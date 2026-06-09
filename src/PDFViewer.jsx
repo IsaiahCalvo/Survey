@@ -79,7 +79,7 @@ import { loadBaseline, saveBaseline, clearBaseline } from './services/excelSyncB
 import { generateRowIdToken } from './services/rowIdToken';
 import { getOrCreateDocumentSecret, resolveDocumentSecret } from './services/rowIdSecretStore';
 import { buildScopeImportPlans } from './services/buildScopeImportPlans';
-import { excelLockFilePath, isExcelOwnerFile, parentDir } from './services/excelLockFile';
+import { excelLockFilePath, isOwnerFileFor, parentDir } from './services/excelLockFile';
 import { makeTombstone, addTombstone, removeTombstone, purgeExpired } from './services/surveyMarkerTrash';
 import { loadTrash, saveTrash } from './services/surveyMarkerTrashStore';
 import { buildSurveyMarkerDeleteHistoryRow, applySurveyMarkerRestore } from './services/surveyMarkerHistory';
@@ -12489,7 +12489,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
                     const range = `A1:${colLetter(colCount)}${rowCount}`;
 
                     try {
-                      await updateCellRange(graphClient, oneDriveFileId, excelSessionId, sheetName, range, values);
+                      await updateCellRange(graphClient, oneDriveFileId, excelSessionId, sheetName, range, values, selectedTemplate?.sharePointDriveId || undefined);
                     } catch (sheetErr) {
                       console.warn(`Failed to update sheet "${sheetName}":`, sheetErr);
                       // Continue with other sheets
@@ -12518,8 +12518,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
                 if (lockPath && await window.electronAPI.fileExists(lockPath)) {
                   excelIsOpen = true;
                 } else {
+                  // Fallback only blocks when the lock file belongs to THIS exact workbook —
+                  // a different open workbook in the same folder must not block this push.
                   const dirEntries = await window.electronAPI.listDir(parentDir(targetPath));
-                  if (Array.isArray(dirEntries) && dirEntries.some(isExcelOwnerFile)) excelIsOpen = true;
+                  if (Array.isArray(dirEntries) && dirEntries.some(name => isOwnerFileFor(name, targetPath))) excelIsOpen = true;
                 }
               } catch {
                 // If we cannot determine open-state, fall through and attempt the write.
@@ -15030,7 +15032,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     if (!liveSyncEnabled || !selectedTemplate?.isOneDrive || !selectedTemplate?.linkedExcelPath || !graphClient) {
       // Clean up existing session
       if (excelSessionRef.current.sessionId && oneDriveFileId && graphClient) {
-        closeWorkbookSession(graphClient, oneDriveFileId, excelSessionRef.current.sessionId);
+        closeWorkbookSession(graphClient, oneDriveFileId, excelSessionRef.current.sessionId, selectedTemplate?.sharePointDriveId || undefined);
         excelSessionRef.current = { sessionId: null, expiresAt: null };
         setExcelSessionId(null);
       }
@@ -15043,13 +15045,17 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     let isMounted = true;
     let sessionRefreshInterval = null;
 
+    // SharePoint/Teams files live in a different drive than the user's own OneDrive;
+    // pass the stored drive id so Graph targets /drives/{id} instead of /me/drive.
+    const sharePointDriveId = selectedTemplate?.sharePointDriveId || undefined;
+
     const initLiveSync = async () => {
       try {
         setLiveSyncStatus('connecting');
 
         // Get file ID from path - use oneDriveApiPath for Graph API calls
         const apiPath = selectedTemplate.oneDriveApiPath || selectedTemplate.linkedExcelPath;
-        const fileId = await getFileIdFromPath(graphClient, apiPath);
+        const fileId = await getFileIdFromPath(graphClient, apiPath, sharePointDriveId);
         if (!isMounted) return;
         setOneDriveFileId(fileId);
 
@@ -15059,13 +15065,13 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
         if (liveSyncSupported === null || liveSyncSupported === true) {
           try {
-            const support = await checkSessionSupport(graphClient, fileId);
+            const support = await checkSessionSupport(graphClient, fileId, sharePointDriveId);
             if (!isMounted) return;
             setLiveSyncSupported(support.supported);
 
             if (support.supported) {
               // Create session for business accounts
-              const { sessionId, expiresAt } = await createWorkbookSession(graphClient, fileId, true);
+              const { sessionId, expiresAt } = await createWorkbookSession(graphClient, fileId, true, sharePointDriveId);
               if (!isMounted) return;
 
               excelSessionRef.current = { sessionId, expiresAt };
@@ -15077,12 +15083,12 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
               sessionRefreshInterval = setInterval(async () => {
                 if (!isMounted || !excelSessionRef.current.sessionId) return;
                 try {
-                  const refreshed = await refreshWorkbookSession(graphClient, fileId, excelSessionRef.current.sessionId);
+                  const refreshed = await refreshWorkbookSession(graphClient, fileId, excelSessionRef.current.sessionId, sharePointDriveId);
                   excelSessionRef.current = refreshed;
                 } catch (err) {
                   console.error('Session refresh failed, recreating...', err);
                   try {
-                    const newSession = await createWorkbookSession(graphClient, fileId, true);
+                    const newSession = await createWorkbookSession(graphClient, fileId, true, sharePointDriveId);
                     excelSessionRef.current = newSession;
                     setExcelSessionId(newSession.sessionId);
                   } catch (recreateErr) {
@@ -15135,7 +15141,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       }
       // Close session on cleanup
       if (excelSessionRef.current.sessionId && oneDriveFileId) {
-        closeWorkbookSession(graphClient, oneDriveFileId, excelSessionRef.current.sessionId);
+        closeWorkbookSession(graphClient, oneDriveFileId, excelSessionRef.current.sessionId, sharePointDriveId);
         excelSessionRef.current = { sessionId: null, expiresAt: null };
       }
       lastKnownETagRef.current = null;
@@ -15186,12 +15192,13 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
         } else if (excelSessionId) {
           // Session-based polling for business accounts
-          const worksheets = await getWorksheets(graphClient, oneDriveFileId, excelSessionId);
+          const pollDriveId = selectedTemplate?.sharePointDriveId || undefined;
+          const worksheets = await getWorksheets(graphClient, oneDriveFileId, excelSessionId, pollDriveId);
 
           // Read data from each worksheet and compare with last poll
           for (const sheet of worksheets) {
             try {
-              const usedRange = await getUsedRange(graphClient, oneDriveFileId, excelSessionId, sheet.name);
+              const usedRange = await getUsedRange(graphClient, oneDriveFileId, excelSessionId, sheet.name, pollDriveId);
 
               const key = sheet.name;
               const lastData = lastPollDataRef.current?.[key];

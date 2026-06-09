@@ -20,46 +20,107 @@ test('local file (not OneDrive) → local, no live writeback', () => {
   assert.equal(cap.liveWritebackEligible, false);
 });
 
-test('SharePoint → business-graph eligible', () => {
+const WORK_TENANT = '11111111-2222-3333-4444-555555555555';
+
+test('work tenant + connected + business drive → business-graph eligible', () => {
+  const cap = classifyExcelCapability({
+    template: { linkedExcelPath: '/x.xlsx', isOneDrive: true },
+    tenantId: WORK_TENANT,
+    isMicrosoftConnected: true,
+    driveType: 'business'
+  });
+  assert.equal(cap.kind, EXCEL_CAPABILITY.BUSINESS_GRAPH);
+  assert.equal(cap.liveWritebackEligible, true);
+});
+
+test('SharePoint/Teams documentLibrary + connected + work tenant → business-graph eligible', () => {
+  const cap = classifyExcelCapability({
+    template: { linkedExcelPath: '/drives/d/items/i', isOneDrive: true, isSharePoint: true },
+    tenantId: WORK_TENANT,
+    isMicrosoftConnected: true,
+    driveType: 'documentLibrary' // case-insensitive
+  });
+  assert.equal(cap.kind, EXCEL_CAPABILITY.BUSINESS_GRAPH);
+  assert.equal(cap.liveWritebackEligible, true);
+  assert.equal(cap.reason, 'sharepoint-documentlibrary');
+});
+
+test('SharePoint flag alone is NOT enough — no connection/tenant/driveType proof → not eligible', () => {
   const cap = classifyExcelCapability({
     template: { linkedExcelPath: '/drives/d/items/i', isOneDrive: true, isSharePoint: true }
   });
-  assert.equal(cap.kind, EXCEL_CAPABILITY.BUSINESS_GRAPH);
-  assert.equal(cap.liveWritebackEligible, true);
+  assert.equal(cap.kind, EXCEL_CAPABILITY.PERSONAL_ONEDRIVE);
+  assert.equal(cap.liveWritebackEligible, false);
+  assert.equal(cap.reason, 'not-connected');
 });
 
-test('work tenant OneDrive → business-graph eligible', () => {
+test('work tenant but NOT connected → not eligible (fail safe)', () => {
   const cap = classifyExcelCapability({
     template: { linkedExcelPath: '/x.xlsx', isOneDrive: true },
-    tenantId: '11111111-2222-3333-4444-555555555555'
+    tenantId: WORK_TENANT,
+    isMicrosoftConnected: false,
+    driveType: 'business'
   });
-  assert.equal(cap.kind, EXCEL_CAPABILITY.BUSINESS_GRAPH);
-  assert.equal(cap.liveWritebackEligible, true);
+  assert.equal(cap.liveWritebackEligible, false);
+  assert.equal(cap.reason, 'not-connected');
 });
 
-test('consumer tenant OneDrive → personal, never live', () => {
+test('connected work tenant but driveType unconfirmed → not eligible', () => {
   const cap = classifyExcelCapability({
     template: { linkedExcelPath: '/x.xlsx', isOneDrive: true },
-    tenantId: CONSUMER_TENANT_ID.toUpperCase() // case-insensitive
+    tenantId: WORK_TENANT,
+    isMicrosoftConnected: true,
+    driveType: null
+  });
+  assert.equal(cap.liveWritebackEligible, false);
+  assert.equal(cap.reason, 'drivetype-unconfirmed');
+});
+
+test('connected work tenant but personal driveType → personal, never live', () => {
+  const cap = classifyExcelCapability({
+    template: { linkedExcelPath: '/x.xlsx', isOneDrive: true },
+    tenantId: WORK_TENANT,
+    isMicrosoftConnected: true,
+    driveType: 'personal'
   });
   assert.equal(cap.kind, EXCEL_CAPABILITY.PERSONAL_ONEDRIVE);
   assert.equal(cap.liveWritebackEligible, false);
+  assert.equal(cap.reason, 'personal-drivetype');
 });
 
-test('unknown tenant OneDrive fails SAFE → personal', () => {
+test('consumer tenant → personal, never live (even if connected + business driveType)', () => {
   const cap = classifyExcelCapability({
     template: { linkedExcelPath: '/x.xlsx', isOneDrive: true },
-    tenantId: null
+    tenantId: CONSUMER_TENANT_ID.toUpperCase(), // case-insensitive
+    isMicrosoftConnected: true,
+    driveType: 'business'
   });
   assert.equal(cap.kind, EXCEL_CAPABILITY.PERSONAL_ONEDRIVE);
   assert.equal(cap.liveWritebackEligible, false);
+  assert.equal(cap.reason, 'consumer-tenant');
+});
+
+test('unknown tenant fails SAFE → personal', () => {
+  const cap = classifyExcelCapability({
+    template: { linkedExcelPath: '/x.xlsx', isOneDrive: true },
+    tenantId: null,
+    isMicrosoftConnected: true,
+    driveType: 'business'
+  });
+  assert.equal(cap.kind, EXCEL_CAPABILITY.PERSONAL_ONEDRIVE);
+  assert.equal(cap.liveWritebackEligible, false);
+  assert.equal(cap.reason, 'no-work-tenant');
 });
 
 test('canAttemptLiveWriteback honors the master gate (off by default)', () => {
   const business = classifyExcelCapability({
-    template: { linkedExcelPath: '/x', isOneDrive: true, isSharePoint: true }
+    template: { linkedExcelPath: '/x', isOneDrive: true, isSharePoint: true },
+    tenantId: WORK_TENANT,
+    isMicrosoftConnected: true,
+    driveType: 'documentLibrary'
   });
-  // Gate is OFF until validated against a real Business M365 account.
+  // Even a fully-proven business setup cannot patch live while the master gate is OFF.
+  assert.equal(business.liveWritebackEligible, true);
   assert.equal(LIVE_WRITEBACK_ENABLED, false);
   assert.equal(canAttemptLiveWriteback(business), false);
   // Local can never attempt live writeback regardless of the gate.

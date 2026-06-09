@@ -34,3 +34,25 @@ export const excelLockFilePath = (filePath) => {
 
 /** True when a directory entry name looks like an Excel owner/lock file. */
 export const isExcelOwnerFile = (name) => typeof name === 'string' && name.startsWith('~$');
+
+/**
+ * The owner/lock file's bare NAME (no directory) for a workbook: `~$<filename>`.
+ * Returns null for an empty path.
+ */
+export const excelOwnerFileName = (filePath) => {
+  const { base } = splitPath(filePath);
+  return base ? `~$${base}` : null;
+};
+
+/**
+ * True when a directory entry name is the owner/lock file for THIS specific workbook
+ * — not merely any open workbook sharing the folder. We must only block a push when the
+ * lock file belongs to the exact target file (e.g. `~$Security_export.xlsx` blocks
+ * `Security_export.xlsx`, but a stray `~$Budget.xlsx` does not). Comparison is
+ * case-insensitive because the default macOS/Windows filesystems are case-insensitive.
+ */
+export const isOwnerFileFor = (entryName, filePath) => {
+  const owner = excelOwnerFileName(filePath);
+  if (!owner || typeof entryName !== 'string') return false;
+  return entryName.toLowerCase() === owner.toLowerCase();
+};

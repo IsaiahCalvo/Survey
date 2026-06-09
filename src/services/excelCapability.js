@@ -14,11 +14,22 @@
 //                        when LIVE_WRITEBACK_ENABLED is on AND a runtime session probe
 //                        (excelSessionService.checkSessionSupport) confirms support.
 //
-// Personal vs business is decided by the signed-in account's tenant: the well-known
-// Microsoft consumer tenant id marks an MSA/personal account. Unknown tenant fails
-// SAFE (treated as personal → queue), never as business.
+// Being "in OneDrive / SharePoint / Teams" is NOT sufficient proof on its own. A file
+// can sit in personal OneDrive (no Graph cell sync) yet still carry an isOneDrive flag.
+// So live writeback is eligible ONLY when EVERY business signal is positively proven:
+//   1. the app is actually connected to Microsoft (a usable Graph client), AND
+//   2. the signed-in account is a WORK/SCHOOL tenant (id present and NOT the consumer id),
+//      decided from the Microsoft id token `tid` — never from the email address, AND
+//   3. Microsoft Graph drive metadata `driveType` is `business` (OneDrive for Business) or
+//      `documentLibrary` (SharePoint / Teams) — `personal` means no live cell sync.
+// Any missing/contradictory signal fails SAFE (treated as personal → queue), never live.
+// A runtime workbook `createSession` probe (excelSessionService.checkSessionSupport) is the
+// final confirm before an actual PATCH; this classifier is the cheap synchronous gate.
 
 export const CONSUMER_TENANT_ID = '9188040d-6c67-4c5b-b112-36a304b66dad';
+
+// Graph drive metadata `driveType` values that can support live workbook sessions.
+export const BUSINESS_DRIVE_TYPES = Object.freeze(['business', 'documentlibrary']);
 
 export const EXCEL_CAPABILITY = Object.freeze({
   NONE: 'none',
@@ -35,31 +46,54 @@ export const LIVE_WRITEBACK_ENABLED = false;
 /**
  * @param {object} params
  * @param {object} params.template  the selected survey template (link metadata)
- * @param {string|null} [params.tenantId]  the signed-in Microsoft account's tenant id
+ * @param {string|null} [params.tenantId]  the signed-in Microsoft account's tenant id (id token `tid`)
+ * @param {boolean} [params.isMicrosoftConnected]  true when the app holds a usable Graph client
+ * @param {string|null} [params.driveType]  Graph drive metadata `driveType`: 'personal' | 'business' | 'documentLibrary'
  * @returns {{kind:string, liveWritebackEligible:boolean, reason:string}}
- *   liveWritebackEligible = the SETUP could support a live cell PATCH (business-graph).
+ *   liveWritebackEligible = the SETUP is PROVEN to support a live cell PATCH (business-graph).
  *   It does NOT mean writeback is on — that also requires LIVE_WRITEBACK_ENABLED and a
- *   runtime session probe. Local/personal are always false.
+ *   runtime session probe. Local/personal/unproven are always false.
  */
-export const classifyExcelCapability = ({ template, tenantId } = {}) => {
+export const classifyExcelCapability = ({ template, tenantId, isMicrosoftConnected = false, driveType = null } = {}) => {
   if (!template || !template.linkedExcelPath) {
     return { kind: EXCEL_CAPABILITY.NONE, liveWritebackEligible: false, reason: 'no-linked-workbook' };
   }
   if (!template.isOneDrive) {
     return { kind: EXCEL_CAPABILITY.LOCAL, liveWritebackEligible: false, reason: 'local-file' };
   }
-  if (template.isSharePoint) {
-    return { kind: EXCEL_CAPABILITY.BUSINESS_GRAPH, liveWritebackEligible: true, reason: 'sharepoint' };
-  }
+
+  // From here the file lives in some Microsoft cloud location (OneDrive personal/business,
+  // SharePoint, or Teams). Decide eligibility ONLY from proven Microsoft account + Graph signals.
   const normalizedTenant = typeof tenantId === 'string' ? tenantId.trim().toLowerCase() : '';
-  if (normalizedTenant === CONSUMER_TENANT_ID) {
+  const normalizedDriveType = typeof driveType === 'string' ? driveType.trim().toLowerCase() : '';
+  const isConsumerTenant = normalizedTenant === CONSUMER_TENANT_ID;
+  const isWorkTenant = Boolean(normalizedTenant) && !isConsumerTenant;
+  const isBusinessDrive = BUSINESS_DRIVE_TYPES.includes(normalizedDriveType);
+  const isPersonalDrive = normalizedDriveType === 'personal';
+
+  // Hard personal signals → never live, regardless of anything else.
+  if (isConsumerTenant) {
     return { kind: EXCEL_CAPABILITY.PERSONAL_ONEDRIVE, liveWritebackEligible: false, reason: 'consumer-tenant' };
   }
-  if (normalizedTenant) {
-    return { kind: EXCEL_CAPABILITY.BUSINESS_GRAPH, liveWritebackEligible: true, reason: 'work-tenant' };
+  if (isPersonalDrive) {
+    return { kind: EXCEL_CAPABILITY.PERSONAL_ONEDRIVE, liveWritebackEligible: false, reason: 'personal-drivetype' };
   }
-  // Unknown tenant (not yet hydrated / older session): fail SAFE — queue, never live.
-  return { kind: EXCEL_CAPABILITY.PERSONAL_ONEDRIVE, liveWritebackEligible: false, reason: 'unknown-tenant-defaults-safe' };
+
+  // Eligible ONLY when connected AND work/school tenant AND a business/SharePoint drive type.
+  if (isMicrosoftConnected && isWorkTenant && isBusinessDrive) {
+    return {
+      kind: EXCEL_CAPABILITY.BUSINESS_GRAPH,
+      liveWritebackEligible: true,
+      reason: normalizedDriveType === 'documentlibrary' ? 'sharepoint-documentlibrary' : 'business-onedrive'
+    };
+  }
+
+  // Otherwise we cannot PROVE business → fail SAFE (queue, never live). Surface why.
+  let reason = 'unproven-defaults-safe';
+  if (!isMicrosoftConnected) reason = 'not-connected';
+  else if (!isWorkTenant) reason = 'no-work-tenant';
+  else if (!isBusinessDrive) reason = 'drivetype-unconfirmed';
+  return { kind: EXCEL_CAPABILITY.PERSONAL_ONEDRIVE, liveWritebackEligible: false, reason };
 };
 
 /**

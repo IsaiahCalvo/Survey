@@ -5,7 +5,17 @@
  *
  * NOTE: Session-based Excel APIs only work with Microsoft 365 Business/Work accounts.
  * Personal OneDrive (consumer) accounts do not support this feature.
+ *
+ * DRIVE SCOPING: a file in the user's own OneDrive lives under `/me/drive`, but a file in
+ * a SharePoint document library or a Teams channel (SharePoint behind the scenes) lives in
+ * a DIFFERENT drive — addressing it via `/me/drive/items/{id}` 404s. When the caller knows
+ * the SharePoint drive id, pass it through as `driveId` and every call targets
+ * `/drives/{driveId}/items/{id}/...` instead. Omitting driveId preserves the OneDrive path.
  */
+
+/** Base Graph item path for a workbook, scoped to the correct drive. */
+const workbookItemBase = (fileId, driveId) =>
+  driveId ? `/drives/${driveId}/items/${fileId}` : `/me/drive/items/${fileId}`;
 
 /**
  * Get OneDrive item ID from file path
@@ -13,14 +23,15 @@
  * @param {string} filePath - Path in OneDrive (e.g., '/Documents/survey.xlsx')
  * @returns {Promise<string>} - OneDrive item ID
  */
-export async function getFileIdFromPath(graphClient, filePath) {
+export async function getFileIdFromPath(graphClient, filePath, driveId) {
   if (!graphClient) {
     throw new Error('Not authenticated with Microsoft. Please sign in first.');
   }
 
   try {
+    const rootPath = driveId ? `/drives/${driveId}/root:${filePath}` : `/me/drive/root:${filePath}`;
     const response = await graphClient
-      .api(`/me/drive/root:${filePath}`)
+      .api(rootPath)
       .select('id')
       .get();
 
@@ -40,14 +51,14 @@ export async function getFileIdFromPath(graphClient, filePath) {
  * @param {boolean} persistChanges - If true, changes are saved immediately (default: true)
  * @returns {Promise<{sessionId: string, expiresAt: Date}>} - Session info
  */
-export async function createWorkbookSession(graphClient, fileId, persistChanges = true) {
+export async function createWorkbookSession(graphClient, fileId, persistChanges = true, driveId) {
   if (!graphClient) {
     throw new Error('Not authenticated with Microsoft. Please sign in first.');
   }
 
   try {
     const response = await graphClient
-      .api(`/me/drive/items/${fileId}/workbook/createSession`)
+      .api(`${workbookItemBase(fileId, driveId)}/workbook/createSession`)
       .post({
         persistChanges: persistChanges
       });
@@ -82,14 +93,14 @@ export async function createWorkbookSession(graphClient, fileId, persistChanges 
  * @param {string} fileId - OneDrive item ID
  * @param {string} sessionId - Session ID to close
  */
-export async function closeWorkbookSession(graphClient, fileId, sessionId) {
+export async function closeWorkbookSession(graphClient, fileId, sessionId, driveId) {
   if (!graphClient || !sessionId) {
     return;
   }
 
   try {
     await graphClient
-      .api(`/me/drive/items/${fileId}/workbook/closeSession`)
+      .api(`${workbookItemBase(fileId, driveId)}/workbook/closeSession`)
       .header('workbook-session-id', sessionId)
       .post({});
 
@@ -108,7 +119,7 @@ export async function closeWorkbookSession(graphClient, fileId, sessionId) {
  * @param {string} sessionId - Current session ID
  * @returns {Promise<{sessionId: string, expiresAt: Date}>} - Refreshed session info
  */
-export async function refreshWorkbookSession(graphClient, fileId, sessionId) {
+export async function refreshWorkbookSession(graphClient, fileId, sessionId, driveId) {
   if (!graphClient || !sessionId) {
     throw new Error('Missing graphClient or sessionId');
   }
@@ -118,7 +129,7 @@ export async function refreshWorkbookSession(graphClient, fileId, sessionId) {
     // Making any API call with the session ID keeps it alive
     // We'll use a lightweight operation - get worksheets
     await graphClient
-      .api(`/me/drive/items/${fileId}/workbook/worksheets`)
+      .api(`${workbookItemBase(fileId, driveId)}/workbook/worksheets`)
       .header('workbook-session-id', sessionId)
       .select('id,name')
       .get();
@@ -146,7 +157,7 @@ export async function refreshWorkbookSession(graphClient, fileId, sessionId) {
  * @param {Array<Array>} values - 2D array of cell values
  * @returns {Promise<Object>} - Updated range info
  */
-export async function updateCellRange(graphClient, fileId, sessionId, sheetName, range, values) {
+export async function updateCellRange(graphClient, fileId, sessionId, sheetName, range, values, driveId) {
   if (!graphClient) {
     throw new Error('Not authenticated with Microsoft. Please sign in first.');
   }
@@ -156,7 +167,7 @@ export async function updateCellRange(graphClient, fileId, sessionId, sheetName,
     const encodedSheetName = encodeURIComponent(sheetName);
 
     const requestBuilder = graphClient
-      .api(`/me/drive/items/${fileId}/workbook/worksheets('${encodedSheetName}')/range(address='${range}')`);
+      .api(`${workbookItemBase(fileId, driveId)}/workbook/worksheets('${encodedSheetName}')/range(address='${range}')`);
 
     // Add session header if provided
     if (sessionId) {
@@ -182,14 +193,14 @@ export async function updateCellRange(graphClient, fileId, sessionId, sheetName,
  * @param {string} sessionId - Workbook session ID (optional)
  * @returns {Promise<Array<{id: string, name: string, position: number}>>} - List of worksheets
  */
-export async function getWorksheets(graphClient, fileId, sessionId) {
+export async function getWorksheets(graphClient, fileId, sessionId, driveId) {
   if (!graphClient) {
     throw new Error('Not authenticated with Microsoft. Please sign in first.');
   }
 
   try {
     const requestBuilder = graphClient
-      .api(`/me/drive/items/${fileId}/workbook/worksheets`);
+      .api(`${workbookItemBase(fileId, driveId)}/workbook/worksheets`);
 
     if (sessionId) {
       requestBuilder.header('workbook-session-id', sessionId);
@@ -215,7 +226,7 @@ export async function getWorksheets(graphClient, fileId, sessionId) {
  * @param {string} sheetName - Worksheet name
  * @returns {Promise<{values: Array<Array>, address: string}>} - Used range data
  */
-export async function getUsedRange(graphClient, fileId, sessionId, sheetName) {
+export async function getUsedRange(graphClient, fileId, sessionId, sheetName, driveId) {
   if (!graphClient) {
     throw new Error('Not authenticated with Microsoft. Please sign in first.');
   }
@@ -224,7 +235,7 @@ export async function getUsedRange(graphClient, fileId, sessionId, sheetName) {
     const encodedSheetName = encodeURIComponent(sheetName);
 
     const requestBuilder = graphClient
-      .api(`/me/drive/items/${fileId}/workbook/worksheets('${encodedSheetName}')/usedRange`);
+      .api(`${workbookItemBase(fileId, driveId)}/workbook/worksheets('${encodedSheetName}')/usedRange`);
 
     if (sessionId) {
       requestBuilder.header('workbook-session-id', sessionId);
@@ -254,7 +265,7 @@ export async function getUsedRange(graphClient, fileId, sessionId, sheetName) {
  * @param {string} fileId - OneDrive item ID to test with
  * @returns {Promise<{supported: boolean, error?: string}>}
  */
-export async function checkSessionSupport(graphClient, fileId) {
+export async function checkSessionSupport(graphClient, fileId, driveId) {
   if (!graphClient || !fileId) {
     return { supported: false, error: 'Missing graphClient or fileId' };
   }
@@ -262,14 +273,14 @@ export async function checkSessionSupport(graphClient, fileId) {
   try {
     // Try to create a non-persistent session to test support
     const response = await graphClient
-      .api(`/me/drive/items/${fileId}/workbook/createSession`)
+      .api(`${workbookItemBase(fileId, driveId)}/workbook/createSession`)
       .post({ persistChanges: false });
 
     // Close the test session immediately
     if (response.id) {
       try {
         await graphClient
-          .api(`/me/drive/items/${fileId}/workbook/closeSession`)
+          .api(`${workbookItemBase(fileId, driveId)}/workbook/closeSession`)
           .header('workbook-session-id', response.id)
           .post({});
       } catch (e) {
