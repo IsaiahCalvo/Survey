@@ -47,6 +47,8 @@ This is the entry point for the next session. Background contract is `PLAN.md` (
 
 11. **Desktop file-watcher permission error.** The local file-watcher hits `EPERM` on the Desktop/Logs path; minor but open.
 
+12. **Tier-4 hardening for the positional slice (carry-over from blank-rowid Slice 1, 2026-06-09).** The Slice-1 field-overlap recovery in `rowImportMatcher.js` deliberately omitted two gates from the verdict doc's recommended Tier 4 (`.planning/blank-rowid-matching-verdict.md`): (a) the **conservation check** (the scope's row-count delta must be explained by matched rows before elimination-pairing) and (b) **cross-scope fingerprint reconciliation** (a cut+paste between sheets is recognized as a move, not eliminated against — the attacker's S7 sub-variant). Add both when the Tier-3 positional slice (slice 2) lands, or as a hardening pass before shipping to users who reorganize sheets across scopes. Also pending a one-line confirmation from Isaiah: an UNBALANCED byte-identical group (1 blank row × 2 identical leftovers) now silently pairs the first in stored order and the residue twin enters `candidateDeletes` (restorable via History) — if he'd rather the residue stay review-shielded, the change is localized to Pass 3a.
+
 ## Landed this session (2026-06-09)
 
 - Item 1 (review icon) — `0e52bd09`. Item 6 (status vocabulary + tone banner) — `f5ae0028`. Item 5 detector core — `86c0e0cb`. Plus the earlier exact-lock-check + proof-gated capability + SharePoint path fix — `7ac4bb7d`.

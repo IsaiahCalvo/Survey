@@ -4,10 +4,13 @@
  *
  *   1. Row ID (rowIdToken) is PRIMARY. A valid, in-scope, count-1 token whose marker was
  *      actually exported binds the row to that marker (rename/edits → same marker).
- *   2. Full-row fingerprint (rowFingerprint) is the SAFETY layer: it recovers a blank/lost
- *      Row ID by content and reports which fields changed (for conflict detection).
- *   3. Duplicate / unknown / foreign / wrong-scope / malformed Row IDs, and ambiguous blank
- *      recovery, NEVER guess — they surface for review ("Needs your choice").
+ *   2. Content fingerprints (rowFingerprint) are the SAFETY layer: a blank/lost Row ID is
+ *      recovered by exact identity fingerprint (byte-identical twin groups pair in stable
+ *      order silently, Amendment #4), then by ≥1 shared NON-BLANK identity field unique in
+ *      both directions (Tier-4 field overlap — survives Excel-side edits to a blank-ID row).
+ *   3. Duplicate / unknown / foreign / wrong-scope / malformed Row IDs, and blank recovery
+ *      with multiple NON-identical candidates either direction, NEVER guess — they surface
+ *      for review ("Needs your choice").
  *
  * This module is PURE and async (it awaits the token classifier + fingerprint hashing). It
  * produces decisions only; it does not mutate markers or the workbook. Excel-driven deletion
@@ -136,29 +139,161 @@ export const buildImportPlan = async ({ rows = [], stored = [], documentId, scop
     });
   }
 
-  // Pass 3 — blank Row ID recovery by fingerprint. Recoverable only against LEFTOVER markers
-  // (not already bound by a token, not tangled in a duplicate). A unique identity-vector hit
-  // re-attaches the marker; multiple hits → "Needs your choice"; no hit → genuinely new.
+  // Pass 3 — blank Row ID recovery. Recoverable only against LEFTOVER markers (not already
+  // bound by a token, not tangled in a duplicate). Per the locked blank-rowid amendments
+  // (2026-06-09, .planning/blank-rowid-matching-verdict.md):
+  //   3a. exact identity-vector fingerprint, GROUP-AWARE: byte-identical rows and markers
+  //       pair in stable order silently (Amendment #4 — assignment is data-inconsequential,
+  //       identical twins never go to review).
+  //   3b. field-overlap recovery (Tier 4, zero storage): a row with ZERO exact candidates
+  //       pairs with a leftover sharing ≥1 NON-BLANK identity field, unique in both
+  //       directions (byte-identical sides pair as a group), iterated to fixpoint.
+  //   3c. fall-through: zero overlap with every leftover → genuinely new (create);
+  //       multiple NON-identical candidates either direction → 'ambiguous-identity'
+  //       review (genuinely consequential ambiguity only — never guess, never create).
   const leftoverFor = () => stored.filter((s) => !matchedMarkerIds.has(s.markerId));
 
+  const recoverDecision = (rowIndex, markerId, extra = {}) => {
+    decisions.push({
+      rowIndex,
+      decision: 'missing-rowid',
+      action: IMPORT_ACTIONS.APPLY, // confident recovery: re-attach + apply (owner rule 5).
+      // Emitting action 'apply' keeps the downstream both-sides conflict guard reachable
+      // (buildScopeImportPlans Amendment #6) — a both-sides edit becomes a 'conflict' review.
+      markerId,
+      recovered: true,
+      ...extra
+    });
+    matchedMarkerIds.add(markerId);
+  };
+
+  // --- Pass 3a: exact-fingerprint groups. Rows and leftovers with the SAME identity
+  // fingerprint are byte-identical both sides, so pairing is order-preserving and silent
+  // (rows in row order × leftovers in stored order). 1×1 is today's unique recovery;
+  // N×M pairs min(N,M); extra rows fall through to field-overlap recovery; extra
+  // markers stay leftover (a deleted twin row → delete candidate, Amendment #3/#7).
+  // Group-at-once (not first-row-wins) → the outcome is independent of row order.
+  const blanksByFp = new Map(); // identityVectorFingerprint -> [enriched], row order
   for (const e of blanks) {
-    const { rowIndex, fp } = e;
-    const candidates = leftoverFor().filter((s) => s.identityVectorFingerprint === fp.identityVectorFingerprint);
-    if (candidates.length === 1) {
-      decisions.push({
-        rowIndex,
-        decision: 'missing-rowid',
-        action: IMPORT_ACTIONS.APPLY, // confident unique recovery: re-attach + apply (owner rule 5)
-        markerId: candidates[0].markerId,
-        recovered: true
-      });
-      matchedMarkerIds.add(candidates[0].markerId);
-    } else if (candidates.length > 1) {
-      decisions.push(reviewDecision(rowIndex, 'ambiguous-identity', {
-        candidateMarkerIds: candidates.map((c) => c.markerId)
-      }));
-    } else {
-      decisions.push({ rowIndex, decision: 'new-row', action: IMPORT_ACTIONS.CREATE });
+    const k = e.fp.identityVectorFingerprint;
+    if (!blanksByFp.has(k)) blanksByFp.set(k, []);
+    blanksByFp.get(k).push(e);
+  }
+
+  let overlapPool = []; // blanks with zero exact candidates (or beyond their exact group)
+  for (const [fpKey, group] of blanksByFp) {
+    const cands = leftoverFor().filter((s) => s.identityVectorFingerprint === fpKey);
+    const n = Math.min(group.length, cands.length);
+    for (let i = 0; i < n; i += 1) recoverDecision(group[i].rowIndex, cands[i].markerId);
+    for (let i = n; i < group.length; i += 1) overlapPool.push(group[i]);
+  }
+  overlapPool.sort((a, b) => a.rowIndex - b.rowIndex);
+
+  // --- Pass 3b: Tier-4 field-overlap recovery. Only the IDENTITY fields participate
+  // (item / entity / notes / answers) — the audit columns (changedBy / changedDate) move
+  // on any edit and never establish identity. A shared field counts ONLY when non-blank
+  // on both sides: blank==blank is no signal.
+  if (overlapPool.length > 0) {
+    // Precompute the canonical-blank fingerprint per identity field (one hashing pass
+    // covering every answer id present on either side) so "non-blank" is an exact
+    // fingerprint comparison, not a value heuristic.
+    const answerIds = new Set();
+    for (const e of overlapPool) Object.keys(e.fp.fieldFingerprints?.answers || {}).forEach((id) => answerIds.add(id));
+    for (const s of stored) Object.keys(s.fieldFingerprints?.answers || {}).forEach((id) => answerIds.add(id));
+    const blankFF = (await computeRowFingerprints({
+      answers: Object.fromEntries([...answerIds].map((id) => [id, null]))
+    })).fieldFingerprints;
+
+    const IDENTITY_SCALARS = ['item', 'entity', 'notes'];
+    // ≥1 identity field whose fingerprints are equal AND not the blank-canonical value.
+    // A marker without fieldFingerprints (older record) safely never overlaps.
+    const sharesNonBlankField = (rowFF, markerFF) => {
+      if (!rowFF || !markerFF) return false;
+      for (const k of IDENTITY_SCALARS) {
+        if (rowFF[k] && rowFF[k] === markerFF[k] && rowFF[k] !== blankFF[k]) return true;
+      }
+      const rowAnswers = rowFF.answers || {};
+      const markerAnswers = markerFF.answers || {};
+      for (const id of Object.keys(rowAnswers)) {
+        if (rowAnswers[id] && rowAnswers[id] === markerAnswers[id] && rowAnswers[id] !== blankFF.answers[id]) return true;
+      }
+      return false;
+    };
+    const candidatesFor = (e, remaining) =>
+      remaining.filter((s) => sharesNonBlankField(e.fp.fieldFingerprints, s.fieldFingerprints));
+
+    let remaining = leftoverFor(); // stored order
+    // Fixpoint: each round pairs every row-fingerprint group whose candidate set is
+    // unambiguous — either a unique mutual pairing, or all candidates byte-identical and
+    // uncontended by any non-identical row (Amendment #4 group pairing) — then re-derives
+    // candidates so earlier matches can disambiguate later ones. Pairs are decided
+    // set-wise per round, so the result is independent of row order.
+    for (;;) {
+      const candsByRow = new Map(); // enriched row -> [stored]
+      const rowsByMarker = new Map(); // stored -> [enriched row]
+      for (const e of overlapPool) {
+        const list = candidatesFor(e, remaining);
+        candsByRow.set(e, list);
+        for (const s of list) {
+          if (!rowsByMarker.has(s)) rowsByMarker.set(s, []);
+          rowsByMarker.get(s).push(e);
+        }
+      }
+
+      // Rows with identical identity fingerprints have identical identity-field
+      // fingerprints, hence identical candidate sets — group them.
+      const rowGroups = new Map(); // identityVectorFingerprint -> [enriched], row order
+      for (const e of overlapPool) {
+        const k = e.fp.identityVectorFingerprint;
+        if (!rowGroups.has(k)) rowGroups.set(k, []);
+        rowGroups.get(k).push(e);
+      }
+
+      const paired = []; // [enriched row, stored marker]
+      for (const group of rowGroups.values()) {
+        const cands = candsByRow.get(group[0]) || [];
+        if (cands.length === 0) continue; // resolved in Pass 3c (new-row)
+        // All candidates must be byte-identical to EACH OTHER (a single candidate is
+        // trivially so — the plain unique pairing), else this is consequential ambiguity.
+        const headFp = cands[0].identityVectorFingerprint;
+        if (!cands.every((s) => s.identityVectorFingerprint === headFp)) continue;
+        // No candidate may be wanted by a row OUTSIDE this byte-identical group —
+        // that contention is ambiguity in the marker direction, never guessed away.
+        const groupSet = new Set(group);
+        const contended = cands.some((s) => (rowsByMarker.get(s) || []).some((r) => !groupSet.has(r)));
+        if (contended) continue;
+        const n = Math.min(group.length, cands.length);
+        for (let i = 0; i < n; i += 1) paired.push([group[i], cands[i]]);
+      }
+
+      if (paired.length === 0) break;
+      const usedRows = new Set();
+      const usedMarkers = new Set();
+      for (const [e, s] of paired) {
+        // recoveredBy is purely diagnostic (logs / future observability) — no executor
+        // consumes it. Exact-fingerprint recoveries (3a) deliberately omit it so their
+        // decision shape stays byte-identical to the pre-Tier-4 matcher.
+        recoverDecision(e.rowIndex, s.markerId, { recoveredBy: 'field-overlap' });
+        usedRows.add(e);
+        usedMarkers.add(s);
+      }
+      overlapPool = overlapPool.filter((e) => !usedRows.has(e));
+      remaining = remaining.filter((s) => !usedMarkers.has(s));
+    }
+
+    // --- Pass 3c: fall-through for still-unmatched blanks. Zero overlap with every
+    // leftover → genuinely new row (Amendment #2). Any surviving candidates here are
+    // non-identical or contended → review; listing them shields them from
+    // candidateDeletes below (a row possibly theirs exists, merely unresolved).
+    for (const e of overlapPool) {
+      const list = candidatesFor(e, remaining);
+      if (list.length === 0) {
+        decisions.push({ rowIndex: e.rowIndex, decision: 'new-row', action: IMPORT_ACTIONS.CREATE });
+      } else {
+        decisions.push(reviewDecision(e.rowIndex, 'ambiguous-identity', {
+          candidateMarkerIds: list.map((s) => s.markerId)
+        }));
+      }
     }
   }
 

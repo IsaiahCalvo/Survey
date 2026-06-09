@@ -149,22 +149,30 @@ test('blank Row ID with a unique fingerprint match to a leftover → recovered (
   assert.deepEqual(candidateDeletes, []); // recovered, not a delete candidate
 });
 
-test('blank Row ID with no fingerprint match → genuinely new row (create)', async () => {
+test('blank Row ID sharing no identity field with any leftover → genuinely new row (create)', async () => {
+  // No fingerprint match AND no non-blank identity-field overlap (Tier 4) — a row that
+  // merely shares some fields would now pair instead (see rowImportMatcherFieldOverlap tests).
   const stored = [await storedFor('m1', vals())];
-  const rows = [{ rowIdCell: '', values: vals({ item: 'Brand New', answers: { q1: 'N' } }) }];
+  const rows = [{ rowIdCell: '', values: vals({ item: 'Brand New', entity: 'South', notes: 'unrelated', answers: { q1: 'N' } }) }];
   const { decisions } = await buildImportPlan({ rows, stored, documentId: DOC, scopeId: SCOPE, resolveSecret });
   assert.equal(decisions[0].decision, 'new-row');
   assert.equal(decisions[0].action, IMPORT_ACTIONS.CREATE);
 });
 
-test('blank Row ID matching two identical leftovers → ambiguous-identity (review, no guess)', async () => {
+test('blank row vs two byte-identical leftovers → pairs the first in stored order, twin becomes delete candidate (Amendment #4, never review)', async () => {
+  // The two markers are byte-identical, so which one the row re-attaches to is
+  // data-inconsequential — locked Amendment #4 pairs in stable order silently. The
+  // unmatched twin means one of two identical rows was deleted in Excel → a delete
+  // candidate for the caller's triage (Amendment #3/#7: deletes never prompt).
   const v = vals();
   const stored = [await storedFor('m1', v), await storedFor('m2', v)]; // two markers, identical content
   const rows = [{ rowIdCell: '', values: v }];
-  const { decisions } = await buildImportPlan({ rows, stored, documentId: DOC, scopeId: SCOPE, resolveSecret });
-  assert.equal(decisions[0].decision, 'ambiguous-identity');
-  assert.equal(decisions[0].action, 'review');
-  assert.deepEqual(decisions[0].candidateMarkerIds.sort(), ['m1', 'm2']);
+  const { decisions, candidateDeletes } = await buildImportPlan({ rows, stored, documentId: DOC, scopeId: SCOPE, resolveSecret });
+  assert.equal(decisions.length, 1);
+  assert.equal(decisions[0].decision, 'missing-rowid');
+  assert.equal(decisions[0].action, IMPORT_ACTIONS.APPLY);
+  assert.equal(decisions[0].markerId, 'm1');
+  assert.deepEqual(candidateDeletes, ['m2']);
 });
 
 test('a stored marker with no row becomes a review-only delete candidate (delete stays OFF)', async () => {
@@ -175,15 +183,20 @@ test('a stored marker with no row becomes a review-only delete candidate (delete
   assert.deepEqual(candidateDeletes, ['m2']);
 });
 
-test('ambiguous blank-row recovery never marks its candidate markers for deletion', async () => {
-  // m1 and m2 share identical content → identical identity-vector fingerprint. A single
-  // blank-Row-ID row could be either of them → ambiguous review. Neither may become a delete
-  // candidate: the row is genuinely one of them, just unresolved (guards Excel-driven delete).
-  const v = vals();
-  const stored = [await storedFor('m1', v), await storedFor('m2', v)];
-  const rows = [{ rowIdCell: '', values: v }];
+test('ambiguous blank-row recovery (non-identical candidates) never marks its candidate markers for deletion', async () => {
+  // m1 and m2 are NOT byte-identical (different notes) but both share the row's Item —
+  // multiple non-identical candidates = genuinely consequential ambiguity → review, and
+  // neither may become a delete candidate: the row is plausibly one of them, just
+  // unresolved (guards Excel-driven delete).
+  const stored = [
+    await storedFor('m1', vals({ notes: 'first twin' })),
+    await storedFor('m2', vals({ notes: 'second twin' }))
+  ];
+  const rows = [{ rowIdCell: '', values: vals({ notes: 'edited in excel' }) }];
   const { decisions, candidateDeletes } = await buildImportPlan({ rows, stored, documentId: DOC, scopeId: SCOPE, resolveSecret });
   const review = decisions.find((d) => d.decision === 'ambiguous-identity');
   assert.ok(review, 'blank row is ambiguous between m1 and m2');
+  assert.equal(review.action, 'review');
+  assert.deepEqual(review.candidateMarkerIds.sort(), ['m1', 'm2']);
   assert.deepEqual(candidateDeletes, [], 'an under-review marker is never a delete candidate');
 });
