@@ -106,6 +106,35 @@ const SurveyMarkerReviewIndicator = ({
   onKeepApp,
   onUseExcel
 }) => {
+  const [isOpen, setIsOpen] = useState(false);
+  const closeTimerRef = useRef(null);
+
+  const clearCloseTimer = () => {
+    if (!closeTimerRef.current) return;
+    window.clearTimeout(closeTimerRef.current);
+    closeTimerRef.current = null;
+  };
+
+  const openTooltip = () => {
+    clearCloseTimer();
+    setIsOpen(true);
+  };
+
+  const closeTooltipSoon = () => {
+    clearCloseTimer();
+    closeTimerRef.current = window.setTimeout(() => {
+      setIsOpen(false);
+      closeTimerRef.current = null;
+    }, 280);
+  };
+
+  const closeTooltipNow = () => {
+    clearCloseTimer();
+    setIsOpen(false);
+  };
+
+  useEffect(() => clearCloseTimer, []);
+
   if (!message) return null;
 
   const conflictFields = Array.isArray(conflict?.conflictFields)
@@ -113,13 +142,28 @@ const SurveyMarkerReviewIndicator = ({
     : [];
 
   return (
-    <span className="survey-marker-review-wrap">
+    <span
+      className={`survey-marker-review-wrap${isOpen ? ' is-open' : ''}`}
+      onMouseEnter={openTooltip}
+      onMouseLeave={closeTooltipSoon}
+      onFocus={openTooltip}
+      onBlur={(event) => {
+        if (!event.currentTarget.contains(event.relatedTarget)) closeTooltipSoon();
+      }}
+    >
       <button
         type="button"
         className="survey-marker-review-button"
         aria-label={message}
         aria-describedby={`survey-marker-review-${markerId || (conflict ? 'conflict' : 'review')}`}
+        aria-expanded={isOpen}
         onClick={(event) => event.stopPropagation()}
+        onKeyDown={(event) => {
+          if (event.key === 'Escape') {
+            event.stopPropagation();
+            closeTooltipNow();
+          }
+        }}
       >
         <img src={reviewWarningIcon} alt="" width={15} height={15} aria-hidden="true" />
       </button>
@@ -142,8 +186,24 @@ const SurveyMarkerReviewIndicator = ({
         )}
         {conflict && (
           <span className="survey-marker-review-tooltip-actions">
-            <button type="button" onClick={onKeepApp}>Keep app</button>
-            <button type="button" onClick={onUseExcel}>Use Excel</button>
+            <button
+              type="button"
+              onClick={(event) => {
+                closeTooltipNow();
+                onKeepApp?.(event);
+              }}
+            >
+              Keep app
+            </button>
+            <button
+              type="button"
+              onClick={(event) => {
+                closeTooltipNow();
+                onUseExcel?.(event);
+              }}
+            >
+              Use Excel
+            </button>
           </span>
         )}
       </span>
@@ -1845,6 +1905,20 @@ const SurveySpacesRail = ({
                                                       />
                                                   </div>
 
+                                                  <SurveyMarkerReviewIndicator
+                                                    markerId={annotationId}
+                                                    message={reviewMessage}
+                                                    conflict={reviewConflict}
+                                                    onKeepApp={(e) => {
+                                                      e.stopPropagation();
+                                                      onResolveExcelConflict && onResolveExcelConflict(annotationId, 'app');
+                                                    }}
+                                                    onUseExcel={(e) => {
+                                                      e.stopPropagation();
+                                                      onResolveExcelConflict && onResolveExcelConflict(annotationId, 'excel');
+                                                    }}
+                                                  />
+
                                                   {/* Item-level Notes button */}
                                                   <button
                                                     onClick={(e) => {
@@ -1885,20 +1959,6 @@ const SurveySpacesRail = ({
                                                   >
                                                     <Icon name="pen" size={13} />
                                                   </button>
-
-                                                  <SurveyMarkerReviewIndicator
-                                                    markerId={annotationId}
-                                                    message={reviewMessage}
-                                                    conflict={reviewConflict}
-                                                    onKeepApp={(e) => {
-                                                      e.stopPropagation();
-                                                      onResolveExcelConflict && onResolveExcelConflict(annotationId, 'app');
-                                                    }}
-                                                    onUseExcel={(e) => {
-                                                      e.stopPropagation();
-                                                      onResolveExcelConflict && onResolveExcelConflict(annotationId, 'excel');
-                                                    }}
-                                                  />
 
                                                   {/* Locate Button (Magnifying Glass) */}
                                                   <div
