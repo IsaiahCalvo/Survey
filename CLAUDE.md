@@ -90,3 +90,29 @@ sub-packages for the deliberate Syncfusion-removal migration. Full record:
 - **2026-04-08 — Fabric.js Textbox fontFamily MUST be a single font name, never a CSS fallback stack:** Multi-font fallback stacks like `-apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif` cause progressive cursor drift in Fabric.js Textbox/IText. Root cause: Fabric.js measures character widths at `CACHE_FONT_SIZE=400px` and scales down — the browser may resolve different fonts in the fallback chain at 400px vs the actual size, producing wrong measurements. Fix: use single-name fonts only (e.g. `"Helvetica"`, `"Arial"`, `"Times New Roman"`). This applies to DEFAULT_FONT_FAMILY in FabricEditCanvas.jsx and any future font picker — only offer single-name standard PDF fonts.
 
 - **2026-03-22 — Canvas sizing must use container-aware measurement, not pageSize * scale:** The Electron/browser zoom factor creates a mismatch between the computed canvas size (`pageSize.width * syncfusionViewerScale`) and the actual Syncfusion page div size. At 50% PDF zoom with a 4/3 Electron zoom factor, the Syncfusion page div was 816x528 but the Fabric.js canvas was only 612x396, causing annotations to appear smaller and offset up-left. Fix: measure `containerEl.offsetWidth / pageSize.width` to get `effectiveScale` instead of trusting the Syncfusion-reported zoom percentage. Applied in PAL's canvas init (`PageAnnotationLayer.jsx:~5192`), direct resize path, and settle callback in the scale useEffect.
+
+## graphify
+
+This project has a knowledge graph at graphify-out/ with god nodes, community structure, and cross-file relationships.
+
+Rules:
+- For codebase questions, first run `graphify query "<question>"` when graphify-out/graph.json exists. Use `graphify path "<A>" "<B>"` for relationships and `graphify explain "<concept>"` for focused concepts. These return a scoped subgraph, usually much smaller than GRAPH_REPORT.md or raw grep output.
+- If graphify-out/wiki/index.md exists, use it for broad navigation instead of raw source browsing.
+- Read graphify-out/GRAPH_REPORT.md only for broad architecture review or when query/path/explain do not surface enough context.
+- After modifying code, run `graphify update .` to keep the graph current (AST-only, no API cost).
+
+## Wiki Knowledge Base
+
+Path: ~/Documents/ClaudeBrain (the durable knowledge brain, powered by the
+claude-obsidian plugin). This is NOT coding-session memory and NOT the code
+graph — it holds synthesized knowledge: tools, research, decisions, comparisons.
+
+When you need durable context not already in this project or the code graph:
+1. Read `~/Documents/ClaudeBrain/wiki/hot.md` first (recent context, ~500 words).
+2. If not enough, read `~/Documents/ClaudeBrain/wiki/index.md` (full catalog).
+3. Only then read individual wiki pages.
+
+Do NOT read the wiki for general coding questions, language syntax, or anything
+already in this repo, the conversation, or graphify-out/. To file something
+durable into the brain, use the claude-obsidian `/wiki` and `ingest` operations
+against that vault — never duplicate coding-session memory there.
