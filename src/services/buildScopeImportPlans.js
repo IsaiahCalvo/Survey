@@ -11,14 +11,14 @@
 // Worksheets with NO `Row ID` column are omitted from the result — the caller
 // keeps its legacy name-match fallback for those (a legacy/column-deleted sheet).
 //
-// Pure + async. Mutates nothing; produces decisions only. Excel-driven deletion of
-// a placed marker stays OFF: candidateDeletes are returned for review surfacing,
-// never acted on here.
+// Pure + async. Mutates nothing; produces decisions only. candidateDeletes are
+// returned for the CALLER to triage (received markers → History-backed removal,
+// never-received → review-only, stale imports → review-only); nothing is deleted here.
 
 import { buildImportPlan } from './rowImportMatcher.js';
 import { buildMarkerIdentityRecord } from './excelIdentityRecord.js';
 import { computeRowFingerprints } from './rowFingerprint.js';
-import { classifyRowConflict, detectFieldConflicts, CONFLICT_CLASS } from './excelConflictDetect.js';
+import { detectFieldConflicts } from './excelConflictDetect.js';
 
 const SYSTEM_HEADERS = ['Row ID', 'Changed By', 'Changed Date', 'Item', 'Entity', 'Notes'];
 
@@ -180,11 +180,18 @@ export const buildScopeImportPlans = async ({
             if (baseline) {
               const appNow = (await computeRowFingerprints(appValuesByMarkerId[d.markerId])).fieldFingerprints;
               const excelIn = d.identityRecord.fieldFingerprints; // incoming Excel row
-              if (classifyRowConflict({ baseline, appNow, excelIn }) === CONFLICT_CLASS.CONFLICT) {
+              const fieldDiff = detectFieldConflicts({ baseline, appNow, excelIn });
+              if (fieldDiff.conflictFields.length > 0) {
                 d.action = 'review';
                 d.decision = 'conflict';
-                d.conflictFields = detectFieldConflicts({ baseline, appNow, excelIn }).conflictFields;
+                d.conflictFields = fieldDiff.conflictFields;
                 d.excelValues = rows[d.rowIndex].values; // stashed so "use Excel's version" can apply later
+              } else {
+                // True 3-way merge (Amendment #6): Excel may write ONLY the fields Excel
+                // itself changed since the baseline. App-only edits (incl. a kept "keep my
+                // version" choice) are never reverted by a row that merely differs from the
+                // app — the apply loop honors this whitelist when present.
+                d.excelChangedFields = fieldDiff.excelChangedFields;
               }
             }
           }

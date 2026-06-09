@@ -48,7 +48,7 @@ export const syncMessageTone = (message) => {
   const text = typeof message === 'string' ? message.toLowerCase() : '';
   if (!text) return SYNC_TONE.INFO;
   if (/(failed|error|couldn.t|can.t|unable)/.test(text)) return SYNC_TONE.ERROR;
-  if (/(close excel|needs? your choice|queued|needs sync)/.test(text)) return SYNC_TONE.WARN;
+  if (/(close excel|needs? your choice|queued|needs sync|looks older|no sync stamp|sync skipped)/.test(text)) return SYNC_TONE.WARN;
   if (/(synced|saved|complete|up to date)/.test(text)) return SYNC_TONE.SUCCESS;
   return SYNC_TONE.INFO;
 };

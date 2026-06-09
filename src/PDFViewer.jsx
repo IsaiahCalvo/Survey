@@ -79,6 +79,7 @@ import { loadBaseline, saveBaseline, clearBaseline } from './services/excelSyncB
 import { generateRowIdToken } from './services/rowIdToken';
 import { getOrCreateDocumentSecret, resolveDocumentSecret } from './services/rowIdSecretStore';
 import { buildScopeImportPlans } from './services/buildScopeImportPlans';
+import { RECENCY, classifyWorkbookRecency, latestAppExportStamp, readWorkbookExportStamp, staleAutoSkipMessage, staleManualConfirmText } from './services/excelImportRecencyGuard';
 import { buildMarkerRowValues, resolveMarkerModuleData } from './services/markerRowValues';
 import { excelLockFilePath, isOwnerFileFor, parentDir } from './services/excelLockFile';
 import { reviewReasonMessage } from './services/excelReviewMessages';
@@ -11941,6 +11942,11 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       const ExcelJS = (await import('exceljs')).default;
       const workbook = new ExcelJS.Workbook();
 
+      // Id of THIS export — ONE stamp shared by the workbook's metadata sheet and every
+      // written marker's identity record, so the import-side stale gate can compare the
+      // two clocks exactly (excelImportRecencyGuard).
+      const rowIdExportId = new Date().toISOString();
+
       // Add hidden metadata sheet for template tracking
       const metaSheet = workbook.addWorksheet('_SurveyMetadata', {
         state: 'veryHidden' // Cannot be unhidden via Excel UI
@@ -11950,7 +11956,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       metaSheet.getCell('A2').value = 'template_name';
       metaSheet.getCell('B2').value = selectedTemplate.name || '';
       metaSheet.getCell('A3').value = 'export_timestamp';
-      metaSheet.getCell('B3').value = new Date().toISOString();
+      metaSheet.getCell('B3').value = rowIdExportId;
       metaSheet.getCell('A4').value = 'app_version';
       metaSheet.getCell('B4').value = '1.0';
 
@@ -11982,9 +11988,6 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       // per-document signing secret lives in the app store, never in the workbook.
       const rowIdScopeId = (moduleId, categoryId) => `${String(moduleId)}:${String(categoryId)}`;
       const rowIdDocumentId = `${pdfFile?.id || 'local'}:${pdfId || pdfFile?.name || 'pdf'}`;
-      // Id of THIS export — stamped into each written marker's identity record so the
-      // importer knows which export the row came from (and, later, the stale gate).
-      const rowIdExportId = new Date().toISOString();
       // Per-marker visible values actually written to a row, captured during the row
       // build so the identity fingerprints are computed from the same strings the
       // importer reads back out of the cells. markerId → { values: {...} }.
@@ -12962,7 +12965,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         // We'll trigger it via a small delay to ensure component is ready
         setTimeout(() => {
           if (typeof handleSyncFromExcel === 'function') {
-            handleSyncFromExcel();
+            handleSyncFromExcel({ silent: true });
           }
         }, 500);
       }
@@ -13348,7 +13351,40 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   }, [pendingImportReview, surveyMarkers, selectedTemplate, markExcelSyncCheckpoint]);
 
   // Helper: Execute the actual Excel import after new columns are handled
-  const executeExcelImport = useCallback(async (worksheetDataList, templateToUse) => {
+  const executeExcelImport = useCallback(async (worksheetDataList, templateToUse, importMeta = null) => {
+    // Stale / export-clock guard (open item 9, STAGE1 Step 0): compare the workbook's
+    // hidden export stamp against the newest export stamp our markers carry. An OLDER
+    // file (restored/outdated copy) must never silently overwrite newer app work.
+    // Auto-triggered runs refuse outright; a manual pull asks the user first, and even
+    // an accepted stale import never deletes anything (deletes go to review instead).
+    const recency = classifyWorkbookRecency({
+      workbookExportStamp: importMeta?.workbookExportStamp ?? null,
+      // Ref, not closure state: the guard must see the newest export stamp even if a
+      // poll fired with a callback created before the latest export re-render.
+      appExportStamp: latestAppExportStamp(surveyMarkersRef.current || surveyMarkers)
+    });
+    // Missing/forgotten trigger metadata is treated as AUTO (refuse quietly) — the
+    // conservative direction; only an explicit manual pull may confirm-and-proceed.
+    const importIsAuto = importMeta?.trigger !== 'manual';
+    if (recency.blocksAutoImport && importIsAuto) {
+      setLastSyncMessage(staleAutoSkipMessage(recency.verdict));
+      setTimeout(() => setLastSyncMessage(''), 8000);
+      return;
+    }
+    let staleImportAccepted = false;
+    if (recency.verdict === RECENCY.STALE_WORKBOOK) {
+      if (!window.confirm(staleManualConfirmText())) {
+        setLastSyncMessage('Sync cancelled. No changes were made.');
+        setTimeout(() => setLastSyncMessage(''), 5000);
+        return;
+      }
+      staleImportAccepted = true;
+    }
+    // Deletes are disabled whenever recency is untrusted: an accepted stale import OR a
+    // workbook with no readable export stamp (foreign/hand-built file) may update values,
+    // but a missing row in such a file is never a deletion intent — those go to review.
+    const recencyDeletesDisabled = staleImportAccepted || recency.verdict === RECENCY.MISSING_EXPORT_CLOCK;
+
     const newSurveyMarkers = { ...surveyMarkers };
     let updatesCount = 0;
     let deletionsCount = 0;
@@ -13426,12 +13462,16 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         // rename); legacy name-match is the fallback for sheets with no Row ID column.
         let matchedSurveyMarkerKey = null;
         let rowIdentityRecord = null; // content fingerprint to remember this row by
+        let excelChangedFields = null; // 3-way merge whitelist: the fields EXCEL changed since baseline
         const planScopeKey = `${matchedModuleId}-${matchedCategory.id}`;
         const scopePlan = scopePlans.get(planScopeKey);
         if (scopePlan) {
           const decision = scopePlan.byRowIndex.get(i);
           if (decision && (decision.action === 'apply' || decision.action === 'create')) {
             rowIdentityRecord = decision.identityRecord || null;
+          }
+          if (decision && decision.action === 'apply' && Array.isArray(decision.excelChangedFields)) {
+            excelChangedFields = decision.excelChangedFields;
           }
           if (decision && decision.action === 'apply' && decision.markerId && newSurveyMarkers[decision.markerId]) {
             matchedSurveyMarkerKey = decision.markerId; // match or recovered missing-rowid
@@ -13468,6 +13508,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
           const key = matchedSurveyMarkerKey;
           const ann = newSurveyMarkers[key];
           let changed = false;
+          // True 3-way merge (Amendment #6): when the plan computed which fields EXCEL
+          // changed since the baseline, only those fields may be written — app-only
+          // edits (incl. a kept "keep my version" choice) are never reverted.
+          const mayWriteField = (fieldKey) => !excelChangedFields || excelChangedFields.includes(fieldKey);
 
           // Update Excel row index to maintain order (i is the 1-based row index in Excel)
           if (ann.excelRowIndex !== i) {
@@ -13482,7 +13526,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
             const value = row[colIndex];
             const currentVal = ann.checklistResponses[checklistId]?.selection;
 
-            if (value !== undefined && value !== currentVal) {
+            if (value !== undefined && value !== currentVal && mayWriteField(`answer:${checklistId}`)) {
               ann.checklistResponses[checklistId] = {
                 ...ann.checklistResponses[checklistId],
                 selection: value
@@ -13494,7 +13538,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
           // Update Entity
           if (entityIndex !== -1) {
             const entityNameFromExcel = row[entityIndex];
-            if (entityNameFromExcel && entityNameFromExcel !== ann.entityName) {
+            if (entityNameFromExcel && entityNameFromExcel !== ann.entityName && mayWriteField('entity')) {
               const entities = templateToUse.entities || [];
               const entity = entities.find(e => e.name === entityNameFromExcel);
               if (entity) {
@@ -13514,7 +13558,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
           // Update Notes
           if (notesIndex !== -1) {
             const noteText = row[notesIndex];
-            if (noteText !== undefined) {
+            if (noteText !== undefined && mayWriteField('notes')) {
               if (typeof ann.note === 'string') {
                 try {
                   ann.note = JSON.parse(ann.note);
@@ -13614,6 +13658,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     // Detect and delete surveyMarkers that exist in app but not in Excel
     const surveyMarkersToDelete = [];
     Object.entries(newSurveyMarkers).forEach(([key, ann]) => {
+      // Untrusted recency (accepted stale import, or no readable export stamp) may
+      // update values, but it must never delete: a missing row in an old or foreign
+      // copy is not a deletion intent.
+      if (recencyDeletesDisabled) return;
       const annModuleId = ann.moduleId || ann.spaceId;
       const scopeKey = `${annModuleId}-${ann.categoryId}`;
 
@@ -13645,11 +13693,14 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     // the ones Excel actually handed out (exportedAt present) are auto-removed WITHOUT a
     // prompt but routed through the same History + 30-day-trash machinery below, so each is
     // one-click restorable. Markers Excel never received stay review-only (flagged, kept).
+    // Untrusted recency (accepted stale import, or missing export stamp) additionally
+    // routes EVERY candidate to review — an old/foreign copy missing recently-exported
+    // rows must not trash them.
     scopePlans.forEach((plan, scopeKey) => {
       (plan.candidateDeletes || []).forEach((markerId) => {
         const ann = newSurveyMarkers[markerId];
         if (!ann) return;
-        if (wasReceivedByExcel(ann)) {
+        if (!recencyDeletesDisabled && wasReceivedByExcel(ann)) {
           surveyMarkersToDelete.push({ key: markerId, ann });
         } else {
           importReviewItems.push({ scopeKey, rowIndex: null, reason: 'candidate-delete', markerId });
@@ -13896,7 +13947,22 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   }, [surveyMarkers, items, setItems, setAnnotations, scale, setAnnotationsByPage, markExcelSyncCheckpoint, pdfFile, pdfId]);
 
   // Helper: Execute auto-sync import with canvas color tracking
-  const executeAutoExcelImport = useCallback(async (worksheetDataList, templateToUse) => {
+  const executeAutoExcelImport = useCallback(async (worksheetDataList, templateToUse, importMeta = null) => {
+    // Stale / export-clock guard (open item 9, STAGE1 Step 0): an auto-triggered import
+    // from a workbook that is OLDER than our latest export (or carries no readable
+    // export stamp) is refused outright — no writes, no deletes. The user can still
+    // pull manually, which asks first.
+    const recency = classifyWorkbookRecency({
+      workbookExportStamp: importMeta?.workbookExportStamp ?? null,
+      // Ref, not closure state — see executeExcelImport's guard.
+      appExportStamp: latestAppExportStamp(surveyMarkersRef.current || surveyMarkers)
+    });
+    if (recency.blocksAutoImport) {
+      setLastSyncMessage(staleAutoSkipMessage(recency.verdict));
+      setTimeout(() => setLastSyncMessage(''), 8000);
+      return;
+    }
+
     const newSurveyMarkers = { ...surveyMarkers };
     let updatesCount = 0;
     let deletionsCount = 0;
@@ -13973,12 +14039,16 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         // rename); legacy name-match is the fallback for sheets with no Row ID column.
         let matchedSurveyMarkerKey = null;
         let rowIdentityRecord = null; // content fingerprint to remember this row by
+        let excelChangedFields = null; // 3-way merge whitelist: the fields EXCEL changed since baseline
         const planScopeKey = `${matchedModuleId}-${matchedCategory.id}`;
         const scopePlan = scopePlans.get(planScopeKey);
         if (scopePlan) {
           const decision = scopePlan.byRowIndex.get(i);
           if (decision && (decision.action === 'apply' || decision.action === 'create')) {
             rowIdentityRecord = decision.identityRecord || null;
+          }
+          if (decision && decision.action === 'apply' && Array.isArray(decision.excelChangedFields)) {
+            excelChangedFields = decision.excelChangedFields;
           }
           if (decision && decision.action === 'apply' && decision.markerId && newSurveyMarkers[decision.markerId]) {
             matchedSurveyMarkerKey = decision.markerId; // match or recovered missing-rowid
@@ -14015,6 +14085,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
           const key = matchedSurveyMarkerKey;
           const ann = newSurveyMarkers[key];
           let changed = false;
+          // True 3-way merge (Amendment #6): when the plan computed which fields EXCEL
+          // changed since the baseline, only those fields may be written — app-only
+          // edits (incl. a kept "keep my version" choice) are never reverted.
+          const mayWriteField = (fieldKey) => !excelChangedFields || excelChangedFields.includes(fieldKey);
 
           // Update Excel row index to maintain order (i is the 1-based row index in Excel)
           if (ann.excelRowIndex !== i) {
@@ -14029,7 +14103,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
             const value = row[colIndex];
             const currentVal = ann.checklistResponses[checklistId]?.selection;
 
-            if (value !== undefined && value !== currentVal) {
+            if (value !== undefined && value !== currentVal && mayWriteField(`answer:${checklistId}`)) {
               ann.checklistResponses[checklistId] = {
                 ...ann.checklistResponses[checklistId],
                 selection: value
@@ -14041,7 +14115,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
           // Update Entity
           if (entityIndex !== -1) {
             const entityNameFromExcel = row[entityIndex];
-            if (entityNameFromExcel && entityNameFromExcel !== ann.entityName) {
+            if (entityNameFromExcel && entityNameFromExcel !== ann.entityName && mayWriteField('entity')) {
               const entities = templateToUse.entities || [];
               const entity = entities.find(e => e.name === entityNameFromExcel);
               if (entity) {
@@ -14081,7 +14155,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
           // Update Notes
           if (notesIndex !== -1) {
             const noteText = row[notesIndex];
-            if (noteText !== undefined) {
+            if (noteText !== undefined && mayWriteField('notes')) {
               if (typeof ann.note === 'string') {
                 try {
                   ann.note = JSON.parse(ann.note);
@@ -14692,7 +14766,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   const handleNewColumnsDecision = useCallback(async (decision, templateName) => {
     if (!pendingNewColumns) return;
 
-    const { newColumnsByCategory, worksheetDataList, isAutoSync } = pendingNewColumns;
+    const { newColumnsByCategory, worksheetDataList, isAutoSync, importMeta } = pendingNewColumns;
     let templateToUse = selectedTemplate;
 
     if (decision === 'newTemplate') {
@@ -14704,9 +14778,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
     // Continue with import using the appropriate function based on sync type
     if (isAutoSync) {
-      await executeAutoExcelImport(worksheetDataList, templateToUse);
+      await executeAutoExcelImport(worksheetDataList, templateToUse, importMeta || null);
     } else {
-      await executeExcelImport(worksheetDataList, templateToUse);
+      await executeExcelImport(worksheetDataList, templateToUse, importMeta || null);
     }
 
     // Clean up
@@ -14714,7 +14788,11 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     setShowNewColumnsModal(false);
   }, [pendingNewColumns, selectedTemplate, handleCreateNewTemplateFromColumns, handleModifyCurrentTemplate, executeExcelImport, executeAutoExcelImport]);
 
-  const handleSyncFromExcel = useCallback(async () => {
+  const handleSyncFromExcel = useCallback(async (options = null) => {
+    // The open-time silent import (loadLatestSurveyData) calls this with
+    // { silent: true } — the stale guard then treats it as an AUTO trigger
+    // (refuse quietly) instead of popping a confirm dialog at open.
+    const importTrigger = options?.silent === true ? 'auto' : 'manual';
     if (!selectedTemplate?.linkedExcelPath) {
       alert('No Excel file linked to this survey.');
       return;
@@ -14757,6 +14835,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         const ExcelJS = (await import('exceljs')).default;
         const workbook = new ExcelJS.Workbook();
         await workbook.xlsx.load(fileData);
+        // Stale guard input: the export stamp this workbook carries (hidden metadata sheet).
+        const importMeta = { workbookExportStamp: readWorkbookExportStamp(workbook), trigger: importTrigger };
 
         // Phase 1: Parse worksheets and detect new columns
         const allNewColumns = {}; // { categoryId: { displayName, columns: [{ columnIndex, text }] } }
@@ -14880,14 +14960,15 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         if (Object.keys(allNewColumns).length > 0) {
           setPendingNewColumns({
             newColumnsByCategory: allNewColumns,
-            worksheetDataList
+            worksheetDataList,
+            importMeta
           });
           setShowNewColumnsModal(true);
           return; // Pause here, continue after user decision
         }
 
         // No new columns, proceed with normal import
-        await executeExcelImport(worksheetDataList, selectedTemplate);
+        await executeExcelImport(worksheetDataList, selectedTemplate, importMeta);
 
       } catch (error) {
         console.error('Failed to sync from Excel:', error);
@@ -14928,6 +15009,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         const ExcelJS = (await import('exceljs')).default;
         const workbook = new ExcelJS.Workbook();
         await workbook.xlsx.load(fileData);
+        // Stale guard input: the export stamp this workbook carries (hidden metadata sheet).
+        const importMeta = { workbookExportStamp: readWorkbookExportStamp(workbook), trigger: 'auto' };
 
         // Phase 1: Parse worksheets and detect new columns
         const allNewColumns = {};
@@ -15048,14 +15131,15 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
           setPendingNewColumns({
             newColumnsByCategory: allNewColumns,
             worksheetDataList,
-            isAutoSync: true
+            isAutoSync: true,
+            importMeta
           });
           setShowNewColumnsModal(true);
           return;
         }
 
         // No new columns, proceed with auto-sync import
-        await executeAutoExcelImport(worksheetDataList, selectedTemplate);
+        await executeAutoExcelImport(worksheetDataList, selectedTemplate, importMeta);
 
       } catch (error) {
         console.error('Failed to auto-sync from Excel:', error);

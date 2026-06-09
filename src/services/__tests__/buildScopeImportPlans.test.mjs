@@ -199,3 +199,70 @@ test('worksheet with no Row ID column is omitted (caller keeps legacy match)', a
   });
   assert.equal(plans.has(scopeKeyFor(MODULE, CATEGORY)), false);
 });
+
+// ── 3-way merge whitelist (excelChangedFields) — Excel may write ONLY what Excel changed ──
+
+test('Excel-only change → apply carries excelChangedFields with exactly that field', async () => {
+  const token = await generateRowIdToken({ keyId: KEY_ID, secret: SECRET, documentId: DOC, scopeId: SCOPE, markerId: 'm1' });
+  const surveyMarkers = { m1: await markerWithRecord('m1', { item: 'Door 12', notes: 'ok' }) };
+  const jsonData = [headerRow, excelRowFor(token, { item: 'Door 12', notes: 'excel note' })];
+  const appValuesByMarkerId = { m1: rowValuesFor({ item: 'Door 12', notes: 'ok' }) }; // app untouched
+
+  const plans = await buildScopeImportPlans({
+    worksheetDataList: [{ jsonData, headerRow, matchedCategory: { id: CATEGORY }, matchedModuleId: MODULE }],
+    surveyMarkers, templateToUse, documentId: DOC, resolveSecret, appValuesByMarkerId
+  });
+
+  const decision = plans.get(scopeKeyFor(MODULE, CATEGORY)).byRowIndex.get(1);
+  assert.equal(decision.action, 'apply');
+  assert.deepEqual(decision.excelChangedFields, ['notes']);
+});
+
+test('app-only change → apply carries an EMPTY excelChangedFields (Excel writes nothing back)', async () => {
+  const token = await generateRowIdToken({ keyId: KEY_ID, secret: SECRET, documentId: DOC, scopeId: SCOPE, markerId: 'm1' });
+  // Baseline notes "ok"; Excel row still says "ok"; the APP changed notes to "app note".
+  const surveyMarkers = { m1: await markerWithRecord('m1', { item: 'Door 12', notes: 'ok' }) };
+  const jsonData = [headerRow, excelRowFor(token, { item: 'Door 12', notes: 'ok' })];
+  const appValuesByMarkerId = { m1: rowValuesFor({ item: 'Door 12', notes: 'app note' }) };
+
+  const plans = await buildScopeImportPlans({
+    worksheetDataList: [{ jsonData, headerRow, matchedCategory: { id: CATEGORY }, matchedModuleId: MODULE }],
+    surveyMarkers, templateToUse, documentId: DOC, resolveSecret, appValuesByMarkerId
+  });
+
+  const decision = plans.get(scopeKeyFor(MODULE, CATEGORY)).byRowIndex.get(1);
+  assert.equal(decision.action, 'apply');
+  assert.deepEqual(decision.excelChangedFields, [], 'no Excel-side change → nothing may be written');
+});
+
+test('both sides changed DIFFERENT fields → clean merge: whitelist holds only Excel\'s field', async () => {
+  const token = await generateRowIdToken({ keyId: KEY_ID, secret: SECRET, documentId: DOC, scopeId: SCOPE, markerId: 'm1' });
+  // Baseline: notes "ok", answer Y. Excel changed the ANSWER; the app changed the NOTES.
+  const surveyMarkers = { m1: await markerWithRecord('m1', { item: 'Door 12', notes: 'ok', answer: 'Y' }) };
+  const jsonData = [headerRow, excelRowFor(token, { item: 'Door 12', notes: 'ok', answer: 'N' })];
+  const appValuesByMarkerId = { m1: rowValuesFor({ item: 'Door 12', notes: 'app note', answer: 'Y' }) };
+
+  const plans = await buildScopeImportPlans({
+    worksheetDataList: [{ jsonData, headerRow, matchedCategory: { id: CATEGORY }, matchedModuleId: MODULE }],
+    surveyMarkers, templateToUse, documentId: DOC, resolveSecret, appValuesByMarkerId
+  });
+
+  const decision = plans.get(scopeKeyFor(MODULE, CATEGORY)).byRowIndex.get(1);
+  assert.equal(decision.action, 'apply', 'disjoint fields merge cleanly, no review');
+  assert.deepEqual(decision.excelChangedFields, ['answer:chk-1'], 'app\'s notes edit stays out of the whitelist');
+});
+
+test('no baseline / no app values → no whitelist attached (legacy Excel-wins behavior kept)', async () => {
+  const token = await generateRowIdToken({ keyId: KEY_ID, secret: SECRET, documentId: DOC, scopeId: SCOPE, markerId: 'm1' });
+  const surveyMarkers = { m1: await markerWithRecord('m1', { item: 'Door 12' }) };
+  const jsonData = [headerRow, excelRowFor(token, { item: 'Door 12', notes: 'excel note' })];
+
+  const plans = await buildScopeImportPlans({
+    worksheetDataList: [{ jsonData, headerRow, matchedCategory: { id: CATEGORY }, matchedModuleId: MODULE }],
+    surveyMarkers, templateToUse, documentId: DOC, resolveSecret // no appValuesByMarkerId
+  });
+
+  const decision = plans.get(scopeKeyFor(MODULE, CATEGORY)).byRowIndex.get(1);
+  assert.equal(decision.action, 'apply');
+  assert.equal(decision.excelChangedFields, undefined);
+});
