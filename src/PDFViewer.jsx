@@ -103,6 +103,7 @@ import { resolveSafeSnapshot } from './utils/safeSnapshot';
 import { sanitizeConsoleLogText } from './utils/consoleLogFilter';
 import { scopeHistoryStateForCalloutRestore } from './utils/calloutHistoryScope';
 import { shouldRunSurveyMarkerSync } from './utils/surveyMarkerSyncSafety';
+import { compareSurveyMarkersForOrder } from './utils/surveyMarkerOrdering';
 import { splitImportedCalloutsFromPage } from './utils/calloutImportAdapter';
 import { supabase } from './supabaseClient';
 import { useAnnotationCloudSync } from './hooks/useAnnotationCloudSync.js';
@@ -12046,12 +12047,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
               }
             });
 
-            // Sort by excelRowIndex to maintain Excel row order
-            categorySurveyMarkers.sort((a, b) => {
-              const aIndex = a.excelRowIndex ?? Infinity;
-              const bIndex = b.excelRowIndex ?? Infinity;
-              return aIndex - bIndex;
-            });
+            // Sort by user order first, then Excel row order.
+            categorySurveyMarkers.sort(compareSurveyMarkersForOrder);
 
             // Build header row: Row ID, Changed By, Changed Date, Item, [checklist items], Entity, Notes
             const headerRow = ['Row ID', 'Changed By', 'Changed Date', 'Item'];

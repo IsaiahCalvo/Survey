@@ -7,7 +7,7 @@
  * onReorder via flushSync on drop and emits [SortableRearrange] drag-diagnostic
  * logs. Used wherever survey lists/rows are reordered by drag.
  */
-import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
+import { createContext, useCallback, useContext, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
 import {
   DndContext,
@@ -36,6 +36,11 @@ const pointerThenClosestCenter = (args) => {
   const pointerCollisions = pointerWithin(args);
   return pointerCollisions.length > 0 ? pointerCollisions : closestCenter(args);
 };
+
+const DropTransformSuppressionContext = createContext({
+  activeId: null,
+  isSuppressed: false,
+});
 
 const getSortableRearrangeItemNode = (id) => {
   const idValue = String(id ?? '');
@@ -102,9 +107,13 @@ export function SortableRearrangeList({
   variableHeight = false,
   children,
   gap = 'inherit',
+  dropSettleMs = 0,
+  suppressDropTransforms = false,
 }) {
   const dndContextId = useId();
   const [activeId, setActiveId] = useState(null);
+  const [isDropTransformSuppressed, setIsDropTransformSuppressed] = useState(false);
+  const [dropTransformSuppressedActiveId, setDropTransformSuppressedActiveId] = useState(null);
   const dragDiagRef = useRef(null);
   const dragClampBoundsRef = useRef(null);
   const sensors = useSensors(
@@ -215,6 +224,10 @@ export function SortableRearrangeList({
     });
     if (didReorder) {
       flushSync(() => {
+        if (suppressDropTransforms) {
+          setIsDropTransformSuppressed(true);
+          setDropTransformSuppressedActiveId(active.id);
+        }
         onReorder(active.id, over.id);
       });
     }
@@ -224,12 +237,23 @@ export function SortableRearrangeList({
       overId: over?.id ?? null,
       didReorder,
     });
+    if (suppressDropTransforms && didReorder) {
+      setTimeout(() => {
+        setIsDropTransformSuppressed(false);
+        setDropTransformSuppressedActiveId(null);
+      }, dropSettleMs);
+    }
     onDragEnd?.({
       activeId: active.id,
       overId: over?.id ?? null,
       didReorder,
     });
-  }, [finishDragDiag, onBeforeDragEnd, onDragEnd, onReorder]);
+  }, [dropSettleMs, finishDragDiag, onBeforeDragEnd, onDragEnd, onReorder, suppressDropTransforms]);
+
+  const dropTransformSuppressionValue = useMemo(() => ({
+    activeId: dropTransformSuppressedActiveId,
+    isSuppressed: isDropTransformSuppressed,
+  }), [dropTransformSuppressedActiveId, isDropTransformSuppressed]);
 
   return (
     <DndContext
@@ -306,12 +330,14 @@ export function SortableRearrangeList({
       }}
     >
       <SortableContext items={ids} strategy={verticalListSortingStrategy}>
-        <div
-          data-sortable-rearrange-list={String(activeId ?? '')}
-          style={{ width: '100%', minHeight: '100%', display: 'flex', flexDirection: 'column', gap }}
-        >
-          {children}
-        </div>
+        <DropTransformSuppressionContext.Provider value={dropTransformSuppressionValue}>
+          <div
+            data-sortable-rearrange-list={String(activeId ?? '')}
+            style={{ width: '100%', minHeight: '100%', display: 'flex', flexDirection: 'column', gap }}
+          >
+            {children}
+          </div>
+        </DropTransformSuppressionContext.Provider>
       </SortableContext>
     </DndContext>
   );
@@ -327,6 +353,7 @@ export function SortableRearrangeRow({
   draggingOpacity = 0.8,
   forceDraggingVisual = false,
   transition: transitionOption,
+  wrapperStyle = null,
 }) {
   const {
     attributes,
@@ -339,25 +366,39 @@ export function SortableRearrangeRow({
     isDragging,
     isSorting,
   } = useSortable({ id, disabled, animateLayoutChanges, transition: transitionOption });
+  const dropTransformSuppression = useContext(DropTransformSuppressionContext);
+  const isDropTransformSuppressed = !!dropTransformSuppression.isSuppressed;
+  const isSuppressedActiveRow = isDropTransformSuppressed
+    && String(dropTransformSuppression.activeId ?? '') === String(id);
+  const isDraggingVisual = isDragging || forceDraggingVisual || isSuppressedActiveRow;
   const rowTransition = transitionOption === null
     ? 'none'
-    : (isDragging || forceDraggingVisual || (disableSettledTransition && !isSorting) ? 'none' : transition);
+    : (isDraggingVisual || isDropTransformSuppressed || (disableSettledTransition && !isSorting) ? 'none' : transition);
+
+  const resolvedWrapperStyle = typeof wrapperStyle === 'function'
+    ? wrapperStyle({
+      id,
+      isDragging: isDraggingVisual,
+      isSorting,
+    })
+    : wrapperStyle;
 
   const style = {
-    transform: CSS.Translate.toString(transform),
+    transform: isDropTransformSuppressed ? 'none' : CSS.Translate.toString(transform),
     transition: rowTransition,
-    opacity: isDragging || forceDraggingVisual ? draggingOpacity : 1,
-    zIndex: isDragging || forceDraggingVisual ? 1 : 0,
+    opacity: isDraggingVisual ? draggingOpacity : 1,
+    zIndex: isDraggingVisual ? 1 : 0,
     position: 'relative',
     width: '100%',
     flexShrink: 0,
+    ...(resolvedWrapperStyle || {}),
   };
 
   if (customLayout) {
     return children({
       attributes,
       listeners,
-      isDragging: isDragging || forceDraggingVisual,
+      isDragging: isDraggingVisual,
       isSorting,
       setNodeRef,
       setDraggableNodeRef,
@@ -374,7 +415,7 @@ export function SortableRearrangeRow({
       {children({
         attributes,
         listeners,
-        isDragging: isDragging || forceDraggingVisual,
+        isDragging: isDraggingVisual,
         isSorting,
       })}
     </div>

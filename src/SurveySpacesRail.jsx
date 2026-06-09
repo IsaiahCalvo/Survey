@@ -9,14 +9,60 @@
 // tab or Spaces UI. The Spaces panel lives in the LEFT rail (PDFSidebar).
 // Accurate rename candidate: SurveyRail.jsx.
 
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { flushSync } from 'react-dom';
 import Icon from './Icons';
 import EntityIndicator from './components/EntityIndicator';
+import DragRearrangeHandle from './reorder/DragRearrangeHandle';
+import { SortableRearrangeList, SortableRearrangeRow } from './reorder/SortableRearrangeList';
+import { moveItemById } from './reorder/flatReorderUtils.js';
 import { COLORS } from './theme';
 import reviewWarningIcon from './assets/review-warning.svg';
 import { syncMessagePresentation } from './services/excelSyncStatus';
+import { compareSurveyMarkersForOrder } from './utils/surveyMarkerOrdering';
 
 const FONT_FAMILY = '-apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", "Segoe UI", Roboto, Ubuntu, "Noto Sans", Arial, sans-serif';
+
+const getElementCenterY = (element) => {
+  const rect = element?.getBoundingClientRect?.();
+  return rect ? rect.top + rect.height / 2 : null;
+};
+
+const getNearestVerticalScrollContainer = (element) => {
+  if (typeof window === 'undefined') return null;
+  let current = element?.parentElement || null;
+  while (current && current !== document.body && current !== document.documentElement) {
+    const style = window.getComputedStyle(current);
+    if (
+      /auto|scroll|overlay/.test(style.overflowY || '')
+      && current.scrollHeight > current.clientHeight
+    ) {
+      return current;
+    }
+    current = current.parentElement;
+  }
+  return document.scrollingElement || document.documentElement;
+};
+
+const preserveElementViewportY = (element, mutateLayout) => {
+  const beforeY = getElementCenterY(element);
+  const scrollContainer = getNearestVerticalScrollContainer(element);
+
+  mutateLayout();
+
+  if (beforeY == null || !scrollContainer) return;
+  const afterY = getElementCenterY(element);
+  if (afterY == null) return;
+
+  const deltaY = afterY - beforeY;
+  if (Math.abs(deltaY) < 0.5) return;
+
+  if (scrollContainer === document.scrollingElement || scrollContainer === document.documentElement) {
+    window.scrollBy(0, deltaY);
+  } else {
+    scrollContainer.scrollTop += deltaY;
+  }
+};
 
 const SurveySpacesRail = ({
   activeSpaceId,
@@ -126,7 +172,9 @@ const SurveySpacesRail = ({
   const [isSurveyPanelCollapsed, setIsSurveyPanelCollapsed] = useState(true);
   // Which conflict row currently has its "keep mine / use Excel's" choice open (marker id).
   const [openConflictMarkerId, setOpenConflictMarkerId] = useState(null);
+  const [openEntityDropdownId, setOpenEntityDropdownId] = useState(null);
   const [railIconHover, setRailIconHover] = useState(null);
+  const surveyMarkerDragRestoreRef = useRef(null);
 
   useEffect(() => {
     if (showSurveyPanel) {
@@ -145,6 +193,23 @@ const SurveySpacesRail = ({
       onCollapseChange(isSurveyPanelCollapsed);
     }
   }, [isSurveyPanelCollapsed, onCollapseChange]);
+
+  useEffect(() => {
+    if (!openEntityDropdownId) return undefined;
+    const closeEntityDropdown = (event) => {
+      if (event.target?.closest?.('.survey-marker-entity-select-wrap')) return;
+      setOpenEntityDropdownId(null);
+    };
+    const closeEntityDropdownOnEscape = (event) => {
+      if (event.key === 'Escape') setOpenEntityDropdownId(null);
+    };
+    document.addEventListener('mousedown', closeEntityDropdown, true);
+    document.addEventListener('keydown', closeEntityDropdownOnEscape, true);
+    return () => {
+      document.removeEventListener('mousedown', closeEntityDropdown, true);
+      document.removeEventListener('keydown', closeEntityDropdownOnEscape, true);
+    };
+  }, [openEntityDropdownId]);
 
   // O(1) entity-by-id lookup for the per-marker render loop below (entity ids are
   // unique, so a Map.get matches the old entities.find first-and-only result).
@@ -169,6 +234,168 @@ const SurveySpacesRail = ({
     });
     return m;
   }, [items]);
+
+  const commitSurveyMarkerName = (annotationId, categoryId, previousName, nextRawName, fallbackName) => {
+    const nextName = (nextRawName || '').trim() || fallbackName;
+    const oldName = (previousName || '').trim() || fallbackName;
+    if (!annotationId || nextName === oldName) return;
+
+    const currentMarker = surveyMarkers[annotationId] || {};
+    setSurveyMarkers(prev => ({
+      ...prev,
+      [annotationId]: {
+        ...(prev[annotationId] || {}),
+        name: nextName
+      }
+    }));
+
+    if (!selectedTemplate || !selectedModuleId || !categoryId) return;
+    const categoryName = getCategoryName(selectedTemplate, selectedModuleId, categoryId);
+    const itemFromMarkerId = currentMarker.itemId ? items[currentMarker.itemId] : null;
+    const matchingItem = itemFromMarkerId || itemsByNameType.get(`${oldName}\0${categoryName}`);
+    if (!matchingItem?.itemId) return;
+
+    setItems(prev => ({
+      ...prev,
+      [matchingItem.itemId]: {
+        ...(prev[matchingItem.itemId] || matchingItem),
+        name: nextName
+      }
+    }));
+  };
+
+  const surveyMarkerRowActionStyle = {
+    width: '22px',
+    height: '22px',
+    padding: 0,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: '4px',
+    cursor: 'pointer',
+    transition: 'background 0.2s, color 0.2s',
+    marginLeft: 0,
+    flex: '0 0 22px',
+    transform: 'none',
+    boxShadow: 'none'
+  };
+
+  const toggleSurveyMarkerExpanded = (annotationId) => {
+    if (!annotationId) return;
+    setExpandedSurveyMarkers(prev => ({
+      ...prev,
+      [annotationId]: !prev[annotationId]
+    }));
+  };
+
+  const getEntitySwatchStyle = (color) => {
+    const exactColor = color || null;
+    return {
+      backgroundColor: '#fff',
+      borderColor: exactColor ? 'rgba(255, 255, 255, 0.58)' : '#777',
+      '--survey-marker-entity-swatch-color': exactColor || 'transparent'
+    };
+  };
+
+  const restoreSurveyMarkerAfterDrag = useCallback((delayMs = 180) => {
+    const restoreState = surveyMarkerDragRestoreRef.current;
+    if (!restoreState?.annotationId) return;
+
+    if (restoreState.fallbackTimer) {
+      clearTimeout(restoreState.fallbackTimer);
+    }
+    if (restoreState.restoreTimer) {
+      clearTimeout(restoreState.restoreTimer);
+    }
+
+    restoreState.restoreTimer = setTimeout(() => {
+      const latestRestoreState = surveyMarkerDragRestoreRef.current;
+      const annotationId = latestRestoreState?.annotationId;
+      if (annotationId) {
+        setExpandedSurveyMarkers(prev => (
+          prev[annotationId] ? prev : { ...prev, [annotationId]: true }
+        ));
+      }
+      surveyMarkerDragRestoreRef.current = null;
+    }, delayMs);
+  }, [setExpandedSurveyMarkers]);
+
+  useEffect(() => () => {
+    const restoreState = surveyMarkerDragRestoreRef.current;
+    if (restoreState?.fallbackTimer) clearTimeout(restoreState.fallbackTimer);
+    if (restoreState?.restoreTimer) clearTimeout(restoreState.restoreTimer);
+  }, []);
+
+  const markSurveyMarkerDragStarted = useCallback(() => {
+    const restoreState = surveyMarkerDragRestoreRef.current;
+    if (!restoreState) return;
+    restoreState.dragStarted = true;
+    if (restoreState.fallbackTimer) {
+      clearTimeout(restoreState.fallbackTimer);
+      restoreState.fallbackTimer = null;
+    }
+  }, []);
+
+  const collapseSurveyMarkerBeforeDrag = useCallback((annotationId, { restoreAfterDrag = false } = {}) => {
+    if (!annotationId) return;
+
+    if (restoreAfterDrag) {
+      const existingRestoreState = surveyMarkerDragRestoreRef.current;
+      if (existingRestoreState?.fallbackTimer) clearTimeout(existingRestoreState.fallbackTimer);
+      if (existingRestoreState?.restoreTimer) clearTimeout(existingRestoreState.restoreTimer);
+      surveyMarkerDragRestoreRef.current = {
+        annotationId,
+        dragStarted: false,
+        fallbackTimer: setTimeout(() => {
+          const restoreState = surveyMarkerDragRestoreRef.current;
+          if (restoreState?.annotationId === annotationId && !restoreState.dragStarted) {
+            restoreSurveyMarkerAfterDrag(0);
+          }
+        }, 650),
+        restoreTimer: null,
+      };
+    }
+
+    setOpenEntityDropdownId(prev => (
+      prev === `${annotationId}:entity` ? null : prev
+    ));
+    setExpandedSurveyMarkers(prev => {
+      if (!prev[annotationId]) return prev;
+      return {
+        ...prev,
+        [annotationId]: false
+      };
+    });
+  }, [restoreSurveyMarkerAfterDrag, setExpandedSurveyMarkers]);
+
+  const reorderSurveyMarkersInCategory = useCallback((orderedMarkers, activeId, overId) => {
+    if (!Array.isArray(orderedMarkers) || !overId || activeId === overId) return;
+
+    const reorderedMarkers = moveItemById(orderedMarkers, activeId, overId);
+    if (reorderedMarkers === orderedMarkers) return;
+
+    setSurveyMarkers(prev => {
+      let changed = false;
+      const next = { ...prev };
+
+      reorderedMarkers.forEach((marker, index) => {
+        const markerId = marker.id;
+        const existing = next[markerId];
+        if (!existing) return;
+
+        const nextOrder = index + 1;
+        if (existing.surveyMarkerOrder !== nextOrder) {
+          next[markerId] = {
+            ...existing,
+            surveyMarkerOrder: nextOrder
+          };
+          changed = true;
+        }
+      });
+
+      return changed ? next : prev;
+    });
+  }, [setSurveyMarkers]);
 
   return (
           <>
@@ -484,14 +711,9 @@ const SurveySpacesRail = ({
                         }
                       });
 
-                      // Sort surveyMarkers within each category by excelRowIndex to maintain Excel row order
+                      // Sort surveyMarkers within each category by user order, then Excel row order.
                       Object.keys(surveyMarkersByCategory).forEach(categoryId => {
-                        surveyMarkersByCategory[categoryId].sort((a, b) => {
-                          // Items with excelRowIndex come before those without
-                          const aIndex = a.excelRowIndex ?? Infinity;
-                          const bIndex = b.excelRowIndex ?? Infinity;
-                          return aIndex - bIndex;
-                        });
+                        surveyMarkersByCategory[categoryId].sort(compareSurveyMarkersForOrder);
                       });
 
                       // Show categories list first (before surveyMarkers)
@@ -1323,6 +1545,7 @@ const SurveySpacesRail = ({
                                           {/* Select button for item-level selection - only show when NOT in item select mode */}
                                           {!isItemSelectModeActiveForCategory && !categorySelectModeActive && !copyModeActive && (
                                             <button
+                                              type="button"
                                               onClick={() => {
                                                 setItemSelectModeActive(prev => ({
                                                   ...prev,
@@ -1333,31 +1556,35 @@ const SurveySpacesRail = ({
                                                   [category.id]: {}
                                                 }));
                                               }}
-                                              className="btn btn-sm"
-                                              style={{
-                                                marginBottom: '8px',
-                                                background: '#3a3a3a',
-                                                color: '#ddd',
-                                                border: '1px solid transparent',
-                                                whiteSpace: 'nowrap'
-                                              }}
+                                              className="survey-marker-select-mode-toggle"
                                             >
-                                              Select Item
+                                              Select
                                             </button>
                                           )}
 
                                           {/* Item Select Mode Actions */}
                                           {isItemSelectModeActiveForCategory && (
-                                            <div style={{
-                                              marginBottom: '8px',
-                                              display: 'flex',
-                                              gap: '4px',
-                                              alignItems: 'center',
-                                              justifyContent: 'center',
-                                              flexWrap: 'nowrap',
-                                              width: '100%'
-                                            }}>
+                                            <div className="survey-marker-select-toolbar" role="toolbar" aria-label="Item selection actions">
                                               <button
+                                                type="button"
+                                                onClick={() => {
+                                                  setItemSelectModeActive(prev => {
+                                                    const updated = { ...prev };
+                                                    delete updated[category.id];
+                                                    return updated;
+                                                  });
+                                                  setSelectedItemsInCategory(prev => {
+                                                    const updated = { ...prev };
+                                                    delete updated[category.id];
+                                                    return updated;
+                                                  });
+                                                }}
+                                                className="survey-marker-select-mode-toggle"
+                                              >
+                                                Done
+                                              </button>
+                                              <button
+                                                type="button"
                                                 onClick={() => {
                                                   const newSelection = {};
                                                   categorySurveyMarkers.forEach(h => {
@@ -1368,24 +1595,13 @@ const SurveySpacesRail = ({
                                                     [category.id]: newSelection
                                                   }));
                                                 }}
-                                                style={{
-                                                  flex: '1 1 0',
-                                                  padding: '4px 5px',
-                                                  background: 'rgb(68, 68, 68)',
-                                                  color: 'rgb(221, 221, 221)',
-                                                  border: '1px solid rgb(74, 144, 226)',
-                                                  borderRadius: '4px',
-                                                  fontSize: '11px',
-                                                  fontWeight: '400',
-                                                  cursor: 'pointer',
-                                                  whiteSpace: 'nowrap',
-                                                  minWidth: 0
-                                                }}
+                                                className="survey-marker-select-action"
                                               >
-                                                Select All
+                                                All
                                               </button>
 
                                               <button
+                                                type="button"
                                                 onClick={() => {
                                                   const selectedItemIds = Object.keys(selectedItemsForCategory).filter(id => selectedItemsForCategory[id]);
                                                   if (selectedItemIds.length === 0) {
@@ -1403,25 +1619,13 @@ const SurveySpacesRail = ({
                                                   setShowSpaceSelection(true);
                                                 }}
                                                 disabled={itemSelectedCount === 0}
-                                                style={{
-                                                  flex: '1 1 0',
-                                                  padding: '4px 5px',
-                                                  background: 'rgb(68, 68, 68)',
-                                                  color: 'rgb(221, 221, 221)',
-                                                  border: '1px solid rgb(74, 144, 226)',
-                                                  borderRadius: '4px',
-                                                  fontSize: '11px',
-                                                  fontWeight: '400',
-                                                  cursor: itemSelectedCount > 0 ? 'pointer' : 'not-allowed',
-                                                  opacity: itemSelectedCount > 0 ? 1 : 0.5,
-                                                  whiteSpace: 'nowrap',
-                                                  minWidth: 0
-                                                }}
+                                                className="survey-marker-select-action"
                                               >
                                                 Copy
                                               </button>
 
                                               <button
+                                                type="button"
                                                 onClick={() => {
                                                   const selectedItemIds = Object.keys(selectedItemsForCategory).filter(id => selectedItemsForCategory[id]);
                                                   if (selectedItemIds.length === 0) {
@@ -1460,73 +1664,92 @@ const SurveySpacesRail = ({
                                                   }
                                                 }}
                                                 disabled={itemSelectedCount === 0}
-                                                style={{
-                                                  flex: '1 1 0',
-                                                  padding: '4px 5px',
-                                                  background: 'rgb(68, 68, 68)',
-                                                  color: 'rgb(255, 102, 102)',
-                                                  border: '1px solid rgb(204, 68, 68)',
-                                                  borderRadius: '4px',
-                                                  fontSize: '11px',
-                                                  fontWeight: '400',
-                                                  cursor: itemSelectedCount > 0 ? 'pointer' : 'not-allowed',
-                                                  opacity: itemSelectedCount > 0 ? 1 : 0.5,
-                                                  whiteSpace: 'nowrap',
-                                                  minWidth: 0
-                                                }}
+                                                className="survey-marker-select-action survey-marker-select-action-icon survey-marker-select-action-danger"
+                                                title="Delete"
+                                                aria-label="Delete selected items"
                                               >
-                                                Delete
-                                              </button>
-
-                                              <button
-                                                onClick={() => {
-                                                  setItemSelectModeActive(prev => {
-                                                    const updated = { ...prev };
-                                                    delete updated[category.id];
-                                                    return updated;
-                                                  });
-                                                  setSelectedItemsInCategory(prev => {
-                                                    const updated = { ...prev };
-                                                    delete updated[category.id];
-                                                    return updated;
-                                                  });
-                                                }}
-                                                style={{
-                                                  flex: '1 1 0',
-                                                  padding: '4px 5px',
-                                                  background: 'rgb(68, 68, 68)',
-                                                  color: 'rgb(221, 221, 221)',
-                                                  border: '1px solid rgb(74, 144, 226)',
-                                                  borderRadius: '4px',
-                                                  fontSize: '11px',
-                                                  fontWeight: '400',
-                                                  cursor: 'pointer',
-                                                  whiteSpace: 'nowrap',
-                                                  minWidth: 0
-                                                }}
-                                              >
-                                                Cancel
+                                                <Icon name="trash" size={12} />
                                               </button>
                                             </div>
                                           )}
 
+                                          <SortableRearrangeList
+                                            ids={categorySurveyMarkers.map((surveyMarker) => surveyMarker.id)}
+                                            onReorder={(activeId, overId) => reorderSurveyMarkersInCategory(categorySurveyMarkers, activeId, overId)}
+                                            onDragStart={markSurveyMarkerDragStarted}
+                                            onDragEnd={() => restoreSurveyMarkerAfterDrag()}
+                                            onDragCancel={() => restoreSurveyMarkerAfterDrag()}
+                                            variableHeight
+                                            gap={4}
+                                            dropSettleMs={160}
+                                            suppressDropTransforms
+                                          >
                                           {categorySurveyMarkers.map((surveyMarker, surveyMarkerIndex) => {
                                             const annotationId = surveyMarker.id;
                                             const isSurveyMarkerExpanded = expandedSurveyMarkers[annotationId];
                                             const baseCategoryName = category?.name?.trim() || 'Untitled Category';
                                             const fallbackName = `${baseCategoryName} ${surveyMarkerIndex + 1}`;
                                             const surveyMarkerName = surveyMarkers[annotationId]?.name || surveyMarker.name || fallbackName;
+                                            const entityDropdownId = `${annotationId}:entity`;
+                                            const isEntityDropdownOpenForMarker = openEntityDropdownId === entityDropdownId;
 
                                             return (
-                                              <div key={surveyMarker.id} id={`highlight-item-${surveyMarker.id}`} style={{
-                                                marginBottom: '4px',
-                                                background: 'transparent',
+                                              <SortableRearrangeRow
+                                                key={surveyMarker.id}
+                                                id={surveyMarker.id}
+                                                wrapperStyle={{
+                                                  overflow: 'visible',
+                                                  ...(isEntityDropdownOpenForMarker ? { zIndex: 30 } : {})
+                                                }}
+                                              >
+                                                {({ attributes, listeners, isDragging }) => {
+                                                  const prepareSurveyMarkerDrag = (anchorElement = null) => {
+                                                    if (!isSurveyMarkerExpanded && !isEntityDropdownOpenForMarker) return;
+                                                    preserveElementViewportY(anchorElement, () => {
+                                                      flushSync(() => {
+                                                        collapseSurveyMarkerBeforeDrag(annotationId, {
+                                                          restoreAfterDrag: isSurveyMarkerExpanded
+                                                        });
+                                                      });
+                                                    });
+                                                  };
+                                                  const dragListeners = {
+                                                    ...(listeners || {}),
+                                                    onPointerDown: (event) => {
+                                                      prepareSurveyMarkerDrag(event.currentTarget);
+                                                      listeners?.onPointerDown?.(event);
+                                                    },
+                                                    onKeyDown: (event) => {
+                                                      if (event.key === ' ' || event.key === 'Enter') {
+                                                        prepareSurveyMarkerDrag();
+                                                      }
+                                                      listeners?.onKeyDown?.(event);
+                                                    }
+                                                  };
+                                                  return (
+                                              <div
+                                                id={`highlight-item-${surveyMarker.id}`}
+                                                data-drag-rearrange-row
+                                                style={{
+                                                background: isDragging ? 'rgba(74, 144, 226, 0.12)' : 'transparent',
                                                 border: '1px solid #444',
                                                 borderRadius: '4px',
-                                                overflow: 'hidden'
+                                                overflow: isEntityDropdownOpenForMarker ? 'visible' : 'hidden',
+                                                flexShrink: 0,
+                                                opacity: isDragging ? 0.72 : 1,
+                                                boxShadow: isDragging ? '0 10px 22px rgba(0, 0, 0, 0.34), inset 0 0 0 1px rgba(74, 144, 226, 0.3)' : 'none',
+                                                transition: isDragging ? 'none' : 'background 0.15s ease, opacity 0.15s ease, box-shadow 0.15s ease'
                                               }}>
                                                 {/* SurveyMarker header - clickable to expand */}
                                                 <div style={{ display: 'flex', alignItems: 'center', gap: '2px' }}>
+                                                  <DragRearrangeHandle
+                                                    {...attributes}
+                                                    {...dragListeners}
+                                                    isDragging={isDragging}
+                                                    title="Drag to rearrange"
+                                                    style={{ width: 18, height: 22, marginLeft: 2 }}
+                                                  />
+
                                                   {/* Checkbox for selection - show in copy mode or item select mode */}
                                                   {(copyModeActive || isItemSelectModeActiveForCategory) && (
                                                     <input
@@ -1562,28 +1785,14 @@ const SurveySpacesRail = ({
                                                     />
                                                   )}
 
-                                                  {/* Expandable button */}
-                                                  <button
-                                                    onClick={() => {
-                                                      setExpandedSurveyMarkers(prev => ({
-                                                        ...prev,
-                                                        [annotationId]: !prev[annotationId]
-                                                      }));
-                                                    }}
-                                                    style={{
-                                                      flex: 1,
-                                                      display: 'flex',
-                                                      alignItems: 'center',
-                                                      justifyContent: 'space-between',
-                                                      padding: '6px 8px',
-                                                      background: 'transparent',
-                                                      border: 'none',
-                                                      cursor: 'pointer',
-                                                      textAlign: 'left',
-                                                      minWidth: 0
-                                                    }}
-                                                  >
-                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flex: 1, minWidth: 0 }}>
+                                                  <div style={{
+                                                    flex: 1,
+                                                    display: 'flex',
+                                                    alignItems: 'center',
+                                                    gap: '6px',
+                                                    padding: '4px 4px 4px 8px',
+                                                    minWidth: 0
+                                                  }}>
 
                                                       {(() => {
                                                         // Get entity entity for indicator - data-driven from category item's entity field
@@ -1626,6 +1835,33 @@ const SurveySpacesRail = ({
                                                           />
                                                         );
                                                       })()}
+                                                      <button
+                                                        type="button"
+                                                        className="survey-marker-expand-toggle"
+                                                        onClick={(e) => {
+                                                          e.stopPropagation();
+                                                          toggleSurveyMarkerExpanded(annotationId);
+                                                        }}
+                                                        title={isSurveyMarkerExpanded ? 'Collapse' : 'Expand'}
+                                                        aria-label={isSurveyMarkerExpanded ? 'Collapse marker details' : 'Expand marker details'}
+                                                        style={{
+                                                          width: '18px',
+                                                          height: '20px',
+                                                          padding: 0,
+                                                          background: 'transparent',
+                                                          border: 0,
+                                                          color: isSurveyMarkerExpanded ? '#4A90E2' : '#bbb',
+                                                          cursor: 'pointer',
+                                                          display: 'flex',
+                                                          alignItems: 'center',
+                                                          justifyContent: 'center',
+                                                          flexShrink: 0,
+                                                          transform: isSurveyMarkerExpanded ? 'rotate(90deg)' : 'none',
+                                                          transition: 'color 0.15s ease, transform 0.15s ease'
+                                                        }}
+                                                      >
+                                                        <Icon name="chevronRight" size={12} />
+                                                      </button>
                                                       {surveyReviewByMarkerId[annotationId] && (() => {
                                                         const isConflict = !!surveyConflictByMarkerId[annotationId];
                                                         const isOpen = isConflict && openConflictMarkerId === annotationId;
@@ -1684,127 +1920,53 @@ const SurveySpacesRail = ({
                                                           </span>
                                                         );
                                                       })()}
-                                                      {surveyMarkers[annotationId]?.editingName ? (
+                                                      <span className="survey-marker-name-fit" data-value={surveyMarkerName || ' '}>
                                                         <input
                                                           type="text"
-                                                          value={surveyMarkers[annotationId]?.name || ''}
-                                                          onChange={(e) => {
-                                                            setSurveyMarkers(prev => ({
-                                                              ...prev,
-                                                              [surveyMarker.id]: {
-                                                                ...prev[surveyMarker.id],
-                                                                name: e.target.value
-                                                              }
-                                                            }));
+                                                          size={1}
+                                                          className="survey-marker-name-inline"
+                                                          defaultValue={surveyMarkerName}
+                                                          key={`${annotationId}:${surveyMarkerName}`}
+                                                          title="Click to rename"
+                                                          aria-label={`Rename ${surveyMarkerName}`}
+                                                          onClick={(e) => e.stopPropagation()}
+                                                          onDoubleClick={(e) => e.currentTarget.select()}
+                                                          onInput={(e) => {
+                                                            if (e.currentTarget.parentElement) {
+                                                              e.currentTarget.parentElement.dataset.value = e.currentTarget.value || ' ';
+                                                            }
                                                           }}
-                                                          onBlur={() => {
-                                                            setSurveyMarkers(prev => ({
-                                                              ...prev,
-                                                              [surveyMarker.id]: {
-                                                                ...prev[surveyMarker.id],
-                                                                editingName: false
-                                                              }
-                                                            }));
+                                                          onBlur={(e) => {
+                                                            const nextName = (e.currentTarget.value || '').trim() || fallbackName;
+                                                            e.currentTarget.value = nextName;
+                                                            if (e.currentTarget.parentElement) {
+                                                              e.currentTarget.parentElement.dataset.value = nextName || ' ';
+                                                            }
+                                                            commitSurveyMarkerName(annotationId, category.id, surveyMarkerName, nextName, fallbackName);
                                                           }}
                                                           onKeyDown={(e) => {
                                                             if (e.key === 'Enter') {
-                                                              e.target.blur();
+                                                              e.currentTarget.blur();
                                                             } else if (e.key === 'Escape') {
-                                                              setSurveyMarkers(prev => ({
-                                                                ...prev,
-                                                                [surveyMarker.id]: {
-                                                                  ...prev[surveyMarker.id],
-                                                                  editingName: false,
-                                                                  name: prev[surveyMarker.id]?.name || fallbackName
-                                                                }
-                                                              }));
-                                                              e.target.blur();
+                                                              e.currentTarget.value = surveyMarkerName;
+                                                              if (e.currentTarget.parentElement) {
+                                                                e.currentTarget.parentElement.dataset.value = surveyMarkerName || ' ';
+                                                              }
+                                                              e.currentTarget.blur();
                                                             }
                                                           }}
-                                                          onClick={(e) => e.stopPropagation()}
-                                                          autoFocus
-                                                          style={{
-                                                            flex: 1,
-                                                            minWidth: 0,
-                                                            padding: '3px 6px',
-                                                            background: '#333',
-                                                            color: '#fff',
-                                                            border: '1px solid #4A90E2',
-                                                            borderRadius: '4px',
-                                                            fontSize: '12px',
-                                                            fontFamily: FONT_FAMILY,
-                                                            outline: 'none'
-                                                          }}
                                                         />
-                                                      ) : (
-                                                        <span style={{
-                                                          fontSize: '12px',
-                                                          color: '#999',
-                                                          fontWeight: surveyMarkers[annotationId]?.name ? '500' : '400'
-                                                        }}>
-                                                          {surveyMarkerName}
-                                                        </span>
-                                                      )}
-                                                    </div>
-                                                    <span
-                                                      style={{
-                                                        marginLeft: '4px',
-                                                        display: 'flex',
-                                                        alignItems: 'center',
-                                                        transition: 'transform 0.2s ease',
-                                                        transform: isSurveyMarkerExpanded ? 'rotate(180deg)' : 'rotate(0deg)',
-                                                        flexShrink: 0
-                                                      }}
-                                                    >
-                                                      <svg
-                                                        width="14"
-                                                        height="14"
-                                                        viewBox="0 0 24 24"
-                                                        fill="none"
-                                                        xmlns="http://www.w3.org/2000/svg"
-                                                        style={{ width: '14px', height: '14px' }}
-                                                      >
-                                                        <path
-                                                          d="M6 9L12 15L18 9"
-                                                          stroke="#fff"
-                                                          strokeWidth="2.5"
-                                                          strokeLinecap="round"
-                                                          strokeLinejoin="round"
-                                                        />
-                                                      </svg>
-                                                    </span>
-                                                  </button>
-
-                                                  {/* Rename button - now a sibling, not nested */}
-                                                  {!surveyMarkers[annotationId]?.editingName && (
-                                                    <button
-                                                      onClick={(e) => {
-                                                        e.stopPropagation();
-                                                        setSurveyMarkers(prev => ({
-                                                          ...prev,
-                                                          [surveyMarker.id]: {
-                                                            ...prev[surveyMarker.id],
-                                                            editingName: true
-                                                          }
-                                                        }));
-                                                      }}
-                                                      style={{
-                                                        background: 'transparent',
-                                                        border: 'none',
-                                                        color: '#999',
-                                                        cursor: 'pointer',
-                                                        padding: '4px',
-                                                        fontSize: '12px',
-                                                        opacity: 0.7,
-                                                        flexShrink: 0
-                                                      }}
-                                                      onMouseEnter={(e) => e.currentTarget.style.opacity = '1'}
-                                                      onMouseLeave={(e) => e.currentTarget.style.opacity = '0.7'}
-                                                      title="Rename Survey Marker"
-                                                    >
-                                                      ✎
-                                                    </button>
-                                                  )}
+                                                      </span>
+                                                      <div
+                                                        className="survey-marker-expand-spacer"
+                                                        title={isSurveyMarkerExpanded ? 'Collapse' : 'Expand'}
+                                                        aria-hidden="true"
+                                                        onClick={(e) => {
+                                                          e.stopPropagation();
+                                                          toggleSurveyMarkerExpanded(annotationId);
+                                                        }}
+                                                      />
+                                                  </div>
 
                                                   {/* Item-level Notes button */}
                                                   <button
@@ -1827,32 +1989,24 @@ const SurveySpacesRail = ({
                                                       setNoteDialogOpen(annotationId);
                                                     }}
                                                     style={{
+                                                      ...surveyMarkerRowActionStyle,
                                                       background: 'transparent',
                                                       border: 'none',
                                                       color: surveyMarkers[annotationId]?.note?.text ? '#4A90E2' : '#999',
-                                                      cursor: 'pointer',
-                                                      padding: '4px',
-                                                      fontSize: '12px',
-                                                      opacity: 0.7,
-                                                      flexShrink: 0
+                                                      opacity: 0.78
                                                     }}
-                                                    onMouseEnter={(e) => e.currentTarget.style.opacity = '1'}
-                                                    onMouseLeave={(e) => e.currentTarget.style.opacity = '0.7'}
+                                                    onMouseEnter={(e) => {
+                                                      e.currentTarget.style.opacity = '1';
+                                                      e.currentTarget.style.background = '#444';
+                                                    }}
+                                                    onMouseLeave={(e) => {
+                                                      e.currentTarget.style.opacity = '0.78';
+                                                      e.currentTarget.style.background = 'transparent';
+                                                    }}
                                                     title={surveyMarkers[annotationId]?.note?.text ? "Edit item notes" : "Add item notes"}
+                                                    aria-label={surveyMarkers[annotationId]?.note?.text ? "Edit item notes" : "Add item notes"}
                                                   >
-                                                    Notes
-                                                    <span
-                                                      aria-hidden="true"
-                                                      style={{
-                                                        display: 'inline-block',
-                                                        width: '14px',
-                                                        marginLeft: '4px',
-                                                        textAlign: 'center',
-                                                        visibility: surveyMarkers[annotationId]?.note?.text ? 'visible' : 'hidden'
-                                                      }}
-                                                    >
-                                                      ✓
-                                                    </span>
+                                                    <Icon name="pen" size={13} />
                                                   </button>
 
                                                   {/* Locate Button (Magnifying Glass) */}
@@ -1870,15 +2024,8 @@ const SurveySpacesRail = ({
                                                       }
                                                     }}
                                                     style={{
-                                                      display: 'flex',
-                                                      alignItems: 'center',
-                                                      justifyContent: 'center',
-                                                      padding: '4px',
-                                                      borderRadius: '4px',
-                                                      cursor: 'pointer',
+                                                      ...surveyMarkerRowActionStyle,
                                                       color: (surveyMarker.bounds && surveyMarker.pageNumber) ? '#4A90E2' : '#F5A623', // Blue if located, Orange if not
-                                                      transition: 'background 0.2s, color 0.2s',
-                                                      marginLeft: '0'
                                                     }}
                                                     onMouseEnter={(e) => {
                                                       e.currentTarget.style.background = '#444';
@@ -1891,47 +2038,6 @@ const SurveySpacesRail = ({
                                                     <Icon name="search" size={14} />
                                                   </div>
 
-                                                  {/* Delete Button */}
-                                                  <div
-                                                    onClick={(e) => {
-                                                      e.stopPropagation();
-                                                      if (confirm('Are you sure you want to delete this item?')) {
-                                                        handleDeleteSurveyMarkerItem(annotationId);
-                                                      }
-                                                    }}
-                                                    style={{
-                                                      display: 'flex',
-                                                      alignItems: 'center',
-                                                      justifyContent: 'center',
-                                                      padding: '4px',
-                                                      borderRadius: '4px',
-                                                      cursor: 'pointer',
-                                                      color: '#FF6666',
-                                                      transition: 'background 0.2s, color 0.2s',
-                                                      marginLeft: '0'
-                                                    }}
-                                                    onMouseEnter={(e) => {
-                                                      e.currentTarget.style.background = '#444';
-                                                    }}
-                                                    onMouseLeave={(e) => {
-                                                      e.currentTarget.style.background = 'transparent';
-                                                    }}
-                                                    title="Delete item"
-                                                  >
-                                                    <svg
-                                                      width="14"
-                                                      height="14"
-                                                      viewBox="0 0 24 24"
-                                                      fill="none"
-                                                      stroke="currentColor"
-                                                      strokeWidth="2"
-                                                      strokeLinecap="round"
-                                                      strokeLinejoin="round"
-                                                    >
-                                                      <polyline points="3 6 5 6 21 6"></polyline>
-                                                      <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
-                                                    </svg>
-                                                  </div>
                                                 </div>
 
                                                 {/* Entity selector */}
@@ -1951,6 +2057,104 @@ const SurveySpacesRail = ({
                                                     // Get current entity status from item's module-specific data (preferred) or from survey marker annotation (legacy)
                                                     const currentEntityId = moduleData.entityId || surveyMarkerData?.entityId;
                                                     const entities = selectedTemplate?.entities || [];
+                                                    const currentEntity = currentEntityId ? entities.find(entity => entity.id === currentEntityId) : null;
+                                                    const selectedEntityColor = currentEntity?.color || moduleData.entityColor || surveyMarkerData?.entityColor;
+                                                    const selectedEntityName = currentEntity?.name || moduleData.entityName || surveyMarkerData?.entityName || 'None';
+                                                    const isEntityDropdownOpen = openEntityDropdownId === entityDropdownId;
+                                                    const entityOptions = [
+                                                      { id: '', name: 'None', color: null },
+                                                      ...entities.map(entity => ({
+                                                        id: entity.id,
+                                                        name: entity.name,
+                                                        color: entity.color
+                                                      }))
+                                                    ];
+                                                    const handleEntitySelection = (entityId) => {
+                                                      const entity = entityId ? entities.find(e => e.id === entityId) : null;
+
+                                                      // Update survey marker annotation - the useEffect will automatically rebuild newSurveyMarkersByPage
+                                                      setSurveyMarkers(prev => {
+                                                        const updated = {
+                                                          ...prev,
+                                                          [annotationId]: {
+                                                            ...prev[annotationId],
+                                                            entityId: entity?.id,
+                                                            entityName: entity?.name,
+                                                            entityColor: entity?.color
+                                                          }
+                                                        };
+                                                        return updated;
+                                                      });
+
+                                                      // Update item's module-specific data if matchingItem exists
+                                                      if (matchingItem) {
+                                                        if (entity) {
+                                                          // Update item with entity status
+                                                          const updatedItem = {
+                                                            ...matchingItem,
+                                                            [dataKey]: {
+                                                              ...moduleData,
+                                                              entityId: entity.id,
+                                                              entityName: entity.name,
+                                                              entityColor: entity.color
+                                                            }
+                                                          };
+
+                                                          setItems(prev => ({
+                                                            ...prev,
+                                                            [matchingItem.itemId]: updatedItem
+                                                          }));
+
+                                                          // Update all annotations for this item in this space with the new color
+                                                          setAnnotations(prev => {
+                                                            const updated = { ...prev };
+                                                            Object.values(updated).forEach(ann => {
+                                                              if (ann.itemId === matchingItem.itemId && ann.spaceId === selectedSpaceId) {
+                                                                updated[ann.annotationId] = {
+                                                                  ...ann,
+                                                                  entityId: entity.id,
+                                                                  entityName: entity.name,
+                                                                  entityColor: entity.color
+                                                                };
+                                                              }
+                                                            });
+                                                            return updated;
+                                                          });
+                                                        } else {
+                                                          // Remove entity status from item
+                                                          const updatedItem = {
+                                                            ...matchingItem,
+                                                            [dataKey]: {
+                                                              ...moduleData,
+                                                              entityId: undefined,
+                                                              entityName: undefined,
+                                                              entityColor: undefined
+                                                            }
+                                                          };
+
+                                                          setItems(prev => ({
+                                                            ...prev,
+                                                            [matchingItem.itemId]: updatedItem
+                                                          }));
+
+                                                          // Update all annotations for this item in this space
+                                                          setAnnotations(prev => {
+                                                            const updated = { ...prev };
+                                                            Object.values(updated).forEach(ann => {
+                                                              if (ann.itemId === matchingItem.itemId && ann.spaceId === selectedSpaceId) {
+                                                                updated[ann.annotationId] = {
+                                                                  ...ann,
+                                                                  entityId: undefined,
+                                                                  entityName: undefined,
+                                                                  entityColor: undefined
+                                                                };
+                                                              }
+                                                            });
+                                                            return updated;
+                                                          });
+                                                        }
+                                                      }
+                                                    };
 
                                                     return (
                                                       <div style={{
@@ -1959,132 +2163,70 @@ const SurveySpacesRail = ({
                                                         borderTop: '1px solid #444',
                                                         marginTop: '0'
                                                       }}>
-                                                        <div style={{
-                                                          display: 'flex',
-                                                          alignItems: 'center',
-                                                          gap: '8px',
-                                                          marginBottom: '4px',
-                                                          flexWrap: 'wrap'
-                                                        }}>
-                                                          <span style={{
-                                                            color: '#DDD',
-                                                            fontSize: '12px',
-                                                            flex: '1',
-                                                            minWidth: '150px'
-                                                          }}>
-                                                            Entity:
+                                                        <div className="survey-marker-entity-row">
+                                                          <span className="survey-marker-entity-label">
+                                                            Entity
                                                           </span>
-                                                          <select
-                                                            value={currentEntityId || ''}
-                                                            onChange={(e) => {
-                                                              e.stopPropagation();
-                                                              const entityId = e.target.value;
-                                                              const entity = entityId ? entities.find(e => e.id === entityId) : null;
-
-
-                                                              // Update survey marker annotation - the useEffect will automatically rebuild newSurveyMarkersByPage
-                                                              setSurveyMarkers(prev => {
-                                                                const updated = {
-                                                                  ...prev,
-                                                                  [annotationId]: {
-                                                                    ...prev[annotationId],
-                                                                    entityId: entity?.id,
-                                                                    entityName: entity?.name,
-                                                                    entityColor: entity?.color
-                                                                  }
-                                                                };
-                                                                return updated;
-                                                              });
-
-                                                              // Update item's module-specific data if matchingItem exists
-                                                              if (matchingItem) {
-                                                                if (entity) {
-                                                                  // Update item with entity status
-                                                                  const updatedItem = {
-                                                                    ...matchingItem,
-                                                                    [dataKey]: {
-                                                                      ...moduleData,
-                                                                      entityId: entity.id,
-                                                                      entityName: entity.name,
-                                                                      entityColor: entity.color
-                                                                    }
-                                                                  };
-
-                                                                  setItems(prev => ({
-                                                                    ...prev,
-                                                                    [matchingItem.itemId]: updatedItem
-                                                                  }));
-
-                                                                  // Update all annotations for this item in this space with the new color
-                                                                  setAnnotations(prev => {
-                                                                    const updated = { ...prev };
-                                                                    Object.values(updated).forEach(ann => {
-                                                                      if (ann.itemId === matchingItem.itemId && ann.spaceId === selectedSpaceId) {
-                                                                        updated[ann.annotationId] = {
-                                                                          ...ann,
-                                                                          entityId: entity.id,
-                                                                          entityName: entity.name,
-                                                                          entityColor: entity.color
-                                                                        };
-                                                                      }
-                                                                    });
-                                                                    return updated;
-                                                                  });
-                                                                } else {
-                                                                  // Remove entity status from item
-                                                                  const updatedItem = {
-                                                                    ...matchingItem,
-                                                                    [dataKey]: {
-                                                                      ...moduleData,
-                                                                      entityId: undefined,
-                                                                      entityName: undefined,
-                                                                      entityColor: undefined
-                                                                    }
-                                                                  };
-
-                                                                  setItems(prev => ({
-                                                                    ...prev,
-                                                                    [matchingItem.itemId]: updatedItem
-                                                                  }));
-
-                                                                  // Update all annotations for this item in this space
-                                                                  setAnnotations(prev => {
-                                                                    const updated = { ...prev };
-                                                                    Object.values(updated).forEach(ann => {
-                                                                      if (ann.itemId === matchingItem.itemId && ann.spaceId === selectedSpaceId) {
-                                                                        updated[ann.annotationId] = {
-                                                                          ...ann,
-                                                                          entityId: undefined,
-                                                                          entityName: undefined,
-                                                                          entityColor: undefined
-                                                                        };
-                                                                      }
-                                                                    });
-                                                                    return updated;
-                                                                  });
-                                                                }
-                                                              }
-                                                            }}
-                                                            onClick={(e) => e.stopPropagation()}
-                                                            style={{
-                                                              padding: '4px 8px',
-                                                              fontSize: '11px',
-                                                              background: '#141414',
-                                                              color: '#ddd',
-                                                              border: '1px solid #2f2f2f',
-                                                              borderRadius: '4px',
-                                                              outline: 'none',
-                                                              cursor: 'pointer',
-                                                              minWidth: '120px'
-                                                            }}
-                                                          >
-                                                            <option value="">None</option>
-                                                            {entities.map(entity => (
-                                                              <option key={entity.id} value={entity.id}>
-                                                                {entity.name}
-                                                              </option>
-                                                            ))}
-                                                          </select>
+                                                          <div className="survey-marker-entity-select-wrap">
+                                                            <button
+                                                              type="button"
+                                                              className="survey-marker-entity-trigger"
+                                                              aria-haspopup="listbox"
+                                                              aria-expanded={isEntityDropdownOpen}
+                                                              onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                setOpenEntityDropdownId(isEntityDropdownOpen ? null : entityDropdownId);
+                                                              }}
+                                                            >
+                                                              <span className="survey-marker-entity-trigger-content">
+                                                                <span
+                                                                  className="survey-marker-entity-swatch"
+                                                                  style={getEntitySwatchStyle(selectedEntityColor)}
+                                                                />
+                                                                <span className="survey-marker-entity-trigger-label">
+                                                                  {selectedEntityName}
+                                                                </span>
+                                                              </span>
+                                                              <span className={`survey-marker-entity-caret${isEntityDropdownOpen ? ' is-open' : ''}`}>
+                                                                <Icon name="chevronDown" size={12} />
+                                                              </span>
+                                                            </button>
+                                                            {isEntityDropdownOpen && (
+                                                              <div
+                                                                className="survey-marker-entity-options"
+                                                                role="listbox"
+                                                                aria-label="Entity"
+                                                                onClick={(e) => e.stopPropagation()}
+                                                              >
+                                                                {entityOptions.map(option => {
+                                                                  const optionValue = option.id || '';
+                                                                  const isSelectedOption = (currentEntityId || '') === optionValue;
+                                                                  return (
+                                                                    <button
+                                                                      key={optionValue || 'none'}
+                                                                      type="button"
+                                                                      className={`survey-marker-entity-option${isSelectedOption ? ' is-selected' : ''}`}
+                                                                      role="option"
+                                                                      aria-selected={isSelectedOption}
+                                                                      onClick={(e) => {
+                                                                        e.stopPropagation();
+                                                                        handleEntitySelection(optionValue);
+                                                                        setOpenEntityDropdownId(null);
+                                                                      }}
+                                                                    >
+                                                                      <span
+                                                                        className="survey-marker-entity-option-swatch"
+                                                                        style={getEntitySwatchStyle(option.color)}
+                                                                      />
+                                                                      <span className="survey-marker-entity-option-label">
+                                                                        {option.name}
+                                                                      </span>
+                                                                    </button>
+                                                                  );
+                                                                })}
+                                                              </div>
+                                                            )}
+                                                          </div>
                                                         </div>
                                                       </div>
                                                     );
@@ -2448,8 +2590,12 @@ const SurveySpacesRail = ({
                                                   })()
                                                 }
                                               </div>
+                                                  );
+                                                }}
+                                              </SortableRearrangeRow>
                                             );
                                           })}
+                                          </SortableRearrangeList>
                                         </div>
                                       )
                                       }

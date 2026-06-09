@@ -218,6 +218,313 @@
   height: 24px;
 }
 
+.survey-marker-name-fit {
+  display: inline-grid;
+  align-items: center;
+  flex: 0 1 auto;
+  min-width: 1ch;
+  max-width: 100%;
+  line-height: 1.2;
+}
+
+.survey-marker-name-fit::after {
+  content: attr(data-value);
+  grid-area: 1 / 1;
+  visibility: hidden;
+  white-space: pre;
+  min-width: 1ch;
+  padding: 3px 0 2px;
+  border-bottom: 1px dashed transparent;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0;
+}
+
+.survey-marker-name-inline {
+  grid-area: 1 / 1;
+  width: 100%;
+  min-width: 1ch;
+  max-width: 100%;
+  height: 24px;
+  padding: 3px 0 2px;
+  background: transparent;
+  border: 0;
+  border-bottom: 1px dashed transparent;
+  border-radius: 0;
+  color: #999;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.2;
+  letter-spacing: 0;
+  outline: none;
+  box-shadow: none;
+  cursor: text;
+  text-overflow: ellipsis;
+}
+
+.survey-marker-name-inline:hover,
+.survey-marker-name-fit:hover .survey-marker-name-inline {
+  border-bottom-color: #666;
+  color: #cfcfcf;
+}
+
+.survey-marker-name-inline:focus,
+.survey-marker-name-fit:focus-within .survey-marker-name-inline,
+input[type="text"].survey-marker-name-inline:focus {
+  border-bottom-color: #4A90E2;
+  color: #fff;
+  box-shadow: none;
+}
+
+.survey-marker-expand-spacer {
+  flex: 1 1 auto;
+  align-self: stretch;
+  min-width: 0;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+}
+
+.survey-marker-select-toolbar {
+  margin-bottom: 8px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: 22px;
+  overflow: hidden;
+  flex-wrap: nowrap;
+}
+
+.survey-marker-select-mode-toggle {
+  margin-bottom: 8px;
+  background: transparent;
+  border: 0;
+  color: #4A90E2;
+  border-radius: 2px;
+  padding: 2px 5px;
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1;
+  letter-spacing: 0;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.survey-marker-select-toolbar .survey-marker-select-mode-toggle {
+  margin-bottom: 0;
+  flex: none;
+}
+
+.survey-marker-select-mode-toggle:hover {
+  color: #76adf0;
+  background: rgba(74, 144, 226, 0.1);
+}
+
+.survey-marker-select-action {
+  height: 20px;
+  flex: none;
+  padding: 1px 7px;
+  background: transparent;
+  border: 1px solid #555;
+  border-radius: 2px;
+  color: #ddd;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 10.5px;
+  line-height: 1;
+  letter-spacing: 0;
+  white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.survey-marker-select-action:hover:not(:disabled) {
+  border-color: #4A90E2;
+  color: #fff;
+  background: rgba(74, 144, 226, 0.12);
+}
+
+.survey-marker-select-action:disabled {
+  color: #777;
+  border-color: #444;
+  cursor: not-allowed;
+}
+
+.survey-marker-select-action-icon {
+  width: 22px;
+  padding: 0;
+}
+
+.survey-marker-select-action-danger {
+  color: #ff6666;
+  border-color: #6b3a3a;
+}
+
+.survey-marker-select-action-danger:hover:not(:disabled) {
+  color: #ff8585;
+  border-color: #cc4444;
+  background: rgba(255, 102, 102, 0.12);
+}
+
+.survey-marker-select-action-danger:disabled {
+  color: #785050;
+  border-color: #4d3838;
+}
+
+.survey-marker-entity-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 4px;
+  min-width: 0;
+  flex-wrap: nowrap;
+}
+
+.survey-marker-entity-label {
+  flex: 1 1 auto;
+  min-width: 0;
+  color: #ddd;
+  font-size: 12px;
+  line-height: 1.2;
+}
+
+.survey-marker-entity-select-wrap {
+  position: relative;
+  flex: 0 0 186px;
+  max-width: calc(100% - 64px);
+  z-index: 20;
+}
+
+.survey-marker-entity-trigger {
+  width: 100%;
+  height: 28px;
+  padding: 0 8px;
+  background: #3a3a3a;
+  color: #e5e5e5;
+  border: 1px solid #555;
+  border-radius: 4px;
+  outline: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font: inherit;
+  font-size: 11px;
+  letter-spacing: 0;
+  text-align: left;
+}
+
+.survey-marker-entity-trigger:hover {
+  background: #414141;
+  border-color: #666;
+}
+
+.survey-marker-entity-trigger:focus,
+.survey-marker-entity-trigger[aria-expanded="true"] {
+  border-color: #4A90E2;
+  box-shadow: 0 0 0 1px rgba(74, 144, 226, 0.3);
+}
+
+.survey-marker-entity-trigger-content,
+.survey-marker-entity-option {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+
+.survey-marker-entity-trigger-content {
+  gap: 7px;
+  flex: 1 1 auto;
+}
+
+.survey-marker-entity-swatch,
+.survey-marker-entity-option-swatch {
+  position: relative;
+  flex: 0 0 10px;
+  width: 10px;
+  height: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.42);
+  border-radius: 50%;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.survey-marker-entity-swatch::after,
+.survey-marker-entity-option-swatch::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: var(--survey-marker-entity-swatch-color, transparent);
+  mix-blend-mode: multiply;
+}
+
+.survey-marker-entity-trigger-label,
+.survey-marker-entity-option-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.survey-marker-entity-caret {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  color: #cfcfcf;
+  transition: transform 0.14s ease;
+  pointer-events: none;
+}
+
+.survey-marker-entity-caret.is-open {
+  transform: rotate(180deg);
+}
+
+.survey-marker-entity-options {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  width: 100%;
+  z-index: 1200;
+  padding: 4px;
+  background: #303030;
+  border: 1px solid #555;
+  border-radius: 5px;
+  box-shadow: 0 10px 22px rgba(0, 0, 0, 0.38);
+  isolation: isolate;
+}
+
+.survey-marker-entity-option {
+  width: 100%;
+  height: 28px;
+  gap: 7px;
+  padding: 0 8px;
+  background: transparent;
+  border: 0;
+  border-radius: 4px;
+  color: #ddd;
+  cursor: pointer;
+  font: inherit;
+  font-size: 11px;
+  letter-spacing: 0;
+  text-align: left;
+}
+
+.survey-marker-entity-option:hover {
+  background: #414141;
+  color: #fff;
+}
+
+.survey-marker-entity-option.is-selected {
+  background: #385a7d;
+  color: #fff;
+}
+
 /* Active state */
 .btn-active,
 .btn-active:hover {
