@@ -709,7 +709,7 @@ const SurveySpacesRail = ({
                   <div style={{
                     flex: categorySelectModeActive ? '1 1 auto' : 1,
                     overflowY: 'auto',
-                    padding: '12px 8px',
+                    padding: '12px 10px',
                     fontFamily: FONT_FAMILY,
                     display: 'flex',
                     flexDirection: 'column',
@@ -1219,10 +1219,10 @@ const SurveySpacesRail = ({
                           {/* Categories List */}
                           <div style={{ marginBottom: '20px' }}>
                             <h3 style={{
-                              fontSize: '14px',
+                              fontSize: '13px',
                               fontWeight: '600',
-                              color: '#fff',
-                              marginBottom: '10px',
+                              color: '#e8e8e8',
+                              margin: '0 2px 8px',
                               fontFamily: FONT_FAMILY
                             }}>
                               Select Category to Highlight
@@ -1233,7 +1233,7 @@ const SurveySpacesRail = ({
                                 ids={module.categories.map((category) => category.id)}
                                 onReorder={(activeId, overId) => handleReorderSurveyCategories(selectedModuleId, activeId, overId)}
                                 variableHeight
-                                gap={4}
+                                gap={6}
                                 dropSettleMs={160}
                                 suppressDropTransforms
                               >
@@ -1298,9 +1298,9 @@ const SurveySpacesRail = ({
 
                                         return (
                                     <div style={{
-                                      border: '1px solid #444',
-                                      borderRadius: '4px',
-                                      padding: '2px',
+                                      border: '1px solid #424242',
+                                      borderRadius: '5px',
+                                      padding: '4px 5px',
                                       overflow: 'visible',
                                       opacity: isDragging ? 0.72 : 1,
                                       transition: isDragging ? 'none' : 'background 0.15s ease, opacity 0.15s ease'
@@ -1309,7 +1309,7 @@ const SurveySpacesRail = ({
                                         data-drag-rearrange-row
                                         style={{
                                           display: 'flex',
-                                          gap: '4px',
+                                          gap: '6px',
                                           alignItems: 'center',
                                           minWidth: 0,
                                         }}
@@ -1328,7 +1328,7 @@ const SurveySpacesRail = ({
                                             {...listeners}
                                             isDragging={isDragging}
                                             title="Drag category to rearrange"
-                                            style={{ width: 22, height: 28, marginLeft: 2 }}
+                                            style={{ width: 28, height: 28, marginLeft: 0 }}
                                           />
                                         )}
 
@@ -1356,7 +1356,7 @@ const SurveySpacesRail = ({
                                               style={{
                                                 textAlign: 'left',
                                                 justifyContent: 'flex-start',
-                                                padding: '6px 12px',
+                                                padding: '5px 10px',
                                                 background: buttonBackground,
                                                 borderTop: baseBorder,
                                                 borderBottom: baseBorder,
@@ -1364,6 +1364,7 @@ const SurveySpacesRail = ({
                                                 borderRight: surveyMarkerCount > 0 ? 'none' : baseBorder,
                                                 color: buttonTextColor,
                                                 flex: 1,
+                                                minWidth: 0,
                                                 borderRadius: surveyMarkerCount > 0 ? '4px 0 0 4px' : '4px',
                                               }}
                                             >
@@ -1385,7 +1386,7 @@ const SurveySpacesRail = ({
                                                   }));
                                                 }}
                                                 style={{
-                                                  padding: '2px 8px',
+                                                  padding: '2px 7px',
                                                   background: 'transparent',
                                                   borderTop: baseBorder,
                                                   borderRight: baseBorder,
@@ -1432,8 +1433,8 @@ const SurveySpacesRail = ({
                                       {/* Expanded surveyMarkers list */}
                                       {isExpanded && surveyMarkerCount > 0 && (
                                         <div style={{
-                                          marginTop: '2px',
-                                          padding: '2px 4px 4px',
+                                          marginTop: '5px',
+                                          padding: '0 0 1px',
                                           background: 'transparent',
                                           border: '1px solid transparent',
                                           borderRadius: '4px'
@@ -1579,7 +1580,7 @@ const SurveySpacesRail = ({
                                             onDragEnd={() => restoreSurveyMarkerAfterDrag()}
                                             onDragCancel={() => restoreSurveyMarkerAfterDrag()}
                                             variableHeight
-                                            gap={4}
+                                            gap={5}
                                             dropSettleMs={160}
                                             suppressDropTransforms
                                           >
@@ -1681,7 +1682,7 @@ const SurveySpacesRail = ({
                                                       {...dragListeners}
                                                       isDragging={isDragging}
                                                       title="Drag to rearrange"
-                                                      style={{ width: 18, height: 22, marginLeft: 2 }}
+                                                      style={{ width: 22, height: 24, marginLeft: 0 }}
                                                     />
                                                   )}
 
@@ -1689,8 +1690,8 @@ const SurveySpacesRail = ({
                                                     flex: 1,
                                                     display: 'flex',
                                                     alignItems: 'center',
-                                                    gap: '6px',
-                                                    padding: '4px 4px 4px 8px',
+                                                    gap: '7px',
+                                                    padding: '4px 5px 4px 6px',
                                                     minWidth: 0
                                                   }}>
 
