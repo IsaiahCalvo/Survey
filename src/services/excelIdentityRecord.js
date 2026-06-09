@@ -26,6 +26,11 @@ export const IDENTITY_RECORD_VERSION = 'v1';
  * @param {{changedBy, changedDate, item, entity, notes, answers}} params.values
  *        answers: { [checklistItemId]: visibleSelection }
  * @param {string|null} [params.exportId]  id/clock of the export that wrote this row
+ * @param {number|null} [params.lastSeenRowNumber]  TRUE 1-based sheet row this row occupied
+ *        in the ingested save (positional memory, blank-Row-ID plan slice 2)
+ * @param {number|null} [params.lastIngestSeq]  monotonic per-import sequence identifying
+ *        WHICH ingest observed that position (wall-clock taken once at the executor
+ *        boundary). Validated like lastSeenRowNumber: non-positive/non-integer → null.
  * @returns {Promise<{version, lastExportId, wasWrittenAsRow, identityVectorFingerprint,
  *           fullRowFingerprint, fieldFingerprints}>}
  */
@@ -34,7 +39,9 @@ export const buildMarkerIdentityRecord = async ({
   exportId = null,
   origin = 'export',
   assignedToken = null,
-  pendingRowIdWriteback = false
+  pendingRowIdWriteback = false,
+  lastSeenRowNumber = null,
+  lastIngestSeq = null
 } = {}) => {
   const fp = await computeRowFingerprints(values || {});
   return {
@@ -51,6 +58,14 @@ export const buildMarkerIdentityRecord = async ({
     // personal workbooks, where the cell is blank/duplicate until a safe writeback).
     assignedToken,
     pendingRowIdWriteback,
+    // Positional memory (blank-Row-ID matching, slice 2): the TRUE 1-based sheet row
+    // this marker's row occupied at the last ingested save, plus a monotonic per-import
+    // sequence saying WHICH ingest stamped it. Device-local hints only — readers MUST
+    // treat null/undefined (older records, other devices, export-stamped records) as
+    // "unknown" and degrade to content-only matching; never throw, never change behavior.
+    lastSeenRowNumber:
+      Number.isInteger(lastSeenRowNumber) && lastSeenRowNumber > 0 ? lastSeenRowNumber : null,
+    lastIngestSeq: Number.isInteger(lastIngestSeq) && lastIngestSeq > 0 ? lastIngestSeq : null,
     identityVectorFingerprint: fp.identityVectorFingerprint,
     fullRowFingerprint: fp.fullRowFingerprint,
     fieldFingerprints: fp.fieldFingerprints

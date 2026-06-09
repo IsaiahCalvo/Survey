@@ -13333,7 +13333,15 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     if (!marker) return;
     const excelValues = entry.excelValues;
 
-    const record = await buildMarkerIdentityRecord({ values: excelValues, origin: 'conflict-resolve' });
+    // Resolving a conflict re-baselines CONTENT only — it doesn't change where the row
+    // was last seen in the sheet. Pass the device-local positional stamps (slice 2)
+    // through, or the spread below would silently null them (builder defaults).
+    const priorSync = marker.excelSync || {};
+    const record = await buildMarkerIdentityRecord({
+      values: excelValues, origin: 'conflict-resolve',
+      lastSeenRowNumber: priorSync.lastSeenRowNumber ?? null,
+      lastIngestSeq: priorSync.lastIngestSeq ?? null
+    });
     const entities = selectedTemplate?.entities || [];
 
     let nextMarker = { ...marker, excelSync: { ...(marker.excelSync || {}), ...record } };
@@ -13400,7 +13408,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     const scopePlans = await buildScopeImportPlans({
       worksheetDataList, surveyMarkers: newSurveyMarkers, templateToUse,
       documentId: importDocumentId, resolveSecret: importResolveSecret,
-      appValuesByMarkerId: buildAppValuesByMarkerId(newSurveyMarkers, templateToUse)
+      appValuesByMarkerId: buildAppValuesByMarkerId(newSurveyMarkers, templateToUse),
+      // One wall-clock reading per import, taken here at the executor boundary (the
+      // service stays pure): orders this ingest's positional stamps (lastIngestSeq).
+      ingestSeq: Date.now()
     });
     const importReviewItems = [];
     let identityPersisted = false; // true once any marker got its excelSync memory stamped
@@ -13977,7 +13988,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     const scopePlans = await buildScopeImportPlans({
       worksheetDataList, surveyMarkers: newSurveyMarkers, templateToUse,
       documentId: importDocumentId, resolveSecret: importResolveSecret,
-      appValuesByMarkerId: buildAppValuesByMarkerId(newSurveyMarkers, templateToUse)
+      appValuesByMarkerId: buildAppValuesByMarkerId(newSurveyMarkers, templateToUse),
+      // One wall-clock reading per import, taken here at the executor boundary (the
+      // service stays pure): orders this ingest's positional stamps (lastIngestSeq).
+      ingestSeq: Date.now()
     });
     const importReviewItems = [];
     let identityPersisted = false; // true once any marker got its excelSync memory stamped
@@ -14852,6 +14866,11 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
             row.eachCell({ includeEmpty: true }, (cell, colNumber) => {
               rowData[colNumber - 1] = cell.value;
             });
+            // TRUE 1-based sheet row (eachRow skips empty rows, so the jsonData index
+            // is "nth non-empty row", NOT the sheet row). Non-index expando on the row
+            // array — invisible to every index-based consumer of jsonData; read by
+            // buildScopeImportPlans to stamp positional memory (blank-Row-ID slice 2).
+            rowData.sheetRowNumber = rowNumber;
             jsonData.push(rowData);
           });
 
@@ -15025,6 +15044,11 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
             row.eachCell({ includeEmpty: true }, (cell, colNumber) => {
               rowData[colNumber - 1] = cell.value;
             });
+            // TRUE 1-based sheet row (eachRow skips empty rows, so the jsonData index
+            // is "nth non-empty row", NOT the sheet row). Non-index expando on the row
+            // array — invisible to every index-based consumer of jsonData; read by
+            // buildScopeImportPlans to stamp positional memory (blank-Row-ID slice 2).
+            rowData.sheetRowNumber = rowNumber;
             jsonData.push(rowData);
           });
 

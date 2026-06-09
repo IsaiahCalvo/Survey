@@ -79,6 +79,12 @@ export const buildScopeImportPlans = async ({
   documentId,
   resolveSecret,
   appValuesByMarkerId = null,
+  // Monotonic per-import sequence (wall-clock taken ONCE at the executor boundary in
+  // PDFViewer — this module stays pure). Stamped as lastIngestSeq next to
+  // lastSeenRowNumber on every apply/create identity record so future positional tiers
+  // can tell a fresh position from a stale one. Optional: omitted → records simply
+  // carry no ingest stamp (older callers, tests) and nothing changes behavior.
+  ingestSeq = null,
   logger = defaultLogger
 }) => {
   const result = new Map();
@@ -130,7 +136,15 @@ export const buildScopeImportPlans = async ({
       const rows = [];
       const jsonIndexByPos = [];
       for (let i = 1; i < jsonData.length; i += 1) {
-        rows.push({ rowIdCell: jsonData[i][rowIdIdx], values: buildValues(jsonData[i]) });
+        // sheetRowNumber: the TRUE 1-based sheet row, captured by the exceljs parse
+        // loop as a non-index property on the row array (eachRow skips empty rows, so
+        // the array index is "nth non-empty row", NOT the sheet row). null when absent
+        // (older callers, fixtures) — carried as data only; the matcher ignores it.
+        const sheetRowNumber =
+          Number.isInteger(jsonData[i].sheetRowNumber) && jsonData[i].sheetRowNumber > 0
+            ? jsonData[i].sheetRowNumber
+            : null;
+        rows.push({ rowIdCell: jsonData[i][rowIdIdx], values: buildValues(jsonData[i]), sheetRowNumber });
         jsonIndexByPos.push(i);
       }
 
@@ -163,7 +177,12 @@ export const buildScopeImportPlans = async ({
         if (d.action === 'apply' || d.action === 'create') {
           d.identityRecord = await buildMarkerIdentityRecord({
             values: rows[d.rowIndex].values,
-            origin: 'import'
+            origin: 'import',
+            // Positional memory (blank-Row-ID plan, slice 2): where this row sat in the
+            // sheet at this ingest + which ingest observed it. Read by future positional
+            // tiers only; absence (null) is always valid and changes nothing today.
+            lastSeenRowNumber: rows[d.rowIndex].sheetRowNumber ?? null,
+            lastIngestSeq: ingestSeq
           });
           // A new copy remembers its lineage so the next import recognizes it by
           // (origin, ordinal) instead of creating yet another twin.
