@@ -4045,7 +4045,12 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     const map = {};
     (pendingImportReview || []).forEach((entry) => {
       if (!entry || entry.reason !== 'conflict' || !entry.markerId) return;
-      if (!map[entry.markerId]) map[entry.markerId] = { excelValues: entry.excelValues };
+      if (!map[entry.markerId]) {
+        map[entry.markerId] = {
+          excelValues: entry.excelValues,
+          conflictFields: entry.conflictFields || []
+        };
+      }
     });
     return map;
   }, [pendingImportReview]);

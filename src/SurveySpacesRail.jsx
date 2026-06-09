@@ -88,6 +88,69 @@ const SurveyMarkerLeadingSelect = ({
   </button>
 );
 
+const formatConflictFieldLabel = (field) => {
+  if (!field) return null;
+  if (field === 'item') return 'Item name';
+  if (field === 'entity') return 'Entity';
+  if (field === 'notes') return 'Notes';
+  if (field === 'changedBy') return 'Changed by';
+  if (field === 'changedDate') return 'Changed date';
+  if (String(field).startsWith('answer:')) return 'Checklist answer';
+  return String(field);
+};
+
+const SurveyMarkerReviewIndicator = ({
+  markerId,
+  message,
+  conflict,
+  onKeepApp,
+  onUseExcel
+}) => {
+  if (!message) return null;
+
+  const conflictFields = Array.isArray(conflict?.conflictFields)
+    ? [...new Set(conflict.conflictFields.map(formatConflictFieldLabel).filter(Boolean))]
+    : [];
+
+  return (
+    <span className="survey-marker-review-wrap">
+      <button
+        type="button"
+        className="survey-marker-review-button"
+        aria-label={message}
+        aria-describedby={`survey-marker-review-${markerId || (conflict ? 'conflict' : 'review')}`}
+        onClick={(event) => event.stopPropagation()}
+      >
+        <img src={reviewWarningIcon} alt="" width={15} height={15} aria-hidden="true" />
+      </button>
+      <span
+        id={`survey-marker-review-${markerId || (conflict ? 'conflict' : 'review')}`}
+        className="survey-marker-review-tooltip"
+        role="tooltip"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <span className="survey-marker-review-tooltip-title">
+          {conflict ? 'Excel sync conflict' : 'Excel sync review'}
+        </span>
+        <span className="survey-marker-review-tooltip-body">
+          {message}
+        </span>
+        {conflictFields.length > 0 && (
+          <span className="survey-marker-review-tooltip-meta">
+            Affected: {conflictFields.join(', ')}
+          </span>
+        )}
+        {conflict && (
+          <span className="survey-marker-review-tooltip-actions">
+            <button type="button" onClick={onKeepApp}>Keep app</button>
+            <button type="button" onClick={onUseExcel}>Use Excel</button>
+          </span>
+        )}
+      </span>
+    </span>
+  );
+};
+
 const SurveySpacesRail = ({
   activeSpaceId,
   annotationsByPage,
@@ -195,8 +258,6 @@ const SurveySpacesRail = ({
   onCollapseChange = null,
 }) => {
   const [isSurveyPanelCollapsed, setIsSurveyPanelCollapsed] = useState(true);
-  // Which conflict row currently has its "keep mine / use Excel's" choice open (marker id).
-  const [openConflictMarkerId, setOpenConflictMarkerId] = useState(null);
   const [openEntityDropdownId, setOpenEntityDropdownId] = useState(null);
   const [railIconHover, setRailIconHover] = useState(null);
   const surveyMarkerDragRestoreRef = useRef(null);
@@ -1563,6 +1624,8 @@ const SurveySpacesRail = ({
                                             const surveyMarkerName = surveyMarkers[annotationId]?.name || surveyMarker.name || fallbackName;
                                             const entityDropdownId = `${annotationId}:entity`;
                                             const isEntityDropdownOpenForMarker = openEntityDropdownId === entityDropdownId;
+                                            const reviewMessage = surveyReviewByMarkerId[annotationId] || '';
+                                            const reviewConflict = surveyConflictByMarkerId[annotationId] || null;
 
                                             return (
                                               <SortableRearrangeRow
@@ -1632,7 +1695,7 @@ const SurveySpacesRail = ({
                                                 background: isDragging ? 'rgba(74, 144, 226, 0.12)' : 'transparent',
                                                 border: '1px solid #444',
                                                 borderRadius: '4px',
-                                                overflow: isEntityDropdownOpenForMarker ? 'visible' : 'hidden',
+                                                overflow: (isEntityDropdownOpenForMarker || reviewMessage) ? 'visible' : 'hidden',
                                                 flexShrink: 0,
                                                 opacity: isDragging ? 0.72 : 1,
                                                 boxShadow: isDragging ? '0 10px 22px rgba(0, 0, 0, 0.34), inset 0 0 0 1px rgba(74, 144, 226, 0.3)' : 'none',
@@ -1734,64 +1797,6 @@ const SurveySpacesRail = ({
                                                       >
                                                         <Icon name="chevronRight" size={12} />
                                                       </button>
-                                                      {surveyReviewByMarkerId[annotationId] && (() => {
-                                                        const isConflict = !!surveyConflictByMarkerId[annotationId];
-                                                        const isOpen = isConflict && openConflictMarkerId === annotationId;
-                                                        return (
-                                                          <span style={{ position: 'relative', display: 'inline-flex', flexShrink: 0 }}>
-                                                            <img
-                                                              src={reviewWarningIcon}
-                                                              alt={isConflict ? 'Changed in both places — choose a version' : 'Needs review'}
-                                                              title={surveyReviewByMarkerId[annotationId]}
-                                                              width={15}
-                                                              height={15}
-                                                              style={{ flexShrink: 0, cursor: isConflict ? 'pointer' : 'help' }}
-                                                              onClick={(e) => {
-                                                                e.stopPropagation();
-                                                                if (!isConflict) return;
-                                                                setOpenConflictMarkerId((cur) => (cur === annotationId ? null : annotationId));
-                                                              }}
-                                                            />
-                                                            {isOpen && (
-                                                              <span
-                                                                onClick={(e) => e.stopPropagation()}
-                                                                style={{
-                                                                  position: 'absolute', top: '18px', left: 0, zIndex: 50,
-                                                                  background: '#fff', border: '1px solid #d0d0d0', borderRadius: 6,
-                                                                  boxShadow: '0 2px 8px rgba(0,0,0,0.18)', padding: 8, width: 200,
-                                                                  display: 'flex', flexDirection: 'column', gap: 6
-                                                                }}
-                                                              >
-                                                                <span style={{ fontSize: 12, color: '#333', lineHeight: 1.3 }}>
-                                                                  Changed in both Excel and the app. Which version do you want to keep?
-                                                                </span>
-                                                                <button
-                                                                  type="button"
-                                                                  style={{ fontSize: 12, padding: '4px 6px', cursor: 'pointer' }}
-                                                                  onClick={(e) => {
-                                                                    e.stopPropagation();
-                                                                    setOpenConflictMarkerId(null);
-                                                                    onResolveExcelConflict && onResolveExcelConflict(annotationId, 'app');
-                                                                  }}
-                                                                >
-                                                                  Keep app version
-                                                                </button>
-                                                                <button
-                                                                  type="button"
-                                                                  style={{ fontSize: 12, padding: '4px 6px', cursor: 'pointer' }}
-                                                                  onClick={(e) => {
-                                                                    e.stopPropagation();
-                                                                    setOpenConflictMarkerId(null);
-                                                                    onResolveExcelConflict && onResolveExcelConflict(annotationId, 'excel');
-                                                                  }}
-                                                                >
-                                                                  Use Excel version
-                                                                </button>
-                                                              </span>
-                                                            )}
-                                                          </span>
-                                                        );
-                                                      })()}
                                                       <span className="survey-marker-name-fit" data-value={surveyMarkerName || ' '}>
                                                         <input
                                                           type="text"
@@ -1880,6 +1885,20 @@ const SurveySpacesRail = ({
                                                   >
                                                     <Icon name="pen" size={13} />
                                                   </button>
+
+                                                  <SurveyMarkerReviewIndicator
+                                                    markerId={annotationId}
+                                                    message={reviewMessage}
+                                                    conflict={reviewConflict}
+                                                    onKeepApp={(e) => {
+                                                      e.stopPropagation();
+                                                      onResolveExcelConflict && onResolveExcelConflict(annotationId, 'app');
+                                                    }}
+                                                    onUseExcel={(e) => {
+                                                      e.stopPropagation();
+                                                      onResolveExcelConflict && onResolveExcelConflict(annotationId, 'excel');
+                                                    }}
+                                                  />
 
                                                   {/* Locate Button (Magnifying Glass) */}
                                                   <div

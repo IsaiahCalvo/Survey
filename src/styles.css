@@ -287,6 +287,128 @@ input[type="text"].survey-marker-name-inline:focus {
   cursor: pointer;
 }
 
+.survey-marker-review-wrap {
+  position: relative;
+  width: 22px;
+  height: 22px;
+  flex: 0 0 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 3;
+}
+
+.survey-marker-review-button {
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: #dc2626;
+  cursor: help;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transform: none;
+  box-shadow: none;
+}
+
+.survey-marker-review-button:hover,
+.survey-marker-review-button:focus-visible {
+  background: rgba(220, 38, 38, 0.12);
+  outline: none;
+}
+
+.survey-marker-review-button img {
+  width: 15px;
+  height: 15px;
+  display: block;
+}
+
+.survey-marker-review-tooltip {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 7px);
+  width: min(236px, calc(100vw - 32px));
+  max-width: 236px;
+  padding: 8px 9px;
+  border: 1px solid #4a4a4a;
+  border-radius: 6px;
+  background: #1f1f1f;
+  color: #f2f2f2;
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.42);
+  font-size: 11px;
+  line-height: 1.35;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transform: translateY(3px);
+  transition: opacity 0.12s ease, transform 0.12s ease, visibility 0.12s ease;
+  z-index: 90;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  white-space: normal;
+}
+
+.survey-marker-review-tooltip::after {
+  content: '';
+  position: absolute;
+  right: 7px;
+  top: 100%;
+  width: 8px;
+  height: 8px;
+  background: #1f1f1f;
+  border-right: 1px solid #4a4a4a;
+  border-bottom: 1px solid #4a4a4a;
+  transform: rotate(45deg);
+}
+
+.survey-marker-review-wrap:hover .survey-marker-review-tooltip,
+.survey-marker-review-wrap:focus-within .survey-marker-review-tooltip {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+  transform: translateY(0);
+}
+
+.survey-marker-review-tooltip-title {
+  color: #ff7777;
+  font-weight: 600;
+}
+
+.survey-marker-review-tooltip-body,
+.survey-marker-review-tooltip-meta {
+  color: #d6d6d6;
+}
+
+.survey-marker-review-tooltip-meta {
+  color: #b8b8b8;
+}
+
+.survey-marker-review-tooltip-actions {
+  display: flex;
+  gap: 6px;
+  margin-top: 2px;
+}
+
+.survey-marker-review-tooltip-actions button {
+  height: 22px;
+  padding: 0 7px;
+  border: 1px solid #555;
+  border-radius: 4px;
+  background: #2f2f2f;
+  color: #e8e8e8;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.survey-marker-review-tooltip-actions button:hover {
+  border-color: #4A90E2;
+  background: rgba(74, 144, 226, 0.18);
+}
+
 .survey-marker-leading-control {
   width: 22px;
   height: 24px;
