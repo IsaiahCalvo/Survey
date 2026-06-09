@@ -13287,6 +13287,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       documentId: importDocumentId, resolveSecret: importResolveSecret
     });
     const importReviewItems = [];
+    let identityPersisted = false; // true once any marker got its excelSync memory stamped
 
     worksheetDataList.forEach(({ jsonData, headerRow, matchedCategory, matchedModuleId }) => {
       // Rebuild colToChecklistId using the updated category from templateToUse
@@ -13344,10 +13345,14 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         // row to its marker by signed token / recovered fingerprint, regardless of
         // rename); legacy name-match is the fallback for sheets with no Row ID column.
         let matchedSurveyMarkerKey = null;
+        let rowIdentityRecord = null; // content fingerprint to remember this row by
         const planScopeKey = `${matchedModuleId}-${matchedCategory.id}`;
         const scopePlan = scopePlans.get(planScopeKey);
         if (scopePlan) {
           const decision = scopePlan.byRowIndex.get(i);
+          if (decision && (decision.action === 'apply' || decision.action === 'create')) {
+            rowIdentityRecord = decision.identityRecord || null;
+          }
           if (decision && decision.action === 'apply' && decision.markerId && newSurveyMarkers[decision.markerId]) {
             matchedSurveyMarkerKey = decision.markerId; // match or recovered missing-rowid
           } else if (decision && decision.action === 'review') {
@@ -13445,6 +13450,12 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
             // Attribute-only import: never let Excel change a marker's geometry.
             newSurveyMarkers[key] = freezeGeometryFromOriginal({ ...ann }, surveyMarkers[key]);
           }
+          // Remember this row by content — persist even if nothing visible changed
+          // (Codex R1), so the next sync recognizes it instead of creating a twin.
+          if (rowIdentityRecord) {
+            newSurveyMarkers[key] = { ...newSurveyMarkers[key], excelSync: rowIdentityRecord };
+            identityPersisted = true;
+          }
         } else {
           // Create new surveyMarker for new row
           const newSurveyMarkerId = `surveyMarker-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`;
@@ -13501,6 +13512,15 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
           // Imported rows are always unplaced proposals (no geometry) — they
           // appear in the Survey panel with the orange locate button.
           newSurveyMarkers[newSurveyMarkerId] = forceUnplacedImportedMarker(newSurveyMarker);
+          // Remember this new row by content so re-saving the same row recovers it
+          // instead of creating another twin (fixes the repeated-save duplication).
+          if (rowIdentityRecord) {
+            newSurveyMarkers[newSurveyMarkerId] = {
+              ...newSurveyMarkers[newSurveyMarkerId],
+              excelSync: rowIdentityRecord
+            };
+            identityPersisted = true;
+          }
           updatesCount++;
         }
       }
@@ -13756,6 +13776,12 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       });
     });
     setPendingImportReview(importReviewItems);
+    // Persist import memory even when nothing user-visible changed (Codex R1) — the
+    // excelSync records must survive so the next sync recognizes these rows by content.
+    if (identityPersisted && updatesCount === 0 && deletionsCount === 0) {
+      setSurveyMarkers(newSurveyMarkers);
+      markExcelSyncCheckpoint(templateToUse, newSurveyMarkers);
+    }
 
     if (updatesCount > 0 || deletionsCount > 0) {
       setSurveyMarkers(newSurveyMarkers);
@@ -13789,6 +13815,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       documentId: importDocumentId, resolveSecret: importResolveSecret
     });
     const importReviewItems = [];
+    let identityPersisted = false; // true once any marker got its excelSync memory stamped
 
     worksheetDataList.forEach(({ jsonData, headerRow, matchedCategory, matchedModuleId }) => {
       // Rebuild colToChecklistId using the updated category from templateToUse
@@ -13846,10 +13873,14 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         // row to its marker by signed token / recovered fingerprint, regardless of
         // rename); legacy name-match is the fallback for sheets with no Row ID column.
         let matchedSurveyMarkerKey = null;
+        let rowIdentityRecord = null; // content fingerprint to remember this row by
         const planScopeKey = `${matchedModuleId}-${matchedCategory.id}`;
         const scopePlan = scopePlans.get(planScopeKey);
         if (scopePlan) {
           const decision = scopePlan.byRowIndex.get(i);
+          if (decision && (decision.action === 'apply' || decision.action === 'create')) {
+            rowIdentityRecord = decision.identityRecord || null;
+          }
           if (decision && decision.action === 'apply' && decision.markerId && newSurveyMarkers[decision.markerId]) {
             matchedSurveyMarkerKey = decision.markerId; // match or recovered missing-rowid
           } else if (decision && decision.action === 'review') {
@@ -13967,6 +13998,12 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
             // Attribute-only import: never let Excel change a marker's geometry.
             newSurveyMarkers[key] = freezeGeometryFromOriginal({ ...ann }, surveyMarkers[key]);
           }
+          // Remember this row by content — persist even if nothing visible changed
+          // (Codex R1), so the next sync recognizes it instead of creating a twin.
+          if (rowIdentityRecord) {
+            newSurveyMarkers[key] = { ...newSurveyMarkers[key], excelSync: rowIdentityRecord };
+            identityPersisted = true;
+          }
         } else {
           // Create new surveyMarker for new row
           const newSurveyMarkerId = `surveyMarker-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`;
@@ -14023,6 +14060,15 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
           // Imported rows are always unplaced proposals (no geometry) — they
           // appear in the Survey panel with the orange locate button.
           newSurveyMarkers[newSurveyMarkerId] = forceUnplacedImportedMarker(newSurveyMarker);
+          // Remember this new row by content so re-saving the same row recovers it
+          // instead of creating another twin (fixes the repeated-save duplication).
+          if (rowIdentityRecord) {
+            newSurveyMarkers[newSurveyMarkerId] = {
+              ...newSurveyMarkers[newSurveyMarkerId],
+              excelSync: rowIdentityRecord
+            };
+            identityPersisted = true;
+          }
           updatesCount++;
         }
       }
@@ -14279,6 +14325,12 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       });
     });
     setPendingImportReview(importReviewItems);
+    // Persist import memory even when nothing user-visible changed (Codex R1) — the
+    // excelSync records must survive so the next sync recognizes these rows by content.
+    if (identityPersisted && updatesCount === 0 && deletionsCount === 0) {
+      setSurveyMarkers(newSurveyMarkers);
+      markExcelSyncCheckpoint(templateToUse, newSurveyMarkers);
+    }
     const reviewSuffix = importReviewItems.length > 0 ? ` · ${importReviewItems.length} need your choice` : '';
 
     if (updatesCount > 0 || deletionsCount > 0) {

@@ -29,12 +29,28 @@ export const IDENTITY_RECORD_VERSION = 'v1';
  * @returns {Promise<{version, lastExportId, wasWrittenAsRow, identityVectorFingerprint,
  *           fullRowFingerprint, fieldFingerprints}>}
  */
-export const buildMarkerIdentityRecord = async ({ values, exportId = null } = {}) => {
+export const buildMarkerIdentityRecord = async ({
+  values,
+  exportId = null,
+  origin = 'export',
+  assignedToken = null,
+  pendingRowIdWriteback = false
+} = {}) => {
   const fp = await computeRowFingerprints(values || {});
   return {
     version: IDENTITY_RECORD_VERSION,
+    // origin distinguishes a record stamped because WE wrote the row to Excel
+    // ('export') from one stamped because we READ the row from Excel and created/
+    // updated a marker ('import'). Both make the marker a first-class member of the
+    // import matcher's `stored` set so the next sync recognizes the row by content.
+    origin,
     lastExportId: exportId,
-    wasWrittenAsRow: true,
+    wasWrittenAsRow: origin === 'export',
+    // The signed Row ID this marker should carry in Excel, and whether that token
+    // still needs to be written back into the sheet (import-created rows on local/
+    // personal workbooks, where the cell is blank/duplicate until a safe writeback).
+    assignedToken,
+    pendingRowIdWriteback,
     identityVectorFingerprint: fp.identityVectorFingerprint,
     fullRowFingerprint: fp.fullRowFingerprint,
     fieldFingerprints: fp.fieldFingerprints

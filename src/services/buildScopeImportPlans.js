@@ -16,6 +16,7 @@
 // never acted on here.
 
 import { buildImportPlan } from './rowImportMatcher.js';
+import { buildMarkerIdentityRecord } from './excelIdentityRecord.js';
 
 const SYSTEM_HEADERS = ['Row ID', 'Changed By', 'Changed Date', 'Item', 'Entity', 'Notes'];
 
@@ -139,6 +140,21 @@ export const buildScopeImportPlans = async ({
       }
 
       const plan = await buildImportPlan({ rows, stored, documentId, scopeId, resolveSecret });
+
+      // Attach a ready-to-stamp identity record (computed from the SAME visible row
+      // values) to every apply/create decision, so when the import creates or updates
+      // a marker it remembers the row by content — making the row a first-class member
+      // of `stored` on the next sync. This is what stops repeated saves and blank
+      // copied rows from duplicating: a second save recovers the marker by fingerprint
+      // instead of creating a twin.
+      await Promise.all(plan.decisions.map(async (d) => {
+        if (d.action === 'apply' || d.action === 'create') {
+          d.identityRecord = await buildMarkerIdentityRecord({
+            values: rows[d.rowIndex].values,
+            origin: 'import'
+          });
+        }
+      }));
 
       const byRowIndex = new Map();
       for (const d of plan.decisions) {

@@ -109,6 +109,33 @@ test('stored marker with no row → candidate-delete (review-only, never deleted
   assert.deepEqual(plan.candidateDeletes, ['m2']);
 });
 
+test('repeated save of one new blank row dedupes: create then recover (no twin)', async () => {
+  const ws = (markers) => buildScopeImportPlans({
+    worksheetDataList: [{
+      jsonData: [headerRow, excelRowFor('', { item: 'Brand New' })],
+      headerRow, matchedCategory: { id: CATEGORY }, matchedModuleId: MODULE
+    }],
+    surveyMarkers: markers, templateToUse, documentId: DOC, resolveSecret
+  });
+
+  // Save 1: nothing stored → the blank row is genuinely new, and the decision carries
+  // a ready-to-stamp import identity record.
+  const plan1 = (await ws({})).get(scopeKeyFor(MODULE, CATEGORY)).byRowIndex.get(1);
+  assert.equal(plan1.decision, 'new-row');
+  assert.ok(plan1.identityRecord, 'create decision carries an identity record');
+  assert.equal(plan1.identityRecord.origin, 'import');
+
+  // The app would create a marker and stamp that record as its excelSync. Simulate it.
+  const markers = { m1: { moduleId: MODULE, categoryId: CATEGORY, name: 'Brand New', excelSync: plan1.identityRecord } };
+
+  // Save 2: the SAME blank row now recovers the remembered marker — missing-rowid,
+  // apply to m1 — instead of creating a second item.
+  const plan2 = (await ws(markers)).get(scopeKeyFor(MODULE, CATEGORY)).byRowIndex.get(1);
+  assert.equal(plan2.decision, 'missing-rowid');
+  assert.equal(plan2.action, 'apply');
+  assert.equal(plan2.markerId, 'm1');
+});
+
 test('worksheet with no Row ID column is omitted (caller keeps legacy match)', async () => {
   const legacyHeader = ['Changed By', 'Changed Date', 'Item', 'Locked?', 'Entity', 'Notes'];
   const jsonData = [legacyHeader, ['IC', '6/8/2026', 'Door 12', 'Y', 'North', 'ok']];
