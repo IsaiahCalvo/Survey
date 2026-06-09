@@ -14,6 +14,7 @@ import Icon from './Icons';
 import EntityIndicator from './components/EntityIndicator';
 import { COLORS } from './theme';
 import reviewWarningIcon from './assets/review-warning.svg';
+import { syncMessagePresentation } from './services/excelSyncStatus';
 
 const FONT_FAMILY = '-apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", "Segoe UI", Roboto, Ubuntu, "Noto Sans", Arial, sans-serif';
 
@@ -352,19 +353,25 @@ const SurveySpacesRail = ({
                           ? ((selectedTemplate.modules || selectedTemplate.spaces || []).find(m => m.id === selectedModuleId)?.name || 'Survey')
                           : (selectedTemplate.name || 'Survey')}
                       </h2>
-                      {!categorySelectModeActive && selectedTemplate.linkedExcelPath && lastSyncMessage && (
-                        <div style={{
-                          marginTop: '6px',
-                          fontSize: '11px',
-                          color: lastSyncMessage.includes('failed') ? '#e74c3c' : '#3498db',
-                          padding: '4px 8px',
-                          background: lastSyncMessage.includes('failed') ? 'rgba(231, 76, 60, 0.1)' : 'rgba(52, 152, 219, 0.1)',
-                          borderRadius: '4px',
-                          border: lastSyncMessage.includes('failed') ? '1px solid rgba(231, 76, 60, 0.3)' : '1px solid rgba(52, 152, 219, 0.3)'
-                        }}>
-                          {lastSyncMessage}
-                        </div>
-                      )}
+                      {!categorySelectModeActive && selectedTemplate.linkedExcelPath && lastSyncMessage && (() => {
+                        // Color the banner by the message's tone so warnings (close Excel,
+                        // needs your choice, queued) and successes (synced/saved) no longer
+                        // look identical to neutral info. See services/excelSyncStatus.
+                        const tone = syncMessagePresentation(lastSyncMessage);
+                        return (
+                          <div style={{
+                            marginTop: '6px',
+                            fontSize: '11px',
+                            color: tone.color,
+                            padding: '4px 8px',
+                            background: tone.background,
+                            borderRadius: '4px',
+                            border: tone.border
+                          }}>
+                            {lastSyncMessage}
+                          </div>
+                        );
+                      })()}
                     </div>
                     <button
                       onClick={() => {
