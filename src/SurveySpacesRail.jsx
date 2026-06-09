@@ -1251,12 +1251,8 @@ const SurveySpacesRail = ({
                                   const isCategorySelected = selectedCategories[category.id] === true;
                                   const isCategorySelectModeActive = categorySelectModeActive;
                                   const isCategoryActive = (isCategorySelectModeActive && isCategorySelected) || selectedCategoryId === category.id;
-                                  const buttonBackground = 'transparent';
-                                  const borderColor = isCategoryActive ? '#4A90E2' : 'transparent';
-                                  const baseBorder = `1px solid ${borderColor}`;
                                   const buttonTextColor = isCategoryActive ? '#4A90E2' : '#ddd';
                                   const buttonSubTextColor = isCategoryActive ? '#4A90E2' : '#999';
-                                  const buttonLeftBorder = (copyModeActive || isCategorySelectModeActive) ? 'none' : baseBorder;
 
                                   // Item-level selection state
                                   const isItemSelectModeActiveForCategory = itemSelectModeActive[category.id] === true;
@@ -1297,22 +1293,16 @@ const SurveySpacesRail = ({
                                         };
 
                                         return (
-                                    <div style={{
-                                      border: '1px solid #424242',
-                                      borderRadius: '5px',
-                                      padding: '4px 5px',
-                                      overflow: 'visible',
-                                      opacity: isDragging ? 0.72 : 1,
-                                      transition: isDragging ? 'none' : 'background 0.15s ease, opacity 0.15s ease'
-                                    }}>
+                                    <div
+                                      className={`survey-marker-category-card${isCategoryActive ? ' is-active' : ''}`}
+                                      style={{
+                                        opacity: isDragging ? 0.72 : 1,
+                                        transition: isDragging ? 'none' : undefined
+                                      }}
+                                    >
                                       <div
                                         data-drag-rearrange-row
-                                        style={{
-                                          display: 'flex',
-                                          gap: '6px',
-                                          alignItems: 'center',
-                                          minWidth: 0,
-                                        }}
+                                        className="survey-marker-category-row"
                                       >
                                         {isCategorySelectable ? (
                                           <SurveyMarkerLeadingSelect
@@ -1332,7 +1322,7 @@ const SurveySpacesRail = ({
                                           />
                                         )}
 
-                                        <div style={{ display: 'flex', flex: 1, alignItems: 'stretch', minWidth: 0 }}>
+                                        <div className="survey-marker-category-body">
                                             <button
                                               onClick={(e) => {
                                                 e.stopPropagation();
@@ -1352,32 +1342,24 @@ const SurveySpacesRail = ({
                                                 // Switch to surveyMarker tool
                                                 setActiveTool('survey-marker');
                                               }}
-                                              className="btn btn-default btn-md"
+                                              className="survey-marker-category-main"
                                               style={{
-                                                textAlign: 'left',
-                                                justifyContent: 'flex-start',
-                                                padding: '5px 10px',
-                                                background: buttonBackground,
-                                                borderTop: baseBorder,
-                                                borderBottom: baseBorder,
-                                                borderLeft: buttonLeftBorder,
-                                                borderRight: surveyMarkerCount > 0 ? 'none' : baseBorder,
                                                 color: buttonTextColor,
-                                                flex: 1,
-                                                minWidth: 0,
-                                                borderRadius: surveyMarkerCount > 0 ? '4px 0 0 4px' : '4px',
                                               }}
                                             >
-                                              <div style={{ fontWeight: '500' }}>
+                                              <span className="survey-marker-category-main-label">
                                                 {category.name || 'Untitled Category'}
-                                              </div>
-                                              <div style={{ fontSize: '11px', color: buttonSubTextColor, marginTop: '2px' }}>
+                                              </span>
+                                              <span
+                                                className="survey-marker-category-main-count"
+                                                style={{ color: buttonSubTextColor }}
+                                              >
                                                 {surveyMarkerCount}
-                                              </div>
+                                              </span>
                                             </button>
                                             {surveyMarkerCount > 0 && (
                                               <button
-                                                className="dropdown-arrow"
+                                                className="survey-marker-category-arrow"
                                                 onClick={(e) => {
                                                   e.stopPropagation();
                                                   setExpandedCategories(prev => ({
@@ -1386,18 +1368,7 @@ const SurveySpacesRail = ({
                                                   }));
                                                 }}
                                                 style={{
-                                                  padding: '2px 7px',
-                                                  background: 'transparent',
-                                                  borderTop: baseBorder,
-                                                  borderRight: baseBorder,
-                                                  borderBottom: baseBorder,
-                                                  borderLeft: 'none',
-                                                  borderRadius: '0 4px 4px 0',
-                                                  cursor: 'pointer',
-                                                  display: 'flex',
-                                                  alignItems: 'center',
-                                                  justifyContent: 'center',
-                                                  transition: 'background 0.2s ease, border-color 0.2s ease'
+                                                  color: isArrowActive ? '#4A90E2' : '#fff'
                                                 }}
                                               >
                                                 <span
@@ -1418,7 +1389,7 @@ const SurveySpacesRail = ({
                                                   >
                                                     <path
                                                       d="M6 9L12 15L18 9"
-                                                      stroke={isArrowActive ? "#4A90E2" : "#fff"}
+                                                      stroke="currentColor"
                                                       strokeWidth="2.5"
                                                       strokeLinecap="round"
                                                       strokeLinejoin="round"

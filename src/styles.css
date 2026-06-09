@@ -514,6 +514,94 @@ input[type="text"].survey-marker-name-inline:focus {
   margin-bottom: 0;
 }
 
+.survey-marker-category-card {
+  border: 1px solid #424242;
+  border-radius: 5px;
+  padding: 4px 5px;
+  overflow: visible;
+  transition: background 0.15s ease, opacity 0.15s ease;
+}
+
+.survey-marker-category-card.is-active {
+  border-color: #4A90E2;
+  background: rgba(74, 144, 226, 0.035);
+}
+
+.survey-marker-category-row {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  min-width: 0;
+}
+
+.survey-marker-category-body {
+  display: flex;
+  flex: 1 1 auto;
+  align-items: stretch;
+  min-width: 0;
+  overflow: hidden;
+  border-radius: 4px;
+}
+
+.survey-marker-category-main,
+.survey-marker-category-arrow {
+  min-height: 28px;
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+  outline: none;
+  color: #ddd;
+  cursor: pointer;
+  font-family: inherit;
+  transform: none;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+
+.survey-marker-category-main {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 5px 10px;
+  text-align: left;
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.survey-marker-category-main:hover,
+.survey-marker-category-arrow:hover {
+  background: rgba(255, 255, 255, 0.045);
+}
+
+.survey-marker-category-main:active,
+.survey-marker-category-arrow:active {
+  background: rgba(255, 255, 255, 0.035);
+}
+
+.survey-marker-category-main-label {
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.survey-marker-category-main-count {
+  font-size: 11px;
+  margin-left: 2px;
+  opacity: 0.72;
+  flex: 0 0 auto;
+}
+
+.survey-marker-category-arrow {
+  flex: 0 0 28px;
+  width: 28px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
 .survey-marker-entity-row {
   display: flex;
   align-items: center;
