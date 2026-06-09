@@ -21,9 +21,9 @@ This is the entry point for the next session. It confirms the user's open-items 
 
 4. **Excel deleting received markers — NOT STARTED.** Today deletions are review-only candidate-deletes (flagged via item 1, never applied). Next: allow deletion ONLY for markers that carry an `exportedAt` (Excel previously received them — the `excelExportAck` stamp already exists), and route every such deletion through the existing History/restore path so it's recoverable. Confirm the History restore path covers Survey Markers before enabling.
 
-5. **Conflict review — PARTIAL.** Review items are captured and now surfaced (item 1), but there is no "same field changed on both sides" detection and no per-row choose-a-side UI. Next: detect field-level conflict (app value vs Excel value both differ from last-synced baseline — baseline store is `excelSyncBaselineStore.js`) and present a simple keep-mine / take-Excel choice instead of guessing.
+5. **Conflict review — DETECTOR DONE (commit `86c0e0cb`), UI is a product decision.** The pure field-level detector landed: `src/services/excelConflictDetect.js` (`detectFieldConflicts` / `classifyRowConflict`, reusing `diffRowFields` over the stored per-field fingerprints). A field is a CONFLICT only when both the app and Excel moved it off the last-synced baseline AND disagree; one side only → that side wins; both changed different fields → clean MERGE. **Remaining (needs the user's call):** wire it into `executeExcelImport`/`executeAutoExcelImport` (compare stored `excelSync.fieldFingerprints` baseline vs current app values vs incoming Excel values), route CONFLICT rows into `pendingImportReview` with a `conflict` reason (the red icon already covers it), and build the choose-a-side UI (keep-mine / take-Excel, per field or per row?). The UI shape is the product decision.
 
-6. **Clear sync status wording — PARTIAL / INCONSISTENT.** Status strings are scattered across `lastSyncMessage` / `liveSyncStatus` in PDFViewer (e.g. "Live synced", "Sync failed", "needs your choice", the close-Excel alert). They are not a single vocabulary. Next: define one small set of plain-English statuses (saved · needs sync · close Excel first · needs your choice · queued until safe · synced) in a pure helper and route the UI through it. Local + testable; pairs naturally with item 1.
+6. **Clear sync status wording — DONE (commit `f5ae0028`, 2026-06-09).** One plain-English vocabulary + tones now lives in `src/services/excelSyncStatus.js` (saved · synced · syncing · needs sync · needs your choice · close Excel first · queued until safe · no changes · cancelled · failed). The Survey panel status banner colors by tone, so warnings (close Excel, needs your choice, queued) and successes (synced/saved) are no longer shown identical to neutral info. **Optional follow-up:** route the scattered `setLastSyncMessage` literals in PDFViewer through the canonical labels, and add a persistent per-survey state badge (saved / needs sync) instead of only the transient banner.
 
 7. **End-to-end test cases — PARTIAL.** `agent-cli/` drives the real backend headless and there are many unit tests, but there is no single scenario suite covering: copied row, renamed row, deleted row, local Excel open vs closed, personal OneDrive, Business OneDrive, SharePoint/Teams. Next: build these as agent-cli scenarios / node tests, mocking the Graph paths where a live account is required.
 
@@ -37,15 +37,18 @@ This is the entry point for the next session. It confirms the user's open-items 
 
 11. **Desktop file-watcher permission error.** The local file-watcher hits `EPERM` on the Desktop/Logs path; minor but open.
 
+## Landed this session (2026-06-09)
+
+- Item 1 (review icon) — `0e52bd09`. Item 6 (status vocabulary + tone banner) — `f5ae0028`. Item 5 detector core — `86c0e0cb`. Plus the earlier exact-lock-check + proof-gated capability + SharePoint path fix — `7ac4bb7d`.
+
 ## Recommended order (best next step first)
 
-1. **Item 6 — clear sync status wording** (local, fully testable, pairs with the icon just shipped; gives the user a coherent vocabulary to test against).
-2. **Item 5 — conflict review** (uses the baseline store + the review surface from item 1; high data-safety value; local + mockable).
-3. **Item 4 — received-only deletion through History restore** (data-safety; gated on confirming the restore path; local + testable).
-4. **Item 9 — stale/export-clock guard** (small, protects against the original bug).
-5. **Item 7 — scenario test suite** (lock in everything above with copied/renamed/deleted/open-closed/personal/business/SharePoint cases).
-6. **Items 2 + 3 + 8** — wire capability gating and the writeback flush, but these need the Microsoft sign-in migration (item 8) and a real work account to verify end-to-end. Do the wiring + mocks now; flip the master gate only after a live pass.
+1. **Item 5 — wire the conflict detector + choose-a-side UI** (detector is done; needs a product decision on the choice UI, then wiring into import + the review surface).
+2. **Item 4 — received-only deletion through History restore** (data-safety; gated on confirming the restore path covers Survey Markers; local + testable).
+3. **Item 9 — stale/export-clock guard** (small, protects against the original bug).
+4. **Item 7 — scenario test suite** (lock in everything above with copied/renamed/deleted/open-closed/personal/business/SharePoint cases).
+5. **Items 2 + 3 + 8** — wire capability gating and the writeback flush, but these need the Microsoft sign-in migration (item 8) and a real work account to verify end-to-end. Do the wiring + mocks now; flip the master gate only after a live pass.
 
 ## Recommended starting point for the next session
 
-Start with **item 6 (status wording)** — it is local, low-risk, immediately testable on the dev server, and it gives the user the plain-English vocabulary every later item reports through. Then move to item 5 (conflict review). Stop only for a real blocker (item 8 / live account) or a product decision.
+Two product decisions and one hard blocker now gate the remaining work: (a) the choose-a-side conflict UI shape (item 5), (b) confirming the History restore path covers Survey Markers before enabling Excel-driven deletion (item 4), and (c) the Microsoft work-account sign-in migration that blocks live verification of items 2/3 (item 8). Everything that did NOT require one of those is now done. Start by resolving the item 5 UI decision, then wire it.
