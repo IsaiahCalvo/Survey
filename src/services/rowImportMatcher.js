@@ -46,75 +46,100 @@ export const buildImportPlan = async ({ rows = [], stored = [], documentId, scop
     return { rowIndex, row, cls, fp };
   }));
 
-  // Pass 1 — duplicate pre-pass: any valid token appearing on >1 row is a duplicate; ALL its
-  // copies go to review and are excluded from binding (and their marker from blank-recovery).
-  const validTokenCounts = new Map();
-  for (const e of enriched) {
-    if (e.cls.status === 'valid') {
-      validTokenCounts.set(e.cls.markerId, (validTokenCounts.get(e.cls.markerId) || 0) + 1);
-    }
-  }
-  const duplicateMarkerIds = new Set(
-    [...validTokenCounts.entries()].filter(([, n]) => n > 1).map(([id]) => id)
-  );
-
   const decisions = [];
   const matchedMarkerIds = new Set();
   const blanks = [];
 
-  // Pass 2 — primary Row ID decisions.
+  // Group valid-token rows by their marker id, preserving row order. A row COPIED in
+  // Excel carries the original's token, so a token appearing on >1 row is the
+  // copy/paste case — the group is resolved by position below, not sent to review.
+  const validGroups = new Map(); // originMarkerId -> [enriched rows]
   for (const e of enriched) {
-    const { rowIndex, cls, fp } = e;
+    if (e.cls.status === 'valid') {
+      if (!validGroups.has(e.cls.markerId)) validGroups.set(e.cls.markerId, []);
+      validGroups.get(e.cls.markerId).push(e);
+    }
+  }
+
+  // Copies created on a PRIOR import remember their lineage on their own identity
+  // record: copyOfMarkerId (the original) + copyOrdinal (their position in the group).
+  // copiesByOrigin: originMarkerId -> Map(ordinal -> storedEntry).
+  const copiesByOrigin = new Map();
+  for (const s of stored) {
+    if (s.copyOfMarkerId != null && Number.isInteger(s.copyOrdinal)) {
+      if (!copiesByOrigin.has(s.copyOfMarkerId)) copiesByOrigin.set(s.copyOfMarkerId, new Map());
+      copiesByOrigin.get(s.copyOfMarkerId).set(s.copyOrdinal, s);
+    }
+  }
+
+  // Pass 1 — non-valid rows (blank deferred to Pass 3; the rest are terminal reviews).
+  for (const e of enriched) {
+    const { rowIndex, cls } = e;
     switch (cls.status) {
-      case 'valid': {
-        if (duplicateMarkerIds.has(cls.markerId)) {
-          decisions.push(reviewDecision(rowIndex, 'duplicate-rowid', { markerId: cls.markerId }));
-        } else if (!exportedIds.has(cls.markerId)) {
-          // Valid signature for this doc+scope, but the marker was never exported here
-          // (e.g. a token typed/pasted for a marker not in this workbook). Never mutate.
-          decisions.push(reviewDecision(rowIndex, 'unknown-rowid', { markerId: cls.markerId }));
+      case 'valid': break; // resolved in the group pass below
+      case 'blank': blanks.push(e); break;
+      case 'foreign': decisions.push(reviewDecision(rowIndex, 'foreign-rowid')); break;
+      case 'wrong-scope': decisions.push(reviewDecision(rowIndex, 'wrong-scope-rowid')); break;
+      case 'key-unavailable':
+        decisions.push(reviewDecision(rowIndex, 'rowid-key-unavailable', { keyId: cls.keyId })); break;
+      case 'malformed':
+      default: decisions.push(reviewDecision(rowIndex, 'malformed-rowid')); break;
+    }
+  }
+
+  // Pass 2 — valid-token groups. The FIRST row (lowest index) is the original and binds
+  // to the token's marker; each LATER row is a copy and maps to its OWN marker by
+  // (origin, ordinal) — so a copy becomes a new item automatically and re-saving the
+  // same copies never multiplies them. (Position-based: pasting a copy ABOVE the
+  // original flips which row owns the identity — no data is lost since both become
+  // items; the user can reorder. Codex flagged this as the accepted tradeoff for a
+  // zero-friction copy/paste.)
+  for (const [originMarkerId, group] of validGroups) {
+    const sortedRows = group.slice().sort((a, b) => a.rowIndex - b.rowIndex);
+    const knownCopies = copiesByOrigin.get(originMarkerId) || new Map();
+    sortedRows.forEach((e, ordinal) => {
+      const { rowIndex, fp } = e;
+      if (ordinal === 0) {
+        if (!exportedIds.has(originMarkerId)) {
+          // Valid signature for this doc+scope, but never exported here (typed/pasted
+          // token for a marker not in this workbook). Never mutate.
+          decisions.push(reviewDecision(rowIndex, 'unknown-rowid', { markerId: originMarkerId }));
         } else {
-          const stored = storedById.get(cls.markerId);
-          const changed = fp.fullRowFingerprint !== stored.fullRowFingerprint;
-          const changedFields = stored.fieldFingerprints
-            ? diffRowFields(stored.fieldFingerprints, fp.fieldFingerprints)
-            : undefined;
+          const s = storedById.get(originMarkerId);
           decisions.push({
             rowIndex,
             decision: 'match',
             action: IMPORT_ACTIONS.APPLY,
-            markerId: cls.markerId,
-            changed,
-            changedFields
+            markerId: originMarkerId,
+            changed: fp.fullRowFingerprint !== s.fullRowFingerprint,
+            changedFields: s.fieldFingerprints ? diffRowFields(s.fieldFingerprints, fp.fieldFingerprints) : undefined
           });
-          matchedMarkerIds.add(cls.markerId);
+          matchedMarkerIds.add(originMarkerId);
         }
-        break;
+      } else {
+        const existing = knownCopies.get(ordinal);
+        if (existing) {
+          // This copy was created on a previous import — apply to its marker, don't twin.
+          decisions.push({ rowIndex, decision: 'copy-existing', action: IMPORT_ACTIONS.APPLY, markerId: existing.markerId });
+          matchedMarkerIds.add(existing.markerId);
+        } else {
+          // A brand-new copy → create a new item, remembered by (origin, ordinal).
+          decisions.push({
+            rowIndex,
+            decision: 'copy-new',
+            action: IMPORT_ACTIONS.CREATE,
+            copyOfMarkerId: originMarkerId,
+            copyOrdinal: ordinal
+          });
+        }
       }
-      case 'blank':
-        blanks.push(e); // resolved in Pass 3 (fingerprint recovery)
-        break;
-      case 'foreign':
-        decisions.push(reviewDecision(rowIndex, 'foreign-rowid'));
-        break;
-      case 'wrong-scope':
-        decisions.push(reviewDecision(rowIndex, 'wrong-scope-rowid'));
-        break;
-      case 'key-unavailable':
-        decisions.push(reviewDecision(rowIndex, 'rowid-key-unavailable', { keyId: cls.keyId }));
-        break;
-      case 'malformed':
-      default:
-        decisions.push(reviewDecision(rowIndex, 'malformed-rowid'));
-        break;
-    }
+    });
   }
 
   // Pass 3 — blank Row ID recovery by fingerprint. Recoverable only against LEFTOVER markers
   // (not already bound by a token, not tangled in a duplicate). A unique identity-vector hit
   // re-attaches the marker; multiple hits → "Needs your choice"; no hit → genuinely new.
-  const leftoverFor = () => stored.filter((s) =>
-    !matchedMarkerIds.has(s.markerId) && !duplicateMarkerIds.has(s.markerId));
+  const leftoverFor = () => stored.filter((s) => !matchedMarkerIds.has(s.markerId));
 
   for (const e of blanks) {
     const { rowIndex, fp } = e;
@@ -139,7 +164,7 @@ export const buildImportPlan = async ({ rows = [], stored = [], documentId, scop
 
   // Pass 4 — stored markers that no row matched → review-only delete candidates (guard ON).
   const candidateDeletes = stored
-    .filter((s) => !matchedMarkerIds.has(s.markerId) && !duplicateMarkerIds.has(s.markerId))
+    .filter((s) => !matchedMarkerIds.has(s.markerId))
     .map((s) => s.markerId);
 
   // Keep decisions in row order for a stable, readable plan.

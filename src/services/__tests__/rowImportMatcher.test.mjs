@@ -51,18 +51,58 @@ test('rename + answer edit on the same token → still match, with changed field
   assert.deepEqual(decisions[0].changedFields, ['answer:q1', 'item']);
 });
 
-test('duplicate token on two rows → both review as duplicate-rowid, neither binds', async () => {
+test('copied row (same token twice) → first is the original (match), second becomes a new copy', async () => {
   const stored = [await storedFor('m1', vals())];
   const tok = await tokenFor('m1');
   const rows = [
     { rowIdCell: tok, values: vals() },
-    { rowIdCell: tok, values: vals({ item: 'Copy' }) }
+    { rowIdCell: tok, values: vals() } // an exact copy/paste in Excel
   ];
   const { decisions, candidateDeletes } = await buildImportPlan({ rows, stored, documentId: DOC, scopeId: SCOPE, resolveSecret });
-  assert.equal(decisions.every((d) => d.decision === 'duplicate-rowid' && d.action === 'review'), true);
-  // m1 is tangled in a duplicate → excluded from delete candidates (resolve the duplicate
-  // first; never propose deleting something the user still has to choose about).
+  assert.equal(decisions[0].decision, 'match');
+  assert.equal(decisions[0].markerId, 'm1');
+  assert.equal(decisions[1].decision, 'copy-new');
+  assert.equal(decisions[1].action, IMPORT_ACTIONS.CREATE);
+  assert.equal(decisions[1].copyOfMarkerId, 'm1');
+  assert.equal(decisions[1].copyOrdinal, 1);
   assert.deepEqual(candidateDeletes, []);
+});
+
+test('re-saving the same copied rows is idempotent: the copy applies to its marker, no new twin', async () => {
+  const v = vals();
+  // After the first import the copy became marker m2, remembered by its lineage.
+  const stored = [
+    await storedFor('m1', v),
+    { ...(await storedFor('m2', v)), copyOfMarkerId: 'm1', copyOrdinal: 1 }
+  ];
+  const tok = await tokenFor('m1');
+  const rows = [
+    { rowIdCell: tok, values: v },
+    { rowIdCell: tok, values: v }
+  ];
+  const { decisions } = await buildImportPlan({ rows, stored, documentId: DOC, scopeId: SCOPE, resolveSecret });
+  assert.equal(decisions[0].decision, 'match');
+  assert.equal(decisions[0].markerId, 'm1');
+  assert.equal(decisions[1].decision, 'copy-existing');
+  assert.equal(decisions[1].action, IMPORT_ACTIONS.APPLY);
+  assert.equal(decisions[1].markerId, 'm2'); // recovered, not re-created
+});
+
+test('a third copy appears → only the genuinely new one is created', async () => {
+  const v = vals();
+  const stored = [
+    await storedFor('m1', v),
+    { ...(await storedFor('m2', v)), copyOfMarkerId: 'm1', copyOrdinal: 1 }
+  ];
+  const tok = await tokenFor('m1');
+  const rows = [
+    { rowIdCell: tok, values: v },
+    { rowIdCell: tok, values: v },
+    { rowIdCell: tok, values: v } // a brand-new third copy
+  ];
+  const { decisions } = await buildImportPlan({ rows, stored, documentId: DOC, scopeId: SCOPE, resolveSecret });
+  assert.deepEqual(decisions.map((d) => d.decision), ['match', 'copy-existing', 'copy-new']);
+  assert.equal(decisions[2].copyOrdinal, 2);
 });
 
 test('valid token for a marker never exported here → unknown-rowid (review, no mutate)', async () => {

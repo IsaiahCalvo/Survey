@@ -134,7 +134,11 @@ export const buildScopeImportPlans = async ({
             markerId: key,
             identityVectorFingerprint: ann.excelSync.identityVectorFingerprint,
             fullRowFingerprint: ann.excelSync.fullRowFingerprint,
-            fieldFingerprints: ann.excelSync.fieldFingerprints
+            fieldFingerprints: ann.excelSync.fieldFingerprints,
+            // Lineage for copy/paste resolution: a marker created from a copied row
+            // remembers which original it copied and its position in the group.
+            copyOfMarkerId: ann.excelSync.copyOfMarkerId,
+            copyOrdinal: ann.excelSync.copyOrdinal
           });
         }
       }
@@ -153,6 +157,12 @@ export const buildScopeImportPlans = async ({
             values: rows[d.rowIndex].values,
             origin: 'import'
           });
+          // A new copy remembers its lineage so the next import recognizes it by
+          // (origin, ordinal) instead of creating yet another twin.
+          if (d.decision === 'copy-new') {
+            d.identityRecord.copyOfMarkerId = d.copyOfMarkerId;
+            d.identityRecord.copyOrdinal = d.copyOrdinal;
+          }
         }
       }));
 
