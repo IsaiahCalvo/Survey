@@ -19,6 +19,29 @@ import { buildImportPlan } from './rowImportMatcher.js';
 
 const SYSTEM_HEADERS = ['Row ID', 'Changed By', 'Changed Date', 'Item', 'Entity', 'Notes'];
 
+// Privacy-bounded short hash (FNV-1a, 8 hex) for correlating a Row ID cell across
+// imports WITHOUT logging the token, notes, or any user content.
+const shortHash = (value) => {
+  const s = value == null ? '' : String(value);
+  let h = 2166136261;
+  for (let i = 0; i < s.length; i += 1) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return (h >>> 0).toString(16).padStart(8, '0');
+};
+
+// Default logger: one compact, content-free line per scope so the user can SEE why
+// each import row was matched / created / held for review. Override in tests.
+const defaultLogger = (entry) => {
+  try {
+    // eslint-disable-next-line no-console
+    console.info('[ImportPlan]', JSON.stringify(entry));
+  } catch {
+    /* logging must never throw */
+  }
+};
+
 // scopeKey matches the existing excelItemsByScope key in PDFViewer's import loop.
 export const scopeKeyFor = (moduleId, categoryId) => `${moduleId}-${categoryId}`;
 
@@ -46,7 +69,8 @@ export const buildScopeImportPlans = async ({
   surveyMarkers = {},
   templateToUse,
   documentId,
-  resolveSecret
+  resolveSecret,
+  logger = defaultLogger
 }) => {
   const result = new Map();
 
@@ -122,6 +146,27 @@ export const buildScopeImportPlans = async ({
         if (jsonIndex != null) byRowIndex.set(jsonIndex, d);
       }
       result.set(scopeKey, { byRowIndex, candidateDeletes: plan.candidateDeletes });
+
+      // Content-free observability: per-row decision + reason + short token hash, plus
+      // a counts roll-up. Never logs the token, item name, notes, or any cell value.
+      const counts = {};
+      const perRow = plan.decisions.map((d) => {
+        counts[d.decision] = (counts[d.decision] || 0) + 1;
+        return {
+          row: jsonIndexByPos[d.rowIndex],
+          decision: d.decision,
+          action: d.action,
+          rowIdHash: shortHash(rows[d.rowIndex]?.rowIdCell)
+        };
+      });
+      logger({
+        scopeKey,
+        storedCount: stored.length,
+        rowCount: rows.length,
+        counts,
+        candidateDeletes: plan.candidateDeletes.length,
+        rows: perRow
+      });
     })
   );
 

@@ -14571,9 +14571,17 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
             }
           }
 
-          // Use oneDriveApiPath for Graph API calls, fall back to linkedExcelPath for legacy data
-          const apiPath = selectedTemplate.oneDriveApiPath || selectedTemplate.linkedExcelPath;
-          fileData = await downloadExcelFileByPath(graphClient, apiPath);
+          // Prefer download by file ID (mirrors auto-sync). The path form wraps a
+          // SharePoint apiPath like `/drives/{id}/items/{id}` incorrectly as a root
+          // path, which is why manual "Pull from Excel" silently fetched the wrong
+          // file for OneDrive/SharePoint links. Path is the fallback for real roots.
+          if (oneDriveFileId || selectedTemplate.oneDriveFileId) {
+            const fileId = oneDriveFileId || selectedTemplate.oneDriveFileId;
+            fileData = await downloadExcelFile(graphClient, fileId);
+          } else {
+            const apiPath = selectedTemplate.oneDriveApiPath || selectedTemplate.linkedExcelPath;
+            fileData = await downloadExcelFileByPath(graphClient, apiPath);
+          }
         } else {
           // Use local filesystem
           fileData = await window.electronAPI.readFile(selectedTemplate.linkedExcelPath);
