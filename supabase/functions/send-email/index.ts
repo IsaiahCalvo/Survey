@@ -1,6 +1,38 @@
 import { Resend } from 'https://esm.sh/resend@2.0.0';
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.47.10';
 
 const resend = new Resend(Deno.env.get('RESEND_API_KEY'));
+
+// Authorize the caller before sending anything. Two legitimate callers exist:
+//   1. The stripe-webhook function, which calls us with the service-role key.
+//   2. The app, which calls us with the signed-in user's JWT (via functions.invoke).
+// Anyone else (e.g. an anonymous request bearing only the public anon key) is
+// rejected, so this function can't be driven as an open phishing/spam relay.
+async function isAuthorizedCaller(req: Request): Promise<boolean> {
+    const authHeader = req.headers.get('Authorization');
+    if (!authHeader) return false;
+
+    const token = authHeader.replace(/^Bearer\s+/i, '').trim();
+    if (!token) return false;
+
+    // Trusted server-to-server caller (stripe-webhook).
+    const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+    if (serviceKey && token === serviceKey) return true;
+
+    // Otherwise require a real, signed-in user (not the anonymous public key).
+    const supabaseUrl = Deno.env.get('SUPABASE_URL');
+    const anonKey = Deno.env.get('SUPABASE_ANON_KEY');
+    if (!supabaseUrl || !anonKey) return false;
+    if (token === anonKey) return false;
+
+    try {
+        const supabase = createClient(supabaseUrl, anonKey);
+        const { data: { user }, error } = await supabase.auth.getUser(token);
+        return !error && !!user;
+    } catch {
+        return false;
+    }
+}
 
 const corsHeaders = {
     'Access-Control-Allow-Origin': '*',
@@ -11,6 +43,17 @@ Deno.serve(async (req) => {
     // Handle CORS preflight requests
     if (req.method === 'OPTIONS') {
         return new Response(null, { headers: corsHeaders });
+    }
+
+    // Reject unauthenticated callers before doing any work.
+    if (!(await isAuthorizedCaller(req))) {
+        return new Response(
+            JSON.stringify({ error: 'Unauthorized' }),
+            {
+                status: 401,
+                headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+            }
+        );
     }
 
     try {
