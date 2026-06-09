@@ -7,7 +7,11 @@ handoffs and this file only routes you.
 
 ## Current entry point
 
-**`HANDOFF-excel-sync-next.md`** — the live session entry point (Excel ↔ Survey
+**`HANDOFF-testing-issue.md`** — READ FIRST (2026-06-09 night): Isaiah found an
+issue while live-testing and has a proposed solution to discuss; that file says
+exactly how to pick the conversation up. Then:
+
+**`HANDOFF-excel-sync-next.md`** — the live workstream state (Excel ↔ Survey
 Marker sync workstream). Read it first, together with the two GOVERNING sections
 of `PLAN.md`: "Product Decision Amendments — 2026-06-08" and "Amendment
 2026-06-08(b)". Those decisions are MADE — never re-ask "answers-only vs
