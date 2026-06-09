@@ -16,7 +16,9 @@ const MESSAGES = Object.freeze({
   malformed: 'This row’s tracking ID is damaged and can’t be read. Review it before syncing.',
   ambiguous: 'This row could match more than one item. Choose which one it belongs to.',
   // A Survey Marker the sheet no longer lists (flag only — never auto-deleted).
-  'candidate-delete': 'This item is no longer in the linked Excel sheet. Review whether to remove it.'
+  'candidate-delete': 'This item is no longer in the linked Excel sheet. Review whether to remove it.',
+  // The same item was edited in both places before syncing (Amendment #6).
+  conflict: 'This item was changed in both Excel and the app. Choose which version to keep.'
 });
 
 const DEFAULT_MESSAGE = 'This row needs your review before it can sync.';

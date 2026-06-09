@@ -17,6 +17,8 @@
 
 import { buildImportPlan } from './rowImportMatcher.js';
 import { buildMarkerIdentityRecord } from './excelIdentityRecord.js';
+import { computeRowFingerprints } from './rowFingerprint.js';
+import { classifyRowConflict, detectFieldConflicts, CONFLICT_CLASS } from './excelConflictDetect.js';
 
 const SYSTEM_HEADERS = ['Row ID', 'Changed By', 'Changed Date', 'Item', 'Entity', 'Notes'];
 
@@ -62,6 +64,11 @@ const resolveUpdatedCategory = (templateToUse, matchedCategory) => {
  * @param {object} params.templateToUse  resolves each scope's checklist items by header text
  * @param {string} params.documentId  must equal the export-side documentId
  * @param {(keyId:string)=>string|null|Promise<string|null>} params.resolveSecret
+ * @param {object} [params.appValuesByMarkerId]  markerId → the marker's CURRENT visible values
+ *   (same {changedBy,changedDate,item,entity,notes,answers} shape as export). When supplied,
+ *   a matched ('apply') row whose SAME field was edited on BOTH sides since last sync (PLAN
+ *   Amendment #6) is downgraded to a 'conflict' REVIEW instead of silently overwriting the
+ *   app — the user picks the winner. Omit it (current behavior) and no apply is reclassified.
  * @returns {Promise<Map<string, {byRowIndex:Map<number,object>, candidateDeletes:string[]}>>}
  *          keyed by scopeKey; only scopes WITH a Row ID column are present.
  */
@@ -71,6 +78,7 @@ export const buildScopeImportPlans = async ({
   templateToUse,
   documentId,
   resolveSecret,
+  appValuesByMarkerId = null,
   logger = defaultLogger
 }) => {
   const result = new Map();
@@ -162,6 +170,23 @@ export const buildScopeImportPlans = async ({
           if (d.decision === 'copy-new') {
             d.identityRecord.copyOfMarkerId = d.copyOfMarkerId;
             d.identityRecord.copyOrdinal = d.copyOrdinal;
+          }
+
+          // Conflict guard (Amendment #6): if the caller told us this marker's CURRENT app
+          // values and the SAME field was edited on both sides since the last sync, do not
+          // silently overwrite — downgrade to a 'conflict' review so the user chooses.
+          if (d.action === 'apply' && appValuesByMarkerId && d.markerId && appValuesByMarkerId[d.markerId]) {
+            const baseline = surveyMarkers[d.markerId]?.excelSync?.fieldFingerprints;
+            if (baseline) {
+              const appNow = (await computeRowFingerprints(appValuesByMarkerId[d.markerId])).fieldFingerprints;
+              const excelIn = d.identityRecord.fieldFingerprints; // incoming Excel row
+              if (classifyRowConflict({ baseline, appNow, excelIn }) === CONFLICT_CLASS.CONFLICT) {
+                d.action = 'review';
+                d.decision = 'conflict';
+                d.conflictFields = detectFieldConflicts({ baseline, appNow, excelIn }).conflictFields;
+                d.excelValues = rows[d.rowIndex].values; // stashed so "use Excel's version" can apply later
+              }
+            }
           }
         }
       }));

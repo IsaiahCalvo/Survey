@@ -136,6 +136,59 @@ test('repeated save of one new blank row dedupes: create then recover (no twin)'
   assert.equal(plan2.markerId, 'm1');
 });
 
+test('same field edited on both sides → apply downgraded to conflict review (Amendment #6)', async () => {
+  const token = await generateRowIdToken({ keyId: KEY_ID, secret: SECRET, documentId: DOC, scopeId: SCOPE, markerId: 'm1' });
+  // Last sync baseline: notes "ok".
+  const surveyMarkers = { m1: await markerWithRecord('m1', { item: 'Door 12', notes: 'ok' }) };
+  // Excel changed notes to "excel note".
+  const jsonData = [headerRow, excelRowFor(token, { item: 'Door 12', notes: 'excel note' })];
+  // The app changed the SAME notes field to something different.
+  const appValuesByMarkerId = { m1: rowValuesFor({ item: 'Door 12', notes: 'app note' }) };
+
+  const plans = await buildScopeImportPlans({
+    worksheetDataList: [{ jsonData, headerRow, matchedCategory: { id: CATEGORY }, matchedModuleId: MODULE }],
+    surveyMarkers, templateToUse, documentId: DOC, resolveSecret, appValuesByMarkerId
+  });
+
+  const decision = plans.get(scopeKeyFor(MODULE, CATEGORY)).byRowIndex.get(1);
+  assert.equal(decision.action, 'review');
+  assert.equal(decision.decision, 'conflict');
+  assert.deepEqual(decision.conflictFields, ['notes']);
+  assert.ok(decision.excelValues, 'incoming Excel values are stashed for "use Excel’s version"');
+  assert.equal(decision.excelValues.notes, 'excel note');
+});
+
+test('Excel-only change with app unchanged → stays apply (no false conflict)', async () => {
+  const token = await generateRowIdToken({ keyId: KEY_ID, secret: SECRET, documentId: DOC, scopeId: SCOPE, markerId: 'm1' });
+  const surveyMarkers = { m1: await markerWithRecord('m1', { item: 'Door 12', notes: 'ok' }) };
+  const jsonData = [headerRow, excelRowFor(token, { item: 'Door 12', notes: 'excel note' })];
+  // App side is identical to the baseline → only Excel moved → no conflict.
+  const appValuesByMarkerId = { m1: rowValuesFor({ item: 'Door 12', notes: 'ok' }) };
+
+  const plans = await buildScopeImportPlans({
+    worksheetDataList: [{ jsonData, headerRow, matchedCategory: { id: CATEGORY }, matchedModuleId: MODULE }],
+    surveyMarkers, templateToUse, documentId: DOC, resolveSecret, appValuesByMarkerId
+  });
+
+  const decision = plans.get(scopeKeyFor(MODULE, CATEGORY)).byRowIndex.get(1);
+  assert.equal(decision.action, 'apply');
+  assert.equal(decision.decision, 'match');
+});
+
+test('without current app values, a match is never reclassified (back-compat)', async () => {
+  const token = await generateRowIdToken({ keyId: KEY_ID, secret: SECRET, documentId: DOC, scopeId: SCOPE, markerId: 'm1' });
+  const surveyMarkers = { m1: await markerWithRecord('m1', { item: 'Door 12', notes: 'ok' }) };
+  const jsonData = [headerRow, excelRowFor(token, { item: 'Door 12', notes: 'excel note' })];
+
+  const plans = await buildScopeImportPlans({
+    worksheetDataList: [{ jsonData, headerRow, matchedCategory: { id: CATEGORY }, matchedModuleId: MODULE }],
+    surveyMarkers, templateToUse, documentId: DOC, resolveSecret // no appValuesByMarkerId
+  });
+
+  const decision = plans.get(scopeKeyFor(MODULE, CATEGORY)).byRowIndex.get(1);
+  assert.equal(decision.action, 'apply');
+});
+
 test('worksheet with no Row ID column is omitted (caller keeps legacy match)', async () => {
   const legacyHeader = ['Changed By', 'Changed Date', 'Item', 'Locked?', 'Entity', 'Notes'];
   const jsonData = [legacyHeader, ['IC', '6/8/2026', 'Door 12', 'Y', 'North', 'ok']];
