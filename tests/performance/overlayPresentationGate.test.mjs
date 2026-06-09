@@ -19,7 +19,10 @@ test('overlay recorder samples include PDF/annotation presentation-gap metrics',
 test('Syncfusion overlay portals are hidden until the PDF page surface is ready', () => {
   assert.match(APP_SOURCE, /const pagePdfReadyState = readSyncfusionPageVisitState\(pageNumber\);/);
   assert.match(APP_SOURCE, /const pagePdfHasEverBeenReady = syncfusionPagePdfEverReadyRef\.current\.has\(pageNumber\);/);
-  assert.match(APP_SOURCE, /const hideOverlayUntilPdfReady = pageAnnotationObjects\.length > 0 &&\s*!pagePdfHasEverBeenReady &&\s*!pagePdfReadyState\.ready;/);
+  // The Syncfusion overlay readiness gate stays intact for the Syncfusion engine.
+  // Under the owned pdf.js engine it is intentionally exempted (pdf.js has no
+  // Syncfusion page surface for the readiness probe to detect, and rasters fast).
+  assert.match(APP_SOURCE, /const hideOverlayUntilPdfReady = getPDFViewerEngine\(\) !== PDF_VIEWER_ENGINE_PDFJS &&\s*pageAnnotationObjects\.length > 0 &&\s*!pagePdfHasEverBeenReady &&\s*!pagePdfReadyState\.ready;/);
   assert.match(APP_SOURCE, /visibility: hideOverlayUntilPdfReady \? 'hidden' : undefined/);
   assert.match(APP_SOURCE, /data-pdf-ever-ready=\{pagePdfHasEverBeenReady \? 'true' : 'false'\}/);
   assert.match(APP_SOURCE, /data-overlay-hidden-pending-pdf=\{hideOverlayUntilPdfReady \? 'true' : 'false'\}/);
