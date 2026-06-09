@@ -13,6 +13,7 @@ import { useEffect, useMemo, useState } from 'react';
 import Icon from './Icons';
 import EntityIndicator from './components/EntityIndicator';
 import { COLORS } from './theme';
+import reviewWarningIcon from './assets/review-warning.svg';
 
 const FONT_FAMILY = '-apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", "Segoe UI", Roboto, Ubuntu, "Noto Sans", Arial, sans-serif';
 
@@ -114,6 +115,7 @@ const SurveySpacesRail = ({
   showSurveyPanel,
   spaces,
   surveyMarkers,
+  surveyReviewByMarkerId = {},
   user,
   expandRequestKey = 0,
   onCollapseChange = null,
@@ -1613,6 +1615,17 @@ const SurveySpacesRail = ({
                                                           />
                                                         );
                                                       })()}
+                                                      {surveyReviewByMarkerId[annotationId] && (
+                                                        <img
+                                                          src={reviewWarningIcon}
+                                                          alt="Needs review"
+                                                          title={surveyReviewByMarkerId[annotationId]}
+                                                          width={15}
+                                                          height={15}
+                                                          style={{ flexShrink: 0, cursor: 'help' }}
+                                                          onClick={(e) => e.stopPropagation()}
+                                                        />
+                                                      )}
                                                       {surveyMarkers[annotationId]?.editingName ? (
                                                         <input
                                                           type="text"

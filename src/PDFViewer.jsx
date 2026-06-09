@@ -80,6 +80,7 @@ import { generateRowIdToken } from './services/rowIdToken';
 import { getOrCreateDocumentSecret, resolveDocumentSecret } from './services/rowIdSecretStore';
 import { buildScopeImportPlans } from './services/buildScopeImportPlans';
 import { excelLockFilePath, isOwnerFileFor, parentDir } from './services/excelLockFile';
+import { reviewReasonMessage } from './services/excelReviewMessages';
 import { makeTombstone, addTombstone, removeTombstone, purgeExpired } from './services/surveyMarkerTrash';
 import { loadTrash, saveTrash } from './services/surveyMarkerTrashStore';
 import { buildSurveyMarkerDeleteHistoryRow, applySurveyMarkerRestore } from './services/surveyMarkerHistory';
@@ -4018,6 +4019,19 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   // choice" in the Survey panel (Stage 1 review UI). Never written automatically.
   const [pendingImportReview, setPendingImportReview] = useState([]);
   const lastExcelSyncFingerprintRef = useRef(null);
+
+  // Map of Survey Marker id → plain-English reason it needs review, derived from the last
+  // import. Drives the red review icon next to a row in the Survey panel. Memoized so the
+  // published rail API stays referentially stable (App-shell publish suppresses identity
+  // churn — see Gotchas) and only re-publishes when the review set actually changes.
+  const surveyReviewByMarkerId = useMemo(() => {
+    const map = {};
+    (pendingImportReview || []).forEach((entry) => {
+      if (!entry || !entry.markerId) return; // rows with no app marker yet can't attach to a row
+      if (!map[entry.markerId]) map[entry.markerId] = reviewReasonMessage(entry.reason);
+    });
+    return map;
+  }, [pendingImportReview]);
 
   const [lastDrawTool, setLastDrawTool] = useState(() => {
     try {
@@ -25574,6 +25588,7 @@ ${pageBlocks}
       showSurveyPanel,
       spaces,
       surveyMarkers,
+      surveyReviewByMarkerId,
       user,
       expandRequestKey: rightRailExpandRequestKey,
       onCollapseChange: handleRightRailCollapseChange,
@@ -25693,6 +25708,7 @@ ${pageBlocks}
     showSurveyPanel,
     spaces,
     surveyMarkers,
+    surveyReviewByMarkerId,
     user,
     rightRailExpandRequestKey,
     handleRightRailCollapseChange,
