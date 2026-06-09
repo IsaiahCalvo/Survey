@@ -162,9 +162,21 @@ export const buildImportPlan = async ({ rows = [], stored = [], documentId, scop
     }
   }
 
-  // Pass 4 — stored markers that no row matched → review-only delete candidates (guard ON).
+  // Pass 4 — stored markers that no row matched → delete candidates. A stored marker
+  // referenced by ANY review decision (an ambiguous blank-recovery candidate, or an
+  // unknown/duplicate token that names it) still has a possibly-corresponding row that is
+  // merely unresolved, NOT genuinely gone — so it is excluded here. This makes a delete
+  // candidate mean strictly "no Excel row references this marker at all", which is the only
+  // safe signal for Excel-driven deletion (the caller may auto-remove received ones through
+  // History, so this exclusion prevents deleting a marker whose row is just under review).
+  const reviewReferenced = new Set();
+  for (const d of decisions) {
+    if (d.action !== IMPORT_ACTIONS.REVIEW) continue;
+    if (d.markerId) reviewReferenced.add(d.markerId);
+    if (Array.isArray(d.candidateMarkerIds)) d.candidateMarkerIds.forEach((id) => reviewReferenced.add(id));
+  }
   const candidateDeletes = stored
-    .filter((s) => !matchedMarkerIds.has(s.markerId))
+    .filter((s) => !matchedMarkerIds.has(s.markerId) && !reviewReferenced.has(s.markerId))
     .map((s) => s.markerId);
 
   // Keep decisions in row order for a stable, readable plan.

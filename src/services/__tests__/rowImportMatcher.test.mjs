@@ -174,3 +174,16 @@ test('a stored marker with no row becomes a review-only delete candidate (delete
   assert.equal(decisions[0].decision, 'match');
   assert.deepEqual(candidateDeletes, ['m2']);
 });
+
+test('ambiguous blank-row recovery never marks its candidate markers for deletion', async () => {
+  // m1 and m2 share identical content → identical identity-vector fingerprint. A single
+  // blank-Row-ID row could be either of them → ambiguous review. Neither may become a delete
+  // candidate: the row is genuinely one of them, just unresolved (guards Excel-driven delete).
+  const v = vals();
+  const stored = [await storedFor('m1', v), await storedFor('m2', v)];
+  const rows = [{ rowIdCell: '', values: v }];
+  const { decisions, candidateDeletes } = await buildImportPlan({ rows, stored, documentId: DOC, scopeId: SCOPE, resolveSecret });
+  const review = decisions.find((d) => d.decision === 'ambiguous-identity');
+  assert.ok(review, 'blank row is ambiguous between m1 and m2');
+  assert.deepEqual(candidateDeletes, [], 'an under-review marker is never a delete candidate');
+});

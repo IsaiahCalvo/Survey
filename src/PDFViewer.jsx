@@ -13636,6 +13636,24 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       }
     });
 
+    // Excel-driven deletion of RECEIVED markers in Row-ID scopes. The matcher's candidate
+    // deletes are stored markers that NO Excel row references at all (genuinely gone, not
+    // merely under review — see rowImportMatcher Pass 4). Per the 2026-06-09 product decision,
+    // the ones Excel actually handed out (exportedAt present) are auto-removed WITHOUT a
+    // prompt but routed through the same History + 30-day-trash machinery below, so each is
+    // one-click restorable. Markers Excel never received stay review-only (flagged, kept).
+    scopePlans.forEach((plan, scopeKey) => {
+      (plan.candidateDeletes || []).forEach((markerId) => {
+        const ann = newSurveyMarkers[markerId];
+        if (!ann) return;
+        if (wasReceivedByExcel(ann)) {
+          surveyMarkersToDelete.push({ key: markerId, ann });
+        } else {
+          importReviewItems.push({ scopeKey, rowIndex: null, reason: 'candidate-delete', markerId });
+        }
+      });
+    });
+
     // Check for bulk deletions (deleting ALL items in a scope) and require confirmation
     const bulkDeletionScopes = {};
 
@@ -13850,13 +13868,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       });
     }
 
-    // Add review-only candidate-deletes (a stored marker the sheet no longer lists)
-    // to the review surface. Guard ON: never deleted here, only flagged.
-    scopePlans.forEach((plan, scopeKey) => {
-      (plan.candidateDeletes || []).forEach((markerId) => {
-        importReviewItems.push({ scopeKey, rowIndex: null, reason: 'candidate-delete', markerId });
-      });
-    });
+    // Candidate-deletes were already triaged above (received → History-backed delete;
+    // not-received → review item), so nothing more to add here.
     setPendingImportReview(importReviewItems);
     // Persist import memory even when nothing user-visible changed (Codex R1) — the
     // excelSync records must survive so the next sync recognizes these rows by content.
@@ -14190,6 +14203,23 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       }
     });
 
+    // Excel-driven deletion of RECEIVED markers in Row-ID scopes (same rule as the manual
+    // import): candidate deletes are stored markers no Excel row references at all; the ones
+    // Excel handed out (exportedAt) are auto-removed without a prompt but routed through the
+    // History + 30-day-trash machinery below (one-click restorable); never-received markers
+    // stay review-only.
+    scopePlans.forEach((plan, scopeKey) => {
+      (plan.candidateDeletes || []).forEach((markerId) => {
+        const ann = newSurveyMarkers[markerId];
+        if (!ann) return;
+        if (wasReceivedByExcel(ann)) {
+          surveyMarkersToDelete.push({ key: markerId, ann });
+        } else {
+          importReviewItems.push({ scopeKey, rowIndex: null, reason: 'candidate-delete', markerId });
+        }
+      });
+    });
+
     // Check for bulk deletions (deleting ALL items in a scope) - skip for safety in auto-sync
     const bulkDeletionScopes = {};
 
@@ -14405,13 +14435,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       });
     }
 
-    // Review-only candidate-deletes (a stored marker the sheet no longer lists).
-    // Guard ON: never deleted here, only surfaced as "needs your choice".
-    scopePlans.forEach((plan, scopeKey) => {
-      (plan.candidateDeletes || []).forEach((markerId) => {
-        importReviewItems.push({ scopeKey, rowIndex: null, reason: 'candidate-delete', markerId });
-      });
-    });
+    // Candidate-deletes were already triaged above (received → History-backed delete;
+    // not-received → review item), so nothing more to add here.
     setPendingImportReview(importReviewItems);
     // Persist import memory even when nothing user-visible changed (Codex R1) — the
     // excelSync records must survive so the next sync recognizes these rows by content.
