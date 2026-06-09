@@ -118,6 +118,7 @@ import { useZoomState } from './hooks/useZoomState';
 import { useAnnotationContextMenu, renderAnnotationContextMenu } from './hooks/useAnnotationContextMenu.jsx';
 import { usePageOperations } from './hooks/usePageOperations.js';
 import { userRedo, userUndo } from './lib/collab/crdtUndoManager.js';
+import { moveItemById } from './reorder/flatReorderUtils.js';
 
 import {
   DEFAULT_SURVEY_MARKER_OPACITY,
@@ -23302,6 +23303,57 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
   }, [surveyMarkers, handleSurveyMarkerDeleted]);
 
+  const handleReorderSurveyCategories = useCallback((moduleId, activeId, overId) => {
+    if (!selectedTemplate || !moduleId || !activeId || !overId || activeId === overId) return;
+
+    const sourceModules = selectedTemplate.modules || selectedTemplate.spaces || [];
+    let changed = false;
+    const updatedModules = sourceModules.map((module) => {
+      if (module.id !== moduleId) return module;
+
+      const categories = module.categories || [];
+      const nextCategories = moveItemById(categories, activeId, overId);
+      if (nextCategories === categories) return module;
+
+      changed = true;
+      return {
+        ...module,
+        categories: nextCategories
+      };
+    });
+
+    if (!changed) return;
+
+    const updatedTemplate = {
+      ...selectedTemplate,
+      modules: updatedModules,
+      spaces: updatedModules,
+      updatedAt: new Date().toISOString()
+    };
+    const supabaseTemplateId = selectedTemplate?.supabaseId || selectedTemplate?.id;
+
+    setSelectedTemplate(updatedTemplate);
+
+    if (handleTemplatesChange && appTemplates) {
+      const updatedTemplates = appTemplates.map(t =>
+        (t.id === updatedTemplate.id || t.supabaseId === supabaseTemplateId)
+          ? updatedTemplate
+          : t
+      );
+      handleTemplatesChange(updatedTemplates);
+    }
+
+    if (updateSupabaseTemplate && supabaseTemplateId) {
+      const configPayload = sanitizeTemplateConfig(updatedTemplate);
+      updateSupabaseTemplate(supabaseTemplateId, {
+        config: configPayload,
+        updated_at: updatedTemplate.updatedAt
+      }).catch(err => {
+        console.warn('Failed to persist survey category order:', err);
+      });
+    }
+  }, [selectedTemplate, handleTemplatesChange, appTemplates, updateSupabaseTemplate, sanitizeTemplateConfig]);
+
   const handleDeleteSurveyMarker = useCallback((annotationId) => {
     if (!annotationId) return;
 
@@ -25589,6 +25641,7 @@ ${pageBlocks}
       handleExportSpaceToPDF,
       handleExportSurveyToExcel,
       handleLocateItemOnPDF,
+      handleReorderSurveyCategories,
       handleReorderSpaces,
       handleRequestRegionEdit,
       handleSetActiveSpace,
@@ -25713,6 +25766,7 @@ ${pageBlocks}
     handleExportSpaceToPDF,
     handleExportSurveyToExcel,
     handleLocateItemOnPDF,
+    handleReorderSurveyCategories,
     handleReorderSpaces,
     handleRequestRegionEdit,
     handleSetActiveSpace,

@@ -64,6 +64,30 @@ const preserveElementViewportY = (element, mutateLayout) => {
   }
 };
 
+const SurveyMarkerLeadingSelect = ({
+  selected,
+  onClick,
+  title,
+  ariaLabel,
+  category = false
+}) => (
+  <button
+    type="button"
+    className={`survey-marker-leading-control survey-marker-leading-check${category ? ' survey-marker-leading-control-category' : ''}${selected ? ' is-selected' : ''}`}
+    title={title}
+    aria-label={ariaLabel}
+    aria-pressed={selected}
+    onClick={(event) => {
+      event.stopPropagation();
+      onClick?.(event);
+    }}
+  >
+    <span className="survey-marker-leading-checkbox" aria-hidden="true">
+      {selected && <span className="survey-marker-leading-checkmark">✓</span>}
+    </span>
+  </button>
+);
+
 const SurveySpacesRail = ({
   activeSpaceId,
   annotationsByPage,
@@ -92,6 +116,7 @@ const SurveySpacesRail = ({
   handleExportSpaceToPDF,
   handleExportSurveyToExcel,
   handleLocateItemOnPDF,
+  handleReorderSurveyCategories = () => {},
   handleReorderSpaces,
   handleRequestRegionEdit,
   handleSetActiveSpace,
@@ -722,49 +747,154 @@ const SurveySpacesRail = ({
                       return (
                         <div>
                           {/* Select toggle button + Create Category */}
-                          {!copyModeActive && !categorySelectModeActive ? (
-                            <div
-                              style={{
-                                marginBottom: '12px',
-                                display: 'flex',
-                                gap: '8px',
-                                flexWrap: 'wrap',
-                                alignItems: 'center'
-                              }}
-                            >
-                              <button
-                                onClick={() => setCategorySelectModeActive(true)}
-                                className="btn btn-sm btn-secondary"
-                                style={{
-                                  whiteSpace: 'nowrap',
-                                  flexShrink: 0
-                                }}
-                              >
-                                Select Category
-                              </button>
-                              <button
-                                onClick={() => {
-                                  if (!selectedTemplate?.id || !selectedModuleId) {
-                                    alert('Please select a template and module before creating a category.');
-                                    return;
+                          {!copyModeActive ? (() => {
+                            const categoriesForModule = module.categories || [];
+                            const selectedCategoryCount = Object.keys(selectedCategories).filter(id => selectedCategories[id]).length;
+                            const hasSelectedCategories = selectedCategoryCount > 0;
+
+                            const createCategory = () => {
+                              if (!selectedTemplate?.id || !selectedModuleId) {
+                                alert('Please select a template and module before creating a category.');
+                                return;
+                              }
+                              onRequestCreateTemplate?.({
+                                mode: 'edit',
+                                templateId: selectedTemplate.id,
+                                moduleId: selectedModuleId,
+                                startAddingCategory: true
+                              });
+                            };
+
+                            const deleteSelectedCategories = () => {
+                              const selectedCatIds = Object.keys(selectedCategories).filter(id => selectedCategories[id]);
+                              if (selectedCatIds.length === 0) {
+                                alert('Please select at least one category to delete.');
+                                return;
+                              }
+                              if (!confirm(`Are you sure you want to delete ${selectedCatIds.length} categor${selectedCatIds.length !== 1 ? 'ies' : 'y'} and all items within?`)) {
+                                return;
+                              }
+
+                              selectedCatIds.forEach(catId => {
+                                const surveyMarkersInCategory = Object.entries(surveyMarkers).filter(([_, h]) => {
+                                  const hModuleId = h.moduleId;
+                                  return hModuleId === selectedModuleId && h.categoryId === catId;
+                                });
+
+                                surveyMarkersInCategory.forEach(([annotationId, surveyMarker]) => {
+                                  if (surveyMarker.pageNumber && surveyMarker.bounds) {
+                                    setSurveyMarkersToRemoveByPage(prev => ({
+                                      ...prev,
+                                      [surveyMarker.pageNumber]: [...(prev[surveyMarker.pageNumber] || []), surveyMarker.bounds]
+                                    }));
                                   }
-                                  onRequestCreateTemplate?.({
-                                    mode: 'edit',
-                                    templateId: selectedTemplate.id,
-                                    moduleId: selectedModuleId,
-                                    startAddingCategory: true
+                                });
+
+                                setSurveyMarkers(prev => {
+                                  const updated = { ...prev };
+                                  surveyMarkersInCategory.forEach(([annotationId]) => {
+                                    delete updated[annotationId];
                                   });
-                                }}
-                                className="btn btn-sm btn-primary"
-                                style={{
-                                  whiteSpace: 'nowrap',
-                                  flexShrink: 0
-                                }}
-                              >
-                                Create Category
-                              </button>
-                            </div>
-                          ) : copyModeActive ? (
+                                  return updated;
+                                });
+
+                                const documentId = pdfFile?.id;
+                                const surveyMarkerIdsToDelete = surveyMarkersInCategory.map(([id]) => id);
+                                if (documentId && user?.id && documentSyncEnabled && surveyMarkerIdsToDelete.length > 0) {
+                                  deleteAnnotations(documentId, surveyMarkerIdsToDelete).catch(err => {
+                                    console.error('[App] Error deleting annotations from Supabase:', err);
+                                  });
+                                }
+
+                                deleteCategory(selectedModuleId, catId);
+                              });
+
+                              setCategorySelectModeActive(false);
+                              setCategorySelectModeForCategory(null);
+                              setSelectedCategories({});
+                            };
+
+                            return (
+                              <div className="survey-marker-category-action-row">
+                                <div className="survey-marker-category-action-strip">
+                                  {categorySelectModeActive ? (
+                                    <div className="survey-marker-select-toolbar" role="toolbar" aria-label="Category selection actions">
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          setCategorySelectModeActive(false);
+                                          setCategorySelectModeForCategory(null);
+                                          setSelectedCategories({});
+                                        }}
+                                        className="survey-marker-select-mode-toggle"
+                                      >
+                                        Done
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          const newSelection = {};
+                                          categoriesForModule.forEach(category => {
+                                            newSelection[category.id] = true;
+                                          });
+                                          setSelectedCategories(newSelection);
+                                        }}
+                                        disabled={categoriesForModule.length === 0}
+                                        className="survey-marker-select-action"
+                                      >
+                                        All
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          const selectedCatIds = Object.keys(selectedCategories).filter(id => selectedCategories[id]);
+                                          if (selectedCatIds.length === 0) {
+                                            alert('Please select at least one category to move or copy.');
+                                            return;
+                                          }
+                                          alert(`Move/Copy functionality for ${selectedCatIds.length} categories to be implemented.`);
+                                        }}
+                                        disabled={!hasSelectedCategories}
+                                        className="survey-marker-select-action"
+                                      >
+                                        Move/Copy
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={deleteSelectedCategories}
+                                        disabled={!hasSelectedCategories}
+                                        className="survey-marker-select-action survey-marker-select-action-icon survey-marker-select-action-danger"
+                                        title="Delete"
+                                        aria-label="Delete selected categories"
+                                      >
+                                        <Icon name="trash" size={12} />
+                                      </button>
+                                    </div>
+                                  ) : (
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setCategorySelectModeActive(true);
+                                        setSelectedCategories({});
+                                      }}
+                                      className="survey-marker-category-select-button"
+                                    >
+                                      Select
+                                    </button>
+                                  )}
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={createCategory}
+                                  className="survey-marker-category-create-button"
+                                  title="Create Category"
+                                  aria-label="Create Category"
+                                >
+                                  <Icon name="plus" size={14} />
+                                </button>
+                              </div>
+                            );
+                          })() : copyModeActive ? (
                             <div style={{
                               marginBottom: '12px',
                               display: 'flex',
@@ -1098,216 +1228,15 @@ const SurveySpacesRail = ({
                               Select Category to Highlight
                             </h3>
 
-                            {/* Category Select Mode Actions - show when category select mode is active */}
-                            {categorySelectModeActive && module.categories && module.categories.length > 0 && (() => {
-                              const selectedCategoryCount = Object.keys(selectedCategories).filter(id => selectedCategories[id]).length;
-                              const hasSelectedCategories = selectedCategoryCount > 0;
-
-                              return (
-                                <div style={{
-                                  marginBottom: '10px'
-                                }}>
-                                  <div style={{
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    justifyContent: 'center',
-                                    gap: '4px',
-                                    flexWrap: 'nowrap',
-                                    width: '100%'
-                                  }}>
-                                    <button
-                                      onClick={() => {
-                                        // Select all categories in this module
-                                        const allCategoryIds = module.categories.map(c => c.id);
-                                        const newSelection = {};
-                                        allCategoryIds.forEach(catId => {
-                                          newSelection[catId] = true;
-                                        });
-                                        setSelectedCategories(newSelection);
-                                      }}
-                                      style={{
-                                        flex: '1 1 0',
-                                        padding: '4px 5px',
-                                        background: '#3A3A3A',
-                                        color: '#DDD',
-                                        border: '1px solid #4A90E2',
-                                        borderRadius: '4px',
-                                        fontSize: '11px',
-                                        fontWeight: '400',
-                                        cursor: 'pointer',
-                                        whiteSpace: 'nowrap',
-                                        minWidth: 0
-                                      }}
-                                      onMouseEnter={(e) => {
-                                        e.currentTarget.style.background = '#444';
-                                      }}
-                                      onMouseLeave={(e) => {
-                                        e.currentTarget.style.background = '#3A3A3A';
-                                      }}
-                                    >
-                                      Select All
-                                    </button>
-
-                                    <button
-                                      onClick={() => {
-                                        const selectedCatIds = Object.keys(selectedCategories).filter(id => selectedCategories[id]);
-                                        if (selectedCatIds.length === 0) {
-                                          alert('Please select at least one category to copy.');
-                                          return;
-                                        }
-
-                                        // Copy logic would go here - for now just alert
-                                        alert(`Copy functionality for ${selectedCatIds.length} categories to be implemented.`);
-                                      }}
-                                      disabled={!hasSelectedCategories}
-                                      style={{
-                                        flex: '1 1 0',
-                                        padding: '4px 5px',
-                                        background: '#3A3A3A',
-                                        color: hasSelectedCategories ? '#DDD' : '#666',
-                                        border: '1px solid #4A90E2',
-                                        borderRadius: '4px',
-                                        fontSize: '11px',
-                                        fontWeight: '400',
-                                        cursor: hasSelectedCategories ? 'pointer' : 'not-allowed',
-                                        whiteSpace: 'nowrap',
-                                        minWidth: 0
-                                      }}
-                                      onMouseEnter={(e) => {
-                                        if (hasSelectedCategories) {
-                                          e.currentTarget.style.background = '#444';
-                                        }
-                                      }}
-                                      onMouseLeave={(e) => {
-                                        if (hasSelectedCategories) {
-                                          e.currentTarget.style.background = '#3A3A3A';
-                                        }
-                                      }}
-                                    >
-                                      Copy
-                                    </button>
-
-                                    <button
-                                      onClick={() => {
-                                        const selectedCatIds = Object.keys(selectedCategories).filter(id => selectedCategories[id]);
-                                        if (selectedCatIds.length === 0) {
-                                          alert('Please select at least one category to delete.');
-                                          return;
-                                        }
-                                        if (!confirm(`Are you sure you want to delete ${selectedCatIds.length} categor${selectedCatIds.length !== 1 ? 'ies' : 'y'} and all items within?`)) {
-                                          return;
-                                        }
-
-                                        // Delete categories and their items
-                                        selectedCatIds.forEach(catId => {
-                                          // Delete all surveyMarkers in this category
-                                          const surveyMarkersInCategory = Object.entries(surveyMarkers).filter(([_, h]) => {
-                                            const hModuleId = h.moduleId;
-                                            return hModuleId === selectedModuleId && h.categoryId === catId;
-                                          });
-
-                                          surveyMarkersInCategory.forEach(([annotationId, surveyMarker]) => {
-                                            // Remove from canvas
-                                            if (surveyMarker.pageNumber && surveyMarker.bounds) {
-                                              setSurveyMarkersToRemoveByPage(prev => ({
-                                                ...prev,
-                                                [surveyMarker.pageNumber]: [...(prev[surveyMarker.pageNumber] || []), surveyMarker.bounds]
-                                              }));
-                                            }
-                                          });
-
-                                          // Delete from surveyMarkers
-                                          setSurveyMarkers(prev => {
-                                            const updated = { ...prev };
-                                            surveyMarkersInCategory.forEach(([annotationId]) => {
-                                              delete updated[annotationId];
-                                            });
-                                            return updated;
-                                          });
-
-                                          // Delete from Supabase document_annotations table
-                                          const documentId = pdfFile?.id;
-                                          const surveyMarkerIdsToDelete = surveyMarkersInCategory.map(([id]) => id);
-                                          if (documentId && user?.id && documentSyncEnabled && surveyMarkerIdsToDelete.length > 0) {
-                                            deleteAnnotations(documentId, surveyMarkerIdsToDelete).catch(err => {
-                                              console.error('[App] Error deleting annotations from Supabase:', err);
-                                            });
-                                          }
-
-                                          // Delete category from module
-                                          deleteCategory(selectedModuleId, catId);
-                                        });
-
-                                        // Exit category select mode
-                                        setCategorySelectModeActive(false);
-                                        setCategorySelectModeForCategory(null);
-                                        setSelectedCategories({});
-                                      }}
-                                      disabled={!hasSelectedCategories}
-                                      style={{
-                                        flex: '1 1 0',
-                                        padding: '4px 5px',
-                                        background: '#3A3A3A',
-                                        color: hasSelectedCategories ? '#cc4444' : '#666',
-                                        border: '1px solid #cc4444',
-                                        borderRadius: '4px',
-                                        fontSize: '11px',
-                                        fontWeight: '400',
-                                        cursor: hasSelectedCategories ? 'pointer' : 'not-allowed',
-                                        whiteSpace: 'nowrap',
-                                        minWidth: 0
-                                      }}
-                                      onMouseEnter={(e) => {
-                                        if (hasSelectedCategories) {
-                                          e.currentTarget.style.background = '#444';
-                                          e.currentTarget.style.color = '#ff6666';
-                                        }
-                                      }}
-                                      onMouseLeave={(e) => {
-                                        if (hasSelectedCategories) {
-                                          e.currentTarget.style.background = '#3A3A3A';
-                                          e.currentTarget.style.color = '#cc4444';
-                                        }
-                                      }}
-                                    >
-                                      Delete
-                                    </button>
-
-                                    <button
-                                      onClick={() => {
-                                        setCategorySelectModeActive(false);
-                                        setCategorySelectModeForCategory(null);
-                                        setSelectedCategories({});
-                                      }}
-                                      style={{
-                                        flex: '1 1 0',
-                                        padding: '4px 5px',
-                                        background: '#3A3A3A',
-                                        color: '#DDD',
-                                        border: '1px solid #4A90E2',
-                                        borderRadius: '4px',
-                                        fontSize: '11px',
-                                        fontWeight: '400',
-                                        cursor: 'pointer',
-                                        whiteSpace: 'nowrap',
-                                        minWidth: 0
-                                      }}
-                                      onMouseEnter={(e) => {
-                                        e.currentTarget.style.background = '#444';
-                                      }}
-                                      onMouseLeave={(e) => {
-                                        e.currentTarget.style.background = '#3A3A3A';
-                                      }}
-                                    >
-                                      Cancel
-                                    </button>
-                                  </div>
-                                </div>
-                              );
-                            })()}
-
                             {module.categories && module.categories.length > 0 ? (
-                              <div style={{ display: 'flex', flexDirection: 'column', gap: categorySelectModeActive ? '8px' : '4px' }}>
+                              <SortableRearrangeList
+                                ids={module.categories.map((category) => category.id)}
+                                onReorder={(activeId, overId) => handleReorderSurveyCategories(selectedModuleId, activeId, overId)}
+                                variableHeight
+                                gap={4}
+                                dropSettleMs={160}
+                                suppressDropTransforms
+                              >
                                 {module.categories.map(category => {
                                   const categorySurveyMarkers = surveyMarkersByCategory[category.id] || [];
                                   const surveyMarkerCount = categorySurveyMarkers.length;
@@ -1328,121 +1257,89 @@ const SurveySpacesRail = ({
                                   const buttonTextColor = isCategoryActive ? '#4A90E2' : '#ddd';
                                   const buttonSubTextColor = isCategoryActive ? '#4A90E2' : '#999';
                                   const buttonLeftBorder = (copyModeActive || isCategorySelectModeActive) ? 'none' : baseBorder;
-                                  const buttonRightBorder = surveyMarkerCount > 0 ? 'none' : baseBorder;
 
                                   // Item-level selection state
                                   const isItemSelectModeActiveForCategory = itemSelectModeActive[category.id] === true;
                                   const selectedItemsForCategory = selectedItemsInCategory[category.id] || {};
                                   const itemSelectedCount = Object.values(selectedItemsForCategory).filter(Boolean).length;
-                                  const allItemsSelected = itemSelectedCount === surveyMarkerCount && surveyMarkerCount > 0;
 
                                   return (
-                                    <div key={category.id} style={{
-                                      marginBottom: categorySelectModeActive ? '0' : '4px',
+                                    <SortableRearrangeRow
+                                      key={category.id}
+                                      id={category.id}
+                                      wrapperStyle={{ overflow: 'visible' }}
+                                    >
+                                      {({ attributes, listeners, isDragging }) => {
+                                        const isCategorySelectable = copyModeActive || isCategorySelectModeActive;
+                                        const isCategorySelectionSelected = isCategorySelectModeActive
+                                          ? isCategorySelected
+                                          : categoryAllSelected;
+                                        const toggleCategorySelection = () => {
+                                          if (isCategorySelectModeActive) {
+                                            setSelectedCategories(prev => ({
+                                              ...prev,
+                                              [category.id]: !prev[category.id]
+                                            }));
+                                            return;
+                                          }
+
+                                          if (copyModeActive) {
+                                            const newSelection = { ...copiedItemSelection };
+                                            categorySurveyMarkers.forEach(h => {
+                                              if (!categoryAllSelected) {
+                                                newSelection[h.id] = true;
+                                              } else {
+                                                delete newSelection[h.id];
+                                              }
+                                            });
+                                            setCopiedItemSelection(newSelection);
+                                          }
+                                        };
+
+                                        return (
+                                    <div style={{
                                       border: '1px solid #444',
                                       borderRadius: '4px',
-                                      padding: '2px'
+                                      padding: '2px',
+                                      overflow: 'visible',
+                                      opacity: isDragging ? 0.72 : 1,
+                                      transition: isDragging ? 'none' : 'background 0.15s ease, opacity 0.15s ease'
                                     }}>
-                                      <div style={{ display: 'flex', gap: isCategorySelectModeActive ? '12px' : '8px', alignItems: 'center' }}>
-                                        {/* Checkbox for category selection - only show in copy mode */}
-                                        {copyModeActive && (
-                                          <label style={{
-                                            display: 'flex',
-                                            alignItems: 'center',
-                                            padding: '0 6px',
-                                            cursor: 'pointer',
-                                            border: '1px solid transparent',
-                                            borderRadius: '4px 0 0 4px',
-                                            background: '#333',
-                                            userSelect: 'none'
-                                          }}>
-                                            <input
-                                              type="checkbox"
-                                              checked={categoryAllSelected}
-                                              onChange={(e) => {
-                                                const newSelection = { ...copiedItemSelection };
-                                                categorySurveyMarkers.forEach(h => {
-                                                  if (!categoryAllSelected) {
-                                                    newSelection[h.id] = true;
-                                                  } else {
-                                                    delete newSelection[h.id];
-                                                  }
-                                                });
-                                                setCopiedItemSelection(newSelection);
-                                              }}
-                                              onClick={(e) => e.stopPropagation()}
-                                              style={{ cursor: 'pointer', flexShrink: 0 }}
-                                            />
-                                          </label>
+                                      <div
+                                        data-drag-rearrange-row
+                                        style={{
+                                          display: 'flex',
+                                          gap: '4px',
+                                          alignItems: 'center',
+                                          minWidth: 0,
+                                        }}
+                                      >
+                                        {isCategorySelectable ? (
+                                          <SurveyMarkerLeadingSelect
+                                            selected={isCategorySelectionSelected}
+                                            category
+                                            onClick={toggleCategorySelection}
+                                            title={isCategorySelectionSelected ? 'Deselect category' : 'Select category'}
+                                            ariaLabel={`${isCategorySelectionSelected ? 'Deselect' : 'Select'} ${category.name || 'Untitled Category'}`}
+                                          />
+                                        ) : (
+                                          <DragRearrangeHandle
+                                            {...attributes}
+                                            {...listeners}
+                                            isDragging={isDragging}
+                                            title="Drag category to rearrange"
+                                            style={{ width: 22, height: 28, marginLeft: 2 }}
+                                          />
                                         )}
 
-                                        {isCategorySelectModeActive ? (
-                                          <div
-                                            onClick={(e) => {
-                                              e.stopPropagation();
-                                              setSelectedCategories(prev => ({
-                                                ...prev,
-                                                [category.id]: !prev[category.id]
-                                              }));
-                                            }}
-                                            style={{
-                                              display: 'flex',
-                                              alignItems: 'center',
-                                              gap: '12px',
-                                              padding: '12px 16px',
-                                              background: 'transparent',
-                                              borderRadius: '6px',
-                                              cursor: 'pointer',
-                                              flex: 1,
-                                              marginBottom: '8px',
-                                              color: isCategorySelected ? '#4A90E2' : '#DDD',
-                                              border: `1px solid ${isCategorySelected ? '#4A90E2' : 'transparent'}`
-                                            }}
-                                            onMouseEnter={(e) => {
-                                              if (!isCategorySelected) {
-                                                e.currentTarget.style.background = 'rgba(255, 255, 255, 0.05)';
-                                              }
-                                            }}
-                                            onMouseLeave={(e) => {
-                                              if (!isCategorySelected) {
-                                                e.currentTarget.style.background = 'transparent';
-                                              }
-                                            }}
-                                          >
-                                            <input
-                                              type="checkbox"
-                                              checked={isCategorySelected}
-                                              onChange={(e) => {
-                                                e.stopPropagation();
-                                                setSelectedCategories(prev => ({
-                                                  ...prev,
-                                                  [category.id]: e.target.checked
-                                                }));
-                                              }}
-                                              onClick={(e) => e.stopPropagation()}
-                                              style={{
-                                                cursor: 'pointer',
-                                                flexShrink: 0,
-                                                width: '18px',
-                                                height: '18px',
-                                                accentColor: '#4A90E2',
-                                                margin: 0
-                                              }}
-                                            />
-                                            <div style={{
-                                              fontWeight: '500',
-                                              fontSize: '14px',
-                                              color: isCategorySelected ? '#fff' : '#DDD',
-                                              flex: 1
-                                            }}>
-                                              {category.name || 'Untitled Category'}
-                                            </div>
-                                          </div>
-                                        ) : (
-                                          <div style={{ display: 'flex', flex: 1, alignItems: 'stretch' }}>
+                                        <div style={{ display: 'flex', flex: 1, alignItems: 'stretch', minWidth: 0 }}>
                                             <button
                                               onClick={(e) => {
                                                 e.stopPropagation();
+                                                if (isCategorySelectModeActive) {
+                                                  toggleCategorySelection();
+                                                  return;
+                                                }
                                                 if (copyModeActive) {
                                                   // In copy mode, don't change category selection or hide panel
                                                   return;
@@ -1530,41 +1427,41 @@ const SurveySpacesRail = ({
                                               </button>
                                             )}
                                           </div>
-                                        )}
                                       </div>
 
                                       {/* Expanded surveyMarkers list */}
                                       {isExpanded && surveyMarkerCount > 0 && (
                                         <div style={{
-                                          marginTop: '4px',
-                                          padding: '4px',
+                                          marginTop: '2px',
+                                          padding: '2px 4px 4px',
                                           background: 'transparent',
                                           border: '1px solid transparent',
                                           borderRadius: '4px'
                                         }}>
-                                          {/* Select button for item-level selection - only show when NOT in item select mode */}
-                                          {!isItemSelectModeActiveForCategory && !categorySelectModeActive && !copyModeActive && (
-                                            <button
-                                              type="button"
-                                              onClick={() => {
-                                                setItemSelectModeActive(prev => ({
-                                                  ...prev,
-                                                  [category.id]: true
-                                                }));
-                                                setSelectedItemsInCategory(prev => ({
-                                                  ...prev,
-                                                  [category.id]: {}
-                                                }));
-                                              }}
-                                              className="survey-marker-select-mode-toggle"
+                                          {!copyModeActive && (
+                                            <div
+                                              className={`survey-marker-inline-select-row${categorySelectModeActive ? ' is-placeholder' : ''}`}
+                                              aria-hidden={categorySelectModeActive ? 'true' : undefined}
                                             >
-                                              Select
-                                            </button>
-                                          )}
-
-                                          {/* Item Select Mode Actions */}
-                                          {isItemSelectModeActiveForCategory && (
-                                            <div className="survey-marker-select-toolbar" role="toolbar" aria-label="Item selection actions">
+                                              {categorySelectModeActive ? null : !isItemSelectModeActiveForCategory ? (
+                                                <button
+                                                  type="button"
+                                                  onClick={() => {
+                                                    setItemSelectModeActive(prev => ({
+                                                      ...prev,
+                                                      [category.id]: true
+                                                    }));
+                                                    setSelectedItemsInCategory(prev => ({
+                                                      ...prev,
+                                                      [category.id]: {}
+                                                    }));
+                                                  }}
+                                                  className="survey-marker-select-mode-toggle"
+                                                >
+                                                  Select
+                                                </button>
+                                              ) : (
+                                                <div className="survey-marker-select-toolbar" role="toolbar" aria-label="Item selection actions">
                                               <button
                                                 type="button"
                                                 onClick={() => {
@@ -1670,6 +1567,8 @@ const SurveySpacesRail = ({
                                               >
                                                 <Icon name="trash" size={12} />
                                               </button>
+                                                </div>
+                                              )}
                                             </div>
                                           )}
 
@@ -1726,6 +1625,33 @@ const SurveySpacesRail = ({
                                                       listeners?.onKeyDown?.(event);
                                                     }
                                                   };
+                                                  const isMarkerSelectable = copyModeActive || isItemSelectModeActiveForCategory;
+                                                  const isMarkerSelected = isItemSelectModeActiveForCategory
+                                                    ? selectedItemsForCategory[annotationId] === true
+                                                    : copiedItemSelection[annotationId] === true;
+                                                  const toggleMarkerSelection = () => {
+                                                    const nextSelected = !isMarkerSelected;
+                                                    if (isItemSelectModeActiveForCategory) {
+                                                      setSelectedItemsInCategory(prev => ({
+                                                        ...prev,
+                                                        [category.id]: {
+                                                          ...(prev[category.id] || {}),
+                                                          [annotationId]: nextSelected
+                                                        }
+                                                      }));
+                                                      return;
+                                                    }
+
+                                                    setCopiedItemSelection(prev => {
+                                                      const newSelection = { ...prev };
+                                                      if (nextSelected) {
+                                                        newSelection[annotationId] = true;
+                                                      } else {
+                                                        delete newSelection[annotationId];
+                                                      }
+                                                      return newSelection;
+                                                    });
+                                                  };
                                                   return (
                                               <div
                                                 id={`highlight-item-${surveyMarker.id}`}
@@ -1742,46 +1668,20 @@ const SurveySpacesRail = ({
                                               }}>
                                                 {/* SurveyMarker header - clickable to expand */}
                                                 <div style={{ display: 'flex', alignItems: 'center', gap: '2px' }}>
-                                                  <DragRearrangeHandle
-                                                    {...attributes}
-                                                    {...dragListeners}
-                                                    isDragging={isDragging}
-                                                    title="Drag to rearrange"
-                                                    style={{ width: 18, height: 22, marginLeft: 2 }}
-                                                  />
-
-                                                  {/* Checkbox for selection - show in copy mode or item select mode */}
-                                                  {(copyModeActive || isItemSelectModeActiveForCategory) && (
-                                                    <input
-                                                      type="checkbox"
-                                                      checked={
-                                                        isItemSelectModeActiveForCategory
-                                                          ? selectedItemsForCategory[annotationId] === true
-                                                          : copiedItemSelection[annotationId] === true
-                                                      }
-                                                      onChange={(e) => {
-                                                        if (isItemSelectModeActiveForCategory) {
-                                                          setSelectedItemsInCategory(prev => ({
-                                                            ...prev,
-                                                            [category.id]: {
-                                                              ...(prev[category.id] || {}),
-                                                              [annotationId]: e.target.checked
-                                                            }
-                                                          }));
-                                                        } else {
-                                                          setCopiedItemSelection(prev => {
-                                                            const newSelection = { ...prev };
-                                                            if (e.target.checked) {
-                                                              newSelection[annotationId] = true;
-                                                            } else {
-                                                              delete newSelection[annotationId];
-                                                            }
-                                                            return newSelection;
-                                                          });
-                                                        }
-                                                      }}
-                                                      onClick={(e) => e.stopPropagation()}
-                                                      style={{ cursor: 'pointer', flexShrink: 0 }}
+                                                  {isMarkerSelectable ? (
+                                                    <SurveyMarkerLeadingSelect
+                                                      selected={isMarkerSelected}
+                                                      onClick={toggleMarkerSelection}
+                                                      title={isMarkerSelected ? 'Deselect item' : 'Select item'}
+                                                      ariaLabel={`${isMarkerSelected ? 'Deselect' : 'Select'} ${surveyMarkerName}`}
+                                                    />
+                                                  ) : (
+                                                    <DragRearrangeHandle
+                                                      {...attributes}
+                                                      {...dragListeners}
+                                                      isDragging={isDragging}
+                                                      title="Drag to rearrange"
+                                                      style={{ width: 18, height: 22, marginLeft: 2 }}
                                                     />
                                                   )}
 
@@ -2600,9 +2500,12 @@ const SurveySpacesRail = ({
                                       )
                                       }
                                     </div>
+                                        );
+                                      }}
+                                    </SortableRearrangeRow>
                                   );
                                 })}
-                              </div>
+                              </SortableRearrangeList>
                             ) : (
                               <div style={{ color: '#999', fontSize: '14px', padding: '20px', textAlign: 'center' }}>
                                 <div>No categories available for this space.</div>

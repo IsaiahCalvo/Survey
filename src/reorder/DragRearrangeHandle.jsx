@@ -8,13 +8,16 @@
  */
 import Icon from '../Icons';
 
+const DEFAULT_HANDLE_COLOR = '#b8c0cc';
+const HOVER_HANDLE_COLOR = '#f2f5f8';
+
 const handleStyle = (isDragging, style = {}) => ({
   display: 'flex',
   alignItems: 'center',
   justifyContent: 'center',
   width: 24,
   height: 24,
-  color: '#777',
+  color: DEFAULT_HANDLE_COLOR,
   cursor: isDragging ? 'grabbing' : 'grab',
   flexShrink: 0,
   lineHeight: 1,
@@ -60,10 +63,10 @@ export default function DragRearrangeHandle({
       }}
       onDragEnd={onDragEnd}
       onMouseEnter={(event) => {
-        event.currentTarget.style.color = '#bbb';
+        event.currentTarget.style.color = HOVER_HANDLE_COLOR;
       }}
       onMouseLeave={(event) => {
-        event.currentTarget.style.color = '#777';
+        event.currentTarget.style.color = style?.color || DEFAULT_HANDLE_COLOR;
       }}
       style={handleStyle(isDragging, style)}
       {...props}
