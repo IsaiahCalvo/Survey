@@ -74,13 +74,15 @@ import { getCalloutSyncFingerprint } from './utils/calloutSyncPayload';
 import { isPlacedSurveyMarker } from './services/surveyMarkerSyncDiff';
 import { forceUnplacedImportedMarker, freezeGeometryFromOriginal } from './services/importFieldWhitelist';
 import { stampExportAck, wasReceivedByExcel } from './services/excelExportAck';
-import { buildMarkerIdentityRecords, applyMarkerIdentityRecords } from './services/excelIdentityRecord';
+import { buildMarkerIdentityRecord, buildMarkerIdentityRecords, applyMarkerIdentityRecords } from './services/excelIdentityRecord';
 import { loadBaseline, saveBaseline, clearBaseline } from './services/excelSyncBaselineStore';
 import { generateRowIdToken } from './services/rowIdToken';
 import { getOrCreateDocumentSecret, resolveDocumentSecret } from './services/rowIdSecretStore';
 import { buildScopeImportPlans } from './services/buildScopeImportPlans';
+import { buildMarkerRowValues, resolveMarkerModuleData } from './services/markerRowValues';
 import { excelLockFilePath, isOwnerFileFor, parentDir } from './services/excelLockFile';
 import { reviewReasonMessage } from './services/excelReviewMessages';
+import { applyExcelValuesToMarker } from './services/excelConflictResolve';
 import { makeTombstone, addTombstone, removeTombstone, purgeExpired } from './services/surveyMarkerTrash';
 import { loadTrash, saveTrash } from './services/surveyMarkerTrashStore';
 import { buildSurveyMarkerDeleteHistoryRow, applySurveyMarkerRestore } from './services/surveyMarkerHistory';
@@ -4029,6 +4031,19 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     (pendingImportReview || []).forEach((entry) => {
       if (!entry || !entry.markerId) return; // rows with no app marker yet can't attach to a row
       if (!map[entry.markerId]) map[entry.markerId] = reviewReasonMessage(entry.reason);
+    });
+    return map;
+  }, [pendingImportReview]);
+
+  // The subset of review entries that are a both-sides "conflict": marker id → the stashed
+  // incoming Excel values. Only these rows offer the "keep mine" / "use Excel's" choice in the
+  // Survey panel; the other review reasons are help-only. Memoized so the published rail API
+  // stays referentially stable (App-shell publish suppresses identity churn — see Gotchas).
+  const surveyConflictByMarkerId = useMemo(() => {
+    const map = {};
+    (pendingImportReview || []).forEach((entry) => {
+      if (!entry || entry.reason !== 'conflict' || !entry.markerId) return;
+      if (!map[entry.markerId]) map[entry.markerId] = { excelValues: entry.excelValues };
     });
     return map;
   }, [pendingImportReview]);
@@ -12091,89 +12106,53 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
               // Ensure survey marker has metadata (add if missing)
               actualSurveyMarker = ensureSurveyMarkerMetadata(actualSurveyMarker);
 
+              // SINGLE SOURCE OF TRUTH (src/services/markerRowValues.js): the cells written
+              // below AND the fingerprints stamped onto the marker both derive from `values`,
+              // using the EXACT builder the importer runs. If the two sides ever read a row
+              // even slightly differently, every matched row would false-flag as a conflict —
+              // routing through one builder is what prevents that.
+              const moduleData = resolveMarkerModuleData({
+                items,
+                markerName: surveyMarker?.name || '',
+                categoryName,
+                moduleDataKey
+              });
+              const values = buildMarkerRowValues({ marker: actualSurveyMarker, checklistItems, moduleData });
+
               // Row ID - signed scoped identity token (first column). Blank when signing was
               // unavailable; import then recovers identity by fingerprint.
               row.push(rowIdTokensByMarkerId.get(annotationId) || '');
-
-              // Changed By - get user initials
-              const changedBy = actualSurveyMarker?.changedBy || '';
-              row.push(changedBy);
-
-              // Changed Date - format as MM/DD/YYYY
-              const changedDate = actualSurveyMarker?.changedDate || '';
-              const formattedDate = changedDate ? new Date(changedDate).toLocaleDateString('en-US') : '';
-              row.push(formattedDate);
-
-              // Item name from survey marker
-              const surveyMarkerName = surveyMarker?.name || '';
-              row.push(surveyMarkerName);
-
-              // Get checklist responses from survey marker annotation
-              const surveyMarkerChecklistResponses = actualSurveyMarker?.checklistResponses || {};
-
-              // Try to find matching item for fallback data
-              const matchingItem = Object.values(items).find(item => {
-                return item.name === surveyMarkerName &&
-                  item.itemType === categoryName;
+              row.push(values.changedBy);    // Changed By (initials)
+              row.push(values.changedDate);  // Changed Date (MM/DD/YYYY)
+              row.push(values.item);         // Item name
+              // Checklist responses (Y/N/N/A), in checklist order.
+              checklistItems.forEach((checklistItem) => {
+                row.push(values.answers[checklistItem.id] ?? '');
               });
+              row.push(values.entity);       // Entity
 
-              // Get module-specific data for this item (for entity fallback)
-              const moduleData = matchingItem?.[moduleDataKey] || {};
-
-              // Checklist responses (Y/N/N/A) - use survey marker annotation data
-              const rowAnswers = {};
-              checklistItems.forEach(checklistItem => {
-                const response = surveyMarkerChecklistResponses[checklistItem.id];
-                const selection = response?.selection || '';
-                row.push(selection);
-                rowAnswers[checklistItem.id] = selection;
-              });
-
-              // Entity - check survey marker annotation first, then item module data
+              // Get entity color - try multiple sources (used by any cell styling below).
               const entityId = actualSurveyMarker?.entityId || moduleData.entityId;
-              const entityName = actualSurveyMarker?.entityName ||
-                moduleData.entityName || '';
-              row.push(entityName);
-
-              // Get entity color - try multiple sources
               let entityColor = null;
-
-              // First, try to get color directly from survey marker annotation
               if (actualSurveyMarker?.entityColor) {
                 entityColor = getHexFromColor(actualSurveyMarker.entityColor);
               }
-
-              // If not found, try to get from entity lookup
               if (!entityColor && entityId) {
                 const entity = entities.find(e => e.id === entityId);
                 if (entity && entity.color) {
                   entityColor = getHexFromColor(entity.color);
                 }
               }
-
-              // If still not found, try from module data
               if (!entityColor && moduleData.entityColor) {
                 entityColor = getHexFromColor(moduleData.entityColor);
               }
 
-              // Notes - get item-level note from survey marker annotation
-              const itemNote = actualSurveyMarker?.note?.text || '';
-              row.push(itemNote);
+              row.push(values.notes);        // Notes
 
-              // Capture the exact visible values written to this row, keyed by marker
-              // id, so we can fingerprint them identically on import. Skip rows with no
-              // marker id (defensive — every survey row has one).
+              // Capture the exact visible values written to this row, keyed by marker id, so
+              // we fingerprint them identically on import. Skip rows with no marker id.
               if (annotationId) {
-                markerRowValuesById.set(annotationId, {
-                  values: {
-                    changedBy,
-                    changedDate: formattedDate,
-                    item: surveyMarkerName,
-                    entity: entityName,
-                    notes: itemNote,
-                    answers: rowAnswers
-                  }
-                });
+                markerRowValuesById.set(annotationId, { values });
               }
 
               dataRows.push(row);
@@ -13305,6 +13284,66 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     }
   }, [isMSAuthenticated, pendingOneDriveExport, exportPendingData, graphClient]);
 
+  // Build the marker → CURRENT visible row values map fed to the import conflict guard.
+  // CRITICAL: this MUST use the same builder + same scope resolution the export uses, or the
+  // fingerprints won't match the stored baseline and every matched row would false-flag as a
+  // both-sides conflict. Only markers that already carry an excelSync baseline need comparing.
+  const buildAppValuesByMarkerId = useCallback((markersMap, templateToUse) => {
+    const out = {};
+    const modules = templateToUse?.modules || templateToUse?.spaces || [];
+    for (const [markerId, marker] of Object.entries(markersMap || {})) {
+      if (!marker || !marker.excelSync) continue; // no baseline → nothing to compare against
+      const moduleId = marker.moduleId || marker.spaceId;
+      const categoryId = marker.categoryId;
+      const mod = modules.find((m) => String(m.id) === String(moduleId));
+      if (!mod) continue;
+      const cat = (mod.categories || []).find((c) => String(c.id) === String(categoryId));
+      if (!cat) continue;
+      const checklistItems = cat.checklist || [];
+      const moduleName = getModuleName(templateToUse, moduleId);
+      const moduleDataKey = getModuleDataKey(moduleName);
+      const categoryName = getCategoryName(templateToUse, moduleId, categoryId);
+      const ensured = ensureSurveyMarkerMetadata(marker);
+      const moduleData = resolveMarkerModuleData({
+        items, markerName: ensured?.name || '', categoryName, moduleDataKey
+      });
+      out[markerId] = buildMarkerRowValues({ marker: ensured, checklistItems, moduleData });
+    }
+    return out;
+  }, [items, ensureSurveyMarkerMetadata]);
+
+  // Resolve one both-sides conflict (PLAN Amendment #6 — one choice per item, whole row).
+  // "use Excel's" applies Excel's content to the marker; "keep mine" leaves the marker as-is.
+  // In BOTH cases the marker's excelSync baseline is re-stamped to the INCOMING Excel values
+  // (the new agreed point), so the row stops flagging and the next sync sees agreement. Live
+  // writeback stays gated — this only changes the in-app marker and its sync memory.
+  const handleResolveExcelConflict = useCallback(async (markerId, choice) => {
+    if (!markerId) return;
+    const entry = (pendingImportReview || []).find(
+      (e) => e && e.reason === 'conflict' && e.markerId === markerId
+    );
+    if (!entry || !entry.excelValues) return;
+    const marker = surveyMarkers[markerId];
+    if (!marker) return;
+    const excelValues = entry.excelValues;
+
+    const record = await buildMarkerIdentityRecord({ values: excelValues, origin: 'conflict-resolve' });
+    const entities = selectedTemplate?.entities || [];
+
+    let nextMarker = { ...marker, excelSync: { ...(marker.excelSync || {}), ...record } };
+    if (choice === 'excel') {
+      // applyExcelValuesToMarker spreads the marker, so the re-stamped excelSync is preserved.
+      nextMarker = applyExcelValuesToMarker(nextMarker, excelValues, entities);
+    }
+    const updatedMap = { ...surveyMarkers, [markerId]: nextMarker };
+
+    setSurveyMarkers(updatedMap);
+    setPendingImportReview((prev) =>
+      (prev || []).filter((e) => !(e && e.reason === 'conflict' && e.markerId === markerId))
+    );
+    try { markExcelSyncCheckpoint(selectedTemplate, updatedMap); } catch { /* best-effort persist */ }
+  }, [pendingImportReview, surveyMarkers, selectedTemplate, markExcelSyncCheckpoint]);
+
   // Helper: Execute the actual Excel import after new columns are handled
   const executeExcelImport = useCallback(async (worksheetDataList, templateToUse) => {
     const newSurveyMarkers = { ...surveyMarkers };
@@ -13321,7 +13360,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     const importResolveSecret = (keyId) => resolveDocumentSecret(importDocumentId, keyId);
     const scopePlans = await buildScopeImportPlans({
       worksheetDataList, surveyMarkers: newSurveyMarkers, templateToUse,
-      documentId: importDocumentId, resolveSecret: importResolveSecret
+      documentId: importDocumentId, resolveSecret: importResolveSecret,
+      appValuesByMarkerId: buildAppValuesByMarkerId(newSurveyMarkers, templateToUse)
     });
     const importReviewItems = [];
     let identityPersisted = false; // true once any marker got its excelSync memory stamped
@@ -13397,7 +13437,12 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
             // malformed / ambiguous). Never write — surface it instead.
             importReviewItems.push({
               scopeKey: planScopeKey, rowIndex: i, itemName,
-              reason: decision.decision, markerId: decision.markerId || null
+              reason: decision.decision, markerId: decision.markerId || null,
+              // A both-sides "conflict" carries the incoming Excel values + which fields
+              // disagree, so the Survey-panel choice ("keep mine" / "use Excel's") can apply.
+              ...(decision.decision === 'conflict'
+                ? { excelValues: decision.excelValues, conflictFields: decision.conflictFields }
+                : {})
             });
             continue;
           }
@@ -13849,7 +13894,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     const importResolveSecret = (keyId) => resolveDocumentSecret(importDocumentId, keyId);
     const scopePlans = await buildScopeImportPlans({
       worksheetDataList, surveyMarkers: newSurveyMarkers, templateToUse,
-      documentId: importDocumentId, resolveSecret: importResolveSecret
+      documentId: importDocumentId, resolveSecret: importResolveSecret,
+      appValuesByMarkerId: buildAppValuesByMarkerId(newSurveyMarkers, templateToUse)
     });
     const importReviewItems = [];
     let identityPersisted = false; // true once any marker got its excelSync memory stamped
@@ -13925,7 +13971,12 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
             // malformed / ambiguous). Never write — surface it instead.
             importReviewItems.push({
               scopeKey: planScopeKey, rowIndex: i, itemName,
-              reason: decision.decision, markerId: decision.markerId || null
+              reason: decision.decision, markerId: decision.markerId || null,
+              // A both-sides "conflict" carries the incoming Excel values + which fields
+              // disagree, so the Survey-panel choice ("keep mine" / "use Excel's") can apply.
+              ...(decision.decision === 'conflict'
+                ? { excelValues: decision.excelValues, conflictFields: decision.conflictFields }
+                : {})
             });
             continue;
           }
@@ -25589,6 +25640,8 @@ ${pageBlocks}
       spaces,
       surveyMarkers,
       surveyReviewByMarkerId,
+      surveyConflictByMarkerId,
+      onResolveExcelConflict: handleResolveExcelConflict,
       user,
       expandRequestKey: rightRailExpandRequestKey,
       onCollapseChange: handleRightRailCollapseChange,
@@ -25709,6 +25762,8 @@ ${pageBlocks}
     spaces,
     surveyMarkers,
     surveyReviewByMarkerId,
+    surveyConflictByMarkerId,
+    handleResolveExcelConflict,
     user,
     rightRailExpandRequestKey,
     handleRightRailCollapseChange,

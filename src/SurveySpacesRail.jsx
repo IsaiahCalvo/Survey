@@ -117,11 +117,15 @@ const SurveySpacesRail = ({
   spaces,
   surveyMarkers,
   surveyReviewByMarkerId = {},
+  surveyConflictByMarkerId = {},
+  onResolveExcelConflict = null,
   user,
   expandRequestKey = 0,
   onCollapseChange = null,
 }) => {
   const [isSurveyPanelCollapsed, setIsSurveyPanelCollapsed] = useState(true);
+  // Which conflict row currently has its "keep mine / use Excel's" choice open (marker id).
+  const [openConflictMarkerId, setOpenConflictMarkerId] = useState(null);
   const [railIconHover, setRailIconHover] = useState(null);
 
   useEffect(() => {
@@ -1622,17 +1626,64 @@ const SurveySpacesRail = ({
                                                           />
                                                         );
                                                       })()}
-                                                      {surveyReviewByMarkerId[annotationId] && (
-                                                        <img
-                                                          src={reviewWarningIcon}
-                                                          alt="Needs review"
-                                                          title={surveyReviewByMarkerId[annotationId]}
-                                                          width={15}
-                                                          height={15}
-                                                          style={{ flexShrink: 0, cursor: 'help' }}
-                                                          onClick={(e) => e.stopPropagation()}
-                                                        />
-                                                      )}
+                                                      {surveyReviewByMarkerId[annotationId] && (() => {
+                                                        const isConflict = !!surveyConflictByMarkerId[annotationId];
+                                                        const isOpen = isConflict && openConflictMarkerId === annotationId;
+                                                        return (
+                                                          <span style={{ position: 'relative', display: 'inline-flex', flexShrink: 0 }}>
+                                                            <img
+                                                              src={reviewWarningIcon}
+                                                              alt={isConflict ? 'Changed in both places — choose a version' : 'Needs review'}
+                                                              title={surveyReviewByMarkerId[annotationId]}
+                                                              width={15}
+                                                              height={15}
+                                                              style={{ flexShrink: 0, cursor: isConflict ? 'pointer' : 'help' }}
+                                                              onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                if (!isConflict) return;
+                                                                setOpenConflictMarkerId((cur) => (cur === annotationId ? null : annotationId));
+                                                              }}
+                                                            />
+                                                            {isOpen && (
+                                                              <span
+                                                                onClick={(e) => e.stopPropagation()}
+                                                                style={{
+                                                                  position: 'absolute', top: '18px', left: 0, zIndex: 50,
+                                                                  background: '#fff', border: '1px solid #d0d0d0', borderRadius: 6,
+                                                                  boxShadow: '0 2px 8px rgba(0,0,0,0.18)', padding: 8, width: 200,
+                                                                  display: 'flex', flexDirection: 'column', gap: 6
+                                                                }}
+                                                              >
+                                                                <span style={{ fontSize: 12, color: '#333', lineHeight: 1.3 }}>
+                                                                  Changed in both Excel and the app. Which version do you want to keep?
+                                                                </span>
+                                                                <button
+                                                                  type="button"
+                                                                  style={{ fontSize: 12, padding: '4px 6px', cursor: 'pointer' }}
+                                                                  onClick={(e) => {
+                                                                    e.stopPropagation();
+                                                                    setOpenConflictMarkerId(null);
+                                                                    onResolveExcelConflict && onResolveExcelConflict(annotationId, 'app');
+                                                                  }}
+                                                                >
+                                                                  Keep app version
+                                                                </button>
+                                                                <button
+                                                                  type="button"
+                                                                  style={{ fontSize: 12, padding: '4px 6px', cursor: 'pointer' }}
+                                                                  onClick={(e) => {
+                                                                    e.stopPropagation();
+                                                                    setOpenConflictMarkerId(null);
+                                                                    onResolveExcelConflict && onResolveExcelConflict(annotationId, 'excel');
+                                                                  }}
+                                                                >
+                                                                  Use Excel version
+                                                                </button>
+                                                              </span>
+                                                            )}
+                                                          </span>
+                                                        );
+                                                      })()}
                                                       {surveyMarkers[annotationId]?.editingName ? (
                                                         <input
                                                           type="text"
