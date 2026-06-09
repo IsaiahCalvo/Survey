@@ -9,6 +9,16 @@
 import { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import { useAuth } from './AuthContext';
 import { supabase, isSupabaseAvailable } from '../supabaseClient';
+import { buildConnectionMarkerRow, buildMainAuthAccount } from '../services/microsoftConnectionMarker';
+
+// Main-process token custody (PLAN.md Amendment 2026-06-08(b) #5): in Electron,
+// sign-in runs in the SYSTEM browser via msal-node in the main process — the only
+// surface where Microsoft renders passkeys / Windows Hello / phone sign-in — and
+// the MSAL cache there owns all refresh tokens. The renderer only ever holds a
+// short-lived access token. The legacy embedded PKCE flow below remains the
+// fallback for the web build and for legacy rows not yet migrated.
+const isMainAuthAvailable = () =>
+    typeof window !== 'undefined' && Boolean(window.electronAPI?.microsoftSignIn);
 
 export const MSGraphContext = createContext({});
 
@@ -72,6 +82,9 @@ export const MSGraphProvider = ({ children }) => {
     //     account_email, account_name }
     const tokenMetadataRef = useRef(null);
     const oauthProcessing = useRef(false); // Prevent duplicate OAuth callback processing
+    // Which path owns the tokens this session: 'main' (msal-node in the Electron
+    // main process — source of truth) or null/legacy (renderer-managed refresh).
+    const custodyRef = useRef(null);
     const refreshStateRef = useRef({
         inFlight: null,
         cooldownUntil: 0,
@@ -114,6 +127,42 @@ export const MSGraphProvider = ({ children }) => {
             account_name: accountFields?.account_name ?? null,
         };
     }, []);
+
+    // Adopt a main-process auth result (sign-in or silent restore): the MSAL cache
+    // in the Electron main process is now the source of truth; the renderer keeps
+    // only the access token, and connected_services is reduced to a NO-TOKEN marker.
+    const adoptMainAuthResult = useCallback(async (authResult) => {
+        const acct = buildMainAuthAccount(authResult.account || {});
+        custodyRef.current = 'main';
+        tokenMetadataRef.current = {
+            custody: 'main',
+            refresh_token: null, // never present in the renderer on this path
+            access_token: authResult.accessToken,
+            expires_at: authResult.expiresAt,
+            tenant_id: acct.tenantId,
+            account_id: acct.homeAccountId,
+            account_email: acct.username,
+            account_name: acct.name,
+        };
+        setAccount({ username: acct.username, name: acct.name, homeAccountId: acct.homeAccountId });
+        setIsAuthenticated(true);
+        setNeedsReconnect(false);
+        await initializeGraphClient(authResult.accessToken);
+        refreshStateRef.current.cooldownUntil = 0;
+        refreshStateRef.current.hardBlockedUntil = 0;
+        refreshStateRef.current.lastErrorCode = null;
+        writeRefreshBlockUntil(0);
+        if (user && isSupabaseAvailable()) {
+            try {
+                await supabase
+                    .from('connected_services')
+                    .upsert(buildConnectionMarkerRow({ userId: user.id, account: acct }), { onConflict: 'user_id,service_name' });
+            } catch {
+                // Marker is best-effort; token custody lives in the main process.
+            }
+        }
+        return true;
+    }, [user, initializeGraphClient]);
 
     // Store tokens in Supabase database
     const storeTokens = useCallback(async (tokens, accountInfo) => {
@@ -331,6 +380,47 @@ export const MSGraphProvider = ({ children }) => {
             setIsLoading(true);
 
             try {
+                // Main-process custody first: if the MSAL cache (system-browser
+                // sign-in) already holds an account, restore from it and ignore
+                // any legacy renderer-managed tokens. Legacy rows keep working
+                // below until the first system-browser sign-in migrates them.
+                if (isMainAuthAvailable()) {
+                    try {
+                        const status = await window.electronAPI.microsoftAuthStatus();
+                        if (status?.signedIn) {
+                            let res = await window.electronAPI.microsoftGetAccessToken();
+                            if (!res?.success && !res?.needsInteraction) {
+                                // One retry for transient failures (network blip) before
+                                // surfacing reconnect — never lock out on a single miss.
+                                res = await window.electronAPI.microsoftGetAccessToken();
+                            }
+                            if (res?.success && res.accessToken) {
+                                if (isMounted) await adoptMainAuthResult(res);
+                                setIsLoading(false);
+                                setConnectionRestored(true);
+                                return;
+                            }
+                            // The MSAL cache HAS this account but no token could be
+                            // acquired. Surface reconnect against the cached account
+                            // here — do NOT fall through, where the no-token marker
+                            // row would be misread as a missing legacy connection.
+                            if (isMounted) {
+                                custodyRef.current = 'main';
+                                const acct = buildMainAuthAccount(status.account || {});
+                                setAccount({ username: acct.username, name: acct.name, homeAccountId: acct.homeAccountId });
+                                setNeedsReconnect(true);
+                                setIsAuthenticated(false);
+                                setGraphClient(null);
+                            }
+                            setIsLoading(false);
+                            setConnectionRestored(true);
+                            return;
+                        }
+                    } catch {
+                        // Fall through to the legacy restore path.
+                    }
+                }
+
                 const storedData = await fetchStoredTokens();
 
                 if (!storedData?.is_connected || !storedData?.metadata?.refresh_token) {
@@ -421,12 +511,15 @@ export const MSGraphProvider = ({ children }) => {
 
         restoreConnection();
         return () => { isMounted = false; };
-    }, [user, fetchStoredTokens, storeTokens, refreshAccessToken, initializeGraphClient, setTokenMetadataCache]);
+    }, [user, fetchStoredTokens, storeTokens, refreshAccessToken, initializeGraphClient, setTokenMetadataCache, adoptMainAuthResult]);
 
     // Periodic token refresh - refresh every 10 minutes to stay ahead of expiry
     // Microsoft access tokens typically last 60-90 minutes, but can be revoked anytime
     useEffect(() => {
         if (!isAuthenticated || !user || needsReconnect) return;
+        // Main custody: silent refresh happens on demand in the main process
+        // (ensureFreshToken → msauth:getAccessToken); no renderer interval needed.
+        if (custodyRef.current === 'main') return;
 
         const refreshInterval = setInterval(async () => {
             const state = refreshStateRef.current;
@@ -468,6 +561,36 @@ export const MSGraphProvider = ({ children }) => {
     // Ensure fresh token before API operations - call this before making Graph API calls
     const ensureFreshToken = useCallback(async () => {
         if (!user || needsReconnect) return false;
+
+        // Main-process custody: the MSAL cache in the Electron main process owns
+        // refresh; ask it for a valid access token. Short-circuit while the current
+        // one is comfortably fresh (same 10-minute buffer as the legacy path).
+        if (custodyRef.current === 'main' && isMainAuthAvailable()) {
+            const meta = tokenMetadataRef.current;
+            const nowSec = Math.floor(Date.now() / 1000);
+            if (tokenRef.current && meta?.expires_at && meta.expires_at > nowSec + 600) {
+                return true;
+            }
+            const res = await window.electronAPI.microsoftGetAccessToken();
+            if (res?.success && res.accessToken) {
+                tokenRef.current = res.accessToken;
+                if (tokenMetadataRef.current) {
+                    tokenMetadataRef.current = {
+                        ...tokenMetadataRef.current,
+                        access_token: res.accessToken,
+                        expires_at: res.expiresAt,
+                    };
+                }
+                return true;
+            }
+            if (res?.needsInteraction) {
+                setNeedsReconnect(true);
+                setIsAuthenticated(false);
+                setGraphClient(null);
+                tokenRef.current = null;
+            }
+            return false;
+        }
 
         const state = refreshStateRef.current;
         const nowMs = Date.now();
@@ -628,6 +751,18 @@ export const MSGraphProvider = ({ children }) => {
         try {
             setError(null);
 
+            // Preferred (Electron): system-browser sign-in with main-process token
+            // custody — the only surface where Microsoft offers passkeys, Windows
+            // Hello / device PIN, and phone sign-in. The embedded flow below stays
+            // as the web-build fallback.
+            if (isMainAuthAvailable()) {
+                const result = await window.electronAPI.microsoftSignIn();
+                if (!result?.success) {
+                    throw new Error(result?.error || 'Microsoft sign-in was cancelled');
+                }
+                return await adoptMainAuthResult(result);
+            }
+
             // Generate PKCE code verifier and challenge
             const generatePKCE = () => {
                 const array = new Uint8Array(32);
@@ -692,7 +827,7 @@ export const MSGraphProvider = ({ children }) => {
             setError(err.message);
             throw err;
         }
-    }, [clearOAuthSession, completeOAuthLogin]);
+    }, [clearOAuthSession, completeOAuthLogin, adoptMainAuthResult]);
 
     // Handle OAuth callback (call this from App.jsx on mount)
     const handleOAuthCallback = useCallback(async () => {
@@ -737,6 +872,14 @@ export const MSGraphProvider = ({ children }) => {
 
     const logout = async () => {
         try {
+            if (isMainAuthAvailable()) {
+                try {
+                    await window.electronAPI.microsoftSignOut(); // clears the main-process MSAL cache
+                } catch {
+                    // Best-effort; the marker row below is removed regardless.
+                }
+            }
+            custodyRef.current = null;
             await removeConnection();
             setAccount(null);
             setIsAuthenticated(false);

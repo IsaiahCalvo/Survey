@@ -129,8 +129,17 @@ contextBridge.exposeInMainWorld('electronAPI', {
     return () => ipcRenderer.removeListener('menu:check-for-updates', subscription);
   },
 
-  // OAuth APIs - opens a separate window for authentication
+  // OAuth APIs - opens a separate window for authentication (LEGACY embedded flow;
+  // kept as the fallback while the system-browser flow below rolls out)
   openOAuthWindow: (authUrl, redirectUri) => ipcRenderer.invoke('oauth:openWindow', { authUrl, redirectUri }),
+
+  // Microsoft sign-in via the SYSTEM browser with main-process token custody
+  // (msal-node). The renderer only ever receives an access token + account info;
+  // refresh tokens never cross this bridge.
+  microsoftSignIn: () => ipcRenderer.invoke('msauth:signIn'),
+  microsoftGetAccessToken: (options) => ipcRenderer.invoke('msauth:getAccessToken', options || {}),
+  microsoftAuthStatus: () => ipcRenderer.invoke('msauth:status'),
+  microsoftSignOut: () => ipcRenderer.invoke('msauth:signOut'),
 
   // 2026-04-26 — Renderer flips the developer-mode gate on/off based on
   // the signed-in user's tier. When ON, the View menu shows Reload +

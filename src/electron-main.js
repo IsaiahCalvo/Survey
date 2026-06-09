@@ -1,6 +1,6 @@
 // electron-main.js
 // electron-main.js
-const { app, BrowserWindow, ipcMain, dialog, shell, Menu } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, shell, Menu, safeStorage } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const { exec, spawn } = require('child_process');
@@ -1552,6 +1552,13 @@ ipcMain.handle('logs:saveSnapshot', async (event, payload = {}) => {
     return { ok: false, error: error?.message || String(error) };
   }
 });
+
+// Microsoft sign-in via the SYSTEM browser with main-process token custody
+// (PLAN.md Amendment 2026-06-08(b) #5). Registers msauth:signIn / getAccessToken /
+// status / signOut. The embedded oauth:openWindow flow below stays as the legacy
+// fallback while this rolls out.
+const { registerMicrosoftAuthIpc } = require('./electron/msalAuthMain.js');
+registerMicrosoftAuthIpc({ ipcMain, app, shell, safeStorage });
 
 // OAuth window handler for Microsoft authentication
 // Opens a separate window for OAuth flow, captures the redirect, and returns the result

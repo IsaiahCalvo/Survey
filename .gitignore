@@ -83,3 +83,7 @@ audit/**/*.log
 
 # Dev-only test fixture for ?testPdf= route (do not commit)
 public/debug-fixtures/
+
+# Main-process MSAL token cache (only ever in userData; ignore if a dev profile points into the repo)
+ms-auth-cache.bin
+ms-auth-cache.bin.tmp
