@@ -1,15 +1,20 @@
 # Handoff — Excel ↔ Survey Marker sync: remaining open items
 
-**Updated:** 2026-06-09. **Branch:** `main` (local, unpushed — direct-to-main; the user tests on their dev server; push only on their say-so).
+**Updated:** 2026-06-09 (late). **Branch:** `main` (local, unpushed — direct-to-main; the user tests on their dev server; push only on their say-so). **HEAD when written:** `ea3c725c`. **New model:** the user is switching to Claude Code's latest model from here; this handoff is the clean entry point for it.
 
 This is the entry point for the next session. It confirms the user's open-items list against the live code, adds the items that were missing from that list, and recommends what to do next. Background contract is still `PLAN.md` (read the "Product Decision Amendments — 2026-06-08 (GOVERNING)" section first) and `PLAN-REVIEW-LOG.md`. Prior progress is in `HANDOFF-excel-sync.md`.
+
+## What changed most recently (read this first)
+
+- **Items 1, 4, 5, 6 are DONE and committed.** The Excel↔app conflict flow is live end-to-end: a both-sides edit flags the row, and the Survey-panel review marker offers "keep app" / "use Excel" (one choice per item). Excel-driven deletion of previously-RECEIVED markers is enabled and routed through History (one-click restore), verified to bring back the full marker including its PDF location.
+- **A separate session overhauled the Survey panel** (`feat(survey): refine marker row controls`, `9e1259d0`, plus tooltip refinements `5c784d7f`/`3a6e6e75`/`ea3c725c`). Rows are now drag-to-reorder, with expand/collapse, rename, per-row trash, a multi-select delete toolbar, and a reworked entity swatch/dropdown. The conflict choice was refactored out of an inline block into a dedicated `SurveyMarkerReviewIndicator` component (`onKeepApp` / `onUseExcel` → still call `onResolveExcelConflict(markerId, 'app'|'excel')`). The feature is intact; just componentized + restyled. Treat `src/SurveySpacesRail.jsx` as freshly-rewritten and high-churn — re-read it before editing.
 
 ## Working invariants (do not break)
 
 - Plain-English only in replies to the user (no file paths / code names / line numbers). Always write "Survey Marker" in full.
 - Direct-to-main: commit locally, do NOT push without the user's say-so. Gate every change on `npx vite build` + `node scripts/run-node-tests.mjs`. Baseline at this handoff: **1110 pass / 0 fail / 6 skipped**, build clean (was 1078 before items 5 & 4 landed).
 - Live Excel writeback master gate stays **OFF** (`LIVE_WRITEBACK_ENABLED = false` in `src/services/excelCapability.js`) until proven on a real work M365 account.
-- Excel-driven deletion of PLACED Survey Markers stays review-only for now (flagged, never auto-deleted). High-risk files (minimum-viable-diff, run tests after): `src/PDFViewer.jsx`, `src/SurveySpacesRail.jsx`, the Fabric canvases, `src/components/SVGAnnotationLayer.jsx`.
+- Excel-driven deletion: a previously-RECEIVED marker (carries `exportedAt`) whose row disappears is now auto-removed via History (restorable). A marker Excel never received, and the legacy name-match path (sheets with no Row ID column), still protect placed markers — leave those as-is. High-risk files (minimum-viable-diff, run tests after): `src/PDFViewer.jsx`, `src/SurveySpacesRail.jsx` (freshly rewritten), the Fabric canvases, `src/components/SVGAnnotationLayer.jsx`.
 
 ## Status of the user's 7 items (confirmed against code)
 
