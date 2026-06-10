@@ -11,7 +11,8 @@
 import { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import Icon from './Icons';
 import { diff, union, intersection } from 'martinez-polygon-clipping';
-import { REGION_OPERATIONS, polygonToRegionCoords, regionToPolygon, simplifyPolygon, subtractRegionFromRegion } from './utils/regionMath';
+import { REGION_OPERATIONS, polygonToRegionCoords, regionToPolygon, simplifyPolygon, subtractRegionFromRegion, rotateCoordsAroundPoint, getRegionRotation, normalizeRegionRotation, deriveRegionChromeGeometry } from './utils/regionMath';
+import { isUndoKeyEvent, isRedoKeyEvent } from './utils/undoRedoHotkeys';
 import { calculateViewportSafePosition } from './utils/menuPositioning';
 import { HANDLE_FILL, HANDLE_RING, HANDLE_RADIUS } from './utils/handleStyle';
 // KAL-301 REDO: rotation chrome copies the day-one standard implementation.
@@ -40,23 +41,9 @@ const regionEditHistoryStore = new Map();
 const ROT_PILL_HOVER_INTENT_MS = 150;
 const ROT_PILL_GRACE_MS = 500;
 
-// KAL-301 REDO: pure rotation bake — rotate a flat [x0,y0,x1,y1,...] coord
-// array around (cx, cy) by angleDeg (degrees, clockwise in screen space, the
-// same direction as the SVG rotate() transform used for the live preview, so
-// what you see during the drag is exactly what gets committed on release).
-const rotateCoordsAroundPoint = (coords, cx, cy, angleDeg) => {
-  const rad = (angleDeg * Math.PI) / 180;
-  const cosA = Math.cos(rad);
-  const sinA = Math.sin(rad);
-  const rotated = new Array(coords.length);
-  for (let i = 0; i < coords.length; i += 2) {
-    const dx = coords[i] - cx;
-    const dy = coords[i + 1] - cy;
-    rotated[i] = cx + dx * cosA - dy * sinA;
-    rotated[i + 1] = cy + dx * sinA + dy * cosA;
-  }
-  return rotated;
-};
+// KAL-301 follow-up: rotation bake math + chrome-geometry derivation moved to
+// utils/regionMath.js (rotateCoordsAroundPoint, deriveRegionChromeGeometry)
+// so the node test suite exercises the real implementation.
 
 const regionDebug = (...args) => {
   if (typeof window === 'undefined' || window.__REGION_DEBUG !== true) return;
@@ -103,7 +90,12 @@ const RegionSelectionTool = ({
   onSetFullPage,
   canSetFullPage = false,
   initialRegions = [],
-  activeTool = null // Active tool from parent (e.g., 'pan' when space is held)
+  activeTool = null, // Active tool from parent (e.g., 'pan' when space is held)
+  // KAL-301 follow-up: bridge the region-edit history into the app's top
+  // toolbar. Called with { canUndo, canRedo, undo, redo } whenever the
+  // region undo/redo stacks change, and with null on deactivate, so the
+  // toolbar buttons can light up and drive region undo/redo while editing.
+  onHistoryStateChange = null
 }) => {
   const [toolType, setToolType] = useState('rectangular'); // 'rectangular' | 'freehand' | 'move'
   const [selectionMode, setSelectionMode] = useState(REGION_OPERATIONS.ADD); // 'add' | 'subtract'
@@ -132,12 +124,13 @@ const RegionSelectionTool = ({
   // selected region + its entire selection chrome render with a
   // rotate(angle, cx, cy) transform; coords are baked ONCE at mouse-up.
   const [liveRotationAngle, setLiveRotationAngle] = useState(null);
-  // KAL-301 REDO: cumulative angle applied to the current selection via the
-  // rotation pill / rotate drags in this selection session. Regions bake
-  // rotation into coords (no persisted angle field), so this is what makes
-  // the standard pill's absolute-angle semantics work: typing 50 after a 30°
-  // rotate applies the missing 20°. Reset when the selection changes.
-  const [pillSessionAngle, setPillSessionAngle] = useState(0);
+  // KAL-301 follow-up: rotation now PERSISTS on the region object as a
+  // `rotation` field (degrees [0,360), Fabric convention 0 = up) — the same
+  // model standard annotations use for their `angle`. Coords are still baked
+  // at release (hit-testing, boolean ops, overlays and export keep consuming
+  // plain polygons), but the chrome re-renders tilted from region.rotation,
+  // so release / deselect / re-select all keep the tilted box. The pill's
+  // absolute angle is read straight from the selected region's rotation.
   // KAL-301 REDO: hover-driven visibility for the standard RotationInputField
   // pill (150ms hover intent / 500ms grace — same machine as EDIT-12).
   const [rotPillVisible, setRotPillVisible] = useState(false);
@@ -305,12 +298,36 @@ const RegionSelectionTool = ({
     regions: cloneRegionsForUndo(snapshot?.regions)
   }), [cloneRegionsForUndo]);
 
+  // KAL-301 follow-up: history bridge to the app's top toolbar.
+  // - onHistoryStateChangeRef: latest callback without re-subscribing effects.
+  // - latestUndoRedoRef: latest undo/redo implementations (their useCallback
+  //   identity changes with historyKey), read at click time by two STABLE
+  //   wrappers so the published API object only changes when the canUndo /
+  //   canRedo booleans actually flip — respecting the chrome-publish
+  //   identity-churn rule (CLAUDE.md 2026-05-13 gotcha).
+  const onHistoryStateChangeRef = useRef(onHistoryStateChange);
+  onHistoryStateChangeRef.current = onHistoryStateChange;
+  const latestUndoRedoRef = useRef({ undo: null, redo: null });
+  const stableBridgeUndo = useCallback(() => latestUndoRedoRef.current.undo?.(), []);
+  const stableBridgeRedo = useCallback(() => latestUndoRedoRef.current.redo?.(), []);
+  const notifyHistoryState = useCallback(() => {
+    onHistoryStateChangeRef.current?.({
+      canUndo: undoStackRef.current.length > 0,
+      canRedo: redoStackRef.current.length > 0,
+      undo: stableBridgeUndo,
+      redo: stableBridgeRedo
+    });
+  }, [stableBridgeUndo, stableBridgeRedo]);
+
   const persistHistoryStacks = useCallback(() => {
     regionEditHistoryStore.set(historyKey, {
       undo: undoStackRef.current.map(cloneHistorySnapshot),
       redo: redoStackRef.current.map(cloneHistorySnapshot)
     });
-  }, [cloneHistorySnapshot, historyKey]);
+    // Every stack mutation funnels through here (push, undo, redo, drag-end
+    // direct push, session restore) — the single choke point for the bridge.
+    notifyHistoryState();
+  }, [cloneHistorySnapshot, historyKey, notifyHistoryState]);
 
   const pushUndoSnapshot = useCallback(() => {
     undoStackRef.current.push(createHistorySnapshot());
@@ -354,6 +371,20 @@ const RegionSelectionTool = ({
     persistHistoryStacks();
     return restoreHistorySnapshot(snapshot);
   }, [createHistorySnapshot, persistHistoryStacks, restoreHistorySnapshot]);
+
+  // KAL-301 follow-up: keep the bridge's click targets pointing at the latest
+  // undo/redo implementations, and clear the published API on deactivate /
+  // unmount so the toolbar falls back to the main annotation history.
+  useEffect(() => {
+    latestUndoRedoRef.current = { undo: undoLastRegionEdit, redo: redoLastRegionEdit };
+  }, [undoLastRegionEdit, redoLastRegionEdit]);
+  useEffect(() => {
+    if (!active) {
+      onHistoryStateChangeRef.current?.(null);
+      return undefined;
+    }
+    return () => { onHistoryStateChangeRef.current?.(null); };
+  }, [active]);
 
   useEffect(() => {
     if (!active) {
@@ -722,13 +753,13 @@ const RegionSelectionTool = ({
   }, [handleRotHandleHoverLeave]);
 
   // Bake a rotation delta (degrees) into a region's coordinates around its
-  // bbox center, with an undo checkpoint. Regions are flat polygons — unlike
-  // standard annotations there is no persisted angle field, so rotation
-  // commits by rewriting coords once (NOT per-frame; per-frame baking was the
-  // first attempt's mistake — it made the chrome resize around the rotating
-  // coords instead of rotating with the shape).
+  // bbox center, with an undo checkpoint. Coords are baked so hit-testing,
+  // boolean ops, overlays and export keep consuming plain polygons — and the
+  // accumulated display angle PERSISTS on region.rotation (KAL-301 follow-up)
+  // so the selection chrome stays tilted after release, exactly like a
+  // standard annotation persisting obj.angle.
   const bakeRegionRotation = useCallback((regionId, deltaDeg) => {
-    const norm = ((deltaDeg % 360) + 360) % 360;
+    const norm = normalizeRegionRotation(deltaDeg);
     if (norm === 0) return false;
     const region = regionsRef.current.find(r => r.regionId === regionId);
     if (!region) return false;
@@ -738,6 +769,7 @@ const RegionSelectionTool = ({
     const cy = (bounds.minY + bounds.maxY) / 2;
     pushUndoSnapshot();
     const rotated = rotateCoordsAroundPoint(region.coordinates, cx, cy, norm);
+    const newRotation = normalizeRegionRotation(getRegionRotation(region) + norm);
     setRegions(prev => prev.map(r => (
       r.regionId === regionId
         ? {
@@ -745,7 +777,8 @@ const RegionSelectionTool = ({
             // A rectangle rotated off-axis is no longer axis-aligned; the
             // resize path rebuilds 'rectangular' coords from bounds, which
             // would silently un-rotate it. 90° multiples stay rectangular.
-            shapeType: norm % 90 === 0 ? r.shapeType : 'polygon',
+            shapeType: newRotation % 90 === 0 ? r.shapeType : 'polygon',
+            rotation: newRotation,
             coordinates: rotated
           }
         : r
@@ -754,22 +787,19 @@ const RegionSelectionTool = ({
   }, [getRegionBounds, pushUndoSnapshot]);
 
   // Standard pill commit semantics (absolute angle): the typed value is the
-  // shape's absolute angle for this selection session; we apply the delta
-  // from what has already been baked.
+  // region's absolute persisted angle; apply the delta from region.rotation.
   const handleRotationPillCommit = useCallback((regionId, newAngle) => {
-    const target = ((Number(newAngle) % 360) + 360) % 360;
-    const delta = target - pillSessionAngle;
-    if (bakeRegionRotation(regionId, delta)) {
-      setPillSessionAngle(target);
-    }
-  }, [pillSessionAngle, bakeRegionRotation]);
+    const region = regionsRef.current.find(r => r.regionId === regionId);
+    if (!region) return;
+    const target = normalizeRegionRotation(Number(newAngle));
+    bakeRegionRotation(regionId, target - getRegionRotation(region));
+  }, [bakeRegionRotation]);
 
-  // Selection change closes the pill and resets the session angle (regions
-  // bake their rotation, so a fresh selection always reads 0°).
+  // Selection change closes the pill (the angle itself now lives on the
+  // region object, so there is no per-selection session state to reset).
   useEffect(() => {
     clearRotPillTimers();
     setRotPillVisible(false);
-    setPillSessionAngle(0);
   }, [selectedRegionIds, clearRotPillTimers]);
 
   // Cleanup timers on unmount / deactivate.
@@ -1562,10 +1592,15 @@ const RegionSelectionTool = ({
       // angle is written into the coords (the polygon-region equivalent of a
       // standard annotation persisting obj.angle).
       if (interactionState.type === 'rotate') {
-        const finalAngle = ((Number(liveRotationAngle ?? 0) % 360) + 360) % 360;
-        const { regionId, center, initialCoords } = interactionState;
-        if (dragHasMovedRef.current && finalAngle !== 0 && center && Array.isArray(initialCoords)) {
-          const rotated = rotateCoordsAroundPoint(initialCoords, center.cx, center.cy, finalAngle);
+        const finalAngle = normalizeRegionRotation(liveRotationAngle ?? 0);
+        const { regionId, center, initialCoords, baseRotation = 0 } = interactionState;
+        // KAL-301 follow-up: only the DELTA from the persisted base rotation
+        // gets baked into coords (they already contain the base); the new
+        // absolute angle persists on region.rotation so the chrome keeps the
+        // tilted box after release / deselect / re-select.
+        const deltaAngle = normalizeRegionRotation(finalAngle - baseRotation);
+        if (dragHasMovedRef.current && deltaAngle !== 0 && center && Array.isArray(initialCoords)) {
+          const rotated = rotateCoordsAroundPoint(initialCoords, center.cx, center.cy, deltaAngle);
           setRegions(prev => prev.map(r => (
             r.regionId === regionId
               ? {
@@ -1574,12 +1609,11 @@ const RegionSelectionTool = ({
                   // resize path rebuilds rect coords from bounds, silently
                   // un-rotating). 90° multiples stay rectangular.
                   shapeType: finalAngle % 90 === 0 ? r.shapeType : 'polygon',
+                  rotation: finalAngle,
                   coordinates: rotated
                 }
               : r
           )));
-          // Keep the pill's absolute-angle session in sync with the bake.
-          setPillSessionAngle(prev => (((prev + finalAngle) % 360) + 360) % 360);
         } else {
           // Grab-and-release without an effective rotation — no undo entry.
           dragHasMovedRef.current = false;
@@ -1915,12 +1949,18 @@ const RegionSelectionTool = ({
     // KAL-301a: pre-drag snapshot for undo (pushed at drag-END only if moved)
     const preSnapshot = createHistorySnapshot();
     dragHasMovedRef.current = false;
-    setLiveRotationAngle(0);
+    // KAL-301 follow-up: the live angle starts at the region's PERSISTED
+    // rotation. The mtr handle of a tilted chrome sits at that angle from
+    // the pivot, so the first pointermove's absolute angle is continuous —
+    // no jump, same behavior as grabbing a rotated annotation's mtr.
+    const baseRotation = getRegionRotation(region);
+    setLiveRotationAngle(baseRotation);
     setInteractionState({
       type: 'rotate',
       regionId: region.regionId,
       center: { cx, cy },
       initialCoords: [...region.coordinates],
+      baseRotation,
       preSnapshot
     });
   }, [active, effectiveToolType, targetElement, getRegionBounds, createHistorySnapshot]);
@@ -2255,11 +2295,12 @@ const RegionSelectionTool = ({
       // KAL-301 REDO: never hijack undo/redo while the user is typing in an
       // input (e.g. the rotation pill) — let the field's native undo work.
       const inEditableTarget = isEditableKeyboardTarget();
-      const isUndoShortcut = !inEditableTarget && (event.metaKey || event.ctrlKey) && !event.shiftKey && event.key?.toLowerCase?.() === 'z';
-      const isRedoShortcut = !inEditableTarget && (
-        ((event.metaKey || event.ctrlKey) && event.shiftKey && event.key?.toLowerCase?.() === 'z') ||
-        ((event.ctrlKey && !event.metaKey) && event.key?.toLowerCase?.() === 'y')
-      );
+      // KAL-301 follow-up: app-wide hotkey standard (owner decision) —
+      // UNDO = Cmd/Ctrl+Z; REDO = Cmd/Ctrl+Shift+Z OR Cmd/Ctrl+Y. Shared
+      // predicates with PDFViewer's global handler (utils/undoRedoHotkeys.js)
+      // so the two surfaces can't drift.
+      const isUndoShortcut = !inEditableTarget && isUndoKeyEvent(event);
+      const isRedoShortcut = !inEditableTarget && isRedoKeyEvent(event);
       if (isRedoShortcut) {
         stopRegionKeyboardShortcut(event);
         redoLastRegionEdit();
@@ -2346,6 +2387,12 @@ const RegionSelectionTool = ({
       if (event.target.closest('[data-region-selection-ui="true"]')) {
         return;
       }
+      // KAL-301 follow-up: the app chrome's Undo/Redo cluster drives the
+      // REGION history while this tool is active — clicking those buttons
+      // must not cancel the edit session.
+      if (event.target.closest('[data-undo-redo-controls="true"]')) {
+        return;
+      }
       handleCancel();
     };
 
@@ -2398,10 +2445,17 @@ const RegionSelectionTool = ({
 
   // KAL-301 REDO: live rotation preview transform. While a rotate drag is in
   // flight the selected region AND its full selection chrome (boundary box,
-  // every grabber, the mtr handle + stem) render inside this rotation — the
+  // every grabber, the mtr handle + stem) render inside a rotation — the
   // exact mechanism SVGSelectionOverlay uses (`<g transform="rotate(a,cx,cy)">`)
   // so a rotating region is indistinguishable from a rotating rectangle
   // annotation. Coords stay untouched until mouse-up.
+  //
+  // KAL-301 follow-up (persisted rotation): the SHAPE's coords already carry
+  // the persisted base rotation baked in, so its live preview rotates only by
+  // the DELTA (liveRotationAngle - baseRotation). The CHROME is derived from
+  // the un-rotated geometry (deriveRegionChromeGeometry) and renders at the
+  // full display angle — liveRotationAngle during a drag, region.rotation
+  // when static — which is what keeps the box tilted after release.
   const isRotatingRegion = (
     interactionState?.type === 'rotate' &&
     liveRotationAngle !== null &&
@@ -2414,9 +2468,27 @@ const RegionSelectionTool = ({
       }
     : null;
   const rotationPreviewSvgTransform = isRotatingRegion
-    ? `rotate(${liveRotationAngle} ${rotationCenterScreen.x} ${rotationCenterScreen.y})`
+    ? `rotate(${liveRotationAngle - (interactionState.baseRotation || 0)} ${rotationCenterScreen.x} ${rotationCenterScreen.y})`
     : undefined;
   const rotatingRegionId = isRotatingRegion ? interactionState.regionId : null;
+
+  // Chrome display geometry for a (possibly rotated) region: tilted box +
+  // handle positions in un-rotated space, rendered inside rotate(displayAngle).
+  const getChromeDisplay = (region) => {
+    const chrome = deriveRegionChromeGeometry(region.coordinates, getRegionRotation(region));
+    if (!chrome) return null;
+    const displayAngle = region.regionId === rotatingRegionId
+      ? liveRotationAngle
+      : chrome.rotation;
+    return {
+      ...chrome,
+      displayAngle,
+      centerScreen: {
+        x: pageToScreenX(chrome.center.cx),
+        y: pageToScreenY(chrome.center.cy)
+      }
+    };
+  };
 
   if (!active) return null;
 
@@ -2911,8 +2983,12 @@ const RegionSelectionTool = ({
             {effectiveToolType === 'move' && selectedRegionIds.size === 1 && (() => {
               const selectedRegion = regions.find(r => r.regionId === Array.from(selectedRegionIds)[0]);
               if (!selectedRegion) return null;
-              const bounds = getRegionBounds(selectedRegion);
-              if (!bounds) return null;
+              // KAL-301 follow-up: tilted-chrome geometry — un-rotated box
+              // rendered inside rotate(displayAngle, center), exactly like
+              // SVGSelectionOverlay renders a previously-rotated annotation.
+              const chrome = getChromeDisplay(selectedRegion);
+              if (!chrome) return null;
+              const { bounds, displayAngle, centerScreen } = chrome;
 
               const left = pageToScreenX(bounds.minX);
               const top = pageToScreenY(bounds.minY);
@@ -2933,7 +3009,7 @@ const RegionSelectionTool = ({
               const mtrY = top - spec.rotationOffset;
 
               return (
-                <g transform={rotationPreviewSvgTransform}>
+                <g transform={displayAngle ? `rotate(${displayAngle} ${centerScreen.x} ${centerScreen.y})` : undefined}>
                   <g
                     className="rotation-handle"
                     data-rotation-handle="mtr"
@@ -3083,10 +3159,14 @@ const RegionSelectionTool = ({
             const selectedRegion = regions.find(r => r.regionId === Array.from(selectedRegionIds)[0]);
             if (!selectedRegion) return null;
 
-            // KAL-301 REDO: during a rotate drag the whole DOM chrome (boundary
-            // box + every grabber) rides this rotated wrapper, so the box and
-            // grabbers rotate WITH the shape — same visual contract as
-            // SVGSelectionOverlay's rotated <g>. Identity transform otherwise.
+            // KAL-301 follow-up: chrome geometry is derived from the
+            // un-rotated coords and rendered inside a rotate(displayAngle)
+            // wrapper — tilted while rotating AND after release/re-select,
+            // same visual contract as SVGSelectionOverlay's rotated <g>.
+            const chromeDisplay = getChromeDisplay(selectedRegion);
+            if (!chromeDisplay) return null;
+            const { displayAngle: chromeAngle, centerScreen: chromeCenterScreen } = chromeDisplay;
+
             const wrapChrome = (children) => (
               <div
                 style={{
@@ -3096,9 +3176,9 @@ const RegionSelectionTool = ({
                   width: '100%',
                   height: '100%',
                   pointerEvents: 'none',
-                  transform: isRotatingRegion ? `rotate(${liveRotationAngle}deg)` : undefined,
-                  transformOrigin: isRotatingRegion
-                    ? `${rotationCenterScreen.x}px ${rotationCenterScreen.y}px`
+                  transform: chromeAngle ? `rotate(${chromeAngle}deg)` : undefined,
+                  transformOrigin: chromeAngle
+                    ? `${chromeCenterScreen.x}px ${chromeCenterScreen.y}px`
                     : undefined
                 }}
               >
@@ -3110,8 +3190,11 @@ const RegionSelectionTool = ({
             const useVertexHandles = vertexCount <= 32;
 
             if (useVertexHandles) {
-              // Render handles for each vertex
-              const bounds = getRegionBounds(selectedRegion);
+              // Render handles for each vertex (positions in un-rotated
+              // space — the rotated wrapper puts them back on the real
+              // vertices).
+              const bounds = chromeDisplay.bounds;
+              const chromeCoords = chromeDisplay.unrotatedCoords;
               const handles = [];
               
               // Add boundary box for vertex handles case
@@ -3154,8 +3237,8 @@ const RegionSelectionTool = ({
               }
               
               for (let i = 0; i < vertexCount; i++) {
-                const x = pageToScreenX(selectedRegion.coordinates[i * 2]);
-                const y = pageToScreenY(selectedRegion.coordinates[i * 2 + 1]);
+                const x = pageToScreenX(chromeCoords[i * 2]);
+                const y = pageToScreenY(chromeCoords[i * 2 + 1]);
 
                 handles.push(
                   <div
@@ -3181,8 +3264,9 @@ const RegionSelectionTool = ({
               }
               return wrapChrome(<>{boundaryBox}{handles}</>);
             } else {
-              // Render bounding box handles for complex shapes
-              const bounds = getRegionBounds(selectedRegion);
+              // Render bounding box handles for complex shapes (un-rotated
+              // bounds inside the rotated wrapper).
+              const bounds = chromeDisplay.bounds;
               if (!bounds) return null;
               const left = pageToScreenX(bounds.minX);
               const top = pageToScreenY(bounds.minY);
@@ -3271,9 +3355,12 @@ const RegionSelectionTool = ({
         const bounds = getRegionBounds(selectedRegion);
         if (!bounds) return null;
 
+        // KAL-301 follow-up: the pill shows the ABSOLUTE persisted angle
+        // (region.rotation), live-following the drag — identical semantics
+        // to the standard annotation pill reading obj.angle.
         const liveAngle = isRotatingRegion
-          ? (((pillSessionAngle + liveRotationAngle) % 360) + 360) % 360
-          : pillSessionAngle;
+          ? normalizeRegionRotation(liveRotationAngle)
+          : getRegionRotation(selectedRegion);
         // The overlay svg has no viewBox, so its user units ARE container-local
         // CSS pixels — pass the bbox center in those units.
         const centerLocal = {

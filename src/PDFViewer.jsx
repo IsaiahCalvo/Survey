@@ -75,6 +75,7 @@ import { debugMark } from './utils/debugBridge';
 import { deleteAnnotations, removeDocumentPresence, subscribeToDocumentAnnotations, syncAnnotationsToSupabase, updateDocumentPresence } from './services/documentAnnotationService';
 import { fromFabricGroup, toFabricGroup } from './utils/calloutEditAdapter';
 import { getActivePageRegionId, getPageAnnotationVisibilityState, normalizePageRegions, normalizeRegionVisibility } from './utils/annotationVisibilityRules';
+import { isUndoKeyEvent, isRedoKeyEvent } from './utils/undoRedoHotkeys';
 import { getCalloutSyncFingerprint } from './utils/calloutSyncPayload';
 import { isPlacedSurveyMarker } from './services/surveyMarkerSyncDiff';
 import { forceUnplacedImportedMarker, freezeGeometryFromOriginal } from './services/importFieldWhitelist';
@@ -2849,10 +2850,15 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   // when Cmd+Z is pressed, swallowing the event before our undo can run.
   // Capturing first + stopping propagation prevents the crash from firing
   // and keeps undo/redo responsive.
+  // KAL-301 follow-up — app-wide hotkey standard (owner decision 2026-06-10):
+  // UNDO = Cmd+Z or Ctrl+Z; REDO = Cmd+Shift+Z, Ctrl+Shift+Z, Cmd+Y, or
+  // Ctrl+Y. Predicates shared with RegionSelectionTool via
+  // utils/undoRedoHotkeys.js so the two surfaces can't drift.
   useEffect(() => {
     const handleUndoRedoKey = (e) => {
-      if (e.key !== 'z' && e.key !== 'Z') return;
-      if (!(e.ctrlKey || e.metaKey)) return;
+      const isUndoCombo = isUndoKeyEvent(e);
+      const isRedoCombo = isRedoKeyEvent(e);
+      if (!isUndoCombo && !isRedoCombo) return;
 
       // KAL-301 REDO: while the region-edit overlay is mounted,
       // RegionSelectionTool owns Cmd+Z / Cmd+Shift+Z through its own
@@ -2873,7 +2879,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       } else {
         e.stopPropagation();
       }
-      if (e.shiftKey) {
+      if (isRedoCombo) {
         handleRedoRef.current?.();
       } else {
         handleUndoRef.current?.();
@@ -11109,19 +11115,43 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   const canRedo = localAnnotationHistoryVersion >= 0
     && (localAnnotationRedoRef.current.length > 0 || redoHistory.length > 0 || (yjsUndoManager?.redoStack?.length || 0) > 0);
 
+  // KAL-301 follow-up: region-edit history bridge. While the region editor is
+  // open, RegionSelectionTool publishes { canUndo, canRedo, undo, redo } here
+  // (null when inactive). The setter compares before storing so the bridge
+  // never republishes on identity-only churn (CLAUDE.md 2026-05-13 gotcha —
+  // RST's undo/redo are stable wrappers, so equality holds between real
+  // stack changes).
+  const [regionHistoryApi, setRegionHistoryApi] = useState(null);
+  const handleRegionHistoryStateChange = useCallback((next) => {
+    setRegionHistoryApi(prev => {
+      if (prev === next) return prev;
+      if (
+        prev && next &&
+        prev.canUndo === next.canUndo &&
+        prev.canRedo === next.canRedo &&
+        prev.undo === next.undo &&
+        prev.redo === next.redo
+      ) return prev;
+      return next;
+    });
+  }, []);
+
   // UX 2026-05-13: Publish top toolbar state to the App shell when this tab is
   // active. The App-level chrome strip renders Undo / Redo; Survey now lives in
   // the always-visible right rail. Placed past canUndo / canRedo declarations so
   // the deps array doesn't hit a temporal-dead-zone.
+  // KAL-301 follow-up: while region editing is active the buttons reflect and
+  // drive the REGION undo/redo stacks instead of the annotation history.
   useEffect(() => {
     if (!isActive || typeof onTopToolbarApiChange !== 'function') return;
+    const useRegionHistory = showRegionSelection && regionHistoryApi;
     onTopToolbarApiChange({
-      canUndo,
-      canRedo,
-      onUndo: handleUndo,
-      onRedo: handleRedo
+      canUndo: useRegionHistory ? regionHistoryApi.canUndo : canUndo,
+      canRedo: useRegionHistory ? regionHistoryApi.canRedo : canRedo,
+      onUndo: useRegionHistory ? regionHistoryApi.undo : handleUndo,
+      onRedo: useRegionHistory ? regionHistoryApi.redo : handleRedo
     });
-  }, [isActive, canUndo, canRedo, handleUndo, handleRedo, onTopToolbarApiChange]);
+  }, [isActive, canUndo, canRedo, handleUndo, handleRedo, onTopToolbarApiChange, showRegionSelection, regionHistoryApi]);
 
 
 
@@ -26660,6 +26690,7 @@ ${pageBlocks}
             initialRegions={initialRegionsForSelection}
             onSetFullPage={handleRegionSetFullPage}
             canSetFullPage={canSetRegionToFullPage}
+            onHistoryStateChange={handleRegionHistoryStateChange}
           />
         )}
 

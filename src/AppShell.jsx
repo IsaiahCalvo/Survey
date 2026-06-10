@@ -1143,7 +1143,13 @@ export default function App() {
               toolbar where tools sat centered and adjacent helpers
               flanked them. Padding inside the strip leaves 12 px for the
               Undo/Redo cluster. */}
-          <div style={{
+          <div
+            // KAL-301 follow-up: marks the Undo/Redo cluster so
+            // RegionSelectionTool's outside-mousedown handler doesn't cancel
+            // the region-edit session when these buttons are clicked (they
+            // drive the region history while region editing is active).
+            data-undo-redo-controls="true"
+            style={{
             position: 'absolute',
             left: '12px',
             top: 0,
