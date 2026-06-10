@@ -7,6 +7,10 @@ handoffs and this file only routes you.
 
 ## Current entry point
 
+**`HANDOFF-testing-and-decisions.md`** — READ FIRST (2026-06-10): Isaiah's testing
+checklist + 9 queued decisions; the autonomous loop fleet (HANDOFF-loop.md) is
+test-audit-only until he confirms testing. Then:
+
 **`HANDOFF-testing-issue.md`** — READ FIRST (2026-06-09 night): Isaiah found an
 issue while live-testing and has a proposed solution to discuss; that file says
 exactly how to pick the conversation up. **Update 2026-06-09 late night: that
