@@ -64,7 +64,8 @@ import { canModify, getAnnotationAuthorId } from './lib/collab/permissionScope.j
 import { checkFileExists, checkFileExistsInDrive, downloadExcelFile, downloadExcelFileByPath, getFileById, getFileETag, getFileMetadata, getTemplateIdFromExcel, uploadExcelFile, uploadFileContentById, uploadFileToDrive } from './services/excelGraphService';
 import { checkSessionSupport, closeWorkbookSession, createWorkbookSession, getFileIdFromPath, getUsedRange, getWorksheets, refreshWorkbookSession, updateCellRange } from './services/excelSessionService';
 import { LIVE_SYNC_GATE_REASON, resolveLiveSyncEligibility } from './services/liveSyncEligibility';
-import { liveSyncGateStatus, rowIdWritebackMessage } from './services/excelSyncStatus';
+import { VERIFY_STEP, runLiveSyncVerification } from './services/liveSyncVerification';
+import { liveSyncGateStatus, liveSyncVerifyStatus, rowIdWritebackMessage } from './services/excelSyncStatus';
 import { drainRowIdWritebackQueue } from './services/rowIdGraphWriteback';
 import { drainRowIdWritebackQueueLocal } from './services/rowIdLocalWriteback';
 import { clearDebugState, debugLog, emitDebugEvent as emitPdfDebugEvent, getDebugSnapshot, setDebugData, setDebugEnabled as setPdfDebugEnabled, setLastDebugError, setPresenceDebugStatus } from './utils/pdfDebug';
@@ -7178,6 +7179,11 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   const [liveSyncGate, setLiveSyncGate] = useState(null);
   const liveSyncDriveTypeCacheRef = useRef(new Map()); // per-drive driveType probe cache (lazy, no polling)
   const liveSyncGateInFlightRef = useRef(false);
+  // "Verify Live Sync" probe state (read-only guided check, slice 4):
+  // null = never run; {state:'checking'} while running; {state:'done', ready,
+  // verdictCode, failedStep, steps} afterwards. Feeds the rail menu row.
+  const [liveSyncVerify, setLiveSyncVerify] = useState(null);
+  const liveSyncVerifyInFlightRef = useRef(false);
   const rowIdDrainInFlightRef = useRef(false); // one Row ID writeback drain pass at a time
   const localRowIdFlushInFlightRef = useRef(false); // one local "Excel closed" flush pass at a time
   // Latest-ref for the local flush (assigned each render where it's defined, just
@@ -15400,10 +15406,70 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     }
   }, [liveSyncEnabled, liveSyncSupported, selectedTemplate, graphClient, isMSAuthenticated, msGetAuthSignals]);
 
+  // Amendment 2026-06-08(b), slice 4 — guided "Verify Live Sync": a STRICTLY
+  // READ-ONLY, step-by-step probe (sign-in → work account → business drive →
+  // workbook session → usedRange → sync stamp) the user runs right after the
+  // first work-account sign-in. Steps 1–3 REUSE the slice-1 eligibility gate
+  // and its per-drive driveType cache; steps 4–6 run under one non-persistent
+  // workbook session that is always closed. It never writes, never flips any
+  // gate, and never enables live sync by itself. The verdict lands on the
+  // sync banner in plain English (excelSyncStatus vocabulary); a token that
+  // cannot refresh surfaces the reconnect status — never a silent fail.
+  const handleVerifyLiveSync = useCallback(async () => {
+    if (liveSyncVerifyInFlightRef.current) return;
+    liveSyncVerifyInFlightRef.current = true;
+    setLiveSyncVerify({ state: 'checking' });
+    setLastSyncMessage(liveSyncVerifyStatus('verifying').label);
+    try {
+      // Refresh the token up front (same pattern as the export/import paths).
+      // A token that cannot refresh IS the verdict: reconnect.
+      if (ensureFreshToken && graphClient) {
+        let tokenValid = false;
+        try { tokenValid = await ensureFreshToken(); } catch { tokenValid = false; }
+        if (!tokenValid) {
+          setLiveSyncVerify({ state: 'done', ready: false, verdictCode: 'auth-expired', failedStep: VERIFY_STEP.SIGN_IN, steps: [] });
+          setLastSyncMessage(liveSyncVerifyStatus('auth-expired').label);
+          setTimeout(() => setLastSyncMessage(''), 8000);
+          return;
+        }
+      }
+      const result = await runLiveSyncVerification({
+        template: selectedTemplate,
+        graphClient,
+        isMicrosoftConnected: Boolean(isMSAuthenticated && graphClient),
+        getAuthSignals: msGetAuthSignals,
+        driveTypeCache: liveSyncDriveTypeCacheRef.current,
+        appExportStamp: latestAppExportStamp(surveyMarkersRef.current || {})
+      });
+      setLiveSyncVerify({
+        state: 'done',
+        ready: result.ready,
+        verdictCode: result.verdictCode,
+        failedStep: result.failedStep,
+        steps: result.steps
+      });
+      // Keep the Live Sync toggle's displayed verdict in step with what the
+      // probe just proved (same eligibility shape slice 1 stores).
+      if (result.eligibility) setLiveSyncGate(result.eligibility);
+      setLastSyncMessage(liveSyncVerifyStatus(result.verdictCode).label);
+      setTimeout(() => setLastSyncMessage(''), 8000);
+    } catch (verifyErr) {
+      // The service handles its own probe failures; this is a belt-and-braces
+      // fail-safe so the user always gets a verdict — never a silent fail.
+      console.warn('[LiveSync] Verification failed:', verifyErr);
+      setLiveSyncVerify({ state: 'done', ready: false, verdictCode: 'workbook-read-failed', failedStep: null, steps: [] });
+      setLastSyncMessage(liveSyncVerifyStatus('workbook-read-failed').label);
+      setTimeout(() => setLastSyncMessage(''), 8000);
+    } finally {
+      liveSyncVerifyInFlightRef.current = false;
+    }
+  }, [selectedTemplate, graphClient, isMSAuthenticated, msGetAuthSignals, ensureFreshToken]);
+
   // A different link (or unlink) invalidates the displayed gate verdict; the
   // per-drive driveType cache stays — driveType is a property of the drive.
   useEffect(() => {
     setLiveSyncGate(null);
+    setLiveSyncVerify(null); // a verify verdict is per-link too
   }, [selectedTemplate?.id, selectedTemplate?.linkedExcelPath]);
 
   // Live sync lifecycle management (OneDrive only)
@@ -26014,6 +26080,7 @@ ${pageBlocks}
       liveSyncGate,
       liveSyncStatus,
       liveSyncSupported,
+      liveSyncVerify,
       msLogin,
       msNeedsReconnect,
       normalizeSurveyMarkerColor,
@@ -26021,6 +26088,8 @@ ${pageBlocks}
       // Amendment (b): the rail toggles live sync ONLY through the gated
       // request — never via the raw setter.
       onLiveSyncToggle: handleLiveSyncToggleRequest,
+      // Slice 4: the read-only guided "Verify Live Sync" probe.
+      onVerifyLiveSync: handleVerifyLiveSync,
       onRequestCreateTemplate,
       pdfFile,
       scale,
@@ -26142,7 +26211,9 @@ ${pageBlocks}
     liveSyncGate,
     liveSyncStatus,
     liveSyncSupported,
+    liveSyncVerify,
     handleLiveSyncToggleRequest,
+    handleVerifyLiveSync,
     msLogin,
     msNeedsReconnect,
     normalizeSurveyMarkerColor,

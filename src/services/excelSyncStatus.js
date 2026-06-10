@@ -48,6 +48,41 @@ export const LIVE_SYNC_GATE_STATUS = Object.freeze({
 export const liveSyncGateStatus = (reasonCode) =>
   LIVE_SYNC_GATE_STATUS[reasonCode] || LIVE_SYNC_GATE_STATUS['unconfirmed-business'];
 
+// "Verify Live Sync" probe verdicts (src/services/liveSyncVerification.js).
+// The probe's first three steps reuse the gate vocabulary above; these cover
+// the live workbook steps (open / read / sync stamp) plus the overall verdict.
+// Wording is tuned so syncMessageTone colors each banner honestly.
+export const LIVE_SYNC_VERIFY_STATUS = Object.freeze({
+  'idle': { key: 'idle', label: 'Check this workbook is ready for live sync (read-only)', tone: SYNC_TONE.INFO },
+  'ready': { key: 'ready', label: 'Live sync ready — this workbook can sync in real time', tone: SYNC_TONE.SUCCESS },
+  'verifying': { key: 'verifying', label: 'Checking live sync, step by step…', tone: SYNC_TONE.INFO },
+  'auth-expired': { key: 'auth-expired', label: 'Microsoft sign-in expired — reconnect your Microsoft account in Account Settings, then verify again', tone: SYNC_TONE.WARN },
+  'workbook-open-failed': { key: 'workbook-open-failed', label: 'Couldn’t open the Excel workbook for live sync — check the file still exists, then verify again', tone: SYNC_TONE.ERROR },
+  'workbook-read-failed': { key: 'workbook-read-failed', label: 'Couldn’t read the Excel workbook — try verifying again in a moment', tone: SYNC_TONE.ERROR },
+  'no-sync-stamp': { key: 'no-sync-stamp', label: 'This workbook has no sync stamp yet — push to Excel once, then verify again', tone: SYNC_TONE.WARN },
+  'stale-workbook': { key: 'stale-workbook', label: 'This Excel file looks older than your latest export — pull from Excel to review it first', tone: SYNC_TONE.WARN }
+});
+
+// Plain-English names for the probe's ordered steps (tooltips / details).
+export const LIVE_SYNC_VERIFY_STEP_LABELS = Object.freeze({
+  'sign-in': 'Microsoft sign-in',
+  'work-account': 'Work or school account',
+  'business-file': 'Business OneDrive or SharePoint file',
+  'workbook-open': 'Workbook opens for live sync',
+  'workbook-read': 'Workbook contents readable',
+  'sync-stamp': 'Sync stamp check'
+});
+
+/**
+ * Verify verdict code → plain-English status. Probe-specific codes first, then
+ * the slice-1 gate refusals (the probe's steps 1–3 reuse those codes), then the
+ * safe fallback.
+ */
+export const liveSyncVerifyStatus = (verdictCode) =>
+  LIVE_SYNC_VERIFY_STATUS[verdictCode]
+    || LIVE_SYNC_GATE_STATUS[verdictCode]
+    || LIVE_SYNC_GATE_STATUS['unconfirmed-business'];
+
 /**
  * Plain-English banner message for a Row ID writeback drain result — BOTH
  * drains share this vocabulary: the business-Graph single-cell writer
@@ -117,7 +152,7 @@ export const syncMessageTone = (message) => {
   if (!text) return SYNC_TONE.INFO;
   if (/(failed|error|couldn.t|can.t|unable)/.test(text)) return SYNC_TONE.ERROR;
   if (/(close excel|needs? your choice|queued|needs sync|looks older|no sync stamp|sync skipped|sign in with|reconnect your microsoft|work or school account|not confirmed as a work)/.test(text)) return SYNC_TONE.WARN;
-  if (/(synced|saved|complete|up to date)/.test(text)) return SYNC_TONE.SUCCESS;
+  if (/(synced|saved|complete|up to date|live sync ready)/.test(text)) return SYNC_TONE.SUCCESS;
   return SYNC_TONE.INFO;
 };
 

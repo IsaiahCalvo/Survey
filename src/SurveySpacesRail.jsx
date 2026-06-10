@@ -18,7 +18,7 @@ import { SortableRearrangeList, SortableRearrangeRow } from './reorder/SortableR
 import { moveItemById } from './reorder/flatReorderUtils.js';
 import { COLORS } from './theme';
 import reviewWarningIcon from './assets/review-warning.svg';
-import { liveSyncGateStatus, syncMessagePresentation } from './services/excelSyncStatus';
+import { SYNC_TONE_COLORS, liveSyncGateStatus, liveSyncVerifyStatus, syncMessagePresentation } from './services/excelSyncStatus';
 import { compareSurveyMarkersForOrder } from './utils/surveyMarkerOrdering';
 
 const FONT_FAMILY = '-apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", "Segoe UI", Roboto, Ubuntu, "Noto Sans", Arial, sans-serif';
@@ -266,11 +266,13 @@ const SurveySpacesRail = ({
   liveSyncGate,
   liveSyncStatus,
   liveSyncSupported,
+  liveSyncVerify,
   msLogin,
   msNeedsReconnect,
   normalizeSurveyMarkerColor,
   numPages,
   onLiveSyncToggle,
+  onVerifyLiveSync,
   onRequestCreateTemplate,
   pdfFile,
   scale,
@@ -3167,6 +3169,49 @@ const SurveySpacesRail = ({
                                     : '○'}
                               </span>
                               Live Sync
+                            </div>
+                            );
+                          })()}
+                          {selectedTemplate?.isOneDrive && (() => {
+                            // Slice 4 — guided "Verify Live Sync": a READ-ONLY,
+                            // step-by-step check of the whole live-sync path. The
+                            // verdict (and the running state) comes from the shared
+                            // excelSyncStatus vocabulary — never an inline literal.
+                            const verifying = liveSyncVerify?.state === 'checking';
+                            const verdict = liveSyncVerify?.state === 'done'
+                              ? liveSyncVerifyStatus(liveSyncVerify.verdictCode)
+                              : null;
+                            const verdictColor = verdict ? SYNC_TONE_COLORS[verdict.tone]?.color : null;
+                            return (
+                            <div
+                              onClick={() => {
+                                if (verifying) return;
+                                if (typeof onVerifyLiveSync === 'function') onVerifyLiveSync();
+                              }}
+                              style={{
+                                padding: '12px 16px',
+                                color: verifying ? '#f39c12' : (verdictColor || '#fff'),
+                                fontSize: '14px',
+                                cursor: verifying ? 'wait' : 'pointer',
+                                borderTop: '1px solid #444',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '8px'
+                              }}
+                              onMouseEnter={(e) => e.currentTarget.style.background = '#444'}
+                              onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+                              title={
+                                verifying
+                                  ? liveSyncVerifyStatus('verifying').label
+                                  : verdict
+                                    ? verdict.label
+                                    : liveSyncVerifyStatus('idle').label
+                              }
+                            >
+                              <span style={{ fontSize: '14px' }}>
+                                {verifying ? '...' : verdict ? (liveSyncVerify.ready ? '✓' : '!') : '○'}
+                              </span>
+                              Verify Live Sync
                             </div>
                             );
                           })()}
