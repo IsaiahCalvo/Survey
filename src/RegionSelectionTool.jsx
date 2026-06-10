@@ -493,18 +493,30 @@ const RegionSelectionTool = ({
           ? storedHistory.redo.map(cloneHistorySnapshot)
           : [];
         hasInitializedRegionsRef.current = true;
+        // Clear selection and interaction state on session start / page switch.
+        // Do NOT clear here on mid-session re-runs (when hasInitializedRegionsRef was already
+        // true) — that would silently deselect regions during background Yjs syncs (KAL-300).
+        setSelectedRegionIds(new Set());
+        setInteractionState(null);
+        setIsDrawing(false);
+        setCurrentRect(null);
+        setPolygonPoints([]);
+        setIsCursorOverCanvas(false);
       }
     } else {
       persistHistoryStacks();
       setRegions([]);
       hasInitializedRegionsRef.current = false;
+      // Clear selection and interaction state when the region-edit session ends
+      // (cancel or deactivate). This is the only correct moment to wipe selection
+      // — NOT during mid-session re-renders caused by background spaces updates.
+      setSelectedRegionIds(new Set());
+      setInteractionState(null);
+      setIsDrawing(false);
+      setCurrentRect(null);
+      setPolygonPoints([]);
+      setIsCursorOverCanvas(false);
     }
-    setSelectedRegionIds(new Set());
-    setInteractionState(null);
-    setIsDrawing(false);
-    setCurrentRect(null);
-    setPolygonPoints([]);
-    setIsCursorOverCanvas(false);
   }, [active, initialRegions, historyKey, cloneHistorySnapshot, persistHistoryStacks]);
 
   useEffect(() => {

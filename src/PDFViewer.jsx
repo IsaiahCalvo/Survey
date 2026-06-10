@@ -25124,6 +25124,20 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     return allRegions;
   }, [activeSpaceId, spaces, showRegionSelection, regionSelectionPage]);
 
+  // Stable reference for the region-selection tool's initial regions.
+  // Memoized so the array identity only changes when the underlying space data
+  // actually changes — not on every PDFViewer render.  Without this, any spaces
+  // state update (e.g. a remote Yjs sync) would produce a new array reference
+  // and re-fire RST's `active` effect, which previously wiped the user's
+  // in-session region selection (KAL-300).
+  const initialRegionsForSelection = useMemo(
+    () => (regionSelectionPage ? (getPageRegions(regionSelectionPage) || []) : []),
+    // getPageRegions already re-computes when spaces/activeSpaceId/regionSelectionPage change;
+    // listing the primitive deps here ensures React can compare them correctly.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [activeSpaceId, spaces, regionSelectionPage, showRegionSelection]
+  );
+
   // Track active region ID when regions are active AND OVERLAY toggle is ON
   // A regionId should only be assigned to annotations when the overlay is visible
   useEffect(() => {
@@ -26634,7 +26648,7 @@ ${pageBlocks}
             scale={regionSelectionScale}
             pageWidth={regionSelectionPage ? (pageSizes[regionSelectionPage]?.width || 0) : 0}
             pageHeight={regionSelectionPage ? (pageSizes[regionSelectionPage]?.height || 0) : 0}
-            initialRegions={regionSelectionPage ? (getPageRegions(regionSelectionPage) || []) : []}
+            initialRegions={initialRegionsForSelection}
             onSetFullPage={handleRegionSetFullPage}
             canSetFullPage={canSetRegionToFullPage}
           />
