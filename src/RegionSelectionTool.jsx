@@ -14,6 +14,16 @@ import { diff, union, intersection } from 'martinez-polygon-clipping';
 import { REGION_OPERATIONS, polygonToRegionCoords, regionToPolygon, simplifyPolygon, subtractRegionFromRegion } from './utils/regionMath';
 import { calculateViewportSafePosition } from './utils/menuPositioning';
 import { HANDLE_FILL, HANDLE_RING, HANDLE_RADIUS } from './utils/handleStyle';
+// KAL-301 REDO: rotation chrome copies the day-one standard implementation.
+// - normalizeAngle / snapAngleToNearest45: same drag math + soft Shift-snap
+//   convention as useSVGInteraction.js's rotate branch (Phase 9/EDIT-11).
+// - selectionHandleVisibility metrics: same mtr circle size / icon size /
+//   rotation offset as SVGSelectionOverlay.jsx.
+// - RotationInputField: the app's standard angle pill (EDIT-12), reused as-is.
+import { normalizeAngle, snapAngleToNearest45 } from './utils/svgTransformMath';
+import { getSelectionHandleVisualMetrics, getAdaptiveSelectionHandleSpec } from './utils/selectionHandleVisibility.js';
+import RotationInputField from './components/RotationInputField';
+import rotateIconSvg from './assets/rotate-icon.svg';
 
 const FONT_FAMILY = '-apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", "Segoe UI", Roboto, Ubuntu, "Noto Sans", Arial, sans-serif';
 const MIN_REGION_SIZE = 5;
@@ -23,6 +33,30 @@ const REGION_HANDLE_STROKE = HANDLE_RING;
 const REGION_HANDLE_FILL = HANDLE_FILL;
 const REGION_HISTORY_LIMIT = 100;
 const regionEditHistoryStore = new Map();
+
+// KAL-301 REDO: standard rotation-pill visibility timings, copied from the
+// SVGAnnotationLayer state machine (EDIT-12): 150ms hover-intent before the
+// pill appears, 500ms grace after the cursor leaves before it hides.
+const ROT_PILL_HOVER_INTENT_MS = 150;
+const ROT_PILL_GRACE_MS = 500;
+
+// KAL-301 REDO: pure rotation bake — rotate a flat [x0,y0,x1,y1,...] coord
+// array around (cx, cy) by angleDeg (degrees, clockwise in screen space, the
+// same direction as the SVG rotate() transform used for the live preview, so
+// what you see during the drag is exactly what gets committed on release).
+const rotateCoordsAroundPoint = (coords, cx, cy, angleDeg) => {
+  const rad = (angleDeg * Math.PI) / 180;
+  const cosA = Math.cos(rad);
+  const sinA = Math.sin(rad);
+  const rotated = new Array(coords.length);
+  for (let i = 0; i < coords.length; i += 2) {
+    const dx = coords[i] - cx;
+    const dy = coords[i + 1] - cy;
+    rotated[i] = cx + dx * cosA - dy * sinA;
+    rotated[i + 1] = cy + dx * sinA + dy * cosA;
+  }
+  return rotated;
+};
 
 const regionDebug = (...args) => {
   if (typeof window === 'undefined' || window.__REGION_DEBUG !== true) return;
@@ -92,9 +126,26 @@ const RegionSelectionTool = ({
   const [isCmdCtrlPressed, setIsCmdCtrlPressed] = useState(false);
   const [isSpacePressed, setIsSpacePressed] = useState(false);
   const [lastDrawingTool, setLastDrawingTool] = useState('rectangular');
-  // KAL-301c: live rotation angle shown in the pill during a rotate drag.
-  // Null when not rotating (pill hidden). Degrees [0, 360).
+  // KAL-301 REDO: live rotation angle during a rotate drag. Null when not
+  // rotating. Degrees [0, 360), Fabric convention (0 = up) — the same value
+  // the standard useSVGInteraction rotate branch produces. While set, the
+  // selected region + its entire selection chrome render with a
+  // rotate(angle, cx, cy) transform; coords are baked ONCE at mouse-up.
   const [liveRotationAngle, setLiveRotationAngle] = useState(null);
+  // KAL-301 REDO: cumulative angle applied to the current selection via the
+  // rotation pill / rotate drags in this selection session. Regions bake
+  // rotation into coords (no persisted angle field), so this is what makes
+  // the standard pill's absolute-angle semantics work: typing 50 after a 30°
+  // rotate applies the missing 20°. Reset when the selection changes.
+  const [pillSessionAngle, setPillSessionAngle] = useState(0);
+  // KAL-301 REDO: hover-driven visibility for the standard RotationInputField
+  // pill (150ms hover intent / 500ms grace — same machine as EDIT-12).
+  const [rotPillVisible, setRotPillVisible] = useState(false);
+  const rotPillHoverTimerRef = useRef(null);
+  const rotPillGraceTimerRef = useRef(null);
+  // Ref to the overlay's inline <svg> — RotationInputField self-positions by
+  // querying [data-rotation-handle="mtr"] inside this svg.
+  const overlaySvgRef = useRef(null);
   const [isToolDropdownOpen, setIsToolDropdownOpen] = useState(false);
   const [contextMenu, setContextMenu] = useState(null); // { x, y, pageX, pageY, regionId, type, canMerge, canUnmerge }
   const canvasRectRef = useRef(null);
@@ -607,6 +658,123 @@ const RegionSelectionTool = ({
     return bounds;
   }, []);
 
+  // ---------------------------------------------------------------------
+  // KAL-301 REDO: standard rotation-pill visibility machine + rotation bake.
+  // Copied behaviorally from SVGAnnotationLayer's EDIT-12 machine: 150ms
+  // hover-intent on the mtr handle shows the pill, 500ms grace after leaving
+  // hides it (unless the input holds focus), an active rotate drag forces it
+  // visible ("drag wins").
+  // ---------------------------------------------------------------------
+  const clearRotPillTimers = useCallback(() => {
+    if (rotPillHoverTimerRef.current) {
+      clearTimeout(rotPillHoverTimerRef.current);
+      rotPillHoverTimerRef.current = null;
+    }
+    if (rotPillGraceTimerRef.current) {
+      clearTimeout(rotPillGraceTimerRef.current);
+      rotPillGraceTimerRef.current = null;
+    }
+  }, []);
+
+  const handleRotHandleHoverEnter = useCallback(() => {
+    if (rotPillGraceTimerRef.current) {
+      clearTimeout(rotPillGraceTimerRef.current);
+      rotPillGraceTimerRef.current = null;
+    }
+    if (rotPillHoverTimerRef.current) return;
+    rotPillHoverTimerRef.current = setTimeout(() => {
+      rotPillHoverTimerRef.current = null;
+      setRotPillVisible(true);
+    }, ROT_PILL_HOVER_INTENT_MS);
+  }, []);
+
+  const handleRotHandleHoverLeave = useCallback(() => {
+    if (rotPillHoverTimerRef.current) {
+      clearTimeout(rotPillHoverTimerRef.current);
+      rotPillHoverTimerRef.current = null;
+    }
+    if (rotPillGraceTimerRef.current) clearTimeout(rotPillGraceTimerRef.current);
+    rotPillGraceTimerRef.current = setTimeout(() => {
+      rotPillGraceTimerRef.current = null;
+      // Standard rule: never hide while the pill input holds focus.
+      const ae = document.activeElement;
+      const focusedInPill = !!(ae && ae.closest && ae.closest('[data-rotation-input-field]'));
+      if (!focusedInPill) setRotPillVisible(false);
+    }, ROT_PILL_GRACE_MS);
+  }, []);
+
+  // RotationInputField reports hover on the pill itself through onHoverChange
+  // so the user can travel from the handle into the input without it closing.
+  const handleRotationPillHover = useCallback((hovered) => {
+    if (hovered) {
+      if (rotPillGraceTimerRef.current) {
+        clearTimeout(rotPillGraceTimerRef.current);
+        rotPillGraceTimerRef.current = null;
+      }
+      setRotPillVisible(true);
+    } else {
+      handleRotHandleHoverLeave();
+    }
+  }, [handleRotHandleHoverLeave]);
+
+  const handleRotationPillCancel = useCallback(() => {
+    handleRotHandleHoverLeave();
+  }, [handleRotHandleHoverLeave]);
+
+  // Bake a rotation delta (degrees) into a region's coordinates around its
+  // bbox center, with an undo checkpoint. Regions are flat polygons — unlike
+  // standard annotations there is no persisted angle field, so rotation
+  // commits by rewriting coords once (NOT per-frame; per-frame baking was the
+  // first attempt's mistake — it made the chrome resize around the rotating
+  // coords instead of rotating with the shape).
+  const bakeRegionRotation = useCallback((regionId, deltaDeg) => {
+    const norm = ((deltaDeg % 360) + 360) % 360;
+    if (norm === 0) return false;
+    const region = regionsRef.current.find(r => r.regionId === regionId);
+    if (!region) return false;
+    const bounds = getRegionBounds(region);
+    if (!bounds) return false;
+    const cx = (bounds.minX + bounds.maxX) / 2;
+    const cy = (bounds.minY + bounds.maxY) / 2;
+    pushUndoSnapshot();
+    const rotated = rotateCoordsAroundPoint(region.coordinates, cx, cy, norm);
+    setRegions(prev => prev.map(r => (
+      r.regionId === regionId
+        ? {
+            ...r,
+            // A rectangle rotated off-axis is no longer axis-aligned; the
+            // resize path rebuilds 'rectangular' coords from bounds, which
+            // would silently un-rotate it. 90° multiples stay rectangular.
+            shapeType: norm % 90 === 0 ? r.shapeType : 'polygon',
+            coordinates: rotated
+          }
+        : r
+    )));
+    return true;
+  }, [getRegionBounds, pushUndoSnapshot]);
+
+  // Standard pill commit semantics (absolute angle): the typed value is the
+  // shape's absolute angle for this selection session; we apply the delta
+  // from what has already been baked.
+  const handleRotationPillCommit = useCallback((regionId, newAngle) => {
+    const target = ((Number(newAngle) % 360) + 360) % 360;
+    const delta = target - pillSessionAngle;
+    if (bakeRegionRotation(regionId, delta)) {
+      setPillSessionAngle(target);
+    }
+  }, [pillSessionAngle, bakeRegionRotation]);
+
+  // Selection change closes the pill and resets the session angle (regions
+  // bake their rotation, so a fresh selection always reads 0°).
+  useEffect(() => {
+    clearRotPillTimers();
+    setRotPillVisible(false);
+    setPillSessionAngle(0);
+  }, [selectedRegionIds, clearRotPillTimers]);
+
+  // Cleanup timers on unmount / deactivate.
+  useEffect(() => () => clearRotPillTimers(), [clearRotPillTimers]);
+
   const resizeHandles = useMemo(() => ([
     { key: 'nw', cursor: 'nwse-resize', offsetX: 0, offsetY: 0 },
     { key: 'n', cursor: 'ns-resize', offsetX: 0.5, offsetY: 0 },
@@ -1110,10 +1278,11 @@ const RegionSelectionTool = ({
 
         const bounds = { ...initialBounds };
 
-        if (isShiftPressed) {
-          // KAL-301b: Shift+drag corner handle = uniform aspect-preserving scale.
-          // isShiftPressed is read live each mousemove, so holding/releasing Shift
-          // mid-drag switches behavior immediately (live, not locked at drag-start).
+        if (event.shiftKey) {
+          // KAL-301b/REDO: Shift+drag handle = uniform aspect-preserving scale.
+          // Shift is read directly off the mousemove event (modifier flags ride
+          // on every mouse event) instead of the isShiftPressed state, so no
+          // keydown-listener race or stale closure can break detection.
           // Edge handles (n/s/e/w) also preserve aspect, driving from the moved axis.
           const initW = Math.max(initialBounds.maxX - initialBounds.minX, 1);
           const initH = Math.max(initialBounds.maxY - initialBounds.minY, 1);
@@ -1279,67 +1448,89 @@ const RegionSelectionTool = ({
           };
         }));
       } else if (interactionState.type === 'vertex') {
-        const { vertexIndex, regionId } = interactionState;
+        const { vertexIndex, regionId, initialBounds, initialCoords } = interactionState;
 
         // KAL-301a: mark that vertex drag moved
         dragHasMovedRef.current = true;
 
-        setRegions(prev => prev.map(region => {
-          if (region.regionId !== regionId) {
-            return region;
-          }
+        // KAL-301 REDO: Shift+drag a vertex handle = uniform aspect-preserving
+        // scale of the WHOLE region, anchored at the opposite bbox corner.
+        // The first attempt put this only in the 'resize' branch — but regions
+        // with <=32 vertices (i.e. every rectangle) render VERTEX handles, so
+        // the owner's "Shift+drag corner" never reached that code. Shift is
+        // read live off the mousemove event (the modifier flags ride on every
+        // mouse event), so holding/releasing Shift mid-drag toggles behavior
+        // immediately and no keydown-listener race can break it.
+        if (event.shiftKey && initialBounds && Array.isArray(initialCoords)) {
+          const vx0 = initialCoords[vertexIndex * 2];
+          const vy0 = initialCoords[vertexIndex * 2 + 1];
+          // Anchor: the bbox corner diagonally opposite the dragged vertex.
+          const anchorX = (vx0 - initialBounds.minX) < (initialBounds.maxX - vx0)
+            ? initialBounds.maxX : initialBounds.minX;
+          const anchorY = (vy0 - initialBounds.minY) < (initialBounds.maxY - vy0)
+            ? initialBounds.maxY : initialBounds.minY;
+          const d0 = Math.hypot(vx0 - anchorX, vy0 - anchorY);
+          const d1 = Math.hypot(x - anchorX, y - anchorY);
+          const initW = Math.max(initialBounds.maxX - initialBounds.minX, 1);
+          const initH = Math.max(initialBounds.maxY - initialBounds.minY, 1);
+          const minScale = MIN_REGION_SIZE / Math.max(Math.min(initW, initH), 1);
+          const s = Math.max(d0 > 0 ? d1 / d0 : 1, minScale);
 
-          const newCoords = [...region.coordinates];
-          newCoords[vertexIndex * 2] = x;
-          newCoords[vertexIndex * 2 + 1] = y;
+          setRegions(prev => prev.map(region => {
+            if (region.regionId !== regionId) return region;
+            const scaled = initialCoords.map((value, index) => (
+              index % 2 === 0
+                ? anchorX + (value - anchorX) * s
+                : anchorY + (value - anchorY) * s
+            ));
+            // Uniform scale preserves the shape — keep shapeType as-is.
+            return { ...region, coordinates: scaled };
+          }));
+        } else {
+          // Free vertex move. Built from the drag-start coords (not the
+          // accumulated ones) so toggling Shift mid-drag is lossless.
+          setRegions(prev => prev.map(region => {
+            if (region.regionId !== regionId) {
+              return region;
+            }
 
-          return {
-            ...region,
-            shapeType: 'polygon',
-            coordinates: newCoords
-          };
-        }));
+            const newCoords = Array.isArray(initialCoords)
+              ? [...initialCoords]
+              : [...region.coordinates];
+            newCoords[vertexIndex * 2] = x;
+            newCoords[vertexIndex * 2 + 1] = y;
+
+            return {
+              ...region,
+              shapeType: 'polygon',
+              coordinates: newCoords
+            };
+          }));
+        }
       } else if (interactionState.type === 'rotate') {
-        // KAL-301c: rotation drag. Compute angle from region centroid to current
-        // pointer in screen space, snap to 15°, transform all coords relative to
-        // the angle delta since last frame (stored as interactionState.lastAngleDeg).
-        const { regionId, centerPage, lastAngleDeg, initialCoords } = interactionState;
-        if (!centerPage) return;
+        // KAL-301 REDO: rotation drag, copied from the standard rotate branch
+        // in useSVGInteraction.js. The angle is the ABSOLUTE pointer direction
+        // from the shape's bbox center, converted to Fabric-style degrees
+        // (0 = up) via normalizeAngle. There is NO always-on snap — the app's
+        // day-one convention is free rotation with a soft Shift-snap to the
+        // nearest 45° within a 3° threshold (EDIT-11 locked decision).
+        //
+        // Coords are NOT touched here. The selected region and its entire
+        // selection chrome (box + grabbers + mtr handle) render with a
+        // rotate(angle, cx, cy) transform while liveRotationAngle is set, so
+        // the box rotates WITH the shape exactly like a standard rectangle
+        // annotation. The final angle is baked into coords once at mouse-up.
+        const { center } = interactionState;
+        if (!center) return;
 
-        // Angle from centroid to pointer in page coords (atan2 gives radians).
-        // 0° = right, 90° = down — we normalise to [0, 360).
-        const rawAngleDeg = (Math.atan2(y - centerPage.cy, x - centerPage.cx) * 180) / Math.PI;
-        const snappedAngle = Math.round(rawAngleDeg / 15) * 15;
-        const normAngle = ((snappedAngle % 360) + 360) % 360;
+        const radians = Math.atan2(y - center.cy, x - center.cx);
+        let newAngle = normalizeAngle(radians);
+        if (event.shiftKey) {
+          newAngle = snapAngleToNearest45(newAngle, 3);
+        }
 
-        const delta = normAngle - lastAngleDeg;
-        if (Math.abs(delta) < 0.001) return; // no meaningful movement
-
-        // KAL-301a: mark that rotation moved
         dragHasMovedRef.current = true;
-
-        // Rotate all coords of the region around the centroid by delta degrees.
-        const rad = (delta * Math.PI) / 180;
-        const cosA = Math.cos(rad);
-        const sinA = Math.sin(rad);
-        const { cx, cy } = centerPage;
-
-        setRegions(prev => prev.map(region => {
-          if (region.regionId !== regionId) return region;
-          const coords = region.coordinates;
-          const rotated = [];
-          for (let i = 0; i < coords.length; i += 2) {
-            const dx = coords[i] - cx;
-            const dy = coords[i + 1] - cy;
-            rotated.push(cx + dx * cosA - dy * sinA);
-            rotated.push(cy + dx * sinA + dy * cosA);
-          }
-          return { ...region, coordinates: rotated };
-        }));
-
-        // Update lastAngleDeg in interactionState so next frame delta is correct.
-        setInteractionState(prev => prev ? { ...prev, lastAngleDeg: normAngle } : prev);
-        setLiveRotationAngle(normAngle);
+        setLiveRotationAngle(prev => (prev === newAngle ? prev : newAngle));
       }
       return;
     }
@@ -1358,7 +1549,7 @@ const RegionSelectionTool = ({
     } else if (effectiveToolType === 'freehand') {
       setPolygonPoints(prev => [...prev, { x, y }]);
     }
-  }, [active, targetElement, clientPointToPage, displayScaleX, displayScaleY, interactionState, ensureBoundsMinSize, isDrawing, effectiveToolType, startPoint, regions, activeTool, isShiftPressed, setLiveRotationAngle]);
+  }, [active, targetElement, clientPointToPage, displayScaleX, displayScaleY, interactionState, ensureBoundsMinSize, isDrawing, effectiveToolType, startPoint, regions, activeTool]);
 
   const handleMouseUp = useCallback(() => {
     if (!active) return;
@@ -1366,6 +1557,35 @@ const RegionSelectionTool = ({
     setIsCursorOverCanvas(false);
 
     if (interactionState) {
+      // KAL-301 REDO: rotation bakes ONCE here at drag end. During the drag
+      // the shape + chrome only carried a rotate() transform; now the final
+      // angle is written into the coords (the polygon-region equivalent of a
+      // standard annotation persisting obj.angle).
+      if (interactionState.type === 'rotate') {
+        const finalAngle = ((Number(liveRotationAngle ?? 0) % 360) + 360) % 360;
+        const { regionId, center, initialCoords } = interactionState;
+        if (dragHasMovedRef.current && finalAngle !== 0 && center && Array.isArray(initialCoords)) {
+          const rotated = rotateCoordsAroundPoint(initialCoords, center.cx, center.cy, finalAngle);
+          setRegions(prev => prev.map(r => (
+            r.regionId === regionId
+              ? {
+                  ...r,
+                  // Off-axis rotation breaks the 'rectangular' invariant (the
+                  // resize path rebuilds rect coords from bounds, silently
+                  // un-rotating). 90° multiples stay rectangular.
+                  shapeType: finalAngle % 90 === 0 ? r.shapeType : 'polygon',
+                  coordinates: rotated
+                }
+              : r
+          )));
+          // Keep the pill's absolute-angle session in sync with the bake.
+          setPillSessionAngle(prev => (((prev + finalAngle) % 360) + 360) % 360);
+        } else {
+          // Grab-and-release without an effective rotation — no undo entry.
+          dragHasMovedRef.current = false;
+        }
+        setLiveRotationAngle(null);
+      }
       // KAL-301a: push the pre-drag snapshot onto the undo stack only when the
       // drag actually changed coords (one checkpoint per completed drag, not per
       // pixel, and not for click-without-drag). The pre-drag snapshot was
@@ -1379,10 +1599,6 @@ const RegionSelectionTool = ({
         persistHistoryStacks();
       }
       dragHasMovedRef.current = false;
-      // KAL-301c: clear the live rotation angle pill when drag ends.
-      if (interactionState.type === 'rotate') {
-        setLiveRotationAngle(null);
-      }
       setInteractionState(null);
       return;
     }
@@ -1473,7 +1689,7 @@ const RegionSelectionTool = ({
     setStartPoint(null);
     setCurrentRect(null);
     setPolygonPoints([]);
-  }, [active, interactionState, isDrawing, effectiveToolType, currentRect, polygonPoints, currentPageId, effectiveSelectionMode, mergeRegionWithOverlapping, subtractRegionFromRegions, pushUndoSnapshot, persistHistoryStacks, setLiveRotationAngle]);
+  }, [active, interactionState, liveRotationAngle, isDrawing, effectiveToolType, currentRect, polygonPoints, currentPageId, effectiveSelectionMode, mergeRegionWithOverlapping, subtractRegionFromRegions, pushUndoSnapshot, persistHistoryStacks]);
 
   const handleCanvasMouseLeave = useCallback(() => {
     setIsCursorOverCanvas(false);
@@ -1641,9 +1857,13 @@ const RegionSelectionTool = ({
       regionId: region.regionId,
       vertexIndex,
       startPoint: { x: event.clientX, y: event.clientY },
+      // KAL-301 REDO: drag-start geometry so the mousemove branch can do
+      // Shift = uniform aspect-preserving scale (and lossless Shift toggling).
+      initialBounds: getRegionBounds(region),
+      initialCoords: [...region.coordinates],
       preSnapshot
     });
-  }, [active, effectiveToolType, targetElement, selectedRegionIds, createHistorySnapshot]);
+  }, [active, effectiveToolType, targetElement, selectedRegionIds, createHistorySnapshot, getRegionBounds]);
 
   const handleResizePointerDown = useCallback((region, handle, event) => {
     if (!active || effectiveToolType !== 'move' || !targetElement) return;
@@ -1674,48 +1894,36 @@ const RegionSelectionTool = ({
     });
   }, [active, effectiveToolType, targetElement, getRegionBounds, selectedRegionIds, createHistorySnapshot]);
 
-  // KAL-301c: rotation handle pointer-down. Captures the centroid in page space
-  // and the initial angle from centroid to pointer, so handleMouseMove can compute
-  // angle deltas frame-by-frame and snap to 15° increments.
+  // KAL-301 REDO: rotation handle pointer-down, matching the standard mtr
+  // pointer-down in useSVGInteraction.js: the rotation pivot is the bbox
+  // CENTER (the universal pivot for every shape type — "bbox center is the
+  // universal rotation pivot", useSVGInteraction.js ~L3981), drag-start
+  // geometry is captured once, and the live angle starts at 0 so there is no
+  // jump on the first pointermove.
   const handleRotatePointerDown = useCallback((region, event) => {
     if (!active || effectiveToolType !== 'move' || !targetElement) return;
     if (event.button === 2) return;
     event.stopPropagation();
     event.preventDefault();
 
-    const rect = targetElement.getBoundingClientRect();
-    const pointer = clientPointToPage(event.clientX, event.clientY, rect);
-    if (!pointer) return;
-
-    // Compute centroid in page coords (arithmetic mean of all vertices).
-    const coords = region.coordinates;
-    let sumX = 0;
-    let sumY = 0;
-    const n = coords.length / 2;
-    for (let i = 0; i < coords.length; i += 2) {
-      sumX += coords[i];
-      sumY += coords[i + 1];
-    }
-    const cx = sumX / n;
-    const cy = sumY / n;
-
-    // Starting angle from centroid to pointer.
-    const startRawDeg = (Math.atan2(pointer.y - cy, pointer.x - cx) * 180) / Math.PI;
-    const startAngleDeg = ((Math.round(startRawDeg / 15) * 15) % 360 + 360) % 360;
+    const bounds = getRegionBounds(region);
+    if (!bounds) return;
+    const cx = (bounds.minX + bounds.maxX) / 2;
+    const cy = (bounds.minY + bounds.maxY) / 2;
 
     setSelectedRegionIds(new Set([region.regionId]));
-    // KAL-301a: pre-drag snapshot for undo
+    // KAL-301a: pre-drag snapshot for undo (pushed at drag-END only if moved)
     const preSnapshot = createHistorySnapshot();
     dragHasMovedRef.current = false;
-    setLiveRotationAngle(startAngleDeg);
+    setLiveRotationAngle(0);
     setInteractionState({
       type: 'rotate',
       regionId: region.regionId,
-      centerPage: { cx, cy },
-      lastAngleDeg: startAngleDeg,
+      center: { cx, cy },
+      initialCoords: [...region.coordinates],
       preSnapshot
     });
-  }, [active, effectiveToolType, targetElement, clientPointToPage, createHistorySnapshot]);
+  }, [active, effectiveToolType, targetElement, getRegionBounds, createHistorySnapshot]);
 
   const handleDeleteSelected = useCallback(() => {
     if (selectedRegionIds.size === 0) return;
@@ -2044,8 +2252,11 @@ const RegionSelectionTool = ({
 
     const handleKeyDown = (event) => {
       const key = event.key?.toLowerCase?.();
-      const isUndoShortcut = (event.metaKey || event.ctrlKey) && !event.shiftKey && event.key?.toLowerCase?.() === 'z';
-      const isRedoShortcut = (
+      // KAL-301 REDO: never hijack undo/redo while the user is typing in an
+      // input (e.g. the rotation pill) — let the field's native undo work.
+      const inEditableTarget = isEditableKeyboardTarget();
+      const isUndoShortcut = !inEditableTarget && (event.metaKey || event.ctrlKey) && !event.shiftKey && event.key?.toLowerCase?.() === 'z';
+      const isRedoShortcut = !inEditableTarget && (
         ((event.metaKey || event.ctrlKey) && event.shiftKey && event.key?.toLowerCase?.() === 'z') ||
         ((event.ctrlKey && !event.metaKey) && event.key?.toLowerCase?.() === 'y')
       );
@@ -2184,6 +2395,28 @@ const RegionSelectionTool = ({
       document.removeEventListener('mouseup', handleDocumentMouseUpCapture, true);
     };
   }, [active, targetElement, activeTool, handleMouseDown, handleMouseMove, handleMouseUp, isPointWithinTargetRect]);
+
+  // KAL-301 REDO: live rotation preview transform. While a rotate drag is in
+  // flight the selected region AND its full selection chrome (boundary box,
+  // every grabber, the mtr handle + stem) render inside this rotation — the
+  // exact mechanism SVGSelectionOverlay uses (`<g transform="rotate(a,cx,cy)">`)
+  // so a rotating region is indistinguishable from a rotating rectangle
+  // annotation. Coords stay untouched until mouse-up.
+  const isRotatingRegion = (
+    interactionState?.type === 'rotate' &&
+    liveRotationAngle !== null &&
+    !!interactionState.center
+  );
+  const rotationCenterScreen = isRotatingRegion
+    ? {
+        x: pageToScreenX(interactionState.center.cx),
+        y: pageToScreenY(interactionState.center.cy)
+      }
+    : null;
+  const rotationPreviewSvgTransform = isRotatingRegion
+    ? `rotate(${liveRotationAngle} ${rotationCenterScreen.x} ${rotationCenterScreen.y})`
+    : undefined;
+  const rotatingRegionId = isRotatingRegion ? interactionState.regionId : null;
 
   if (!active) return null;
 
@@ -2510,13 +2743,17 @@ const RegionSelectionTool = ({
             })}
           >
           <svg
+            ref={overlaySvgRef}
             width={canvasRect.width}
             height={canvasRect.height}
             style={{
               position: 'absolute',
               top: 0,
               left: 0,
-              pointerEvents: 'none'
+              pointerEvents: 'none',
+              // KAL-301 REDO: the mtr rotation handle sits above the bbox top
+              // edge — keep it visible when the shape is near the canvas top.
+              overflow: 'visible'
             }}
           >
             {toolType === 'rectangular' && currentRect && (
@@ -2548,7 +2785,13 @@ const RegionSelectionTool = ({
               // Calculate union of all regions for visual display
               // This ensures overlapping regions look like a single shape
               try {
-                const additiveRegions = regions.filter(r => !r.operation || r.operation === REGION_OPERATIONS.ADD);
+                // KAL-301 REDO: while a region is mid-rotation it renders with
+                // a live rotate() transform — drop it from the static union so
+                // an unrotated ghost copy doesn't linger underneath.
+                const additiveRegions = regions.filter(r => (
+                  (!r.operation || r.operation === REGION_OPERATIONS.ADD) &&
+                  r.regionId !== rotatingRegionId
+                ));
                 const subtractiveRegions = regions.filter(r => r.operation === REGION_OPERATIONS.SUBTRACT);
 
                 let mergedPolygons = [];
@@ -2615,7 +2858,7 @@ const RegionSelectionTool = ({
               // If not selected, render transparently for hit testing (visual is handled by unified path)
 
               if (isSelected) {
-                return (
+                const selectedPath = (
                   <path
                     key={region.regionId}
                     d={path}
@@ -2629,6 +2872,16 @@ const RegionSelectionTool = ({
                     onMouseDown={effectiveToolType === 'move' ? (event) => handleRegionPointerDown(region, event) : undefined}
                   />
                 );
+                // KAL-301 REDO: live rotation preview — shape rotates via
+                // transform (coords untouched until mouse-up bake).
+                if (region.regionId === rotatingRegionId) {
+                  return (
+                    <g key={region.regionId} transform={rotationPreviewSvgTransform}>
+                      {selectedPath}
+                    </g>
+                  );
+                }
+                return selectedPath;
               } else {
                 return (
                   <path
@@ -2646,6 +2899,85 @@ const RegionSelectionTool = ({
                 );
               }
             })}
+
+            {/* KAL-301 REDO: rotation handle (mtr) — a faithful copy of the
+                day-one chrome in SVGSelectionOverlay.jsx: solid #d1d1d1
+                connector line from the bbox top-center, white-fill/blue-ring
+                circle (r = rotationR), rotate icon at 70% of the circle
+                diameter, crosshair cursor, drop shadow. data-rotation-handle
+                ="mtr" is what RotationInputField anchors to. The whole group
+                rotates with the shape during a rotate drag, exactly like the
+                standard overlay's rotated <g>. */}
+            {effectiveToolType === 'move' && selectedRegionIds.size === 1 && (() => {
+              const selectedRegion = regions.find(r => r.regionId === Array.from(selectedRegionIds)[0]);
+              if (!selectedRegion) return null;
+              const bounds = getRegionBounds(selectedRegion);
+              if (!bounds) return null;
+
+              const left = pageToScreenX(bounds.minX);
+              const top = pageToScreenY(bounds.minY);
+              const width = (bounds.maxX - bounds.minX) * displayScaleX;
+              const height = (bounds.maxY - bounds.minY) * displayScaleY;
+
+              // Region overlay coords are already screen pixels → inverseScale 1.
+              const metrics = getSelectionHandleVisualMetrics(1);
+              const spec = getAdaptiveSelectionHandleSpec({
+                bboxWidth: width,
+                bboxHeight: height,
+                inverseScale: 1,
+                padding: 0
+              });
+
+              const mtX = left + width / 2;
+              const mtY = top;
+              const mtrY = top - spec.rotationOffset;
+
+              return (
+                <g transform={rotationPreviewSvgTransform}>
+                  <g
+                    className="rotation-handle"
+                    data-rotation-handle="mtr"
+                    onPointerEnter={handleRotHandleHoverEnter}
+                    onPointerLeave={handleRotHandleHoverLeave}
+                  >
+                    {/* Connector line from top-center of bbox to rotation handle */}
+                    <line
+                      x1={mtX}
+                      y1={mtY}
+                      x2={mtX}
+                      y2={mtrY}
+                      stroke="#d1d1d1"
+                      strokeWidth={1}
+                      style={{ pointerEvents: 'none' }}
+                    />
+                    {/* Rotation circle */}
+                    <circle
+                      cx={mtX}
+                      cy={mtrY}
+                      r={metrics.rotationR}
+                      fill={HANDLE_FILL}
+                      stroke={HANDLE_RING}
+                      strokeWidth={1}
+                      style={{
+                        filter: 'drop-shadow(0 2px 5px rgba(0,0,0,0.1))',
+                        cursor: 'crosshair',
+                        pointerEvents: 'auto'
+                      }}
+                      onMouseDown={(event) => handleRotatePointerDown(selectedRegion, event)}
+                    />
+                    {/* Rotation icon image (70% of circle diameter) */}
+                    <image
+                      href={rotateIconSvg}
+                      x={mtX - metrics.rotationIconSize / 2}
+                      y={mtrY - metrics.rotationIconSize / 2}
+                      width={metrics.rotationIconSize}
+                      height={metrics.rotationIconSize}
+                      style={{ pointerEvents: 'none' }}
+                    />
+                  </g>
+                </g>
+              );
+            })()}
           </svg>
 
           {/* Context Menu */}
@@ -2751,6 +3083,29 @@ const RegionSelectionTool = ({
             const selectedRegion = regions.find(r => r.regionId === Array.from(selectedRegionIds)[0]);
             if (!selectedRegion) return null;
 
+            // KAL-301 REDO: during a rotate drag the whole DOM chrome (boundary
+            // box + every grabber) rides this rotated wrapper, so the box and
+            // grabbers rotate WITH the shape — same visual contract as
+            // SVGSelectionOverlay's rotated <g>. Identity transform otherwise.
+            const wrapChrome = (children) => (
+              <div
+                style={{
+                  position: 'absolute',
+                  left: 0,
+                  top: 0,
+                  width: '100%',
+                  height: '100%',
+                  pointerEvents: 'none',
+                  transform: isRotatingRegion ? `rotate(${liveRotationAngle}deg)` : undefined,
+                  transformOrigin: isRotatingRegion
+                    ? `${rotationCenterScreen.x}px ${rotationCenterScreen.y}px`
+                    : undefined
+                }}
+              >
+                {children}
+              </div>
+            );
+
             const vertexCount = selectedRegion.coordinates.length / 2;
             const useVertexHandles = vertexCount <= 32;
 
@@ -2824,7 +3179,7 @@ const RegionSelectionTool = ({
                   />
                 );
               }
-              return <>{boundaryBox}{handles}</>;
+              return wrapChrome(<>{boundaryBox}{handles}</>);
             } else {
               // Render bounding box handles for complex shapes
               const bounds = getRegionBounds(selectedRegion);
@@ -2834,7 +3189,7 @@ const RegionSelectionTool = ({
               const width = (bounds.maxX - bounds.minX) * displayScaleX;
               const height = (bounds.maxY - bounds.minY) * displayScaleY;
 
-              return (
+              return wrapChrome(
                 <>
                   {/* Selection boundary box - Drawboard style */}
                   <div
@@ -2899,139 +3254,48 @@ const RegionSelectionTool = ({
             }
           })()}
 
-          {/* KAL-301c: Rotation handle — circle above bounding box centre.
-              Matches the standard annotation mtr handle: sits along the
-              vertical ray from the shape centroid, 32px above the top edge
-              (screen pixels). Drag rotates all coords around the centroid,
-              snapping to 15° increments. Undoable via Slice 1 mechanism. */}
-          {effectiveToolType === 'move' && selectedRegionIds.size === 1 && (() => {
-            const selectedRegion = regions.find(r => r.regionId === Array.from(selectedRegionIds)[0]);
-            if (!selectedRegion) return null;
-            const bounds = getRegionBounds(selectedRegion);
-            if (!bounds) return null;
-
-            const centerScreenX = pageToScreenX((bounds.minX + bounds.maxX) / 2);
-            const topScreenY = pageToScreenY(bounds.minY);
-            // 32px above the top edge of the bounding box — matches standard annotation mtr gap.
-            const ROTATION_HANDLE_OFFSET = 32;
-            const handleScreenX = centerScreenX;
-            const handleScreenY = topScreenY - ROTATION_HANDLE_OFFSET;
-            const ROTATION_HANDLE_RADIUS = 7; // px
-
-            return (
-              <>
-                {/* Stem line from bounding box top-centre to rotation handle */}
-                <svg
-                  style={{
-                    position: 'absolute',
-                    top: 0,
-                    left: 0,
-                    width: '100%',
-                    height: '100%',
-                    pointerEvents: 'none',
-                    zIndex: 100002,
-                    overflow: 'visible'
-                  }}
-                >
-                  <line
-                    x1={centerScreenX}
-                    y1={topScreenY}
-                    x2={handleScreenX}
-                    y2={handleScreenY + ROTATION_HANDLE_RADIUS}
-                    stroke={REGION_HANDLE_STROKE}
-                    strokeWidth="1.5"
-                    strokeDasharray="3 3"
-                  />
-                </svg>
-                {/* Rotation handle circle */}
-                <div
-                  data-region-selection-ui="true"
-                  onMouseDown={(event) => handleRotatePointerDown(selectedRegion, event)}
-                  title="Drag to rotate (snaps to 15°)"
-                  style={{
-                    position: 'absolute',
-                    left: `${handleScreenX}px`,
-                    top: `${handleScreenY}px`,
-                    transform: 'translate(-50%, -50%)',
-                    width: `${ROTATION_HANDLE_RADIUS * 2}px`,
-                    height: `${ROTATION_HANDLE_RADIUS * 2}px`,
-                    borderRadius: '50%',
-                    background: REGION_HANDLE_FILL,
-                    border: `1.5px solid ${REGION_HANDLE_STROKE}`,
-                    boxShadow: '0 1px 4px rgba(0,0,0,0.2)',
-                    cursor: 'grab',
-                    pointerEvents: 'auto',
-                    zIndex: 100004,
-                    // Subtle rotation icon hint — ↺ symbol centred
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    fontSize: '9px',
-                    color: REGION_HANDLE_STROKE,
-                    userSelect: 'none'
-                  }}
-                >
-                  ↺
-                </div>
-              </>
-            );
-          })()}
 
           </div>
       )}
 
-      {/* KAL-301c: Live rotation angle pill — shown during rotate drag only.
-          Styled to match RotationInputField (dark pill, white text).
-          Position: fixed near the rotation handle to avoid obstructing the shape. */}
-      {liveRotationAngle !== null && interactionState?.type === 'rotate' && (
-        <div
-          data-region-selection-ui="true"
-          style={{
-            position: 'fixed',
-            // Position pill to the right of the rotation handle if possible.
-            // We use a simple fixed offset from the interaction centroid converted
-            // to screen via canvasRect. Falls back to top-left corner of viewport.
-            left: canvasRect
-              ? `${canvasRect.left + pageToScreenX(
-                  // centroid x from interactionState
-                  (() => {
-                    const region = regions.find(r => interactionState && r.regionId === interactionState.regionId);
-                    if (!region) return 0;
-                    const b = getRegionBounds(region);
-                    return b ? (b.minX + b.maxX) / 2 : 0;
-                  })()
-                ) + 20}px`
-              : '20px',
-            top: canvasRect
-              ? `${canvasRect.top + pageToScreenY(
-                  (() => {
-                    const region = regions.find(r => interactionState && r.regionId === interactionState.regionId);
-                    if (!region) return 0;
-                    const b = getRegionBounds(region);
-                    return b ? b.minY : 0;
-                  })()
-                ) - 50}px`
-              : '20px',
-            background: '#2D2D2D',
-            border: '1px solid #3A3A3A',
-            borderRadius: 6,
-            boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
-            padding: '4px 10px',
-            display: 'flex',
-            alignItems: 'center',
-            gap: 2,
-            pointerEvents: 'none',
-            zIndex: 100005,
-            fontFamily: FONT_FAMILY,
-            minWidth: 60
-          }}
-        >
-          <span style={{ fontSize: 13, fontWeight: 500, color: '#ddd', letterSpacing: '-0.2px' }}>
-            {Math.round(liveRotationAngle)}
-          </span>
-          <span style={{ fontSize: 12, fontWeight: 400, color: '#999' }}>°</span>
-        </div>
-      )}
+      {/* KAL-301 REDO: the app's STANDARD rotation pill (RotationInputField,
+          EDIT-12) — the same component every other annotation uses, reused
+          as-is. It portals into the overlay container, self-positions off the
+          mtr handle's rect, live-updates during a rotate drag ("drag wins"),
+          and supports typed-angle commits (Enter/blur), arrow-key nudges and
+          Escape-cancel. Visibility follows the standard machine: 150ms hover
+          intent on the handle, 500ms grace, forced visible while rotating. */}
+      {canvasRect && containerRef.current && effectiveToolType === 'move' && selectedRegionIds.size === 1 && (() => {
+        const selectedRegion = regions.find(r => r.regionId === Array.from(selectedRegionIds)[0]);
+        if (!selectedRegion) return null;
+        const bounds = getRegionBounds(selectedRegion);
+        if (!bounds) return null;
+
+        const liveAngle = isRotatingRegion
+          ? (((pillSessionAngle + liveRotationAngle) % 360) + 360) % 360
+          : pillSessionAngle;
+        // The overlay svg has no viewBox, so its user units ARE container-local
+        // CSS pixels — pass the bbox center in those units.
+        const centerLocal = {
+          x: pageToScreenX((bounds.minX + bounds.maxX) / 2),
+          y: pageToScreenY((bounds.minY + bounds.maxY) / 2)
+        };
+
+        return (
+          <RotationInputField
+            svgRef={overlaySvgRef}
+            hostEl={containerRef.current}
+            angle={liveAngle}
+            annotationIndex={selectedRegion.regionId}
+            isRotating={isRotatingRegion}
+            isVisible={isRotatingRegion || rotPillVisible}
+            shapeCenterViewBox={centerLocal}
+            onCommit={handleRotationPillCommit}
+            onCancel={handleRotationPillCancel}
+            onHoverChange={handleRotationPillHover}
+          />
+        );
+      })()}
 
       {/* Floating Plus Sign Indicator for Additive Mode */}
       {effectiveSelectionMode === REGION_OPERATIONS.ADD && isCursorOverCanvas && (toolType === 'rectangular' || toolType === 'freehand') && (

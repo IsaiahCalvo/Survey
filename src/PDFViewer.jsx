@@ -2854,6 +2854,15 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       if (e.key !== 'z' && e.key !== 'Z') return;
       if (!(e.ctrlKey || e.metaKey)) return;
 
+      // KAL-301 REDO: while the region-edit overlay is mounted,
+      // RegionSelectionTool owns Cmd+Z / Cmd+Shift+Z through its own
+      // window-capture listener. That listener registers when region edit
+      // activates (i.e. AFTER this one), so same-target capture ordering
+      // runs this handler first — bail here WITHOUT stopImmediatePropagation
+      // so the region handler can run. Swallowing the event here was why
+      // undo did nothing in region edit mode.
+      if (document.querySelector('[data-region-selection-ui="true"]')) return;
+
       // Skip if user is typing in an input
       const active = document.activeElement;
       if (active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.isContentEditable)) return;
