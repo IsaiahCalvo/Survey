@@ -31,7 +31,7 @@ const storedFor = async (markerId, values) => {
 const plan = (rows, stored) => buildImportPlan({ rows, stored, documentId: DOC, scopeId: SCOPE, resolveSecret });
 const blankRow = (values) => ({ rowIdCell: '', values });
 
-test('T1 verbatim bug: Excel edits notes on a blank-ID row → one apply pairing to the original marker, no duplicate, no delete candidate', async () => {
+test('T1 one-field overlap: Excel edits notes on a blank-ID row → review, no duplicate, no delete candidate', async () => {
   // Baseline stamped at export: Item="test", notes blank. The app-side note ("car") is
   // irrelevant at the matcher level — it feeds the downstream conflict guard, which this
   // pairing keeps reachable by emitting action 'apply' with a markerId.
@@ -40,11 +40,10 @@ test('T1 verbatim bug: Excel edits notes on a blank-ID row → one apply pairing
   const rows = [blankRow({ ...baseline, notes: 'not car' })]; // the Excel-side edit
   const { decisions, candidateDeletes } = await plan(rows, stored);
   assert.equal(decisions.length, 1);
-  assert.equal(decisions[0].decision, 'missing-rowid');
-  assert.equal(decisions[0].action, IMPORT_ACTIONS.APPLY);
-  assert.equal(decisions[0].markerId, 'm1');
-  assert.equal(decisions[0].recovered, true);
-  assert.deepEqual(candidateDeletes, [], 'the original is paired, never a delete candidate');
+  assert.equal(decisions[0].decision, 'ambiguous-identity');
+  assert.equal(decisions[0].action, IMPORT_ACTIONS.REVIEW);
+  assert.deepEqual(decisions[0].candidateMarkerIds, ['m1']);
+  assert.deepEqual(candidateDeletes, [], 'the possible original is review-shielded from deletes');
 });
 
 test('T5 Excel-only edit to a blank-ID row → same pairing, zero creates', async () => {
@@ -58,17 +57,18 @@ test('T5 Excel-only edit to a blank-ID row → same pairing, zero creates', asyn
   assert.deepEqual(candidateDeletes, []);
 });
 
-test('T9 repeated save xN → one pairing each time, never a create (before AND after baseline restamp)', async () => {
+test('T9 repeated save xN → one-field overlap reviews until baseline restamp; exact restamp recovers', async () => {
   const baseline = { changedBy: 'IC', changedDate: '6/8/2026', item: 'test', entity: '', notes: '', answers: {} };
   const edited = { ...baseline, notes: 'not car' };
 
   // Phase 1: the import was not yet applied (baseline unchanged) — N identical saves.
   const staleStored = [await storedFor('m1', baseline)];
   for (let i = 0; i < 3; i += 1) {
-    const { decisions } = await plan([blankRow(edited)], staleStored);
-    assert.deepEqual(decisions.map((d) => d.decision), ['missing-rowid'], `save #${i + 1} pairs`);
-    assert.equal(decisions[0].markerId, 'm1');
+    const { decisions, candidateDeletes } = await plan([blankRow(edited)], staleStored);
+    assert.deepEqual(decisions.map((d) => d.decision), ['ambiguous-identity'], `save #${i + 1} reviews`);
+    assert.deepEqual(decisions[0].candidateMarkerIds, ['m1']);
     assert.ok(decisions.every((d) => d.action !== IMPORT_ACTIONS.CREATE), `save #${i + 1} never creates`);
+    assert.deepEqual(candidateDeletes, []);
   }
 
   // Phase 2: the apply restamped the baseline to the edited values — the next save
@@ -114,14 +114,17 @@ test('T13 result is independent of row order', async () => {
     // Key each decision by the row's Item so the two orders are comparable. NB: `rows`
     // here is THIS function's parameter (the per-call ordering), not an outer fixture —
     // d.rowIndex indexes into the same array that was passed to plan().
-    return new Map(decisions.map((d) => [rows[d.rowIndex].item, `${d.decision}:${d.markerId || ''}`]));
+    return new Map(decisions.map((d) => [
+      rows[d.rowIndex].item,
+      `${d.decision}:${d.markerId || (d.candidateMarkerIds || []).join('|')}`
+    ]));
   };
 
   const forward = await outcomes([rA, rB, rNew]);
   const reversed = await outcomes([rNew, rB, rA]);
   assert.deepEqual(Object.fromEntries(forward), Object.fromEntries(reversed));
-  assert.equal(forward.get('alpha'), 'missing-rowid:mA');
-  assert.equal(forward.get('beta'), 'missing-rowid:mB');
+  assert.equal(forward.get('alpha'), 'ambiguous-identity:mA');
+  assert.equal(forward.get('beta'), 'ambiguous-identity:mB');
   assert.equal(forward.get('gamma'), 'new-row:');
 });
 

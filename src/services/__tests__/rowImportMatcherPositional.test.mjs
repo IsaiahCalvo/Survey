@@ -255,7 +255,7 @@ test('content swap between two rows: pairings follow CONTENT, not slots (exact t
   assert.deepEqual(candidateDeletes, []);
 });
 
-test('content swap WITH edits: field overlap follows content across slots; the slot never grafts a rewrite', async () => {
+test('content swap WITH one-field edits: reviews instead of grafting a rewrite by slot', async () => {
   const stored = [
     await storedFor('mA', v('A', 'noteA'), 5, SEQ),
     await storedFor('mB', v('B', 'noteB'), 7, SEQ)
@@ -265,13 +265,14 @@ test('content swap WITH edits: field overlap follows content across slots; the s
     blankRow(v('A', 'noteA-edited'), 7)
   ];
   const { decisions, candidateDeletes } = await plan(rows, stored);
-  assert.equal(dAt(decisions, 0).markerId, 'mB', 'shared item "B" beats the slot');
-  assert.equal(dAt(decisions, 0).recoveredBy, 'field-overlap');
-  assert.equal(dAt(decisions, 1).markerId, 'mA');
+  assert.equal(dAt(decisions, 0).decision, 'ambiguous-identity');
+  assert.deepEqual(dAt(decisions, 0).candidateMarkerIds, ['mB'], 'shared item "B" is review evidence, not a slot graft');
+  assert.equal(dAt(decisions, 1).decision, 'ambiguous-identity');
+  assert.deepEqual(dAt(decisions, 1).candidateMarkerIds, ['mA']);
   assert.deepEqual(candidateDeletes, []);
 });
 
-test('missing stamps → byte-identical to slice-1 behavior (EX4 inputs degrade to content-only tiers)', async () => {
+test('missing stamps → byte-identical to content-only tiers; one-field residue reviews', async () => {
   const base = v('test', '');
   // No positions anywhere → slice-1: exact group pairs in row order × stored order,
   // then field overlap takes the remaining twin.
@@ -279,16 +280,17 @@ test('missing stamps → byte-identical to slice-1 behavior (EX4 inputs degrade 
   const rowsBare = [blankRow(v('test', '')), blankRow(v('test', 'abc'))];
   const bare = await plan(rowsBare, storedBare);
   assert.equal(dAt(bare.decisions, 0).markerId, 'm5', 'slice-1 stable order: first row × first stored');
-  assert.equal(dAt(bare.decisions, 1).markerId, 'm7');
-  assert.equal(dAt(bare.decisions, 1).recoveredBy, 'field-overlap');
-  assert.ok(bare.decisions.every((d) => d.action === IMPORT_ACTIONS.APPLY));
+  assert.equal(dAt(bare.decisions, 1).decision, 'ambiguous-identity');
+  assert.deepEqual(dAt(bare.decisions, 1).candidateMarkerIds, ['m7']);
+  assert.deepEqual(bare.candidateDeletes, []);
 
   // Stale mix (two different ingest snapshots) → trust fails → same slice-1 results.
   const storedStale = [await storedFor('m5', base, 5, SEQ), await storedFor('m7', base, 7, SEQ + 1)];
   const rowsPos = [blankRow(v('test', ''), 2), blankRow(v('test', 'abc'), 5)];
   const stale = await plan(rowsPos, storedStale);
   assert.equal(dAt(stale.decisions, 0).markerId, 'm5', 'mixed lastIngestSeq disables the positional tier');
-  assert.equal(dAt(stale.decisions, 1).markerId, 'm7');
+  assert.equal(dAt(stale.decisions, 1).decision, 'ambiguous-identity');
+  assert.deepEqual(dAt(stale.decisions, 1).candidateMarkerIds, ['m7']);
 });
 
 test('cross-scope reconciliation: a marker whose baseline reappeared in ANOTHER scope is never eliminated-against locally', async () => {
@@ -298,8 +300,8 @@ test('cross-scope reconciliation: a marker whose baseline reappeared in ANOTHER 
   const rows = [blankRow(v('Cut Row', 'something else'))];
 
   const unshielded = await plan(rows, stored);
-  assert.equal(unshielded.decisions[0].decision, 'missing-rowid', 'sanity: overlap would pair without the shield');
-  assert.equal(unshielded.decisions[0].markerId, 'mCut');
+  assert.equal(unshielded.decisions[0].decision, 'ambiguous-identity', 'sanity: one-field overlap reviews without the shield');
+  assert.deepEqual(unshielded.decisions[0].candidateMarkerIds, ['mCut']);
 
   const cutFp = (await computeRowFingerprints(cutValues)).identityVectorFingerprint;
   const shielded = await plan(rows, stored, { crossScopeBlankFingerprints: new Set([cutFp]) });

@@ -204,7 +204,7 @@ export const buildImportPlan = async ({
   //       else); anything unexplained falls through to create + normal delete semantics
   //       (Amendment #3 — delete-and-replace never prompts).
   //   3b. field-overlap recovery (Tier 4, zero storage): a row with ZERO exact candidates
-  //       pairs with a leftover sharing ≥1 NON-BLANK identity field, unique in both
+  //       pairs with a leftover sharing ≥2 NON-BLANK identity fields, unique in both
   //       directions (byte-identical sides pair as a group), iterated to fixpoint.
   //   3c. fall-through: zero overlap with every leftover → genuinely new (create);
   //       multiple NON-identical candidates either direction → 'ambiguous-identity'
@@ -356,7 +356,9 @@ export const buildImportPlan = async ({
   // IDENTITY fields participate (item / entity / notes / answers) — the audit columns
   // (changedBy / changedDate) move on any edit and never establish identity. A shared
   // field counts ONLY when non-blank on both sides: blank==blank is no signal.
+  let nonBlankFieldOverlapCount = () => 0;
   let sharesNonBlankField = () => false;
+  let sharesTier4FieldOverlap = () => false;
   if (overlapPool.length > 0) {
     // Precompute the canonical-blank fingerprint per identity field (one hashing pass
     // covering every answer id present on either side) so "non-blank" is an exact
@@ -369,15 +371,14 @@ export const buildImportPlan = async ({
     })).fieldFingerprints;
 
     const IDENTITY_SCALARS = ['item', 'entity', 'notes'];
-    // ≥2 distinct identity fields whose fingerprints are equal AND not the blank-canonical value.
+    // Count distinct identity fields whose fingerprints are equal AND not the blank-canonical value.
     // A marker without fieldFingerprints (older record) safely never overlaps.
-    sharesNonBlankField = (rowFF, markerFF) => {
-      if (!rowFF || !markerFF) return false;
+    nonBlankFieldOverlapCount = (rowFF, markerFF) => {
+      if (!rowFF || !markerFF) return 0;
       let shared = 0;
       for (const k of IDENTITY_SCALARS) {
         if (rowFF[k] && rowFF[k] === markerFF[k] && rowFF[k] !== blankFF[k]) {
           shared += 1;
-          if (shared >= 2) return true;
         }
       }
       const rowAnswers = rowFF.answers || {};
@@ -385,13 +386,16 @@ export const buildImportPlan = async ({
       for (const id of Object.keys(rowAnswers)) {
         if (rowAnswers[id] && rowAnswers[id] === markerAnswers[id] && rowAnswers[id] !== blankFF.answers[id]) {
           shared += 1;
-          if (shared >= 2) return true;
         }
       }
-      return false;
+      return shared;
     };
+    sharesNonBlankField = (rowFF, markerFF) => nonBlankFieldOverlapCount(rowFF, markerFF) >= 1;
+    sharesTier4FieldOverlap = (rowFF, markerFF) => nonBlankFieldOverlapCount(rowFF, markerFF) >= 2;
   }
   const candidatesFor = (e, fromMarkers) =>
+    fromMarkers.filter((s) => sharesTier4FieldOverlap(e.fp.fieldFingerprints, s.fieldFingerprints));
+  const weakCandidatesFor = (e, fromMarkers) =>
     fromMarkers.filter((s) => sharesNonBlankField(e.fp.fieldFingerprints, s.fieldFingerprints));
 
   // --- Tier 3: positional slot for CONTENT-CHANGED rows (trusted stamps only). A pool
@@ -539,6 +543,13 @@ export const buildImportPlan = async ({
     for (const e of overlapPool) {
       const list = candidatesFor(e, remaining);
       if (list.length === 0) {
+        const weakList = weakCandidatesFor(e, remaining);
+        if (weakList.length > 0) {
+          decisions.push(reviewDecision(e.rowIndex, 'ambiguous-identity', {
+            candidateMarkerIds: weakList.map((s) => s.markerId)
+          }));
+          continue;
+        }
         decisions.push({ rowIndex: e.rowIndex, decision: 'new-row', action: IMPORT_ACTIONS.CREATE });
       } else {
         decisions.push(reviewDecision(e.rowIndex, 'ambiguous-identity', {
