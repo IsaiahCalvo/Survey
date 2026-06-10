@@ -69,6 +69,15 @@ export const buildImportPlan = async ({
   const matchedMarkerIds = new Set();
   const blanks = [];
 
+  const reviewMarkerExtraFor = (e, extra = {}) => {
+    const match = stored.find((s) =>
+      s?.markerId &&
+      (s.identityVectorFingerprint === e.fp.identityVectorFingerprint ||
+        s.fullRowFingerprint === e.fp.fullRowFingerprint)
+    );
+    return match ? { ...extra, markerId: match.markerId } : extra;
+  };
+
   // Group valid-token rows by their marker id, preserving row order. A row COPIED in
   // Excel carries the original's token, so a token appearing on >1 row is the
   // copy/paste case — the group is resolved by position below, not sent to review.
@@ -118,12 +127,12 @@ export const buildImportPlan = async ({
     switch (cls.status) {
       case 'valid': break; // resolved in the group pass below
       case 'blank': blanks.push(e); break;
-      case 'foreign': decisions.push(reviewDecision(rowIndex, 'foreign-rowid')); break;
-      case 'wrong-scope': decisions.push(reviewDecision(rowIndex, 'wrong-scope-rowid')); break;
+      case 'foreign': decisions.push(reviewDecision(rowIndex, 'foreign-rowid', reviewMarkerExtraFor(e))); break;
+      case 'wrong-scope': decisions.push(reviewDecision(rowIndex, 'wrong-scope-rowid', reviewMarkerExtraFor(e))); break;
       case 'key-unavailable':
-        decisions.push(reviewDecision(rowIndex, 'rowid-key-unavailable', { keyId: cls.keyId })); break;
+        decisions.push(reviewDecision(rowIndex, 'rowid-key-unavailable', reviewMarkerExtraFor(e, { keyId: cls.keyId }))); break;
       case 'malformed':
-      default: decisions.push(reviewDecision(rowIndex, 'malformed-rowid')); break;
+      default: decisions.push(reviewDecision(rowIndex, 'malformed-rowid', reviewMarkerExtraFor(e))); break;
     }
   }
 
