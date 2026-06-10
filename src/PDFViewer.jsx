@@ -66,6 +66,7 @@ import { checkSessionSupport, closeWorkbookSession, createWorkbookSession, getFi
 import { LIVE_SYNC_GATE_REASON, resolveLiveSyncEligibility } from './services/liveSyncEligibility';
 import { liveSyncGateStatus, rowIdWritebackMessage } from './services/excelSyncStatus';
 import { drainRowIdWritebackQueue } from './services/rowIdGraphWriteback';
+import { drainRowIdWritebackQueueLocal } from './services/rowIdLocalWriteback';
 import { clearDebugState, debugLog, emitDebugEvent as emitPdfDebugEvent, getDebugSnapshot, setDebugData, setDebugEnabled as setPdfDebugEnabled, setLastDebugError, setPresenceDebugStatus } from './utils/pdfDebug';
 import { computeExcelSyncFingerprint, computeHasPendingExcelSyncChanges } from './utils/excelSyncDirtyState';
 import { createPortal, flushSync } from 'react-dom';
@@ -7178,6 +7179,11 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   const liveSyncDriveTypeCacheRef = useRef(new Map()); // per-drive driveType probe cache (lazy, no polling)
   const liveSyncGateInFlightRef = useRef(false);
   const rowIdDrainInFlightRef = useRef(false); // one Row ID writeback drain pass at a time
+  const localRowIdFlushInFlightRef = useRef(false); // one local "Excel closed" flush pass at a time
+  // Latest-ref for the local flush (assigned each render where it's defined, just
+  // before handleAutoSyncFromExcel). Call sites use the ref so neither the file
+  // watcher effect nor the export executors gain a churning dependency.
+  const localRowIdFlushRef = useRef(null);
 
   // Export/Sync modal states
   const [showExportLocationModal, setShowExportLocationModal] = useState(false);
@@ -12579,6 +12585,13 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
             setLinkedExcelExists(true);
             markExcelExportSynced(updatedTemplate, identityRecordsByMarkerId);
 
+            // Local-file export just rewrote the workbook (with every marker's
+            // token) through the safe path — drain the local Row ID queue now;
+            // entries clear only on read-back verification (Amendment (b) step 3).
+            if (!updatedTemplate.isOneDrive) {
+              localRowIdFlushRef.current?.({ filePath: targetPath });
+            }
+
             if (!silent) {
               setIsExporting(false);
               alert('Sync to Excel successful!');
@@ -15060,6 +15073,50 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     }
   }, [selectedTemplate, graphClient, ensureFreshToken, executeExcelImport]);
 
+  // Local "Excel is closed" Row ID flush (Amendment 2026-06-08(b) step 3,
+  // HANDOFF item 3b — rowIdLocalWriteback.js). Runs ONLY at existing settle
+  // points (after an app export through the safe local path; after a
+  // watcher-driven ingest settles) — no new pollers. The module itself enforces
+  // every safety rail: lock sentinel (fail-closed), mtime stability, the
+  // export-clock drift guard, per-cell preconditions, and read-back-verified
+  // clearing. Every refusal leaves the queue intact and the file untouched.
+  // Assigned to localRowIdFlushRef (latest-ref) so call sites add no deps.
+  localRowIdFlushRef.current = async ({ filePath } = {}) => {
+    if (!window.electronAPI || !filePath) return;
+    if (localRowIdFlushInFlightRef.current) return;
+    localRowIdFlushInFlightRef.current = true;
+    try {
+      const rowIdDocumentId = `${pdfFile?.id || 'local'}:${pdfId || pdfFile?.name || 'pdf'}`;
+      const flushResult = await drainRowIdWritebackQueueLocal({
+        documentId: rowIdDocumentId,
+        filePath,
+        appExportStamp: latestAppExportStamp(surveyMarkersRef.current || surveyMarkers),
+        fs: window.electronAPI
+      });
+      if (flushResult.markerUpdates.length > 0) {
+        // Read-back-verified tokens: flip pendingRowIdWriteback off on the
+        // markers' identity records (excelSync is outside the dirty
+        // fingerprint, so this never re-dirties a synced survey).
+        setSurveyMarkers((prev) => applyWritebackVerification(prev, flushResult.markerUpdates));
+      }
+      if (flushResult.remaining > 0) {
+        debugLog('[RowIdWriteback] local flush left entries queued', {
+          status: flushResult.status, remaining: flushResult.remaining
+        });
+      }
+      const flushMessage = rowIdWritebackMessage(flushResult);
+      if (flushMessage) {
+        setLastSyncMessage(flushMessage);
+        setTimeout(() => setLastSyncMessage(''), 5000);
+      }
+    } catch (flushErr) {
+      // Queue stays intact by design; a flush failure never blocks the user.
+      console.warn('[RowIdWriteback] local flush failed:', flushErr);
+    } finally {
+      localRowIdFlushInFlightRef.current = false;
+    }
+  };
+
   // Auto-sync from Excel when file changes (file watcher)
   const handleAutoSyncFromExcel = useCallback(async () => {
     // Checkpoint history before sync
@@ -15228,6 +15285,13 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
         // No new columns, proceed with auto-sync import
         await executeAutoExcelImport(worksheetDataList, selectedTemplate, importMeta);
+
+        // Ingest settled (local files only): if Excel is provably closed, flush
+        // queued Row IDs into column A — fire-and-forget; the flush module
+        // enforces its own safety rails and reports through the sync banner.
+        if (!selectedTemplate?.isOneDrive) {
+          localRowIdFlushRef.current?.({ filePath: selectedTemplate.linkedExcelPath });
+        }
 
       } catch (error) {
         console.error('Failed to auto-sync from Excel:', error);
@@ -33654,6 +33718,9 @@ ${pageBlocks}
 
                       setLinkedExcelExists(true);
                       markExcelExportSynced(updatedTemplate, exportPendingData?.identityRecords || null);
+                      // A brand-new LOCAL link written through the safe path —
+                      // drain the local Row ID queue (read-back-verified).
+                      localRowIdFlushRef.current?.({ filePath: result.filePath });
                       alert('Export to computer successful!');
                     }
                   } catch (error) {

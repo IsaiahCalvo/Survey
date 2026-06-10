@@ -49,13 +49,15 @@ export const liveSyncGateStatus = (reasonCode) =>
   LIVE_SYNC_GATE_STATUS[reasonCode] || LIVE_SYNC_GATE_STATUS['unconfirmed-business'];
 
 /**
- * Plain-English banner message for a Row ID writeback drain result
- * (src/services/rowIdGraphWriteback.js — Amendment 2026-06-08(b) step 3).
+ * Plain-English banner message for a Row ID writeback drain result — BOTH
+ * drains share this vocabulary: the business-Graph single-cell writer
+ * (src/services/rowIdGraphWriteback.js) and the local "Excel is closed" flush
+ * (src/services/rowIdLocalWriteback.js) — Amendment 2026-06-08(b) step 3.
  * Returns null when there is nothing the surveyor needs to see: an empty queue,
  * the dormant master gate, or a setup that simply isn't live-writeback eligible
  * (those rows stay safely queued; the queue depth state is a later slice).
  * Wording is chosen so syncMessageTone colors it honestly: "synced" → success,
- * "queued" / "reconnect your Microsoft" → warn.
+ * "close excel" / "queued" / "reconnect your Microsoft" → warn.
  * @param {{status:string, verified?:number, remaining?:number}|null} result
  * @returns {string|null}
  */
@@ -73,14 +75,23 @@ export const rowIdWritebackMessage = (result) => {
       }
       return remaining > 0 ? `${remaining} ${rowIds(remaining)} queued until safe` : null;
     case 'stopped-verify-mismatch':
-    case 'stopped-error':
       return 'Could not confirm a Row ID write — kept queued until safe';
+    case 'stopped-error':
+      return 'Row ID write failed (file error) — kept queued until safe';
     case 'stopped-locked':
       return 'Excel is busy — Row IDs stay queued until safe';
     case 'auth-expired':
       return 'Reconnect your Microsoft account in Account Settings to finish writing Row IDs';
     case 'session-unavailable':
       return 'Live writeback unavailable right now — Row IDs stay queued until safe';
+    // Local "Excel is closed" flush refusals (rowIdLocalWriteback.js):
+    case 'excel-open':
+      return 'Close Excel to finish writing Row IDs — they stay queued until safe';
+    case 'unsafe-unknown':
+      return 'Not sure Excel is closed — Row IDs stay queued until safe';
+    case 'workbook-drifted':
+    case 'drifted-during-flush':
+      return 'The Excel file changed outside the app — Row IDs stay queued until safe';
     default:
       return null; // 'empty' | 'gate-off' | 'not-eligible' | 'no-document' | 'not-ready'
   }

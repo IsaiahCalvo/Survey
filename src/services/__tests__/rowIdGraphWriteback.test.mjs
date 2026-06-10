@@ -522,6 +522,11 @@ test('rowIdWritebackMessage: silent for dormant/no-op outcomes, honest words oth
   assert.equal(rowIdWritebackMessage({ status: 'completed', verified: 0, remaining: 0 }), null);
   assert.match(rowIdWritebackMessage({ status: 'stopped-verify-mismatch' }), /queued until safe/);
   assert.match(rowIdWritebackMessage({ status: 'stopped-error' }), /queued until safe/);
+  // A genuine file/IO error must read differently from a verify mismatch.
+  assert.notEqual(
+    rowIdWritebackMessage({ status: 'stopped-error' }),
+    rowIdWritebackMessage({ status: 'stopped-verify-mismatch' })
+  );
   assert.match(rowIdWritebackMessage({ status: 'stopped-locked' }), /queued until safe/);
   assert.match(rowIdWritebackMessage({ status: 'auth-expired' }), /Reconnect your Microsoft account/);
   assert.match(rowIdWritebackMessage({ status: 'session-unavailable' }), /queued until safe/);

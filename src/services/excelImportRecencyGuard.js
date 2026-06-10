@@ -44,9 +44,11 @@ export const RECENCY = Object.freeze({
 // real "restored an old copy" gap.
 export const RECENCY_TOLERANCE_MS = 120000;
 
-const META_SHEET_NAME = '_SurveyMetadata';
-const META_STAMP_KEY = 'export_timestamp';
-const META_SCAN_ROWS = 10; // the stamp lives at A3/B3; scan a few rows to be safe
+// Exported so the local Row ID flush (rowIdLocalWriteback.js) refreshes the SAME
+// stamp cell this guard reads — one source for the sheet/key names.
+export const META_SHEET_NAME = '_SurveyMetadata';
+export const META_STAMP_KEY = 'export_timestamp';
+export const META_SCAN_ROWS = 10; // the stamp lives at A3/B3; scan a few rows to be safe
 
 const parseStampMs = (stamp) => {
   if (stamp == null) return null;

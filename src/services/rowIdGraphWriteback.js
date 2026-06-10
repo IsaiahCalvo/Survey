@@ -28,8 +28,8 @@
 //   - Errors abort the pass with the queue intact: 401/auth → surface reconnect;
 //     409/423/locked → retry on a later pass; anything else → retry later.
 //
-// NO local-file writes live here — the local/personal "Excel closed" flush is a
-// separate slice with its own multi-signal safety rules.
+// NO local-file writes live here — the local/personal "Excel closed" flush
+// lives in rowIdLocalWriteback.js with its own multi-signal safety rules.
 
 import { LIVE_WRITEBACK_ENABLED } from './excelCapability.js';
 import {
@@ -148,8 +148,12 @@ export async function writeRowIdCellVerified(
   return { outcome: 'verify-mismatch', wrote: true, cellValue: after };
 }
 
-/** 1-based row number out of a queue entry's rowLocator (number or {rowNumber}). */
-const resolveEntryRowNumber = (entry) => {
+/**
+ * 1-based row number out of a queue entry's rowLocator (number or {rowNumber}).
+ * Exported so the local flush (rowIdLocalWriteback.js) resolves entries with
+ * IDENTICAL semantics — the queue schema must never fork between the drains.
+ */
+export const resolveEntryRowNumber = (entry) => {
   const direct = entry?.rowLocator;
   if (Number.isInteger(direct) && direct > 0) return direct;
   const nested = direct?.rowNumber;
