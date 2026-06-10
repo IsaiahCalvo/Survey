@@ -58,3 +58,14 @@ _Workstream state: blank-Row-ID matching fix + M365 buildout fully landed on loc
 - [ ] **"Rows we couldn't place" review surface (item 10, MEDIUM).** Review entries with a null markerId (brand-new unmatched Excel rows with no app marker yet) have no Survey-panel row to attach their red icon to — they currently vanish from view. Needs a small list surface (e.g. at the top of the Survey panel) plus the existing plain-English vocabulary. Wire from `pendingImportReview` entries where `markerId == null`.
 
 - [ ] **Desktop file-watcher EPERM on Desktop/Logs path (item 11, LOW bug).** The local watcher hits a harmless-but-noisy permission error on the Desktop/Logs path; investigate scope (likely macOS folder permissions) and silence or request access properly.
+
+---
+
+## STILL TO FILE — Unification / consolidation sweep (added 2026-06-10, per Isaiah)
+
+_Already in Linear: KAL-81 (unify callouts with the main annotation model — Backlog) and KAL-125 (callout + survey-marker delete bypass the per-user ownership gate — Backlog). Authority: `docs/ANNOTATION-CONTRACT.md` (callout is the documented odd-one-out; unification is a dedicated migration, not piecemeal). The items below extend that same principle app-wide._
+
+- [ ] **Callout unification (execute KAL-81 + KAL-125 together).** Callouts are just text-box annotations; move them onto the standard annotation contract (storage, ownership gate, styling flags, sync, undo/redo, delete authority). Run as ONE dedicated migration with before/after parity tests — the contract doc explicitly warns against piecemeal edits.
+- [ ] **Select-mode checkbox consistency audit.** Every list that enters select mode (Survey panel rows, pages panel, history, anywhere else) should use the same checkbox component, keyboard behavior, and select-all semantics. Audit first; unify only where they actually diverge.
+- [ ] **Drag-and-drop consolidation audit.** Multiple drag-reorder/drag-drop implementations exist (Survey panel rows, templates editor, page thumbnails, file drop). Inventory them, confirm which share code, and consolidate onto one mechanism where divergence buys nothing. Audit-then-unify, same pattern.
+- [ ] **General duplication sweep (standing).** When the loop touches an area, prefer consolidating duplicate spinners/tooltips/modals onto one implementation (KAL-65 tooltips and KAL-73 spinners already exist in Linear Backlog — fold into this principle).
