@@ -236,6 +236,30 @@ export async function getFileETag(graphClient, fileId) {
 }
 
 /**
+ * READ-ONLY probe of a drive's `driveType` — 'personal' (consumer OneDrive),
+ * 'business' (OneDrive for Business) or 'documentLibrary' (SharePoint/Teams).
+ * Used by the Live Sync capability gate (Amendment 2026-06-08(b)) to PROVE a
+ * business/work drive before live sync may turn on. Drive-scoped: pass the
+ * linked file's driveId (SharePoint/Teams) to target /drives/{id}; omit it to
+ * read the signed-in user's own drive (/me/drive). Performs no writes.
+ * @param {Object} graphClient - Microsoft Graph client
+ * @param {string|null} [driveId] - The drive to probe; null = the user's own drive
+ * @returns {Promise<string|null>} - The driveType string, or null when Graph omits it
+ */
+export async function getDriveType(graphClient, driveId = null) {
+  if (!graphClient) {
+    throw new Error('Not authenticated with Microsoft. Please sign in first.');
+  }
+
+  const drive = await graphClient
+    .api(driveId ? `/drives/${driveId}` : '/me/drive')
+    .select('driveType')
+    .get();
+
+  return typeof drive?.driveType === 'string' && drive.driveType ? drive.driveType : null;
+}
+
+/**
  * Upload/update an Excel file to OneDrive by file ID
  * This is useful for updating existing files and works even when Excel has the file open
  * (because it updates the cloud version, not the local synced copy)

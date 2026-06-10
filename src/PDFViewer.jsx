@@ -63,6 +63,8 @@ import { buildTextSearchDiagLogSection, emitTextSearchDiag } from './utils/textS
 import { canModify, getAnnotationAuthorId } from './lib/collab/permissionScope.js';
 import { checkFileExists, checkFileExistsInDrive, downloadExcelFile, downloadExcelFileByPath, getFileById, getFileETag, getFileMetadata, getTemplateIdFromExcel, uploadExcelFile, uploadFileContentById, uploadFileToDrive } from './services/excelGraphService';
 import { checkSessionSupport, closeWorkbookSession, createWorkbookSession, getFileIdFromPath, getUsedRange, getWorksheets, refreshWorkbookSession, updateCellRange } from './services/excelSessionService';
+import { LIVE_SYNC_GATE_REASON, resolveLiveSyncEligibility } from './services/liveSyncEligibility';
+import { liveSyncGateStatus } from './services/excelSyncStatus';
 import { clearDebugState, debugLog, emitDebugEvent as emitPdfDebugEvent, getDebugSnapshot, setDebugData, setDebugEnabled as setPdfDebugEnabled, setLastDebugError, setPresenceDebugStatus } from './utils/pdfDebug';
 import { computeExcelSyncFingerprint, computeHasPendingExcelSyncChanges } from './utils/excelSyncDirtyState';
 import { createPortal, flushSync } from 'react-dom';
@@ -268,7 +270,7 @@ import { getExportErrorMessage, isFileLocked } from './utils/exportHelpers';
 import { buildTrackpadInteractionDebugSummaryText, summarizeOverlayLagSamples } from './utils/overlayDebug';
 import { EXCEL_AUTOMATIC_WRITEBACK_ENABLED, isSilentWritebackBlocked } from './utils/excelWritebackGate';
 
-export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, tabId, isActive, onTopToolbarApiChange, onBottomToolbarApiChange, onLeftRailApiChange, onRightRailApiChange, onPageDrop, onUpdatePDFFile, onRequestCreateTemplate, initialViewState, onViewStateChange, templates = [], onTemplatesChange, onRefetchTemplates, user, isMSAuthenticated, msLogin, graphClient, msAccount, msNeedsReconnect, ensureFreshToken, entities, setEntities, onUnsavedAnnotationsChange, onAnnotationsExistChange }) {
+export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, tabId, isActive, onTopToolbarApiChange, onBottomToolbarApiChange, onLeftRailApiChange, onRightRailApiChange, onPageDrop, onUpdatePDFFile, onRequestCreateTemplate, initialViewState, onViewStateChange, templates = [], onTemplatesChange, onRefetchTemplates, user, isMSAuthenticated, msLogin, graphClient, msAccount, msNeedsReconnect, ensureFreshToken, msGetAuthSignals, entities, setEntities, onUnsavedAnnotationsChange, onAnnotationsExistChange }) {
   // Phase 35 UAT diag — mirror current PDF filename to window so the dev-only
   // phase35Diag logger can prefix every gate decision with the file under test.
   // Production-stripped via import.meta.env.MODE check; tree-shakes from prod.
@@ -7168,6 +7170,12 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   const liveSyncPollRef = useRef(null);
   const lastPollDataRef = useRef(null);
   const lastKnownETagRef = useRef(null); // Store ETag for change detection in fallback mode
+  // Live Sync capability gate (Amendment 2026-06-08(b)): the toggle only turns
+  // ON for a PROVEN business/work setup. null = not evaluated yet; otherwise
+  // the verdict from resolveLiveSyncEligibility ({allowed, reasonCode, ...}).
+  const [liveSyncGate, setLiveSyncGate] = useState(null);
+  const liveSyncDriveTypeCacheRef = useRef(new Map()); // per-drive driveType probe cache (lazy, no polling)
+  const liveSyncGateInFlightRef = useRef(false);
 
   // Export/Sync modal states
   const [showExportLocationModal, setShowExportLocationModal] = useState(false);
@@ -15279,6 +15287,58 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       }
     };
   }, [selectedTemplate?.id, selectedTemplate?.linkedExcelPath, handleAutoSyncFromExcel]);
+
+  // Amendment 2026-06-08(b) — Live Sync gate. The ONLY path that turns
+  // liveSyncEnabled ON: the rail toggle routes here, and live sync may start
+  // only for a positively PROVEN business/work setup (connected + work tenant
+  // + main-process token custody + Graph driveType business/documentLibrary).
+  // Eligibility resolves LAZILY on the click — at most one read-only Graph
+  // drive probe, cached per drive (no polling, no writes). Every refusal
+  // surfaces its plain-English reason from the excelSyncStatus vocabulary on
+  // the sync banner; the verdict also feeds the toggle tooltip via the rail.
+  // Turning OFF is always allowed. Signed-out / web build / legacy PKCE /
+  // personal OneDrive setups keep today's read paths — they just get an
+  // honest reason instead of a toggle that silently misbehaves.
+  const handleLiveSyncToggleRequest = useCallback(async () => {
+    if (liveSyncEnabled) {
+      setLiveSyncEnabled(false);
+      return;
+    }
+    if (liveSyncSupported === false) return; // existing runtime session-probe latch
+    if (liveSyncGateInFlightRef.current) return;
+    liveSyncGateInFlightRef.current = true;
+    setLiveSyncGate({ allowed: false, reasonCode: LIVE_SYNC_GATE_REASON.CHECKING, retryable: false });
+    try {
+      const verdict = await resolveLiveSyncEligibility({
+        template: selectedTemplate,
+        graphClient,
+        isMicrosoftConnected: Boolean(isMSAuthenticated && graphClient),
+        getAuthSignals: msGetAuthSignals,
+        cache: liveSyncDriveTypeCacheRef.current
+      });
+      setLiveSyncGate(verdict);
+      if (verdict.allowed) {
+        setLiveSyncEnabled(true);
+      } else {
+        setLastSyncMessage(liveSyncGateStatus(verdict.reasonCode).label);
+        setTimeout(() => setLastSyncMessage(''), 5000);
+      }
+    } catch (gateErr) {
+      // Fail SAFE: never enable live sync on an unproven setup.
+      console.warn('[LiveSync] Eligibility check failed:', gateErr);
+      setLiveSyncGate({ allowed: false, reasonCode: LIVE_SYNC_GATE_REASON.UNCONFIRMED, retryable: true });
+      setLastSyncMessage(liveSyncGateStatus(LIVE_SYNC_GATE_REASON.UNCONFIRMED).label);
+      setTimeout(() => setLastSyncMessage(''), 5000);
+    } finally {
+      liveSyncGateInFlightRef.current = false;
+    }
+  }, [liveSyncEnabled, liveSyncSupported, selectedTemplate, graphClient, isMSAuthenticated, msGetAuthSignals]);
+
+  // A different link (or unlink) invalidates the displayed gate verdict; the
+  // per-drive driveType cache stays — driveType is a property of the drive.
+  useEffect(() => {
+    setLiveSyncGate(null);
+  }, [selectedTemplate?.id, selectedTemplate?.linkedExcelPath]);
 
   // Live sync lifecycle management (OneDrive only)
   // Supports both session-based (business accounts) and ETag-based (personal accounts) sync
@@ -25832,12 +25892,16 @@ ${pageBlocks}
       lastSyncMessage,
       linkedExcelExists,
       liveSyncEnabled,
+      liveSyncGate,
       liveSyncStatus,
       liveSyncSupported,
       msLogin,
       msNeedsReconnect,
       normalizeSurveyMarkerColor,
       numPages,
+      // Amendment (b): the rail toggles live sync ONLY through the gated
+      // request — never via the raw setter.
+      onLiveSyncToggle: handleLiveSyncToggleRequest,
       onRequestCreateTemplate,
       pdfFile,
       scale,
@@ -25861,7 +25925,6 @@ ${pageBlocks}
       setExpandedSurveyMarkers,
       setItemSelectModeActive,
       setItems,
-      setLiveSyncEnabled,
       setNewSurveyMarkersByPage,
       setNoteDialogContent,
       setNoteDialogOpen,
@@ -25957,8 +26020,10 @@ ${pageBlocks}
     lastSyncMessage,
     linkedExcelExists,
     liveSyncEnabled,
+    liveSyncGate,
     liveSyncStatus,
     liveSyncSupported,
+    handleLiveSyncToggleRequest,
     msLogin,
     msNeedsReconnect,
     normalizeSurveyMarkerColor,
@@ -25984,7 +26049,6 @@ ${pageBlocks}
     setExpandedSurveyMarkers,
     setItemSelectModeActive,
     setItems,
-    setLiveSyncEnabled,
     setNewSurveyMarkersByPage,
     setNoteDialogContent,
     setNoteDialogOpen,

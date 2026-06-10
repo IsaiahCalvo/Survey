@@ -29,6 +29,25 @@ export const SYNC_STATUS = Object.freeze({
   FAILED: { key: 'failed', label: 'Sync failed', tone: SYNC_TONE.ERROR }
 });
 
+// Live Sync gate refusals (Amendment 2026-06-08(b)): why the Live Sync toggle
+// won't turn on yet. Keyed by the reason codes from
+// src/services/liveSyncEligibility.js (LIVE_SYNC_GATE_REASON). Plain English —
+// the surveyor reads these on the toggle tooltip and the sync banner.
+export const LIVE_SYNC_GATE_STATUS = Object.freeze({
+  'eligible': { key: 'eligible', label: 'Live Sync available', tone: SYNC_TONE.SUCCESS },
+  'checking': { key: 'checking', label: 'Checking Live Sync availability…', tone: SYNC_TONE.INFO },
+  'not-linked': { key: 'not-linked', label: 'Link an Excel workbook first to use Live Sync', tone: SYNC_TONE.INFO },
+  'local-file': { key: 'local-file', label: 'Live Sync works with OneDrive and SharePoint workbooks only', tone: SYNC_TONE.INFO },
+  'not-signed-in': { key: 'not-signed-in', label: 'Sign in with your Microsoft work account to turn on Live Sync', tone: SYNC_TONE.WARN },
+  'legacy-reconnect': { key: 'legacy-reconnect', label: 'Reconnect your Microsoft account in Account Settings to turn on Live Sync', tone: SYNC_TONE.WARN },
+  'personal-account': { key: 'personal-account', label: 'Live Sync needs a Microsoft 365 work or school account — import and export still work', tone: SYNC_TONE.WARN },
+  'unconfirmed-business': { key: 'unconfirmed-business', label: 'Not confirmed as a work OneDrive or SharePoint file yet — try again in a moment', tone: SYNC_TONE.WARN }
+});
+
+/** Gate verdict reason code → plain-English status (safe fallback: unconfirmed). */
+export const liveSyncGateStatus = (reasonCode) =>
+  LIVE_SYNC_GATE_STATUS[reasonCode] || LIVE_SYNC_GATE_STATUS['unconfirmed-business'];
+
 // Tone → colors for a status banner (text, background, border).
 export const SYNC_TONE_COLORS = Object.freeze({
   [SYNC_TONE.INFO]: { color: '#3498db', background: 'rgba(52, 152, 219, 0.1)', border: '1px solid rgba(52, 152, 219, 0.3)' },
@@ -48,7 +67,7 @@ export const syncMessageTone = (message) => {
   const text = typeof message === 'string' ? message.toLowerCase() : '';
   if (!text) return SYNC_TONE.INFO;
   if (/(failed|error|couldn.t|can.t|unable)/.test(text)) return SYNC_TONE.ERROR;
-  if (/(close excel|needs? your choice|queued|needs sync|looks older|no sync stamp|sync skipped)/.test(text)) return SYNC_TONE.WARN;
+  if (/(close excel|needs? your choice|queued|needs sync|looks older|no sync stamp|sync skipped|sign in with|reconnect your microsoft|work or school account|not confirmed as a work)/.test(text)) return SYNC_TONE.WARN;
   if (/(synced|saved|complete|up to date)/.test(text)) return SYNC_TONE.SUCCESS;
   return SYNC_TONE.INFO;
 };

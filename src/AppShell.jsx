@@ -46,7 +46,7 @@ const CompactColorPicker = lazy(() => import('./components/CompactColorPicker'))
 
 export default function App() {
   // Microsoft Graph authentication hook
-  const { graphClient, isAuthenticated: isMSAuthenticated, login: msLogin, account: msAccount, needsReconnect: msNeedsReconnect, ensureFreshToken } = useMSGraph();
+  const { graphClient, isAuthenticated: isMSAuthenticated, login: msLogin, account: msAccount, needsReconnect: msNeedsReconnect, ensureFreshToken, getAuthSignals: msGetAuthSignals } = useMSGraph();
 
   // UX 2026-04-22: Global Save Log handler — subscribes to the File menu /
   // Cmd+Shift+L shortcut from the outermost App level so it works on the
@@ -2424,6 +2424,7 @@ export default function App() {
                       msAccount={msAccount}
                       msNeedsReconnect={msNeedsReconnect}
                       ensureFreshToken={ensureFreshToken}
+                      msGetAuthSignals={msGetAuthSignals}
                       entities={entities}
                       setEntities={setEntities}
                     />

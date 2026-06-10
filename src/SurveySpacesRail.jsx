@@ -18,7 +18,7 @@ import { SortableRearrangeList, SortableRearrangeRow } from './reorder/SortableR
 import { moveItemById } from './reorder/flatReorderUtils.js';
 import { COLORS } from './theme';
 import reviewWarningIcon from './assets/review-warning.svg';
-import { syncMessagePresentation } from './services/excelSyncStatus';
+import { liveSyncGateStatus, syncMessagePresentation } from './services/excelSyncStatus';
 import { compareSurveyMarkersForOrder } from './utils/surveyMarkerOrdering';
 
 const FONT_FAMILY = '-apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", "Segoe UI", Roboto, Ubuntu, "Noto Sans", Arial, sans-serif';
@@ -263,12 +263,14 @@ const SurveySpacesRail = ({
   lastSyncMessage,
   linkedExcelExists,
   liveSyncEnabled,
+  liveSyncGate,
   liveSyncStatus,
   liveSyncSupported,
   msLogin,
   msNeedsReconnect,
   normalizeSurveyMarkerColor,
   numPages,
+  onLiveSyncToggle,
   onRequestCreateTemplate,
   pdfFile,
   scale,
@@ -290,7 +292,6 @@ const SurveySpacesRail = ({
   setExpandedSurveyMarkers,
   setItemSelectModeActive,
   setItems,
-  setLiveSyncEnabled,
   setNewSurveyMarkersByPage,
   setNoteDialogContent,
   setNoteDialogOpen,
@@ -3106,24 +3107,32 @@ const SurveySpacesRail = ({
                             Pull from Excel
                           </div>
                           )}
-                          {selectedTemplate?.isOneDrive && (
+                          {selectedTemplate?.isOneDrive && (() => {
+                            // Amendment (b) capability gate: a refused verdict keeps the
+                            // toggle visible but inert-with-reason. Clicking re-checks
+                            // (retry); the plain-English reason comes from the shared
+                            // excelSyncStatus vocabulary — never an inline literal here.
+                            const gateRefused = !liveSyncEnabled && liveSyncGate && !liveSyncGate.allowed
+                              && liveSyncGate.reasonCode !== 'checking';
+                            const gateChecking = !liveSyncEnabled && liveSyncGate?.reasonCode === 'checking';
+                            return (
                             <div
                               onClick={() => {
                                 if (liveSyncSupported === false) return;
-                                setLiveSyncEnabled(!liveSyncEnabled);
+                                if (typeof onLiveSyncToggle === 'function') onLiveSyncToggle();
                               }}
                               style={{
                                 padding: '12px 16px',
                                 color: liveSyncEnabled && liveSyncStatus === 'connected'
                                   ? '#3498db'
-                                  : liveSyncStatus === 'connecting'
+                                  : liveSyncStatus === 'connecting' || gateChecking
                                     ? '#f39c12'
                                     : liveSyncStatus === 'error' || liveSyncSupported === false
                                       ? '#e74c3c'
                                       : '#fff',
                                 fontSize: '14px',
                                 cursor: liveSyncSupported === false ? 'not-allowed' : 'pointer',
-                                opacity: liveSyncSupported === false ? 0.6 : 1,
+                                opacity: liveSyncSupported === false ? 0.6 : gateRefused ? 0.75 : 1,
                                 display: 'flex',
                                 alignItems: 'center',
                                 gap: '8px'
@@ -3139,17 +3148,19 @@ const SurveySpacesRail = ({
                               title={
                                 liveSyncSupported === false
                                   ? 'Live sync requires Microsoft 365 Business account'
-                                  : liveSyncEnabled && liveSyncStatus === 'connected'
-                                    ? 'Live sync is active - changes sync in real-time'
-                                    : liveSyncStatus === 'connecting'
-                                      ? 'Connecting to Excel...'
-                                      : liveSyncStatus === 'error'
-                                        ? 'Live sync error - click to retry'
-                                        : 'Enable live sync for real-time Excel updates'
+                                  : gateRefused || gateChecking
+                                    ? liveSyncGateStatus(liveSyncGate.reasonCode).label
+                                    : liveSyncEnabled && liveSyncStatus === 'connected'
+                                      ? 'Live sync is active - changes sync in real-time'
+                                      : liveSyncStatus === 'connecting'
+                                        ? 'Connecting to Excel...'
+                                        : liveSyncStatus === 'error'
+                                          ? 'Live sync error - click to retry'
+                                          : 'Enable live sync for real-time Excel updates'
                               }
                             >
                               <span style={{ fontSize: '14px' }}>
-                                {liveSyncStatus === 'connecting'
+                                {liveSyncStatus === 'connecting' || gateChecking
                                   ? '...'
                                   : liveSyncEnabled && liveSyncStatus === 'connected'
                                     ? '●'
@@ -3157,7 +3168,8 @@ const SurveySpacesRail = ({
                               </span>
                               Live Sync
                             </div>
-                          )}
+                            );
+                          })()}
                         </div>
                       )}
                     </div>

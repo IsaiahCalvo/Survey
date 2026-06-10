@@ -896,6 +896,20 @@ export const MSGraphProvider = ({ children }) => {
         }
     };
 
+    // Capability-gating signals (Amendment 2026-06-08(b)): the signed-in
+    // account's tenant id (id-token `tid`) and which path holds token custody —
+    // 'main' (system-browser sign-in, main-process MSAL), 'legacy' (renderer
+    // PKCE / web build) or null (signed out). Sampled from refs at call time so
+    // lazy consumers (the Live Sync gate) read them on a click without a
+    // re-render subscription. Both custody paths populate tokenMetadataRef
+    // with tenant_id, so this works for main-custody AND legacy connections.
+    const getAuthSignals = useCallback(() => ({
+        tenantId: tokenMetadataRef.current?.tenant_id ?? null,
+        custody: custodyRef.current === 'main'
+            ? 'main'
+            : (tokenMetadataRef.current ? 'legacy' : null),
+    }), []);
+
     const value = {
         msalInstance: null,
         account,
@@ -910,6 +924,7 @@ export const MSGraphProvider = ({ children }) => {
         needsReconnect,
         handleOAuthCallback,
         ensureFreshToken, // Call this before Graph API operations to ensure valid token
+        getAuthSignals, // tenant id + token custody, sampled at call time (capability gating)
     };
 
     return <MSGraphContext.Provider value={value}>{children}</MSGraphContext.Provider>;
