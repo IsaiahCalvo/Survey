@@ -10146,6 +10146,50 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     }
   }, [createHistoryMeta, getAnnotationPageHistorySnapshot, getHistoryFingerprint, getHistorySnapshot, normalizeHistoryReason, pushHistoryDebugEvent]);
 
+  // Phase 35 Plan 03 — per-user delete authority. documentOwnerId comes from
+  // the documents-table user_id attached to pdfFile at Dashboard load time
+  // (see handleDocumentClick / file.user_id sites). pdfFile is a File-like
+  // blob and doesn't carry user_id natively — Dashboard threads it on the
+  // file object alongside id and projectId. When user_id is missing (e.g.
+  // local-only File picked from disk before sharing lands), the gate falls
+  // through to legacy behavior because canModify's boot guard requires both
+  // viewerId AND documentOwnerId.
+  //
+  // HOISTED here from the Phase 35 block (~line 16450) by KAL-125 2026-06-10:
+  // handleDeleteSelectedCallouts' dep array below reads documentOwnerId during
+  // render, so it must be declared first (same TDZ rule as the
+  // addHistoryCheckpoint note below). Depends only on props, safe to hoist.
+  //
+  // Phase 35 Plan 06 test seam — window.__phase35TestRoleOverride lets e2e
+  // specs flip the viewer role between 'collaborator' and 'owner' without
+  // needing two real Supabase accounts. Production-stripped by Vite tree-shake
+  // on the import.meta.env.MODE check (production bundle never sees this
+  // branch). 'collaborator' returns a fake UUID owner so canModify treats the
+  // viewer as a non-owner. 'owner' returns the viewer's own user.id so
+  // canModify treats them as owner.
+  const documentOwnerId = useMemo(() => {
+    if (import.meta.env.MODE !== 'production' && typeof window !== 'undefined') {
+      const override = window.__phase35TestRoleOverride;
+      if (override === 'collaborator') {
+        return '00000000-0000-0000-0000-000000000001';
+      }
+      if (override === 'owner') {
+        return user?.id || null;
+      }
+    }
+    // Bug fix (2026-04-30): when pdfFile.user_id is missing (some load paths
+    // never resolve it — e.g. opening a PDF outside the Dashboard fetch flow),
+    // FALL BACK to the current user's id rather than null. Returning null
+    // makes canModify reject every delete because isOwner needs both args to
+    // be strings, and old annotations lack authorId, so the bulk-delete planner
+    // returns 'no-op' and the user gets a silent broken delete. Treating the
+    // viewer as the owner when ownership is unknown matches pre-Phase-35
+    // behavior (where every user could delete everything in their own session)
+    // and preserves the safety model: the only viewer who could be wrong about
+    // ownership is the doc opener, who already has full local access anyway.
+    return pdfFile?.user_id || user?.id || null;
+  }, [pdfFile?.user_id, user?.id]);
+
   // UX: Phase 14 KBD-01 — handler for Delete/Backspace on selected callouts.
   // Called by SVGAnnotationLayer's extended keydown effect via
   // onDeleteSelectedCallouts prop. Uses per-action undo via
@@ -10153,22 +10197,36 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   // addHistoryCheckpoint to avoid a TDZ ReferenceError on the dep array.
   const handleDeleteSelectedCallouts = useCallback((calloutIdsToDelete) => {
     if (!Array.isArray(calloutIdsToDelete) || calloutIdsToDelete.length === 0) return;
-    const idsSet = new Set(calloutIdsToDelete);
+    // KAL-125: ownership gate — mirror the standard annotation delete path
+    // (useSVGInteraction.js:4207-4224). Run canModify against each callout at
+    // delete time; silently drop any callout the viewer is not allowed to modify.
+    // Boot guard: when viewerId or documentOwnerId is not yet resolved, fall
+    // through permissively (same pattern as useSVGInteraction.js:4218-4222).
+    const viewerId = user?.id ?? null;
+    const permittedIds = calloutIdsToDelete.filter((id) => {
+      if (!viewerId || !documentOwnerId) return true;
+      // Resolve the callout object so canModify can read its authorId chain.
+      const callout = callouts.find((c) => c.id === id);
+      if (!callout) return false;
+      return canModify({ annotation: callout, viewerId, documentOwnerId });
+    });
+    if (permittedIds.length === 0) return;
+    const idsSet = new Set(permittedIds);
     // UX: undo checkpoint BEFORE the mutation, same pattern as
     // annotations:save (App.jsx:23752) — so Cmd+Z restores the deleted callouts.
     addHistoryCheckpoint('callouts:delete', {
-      calloutIds: calloutIdsToDelete,
-      count: calloutIdsToDelete.length,
+      calloutIds: permittedIds,
+      count: permittedIds.length,
     });
     markCalloutRemovalIntent({
       source: 'delete',
       reason: 'callouts:delete',
-      calloutIds: calloutIdsToDelete,
-      count: calloutIdsToDelete.length,
+      calloutIds: permittedIds,
+      count: permittedIds.length,
     }, window);
     setCalloutsIfPersistedChanged((prev) => prev.filter((c) => !idsSet.has(c.id)));
     setSelectedCalloutIds(new Set());
-  }, [addHistoryCheckpoint, setCalloutsIfPersistedChanged]);
+  }, [addHistoryCheckpoint, callouts, documentOwnerId, setCalloutsIfPersistedChanged, user?.id]);
 
   // UX 2026-04-21: single-checkpoint opener for marquee delete of a mixed
   // shape+callout selection. The SVGAnnotationLayer delete handler calls
@@ -16463,44 +16521,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   const cloudSyncEnabled = !!features?.cloudSync;
   const cloudSyncActive = cloudSyncEnabled && !!documentSyncEnabled;
 
-  // Phase 35 Plan 03 — per-user delete authority. documentOwnerId comes from
-  // the documents-table user_id attached to pdfFile at Dashboard load time
-  // (see handleDocumentClick / file.user_id sites). pdfFile is a File-like
-  // blob and doesn't carry user_id natively — Dashboard threads it on the
-  // file object alongside id and projectId. When user_id is missing (e.g.
-  // local-only File picked from disk before sharing lands), the gate falls
-  // through to legacy behavior because canModify's boot guard requires both
-  // viewerId AND documentOwnerId.
-  //
-  // Phase 35 Plan 06 test seam — window.__phase35TestRoleOverride lets e2e
-  // specs flip the viewer role between 'collaborator' and 'owner' without
-  // needing two real Supabase accounts. Production-stripped by Vite tree-shake
-  // on the import.meta.env.MODE check (production bundle never sees this
-  // branch). 'collaborator' returns a fake UUID owner so canModify treats the
-  // viewer as a non-owner. 'owner' returns the viewer's own user.id so
-  // canModify treats them as owner.
-  const documentOwnerId = useMemo(() => {
-    if (import.meta.env.MODE !== 'production' && typeof window !== 'undefined') {
-      const override = window.__phase35TestRoleOverride;
-      if (override === 'collaborator') {
-        return '00000000-0000-0000-0000-000000000001';
-      }
-      if (override === 'owner') {
-        return user?.id || null;
-      }
-    }
-    // Bug fix (2026-04-30): when pdfFile.user_id is missing (some load paths
-    // never resolve it — e.g. opening a PDF outside the Dashboard fetch flow),
-    // FALL BACK to the current user's id rather than null. Returning null
-    // makes canModify reject every delete because isOwner needs both args to
-    // be strings, and old annotations lack authorId, so the bulk-delete planner
-    // returns 'no-op' and the user gets a silent broken delete. Treating the
-    // viewer as the owner when ownership is unknown matches pre-Phase-35
-    // behavior (where every user could delete everything in their own session)
-    // and preserves the safety model: the only viewer who could be wrong about
-    // ownership is the doc opener, who already has full local access anyway.
-    return pdfFile?.user_id || user?.id || null;
-  }, [pdfFile?.user_id, user?.id]);
+  // Phase 35 Plan 03 — documentOwnerId was declared here until KAL-125
+  // (2026-06-10) hoisted it above handleDeleteSelectedCallouts (~line 10150),
+  // whose dep array reads it during render — declaring it below that callback
+  // would TDZ-crash the component. All Phase 35 consumers below still see it.
 
   // Phase 35 Plan 04 — bulk-delete modal + undo toast layer.
   //
@@ -27608,7 +27632,11 @@ ${pageBlocks}
                                     } else if (isCounter || annotationType === 'line' || annotationType === 'polygon' || annotationType === 'polyline') {
                                       editType = 'bbox';
                                     } else {
-                                      editType = 'callout';
+                                      // KAL-125 / CD-6: unknown type (e.g. stamp/image) — explicit
+                                      // no-op. The old else→'callout' fallthrough could accidentally
+                                      // mount the orphaned callout canvas for any unrecognized type.
+                                      appDebug(`[App p${pageNumber}] edit SKIPPED — unhandled type=${annotationType}, idx=${annotationIndex}`);
+                                      return;
                                     }
                                     appDebug(`[App p${pageNumber}] edit START — type=${annotationType}, editType=${editType}, idx=${annotationIndex}, fill=${annotationData.fill}, stroke=${annotationData.stroke}`);
                                     setEditingAnnotation({
@@ -28500,7 +28528,11 @@ ${pageBlocks}
                                         } else if (isCounter || annotationType === 'line' || annotationType === 'polygon' || annotationType === 'polyline') {
                                           editType = 'bbox';
                                         } else {
-                                          editType = 'callout';
+                                          // KAL-125 / CD-6: unknown type (e.g. stamp/image) — explicit
+                                          // no-op. The old else→'callout' fallthrough could accidentally
+                                          // mount the orphaned callout canvas for any unrecognized type.
+                                          appDebug(`[App p${pageNumber}] edit SKIPPED — unhandled type=${annotationType}, idx=${annotationIndex}`);
+                                          return;
                                         }
                                         appDebug(`[App p${pageNumber}] edit START — type=${annotationType}, editType=${editType}, idx=${annotationIndex}, fill=${annotationData.fill}, stroke=${annotationData.stroke}`);
                                         setEditingAnnotation({
@@ -29134,7 +29166,11 @@ ${pageBlocks}
                                         } else if (annotationType === 'rect' || annotationType === 'circle' || annotationType === 'ellipse' || annotationType === 'triangle') {
                                           editType = 'shape';
                                         } else {
-                                          editType = 'callout';
+                                          // KAL-125 / CD-6: unknown type (e.g. stamp/image) — explicit
+                                          // no-op. The old else→'callout' fallthrough could accidentally
+                                          // mount the orphaned callout canvas for any unrecognized type.
+                                          appDebug(`[App p${pageNum}] edit SKIPPED — unhandled type=${annotationType}, idx=${annotationIndex}`);
+                                          return;
                                         }
                                         appDebug(`[App p${pageNum}] edit START — type=${annotationType}, editType=${editType}, idx=${annotationIndex}, fill=${annotationData.fill}, stroke=${annotationData.stroke}`);
                                         setEditingAnnotation({
@@ -32339,7 +32375,7 @@ ${pageBlocks}
                         outline: 'none',
                         marginBottom: '16px'
                       }}
-                      placeholder="Enter surveyMarker name"
+                      placeholder="Enter Name"
                     />
 
                     <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>

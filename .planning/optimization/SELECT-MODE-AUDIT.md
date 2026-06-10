@@ -66,6 +66,7 @@ select-mode surface has tests.
 5. **S5 — semantics polish (C3+C4+C5)**: needs Isaiah's UX decisions (tri-state? Escape? one confirm pattern) — blocked on product choices; overlaps KAL-57/KAL-66/KAL-72, so consider folding into those tickets instead of a new one.
 
 ## Open decisions for Isaiah
+- ~~Checkbox style standard~~ **DECIDED 2026-06-10 (Isaiah): GOLD checked-fill is the app-wide standard** (the homepage/Documents-ledger look — everything moves toward the homepage design language). Behavior comes from the Survey-panel button variant (focusable, `aria-pressed`, keyboard-togglable); visual comes from the ledger (14px square, 2px radius, gold fill + dark ✓ when checked). The shared `SelectCheckbox` (S4/C1) combines both.
 - B3: was module-scope "copy mode" abandoned (delete) or still wanted (wire a trigger)?
 - Team modal: should bulk member REMOVE get a confirm? (recommend yes — `ConfirmModal`.)
 - S5 UX choices: tri-state select-all? Escape-to-exit everywhere? single confirm pattern (recommend `ConfirmModal`)?
