@@ -9,7 +9,6 @@
 import { loadPdfjs } from './utils/pdfWorkerConfig';
 import { classifyIncomingFile } from './utils/incomingFileResolver';
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
-import { PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
 import SurveyHub from './home/SurveyHub';
 import { useAuth } from './contexts/AuthContext';
 import { useMSGraph } from './contexts/MSGraphContext';
@@ -22,7 +21,6 @@ import { computeContentSha256 } from './services/contentHash';
 import { purgeAnnotationDoc } from './services/annotationDocSync';
 import { lockDocument, unlockDocument } from './services/documentLockService.js';
 import { perfUpload } from './utils/performanceLogger';
-import { reorderCategoriesByActiveOver, reorderItemsByActiveOver } from './home/templateReorderUtils';
 
 // --- helpers (shared small utilities; FONT_FAMILY/hexToRgba/normalizeName/
 //     hasNameConflict also live in App.jsx for the viewer) ---
@@ -126,7 +124,6 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
   }, []);
   const [isProjectModalOpen, setIsProjectModalOpen] = useState(false);
   const [isTemplateModalOpen, setIsTemplateModalOpen] = useState(false);
-  const [isMoveModalOpen, setIsMoveModalOpen] = useState(false);
   const [isMoveCopyDropdownOpen, setIsMoveCopyDropdownOpen] = useState(false);
   const moveCopyDropdownRef = useRef(null);
   const [templateName, setTemplateName] = useState('');
@@ -195,14 +192,6 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
   const [tempColor, setTempColor] = useState(null); // Temporary color while picking
   const [opacityInputValue, setOpacityInputValue] = useState(null); // Temporary opacity input value (null = show current, '' = empty during typing, string = value)
   const [opacityInputFocused, setOpacityInputFocused] = useState(false); // Track if opacity input is focused
-  const entitySensors = useSensors(
-    useSensor(PointerSensor, {
-      activationConstraint: {
-        distance: 6
-      }
-    })
-  );
-
   // Close user dropdown when clicking outside
   useEffect(() => {
     const handleClickOutside = (event) => {
@@ -220,31 +209,6 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
     };
   }, [showUserDropdown]);
 
-  const [activeEntityId, setActiveEntityId] = useState(null);
-  const handleEntityDragStart = useCallback(({ active }) => {
-    setActiveEntityId(active.id);
-  }, []);
-  const handleEntityDragEnd = useCallback(({ active, over }) => {
-    setActiveEntityId(null);
-    if (!over || active.id === over.id) {
-      return;
-    }
-    setEntities((prevEntities) => reorderItemsByActiveOver(prevEntities, active.id, over.id));
-  }, []);
-  const handleEntityDragCancel = useCallback(() => {
-    setActiveEntityId(null);
-  }, []);
-  const isAnyEntityDragging = Boolean(activeEntityId);
-  useEffect(() => {
-    if (isAnyEntityDragging) {
-      document.body.classList.add('entity-dragging');
-    } else {
-      document.body.classList.remove('entity-dragging');
-    }
-    return () => {
-      document.body.classList.remove('entity-dragging');
-    };
-  }, [isAnyEntityDragging]);
   const [projectName, setProjectName] = useState('');
   const [projectFiles, setProjectFiles] = useState([]);
   const [isDragOver, setIsDragOver] = useState(false);
@@ -368,14 +332,10 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
     lineHeight: '20px'
   };
 
-  // Bulk selection state
-  const [isSelectionMode, setIsSelectionMode] = useState(false);
-  const [selectedIds, setSelectedIds] = useState([]); // array of item ids currently selected
 
   // View mode dropdown state
   const [isViewDropdownOpen, setIsViewDropdownOpen] = useState(false);
   const viewDropdownRef = useRef(null);
-  const selectionModeActionsRef = useRef(null);
 
   // Load view mode from localStorage (only UI preference, not data)
   useEffect(() => {
@@ -1116,160 +1076,12 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
     setIsProjectModalOpen(false);
   };
 
-  // Helpers for selection/bulk actions
-  const getCurrentContextKey = () => {
-    if (activeSection === 'projects') {
-      return selectedProjectId ? 'projectFiles' : 'projects';
-    }
-    if (activeSection === 'templates') {
-      return selectedTemplateId ? 'templateFiles' : 'templates';
-    }
-    return 'documents';
-  };
+  // Legacy hub selection mode was removed (KAL-82 slice 1 — see
+  // .planning/optimization/SELECT-MODE-AUDIT.md). AppShell still calls
+  // dashboardRef.current.exitSelectionMode(); keep a no-op until that caller
+  // is cleaned up separately.
+  const exitSelectionMode = useCallback(() => {}, []);
 
-  const getCurrentItems = () => {
-    const ctx = getCurrentContextKey();
-    if (ctx === 'documents') return sortedDocuments;
-    if (ctx === 'projects') return sortedProjects;
-    if (ctx === 'projectFiles') {
-      // Use supabaseDocuments when a project is selected
-      if (selectedProjectId && supabaseDocuments) {
-        return supabaseDocuments.map(doc => ({
-          id: doc.id,
-          name: doc.name,
-          size: doc.file_size || 0,
-          uploadedAt: doc.created_at || doc.updated_at,
-          type: 'application/pdf',
-          filePath: doc.file_path,
-          projectId: doc.project_id
-        }));
-      }
-      return [];
-    }
-    if (ctx === 'templates') return sortedTemplates;
-    if (ctx === 'templateFiles') return (templates.find(t => t.id === selectedTemplateId)?.pdfs || []);
-    return [];
-  };
-
-  const selectedIdsSet = new Set(selectedIds);
-  const isItemSelected = (id) => selectedIdsSet.has(id);
-
-  const toggleSelectItem = (id, e) => {
-    if (e && e.stopPropagation) e.stopPropagation();
-    setSelectedIds(prev => {
-      const next = prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id];
-      console.log('[DocumentDelete] selection:toggle', JSON.stringify({
-        id,
-        wasSelected: prev.includes(id),
-        selectedIds: next,
-      }));
-      return next;
-    });
-  };
-
-  const handleEnterSelectionMode = (e) => {
-    if (e) {
-      e.preventDefault();
-      e.stopPropagation();
-    }
-    console.log('[DocumentDelete] selection:enter', JSON.stringify({
-      activeSection,
-      visibleItems: getCurrentItems().length,
-    }));
-    setIsSelectionMode(true);
-    setSelectedIds([]);
-  };
-
-  const selectAllCurrent = () => {
-    const items = getCurrentItems();
-    setSelectedIds(items.map(i => i.id));
-  };
-
-  const clearSelection = () => setSelectedIds([]);
-
-  const exitSelectionMode = useCallback(() => { setIsSelectionMode(false); setSelectedIds([]); }, []);
-
-  // Document-level click handler to exit selection mode when clicking outside items
-  useEffect(() => {
-    if (!isSelectionMode || (activeSection !== 'documents' && activeSection !== 'projects' && activeSection !== 'templates')) {
-      return;
-    }
-
-    const handleDocumentClick = (e) => {
-      const target = e.target;
-
-      // Check if clicking within the selection mode actions container
-      const isInSelectionModeActions = selectionModeActionsRef.current && selectionModeActionsRef.current.contains(target);
-
-      // Check if clicking on an item container (grid item div or table row)
-      const isItemContainer = target.closest('tr[style*="cursor: pointer"]') ||
-        (target.closest('div[style*="cursor: pointer"]') &&
-          target.closest('div[style*="cursor: pointer"]')?.style?.cursor === 'pointer' &&
-          !target.closest('div[style*="cursor: pointer"]')?.closest('button'));
-
-      // Only prevent exit if clicking within selection mode actions OR on an item container
-      const shouldPreventExit = isInSelectionModeActions || isItemContainer;
-
-      if (!shouldPreventExit) {
-        exitSelectionMode();
-      }
-    };
-
-    // Use capture phase to catch clicks before they're handled by other elements
-    document.addEventListener('click', handleDocumentClick, true);
-
-    return () => {
-      document.removeEventListener('click', handleDocumentClick, true);
-    };
-  }, [isSelectionMode, activeSection, exitSelectionMode]);
-
-  // Handle clicking outside items to exit selection mode (container-level handler as backup)
-  const handleContainerClick = (e) => {
-    // Only exit if we're in selection mode and in one of the relevant sections
-    if (isSelectionMode && (activeSection === 'documents' || activeSection === 'projects' || activeSection === 'templates')) {
-      const target = e.target;
-
-      // Check if clicking within the selection mode actions container (Select All, Move/Copy, Share, Delete, Cancel buttons)
-      const isInSelectionModeActions = selectionModeActionsRef.current && selectionModeActionsRef.current.contains(target);
-
-      // Check if clicking on an item container (grid item div or table row)
-      // Items have onClick handlers that stop propagation, but we check here as a safety measure
-      const isItemContainer = target.closest('tr[style*="cursor: pointer"]') ||
-        (target.closest('div[style*="cursor: pointer"]') &&
-          target.closest('div[style*="cursor: pointer"]')?.style?.cursor === 'pointer' &&
-          !target.closest('div[style*="cursor: pointer"]')?.closest('button'));
-
-      // Only prevent exit if clicking within selection mode actions OR on an item container
-      // All other clicks (including other buttons like settings, upload, create project, etc.) should exit
-      const shouldPreventExit = isInSelectionModeActions || isItemContainer;
-
-      if (!shouldPreventExit) {
-        exitSelectionMode();
-      }
-    }
-  };
-
-  const handleSectionNavClick = (section, { resetProject = false, resetTemplate = false } = {}) => {
-    // Feature gate Templates section for Pro/Enterprise users
-    if (section === 'templates' && !features?.advancedSurvey) {
-      alert('Survey Templates are a Pro feature. Please upgrade to access Templates.');
-      return;
-    }
-
-    if (section !== activeSection && isSelectionMode) {
-      exitSelectionMode();
-    }
-
-    if (resetProject) {
-      setSelectedProjectId(null);
-    }
-
-    if (resetTemplate) {
-      setSelectedTemplateId(null);
-    }
-
-    setActiveSection(section);
-  };
 
   // Persist projects to Supabase
   const persistProjects = async (projectsToSave) => {
@@ -1462,379 +1274,6 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
     }
 
     console.log('[DocumentDelete] verify:removed', JSON.stringify({ docId, source }));
-  };
-
-  const handleBulkDelete = async () => {
-    const ctx = getCurrentContextKey();
-    if (selectedIds.length === 0) return;
-
-    if (!user) {
-      alert('Please sign in to delete items');
-      return;
-    }
-
-    try {
-      if (ctx === 'documents') {
-        const idsToDelete = [...selectedIds];
-        console.log('[DocumentDelete] bulk:start', JSON.stringify({
-          ctx,
-          selectedIds: idsToDelete,
-          selectedCount: idsToDelete.length,
-          visibleDocumentCount: sortedDocuments.length,
-        }));
-        // Hide immediately. The database operation below hard-deletes each row,
-        // and Postgres ON DELETE CASCADE removes its annotation log, snapshot,
-        // and all child rows; storage bytes + the local durable copy are purged too.
-        setDocuments(prev => prev.filter(d => !idsToDelete.includes(d.id)));
-        setSelectedIds([]);
-        setIsSelectionMode(false);
-        // Delete documents from Supabase
-        for (const docId of idsToDelete) {
-          try {
-            // Check if this is a temp document (local only, not yet in Supabase)
-            if (typeof docId === 'string' && docId.startsWith('temp-')) {
-              // Just remove from local state, no Supabase deletion needed
-              continue;
-            }
-            const doc = supabaseDocuments.find(d => d.id === docId);
-            const filePath = doc?.file_path || doc?.filePath;
-
-            await deleteDocumentEverywhere({ docId, filePath, source: 'bulk-documents' });
-          } catch (err) {
-            console.error('[DocumentDelete] bulk:item-error', { docId, error: serializeError(err) });
-            throw err;
-          }
-        }
-        await refetchDocuments();
-      } else if (ctx === 'projects') {
-        // Delete projects from Supabase
-        for (const projectId of selectedIds) {
-          try {
-            await deleteSupabaseProject(projectId);
-          } catch (err) {
-            console.error('Error deleting project:', err);
-          }
-        }
-        await refetchProjects();
-      } else if (ctx === 'projectFiles') {
-        const proj = projects.find(p => p.id === selectedProjectId);
-        if (proj) {
-          const idsToDelete = [...selectedIds];
-          setDocuments(prev => prev.filter(d => !idsToDelete.includes(d.id)));
-          setSelectedIds([]);
-          setIsSelectionMode(false);
-          // Delete document records and files from Supabase
-          for (const docId of idsToDelete) {
-            try {
-              // Check if this is a temp document (local only, not yet in Supabase)
-              if (typeof docId === 'string' && docId.startsWith('temp-')) {
-                // Just remove from local state, no Supabase deletion needed
-                continue;
-              }
-              const doc = supabaseDocuments.find(d => d.id === docId);
-              const filePath = doc?.file_path || doc?.filePath;
-
-              await deleteDocumentEverywhere({ docId, filePath, source: 'bulk-project-files' });
-            } catch (err) {
-              console.error('[DocumentDelete] bulk:item-error', { docId, error: serializeError(err) });
-              throw err;
-            }
-          }
-
-          // Documents are automatically linked to projects via project_id foreign key
-          // No need to update project config - documents will be refetched
-          await refetchProjects();
-          await refetchDocuments();
-        }
-      } else if (ctx === 'templates') {
-        // Delete templates from Supabase
-        for (const templateId of selectedIds) {
-          const supabaseId = resolveSupabaseTemplateId(templateId);
-          if (!supabaseId) continue;
-          try {
-            await deleteSupabaseTemplate(supabaseId);
-          } catch (err) {
-            console.error('Error deleting template:', err);
-          }
-        }
-        await refetchTemplates();
-      } else if (ctx === 'templateFiles') {
-        const tmpl = templates.find(t => t.id === selectedTemplateId);
-        if (tmpl) {
-          // Update template config to remove PDFs
-          const updatedPdfs = (Array.isArray(tmpl.pdfs) ? tmpl.pdfs : []).filter(f => !selectedIds.includes(f.id));
-          const supabaseId = resolveSupabaseTemplateId(tmpl);
-          if (supabaseId) {
-            const updatedConfig = sanitizeTemplateConfig({ ...tmpl, pdfs: updatedPdfs });
-            await updateSupabaseTemplate(supabaseId, {
-              config: updatedConfig
-            });
-            await refetchTemplates();
-          } else {
-            console.warn('Unable to resolve Supabase template id for template files update.');
-          }
-        }
-      }
-      exitSelectionMode();
-    } catch (err) {
-      console.error('[DocumentDelete] bulk:error', serializeError(err));
-      alert('Failed to delete items: ' + (err.message || 'Unknown error'));
-    }
-  };
-
-  const handleBulkCopy = () => {
-    const ctx = getCurrentContextKey();
-    if (selectedIds.length === 0) return;
-    if (ctx === 'documents') {
-      const toCopy = sortedDocuments.filter(d => selectedIds.includes(d.id));
-      const copies = toCopy.map(d => ({ ...d, id: `${Date.now()}-${Math.random()}`, name: `${d.name} (Copy)` }));
-      setDocuments(prev => [...copies, ...prev]);
-    } else if (ctx === 'projects') {
-      const toCopy = projects.filter(p => selectedIds.includes(p.id));
-      const usedProjectNames = new Set(
-        projects
-          .map(project => normalizeName(project?.name))
-          .filter(Boolean)
-      );
-      const copies = toCopy.map(p => {
-        const newProjectId = `${Date.now()}-${Math.random()}`;
-        const newPdfs = (p.pdfs || []).map(f => ({ ...f, id: `${Date.now()}-${Math.random()}` }));
-        const baseName = p?.name?.trim() || 'Untitled Project';
-        const normalizedBaseName = normalizeName(baseName);
-        let copyName = baseName;
-        if (normalizedBaseName && usedProjectNames.has(normalizedBaseName)) {
-          copyName = createCopyName(baseName, usedProjectNames);
-        } else if (normalizedBaseName) {
-          usedProjectNames.add(normalizedBaseName);
-        }
-        return { ...p, id: newProjectId, name: copyName, createdAt: new Date().toISOString(), pdfs: newPdfs };
-      });
-      const next = [...copies, ...projects];
-      persistProjects(next);
-    } else if (ctx === 'projectFiles') {
-      const proj = projects.find(p => p.id === selectedProjectId);
-      if (proj) {
-        const toCopy = (proj.pdfs || []).filter(f => selectedIds.includes(f.id));
-        const copies = toCopy.map(f => ({ ...f, id: `${Date.now()}-${Math.random()}`, name: `${f.name} (Copy)` }));
-        const updated = { ...proj, pdfs: [...copies, ...(proj.pdfs || [])] };
-        const next = projects.map(p => p.id === proj.id ? updated : p);
-        persistProjects(next);
-        // Also add to global documents list
-        setDocuments(prev => [...copies, ...prev]);
-      }
-    } else if (ctx === 'templates') {
-      const toCopy = templates.filter(t => selectedIds.includes(t.id));
-      const usedTemplateNames = new Set(
-        templates
-          .map(template => normalizeName(template?.name))
-          .filter(Boolean)
-      );
-      const copies = toCopy.map(t => {
-        const newTemplateId = `${Date.now()}-${Math.random()}`;
-        const newPdfs = (t.pdfs || []).map(f => ({ ...f, id: `${Date.now()}-${Math.random()}` }));
-        const baseName = (t?.name?.trim()) || 'Template';
-        const normalizedBaseName = normalizeName(baseName);
-        let copyName = baseName;
-        if (normalizedBaseName && usedTemplateNames.has(normalizedBaseName)) {
-          copyName = createCopyName(baseName, usedTemplateNames);
-        } else if (normalizedBaseName) {
-          usedTemplateNames.add(normalizedBaseName);
-        }
-        return { ...t, id: newTemplateId, name: copyName, createdAt: new Date().toISOString(), pdfs: newPdfs };
-      });
-      const next = [...copies, ...templates];
-      persistTemplates(next);
-    } else if (ctx === 'templateFiles') {
-      const tmpl = templates.find(t => t.id === selectedTemplateId);
-      if (tmpl) {
-        const toCopy = (tmpl.pdfs || []).filter(f => selectedIds.includes(f.id));
-        const copies = toCopy.map(f => ({ ...f, id: `${Date.now()}-${Math.random()}`, name: `${f.name} (Copy)` }));
-        const updated = { ...tmpl, pdfs: [...copies, ...(tmpl.pdfs || [])] };
-        const next = templates.map(t => t.id === tmpl.id ? updated : t);
-        persistTemplates(next);
-      }
-    }
-    exitSelectionMode();
-  };
-
-  const handleBulkShare = () => {
-    const ctx = getCurrentContextKey();
-    if (selectedIds.length === 0) return;
-    if (ctx === 'documents') {
-      setDocuments(prev => prev.map(d => selectedIds.includes(d.id) ? { ...d, shared: true } : d));
-    } else if (ctx === 'projects') {
-      const next = projects.map(p => selectedIds.includes(p.id) ? { ...p, shared: true } : p);
-      persistProjects(next);
-    } else if (ctx === 'projectFiles') {
-      const proj = projects.find(p => p.id === selectedProjectId);
-      if (proj) {
-        const updated = { ...proj, pdfs: (proj.pdfs || []).map(f => selectedIds.includes(f.id) ? { ...f, shared: true } : f) };
-        const next = projects.map(p => p.id === proj.id ? updated : p);
-        persistProjects(next);
-      }
-    } else if (ctx === 'templates') {
-      const next = templates.map(t => selectedIds.includes(t.id) ? { ...t, shared: true } : t);
-      persistTemplates(next);
-    } else if (ctx === 'templateFiles') {
-      const tmpl = templates.find(t => t.id === selectedTemplateId);
-      if (tmpl) {
-        const updated = { ...tmpl, pdfs: (tmpl.pdfs || []).map(f => selectedIds.includes(f.id) ? { ...f, shared: true } : f) };
-        const next = templates.map(t => t.id === tmpl.id ? updated : t);
-        persistTemplates(next);
-      }
-    }
-    alert(`Shared ${selectedIds.length} item(s)`);
-    exitSelectionMode();
-  };
-
-  const handleBulkMove = () => {
-    if (selectedIds.length === 0) return;
-    setIsMoveModalOpen(true);
-  };
-
-  const handleMoveToProject = async (projectId, isNewProject = false, moveToDocuments = false) => {
-    if (selectedIds.length === 0) return;
-
-    const ctx = getCurrentContextKey();
-
-    // Get selected documents based on context
-    let docsToMove = [];
-    if (ctx === 'documents') {
-      docsToMove = sortedDocuments.filter(d => selectedIds.includes(d.id));
-    } else if (ctx === 'projectFiles') {
-      // Get files from the current project
-      const currentProject = projects.find(p => p.id === selectedProjectId);
-      if (currentProject) {
-        docsToMove = (currentProject.pdfs || []).filter(f => selectedIds.includes(f.id));
-      }
-    }
-
-    if (docsToMove.length === 0) return;
-
-    // Handle moving to Documents tab
-    if (moveToDocuments) {
-      // Remove from source location
-      if (ctx === 'documents') {
-        setDocuments(prev => prev.filter(d => !selectedIds.includes(d.id)));
-      } else if (ctx === 'projectFiles') {
-        const proj = projects.find(p => p.id === selectedProjectId);
-        if (proj) {
-          const updated = { ...proj, pdfs: (proj.pdfs || []).filter(f => !selectedIds.includes(f.id)) };
-          const next = projects.map(p => p.id === proj.id ? updated : p);
-          persistProjects(next);
-        }
-        // Also update documents list
-        setDocuments(prev => prev.filter(d => !selectedIds.includes(d.id)));
-      }
-
-      // Add to documents list (with new IDs to avoid conflicts)
-      const docsWithNewIds = docsToMove.map(d => ({
-        ...d,
-        id: `${Date.now()}-${Math.random()}`
-      }));
-      setDocuments(prev => [...docsWithNewIds, ...prev]);
-
-      setIsMoveModalOpen(false);
-      setProjectName('');
-      exitSelectionMode();
-      return;
-    }
-
-    if (isNewProject) {
-      // Create new project with selected documents
-      // Add documents to new project (with new IDs to avoid conflicts when moving from projectFiles)
-      const docsWithNewIds = docsToMove.map(d => ({
-        ...d,
-        id: `${Date.now()}-${Math.random()}`
-      }));
-
-      if (!user) {
-        setDashboardError('Please sign in to create projects.');
-        return;
-      }
-
-      // Create new project in Supabase
-      const createdProject = await createSupabaseProject({
-        name: projectName.trim() || 'New Project',
-        config: {
-          pdfs: docsWithNewIds,
-          createdAt: new Date().toISOString()
-        }
-      });
-
-      // Update documents to associate with project
-      for (const doc of docsToMove) {
-        try {
-          // Find the actual document in Supabase
-          const actualDoc = supabaseDocuments.find(d =>
-            (d.id === doc.id) || (d.name === doc.name && !d.project_id)
-          );
-          if (actualDoc) {
-            await updateSupabaseDocument(actualDoc.id, {
-              project_id: createdProject.id
-            });
-          }
-        } catch (err) {
-          console.error('Error updating document:', err);
-        }
-      }
-
-      await refetchProjects();
-      await refetchDocuments();
-
-      // Remove from source location
-      if (ctx === 'documents') {
-        setDocuments(prev => prev.filter(d => !selectedIds.includes(d.id)));
-      } else if (ctx === 'projectFiles') {
-        const proj = projects.find(p => p.id === selectedProjectId);
-        if (proj) {
-          const updated = { ...proj, pdfs: (proj.pdfs || []).filter(f => !selectedIds.includes(f.id)) };
-          const next = projects.map(p => p.id === proj.id ? updated : p);
-          persistProjects(next);
-        }
-      }
-    } else {
-      // Move to existing project
-      const targetProj = projects.find(p => p.id === projectId);
-      if (targetProj) {
-        // Add documents to target project (with new IDs to avoid conflicts)
-        const docsWithNewIds = docsToMove.map(d => ({
-          ...d,
-          id: `${Date.now()}-${Math.random()}`
-        }));
-
-        // Update documents to move to target project
-        if (!user) {
-          alert('Please sign in to move documents');
-          return;
-        }
-
-        for (const doc of docsToMove) {
-          try {
-            const actualDoc = supabaseDocuments.find(d =>
-              (d.id === doc.id) || (d.name === doc.name)
-            );
-            if (actualDoc) {
-              await updateSupabaseDocument(actualDoc.id, {
-                project_id: projectId
-              });
-            }
-          } catch (err) {
-            console.error('Error updating document:', err);
-          }
-        }
-
-        // Documents are automatically linked to projects via project_id foreign key
-        // No need to update project config - documents will be refetched
-
-        await refetchProjects();
-        await refetchDocuments();
-      }
-    }
-
-    setIsMoveModalOpen(false);
-    setProjectName('');
-    exitSelectionMode();
   };
 
   const formatFileSize = (bytes) => {
@@ -2343,22 +1782,6 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
     setEditingModuleName(initialNames);
   };
 
-  const moduleSensors = useSensors(
-    useSensor(PointerSensor, {
-      activationConstraint: {
-        distance: 8
-      }
-    })
-  );
-
-  const handleModuleDragEnd = useCallback(({ active, over }) => {
-    if (!over || active.id === over.id) {
-      return;
-    }
-
-    setModules((prevModules) => reorderItemsByActiveOver(prevModules, active.id, over.id));
-  }, []);
-
   const handleModuleInputKeyDown = useCallback((moduleId, event) => {
     if (event.key === 'Enter') {
       saveModuleEdit(moduleId);
@@ -2599,22 +2022,6 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
     () => modules.find((m) => m.id === selectedModuleId) || null,
     [modules, selectedModuleId]
   );
-
-  const categorySensors = useSensors(
-    useSensor(PointerSensor, {
-      activationConstraint: {
-        distance: 8
-      }
-    })
-  );
-
-  const handleCategoryDragEnd = useCallback(({ active, over }) => {
-    if (!over || active.id === over.id || !selectedModuleId) {
-      return;
-    }
-
-    setModules((prevModules) => reorderCategoriesByActiveOver(prevModules, selectedModuleId, active.id, over.id));
-  }, [selectedModuleId]);
 
   const handleCategoryInputKeyDown = useCallback((categoryId, event) => {
     if (event.key === 'Enter') {
@@ -3771,7 +3178,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
   };
 
   // Duplicate the given documents — optimistic local copies, same shape as
-  // the legacy handleBulkCopy documents branch.
+  // the removed legacy bulk-copy documents flow.
   const hubDuplicateDocuments = (docs) => {
     const list = Array.isArray(docs) ? docs.filter(Boolean) : [];
     if (list.length === 0) return;
@@ -3780,10 +3187,10 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
   };
 
   // Move or copy the given documents to an existing project. Move re-parents
-  // the real Supabase rows (project_id) — same call the legacy
-  // handleMoveToProject "move to existing project" branch makes. Copy has no
+  // the real Supabase rows (project_id), matching the removed legacy
+  // move-to-existing-project behavior. Copy has no
   // clean single-call Supabase primitive, so it stays an optimistic local
-  // copy (consistent with the legacy handleBulkCopy documents branch).
+  // copy (consistent with the removed legacy bulk-copy flow).
   const hubMoveCopyDocuments = async (docs, projectId, mode = 'move') => {
     const list = Array.isArray(docs) ? docs.filter(Boolean) : [];
     if (list.length === 0 || !projectId) return;
@@ -3793,7 +3200,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
 
     if (mode === 'copy') {
       // TODO: no server-side document-copy primitive exists; this is an
-      // optimistic local-only copy, matching the legacy handleBulkCopy
+      // optimistic local-only copy, matching the removed legacy bulk-copy
       // behavior. Wire a real copy primitive if/when one is added.
       const copies = list.map(d => ({
         ...d,
