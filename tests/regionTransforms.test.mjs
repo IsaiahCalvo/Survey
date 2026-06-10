@@ -20,6 +20,13 @@
 import test from 'node:test';
 import { strictEqual, deepStrictEqual, ok } from 'node:assert/strict';
 import { normalizeAngle, snapAngleToNearest45 } from '../src/utils/svgTransformMath.js';
+import {
+  rotateCoordsAroundPoint,
+  deriveRegionChromeGeometry,
+  getRegionRotation,
+  normalizeRegionRotation
+} from '../src/utils/regionMath.js';
+import { isUndoKeyEvent, isRedoKeyEvent } from '../src/utils/undoRedoHotkeys.js';
 
 // ---------------------------------------------------------------------------
 // Helper: the same deep-clone logic RST uses for undo snapshots
@@ -488,6 +495,139 @@ test('Slice 3: rotation composed with undo restores original coords', () => {
   // Undo: restore from snapshot
   const restored = preSnapshot.regions[0].coordinates;
   ok(Math.abs(restored[0] - original[0]) < 1e-9, 'undo restores original coords after rotation');
+});
+
+// ---------------------------------------------------------------------------
+// KAL-301 FOLLOW-UP A — app-wide undo/redo hotkey standard (owner decision
+// 2026-06-10): UNDO = Cmd+Z / Ctrl+Z; REDO = Cmd+Shift+Z, Ctrl+Shift+Z,
+// Cmd+Y, Ctrl+Y. Tests run against the REAL shared predicates that both
+// PDFViewer's global capture handler and RegionSelectionTool consume.
+// ---------------------------------------------------------------------------
+
+const keyEvent = ({ key, code, metaKey = false, ctrlKey = false, shiftKey = false, altKey = false }) => (
+  { key, code, metaKey, ctrlKey, shiftKey, altKey }
+);
+
+test('Hotkeys: Cmd+Z and Ctrl+Z are undo (not redo)', () => {
+  for (const mod of [{ metaKey: true }, { ctrlKey: true }]) {
+    const e = keyEvent({ key: 'z', code: 'KeyZ', ...mod });
+    strictEqual(isUndoKeyEvent(e), true, `undo with ${JSON.stringify(mod)}`);
+    strictEqual(isRedoKeyEvent(e), false);
+  }
+});
+
+test('Hotkeys: all four redo combos are redo (not undo)', () => {
+  const combos = [
+    keyEvent({ key: 'Z', code: 'KeyZ', metaKey: true, shiftKey: true }),   // Cmd+Shift+Z
+    keyEvent({ key: 'Z', code: 'KeyZ', ctrlKey: true, shiftKey: true }),   // Ctrl+Shift+Z
+    keyEvent({ key: 'y', code: 'KeyY', metaKey: true }),                   // Cmd+Y
+    keyEvent({ key: 'y', code: 'KeyY', ctrlKey: true })                    // Ctrl+Y
+  ];
+  combos.forEach((e, i) => {
+    strictEqual(isRedoKeyEvent(e), true, `combo ${i} is redo`);
+    strictEqual(isUndoKeyEvent(e), false, `combo ${i} is not undo`);
+  });
+});
+
+test('Hotkeys: event.code fallback catches layout-shifted key values', () => {
+  // Some layouts report a non-latin event.key for the physical Z with
+  // Ctrl+Shift held — the physical code must still match.
+  const e = keyEvent({ key: 'Ω', code: 'KeyZ', ctrlKey: true, shiftKey: true });
+  strictEqual(isRedoKeyEvent(e), true);
+});
+
+test('Hotkeys: plain Z / Y without Cmd/Ctrl never match; Alt is excluded', () => {
+  strictEqual(isUndoKeyEvent(keyEvent({ key: 'z', code: 'KeyZ' })), false);
+  strictEqual(isRedoKeyEvent(keyEvent({ key: 'y', code: 'KeyY' })), false);
+  strictEqual(isUndoKeyEvent(keyEvent({ key: 'z', code: 'KeyZ', metaKey: true, altKey: true })), false);
+  strictEqual(isRedoKeyEvent(keyEvent({ key: 'y', code: 'KeyY', ctrlKey: true, altKey: true })), false);
+});
+
+// ---------------------------------------------------------------------------
+// KAL-301 FOLLOW-UP B — persisted rotation chrome. Regions bake rotation into
+// coords AND remember the display angle on region.rotation. The chrome is
+// derived by counter-rotating the baked coords around their bbox center,
+// taking the axis-aligned bounds, and rendering inside rotate(rotation,
+// center). These tests run against the REAL deriveRegionChromeGeometry /
+// rotateCoordsAroundPoint in src/utils/regionMath.js.
+// ---------------------------------------------------------------------------
+
+test('Chrome: rotation 0 returns the plain bbox and original coords', () => {
+  const coords = [10, 20, 110, 20, 110, 70, 10, 70];
+  const chrome = deriveRegionChromeGeometry(coords, 0);
+  deepStrictEqual(chrome.bounds, { minX: 10, minY: 20, maxX: 110, maxY: 70 });
+  strictEqual(chrome.rotation, 0);
+  strictEqual(chrome.unrotatedCoords, coords, 'no copy when rotation is 0');
+});
+
+test('Chrome: rotate(rotation, center) of unrotatedCoords reproduces the baked coords exactly', () => {
+  // Bake a 30° rotation the way RST does (around the pre-rotation bbox center)
+  const original = [0, 0, 100, 0, 100, 50, 0, 50];
+  const baked = rotateCoordsAroundPoint(original, 50, 25, 30);
+
+  const chrome = deriveRegionChromeGeometry(baked, 30);
+  const reproduced = rotateCoordsAroundPoint(
+    chrome.unrotatedCoords, chrome.center.cx, chrome.center.cy, chrome.rotation
+  );
+  baked.forEach((v, i) => ok(Math.abs(v - reproduced[i]) < 1e-9, `coord[${i}] reproduced`));
+});
+
+test('Chrome: tilted box has the original (pre-rotation) dimensions', () => {
+  const original = [0, 0, 100, 0, 100, 50, 0, 50]; // 100x50
+  const baked = rotateCoordsAroundPoint(original, 50, 25, 73); // arbitrary angle
+  const chrome = deriveRegionChromeGeometry(baked, 73);
+  const w = chrome.bounds.maxX - chrome.bounds.minX;
+  const h = chrome.bounds.maxY - chrome.bounds.minY;
+  ok(Math.abs(w - 100) < 1e-9, `box width 100, got ${w}`);
+  ok(Math.abs(h - 50) < 1e-9, `box height 50, got ${h}`);
+});
+
+test('Chrome: box corners under rotate(rotation, center) land on the baked rect corners', () => {
+  // The owner-visible requirement: re-selecting a rotated rectangle shows the
+  // tilted box hugging the shape — i.e. the rotated chrome corners coincide
+  // with the shape's actual corners.
+  const original = [0, 0, 80, 0, 80, 40, 0, 40];
+  const angle = 25;
+  const baked = rotateCoordsAroundPoint(original, 40, 20, angle);
+  const chrome = deriveRegionChromeGeometry(baked, angle);
+  const { minX, minY, maxX, maxY } = chrome.bounds;
+  const boxCorners = [minX, minY, maxX, minY, maxX, maxY, minX, maxY];
+  const rotatedBox = rotateCoordsAroundPoint(boxCorners, chrome.center.cx, chrome.center.cy, angle);
+  baked.forEach((v, i) => ok(Math.abs(v - rotatedBox[i]) < 1e-9, `corner coord[${i}] aligned`));
+});
+
+test('Chrome: accumulated rotation (30° then 20°, total 50°) still aligns', () => {
+  const original = [0, 0, 60, 0, 60, 30, 0, 30];
+  // First bake: 30° around bbox center (30, 15)
+  const baked1 = rotateCoordsAroundPoint(original, 30, 15, 30);
+  // Second bake rotates around the CURRENT bbox center, as RST does
+  const c1 = deriveRegionChromeGeometry(baked1, 30).center;
+  const baked2 = rotateCoordsAroundPoint(baked1, c1.cx, c1.cy, 20);
+
+  const chrome = deriveRegionChromeGeometry(baked2, 50);
+  const reproduced = rotateCoordsAroundPoint(
+    chrome.unrotatedCoords, chrome.center.cx, chrome.center.cy, 50
+  );
+  baked2.forEach((v, i) => ok(Math.abs(v - reproduced[i]) < 1e-9, `coord[${i}] aligned after accumulation`));
+  const w = chrome.bounds.maxX - chrome.bounds.minX;
+  const h = chrome.bounds.maxY - chrome.bounds.minY;
+  ok(Math.abs(w - 60) < 1e-9 && Math.abs(h - 30) < 1e-9, 'box keeps original dimensions');
+});
+
+test('Chrome: getRegionRotation reads the persisted field and survives undo-style cloning', () => {
+  const region = { regionId: 'r1', shapeType: 'polygon', coordinates: [0, 0, 10, 0, 10, 10, 0, 10], rotation: 33 };
+  strictEqual(getRegionRotation(region), 33);
+  strictEqual(getRegionRotation({ coordinates: [] }), 0, 'absent field reads 0');
+  // The RST undo snapshot clones via spread — the field must survive
+  const clone = { ...region, coordinates: [...region.coordinates] };
+  strictEqual(getRegionRotation(clone), 33, 'rotation survives snapshot cloning');
+});
+
+test('Chrome: normalizeRegionRotation wraps and rejects junk', () => {
+  strictEqual(normalizeRegionRotation(360), 0);
+  strictEqual(normalizeRegionRotation(-15), 345);
+  strictEqual(normalizeRegionRotation('nope'), 0);
+  strictEqual(normalizeRegionRotation(undefined), 0);
 });
 
 test('Slice 3: shift-scale of a rotated region preserves aspect ratio', () => {

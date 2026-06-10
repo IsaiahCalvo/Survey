@@ -585,3 +585,110 @@ export const simplifyPolygon = (coordinates, tolerance = 2) => {
 
   return result;
 };
+
+// ---------------------------------------------------------------------------
+// KAL-301 follow-up — persisted region rotation (selection-chrome display).
+//
+// Regions BAKE rotation into their coordinates at drag release (so hit-testing,
+// boolean ops, the space overlay mask, and print/export all keep consuming
+// plain polygon coords with zero changes). The `rotation` field on a region is
+// pure display metadata: the angle the selection chrome (bounding box +
+// grabbers + mtr handle) should render at — exactly how standard annotations
+// persist `angle` and SVGSelectionOverlay renders a rotated <g>.
+// ---------------------------------------------------------------------------
+
+/** Bring an angle into [0, 360). */
+export const normalizeRegionRotation = (deg) => {
+  const n = Number(deg);
+  if (!Number.isFinite(n)) return 0;
+  return ((n % 360) + 360) % 360;
+};
+
+/** Read a region's persisted chrome rotation (0 when absent/invalid). */
+export const getRegionRotation = (region) => normalizeRegionRotation(region?.rotation ?? 0);
+
+/**
+ * Rotate a flat [x0,y0,x1,y1,...] coord array around (cx, cy) by angleDeg
+ * (degrees, clockwise in screen space — the same direction as the SVG
+ * rotate() transform used for chrome rendering and live previews).
+ */
+export const rotateCoordsAroundPoint = (coords, cx, cy, angleDeg) => {
+  const rad = (angleDeg * Math.PI) / 180;
+  const cosA = Math.cos(rad);
+  const sinA = Math.sin(rad);
+  const rotated = new Array(coords.length);
+  for (let i = 0; i < coords.length; i += 2) {
+    const dx = coords[i] - cx;
+    const dy = coords[i + 1] - cy;
+    rotated[i] = cx + dx * cosA - dy * sinA;
+    rotated[i + 1] = cy + dx * sinA + dy * cosA;
+  }
+  return rotated;
+};
+
+/**
+ * Derive the tilted selection-chrome geometry for a region whose coords have
+ * rotation baked in and whose `rotation` field remembers the display angle.
+ *
+ * Returns { center: {cx, cy}, bounds: {minX, minY, maxX, maxY}, rotation,
+ * unrotatedCoords } where:
+ *  - center is the axis-aligned bbox center of the CURRENT (baked) coords —
+ *    the rotation pivot for chrome rendering;
+ *  - unrotatedCoords are the coords counter-rotated by -rotation around
+ *    center (a pure translation of the original pre-rotation polygon);
+ *  - bounds is the axis-aligned bbox of unrotatedCoords.
+ *
+ * Rendering `bounds` (+ handles at unrotatedCoords) inside a
+ * rotate(rotation, center) transform reproduces the baked coords exactly:
+ * R(θ,c)·unrotatedCoords === coords, so the tilted box hugs the shape the
+ * same way the upright box hugged it before the rotation was baked.
+ */
+export const deriveRegionChromeGeometry = (coordinates, rotationDeg) => {
+  if (!Array.isArray(coordinates) || coordinates.length < 4) return null;
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  for (let i = 0; i < coordinates.length; i += 2) {
+    const x = coordinates[i];
+    const y = coordinates[i + 1];
+    if (typeof x !== 'number' || typeof y !== 'number') continue;
+    if (x < minX) minX = x;
+    if (x > maxX) maxX = x;
+    if (y < minY) minY = y;
+    if (y > maxY) maxY = y;
+  }
+  if (!Number.isFinite(minX) || !Number.isFinite(minY) || !Number.isFinite(maxX) || !Number.isFinite(maxY)) {
+    return null;
+  }
+  const rotation = normalizeRegionRotation(rotationDeg);
+  const cx = (minX + maxX) / 2;
+  const cy = (minY + maxY) / 2;
+  if (rotation === 0) {
+    return {
+      center: { cx, cy },
+      bounds: { minX, minY, maxX, maxY },
+      rotation: 0,
+      unrotatedCoords: coordinates
+    };
+  }
+  const unrotatedCoords = rotateCoordsAroundPoint(coordinates, cx, cy, -rotation);
+  let uMinX = Infinity;
+  let uMinY = Infinity;
+  let uMaxX = -Infinity;
+  let uMaxY = -Infinity;
+  for (let i = 0; i < unrotatedCoords.length; i += 2) {
+    const x = unrotatedCoords[i];
+    const y = unrotatedCoords[i + 1];
+    if (x < uMinX) uMinX = x;
+    if (x > uMaxX) uMaxX = x;
+    if (y < uMinY) uMinY = y;
+    if (y > uMaxY) uMaxY = y;
+  }
+  return {
+    center: { cx, cy },
+    bounds: { minX: uMinX, minY: uMinY, maxX: uMaxX, maxY: uMaxY },
+    rotation,
+    unrotatedCoords
+  };
+};
