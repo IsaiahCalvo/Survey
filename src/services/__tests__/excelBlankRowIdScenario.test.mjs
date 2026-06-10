@@ -9,8 +9,9 @@
 //
 // Covered, in order:
 //   1. the verbatim live-bug steps (2026-06-09): blank-ID row, note edited BOTH
-//      sides with only one shared identity field → review, empty candidateDeletes
-//      (previously: auto-paired by one field or created a duplicate/delete candidate);
+//      sides → exactly ONE 'conflict' review flagging 'notes', empty candidateDeletes
+//      (previously: 'new-row' create = duplicate Survey Marker + original became a
+//      delete candidate);
 //   2. Variant C: same shape but the original was EXPORTED (exportedAt stamped) —
 //      once paired it must NOT be delete-eligible (previously: silent auto-trash);
 //   3. Isaiah's five verbatim examples (EX1-EX5) at plan level;
@@ -83,7 +84,7 @@ const decisionsOf = (plan) => [...plan.byRowIndex.values()];
 // 1. The verbatim bug steps (live repro 2026-06-09), end-to-end at plan level
 // ---------------------------------------------------------------------------
 
-test('BUG STEPS: blank-ID row, note edited BOTH sides with one-field overlap → review; empty candidateDeletes', async () => {
+test('BUG STEPS: blank-ID row, note edited BOTH sides → exactly ONE conflict review flagging notes; empty candidateDeletes', async () => {
   // Step 1: import created m1 from [item="test", notes blank, no Row ID] and
   // stamped excelSync from those exact values.
   const baseline = vals('test', '');
@@ -101,17 +102,19 @@ test('BUG STEPS: blank-ID row, note edited BOTH sides with one-field overlap →
   const ds = decisionsOf(plan);
   assert.equal(ds.length, 1, 'exactly one decision — no duplicate create');
   const d = plan.byRowIndex.get(1);
-  assert.equal(d.decision, 'ambiguous-identity', 'one shared identity field is review, not auto-pair');
+  assert.equal(d.decision, 'conflict', 'the shipped keep-app/use-Excel review — no new review kinds');
   assert.equal(d.action, 'review');
-  assert.deepEqual(d.candidateMarkerIds, ['m1']);
-  assert.deepEqual(plan.candidateDeletes, [], 'the possible original stays shielded from deletes');
+  assert.equal(d.markerId, 'm1');
+  assert.deepEqual(d.conflictFields, ['notes'], 'exactly the notes field is flagged');
+  assert.ok(d.excelValues, 'Excel values stashed so "use Excel\'s version" can apply later');
+  assert.deepEqual(plan.candidateDeletes, [], 'the original is paired, never a delete candidate');
 });
 
 // ---------------------------------------------------------------------------
 // 2. Variant C: the exported-marker variant — paired ⇒ never delete-eligible
 // ---------------------------------------------------------------------------
 
-test('VARIANT C: exported original with one-field overlap is review-shielded (no auto-trash)', async () => {
+test('VARIANT C: original marker was EXPORTED (exportedAt) → once paired it is NOT delete-eligible (no auto-trash)', async () => {
   const baseline = vals('test', '');
   const m1 = await markerFor(baseline, { exportedAt: '2026-06-08T00:00:00.000Z' });
   assert.equal(wasReceivedByExcel(m1), true,
@@ -124,10 +127,10 @@ test('VARIANT C: exported original with one-field overlap is review-shielded (no
   });
 
   const d = plan.byRowIndex.get(1);
-  assert.equal(d.decision, 'ambiguous-identity');
-  assert.deepEqual(d.candidateMarkerIds, ['m1']);
+  assert.equal(d.decision, 'conflict');
+  assert.equal(d.markerId, 'm1');
   assert.deepEqual(plan.candidateDeletes, [],
-    'review-shielded marker never enters candidateDeletes — the Variant-C silent auto-trash is unreachable');
+    'paired marker never enters candidateDeletes — the Variant-C silent auto-trash is unreachable');
 });
 
 // ---------------------------------------------------------------------------
@@ -248,7 +251,7 @@ test('MIXED: token + blank rows, one moved + one edited → token > exact > posi
 
   // This save: mA's row RENAMED (token must still win — tier 0 beats all content);
   // mC's row MOVED verbatim into mB's old slot 5 (exact content must beat the slot);
-  // mB's row EDITED (notes) and moved to slot 7 (one-field overlap now reviews).
+  // mB's row EDITED (notes) and moved to slot 7 (overlap follows content across slots).
   const plan = await runPlan({
     dataRows: [
       excelRow(token, vals('Alpha RENAMED', 'a'), 2),
@@ -269,9 +272,10 @@ test('MIXED: token + blank rows, one moved + one edited → token > exact > posi
   assert.equal(dExact.recoveredBy, undefined, 'exact tier — position never outranks an exact match');
 
   const dEdited = plan.byRowIndex.get(3);
-  assert.equal(dEdited.decision, 'ambiguous-identity');
-  assert.deepEqual(dEdited.candidateMarkerIds, ['mB']);
+  assert.equal(dEdited.decision, 'missing-rowid');
+  assert.equal(dEdited.markerId, 'mB', 'edited row follows its content, not the slot it moved to');
+  assert.equal(dEdited.recoveredBy, 'field-overlap');
 
-  assert.ok(decisionsOf(plan).every((d) => d.action !== 'create'), 'zero creates');
+  assert.ok(decisionsOf(plan).every((d) => d.action === 'apply'), 'zero creates, zero reviews');
   assert.deepEqual(plan.candidateDeletes, []);
 });

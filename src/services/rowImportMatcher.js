@@ -9,8 +9,9 @@
  *      order silently, Amendment #4), then — when the scope's DEVICE-LOCAL positional
  *      stamps are TRUSTED (every leftover stamped from ONE snapshot, matched anchors
  *      order-consistent) — by the row's sheet SLOT relative to flanking anchors (Tier 3),
- *      then by ≥2 shared NON-BLANK identity fields unique in both directions (Tier-4 field
- *      overlap — survives Excel-side edits to a blank-ID row). Strict precedence:
+ *      then by a shared NON-BLANK Item field — or ≥2 other shared NON-BLANK identity
+ *      fields — unique in both directions (Tier-4 field overlap — survives Excel-side
+ *      edits to a blank-ID row; a single weak field only review-shields). Strict precedence:
  *      Row-ID tokens > exact unique fingerprint > position; position NEVER overrides an
  *      exact content match (rows that swap content swap pairings, not slots).
  *   3. Duplicate / unknown / foreign / wrong-scope / malformed Row IDs, and blank recovery
@@ -204,8 +205,9 @@ export const buildImportPlan = async ({
   //       else); anything unexplained falls through to create + normal delete semantics
   //       (Amendment #3 — delete-and-replace never prompts).
   //   3b. field-overlap recovery (Tier 4, zero storage): a row with ZERO exact candidates
-  //       pairs with a leftover sharing ≥2 NON-BLANK identity fields, unique in both
-  //       directions (byte-identical sides pair as a group), iterated to fixpoint.
+  //       pairs with a leftover sharing the non-blank Item field (or ≥2 other non-blank
+  //       identity fields), unique in both directions (byte-identical sides pair as a
+  //       group), iterated to fixpoint. A single weak (non-Item) overlap reviews instead.
   //   3c. fall-through: zero overlap with every leftover → genuinely new (create);
   //       multiple NON-identical candidates either direction → 'ambiguous-identity'
   //       review (genuinely consequential ambiguity only — never guess, never create).
@@ -360,6 +362,8 @@ export const buildImportPlan = async ({
   let sharesNonBlankField = () => false;
   let sharesTier4FieldOverlap = () => false;
   if (overlapPool.length > 0) {
+    // blankFF (and the helpers closing over it) are scoped to this block on purpose:
+    // with an empty overlapPool the helpers stay no-ops and blankFF is never computed.
     // Precompute the canonical-blank fingerprint per identity field (one hashing pass
     // covering every answer id present on either side) so "non-blank" is an exact
     // fingerprint comparison, not a value heuristic.
@@ -390,8 +394,16 @@ export const buildImportPlan = async ({
       }
       return shared;
     };
+    // Field-weighted pairing: the Item field is the salient identity, so a shared
+    // non-blank Item alone may pair — the same-Item delete/retype collision is the
+    // explicitly accepted residual (verdict doc, Amendment 2). Weak fields (entity /
+    // notes / answers) never pair alone: without the Item they need ≥2 distinct
+    // shared fields; a single weak overlap only shields via review (weakCandidatesFor).
+    const sharesItemField = (rowFF, markerFF) =>
+      Boolean(rowFF && markerFF && rowFF.item && rowFF.item === markerFF.item && rowFF.item !== blankFF.item);
     sharesNonBlankField = (rowFF, markerFF) => nonBlankFieldOverlapCount(rowFF, markerFF) >= 1;
-    sharesTier4FieldOverlap = (rowFF, markerFF) => nonBlankFieldOverlapCount(rowFF, markerFF) >= 2;
+    sharesTier4FieldOverlap = (rowFF, markerFF) =>
+      sharesItemField(rowFF, markerFF) || nonBlankFieldOverlapCount(rowFF, markerFF) >= 2;
   }
   const candidatesFor = (e, fromMarkers) =>
     fromMarkers.filter((s) => sharesTier4FieldOverlap(e.fp.fieldFingerprints, s.fieldFingerprints));
