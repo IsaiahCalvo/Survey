@@ -79,6 +79,7 @@ import { loadBaseline, saveBaseline, clearBaseline } from './services/excelSyncB
 import { generateRowIdToken } from './services/rowIdToken';
 import { getOrCreateDocumentSecret, resolveDocumentSecret } from './services/rowIdSecretStore';
 import { buildScopeImportPlans } from './services/buildScopeImportPlans';
+import { triageCandidateDelete, markPendingDelete, clearPendingDeleteMark } from './services/excelDeleteGrace';
 import { RECENCY, classifyWorkbookRecency, latestAppExportStamp, readWorkbookExportStamp, staleAutoSkipMessage, staleManualConfirmText } from './services/excelImportRecencyGuard';
 import { buildMarkerRowValues, resolveMarkerModuleData } from './services/markerRowValues';
 import { excelLockFilePath, isOwnerFileFor, parentDir } from './services/excelLockFile';
@@ -13405,13 +13406,16 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     // and review-only candidate-deletes, are collected here and surfaced, never written.
     const importDocumentId = `${pdfFile?.id || 'local'}:${pdfId || pdfFile?.name || 'pdf'}`;
     const importResolveSecret = (keyId) => resolveDocumentSecret(importDocumentId, keyId);
+    // One wall-clock reading per import, taken here at the executor boundary (the
+    // services stay pure): orders this ingest's positional stamps (lastIngestSeq)
+    // and keys the delete-grace pending marks (slice 4) so a mark stamped by THIS
+    // ingest never counts as a prior miss.
+    const importIngestSeq = Date.now();
     const scopePlans = await buildScopeImportPlans({
       worksheetDataList, surveyMarkers: newSurveyMarkers, templateToUse,
       documentId: importDocumentId, resolveSecret: importResolveSecret,
       appValuesByMarkerId: buildAppValuesByMarkerId(newSurveyMarkers, templateToUse),
-      // One wall-clock reading per import, taken here at the executor boundary (the
-      // service stays pure): orders this ingest's positional stamps (lastIngestSeq).
-      ingestSeq: Date.now()
+      ingestSeq: importIngestSeq
     });
     const importReviewItems = [];
     let identityPersisted = false; // true once any marker got its excelSync memory stamped
@@ -13489,6 +13493,16 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
           } else if (decision && decision.action === 'review') {
             // Needs your choice (duplicate / unknown / foreign / wrong-scope /
             // malformed / ambiguous). Never write — surface it instead.
+            // A both-sides 'conflict' IS a tier match (the row exists; only its values
+            // are in dispute), so it clears any delete-grace pending mark (slice 4):
+            // a rebound marker never carries a stale mark while the user decides.
+            if (decision.decision === 'conflict' && decision.markerId && newSurveyMarkers[decision.markerId]) {
+              const clearedSync = clearPendingDeleteMark(newSurveyMarkers[decision.markerId].excelSync);
+              if (clearedSync !== newSurveyMarkers[decision.markerId].excelSync) {
+                newSurveyMarkers[decision.markerId] = { ...newSurveyMarkers[decision.markerId], excelSync: clearedSync };
+                identityPersisted = true;
+              }
+            }
             importReviewItems.push({
               scopeKey: planScopeKey, rowIndex: i, itemName,
               reason: decision.decision, markerId: decision.markerId || null,
@@ -13712,7 +13726,23 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         const ann = newSurveyMarkers[markerId];
         if (!ann) return;
         if (!recencyDeletesDisabled && wasReceivedByExcel(ann)) {
-          surveyMarkersToDelete.push({ key: markerId, ann });
+          // One-import delete-grace window (blank-rowid slice 4, Amendment #5): the
+          // FIRST import that misses a received marker's row only stamps a pending
+          // mark on its device-local excelSync record — protecting cut+paste across
+          // saves and AutoSave bursts from a trash+recreate. The shipped trash path
+          // below runs unchanged on the NEXT import that still misses it. Any tier
+          // rebind clears the mark (wholesale excelSync restamp on apply/export;
+          // explicit clear on a 'conflict' review). Accepted behavior: deletes take
+          // effect one save later.
+          if (triageCandidateDelete(ann.excelSync, { ingestSeq: importIngestSeq }) === 'trash') {
+            surveyMarkersToDelete.push({ key: markerId, ann });
+          } else {
+            newSurveyMarkers[markerId] = {
+              ...ann,
+              excelSync: markPendingDelete(ann.excelSync, { ingestSeq: importIngestSeq })
+            };
+            identityPersisted = true;
+          }
         } else {
           importReviewItems.push({ scopeKey, rowIndex: null, reason: 'candidate-delete', markerId });
         }
@@ -13985,13 +14015,16 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     // candidate-deletes are surfaced, never written automatically.
     const importDocumentId = `${pdfFile?.id || 'local'}:${pdfId || pdfFile?.name || 'pdf'}`;
     const importResolveSecret = (keyId) => resolveDocumentSecret(importDocumentId, keyId);
+    // One wall-clock reading per import, taken here at the executor boundary (the
+    // services stay pure): orders this ingest's positional stamps (lastIngestSeq)
+    // and keys the delete-grace pending marks (slice 4) so a mark stamped by THIS
+    // ingest never counts as a prior miss.
+    const importIngestSeq = Date.now();
     const scopePlans = await buildScopeImportPlans({
       worksheetDataList, surveyMarkers: newSurveyMarkers, templateToUse,
       documentId: importDocumentId, resolveSecret: importResolveSecret,
       appValuesByMarkerId: buildAppValuesByMarkerId(newSurveyMarkers, templateToUse),
-      // One wall-clock reading per import, taken here at the executor boundary (the
-      // service stays pure): orders this ingest's positional stamps (lastIngestSeq).
-      ingestSeq: Date.now()
+      ingestSeq: importIngestSeq
     });
     const importReviewItems = [];
     let identityPersisted = false; // true once any marker got its excelSync memory stamped
@@ -14069,6 +14102,16 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
           } else if (decision && decision.action === 'review') {
             // Needs your choice (duplicate / unknown / foreign / wrong-scope /
             // malformed / ambiguous). Never write — surface it instead.
+            // A both-sides 'conflict' IS a tier match (the row exists; only its values
+            // are in dispute), so it clears any delete-grace pending mark (slice 4):
+            // a rebound marker never carries a stale mark while the user decides.
+            if (decision.decision === 'conflict' && decision.markerId && newSurveyMarkers[decision.markerId]) {
+              const clearedSync = clearPendingDeleteMark(newSurveyMarkers[decision.markerId].excelSync);
+              if (clearedSync !== newSurveyMarkers[decision.markerId].excelSync) {
+                newSurveyMarkers[decision.markerId] = { ...newSurveyMarkers[decision.markerId], excelSync: clearedSync };
+                identityPersisted = true;
+              }
+            }
             importReviewItems.push({
               scopeKey: planScopeKey, rowIndex: i, itemName,
               reason: decision.decision, markerId: decision.markerId || null,
@@ -14304,7 +14347,19 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         const ann = newSurveyMarkers[markerId];
         if (!ann) return;
         if (wasReceivedByExcel(ann)) {
-          surveyMarkersToDelete.push({ key: markerId, ann });
+          // One-import delete-grace window (blank-rowid slice 4) — same rule as the
+          // manual import: first miss marks (no trash), a later import that still
+          // misses the marker trashes through the unchanged History/tombstone path,
+          // and any tier rebind clears the mark.
+          if (triageCandidateDelete(ann.excelSync, { ingestSeq: importIngestSeq }) === 'trash') {
+            surveyMarkersToDelete.push({ key: markerId, ann });
+          } else {
+            newSurveyMarkers[markerId] = {
+              ...ann,
+              excelSync: markPendingDelete(ann.excelSync, { ingestSeq: importIngestSeq })
+            };
+            identityPersisted = true;
+          }
         } else {
           importReviewItems.push({ scopeKey, rowIndex: null, reason: 'candidate-delete', markerId });
         }
