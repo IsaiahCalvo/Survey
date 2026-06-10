@@ -40,8 +40,7 @@ the benchmarks deliberately copy app logic to time it in isolation.
 
 ## Slice plan
 
-1. **D1 — unify the two error classifiers** in the annotation service (LOW risk, has
-   test coverage to extend).
+1. **D1 — unify the two error classifiers** — DONE 2026-06-10, commit `5a9eced6` (41 lines removed, behavior-identical, Codex-approved).
 2. **D2 — point the region overlay AND the region selection tool at the shared
    region math** (LOW: the drift check already passed during review — pure
    consolidation across the three copies).
