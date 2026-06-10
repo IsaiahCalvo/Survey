@@ -509,46 +509,6 @@ function convertToLocalFormat(record) {
 // PRESENCE OPERATIONS
 // ============================================
 
-const classifyPresenceError = (error) => {
-  const message = error?.message || '';
-  const code = error?.code || null;
-  const status = Number(error?.status) || null;
-  const normalizedMessage = typeof message === 'string' ? message.toLowerCase() : '';
-  const isRLSError = code === '42501' || normalizedMessage.includes('row-level security');
-  const isMissingTable = code === '42P01';
-  const isNotFound = status === 404 || normalizedMessage.includes('404') || normalizedMessage.includes('not found');
-
-  if (isRLSError) {
-    return {
-      errorClass: 'RLS',
-      nonRetryable: true,
-      isRLSError: true
-    };
-  }
-
-  if (isMissingTable) {
-    return {
-      errorClass: 'SCHEMA_MISSING',
-      nonRetryable: true,
-      isRLSError: false
-    };
-  }
-
-  if (isNotFound) {
-    return {
-      errorClass: 'NOT_FOUND',
-      nonRetryable: true,
-      isRLSError: false
-    };
-  }
-
-  return {
-    errorClass: code || 'UNKNOWN',
-    nonRetryable: false,
-    isRLSError: false
-  };
-};
-
 /**
  * Update user presence for a document
  */
@@ -571,7 +531,7 @@ export async function updateDocumentPresence(documentId, userId, presenceData = 
     });
 
   if (error) {
-    const classification = classifyPresenceError(error);
+    const classification = classifyAnnotationSyncError(error);
     // Avoid console noise for non-retryable structural errors and RLS failures.
     if (!classification.nonRetryable && !classification.isRLSError) {
       console.error('[AnnotationSync] Error updating presence:', error);
