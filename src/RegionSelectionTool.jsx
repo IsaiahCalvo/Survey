@@ -92,6 +92,9 @@ const RegionSelectionTool = ({
   const [isCmdCtrlPressed, setIsCmdCtrlPressed] = useState(false);
   const [isSpacePressed, setIsSpacePressed] = useState(false);
   const [lastDrawingTool, setLastDrawingTool] = useState('rectangular');
+  // KAL-301c: live rotation angle shown in the pill during a rotate drag.
+  // Null when not rotating (pill hidden). Degrees [0, 360).
+  const [liveRotationAngle, setLiveRotationAngle] = useState(null);
   const [isToolDropdownOpen, setIsToolDropdownOpen] = useState(false);
   const [contextMenu, setContextMenu] = useState(null); // { x, y, pageX, pageY, regionId, type, canMerge, canUnmerge }
   const canvasRectRef = useRef(null);
@@ -102,6 +105,10 @@ const RegionSelectionTool = ({
   const undoStackRef = useRef([]);
   const redoStackRef = useRef([]);
   const documentDragFallbackRef = useRef(false);
+  // Slice 1 (KAL-301a): tracks whether the current drag interaction actually
+  // moved (i.e. coords changed). Undo snapshot is pushed at drag-END only when
+  // this is true — one checkpoint per completed drag, not per pixel.
+  const dragHasMovedRef = useRef(false);
   const historyKey = useMemo(
     () => getRegionEditHistoryKey(currentSpaceId, currentPageId),
     [currentSpaceId, currentPageId]
@@ -1076,6 +1083,11 @@ const RegionSelectionTool = ({
         const dx = (event.clientX - interactionState.startPoint.x) / displayScaleX;
         const dy = (event.clientY - interactionState.startPoint.y) / displayScaleY;
 
+        if (dx !== 0 || dy !== 0) {
+          // KAL-301a: mark that the drag actually moved coords
+          dragHasMovedRef.current = true;
+        }
+
         // Move all selected regions
         const updatedRegions = regions.map(r => {
           // Check if this region is being moved (is in the initial set of moved regions)
@@ -1098,40 +1110,129 @@ const RegionSelectionTool = ({
 
         const bounds = { ...initialBounds };
 
-        switch (handle) {
-          case 'nw':
-            bounds.minX = Math.min(x, initialBounds.maxX - MIN_REGION_SIZE);
-            bounds.minY = Math.min(y, initialBounds.maxY - MIN_REGION_SIZE);
-            break;
-          case 'n':
-            bounds.minY = Math.min(y, initialBounds.maxY - MIN_REGION_SIZE);
-            break;
-          case 'ne':
-            bounds.maxX = Math.max(x, initialBounds.minX + MIN_REGION_SIZE);
-            bounds.minY = Math.min(y, initialBounds.maxY - MIN_REGION_SIZE);
-            break;
-          case 'e':
-            bounds.maxX = Math.max(x, initialBounds.minX + MIN_REGION_SIZE);
-            break;
-          case 'se':
-            bounds.maxX = Math.max(x, initialBounds.minX + MIN_REGION_SIZE);
-            bounds.maxY = Math.max(y, initialBounds.minY + MIN_REGION_SIZE);
-            break;
-          case 's':
-            bounds.maxY = Math.max(y, initialBounds.minY + MIN_REGION_SIZE);
-            break;
-          case 'sw':
-            bounds.minX = Math.min(x, initialBounds.maxX - MIN_REGION_SIZE);
-            bounds.maxY = Math.max(y, initialBounds.minY + MIN_REGION_SIZE);
-            break;
-          case 'w':
-            bounds.minX = Math.min(x, initialBounds.maxX - MIN_REGION_SIZE);
-            break;
-          default:
-            break;
+        if (isShiftPressed) {
+          // KAL-301b: Shift+drag corner handle = uniform aspect-preserving scale.
+          // isShiftPressed is read live each mousemove, so holding/releasing Shift
+          // mid-drag switches behavior immediately (live, not locked at drag-start).
+          // Edge handles (n/s/e/w) also preserve aspect, driving from the moved axis.
+          const initW = Math.max(initialBounds.maxX - initialBounds.minX, 1);
+          const initH = Math.max(initialBounds.maxY - initialBounds.minY, 1);
+          const aspect = initW / initH; // width / height ratio to preserve
+
+          switch (handle) {
+            case 'se': {
+              // Anchor: nw corner (minX, minY). Width drives.
+              const newW = Math.max(x - initialBounds.minX, MIN_REGION_SIZE);
+              const newH = newW / aspect;
+              bounds.maxX = initialBounds.minX + newW;
+              bounds.maxY = initialBounds.minY + newH;
+              break;
+            }
+            case 'sw': {
+              // Anchor: ne corner (maxX, minY). Width drives.
+              const newW = Math.max(initialBounds.maxX - x, MIN_REGION_SIZE);
+              const newH = newW / aspect;
+              bounds.minX = initialBounds.maxX - newW;
+              bounds.maxY = initialBounds.minY + newH;
+              break;
+            }
+            case 'ne': {
+              // Anchor: sw corner (minX, maxY). Width drives.
+              const newW = Math.max(x - initialBounds.minX, MIN_REGION_SIZE);
+              const newH = newW / aspect;
+              bounds.maxX = initialBounds.minX + newW;
+              bounds.minY = initialBounds.maxY - newH;
+              break;
+            }
+            case 'nw': {
+              // Anchor: se corner (maxX, maxY). Width drives.
+              const newW = Math.max(initialBounds.maxX - x, MIN_REGION_SIZE);
+              const newH = newW / aspect;
+              bounds.minX = initialBounds.maxX - newW;
+              bounds.minY = initialBounds.maxY - newH;
+              break;
+            }
+            case 'e': {
+              // Width drives; height follows; centred vertically.
+              const newW = Math.max(x - initialBounds.minX, MIN_REGION_SIZE);
+              const newH = newW / aspect;
+              const midY = (initialBounds.minY + initialBounds.maxY) / 2;
+              bounds.maxX = initialBounds.minX + newW;
+              bounds.minY = midY - newH / 2;
+              bounds.maxY = midY + newH / 2;
+              break;
+            }
+            case 'w': {
+              const newW = Math.max(initialBounds.maxX - x, MIN_REGION_SIZE);
+              const newH = newW / aspect;
+              const midY = (initialBounds.minY + initialBounds.maxY) / 2;
+              bounds.minX = initialBounds.maxX - newW;
+              bounds.minY = midY - newH / 2;
+              bounds.maxY = midY + newH / 2;
+              break;
+            }
+            case 's': {
+              // Height drives; width follows; centred horizontally.
+              const newH = Math.max(y - initialBounds.minY, MIN_REGION_SIZE);
+              const newW = newH * aspect;
+              const midX = (initialBounds.minX + initialBounds.maxX) / 2;
+              bounds.maxY = initialBounds.minY + newH;
+              bounds.minX = midX - newW / 2;
+              bounds.maxX = midX + newW / 2;
+              break;
+            }
+            case 'n': {
+              const newH = Math.max(initialBounds.maxY - y, MIN_REGION_SIZE);
+              const newW = newH * aspect;
+              const midX = (initialBounds.minX + initialBounds.maxX) / 2;
+              bounds.minY = initialBounds.maxY - newH;
+              bounds.minX = midX - newW / 2;
+              bounds.maxX = midX + newW / 2;
+              break;
+            }
+            default:
+              break;
+          }
+        } else {
+          // Plain drag: existing free resize (each handle moves independently).
+          switch (handle) {
+            case 'nw':
+              bounds.minX = Math.min(x, initialBounds.maxX - MIN_REGION_SIZE);
+              bounds.minY = Math.min(y, initialBounds.maxY - MIN_REGION_SIZE);
+              break;
+            case 'n':
+              bounds.minY = Math.min(y, initialBounds.maxY - MIN_REGION_SIZE);
+              break;
+            case 'ne':
+              bounds.maxX = Math.max(x, initialBounds.minX + MIN_REGION_SIZE);
+              bounds.minY = Math.min(y, initialBounds.maxY - MIN_REGION_SIZE);
+              break;
+            case 'e':
+              bounds.maxX = Math.max(x, initialBounds.minX + MIN_REGION_SIZE);
+              break;
+            case 'se':
+              bounds.maxX = Math.max(x, initialBounds.minX + MIN_REGION_SIZE);
+              bounds.maxY = Math.max(y, initialBounds.minY + MIN_REGION_SIZE);
+              break;
+            case 's':
+              bounds.maxY = Math.max(y, initialBounds.minY + MIN_REGION_SIZE);
+              break;
+            case 'sw':
+              bounds.minX = Math.min(x, initialBounds.maxX - MIN_REGION_SIZE);
+              bounds.maxY = Math.max(y, initialBounds.minY + MIN_REGION_SIZE);
+              break;
+            case 'w':
+              bounds.minX = Math.min(x, initialBounds.maxX - MIN_REGION_SIZE);
+              break;
+            default:
+              break;
+          }
         }
 
         ensureBoundsMinSize(bounds);
+
+        // KAL-301a: mark that the resize drag actually moved coords
+        dragHasMovedRef.current = true;
 
         setRegions(prev => prev.map(region => {
           if (region.regionId !== regionId) {
@@ -1180,6 +1281,9 @@ const RegionSelectionTool = ({
       } else if (interactionState.type === 'vertex') {
         const { vertexIndex, regionId } = interactionState;
 
+        // KAL-301a: mark that vertex drag moved
+        dragHasMovedRef.current = true;
+
         setRegions(prev => prev.map(region => {
           if (region.regionId !== regionId) {
             return region;
@@ -1195,6 +1299,47 @@ const RegionSelectionTool = ({
             coordinates: newCoords
           };
         }));
+      } else if (interactionState.type === 'rotate') {
+        // KAL-301c: rotation drag. Compute angle from region centroid to current
+        // pointer in screen space, snap to 15°, transform all coords relative to
+        // the angle delta since last frame (stored as interactionState.lastAngleDeg).
+        const { regionId, centerPage, lastAngleDeg, initialCoords } = interactionState;
+        if (!centerPage) return;
+
+        // Angle from centroid to pointer in page coords (atan2 gives radians).
+        // 0° = right, 90° = down — we normalise to [0, 360).
+        const rawAngleDeg = (Math.atan2(y - centerPage.cy, x - centerPage.cx) * 180) / Math.PI;
+        const snappedAngle = Math.round(rawAngleDeg / 15) * 15;
+        const normAngle = ((snappedAngle % 360) + 360) % 360;
+
+        const delta = normAngle - lastAngleDeg;
+        if (Math.abs(delta) < 0.001) return; // no meaningful movement
+
+        // KAL-301a: mark that rotation moved
+        dragHasMovedRef.current = true;
+
+        // Rotate all coords of the region around the centroid by delta degrees.
+        const rad = (delta * Math.PI) / 180;
+        const cosA = Math.cos(rad);
+        const sinA = Math.sin(rad);
+        const { cx, cy } = centerPage;
+
+        setRegions(prev => prev.map(region => {
+          if (region.regionId !== regionId) return region;
+          const coords = region.coordinates;
+          const rotated = [];
+          for (let i = 0; i < coords.length; i += 2) {
+            const dx = coords[i] - cx;
+            const dy = coords[i + 1] - cy;
+            rotated.push(cx + dx * cosA - dy * sinA);
+            rotated.push(cy + dx * sinA + dy * cosA);
+          }
+          return { ...region, coordinates: rotated };
+        }));
+
+        // Update lastAngleDeg in interactionState so next frame delta is correct.
+        setInteractionState(prev => prev ? { ...prev, lastAngleDeg: normAngle } : prev);
+        setLiveRotationAngle(normAngle);
       }
       return;
     }
@@ -1213,7 +1358,7 @@ const RegionSelectionTool = ({
     } else if (effectiveToolType === 'freehand') {
       setPolygonPoints(prev => [...prev, { x, y }]);
     }
-  }, [active, targetElement, clientPointToPage, displayScaleX, displayScaleY, interactionState, ensureBoundsMinSize, isDrawing, effectiveToolType, startPoint, regions, activeTool]);
+  }, [active, targetElement, clientPointToPage, displayScaleX, displayScaleY, interactionState, ensureBoundsMinSize, isDrawing, effectiveToolType, startPoint, regions, activeTool, isShiftPressed, setLiveRotationAngle]);
 
   const handleMouseUp = useCallback(() => {
     if (!active) return;
@@ -1221,6 +1366,23 @@ const RegionSelectionTool = ({
     setIsCursorOverCanvas(false);
 
     if (interactionState) {
+      // KAL-301a: push the pre-drag snapshot onto the undo stack only when the
+      // drag actually changed coords (one checkpoint per completed drag, not per
+      // pixel, and not for click-without-drag). The pre-drag snapshot was
+      // captured at pointer-down and stored in interactionState.preSnapshot.
+      if (dragHasMovedRef.current && interactionState.preSnapshot) {
+        undoStackRef.current.push(interactionState.preSnapshot);
+        redoStackRef.current = [];
+        if (undoStackRef.current.length > REGION_HISTORY_LIMIT) {
+          undoStackRef.current.shift();
+        }
+        persistHistoryStacks();
+      }
+      dragHasMovedRef.current = false;
+      // KAL-301c: clear the live rotation angle pill when drag ends.
+      if (interactionState.type === 'rotate') {
+        setLiveRotationAngle(null);
+      }
       setInteractionState(null);
       return;
     }
@@ -1311,7 +1473,7 @@ const RegionSelectionTool = ({
     setStartPoint(null);
     setCurrentRect(null);
     setPolygonPoints([]);
-  }, [active, interactionState, isDrawing, effectiveToolType, currentRect, polygonPoints, currentPageId, effectiveSelectionMode, mergeRegionWithOverlapping, subtractRegionFromRegions, pushUndoSnapshot]);
+  }, [active, interactionState, isDrawing, effectiveToolType, currentRect, polygonPoints, currentPageId, effectiveSelectionMode, mergeRegionWithOverlapping, subtractRegionFromRegions, pushUndoSnapshot, persistHistoryStacks, setLiveRotationAngle]);
 
   const handleCanvasMouseLeave = useCallback(() => {
     setIsCursorOverCanvas(false);
@@ -1416,11 +1578,15 @@ const RegionSelectionTool = ({
 
       // If we just added it, start moving it (and others)
       if (!isSelected) {
-        pushUndoSnapshot();
+        // KAL-301a: capture pre-drag snapshot; push to undo stack at drag-END
+        // (in handleMouseUp) only if coords actually changed.
+        const preSnapshot = createHistorySnapshot();
+        dragHasMovedRef.current = false;
         setInteractionState({
           type: 'move',
           startPoint: { x: event.clientX, y: event.clientY },
-          initialRegions: regions.filter(r => newSelection.has(r.regionId))
+          initialRegions: regions.filter(r => newSelection.has(r.regionId)),
+          preSnapshot
         });
       }
     } else {
@@ -1428,26 +1594,32 @@ const RegionSelectionTool = ({
       if (!isSelected) {
         // If clicking a new region, select ONLY it
         setSelectedRegionIds(new Set([region.regionId]));
-        pushUndoSnapshot();
+        // KAL-301a: capture pre-drag snapshot
+        const preSnapshot = createHistorySnapshot();
+        dragHasMovedRef.current = false;
         setInteractionState({
           type: 'move',
           startPoint: { x: event.clientX, y: event.clientY },
-          initialRegions: [region]
+          initialRegions: [region],
+          preSnapshot
         });
       } else {
         // If clicking an already selected region, keep selection (allow bulk move)
         // But if we just click and release without moving, we might want to deselect others?
-        // Standard behavior: MouseDown doesn't clear others if clicking selected, 
+        // Standard behavior: MouseDown doesn't clear others if clicking selected,
         // but MouseUp might if no drag occurred. For now, keep simple: don't clear.
-        pushUndoSnapshot();
+        // KAL-301a: capture pre-drag snapshot
+        const preSnapshot = createHistorySnapshot();
+        dragHasMovedRef.current = false;
         setInteractionState({
           type: 'move',
           startPoint: { x: event.clientX, y: event.clientY },
-          initialRegions: regions.filter(r => selectedRegionIds.has(r.regionId))
+          initialRegions: regions.filter(r => selectedRegionIds.has(r.regionId)),
+          preSnapshot
         });
       }
     }
-  }, [active, effectiveToolType, targetElement, regions, selectedRegionIds, toolType, pushUndoSnapshot]);
+  }, [active, effectiveToolType, targetElement, regions, selectedRegionIds, toolType, createHistorySnapshot]);
 
   const handleVertexPointerDown = useCallback((region, vertexIndex, event) => {
     if (!active || effectiveToolType !== 'move' || !targetElement) return;
@@ -1461,14 +1633,17 @@ const RegionSelectionTool = ({
     event.preventDefault();
 
     setSelectedRegionIds(new Set([region.regionId])); // Select only this region for vertex editing
-    pushUndoSnapshot();
+    // KAL-301a: capture pre-drag snapshot; push to undo stack at drag-END only if moved
+    const preSnapshot = createHistorySnapshot();
+    dragHasMovedRef.current = false;
     setInteractionState({
       type: 'vertex',
       regionId: region.regionId,
       vertexIndex,
-      startPoint: { x: event.clientX, y: event.clientY }
+      startPoint: { x: event.clientX, y: event.clientY },
+      preSnapshot
     });
-  }, [active, effectiveToolType, targetElement, selectedRegionIds, pushUndoSnapshot]);
+  }, [active, effectiveToolType, targetElement, selectedRegionIds, createHistorySnapshot]);
 
   const handleResizePointerDown = useCallback((region, handle, event) => {
     if (!active || effectiveToolType !== 'move' || !targetElement) return;
@@ -1485,16 +1660,62 @@ const RegionSelectionTool = ({
     if (!bounds) return;
 
     setSelectedRegionIds(new Set([region.regionId])); // Select only this region for resizing
-    pushUndoSnapshot();
+    // KAL-301a: capture pre-drag snapshot; push to undo stack at drag-END only if moved
+    const preSnapshot = createHistorySnapshot();
+    dragHasMovedRef.current = false;
     setInteractionState({
       type: 'resize',
       regionId: region.regionId,
       handle,
       startPoint: { x: event.clientX, y: event.clientY },
       initialBounds: bounds,
-      initialCoords: [...region.coordinates]
+      initialCoords: [...region.coordinates],
+      preSnapshot
     });
-  }, [active, effectiveToolType, targetElement, getRegionBounds, selectedRegionIds, pushUndoSnapshot]);
+  }, [active, effectiveToolType, targetElement, getRegionBounds, selectedRegionIds, createHistorySnapshot]);
+
+  // KAL-301c: rotation handle pointer-down. Captures the centroid in page space
+  // and the initial angle from centroid to pointer, so handleMouseMove can compute
+  // angle deltas frame-by-frame and snap to 15° increments.
+  const handleRotatePointerDown = useCallback((region, event) => {
+    if (!active || effectiveToolType !== 'move' || !targetElement) return;
+    if (event.button === 2) return;
+    event.stopPropagation();
+    event.preventDefault();
+
+    const rect = targetElement.getBoundingClientRect();
+    const pointer = clientPointToPage(event.clientX, event.clientY, rect);
+    if (!pointer) return;
+
+    // Compute centroid in page coords (arithmetic mean of all vertices).
+    const coords = region.coordinates;
+    let sumX = 0;
+    let sumY = 0;
+    const n = coords.length / 2;
+    for (let i = 0; i < coords.length; i += 2) {
+      sumX += coords[i];
+      sumY += coords[i + 1];
+    }
+    const cx = sumX / n;
+    const cy = sumY / n;
+
+    // Starting angle from centroid to pointer.
+    const startRawDeg = (Math.atan2(pointer.y - cy, pointer.x - cx) * 180) / Math.PI;
+    const startAngleDeg = ((Math.round(startRawDeg / 15) * 15) % 360 + 360) % 360;
+
+    setSelectedRegionIds(new Set([region.regionId]));
+    // KAL-301a: pre-drag snapshot for undo
+    const preSnapshot = createHistorySnapshot();
+    dragHasMovedRef.current = false;
+    setLiveRotationAngle(startAngleDeg);
+    setInteractionState({
+      type: 'rotate',
+      regionId: region.regionId,
+      centerPage: { cx, cy },
+      lastAngleDeg: startAngleDeg,
+      preSnapshot
+    });
+  }, [active, effectiveToolType, targetElement, clientPointToPage, createHistorySnapshot]);
 
   const handleDeleteSelected = useCallback(() => {
     if (selectedRegionIds.size === 0) return;
@@ -2677,7 +2898,139 @@ const RegionSelectionTool = ({
               );
             }
           })()}
+
+          {/* KAL-301c: Rotation handle — circle above bounding box centre.
+              Matches the standard annotation mtr handle: sits along the
+              vertical ray from the shape centroid, 32px above the top edge
+              (screen pixels). Drag rotates all coords around the centroid,
+              snapping to 15° increments. Undoable via Slice 1 mechanism. */}
+          {effectiveToolType === 'move' && selectedRegionIds.size === 1 && (() => {
+            const selectedRegion = regions.find(r => r.regionId === Array.from(selectedRegionIds)[0]);
+            if (!selectedRegion) return null;
+            const bounds = getRegionBounds(selectedRegion);
+            if (!bounds) return null;
+
+            const centerScreenX = pageToScreenX((bounds.minX + bounds.maxX) / 2);
+            const topScreenY = pageToScreenY(bounds.minY);
+            // 32px above the top edge of the bounding box — matches standard annotation mtr gap.
+            const ROTATION_HANDLE_OFFSET = 32;
+            const handleScreenX = centerScreenX;
+            const handleScreenY = topScreenY - ROTATION_HANDLE_OFFSET;
+            const ROTATION_HANDLE_RADIUS = 7; // px
+
+            return (
+              <>
+                {/* Stem line from bounding box top-centre to rotation handle */}
+                <svg
+                  style={{
+                    position: 'absolute',
+                    top: 0,
+                    left: 0,
+                    width: '100%',
+                    height: '100%',
+                    pointerEvents: 'none',
+                    zIndex: 100002,
+                    overflow: 'visible'
+                  }}
+                >
+                  <line
+                    x1={centerScreenX}
+                    y1={topScreenY}
+                    x2={handleScreenX}
+                    y2={handleScreenY + ROTATION_HANDLE_RADIUS}
+                    stroke={REGION_HANDLE_STROKE}
+                    strokeWidth="1.5"
+                    strokeDasharray="3 3"
+                  />
+                </svg>
+                {/* Rotation handle circle */}
+                <div
+                  data-region-selection-ui="true"
+                  onMouseDown={(event) => handleRotatePointerDown(selectedRegion, event)}
+                  title="Drag to rotate (snaps to 15°)"
+                  style={{
+                    position: 'absolute',
+                    left: `${handleScreenX}px`,
+                    top: `${handleScreenY}px`,
+                    transform: 'translate(-50%, -50%)',
+                    width: `${ROTATION_HANDLE_RADIUS * 2}px`,
+                    height: `${ROTATION_HANDLE_RADIUS * 2}px`,
+                    borderRadius: '50%',
+                    background: REGION_HANDLE_FILL,
+                    border: `1.5px solid ${REGION_HANDLE_STROKE}`,
+                    boxShadow: '0 1px 4px rgba(0,0,0,0.2)',
+                    cursor: 'grab',
+                    pointerEvents: 'auto',
+                    zIndex: 100004,
+                    // Subtle rotation icon hint — ↺ symbol centred
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    fontSize: '9px',
+                    color: REGION_HANDLE_STROKE,
+                    userSelect: 'none'
+                  }}
+                >
+                  ↺
+                </div>
+              </>
+            );
+          })()}
+
           </div>
+      )}
+
+      {/* KAL-301c: Live rotation angle pill — shown during rotate drag only.
+          Styled to match RotationInputField (dark pill, white text).
+          Position: fixed near the rotation handle to avoid obstructing the shape. */}
+      {liveRotationAngle !== null && interactionState?.type === 'rotate' && (
+        <div
+          data-region-selection-ui="true"
+          style={{
+            position: 'fixed',
+            // Position pill to the right of the rotation handle if possible.
+            // We use a simple fixed offset from the interaction centroid converted
+            // to screen via canvasRect. Falls back to top-left corner of viewport.
+            left: canvasRect
+              ? `${canvasRect.left + pageToScreenX(
+                  // centroid x from interactionState
+                  (() => {
+                    const region = regions.find(r => interactionState && r.regionId === interactionState.regionId);
+                    if (!region) return 0;
+                    const b = getRegionBounds(region);
+                    return b ? (b.minX + b.maxX) / 2 : 0;
+                  })()
+                ) + 20}px`
+              : '20px',
+            top: canvasRect
+              ? `${canvasRect.top + pageToScreenY(
+                  (() => {
+                    const region = regions.find(r => interactionState && r.regionId === interactionState.regionId);
+                    if (!region) return 0;
+                    const b = getRegionBounds(region);
+                    return b ? b.minY : 0;
+                  })()
+                ) - 50}px`
+              : '20px',
+            background: '#2D2D2D',
+            border: '1px solid #3A3A3A',
+            borderRadius: 6,
+            boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
+            padding: '4px 10px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 2,
+            pointerEvents: 'none',
+            zIndex: 100005,
+            fontFamily: FONT_FAMILY,
+            minWidth: 60
+          }}
+        >
+          <span style={{ fontSize: 13, fontWeight: 500, color: '#ddd', letterSpacing: '-0.2px' }}>
+            {Math.round(liveRotationAngle)}
+          </span>
+          <span style={{ fontSize: 12, fontWeight: 400, color: '#999' }}>°</span>
+        </div>
       )}
 
       {/* Floating Plus Sign Indicator for Additive Mode */}
