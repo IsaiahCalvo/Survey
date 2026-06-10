@@ -107,6 +107,7 @@ import { recordAnnotationCommit, recordAnnotationSyncPush, recordAnnotationUndoR
 import { regionContainsPoint } from './utils/regionMath';
 import { resolveAnnotationAt } from './utils/annotationHitTest';
 import { resolveSafeSnapshot } from './utils/safeSnapshot';
+import { resolveSurveyMarkerPromptName } from './utils/surveyMarkerNamePrompt';
 import { sanitizeConsoleLogText } from './utils/consoleLogFilter';
 import { scopeHistoryStateForCalloutRestore } from './utils/calloutHistoryScope';
 import { shouldRunSurveyMarkerSync } from './utils/surveyMarkerSyncSafety';
@@ -6864,7 +6865,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   const [surveyKeepCategoryActive, setSurveyKeepCategoryActive] = useState(false);
   const [selectedSpaceId, setSelectedSpaceId] = useState(null); // Currently selected space for survey interactions
   const [pendingSurveyMarkerName, setPendingSurveyMarkerName] = useState(null); // { surveyMarker, categoryId } when prompting for name
-  const [surveyMarkerNameInput, setSurveyMarkerNameInput] = useState(''); // Temporary name input value
+  const [surveyMarkerNameInput, setSurveyMarkerNameInput] = useState(null); // Name prompt input; null = untouched (show category-derived default), any string ('' included) = user's text
   const [pendingEntitySelection, setPendingEntitySelection] = useState(null); // { surveyMarker, categoryId } when prompting for Entity
 
   // NEW: Item and Annotation system state
@@ -17806,7 +17807,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     isPanningRef.current = false;
     setPendingSurveyMarker(null);
     setPendingSurveyMarkerName(null);
-    setSurveyMarkerNameInput('');
+    setSurveyMarkerNameInput(null);
     setPendingEntitySelection(null);
     setShowSpaceSelection(false);
     setShowTemplateSelection(false);
@@ -23798,10 +23799,13 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     setPendingEntitySelection(prev => (
       prev?.surveyMarker?.id === annotationId ? null : prev
     ));
+    if (pendingSurveyMarkerName?.surveyMarker?.id === annotationId) {
+      setSurveyMarkerNameInput(null);
+    }
     setPendingSurveyMarkerName(prev => (
       prev?.surveyMarker?.id === annotationId ? null : prev
     ));
-  }, [addHistoryCheckpoint, handleSurveyMarkerDeleted, surveyMarkers]);
+  }, [addHistoryCheckpoint, handleSurveyMarkerDeleted, surveyMarkers, pendingSurveyMarkerName]);
 
   const getPageSurveyRegionId = useCallback((pageId) => {
     return getActivePageRegionId({
@@ -23995,7 +23999,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
           },
           categoryId: selectedCategoryId
         });
-        setSurveyMarkerNameInput(''); // Reset input
+        setSurveyMarkerNameInput(null); // Reset input
       }
 
       if (!surveyKeepCategoryActive) {
@@ -31768,7 +31772,7 @@ ${pageBlocks}
                                   surveyMarker: pendingSurveyMarker,
                                   categoryId: category.id
                                 });
-                                setSurveyMarkerNameInput(''); // Reset input
+                                setSurveyMarkerNameInput(null); // Reset input
                               }
                               // Clear pending surveyMarker modal
                               setPendingSurveyMarker(null);
@@ -31826,7 +31830,7 @@ ${pageBlocks}
                       categoryId: pendingEntitySelection.categoryId
                     });
                     setPendingEntitySelection(null);
-                    setSurveyMarkerNameInput('');
+                    setSurveyMarkerNameInput(null);
                   }}
                   style={{
                     position: 'fixed',
@@ -31878,7 +31882,7 @@ ${pageBlocks}
                             categoryId: pendingEntitySelection.categoryId
                           });
                           setPendingEntitySelection(null);
-                          setSurveyMarkerNameInput('');
+                          setSurveyMarkerNameInput(null);
                         }}
                         className="btn btn-icon btn-icon-sm"
                         style={{
@@ -31957,7 +31961,7 @@ ${pageBlocks}
                               categoryId: pendingEntitySelection.categoryId
                             });
                             setPendingEntitySelection(null);
-                            setSurveyMarkerNameInput('');
+                            setSurveyMarkerNameInput(null);
                           }}
                           style={{
                             display: 'flex',
@@ -32052,7 +32056,7 @@ ${pageBlocks}
                     });
 
                     setPendingSurveyMarkerName(null);
-                    setSurveyMarkerNameInput('');
+                    setSurveyMarkerNameInput(null);
                     setShowSurveyPanel(true);
                   }}
                   style={{
@@ -32216,7 +32220,7 @@ ${pageBlocks}
                           });
 
                           setPendingSurveyMarkerName(null);
-                          setSurveyMarkerNameInput('');
+                          setSurveyMarkerNameInput(null);
                           setShowSurveyPanel(true);
                         }}
                         className="btn btn-icon btn-icon-sm"
@@ -32237,11 +32241,12 @@ ${pageBlocks}
                     <input
                       type="text"
                       autoFocus
-                      value={surveyMarkerNameInput || defaultName}
+                      value={surveyMarkerNameInput ?? defaultName}
                       onChange={(e) => setSurveyMarkerNameInput(e.target.value)}
+                      onFocus={(e) => { if (surveyMarkerNameInput === null) e.target.select(); }}
                       onKeyDown={(e) => {
                         if (e.key === 'Enter') {
-                          const name = (surveyMarkerNameInput || defaultName).trim() || defaultName;
+                          const name = resolveSurveyMarkerPromptName(surveyMarkerNameInput, defaultName);
                           // Compute color first so it can be saved with surveyMarkerData
                           const highlightColor = pendingSurveyMarkerName.surveyMarker.entityColor
                             ? (normalizeSurveyMarkerColor(pendingSurveyMarkerName.surveyMarker.entityColor) || pendingSurveyMarkerName.surveyMarker.entityColor)
@@ -32278,7 +32283,7 @@ ${pageBlocks}
                           });
 
                           setPendingSurveyMarkerName(null);
-                          setSurveyMarkerNameInput('');
+                          setSurveyMarkerNameInput(null);
                           setShowSurveyPanel(true);
                         } else if (e.key === 'Escape') {
                           // Cancel - save with default name
@@ -32318,7 +32323,7 @@ ${pageBlocks}
                           });
 
                           setPendingSurveyMarkerName(null);
-                          setSurveyMarkerNameInput('');
+                          setSurveyMarkerNameInput(null);
                           setShowSurveyPanel(true);
                         }
                       }}
@@ -32457,7 +32462,7 @@ ${pageBlocks}
                           });
 
                           setPendingSurveyMarkerName(null);
-                          setSurveyMarkerNameInput('');
+                          setSurveyMarkerNameInput(null);
                           setShowSurveyPanel(true);
                         }}
                         className="btn btn-default btn-md"
@@ -32474,7 +32479,7 @@ ${pageBlocks}
                       </button>
                       <button
                         onClick={() => {
-                          const name = (surveyMarkerNameInput || defaultName).trim() || defaultName;
+                          const name = resolveSurveyMarkerPromptName(surveyMarkerNameInput, defaultName);
                           // Compute color first so it can be saved with surveyMarkerData
                           const highlightColor = pendingSurveyMarkerName.surveyMarker.entityColor
                             ? (normalizeSurveyMarkerColor(pendingSurveyMarkerName.surveyMarker.entityColor) || pendingSurveyMarkerName.surveyMarker.entityColor)
@@ -32591,7 +32596,7 @@ ${pageBlocks}
                           });
 
                           setPendingSurveyMarkerName(null);
-                          setSurveyMarkerNameInput('');
+                          setSurveyMarkerNameInput(null);
                           setShowSurveyPanel(true);
                         }}
                         className="btn btn-primary btn-md"
