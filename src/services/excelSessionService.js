@@ -13,8 +13,10 @@
  * `/drives/{driveId}/items/{id}/...` instead. Omitting driveId preserves the OneDrive path.
  */
 
-/** Base Graph item path for a workbook, scoped to the correct drive. */
-const workbookItemBase = (fileId, driveId) =>
+/** Base Graph item path for a workbook, scoped to the correct drive.
+ *  Exported so rowIdGraphWriteback (the single-cell Row ID writer) shares the
+ *  exact same drive-scoping rule instead of re-deriving it. */
+export const workbookItemBase = (fileId, driveId) =>
   driveId ? `/drives/${driveId}/items/${fileId}` : `/me/drive/items/${fileId}`;
 
 /**

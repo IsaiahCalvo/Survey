@@ -48,6 +48,44 @@ export const LIVE_SYNC_GATE_STATUS = Object.freeze({
 export const liveSyncGateStatus = (reasonCode) =>
   LIVE_SYNC_GATE_STATUS[reasonCode] || LIVE_SYNC_GATE_STATUS['unconfirmed-business'];
 
+/**
+ * Plain-English banner message for a Row ID writeback drain result
+ * (src/services/rowIdGraphWriteback.js — Amendment 2026-06-08(b) step 3).
+ * Returns null when there is nothing the surveyor needs to see: an empty queue,
+ * the dormant master gate, or a setup that simply isn't live-writeback eligible
+ * (those rows stay safely queued; the queue depth state is a later slice).
+ * Wording is chosen so syncMessageTone colors it honestly: "synced" → success,
+ * "queued" / "reconnect your Microsoft" → warn.
+ * @param {{status:string, verified?:number, remaining?:number}|null} result
+ * @returns {string|null}
+ */
+export const rowIdWritebackMessage = (result) => {
+  if (!result || typeof result !== 'object') return null;
+  const verified = Number.isInteger(result.verified) ? result.verified : 0;
+  const remaining = Number.isInteger(result.remaining) ? result.remaining : 0;
+  const rowIds = (n) => (n === 1 ? 'Row ID' : 'Row IDs');
+  switch (result.status) {
+    case 'completed':
+      if (verified > 0) {
+        return remaining > 0
+          ? `${verified} ${rowIds(verified)} synced to Excel · ${remaining} still queued`
+          : `${verified} ${rowIds(verified)} synced to Excel`;
+      }
+      return remaining > 0 ? `${remaining} ${rowIds(remaining)} queued until safe` : null;
+    case 'stopped-verify-mismatch':
+    case 'stopped-error':
+      return 'Could not confirm a Row ID write — kept queued until safe';
+    case 'stopped-locked':
+      return 'Excel is busy — Row IDs stay queued until safe';
+    case 'auth-expired':
+      return 'Reconnect your Microsoft account in Account Settings to finish writing Row IDs';
+    case 'session-unavailable':
+      return 'Live writeback unavailable right now — Row IDs stay queued until safe';
+    default:
+      return null; // 'empty' | 'gate-off' | 'not-eligible' | 'no-document' | 'not-ready'
+  }
+};
+
 // Tone → colors for a status banner (text, background, border).
 export const SYNC_TONE_COLORS = Object.freeze({
   [SYNC_TONE.INFO]: { color: '#3498db', background: 'rgba(52, 152, 219, 0.1)', border: '1px solid rgba(52, 152, 219, 0.3)' },

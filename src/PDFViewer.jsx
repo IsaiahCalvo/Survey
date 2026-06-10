@@ -64,7 +64,8 @@ import { canModify, getAnnotationAuthorId } from './lib/collab/permissionScope.j
 import { checkFileExists, checkFileExistsInDrive, downloadExcelFile, downloadExcelFileByPath, getFileById, getFileETag, getFileMetadata, getTemplateIdFromExcel, uploadExcelFile, uploadFileContentById, uploadFileToDrive } from './services/excelGraphService';
 import { checkSessionSupport, closeWorkbookSession, createWorkbookSession, getFileIdFromPath, getUsedRange, getWorksheets, refreshWorkbookSession, updateCellRange } from './services/excelSessionService';
 import { LIVE_SYNC_GATE_REASON, resolveLiveSyncEligibility } from './services/liveSyncEligibility';
-import { liveSyncGateStatus } from './services/excelSyncStatus';
+import { liveSyncGateStatus, rowIdWritebackMessage } from './services/excelSyncStatus';
+import { drainRowIdWritebackQueue } from './services/rowIdGraphWriteback';
 import { clearDebugState, debugLog, emitDebugEvent as emitPdfDebugEvent, getDebugSnapshot, setDebugData, setDebugEnabled as setPdfDebugEnabled, setLastDebugError, setPresenceDebugStatus } from './utils/pdfDebug';
 import { computeExcelSyncFingerprint, computeHasPendingExcelSyncChanges } from './utils/excelSyncDirtyState';
 import { createPortal, flushSync } from 'react-dom';
@@ -76,7 +77,7 @@ import { getCalloutSyncFingerprint } from './utils/calloutSyncPayload';
 import { isPlacedSurveyMarker } from './services/surveyMarkerSyncDiff';
 import { forceUnplacedImportedMarker, freezeGeometryFromOriginal } from './services/importFieldWhitelist';
 import { stampExportAck, wasReceivedByExcel } from './services/excelExportAck';
-import { buildMarkerIdentityRecord, buildMarkerIdentityRecords, applyMarkerIdentityRecords } from './services/excelIdentityRecord';
+import { buildMarkerIdentityRecord, buildMarkerIdentityRecords, applyMarkerIdentityRecords, applyWritebackVerification } from './services/excelIdentityRecord';
 import { loadBaseline, saveBaseline, clearBaseline } from './services/excelSyncBaselineStore';
 import { generateRowIdToken } from './services/rowIdToken';
 import { getOrCreateDocumentSecret, resolveDocumentSecret } from './services/rowIdSecretStore';
@@ -7176,6 +7177,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   const [liveSyncGate, setLiveSyncGate] = useState(null);
   const liveSyncDriveTypeCacheRef = useRef(new Map()); // per-drive driveType probe cache (lazy, no polling)
   const liveSyncGateInFlightRef = useRef(false);
+  const rowIdDrainInFlightRef = useRef(false); // one Row ID writeback drain pass at a time
 
   // Export/Sync modal states
   const [showExportLocationModal, setShowExportLocationModal] = useState(false);
@@ -15462,6 +15464,59 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       lastKnownETagRef.current = null;
     };
   }, [liveSyncEnabled, selectedTemplate?.isOneDrive, selectedTemplate?.linkedExcelPath, selectedTemplate?.id, graphClient, liveSyncSupported, oneDriveFileId]);
+
+  // Row ID writeback drain (Amendment 2026-06-08(b) step 3, Graph side). When —
+  // and only when — the SAFE business path is provably available (gate verdict
+  // business-graph eligible + a live workbook session connected), drain this
+  // document's pending Row ID queue through the single-cell column-A writer.
+  // DORMANT IN PRODUCTION: drainRowIdWritebackQueue refuses with 'gate-off'
+  // while LIVE_WRITEBACK_ENABLED (excelCapability.js) is false — no override is
+  // passed here; only the user flips that gate after a live Business M365 pass.
+  // Every refusal path makes zero Graph calls and leaves the queue intact.
+  useEffect(() => {
+    if (liveSyncStatus !== 'connected' || !excelSessionId || !oneDriveFileId || !graphClient) return;
+    if (!liveSyncGate?.allowed || !liveSyncGate?.capability?.liveWritebackEligible) return;
+    if (rowIdDrainInFlightRef.current) return;
+    rowIdDrainInFlightRef.current = true;
+    let cancelled = false;
+    let msgTimer = null;
+    const rowIdDocumentId = `${pdfFile?.id || 'local'}:${pdfId || pdfFile?.name || 'pdf'}`;
+    (async () => {
+      try {
+        const drainResult = await drainRowIdWritebackQueue({
+          graphClient,
+          documentId: rowIdDocumentId,
+          fileId: oneDriveFileId,
+          driveId: selectedTemplate?.sharePointDriveId || undefined,
+          sessionId: excelSessionId,
+          capability: liveSyncGate.capability
+        });
+        if (cancelled) return;
+        if (drainResult.markerUpdates.length > 0) {
+          // Read-back-verified tokens: flip pendingRowIdWriteback off on the
+          // markers' identity records (excelSync is outside the dirty
+          // fingerprint, so this never re-dirties a synced survey).
+          setSurveyMarkers((prev) => applyWritebackVerification(prev, drainResult.markerUpdates));
+        }
+        if (drainResult.remaining > 0) {
+          debugLog('[RowIdWriteback] drain pass left entries queued', {
+            status: drainResult.status, remaining: drainResult.remaining
+          });
+        }
+        const message = rowIdWritebackMessage(drainResult);
+        if (message) {
+          setLastSyncMessage(message);
+          msgTimer = setTimeout(() => setLastSyncMessage(''), 5000);
+        }
+      } catch (drainErr) {
+        // Queue stays intact by design; never block live sync on the drain.
+        console.warn('[RowIdWriteback] drain pass failed:', drainErr);
+      } finally {
+        rowIdDrainInFlightRef.current = false;
+      }
+    })();
+    return () => { cancelled = true; if (msgTimer) clearTimeout(msgTimer); };
+  }, [liveSyncStatus, excelSessionId, oneDriveFileId, graphClient, liveSyncGate, selectedTemplate?.sharePointDriveId, pdfFile?.id, pdfFile?.name, pdfId]);
 
   // Poll for Excel changes when live sync is active
   // Supports both session-based (business) and ETag-based (personal) polling

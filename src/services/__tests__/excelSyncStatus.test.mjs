@@ -7,7 +7,8 @@ import {
   SYNC_TONE_COLORS,
   syncMessageTone,
   syncMessagePresentation,
-  needsChoiceSuffix
+  needsChoiceSuffix,
+  rowIdWritebackMessage
 } from '../excelSyncStatus.js';
 
 test('every canonical status has a plain label and a known tone', () => {
@@ -59,4 +60,18 @@ test('syncMessagePresentation returns the tone colors for a message', () => {
 test('needsChoiceSuffix only appears when there is something to choose', () => {
   assert.equal(needsChoiceSuffix(0), '');
   assert.equal(needsChoiceSuffix(2), ' · 2 need your choice');
+});
+
+test('Row ID writeback banner strings color honestly through syncMessageTone', () => {
+  // Full success reads green; anything still queued or needing the user reads amber.
+  assert.equal(syncMessageTone(rowIdWritebackMessage({ status: 'completed', verified: 2, remaining: 0 })), SYNC_TONE.SUCCESS);
+  assert.equal(syncMessageTone(rowIdWritebackMessage({ status: 'completed', verified: 2, remaining: 3 })), SYNC_TONE.WARN);
+  assert.equal(syncMessageTone(rowIdWritebackMessage({ status: 'stopped-verify-mismatch' })), SYNC_TONE.WARN);
+  assert.equal(syncMessageTone(rowIdWritebackMessage({ status: 'stopped-locked' })), SYNC_TONE.WARN);
+  assert.equal(syncMessageTone(rowIdWritebackMessage({ status: 'auth-expired' })), SYNC_TONE.WARN);
+  // Plain English guard, mirroring the canonical-status test.
+  for (const status of ['completed', 'stopped-verify-mismatch', 'stopped-locked', 'auth-expired', 'session-unavailable']) {
+    const msg = rowIdWritebackMessage({ status, verified: 1, remaining: 1 });
+    if (msg) assert.ok(!/[a-z][A-Z]/.test(msg), `label "${msg}" looks like camelCase`);
+  }
 });

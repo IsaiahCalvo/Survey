@@ -107,3 +107,46 @@ export const applyMarkerIdentityRecords = (surveyMarkers = {}, recordsByMarkerId
   }
   return out;
 };
+
+/**
+ * Stamp the outcome of a VERIFIED Row ID writeback onto markers' identity
+ * records: the drain (rowIdGraphWriteback) read the cell back equal to the
+ * assigned token, so `pendingRowIdWriteback` flips false and `assignedToken`
+ * records what now provably sits in the sheet.
+ *
+ * Pure; returns the SAME map instance when nothing changed (cheap no-op for
+ * React setState). Only markers that already carry an `excelSync` record are
+ * touched — this helper never fabricates a record (it has no row values to
+ * fingerprint); a verified update for a marker without a record is skipped.
+ *
+ * @param {object} surveyMarkers  keyed marker map
+ * @param {Array<{markerId:string, assignedToken:?string}>} markerUpdates
+ * @returns {object} new keyed marker map (or the input map when unchanged)
+ */
+export const applyWritebackVerification = (surveyMarkers = {}, markerUpdates = []) => {
+  const updates = Array.isArray(markerUpdates)
+    ? markerUpdates.filter((u) => u && typeof u.markerId === 'string' && u.markerId)
+    : [];
+  if (updates.length === 0) return surveyMarkers;
+  const byMarkerId = new Map(updates.map((u) => [u.markerId, u]));
+
+  let changed = false;
+  const out = {};
+  for (const [key, marker] of Object.entries(surveyMarkers || {})) {
+    const update = byMarkerId.get(key);
+    if (update && marker && typeof marker === 'object' && marker.excelSync && typeof marker.excelSync === 'object') {
+      out[key] = {
+        ...marker,
+        excelSync: {
+          ...marker.excelSync,
+          assignedToken: update.assignedToken ?? marker.excelSync.assignedToken,
+          pendingRowIdWriteback: false
+        }
+      };
+      changed = true;
+    } else {
+      out[key] = marker;
+    }
+  }
+  return changed ? out : surveyMarkers;
+};
