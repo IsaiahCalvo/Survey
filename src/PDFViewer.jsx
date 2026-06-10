@@ -32375,7 +32375,7 @@ ${pageBlocks}
                         outline: 'none',
                         marginBottom: '16px'
                       }}
-                      placeholder="Enter surveyMarker name"
+                      placeholder="Enter Name"
                     />
 
                     <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
