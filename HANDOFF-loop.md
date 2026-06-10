@@ -1,8 +1,12 @@
 # Loop Baton — Survey queue (scheduled sessions read this FIRST)
 
-**active_since:** none
+**active_since:** 2026-06-10 08:26
+**session_title:** pick next from board
 **last_session_ended:** 2026-06-10 ~06:00 (overnight loop, wound down clean)
 **code-change cap used:** 3 of 6 since Isaiah's last testing confirmation (KAL-82 slice 1, BL-19 D1, BL-19 D2)
+
+## Session title protocol
+Keep the session_title field current at ALL times: set it to the task id + short slug the moment you start a task (e.g. "BL-22 title-rename bug"), prefix "continue: " if you are resuming a parked task, and at wind-down set it to the next recommended task (or "pick next from board"). The scheduler names the next session from this field.
 
 ## Overlap lock protocol
 On session start: if active_since is a timestamp younger than 90 minutes, EXIT immediately (another session is live). Otherwise write the current timestamp into active_since, work, and on wind-down set it back to "none" and update last_session_ended.
