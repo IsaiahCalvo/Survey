@@ -64,3 +64,51 @@ Both non-blocking nits applied anyway: Problem intro now scopes drag/move claims
 
 ## Outcome
 CONVERGED — VERDICT: APPROVED at round 3 of 5. Plan is execution-ready for a future session (code-change cap was full at plan time). Status update: the plan-approved slice awaits a free cap slot + Isaiah's testing confirmation.
+
+---
+
+# Result Review Log: KAL-298 execution (2026-06-10 ~16:10–16:40 loop session)
+
+Implementation executed per the approved plan (round-3 APPROVED above). Gates:
+`npx vite build` clean; `node scripts/run-node-tests.mjs` 1427 tests / 1421
+pass / 0 fail / 6 skipped (pre-task baseline that day: 1390/1384/0/6 — delta is
+the new selectionById tests plus tests landed by the interactive session).
+
+## Verification — two independent passes
+
+**1. Multi-lens workflow (3 Sonnet agents: plan-conformance, regression-hunt,
+contract-boundary).** Actionable findings, all resolved:
+- Toolbar Duplicate/Delete passed the raw `[...selFiles]` id set instead of the
+  derived `selectedFiles.map(f => f.id)` — functionally safe (ids resolve via
+  pickByIds at action time) but against the plan's derive-everything letter.
+  FIXED both call sites.
+- Twin-corner test didn't pin WHICH twin each copy followed. FIXED — added a
+  tag-order assertion.
+- `modRename` (rename-mode activation) is still index-keyed while the rename
+  COMMIT path is now id-keyed. DELIBERATELY NOT FIXED — scope discipline: the
+  plan scoped the commit path only; the activation highlight (and the whole
+  `openMod` open-tab pointer) is a pre-existing index-keyed display surface
+  with no wrong-target data risk (onBlur commits the id of the module whose
+  tab the input visibly sits on). Filed as a follow-up finding (see board /
+  Linear). Worst case is a rename input visually jumping tabs if the user
+  drag-reorders mid-rename.
+- Dismissed: TOCTOU between the render-time zero-match bail and the
+  `mutateTpl` updater (theoretical — two user actions can't share a batch;
+  any concurrent mutateTpl already marked dirty itself; bail-before-mutate is
+  exactly what the approved plan specifies), modal-count O(n) per render
+  (plan-mandated expression, suggested by Codex itself in round 3),
+  `!ids.size` guard vs array-tolerant helpers (all internal callers pass Sets).
+
+**2. Codex adversarial result review** (read-only, full diff + new files +
+plan): "No findings." — VERDICT: APPROVED (round 1). Confirmed Part A/B/C
+complete, no index-keyed survivor, zero-match bail before the dirty path,
+reload gating untouched beyond the permitted selMods clear, DO NOT CHANGE
+honored, tests pin all invariant groups + duplicate-id corner.
+
+Post-approval deltas (the two FIXED items above) are strictly more conformant
+to the already-approved plan text; gates re-run green after them.
+
+## Outcome
+CONVERGED — implementation committed locally. Follow-up filed: id-key the
+module rename-activation/open-tab pointers (`modRename`, `openMod`) as a
+small UX-hardening slice.

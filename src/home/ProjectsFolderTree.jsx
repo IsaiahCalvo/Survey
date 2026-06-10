@@ -29,6 +29,7 @@ import ManageTeamModal from './ManageTeamModal';
 import { MoveCopyModal } from './BulkModals';
 import DragRearrangeHandle from '../reorder/DragRearrangeHandle';
 import { SortableRearrangeList, SortableRearrangeRow } from '../reorder/SortableRearrangeList';
+import { pickByIds } from './selectionById';
 
 /* Literal palette — used by the portal popups, which render outside the
    `.survey-hub` root and therefore cannot inherit its CSS variables. */
@@ -187,14 +188,15 @@ export default function ProjectsFolderTree({
   const [clipboard, setClipboard] = useState(null);
 
   // Move/Copy picker — opened by the file select-mode "Move/Copy" button.
-  // Holds the indices (into openFiles) of the files to move or copy.
+  // Holds the document ids of the files to move or copy. Ids (never indices)
+  // so the picks survive a list reorder/rebuild while the modal is open.
   const [moveOpen, setMoveOpen] = useState(false);
-  const [moveIndices, setMoveIndices] = useState([]);
+  const [moveIds, setMoveIds] = useState([]);
 
   // Open-menu state: each holds { id, rect } so the portalled PopupMenu knows
   // what to anchor to. `null` when closed.
   const [teamMenu, setTeamMenu] = useState(null); // { id, rect }
-  const [fileMenu, setFileMenu] = useState(null); // { idx, rect }
+  const [fileMenu, setFileMenu] = useState(null); // { id, rect }
 
   // Manage Project modal — controlled entirely by local state. Opened by the
   // header "Manage Team" button and the per-project menu's "Manage project".
@@ -222,9 +224,12 @@ export default function ProjectsFolderTree({
   const [draggingFileId, setDraggingFileId] = useState(null);
   const [dragOverFileId, setDragOverFileId] = useState(null);
 
-  const toggleFileSel = (i) => setSelFiles((prev) => {
+  // Selection is keyed by document id (never array index) so a reorder or
+  // re-derive of `openFiles` between selecting and acting can't retarget the
+  // bulk actions. Actions resolve ids → docs at action time via pickByIds.
+  const toggleFileSel = (id) => setSelFiles((prev) => {
     const n = new Set(prev);
-    n.has(i) ? n.delete(i) : n.add(i);
+    n.has(id) ? n.delete(id) : n.add(id);
     return n;
   });
   const toggleProjSel = (id) => setSelProj((prev) => {
@@ -431,17 +436,15 @@ export default function ProjectsFolderTree({
     setLocalDocs((prev) => [...prev, ...docs]);
   }, [localProjects, user]);
 
-  const duplicateFiles = useCallback((indices) => {
+  const duplicateFiles = useCallback((docIds) => {
     if (!open) return;
-    const clones = indices
-      .map((i) => openFiles[i])
-      .filter(Boolean)
+    const clones = pickByIds(openFiles, docIds)
       .map((f) => ({ ...f, id: nextLocalId(), name: `${f.name} (copy)`, updated_at: new Date().toISOString() }));
     if (clones.length) setLocalDocs((prev) => [...prev, ...clones]);
   }, [open, openFiles]);
 
-  const deleteFiles = useCallback((indices) => {
-    const targets = indices.map((i) => openFiles[i]).filter(Boolean);
+  const deleteFiles = useCallback((docIds) => {
+    const targets = pickByIds(openFiles, docIds);
     if (targets.length === 0) return;
     // Real delete: hand the documents to the host so they are removed from
     // Supabase and STAY deleted across tab switches and reloads. The host
@@ -474,12 +477,14 @@ export default function ProjectsFolderTree({
     });
   }, [open]);
 
-  // Move or copy the given file indices (into openFiles) to a destination
-  // project. 'move' re-parents the originals; 'copy' clones them into the
-  // destination and leaves the originals in place.
-  const moveCopyFiles = useCallback((indices, destId, mode) => {
+  // Move or copy the given document ids to a destination project. 'move'
+  // re-parents the originals; 'copy' clones them into the destination and
+  // leaves the originals in place. Ids are resolved against the OPEN
+  // project's current files — a stale id (doc deleted/moved meanwhile) is a
+  // silent no-op, never a wrong target.
+  const moveCopyFiles = useCallback((docIds, destId, mode) => {
     if (!open || destId == null) return;
-    const ids = new Set(indices.map((i) => openFiles[i]?.id).filter((x) => x != null));
+    const ids = new Set(pickByIds(openFiles, docIds).map((d) => d.id));
     if (ids.size === 0) return;
     setLocalDocs((prev) => {
       if (mode === 'copy') {
@@ -722,19 +727,23 @@ export default function ProjectsFolderTree({
                     <span style={{ fontSize: 10.5, letterSpacing: 0.06, textTransform: 'uppercase', color: 'var(--ink-200)', fontWeight: 700 }}>Files</span>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 4, flex: 'none' }}>
                       {fileSelect && (() => {
-                        const c = selFiles.size;
+                        // Effective selection is DERIVED from the current rows
+                        // — never the raw id set, which may hold stale ids of
+                        // docs that were removed/moved since being checked.
+                        const selectedFiles = openFiles.filter((f) => selFiles.has(f.id));
+                        const c = selectedFiles.length;
                         const allSel = c === openFiles.length && openFiles.length > 0;
                         const baseBtn = { background: 'transparent', border: '1px solid var(--ink-500)', borderRadius: 2, padding: '1px 7px', fontSize: 10.5, cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap', height: 18, lineHeight: 1, boxSizing: 'border-box' };
                         return (
                           <>
                             <button
-                              onClick={() => setSelFiles(allSel ? new Set() : new Set(openFiles.map((_, i) => i)))}
+                              onClick={() => setSelFiles(allSel ? new Set() : new Set(openFiles.map((f) => f.id)))}
                               style={{ ...baseBtn, color: 'var(--bone-100)' }}
                             >{allSel ? 'None' : 'All'}</button>
                             {/* Duplicate — clones each selected file in place. */}
                             <button
                               disabled={!c}
-                              onClick={() => { duplicateFiles([...selFiles]); setSelFiles(new Set()); }}
+                              onClick={() => { duplicateFiles(selectedFiles.map((f) => f.id)); setSelFiles(new Set()); }}
                               style={{ ...baseBtn, color: c ? 'var(--bone-100)' : 'var(--ink-300)', cursor: c ? 'pointer' : 'not-allowed' }}
                             >Duplicate</button>
                             {/* Move/Copy — opens the Move/Copy picker so the
@@ -744,7 +753,7 @@ export default function ProjectsFolderTree({
                               disabled={!c}
                               onClick={() => {
                                 if (!c) return;
-                                setMoveIndices([...selFiles]);
+                                setMoveIds(selectedFiles.map((f) => f.id));
                                 setMoveOpen(true);
                               }}
                               style={{ ...baseBtn, color: c ? 'var(--bone-100)' : 'var(--ink-300)', cursor: c ? 'pointer' : 'not-allowed' }}
@@ -759,7 +768,7 @@ export default function ProjectsFolderTree({
                             {/* Delete — removes each selected file locally. */}
                             <button
                               disabled={!c}
-                              onClick={() => deleteFiles([...selFiles])}
+                              onClick={() => deleteFiles(selectedFiles.map((f) => f.id))}
                               style={{ ...baseBtn, color: c ? '#cf6f6f' : 'var(--ink-300)', cursor: c ? 'pointer' : 'not-allowed', display: 'inline-flex', alignItems: 'center' }}
                               title="Delete"
                             ><Icon name="trash" size={11} /></button>
@@ -783,7 +792,7 @@ export default function ProjectsFolderTree({
                     <SortableRearrangeList ids={openFiles.map((f) => f.id)} onReorder={reorderFiles}>
                     <div style={{ display: 'grid', gap: 1 }}>
                       {openFiles.map((f, i) => {
-                        const isChecked = selFiles.has(i);
+                        const isChecked = selFiles.has(f.id);
                         // "Last edited by" owner — the document's own user id
                         // when present, else the project owner. Resolved to a
                         // real member so the avatar shows true initials.
@@ -799,7 +808,7 @@ export default function ProjectsFolderTree({
                             {({ attributes, listeners, isDragging }) => (
                           <div
                             data-drag-rearrange-row
-                            onClick={() => { if (fileSelect) { toggleFileSel(i); return; } onOpenDocument && onOpenDocument(f); }}
+                            onClick={() => { if (fileSelect) { toggleFileSel(f.id); return; } onOpenDocument && onOpenDocument(f); }}
                             style={{
                               background: dragOverFileId === f.id && draggingFileId !== f.id
                                 ? 'rgba(216,168,78,0.10)'
@@ -829,7 +838,7 @@ export default function ProjectsFolderTree({
                             <span className="mono meta" style={{ fontSize: 11 }}>{shortWhen(f)}</span>
                             {fileSelect ? (
                               <span
-                                onClick={(e) => { e.stopPropagation(); toggleFileSel(i); }}
+                                onClick={(e) => { e.stopPropagation(); toggleFileSel(f.id); }}
                                 style={{ width: 14, height: 14, border: `1.4px solid ${isChecked ? 'var(--gold)' : 'var(--ink-300)'}`, background: isChecked ? 'var(--gold)' : 'transparent', borderRadius: 2, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', justifySelf: 'center' }}
                               >
                                 {isChecked && <span style={{ color: '#15110a', fontSize: 10, lineHeight: 1 }}>✓</span>}
@@ -842,7 +851,7 @@ export default function ProjectsFolderTree({
                                   // this trigger button's rect.
                                   const rect = e.currentTarget.getBoundingClientRect();
                                   setTeamMenu(null);
-                                  setFileMenu((cur) => (cur && cur.idx === i ? null : { idx: i, rect }));
+                                  setFileMenu((cur) => (cur && cur.id === f.id ? null : { id: f.id, rect }));
                                 }}
                                 style={{ background: 'transparent', border: 0, color: 'var(--ink-200)', cursor: 'pointer', fontSize: 16, lineHeight: 1, padding: '2px 6px', borderRadius: 4 }}
                                 title="More"
@@ -937,9 +946,12 @@ export default function ProjectsFolderTree({
         );
       })()}
 
-      {/* File-row "more" menu — also portalled + fixed-positioned. */}
+      {/* File-row "more" menu — also portalled + fixed-positioned. Resolved
+          by document id at render time: if the doc vanished (deleted, moved,
+          list rebuilt) while the menu was open, it renders nothing rather
+          than retargeting a different row. */}
       {fileMenu && (() => {
-        const f = openFiles[fileMenu.idx];
+        const f = openFiles.find((d) => d.id === fileMenu.id);
         if (!f) return null;
         const locked = f.locked_at != null;
         const canLock = user?.id && f.user_id === user.id;
@@ -951,7 +963,7 @@ export default function ProjectsFolderTree({
             items={[
               { label: 'Copy', onClick: () => copyFile(f) },
               { label: 'Paste', disabled: !clipboard, onClick: () => pasteFile() },
-              { label: 'Delete', danger: true, onClick: () => deleteFiles([fileMenu.idx]) },
+              { label: 'Delete', danger: true, onClick: () => deleteFiles([fileMenu.id]) },
               { label: 'Share', onClick: () => onShareDocument ? onShareDocument([f]) : onShare && onShare(open) },
               {
                 label: locked ? 'Unlock Document' : 'Lock Document',
@@ -990,8 +1002,8 @@ export default function ProjectsFolderTree({
         open={moveOpen}
         onClose={() => setMoveOpen(false)}
         projects={localProjects}
-        count={moveIndices.length}
-        onConfirm={(destId, mode) => { moveCopyFiles(moveIndices, destId, mode); }}
+        count={pickByIds(openFiles, moveIds).length}
+        onConfirm={(destId, mode) => { moveCopyFiles(moveIds, destId, mode); }}
       />
     </HubShell>
   );

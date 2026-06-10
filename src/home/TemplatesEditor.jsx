@@ -75,6 +75,7 @@ import {
   archivedItemLabel,
 } from '../services/checklistOrphanCleanup';
 import { moveItemById } from '../reorder/flatReorderUtils.js';
+import { pickByIds, removeByIds, duplicateAfterByIds } from './selectionById.js';
 
 const CATEGORY_COLLAPSE_TRANSITION = 'grid-template-rows 0.18s ease, opacity 0.16s ease';
 const TEMPLATE_ORDER_STORAGE_KEY = 'surveyHub.templateOrder';
@@ -449,7 +450,7 @@ function SortableModuleTab({
           defaultValue={mod.name}
           autoFocus
           onFocus={(e) => e.currentTarget.select()}
-          onBlur={(e) => onRename(index, e.currentTarget.value)}
+          onBlur={(e) => onRename(mod.id, e.currentTarget.value)}
           onKeyDown={(e) => {
             if (e.key === 'Enter') e.currentTarget.blur();
             else if (e.key === 'Escape') onCancelRename();
@@ -851,8 +852,11 @@ export default function TemplatesEditor({
   const [openMod, setOpenMod] = useState(0);
   const [modEdit, setModEdit] = useState(false);
   const [modRename, setModRename] = useState(null);   // module index in rename mode
+  // Module bulk selection is keyed by module ID (never array index) so a
+  // working-copy rebuild or module insertion/removal between selecting and
+  // acting can't retarget Delete/Duplicate. Actions resolve ids at use time.
   const [selMods, setSelMods] = useState(() => new Set());
-  const toggleModSel = (mi) => setSelMods((prev) => { const n = new Set(prev); n.has(mi) ? n.delete(mi) : n.add(mi); return n; });
+  const toggleModSel = (id) => setSelMods((prev) => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
   const [catEdit, setCatEdit] = useState(false);
   const [selCats, setSelCats] = useState(() => new Set());
   const toggleCatSel = (id) => setSelCats((prev) => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
@@ -876,6 +880,11 @@ export default function TemplatesEditor({
     setRoleColors(seeded.roleColors);
     setBorderColors(seeded.borderColors);
     setMatchFill(seeded.matchFill);
+    /* BL-17 S1: a rebuild can re-mint ids for legacy id-less modules with the
+       known occurrence-shift corner (a surviving module can inherit the id a
+       same-named sibling had before), so an id-keyed selection held across a
+       rebuild could silently point at different modules. Clear it. */
+    setSelMods(new Set());
     setDirty(false);
   }, [templates, user?.id, user?.email, mintId]);
   /* BL-23 dirty guard — sync the working copy with the host's templates prop.
@@ -1066,12 +1075,16 @@ export default function TemplatesEditor({
     const newIndex = orderedMods.length;
     setTimeout(() => { setOpenMod(newIndex); setOpenCat(-1); setModRename(newIndex); }, 0);
   };
-  const renameModule = (mi, name) => {
+  /* Commits by module ID at blur time — the module list may have been
+     rebuilt/reordered since the rename input opened; a missing id is a
+     no-op, never a rename of a different module. */
+  const renameModule = (id, name) => {
     const v = name.trim();
     if (!v || !tpl) { setModRename(null); return; }
     mutateTpl(tpl.id, (t) => {
-      const modules = t.modules.slice();
-      if (modules[mi] && modules[mi].name !== v) modules[mi] = { ...modules[mi], name: v };
+      const modules = t.modules.map((m) => (
+        m.id === id && m.name !== v ? { ...m, name: v } : m
+      ));
       return { ...t, modules };
     });
     setModRename(null);
@@ -1088,31 +1101,31 @@ export default function TemplatesEditor({
     else if (from < openMod && to >= openMod) setOpenMod(openMod - 1);
     else if (from > openMod && to <= openMod) setOpenMod(openMod + 1);
   };
-  const deleteModules = (indices) => {
-    if (!tpl || !indices.size) return;
-    mutateTpl(tpl.id, (t) => ({ ...t, modules: t.modules.filter((_, i) => !indices.has(i)) }));
+  /* Bulk delete/duplicate take module IDS, resolved against the template's
+     CURRENT modules at action time. Zero matches bail BEFORE mutateTpl —
+     a no-op action must never mark the editor dirty (post-BL-23, a spurious
+     dirty would block reloads). Stale ids are silently skipped. */
+  const deleteModules = (ids) => {
+    if (!tpl || !ids.size) return;
+    if (pickByIds(tpl.modules, ids).length === 0) return;
+    mutateTpl(tpl.id, (t) => ({ ...t, modules: removeByIds(t.modules, ids) }));
     setSelMods(new Set());
     setOpenMod(0);
     setOpenCat(-1);
   };
-  const duplicateModules = (indices) => {
-    if (!tpl || !indices.size) return;
-    mutateTpl(tpl.id, (t) => {
-      const out = [];
-      t.modules.forEach((m, i) => {
-        out.push(m);
-        if (indices.has(i)) {
-          out.push({
-            ...m, id: newId('m'), name: `${m.name} copy`,
-            categories: m.categories.map((c) => ({
-              ...c, id: newId('c'),
-              items: c.items.map((it) => ({ ...it, id: newId('i') })),
-            })),
-          });
-        }
-      });
-      return { ...t, modules: out };
-    });
+  const duplicateModules = (ids) => {
+    if (!tpl || !ids.size) return;
+    if (pickByIds(tpl.modules, ids).length === 0) return;
+    mutateTpl(tpl.id, (t) => ({
+      ...t,
+      modules: duplicateAfterByIds(t.modules, ids, (m) => ({
+        ...m, id: newId('m'), name: `${m.name} copy`,
+        categories: m.categories.map((c) => ({
+          ...c, id: newId('c'),
+          items: c.items.map((it) => ({ ...it, id: newId('i') })),
+        })),
+      })),
+    }));
     setSelMods(new Set());
   };
 
@@ -2202,7 +2215,10 @@ export default function TemplatesEditor({
     {/* Edit modules modal */}
     {modEdit && tpl && (() => {
       const mods = orderedMods;
-      const selCount = selMods.size;
+      // Effective selection is DERIVED from the current modules — never the
+      // raw id set, which may hold stale ids after a working-copy rebuild.
+      const selectedMods = mods.filter((m) => selMods.has(m.id));
+      const selCount = selectedMods.length;
       return (
         <div
           onClick={() => setModEdit(false)}
@@ -2223,8 +2239,8 @@ export default function TemplatesEditor({
               </div>
             </div>
             <div className="slim-scroll" style={{ padding: '8px 10px', display: 'flex', flexDirection: 'column', gap: 4, maxHeight: 420, overflowY: 'auto', flex: '0 1 auto', minHeight: 0 }}>
-              {mods.map((mod, mi) => {
-                const isSel = selMods.has(mi);
+              {mods.map((mod) => {
+                const isSel = selMods.has(mod.id);
                 return (
                   <div key={mod.id} draggable style={{
                     display: 'grid', gridTemplateColumns: '14px 14px 1fr auto', gap: 10,
@@ -2233,13 +2249,13 @@ export default function TemplatesEditor({
                     border: '1px solid #2a3140',
                   }}>
                     <span title="Drag" style={{ color: '#8d96a6', cursor: 'grab', lineHeight: 1, textAlign: 'center', fontSize: 11 }}>⋮⋮</span>
-                    <span onClick={() => toggleModSel(mi)} style={{ width: 14, height: 14, border: `1.4px solid ${isSel ? '#d8a84e' : '#3a4252'}`, background: isSel ? '#d8a84e' : 'transparent', borderRadius: 2, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <span onClick={() => toggleModSel(mod.id)} style={{ width: 14, height: 14, border: `1.4px solid ${isSel ? '#d8a84e' : '#3a4252'}`, background: isSel ? '#d8a84e' : 'transparent', borderRadius: 2, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                       {isSel && <span style={{ color: '#0d0f14', fontSize: 10, lineHeight: 1 }}>✓</span>}
                     </span>
                     <input
                       defaultValue={mod.name}
                       key={mod.id + ':' + mod.name}
-                      onBlur={(e) => renameModule(mi, e.currentTarget.value)}
+                      onBlur={(e) => renameModule(mod.id, e.currentTarget.value)}
                       onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); else if (e.key === 'Escape') { e.currentTarget.value = mod.name; e.currentTarget.blur(); } }}
                       style={{ background: 'transparent', border: 0, borderBottom: '1px solid transparent', color: '#f4f1ea', font: 'inherit', fontSize: 12.5, fontWeight: 500, padding: '4px 0', width: '100%', outline: 'none' }}
                     />
@@ -2254,7 +2270,7 @@ export default function TemplatesEditor({
               </button>
             </div>
             <div style={{ padding: '10px 12px', borderTop: '1px solid #2a3140', background: '#12151c', display: 'flex', gap: 6, alignItems: 'center', flex: 'none' }}>
-              <button onClick={() => { const allSel = selMods.size === mods.length; setSelMods(allSel ? new Set() : new Set(mods.map((_, i) => i))); }} style={{ background: 'transparent', border: '1px solid #3a4252', color: '#e8e2d4', borderRadius: 4, padding: '5px 9px', fontSize: 11.5, cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' }}>{selMods.size === mods.length && mods.length > 0 ? 'None' : 'All'}</button>
+              <button onClick={() => { const allSel = selectedMods.length === mods.length; setSelMods(allSel ? new Set() : new Set(mods.map((m) => m.id))); }} style={{ background: 'transparent', border: '1px solid #3a4252', color: '#e8e2d4', borderRadius: 4, padding: '5px 9px', fontSize: 11.5, cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' }}>{selectedMods.length === mods.length && mods.length > 0 ? 'None' : 'All'}</button>
               <button onClick={() => duplicateModules(selMods)} disabled={!selCount} style={{ background: 'transparent', border: '1px solid #3a4252', color: selCount ? '#e8e2d4' : '#5a6473', borderRadius: 4, padding: '5px 9px', fontSize: 11.5, cursor: selCount ? 'pointer' : 'not-allowed', fontFamily: 'inherit', whiteSpace: 'nowrap' }}>Duplicate</button>
               <button onClick={() => { if (selCount) setMoveModal({ count: selCount, kind: 'module' }); }} disabled={!selCount} style={{ background: 'transparent', border: '1px solid #3a4252', color: selCount ? '#e8e2d4' : '#5a6473', borderRadius: 4, padding: '5px 9px', fontSize: 11.5, cursor: selCount ? 'pointer' : 'not-allowed', fontFamily: 'inherit', whiteSpace: 'nowrap' }}>Move/Copy</button>
               <button disabled={!selCount} onClick={() => { if (selCount && tpl) onShare && onShare(tpl); }} style={{ background: 'transparent', border: '1px solid #3a4252', color: selCount ? '#e8e2d4' : '#5a6473', borderRadius: 4, padding: '5px 9px', fontSize: 11.5, cursor: selCount ? 'pointer' : 'not-allowed', fontFamily: 'inherit', whiteSpace: 'nowrap', display: 'inline-flex', alignItems: 'center' }} title="Share"><Icon name="share" size={12} /></button>
