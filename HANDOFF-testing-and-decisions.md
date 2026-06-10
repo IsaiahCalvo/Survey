@@ -31,5 +31,6 @@
 Plain English only to Isaiah (no paths/code names; "Survey Marker" in full). Don't re-open settled decisions (PLAN.md amendments, blank-rowid verdict doc AMENDMENTS). Respect the baton lock. Gate any change on build + node tests. Never push without his word.
 
 ## 4. New since writing (2026-06-10 ~13:20)
-- Isaiah archived ALL closed Linear issues via another agent — the workspace has free slots again. FIRST ADMIN TASK for the next session: migrate the backlog overflow items (BL-01…BL-23 in `.planning/optimization/BACKLOG-not-yet-in-linear.md` + the Obsidian Survey board's Backlog section) into real Linear issues, then update both boards so Linear is canonical again (per the Task Boards README sync contract).
+- Isaiah archived ALL closed Linear issues — workspace had free slots again.
+- **DONE 2026-06-10 ~18:00**: BL-01…BL-23 fully migrated to Linear (KAL-280…KAL-297). Linear is now canonical. BACKLOG-not-yet-in-linear.md and all Obsidian BL files updated with linear_issue fields. See the mapping table in BACKLOG-not-yet-in-linear.md.
 - Known UX limitation acknowledged to Isaiah: a session's phone-visible name is fixed at birth; multi-task sessions keep their first title until the next session is born.

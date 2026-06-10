@@ -1,6 +1,34 @@
 # Backlog — audit items not yet filed in Linear
 
-_Created 2026-06-05. The Survey workspace hit its Linear free-tier issue limit after KAL-279, so these remaining audit findings live here until Linear has room (upgrade, or free up issues). Source docs: `.planning/optimization/PERSISTENCE-ARCHITECTURE.md`, `SUPABASE-DATA-AUDIT.md`, `PRE-REBUILD-READINESS.md`._
+_Created 2026-06-05. **MIGRATED 2026-06-10**: all BL-01…BL-23 items are now in Linear (KAL-280…KAL-297). Linear is now canonical — this file is a historical record only. Obsidian BL files updated with linear_issue fields. Source docs: `.planning/optimization/PERSISTENCE-ARCHITECTURE.md`, `SUPABASE-DATA-AUDIT.md`, `PRE-REBUILD-READINESS.md`._
+
+## BL → Linear mapping (2026-06-10)
+
+| BL | KAL | Status |
+|----|-----|--------|
+| BL-01 | KAL-280 | Backlog |
+| BL-02 | KAL-281 | Backlog |
+| BL-03 | KAL-282 | Backlog |
+| BL-04 | KAL-283 | Backlog |
+| BL-05 | KAL-284 | Backlog |
+| BL-06 | KAL-285 | Backlog |
+| BL-07 | KAL-286 | Backlog |
+| BL-08 | KAL-287 | Backlog |
+| BL-09 | KAL-288 | Backlog |
+| BL-10 | KAL-289 | Backlog |
+| BL-11 | KAL-290 | Backlog |
+| BL-12 | KAL-291 | Backlog |
+| BL-13 | DONE | fa296bc2 — Excel-sync scenario test suite |
+| BL-14 | KAL-292 | Backlog |
+| BL-15 | KAL-293 | Backlog |
+| BL-16 | KAL-297 | Backlog |
+| BL-17 | DONE | b30e3667 — select-mode audit |
+| BL-18 | DONE | 6377a33b — DND consolidation audit |
+| BL-19 | DONE | e0a50e85 — duplication sweep snapshot |
+| BL-20 | KAL-294 | Backlog |
+| BL-21 | KAL-295 | Backlog |
+| BL-22 | KAL-296 | Backlog |
+| BL-23 | DONE | e2020f0e — templates editor refresh fix |
 
 ## Already in Linear (for reference): KAL-254 … KAL-279
 Epic KAL-254. Milestones A–F + "DB hygiene quick wins" + "Decisions to make" all created. 26 issues filed covering: safety-net tests, security blockers, migration backup/baseline/verification, op-log + access-gate + compaction, data bootstrap + content-hash + dual-write, the full Phase E rebuild (clear-and-refan, Yjs source of truth, embedded-import-exactly-once, large-update drop, offline, concurrency, delete patches), rollout + duplicate-upload UX + realtime cleanup, and the "Failed to fetch" one-line fix (KAL-279).
