@@ -3,7 +3,7 @@
 **active_since:** none
 **session_title:** BL-23 templates-editor rename wipe
 **last_session_ended:** 2026-06-10 ~09:01 (BL-22 fixed and committed, wound down clean at context budget)
-**code-change cap used:** 4 of 6 since Isaiah's last testing confirmation (KAL-82 slice 1, BL-19 D1, BL-19 D2, BL-22)
+**code-change cap used:** 0 of 6 — RESET 2026-06-10 ~18:40: Isaiah completed a passing testing pass (marker naming popup ✓ with one cosmetic follow-up [placeholder → "Enter Name", being fixed], templates editor refresh survival ✓, region/shape drawing ✓). Fleet code work is un-paused. (Previous count had reached 6/6: KAL-82 slice 1, BL-19 D1, BL-19 D2, BL-22, BL-23, KAL-82 slice 2.)
 
 ## Session title protocol
 Keep the session_title field current at ALL times: set it to the task id + short slug the moment you start a task (e.g. "BL-22 title-rename bug"), prefix "continue: " if you are resuming a parked task, and at wind-down set it to the next recommended task (or "pick next from board"). The scheduler names the next session from this field.
