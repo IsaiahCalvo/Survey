@@ -69,3 +69,10 @@ _Already in Linear: KAL-81 (unify callouts with the main annotation model — Ba
 - [ ] **Select-mode checkbox consistency audit.** Every list that enters select mode (Survey panel rows, pages panel, history, anywhere else) should use the same checkbox component, keyboard behavior, and select-all semantics. Audit first; unify only where they actually diverge.
 - [ ] **Drag-and-drop consolidation audit.** Multiple drag-reorder/drag-drop implementations exist (Survey panel rows, templates editor, page thumbnails, file drop). Inventory them, confirm which share code, and consolidate onto one mechanism where divergence buys nothing. Audit-then-unify, same pattern.
 - [ ] **General duplication sweep (standing).** When the loop touches an area, prefer consolidating duplicate spinners/tooltips/modals onto one implementation (KAL-65 tooltips and KAL-73 spinners already exist in Linear Backlog — fold into this principle).
+
+---
+
+## STILL TO FILE — UI parity + print/export finalization (added 2026-06-10, per Isaiah)
+
+- [ ] **Match the PDF viewer UI to the homepage hub design language.** The homepage (Documents / Projects / Templates tabs) and the viewer use different palettes, possibly different fonts, and different density — Isaiah PREFERS the homepage's tighter spacing and smaller elements. Direction: bring the viewer toward the homepage look (palette, type, control density), not the other way. Big surface — slice it (toolbar/chrome first, then rails, then panels/modals); screenshot-driven before/after per slice.
+- [ ] **Finish the custom print panel + export finalization.** Per Isaiah the custom print panel and export surfaces were never finalized. Prior art: KAL-8 (print/export surface audit, Done) and KAL-7 (export scope decision: normal PDF export excludes survey/region/space overlays — GOVERNING). First step is a state-of-the-world audit of what exists vs what KAL-8 recommended, then finish the panel against the KAL-7 rules.
