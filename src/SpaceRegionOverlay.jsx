@@ -9,72 +9,11 @@
  */
 import { useId, useLayoutEffect, useMemo, useRef } from 'react';
 import { union, diff } from 'martinez-polygon-clipping';
+import { regionToPolygon } from './utils/regionMath';
 
 const spaceRegionDebug = (...args) => {
   if (typeof window === 'undefined' || window.__SPACE_REGION_DEBUG !== true) return;
   try { console.debug(...args); } catch { /* ignore debug logging failures */ }
-};
-
-// Helper to convert region to polygon for martinez
-const regionToPolygon = (region) => {
-  if (!region || !Array.isArray(region.coordinates)) {
-    return null;
-  }
-
-  const coords = region.coordinates;
-  const polygon = [];
-
-  for (let i = 0; i < coords.length; i += 2) {
-    if (i + 1 < coords.length) {
-      polygon.push([coords[i], coords[i + 1]]);
-    }
-  }
-
-  // Close the polygon if not already closed
-  if (polygon.length > 0 &&
-    (polygon[0][0] !== polygon[polygon.length - 1][0] ||
-      polygon[0][1] !== polygon[polygon.length - 1][1])) {
-    polygon.push([polygon[0][0], polygon[0][1]]);
-  }
-
-  if (polygon.length < 4) return null; // Need at least 3 points + closing point
-
-  // Ensure Counter-Clockwise (CCW) winding for outer ring
-  // Shoelace formula for signed area
-  let area = 0;
-  for (let i = 0; i < polygon.length - 1; i++) {
-    area += (polygon[i + 1][0] - polygon[i][0]) * (polygon[i + 1][1] + polygon[i][1]);
-  }
-  // If area is positive, it's Clockwise (assuming y-down screen coords? Wait.)
-  // Standard shoelace (x2-x1)(y2+y1) gives 2*Area.
-  // For (0,0)->(10,0)->(10,10)->(0,0):
-  // (10-0)(0+0) + (10-10)(10+0) + (0-10)(0+10) + (0-0)(0+0)
-  // 0 + 0 + -100 + 0 = -100.
-  // This is CW (Right-Down-Left-Up). Area is negative.
-  // So CW is Negative?
-  // Let's re-check my previous calculation.
-  // Previous: (x2-x1)(y2+y1)
-  // (0,0)->(10,0) -> (10,0)-(0,0) -> 10*0 = 0.
-  // (10,0)->(10,10) -> (10-10)*(10+0) = 0.
-  // (10,10)->(0,10) -> (0-10)*(10+10) = -200.
-  // (0,10)->(0,0) -> (0-0)*(0+10) = 0.
-  // Sum = -200.
-  // So CW is Negative.
-
-  // CCW: (0,0)->(0,10)->(10,10)->(10,0).
-  // (0-0)(10+0) = 0.
-  // (10-0)(10+10) = 200.
-  // (10-10)(0+10) = 0.
-  // (0-10)(0+0) = 0.
-  // Sum = 200.
-  // So CCW is Positive.
-
-  // Martinez expects CCW. So we want Positive area.
-  if (area < 0) {
-    polygon.reverse();
-  }
-
-  return [polygon];
 };
 
 // Helper to convert polygon back to path string

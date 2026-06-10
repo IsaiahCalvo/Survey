@@ -191,7 +191,7 @@ const regionsOverlap = (region1, region2) => {
 };
 
 // Convert region coordinates to polygon format for martinez library
-const regionToPolygon = (region) => {
+export const regionToPolygon = (region) => {
   if (!region || !Array.isArray(region.coordinates)) {
     return null;
   }
@@ -230,7 +230,7 @@ const regionToPolygon = (region) => {
 };
 
 // Convert polygon from martinez format back to region coordinates
-const polygonToRegionCoords = (polygon) => {
+export const polygonToRegionCoords = (polygon) => {
   if (!polygon || !Array.isArray(polygon) || polygon.length === 0) {
     return null;
   }

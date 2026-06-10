@@ -11,7 +11,7 @@
 import { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import Icon from './Icons';
 import { diff, union, intersection } from 'martinez-polygon-clipping';
-import { REGION_OPERATIONS, simplifyPolygon, subtractRegionFromRegion } from './utils/regionMath';
+import { REGION_OPERATIONS, polygonToRegionCoords, regionToPolygon, simplifyPolygon, subtractRegionFromRegion } from './utils/regionMath';
 import { calculateViewportSafePosition } from './utils/menuPositioning';
 import { HANDLE_FILL, HANDLE_RING, HANDLE_RADIUS } from './utils/handleStyle';
 
@@ -656,73 +656,6 @@ const RegionSelectionTool = ({
 
 
 
-  // Convert polygon from martinez format back to region coordinates
-  const polygonToRegionCoords = useCallback((polygon) => {
-    if (!polygon || !Array.isArray(polygon) || polygon.length === 0) {
-      return null;
-    }
-
-    const firstRing = polygon[0];
-    if (!Array.isArray(firstRing) || firstRing.length < 3) {
-      return null;
-    }
-
-    const coords = [];
-    for (const point of firstRing) {
-      if (Array.isArray(point) && point.length >= 2) {
-        coords.push(point[0], point[1]);
-      }
-    }
-
-    // Remove duplicate last point if it's the same as first
-    if (coords.length >= 4 &&
-      coords[0] === coords[coords.length - 2] &&
-      coords[1] === coords[coords.length - 1]) {
-      coords.pop();
-      coords.pop();
-    }
-
-    return coords.length >= 6 ? coords : null;
-  }, []);
-
-  // Check if two regions overlap (quick bounding box check)
-  // Check if two regions overlap (precise polygon intersection check)
-  // Helper to convert region to polygon for martinez (copied from regionMath to ensure availability/consistency)
-  const regionToPolygon = useCallback((region) => {
-    if (!region || !Array.isArray(region.coordinates)) {
-      return null;
-    }
-
-    const coords = region.coordinates;
-    const polygon = [];
-
-    for (let i = 0; i < coords.length; i += 2) {
-      if (i + 1 < coords.length) {
-        polygon.push([coords[i], coords[i + 1]]);
-      }
-    }
-
-    // Close the polygon
-    if (polygon.length > 0 &&
-      (polygon[0][0] !== polygon[polygon.length - 1][0] ||
-        polygon[0][1] !== polygon[polygon.length - 1][1])) {
-      polygon.push([polygon[0][0], polygon[0][1]]);
-    }
-
-    if (polygon.length < 4) return null;
-
-    // Ensure CCW winding
-    let area = 0;
-    for (let i = 0; i < polygon.length - 1; i++) {
-      area += (polygon[i + 1][0] - polygon[i][0]) * (polygon[i + 1][1] + polygon[i][1]);
-    }
-    if (area < 0) {
-      polygon.reverse();
-    }
-
-    return [polygon];
-  }, []);
-
   // Helper to convert polygon back to path string
   const polygonToPath = useCallback((polygon) => {
     if (!polygon || !Array.isArray(polygon) || polygon.length === 0) return '';
@@ -780,7 +713,7 @@ const RegionSelectionTool = ({
       // Fallback to bbox overlap on error
       return true;
     }
-  }, [getRegionBounds, regionToPolygon]);
+  }, [getRegionBounds]);
 
   const cloneRegionForHistory = useCallback((region) => ({
     ...region,
@@ -819,7 +752,7 @@ const RegionSelectionTool = ({
       console.error('Error checking merge capability', error);
       return false;
     }
-  }, [regionToPolygon]);
+  }, []);
 
   const getConnectedMergeCandidates = useCallback((seedRegion) => {
     if (!seedRegion) return [];
@@ -997,7 +930,7 @@ const RegionSelectionTool = ({
     }
 
     return resultRegions;
-  }, [regionToPolygon, polygonToRegionCoords]);
+  }, []);
 
   const handleMouseDown = useCallback((event) => {
     if (!active || !targetElement) {
