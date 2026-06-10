@@ -470,7 +470,7 @@ function SortableModuleTab({
       ) : (
         <button
           onClick={() => onOpen(index)}
-          onDoubleClick={() => onStartRename(index)}
+          onDoubleClick={() => onStartRename(mod.id)}
           title={`${mod.name} · drag to reorder · double-click to rename`}
           style={{
             background: 'transparent',
@@ -569,7 +569,7 @@ function SortableModuleTabs({
               index={mi}
               isOn={openMod === mi}
               catCount={(mod.categories || []).length}
-              isRenaming={modRename === mi}
+              isRenaming={modRename === mod.id}
               onOpen={onOpenModule}
               onStartRename={onStartRename}
               onRename={onRenameModule}
@@ -851,7 +851,7 @@ export default function TemplatesEditor({
   const [roleColors, setRoleColors] = useState({});   // { entityId: { color, opacity } } picker fill state
   const [openMod, setOpenMod] = useState(0);
   const [modEdit, setModEdit] = useState(false);
-  const [modRename, setModRename] = useState(null);   // module index in rename mode
+  const [modRename, setModRename] = useState(null);   // module id in rename mode (null = none)
   // Module bulk selection is keyed by module ID (never array index) so a
   // working-copy rebuild or module insertion/removal between selecting and
   // acting can't retarget Delete/Duplicate. Actions resolve ids at use time.
@@ -883,8 +883,10 @@ export default function TemplatesEditor({
     /* BL-17 S1: a rebuild can re-mint ids for legacy id-less modules with the
        known occurrence-shift corner (a surviving module can inherit the id a
        same-named sibling had before), so an id-keyed selection held across a
-       rebuild could silently point at different modules. Clear it. */
+       rebuild could silently point at different modules. Clear it. KAL-302:
+       same hazard for the rename-activation id — exit rename mode too. */
     setSelMods(new Set());
+    setModRename(null);
     setDirty(false);
   }, [templates, user?.id, user?.email, mintId]);
   /* BL-23 dirty guard — sync the working copy with the host's templates prop.
@@ -1070,10 +1072,13 @@ export default function TemplatesEditor({
     const existing = orderedMods.map((m) => m.name);
     let n = 1, name;
     do { name = `Module ${n++}`; } while (existing.includes(name));
-    mutateTpl(tpl.id, (t) => ({ ...t, modules: [...t.modules, { id: newId('m'), name, categories: [] }] }));
+    /* Mint the id OUTSIDE the updater: rename mode is keyed by it, and the
+       updater stays deterministic under StrictMode double-invoke. */
+    const id = newId('m');
+    mutateTpl(tpl.id, (t) => ({ ...t, modules: [...t.modules, { id, name, categories: [] }] }));
     /* Focus + open the brand-new tab and drop it straight into rename mode. */
     const newIndex = orderedMods.length;
-    setTimeout(() => { setOpenMod(newIndex); setOpenCat(-1); setModRename(newIndex); }, 0);
+    setTimeout(() => { setOpenMod(newIndex); setOpenCat(-1); setModRename(id); }, 0);
   };
   /* Commits by module ID at blur time — the module list may have been
      rebuilt/reordered since the rename input opened; a missing id is a
