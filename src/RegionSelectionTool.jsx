@@ -1107,37 +1107,123 @@ const RegionSelectionTool = ({
 
         const bounds = { ...initialBounds };
 
-        switch (handle) {
-          case 'nw':
-            bounds.minX = Math.min(x, initialBounds.maxX - MIN_REGION_SIZE);
-            bounds.minY = Math.min(y, initialBounds.maxY - MIN_REGION_SIZE);
-            break;
-          case 'n':
-            bounds.minY = Math.min(y, initialBounds.maxY - MIN_REGION_SIZE);
-            break;
-          case 'ne':
-            bounds.maxX = Math.max(x, initialBounds.minX + MIN_REGION_SIZE);
-            bounds.minY = Math.min(y, initialBounds.maxY - MIN_REGION_SIZE);
-            break;
-          case 'e':
-            bounds.maxX = Math.max(x, initialBounds.minX + MIN_REGION_SIZE);
-            break;
-          case 'se':
-            bounds.maxX = Math.max(x, initialBounds.minX + MIN_REGION_SIZE);
-            bounds.maxY = Math.max(y, initialBounds.minY + MIN_REGION_SIZE);
-            break;
-          case 's':
-            bounds.maxY = Math.max(y, initialBounds.minY + MIN_REGION_SIZE);
-            break;
-          case 'sw':
-            bounds.minX = Math.min(x, initialBounds.maxX - MIN_REGION_SIZE);
-            bounds.maxY = Math.max(y, initialBounds.minY + MIN_REGION_SIZE);
-            break;
-          case 'w':
-            bounds.minX = Math.min(x, initialBounds.maxX - MIN_REGION_SIZE);
-            break;
-          default:
-            break;
+        if (isShiftPressed) {
+          // KAL-301b: Shift+drag corner handle = uniform aspect-preserving scale.
+          // isShiftPressed is read live each mousemove, so holding/releasing Shift
+          // mid-drag switches behavior immediately (live, not locked at drag-start).
+          // Edge handles (n/s/e/w) also preserve aspect, driving from the moved axis.
+          const initW = Math.max(initialBounds.maxX - initialBounds.minX, 1);
+          const initH = Math.max(initialBounds.maxY - initialBounds.minY, 1);
+          const aspect = initW / initH; // width / height ratio to preserve
+
+          switch (handle) {
+            case 'se': {
+              // Anchor: nw corner (minX, minY). Width drives.
+              const newW = Math.max(x - initialBounds.minX, MIN_REGION_SIZE);
+              const newH = newW / aspect;
+              bounds.maxX = initialBounds.minX + newW;
+              bounds.maxY = initialBounds.minY + newH;
+              break;
+            }
+            case 'sw': {
+              // Anchor: ne corner (maxX, minY). Width drives.
+              const newW = Math.max(initialBounds.maxX - x, MIN_REGION_SIZE);
+              const newH = newW / aspect;
+              bounds.minX = initialBounds.maxX - newW;
+              bounds.maxY = initialBounds.minY + newH;
+              break;
+            }
+            case 'ne': {
+              // Anchor: sw corner (minX, maxY). Width drives.
+              const newW = Math.max(x - initialBounds.minX, MIN_REGION_SIZE);
+              const newH = newW / aspect;
+              bounds.maxX = initialBounds.minX + newW;
+              bounds.minY = initialBounds.maxY - newH;
+              break;
+            }
+            case 'nw': {
+              // Anchor: se corner (maxX, maxY). Width drives.
+              const newW = Math.max(initialBounds.maxX - x, MIN_REGION_SIZE);
+              const newH = newW / aspect;
+              bounds.minX = initialBounds.maxX - newW;
+              bounds.minY = initialBounds.maxY - newH;
+              break;
+            }
+            case 'e': {
+              // Width drives; height follows; centred vertically.
+              const newW = Math.max(x - initialBounds.minX, MIN_REGION_SIZE);
+              const newH = newW / aspect;
+              const midY = (initialBounds.minY + initialBounds.maxY) / 2;
+              bounds.maxX = initialBounds.minX + newW;
+              bounds.minY = midY - newH / 2;
+              bounds.maxY = midY + newH / 2;
+              break;
+            }
+            case 'w': {
+              const newW = Math.max(initialBounds.maxX - x, MIN_REGION_SIZE);
+              const newH = newW / aspect;
+              const midY = (initialBounds.minY + initialBounds.maxY) / 2;
+              bounds.minX = initialBounds.maxX - newW;
+              bounds.minY = midY - newH / 2;
+              bounds.maxY = midY + newH / 2;
+              break;
+            }
+            case 's': {
+              // Height drives; width follows; centred horizontally.
+              const newH = Math.max(y - initialBounds.minY, MIN_REGION_SIZE);
+              const newW = newH * aspect;
+              const midX = (initialBounds.minX + initialBounds.maxX) / 2;
+              bounds.maxY = initialBounds.minY + newH;
+              bounds.minX = midX - newW / 2;
+              bounds.maxX = midX + newW / 2;
+              break;
+            }
+            case 'n': {
+              const newH = Math.max(initialBounds.maxY - y, MIN_REGION_SIZE);
+              const newW = newH * aspect;
+              const midX = (initialBounds.minX + initialBounds.maxX) / 2;
+              bounds.minY = initialBounds.maxY - newH;
+              bounds.minX = midX - newW / 2;
+              bounds.maxX = midX + newW / 2;
+              break;
+            }
+            default:
+              break;
+          }
+        } else {
+          // Plain drag: existing free resize (each handle moves independently).
+          switch (handle) {
+            case 'nw':
+              bounds.minX = Math.min(x, initialBounds.maxX - MIN_REGION_SIZE);
+              bounds.minY = Math.min(y, initialBounds.maxY - MIN_REGION_SIZE);
+              break;
+            case 'n':
+              bounds.minY = Math.min(y, initialBounds.maxY - MIN_REGION_SIZE);
+              break;
+            case 'ne':
+              bounds.maxX = Math.max(x, initialBounds.minX + MIN_REGION_SIZE);
+              bounds.minY = Math.min(y, initialBounds.maxY - MIN_REGION_SIZE);
+              break;
+            case 'e':
+              bounds.maxX = Math.max(x, initialBounds.minX + MIN_REGION_SIZE);
+              break;
+            case 'se':
+              bounds.maxX = Math.max(x, initialBounds.minX + MIN_REGION_SIZE);
+              bounds.maxY = Math.max(y, initialBounds.minY + MIN_REGION_SIZE);
+              break;
+            case 's':
+              bounds.maxY = Math.max(y, initialBounds.minY + MIN_REGION_SIZE);
+              break;
+            case 'sw':
+              bounds.minX = Math.min(x, initialBounds.maxX - MIN_REGION_SIZE);
+              bounds.maxY = Math.max(y, initialBounds.minY + MIN_REGION_SIZE);
+              break;
+            case 'w':
+              bounds.minX = Math.min(x, initialBounds.maxX - MIN_REGION_SIZE);
+              break;
+            default:
+              break;
+          }
         }
 
         ensureBoundsMinSize(bounds);
@@ -1228,7 +1314,7 @@ const RegionSelectionTool = ({
     } else if (effectiveToolType === 'freehand') {
       setPolygonPoints(prev => [...prev, { x, y }]);
     }
-  }, [active, targetElement, clientPointToPage, displayScaleX, displayScaleY, interactionState, ensureBoundsMinSize, isDrawing, effectiveToolType, startPoint, regions, activeTool]);
+  }, [active, targetElement, clientPointToPage, displayScaleX, displayScaleY, interactionState, ensureBoundsMinSize, isDrawing, effectiveToolType, startPoint, regions, activeTool, isShiftPressed]);
 
   const handleMouseUp = useCallback(() => {
     if (!active) return;
