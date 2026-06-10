@@ -4,13 +4,22 @@
  * KAL-301 — Region Edit Parity: pure-function unit tests for all three slices.
  *
  * Slice 1: undo/redo snapshot logic (drag-end checkpoint, not drag-start)
- * Slice 2: uniform aspect-preserving scale math
- * Slice 3: rotation snap + coordinate rotation around centroid
+ * Slice 2: uniform aspect-preserving scale math (resize handles AND vertex
+ *          handles — rectangles render vertex handles, so Shift+corner goes
+ *          through the vertex branch)
+ * Slice 3 (REDO): rotation copies the day-one standard — normalizeAngle
+ *          (Fabric convention, 0 = up) + soft Shift-snap to nearest 45°
+ *          within 3° (snapAngleToNearest45), pivot at the BBOX CENTER,
+ *          coords baked ONCE at drag end (never per frame).
  *
  * These tests cover the pure math helpers only — no React, no DOM.
+ * Snap/normalize tests run against the REAL shared implementation in
+ * src/utils/svgTransformMath.js — the same functions RegionSelectionTool
+ * imports — so regions can't drift from the standard convention again.
  */
 import test from 'node:test';
 import { strictEqual, deepStrictEqual, ok } from 'node:assert/strict';
+import { normalizeAngle, snapAngleToNearest45 } from '../src/utils/svgTransformMath.js';
 
 // ---------------------------------------------------------------------------
 // Helper: the same deep-clone logic RST uses for undo snapshots
@@ -281,16 +290,96 @@ test('Slice 2: plain drag (no shift) still works independently — free resize d
 });
 
 // ---------------------------------------------------------------------------
-// SLICE 3 — rotation snap + coordinate rotation around centroid
+// SLICE 2 (REDO) — Shift+drag a VERTEX handle = uniform scale of the whole
+// region anchored at the opposite bbox corner. Mirrors the vertex branch in
+// RegionSelectionTool.handleMouseMove.
 // ---------------------------------------------------------------------------
 
-/**
- * snapToStep — snap an angle to the nearest multiple of stepDeg.
- * Matches the 15° snap convention requested for regions.
- */
-function snapToStep(angleDeg, stepDeg) {
-  return Math.round(angleDeg / stepDeg) * stepDeg;
+function computeVertexUniformScale(initialCoords, initialBounds, vertexIndex, pointer, MIN = 5) {
+  const vx0 = initialCoords[vertexIndex * 2];
+  const vy0 = initialCoords[vertexIndex * 2 + 1];
+  const anchorX = (vx0 - initialBounds.minX) < (initialBounds.maxX - vx0)
+    ? initialBounds.maxX : initialBounds.minX;
+  const anchorY = (vy0 - initialBounds.minY) < (initialBounds.maxY - vy0)
+    ? initialBounds.maxY : initialBounds.minY;
+  const d0 = Math.hypot(vx0 - anchorX, vy0 - anchorY);
+  const d1 = Math.hypot(pointer.x - anchorX, pointer.y - anchorY);
+  const initW = Math.max(initialBounds.maxX - initialBounds.minX, 1);
+  const initH = Math.max(initialBounds.maxY - initialBounds.minY, 1);
+  const minScale = MIN / Math.max(Math.min(initW, initH), 1);
+  const s = Math.max(d0 > 0 ? d1 / d0 : 1, minScale);
+  return initialCoords.map((value, index) => (
+    index % 2 === 0 ? anchorX + (value - anchorX) * s : anchorY + (value - anchorY) * s
+  ));
 }
+
+test('Slice 2 REDO: shift+vertex-drag on a rect corner preserves aspect ratio', () => {
+  const coords = [0, 0, 100, 0, 100, 50, 0, 50]; // 2:1 rect, vertices nw,ne,se,sw
+  const bounds = { minX: 0, minY: 0, maxX: 100, maxY: 50 };
+  // Drag the se vertex (index 2) outward to double the diagonal
+  const scaled = computeVertexUniformScale(coords, bounds, 2, { x: 200, y: 100 });
+  const w = Math.max(...scaled.filter((_, i) => i % 2 === 0)) - Math.min(...scaled.filter((_, i) => i % 2 === 0));
+  const h = Math.max(...scaled.filter((_, i) => i % 2 === 1)) - Math.min(...scaled.filter((_, i) => i % 2 === 1));
+  ok(Math.abs(w / h - 2) < 0.001, `aspect should stay 2:1, got ${w / h}`);
+  ok(Math.abs(w - 200) < 0.001, `width should double to 200, got ${w}`);
+});
+
+test('Slice 2 REDO: shift+vertex-drag anchors the opposite bbox corner', () => {
+  const coords = [0, 0, 100, 0, 100, 50, 0, 50];
+  const bounds = { minX: 0, minY: 0, maxX: 100, maxY: 50 };
+  // Dragging the se vertex (index 2) — the nw corner (0,0) must not move.
+  const scaled = computeVertexUniformScale(coords, bounds, 2, { x: 150, y: 75 });
+  ok(Math.abs(scaled[0] - 0) < 1e-9 && Math.abs(scaled[1] - 0) < 1e-9, 'nw anchor unchanged');
+});
+
+test('Slice 2 REDO: shift+vertex-drag never collapses below MIN_REGION_SIZE', () => {
+  const coords = [0, 0, 100, 0, 100, 50, 0, 50];
+  const bounds = { minX: 0, minY: 0, maxX: 100, maxY: 50 };
+  // Drag se vertex onto the anchor — scale would be 0 without the clamp.
+  const scaled = computeVertexUniformScale(coords, bounds, 2, { x: 0, y: 0 });
+  const w = Math.max(...scaled.filter((_, i) => i % 2 === 0)) - Math.min(...scaled.filter((_, i) => i % 2 === 0));
+  const h = Math.max(...scaled.filter((_, i) => i % 2 === 1)) - Math.min(...scaled.filter((_, i) => i % 2 === 1));
+  ok(h >= 5 - 1e-9, `min dimension >= MIN_REGION_SIZE, got ${h}`);
+  ok(w > 0, 'width stays positive');
+});
+
+// ---------------------------------------------------------------------------
+// SLICE 3 (REDO) — standard rotation convention: normalizeAngle +
+// snapAngleToNearest45 (the real shared implementations), pivot at bbox
+// center, bake-once coordinate rotation.
+// ---------------------------------------------------------------------------
+
+test('Slice 3 REDO: normalizeAngle converts atan2 east to Fabric 90° (0 = up)', () => {
+  // atan2(0, 1) = 0 rad = pointing east → Fabric convention 90°
+  strictEqual(normalizeAngle(0), 90);
+});
+
+test('Slice 3 REDO: normalizeAngle converts atan2 north to Fabric 0°', () => {
+  // pointing up (north) in screen coords: atan2(-1, 0) = -π/2 → 0°
+  strictEqual(normalizeAngle(Math.atan2(-1, 0)), 0);
+});
+
+test('Slice 3 REDO: snapAngleToNearest45 soft-snaps 44° to 45° (within 3°)', () => {
+  strictEqual(snapAngleToNearest45(44, 3), 45);
+});
+
+test('Slice 3 REDO: snapAngleToNearest45 leaves 40° unsnapped (outside 3°)', () => {
+  strictEqual(snapAngleToNearest45(40, 3), 40);
+});
+
+test('Slice 3 REDO: snapAngleToNearest45 snaps 91° to 90°', () => {
+  strictEqual(snapAngleToNearest45(91, 3), 90);
+});
+
+test('Slice 3 REDO: snapAngleToNearest45 wraps 358° to 0° (not 360°)', () => {
+  strictEqual(snapAngleToNearest45(358, 3), 0);
+});
+
+test('Slice 3 REDO: no always-on snap — 22° stays 22° without Shift', () => {
+  // The standard convention is FREE rotation; snapping only applies while
+  // Shift is held (soft 45° within 3°). 22° must never round to 15 or 30.
+  strictEqual(snapAngleToNearest45(22, 3), 22);
+});
 
 /**
  * normalizeDegrees — bring angle into [0, 360).
@@ -330,35 +419,6 @@ function getRegionCentroid(coords) {
   }
   return { cx: sumX / n, cy: sumY / n };
 }
-
-test('Slice 3: snapToStep snaps 0° to 0°', () => {
-  strictEqual(snapToStep(0, 15), 0);
-});
-
-test('Slice 3: snapToStep snaps 7° to 0° (rounds down)', () => {
-  strictEqual(snapToStep(7, 15), 0);
-});
-
-test('Slice 3: snapToStep snaps 8° to 15° (rounds up)', () => {
-  strictEqual(snapToStep(8, 15), 15);
-});
-
-test('Slice 3: snapToStep snaps 22° to 15°', () => {
-  strictEqual(snapToStep(22, 15), 15);
-});
-
-test('Slice 3: snapToStep snaps 23° to 30°', () => {
-  strictEqual(snapToStep(23, 15), 30);
-});
-
-test('Slice 3: snapToStep snaps 352° to 345°', () => {
-  strictEqual(snapToStep(352, 15), 345);
-});
-
-test('Slice 3: snapToStep snaps 357° to 360°', () => {
-  // 360 is same as 0 when normalized
-  strictEqual(normalizeDegrees(snapToStep(357, 15)), 0);
-});
 
 test('Slice 3: normalizeDegrees keeps 90 as 90', () => {
   strictEqual(normalizeDegrees(90), 90);
