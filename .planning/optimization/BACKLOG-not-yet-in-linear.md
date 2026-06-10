@@ -67,7 +67,7 @@ _Already in Linear: KAL-81 (unify callouts with the main annotation model — Ba
 
 - [ ] **Callout unification (execute KAL-81 + KAL-125 together).** Callouts are just text-box annotations; move them onto the standard annotation contract (storage, ownership gate, styling flags, sync, undo/redo, delete authority). Run as ONE dedicated migration with before/after parity tests — the contract doc explicitly warns against piecemeal edits.
 - [ ] **Select-mode checkbox consistency audit.** Every list that enters select mode (Survey panel rows, pages panel, history, anywhere else) should use the same checkbox component, keyboard behavior, and select-all semantics. Audit first; unify only where they actually diverge.
-- [ ] **Drag-and-drop consolidation audit.** Multiple drag-reorder/drag-drop implementations exist (Survey panel rows, templates editor, page thumbnails, file drop). Inventory them, confirm which share code, and consolidate onto one mechanism where divergence buys nothing. Audit-then-unify, same pattern.
+- [x] **Drag-and-drop consolidation audit.** _Done 2026-06-10, commit 6377a33b — report at .planning/optimization/DND-CONSOLIDATION-AUDIT.md; slice plan posted to KAL-84; 3 open decisions for Isaiah._ Multiple drag-reorder/drag-drop implementations exist (Survey panel rows, templates editor, page thumbnails, file drop). Inventory them, confirm which share code, and consolidate onto one mechanism where divergence buys nothing. Audit-then-unify, same pattern.
 - [ ] **General duplication sweep (standing).** When the loop touches an area, prefer consolidating duplicate spinners/tooltips/modals onto one implementation (KAL-65 tooltips and KAL-73 spinners already exist in Linear Backlog — fold into this principle).
 
 ---
