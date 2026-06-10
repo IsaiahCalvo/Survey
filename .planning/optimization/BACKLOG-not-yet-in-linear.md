@@ -1,4 +1,6 @@
-# Backlog — audit items not yet filed in Linear
+# Backlog — audit items not yet filed in Linear — ⚠️ MIGRATED TO LINEAR 2026-06-10
+
+_**This file is now historical.** Isaiah freed Linear slots (archived all closed issues) and every open item below was filed as a real Linear issue in the Survey project on 2026-06-10. Mapping: BL-01→KAL-280, BL-02→KAL-281, BL-03→KAL-282, BL-04→KAL-283, BL-05→KAL-284, BL-06→KAL-285, BL-07→KAL-286, BL-08→KAL-287, BL-09→KAL-288, BL-10→KAL-289, BL-11→KAL-290, BL-12→KAL-291, BL-14→KAL-292, BL-15→KAL-293, BL-16→KAL-297, BL-20→KAL-294, BL-21→KAL-295 (In Progress), BL-22→KAL-296 (created Done — fix already committed). Already-done BL-13/17/18/23 and the standing BL-19 principle got no Linear issue. Work from Linear + the Obsidian Survey board from now on; do NOT work items from this file._
 
 _Created 2026-06-05. The Survey workspace hit its Linear free-tier issue limit after KAL-279, so these remaining audit findings live here until Linear has room (upgrade, or free up issues). Source docs: `.planning/optimization/PERSISTENCE-ARCHITECTURE.md`, `SUPABASE-DATA-AUDIT.md`, `PRE-REBUILD-READINESS.md`._
 
