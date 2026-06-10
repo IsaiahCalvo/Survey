@@ -102,6 +102,10 @@ const RegionSelectionTool = ({
   const undoStackRef = useRef([]);
   const redoStackRef = useRef([]);
   const documentDragFallbackRef = useRef(false);
+  // Slice 1 (KAL-301a): tracks whether the current drag interaction actually
+  // moved (i.e. coords changed). Undo snapshot is pushed at drag-END only when
+  // this is true — one checkpoint per completed drag, not per pixel.
+  const dragHasMovedRef = useRef(false);
   const historyKey = useMemo(
     () => getRegionEditHistoryKey(currentSpaceId, currentPageId),
     [currentSpaceId, currentPageId]
@@ -1076,6 +1080,11 @@ const RegionSelectionTool = ({
         const dx = (event.clientX - interactionState.startPoint.x) / displayScaleX;
         const dy = (event.clientY - interactionState.startPoint.y) / displayScaleY;
 
+        if (dx !== 0 || dy !== 0) {
+          // KAL-301a: mark that the drag actually moved coords
+          dragHasMovedRef.current = true;
+        }
+
         // Move all selected regions
         const updatedRegions = regions.map(r => {
           // Check if this region is being moved (is in the initial set of moved regions)
@@ -1133,6 +1142,9 @@ const RegionSelectionTool = ({
 
         ensureBoundsMinSize(bounds);
 
+        // KAL-301a: mark that the resize drag actually moved coords
+        dragHasMovedRef.current = true;
+
         setRegions(prev => prev.map(region => {
           if (region.regionId !== regionId) {
             return region;
@@ -1180,6 +1192,9 @@ const RegionSelectionTool = ({
       } else if (interactionState.type === 'vertex') {
         const { vertexIndex, regionId } = interactionState;
 
+        // KAL-301a: mark that vertex drag moved
+        dragHasMovedRef.current = true;
+
         setRegions(prev => prev.map(region => {
           if (region.regionId !== regionId) {
             return region;
@@ -1221,6 +1236,19 @@ const RegionSelectionTool = ({
     setIsCursorOverCanvas(false);
 
     if (interactionState) {
+      // KAL-301a: push the pre-drag snapshot onto the undo stack only when the
+      // drag actually changed coords (one checkpoint per completed drag, not per
+      // pixel, and not for click-without-drag). The pre-drag snapshot was
+      // captured at pointer-down and stored in interactionState.preSnapshot.
+      if (dragHasMovedRef.current && interactionState.preSnapshot) {
+        undoStackRef.current.push(interactionState.preSnapshot);
+        redoStackRef.current = [];
+        if (undoStackRef.current.length > REGION_HISTORY_LIMIT) {
+          undoStackRef.current.shift();
+        }
+        persistHistoryStacks();
+      }
+      dragHasMovedRef.current = false;
       setInteractionState(null);
       return;
     }
@@ -1311,7 +1339,7 @@ const RegionSelectionTool = ({
     setStartPoint(null);
     setCurrentRect(null);
     setPolygonPoints([]);
-  }, [active, interactionState, isDrawing, effectiveToolType, currentRect, polygonPoints, currentPageId, effectiveSelectionMode, mergeRegionWithOverlapping, subtractRegionFromRegions, pushUndoSnapshot]);
+  }, [active, interactionState, isDrawing, effectiveToolType, currentRect, polygonPoints, currentPageId, effectiveSelectionMode, mergeRegionWithOverlapping, subtractRegionFromRegions, pushUndoSnapshot, persistHistoryStacks]);
 
   const handleCanvasMouseLeave = useCallback(() => {
     setIsCursorOverCanvas(false);
@@ -1416,11 +1444,15 @@ const RegionSelectionTool = ({
 
       // If we just added it, start moving it (and others)
       if (!isSelected) {
-        pushUndoSnapshot();
+        // KAL-301a: capture pre-drag snapshot; push to undo stack at drag-END
+        // (in handleMouseUp) only if coords actually changed.
+        const preSnapshot = createHistorySnapshot();
+        dragHasMovedRef.current = false;
         setInteractionState({
           type: 'move',
           startPoint: { x: event.clientX, y: event.clientY },
-          initialRegions: regions.filter(r => newSelection.has(r.regionId))
+          initialRegions: regions.filter(r => newSelection.has(r.regionId)),
+          preSnapshot
         });
       }
     } else {
@@ -1428,26 +1460,32 @@ const RegionSelectionTool = ({
       if (!isSelected) {
         // If clicking a new region, select ONLY it
         setSelectedRegionIds(new Set([region.regionId]));
-        pushUndoSnapshot();
+        // KAL-301a: capture pre-drag snapshot
+        const preSnapshot = createHistorySnapshot();
+        dragHasMovedRef.current = false;
         setInteractionState({
           type: 'move',
           startPoint: { x: event.clientX, y: event.clientY },
-          initialRegions: [region]
+          initialRegions: [region],
+          preSnapshot
         });
       } else {
         // If clicking an already selected region, keep selection (allow bulk move)
         // But if we just click and release without moving, we might want to deselect others?
-        // Standard behavior: MouseDown doesn't clear others if clicking selected, 
+        // Standard behavior: MouseDown doesn't clear others if clicking selected,
         // but MouseUp might if no drag occurred. For now, keep simple: don't clear.
-        pushUndoSnapshot();
+        // KAL-301a: capture pre-drag snapshot
+        const preSnapshot = createHistorySnapshot();
+        dragHasMovedRef.current = false;
         setInteractionState({
           type: 'move',
           startPoint: { x: event.clientX, y: event.clientY },
-          initialRegions: regions.filter(r => selectedRegionIds.has(r.regionId))
+          initialRegions: regions.filter(r => selectedRegionIds.has(r.regionId)),
+          preSnapshot
         });
       }
     }
-  }, [active, effectiveToolType, targetElement, regions, selectedRegionIds, toolType, pushUndoSnapshot]);
+  }, [active, effectiveToolType, targetElement, regions, selectedRegionIds, toolType, createHistorySnapshot]);
 
   const handleVertexPointerDown = useCallback((region, vertexIndex, event) => {
     if (!active || effectiveToolType !== 'move' || !targetElement) return;
@@ -1461,14 +1499,17 @@ const RegionSelectionTool = ({
     event.preventDefault();
 
     setSelectedRegionIds(new Set([region.regionId])); // Select only this region for vertex editing
-    pushUndoSnapshot();
+    // KAL-301a: capture pre-drag snapshot; push to undo stack at drag-END only if moved
+    const preSnapshot = createHistorySnapshot();
+    dragHasMovedRef.current = false;
     setInteractionState({
       type: 'vertex',
       regionId: region.regionId,
       vertexIndex,
-      startPoint: { x: event.clientX, y: event.clientY }
+      startPoint: { x: event.clientX, y: event.clientY },
+      preSnapshot
     });
-  }, [active, effectiveToolType, targetElement, selectedRegionIds, pushUndoSnapshot]);
+  }, [active, effectiveToolType, targetElement, selectedRegionIds, createHistorySnapshot]);
 
   const handleResizePointerDown = useCallback((region, handle, event) => {
     if (!active || effectiveToolType !== 'move' || !targetElement) return;
@@ -1485,16 +1526,19 @@ const RegionSelectionTool = ({
     if (!bounds) return;
 
     setSelectedRegionIds(new Set([region.regionId])); // Select only this region for resizing
-    pushUndoSnapshot();
+    // KAL-301a: capture pre-drag snapshot; push to undo stack at drag-END only if moved
+    const preSnapshot = createHistorySnapshot();
+    dragHasMovedRef.current = false;
     setInteractionState({
       type: 'resize',
       regionId: region.regionId,
       handle,
       startPoint: { x: event.clientX, y: event.clientY },
       initialBounds: bounds,
-      initialCoords: [...region.coordinates]
+      initialCoords: [...region.coordinates],
+      preSnapshot
     });
-  }, [active, effectiveToolType, targetElement, getRegionBounds, selectedRegionIds, pushUndoSnapshot]);
+  }, [active, effectiveToolType, targetElement, getRegionBounds, selectedRegionIds, createHistorySnapshot]);
 
   const handleDeleteSelected = useCallback(() => {
     if (selectedRegionIds.size === 0) return;
