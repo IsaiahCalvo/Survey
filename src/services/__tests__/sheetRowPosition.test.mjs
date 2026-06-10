@@ -205,6 +205,74 @@ test('buildMarkerIdentityRecord: positional fields default to null and reject in
   }
 });
 
+// --- 5. slice 3: positional stamps + cross-scope fingerprints THREAD THROUGH the plans
+//        bridge into the matcher (end-to-end through buildScopeImportPlans) -------------
+
+test('slice 3 threading: a TOTAL REWRITE at the remembered slot pairs through buildScopeImportPlans (no duplicate)', async () => {
+  // The marker remembers sheet row 2 from the last ingest; the row at sheet 2 now has
+  // EVERY identity field changed. Only the positional tier (fed by stored[] threading)
+  // can pair this — content-only matching would emit new-row + a delete candidate.
+  const record = await buildMarkerIdentityRecord({
+    values: rowValuesFor({ item: 'test', answer: 'Y', entity: 'North', notes: 'ok' }),
+    origin: 'import', lastSeenRowNumber: 2, lastIngestSeq: 9
+  });
+  const surveyMarkers = { m1: { moduleId: MODULE, categoryId: CATEGORY, name: 'test', excelSync: record } };
+  const jsonData = [
+    withSheetRow([...headerRow], 1),
+    withSheetRow(excelRowFor('', { item: 'car', answer: 'N', entity: 'South', notes: 'changed' }), 2)
+  ];
+  const plan = (await plansFor(jsonData, surveyMarkers)).get(scopeKeyFor(MODULE, CATEGORY));
+  const d = plan.byRowIndex.get(1);
+  assert.equal(d.decision, 'missing-rowid', 'Amendment #2: silent same-row match through the full bridge');
+  assert.equal(d.action, 'apply');
+  assert.equal(d.markerId, 'm1');
+  assert.deepEqual(plan.candidateDeletes, []);
+});
+
+test('slice 3 threading: blank rows in one worksheet SHIELD another scope\'s marker (cross-scope reconciliation)', async () => {
+  const MODULE2 = 'mod-2';
+  const CATEGORY2 = 'cat-2';
+  // Both categories share the checklist item id, so the cut row's identity fingerprint
+  // is the same in both scopes (the shield is exact-fingerprint based).
+  const template2 = {
+    modules: [
+      { id: MODULE, categories: [{ id: CATEGORY, checklist: [{ id: 'chk-1', text: 'Locked?' }] }] },
+      { id: MODULE2, categories: [{ id: CATEGORY2, checklist: [{ id: 'chk-1', text: 'Locked?' }] }] }
+    ]
+  };
+  const cutVals = { item: 'Cut Row', answer: 'Y', entity: 'North', notes: 'payload' };
+  const surveyMarkers = {
+    mCut: {
+      moduleId: MODULE, categoryId: CATEGORY, name: 'Cut Row',
+      excelSync: await buildMarkerIdentityRecord({ values: rowValuesFor(cutVals), origin: 'import' })
+    }
+  };
+  // Scope A keeps a DIFFERENT blank row sharing mCut's Item (would pair without the
+  // shield); the cut row itself was pasted VERBATIM into scope B's sheet.
+  const sheetA = [
+    withSheetRow([...headerRow], 1),
+    withSheetRow(excelRowFor('', { item: 'Cut Row', answer: 'N', entity: 'South', notes: 'other' }), 2)
+  ];
+  const sheetB = [
+    withSheetRow([...headerRow], 1),
+    withSheetRow(excelRowFor('', cutVals), 2)
+  ];
+  const plans = await buildScopeImportPlans({
+    worksheetDataList: [
+      { jsonData: sheetA, headerRow, matchedCategory: { id: CATEGORY }, matchedModuleId: MODULE },
+      { jsonData: sheetB, headerRow, matchedCategory: { id: CATEGORY2 }, matchedModuleId: MODULE2 }
+    ],
+    surveyMarkers, templateToUse: template2, documentId: DOC, resolveSecret, logger: () => {}
+  });
+  const planA = plans.get(scopeKeyFor(MODULE, CATEGORY));
+  const planB = plans.get(scopeKeyFor(MODULE2, CATEGORY2));
+  assert.equal(planA.byRowIndex.get(1).decision, 'new-row',
+    'the overlapping local row must NOT steal the moved marker');
+  assert.deepEqual(planA.candidateDeletes, ['mCut'],
+    'the move degrades to a silent, restorable delete in the old scope');
+  assert.equal(planB.byRowIndex.get(1).decision, 'new-row', 'the pasted row creates in its new scope');
+});
+
 test('conflict-resolve re-stamp preserves positional memory (the PDFViewer merge pattern)', async () => {
   // A marker that was stamped with a position by a prior import…
   const prior = await buildMarkerIdentityRecord({

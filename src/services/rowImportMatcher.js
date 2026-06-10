@@ -6,8 +6,13 @@
  *      actually exported binds the row to that marker (rename/edits → same marker).
  *   2. Content fingerprints (rowFingerprint) are the SAFETY layer: a blank/lost Row ID is
  *      recovered by exact identity fingerprint (byte-identical twin groups pair in stable
- *      order silently, Amendment #4), then by ≥1 shared NON-BLANK identity field unique in
- *      both directions (Tier-4 field overlap — survives Excel-side edits to a blank-ID row).
+ *      order silently, Amendment #4), then — when the scope's DEVICE-LOCAL positional
+ *      stamps are TRUSTED (every leftover stamped from ONE snapshot, matched anchors
+ *      order-consistent) — by the row's sheet SLOT relative to flanking anchors (Tier 3),
+ *      then by ≥1 shared NON-BLANK identity field unique in both directions (Tier-4 field
+ *      overlap — survives Excel-side edits to a blank-ID row). Strict precedence:
+ *      Row-ID tokens > exact unique fingerprint > position; position NEVER overrides an
+ *      exact content match (rows that swap content swap pairings, not slots).
  *   3. Duplicate / unknown / foreign / wrong-scope / malformed Row IDs, and blank recovery
  *      with multiple NON-identical candidates either direction, NEVER guess — they surface
  *      for review ("Needs your choice").
@@ -30,15 +35,26 @@ const reviewDecision = (rowIndex, decision, extra = {}) =>
 
 /**
  * @param {object} input
- * @param {Array<{rowIdCell:*, values:object}>} input.rows  visible row values + the Row ID cell
+ * @param {Array<{rowIdCell:*, values:object, sheetRowNumber?:number}>} input.rows  visible row
+ *        values + the Row ID cell. sheetRowNumber is the TRUE 1-based sheet row (positional
+ *        tier input); absence is always valid and disables only the positional tier.
  * @param {Array<{markerId:string, identityVectorFingerprint:string, fullRowFingerprint?:string,
- *                fieldFingerprints?:object}>} input.stored  markers exported to THIS scope
+ *                fieldFingerprints?:object, lastSeenRowNumber?:number, lastIngestSeq?:number
+ *               }>} input.stored  markers exported to THIS scope (positions are device-local
+ *        hints from the last ingested save — missing/stale stamps degrade to content tiers)
  * @param {string} input.documentId
  * @param {string} input.scopeId  `${moduleId}:${categoryId}`
  * @param {(keyId:string)=>string|null|Promise<string|null>} input.resolveSecret
+ * @param {Set<string>|string[]} [input.crossScopeBlankFingerprints]  identity fingerprints of
+ *        blank-Row-ID rows seen in OTHER scopes of the same import. A leftover marker whose
+ *        baseline fingerprint reappears there was likely cut+pasted to that sheet — it is
+ *        shielded from positional/field-overlap pairing here (never eliminated-against
+ *        locally); it follows normal delete semantics instead.
  * @returns {Promise<{decisions:Array, candidateDeletes:string[]}>}
  */
-export const buildImportPlan = async ({ rows = [], stored = [], documentId, scopeId, resolveSecret }) => {
+export const buildImportPlan = async ({
+  rows = [], stored = [], documentId, scopeId, resolveSecret, crossScopeBlankFingerprints = null
+}) => {
   const storedById = new Map(stored.map((s) => [s.markerId, s]));
   const exportedIds = new Set(storedById.keys());
 
@@ -74,6 +90,27 @@ export const buildImportPlan = async ({ rows = [], stored = [], documentId, scop
       copiesByOrigin.get(s.copyOfMarkerId).set(s.copyOrdinal, s);
     }
   }
+
+  // --- Positional stamps (slice 3 of the blank-rowid plan) — device-local hints read
+  // defensively: anything non-integer / non-positive is "unknown" and (via the trust
+  // gate below) disables the positional tier for the scope, never throws.
+  const storedPosOf = (s) =>
+    (Number.isInteger(s?.lastSeenRowNumber) && s.lastSeenRowNumber > 0 ? s.lastSeenRowNumber : null);
+  const storedSeqOf = (s) =>
+    (Number.isInteger(s?.lastIngestSeq) && s.lastIngestSeq > 0 ? s.lastIngestSeq : null);
+  const rowPosOf = (e) =>
+    (Number.isInteger(e?.row?.sheetRowNumber) && e.row.sheetRowNumber > 0 ? e.row.sheetRowNumber : null);
+  // Anchors: already-matched pairs carrying BOTH a stored position and a new sheet
+  // position. Token-tier matches are collected in Pass 2; 1×1 exact recoveries join in
+  // Pass 3a. They gate (order-consistency) and parameterize (flank offsets) every
+  // positional inference below.
+  const anchorPairs = [];
+  // Cross-scope reconciliation (slice 3): markers whose exact baseline fingerprint
+  // reappears as a blank row in ANOTHER scope were likely cut+pasted there.
+  const crossScopeFps = crossScopeBlankFingerprints instanceof Set
+    ? crossScopeBlankFingerprints
+    : new Set(crossScopeBlankFingerprints || []);
+  const crossShielded = (s) => crossScopeFps.has(s.identityVectorFingerprint);
 
   // Pass 1 — non-valid rows (blank deferred to Pass 3; the rest are terminal reviews).
   for (const e of enriched) {
@@ -118,6 +155,7 @@ export const buildImportPlan = async ({ rows = [], stored = [], documentId, scop
             changedFields: s.fieldFingerprints ? diffRowFields(s.fieldFingerprints, fp.fieldFingerprints) : undefined
           });
           matchedMarkerIds.add(originMarkerId);
+          anchorPairs.push({ storedPos: storedPosOf(s), newPos: rowPosOf(e), seq: storedSeqOf(s) });
         }
       } else {
         const existing = knownCopies.get(ordinal);
@@ -125,6 +163,7 @@ export const buildImportPlan = async ({ rows = [], stored = [], documentId, scop
           // This copy was created on a previous import — apply to its marker, don't twin.
           decisions.push({ rowIndex, decision: 'copy-existing', action: IMPORT_ACTIONS.APPLY, markerId: existing.markerId });
           matchedMarkerIds.add(existing.markerId);
+          anchorPairs.push({ storedPos: storedPosOf(existing), newPos: rowPosOf(e), seq: storedSeqOf(existing) });
         } else {
           // A brand-new copy → create a new item, remembered by (origin, ordinal).
           decisions.push({
@@ -144,7 +183,17 @@ export const buildImportPlan = async ({ rows = [], stored = [], documentId, scop
   // (2026-06-09, .planning/blank-rowid-matching-verdict.md):
   //   3a. exact identity-vector fingerprint, GROUP-AWARE: byte-identical rows and markers
   //       pair in stable order silently (Amendment #4 — assignment is data-inconsequential,
-  //       identical twins never go to review).
+  //       identical twins never go to review). With TRUSTED positional stamps, same-slot
+  //       twins pair first and the remainder pairs in relative sheet order (pins follow
+  //       slots); without trust the slice-1 order (row order × stored order) is unchanged.
+  //   Tier 3. positional slot (trusted stamps only): a CONTENT-CHANGED row pairs with the
+  //       leftover whose remembered slot it occupies (flanking-anchor offsets, never
+  //       absolute rows), unique in both directions. ≥1 unchanged identity field → apply
+  //       (the both-sides conflict guard stays reachable). ZERO unchanged fields (total
+  //       rewrite) → Amendment #2: SILENT same-row match, but only while the scope's
+  //       layout is otherwise explained (population conserved, content points nowhere
+  //       else); anything unexplained falls through to create + normal delete semantics
+  //       (Amendment #3 — delete-and-replace never prompts).
   //   3b. field-overlap recovery (Tier 4, zero storage): a row with ZERO exact candidates
   //       pairs with a leftover sharing ≥1 NON-BLANK identity field, unique in both
   //       directions (byte-identical sides pair as a group), iterated to fixpoint.
@@ -167,11 +216,72 @@ export const buildImportPlan = async ({ rows = [], stored = [], documentId, scop
     matchedMarkerIds.add(markerId);
   };
 
+  // --- Positional trust gate (slice 3). ONE scope-level evaluation; any missing, stale,
+  // or inconsistent stamp disables the tier and every path below degrades to the
+  // content-only passes (byte-identical to the pre-positional matcher). Gates:
+  //   (i)   stamps exist — every leftover marker carries lastSeenRowNumber AND every
+  //         still-unmatched blank row carries its TRUE sheetRowNumber;
+  //   (ii)  one snapshot — all leftover lastIngestSeq agree and stored positions are
+  //         duplicate-free (a position from a different ingest is STALE; two snapshots
+  //         never mix). Anchors from another snapshot are dropped, not trusted;
+  //   (iii) anchor order-consistency — the already-matched pairs (Row-ID tokens +
+  //         1×1 exact) keep their relative order in the new sheet; no positional
+  //         inference under sorts/scrambles.
+  // Expected slots come from FLANKING-ANCHOR OFFSETS, never absolute row numbers (an
+  // insert/delete above shifts absolutes; the offset to the nearest surviving anchor
+  // does not). A virtual top-of-sheet anchor (0→0) covers the no-anchor case, where
+  // the expected slot degrades to the absolute stored row number.
+  const evaluatePositionalTrust = (pendingBlanks, exactAnchors) => {
+    const leftovers = leftoverFor();
+    if (leftovers.length === 0) return null; // nothing positional to decide
+    if (leftovers.some((s) => storedPosOf(s) == null)) return null; // (i)
+    if (pendingBlanks.some((e) => rowPosOf(e) == null)) return null; // (i)
+    const seqs = new Set(leftovers.map(storedSeqOf));
+    if (seqs.size > 1) return null; // (ii) stale mix
+    const snapshotSeq = [...seqs][0];
+    // (ii) a stamped position WITHOUT an ingest seq is not a snapshot. No current writer
+    // produces this shape (buildMarkerIdentityRecord stamps both together), but a null
+    // snapshotSeq would otherwise admit null-seq anchors as one coherent layout.
+    if (snapshotSeq == null) return null;
+    const anchors = [...anchorPairs, ...exactAnchors].filter(
+      (a) => a.storedPos != null && a.newPos != null && a.seq === snapshotSeq
+    );
+    const seen = new Set();
+    for (const p of [...leftovers.map(storedPosOf), ...anchors.map((a) => a.storedPos)]) {
+      if (seen.has(p)) return null; // (ii) duplicate stored position
+      seen.add(p);
+    }
+    const sorted = anchors.slice().sort((a, b) => a.storedPos - b.storedPos);
+    for (let i = 1; i < sorted.length; i += 1) {
+      if (sorted[i].newPos <= sorted[i - 1].newPos) return null; // (iii)
+    }
+    return { anchors: [{ storedPos: 0, newPos: 0 }, ...sorted] };
+  };
+  const expectedSlotsFor = (trust, storedPos) => {
+    let prev = trust.anchors[0];
+    let next = null;
+    for (const a of trust.anchors) {
+      if (a.storedPos < storedPos) prev = a;
+      else if (a.storedPos > storedPos) { next = a; break; }
+    }
+    // Agreement with EITHER flank survives an insert/delete strictly between the marker
+    // and the other flank.
+    const slots = [prev.newPos + (storedPos - prev.storedPos)];
+    if (next) slots.push(next.newPos - (next.storedPos - storedPos));
+    return slots;
+  };
+  const slotAgrees = (trust, e, s) => {
+    const rp = rowPosOf(e);
+    const sp = storedPosOf(s);
+    if (rp == null || sp == null) return false;
+    return expectedSlotsFor(trust, sp).includes(rp);
+  };
+
   // --- Pass 3a: exact-fingerprint groups. Rows and leftovers with the SAME identity
-  // fingerprint are byte-identical both sides, so pairing is order-preserving and silent
-  // (rows in row order × leftovers in stored order). 1×1 is today's unique recovery;
-  // N×M pairs min(N,M); extra rows fall through to field-overlap recovery; extra
-  // markers stay leftover (a deleted twin row → delete candidate, Amendment #3/#7).
+  // fingerprint are byte-identical both sides, so pairing is order-preserving and silent.
+  // 1×1 is today's unique recovery (position-free) and joins the anchor set; N×M pairs
+  // min(N,M); extra rows fall through to field-overlap recovery; extra markers stay
+  // leftover (a deleted twin row → delete candidate, Amendment #3/#7).
   // Group-at-once (not first-row-wins) → the outcome is independent of row order.
   const blanksByFp = new Map(); // identityVectorFingerprint -> [enriched], row order
   for (const e of blanks) {
@@ -181,18 +291,63 @@ export const buildImportPlan = async ({ rows = [], stored = [], documentId, scop
   }
 
   let overlapPool = []; // blanks with zero exact candidates (or beyond their exact group)
+  const nxmGroups = []; // exact groups bigger than 1×1, resolved after the trust gate
+  const exactSingletonAnchors = [];
   for (const [fpKey, group] of blanksByFp) {
     const cands = leftoverFor().filter((s) => s.identityVectorFingerprint === fpKey);
-    const n = Math.min(group.length, cands.length);
-    for (let i = 0; i < n; i += 1) recoverDecision(group[i].rowIndex, cands[i].markerId);
-    for (let i = n; i < group.length; i += 1) overlapPool.push(group[i]);
+    if (cands.length === 0) { overlapPool.push(...group); continue; }
+    if (group.length === 1 && cands.length === 1) {
+      recoverDecision(group[0].rowIndex, cands[0].markerId);
+      exactSingletonAnchors.push({
+        storedPos: storedPosOf(cands[0]), newPos: rowPosOf(group[0]), seq: storedSeqOf(cands[0])
+      });
+    } else {
+      nxmGroups.push({ group, cands });
+    }
+  }
+
+  const trust = evaluatePositionalTrust(
+    [...overlapPool, ...nxmGroups.flatMap((g) => g.group)],
+    exactSingletonAnchors
+  );
+
+  // N×M byte-identical groups (Amendment #4: silent, zero creates while twins remain;
+  // the assignment is data-inconsequential so it may follow position — pins follow
+  // slots). Untrusted → exactly the slice-1 pairing, immediately. Trusted → same-slot
+  // pairs first; the remainder is RESERVED and finalized after the positional tier in
+  // relative sheet order, so a content-changed row whose slot points at one specific
+  // twin (EX4) can take it without starving any reserved exact row.
+  const deferredGroups = []; // { rows:[enriched], cands:[stored] } — exact reservations
+  for (const { group, cands } of nxmGroups) {
+    if (!trust) {
+      const n = Math.min(group.length, cands.length);
+      for (let i = 0; i < n; i += 1) recoverDecision(group[i].rowIndex, cands[i].markerId);
+      for (let i = n; i < group.length; i += 1) overlapPool.push(group[i]);
+      continue;
+    }
+    const remRows = group.slice().sort((a, b) => rowPosOf(a) - rowPosOf(b));
+    const remCands = cands.slice(); // stored order
+    const samePaired = new Set();
+    for (const e of remRows) {
+      const idx = remCands.findIndex((s) => slotAgrees(trust, e, s));
+      if (idx !== -1) {
+        recoverDecision(e.rowIndex, remCands[idx].markerId);
+        remCands.splice(idx, 1);
+        samePaired.add(e);
+      }
+    }
+    const rowsLeft = remRows.filter((e) => !samePaired.has(e));
+    // Rows beyond the group's exact entitlement can never exact-match → overlap pool.
+    while (rowsLeft.length > remCands.length) overlapPool.push(rowsLeft.pop());
+    if (rowsLeft.length > 0) deferredGroups.push({ rows: rowsLeft, cands: remCands });
   }
   overlapPool.sort((a, b) => a.rowIndex - b.rowIndex);
 
-  // --- Pass 3b: Tier-4 field-overlap recovery. Only the IDENTITY fields participate
-  // (item / entity / notes / answers) — the audit columns (changedBy / changedDate) move
-  // on any edit and never establish identity. A shared field counts ONLY when non-blank
-  // on both sides: blank==blank is no signal.
+  // --- Field-overlap helpers (shared by the positional tier and Pass 3b). Only the
+  // IDENTITY fields participate (item / entity / notes / answers) — the audit columns
+  // (changedBy / changedDate) move on any edit and never establish identity. A shared
+  // field counts ONLY when non-blank on both sides: blank==blank is no signal.
+  let sharesNonBlankField = () => false;
   if (overlapPool.length > 0) {
     // Precompute the canonical-blank fingerprint per identity field (one hashing pass
     // covering every answer id present on either side) so "non-blank" is an exact
@@ -207,7 +362,7 @@ export const buildImportPlan = async ({ rows = [], stored = [], documentId, scop
     const IDENTITY_SCALARS = ['item', 'entity', 'notes'];
     // ≥1 identity field whose fingerprints are equal AND not the blank-canonical value.
     // A marker without fieldFingerprints (older record) safely never overlaps.
-    const sharesNonBlankField = (rowFF, markerFF) => {
+    sharesNonBlankField = (rowFF, markerFF) => {
       if (!rowFF || !markerFF) return false;
       for (const k of IDENTITY_SCALARS) {
         if (rowFF[k] && rowFF[k] === markerFF[k] && rowFF[k] !== blankFF[k]) return true;
@@ -219,10 +374,90 @@ export const buildImportPlan = async ({ rows = [], stored = [], documentId, scop
       }
       return false;
     };
-    const candidatesFor = (e, remaining) =>
-      remaining.filter((s) => sharesNonBlankField(e.fp.fieldFingerprints, s.fieldFingerprints));
+  }
+  const candidatesFor = (e, fromMarkers) =>
+    fromMarkers.filter((s) => sharesNonBlankField(e.fp.fieldFingerprints, s.fieldFingerprints));
 
-    let remaining = leftoverFor(); // stored order
+  // --- Tier 3: positional slot for CONTENT-CHANGED rows (trusted stamps only). A pool
+  // row pairs with the leftover marker whose remembered slot it occupies, when the slot
+  // claim is unique in BOTH directions (gate iv). Two arms:
+  //   • ≥1 identity field unchanged → confident same-row edit: pair as 'missing-rowid'/
+  //     apply, keeping the downstream both-sides conflict guard reachable.
+  //   • ZERO fields unchanged (total rewrite at a stable slot) → Amendment #2: SILENT
+  //     same-row match, gated on the layout being otherwise explained — population
+  //     conserved (unresolved rows === unresolved markers, i.e. the scope's row-count
+  //     delta is fully accounted for by matches already made) AND the content evidence
+  //     pointing nowhere else (this row overlaps no OTHER leftover; no other pool row
+  //     overlaps this marker). Unexplained layouts fall through: the row creates and
+  //     the orphan follows normal delete semantics (Amendment #3 — never a prompt).
+  // Cross-scope shield: a leftover whose baseline reappeared verbatim in another scope
+  // is never paired positionally here.
+  if (trust && overlapPool.length > 0) {
+    const claimable = leftoverFor().filter((s) => !crossShielded(s));
+    const claimsByRow = new Map(); // enriched row -> [stored]
+    const claimsByMarker = new Map(); // stored -> [enriched row]
+    for (const e of overlapPool) {
+      const list = claimable.filter((s) => slotAgrees(trust, e, s));
+      claimsByRow.set(e, list);
+      for (const s of list) {
+        if (!claimsByMarker.has(s)) claimsByMarker.set(s, []);
+        claimsByMarker.get(s).push(e);
+      }
+    }
+    const unresolvedRows = overlapPool.length + deferredGroups.reduce((n, g) => n + g.rows.length, 0);
+    // Computed once: every pairing the loop below makes removes exactly ONE pool row and
+    // ONE leftover marker, so this equality is loop-invariant — recomputing it inside
+    // the loop would yield the same boolean (N conserved rewrites stay conserved at N-1).
+    const conserved = unresolvedRows === leftoverFor().length;
+
+    for (const e of [...overlapPool]) {
+      const list = claimsByRow.get(e) || [];
+      if (list.length !== 1) continue; // (iv) row → marker must be unique
+      const s = list[0];
+      if ((claimsByMarker.get(s) || []).length !== 1) continue; // (iv) marker → row must be unique
+      if (matchedMarkerIds.has(s.markerId)) continue; // safety: claims were a snapshot
+      // Never starve a reserved exact group: a reserved twin may be taken only while
+      // the group keeps at least one candidate per remaining row.
+      const g = deferredGroups.find((dg) => dg.cands.includes(s));
+      if (g && g.cands.length - 1 < g.rows.length) continue;
+      const corroborated = sharesNonBlankField(e.fp.fieldFingerprints, s.fieldFingerprints);
+      if (!corroborated) {
+        if (!conserved) continue;
+        const allLeftovers = leftoverFor();
+        const rowPointsElsewhere = allLeftovers.some(
+          (s2) => s2 !== s && sharesNonBlankField(e.fp.fieldFingerprints, s2.fieldFingerprints)
+        );
+        if (rowPointsElsewhere) continue;
+        // Deliberately reads the LIVE pool (unlike the snapshot-based claims maps): a row
+        // already paired earlier in this loop is no longer a contender for this marker.
+        const markerClaimedElsewhere = overlapPool.some(
+          (e2) => e2 !== e && sharesNonBlankField(e2.fp.fieldFingerprints, s.fieldFingerprints)
+        );
+        if (markerClaimedElsewhere) continue;
+      }
+      recoverDecision(e.rowIndex, s.markerId, { recoveredBy: 'positional' });
+      overlapPool = overlapPool.filter((x) => x !== e);
+      if (g) g.cands = g.cands.filter((x) => x !== s);
+    }
+  }
+
+  // --- Pass 3a (cont.): finalize the reserved exact groups AFTER the positional tier:
+  // remaining byte-identical rows × remaining twin markers, order-preserving by sheet
+  // position (Amendment #4 — silent, zero creates, zero reviews).
+  for (const g of deferredGroups) {
+    const rs = g.rows.slice().sort((a, b) => rowPosOf(a) - rowPosOf(b));
+    const cs = g.cands.slice().sort((a, b) => storedPosOf(a) - storedPosOf(b));
+    const n = Math.min(rs.length, cs.length);
+    for (let i = 0; i < n; i += 1) recoverDecision(rs[i].rowIndex, cs[i].markerId);
+    for (let i = n; i < rs.length; i += 1) overlapPool.push(rs[i]); // defensive; reservation forbids this
+  }
+  if (deferredGroups.length > 0) overlapPool.sort((a, b) => a.rowIndex - b.rowIndex);
+
+  // --- Pass 3b: Tier-4 field-overlap recovery (slice-1 semantics, plus the cross-scope
+  // shield: a marker whose baseline reappeared verbatim in another scope's blank rows is
+  // never eliminated-against locally — it follows normal delete semantics instead).
+  if (overlapPool.length > 0) {
+    let remaining = leftoverFor().filter((s) => !crossShielded(s)); // stored order
     // Fixpoint: each round pairs every row-fingerprint group whose candidate set is
     // unambiguous — either a unique mutual pairing, or all candidates byte-identical and
     // uncontended by any non-identical row (Amendment #4 group pairing) — then re-derives

@@ -19,6 +19,7 @@ import { buildImportPlan } from './rowImportMatcher.js';
 import { buildMarkerIdentityRecord } from './excelIdentityRecord.js';
 import { computeRowFingerprints } from './rowFingerprint.js';
 import { detectFieldConflicts } from './excelConflictDetect.js';
+import { parseRowIdToken } from './rowIdToken.js';
 
 const SYSTEM_HEADERS = ['Row ID', 'Changed By', 'Changed Date', 'Item', 'Entity', 'Notes'];
 
@@ -89,11 +90,16 @@ export const buildScopeImportPlans = async ({
 }) => {
   const result = new Map();
 
-  await Promise.all(
-    worksheetDataList.map(async ({ jsonData, headerRow, matchedCategory, matchedModuleId }) => {
-      if (!Array.isArray(headerRow) || !Array.isArray(jsonData)) return;
+  // ---- Phase 1: per-worksheet prep. Cross-scope reconciliation (blank-rowid slice 3)
+  // needs EVERY scope's blank-row fingerprints before ANY scope's matcher runs — a row
+  // cut from one sheet and pasted into another must shield its old marker from being
+  // eliminated-against locally — so row/stored construction is hoisted out of the
+  // matcher pass. Worksheets without a Row ID column are skipped exactly as before.
+  const prepped = [];
+  for (const { jsonData, headerRow, matchedCategory, matchedModuleId } of worksheetDataList) {
+      if (!Array.isArray(headerRow) || !Array.isArray(jsonData)) continue;
       const rowIdIdx = headerRow.indexOf('Row ID');
-      if (rowIdIdx === -1) return; // no Row ID column → caller keeps legacy name-match
+      if (rowIdIdx === -1) continue; // no Row ID column → caller keeps legacy name-match
 
       const scopeId = `${matchedModuleId}:${matchedCategory.id}`;
       const scopeKey = scopeKeyFor(matchedModuleId, matchedCategory.id);
@@ -160,12 +166,43 @@ export const buildScopeImportPlans = async ({
             // Lineage for copy/paste resolution: a marker created from a copied row
             // remembers which original it copied and its position in the group.
             copyOfMarkerId: ann.excelSync.copyOfMarkerId,
-            copyOrdinal: ann.excelSync.copyOrdinal
+            copyOrdinal: ann.excelSync.copyOrdinal,
+            // Positional memory (slice 2/3): where this marker's row sat at the last
+            // ingested save + which ingest observed it. The matcher validates and
+            // degrades to content-only tiers when these are missing/stale.
+            lastSeenRowNumber: ann.excelSync.lastSeenRowNumber,
+            lastIngestSeq: ann.excelSync.lastIngestSeq
           });
         }
       }
 
-      const plan = await buildImportPlan({ rows, stored, documentId, scopeId, resolveSecret });
+      // Blank-row identity fingerprints for cross-scope reconciliation, using the
+      // matcher's EXACT blank rule (parseRowIdToken): only a genuinely blank Row ID
+      // cell counts — malformed/foreign tokens are review rows, never "blank".
+      const blankFps = new Set();
+      for (const r of rows) {
+        const parsed = parseRowIdToken(r.rowIdCell);
+        if (!parsed.ok && parsed.reason === 'blank') {
+          blankFps.add((await computeRowFingerprints(r.values)).identityVectorFingerprint);
+        }
+      }
+
+      prepped.push({ scopeId, scopeKey, rows, jsonIndexByPos, stored, blankFps });
+  }
+
+  // ---- Phase 2: run the matcher per scope, each told which blank-row fingerprints
+  // exist in the OTHER scopes of this same import.
+  await Promise.all(
+    prepped.map(async ({ scopeId, scopeKey, rows, jsonIndexByPos, stored, blankFps }) => {
+      const crossScopeBlankFingerprints = new Set();
+      for (const other of prepped) {
+        if (other.blankFps === blankFps) continue;
+        for (const fp of other.blankFps) crossScopeBlankFingerprints.add(fp);
+      }
+
+      const plan = await buildImportPlan({
+        rows, stored, documentId, scopeId, resolveSecret, crossScopeBlankFingerprints
+      });
 
       // Attach a ready-to-stamp identity record (computed from the SAME visible row
       // values) to every apply/create decision, so when the import creates or updates
