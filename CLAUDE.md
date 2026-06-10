@@ -103,13 +103,13 @@ Rules:
 
 ## Wiki Knowledge Base
 
-Path: ~/Documents/ClaudeBrain (the durable knowledge brain, powered by the
+Path: `/Users/isaiahcalvo/.openclaw/workspace/Second Brain Vault` (the durable knowledge brain, powered by the
 claude-obsidian plugin). This is NOT coding-session memory and NOT the code
 graph — it holds synthesized knowledge: tools, research, decisions, comparisons.
 
 When you need durable context not already in this project or the code graph:
-1. Read `~/Documents/ClaudeBrain/wiki/hot.md` first (recent context, ~500 words).
-2. If not enough, read `~/Documents/ClaudeBrain/wiki/index.md` (full catalog).
+1. Read `"/Users/isaiahcalvo/.openclaw/workspace/Second Brain Vault/wiki/hot.md"` first (recent context, ~500 words).
+2. If not enough, read `"/Users/isaiahcalvo/.openclaw/workspace/Second Brain Vault/wiki/index.md"` (full catalog).
 3. Only then read individual wiki pages.
 
 Do NOT read the wiki for general coding questions, language syntax, or anything
