@@ -2,8 +2,8 @@
 
 **Generated**: 2026-06-09 (night, end of session)
 **Branch**: `main` (local-only, 148 commits ahead of origin — direct-to-main; push only on the user's say-so)
-**HEAD**: `2eb7f7d1` (working tree CLEAN — everything from this session is committed)
-**Status**: Blocked on user input — START HERE NEXT SESSION
+**HEAD**: `131d63d9` at fix time; the scenario-suite + docs commit (`test(excel-sync): integration scenarios for blank-Row-ID matching …`) lands immediately after — check `git log -1` for the true tip
+**Status**: RESOLVED-PENDING-LIVE-TEST (2026-06-09 late night) — the issue Isaiah found was the blank-Row-ID duplicate: an Excel row with no Row ID, edited on both sides, created a duplicate Survey Marker instead of the keep-app/use-Excel choice (and auto-trashed an exported original). Root-caused, designed under his locked amendments (`.planning/blank-rowid-matching-verdict.md`, AMENDMENTS section GOVERNING), and fixed in commits `cad87ac5` → `9edaa8f8` → `5108cc97` → `131d63d9` + the staged scenario suite. Full state: `HANDOFF-excel-sync-next.md` ("What changed most recently"). **His next action: re-run tonight's exact steps live on the dev server.** The "ask him to describe the issue" instructions below are SUPERSEDED — kept for the historical record only.
 
 ## Goal (next session's first move)
 

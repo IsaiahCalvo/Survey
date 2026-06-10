@@ -9,7 +9,9 @@ handoffs and this file only routes you.
 
 **`HANDOFF-testing-issue.md`** — READ FIRST (2026-06-09 night): Isaiah found an
 issue while live-testing and has a proposed solution to discuss; that file says
-exactly how to pick the conversation up. Then:
+exactly how to pick the conversation up. **Update 2026-06-09 late night: that
+issue (blank-Row-ID Excel row duplicating its Survey Marker) is FIXED pending his
+live re-test — see the status block there and `HANDOFF-excel-sync-next.md`.** Then:
 
 **`HANDOFF-excel-sync-next.md`** — the live workstream state (Excel ↔ Survey
 Marker sync workstream). Read it first, together with the two GOVERNING sections
