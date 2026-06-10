@@ -58,6 +58,13 @@ import {
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { HubShell, Icon, Search } from './HubShell';
+import {
+  resolveTemplatesReload,
+  createStableIdMint,
+  createOccurrenceKeyer,
+  seedColorMaps,
+  resolveTitleCommit,
+} from './templatesEditorReload';
 import CompactColorPicker from '../components/CompactColorPicker';
 import DragRearrangeHandle from '../reorder/DragRearrangeHandle';
 import { SortableRearrangeList, SortableRearrangeRow } from '../reorder/SortableRearrangeList';
@@ -275,13 +282,26 @@ const toHex6 = (color) => {
 let _uid = 0;
 const newId = (prefix) => `${prefix}_${Date.now().toString(36)}_${(_uid++).toString(36)}`;
 
-/* Normalise the `templates` prop into the editor's mutable working shape. */
-const buildRich = (templates) => templates.map((t, i) => {
-  const mods = modulesOf(t).map((m, mi) => ({
-    id: m?.id ?? newId('m'),
+/* Normalise the `templates` prop into the editor's mutable working shape.
+   BL-23: `mint(key, prefix)` supplies ids for legacy rows that lack one. The
+   component passes a session-stable cached mint so id-less rows keep the same
+   id across rebuilds (their keyed inputs would otherwise remount on every
+   background refresh and wipe uncommitted typing). Keys are semantic
+   (name + occurrence within scope) so a remote insertion above doesn't shift
+   surviving rows' ids; identically-named id-less siblings remain the accepted
+   occurrence-shift corner pinned in tests. */
+const buildRich = (templates, mint = (_key, prefix) => newId(prefix)) => templates.map((t, i) => {
+  const keyer = createOccurrenceKeyer();
+  const tplScope = t?.id ?? `t${i}`;
+  const mods = modulesOf(t).map((m, mi) => {
+    const modKey = keyer(tplScope, `m:${m?.name || `Module ${mi + 1}`}`);
+    return {
+    id: m?.id ?? mint(modKey, 'm'),
     name: m?.name || `Module ${mi + 1}`,
-    categories: categoriesOf(m).map((c, ci) => ({
-      id: c?.id ?? newId('c'),
+    categories: categoriesOf(m).map((c, ci) => {
+      const catKey = keyer(modKey, `c:${c?.name || `Category ${ci + 1}`}`);
+      return {
+      id: c?.id ?? mint(catKey, 'c'),
       name: c?.name || `Category ${ci + 1}`,
       items: checklistOf(c).map((it) => {
         /* Preserve stable item ids when the persisted row already has one —
@@ -291,7 +311,7 @@ const buildRich = (templates) => templates.map((t, i) => {
            "saved-then-reopened" archives keep their flag + label. */
         const text = itemText(it);
         const base = {
-          id: (it && typeof it.id === 'string' && it.id) ? it.id : newId('i'),
+          id: (it && typeof it.id === 'string' && it.id) ? it.id : mint(keyer(catKey, `i:${text}`), 'i'),
           text,
         };
         if (it && typeof it === 'object') {
@@ -305,10 +325,12 @@ const buildRich = (templates) => templates.map((t, i) => {
         }
         return base;
       }),
-    })),
-  }));
+    };
+    }),
+  };
+  });
   const roster = entitiesOf(t).map((e, ei) => ({
-    id: e?.id ?? newId('e'),
+    id: e?.id ?? mint(keyer(tplScope, `e:${e?.name || e?.role || `Entity ${ei + 1}`}`), 'e'),
     role: e?.name || e?.role || `Entity ${ei + 1}`,
     color: toHex6(e?.color),
     /* Optional colour refinements persisted alongside the entity. Older
@@ -767,12 +789,44 @@ export default function TemplatesEditor({
 }) {
   /* ---- mutable working data ----
      Seeded from the `templates` prop, then owned locally so every editor
-     action below actually mutates it. Re-seeded whenever the prop identity
-     changes (e.g. the host adds a template via onCreateTemplate). */
-  const [rich, setRich] = useState(() => buildRich(applyTemplateOrderPreference(templates, user)));
+     action below actually mutates it. Re-seeded from the prop only while the
+     editor has no unsaved edits (BL-23 dirty guard below). */
+  /* Session-stable cached mint: legacy rows without a persisted id keep one
+     minted id across every rebuild, so their keyed inputs don't remount on
+     background refreshes (which wiped uncommitted typing). Lazy ref init keeps
+     the identity stable without effect-dep churn. */
+  const mintIdRef = useRef(null);
+  if (mintIdRef.current === null) mintIdRef.current = createStableIdMint(new Map(), newId);
+  const mintId = mintIdRef.current;
+  const [rich, setRich] = useState(() => buildRich(applyTemplateOrderPreference(templates, user), mintId));
   /* True once the user edits anything; drives the Save / Cancel bar. Reset
      whenever the editor reloads from props, or on Save / Cancel. */
   const [dirty, setDirty] = useState(false);
+  /* BL-23 — monotonically increasing edit revision. Save/Delete capture it at
+     dispatch and clear (or restore) dirty only if no newer edit happened while
+     the request was in flight; otherwise an older promise settling would clear
+     dirty over newer unsaved edits and expose them to a reload wipe. */
+  const editRevisionRef = useRef(0);
+  const markEdited = useCallback(() => { editRevisionRef.current += 1; setDirty(true); }, []);
+  /* Companion sequence for dispatched save/delete requests: two requests can
+     share an edit revision (Save clicked twice with no edit between), so only
+     the LATEST dispatched request may settle the dirty flag — an earlier
+     request rejecting after a later one succeeded must not re-dirty a saved
+     editor. Each later request snapshots a same-or-newer working copy, so
+     deferring to the latest is always correct. */
+  const saveReqSeqRef = useRef(0);
+  /* Serialize the actual persistence calls: two overlapping onSaveTemplates
+     runs interleave per-row writes at the backend, letting an OLDER payload's
+     rows land after a newer one's (and its refetch republish stale data over
+     a clean editor). Chaining guarantees dispatch order = write order, so the
+     newest payload always lands last. Payloads are snapshotted at dispatch. */
+  const saveChainRef = useRef(Promise.resolve());
+  const dispatchTemplatesSave = useCallback((payload) => {
+    const run = () => Promise.resolve(onSaveTemplates(payload));
+    const p = saveChainRef.current.then(run, run);
+    saveChainRef.current = p.then(() => {}, () => {});
+    return p;
+  }, [onSaveTemplates]);
 
   /* ---- selection / edit state ---- */
   const [selectedId, setSelected] = useState(null);
@@ -816,22 +870,44 @@ export default function TemplatesEditor({
      Seeds the maps from each entity's persisted refinements so saved colours
      round-trip, and clears the dirty flag since the copy now matches the host. */
   const reloadFromProps = useCallback(() => {
-    const next = buildRich(applyTemplateOrderPreference(templates, user));
-    const rc = {}, bc = {}, mf = {};
-    next.forEach((t) => t.roster.forEach((r) => {
-      rc[r.id] = { color: r.color, opacity: r.opacity ?? 0.35 };
-      if (r.borderColor) bc[r.id] = { color: r.borderColor, opacity: r.borderOpacity ?? (r.opacity ?? 0.35) };
-      if (r.matchFill) mf[r.id] = true;
-    }));
+    const next = buildRich(applyTemplateOrderPreference(templates, user), mintId);
+    const seeded = seedColorMaps(next);
     setRich(next);
-    setRoleColors(rc);
-    setBorderColors(bc);
-    setMatchFill(mf);
+    setRoleColors(seeded.roleColors);
+    setBorderColors(seeded.borderColors);
+    setMatchFill(seeded.matchFill);
     setDirty(false);
-  }, [templates, user?.id, user?.email]);
-  /* Reload whenever the host swaps the templates prop (added a template, or a
-     Save refetched fresh rows). */
-  useEffect(() => { reloadFromProps(); }, [reloadFromProps]);
+  }, [templates, user?.id, user?.email, mintId]);
+  /* BL-23 dirty guard — sync the working copy with the host's templates prop.
+     `reloadFromProps`'s useCallback identity changes exactly when
+     (templates, user) change, so it doubles as the snapshot key; the guard ref
+     is written only inside the effect (no render-phase writes). Reruns caused
+     by `dirty`/`rich` changes hit the snapshot guard and return, so a dirty
+     transition can never replay a reload over fresh local state.
+     - Clean editor → full reload, exactly the pre-BL-23 behavior.
+     - Unsaved edits → never rebuild over them; only APPEND templates whose ids
+       the working copy doesn't know (e.g. host-created via New Template), and
+       seed colour maps for the appended entities. Remote deletes/edits of
+       known templates are deferred until Save (full-working-copy,
+       last-writer-wins — today's Save semantics) or Cancel. */
+  const lastSyncedReloadRef = useRef(null);
+  useEffect(() => {
+    if (lastSyncedReloadRef.current === reloadFromProps) return;
+    lastSyncedReloadRef.current = reloadFromProps;
+    if (!dirty) { reloadFromProps(); return; }
+    const next = buildRich(applyTemplateOrderPreference(templates, user), mintId);
+    const res = resolveTemplatesReload({ dirty: true, prevRich: rich, nextRich: next });
+    if (res.mode !== 'append') return;
+    setRich((prev) => {
+      const have = new Set(prev.map((t) => t.id));
+      const add = res.appended.filter((t) => !have.has(t.id));
+      return add.length ? [...prev, ...add] : prev;
+    });
+    const seeded = seedColorMaps(res.appended);
+    setRoleColors((prev) => ({ ...seeded.roleColors, ...prev }));
+    setBorderColors((prev) => ({ ...seeded.borderColors, ...prev }));
+    setMatchFill((prev) => ({ ...seeded.matchFill, ...prev }));
+  }, [reloadFromProps, dirty, rich, templates, user, mintId]);
 
   /* ---- colour math (carried verbatim from the prototype) ---- */
   const hexToHsl = (hex) => {
@@ -912,8 +988,8 @@ export default function TemplatesEditor({
   /* Map over one template by id and replace it with `fn`'s result. */
   const mutateTpl = useCallback((tid, fn) => {
     setRich((prev) => prev.map((t) => (t.id === tid ? fn(t) : t)));
-    setDirty(true);
-  }, []);
+    markEdited();
+  }, [markEdited]);
 
   /* --- template-level --- */
   const renameTemplate = (tid, name) => {
@@ -944,7 +1020,7 @@ export default function TemplatesEditor({
       });
       return out;
     });
-    setDirty(true);
+    markEdited();
   };
   const reorderTemplates = (activeId, overId) => {
     if (!activeId || !overId || activeId === overId) return;
@@ -955,17 +1031,28 @@ export default function TemplatesEditor({
     });
   };
   const deleteTemplates = (ids) => {
-    setRich((prev) => {
-      const next = prev.filter((t) => !ids.has(t.id));
-      if (onSaveTemplates) {
-        Promise.resolve(onSaveTemplates(next.map(richToTemplate))).catch((err) => {
+    /* BL-23: the save call lives OUTSIDE the setRich updater (updaters must
+       stay pure — StrictMode double-invokes them, which would double the
+       save). A delete IS an edit: markEdited() keeps dirty=true while the
+       save is in flight so a background refetch can't full-reload and
+       transiently resurrect the deleted templates; the revision captured
+       after the bump gates the dirty clear/restore so a newer edit is never
+       exposed to a reload wipe by this promise settling. */
+    const next = rich.filter((t) => !ids.has(t.id));
+    markEdited();
+    setRich(next);
+    if (onSaveTemplates) {
+      const rev = editRevisionRef.current;
+      const req = ++saveReqSeqRef.current;
+      dispatchTemplatesSave(next.map(richToTemplate))
+        .then(() => { if (editRevisionRef.current === rev && saveReqSeqRef.current === req) setDirty(false); })
+        .catch((err) => {
           console.error('Failed to delete templates', err);
-          setDirty(true);
+          if (editRevisionRef.current === rev && saveReqSeqRef.current === req) setDirty(true);
         });
-      }
-      return next;
-    });
-    setDirty(false);
+    } else {
+      setDirty(false);
+    }
   };
 
   /* --- module-level --- */
@@ -1296,15 +1383,28 @@ export default function TemplatesEditor({
   };
 
   const handleSaveTemplates = () => {
-    if (onSaveTemplates) {
-      Promise.resolve(onSaveTemplates(rich.map(richToTemplate))).catch((err) => {
+    /* BL-23: dirty clears only when the save RESOLVES (the host now rethrows
+       persistence failures), and only if no newer edit happened while it was
+       in flight — an older promise settling must not clear dirty over newer
+       unsaved edits (then-branch) or re-dirty an editor whose newer save
+       already succeeded (catch-branch). On failure the edits and the Save bar
+       survive, so the user can retry. */
+    if (!onSaveTemplates) { setDirty(false); return; }
+    const rev = editRevisionRef.current;
+    const req = ++saveReqSeqRef.current;
+    dispatchTemplatesSave(rich.map(richToTemplate))
+      .then(() => { if (editRevisionRef.current === rev && saveReqSeqRef.current === req) setDirty(false); })
+      .catch((err) => {
         console.error('Failed to save templates', err);
-        setDirty(true);
+        if (editRevisionRef.current === rev && saveReqSeqRef.current === req) setDirty(true);
       });
-    }
-    setDirty(false);
   };
-  const handleCancelEdits = () => { reloadFromProps(); };
+  const handleCancelEdits = () => {
+    /* BL-23: invalidate any in-flight save/delete so its later settlement
+       can't re-dirty (or re-clear) the editor the user just reset. */
+    editRevisionRef.current += 1;
+    reloadFromProps();
+  };
 
   const subtitle = (
     <span><b>{rich.length}</b> templates · reusable category + checklist sets</span>
@@ -1625,7 +1725,15 @@ export default function TemplatesEditor({
                           title="Click to rename"
                           onClick={(e) => e.stopPropagation()}
                           onDoubleClick={(e) => e.currentTarget.select()}
-                          onBlur={(e) => renameCategory(i, e.currentTarget.value)}
+                          onBlur={(e) => {
+                            /* BL-23: empty titles snap back visibly to the old
+                               name (the model never accepted them), and an
+                               unchanged title is a no-op that must not dirty
+                               the editor (incl. the Escape-then-blur path). */
+                            const r = resolveTitleCommit(e.currentTarget.value, c.name);
+                            if (r.action === 'commit') renameCategory(i, r.name);
+                            e.currentTarget.value = r.name;
+                          }}
                           onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); else if (e.key === 'Escape') { e.currentTarget.value = c.name; e.currentTarget.blur(); } }}
                           style={{ fontSize: 13, fontWeight: 500, lineHeight: 1.2, width: 'max-content', maxWidth: '100%', minWidth: 40 }}
                         />
@@ -1925,7 +2033,7 @@ export default function TemplatesEditor({
                             setRoleColors({ ...roleColors, [r.id]: { color, opacity } });
                             setEntityColor(r.id, color);
                           }
-                          setDirty(true);
+                          markEdited();
                         };
                         return (
                           <div style={{
@@ -1960,7 +2068,7 @@ export default function TemplatesEditor({
                                   <input
                                     type="checkbox"
                                     checked={match}
-                                    onChange={(e) => { setMatchFill({ ...matchFill, [r.id]: e.target.checked }); setDirty(true); }}
+                                    onChange={(e) => { setMatchFill({ ...matchFill, [r.id]: e.target.checked }); markEdited(); }}
                                     style={{ width: 13, height: 13, margin: 0, accentColor: 'var(--accent)' }}
                                   />
                                   <span style={{ fontSize: 11, fontWeight: 600, color: match ? 'var(--ink)' : 'var(--ink-soft)' }}>Match Fill</span>

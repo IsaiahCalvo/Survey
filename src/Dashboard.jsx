@@ -272,7 +272,9 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
     if (!templateId) return null;
     const match = templates.find(t => t.id === templateId);
     if (match?.supabaseId) return match.supabaseId;
-    const supabaseMatch = (supabaseTemplates || []).find(t =>
+    // BL-23: search the freshest rows (ref), not just this render's state — a
+    // queued save must resolve rows its predecessor created moments ago.
+    const supabaseMatch = (supabaseRowsRef.current || supabaseTemplates || []).find(t =>
       t.id === templateId || (t.config && t.config.id === templateId)
     );
     return supabaseMatch?.id || null;
@@ -289,6 +291,13 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
   // depends on it). The ref is written during render so it is always current.
   const templatesRef = useRef(templates);
   templatesRef.current = templates;
+  // BL-23: the newest known Supabase template rows. Render-synced like
+  // templatesRef, but ALSO advanced synchronously from each persist's refetch
+  // result — a save queued behind another save starts before React re-renders
+  // with the refetched state, and diffing against the pre-save rows would
+  // re-create rows the earlier save just persisted (duplicates).
+  const supabaseRowsRef = useRef(supabaseTemplates);
+  supabaseRowsRef.current = supabaseTemplates;
   const updateTemplates = useCallback((updater) => {
     const currentTemplates = templatesRef.current;
     const nextValue = typeof updater === 'function' ? updater(currentTemplates) : updater;
@@ -1150,12 +1159,27 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
       return;
     }
 
+    // BL-23: count per-row failures and throw after the refetch so callers can
+    // tell a save actually failed (the editor keeps its dirty state and the
+    // user's edits survive). Whatever DID persist still syncs via the refetch.
+    let rowFailures = 0;
     try {
-      const currentTemplateIds = new Set(templates.map(t => t.id));
+      // BL-23: diff against the freshest PERSISTED rows (supabaseRowsRef is
+      // render-synced AND advanced synchronously by the previous save's
+      // refetch below), not this closure's render-time `templates` — a save
+      // queued behind another save would otherwise diff against a stale
+      // baseline and re-create rows the earlier save already persisted
+      // (duplicates) or miss deletes. Mapping mirrors the templates useMemo:
+      // template id lives in config.id (the row id is the Supabase id).
+      const baselineTemplates = (supabaseRowsRef.current || []).map((row) => ({
+        id: (row?.config && typeof row.config === 'object' && row.config.id) || row.id,
+        supabaseId: row.id,
+      }));
+      const currentTemplateIds = new Set(baselineTemplates.map(t => t.id));
       const newTemplateIds = new Set(templatesToSave.map(t => t.id));
 
       // Delete templates that were removed
-      for (const template of templates) {
+      for (const template of baselineTemplates) {
         if (!newTemplateIds.has(template.id)) {
           const supabaseId = resolveSupabaseTemplateId(template);
           if (!supabaseId) continue;
@@ -1163,6 +1187,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
             await deleteSupabaseTemplate(supabaseId);
           } catch (err) {
             console.error('Error deleting template:', err);
+            rowFailures += 1;
           }
         }
       }
@@ -1182,6 +1207,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
               });
             } catch (err) {
               console.error('Error creating template:', err);
+              rowFailures += 1;
             }
             continue;
           }
@@ -1192,6 +1218,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
             });
           } catch (err) {
             console.error('Error updating template:', err);
+            rowFailures += 1;
           }
         } else {
           // Create new template
@@ -1202,14 +1229,28 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
             });
           } catch (err) {
             console.error('Error creating template:', err);
+            rowFailures += 1;
           }
         }
       }
 
-      // Refetch to sync state
-      await refetchTemplates();
+      // Refetch to sync state — and advance the baseline ref synchronously so
+      // a save queued right behind this one diffs against what we just
+      // persisted, without waiting for React to re-render. Guard: a refetch
+      // failure returns [] (loadTemplates swallows its error); never poison
+      // the baseline with an empty set while rows were just saved.
+      const freshRows = await refetchTemplates();
+      if (Array.isArray(freshRows) && (freshRows.length > 0 || templatesToSave.length === 0)) {
+        supabaseRowsRef.current = freshRows;
+      }
     } catch (err) {
+      // BL-23: rethrow — swallowing refetch/unexpected errors here left callers
+      // believing failed saves succeeded (the editor then dropped its edits).
       console.error('Error persisting templates:', err);
+      throw err;
+    }
+    if (rowFailures > 0) {
+      throw new Error(`${rowFailures} template${rowFailures === 1 ? '' : 's'} failed to save`);
     }
   };
 
@@ -3124,6 +3165,9 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
     } catch (e) {
       console.error('Failed to save templates', e);
       alert('Failed to save templates.');
+      // BL-23: rethrow so the templates editor keeps its dirty state (and the
+      // user's unsaved edits) when persistence fails.
+      throw e;
     }
   };
 
