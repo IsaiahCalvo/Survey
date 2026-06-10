@@ -13329,23 +13329,14 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     const entry = (pendingImportReview || []).find(
       (e) => e && e.reason === 'conflict' && e.markerId === markerId
     );
-    if (!entry || !entry.excelValues) return;
+    if (!entry || !entry.excelValues || !entry.identityRecord) return;
     const marker = surveyMarkers[markerId];
     if (!marker) return;
     const excelValues = entry.excelValues;
-
-    // Resolving a conflict re-baselines CONTENT only — it doesn't change where the row
-    // was last seen in the sheet. Pass the device-local positional stamps (slice 2)
-    // through, or the spread below would silently null them (builder defaults).
-    const priorSync = marker.excelSync || {};
-    const record = await buildMarkerIdentityRecord({
-      values: excelValues, origin: 'conflict-resolve',
-      lastSeenRowNumber: priorSync.lastSeenRowNumber ?? null,
-      lastIngestSeq: priorSync.lastIngestSeq ?? null
-    });
+    const record = entry.identityRecord;
     const entities = selectedTemplate?.entities || [];
 
-    let nextMarker = { ...marker, excelSync: { ...(marker.excelSync || {}), ...record } };
+    let nextMarker = { ...marker, excelSync: record };
     if (choice === 'excel') {
       // applyExcelValuesToMarker spreads the marker, so the re-stamped excelSync is preserved.
       nextMarker = applyExcelValuesToMarker(nextMarker, excelValues, entities);
@@ -13509,7 +13500,11 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
               // A both-sides "conflict" carries the incoming Excel values + which fields
               // disagree, so the Survey-panel choice ("keep mine" / "use Excel's") can apply.
               ...(decision.decision === 'conflict'
-                ? { excelValues: decision.excelValues, conflictFields: decision.conflictFields }
+                ? {
+                    excelValues: decision.excelValues,
+                    conflictFields: decision.conflictFields,
+                    identityRecord: decision.identityRecord
+                  }
                 : {})
             });
             continue;
@@ -14118,7 +14113,11 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
               // A both-sides "conflict" carries the incoming Excel values + which fields
               // disagree, so the Survey-panel choice ("keep mine" / "use Excel's") can apply.
               ...(decision.decision === 'conflict'
-                ? { excelValues: decision.excelValues, conflictFields: decision.conflictFields }
+                ? {
+                    excelValues: decision.excelValues,
+                    conflictFields: decision.conflictFields,
+                    identityRecord: decision.identityRecord
+                  }
                 : {})
             });
             continue;
