@@ -13,35 +13,40 @@
 // device merge. If server_ts were nullable, a malicious or buggy client could
 // INSERT NULL and break the merge order silently.
 //
-// Skip condition: SUPABASE_TEST_URL not set. Plan 27-03 wires the CI env var.
+// Re-enabled by KAL-257 (2026-06-10): runs via `npm run test:integration`
+// against an allowlisted cloud TEST project (see ./integrationEnv.mjs).
+// PostgREST does NOT expose information_schema, so this reads the test-only
+// view public.test_schema_columns created by scripts/bootstrap-test-db.sql
+// (same columns, same filters — assertions unchanged).
 
 import { test } from 'node:test';
 import { strictEqual, ok, match } from 'node:assert';
 import { existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
+import { integrationSkipReason } from './integrationEnv.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(__dirname, '..', '..');
 
-const skipReason = !process.env.SUPABASE_TEST_URL
-  ? 'SUPABASE_TEST_URL env not set — schema test only runs in CI/local-supabase mode'
-  : !existsSync(resolve(REPO_ROOT, 'node_modules/@supabase/supabase-js/package.json'))
+const skipReason = integrationSkipReason()
+  || (!existsSync(resolve(REPO_ROOT, 'node_modules/@supabase/supabase-js/package.json'))
     ? '@supabase/supabase-js not installed yet'
-    : false;
+    : false);
 
 test(
   'AUTH-03: server_ts column is NOT NULL with DEFAULT now() on doc_yjs_updates and activity_log',
   { skip: skipReason },
   async () => {
     const { createClient } = await import('@supabase/supabase-js');
+    // Service key only — no anon fallback (see integrationEnv.mjs).
     const client = createClient(
       process.env.SUPABASE_TEST_URL,
-      process.env.SUPABASE_TEST_SERVICE_KEY || process.env.SUPABASE_TEST_ANON_KEY
+      process.env.SUPABASE_TEST_SERVICE_KEY
     );
 
     const { data: rows, error } = await client
-      .from('information_schema.columns')
+      .from('test_schema_columns')
       .select('table_name, column_name, is_nullable, column_default')
       .eq('table_schema', 'public')
       .in('table_name', ['doc_yjs_updates', 'activity_log'])

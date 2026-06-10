@@ -9,24 +9,26 @@
 // because Yjs binary updates MUST round-trip exactly — any encoding-layer rewrite
 // (text, jsonb) would corrupt CRDT history.
 //
-// Skip condition: SUPABASE_TEST_URL env var not set. The schema test only runs in
-// CI (or local-supabase mode) where a Supabase instance is reachable. Plan 27-03
-// owns wiring the CI env var; until then this skips cleanly.
+// Re-enabled by KAL-257 (2026-06-10): runs via `npm run test:integration`
+// against an allowlisted cloud TEST project (see ./integrationEnv.mjs).
+// PostgREST does NOT expose information_schema, so this reads the test-only
+// view public.test_schema_columns created by scripts/bootstrap-test-db.sql
+// (same columns, same filters — assertions unchanged).
 
 import { test } from 'node:test';
 import { strictEqual, ok } from 'node:assert';
 import { existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
+import { integrationSkipReason } from './integrationEnv.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(__dirname, '..', '..');
 
-const skipReason = !process.env.SUPABASE_TEST_URL
-  ? 'SUPABASE_TEST_URL env not set — schema test only runs in CI/local-supabase mode'
-  : !existsSync(resolve(REPO_ROOT, 'node_modules/@supabase/supabase-js/package.json'))
+const skipReason = integrationSkipReason()
+  || (!existsSync(resolve(REPO_ROOT, 'node_modules/@supabase/supabase-js/package.json'))
     ? '@supabase/supabase-js not installed yet'
-    : false;
+    : false);
 
 // Expected columns per table — sourced from 27-RESEARCH.md schema design.
 // information_schema.columns reports types in lower-case canonical form.
@@ -67,14 +69,15 @@ test(
   { skip: skipReason },
   async () => {
     const { createClient } = await import('@supabase/supabase-js');
+    // Service key only — no anon fallback (see integrationEnv.mjs).
     const client = createClient(
       process.env.SUPABASE_TEST_URL,
-      process.env.SUPABASE_TEST_SERVICE_KEY || process.env.SUPABASE_TEST_ANON_KEY
+      process.env.SUPABASE_TEST_SERVICE_KEY
     );
 
     for (const [tableName, expectedColumns] of Object.entries(EXPECTED)) {
       const { data: rows, error } = await client
-        .from('information_schema.columns')
+        .from('test_schema_columns')
         .select('column_name, data_type')
         .eq('table_schema', 'public')
         .eq('table_name', tableName);
