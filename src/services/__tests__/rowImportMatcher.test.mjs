@@ -183,6 +183,87 @@ test('a stored marker with no row becomes a review-only delete candidate (delete
   assert.deepEqual(candidateDeletes, ['m2']);
 });
 
+// ---------------------------------------------------------------------------
+// Paste-above disambiguation (KAL-306) — PLAN.md Amendment 2026-06-08(b) #3:
+// a copy placed BEFORE/DISPLACING the bound row goes to review, never
+// auto-resolves to first-row-wins.  The bound row is identified via the stored
+// marker's lastSeenRowNumber.  Without a positional stamp the order is
+// untrusted and the whole group also goes to review (per the same amendment:
+// "any untrusted order → review").
+// ---------------------------------------------------------------------------
+
+test('KAL-306: paste-above with positional stamp — copy is above the bound row → review, not first-row-wins', async () => {
+  // m1 was last seen at sheet row 5 (original position).  The user copies the
+  // row and pastes it at row 3 (above the original at row 5).  Excel now shows
+  // two rows carrying m1's token: row 3 (the new copy) and row 5 (the original).
+  // rowIndex 0 = copy (sheetRowNumber 3), rowIndex 1 = original (sheetRowNumber 5).
+  // The matcher must detect the reversal and surface for review — NOT silently
+  // match the copy to m1 and create a new item from the original.
+  const v = vals();
+  const s1 = await storedFor('m1', v);
+  // Stamp the stored marker as last seen at sheet row 5 with ingest seq 100.
+  s1.lastSeenRowNumber = 5;
+  s1.lastIngestSeq = 100;
+  const stored = [s1];
+  const tok = await tokenFor('m1');
+  const rows = [
+    { rowIdCell: tok, values: v, sheetRowNumber: 3 }, // copy pasted above
+    { rowIdCell: tok, values: v, sheetRowNumber: 5 }  // original at its bound slot
+  ];
+  const { decisions, candidateDeletes } = await buildImportPlan({ rows, stored, documentId: DOC, scopeId: SCOPE, resolveSecret });
+  // Both rows must surface for review (not auto-resolved).
+  assert.equal(decisions.length, 2);
+  assert.ok(decisions.every((d) => d.action === IMPORT_ACTIONS.REVIEW),
+    `expected all decisions to be review, got: ${JSON.stringify(decisions.map((d) => d.decision))}`);
+  // m1 must NOT become a delete candidate — the rows are under review.
+  assert.deepEqual(candidateDeletes, []);
+});
+
+test('KAL-306: paste-above without any positional stamp — no detection signal, first-row-wins assumed (copy-below default)', async () => {
+  // No lastSeenRowNumber on the stored marker AND no sheetRowNumber on the rows.
+  // Without any positional signal the matcher cannot detect paste-above — it falls
+  // back to the copy-below assumption (first-row-wins) which is the correct behavior
+  // for the common case.  Detecting paste-above requires positional evidence on at
+  // least one side.  This matches the pre-KAL-306 behavior preserved by design.
+  const v = vals();
+  const stored = [await storedFor('m1', v)]; // no lastSeenRowNumber
+  const tok = await tokenFor('m1');
+  const rows = [
+    { rowIdCell: tok, values: v }, // first row (treated as original — no position to contradict)
+    { rowIdCell: tok, values: v }  // second row (treated as copy-below)
+  ];
+  const { decisions, candidateDeletes } = await buildImportPlan({ rows, stored, documentId: DOC, scopeId: SCOPE, resolveSecret });
+  // Falls through to first-row-wins: original matches, copy creates.
+  assert.equal(decisions[0].decision, 'match');
+  assert.equal(decisions[0].markerId, 'm1');
+  assert.equal(decisions[1].decision, 'copy-new');
+  assert.equal(decisions[1].action, IMPORT_ACTIONS.CREATE);
+  assert.deepEqual(candidateDeletes, []);
+});
+
+test('KAL-306: copy-below with positional stamp — copy is after the bound row → auto-resolves normally', async () => {
+  // m1 last seen at sheet row 3.  User copies the row and pastes it at row 5
+  // (below the original).  rowIndex 0 = original (sheetRowNumber 3),
+  // rowIndex 1 = copy (sheetRowNumber 5).  Normal copy-below — auto-resolves.
+  const v = vals();
+  const s1 = await storedFor('m1', v);
+  s1.lastSeenRowNumber = 3;
+  s1.lastIngestSeq = 100;
+  const stored = [s1];
+  const tok = await tokenFor('m1');
+  const rows = [
+    { rowIdCell: tok, values: v, sheetRowNumber: 3 }, // original at its bound slot
+    { rowIdCell: tok, values: v, sheetRowNumber: 5 }  // copy pasted below
+  ];
+  const { decisions, candidateDeletes } = await buildImportPlan({ rows, stored, documentId: DOC, scopeId: SCOPE, resolveSecret });
+  // Original matches m1; copy becomes a new item.
+  assert.equal(decisions[0].decision, 'match');
+  assert.equal(decisions[0].markerId, 'm1');
+  assert.equal(decisions[1].decision, 'copy-new');
+  assert.equal(decisions[1].action, IMPORT_ACTIONS.CREATE);
+  assert.deepEqual(candidateDeletes, []);
+});
+
 test('ambiguous blank-row recovery (non-identical candidates) never marks its candidate markers for deletion', async () => {
   // m1 and m2 are NOT byte-identical (different notes) but both share the row's Item —
   // multiple non-identical candidates = genuinely consequential ambiguity → review, and

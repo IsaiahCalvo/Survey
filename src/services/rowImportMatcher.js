@@ -137,45 +137,122 @@ export const buildImportPlan = async ({
     }
   }
 
-  // Pass 2 — valid-token groups. The FIRST row (lowest index) is the original and binds
-  // to the token's marker; each LATER row is a copy and maps to its OWN marker by
-  // (origin, ordinal) — so a copy becomes a new item automatically and re-saving the
-  // same copies never multiplies them. (Position-based: pasting a copy ABOVE the
-  // original flips which row owns the identity — no data is lost since both become
-  // items; the user can reorder. Codex flagged this as the accepted tradeoff for a
-  // zero-friction copy/paste.)
+  // Pass 2 — valid-token groups. The BOUND row (the one whose sheet position matches the
+  // stored marker's lastSeenRowNumber) is the original; each other row in the group is a
+  // copy. Auto-resolve fires ONLY when:
+  //   (a) the group has exactly one row (singleton — trivially unambiguous), OR
+  //   (b) the stored marker carries a lastSeenRowNumber AND at least one row in the
+  //       group carries a matching sheetRowNumber — the bound row is identified, and
+  //       every row AFTER it (higher sheetRowNumber) is a copy-below (safe to
+  //       auto-resolve per PLAN.md Amendment 2026-06-08(b) decision #3).
+  // Any other multi-row group (paste-above, unknown/flipped order) goes to review:
+  // "a copy placed before/displacing the bound row, or any untrusted order → review".
+  // This replaces the old first-row-wins tradeoff noted in the previous comment.
   for (const [originMarkerId, group] of validGroups) {
     const sortedRows = group.slice().sort((a, b) => a.rowIndex - b.rowIndex);
     const knownCopies = copiesByOrigin.get(originMarkerId) || new Map();
+
+    // Single-row group — the existing singleton path, unchanged.
+    if (sortedRows.length === 1) {
+      const e = sortedRows[0];
+      const { rowIndex, fp } = e;
+      if (!exportedIds.has(originMarkerId)) {
+        decisions.push(reviewDecision(rowIndex, 'unknown-rowid', { markerId: originMarkerId }));
+      } else {
+        const s = storedById.get(originMarkerId);
+        decisions.push({
+          rowIndex,
+          decision: 'match',
+          action: IMPORT_ACTIONS.APPLY,
+          markerId: originMarkerId,
+          changed: fp.fullRowFingerprint !== s.fullRowFingerprint,
+          changedFields: s.fieldFingerprints ? diffRowFields(s.fieldFingerprints, fp.fieldFingerprints) : undefined
+        });
+        matchedMarkerIds.add(originMarkerId);
+        anchorPairs.push({ storedPos: storedPosOf(s), newPos: rowPosOf(e), seq: storedSeqOf(s) });
+      }
+      continue;
+    }
+
+    // Multi-row group: the same token appears on >1 row (copy/paste in Excel).
+    // We must identify which row is the BOUND row (the original). The bound marker's
+    // lastSeenRowNumber tells us where the original row sat at the last ingested save.
+    // A row in the group with sheetRowNumber equal to that stamp IS the bound row.
+    // If no such identification is possible, the order is untrusted → all rows review.
+    const s = exportedIds.has(originMarkerId) ? storedById.get(originMarkerId) : null;
+    const boundStoredPos = s ? storedPosOf(s) : null;
+
+    // Try to locate the bound row using positional stamps: the row whose sheetRowNumber
+    // matches the stored marker's lastSeenRowNumber. Positional detection requires BOTH
+    // the stored marker to carry a lastSeenRowNumber AND at least the rows in this group
+    // to carry sheetRowNumbers. When neither side carries positional data ("no stamp at
+    // all"), positional detection is skipped and we fall through to the legacy
+    // first-row-wins path (copy-below assumption, unchanged pre-KAL-306 behavior).
+    const anyRowHasPos = sortedRows.some((e) => rowPosOf(e) != null);
+    const positionalDetectionEnabled = boundStoredPos != null && anyRowHasPos;
+
+    let orderTrusted = false;    // false → review (paste-above detected or ambiguous)
+    let useFirstRowWins = false; // true → legacy copy-below path (no positional signal)
+
+    if (!positionalDetectionEnabled) {
+      // No positional signal on either side — cannot detect paste-above.
+      // Fall through to first-row-wins (the pre-KAL-306 copy-below assumption).
+      useFirstRowWins = true;
+    } else {
+      // Positional data available: locate the bound row by sheetRowNumber.
+      // When multiple rows share that number (impossible in a well-formed sheet but
+      // defensive), or when no row matches, the order is considered ambiguous → review.
+      const matchingRows = sortedRows.filter((e) => rowPosOf(e) === boundStoredPos);
+      if (matchingRows.length === 1) {
+        const boundRowIdx = sortedRows.indexOf(matchingRows[0]);
+        // Confirm the bound row is FIRST (lowest rowIndex) and ALL other rows appear
+        // AFTER it in the sheet (higher sheetRowNumber → confirmed copy-below).
+        const boundIsFirst = boundRowIdx === 0;
+        const allCopiesAreBelow = boundIsFirst && sortedRows.slice(1).every(
+          (e) => rowPosOf(e) != null && rowPosOf(e) > boundStoredPos
+        );
+        orderTrusted = boundIsFirst && allCopiesAreBelow;
+      }
+      // orderTrusted=false, useFirstRowWins=false → review (paste-above or ambiguous)
+    }
+
+    if (!useFirstRowWins && !orderTrusted) {
+      // Paste-above detected or order ambiguous: surface ALL rows for review.
+      // The stored marker is referenced by review decisions, so it is excluded from
+      // candidateDeletes below (the rows are under review, not genuinely absent).
+      if (!exportedIds.has(originMarkerId)) {
+        for (const e of sortedRows) {
+          decisions.push(reviewDecision(e.rowIndex, 'unknown-rowid', { markerId: originMarkerId }));
+        }
+      } else {
+        for (const e of sortedRows) {
+          decisions.push(reviewDecision(e.rowIndex, 'paste-above', { markerId: originMarkerId }));
+        }
+      }
+      continue;
+    }
+
+    // Trusted order: bound row (ordinal 0) matches, later rows are copies.
     sortedRows.forEach((e, ordinal) => {
       const { rowIndex, fp } = e;
       if (ordinal === 0) {
-        if (!exportedIds.has(originMarkerId)) {
-          // Valid signature for this doc+scope, but never exported here (typed/pasted
-          // token for a marker not in this workbook). Never mutate.
-          decisions.push(reviewDecision(rowIndex, 'unknown-rowid', { markerId: originMarkerId }));
-        } else {
-          const s = storedById.get(originMarkerId);
-          decisions.push({
-            rowIndex,
-            decision: 'match',
-            action: IMPORT_ACTIONS.APPLY,
-            markerId: originMarkerId,
-            changed: fp.fullRowFingerprint !== s.fullRowFingerprint,
-            changedFields: s.fieldFingerprints ? diffRowFields(s.fieldFingerprints, fp.fieldFingerprints) : undefined
-          });
-          matchedMarkerIds.add(originMarkerId);
-          anchorPairs.push({ storedPos: storedPosOf(s), newPos: rowPosOf(e), seq: storedSeqOf(s) });
-        }
+        decisions.push({
+          rowIndex,
+          decision: 'match',
+          action: IMPORT_ACTIONS.APPLY,
+          markerId: originMarkerId,
+          changed: fp.fullRowFingerprint !== s.fullRowFingerprint,
+          changedFields: s.fieldFingerprints ? diffRowFields(s.fieldFingerprints, fp.fieldFingerprints) : undefined
+        });
+        matchedMarkerIds.add(originMarkerId);
+        anchorPairs.push({ storedPos: storedPosOf(s), newPos: rowPosOf(e), seq: storedSeqOf(s) });
       } else {
         const existing = knownCopies.get(ordinal);
         if (existing) {
-          // This copy was created on a previous import — apply to its marker, don't twin.
           decisions.push({ rowIndex, decision: 'copy-existing', action: IMPORT_ACTIONS.APPLY, markerId: existing.markerId });
           matchedMarkerIds.add(existing.markerId);
           anchorPairs.push({ storedPos: storedPosOf(existing), newPos: rowPosOf(e), seq: storedSeqOf(existing) });
         } else {
-          // A brand-new copy → create a new item, remembered by (origin, ordinal).
           decisions.push({
             rowIndex,
             decision: 'copy-new',
