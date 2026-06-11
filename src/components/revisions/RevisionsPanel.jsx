@@ -32,7 +32,7 @@ import {
   restoreRevision,
 } from '../../services/documentRevisionService';
 import { listDocumentHistoryEvents } from '../../services/documentHistoryService';
-import { resolveRegionRestoreCascade } from '../../services/annotationTrashHistory';
+import { resolveRegionRestoreCascade, describeHistoryEventSubject } from '../../services/annotationTrashHistory';
 
 const DRAWER_WIDTH = 360;
 const HISTORY_SPOTLIGHT_STYLE_ID = 'document-history-spotlight-style';
@@ -638,7 +638,13 @@ export default function RevisionsPanel({
     try {
       const result = onRestoreHistoryActivity(event);
       if (result?.ok) {
-        setStatusMsg(`Restored deleted item${result.pageNumber ? ` on page ${result.pageNumber}` : ''}.`);
+        // KAL-313 follow-up: name the restored subject for space entries.
+        const spaceName = event.event_type === 'space_deleted'
+          ? (event.payload?.spaceName ?? event.payload?.restoreAction?.spaceName)
+          : null;
+        setStatusMsg(event.event_type === 'space_deleted'
+          ? `Restored space${spaceName ? ` "${spaceName}"` : ''}.`
+          : `Restored deleted item${result.pageNumber ? ` on page ${result.pageNumber}` : ''}.`);
         await refresh({ silent: true });
       } else if (result?.reason === 'cascade-confirm') {
         // KAL-313 CONFIRM-CASCADE: the region's parent space is gone.
@@ -866,7 +872,12 @@ export default function RevisionsPanel({
                         ? 'Clicking shows where the deleted item was; Restore brings back this item only.'
                         : 'Clicking activity shows the current item or a stored visual preview, not a full-document snapshot.'}
                     </div>
-                    {event.annotation_id && <div>Annotation: {event.annotation_id}</div>}
+                    {(() => {
+                      // KAL-313 follow-up: label by event type — "Space: <name>" /
+                      // "Region in <space>" — never "Annotation: <id>" for non-annotations.
+                      const subjectLine = describeHistoryEventSubject(event);
+                      return subjectLine ? <div>{subjectLine}</div> : null;
+                    })()}
                   </div>
                 )}
               </div>
