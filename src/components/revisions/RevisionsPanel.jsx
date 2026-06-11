@@ -952,7 +952,58 @@ export default function RevisionsPanel({
     </div>
   );
 
-  if (embedded) return panel;
+  // Banner — visible while viewing a prior revision (rendered in both the
+  // embedded and standalone branches; position:fixed, so mount point is moot)
+  const readOnlyBanner = viewingRevision && (
+    <div
+      data-testid="kal48-readonly-banner"
+      style={{
+        position: 'fixed',
+        top: 0,
+        left: 0,
+        right: 0,
+        background: '#5e4a1f',
+        color: '#fff8dd',
+        padding: '8px 16px',
+        zIndex: 9100,
+        fontSize: 12,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        borderBottom: '1px solid #7e6630',
+      }}
+    >
+      <span>
+        Viewing revision v{viewingRevision.revisionNumber}
+        {viewingRevision.label ? ` — ${viewingRevision.label}` : ''} · created {formatDate(viewingRevision.createdAt)} · {viewingRevision.snapshot?.annotations?.length ?? viewingRevision.annotationCount} annotation(s). Edits disabled.
+      </span>
+      <button
+        type="button"
+        data-testid="kal48-return-to-current"
+        onClick={handleReturnToCurrent}
+        style={{
+          background: 'transparent',
+          color: '#fff8dd',
+          border: '1px solid #fff8dd',
+          borderRadius: 4,
+          padding: '3px 10px',
+          cursor: 'pointer',
+          fontSize: 12,
+        }}
+      >
+        Return to current
+      </button>
+    </div>
+  );
+
+  if (embedded) {
+    return (
+      <>
+        {readOnlyBanner}
+        {panel}
+      </>
+    );
+  }
 
   return (
     <>
@@ -980,48 +1031,7 @@ export default function RevisionsPanel({
         Revisions{revisions.length ? ` (${revisions.length})` : ''}
       </button>
 
-      {/* Banner — visible while viewing a prior revision */}
-      {viewingRevision && (
-        <div
-          data-testid="kal48-readonly-banner"
-          style={{
-            position: 'fixed',
-            top: 0,
-            left: 0,
-            right: 0,
-            background: '#5e4a1f',
-            color: '#fff8dd',
-            padding: '8px 16px',
-            zIndex: 9100,
-            fontSize: 12,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            borderBottom: '1px solid #7e6630',
-          }}
-        >
-          <span>
-            Viewing revision v{viewingRevision.revisionNumber}
-            {viewingRevision.label ? ` — ${viewingRevision.label}` : ''} · created {formatDate(viewingRevision.createdAt)} · {viewingRevision.snapshot?.annotations?.length ?? viewingRevision.annotationCount} annotation(s). Edits disabled.
-          </span>
-          <button
-            type="button"
-            data-testid="kal48-return-to-current"
-            onClick={handleReturnToCurrent}
-            style={{
-              background: 'transparent',
-              color: '#fff8dd',
-              border: '1px solid #fff8dd',
-              borderRadius: 4,
-              padding: '3px 10px',
-              cursor: 'pointer',
-              fontSize: 12,
-            }}
-          >
-            Return to current
-          </button>
-        </div>
-      )}
+      {readOnlyBanner}
 
       {/* Drawer */}
       {open && panel}
