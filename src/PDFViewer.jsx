@@ -94,6 +94,19 @@ import { applyExcelValuesToMarker } from './services/excelConflictResolve';
 import { makeTombstone, addTombstone, removeTombstone, purgeExpired } from './services/surveyMarkerTrash';
 import { loadTrash, saveTrash } from './services/surveyMarkerTrashStore';
 import { buildSurveyMarkerDeleteHistoryRow, applySurveyMarkerRestore } from './services/surveyMarkerHistory';
+// KAL-313: trash / history / restore for shapes, ink, text, callouts, regions, bulk.
+import {
+  buildAnnotationDeleteHistoryRow,
+  isAnnotationRestoreAction,
+  buildCalloutDeleteHistoryRow,
+  isCalloutRestoreAction,
+  applyCalloutRestore,
+  buildRegionDeleteHistoryRow,
+  isRegionRestoreAction,
+  buildBulkAnnotationDeleteHistoryRows,
+  isBulkAnnotationDeleteEvent,
+  buildAnnotationRestoreAction,
+} from './services/annotationTrashHistory';
 // KAL-307: server-minted workbook registration (one live workbook per survey).
 import { registerWorkbook, embedRegistrationIntoMetaSheet } from './services/workbookRegistration';
 import { getCounterSeriesList, pickNextSeriesColor, renumberCounters } from './utils/counterNumbering';
@@ -10229,6 +10242,11 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     });
     if (permittedIds.length === 0) return;
     const idsSet = new Set(permittedIds);
+
+    // KAL-313: capture the full callout objects BEFORE the mutation so the
+    // trash history rows carry the complete restore payload.
+    const deletedCallouts = callouts.filter((c) => idsSet.has(c.id));
+
     // UX: undo checkpoint BEFORE the mutation, same pattern as
     // annotations:save (App.jsx:23752) — so Cmd+Z restores the deleted callouts.
     addHistoryCheckpoint('callouts:delete', {
@@ -10243,7 +10261,29 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     }, window);
     setCalloutsIfPersistedChanged((prev) => prev.filter((c) => !idsSet.has(c.id)));
     setSelectedCalloutIds(new Set());
-  }, [addHistoryCheckpoint, callouts, documentOwnerId, setCalloutsIfPersistedChanged, user?.id]);
+
+    // KAL-313: emit a durable trash event for each deleted callout so the
+    // History panel can offer Restore for 30 days (multi-device, cross-user).
+    const documentId = pdfFile?.id || null;
+    if (documentId && deletedCallouts.length > 0) {
+      const deletedAt = new Date().toISOString();
+      const actorName = user?.user_metadata?.full_name
+        || user?.user_metadata?.name
+        || [user?.user_metadata?.first_name, user?.user_metadata?.last_name].filter(Boolean).join(' ')
+        || user?.email
+        || 'Someone';
+      for (const callout of deletedCallouts) {
+        const trashRow = buildCalloutDeleteHistoryRow({
+          callout,
+          documentId,
+          userId: user?.id || null,
+          actorName,
+          deletedAt,
+        });
+        if (trashRow) void recordDocumentHistoryEvent(trashRow);
+      }
+    }
+  }, [addHistoryCheckpoint, callouts, documentOwnerId, setCalloutsIfPersistedChanged, user, pdfFile?.id]);
 
   // UX 2026-04-21: single-checkpoint opener for marquee delete of a mixed
   // shape+callout selection. The SVGAnnotationLayer delete handler calls
@@ -16652,12 +16692,59 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
       if (plan.mode === 'no-op') return;
 
+      // KAL-313: build bulk trash rows from the snapshot objects that will be
+      // deleted. snapshotObjects already contains the pre-delete Fabric objects.
+      // We need fabric:delete-shaped actions to produce the restoreActions.
+      const emitBulkTrashRows = () => {
+        const documentId = pdfFile?.id || null;
+        if (!documentId || !Array.isArray(snapshotObjects) || snapshotObjects.length === 0) return;
+        const candidateSet = new Set(Array.isArray(candidateIds) ? candidateIds : []);
+        const deletedObjects = snapshotObjects.filter((obj) => {
+          const id = obj?.data?.id || obj?.id || null;
+          return id && candidateSet.has(id);
+        });
+        if (deletedObjects.length === 0) return;
+        const deletedAt = new Date().toISOString();
+        const actorName = user?.user_metadata?.full_name
+          || user?.user_metadata?.name
+          || [user?.user_metadata?.first_name, user?.user_metadata?.last_name].filter(Boolean).join(' ')
+          || user?.email
+          || 'Someone';
+        const objectRestoreActions = deletedObjects.map((obj) => {
+          const id = obj?.data?.id || obj?.id || null;
+          const deleteAction = {
+            type: 'fabric:delete',
+            pageNumber,
+            annotationId: id,
+            annotation: obj,
+            index: null,
+          };
+          return {
+            annotationId: id,
+            pageNumber,
+            restoreAction: buildAnnotationRestoreAction(deleteAction),
+          };
+        }).filter((entry) => entry.restoreAction !== null);
+        const rows = buildBulkAnnotationDeleteHistoryRows({
+          objectRestoreActions,
+          totalCount: deletedObjects.length,
+          documentId,
+          userId: user?.id || null,
+          actorName,
+          deletedAt,
+        });
+        for (const row of rows) {
+          void recordDocumentHistoryEvent(row);
+        }
+      };
+
       // Wrap runDelete with the toast enqueue. Both the direct-fire path
       // (owner-own-only) and the modal-confirm path use this wrapped runner
       // so the undo restoration is identical regardless of which branch
       // fires.
       const wrappedRunDelete = () => {
         runDelete();
+        emitBulkTrashRows();
         // Snapshot restoration: re-add the deleted objects to
         // annotationsByPage. Functional setter ensures we read the latest
         // state at undo time (closure-captured snapshot is the source of
@@ -16694,6 +16781,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         // (cross-author wipe, collaborator deleting all of theirs) — for
         // the everyday solo-owner delete it's noise.
         runDelete();
+        emitBulkTrashRows();
         return;
       }
 
@@ -16704,7 +16792,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       pendingDeleteRunnerRef.current = wrappedRunDelete;
       setPendingDeletePlan(plan);
     },
-    [annotationsByPage, user, documentOwnerId, enqueueUndoToast],
+    [annotationsByPage, user, documentOwnerId, enqueueUndoToast, pdfFile?.id],
   );
 
   // Legacy cloud sync — its annotation HYDRATE + PUSH are retired by the Yjs
@@ -17848,6 +17936,36 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     finishRegionEditSession();
     // Keep selectedSpaceId set - don't clear it when region selection completes
   }, [activeSpaceId, regionSelectionPage, spaces, handleSpaceUpdate, finishRegionEditSession, cascadeDeleteScopedAppState]);
+
+  // KAL-313: called by RegionSelectionTool when the user deletes one or more
+  // regions. Emits a durable trash history row per region so the History panel
+  // can offer Restore for 30 days (multi-device, cross-user). The space name
+  // is resolved from the live spaces array for the History panel label.
+  const handleRegionsDeleted = useCallback((deletedRegions) => {
+    const documentId = pdfFile?.id || null;
+    if (!documentId || !Array.isArray(deletedRegions) || deletedRegions.length === 0) return;
+    const spaceId = activeSpaceId || null;
+    const activeSpace = spaceId ? (spacesRef.current || []).find((s) => s.id === spaceId) : null;
+    const spaceName = activeSpace?.name || null;
+    const deletedAt = new Date().toISOString();
+    const actorName = user?.user_metadata?.full_name
+      || user?.user_metadata?.name
+      || [user?.user_metadata?.first_name, user?.user_metadata?.last_name].filter(Boolean).join(' ')
+      || user?.email
+      || 'Someone';
+    for (const region of deletedRegions) {
+      const trashRow = buildRegionDeleteHistoryRow({
+        region,
+        spaceId,
+        spaceName,
+        documentId,
+        userId: user?.id || null,
+        actorName,
+        deletedAt,
+      });
+      if (trashRow) void recordDocumentHistoryEvent(trashRow);
+    }
+  }, [activeSpaceId, pdfFile?.id, user]);
 
   // Templates are loaded from Supabase via Dashboard component
   // No need to load from localStorage here
@@ -21242,7 +21360,32 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 	      undoDepth: nextUndo.length,
       redoDepth: 0
     });
-  }, [pushHistoryDebugEvent, user?.id, yjsUndoCtx?.userId]);
+
+    // KAL-313: emit a durable trash event for single-annotation deletes so the
+    // History panel can offer Restore for 30 days (multi-device, cross-user).
+    // fabric:batch (bulk) deletes are handled separately in handleRequestBulkDelete.
+    if (scopedAction.type === 'fabric:delete') {
+      const documentId = pdfFile?.id || null;
+      if (documentId) {
+        const deletedAt = actionWithMeta.__historyMeta.createdAt;
+        const actorName = user?.user_metadata?.full_name
+          || user?.user_metadata?.name
+          || [user?.user_metadata?.first_name, user?.user_metadata?.last_name].filter(Boolean).join(' ')
+          || user?.email
+          || 'Someone';
+        const trashRow = buildAnnotationDeleteHistoryRow({
+          deleteAction: scopedAction,
+          documentId,
+          userId: user?.id || null,
+          actorName,
+          deletedAt,
+        });
+        if (trashRow) {
+          void recordDocumentHistoryEvent(trashRow);
+        }
+      }
+    }
+  }, [pushHistoryDebugEvent, user, pdfFile?.id, yjsUndoCtx?.userId]);
 
   const handleSaveAnnotations = useCallback((pageNumber, json, saveContext = null) => {
     const source_ = saveContext?.source || 'unknown';
@@ -21730,6 +21873,101 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       return { ok: true, pageNumber: Number.isFinite(pageNumber) ? pageNumber : null };
     }
 
+    // KAL-313: Callout restore (parallel branch — deleted at KAL-81 unification).
+    // Re-inserts the deleted callout into the live callouts array.
+    if (isCalloutRestoreAction(restoreAction)) {
+      const result = applyCalloutRestore(
+        calloutsRef.current || [],
+        restoreAction,
+        { restoredAt: new Date().toISOString() }
+      );
+      if (!result) return { ok: false, reason: 'restore-noop' }; // already present
+      setCalloutsIfPersistedChanged(() => result.callouts);
+      return { ok: true, pageNumber: restoreAction.pageNumber ?? null };
+    }
+
+    // KAL-313: Region restore.
+    // Appends the deleted region back to its parent space/page.
+    // If the parent space is gone: returns greyed-out reason per OQ-4 decision.
+    if (isRegionRestoreAction(restoreAction)) {
+      const { spaceId, region: restoredRegion, pageNumber: regionPageNumber } = restoreAction;
+      const liveSpaces = spacesRef.current || [];
+      const targetSpace = liveSpaces.find((s) => s.id === spaceId);
+      if (!targetSpace) {
+        return { ok: false, reason: 'region-space-deleted' };
+      }
+      // Find the assigned page entry within the space; if missing, create it.
+      const existingPages = Array.isArray(targetSpace.assignedPages) ? targetSpace.assignedPages : [];
+      const pageId = restoredRegion.pageId ?? regionPageNumber;
+      const pageEntry = existingPages.find((p) => String(p.pageId) === String(pageId));
+      let updatedPages;
+      if (pageEntry) {
+        // Idempotent: skip if region already present.
+        const alreadyPresent = (pageEntry.regions || []).some((r) => r.regionId === restoredRegion.regionId);
+        if (alreadyPresent) return { ok: false, reason: 'restore-noop' };
+        updatedPages = existingPages.map((p) =>
+          String(p.pageId) === String(pageId)
+            ? { ...p, regions: [...(p.regions || []), restoredRegion] }
+            : p
+        );
+      } else {
+        updatedPages = [...existingPages, { pageId, regions: [restoredRegion], wholePageIncluded: false }];
+      }
+      handleSpaceUpdate(spaceId, { assignedPages: updatedPages });
+      return { ok: true, pageNumber: Number.isFinite(Number(pageId)) ? Number(pageId) : null };
+    }
+
+    // KAL-313: Bulk annotation delete restore.
+    // Each object in payload.objects carries a per-object restoreAction; dispatch
+    // each to the appropriate per-type restore path (fabric:create → handleSaveAnnotations,
+    // callout → setCallouts, region → handleSpaceUpdate).
+    if (isBulkAnnotationDeleteEvent(event)) {
+      const objects = Array.isArray(event?.payload?.objects) ? event.payload.objects : [];
+      if (objects.length === 0) return { ok: false, reason: 'restore-unavailable' };
+      let restoredCount = 0;
+      // Group fabric:create restoreActions by page for efficient batch save.
+      const byPage = new Map();
+      for (const obj of objects) {
+        const ra = obj?.restoreAction;
+        if (!ra) continue;
+        if (isCalloutRestoreAction(ra)) {
+          const calloutResult = applyCalloutRestore(calloutsRef.current || [], ra, { restoredAt: new Date().toISOString() });
+          if (calloutResult) {
+            setCalloutsIfPersistedChanged(() => calloutResult.callouts);
+            restoredCount++;
+          }
+        } else if (isRegionRestoreAction(ra)) {
+          // Delegate to the same region restore logic above.
+          const regionResult = handleRestoreHistoryActivity({ payload: { restoreAction: ra } });
+          if (regionResult?.ok) restoredCount++;
+        } else if (isAnnotationRestoreAction(ra)) {
+          const pg = String(ra.pageNumber);
+          if (!byPage.has(pg)) byPage.set(pg, []);
+          byPage.get(pg).push(ra);
+          restoredCount++;
+        }
+      }
+      // Apply all fabric restoreActions per page in one handleSaveAnnotations call.
+      for (const [pg, ras] of byPage.entries()) {
+        const current = annotationsByPageRef.current || {};
+        let pageState = current[pg] || current[Number(pg)] || { objects: [] };
+        for (const ra of ras) {
+          const nextByPage = applyAnnotationHistoryAction({ [pg]: pageState }, ra);
+          pageState = nextByPage[pg] || pageState;
+        }
+        handleSaveAnnotations(Number(pg), pageState, {
+          source: 'history:restore-deleted-annotation',
+          action: 'restore',
+          checkpointPolicy: 'default',
+          restoredFromHistoryEventId: event?.client_event_id || event?.id || null,
+        });
+      }
+      return restoredCount > 0
+        ? { ok: true, pageNumber: null }
+        : { ok: false, reason: 'restore-noop' };
+    }
+
+    // Standard annotation restore (fabric:create restoreAction from single-delete trash row).
     if (!restoreAction.pageNumber) {
       return { ok: false, reason: 'restore-unavailable' };
     }
@@ -21750,7 +21988,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       restoredFromHistoryEventId: event?.client_event_id || event?.id || null,
     });
     return { ok: true, pageNumber };
-  }, [handleSaveAnnotations, pdfId]);
+  }, [handleSaveAnnotations, handleSpaceUpdate, pdfId]);
 
   // Embedded import — exactly once per document, durably.
   //
@@ -26725,6 +26963,8 @@ ${pageBlocks}
             onSetFullPage={handleRegionSetFullPage}
             canSetFullPage={canSetRegionToFullPage}
             onHistoryStateChange={handleRegionHistoryStateChange}
+            userId={user?.id ?? null}
+            onRegionsDeleted={handleRegionsDeleted}
           />
         )}
 
