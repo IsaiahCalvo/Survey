@@ -128,6 +128,11 @@ export default function RevisionsPanel({
   documentId,
   user,
   embedded = false,
+  // History-audit P1: when embedded, the sidebar keeps this panel mounted
+  // behind display:none. isActive=false means the History tab is deselected
+  // or the rail is collapsed — preview/spotlight state must be torn down so
+  // body[data-readonly] and the spotlight SVG can't outlive the panel.
+  isActive = true,
   onClose = null,
   onNavigateToPage = null,
   onRestoreHistoryActivity = null,
@@ -238,9 +243,15 @@ export default function RevisionsPanel({
   }, [documentId, embedded, open, refresh]);
 
   // body[data-readonly] mirroring — set when viewing a prior revision.
+  // Ownership-aware (history-audit P1): if the attribute was ALREADY set when
+  // this effect ran (ReadOnlyGate's access-revoked state uses the same body
+  // attribute), the panel does not own it and must not remove it on cleanup —
+  // only clear what the panel itself set.
   useEffect(() => {
     if (typeof document === 'undefined') return undefined;
     if (viewingRevision) {
+      const alreadySet = document.body?.getAttribute('data-readonly') === 'true';
+      if (alreadySet) return undefined; // ReadOnlyGate owns it — leave untouched
       document.body?.setAttribute('data-readonly', 'true');
       return () => document.body?.removeAttribute('data-readonly');
     }
@@ -384,9 +395,17 @@ export default function RevisionsPanel({
 
   useEffect(() => () => stopSpotlightTracking(), [stopSpotlightTracking]);
 
+  // History-audit P1: tear down preview + spotlight whenever the panel stops
+  // being visible. Embedded panels are hidden via display:none (still mounted),
+  // so without this the revision preview's body[data-readonly] kept the toolbar
+  // dimmed indefinitely and a stale spotlight SVG could cover fresh drawings.
   useEffect(() => {
-    if (!embedded && !open) stopSpotlightTracking();
-  }, [embedded, open, stopSpotlightTracking]);
+    const hidden = embedded ? !isActive : !open;
+    if (hidden) {
+      stopSpotlightTracking();
+      setViewingRevision(null);
+    }
+  }, [embedded, isActive, open, stopSpotlightTracking]);
 
   const createPageSpotlightSvg = useCallback((pageElement, pageNumber = null) => {
     if (typeof document === 'undefined' || !pageElement) return null;
