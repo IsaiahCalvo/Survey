@@ -25,6 +25,9 @@
 //   S3  spotlight (6–12): inner <path> glow, pulse animation, 4.5s persistence,
 //       strict center alignment (≤3px) + stroke-allowance size deltas through
 //       scroll, real-control zoom ×2 (settle-poll), horizontal pan.
+//   S3b DOM-fallback spotlight (KAL-303 coverage): seeded no-previewAnnotation
+//       row pointing at fixture rect kal75-fab-01 → glow via the DOM-fallback
+//       path, wrapper-scoped host, same strict alignment metric, zero POSTs.
 //   S4  delete + restore payload (13–17): delete row appears, glow marks the
 //       deleted location (±8px), Restore button brings the stroke back with
 //       fixture identity+geometry untouched and ZERO kal48_restore RPCs.
@@ -72,19 +75,13 @@ const gate = (cond, label) => (DISCOVERY ? log(`  ${cond ? 'pass' : 'WOULD-FAIL'
 // measured and logged loudly but do not fail the run; if the bug gets fixed
 // they turn back into normal passing gates. The verdict prints the ledger.
 //
-// FIXED ALLOWLIST (Codex result-review r1 #5): only these 8 label prefixes may
+// FIXED ALLOWLIST (Codex result-review r1 #5): only listed label prefixes may
 // be downgraded. A knownBug() call with any other label FAILS the run, so a
 // future edit cannot silently park a new regression in this channel.
-const KNOWN_BUG_ALLOWLIST = [
-  'S3: glow path aligns with the rendered stroke',
-  'S3: alignment holds after scroll down (case 10)',
-  'S3: alignment holds after scroll back up',
-  'S3: alignment holds after zoom in (case 11)',
-  'S3: alignment holds after horizontal pan while zoomed (case 12)',
-  'S3: alignment holds after zoom back to 100%',
-  'S4: glow path bbox ≈ pre-delete stroke bbox ±8px (case 15)',
-  'S6: read-only banner rendered while viewing v1 (case 21 scope)',
-];
+// EMPTY since KAL-303 (spotlight viewBox host fallback) and KAL-304 (embedded
+// read-only banner) were fixed — the original 8 entries re-armed to hard
+// asserts; a regression on any of them now fails the run.
+const KNOWN_BUG_ALLOWLIST = [];
 const knownBugs = [];
 const knownBug = (cond, label, bugNote) => {
   if (cond) { gate(cond, label); return; }
@@ -447,6 +444,7 @@ async function main() {
       S1: { ...PRESENCE_RANGES, 'PATCH documents': [1, 2] },
       S2: { ...PRESENCE_RANGES, 'POST document_history_events': [1, 1], 'POST annotation_updates': [1, 1], 'POST annotation_snapshots': [0, 1] },
       S3: { ...PRESENCE_RANGES, 'POST annotation_snapshots': [0, 1] }, // S2's debounced snapshot may drift in
+      S3b: { ...PRESENCE_RANGES }, // seeded row is store-side — zero new POSTs
       S4: { ...PRESENCE_RANGES, 'POST document_history_events': [2, 2], 'POST annotation_updates': [2, 2], 'POST annotation_snapshots': [0, 2] },
       S5: { ...PRESENCE_RANGES, 'POST annotation_snapshots': [0, 2] }, // S4's debounced snapshot drifts here
       S6: { ...PRESENCE_RANGES, 'POST document_history_events': [1, 1], 'POST annotation_updates': [1, 1], 'POST annotation_snapshots': [0, 2] },
@@ -550,14 +548,12 @@ async function main() {
     gate(glow.styleTag, 'S3: #document-history-spotlight-style tag present');
     gate(glow.animation === 'document-history-pulse-glow', `S3: pulsing animation applied (case 8) (saw "${glow.animation}")`);
 
-    // PRODUCT BUG (reproduced in diag-kal74-glow.mjs, recorded on the run):
-    // svg[data-svg-annotation-layer] is NOT a descendant of .e-pv-page-div, so
-    // RevisionsPanel.resolveSpotlightHost (RevisionsPanel.jsx:302-318) falls
-    // back to the page div and mints the spotlight with a PIXEL-dimension
-    // viewBox (e.g. "0 0 1272.95 823.67") while the glow path coordinates are
-    // PAGE units (1224x792 space) → ~4% scale error: Δcenter ≈ (24, 18.6)px at
-    // 100% zoom, ≈ (368, 287)px at 156%. Alignment gates are measured + logged
-    // as KNOWN-BUG instead of failing; they harden automatically on fix.
+    // KAL-303 (FIXED): svg[data-svg-annotation-layer] is NOT a descendant of
+    // .e-pv-page-div (portalled overlay tree), so resolveSpotlightHost used to
+    // fall back to the page div and mint a PIXEL-dimension viewBox while the
+    // glow path coords are PAGE units (~4% error at 100% zoom, huge at 156%).
+    // Fixed by page-number-keyed overlay resolution (wrapper-scoped first);
+    // these alignment gates are HARD asserts now (allowlist emptied).
     // (UNMEASURABLE samples hard-fail via alignCheck — r1 #3.)
     let align = await settleAligned(strokeId);
     alignCheck(align, `S3: glow path aligns with the rendered stroke (${fmtAlign(align)})`);
@@ -621,6 +617,51 @@ async function main() {
     align = await settleAligned(strokeId);
     alignCheck(align, `S3: alignment holds after zoom back to 100% (${fmtAlign(align)})`);
     await shot('s3-spotlight');
+
+    // =================== S3b — DOM-fallback spotlight (KAL-303 coverage) ======
+    // A history row with NO payload.previewAnnotation but a real annotation_id
+    // makes spotlightHistoryPreview() return false, so the click exercises
+    // spotlightAnnotation() → renderDomPathFallbackSpotlight() — the path that
+    // must resolve page + host from the portalled overlay ancestry (plan r1 #1,
+    // harness case r1 #3). The row is seeded straight into the primary store
+    // (no POST), so it must not disturb the mutation-ledger gates.
+    log('\n=== S3b: seeded no-preview row → DOM-fallback glow on fixture rect ===');
+    mock.setWindow('S3b');
+    historyStore.rows.push({
+      id: 'hist-s3b-seeded',
+      document_id: DOC_ID,
+      client_event_id: 'kal74-s3b-seeded',
+      event_type: 'local_annotation_history_added',
+      summary: 'edited the seeded fixture rectangle on page 1',
+      page_number: 1,
+      annotation_id: 'kal75-fab-01',
+      payload: {},
+      occurred_at: new Date().toISOString(),
+    });
+    // Collapse/reopen forces a primary-store refetch so the seeded row renders
+    // (same mechanism the S2 reopen probe relies on).
+    await collapseSidebar();
+    await openHistoryPanel();
+    const seededRowRe = /edited the seeded fixture rectangle on page 1/;
+    gate(await pollFor(async () => (await rowsMatching(seededRowRe)).length, 1, 12000, 'S3b seeded row'),
+      'S3b: seeded no-preview row renders in the timeline');
+    await clickEventRow(seededRowRe);
+    gate(await pollFor(glowCount, 1, 6000, 'S3b spotlight svg'),
+      'S3b: spotlight renders via the DOM-fallback path (no previewAnnotation)');
+    const s3bHost = await page.evaluate(() => {
+      const spot = document.querySelector('#document-history-spotlight-svg');
+      const layer = document.querySelector('svg[data-svg-annotation-layer="1"]');
+      return {
+        wrapperScoped: !!(spot && layer && spot.parentElement === layer.parentElement),
+        viewBox: spot?.getAttribute('viewBox') || null,
+        layerViewBox: layer?.getAttribute('viewBox') || null,
+      };
+    });
+    gate(s3bHost.wrapperScoped,
+      `S3b: spotlight hosted beside the annotation layer (wrapper-scoped) (spot viewBox=${s3bHost.viewBox}, layer viewBox=${s3bHost.layerViewBox})`);
+    const s3bAlign = await settleAligned('kal75-fab-01');
+    alignCheck(s3bAlign, `S3b: DOM-fallback glow aligns with the fixture rect (${fmtAlign(s3bAlign)})`);
+    await shot('s3b-dom-fallback');
 
     // =================== S4 — delete + payload restore (cases 13–17) ==========
     log('\n=== S4: delete stroke → delete row → glow at location → payload restore ===');

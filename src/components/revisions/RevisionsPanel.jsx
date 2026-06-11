@@ -299,11 +299,29 @@ export default function RevisionsPanel({
       }) || null;
   }, []);
 
-  const resolveSpotlightHost = useCallback((pageElement) => {
+  const resolveSpotlightHost = useCallback((pageElement, pageNumber = null) => {
     if (!pageElement) return null;
-    const annotationSvg = pageElement.matches?.('svg[data-svg-annotation-layer]')
+    let annotationSvg = pageElement.matches?.('svg[data-svg-annotation-layer]')
       ? pageElement
       : pageElement.querySelector?.('svg[data-svg-annotation-layer]');
+    if (!annotationSvg && Number.isFinite(pageNumber)) {
+      // The annotation overlay tree is portalled OUTSIDE the Syncfusion page div,
+      // so the descendant lookup misses in the live app. Resolve document-wide by
+      // page number (attribute value = page number), wrapper-scoped first.
+      const candidates = [
+        `[data-diag-svg-wrapper="${pageNumber}"] svg[data-svg-annotation-layer="${pageNumber}"]`,
+        `svg[data-svg-annotation-layer="${pageNumber}"]`,
+      ];
+      annotationSvg = candidates
+        .map((selector) => {
+          try { return document.querySelector(selector); } catch (_err) { return null; }
+        })
+        .find((element) => {
+          if (!element?.isConnected) return false;
+          const rect = element.getBoundingClientRect?.();
+          return rect && rect.width > 0 && rect.height > 0;
+        }) || null;
+    }
     const hostElement = annotationSvg || pageElement;
     const hostRect = hostElement.getBoundingClientRect();
     const nativeViewBox = annotationSvg?.viewBox?.baseVal;
@@ -322,7 +340,7 @@ export default function RevisionsPanel({
     const pageElement = findPageElement(active.pageNumber, active.pageElement);
     if (!pageElement) return false;
     active.pageElement = pageElement;
-    const host = resolveSpotlightHost(pageElement);
+    const host = resolveSpotlightHost(pageElement, active.pageNumber);
     if (!host?.hostElement?.isConnected || !host.overlayParent?.isConnected) return false;
     const { svg } = active;
     const { hostElement, overlayParent, hostRect, viewBoxWidth, viewBoxHeight } = host;
@@ -387,7 +405,11 @@ export default function RevisionsPanel({
     if (typeof document === 'undefined' || !pageElement) return null;
     ensureSpotlightStyle();
     stopSpotlightTracking();
-    const host = resolveSpotlightHost(pageElement);
+    const normalizedPageNumber = Number(pageNumber);
+    const effectivePageNumber = Number.isFinite(normalizedPageNumber) && normalizedPageNumber > 0
+      ? normalizedPageNumber
+      : null;
+    const host = resolveSpotlightHost(pageElement, effectivePageNumber);
     if (!host) return null;
     const { hostElement, overlayParent, hostRect, viewBoxWidth, viewBoxHeight } = host;
     const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
@@ -409,12 +431,7 @@ export default function RevisionsPanel({
       zIndex: 9999,
     });
     overlayParent.appendChild(svg);
-    const normalizedPageNumber = Number(pageNumber);
-    startSpotlightTracking(
-      svg,
-      pageElement,
-      Number.isFinite(normalizedPageNumber) && normalizedPageNumber > 0 ? normalizedPageNumber : null,
-    );
+    startSpotlightTracking(svg, pageElement, effectivePageNumber);
     return svg;
   }, [resolveSpotlightHost, startSpotlightTracking, stopSpotlightTracking]);
 
@@ -523,10 +540,23 @@ export default function RevisionsPanel({
     const path = target.matches?.('path, line, polyline, polygon, rect, circle, ellipse')
       ? target
       : target.querySelector?.('path, line, polyline, polygon, rect, circle, ellipse');
-    const pageElement = target.closest?.('.e-pv-page-div, [data-page-number], [id*="_pageDiv_"]');
+    // The target lives inside the portalled overlay tree, so closest() on page-div
+    // selectors misses in the live app. Derive the page number from the overlay
+    // ancestry (attribute value = page number) and resolve the page div from it.
+    const overlaySvg = target.closest?.('svg[data-svg-annotation-layer]');
+    let pageNumber = Number(overlaySvg?.getAttribute?.('data-svg-annotation-layer'));
+    if (!Number.isFinite(pageNumber) || pageNumber <= 0) {
+      const wrapper = target.closest?.('[data-diag-svg-wrapper], [data-pal-root]');
+      pageNumber = Number(
+        wrapper?.getAttribute?.('data-diag-svg-wrapper') ?? wrapper?.getAttribute?.('data-pal-root'),
+      );
+    }
+    if (!Number.isFinite(pageNumber) || pageNumber <= 0) pageNumber = null;
+    const pageElement = target.closest?.('.e-pv-page-div, [data-page-number], [id*="_pageDiv_"]')
+      || findPageElement(pageNumber);
     if (!path || !pageElement) return false;
     const clone = path.cloneNode(false);
-    const svg = createPageSpotlightSvg(pageElement);
+    const svg = createPageSpotlightSvg(pageElement, pageNumber);
     if (!svg) return false;
     clone.removeAttribute('fill');
     clone.setAttribute('fill', 'none');
@@ -539,7 +569,7 @@ export default function RevisionsPanel({
     clone.style.animation = 'document-history-pulse-glow 900ms ease-in-out infinite';
     svg.appendChild(clone);
     return true;
-  }, [createPageSpotlightSvg]);
+  }, [createPageSpotlightSvg, findPageElement]);
 
   const spotlightAnnotation = useCallback((annotationId) => {
     if (typeof document === 'undefined' || !annotationId) return false;
