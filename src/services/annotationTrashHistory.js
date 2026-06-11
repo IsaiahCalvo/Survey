@@ -323,6 +323,42 @@ export function isRegionRestoreAction(restoreAction) {
   );
 }
 
+/**
+ * Apply a region restore against a spaces array (pure — KAL-313 follow-up).
+ * Mirrors PDFViewer's plain region restore branch exactly so the live path is
+ * node-testable: find the parent space, find/create the page entry, append the
+ * region idempotently. The region object is appended UNCHANGED (rotation,
+ * coordinates, sourceRegions all preserved).
+ *
+ * @param {object[]} spaces         current live spaces array
+ * @param {object}   restoreAction  region restoreAction from the history row
+ * @returns {{ status: 'invalid' }
+ *         | { status: 'space-missing', spaceId: string }
+ *         | { status: 'noop' }
+ *         | { status: 'ok', assignedPages: object[], pageId: * }}
+ */
+export function applyRegionRestoreToSpaces(spaces, restoreAction) {
+  if (!isRegionRestoreAction(restoreAction)) return { status: 'invalid' };
+  const safeSpaces = Array.isArray(spaces) ? spaces : [];
+  const { spaceId, region, pageNumber } = restoreAction;
+  const targetSpace = safeSpaces.find((s) => s.id === spaceId);
+  if (!targetSpace) return { status: 'space-missing', spaceId };
+  const existingPages = Array.isArray(targetSpace.assignedPages) ? targetSpace.assignedPages : [];
+  const pageId = region.pageId ?? pageNumber;
+  const pageEntry = existingPages.find((p) => String(p.pageId) === String(pageId));
+  if (pageEntry && (pageEntry.regions || []).some((r) => r.regionId === region.regionId)) {
+    return { status: 'noop' };
+  }
+  const assignedPages = pageEntry
+    ? existingPages.map((p) =>
+        String(p.pageId) === String(pageId)
+          ? { ...p, regions: [...(p.regions || []), region] }
+          : p,
+      )
+    : [...existingPages, { pageId, regions: [region], wholePageIncluded: false }];
+  return { status: 'ok', assignedPages, pageId };
+}
+
 // ─── Slice 5: Bulk delete ──────────────────────────────────────────────────
 
 const BULK_BATCH_SIZE = 50; // OQ-3: 50-object soft cap per row
@@ -501,6 +537,35 @@ export function isSpaceRestoreAction(restoreAction) {
   );
 }
 
+/**
+ * Apply a space restore: re-insert the deleted space into the live spaces
+ * array exactly as captured at delete time (assignedPages, regions, name —
+ * full object fidelity). Pure mirror of PDFViewer's handleRestoreSpace so the
+ * standalone space restore path is node-testable.
+ *
+ * Idempotent: returns null when the space already exists (caller treats as
+ * restore-noop / "already present").
+ *
+ * @param {object[]} spaces         current live spaces array
+ * @param {object}   restoreAction  space restoreAction from the history row
+ * @param {object}   [opts]
+ * @param {string}   [opts.restoredAt]  ISO timestamp
+ * @returns {{ spaces: object[], space: object } | null}
+ */
+export function applySpaceRestore(spaces, restoreAction, { restoredAt } = {}) {
+  if (!isSpaceRestoreAction(restoreAction)) return null;
+  const { spaceId, space } = restoreAction;
+  const safeSpaces = Array.isArray(spaces) ? spaces : [];
+  if (safeSpaces.some((s) => s.id === spaceId)) {
+    return null; // caller treats as restore-noop / already present
+  }
+  const restored = { ...space, restoredAt: restoredAt || new Date().toISOString() };
+  return {
+    spaces: [...safeSpaces, restored],
+    space: restored,
+  };
+}
+
 // ─── Cascade decision helper ──────────────────────────────────────────────────
 //
 // Used by the region restore path to decide whether to:
@@ -537,4 +602,34 @@ export function resolveRegionRestoreCascade({ spaceId, liveSpaces, historyEvents
 
   // Case 3: no restore record available
   return 'blocked';
+}
+
+// ─── History event subject labels ─────────────────────────────────────────────
+//
+// KAL-313 follow-up: RevisionsPanel previously rendered "Annotation: <id>" for
+// ANY event with an annotation_id — including space_deleted (where the id is
+// the space UUID) and region_deleted (region UUID). Label by event type.
+
+/**
+ * Human-readable subject line for a history event's expanded detail.
+ * Returns null when there is nothing meaningful to show.
+ *
+ * @param {object} event  document-history event row
+ * @returns {string|null}
+ */
+export function describeHistoryEventSubject(event) {
+  if (!event) return null;
+  const payload = event.payload || {};
+  if (event.event_type === 'space_deleted') {
+    const name = payload.spaceName ?? payload.restoreAction?.spaceName;
+    if (name) return `Space: "${name}"`;
+    const spaceId = payload.spaceId || event.annotation_id;
+    return spaceId ? `Space: ${spaceId}` : 'Space';
+  }
+  if (event.event_type === 'region_deleted') {
+    const spaceName = payload.spaceName ?? payload.restoreAction?.spaceName;
+    return spaceName ? `Region in "${spaceName}"` : 'Region in a space';
+  }
+  if (event.event_type === 'annotations_bulk_deleted') return null;
+  return event.annotation_id ? `Annotation: ${event.annotation_id}` : null;
 }

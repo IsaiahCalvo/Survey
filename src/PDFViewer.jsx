@@ -108,6 +108,8 @@ import {
   buildAnnotationRestoreAction,
   buildSpaceDeleteHistoryRow,
   isSpaceRestoreAction,
+  applySpaceRestore,
+  applyRegionRestoreToSpaces,
   resolveRegionRestoreCascade,
 } from './services/annotationTrashHistory';
 // KAL-307: server-minted workbook registration (one live workbook per survey).
@@ -21899,6 +21901,29 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     yjsUndoManager
   ]);
 
+  // KAL-313: Space restore — re-inserts a deleted space into live spaces state
+  // exactly as captured at delete time (full object incl. assignedPages).
+  // Called by handleRestoreHistoryActivity (standalone space_deleted entry) and
+  // handleCascadeRestoreRegion (cascade confirm path).
+  // DECLARATION ORDER: must stay ABOVE handleRestoreHistoryActivity — that
+  // callback lists it in its dep array (TDZ crash otherwise).
+  const handleRestoreSpace = useCallback((spaceRestoreAction) => {
+    if (!isSpaceRestoreAction(spaceRestoreAction)) {
+      return { ok: false, reason: 'restore-unavailable' };
+    }
+    const liveSpaces = spacesRef.current || [];
+    // Idempotent: if space already exists (restored via another path), no-op.
+    if (liveSpaces.some((s) => s.id === spaceRestoreAction.spaceId)) {
+      return { ok: true, alreadyPresent: true };
+    }
+    const restoredAt = new Date().toISOString();
+    setSpaces((prev) => {
+      const result = applySpaceRestore(prev, spaceRestoreAction, { restoredAt });
+      return result ? result.spaces : prev;
+    });
+    return { ok: true };
+  }, []);
+
   const handleRestoreHistoryActivity = useCallback((event) => {
     const restoreAction = event?.payload?.restoreAction;
     if (!restoreAction || !restoreAction.type) {
@@ -21958,6 +21983,19 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       return { ok: true, pageNumber: restoreAction.pageNumber ?? null };
     }
 
+    // KAL-313 follow-up: Standalone space restore — a space_deleted entry's
+    // Restore button brings the space back exactly as captured at delete time.
+    // Regions deleted SEPARATELY beforehand stay deleted (they are not in the
+    // delete-time snapshot); their own region_deleted entries become plainly
+    // restorable again once the space exists. Already-present → restore-noop
+    // so the panel shows "already present", not an error.
+    if (isSpaceRestoreAction(restoreAction)) {
+      const spaceResult = handleRestoreSpace(restoreAction);
+      if (!spaceResult?.ok) return { ok: false, reason: 'restore-unavailable' };
+      if (spaceResult.alreadyPresent) return { ok: false, reason: 'restore-noop' };
+      return { ok: true, pageNumber: null };
+    }
+
     // KAL-313: Region restore.
     // Appends the deleted region back to its parent space/page.
     // KAL-313 OQ-4 SUPERSEDED (CONFIRM-CASCADE):
@@ -21969,32 +22007,20 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     // because only the panel has the loaded historyEvents array. We signal which
     // branch is needed via `reason` so the panel can act without a second round-trip.
     if (isRegionRestoreAction(restoreAction)) {
-      const { spaceId, region: restoredRegion, pageNumber: regionPageNumber } = restoreAction;
-      const liveSpaces = spacesRef.current || [];
-      const targetSpace = liveSpaces.find((s) => s.id === spaceId);
-      if (!targetSpace) {
+      // Pure apply logic extracted to applyRegionRestoreToSpaces (node-tested);
+      // this branch only maps its status onto the panel's result contract.
+      const regionResult = applyRegionRestoreToSpaces(spacesRef.current || [], restoreAction);
+      if (regionResult.status === 'space-missing') {
         // Signal the panel — it will resolve cascade vs blocked using historyEvents.
-        return { ok: false, reason: 'cascade-confirm', spaceId };
+        return { ok: false, reason: 'cascade-confirm', spaceId: regionResult.spaceId };
       }
-      // Find the assigned page entry within the space; if missing, create it.
-      const existingPages = Array.isArray(targetSpace.assignedPages) ? targetSpace.assignedPages : [];
-      const pageId = restoredRegion.pageId ?? regionPageNumber;
-      const pageEntry = existingPages.find((p) => String(p.pageId) === String(pageId));
-      let updatedPages;
-      if (pageEntry) {
-        // Idempotent: skip if region already present.
-        const alreadyPresent = (pageEntry.regions || []).some((r) => r.regionId === restoredRegion.regionId);
-        if (alreadyPresent) return { ok: false, reason: 'restore-noop' };
-        updatedPages = existingPages.map((p) =>
-          String(p.pageId) === String(pageId)
-            ? { ...p, regions: [...(p.regions || []), restoredRegion] }
-            : p
-        );
-      } else {
-        updatedPages = [...existingPages, { pageId, regions: [restoredRegion], wholePageIncluded: false }];
-      }
-      handleSpaceUpdate(spaceId, { assignedPages: updatedPages });
-      return { ok: true, pageNumber: Number.isFinite(Number(pageId)) ? Number(pageId) : null };
+      if (regionResult.status === 'noop') return { ok: false, reason: 'restore-noop' };
+      if (regionResult.status !== 'ok') return { ok: false, reason: 'restore-unavailable' };
+      handleSpaceUpdate(restoreAction.spaceId, { assignedPages: regionResult.assignedPages });
+      return {
+        ok: true,
+        pageNumber: Number.isFinite(Number(regionResult.pageId)) ? Number(regionResult.pageId) : null,
+      };
     }
 
     // KAL-313: Bulk annotation delete restore.
@@ -22068,24 +22094,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       restoredFromHistoryEventId: event?.client_event_id || event?.id || null,
     });
     return { ok: true, pageNumber };
-  }, [handleSaveAnnotations, handleSpaceUpdate, pdfId]);
-
-  // KAL-313: Space restore — re-inserts a deleted space into live spaces state.
-  // Called by handleCascadeRestoreRegion (cascade confirm path) after the user
-  // confirms "Restore both?" in RevisionsPanel.
-  const handleRestoreSpace = useCallback((spaceRestoreAction) => {
-    if (!isSpaceRestoreAction(spaceRestoreAction)) {
-      return { ok: false, reason: 'restore-unavailable' };
-    }
-    const { spaceId, space: restoredSpace } = spaceRestoreAction;
-    const liveSpaces = spacesRef.current || [];
-    // Idempotent: if space already exists (restored via another path), no-op.
-    if (liveSpaces.some((s) => s.id === spaceId)) {
-      return { ok: true, alreadyPresent: true };
-    }
-    setSpaces((prev) => [...prev, { ...restoredSpace, restoredAt: new Date().toISOString() }]);
-    return { ok: true };
-  }, []);
+  }, [handleSaveAnnotations, handleSpaceUpdate, handleRestoreSpace, pdfId]);
 
   // KAL-313: Cascade restore — space first, then the orphaned region.
   // Called by RevisionsPanel when the user confirms "Restore both?" after
