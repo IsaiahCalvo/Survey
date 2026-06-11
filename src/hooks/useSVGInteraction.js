@@ -1148,6 +1148,15 @@ export function useSVGInteraction({
 
     const ds = dragStateRef.current;
     if (!ds.active) return;
+
+    // KAL-75 (G4): locked/read-only documents — a drag gesture must never
+    // mutate geometry. Disarm in place: pointer-up then takes its non-drag
+    // (click-style) path and commits nothing. Selection itself stays live
+    // (copy is a read affordance).
+    if (document.body.getAttribute('data-readonly') === 'true') {
+      dragStateRef.current.active = false;
+      return;
+    }
     if (!ds.diagGestureId) {
       const targetObj = annotations?.objects?.[ds.annotationIndex];
       ds.diagGestureId = beginAnnotationGesture({
@@ -3569,6 +3578,10 @@ export function useSVGInteraction({
    */
   const handleHandlePointerDown = useCallback((e, handleId) => {
     e.stopPropagation();
+    // KAL-75 (G4): locked/read-only documents — resize/rotate handles are a
+    // pure transform surface; never arm the gesture. (Whole-shape move is
+    // guarded in handlePointerMove, which all drag modes flow through.)
+    if (document.body.getAttribute('data-readonly') === 'true') return;
     e.target.setPointerCapture(e.pointerId);
 
     // UX: 2026-04-20 — Group transform branch. When 2+ items are selected

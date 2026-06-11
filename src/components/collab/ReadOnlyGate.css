@@ -30,7 +30,14 @@
  * section 3 exactly. */
 body[data-readonly="true"] .tool-toolbar,
 body[data-readonly="true"] .tool-toolbar__button,
-body[data-readonly="true"] .toolbar-button {
+body[data-readonly="true"] .toolbar-button,
+/* KAL-75 (G3): the current AppShell viewer toolbar ships `btn btn-icon` /
+ * `btn btn-md` buttons inside the data-tool-toolbar container, and the
+ * undo/redo cluster carries data-undo-redo-controls — the historical class
+ * names above no longer match anything. Zoom/page-nav/back chrome live
+ * OUTSIDE both containers and stay live (Phase-28 matrix). */
+body[data-readonly="true"] [data-tool-toolbar="true"],
+body[data-readonly="true"] [data-undo-redo-controls="true"] {
   opacity: 0.5;
   pointer-events: none;
   cursor: not-allowed;

@@ -1203,7 +1203,7 @@ export default function App() {
               tool cluster sits centered while Undo/Redo float on the
               left edge. */}
           {bottomToolbarApi && (
-            <div style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <div data-tool-toolbar="true" style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: '6px' }}>
               {/* 2026-05-26: Pan + Select sit in their own absolute block to
                   the LEFT of the centered annotation cluster. This mirrors
                   the right-side tool properties block so the annotation

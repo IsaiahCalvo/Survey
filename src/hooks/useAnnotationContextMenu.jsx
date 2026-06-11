@@ -29,6 +29,10 @@ export function useAnnotationContextMenu() {
   const [annotationContextMenu, setAnnotationContextMenu] = useState(null);
 
   const openAnnotationContextMenu = useCallback((descriptor) => {
+    // KAL-75 (G4): the annotation context menu is an EDIT menu (Cut / Paste /
+    // Delete / z-order call the save path directly) — suppress it entirely on
+    // locked/read-only documents. Keyboard Cmd+C still covers copy.
+    if (document.body.getAttribute('data-readonly') === 'true') return;
     setAnnotationContextMenu(descriptor);
   }, []);
 
@@ -41,6 +45,11 @@ export function useAnnotationContextMenu() {
   // — one listener, always on, covers every page without needing PAL to be mounted.
   useEffect(() => {
     window.__onAnnotationContextMenu = ({ pageNumber, annotationIndex, calloutId, kind, groupIndices, event }) => {
+      // KAL-75 (G4): locked/read-only documents — this menu's items (Cut /
+      // Paste / Delete / z-order) call the save path directly; suppress at
+      // THIS entry too (the route from contextMenuDiagnostics lands here,
+      // not on openAnnotationContextMenu).
+      if (document.body.getAttribute('data-readonly') === 'true') return;
       // Opt-in diagnostic hook for right-click menu routing.
       const snapshot = {
         page: pageNumber,

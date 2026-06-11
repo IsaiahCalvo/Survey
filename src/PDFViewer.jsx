@@ -2860,6 +2860,12 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       const isRedoCombo = isRedoKeyEvent(e);
       if (!isUndoCombo && !isRedoCombo) return;
 
+      // KAL-75 (G2): locked/read-only documents never execute undo/redo. This
+      // execution-site guard is registration-order-proof — the lock banner's
+      // capture blocker registers AFTER this handler (banner mounts on the
+      // lock-state fetch) and therefore cannot preempt it; the guard can.
+      if (document.body.getAttribute('data-readonly') === 'true') return;
+
       // KAL-301 REDO: while the region-edit overlay is mounted,
       // RegionSelectionTool owns Cmd+Z / Cmd+Shift+Z through its own
       // window-capture listener. That listener registers when region edit
@@ -18380,6 +18386,17 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     // Feature Gate: Cloud Sync - still save locally regardless of plan
     if (!pdfId || !pdfFile) return;
 
+    // KAL-75 (G5): LOCKED documents — save is a no-op. Edits are blocked
+    // while locked so there is nothing to persist, but the cloud flush below
+    // would still POST an annotation snapshot, violating the lock contract's
+    // zero-writes guarantee (caught by the e2e zero-writes gate when the
+    // Cmd+S liveness probe landed). Covers Cmd+S and the auto-save call
+    // sites uniformly. Deliberately keyed on data-kal49-locked, NOT
+    // data-readonly: Phase-28 access-revoked mode also sets data-readonly
+    // but explicitly PRESERVES Cmd+S (ReadOnlyGate pass-through, commit
+    // 477fe90e) so kicked-out users can save offline/sync state.
+    if (document.body.getAttribute('data-kal49-locked') === 'true') return;
+
     try {
       // UX 2026-04-27 (Phase 27 follow-up): split the cloud-side save (always
       // automatic) from the PDF-file output (user choice). The cloud-side
@@ -20878,6 +20895,20 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
           activeElement.isContentEditable ||
           activeElement.contentEditable === 'true');
 
+      // KAL-75 (G1): a locked/read-only document must not arm mutating tools
+      // from the keyboard — the read-only CSS layer blocks the toolbar, this
+      // blocks the shortcut path. 'v' (select) stays live: selection is a read
+      // affordance (copy still works). Cmd/Ctrl combos are handled below
+      // (paste is guarded at its own branch; search/zoom/save stay live per
+      // the Phase-28 matrix).
+      if (
+        document.body.getAttribute('data-readonly') === 'true' &&
+        !isFormField && !e.metaKey && !e.ctrlKey && !e.altKey &&
+        ['p', 'h', 'e', 't', 'q', 'l', 'a', 'c'].includes(e.key.toLowerCase())
+      ) {
+        return;
+      }
+
       // 'V' key to switch to Selection Tool (only when no modifiers are pressed)
       if ((e.key === 'v' || e.key === 'V') && !e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey) {
         // Don't trigger if user is focused on an input field, textbox, or callout
@@ -21065,12 +21096,28 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
           // the cursor via elementFromPoint → closest('.e-pv-page-div') →
           // data attribute lookup, matching the resolveAnnotationAt pattern.
           if (key === 'v' && !e.shiftKey && clipboardAnnotation) {
+            // KAL-75 (G1): paste is a mutation — inert on locked/read-only docs.
+            if (document.body.getAttribute('data-readonly') === 'true') return;
             const { x, y } = lastPointerPosRef.current;
             const elAtCursor = document.elementFromPoint(x, y);
-            const pageDiv = elAtCursor?.closest?.('.e-pv-page-div') || null;
-            const palWrap = pageDiv?.querySelector?.('[data-diag-svg-wrapper], [data-pal-root]');
-            const pageNumAttr = palWrap?.getAttribute?.('data-diag-svg-wrapper')
-              || palWrap?.getAttribute?.('data-pal-root');
+            // KAL-75: the annotation overlay tree is portalled OUTSIDE the
+            // Syncfusion page div (app-owned overlay root), so whenever
+            // annotations are rendered the element under the cursor is the
+            // overlay svg and closest('.e-pv-page-div') never matches —
+            // which silently killed Cmd+V paste-at-cursor. Resolve the page
+            // from the overlay wrapper's own page-number attribute first
+            // (the right-click route in contextMenuDiagnostics already uses
+            // this pattern); the page-div path stays as fallback for points
+            // over the bare page.
+            const overlayWrap = elAtCursor?.closest?.('[data-diag-svg-wrapper], [data-pal-root]');
+            let pageNumAttr = overlayWrap?.getAttribute?.('data-diag-svg-wrapper')
+              || overlayWrap?.getAttribute?.('data-pal-root');
+            if (!pageNumAttr) {
+              const pageDiv = elAtCursor?.closest?.('.e-pv-page-div') || null;
+              const palWrap = pageDiv?.querySelector?.('[data-diag-svg-wrapper], [data-pal-root]');
+              pageNumAttr = palWrap?.getAttribute?.('data-diag-svg-wrapper')
+                || palWrap?.getAttribute?.('data-pal-root');
+            }
             const pageNumber = pageNumAttr ? parseInt(pageNumAttr, 10) : null;
             if (pageNumber != null && pasteAnnotationAtRef.current) {
               e.preventDefault();

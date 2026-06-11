@@ -786,6 +786,10 @@ const SVGAnnotationLayer = memo(({
       const annotationIndex = Array.from(selectedIds)[0];
       if (typeof annotationIndex !== 'number') return;
 
+      // KAL-75 (G4): locked/read-only documents — Copy stays live (read
+      // affordance), but Cut and z-order are mutations and must be inert.
+      if (!isCopy && document.body.getAttribute('data-readonly') === 'true') return;
+
       if (isCopy && typeof onCopyAnnotation === 'function') {
         e.preventDefault();
         onCopyAnnotation(pageNumber, annotationIndex);

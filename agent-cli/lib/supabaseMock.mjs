@@ -96,7 +96,7 @@ function applyFilters(rows, q) {
 // could never validate. Schemas list the columns the real tables expose
 // (migrations + the verified read inventory).
 const TABLE_COLUMNS = {
-  documents: ['id', 'user_id', 'project_id', 'archived', 'name', 'file_path', 'file_size', 'page_count', 'created_at', 'updated_at', 'last_opened_at', 'locked_at', 'locked_by', 'tool_preferences', 'annotations_changed_at', 'cutover_completed_at', 'embedded_import_completed_at', 'content_sha256'],
+  documents: ['id', 'user_id', 'project_id', 'archived', 'name', 'file_path', 'file_size', 'page_count', 'created_at', 'updated_at', 'last_opened_at', 'locked_at', 'locked_by', 'locked_label', 'tool_preferences', 'annotations_changed_at', 'cutover_completed_at', 'embedded_import_completed_at', 'content_sha256'],
   projects: ['id', 'user_id', 'name', 'created_at', 'updated_at'],
   templates: ['id', 'user_id', 'name', 'config', 'created_at', 'updated_at'],
   document_collaborators: ['id', 'document_id', 'user_id', 'status', 'role', 'created_at'],
@@ -143,7 +143,11 @@ function wantsCount(headers) {
   return String(headers['prefer'] || '').includes('count=');
 }
 
-export function createSupabaseMock({ fixtures, pdfPath, log = () => {} }) {
+// rpcHandlers (KAL-75): { [fnName]: (body, ctx) => ({ status, json }) } serves
+// POST /rest/v1/rpc/<fnName>. ctx = { fixtures, sniffedUserId } so handlers can
+// mutate fixture rows in place (e.g. the kal49 lock RPCs setting locked_at on
+// the documents row). Unhandled RPC names stay unmatched → run failure.
+export function createSupabaseMock({ fixtures, pdfPath, log = () => {}, rpcHandlers = {} }) {
   const pdfBytes = readFileSync(pdfPath);
 
   const state = {
@@ -165,17 +169,24 @@ export function createSupabaseMock({ fixtures, pdfPath, log = () => {} }) {
 
   // The FIRST query filtering user_id=eq.<uuid> (whichever table — the
   // subscription-tier read usually wins the race) reveals the real logged-in
-  // user; stamp every fixture row so strict column filtering matches.
+  // user; stamp fixture rows so strict column filtering matches. NULL-ONLY
+  // (KAL-75 plan review r1): a fixture row with an explicit user_id is a
+  // deliberately foreign-owned row and must stay foreign — stamping it would
+  // silently convert the non-owner scenario into an owner one. KAL-92 fixtures
+  // ship user_id:null everywhere, so this is behavior-identical for them.
   const subscription = { user_id: null, tier: 'pro', status: 'active', storage_used_bytes: 0 };
+  const stampIfNull = (row) => { if (row.user_id == null) row.user_id = state.userId; };
   const captureUserId = (q) => {
     const f = q.filters.find((x) => x.column === 'user_id' && x.op === 'eq');
     if (f && !state.userId) {
       state.userId = f.value;
       subscription.user_id = state.userId;
-      for (const row of fixtures.documents) row.user_id = state.userId;
-      for (const row of fixtures.templates) row.user_id = state.userId;
+      for (const row of fixtures.documents) stampIfNull(row);
+      for (const row of fixtures.projects ?? []) stampIfNull(row);
+      for (const row of fixtures.templates) stampIfNull(row);
+      for (const row of fixtures.documentCollaborators ?? []) stampIfNull(row);
       for (const doc of Object.values(fixtures.docsById)) {
-        for (const row of doc.annotationRows) row.user_id = state.userId;
+        for (const row of doc.annotationRows) stampIfNull(row);
       }
       log(`[mock] captured user id ${state.userId.slice(0, 8)}…`);
     }
@@ -186,7 +197,7 @@ export function createSupabaseMock({ fixtures, pdfPath, log = () => {} }) {
     documents: (q) => applyFilters(fixtures.documents, q),
     projects: (q) => applyFilters(fixtures.projects, q),
     templates: (q) => applyFilters(fixtures.templates, q),
-    document_collaborators: () => [],
+    document_collaborators: (q) => applyFilters(fixtures.documentCollaborators ?? [], q),
     connected_services: () => [],
     document_presence: () => [],
     document_history_events: () => [],
@@ -223,7 +234,29 @@ export function createSupabaseMock({ fixtures, pdfPath, log = () => {} }) {
     const headers = request.headers();
     if (method === 'OPTIONS') return route.fulfill({ status: 204, headers: { ...CORS } });
 
-    const table = url.pathname.replace(/^.*\/rest\/v1\//, '').split('/')[0];
+    const pathTail = url.pathname.replace(/^.*\/rest\/v1\//, '');
+    const table = pathTail.split('/')[0];
+
+    // ---- RPC routing (KAL-75): POST /rest/v1/rpc/<fn> ----
+    if (table === 'rpc') {
+      const fn = pathTail.split('/')[1] || '';
+      let body = null;
+      try { body = request.postDataJSON(); } catch { body = request.postData(); }
+      const handler = rpcHandlers[fn];
+      if (method !== 'POST' || !handler) {
+        recordUnmatched(method, url, `unhandled rpc ${fn}`);
+        return route.fulfill({ status: 404, headers: jsonHeaders(), body: JSON.stringify({ code: 'PGRST202', message: `Could not find the function public.${fn}` }) });
+      }
+      record({ method: 'RPC', table: `rpc/${fn}`, filters: [], body });
+      log(`[mock] RPC ${fn} (window=${state.window})`);
+      let res;
+      try { res = handler(body, { fixtures, get sniffedUserId() { return state.userId; } }); } catch (err) {
+        recordUnmatched(method, url, `rpc handler threw: ${err?.message}`);
+        return route.fulfill({ status: 500, headers: jsonHeaders(), body: JSON.stringify({ code: 'KAL75_RPC_HANDLER_ERROR', message: String(err?.message) }) });
+      }
+      return route.fulfill({ status: res.status ?? 200, headers: jsonHeaders(), body: JSON.stringify(res.json ?? null) });
+    }
+
     const q = parseQuery(url);
     captureUserId(q);
     validateFilterColumns(table, q);
@@ -281,6 +314,24 @@ export function createSupabaseMock({ fixtures, pdfPath, log = () => {} }) {
     log(`[mock] MUTATION ${method} ${table} (window=${state.window})`);
 
     if (method === 'DELETE' || method === 'PATCH') {
+      // DELETE applies to fixture state (KAL-75 plan review r1 finding 2):
+      // deleteDocumentEverywhere verify-reads the row after deleting and the
+      // hub refetches — a non-applying mock fails the app's own verification
+      // and resurrects the row. Recorded above as always; KAL-92 windows have
+      // zero fixture-table DELETEs, so this is behavior-neutral for it.
+      if (method === 'DELETE') {
+        const arr = {
+          documents: fixtures.documents,
+          projects: fixtures.projects,
+          templates: fixtures.templates,
+          document_collaborators: fixtures.documentCollaborators,
+        }[table];
+        if (arr && q.filters.length) {
+          for (let i = arr.length - 1; i >= 0; i -= 1) {
+            if (q.filters.every((f) => rowMatches(arr[i], f))) arr.splice(i, 1);
+          }
+        }
+      }
       return route.fulfill({ status: 204, headers: jsonHeaders(), body: '' });
     }
     if (method === 'POST') {

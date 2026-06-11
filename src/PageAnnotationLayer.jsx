@@ -3812,6 +3812,13 @@ const PageAnnotationLayer = memo(({
 
   // Context Menu Handlers
   const handleContextMenu = useCallback((e, fabricTarget = null) => {
+    // KAL-75 (G4): locked/read-only documents — this is an EDIT menu (Delete /
+    // Cut / Paste call the save path); suppress it entirely, matching the
+    // PDFViewer-level annotation context menu's guard.
+    if (document.body.getAttribute('data-readonly') === 'true') {
+      if (e && e.preventDefault) e.preventDefault();
+      return;
+    }
     // Only show context menu if not in drawing mode or other active interaction
     if (drawingStateRef.current.isDrawingShape || panInteractionTypeRef.current) {
       return;
