@@ -264,6 +264,43 @@ export async function recordDocumentHistoryEvent(row) {
   return { data: null, error };
 }
 
+// History-audit P2 (2026-06-11): unified write path for DIRECT history rows
+// (space/region/callout/single-annotation/bulk deletes). Records the row AND
+// dispatches the document-history:event-recorded window event so the History
+// panel live-updates instead of waiting for the 10s poll. The debug-pipeline
+// path (pushHistoryDebugEvent in PDFViewer) keeps its own dispatch and must
+// NOT call this — dedupe here guards against accidental double-dispatch of
+// the same client_event_id within a short window.
+const recentlyNotifiedEventIds = new Map(); // client_event_id -> timestamp ms
+const NOTIFY_DEDUPE_WINDOW_MS = 5000;
+
+export function notifyDocumentHistoryEventRecorded(row) {
+  if (typeof window === 'undefined' || !row?.document_id || !row?.client_event_id) return;
+  const now = Date.now();
+  const lastAt = recentlyNotifiedEventIds.get(row.client_event_id);
+  if (lastAt != null && now - lastAt < NOTIFY_DEDUPE_WINDOW_MS) return; // already announced
+  recentlyNotifiedEventIds.set(row.client_event_id, now);
+  // Bounded memory: drop stale entries opportunistically.
+  if (recentlyNotifiedEventIds.size > 200) {
+    for (const [key, at] of recentlyNotifiedEventIds) {
+      if (now - at >= NOTIFY_DEDUPE_WINDOW_MS) recentlyNotifiedEventIds.delete(key);
+    }
+  }
+  try {
+    window.dispatchEvent(new CustomEvent('document-history:event-recorded', {
+      detail: { documentId: row.document_id, row },
+    }));
+  } catch (_err) {
+    // Live-update signal is best-effort; persistence is handled separately.
+  }
+}
+
+export async function recordAndNotifyDocumentHistoryEvent(row) {
+  if (!row?.document_id || !row?.client_event_id) return { data: null, error: null };
+  notifyDocumentHistoryEventRecorded(row);
+  return recordDocumentHistoryEvent(row);
+}
+
 export async function listDocumentHistoryEvents(documentId, { limit = HISTORY_EVENT_LIMIT } = {}) {
   const safeLimit = Math.max(1, Math.min(500, Number(limit) || HISTORY_EVENT_LIMIT));
   const localRows = listLocalHistoryRows(documentId);

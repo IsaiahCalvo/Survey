@@ -1,7 +1,11 @@
 import test from 'node:test';
-import { equal, match } from 'node:assert/strict';
+import { equal, match, deepEqual } from 'node:assert/strict';
 
-import { buildHistoryEventRowFromDebugEvent } from '../src/services/documentHistoryService.js';
+import {
+  buildHistoryEventRowFromDebugEvent,
+  notifyDocumentHistoryEventRecorded,
+  recordAndNotifyDocumentHistoryEvent,
+} from '../src/services/documentHistoryService.js';
 
 const user = {
   id: 'user-1',
@@ -43,6 +47,64 @@ test('document history records restore checkpoints separately from activity edit
   equal(row.is_checkpoint, true);
   equal(row.summary, 'Isaiah Calvo created a callout on page 3');
   match(row.client_event_id, /^history:checkpoint_added:4:/);
+});
+
+// History-audit P2 — unified record+notify wrapper. The service reads
+// `window` at CALL time, so a stub window installed per-test is sufficient.
+function withStubWindow(fn) {
+  const events = [];
+  const storage = new Map();
+  const prevWindow = globalThis.window;
+  globalThis.window = {
+    dispatchEvent: (event) => { events.push(event); return true; },
+    localStorage: {
+      getItem: (k) => (storage.has(k) ? storage.get(k) : null),
+      setItem: (k, v) => storage.set(k, String(v)),
+      removeItem: (k) => storage.delete(k),
+    },
+  };
+  try {
+    return fn(events);
+  } finally {
+    if (prevWindow === undefined) delete globalThis.window;
+    else globalThis.window = prevWindow;
+  }
+}
+
+test('recordAndNotify dispatches document-history:event-recorded with the row', async () => {
+  await withStubWindow(async (events) => {
+    const row = {
+      document_id: 'doc-notify-1',
+      client_event_id: 'evt-notify-1',
+      event_type: 'region_deleted',
+      occurred_at: '2026-06-11T00:00:00.000Z',
+    };
+    await recordAndNotifyDocumentHistoryEvent(row);
+    equal(events.length, 1, 'exactly one live-update event dispatched');
+    equal(events[0].type, 'document-history:event-recorded');
+    equal(events[0].detail.documentId, 'doc-notify-1');
+    deepEqual(events[0].detail.row, row);
+  });
+});
+
+test('notify is idempotent per client_event_id within the dedupe window', () => {
+  withStubWindow((events) => {
+    const row = { document_id: 'doc-notify-2', client_event_id: 'evt-dedupe-1' };
+    notifyDocumentHistoryEventRecorded(row);
+    notifyDocumentHistoryEventRecorded(row); // pipeline-path double-fire simulation
+    equal(events.length, 1, 'duplicate dispatch for the same row must be suppressed');
+    notifyDocumentHistoryEventRecorded({ document_id: 'doc-notify-2', client_event_id: 'evt-dedupe-2' });
+    equal(events.length, 2, 'distinct rows still dispatch');
+  });
+});
+
+test('notify refuses rows missing identity fields', () => {
+  withStubWindow((events) => {
+    notifyDocumentHistoryEventRecorded(null);
+    notifyDocumentHistoryEventRecorded({ document_id: 'doc-only' });
+    notifyDocumentHistoryEventRecorded({ client_event_id: 'evt-only' });
+    equal(events.length, 0);
+  });
 });
 
 test('document history does not expose lower-level Yjs events that duplicate user actions', () => {

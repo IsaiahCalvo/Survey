@@ -43,11 +43,10 @@ test('region journaling lives at COMMIT time inside handleRegionComplete', () =>
   const body = pdfViewerSrc.slice(start, endMarker === -1 ? start + 8000 : endMarker);
   assert.match(body, /removedRegionIds/, 'removedRegionIds diff missing');
   assert.match(body, /buildRegionDeleteHistoryRow\(/, 'commit-time row builder call missing');
-  assert.match(body, /recordDocumentHistoryEvent\(/, 'recordDocumentHistoryEvent call missing');
   assert.match(
     body,
-    /document-history:event-recorded/,
-    'commit-time journaling must dispatch the live-update window event',
+    /recordAndNotifyDocumentHistoryEvent\(/,
+    'commit-time journaling must use the record+notify wrapper (records AND live-updates the panel)',
   );
   // Journaling must be INSIDE the removedRegionIds guard (only fires when
   // regions were actually removed by this commit).
@@ -115,7 +114,11 @@ test('handleSpaceDelete journals a space_deleted row with a restore record', () 
   assert.notEqual(start, -1, 'handleSpaceDelete not found in PDFViewer.jsx');
   const body = pdfViewerSrc.slice(start, start + 2500);
   assert.match(body, /buildSpaceDeleteHistoryRow\(/, 'space row builder call missing');
-  assert.match(body, /recordDocumentHistoryEvent\(/, 'recordDocumentHistoryEvent call missing');
+  assert.match(
+    body,
+    /recordAndNotifyDocumentHistoryEvent\(/,
+    'space delete must use the record+notify wrapper',
+  );
 });
 
 test('immutability trigger + retention sweep cover space_deleted rows', () => {
@@ -152,6 +155,38 @@ test('restore dispatch handles standalone space_deleted entries', () => {
     /alreadyPresent[\s\S]{0,80}?restore-noop/,
     'already-present space must map to restore-noop (panel "already present" message)',
   );
+});
+
+test('standard annotation restore guard treats page 0 as a valid page (== null, not falsy)', () => {
+  const start = pdfViewerSrc.indexOf('const handleRestoreHistoryActivity');
+  const end = pdfViewerSrc.indexOf('const handleCascadeRestoreRegion');
+  const body = pdfViewerSrc.slice(start, end);
+  assert.match(
+    body,
+    /restoreAction\.pageNumber == null/,
+    'page guard must be == null — page 0 must not read as "restore unavailable"',
+  );
+  assert.doesNotMatch(
+    body,
+    /if \(!restoreAction\.pageNumber\)/,
+    'falsy page-number guard must not come back (blocked page-0 restores)',
+  );
+});
+
+test('direct trash writes route through recordAndNotifyDocumentHistoryEvent', () => {
+  // History-audit P2: every direct (non-debug-pipeline) history write must use
+  // the wrapper so the panel live-updates without waiting for the 10s poll.
+  // The ONLY remaining bare recordDocumentHistoryEvent call site in PDFViewer
+  // is the debug pipeline (pushHistoryDebugEvent), which has its own dispatch.
+  const bareCalls = pdfViewerSrc.match(/[^A-Za-z]recordDocumentHistoryEvent\(/g) || [];
+  assert.equal(
+    bareCalls.length,
+    1,
+    `expected exactly 1 bare recordDocumentHistoryEvent call (the debug pipeline), found ${bareCalls.length}`,
+  );
+  const wrapped = pdfViewerSrc.match(/recordAndNotifyDocumentHistoryEvent\(/g) || [];
+  assert.ok(wrapped.length >= 5,
+    'space/region/callout/single-annotation/bulk/survey-marker sites must use the wrapper');
 });
 
 test('declaration order: handleRestoreSpace is declared before handleRestoreHistoryActivity', () => {

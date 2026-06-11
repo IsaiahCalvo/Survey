@@ -57,7 +57,7 @@ import { areViewStatesEqual, normalizeViewState } from './utils/viewState';
 import { arrayMove } from '@dnd-kit/sortable';
 import { buildAnnotationSelectionContextKey, didAnnotationSelectionContextChange } from './utils/annotationSelectionContext';
 import { buildBulkDeletePlan } from './lib/collab/bulkDeletePlan.js';
-import { buildHistoryEventRowFromDebugEvent, recordDocumentHistoryEvent } from './services/documentHistoryService.js';
+import { buildHistoryEventRowFromDebugEvent, recordDocumentHistoryEvent, recordAndNotifyDocumentHistoryEvent } from './services/documentHistoryService.js';
 import { buildPrintableRegularAnnotationPayload, savePDFWithAnnotationsPdfLib, savePDFWithFlattenedRegularAnnotationsForPrint } from './utils/pdfAnnotationsPdfLib';
 import { buildTextSearchDiagLogSection, emitTextSearchDiag } from './utils/textSearchDiag';
 import { canModify, getAnnotationAuthorId } from './lib/collab/permissionScope.js';
@@ -9659,12 +9659,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         const row = buildSurveyMarkerDeleteHistoryRow({
           markerId: id, marker, documentId, userId: user?.id || null, actorName, origin, deletedAt,
         });
-        try {
-          window.dispatchEvent(new CustomEvent('document-history:event-recorded', { detail: { documentId, row } }));
-        } catch {
-          // live refresh is best-effort; persistence still runs
-        }
-        void recordDocumentHistoryEvent(row);
+        void recordAndNotifyDocumentHistoryEvent(row);
       } catch (histErr) {
         console.warn('Failed to record Survey Marker delete history:', histErr);
       }
@@ -10285,7 +10280,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
           actorName,
           deletedAt,
         });
-        if (trashRow) void recordDocumentHistoryEvent(trashRow);
+        if (trashRow) void recordAndNotifyDocumentHistoryEvent(trashRow);
       }
     }
   }, [addHistoryCheckpoint, callouts, documentOwnerId, setCalloutsIfPersistedChanged, user, pdfFile?.id]);
@@ -16739,7 +16734,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
           deletedAt,
         });
         for (const row of rows) {
-          void recordDocumentHistoryEvent(row);
+          void recordAndNotifyDocumentHistoryEvent(row);
         }
       };
 
@@ -17135,7 +17130,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         actorName,
         deletedAt: new Date().toISOString(),
       });
-      if (spaceTrashRow) void recordDocumentHistoryEvent(spaceTrashRow);
+      if (spaceTrashRow) void recordAndNotifyDocumentHistoryEvent(spaceTrashRow);
     }
 
     cascadeDeleteScopedAppState({
@@ -17960,16 +17955,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
             actorName,
             deletedAt,
           });
-          if (trashRow) {
-            void recordDocumentHistoryEvent(trashRow);
-            try {
-              window.dispatchEvent(new CustomEvent('document-history:event-recorded', {
-                detail: { documentId, row: trashRow },
-              }));
-            } catch (_err) {
-              // best-effort live-update signal
-            }
-          }
+          if (trashRow) void recordAndNotifyDocumentHistoryEvent(trashRow);
         }
       }
     }
@@ -21424,7 +21410,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
           deletedAt,
         });
         if (trashRow) {
-          void recordDocumentHistoryEvent(trashRow);
+          void recordAndNotifyDocumentHistoryEvent(trashRow);
         }
       }
     }
@@ -22043,7 +22029,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     }
 
     // Standard annotation restore (fabric:create restoreAction from single-delete trash row).
-    if (!restoreAction.pageNumber) {
+    // History-audit P2: == null (not falsy) — page 0 must not read as "missing page".
+    if (restoreAction.pageNumber == null) {
       return { ok: false, reason: 'restore-unavailable' };
     }
     const current = annotationsByPageRef.current || {};
