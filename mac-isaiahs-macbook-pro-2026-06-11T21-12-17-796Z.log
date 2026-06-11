@@ -1,0 +1,461 @@
+===== SurveyApp Save Log =====
+version:   0.1.46
+runtime:   dev-server
+platform:  desktop
+device:    Mac
+os:        macOS 10.15.7
+screen:    1512x982 @2x
+viewport:  1203x829
+locale:    en-US
+timestamp: 2026-06-11T21:12:17.782Z (6/11/2026, 5:12:17 PM)
+==============================
+[2026-06-11T15:51:22.023Z] [info] http://localhost:5173/src/main.jsx:83 [PreviewDiag] start [object Object]
+[2026-06-11T15:51:22.239Z] [info] http://localhost:5173/src/main.jsx:83 [PreviewDiag] preview [object Object]
+[2026-06-11T15:51:22.464Z] [info] http://localhost:5173/src/main.jsx:83 [PreviewDiag] preview [object Object]
+[2026-06-11T15:51:22.689Z] [info] http://localhost:5173/src/main.jsx:83 [PreviewDiag] preview [object Object]
+[2026-06-11T15:51:22.906Z] [info] http://localhost:5173/src/main.jsx:83 [PreviewDiag] preview [object Object]
+[2026-06-11T15:51:23.359Z] [info] http://localhost:5173/src/main.jsx:83 [PreviewDiag] preview [object Object]
+[2026-06-11T15:51:23.454Z] [info] http://localhost:5173/src/main.jsx:83 [PreviewDiag] pointer release [object Object]
+[2026-06-11T15:51:23.454Z] [info] http://localhost:5173/src/main.jsx:83 [PreviewDiag] final commit [object Object]
+[2026-06-11T15:51:24.222Z] [info] http://localhost:5173/src/main.jsx:83 [PreviewDiag] start [object Object]
+[2026-06-11T15:51:24.222Z] [info] http://localhost:5173/src/main.jsx:83 [PreviewDiag] preview [object Object]
+[2026-06-11T15:51:24.513Z] [info] http://localhost:5173/src/main.jsx:83 [PreviewDiag] preview [object Object]
+[2026-06-11T15:51:24.855Z] [info] http://localhost:5173/src/main.jsx:83 [PreviewDiag] summary callout-commit started, 131 preview frames, 0 sync writes during drag, 0 sync deferrals during drag, 0 backup writes during drag, 1 commit on release, 0 sync pushes after release, 0 backup writes after release [object Object]
+[2026-06-11T15:51:24.964Z] [info] http://localhost:5173/src/main.jsx:83 [PreviewDiag] pointer release [object Object]
+[2026-06-11T15:51:24.964Z] [info] http://localhost:5173/src/main.jsx:83 [PreviewDiag] final commit [object Object]
+[2026-06-11T15:51:26.365Z] [info] http://localhost:5173/src/main.jsx:83 [PreviewDiag] summary callout-commit started, 38 preview frames, 0 sync writes during drag, 0 sync deferrals during drag, 0 backup writes during drag, 1 commit on release, 0 sync pushes after release, 0 backup writes after release [object Object]
+[2026-06-11T15:51:27.743Z] [info] http://localhost:5173/src/main.jsx:83 [PreviewDiag] start [object Object]
+[2026-06-11T15:51:27.743Z] [info] http://localhost:5173/src/main.jsx:83 [PreviewDiag] preview [object Object]
+[2026-06-11T15:51:28.295Z] [info] http://localhost:5173/src/main.jsx:83 [PreviewDiag] preview [object Object]
+[2026-06-11T15:51:28.315Z] [info] http://localhost:5173/src/main.jsx:83 [PreviewDiag] pointer release [object Object]
+[2026-06-11T15:51:28.315Z] [info] http://localhost:5173/src/main.jsx:83 [PreviewDiag] final commit [object Object]
+[2026-06-11T15:51:29.717Z] [info] http://localhost:5173/src/main.jsx:83 [PreviewDiag] summary callout-commit started, 26 preview frames, 0 sync writes during drag, 0 sync deferrals during drag, 0 backup writes during drag, 1 commit on release, 0 sync pushes after release, 0 backup writes after release [object Object]
+[2026-06-11T15:51:30.794Z] [info] http://localhost:5173/src/main.jsx:83 [PreviewDiag] start [object Object]
+[2026-06-11T15:51:30.794Z] [info] http://localhost:5173/src/main.jsx:83 [PreviewDiag] preview [object Object]
+[2026-06-11T15:51:30.842Z] [info] http://localhost:5173/src/main.jsx:83 [PreviewDiag] pointer release [object Object]
+[2026-06-11T15:51:30.842Z] [info] http://localhost:5173/src/main.jsx:83 [PreviewDiag] final commit [object Object]
+[2026-06-11T15:51:32.245Z] [info] http://localhost:5173/src/main.jsx:83 [PreviewDiag] summary callout-commit started, 2 preview frames, 0 sync writes during drag, 0 sync deferrals during drag, 0 backup writes during drag, 1 commit on release, 0 sync pushes after release, 0 backup writes after release [object Object]
+[2026-06-11T15:51:35.591Z] [info] http://localhost:5173/src/main.jsx:83 [CalloutEditCanvasDiag] [object Object]
+[2026-06-11T15:51:35.601Z] [info] http://localhost:5173/src/main.jsx:76 [TextCursorParity] [object Object]
+[2026-06-11T15:51:38.141Z] [info] http://localhost:5173/src/main.jsx:76 [TextCursorParity] [object Object]
+[2026-06-11T15:51:39.084Z] [info] http://localhost:5173/src/main.jsx:83 [InteractionDiag] viewer-pointer-down @ 68114878ms tool=select button=0 target=syncfusion-page
+[2026-06-11T15:51:39.087Z] [info] http://localhost:5173/src/main.jsx:83 [EditCanvas] COMMIT post-convert — text="This text is collidi" fontSize=11 width=169.2203930412371 height=52.90029290795904 scaleX=1 scaleY=1 left=21.889078608247424 top=361.23690112272124
+[2026-06-11T15:51:39.087Z] [info] http://localhost:5173/src/main.jsx:83 [EditCanvas] COMMIT pre-convert — text="This text is collidi" fontSize=11 width=157.22 height=24.86 scaleX=1 scaleY=1 left=38 top=47.95 isNewText=false
+[2026-06-11T15:51:39.137Z] [info] http://localhost:5173/src/main.jsx:83 [InteractionDiag] pointer-end @ 68114931ms tool=select
+[2026-06-11T15:51:41.679Z] [info] http://localhost:5173/src/main.jsx:83 [PreviewDiag] start [object Object]
+[2026-06-11T15:51:41.679Z] [info] http://localhost:5173/src/main.jsx:83 [PreviewDiag] preview [object Object]
+[2026-06-11T15:51:41.721Z] [info] http://localhost:5173/src/main.jsx:83 [PreviewDiag] pointer release [object Object]
+[2026-06-11T15:51:41.721Z] [info] http://localhost:5173/src/main.jsx:83 [PreviewDiag] final commit [object Object]
+[2026-06-11T15:51:41.913Z] [info] http://localhost:5173/src/main.jsx:83 [CalloutEditCanvasDiag] [object Object]
+[2026-06-11T15:51:41.932Z] [info] http://localhost:5173/src/main.jsx:76 [TextCursorParity] [object Object]
+[2026-06-11T15:51:42.085Z] [info] http://localhost:5173/src/main.jsx:83 [InteractionDiag] viewer-pointer-down @ 68117879ms tool=select button=0 target=canvas
+[2026-06-11T15:51:42.098Z] [info] http://localhost:5173/src/main.jsx:76 [TextCursorParity] [object Object]
+[2026-06-11T15:51:42.175Z] [info] http://localhost:5173/src/main.jsx:83 [InteractionDiag] pointer-end @ 68117969ms tool=select
+[2026-06-11T15:51:42.438Z] [info] http://localhost:5173/src/main.jsx:83 [InteractionDiag] viewer-pointer-down @ 68118233ms tool=select button=0 target=canvas
+[2026-06-11T15:51:42.441Z] [info] http://localhost:5173/src/main.jsx:76 [TextCursorParity] [object Object]
+[2026-06-11T15:51:42.496Z] [info] http://localhost:5173/src/main.jsx:83 [InteractionDiag] pointer-end @ 68118290ms tool=select
+[2026-06-11T15:51:42.601Z] [info] http://localhost:5173/src/main.jsx:83 [InteractionDiag] viewer-pointer-down @ 68118396ms tool=select button=0 target=canvas
+[2026-06-11T15:51:42.603Z] [info] http://localhost:5173/src/main.jsx:76 [TextCursorParity] [object Object]
+[2026-06-11T15:51:42.604Z] [info] http://localhost:5173/src/main.jsx:76 [TextCursorParity] [object Object]
+[2026-06-11T15:51:42.661Z] [info] http://localhost:5173/src/main.jsx:83 [InteractionDiag] pointer-end @ 68118455ms tool=select
+[2026-06-11T15:51:42.663Z] [info] http://localhost:5173/src/main.jsx:76 [TextCursorParity] [object Object]
+[2026-06-11T15:51:42.919Z] [info] http://localhost:5173/src/main.jsx:83 [InteractionDiag] viewer-pointer-down @ 68118713ms tool=select button=0 target=canvas
+[2026-06-11T15:51:42.921Z] [info] http://localhost:5173/src/main.jsx:76 [TextCursorParity] [object Object]
+[2026-06-11T15:51:42.985Z] [info] http://localhost:5173/src/main.jsx:83 [InteractionDiag] pointer-end @ 68118779ms tool=select
+[2026-06-11T15:51:43.119Z] [info] http://localhost:5173/src/main.jsx:83 [InteractionDiag] viewer-pointer-down @ 68118913ms tool=select button=0 target=canvas
+[2026-06-11T15:51:43.126Z] [info] http://localhost:5173/src/main.jsx:76 [TextCursorParity] [object Object]
+[2026-06-11T15:51:43.128Z] [info] http://localhost:5173/src/main.jsx:76 [TextCursorParity] [object Object]
+[2026-06-11T15:51:43.145Z] [info] http://localhost:5173/src/main.jsx:83 [InteractionDiag] pointer-end @ 68118939ms tool=select
+[2026-06-11T15:51:43.148Z] [info] http://localhost:5173/src/main.jsx:76 [TextCursorParity] [object Object]
+[2026-06-11T15:51:43.153Z] [info] http://localhost:5173/src/main.jsx:83 [PreviewDiag] summary callout-commit started, 1 preview frames, 0 sync writes during drag, 0 sync deferrals during drag, 0 backup writes during drag, 1 commit on release, 0 sync pushes after release, 0 backup writes after release [object Object]
+[2026-06-11T15:51:43.246Z] [info] http://localhost:5173/src/main.jsx:83 [InteractionDiag] viewer-pointer-down @ 68119040ms tool=select button=0 target=canvas
+[2026-06-11T15:51:43.248Z] [info] http://localhost:5173/src/main.jsx:76 [TextCursorParity] [object Object]
+[2026-06-11T15:51:43.249Z] [info] http://localhost:5173/src/main.jsx:76 [TextCursorParity] [object Object]
+[2026-06-11T15:51:43.336Z] [info] http://localhost:5173/src/main.jsx:83 [InteractionDiag] pointer-end @ 68119131ms tool=select
+[2026-06-11T15:51:45.831Z] [info] http://localhost:5173/src/main.jsx:76 [TextCursorParity] [object Object]
+[2026-06-11T15:51:50.202Z] [info] http://localhost:5173/src/main.jsx:83 [InteractionDiag] viewer-pointer-down @ 68125996ms tool=select button=0 target=canvas
+[2026-06-11T15:51:50.261Z] [info] http://localhost:5173/src/main.jsx:83 [EditCanvas] COMMIT pre-convert — text="This text is collidi" fontSize=12 width=157.22 height=27.12 scaleX=1 scaleY=1 left=38 top=46.99 isNewText=false
+[2026-06-11T15:51:50.261Z] [info] http://localhost:5173/src/main.jsx:83 [EditCanvas] COMMIT post-convert — text="This text is collidi" fontSize=12 width=169.2203930412371 height=52.90029290795904 scaleX=1 scaleY=1 left=21.889078608247424 top=361.2984070698088
+[2026-06-11T15:51:50.292Z] [info] http://localhost:5173/src/main.jsx:83 [InteractionDiag] pointer-end @ 68126078ms tool=select
+[2026-06-11T15:51:52.154Z] [info] http://localhost:5173/src/main.jsx:83 [PreviewDiag] start [object Object]
+[2026-06-11T15:51:52.154Z] [info] http://localhost:5173/src/main.jsx:83 [PreviewDiag] preview [object Object]
+[2026-06-11T15:51:52.402Z] [info] http://localhost:5173/src/main.jsx:83 [PreviewDiag] preview [object Object]
+[2026-06-11T15:51:52.778Z] [info] http://localhost:5173/src/main.jsx:83 [PreviewDiag] preview [object Object]
+[2026-06-11T15:51:53.126Z] [info] http://localhost:5173/src/main.jsx:83 [PreviewDiag] preview [object Object]
+[2026-06-11T15:51:53.335Z] [info] http://localhost:5173/src/main.jsx:83 [PreviewDiag] preview [object Object]
+[2026-06-11T15:51:54.468Z] [info] http://localhost:5173/src/main.jsx:83 [PreviewDiag] preview [object Object]
+[2026-06-11T15:51:55.256Z] [info] http://localhost:5173/src/main.jsx:83 [PreviewDiag] pointer release [object Object]
+[2026-06-11T15:51:55.256Z] [info] http://localhost:5173/src/main.jsx:83 [PreviewDiag] final commit [object Object]
+[2026-06-11T15:51:56.658Z] [info] http://localhost:5173/src/main.jsx:83 [PreviewDiag] summary callout-commit started, 140 preview frames, 0 sync writes during drag, 0 sync deferrals during drag, 0 backup writes during drag, 1 commit on release, 0 sync pushes after release, 0 backup writes after release [object Object]
+[2026-06-11T15:51:56.997Z] [info] http://localhost:5173/src/main.jsx:83 [PreviewDiag] start [object Object]
+[2026-06-11T15:51:56.997Z] [info] http://localhost:5173/src/main.jsx:83 [PreviewDiag] preview [object Object]
+[2026-06-11T15:51:57.039Z] [info] http://localhost:5173/src/main.jsx:83 [PreviewDiag] pointer release [object Object]
+[2026-06-11T15:51:57.039Z] [info] http://localhost:5173/src/main.jsx:83 [PreviewDiag] final commit [object Object]
+[2026-06-11T15:51:58.439Z] [info] http://localhost:5173/src/main.jsx:83 [PreviewDiag] summary callout-commit started, 1 preview frames, 0 sync writes during drag, 0 sync deferrals during drag, 0 backup writes during drag, 1 commit on release, 0 sync pushes after release, 0 backup writes after release [object Object]
+[2026-06-11T15:52:06.138Z] [info] http://localhost:5173/src/main.jsx:83 [PreviewDiag] start [object Object]
+[2026-06-11T15:52:06.138Z] [info] http://localhost:5173/src/main.jsx:83 [PreviewDiag] preview [object Object]
+[2026-06-11T15:52:06.339Z] [info] http://localhost:5173/src/main.jsx:83 [PreviewDiag] preview [object Object]
+[2026-06-11T15:52:06.656Z] [info] http://localhost:5173/src/main.jsx:83 [PreviewDiag] preview [object Object]
+[2026-06-11T15:52:06.939Z] [info] http://localhost:5173/src/main.jsx:83 [PreviewDiag] preview [object Object]
+[2026-06-11T15:52:07.151Z] [info] http://localhost:5173/src/main.jsx:83 [PreviewDiag] pointer release [object Object]
+[2026-06-11T15:52:07.151Z] [info] http://localhost:5173/src/main.jsx:83 [PreviewDiag] final commit [object Object]
+[2026-06-11T15:52:07.574Z] [info] http://localhost:5173/src/main.jsx:83 [PreviewDiag] undo-redo [object Object]
+[2026-06-11T15:52:08.557Z] [info] http://localhost:5173/src/main.jsx:83 [PreviewDiag] summary callout-commit started, 97 preview frames, 0 sync writes during drag, 0 sync deferrals during drag, 0 backup writes during drag, 1 commit on release, 0 sync pushes after release, 0 backup writes after release [object Object]
+[2026-06-11T15:52:13.822Z] [info] http://localhost:5173/src/main.jsx:83 [PreviewDiag] start [object Object]
+[2026-06-11T15:52:13.822Z] [info] http://localhost:5173/src/main.jsx:83 [PreviewDiag] preview [object Object]
+[2026-06-11T15:52:13.916Z] [info] http://localhost:5173/src/main.jsx:83 [PreviewDiag] pointer release [object Object]
+[2026-06-11T15:52:13.916Z] [info] http://localhost:5173/src/main.jsx:83 [PreviewDiag] final commit [object Object]
+[2026-06-11T15:52:15.318Z] [info] http://localhost:5173/src/main.jsx:83 [PreviewDiag] summary callout-commit started, 7 preview frames, 0 sync writes during drag, 0 sync deferrals during drag, 0 backup writes during drag, 1 commit on release, 0 sync pushes after release, 0 backup writes after release [object Object]
+[2026-06-11T15:52:17.303Z] [info] http://localhost:5173/src/main.jsx:83 [InteractionDiag] tool-intent @ 68153098ms requested=counter from=select
+[2026-06-11T15:52:17.312Z] [info] http://localhost:5173/src/main.jsx:83 [InteractionDiag] tool-changed @ 68153107ms from=select to=counter
+[2026-06-11T15:52:19.400Z] [info] http://localhost:5173/src/main.jsx:83 [InteractionDiag] tool-intent @ 68155194ms requested=callout from=counter
+[2026-06-11T15:52:19.403Z] [info] http://localhost:5173/src/main.jsx:83 [InteractionDiag] tool-changed @ 68155197ms from=counter to=callout
+[2026-06-11T15:52:23.586Z] [info] http://localhost:5173/src/main.jsx:83 [CalloutEditCanvasDiag] [object Object]
+[2026-06-11T15:52:23.594Z] [info] http://localhost:5173/src/main.jsx:76 [TextCursorParity] [object Object]
+[2026-06-11T15:52:23.595Z] [info] http://localhost:5173/src/main.jsx:83 [InteractionDiag] tool-changed @ 68159390ms from=callout to=select
+[2026-06-11T15:52:25.586Z] [info] http://localhost:5173/src/main.jsx:76 [TextCursorParity] [object Object]
+[2026-06-11T15:52:26.825Z] [info] http://localhost:5173/src/main.jsx:83 [InteractionDiag] viewer-pointer-down @ 68162620ms tool=select button=0 target=svg-annotation-layer
+[2026-06-11T15:52:26.834Z] [info] http://localhost:5173/src/main.jsx:83 [EditCanvas] COMMIT pre-convert — text="Hi " fontSize=14 width=108 height=15.82 scaleX=1 scaleY=1 left=38 top=42.54 isNewText=false
+[2026-06-11T15:52:26.834Z] [info] http://localhost:5173/src/main.jsx:83 [EditCanvas] COMMIT post-convert — text="Hi " fontSize=14 width=120 height=32 scaleX=1 scaleY=1 left=144.63435218978103 top=76.25170332618026
+[2026-06-11T15:52:26.907Z] [info] http://localhost:5173/src/main.jsx:83 [InteractionDiag] pointer-end @ 68162701ms tool=select
+[2026-06-11T15:52:27.446Z] [info] http://localhost:5173/src/main.jsx:83 [PreviewDiag] start [object Object]
+[2026-06-11T15:52:27.446Z] [info] http://localhost:5173/src/main.jsx:83 [PreviewDiag] preview [object Object]
+[2026-06-11T15:52:27.672Z] [info] http://localhost:5173/src/main.jsx:83 [PreviewDiag] preview [object Object]
+[2026-06-11T15:52:28.345Z] [info] http://localhost:5173/src/main.jsx:83 [PreviewDiag] pointer release [object Object]
+[2026-06-11T15:52:28.348Z] [info] http://localhost:5173/src/main.jsx:83 [PreviewDiag] final commit [object Object]
+[2026-06-11T15:52:29.749Z] [info] http://localhost:5173/src/main.jsx:83 [PreviewDiag] summary callout-commit started, 47 preview frames, 0 sync writes during drag, 0 sync deferrals during drag, 0 backup writes during drag, 1 commit on release, 0 sync pushes after release, 0 backup writes after release [object Object]
+[2026-06-11T15:52:32.165Z] [info] http://localhost:5173/src/main.jsx:83 [PreviewDiag] start [object Object]
+[2026-06-11T15:52:32.165Z] [info] http://localhost:5173/src/main.jsx:83 [PreviewDiag] preview [object Object]
+[2026-06-11T15:52:32.200Z] [info] http://localhost:5173/src/main.jsx:83 [PreviewDiag] pointer release [object Object]
+[2026-06-11T15:52:32.201Z] [info] http://localhost:5173/src/main.jsx:83 [PreviewDiag] final commit [object Object]
+[2026-06-11T15:52:32.440Z] [info] http://localhost:5173/src/main.jsx:83 [CalloutEditCanvasDiag] [object Object]
+[2026-06-11T15:52:32.465Z] [info] http://localhost:5173/src/main.jsx:76 [TextCursorParity] [object Object]
+[2026-06-11T15:52:32.695Z] [info] http://localhost:5173/src/main.jsx:83 [InteractionDiag] viewer-pointer-down @ 68168490ms tool=select button=0 target=canvas
+[2026-06-11T15:52:32.706Z] [info] http://localhost:5173/src/main.jsx:76 [TextCursorParity] [object Object]
+[2026-06-11T15:52:32.739Z] [info] http://localhost:5173/src/main.jsx:83 [InteractionDiag] pointer-end @ 68168534ms tool=select
+[2026-06-11T15:52:33.043Z] [info] http://localhost:5173/src/main.jsx:83 [InteractionDiag] viewer-pointer-down @ 68168837ms tool=select button=0 target=canvas
+[2026-06-11T15:52:33.044Z] [info] http://localhost:5173/src/main.jsx:76 [TextCursorParity] [object Object]
+[2026-06-11T15:52:33.044Z] [info] http://localhost:5173/src/main.jsx:76 [TextCursorParity] [object Object]
+[2026-06-11T15:52:33.108Z] [info] http://localhost:5173/src/main.jsx:83 [InteractionDiag] pointer-end @ 68168902ms tool=select
+[2026-06-11T15:52:33.109Z] [info] http://localhost:5173/src/main.jsx:76 [TextCursorParity] [object Object]
+[2026-06-11T15:52:33.197Z] [info] http://localhost:5173/src/main.jsx:83 [InteractionDiag] viewer-pointer-down @ 68168991ms tool=select button=0 target=canvas
+[2026-06-11T15:52:33.198Z] [info] http://localhost:5173/src/main.jsx:76 [TextCursorParity] [object Object]
+[2026-06-11T15:52:33.279Z] [info] http://localhost:5173/src/main.jsx:83 [InteractionDiag] pointer-end @ 68169074ms tool=select
+[2026-06-11T15:52:33.602Z] [info] http://localhost:5173/src/main.jsx:83 [PreviewDiag] summary callout-commit started, 1 preview frames, 0 sync writes during drag, 0 sync deferrals during drag, 0 backup writes during drag, 1 commit on release, 0 sync pushes after release, 0 backup writes after release [object Object]
+[2026-06-11T15:52:34.546Z] [info] http://localhost:5173/src/main.jsx:76 [TextCursorParity] [object Object]
+[2026-06-11T15:52:45.921Z] [info] http://localhost:5173/src/main.jsx:76 [TextCursorParity] [object Object]
+[2026-06-11T15:52:48.237Z] [info] http://localhost:5173/src/main.jsx:76 [TextCursorParity] [object Object]
+[2026-06-11T15:52:48.593Z] [info] http://localhost:5173/src/main.jsx:76 [TextCursorParity] [object Object]
+[2026-06-11T15:52:49.824Z] [info] http://localhost:5173/src/main.jsx:76 [TextCursorParity] [object Object]
+[2026-06-11T15:52:50.279Z] [info] http://localhost:5173/src/main.jsx:76 [TextCursorParity] [object Object]
+[2026-06-11T15:52:51.034Z] [info] http://localhost:5173/src/main.jsx:83 [InteractionDiag] viewer-pointer-down @ 68186829ms tool=select button=0 target=canvas
+[2026-06-11T15:52:51.092Z] [info] http://localhost:5173/src/main.jsx:83 [EditCanvas] COMMIT pre-convert — text="There seems to be an" fontSize=14 width=108 height=94.92 scaleX=1 scaleY=1 left=38 top=34.45 isNewText=false
+[2026-06-11T15:52:51.092Z] [info] http://localhost:5173/src/main.jsx:83 [EditCanvas] COMMIT post-convert — text="There seems to be an" fontSize=14 width=120 height=94.91999999999999 scaleX=1 scaleY=1 left=144.63435218978103 top=76.21187082829832
+[2026-06-11T15:52:51.140Z] [info] http://localhost:5173/src/main.jsx:83 [InteractionDiag] pointer-end @ 68186928ms tool=select
+[2026-06-11T15:52:52.715Z] [info] http://localhost:5173/src/main.jsx:83 [PreviewDiag] start [object Object]
+[2026-06-11T15:52:52.715Z] [info] http://localhost:5173/src/main.jsx:83 [PreviewDiag] preview [object Object]
+[2026-06-11T15:52:52.935Z] [info] http://localhost:5173/src/main.jsx:83 [PreviewDiag] preview [object Object]
+[2026-06-11T15:52:53.151Z] [info] http://localhost:5173/src/main.jsx:83 [PreviewDiag] preview [object Object]
+[2026-06-11T15:52:53.393Z] [info] http://localhost:5173/src/main.jsx:83 [PreviewDiag] preview [object Object]
+[2026-06-11T15:52:53.456Z] [info] http://localhost:5173/src/main.jsx:83 [PreviewDiag] pointer release [object Object]
+[2026-06-11T15:52:53.456Z] [info] http://localhost:5173/src/main.jsx:83 [PreviewDiag] final commit [object Object]
+[2026-06-11T15:52:54.859Z] [info] http://localhost:5173/src/main.jsx:83 [PreviewDiag] summary callout-commit started, 79 preview frames, 0 sync writes during drag, 0 sync deferrals during drag, 0 backup writes during drag, 1 commit on release, 0 sync pushes after release, 0 backup writes after release [object Object]
+[2026-06-11T15:52:56.658Z] [info] http://localhost:5173/src/main.jsx:83 [PreviewDiag] start [object Object]
+[2026-06-11T15:52:56.659Z] [info] http://localhost:5173/src/main.jsx:83 [PreviewDiag] preview [object Object]
+[2026-06-11T15:52:56.876Z] [info] http://localhost:5173/src/main.jsx:83 [PreviewDiag] preview [object Object]
+[2026-06-11T15:52:57.142Z] [info] http://localhost:5173/src/main.jsx:83 [PreviewDiag] preview [object Object]
+[2026-06-11T15:52:57.534Z] [info] http://localhost:5173/src/main.jsx:83 [PreviewDiag] preview [object Object]
+[2026-06-11T15:52:57.761Z] [info] http://localhost:5173/src/main.jsx:83 [PreviewDiag] pointer release [object Object]
+[2026-06-11T15:52:57.761Z] [info] http://localhost:5173/src/main.jsx:83 [PreviewDiag] final commit [object Object]
+[2026-06-11T15:52:59.162Z] [info] http://localhost:5173/src/main.jsx:83 [PreviewDiag] summary callout-commit started, 87 preview frames, 0 sync writes during drag, 0 sync deferrals during drag, 0 backup writes during drag, 1 commit on release, 0 sync pushes after release, 0 backup writes after release [object Object]
+[2026-06-11T15:53:00.751Z] [info] http://localhost:5173/src/main.jsx:83 [PreviewDiag] start [object Object]
+[2026-06-11T15:53:00.751Z] [info] http://localhost:5173/src/main.jsx:83 [PreviewDiag] preview [object Object]
+[2026-06-11T15:53:00.968Z] [info] http://localhost:5173/src/main.jsx:83 [PreviewDiag] preview [object Object]
+[2026-06-11T15:53:01.585Z] [info] http://localhost:5173/src/main.jsx:83 [PreviewDiag] preview [object Object]
+[2026-06-11T15:53:02.421Z] [info] http://localhost:5173/src/main.jsx:83 [PreviewDiag] final commit [object Object]
+[2026-06-11T15:53:02.421Z] [info] http://localhost:5173/src/main.jsx:83 [PreviewDiag] pointer release [object Object]
+[2026-06-11T15:53:03.355Z] [info] http://localhost:5173/src/main.jsx:83 [CalloutEditCanvasDiag] [object Object]
+[2026-06-11T15:53:03.361Z] [info] http://localhost:5173/src/main.jsx:76 [TextCursorParity] [object Object]
+[2026-06-11T15:53:03.822Z] [info] http://localhost:5173/src/main.jsx:83 [PreviewDiag] summary callout-commit started, 71 preview frames, 0 sync writes during drag, 0 sync deferrals during drag, 0 backup writes during drag, 1 commit on release, 0 sync pushes after release, 0 backup writes after release [object Object]
+[2026-06-11T15:53:04.849Z] [info] http://localhost:5173/src/main.jsx:76 [TextCursorParity] [object Object]
+[2026-06-11T15:53:05.430Z] [info] http://localhost:5173/src/main.jsx:76 [TextCursorParity] [object Object]
+[2026-06-11T15:53:05.609Z] [info] http://localhost:5173/src/main.jsx:76 [TextCursorParity] [object Object]
+[2026-06-11T15:53:06.119Z] [info] http://localhost:5173/src/main.jsx:76 [TextCursorParity] [object Object]
+[2026-06-11T15:53:06.192Z] [info] http://localhost:5173/src/main.jsx:76 [TextCursorParity] [object Object]
+[2026-06-11T15:53:06.277Z] [info] http://localhost:5173/src/main.jsx:76 [TextCursorParity] [object Object]
+[2026-06-11T15:53:06.445Z] [info] http://localhost:5173/src/main.jsx:76 [TextCursorParity] [object Object]
+[2026-06-11T15:53:06.794Z] [info] http://localhost:5173/src/main.jsx:76 [TextCursorParity] [object Object]
+[2026-06-11T15:53:07.986Z] [info] http://localhost:5173/src/main.jsx:76 [TextCursorParity] [object Object]
+[2026-06-11T15:53:08.736Z] [info] http://localhost:5173/src/main.jsx:76 [TextCursorParity] [object Object]
+[2026-06-11T15:53:09.015Z] [info] http://localhost:5173/src/main.jsx:76 [TextCursorParity] [object Object]
+[2026-06-11T15:53:09.871Z] [info] http://localhost:5173/src/main.jsx:76 [TextCursorParity] [object Object]
+[2026-06-11T15:53:11.465Z] [info] http://localhost:5173/src/main.jsx:83 [InteractionDiag] viewer-pointer-down @ 68207259ms tool=select button=0 target=syncfusion-page
+[2026-06-11T15:53:11.476Z] [info] http://localhost:5173/src/main.jsx:83 [EditCanvas] COMMIT pre-convert — text="There seems to be an" fontSize=14 width=180.62 height=63.28 scaleX=1 scaleY=1 left=38 top=48.85 isNewText=false
+[2026-06-11T15:53:11.476Z] [info] http://localhost:5173/src/main.jsx:83 [EditCanvas] COMMIT post-convert — text="There seems to be an" fontSize=14 width=192.62138584247256 height=92.07592741935484 scaleX=1 scaleY=1 left=94.67784670623169 top=8.338665183137007
+[2026-06-11T15:53:11.514Z] [info] http://localhost:5173/src/main.jsx:83 [InteractionDiag] pointer-end @ 68207309ms tool=select
+[2026-06-11T15:53:12.794Z] [info] http://localhost:5173/src/main.jsx:83 [PreviewDiag] start [object Object]
+[2026-06-11T15:53:12.795Z] [info] http://localhost:5173/src/main.jsx:83 [PreviewDiag] preview [object Object]
+[2026-06-11T15:53:13.002Z] [info] http://localhost:5173/src/main.jsx:83 [PreviewDiag] preview [object Object]
+[2026-06-11T15:53:13.909Z] [info] http://localhost:5173/src/main.jsx:83 [PreviewDiag] preview [object Object]
+[2026-06-11T15:53:14.184Z] [info] http://localhost:5173/src/main.jsx:83 [PreviewDiag] preview [object Object]
+[2026-06-11T15:53:14.592Z] [info] http://localhost:5173/src/main.jsx:83 [PreviewDiag] preview [object Object]
+[2026-06-11T15:53:14.952Z] [info] http://localhost:5173/src/main.jsx:83 [PreviewDiag] preview [object Object]
+[2026-06-11T15:53:15.218Z] [info] http://localhost:5173/src/main.jsx:83 [PreviewDiag] preview [object Object]
+[2026-06-11T15:53:15.460Z] [info] http://localhost:5173/src/main.jsx:83 [PreviewDiag] preview [object Object]
+[2026-06-11T15:53:15.761Z] [info] http://localhost:5173/src/main.jsx:83 [PreviewDiag] preview [object Object]
+[2026-06-11T15:53:17.135Z] [info] http://localhost:5173/src/main.jsx:83 [PreviewDiag] preview [object Object]
+[2026-06-11T15:53:17.984Z] [info] http://localhost:5173/src/main.jsx:83 [PreviewDiag] preview [object Object]
+[2026-06-11T15:53:18.401Z] [info] http://localhost:5173/src/main.jsx:83 [PreviewDiag] preview [object Object]
+[2026-06-11T15:53:18.800Z] [info] http://localhost:5173/src/main.jsx:83 [PreviewDiag] preview [object Object]
+[2026-06-11T15:53:19.110Z] [info] http://localhost:5173/src/main.jsx:83 [PreviewDiag] preview [object Object]
+[2026-06-11T15:53:19.393Z] [info] http://localhost:5173/src/main.jsx:83 [PreviewDiag] preview [object Object]
+[2026-06-11T15:53:19.926Z] [info] http://localhost:5173/src/main.jsx:83 [PreviewDiag] preview [object Object]
+[2026-06-11T15:53:20.409Z] [info] http://localhost:5173/src/main.jsx:83 [PreviewDiag] preview [object Object]
+[2026-06-11T15:53:21.795Z] [info] http://localhost:5173/src/main.jsx:83 [PreviewDiag] pointer release [object Object]
+[2026-06-11T15:53:21.796Z] [info] http://localhost:5173/src/main.jsx:83 [PreviewDiag] final commit [object Object]
+[2026-06-11T15:53:22.368Z] [info] http://localhost:5173/src/main.jsx:83 [PreviewDiag] preview [object Object]
+[2026-06-11T15:53:22.368Z] [info] http://localhost:5173/src/main.jsx:83 [PreviewDiag] start [object Object]
+[2026-06-11T15:53:22.576Z] [info] http://localhost:5173/src/main.jsx:83 [PreviewDiag] preview [object Object]
+[2026-06-11T15:53:22.885Z] [info] http://localhost:5173/src/main.jsx:83 [PreviewDiag] preview [object Object]
+[2026-06-11T15:53:23.197Z] [info] http://localhost:5173/src/main.jsx:83 [PreviewDiag] summary callout-commit started, 421 preview frames, 0 sync writes during drag, 0 sync deferrals during drag, 0 backup writes during drag, 1 commit on release, 0 sync pushes after release, 0 backup writes after release [object Object]
+[2026-06-11T15:53:23.601Z] [info] http://localhost:5173/src/main.jsx:83 [PreviewDiag] preview [object Object]
+[2026-06-11T15:53:23.810Z] [info] http://localhost:5173/src/main.jsx:83 [PreviewDiag] preview [object Object]
+[2026-06-11T15:53:24.259Z] [info] http://localhost:5173/src/main.jsx:83 [PreviewDiag] preview [object Object]
+[2026-06-11T15:53:24.593Z] [info] http://localhost:5173/src/main.jsx:83 [PreviewDiag] preview [object Object]
+[2026-06-11T15:53:24.843Z] [info] http://localhost:5173/src/main.jsx:83 [PreviewDiag] preview [object Object]
+[2026-06-11T15:53:25.176Z] [info] http://localhost:5173/src/main.jsx:83 [PreviewDiag] preview [object Object]
+[2026-06-11T15:53:26.275Z] [info] http://localhost:5173/src/main.jsx:83 [PreviewDiag] pointer release [object Object]
+[2026-06-11T15:53:26.276Z] [info] http://localhost:5173/src/main.jsx:83 [PreviewDiag] final commit [object Object]
+[2026-06-11T15:53:27.676Z] [info] http://localhost:5173/src/main.jsx:83 [PreviewDiag] summary callout-commit started, 217 preview frames, 0 sync writes during drag, 0 sync deferrals during drag, 0 backup writes during drag, 1 commit on release, 0 sync pushes after release, 0 backup writes after release [object Object]
+[2026-06-11T15:53:34.343Z] [info] http://localhost:5173/src/main.jsx:83 [InteractionDiag] tool-changed @ 68230136ms from=select to=counter
+[2026-06-11T15:53:37.704Z] [info] http://localhost:5173/src/main.jsx:83 [PreviewDiag] final commit [object Object]
+[2026-06-11T15:53:40.709Z] [info] http://localhost:5173/src/main.jsx:83 [PreviewDiag] final commit [object Object]
+[2026-06-11T15:53:43.754Z] [info] http://localhost:5173/src/main.jsx:83 [InteractionDiag] tool-changed @ 68239548ms from=counter to=pan (pan-active → Syncfusion interactionMode=Pan)
+[2026-06-11T15:53:44.038Z] [info] http://localhost:5173/src/main.jsx:83 [InteractionDiag] viewer-pan-start @ 68239833ms tool=pan button=0 target=syncfusion-page scrollTop=2026 scrollLeft=0
+[2026-06-11T15:53:44.048Z] [info] http://localhost:5173/src/main.jsx:83 [InteractionDiag] pan-drag @ 68239843ms pointerDelta=(0,0) scrollDelta=(0,0) NO-SCROLL (pan gesture not moving container)
+[2026-06-11T15:53:44.147Z] [info] http://localhost:5173/src/main.jsx:83 [InteractionDiag] pan-drag @ 68239941ms pointerDelta=(-29,50) scrollDelta=(27,-53) MOVED
+[2026-06-11T15:53:44.246Z] [info] http://localhost:5173/src/main.jsx:83 [InteractionDiag] pan-drag @ 68240041ms pointerDelta=(-110,143) scrollDelta=(105,-149) MOVED
+[2026-06-11T15:53:44.347Z] [info] http://localhost:5173/src/main.jsx:83 [InteractionDiag] pan-drag @ 68240142ms pointerDelta=(-169,201) scrollDelta=(162,-211) MOVED
+[2026-06-11T15:53:44.446Z] [info] http://localhost:5173/src/main.jsx:83 [InteractionDiag] pan-drag @ 68240241ms pointerDelta=(-181,195) scrollDelta=(170,-207) MOVED
+[2026-06-11T15:53:44.546Z] [info] http://localhost:5173/src/main.jsx:83 [InteractionDiag] pan-drag @ 68240341ms pointerDelta=(-203,184) scrollDelta=(190,-198) MOVED
+[2026-06-11T15:53:44.647Z] [info] http://localhost:5173/src/main.jsx:83 [InteractionDiag] pan-drag @ 68240441ms pointerDelta=(-227,179) scrollDelta=(210,-195) MOVED
+[2026-06-11T15:53:44.746Z] [info] http://localhost:5173/src/main.jsx:83 [InteractionDiag] pan-drag @ 68240540ms pointerDelta=(-254,177) scrollDelta=(234,-195) MOVED
+[2026-06-11T15:53:44.846Z] [info] http://localhost:5173/src/main.jsx:83 [InteractionDiag] pan-drag @ 68240641ms pointerDelta=(-354,154) scrollDelta=(332,-173) MOVED
+[2026-06-11T15:53:44.947Z] [info] http://localhost:5173/src/main.jsx:83 [InteractionDiag] pan-drag @ 68240741ms pointerDelta=(-451,123) scrollDelta=(426,-145) MOVED
+[2026-06-11T15:53:45.388Z] [info] http://localhost:5173/src/main.jsx:83 [InteractionDiag] pan-end @ 68241183ms totalScrollDelta=(426,-145)
+[2026-06-11T15:53:45.924Z] [info] http://localhost:5173/src/main.jsx:83 [InteractionDiag] tool-changed @ 68241719ms from=pan to=counter
+[2026-06-11T15:53:52.657Z] [info] http://localhost:5173/src/main.jsx:83 [PreviewDiag] final commit [object Object]
+[2026-06-11T15:53:55.643Z] [info] http://localhost:5173/src/main.jsx:83 [PreviewDiag] final commit [object Object]
+[2026-06-11T15:53:58.543Z] [info] http://localhost:5173/src/main.jsx:83 [PreviewDiag] final commit [object Object]
+[2026-06-11T15:54:02.347Z] [info] http://localhost:5173/src/main.jsx:83 [PreviewDiag] final commit [object Object]
+[2026-06-11T15:54:04.919Z] [info] http://localhost:5173/src/main.jsx:83 [PreviewDiag] final commit [object Object]
+[2026-06-11T15:54:07.730Z] [info] http://localhost:5173/src/main.jsx:83 [PreviewDiag] final commit [object Object]
+[2026-06-11T15:54:10.012Z] [info] http://localhost:5173/src/main.jsx:83 [PreviewDiag] final commit [object Object]
+[2026-06-11T15:54:12.923Z] [info] http://localhost:5173/src/main.jsx:83 [PreviewDiag] final commit [object Object]
+[2026-06-11T15:54:23.517Z] [info] http://localhost:5173/src/main.jsx:83 [PreviewDiag] final commit [object Object]
+[2026-06-11T15:54:33.896Z] [info] http://localhost:5173/src/main.jsx:83 [PreviewDiag] final commit [object Object]
+[2026-06-11T15:54:40.678Z] [info] http://localhost:5173/src/main.jsx:83 [PDFSaveExport] action start {"actionType":"app-state-save","documentId":"b120352b-b518-4d3f-9aaa-807608270e12","supabaseAnnotationSaveRan":false,"pdfBytesGenerated":false,"localFilesystemWrite":false,"outputPath":null,"annotationCountsByType":{"circle":19,"callout":2},"annotationCountSummary":{"totalObjects":19,"calloutCount":2,"surveyMarkerCount":0,"importedPdfObjects":0,"byType":{"circle":19,"callout":2}},"embeddedPdfNativeAnnotationHandling":"not-applicable-app-state-only","silent":false}
+[2026-06-11T15:54:40.799Z] [info] http://localhost:5173/src/main.jsx:83 [PDFSaveExport] action complete {"actionType":"app-state-save","documentId":"b120352b-b518-4d3f-9aaa-807608270e12","supabaseAnnotationSaveRan":true,"supabaseAnnotationSaveError":null,"pdfBytesGenerated":false,"localFilesystemWrite":false,"outputPath":null,"annotationCountsByType":{"circle":19,"callout":2},"annotationCountSummary":{"totalObjects":19,"calloutCount":2,"surveyMarkerCount":0,"importedPdfObjects":0,"byType":{"circle":19,"callout":2}},"embeddedPdfNativeAnnotationHandling":"not-applicable-app-state-only","localBackupSaved":true,"surveyDataStorageSaveRequested":true,"silent":false}
+[2026-06-11T15:54:43.058Z] [info] http://localhost:5173/src/main.jsx:83 [PDFSaveExport] action start {"actionType":"app-state-save","documentId":"b120352b-b518-4d3f-9aaa-807608270e12","supabaseAnnotationSaveRan":false,"pdfBytesGenerated":false,"localFilesystemWrite":false,"outputPath":null,"annotationCountsByType":{"circle":19,"callout":2},"annotationCountSummary":{"totalObjects":19,"calloutCount":2,"surveyMarkerCount":0,"importedPdfObjects":0,"byType":{"circle":19,"callout":2}},"embeddedPdfNativeAnnotationHandling":"not-applicable-app-state-only","silent":false}
+[2026-06-11T15:54:43.124Z] [info] http://localhost:5173/src/main.jsx:83 [PDFSaveExport] action complete {"actionType":"app-state-save","documentId":"b120352b-b518-4d3f-9aaa-807608270e12","supabaseAnnotationSaveRan":true,"supabaseAnnotationSaveError":null,"pdfBytesGenerated":false,"localFilesystemWrite":false,"outputPath":null,"annotationCountsByType":{"circle":19,"callout":2},"annotationCountSummary":{"totalObjects":19,"calloutCount":2,"surveyMarkerCount":0,"importedPdfObjects":0,"byType":{"circle":19,"callout":2}},"embeddedPdfNativeAnnotationHandling":"not-applicable-app-state-only","localBackupSaved":true,"surveyDataStorageSaveRequested":true,"silent":false}
+[2026-06-11T15:54:44.878Z] [info] http://localhost:5173/src/main.jsx:83 [PrintPanel] window keydown Cmd/Ctrl+P intercepted (no markup)
+[2026-06-11T15:54:44.891Z] [info] http://localhost:5173/src/main.jsx:83 [PrintPanel] OPEN requested via window keydown, withMarkup=false, panel enabled=false, inFlight=false
+[2026-06-11T15:54:44.892Z] [info] http://localhost:5173/src/main.jsx:83 [PrintPanel] disabled — base PDF blob print, file: Darline McKnight - Floor Plans Only.pdf
+[2026-06-11T15:54:45.033Z] [info] http://localhost:5173/src/main.jsx:83 [PrintPanel] blob-URL iframe.print() called
+[2026-06-11T16:19:04.664Z] [verbose] http://localhost:5173/@vite/client:223 [vite] hot updated: /src/components/revisions/RevisionsPanel.jsx
+[2026-06-11T16:19:05.589Z] [verbose] http://localhost:5173/@vite/client:223 [vite] hot updated: /src/RegionSelectionTool.jsx
+[2026-06-11T16:19:06.047Z] [verbose] http://localhost:5173/@vite/client:223 [vite] hot updated: /src/PDFViewer.jsx
+[2026-06-11T16:19:06.971Z] [info] http://localhost:5173/src/main.jsx:83 [OpenTiming] pdfid-resolve @ 69762723ms Darline McKnight - Floor Plans Only.pdf-100719
+[2026-06-11T16:19:06.974Z] [info] http://localhost:5173/src/main.jsx:83 %c[LOAD-TRACE +0ms] ════ OPEN START — Darline McKnight - Floor Plans Only.pdf color:#2196F3;font-weight:bold
+[2026-06-11T16:19:06.976Z] [info] http://localhost:5173/src/main.jsx:83 %c[LOAD-TRACE +1ms] watchdog armed — will check in 20s color:#2196F3;font-weight:bold
+[2026-06-11T16:19:07.020Z] [info] http://localhost:5173/src/main.jsx:83 [OpenTiming] pdfid-resolve @ 69762772ms Darline McKnight - Floor Plans Only.pdf-100719
+[2026-06-11T16:19:07.020Z] [info] http://localhost:5173/src/main.jsx:83 %c[LOAD-TRACE +0ms] ════ OPEN START — Darline McKnight - Floor Plans Only.pdf color:#2196F3;font-weight:bold
+[2026-06-11T16:19:07.020Z] [info] http://localhost:5173/src/main.jsx:83 %c[LOAD-TRACE +0ms] watchdog armed — will check in 20s color:#2196F3;font-weight:bold
+[2026-06-11T16:19:07.026Z] [info] http://localhost:5173/src/main.jsx:83 %c[LOAD-TRACE +6ms] Local file to ArrayBuffer color:#2196F3;font-weight:bold
+[2026-06-11T16:19:07.026Z] [info] http://localhost:5173/src/main.jsx:83 %c[LOAD-TRACE +6ms] configuring pdf.js worker (loadPdfjs) color:#2196F3;font-weight:bold
+[2026-06-11T16:19:07.026Z] [info] http://localhost:5173/src/main.jsx:83 %c[LOAD-TRACE +6ms] pdf.js worker ready color:#2196F3;font-weight:bold
+[2026-06-11T16:19:07.026Z] [info] http://localhost:5173/src/main.jsx:83 %c[LOAD-TRACE +6ms] Starting PDF.js getDocument color:#2196F3;font-weight:bold
+[2026-06-11T16:19:07.047Z] [info] http://localhost:5173/src/main.jsx:83 %c[LOAD-TRACE +27ms] Local file to ArrayBuffer color:#2196F3;font-weight:bold
+[2026-06-11T16:19:07.047Z] [info] http://localhost:5173/src/main.jsx:83 %c[LOAD-TRACE +27ms] configuring pdf.js worker (loadPdfjs) color:#2196F3;font-weight:bold
+[2026-06-11T16:19:07.047Z] [info] http://localhost:5173/src/main.jsx:83 %c[LOAD-TRACE +27ms] pdf.js worker ready color:#2196F3;font-weight:bold
+[2026-06-11T16:19:07.047Z] [info] http://localhost:5173/src/main.jsx:83 %c[LOAD-TRACE +27ms] Starting PDF.js getDocument color:#2196F3;font-weight:bold
+[2026-06-11T16:19:07.232Z] [info] http://localhost:5173/src/main.jsx:83 %c[LOAD-TRACE +212ms] PDF.js document parsed color:#2196F3;font-weight:bold
+[2026-06-11T16:19:07.232Z] [info] http://localhost:5173/src/main.jsx:83 %c[LOAD-TRACE +213ms] Calculating page sizes color:#2196F3;font-weight:bold
+[2026-06-11T16:19:07.251Z] [info] http://localhost:5173/src/main.jsx:83 %c[LOAD-TRACE +231ms] Page sizes calculated (2 pages) color:#2196F3;font-weight:bold
+[2026-06-11T16:19:07.251Z] [info] http://localhost:5173/src/main.jsx:83 %c[LOAD-TRACE +232ms] Importing PDF annotations color:#2196F3;font-weight:bold
+[2026-06-11T16:19:07.252Z] [info] http://localhost:5173/src/main.jsx:83 %c[LOAD-TRACE +232ms] PDF ready for rendering color:#2196F3;font-weight:bold
+[2026-06-11T16:19:07.252Z] [info] http://localhost:5173/src/main.jsx:83 %c[LOAD-TRACE +232ms] ✅ LOAD COMPLETE — lifting the Loading curtain color:#2196F3;font-weight:bold
+[2026-06-11T16:19:07.264Z] [info] http://localhost:5173/src/main.jsx:83 [InteractionDiag] interactive-ready @ 69763017ms (isLoadingPDF→false; loading curtain lifted, toolbar+page now accept input)
+[2026-06-11T16:19:07.271Z] [info] http://localhost:5173/src/main.jsx:83 [OpenTiming] first-marks-painted @ 69763024ms pdfId=Darline McKnight - Floor Plans Only.pdf-100719
+[2026-06-11T16:19:07.301Z] [info] http://localhost:5173/src/main.jsx:83 %c[LOAD-TRACE +281ms] PDF.js document parsed color:#2196F3;font-weight:bold
+[2026-06-11T16:19:08.118Z] [error] http://localhost:5173/src/main.jsx:83 [useAnnotationDoc] open failed cannot add `postgres_changes` callbacks for realtime:anno-b120352b-b518-4d3f-9aaa-807608270e12 after `subscribe()`.
+[2026-06-11T16:52:14.618Z] [error] http://localhost:5173/src/main.jsx:83 [hmr] Failed to reload /src/components/revisions/RevisionsPanel.jsx. This could be due to syntax errors or importing non-existent modules. (see errors above)
+[2026-06-11T16:52:14.631Z] [verbose] http://localhost:5173/@vite/client:223 [vite] hot updated: /src/components/revisions/RevisionsPanel.jsx
+[2026-06-11T16:52:14.631Z] [error] http://localhost:5173/src/main.jsx:83 [hmr] Failed to reload /src/PDFSidebar.jsx. This could be due to syntax errors or importing non-existent modules. (see errors above)
+[2026-06-11T16:52:14.631Z] [verbose] http://localhost:5173/@vite/client:223 [vite] hot updated: /src/PDFSidebar.jsx
+[2026-06-11T16:52:15.895Z] [verbose] http://localhost:5173/@vite/client:223 [vite] hot updated: /src/PDFViewer.jsx
+[2026-06-11T16:52:15.895Z] [verbose] http://localhost:5173/@vite/client:223 [vite] hot updated: /src/PDFViewer.jsx
+[2026-06-11T16:52:16.893Z] [error] http://localhost:5173/src/PDFViewer.jsx?t=1781196734229:13605 Uncaught ReferenceError: documentId is not defined
+[2026-06-11T16:52:16.917Z] [error] http://localhost:5173/src/PDFViewer.jsx?t=1781196734229:13605 Uncaught ReferenceError: documentId is not defined
+[2026-06-11T16:52:16.926Z] [error] http://localhost:5173/src/main.jsx:83 The above error occurred in the <PDFViewer> component:
+
+    at PDFViewer (http://localhost:5173/src/PDFViewer.jsx?t=1781196734229:300:29)
+    at Suspense
+    at YDocProviderInner (http://localhost:5173/src/components/collab/YDocProvider.jsx:135:30)
+    at YDocProvider (http://localhost:5173/src/components/collab/YDocProvider.jsx:119:32)
+    at div
+    at div
+    at div
+    at div
+    at div
+    at App (http://localhost:5173/src/AppShell.jsx?t=1781147029914:53:185)
+    at MSGraphProvider (http://localhost:5173/src/contexts/MSGraphContext.jsx:66:35)
+    at AuthProvider (http://localhost:5173/src/contexts/AuthContext.jsx:50:32)
+    at ErrorBoundary (http://localhost:5173/src/components/ErrorBoundary.jsx:31:5)
+
+React will try to recreate this component tree from scratch using the error boundary you provided, ErrorBoundary.
+[2026-06-11T16:52:16.926Z] [error] http://localhost:5173/src/main.jsx:83 ErrorBoundary caught an error: [object Object] [object Object]
+[2026-06-11T16:53:11.800Z] [verbose] http://localhost:5173/@vite/client:223 [vite] hot updated: /src/components/revisions/RevisionsPanel.jsx
+[2026-06-11T18:22:11.075Z] [info] http://localhost:5173/src/main.jsx:83 [OpenTiming] doc-click @ 77146912ms Package 2 - Rev 4 -- IC.pdf
+[2026-06-11T18:22:12.014Z] [error] http://localhost:5173/src/PDFViewer.jsx?t=1781196734229:13605 Uncaught ReferenceError: documentId is not defined
+[2026-06-11T18:22:12.032Z] [error] http://localhost:5173/src/PDFViewer.jsx?t=1781196734229:13605 Uncaught ReferenceError: documentId is not defined
+[2026-06-11T18:22:12.032Z] [error] http://localhost:5173/src/main.jsx:83 The above error occurred in the <PDFViewer> component:
+
+    at PDFViewer (http://localhost:5173/src/PDFViewer.jsx?t=1781196734229:300:29)
+    at Suspense
+    at YDocProviderInner (http://localhost:5173/src/components/collab/YDocProvider.jsx:135:30)
+    at YDocProvider (http://localhost:5173/src/components/collab/YDocProvider.jsx:119:32)
+    at div
+    at div
+    at div
+    at div
+    at div
+    at App (http://localhost:5173/src/AppShell.jsx?t=1781147029914:53:185)
+    at MSGraphProvider (http://localhost:5173/src/contexts/MSGraphContext.jsx:66:35)
+    at AuthProvider (http://localhost:5173/src/contexts/AuthContext.jsx:50:32)
+    at ErrorBoundary (http://localhost:5173/src/components/ErrorBoundary.jsx:31:5)
+
+React will try to recreate this component tree from scratch using the error boundary you provided, ErrorBoundary.
+[2026-06-11T18:22:12.035Z] [error] http://localhost:5173/src/main.jsx:83 ErrorBoundary caught an error: [object Object] [object Object]
+[2026-06-11T18:22:14.356Z] [verbose] http://localhost:5173/@vite/client:495 [vite] connecting...
+[2026-06-11T18:22:14.368Z] [verbose] http://localhost:5173/@vite/client:618 [vite] connected.
+[2026-06-11T18:22:14.458Z] [info] http://localhost:5173/node_modules/.vite/deps/chunk-DSUIPI7G.js?v=e3347378:28429 %cDownload the React DevTools for a better development experience: https://reactjs.org/link/react-devtools font-weight:bold
+[2026-06-11T18:22:14.499Z] [info] main:0 === did-finish-load (navigation) http://localhost:5173/ ===
+[2026-06-11T18:22:16.277Z] [info] http://localhost:5173/src/main.jsx?t=1781196791680:83 [OpenTiming] doc-click @ 2071ms Package 2 - Rev 4 -- IC.pdf
+[2026-06-11T18:22:17.608Z] [error] http://localhost:5173/src/PDFViewer.jsx?t=1781196734231:13605 Uncaught ReferenceError: documentId is not defined
+[2026-06-11T18:22:17.645Z] [error] http://localhost:5173/src/PDFViewer.jsx?t=1781196734231:13605 Uncaught ReferenceError: documentId is not defined
+[2026-06-11T18:22:17.647Z] [error] http://localhost:5173/src/main.jsx?t=1781196791680:83 The above error occurred in the <PDFViewer> component:
+
+    at PDFViewer (http://localhost:5173/src/PDFViewer.jsx?t=1781196734231:300:29)
+    at Suspense
+    at YDocProviderInner (http://localhost:5173/src/components/collab/YDocProvider.jsx?t=1781147073341:135:30)
+    at YDocProvider (http://localhost:5173/src/components/collab/YDocProvider.jsx?t=1781147073341:119:32)
+    at div
+    at div
+    at div
+    at div
+    at div
+    at App (http://localhost:5173/src/AppShell.jsx?t=1781196791680:53:185)
+    at MSGraphProvider (http://localhost:5173/src/contexts/MSGraphContext.jsx:66:35)
+    at AuthProvider (http://localhost:5173/src/contexts/AuthContext.jsx:50:32)
+    at ErrorBoundary (http://localhost:5173/src/components/ErrorBoundary.jsx:31:5)
+
+React will try to recreate this component tree from scratch using the error boundary you provided, ErrorBoundary.
+[2026-06-11T18:22:17.647Z] [error] http://localhost:5173/src/main.jsx?t=1781196791680:83 ErrorBoundary caught an error: [object Object] [object Object]
+[2026-06-11T18:22:18.757Z] [warning] http://localhost:5173/src/main.jsx?t=1781196791680:83 [crdtBackfill] cutover sealed but Y.Map < legacy count — re-running import loop to recover {"yMapSize":0,"legacyCount":0}
+[2026-06-11T18:22:18.926Z] [verbose] http://localhost:5173/@vite/client:495 [vite] connecting...
+[2026-06-11T18:22:18.934Z] [verbose] http://localhost:5173/@vite/client:618 [vite] connected.
+[2026-06-11T18:22:18.982Z] [info] http://localhost:5173/node_modules/.vite/deps/chunk-DSUIPI7G.js?v=e3347378:28429 %cDownload the React DevTools for a better development experience: https://reactjs.org/link/react-devtools font-weight:bold
+[2026-06-11T18:22:19.011Z] [info] main:0 === did-finish-load (navigation) http://localhost:5173/ ===
+[2026-06-11T21:02:46.515Z] [verbose] http://localhost:5173/@vite/client:495 [vite] connecting...
+[2026-06-11T21:02:46.552Z] [verbose] http://localhost:5173/@vite/client:618 [vite] connected.
+[2026-06-11T21:02:46.703Z] [info] http://localhost:5173/node_modules/.vite/deps/chunk-DSUIPI7G.js?v=e3347378:28429 %cDownload the React DevTools for a better development experience: https://reactjs.org/link/react-devtools font-weight:bold
+[2026-06-11T21:02:46.856Z] [info] main:0 === did-finish-load (navigation) http://localhost:5173/ ===
+[2026-06-11T21:02:50.375Z] [info] http://localhost:5173/src/main.jsx?t=1781196791680:83 [OpenTiming] doc-click @ 4006ms sync-test.pdf
+[2026-06-11T21:02:51.124Z] [error] http://localhost:5173/src/PDFViewer.jsx?t=1781196734231:13605 Uncaught ReferenceError: documentId is not defined
+[2026-06-11T21:02:51.142Z] [error] http://localhost:5173/src/PDFViewer.jsx?t=1781196734231:13605 Uncaught ReferenceError: documentId is not defined
+[2026-06-11T21:02:51.143Z] [error] http://localhost:5173/src/main.jsx?t=1781196791680:83 The above error occurred in the <PDFViewer> component:
+
+    at PDFViewer (http://localhost:5173/src/PDFViewer.jsx?t=1781196734231:300:29)
+    at Suspense
+    at YDocProviderInner (http://localhost:5173/src/components/collab/YDocProvider.jsx?t=1781147073341:135:30)
+    at YDocProvider (http://localhost:5173/src/components/collab/YDocProvider.jsx?t=1781147073341:119:32)
+    at div
+    at div
+    at div
+    at div
+    at div
+    at App (http://localhost:5173/src/AppShell.jsx?t=1781196791680:53:185)
+    at MSGraphProvider (http://localhost:5173/src/contexts/MSGraphContext.jsx:66:35)
+    at AuthProvider (http://localhost:5173/src/contexts/AuthContext.jsx:50:32)
+    at ErrorBoundary (http://localhost:5173/src/components/ErrorBoundary.jsx:31:5)
+
+React will try to recreate this component tree from scratch using the error boundary you provided, ErrorBoundary.
+[2026-06-11T21:02:51.143Z] [error] http://localhost:5173/src/main.jsx?t=1781196791680:83 ErrorBoundary caught an error: [object Object] [object Object]
+[2026-06-11T21:02:52.510Z] [warning] http://localhost:5173/src/main.jsx?t=1781196791680:83 [crdtBackfill] cutover sealed but Y.Map < legacy count — re-running import loop to recover {"yMapSize":0,"legacyCount":0}
+[2026-06-11T21:05:49.506Z] [verbose] http://localhost:5173/@vite/client:223 [vite] hot updated: /src/PDFViewer.jsx
+[2026-06-11T21:10:02.736Z] [verbose] http://localhost:5173/@vite/client:495 [vite] connecting...
+[2026-06-11T21:10:02.749Z] [verbose] http://localhost:5173/@vite/client:618 [vite] connected.
+[2026-06-11T21:10:02.846Z] [info] http://localhost:5173/node_modules/.vite/deps/chunk-DSUIPI7G.js?v=e3347378:28429 %cDownload the React DevTools for a better development experience: https://reactjs.org/link/react-devtools font-weight:bold
+[2026-06-11T21:10:02.885Z] [info] main:0 === did-finish-load (navigation) http://localhost:5173/ ===
+[2026-06-11T21:10:05.707Z] [info] http://localhost:5173/src/main.jsx?t=1781211948008:83 [OpenTiming] doc-click @ 3081ms sync-test.pdf
+[2026-06-11T21:10:06.162Z] [info] http://localhost:5173/src/main.jsx?t=1781211948008:83 [OpenTiming] pdfid-resolve @ 3536ms sync-test.pdf-2489
+[2026-06-11T21:10:06.164Z] [info] http://localhost:5173/src/main.jsx?t=1781211948008:83 %c[LOAD-TRACE +0ms] ════ OPEN START — sync-test.pdf color:#2196F3;font-weight:bold
+[2026-06-11T21:10:06.165Z] [info] http://localhost:5173/src/main.jsx?t=1781211948008:83 %c[LOAD-TRACE +0ms] watchdog armed — will check in 20s color:#2196F3;font-weight:bold
+[2026-06-11T21:10:06.178Z] [info] http://localhost:5173/src/main.jsx?t=1781211948008:83 %c[LOAD-TRACE +14ms] Local file to ArrayBuffer color:#2196F3;font-weight:bold
+[2026-06-11T21:10:06.178Z] [info] http://localhost:5173/src/main.jsx?t=1781211948008:83 %c[LOAD-TRACE +14ms] pdf.js worker ready color:#2196F3;font-weight:bold
+[2026-06-11T21:10:06.178Z] [info] http://localhost:5173/src/main.jsx?t=1781211948008:83 %c[LOAD-TRACE +14ms] Starting PDF.js getDocument color:#2196F3;font-weight:bold
+[2026-06-11T21:10:06.178Z] [info] http://localhost:5173/src/main.jsx?t=1781211948008:83 %c[LOAD-TRACE +14ms] configuring pdf.js worker (loadPdfjs) color:#2196F3;font-weight:bold
+[2026-06-11T21:10:06.353Z] [info] http://localhost:5173/src/main.jsx?t=1781211948008:83 %c[LOAD-TRACE +189ms] PDF.js document parsed color:#2196F3;font-weight:bold
+[2026-06-11T21:10:06.354Z] [info] http://localhost:5173/src/main.jsx?t=1781211948008:83 %c[LOAD-TRACE +189ms] Calculating page sizes color:#2196F3;font-weight:bold
+[2026-06-11T21:10:06.360Z] [info] http://localhost:5173/src/main.jsx?t=1781211948008:83 %c[LOAD-TRACE +196ms] Page sizes calculated (3 pages) color:#2196F3;font-weight:bold
+[2026-06-11T21:10:06.361Z] [info] http://localhost:5173/src/main.jsx?t=1781211948008:83 %c[LOAD-TRACE +196ms] Importing PDF annotations color:#2196F3;font-weight:bold
+[2026-06-11T21:10:06.361Z] [info] http://localhost:5173/src/main.jsx?t=1781211948008:83 %c[LOAD-TRACE +196ms] ✅ LOAD COMPLETE — lifting the Loading curtain color:#2196F3;font-weight:bold
+[2026-06-11T21:10:06.361Z] [info] http://localhost:5173/src/main.jsx?t=1781211948008:83 %c[LOAD-TRACE +196ms] PDF ready for rendering color:#2196F3;font-weight:bold
+[2026-06-11T21:10:06.368Z] [info] http://localhost:5173/src/main.jsx?t=1781211948008:83 [InteractionDiag] interactive-ready @ 3742ms (isLoadingPDF→false; loading curtain lifted, toolbar+page now accept input)
+[2026-06-11T21:10:06.376Z] [info] http://localhost:5173/src/main.jsx?t=1781211948008:83 [OpenTiming] first-marks-painted @ 3751ms pdfId=sync-test.pdf-2489
+[2026-06-11T21:10:07.734Z] [warning] http://localhost:5173/src/main.jsx?t=1781211948008:83 [crdtBackfill] cutover sealed but Y.Map < legacy count — re-running import loop to recover {"yMapSize":0,"legacyCount":0}
+[2026-06-11T21:10:08.668Z] [info] http://localhost:5173/src/main.jsx?t=1781211948008:83 [TextSearchDiag] document_key_ready {"at":"2026-06-11T21:10:08.667Z","documentKey":"explicit:43c92ebc-8ae9-4aec-bd6d-5281fdfcfe5d:sync-test.pdf-2489:3","numPages":3}
+[2026-06-11T21:10:08.819Z] [info] http://localhost:5173/src/main.jsx?t=1781211948008:83 [PreviewDiag] sync push [object Object]
+[2026-06-11T21:10:08.869Z] [info] http://localhost:5173/src/main.jsx?t=1781211948008:83 [TextSearchDiag] search_clear_empty_query {"at":"2026-06-11T21:10:08.869Z","previousResultCount":0,"previousIndex":-1,"documentKey":"explicit:43c92ebc-8ae9-4aec-bd6d-5281fdfcfe5d:sync-test.pdf-2489:3"}
+[2026-06-11T21:10:46.527Z] [info] http://localhost:5173/src/main.jsx?t=1781211948008:83 [PreviewDiag] undo-redo [object Object]
+[2026-06-11T21:10:48.372Z] [info] http://localhost:5173/src/main.jsx?t=1781211948008:83 [PreviewDiag] undo-redo [object Object]
+[2026-06-11T21:10:48.572Z] [info] http://localhost:5173/src/main.jsx?t=1781211948008:83 [PreviewDiag] undo-redo [object Object]
+[2026-06-11T21:10:48.774Z] [info] http://localhost:5173/src/main.jsx?t=1781211948008:83 [PreviewDiag] undo-redo [object Object]
+[2026-06-11T21:10:48.957Z] [info] http://localhost:5173/src/main.jsx?t=1781211948008:83 [PreviewDiag] undo-redo [object Object]
+[2026-06-11T21:10:49.146Z] [info] http://localhost:5173/src/main.jsx?t=1781211948008:83 [PreviewDiag] undo-redo [object Object]
+[2026-06-11T21:10:49.492Z] [info] http://localhost:5173/src/main.jsx?t=1781211948008:83 [InteractionDiag] viewer-pan-start @ 46865ms tool=pan button=0 target=div scrollTop=0 scrollLeft=0
+[2026-06-11T21:10:49.498Z] [info] http://localhost:5173/src/main.jsx?t=1781211948008:83 [InteractionDiag] pan-drag @ 46871ms pointerDelta=(0,0) scrollDelta=(0,0) NO-SCROLL (pan gesture not moving container)
+[2026-06-11T21:10:49.557Z] [info] http://localhost:5173/src/main.jsx?t=1781211948008:83 [InteractionDiag] pan-end @ 46931ms totalScrollDelta=(0,0) [PAN DID NOTHING]
+[2026-06-11T21:10:50.499Z] [info] http://localhost:5173/src/main.jsx?t=1781211948008:83 [PreviewDiag] undo-redo [object Object]
+[2026-06-11T21:10:50.999Z] [info] http://localhost:5173/src/main.jsx?t=1781211948008:83 [PreviewDiag] undo-redo [object Object]
+[2026-06-11T21:10:51.090Z] [info] http://localhost:5173/src/main.jsx?t=1781211948008:83 [PreviewDiag] undo-redo [object Object]
+[2026-06-11T21:10:51.167Z] [info] http://localhost:5173/src/main.jsx?t=1781211948008:83 [PreviewDiag] undo-redo [object Object]
+[2026-06-11T21:10:51.247Z] [info] http://localhost:5173/src/main.jsx?t=1781211948008:83 [PreviewDiag] undo-redo [object Object]
+[2026-06-11T21:10:51.337Z] [info] http://localhost:5173/src/main.jsx?t=1781211948008:83 [PreviewDiag] undo-redo [object Object]
+[2026-06-11T21:10:51.415Z] [info] http://localhost:5173/src/main.jsx?t=1781211948008:83 [PreviewDiag] undo-redo [object Object]
+[2026-06-11T21:10:51.500Z] [info] http://localhost:5173/src/main.jsx?t=1781211948008:83 [PreviewDiag] undo-redo [object Object]
+[2026-06-11T21:10:51.583Z] [info] http://localhost:5173/src/main.jsx?t=1781211948008:83 [PreviewDiag] undo-redo [object Object]
+[2026-06-11T21:10:51.733Z] [info] http://localhost:5173/src/main.jsx?t=1781211948008:83 [PreviewDiag] undo-redo [object Object]
+[2026-06-11T21:10:51.916Z] [info] http://localhost:5173/src/main.jsx?t=1781211948008:83 [PreviewDiag] undo-redo [object Object]
+[2026-06-11T21:10:52.247Z] [info] http://localhost:5173/src/main.jsx?t=1781211948008:83 [PreviewDiag] undo-redo [object Object]
+[2026-06-11T21:10:52.439Z] [info] http://localhost:5173/src/main.jsx?t=1781211948008:83 [PreviewDiag] undo-redo [object Object]
+[2026-06-11T21:10:52.630Z] [info] http://localhost:5173/src/main.jsx?t=1781211948008:83 [PreviewDiag] undo-redo [object Object]
+[2026-06-11T21:10:52.789Z] [info] http://localhost:5173/src/main.jsx?t=1781211948008:83 [PreviewDiag] undo-redo [object Object]
+[2026-06-11T21:10:52.866Z] [info] http://localhost:5173/src/main.jsx?t=1781211948008:83 [PreviewDiag] undo-redo [object Object]
+[2026-06-11T21:10:53.080Z] [info] http://localhost:5173/src/main.jsx?t=1781211948008:83 [PreviewDiag] undo-redo [object Object]
+[2026-06-11T21:10:53.299Z] [info] http://localhost:5173/src/main.jsx?t=1781211948008:83 [PreviewDiag] undo-redo [object Object]
+[2026-06-11T21:10:53.493Z] [info] http://localhost:5173/src/main.jsx?t=1781211948008:83 [PreviewDiag] undo-redo [object Object]
+[2026-06-11T21:10:53.675Z] [info] http://localhost:5173/src/main.jsx?t=1781211948008:83 [PreviewDiag] undo-redo [object Object]
+[2026-06-11T21:10:53.850Z] [info] http://localhost:5173/src/main.jsx?t=1781211948008:83 [PreviewDiag] undo-redo [object Object]
+[2026-06-11T21:10:54.022Z] [info] http://localhost:5173/src/main.jsx?t=1781211948008:83 [PreviewDiag] undo-redo [object Object]
+[2026-06-11T21:10:54.203Z] [info] http://localhost:5173/src/main.jsx?t=1781211948008:83 [PreviewDiag] undo-redo [object Object]
+[2026-06-11T21:10:54.374Z] [info] http://localhost:5173/src/main.jsx?t=1781211948008:83 [PreviewDiag] undo-redo [object Object]
+[2026-06-11T21:10:54.539Z] [info] http://localhost:5173/src/main.jsx?t=1781211948008:83 [PreviewDiag] undo-redo [object Object]
+[2026-06-11T21:12:12.723Z] [info] :67 [preload] menu:save-log received, forwarding to renderer
+
+
+===== Text Search Diagnostics =====
+[TextSearchDiag] document_key_ready {"at":"2026-06-11T21:10:08.667Z","documentKey":"explicit:43c92ebc-8ae9-4aec-bd6d-5281fdfcfe5d:sync-test.pdf-2489:3","numPages":3}
+[TextSearchDiag] search_clear_empty_query {"at":"2026-06-11T21:10:08.869Z","previousResultCount":0,"previousIndex":-1,"documentKey":"explicit:43c92ebc-8ae9-4aec-bd6d-5281fdfcfe5d:sync-test.pdf-2489:3"}
+===== End Text Search Diagnostics =====
