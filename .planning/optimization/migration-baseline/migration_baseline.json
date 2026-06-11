@@ -1,0 +1,1696 @@
+{
+ "task": "KAL-261",
+ "generated_at": "2026-06-11T14:38:44.892Z",
+ "run": {
+  "host": "cvamwtpsuvxvjdnotbeg.supabase.co",
+  "predicates": "created_at=lte.2026-06-11T14:38:44.892Z; classification: embedded === (fabricObject.isPdfImported === true); effective page = annotation_data.pageNumber ?? page_number (integers only)",
+  "attempt": 1,
+  "snapshot_before": {
+   "total": 53229,
+   "maxUpdatedAt": "2026-06-10T21:32:37.147345+00:00"
+  },
+  "snapshot_after": {
+   "total": 53229,
+   "maxUpdatedAt": "2026-06-10T21:32:37.147345+00:00"
+  },
+  "pages_fetched": 54,
+  "page_batches": [
+   {
+    "first_id": "00018dbe-ca1e-4b66-8e53-6274d54ffafa",
+    "last_id": "04db8ecd-0195-4e3c-af28-0307b77ec84c",
+    "count": 1000
+   },
+   {
+    "first_id": "04e2e72e-4d13-477f-80c7-7b1592c2335b",
+    "last_id": "0997ca51-7724-4105-8404-c98c45d94352",
+    "count": 1000
+   },
+   {
+    "first_id": "0999e5ab-0b0d-4674-a0b4-475d23b42d20",
+    "last_id": "0e682165-940e-4cc2-88f2-a7053c5b2141",
+    "count": 1000
+   },
+   {
+    "first_id": "0e694f58-e29f-44a9-907f-2d0c1441ff93",
+    "last_id": "135d6897-5387-4183-bfad-736c40ce6d1e",
+    "count": 1000
+   },
+   {
+    "first_id": "135f1175-a41a-4259-8c70-b4a427e9bfdb",
+    "last_id": "183d43ac-bd72-4406-9fc4-244923931e3b",
+    "count": 1000
+   },
+   {
+    "first_id": "1842cc34-187f-4783-ac91-63e976dced0a",
+    "last_id": "1cf31514-97a6-49c4-80fa-cc805a657eb9",
+    "count": 1000
+   },
+   {
+    "first_id": "1cf43d34-bdb6-49b0-bada-731144120ac5",
+    "last_id": "22254147-35fa-4dda-aa45-0a2ae150ba04",
+    "count": 1000
+   },
+   {
+    "first_id": "222629e2-bd6e-49ca-a7ff-dab6ea365849",
+    "last_id": "271cdd05-6bc8-42b3-b593-a6a387810cfe",
+    "count": 1000
+   },
+   {
+    "first_id": "271d1536-dc1f-4eda-99df-89139de2a952",
+    "last_id": "2c0d78fd-3eb8-48a4-85ba-66a3208ff0d0",
+    "count": 1000
+   },
+   {
+    "first_id": "2c0d953f-6198-4cd1-96c3-0ac20a689edf",
+    "last_id": "30f884fa-6e0f-4ea5-a688-0da97143e903",
+    "count": 1000
+   },
+   {
+    "first_id": "30faa3d1-4216-4fd7-ad1b-6dbf10ae440f",
+    "last_id": "35bb6afb-4516-4597-8d0c-aec73d3b4394",
+    "count": 1000
+   },
+   {
+    "first_id": "35bc75c9-0722-4197-97b5-b1d9c031a94a",
+    "last_id": "3a730d3c-a824-46fd-a146-aba3852a8aba",
+    "count": 1000
+   },
+   {
+    "first_id": "3a733ac5-203b-4362-8352-0430508fdae6",
+    "last_id": "3f478f9c-b7b9-4350-87f3-fae7478928d9",
+    "count": 1000
+   },
+   {
+    "first_id": "3f48fcce-0570-4372-a5a2-7a60cb7737af",
+    "last_id": "43e643e8-dd0f-4829-8514-d2cb18f5cd33",
+    "count": 1000
+   },
+   {
+    "first_id": "43e692f6-123c-4715-894e-0b4f80f3f0d9",
+    "last_id": "48642ccb-7e2a-49a2-81e7-63a295baf49c",
+    "count": 1000
+   },
+   {
+    "first_id": "48699fa6-ce57-4967-9bdb-55c995061139",
+    "last_id": "4d03e081-b885-4389-a544-83fce0880ffe",
+    "count": 1000
+   },
+   {
+    "first_id": "4d0434fe-96fb-4cb2-8c09-9406e14c6c52",
+    "last_id": "5184afcd-5286-4b23-b40e-666cf2bf7cbf",
+    "count": 1000
+   },
+   {
+    "first_id": "5184dfa3-c0d4-43c3-abac-cef35699fcec",
+    "last_id": "562e7d3e-4f7f-44b7-a262-680b7e136534",
+    "count": 1000
+   },
+   {
+    "first_id": "562eaaa5-f452-4c95-b26c-1bce218dc9bc",
+    "last_id": "5b059ef7-c63d-4f4b-af3c-399f6c44f449",
+    "count": 1000
+   },
+   {
+    "first_id": "5b061ff7-9006-4461-8f2f-66717c38c74b",
+    "last_id": "5fc1649a-8ec5-4691-a203-5a3856c19d89",
+    "count": 1000
+   },
+   {
+    "first_id": "5fc18f81-7ea9-47c4-8e1f-c936e0f519ab",
+    "last_id": "64877218-b528-4c0b-b9bc-9bba97d0e292",
+    "count": 1000
+   },
+   {
+    "first_id": "64880a05-a99c-44df-ad27-b09bfe6163d2",
+    "last_id": "6965d7aa-07a2-4d5e-84f6-8993686bd836",
+    "count": 1000
+   },
+   {
+    "first_id": "696639e5-afe3-410a-ae38-bf0720f00d54",
+    "last_id": "6e7c887f-75cd-4c20-819e-c66febf1c99d",
+    "count": 1000
+   },
+   {
+    "first_id": "6e7f6a43-7d93-446f-a8f3-8095e16c9159",
+    "last_id": "73537d29-f4f9-4666-a638-f810351e9524",
+    "count": 1000
+   },
+   {
+    "first_id": "73537fb9-ce30-45d7-b2cf-43f9bd8049b9",
+    "last_id": "78518e3b-a134-4492-82a4-b95b22f07dc1",
+    "count": 1000
+   },
+   {
+    "first_id": "7851dab6-d874-46a8-8a42-6fd1daf76468",
+    "last_id": "7d6ec9d5-9133-409c-ac58-0f34dd5e6e37",
+    "count": 1000
+   },
+   {
+    "first_id": "7d6fb51d-1757-4f40-8146-6c419810aac4",
+    "last_id": "8227857f-aa16-4e96-a131-606748146544",
+    "count": 1000
+   },
+   {
+    "first_id": "822a407d-4a34-4203-b03b-061d0210dac5",
+    "last_id": "86fbe578-c1f5-4c81-a787-b01c18ef7272",
+    "count": 1000
+   },
+   {
+    "first_id": "86fdafa7-2cd8-47b5-9a8c-c87975d04dfc",
+    "last_id": "8bb75cc3-d62d-4151-a4db-e172e1fe8064",
+    "count": 1000
+   },
+   {
+    "first_id": "8bbc4deb-3371-4543-8025-f73ddcd4587f",
+    "last_id": "90b0a02f-88b9-4ad3-8eb4-eaf2f77ee61d",
+    "count": 1000
+   },
+   {
+    "first_id": "90b2800e-dd45-41ca-bff2-e076be7d0a73",
+    "last_id": "959cc96c-fd6b-461a-961b-2617a76790c6",
+    "count": 1000
+   },
+   {
+    "first_id": "959ee678-2307-489b-9c88-d68da7709579",
+    "last_id": "9a49e32f-c78c-4316-93ae-a32c7e140574",
+    "count": 1000
+   },
+   {
+    "first_id": "9a4b8a75-6a2e-4806-92dd-7007c6f3c963",
+    "last_id": "9f1b534e-bb49-4543-a026-d224cf250dc6",
+    "count": 1000
+   },
+   {
+    "first_id": "9f1b9f26-c7ef-4be0-a281-d4532a91e1dd",
+    "last_id": "a3d014f5-35ea-4abe-bc9d-ed5f2606e788",
+    "count": 1000
+   },
+   {
+    "first_id": "a3d02d2c-bbf4-4425-8949-1f02b323cc77",
+    "last_id": "a8b36cf9-0d3e-4eb7-87b6-02d1bafccd75",
+    "count": 1000
+   },
+   {
+    "first_id": "a8b503f5-c45b-44a1-b056-0f4b0590d9ec",
+    "last_id": "ad94b78a-2207-4eef-9a3d-ca39121df762",
+    "count": 1000
+   },
+   {
+    "first_id": "ad95f083-b025-47a2-b306-ac7a97f66d8e",
+    "last_id": "b256fb1a-c4bc-43ce-b60b-dbfae59d18ca",
+    "count": 1000
+   },
+   {
+    "first_id": "b25795d7-7507-4678-87c1-8114014f27c2",
+    "last_id": "b6f4e703-6436-4679-991f-ea910656e62c",
+    "count": 1000
+   },
+   {
+    "first_id": "b6fb5e73-da76-49af-a6c3-2106c60048fb",
+    "last_id": "bb6af009-72c9-4b67-8841-54392818e77e",
+    "count": 1000
+   },
+   {
+    "first_id": "bb6c07a5-14f8-41c8-a022-65a74deced86",
+    "last_id": "c00f2438-acd2-42fd-bdfd-780afbd8c139",
+    "count": 1000
+   },
+   {
+    "first_id": "c00fe2cb-225d-45b7-ac1a-174341ad33a5",
+    "last_id": "c4d2dda2-d6d8-4153-a5ce-6f8f9f798bcb",
+    "count": 1000
+   },
+   {
+    "first_id": "c4d46196-f6b2-4120-b64d-056b89a62411",
+    "last_id": "c991b753-8383-476c-8916-67dc63ac5959",
+    "count": 1000
+   },
+   {
+    "first_id": "c9925e71-d4d8-4c4c-a306-f5eaf348a6c0",
+    "last_id": "ce73bc4d-7de4-4772-8ec6-6fbd0a7d321a",
+    "count": 1000
+   },
+   {
+    "first_id": "ce744d23-f253-482c-9f9d-0f26e5325f9e",
+    "last_id": "d31542dc-2ff8-461d-8db5-a1a36c0d305f",
+    "count": 1000
+   },
+   {
+    "first_id": "d318f23d-7659-423c-9cde-27afd0e6ae3f",
+    "last_id": "d7fdf7af-3989-4f4c-9c95-711b3cc82898",
+    "count": 1000
+   },
+   {
+    "first_id": "d7feba01-e700-470b-8d46-4e3eb40e48bc",
+    "last_id": "dccfb36a-c6e6-43f5-b10b-c262f19e1f69",
+    "count": 1000
+   },
+   {
+    "first_id": "dcd12718-3e49-44b0-9496-0818b48c545f",
+    "last_id": "e18ce368-2fe2-424f-bb98-c07a373c435a",
+    "count": 1000
+   },
+   {
+    "first_id": "e18ec0f1-5f8b-4612-9cde-4be0dea09c18",
+    "last_id": "e676559c-e5ed-46bb-846d-d512d84660dc",
+    "count": 1000
+   },
+   {
+    "first_id": "e677b43f-b5df-4ce8-9c15-180c3a22164b",
+    "last_id": "eb5bedcd-a367-4443-bb90-c73351cfb7f5",
+    "count": 1000
+   },
+   {
+    "first_id": "eb5c3023-410a-401a-8d6b-6739e88d6a25",
+    "last_id": "f0684f2a-b457-46c3-a527-9517c607e5a2",
+    "count": 1000
+   },
+   {
+    "first_id": "f06a4ef2-09cd-4627-8f89-8a37e32eb2a6",
+    "last_id": "f54492fd-fb12-484c-a2a4-6c7d84a30c69",
+    "count": 1000
+   },
+   {
+    "first_id": "f545ed61-43cd-43b9-b735-10178d2f71a5",
+    "last_id": "fa16a177-3b42-4351-8f9d-28672a77d2d8",
+    "count": 1000
+   },
+   {
+    "first_id": "fa17987f-8747-4885-8d07-94e44e96398c",
+    "last_id": "fee6425e-0e42-4e5e-ad53-32c72c389746",
+    "count": 1000
+   },
+   {
+    "first_id": "fee882ec-fbf0-42a7-ba2d-3d173b79faa7",
+    "last_id": "ffffdb37-17f2-4796-9847-e60519b0196b",
+    "count": 229
+   }
+  ],
+  "output_sha256": {
+   "user_drawn_marks_checkpoint.json": "f486c4de5adf6e6b938f3b168d7f0a3b06366c33ddb47c3bc748a7256cae8d2f",
+   "embedded_dedup_survivors.json": "b022cf128c7b9e2cad658abd3c67d63d6f107ec57f64bb18a765618b8d782f84"
+  }
+ },
+ "totals": {
+  "annotation_rows": 53229,
+  "documents_total": 120,
+  "documents_with_annotations": 68,
+  "user_drawn": 615,
+  "embedded_raw": 52614,
+  "embedded_unique_keys": 10960,
+  "survivor_policy_divergent_keys": 1244
+ },
+ "validation_checks": [
+  {
+   "label": "heavy doc 70dadd86… unique embedded refs",
+   "expected": 3056,
+   "observed": 3056,
+   "pass": true
+  },
+  {
+   "label": "heavy doc 70dadd86… raw embedded rows",
+   "expected": 24449,
+   "observed": 24448,
+   "pass": false
+  },
+  {
+   "label": "total user-drawn marks (~)",
+   "expected": 489,
+   "observed": 615,
+   "pass": false
+  },
+  {
+   "label": "SE-011-ARCH 97f95b32… user-drawn",
+   "expected": 388,
+   "observed": 388,
+   "pass": true
+  },
+  {
+   "label": "Package2-ARCH d30ac66b… user-drawn",
+   "expected": 30,
+   "observed": 30,
+   "pass": true
+  },
+  {
+   "label": "table total at audit time (~, drift expected)",
+   "expected": 53216,
+   "observed": 53229,
+   "pass": true
+  }
+ ],
+ "anomalies": {},
+ "documents": [
+  {
+   "document_id": "70dadd86-35f0-432b-925f-c59e919a4e4d",
+   "name": "Package 2 - Rev 4 -- IC.pdf",
+   "archived": true,
+   "file_size": 8316501,
+   "content_sha256_present": false,
+   "total": 24450,
+   "user_drawn": 2,
+   "embedded_raw": 24448,
+   "embedded_unique": 3056,
+   "embedded_dupe_factor": 8,
+   "survivor_policy_divergent_keys": 748,
+   "by_type": {
+    "ink": 22584,
+    "survey-marker": 1820,
+    "square": 42,
+    "freetext": 4
+   }
+  },
+  {
+   "document_id": "5fa31b86-a0ce-481d-b20c-66be5f2f30fc",
+   "name": "Package 2 - Rev 4 -- IC.pdf",
+   "archived": true,
+   "file_size": 6311068,
+   "content_sha256_present": false,
+   "total": 22105,
+   "user_drawn": 19,
+   "embedded_raw": 22086,
+   "embedded_unique": 3057,
+   "embedded_dupe_factor": 7.22,
+   "survivor_policy_divergent_keys": 0,
+   "by_type": {
+    "ink": 22035,
+    "square": 45,
+    "counter": 2,
+    "line": 8,
+    "circle": 1,
+    "freetext": 10,
+    "callout": 2,
+    "survey-marker": 2
+   }
+  },
+  {
+   "document_id": "d30ac66b-5d2e-4a93-aab3-8fdd84a0af86",
+   "name": "Package 2 - Rev 4 -- IC.pdf",
+   "archived": true,
+   "file_size": 6291605,
+   "content_sha256_present": false,
+   "total": 2431,
+   "user_drawn": 30,
+   "embedded_raw": 2401,
+   "embedded_unique": 2401,
+   "embedded_dupe_factor": 1,
+   "survivor_policy_divergent_keys": 0,
+   "by_type": {
+    "ink": 2401,
+    "square": 6,
+    "survey-marker": 20,
+    "counter": 3,
+    "freetext": 1
+   }
+  },
+  {
+   "document_id": "97f95b32-77b3-4834-a8fc-68f21543eb16",
+   "name": "SE-011 Security Shop Drawing Rev2 - 05.06.25.pdf",
+   "archived": true,
+   "file_size": 26263753,
+   "content_sha256_present": false,
+   "total": 2117,
+   "user_drawn": 388,
+   "embedded_raw": 1729,
+   "embedded_unique": 496,
+   "embedded_dupe_factor": 3.49,
+   "survivor_policy_divergent_keys": 496,
+   "by_type": {
+    "square": 494,
+    "survey-marker": 1574,
+    "callout": 3,
+    "counter": 40,
+    "ink": 5,
+    "polygon": 1
+   }
+  },
+  {
+   "document_id": "00e1cde9-449b-4771-9743-37bd604557a9",
+   "name": "SE-011 Security Shop Drawing Rev2 - 05.06.25.pdf",
+   "archived": true,
+   "file_size": 26261080,
+   "content_sha256_present": false,
+   "total": 546,
+   "user_drawn": 51,
+   "embedded_raw": 495,
+   "embedded_unique": 495,
+   "embedded_dupe_factor": 1,
+   "survivor_policy_divergent_keys": 0,
+   "by_type": {
+    "square": 494,
+    "freetext": 10,
+    "polygon": 1,
+    "survey-marker": 4,
+    "ink": 13,
+    "counter": 13,
+    "line": 5,
+    "circle": 5,
+    "callout": 1
+   }
+  },
+  {
+   "document_id": "eddb45fc-3a0c-49fd-9615-124dd5434d96",
+   "name": "3.pdf",
+   "archived": true,
+   "file_size": 26264537,
+   "content_sha256_present": false,
+   "total": 540,
+   "user_drawn": 0,
+   "embedded_raw": 540,
+   "embedded_unique": 540,
+   "embedded_dupe_factor": 1,
+   "survivor_policy_divergent_keys": 0,
+   "by_type": {
+    "square": 494,
+    "circle": 40,
+    "ink": 5,
+    "polygon": 1
+   }
+  },
+  {
+   "document_id": "21cca3f9-6168-4434-b092-9a30fa9b22ea",
+   "name": "Package 2 - Rev 4 -- IC.pdf",
+   "archived": true,
+   "file_size": 6311068,
+   "content_sha256_present": false,
+   "total": 502,
+   "user_drawn": 2,
+   "embedded_raw": 500,
+   "embedded_unique": 500,
+   "embedded_dupe_factor": 1,
+   "survivor_policy_divergent_keys": 0,
+   "by_type": {
+    "ink": 497,
+    "survey-marker": 2,
+    "square": 2,
+    "freetext": 1
+   }
+  },
+  {
+   "document_id": "b8f0c934-b0d5-49ce-be9d-2d6b3a562df6",
+   "name": "Package 2 - Rev 4 -- IC.pdf",
+   "archived": true,
+   "file_size": 6311068,
+   "content_sha256_present": false,
+   "total": 257,
+   "user_drawn": 0,
+   "embedded_raw": 257,
+   "embedded_unique": 257,
+   "embedded_dupe_factor": 1,
+   "survivor_policy_divergent_keys": 0,
+   "by_type": {
+    "ink": 256,
+    "square": 1
+   }
+  },
+  {
+   "document_id": "18cd6968-d996-4eb0-b2e2-b92e9fe0dc83",
+   "name": "test.pdf",
+   "archived": false,
+   "file_size": 2462,
+   "content_sha256_present": false,
+   "total": 33,
+   "user_drawn": 33,
+   "embedded_raw": 0,
+   "embedded_unique": 0,
+   "embedded_dupe_factor": null,
+   "survivor_policy_divergent_keys": 0,
+   "by_type": {
+    "ink": 20,
+    "line": 12,
+    "freetext": 1
+   }
+  },
+  {
+   "document_id": "43c92ebc-8ae9-4aec-bd6d-5281fdfcfe5d",
+   "name": "sync-test.pdf",
+   "archived": false,
+   "file_size": 2489,
+   "content_sha256_present": false,
+   "total": 17,
+   "user_drawn": 17,
+   "embedded_raw": 0,
+   "embedded_unique": 0,
+   "embedded_dupe_factor": null,
+   "survivor_policy_divergent_keys": 0,
+   "by_type": {
+    "survey-marker": 17
+   }
+  },
+  {
+   "document_id": "1c651784-3037-49ab-843c-1fde344ab3cb",
+   "name": "1.pdf",
+   "archived": true,
+   "file_size": 10612,
+   "content_sha256_present": false,
+   "total": 14,
+   "user_drawn": 14,
+   "embedded_raw": 0,
+   "embedded_unique": 0,
+   "embedded_dupe_factor": null,
+   "survivor_policy_divergent_keys": 0,
+   "by_type": {
+    "line": 2,
+    "ink": 6,
+    "survey-marker": 6
+   }
+  },
+  {
+   "document_id": "484e4280-bca3-4ebe-bde7-d9371da0f528",
+   "name": "test.pdf",
+   "archived": true,
+   "file_size": 2462,
+   "content_sha256_present": false,
+   "total": 11,
+   "user_drawn": 11,
+   "embedded_raw": 0,
+   "embedded_unique": 0,
+   "embedded_dupe_factor": null,
+   "survivor_policy_divergent_keys": 0,
+   "by_type": {
+    "ink": 6,
+    "counter": 1,
+    "survey-marker": 3,
+    "square": 1
+   }
+  },
+  {
+   "document_id": "e0686482-2307-4e3a-9dca-f3debc1fac84",
+   "name": "clickable-link-test.pdf",
+   "archived": false,
+   "file_size": 23183,
+   "content_sha256_present": false,
+   "total": 10,
+   "user_drawn": 3,
+   "embedded_raw": 7,
+   "embedded_unique": 7,
+   "embedded_dupe_factor": 1,
+   "survivor_policy_divergent_keys": 0,
+   "by_type": {
+    "square": 4,
+    "ink": 2,
+    "polygon": 1,
+    "polyline": 1,
+    "counter": 1,
+    "survey-marker": 1
+   }
+  },
+  {
+   "document_id": "b2e7e719-f7fa-4a86-885d-3edd44db54ae",
+   "name": "clickable-link-test.pdf",
+   "archived": true,
+   "file_size": 23183,
+   "content_sha256_present": false,
+   "total": 9,
+   "user_drawn": 1,
+   "embedded_raw": 8,
+   "embedded_unique": 8,
+   "embedded_dupe_factor": 1,
+   "survivor_policy_divergent_keys": 0,
+   "by_type": {
+    "square": 4,
+    "ink": 2,
+    "callout": 1,
+    "polyline": 1,
+    "polygon": 1
+   }
+  },
+  {
+   "document_id": "b4388a09-3ba0-462f-9f3c-1c880e89e138",
+   "name": "Fix19 Live Contract 20260512180210.pdf",
+   "archived": true,
+   "file_size": 1403,
+   "content_sha256_present": false,
+   "total": 8,
+   "user_drawn": 8,
+   "embedded_raw": 0,
+   "embedded_unique": 0,
+   "embedded_dupe_factor": null,
+   "survivor_policy_divergent_keys": 0,
+   "by_type": {
+    "line": 2,
+    "freetext": 1,
+    "ink": 2,
+    "square": 1,
+    "callout": 1,
+    "counter": 1
+   }
+  },
+  {
+   "document_id": "633d23e8-b232-4338-bee5-b723db465663",
+   "name": "Fix19 Live Contract 20260512175410.pdf",
+   "archived": true,
+   "file_size": 1403,
+   "content_sha256_present": false,
+   "total": 8,
+   "user_drawn": 8,
+   "embedded_raw": 0,
+   "embedded_unique": 0,
+   "embedded_dupe_factor": null,
+   "survivor_policy_divergent_keys": 0,
+   "by_type": {
+    "square": 1,
+    "ink": 2,
+    "callout": 1,
+    "freetext": 1,
+    "counter": 1,
+    "line": 2
+   }
+  },
+  {
+   "document_id": "58c80bb3-0ba7-484e-999a-5daec6ba2a88",
+   "name": "Fix19 Live Contract 20260512180438.pdf",
+   "archived": true,
+   "file_size": 1405,
+   "content_sha256_present": false,
+   "total": 8,
+   "user_drawn": 8,
+   "embedded_raw": 0,
+   "embedded_unique": 0,
+   "embedded_dupe_factor": null,
+   "survivor_policy_divergent_keys": 0,
+   "by_type": {
+    "counter": 1,
+    "ink": 2,
+    "square": 1,
+    "callout": 1,
+    "line": 2,
+    "freetext": 1
+   }
+  },
+  {
+   "document_id": "b9bb19b4-62dd-42f5-b78d-b6d8b1c1f71d",
+   "name": "clickable-link-test.pdf",
+   "archived": true,
+   "file_size": 22589,
+   "content_sha256_present": false,
+   "total": 8,
+   "user_drawn": 0,
+   "embedded_raw": 8,
+   "embedded_unique": 8,
+   "embedded_dupe_factor": 1,
+   "survivor_policy_divergent_keys": 0,
+   "by_type": {
+    "ink": 2,
+    "square": 4,
+    "polygon": 1,
+    "polyline": 1
+   }
+  },
+  {
+   "document_id": "61f3fb50-9b9a-4fbb-a751-a538c1eb6ed5",
+   "name": "clickable-link-test.pdf",
+   "archived": true,
+   "file_size": 23183,
+   "content_sha256_present": false,
+   "total": 8,
+   "user_drawn": 0,
+   "embedded_raw": 8,
+   "embedded_unique": 8,
+   "embedded_dupe_factor": 1,
+   "survivor_policy_divergent_keys": 0,
+   "by_type": {
+    "polyline": 1,
+    "square": 4,
+    "ink": 2,
+    "polygon": 1
+   }
+  },
+  {
+   "document_id": "8fbe0394-0300-4d8b-9851-1a942f3d5013",
+   "name": "KAL-bundle-UAT-1779389030144.pdf",
+   "archived": false,
+   "file_size": 1577,
+   "content_sha256_present": false,
+   "total": 7,
+   "user_drawn": 7,
+   "embedded_raw": 0,
+   "embedded_unique": 0,
+   "embedded_dupe_factor": null,
+   "survivor_policy_divergent_keys": 0,
+   "by_type": {
+    "square": 4,
+    "ink": 3
+   }
+  },
+  {
+   "document_id": "cad2c817-3630-4435-b821-1743466a30d9",
+   "name": "Fix19 Survey Region Contract 20260512235459.pdf",
+   "archived": true,
+   "file_size": 1036,
+   "content_sha256_present": false,
+   "total": 5,
+   "user_drawn": 5,
+   "embedded_raw": 0,
+   "embedded_unique": 0,
+   "embedded_dupe_factor": null,
+   "survivor_policy_divergent_keys": 0,
+   "by_type": {
+    "square": 4,
+    "survey-marker": 1
+   }
+  },
+  {
+   "document_id": "d9ec1adb-fff3-4c32-aef0-e9dff54ab7cc",
+   "name": "Fix19 Imported PDF Gap 20260512193929.pdf",
+   "archived": true,
+   "file_size": 1664,
+   "content_sha256_present": false,
+   "total": 3,
+   "user_drawn": 0,
+   "embedded_raw": 3,
+   "embedded_unique": 3,
+   "embedded_dupe_factor": 1,
+   "survivor_policy_divergent_keys": 0,
+   "by_type": {
+    "polyline": 1,
+    "polygon": 1,
+    "ink": 1
+   }
+  },
+  {
+   "document_id": "904eb457-c85d-4fbe-a59f-0240b075376a",
+   "name": "Fix19 Imported PDF Gap 20260512212735.pdf",
+   "archived": true,
+   "file_size": 1664,
+   "content_sha256_present": false,
+   "total": 3,
+   "user_drawn": 0,
+   "embedded_raw": 3,
+   "embedded_unique": 3,
+   "embedded_dupe_factor": 1,
+   "survivor_policy_divergent_keys": 0,
+   "by_type": {
+    "polyline": 1,
+    "polygon": 1,
+    "ink": 1
+   }
+  },
+  {
+   "document_id": "989fd5c5-8bd9-4d35-9880-dc46e4bad47b",
+   "name": "Fix19 Imported PDF Gap 20260512221116.pdf",
+   "archived": true,
+   "file_size": 1664,
+   "content_sha256_present": false,
+   "total": 3,
+   "user_drawn": 0,
+   "embedded_raw": 3,
+   "embedded_unique": 3,
+   "embedded_dupe_factor": 1,
+   "survivor_policy_divergent_keys": 0,
+   "by_type": {
+    "polygon": 1,
+    "polyline": 1,
+    "ink": 1
+   }
+  },
+  {
+   "document_id": "9daa5cd8-e5b6-4feb-bbfe-0b279f06dcc8",
+   "name": "Fix19 Imported PDF Gap 20260512214049.pdf",
+   "archived": true,
+   "file_size": 1664,
+   "content_sha256_present": false,
+   "total": 3,
+   "user_drawn": 0,
+   "embedded_raw": 3,
+   "embedded_unique": 3,
+   "embedded_dupe_factor": 1,
+   "survivor_policy_divergent_keys": 0,
+   "by_type": {
+    "ink": 1,
+    "polyline": 1,
+    "polygon": 1
+   }
+  },
+  {
+   "document_id": "0524f231-11ca-4339-80af-31758aee8557",
+   "name": "Fix19 Imported PDF Gap 20260512215536.pdf",
+   "archived": true,
+   "file_size": 1664,
+   "content_sha256_present": false,
+   "total": 3,
+   "user_drawn": 0,
+   "embedded_raw": 3,
+   "embedded_unique": 3,
+   "embedded_dupe_factor": 1,
+   "survivor_policy_divergent_keys": 0,
+   "by_type": {
+    "polygon": 1,
+    "polyline": 1,
+    "ink": 1
+   }
+  },
+  {
+   "document_id": "7aad296e-6e8e-47e3-8d52-22adafb6993e",
+   "name": "Fix19 Imported PDF Gap 20260512211110.pdf",
+   "archived": true,
+   "file_size": 1664,
+   "content_sha256_present": false,
+   "total": 3,
+   "user_drawn": 0,
+   "embedded_raw": 3,
+   "embedded_unique": 3,
+   "embedded_dupe_factor": 1,
+   "survivor_policy_divergent_keys": 0,
+   "by_type": {
+    "polyline": 1,
+    "polygon": 1,
+    "ink": 1
+   }
+  },
+  {
+   "document_id": "cadf7af7-4b0e-46a0-b836-437bad110c84",
+   "name": "Fix19 Imported PDF Gap 20260512182912.pdf",
+   "archived": true,
+   "file_size": 1664,
+   "content_sha256_present": false,
+   "total": 3,
+   "user_drawn": 0,
+   "embedded_raw": 3,
+   "embedded_unique": 3,
+   "embedded_dupe_factor": 1,
+   "survivor_policy_divergent_keys": 0,
+   "by_type": {
+    "polyline": 2,
+    "polygon": 1
+   }
+  },
+  {
+   "document_id": "a512b172-13aa-4ed1-9408-ff233cfaddde",
+   "name": "Fix19 Imported PDF Gap 20260512190503.pdf",
+   "archived": true,
+   "file_size": 1664,
+   "content_sha256_present": false,
+   "total": 3,
+   "user_drawn": 0,
+   "embedded_raw": 3,
+   "embedded_unique": 3,
+   "embedded_dupe_factor": 1,
+   "survivor_policy_divergent_keys": 0,
+   "by_type": {
+    "polygon": 1,
+    "polyline": 2
+   }
+  },
+  {
+   "document_id": "fd9d0279-c041-4cac-91ca-8734899fc1b9",
+   "name": "Fix19 Imported PDF Gap 20260512190702.pdf",
+   "archived": true,
+   "file_size": 1663,
+   "content_sha256_present": false,
+   "total": 3,
+   "user_drawn": 0,
+   "embedded_raw": 3,
+   "embedded_unique": 3,
+   "embedded_dupe_factor": 1,
+   "survivor_policy_divergent_keys": 0,
+   "by_type": {
+    "polyline": 2,
+    "polygon": 1
+   }
+  },
+  {
+   "document_id": "42083da5-a57f-4171-8de3-10549904584f",
+   "name": "Fix19 Imported PDF Gap 20260512195422.pdf",
+   "archived": true,
+   "file_size": 1664,
+   "content_sha256_present": false,
+   "total": 3,
+   "user_drawn": 0,
+   "embedded_raw": 3,
+   "embedded_unique": 3,
+   "embedded_dupe_factor": 1,
+   "survivor_policy_divergent_keys": 0,
+   "by_type": {
+    "ink": 1,
+    "polyline": 1,
+    "polygon": 1
+   }
+  },
+  {
+   "document_id": "ed3faeb1-7b8c-4e56-b194-4f70f0240178",
+   "name": "Fix19 Imported PDF Gap 20260512231521.pdf",
+   "archived": true,
+   "file_size": 1664,
+   "content_sha256_present": false,
+   "total": 3,
+   "user_drawn": 0,
+   "embedded_raw": 3,
+   "embedded_unique": 3,
+   "embedded_dupe_factor": 1,
+   "survivor_policy_divergent_keys": 0,
+   "by_type": {
+    "polygon": 1,
+    "polyline": 1,
+    "ink": 1
+   }
+  },
+  {
+   "document_id": "04a7a27c-4c12-461d-aafd-2c37a32360d9",
+   "name": "Fix19 Imported PDF Gap 20260512182738.pdf",
+   "archived": true,
+   "file_size": 1664,
+   "content_sha256_present": false,
+   "total": 3,
+   "user_drawn": 0,
+   "embedded_raw": 3,
+   "embedded_unique": 3,
+   "embedded_dupe_factor": 1,
+   "survivor_policy_divergent_keys": 0,
+   "by_type": {
+    "polyline": 2,
+    "polygon": 1
+   }
+  },
+  {
+   "document_id": "2dee093e-bf3b-4ba3-9b29-a03fbfe508a4",
+   "name": "Fix19 Imported PDF Gap 20260512190850.pdf",
+   "archived": true,
+   "file_size": 1664,
+   "content_sha256_present": false,
+   "total": 3,
+   "user_drawn": 0,
+   "embedded_raw": 3,
+   "embedded_unique": 3,
+   "embedded_dupe_factor": 1,
+   "survivor_policy_divergent_keys": 0,
+   "by_type": {
+    "polyline": 2,
+    "polygon": 1
+   }
+  },
+  {
+   "document_id": "6274fd2b-48c3-452a-9673-bad1b11a0dc2",
+   "name": "Fix19 Imported PDF Gap 20260512220046.pdf",
+   "archived": true,
+   "file_size": 1664,
+   "content_sha256_present": false,
+   "total": 3,
+   "user_drawn": 0,
+   "embedded_raw": 3,
+   "embedded_unique": 3,
+   "embedded_dupe_factor": 1,
+   "survivor_policy_divergent_keys": 0,
+   "by_type": {
+    "polyline": 1,
+    "ink": 1,
+    "polygon": 1
+   }
+  },
+  {
+   "document_id": "0bb1efd2-1b66-47b2-8883-c7e3c0ebda8e",
+   "name": "Fix19 Imported PDF Gap 20260512195801.pdf",
+   "archived": true,
+   "file_size": 1664,
+   "content_sha256_present": false,
+   "total": 3,
+   "user_drawn": 0,
+   "embedded_raw": 3,
+   "embedded_unique": 3,
+   "embedded_dupe_factor": 1,
+   "survivor_policy_divergent_keys": 0,
+   "by_type": {
+    "polygon": 1,
+    "ink": 1,
+    "polyline": 1
+   }
+  },
+  {
+   "document_id": "483f6e9d-03ad-482b-a25f-22593e1213d7",
+   "name": "Fix19 Imported PDF Gap 20260512220558.pdf",
+   "archived": true,
+   "file_size": 1664,
+   "content_sha256_present": false,
+   "total": 3,
+   "user_drawn": 0,
+   "embedded_raw": 3,
+   "embedded_unique": 3,
+   "embedded_dupe_factor": 1,
+   "survivor_policy_divergent_keys": 0,
+   "by_type": {
+    "polygon": 1,
+    "ink": 1,
+    "polyline": 1
+   }
+  },
+  {
+   "document_id": "1728f636-3f48-4353-b7e3-f711f7eaba45",
+   "name": "Fix19 Imported PDF Gap 20260512194545.pdf",
+   "archived": true,
+   "file_size": 1664,
+   "content_sha256_present": false,
+   "total": 3,
+   "user_drawn": 0,
+   "embedded_raw": 3,
+   "embedded_unique": 3,
+   "embedded_dupe_factor": 1,
+   "survivor_policy_divergent_keys": 0,
+   "by_type": {
+    "ink": 1,
+    "polygon": 1,
+    "polyline": 1
+   }
+  },
+  {
+   "document_id": "11b4cb7b-cd6b-4305-bb93-1bf3889cbf9e",
+   "name": "Fix19 Imported PDF Gap 20260512232111.pdf",
+   "archived": true,
+   "file_size": 1664,
+   "content_sha256_present": false,
+   "total": 3,
+   "user_drawn": 0,
+   "embedded_raw": 3,
+   "embedded_unique": 3,
+   "embedded_dupe_factor": 1,
+   "survivor_policy_divergent_keys": 0,
+   "by_type": {
+    "polygon": 1,
+    "ink": 1,
+    "polyline": 1
+   }
+  },
+  {
+   "document_id": "d6df5833-fec9-4a5d-96b6-33344c3b79da",
+   "name": "Fix19 Imported PDF Gap 20260512184859.pdf",
+   "archived": true,
+   "file_size": 1664,
+   "content_sha256_present": false,
+   "total": 3,
+   "user_drawn": 0,
+   "embedded_raw": 3,
+   "embedded_unique": 3,
+   "embedded_dupe_factor": 1,
+   "survivor_policy_divergent_keys": 0,
+   "by_type": {
+    "polygon": 1,
+    "polyline": 2
+   }
+  },
+  {
+   "document_id": "d76c1e6d-484b-4571-acb4-0af3401d3e97",
+   "name": "Fix19 Imported PDF Gap 20260512230351.pdf",
+   "archived": true,
+   "file_size": 1664,
+   "content_sha256_present": false,
+   "total": 3,
+   "user_drawn": 0,
+   "embedded_raw": 3,
+   "embedded_unique": 3,
+   "embedded_dupe_factor": 1,
+   "survivor_policy_divergent_keys": 0,
+   "by_type": {
+    "polyline": 1,
+    "ink": 1,
+    "polygon": 1
+   }
+  },
+  {
+   "document_id": "a48d1909-e498-4f18-8efb-4083ef23542b",
+   "name": "Fix19 Imported PDF Gap 20260512200558.pdf",
+   "archived": true,
+   "file_size": 1663,
+   "content_sha256_present": false,
+   "total": 3,
+   "user_drawn": 0,
+   "embedded_raw": 3,
+   "embedded_unique": 3,
+   "embedded_dupe_factor": 1,
+   "survivor_policy_divergent_keys": 0,
+   "by_type": {
+    "polygon": 1,
+    "ink": 1,
+    "polyline": 1
+   }
+  },
+  {
+   "document_id": "7b9126f6-62e0-4cbb-8be8-d2d8e19246a9",
+   "name": "Fix19 Imported PDF Gap 20260512185712.pdf",
+   "archived": true,
+   "file_size": 1664,
+   "content_sha256_present": false,
+   "total": 3,
+   "user_drawn": 0,
+   "embedded_raw": 3,
+   "embedded_unique": 3,
+   "embedded_dupe_factor": 1,
+   "survivor_policy_divergent_keys": 0,
+   "by_type": {
+    "polygon": 1,
+    "polyline": 2
+   }
+  },
+  {
+   "document_id": "c77040a2-174e-4f59-8d05-0c25d53af251",
+   "name": "Fix19 Imported PDF Gap 20260512212005.pdf",
+   "archived": true,
+   "file_size": 1663,
+   "content_sha256_present": false,
+   "total": 3,
+   "user_drawn": 0,
+   "embedded_raw": 3,
+   "embedded_unique": 3,
+   "embedded_dupe_factor": 1,
+   "survivor_policy_divergent_keys": 0,
+   "by_type": {
+    "ink": 1,
+    "polyline": 1,
+    "polygon": 1
+   }
+  },
+  {
+   "document_id": "3a2260cb-024a-43fa-bd9d-2c6560252f13",
+   "name": "Fix19 Imported PDF Gap 20260512212354.pdf",
+   "archived": true,
+   "file_size": 1664,
+   "content_sha256_present": false,
+   "total": 3,
+   "user_drawn": 0,
+   "embedded_raw": 3,
+   "embedded_unique": 3,
+   "embedded_dupe_factor": 1,
+   "survivor_policy_divergent_keys": 0,
+   "by_type": {
+    "polyline": 1,
+    "ink": 1,
+    "polygon": 1
+   }
+  },
+  {
+   "document_id": "0d1e5ccc-2890-445a-97de-51caae061ee6",
+   "name": "Fix19 Imported PDF Gap 20260512215025.pdf",
+   "archived": true,
+   "file_size": 1664,
+   "content_sha256_present": false,
+   "total": 3,
+   "user_drawn": 0,
+   "embedded_raw": 3,
+   "embedded_unique": 3,
+   "embedded_dupe_factor": 1,
+   "survivor_policy_divergent_keys": 0,
+   "by_type": {
+    "polyline": 1,
+    "polygon": 1,
+    "ink": 1
+   }
+  },
+  {
+   "document_id": "ff4e2bbc-6c36-44e1-9bc5-60a32c22674a",
+   "name": "Package 2 - Rev 4 -- IC.pdf",
+   "archived": false,
+   "file_size": 6311068,
+   "content_sha256_present": true,
+   "total": 3,
+   "user_drawn": 3,
+   "embedded_raw": 0,
+   "embedded_unique": 0,
+   "embedded_dupe_factor": null,
+   "survivor_policy_divergent_keys": 0,
+   "by_type": {
+    "survey-marker": 3
+   }
+  },
+  {
+   "document_id": "086df1d3-fba2-4a2a-a5ad-58c87ee953fe",
+   "name": "Fix19 Imported PDF Gap 20260512194236.pdf",
+   "archived": true,
+   "file_size": 1664,
+   "content_sha256_present": false,
+   "total": 3,
+   "user_drawn": 0,
+   "embedded_raw": 3,
+   "embedded_unique": 3,
+   "embedded_dupe_factor": 1,
+   "survivor_policy_divergent_keys": 0,
+   "by_type": {
+    "polygon": 1,
+    "polyline": 1,
+    "ink": 1
+   }
+  },
+  {
+   "document_id": "e31c0036-25ea-4659-a07d-d9a98f0069b1",
+   "name": "Fix19 Imported PDF Gap 20260512190054.pdf",
+   "archived": true,
+   "file_size": 1664,
+   "content_sha256_present": false,
+   "total": 3,
+   "user_drawn": 0,
+   "embedded_raw": 3,
+   "embedded_unique": 3,
+   "embedded_dupe_factor": 1,
+   "survivor_policy_divergent_keys": 0,
+   "by_type": {
+    "polyline": 2,
+    "polygon": 1
+   }
+  },
+  {
+   "document_id": "1faec840-7bec-43a7-8eba-b60c03a2557e",
+   "name": "Fix19 Imported PDF Gap 20260512232657.pdf",
+   "archived": true,
+   "file_size": 1664,
+   "content_sha256_present": false,
+   "total": 3,
+   "user_drawn": 0,
+   "embedded_raw": 3,
+   "embedded_unique": 3,
+   "embedded_dupe_factor": 1,
+   "survivor_policy_divergent_keys": 0,
+   "by_type": {
+    "polygon": 1,
+    "polyline": 1,
+    "ink": 1
+   }
+  },
+  {
+   "document_id": "f8bc5341-543e-4618-b5bf-183b6c9aa329",
+   "name": "Fix19 Imported PDF Gap 20260512213550.pdf",
+   "archived": true,
+   "file_size": 1664,
+   "content_sha256_present": false,
+   "total": 3,
+   "user_drawn": 0,
+   "embedded_raw": 3,
+   "embedded_unique": 3,
+   "embedded_dupe_factor": 1,
+   "survivor_policy_divergent_keys": 0,
+   "by_type": {
+    "polygon": 1,
+    "polyline": 1,
+    "ink": 1
+   }
+  },
+  {
+   "document_id": "9537d4c4-69d9-42b9-b51a-d4a985cafcda",
+   "name": "Fix19 Imported PDF Gap 20260512211605.pdf",
+   "archived": true,
+   "file_size": 1663,
+   "content_sha256_present": false,
+   "total": 3,
+   "user_drawn": 0,
+   "embedded_raw": 3,
+   "embedded_unique": 3,
+   "embedded_dupe_factor": 1,
+   "survivor_policy_divergent_keys": 0,
+   "by_type": {
+    "polygon": 1,
+    "ink": 1,
+    "polyline": 1
+   }
+  },
+  {
+   "document_id": "7b9e5a46-e9e8-4c65-85d5-082e30d401c0",
+   "name": "Fix19 Imported PDF Gap 20260512230938.pdf",
+   "archived": true,
+   "file_size": 1664,
+   "content_sha256_present": false,
+   "total": 3,
+   "user_drawn": 0,
+   "embedded_raw": 3,
+   "embedded_unique": 3,
+   "embedded_dupe_factor": 1,
+   "survivor_policy_divergent_keys": 0,
+   "by_type": {
+    "ink": 1,
+    "polygon": 1,
+    "polyline": 1
+   }
+  },
+  {
+   "document_id": "377c8927-a1f1-45ad-8046-6f6784f7685f",
+   "name": "Fix19 Imported PDF Gap 20260512185439.pdf",
+   "archived": true,
+   "file_size": 1664,
+   "content_sha256_present": false,
+   "total": 3,
+   "user_drawn": 0,
+   "embedded_raw": 3,
+   "embedded_unique": 3,
+   "embedded_dupe_factor": 1,
+   "survivor_policy_divergent_keys": 0,
+   "by_type": {
+    "polygon": 1,
+    "polyline": 2
+   }
+  },
+  {
+   "document_id": "43839482-cae4-4741-9245-0b4ff52f510f",
+   "name": "Fix19 Imported PDF Gap 20260512205943.pdf",
+   "archived": true,
+   "file_size": 1665,
+   "content_sha256_present": false,
+   "total": 3,
+   "user_drawn": 0,
+   "embedded_raw": 3,
+   "embedded_unique": 3,
+   "embedded_dupe_factor": 1,
+   "survivor_policy_divergent_keys": 0,
+   "by_type": {
+    "polygon": 1,
+    "polyline": 1,
+    "ink": 1
+   }
+  },
+  {
+   "document_id": "c67a23aa-346c-45d3-8a68-f33ee12db6bd",
+   "name": "Fix19 Imported PDF Gap 20260512213144.pdf",
+   "archived": true,
+   "file_size": 1664,
+   "content_sha256_present": false,
+   "total": 3,
+   "user_drawn": 0,
+   "embedded_raw": 3,
+   "embedded_unique": 3,
+   "embedded_dupe_factor": 1,
+   "survivor_policy_divergent_keys": 0,
+   "by_type": {
+    "ink": 1,
+    "polyline": 1,
+    "polygon": 1
+   }
+  },
+  {
+   "document_id": "5b374439-6a25-42e0-bfde-b6d59d9252db",
+   "name": "Fix19 Imported PDF Gap 20260512210319.pdf",
+   "archived": true,
+   "file_size": 1664,
+   "content_sha256_present": false,
+   "total": 3,
+   "user_drawn": 0,
+   "embedded_raw": 3,
+   "embedded_unique": 3,
+   "embedded_dupe_factor": 1,
+   "survivor_policy_divergent_keys": 0,
+   "by_type": {
+    "polyline": 1,
+    "ink": 1,
+    "polygon": 1
+   }
+  },
+  {
+   "document_id": "164751c3-3992-43ef-93b3-3e9bb5d9c6ec",
+   "name": "Fix19 Imported PDF Gap 20260512205610.pdf",
+   "archived": true,
+   "file_size": 1664,
+   "content_sha256_present": false,
+   "total": 3,
+   "user_drawn": 0,
+   "embedded_raw": 3,
+   "embedded_unique": 3,
+   "embedded_dupe_factor": 1,
+   "survivor_policy_divergent_keys": 0,
+   "by_type": {
+    "polyline": 1,
+    "polygon": 1,
+    "ink": 1
+   }
+  },
+  {
+   "document_id": "ff9d5ff3-71b2-4430-ae69-6876e7d25818",
+   "name": "Fix19 Imported PDF Gap 20260512194955.pdf",
+   "archived": true,
+   "file_size": 1664,
+   "content_sha256_present": false,
+   "total": 3,
+   "user_drawn": 0,
+   "embedded_raw": 3,
+   "embedded_unique": 3,
+   "embedded_dupe_factor": 1,
+   "survivor_policy_divergent_keys": 0,
+   "by_type": {
+    "ink": 1,
+    "polygon": 1,
+    "polyline": 1
+   }
+  },
+  {
+   "document_id": "fa504635-afa9-4d05-ab63-0ccb1f230bb2",
+   "name": "Fix19 Imported PDF Gap 20260512210737.pdf",
+   "archived": true,
+   "file_size": 1664,
+   "content_sha256_present": false,
+   "total": 3,
+   "user_drawn": 0,
+   "embedded_raw": 3,
+   "embedded_unique": 3,
+   "embedded_dupe_factor": 1,
+   "survivor_policy_divergent_keys": 0,
+   "by_type": {
+    "ink": 1,
+    "polygon": 1,
+    "polyline": 1
+   }
+  },
+  {
+   "document_id": "8c18b9c9-a5c9-45f5-8052-29d6edc53edc",
+   "name": "Fix19 Imported PDF Gap 20260512200154.pdf",
+   "archived": true,
+   "file_size": 1663,
+   "content_sha256_present": false,
+   "total": 3,
+   "user_drawn": 0,
+   "embedded_raw": 3,
+   "embedded_unique": 3,
+   "embedded_dupe_factor": 1,
+   "survivor_policy_divergent_keys": 0,
+   "by_type": {
+    "polyline": 1,
+    "ink": 1,
+    "polygon": 1
+   }
+  },
+  {
+   "document_id": "d0778843-add1-468f-bd82-de863661d6f4",
+   "name": "Fix19 Imported PDF Gap 20260512191126.pdf",
+   "archived": true,
+   "file_size": 1664,
+   "content_sha256_present": false,
+   "total": 3,
+   "user_drawn": 0,
+   "embedded_raw": 3,
+   "embedded_unique": 3,
+   "embedded_dupe_factor": 1,
+   "survivor_policy_divergent_keys": 0,
+   "by_type": {
+    "polyline": 2,
+    "polygon": 1
+   }
+  },
+  {
+   "document_id": "467cacc3-9535-4168-94e4-ac9a71fca9c3",
+   "name": "Fix19 Imported PDF Gap 20260512185138.pdf",
+   "archived": true,
+   "file_size": 1664,
+   "content_sha256_present": false,
+   "total": 3,
+   "user_drawn": 0,
+   "embedded_raw": 3,
+   "embedded_unique": 3,
+   "embedded_dupe_factor": 1,
+   "survivor_policy_divergent_keys": 0,
+   "by_type": {
+    "polyline": 2,
+    "polygon": 1
+   }
+  },
+  {
+   "document_id": "c241c7a9-49ad-4af3-8704-9b38db5d3e62",
+   "name": "Fix19 Imported PDF Gap 20260512184555.pdf",
+   "archived": true,
+   "file_size": 1664,
+   "content_sha256_present": false,
+   "total": 3,
+   "user_drawn": 0,
+   "embedded_raw": 3,
+   "embedded_unique": 3,
+   "embedded_dupe_factor": 1,
+   "survivor_policy_divergent_keys": 0,
+   "by_type": {
+    "polygon": 1,
+    "polyline": 2
+   }
+  },
+  {
+   "document_id": "27bac56b-be3e-41dd-8bbf-b826fe15f8fe",
+   "name": "Fix26 RLS Live Validation 20260513155344.pdf",
+   "archived": false,
+   "file_size": 961,
+   "content_sha256_present": false,
+   "total": 2,
+   "user_drawn": 2,
+   "embedded_raw": 0,
+   "embedded_unique": 0,
+   "embedded_dupe_factor": null,
+   "survivor_policy_divergent_keys": 0,
+   "by_type": {
+    "survey-marker": 2
+   }
+  },
+  {
+   "document_id": "3fb7118c-dfe7-4923-babb-fcfa5db1bc11",
+   "name": "1.pdf",
+   "archived": true,
+   "file_size": 7346,
+   "content_sha256_present": false,
+   "total": 2,
+   "user_drawn": 1,
+   "embedded_raw": 1,
+   "embedded_unique": 1,
+   "embedded_dupe_factor": 1,
+   "survivor_policy_divergent_keys": 0,
+   "by_type": {
+    "ink": 2
+   }
+  },
+  {
+   "document_id": "dd2747d1-5115-4e2b-ac01-b1068628b597",
+   "name": "Fix19 Survey Region Contract 20260512235430.pdf",
+   "archived": true,
+   "file_size": 1035,
+   "content_sha256_present": false,
+   "total": 1,
+   "user_drawn": 1,
+   "embedded_raw": 0,
+   "embedded_unique": 0,
+   "embedded_dupe_factor": null,
+   "survivor_policy_divergent_keys": 0,
+   "by_type": {
+    "survey-marker": 1
+   }
+  },
+  {
+   "document_id": "6ba9b74d-0476-4a78-bd24-ac59c5955f1b",
+   "name": "SE-011 Security Shop Drawing Rev2 - 05.06.25.pdf",
+   "archived": false,
+   "file_size": 22071236,
+   "content_sha256_present": false,
+   "total": 1,
+   "user_drawn": 1,
+   "embedded_raw": 0,
+   "embedded_unique": 0,
+   "embedded_dupe_factor": null,
+   "survivor_policy_divergent_keys": 0,
+   "by_type": {
+    "callout": 1
+   }
+  }
+ ],
+ "heavy_doc_detail": {
+  "document_id": "70dadd86-35f0-432b-925f-c59e919a4e4d",
+  "pages_with_most_duplication": [
+   {
+    "page": 9,
+    "unique": 1520,
+    "raw": 12160,
+    "top_duplicates": [
+     {
+      "pdfAnnotationId": "5036R",
+      "count": 8
+     },
+     {
+      "pdfAnnotationId": "4552R",
+      "count": 8
+     },
+     {
+      "pdfAnnotationId": "5783R",
+      "count": 8
+     }
+    ]
+   },
+   {
+    "page": 6,
+    "unique": 410,
+    "raw": 3280,
+    "top_duplicates": [
+     {
+      "pdfAnnotationId": "3572R",
+      "count": 8
+     },
+     {
+      "pdfAnnotationId": "3792R",
+      "count": 8
+     },
+     {
+      "pdfAnnotationId": "3627R",
+      "count": 8
+     }
+    ]
+   },
+   {
+    "page": 8,
+    "unique": 393,
+    "raw": 3144,
+    "top_duplicates": [
+     {
+      "pdfAnnotationId": "4300R",
+      "count": 8
+     },
+     {
+      "pdfAnnotationId": "4045R",
+      "count": 8
+     },
+     {
+      "pdfAnnotationId": "4336R",
+      "count": 8
+     }
+    ]
+   },
+   {
+    "page": 10,
+    "unique": 330,
+    "raw": 2640,
+    "top_duplicates": [
+     {
+      "pdfAnnotationId": "5936R",
+      "count": 8
+     },
+     {
+      "pdfAnnotationId": "6075R",
+      "count": 8
+     },
+     {
+      "pdfAnnotationId": "5911R",
+      "count": 8
+     }
+    ]
+   },
+   {
+    "page": 11,
+    "unique": 257,
+    "raw": 2056,
+    "top_duplicates": [
+     {
+      "pdfAnnotationId": "6367R",
+      "count": 8
+     },
+     {
+      "pdfAnnotationId": "6230R",
+      "count": 8
+     },
+     {
+      "pdfAnnotationId": "6268R",
+      "count": 8
+     }
+    ]
+   },
+   {
+    "page": 7,
+    "unique": 146,
+    "raw": 1168,
+    "top_duplicates": [
+     {
+      "pdfAnnotationId": "3938R",
+      "count": 8
+     },
+     {
+      "pdfAnnotationId": "3895R",
+      "count": 8
+     },
+     {
+      "pdfAnnotationId": "3882R",
+      "count": 8
+     }
+    ]
+   }
+  ]
+ }
+}
