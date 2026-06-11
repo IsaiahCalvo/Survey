@@ -49,6 +49,50 @@ test('document history records restore checkpoints separately from activity edit
   match(row.client_event_id, /^history:checkpoint_added:4:/);
 });
 
+// History-audit P3 — previewAnnotation must survive payload trimming (it
+// drives the spotlight highlight), bounded by a defensive size cap.
+test('trimmed payloads keep a small previewAnnotation for the spotlight', () => {
+  const previewAnnotation = {
+    type: 'rect', left: 10, top: 20, width: 30, height: 40, angle: 0, strokeWidth: 2,
+  };
+  const row = buildHistoryEventRowFromDebugEvent({
+    type: 'local_annotation_history_added',
+    checkpointId: 99,
+    actionType: 'create',
+    rawActionType: 'fabric:create',
+    annotationType: 'rect',
+    annotationId: 'rect-big',
+    pageNumber: 2,
+    previewAnnotation,
+    filler: 'x'.repeat(20000), // force the trim path
+  }, { documentId: 'doc-1', user });
+  equal(row.payload.truncated, true, 'payload should have been trimmed');
+  deepEqual(row.payload.previewAnnotation, previewAnnotation,
+    'small previewAnnotation must survive trimming intact');
+});
+
+test('oversized previewAnnotation is clamped to its geometry envelope', () => {
+  const hugePath = Array.from({ length: 2000 }, (_, i) => ['L', i, i]);
+  const row = buildHistoryEventRowFromDebugEvent({
+    type: 'local_annotation_history_added',
+    checkpointId: 100,
+    actionType: 'create',
+    rawActionType: 'fabric:create',
+    annotationType: 'path',
+    annotationId: 'ink-huge',
+    pageNumber: 2,
+    previewAnnotation: {
+      type: 'path', left: 5, top: 6, width: 100, height: 100, path: hugePath,
+    },
+    filler: 'x'.repeat(20000),
+  }, { documentId: 'doc-1', user });
+  equal(row.payload.truncated, true);
+  const preview = row.payload.previewAnnotation;
+  equal(preview?.path, undefined, 'path-heavy ink data must be dropped from the preview');
+  equal(preview?.left, 5, 'geometry envelope must survive (bounding-rect fallback)');
+  equal(preview?.width, 100);
+});
+
 // History-audit P2 — unified record+notify wrapper. The service reads
 // `window` at CALL time, so a stub window installed per-test is sufficient.
 function withStubWindow(fn) {
