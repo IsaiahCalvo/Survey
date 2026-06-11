@@ -74,7 +74,7 @@ function rowMatches(row, f) {
   }
 }
 
-function applyFilters(rows, q) {
+export function applyFilters(rows, q) {
   let out = rows.filter((r) => q.filters.every((f) => rowMatches(r, f)));
   if (q.order) {
     const [col, ...mods] = q.order.split('.');
@@ -102,7 +102,9 @@ const TABLE_COLUMNS = {
   document_collaborators: ['id', 'document_id', 'user_id', 'status', 'role', 'created_at'],
   connected_services: ['id', 'user_id', 'service_name', 'created_at', 'updated_at'],
   document_presence: ['id', 'document_id', 'user_id', 'client_type', 'last_seen', 'page_number', 'updated_at'],
-  document_history_events: ['id', 'document_id', 'user_id', 'client_event_id', 'created_at'],
+  // Full migration column list (20260524090000_document_history_events.sql) —
+  // the KAL-74 harness reads/filters every column the app's GET selects.
+  document_history_events: ['id', 'document_id', 'user_id', 'client_event_id', 'event_type', 'source', 'page_number', 'annotation_id', 'summary', 'payload', 'is_undoable', 'is_checkpoint', 'occurred_at', 'created_at'],
   user_subscriptions: ['user_id', 'tier', 'status', 'storage_used_bytes'],
   annotation_snapshots: ['document_id', 'at_seq', 'snapshot', 'encoding_version', 'updated_at'],
   annotation_updates: ['id', 'document_id', 'client_id', 'client_seq', 'seq', 'data', 'created_at'],
@@ -147,7 +149,12 @@ function wantsCount(headers) {
 // POST /rest/v1/rpc/<fnName>. ctx = { fixtures, sniffedUserId } so handlers can
 // mutate fixture rows in place (e.g. the kal49 lock RPCs setting locked_at on
 // the documents row). Unhandled RPC names stay unmatched → run failure.
-export function createSupabaseMock({ fixtures, pdfPath, log = () => {}, rpcHandlers = {} }) {
+// readHandlerOverrides (KAL-74): { [table]: (q) => rows } merged OVER the
+// default read handlers — lets a harness serve a stateful store (e.g. history
+// events fed from the mutation ledger) without touching the shared defaults.
+// onMutation (KAL-74): callback invoked after every ledger record with the
+// recorded entry ({ window, method, table, filters, body }) — default no-op.
+export function createSupabaseMock({ fixtures, pdfPath, log = () => {}, rpcHandlers = {}, readHandlerOverrides = {}, onMutation = () => {} }) {
   const pdfBytes = readFileSync(pdfPath);
 
   const state = {
@@ -161,7 +168,11 @@ export function createSupabaseMock({ fixtures, pdfPath, log = () => {}, rpcHandl
 
   const setWindow = (name) => { state.window = name; log(`[mock] window → ${name}`); };
 
-  const record = (entry) => { state.mutations.push({ window: state.window, ...entry }); };
+  const record = (entry) => {
+    const stamped = { window: state.window, ...entry };
+    state.mutations.push(stamped);
+    onMutation(stamped); // throws surface as router-crash unmatched → run fails loudly
+  };
   const recordUnmatched = (method, url, note) => {
     state.unmatched.push({ window: state.window, method, url: url.toString().slice(0, 300), note });
     log(`[mock] UNMATCHED ${method} ${url.pathname}${url.search.slice(0, 160)} (${note})`);
@@ -228,6 +239,31 @@ export function createSupabaseMock({ fixtures, pdfPath, log = () => {}, rpcHandl
     },
   };
 
+  // KAL-74: harness-supplied overrides win per table; defaults untouched.
+  const effectiveReadHandlers = { ...readHandlers, ...readHandlerOverrides };
+
+  // KAL-74 (Codex plan-review r2 #1 / r3 #1): the ONE exact embedded select the
+  // app issues — RevisionsPanel's owner check (RevisionsPanel.jsx:157-169):
+  //   documents.select('user_id, project_id, projects!documents_project_id_fkey(user_id)')
+  // postgrest-js strips whitespace, so compare whitespace-normalized. Consumed
+  // BEFORE the generic projection/unmatched logic; any OTHER embedded select
+  // stays unmatched (no permissive fallback).
+  const OWNER_CHECK_EMBED_SELECT = 'user_id,project_id,projects!documents_project_id_fkey(user_id)';
+  const consumeOwnerCheckEmbed = (table, q, rows) => {
+    if (table !== 'documents' || !q.select) return null;
+    if (q.select.replace(/\s+/g, '') !== OWNER_CHECK_EMBED_SELECT) return null;
+    const projected = rows.map((r) => {
+      const proj = (fixtures.projects ?? []).find((p) => p.id === r.project_id) || null;
+      return {
+        user_id: r.user_id ?? null,
+        project_id: r.project_id ?? null,
+        projects: proj ? { user_id: proj.user_id ?? null } : null,
+      };
+    });
+    q.select = null; // handled — generic embed-unmatched + projection both skip
+    return projected;
+  };
+
   async function handleRest(route, request) {
     const url = new URL(request.url());
     const method = request.method();
@@ -262,7 +298,7 @@ export function createSupabaseMock({ fixtures, pdfPath, log = () => {}, rpcHandl
     validateFilterColumns(table, q);
 
     if (method === 'GET' || method === 'HEAD') {
-      const handler = readHandlers[table];
+      const handler = effectiveReadHandlers[table];
       if (!handler) {
         recordUnmatched(method, url, `no read handler for table ${table}`);
         return route.fulfill({ status: 500, headers: jsonHeaders(), body: JSON.stringify({ code: 'KAL92_UNMATCHED', message: `unmatched read: ${table}` }) });
@@ -277,6 +313,10 @@ export function createSupabaseMock({ fixtures, pdfPath, log = () => {}, rpcHandl
       // verdict time — wrong query shapes never silently pass (Codex result r1).
       if (q.rawOr) q.unknown.push(`or=${q.rawOr}`);
       if (q.unknown.length) recordUnmatched(method, url, `unmodeled filter syntax: ${q.unknown.join(' & ').slice(0, 140)}`);
+      // KAL-74 owner-check embed: exact-match consumed here, BEFORE the
+      // generic projection/unmatched path (Codex plan-review r3 #1).
+      const embedded = consumeOwnerCheckEmbed(table, q, rows);
+      if (embedded) rows = embedded;
       // Apply the select projection so a drifted app projection (e.g. a WAL
       // read that stops selecting `data`) breaks loudly instead of being
       // backfilled by the mock (Codex result r4). Embedded selects (parens)
@@ -289,7 +329,7 @@ export function createSupabaseMock({ fixtures, pdfPath, log = () => {}, rpcHandl
           rows = rows.map((r) => Object.fromEntries(cols.filter((c) => c in r).map((c) => [c, r[c]])));
         }
       }
-      state.reads.push({ window: state.window, method, table, qs: url.search.slice(0, 200) });
+      state.reads.push({ window: state.window, method, table, qs: url.search.slice(0, 400) });
       const extra = {};
       if (wantsCount(headers) || method === 'HEAD') extra['content-range'] = method === 'HEAD' ? `*/${rows.length}` : `0-${Math.max(rows.length - 1, 0)}/${rows.length}`;
       if (method === 'HEAD') return route.fulfill({ status: 200, headers: jsonHeaders(extra), body: '' });
