@@ -270,3 +270,27 @@ Live writeback is **capability-gated**: built behind a gate now with automated t
 - Excel-driven deletion of **placed** markers (still OFF; review-only candidate-deletes).
 - An Office.js in-Excel add-in for live local-file writeback (future "premium live" path).
 - Whole-file automatic writeback (stays OFF; only targeted, safe, single-cell ID writes).
+
+---
+
+## Amendment 2026-06-11 — Excel Security V1 (owner-approved at sign-off)
+
+**Governing addition:** `PLAN-EXCEL-SECURITY-V1.md` (Codex-approved, round 3/5; argument in
+`PLAN-REVIEW-LOG-excel-security.md`) governs the Excel security wave. Four changes to this
+contract, all owner-approved 2026-06-11:
+
+1. **Identity-stamping sequencing** — Amendment (b)'s "remember imported rows IMMEDIATELY"
+   becomes "stamp identity records AFTER server change-set outcomes return." Imports are
+   validated AND applied server-side (transactional Edge Function); the client applies
+   accepted ops from the server's response/broadcast.
+2. **Office.js add-in path** — moves from out-of-scope to **V2** (still never Excel-side
+   identity authority; the server remains the sole assigner).
+3. **One live workbook per survey** — server-registered (server-minted workbookId + token,
+   hash-stored), re-export retires prior copies, owner-only re-link. Legacy pre-V1 exports:
+   preflight snapshot/quarantine, then one-time re-export/re-link prompt.
+4. **Business-only multi-user Excel collaboration in V1** — shared surveys accept Excel-origin
+   change sets only from registered business-path workbooks; local files remain owner/editor
+   own-machine convenience on unshared surveys; viewer writebacks rejected server-side.
+
+Enterprise positioning (owner): "We integrate with your existing Microsoft 365 / SharePoint
+permissions and audit every Excel-origin change."

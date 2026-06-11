@@ -21,7 +21,7 @@ the writeback rows.
 |---|---|---|
 | **Copied row** (token duplicated, copy below) — matcher level | `rowImportMatcher.test.mjs`: "copied row (same token twice) → first is the original (match), second becomes a new copy"; "re-saving the same copied rows is idempotent…"; "a third copy appears → only the genuinely new one is created" | PLAN.md Amendment 2026-06-08(b), key decision #3 (copy auto-resolves to a new item by binding+position) |
 | **Copied row — plan level + lineage stamping** | `excelScenarioGaps.test.mjs`: G1 | same |
-| **Copied row pasted ABOVE / displacing the original** | ⚠️ **NOT TESTED — CONTRACT DRIFT, OWNER SIGN-OFF NEEDED.** PLAN.md decision #3 says before/displacing → review; `rowImportMatcher.js` implements first-row-wins (in-code "accepted tradeoff" note, which is not a PLAN.md amendment). Either amend PLAN.md to bless first-row-wins or fix the matcher; then add the test. | drift between PLAN.md decision #3 and implementation |
+| **Copied row pasted ABOVE / displacing the original** | `rowImportMatcher.test.mjs`: "KAL-306: paste-above with positional stamp — copy is above the bound row → review, not first-row-wins"; "KAL-306: paste-above without any positional stamp — no detection signal, first-row-wins assumed (copy-below default)"; "KAL-306: copy-below with positional stamp — copy is after the bound row → auto-resolves normally" | PLAN.md Amendment 2026-06-08(b) decision #3 (paste-above → review); **RESOLVED 2026-06-11** — Isaiah approved via PLAN-EXCEL-SECURITY-V1.md sign-off; matcher now detects paste-above via `lastSeenRowNumber` vs row `sheetRowNumber` and surfaces for review; without any positional stamp (no prior import), first-row-wins is preserved as the copy-below default |
 | **Renamed row, WITH Row-ID token** | `buildScopeImportPlans.test.mjs`: "valid in-scope token on its exported marker → match (apply) at the right row index" (renamed item fixture); `rowImportMatcher.test.mjs`: "rename + answer edit on the same token → still match, with changed fields reported"; `excelBlankRowIdScenario.test.mjs`: MIXED tier-precedence test | PLAN.md Amendment #10 (Row ID matches a marker → same marker is updated on rename/edit) |
 | **Renamed row, blank Row ID** — matcher level | `rowImportMatcherFieldOverlap.test.mjs` (Tier-4 recovery suite) | blank-rowid-matching-verdict.md amendments |
 | **Renamed row, blank Row ID — plan level** | `excelScenarioGaps.test.mjs`: G2 | same |
@@ -45,11 +45,10 @@ the writeback rows.
 | "Needs your choice" per-row review icon | React component rendering | KAL-59 family / review-surface work |
 | Brand-new unmatched Excel rows review surface (null marker id) | UI surface does not exist yet | HANDOFF open item 10 / BL-14 |
 
-## Open sign-off item for Isaiah
+## Open sign-off items
 
-**Paste-above contract drift:** PLAN.md key decision #3 says a copy placed
-before/displacing the bound row goes to review; the shipped matcher resolves
-first-row-wins (both rows survive as items; identity follows the first row) with an
-in-code note calling it an accepted tradeoff. A code comment can't amend the
-contract. Decide: bless first-row-wins with a PLAN.md amendment, or change the
-matcher to review. Until then this cell stays untested by design.
+_None currently open._ The paste-above contract drift was **resolved 2026-06-11**
+(KAL-306): Isaiah approved the fix via PLAN-EXCEL-SECURITY-V1.md sign-off. The
+matcher now uses `lastSeenRowNumber` (stored) vs `sheetRowNumber` (incoming row) to
+detect when a copy lands above the bound row and routes those cases to review. See
+`rowImportMatcher.test.mjs` KAL-306 tests for the coverage.
