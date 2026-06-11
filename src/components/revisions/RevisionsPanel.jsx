@@ -128,6 +128,11 @@ export default function RevisionsPanel({
   documentId,
   user,
   embedded = false,
+  // History-audit P1: when embedded, the sidebar keeps this panel mounted
+  // behind display:none. isActive=false means the History tab is deselected
+  // or the rail is collapsed — preview/spotlight state must be torn down so
+  // body[data-readonly] and the spotlight SVG can't outlive the panel.
+  isActive = true,
   onClose = null,
   onNavigateToPage = null,
   onRestoreHistoryActivity = null,
@@ -238,9 +243,15 @@ export default function RevisionsPanel({
   }, [documentId, embedded, open, refresh]);
 
   // body[data-readonly] mirroring — set when viewing a prior revision.
+  // Ownership-aware (history-audit P1): if the attribute was ALREADY set when
+  // this effect ran (ReadOnlyGate's access-revoked state uses the same body
+  // attribute), the panel does not own it and must not remove it on cleanup —
+  // only clear what the panel itself set.
   useEffect(() => {
     if (typeof document === 'undefined') return undefined;
     if (viewingRevision) {
+      const alreadySet = document.body?.getAttribute('data-readonly') === 'true';
+      if (alreadySet) return undefined; // ReadOnlyGate owns it — leave untouched
       document.body?.setAttribute('data-readonly', 'true');
       return () => document.body?.removeAttribute('data-readonly');
     }
@@ -304,48 +315,54 @@ export default function RevisionsPanel({
       }) || null;
   }, []);
 
+  // History-audit P3: the spotlight draws annotation geometry in SVG viewBox
+  // units (page PDF units), so it REQUIRES the annotation layer's non-zero
+  // native viewBox. There is no screen-pixel fallback — falling back to
+  // hostRect dimensions produced misaligned highlights. If the SVG hasn't
+  // painted yet (zero/absent viewBox), skip the spotlight rather than misalign.
   const resolveSpotlightHost = useCallback((pageElement) => {
     if (!pageElement) return null;
     const annotationSvg = pageElement.matches?.('svg[data-svg-annotation-layer]')
       ? pageElement
       : pageElement.querySelector?.('svg[data-svg-annotation-layer]');
-    const hostElement = annotationSvg || pageElement;
+    if (!annotationSvg) return null;
+    const nativeViewBox = annotationSvg.viewBox?.baseVal;
+    if (!nativeViewBox || !(nativeViewBox.width > 0) || !(nativeViewBox.height > 0)) return null;
+    const hostElement = annotationSvg;
     const hostRect = hostElement.getBoundingClientRect();
-    const nativeViewBox = annotationSvg?.viewBox?.baseVal;
-    const overlayParent = hostElement.parentElement || pageElement;
     return {
       hostElement,
-      overlayParent,
       hostRect,
-      viewBoxWidth: nativeViewBox?.width || hostRect.width,
-      viewBoxHeight: nativeViewBox?.height || hostRect.height,
+      viewBoxWidth: nativeViewBox.width,
+      viewBoxHeight: nativeViewBox.height,
     };
   }, []);
 
+  // History-audit P3: the spotlight SVG lives in a document-body portal with
+  // position:fixed, sized from the annotation layer's getBoundingClientRect()
+  // each frame. No reparenting into the page container and NO
+  // overlayParent.style.position mutation — that restacked the page's children
+  // and could push canvas layers behind other positioned elements (S5).
   const syncSpotlightOverlay = useCallback((active) => {
     if (typeof document === 'undefined' || !active?.svg) return false;
     const pageElement = findPageElement(active.pageNumber, active.pageElement);
     if (!pageElement) return false;
     active.pageElement = pageElement;
     const host = resolveSpotlightHost(pageElement);
-    if (!host?.hostElement?.isConnected || !host.overlayParent?.isConnected) return false;
+    if (!host?.hostElement?.isConnected) return false;
     const { svg } = active;
-    const { hostElement, overlayParent, hostRect, viewBoxWidth, viewBoxHeight } = host;
-    if (svg.parentElement !== overlayParent) overlayParent.appendChild(svg);
+    const { hostRect, viewBoxWidth, viewBoxHeight } = host;
+    if (svg.parentElement !== document.body) document.body.appendChild(svg);
     if (hostRect.width <= 0 || hostRect.height <= 0) {
       svg.style.display = 'none';
       return true;
     }
-    const parentPosition = window.getComputedStyle(overlayParent).position;
-    if (parentPosition === 'static') overlayParent.style.position = 'relative';
     svg.style.display = 'block';
-    svg.setAttribute('width', hostElement.getAttribute('width') || `${hostRect.width}`);
-    svg.setAttribute('height', hostElement.getAttribute('height') || `${hostRect.height}`);
     svg.setAttribute('viewBox', `0 0 ${viewBoxWidth} ${viewBoxHeight}`);
-    svg.style.left = hostElement.style.left || `${hostElement.offsetLeft || 0}px`;
-    svg.style.top = hostElement.style.top || `${hostElement.offsetTop || 0}px`;
-    svg.style.width = hostElement.style.width || hostElement.getAttribute('width') || `${hostElement.offsetWidth || hostRect.width}px`;
-    svg.style.height = hostElement.style.height || hostElement.getAttribute('height') || `${hostElement.offsetHeight || hostRect.height}px`;
+    svg.style.left = `${hostRect.left}px`;
+    svg.style.top = `${hostRect.top}px`;
+    svg.style.width = `${hostRect.width}px`;
+    svg.style.height = `${hostRect.height}px`;
     return true;
   }, [findPageElement, resolveSpotlightHost]);
 
@@ -384,36 +401,42 @@ export default function RevisionsPanel({
 
   useEffect(() => () => stopSpotlightTracking(), [stopSpotlightTracking]);
 
+  // History-audit P1: tear down preview + spotlight whenever the panel stops
+  // being visible. Embedded panels are hidden via display:none (still mounted),
+  // so without this the revision preview's body[data-readonly] kept the toolbar
+  // dimmed indefinitely and a stale spotlight SVG could cover fresh drawings.
   useEffect(() => {
-    if (!embedded && !open) stopSpotlightTracking();
-  }, [embedded, open, stopSpotlightTracking]);
+    const hidden = embedded ? !isActive : !open;
+    if (hidden) {
+      stopSpotlightTracking();
+      setViewingRevision(null);
+    }
+  }, [embedded, isActive, open, stopSpotlightTracking]);
 
   const createPageSpotlightSvg = useCallback((pageElement, pageNumber = null) => {
     if (typeof document === 'undefined' || !pageElement) return null;
     ensureSpotlightStyle();
     stopSpotlightTracking();
     const host = resolveSpotlightHost(pageElement);
-    if (!host) return null;
-    const { hostElement, overlayParent, hostRect, viewBoxWidth, viewBoxHeight } = host;
+    if (!host) return null; // annotation SVG absent or viewBox not painted — skip, never misalign
+    const { hostRect, viewBoxWidth, viewBoxHeight } = host;
     const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
     svg.id = 'document-history-spotlight-svg';
-    svg.setAttribute('width', hostElement.getAttribute('width') || `${hostRect.width}`);
-    svg.setAttribute('height', hostElement.getAttribute('height') || `${hostRect.height}`);
     svg.setAttribute('viewBox', `0 0 ${viewBoxWidth} ${viewBoxHeight}`);
     svg.setAttribute('preserveAspectRatio', 'none');
-    const parentPosition = window.getComputedStyle(overlayParent).position;
-    if (parentPosition === 'static') overlayParent.style.position = 'relative';
+    // History-audit P3: fixed-position document-body portal at viewport coords.
+    // No page-container reparenting, no overlayParent.style.position mutation.
     Object.assign(svg.style, {
-      position: 'absolute',
-      left: hostElement.style.left || `${hostElement.offsetLeft || 0}px`,
-      top: hostElement.style.top || `${hostElement.offsetTop || 0}px`,
-      width: hostElement.style.width || hostElement.getAttribute('width') || `${hostElement.offsetWidth || hostRect.width}px`,
-      height: hostElement.style.height || hostElement.getAttribute('height') || `${hostElement.offsetHeight || hostRect.height}px`,
+      position: 'fixed',
+      left: `${hostRect.left}px`,
+      top: `${hostRect.top}px`,
+      width: `${hostRect.width}px`,
+      height: `${hostRect.height}px`,
       overflow: 'visible',
       pointerEvents: 'none',
       zIndex: 9999,
     });
-    overlayParent.appendChild(svg);
+    document.body.appendChild(svg);
     const normalizedPageNumber = Number(pageNumber);
     startSpotlightTracking(
       svg,

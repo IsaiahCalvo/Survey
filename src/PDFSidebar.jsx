@@ -432,6 +432,7 @@ const PDFSidebar = React.forwardRef(({
                 documentId={documentId}
                 user={user}
                 embedded
+                isActive={activeTab === 'history' && !isCollapsed}
                 onNavigateToPage={onNavigateToPage}
                 onRestoreHistoryActivity={onRestoreHistoryActivity}
                 onCascadeRestoreRegion={onCascadeRestoreRegion}

@@ -20,7 +20,8 @@ CREATE INDEX IF NOT EXISTS idx_document_history_events_trash_query
         'annotation_deleted',
         'callout_deleted',
         'region_deleted',
-        'annotations_bulk_deleted'
+        'annotations_bulk_deleted',
+        'space_deleted'
     );
 
 -- ─── 2. Immutability trigger ───────────────────────────────────────────────
@@ -50,7 +51,8 @@ BEGIN
         'annotation_deleted',
         'callout_deleted',
         'region_deleted',
-        'annotations_bulk_deleted'
+        'annotations_bulk_deleted',
+        'space_deleted'
     ) THEN
         RAISE EXCEPTION
             'annotation-delete audit rows are immutable and cannot be deleted (KAL-313). '
@@ -96,7 +98,8 @@ BEGIN
         'annotation_deleted',
         'callout_deleted',
         'region_deleted',
-        'annotations_bulk_deleted'
+        'annotations_bulk_deleted',
+        'space_deleted'
     )
     AND occurred_at < v_cutoff;
 
@@ -111,5 +114,5 @@ REVOKE ALL ON FUNCTION public.sweep_annotation_trash_events(INT) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.sweep_annotation_trash_events(INT) TO service_role;
 
 COMMENT ON FUNCTION public.sweep_annotation_trash_events(INT) IS
-    'KAL-313: Delete annotation/callout/region/bulk-deleted history rows older than p_days days. '
+    'KAL-313: Delete annotation/callout/region/space/bulk-deleted history rows older than p_days days. '
     'Call via pg_cron or Edge Function scheduler. Default 30-day retention.';
