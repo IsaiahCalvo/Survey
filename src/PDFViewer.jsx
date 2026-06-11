@@ -94,6 +94,8 @@ import { applyExcelValuesToMarker } from './services/excelConflictResolve';
 import { makeTombstone, addTombstone, removeTombstone, purgeExpired } from './services/surveyMarkerTrash';
 import { loadTrash, saveTrash } from './services/surveyMarkerTrashStore';
 import { buildSurveyMarkerDeleteHistoryRow, applySurveyMarkerRestore } from './services/surveyMarkerHistory';
+// KAL-307: server-minted workbook registration (one live workbook per survey).
+import { registerWorkbook, embedRegistrationIntoMetaSheet } from './services/workbookRegistration';
 import { getCounterSeriesList, pickNextSeriesColor, renumberCounters } from './utils/counterNumbering';
 import { getHistoryDebugRows, getHistoryFingerprint, getYjsHistoryTarget, isLegacyAnnotationHistoryMeta, migrateHistorySpaces, normalizeCanvasJsonForHistory, normalizeHistoryReason, summarizeAnnotationPageTransitionForDebug, summarizeHistoryDelta, summarizeHistorySnapshot } from './utils/historyHelpers';
 import { getHistoryOrder, shouldRedoLocalBeforeLegacy, shouldUndoLocalBeforeLegacy } from './utils/historyStacks';
@@ -12080,6 +12082,38 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       metaSheet.getCell('B3').value = rowIdExportId;
       metaSheet.getCell('A4').value = 'app_version';
       metaSheet.getCell('B4').value = '1.0';
+
+      // KAL-307: server-minted workbook registration.
+      // registerWorkbook() calls the kal307_register_workbook RPC (SECURITY DEFINER).
+      // The raw syncToken is returned ONCE, embedded here, then discarded — never logged or stored.
+      // Legacy detection: workbooks exported before this build lack cells B5/B6 and
+      // will be detected as 'unregistered-legacy' by detectLegacyWorkbook() on import.
+      // TODO (slice 2): when the gate flip lands, route 'unregistered-legacy' into
+      //   the preflight/quarantine UX (one-time re-export/re-link prompt).
+      try {
+        const supabaseDocId = pdfFile?.id ?? null;
+        const supabaseTemplateId = selectedTemplate?.supabaseId || selectedTemplate?.id || null;
+        if (supabaseDocId && supabaseTemplateId) {
+          const capabilityTier =
+            selectedTemplate?.isSharePoint ? 'business'
+            : selectedTemplate?.isOneDrive ? 'personal'
+            : 'local';
+          const registration = await registerWorkbook({
+            documentId:     supabaseDocId,
+            templateId:     String(supabaseTemplateId),
+            graphDriveId:   selectedTemplate?.sharePointDriveId ?? null,
+            graphItemId:    selectedTemplate?.oneDriveFileId    ?? null,
+            capabilityTier,
+          });
+          embedRegistrationIntoMetaSheet(metaSheet, registration.workbookId, registration.syncToken);
+          // registration.syncToken is no longer referenced after embedRegistrationIntoMetaSheet returns.
+        }
+        // If documentId or templateId is absent (offline / local-only), silently skip registration.
+        // The workbook will be detected as 'unregistered-legacy' on import.
+      } catch (regErr) {
+        // Registration failure must not block the export.  Log a warning (no token in the message).
+        console.warn('KAL-307: workbook registration failed — export proceeds without registration:', regErr?.message ?? regErr);
+      }
 
       const modulesList = selectedTemplate.modules || selectedTemplate.spaces || [];
       const sheetNames = new Set();
