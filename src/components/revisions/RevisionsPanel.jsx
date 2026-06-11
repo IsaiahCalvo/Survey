@@ -666,7 +666,14 @@ export default function RevisionsPanel({
         setStatusMsg(`Restored deleted item${result.pageNumber ? ` on page ${result.pageNumber}` : ''}.`);
         await refresh({ silent: true });
       } else {
-        setStatusMsg('Restore unavailable for this history item.');
+        // KAL-313 OQ-4: show a specific message for region-space-deleted (greyed-out UX).
+        if (result?.reason === 'region-space-deleted') {
+          setStatusMsg('Cannot restore — its space was deleted. Restore the space first.');
+        } else if (result?.reason === 'restore-noop') {
+          setStatusMsg('Item is already present — no restore needed.');
+        } else {
+          setStatusMsg('Restore unavailable for this history item.');
+        }
       }
     } catch (e) {
       setStatusMsg(`Restore failed: ${e.message}`);

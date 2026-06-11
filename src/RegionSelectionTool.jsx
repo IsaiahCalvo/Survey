@@ -95,7 +95,14 @@ const RegionSelectionTool = ({
   // toolbar. Called with { canUndo, canRedo, undo, redo } whenever the
   // region undo/redo stacks change, and with null on deactivate, so the
   // toolbar buttons can light up and drive region undo/redo while editing.
-  onHistoryStateChange = null
+  onHistoryStateChange = null,
+  // KAL-313: stamped on new regions at creation time so the region ownership
+  // chain is available for delete-audit and the step-11 permission gate.
+  userId = null,
+  // KAL-313: called with the array of deleted region objects immediately before
+  // the setRegions filter so PDFViewer can emit durable trash history rows.
+  // Signature: (deletedRegions: object[]) => void
+  onRegionsDeleted = null,
 }) => {
   const [toolType, setToolType] = useState('rectangular'); // 'rectangular' | 'freehand' | 'move'
   const [selectionMode, setSelectionMode] = useState(REGION_OPERATIONS.ADD); // 'add' | 'subtract'
@@ -1660,7 +1667,9 @@ const RegionSelectionTool = ({
           currentRect.y + currentRect.height,
           currentRect.x,
           currentRect.y + currentRect.height
-        ]
+        ],
+        // KAL-313 prerequisite: ownership stamp for delete-audit + step-11 gate.
+        ...(userId ? { createdBy: userId } : {}),
       };
 
       if (effectiveSelectionMode === REGION_OPERATIONS.ADD) {
@@ -1694,7 +1703,9 @@ const RegionSelectionTool = ({
         pageId: currentPageId,
         shapeType: 'polygon',
         operation: effectiveSelectionMode,
-        coordinates: polygonPoints.flatMap(point => [point.x, point.y])
+        coordinates: polygonPoints.flatMap(point => [point.x, point.y]),
+        // KAL-313 prerequisite: ownership stamp for delete-audit + step-11 gate.
+        ...(userId ? { createdBy: userId } : {}),
       };
 
       if (effectiveSelectionMode === REGION_OPERATIONS.ADD) {
@@ -1723,7 +1734,7 @@ const RegionSelectionTool = ({
     setStartPoint(null);
     setCurrentRect(null);
     setPolygonPoints([]);
-  }, [active, interactionState, liveRotationAngle, isDrawing, effectiveToolType, currentRect, polygonPoints, currentPageId, effectiveSelectionMode, mergeRegionWithOverlapping, subtractRegionFromRegions, pushUndoSnapshot, persistHistoryStacks]);
+  }, [active, interactionState, liveRotationAngle, isDrawing, effectiveToolType, currentRect, polygonPoints, currentPageId, effectiveSelectionMode, mergeRegionWithOverlapping, subtractRegionFromRegions, pushUndoSnapshot, persistHistoryStacks, userId]);
 
   const handleCanvasMouseLeave = useCallback(() => {
     setIsCursorOverCanvas(false);
@@ -1968,10 +1979,20 @@ const RegionSelectionTool = ({
   const handleDeleteSelected = useCallback(() => {
     if (selectedRegionIds.size === 0) return;
     pushUndoSnapshot();
+
+    // KAL-313: capture deleted regions BEFORE the filter so the trash callback
+    // receives the full region objects (including baked rotation from KAL-301).
+    if (typeof onRegionsDeleted === 'function') {
+      const deletedRegions = regionsRef.current.filter(r => selectedRegionIds.has(r.regionId));
+      if (deletedRegions.length > 0) {
+        onRegionsDeleted(deletedRegions);
+      }
+    }
+
     setRegions(prev => prev.filter(r => !selectedRegionIds.has(r.regionId)));
     setSelectedRegionIds(new Set());
     setInteractionState(null);
-  }, [selectedRegionIds, pushUndoSnapshot]);
+  }, [selectedRegionIds, pushUndoSnapshot, onRegionsDeleted]);
 
   const handleContextMenu = useCallback((event) => {
     event.preventDefault();
