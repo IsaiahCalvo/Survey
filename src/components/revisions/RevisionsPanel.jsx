@@ -32,6 +32,7 @@ import {
   restoreRevision,
 } from '../../services/documentRevisionService';
 import { listDocumentHistoryEvents } from '../../services/documentHistoryService';
+import { resolveRegionRestoreCascade } from '../../services/annotationTrashHistory';
 
 const DRAWER_WIDTH = 360;
 const HISTORY_SPOTLIGHT_STYLE_ID = 'document-history-spotlight-style';
@@ -130,6 +131,7 @@ export default function RevisionsPanel({
   onClose = null,
   onNavigateToPage = null,
   onRestoreHistoryActivity = null,
+  onCascadeRestoreRegion = null,
 }) {
   const [open, setOpen] = useState(false);
   const [isOwner, setIsOwner] = useState(false);
@@ -142,6 +144,9 @@ export default function RevisionsPanel({
   const [statusMsg, setStatusMsg] = useState(null);
   const [selectedEventId, setSelectedEventId] = useState(null);
   const [selectedEventDetail, setSelectedEventDetail] = useState(null);
+  // KAL-313 CONFIRM-CASCADE: pending cascade restore { regionEvent, spaceEvent }
+  // Set when Restore is clicked for an orphaned region whose space has a restorable record.
+  const [cascadePending, setCascadePending] = useState(null);
   const hasLoadedRef = useRef(false);
   const refreshTimeoutRef = useRef(null);
   const spotlightFrameRef = useRef(null);
@@ -299,29 +304,11 @@ export default function RevisionsPanel({
       }) || null;
   }, []);
 
-  const resolveSpotlightHost = useCallback((pageElement, pageNumber = null) => {
+  const resolveSpotlightHost = useCallback((pageElement) => {
     if (!pageElement) return null;
-    let annotationSvg = pageElement.matches?.('svg[data-svg-annotation-layer]')
+    const annotationSvg = pageElement.matches?.('svg[data-svg-annotation-layer]')
       ? pageElement
       : pageElement.querySelector?.('svg[data-svg-annotation-layer]');
-    if (!annotationSvg && Number.isFinite(pageNumber)) {
-      // The annotation overlay tree is portalled OUTSIDE the Syncfusion page div,
-      // so the descendant lookup misses in the live app. Resolve document-wide by
-      // page number (attribute value = page number), wrapper-scoped first.
-      const candidates = [
-        `[data-diag-svg-wrapper="${pageNumber}"] svg[data-svg-annotation-layer="${pageNumber}"]`,
-        `svg[data-svg-annotation-layer="${pageNumber}"]`,
-      ];
-      annotationSvg = candidates
-        .map((selector) => {
-          try { return document.querySelector(selector); } catch (_err) { return null; }
-        })
-        .find((element) => {
-          if (!element?.isConnected) return false;
-          const rect = element.getBoundingClientRect?.();
-          return rect && rect.width > 0 && rect.height > 0;
-        }) || null;
-    }
     const hostElement = annotationSvg || pageElement;
     const hostRect = hostElement.getBoundingClientRect();
     const nativeViewBox = annotationSvg?.viewBox?.baseVal;
@@ -340,7 +327,7 @@ export default function RevisionsPanel({
     const pageElement = findPageElement(active.pageNumber, active.pageElement);
     if (!pageElement) return false;
     active.pageElement = pageElement;
-    const host = resolveSpotlightHost(pageElement, active.pageNumber);
+    const host = resolveSpotlightHost(pageElement);
     if (!host?.hostElement?.isConnected || !host.overlayParent?.isConnected) return false;
     const { svg } = active;
     const { hostElement, overlayParent, hostRect, viewBoxWidth, viewBoxHeight } = host;
@@ -405,11 +392,7 @@ export default function RevisionsPanel({
     if (typeof document === 'undefined' || !pageElement) return null;
     ensureSpotlightStyle();
     stopSpotlightTracking();
-    const normalizedPageNumber = Number(pageNumber);
-    const effectivePageNumber = Number.isFinite(normalizedPageNumber) && normalizedPageNumber > 0
-      ? normalizedPageNumber
-      : null;
-    const host = resolveSpotlightHost(pageElement, effectivePageNumber);
+    const host = resolveSpotlightHost(pageElement);
     if (!host) return null;
     const { hostElement, overlayParent, hostRect, viewBoxWidth, viewBoxHeight } = host;
     const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
@@ -431,7 +414,12 @@ export default function RevisionsPanel({
       zIndex: 9999,
     });
     overlayParent.appendChild(svg);
-    startSpotlightTracking(svg, pageElement, effectivePageNumber);
+    const normalizedPageNumber = Number(pageNumber);
+    startSpotlightTracking(
+      svg,
+      pageElement,
+      Number.isFinite(normalizedPageNumber) && normalizedPageNumber > 0 ? normalizedPageNumber : null,
+    );
     return svg;
   }, [resolveSpotlightHost, startSpotlightTracking, stopSpotlightTracking]);
 
@@ -540,23 +528,10 @@ export default function RevisionsPanel({
     const path = target.matches?.('path, line, polyline, polygon, rect, circle, ellipse')
       ? target
       : target.querySelector?.('path, line, polyline, polygon, rect, circle, ellipse');
-    // The target lives inside the portalled overlay tree, so closest() on page-div
-    // selectors misses in the live app. Derive the page number from the overlay
-    // ancestry (attribute value = page number) and resolve the page div from it.
-    const overlaySvg = target.closest?.('svg[data-svg-annotation-layer]');
-    let pageNumber = Number(overlaySvg?.getAttribute?.('data-svg-annotation-layer'));
-    if (!Number.isFinite(pageNumber) || pageNumber <= 0) {
-      const wrapper = target.closest?.('[data-diag-svg-wrapper], [data-pal-root]');
-      pageNumber = Number(
-        wrapper?.getAttribute?.('data-diag-svg-wrapper') ?? wrapper?.getAttribute?.('data-pal-root'),
-      );
-    }
-    if (!Number.isFinite(pageNumber) || pageNumber <= 0) pageNumber = null;
-    const pageElement = target.closest?.('.e-pv-page-div, [data-page-number], [id*="_pageDiv_"]')
-      || findPageElement(pageNumber);
+    const pageElement = target.closest?.('.e-pv-page-div, [data-page-number], [id*="_pageDiv_"]');
     if (!path || !pageElement) return false;
     const clone = path.cloneNode(false);
-    const svg = createPageSpotlightSvg(pageElement, pageNumber);
+    const svg = createPageSpotlightSvg(pageElement);
     if (!svg) return false;
     clone.removeAttribute('fill');
     clone.setAttribute('fill', 'none');
@@ -569,7 +544,7 @@ export default function RevisionsPanel({
     clone.style.animation = 'document-history-pulse-glow 900ms ease-in-out infinite';
     svg.appendChild(clone);
     return true;
-  }, [createPageSpotlightSvg, findPageElement]);
+  }, [createPageSpotlightSvg]);
 
   const spotlightAnnotation = useCallback((annotationId) => {
     if (typeof document === 'undefined' || !annotationId) return false;
@@ -665,22 +640,62 @@ export default function RevisionsPanel({
       if (result?.ok) {
         setStatusMsg(`Restored deleted item${result.pageNumber ? ` on page ${result.pageNumber}` : ''}.`);
         await refresh({ silent: true });
-      } else {
-        // KAL-313 OQ-4: show a specific message for region-space-deleted (greyed-out UX).
-        if (result?.reason === 'region-space-deleted') {
-          setStatusMsg('Cannot restore — its space was deleted. Restore the space first.');
-        } else if (result?.reason === 'restore-noop') {
-          setStatusMsg('Item is already present — no restore needed.');
+      } else if (result?.reason === 'cascade-confirm') {
+        // KAL-313 CONFIRM-CASCADE: the region's parent space is gone.
+        // Decide whether we can offer a cascade restore or must show blocked UI.
+        const { spaceId } = result;
+        const cascade = resolveRegionRestoreCascade({
+          spaceId,
+          liveSpaces: [], // not available here — we use historyEvents to find the space record
+          historyEvents,
+        });
+        if (cascade === 'cascade') {
+          // Find the space_deleted event for the confirm dialog
+          const spaceEvent = historyEvents.find(
+            (ev) =>
+              ev.event_type === 'space_deleted' &&
+              ev.payload?.restoreAction?.spaceId === spaceId,
+          );
+          // Show the themed confirm modal instead of proceeding
+          setCascadePending({ regionEvent: event, spaceEvent });
+          setStatusMsg(null);
         } else {
-          setStatusMsg('Restore unavailable for this history item.');
+          // 'blocked' — no space restore record available
+          setStatusMsg("Cannot restore — its space was deleted and has no restore record.");
         }
+      } else if (result?.reason === 'restore-noop') {
+        setStatusMsg('Item is already present — no restore needed.');
+      } else {
+        setStatusMsg('Restore unavailable for this history item.');
       }
     } catch (e) {
       setStatusMsg(`Restore failed: ${e.message}`);
     } finally {
       setBusy(false);
     }
-  }, [busy, onRestoreHistoryActivity, refresh]);
+  }, [busy, onRestoreHistoryActivity, refresh, historyEvents]);
+
+  // KAL-313: Execute the confirmed cascade restore (space first, then region).
+  const handleCascadeConfirm = useCallback(async () => {
+    if (!cascadePending || typeof onCascadeRestoreRegion !== 'function') return;
+    const { regionEvent, spaceEvent } = cascadePending;
+    setCascadePending(null);
+    setBusy(true);
+    setStatusMsg(null);
+    try {
+      const result = onCascadeRestoreRegion(spaceEvent, regionEvent);
+      if (result?.ok) {
+        setStatusMsg(`Restored space and region${result.pageNumber ? ` on page ${result.pageNumber}` : ''}.`);
+        await refresh({ silent: true });
+      } else {
+        setStatusMsg('Cascade restore failed — please try again.');
+      }
+    } catch (e) {
+      setStatusMsg(`Cascade restore failed: ${e.message}`);
+    } finally {
+      setBusy(false);
+    }
+  }, [cascadePending, onCascadeRestoreRegion, refresh]);
 
   if (!documentId) return null;
 
@@ -989,58 +1004,94 @@ export default function RevisionsPanel({
     </div>
   );
 
-  // Banner — visible while viewing a prior revision (rendered in both the
-  // embedded and standalone branches; position:fixed, so mount point is moot)
-  const readOnlyBanner = viewingRevision && (
+  // KAL-313 CONFIRM-CASCADE modal — shared across embedded and non-embedded renders.
+  // Uses same backdrop/card styling as ConfirmDeleteModal (collab family, bg-secondary palette).
+  const cascadeModal = cascadePending ? (
     <div
-      data-testid="kal48-readonly-banner"
+      data-testid="cascade-restore-modal-backdrop"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="cascade-restore-heading"
+      onClick={(e) => { if (e.target === e.currentTarget) setCascadePending(null); }}
       style={{
         position: 'fixed',
-        top: 0,
-        left: 0,
-        right: 0,
-        background: '#5e4a1f',
-        color: '#fff8dd',
-        padding: '8px 16px',
-        zIndex: 9100,
-        fontSize: 12,
+        top: 0, left: 0, right: 0, bottom: 0,
+        zIndex: 9200,
+        background: 'rgba(0,0,0,0.5)',
         display: 'flex',
         alignItems: 'center',
-        justifyContent: 'space-between',
-        borderBottom: '1px solid #7e6630',
+        justifyContent: 'center',
+        animation: 'confirm-delete-modal-fade-in 120ms cubic-bezier(0,0,0.2,1)',
       }}
     >
-      <span>
-        Viewing revision v{viewingRevision.revisionNumber}
-        {viewingRevision.label ? ` — ${viewingRevision.label}` : ''} · created {formatDate(viewingRevision.createdAt)} · {viewingRevision.snapshot?.annotations?.length ?? viewingRevision.annotationCount} annotation(s). Edits disabled.
-      </span>
-      <button
-        type="button"
-        data-testid="kal48-return-to-current"
-        onClick={handleReturnToCurrent}
+      <div
         style={{
-          background: 'transparent',
-          color: '#fff8dd',
-          border: '1px solid #fff8dd',
-          borderRadius: 4,
-          padding: '3px 10px',
-          cursor: 'pointer',
-          fontSize: 12,
+          background: 'var(--bg-secondary, #252525)',
+          border: '1px solid var(--border-primary, #3A3A3A)',
+          borderRadius: 8,
+          boxShadow: 'var(--shadow-lg, 0 8px 24px rgba(0,0,0,0.5))',
+          width: '100%',
+          maxWidth: 480,
+          margin: '0 16px',
+          padding: 24,
+          fontFamily: 'var(--font-primary, -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif)',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 12,
+          color: '#e9e6df',
         }}
       >
-        Return to current
-      </button>
+        <h2
+          id="cascade-restore-heading"
+          style={{ margin: 0, fontSize: 16, fontWeight: 600, color: '#e9e6df' }}
+        >
+          Restore this region?
+        </h2>
+        <p style={{ margin: 0, fontSize: 14, color: '#c8c4bc', lineHeight: 1.5 }}>
+          {"This region's space was deleted too. Restore both?"}
+          {cascadePending.spaceEvent?.payload?.spaceName
+            ? ` (Space: "${cascadePending.spaceEvent.payload.spaceName}")`
+            : ''}
+        </p>
+        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 4 }}>
+          <button
+            type="button"
+            data-testid="cascade-restore-cancel"
+            onClick={() => setCascadePending(null)}
+            style={{
+              fontSize: 13,
+              background: 'transparent',
+              color: '#c8c4bc',
+              border: '1px solid #555',
+              borderRadius: 4,
+              padding: '6px 14px',
+              cursor: 'pointer',
+            }}
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            data-testid="cascade-restore-confirm"
+            onClick={handleCascadeConfirm}
+            style={{
+              fontSize: 13,
+              background: '#3a3220',
+              color: '#ffe0a3',
+              border: '1px solid #6f5624',
+              borderRadius: 4,
+              padding: '6px 14px',
+              cursor: 'pointer',
+            }}
+          >
+            Restore both
+          </button>
+        </div>
+      </div>
     </div>
-  );
+  ) : null;
 
-  if (embedded) {
-    return (
-      <>
-        {readOnlyBanner}
-        {panel}
-      </>
-    );
-  }
+  if (embedded) return <>{panel}{cascadeModal}</>;
 
   return (
     <>
@@ -1068,10 +1119,52 @@ export default function RevisionsPanel({
         Revisions{revisions.length ? ` (${revisions.length})` : ''}
       </button>
 
-      {readOnlyBanner}
+      {/* Banner — visible while viewing a prior revision */}
+      {viewingRevision && (
+        <div
+          data-testid="kal48-readonly-banner"
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            background: '#5e4a1f',
+            color: '#fff8dd',
+            padding: '8px 16px',
+            zIndex: 9100,
+            fontSize: 12,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            borderBottom: '1px solid #7e6630',
+          }}
+        >
+          <span>
+            Viewing revision v{viewingRevision.revisionNumber}
+            {viewingRevision.label ? ` — ${viewingRevision.label}` : ''} · created {formatDate(viewingRevision.createdAt)} · {viewingRevision.snapshot?.annotations?.length ?? viewingRevision.annotationCount} annotation(s). Edits disabled.
+          </span>
+          <button
+            type="button"
+            data-testid="kal48-return-to-current"
+            onClick={handleReturnToCurrent}
+            style={{
+              background: 'transparent',
+              color: '#fff8dd',
+              border: '1px solid #fff8dd',
+              borderRadius: 4,
+              padding: '3px 10px',
+              cursor: 'pointer',
+              fontSize: 12,
+            }}
+          >
+            Return to current
+          </button>
+        </div>
+      )}
 
       {/* Drawer */}
       {open && panel}
+      {cascadeModal}
     </>
   );
 }

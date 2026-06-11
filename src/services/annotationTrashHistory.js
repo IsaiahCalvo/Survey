@@ -1,7 +1,7 @@
 // src/services/annotationTrashHistory.js
 //
 // KAL-313 Phase 2 — Trash / History / Restore: shapes, ink, text, callouts,
-// regions, and bulk deletes.
+// regions, bulk deletes, and spaces.
 //
 // Pure + storage-agnostic so every function is unit-testable without React or
 // Supabase.  PDFViewer.jsx imports only what it needs; the rest stay here.
@@ -11,7 +11,9 @@
 //   OQ-1: callout parallel branch ships NOW (deleted at KAL-81 unification).
 //   OQ-2: delete-audit rows are immutable (trigger blocks owner DELETE).
 //   OQ-3: 50-object soft cap per bulk row; batchId splitting beyond 50.
-//   OQ-4: greyed-out + "its space was deleted — restore the space first".
+//   OQ-4 SUPERSEDED: CONFIRM-CASCADE — when space restore record exists,
+//         keep Restore enabled and offer "Restore both?" confirm; greyed-out
+//         only when no space record is available (aged out / never journaled).
 
 import { invertAnnotationHistoryAction } from '../utils/annotationLocalHistory.js';
 
@@ -409,4 +411,130 @@ export function buildBulkAnnotationDeleteHistoryRows({
 /** True when a history event is a bulk-delete row. */
 export function isBulkAnnotationDeleteEvent(event) {
   return event?.event_type === 'annotations_bulk_deleted';
+}
+
+// ─── Slice 6: Space (prerequisite for region cascade restore) ─────────────────
+//
+// handleSpaceDelete in PDFViewer previously only wrote an addHistoryCheckpoint
+// entry — no restoreAction, no space_deleted event_type, so the region restore
+// handler had no space record to find when checking whether the parent space
+// could be revived. This slice closes that gap.
+
+/**
+ * Build the restoreAction for a space deletion.
+ *
+ * @param {object} space  the full space object at delete time
+ *                        { id, name, assignedPages: [...], ... }
+ * @returns {object}
+ */
+export function buildSpaceRestoreAction(space) {
+  return {
+    type: 'space',
+    spaceId: space?.id,
+    spaceName: space?.name ?? null,
+    space,
+  };
+}
+
+/**
+ * Build a document-history row for a space deletion.
+ *
+ * @param {object} args
+ * @param {object} args.space          full space object being deleted
+ * @param {string} args.documentId
+ * @param {string|null} [args.userId]
+ * @param {string} [args.actorName]
+ * @param {string} args.deletedAt      ISO timestamp
+ * @returns {object|null}
+ */
+export function buildSpaceDeleteHistoryRow({
+  space,
+  documentId,
+  userId = null,
+  actorName = 'Someone',
+  deletedAt,
+}) {
+  if (!space || !space.id) return null;
+  if (!documentId) return null;
+
+  const spaceLabel = space.name ? `"${space.name}"` : 'a space';
+  const restoreAction = buildSpaceRestoreAction(space);
+
+  const clientEventId = [
+    'space-delete',
+    space.id,
+    deletedAt,
+  ].join(':');
+
+  return {
+    id: clientEventId,
+    document_id: documentId,
+    user_id: userId,
+    client_event_id: clientEventId,
+    event_type: 'space_deleted',
+    source: 'space-trash',
+    page_number: null,
+    annotation_id: space.id,
+    summary: `${actorName} deleted space ${spaceLabel}`,
+    payload: {
+      actionType: 'delete',
+      rawActionType: 'space_deleted',
+      spaceId: space.id,
+      spaceName: space.name ?? null,
+      deletedBy: userId,
+      restoreAction,
+    },
+    is_undoable: true,
+    is_checkpoint: false,
+    occurred_at: deletedAt,
+    created_at: deletedAt,
+  };
+}
+
+/** True when a history restoreAction targets a space. */
+export function isSpaceRestoreAction(restoreAction) {
+  return Boolean(
+    restoreAction &&
+    restoreAction.type === 'space' &&
+    restoreAction.spaceId &&
+    restoreAction.space,
+  );
+}
+
+// ─── Cascade decision helper ──────────────────────────────────────────────────
+//
+// Used by the region restore path to decide whether to:
+//   'plain'   — space exists in live state, restore region directly
+//   'cascade' — space is gone BUT a restorable space_deleted event exists;
+//               caller should present "Restore both?" confirm
+//   'blocked' — space is gone AND no restorable record available; show greyed-out
+
+/**
+ * Determine the cascade decision for restoring an orphaned region.
+ *
+ * @param {object} args
+ * @param {string}   args.spaceId            the region's parent space ID
+ * @param {object[]} args.liveSpaces         current live spaces array
+ * @param {object[]} args.historyEvents      loaded history events from the panel
+ * @returns {'plain' | 'cascade' | 'blocked'}
+ */
+export function resolveRegionRestoreCascade({ spaceId, liveSpaces, historyEvents }) {
+  // Case 1: space still exists → plain restore
+  if (Array.isArray(liveSpaces) && liveSpaces.some((s) => s.id === spaceId)) {
+    return 'plain';
+  }
+
+  // Case 2: space gone — look for a restorable space_deleted event
+  if (Array.isArray(historyEvents)) {
+    const spaceRecord = historyEvents.find(
+      (ev) =>
+        ev.event_type === 'space_deleted' &&
+        ev.payload?.restoreAction?.spaceId === spaceId &&
+        isSpaceRestoreAction(ev.payload?.restoreAction),
+    );
+    if (spaceRecord) return 'cascade';
+  }
+
+  // Case 3: no restore record available
+  return 'blocked';
 }

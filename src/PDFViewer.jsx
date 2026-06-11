@@ -94,7 +94,7 @@ import { applyExcelValuesToMarker } from './services/excelConflictResolve';
 import { makeTombstone, addTombstone, removeTombstone, purgeExpired } from './services/surveyMarkerTrash';
 import { loadTrash, saveTrash } from './services/surveyMarkerTrashStore';
 import { buildSurveyMarkerDeleteHistoryRow, applySurveyMarkerRestore } from './services/surveyMarkerHistory';
-// KAL-313: trash / history / restore for shapes, ink, text, callouts, regions, bulk.
+// KAL-313: trash / history / restore for shapes, ink, text, callouts, regions, bulk, spaces.
 import {
   buildAnnotationDeleteHistoryRow,
   isAnnotationRestoreAction,
@@ -106,6 +106,9 @@ import {
   buildBulkAnnotationDeleteHistoryRows,
   isBulkAnnotationDeleteEvent,
   buildAnnotationRestoreAction,
+  buildSpaceDeleteHistoryRow,
+  isSpaceRestoreAction,
+  resolveRegionRestoreCascade,
 } from './services/annotationTrashHistory';
 // KAL-307: server-minted workbook registration (one live workbook per survey).
 import { registerWorkbook, embedRegistrationIntoMetaSheet } from './services/workbookRegistration';
@@ -17117,6 +17120,27 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     // Checkpoint history before deleting space
     addHistoryCheckpoint('space:delete', { spaceId: id });
 
+    // KAL-313: emit a space_deleted history row so the region cascade restore
+    // path (resolveRegionRestoreCascade) can find the space's restore record
+    // when a user later tries to restore an orphaned region.
+    const spaceToDelete = (spacesRef.current || []).find((s) => s.id === id);
+    if (spaceToDelete && documentId) {
+      const actorName =
+        user?.user_metadata?.full_name
+        || user?.user_metadata?.name
+        || [user?.user_metadata?.first_name, user?.user_metadata?.last_name].filter(Boolean).join(' ')
+        || user?.email
+        || 'Someone';
+      const spaceTrashRow = buildSpaceDeleteHistoryRow({
+        space: spaceToDelete,
+        documentId,
+        userId: user?.id || null,
+        actorName,
+        deletedAt: new Date().toISOString(),
+      });
+      if (spaceTrashRow) void recordDocumentHistoryEvent(spaceTrashRow);
+    }
+
     cascadeDeleteScopedAppState({
       spaceId: id,
       reason: 'space-delete',
@@ -17128,7 +17152,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     if (selectedSpaceId === id) {
       setSelectedSpaceId(null);
     }
-  }, [addHistoryCheckpoint, activeSpaceId, selectedSpaceId, cascadeDeleteScopedAppState]);
+  }, [addHistoryCheckpoint, activeSpaceId, selectedSpaceId, cascadeDeleteScopedAppState, documentId, user]);
 
   const handleSetActiveSpace = useCallback((spaceId) => {
     debugLog('[SPACE TOGGLE] Activating space - regions enabled, annotations with regionId should be shown:', { spaceId, previousActiveSpaceId: activeSpaceId });
@@ -21935,13 +21959,21 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
     // KAL-313: Region restore.
     // Appends the deleted region back to its parent space/page.
-    // If the parent space is gone: returns greyed-out reason per OQ-4 decision.
+    // KAL-313 OQ-4 SUPERSEDED (CONFIRM-CASCADE):
+    //   - space present → plain restore (falls through below)
+    //   - space missing + restore record exists → return 'cascade-confirm' so
+    //     RevisionsPanel can look up the space event and ask "Restore both?"
+    //   - space missing + no record → return 'blocked' (greyed-out)
+    // The cascade *decision* (does a space event exist?) lives in RevisionsPanel
+    // because only the panel has the loaded historyEvents array. We signal which
+    // branch is needed via `reason` so the panel can act without a second round-trip.
     if (isRegionRestoreAction(restoreAction)) {
       const { spaceId, region: restoredRegion, pageNumber: regionPageNumber } = restoreAction;
       const liveSpaces = spacesRef.current || [];
       const targetSpace = liveSpaces.find((s) => s.id === spaceId);
       if (!targetSpace) {
-        return { ok: false, reason: 'region-space-deleted' };
+        // Signal the panel — it will resolve cascade vs blocked using historyEvents.
+        return { ok: false, reason: 'cascade-confirm', spaceId };
       }
       // Find the assigned page entry within the space; if missing, create it.
       const existingPages = Array.isArray(targetSpace.assignedPages) ? targetSpace.assignedPages : [];
@@ -22036,6 +22068,104 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     });
     return { ok: true, pageNumber };
   }, [handleSaveAnnotations, handleSpaceUpdate, pdfId]);
+
+  // KAL-313: Space restore — re-inserts a deleted space into live spaces state.
+  // Called by handleCascadeRestoreRegion (cascade confirm path) after the user
+  // confirms "Restore both?" in RevisionsPanel.
+  const handleRestoreSpace = useCallback((spaceRestoreAction) => {
+    if (!isSpaceRestoreAction(spaceRestoreAction)) {
+      return { ok: false, reason: 'restore-unavailable' };
+    }
+    const { spaceId, space: restoredSpace } = spaceRestoreAction;
+    const liveSpaces = spacesRef.current || [];
+    // Idempotent: if space already exists (restored via another path), no-op.
+    if (liveSpaces.some((s) => s.id === spaceId)) {
+      return { ok: true, alreadyPresent: true };
+    }
+    setSpaces((prev) => [...prev, { ...restoredSpace, restoredAt: new Date().toISOString() }]);
+    return { ok: true };
+  }, []);
+
+  // KAL-313: Cascade restore — space first, then the orphaned region.
+  // Called by RevisionsPanel when the user confirms "Restore both?" after
+  // resolveRegionRestoreCascade returns 'cascade'.
+  //
+  // spaceEvent: the space_deleted history event (carries the space restoreAction)
+  // regionEvent: the region_deleted history event (carries the region restoreAction)
+  const handleCascadeRestoreRegion = useCallback((spaceEvent, regionEvent) => {
+    // 1. Restore the space
+    const spaceRestoreAction = spaceEvent?.payload?.restoreAction;
+    const spaceResult = handleRestoreSpace(spaceRestoreAction);
+    if (!spaceResult?.ok) {
+      return { ok: false, reason: 'space-restore-failed' };
+    }
+    // 2. Restore the region (space is now in live state via setSpaces above;
+    //    spacesRef.current may not be updated synchronously, so we apply
+    //    the region directly rather than delegating to handleRestoreHistoryActivity).
+    const regionRestoreAction = regionEvent?.payload?.restoreAction;
+    if (!isRegionRestoreAction(regionRestoreAction)) {
+      return { ok: false, reason: 'region-restore-unavailable' };
+    }
+    const { spaceId, region: restoredRegion } = regionRestoreAction;
+    const pageId = restoredRegion.pageId ?? regionRestoreAction.pageNumber;
+    // Read fresh live spaces: after setSpaces the ref may not be updated yet,
+    // so merge the restored space inline rather than reading spacesRef.current.
+    const prevSpaces = spacesRef.current || [];
+    const spaceAlreadyInRef = prevSpaces.some((s) => s.id === spaceId);
+    if (spaceAlreadyInRef) {
+      // Ref is already up-to-date — delegate to the normal handleSpaceUpdate path.
+      const existingPages = Array.isArray(
+        prevSpaces.find((s) => s.id === spaceId)?.assignedPages
+      )
+        ? prevSpaces.find((s) => s.id === spaceId).assignedPages
+        : [];
+      const pageEntry = existingPages.find((p) => String(p.pageId) === String(pageId));
+      let updatedPages;
+      if (pageEntry) {
+        if ((pageEntry.regions || []).some((r) => r.regionId === restoredRegion.regionId)) {
+          return { ok: true, alreadyPresent: true };
+        }
+        updatedPages = existingPages.map((p) =>
+          String(p.pageId) === String(pageId)
+            ? { ...p, regions: [...(p.regions || []), restoredRegion] }
+            : p
+        );
+      } else {
+        updatedPages = [...existingPages, { pageId, regions: [restoredRegion], wholePageIncluded: false }];
+      }
+      handleSpaceUpdate(spaceId, { assignedPages: updatedPages });
+    } else {
+      // Ref not yet synced — apply region inside the setSpaces updater so both
+      // the restored space AND the region land in the same state update.
+      const restoredSpaceObj = spaceRestoreAction.space;
+      setSpaces((prev) => {
+        // If space was re-added by handleRestoreSpace's setSpaces call (which
+        // batches with this one in React 18), find it; otherwise use the snapshot.
+        const existingSpace = prev.find((s) => s.id === spaceId);
+        const baseSpace = existingSpace || { ...restoredSpaceObj, restoredAt: new Date().toISOString() };
+        const existingPages = Array.isArray(baseSpace.assignedPages) ? baseSpace.assignedPages : [];
+        const pageEntry = existingPages.find((p) => String(p.pageId) === String(pageId));
+        let updatedPages;
+        if (pageEntry) {
+          if ((pageEntry.regions || []).some((r) => r.regionId === restoredRegion.regionId)) {
+            return prev; // already present — no-op
+          }
+          updatedPages = existingPages.map((p) =>
+            String(p.pageId) === String(pageId)
+              ? { ...p, regions: [...(p.regions || []), restoredRegion] }
+              : p
+          );
+        } else {
+          updatedPages = [...existingPages, { pageId, regions: [restoredRegion], wholePageIncluded: false }];
+        }
+        const updatedSpace = { ...baseSpace, assignedPages: updatedPages };
+        return prev.some((s) => s.id === spaceId)
+          ? prev.map((s) => (s.id === spaceId ? updatedSpace : s))
+          : [...prev, updatedSpace];
+      });
+    }
+    return { ok: true, pageNumber: Number.isFinite(Number(pageId)) ? Number(pageId) : null };
+  }, [handleRestoreSpace, handleSpaceUpdate]);
 
   // Embedded import — exactly once per document, durably.
   //
@@ -26328,7 +26458,8 @@ ${pageBlocks}
       onToggleCollapse: handleLeftRailToggleCollapse,
       documentId: currentDocumentId,
       user,
-      onRestoreHistoryActivity: handleRestoreHistoryActivity
+      onRestoreHistoryActivity: handleRestoreHistoryActivity,
+      onCascadeRestoreRegion: handleCascadeRestoreRegion,
     };
     onLeftRailApiChange((prev) => {
       if (prev) {
@@ -26419,7 +26550,8 @@ ${pageBlocks}
     currentDocumentId,
     user,
     handleLeftRailToggleCollapse,
-    handleRestoreHistoryActivity
+    handleRestoreHistoryActivity,
+    handleCascadeRestoreRegion,
   ]);
 
   // UX 2026-05-29: Publish the active PDF viewer's right-rail data to the App
