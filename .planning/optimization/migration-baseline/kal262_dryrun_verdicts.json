@@ -1,0 +1,1582 @@
+{
+ "task": "KAL-262",
+ "generated_at": "2026-06-11T16:44:22.390Z",
+ "baseline_generated_at": "2026-06-11T14:38:44.892Z",
+ "cutoff": "2026-06-11T14:38:44.892Z",
+ "host": "cvamwtpsuvxvjdnotbeg.supabase.co",
+ "live_snapshot": {
+  "total": 53229,
+  "max_updated_at": "2026-06-10T21:32:37.147345+00:00",
+  "baseline_total": 53229,
+  "baseline_max_updated_at": "2026-06-10T21:32:37.147345+00:00",
+  "matches": true,
+  "post_cutoff_count": 0,
+  "post_cutoff_count_method": "exact_filtered_count"
+ },
+ "anchoring": {
+  "user_drawn": {
+   "matched": 615,
+   "drift_explained_count": 0,
+   "unexplained_count": 0,
+   "drift_explained": [],
+   "unexplained": []
+  },
+  "embedded": {
+   "matched": 10960,
+   "drift_explained_count": 0,
+   "unexplained_count": 0,
+   "drift_explained": [],
+   "unexplained": []
+  }
+ },
+ "self_test": {
+  "pass": true,
+  "detections": [
+   {
+    "injection": "tampered survey-marker payload field",
+    "expected_diff": "hash_mismatch",
+    "detected": true
+   },
+   {
+    "injection": "deleted user-drawn mark",
+    "expected_diff": "missing_mark",
+    "detected": true
+   },
+   {
+    "injection": "deleted embedded key",
+    "expected_diff": "missing_embedded_key",
+    "detected": true
+   },
+   {
+    "injection": "extra embedded key",
+    "expected_diff": "extra_key",
+    "detected": true
+   },
+   {
+    "injection": "callout in wrong map",
+    "expected_diff": "wrong_map",
+    "detected": true
+   },
+   {
+    "injection": "wrong survivor on divergent key",
+    "expected_diff": "hash_mismatch",
+    "detected": true
+   },
+   {
+    "injection": "bridge-shaped stub entry",
+    "expected_diff": "unreconstructable_entry",
+    "detected": true
+   }
+  ]
+ },
+ "documents": [
+  {
+   "document_id": "00e1cde9-449b-4771-9743-37bd604557a9",
+   "user_drawn_expected": 51,
+   "embedded_expected": 495,
+   "policies": {
+    "app_exact": {
+     "pass": true,
+     "diff_count": 0,
+     "diffs": []
+    },
+    "latest_updated_at": {
+     "pass": true,
+     "diff_count": 0,
+     "diffs": []
+    },
+    "latest_created_at": {
+     "pass": true,
+     "diff_count": 0,
+     "diffs": []
+    }
+   }
+  },
+  {
+   "document_id": "18cd6968-d996-4eb0-b2e2-b92e9fe0dc83",
+   "user_drawn_expected": 33,
+   "embedded_expected": 0,
+   "policies": {
+    "app_exact": {
+     "pass": true,
+     "diff_count": 0,
+     "diffs": []
+    },
+    "latest_updated_at": {
+     "pass": true,
+     "diff_count": 0,
+     "diffs": []
+    },
+    "latest_created_at": {
+     "pass": true,
+     "diff_count": 0,
+     "diffs": []
+    }
+   }
+  },
+  {
+   "document_id": "1c651784-3037-49ab-843c-1fde344ab3cb",
+   "user_drawn_expected": 14,
+   "embedded_expected": 0,
+   "policies": {
+    "app_exact": {
+     "pass": true,
+     "diff_count": 0,
+     "diffs": []
+    },
+    "latest_updated_at": {
+     "pass": true,
+     "diff_count": 0,
+     "diffs": []
+    },
+    "latest_created_at": {
+     "pass": true,
+     "diff_count": 0,
+     "diffs": []
+    }
+   }
+  },
+  {
+   "document_id": "21cca3f9-6168-4434-b092-9a30fa9b22ea",
+   "user_drawn_expected": 2,
+   "embedded_expected": 500,
+   "policies": {
+    "app_exact": {
+     "pass": true,
+     "diff_count": 0,
+     "diffs": []
+    },
+    "latest_updated_at": {
+     "pass": true,
+     "diff_count": 0,
+     "diffs": []
+    },
+    "latest_created_at": {
+     "pass": true,
+     "diff_count": 0,
+     "diffs": []
+    }
+   }
+  },
+  {
+   "document_id": "27bac56b-be3e-41dd-8bbf-b826fe15f8fe",
+   "user_drawn_expected": 2,
+   "embedded_expected": 0,
+   "policies": {
+    "app_exact": {
+     "pass": true,
+     "diff_count": 0,
+     "diffs": []
+    },
+    "latest_updated_at": {
+     "pass": true,
+     "diff_count": 0,
+     "diffs": []
+    },
+    "latest_created_at": {
+     "pass": true,
+     "diff_count": 0,
+     "diffs": []
+    }
+   }
+  },
+  {
+   "document_id": "3fb7118c-dfe7-4923-babb-fcfa5db1bc11",
+   "user_drawn_expected": 1,
+   "embedded_expected": 1,
+   "policies": {
+    "app_exact": {
+     "pass": true,
+     "diff_count": 0,
+     "diffs": []
+    },
+    "latest_updated_at": {
+     "pass": true,
+     "diff_count": 0,
+     "diffs": []
+    },
+    "latest_created_at": {
+     "pass": true,
+     "diff_count": 0,
+     "diffs": []
+    }
+   }
+  },
+  {
+   "document_id": "43c92ebc-8ae9-4aec-bd6d-5281fdfcfe5d",
+   "user_drawn_expected": 17,
+   "embedded_expected": 0,
+   "policies": {
+    "app_exact": {
+     "pass": true,
+     "diff_count": 0,
+     "diffs": []
+    },
+    "latest_updated_at": {
+     "pass": true,
+     "diff_count": 0,
+     "diffs": []
+    },
+    "latest_created_at": {
+     "pass": true,
+     "diff_count": 0,
+     "diffs": []
+    }
+   }
+  },
+  {
+   "document_id": "484e4280-bca3-4ebe-bde7-d9371da0f528",
+   "user_drawn_expected": 11,
+   "embedded_expected": 0,
+   "policies": {
+    "app_exact": {
+     "pass": true,
+     "diff_count": 0,
+     "diffs": []
+    },
+    "latest_updated_at": {
+     "pass": true,
+     "diff_count": 0,
+     "diffs": []
+    },
+    "latest_created_at": {
+     "pass": true,
+     "diff_count": 0,
+     "diffs": []
+    }
+   }
+  },
+  {
+   "document_id": "58c80bb3-0ba7-484e-999a-5daec6ba2a88",
+   "user_drawn_expected": 8,
+   "embedded_expected": 0,
+   "policies": {
+    "app_exact": {
+     "pass": true,
+     "diff_count": 0,
+     "diffs": []
+    },
+    "latest_updated_at": {
+     "pass": true,
+     "diff_count": 0,
+     "diffs": []
+    },
+    "latest_created_at": {
+     "pass": true,
+     "diff_count": 0,
+     "diffs": []
+    }
+   }
+  },
+  {
+   "document_id": "5fa31b86-a0ce-481d-b20c-66be5f2f30fc",
+   "user_drawn_expected": 19,
+   "embedded_expected": 3057,
+   "policies": {
+    "app_exact": {
+     "pass": true,
+     "diff_count": 0,
+     "diffs": []
+    },
+    "latest_updated_at": {
+     "pass": true,
+     "diff_count": 0,
+     "diffs": []
+    },
+    "latest_created_at": {
+     "pass": true,
+     "diff_count": 0,
+     "diffs": []
+    }
+   }
+  },
+  {
+   "document_id": "633d23e8-b232-4338-bee5-b723db465663",
+   "user_drawn_expected": 8,
+   "embedded_expected": 0,
+   "policies": {
+    "app_exact": {
+     "pass": true,
+     "diff_count": 0,
+     "diffs": []
+    },
+    "latest_updated_at": {
+     "pass": true,
+     "diff_count": 0,
+     "diffs": []
+    },
+    "latest_created_at": {
+     "pass": true,
+     "diff_count": 0,
+     "diffs": []
+    }
+   }
+  },
+  {
+   "document_id": "6ba9b74d-0476-4a78-bd24-ac59c5955f1b",
+   "user_drawn_expected": 1,
+   "embedded_expected": 0,
+   "policies": {
+    "app_exact": {
+     "pass": true,
+     "diff_count": 0,
+     "diffs": []
+    },
+    "latest_updated_at": {
+     "pass": true,
+     "diff_count": 0,
+     "diffs": []
+    },
+    "latest_created_at": {
+     "pass": true,
+     "diff_count": 0,
+     "diffs": []
+    }
+   }
+  },
+  {
+   "document_id": "70dadd86-35f0-432b-925f-c59e919a4e4d",
+   "user_drawn_expected": 2,
+   "embedded_expected": 3056,
+   "policies": {
+    "app_exact": {
+     "pass": true,
+     "diff_count": 0,
+     "diffs": []
+    },
+    "latest_updated_at": {
+     "pass": true,
+     "diff_count": 0,
+     "diffs": []
+    },
+    "latest_created_at": {
+     "pass": true,
+     "diff_count": 0,
+     "diffs": []
+    }
+   }
+  },
+  {
+   "document_id": "8fbe0394-0300-4d8b-9851-1a942f3d5013",
+   "user_drawn_expected": 7,
+   "embedded_expected": 0,
+   "policies": {
+    "app_exact": {
+     "pass": true,
+     "diff_count": 0,
+     "diffs": []
+    },
+    "latest_updated_at": {
+     "pass": true,
+     "diff_count": 0,
+     "diffs": []
+    },
+    "latest_created_at": {
+     "pass": true,
+     "diff_count": 0,
+     "diffs": []
+    }
+   }
+  },
+  {
+   "document_id": "97f95b32-77b3-4834-a8fc-68f21543eb16",
+   "user_drawn_expected": 388,
+   "embedded_expected": 496,
+   "policies": {
+    "app_exact": {
+     "pass": true,
+     "diff_count": 0,
+     "diffs": []
+    },
+    "latest_updated_at": {
+     "pass": true,
+     "diff_count": 0,
+     "diffs": []
+    },
+    "latest_created_at": {
+     "pass": true,
+     "diff_count": 0,
+     "diffs": []
+    }
+   }
+  },
+  {
+   "document_id": "b2e7e719-f7fa-4a86-885d-3edd44db54ae",
+   "user_drawn_expected": 1,
+   "embedded_expected": 8,
+   "policies": {
+    "app_exact": {
+     "pass": true,
+     "diff_count": 0,
+     "diffs": []
+    },
+    "latest_updated_at": {
+     "pass": true,
+     "diff_count": 0,
+     "diffs": []
+    },
+    "latest_created_at": {
+     "pass": true,
+     "diff_count": 0,
+     "diffs": []
+    }
+   }
+  },
+  {
+   "document_id": "b4388a09-3ba0-462f-9f3c-1c880e89e138",
+   "user_drawn_expected": 8,
+   "embedded_expected": 0,
+   "policies": {
+    "app_exact": {
+     "pass": true,
+     "diff_count": 0,
+     "diffs": []
+    },
+    "latest_updated_at": {
+     "pass": true,
+     "diff_count": 0,
+     "diffs": []
+    },
+    "latest_created_at": {
+     "pass": true,
+     "diff_count": 0,
+     "diffs": []
+    }
+   }
+  },
+  {
+   "document_id": "cad2c817-3630-4435-b821-1743466a30d9",
+   "user_drawn_expected": 5,
+   "embedded_expected": 0,
+   "policies": {
+    "app_exact": {
+     "pass": true,
+     "diff_count": 0,
+     "diffs": []
+    },
+    "latest_updated_at": {
+     "pass": true,
+     "diff_count": 0,
+     "diffs": []
+    },
+    "latest_created_at": {
+     "pass": true,
+     "diff_count": 0,
+     "diffs": []
+    }
+   }
+  },
+  {
+   "document_id": "d30ac66b-5d2e-4a93-aab3-8fdd84a0af86",
+   "user_drawn_expected": 30,
+   "embedded_expected": 2401,
+   "policies": {
+    "app_exact": {
+     "pass": true,
+     "diff_count": 0,
+     "diffs": []
+    },
+    "latest_updated_at": {
+     "pass": true,
+     "diff_count": 0,
+     "diffs": []
+    },
+    "latest_created_at": {
+     "pass": true,
+     "diff_count": 0,
+     "diffs": []
+    }
+   }
+  },
+  {
+   "document_id": "dd2747d1-5115-4e2b-ac01-b1068628b597",
+   "user_drawn_expected": 1,
+   "embedded_expected": 0,
+   "policies": {
+    "app_exact": {
+     "pass": true,
+     "diff_count": 0,
+     "diffs": []
+    },
+    "latest_updated_at": {
+     "pass": true,
+     "diff_count": 0,
+     "diffs": []
+    },
+    "latest_created_at": {
+     "pass": true,
+     "diff_count": 0,
+     "diffs": []
+    }
+   }
+  },
+  {
+   "document_id": "e0686482-2307-4e3a-9dca-f3debc1fac84",
+   "user_drawn_expected": 3,
+   "embedded_expected": 7,
+   "policies": {
+    "app_exact": {
+     "pass": true,
+     "diff_count": 0,
+     "diffs": []
+    },
+    "latest_updated_at": {
+     "pass": true,
+     "diff_count": 0,
+     "diffs": []
+    },
+    "latest_created_at": {
+     "pass": true,
+     "diff_count": 0,
+     "diffs": []
+    }
+   }
+  },
+  {
+   "document_id": "ff4e2bbc-6c36-44e1-9bc5-60a32c22674a",
+   "user_drawn_expected": 3,
+   "embedded_expected": 0,
+   "policies": {
+    "app_exact": {
+     "pass": true,
+     "diff_count": 0,
+     "diffs": []
+    },
+    "latest_updated_at": {
+     "pass": true,
+     "diff_count": 0,
+     "diffs": []
+    },
+    "latest_created_at": {
+     "pass": true,
+     "diff_count": 0,
+     "diffs": []
+    }
+   }
+  },
+  {
+   "document_id": "eddb45fc-3a0c-49fd-9615-124dd5434d96",
+   "user_drawn_expected": 0,
+   "embedded_expected": 540,
+   "policies": {
+    "app_exact": {
+     "pass": true,
+     "diff_count": 0,
+     "diffs": []
+    },
+    "latest_updated_at": {
+     "pass": true,
+     "diff_count": 0,
+     "diffs": []
+    },
+    "latest_created_at": {
+     "pass": true,
+     "diff_count": 0,
+     "diffs": []
+    }
+   }
+  },
+  {
+   "document_id": "b8f0c934-b0d5-49ce-be9d-2d6b3a562df6",
+   "user_drawn_expected": 0,
+   "embedded_expected": 257,
+   "policies": {
+    "app_exact": {
+     "pass": true,
+     "diff_count": 0,
+     "diffs": []
+    },
+    "latest_updated_at": {
+     "pass": true,
+     "diff_count": 0,
+     "diffs": []
+    },
+    "latest_created_at": {
+     "pass": true,
+     "diff_count": 0,
+     "diffs": []
+    }
+   }
+  },
+  {
+   "document_id": "d9ec1adb-fff3-4c32-aef0-e9dff54ab7cc",
+   "user_drawn_expected": 0,
+   "embedded_expected": 3,
+   "policies": {
+    "app_exact": {
+     "pass": true,
+     "diff_count": 0,
+     "diffs": []
+    },
+    "latest_updated_at": {
+     "pass": true,
+     "diff_count": 0,
+     "diffs": []
+    },
+    "latest_created_at": {
+     "pass": true,
+     "diff_count": 0,
+     "diffs": []
+    }
+   }
+  },
+  {
+   "document_id": "904eb457-c85d-4fbe-a59f-0240b075376a",
+   "user_drawn_expected": 0,
+   "embedded_expected": 3,
+   "policies": {
+    "app_exact": {
+     "pass": true,
+     "diff_count": 0,
+     "diffs": []
+    },
+    "latest_updated_at": {
+     "pass": true,
+     "diff_count": 0,
+     "diffs": []
+    },
+    "latest_created_at": {
+     "pass": true,
+     "diff_count": 0,
+     "diffs": []
+    }
+   }
+  },
+  {
+   "document_id": "989fd5c5-8bd9-4d35-9880-dc46e4bad47b",
+   "user_drawn_expected": 0,
+   "embedded_expected": 3,
+   "policies": {
+    "app_exact": {
+     "pass": true,
+     "diff_count": 0,
+     "diffs": []
+    },
+    "latest_updated_at": {
+     "pass": true,
+     "diff_count": 0,
+     "diffs": []
+    },
+    "latest_created_at": {
+     "pass": true,
+     "diff_count": 0,
+     "diffs": []
+    }
+   }
+  },
+  {
+   "document_id": "9daa5cd8-e5b6-4feb-bbfe-0b279f06dcc8",
+   "user_drawn_expected": 0,
+   "embedded_expected": 3,
+   "policies": {
+    "app_exact": {
+     "pass": true,
+     "diff_count": 0,
+     "diffs": []
+    },
+    "latest_updated_at": {
+     "pass": true,
+     "diff_count": 0,
+     "diffs": []
+    },
+    "latest_created_at": {
+     "pass": true,
+     "diff_count": 0,
+     "diffs": []
+    }
+   }
+  },
+  {
+   "document_id": "0524f231-11ca-4339-80af-31758aee8557",
+   "user_drawn_expected": 0,
+   "embedded_expected": 3,
+   "policies": {
+    "app_exact": {
+     "pass": true,
+     "diff_count": 0,
+     "diffs": []
+    },
+    "latest_updated_at": {
+     "pass": true,
+     "diff_count": 0,
+     "diffs": []
+    },
+    "latest_created_at": {
+     "pass": true,
+     "diff_count": 0,
+     "diffs": []
+    }
+   }
+  },
+  {
+   "document_id": "7aad296e-6e8e-47e3-8d52-22adafb6993e",
+   "user_drawn_expected": 0,
+   "embedded_expected": 3,
+   "policies": {
+    "app_exact": {
+     "pass": true,
+     "diff_count": 0,
+     "diffs": []
+    },
+    "latest_updated_at": {
+     "pass": true,
+     "diff_count": 0,
+     "diffs": []
+    },
+    "latest_created_at": {
+     "pass": true,
+     "diff_count": 0,
+     "diffs": []
+    }
+   }
+  },
+  {
+   "document_id": "cadf7af7-4b0e-46a0-b836-437bad110c84",
+   "user_drawn_expected": 0,
+   "embedded_expected": 3,
+   "policies": {
+    "app_exact": {
+     "pass": true,
+     "diff_count": 0,
+     "diffs": []
+    },
+    "latest_updated_at": {
+     "pass": true,
+     "diff_count": 0,
+     "diffs": []
+    },
+    "latest_created_at": {
+     "pass": true,
+     "diff_count": 0,
+     "diffs": []
+    }
+   }
+  },
+  {
+   "document_id": "a512b172-13aa-4ed1-9408-ff233cfaddde",
+   "user_drawn_expected": 0,
+   "embedded_expected": 3,
+   "policies": {
+    "app_exact": {
+     "pass": true,
+     "diff_count": 0,
+     "diffs": []
+    },
+    "latest_updated_at": {
+     "pass": true,
+     "diff_count": 0,
+     "diffs": []
+    },
+    "latest_created_at": {
+     "pass": true,
+     "diff_count": 0,
+     "diffs": []
+    }
+   }
+  },
+  {
+   "document_id": "fd9d0279-c041-4cac-91ca-8734899fc1b9",
+   "user_drawn_expected": 0,
+   "embedded_expected": 3,
+   "policies": {
+    "app_exact": {
+     "pass": true,
+     "diff_count": 0,
+     "diffs": []
+    },
+    "latest_updated_at": {
+     "pass": true,
+     "diff_count": 0,
+     "diffs": []
+    },
+    "latest_created_at": {
+     "pass": true,
+     "diff_count": 0,
+     "diffs": []
+    }
+   }
+  },
+  {
+   "document_id": "b9bb19b4-62dd-42f5-b78d-b6d8b1c1f71d",
+   "user_drawn_expected": 0,
+   "embedded_expected": 8,
+   "policies": {
+    "app_exact": {
+     "pass": true,
+     "diff_count": 0,
+     "diffs": []
+    },
+    "latest_updated_at": {
+     "pass": true,
+     "diff_count": 0,
+     "diffs": []
+    },
+    "latest_created_at": {
+     "pass": true,
+     "diff_count": 0,
+     "diffs": []
+    }
+   }
+  },
+  {
+   "document_id": "42083da5-a57f-4171-8de3-10549904584f",
+   "user_drawn_expected": 0,
+   "embedded_expected": 3,
+   "policies": {
+    "app_exact": {
+     "pass": true,
+     "diff_count": 0,
+     "diffs": []
+    },
+    "latest_updated_at": {
+     "pass": true,
+     "diff_count": 0,
+     "diffs": []
+    },
+    "latest_created_at": {
+     "pass": true,
+     "diff_count": 0,
+     "diffs": []
+    }
+   }
+  },
+  {
+   "document_id": "ed3faeb1-7b8c-4e56-b194-4f70f0240178",
+   "user_drawn_expected": 0,
+   "embedded_expected": 3,
+   "policies": {
+    "app_exact": {
+     "pass": true,
+     "diff_count": 0,
+     "diffs": []
+    },
+    "latest_updated_at": {
+     "pass": true,
+     "diff_count": 0,
+     "diffs": []
+    },
+    "latest_created_at": {
+     "pass": true,
+     "diff_count": 0,
+     "diffs": []
+    }
+   }
+  },
+  {
+   "document_id": "04a7a27c-4c12-461d-aafd-2c37a32360d9",
+   "user_drawn_expected": 0,
+   "embedded_expected": 3,
+   "policies": {
+    "app_exact": {
+     "pass": true,
+     "diff_count": 0,
+     "diffs": []
+    },
+    "latest_updated_at": {
+     "pass": true,
+     "diff_count": 0,
+     "diffs": []
+    },
+    "latest_created_at": {
+     "pass": true,
+     "diff_count": 0,
+     "diffs": []
+    }
+   }
+  },
+  {
+   "document_id": "2dee093e-bf3b-4ba3-9b29-a03fbfe508a4",
+   "user_drawn_expected": 0,
+   "embedded_expected": 3,
+   "policies": {
+    "app_exact": {
+     "pass": true,
+     "diff_count": 0,
+     "diffs": []
+    },
+    "latest_updated_at": {
+     "pass": true,
+     "diff_count": 0,
+     "diffs": []
+    },
+    "latest_created_at": {
+     "pass": true,
+     "diff_count": 0,
+     "diffs": []
+    }
+   }
+  },
+  {
+   "document_id": "6274fd2b-48c3-452a-9673-bad1b11a0dc2",
+   "user_drawn_expected": 0,
+   "embedded_expected": 3,
+   "policies": {
+    "app_exact": {
+     "pass": true,
+     "diff_count": 0,
+     "diffs": []
+    },
+    "latest_updated_at": {
+     "pass": true,
+     "diff_count": 0,
+     "diffs": []
+    },
+    "latest_created_at": {
+     "pass": true,
+     "diff_count": 0,
+     "diffs": []
+    }
+   }
+  },
+  {
+   "document_id": "0bb1efd2-1b66-47b2-8883-c7e3c0ebda8e",
+   "user_drawn_expected": 0,
+   "embedded_expected": 3,
+   "policies": {
+    "app_exact": {
+     "pass": true,
+     "diff_count": 0,
+     "diffs": []
+    },
+    "latest_updated_at": {
+     "pass": true,
+     "diff_count": 0,
+     "diffs": []
+    },
+    "latest_created_at": {
+     "pass": true,
+     "diff_count": 0,
+     "diffs": []
+    }
+   }
+  },
+  {
+   "document_id": "483f6e9d-03ad-482b-a25f-22593e1213d7",
+   "user_drawn_expected": 0,
+   "embedded_expected": 3,
+   "policies": {
+    "app_exact": {
+     "pass": true,
+     "diff_count": 0,
+     "diffs": []
+    },
+    "latest_updated_at": {
+     "pass": true,
+     "diff_count": 0,
+     "diffs": []
+    },
+    "latest_created_at": {
+     "pass": true,
+     "diff_count": 0,
+     "diffs": []
+    }
+   }
+  },
+  {
+   "document_id": "1728f636-3f48-4353-b7e3-f711f7eaba45",
+   "user_drawn_expected": 0,
+   "embedded_expected": 3,
+   "policies": {
+    "app_exact": {
+     "pass": true,
+     "diff_count": 0,
+     "diffs": []
+    },
+    "latest_updated_at": {
+     "pass": true,
+     "diff_count": 0,
+     "diffs": []
+    },
+    "latest_created_at": {
+     "pass": true,
+     "diff_count": 0,
+     "diffs": []
+    }
+   }
+  },
+  {
+   "document_id": "11b4cb7b-cd6b-4305-bb93-1bf3889cbf9e",
+   "user_drawn_expected": 0,
+   "embedded_expected": 3,
+   "policies": {
+    "app_exact": {
+     "pass": true,
+     "diff_count": 0,
+     "diffs": []
+    },
+    "latest_updated_at": {
+     "pass": true,
+     "diff_count": 0,
+     "diffs": []
+    },
+    "latest_created_at": {
+     "pass": true,
+     "diff_count": 0,
+     "diffs": []
+    }
+   }
+  },
+  {
+   "document_id": "d6df5833-fec9-4a5d-96b6-33344c3b79da",
+   "user_drawn_expected": 0,
+   "embedded_expected": 3,
+   "policies": {
+    "app_exact": {
+     "pass": true,
+     "diff_count": 0,
+     "diffs": []
+    },
+    "latest_updated_at": {
+     "pass": true,
+     "diff_count": 0,
+     "diffs": []
+    },
+    "latest_created_at": {
+     "pass": true,
+     "diff_count": 0,
+     "diffs": []
+    }
+   }
+  },
+  {
+   "document_id": "d76c1e6d-484b-4571-acb4-0af3401d3e97",
+   "user_drawn_expected": 0,
+   "embedded_expected": 3,
+   "policies": {
+    "app_exact": {
+     "pass": true,
+     "diff_count": 0,
+     "diffs": []
+    },
+    "latest_updated_at": {
+     "pass": true,
+     "diff_count": 0,
+     "diffs": []
+    },
+    "latest_created_at": {
+     "pass": true,
+     "diff_count": 0,
+     "diffs": []
+    }
+   }
+  },
+  {
+   "document_id": "a48d1909-e498-4f18-8efb-4083ef23542b",
+   "user_drawn_expected": 0,
+   "embedded_expected": 3,
+   "policies": {
+    "app_exact": {
+     "pass": true,
+     "diff_count": 0,
+     "diffs": []
+    },
+    "latest_updated_at": {
+     "pass": true,
+     "diff_count": 0,
+     "diffs": []
+    },
+    "latest_created_at": {
+     "pass": true,
+     "diff_count": 0,
+     "diffs": []
+    }
+   }
+  },
+  {
+   "document_id": "7b9126f6-62e0-4cbb-8be8-d2d8e19246a9",
+   "user_drawn_expected": 0,
+   "embedded_expected": 3,
+   "policies": {
+    "app_exact": {
+     "pass": true,
+     "diff_count": 0,
+     "diffs": []
+    },
+    "latest_updated_at": {
+     "pass": true,
+     "diff_count": 0,
+     "diffs": []
+    },
+    "latest_created_at": {
+     "pass": true,
+     "diff_count": 0,
+     "diffs": []
+    }
+   }
+  },
+  {
+   "document_id": "c77040a2-174e-4f59-8d05-0c25d53af251",
+   "user_drawn_expected": 0,
+   "embedded_expected": 3,
+   "policies": {
+    "app_exact": {
+     "pass": true,
+     "diff_count": 0,
+     "diffs": []
+    },
+    "latest_updated_at": {
+     "pass": true,
+     "diff_count": 0,
+     "diffs": []
+    },
+    "latest_created_at": {
+     "pass": true,
+     "diff_count": 0,
+     "diffs": []
+    }
+   }
+  },
+  {
+   "document_id": "3a2260cb-024a-43fa-bd9d-2c6560252f13",
+   "user_drawn_expected": 0,
+   "embedded_expected": 3,
+   "policies": {
+    "app_exact": {
+     "pass": true,
+     "diff_count": 0,
+     "diffs": []
+    },
+    "latest_updated_at": {
+     "pass": true,
+     "diff_count": 0,
+     "diffs": []
+    },
+    "latest_created_at": {
+     "pass": true,
+     "diff_count": 0,
+     "diffs": []
+    }
+   }
+  },
+  {
+   "document_id": "0d1e5ccc-2890-445a-97de-51caae061ee6",
+   "user_drawn_expected": 0,
+   "embedded_expected": 3,
+   "policies": {
+    "app_exact": {
+     "pass": true,
+     "diff_count": 0,
+     "diffs": []
+    },
+    "latest_updated_at": {
+     "pass": true,
+     "diff_count": 0,
+     "diffs": []
+    },
+    "latest_created_at": {
+     "pass": true,
+     "diff_count": 0,
+     "diffs": []
+    }
+   }
+  },
+  {
+   "document_id": "61f3fb50-9b9a-4fbb-a751-a538c1eb6ed5",
+   "user_drawn_expected": 0,
+   "embedded_expected": 8,
+   "policies": {
+    "app_exact": {
+     "pass": true,
+     "diff_count": 0,
+     "diffs": []
+    },
+    "latest_updated_at": {
+     "pass": true,
+     "diff_count": 0,
+     "diffs": []
+    },
+    "latest_created_at": {
+     "pass": true,
+     "diff_count": 0,
+     "diffs": []
+    }
+   }
+  },
+  {
+   "document_id": "086df1d3-fba2-4a2a-a5ad-58c87ee953fe",
+   "user_drawn_expected": 0,
+   "embedded_expected": 3,
+   "policies": {
+    "app_exact": {
+     "pass": true,
+     "diff_count": 0,
+     "diffs": []
+    },
+    "latest_updated_at": {
+     "pass": true,
+     "diff_count": 0,
+     "diffs": []
+    },
+    "latest_created_at": {
+     "pass": true,
+     "diff_count": 0,
+     "diffs": []
+    }
+   }
+  },
+  {
+   "document_id": "e31c0036-25ea-4659-a07d-d9a98f0069b1",
+   "user_drawn_expected": 0,
+   "embedded_expected": 3,
+   "policies": {
+    "app_exact": {
+     "pass": true,
+     "diff_count": 0,
+     "diffs": []
+    },
+    "latest_updated_at": {
+     "pass": true,
+     "diff_count": 0,
+     "diffs": []
+    },
+    "latest_created_at": {
+     "pass": true,
+     "diff_count": 0,
+     "diffs": []
+    }
+   }
+  },
+  {
+   "document_id": "1faec840-7bec-43a7-8eba-b60c03a2557e",
+   "user_drawn_expected": 0,
+   "embedded_expected": 3,
+   "policies": {
+    "app_exact": {
+     "pass": true,
+     "diff_count": 0,
+     "diffs": []
+    },
+    "latest_updated_at": {
+     "pass": true,
+     "diff_count": 0,
+     "diffs": []
+    },
+    "latest_created_at": {
+     "pass": true,
+     "diff_count": 0,
+     "diffs": []
+    }
+   }
+  },
+  {
+   "document_id": "f8bc5341-543e-4618-b5bf-183b6c9aa329",
+   "user_drawn_expected": 0,
+   "embedded_expected": 3,
+   "policies": {
+    "app_exact": {
+     "pass": true,
+     "diff_count": 0,
+     "diffs": []
+    },
+    "latest_updated_at": {
+     "pass": true,
+     "diff_count": 0,
+     "diffs": []
+    },
+    "latest_created_at": {
+     "pass": true,
+     "diff_count": 0,
+     "diffs": []
+    }
+   }
+  },
+  {
+   "document_id": "9537d4c4-69d9-42b9-b51a-d4a985cafcda",
+   "user_drawn_expected": 0,
+   "embedded_expected": 3,
+   "policies": {
+    "app_exact": {
+     "pass": true,
+     "diff_count": 0,
+     "diffs": []
+    },
+    "latest_updated_at": {
+     "pass": true,
+     "diff_count": 0,
+     "diffs": []
+    },
+    "latest_created_at": {
+     "pass": true,
+     "diff_count": 0,
+     "diffs": []
+    }
+   }
+  },
+  {
+   "document_id": "7b9e5a46-e9e8-4c65-85d5-082e30d401c0",
+   "user_drawn_expected": 0,
+   "embedded_expected": 3,
+   "policies": {
+    "app_exact": {
+     "pass": true,
+     "diff_count": 0,
+     "diffs": []
+    },
+    "latest_updated_at": {
+     "pass": true,
+     "diff_count": 0,
+     "diffs": []
+    },
+    "latest_created_at": {
+     "pass": true,
+     "diff_count": 0,
+     "diffs": []
+    }
+   }
+  },
+  {
+   "document_id": "377c8927-a1f1-45ad-8046-6f6784f7685f",
+   "user_drawn_expected": 0,
+   "embedded_expected": 3,
+   "policies": {
+    "app_exact": {
+     "pass": true,
+     "diff_count": 0,
+     "diffs": []
+    },
+    "latest_updated_at": {
+     "pass": true,
+     "diff_count": 0,
+     "diffs": []
+    },
+    "latest_created_at": {
+     "pass": true,
+     "diff_count": 0,
+     "diffs": []
+    }
+   }
+  },
+  {
+   "document_id": "43839482-cae4-4741-9245-0b4ff52f510f",
+   "user_drawn_expected": 0,
+   "embedded_expected": 3,
+   "policies": {
+    "app_exact": {
+     "pass": true,
+     "diff_count": 0,
+     "diffs": []
+    },
+    "latest_updated_at": {
+     "pass": true,
+     "diff_count": 0,
+     "diffs": []
+    },
+    "latest_created_at": {
+     "pass": true,
+     "diff_count": 0,
+     "diffs": []
+    }
+   }
+  },
+  {
+   "document_id": "c67a23aa-346c-45d3-8a68-f33ee12db6bd",
+   "user_drawn_expected": 0,
+   "embedded_expected": 3,
+   "policies": {
+    "app_exact": {
+     "pass": true,
+     "diff_count": 0,
+     "diffs": []
+    },
+    "latest_updated_at": {
+     "pass": true,
+     "diff_count": 0,
+     "diffs": []
+    },
+    "latest_created_at": {
+     "pass": true,
+     "diff_count": 0,
+     "diffs": []
+    }
+   }
+  },
+  {
+   "document_id": "5b374439-6a25-42e0-bfde-b6d59d9252db",
+   "user_drawn_expected": 0,
+   "embedded_expected": 3,
+   "policies": {
+    "app_exact": {
+     "pass": true,
+     "diff_count": 0,
+     "diffs": []
+    },
+    "latest_updated_at": {
+     "pass": true,
+     "diff_count": 0,
+     "diffs": []
+    },
+    "latest_created_at": {
+     "pass": true,
+     "diff_count": 0,
+     "diffs": []
+    }
+   }
+  },
+  {
+   "document_id": "164751c3-3992-43ef-93b3-3e9bb5d9c6ec",
+   "user_drawn_expected": 0,
+   "embedded_expected": 3,
+   "policies": {
+    "app_exact": {
+     "pass": true,
+     "diff_count": 0,
+     "diffs": []
+    },
+    "latest_updated_at": {
+     "pass": true,
+     "diff_count": 0,
+     "diffs": []
+    },
+    "latest_created_at": {
+     "pass": true,
+     "diff_count": 0,
+     "diffs": []
+    }
+   }
+  },
+  {
+   "document_id": "ff9d5ff3-71b2-4430-ae69-6876e7d25818",
+   "user_drawn_expected": 0,
+   "embedded_expected": 3,
+   "policies": {
+    "app_exact": {
+     "pass": true,
+     "diff_count": 0,
+     "diffs": []
+    },
+    "latest_updated_at": {
+     "pass": true,
+     "diff_count": 0,
+     "diffs": []
+    },
+    "latest_created_at": {
+     "pass": true,
+     "diff_count": 0,
+     "diffs": []
+    }
+   }
+  },
+  {
+   "document_id": "fa504635-afa9-4d05-ab63-0ccb1f230bb2",
+   "user_drawn_expected": 0,
+   "embedded_expected": 3,
+   "policies": {
+    "app_exact": {
+     "pass": true,
+     "diff_count": 0,
+     "diffs": []
+    },
+    "latest_updated_at": {
+     "pass": true,
+     "diff_count": 0,
+     "diffs": []
+    },
+    "latest_created_at": {
+     "pass": true,
+     "diff_count": 0,
+     "diffs": []
+    }
+   }
+  },
+  {
+   "document_id": "8c18b9c9-a5c9-45f5-8052-29d6edc53edc",
+   "user_drawn_expected": 0,
+   "embedded_expected": 3,
+   "policies": {
+    "app_exact": {
+     "pass": true,
+     "diff_count": 0,
+     "diffs": []
+    },
+    "latest_updated_at": {
+     "pass": true,
+     "diff_count": 0,
+     "diffs": []
+    },
+    "latest_created_at": {
+     "pass": true,
+     "diff_count": 0,
+     "diffs": []
+    }
+   }
+  },
+  {
+   "document_id": "d0778843-add1-468f-bd82-de863661d6f4",
+   "user_drawn_expected": 0,
+   "embedded_expected": 3,
+   "policies": {
+    "app_exact": {
+     "pass": true,
+     "diff_count": 0,
+     "diffs": []
+    },
+    "latest_updated_at": {
+     "pass": true,
+     "diff_count": 0,
+     "diffs": []
+    },
+    "latest_created_at": {
+     "pass": true,
+     "diff_count": 0,
+     "diffs": []
+    }
+   }
+  },
+  {
+   "document_id": "467cacc3-9535-4168-94e4-ac9a71fca9c3",
+   "user_drawn_expected": 0,
+   "embedded_expected": 3,
+   "policies": {
+    "app_exact": {
+     "pass": true,
+     "diff_count": 0,
+     "diffs": []
+    },
+    "latest_updated_at": {
+     "pass": true,
+     "diff_count": 0,
+     "diffs": []
+    },
+    "latest_created_at": {
+     "pass": true,
+     "diff_count": 0,
+     "diffs": []
+    }
+   }
+  },
+  {
+   "document_id": "c241c7a9-49ad-4af3-8704-9b38db5d3e62",
+   "user_drawn_expected": 0,
+   "embedded_expected": 3,
+   "policies": {
+    "app_exact": {
+     "pass": true,
+     "diff_count": 0,
+     "diffs": []
+    },
+    "latest_updated_at": {
+     "pass": true,
+     "diff_count": 0,
+     "diffs": []
+    },
+    "latest_created_at": {
+     "pass": true,
+     "diff_count": 0,
+     "diffs": []
+    }
+   }
+  }
+ ],
+ "totals": {
+  "documents_verified": 68,
+  "user_drawn_expected": 615,
+  "user_drawn_verified": 615,
+  "survey_marker_verified": 403,
+  "callout_verified": 11,
+  "embedded_keys_expected": 10960,
+  "policies_verified": 3,
+  "per_doc_count_cross_checks_pass": true
+ },
+ "exit_code": 0,
+ "verdict": "PASS"
+}

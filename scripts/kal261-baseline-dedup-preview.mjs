@@ -210,7 +210,7 @@ export function makeRoGet(baseUrl, serviceKey, fetchImpl = fetch) {
 // (verified live: 8104ms vs 840ms unfiltered). An unfiltered count means a
 // benign post-cutoff insert reads as drift — that just costs a retry, which
 // is the safe direction.
-async function snapshotTable(roGet) {
+export async function snapshotTable(roGet) {
   const head = await roGet('document_annotations', 'select=id&limit=1', { prefer: 'count=exact' });
   const total = Number.parseInt(String(head.contentRange).split('/')[1], 10);
   const top = await roGet(
@@ -220,7 +220,7 @@ async function snapshotTable(roGet) {
   return { total, maxUpdatedAt: top.rows[0]?.updated_at ?? null };
 }
 
-async function fetchAllPass1(roGet, cutoff, runStats) {
+export async function fetchAllPass1(roGet, cutoff, runStats) {
   const cut = encodeURIComponent(cutoff);
   const select = [
     'id', 'annotation_id', 'document_id', 'page_number', 'annotation_type', 'user_id', 'created_at', 'updated_at',
@@ -249,7 +249,7 @@ async function fetchAllPass1(roGet, cutoff, runStats) {
   return rows;
 }
 
-async function fetchFullRowsByIds(roGet, ids) {
+export async function fetchFullRowsByIds(roGet, ids) {
   const out = new Map();
   for (let i = 0; i < ids.length; i += PASS2_BATCH) {
     const batch = ids.slice(i, i + PASS2_BATCH);
@@ -376,7 +376,7 @@ async function runOnce(roGet, attempt) {
   return { cutoff, runStats, before, after, documents, perDoc, anomalies, userDrawn, survivorEntries, userDrawnHash, embeddedHash };
 }
 
-class DriftError extends Error {}
+export class DriftError extends Error {}
 
 // ---------------------------------------------------------------------------
 // Output assembly
