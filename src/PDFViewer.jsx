@@ -17123,6 +17123,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     // KAL-313: emit a space_deleted history row so the region cascade restore
     // path (resolveRegionRestoreCascade) can find the space's restore record
     // when a user later tries to restore an orphaned region.
+    const documentId = pdfFile?.id || null;
     const spaceToDelete = (spacesRef.current || []).find((s) => s.id === id);
     if (spaceToDelete && documentId) {
       const actorName =
@@ -17152,7 +17153,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     if (selectedSpaceId === id) {
       setSelectedSpaceId(null);
     }
-  }, [addHistoryCheckpoint, activeSpaceId, selectedSpaceId, cascadeDeleteScopedAppState, documentId, user]);
+  }, [addHistoryCheckpoint, activeSpaceId, selectedSpaceId, cascadeDeleteScopedAppState, pdfFile?.id, user]);
 
   const handleSetActiveSpace = useCallback((spaceId) => {
     debugLog('[SPACE TOGGLE] Activating space - regions enabled, annotations with regionId should be shown:', { spaceId, previousActiveSpaceId: activeSpaceId });
