@@ -377,3 +377,6 @@ _End of design doc. All claims verified at source file:line. Open questions mark
 - **OQ-2 RESOLVED by governing plan:** delete-audit rows are permanently immutable (trigger blocks owner DELETE) — PLAN-EXCEL-SECURITY-V1.md step 5 governs.
 - **OQ-3 RESOLVED (technical call):** 50-object soft cap with batchId splitting; no payload-size raise, no storage pointers in V1.
 - **OQ-4 RESOLVED: greyed-out + reason.** Orphaned region entries stay visible with Restore disabled and "its space was deleted — restore the space first."
+
+### OQ-4 SUPERSEDED (Isaiah, 2026-06-11 afternoon)
+Greyed-out dead-end replaced by CONFIRM-CASCADE: Restore stays enabled; clicking offers "this region's space was deleted too — restore both?"; on confirm, restore space first, then region, as one undoable operation. Silent cascade rejected (a space may carry other deliberately-removed content). The greyed-out + reason UI remains ONLY when the space's own restore record is unavailable (e.g. swept past retention).
