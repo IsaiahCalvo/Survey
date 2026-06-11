@@ -17,6 +17,10 @@ import {
   buildBulkAnnotationDeleteHistoryRows,
   splitBulkRestoreActionsIntoBatches,
   isBulkAnnotationDeleteEvent,
+  buildSpaceRestoreAction,
+  buildSpaceDeleteHistoryRow,
+  isSpaceRestoreAction,
+  resolveRegionRestoreCascade,
 } from '../src/services/annotationTrashHistory.js';
 import {
   invertAnnotationHistoryAction,
@@ -343,4 +347,196 @@ test('annotation delete row has different event_type than survey_marker_deleted'
   const row = buildAnnotationDeleteHistoryRow({ deleteAction, documentId: DOC_ID, deletedAt: TS });
   assert.notEqual(row.event_type, 'survey_marker_deleted');
   assert.equal(row.event_type, 'annotation_deleted');
+});
+
+// ─── Slice 6: Space delete journaling ────────────────────────────────────────
+
+const space = {
+  id: 'sp-99',
+  name: 'Zone Alpha',
+  assignedPages: [
+    { pageId: 3, wholePageIncluded: false, regions: [{ regionId: 'reg-1', coordinates: [0, 0, 100, 100] }] },
+  ],
+};
+
+test('buildSpaceRestoreAction captures full space object', () => {
+  const ra = buildSpaceRestoreAction(space);
+  assert.equal(ra.type, 'space');
+  assert.equal(ra.spaceId, 'sp-99');
+  assert.equal(ra.spaceName, 'Zone Alpha');
+  assert.deepEqual(ra.space, space);
+});
+
+test('buildSpaceRestoreAction handles missing name gracefully', () => {
+  const ra = buildSpaceRestoreAction({ ...space, name: undefined });
+  assert.equal(ra.spaceName, null);
+});
+
+test('buildSpaceDeleteHistoryRow produces a valid restorable row', () => {
+  const row = buildSpaceDeleteHistoryRow({
+    space,
+    documentId: DOC_ID,
+    userId: USER_ID,
+    actorName: 'Alice',
+    deletedAt: TS,
+  });
+  assert.ok(row, 'row produced');
+  assert.equal(row.event_type, 'space_deleted');
+  assert.equal(row.document_id, DOC_ID);
+  assert.equal(row.user_id, USER_ID);
+  assert.equal(row.annotation_id, 'sp-99');
+  assert.equal(row.is_undoable, true);
+  assert.ok(row.payload.restoreAction, 'restoreAction present');
+  assert.equal(row.payload.restoreAction.type, 'space');
+  assert.equal(row.payload.restoreAction.spaceId, 'sp-99');
+  assert.deepEqual(row.payload.restoreAction.space, space);
+  assert.equal(row.payload.deletedBy, USER_ID);
+  assert.match(row.summary, /Alice.*deleted.*space.*Zone Alpha/i);
+});
+
+test('buildSpaceDeleteHistoryRow returns null when space.id is missing', () => {
+  assert.equal(
+    buildSpaceDeleteHistoryRow({ space: { name: 'No ID' }, documentId: DOC_ID, deletedAt: TS }),
+    null,
+  );
+});
+
+test('buildSpaceDeleteHistoryRow returns null when documentId is missing', () => {
+  assert.equal(
+    buildSpaceDeleteHistoryRow({ space, documentId: null, deletedAt: TS }),
+    null,
+  );
+});
+
+test('isSpaceRestoreAction identifies valid space restore actions', () => {
+  const ra = buildSpaceRestoreAction(space);
+  assert.ok(isSpaceRestoreAction(ra));
+  assert.equal(isSpaceRestoreAction({ type: 'region' }), false);
+  assert.equal(isSpaceRestoreAction(null), false);
+  assert.equal(isSpaceRestoreAction({ type: 'space', spaceId: 'x' }), false, 'missing space object');
+});
+
+// ─── Slice 6: resolveRegionRestoreCascade ────────────────────────────────────
+
+// Build a space_deleted history event that the cascade resolver can find.
+function makeSpaceDeletedEvent(spaceId, spaceName) {
+  const s = { ...space, id: spaceId, name: spaceName };
+  const row = buildSpaceDeleteHistoryRow({
+    space: s,
+    documentId: DOC_ID,
+    userId: USER_ID,
+    actorName: 'Alice',
+    deletedAt: TS,
+  });
+  return row;
+}
+
+test('resolveRegionRestoreCascade → plain when space is in liveSpaces', () => {
+  const result = resolveRegionRestoreCascade({
+    spaceId: 'sp-99',
+    liveSpaces: [{ id: 'sp-99', name: 'Zone Alpha' }],
+    historyEvents: [],
+  });
+  assert.equal(result, 'plain');
+});
+
+test('resolveRegionRestoreCascade → cascade when space absent but space_deleted event exists', () => {
+  const spaceEvent = makeSpaceDeletedEvent('sp-99', 'Zone Alpha');
+  const result = resolveRegionRestoreCascade({
+    spaceId: 'sp-99',
+    liveSpaces: [],
+    historyEvents: [spaceEvent],
+  });
+  assert.equal(result, 'cascade');
+});
+
+test('resolveRegionRestoreCascade → blocked when space absent and no restorable event', () => {
+  const result = resolveRegionRestoreCascade({
+    spaceId: 'sp-99',
+    liveSpaces: [],
+    historyEvents: [],
+  });
+  assert.equal(result, 'blocked');
+});
+
+test('resolveRegionRestoreCascade → blocked when event exists for a different spaceId', () => {
+  const spaceEvent = makeSpaceDeletedEvent('sp-OTHER', 'Other Zone');
+  const result = resolveRegionRestoreCascade({
+    spaceId: 'sp-99',
+    liveSpaces: [],
+    historyEvents: [spaceEvent],
+  });
+  assert.equal(result, 'blocked');
+});
+
+test('resolveRegionRestoreCascade → blocked when event type is not space_deleted', () => {
+  // A region_deleted event for the same spaceId should not qualify as a space record.
+  const fakeEvent = {
+    event_type: 'region_deleted',
+    payload: { restoreAction: { type: 'space', spaceId: 'sp-99', space: { id: 'sp-99' } } },
+  };
+  const result = resolveRegionRestoreCascade({
+    spaceId: 'sp-99',
+    liveSpaces: [],
+    historyEvents: [fakeEvent],
+  });
+  assert.equal(result, 'blocked');
+});
+
+test('resolveRegionRestoreCascade → plain takes priority over historyEvents when space is live', () => {
+  // Even if a space_deleted event exists, if the space is alive the answer is plain.
+  const spaceEvent = makeSpaceDeletedEvent('sp-99', 'Zone Alpha');
+  const result = resolveRegionRestoreCascade({
+    spaceId: 'sp-99',
+    liveSpaces: [{ id: 'sp-99', name: 'Zone Alpha' }],
+    historyEvents: [spaceEvent],
+  });
+  assert.equal(result, 'plain');
+});
+
+// ─── Slice 6 + Slice 4 cross-test: region rotation survives cascade path ─────
+
+test('region rotation survives cascade: restoreAction carries baked rotation through space delete row', () => {
+  // Simulate: region with rotation=135 is deleted inside a space that is then deleted.
+  const rotatedRegion = { ...region, rotation: 135 };
+  const regionRa = buildRegionRestoreAction({ region: rotatedRegion, spaceId: 'sp-99', spaceName: 'Zone Alpha' });
+  const regionRow = buildRegionDeleteHistoryRow({
+    region: rotatedRegion,
+    spaceId: 'sp-99',
+    spaceName: 'Zone Alpha',
+    documentId: DOC_ID,
+    userId: USER_ID,
+    actorName: 'Alice',
+    deletedAt: TS,
+  });
+
+  // Space is then also deleted.
+  const spaceRow = buildSpaceDeleteHistoryRow({
+    space,
+    documentId: DOC_ID,
+    userId: USER_ID,
+    actorName: 'Alice',
+    deletedAt: TS,
+  });
+
+  // Cascade resolver sees both events in historyEvents.
+  const decision = resolveRegionRestoreCascade({
+    spaceId: 'sp-99',
+    liveSpaces: [],
+    historyEvents: [spaceRow, regionRow],
+  });
+  assert.equal(decision, 'cascade', 'cascade path selected');
+
+  // The region restoreAction from regionRow must still carry the rotation.
+  assert.equal(
+    regionRow.payload.restoreAction.region.rotation,
+    135,
+    'rotation preserved in region row through cascade path',
+  );
+
+  // The space restoreAction from spaceRow must carry the full space (with assignedPages).
+  assert.ok(
+    spaceRow.payload.restoreAction.space.assignedPages,
+    'space assignedPages preserved in space row',
+  );
 });

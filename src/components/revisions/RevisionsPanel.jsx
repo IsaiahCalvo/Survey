@@ -32,6 +32,7 @@ import {
   restoreRevision,
 } from '../../services/documentRevisionService';
 import { listDocumentHistoryEvents } from '../../services/documentHistoryService';
+import { resolveRegionRestoreCascade } from '../../services/annotationTrashHistory';
 
 const DRAWER_WIDTH = 360;
 const HISTORY_SPOTLIGHT_STYLE_ID = 'document-history-spotlight-style';
@@ -130,6 +131,7 @@ export default function RevisionsPanel({
   onClose = null,
   onNavigateToPage = null,
   onRestoreHistoryActivity = null,
+  onCascadeRestoreRegion = null,
 }) {
   const [open, setOpen] = useState(false);
   const [isOwner, setIsOwner] = useState(false);
@@ -142,6 +144,9 @@ export default function RevisionsPanel({
   const [statusMsg, setStatusMsg] = useState(null);
   const [selectedEventId, setSelectedEventId] = useState(null);
   const [selectedEventDetail, setSelectedEventDetail] = useState(null);
+  // KAL-313 CONFIRM-CASCADE: pending cascade restore { regionEvent, spaceEvent }
+  // Set when Restore is clicked for an orphaned region whose space has a restorable record.
+  const [cascadePending, setCascadePending] = useState(null);
   const hasLoadedRef = useRef(false);
   const refreshTimeoutRef = useRef(null);
   const spotlightFrameRef = useRef(null);
@@ -635,22 +640,62 @@ export default function RevisionsPanel({
       if (result?.ok) {
         setStatusMsg(`Restored deleted item${result.pageNumber ? ` on page ${result.pageNumber}` : ''}.`);
         await refresh({ silent: true });
-      } else {
-        // KAL-313 OQ-4: show a specific message for region-space-deleted (greyed-out UX).
-        if (result?.reason === 'region-space-deleted') {
-          setStatusMsg('Cannot restore — its space was deleted. Restore the space first.');
-        } else if (result?.reason === 'restore-noop') {
-          setStatusMsg('Item is already present — no restore needed.');
+      } else if (result?.reason === 'cascade-confirm') {
+        // KAL-313 CONFIRM-CASCADE: the region's parent space is gone.
+        // Decide whether we can offer a cascade restore or must show blocked UI.
+        const { spaceId } = result;
+        const cascade = resolveRegionRestoreCascade({
+          spaceId,
+          liveSpaces: [], // not available here — we use historyEvents to find the space record
+          historyEvents,
+        });
+        if (cascade === 'cascade') {
+          // Find the space_deleted event for the confirm dialog
+          const spaceEvent = historyEvents.find(
+            (ev) =>
+              ev.event_type === 'space_deleted' &&
+              ev.payload?.restoreAction?.spaceId === spaceId,
+          );
+          // Show the themed confirm modal instead of proceeding
+          setCascadePending({ regionEvent: event, spaceEvent });
+          setStatusMsg(null);
         } else {
-          setStatusMsg('Restore unavailable for this history item.');
+          // 'blocked' — no space restore record available
+          setStatusMsg("Cannot restore — its space was deleted and has no restore record.");
         }
+      } else if (result?.reason === 'restore-noop') {
+        setStatusMsg('Item is already present — no restore needed.');
+      } else {
+        setStatusMsg('Restore unavailable for this history item.');
       }
     } catch (e) {
       setStatusMsg(`Restore failed: ${e.message}`);
     } finally {
       setBusy(false);
     }
-  }, [busy, onRestoreHistoryActivity, refresh]);
+  }, [busy, onRestoreHistoryActivity, refresh, historyEvents]);
+
+  // KAL-313: Execute the confirmed cascade restore (space first, then region).
+  const handleCascadeConfirm = useCallback(async () => {
+    if (!cascadePending || typeof onCascadeRestoreRegion !== 'function') return;
+    const { regionEvent, spaceEvent } = cascadePending;
+    setCascadePending(null);
+    setBusy(true);
+    setStatusMsg(null);
+    try {
+      const result = onCascadeRestoreRegion(spaceEvent, regionEvent);
+      if (result?.ok) {
+        setStatusMsg(`Restored space and region${result.pageNumber ? ` on page ${result.pageNumber}` : ''}.`);
+        await refresh({ silent: true });
+      } else {
+        setStatusMsg('Cascade restore failed — please try again.');
+      }
+    } catch (e) {
+      setStatusMsg(`Cascade restore failed: ${e.message}`);
+    } finally {
+      setBusy(false);
+    }
+  }, [cascadePending, onCascadeRestoreRegion, refresh]);
 
   if (!documentId) return null;
 
@@ -959,7 +1004,94 @@ export default function RevisionsPanel({
     </div>
   );
 
-  if (embedded) return panel;
+  // KAL-313 CONFIRM-CASCADE modal — shared across embedded and non-embedded renders.
+  // Uses same backdrop/card styling as ConfirmDeleteModal (collab family, bg-secondary palette).
+  const cascadeModal = cascadePending ? (
+    <div
+      data-testid="cascade-restore-modal-backdrop"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="cascade-restore-heading"
+      onClick={(e) => { if (e.target === e.currentTarget) setCascadePending(null); }}
+      style={{
+        position: 'fixed',
+        top: 0, left: 0, right: 0, bottom: 0,
+        zIndex: 9200,
+        background: 'rgba(0,0,0,0.5)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        animation: 'confirm-delete-modal-fade-in 120ms cubic-bezier(0,0,0.2,1)',
+      }}
+    >
+      <div
+        style={{
+          background: 'var(--bg-secondary, #252525)',
+          border: '1px solid var(--border-primary, #3A3A3A)',
+          borderRadius: 8,
+          boxShadow: 'var(--shadow-lg, 0 8px 24px rgba(0,0,0,0.5))',
+          width: '100%',
+          maxWidth: 480,
+          margin: '0 16px',
+          padding: 24,
+          fontFamily: 'var(--font-primary, -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif)',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 12,
+          color: '#e9e6df',
+        }}
+      >
+        <h2
+          id="cascade-restore-heading"
+          style={{ margin: 0, fontSize: 16, fontWeight: 600, color: '#e9e6df' }}
+        >
+          Restore this region?
+        </h2>
+        <p style={{ margin: 0, fontSize: 14, color: '#c8c4bc', lineHeight: 1.5 }}>
+          {"This region's space was deleted too. Restore both?"}
+          {cascadePending.spaceEvent?.payload?.spaceName
+            ? ` (Space: "${cascadePending.spaceEvent.payload.spaceName}")`
+            : ''}
+        </p>
+        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 4 }}>
+          <button
+            type="button"
+            data-testid="cascade-restore-cancel"
+            onClick={() => setCascadePending(null)}
+            style={{
+              fontSize: 13,
+              background: 'transparent',
+              color: '#c8c4bc',
+              border: '1px solid #555',
+              borderRadius: 4,
+              padding: '6px 14px',
+              cursor: 'pointer',
+            }}
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            data-testid="cascade-restore-confirm"
+            onClick={handleCascadeConfirm}
+            style={{
+              fontSize: 13,
+              background: '#3a3220',
+              color: '#ffe0a3',
+              border: '1px solid #6f5624',
+              borderRadius: 4,
+              padding: '6px 14px',
+              cursor: 'pointer',
+            }}
+          >
+            Restore both
+          </button>
+        </div>
+      </div>
+    </div>
+  ) : null;
+
+  if (embedded) return <>{panel}{cascadeModal}</>;
 
   return (
     <>
@@ -1032,6 +1164,7 @@ export default function RevisionsPanel({
 
       {/* Drawer */}
       {open && panel}
+      {cascadeModal}
     </>
   );
 }
