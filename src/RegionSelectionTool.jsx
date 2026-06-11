@@ -99,10 +99,9 @@ const RegionSelectionTool = ({
   // KAL-313: stamped on new regions at creation time so the region ownership
   // chain is available for delete-audit and the step-11 permission gate.
   userId = null,
-  // KAL-313: called with the array of deleted region objects immediately before
-  // the setRegions filter so PDFViewer can emit durable trash history rows.
-  // Signature: (deletedRegions: object[]) => void
-  onRegionsDeleted = null,
+  // KAL-313 (2026-06-11): onRegionsDeleted prop REMOVED — region trash
+  // journaling now happens at commit time in PDFViewer.handleRegionComplete
+  // (removedRegionIds diff), so Cancel can never produce phantom journal rows.
 }) => {
   const [toolType, setToolType] = useState('rectangular'); // 'rectangular' | 'freehand' | 'move'
   const [selectionMode, setSelectionMode] = useState(REGION_OPERATIONS.ADD); // 'add' | 'subtract'
@@ -1980,19 +1979,14 @@ const RegionSelectionTool = ({
     if (selectedRegionIds.size === 0) return;
     pushUndoSnapshot();
 
-    // KAL-313: capture deleted regions BEFORE the filter so the trash callback
-    // receives the full region objects (including baked rotation from KAL-301).
-    if (typeof onRegionsDeleted === 'function') {
-      const deletedRegions = regionsRef.current.filter(r => selectedRegionIds.has(r.regionId));
-      if (deletedRegions.length > 0) {
-        onRegionsDeleted(deletedRegions);
-      }
-    }
+    // KAL-313: journaling moved to PDFViewer handleRegionComplete (commit time).
+    // Firing here (delete-key press) was pre-commit — cancel would produce phantom
+    // trash rows for regions that were never actually removed from state.
 
     setRegions(prev => prev.filter(r => !selectedRegionIds.has(r.regionId)));
     setSelectedRegionIds(new Set());
     setInteractionState(null);
-  }, [selectedRegionIds, pushUndoSnapshot, onRegionsDeleted]);
+  }, [selectedRegionIds, pushUndoSnapshot]);
 
   const handleContextMenu = useCallback((event) => {
     event.preventDefault();

@@ -17932,6 +17932,46 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         regionIds: removedRegionIds,
         reason: 'region-delete-or-replace',
       });
+
+      // KAL-313: emit commit-time trash rows for regions that were actually removed.
+      // Journaling is deferred to here (not RST delete-key press) so that Cancel
+      // produces no journal rows — only a confirmed Confirm reaches this path.
+      const documentId = pdfFile?.id || null;
+      if (documentId) {
+        const activeSpace = (spacesRef.current || []).find((s) => s.id === activeSpaceId);
+        const spaceName = activeSpace?.name || null;
+        const actorName =
+          user?.user_metadata?.full_name
+          || user?.user_metadata?.name
+          || [user?.user_metadata?.first_name, user?.user_metadata?.last_name].filter(Boolean).join(' ')
+          || user?.email
+          || 'Someone';
+        const deletedAt = new Date().toISOString();
+        const removedRegions = (previousPage?.regions || []).filter(
+          (region) => region?.regionId && removedRegionIds.includes(region.regionId)
+        );
+        for (const region of removedRegions) {
+          const trashRow = buildRegionDeleteHistoryRow({
+            region,
+            spaceId: activeSpaceId,
+            spaceName,
+            documentId,
+            userId: user?.id || null,
+            actorName,
+            deletedAt,
+          });
+          if (trashRow) {
+            void recordDocumentHistoryEvent(trashRow);
+            try {
+              window.dispatchEvent(new CustomEvent('document-history:event-recorded', {
+                detail: { documentId, row: trashRow },
+              }));
+            } catch (_err) {
+              // best-effort live-update signal
+            }
+          }
+        }
+      }
     }
 
     if (pageIndex >= 0) {
@@ -17962,37 +18002,13 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     setSelectedSpaceId(activeSpaceId);
     finishRegionEditSession();
     // Keep selectedSpaceId set - don't clear it when region selection completes
-  }, [activeSpaceId, regionSelectionPage, spaces, handleSpaceUpdate, finishRegionEditSession, cascadeDeleteScopedAppState]);
+  }, [activeSpaceId, regionSelectionPage, spaces, handleSpaceUpdate, finishRegionEditSession, cascadeDeleteScopedAppState, pdfFile?.id, user]);
 
-  // KAL-313: called by RegionSelectionTool when the user deletes one or more
-  // regions. Emits a durable trash history row per region so the History panel
-  // can offer Restore for 30 days (multi-device, cross-user). The space name
-  // is resolved from the live spaces array for the History panel label.
-  const handleRegionsDeleted = useCallback((deletedRegions) => {
-    const documentId = pdfFile?.id || null;
-    if (!documentId || !Array.isArray(deletedRegions) || deletedRegions.length === 0) return;
-    const spaceId = activeSpaceId || null;
-    const activeSpace = spaceId ? (spacesRef.current || []).find((s) => s.id === spaceId) : null;
-    const spaceName = activeSpace?.name || null;
-    const deletedAt = new Date().toISOString();
-    const actorName = user?.user_metadata?.full_name
-      || user?.user_metadata?.name
-      || [user?.user_metadata?.first_name, user?.user_metadata?.last_name].filter(Boolean).join(' ')
-      || user?.email
-      || 'Someone';
-    for (const region of deletedRegions) {
-      const trashRow = buildRegionDeleteHistoryRow({
-        region,
-        spaceId,
-        spaceName,
-        documentId,
-        userId: user?.id || null,
-        actorName,
-        deletedAt,
-      });
-      if (trashRow) void recordDocumentHistoryEvent(trashRow);
-    }
-  }, [activeSpaceId, pdfFile?.id, user]);
+  // KAL-313 (2026-06-11): region trash journaling moved INTO handleRegionComplete
+  // above — commit time, gated on the removedRegionIds diff. The old
+  // handleRegionsDeleted callback fired at RST delete-key press, BEFORE the
+  // deletion was committed to spaces state, so Cancel left phantom delete rows
+  // in the journal (and the space snapshot still contained the region).
 
   // Templates are loaded from Supabase via Dashboard component
   // No need to load from localStorage here
@@ -27106,7 +27122,6 @@ ${pageBlocks}
             canSetFullPage={canSetRegionToFullPage}
             onHistoryStateChange={handleRegionHistoryStateChange}
             userId={user?.id ?? null}
-            onRegionsDeleted={handleRegionsDeleted}
           />
         )}
 
