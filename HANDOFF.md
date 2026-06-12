@@ -7,6 +7,8 @@ handoffs and this file only routes you.
 
 ## Current entry point
 
+**`HANDOFF-mvp-takeover.md`** — READ FIRST AND ONLY (2026-06-12): Isaiah handed over the wheel. Full MVP assessment, release blockers, flagship-wave state, verification recipe, agent discipline, attack order. Operating mode: pick highest-MVP-value work, browser-verify, fix forward — do NOT ask "what next." The files below are historical context only.
+
 **`HANDOFF-testing-and-decisions.md`** — READ FIRST (2026-06-10): Isaiah's testing
 checklist + 9 queued decisions; the autonomous loop fleet (HANDOFF-loop.md) is
 test-audit-only until he confirms testing. Then:
