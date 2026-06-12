@@ -20,7 +20,7 @@ Target: enterprise M365/SharePoint shops (Schneider-Electric-class). Pitch: **"W
 
 1. **Fabric annotations don't survive app reload** (found in live sweep; task chip spawned). Sync chips lie ("Up to date") while the Y.Doc-backed store reverts. Matches the documented dual-write/stale-snapshot-pinning gotcha (quarantined retry queue pins stale reads). For MVP: targeted fix (snapshot/queue repair + reconciliation), NOT the full Phase-E rebuild. THIS IS THE #1 ENGINEERING ITEM.
 2. **Shipped-but-unapplied migrations:** KAL-307 registration table+RPC, KAL-313 trash trigger+retention+`space_deleted` immutability — exist as files only; the app runs against PRODUCTION Supabase. Export is safe (registration failure is caught, warns, proceeds). Consequence: registration/immutability/sweep are dormant until applied. Path: verify on survey-test (blocked on keys) → Isaiah's go → apply to production.
-3. **~200 unpushed commits on one laptop.** A year of work, single point of failure. Needs Isaiah's push authorization (private repo, auth via gh per memory).
+3. ~~Unpushed commits~~ **CLEARED 2026-06-12: pushed to github.com/IsaiahCalvo/Survey (17c8d831..11409f80).** Keep pushing on Isaiah's cadence going forward — he authorized this push explicitly; future pushes still need his word unless he says otherwise.
 
 ## CATEGORY B — FLAGSHIP WAVE (Excel Security V1; epic KAL-305; PLAN-EXCEL-SECURITY-V1.md governs, Codex-approved)
 
@@ -34,7 +34,8 @@ Done: slice 0 matcher (KAL-306✓), slice 1 registration client+migration (KAL-3
 - **Stamp/image annotations (KAL-126):** in/out of MVP — decision round.
 - **Dead-end buttons (KAL-82 S2):** rewire or remove 5 buttons — decision round.
 - Cosmetics queue: history actor shows raw email for marker deletes; sweep residue on test doc; KAL-293 watcher EPERM noise.
-- Recommend POST-MVP: callout unification (KAL-297 — works today, documented fork), Syncfusion removal (north star, not MVP), DB hygiene KAL-280…289 (opportunistic only), region-math consolidation + idle-rAF cleanup (REGION-ARCHITECTURE-AUDIT).
+- Recommend POST-MVP: callout unification (KAL-297 — works today, documented fork), DB hygiene KAL-280…289 (opportunistic only), region-math consolidation + idle-rAF cleanup (REGION-ARCHITECTURE-AUDIT).
+- **SCOPE OVERRIDE (Isaiah, 2026-06-12): Syncfusion removal IS MVP SCOPE.** "Rip out Syncfusion and use something good or better" — engine choice is Claude's lead (the three ?spike= pdf.js demos are the proven foundation, not a mandate). This joins Category A/B as a third critical-path lane: plan via DEMO-PARITY-BLUEPRINT.md + HANDOFF-remove-legacy-engine.md, slice it (render parity → overlay/zoom contracts → save/sync paths → Syncfusion excision), grill+Codex-review the cutover plan before building.
 
 ## BLOCKERS — only Isaiah can clear (work through these FIRST)
 
