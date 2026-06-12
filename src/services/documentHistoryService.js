@@ -223,8 +223,32 @@ function shouldExposeHistoryRow(row) {
   return eventType !== 'yjs_history_added' && eventType !== 'yjs_history_popped';
 }
 
+// KAL-313 / history F2 (2026-06-11): ONE restorable History row per delete.
+// Checkpoint debug events with these reasons are activity TWINS of dedicated
+// trash rows (callout_deleted / space_deleted / annotations_bulk_deleted /
+// survey-marker delete rows) — the trash row is the single visible, restorable,
+// trigger-protected record, so the checkpoint twin is not persisted.
+// 'highlight:delete' is a prefix match: it also covers 'highlight:delete-pending',
+// which fires before a deletion that may never commit.
+function isDeleteCheckpointTwin(event) {
+  if (event.type !== 'checkpoint_added' && event.type !== 'checkpoint_added_annotation_fast') {
+    return false;
+  }
+  const reason = String(event.reason || '');
+  return reason === 'callouts:delete'
+    || reason === 'space:delete'
+    || reason === 'delete:batch'
+    || reason.startsWith('highlight:delete');
+}
+
 export function buildHistoryEventRowFromDebugEvent(event, { documentId, user } = {}) {
   if (!documentId || !event || typeof event !== 'object') return null;
+  // KAL-313 / history F2: the emitter can mark an event as covered by a
+  // dedicated trash row (e.g. fabric:delete — annotation_deleted is the one
+  // visible, restorable record). Suppressed here so the debug timeline keeps
+  // the event but the History panel shows a single row per delete.
+  if (event.suppressHistoryRow === true) return null;
+  if (isDeleteCheckpointTwin(event)) return null;
   const trackable = new Set([
     'local_annotation_history_added',
     'checkpoint_added',

@@ -11870,6 +11870,40 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       reason: 'space-page-delete',
     });
 
+    // KAL-313 / history F1 (2026-06-11): the sidebar trash button on a region
+    // row commits the deletion immediately (no Confirm step), so journal the
+    // removed page's region areas here — one restorable region_deleted row per
+    // region object. applyRegionRestoreToSpaces recreates the page entry on
+    // restore when it no longer exists. Whole-page entries with no drawn
+    // regions have no restorable region object and are not journaled.
+    {
+      const documentId = pdfFile?.id || null;
+      const spaceForJournal = (spacesRef.current || []).find((s) => s.id === spaceId);
+      const pageForJournal = spaceForJournal?.assignedPages?.find((p) => p.pageId === pageId);
+      const regionsForJournal = Array.isArray(pageForJournal?.regions) ? pageForJournal.regions : [];
+      if (documentId && regionsForJournal.length > 0) {
+        const deletedAt = new Date().toISOString();
+        const actorName = user?.user_metadata?.full_name
+          || user?.user_metadata?.name
+          || [user?.user_metadata?.first_name, user?.user_metadata?.last_name].filter(Boolean).join(' ')
+          || user?.email
+          || 'Someone';
+        for (const region of regionsForJournal) {
+          if (!region?.regionId) continue;
+          const trashRow = buildRegionDeleteHistoryRow({
+            region: { ...region, pageId: region.pageId ?? pageId },
+            spaceId,
+            spaceName: spaceForJournal?.name || null,
+            documentId,
+            userId: user?.id || null,
+            actorName,
+            deletedAt,
+          });
+          if (trashRow) void recordAndNotifyDocumentHistoryEvent(trashRow);
+        }
+      }
+    }
+
     // Then update the spaces to remove the page
     setSpaces(prev => {
       const nextSpaces = prev.map(space => {
@@ -11893,7 +11927,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
       return nextSpaces;
     });
-  }, [activeSpaceId, cascadeDeleteScopedAppState]);
+  }, [activeSpaceId, cascadeDeleteScopedAppState, pdfFile?.id, user]);
 
   const handleSpaceRenamePage = useCallback((spaceId, pageId, newLabel) => {
     const trimmedLabel = typeof newLabel === 'string' ? newLabel.trim() : '';
@@ -16671,6 +16705,28 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   const [pendingDeletePlan, setPendingDeletePlan] = useState(null);
   const pendingDeleteRunnerRef = useRef(null);
 
+  // KAL-313 / history F2 (2026-06-11): one restorable History row per delete.
+  // The bulk-delete path journals its own trash rows (emitBulkTrashRows), but
+  // the deletion ALSO flows through handleSaveAnnotations →
+  // pushLocalAnnotationHistoryAction, which journals single-annotation deletes.
+  // Register the candidate ids here BEFORE runDelete fires so the single-
+  // annotation emitter can skip ids the bulk path already covers.
+  // Map of annotationId -> registeredAt (ms); entries expire after 10s.
+  const bulkJournaledAnnotationIdsRef = useRef(new Map());
+  const registerBulkJournaledAnnotationIds = useCallback((ids) => {
+    const now = Date.now();
+    const map = bulkJournaledAnnotationIdsRef.current;
+    for (const [key, at] of map) {
+      if (now - at > 10000) map.delete(key);
+    }
+    (Array.isArray(ids) ? ids : []).forEach((id) => { if (id) map.set(id, now); });
+  }, []);
+  const isBulkJournaledAnnotationId = useCallback((id) => {
+    if (!id) return false;
+    const at = bulkJournaledAnnotationIdsRef.current.get(id);
+    return at != null && Date.now() - at <= 10000;
+  }, []);
+
   // Hardening (audit 2026-04-30 #1): clear the bulk-delete confirmation modal
   // state whenever the document loaded into this PDFViewer changes. Without
   // this, a stale `pendingDeletePlan` snapshot from PDF A could survive a
@@ -16732,6 +16788,30 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
             restoreAction: buildAnnotationRestoreAction(deleteAction),
           };
         }).filter((entry) => entry.restoreAction !== null);
+        // KAL-313 / history F2 (2026-06-11): a single-object "bulk" delete
+        // (select one annotation → Delete) gets a single annotation_deleted
+        // row — better summary ("deleted a rectangle on page 1") and the
+        // panel's Restore button keys off payload.restoreAction directly.
+        // Multi-object deletes keep the batched annotations_bulk_deleted rows.
+        if (deletedObjects.length === 1) {
+          const obj = deletedObjects[0];
+          const id = obj?.data?.id || obj?.id || null;
+          const singleRow = buildAnnotationDeleteHistoryRow({
+            deleteAction: {
+              type: 'fabric:delete',
+              pageNumber,
+              annotationId: id,
+              annotation: obj,
+              index: null,
+            },
+            documentId,
+            userId: user?.id || null,
+            actorName,
+            deletedAt,
+          });
+          if (singleRow) void recordAndNotifyDocumentHistoryEvent(singleRow);
+          return;
+        }
         const rows = buildBulkAnnotationDeleteHistoryRows({
           objectRestoreActions,
           totalCount: deletedObjects.length,
@@ -16750,6 +16830,11 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       // so the undo restoration is identical regardless of which branch
       // fires.
       const wrappedRunDelete = () => {
+        // KAL-313 / history F2: mark these ids as bulk-journaled BEFORE the
+        // delete mutation runs, so pushLocalAnnotationHistoryAction (invoked
+        // synchronously or async by the save pipeline) skips its own
+        // single-annotation trash row for the same delete.
+        registerBulkJournaledAnnotationIds(candidateIds);
         runDelete();
         emitBulkTrashRows();
         // Snapshot restoration: re-add the deleted objects to
@@ -16787,6 +16872,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         // path. The toast is only valuable when the delete is unusual
         // (cross-author wipe, collaborator deleting all of theirs) — for
         // the everyday solo-owner delete it's noise.
+        // KAL-313 / history F2: this direct-fire branch bypasses
+        // wrappedRunDelete, so register the ids here too — otherwise the
+        // single-annotation emitter journals the same delete a second time.
+        registerBulkJournaledAnnotationIds(candidateIds);
         runDelete();
         emitBulkTrashRows();
         return;
@@ -16799,7 +16888,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       pendingDeleteRunnerRef.current = wrappedRunDelete;
       setPendingDeletePlan(plan);
     },
-    [annotationsByPage, user, documentOwnerId, enqueueUndoToast, pdfFile?.id],
+    [annotationsByPage, user, documentOwnerId, enqueueUndoToast, pdfFile?.id, registerBulkJournaledAnnotationIds],
   );
 
   // Legacy cloud sync — its annotation HYDRATE + PUSH are retired by the Yjs
@@ -21455,6 +21544,32 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     const clearedRedoEntries = localAnnotationRedoRef.current.length;
     localAnnotationRedoRef.current = [];
     setLocalAnnotationHistoryVersion((prev) => prev + 1);
+
+    // KAL-313 / history F2 (2026-06-11): ONE restorable History row per delete.
+    // A delete used to write up to three rows: the activity-pipeline row
+    // (local_annotation_history_added), the single annotation_deleted trash
+    // row, and — via select+Delete — an annotations_bulk_deleted row. Unified:
+    //  - the durable, restorable row is the trash row (annotation_deleted /
+    //    annotations_bulk_deleted), which the immutability trigger protects
+    //    and the 30-day retention sweep covers;
+    //  - the activity-pipeline DB row is suppressed for those deletes
+    //    (suppressHistoryRow below — the in-memory debug timeline and the
+    //    undo engine are unaffected);
+    //  - deletes journaled by the bulk path (handleRequestBulkDelete) are
+    //    skipped here via the pre-registered id set, so the same delete is
+    //    never journaled twice.
+    // Eraser multi-deletes (pure-delete fabric:batch NOT via the bulk path)
+    // keep their activity row — it is their only restorable row.
+    const deletedIdsForJournal = scopedAction.type === 'fabric:delete'
+      ? [scopedAction.annotationId].filter(Boolean)
+      : scopedAction.type === 'fabric:batch'
+        ? (scopedAction.deleted || []).map((entry) => entry?.id).filter(Boolean)
+        : [];
+    const journaledByBulkPath = deletedIdsForJournal.length > 0
+      && deletedIdsForJournal.every((id) => isBulkJournaledAnnotationId(id));
+    const suppressActivityHistoryRow = deletedIdsForJournal.length > 0
+      && (scopedAction.type === 'fabric:delete' || journaledByBulkPath);
+
 	    pushHistoryDebugEvent('local_annotation_history_added', {
 	      checkpointId,
 	      order: checkpointId,
@@ -21467,13 +21582,14 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 	      pageNumber: actionWithMeta.pageNumber,
 	      annotationId: actionWithMeta.annotationId,
 	      undoDepth: nextUndo.length,
-      redoDepth: 0
+      redoDepth: 0,
+      suppressHistoryRow: suppressActivityHistoryRow
     });
 
     // KAL-313: emit a durable trash event for single-annotation deletes so the
     // History panel can offer Restore for 30 days (multi-device, cross-user).
-    // fabric:batch (bulk) deletes are handled separately in handleRequestBulkDelete.
-    if (scopedAction.type === 'fabric:delete') {
+    // Skipped when the bulk-delete path already journaled this id (F2 dedupe).
+    if (scopedAction.type === 'fabric:delete' && !journaledByBulkPath) {
       const documentId = pdfFile?.id || null;
       if (documentId) {
         const deletedAt = actionWithMeta.__historyMeta.createdAt;
@@ -21494,7 +21610,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         }
       }
     }
-  }, [pushHistoryDebugEvent, user, pdfFile?.id, yjsUndoCtx?.userId]);
+  }, [pushHistoryDebugEvent, user, pdfFile?.id, yjsUndoCtx?.userId, isBulkJournaledAnnotationId]);
 
   const handleSaveAnnotations = useCallback((pageNumber, json, saveContext = null) => {
     const source_ = saveContext?.source || 'unknown';
