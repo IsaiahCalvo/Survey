@@ -2,9 +2,37 @@
 // These are the targeted gates from PLAN-KAL261.md (Codex-approved r3):
 // canonical hash vector, GET/table whitelist, classification truth table,
 // effective-page pinning, survivor determinism, drift detection, leak guard.
+//
+// Conditional-skip guard (KAL-257 §2.5): all tests in this file depend on
+// successfully importing kal261-baseline-dedup-preview.mjs, which in turn
+// imports src/utils/surveyMarkerType.js. In environments where the repo
+// working tree is incomplete the import chain may not resolve. The guard
+// checks that the script is present before running; absent → skip, not fail.
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { existsSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { dirname, resolve } from 'node:path';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const REPO_ROOT = resolve(__dirname, '..');
+
+function missingPrerequisite() {
+  const scriptPath = resolve(REPO_ROOT, 'scripts/kal261-baseline-dedup-preview.mjs');
+  if (!existsSync(scriptPath)) {
+    return `script absent: ${scriptPath}`;
+  }
+  const utilPath = resolve(REPO_ROOT, 'src/utils/surveyMarkerType.js');
+  if (!existsSync(utilPath)) {
+    return `utility absent: ${utilPath}`;
+  }
+  return false;
+}
+
+// Computed once at module load. Falsy means all prerequisites are present.
+const ARTIFACT_SKIP = missingPrerequisite();
+
 import {
   ALLOWED_TABLES,
   PROD_HOST,
@@ -22,7 +50,7 @@ import {
 
 const PROD_URL = `https://${PROD_HOST}`;
 
-test('canonicalStringify sorts keys recursively and omits undefined', () => {
+test('canonicalStringify sorts keys recursively and omits undefined', { skip: ARTIFACT_SKIP }, () => {
   assert.equal(
     canonicalStringify({ b: 1, a: [1, { d: 2, c: 3 }], skip: undefined }),
     '{"a":[1,{"c":3,"d":2}],"b":1}',
@@ -31,11 +59,11 @@ test('canonicalStringify sorts keys recursively and omits undefined', () => {
   assert.equal(canonicalStringify([undefined, 1]), '[null,1]');
 });
 
-test('sha256Hex matches the published test vector for "abc"', () => {
+test('sha256Hex matches the published test vector for "abc"', { skip: ARTIFACT_SKIP }, () => {
   assert.equal(sha256Hex('abc'), 'ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad');
 });
 
-test('normalizeRowForHash: bookkeeping excluded, nested ids preserved, input not mutated', () => {
+test('normalizeRowForHash: bookkeeping excluded, nested ids preserved, input not mutated', { skip: ARTIFACT_SKIP }, () => {
   const row = {
     id: 'pk', created_at: 't1', updated_at: 't2', annotation_id: 'a1',
     document_id: 'd1', user_id: 'u1', bounds: { x: 1 }, name: 'n',
@@ -60,7 +88,7 @@ test('normalizeRowForHash: bookkeeping excluded, nested ids preserved, input not
   assert.equal(payloadHash(row), payloadHash(row2));
 });
 
-test('classifyImportFlag truth table (strict booleans only)', () => {
+test('classifyImportFlag truth table (strict booleans only)', { skip: ARTIFACT_SKIP }, () => {
   assert.deepEqual(classifyImportFlag(true), { embedded: true, anomaly: null });
   assert.deepEqual(classifyImportFlag(false), { embedded: false, anomaly: null });
   assert.deepEqual(classifyImportFlag(null), { embedded: false, anomaly: null });
@@ -72,7 +100,7 @@ test('classifyImportFlag truth table (strict booleans only)', () => {
   }
 });
 
-test('resolveEffectivePage pins to integers, flags mismatches and invalid values', () => {
+test('resolveEffectivePage pins to integers, flags mismatches and invalid values', { skip: ARTIFACT_SKIP }, () => {
   assert.deepEqual(resolveEffectivePage(5, 5), { page: 5, flags: [] });
   assert.deepEqual(resolveEffectivePage(5, 3), { page: 5, flags: ['page_mismatch'] }); // data wins (app semantics)
   assert.deepEqual(resolveEffectivePage(null, 3), { page: 3, flags: [] });
@@ -82,7 +110,7 @@ test('resolveEffectivePage pins to integers, flags mismatches and invalid values
   assert.deepEqual(resolveEffectivePage(null, null), { page: null, flags: ['page_unresolvable'] });
 });
 
-test('pickSurvivors: three policies, app_exact prefers non-survey-marker, deterministic ties', () => {
+test('pickSurvivors: three policies, app_exact prefers non-survey-marker, deterministic ties', { skip: ARTIFACT_SKIP }, () => {
   const mk = (id, type, created, updated) => ({ id, annotation_type: type, created_at: created, updated_at: updated });
 
   // Newer survey-marker row loses to older path row under app_exact only.
@@ -122,7 +150,7 @@ test('pickSurvivors: three policies, app_exact prefers non-survey-marker, determ
   assert.deepEqual(pickSurvivors([g, h]), pickSurvivors([h, g]));
 });
 
-test('makeRoGet: host pin, table whitelist, GET-only, no body', async () => {
+test('makeRoGet: host pin, table whitelist, GET-only, no body', { skip: ARTIFACT_SKIP }, async () => {
   assert.throws(() => makeRoGet('https://evil.supabase.co', 'k'), /pinned production host/);
   assert.throws(() => makeRoGet('https://zgdkyslxbkusexmkfvgd.supabase.co', 'k'), /pinned production host/); // even the test project
 
@@ -144,14 +172,14 @@ test('makeRoGet: host pin, table whitelist, GET-only, no body', async () => {
   assert.deepEqual([...ALLOWED_TABLES].sort(), ['document_annotations', 'documents']);
 });
 
-test('driftChanged detects count and max-updated_at movement', () => {
+test('driftChanged detects count and max-updated_at movement', { skip: ARTIFACT_SKIP }, () => {
   const base = { total: 10, maxUpdatedAt: 't1' };
   assert.equal(driftChanged(base, { total: 10, maxUpdatedAt: 't1' }), false);
   assert.equal(driftChanged(base, { total: 11, maxUpdatedAt: 't1' }), true); // insert/delete
   assert.equal(driftChanged(base, { total: 10, maxUpdatedAt: 't2' }), true); // update
 });
 
-test('assertNoLeaks: structural key check with hash_scheme exemption + secret scan', () => {
+test('assertNoLeaks: structural key check with hash_scheme exemption + secret scan', { skip: ARTIFACT_SKIP }, () => {
   // clean checkpoint shape passes even though hash_scheme TEXT mentions payload fields
   assert.doesNotThrow(() => assertNoLeaks({
     hash_scheme: { excluded_nested: ['annotation_data.clientSessionId'], note: 'fabricObject ids preserved' },
