@@ -22077,7 +22077,11 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
   const handleRestoreHistoryActivity = useCallback((event) => {
     const restoreAction = event?.payload?.restoreAction;
-    if (!restoreAction || !restoreAction.type) {
+    // Bulk-delete rows carry payload.objects (per-object restoreActions), not a
+    // top-level restoreAction — they must reach the isBulkAnnotationDeleteEvent
+    // branch below instead of failing this guard. (Live-sweep fix 2026-06-12:
+    // the early return made the bulk branch unreachable → "Restore unavailable".)
+    if ((!restoreAction || !restoreAction.type) && !isBulkAnnotationDeleteEvent(event)) {
       return { ok: false, reason: 'restore-unavailable' };
     }
 
@@ -22087,7 +22091,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     // the next import can't immediately re-delete it just because the Excel row is
     // still missing — it becomes Excel-deletable again only after a successful
     // export. Its tombstone is dropped and, if it was placed, it is redrawn.
-    if (restoreAction.type === 'surveyMarker') {
+    if (restoreAction?.type === 'surveyMarker') {
       const result = applySurveyMarkerRestore(
         surveyMarkersRef.current || {},
         restoreAction,
