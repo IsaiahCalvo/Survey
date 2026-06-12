@@ -813,7 +813,17 @@ export default function RevisionsPanel({
             const event = item.event;
             const isSelected = selectedEventId === (event.client_event_id || event.id);
             const isDeleted = isDeleteHistoryEvent(event);
-            const canRestoreDeleted = Boolean(event.payload?.restoreAction && onRestoreHistoryActivity);
+            // KAL-313 / history F2 (2026-06-11): bulk-delete rows carry their
+            // restore data in payload.objects (per-object restoreActions), not
+            // payload.restoreAction — the viewer's restore dispatch already
+            // handles them (isBulkAnnotationDeleteEvent branch). Offer Restore
+            // for both shapes.
+            const canRestoreDeleted = Boolean(onRestoreHistoryActivity) && Boolean(
+              event.payload?.restoreAction
+              || (event.event_type === 'annotations_bulk_deleted'
+                && Array.isArray(event.payload?.objects)
+                && event.payload.objects.length > 0),
+            );
             return (
               <div
                 key={item.id}
@@ -1125,7 +1135,54 @@ export default function RevisionsPanel({
     </div>
   ) : null;
 
-  if (embedded) return <>{panel}{cascadeModal}</>;
+  // History F3 (2026-06-11): the "Viewing revision … / Return to current"
+  // banner used to render only in the legacy drawer mode — the embedded
+  // sidebar panel (the only mode actually mounted since the History tab moved
+  // into PDFSidebar) opened revisions read-only with NO visible state banner
+  // and NO way back besides hiding the panel. Render it in both modes.
+  const viewingBanner = viewingRevision ? (
+    <div
+      data-testid="kal48-readonly-banner"
+      style={{
+        position: 'fixed',
+        top: 0,
+        left: 0,
+        right: 0,
+        background: '#5e4a1f',
+        color: '#fff8dd',
+        padding: '8px 16px',
+        zIndex: 9100,
+        fontSize: 12,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        borderBottom: '1px solid #7e6630',
+      }}
+    >
+      <span>
+        Viewing revision v{viewingRevision.revisionNumber}
+        {viewingRevision.label ? ` — ${viewingRevision.label}` : ''} · created {formatDate(viewingRevision.createdAt)} · {viewingRevision.snapshot?.annotations?.length ?? viewingRevision.annotationCount} annotation(s). Edits disabled.
+      </span>
+      <button
+        type="button"
+        data-testid="kal48-return-to-current"
+        onClick={handleReturnToCurrent}
+        style={{
+          background: 'transparent',
+          color: '#fff8dd',
+          border: '1px solid #fff8dd',
+          borderRadius: 4,
+          padding: '3px 10px',
+          cursor: 'pointer',
+          fontSize: 12,
+        }}
+      >
+        Return to current
+      </button>
+    </div>
+  ) : null;
+
+  if (embedded) return <>{panel}{viewingBanner}{cascadeModal}</>;
 
   return (
     <>
@@ -1154,47 +1211,7 @@ export default function RevisionsPanel({
       </button>
 
       {/* Banner — visible while viewing a prior revision */}
-      {viewingRevision && (
-        <div
-          data-testid="kal48-readonly-banner"
-          style={{
-            position: 'fixed',
-            top: 0,
-            left: 0,
-            right: 0,
-            background: '#5e4a1f',
-            color: '#fff8dd',
-            padding: '8px 16px',
-            zIndex: 9100,
-            fontSize: 12,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            borderBottom: '1px solid #7e6630',
-          }}
-        >
-          <span>
-            Viewing revision v{viewingRevision.revisionNumber}
-            {viewingRevision.label ? ` — ${viewingRevision.label}` : ''} · created {formatDate(viewingRevision.createdAt)} · {viewingRevision.snapshot?.annotations?.length ?? viewingRevision.annotationCount} annotation(s). Edits disabled.
-          </span>
-          <button
-            type="button"
-            data-testid="kal48-return-to-current"
-            onClick={handleReturnToCurrent}
-            style={{
-              background: 'transparent',
-              color: '#fff8dd',
-              border: '1px solid #fff8dd',
-              borderRadius: 4,
-              padding: '3px 10px',
-              cursor: 'pointer',
-              fontSize: 12,
-            }}
-          >
-            Return to current
-          </button>
-        </div>
-      )}
+      {viewingBanner}
 
       {/* Drawer */}
       {open && panel}

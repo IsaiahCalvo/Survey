@@ -212,3 +212,72 @@ test('RevisionsPanel labels event subjects by type instead of raw "Annotation: <
     'unconditional "Annotation: <id>" detail line must not come back',
   );
 });
+
+// ─── History F1 (2026-06-11): owner's live finding — region delete wrote no row ──
+
+const spacesPanelSrc = readFileSync(
+  new URL('../../sidebar/SpacesPanel.jsx', import.meta.url),
+  'utf8',
+);
+
+test('SpacesPanel keeps a region-edit entry point (onRequestRegionEdit is CALLED, not just destructured)', () => {
+  // The 2026-06-11 "Polish spaces sidebar controls" rewrite destructured
+  // onRequestRegionEdit but never called it — the Region Selection Tool became
+  // unreachable from the UI, so the commit-time region journaling could never
+  // fire. Pin the call site so a future rewrite can't silently drop it again.
+  assert.match(
+    spacesPanelSrc,
+    /onRequestRegionEdit\?\.\(/,
+    'SpacesPanel must call onRequestRegionEdit(space.id, page.pageId) somewhere — region edit is otherwise unreachable',
+  );
+  assert.match(
+    spacesPanelSrc,
+    /onCancelRegionEdit\?\.\(/,
+    'SpacesPanel must offer a cancel path for an active region edit',
+  );
+});
+
+test('handleSpaceRemovePage journals restorable region_deleted rows (sidebar trash button commits immediately)', () => {
+  const start = pdfViewerSrc.indexOf('const handleSpaceRemovePage');
+  assert.notEqual(start, -1, 'handleSpaceRemovePage not found in PDFViewer.jsx');
+  const end = pdfViewerSrc.indexOf('const handleSpaceRenamePage', start);
+  const body = pdfViewerSrc.slice(start, end === -1 ? start + 4000 : end);
+  assert.match(body, /buildRegionDeleteHistoryRow\(/, 'sidebar region delete must journal region_deleted rows');
+  assert.match(
+    body,
+    /recordAndNotifyDocumentHistoryEvent\(/,
+    'sidebar region delete must use the record+notify wrapper (live panel update)',
+  );
+});
+
+// ─── History F2 (2026-06-11): one restorable row per delete ─────────────────
+
+test('single-annotation delete journals exactly one durable row (bulk path dedupe wiring)', () => {
+  // (a) the bulk path pre-registers candidate ids before runDelete…
+  const bulkStart = pdfViewerSrc.indexOf('const handleRequestBulkDelete');
+  assert.notEqual(bulkStart, -1);
+  const bulkBody = pdfViewerSrc.slice(bulkStart, bulkStart + 9000);
+  assert.match(
+    bulkBody,
+    /registerBulkJournaledAnnotationIds\(candidateIds\)[\s\S]{0,400}?runDelete\(\)/,
+    'bulk path must register candidate ids BEFORE runDelete so the single-annotation emitter can skip them',
+  );
+  // (b) …and a one-object bulk delete emits a single annotation_deleted row.
+  assert.match(
+    bulkBody,
+    /deletedObjects\.length === 1/,
+    'single-object bulk delete must emit one annotation_deleted row instead of a bulk row',
+  );
+  // (c) the single-annotation emitter skips bulk-journaled ids and suppresses
+  // the activity-pipeline twin row.
+  const pushStart = pdfViewerSrc.indexOf('const pushLocalAnnotationHistoryAction');
+  assert.notEqual(pushStart, -1);
+  const pushBody = pdfViewerSrc.slice(pushStart, pushStart + 8000);
+  assert.match(pushBody, /journaledByBulkPath/, 'bulk dedupe check missing from pushLocalAnnotationHistoryAction');
+  assert.match(pushBody, /suppressHistoryRow:\s*suppressActivityHistoryRow/, 'delete activity twin suppression flag missing');
+  assert.match(
+    pushBody,
+    /scopedAction\.type === 'fabric:delete' && !journaledByBulkPath/,
+    'single trash row must be skipped when the bulk path already journaled the id',
+  );
+});

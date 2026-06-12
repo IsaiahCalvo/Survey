@@ -190,3 +190,57 @@ test('document history keeps deleted annotation restore payloads when compact en
   equal(row.payload.restoreAction.annotation.id, 'stroke-2');
   equal(row.payload.visualBounds.left, 10);
 });
+
+// ─── KAL-313 / history F2 (2026-06-11): one restorable row per delete ────────
+
+test('suppressHistoryRow events never persist a history row (delete activity twin)', () => {
+  const row = buildHistoryEventRowFromDebugEvent({
+    type: 'local_annotation_history_added',
+    checkpointId: 21,
+    actionType: 'delete',
+    rawActionType: 'fabric:delete',
+    annotationType: 'rect',
+    annotationId: 'rect-1',
+    pageNumber: 1,
+    suppressHistoryRow: true,
+  }, { documentId: 'doc-1', user });
+  equal(row, null);
+});
+
+test('delete-reason checkpoints are activity twins of trash rows and are not persisted', () => {
+  for (const reason of ['callouts:delete', 'space:delete', 'delete:batch', 'highlight:delete', 'highlight:delete-pending']) {
+    const row = buildHistoryEventRowFromDebugEvent({
+      type: 'checkpoint_added',
+      checkpointId: 7,
+      reason,
+      pageNumber: 1,
+    }, { documentId: 'doc-1', user });
+    equal(row, null, `checkpoint with reason "${reason}" must not persist (trash row covers it)`);
+  }
+});
+
+test('non-delete checkpoints still persist (create/edit activity unaffected)', () => {
+  for (const reason of ['callouts:create', 'space:create', 'space:update', 'highlight:create', 'annotations:save']) {
+    const row = buildHistoryEventRowFromDebugEvent({
+      type: 'checkpoint_added',
+      checkpointId: 8,
+      reason,
+      pageNumber: 1,
+    }, { documentId: 'doc-1', user });
+    equal(Boolean(row), true, `checkpoint with reason "${reason}" must still persist`);
+  }
+});
+
+test('un-flagged delete events still persist (eraser path keeps its only restorable row)', () => {
+  const row = buildHistoryEventRowFromDebugEvent({
+    type: 'local_annotation_history_added',
+    checkpointId: 22,
+    actionType: 'delete',
+    rawActionType: 'fabric:batch',
+    annotationType: 'path',
+    pageNumber: 3,
+    itemCount: 2,
+    restoreAction: { type: 'fabric:batch', pageNumber: 3, created: [] },
+  }, { documentId: 'doc-1', user });
+  equal(Boolean(row), true, 'pure-delete batch without suppressHistoryRow must persist');
+});

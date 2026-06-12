@@ -44,6 +44,8 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
   onNavigateToPage,
   onExitSpace,
   onToggleSpace,
+  onRequestRegionEdit = null,
+  onCancelRegionEdit = null,
   isRegionSelectionActive = false,
   regionSelectionPage = null,
   getCanvasAnnotationVisibilityState = null,
@@ -548,6 +550,47 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
                             )}
                           </div>
                           <div className="region-action-controls">
+                            {/* KAL-313 / history F1 (2026-06-11): region-edit entry point.
+                                The 2026-06-11 panel rewrite ("Polish spaces sidebar controls")
+                                dropped the only call site of onRequestRegionEdit, making the
+                                Region Selection Tool unreachable from the UI — and with it the
+                                commit-time region-delete journaling. This button restores it. */}
+                            {(() => {
+                              const isActiveRegionEdit =
+                                isRegionSelectionActive &&
+                                regionSelectionPage === page.pageId &&
+                                activeSpaceId === space.id;
+                              return (
+                                <button
+                                  type="button"
+                                  className="region-edit-button"
+                                  title={isActiveRegionEdit ? 'Exit region edit' : 'Edit region areas on the page'}
+                                  aria-label={isActiveRegionEdit ? 'Exit region edit' : 'Edit region areas on the page'}
+                                  onClick={(e) => {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    if (isActiveRegionEdit) {
+                                      onCancelRegionEdit?.(space.id, page.pageId);
+                                    } else {
+                                      onRequestRegionEdit?.(space.id, page.pageId);
+                                    }
+                                  }}
+                                  style={{
+                                    background: isActiveRegionEdit ? 'rgba(74, 144, 226, 0.18)' : 'transparent',
+                                    border: isActiveRegionEdit ? '1px solid rgba(74, 144, 226, 0.55)' : '1px solid transparent',
+                                    borderRadius: '4px',
+                                    padding: '2px',
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    cursor: 'pointer',
+                                    color: isActiveRegionEdit ? '#4A90E2' : '#999'
+                                  }}
+                                >
+                                  <Icon name="edit" size={12} color="currentColor" />
+                                </button>
+                              );
+                            })()}
                             <button
                               type="button"
                               className="region-page-pill"
@@ -1342,6 +1385,8 @@ const SpacesPanel = ({
                       onRenameRegion={onSpaceRenamePage}
                       onRemovePage={handleRemovePage}
                       onNavigateToPage={onNavigateToPage}
+                      onRequestRegionEdit={onRequestRegionEdit}
+                      onCancelRegionEdit={onCancelRegionEdit}
                       isRegionSelectionActive={isRegionSelectionActive}
                       regionSelectionPage={regionSelectionPage}
                       getCanvasAnnotationVisibilityState={getCanvasAnnotationVisibilityState}
