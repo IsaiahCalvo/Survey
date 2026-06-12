@@ -178,15 +178,15 @@ BEGIN
   END IF;
 
   -- ④ Mint workbook_id: 16 random bytes → hex string, prefixed.
-  v_wb_bytes    := gen_random_bytes(16);
+  v_wb_bytes    := extensions.gen_random_bytes(16);
   v_workbook_id := 'wb_' || encode(v_wb_bytes, 'hex');
 
   -- ⑤ Mint syncToken: 32 random bytes → hex string, prefixed.
-  v_token_bytes := gen_random_bytes(32);
+  v_token_bytes := extensions.gen_random_bytes(32);
   v_raw_token   := 'st_' || encode(v_token_bytes, 'hex');
 
   -- ⑥ Hash the token for storage (SHA-256 hex).
-  v_token_hash  := encode(digest(v_raw_token, 'sha256'), 'hex');
+  v_token_hash  := encode(extensions.digest(v_raw_token, 'sha256'), 'hex');
 
   -- ⑦ Insert the new registration.
   INSERT INTO public.excel_workbook_registrations (
