@@ -460,6 +460,21 @@ input[type="text"].space-name-inline:focus {
   box-shadow: none;
 }
 
+.region-name-line {
+  display: inline-flex;
+  align-items: center;
+  max-width: 100%;
+  min-width: 0;
+}
+
+.region-leading-controls {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: 0 0 auto;
+  min-width: 52px;
+}
+
 .region-page-pill {
   appearance: none;
   display: inline-flex;
@@ -489,34 +504,34 @@ input[type="text"].space-name-inline:focus {
   outline: none;
 }
 
+.region-page-pill-leading {
+  width: auto;
+  min-width: 18px;
+  height: 16px;
+  padding: 0 5px;
+  font-size: 9.5px;
+  transform: none;
+}
+
 .region-action-controls {
   display: inline-grid;
-  grid-template-columns: repeat(3, 24px);
+  grid-template-columns: repeat(3, 20px);
   align-items: center;
   justify-items: center;
-  column-gap: 6px;
+  column-gap: 4px;
   flex: 0 0 auto;
 }
 
-.region-action-controls .region-page-pill {
-  width: 24px;
-  min-width: 24px;
-  padding: 0;
-  transform: translateX(4px);
-}
-
-.region-action-controls .region-visibility-button {
-  transform: translateX(4px);
-}
-
+.region-edit-button,
 .region-visibility-button,
 .region-delete-button {
   appearance: none;
-  width: 24px;
-  height: 24px;
-  min-width: 24px;
-  min-height: 24px;
+  width: 20px;
+  height: 20px;
+  min-width: 20px;
+  min-height: 20px;
   padding: 0;
+  box-sizing: border-box;
   background: transparent;
   border: 0;
   border-radius: 4px;
@@ -982,6 +997,13 @@ input[type="text"].space-name-inline:focus {
   align-self: center;
 }
 
+input[type="text"].space-add-pages-input:focus,
+input[type="text"].space-add-pages-input:focus-visible {
+  outline: none;
+  box-shadow: none;
+  border-color: #3a3a3a;
+}
+
 .space-add-pages-icon-button {
   appearance: none;
   width: 24px;
@@ -1004,6 +1026,20 @@ input[type="text"].space-name-inline:focus {
 .space-add-pages-icon-button:hover {
   background: #5fa0ef;
   border-color: #5fa0ef;
+}
+
+.space-page-range-error {
+  position: absolute;
+  top: 25px;
+  left: 0;
+  right: 0;
+  color: #ff8a80;
+  font-size: 9px;
+  line-height: 10px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  pointer-events: none;
 }
 
 .survey-marker-category-action-strip .survey-marker-select-toolbar {

@@ -10,7 +10,7 @@
  */
 import React, { useState, useCallback, useRef } from 'react';
 import Icon from '../Icons';
-import { parsePageRangeInput } from '../utils/pageRangeParser';
+import { parsePageRangeInput, sanitizePageRangeInput } from '../utils/pageRangeParser';
 import DragRearrangeHandle from '../reorder/DragRearrangeHandle';
 import { SortableRearrangeList, SortableRearrangeRow } from '../reorder/SortableRearrangeList';
 import { moveItem } from '../reorder/flatReorderUtils.js';
@@ -335,7 +335,7 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
             color: '#999',
             position: 'relative'
           }}>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+            <div style={{ position: 'relative', height: '24px', flex: '0 0 24px' }}>
               <div style={{
                 display: 'flex',
                 alignItems: 'center',
@@ -346,7 +346,9 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
                   className="space-add-pages-input"
                   value={pageInputValue}
                   placeholder="Add pages (e.g. 3, 6-9, 12)"
-                  onChange={(e) => onPageInputChange(space.id, e.target.value)}
+                  onChange={(e) => onPageInputChange(space.id, sanitizePageRangeInput(e.target.value))}
+                  inputMode="numeric"
+                  pattern="[0-9,-]*"
                   onKeyDown={(e) => {
                     if (e.key === 'Enter') {
                       e.preventDefault();
@@ -381,16 +383,13 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
                 </button>
               </div>
               {pageError && (
-                <div style={{ color: '#ff8a80', fontSize: '11px' }}>
+                <div className="space-page-range-error" title={pageError}>
                   {pageError}
                 </div>
               )}
             </div>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-              <div style={{ color: '#ccc', fontSize: '12px', fontWeight: 500 }}>
-                Included Pages
-              </div>
               {pageCount === 0 ? (
                 <div style={{ color: '#777', fontSize: '12px' }}>
                   No pages added yet.
@@ -420,134 +419,153 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
                             display: 'flex',
                             alignItems: 'center',
                             gap: '8px',
-                            padding: '6px 8px',
+                            padding: '4px 8px',
+                            minHeight: '34px',
                             background: '#1f1f1f',
                             border: '1px solid #333',
                             borderRadius: '6px'
                           }}
                         >
-                          {/* Region Overlay Toggle Switch - Always visible, dimmed when disabled */}
-                          {(() => {
-                            const hasProps = onToggleRegionOverlay && getRegionOverlayEnabled && isRegionOverlayToggleEnabled;
-                            const isOverlayEnabled = hasProps && getRegionOverlayEnabled ? getRegionOverlayEnabled(space.id, page.pageId, page) : false;
-                            const isToggleEnabled = hasProps && isRegionOverlayToggleEnabled ? isRegionOverlayToggleEnabled(space.id, page.pageId, page) : false;
-                            const isSpaceActive = isActive;
+                          <div className="region-leading-controls">
+                            <button
+                              type="button"
+                              className="region-page-pill region-page-pill-leading"
+                              title={`Go to page ${page.pageId}`}
+                              aria-label={`Go to page ${page.pageId}`}
+                              onClick={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                onNavigateToPage?.(page.pageId);
+                              }}
+                            >
+                              {page.pageId}
+                            </button>
 
-                            return (
-                              <div
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  if (!isToggleEnabled || !onToggleRegionOverlay) {
-                                    return;
-                                  }
-                                  onToggleRegionOverlay(space.id, page.pageId);
-                                }}
-                                style={{
-                                  position: 'relative',
-                                  width: '28px',
-                                  height: '16px',
-                                  borderRadius: '8px',
-                                  background: isToggleEnabled && isOverlayEnabled ? '#4A90E2' : '#3a3a3a',
-                                  cursor: isToggleEnabled ? 'pointer' : 'not-allowed',
-                                  transition: 'background 0.2s ease',
-                                  border: isToggleEnabled && isOverlayEnabled ? '1px solid #357abd' : '1px solid #4a4a4a',
-                                  display: 'flex',
-                                  alignItems: 'center',
-                                  padding: '2px',
-                                  flexShrink: 0,
-                                  opacity: isToggleEnabled ? 1 : 0.5
-                                }}
-                                onMouseEnter={(e) => {
-                                  if (!isToggleEnabled) return;
-                                  if (!isOverlayEnabled) {
-                                    e.currentTarget.style.background = '#4a4a4a';
-                                  } else {
-                                    e.currentTarget.style.background = '#357abd';
-                                  }
-                                }}
-                                onMouseLeave={(e) => {
-                                  if (!isToggleEnabled) return;
-                                  e.currentTarget.style.background = isOverlayEnabled ? '#4A90E2' : '#3a3a3a';
-                                }}
-                                title={
-                                  !hasProps
-                                    ? 'Overlay toggle'
-                                    : !isSpaceActive
-                                      ? 'Enable space to toggle overlay'
-                                      : !isToggleEnabled
-                                        ? 'Define regions first to enable overlay'
-                                        : (isOverlayEnabled ? 'Hide overlay for this region' : 'Show overlay for this region')
-                                }
-                              >
+                            {/* Region Overlay Toggle Switch - Always visible, dimmed when disabled */}
+                            {(() => {
+                              const hasProps = onToggleRegionOverlay && getRegionOverlayEnabled && isRegionOverlayToggleEnabled;
+                              const isOverlayEnabled = hasProps && getRegionOverlayEnabled ? getRegionOverlayEnabled(space.id, page.pageId, page) : false;
+                              const isToggleEnabled = hasProps && isRegionOverlayToggleEnabled ? isRegionOverlayToggleEnabled(space.id, page.pageId, page) : false;
+                              const isSpaceActive = isActive;
+
+                              return (
                                 <div
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    if (!isToggleEnabled || !onToggleRegionOverlay) {
+                                      return;
+                                    }
+                                    onToggleRegionOverlay(space.id, page.pageId);
+                                  }}
                                   style={{
-                                    position: 'absolute',
-                                    width: '12px',
-                                    height: '12px',
-                                    borderRadius: '50%',
-                                    background: '#ffffff',
-                                    boxShadow: '0 1px 3px rgba(0, 0, 0, 0.2)',
-                                    transition: 'transform 0.2s ease',
-                                    transform: isToggleEnabled && isOverlayEnabled ? 'translate(12px, -50%)' : 'translate(0px, -50%)',
-                                    left: '2px',
-                                    top: '50%'
+                                    position: 'relative',
+                                    width: '28px',
+                                    height: '16px',
+                                    borderRadius: '8px',
+                                    background: isToggleEnabled && isOverlayEnabled ? '#4A90E2' : '#3a3a3a',
+                                    cursor: isToggleEnabled ? 'pointer' : 'not-allowed',
+                                    transition: 'background 0.2s ease',
+                                    border: isToggleEnabled && isOverlayEnabled ? '1px solid #357abd' : '1px solid #4a4a4a',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    padding: '2px',
+                                    flexShrink: 0,
+                                    opacity: isToggleEnabled ? 1 : 0.5
+                                  }}
+                                  onMouseEnter={(e) => {
+                                    if (!isToggleEnabled) return;
+                                    if (!isOverlayEnabled) {
+                                      e.currentTarget.style.background = '#4a4a4a';
+                                    } else {
+                                      e.currentTarget.style.background = '#357abd';
+                                    }
+                                  }}
+                                  onMouseLeave={(e) => {
+                                    if (!isToggleEnabled) return;
+                                    e.currentTarget.style.background = isOverlayEnabled ? '#4A90E2' : '#3a3a3a';
+                                  }}
+                                  title={
+                                    !hasProps
+                                      ? 'Overlay toggle'
+                                      : !isSpaceActive
+                                        ? 'Enable space to toggle overlay'
+                                        : !isToggleEnabled
+                                          ? 'Define regions first to enable overlay'
+                                          : (isOverlayEnabled ? 'Hide overlay for this region' : 'Show overlay for this region')
+                                  }
+                                >
+                                  <div
+                                    style={{
+                                      position: 'absolute',
+                                      width: '12px',
+                                      height: '12px',
+                                      borderRadius: '50%',
+                                      background: '#ffffff',
+                                      boxShadow: '0 1px 3px rgba(0, 0, 0, 0.2)',
+                                      transition: 'transform 0.2s ease',
+                                      transform: isToggleEnabled && isOverlayEnabled ? 'translate(12px, -50%)' : 'translate(0px, -50%)',
+                                      left: '2px',
+                                      top: '50%'
+                                    }}
+                                  />
+                                </div>
+                              );
+                            })()}
+                          </div>
+                          <div style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            <div className="region-name-line">
+                              {isEditingRegion ? (
+                                <input
+                                  ref={editingRegionInputRef}
+                                  type="text"
+                                  value={editingRegionValue}
+                                  onChange={(e) => setEditingRegionValue(e.target.value)}
+                                  onMouseDown={(e) => {
+                                    e.stopPropagation();
+                                  }}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                  }}
+                                  onFocus={(e) => {
+                                    e.stopPropagation();
+                                  }}
+                                  onBlur={() => {
+                                    if (isRegionSelectionActive) {
+                                      return;
+                                    }
+                                    commitRegionRename(page.pageId);
+                                  }}
+                                  onKeyDown={(e) => {
+
+                                    if (e.key === 'Enter') {
+                                      e.preventDefault();
+                                      commitRegionRename(page.pageId);
+                                    } else if (e.key === 'Escape') {
+                                      e.preventDefault();
+                                      e.stopPropagation();
+                                      cancelRegionRename();
+                                    }
+                                  }}
+                                  className="region-name-inline"
+                                  style={{
+                                    width: '100%',
                                   }}
                                 />
-                              </div>
-                            );
-                          })()}
-                          <div style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: '6px' }}>
-                            {isEditingRegion ? (
-                              <input
-                                ref={editingRegionInputRef}
-                                type="text"
-                                value={editingRegionValue}
-                                onChange={(e) => setEditingRegionValue(e.target.value)}
-                                onMouseDown={(e) => {
-                                  e.stopPropagation();
-                                }}
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                }}
-                                onFocus={(e) => {
-                                  e.stopPropagation();
-                                }}
-                                onBlur={() => {
-                                  if (isRegionSelectionActive) {
-                                    return;
-                                  }
-                                  commitRegionRename(page.pageId);
-                                }}
-                                onKeyDown={(e) => {
-
-                                  if (e.key === 'Enter') {
-                                    e.preventDefault();
-                                    commitRegionRename(page.pageId);
-                                  } else if (e.key === 'Escape') {
+                              ) : (
+                                <button
+                                  type="button"
+                                  className="region-name-display"
+                                  onClick={(e) => {
                                     e.preventDefault();
                                     e.stopPropagation();
-                                    cancelRegionRename();
-                                  }
-                                }}
-                                className="region-name-inline"
-                                style={{
-                                  width: '100%',
-                                }}
-                              />
-                            ) : (
-                              <button
-                                type="button"
-                                className="region-name-display"
-                                onClick={(e) => {
-                                  e.preventDefault();
-                                  e.stopPropagation();
-                                  handleRegionEditClick(page.pageId, regionLabel);
-                                }}
-                                title="Click to rename"
-                              >
-                                {regionLabel}
-                              </button>
-                            )}
+                                    handleRegionEditClick(page.pageId, regionLabel);
+                                  }}
+                                  title="Click to rename"
+                                >
+                                  {regionLabel}
+                                </button>
+                              )}
+                            </div>
                           </div>
                           <div className="region-action-controls">
                             {/* KAL-313 / history F1 (2026-06-11): region-edit entry point.
@@ -591,19 +609,6 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
                                 </button>
                               );
                             })()}
-                            <button
-                              type="button"
-                              className="region-page-pill"
-                              title={`Go to page ${page.pageId}`}
-                              aria-label={`Go to page ${page.pageId}`}
-                              onClick={(e) => {
-                                e.preventDefault();
-                                e.stopPropagation();
-                                onNavigateToPage?.(page.pageId);
-                              }}
-                            >
-                              {page.pageId}
-                            </button>
                             {/* One visible control on screen, but separate canvas/survey features in code. */}
                             {isExpanded && (() => {
                               const controlMode = getPageVisibilityControlMode({ showSurveyPanel, selectedModuleId });

@@ -6,10 +6,44 @@
  * collapsing a page array back into compact "1, 3, 5-7" range notation).
  * Used by print/export dialogs that accept a page-selection field.
  */
+export const sanitizePageRangeInput = (input) => {
+  if (typeof input !== 'string') {
+    return '';
+  }
+
+  let sanitized = '';
+  let atNumberStart = true;
+
+  for (const char of input) {
+    if (char >= '0' && char <= '9') {
+      if (char === '0' && atNumberStart) {
+        continue;
+      }
+      sanitized += char;
+      atNumberStart = false;
+      continue;
+    }
+
+    if (char === ',' || char === '-') {
+      sanitized += char;
+      atNumberStart = true;
+    }
+  }
+
+  return sanitized;
+};
+
 export const parsePageRangeInput = (input, options = {}) => {
   const { min = 1, max = Infinity } = options;
   const pages = new Set();
   const errors = [];
+  let hasOutOfRangeError = false;
+  const validRangeText = Number.isFinite(max) ? `${min}-${max}` : `${min}+`;
+  const addOutOfRangeError = () => {
+    if (hasOutOfRangeError) return;
+    errors.push(`This page range is out of the valid range (${validRangeText}).`);
+    hasOutOfRangeError = true;
+  };
 
   if (!input || typeof input !== 'string') {
     return { pages: [], errors: ['No page numbers provided.'] };
@@ -28,7 +62,7 @@ export const parsePageRangeInput = (input, options = {}) => {
     if (/^\d+$/.test(segment)) {
       const pageNum = Number(segment);
       if (!Number.isInteger(pageNum) || pageNum < min || pageNum > max) {
-        errors.push(`Page ${segment} is outside the valid range (${min}-${max}).`);
+        addOutOfRangeError();
         return;
       }
       pages.add(pageNum);
@@ -49,11 +83,13 @@ export const parsePageRangeInput = (input, options = {}) => {
         [start, end] = [end, start];
       }
 
-      for (let page = start; page <= end; page += 1) {
-        if (page < min || page > max) {
-          errors.push(`Page ${page} in range "${segment}" is outside the valid range (${min}-${max}).`);
-          continue;
-        }
+      if (start < min || end > max) {
+        addOutOfRangeError();
+      }
+
+      const boundedStart = Math.max(start, min);
+      const boundedEnd = Math.min(end, max);
+      for (let page = boundedStart; page <= boundedEnd; page += 1) {
         pages.add(page);
       }
       return;
@@ -103,4 +139,3 @@ export const formatPageList = (pageEntries = []) => {
 
   return ranges.join(', ');
 };
-
