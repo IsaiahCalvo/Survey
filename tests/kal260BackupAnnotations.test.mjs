@@ -2,10 +2,37 @@
 // Plan §7 test list: keyset loop, sweep comparator, drift/retry, checkpoint
 // verification glue, buildRestoreBatches, exit precedence, write-leak source
 // scan, manifest allowlist + poisoned-input, precision tripwire.
+//
+// Conditional-skip guard (KAL-257 §2.5): tests that read the committed baseline
+// files (.planning/optimization/migration-baseline/) or the script source from
+// scripts/ are skipped — not failed — when those paths are absent from the
+// working tree (e.g. a shallow CI checkout or a stripped-down environment).
+// All synthetic-fixture tests run unconditionally.
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { existsSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
+import { fileURLToPath } from 'node:url';
+import { dirname, resolve } from 'node:path';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const REPO_ROOT = resolve(__dirname, '..');
+
+function missingPrerequisite() {
+  const baselineDir = resolve(REPO_ROOT, '.planning/optimization/migration-baseline');
+  if (!existsSync(baselineDir)) {
+    return `baseline dir absent: ${baselineDir} — run KAL-261 first to generate committed outputs`;
+  }
+  const scriptPath = resolve(REPO_ROOT, 'scripts/kal260-backup-annotations.mjs');
+  if (!existsSync(scriptPath)) {
+    return `script absent: ${scriptPath}`;
+  }
+  return false;
+}
+
+// Computed once at module load. Falsy means all prerequisites are present.
+const ARTIFACT_SKIP = missingPrerequisite();
 import {
   HASH_SCHEME,
   payloadHash,
@@ -309,7 +336,7 @@ test('checkpoint integrity gate: passes on exact sha256 + correct hash_scheme fo
 //      (wrong survivor count in the file triggers hash mismatch)
 // ---------------------------------------------------------------------------
 
-test('checkpoint integrity gate: verifies real committed baseline files (615 marks, 10960 survivors)', async () => {
+test('checkpoint integrity gate: verifies real committed baseline files (615 marks, 10960 survivors)', { skip: ARTIFACT_SKIP }, async () => {
   const texts = {};
   for (const name of Object.keys(PINNED_BASELINE_SHA256)) {
     texts[name] = await readFile(
@@ -398,7 +425,7 @@ test('exit precedence: FAIL(1) beats DRIFT(2) beats PASS(0)', () => {
 // 20 — write-leak source scan: exactly one fetchImpl( call site (roGet wrapper)
 // ---------------------------------------------------------------------------
 
-test('write-leak source scan: exactly one fetchImpl( call site in kal260-backup-annotations.mjs', async () => {
+test('write-leak source scan: exactly one fetchImpl( call site in kal260-backup-annotations.mjs', { skip: ARTIFACT_SKIP }, async () => {
   const src = await readFile('scripts/kal260-backup-annotations.mjs', 'utf8');
   // There must be exactly ONE fetchImpl( — the call inside roGet.
   const implMatches = [...src.matchAll(/\bfetchImpl\s*\(/g)];
@@ -421,7 +448,7 @@ test('write-leak source scan: exactly one fetchImpl( call site in kal260-backup-
 // 21 — write-leak source scan: no supabase-js import
 // ---------------------------------------------------------------------------
 
-test('write-leak source scan: no supabase-js or createClient in the script', async () => {
+test('write-leak source scan: no supabase-js or createClient in the script', { skip: ARTIFACT_SKIP }, async () => {
   const src = await readFile('scripts/kal260-backup-annotations.mjs', 'utf8');
   assert.doesNotMatch(src, /supabase-js|createClient/);
 });
@@ -430,7 +457,7 @@ test('write-leak source scan: no supabase-js or createClient in the script', asy
 // 22 — write-leak source scan: no /rpc/ in URL template literals
 // ---------------------------------------------------------------------------
 
-test('write-leak source scan: no /rpc/ embedded in URL template literals or string concatenations', async () => {
+test('write-leak source scan: no /rpc/ embedded in URL template literals or string concatenations', { skip: ARTIFACT_SKIP }, async () => {
   const src = await readFile('scripts/kal260-backup-annotations.mjs', 'utf8');
   // The guard regex /\/rpc\// is intentionally present to REJECT rpc paths —
   // that is correct. What must not appear is /rpc/ inside a template-literal
@@ -445,7 +472,7 @@ test('write-leak source scan: no /rpc/ embedded in URL template literals or stri
 //      buildRestoreBatches but no second fetch( references it
 // ---------------------------------------------------------------------------
 
-test("write-leak source scan: inert method:'POST' literal exists in buildRestoreBatches; no second fetchImpl( references it", async () => {
+test("write-leak source scan: inert method:'POST' literal exists in buildRestoreBatches; no second fetchImpl( references it", { skip: ARTIFACT_SKIP }, async () => {
   const src = await readFile('scripts/kal260-backup-annotations.mjs', 'utf8');
   // The POST literal must exist (inert data in buildRestoreBatches for the runbook)
   assert.match(src, /method:\s*'POST'/);

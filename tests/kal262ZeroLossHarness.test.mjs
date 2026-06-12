@@ -2,10 +2,37 @@
 // Targeted gates from PLAN-KAL262.md (Codex-approved r3): round-trip pass,
 // every typed diff fires, drift attribution, integrity gate refusal, pinned
 // known-answer hash vector, write-leak gate, allowlist schema, exit precedence.
+//
+// Conditional-skip guard (KAL-257 §2.5): tests that read the committed baseline
+// files (.planning/optimization/migration-baseline/) or the harness source from
+// scripts/ are skipped — not failed — when those paths are absent from the
+// working tree (e.g. a shallow CI checkout or a stripped-down environment).
+// All synthetic-fixture tests run unconditionally.
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { existsSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
+import { fileURLToPath } from 'node:url';
+import { dirname, resolve } from 'node:path';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const REPO_ROOT = resolve(__dirname, '..');
+
+function missingPrerequisite() {
+  const baselineDir = resolve(REPO_ROOT, '.planning/optimization/migration-baseline');
+  if (!existsSync(baselineDir)) {
+    return `baseline dir absent: ${baselineDir} — run KAL-261 first to generate committed outputs`;
+  }
+  const scriptPath = resolve(REPO_ROOT, 'scripts/kal262-zero-loss-harness.mjs');
+  if (!existsSync(scriptPath)) {
+    return `script absent: ${scriptPath}`;
+  }
+  return false;
+}
+
+// Computed once at module load. Falsy means all prerequisites are present.
+const ARTIFACT_SKIP = missingPrerequisite();
 import {
   HASH_SCHEME,
   canonicalStringify,
@@ -294,7 +321,7 @@ test('integrity gate: refuses on sha256 mismatch and on hash_scheme drift; passe
   assert.equal(Object.keys(PINNED_BASELINE_SHA256).length, 3);
 });
 
-test('integrity gate verifies the real committed baseline files byte-exactly', async () => {
+test('integrity gate verifies the real committed baseline files byte-exactly', { skip: ARTIFACT_SKIP }, async () => {
   const texts = {};
   for (const name of Object.keys(PINNED_BASELINE_SHA256)) {
     texts[name] = await readFile(`.planning/optimization/migration-baseline/${name}`, 'utf8');
@@ -330,7 +357,7 @@ test('write-leak gate: every harness request is a body-less GET to a whitelisted
   }
 });
 
-test('write-leak gate: harness source has no direct fetch, no supabase-js, no /rpc/, no non-GET method', async () => {
+test('write-leak gate: harness source has no direct fetch, no supabase-js, no /rpc/, no non-GET method', { skip: ARTIFACT_SKIP }, async () => {
   const src = await readFile('scripts/kal262-zero-loss-harness.mjs', 'utf8');
   assert.doesNotMatch(src, /supabase-js|createClient/);
   assert.doesNotMatch(src, /\/rpc\//);
