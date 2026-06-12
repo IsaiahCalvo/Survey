@@ -40,7 +40,7 @@ Done: slice 0 matcher (KAL-306✓), slice 1 registration client+migration (KAL-3
 ## BLOCKERS — only Isaiah can clear (work through these FIRST)
 
 1. **Azure portal 15-minute change** on app 0da81a9e-2b05-46ee-b826-5efc5114c765 (Mobile+desktop platform, http://localhost redirect, public client flows) + **work-account sign-in** → unlocks the entire M365 live chain and ultimately the writeback flip.
-2. **Test-project keys go-ahead** (he was asked 4×; option: he runs the three commands from the registration-verifier note instead) → unlocks DB verification of every shipped migration → then his **production apply** go.
+2. ~~Test-project keys~~ **CLEARED 2026-06-12: Isaiah authorized; keys fetched (CLI keychain go-keyring-base64 wrapper → sbp_ token); .env.test written (gitignored, BOTH checkouts).** KAL-307 registration: applied to survey-test, **8/8 integration scenarios PASS** after fixing unqualified pgcrypto calls (extensions.gen_random_bytes/digest — fixed in BOTH the migration file AND the apply script's inlined copy; those two must stay in sync or be deduped). KAL-313 + its prerequisite history-events migration also applied to survey-test; trigger + sweep deployed; immutability verified by source-read (Management API runs as postgres which is allowlisted for the sweep — authenticated-user block needs a supabase-js client test later). REMAINING: Isaiah's **production apply** go for these migrations.
 3. **Push authorization** — back up the year of work (private repo; or his alternative).
 4. **One batched decision round** (present with recommendations, 10 minutes): stamps in/out; print panel 4 choices; imported-ink policy; dead-end buttons; plus rulings he can rubber-stamp: callout-unification post-MVP, Syncfusion removal post-MVP.
 

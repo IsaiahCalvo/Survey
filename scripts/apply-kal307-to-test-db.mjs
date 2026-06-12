@@ -247,13 +247,13 @@ BEGIN
     v_active_gen := 0;
   END IF;
 
-  v_wb_bytes    := gen_random_bytes(16);
+  v_wb_bytes    := extensions.gen_random_bytes(16);
   v_workbook_id := 'wb_' || encode(v_wb_bytes, 'hex');
 
-  v_token_bytes := gen_random_bytes(32);
+  v_token_bytes := extensions.gen_random_bytes(32);
   v_raw_token   := 'st_' || encode(v_token_bytes, 'hex');
 
-  v_token_hash  := encode(digest(v_raw_token, 'sha256'), 'hex');
+  v_token_hash  := encode(extensions.digest(v_raw_token, 'sha256'), 'hex');
 
   INSERT INTO public.excel_workbook_registrations (
     document_id, template_id,
