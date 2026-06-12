@@ -3,14 +3,14 @@
  * regions and per-page annotation visibility).
  *
  * Default-exports the SpacesPanel component; internal SpaceSortableCard renders
- * each card with expand, rename, toggle, page-range add (parsePageRangeInput),
- * region rename/edit, CSV/PDF export, and canvas/survey annotation-visibility
+ * each card with expand, inline rename, toggle, page-range add (parsePageRangeInput),
+ * region rename/edit, and canvas/survey annotation-visibility
  * toggles (gated on the Pro `features` flags). Cards reorder via dnd-kit
  * SortableRearrangeList with optimistic ordering and frame-capture debug hooks.
  */
 import React, { useState, useCallback, useRef } from 'react';
 import Icon from '../Icons';
-import { parsePageRangeInput, formatPageList } from '../utils/pageRangeParser';
+import { parsePageRangeInput } from '../utils/pageRangeParser';
 import DragRearrangeHandle from '../reorder/DragRearrangeHandle';
 import { SortableRearrangeList, SortableRearrangeRow } from '../reorder/SortableRearrangeList';
 import { moveItem } from '../reorder/flatReorderUtils.js';
@@ -30,33 +30,22 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
   isActive,
   isSelected,
   isExpanded,
-  isEditing,
-  editingName,
-  pageSummary,
   pageCount,
   regionCount,
   pageInputValue,
   pageError,
   onToggleExpand,
-  onSpaceClick,
-  onRenameClick,
-  onEditingNameChange,
-  onSaveRename,
-  onCancelRename,
+  onRenameSpace,
   onDelete,
-  onExportSpaceCSV,
-  onExportSpacePDF,
   onPageInputChange,
   onAssignPages,
   onRenameRegion,
-  onRequestRegionEdit,
-  onCancelRegionEdit,
   onRemovePage,
+  onNavigateToPage,
   onExitSpace,
   onToggleSpace,
   isRegionSelectionActive = false,
   regionSelectionPage = null,
-  features,
   getCanvasAnnotationVisibilityState = null,
   onToggleCanvasAnnotations = null,
   getSurveyAnnotationVisibilityState = null,
@@ -68,47 +57,21 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
   showSurveyPanel = false,
   selectedModuleId = null
 }) {
-  const [isExportMenuOpen, setIsExportMenuOpen] = useState(false);
-  const [isExportHovered, setIsExportHovered] = useState(false);
   const [editingRegionId, setEditingRegionId] = useState(null);
   const [editingRegionValue, setEditingRegionValue] = useState('');
   const editingRegionInputRef = useRef(null);
-  const exportControlAnchorRef = useRef(null);
-  const suppressRegionEditClickRef = useRef(null);
-  const skipRegionRenameCommitRef = useRef(false);
   React.useEffect(() => {
     if (!isExpanded) {
-      setIsExportMenuOpen(false);
       setEditingRegionId(null);
       setEditingRegionValue('');
     }
   }, [isExpanded]);
   React.useEffect(() => {
-    if (!isExportMenuOpen) return;
-
-    const handleOutsideClick = (event) => {
-      if (!exportControlAnchorRef.current) return;
-      if (!exportControlAnchorRef.current.contains(event.target)) {
-        setIsExportMenuOpen(false);
-      }
-    };
-
-    document.addEventListener('mousedown', handleOutsideClick);
-    document.addEventListener('touchstart', handleOutsideClick, { passive: true });
-
-    return () => {
-      document.removeEventListener('mousedown', handleOutsideClick);
-      document.removeEventListener('touchstart', handleOutsideClick);
-    };
-  }, [isExportMenuOpen]);
-  React.useEffect(() => {
     setEditingRegionId(null);
     setEditingRegionValue('');
   }, [space.id]);
 
-  const isExportActive = isExportHovered || isExportMenuOpen;
-
-  const commitRegionRename = useCallback((pageId, triggerRegionEdit = false) => {
+  const commitRegionRename = useCallback((pageId) => {
 
     if (editingRegionId !== pageId) {
 
@@ -119,11 +82,7 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
     onRenameRegion?.(space.id, pageId, labelToSave);
     setEditingRegionId(null);
     setEditingRegionValue('');
-
-    if (triggerRegionEdit) {
-      onRequestRegionEdit?.(space.id, pageId);
-    }
-  }, [editingRegionId, editingRegionValue, onRenameRegion, onRequestRegionEdit, space.id]);
+  }, [editingRegionId, editingRegionValue, onRenameRegion, space.id]);
 
 
   const cancelRegionRename = useCallback(() => {
@@ -132,25 +91,36 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
   }, []);
 
   React.useEffect(() => {
-    // When edit mode is dismissed, save any active rename
-    if (!isRegionSelectionActive && editingRegionId !== null) {
-      if (skipRegionRenameCommitRef.current) {
-        skipRegionRenameCommitRef.current = false;
-        return;
-      }
-      commitRegionRename(editingRegionId, false);
-    }
-  }, [isRegionSelectionActive, editingRegionId, commitRegionRename]);
+    if (editingRegionId === null) return;
+    requestAnimationFrame(() => {
+      editingRegionInputRef.current?.focus();
+      editingRegionInputRef.current?.select();
+    });
+  }, [editingRegionId]);
 
   const handleRegionEditClick = useCallback((pageId, currentLabel) => {
     setEditingRegionId(pageId);
     setEditingRegionValue(currentLabel);
-    // Note: Rename mode should NOT automatically select the space
-  }, [space.id]);
+  }, []);
 
   const isHighlighted = isSelected || isActive;
   const headerBackground = isHighlighted ? '#3a3a3a' : 'transparent';
   const headerHoverBackground = isHighlighted ? '#3a3a3a' : '#2b2b2b';
+  const regionCountText = String(regionCount);
+  const regionCountDigits = regionCountText.length;
+  const regionCountFontSize = regionCountDigits >= 4 ? '6px' : (regionCountDigits >= 3 ? '7.5px' : '10px');
+  const commitSpaceName = useCallback((input) => {
+    if (!input) return;
+    const fallbackName = space.name?.trim() || 'Space';
+    const nextName = (input.value || '').trim() || fallbackName;
+    input.value = nextName;
+    if (input.parentElement) {
+      input.parentElement.dataset.value = nextName || ' ';
+    }
+    if (nextName !== space.name) {
+      onRenameSpace?.(space.id, nextName);
+    }
+  }, [onRenameSpace, space.id, space.name]);
 
   return (
     <div data-space-sortable-row-id={space.id}>
@@ -159,7 +129,7 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
         style={{
           background: '#2b2b2b',
           border: isHighlighted ? '1px solid transparent' : '1px solid #3a3a3a',
-          borderRadius: '8px',
+          borderRadius: '5px',
           overflow: isExpanded ? 'visible' : 'hidden',
           boxShadow: isHighlighted
             ? '0 4px 16px rgba(0, 0, 0, 0.18)'
@@ -167,10 +137,10 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
         }}
       >
         <div
-          onDoubleClick={() => onToggleExpand(space.id)}
+          onClick={() => onToggleExpand(space.id)}
           style={{
-            padding: '10px 10px 10px 6px',
-            cursor: 'default',
+            padding: '2px 5px',
+            cursor: 'pointer',
             background: headerBackground,
             transition: isDragging || isRearranging ? 'none' : 'background 0.15s ease',
             display: 'flex',
@@ -190,24 +160,147 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
             }
           }}
         >
-          <DragRearrangeHandle
-            {...dragHandleProps}
-            data-space-drag-handle
-            isDragging={isDragging}
-            title="Drag to rearrange"
-            style={{
-              width: '20px',
-              height: '20px',
-              color: '#666',
-            }}
-          />
+          <div className="space-card-leading-controls">
+            <DragRearrangeHandle
+              {...dragHandleProps}
+              className="space-card-drag-handle"
+              data-space-drag-handle
+              isDragging={isDragging}
+              title="Drag to rearrange"
+              onClick={(e) => e.stopPropagation()}
+              style={{
+                width: '24px',
+                height: '24px',
+                color: '#666',
+              }}
+            />
 
-          {!isEditing && (
+            <span
+              className="space-region-count"
+              title={`${regionCount} region${regionCount !== 1 ? 's' : ''}`}
+              aria-label={`${regionCount} region${regionCount !== 1 ? 's' : ''}`}
+              style={{ fontSize: regionCountFontSize }}
+            >
+              {regionCountText}
+            </span>
+
+            <button
+              className="space-card-expand-button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onToggleExpand(space.id);
+              }}
+              style={{
+                background: 'none',
+                border: 'none',
+                color: '#666',
+                cursor: 'pointer',
+                padding: '2px 4px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                borderRadius: '4px'
+              }}
+              onMouseEnter={(e) => e.currentTarget.style.background = '#f0f0f0'}
+              onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+              title={isExpanded ? 'Collapse' : 'Expand'}
+            >
+              <Icon
+                name={isExpanded ? 'chevronDown' : 'chevronRight'}
+                size={12}
+              />
+            </button>
+          </div>
+
+          <span className="space-name-fit" data-value={space.name || ' '}>
+            <input
+              type="text"
+              size={1}
+              className="space-name-inline"
+              defaultValue={space.name}
+              key={`${space.id}:${space.name}`}
+              title="Click to rename"
+              aria-label={`Rename ${space.name || 'Space'}`}
+              onPointerDown={(e) => e.stopPropagation()}
+              onClick={(e) => e.stopPropagation()}
+              onDoubleClick={(e) => {
+                e.stopPropagation();
+                e.currentTarget.select();
+              }}
+              onInput={(e) => {
+                if (e.currentTarget.parentElement) {
+                  e.currentTarget.parentElement.dataset.value = e.currentTarget.value || ' ';
+                }
+              }}
+              onBlur={(e) => commitSpaceName(e.currentTarget)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.currentTarget.blur();
+                } else if (e.key === 'Escape') {
+                  e.currentTarget.value = space.name || '';
+                  if (e.currentTarget.parentElement) {
+                    e.currentTarget.parentElement.dataset.value = space.name || ' ';
+                  }
+                  e.currentTarget.blur();
+                }
+              }}
+            />
+          </span>
+          <div className="space-card-header-controls">
+            {/* Toggle Switch - Always visible */}
+            <div
+              className="space-toggle-control"
+              onClick={(e) => {
+                e.stopPropagation();
+                onToggleSpace?.(space.id, !isActive);
+              }}
+              style={{
+                position: 'relative',
+                width: '28px',
+                height: '16px',
+                borderRadius: '8px',
+                background: isActive ? '#4A90E2' : '#3a3a3a',
+                cursor: 'pointer',
+                transition: 'background 0.2s ease',
+                border: isActive ? '1px solid #357abd' : '1px solid #4a4a4a',
+                display: 'flex',
+                alignItems: 'center',
+                padding: '2px',
+                flexShrink: 0
+              }}
+              onMouseEnter={(e) => {
+                if (!isActive) {
+                  e.currentTarget.style.background = '#4a4a4a';
+                } else {
+                  e.currentTarget.style.background = '#357abd';
+                }
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = isActive ? '#4A90E2' : '#3a3a3a';
+              }}
+              title={isActive ? 'Turn off space' : 'Turn on space'}
+            >
+              <div
+                style={{
+                  position: 'absolute',
+                  width: '12px',
+                  height: '12px',
+                  borderRadius: '50%',
+                  background: '#ffffff',
+                  boxShadow: '0 1px 3px rgba(0, 0, 0, 0.2)',
+                  transition: 'transform 0.2s ease',
+                  transform: isActive ? 'translate(12px, -50%)' : 'translate(0px, -50%)',
+                  left: '2px',
+                  top: '50%'
+                }}
+              />
+            </div>
             <button
               onClick={(e) => {
                 e.stopPropagation();
-                onRenameClick(space.id, space.name);
+                onDelete(space.id);
               }}
+              className="space-card-delete-button"
               style={{
                 background: 'transparent',
                 border: 'none',
@@ -218,158 +311,13 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
                 alignItems: 'center',
                 justifyContent: 'center'
               }}
-              onMouseEnter={(e) => e.currentTarget.style.background = '#f0f0f0'}
+              onMouseEnter={(e) => e.currentTarget.style.background = '#ffebee'}
               onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
-              title="Rename"
+              title="Delete"
             >
-              <Icon name="edit" size={12} color="#666" />
+              <Icon name="trash" size={12} color="#d32f2f" />
             </button>
-          )}
-
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              onToggleExpand(space.id);
-            }}
-            style={{
-              background: 'none',
-              border: 'none',
-              color: '#666',
-              cursor: 'pointer',
-              padding: '2px 4px',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              borderRadius: '4px'
-            }}
-            onMouseEnter={(e) => e.currentTarget.style.background = '#f0f0f0'}
-            onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
-            title={isExpanded ? 'Collapse' : 'Expand'}
-          >
-            <Icon
-              name={isExpanded ? 'chevronDown' : 'chevronRight'}
-              size={12}
-            />
-          </button>
-
-          {isEditing ? (
-            <input
-              type="text"
-              value={editingName}
-              onChange={(e) => onEditingNameChange(e.target.value)}
-              onBlur={onSaveRename}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') {
-                  onSaveRename();
-                } else if (e.key === 'Escape') {
-                  onCancelRename();
-                }
-              }}
-              onClick={(e) => e.stopPropagation()}
-              autoFocus
-              style={{
-                flex: 1,
-                padding: '4px 8px',
-                background: '#2b2b2b',
-                color: '#ddd',
-                border: '1px solid #4A90E2',
-                borderRadius: '4px',
-                fontSize: '13px',
-                fontFamily: FONT_FAMILY,
-                outline: 'none'
-              }}
-            />
-          ) : (
-            <>
-              <span
-                style={{
-                  flex: 1,
-                  fontSize: '13px',
-                  fontWeight: '500',
-                  color: '#ddd',
-                  overflow: 'hidden',
-                  textOverflow: 'ellipsis',
-                  whiteSpace: 'nowrap'
-                }}
-              >
-                {space.name}
-              </span>
-              <div style={{
-                display: 'flex',
-                gap: '4px',
-                alignItems: 'center',
-                marginLeft: 'auto'
-              }}>
-                {/* Toggle Switch - Always visible */}
-                <div
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onToggleSpace?.(space.id, !isActive);
-                  }}
-                  style={{
-                    position: 'relative',
-                    width: '36px',
-                    height: '20px',
-                    borderRadius: '10px',
-                    background: isActive ? '#4A90E2' : '#3a3a3a',
-                    cursor: 'pointer',
-                    transition: 'background 0.2s ease',
-                    border: isActive ? '1px solid #357abd' : '1px solid #4a4a4a',
-                    display: 'flex',
-                    alignItems: 'center',
-                    padding: '2px',
-                    flexShrink: 0
-                  }}
-                  onMouseEnter={(e) => {
-                    if (!isActive) {
-                      e.currentTarget.style.background = '#4a4a4a';
-                    } else {
-                      e.currentTarget.style.background = '#357abd';
-                    }
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.background = isActive ? '#4A90E2' : '#3a3a3a';
-                  }}
-                  title={isActive ? 'Turn off space' : 'Turn on space'}
-                >
-                  <div
-                    style={{
-                      position: 'absolute',
-                      width: '16px',
-                      height: '16px',
-                      borderRadius: '50%',
-                      background: '#ffffff',
-                      boxShadow: '0 1px 3px rgba(0, 0, 0, 0.2)',
-                      transition: 'transform 0.2s ease',
-                      transform: isActive ? 'translateX(16px)' : 'translateX(0px)',
-                      left: '2px'
-                    }}
-                  />
-                </div>
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onDelete(space.id);
-                  }}
-                  style={{
-                    background: 'transparent',
-                    border: 'none',
-                    padding: '4px',
-                    cursor: 'pointer',
-                    borderRadius: '4px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center'
-                  }}
-                  onMouseEnter={(e) => e.currentTarget.style.background = '#ffebee'}
-                  onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
-                  title="Delete"
-                >
-                  <Icon name="trash" size={12} color="#d32f2f" />
-                </button>
-              </div>
-            </>
-          )}
+          </div>
         </div>
 
         {isExpanded && (
@@ -385,203 +333,51 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
             color: '#999',
             position: 'relative'
           }}>
-            <div style={{
-              display: 'flex',
-              flexWrap: 'nowrap',
-              gap: '8px',
-              alignItems: 'center'
-            }}>
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onAssignPages(space.id);
-                }}
-                style={{
-                  padding: '6px 10px',
-                  background: '#4A90E2',
-                  color: '#fff',
-                  border: 'none',
-                  borderRadius: '4px',
-                  fontSize: '11px',
-                  fontWeight: 500,
-                  cursor: 'pointer',
-                  fontFamily: FONT_FAMILY,
-                  whiteSpace: 'nowrap'
-                }}
-              >
-                Add Pages
-              </button>
-              <div
-                ref={exportControlAnchorRef}
-                style={{ position: 'relative', display: 'inline-flex' }}
-                onClick={(e) => e.stopPropagation()}
-              >
-                <button
-                  onClick={() => {
-                    if (!features?.excelExport) {
-                      alert('Exporting Spaces is a Pro feature.');
-                      return;
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+              <div style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px'
+              }}>
+                <input
+                  type="text"
+                  className="space-add-pages-input"
+                  value={pageInputValue}
+                  placeholder="Add pages (e.g. 3, 6-9, 12)"
+                  onChange={(e) => onPageInputChange(space.id, e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      onAssignPages(space.id);
                     }
-                    setIsExportMenuOpen((open) => !open);
                   }}
-                  onMouseEnter={() => setIsExportHovered(true)}
-                  onMouseLeave={() => setIsExportHovered(false)}
                   style={{
-                    padding: '6px',
-                    background: isExportActive ? '#4A90E2' : '#3a3a3a',
-                    border: '1px solid #4A90E2',
-                    color: isExportActive ? '#ffffff' : '#4A90E2',
-                    borderRadius: '6px',
-                    fontSize: '12px',
-                    fontWeight: 500,
-                    cursor: 'pointer',
-                    fontFamily: FONT_FAMILY,
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    transition: 'background 0.15s ease, border-color 0.15s ease, color 0.15s ease'
-                  }}
-                >
-                  <Icon name="upload" size={14} color={isExportActive ? '#ffffff' : '#4A90E2'} />
-                </button>
-                <div
-                  style={{
-                    position: 'absolute',
-                    top: '50%',
-                    left: 'calc(100% + 8px)',
-                    transform: 'translateY(-50%)',
+                    flex: 1,
+                    minWidth: 0,
+                    height: '24px',
+                    padding: '2px 8px',
                     background: '#1f1f1f',
-                    color: '#fff',
-                    padding: '4px 8px',
+                    color: '#ddd',
+                    border: '1px solid #3a3a3a',
                     borderRadius: '4px',
                     fontSize: '11px',
-                    fontWeight: 500,
-                    opacity: isExportActive ? 1 : 0,
-                    pointerEvents: 'none',
-                    transition: 'opacity 0.2s ease',
-                    whiteSpace: 'nowrap'
+                    fontFamily: FONT_FAMILY,
+                    boxSizing: 'border-box'
                   }}
-                >
-                  Export
-                </div>
-                {isExportMenuOpen && (
-                  <div
-                    style={{
-                      position: 'absolute',
-                      top: 'calc(100% + 6px)',
-                      left: '50%',
-                      transform: 'translateX(-50%)',
-                      background: '#1f1f1f',
-                      border: '1px solid #3a3a3a',
-                      borderRadius: '6px',
-                      boxShadow: '0 8px 20px rgba(0,0,0,0.35)',
-                      display: 'flex',
-                      flexDirection: 'column',
-                      minWidth: 'auto',
-                      width: 'max-content',
-                      zIndex: 10,
-                      overflow: 'hidden'
-                    }}
-                  >
-                    <button
-                      onClick={() => {
-                        setIsExportMenuOpen(false);
-                        onExportSpaceCSV?.(space.id);
-                      }}
-                      style={{
-                        padding: '8px 12px',
-                        background: 'transparent',
-                        color: '#ddd',
-                        border: 'none',
-                        fontSize: '12px',
-                        textAlign: 'left',
-                        cursor: 'pointer',
-                        fontFamily: FONT_FAMILY
-                      }}
-                      onMouseEnter={(e) => e.currentTarget.style.background = '#333'}
-                      onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
-                    >
-                      CSV
-                    </button>
-                    <button
-                      onClick={() => {
-                        setIsExportMenuOpen(false);
-                        onExportSpacePDF?.(space.id);
-                      }}
-                      title="Exports base PDF pages only; app annotations are not embedded."
-                      style={{
-                        padding: '8px 12px',
-                        background: 'transparent',
-                        color: '#ddd',
-                        border: 'none',
-                        fontSize: '12px',
-                        textAlign: 'left',
-                        cursor: 'pointer',
-                        fontFamily: FONT_FAMILY
-                      }}
-                      onMouseEnter={(e) => e.currentTarget.style.background = '#333'}
-                      onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
-                    >
-                      PDF Pages
-                    </button>
-                  </div>
-                )}
-              </div>
-              <div style={{
-                position: 'absolute',
-                top: '10px',
-                right: '12px',
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'flex-end',
-                gap: '2px'
-              }}>
-                <span style={{
-                  color: '#777',
-                  fontSize: '10px',
-                  fontWeight: 400,
-                  lineHeight: '1.2',
-                  textAlign: 'right'
-                }}>
-                  {pageCount} page{pageCount !== 1 ? 's' : ''}
-                </span>
-                {regionCount > 0 && (
-                  <span style={{
-                    color: '#777',
-                    fontSize: '10px',
-                    fontWeight: 400,
-                    lineHeight: '1.2',
-                    textAlign: 'right'
-                  }}>
-                    {regionCount} region{regionCount !== 1 ? 's' : ''}
-                  </span>
-                )}
-              </div>
-            </div>
-
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-              <input
-                type="text"
-                value={pageInputValue}
-                placeholder="Add pages (e.g. 3, 6-9, 12)"
-                onChange={(e) => onPageInputChange(space.id, e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
-                    e.preventDefault();
+                />
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
                     onAssignPages(space.id);
-                  }
-                }}
-                style={{
-                  flex: 1,
-                  padding: '6px 8px',
-                  background: '#1f1f1f',
-                  color: '#ddd',
-                  border: '1px solid #3a3a3a',
-                  borderRadius: '4px',
-                  fontSize: '11px',
-                  fontFamily: FONT_FAMILY
-                }}
-              />
+                  }}
+                  className="space-add-pages-icon-button"
+                  title="Add Pages"
+                  aria-label="Add Pages"
+                >
+                  <Icon name="plus" size={13} />
+                </button>
+              </div>
               {pageError && (
                 <div style={{ color: '#ff8a80', fontSize: '11px' }}>
                   {pageError}
@@ -614,7 +410,6 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
                         ? page.label.trim()
                         : `Region ${page.pageId}`;
                       const isEditingRegion = editingRegionId === page.pageId;
-                      const isActiveRegionEdit = isRegionSelectionActive && isActive && regionSelectionPage === page.pageId;
 
                       return (
                         <li
@@ -647,8 +442,8 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
                                 }}
                                 style={{
                                   position: 'relative',
-                                  width: '28px',  // Smaller than space switch (36px)
-                                  height: '16px', // Smaller than space switch (20px)
+                                  width: '28px',
+                                  height: '16px',
                                   borderRadius: '8px',
                                   background: isToggleEnabled && isOverlayEnabled ? '#4A90E2' : '#3a3a3a',
                                   cursor: isToggleEnabled ? 'pointer' : 'not-allowed',
@@ -656,7 +451,7 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
                                   border: isToggleEnabled && isOverlayEnabled ? '1px solid #357abd' : '1px solid #4a4a4a',
                                   display: 'flex',
                                   alignItems: 'center',
-                                  padding: '1px',
+                                  padding: '2px',
                                   flexShrink: 0,
                                   opacity: isToggleEnabled ? 1 : 0.5
                                 }}
@@ -685,20 +480,21 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
                                 <div
                                   style={{
                                     position: 'absolute',
-                                    width: '14px',
-                                    height: '14px',
+                                    width: '12px',
+                                    height: '12px',
                                     borderRadius: '50%',
                                     background: '#ffffff',
-                                    boxShadow: '0 1px 2px rgba(0, 0, 0, 0.2)',
+                                    boxShadow: '0 1px 3px rgba(0, 0, 0, 0.2)',
                                     transition: 'transform 0.2s ease',
-                                    transform: isToggleEnabled && isOverlayEnabled ? 'translateX(12px)' : 'translateX(0px)',
-                                    left: '1px'
+                                    transform: isToggleEnabled && isOverlayEnabled ? 'translate(12px, -50%)' : 'translate(0px, -50%)',
+                                    left: '2px',
+                                    top: '50%'
                                   }}
                                 />
                               </div>
                             );
                           })()}
-                          <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <div style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: '6px' }}>
                             {isEditingRegion ? (
                               <input
                                 ref={editingRegionInputRef}
@@ -718,59 +514,53 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
                                   if (isRegionSelectionActive) {
                                     return;
                                   }
-                                  commitRegionRename(page.pageId, false);
+                                  commitRegionRename(page.pageId);
                                 }}
                                 onKeyDown={(e) => {
 
                                   if (e.key === 'Enter') {
                                     e.preventDefault();
-                                    commitRegionRename(page.pageId, true);
+                                    commitRegionRename(page.pageId);
                                   } else if (e.key === 'Escape') {
                                     e.preventDefault();
                                     e.stopPropagation();
                                     cancelRegionRename();
                                   }
                                 }}
+                                className="region-name-inline"
                                 style={{
                                   width: '100%',
-                                  padding: '4px 6px',
-                                  background: '#1f1f1f',
-                                  color: '#ddd',
-                                  border: '1px solid #4A90E2',
-                                  borderRadius: '4px',
-                                  fontSize: '12px',
-                                  fontWeight: 500,
-                                  fontFamily: FONT_FAMILY,
-                                  outline: 'none'
                                 }}
                               />
                             ) : (
-                              <div style={{
-                                display: 'flex',
-                                flexDirection: 'column',
-                                gap: '2px',
-                                minWidth: 0
-                              }}>
-                                <div style={{
-                                  color: '#ddd',
-                                  fontWeight: 500,
-                                  overflow: 'hidden',
-                                  textOverflow: 'ellipsis',
-                                  whiteSpace: 'nowrap'
-                                }}>
-                                  {regionLabel}
-                                </div>
-                                <div style={{
-                                  color: '#888',
-                                  fontSize: '11px',
-                                  lineHeight: 1.2
-                                }}>
-                                  Page {page.pageId}
-                                </div>
-                              </div>
+                              <button
+                                type="button"
+                                className="region-name-display"
+                                onClick={(e) => {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                  handleRegionEditClick(page.pageId, regionLabel);
+                                }}
+                                title="Click to rename"
+                              >
+                                {regionLabel}
+                              </button>
                             )}
                           </div>
-                          <div style={{ display: 'flex', gap: '4px' }}>
+                          <div className="region-action-controls">
+                            <button
+                              type="button"
+                              className="region-page-pill"
+                              title={`Go to page ${page.pageId}`}
+                              aria-label={`Go to page ${page.pageId}`}
+                              onClick={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                onNavigateToPage?.(page.pageId);
+                              }}
+                            >
+                              {page.pageId}
+                            </button>
                             {/* One visible control on screen, but separate canvas/survey features in code. */}
                             {isExpanded && (() => {
                               const controlMode = getPageVisibilityControlMode({ showSurveyPanel, selectedModuleId });
@@ -815,33 +605,20 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
                                     e.stopPropagation();
                                     onToggleVisibility(space.id, page.pageId, !visibilityState);
                                   }}
+                                  className="region-visibility-button"
                                   style={{
-                                    background: visibilityState ? 'rgba(74, 144, 226, 0.15)' : 'rgba(153, 153, 153, 0.1)',
-                                    border: `1px solid ${visibilityState ? 'rgba(74, 144, 226, 0.4)' : 'rgba(153, 153, 153, 0.3)'}`,
-                                    padding: '4px 8px',
                                     cursor: isDisabled ? 'not-allowed' : 'pointer',
-                                    borderRadius: '4px',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    justifyContent: 'center',
-                                    fontSize: '10px',
                                     color: isDisabled ? '#666' : (visibilityState ? '#4A90E2' : '#999'),
                                     opacity: isDisabled ? 0.5 : 1,
-                                    fontFamily: FONT_FAMILY,
-                                    transition: 'all 0.15s ease',
-                                    width: '24px',
-                                    height: '24px',
-                                    minWidth: '24px',
-                                    minHeight: '24px',
                                     pointerEvents: isDisabled ? 'none' : 'auto'
                                   }}
                                   onMouseEnter={(e) => {
                                     if (!isDisabled) {
-                                      e.currentTarget.style.background = 'rgba(255, 255, 255, 0.05)';
+                                      e.currentTarget.style.color = visibilityState ? '#5ba1f0' : '#c7c7c7';
                                     }
                                   }}
                                   onMouseLeave={(e) => {
-                                    e.currentTarget.style.background = 'transparent';
+                                    e.currentTarget.style.color = visibilityState ? '#4A90E2' : '#999';
                                   }}
                                   title={title}
                                 >
@@ -879,74 +656,9 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
                               );
                             })()}
                             <button
-                              onMouseDown={(e) => {
-                                if (!isActiveRegionEdit) {
-                                  return;
-                                }
-                                e.preventDefault();
-                                e.stopPropagation();
-                                suppressRegionEditClickRef.current = `${space.id}:${page.pageId}`;
-                                skipRegionRenameCommitRef.current = true;
-                                setEditingRegionId(null);
-                                setEditingRegionValue('');
-                                onCancelRegionEdit?.(space.id, page.pageId);
-                              }}
-                              onClick={(e) => {
-                                e.preventDefault();
-                                e.stopPropagation();
-                                const suppressKey = `${space.id}:${page.pageId}`;
-                                if (suppressRegionEditClickRef.current === suppressKey) {
-                                  suppressRegionEditClickRef.current = null;
-                                  return;
-                                }
-                                if (isActiveRegionEdit) {
-                                  skipRegionRenameCommitRef.current = true;
-                                  setEditingRegionId(null);
-                                  setEditingRegionValue('');
-                                  onCancelRegionEdit?.(space.id, page.pageId);
-                                  return;
-                                }
-                                handleRegionEditClick(page.pageId, regionLabel);
-                                onRequestRegionEdit?.(space.id, page.pageId);
-                              }}
-                              style={{
-                                background: isActiveRegionEdit ? 'rgba(74, 144, 226, 0.18)' : '#333333',
-                                border: isActiveRegionEdit ? '1px solid rgba(74, 144, 226, 0.55)' : '1px solid transparent',
-                                padding: '4px',
-                                cursor: 'pointer',
-                                borderRadius: '4px',
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                                color: isActiveRegionEdit ? '#4A90E2' : '#dddddd'
-                              }}
-                              onMouseEnter={(e) => {
-                                e.currentTarget.style.background = isActiveRegionEdit ? 'rgba(74, 144, 226, 0.26)' : '#3a3a3a';
-                                e.currentTarget.style.color = isActiveRegionEdit ? '#5ba1f0' : '#fff';
-                              }}
-                              onMouseLeave={(e) => {
-                                e.currentTarget.style.background = isActiveRegionEdit ? 'rgba(74, 144, 226, 0.18)' : '#333333';
-                                e.currentTarget.style.color = isActiveRegionEdit ? '#4A90E2' : '#dddddd';
-                              }}
-                              title={isActiveRegionEdit ? 'Exit Region Edit' : 'Edit Region'}
-                            >
-                              <Icon name="edit" size={12} />
-                            </button>
-                            <button
                               title="Delete"
                               onClick={() => onRemovePage(space.id, page.pageId)}
-                              style={{
-                                background: 'transparent',
-                                border: 'none',
-                                padding: '4px',
-                                cursor: 'pointer',
-                                borderRadius: '4px',
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'center'
-                              }}
-                              onMouseEnter={(e) => e.currentTarget.style.background = '#ffebee'}
-                              onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+                              className="region-delete-button"
                             >
                               <Icon name="trash" size={12} color="#d32f2f" />
                             </button>
@@ -977,6 +689,7 @@ const SpacesPanel = ({
   onSpaceAssignPages,
   onSpaceRenamePage,
   onSpaceRemovePage,
+  onNavigateToPage = null,
   onReorderSpaces,
   onExportSpaceCSV,
   onExportSpacePDF,
@@ -995,13 +708,12 @@ const SpacesPanel = ({
   showSurveyPanel = false,
   selectedModuleId = null
 }) => {
-  const [newSpaceName, setNewSpaceName] = useState('');
-  const [editingSpace, setEditingSpace] = useState(null);
-  const [editingName, setEditingName] = useState('');
   const [expandedSpaces, setExpandedSpaces] = useState(() => new Set());
   const [selectedSpaceId, setSelectedSpaceId] = useState(null);
   const [isRearrangingSpaces, setIsRearrangingSpaces] = useState(false);
   const [optimisticSpaceIds, setOptimisticSpaceIds] = useState(() => spaces.map(space => space.id));
+  const [isSpacesExportMenuOpen, setIsSpacesExportMenuOpen] = useState(false);
+  const [isSpacesExportHovered, setIsSpacesExportHovered] = useState(false);
 
   // Sync external selectedSpaceId prop with internal state
   React.useEffect(() => {
@@ -1028,6 +740,26 @@ const SpacesPanel = ({
   const spacesReorderDebugSessionRef = useRef(null);
   const spacesReorderMoveCountRef = useRef(0);
   const spacesDropFrameCaptureRef = useRef(null);
+  const spacesExportAnchorRef = useRef(null);
+
+  React.useEffect(() => {
+    if (!isSpacesExportMenuOpen) return;
+
+    const handleOutsideClick = (event) => {
+      if (!spacesExportAnchorRef.current) return;
+      if (!spacesExportAnchorRef.current.contains(event.target)) {
+        setIsSpacesExportMenuOpen(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleOutsideClick);
+    document.addEventListener('touchstart', handleOutsideClick, { passive: true });
+
+    return () => {
+      document.removeEventListener('mousedown', handleOutsideClick);
+      document.removeEventListener('touchstart', handleOutsideClick);
+    };
+  }, [isSpacesExportMenuOpen]);
 
   const captureSpacesDropFrame = useCallback((label, details = {}) => {
     if (typeof window === 'undefined' || typeof document === 'undefined') return null;
@@ -1224,37 +956,25 @@ const SpacesPanel = ({
   }, [expandedSpaces]);
 
   const handleCreateSpace = useCallback(() => {
-    const name = newSpaceName.trim() || `Space ${spaces.length + 1}`;
+    if (!features?.advancedSurvey) {
+      alert('Upgrade to Pro to create Spaces.');
+      return;
+    }
+    const name = `Space ${spaces.length + 1}`;
     if (onSpaceCreate) {
       onSpaceCreate({
         name,
         assignedPages: []
       });
     }
-    setNewSpaceName('');
-  }, [newSpaceName, spaces.length, onSpaceCreate]);
+  }, [features?.advancedSurvey, spaces.length, onSpaceCreate]);
 
-  const handleRename = useCallback((spaceId, currentName) => {
-    setEditingSpace(spaceId);
-    setEditingName(currentName);
-  }, []);
-
-  const saveRename = useCallback(() => {
-    if (editingSpace && editingName.trim() && onSpaceUpdate) {
-      onSpaceUpdate(editingSpace, { name: editingName.trim() });
+  const handleRenameSpace = useCallback((spaceId, nextName) => {
+    const name = nextName?.trim();
+    if (spaceId && name && onSpaceUpdate) {
+      onSpaceUpdate(spaceId, { name });
     }
-    setEditingSpace(null);
-    setEditingName('');
-  }, [editingSpace, editingName, onSpaceUpdate]);
-
-  const handleEditingNameChange = useCallback((value) => {
-    setEditingName(value);
-  }, []);
-
-  const handleRenameCancel = useCallback(() => {
-    setEditingSpace(null);
-    setEditingName('');
-  }, []);
+  }, [onSpaceUpdate]);
 
   const handleDelete = useCallback((spaceId) => {
     if (window.confirm('Delete this space? This will not delete the pages, only the space assignment.')) {
@@ -1275,13 +995,6 @@ const SpacesPanel = ({
       return next;
     });
   }, []);
-
-  const handleSpaceClick = useCallback((spaceId) => {
-    setSelectedSpaceId(spaceId);
-    if (onSetActiveSpace) {
-      onSetActiveSpace(spaceId);
-    }
-  }, [onSetActiveSpace, selectedSpaceId]);
 
   const handleExitSpace = useCallback((spaceId) => {
     if (selectedSpaceId === spaceId) {
@@ -1401,13 +1114,6 @@ const SpacesPanel = ({
     return ordered;
   }, [optimisticSpaceIds, spaces]);
 
-  const renderPageSummary = useCallback((assignedPages = []) => {
-    const ids = assignedPages
-      .map(entry => entry?.pageId)
-      .filter(pageId => typeof pageId === 'number' && !Number.isNaN(pageId));
-    return formatPageList(ids);
-  }, []);
-
   const handleRemovePage = useCallback((spaceId, pageId) => {
     if (!onSpaceRemovePage) return;
     onSpaceRemovePage(spaceId, pageId);
@@ -1471,6 +1177,11 @@ const SpacesPanel = ({
     }
   }, [recordSpacesReorderDebug]);
 
+  const expandedSpaceId = Array.from(expandedSpaces)[0] || null;
+  const spacesExportTargetId = selectedSpaceId || activeSpaceId || expandedSpaceId || orderedSpaces[0]?.id || null;
+  const spacesExportTarget = orderedSpaces.find((space) => space.id === spacesExportTargetId) || null;
+  const isSpacesExportActive = isSpacesExportHovered || isSpacesExportMenuOpen;
+
   return (
     <div style={{
       display: 'flex',
@@ -1482,88 +1193,88 @@ const SpacesPanel = ({
       {/* Header */}
       <div style={{
         padding: '12px',
+        height: '50px',
+        boxSizing: 'border-box',
         background: '#252525',
-        borderBottom: '1px solid #3a3a3a'
+        borderBottom: '1px solid #3a3a3a',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        flexShrink: 0
       }}>
         <h3 style={{
           margin: 0,
           fontSize: '13px',
           fontWeight: '600',
           color: '#ddd',
-          marginBottom: '12px'
+          lineHeight: 1
         }}>
           Spaces
         </h3>
 
-        {/* Create Space Input */}
-        {/* Create Space Input - Gated */}
-        {features?.advancedSurvey ? (
-          <div style={{
-            display: 'flex',
-            gap: '8px'
-          }}>
-            <input
-              type="text"
-              placeholder="New space name"
-              value={newSpaceName}
-              onChange={(e) => setNewSpaceName(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') {
-                  handleCreateSpace();
-                }
-              }}
-              style={{
-                flex: 1,
-                padding: '8px 10px',
-                background: '#2b2b2b',
-                color: '#ddd',
-                border: '1px solid #3a3a3a',
-                borderRadius: '6px',
-                fontSize: '13px',
-                fontFamily: FONT_FAMILY,
-                outline: 'none'
-              }}
-              onFocus={(e) => e.currentTarget.style.borderColor = '#4A90E2'}
-              onBlur={(e) => e.currentTarget.style.borderColor = '#d0d0d0'}
-            />
+        <div className="spaces-header-actions">
+          <button
+            type="button"
+            onClick={handleCreateSpace}
+            className="survey-marker-category-create-button"
+            title={features?.advancedSurvey ? 'Create Space' : 'Upgrade to Pro to create Spaces'}
+            aria-label={features?.advancedSurvey ? 'Create Space' : 'Upgrade to Pro to create Spaces'}
+          >
+            <Icon name="plus" size={14} />
+          </button>
+          <div
+            ref={spacesExportAnchorRef}
+            style={{ position: 'relative', display: 'inline-flex' }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Future: replace this compact menu with a custom Spaces export panel that lets users choose which space to export. */}
             <button
-              onClick={handleCreateSpace}
-              style={{
-                padding: '8px 12px',
-                background: '#4A90E2',
-                color: '#ffffff',
-                border: 'none',
-                borderRadius: '6px',
-                fontSize: '13px',
-                fontWeight: '500',
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                fontFamily: FONT_FAMILY
+              type="button"
+              className={`spaces-header-export-button${isSpacesExportActive ? ' is-active' : ''}`}
+              title={spacesExportTarget ? `Export ${spacesExportTarget.name || 'space'}` : 'Create a space to export'}
+              aria-label={spacesExportTarget ? `Export ${spacesExportTarget.name || 'space'}` : 'Create a space to export'}
+              aria-expanded={isSpacesExportMenuOpen}
+              disabled={!spacesExportTarget}
+              onClick={() => {
+                if (!spacesExportTarget) return;
+                if (!features?.excelExport) {
+                  alert('Exporting Spaces is a Pro feature.');
+                  return;
+                }
+                setIsSpacesExportMenuOpen((open) => !open);
               }}
-              onMouseEnter={(e) => e.currentTarget.style.background = '#357abd'}
-              onMouseLeave={(e) => e.currentTarget.style.background = '#4A90E2'}
+              onMouseEnter={() => setIsSpacesExportHovered(true)}
+              onMouseLeave={() => setIsSpacesExportHovered(false)}
             >
-              <Icon name="plus" size={14} color="#ffffff" />
+              <Icon name="upload" size={14} />
             </button>
+            {isSpacesExportMenuOpen && spacesExportTarget && (
+              <div className="spaces-header-export-menu" role="menu">
+                <button
+                  type="button"
+                  className="spaces-header-export-menu-button"
+                  onClick={() => {
+                    setIsSpacesExportMenuOpen(false);
+                    onExportSpaceCSV?.(spacesExportTarget.id);
+                  }}
+                >
+                  CSV
+                </button>
+                <button
+                  type="button"
+                  className="spaces-header-export-menu-button"
+                  title="Exports base PDF pages only; app annotations are not embedded."
+                  onClick={() => {
+                    setIsSpacesExportMenuOpen(false);
+                    onExportSpacePDF?.(spacesExportTarget.id);
+                  }}
+                >
+                  PDF Pages
+                </button>
+              </div>
+            )}
           </div>
-        ) : (
-          <div style={{
-            padding: '10px',
-            background: '#2b2b2b',
-            border: '1px solid #3a3a3a',
-            borderRadius: '6px',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '8px',
-            color: '#aaa',
-            fontSize: '12px'
-          }}>
-            <Icon name="lock" size={14} color="#aaa" />
-            <span>Upgrade to Pro to create Spaces</span>
-          </div>
-        )}
+        </div>
       </div>
 
       {/* Spaces List */}
@@ -1617,33 +1328,22 @@ const SpacesPanel = ({
                       isActive={isActive}
                       isSelected={isSelected}
                       isExpanded={isExpanded}
-                      isEditing={editingSpace === space.id}
-                      editingName={editingName}
-                      pageSummary={renderPageSummary(space.assignedPages)}
                       pageCount={pageCount}
                       regionCount={regionCount}
                       pageInputValue={pageInputs[space.id] || ''}
                       pageError={pageErrors[space.id]}
                       onToggleExpand={handleToggleExpand}
-                      onSpaceClick={handleSpaceClick}
-                      onRenameClick={handleRename}
-                      onEditingNameChange={handleEditingNameChange}
-                      onSaveRename={saveRename}
-                      onCancelRename={handleRenameCancel}
+                      onRenameSpace={handleRenameSpace}
                       onDelete={handleDelete}
                       onExitSpace={handleExitSpace}
                       onToggleSpace={handleToggleSpace}
-                      onExportSpaceCSV={(spaceId) => onExportSpaceCSV?.(spaceId)}
-                      onExportSpacePDF={(spaceId) => onExportSpacePDF?.(spaceId)}
                       onPageInputChange={handlePageInputChange}
                       onAssignPages={handleAssignPages}
                       onRenameRegion={onSpaceRenamePage}
-                      onRequestRegionEdit={(spaceId, pageId) => onRequestRegionEdit?.(spaceId, pageId)}
-                      onCancelRegionEdit={(spaceId, pageId) => onCancelRegionEdit?.(spaceId, pageId)}
                       onRemovePage={handleRemovePage}
+                      onNavigateToPage={onNavigateToPage}
                       isRegionSelectionActive={isRegionSelectionActive}
                       regionSelectionPage={regionSelectionPage}
-                      features={features}
                       getCanvasAnnotationVisibilityState={getCanvasAnnotationVisibilityState}
                       onToggleCanvasAnnotations={onToggleCanvasAnnotations}
                       getSurveyAnnotationVisibilityState={getSurveyAnnotationVisibilityState}

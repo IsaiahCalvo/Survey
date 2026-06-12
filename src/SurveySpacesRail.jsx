@@ -1442,7 +1442,7 @@ const SurveySpacesRail = ({
                                             {...listeners}
                                             isDragging={isDragging}
                                             title="Drag category to rearrange"
-                                            style={{ width: 28, height: 28, marginLeft: 0 }}
+                                            style={{ width: 24, height: 24, marginLeft: 0 }}
                                           />
                                         )}
 

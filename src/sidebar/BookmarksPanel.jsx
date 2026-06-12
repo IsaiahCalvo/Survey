@@ -1364,11 +1364,14 @@ const BookmarksPanel = ({
       {/* Header */}
       <div style={{
         padding: '12px',
+        height: '50px',
+        boxSizing: 'border-box',
         background: '#252525',
         borderBottom: '1px solid #3a3a3a',
         display: 'flex',
         justifyContent: 'space-between',
-        alignItems: 'center'
+        alignItems: 'center',
+        flexShrink: 0
       }}>
         <h3 style={{
           margin: 0,
@@ -1382,11 +1385,12 @@ const BookmarksPanel = ({
           <button
             onClick={() => setIsEditMode(!isEditMode)}
             style={{
+              height: '26px',
               background: isEditMode ? '#4A90E2' : '#3a3a3a',
               color: '#ffffff',
               border: 'none',
               borderRadius: '6px',
-              padding: '6px 10px',
+              padding: '0 10px',
               fontSize: '12px',
               fontWeight: '500',
               cursor: 'pointer',

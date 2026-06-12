@@ -92,6 +92,7 @@ const PDFSidebar = React.forwardRef(({
   onSpaceAssignPages,
   onSpaceRenamePage,
   onSpaceRemovePage,
+  onNavigateToSpacePage = null,
   onReorderSpaces,
   onExportSpaceCSV,
   onExportSpacePDF,
@@ -239,9 +240,11 @@ const PDFSidebar = React.forwardRef(({
             display: 'flex',
             borderBottom: '1px solid #3a3a3a',
             background: '#252525',
-            overflowX: 'auto',
+            overflow: 'hidden',
             scrollbarWidth: 'none',
-            msOverflowStyle: 'none'
+            msOverflowStyle: 'none',
+            width: '100%',
+            boxSizing: 'border-box'
           }}>
             <style>{`
               .sidebar-tabs::-webkit-scrollbar {
@@ -276,11 +279,15 @@ const PDFSidebar = React.forwardRef(({
                     setActiveTab(tab.id);
                   }}
                   style={{
-                    flex: 1,
-                    padding: '10px 8px',
+                    flex: '1 1 0',
+                    minWidth: 0,
+                    maxWidth: 'none',
+                    padding: '10px 2px',
                     background: isActive ? '#2b2b2b' : 'transparent',
                     border: 'none',
                     borderBottom: isActive ? '2px solid #4A90E2' : '2px solid transparent',
+                    boxSizing: 'border-box',
+                    overflow: 'hidden',
                     cursor: 'pointer',
                     display: 'flex',
                     flexDirection: 'column',
@@ -292,8 +299,7 @@ const PDFSidebar = React.forwardRef(({
                     fontWeight: isActive ? '500' : '400',
                     fontFamily: FONT_FAMILY,
                     transition: 'all 0.15s ease',
-                    whiteSpace: 'nowrap',
-                    minWidth: '70px'
+                    whiteSpace: 'nowrap'
                   }}
                   onMouseEnter={(e) => {
                     if (!isActive) {
@@ -312,7 +318,12 @@ const PDFSidebar = React.forwardRef(({
                     color={isActive ? '#4A90E2' : '#999'}
                     style={tab.icon === 'pages' ? { boxSizing: 'content-box', marginTop: '3px' } : undefined}
                   />
-                  <span>{tab.label}</span>
+                  <span style={{
+                    maxWidth: '100%',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap'
+                  }}>{tab.label}</span>
                 </button>
               );
             })}
@@ -406,6 +417,7 @@ const PDFSidebar = React.forwardRef(({
                 onSpaceAssignPages={onSpaceAssignPages}
                 onSpaceRenamePage={onSpaceRenamePage}
                 onSpaceRemovePage={onSpaceRemovePage}
+                onNavigateToPage={onNavigateToSpacePage}
                 onReorderSpaces={onReorderSpaces}
                 onExportSpaceCSV={onExportSpaceCSV}
                 onExportSpacePDF={onExportSpacePDF}

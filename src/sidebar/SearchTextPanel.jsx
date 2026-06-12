@@ -1684,8 +1684,10 @@ const SearchTextPanel = ({
       {/* Search Bar */}
       <div style={{
         padding: '12px',
+        boxSizing: 'border-box',
         background: '#252525',
-        borderBottom: '1px solid #3a3a3a'
+        borderBottom: '1px solid #3a3a3a',
+        flexShrink: 0
       }}>
         <div style={{
           position: 'relative',
@@ -1710,7 +1712,9 @@ const SearchTextPanel = ({
             placeholder="Search text in PDF..."
             style={{
               width: '100%',
-              padding: '8px 10px 8px 36px',
+              height: '25px',
+              boxSizing: 'border-box',
+              padding: '0 10px 0 36px',
               background: '#2b2b2b',
               border: '1px solid #3a3a3a',
               borderRadius: '6px',

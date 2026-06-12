@@ -7259,6 +7259,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   // Syncfusion document-load handler, consumed by an effect once pageSizes exist).
   const handleZoomModeSelectRef = useRef(null);
   const pendingInitialFitPageRef = useRef(false);
+  const spacePageNavigationTimersRef = useRef([]);
   const pageSizesRef = useRef({});
   const manualZoomScaleRef = useRef(initialZoomPreferences.manualScale);
   // Bug #2.6 calibration: Syncfusion's page div at 100% is pdfPageSize.width * electronFactor
@@ -17703,6 +17704,38 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     };
   }, [goToPage]);
 
+  const handleNavigateToSpacePage = useCallback((pageId) => {
+    const targetPage = coercePageNumber(pageId, Number.POSITIVE_INFINITY);
+    if (!targetPage) return;
+
+    const fitPage = () => handleZoomModeSelectRef.current?.(ZOOM_MODES.FIT_PAGE);
+    const navigateToTarget = () => {
+      goToPage(targetPage, { fallback: 'nearest', bypassActiveSpace: true });
+    };
+
+    if (typeof window !== 'undefined') {
+      spacePageNavigationTimersRef.current.forEach((timerId) => window.clearTimeout(timerId));
+      spacePageNavigationTimersRef.current = [];
+    }
+
+    fitPage();
+
+    if (typeof window !== 'undefined') {
+      spacePageNavigationTimersRef.current = [0, 120, 320, 650].map((delay) => (
+        window.setTimeout(navigateToTarget, delay)
+      ));
+      return;
+    }
+
+    navigateToTarget();
+  }, [goToPage]);
+
+  useEffect(() => () => {
+    if (typeof window === 'undefined') return;
+    spacePageNavigationTimersRef.current.forEach((timerId) => window.clearTimeout(timerId));
+    spacePageNavigationTimersRef.current = [];
+  }, []);
+
   useEffect(() => {
     currentPageRef.current = pageNum;
     if (typeof window !== 'undefined') {
@@ -26441,6 +26474,7 @@ ${pageBlocks}
       onSpaceAssignPages: handleSpaceAssignPages,
       onSpaceRenamePage: handleSpaceRenamePage,
       onSpaceRemovePage: handleSpaceRemovePage,
+      onNavigateToSpacePage: handleNavigateToSpacePage,
       onReorderSpaces: handleReorderSpaces,
       onExportSpaceCSV: handleExportSpaceToCSV,
       onExportSpacePDF: handleExportSpaceToPDF,
@@ -26536,6 +26570,7 @@ ${pageBlocks}
     handleSpaceAssignPages,
     handleSpaceRenamePage,
     handleSpaceRemovePage,
+    handleNavigateToSpacePage,
     handleReorderSpaces,
     handleExportSpaceToCSV,
     handleExportSpaceToPDF,
