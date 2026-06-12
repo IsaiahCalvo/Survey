@@ -26391,6 +26391,26 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
             `orientation=${spec.orientation}`,
             `landscape=${landscape}`,
             `→ sheet ${paperW}x${paperH}`);
+        } else if (spec.paperSize === 'custom' && spec.customDims
+          && Number.isFinite(spec.customDims.width) && spec.customDims.width > 0
+          && Number.isFinite(spec.customDims.height) && spec.customDims.height > 0) {
+          // G6 fix 2026-06-12: "Custom W × H…" carries the user-typed sheet
+          // dimensions (inches). Same rule as "Match another page": the
+          // sheet's shape IS the typed shape; only explicit Portrait /
+          // Landscape overrides can swap it. Previously this option fell
+          // through to the Letter fallback silently.
+          const cW = spec.customDims.width;
+          const cH = spec.customDims.height;
+          const long = Math.max(cW, cH);
+          const short = Math.min(cW, cH);
+          const landscape = spec.orientation === 'landscape'
+            || (spec.orientation !== 'portrait' && cW > cH);
+          paperW = landscape ? long : short;
+          paperH = landscape ? short : long;
+          console.log('[PrintPanel→App] custom paper:',
+            `customDims=${cW}x${cH}`,
+            `orientation=${spec.orientation}`,
+            `→ sheet ${paperW}x${paperH}`);
         } else {
           const dim = PAPER_DIM_INCHES[spec.paperSize] || [8.5, 11];
           // UX 2026-04-24: "auto" adapts the paper to each page's own
@@ -27125,8 +27145,8 @@ ${pageBlocks}
       <SaveLogBanner />
       {/* UX 2026-04-23: custom Print Panel — replaces the OS print dialog and
           Syncfusion's built-in print flow. Non-destructive: close/cancel
-          discards settings, Print fires to the selected printer. A temporary
-          J ↔ K variant toggle lives in its titlebar while we compare layouts. */}
+          discards settings, Print fires to the selected printer. Layout K
+          (single scope tab rail) won the J-vs-K comparison on 2026-06-12. */}
       <PrintPanel
         open={printPanelOpen}
         onClose={() => setPrintPanelOpen(false)}

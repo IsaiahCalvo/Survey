@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import './PrintPanel.css';
 
 const printPanelDebug = (...args) => {
@@ -9,15 +10,12 @@ const printPanelDebug = (...args) => {
 /**
  * PrintPanel — custom print dialog for Survey.
  *
- * Built directly from the v3 wireframes (options J and K). A temporary
- * top-bar toggle lets the user flip between the two variants so they can
- * feel both side-by-side; once a winner is picked, the toggle and the
- * losing branch come out.
- *
- * J variant: each customization section carries its own "Apply to" scope
- *   pills — All selected / Pages… / This page.
- * K variant: three scope tabs (All / Select / Current) at the top of the
- *   right rail drive every section below.
+ * Built from the v3 wireframes. Layout K won the J-vs-K comparison
+ * (2026-06-12): three scope tabs (All / Select / Current) at the top of
+ * the right rail drive every customization section below. The J variant
+ * (per-section "Apply to" scope pills) and the temporary titlebar toggle
+ * were removed when K was chosen — its density and single-decision scope
+ * model match the home screen's design language.
  *
  * The panel is non-destructive: closing or canceling discards every setting.
  * Hitting Print forwards the finalized settings via `onPrint(jobSpec)` —
@@ -153,6 +151,17 @@ function compactRange(set) {
     }
   }
   return runs.join(', ');
+}
+
+// G6 fix 2026-06-12: parse one "Custom W × H" dimension input. Returns the
+// typed value clamped to 1–200 inches (index card → plotter roll), or the
+// fallback when the field is empty/garbage. The on-blur handler writes the
+// resolved value back into the field, so the user always SEES the number
+// that will be used — no silent fallback.
+function parseCustomInches(raw, fallback) {
+  const n = parseFloat(String(raw ?? '').replace(/[^0-9.]/g, ''));
+  if (!Number.isFinite(n) || n <= 0) return fallback;
+  return Math.min(200, Math.max(1, Math.round(n * 100) / 100));
 }
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -323,61 +332,6 @@ const CwArrow = () => (
   </svg>
 );
 
-// J-variant scope row: three pills + a "Pages…" text input that's only active
-// when the middle pill is selected. The active scope determines what pages
-// this particular section applies to.
-// UX 2026-04-24: scope pills + range input. The typed range is clamped
-// to the top-row included set — any page number outside that range
-// triggers a soft-red border to flag it visually while still letting
-// the user keep typing. An out-of-range tooltip explains why.
-function ScopePills({ scope, onChange, totalRangeLabel, currentPage, totalPages, includedSet }) {
-  const setMode = (mode) => onChange({ ...scope, mode });
-  const setRange = (range) => onChange({ ...scope, range });
-  const hasOutOfRange = (() => {
-    if (scope.mode !== 'pages' || !scope.range) return false;
-    const parsed = parseRange(scope.range, totalPages);
-    for (const n of parsed) if (!includedSet?.has(n)) return true;
-    return false;
-  })();
-  return (
-    <div className="pp-scope-row">
-      <span className="pp-scope-label">Apply to</span>
-      <button
-        className={`pp-pill ${scope.mode === 'all' ? 'is-active' : ''}`}
-        type="button"
-        onClick={() => setMode('all')}
-      >
-        All selected
-      </button>
-      <button
-        className={`pp-pill ${scope.mode === 'pages' ? 'is-active' : ''}`}
-        type="button"
-        onClick={() => setMode('pages')}
-      >
-        Pages…
-      </button>
-      <button
-        className={`pp-pill ${scope.mode === 'current' ? 'is-active' : ''}`}
-        type="button"
-        onClick={() => setMode('current')}
-      >
-        This page
-      </button>
-      <input
-        type="text"
-        className={`pp-pill-range ${hasOutOfRange ? 'has-error' : ''}`}
-        placeholder="e.g. 2, 7-9"
-        value={scope.mode === 'all' ? totalRangeLabel : scope.mode === 'current' ? String(currentPage || '') : scope.range}
-        onChange={(e) => setRange(clampRangeToMax(filterRangeChars(e.target.value), totalPages))}
-        onBlur={(e) => { if (scope.mode === 'pages') setRange(sanitizeRangeInput(e.target.value, totalPages)); }}
-        onFocus={() => setMode('pages')}
-        disabled={scope.mode !== 'pages'}
-        title={hasOutOfRange ? 'Some pages are outside the selected print range' : undefined}
-      />
-    </div>
-  );
-}
-
 // ─────────────────────────────────────────────────────────────────────────
 // Main component
 // ─────────────────────────────────────────────────────────────────────────
@@ -389,7 +343,6 @@ export default function PrintPanel({
   docName = 'Untitled.pdf',
   pages,
   printers = [{ id: 'default', label: 'System printer (default)' }],
-  defaultVariant = 'J',
   getThumbnail, // (pageNumber, { targetWidth, rotation, ... }) => Promise<{ src, width, height } | null>
   getPageContentRotation, // (pageNumber) => Promise<number> — 0/90/180/270 correction so content reads upright.
 }) {
@@ -397,7 +350,6 @@ export default function PrintPanel({
   const totalPages = effectivePages.length;
 
   // Root state
-  const [variant, setVariant] = useState(defaultVariant);
   // UX 2026-04-24: start empty so the "e.g. 2, 7-9" hint shows in the
   // input on first open. Empty is interpreted as "All" downstream, and
   // the All quick pill lights up to confirm.
@@ -406,23 +358,21 @@ export default function PrintPanel({
   const [bigPreviewOpen, setBigPreviewOpen] = useState(false);
   const [bigPreviewZoom, setBigPreviewZoom] = useState(1);
 
-  // J-variant: per-section scope + value
-  const defaultScope = { mode: 'all', range: '' };
-  const [paperScopeJ, setPaperScopeJ] = useState(defaultScope);
-  const [orientScopeJ, setOrientScopeJ] = useState(defaultScope);
-  const [outputScopeJ, setOutputScopeJ] = useState(defaultScope);
-
-  // K-variant: top-level scope tab + the Select range
+  // Top-level scope tab + the Select range
   const [kScope, setKScope] = useState('all'); // 'all' | 'select' | 'current'
   const [kSelectRange, setKSelectRange] = useState('');
 
-  // Shared customization values (each variant stores its own answer for the
-  // section, but since the settings themselves are identical, one state bag
-  // per section serves both).
+  // Customization values
   const [paperSize, setPaperSize] = useState('auto');
   // UX 2026-04-24: when paper size is "Match another page…", this holds
   // the source page whose dimensions every in-scope page copies.
   const [matchPage, setMatchPage] = useState(1);
+  // G6 fix 2026-06-12: real inputs behind "Custom W × H…". Stored as
+  // strings so mid-typing feels natural; committed (clamped to sane
+  // bounds) on blur. The print pipeline receives the parsed inches via
+  // customDims on each in-scope page — no more silent Letter fallback.
+  const [customW, setCustomW] = useState('8.5');
+  const [customH, setCustomH] = useState('11');
   const [fitMode, setFitMode] = useState('proportional'); // 'proportional' | 'stretch'
   const [orientation, setOrientation] = useState('auto');
   const [mirrorH, setMirrorH] = useState(false);
@@ -468,23 +418,14 @@ export default function PrintPanel({
     const trimmedTop = (pagesToPrint || '').trim();
     const inSet = !trimmedTop || parseRange(pagesToPrint, totalPages).has(pageNum);
     if (!inSet) return { rotation: 0, mirrorH: false, mirrorV: false, withAnnotations: true, bw: false };
-    const inSectionRange = (scope) => {
-      if (!scope || scope.mode === 'all') return true;
-      if (scope.mode === 'current') return pageNum === currentPage;
-      if (scope.mode === 'pages') {
-        const s = parseRange(scope.range, totalPages);
-        return s.has(pageNum);
-      }
-      return false;
-    };
     const kSectionApplies = () => {
       if (kScope === 'all') return true;
       if (kScope === 'current') return pageNum === currentPage;
       if (kScope === 'select') return parseRange(kSelectRange, totalPages).has(pageNum);
       return false;
     };
-    const orientApplies = variant === 'J' ? inSectionRange(orientScopeJ) : kSectionApplies();
-    const outputApplies = variant === 'J' ? inSectionRange(outputScopeJ) : kSectionApplies();
+    const orientApplies = kSectionApplies();
+    const outputApplies = kSectionApplies();
 
     const manualRot = pageRotations[pageNum] || 0;
     const pg = (effectivePages || []).find((p) => p.index === pageNum);
@@ -521,7 +462,7 @@ export default function PrintPanel({
       );
     }
     return resolved;
-  }, [pagesToPrint, totalPages, variant, orientScopeJ, outputScopeJ, kScope, kSelectRange, currentPage, pageRotations, contentRotations, effectivePages, orientation, mirrorH, mirrorV, markupsOn, colorOn]);
+  }, [pagesToPrint, totalPages, kScope, kSelectRange, currentPage, pageRotations, contentRotations, effectivePages, orientation, mirrorH, mirrorV, markupsOn, colorOn]);
 
   // UX 2026-04-24: on every open, discard any stored auto-rotations so
   // we re-read whatever the user is looking at in the main viewer right
@@ -668,7 +609,6 @@ export default function PrintPanel({
     return parseRange(pagesToPrint, totalPages);
   }, [pagesToPrint, totalPages]);
   const includedCount = includedSet.size;
-  const totalRangeLabel = useMemo(() => compactRange(includedSet), [includedSet]);
 
   // Clamp the current-page pointer to the included set.
   useEffect(() => {
@@ -771,23 +711,8 @@ export default function PrintPanel({
     [kSelectRange, totalPages, intersectWithIncluded]
   );
 
-  // Whether a J-variant section scope currently applies to the previewed page.
-  const applyToCurrent = useCallback((scope) => {
-    if (!scope) return true;
-    // Any scope that doesn't include the current page in the top-row set is
-    // automatically not applying — a section can never touch pages that
-    // aren't being printed.
-    if (!includedSet.has(currentPage)) return false;
-    if (scope.mode === 'all') return true;
-    if (scope.mode === 'current') return true;
-    if (scope.mode === 'pages') {
-      return intersectWithIncluded(parseRange(scope.range, totalPages)).has(currentPage);
-    }
-    return false;
-  }, [includedSet, currentPage, totalPages, intersectWithIncluded]);
-
-  // For K: every section's scope is the single `kScope`, also clamped to
-  // the top-row included set.
+  // Every section's scope is the single `kScope`, clamped to the top-row
+  // included set.
   const kScopeAppliesToCurrent = useMemo(() => {
     if (!includedSet.has(currentPage)) return false;
     if (kScope === 'all') return true;
@@ -796,51 +721,26 @@ export default function PrintPanel({
     return false;
   }, [kScope, kSelectEffectiveSet, includedSet, currentPage]);
 
-  // Mirror/rotation preview class — gated by which section's scope they belong
-  // to. For J, mirror lives in the Orient section; for K, it's just kScope.
-  const mirrorAppliesHere = variant === 'J'
-    ? applyToCurrent(orientScopeJ)
-    : kScopeAppliesToCurrent;
+  // Mirror/rotation preview class — every section follows the single kScope.
+  const mirrorAppliesHere = kScopeAppliesToCurrent;
 
-  const bwAppliesHere = variant === 'J'
-    ? applyToCurrent(outputScopeJ) && !colorOn
-    : kScopeAppliesToCurrent && !colorOn;
+  const bwAppliesHere = kScopeAppliesToCurrent && !colorOn;
 
-  const markupsShowOnPreview = variant === 'J'
-    ? (applyToCurrent(outputScopeJ) ? markupsOn : true)
-    : (kScopeAppliesToCurrent ? markupsOn : true);
-
-  // UX 2026-04-24: resolve a page set for a given section ('paper' | 'orient'
-  // | 'output'). Handles both variants and clamps to the top-row selection.
-  // Used by: (a) CCW/CW rotation handlers to know which pages to rotate,
-  // (b) handlePrint to build per-page settings, and (c) the preview layer to
-  // know which sections "apply" to the currently viewed page.
-  const resolveScopePages = useCallback((sectionKey) => {
-    if (variant === 'J') {
-      const scope = sectionKey === 'paper'
-        ? paperScopeJ
-        : sectionKey === 'orient'
-          ? orientScopeJ
-          : outputScopeJ;
-      if (!scope) return includedOrdered;
-      if (scope.mode === 'all') return includedOrdered;
-      if (scope.mode === 'current') return includedSet.has(currentPage) ? [currentPage] : [];
-      if (scope.mode === 'pages') {
-        const s = intersectWithIncluded(parseRange(scope.range, totalPages));
-        return Array.from(s).sort((a, b) => a - b);
-      }
-      return [];
-    }
+  // UX 2026-04-24: resolve the in-scope page set, clamped to the top-row
+  // selection. Used by: (a) CCW/CW rotation handlers to know which pages to
+  // rotate, (b) handlePrint to build per-page settings, and (c) the preview
+  // layer to know which sections "apply" to the currently viewed page.
+  const resolveScopePages = useCallback(() => {
     if (kScope === 'all') return includedOrdered;
     if (kScope === 'current') return includedSet.has(currentPage) ? [currentPage] : [];
     if (kScope === 'select') return Array.from(kSelectEffectiveSet).sort((a, b) => a - b);
     return [];
-  }, [variant, paperScopeJ, orientScopeJ, outputScopeJ, kScope, kSelectEffectiveSet, includedOrdered, includedSet, currentPage, totalPages, intersectWithIncluded]);
+  }, [kScope, kSelectEffectiveSet, includedOrdered, includedSet, currentPage]);
 
   // Apply a rotation delta (90° increments) to every page in the orientation
   // section's scope. Stored mod-360 so repeated clicks cycle cleanly.
   const handleRotate = useCallback((deltaDegrees) => {
-    const targetPages = resolveScopePages('orient');
+    const targetPages = resolveScopePages();
     printPanelDebug(`[PrintPanel][DBG] rotate delta=${deltaDegrees}° scope-pages=${targetPages.length} first10=`, targetPages.slice(0, 10));
     if (!targetPages.length) {
       console.warn('[PrintPanel][DBG] rotate: NO pages in scope — did the orient section narrow to empty?');
@@ -889,15 +789,10 @@ export default function PrintPanel({
     const natW = pg?.width || 8.5;
     const natH = pg?.height || 11;
 
-    const orientScopeApplies = variant === 'J'
-      ? (orientScopeJ.mode === 'all' || (orientScopeJ.mode === 'current' && pageNum === currentPage) || (orientScopeJ.mode === 'pages' && intersectWithIncluded(parseRange(orientScopeJ.range, totalPages)).has(pageNum)))
-      : (kScope === 'all' || (kScope === 'current' && pageNum === currentPage) || (kScope === 'select' && kSelectEffectiveSet.has(pageNum)));
-    const outputScopeApplies = variant === 'J'
-      ? (outputScopeJ.mode === 'all' || (outputScopeJ.mode === 'current' && pageNum === currentPage) || (outputScopeJ.mode === 'pages' && intersectWithIncluded(parseRange(outputScopeJ.range, totalPages)).has(pageNum)))
-      : (kScope === 'all' || (kScope === 'current' && pageNum === currentPage) || (kScope === 'select' && kSelectEffectiveSet.has(pageNum)));
-    const paperScopeApplies = variant === 'J'
-      ? (paperScopeJ.mode === 'all' || (paperScopeJ.mode === 'current' && pageNum === currentPage) || (paperScopeJ.mode === 'pages' && intersectWithIncluded(parseRange(paperScopeJ.range, totalPages)).has(pageNum)))
-      : (kScope === 'all' || (kScope === 'current' && pageNum === currentPage) || (kScope === 'select' && kSelectEffectiveSet.has(pageNum)));
+    const scopeApplies = (kScope === 'all' || (kScope === 'current' && pageNum === currentPage) || (kScope === 'select' && kSelectEffectiveSet.has(pageNum)));
+    const orientScopeApplies = scopeApplies;
+    const outputScopeApplies = scopeApplies;
+    const paperScopeApplies = scopeApplies;
 
     // Total rotation = user-clicked deltas + orientation override.
     const manualRot = pageRotations[pageNum] || 0;
@@ -916,7 +811,7 @@ export default function PrintPanel({
       paperSize: paperScopeApplies ? paperSize : 'auto',
       fitMode: paperScopeApplies ? fitMode : 'proportional',
     };
-  }, [includedSet, effectivePages, variant, orientScopeJ, outputScopeJ, paperScopeJ, kScope, kSelectEffectiveSet, currentPage, totalPages, intersectWithIncluded, pageRotations, orientationRotationForPage, mirrorH, mirrorV, markupsOn, colorOn, paperSize, fitMode]);
+  }, [includedSet, effectivePages, kScope, kSelectEffectiveSet, currentPage, pageRotations, orientationRotationForPage, mirrorH, mirrorV, markupsOn, colorOn, paperSize, fitMode]);
 
   // Effective settings for the currently previewed page (or null).
   const currentPageSettings = resolvePageSettings(currentPage);
@@ -944,22 +839,16 @@ export default function PrintPanel({
       const opts = computePageOptsInline(pageNumber);
       const pg = (effectivePages || []).find((p) => p.index === pageNumber);
       const natLandscape = (pg?.width || 0) > (pg?.height || 0);
-      // Resolve paper-section and output-section applies inline (parallel
-      // to computePageOptsInline so they agree).
-      const inRange = (scope) => {
-        if (!scope || scope.mode === 'all') return true;
-        if (scope.mode === 'current') return pageNumber === currentPage;
-        if (scope.mode === 'pages') return parseRange(scope.range, totalPages).has(pageNumber);
-        return false;
-      };
+      // Resolve the section applies inline (parallel to
+      // computePageOptsInline so they agree).
       const kApplies = () => {
         if (kScope === 'all') return true;
         if (kScope === 'current') return pageNumber === currentPage;
         if (kScope === 'select') return parseRange(kSelectRange, totalPages).has(pageNumber);
         return false;
       };
-      const paperApplies = variant === 'J' ? inRange(paperScopeJ) : kApplies();
-      const outputApplies = variant === 'J' ? inRange(outputScopeJ) : kApplies();
+      const paperApplies = kApplies();
+      const outputApplies = kApplies();
       return {
         pageNumber,
         naturalWidth: pg?.width ?? 8.5,
@@ -982,26 +871,29 @@ export default function PrintPanel({
               return src ? { width: src.width, height: src.height } : null;
             })()
           : null,
+        // G6 fix: "Custom W × H…" carries the user-typed sheet dimensions
+        // (inches) so the print pipeline stamps every page in scope onto
+        // exactly that sheet instead of silently falling back to Letter.
+        customDims: (paperApplies && paperSize === 'custom')
+          ? { width: parseCustomInches(customW, 8.5), height: parseCustomInches(customH, 11) }
+          : null,
       };
     });
     const jobSpec = {
       docName,
-      variant,
       includedPages: includedOrdered,
       perPage,
       job: { copies, collate, duplex, destination },
       settings: { paperSize, fitMode, orientation, mirrorH, mirrorV, markupsOn, colorOn },
-      scopes: variant === 'J'
-        ? { paper: paperScopeJ, orient: orientScopeJ, output: outputScopeJ }
-        : { all: kScope, selectRange: kSelectRange },
+      scopes: { all: kScope, selectRange: kSelectRange },
     };
     printPanelDebug('[PrintPanel] PRINT pressed → jobSpec pages=', perPage.length, 'first=', perPage[0]);
     onPrint?.(jobSpec);
   }, [
-    docName, variant, includedOrdered, computePageOptsInline, effectivePages, currentPage, totalPages,
-    paperSize, fitMode, orientation, mirrorH, mirrorV, markupsOn, colorOn, matchPage,
+    docName, includedOrdered, computePageOptsInline, effectivePages, currentPage, totalPages,
+    paperSize, fitMode, orientation, mirrorH, mirrorV, markupsOn, colorOn, matchPage, customW, customH,
     copies, collate, duplex, destination,
-    paperScopeJ, orientScopeJ, outputScopeJ, kScope, kSelectRange, onPrint,
+    kScope, kSelectRange, onPrint,
   ]);
 
   // Diagnostic — fires every time the panel transitions open/closed so we can
@@ -1009,7 +901,7 @@ export default function PrintPanel({
   useEffect(() => {
     if (open) {
       printPanelDebug('[PrintPanel] RENDER — panel opened with', {
-        totalPages, variant, docName,
+        totalPages, docName,
         initialIncludedCount: includedCount,
         printers: printers.map((p) => p.id),
       });
@@ -1021,7 +913,6 @@ export default function PrintPanel({
 
   // Diagnostic — log each significant control change so the full user flow
   // is reproducible from a log dump.
-  useEffect(() => { if (open) printPanelDebug('[PrintPanel] variant =', variant); }, [variant, open]);
   useEffect(() => { if (open) printPanelDebug('[PrintPanel] pagesToPrint =', pagesToPrint, '→ included:', includedCount); }, [pagesToPrint, includedCount, open]);
   useEffect(() => { if (open) printPanelDebug('[PrintPanel] currentPage =', currentPage); }, [currentPage, open]);
   useEffect(() => { if (open) printPanelDebug('[PrintPanel] paperSize =', paperSize, 'fitMode =', fitMode); }, [paperSize, fitMode, open]);
@@ -1038,10 +929,7 @@ export default function PrintPanel({
   useEffect(() => { if (open) printPanelDebug('[PrintPanel] markupsOn =', markupsOn, 'colorOn =', colorOn); }, [markupsOn, colorOn, open]);
   useEffect(() => { if (open) printPanelDebug('[PrintPanel] copies =', copies, 'collate =', collate, 'duplex =', duplex); }, [copies, collate, duplex, open]);
   useEffect(() => { if (open) printPanelDebug('[PrintPanel] destination =', destination); }, [destination, open]);
-  useEffect(() => { if (open && variant === 'J') printPanelDebug('[PrintPanel][J] paperScope =', paperScopeJ); }, [paperScopeJ, variant, open]);
-  useEffect(() => { if (open && variant === 'J') printPanelDebug('[PrintPanel][J] orientScope =', orientScopeJ); }, [orientScopeJ, variant, open]);
-  useEffect(() => { if (open && variant === 'J') printPanelDebug('[PrintPanel][J] outputScope =', outputScopeJ); }, [outputScopeJ, variant, open]);
-  useEffect(() => { if (open && variant === 'K') printPanelDebug('[PrintPanel][K] kScope =', kScope, 'kSelectRange =', kSelectRange); }, [kScope, kSelectRange, variant, open]);
+  useEffect(() => { if (open) printPanelDebug('[PrintPanel] kScope =', kScope, 'kSelectRange =', kSelectRange); }, [kScope, kSelectRange, open]);
   useEffect(() => { if (open) printPanelDebug('[PrintPanel] bigPreviewOpen =', bigPreviewOpen); }, [bigPreviewOpen, open]);
 
   const handleCancel = useCallback((source) => {
@@ -1107,7 +995,7 @@ export default function PrintPanel({
     const included = includedSet.has(page.index);
     const isCurrent = page.index === currentPage;
     const kBadges = [];
-    if (variant === 'K' && kScope === 'select' && kSelectEffectiveSet.has(page.index)) {
+    if (kScope === 'select' && kSelectEffectiveSet.has(page.index)) {
       kBadges.push(<span key="s" className="pp-thumb-bd bd-sel">S</span>);
     }
     const thumbOpts = computePageOptsInline(page.index);
@@ -1159,107 +1047,13 @@ export default function PrintPanel({
     );
   };
 
-  // ─── Right rail: J variant ────────────────────────────────────────────
-  const renderRailJ = () => (
+  // ─── Right rail ───────────────────────────────────────────────────────
+  const renderRail = () => (
     <div
       className="pp-rail"
       aria-label="Print options"
       style={{ flex: '0 0 340px', width: 340, minWidth: 340, maxWidth: 340, display: 'block', background: '#242428', borderLeft: '1px solid #333' }}
-      ref={(node) => { if (node) printPanelDebug('[PrintPanel][J] rail mounted, rect:', node.getBoundingClientRect()); }}
-    >
-      <div className="pp-section">
-        <div className="pp-section-head">
-          <span className="pp-section-title">Page size</span>
-        </div>
-        <ScopePills scope={paperScopeJ} onChange={setPaperScopeJ} totalRangeLabel={totalRangeLabel} currentPage={currentPage} totalPages={totalPages} includedSet={includedSet} />
-        {/* UX 2026-04-24: when the user picks "Match another page…", a
-            compact page picker slides in beside the paper dropdown so
-            they can type or pick which page's size to copy. Every page
-            in scope is then printed on that size. */}
-        <div className="pp-paper-row">
-          <Dropdown value={paperSize} options={PAPER_OPTIONS} onChange={setPaperSize} />
-          {paperSize === 'match' && (
-            <span className="pp-match-page">
-              <span className="pp-match-label">of page</span>
-              <PagePicker
-                value={matchPage}
-                options={Array.from({ length: totalPages }, (_, i) => i + 1)}
-                onChange={setMatchPage}
-              />
-            </span>
-          )}
-        </div>
-        <div className="pp-fit-row">
-          <span className="pp-hint" style={{ margin: 0 }}>Fit</span>
-          <div className="pp-seg">
-            <button className={fitMode === 'proportional' ? 'is-active' : ''} onClick={() => setFitMode('proportional')}>Proportional</button>
-            <button className={fitMode === 'stretch' ? 'is-active' : ''} onClick={() => setFitMode('stretch')}>Stretch</button>
-          </div>
-        </div>
-      </div>
-
-      <div className="pp-section">
-        <div className="pp-section-head">
-          <span className="pp-section-title">Page orientation</span>
-          <span className="pp-section-hint">auto matches each page's aspect</span>
-        </div>
-        <ScopePills scope={orientScopeJ} onChange={setOrientScopeJ} totalRangeLabel={totalRangeLabel} currentPage={currentPage} totalPages={totalPages} includedSet={includedSet} />
-        <div className="pp-orient-row">
-          <Dropdown value={orientation} options={ORIENT_OPTIONS} onChange={setOrientation} />
-          <div className="pp-rotbtns" aria-label="Rotate content">
-            <button className="pp-rbtn" title="Rotate counter-clockwise 90°" aria-label="Rotate counter-clockwise" type="button" onClick={() => handleRotate(-90)}>
-              <CcwArrow />
-            </button>
-            <button className="pp-rbtn" title="Rotate clockwise 90°" aria-label="Rotate clockwise" type="button" onClick={() => handleRotate(90)}>
-              <CwArrow />
-            </button>
-          </div>
-        </div>
-        <div className="pp-tog-row">
-          <Toggle on={mirrorH} onChange={setMirrorH}>Mirror H</Toggle>
-          <Toggle on={mirrorV} onChange={setMirrorV}>Mirror V</Toggle>
-        </div>
-      </div>
-
-      <div className="pp-section">
-        <div className="pp-section-head">
-          <span className="pp-section-title">Output</span>
-        </div>
-        <ScopePills scope={outputScopeJ} onChange={setOutputScopeJ} totalRangeLabel={totalRangeLabel} currentPage={currentPage} totalPages={totalPages} includedSet={includedSet} />
-        <div className="pp-tog-row">
-          <Toggle on={markupsOn} onChange={setMarkupsOn}>Markups</Toggle>
-          <Toggle on={colorOn} onChange={setColorOn}>Color</Toggle>
-        </div>
-      </div>
-
-      <div className="pp-section">
-        <div className="pp-section-head">
-          <span className="pp-section-title">Copies</span>
-          <span className="pp-section-hint">whole job</span>
-        </div>
-        <div className="pp-copies-row">
-          <div className="pp-stepper">
-            <button type="button" onClick={() => setCopies((c) => Math.max(1, c - 1))} aria-label="Fewer copies">−</button>
-            <input value={copies} onChange={(e) => setCopies(Math.max(1, parseInt(e.target.value, 10) || 1))} />
-            <button type="button" onClick={() => setCopies((c) => Math.min(999, c + 1))} aria-label="More copies">+</button>
-          </div>
-          <Toggle on={collate} onChange={setCollate}>Collate</Toggle>
-          <Toggle on={duplex} onChange={setDuplex}>Duplex</Toggle>
-        </div>
-        <div className="pp-section-hint" style={{ marginTop: 4, marginLeft: 0 }}>
-          Collate: 1,2,3 / 1,2,3 · Off: 1,1 / 2,2
-        </div>
-      </div>
-    </div>
-  );
-
-  // ─── Right rail: K variant ────────────────────────────────────────────
-  const renderRailK = () => (
-    <div
-      className="pp-rail"
-      aria-label="Print options"
-      style={{ flex: '0 0 340px', width: 340, minWidth: 340, maxWidth: 340, display: 'block', background: '#242428', borderLeft: '1px solid #333' }}
-      ref={(node) => { if (node) printPanelDebug('[PrintPanel][K] rail mounted, rect:', node.getBoundingClientRect()); }}
+      ref={(node) => { if (node) printPanelDebug('[PrintPanel] rail mounted, rect:', node.getBoundingClientRect()); }}
     >
       <div className="pp-scope-tabs" role="tablist" aria-label="Customization scope">
         {['all', 'select', 'current'].map((id) => (
@@ -1317,6 +1111,35 @@ export default function PrintPanel({
             </span>
           )}
         </div>
+        {/* G6 fix 2026-06-12: real width/height inputs behind
+            "Custom W × H…". Values are inches, clamped 1–200 on blur
+            with the resolved number written back into the field so what
+            you see is exactly the sheet that prints. */}
+        {paperSize === 'custom' && (
+          <div className="pp-custom-row">
+            <span className="pp-match-label">W</span>
+            <input
+              type="text"
+              inputMode="decimal"
+              className="pp-custom-dim"
+              aria-label="Custom sheet width in inches"
+              value={customW}
+              onChange={(e) => setCustomW(e.target.value.replace(/[^0-9.]/g, ''))}
+              onBlur={() => setCustomW(String(parseCustomInches(customW, 8.5)))}
+            />
+            <span className="pp-match-label">× H</span>
+            <input
+              type="text"
+              inputMode="decimal"
+              className="pp-custom-dim"
+              aria-label="Custom sheet height in inches"
+              value={customH}
+              onChange={(e) => setCustomH(e.target.value.replace(/[^0-9.]/g, ''))}
+              onBlur={() => setCustomH(String(parseCustomInches(customH, 11)))}
+            />
+            <span className="pp-match-label">in</span>
+          </div>
+        )}
         <div className="pp-fit-row">
           <span className="pp-hint" style={{ margin: 0 }}>Fit</span>
           <div className="pp-seg">
@@ -1399,6 +1222,13 @@ export default function PrintPanel({
       const src = (effectivePages || []).find((p) => p.index === matchPage);
       base = src ? (src.width / src.height) : imageAspect;
       isMatch = true;
+    } else if (currentPageSettings.paperSize === 'custom') {
+      // G6 fix: the sheet's shape IS the typed W × H, exactly — same
+      // rule as "Match another page", only the source is the user input.
+      const cw = parseCustomInches(customW, 8.5);
+      const ch = parseCustomInches(customH, 11);
+      base = cw / ch;
+      isMatch = true;
     } else {
       base = PAPER_ASPECTS[currentPageSettings.paperSize] ?? imageAspect;
     }
@@ -1461,7 +1291,12 @@ export default function PrintPanel({
   const previewImgFit = currentPageSettings?.fitMode === 'stretch' ? 'fill' : 'contain';
 
   // ─── Main render ──────────────────────────────────────────────────────
-  return (
+  // 2026-06-12: rendered through a portal to document.body. PDFViewer's
+  // overlay ancestor creates a z-index:5000 stacking context, which buried
+  // the panel's titlebar under the app's top toolbar (chrome-top-host,
+  // z-index 5500) no matter how high pp-root's own z-index went. The
+  // portal lifts the dialog out of that context entirely.
+  return createPortal(
     <>
       <div
         className="pp-backdrop"
@@ -1482,20 +1317,6 @@ export default function PrintPanel({
             <span className="pp-title-count">· {totalPages} pages</span>
           </div>
           <div className="pp-title-actions">
-            {/* TEMP — remove once a winner is chosen */}
-            <div className="pp-variant-toggle" role="group" aria-label="Compare design variant">
-              <span className="pp-variant-label">variant</span>
-              <button
-                type="button"
-                className={variant === 'J' ? 'is-active' : ''}
-                onClick={() => setVariant('J')}
-              >J</button>
-              <button
-                type="button"
-                className={variant === 'K' ? 'is-active' : ''}
-                onClick={() => setVariant('K')}
-              >K</button>
-            </div>
             <button className="pp-close" onClick={() => handleCancel('button')} aria-label="Close print panel">✕</button>
           </div>
         </header>
@@ -1642,7 +1463,7 @@ export default function PrintPanel({
                 >›</button>
               </div>
             </div>
-            {variant === 'J' ? renderRailJ() : renderRailK()}
+            {renderRail()}
           </div>
         </div>
 
@@ -1804,6 +1625,7 @@ export default function PrintPanel({
           </div>
         )}
       </section>
-    </>
+    </>,
+    document.body
   );
 }
