@@ -8,6 +8,7 @@
 import { useState, useEffect } from 'react';
 import { COLORS, TYPOGRAPHY, BORDERS, SHADOWS } from '../theme';
 import OneDriveFolderBrowser from './OneDriveFolderBrowser';
+import { showToast } from '../utils/toast';
 
 const OneDriveFileSaveModal = ({
   isOpen,
@@ -70,7 +71,7 @@ const OneDriveFileSaveModal = ({
 
     // Ensure folder is selected
     if (!selectedFolder) {
-      alert('Please select a destination folder');
+      showToast('Please select a destination folder', 'warn');
       return;
     }
 

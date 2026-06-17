@@ -122,18 +122,17 @@ export default function SaveLogBanner() {
     console.log('[SaveLog] runPush start ' + JSON.stringify({
       hasElectronApi: !!api,
       hasPushLogFn: !!(api && typeof api.pushLogToGithub === 'function'),
-      hasGhTokenEnv: !!import.meta.env.VITE_GITHUB_LOG_TOKEN,
       payloadLength: payload?.length || 0
     }));
 
-    // Desktop path — Electron handler pushes to GitHub directly.
+    // Desktop path — Electron handler pushes to GitHub via the `gh` CLI.
+    // SECURITY 2026-06-17: no GitHub token is embedded in the renderer
+    // bundle. A baked write-token (VITE_GITHUB_LOG_TOKEN) would ship inside
+    // every local build; CI release builds already strip it. The main
+    // handler returns a graceful error when `gh` is unavailable.
     if (api && typeof api.pushLogToGithub === 'function') {
       try {
-        // Pass the baked GitHub token through to main so the handler can
-        // fall back to the GitHub REST API when `gh` CLI isn't installed
-        // (common on Windows end-user machines).
-        const fallbackToken = import.meta.env.VITE_GITHUB_LOG_TOKEN || null;
-        const push = await api.pushLogToGithub(payload, fallbackToken);
+        const push = await api.pushLogToGithub(payload, null);
         if (push?.ok) {
           console.log('[SaveLogBanner] GitHub push OK', { url: push.url, filename: push.filename });
           setResult({
@@ -181,93 +180,12 @@ export default function SaveLogBanner() {
       return;
     }
 
-    // UX 2026-04-22: Mobile path — when there's no Electron, push directly
-    // to the GitHub contents API using a local token from .env.local so the
-    // same auto-triage pipeline fires as on desktop. The token is baked
-    // into the mobile bundle at build time; CI store builds don't include
-    // it, so the App Store / Play Store app will fall back to the system
-    // share sheet below.
-    const ghToken = import.meta.env.VITE_GITHUB_LOG_TOKEN;
-    const ghRepo = import.meta.env.VITE_GITHUB_LOG_REPO || 'IsaiahCalvo/Survey';
-    const ghBranch = import.meta.env.VITE_GITHUB_LOG_BRANCH || 'logs';
-    console.log('[SaveLog] mobile/browser fallback path ' + JSON.stringify({
-      hasToken: !!ghToken,
-      tokenLength: ghToken ? ghToken.length : 0,
-      repo: ghRepo,
-      branch: ghBranch
-    }));
-    if (!ghToken) {
-      // Most common dev-mode failure: the .env.local token isn't available
-      // to the renderer (vite reload hiccup, file missing, var name typo).
-      // Surface it loudly so we know which leg failed.
-      console.warn('[SaveLog] no GitHub token available in this build — falling through to share/clipboard');
-      setResult({ message: 'GitHub push unavailable — no token in this build', url: null });
-      setState('error');
-      return;
-    }
-    if (ghToken) {
-      try {
-        const platform = (() => {
-          const ua = (typeof navigator !== 'undefined' && navigator.userAgent) || '';
-          if (/iPad/i.test(ua)) return 'ipad';
-          if (/iPhone/i.test(ua)) return 'iphone';
-          if (/Android/i.test(ua)) return 'android';
-          return 'mobile';
-        })();
-        const host = (typeof window !== 'undefined' && window.location?.hostname) || 'unknown';
-        const ts = new Date().toISOString().replace(/[:.]/g, '-');
-        const filename = `${platform}-${host}-${ts}.log`;
-        const contentB64 = typeof btoa === 'function'
-          ? btoa(unescape(encodeURIComponent(payload)))
-          : '';
-        const res = await fetch(`https://api.github.com/repos/${ghRepo}/contents/${filename}`, {
-          method: 'PUT',
-          headers: {
-            Authorization: `token ${ghToken}`,
-            Accept: 'application/vnd.github+json',
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({
-            message: `save-log from ${platform} (${host}) @ ${ts}`,
-            content: contentB64,
-            branch: ghBranch
-          })
-        });
-        console.log('[SaveLog] github fetch returned ' + JSON.stringify({
-          status: res.status,
-          ok: res.ok
-        }));
-        if (res.ok) {
-          const data = await res.json().catch(() => ({}));
-          setResult({
-            message: trimmed ? 'Log + description saved to GitHub' : 'Log saved to GitHub',
-            url: data?.content?.html_url || null
-          });
-          setState('success');
-          return;
-        }
-        // Non-ok response — surface the status so we can debug without
-        // reading the device console. E.g. 401=bad token, 403=scope, 404=
-        // repo/branch not found, 422=file already exists on same path.
-        let reason = `HTTP ${res.status}`;
-        try {
-          const errBody = await res.json();
-          if (errBody?.message) reason += `: ${errBody.message.slice(0, 80)}`;
-        } catch {
-          // ignore body parse errors
-        }
-        setResult({ message: `GitHub push failed — ${reason}`, url: null });
-        setState('error');
-        return;
-      } catch (netErr) {
-        setResult({
-          message: `GitHub push failed — ${netErr?.message?.slice(0, 100) || 'network error'}`,
-          url: null
-        });
-        setState('error');
-        return;
-      }
-    }
+    // SECURITY 2026-06-17: the browser/mobile direct-push path was removed.
+    // It embedded a GitHub write-token (VITE_GITHUB_LOG_TOKEN) into the
+    // client bundle. Without an Electron main process there is no safe place
+    // to hold a write-token, so non-desktop builds fall through to the OS
+    // share sheet / clipboard below — the same behavior CI store builds
+    // already had (their bundles never included the token).
 
     // Share / clipboard fallback (used on App Store / Play Store builds
     // where no GitHub token is present, or when the token push fails).

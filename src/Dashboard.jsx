@@ -23,6 +23,7 @@ import { computeContentSha256 } from './services/contentHash';
 import { purgeAnnotationDoc } from './services/annotationDocSync';
 import { lockDocument, unlockDocument } from './services/documentLockService.js';
 import { perfUpload } from './utils/performanceLogger';
+import { showToast } from './utils/toast';
 
 // --- helpers (shared small utilities; FONT_FAMILY/hexToRgba/normalizeName/
 //     hasNameConflict also live in App.jsx for the viewer) ---
@@ -1440,7 +1441,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
         await handleFileNotFound(doc.id);
       } else {
         // Network or other temporary error - show message
-        alert('Unable to open document. Please check your connection and try again.');
+        showToast('Unable to open document. Please check your connection and try again.', 'error');
       }
     }
   };
@@ -1523,7 +1524,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
       await refetchDocuments();
     } catch (error) {
       console.error('[DocumentDelete] single:error', serializeError(error));
-      alert('Failed to delete document: ' + error.message);
+      showToast('Failed to delete document: ' + error.message, 'error');
       // Revert optimistic update if needed, but refetching should handle it
       await refetchDocuments();
     }
@@ -1555,7 +1556,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
   const openEditTemplateModal = (templateId) => {
     const template = templates.find(t => t.id === templateId);
     if (!template) {
-      alert('Template not found.');
+      showToast('Template not found.', 'error');
       return;
     }
 
@@ -1644,7 +1645,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
       }
     } catch (e) {
       console.error('Failed to save templates', e);
-      alert('Failed to save templates.');
+      showToast('Failed to save templates.', 'error');
       // BL-23: rethrow so the templates editor keeps its dirty state (and the
       // user's unsaved edits) when persistence fails.
       throw e;
@@ -1657,7 +1658,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
   const hubDeleteDocuments = async (docs) => {
     const list = Array.isArray(docs) ? docs.filter(Boolean) : [];
     if (list.length === 0) return;
-    if (!user) { alert('Please sign in to delete documents'); return; }
+    if (!user) { showToast('Please sign in to delete documents', 'warn'); return; }
     if (!confirm(`Delete ${list.length === 1 ? 'this document' : `these ${list.length} documents`}? This action cannot be undone.`)) return;
     const ids = list.map(d => d.id);
     setDocuments(prev => prev.filter(d => !ids.includes(d.id)));
@@ -1671,7 +1672,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
       await refetchDocuments();
     } catch (err) {
       console.error('[DocumentDelete] survey-hub:error', serializeError(err));
-      alert('Failed to delete documents: ' + (err.message || 'Unknown error'));
+      showToast('Failed to delete documents: ' + (err.message || 'Unknown error'), 'error');
       await refetchDocuments();
     }
   };
@@ -1679,7 +1680,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
   const hubDeleteProjects = async (items) => {
     const list = Array.isArray(items) ? items.filter(Boolean) : [];
     if (list.length === 0) return false;
-    if (!user) { alert('Please sign in to delete projects'); return false; }
+    if (!user) { showToast('Please sign in to delete projects', 'warn'); return false; }
     if (!confirm(`Delete ${list.length === 1 ? 'this project and its documents' : `these ${list.length} projects and their documents`}? This action cannot be undone.`)) return false;
 
     const ids = list.map((project) => project.id).filter(Boolean);
@@ -1694,7 +1695,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
       return true;
     } catch (err) {
       console.error('[ProjectDelete] survey-hub:error', serializeError(err));
-      alert('Failed to delete projects: ' + (err.message || 'Unknown error'));
+      showToast('Failed to delete projects: ' + (err.message || 'Unknown error'), 'error');
       await refetchProjects();
       await refetchDocuments();
       return false;
@@ -1718,7 +1719,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
   const hubMoveCopyDocuments = async (docs, projectId, mode = 'move') => {
     const list = Array.isArray(docs) ? docs.filter(Boolean) : [];
     if (list.length === 0 || !projectId) return;
-    if (!user) { alert('Please sign in to move documents'); return; }
+    if (!user) { showToast('Please sign in to move documents', 'warn'); return; }
     const targetProj = projects.find(p => p.id === projectId);
     if (!targetProj) return;
 
@@ -1750,16 +1751,16 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
       await refetchDocuments();
     } catch (err) {
       console.error('[DocumentMoveCopy] survey-hub:error', serializeError(err));
-      alert('Failed to move documents: ' + (err.message || 'Unknown error'));
+      showToast('Failed to move documents: ' + (err.message || 'Unknown error'), 'error');
       await refetchDocuments();
     }
   };
 
   const hubToggleDocumentLock = async (doc) => {
     if (!doc?.id) return;
-    if (!user) { alert('Please sign in to lock documents'); return; }
+    if (!user) { showToast('Please sign in to lock documents', 'warn'); return; }
     if (doc.user_id && doc.user_id !== user.id) {
-      alert('Only the document owner can lock or unlock this document.');
+      showToast('Only the document owner can lock or unlock this document.', 'error');
       return;
     }
 
@@ -1795,7 +1796,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
       await refetchDocuments();
     } catch (err) {
       console.error('[DocumentLock] survey-hub:error', serializeError(err));
-      alert(`Failed to ${isLocked ? 'unlock' : 'lock'} document: ${err.message || 'Unknown error'}`);
+      showToast(`Failed to ${isLocked ? 'unlock' : 'lock'} document: ${err.message || 'Unknown error'}`, 'error');
       await refetchDocuments();
     }
   };

@@ -258,9 +258,10 @@ test('BL-23 tripwire: Dashboard persistTemplates counts row failures and throws;
   assert.match(dashboardSrc, /console\.error\('Error persisting templates:', err\);\s*\n\s*throw err;/);
 });
 
-test('BL-23 tripwire: Dashboard hubSaveTemplates rethrows after alerting', () => {
+test('BL-23 tripwire: Dashboard hubSaveTemplates rethrows after notifying', () => {
   const hub = dashboardSrc.slice(dashboardSrc.indexOf('const hubSaveTemplates'));
   const block = hub.slice(0, hub.indexOf('};') + 2);
-  assert.match(block, /alert\('Failed to save templates\.'\);/);
+  // KAL-57: the save-failure notice moved from native alert() to the in-app toast.
+  assert.match(block, /showToast\('Failed to save templates\.', 'error'\);/);
   assert.match(block, /throw e;/);
 });

@@ -81,9 +81,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   },
 
   // UX 2026-04-22: Save Log GitHub push. Returns { ok, url, filename, error }.
-  // Renderer also passes a baked GitHub token (VITE_GITHUB_LOG_TOKEN) so the
-  // main-process handler can fall back to a direct GitHub Contents API call
-  // when the `gh` CLI isn't installed (typical Windows-end-user case).
+  // SECURITY 2026-06-17: the renderer now passes fallbackToken = null — no
+  // GitHub write-token is embedded in the client bundle. The main-process
+  // handler pushes via the `gh` CLI and returns a graceful error if `gh`
+  // isn't installed (it no longer has a token for the REST fallback).
   pushLogToGithub: (content, fallbackToken) =>
     ipcRenderer.invoke('logs:pushToGithub', { content, fallbackToken }),
 

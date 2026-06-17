@@ -10,6 +10,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { COLORS, TYPOGRAPHY, BORDERS, SHADOWS } from '../theme';
 import { getOtherSurveysUsingTemplate } from '../hooks/useDatabase';
+import { showToast } from '../utils/toast';
 
 const NewColumnsModal = ({
   isOpen,
@@ -128,12 +129,12 @@ const NewColumnsModal = ({
 
   const handleConfirm = () => {
     if (!selectedOption) {
-      alert('Please select an option.');
+      showToast('Please select an option.', 'warn');
       return;
     }
     if (selectedOption === 'newTemplate') {
       if (!newTemplateName.trim()) {
-        alert('Please enter a name for the new template.');
+        showToast('Please enter a name for the new template.', 'warn');
         return;
       }
       if (isDuplicateName(newTemplateName)) {

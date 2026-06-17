@@ -19,6 +19,7 @@ import Icon from './Icons';
 import KeyboardShortcutsOverlay from './components/KeyboardShortcutsOverlay';
 import PDFSidebar from './PDFSidebar';
 import SaveLogBanner from './components/SaveLogBanner';
+import ToastHost from './components/ToastHost';
 import SurveySpacesRail from './SurveySpacesRail';
 import TabBar from './TabBar';
 import YDocProvider from './components/collab/YDocProvider.jsx';
@@ -29,6 +30,7 @@ import { ZOOM_MODES } from './utils/zoomController';
 import { createPortal } from 'react-dom';
 import { getNetworkLogSnapshot } from './utils/networkLogger';
 import { sanitizeConsoleLogText } from './utils/consoleLogFilter';
+import { showToast } from './utils/toast';
 import { useAuth } from './contexts/AuthContext';
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import { useMSGraph } from './contexts/MSGraphContext';
@@ -784,7 +786,7 @@ export default function App() {
     // 3. Adding the page to target PDF
     // 4. Updating the target tab's file
 
-    alert(`Page ${pageNumber} drag-and-drop functionality is being implemented. This feature requires PDF manipulation capabilities.`);
+    showToast(`Page ${pageNumber} drag-and-drop functionality is being implemented. This feature requires PDF manipulation capabilities.`, 'info');
   };
 
   const handleBack = () => {
@@ -896,6 +898,7 @@ export default function App() {
           only inside the PDF viewer. Listens for a window event the Save
           Log handler dispatches. */}
       <SaveLogBanner />
+      <ToastHost />
       <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
         {tabs.length > 0 && ( // Show tab bar if there are any tabs (including home)
           <TabBar

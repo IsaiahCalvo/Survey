@@ -14,6 +14,7 @@
 
 import * as pdfjsLib from 'pdfjs-dist';
 import { loadPdfjs } from './utils/pdfWorkerConfig';
+import { showToast } from './utils/toast';
 import AnnotationPropertiesPanel from './components/AnnotationPropertiesPanel';
 import CalloutOverlay from './components/Callout';
 // ExcelJS (~1MB) is loaded on demand inside the three async export/sync handlers
@@ -4722,7 +4723,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   // active, otherwise tears down the survey panel and active selection.
   const handleSurveyToggle = useCallback(() => {
     if (!features?.advancedSurvey) {
-      alert('Survey Templates are a Pro feature. Please upgrade to use this tool.');
+      showToast('Survey Templates are a Pro feature. Please upgrade to use this tool.', 'warn');
       return;
     }
     if (!showSurveyPanel) {
@@ -11458,7 +11459,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
   const handleReimportPdfBookmarks = useCallback(() => {
     if (!Array.isArray(pdfBookmarks) || pdfBookmarks.length === 0) {
-      alert('No PDF bookmarks are available to import yet.');
+      showToast('No PDF bookmarks are available to import yet.', 'info');
       return;
     }
     importPdfBookmarksIntoSidebar(pdfBookmarks);
@@ -11498,13 +11499,13 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       const type = bookmark?.type === 'folder' ? 'folder' : 'bookmark';
       const trimmedName = typeof bookmark?.name === 'string' ? bookmark.name.trim() : '';
       if (!trimmedName) {
-        alert(`Please enter a ${type === 'folder' ? 'bookmark group' : 'bookmark'} name.`);
+        showToast(`Please enter a ${type === 'folder' ? 'bookmark group' : 'bookmark'} name.`, 'warn');
         return prev;
       }
       if (hasNameConflict(prev, trimmedName, {
         predicate: (item) => item?.type === type
       })) {
-        alert(`A ${type === 'folder' ? 'bookmark group' : 'bookmark'} with this name already exists. Please choose a different name.`);
+        showToast(`A ${type === 'folder' ? 'bookmark group' : 'bookmark'} with this name already exists. Please choose a different name.`, 'error');
         return prev;
       }
       const newBookmark = {
@@ -11530,14 +11531,14 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       if (Object.prototype.hasOwnProperty.call(updates, 'name')) {
         const trimmedName = typeof updates.name === 'string' ? updates.name.trim() : '';
         if (!trimmedName) {
-          alert(`${targetBookmark.type === 'folder' ? 'Bookmark group' : 'Bookmark'} name cannot be empty.`);
+          showToast(`${targetBookmark.type === 'folder' ? 'Bookmark group' : 'Bookmark'} name cannot be empty.`, 'warn');
           return prev;
         }
         if (hasNameConflict(prev, trimmedName, {
           predicate: (item) => item?.type === targetBookmark.type,
           ignoreId: id
         })) {
-          alert(`A ${targetBookmark.type === 'folder' ? 'bookmark group' : 'bookmark'} with this name already exists. Please choose a different name.`);
+          showToast(`A ${targetBookmark.type === 'folder' ? 'bookmark group' : 'bookmark'} with this name already exists. Please choose a different name.`, 'error');
           return prev;
         }
         sanitizedUpdates = { ...sanitizedUpdates, name: trimmedName };
@@ -11599,7 +11600,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
       if (trimmedName) {
         if (hasNameConflict(prev, trimmedName, { getName: (entry) => entry?.name })) {
-          alert('A space with this name already exists. Please choose a different name.');
+          showToast('A space with this name already exists. Please choose a different name.', 'error');
           return prev;
         }
       } else {
@@ -11640,11 +11641,11 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       if (Object.prototype.hasOwnProperty.call(updates, 'name')) {
         const trimmedName = typeof updates.name === 'string' ? updates.name.trim() : '';
         if (!trimmedName) {
-          alert('Space name cannot be empty.');
+          showToast('Space name cannot be empty.', 'warn');
           return prev;
         }
         if (hasNameConflict(prev, trimmedName, { getName: (space) => space?.name, ignoreId: id })) {
-          alert('A space with this name already exists. Please choose a different name.');
+          showToast('A space with this name already exists. Please choose a different name.', 'error');
           return prev;
         }
         sanitizedUpdates = { ...sanitizedUpdates, name: trimmedName };
@@ -11950,7 +11951,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         getId: (page) => page?.pageId,
         ignoreId: pageId
       })) {
-        alert('A region with this name already exists in this space. Please choose a different name.');
+        showToast('A region with this name already exists in this space. Please choose a different name.', 'error');
         return space;
       }
 
@@ -12115,13 +12116,13 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   const handleExportSurveyToExcel = useCallback(async (targetPath = null, options = {}) => {
     const { silent = false } = options;
     if (!features?.excelExport) {
-      if (!silent) alert('Excel Export is a Pro feature. Please upgrade to use this tool.');
+      if (!silent) showToast('Excel Export is a Pro feature. Please upgrade to use this tool.', 'warn');
       return;
     }
     // If called from event handler, targetPath will be the event object
     if (targetPath && typeof targetPath !== 'string') targetPath = null;
     if (!selectedTemplate) {
-      if (!silent) alert('Please select a survey template before exporting.');
+      if (!silent) showToast('Please select a survey template before exporting.', 'warn');
       return;
     }
 
@@ -12684,7 +12685,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
             if (selectedTemplate?.isOneDrive) {
               // Use OneDrive API to upload
               if (!graphClient) {
-                alert('Please sign in to Microsoft to sync with OneDrive.');
+                showToast('Please sign in to Microsoft to sync with OneDrive.', 'warn');
                 return;
               }
 
@@ -12763,7 +12764,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
               }
               if (excelIsOpen) {
                 setIsExporting(false);
-                alert('This Excel file is open. Please close it in Excel, then push again — the app can’t safely update the file while Excel has it open.');
+                showToast('This Excel file is open. Please close it in Excel, then push again — the app can’t safely update the file while Excel has it open.', 'warn');
                 return;
               }
               // Use local filesystem
@@ -12813,7 +12814,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
             if (!silent) {
               setIsExporting(false);
-              alert('Sync to Excel successful!');
+              showToast('Sync to Excel successful!', 'success');
             }
           } catch (err) {
             console.error('Failed to write file:', err);
@@ -12821,9 +12822,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
             if (!silent) {
               setIsExporting(false);
               if (err.message && err.message.includes('locked')) {
-                alert('Failed to sync: The Excel file is locked. Please close it in Excel or OneDrive and try again.');
+                showToast('Failed to sync: The Excel file is locked. Please close it in Excel or OneDrive and try again.', 'error');
               } else {
-                alert('Failed to sync to Excel file. It might be open in another program.');
+                showToast('Failed to sync to Excel file. It might be open in another program.', 'error');
               }
             } else {
               // Re-throw error in silent mode so caller can handle it (e.g., show locked modal)
@@ -12865,13 +12866,13 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         // Re-throw in silent mode so caller can handle (e.g., show locked modal)
         throw error;
       }
-      alert('Unable to create the Excel file. Please try again.');
+      showToast('Unable to create the Excel file. Please try again.', 'error');
     }
   }, [selectedTemplate, items, surveyMarkers, graphClient, liveSyncEnabled, excelSessionId, oneDriveFileId, liveSyncStatus, markExcelSyncCheckpoint]);
 
   const handleOpenExcel = useCallback(async () => {
     if (!selectedTemplate?.linkedExcelPath) {
-      alert('No Excel file linked to this survey.');
+      showToast('No Excel file linked to this survey.', 'error');
       return;
     }
 
@@ -13226,7 +13227,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
   const handleSyncToExcel = useCallback(async () => {
     if (!selectedTemplate?.linkedExcelPath) {
-      alert('No Excel file linked to this survey.');
+      showToast('No Excel file linked to this survey.', 'error');
       return;
     }
 
@@ -13238,7 +13239,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
     // Step B: File Location Check
     if (!selectedTemplate.isOneDrive) {
-      alert('This file is saved locally. Please move it to OneDrive or Microsoft Teams to enable syncing.\n\nLocal files cannot be synced while open. Move the file to a OneDrive or Teams folder to use real-time sync.');
+      showToast('This file is saved locally. Please move it to OneDrive or Microsoft Teams to enable syncing.\n\nLocal files cannot be synced while open. Move the file to a OneDrive or Teams folder to use real-time sync.', 'warn');
       return;
     }
 
@@ -13259,7 +13260,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       await handleExportSurveyToExcel(selectedTemplate.linkedExcelPath, { silent: true });
       // Show success message (especially important after retry)
       if (isRetry) {
-        alert('Excel file updated successfully!');
+        showToast('Excel file updated successfully!', 'success');
       }
     } catch (error) {
       console.error('Failed to push to Excel:', error);
@@ -13433,11 +13434,11 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         handleTemplatesChange(updatedTemplates);
       }
 
-      alert('Export to OneDrive successful!');
+      showToast('Export to OneDrive successful!', 'success');
       return true;
     } catch (error) {
       console.error('Failed to export to OneDrive:', error);
-      alert(getExportErrorMessage(error));
+      showToast(getExportErrorMessage(error), 'error');
       return false;
     } finally {
       isExportInProgressRef.current = false;
@@ -14025,7 +14026,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       );
 
       if (!confirmed) {
-        alert('Sync cancelled. No changes were made.');
+        showToast('Sync cancelled. No changes were made.', 'info');
         return;
       }
     }
@@ -14214,13 +14215,13 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       setSurveyMarkers(newSurveyMarkers);
       markExcelSyncCheckpoint(templateToUse, newSurveyMarkers);
       const reviewNote = importReviewItems.length > 0 ? ` ${importReviewItems.length} row(s) need your choice.` : '';
-      alert(`Sync complete! Updated ${updatesCount} items, deleted ${deletionsCount} items.${reviewNote}`);
+      showToast(`Sync complete! Updated ${updatesCount} items, deleted ${deletionsCount} items.${reviewNote}`, 'success');
     } else {
       markExcelSyncCheckpoint(templateToUse, newSurveyMarkers);
       const reviewNote = importReviewItems.length > 0
         ? `Sync complete! ${importReviewItems.length} row(s) need your choice.`
         : 'Sync complete! No changes found.';
-      alert(reviewNote);
+      showToast(reviewNote, 'info');
     }
   }, [surveyMarkers, items, setItems, setAnnotations, scale, setAnnotationsByPage, markExcelSyncCheckpoint, pdfFile, pdfId]);
 
@@ -15055,7 +15056,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         });
       } catch (err) {
         console.error('Failed to persist template modification to Supabase:', err);
-        alert('Warning: Template was modified locally but failed to save to cloud. Your changes may not persist.');
+        showToast('Warning: Template was modified locally but failed to save to cloud. Your changes may not persist.', 'error');
       }
     }
 
@@ -15104,7 +15105,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     // (refuse quietly) instead of popping a confirm dialog at open.
     const importTrigger = options?.silent === true ? 'auto' : 'manual';
     if (!selectedTemplate?.linkedExcelPath) {
-      alert('No Excel file linked to this survey.');
+      showToast('No Excel file linked to this survey.', 'error');
       return;
     }
 
@@ -15114,7 +15115,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         if (selectedTemplate?.isOneDrive) {
           // Use OneDrive API to download
           if (!graphClient) {
-            alert('Please sign in to Microsoft to sync with OneDrive.');
+            showToast('Please sign in to Microsoft to sync with OneDrive.', 'warn');
             return;
           }
 
@@ -15122,7 +15123,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
           if (ensureFreshToken) {
             const tokenValid = await ensureFreshToken();
             if (!tokenValid) {
-              alert('Microsoft session expired. Please reconnect your account.');
+              showToast('Microsoft session expired. Please reconnect your account.', 'warn');
               return;
             }
           }
@@ -15287,7 +15288,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
       } catch (error) {
         console.error('Failed to sync from Excel:', error);
-        alert('Failed to read or parse the linked Excel file.');
+        showToast('Failed to read or parse the linked Excel file.', 'error');
       }
     }
   }, [selectedTemplate, graphClient, ensureFreshToken, executeExcelImport]);
@@ -17001,18 +17002,18 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
   const handleExportSpaceToCSV = useCallback((spaceId) => {
     if (!features?.excelExport) {
-      alert('CSV/Excel Export is a Pro feature. Please upgrade to use this tool.');
+      showToast('CSV/Excel Export is a Pro feature. Please upgrade to use this tool.', 'warn');
       return;
     }
     const space = spaces.find(s => s.id === spaceId);
     if (!space) {
-      alert('Space not found.');
+      showToast('Space not found.', 'error');
       return;
     }
 
     const assignedPages = space.assignedPages || [];
     if (assignedPages.length === 0) {
-      alert('This space has no pages to export.');
+      showToast('This space has no pages to export.', 'warn');
       return;
     }
 
@@ -17131,23 +17132,23 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
   const handleExportSpaceToPDF = useCallback(async (spaceId) => {
     if (!features?.excelExport) {
-      alert('Space PDF Export is a Pro feature. Please upgrade.');
+      showToast('Space PDF Export is a Pro feature. Please upgrade.', 'warn');
       return;
     }
     const space = spaces.find(s => s.id === spaceId);
     if (!space) {
-      alert('Space not found.');
+      showToast('Space not found.', 'error');
       return;
     }
 
     if (!pdfDoc) {
-      alert('PDF is not ready yet. Please wait for the document to load.');
+      showToast('PDF is not ready yet. Please wait for the document to load.', 'warn');
       return;
     }
 
     const assignedPages = space.assignedPages || [];
     if (assignedPages.length === 0) {
-      alert('This space has no pages to export.');
+      showToast('This space has no pages to export.', 'warn');
       return;
     }
 
@@ -17199,7 +17200,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       URL.revokeObjectURL(url);
     } catch (error) {
       console.error('Error exporting space to PDF:', error);
-      alert('Unable to export this space to PDF. Please try again.');
+      showToast('Unable to export this space to PDF. Please try again.', 'error');
     }
   }, [spaces, pdfDoc]);
 
@@ -17951,7 +17952,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       setActiveTool(REGION_EDIT_TOOL);
       setShowRegionSelection(true);
     } else {
-      alert('The Region Selection Tool is a Pro feature. Please upgrade to use this tool.');
+      showToast('The Region Selection Tool is a Pro feature. Please upgrade to use this tool.', 'warn');
     }
     goToPage(pageId, { fallback: 'nearest' });
   }, [spaces, goToPage, features, getRegionEditReturnTool, showSurveyPanel, selectedModuleId, activeRegionId, clearAnnotationSelectionForContextChange]);
@@ -18587,12 +18588,12 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   // place the app generates PDF bytes and writes/downloads a PDF copy.
   const handleExportAnnotatedPDF = useCallback(async () => {
     if (!pdfFile) {
-      alert('Open a PDF first.');
+      showToast('Open a PDF first.', 'warn');
       return;
     }
     const api = window.electronAPI;
     if (!api?.saveFile) {
-      alert('Export is only available in the desktop app.');
+      showToast('Export is only available in the desktop app.', 'info');
       return;
     }
     try {
@@ -18635,7 +18636,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         }
       );
       if (!buffer) {
-        alert('Nothing to export.');
+        showToast('Nothing to export.', 'warn');
         return;
       }
       const bytes = Array.from(new Uint8Array(buffer));
@@ -18647,7 +18648,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       });
       if (result?.canceled) return;
       if (result?.error) {
-        alert(`Export failed: ${result.error}`);
+        showToast(`Export failed: ${result.error}`, 'error');
         return;
       }
       console.log('[PDFSaveExport] action complete ' + JSON.stringify({
@@ -18666,7 +18667,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       // the [PDFSaveExport] action-complete diagnostic above.
     } catch (err) {
       console.error('[ExportAnnotatedPDF] failed:', err);
-      alert(`Export failed: ${err?.message || err}`);
+      showToast(`Export failed: ${err?.message || err}`, 'error');
     }
   }, [pdfFile, annotationsByPage, pageSizes, callouts, surveyMarkers, spaces]);
 
@@ -18792,7 +18793,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     } catch (error) {
       console.error('Error saving document:', error);
       if (!silent) {
-        alert('Error saving annotations: ' + error.message);
+        showToast('Error saving annotations: ' + error.message, 'error');
       }
     }
   }, [pdfId, pdfFile, annotationsByPage, callouts, onUnsavedAnnotationsChange, selectedTemplate, saveSurveyDataToSupabase, pushToExcelWithRetry, features?.cloudSync, features?.excelExport, surveyMarkers, spaces, tabId, hasPendingExcelSyncChanges, user?.id, cloudSyncForceFlush]);
@@ -31632,7 +31633,7 @@ ${pageBlocks}
 
                             if (!template) {
                               console.error('Template not found for module:', module);
-                              alert('Template not found. Please try again.');
+                              showToast('Template not found. Please try again.', 'error');
                               return;
                             }
 
@@ -31640,7 +31641,7 @@ ${pageBlocks}
                             if (categorySelectModeActive) {
                               const selectedCatIds = Object.keys(selectedCategories).filter(id => selectedCategories[id]);
                               if (selectedCatIds.length === 0) {
-                                alert('Please select at least one category to copy.');
+                                showToast('Please select at least one category to copy.', 'warn');
                                 return;
                               }
 
@@ -31658,7 +31659,7 @@ ${pageBlocks}
                               });
 
                               if (surveyMarkersToCopy.length === 0) {
-                                alert('Selected categories have no items to copy.');
+                                showToast('Selected categories have no items to copy.', 'warn');
                                 return;
                               }
 
@@ -31670,7 +31671,7 @@ ${pageBlocks}
                               });
 
                               if (!sourceTemplate) {
-                                alert('Unable to find source template. Please try again.');
+                                showToast('Unable to find source template. Please try again.', 'error');
                                 return;
                               }
 
@@ -31699,7 +31700,7 @@ ${pageBlocks}
                                 );
 
                                 if (missingCategories.length > 0) {
-                                  alert(`Some categories don't exist in the destination module. Please create them first: ${missingCategories.join(', ')}`);
+                                  showToast(`Some categories don't exist in the destination module. Please create them first: ${missingCategories.join(', ')}`, 'warn');
                                   return;
                                 }
 
@@ -31806,7 +31807,7 @@ ${pageBlocks}
                                   .filter(Boolean);
 
                                 if (legacySurveyMarkers.length === 0) {
-                                  alert('No valid items found to copy.');
+                                  showToast('No valid items found to copy.', 'warn');
                                   return;
                                 }
 
@@ -31822,7 +31823,7 @@ ${pageBlocks}
                                 });
 
                                 if (missingCategories.length > 0) {
-                                  alert(`Cannot copy categories. The following categories don't exist in the destination module:\n\n${missingCategories.join(', ')}\n\nPlease create these categories in the destination module first.`);
+                                  showToast(`Cannot copy categories. The following categories don't exist in the destination module:\n\n${missingCategories.join(', ')}\n\nPlease create these categories in the destination module first.`, 'error');
                                   return;
                                 }
 
@@ -31867,7 +31868,7 @@ ${pageBlocks}
 
                               if (!sourceSpaceId) {
                                 console.error('No source space ID found');
-                                alert('Unable to determine source space. Please try again.');
+                                showToast('Unable to determine source space. Please try again.', 'error');
                                 return;
                               }
 
@@ -31878,7 +31879,7 @@ ${pageBlocks}
 
                               if (!sourceTemplate) {
                                 console.error('Source template not found for space:', sourceSpaceId);
-                                alert('Unable to find source template. Please try again.');
+                                showToast('Unable to find source template. Please try again.', 'error');
                                 return;
                               }
 
@@ -31946,7 +31947,7 @@ ${pageBlocks}
 
                                 if (missingCategories.length > 0) {
                                   // Need to create categories - show a message for now
-                                  alert(`Some categories don't exist in the destination space. Please create them first: ${missingCategories.join(', ')}`);
+                                  showToast(`Some categories don't exist in the destination space. Please create them first: ${missingCategories.join(', ')}`, 'warn');
                                   return;
                                 } else {
                                   // Direct transfer - copy items to the destination space
@@ -32069,7 +32070,7 @@ ${pageBlocks}
 
                                 if (legacySurveyMarkers.length === 0) {
                                   console.error('No valid surveyMarkers found to process');
-                                  alert('No valid surveyMarkers selected. Please select surveyMarkers and try again.');
+                                  showToast('No valid surveyMarkers selected. Please select surveyMarkers and try again.', 'warn');
                                   return;
                                 }
 
@@ -32086,7 +32087,7 @@ ${pageBlocks}
                                 });
 
                                 if (missingCategories.length > 0) {
-                                  alert(`Cannot copy surveyMarkers. The following categories don't exist in the destination space:\n\n${missingCategories.join(', ')}\n\nPlease create these categories in the destination space first.`);
+                                  showToast(`Cannot copy surveyMarkers. The following categories don't exist in the destination space:\n\n${missingCategories.join(', ')}\n\nPlease create these categories in the destination space first.`, 'error');
                                   return;
                                 }
 
@@ -34507,11 +34508,11 @@ ${pageBlocks}
                       // A brand-new LOCAL link written through the safe path —
                       // drain the local Row ID queue (read-back-verified).
                       localRowIdFlushRef.current?.({ filePath: result.filePath });
-                      alert('Export to computer successful!');
+                      showToast('Export to computer successful!', 'success');
                     }
                   } catch (error) {
                     console.error('Failed to export to computer:', error);
-                    alert('Failed to export to computer.');
+                    showToast('Failed to export to computer.', 'error');
                   }
                   setExportPendingData(null);
                   setIsExporting(false);
@@ -34836,7 +34837,7 @@ ${pageBlocks}
                       await msLogin();
                     } catch (error) {
                       console.error('Reconnect failed:', error);
-                      alert('Failed to reconnect to Microsoft.');
+                      showToast('Failed to reconnect to Microsoft.', 'error');
                     }
                   }}
                   style={{
@@ -34896,7 +34897,7 @@ ${pageBlocks}
                 <button
                   onClick={async () => {
                     if (!features?.sso) {
-                      alert('OneDrive integration is an Enterprise feature. Please upgrade.');
+                      showToast('OneDrive integration is an Enterprise feature. Please upgrade.', 'warn');
                       return;
                     }
                     try {
@@ -34904,7 +34905,7 @@ ${pageBlocks}
                       // Modal will stay open to show connected status
                     } catch (error) {
                       console.error('Login failed:', error);
-                      alert('Failed to sign in with Microsoft.');
+                      showToast('Failed to sign in with Microsoft.', 'error');
                     }
                   }}
                   style={{

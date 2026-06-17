@@ -20,6 +20,7 @@
 
 import { useCallback, useMemo } from 'react';
 import { PDFDocument, degrees } from 'pdf-lib';
+import { showToast } from '../utils/toast';
 
 export function usePageOperations({
   pdfFile,
@@ -37,7 +38,7 @@ export function usePageOperations({
   // Sidebar handlers
   const handleDuplicatePage = useCallback(async (pageNumber) => {
     if (!pdfFile || !onUpdatePDFFile) {
-      alert('PDF file not available for manipulation');
+      showToast('PDF file not available for manipulation', 'error');
       return;
     }
 
@@ -50,7 +51,7 @@ export function usePageOperations({
       const pageToDuplicate = pages[pageNumber - 1];
 
       if (!pageToDuplicate) {
-        alert(`Page ${pageNumber} not found`);
+        showToast(`Page ${pageNumber} not found`, 'error');
         return;
       }
 
@@ -75,7 +76,7 @@ export function usePageOperations({
       onUpdatePDFFile(newFile);
     } catch (error) {
       console.error('Error duplicating page:', error);
-      alert(`Error duplicating page: ${error.message}`);
+      showToast(`Error duplicating page: ${error.message}`, 'error');
     }
   }, [pdfFile, onUpdatePDFFile]);
 
@@ -85,7 +86,7 @@ export function usePageOperations({
 
   const handleDeletePage = useCallback(async (pageNumber) => {
     if (!pdfFile || !onUpdatePDFFile) {
-      alert('PDF file not available for manipulation');
+      showToast('PDF file not available for manipulation', 'error');
       return;
     }
 
@@ -113,7 +114,7 @@ export function usePageOperations({
       onUpdatePDFFile(newFile);
     } catch (error) {
       console.error('Error deleting page:', error);
-      alert(`Error deleting page: ${error.message}`);
+      showToast(`Error deleting page: ${error.message}`, 'error');
     }
   }, [pdfFile, onUpdatePDFFile]);
 
@@ -129,7 +130,7 @@ export function usePageOperations({
 
   const handlePastePage = useCallback(async (targetPageNumber, sourcePageNumber, pasteType) => {
     if (!pdfFile || !onUpdatePDFFile) {
-      alert('PDF file not available for manipulation');
+      showToast('PDF file not available for manipulation', 'error');
       return;
     }
 
@@ -176,7 +177,7 @@ export function usePageOperations({
       onUpdatePDFFile(newFile);
     } catch (error) {
       console.error('Error pasting page:', error);
-      alert(`Error pasting page: ${error.message}`);
+      showToast(`Error pasting page: ${error.message}`, 'error');
     }
   }, [pdfFile, onUpdatePDFFile]);
 
@@ -247,7 +248,7 @@ export function usePageOperations({
   // PDF-lib based rotation handlers (persistent - modifies actual PDF)
   const handleRotatePageCW = useCallback(async (pageNumber) => {
     if (!pdfFile || !onUpdatePDFFile) {
-      alert('PDF file not available for manipulation');
+      showToast('PDF file not available for manipulation', 'error');
       return;
     }
 
@@ -277,13 +278,13 @@ export function usePageOperations({
       onUpdatePDFFile(newFile);
     } catch (error) {
       console.error('Error rotating page clockwise:', error);
-      alert(`Error rotating page: ${error.message}`);
+      showToast(`Error rotating page: ${error.message}`, 'error');
     }
   }, [pdfFile, onUpdatePDFFile]);
 
   const handleRotatePageCCW = useCallback(async (pageNumber) => {
     if (!pdfFile || !onUpdatePDFFile) {
-      alert('PDF file not available for manipulation');
+      showToast('PDF file not available for manipulation', 'error');
       return;
     }
 
@@ -313,13 +314,13 @@ export function usePageOperations({
       onUpdatePDFFile(newFile);
     } catch (error) {
       console.error('Error rotating page counter-clockwise:', error);
-      alert(`Error rotating page: ${error.message}`);
+      showToast(`Error rotating page: ${error.message}`, 'error');
     }
   }, [pdfFile, onUpdatePDFFile]);
 
   const handleInsertBlankPage = useCallback(async (afterPageNumber) => {
     if (!pdfFile || !onUpdatePDFFile) {
-      alert('PDF file not available for manipulation');
+      showToast('PDF file not available for manipulation', 'error');
       return;
     }
 
@@ -350,7 +351,7 @@ export function usePageOperations({
       onUpdatePDFFile(newFile);
     } catch (error) {
       console.error('Error inserting blank page:', error);
-      alert(`Error inserting page: ${error.message}`);
+      showToast(`Error inserting page: ${error.message}`, 'error');
     }
   }, [pdfFile, onUpdatePDFFile]);
 

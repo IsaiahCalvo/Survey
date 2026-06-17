@@ -18,6 +18,7 @@ import {
   getPageVisibilityControlMode,
   PAGE_VISIBILITY_CONTROL_MODE
 } from '../utils/annotationVisibilityRules';
+import { showToast } from '../utils/toast';
 
 const FONT_FAMILY = '-apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", "Segoe UI", Roboto, Ubuntu, "Noto Sans", Arial, sans-serif';
 const animateSpaceLayoutChanges = () => false;
@@ -1005,7 +1006,7 @@ const SpacesPanel = ({
 
   const handleCreateSpace = useCallback(() => {
     if (!features?.advancedSurvey) {
-      alert('Upgrade to Pro to create Spaces.');
+      showToast('Upgrade to Pro to create Spaces.', 'error');
       return;
     }
     const name = `Space ${spaces.length + 1}`;
@@ -1286,7 +1287,7 @@ const SpacesPanel = ({
               onClick={() => {
                 if (!spacesExportTarget) return;
                 if (!features?.excelExport) {
-                  alert('Exporting Spaces is a Pro feature.');
+                  showToast('Exporting Spaces is a Pro feature.', 'error');
                   return;
                 }
                 setIsSpacesExportMenuOpen((open) => !open);

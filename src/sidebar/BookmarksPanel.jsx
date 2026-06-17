@@ -18,6 +18,7 @@ import {
 } from '@dnd-kit/core';
 import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
+import { showToast } from '../utils/toast';
 import Icon from '../Icons';
 import {
   BOOKMARK_INDENTATION_WIDTH,
@@ -143,7 +144,7 @@ const BookmarkTreeRow = ({
 
     const pageNumber = parseInt(trimmedValue, 10);
     if (Number.isNaN(pageNumber) || pageNumber < 1 || (numPages && pageNumber > numPages)) {
-      alert(numPages ? `Please enter a page number between 1 and ${numPages}.` : 'Please enter a valid page number.');
+      showToast(numPages ? `Please enter a page number between 1 and ${numPages}.` : 'Please enter a valid page number.', 'warn');
       setEditPage(originalPage);
       return;
     }
@@ -1059,18 +1060,18 @@ const BookmarksPanel = ({
 
     const trimmedPage = newBookmarkPages.trim();
     if (!trimmedPage) {
-      alert('Please enter a page number.');
+      showToast('Please enter a page number.', 'warn');
       return;
     }
 
     const pageNumber = parseInt(trimmedPage, 10);
     if (isNaN(pageNumber) || pageNumber < 1) {
-      alert('Please enter a valid page number.');
+      showToast('Please enter a valid page number.', 'warn');
       return;
     }
 
     if (numPages && pageNumber > numPages) {
-      alert(`Please enter a page number between 1 and ${numPages}.`);
+      showToast(`Please enter a page number between 1 and ${numPages}.`, 'warn');
       return;
     }
 
@@ -1114,12 +1115,12 @@ const BookmarksPanel = ({
 
   const handleSaveBookmarkGroup = useCallback(() => {
     if (!groupName.trim()) {
-      alert('Please enter a name for the bookmark group');
+      showToast('Please enter a name for the bookmark group', 'warn');
       return;
     }
 
     if (groupBookmarks.length === 0) {
-      alert('Please add at least one bookmark to the group');
+      showToast('Please add at least one bookmark to the group', 'warn');
       return;
     }
 
@@ -1134,7 +1135,7 @@ const BookmarksPanel = ({
     });
 
     if (invalidBookmarks.length > 0) {
-      alert('Please ensure all new bookmarks have both a name and a valid page number within the PDF page range.');
+      showToast('Please ensure all new bookmarks have both a name and a valid page number within the PDF page range.', 'warn');
       return;
     }
 
@@ -1280,7 +1281,7 @@ const BookmarksPanel = ({
     if (!targetGroupId) return;
 
     if (addToGroupBookmarks.length === 0) {
-      alert('Please add at least one bookmark to the group');
+      showToast('Please add at least one bookmark to the group', 'warn');
       return;
     }
 
@@ -1295,7 +1296,7 @@ const BookmarksPanel = ({
     });
 
     if (invalidBookmarks.length > 0) {
-      alert('Please ensure all new bookmarks have both a name and a valid page number within the PDF page range.');
+      showToast('Please ensure all new bookmarks have both a name and a valid page number within the PDF page range.', 'warn');
       return;
     }
 

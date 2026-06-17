@@ -20,6 +20,7 @@ import { COLORS } from './theme';
 import reviewWarningIcon from './assets/review-warning.svg';
 import { SYNC_TONE_COLORS, liveSyncGateStatus, liveSyncVerifyStatus, syncMessagePresentation } from './services/excelSyncStatus';
 import { compareSurveyMarkersForOrder } from './utils/surveyMarkerOrdering';
+import { showToast } from './utils/toast';
 
 const FONT_FAMILY = '-apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", "Segoe UI", Roboto, Ubuntu, "Noto Sans", Arial, sans-serif';
 
@@ -589,7 +590,7 @@ const SurveySpacesRail = ({
                         setIsSurveyPanelCollapsed(false);
                         requestAnimationFrame(() => { applyLayoutDrivenZoom(); });
                       }}
-                      aria-label="Expand panel"
+                      aria-label="Expand Survey panel"
                       style={{ background: 'transparent', border: 'none', color: '#999', cursor: 'pointer', padding: '4px', borderRadius: '4px', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'background 0.15s' }}
                       onMouseEnter={(e) => e.currentTarget.style.background = '#333'}
                       onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
@@ -878,7 +879,7 @@ const SurveySpacesRail = ({
 
                             const createCategory = () => {
                               if (!selectedTemplate?.id || !selectedModuleId) {
-                                alert('Please select a template and module before creating a category.');
+                                showToast('Please select a template and module before creating a category.', 'warn');
                                 return;
                               }
                               onRequestCreateTemplate?.({
@@ -892,7 +893,7 @@ const SurveySpacesRail = ({
                             const deleteSelectedCategories = () => {
                               const selectedCatIds = Object.keys(selectedCategories).filter(id => selectedCategories[id]);
                               if (selectedCatIds.length === 0) {
-                                alert('Please select at least one category to delete.');
+                                showToast('Please select at least one category to delete.', 'warn');
                                 return;
                               }
                               if (!confirm(`Are you sure you want to delete ${selectedCatIds.length} categor${selectedCatIds.length !== 1 ? 'ies' : 'y'} and all items within?`)) {
@@ -973,10 +974,10 @@ const SurveySpacesRail = ({
                                         onClick={() => {
                                           const selectedCatIds = Object.keys(selectedCategories).filter(id => selectedCategories[id]);
                                           if (selectedCatIds.length === 0) {
-                                            alert('Please select at least one category to move or copy.');
+                                            showToast('Please select at least one category to move or copy.', 'warn');
                                             return;
                                           }
-                                          alert(`Move/Copy functionality for ${selectedCatIds.length} categories to be implemented.`);
+                                          showToast(`Move/Copy functionality for ${selectedCatIds.length} categories to be implemented.`, 'info');
                                         }}
                                         disabled={!hasSelectedCategories}
                                         className="survey-marker-select-action"
@@ -1598,7 +1599,7 @@ const SurveySpacesRail = ({
                                                 onClick={() => {
                                                   const selectedItemIds = Object.keys(selectedItemsForCategory).filter(id => selectedItemsForCategory[id]);
                                                   if (selectedItemIds.length === 0) {
-                                                    alert('Please select at least one item to copy.');
+                                                    showToast('Please select at least one item to copy.', 'warn');
                                                     return;
                                                   }
                                                   // Store selected items for copy operation
@@ -1622,7 +1623,7 @@ const SurveySpacesRail = ({
                                                 onClick={() => {
                                                   const selectedItemIds = Object.keys(selectedItemsForCategory).filter(id => selectedItemsForCategory[id]);
                                                   if (selectedItemIds.length === 0) {
-                                                    alert('Please select at least one item to delete.');
+                                                    showToast('Please select at least one item to delete.', 'warn');
                                                     return;
                                                   }
                                                   if (!confirm(`Are you sure you want to delete ${selectedItemIds.length} item${selectedItemIds.length !== 1 ? 's' : ''}?`)) {
@@ -1867,7 +1868,7 @@ const SurveySpacesRail = ({
                                                           className="survey-marker-name-inline"
                                                           defaultValue={surveyMarkerName}
                                                           key={`${annotationId}:${surveyMarkerName}`}
-                                                          title="Click to rename"
+                                                          title="Rename Survey Marker"
                                                           aria-label={`Rename ${surveyMarkerName}`}
                                                           onClick={(e) => e.stopPropagation()}
                                                           onDoubleClick={(e) => e.currentTarget.select()}
@@ -2569,7 +2570,7 @@ const SurveySpacesRail = ({
                                     onClick={(e) => {
                                       e.stopPropagation();
                                       if (!selectedTemplate?.id || !selectedModuleId) {
-                                        alert('Please select a template and module before creating a category.');
+                                        showToast('Please select a template and module before creating a category.', 'warn');
                                         return;
                                       }
                                       onRequestCreateTemplate?.({
@@ -2877,7 +2878,7 @@ const SurveySpacesRail = ({
 
 
                               if (!excelPath) {
-                                alert('No Excel file is linked to this survey.');
+                                showToast('No Excel file is linked to this survey.', 'error');
                                 setShowExportMenu(false);
                                 return;
                               }
@@ -2944,7 +2945,7 @@ const SurveySpacesRail = ({
                                     const result = await window.electronAPI.openPath(localPathFound);
                                     if (result) {
                                       console.error('Failed to open local OneDrive file:', result);
-                                      alert(`Failed to open Excel file:\n${result}`);
+                                      showToast(`Failed to open Excel file:\n${result}`, 'error');
                                     }
                                     setShowExportMenu(false);
                                     return;
@@ -3006,14 +3007,14 @@ const SurveySpacesRail = ({
                                         window.open(webUrl, '_blank');
                                       }
                                     } else {
-                                      alert('Could not get the OneDrive file URL. Please open the file manually from OneDrive.');
+                                      showToast('Could not get the OneDrive file URL. Please open the file manually from OneDrive.', 'error');
                                     }
                                   } else {
-                                    alert('Please sign in to Microsoft to open OneDrive files.');
+                                    showToast('Please sign in to Microsoft to open OneDrive files.', 'warn');
                                   }
                                 } catch (err) {
                                   console.error('Error opening OneDrive file:', err);
-                                  alert(`Error opening OneDrive file:\n${err.message}`);
+                                  showToast(`Error opening OneDrive file:\n${err.message}`, 'error');
                                 }
                                 setShowExportMenu(false);
                                 return;
@@ -3026,7 +3027,7 @@ const SurveySpacesRail = ({
                                   const exists = await window.electronAPI.fileExists(excelPath);
 
                                   if (!exists) {
-                                    alert(`Excel file not found at:\n${excelPath}\n\nThe file may have been moved or deleted.`);
+                                    showToast(`Excel file not found at:\n${excelPath}\n\nThe file may have been moved or deleted.`, 'error');
                                     setShowExportMenu(false);
                                     return;
                                   }
@@ -3035,14 +3036,14 @@ const SurveySpacesRail = ({
                                   if (result) {
                                     // shell.openPath returns an error string if it fails, empty string on success
                                     console.error('Failed to open Excel file:', result);
-                                    alert(`Failed to open Excel file:\n${result}\n\nPath: ${excelPath}`);
+                                    showToast(`Failed to open Excel file:\n${result}\n\nPath: ${excelPath}`, 'error');
                                   }
                                 } catch (err) {
                                   console.error('Error opening Excel file:', err);
-                                  alert(`Error opening Excel file:\n${err.message}\n\nPath: ${excelPath}`);
+                                  showToast(`Error opening Excel file:\n${err.message}\n\nPath: ${excelPath}`, 'error');
                                 }
                               } else {
-                                alert('This feature is only available in the desktop app.');
+                                showToast('This feature is only available in the desktop app.', 'error');
                               }
                               setShowExportMenu(false);
                             }}
