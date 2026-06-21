@@ -103,14 +103,31 @@ export default defineConfig({
     }
   },
   build: {
-    outDir: 'dist'
+    outDir: 'dist',
+    chunkSizeWarningLimit: 1500,
+    rollupOptions: {
+      output: {
+        // Split heavy, self-contained third-party libraries into their own
+        // cached chunks. These are leaf libraries (no app imports), so isolating
+        // them is safe and (a) shrinks the big viewer chunk by extracting shared
+        // vendors and (b) lets a phone keep them cached across app-code updates
+        // instead of re-downloading multiple MB every release. App code and
+        // everything else keep Vite's default chunking.
+        manualChunks(id) {
+          if (!id.includes('node_modules')) return undefined;
+          if (id.includes('/pdfjs-dist/')) return 'vendor-pdfjs';
+          if (id.includes('/pdf-lib/')) return 'vendor-pdflib';
+          if (id.includes('/fabric/')) return 'vendor-fabric';
+          if (id.includes('/exceljs/')) return 'vendor-exceljs';
+          if (id.includes('/yjs/') || id.includes('/y-protocols/') || id.includes('/y-indexeddb/') || id.includes('/lib0/')) return 'vendor-yjs';
+          if (id.includes('/@supabase/')) return 'vendor-supabase';
+          return undefined;
+        }
+      }
+    }
   },
   resolve: {
-    preserveSymlinks: true,
-    alias: {
-      '@syncfusion/ej2-interactive-chat': path.resolve(__dirname, 'src/shims/ej2-interactive-chat.js'),
-      '@syncfusion/ej2-markdown-converter': path.resolve(__dirname, 'src/shims/ej2-markdown-converter.js')
-    }
+    preserveSymlinks: true
   },
   define: {
     'process.env': {},
