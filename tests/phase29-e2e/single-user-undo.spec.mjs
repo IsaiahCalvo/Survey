@@ -14,7 +14,7 @@ test('Cmd+Z undoes the local user\'s most recent action', async ({ page }) => {
   // PDF link itself instead. 15s timeout covers cold-start IndexedDB reads.
   const docLink = page.locator('text=Package 2 - Rev 4 -- IC.pdf').first();
   await docLink.click({ timeout: 20000 });
-  await page.waitForSelector('.e-pv-page-container', { timeout: 20000 });
+  await page.waitForSelector('.survey-pdfjs-page-container', { timeout: 20000 });
 
   // Navigate to page 6 via the Phase 29 test seam exposed by App.jsx.
   await page.evaluate(() => window.__navigateToPage?.(6));
@@ -26,7 +26,7 @@ test('Cmd+Z undoes the local user\'s most recent action', async ({ page }) => {
   // Draw a stroke via raw mouse drag on the page container. This activates
   // whichever drawing tool is currently armed; the e2e seed app defaults to
   // pen tool on first mount.
-  const pageBox = await page.locator('.e-pv-page-container').first().boundingBox();
+  const pageBox = await page.locator('.survey-pdfjs-page-container').first().boundingBox();
   if (!pageBox) throw new Error('page container bounding box not available');
   await page.mouse.move(pageBox.x + 100, pageBox.y + 100);
   await page.mouse.down();

@@ -35,7 +35,7 @@ test.describe('Phase 35 — single-delete undo toast (5s)', () => {
   test('single delete shows 5-second undo toast', async ({ page }) => {
     await page.goto('http://localhost:5173/');
     await page.locator('text=Package 2 - Rev 4 -- IC.pdf').first().click({ timeout: 20000 });
-    await page.waitForSelector('.e-pv-page-container', { timeout: 20000 });
+    await page.waitForSelector('.survey-pdfjs-page-container', { timeout: 20000 });
     await page.evaluate(() => window.__navigateToPage?.(6));
 
     // Skip if the speculative __phase35SeedOwn seam isn't present (it's not
@@ -68,7 +68,7 @@ test.describe('Phase 35 — single-delete undo toast (5s)', () => {
   test('clicking Undo within 5 seconds restores the annotation', async ({ page }) => {
     await page.goto('http://localhost:5173/');
     await page.locator('text=Package 2 - Rev 4 -- IC.pdf').first().click({ timeout: 20000 });
-    await page.waitForSelector('.e-pv-page-container', { timeout: 20000 });
+    await page.waitForSelector('.survey-pdfjs-page-container', { timeout: 20000 });
     await page.evaluate(() => window.__navigateToPage?.(6));
 
     const hasSeams = await page.evaluate(() => (

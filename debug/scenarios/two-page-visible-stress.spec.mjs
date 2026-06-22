@@ -8,7 +8,7 @@ let session = null;
 test.use({ video: 'off' });
 
 async function waitForAppReady(page) {
-  await page.locator('.e-pv-viewer-container').waitFor({
+  await page.locator('.survey-pdfjs-viewer-container').waitFor({
     state: 'visible',
     timeout: 60_000,
   });
@@ -44,7 +44,7 @@ async function setToolbarZoom(page, zoomLevel) {
 }
 
 async function viewerCenter(page) {
-  const viewer = page.locator('.e-pv-viewer-container');
+  const viewer = page.locator('.survey-pdfjs-viewer-container');
   const box = await viewer.boundingBox();
   expect(box, 'Syncfusion viewer box should be measurable').toBeTruthy();
   return {
@@ -55,10 +55,10 @@ async function viewerCenter(page) {
 
 async function getVisiblePageMetrics(page) {
   return page.evaluate(() => {
-    const viewer = document.querySelector('.e-pv-viewer-container');
+    const viewer = document.querySelector('.survey-pdfjs-viewer-container');
     const viewerRect = viewer?.getBoundingClientRect?.();
     if (!viewer || !viewerRect) return [];
-    return Array.from(document.querySelectorAll('.e-pv-page-div[data-page-number]'))
+    return Array.from(document.querySelectorAll('.survey-pdfjs-page-div[data-page-number]'))
       .map((node) => {
         const rect = node.getBoundingClientRect();
         const overlapTop = Math.max(rect.top, viewerRect.top);
@@ -68,7 +68,7 @@ async function getVisiblePageMetrics(page) {
         return {
           page: Number(node.getAttribute('data-page-number')),
           overlapPct,
-          hasPdfSurface: !!node.querySelector('canvas, .e-pv-page-canvas, .e-pv-text-layer'),
+          hasPdfSurface: !!node.querySelector('canvas, .survey-pdfjs-page-canvas, .survey-pdfjs-text-layer'),
           hasAnnotationContent: !!node.querySelector('[data-svg-annotation-layer] [data-anno-id], .canvas-container'),
         };
       })
@@ -108,8 +108,8 @@ test('two visible pages remain stable during diagonal scroll and cursor zoom', a
   for (const zoom of [90, 80, 70, 60]) {
     await setToolbarZoom(page, zoom);
     await page.evaluate(() => {
-      const viewer = document.querySelector('.e-pv-viewer-container');
-      const page6 = document.querySelector('.e-pv-page-div[data-page-number="6"]');
+      const viewer = document.querySelector('.survey-pdfjs-viewer-container');
+      const page6 = document.querySelector('.survey-pdfjs-page-div[data-page-number="6"]');
       if (!viewer || !page6) return;
       viewer.scrollTop = Math.max(0, page6.offsetTop + page6.clientHeight - Math.round(viewer.clientHeight * 0.55));
     });
@@ -169,7 +169,7 @@ test('two visible pages remain stable during diagonal scroll and cursor zoom', a
   const blankSampleCount = countBlankPageSamples(samples);
   const samplesWithTwoVisiblePages = countSamplesWithTwoVisiblePages(samples);
   const page6AnnotationCount = await page.evaluate(() =>
-    document.querySelectorAll('.e-pv-page-div[data-page-number="6"] [data-svg-annotation-layer] [data-anno-id]').length
+    document.querySelectorAll('.survey-pdfjs-page-div[data-page-number="6"] [data-svg-annotation-layer] [data-anno-id]').length
   );
   const finalSnap = await page.evaluate(() => window.__debugBridge.snapshot());
 

@@ -457,7 +457,7 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
             if (pageEl) {
               // Walk up to the pdfjs page div so the bounds match
               // what the user visually sees as "the page".
-              const pageDiv = pageEl.closest('.e-pv-page-div') || pageEl;
+              const pageDiv = pageEl.closest('.survey-pdfjs-page-div') || pageEl;
               const r = pageDiv.getBoundingClientRect();
               if (r.width > 0 && r.height > 0) bounds = r;
             }

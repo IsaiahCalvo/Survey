@@ -1,7 +1,7 @@
 /**
  * 2026-04-25 — Pan-tool cursor scoping.
  *
- * Pdfjs's e-pv-page-container element spans the full viewer
+ * Pdfjs's survey-pdfjs-page-container element spans the full viewer
  * width, and Pdfjs sets the pan-tool cursor (grab/grabbing) on
  * that container. The result is that the hand cursor appears not
  * only over the actual rendered page, but also over the gray
@@ -95,7 +95,7 @@
   };
 
   const tryBindAll = () => {
-    const containers = document.querySelectorAll('.e-pv-page-container');
+    const containers = document.querySelectorAll('.survey-pdfjs-page-container');
     for (const c of containers) bind(c);
   };
 

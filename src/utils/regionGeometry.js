@@ -30,7 +30,7 @@ export function resolvePageContentElement(pageContainerNode) {
       return pageContainerNode;
     }
 
-    const pdfjsPageCanvas = pageContainerNode.querySelector('.e-pv-page-canvas');
+    const pdfjsPageCanvas = pageContainerNode.querySelector('.survey-pdfjs-page-canvas');
     if (pdfjsPageCanvas) return pdfjsPageCanvas;
 
     const canvasNodes = Array.from(pageContainerNode.querySelectorAll('canvas'));

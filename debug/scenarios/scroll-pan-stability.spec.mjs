@@ -6,7 +6,7 @@ import { createSession, finalizeSession, getSessionBaseDir } from '../lib/sessio
 let session = null;
 
 async function waitForAppReady(page) {
-  await page.locator('.e-pv-viewer-container').waitFor({
+  await page.locator('.survey-pdfjs-viewer-container').waitFor({
     state: 'visible',
     timeout: 60_000,
   });
@@ -43,7 +43,7 @@ async function setToolbarZoom(page, zoomLevel) {
 
 async function getViewerScrollPosition(page) {
   return page.evaluate(() => {
-    const viewer = document.querySelector('.e-pv-viewer-container');
+    const viewer = document.querySelector('.survey-pdfjs-viewer-container');
     return {
       left: Number(viewer?.scrollLeft || 0),
       top: Number(viewer?.scrollTop || 0),
@@ -52,7 +52,7 @@ async function getViewerScrollPosition(page) {
 }
 
 async function getViewerBox(page) {
-  const viewer = page.locator('.e-pv-viewer-container');
+  const viewer = page.locator('.survey-pdfjs-viewer-container');
   const box = await viewer.boundingBox();
   expect(box, 'Syncfusion viewer box should be measurable').toBeTruthy();
   return box;

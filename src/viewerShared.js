@@ -283,9 +283,9 @@ const PDFJS_PDF_SURFACE_SELECTOR = [
   'img[id*="_tileimg_"]',
   'img[id*="_pageCanvas_"]',
   'canvas[id*="_pageCanvas_"]',
-  '.e-pv-page-canvas',
-  '.e-pv-text-layer',
-  '.e-pv-image-canvas'
+  '.survey-pdfjs-page-canvas',
+  '.survey-pdfjs-text-layer',
+  '.survey-pdfjs-image-canvas'
 ].join(',');
 
 export const hasPdfjsPdfSurface = (host) => !!host?.querySelector?.(PDFJS_PDF_SURFACE_SELECTOR);
@@ -293,12 +293,12 @@ export const hasPdfjsPdfSurface = (host) => !!host?.querySelector?.(PDFJS_PDF_SU
 export const hasVisiblePdfjsSpinner = (host) => {
   if (!host?.querySelectorAll) return false;
   const spinners = Array.from(host.querySelectorAll([
-    '.e-spinner-pane:not(.e-spin-hide)',
-    '.e-spinner-pane[aria-hidden="false"]'
+    '.survey-pdfjs-spinner-pane:not(.survey-pdfjs-spin-hide)',
+    '.survey-pdfjs-spinner-pane[aria-hidden="false"]'
   ].join(',')));
   return spinners.some((spinner) => {
     if (!spinner?.isConnected) return false;
-    if (spinner.classList?.contains?.('e-spin-hide')) return false;
+    if (spinner.classList?.contains?.('survey-pdfjs-spin-hide')) return false;
     if (spinner.getAttribute?.('aria-hidden') === 'true') return false;
     if (typeof window !== 'undefined' && typeof window.getComputedStyle === 'function') {
       const style = window.getComputedStyle(spinner);
@@ -996,7 +996,7 @@ export const measurePdfjsPageScale = (pageNumber, pageSizes, pageContainers, fal
   }
 
   const contentBox =
-    pageHost.querySelector?.('.e-pv-page-canvas') ||
+    pageHost.querySelector?.('.survey-pdfjs-page-canvas') ||
     pageHost.querySelector?.('canvas') ||
     pageHost;
   const hostWidth = contentBox?.clientWidth || pageHost.clientWidth || 0;
@@ -1310,7 +1310,7 @@ const normalizeOutlineLooseKey = (value) => {
 const extractSourceLeafFromBookmark = (bookmark) => {
   const sourceId = typeof bookmark?.sourceId === 'string' ? bookmark.sourceId : '';
   if (!sourceId) return '';
-  const match = sourceId.match(/^(?:pdfjs|syncfusion):[^:]+:(.+)$/);
+  const match = sourceId.match(/^pdfjs:[^:]+:(.+)$/);
   if (!match) return '';
   const pathWithOrder = match[1] || '';
   const path = pathWithOrder.replace(/#\d+$/, '');

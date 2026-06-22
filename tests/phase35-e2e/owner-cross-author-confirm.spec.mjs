@@ -39,7 +39,7 @@ test.describe('Phase 35 — owner cross-author confirm + undo toast', () => {
   test('owner cross-author modal shows breakdown', async ({ page }) => {
     await page.goto('http://localhost:5173/');
     await page.locator('text=Package 2 - Rev 4 -- IC.pdf').first().click({ timeout: 20000 });
-    await page.waitForSelector('.e-pv-page-container', { timeout: 20000 });
+    await page.waitForSelector('.survey-pdfjs-page-container', { timeout: 20000 });
     await page.evaluate(() => window.__navigateToPage?.(6));
 
     await page.evaluate(() => {

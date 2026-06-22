@@ -35,7 +35,7 @@ test.describe('Phase 35 — collaborator marquee scope', () => {
     // Open the test document on page 6.
     await page.goto('http://localhost:5173/');
     await page.locator('text=Package 2 - Rev 4 -- IC.pdf').first().click({ timeout: 20000 });
-    await page.waitForSelector('.e-pv-page-container', { timeout: 20000 });
+    await page.waitForSelector('.survey-pdfjs-page-container', { timeout: 20000 });
     await page.evaluate(() => window.__navigateToPage?.(6));
 
     // Force collaborator role (test seam landed in Plan 35-06).
@@ -64,7 +64,7 @@ test.describe('Phase 35 — collaborator marquee scope', () => {
     await page.evaluate(() => window.__phase35SelectTool?.('select'));
 
     // Drag marquee across the seeded region (covers both own and foreign marks).
-    const box = await page.locator('.e-pv-page-container').first().boundingBox();
+    const box = await page.locator('.survey-pdfjs-page-container').first().boundingBox();
     if (!box) throw new Error('page container not measurable');
     await page.mouse.move(box.x + 50, box.y + 50);
     await page.mouse.down();

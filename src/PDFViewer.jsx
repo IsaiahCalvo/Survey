@@ -3291,7 +3291,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   const strikeCaretPopupRef = useRef(null);
 
   // Disable ALL Pdfjs interactive layers during annotation edit mode via injected <style>.
-  // Covers .e-pv-text-layer, .e-pv-annotation-canvas, and any other Pdfjs overlay.
+  // Covers .survey-pdfjs-text-layer, .survey-pdfjs-annotation-canvas, and any other Pdfjs overlay.
   // Using a <style> tag instead of querySelectorAll ensures dynamically-added elements are caught.
   // Also forces cursor:text on the page div during text editing to prevent cursor flicker —
   // when the text overlay gets pointer-events:none and FabricEditCanvas hasn't painted yet,
@@ -3303,14 +3303,14 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     const style = document.createElement('style');
     style.dataset.editMode = 'true';
     style.textContent = `
-      .e-pv-text-layer,
-      .e-pv-annotation-canvas,
-      .e-pv-text-selection-layer,
-      .e-pv-hyperlink-layer,
-      .e-pv-page-div > canvas {
+      .survey-pdfjs-text-layer,
+      .survey-pdfjs-annotation-canvas,
+      .survey-pdfjs-text-selection-layer,
+      .survey-pdfjs-hyperlink-layer,
+      .survey-pdfjs-page-div > canvas {
         pointer-events: none !important;
       }
-      ${isTextEdit ? `.e-pv-page-div { cursor: text !important; }` : ''}
+      ${isTextEdit ? `.survey-pdfjs-page-div { cursor: text !important; }` : ''}
     `;
     document.head.appendChild(style);
     return () => { style.remove(); };
@@ -3324,13 +3324,13 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     const style = document.createElement('style');
     style.dataset.pdfjsNativeAnnotationHandles = 'hidden';
     style.textContent = `
-      .e-pdfviewer .e-pv-diagram-resize-handle,
-      .e-pdfviewer .e-pv-diagram-rotate-handle,
-      .e-pdfviewer [id^="resizeNorth"],
-      .e-pdfviewer [id^="resizeSouth"],
-      .e-pdfviewer [id^="resizeEast"],
-      .e-pdfviewer [id^="resizeWest"],
-      .e-pdfviewer [id^="rotate"] {
+      .survey-pdfjs-pdfviewer .survey-pdfjs-diagram-resize-handle,
+      .survey-pdfjs-pdfviewer .survey-pdfjs-diagram-rotate-handle,
+      .survey-pdfjs-pdfviewer [id^="resizeNorth"],
+      .survey-pdfjs-pdfviewer [id^="resizeSouth"],
+      .survey-pdfjs-pdfviewer [id^="resizeEast"],
+      .survey-pdfjs-pdfviewer [id^="resizeWest"],
+      .survey-pdfjs-pdfviewer [id^="rotate"] {
         visibility: hidden !important;
         pointer-events: none !important;
       }
@@ -3343,8 +3343,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     const style = document.createElement('style');
     style.dataset.pdfjsSelectModeCursor = 'true';
     style.textContent = `
-      .survey-pdfjs-select-mode .e-pv-text,
-      .survey-pdfjs-select-mode .e-pv-text-layer {
+      .survey-pdfjs-select-mode .survey-pdfjs-text,
+      .survey-pdfjs-select-mode .survey-pdfjs-text-layer {
         cursor: default !important;
       }
     `;
@@ -4865,7 +4865,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     if (typeof document === 'undefined' || !Number.isFinite(clientX) || !Number.isFinite(clientY)) {
       return null;
     }
-    const direct = document.elementFromPoint?.(clientX, clientY)?.closest?.('.e-pv-page-div');
+    const direct = document.elementFromPoint?.(clientX, clientY)?.closest?.('.survey-pdfjs-page-div');
     if (direct) {
       pdfjsLastCursorPageRef.current = direct;
       return direct;
@@ -4889,7 +4889,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     // elementFromPoint can return our overlay instead of the PDF page. For
     // cursor-centric zoom we still need the real page under that screen point;
     // otherwise zoom falls back to rough scroll-ratio math and drifts down/right.
-    const pages = Array.from(document.querySelectorAll('.e-pv-page-div'));
+    const pages = Array.from(document.querySelectorAll('.survey-pdfjs-page-div'));
     for (const page of pages) {
       const rect = page.getBoundingClientRect?.();
       if (!rect || rect.width <= 0 || rect.height <= 0) continue;
@@ -5661,9 +5661,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         const tgt = event.target;
         const layer = tgt && tgt.closest
           ? (tgt.closest('[data-diag-eraser-wrapper]') ? 'eraser-canvas'
-            : tgt.closest('.e-pv-text-layer') ? 'pdfjs-text-layer'
+            : tgt.closest('.survey-pdfjs-text-layer') ? 'pdfjs-text-layer'
             : tgt.closest('svg') ? 'svg-annotation-layer'
-            : tgt.closest('.e-pv-page-div') ? 'pdfjs-page'
+            : tgt.closest('.survey-pdfjs-page-div') ? 'pdfjs-page'
             : (tgt.tagName || 'unknown').toLowerCase())
           : 'unknown';
         const family = tool === 'pan' ? 'pan-start' : 'pointer-down';
@@ -5862,11 +5862,11 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     const viewerContainer =
       viewer?.getViewerContainer?.() ||
       viewer?.viewerBase?.viewerContainer ||
-      viewer?.element?.querySelector('.e-pv-viewer-container');
+      viewer?.element?.querySelector('.survey-pdfjs-viewer-container');
     const pageContainer =
       viewer?.getPageLayerContainer?.() ||
       viewer?.viewerBase?.pageContainer ||
-      viewer?.element?.querySelector('.e-pv-page-container');
+      viewer?.element?.querySelector('.survey-pdfjs-page-container');
     if (viewerContainer) {
       containerRef.current = viewerContainer;
       attachPdfjsInteractionListeners(viewerContainer);
@@ -5898,7 +5898,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
     if (Object.keys(next).length === 0) {
       const host = viewer?.element;
-      const pageDivs = host?.querySelectorAll?.('.e-pv-page-div') || [];
+      const pageDivs = host?.querySelectorAll?.('.survey-pdfjs-page-div') || [];
       pageDivs.forEach((pageDiv) => {
         let pageNumber = coercePageNumber(pageDiv?.dataset?.pageNumber, Number.POSITIVE_INFINITY);
         if (!pageNumber) {
@@ -5987,7 +5987,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     }
 
     const cssEscapedPage = String(safePageNumber).replace(/"/g, '\\"');
-    const byDataAttr = viewerHost.querySelector?.(`.e-pv-page-div[data-page-number="${cssEscapedPage}"]`);
+    const byDataAttr = viewerHost.querySelector?.(`.survey-pdfjs-page-div[data-page-number="${cssEscapedPage}"]`);
     if (byDataAttr?.isConnected) {
       byDataAttr.dataset.pageNumber = String(safePageNumber);
       return byDataAttr;
@@ -6567,7 +6567,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     const pageContainerMap = pdfjsPageContainersStateRef.current || pageContainersRef.current || {};
     const directHost = pageContainerMap[pageNumber] || pageContainersRef.current?.[pageNumber] || null;
     const domHost = typeof document !== 'undefined'
-      ? document.querySelector(`.e-pv-page-div[data-page-number="${pageNumber}"]`)
+      ? document.querySelector(`.survey-pdfjs-page-div[data-page-number="${pageNumber}"]`)
       : null;
     const host = directHost?.isConnected ? directHost : domHost;
     const hasContainer = !!host?.isConnected;
@@ -7306,7 +7306,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       // pageDiv by the racy getZoomValue() API (which leads the DOM re-layout).
       const calibrateElectronFactor = (knownScale) => {
         requestAnimationFrame(() => {
-          const pageDiv = pdfjsWrapperRef.current?.querySelector('.e-pv-page-div');
+          const pageDiv = pdfjsWrapperRef.current?.querySelector('.survey-pdfjs-page-div');
           const pdfPageSize = pageSizesRef.current?.[pageNumRef.current]
             || (pageSizesRef.current && Object.values(pageSizesRef.current)[0]);
           if (!pageDiv || !pdfPageSize?.width || !(knownScale > 0)) return;
@@ -7344,7 +7344,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         // click was effectively recalibrating from a wrong prior scale. Measure the live
         // page div against the known current scale to get the factor in one shot.
         if (!pdfjsElectronFactorRef.current && scaleRef.current > 0 && pdfPageSize?.width > 0) {
-          const liveDiv = pdfjsWrapperRef.current?.querySelector('.e-pv-page-div');
+          const liveDiv = pdfjsWrapperRef.current?.querySelector('.survey-pdfjs-page-div');
           if (liveDiv && liveDiv.offsetWidth > 0) {
             const inferred = liveDiv.offsetWidth / (pdfPageSize.width * scaleRef.current);
             if (inferred > 0.3 && inferred < 5) {
@@ -7437,7 +7437,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     if (usePdfjsRenderer && !pdfjsElectronFactorRef.current && scale > 0) {
       requestAnimationFrame(() => {
         if (pdfjsElectronFactorRef.current) return;
-        const pageDiv = pdfjsWrapperRef.current?.querySelector('.e-pv-page-div');
+        const pageDiv = pdfjsWrapperRef.current?.querySelector('.survey-pdfjs-page-div');
         const pdfPageSize = pageSizesRef.current?.[pageNumRef.current]
           || (pageSizesRef.current && Object.values(pageSizesRef.current)[0]);
         if (!pageDiv || !pdfPageSize?.width) return;
@@ -9121,7 +9121,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     };
     const trackpadStressTestApi = {
       async run(options = {}) {
-        const viewerContainer = containerRef.current || document.querySelector('.e-pv-viewer-container');
+        const viewerContainer = containerRef.current || document.querySelector('.survey-pdfjs-viewer-container');
         if (!viewerContainer) {
           return { ok: false, error: 'viewer container not found' };
         }
@@ -9421,7 +9421,6 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         (typeof bookmark?.id === 'string' && bookmark.id.startsWith('pdf:')) ||
         (typeof bookmark?.id === 'string' && bookmark.id.startsWith('pdf-outline-')) ||
         (typeof bookmark?.sourceId === 'string' && bookmark.sourceId.startsWith('pdfjs:')) ||
-        (typeof bookmark?.sourceId === 'string' && bookmark.sourceId.startsWith('syncfusion:')) ||
         Array.isArray(bookmark?.outlinePath) ||
         bookmark?.dest
       ));
@@ -18961,8 +18960,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
           Number.POSITIVE_INFINITY
         );
         const shouldDisableSourceNavigation = typeof bookmark?.sourceId === 'string' && (
-          bookmark.sourceId.startsWith('pdfjs:') ||
-          bookmark.sourceId.startsWith('syncfusion:')
+          bookmark.sourceId.startsWith('pdfjs:')
         );
         const needsPageUpdate = currentPage !== resolvedPage;
         const needsSourceDisable = shouldDisableSourceNavigation && bookmark.disableSourceNavigation !== true;
@@ -21404,7 +21402,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
           // No-op when the clipboard is empty OR when the cursor isn't over a
           // PDF page, letting the browser handle Cmd+V everywhere else
           // (form fields, system paste, etc). Resolves the target page from
-          // the cursor via elementFromPoint → closest('.e-pv-page-div') →
+          // the cursor via elementFromPoint → closest('.survey-pdfjs-page-div') →
           // data attribute lookup, matching the resolveAnnotationAt pattern.
           if (key === 'v' && !e.shiftKey && clipboardAnnotation) {
             // KAL-75 (G1): paste is a mutation — inert on locked/read-only docs.
@@ -21414,7 +21412,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
             // KAL-75: the annotation overlay tree is portalled OUTSIDE the
             // Pdfjs page div (app-owned overlay root), so whenever
             // annotations are rendered the element under the cursor is the
-            // overlay svg and closest('.e-pv-page-div') never matches —
+            // overlay svg and closest('.survey-pdfjs-page-div') never matches —
             // which silently killed Cmd+V paste-at-cursor. Resolve the page
             // from the overlay wrapper's own page-number attribute first
             // (the right-click route in contextMenuDiagnostics already uses
@@ -21424,7 +21422,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
             let pageNumAttr = overlayWrap?.getAttribute?.('data-diag-svg-wrapper')
               || overlayWrap?.getAttribute?.('data-pal-root');
             if (!pageNumAttr) {
-              const pageDiv = elAtCursor?.closest?.('.e-pv-page-div') || null;
+              const pageDiv = elAtCursor?.closest?.('.survey-pdfjs-page-div') || null;
               const palWrap = pageDiv?.querySelector?.('[data-diag-svg-wrapper], [data-pal-root]');
               pageNumAttr = palWrap?.getAttribute?.('data-diag-svg-wrapper')
                 || palWrap?.getAttribute?.('data-pal-root');
@@ -23166,7 +23164,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       try {
         const svgWrap = document.querySelector(`[data-diag-svg-wrapper="${pageNumber}"]`);
         const palRoot = document.querySelector(`[data-pal-root="${pageNumber}"]`);
-        const pageDiv = (svgWrap || palRoot)?.closest?.('.e-pv-page-div') || null;
+        const pageDiv = (svgWrap || palRoot)?.closest?.('.survey-pdfjs-page-div') || null;
         const svgEl = svgWrap?.querySelector?.('svg') || pageDiv?.querySelector?.('svg[viewBox]') || null;
         const vb = svgEl?.getAttribute?.('viewBox')?.split(/\s+/) || null;
         const viewBoxW = vb && vb.length === 4 ? parseFloat(vb[2]) : NaN;
@@ -23219,7 +23217,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     try {
       const svgWrap = document.querySelector(`[data-diag-svg-wrapper="${pageNumber}"]`);
       const palRoot = document.querySelector(`[data-pal-root="${pageNumber}"]`);
-      const pageDiv = (svgWrap || palRoot)?.closest?.('.e-pv-page-div') || null;
+      const pageDiv = (svgWrap || palRoot)?.closest?.('.survey-pdfjs-page-div') || null;
       const svgEl = svgWrap?.querySelector?.('svg') || pageDiv?.querySelector?.('svg[viewBox]') || null;
       const vb = svgEl?.getAttribute?.('viewBox')?.split(/\s+/) || null;
       const viewBoxW = vb && vb.length === 4 ? parseFloat(vb[2]) : NaN;
@@ -24952,8 +24950,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   const handleSelectPdfjsTextMarkupFromClientPoint = useCallback((event) => {
     if (activeTool !== 'select' && activeTool !== 'text-select') return false;
     if (!event || typeof event.clientX !== 'number' || typeof event.clientY !== 'number') return false;
-    if (event.target?.closest?.('[data-annotation-context-menu], [data-toolbar], button, input, textarea, select, a[href], .e-pv-hyperlink, .e-pdfviewer-formFields')) return false;
-    const isPlainPdfTextTarget = !!event.target?.closest?.('.e-pv-text-layer, .e-pv-text');
+    if (event.target?.closest?.('[data-annotation-context-menu], [data-toolbar], button, input, textarea, select, a[href], .survey-pdfjs-hyperlink, .survey-pdfjs-pdfviewer-formFields')) return false;
+    const isPlainPdfTextTarget = !!event.target?.closest?.('.survey-pdfjs-text-layer, .survey-pdfjs-text');
 
     const containers = pdfjsViewerRef.current?.getPageContainers?.() || {};
     const entries = Object.entries(containers);
@@ -27757,18 +27755,18 @@ ${pageBlocks}
                       const nativePdfAnnotationLayerHideCss = `
                         [id="${nativePdfAnnotationCanvasId}"],
                         [id="${nativePdfAnnotationCanvasId}"] *,
-                        [id="${nativePdfPageDivId}"] .e-pv-annotation-canvas,
-                        [id="${nativePdfPageDivId}"] .e-pv-annotation-canvas *,
-                        [id="${nativePdfPageDivId}"] .e-pv-annotation-layer,
-                        [id="${nativePdfPageDivId}"] .e-pv-annotation-layer *,
-                        [id="${nativePdfPageDivId}"] .e-pv-annotation,
-                        [id="${nativePdfPageDivId}"] .e-pv-annotation *,
-                        [id="${nativePdfPageDivId}"] .e-pv-annotation-selection,
-                        [id="${nativePdfPageDivId}"] .e-pv-annotation-selection *,
-                        [id="${nativePdfPageDivId}"] .e-pv-resize-container,
-                        [id="${nativePdfPageDivId}"] .e-pv-resize-container *,
-                        [id="${nativePdfPageDivId}"] .e-pv-resize-div,
-                        [id="${nativePdfPageDivId}"] .e-pv-resize-div *,
+                        [id="${nativePdfPageDivId}"] .survey-pdfjs-annotation-canvas,
+                        [id="${nativePdfPageDivId}"] .survey-pdfjs-annotation-canvas *,
+                        [id="${nativePdfPageDivId}"] .survey-pdfjs-annotation-layer,
+                        [id="${nativePdfPageDivId}"] .survey-pdfjs-annotation-layer *,
+                        [id="${nativePdfPageDivId}"] .survey-pdfjs-annotation,
+                        [id="${nativePdfPageDivId}"] .survey-pdfjs-annotation *,
+                        [id="${nativePdfPageDivId}"] .survey-pdfjs-annotation-selection,
+                        [id="${nativePdfPageDivId}"] .survey-pdfjs-annotation-selection *,
+                        [id="${nativePdfPageDivId}"] .survey-pdfjs-resize-container,
+                        [id="${nativePdfPageDivId}"] .survey-pdfjs-resize-container *,
+                        [id="${nativePdfPageDivId}"] .survey-pdfjs-resize-div,
+                        [id="${nativePdfPageDivId}"] .survey-pdfjs-resize-div *,
                         [id="${nativePdfPageDivId}"] [id$="_diagramAdornerLayer"],
                         [id="${nativePdfPageDivId}"] [id$="_diagramAdornerLayer"] *,
                         [id="${nativePdfPageDivId}"] [id$="_diagramAdorner_svg"],
@@ -27782,13 +27780,13 @@ ${pageBlocks}
                           visibility: hidden !important;
                           pointer-events: none !important;
                         }
-                        [id="${nativePdfPageDivId}"] .e-pdfviewer-formFields,
-                        [id="${nativePdfPageDivId}"] .e-pdfviewer-formFields *,
-                        [id="${nativePdfPageDivId}"] .e-pv-checkbox-container,
-                        [id="${nativePdfPageDivId}"] .e-pv-checkbox-container *,
-                        [id="${nativePdfPageDivId}"] .e-pv-checkbox-div,
-                        [id="${nativePdfPageDivId}"] .e-pv-checkbox-div *,
-                        [id="${nativePdfPageDivId}"] .e-pv-hyperlink {
+                        [id="${nativePdfPageDivId}"] .survey-pdfjs-pdfviewer-formFields,
+                        [id="${nativePdfPageDivId}"] .survey-pdfjs-pdfviewer-formFields *,
+                        [id="${nativePdfPageDivId}"] .survey-pdfjs-checkbox-container,
+                        [id="${nativePdfPageDivId}"] .survey-pdfjs-checkbox-container *,
+                        [id="${nativePdfPageDivId}"] .survey-pdfjs-checkbox-div,
+                        [id="${nativePdfPageDivId}"] .survey-pdfjs-checkbox-div *,
+                        [id="${nativePdfPageDivId}"] .survey-pdfjs-hyperlink {
                           visibility: visible !important;
                           pointer-events: auto !important;
                         }

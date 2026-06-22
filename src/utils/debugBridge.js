@@ -85,7 +85,7 @@ function getDomVisiblePages() {
   // Query the DOM directly for page divs that have data-page-number set.
   // This avoids relying on potentially stale React state (visiblePages from
   // useVisiblePages can lag behind actual DOM after Pdfjs page navigation).
-  const pageDivs = document.querySelectorAll('.e-pv-page-div[data-page-number]');
+  const pageDivs = document.querySelectorAll('.survey-pdfjs-page-div[data-page-number]');
   const pages = [];
   for (const div of pageDivs) {
     const num = Number(div.dataset.pageNumber);
@@ -122,14 +122,14 @@ function findAnnotationLayerPage(node) {
   const annotationNode = el.matches?.('.annotation-layer, [data-annotation-layer], [data-svg-annotation-layer], [data-overlay-hidden-pending-pdf="true"]')
     ? el
     : el.querySelector?.('.annotation-layer, [data-annotation-layer], [data-svg-annotation-layer], [data-overlay-hidden-pending-pdf="true"]');
-  const pageDiv = annotationNode?.closest?.('.e-pv-page-div[data-page-number]');
+  const pageDiv = annotationNode?.closest?.('.survey-pdfjs-page-div[data-page-number]');
   return pageDiv ? Number(pageDiv.dataset.pageNumber) : null;
 }
 
 function refreshAnnotationMountedSignal(page) {
   const domPages = page != null ? [page] : getDomVisiblePages();
   const pagesWithAnnotations = domPages.filter(p => {
-    const div = document.querySelector(`.e-pv-page-div[data-page-number="${p}"]`);
+    const div = document.querySelector(`.survey-pdfjs-page-div[data-page-number="${p}"]`);
     return pageHasAnnotationRuntime(div);
   });
   for (const pageNumber of pagesWithAnnotations) {
@@ -155,7 +155,7 @@ function isConditionMet(condition, page) {
     const domPages = getDomVisiblePages();
     if (domPages.length === 0) return false;
     const pagesWithAnnotations = domPages.filter(p => {
-      const div = document.querySelector(`.e-pv-page-div[data-page-number="${p}"]`);
+      const div = document.querySelector(`.survey-pdfjs-page-div[data-page-number="${p}"]`);
       return pageHasAnnotationRuntime(div);
     });
     if (pagesWithAnnotations.length === 0) return false;
@@ -170,7 +170,7 @@ function isConditionMet(condition, page) {
     const domPages = getDomVisiblePages();
     if (domPages.length === 0) return false;
     const pagesWithAnnotations = domPages.filter(p => {
-      const div = document.querySelector(`.e-pv-page-div[data-page-number="${p}"]`);
+      const div = document.querySelector(`.survey-pdfjs-page-div[data-page-number="${p}"]`);
       return pageHasAnnotationRuntime(div);
     });
     if (pagesWithAnnotations.length === 0) return false;
@@ -231,7 +231,7 @@ function settleSignal(name, debounceMs) {
 
 function checkPageAnnotationComplete(pageNumber) {
   const pageDiv = document.querySelector(
-    `.e-pv-page-div[data-page-number="${pageNumber}"]`
+    `.survey-pdfjs-page-div[data-page-number="${pageNumber}"]`
   );
   return pageHasAnnotationRuntime(pageDiv);
 }
@@ -244,7 +244,7 @@ function markPageAnnotationMounted(pageNumber) {
   // Check if ALL DOM-present pages with annotation runtimes have annotations tracked.
   const domPages = getDomVisiblePages();
   const pagesWithAnnotations = domPages.filter(p => {
-    const div = document.querySelector(`.e-pv-page-div[data-page-number="${p}"]`);
+    const div = document.querySelector(`.survey-pdfjs-page-div[data-page-number="${p}"]`);
     return pageHasAnnotationRuntime(div);
   });
   if (pagesWithAnnotations.length > 0 && pagesWithAnnotations.every(p => perPageAnnotationStatus[p] === true)) {
@@ -403,7 +403,7 @@ function handleMutations(mutations) {
           setTimeout(() => markPageAnnotationMounted(annotationLayerPage), 10);
         }
 
-        if (!node.classList?.contains('e-pv-page-div')) continue;
+        if (!node.classList?.contains('survey-pdfjs-page-div')) continue;
 
         const pageNumber = extractPageNumber(node);
         if (pageNumber == null) continue;
@@ -550,7 +550,7 @@ export function snapshot(options) {
       const visiblePages = state.visiblePages || [];
       result.pageStatus = visiblePages.map((page) => {
         const pageDiv = document.querySelector(
-          `.e-pv-page-div[data-page-number="${page}"]`
+          `.survey-pdfjs-page-div[data-page-number="${page}"]`
         );
         const pdfjsDom = !!pageDiv;
         const palMounted = pdfjsDom ? pageHasAnnotationLayer(pageDiv) : false;

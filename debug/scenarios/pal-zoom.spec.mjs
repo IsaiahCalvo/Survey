@@ -34,7 +34,7 @@ test.describe('pal-zoom', () => {
     await page.goto('/?testPdf=Package%202%20-%20Rev%204%20--%20IC.pdf');
 
     // Wait for PDF viewer to load
-    await page.locator('.e-pv-viewer-container').waitFor({
+    await page.locator('.survey-pdfjs-viewer-container').waitFor({
       state: 'visible',
       timeout: 60_000,
     });
@@ -59,7 +59,7 @@ test.describe('pal-zoom', () => {
    */
   async function performZoomAndSettle(page) {
     // Locate the page 6 container
-    const pageDiv = page.locator('.e-pv-page-div[data-page-number="6"]');
+    const pageDiv = page.locator('.survey-pdfjs-page-div[data-page-number="6"]');
     await expect(pageDiv).toBeVisible({ timeout: 15_000 });
 
     const box = await pageDiv.boundingBox();
@@ -182,7 +182,7 @@ test.describe('pal-zoom', () => {
     console.log('Pre-zoom canvas state:', JSON.stringify(preZoom, null, 2));
 
     // Perform ctrl+scroll zoom in
-    const pageDiv = page.locator('.e-pv-page-div[data-page-number="6"]');
+    const pageDiv = page.locator('.survey-pdfjs-page-div[data-page-number="6"]');
     const box = await pageDiv.boundingBox();
     await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
     await page.keyboard.down('Control');
@@ -232,7 +232,7 @@ test.describe('pal-zoom', () => {
     await setupPage(page);
 
     // Perform ctrl+scroll zoom in
-    const pageDiv = page.locator('.e-pv-page-div[data-page-number="6"]');
+    const pageDiv = page.locator('.survey-pdfjs-page-div[data-page-number="6"]');
     const box = await pageDiv.boundingBox();
     await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
     await page.keyboard.down('Control');
@@ -548,7 +548,7 @@ test.describe('pal-zoom', () => {
     await setupPage(page);
 
     // Locate the page 6 container
-    const pageDiv = page.locator('.e-pv-page-div[data-page-number="6"]');
+    const pageDiv = page.locator('.survey-pdfjs-page-div[data-page-number="6"]');
     await expect(pageDiv).toBeVisible({ timeout: 15_000 });
     const box = await pageDiv.boundingBox();
     const centerX = box.x + box.width / 2;

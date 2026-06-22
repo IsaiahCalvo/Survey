@@ -100,8 +100,8 @@ export function resolveAnnotationAt(e) {
       // the cursor.
       const pageDiv = matchedPageDiv
         || document.querySelector(`[id$="_pageDiv_${sfIndex}"]`);
-      const pageCanvas = pageDiv?.querySelector('canvas.e-pv-page-canvas')
-        || pageDiv?.querySelector('.e-pv-page-canvas')
+      const pageCanvas = pageDiv?.querySelector('canvas.survey-pdfjs-page-canvas')
+        || pageDiv?.querySelector('.survey-pdfjs-page-canvas')
         || null;
       // Diagnostic — emit the rects we used so the next save-log can
       // be inspected directly. This is the data needed to confirm

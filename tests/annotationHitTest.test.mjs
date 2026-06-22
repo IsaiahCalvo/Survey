@@ -22,8 +22,8 @@ class MockElement {
   }
 
   querySelector(selector) {
-    if (selector.includes('canvas.e-pv-page-canvas') || selector.includes('.e-pv-page-canvas')) {
-      return this.children.find((child) => child.attrs.class === 'e-pv-page-canvas') || null;
+    if (selector.includes('canvas.survey-pdfjs-page-canvas') || selector.includes('.survey-pdfjs-page-canvas')) {
+      return this.children.find((child) => child.attrs.class === 'survey-pdfjs-page-canvas') || null;
     }
     return null;
   }
@@ -62,7 +62,7 @@ test('pan fallback checks visible SVG path hit targets across wrappers', () => {
     { left: 100, top: 100, right: 700, bottom: 900, width: 600, height: 800 }
   );
   const pageCanvas = new MockElement(
-    { class: 'e-pv-page-canvas' },
+    { class: 'survey-pdfjs-page-canvas' },
     { left: 100, top: 100, right: 700, bottom: 900, width: 600, height: 800 }
   );
   pageDiv.children.push(pageCanvas);

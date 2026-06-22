@@ -8,7 +8,7 @@ let session = null;
 test.use({ video: 'off' });
 
 async function waitForAppReady(page) {
-  await page.locator('.e-pv-viewer-container').waitFor({ state: 'visible', timeout: 60_000 });
+  await page.locator('.survey-pdfjs-viewer-container').waitFor({ state: 'visible', timeout: 60_000 });
   await page.waitForFunction(() => window.__debugBridge != null && window.pdfOverlayRecorder != null, { timeout: 30_000 });
   await page.evaluate(() => window.__debugReady.waitFor('pdfLoaded', { timeout: 30_000 }));
 }
@@ -32,7 +32,7 @@ async function setToolbarZoom(page, zoomLevel) {
 }
 
 async function viewerCenter(page) {
-  const box = await page.locator('.e-pv-viewer-container').boundingBox();
+  const box = await page.locator('.survey-pdfjs-viewer-container').boundingBox();
   expect(box, 'Syncfusion viewer box should be measurable').toBeTruthy();
   return { x: box.x + box.width / 2, y: box.y + box.height / 2 };
 }
@@ -160,7 +160,7 @@ test('pdf interaction capability baseline', async ({ page }) => {
   });
 
   await page.evaluate(() => {
-    const viewer = document.querySelector('.e-pv-viewer-container');
+    const viewer = document.querySelector('.survey-pdfjs-viewer-container');
     const normalize = (event) => {
       const rawX = Number(event.deltaX) || 0;
       const rawY = Number(event.deltaY) || 0;

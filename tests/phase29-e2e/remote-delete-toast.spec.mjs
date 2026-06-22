@@ -50,13 +50,13 @@ test('remote-delete toast surfaces when local user is interacting with deleted a
   // Both clients open the same document on page 6 (the canonical CLAUDE.md test page).
   for (const page of [pageA, pageB]) {
     await page.locator('text=Package 2 - Rev 4 -- IC.pdf').first().click({ timeout: 20000 });
-    await page.waitForSelector('.e-pv-page-container', { timeout: 20000 });
+    await page.waitForSelector('.survey-pdfjs-page-container', { timeout: 20000 });
     await page.evaluate(() => window.__navigateToPage?.(6));
   }
   await pageA.waitForTimeout(1500);
 
   // Bot A draws a stroke. The annotation will be the target of the remote delete.
-  const boxA = await pageA.locator('.e-pv-page-container').first().boundingBox();
+  const boxA = await pageA.locator('.survey-pdfjs-page-container').first().boundingBox();
   if (!boxA) {
     test.skip(true, 'page container not available — dev seed may not be reachable');
     return;

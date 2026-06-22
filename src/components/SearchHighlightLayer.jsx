@@ -110,7 +110,7 @@ const SearchHighlightLayer = memo(({
   const readLayerGeometry = () => {
     const layerNode = layerRef.current;
     const layerRect = layerNode?.getBoundingClientRect?.() || null;
-    const pageHostNode = layerNode?.closest?.('.e-pv-page-div') || null;
+    const pageHostNode = layerNode?.closest?.('.survey-pdfjs-page-div') || null;
     const pageHostRect = pageHostNode?.getBoundingClientRect?.() || null;
     const contentNode = layerNode?.closest?.('[data-pdfjs-overlay-content]') || null;
     const contentRect = contentNode?.getBoundingClientRect?.() || null;

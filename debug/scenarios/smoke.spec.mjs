@@ -38,7 +38,7 @@ test('smoke test - loads PDF, captures canvas content, creates session', async (
   await page.goto('/?testPdf=Package%202%20-%20Rev%204%20--%20IC.pdf');
 
   // ── Step 2: Wait for PDF viewer to load ──
-  await page.locator('.e-pv-viewer-container').waitFor({
+  await page.locator('.survey-pdfjs-viewer-container').waitFor({
     state: 'visible',
     timeout: 60_000,
   });

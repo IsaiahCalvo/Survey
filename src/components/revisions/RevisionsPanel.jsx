@@ -301,7 +301,7 @@ export default function RevisionsPanel({
     if (fallback?.isConnected) return fallback;
     if (!Number.isFinite(pageNumber)) return fallback?.isConnected ? fallback : null;
     const selectors = [
-      `.e-pv-page-div[data-page-number="${pageNumber}"]`,
+      `.survey-pdfjs-page-div[data-page-number="${pageNumber}"]`,
       `[data-page-number="${pageNumber}"]`,
       `[id$="_pageDiv_${pageNumber - 1}"]`,
     ];
@@ -551,7 +551,7 @@ export default function RevisionsPanel({
     const path = target.matches?.('path, line, polyline, polygon, rect, circle, ellipse')
       ? target
       : target.querySelector?.('path, line, polyline, polygon, rect, circle, ellipse');
-    const pageElement = target.closest?.('.e-pv-page-div, [data-page-number], [id*="_pageDiv_"]');
+    const pageElement = target.closest?.('.survey-pdfjs-page-div, [data-page-number], [id*="_pageDiv_"]');
     if (!path || !pageElement) return false;
     const clone = path.cloneNode(false);
     const svg = createPageSpotlightSvg(pageElement);
@@ -593,7 +593,7 @@ export default function RevisionsPanel({
   const spotlightHistoryPreview = useCallback((pageNumber, event) => {
     if (typeof document === 'undefined' || !Number.isFinite(pageNumber)) return false;
     const pageSelectors = [
-      `.e-pv-page-div[data-page-number="${pageNumber}"]`,
+      `.survey-pdfjs-page-div[data-page-number="${pageNumber}"]`,
       `[data-page-number="${pageNumber}"]`,
       `[id$="_pageDiv_${pageNumber - 1}"]`,
     ];

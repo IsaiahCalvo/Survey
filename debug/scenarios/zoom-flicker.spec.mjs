@@ -96,7 +96,7 @@ test('zoom-flicker scenario', async ({ page }) => {
 
   // ── 1. Navigate to test page (before capture init -- bridge must exist) ──
   await page.goto('/?testPdf=Package%202%20-%20Rev%204%20--%20IC.pdf');
-  await page.locator('.e-pv-viewer-container').waitFor({
+  await page.locator('.survey-pdfjs-viewer-container').waitFor({
     state: 'visible',
     timeout: 60_000,
   });
@@ -234,7 +234,7 @@ test('zoom-flicker scenario', async ({ page }) => {
       .map((node) => {
         const rect = node.getBoundingClientRect();
         const inViewport = rect.right > 0 && rect.bottom > 0 && rect.left < viewportWidth && rect.top < viewportHeight;
-        const pageNumber = Number(node.closest?.('.e-pv-page-div[data-page-number]')?.dataset?.pageNumber);
+        const pageNumber = Number(node.closest?.('.survey-pdfjs-page-div[data-page-number]')?.dataset?.pageNumber);
         return {
           pageNumber: Number.isFinite(pageNumber) ? pageNumber : null,
           inViewport,

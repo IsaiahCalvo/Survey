@@ -6,13 +6,13 @@ import { test, expect } from '@playwright/test';
 test('Cmd+Shift+Z redoes the most recently undone action', async ({ page }) => {
   await page.goto('http://localhost:5173/');
   await page.locator('text=Package 2 - Rev 4 -- IC.pdf').first().click({ timeout: 20000 });
-  await page.waitForSelector('.e-pv-page-container', { timeout: 20000 });
+  await page.waitForSelector('.survey-pdfjs-page-container', { timeout: 20000 });
 
   await page.evaluate(() => window.__navigateToPage?.(6));
   await page.waitForTimeout(800);
 
   const before = await page.locator('svg [data-anno-id]').count();
-  const pageBox = await page.locator('.e-pv-page-container').first().boundingBox();
+  const pageBox = await page.locator('.survey-pdfjs-page-container').first().boundingBox();
   if (!pageBox) throw new Error('page container bounding box not available');
   await page.mouse.move(pageBox.x + 100, pageBox.y + 100);
   await page.mouse.down();

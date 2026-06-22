@@ -752,7 +752,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     const root = contentRef.current;
     if (!root) return;
     const next = {};
-    root.querySelectorAll('.e-pv-page-div[data-page-number]').forEach((el) => {
+    root.querySelectorAll('.survey-pdfjs-page-div[data-page-number]').forEach((el) => {
       const pageNumber = Number(el.getAttribute('data-page-number'));
       if (Number.isFinite(pageNumber) && pageNumber > 0 && el.isConnected) next[pageNumber] = el;
     });
@@ -827,7 +827,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
         const known = pageContainerMapRef.current[target];
         if (known?.isConnected) return known;
         const root = contentRef.current;
-        return root?.querySelector(`.e-pv-page-div[data-page-number="${target}"]`) || null;
+        return root?.querySelector(`.survey-pdfjs-page-div[data-page-number="${target}"]`) || null;
       },
       getPageContainers: () => ({ ...pageContainerMapRef.current }),
       getViewerContainer: () => scrollerRef.current,
@@ -903,7 +903,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
               <div
                 key={i}
                 data-page-number={i + 1}
-                className="e-pv-page-div"
+                className="survey-pdfjs-page-div"
                 id={`${viewerId}_pageDiv_${i}`}
                 style={{ position: 'absolute', left, top, width: dim.w * scale, height: dim.h * scale }}
               >

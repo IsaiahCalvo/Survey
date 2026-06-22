@@ -19,7 +19,7 @@ let session = null;
 test.use({ video: 'off' });
 
 async function waitForAppReady(page) {
-  await page.locator('.e-pv-viewer-container').waitFor({
+  await page.locator('.survey-pdfjs-viewer-container').waitFor({
     state: 'visible',
     timeout: 60_000,
   });
@@ -55,7 +55,7 @@ async function setToolbarZoom(page, zoomLevel) {
 }
 
 async function viewerCenter(page) {
-  const viewer = page.locator('.e-pv-viewer-container');
+  const viewer = page.locator('.survey-pdfjs-viewer-container');
   const box = await viewer.boundingBox();
   expect(box, 'Syncfusion viewer box should be measurable').toBeTruthy();
   return {

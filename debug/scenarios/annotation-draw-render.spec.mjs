@@ -78,7 +78,7 @@ test.describe('annotation-draw-render', () => {
     // Let pdf.js + overlay hosts finish first paint.
     await page.waitForTimeout(6000);
 
-    const page1 = page.locator('.e-pv-page-div[data-page-number="1"]');
+    const page1 = page.locator('.survey-pdfjs-page-div[data-page-number="1"]');
     await expect(page1).toBeVisible({ timeout: 15_000 });
     await page1.scrollIntoViewIfNeeded();
 

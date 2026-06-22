@@ -37,13 +37,13 @@ test('1000 strokes stress run — CPU < 30%, IndexedDB grows linearly, zero echo
   // seams ship the body fills in a 1000-iteration loop:
   //
   //   await page.locator('text=Package 2 - Rev 4 -- IC.pdf').first().click();
-  //   await page.waitForSelector('.e-pv-page-container');
+  //   await page.waitForSelector('.survey-pdfjs-page-container');
   //   await page.evaluate(() => window.__navigateToPage(6));
   //
   //   const t0 = await page.evaluate(() => performance.now());
   //   const idbBefore = await page.evaluate(() => window.__yDocStats.totalUpdates ?? 0);
   //
-  //   const box = await page.locator('.e-pv-page-container').first().boundingBox();
+  //   const box = await page.locator('.survey-pdfjs-page-container').first().boundingBox();
   //   for (let i = 0; i < 1000; i++) {
   //     const x = box.x + 50 + (i % 20) * 30;
   //     const y = box.y + 50 + Math.floor(i / 20) * 30;

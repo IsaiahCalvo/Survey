@@ -42,14 +42,14 @@ test('UNDO-02 canonical: user A undo never erases user B stroke', async ({ brows
   // Both clients open the same document on the same page.
   for (const page of [pageA, pageB]) {
     await page.locator('text=Package 2 - Rev 4 -- IC.pdf').first().click({ timeout: 20000 });
-    await page.waitForSelector('.e-pv-page-container', { timeout: 20000 });
+    await page.waitForSelector('.survey-pdfjs-page-container', { timeout: 20000 });
     await page.evaluate(() => window.__navigateToPage?.(6));
   }
   await pageA.waitForTimeout(1500);
 
   // Each draws a stroke at a different x-offset.
   for (const [page, offset] of [[pageA, 100], [pageB, 320]]) {
-    const box = await page.locator('.e-pv-page-container').first().boundingBox();
+    const box = await page.locator('.survey-pdfjs-page-container').first().boundingBox();
     if (!box) {
       test.skip(true, 'page container not available — dev seed may not be reachable');
       return;

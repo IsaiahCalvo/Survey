@@ -27,7 +27,7 @@ test.describe('render-loop', () => {
     await page.goto('/?testPdf=Package%202%20-%20Rev%204%20--%20IC.pdf');
 
     // Wait for PDF viewer to load
-    await page.locator('.e-pv-viewer-container').waitFor({
+    await page.locator('.survey-pdfjs-viewer-container').waitFor({
       state: 'visible',
       timeout: 60_000,
     });
@@ -50,7 +50,7 @@ test.describe('render-loop', () => {
     await setupPage(page);
 
     // Locate the page 6 container to target wheel events
-    const pageDiv = page.locator('.e-pv-page-div[data-page-number="6"]');
+    const pageDiv = page.locator('.survey-pdfjs-page-div[data-page-number="6"]');
     await expect(pageDiv).toBeVisible({ timeout: 15_000 });
 
     // Get the bounding box to target the wheel event at center
@@ -120,8 +120,8 @@ test.describe('render-loop', () => {
     await setupPage(page);
 
     // Try multiple selectors for the zoom-in button (Syncfusion built-in or custom toolbar)
-    const zoomInBtnById = page.locator('button#e-pv-zoom-in-btn');
-    const zoomInBtnByClass = page.locator('.e-pv-zoom-in-btn');
+    const zoomInBtnById = page.locator('button#survey-pdfjs-zoom-in-btn');
+    const zoomInBtnByClass = page.locator('.survey-pdfjs-zoom-in-btn');
 
     // The app uses a custom zoom toolbar. Zoom controls are grouped near the
     // zoom percentage input. The zoom-in button is the second btn-icon button
@@ -194,7 +194,7 @@ test.describe('render-loop', () => {
     await setupPage(page);
 
     // Locate the page 6 container
-    const pageDiv = page.locator('.e-pv-page-div[data-page-number="6"]');
+    const pageDiv = page.locator('.survey-pdfjs-page-div[data-page-number="6"]');
     await expect(pageDiv).toBeVisible({ timeout: 15_000 });
 
     /**

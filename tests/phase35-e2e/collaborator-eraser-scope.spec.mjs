@@ -31,7 +31,7 @@ test.describe('Phase 35 — collaborator eraser scope', () => {
   test('eraser swipe on foreign annotation has no effect', async ({ page }) => {
     await page.goto('http://localhost:5173/');
     await page.locator('text=Package 2 - Rev 4 -- IC.pdf').first().click({ timeout: 20000 });
-    await page.waitForSelector('.e-pv-page-container', { timeout: 20000 });
+    await page.waitForSelector('.survey-pdfjs-page-container', { timeout: 20000 });
     await page.evaluate(() => window.__navigateToPage?.(6));
 
     await page.evaluate(() => {
@@ -60,7 +60,7 @@ test.describe('Phase 35 — collaborator eraser scope', () => {
     await page.evaluate(() => window.__phase35SelectTool?.('eraser'));
 
     // Swipe across the seeded foreign annotation.
-    const box = await page.locator('.e-pv-page-container').first().boundingBox();
+    const box = await page.locator('.survey-pdfjs-page-container').first().boundingBox();
     if (!box) throw new Error('page container not measurable');
     await page.mouse.move(box.x + 200, box.y + 240);
     await page.mouse.down();
@@ -81,7 +81,7 @@ test.describe('Phase 35 — collaborator eraser scope', () => {
   test('click on foreign annotation produces no selection chrome', async ({ page }) => {
     await page.goto('http://localhost:5173/');
     await page.locator('text=Package 2 - Rev 4 -- IC.pdf').first().click({ timeout: 20000 });
-    await page.waitForSelector('.e-pv-page-container', { timeout: 20000 });
+    await page.waitForSelector('.survey-pdfjs-page-container', { timeout: 20000 });
     await page.evaluate(() => window.__navigateToPage?.(6));
 
     await page.evaluate(() => {

@@ -200,12 +200,12 @@ const getPageImageHost = (pageNumber) => {
   if (!Number.isFinite(pageIndex) || pageIndex < 0) return null;
 
   const pageHost =
-    document.querySelector(`.e-pv-page-div[id$="_pageDiv_${pageIndex}"]`) ||
-    Array.from(document.querySelectorAll('.e-pv-page-div')).find((node) => {
+    document.querySelector(`.survey-pdfjs-page-div[id$="_pageDiv_${pageIndex}"]`) ||
+    Array.from(document.querySelectorAll('.survey-pdfjs-page-div')).find((node) => {
       const pageAttr = node.getAttribute('data-page-number') || node.getAttribute('aria-label') || '';
       return pageAttr === String(pageNumber);
     }) ||
-    Array.from(document.querySelectorAll('.e-pv-page-div'))[pageIndex] ||
+    Array.from(document.querySelectorAll('.survey-pdfjs-page-div'))[pageIndex] ||
     null;
 
   if (!pageHost) return null;

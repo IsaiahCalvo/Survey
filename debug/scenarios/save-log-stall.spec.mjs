@@ -7,7 +7,7 @@ let electronApp = null;
 let session = null;
 
 async function waitForAppReady(page) {
-  await page.locator('.e-pv-viewer-container').waitFor({
+  await page.locator('.survey-pdfjs-viewer-container').waitFor({
     state: 'visible',
     timeout: 60_000,
   });

@@ -50,7 +50,7 @@ function parseReplayEvents() {
 }
 
 async function waitForAppReady(page) {
-  await page.locator('.e-pv-viewer-container').waitFor({
+  await page.locator('.survey-pdfjs-viewer-container').waitFor({
     state: 'visible',
     timeout: 60_000,
   });
@@ -65,7 +65,7 @@ async function waitForAppReady(page) {
 
 async function dispatchWheel(page, event) {
   await page.evaluate(({ deltaX, deltaY, zoom }) => {
-    const viewer = document.querySelector('.e-pv-viewer-container');
+    const viewer = document.querySelector('.survey-pdfjs-viewer-container');
     const rect = viewer?.getBoundingClientRect?.();
     if (!viewer || !rect) return;
     const clientX = rect.left + rect.width / 2;

@@ -69,7 +69,7 @@ export default function App() {
         return {
           url: window.location?.href || null,
           appOwnedOverlayRootCount: query('[data-betasafe-app-owned-overlay-root]').length,
-          pdfjsPageDivCount: query('.e-pv-page-div, [id*="_pageDiv_"]').length,
+          pdfjsPageDivCount: query('.survey-pdfjs-page-div, [id*="_pageDiv_"]').length,
           overlayCount: overlays.length,
           overlays: overlays.slice(0, 12).map((element) => {
             const rect = element.getBoundingClientRect();

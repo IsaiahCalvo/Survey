@@ -54,7 +54,7 @@ test.describe('Phase 35 — cleanup-residue banner one-shot per document', () =>
     });
 
     await page.locator('text=Package 2 - Rev 4 -- IC.pdf').first().click({ timeout: 20000 });
-    await page.waitForSelector('.e-pv-page-container', { timeout: 20000 });
+    await page.waitForSelector('.survey-pdfjs-page-container', { timeout: 20000 });
 
     // Banner must surface with the new sync_residue_cleanup code.
     const banner = page
@@ -79,7 +79,7 @@ test.describe('Phase 35 — cleanup-residue banner one-shot per document', () =>
 
     // Reload — banner must NOT reappear (sticky-per-document dismissal).
     await page.reload();
-    await page.waitForSelector('.e-pv-page-container', { timeout: 20000 });
+    await page.waitForSelector('.survey-pdfjs-page-container', { timeout: 20000 });
     await page.waitForTimeout(2000);
     await expect(
       page
@@ -96,7 +96,7 @@ test.describe('Phase 35 — cleanup-residue banner one-shot per document', () =>
     });
 
     await page.locator('text=Package 2 - Rev 4 -- IC.pdf').first().click({ timeout: 20000 });
-    await page.waitForSelector('.e-pv-page-container', { timeout: 20000 });
+    await page.waitForSelector('.survey-pdfjs-page-container', { timeout: 20000 });
     await page.waitForTimeout(2000);
 
     await expect(

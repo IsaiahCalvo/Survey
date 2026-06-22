@@ -13,7 +13,7 @@ test.describe('Readiness Signals (INST-03)', () => {
 
   test('waitFor ready resolves after PDF load and annotation mount', async ({ page }) => {
     await page.goto('/?testPdf=Package%202%20-%20Rev%204%20--%20IC.pdf');
-    await page.locator('.e-pv-viewer-container').waitFor({ state: 'visible', timeout: 60_000 });
+    await page.locator('.survey-pdfjs-viewer-container').waitFor({ state: 'visible', timeout: 60_000 });
 
     // Wait for bridge availability
     await page.waitForFunction(() => window.__debugReady != null, { timeout: 30_000 });
@@ -42,7 +42,7 @@ test.describe('Readiness Signals (INST-03)', () => {
 
   test('waitFor annotationsMounted with page target resolves', async ({ page }) => {
     await page.goto('/?testPdf=Package%202%20-%20Rev%204%20--%20IC.pdf');
-    await page.locator('.e-pv-viewer-container').waitFor({ state: 'visible', timeout: 60_000 });
+    await page.locator('.survey-pdfjs-viewer-container').waitFor({ state: 'visible', timeout: 60_000 });
     await page.waitForFunction(() => window.__debugReady != null, { timeout: 30_000 });
 
     // Navigate to page 6
@@ -63,7 +63,7 @@ test.describe('Readiness Signals (INST-03)', () => {
 
   test('waitFor rejects on timeout with descriptive state', async ({ page }) => {
     await page.goto('/?testPdf=Package%202%20-%20Rev%204%20--%20IC.pdf');
-    await page.locator('.e-pv-viewer-container').waitFor({ state: 'visible', timeout: 60_000 });
+    await page.locator('.survey-pdfjs-viewer-container').waitFor({ state: 'visible', timeout: 60_000 });
     await page.waitForFunction(() => window.__debugReady != null, { timeout: 30_000 });
 
     // Use page 99 which doesn't exist -- should always timeout

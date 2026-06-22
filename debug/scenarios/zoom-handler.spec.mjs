@@ -43,7 +43,7 @@ test.describe('zoom-handler', () => {
     await page.goto('/?testPdf=Package%202%20-%20Rev%204%20--%20IC.pdf');
 
     // Wait for PDF viewer to load
-    await page.locator('.e-pv-viewer-container').waitFor({
+    await page.locator('.survey-pdfjs-viewer-container').waitFor({
       state: 'visible',
       timeout: 60_000,
     });
@@ -66,7 +66,7 @@ test.describe('zoom-handler', () => {
     await setupPage(page);
 
     // Locate the page 6 container to target wheel events
-    const pageDiv = page.locator('.e-pv-page-div[data-page-number="6"]');
+    const pageDiv = page.locator('.survey-pdfjs-page-div[data-page-number="6"]');
     await expect(pageDiv).toBeVisible({ timeout: 15_000 });
 
     // Get the bounding box to target the wheel event
@@ -315,7 +315,7 @@ test.describe('zoom-handler', () => {
     await setupPage(page);
 
     // Locate the page 6 container
-    const pageDiv = page.locator('.e-pv-page-div[data-page-number="6"]');
+    const pageDiv = page.locator('.survey-pdfjs-page-div[data-page-number="6"]');
     await expect(pageDiv).toBeVisible({ timeout: 15_000 });
 
     const box = await pageDiv.boundingBox();

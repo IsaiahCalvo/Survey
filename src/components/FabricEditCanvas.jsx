@@ -1695,7 +1695,7 @@ const FabricEditCanvas = memo(({
       // canvas is fully initialized with correct dimensions + outline. This eliminates
       // multi-frame transition flicker (empty container → resized container with outline).
       // Cursor continuity during the hidden period is maintained by injected CSS in App.jsx
-      // (useLayoutEffect sets .e-pv-page-div { cursor: text } for text editing).
+      // (useLayoutEffect sets .survey-pdfjs-page-div { cursor: text } for text editing).
       if (editType === 'callout') {
         container.style.visibility = 'visible';
       } else {

@@ -15,14 +15,14 @@ import { test, expect } from '@playwright/test';
 test('Cmd+Z of action on different page jumps view to that page first', async ({ page }) => {
   await page.goto('http://localhost:5173/');
   await page.locator('text=Package 2 - Rev 4 -- IC.pdf').first().click({ timeout: 20000 });
-  await page.waitForSelector('.e-pv-page-container', { timeout: 20000 });
+  await page.waitForSelector('.survey-pdfjs-page-container', { timeout: 20000 });
 
   // Navigate to page 6 via the test seam.
   await page.evaluate(() => window.__navigateToPage?.(6));
   await page.waitForTimeout(800);
 
   // Draw a stroke on page 6.
-  const box6 = await page.locator('.e-pv-page-container').first().boundingBox();
+  const box6 = await page.locator('.survey-pdfjs-page-container').first().boundingBox();
   if (!box6) throw new Error('page container not available');
   await page.mouse.move(box6.x + 100, box6.y + 100);
   await page.mouse.down();

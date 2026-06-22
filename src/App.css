@@ -439,6 +439,6 @@ screen and (min-resolution: 192dpi) {
 
 /* A Pdfjs page can briefly keep its spinner visible after the PDF pixels
    are already painted. Hide that stale spinner so revisits do not look blocked. */
-.e-pv-page-div:has(img[id*="_tileimg_"], img[id*="_pageCanvas_"], canvas[id*="_pageCanvas_"], .e-pv-page-canvas, .e-pv-text-layer, .e-pv-image-canvas) .e-spinner-pane:not(.e-spin-hide) {
+.survey-pdfjs-page-div:has(img[id*="_tileimg_"], img[id*="_pageCanvas_"], canvas[id*="_pageCanvas_"], .survey-pdfjs-page-canvas, .survey-pdfjs-text-layer, .survey-pdfjs-image-canvas) .survey-pdfjs-spinner-pane:not(.survey-pdfjs-spin-hide) {
   display: none !important;
 }

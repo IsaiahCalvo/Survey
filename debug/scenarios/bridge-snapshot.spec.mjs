@@ -13,7 +13,7 @@ test.describe('Debug Bridge Snapshot (INST-01, INST-02, INST-05, INST-06)', () =
   test.beforeEach(async ({ page }) => {
     // Navigate to dev test route and wait for PDF viewer
     await page.goto('/?testPdf=Package%202%20-%20Rev%204%20--%20IC.pdf');
-    await page.locator('.e-pv-viewer-container').waitFor({ state: 'visible', timeout: 60_000 });
+    await page.locator('.survey-pdfjs-viewer-container').waitFor({ state: 'visible', timeout: 60_000 });
 
     // Wait for debug bridge to be available
     await page.waitForFunction(() => window.__debugBridge != null, { timeout: 30_000 });

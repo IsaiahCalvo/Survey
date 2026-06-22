@@ -2,7 +2,7 @@
  * Overlay Attachment Foundation -- OVLY-01 verification.
  *
  * Proves overlay divs are:
- * 1. Direct children of Syncfusion e-pv-page-div elements
+ * 1. Direct children of Syncfusion survey-pdfjs-page-div elements
  * 2. Styled with position:absolute, width:100%, height:100%, pointer-events:none, z-index:20
  * 3. Marked with data-overlay-page attribute matching the page number
  * 4. Not interfering with existing annotation rendering
@@ -17,7 +17,7 @@ test.describe('overlay-attachment', () => {
     await page.goto('/?testPdf=Package%202%20-%20Rev%204%20--%20IC.pdf');
 
     // Step 2: Wait for PDF viewer to load
-    await page.locator('.e-pv-viewer-container').waitFor({
+    await page.locator('.survey-pdfjs-viewer-container').waitFor({
       state: 'visible',
       timeout: 60_000,
     });
@@ -35,7 +35,7 @@ test.describe('overlay-attachment', () => {
     // Wait for page change + overlay attachment
     await page.waitForTimeout(5000);
 
-    // Step 4: Verify overlay divs exist as direct children of e-pv-page-div
+    // Step 4: Verify overlay divs exist as direct children of survey-pdfjs-page-div
     const overlayResults = await page.evaluate(() => {
       const overlayDivs = document.querySelectorAll('[data-overlay-page]');
       if (overlayDivs.length === 0) {
@@ -48,7 +48,7 @@ test.describe('overlay-attachment', () => {
       overlayDivs.forEach(div => {
         const pageNum = div.getAttribute('data-overlay-page');
         const parent = div.parentElement;
-        const isDirectChild = parent?.classList?.contains('e-pv-page-div');
+        const isDirectChild = parent?.classList?.contains('survey-pdfjs-page-div');
         const parentPageNum = parent?.getAttribute?.('data-page-number');
         const style = div.style;
 
@@ -71,7 +71,7 @@ test.describe('overlay-attachment', () => {
 
         // Validate each overlay div
         if (!isDirectChild) {
-          errors.push(`Page ${pageNum}: not a direct child of e-pv-page-div (parent class: ${parent?.className})`);
+          errors.push(`Page ${pageNum}: not a direct child of survey-pdfjs-page-div (parent class: ${parent?.className})`);
         }
         if (pageNum !== parentPageNum) {
           errors.push(`Page ${pageNum}: data-overlay-page (${pageNum}) does not match parent data-page-number (${parentPageNum})`);
@@ -111,7 +111,7 @@ test.describe('overlay-attachment', () => {
 
     // Verify every detected overlay div passes all checks
     for (const p of overlayResults.pages) {
-      expect(p.isDirectChild, `Page ${p.pageNumber} overlay must be direct child of e-pv-page-div`).toBe(true);
+      expect(p.isDirectChild, `Page ${p.pageNumber} overlay must be direct child of survey-pdfjs-page-div`).toBe(true);
       expect(p.pageNumbersMatch, `Page ${p.pageNumber} overlay data-overlay-page must match parent data-page-number`).toBe(true);
       expect(p.position, `Page ${p.pageNumber} overlay position`).toBe('absolute');
       expect(p.width, `Page ${p.pageNumber} overlay width`).toBe('100%');
@@ -126,7 +126,7 @@ test.describe('overlay-attachment', () => {
     await page.goto('/?testPdf=Package%202%20-%20Rev%204%20--%20IC.pdf');
 
     // Step 2: Wait for PDF viewer to load
-    await page.locator('.e-pv-viewer-container').waitFor({
+    await page.locator('.survey-pdfjs-viewer-container').waitFor({
       state: 'visible',
       timeout: 60_000,
     });

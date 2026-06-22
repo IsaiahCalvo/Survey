@@ -50,14 +50,14 @@ test('remote collaborator opens edit canvas → local screen shows per-user-colo
   // Both clients open the same document on page 6.
   for (const page of [pageA, pageB]) {
     await page.locator('text=Package 2 - Rev 4 -- IC.pdf').first().click({ timeout: 20000 });
-    await page.waitForSelector('.e-pv-page-container', { timeout: 20000 });
+    await page.waitForSelector('.survey-pdfjs-page-container', { timeout: 20000 });
     await page.evaluate(() => window.__navigateToPage?.(6));
   }
   await pageA.waitForTimeout(1500);
 
   // Bot A draws an annotation that B will edit. The outline is what we want to
   // observe back on A's screen after B opens edit canvas.
-  const boxA = await pageA.locator('.e-pv-page-container').first().boundingBox();
+  const boxA = await pageA.locator('.survey-pdfjs-page-container').first().boundingBox();
   if (!boxA) {
     test.skip(true, 'page container not available — dev seed may not be reachable');
     return;
