@@ -1001,7 +1001,7 @@ function toRelativeFabricPoints(points) {
 
 function extractAnnotationDashArray(annotation) {
   // Per PDF spec (ISO 32000-2 §12.5.4), the /D dash array is only meaningful
-  // when /S is /D. Upstream parsers (PDF.js, Syncfusion) sometimes surface a
+  // when /S is /D. Upstream parsers (PDF.js, Pdfjs) sometimes surface a
   // leftover [3] on borderStyle.dash / borderDashArray for SOLID lines too
   // (confirmed on SE-011 Security Shop Drawing), which previously produced
   // spurious dashed rendering in FabricEraserCanvas and FabricEditCanvas.

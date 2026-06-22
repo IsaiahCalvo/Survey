@@ -36,7 +36,7 @@ const VIEWER_DIR = path.posix.dirname(VIEWER); // 'src'
 
 // --- CONFIG: which helpers go where -----------------------------------------
 const CONFIG = [
-  { module: 'src/utils/regionGeometry.js', header: 'Geometry / page-resolution helpers for the viewer (page distance sort, region-area checks, DOM page-element + bounds-center math). Lifted verbatim from PDFViewer; all capture-free.', names: ['sortSyncfusionPagesByDistance', 'hasValidRegionAreas', 'resolvePageContentElement', 'getBoundsCenter'] },
+  { module: 'src/utils/regionGeometry.js', header: 'Geometry / page-resolution helpers for the viewer (page distance sort, region-area checks, DOM page-element + bounds-center math). Lifted verbatim from PDFViewer; all capture-free.', names: ['sortPdfjsPagesByDistance', 'hasValidRegionAreas', 'resolvePageContentElement', 'getBoundsCenter'] },
   { module: 'src/utils/annotationData.js', header: 'Annotation data helpers — color patch composition + Y.Map → Fabric annotation materialization. Lifted verbatim from PDFViewer; all capture-free.', names: ['composeColorForPatch', 'materializeFabricAnnotationFromYMap'] },
   { module: 'src/utils/bookmarkOutline.js', header: 'Bookmark / PDF outline helpers — id generation + outline page-number resolution. Lifted verbatim from PDFViewer; all capture-free.', names: ['generateBookmarkId', 'resolvePdfOutlinePageNumber'] },
   { module: 'src/utils/counterGeometry.js', header: 'Counter Survey Marker geometry helpers — render geometry + drag-preview cleanup. Lifted verbatim from PDFViewer; all capture-free.', names: ['getCounterRenderGeometry', 'removeCounterDragPreview'] },

@@ -1,8 +1,8 @@
 // ============================================================================
 // FEATURE SPIKE — THROWAWAY. Renderer-Ownership: prove the pdf.js renderer can
-// stand in for everything Syncfusion still does (text-related), before the cutover.
+// stand in for everything Pdfjs still does (text-related), before the cutover.
 // ============================================================================
-// Slim surface to troubleshoot the features Syncfusion currently owns:
+// Slim surface to troubleshoot the features Pdfjs currently owns:
 //   • BOOKMARKS — detected from the PDF's own outline via pdf.js (nested / grouped /
 //     nested-group), shown in a panel that matches the real app's tree model
 //     (folders + bookmarks, depth-indented). Click → jump to the page.

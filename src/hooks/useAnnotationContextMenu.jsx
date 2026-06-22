@@ -87,9 +87,9 @@ export function useAnnotationContextMenu() {
 
   // Dismiss the annotation context menu on outside click or Escape.
   // UX: capture phase + data-annotation-context-menu marker check. Capture
-  // fires BEFORE any descendant's stopPropagation (e.g. Syncfusion's own
+  // fires BEFORE any descendant's stopPropagation (e.g. Pdfjs's own
   // click handlers on its text/annotation layers), which is why the earlier
-  // bubble-phase listener silently dropped clicks on Syncfusion surfaces.
+  // bubble-phase listener silently dropped clicks on Pdfjs surfaces.
   // Marker check replaces the menu-div's own onMouseDown stopPropagation
   // so the logic lives in one place: "is the click target inside the menu?"
   useEffect(() => {
@@ -124,7 +124,7 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
   if (!annotationContextMenu) return null;
   const {
     pasteAnnotationAt,
-    syncfusionViewerRef,
+    pdfjsViewerRef,
     selectedNativeTextMarkupRef,
     setHasUnsavedAnnotations,
     onUnsavedAnnotationsChange,
@@ -174,7 +174,7 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
     if (ctx.kind === 'textMarkup') {
       items = [
         item('Delete', 'delete', () => {
-          const deleted = syncfusionViewerRef.current?.deleteSelectedTextMarkupAnnotation?.();
+          const deleted = pdfjsViewerRef.current?.deleteSelectedTextMarkupAnnotation?.();
           if (!deleted) return;
           selectedNativeTextMarkupRef.current = null;
           setHasUnsavedAnnotations(true);
@@ -447,7 +447,7 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
 
           // Resolve the bounding box we want to keep the menu inside of.
           // First preference: the PDF page wrapper for ctx.pageNumber.
-          // Fallback: the Syncfusion page div at the same index. Fallback
+          // Fallback: the Pdfjs page div at the same index. Fallback
           // of fallback: the viewport.
           let bounds = null;
           if (ctx.pageNumber != null) {
@@ -455,7 +455,7 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
               document.querySelector(`[data-diag-svg-wrapper="${ctx.pageNumber}"]`)
               || document.querySelector(`[data-pal-root="${ctx.pageNumber}"]`);
             if (pageEl) {
-              // Walk up to the syncfusion page div so the bounds match
+              // Walk up to the pdfjs page div so the bounds match
               // what the user visually sees as "the page".
               const pageDiv = pageEl.closest('.e-pv-page-div') || pageEl;
               const r = pageDiv.getBoundingClientRect();

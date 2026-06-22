@@ -1,6 +1,6 @@
 // Geometry / page-resolution helpers for the viewer (page distance sort, region-area checks, DOM page-element + bounds-center math). Lifted verbatim from PDFViewer; all capture-free.
 
-export function sortSyncfusionPagesByDistance(pages, originPage) {
+export function sortPdfjsPagesByDistance(pages, originPage) {
   return [...pages]
     .filter((pageNumber) => Number.isFinite(pageNumber) && pageNumber > 0)
     .sort((left, right) => {
@@ -30,8 +30,8 @@ export function resolvePageContentElement(pageContainerNode) {
       return pageContainerNode;
     }
 
-    const syncfusionPageCanvas = pageContainerNode.querySelector('.e-pv-page-canvas');
-    if (syncfusionPageCanvas) return syncfusionPageCanvas;
+    const pdfjsPageCanvas = pageContainerNode.querySelector('.e-pv-page-canvas');
+    if (pdfjsPageCanvas) return pdfjsPageCanvas;
 
     const canvasNodes = Array.from(pageContainerNode.querySelectorAll('canvas'));
     if (canvasNodes.length === 0) return pageContainerNode;

@@ -2,7 +2,7 @@
  * PageAnnotationLayer.jsx (PAL) — the per-page Fabric.js canvas overlay (~10k lines).
  *
  * Mounted once per visible PDF page. Owns the Fabric canvas that draws and edits
- * annotations on top of the Syncfusion page div: pen/eraser/shape/callout/counter
+ * annotations on top of the Pdfjs page div: pen/eraser/shape/callout/counter
  * tooling, hit-testing, context menus, and the commit-up path via onSaveAnnotations.
  * HIGH-RISK / load-bearing — touch only when the task requires it, keep diffs minimal,
  * and run `npm test` after. Canvas sizing MUST be container-aware (measure
@@ -8082,7 +8082,7 @@ const PageAnnotationLayer = memo(({
   // Container-aware sizing: instead of computing canvas size as width*scale
   // (which assumes 1:1 CSS pixel mapping), we measure the actual parent
   // container and derive the effective scale from it. This accounts for
-  // Electron/browser zoom, DPR mismatches, and Syncfusion rendering quirks.
+  // Electron/browser zoom, DPR mismatches, and Pdfjs rendering quirks.
   useEffect(() => {
     if (!fabricRef.current || !width || !height) return;
 
@@ -8092,7 +8092,7 @@ const PageAnnotationLayer = memo(({
 
     // Measure actual container to derive effective dimensions.
     // The canvas wrapper sits inside the overlay content div, which sits
-    // inside the overlay div (100% x 100% of the Syncfusion page div).
+    // inside the overlay div (100% x 100% of the Pdfjs page div).
     const containerEl = canvas.wrapperEl?.parentElement;
     let effectiveScale = scale;
     if (containerEl) {
@@ -9165,7 +9165,7 @@ const PageAnnotationLayer = memo(({
   // contextMenuBridge module-level registry. The document-level listener in
   // src/utils/contextMenuDiagnostics.js routes each contextmenu event to the
   // correct PAL by discovering pageNumber from the event path or
-  // elementsFromPoint (Syncfusion's _pageDiv_N id, or our own data-pal-root /
+  // elementsFromPoint (Pdfjs's _pageDiv_N id, or our own data-pal-root /
   // data-diag-svg-wrapper attrs). This avoids the need for a JSX onContextMenu
   // handler on PAL — right-click targets are in sibling DOM subtrees so JSX
   // would never see them. Ctrl+click on Mac is already a native contextmenu

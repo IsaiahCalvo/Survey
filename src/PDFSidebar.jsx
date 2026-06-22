@@ -183,7 +183,7 @@ const PDFSidebar = React.forwardRef(({
     { id: 'pages', label: 'Pages', icon: 'pages' },
     { id: 'search', label: 'Search Text', icon: 'search' },
     { id: 'bookmarks', label: 'Bookmarks', icon: 'bookmark' },
-    { id: 'spaces', label: 'Spaces', icon: 'folder' }
+    { id: 'spaces', label: 'Spaces', icon: 'layers' }
   ];
 
   const openHistoryPanel = useCallback(() => {

@@ -18,7 +18,7 @@ export function resolveAnnotationAt(e) {
   let calloutId = null;
   let isCounter = false;
   // 2026-04-25 — Track the EXACT pageDiv element the click traversed
-  // through (not just the page number). The Syncfusion sidebar
+  // through (not just the page number). The Pdfjs sidebar
   // thumbnails share the same `_pageDiv_N` id pattern as the main
   // viewer pages, so re-querying by id later picks up the wrong
   // element. Saving the actual hit element keeps subsequent
@@ -44,7 +44,7 @@ export function resolveAnnotationAt(e) {
     if (pageNumber == null && el.id) {
       const m = String(el.id).match(/_pageDiv_(\d+)$/);
       if (m) {
-        pageNumber = Number(m[1]) + 1; // Syncfusion is 0-indexed
+        pageNumber = Number(m[1]) + 1; // Pdfjs is 0-indexed
         matchedPageDiv = el;
       }
     }
@@ -75,13 +75,13 @@ export function resolveAnnotationAt(e) {
   }
 
   // 2026-04-25 — Reject pageNumber matches that came purely from a
-  // Syncfusion `_pageDiv_N` id when the cursor isn't actually within
-  // the rendered page rectangle. Since each of Syncfusion's inner
+  // Pdfjs `_pageDiv_N` id when the cursor isn't actually within
+  // the rendered page rectangle. Since each of Pdfjs's inner
   // elements (page-canvas, annotation-canvas, text-layer) may all
   // extend past the visible page (CSS-stretched to the full
   // container), we can't trust class-based hit-testing alone. Use
   // the actual drawing-buffer dimensions of the page-canvas (the
-  // canvas `width`/`height` attributes set by Syncfusion to the
+  // canvas `width`/`height` attributes set by Pdfjs to the
   // rendered page size in pixels) and check the cursor's offset
   // within the canvas.
   if (pageNumber != null && annotationIndex == null && !calloutId && !isCounter) {
@@ -119,7 +119,7 @@ export function resolveAnnotationAt(e) {
       // 2026-04-25 — Two reference rects we can use for the page bounds:
       // (1) the inner page-canvas's CSS rect, and (2) the pageDiv's own
       // bounding rect. The canvas rect is more accurate (it's exactly
-      // the rendered PDF surface) BUT some Syncfusion configurations
+      // the rendered PDF surface) BUT some Pdfjs configurations
       // collapse the canvas to zero CSS size while keeping its
       // intrinsic drawing buffer. When that happens, the pageDiv rect
       // is the next-best truth: the pageDiv visually wraps the page

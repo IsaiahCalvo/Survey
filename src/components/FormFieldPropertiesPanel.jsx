@@ -1,15 +1,10 @@
 /**
  * FormFieldPropertiesPanel — KAL-47
  *
- * Survey-native properties UI for PDF form fields created via the
- * Syncfusion FormDesigner API. We do NOT use Syncfusion's built-in
- * properties dialog (which lives behind `enableFormDesignerToolbar`)
- * because it conflicts with Survey's chrome.
+ * Survey-native properties UI for PDF form fields.
  *
- * Inputs come from a `selectedFormField` object that App.jsx hydrates
- * from FormDesigner's `formFieldSelect` event. Changes are applied via
- * the `onChange` callback, which in turn calls the SyncfusionPDFContainer
- * imperative `updateFormField` API.
+ * Inputs come from a `selectedFormField` object that App.jsx hydrates.
+ * Changes are applied via the `onChange` callback.
  *
  * Keep this component minimal — name / default value / required /
  * read-only / tooltip — and add field-type-specific fields only when
@@ -54,7 +49,7 @@ export default function FormFieldPropertiesPanel({
   const [readOnly, setReadOnly] = useState(false);
   const [tooltip, setTooltip] = useState('');
 
-  // Resync local state whenever the selected field changes — Syncfusion
+  // Resync local state whenever the selected field changes — Pdfjs
   // mutates the underlying model in place, so we treat the field id as the
   // identity for the form (not object identity).
   const fieldId = selectedFormField?.id || selectedFormField?.formFieldId || null;
@@ -232,4 +227,3 @@ export default function FormFieldPropertiesPanel({
     </div>
   );
 }
-

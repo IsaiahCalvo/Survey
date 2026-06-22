@@ -1,8 +1,8 @@
 /**
  * 2026-04-25 — Pan-tool cursor scoping.
  *
- * Syncfusion's e-pv-page-container element spans the full viewer
- * width, and Syncfusion sets the pan-tool cursor (grab/grabbing) on
+ * Pdfjs's e-pv-page-container element spans the full viewer
+ * width, and Pdfjs sets the pan-tool cursor (grab/grabbing) on
  * that container. The result is that the hand cursor appears not
  * only over the actual rendered page, but also over the gray
  * padding to the left and right of the page. Visually that makes
@@ -11,13 +11,13 @@
  *
  * This module installs a mousemove listener on the page-container
  * (once it exists in the DOM) that:
- *   - lets Syncfusion's own cursor apply when the cursor is over
- *     a Syncfusion `_pageDiv_N` element (the actual page surface);
+ *   - lets Pdfjs's own cursor apply when the cursor is over
+ *     a Pdfjs `_pageDiv_N` element (the actual page surface);
  *   - forces cursor: default on the container when the cursor is
  *     anywhere else (the gray gutters).
  *
  * The override is applied via inline style so it wins against
- * Syncfusion's CSS without needing !important, and it auto-clears
+ * Pdfjs's CSS without needing !important, and it auto-clears
  * when the cursor returns to a page so we never block the natural
  * cursor changes in other tool modes (select, eraser, etc.).
  */
@@ -39,7 +39,7 @@
   const isOnPage = (e) => {
     const target = e?.target;
     if (!target || typeof target.closest !== 'function') return false;
-    // 2026-04-25 — Syncfusion's annotation-canvas / text-layer
+    // 2026-04-25 — Pdfjs's annotation-canvas / text-layer
     // children inside each pageDiv are CSS-stretched to the full
     // viewer width, so checking only `closest('[id*="_pageDiv_"]')`
     // returns true even when the cursor is in the gray gutter to
@@ -71,14 +71,14 @@
       } catch { /* ignore */ }
     }
     if (onPage) {
-      // Let Syncfusion's CSS cursor apply (pan grab in pan mode,
+      // Let Pdfjs's CSS cursor apply (pan grab in pan mode,
       // crosshair in select mode, etc.). Remove our class so the
       // descendant cursors aren't forced.
       container.classList.remove('__cursor-off-page');
     } else {
       // 2026-04-25 — Force the regular pointer in the gray gutters.
       // Toggle a CSS class so the matching stylesheet rule (with
-      // !important and a `*` selector) beats Syncfusion's per-element
+      // !important and a `*` selector) beats Pdfjs's per-element
       // cursor rules across every descendant.
       container.classList.add('__cursor-off-page');
     }
@@ -99,7 +99,7 @@
     for (const c of containers) bind(c);
   };
 
-  // The viewer mounts asynchronously (Syncfusion lazy-creates the DOM
+  // The viewer mounts asynchronously (Pdfjs lazy-creates the DOM
   // after the PDF loads). Watch for the container to appear via
   // MutationObserver so we bind whenever a new viewer instance shows
   // up, including tab switches and reopen flows.

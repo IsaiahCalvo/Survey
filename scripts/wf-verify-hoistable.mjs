@@ -7,7 +7,7 @@ export const meta = {
 // 28 capture-free helpers found by scripts/find-hoistable.mjs (zero component captures).
 const CANDIDATES = [
   { name: 'buildTrackpadInteractionDebugSummaryText', start: 655, end: 687, wrapper: 'useCallback' },
-  { name: 'sortSyncfusionPagesByDistance', start: 1133, end: 1140, wrapper: 'useCallback' },
+  { name: 'sortPdfjsPagesByDistance', start: 1133, end: 1140, wrapper: 'useCallback' },
   { name: 'getCounterRenderGeometry', start: 3077, end: 3094, wrapper: 'useCallback' },
   { name: 'removeCounterDragPreview', start: 3107, end: 3111, wrapper: 'useCallback' },
   { name: 'sanitizeTemplateConfig', start: 4655, end: 4659, wrapper: 'plain-fn' },
@@ -33,7 +33,7 @@ const CANDIDATES = [
   { name: 'getBoundsCenter', start: 19542, end: 19561, wrapper: 'useCallback' },
   { name: 'normalizeCanvasJsonForHistory', start: 21060, end: 21108, wrapper: 'useCallback' },
   { name: 'boundsMatch', start: 22857, end: 22865, wrapper: 'plain-fn' },
-  { name: 'handleSyncfusionTextSelectionEnd', start: 23802, end: 23805, wrapper: 'useCallback' },
+  { name: 'handlePdfjsTextSelectionEnd', start: 23802, end: 23805, wrapper: 'useCallback' },
 ]
 
 const SCHEMA = {

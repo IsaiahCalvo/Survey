@@ -14,7 +14,7 @@ const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
 // Only Supabase's public anon key + URL live here. Supabase anon keys are
 // designed to be exposed client-side (security comes from row-level-policies)
 // so this is safe to commit to the public repo. All other secrets — dev
-// auto-login credentials, GitHub log tokens, Syncfusion licenses — stay in
+// auto-login credentials, GitHub log tokens, commercial viewer licenses — stay in
 // your local .env.local and never ship via git.
 const ENV_MAIN = {
   VITE_SUPABASE_URL: 'https://cvamwtpsuvxvjdnotbeg.supabase.co',

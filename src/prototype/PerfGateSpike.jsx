@@ -1,7 +1,7 @@
 // ============================================================================
 // PERF-GATE SPIKE — THROWAWAY. Milestone "Renderer Ownership" Phase 1.
 // ============================================================================
-// THE QUESTION (the only real unknown before we rip out Syncfusion): does the
+// THE QUESTION (the only real unknown before we rip out Pdfjs): does the
 // owned pdf.js renderer hold ~60fps / <18ms worst frame during a cursor-zoom
 // sweep while a HEAVY annotation overlay (hundreds of page-space SVG shapes — the
 // same viewBox technique the real SVGAnnotationLayer uses) rides on top?

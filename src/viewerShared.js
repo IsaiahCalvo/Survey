@@ -245,7 +245,7 @@ export const isPointOnSelectDeleteOnlyTextMarkup = (obj, point, tolerance = 2) =
     && point.y <= bounds.bottom + tolerance;
 };
 
-export const getSyncfusionTextMarkupMode = (tool) => {
+export const getPdfjsTextMarkupMode = (tool) => {
   switch (tool) {
     case 'text-highlight':
       return 'SurveyMarker';
@@ -260,7 +260,7 @@ export const getSyncfusionTextMarkupMode = (tool) => {
   }
 };
 
-export const coerceSyncfusionZoomPercent = (...values) => {
+export const coercePdfjsZoomPercent = (...values) => {
   for (const value of values) {
     if (value == null) continue;
     const parsed = typeof value === 'string'
@@ -279,7 +279,7 @@ export const isSuspiciousWheelZoomPercent = (reportedPercent, trustedPercent) =>
   trustedPercent / Math.max(1, reportedPercent) >= 2
 );
 
-const SYNCFUSION_PDF_SURFACE_SELECTOR = [
+const PDFJS_PDF_SURFACE_SELECTOR = [
   'img[id*="_tileimg_"]',
   'img[id*="_pageCanvas_"]',
   'canvas[id*="_pageCanvas_"]',
@@ -288,9 +288,9 @@ const SYNCFUSION_PDF_SURFACE_SELECTOR = [
   '.e-pv-image-canvas'
 ].join(',');
 
-export const hasSyncfusionPdfSurface = (host) => !!host?.querySelector?.(SYNCFUSION_PDF_SURFACE_SELECTOR);
+export const hasPdfjsPdfSurface = (host) => !!host?.querySelector?.(PDFJS_PDF_SURFACE_SELECTOR);
 
-export const hasVisibleSyncfusionSpinner = (host) => {
+export const hasVisiblePdfjsSpinner = (host) => {
   if (!host?.querySelectorAll) return false;
   const spinners = Array.from(host.querySelectorAll([
     '.e-spinner-pane:not(.e-spin-hide)',
@@ -360,100 +360,53 @@ export const DEFAULT_SURVEY_MARKER_OPACITY = 0.4;
 export const INTERACTION_PERF_MIN_HOLD_MS = 900;
 export const INTERACTION_PERF_SCROLL_HOLD_MS = 1800;
 export const INTERACTION_PERF_DRAW_HOLD_MS = 1600;
-const SYNCFUSION_OVERLAY_PREFETCH_PAGES = 2;
-export const SYNCFUSION_OVERLAY_ROOT_MARGIN = '720px 0px';
-export const SYNCFUSION_OVERLAY_WINDOW_LINGER_MS = 260;
-export const SYNCFUSION_INTERACTION_SETTLE_MS = 1800;
-export const SYNCFUSION_INTERACTION_PROXY_OBJECT_THRESHOLD = 180;
-export const SYNCFUSION_INTERACTION_PROXY_CALLOUT_THRESHOLD = 30;
-export const SYNCFUSION_INTERACTION_PROXY_FORCE_OBJECT_THRESHOLD = 320;
-export const SYNCFUSION_INTERACTION_MAX_RESIDENT_PAGES = 12;
-export const SYNCFUSION_INTERACTION_COMMIT_MAX_PAGES_PER_FRAME = 1;
-export const SYNCFUSION_INTERACTION_COMMIT_FRAME_BUDGET_MS = 6;
-export const SYNCFUSION_INTERACTION_COMMIT_FRAME_SPACING_MS = 24;
-export const SYNCFUSION_INTERACTION_EVENT_THROTTLE_MS = 96;
-export const SYNCFUSION_INTERACTION_MARK_THROTTLE_MS = 96;
-export const SYNCFUSION_INTERACTION_VISIBLE_PAGE_REFRESH_MS = 160;
-export const SYNCFUSION_ZOOM_OVERLAY_SETTLE_MS = 1400;
-const SYNCFUSION_BASE_SCROLL_SENSITIVITY = 1.08;
-const SYNCFUSION_SCROLL_ZOOM_OUT_GAIN = 1;
-const SYNCFUSION_SCROLL_ZOOM_IN_GAIN = 0.9;
-export const SYNCFUSION_DIAGONAL_SCROLL_SENSITIVITY = 0.95;
-export const SYNCFUSION_LARGE_WHEEL_SCROLL_SENSITIVITY = 1;
-export const SYNCFUSION_SCROLL_MAX_STEP_PX = 220;
-export const SYNCFUSION_SCROLL_MIN_STEP_PX = 16;
-export const SYNCFUSION_SCROLL_FRAME_MAX_PX = 180;
-export const SYNCFUSION_WHEEL_SCROLL_BATCH_MS = 24;
+const PDFJS_OVERLAY_PREFETCH_PAGES = 2;
+export const PDFJS_OVERLAY_ROOT_MARGIN = '720px 0px';
+export const PDFJS_OVERLAY_WINDOW_LINGER_MS = 260;
+export const PDFJS_INTERACTION_SETTLE_MS = 1800;
+export const PDFJS_INTERACTION_PROXY_OBJECT_THRESHOLD = 180;
+export const PDFJS_INTERACTION_PROXY_CALLOUT_THRESHOLD = 30;
+export const PDFJS_INTERACTION_PROXY_FORCE_OBJECT_THRESHOLD = 320;
+export const PDFJS_INTERACTION_MAX_RESIDENT_PAGES = 12;
+export const PDFJS_INTERACTION_COMMIT_MAX_PAGES_PER_FRAME = 1;
+export const PDFJS_INTERACTION_COMMIT_FRAME_BUDGET_MS = 6;
+export const PDFJS_INTERACTION_COMMIT_FRAME_SPACING_MS = 24;
+export const PDFJS_INTERACTION_EVENT_THROTTLE_MS = 96;
+export const PDFJS_INTERACTION_MARK_THROTTLE_MS = 96;
+export const PDFJS_INTERACTION_VISIBLE_PAGE_REFRESH_MS = 160;
+export const PDFJS_ZOOM_OVERLAY_SETTLE_MS = 1400;
+const PDFJS_BASE_SCROLL_SENSITIVITY = 1.08;
+const PDFJS_SCROLL_ZOOM_OUT_GAIN = 1;
+const PDFJS_SCROLL_ZOOM_IN_GAIN = 0.9;
+export const PDFJS_DIAGONAL_SCROLL_SENSITIVITY = 0.95;
+export const PDFJS_LARGE_WHEEL_SCROLL_SENSITIVITY = 1;
+export const PDFJS_SCROLL_MAX_STEP_PX = 220;
+export const PDFJS_SCROLL_MIN_STEP_PX = 16;
+export const PDFJS_SCROLL_FRAME_MAX_PX = 180;
+export const PDFJS_WHEEL_SCROLL_BATCH_MS = 24;
 // Trackpad pinch/wheel zoom sensitivity. Keep this centralized so both
-// Syncfusion wheel paths stay cursor-anchored and feel equally responsive.
-const SYNCFUSION_WHEEL_ZOOM_EXPONENT = 0.004;
-const SYNCFUSION_WHEEL_ZOOM_MAX_STEP_PERCENT = 24;
-export const SYNCFUSION_WHEEL_ZOOM_BATCH_MS = 3;
-export const SYNCFUSION_WHEEL_ZOOM_STALE_DROP_MS = 260;
-export const SYNCFUSION_ZOOM_SNAPSHOT_VIEWPORT_MARGIN_PX = 420;
+// Pdfjs wheel paths stay cursor-anchored and feel equally responsive.
+const PDFJS_WHEEL_ZOOM_EXPONENT = 0.004;
+const PDFJS_WHEEL_ZOOM_MAX_STEP_PERCENT = 24;
+export const PDFJS_WHEEL_ZOOM_BATCH_MS = 3;
+export const PDFJS_WHEEL_ZOOM_STALE_DROP_MS = 260;
+export const PDFJS_ZOOM_SNAPSHOT_VIEWPORT_MARGIN_PX = 420;
 export const TOOLBAR_ZOOM_STEP_FACTOR = 1.25;
-export const SYNCFUSION_INTERACTION_FORCE_PROXY_ALL_PAGES = true;
+export const PDFJS_INTERACTION_FORCE_PROXY_ALL_PAGES = true;
 export const ZOOM_ONLY_INTERACTION_REASONS = new Set([
-  'wheel-zoom', 'syncfusion-wheel-zoom', 'syncfusion-zoom-change', 'overlay-wheel-zoom'
+  'wheel-zoom', 'pdfjs-wheel-zoom', 'pdfjs-zoom-change', 'overlay-wheel-zoom'
 ]);
-export const SYNCFUSION_SCROLL_DELAY_MS = 8;
+export const PDFJS_SCROLL_DELAY_MS = 8;
 
-// Phase 37 (pdf.js cutover) — PDF engine selector. This chooses WHICH page-
-// drawing engine mounts: Syncfusion today, the owned pdf.js renderer later.
-// It is deliberately SEPARATE from the in-PDFViewer `useSyncfusionRenderer`
-// flag, which gates overlay/zoom *behavior*, not engine mounting — do not
-// conflate the two. Defaults to Syncfusion; the default flips only after the
-// pdf.js engine passes the parity checklist. A dev-only console override
-// (`window.__DEV_OVERRIDE_PDF_VIEWER_ENGINE = 'pdfjs' | 'syncfusion'`) lets a
-// developer preview the other engine without a rebuild.
-export const PDF_VIEWER_ENGINE_SYNCFUSION = 'syncfusion';
-export const PDF_VIEWER_ENGINE_PDFJS = 'pdfjs';
-// CUTOVER 2026-06-03: the owned pdf.js engine is now the DEFAULT. Glued-zoom
-// (overlays ride the engine's transformed content node — verified live: overlay
-// rect tracks the page canvas 1:1 at rest, mid-gesture, and post-settle, no
-// double-scale), fast snapshot open, and full marking render all confirmed on a
-// real 99-page / 1,776-mark survey. Syncfusion stays in the bundle as instant,
-// no-rebuild rollback: ?pdfEngine=syncfusion, window.__DEV_OVERRIDE_PDF_VIEWER_ENGINE,
-// or the Cmd/Ctrl+Shift+E toggle all outrank this default. Physical removal of
-// Syncfusion is a later, staged release — not part of this flip.
-export const PDF_VIEWER_ENGINE_DEFAULT = PDF_VIEWER_ENGINE_PDFJS;
-
-export const getPDFViewerEngine = () => {
-  if (typeof window !== 'undefined') {
-    // Dev-only URL override (?pdfEngine=pdfjs|syncfusion) — highest precedence so a
-    // preview link survives a fresh load; then the console override; else default.
-    try {
-      const fromUrl = new URLSearchParams(window.location.search).get('pdfEngine');
-      if (fromUrl === PDF_VIEWER_ENGINE_SYNCFUSION || fromUrl === PDF_VIEWER_ENGINE_PDFJS) {
-        return fromUrl;
-      }
-    } catch { /* no window.location in some environments */ }
-    const override = window.__DEV_OVERRIDE_PDF_VIEWER_ENGINE;
-    if (override === PDF_VIEWER_ENGINE_SYNCFUSION || override === PDF_VIEWER_ENGINE_PDFJS) {
-      return override;
-    }
-    // Remembered preference (set by the Cmd/Ctrl+Shift+E toggle) so the chosen
-    // engine survives reloads without a URL param. Lower precedence than the URL
-    // param + console override; the default still wins when unset. Keeps
-    // Syncfusion as the safe fallback per the migration plan.
-    try {
-      const stored = window.localStorage?.getItem('pdfViewerEngine');
-      if (stored === PDF_VIEWER_ENGINE_SYNCFUSION || stored === PDF_VIEWER_ENGINE_PDFJS) {
-        return stored;
-      }
-    } catch { /* localStorage unavailable (private mode / sandbox) */ }
-  }
-  return PDF_VIEWER_ENGINE_DEFAULT;
-};
 // Keep enough PDF pages resident that revisiting nearby drawing sheets does not
-// briefly blank/rebuild the page under already-rendered annotations. Syncfusion
+// briefly blank/rebuild the page under already-rendered annotations. Pdfjs
 // removes canvases outside this initial window, which caused 1s+ page revisit
 // stalls on the Package 2 test PDF. Ten keeps the active drawing range warm
-// without making Syncfusion keep too many offscreen canvases/spinners busy.
-export const SYNCFUSION_INITIAL_RENDER_PAGES = 10;
-export const SYNCFUSION_RESTRICT_ZOOM_REQUEST_DURING_INTERACTION = true;
-const SYNCFUSION_DUAL_LAYER_ENABLED_KEY = 'syncfusion_interaction_dual_layer_enabled';
-const OVERLAY_LAG_RECORDER_AUTO_KEY = 'syncfusion_overlay_lag_auto_v2';
+// without making Pdfjs keep too many offscreen canvases/spinners busy.
+export const PDFJS_INITIAL_RENDER_PAGES = 10;
+export const PDFJS_RESTRICT_ZOOM_REQUEST_DURING_INTERACTION = true;
+const PDFJS_DUAL_LAYER_ENABLED_KEY = 'pdfjs_interaction_dual_layer_enabled';
+const OVERLAY_LAG_RECORDER_AUTO_KEY = 'pdfjs_overlay_lag_auto_v2';
 export const OVERLAY_LAG_RECORDER_AUTO_SAMPLE_PAGE_LIMIT = 6;
 export const OVERLAY_LAG_RECORDER_AUTO_MAX_SAMPLES = 12000;
 export const OVERLAY_LAG_RECORDER_AUTO_SAMPLE_INTERVAL_MS = 180;
@@ -467,7 +420,7 @@ export const TRACKPAD_INTERACTION_CONSOLE_INTERVAL_MS = 180;
 export const OVERLAY_LAG_RECORDER_WORK_CATEGORIES = [
   'annotationRestoration',
   'pageRenderCatchup',
-  'syncfusionInternals',
+  'pdfjsInternals',
   'measurementWork'
 ];
 export const OVERLAY_LAG_RECORDER_ATTRIBUTION_MIN_MS = 8;
@@ -476,25 +429,25 @@ const DOCUMENT_SYNC_STRUCTURAL_DISABLED_KEY = 'document_sync_structural_disabled
 const DOCUMENT_SYNC_STRUCTURAL_DISABLED_TTL_MS = 10 * 60 * 1000;
 const HISTORY_DEBUG_CONSOLE_KEY = 'pdf_history_debug_console';
 
-export const getSmoothSyncfusionWheelZoom = (currentZoom, wheelDelta) => {
+export const getSmoothPdfjsWheelZoom = (currentZoom, wheelDelta) => {
   const safeCurrent = Number.isFinite(Number(currentZoom)) ? Number(currentZoom) : 100;
   const safeDelta = Number.isFinite(Number(wheelDelta)) ? Number(wheelDelta) : 0;
-  const factor = Math.exp(safeDelta * SYNCFUSION_WHEEL_ZOOM_EXPONENT);
+  const factor = Math.exp(safeDelta * PDFJS_WHEEL_ZOOM_EXPONENT);
   const targetZoom = safeCurrent * factor;
   const cappedZoom = safeCurrent + Math.max(
-    -SYNCFUSION_WHEEL_ZOOM_MAX_STEP_PERCENT,
-    Math.min(SYNCFUSION_WHEEL_ZOOM_MAX_STEP_PERCENT, targetZoom - safeCurrent)
+    -PDFJS_WHEEL_ZOOM_MAX_STEP_PERCENT,
+    Math.min(PDFJS_WHEEL_ZOOM_MAX_STEP_PERCENT, targetZoom - safeCurrent)
   );
   return Math.max(10, Math.min(400, cappedZoom));
 };
 
-export const getSyncfusionZoomAwareScrollGain = (zoomScale) => {
+export const getPdfjsZoomAwareScrollGain = (zoomScale) => {
   const safeZoom = Math.max(0.5, Math.min(4, Number(zoomScale) || 1));
   const zoomT = Math.max(-1, Math.min(1, Math.log2(safeZoom)));
   const targetGain = zoomT < 0
-    ? 1 + ((SYNCFUSION_SCROLL_ZOOM_OUT_GAIN - 1) * -zoomT)
-    : 1 - ((1 - SYNCFUSION_SCROLL_ZOOM_IN_GAIN) * zoomT);
-  return SYNCFUSION_BASE_SCROLL_SENSITIVITY * targetGain;
+    ? 1 + ((PDFJS_SCROLL_ZOOM_OUT_GAIN - 1) * -zoomT)
+    : 1 - ((1 - PDFJS_SCROLL_ZOOM_IN_GAIN) * zoomT);
+  return PDFJS_BASE_SCROLL_SENSITIVITY * targetGain;
 };
 
 export const getNormalizedWheelDeltas = (event) => {
@@ -512,7 +465,7 @@ export const getNormalizedWheelDeltas = (event) => {
 
 export const clampWheelDelta = (value, maxStep) => {
   const numeric = Number(value) || 0;
-  const limit = Math.max(SYNCFUSION_SCROLL_MIN_STEP_PX, Number(maxStep) || SYNCFUSION_SCROLL_MAX_STEP_PX);
+  const limit = Math.max(PDFJS_SCROLL_MIN_STEP_PX, Number(maxStep) || PDFJS_SCROLL_MAX_STEP_PX);
   if (Math.abs(numeric) <= limit) return numeric;
   return Math.sign(numeric) * limit;
 };
@@ -938,10 +891,10 @@ export const writeDocumentSyncStructuralDisabled = (disabled) => {
   }
 };
 
-export const readSyncfusionLiveStableOverlayEnabled = () => {
+export const readPdfjsLiveStableOverlayEnabled = () => {
   if (typeof window === 'undefined') return false;
   try {
-    const raw = window.localStorage.getItem('syncfusion_live_stable_overlay');
+    const raw = window.localStorage.getItem('pdfjs_live_stable_overlay');
     if (raw === null || raw === undefined) return false;
     const normalized = String(raw).trim().toLowerCase();
     return normalized !== '0' && normalized !== 'false' && normalized !== 'off';
@@ -950,10 +903,10 @@ export const readSyncfusionLiveStableOverlayEnabled = () => {
   }
 };
 
-export const readSyncfusionDualLayerEnabled = () => {
+export const readPdfjsDualLayerEnabled = () => {
   if (typeof window === 'undefined') return false;
   try {
-    const raw = window.localStorage.getItem(SYNCFUSION_DUAL_LAYER_ENABLED_KEY);
+    const raw = window.localStorage.getItem(PDFJS_DUAL_LAYER_ENABLED_KEY);
     if (raw === null || raw === undefined) return false;
     const normalized = String(raw).trim().toLowerCase();
     return normalized !== '0' && normalized !== 'false' && normalized !== 'off';
@@ -962,10 +915,10 @@ export const readSyncfusionDualLayerEnabled = () => {
   }
 };
 
-export const writeSyncfusionDualLayerEnabled = (enabled) => {
+export const writePdfjsDualLayerEnabled = (enabled) => {
   if (typeof window === 'undefined') return;
   try {
-    window.localStorage.setItem(SYNCFUSION_DUAL_LAYER_ENABLED_KEY, enabled ? '1' : '0');
+    window.localStorage.setItem(PDFJS_DUAL_LAYER_ENABLED_KEY, enabled ? '1' : '0');
   } catch {
     // Ignore storage errors.
   }
@@ -1020,17 +973,17 @@ export const percentileOverlayRecorder = (values = [], percentile = 0.95) => {
   return sorted[index];
 };
 
-export const getSyncfusionOverlayPrefetchPages = (viewerScale) => {
+export const getPdfjsOverlayPrefetchPages = (viewerScale) => {
   const numericScale = Number(viewerScale);
   if (!Number.isFinite(numericScale) || numericScale <= 0) {
-    return SYNCFUSION_OVERLAY_PREFETCH_PAGES;
+    return PDFJS_OVERLAY_PREFETCH_PAGES;
   }
   if (numericScale >= 3) return 0;
   if (numericScale >= 2) return 1;
-  return SYNCFUSION_OVERLAY_PREFETCH_PAGES;
+  return PDFJS_OVERLAY_PREFETCH_PAGES;
 };
 
-export const measureSyncfusionPageScale = (pageNumber, pageSizes, pageContainers, fallbackScale = 1) => {
+export const measurePdfjsPageScale = (pageNumber, pageSizes, pageContainers, fallbackScale = 1) => {
   const safeFallback = Number.isFinite(fallbackScale) && fallbackScale > 0 ? fallbackScale : 1;
   if (!Number.isFinite(pageNumber)) {
     return safeFallback;
@@ -1052,7 +1005,7 @@ export const measureSyncfusionPageScale = (pageNumber, pageSizes, pageContainers
   return Math.max(0.1, Math.round(measuredScale * 100000) / 100000);
 };
 
-export const measureSyncfusionPageHostScale = (pageNumber, pageSizes, pageContainers, fallbackScale = 1) => {
+export const measurePdfjsPageHostScale = (pageNumber, pageSizes, pageContainers, fallbackScale = 1) => {
   const safeFallback = Number.isFinite(fallbackScale) && fallbackScale > 0 ? fallbackScale : 1;
   if (!Number.isFinite(pageNumber)) {
     return safeFallback;
@@ -1080,7 +1033,7 @@ export const normalizeInteractionMeasuredScale = (measuredScale, viewerScale, fa
     return safeFallback;
   }
 
-  // Guard against transient container widths during Syncfusion relayout.
+  // Guard against transient container widths during Pdfjs relayout.
   const minExpected = safeViewerScale * 0.55;
   const maxExpected = safeViewerScale * 1.8;
   if (measured < minExpected || measured > maxExpected) {
@@ -1357,7 +1310,7 @@ const normalizeOutlineLooseKey = (value) => {
 const extractSourceLeafFromBookmark = (bookmark) => {
   const sourceId = typeof bookmark?.sourceId === 'string' ? bookmark.sourceId : '';
   if (!sourceId) return '';
-  const match = sourceId.match(/^syncfusion:[^:]+:(.+)$/);
+  const match = sourceId.match(/^(?:pdfjs|syncfusion):[^:]+:(.+)$/);
   if (!match) return '';
   const pathWithOrder = match[1] || '';
   const path = pathWithOrder.replace(/#\d+$/, '');
@@ -2251,4 +2204,3 @@ export const migrateLegacySurveyMarkers = (legacySurveyMarkers, items, annotatio
 };
 
 // PDF Viewer Component with improved typography
-

@@ -386,7 +386,7 @@ const PagesPanel = ({
     try {
       let thumbnailResult = null;
 
-      // For fast thumbnails, we check if Syncfusion provided one (unlikely given previous issues, but safe optimization)
+      // For fast thumbnails, we check if Pdfjs provided one (unlikely given previous issues, but safe optimization)
       if (type === 'fast' && typeof getThumbnail === 'function') {
         // ... (existing logic for external provider if needed, mostly unused now)
       }

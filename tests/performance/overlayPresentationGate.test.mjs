@@ -16,13 +16,10 @@ test('overlay recorder samples include PDF/annotation presentation-gap metrics',
   assert.match(APP_SOURCE, /viewportPresentationGapCount: viewportPresentationGapPages\.length/);
 });
 
-test('Syncfusion overlay portals are hidden until the PDF page surface is ready', () => {
-  assert.match(APP_SOURCE, /const pagePdfReadyState = readSyncfusionPageVisitState\(pageNumber\);/);
-  assert.match(APP_SOURCE, /const pagePdfHasEverBeenReady = syncfusionPagePdfEverReadyRef\.current\.has\(pageNumber\);/);
-  // The Syncfusion overlay readiness gate stays intact for the Syncfusion engine.
-  // Under the owned pdf.js engine it is intentionally exempted (pdf.js has no
-  // Syncfusion page surface for the readiness probe to detect, and rasters fast).
-  assert.match(APP_SOURCE, /const hideOverlayUntilPdfReady = getPDFViewerEngine\(\) !== PDF_VIEWER_ENGINE_PDFJS &&\s*pageAnnotationObjects\.length > 0 &&\s*!pagePdfHasEverBeenReady &&\s*!pagePdfReadyState\.ready;/);
+test('pdf overlay portals keep readiness markers available', () => {
+  assert.match(APP_SOURCE, /const pagePdfReadyState = readPdfjsPageVisitState\(pageNumber\);/);
+  assert.match(APP_SOURCE, /const pagePdfHasEverBeenReady = pdfjsPagePdfEverReadyRef\.current\.has\(pageNumber\);/);
+  assert.match(APP_SOURCE, /const hideOverlayUntilPdfReady = false &&\s*pageAnnotationObjects\.length > 0 &&\s*!pagePdfHasEverBeenReady &&\s*!pagePdfReadyState\.ready;/);
   assert.match(APP_SOURCE, /visibility: hideOverlayUntilPdfReady \? 'hidden' : undefined/);
   assert.match(APP_SOURCE, /data-pdf-ever-ready=\{pagePdfHasEverBeenReady \? 'true' : 'false'\}/);
   assert.match(APP_SOURCE, /data-overlay-hidden-pending-pdf=\{hideOverlayUntilPdfReady \? 'true' : 'false'\}/);
@@ -35,14 +32,14 @@ test('page visit diagnostics recognize SVG annotation overlays', () => {
   assert.ok(APP_SOURCE.includes("'[data-overlay-hidden-pending-pdf=\"true\"]'"));
 });
 
-test('page visit diagnostics treat painted pages as ready even if Syncfusion spinner lingers', () => {
-  assert.match(APP_SOURCE, /const hasVisibleSyncfusionSpinner = \(host\) =>/);
-  assert.match(APP_SOURCE, /const activeSpinner = hasVisibleSyncfusionSpinner\(host\);/);
-  assert.match(APP_SOURCE, /const spinnerVisible = hasVisibleSyncfusionSpinner\(pageHost\);/);
+test('page visit diagnostics treat painted pages as ready even if a spinner lingers', () => {
+  assert.match(APP_SOURCE, /const hasVisiblePdfjsSpinner = \(host\) =>/);
+  assert.match(APP_SOURCE, /const activeSpinner = hasVisiblePdfjsSpinner\(host\);/);
+  assert.match(APP_SOURCE, /const spinnerVisible = hasVisiblePdfjsSpinner\(pageHost\);/);
   assert.match(APP_SOURCE, /ready: hasContainer && hasPdfSurface/);
 });
 
-test('cursor wheel zoom rejects suspicious Syncfusion 10 percent reports', () => {
+test('cursor wheel zoom rejects suspicious 10 percent reports', () => {
   assert.match(APP_SOURCE, /const isSuspiciousWheelZoomPercent = \(reportedPercent, trustedPercent\) =>/);
   assert.match(APP_SOURCE, /reportedPercent <= 10/);
   assert.match(APP_SOURCE, /const correctedSuspiciousZoom = isSuspiciousWheelZoomPercent\(reportedZoom, trustedReactZoom\);/);
@@ -51,12 +48,12 @@ test('cursor wheel zoom rejects suspicious Syncfusion 10 percent reports', () =>
 });
 
 test('cursor wheel zoom response stays capped below runaway speed', () => {
-  const match = APP_SOURCE.match(/const SYNCFUSION_WHEEL_ZOOM_EXPONENT = ([0-9.]+);/);
-  assert.ok(match, 'SYNCFUSION_WHEEL_ZOOM_EXPONENT constant should exist');
+  const match = APP_SOURCE.match(/const PDFJS_WHEEL_ZOOM_EXPONENT = ([0-9.]+);/);
+  assert.ok(match, 'PDFJS_WHEEL_ZOOM_EXPONENT constant should exist');
   const exponent = Number(match[1]);
   assert.ok(exponent > 0, 'wheel zoom exponent should stay positive');
   assert.ok(exponent <= 0.004, `wheel zoom exponent should not exceed 0.004, got ${exponent}`);
-  const maxStepMatch = APP_SOURCE.match(/const SYNCFUSION_WHEEL_ZOOM_MAX_STEP_PERCENT = (\d+);/);
+  const maxStepMatch = APP_SOURCE.match(/const PDFJS_WHEEL_ZOOM_MAX_STEP_PERCENT = (\d+);/);
   assert.ok(maxStepMatch, 'wheel zoom max-step cap should exist');
   const maxStepPercent = Number(maxStepMatch[1]);
   assert.ok(maxStepPercent < 25, `wheel zoom max step should stay below the recorder's big-jump threshold, got ${maxStepPercent}%`);
@@ -69,39 +66,39 @@ test('overlay recorder expected scale accounts for active zoom transform', () =>
   assert.ok(APP_SOURCE.includes('? (viewerScale / zoomOverlayBaseScale)'));
 });
 
-test('Syncfusion scroll page-request delay stays within a one-to-two-frame budget', () => {
-  const match = APP_SOURCE.match(/const SYNCFUSION_SCROLL_DELAY_MS = (\d+);/);
-  assert.ok(match, 'SYNCFUSION_SCROLL_DELAY_MS constant should exist');
+test('scroll page-request delay stays within a one-to-two-frame budget', () => {
+  const match = APP_SOURCE.match(/const PDFJS_SCROLL_DELAY_MS = (\d+);/);
+  assert.ok(match, 'PDFJS_SCROLL_DELAY_MS constant should exist');
   const delayMs = Number(match[1]);
   assert.ok(delayMs > 0, 'scroll delay should remain explicit');
   assert.ok(delayMs <= 32, `scroll delay should be <= 32ms, got ${delayMs}ms`);
 });
 
-test('Syncfusion wheel scroll gain follows a smooth zoom-aware curve', () => {
-  assert.match(APP_SOURCE, /const getSyncfusionZoomAwareScrollGain = \(zoomScale\) =>/);
+test('wheel scroll gain follows a smooth zoom-aware curve', () => {
+  assert.match(APP_SOURCE, /const getPdfjsZoomAwareScrollGain = \(zoomScale\) =>/);
   assert.match(APP_SOURCE, /Math\.log2\(safeZoom\)/);
-  assert.match(APP_SOURCE, /SYNCFUSION_SCROLL_ZOOM_OUT_GAIN/);
-  assert.match(APP_SOURCE, /SYNCFUSION_SCROLL_ZOOM_IN_GAIN/);
+  assert.match(APP_SOURCE, /PDFJS_SCROLL_ZOOM_OUT_GAIN/);
+  assert.match(APP_SOURCE, /PDFJS_SCROLL_ZOOM_IN_GAIN/);
   assert.match(APP_SOURCE, /const currentZoomForScroll = Math\.max\(1, Number\(scaleRef\.current\) \|\| 1\);/);
-  assert.match(APP_SOURCE, /const zoomAwareSensitivity = getSyncfusionZoomAwareScrollGain\(currentZoomForScroll\);/);
+  assert.match(APP_SOURCE, /const zoomAwareSensitivity = getPdfjsZoomAwareScrollGain\(currentZoomForScroll\);/);
 });
 
-test('rapid Syncfusion page-window refreshes are batched during interaction', () => {
-  assert.match(APP_SOURCE, /const SYNCFUSION_INTERACTION_VISIBLE_PAGE_REFRESH_MS = 160;/);
-  assert.match(APP_SOURCE, /const scheduleSyncfusionVisiblePagesRefresh = useCallback/);
-  assert.match(APP_SOURCE, /scheduleSyncfusionVisiblePagesRefresh\(\);/);
+test('rapid page-window refreshes are batched during interaction', () => {
+  assert.match(APP_SOURCE, /const PDFJS_INTERACTION_VISIBLE_PAGE_REFRESH_MS = 160;/);
+  assert.match(APP_SOURCE, /const schedulePdfjsVisiblePagesRefresh = useCallback/);
+  assert.match(APP_SOURCE, /schedulePdfjsVisiblePagesRefresh\(\);/);
 });
 
 test('wheel scroll applies once per frame-sized batch', () => {
-  assert.match(APP_SOURCE, /const SYNCFUSION_WHEEL_SCROLL_BATCH_MS = 24;/);
-  assert.match(APP_SOURCE, /setTimeout\(flushWheelScroll, SYNCFUSION_WHEEL_SCROLL_BATCH_MS\)/);
+  assert.match(APP_SOURCE, /const PDFJS_WHEEL_SCROLL_BATCH_MS = 24;/);
+  assert.match(APP_SOURCE, /setTimeout\(flushWheelScroll, PDFJS_WHEEL_SCROLL_BATCH_MS\)/);
 });
 
 test('overlay recorder attributes idle work categories', () => {
   assert.match(APP_SOURCE, /const OVERLAY_LAG_RECORDER_WORK_CATEGORIES = \[/);
   assert.match(APP_SOURCE, /'annotationRestoration'/);
   assert.match(APP_SOURCE, /'pageRenderCatchup'/);
-  assert.match(APP_SOURCE, /'syncfusionInternals'/);
+  assert.match(APP_SOURCE, /'pdfjsInternals'/);
   assert.match(APP_SOURCE, /'measurementWork'/);
   assert.match(APP_SOURCE, /const OVERLAY_LAG_RECORDER_ATTRIBUTION_MIN_MS = 8;/);
   assert.match(APP_SOURCE, /const OVERLAY_LAG_RECORDER_ATTRIBUTION_MIN_FRAME_RATIO = 0\.2;/);

@@ -3,8 +3,8 @@
  *
  * These exercise the small pure module that backs the Forms category
  * dropdown in App.jsx. The tests deliberately do NOT mount React or
- * Syncfusion — they pin the contract between the toolbar IDs, the
- * Syncfusion FormFieldType strings, and the `addFormField` payload shape.
+ * Pdfjs — they pin the contract between the toolbar IDs, the
+ * Pdfjs FormFieldType strings, and the `addFormField` payload shape.
  */
 
 import test from 'node:test';
@@ -45,7 +45,7 @@ test('isFormTool matches form-* ids only', () => {
   assert.equal(isFormTool(undefined), false);
 });
 
-test('getFormFieldTypeForTool maps to Syncfusion FormFieldType strings', () => {
+test('getFormFieldTypeForTool maps to Pdfjs FormFieldType strings', () => {
   assert.equal(getFormFieldTypeForTool('form-textbox'), 'Textbox');
   assert.equal(getFormFieldTypeForTool('form-checkbox'), 'CheckBox');
   assert.equal(getFormFieldTypeForTool('form-radio'), 'RadioButton');
@@ -82,7 +82,7 @@ test('sizeBoundsForType: textbox honours width/height with sensible defaults', (
   assert.deepEqual(sized, { x: 7, y: 8, width: 200, height: 30 });
 });
 
-test('buildFieldSettings(Textbox) emits all the keys Syncfusion expects', () => {
+test('buildFieldSettings(Textbox) emits all the keys Pdfjs expects', () => {
   const settings = buildFieldSettings('Textbox', {
     pageNumber: 3,
     bounds: { x: 50, y: 60, width: 220, height: 28 },
@@ -139,7 +139,7 @@ test('buildFormFieldUpdate forwards only known keys', () => {
     tooltip: 'Street address',
     isRequired: true,
     isReadOnly: false,
-    // Unknown / unsupported keys must be dropped — otherwise Syncfusion
+    // Unknown / unsupported keys must be dropped — otherwise Pdfjs
     // throws on undefined fields in `updateFormField`.
     extra: 'ignored',
     pageNumber: 5

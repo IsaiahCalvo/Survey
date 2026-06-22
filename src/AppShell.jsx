@@ -69,7 +69,7 @@ export default function App() {
         return {
           url: window.location?.href || null,
           appOwnedOverlayRootCount: query('[data-betasafe-app-owned-overlay-root]').length,
-          syncfusionPageDivCount: query('.e-pv-page-div, [id*="_pageDiv_"]').length,
+          pdfjsPageDivCount: query('.e-pv-page-div, [id*="_pageDiv_"]').length,
           overlayCount: overlays.length,
           overlays: overlays.slice(0, 12).map((element) => {
             const rect = element.getBoundingClientRect();
@@ -945,7 +945,7 @@ export default function App() {
               [ − %% + ] | [ ‹ n · N › ] | [ Fit ▾ ]. Every handler still comes
               from bottomToolbarApi (published by PDFViewer), so the zoom
               invariants — zoomGeneration, container-aware canvas sizing, the
-              Syncfusion scale-confirm pipeline — are completely untouched; only
+              Pdfjs scale-confirm pipeline — are completely untouched; only
               the buttons moved. The fit popup opens DOWNWARD now (top:100%). */}
           {bottomToolbarApi && (
             <div style={{
@@ -1343,9 +1343,9 @@ export default function App() {
               {/* KAL-47: Forms category. Opens the form-field subtoolbar
                   (Textbox / Checkbox / Radio / Signature) and routes
                   activeTool through the FORM_TOOL_IDS set. We do not
-                  enable Syncfusion's built-in form-designer toolbar — the
+                  enable Pdfjs's built-in form-designer toolbar — the
                   subtoolbar is wired directly to the FormDesigner API
-                  through the syncfusionViewerRef.
+                  through the pdfjsViewerRef.
                   2026-05-26: Hidden for first release — feature not yet
                   ready for users. Code stays intact; flip false back to
                   true to re-enable. */}

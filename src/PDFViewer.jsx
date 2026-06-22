@@ -1,4 +1,4 @@
-// PDFViewer — the document viewer (Syncfusion canvas, annotation overlays,
+// PDFViewer — the document viewer (pdf.js canvas, annotation overlays,
 // zoom/scroll lifecycle, save/sync, history). Extracted verbatim from App.jsx.
 //
 // Shared module helpers/constants stay in ./App and are imported below
@@ -40,7 +40,7 @@ import PdfjsLinkLayer from './components/PdfjsLinkLayer';
 import PdfjsFormLayer from './components/PdfjsFormLayer';
 import PdfjsTextLayer from './components/PdfjsTextLayer';
 import SpaceRegionOverlay from './SpaceRegionOverlay';
-import PDFViewerEngineSelector from './components/PDFViewerEngineSelector';
+import PdfjsViewerContainer from './components/PdfjsViewerContainer';
 import TemplateOverwriteWarningModal from './components/TemplateOverwriteWarningModal';
 import TextLayer from './TextLayer';
 import UnsupportedAnnotationsNotice from './components/UnsupportedAnnotationsNotice';
@@ -170,33 +170,33 @@ import {
   PHASE_2_DEBUG_INDICATORS,
   REGION_EDIT_TOOL,
   REVIEW_TOOL_IDS,
-  SYNCFUSION_DIAGONAL_SCROLL_SENSITIVITY,
-  SYNCFUSION_INITIAL_RENDER_PAGES,
-  SYNCFUSION_INTERACTION_COMMIT_FRAME_BUDGET_MS,
-  SYNCFUSION_INTERACTION_COMMIT_FRAME_SPACING_MS,
-  SYNCFUSION_INTERACTION_COMMIT_MAX_PAGES_PER_FRAME,
-  SYNCFUSION_INTERACTION_EVENT_THROTTLE_MS,
-  SYNCFUSION_INTERACTION_FORCE_PROXY_ALL_PAGES,
-  SYNCFUSION_INTERACTION_MARK_THROTTLE_MS,
-  SYNCFUSION_INTERACTION_MAX_RESIDENT_PAGES,
-  SYNCFUSION_INTERACTION_PROXY_CALLOUT_THRESHOLD,
-  SYNCFUSION_INTERACTION_PROXY_FORCE_OBJECT_THRESHOLD,
-  SYNCFUSION_INTERACTION_PROXY_OBJECT_THRESHOLD,
-  SYNCFUSION_INTERACTION_SETTLE_MS,
-  SYNCFUSION_INTERACTION_VISIBLE_PAGE_REFRESH_MS,
-  SYNCFUSION_LARGE_WHEEL_SCROLL_SENSITIVITY,
-  SYNCFUSION_OVERLAY_ROOT_MARGIN,
-  SYNCFUSION_OVERLAY_WINDOW_LINGER_MS,
-  SYNCFUSION_RESTRICT_ZOOM_REQUEST_DURING_INTERACTION,
-  SYNCFUSION_SCROLL_DELAY_MS,
-  SYNCFUSION_SCROLL_FRAME_MAX_PX,
-  SYNCFUSION_SCROLL_MAX_STEP_PX,
-  SYNCFUSION_SCROLL_MIN_STEP_PX,
-  SYNCFUSION_WHEEL_SCROLL_BATCH_MS,
-  SYNCFUSION_WHEEL_ZOOM_BATCH_MS,
-  SYNCFUSION_WHEEL_ZOOM_STALE_DROP_MS,
-  SYNCFUSION_ZOOM_OVERLAY_SETTLE_MS,
-  SYNCFUSION_ZOOM_SNAPSHOT_VIEWPORT_MARGIN_PX,
+  PDFJS_DIAGONAL_SCROLL_SENSITIVITY,
+  PDFJS_INITIAL_RENDER_PAGES,
+  PDFJS_INTERACTION_COMMIT_FRAME_BUDGET_MS,
+  PDFJS_INTERACTION_COMMIT_FRAME_SPACING_MS,
+  PDFJS_INTERACTION_COMMIT_MAX_PAGES_PER_FRAME,
+  PDFJS_INTERACTION_EVENT_THROTTLE_MS,
+  PDFJS_INTERACTION_FORCE_PROXY_ALL_PAGES,
+  PDFJS_INTERACTION_MARK_THROTTLE_MS,
+  PDFJS_INTERACTION_MAX_RESIDENT_PAGES,
+  PDFJS_INTERACTION_PROXY_CALLOUT_THRESHOLD,
+  PDFJS_INTERACTION_PROXY_FORCE_OBJECT_THRESHOLD,
+  PDFJS_INTERACTION_PROXY_OBJECT_THRESHOLD,
+  PDFJS_INTERACTION_SETTLE_MS,
+  PDFJS_INTERACTION_VISIBLE_PAGE_REFRESH_MS,
+  PDFJS_LARGE_WHEEL_SCROLL_SENSITIVITY,
+  PDFJS_OVERLAY_ROOT_MARGIN,
+  PDFJS_OVERLAY_WINDOW_LINGER_MS,
+  PDFJS_RESTRICT_ZOOM_REQUEST_DURING_INTERACTION,
+  PDFJS_SCROLL_DELAY_MS,
+  PDFJS_SCROLL_FRAME_MAX_PX,
+  PDFJS_SCROLL_MAX_STEP_PX,
+  PDFJS_SCROLL_MIN_STEP_PX,
+  PDFJS_WHEEL_SCROLL_BATCH_MS,
+  PDFJS_WHEEL_ZOOM_BATCH_MS,
+  PDFJS_WHEEL_ZOOM_STALE_DROP_MS,
+  PDFJS_ZOOM_OVERLAY_SETTLE_MS,
+  PDFJS_ZOOM_SNAPSHOT_VIEWPORT_MARGIN_PX,
   TOOLBAR_ZOOM_STEP_FACTOR,
   TRACKPAD_INTERACTION_CONSOLE_INTERVAL_MS,
   TRACKPAD_INTERACTION_DEBUG_MAX_EVENTS,
@@ -211,7 +211,7 @@ import {
   clampWheelDelta,
   cloneOverlayRecorderPayload,
   coercePageNumber,
-  coerceSyncfusionZoomPercent,
+  coercePdfjsZoomPercent,
   compactHistoryEventForLog,
   countAnnotationPageObjects,
   createAnnotation,
@@ -230,10 +230,10 @@ import {
   getNormalizedWheelDeltas,
   getOpacityFromEntityColor,
   getPDFId,
-  getSmoothSyncfusionWheelZoom,
-  getSyncfusionOverlayPrefetchPages,
-  getSyncfusionTextMarkupMode,
-  getSyncfusionZoomAwareScrollGain,
+  getSmoothPdfjsWheelZoom,
+  getPdfjsOverlayPrefetchPages,
+  getPdfjsTextMarkupMode,
+  getPdfjsZoomAwareScrollGain,
   handleModalOptionMouseEnter,
   handleModalOptionMouseLeave,
   handleModalPrimaryButtonMouseEnter,
@@ -241,14 +241,12 @@ import {
   handleModalSecondaryButtonMouseEnter,
   handleModalSecondaryButtonMouseLeave,
   hasNameConflict,
-  hasSyncfusionPdfSurface,
-  hasVisibleSyncfusionSpinner,
+  hasPdfjsPdfSurface,
+  hasVisiblePdfjsSpinner,
   hexToRgba,
   isPointOnSelectDeleteOnlyTextMarkup,
   isSelectDeleteOnlyImportedTextMarkupType,
   isSuspiciousWheelZoomPercent,
-  getPDFViewerEngine,
-  PDF_VIEWER_ENGINE_PDFJS,
   loadAnnotationsByPage,
   loadCallouts,
   loadCloudRenderAnnotationsByPage,
@@ -256,8 +254,8 @@ import {
   loadSurveyMarkers,
   mapYjsMeta,
   markEditedImportedPdfAnnotationsOnPage,
-  measureSyncfusionPageHostScale,
-  measureSyncfusionPageScale,
+  measurePdfjsPageHostScale,
+  measurePdfjsPageScale,
   migrateLegacySurveyMarkers,
   normalizeBookmarkPageIds,
   normalizeInteractionMeasuredScale,
@@ -266,8 +264,8 @@ import {
   readDocumentSyncStructuralDisabled,
   readHistoryDebugConsoleEnabled,
   readOverlayLagRecorderAutoEnabled,
-  readSyncfusionDualLayerEnabled,
-  readSyncfusionLiveStableOverlayEnabled,
+  readPdfjsDualLayerEnabled,
+  readPdfjsLiveStableOverlayEnabled,
   resolveBookmarkPageFromOutlineLookup,
   roundOverlayRecorderValue,
   sanitizeFilename,
@@ -285,9 +283,9 @@ import {
   writeDocumentSyncStructuralDisabled,
   writeHistoryDebugConsoleEnabled,
   writeOverlayLagRecorderAutoEnabled,
-  writeSyncfusionDualLayerEnabled
+  writePdfjsDualLayerEnabled
 } from './viewerShared';
-import { getBoundsCenter, hasValidRegionAreas, resolvePageContentElement, sortSyncfusionPagesByDistance } from './utils/regionGeometry';
+import { getBoundsCenter, hasValidRegionAreas, resolvePageContentElement, sortPdfjsPagesByDistance } from './utils/regionGeometry';
 import { composeColorForPatch, materializeFabricAnnotationFromYMap } from './utils/annotationData';
 import { extractPdfOutlineBookmarks, generateBookmarkId } from './utils/bookmarkOutline';
 import { createCounterDragPreview, removeCounterDragPreview, updateCounterDragPreview } from './utils/counterGeometry';
@@ -303,75 +301,62 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   if (import.meta.env.MODE !== 'production' && typeof window !== 'undefined') {
     window.__currentPdfName = pdfFile?.name || null;
   }
-  const syncfusionViewerElementId = `syncfusion-pdf-viewer-${tabId || 'default'}`;
-  const syncfusionResourceUrl = useMemo(() => {
-    if (typeof window === 'undefined') {
-      return './ej2-pdfviewer-lib';
-    }
-    try {
-      // Syncfusion loads PDFium from a blob worker via importScripts.
-      // That requires an absolute URL (relative URLs are invalid in blob scope).
-      return new URL('./ej2-pdfviewer-lib', window.location.href).href;
-    } catch (error) {
-      console.warn('Failed to resolve Syncfusion resource URL, using relative fallback.', error);
-      return './ej2-pdfviewer-lib';
-    }
-  }, []);
+  const pdfjsViewerElementId = `pdfjs-pdf-viewer-${tabId || 'default'}`;
   const containerRef = useRef();
   const contentRef = useRef();
   const pageContainersRef = useRef({});
   const canvasRef = useRef({});
-  const syncfusionViewerRef = useRef(null);
+  const pdfjsViewerRef = useRef(null);
   const pdfSidebarRef = useRef(null);
-  const syncfusionWrapperRef = useRef(null);
-  const syncfusionZoomSourceRef = useRef(null);
-  const syncfusionRefreshFrameRef = useRef(null);
+  const pdfjsWrapperRef = useRef(null);
+  const pdfjsZoomSourceRef = useRef(null);
+  const pdfjsRefreshFrameRef = useRef(null);
   const overlayVisibilityObserverRef = useRef(null);
-  const syncfusionEventTimesRef = useRef({});
-  const syncfusionPageVisitPerfRef = useRef({ seq: 0, seenPages: new Set(), pending: null });
-  const syncfusionPagePdfEverReadyRef = useRef(new Set());
+  const pdfjsEventTimesRef = useRef({});
+  const pdfjsPageVisitPerfRef = useRef({ seq: 0, seenPages: new Set(), pending: null });
+  const pdfjsPagePdfEverReadyRef = useRef(new Set());
   const lastViewStateEmittedRef = useRef(null);
   const lastAppliedInitialViewStateRef = useRef(null);
-  const syncfusionNavigateResetTimerRef = useRef(null);
-  const syncfusionWheelZoomRafRef = useRef(null);
-  const syncfusionWheelZoomDeltaRef = useRef(0);
-  const syncfusionWheelZoomAnchorRef = useRef(null);
-  const syncfusionLastCursorPageRef = useRef(null);
+  const pdfjsNavigateResetTimerRef = useRef(null);
+  const pdfjsWheelZoomRafRef = useRef(null);
+  const pdfjsWheelZoomDeltaRef = useRef(0);
+  const pdfjsWheelZoomAnchorRef = useRef(null);
+  const pdfjsLastCursorPageRef = useRef(null);
   const skipNextViewStateEmitRef = useRef(true);
   const presenceAutoDisabledRef = useRef(false);
   const presenceStructuralWarningShownRef = useRef(false);
   const lastPresenceErrorClassRef = useRef(null);
   const interactionPerfRef = useRef({ active: false, until: 0, timer: null, lastReason: null });
-  const syncfusionInteractionListenersRef = useRef({ detach: null, container: null });
+  const pdfjsInteractionListenersRef = useRef({ detach: null, container: null });
   const deferredExcelCheckTimerRef = useRef(null);
-  const syncfusionOverlayLayerRefs = useRef({});
-  const syncfusionOverlayContentRefs = useRef({});
+  const pdfjsOverlayLayerRefs = useRef({});
+  const pdfjsOverlayContentRefs = useRef({});
   // Lightweight zoom CSS transform state (bypasses React for perf)
   const zoomOverlayTransformActiveRef = useRef(false);
   const zoomOverlayBaseScaleRef = useRef(1);
   const zoomOverlaySettleTimerRef = useRef(null);
-  const syncfusionZoomSnapshotLayerRef = useRef(null);
-  const syncfusionZoomSnapshotPagesRef = useRef({});
-  const syncfusionZoomSnapshotBaseScaleRef = useRef(1);
-  // Fallback portal hosts: when Syncfusion destroys page containers during zoom,
+  const pdfjsZoomSnapshotLayerRef = useRef(null);
+  const pdfjsZoomSnapshotPagesRef = useRef({});
+  const pdfjsZoomSnapshotBaseScaleRef = useRef(1);
+  // Fallback portal hosts: when Pdfjs destroys page containers during zoom,
   // these keep the React portal tree alive so Fabric canvases aren't destroyed.
-  const syncfusionFallbackHostsRef = useRef({});
+  const pdfjsFallbackHostsRef = useRef({});
   // Stable portal hosts: persistent divs used as createPortal() targets.
   // Same JS object is reused across renders so React never unmounts/remounts
-  // portal children when Syncfusion recreates page containers during zoom.
-  const syncfusionStablePortalHostsRef = useRef({});
-  const syncfusionStablePortalLiveRootsRef = useRef({});
-  const syncfusionStablePortalSnapshotHostsRef = useRef({});
-  const syncfusionAppOverlayRootRef = useRef(null);
-  // Overlay divs: persistent direct-child divs inside Syncfusion page divs.
+  // portal children when Pdfjs recreates page containers during zoom.
+  const pdfjsStablePortalHostsRef = useRef({});
+  const pdfjsStablePortalLiveRootsRef = useRef({});
+  const pdfjsStablePortalSnapshotHostsRef = useRef({});
+  const pdfjsAppOverlayRootRef = useRef(null);
+  // Overlay divs: persistent direct-child divs inside Pdfjs page divs.
   // Phase 1: created and attached but inert (not used for rendering).
   // Phase 2+: zoom handler applies CSS transforms; render loop creates portals into these.
   const overlayDivsRef = useRef({});
-  const syncfusionLastNonEmptyOverlayPagesRef = useRef([]);
-  const syncfusionScaleConfirmHiddenPagesRef = useRef(new Set());
-  const syncfusionScaleConfirmVisibleSwapPagesRef = useRef(new Set());
-  const syncfusionZoomPresentationByPageRef = useRef({});
-  const syncfusionCachedPageRectsRef = useRef({});
+  const pdfjsLastNonEmptyOverlayPagesRef = useRef([]);
+  const pdfjsScaleConfirmHiddenPagesRef = useRef(new Set());
+  const pdfjsScaleConfirmVisibleSwapPagesRef = useRef(new Set());
+  const pdfjsZoomPresentationByPageRef = useRef({});
+  const pdfjsCachedPageRectsRef = useRef({});
   const overlayLagRecorderRef = useRef({
     active: false,
     mode: null,
@@ -448,31 +433,31 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     eventEntries: []
   });
   const overlayLagEventTotalsRef = useRef({
-    syncfusionScroll: 0,
-    syncfusionWheelZoom: 0,
-    syncfusionWheelScroll: 0,
-    syncfusionPointerDown: 0,
-    syncfusionPointerDrag: 0,
-    syncfusionPageChange: 0,
-    syncfusionZoomChange: 0,
-    syncfusionContainerMutation: 0,
-    syncfusionContainerMapChange: 0,
+    pdfjsScroll: 0,
+    pdfjsWheelZoom: 0,
+    pdfjsWheelScroll: 0,
+    pdfjsPointerDown: 0,
+    pdfjsPointerDrag: 0,
+    pdfjsPageChange: 0,
+    pdfjsZoomChange: 0,
+    pdfjsContainerMutation: 0,
+    pdfjsContainerMapChange: 0,
     overlayWheelZoom: 0,
     overlayWheelScroll: 0,
     overlayPointerDown: 0,
     overlayPointerDrag: 0
   });
-  const syncfusionIdleWorkTotalsRef = useRef({
+  const pdfjsIdleWorkTotalsRef = useRef({
     annotationRestorationMs: 0,
     annotationRestorationCount: 0,
     pageRenderCatchupMs: 0,
     pageRenderCatchupCount: 0,
-    syncfusionInternalsMs: 0,
-    syncfusionInternalsCount: 0,
+    pdfjsInternalsMs: 0,
+    pdfjsInternalsCount: 0,
     measurementWorkMs: 0,
     measurementWorkCount: 0
   });
-  const syncfusionWheelPerfTotalsRef = useRef({
+  const pdfjsWheelPerfTotalsRef = useRef({
     scrollEvents: 0,
     scrollRawAbsX: 0,
     scrollRawAbsY: 0,
@@ -500,12 +485,12 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     const totals = overlayLagEventTotalsRef.current;
     totals[key] = (Number(totals[key]) || 0) + safeDelta;
   }, []);
-  const recordSyncfusionIdleWork = useCallback((category, durationMs, count = 1) => {
+  const recordPdfjsIdleWork = useCallback((category, durationMs, count = 1) => {
     if (!OVERLAY_LAG_RECORDER_WORK_CATEGORIES.includes(category)) return;
     const safeDuration = Number(durationMs);
     if (!Number.isFinite(safeDuration) || safeDuration <= 0) return;
     const safeCount = Math.max(1, Number(count) || 1);
-    const totals = syncfusionIdleWorkTotalsRef.current;
+    const totals = pdfjsIdleWorkTotalsRef.current;
     const durationKey = `${category}Ms`;
     const countKey = `${category}Count`;
     totals[durationKey] = (Number(totals[durationKey]) || 0) + safeDuration;
@@ -514,7 +499,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
   const readTrackpadDebugState = useCallback((viewerContainer = null) => {
     const container = viewerContainer || containerRef.current || null;
-    const viewer = syncfusionViewerRef.current || null;
+    const viewer = pdfjsViewerRef.current || null;
     const rawZoom = Number(
       viewer?.getZoomValue?.() ??
       viewer?.zoomValue ??
@@ -541,10 +526,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       } : null,
       page: pageNumRef.current,
       zoomOverlayActive: zoomOverlayTransformActiveRef.current,
-      interactionActive: syncfusionInteractionActiveRef.current,
-      interactionPhase: syncfusionInteractionPhaseRef.current,
+      interactionActive: pdfjsInteractionActiveRef.current,
+      interactionPhase: pdfjsInteractionPhaseRef.current,
       snapshotPages: typeof document !== 'undefined'
-        ? document.querySelectorAll('[data-syncfusion-zoom-snapshot-page]').length
+        ? document.querySelectorAll('[data-pdfjs-zoom-snapshot-page]').length
         : 0,
       // pdf.js form-widget visibility probe (Stage 4.3 zoom-disappearance debug).
       // Captured before/after every zoom event so a real reproduction shows
@@ -829,8 +814,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   const scrollDataRef = useRef({ left: 0, top: 0 });
   const wrapperDragEventAtRef = useRef(0);
   const pendingRendererRestoreRef = useRef(null);
-  const [syncfusionDocumentBytes, setSyncfusionDocumentBytes] = useState(null);
-  const [syncfusionPageContainers, setSyncfusionPageContainers] = useState({});
+  const [pdfjsDocumentBytes, setPdfjsDocumentBytes] = useState(null);
+  const [pdfjsPageContainers, setPdfjsPageContainers] = useState({});
   const pageInputRef = useRef(null);
   const zoomInputRef = useRef(null);
   const pageRenderCacheRef = useRef(new PageRenderCache(100)); // Cache up to 100 pages
@@ -882,7 +867,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   // Using technique from Mozilla pdf.js and Adobe Acrobat for smooth cursor-centered zoom
   const { renderedScale, cssScale, isZooming, zoomStyle, setAnchor } = useZoomState(scale);
   const [scrollMode, setScrollMode] = useState('continuous');
-  const useSyncfusionRenderer = true;
+  const usePdfjsRenderer = true;
   const [isPanning, setIsPanning] = useState(false);
   const [panStart, setPanStart] = useState({ x: 0, y: 0 });
   const [renderedPages, setRenderedPages] = useState(new Set());
@@ -892,34 +877,34 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   const [interactionPerfActive, setInteractionPerfActive] = useState(false);
   const [mountedPages, setMountedPages] = useState(new Set([1])); // Track which pages should be mounted (DOM created)
   const [visiblePagesSet, setVisiblePagesSet] = useState(new Set([1])); // Track currently visible pages for render priority
-  const [syncfusionOverlayWindowPages, setSyncfusionOverlayWindowPages] = useState(new Set());
-  const syncfusionOverlayWindowPagesRef = useRef(new Set());
-  const [syncfusionCommittedPageScales, setSyncfusionCommittedPageScales] = useState({});
-  const [syncfusionLiveStableOverlayEnabled, setSyncfusionLiveStableOverlayEnabled] = useState(() => readSyncfusionLiveStableOverlayEnabled());
-  const [syncfusionDualLayerEnabled, setSyncfusionDualLayerEnabled] = useState(() => readSyncfusionDualLayerEnabled());
-  const [syncfusionInteractionActive, setSyncfusionInteractionActive] = useState(false);
-  const [syncfusionInteractionPhase, setSyncfusionInteractionPhase] = useState('idle'); // idle | interacting | committing
-  const [syncfusionZoomPreviewActive, setSyncfusionZoomPreviewActive] = useState(false);
-  const syncfusionInteractionUntilRef = useRef(0);
-  const syncfusionInteractionTimerRef = useRef(null);
-  const syncfusionInteractionReasonRef = useRef(null);
-  const syncfusionInteractionIsZoomOnlyRef = useRef(false);
-  const syncfusionInteractionTransitionsRef = useRef({ on: 0, off: 0 });
-  const syncfusionInteractionPhaseRef = useRef('idle');
-  const [syncfusionInteractionSessionId, setSyncfusionInteractionSessionId] = useState(0);
-  const syncfusionInteractionSessionIdRef = useRef(0);
-  const syncfusionInteractionStartViewerZoomRef = useRef(1);
-  const syncfusionInteractionModeFlipCountRef = useRef(0);
-  const [syncfusionInteractionModeFlipCount, setSyncfusionInteractionModeFlipCount] = useState(0);
-  const [syncfusionInteractionResidentPages, setSyncfusionInteractionResidentPages] = useState(new Set());
-  const [syncfusionInteractionPageModes, setSyncfusionInteractionPageModes] = useState({});
-  const [syncfusionInteractionProxyPayloads, setSyncfusionInteractionProxyPayloads] = useState({});
-  const [syncfusionCommittingProxyPages, setSyncfusionCommittingProxyPages] = useState(new Set());
-  const [syncfusionProxyReadyPages, setSyncfusionProxyReadyPages] = useState(new Set());
-  const [syncfusionLightweightPages, setSyncfusionLightweightPages] = useState(new Set());
-  const [syncfusionCommitQueueDepth, setSyncfusionCommitQueueDepth] = useState(0);
-  const [syncfusionVisiblePagesVersion, setSyncfusionVisiblePagesVersion] = useState(0);
-  const [syncfusionContainerMutationTick, setSyncfusionContainerMutationTick] = useState(0);
+  const [pdfjsOverlayWindowPages, setPdfjsOverlayWindowPages] = useState(new Set());
+  const pdfjsOverlayWindowPagesRef = useRef(new Set());
+  const [pdfjsCommittedPageScales, setPdfjsCommittedPageScales] = useState({});
+  const [pdfjsLiveStableOverlayEnabled, setPdfjsLiveStableOverlayEnabled] = useState(() => readPdfjsLiveStableOverlayEnabled());
+  const [pdfjsDualLayerEnabled, setPdfjsDualLayerEnabled] = useState(() => readPdfjsDualLayerEnabled());
+  const [pdfjsInteractionActive, setPdfjsInteractionActive] = useState(false);
+  const [pdfjsInteractionPhase, setPdfjsInteractionPhase] = useState('idle'); // idle | interacting | committing
+  const [pdfjsZoomPreviewActive, setPdfjsZoomPreviewActive] = useState(false);
+  const pdfjsInteractionUntilRef = useRef(0);
+  const pdfjsInteractionTimerRef = useRef(null);
+  const pdfjsInteractionReasonRef = useRef(null);
+  const pdfjsInteractionIsZoomOnlyRef = useRef(false);
+  const pdfjsInteractionTransitionsRef = useRef({ on: 0, off: 0 });
+  const pdfjsInteractionPhaseRef = useRef('idle');
+  const [pdfjsInteractionSessionId, setPdfjsInteractionSessionId] = useState(0);
+  const pdfjsInteractionSessionIdRef = useRef(0);
+  const pdfjsInteractionStartViewerZoomRef = useRef(1);
+  const pdfjsInteractionModeFlipCountRef = useRef(0);
+  const [pdfjsInteractionModeFlipCount, setPdfjsInteractionModeFlipCount] = useState(0);
+  const [pdfjsInteractionResidentPages, setPdfjsInteractionResidentPages] = useState(new Set());
+  const [pdfjsInteractionPageModes, setPdfjsInteractionPageModes] = useState({});
+  const [pdfjsInteractionProxyPayloads, setPdfjsInteractionProxyPayloads] = useState({});
+  const [pdfjsCommittingProxyPages, setPdfjsCommittingProxyPages] = useState(new Set());
+  const [pdfjsProxyReadyPages, setPdfjsProxyReadyPages] = useState(new Set());
+  const [pdfjsLightweightPages, setPdfjsLightweightPages] = useState(new Set());
+  const [pdfjsCommitQueueDepth, setPdfjsCommitQueueDepth] = useState(0);
+  const [pdfjsVisiblePagesVersion, setPdfjsVisiblePagesVersion] = useState(0);
+  const [pdfjsContainerMutationTick, setPdfjsContainerMutationTick] = useState(0);
   const [pageHeights, setPageHeights] = useState({});
   const [pageSizes, setPageSizes] = useState({}); // { [page]: { width, height } }
   const [canPan, setCanPan] = useState(false);
@@ -929,7 +914,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   const [printPanelPrinters, setPrintPanelPrinters] = useState([]);
   const [isLoadingPDF, setIsLoadingPDF] = useState(true);
   // KAL-21: in-app PDF load failure state — replaces browser alerts when the
-  // pdf-lib rewrite/retry path or Syncfusion render path can't recover.
+  // pdf-lib rewrite/retry path or Pdfjs render path can't recover.
   const [pdfLoadError, setPdfLoadError] = useState(null);
   const [loadRetryToken, setLoadRetryToken] = useState(0);
   // KAL-46 / sleep-wake: bounds how many times the load watchdog will silently
@@ -937,44 +922,44 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   // gives up and surfaces the retryable error screen. Reset whenever a fresh
   // pdfFile arrives so each document gets its own budget.
   const loadWatchdogRetryCountRef = useRef(0);
-  const syncfusionPageContainersStateRef = useRef({});
-  const syncfusionCommittedPageScalesRef = useRef({});
-  const syncfusionInteractionActiveRef = useRef(false);
-  const syncfusionLightweightPagesRef = useRef(new Set());
-  const syncfusionInteractionResidentPagesRef = useRef(new Set());
-  const syncfusionInteractionPageModesRef = useRef({});
-  const syncfusionInteractionProxyPayloadsRef = useRef({});
-  const syncfusionCommittingProxyPagesRef = useRef(new Set());
-  const syncfusionProxyReadyPagesRef = useRef(new Set());
-  const syncfusionVisiblePagesRef = useRef(new Set());
-  const syncfusionVisiblePagesRefreshRef = useRef({ timer: null, lastAt: 0 });
-  const syncfusionCommitQueueRef = useRef([]);
-  const syncfusionCommitRafRef = useRef(null);
-  const syncfusionLastCommitFrameAtRef = useRef(0);
-  const syncfusionOverlayTransformSyncRafRef = useRef(null);
-  const syncfusionOverlayTransformLoopActiveRef = useRef(false);
-  const syncfusionOverlayTransformRatioByPageRef = useRef({});
-  const syncfusionOverlayTransformNodeByPageRef = useRef({});
-  const syncfusionLiveZoomDebugLastLogRef = useRef({ atMs: 0, phase: null, branch: null, pageNumber: null });
-  const syncfusionOverlayLegacyCompensationRefs = useRef({});
-  const syncfusionInteractionPortalHostsRef = useRef({});
-  const syncfusionOverlayTransformStatsRef = useRef({
+  const pdfjsPageContainersStateRef = useRef({});
+  const pdfjsCommittedPageScalesRef = useRef({});
+  const pdfjsInteractionActiveRef = useRef(false);
+  const pdfjsLightweightPagesRef = useRef(new Set());
+  const pdfjsInteractionResidentPagesRef = useRef(new Set());
+  const pdfjsInteractionPageModesRef = useRef({});
+  const pdfjsInteractionProxyPayloadsRef = useRef({});
+  const pdfjsCommittingProxyPagesRef = useRef(new Set());
+  const pdfjsProxyReadyPagesRef = useRef(new Set());
+  const pdfjsVisiblePagesRef = useRef(new Set());
+  const pdfjsVisiblePagesRefreshRef = useRef({ timer: null, lastAt: 0 });
+  const pdfjsCommitQueueRef = useRef([]);
+  const pdfjsCommitRafRef = useRef(null);
+  const pdfjsLastCommitFrameAtRef = useRef(0);
+  const pdfjsOverlayTransformSyncRafRef = useRef(null);
+  const pdfjsOverlayTransformLoopActiveRef = useRef(false);
+  const pdfjsOverlayTransformRatioByPageRef = useRef({});
+  const pdfjsOverlayTransformNodeByPageRef = useRef({});
+  const pdfjsLiveZoomDebugLastLogRef = useRef({ atMs: 0, phase: null, branch: null, pageNumber: null });
+  const pdfjsOverlayLegacyCompensationRefs = useRef({});
+  const pdfjsInteractionPortalHostsRef = useRef({});
+  const pdfjsOverlayTransformStatsRef = useRef({
     ticks: 0,
     writes: 0,
     resets: 0,
     skips: 0
   });
-  const syncfusionPendingZoomScaleRef = useRef(null);
-  const syncfusionContainerMutationReasonCountsRef = useRef({});
+  const pdfjsPendingZoomScaleRef = useRef(null);
+  const pdfjsContainerMutationReasonCountsRef = useRef({});
   const lightweightCalloutCountByPageRef = useRef({});
   const calloutsRef = useRef([]);
   const activePdfIdentityRef = useRef(null);
   const activeCloudDocumentIdRef = useRef(null);
-  const syncfusionAnnotationsByPageRef = useRef({});
-  const syncfusionActiveSpaceIdRef = useRef(null);
-  const syncfusionActiveSpacePagesRef = useRef([]);
-  const syncfusionSelectedModuleIdRef = useRef(null);
-  const syncfusionShowSurveyPanelRef = useRef(false);
+  const pdfjsAnnotationsByPageRef = useRef({});
+  const pdfjsActiveSpaceIdRef = useRef(null);
+  const pdfjsActiveSpacePagesRef = useRef([]);
+  const pdfjsSelectedModuleIdRef = useRef(null);
+  const pdfjsShowSurveyPanelRef = useRef(false);
 
   useEffect(() => {
     pendingRendererRestoreRef.current = null;
@@ -982,8 +967,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
   useEffect(() => {
     const syncFlag = () => {
-      setSyncfusionLiveStableOverlayEnabled(readSyncfusionLiveStableOverlayEnabled());
-      setSyncfusionDualLayerEnabled(readSyncfusionDualLayerEnabled());
+      setPdfjsLiveStableOverlayEnabled(readPdfjsLiveStableOverlayEnabled());
+      setPdfjsDualLayerEnabled(readPdfjsDualLayerEnabled());
       setOverlayLagAutoRecordEnabled(readOverlayLagRecorderAutoEnabled());
     };
     window.addEventListener('storage', syncFlag);
@@ -999,62 +984,62 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   }, [overlayLagAutoRecordEnabled]);
 
   useEffect(() => {
-    writeSyncfusionDualLayerEnabled(syncfusionDualLayerEnabled);
-  }, [syncfusionDualLayerEnabled]);
+    writePdfjsDualLayerEnabled(pdfjsDualLayerEnabled);
+  }, [pdfjsDualLayerEnabled]);
 
   useEffect(() => {
-    syncfusionOverlayWindowPagesRef.current = syncfusionOverlayWindowPages;
-  }, [syncfusionOverlayWindowPages]);
+    pdfjsOverlayWindowPagesRef.current = pdfjsOverlayWindowPages;
+  }, [pdfjsOverlayWindowPages]);
 
   useEffect(() => {
-    syncfusionPageContainersStateRef.current = syncfusionPageContainers;
-  }, [syncfusionPageContainers]);
+    pdfjsPageContainersStateRef.current = pdfjsPageContainers;
+  }, [pdfjsPageContainers]);
 
   useEffect(() => {
-    syncfusionCommittedPageScalesRef.current = syncfusionCommittedPageScales;
-  }, [syncfusionCommittedPageScales]);
+    pdfjsCommittedPageScalesRef.current = pdfjsCommittedPageScales;
+  }, [pdfjsCommittedPageScales]);
 
   useEffect(() => {
-    syncfusionInteractionActiveRef.current = syncfusionInteractionActive;
-  }, [syncfusionInteractionActive]);
+    pdfjsInteractionActiveRef.current = pdfjsInteractionActive;
+  }, [pdfjsInteractionActive]);
 
   useEffect(() => {
-    syncfusionInteractionPhaseRef.current = syncfusionInteractionPhase;
-    const active = syncfusionInteractionPhase !== 'idle';
-    syncfusionInteractionActiveRef.current = active;
-    setSyncfusionInteractionActive((prevActive) => (prevActive === active ? prevActive : active));
+    pdfjsInteractionPhaseRef.current = pdfjsInteractionPhase;
+    const active = pdfjsInteractionPhase !== 'idle';
+    pdfjsInteractionActiveRef.current = active;
+    setPdfjsInteractionActive((prevActive) => (prevActive === active ? prevActive : active));
     if (!active) {
-      syncfusionInteractionUntilRef.current = 0;
-      syncfusionInteractionReasonRef.current = null;
-      syncfusionInteractionStartViewerZoomRef.current = 1;
-      syncfusionCommitQueueRef.current = [];
-      setSyncfusionCommitQueueDepth(0);
+      pdfjsInteractionUntilRef.current = 0;
+      pdfjsInteractionReasonRef.current = null;
+      pdfjsInteractionStartViewerZoomRef.current = 1;
+      pdfjsCommitQueueRef.current = [];
+      setPdfjsCommitQueueDepth(0);
     }
-  }, [syncfusionInteractionPhase]);
+  }, [pdfjsInteractionPhase]);
 
   useEffect(() => {
-    syncfusionLightweightPagesRef.current = syncfusionLightweightPages;
-  }, [syncfusionLightweightPages]);
+    pdfjsLightweightPagesRef.current = pdfjsLightweightPages;
+  }, [pdfjsLightweightPages]);
 
   useEffect(() => {
-    syncfusionInteractionResidentPagesRef.current = syncfusionInteractionResidentPages;
-  }, [syncfusionInteractionResidentPages]);
+    pdfjsInteractionResidentPagesRef.current = pdfjsInteractionResidentPages;
+  }, [pdfjsInteractionResidentPages]);
 
   useEffect(() => {
-    syncfusionInteractionPageModesRef.current = syncfusionInteractionPageModes;
-  }, [syncfusionInteractionPageModes]);
+    pdfjsInteractionPageModesRef.current = pdfjsInteractionPageModes;
+  }, [pdfjsInteractionPageModes]);
 
   useEffect(() => {
-    syncfusionInteractionProxyPayloadsRef.current = syncfusionInteractionProxyPayloads;
-  }, [syncfusionInteractionProxyPayloads]);
+    pdfjsInteractionProxyPayloadsRef.current = pdfjsInteractionProxyPayloads;
+  }, [pdfjsInteractionProxyPayloads]);
 
   useEffect(() => {
-    syncfusionCommittingProxyPagesRef.current = syncfusionCommittingProxyPages;
-  }, [syncfusionCommittingProxyPages]);
+    pdfjsCommittingProxyPagesRef.current = pdfjsCommittingProxyPages;
+  }, [pdfjsCommittingProxyPages]);
 
   useEffect(() => {
-    syncfusionProxyReadyPagesRef.current = syncfusionProxyReadyPages;
-  }, [syncfusionProxyReadyPages]);
+    pdfjsProxyReadyPagesRef.current = pdfjsProxyReadyPages;
+  }, [pdfjsProxyReadyPages]);
 
   useEffect(() => {
     setPerfDebugEnabled(debugLogging);
@@ -1094,34 +1079,34 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       pageNum,
       numPages,
       scale: Number(scale.toFixed(3)),
-      overlayPageCount: Object.keys(syncfusionPageContainers).length,
-      overlayWindowCount: syncfusionOverlayWindowPages.size,
-      interactionOverlayMode: syncfusionInteractionPhase,
-      interactionResidentPages: syncfusionInteractionResidentPages.size,
-      interactionSessionId: syncfusionInteractionSessionId,
-      interactionModeFlipCount: syncfusionInteractionModeFlipCount,
-      interactionCommitQueueDepth: syncfusionCommitQueueDepth,
-      syncfusionContainerMutationTick,
+      overlayPageCount: Object.keys(pdfjsPageContainers).length,
+      overlayWindowCount: pdfjsOverlayWindowPages.size,
+      interactionOverlayMode: pdfjsInteractionPhase,
+      interactionResidentPages: pdfjsInteractionResidentPages.size,
+      interactionSessionId: pdfjsInteractionSessionId,
+      interactionModeFlipCount: pdfjsInteractionModeFlipCount,
+      interactionCommitQueueDepth: pdfjsCommitQueueDepth,
+      pdfjsContainerMutationTick,
       overlayLagAutoRecordEnabled,
-      liveStableOverlayEnabled: syncfusionLiveStableOverlayEnabled,
-      dualLayerEnabled: syncfusionDualLayerEnabled,
-      refreshQueueActive: syncfusionRefreshFrameRef.current !== null
+      liveStableOverlayEnabled: pdfjsLiveStableOverlayEnabled,
+      dualLayerEnabled: pdfjsDualLayerEnabled,
+      refreshQueueActive: pdfjsRefreshFrameRef.current !== null
     });
   }, [
-    syncfusionCommitQueueDepth,
-    syncfusionContainerMutationTick,
-    syncfusionDualLayerEnabled,
-    syncfusionInteractionModeFlipCount,
-    syncfusionInteractionPhase,
-    syncfusionInteractionSessionId,
+    pdfjsCommitQueueDepth,
+    pdfjsContainerMutationTick,
+    pdfjsDualLayerEnabled,
+    pdfjsInteractionModeFlipCount,
+    pdfjsInteractionPhase,
+    pdfjsInteractionSessionId,
     numPages,
     overlayLagAutoRecordEnabled,
     pageNum,
     scale,
-    syncfusionInteractionResidentPages,
-    syncfusionLiveStableOverlayEnabled,
-    syncfusionPageContainers,
-    syncfusionOverlayWindowPages
+    pdfjsInteractionResidentPages,
+    pdfjsLiveStableOverlayEnabled,
+    pdfjsPageContainers,
+    pdfjsOverlayWindowPages
   ]);
 
   const clearInteractionPerfTimer = useCallback(() => {
@@ -1194,34 +1179,34 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     scheduleCheck();
   }, [clearInteractionPerfTimer, finishInteractionPerfWindow]);
 
-  const getSyncfusionViewerScale = useCallback(() => clampScale(
+  const getPdfjsViewerScale = useCallback(() => clampScale(
     Number(
-      (syncfusionViewerRef.current?.getZoomValue?.() ??
-        syncfusionViewerRef.current?.zoomValue ??
+      (pdfjsViewerRef.current?.getZoomValue?.() ??
+        pdfjsViewerRef.current?.zoomValue ??
         (scaleRef.current || scale) * 100)
     ) / 100
   ), [scale]);
 
-  const isSyncfusionPageEligible = useCallback((pageNumber) => {
+  const isPdfjsPageEligible = useCallback((pageNumber) => {
     if (!(Number.isFinite(pageNumber) && pageNumber > 0)) return false;
-    const activeSpaceId = syncfusionActiveSpaceIdRef.current;
+    const activeSpaceId = pdfjsActiveSpaceIdRef.current;
     if (!activeSpaceId) return true;
-    const activeSpacePages = syncfusionActiveSpacePagesRef.current;
+    const activeSpacePages = pdfjsActiveSpacePagesRef.current;
     if (!Array.isArray(activeSpacePages) || activeSpacePages.length === 0) {
       return false;
     }
     return activeSpacePages.includes(pageNumber);
   }, []);
 
-  const listSyncfusionEligibleContainerPages = useCallback(() => Object.keys(
-    syncfusionPageContainersStateRef.current || pageContainersRef.current || {}
+  const listPdfjsEligibleContainerPages = useCallback(() => Object.keys(
+    pdfjsPageContainersStateRef.current || pageContainersRef.current || {}
   )
     .map((pageKey) => Number(pageKey))
-    .filter((pageNumber) => Number.isFinite(pageNumber) && pageNumber > 0 && isSyncfusionPageEligible(pageNumber))
-    .sort((left, right) => left - right), [isSyncfusionPageEligible]);
+    .filter((pageNumber) => Number.isFinite(pageNumber) && pageNumber > 0 && isPdfjsPageEligible(pageNumber))
+    .sort((left, right) => left - right), [isPdfjsPageEligible]);
 
-  const computeSyncfusionInteractionResidentPages = useCallback(() => {
-    const eligiblePages = listSyncfusionEligibleContainerPages();
+  const computePdfjsInteractionResidentPages = useCallback(() => {
+    const eligiblePages = listPdfjsEligibleContainerPages();
     if (eligiblePages.length === 0) {
       return new Set();
     }
@@ -1235,8 +1220,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       ordered.push(pageNumber);
     };
 
-    const visiblePages = sortSyncfusionPagesByDistance(
-      Array.from(syncfusionVisiblePagesRef.current || []).filter((pageNumber) => eligibleSet.has(pageNumber)),
+    const visiblePages = sortPdfjsPagesByDistance(
+      Array.from(pdfjsVisiblePagesRef.current || []).filter((pageNumber) => eligibleSet.has(pageNumber)),
       currentPage
     );
     visiblePages.forEach(pushUnique);
@@ -1244,20 +1229,20 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       pushUnique(pageNumber - 1);
       pushUnique(pageNumber + 1);
     });
-    sortSyncfusionPagesByDistance(eligiblePages, currentPage).forEach(pushUnique);
+    sortPdfjsPagesByDistance(eligiblePages, currentPage).forEach(pushUnique);
 
     if (ordered.length === 0) {
       pushUnique(currentPage);
     }
 
-    return new Set(ordered.slice(0, SYNCFUSION_INTERACTION_MAX_RESIDENT_PAGES));
-  }, [listSyncfusionEligibleContainerPages, sortSyncfusionPagesByDistance]);
+    return new Set(ordered.slice(0, PDFJS_INTERACTION_MAX_RESIDENT_PAGES));
+  }, [listPdfjsEligibleContainerPages, sortPdfjsPagesByDistance]);
 
-  const setSyncfusionInteractionResidentPagesStable = useCallback((candidatePages) => {
+  const setPdfjsInteractionResidentPagesStable = useCallback((candidatePages) => {
     const currentPage = coercePageNumber(pageNumRef.current, Number.POSITIVE_INFINITY) || 1;
-    const previous = syncfusionInteractionResidentPagesRef.current || new Set();
-    const visiblePages = sortSyncfusionPagesByDistance(
-      Array.from(syncfusionVisiblePagesRef.current || []).filter((pageNumber) => isSyncfusionPageEligible(pageNumber)),
+    const previous = pdfjsInteractionResidentPagesRef.current || new Set();
+    const visiblePages = sortPdfjsPagesByDistance(
+      Array.from(pdfjsVisiblePagesRef.current || []).filter((pageNumber) => isPdfjsPageEligible(pageNumber)),
       currentPage
     );
     const union = new Set([
@@ -1265,7 +1250,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       ...Array.from(candidatePages || []),
       ...visiblePages,
       currentPage
-    ].filter((pageNumber) => isSyncfusionPageEligible(pageNumber)));
+    ].filter((pageNumber) => isPdfjsPageEligible(pageNumber)));
     const ordered = [];
     const pushUnique = (pageNumber) => {
       if (!Number.isFinite(pageNumber) || !union.has(pageNumber)) return;
@@ -1277,9 +1262,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       pushUnique(pageNumber - 1);
       pushUnique(pageNumber + 1);
     });
-    sortSyncfusionPagesByDistance(Array.from(union), currentPage).forEach(pushUnique);
+    sortPdfjsPagesByDistance(Array.from(union), currentPage).forEach(pushUnique);
     const residentCap = Math.max(
-      SYNCFUSION_INTERACTION_MAX_RESIDENT_PAGES,
+      PDFJS_INTERACTION_MAX_RESIDENT_PAGES,
       visiblePages.length + 2
     );
     const next = new Set(ordered.slice(0, residentCap));
@@ -1290,7 +1275,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       return previous;
     }
 
-    const currentPayloads = syncfusionInteractionProxyPayloadsRef.current || {};
+    const currentPayloads = pdfjsInteractionProxyPayloadsRef.current || {};
     const nextPayloads = {};
     let payloadPruned = false;
     Object.entries(currentPayloads).forEach(([pageKey, payload]) => {
@@ -1306,46 +1291,46 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       payloadPruned = true;
     });
     if (payloadPruned) {
-      syncfusionInteractionProxyPayloadsRef.current = nextPayloads;
-      setSyncfusionInteractionProxyPayloads(nextPayloads);
+      pdfjsInteractionProxyPayloadsRef.current = nextPayloads;
+      setPdfjsInteractionProxyPayloads(nextPayloads);
     }
 
-    syncfusionInteractionResidentPagesRef.current = next;
-    setSyncfusionInteractionResidentPages(next);
-    setDebugData({ syncfusionInteractionResidentCount: next.size });
-    emitPdfDebugEvent('syncfusion_interaction_resident_pages', { count: next.size });
+    pdfjsInteractionResidentPagesRef.current = next;
+    setPdfjsInteractionResidentPages(next);
+    setDebugData({ pdfjsInteractionResidentCount: next.size });
+    emitPdfDebugEvent('pdfjs_interaction_resident_pages', { count: next.size });
     return next;
-  }, [isSyncfusionPageEligible, sortSyncfusionPagesByDistance]);
+  }, [isPdfjsPageEligible, sortPdfjsPagesByDistance]);
 
-  const clearSyncfusionOverlayTransformSyncRaf = useCallback(() => {
-    const rafId = syncfusionOverlayTransformSyncRafRef.current;
+  const clearPdfjsOverlayTransformSyncRaf = useCallback(() => {
+    const rafId = pdfjsOverlayTransformSyncRafRef.current;
     if (rafId === null) return;
     if (typeof window !== 'undefined' && typeof window.cancelAnimationFrame === 'function') {
       window.cancelAnimationFrame(rafId);
     } else {
       clearTimeout(rafId);
     }
-    syncfusionOverlayTransformSyncRafRef.current = null;
-    syncfusionOverlayTransformLoopActiveRef.current = false;
+    pdfjsOverlayTransformSyncRafRef.current = null;
+    pdfjsOverlayTransformLoopActiveRef.current = false;
   }, []);
 
-  const clearSyncfusionCommitRaf = useCallback(() => {
-    const rafId = syncfusionCommitRafRef.current;
+  const clearPdfjsCommitRaf = useCallback(() => {
+    const rafId = pdfjsCommitRafRef.current;
     if (rafId === null) return;
     if (typeof window !== 'undefined' && typeof window.cancelAnimationFrame === 'function') {
       window.cancelAnimationFrame(rafId);
     } else {
       clearTimeout(rafId);
     }
-    syncfusionCommitRafRef.current = null;
+    pdfjsCommitRafRef.current = null;
   }, []);
 
-  const ensureSyncfusionZoomPresentationState = useCallback((pageNumber) => {
+  const ensurePdfjsZoomPresentationState = useCallback((pageNumber) => {
     const safePageNumber = Number(pageNumber);
     if (!(Number.isFinite(safePageNumber) && safePageNumber > 0)) {
       return null;
     }
-    const existingState = syncfusionZoomPresentationByPageRef.current?.[safePageNumber];
+    const existingState = pdfjsZoomPresentationByPageRef.current?.[safePageNumber];
     if (existingState) {
       return existingState;
     }
@@ -1358,44 +1343,44 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       paintReady: false,
       swapGroupId: 0
     };
-    syncfusionZoomPresentationByPageRef.current = {
-      ...(syncfusionZoomPresentationByPageRef.current || {}),
+    pdfjsZoomPresentationByPageRef.current = {
+      ...(pdfjsZoomPresentationByPageRef.current || {}),
       [safePageNumber]: nextState
     };
     return nextState;
   }, []);
 
-  const ensureSyncfusionStablePortalChildren = useCallback((pageNumber, stablePortalHost = null) => {
+  const ensurePdfjsStablePortalChildren = useCallback((pageNumber, stablePortalHost = null) => {
     const safePageNumber = Number(pageNumber);
     if (!(Number.isFinite(safePageNumber) && safePageNumber > 0)) {
       return { stablePortalHost: null, liveRoot: null, snapshotHost: null };
     }
-    const resolvedHost = stablePortalHost || syncfusionStablePortalHostsRef.current?.[safePageNumber] || null;
+    const resolvedHost = stablePortalHost || pdfjsStablePortalHostsRef.current?.[safePageNumber] || null;
     if (!resolvedHost) {
       return {
         stablePortalHost: null,
-        liveRoot: syncfusionStablePortalLiveRootsRef.current?.[safePageNumber] || null,
-        snapshotHost: syncfusionStablePortalSnapshotHostsRef.current?.[safePageNumber] || null
+        liveRoot: pdfjsStablePortalLiveRootsRef.current?.[safePageNumber] || null,
+        snapshotHost: pdfjsStablePortalSnapshotHostsRef.current?.[safePageNumber] || null
       };
     }
 
-    let liveRoot = syncfusionStablePortalLiveRootsRef.current?.[safePageNumber] || null;
+    let liveRoot = pdfjsStablePortalLiveRootsRef.current?.[safePageNumber] || null;
     if (!liveRoot) {
       liveRoot = document.createElement('div');
       liveRoot.setAttribute('data-stable-live-root', String(safePageNumber));
       liveRoot.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:20;';
-      syncfusionStablePortalLiveRootsRef.current[safePageNumber] = liveRoot;
+      pdfjsStablePortalLiveRootsRef.current[safePageNumber] = liveRoot;
     }
     if (liveRoot.parentElement !== resolvedHost) {
       resolvedHost.appendChild(liveRoot);
     }
 
-    let snapshotHost = syncfusionStablePortalSnapshotHostsRef.current?.[safePageNumber] || null;
+    let snapshotHost = pdfjsStablePortalSnapshotHostsRef.current?.[safePageNumber] || null;
     if (!snapshotHost) {
       snapshotHost = document.createElement('div');
       snapshotHost.setAttribute('data-stable-snapshot-root', String(safePageNumber));
       snapshotHost.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:24;visibility:hidden;opacity:0;';
-      syncfusionStablePortalSnapshotHostsRef.current[safePageNumber] = snapshotHost;
+      pdfjsStablePortalSnapshotHostsRef.current[safePageNumber] = snapshotHost;
     }
     if (snapshotHost.parentElement !== resolvedHost) {
       resolvedHost.appendChild(snapshotHost);
@@ -1404,12 +1389,12 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     return { stablePortalHost: resolvedHost, liveRoot, snapshotHost };
   }, []);
 
-  const resolveSyncfusionZoomPresentationMode = useCallback((pageNumber) => {
+  const resolvePdfjsZoomPresentationMode = useCallback((pageNumber) => {
     const safePageNumber = Number(pageNumber);
     if (!(Number.isFinite(safePageNumber) && safePageNumber > 0)) {
       return 'live';
     }
-    const presentationState = syncfusionZoomPresentationByPageRef.current?.[safePageNumber] || null;
+    const presentationState = pdfjsZoomPresentationByPageRef.current?.[safePageNumber] || null;
     if (presentationState?.snapshotVisible && presentationState?.snapshotUrl) {
       return 'snapshot';
     }
@@ -1419,13 +1404,13 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     return 'live';
   }, []);
 
-  const syncSyncfusionZoomPresentationPage = useCallback((pageNumber, stablePortalHost = null) => {
+  const syncPdfjsZoomPresentationPage = useCallback((pageNumber, stablePortalHost = null) => {
     const safePageNumber = Number(pageNumber);
     if (!(Number.isFinite(safePageNumber) && safePageNumber > 0)) {
       return false;
     }
-    const presentationState = syncfusionZoomPresentationByPageRef.current?.[safePageNumber] || null;
-    const { stablePortalHost: resolvedHost, liveRoot, snapshotHost } = ensureSyncfusionStablePortalChildren(safePageNumber, stablePortalHost);
+    const presentationState = pdfjsZoomPresentationByPageRef.current?.[safePageNumber] || null;
+    const { stablePortalHost: resolvedHost, liveRoot, snapshotHost } = ensurePdfjsStablePortalChildren(safePageNumber, stablePortalHost);
     if (!liveRoot && !snapshotHost && !resolvedHost) {
       return false;
     }
@@ -1473,27 +1458,27 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     }
 
     if (resolvedHost) {
-      const presentationMode = resolveSyncfusionZoomPresentationMode(safePageNumber);
+      const presentationMode = resolvePdfjsZoomPresentationMode(safePageNumber);
       resolvedHost.setAttribute('data-presentation-mode', presentationMode);
       resolvedHost.setAttribute('data-snapshot-visible', snapshotVisible ? 'true' : 'false');
       resolvedHost.setAttribute('data-paint-ready', presentationState?.paintReady === true ? 'true' : 'false');
     }
 
     return true;
-  }, [ensureSyncfusionStablePortalChildren, resolveSyncfusionZoomPresentationMode]);
+  }, [ensurePdfjsStablePortalChildren, resolvePdfjsZoomPresentationMode]);
 
-  const syncSyncfusionZoomPresentationPages = useCallback((pageNumbers = []) => {
+  const syncPdfjsZoomPresentationPages = useCallback((pageNumbers = []) => {
     Array.from(new Set(
       (Array.isArray(pageNumbers) ? pageNumbers : [])
         .map((pageNumber) => Number(pageNumber))
         .filter((pageNumber) => Number.isFinite(pageNumber) && pageNumber > 0)
     )).forEach((pageNumber) => {
-      syncSyncfusionZoomPresentationPage(pageNumber);
+      syncPdfjsZoomPresentationPage(pageNumber);
     });
-  }, [syncSyncfusionZoomPresentationPage]);
+  }, [syncPdfjsZoomPresentationPage]);
 
-  const resetSyncfusionZoomPresentationPages = useCallback((pageNumbers = null, { revealLive = true } = {}) => {
-    const stateByPage = { ...(syncfusionZoomPresentationByPageRef.current || {}) };
+  const resetPdfjsZoomPresentationPages = useCallback((pageNumbers = null, { revealLive = true } = {}) => {
+    const stateByPage = { ...(pdfjsZoomPresentationByPageRef.current || {}) };
     const targetPages = Array.isArray(pageNumbers) && pageNumbers.length > 0
       ? Array.from(new Set(
           pageNumbers
@@ -1502,13 +1487,13 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         ))
       : Array.from(new Set([
           ...Object.keys(stateByPage).map((pageKey) => Number(pageKey)),
-          ...Object.keys(syncfusionStablePortalSnapshotHostsRef.current || {}).map((pageKey) => Number(pageKey)),
-          ...Object.keys(syncfusionStablePortalLiveRootsRef.current || {}).map((pageKey) => Number(pageKey))
+          ...Object.keys(pdfjsStablePortalSnapshotHostsRef.current || {}).map((pageKey) => Number(pageKey)),
+          ...Object.keys(pdfjsStablePortalLiveRootsRef.current || {}).map((pageKey) => Number(pageKey))
         ].filter((pageNumber) => Number.isFinite(pageNumber) && pageNumber > 0)));
 
     targetPages.forEach((pageNumber) => {
       delete stateByPage[pageNumber];
-      const snapshotHost = syncfusionStablePortalSnapshotHostsRef.current?.[pageNumber];
+      const snapshotHost = pdfjsStablePortalSnapshotHostsRef.current?.[pageNumber];
       if (snapshotHost?.style) {
         const snapshotImage = snapshotHost.querySelector('img[data-zoom-snapshot]');
         if (snapshotImage) {
@@ -1520,13 +1505,13 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         snapshotHost.removeAttribute('data-paint-ready');
         snapshotHost.removeAttribute('data-swap-group-id');
       }
-      const liveRoot = syncfusionStablePortalLiveRootsRef.current?.[pageNumber];
+      const liveRoot = pdfjsStablePortalLiveRootsRef.current?.[pageNumber];
       if (revealLive && liveRoot?.style) {
         liveRoot.style.visibility = '';
         liveRoot.style.opacity = '';
         liveRoot.removeAttribute('data-scale-pending-hidden');
       }
-      const stableHost = syncfusionStablePortalHostsRef.current?.[pageNumber];
+      const stableHost = pdfjsStablePortalHostsRef.current?.[pageNumber];
       if (stableHost) {
         stableHost.removeAttribute('data-presentation-mode');
         stableHost.removeAttribute('data-snapshot-visible');
@@ -1534,32 +1519,32 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       }
     });
 
-    syncfusionZoomPresentationByPageRef.current = stateByPage;
+    pdfjsZoomPresentationByPageRef.current = stateByPage;
     if (!Array.isArray(pageNumbers) || pageNumbers.length === 0) {
-      syncfusionScaleConfirmVisibleSwapPagesRef.current = new Set();
+      pdfjsScaleConfirmVisibleSwapPagesRef.current = new Set();
     } else {
-      const nextVisibleSwapPages = new Set(syncfusionScaleConfirmVisibleSwapPagesRef.current || []);
+      const nextVisibleSwapPages = new Set(pdfjsScaleConfirmVisibleSwapPagesRef.current || []);
       targetPages.forEach((pageNumber) => nextVisibleSwapPages.delete(pageNumber));
-      syncfusionScaleConfirmVisibleSwapPagesRef.current = nextVisibleSwapPages;
+      pdfjsScaleConfirmVisibleSwapPagesRef.current = nextVisibleSwapPages;
     }
   }, []);
 
-  const setSyncfusionStablePortalHostHidden = useCallback((pageNumber, hidden) => {
+  const setPdfjsStablePortalHostHidden = useCallback((pageNumber, hidden) => {
     const safePageNumber = Number(pageNumber);
     if (!(Number.isFinite(safePageNumber) && safePageNumber > 0)) {
       return false;
     }
-    const existingState = syncfusionZoomPresentationByPageRef.current?.[safePageNumber] || null;
-    const presentationState = existingState || (hidden ? ensureSyncfusionZoomPresentationState(safePageNumber) : null);
+    const existingState = pdfjsZoomPresentationByPageRef.current?.[safePageNumber] || null;
+    const presentationState = existingState || (hidden ? ensurePdfjsZoomPresentationState(safePageNumber) : null);
     if (presentationState) {
       presentationState.liveHidden = hidden === true;
-      syncfusionZoomPresentationByPageRef.current = {
-        ...(syncfusionZoomPresentationByPageRef.current || {}),
+      pdfjsZoomPresentationByPageRef.current = {
+        ...(pdfjsZoomPresentationByPageRef.current || {}),
         [safePageNumber]: presentationState
       };
     }
-    return syncSyncfusionZoomPresentationPage(safePageNumber);
-  }, [ensureSyncfusionZoomPresentationState, syncSyncfusionZoomPresentationPage]);
+    return syncPdfjsZoomPresentationPage(safePageNumber);
+  }, [ensurePdfjsZoomPresentationState, syncPdfjsZoomPresentationPage]);
 
   const syncScaleConfirmHiddenPages = useCallback((pageNumbers = []) => {
     const targetPages = new Set(
@@ -1567,22 +1552,22 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         .map((pageNumber) => Number(pageNumber))
         .filter((pageNumber) => Number.isFinite(pageNumber) && pageNumber > 0)
     );
-    const previousHiddenPages = new Set(syncfusionScaleConfirmHiddenPagesRef.current || []);
+    const previousHiddenPages = new Set(pdfjsScaleConfirmHiddenPagesRef.current || []);
     previousHiddenPages.forEach((pageNumber) => {
       if (!targetPages.has(pageNumber)) {
-        setSyncfusionStablePortalHostHidden(pageNumber, false);
+        setPdfjsStablePortalHostHidden(pageNumber, false);
       }
     });
     targetPages.forEach((pageNumber) => {
-      setSyncfusionStablePortalHostHidden(pageNumber, true);
+      setPdfjsStablePortalHostHidden(pageNumber, true);
     });
-    syncfusionScaleConfirmHiddenPagesRef.current = targetPages;
-  }, [setSyncfusionStablePortalHostHidden]);
+    pdfjsScaleConfirmHiddenPagesRef.current = targetPages;
+  }, [setPdfjsStablePortalHostHidden]);
 
   // [Phase 11] Removed: old Canvas-mode zoom confirm-pending / reveal system (4 functions), inert in SVG mode.
 
-  const resetSyncfusionOverlayTransformStyles = useCallback(() => {
-    const overlayContentRefs = syncfusionOverlayContentRefs.current || {};
+  const resetPdfjsOverlayTransformStyles = useCallback(() => {
+    const overlayContentRefs = pdfjsOverlayContentRefs.current || {};
     Object.keys(overlayContentRefs).forEach((pageKey) => {
       const node = overlayContentRefs[pageKey];
       if (!node || !node.isConnected || !node.style) return;
@@ -1591,7 +1576,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       node.style.willChange = '';
       node.style.backfaceVisibility = '';
     });
-    const legacyCompensationRefs = syncfusionOverlayLegacyCompensationRefs.current || {};
+    const legacyCompensationRefs = pdfjsOverlayLegacyCompensationRefs.current || {};
     Object.keys(legacyCompensationRefs).forEach((pageKey) => {
       const node = legacyCompensationRefs[pageKey];
       if (!node || !node.isConnected || !node.style) return;
@@ -1600,39 +1585,39 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       node.style.willChange = '';
       node.style.backfaceVisibility = '';
     });
-    syncfusionOverlayTransformRatioByPageRef.current = {};
-    syncfusionOverlayTransformNodeByPageRef.current = {};
-    resetSyncfusionZoomPresentationPages(null, { revealLive: true });
+    pdfjsOverlayTransformRatioByPageRef.current = {};
+    pdfjsOverlayTransformNodeByPageRef.current = {};
+    resetPdfjsZoomPresentationPages(null, { revealLive: true });
     syncScaleConfirmHiddenPages([]);
     // Clean up any fallback portal hosts created during zoom
-    const fallbacks = syncfusionFallbackHostsRef.current;
+    const fallbacks = pdfjsFallbackHostsRef.current;
     Object.keys(fallbacks).forEach((pageKey) => {
       const fb = fallbacks[pageKey];
       if (fb?.isConnected) fb.remove();
       delete fallbacks[pageKey];
     });
-    const zoomSnapshotLayer = syncfusionZoomSnapshotLayerRef.current;
+    const zoomSnapshotLayer = pdfjsZoomSnapshotLayerRef.current;
     if (zoomSnapshotLayer?.isConnected) {
       zoomSnapshotLayer.remove();
     }
-    syncfusionZoomSnapshotLayerRef.current = null;
-    syncfusionZoomSnapshotPagesRef.current = {};
-  }, [resetSyncfusionZoomPresentationPages, syncScaleConfirmHiddenPages]);
+    pdfjsZoomSnapshotLayerRef.current = null;
+    pdfjsZoomSnapshotPagesRef.current = {};
+  }, [resetPdfjsZoomPresentationPages, syncScaleConfirmHiddenPages]);
 
-  const clearSyncfusionZoomSnapshots = useCallback(() => {
-    const layer = syncfusionZoomSnapshotLayerRef.current;
+  const clearPdfjsZoomSnapshots = useCallback(() => {
+    const layer = pdfjsZoomSnapshotLayerRef.current;
     if (layer?.isConnected) {
       layer.remove();
     }
-    syncfusionZoomSnapshotLayerRef.current = null;
-    syncfusionZoomSnapshotPagesRef.current = {};
+    pdfjsZoomSnapshotLayerRef.current = null;
+    pdfjsZoomSnapshotPagesRef.current = {};
   }, []);
 
-  const applySyncfusionZoomSnapshotClip = useCallback((layer) => {
+  const applyPdfjsZoomSnapshotClip = useCallback((layer) => {
     if (!layer || typeof window === 'undefined' || typeof document === 'undefined') return;
     const viewport =
-      document.getElementById(`${syncfusionViewerElementId}_viewerContainer`) ||
-      syncfusionWrapperRef.current ||
+      document.getElementById(`${pdfjsViewerElementId}_viewerContainer`) ||
+      pdfjsWrapperRef.current ||
       containerRef.current;
     const rect = viewport?.getBoundingClientRect?.();
     if (!(rect && rect.width > 0 && rect.height > 0)) {
@@ -1646,19 +1631,19 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     const bottom = Math.max(0, viewportHeight - rect.bottom);
     const left = Math.max(0, rect.left);
     layer.style.clipPath = `inset(${top}px ${right}px ${bottom}px ${left}px)`;
-  }, [syncfusionViewerElementId]);
+  }, [pdfjsViewerElementId]);
 
-  const ensureSyncfusionZoomSnapshotLayer = useCallback(() => {
+  const ensurePdfjsZoomSnapshotLayer = useCallback(() => {
     if (typeof document === 'undefined') return null;
-    let layer = syncfusionZoomSnapshotLayerRef.current;
+    let layer = pdfjsZoomSnapshotLayerRef.current;
     if (!layer || !layer.isConnected) {
       layer = document.createElement('div');
-      layer.setAttribute('data-syncfusion-zoom-snapshot-layer', 'true');
+      layer.setAttribute('data-pdfjs-zoom-snapshot-layer', 'true');
       document.body.appendChild(layer);
-      syncfusionZoomSnapshotLayerRef.current = layer;
+      pdfjsZoomSnapshotLayerRef.current = layer;
     }
     // The zoom snapshot is PDF content, not app chrome. Keep it above the
-    // Syncfusion page but below top/bottom toolbars and sync/storage banners.
+    // Pdfjs page but below top/bottom toolbars and sync/storage banners.
     // Re-apply every time so a hot-reloaded/stale snapshot node cannot keep an
     // older high z-index and paint annotations over warnings.
     Object.assign(layer.style, {
@@ -1669,14 +1654,14 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       overflow: 'hidden',
       contain: 'layout style paint',
     });
-    applySyncfusionZoomSnapshotClip(layer);
+    applyPdfjsZoomSnapshotClip(layer);
     return layer;
-  }, [applySyncfusionZoomSnapshotClip]);
+  }, [applyPdfjsZoomSnapshotClip]);
 
-  const updateSyncfusionZoomSnapshots = useCallback((nextScale) => {
-    applySyncfusionZoomSnapshotClip(syncfusionZoomSnapshotLayerRef.current);
-    const baseScale = syncfusionZoomSnapshotBaseScaleRef.current || zoomOverlayBaseScaleRef.current || 1;
-    const pages = syncfusionZoomSnapshotPagesRef.current || {};
+  const updatePdfjsZoomSnapshots = useCallback((nextScale) => {
+    applyPdfjsZoomSnapshotClip(pdfjsZoomSnapshotLayerRef.current);
+    const baseScale = pdfjsZoomSnapshotBaseScaleRef.current || zoomOverlayBaseScaleRef.current || 1;
+    const pages = pdfjsZoomSnapshotPagesRef.current || {};
     Object.entries(pages).forEach(([pageKey, entry]) => {
       if (!entry?.host?.isConnected) return;
       const pageNumber = Number(pageKey);
@@ -1693,32 +1678,32 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       entry.host.style.transform = `translate3d(${left}px, ${top}px, 0) scale(${ratio})`;
       entry.host.setAttribute('data-zoom-snapshot-ratio', String(Number(ratio.toFixed(5))));
     });
-  }, [applySyncfusionZoomSnapshotClip]);
+  }, [applyPdfjsZoomSnapshotClip]);
 
-  const captureSyncfusionZoomSnapshots = useCallback((baseScale) => {
+  const capturePdfjsZoomSnapshots = useCallback((baseScale) => {
     if (typeof document === 'undefined') return;
     // The owned pdf.js engine repaints fast and owns its own zoom, so the
-    // Syncfusion-era zoom snapshot (a DOM clone of the annotation surfaces shown
+    // Pdfjs-era zoom snapshot (a DOM clone of the annotation surfaces shown
     // over the page during a gesture) is unnecessary AND harmful here: the clone
     // captures SVG markups but NOT the live HTML form widgets, so it covers the
     // form field + checkbox and they appear to vanish mid-zoom. Skip it entirely
     // under pdf.js — the live overlay stays visible and resyncs each zoom step.
-    if (getPDFViewerEngine() === PDF_VIEWER_ENGINE_PDFJS) return;
-    clearSyncfusionZoomSnapshots();
-    const layer = ensureSyncfusionZoomSnapshotLayer();
+    if (true) return;
+    clearPdfjsZoomSnapshots();
+    const layer = ensurePdfjsZoomSnapshotLayer();
     if (!layer) return;
-    applySyncfusionZoomSnapshotClip(layer);
+    applyPdfjsZoomSnapshotClip(layer);
     const viewport =
-      document.getElementById(`${syncfusionViewerElementId}_viewerContainer`) ||
-      syncfusionWrapperRef.current ||
+      document.getElementById(`${pdfjsViewerElementId}_viewerContainer`) ||
+      pdfjsWrapperRef.current ||
       containerRef.current;
     const viewportRect = viewport?.getBoundingClientRect?.();
     const captureRect = viewportRect && viewportRect.width > 0 && viewportRect.height > 0
       ? {
-          left: viewportRect.left - SYNCFUSION_ZOOM_SNAPSHOT_VIEWPORT_MARGIN_PX,
-          top: viewportRect.top - SYNCFUSION_ZOOM_SNAPSHOT_VIEWPORT_MARGIN_PX,
-          right: viewportRect.right + SYNCFUSION_ZOOM_SNAPSHOT_VIEWPORT_MARGIN_PX,
-          bottom: viewportRect.bottom + SYNCFUSION_ZOOM_SNAPSHOT_VIEWPORT_MARGIN_PX,
+          left: viewportRect.left - PDFJS_ZOOM_SNAPSHOT_VIEWPORT_MARGIN_PX,
+          top: viewportRect.top - PDFJS_ZOOM_SNAPSHOT_VIEWPORT_MARGIN_PX,
+          right: viewportRect.right + PDFJS_ZOOM_SNAPSHOT_VIEWPORT_MARGIN_PX,
+          bottom: viewportRect.bottom + PDFJS_ZOOM_SNAPSHOT_VIEWPORT_MARGIN_PX,
         }
       : null;
     const intersectsCaptureRect = (rect) => (
@@ -1756,7 +1741,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         visibility: 'visible',
       });
       const host = document.createElement('div');
-      host.setAttribute('data-syncfusion-zoom-snapshot-page', String(pageNumber));
+      host.setAttribute('data-pdfjs-zoom-snapshot-page', String(pageNumber));
       Object.assign(host.style, {
         position: 'fixed',
         top: '0',
@@ -1782,11 +1767,11 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         },
       };
     });
-    syncfusionZoomSnapshotBaseScaleRef.current = Number.isFinite(baseScale) && baseScale > 0 ? baseScale : 1;
-    syncfusionZoomSnapshotPagesRef.current = pages;
-  }, [applySyncfusionZoomSnapshotClip, clearSyncfusionZoomSnapshots, ensureSyncfusionZoomSnapshotLayer, syncfusionViewerElementId]);
+    pdfjsZoomSnapshotBaseScaleRef.current = Number.isFinite(baseScale) && baseScale > 0 ? baseScale : 1;
+    pdfjsZoomSnapshotPagesRef.current = pages;
+  }, [applyPdfjsZoomSnapshotClip, clearPdfjsZoomSnapshots, ensurePdfjsZoomSnapshotLayer, pdfjsViewerElementId]);
 
-  const commitSyncfusionOverlayScaleForPage = useCallback((pageNumber, appliedScale, source = 'unknown') => {
+  const commitPdfjsOverlayScaleForPage = useCallback((pageNumber, appliedScale, source = 'unknown') => {
     const safePageNumber = Number(pageNumber);
     if (!(Number.isFinite(safePageNumber) && safePageNumber > 0)) {
       return false;
@@ -1794,11 +1779,11 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
     const safeScale = Number(appliedScale);
     const hasSafeScale = Number.isFinite(safeScale) && safeScale > 0;
-    const node = syncfusionOverlayContentRefs.current?.[safePageNumber] || null;
-    const compensationNode = syncfusionOverlayLegacyCompensationRefs.current?.[safePageNumber] || null;
+    const node = pdfjsOverlayContentRefs.current?.[safePageNumber] || null;
+    const compensationNode = pdfjsOverlayLegacyCompensationRefs.current?.[safePageNumber] || null;
     const inlineTransform = typeof node?.style?.transform === 'string' ? node.style.transform : '';
     const observedRatio = parseCssTransformScaleX(inlineTransform);
-    const ratioByPage = { ...(syncfusionOverlayTransformRatioByPageRef.current || {}) };
+    const ratioByPage = { ...(pdfjsOverlayTransformRatioByPageRef.current || {}) };
     const storedRatio = Number(ratioByPage[safePageNumber]) || 1;
     const hasTransform =
       (typeof inlineTransform === 'string' && inlineTransform.trim().length > 0) ||
@@ -1806,13 +1791,13 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       Math.abs(storedRatio - 1) > 0.001;
 
     if (hasSafeScale) {
-      const currentCommittedScale = Number(syncfusionCommittedPageScalesRef.current?.[safePageNumber]);
+      const currentCommittedScale = Number(pdfjsCommittedPageScalesRef.current?.[safePageNumber]);
       if (!Number.isFinite(currentCommittedScale) || Math.abs(currentCommittedScale - safeScale) > 0.0005) {
-        syncfusionCommittedPageScalesRef.current = {
-          ...(syncfusionCommittedPageScalesRef.current || {}),
+        pdfjsCommittedPageScalesRef.current = {
+          ...(pdfjsCommittedPageScalesRef.current || {}),
           [safePageNumber]: safeScale
         };
-        setSyncfusionCommittedPageScales((prev) => {
+        setPdfjsCommittedPageScales((prev) => {
           const previousScale = Number(prev?.[safePageNumber]);
           if (Number.isFinite(previousScale) && Math.abs(previousScale - safeScale) <= 0.0005) {
             return prev;
@@ -1839,7 +1824,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     }
 
     ratioByPage[safePageNumber] = 1;
-    syncfusionOverlayTransformRatioByPageRef.current = ratioByPage;
+    pdfjsOverlayTransformRatioByPageRef.current = ratioByPage;
 
     if (hasTransform || hasSafeScale) {
       debugMark('overlay_transform_commit', {
@@ -1855,17 +1840,17 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   }, []);
 
   const handleLegacyOverlayPaintCommitted = useCallback((pageNumber, appliedScale) => {
-    if (!useSyncfusionRenderer) return;
+    if (!usePdfjsRenderer) return;
     if (rendererModeRef.current !== 'svg') return;
     if (zoomOverlayTransformActiveRef.current) return;
-    commitSyncfusionOverlayScaleForPage(pageNumber, appliedScale, 'legacy_paint_committed');
-  }, [commitSyncfusionOverlayScaleForPage, useSyncfusionRenderer]);
+    commitPdfjsOverlayScaleForPage(pageNumber, appliedScale, 'legacy_paint_committed');
+  }, [commitPdfjsOverlayScaleForPage, usePdfjsRenderer]);
 
   // [Phase 11] Removed: old frozen overlay page caching function, inert in SVG mode.
 
   // [Phase 11] Removed: old Canvas-mode confirm-pending helper functions (3 functions), inert in SVG mode.
 
-  const beginSyncfusionScaleConfirmPending = useCallback((source = 'unknown') => {
+  const beginPdfjsScaleConfirmPending = useCallback((source = 'unknown') => {
     // Signal zoom-start to mounted Canvas components (FabricDrawingCanvas, FabricEraserCanvas, FabricEditCanvas).
     // zoomGeneration change flushes any in-progress work before canvas resizes.
     setZoomGeneration(prev => prev + 1);
@@ -1884,11 +1869,11 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   // start of a zoom gesture ('gesture-start') and at commit ('settle'). On
   // gesture-start we bump the EXISTING zoomGeneration signal so mounted Canvas
   // tools (FabricDrawingCanvas/Eraser/Edit) auto-commit in-progress work before
-  // the pdf.js page hosts re-layout — the same contract Syncfusion gets via
-  // beginSyncfusionScaleConfirmPending. Engine-gated: only runs under pdf.js;
-  // under Syncfusion this is never wired (the prop is undefined), so it is inert.
+  // the pdf.js page hosts re-layout — the same contract Pdfjs gets via
+  // beginPdfjsScaleConfirmPending. Engine-gated: only runs under pdf.js;
+  // under Pdfjs this is never wired (the prop is undefined), so it is inert.
   const handlePdfjsZoomPhase = useCallback((phase) => {
-    if (getPDFViewerEngine() !== PDF_VIEWER_ENGINE_PDFJS) return;
+    if (false) return;
     // INVARIANT: keep this bump — Canvas tools (Fabric draw/eraser/edit) watch
     // zoomGeneration to auto-commit in-progress work before the host re-layouts.
     // The overlay no longer needs a per-frame zoom signal: it now lives INSIDE the
@@ -1897,46 +1882,46 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     if (phase === 'gesture-start') setZoomGeneration((prev) => prev + 1);
   }, []);
 
-  const clearSyncfusionInteractionTimer = useCallback(() => {
-    if (!syncfusionInteractionTimerRef.current) return;
-    clearTimeout(syncfusionInteractionTimerRef.current);
-    syncfusionInteractionTimerRef.current = null;
+  const clearPdfjsInteractionTimer = useCallback(() => {
+    if (!pdfjsInteractionTimerRef.current) return;
+    clearTimeout(pdfjsInteractionTimerRef.current);
+    pdfjsInteractionTimerRef.current = null;
   }, []);
 
-  const determineSyncfusionPageMode = useCallback((pageNumber, previousMode = 'full') => {
+  const determinePdfjsPageMode = useCallback((pageNumber, previousMode = 'full') => {
     if (
-      SYNCFUSION_INTERACTION_FORCE_PROXY_ALL_PAGES &&
-      syncfusionInteractionPhaseRef.current === 'interacting'
+      PDFJS_INTERACTION_FORCE_PROXY_ALL_PAGES &&
+      pdfjsInteractionPhaseRef.current === 'interacting'
     ) {
       return 'proxy';
     }
 
-    const annotations = syncfusionAnnotationsByPageRef.current?.[pageNumber];
+    const annotations = pdfjsAnnotationsByPageRef.current?.[pageNumber];
     const objectCount = Array.isArray(annotations?.objects) ? annotations.objects.length : 0;
     const calloutCount = Number(lightweightCalloutCountByPageRef.current?.[pageNumber] || 0);
 
-    if (objectCount >= SYNCFUSION_INTERACTION_PROXY_FORCE_OBJECT_THRESHOLD) {
+    if (objectCount >= PDFJS_INTERACTION_PROXY_FORCE_OBJECT_THRESHOLD) {
       return 'proxy';
     }
     if (previousMode === 'proxy') {
       if (
-        objectCount >= SYNCFUSION_INTERACTION_PROXY_OBJECT_THRESHOLD ||
-        calloutCount >= SYNCFUSION_INTERACTION_PROXY_CALLOUT_THRESHOLD
+        objectCount >= PDFJS_INTERACTION_PROXY_OBJECT_THRESHOLD ||
+        calloutCount >= PDFJS_INTERACTION_PROXY_CALLOUT_THRESHOLD
       ) {
         return 'proxy';
       }
     }
     if (
-      objectCount >= SYNCFUSION_INTERACTION_PROXY_OBJECT_THRESHOLD ||
-      calloutCount >= SYNCFUSION_INTERACTION_PROXY_CALLOUT_THRESHOLD
+      objectCount >= PDFJS_INTERACTION_PROXY_OBJECT_THRESHOLD ||
+      calloutCount >= PDFJS_INTERACTION_PROXY_CALLOUT_THRESHOLD
     ) {
       return 'proxy';
     }
     return 'full';
   }, []);
 
-  const buildSyncfusionProxyPayloadForPage = useCallback((pageNumber) => {
-    const annotations = syncfusionAnnotationsByPageRef.current?.[pageNumber];
+  const buildPdfjsProxyPayloadForPage = useCallback((pageNumber) => {
+    const annotations = pdfjsAnnotationsByPageRef.current?.[pageNumber];
     const objects = Array.isArray(annotations?.objects) ? annotations.objects : [];
     const proxyObjects = objects
       .filter((object) => !!object)
@@ -2005,27 +1990,27 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     };
   }, []);
 
-  const freezeSyncfusionSessionPages = useCallback((pageNumbers, { reset = false } = {}) => {
+  const freezePdfjsSessionPages = useCallback((pageNumbers, { reset = false } = {}) => {
     const requestedPages = Array.from(new Set(
       (Array.isArray(pageNumbers) ? pageNumbers : [])
         .map((pageNumber) => Number(pageNumber))
-        .filter((pageNumber) => Number.isFinite(pageNumber) && pageNumber > 0 && isSyncfusionPageEligible(pageNumber))
+        .filter((pageNumber) => Number.isFinite(pageNumber) && pageNumber > 0 && isPdfjsPageEligible(pageNumber))
     ));
 
     if (reset) {
       const resetModes = {};
       const resetPayloads = {};
       requestedPages.forEach((pageNumber) => {
-        const mode = determineSyncfusionPageMode(pageNumber, 'full');
+        const mode = determinePdfjsPageMode(pageNumber, 'full');
         resetModes[pageNumber] = mode;
         if (mode === 'proxy') {
-          resetPayloads[pageNumber] = buildSyncfusionProxyPayloadForPage(pageNumber);
+          resetPayloads[pageNumber] = buildPdfjsProxyPayloadForPage(pageNumber);
         }
       });
-      syncfusionInteractionPageModesRef.current = resetModes;
-      syncfusionInteractionProxyPayloadsRef.current = resetPayloads;
-      setSyncfusionInteractionPageModes(resetModes);
-      setSyncfusionInteractionProxyPayloads(resetPayloads);
+      pdfjsInteractionPageModesRef.current = resetModes;
+      pdfjsInteractionProxyPayloadsRef.current = resetPayloads;
+      setPdfjsInteractionPageModes(resetModes);
+      setPdfjsInteractionProxyPayloads(resetPayloads);
       return requestedPages;
     }
 
@@ -2033,8 +2018,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       return [];
     }
 
-    const nextModes = { ...(syncfusionInteractionPageModesRef.current || {}) };
-    const nextPayloads = { ...(syncfusionInteractionProxyPayloadsRef.current || {}) };
+    const nextModes = { ...(pdfjsInteractionPageModesRef.current || {}) };
+    const nextPayloads = { ...(pdfjsInteractionProxyPayloadsRef.current || {}) };
     const newlyAddedPages = [];
     let modesChanged = false;
     let payloadChanged = false;
@@ -2043,50 +2028,50 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       const existingMode = nextModes[pageNumber];
       if (existingMode) {
         if (existingMode === 'proxy' && !nextPayloads[pageNumber]) {
-          nextPayloads[pageNumber] = buildSyncfusionProxyPayloadForPage(pageNumber);
+          nextPayloads[pageNumber] = buildPdfjsProxyPayloadForPage(pageNumber);
           payloadChanged = true;
         }
         return;
       }
-      const mode = determineSyncfusionPageMode(pageNumber, 'full');
+      const mode = determinePdfjsPageMode(pageNumber, 'full');
       nextModes[pageNumber] = mode;
       modesChanged = true;
       newlyAddedPages.push(pageNumber);
       if (mode === 'proxy') {
-        nextPayloads[pageNumber] = buildSyncfusionProxyPayloadForPage(pageNumber);
+        nextPayloads[pageNumber] = buildPdfjsProxyPayloadForPage(pageNumber);
         payloadChanged = true;
       }
     });
 
     if (modesChanged) {
-      syncfusionInteractionPageModesRef.current = nextModes;
-      setSyncfusionInteractionPageModes(nextModes);
+      pdfjsInteractionPageModesRef.current = nextModes;
+      setPdfjsInteractionPageModes(nextModes);
     }
     if (payloadChanged) {
-      syncfusionInteractionProxyPayloadsRef.current = nextPayloads;
-      setSyncfusionInteractionProxyPayloads(nextPayloads);
+      pdfjsInteractionProxyPayloadsRef.current = nextPayloads;
+      setPdfjsInteractionProxyPayloads(nextPayloads);
     }
 
     return newlyAddedPages;
-  }, [buildSyncfusionProxyPayloadForPage, determineSyncfusionPageMode, isSyncfusionPageEligible]);
+  }, [buildPdfjsProxyPayloadForPage, determinePdfjsPageMode, isPdfjsPageEligible]);
 
-  const syncSyncfusionLightweightPages = useCallback((phaseOverride = null) => {
+  const syncPdfjsLightweightPages = useCallback((phaseOverride = null) => {
     const applyNext = (nextSet) => {
-      const previous = syncfusionLightweightPagesRef.current || new Set();
+      const previous = pdfjsLightweightPagesRef.current || new Set();
       const unchanged = previous.size === nextSet.size &&
         [...nextSet].every((pageNumber) => previous.has(pageNumber));
       if (unchanged) {
         return;
       }
-      syncfusionLightweightPagesRef.current = nextSet;
-      setSyncfusionLightweightPages(nextSet);
+      pdfjsLightweightPagesRef.current = nextSet;
+      setPdfjsLightweightPages(nextSet);
     };
 
-    const phase = phaseOverride || syncfusionInteractionPhaseRef.current;
+    const phase = phaseOverride || pdfjsInteractionPhaseRef.current;
     if (phase === 'interacting') {
-      const residentPages = syncfusionInteractionResidentPagesRef.current || new Set();
+      const residentPages = pdfjsInteractionResidentPagesRef.current || new Set();
       const next = new Set(
-        Object.entries(syncfusionInteractionPageModesRef.current || {})
+        Object.entries(pdfjsInteractionPageModesRef.current || {})
           .filter(([, mode]) => mode === 'proxy')
           .map(([pageKey]) => Number(pageKey))
           .filter((pageNumber) => (
@@ -2099,14 +2084,14 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       return;
     }
     if (phase === 'committing') {
-      const next = new Set(syncfusionCommittingProxyPagesRef.current || []);
+      const next = new Set(pdfjsCommittingProxyPagesRef.current || []);
       applyNext(next);
       return;
     }
     applyNext(new Set());
   }, []);
 
-  const markSyncfusionProxyPageReady = useCallback((pageNumber, sessionId) => {
+  const markPdfjsProxyPageReady = useCallback((pageNumber, sessionId) => {
     const safePageNumber = Number(pageNumber);
     const safeSessionId = Number(sessionId);
     if (!(Number.isFinite(safePageNumber) && safePageNumber > 0)) {
@@ -2115,35 +2100,35 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     if (!(Number.isFinite(safeSessionId) && safeSessionId > 0)) {
       return;
     }
-    if (safeSessionId !== syncfusionInteractionSessionIdRef.current) {
+    if (safeSessionId !== pdfjsInteractionSessionIdRef.current) {
       return;
     }
     if (
-      syncfusionInteractionPhaseRef.current !== 'interacting' &&
-      syncfusionInteractionPhaseRef.current !== 'committing'
+      pdfjsInteractionPhaseRef.current !== 'interacting' &&
+      pdfjsInteractionPhaseRef.current !== 'committing'
     ) {
       return;
     }
-    setSyncfusionProxyReadyPages((prev) => {
+    setPdfjsProxyReadyPages((prev) => {
       if (prev.has(safePageNumber)) {
         return prev;
       }
       const next = new Set(prev);
       next.add(safePageNumber);
-      syncfusionProxyReadyPagesRef.current = next;
+      pdfjsProxyReadyPagesRef.current = next;
       return next;
     });
   }, []);
 
-  const applySyncfusionOverlayTransformSync = useCallback(() => {
-    if (!useSyncfusionRenderer || !syncfusionLiveStableOverlayEnabled || !syncfusionDualLayerEnabled) {
+  const applyPdfjsOverlayTransformSync = useCallback(() => {
+    if (!usePdfjsRenderer || !pdfjsLiveStableOverlayEnabled || !pdfjsDualLayerEnabled) {
       return;
     }
-    if (syncfusionInteractionPhaseRef.current !== 'interacting') {
+    if (pdfjsInteractionPhaseRef.current !== 'interacting') {
       return;
     }
     if (zoomOverlayTransformActiveRef.current) {
-      Object.entries(syncfusionOverlayContentRefs.current || {}).forEach(([pageKey, node]) => {
+      Object.entries(pdfjsOverlayContentRefs.current || {}).forEach(([pageKey, node]) => {
         if (!node?.isConnected || !node.style) return;
         if (node.style.transform || node.style.transformOrigin || node.style.willChange || node.style.backfaceVisibility) {
           node.style.transform = '';
@@ -2151,32 +2136,32 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
           node.style.willChange = '';
           node.style.backfaceVisibility = '';
         }
-        syncfusionOverlayTransformRatioByPageRef.current = {
-          ...(syncfusionOverlayTransformRatioByPageRef.current || {}),
+        pdfjsOverlayTransformRatioByPageRef.current = {
+          ...(pdfjsOverlayTransformRatioByPageRef.current || {}),
           [pageKey]: 1
         };
       });
       return;
     }
 
-    const viewerScale = getSyncfusionViewerScale();
-    const pageContainers = syncfusionPageContainersStateRef.current || pageContainersRef.current || {};
+    const viewerScale = getPdfjsViewerScale();
+    const pageContainers = pdfjsPageContainersStateRef.current || pageContainersRef.current || {};
     const pageSizes = pageSizesRef.current || {};
-    const residentPages = syncfusionInteractionResidentPagesRef.current;
+    const residentPages = pdfjsInteractionResidentPagesRef.current;
     const candidatePages = residentPages && residentPages.size > 0
       ? Array.from(residentPages)
-      : Object.keys(syncfusionOverlayContentRefs.current)
+      : Object.keys(pdfjsOverlayContentRefs.current)
         .map((pageKey) => Number(pageKey))
         .filter((pageNumber) => Number.isFinite(pageNumber) && pageNumber > 0);
-    const ratioByPage = syncfusionOverlayTransformRatioByPageRef.current || {};
-    const nodeByPage = syncfusionOverlayTransformNodeByPageRef.current || {};
-    const committedScales = syncfusionCommittedPageScalesRef.current || {};
+    const ratioByPage = pdfjsOverlayTransformRatioByPageRef.current || {};
+    const nodeByPage = pdfjsOverlayTransformNodeByPageRef.current || {};
+    const committedScales = pdfjsCommittedPageScalesRef.current || {};
     const committedScaleRepairs = {};
-    const transformStats = syncfusionOverlayTransformStatsRef.current || { ticks: 0, writes: 0, resets: 0, skips: 0 };
+    const transformStats = pdfjsOverlayTransformStatsRef.current || { ticks: 0, writes: 0, resets: 0, skips: 0 };
     transformStats.ticks += 1;
 
     candidatePages.forEach((pageNumber) => {
-      const node = syncfusionOverlayContentRefs.current?.[pageNumber];
+      const node = pdfjsOverlayContentRefs.current?.[pageNumber];
       if (!node || !node.isConnected || !node.style) return;
       const previousNode = nodeByPage[pageNumber];
       const nodeChanged = previousNode !== node;
@@ -2187,8 +2172,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       const hasCommittedScale = Number.isFinite(pageBaseScaleRaw) && pageBaseScaleRaw > 0;
       let pageBaseScale = hasCommittedScale
         ? pageBaseScaleRaw
-        : Number(syncfusionInteractionStartViewerZoomRef.current) || viewerScale || 1;
-      const liveScaleRaw = measureSyncfusionPageHostScale(
+        : Number(pdfjsInteractionStartViewerZoomRef.current) || viewerScale || 1;
+      const liveScaleRaw = measurePdfjsPageHostScale(
         pageNumber,
         pageSizes,
         pageContainers,
@@ -2229,173 +2214,173 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       transformStats.writes += 1;
     });
     if (Object.keys(committedScaleRepairs).length > 0) {
-      syncfusionCommittedPageScalesRef.current = {
-        ...(syncfusionCommittedPageScalesRef.current || {}),
+      pdfjsCommittedPageScalesRef.current = {
+        ...(pdfjsCommittedPageScalesRef.current || {}),
         ...committedScaleRepairs
       };
-      setSyncfusionCommittedPageScales((prev) => ({
+      setPdfjsCommittedPageScales((prev) => ({
         ...(prev || {}),
         ...committedScaleRepairs
       }));
     }
-    syncfusionOverlayTransformRatioByPageRef.current = ratioByPage;
-    syncfusionOverlayTransformNodeByPageRef.current = nodeByPage;
-    syncfusionOverlayTransformStatsRef.current = transformStats;
+    pdfjsOverlayTransformRatioByPageRef.current = ratioByPage;
+    pdfjsOverlayTransformNodeByPageRef.current = nodeByPage;
+    pdfjsOverlayTransformStatsRef.current = transformStats;
   }, [
-    getSyncfusionViewerScale,
-    syncfusionDualLayerEnabled,
-    syncfusionLiveStableOverlayEnabled,
-    useSyncfusionRenderer
+    getPdfjsViewerScale,
+    pdfjsDualLayerEnabled,
+    pdfjsLiveStableOverlayEnabled,
+    usePdfjsRenderer
   ]);
 
-  const queueSyncfusionOverlayTransformSync = useCallback((force = false) => {
-    if (!useSyncfusionRenderer || !syncfusionLiveStableOverlayEnabled || !syncfusionDualLayerEnabled) {
+  const queuePdfjsOverlayTransformSync = useCallback((force = false) => {
+    if (!usePdfjsRenderer || !pdfjsLiveStableOverlayEnabled || !pdfjsDualLayerEnabled) {
       return;
     }
-    if (syncfusionOverlayTransformLoopActiveRef.current) {
+    if (pdfjsOverlayTransformLoopActiveRef.current) {
       if (force) {
-        applySyncfusionOverlayTransformSync();
+        applyPdfjsOverlayTransformSync();
       }
       return;
     }
-    if (syncfusionOverlayTransformSyncRafRef.current !== null) {
+    if (pdfjsOverlayTransformSyncRafRef.current !== null) {
       return;
     }
     const raf =
       typeof window !== 'undefined' && typeof window.requestAnimationFrame === 'function'
         ? window.requestAnimationFrame.bind(window)
         : (callback) => setTimeout(callback, 16);
-    syncfusionOverlayTransformSyncRafRef.current = raf(() => {
-      syncfusionOverlayTransformSyncRafRef.current = null;
-      applySyncfusionOverlayTransformSync();
+    pdfjsOverlayTransformSyncRafRef.current = raf(() => {
+      pdfjsOverlayTransformSyncRafRef.current = null;
+      applyPdfjsOverlayTransformSync();
     });
   }, [
-    applySyncfusionOverlayTransformSync,
-    syncfusionDualLayerEnabled,
-    syncfusionLiveStableOverlayEnabled,
-    useSyncfusionRenderer
+    applyPdfjsOverlayTransformSync,
+    pdfjsDualLayerEnabled,
+    pdfjsLiveStableOverlayEnabled,
+    usePdfjsRenderer
   ]);
 
-  const startSyncfusionOverlayTransformLoop = useCallback(() => {
-    if (!useSyncfusionRenderer || !syncfusionLiveStableOverlayEnabled || !syncfusionDualLayerEnabled) {
+  const startPdfjsOverlayTransformLoop = useCallback(() => {
+    if (!usePdfjsRenderer || !pdfjsLiveStableOverlayEnabled || !pdfjsDualLayerEnabled) {
       return;
     }
-    if (syncfusionOverlayTransformLoopActiveRef.current) {
+    if (pdfjsOverlayTransformLoopActiveRef.current) {
       return;
     }
-    if (syncfusionOverlayTransformSyncRafRef.current !== null) {
-      clearSyncfusionOverlayTransformSyncRaf();
+    if (pdfjsOverlayTransformSyncRafRef.current !== null) {
+      clearPdfjsOverlayTransformSyncRaf();
     }
-    syncfusionOverlayTransformLoopActiveRef.current = true;
+    pdfjsOverlayTransformLoopActiveRef.current = true;
     const raf =
       typeof window !== 'undefined' && typeof window.requestAnimationFrame === 'function'
         ? window.requestAnimationFrame.bind(window)
         : (callback) => setTimeout(callback, 16);
     const tick = () => {
-      if (!syncfusionOverlayTransformLoopActiveRef.current) {
-        syncfusionOverlayTransformSyncRafRef.current = null;
+      if (!pdfjsOverlayTransformLoopActiveRef.current) {
+        pdfjsOverlayTransformSyncRafRef.current = null;
         return;
       }
-      if (syncfusionInteractionPhaseRef.current !== 'interacting') {
-        syncfusionOverlayTransformLoopActiveRef.current = false;
-        syncfusionOverlayTransformSyncRafRef.current = null;
+      if (pdfjsInteractionPhaseRef.current !== 'interacting') {
+        pdfjsOverlayTransformLoopActiveRef.current = false;
+        pdfjsOverlayTransformSyncRafRef.current = null;
         return;
       }
-      applySyncfusionOverlayTransformSync();
-      syncfusionOverlayTransformSyncRafRef.current = raf(tick);
+      applyPdfjsOverlayTransformSync();
+      pdfjsOverlayTransformSyncRafRef.current = raf(tick);
     };
-    syncfusionOverlayTransformSyncRafRef.current = raf(tick);
+    pdfjsOverlayTransformSyncRafRef.current = raf(tick);
   }, [
-    applySyncfusionOverlayTransformSync,
-    clearSyncfusionOverlayTransformSyncRaf,
-    syncfusionDualLayerEnabled,
-    syncfusionLiveStableOverlayEnabled,
-    useSyncfusionRenderer
+    applyPdfjsOverlayTransformSync,
+    clearPdfjsOverlayTransformSyncRaf,
+    pdfjsDualLayerEnabled,
+    pdfjsLiveStableOverlayEnabled,
+    usePdfjsRenderer
   ]);
 
-  const finalizeSyncfusionInteractionIdle = useCallback((reason = 'settled') => {
-    const wasActive = syncfusionInteractionPhaseRef.current !== 'idle' || syncfusionInteractionActiveRef.current;
-    clearSyncfusionInteractionTimer();
-    clearSyncfusionOverlayTransformSyncRaf();
-    clearSyncfusionCommitRaf();
-    syncfusionCommitQueueRef.current = [];
-    syncfusionLastCommitFrameAtRef.current = 0;
-    setSyncfusionCommitQueueDepth(0);
-    syncfusionInteractionUntilRef.current = 0;
-    syncfusionInteractionReasonRef.current = null;
-    syncfusionInteractionIsZoomOnlyRef.current = false;
-    syncfusionInteractionPhaseRef.current = 'idle';
-    setSyncfusionInteractionPhase('idle');
+  const finalizePdfjsInteractionIdle = useCallback((reason = 'settled') => {
+    const wasActive = pdfjsInteractionPhaseRef.current !== 'idle' || pdfjsInteractionActiveRef.current;
+    clearPdfjsInteractionTimer();
+    clearPdfjsOverlayTransformSyncRaf();
+    clearPdfjsCommitRaf();
+    pdfjsCommitQueueRef.current = [];
+    pdfjsLastCommitFrameAtRef.current = 0;
+    setPdfjsCommitQueueDepth(0);
+    pdfjsInteractionUntilRef.current = 0;
+    pdfjsInteractionReasonRef.current = null;
+    pdfjsInteractionIsZoomOnlyRef.current = false;
+    pdfjsInteractionPhaseRef.current = 'idle';
+    setPdfjsInteractionPhase('idle');
     if (!zoomOverlayTransformActiveRef.current) {
-      setSyncfusionZoomPreviewActive(false);
+      setPdfjsZoomPreviewActive(false);
     }
-    setSyncfusionCommittingProxyPages(new Set());
-    syncfusionCommittingProxyPagesRef.current = new Set();
-    setSyncfusionProxyReadyPages(new Set());
-    syncfusionProxyReadyPagesRef.current = new Set();
+    setPdfjsCommittingProxyPages(new Set());
+    pdfjsCommittingProxyPagesRef.current = new Set();
+    setPdfjsProxyReadyPages(new Set());
+    pdfjsProxyReadyPagesRef.current = new Set();
     // During active overlay zoom transforms, don't flush the deferred pending scale
     // or start confirm-pending. The zoom settle timer (zoomOverlaySettleTimerRef)
     // owns that lifecycle and will flush/confirm when zoom activity stops.
     const overlayZoomInProgress = zoomOverlayTransformActiveRef.current;
     if (!overlayZoomInProgress) {
-      const pendingScaleRaw = Number(syncfusionPendingZoomScaleRef.current);
+      const pendingScaleRaw = Number(pdfjsPendingZoomScaleRef.current);
       if (Number.isFinite(pendingScaleRaw) && pendingScaleRaw > 0) {
         const pendingScale = clampScale(pendingScaleRaw);
         scaleRef.current = pendingScale;
         setScale((prev) => (Math.abs(prev - pendingScale) <= 0.0005 ? prev : pendingScale));
         setManualZoomScale((prev) => (Math.abs(prev - pendingScale) <= 0.0005 ? prev : pendingScale));
       }
-      syncfusionPendingZoomScaleRef.current = null;
+      pdfjsPendingZoomScaleRef.current = null;
     }
-    setSyncfusionInteractionResidentPages(new Set());
-    syncfusionInteractionResidentPagesRef.current = new Set();
-    setSyncfusionInteractionPageModes({});
-    syncfusionInteractionPageModesRef.current = {};
-    setSyncfusionInteractionProxyPayloads({});
-    syncfusionInteractionProxyPayloadsRef.current = {};
+    setPdfjsInteractionResidentPages(new Set());
+    pdfjsInteractionResidentPagesRef.current = new Set();
+    setPdfjsInteractionPageModes({});
+    pdfjsInteractionPageModesRef.current = {};
+    setPdfjsInteractionProxyPayloads({});
+    pdfjsInteractionProxyPayloadsRef.current = {};
     // DON'T clear portal hosts cache here — the render loop may need the
-    // cached hosts to create fallback portals during Syncfusion post-zoom
+    // cached hosts to create fallback portals during Pdfjs post-zoom
     // DOM reconstruction. The cache gets overwritten when the next
-    // interaction starts (markSyncfusionInteractionActive).
-    syncSyncfusionLightweightPages('idle');
+    // interaction starts (markPdfjsInteractionActive).
+    syncPdfjsLightweightPages('idle');
     // Defer CSS transform removal until Fabric.js confirms it rendered at the new scale.
     // This prevents the visual flicker between CSS transform removal and canvas re-render.
     // Skip during active overlay zoom — the zoom settle timer handles cleanup.
-    // `&& useSyncfusionRenderer` (hardcoded true today, so byte-for-byte unchanged)
+    // `&& usePdfjsRenderer` (hardcoded true today, so byte-for-byte unchanged)
     // keeps this shared zoomGeneration bump off the pdf.js path, where the engine's
     // own onZoomPhase drives the signal — Stage 3 made zoomGeneration cross-engine.
-    if (!overlayZoomInProgress && useSyncfusionRenderer) {
-      beginSyncfusionScaleConfirmPending('finalize_idle');
+    if (!overlayZoomInProgress && usePdfjsRenderer) {
+      beginPdfjsScaleConfirmPending('finalize_idle');
     }
     if (wasActive) {
-      syncfusionInteractionTransitionsRef.current.off += 1;
+      pdfjsInteractionTransitionsRef.current.off += 1;
       setDebugData({
-        syncfusionInteractionMode: 'idle',
-        syncfusionInteractionTransitions: { ...syncfusionInteractionTransitionsRef.current },
-        syncfusionInteractionEndReason: reason
+        pdfjsInteractionMode: 'idle',
+        pdfjsInteractionTransitions: { ...pdfjsInteractionTransitionsRef.current },
+        pdfjsInteractionEndReason: reason
       });
-      emitPdfDebugEvent('syncfusion_interaction_mode_off', {
+      emitPdfDebugEvent('pdfjs_interaction_mode_off', {
         reason,
-        transitions: { ...syncfusionInteractionTransitionsRef.current }
+        transitions: { ...pdfjsInteractionTransitionsRef.current }
       });
     }
   }, [
-    beginSyncfusionScaleConfirmPending,
-    clearSyncfusionCommitRaf,
-    clearSyncfusionInteractionTimer,
-    clearSyncfusionOverlayTransformSyncRaf,
-    resetSyncfusionOverlayTransformStyles,
-    syncSyncfusionLightweightPages
+    beginPdfjsScaleConfirmPending,
+    clearPdfjsCommitRaf,
+    clearPdfjsInteractionTimer,
+    clearPdfjsOverlayTransformSyncRaf,
+    resetPdfjsOverlayTransformStyles,
+    syncPdfjsLightweightPages
   ]);
 
-  const isSyncfusionPageViewportVisible = useCallback((pageNumber) => {
+  const isPdfjsPageViewportVisible = useCallback((pageNumber) => {
     const safePageNumber = Number(pageNumber);
     if (!(Number.isFinite(safePageNumber) && safePageNumber > 0)) {
       return false;
     }
-    const container = syncfusionWrapperRef.current || containerRef.current;
+    const container = pdfjsWrapperRef.current || containerRef.current;
     const pageHost =
-      syncfusionPageContainersStateRef.current?.[safePageNumber] ||
+      pdfjsPageContainersStateRef.current?.[safePageNumber] ||
       pageContainersRef.current?.[safePageNumber] ||
       null;
     if (
@@ -2414,11 +2399,11 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
   // [Phase 11] Removed: old Canvas-mode PAL scale confirmation handler, inert in SVG mode.
 
-  const runSyncfusionCommitQueue = useCallback(() => {
-    if (syncfusionInteractionPhaseRef.current !== 'committing') {
+  const runPdfjsCommitQueue = useCallback(() => {
+    if (pdfjsInteractionPhaseRef.current !== 'committing') {
       return;
     }
-    if (syncfusionCommitRafRef.current !== null) {
+    if (pdfjsCommitRafRef.current !== null) {
       return;
     }
 
@@ -2428,14 +2413,14 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         : (callback) => setTimeout(callback, 16);
 
     const flushFrame = () => {
-      syncfusionCommitRafRef.current = null;
-      if (syncfusionInteractionPhaseRef.current !== 'committing') {
+      pdfjsCommitRafRef.current = null;
+      if (pdfjsInteractionPhaseRef.current !== 'committing') {
         return;
       }
 
-      const queue = syncfusionCommitQueueRef.current || [];
+      const queue = pdfjsCommitQueueRef.current || [];
       if (queue.length === 0) {
-        finalizeSyncfusionInteractionIdle('commit-complete');
+        finalizePdfjsInteractionIdle('commit-complete');
         return;
       }
 
@@ -2443,24 +2428,24 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         ? performance.now()
         : Date.now();
       if (
-        syncfusionLastCommitFrameAtRef.current > 0 &&
-        frameStart - syncfusionLastCommitFrameAtRef.current < SYNCFUSION_INTERACTION_COMMIT_FRAME_SPACING_MS
+        pdfjsLastCommitFrameAtRef.current > 0 &&
+        frameStart - pdfjsLastCommitFrameAtRef.current < PDFJS_INTERACTION_COMMIT_FRAME_SPACING_MS
       ) {
-        syncfusionCommitRafRef.current = raf(flushFrame);
+        pdfjsCommitRafRef.current = raf(flushFrame);
         return;
       }
-      syncfusionLastCommitFrameAtRef.current = frameStart;
+      pdfjsLastCommitFrameAtRef.current = frameStart;
       const committedScaleUpdates = {};
       const committedPages = [];
       let processedPages = 0;
 
-      while (queue.length > 0 && processedPages < SYNCFUSION_INTERACTION_COMMIT_MAX_PAGES_PER_FRAME) {
+      while (queue.length > 0 && processedPages < PDFJS_INTERACTION_COMMIT_MAX_PAGES_PER_FRAME) {
         const now = (typeof performance !== 'undefined' && typeof performance.now === 'function')
           ? performance.now()
           : Date.now();
         if (
           processedPages > 0 &&
-          (now - frameStart) >= SYNCFUSION_INTERACTION_COMMIT_FRAME_BUDGET_MS
+          (now - frameStart) >= PDFJS_INTERACTION_COMMIT_FRAME_BUDGET_MS
         ) {
           break;
         }
@@ -2470,12 +2455,12 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
           continue;
         }
         processedPages += 1;
-        const viewerScale = getSyncfusionViewerScale();
+        const viewerScale = getPdfjsViewerScale();
         const measuredScale = normalizeInteractionMeasuredScale(
-          measureSyncfusionPageScale(
+          measurePdfjsPageScale(
             pageNumber,
             pageSizesRef.current || {},
-            syncfusionPageContainersStateRef.current || pageContainersRef.current || {},
+            pdfjsPageContainersStateRef.current || pageContainersRef.current || {},
             viewerScale
           ),
           viewerScale,
@@ -2486,150 +2471,150 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       }
 
       if (Object.keys(committedScaleUpdates).length > 0) {
-        setSyncfusionCommittedPageScales((prev) => ({
+        setPdfjsCommittedPageScales((prev) => ({
           ...prev,
           ...committedScaleUpdates
         }));
       }
 
       if (committedPages.length > 0) {
-        setSyncfusionCommittingProxyPages((prev) => {
+        setPdfjsCommittingProxyPages((prev) => {
           const next = new Set(prev || []);
           committedPages.forEach((pageNumber) => next.delete(pageNumber));
-          syncfusionCommittingProxyPagesRef.current = next;
+          pdfjsCommittingProxyPagesRef.current = next;
           return next;
         });
-        setSyncfusionInteractionPageModes((prev) => {
+        setPdfjsInteractionPageModes((prev) => {
           const next = { ...(prev || {}) };
           committedPages.forEach((pageNumber) => {
             if (next[pageNumber] !== 'full') {
               next[pageNumber] = 'full';
             }
           });
-          syncfusionInteractionPageModesRef.current = next;
+          pdfjsInteractionPageModesRef.current = next;
           return next;
         });
-        syncSyncfusionLightweightPages('committing');
+        syncPdfjsLightweightPages('committing');
       }
 
-      setSyncfusionCommitQueueDepth(queue.length);
+      setPdfjsCommitQueueDepth(queue.length);
       if (queue.length === 0) {
         const frameEnd = (typeof performance !== 'undefined' && typeof performance.now === 'function')
           ? performance.now()
           : Date.now();
-        recordSyncfusionIdleWork(
+        recordPdfjsIdleWork(
           'annotationRestoration',
           frameEnd - frameStart,
           Math.max(1, committedPages.length)
         );
-        finalizeSyncfusionInteractionIdle('commit-complete');
+        finalizePdfjsInteractionIdle('commit-complete');
         return;
       }
 
       const frameEnd = (typeof performance !== 'undefined' && typeof performance.now === 'function')
         ? performance.now()
         : Date.now();
-      recordSyncfusionIdleWork(
+      recordPdfjsIdleWork(
         'annotationRestoration',
         frameEnd - frameStart,
         Math.max(1, committedPages.length)
       );
-      syncfusionCommitRafRef.current = raf(flushFrame);
+      pdfjsCommitRafRef.current = raf(flushFrame);
     };
 
-    syncfusionCommitRafRef.current = raf(flushFrame);
-  }, [finalizeSyncfusionInteractionIdle, getSyncfusionViewerScale, recordSyncfusionIdleWork, syncSyncfusionLightweightPages]);
+    pdfjsCommitRafRef.current = raf(flushFrame);
+  }, [finalizePdfjsInteractionIdle, getPdfjsViewerScale, recordPdfjsIdleWork, syncPdfjsLightweightPages]);
 
-  const enterSyncfusionCommitPhase = useCallback(() => {
-    if (syncfusionInteractionPhaseRef.current !== 'interacting') {
+  const enterPdfjsCommitPhase = useCallback(() => {
+    if (pdfjsInteractionPhaseRef.current !== 'interacting') {
       return;
     }
-    clearSyncfusionInteractionTimer();
-    clearSyncfusionOverlayTransformSyncRaf();
-    clearSyncfusionCommitRaf();
+    clearPdfjsInteractionTimer();
+    clearPdfjsOverlayTransformSyncRaf();
+    clearPdfjsCommitRaf();
 
-    const residentPages = Array.from(syncfusionInteractionResidentPagesRef.current || [])
+    const residentPages = Array.from(pdfjsInteractionResidentPagesRef.current || [])
       .filter((pageNumber) => Number.isFinite(pageNumber) && pageNumber > 0);
     if (residentPages.length === 0) {
-      finalizeSyncfusionInteractionIdle('settled');
+      finalizePdfjsInteractionIdle('settled');
       return;
     }
 
-    syncfusionInteractionPhaseRef.current = 'committing';
-    setSyncfusionInteractionPhase('committing');
+    pdfjsInteractionPhaseRef.current = 'committing';
+    setPdfjsInteractionPhase('committing');
     const currentPage = coercePageNumber(pageNumRef.current, Number.POSITIVE_INFINITY) || 1;
-    syncfusionCommitQueueRef.current = sortSyncfusionPagesByDistance(residentPages, currentPage);
-    syncfusionLastCommitFrameAtRef.current = 0;
-    setSyncfusionCommitQueueDepth(residentPages.length);
+    pdfjsCommitQueueRef.current = sortPdfjsPagesByDistance(residentPages, currentPage);
+    pdfjsLastCommitFrameAtRef.current = 0;
+    setPdfjsCommitQueueDepth(residentPages.length);
     const committingPages = new Set(residentPages);
-    syncfusionCommittingProxyPagesRef.current = committingPages;
-    setSyncfusionCommittingProxyPages(committingPages);
-    syncSyncfusionLightweightPages('committing');
-    runSyncfusionCommitQueue();
+    pdfjsCommittingProxyPagesRef.current = committingPages;
+    setPdfjsCommittingProxyPages(committingPages);
+    syncPdfjsLightweightPages('committing');
+    runPdfjsCommitQueue();
   }, [
-    clearSyncfusionCommitRaf,
-    clearSyncfusionInteractionTimer,
-    clearSyncfusionOverlayTransformSyncRaf,
-    finalizeSyncfusionInteractionIdle,
-    runSyncfusionCommitQueue,
-    sortSyncfusionPagesByDistance,
-    syncSyncfusionLightweightPages
+    clearPdfjsCommitRaf,
+    clearPdfjsInteractionTimer,
+    clearPdfjsOverlayTransformSyncRaf,
+    finalizePdfjsInteractionIdle,
+    runPdfjsCommitQueue,
+    sortPdfjsPagesByDistance,
+    syncPdfjsLightweightPages
   ]);
 
-  const scheduleSyncfusionInteractionSettleCheck = useCallback(() => {
-    if (syncfusionInteractionTimerRef.current) {
+  const schedulePdfjsInteractionSettleCheck = useCallback(() => {
+    if (pdfjsInteractionTimerRef.current) {
       return;
     }
     const runCheck = () => {
-      syncfusionInteractionTimerRef.current = null;
-      if (syncfusionInteractionPhaseRef.current !== 'interacting') {
+      pdfjsInteractionTimerRef.current = null;
+      if (pdfjsInteractionPhaseRef.current !== 'interacting') {
         return;
       }
-      const remaining = syncfusionInteractionUntilRef.current - Date.now();
+      const remaining = pdfjsInteractionUntilRef.current - Date.now();
       if (remaining > 18) {
-        syncfusionInteractionTimerRef.current = setTimeout(runCheck, Math.max(20, remaining));
+        pdfjsInteractionTimerRef.current = setTimeout(runCheck, Math.max(20, remaining));
         return;
       }
-      enterSyncfusionCommitPhase();
+      enterPdfjsCommitPhase();
     };
-    syncfusionInteractionTimerRef.current = setTimeout(
+    pdfjsInteractionTimerRef.current = setTimeout(
       runCheck,
-      Math.max(20, syncfusionInteractionUntilRef.current - Date.now())
+      Math.max(20, pdfjsInteractionUntilRef.current - Date.now())
     );
-  }, [enterSyncfusionCommitPhase]);
+  }, [enterPdfjsCommitPhase]);
 
-  const startSyncfusionInteractionSession = useCallback((reason, holdMs) => {
-    const viewerScale = getSyncfusionViewerScale();
-    const nextSessionId = syncfusionInteractionSessionIdRef.current + 1;
-    syncfusionInteractionSessionIdRef.current = nextSessionId;
-    setSyncfusionInteractionSessionId(nextSessionId);
-    syncfusionInteractionModeFlipCountRef.current = 0;
-    setSyncfusionInteractionModeFlipCount(0);
-    syncfusionInteractionReasonRef.current = reason;
-    syncfusionInteractionIsZoomOnlyRef.current = ZOOM_ONLY_INTERACTION_REASONS.has(reason);
-    syncfusionInteractionUntilRef.current = Date.now() + holdMs;
-    syncfusionInteractionStartViewerZoomRef.current = viewerScale;
-    syncfusionInteractionPhaseRef.current = 'interacting';
-    setSyncfusionInteractionPhase('interacting');
-    syncfusionInteractionTransitionsRef.current.on += 1;
-    setSyncfusionCommittingProxyPages(new Set());
-    syncfusionCommittingProxyPagesRef.current = new Set();
-    setSyncfusionProxyReadyPages(new Set());
-    syncfusionProxyReadyPagesRef.current = new Set();
-    syncfusionOverlayTransformRatioByPageRef.current = {};
-    syncfusionInteractionPortalHostsRef.current = {};
-    resetSyncfusionZoomPresentationPages(null, { revealLive: true });
+  const startPdfjsInteractionSession = useCallback((reason, holdMs) => {
+    const viewerScale = getPdfjsViewerScale();
+    const nextSessionId = pdfjsInteractionSessionIdRef.current + 1;
+    pdfjsInteractionSessionIdRef.current = nextSessionId;
+    setPdfjsInteractionSessionId(nextSessionId);
+    pdfjsInteractionModeFlipCountRef.current = 0;
+    setPdfjsInteractionModeFlipCount(0);
+    pdfjsInteractionReasonRef.current = reason;
+    pdfjsInteractionIsZoomOnlyRef.current = ZOOM_ONLY_INTERACTION_REASONS.has(reason);
+    pdfjsInteractionUntilRef.current = Date.now() + holdMs;
+    pdfjsInteractionStartViewerZoomRef.current = viewerScale;
+    pdfjsInteractionPhaseRef.current = 'interacting';
+    setPdfjsInteractionPhase('interacting');
+    pdfjsInteractionTransitionsRef.current.on += 1;
+    setPdfjsCommittingProxyPages(new Set());
+    pdfjsCommittingProxyPagesRef.current = new Set();
+    setPdfjsProxyReadyPages(new Set());
+    pdfjsProxyReadyPagesRef.current = new Set();
+    pdfjsOverlayTransformRatioByPageRef.current = {};
+    pdfjsInteractionPortalHostsRef.current = {};
+    resetPdfjsZoomPresentationPages(null, { revealLive: true });
     syncScaleConfirmHiddenPages([]);
-    const seededResidentPages = computeSyncfusionInteractionResidentPages();
+    const seededResidentPages = computePdfjsInteractionResidentPages();
     const fallbackPage = coercePageNumber(pageNumRef.current, Number.POSITIVE_INFINITY) || 1;
     const residentPages = seededResidentPages.size > 0
       ? seededResidentPages
       : new Set([fallbackPage]);
-    syncfusionInteractionResidentPagesRef.current = residentPages;
-    setSyncfusionInteractionResidentPages(residentPages);
+    pdfjsInteractionResidentPagesRef.current = residentPages;
+    setPdfjsInteractionResidentPages(residentPages);
     const portalHostSnapshot = {};
     residentPages.forEach((pageNumber) => {
-      const stateHost = syncfusionPageContainersStateRef.current?.[pageNumber];
+      const stateHost = pdfjsPageContainersStateRef.current?.[pageNumber];
       if (stateHost?.isConnected) {
         portalHostSnapshot[pageNumber] = stateHost;
         return;
@@ -2639,16 +2624,16 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         portalHostSnapshot[pageNumber] = refHost;
       }
     });
-    syncfusionInteractionPortalHostsRef.current = portalHostSnapshot;
+    pdfjsInteractionPortalHostsRef.current = portalHostSnapshot;
 
     const frozenScaleUpdates = {};
     residentPages.forEach((pageNumber) => {
       if (!(Number.isFinite(pageNumber) && pageNumber > 0)) return;
       const measuredScale = normalizeInteractionMeasuredScale(
-        measureSyncfusionPageHostScale(
+        measurePdfjsPageHostScale(
           pageNumber,
           pageSizesRef.current || {},
-          syncfusionPageContainersStateRef.current || pageContainersRef.current || {},
+          pdfjsPageContainersStateRef.current || pageContainersRef.current || {},
           viewerScale
         ),
         viewerScale,
@@ -2657,66 +2642,66 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       frozenScaleUpdates[pageNumber] = measuredScale;
     });
     if (Object.keys(frozenScaleUpdates).length > 0) {
-      syncfusionCommittedPageScalesRef.current = {
-        ...(syncfusionCommittedPageScalesRef.current || {}),
+      pdfjsCommittedPageScalesRef.current = {
+        ...(pdfjsCommittedPageScalesRef.current || {}),
         ...frozenScaleUpdates
       };
-      setSyncfusionCommittedPageScales((prev) => ({
+      setPdfjsCommittedPageScales((prev) => ({
         ...(prev || {}),
         ...frozenScaleUpdates
       }));
     }
 
-    freezeSyncfusionSessionPages(Array.from(residentPages), { reset: true });
-    syncSyncfusionLightweightPages('interacting');
+    freezePdfjsSessionPages(Array.from(residentPages), { reset: true });
+    syncPdfjsLightweightPages('interacting');
 
     setDebugData({
-      syncfusionInteractionMode: 'interacting',
-      syncfusionInteractionReason: reason,
-      syncfusionInteractionSessionId: nextSessionId,
-      syncfusionInteractionTransitions: { ...syncfusionInteractionTransitionsRef.current }
+      pdfjsInteractionMode: 'interacting',
+      pdfjsInteractionReason: reason,
+      pdfjsInteractionSessionId: nextSessionId,
+      pdfjsInteractionTransitions: { ...pdfjsInteractionTransitionsRef.current }
     });
-    emitPdfDebugEvent('syncfusion_interaction_mode_on', {
+    emitPdfDebugEvent('pdfjs_interaction_mode_on', {
       reason,
       holdMs,
       sessionId: nextSessionId,
-      transitions: { ...syncfusionInteractionTransitionsRef.current }
+      transitions: { ...pdfjsInteractionTransitionsRef.current }
     });
-    startSyncfusionOverlayTransformLoop();
-    applySyncfusionOverlayTransformSync();
-    queueSyncfusionOverlayTransformSync(true);
-    scheduleSyncfusionInteractionSettleCheck();
+    startPdfjsOverlayTransformLoop();
+    applyPdfjsOverlayTransformSync();
+    queuePdfjsOverlayTransformSync(true);
+    schedulePdfjsInteractionSettleCheck();
   }, [
-    applySyncfusionOverlayTransformSync,
-    computeSyncfusionInteractionResidentPages,
-    freezeSyncfusionSessionPages,
-    getSyncfusionViewerScale,
-    queueSyncfusionOverlayTransformSync,
-    resetSyncfusionZoomPresentationPages,
-    scheduleSyncfusionInteractionSettleCheck,
-    startSyncfusionOverlayTransformLoop,
+    applyPdfjsOverlayTransformSync,
+    computePdfjsInteractionResidentPages,
+    freezePdfjsSessionPages,
+    getPdfjsViewerScale,
+    queuePdfjsOverlayTransformSync,
+    resetPdfjsZoomPresentationPages,
+    schedulePdfjsInteractionSettleCheck,
+    startPdfjsOverlayTransformLoop,
     syncScaleConfirmHiddenPages,
-    syncSyncfusionLightweightPages
+    syncPdfjsLightweightPages
   ]);
 
-  const finishSyncfusionInteractionWindow = useCallback(() => {
-    finalizeSyncfusionInteractionIdle('forced-reset');
-  }, [finalizeSyncfusionInteractionIdle]);
+  const finishPdfjsInteractionWindow = useCallback(() => {
+    finalizePdfjsInteractionIdle('forced-reset');
+  }, [finalizePdfjsInteractionIdle]);
 
-  const scheduleSyncfusionVisiblePagesRefresh = useCallback(() => {
-    // Syncfusion visible-page tracking is meaningless under the owned pdf.js
+  const schedulePdfjsVisiblePagesRefresh = useCallback(() => {
+    // Pdfjs visible-page tracking is meaningless under the owned pdf.js
     // engine (pdf.js owns page visibility); the version bump only re-renders broad
     // subtrees for nothing. Bail under pdf.js.
-    if (getPDFViewerEngine() === PDF_VIEWER_ENGINE_PDFJS) return;
-    const state = syncfusionVisiblePagesRefreshRef.current;
+    if (true) return;
+    const state = pdfjsVisiblePagesRefreshRef.current;
     const now = Date.now();
     const elapsed = now - (Number(state.lastAt) || 0);
     const flush = () => {
       state.timer = null;
       state.lastAt = Date.now();
-      setSyncfusionVisiblePagesVersion((prev) => prev + 1);
+      setPdfjsVisiblePagesVersion((prev) => prev + 1);
     };
-    if (elapsed >= SYNCFUSION_INTERACTION_VISIBLE_PAGE_REFRESH_MS) {
+    if (elapsed >= PDFJS_INTERACTION_VISIBLE_PAGE_REFRESH_MS) {
       if (state.timer) {
         clearTimeout(state.timer);
         state.timer = null;
@@ -2727,103 +2712,103 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     if (!state.timer) {
       state.timer = setTimeout(
         flush,
-        Math.max(24, SYNCFUSION_INTERACTION_VISIBLE_PAGE_REFRESH_MS - elapsed)
+        Math.max(24, PDFJS_INTERACTION_VISIBLE_PAGE_REFRESH_MS - elapsed)
       );
     }
   }, []);
 
-  const markSyncfusionInteractionActive = useCallback((reason = 'interaction', holdMs = SYNCFUSION_INTERACTION_SETTLE_MS) => {
+  const markPdfjsInteractionActive = useCallback((reason = 'interaction', holdMs = PDFJS_INTERACTION_SETTLE_MS) => {
     // Under the owned pdf.js engine, the engine owns overlay positioning, scroll
     // and zoom natively — overlays ride the engine transform with zero drift. The
-    // entire legacy Syncfusion interaction session (per-frame overlay transform
+    // entire legacy Pdfjs interaction session (per-frame overlay transform
     // rAF loop, visible-pages version bumps, settle bookkeeping) is pure wasted
     // forced-layout + setState churn here. Bail before starting any of it so the
     // pdf.js path matches the stripped demo's scroll/zoom feel. Zoom is unaffected:
-    // it runs in performSyncfusionCursorWheelZoom, which already bails under pdf.js.
-    if (getPDFViewerEngine() === PDF_VIEWER_ENGINE_PDFJS) return;
-    if (!useSyncfusionRenderer || !syncfusionLiveStableOverlayEnabled || !syncfusionDualLayerEnabled) {
+    // it runs in performPdfjsCursorWheelZoom, which already bails under pdf.js.
+    if (true) return;
+    if (!usePdfjsRenderer || !pdfjsLiveStableOverlayEnabled || !pdfjsDualLayerEnabled) {
       return;
     }
 
-    const safeHoldMs = Math.max(120, Number(holdMs) || SYNCFUSION_INTERACTION_SETTLE_MS);
-    syncfusionInteractionUntilRef.current = Math.max(
-      syncfusionInteractionUntilRef.current || 0,
+    const safeHoldMs = Math.max(120, Number(holdMs) || PDFJS_INTERACTION_SETTLE_MS);
+    pdfjsInteractionUntilRef.current = Math.max(
+      pdfjsInteractionUntilRef.current || 0,
       Date.now() + safeHoldMs
     );
-    syncfusionInteractionReasonRef.current = reason;
+    pdfjsInteractionReasonRef.current = reason;
     // If a non-zoom reason arrives during an existing zoom-only session, escalate
-    if (syncfusionInteractionIsZoomOnlyRef.current && !ZOOM_ONLY_INTERACTION_REASONS.has(reason)) {
-      syncfusionInteractionIsZoomOnlyRef.current = false;
+    if (pdfjsInteractionIsZoomOnlyRef.current && !ZOOM_ONLY_INTERACTION_REASONS.has(reason)) {
+      pdfjsInteractionIsZoomOnlyRef.current = false;
     }
 
-    if (syncfusionInteractionPhaseRef.current === 'committing') {
-      clearSyncfusionCommitRaf();
-      syncfusionCommitQueueRef.current = [];
-      syncfusionLastCommitFrameAtRef.current = 0;
-      setSyncfusionCommitQueueDepth(0);
-      setSyncfusionCommittingProxyPages(new Set());
-      syncfusionCommittingProxyPagesRef.current = new Set();
-      syncfusionInteractionPhaseRef.current = 'idle';
-      setSyncfusionInteractionPhase('idle');
+    if (pdfjsInteractionPhaseRef.current === 'committing') {
+      clearPdfjsCommitRaf();
+      pdfjsCommitQueueRef.current = [];
+      pdfjsLastCommitFrameAtRef.current = 0;
+      setPdfjsCommitQueueDepth(0);
+      setPdfjsCommittingProxyPages(new Set());
+      pdfjsCommittingProxyPagesRef.current = new Set();
+      pdfjsInteractionPhaseRef.current = 'idle';
+      setPdfjsInteractionPhase('idle');
     }
 
-    if (syncfusionInteractionPhaseRef.current !== 'interacting') {
-      startSyncfusionInteractionSession(reason, safeHoldMs);
+    if (pdfjsInteractionPhaseRef.current !== 'interacting') {
+      startPdfjsInteractionSession(reason, safeHoldMs);
       return;
     }
-    startSyncfusionOverlayTransformLoop();
-    queueSyncfusionOverlayTransformSync();
-    scheduleSyncfusionInteractionSettleCheck();
+    startPdfjsOverlayTransformLoop();
+    queuePdfjsOverlayTransformSync();
+    schedulePdfjsInteractionSettleCheck();
   }, [
-    clearSyncfusionCommitRaf,
-    queueSyncfusionOverlayTransformSync,
-    scheduleSyncfusionInteractionSettleCheck,
-    startSyncfusionOverlayTransformLoop,
-    startSyncfusionInteractionSession,
-    syncfusionDualLayerEnabled,
-    syncfusionLiveStableOverlayEnabled,
-    useSyncfusionRenderer
+    clearPdfjsCommitRaf,
+    queuePdfjsOverlayTransformSync,
+    schedulePdfjsInteractionSettleCheck,
+    startPdfjsOverlayTransformLoop,
+    startPdfjsInteractionSession,
+    pdfjsDualLayerEnabled,
+    pdfjsLiveStableOverlayEnabled,
+    usePdfjsRenderer
   ]);
 
   useEffect(() => {
-    if (useSyncfusionRenderer && syncfusionLiveStableOverlayEnabled && syncfusionDualLayerEnabled) {
+    if (usePdfjsRenderer && pdfjsLiveStableOverlayEnabled && pdfjsDualLayerEnabled) {
       return undefined;
     }
-    finishSyncfusionInteractionWindow();
+    finishPdfjsInteractionWindow();
     return undefined;
   }, [
-    finishSyncfusionInteractionWindow,
-    syncfusionDualLayerEnabled,
-    syncfusionLiveStableOverlayEnabled,
-    useSyncfusionRenderer
+    finishPdfjsInteractionWindow,
+    pdfjsDualLayerEnabled,
+    pdfjsLiveStableOverlayEnabled,
+    usePdfjsRenderer
   ]);
 
   useEffect(() => () => {
     clearInteractionPerfTimer();
-    clearSyncfusionCommitRaf();
-    clearSyncfusionOverlayTransformSyncRaf();
-    const visiblePageRefreshState = syncfusionVisiblePagesRefreshRef.current;
+    clearPdfjsCommitRaf();
+    clearPdfjsOverlayTransformSyncRaf();
+    const visiblePageRefreshState = pdfjsVisiblePagesRefreshRef.current;
     if (visiblePageRefreshState.timer) {
       clearTimeout(visiblePageRefreshState.timer);
       visiblePageRefreshState.timer = null;
     }
-    resetSyncfusionOverlayTransformStyles();
-    clearSyncfusionInteractionTimer();
-    if (syncfusionWheelZoomRafRef.current !== null) {
+    resetPdfjsOverlayTransformStyles();
+    clearPdfjsInteractionTimer();
+    if (pdfjsWheelZoomRafRef.current !== null) {
       if (typeof window !== 'undefined' && typeof window.cancelAnimationFrame === 'function') {
-        window.cancelAnimationFrame(syncfusionWheelZoomRafRef.current);
+        window.cancelAnimationFrame(pdfjsWheelZoomRafRef.current);
       } else {
-        clearTimeout(syncfusionWheelZoomRafRef.current);
+        clearTimeout(pdfjsWheelZoomRafRef.current);
       }
-      syncfusionWheelZoomRafRef.current = null;
+      pdfjsWheelZoomRafRef.current = null;
     }
-    syncfusionWheelZoomDeltaRef.current = 0;
-    syncfusionWheelZoomAnchorRef.current = null;
+    pdfjsWheelZoomDeltaRef.current = 0;
+    pdfjsWheelZoomAnchorRef.current = null;
     if (deferredExcelCheckTimerRef.current) {
       clearTimeout(deferredExcelCheckTimerRef.current);
       deferredExcelCheckTimerRef.current = null;
     }
-    const listeners = syncfusionInteractionListenersRef.current;
+    const listeners = pdfjsInteractionListenersRef.current;
     if (listeners.detach) {
       listeners.detach();
       listeners.detach = null;
@@ -2832,11 +2817,11 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     interactionPerfRef.current.active = false;
     interactionPerfRef.current.until = 0;
   }, [
-    clearSyncfusionCommitRaf,
+    clearPdfjsCommitRaf,
     clearInteractionPerfTimer,
-    clearSyncfusionInteractionTimer,
-    clearSyncfusionOverlayTransformSyncRaf,
-    resetSyncfusionOverlayTransformStyles
+    clearPdfjsInteractionTimer,
+    clearPdfjsOverlayTransformSyncRaf,
+    resetPdfjsOverlayTransformStyles
   ]);
 
   // Renderer toggle state (SVG vs Canvas display mode)
@@ -2945,7 +2930,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   const interactionDiagZoomLogAtRef = useRef(0);
 
   // KAL-47 Forms mode state.
-  // - `formMode` toggles Syncfusion's `designerMode`. When true, the
+  // - `formMode` toggles Pdfjs's `designerMode`. When true, the
   //   container becomes form-aware; the custom toolbar drives placement
   //   through `setFormFieldMode`.
   // - `selectedFormField` is hydrated from `formFieldSelect` events.
@@ -2960,11 +2945,11 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   // and lets pan/select/draw/etc. resume normal behavior.
   const formModeActive = isFormTool(activeTool);
 
-  // KAL-47: when a form tool is selected, ask Syncfusion to enter the
+  // KAL-47: when a form tool is selected, ask Pdfjs to enter the
   // matching placement mode. The next click on the PDF page produces the
   // field via the bridged formFieldAdd event.
   useEffect(() => {
-    const viewer = syncfusionViewerRef.current;
+    const viewer = pdfjsViewerRef.current;
     if (!viewer || typeof viewer.setFormFieldMode !== 'function') return;
     if (!formModeActive) {
       // Leaving Forms mode — flip designer off so pan/select/draw work.
@@ -2980,7 +2965,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
   // KAL-47 event handlers. We forward into App state so the properties
   // panel + tests can observe creation/selection without reaching into
-  // Syncfusion internals. Wrapped in stable callbacks so the container
+  // Pdfjs internals. Wrapped in stable callbacks so the container
   // doesn't re-subscribe on every render.
   const handleFormFieldAdd = useCallback((args) => {
     const field = args?.field || args?.value || args;
@@ -3034,7 +3019,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
   const handleFormFieldPropertiesPanelChange = useCallback((next) => {
     if (!selectedFormField?.id) return;
-    const viewer = syncfusionViewerRef.current;
+    const viewer = pdfjsViewerRef.current;
     if (!viewer || typeof viewer.updateFormField !== 'function') return;
     viewer.updateFormField(selectedFormField.id, next);
     setSelectedFormField((prev) => (prev ? { ...prev, ...next } : prev));
@@ -3042,7 +3027,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
   const handleFormFieldPropertiesPanelDelete = useCallback(() => {
     if (!selectedFormField?.id) return;
-    const viewer = syncfusionViewerRef.current;
+    const viewer = pdfjsViewerRef.current;
     if (!viewer || typeof viewer.deleteFormField !== 'function') return;
     viewer.deleteFormField(selectedFormField.id);
     setSelectedFormField(null);
@@ -3055,7 +3040,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     try {
       const prevTool = interactionDiagPrevToolRef.current;
       if (prevTool !== activeTool) {
-        console.log(`[InteractionDiag] tool-changed @ ${Math.round(performance.now())}ms from=${prevTool} to=${activeTool}` + (activeTool === 'pan' ? ' (pan-active → Syncfusion interactionMode=Pan)' : '') + (activeTool === 'eraser' ? ' (eraser-active → FabricEraserCanvas mounts)' : ''));
+        console.log(`[InteractionDiag] tool-changed @ ${Math.round(performance.now())}ms from=${prevTool} to=${activeTool}` + (activeTool === 'pan' ? ' (pan-active → Pdfjs interactionMode=Pan)' : '') + (activeTool === 'eraser' ? ' (eraser-active → FabricEraserCanvas mounts)' : ''));
         interactionDiagPrevToolRef.current = activeTool;
       }
     } catch (_e) { /* swallow */ }
@@ -3305,8 +3290,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   const [strikeCaretPopupOpen, setStrikeCaretPopupOpen] = useState(false);
   const strikeCaretPopupRef = useRef(null);
 
-  // Disable ALL Syncfusion interactive layers during annotation edit mode via injected <style>.
-  // Covers .e-pv-text-layer, .e-pv-annotation-canvas, and any other Syncfusion overlay.
+  // Disable ALL Pdfjs interactive layers during annotation edit mode via injected <style>.
+  // Covers .e-pv-text-layer, .e-pv-annotation-canvas, and any other Pdfjs overlay.
   // Using a <style> tag instead of querySelectorAll ensures dynamically-added elements are caught.
   // Also forces cursor:text on the page div during text editing to prevent cursor flicker —
   // when the text overlay gets pointer-events:none and FabricEditCanvas hasn't painted yet,
@@ -3331,13 +3316,13 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     return () => { style.remove(); };
   }, [editingAnnotation]);
 
-  // Syncfusion still owns native PDF annotations that stay in the PDF layer
+  // Pdfjs still owns native PDF annotations that stay in the PDF layer
   // (for example files with form fields/links). Keep its selection border so
   // users can select/delete, but suppress resize/rotate handles that imply
   // editing we do not support.
   useLayoutEffect(() => {
     const style = document.createElement('style');
-    style.dataset.syncfusionNativeAnnotationHandles = 'hidden';
+    style.dataset.pdfjsNativeAnnotationHandles = 'hidden';
     style.textContent = `
       .e-pdfviewer .e-pv-diagram-resize-handle,
       .e-pdfviewer .e-pv-diagram-rotate-handle,
@@ -3356,10 +3341,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
   useLayoutEffect(() => {
     const style = document.createElement('style');
-    style.dataset.syncfusionSelectModeCursor = 'true';
+    style.dataset.pdfjsSelectModeCursor = 'true';
     style.textContent = `
-      .survey-syncfusion-select-mode .e-pv-text,
-      .survey-syncfusion-select-mode .e-pv-text-layer {
+      .survey-pdfjs-select-mode .e-pv-text,
+      .survey-pdfjs-select-mode .e-pv-text-layer {
         cursor: default !important;
       }
     `;
@@ -3701,14 +3686,14 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   // UX: pan-mode hover — when the cursor is over an annotation in pan mode,
   // show the same blue hover glow the Select tool shows AND switch the
   // cursor to `pointer` so the user can tell "click here to pick this up."
-  // Over empty page space, leave the cursor alone (Syncfusion owns pan /
+  // Over empty page space, leave the cursor alone (Pdfjs owns pan /
   // grab styling). Uses the same resolveAnnotationAt hit-test as the
   // pan-mode click listener, so behavior is consistent between "what will
   // a click pick?" and "what does the glow preview?".
   //
   // Rationale for document-level mousemove (vs flipping SVG pointer-events):
   // the SVG layer is `pointer-events: none` in pan mode so empty-space
-  // clicks pass through to Syncfusion for panning. Re-enabling pointer
+  // clicks pass through to Pdfjs for panning. Re-enabling pointer
   // events on hit-zones would require guarding their onPointerDown to
   // avoid fighting pan gestures — more changes + more risk than a single
   // mousemove listener that reuses the hit-test already in production.
@@ -3746,7 +3731,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       if (isAnnotation) {
         setPendingSvgHover({ pageNumber: hit.pageNumber, annotationIndex: hit.annotationIndex });
         // UX: pointer cursor over annotations in pan mode. document.body is
-        // the lowest-priority target so Syncfusion-level pan cursor wins
+        // the lowest-priority target so Pdfjs-level pan cursor wins
         // everywhere else. Cleared on no-hit and on tool-change cleanup.
         if (document.body.style.cursor !== 'pointer') {
           document.body.style.cursor = 'pointer';
@@ -4046,14 +4031,13 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
   // Region annotation visibility state
   const [activeRegionId, setActiveRegionId] = useState(null);
-  const [showTemplateSelection, setShowTemplateSelection] = useState(false);
   const [selectedTemplate, setSelectedTemplate] = useState(null);
   const [selectedModuleId, setSelectedModuleId] = useState(null);
   useEffect(() => {
-    syncfusionSelectedModuleIdRef.current = selectedModuleId;
+    pdfjsSelectedModuleIdRef.current = selectedModuleId;
   }, [selectedModuleId]);
   useEffect(() => {
-    syncfusionShowSurveyPanelRef.current = showSurveyPanel === true;
+    pdfjsShowSurveyPanelRef.current = showSurveyPanel === true;
   }, [showSurveyPanel]);
   const [showExportMenu, setShowExportMenu] = useState(false);
   const exportMenuRef = useRef(null);
@@ -4717,26 +4701,36 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   const bottomToolbarRef = useRef(null);
   const statusBarRef = useRef(null);
   const middleAreaRef = useRef(null);
+  const handleCloseSurveyMode = useCallback(() => {
+    setShowSurveyPanel(false);
+    setSelectedTemplate(null);
+    setSelectedModuleId(null);
+    setSelectedSpaceId(null);
+    setSelectedCategoryId(null);
+    setActiveCategoryDropdown(null);
+    setCategorySelectModeActive(false);
+    setCategorySelectModeForCategory(null);
+    setSelectedCategories({});
+    setCopyModeActive(false);
+    setCopiedItemSelection({});
+    setItemSelectModeActive({});
+    setSelectedItemsInCategory({});
+    setActiveTool('select');
+  }, []);
+
   // UX 2026-05-29: Survey entry now belongs to the always-visible right rail.
-  // The handler stays in PDFViewer because it owns the survey/template state:
-  // gated by the Pro feature flag, opens template-selection modal when not
-  // active, otherwise tears down the survey panel and active selection.
+  // The handler stays in PDFViewer because it owns the survey/template state.
   const handleSurveyToggle = useCallback(() => {
     if (!features?.advancedSurvey) {
       showToast('Survey Templates are a Pro feature. Please upgrade to use this tool.', 'warn');
       return;
     }
     if (!showSurveyPanel) {
-      setShowTemplateSelection(true);
+      setShowSurveyPanel(true);
     } else {
-      setShowSurveyPanel(false);
-      setSelectedModuleId(null);
-      setSelectedSpaceId(null);
-      setSelectedCategoryId(null);
-      setActiveCategoryDropdown(null);
-      setActiveTool('select');
+      handleCloseSurveyMode();
     }
-  }, [features, showSurveyPanel]);
+  }, [features, handleCloseSurveyMode, showSurveyPanel]);
 
   // UX 2026-05-13: top-toolbar publish effect was here but moved further down,
   // past where handleUndo / handleRedo are declared — those are const arrow
@@ -4748,6 +4742,17 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   const [middleAreaBounds, setMiddleAreaBounds] = useState({ top: 56, height: 500 });
   const appTemplates = templates;
   const handleTemplatesChange = onTemplatesChange;
+
+  const handleSelectSurveyTemplate = useCallback((template) => {
+    if (!template) return;
+    const firstModuleId = (template.modules || template.spaces || [])?.[0]?.id || null;
+    setSelectedTemplate(template);
+    setSelectedModuleId(firstModuleId);
+    setSelectedCategoryId(null);
+    setActiveCategoryDropdown('survey');
+    setActiveTool('survey-marker');
+    setShowSurveyPanel(true);
+  }, []);
 
   // Helper to sanitize template config before saving to Supabase
   const sanitizeTemplateConfig = (template) => {
@@ -4781,7 +4786,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       lastViewStateEmittedRef.current = normalized;
     }, 100);
     return () => clearTimeout(timer);
-  }, [areViewStatesEqual, initialViewState, normalizeViewState, pdfDoc, useSyncfusionRenderer]); // Run when PDF doc/viewer container is ready
+  }, [areViewStatesEqual, initialViewState, normalizeViewState, pdfDoc, usePdfjsRenderer]); // Run when PDF doc/viewer container is ready
 
   // Emit view state changes
   useEffect(() => {
@@ -4833,40 +4838,40 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       container.removeEventListener('scroll', debouncedHandleScroll);
       clearTimeout(timeoutId);
     };
-  }, [areViewStatesEqual, normalizeViewState, onViewStateChange, pageNum, scale, useSyncfusionRenderer, zoomMode, scrollMode, tabId]);
+  }, [areViewStatesEqual, normalizeViewState, onViewStateChange, pageNum, scale, usePdfjsRenderer, zoomMode, scrollMode, tabId]);
 
-  const detachSyncfusionInteractionListeners = useCallback(() => {
-    const existing = syncfusionInteractionListenersRef.current;
+  const detachPdfjsInteractionListeners = useCallback(() => {
+    const existing = pdfjsInteractionListenersRef.current;
     if (existing.detach) {
       existing.detach();
     }
-    syncfusionInteractionListenersRef.current = { detach: null, container: null };
+    pdfjsInteractionListenersRef.current = { detach: null, container: null };
   }, []);
 
-  const clearSyncfusionWheelZoomRaf = useCallback(() => {
-    const rafId = syncfusionWheelZoomRafRef.current;
+  const clearPdfjsWheelZoomRaf = useCallback(() => {
+    const rafId = pdfjsWheelZoomRafRef.current;
     if (rafId !== null) {
       if (typeof window !== 'undefined' && typeof window.cancelAnimationFrame === 'function') {
         window.cancelAnimationFrame(rafId);
       }
       clearTimeout(rafId);
-      syncfusionWheelZoomRafRef.current = null;
+      pdfjsWheelZoomRafRef.current = null;
     }
-    syncfusionWheelZoomDeltaRef.current = 0;
-    syncfusionWheelZoomAnchorRef.current = null;
+    pdfjsWheelZoomDeltaRef.current = 0;
+    pdfjsWheelZoomAnchorRef.current = null;
   }, []);
 
-  const findSyncfusionPageAtClientPoint = useCallback((clientX, clientY) => {
+  const findPdfjsPageAtClientPoint = useCallback((clientX, clientY) => {
     if (typeof document === 'undefined' || !Number.isFinite(clientX) || !Number.isFinite(clientY)) {
       return null;
     }
     const direct = document.elementFromPoint?.(clientX, clientY)?.closest?.('.e-pv-page-div');
     if (direct) {
-      syncfusionLastCursorPageRef.current = direct;
+      pdfjsLastCursorPageRef.current = direct;
       return direct;
     }
 
-    const cached = syncfusionLastCursorPageRef.current;
+    const cached = pdfjsLastCursorPageRef.current;
     const cachedRect = cached?.isConnected ? cached.getBoundingClientRect?.() : null;
     if (
       cachedRect &&
@@ -4880,7 +4885,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       return cached;
     }
 
-    // Annotation/selection overlays sit above Syncfusion's page divs, so
+    // Annotation/selection overlays sit above Pdfjs's page divs, so
     // elementFromPoint can return our overlay instead of the PDF page. For
     // cursor-centric zoom we still need the real page under that screen point;
     // otherwise zoom falls back to rough scroll-ratio math and drifts down/right.
@@ -4889,14 +4894,14 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       const rect = page.getBoundingClientRect?.();
       if (!rect || rect.width <= 0 || rect.height <= 0) continue;
       if (clientX >= rect.left && clientX <= rect.right && clientY >= rect.top && clientY <= rect.bottom) {
-        syncfusionLastCursorPageRef.current = page;
+        pdfjsLastCursorPageRef.current = page;
         return page;
       }
     }
     return null;
   }, []);
 
-  const performSyncfusionCursorWheelZoom = useCallback((event, viewerContainer, reason = 'overlay-wheel-zoom') => {
+  const performPdfjsCursorWheelZoom = useCallback((event, viewerContainer, reason = 'overlay-wheel-zoom') => {
     // Under the owned pdf.js engine, let the engine's OWN cursor-anchored smooth
     // wheel zoom (CSS transform during gesture + re-raster on settle) own the
     // gesture. Bail BEFORE the preventDefault/stopPropagation below so the
@@ -4905,9 +4910,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     // still preventDefaults native pinch-zoom itself and fires
     // onZoomPhase('gesture-start') -> handlePdfjsZoomPhase -> zoomGeneration bump,
     // so the Canvas auto-commit invariant is preserved. This covers both wheel
-    // entry paths (the document capture listener and handleSyncfusionWrapperWheel)
+    // entry paths (the document capture listener and handlePdfjsWrapperWheel)
     // because neither calls preventDefault itself. See HANDOFF.md "make pdf.js zoom smooth".
-    if (getPDFViewerEngine() === PDF_VIEWER_ENGINE_PDFJS) return false;
+    if (true) return false;
     if (!event || !viewerContainer || !(event.ctrlKey || event.metaKey)) return false;
     if (event.__surveyCursorZoomHandled) return true;
     event.__surveyCursorZoomHandled = true;
@@ -4954,16 +4959,16 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     if (tool === 'pen' || tool === 'highlighter' || tool === 'eraser') {
       setActiveTool('pan');
     }
-    bumpOverlayLagEventTotal(reason === 'syncfusion-wheel-zoom' ? 'syncfusionWheelZoom' : 'overlayWheelZoom');
+    bumpOverlayLagEventTotal(reason === 'pdfjs-wheel-zoom' ? 'pdfjsWheelZoom' : 'overlayWheelZoom');
     markInteractionPerfActive(reason, INTERACTION_PERF_SCROLL_HOLD_MS);
-    markSyncfusionInteractionActive(reason);
+    markPdfjsInteractionActive(reason);
 
     const containerRect = viewerContainer.getBoundingClientRect();
     const pointerX = Number.isFinite(event.clientX) ? event.clientX - containerRect.left : containerRect.width / 2;
     const pointerY = Number.isFinite(event.clientY) ? event.clientY - containerRect.top : containerRect.height / 2;
     const clientXForAnchor = Number.isFinite(event.clientX) ? event.clientX : (containerRect.left + containerRect.width / 2);
     const clientYForAnchor = Number.isFinite(event.clientY) ? event.clientY : (containerRect.top + containerRect.height / 2);
-    const pageElementAtCursor = findSyncfusionPageAtClientPoint(clientXForAnchor, clientYForAnchor);
+    const pageElementAtCursor = findPdfjsPageAtClientPoint(clientXForAnchor, clientYForAnchor);
     const pageRectAtCursor = pageElementAtCursor?.getBoundingClientRect?.();
     const pageAnchor = pageElementAtCursor && pageRectAtCursor?.width > 0 && pageRectAtCursor?.height > 0
       ? {
@@ -4972,7 +4977,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
           ratioY: (clientYForAnchor - pageRectAtCursor.top) / pageRectAtCursor.height,
         }
       : null;
-    syncfusionWheelZoomAnchorRef.current = {
+    pdfjsWheelZoomAnchorRef.current = {
       x: pointerX + viewerContainer.scrollLeft,
       y: pointerY + viewerContainer.scrollTop,
       cursorX: pointerX,
@@ -4983,19 +4988,19 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       scrollLeftAtEvent: viewerContainer.scrollLeft,
       scrollTopAtEvent: viewerContainer.scrollTop,
     };
-    syncfusionWheelZoomDeltaRef.current += (-event.deltaY);
+    pdfjsWheelZoomDeltaRef.current += (-event.deltaY);
 
-    if (syncfusionWheelZoomRafRef.current !== null) return true;
+    if (pdfjsWheelZoomRafRef.current !== null) return true;
 
-    syncfusionWheelZoomRafRef.current = setTimeout(() => {
+    pdfjsWheelZoomRafRef.current = setTimeout(() => {
       const workStartMs = (typeof performance !== 'undefined' && typeof performance.now === 'function')
         ? performance.now()
         : Date.now();
       const queuedLatencyMs = workStartMs - rawEventAtMs;
-      syncfusionWheelZoomRafRef.current = null;
-      const delta = Number(syncfusionWheelZoomDeltaRef.current) || 0;
-      syncfusionWheelZoomDeltaRef.current = 0;
-      if (queuedLatencyMs > SYNCFUSION_WHEEL_ZOOM_STALE_DROP_MS) {
+      pdfjsWheelZoomRafRef.current = null;
+      const delta = Number(pdfjsWheelZoomDeltaRef.current) || 0;
+      pdfjsWheelZoomDeltaRef.current = 0;
+      if (queuedLatencyMs > PDFJS_WHEEL_ZOOM_STALE_DROP_MS) {
         trackpadInteractionDebugRef.current.totals.skippedZoom += 1;
         recordTrackpadInteractionEvent('zoom-skipped', {
           family: 'zoom',
@@ -5021,10 +5026,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         return;
       }
 
-      const anchor = syncfusionWheelZoomAnchorRef.current;
+      const anchor = pdfjsWheelZoomAnchorRef.current;
       if (anchor) setAnchor(anchor);
 
-      const viewer = syncfusionViewerRef.current;
+      const viewer = pdfjsViewerRef.current;
       if (!viewer) return;
       const rawGetZoomValue = typeof viewer.getZoomValue === 'function' ? viewer.getZoomValue() : null;
       const rawViewerZoomValue = viewer.zoomValue;
@@ -5032,7 +5037,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         ? viewer.magnificationModule.zoomFactor * 100
         : null;
       const trustedReactZoom = scaleRef.current ? scaleRef.current * 100 : null;
-      const reportedZoom = coerceSyncfusionZoomPercent(
+      const reportedZoom = coercePdfjsZoomPercent(
         rawGetZoomValue,
         rawViewerZoomValue,
         rawMagnificationZoom,
@@ -5041,23 +5046,23 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       const correctedSuspiciousZoom = isSuspiciousWheelZoomPercent(reportedZoom, trustedReactZoom);
       const reportedCurrentZoom = correctedSuspiciousZoom
         ? trustedReactZoom
-        : coerceSyncfusionZoomPercent(
+        : coercePdfjsZoomPercent(
           rawGetZoomValue,
           rawViewerZoomValue,
           rawMagnificationZoom,
           trustedReactZoom,
           100
         );
-      // Wheel zoom must advance from the live React zoom, not Syncfusion's rounded
+      // Wheel zoom must advance from the live React zoom, not Pdfjs's rounded
       // reported value, otherwise trackpads feel like they move in tiny stale steps.
       const currentZoom = Number.isFinite(Number(trustedReactZoom))
         ? Number(trustedReactZoom)
         : reportedCurrentZoom;
 
-      const nextZoom = getSmoothSyncfusionWheelZoom(currentZoom, delta);
+      const nextZoom = getSmoothPdfjsWheelZoom(currentZoom, delta);
       const zoomRequestedDeltaAbs = Math.abs(nextZoom - currentZoom);
       const zoomReportedLagAbs = Math.abs(currentZoom - reportedCurrentZoom);
-      const wheelPerfTotals = syncfusionWheelPerfTotalsRef.current;
+      const wheelPerfTotals = pdfjsWheelPerfTotalsRef.current;
       wheelPerfTotals.zoomEvents += 1;
       wheelPerfTotals.zoomRawDeltaAbs += Math.abs(delta);
       wheelPerfTotals.zoomRequestedDeltaAbs += zoomRequestedDeltaAbs;
@@ -5116,20 +5121,20 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       }
 
       // Under pdf.js, never enter the snapshot/overlay-preview mode (see
-      // captureSyncfusionZoomSnapshots) — it hides/covers the live form widgets
+      // capturePdfjsZoomSnapshots) — it hides/covers the live form widgets
       // mid-zoom. Leave the overlay live; it resyncs on each committed step.
-      if (getPDFViewerEngine() !== PDF_VIEWER_ENGINE_PDFJS && !zoomOverlayTransformActiveRef.current) {
+      if (false && !zoomOverlayTransformActiveRef.current) {
         zoomOverlayBaseScaleRef.current = currentZoom / 100;
-        captureSyncfusionZoomSnapshots(currentZoom / 100);
+        capturePdfjsZoomSnapshots(currentZoom / 100);
         zoomOverlayTransformActiveRef.current = true;
-        setSyncfusionZoomPreviewActive(true);
+        setPdfjsZoomPreviewActive(true);
         debugMark('zoom_start', {
           scale: currentZoom / 100,
           source: 'overlay_wheel_zoom_pre',
           reportedScale: reportedZoom / 100,
           correctedSuspiciousZoom
         });
-        const pcMap = syncfusionPageContainersStateRef.current || pageContainersRef.current || {};
+        const pcMap = pdfjsPageContainersStateRef.current || pageContainersRef.current || {};
         const cachedRects = {};
         const portalHostSnapshot = {};
         Object.entries(pcMap).forEach(([pn, el]) => {
@@ -5138,10 +5143,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
             portalHostSnapshot[Number(pn)] = el;
           }
         });
-        syncfusionCachedPageRectsRef.current = cachedRects;
-        const existingHosts = syncfusionInteractionPortalHostsRef.current || {};
+        pdfjsCachedPageRectsRef.current = cachedRects;
+        const existingHosts = pdfjsInteractionPortalHostsRef.current || {};
         if (Object.keys(existingHosts).length === 0) {
-          syncfusionInteractionPortalHostsRef.current = portalHostSnapshot;
+          pdfjsInteractionPortalHostsRef.current = portalHostSnapshot;
         }
       }
 
@@ -5150,16 +5155,16 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       const scrollLeftAtEvent = (anchor && Number.isFinite(anchor.scrollLeftAtEvent)) ? anchor.scrollLeftAtEvent : viewerContainer.scrollLeft;
       const scrollTopAtEvent = (anchor && Number.isFinite(anchor.scrollTopAtEvent)) ? anchor.scrollTopAtEvent : viewerContainer.scrollTop;
       const ratio = nextZoom > 0 && currentZoom > 0 ? (nextZoom / currentZoom) : 1;
-      if (getPDFViewerEngine() !== PDF_VIEWER_ENGINE_PDFJS) updateSyncfusionZoomSnapshots(nextZoom / 100);
+      if (false) updatePdfjsZoomSnapshots(nextZoom / 100);
       const targetScrollLeft = (scrollLeftAtEvent + cursorX) * ratio - cursorX;
       const targetScrollTop = (scrollTopAtEvent + cursorY) * ratio - cursorY;
 
       const mag = viewer.magnificationModule;
       const clientX = (anchor && Number.isFinite(anchor.clientX)) ? anchor.clientX : null;
       const clientY = (anchor && Number.isFinite(anchor.clientY)) ? anchor.clientY : null;
-      // Syncfusion exposes a native cursor-aware zoom entry point. We still
+      // Pdfjs exposes a native cursor-aware zoom entry point. We still
       // reapply scroll below because mixed-size/portrait documents can be
-      // re-centered by Syncfusion after zoom, which breaks cursor-centric zoom.
+      // re-centered by Pdfjs after zoom, which breaks cursor-centric zoom.
       if (mag && typeof mag.initiateMouseZoom === 'function' && clientX !== null && clientY !== null) {
         mag.initiateMouseZoom(clientX, clientY, nextZoom);
       } else if (mag && typeof mag.zoomTo === 'function') {
@@ -5184,7 +5189,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         }
         viewerContainer.scrollLeft = Math.min(Math.max(0, nextLeft), maxScrollLeft);
         viewerContainer.scrollTop = Math.min(Math.max(0, nextTop), maxScrollTop);
-        updateSyncfusionZoomSnapshots(nextZoom / 100);
+        updatePdfjsZoomSnapshots(nextZoom / 100);
       };
       applyAnchor();
       if (typeof window !== 'undefined' && typeof window.requestAnimationFrame === 'function') {
@@ -5250,43 +5255,43 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
           }, delayMs);
         });
       }
-      recordSyncfusionIdleWork('syncfusionInternals', workEndMs - workStartMs);
-    }, SYNCFUSION_WHEEL_ZOOM_BATCH_MS);
+      recordPdfjsIdleWork('pdfjsInternals', workEndMs - workStartMs);
+    }, PDFJS_WHEEL_ZOOM_BATCH_MS);
 
     return true;
   }, [
     bumpOverlayLagEventTotal,
-    captureSyncfusionZoomSnapshots,
-    findSyncfusionPageAtClientPoint,
+    capturePdfjsZoomSnapshots,
+    findPdfjsPageAtClientPoint,
     markInteractionPerfActive,
-    markSyncfusionInteractionActive,
+    markPdfjsInteractionActive,
     readTrackpadDebugState,
-    recordSyncfusionIdleWork,
+    recordPdfjsIdleWork,
     recordTrackpadInteractionEvent,
     setAnchor,
     setActiveTool,
-    updateSyncfusionZoomSnapshots,
+    updatePdfjsZoomSnapshots,
   ]);
 
   // Memoize document unload handler to prevent re-renders
   const handleDocumentUnload = useCallback(() => {
     pageContainersRef.current = {};
-    syncfusionPagePdfEverReadyRef.current = new Set();
-    setSyncfusionPageContainers({});
-    setSyncfusionCommittedPageScales({});
-    finishSyncfusionInteractionWindow();
-  }, [finishSyncfusionInteractionWindow]);
+    pdfjsPagePdfEverReadyRef.current = new Set();
+    setPdfjsPageContainers({});
+    setPdfjsCommittedPageScales({});
+    finishPdfjsInteractionWindow();
+  }, [finishPdfjsInteractionWindow]);
 
-  const attachSyncfusionInteractionListeners = useCallback((viewerContainer) => {
+  const attachPdfjsInteractionListeners = useCallback((viewerContainer) => {
     if (!viewerContainer) return;
 
-    const existing = syncfusionInteractionListenersRef.current;
+    const existing = pdfjsInteractionListenersRef.current;
 
     if (existing.container === viewerContainer && existing.detach) {
       return;
     }
 
-    detachSyncfusionInteractionListeners();
+    detachPdfjsInteractionListeners();
 
     let pointerDown = false;
     let lastDragEventAt = 0;
@@ -5306,22 +5311,22 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         ? window.cancelAnimationFrame.bind(window)
         : (id) => clearTimeout(id);
 
-    const markSyncfusionInteraction = (reason, holdMs = INTERACTION_PERF_SCROLL_HOLD_MS, forcePerfMark = false) => {
+    const markPdfjsInteraction = (reason, holdMs = INTERACTION_PERF_SCROLL_HOLD_MS, forcePerfMark = false) => {
       switch (reason) {
-        case 'syncfusion-scroll':
-          bumpOverlayLagEventTotal('syncfusionScroll');
+        case 'pdfjs-scroll':
+          bumpOverlayLagEventTotal('pdfjsScroll');
           break;
-        case 'syncfusion-wheel-zoom':
-          bumpOverlayLagEventTotal('syncfusionWheelZoom');
+        case 'pdfjs-wheel-zoom':
+          bumpOverlayLagEventTotal('pdfjsWheelZoom');
           break;
-        case 'syncfusion-wheel-scroll':
-          bumpOverlayLagEventTotal('syncfusionWheelScroll');
+        case 'pdfjs-wheel-scroll':
+          bumpOverlayLagEventTotal('pdfjsWheelScroll');
           break;
-        case 'syncfusion-pointer-down':
-          bumpOverlayLagEventTotal('syncfusionPointerDown');
+        case 'pdfjs-pointer-down':
+          bumpOverlayLagEventTotal('pdfjsPointerDown');
           break;
-        case 'syncfusion-pointer-drag':
-          bumpOverlayLagEventTotal('syncfusionPointerDrag');
+        case 'pdfjs-pointer-drag':
+          bumpOverlayLagEventTotal('pdfjsPointerDrag');
           break;
         default:
           break;
@@ -5329,15 +5334,15 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       const now = (typeof performance !== 'undefined' && typeof performance.now === 'function')
         ? performance.now()
         : Date.now();
-      const shouldMarkPerf = forcePerfMark || (now - lastInteractionPerfMarkAt) >= SYNCFUSION_INTERACTION_EVENT_THROTTLE_MS;
+      const shouldMarkPerf = forcePerfMark || (now - lastInteractionPerfMarkAt) >= PDFJS_INTERACTION_EVENT_THROTTLE_MS;
       if (shouldMarkPerf) {
         lastInteractionPerfMarkAt = now;
         markInteractionPerfActive(reason, holdMs);
       }
-      const shouldMarkInteraction = forcePerfMark || (now - lastInteractionMarkAt) >= SYNCFUSION_INTERACTION_MARK_THROTTLE_MS;
+      const shouldMarkInteraction = forcePerfMark || (now - lastInteractionMarkAt) >= PDFJS_INTERACTION_MARK_THROTTLE_MS;
       if (shouldMarkInteraction) {
         lastInteractionMarkAt = now;
-        markSyncfusionInteractionActive(reason);
+        markPdfjsInteractionActive(reason);
       }
     };
 
@@ -5346,7 +5351,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         if (scrollMarkRafId !== null) return;
         scrollMarkRafId = raf(() => {
           scrollMarkRafId = null;
-          markSyncfusionInteraction(reason, holdMs);
+          markPdfjsInteraction(reason, holdMs);
         });
         return;
       }
@@ -5354,7 +5359,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         if (wheelScrollMarkRafId !== null) return;
         wheelScrollMarkRafId = raf(() => {
           wheelScrollMarkRafId = null;
-          markSyncfusionInteraction(reason, holdMs);
+          markPdfjsInteraction(reason, holdMs);
         });
         return;
       }
@@ -5362,22 +5367,22 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         if (wheelZoomMarkRafId !== null) return;
         wheelZoomMarkRafId = raf(() => {
           wheelZoomMarkRafId = null;
-          markSyncfusionInteraction(reason, holdMs);
+          markPdfjsInteraction(reason, holdMs);
         });
       }
     };
 
     const onScroll = () => {
       // KAL-241 lag fix — under pdf.js this scroll handler is pure legacy
-      // Syncfusion overhead that fires on EVERY native scroll frame: it reads
+      // Pdfjs overhead that fires on EVERY native scroll frame: it reads
       // layout (readTrackpadDebugState does getBoundingClientRect + querySelectorAll
       // + elementFromPoint), queues an interaction mark that cascades into React
       // state updates, and pokes the zoom-snapshot machinery. The pdf.js engine
       // owns scroll natively and the overlay rides the transformed page host, so
       // none of this is needed and all of it forces synchronous layout the stripped
       // demo never pays. Bail immediately. Zoom is unaffected — it runs in the
-      // separate document-level ctrl/meta wheel handler. Syncfusion path unchanged.
-      if (getPDFViewerEngine() === PDF_VIEWER_ENGINE_PDFJS) return;
+      // separate document-level ctrl/meta wheel handler. Pdfjs path unchanged.
+      if (true) return;
       const beforeLeft = Number(trackpadInteractionDebugRef.current.lastScrollLeft);
       const beforeTop = Number(trackpadInteractionDebugRef.current.lastScrollTop);
       const nextLeft = Number(viewerContainer.scrollLeft) || 0;
@@ -5401,9 +5406,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
           after: readTrackpadDebugState(viewerContainer)
         });
       }
-      queueInteractionMark('scroll', 'syncfusion-scroll', INTERACTION_PERF_SCROLL_HOLD_MS);
+      queueInteractionMark('scroll', 'pdfjs-scroll', INTERACTION_PERF_SCROLL_HOLD_MS);
       if (zoomOverlayTransformActiveRef.current) {
-        updateSyncfusionZoomSnapshots(scaleRef.current || syncfusionPendingZoomScaleRef.current || zoomOverlayBaseScaleRef.current || 1);
+        updatePdfjsZoomSnapshots(scaleRef.current || pdfjsPendingZoomScaleRef.current || zoomOverlayBaseScaleRef.current || 1);
       }
     };
 
@@ -5418,22 +5423,22 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
       const beforeLeft = viewerContainer.scrollLeft;
       const beforeTop = viewerContainer.scrollTop;
-      const frameMaxX = Math.min(SYNCFUSION_SCROLL_FRAME_MAX_PX, Math.max(1, Number(pending.frameMaxX) || SYNCFUSION_SCROLL_MIN_STEP_PX));
-      const frameMaxY = Math.min(SYNCFUSION_SCROLL_FRAME_MAX_PX, Math.max(1, Number(pending.frameMaxY) || SYNCFUSION_SCROLL_MIN_STEP_PX));
+      const frameMaxX = Math.min(PDFJS_SCROLL_FRAME_MAX_PX, Math.max(1, Number(pending.frameMaxX) || PDFJS_SCROLL_MIN_STEP_PX));
+      const frameMaxY = Math.min(PDFJS_SCROLL_FRAME_MAX_PX, Math.max(1, Number(pending.frameMaxY) || PDFJS_SCROLL_MIN_STEP_PX));
       const appliedX = Math.max(-frameMaxX, Math.min(frameMaxX, pending.appliedX));
       const appliedY = Math.max(-frameMaxY, Math.min(frameMaxY, pending.appliedY));
 
       viewerContainer.scrollLeft += appliedX;
       viewerContainer.scrollTop += appliedY;
       if (zoomOverlayTransformActiveRef.current) {
-        updateSyncfusionZoomSnapshots(scaleRef.current || syncfusionPendingZoomScaleRef.current || zoomOverlayBaseScaleRef.current || 1);
+        updatePdfjsZoomSnapshots(scaleRef.current || pdfjsPendingZoomScaleRef.current || zoomOverlayBaseScaleRef.current || 1);
       }
 
       const actualX = viewerContainer.scrollLeft - beforeLeft;
       const actualY = viewerContainer.scrollTop - beforeTop;
       trackpadInteractionDebugRef.current.lastScrollLeft = viewerContainer.scrollLeft;
       trackpadInteractionDebugRef.current.lastScrollTop = viewerContainer.scrollTop;
-      const wheelPerfTotals = syncfusionWheelPerfTotalsRef.current;
+      const wheelPerfTotals = pdfjsWheelPerfTotalsRef.current;
       wheelPerfTotals.scrollEvents += pending.eventCount;
       wheelPerfTotals.scrollRawAbsX += pending.rawAbsX;
       wheelPerfTotals.scrollRawAbsY += pending.rawAbsY;
@@ -5534,12 +5539,12 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         before: pending.beforeState || null,
         after: readTrackpadDebugState(viewerContainer)
       });
-      recordSyncfusionIdleWork('syncfusionInternals', workEndMs - workStartMs, pending.eventCount);
+      recordPdfjsIdleWork('pdfjsInternals', workEndMs - workStartMs, pending.eventCount);
     };
 
     const onWheel = (event) => {
       if (event.ctrlKey || event.metaKey) {
-        queueInteractionMark('wheel-zoom', 'syncfusion-wheel-zoom', INTERACTION_PERF_SCROLL_HOLD_MS);
+        queueInteractionMark('wheel-zoom', 'pdfjs-wheel-zoom', INTERACTION_PERF_SCROLL_HOLD_MS);
         return;
       }
       // KAL-241 lag fix — under pdf.js, plain (non-zoom) wheel scroll is owned by
@@ -5547,9 +5552,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       // (mirrors PdfjsArm). The JS-driven path below preventDefaults the event and
       // re-drives scrollTop on a batched timer, which forces synchronous layout
       // twice per tick and starves the page raster. Bail before any of that so the
-      // browser scrolls the pdf.js content natively. The Syncfusion path is
+      // browser scrolls the pdf.js content natively. The Pdfjs path is
       // unchanged; the ctrl/meta zoom branch already returned above.
-      if (getPDFViewerEngine() === PDF_VIEWER_ENGINE_PDFJS) return;
+      if (true) return;
       const wheelDelta = getNormalizedWheelDeltas(event);
       trackpadInteractionDebugRef.current.totals.rawWheel += 1;
       trackpadInteractionDebugRef.current.totals.rawScrollWheel += 1;
@@ -5574,8 +5579,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       });
       const currentZoomForScroll = Math.max(1, Number(scaleRef.current) || 1);
       const maxScrollStep = Math.max(
-        SYNCFUSION_SCROLL_MIN_STEP_PX,
-        SYNCFUSION_SCROLL_MAX_STEP_PX / Math.sqrt(currentZoomForScroll)
+        PDFJS_SCROLL_MIN_STEP_PX,
+        PDFJS_SCROLL_MAX_STEP_PX / Math.sqrt(currentZoomForScroll)
       );
       const clippedX = clampWheelDelta(wheelDelta.x, maxScrollStep);
       const clippedY = clampWheelDelta(wheelDelta.y, maxScrollStep);
@@ -5585,14 +5590,14 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       if (isTrackpadScroll || isLargeWheelStep) {
         event.preventDefault();
         event.stopPropagation();
-        const diagonalSensitivity = isDiagonalTrackpadScroll ? SYNCFUSION_DIAGONAL_SCROLL_SENSITIVITY : 1;
-        const largeWheelSensitivity = isLargeWheelStep ? SYNCFUSION_LARGE_WHEEL_SCROLL_SENSITIVITY : 1;
-        const zoomAwareSensitivity = getSyncfusionZoomAwareScrollGain(currentZoomForScroll);
+        const diagonalSensitivity = isDiagonalTrackpadScroll ? PDFJS_DIAGONAL_SCROLL_SENSITIVITY : 1;
+        const largeWheelSensitivity = isLargeWheelStep ? PDFJS_LARGE_WHEEL_SCROLL_SENSITIVITY : 1;
+        const zoomAwareSensitivity = getPdfjsZoomAwareScrollGain(currentZoomForScroll);
         const sensitivity = zoomAwareSensitivity * diagonalSensitivity * largeWheelSensitivity;
         const appliedX = clippedX * sensitivity;
         const appliedY = clippedY * sensitivity;
-        const frameMaxX = Math.max(SYNCFUSION_SCROLL_MIN_STEP_PX, Math.abs(clippedX) * sensitivity);
-        const frameMaxY = Math.max(SYNCFUSION_SCROLL_MIN_STEP_PX, Math.abs(clippedY) * sensitivity);
+        const frameMaxX = Math.max(PDFJS_SCROLL_MIN_STEP_PX, Math.abs(clippedX) * sensitivity);
+        const frameMaxY = Math.max(PDFJS_SCROLL_MIN_STEP_PX, Math.abs(clippedY) * sensitivity);
         if (!pendingWheelScroll) {
           pendingWheelScroll = {
             firstEventAtMs: (typeof performance !== 'undefined' && typeof performance.now === 'function') ? performance.now() : Date.now(),
@@ -5611,8 +5616,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
             preventedEvents: 0,
             clippedEvents: 0,
             diagonalEvents: 0,
-            frameMaxX: SYNCFUSION_SCROLL_MIN_STEP_PX,
-            frameMaxY: SYNCFUSION_SCROLL_MIN_STEP_PX,
+            frameMaxX: PDFJS_SCROLL_MIN_STEP_PX,
+            frameMaxY: PDFJS_SCROLL_MIN_STEP_PX,
             lastSensitivity: sensitivity,
             currentZoomForScroll
           };
@@ -5636,16 +5641,16 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         pendingWheelScroll.lastSensitivity = sensitivity;
         pendingWheelScroll.currentZoomForScroll = currentZoomForScroll;
         if (wheelScrollApplyRafId === null) {
-          wheelScrollApplyRafId = setTimeout(flushWheelScroll, SYNCFUSION_WHEEL_SCROLL_BATCH_MS);
+          wheelScrollApplyRafId = setTimeout(flushWheelScroll, PDFJS_WHEEL_SCROLL_BATCH_MS);
         }
       }
-      queueInteractionMark('wheel-scroll', 'syncfusion-wheel-scroll', INTERACTION_PERF_SCROLL_HOLD_MS);
+      queueInteractionMark('wheel-scroll', 'pdfjs-wheel-scroll', INTERACTION_PERF_SCROLL_HOLD_MS);
     };
 
     const onPointerDown = (event) => {
       pointerDown = true;
       // [InteractionDiag] POINTER on the viewer container. This is the
-      // Syncfusion scroll/pan surface; pan is delegated to Syncfusion via
+      // Pdfjs scroll/pan surface; pan is delegated to Pdfjs via
       // interactionMode="Pan" (set when activeTool==='pan'). Log the gesture
       // start with the active tool, target layer, and gated state so a
       // swallowed / dead pan or click is visible. Move logging is throttled
@@ -5656,9 +5661,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         const tgt = event.target;
         const layer = tgt && tgt.closest
           ? (tgt.closest('[data-diag-eraser-wrapper]') ? 'eraser-canvas'
-            : tgt.closest('.e-pv-text-layer') ? 'syncfusion-text-layer'
+            : tgt.closest('.e-pv-text-layer') ? 'pdfjs-text-layer'
             : tgt.closest('svg') ? 'svg-annotation-layer'
-            : tgt.closest('.e-pv-page-div') ? 'syncfusion-page'
+            : tgt.closest('.e-pv-page-div') ? 'pdfjs-page'
             : (tgt.tagName || 'unknown').toLowerCase())
           : 'unknown';
         const family = tool === 'pan' ? 'pan-start' : 'pointer-down';
@@ -5683,7 +5688,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         const holdMs = activeToolRef.current === 'pan'
           ? INTERACTION_PERF_SCROLL_HOLD_MS
           : INTERACTION_PERF_DRAW_HOLD_MS;
-        markSyncfusionInteraction('syncfusion-pointer-down', holdMs, true);
+        markPdfjsInteraction('pdfjs-pointer-down', holdMs, true);
       }
     };
 
@@ -5709,11 +5714,11 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       const holdMs = activeToolRef.current === 'pan'
         ? INTERACTION_PERF_SCROLL_HOLD_MS
         : INTERACTION_PERF_DRAW_HOLD_MS;
-      markSyncfusionInteraction('syncfusion-pointer-drag', holdMs);
+      markPdfjsInteraction('pdfjs-pointer-drag', holdMs);
       // [InteractionDiag] PAN drag (throttled to the 96ms drag gate above).
       // When pan is the active tool, log the pointer delta vs the actual
       // scroll delta. If pointer moves but scrollDelta stays 0, the pan
-      // gesture is dying — Syncfusion's Pan interactionMode is not scrolling
+      // gesture is dying — Pdfjs's Pan interactionMode is not scrolling
       // the container. This is the smoking gun for the "Pan does nothing" bug.
       try {
         if (activeToolRef.current === 'pan' && start) {
@@ -5762,7 +5767,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     window.addEventListener('pointerup', onPointerEnd, { passive: true });
     window.addEventListener('pointercancel', onPointerEnd, { passive: true });
 
-    syncfusionInteractionListenersRef.current = {
+    pdfjsInteractionListenersRef.current = {
       container: viewerContainer,
       detach: () => {
         if (scrollMarkRafId !== null) {
@@ -5782,7 +5787,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
           cancelRaf(wheelZoomMarkRafId);
           wheelZoomMarkRafId = null;
         }
-        clearSyncfusionWheelZoomRaf();
+        clearPdfjsWheelZoomRaf();
         viewerContainer.removeEventListener('scroll', onScroll);
         viewerContainer.removeEventListener('wheel', onWheel, { capture: true });
         viewerContainer.removeEventListener('pointerdown', onPointerDown);
@@ -5793,67 +5798,67 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     };
   }, [
     bumpOverlayLagEventTotal,
-    clearSyncfusionWheelZoomRaf,
-    detachSyncfusionInteractionListeners,
-    findSyncfusionPageAtClientPoint,
+    clearPdfjsWheelZoomRaf,
+    detachPdfjsInteractionListeners,
+    findPdfjsPageAtClientPoint,
     markInteractionPerfActive,
-    markSyncfusionInteractionActive,
+    markPdfjsInteractionActive,
     readTrackpadDebugState,
-    recordSyncfusionIdleWork,
+    recordPdfjsIdleWork,
     recordTrackpadInteractionEvent,
     setAnchor,
-    updateSyncfusionZoomSnapshots
+    updatePdfjsZoomSnapshots
   ]);
 
   useEffect(() => {
-    if (useSyncfusionRenderer) return;
-    detachSyncfusionInteractionListeners();
-    clearSyncfusionWheelZoomRaf();
-    finishSyncfusionInteractionWindow();
-    if (syncfusionNavigateResetTimerRef.current) {
-      clearTimeout(syncfusionNavigateResetTimerRef.current);
-      syncfusionNavigateResetTimerRef.current = null;
+    if (usePdfjsRenderer) return;
+    detachPdfjsInteractionListeners();
+    clearPdfjsWheelZoomRaf();
+    finishPdfjsInteractionWindow();
+    if (pdfjsNavigateResetTimerRef.current) {
+      clearTimeout(pdfjsNavigateResetTimerRef.current);
+      pdfjsNavigateResetTimerRef.current = null;
     }
-    if (syncfusionRefreshFrameRef.current !== null) {
+    if (pdfjsRefreshFrameRef.current !== null) {
       if (typeof window !== 'undefined' && typeof window.cancelAnimationFrame === 'function') {
-        window.cancelAnimationFrame(syncfusionRefreshFrameRef.current);
+        window.cancelAnimationFrame(pdfjsRefreshFrameRef.current);
       } else {
-        clearTimeout(syncfusionRefreshFrameRef.current);
+        clearTimeout(pdfjsRefreshFrameRef.current);
       }
-      syncfusionRefreshFrameRef.current = null;
+      pdfjsRefreshFrameRef.current = null;
     }
-    syncfusionZoomSourceRef.current = null;
+    pdfjsZoomSourceRef.current = null;
     wrapperDragEventAtRef.current = 0;
-    setSyncfusionPageContainers((prev) => (Object.keys(prev).length === 0 ? prev : {}));
-    setSyncfusionOverlayWindowPages((prev) => (prev.size === 0 ? prev : new Set()));
-    setSyncfusionCommittedPageScales((prev) => (Object.keys(prev).length === 0 ? prev : {}));
-  }, [clearSyncfusionWheelZoomRaf, detachSyncfusionInteractionListeners, finishSyncfusionInteractionWindow, useSyncfusionRenderer]);
+    setPdfjsPageContainers((prev) => (Object.keys(prev).length === 0 ? prev : {}));
+    setPdfjsOverlayWindowPages((prev) => (prev.size === 0 ? prev : new Set()));
+    setPdfjsCommittedPageScales((prev) => (Object.keys(prev).length === 0 ? prev : {}));
+  }, [clearPdfjsWheelZoomRaf, detachPdfjsInteractionListeners, finishPdfjsInteractionWindow, usePdfjsRenderer]);
 
   useEffect(() => {
-    if (!useSyncfusionRenderer || typeof document === 'undefined') return undefined;
+    if (!usePdfjsRenderer || typeof document === 'undefined') return undefined;
 
     const onDocumentWheel = (event) => {
       if (!(event.ctrlKey || event.metaKey)) return;
-      const wrapper = syncfusionWrapperRef.current;
+      const wrapper = pdfjsWrapperRef.current;
       if (!wrapper || !wrapper.contains(event.target)) return;
       const viewerContainer =
-        syncfusionInteractionListenersRef.current?.container ||
-        syncfusionViewerRef.current?.getViewerContainer?.() ||
-        syncfusionViewerRef.current?.viewerBase?.viewerContainer ||
-        syncfusionViewerRef.current?.pdfViewerBase?.viewerContainer ||
+        pdfjsInteractionListenersRef.current?.container ||
+        pdfjsViewerRef.current?.getViewerContainer?.() ||
+        pdfjsViewerRef.current?.viewerBase?.viewerContainer ||
+        pdfjsViewerRef.current?.pdfViewerBase?.viewerContainer ||
         containerRef.current;
-      performSyncfusionCursorWheelZoom(event, viewerContainer, 'overlay-wheel-zoom');
+      performPdfjsCursorWheelZoom(event, viewerContainer, 'overlay-wheel-zoom');
     };
 
     document.addEventListener('wheel', onDocumentWheel, { passive: false, capture: true });
     return () => {
       document.removeEventListener('wheel', onDocumentWheel, { capture: true });
     };
-  }, [performSyncfusionCursorWheelZoom, useSyncfusionRenderer]);
+  }, [performPdfjsCursorWheelZoom, usePdfjsRenderer]);
 
-  const bindSyncfusionViewerRefs = useCallback(() => {
-    if (!useSyncfusionRenderer) return;
-    const viewer = syncfusionViewerRef.current;
+  const bindPdfjsViewerRefs = useCallback(() => {
+    if (!usePdfjsRenderer) return;
+    const viewer = pdfjsViewerRef.current;
     const viewerContainer =
       viewer?.getViewerContainer?.() ||
       viewer?.viewerBase?.viewerContainer ||
@@ -5864,16 +5869,16 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       viewer?.element?.querySelector('.e-pv-page-container');
     if (viewerContainer) {
       containerRef.current = viewerContainer;
-      attachSyncfusionInteractionListeners(viewerContainer);
+      attachPdfjsInteractionListeners(viewerContainer);
     }
     if (pageContainer) {
       contentRef.current = pageContainer;
     }
-  }, [attachSyncfusionInteractionListeners, useSyncfusionRenderer]);
+  }, [attachPdfjsInteractionListeners, usePdfjsRenderer]);
 
-  const refreshSyncfusionPageContainers = useCallback(() => {
-    if (!useSyncfusionRenderer) return;
-    const viewer = syncfusionViewerRef.current;
+  const refreshPdfjsPageContainers = useCallback(() => {
+    if (!usePdfjsRenderer) return;
+    const viewer = pdfjsViewerRef.current;
 
     const next = {};
     const viewerPageCount = coercePageNumber(
@@ -5919,9 +5924,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     });
 
     pageContainersRef.current = { ...connectedNext };
-    emitPdfDebugEvent('app_syncfusion_page_container_refresh', { count: Object.keys(connectedNext).length });
+    emitPdfDebugEvent('app_pdfjs_page_container_refresh', { count: Object.keys(connectedNext).length });
     setDebugData({ overlayPageCount: Object.keys(connectedNext).length });
-    setSyncfusionPageContainers((prev) => {
+    setPdfjsPageContainers((prev) => {
       const prevKeys = Object.keys(prev);
       const nextKeys = Object.keys(connectedNext);
       if (
@@ -5932,24 +5937,24 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       }
       return connectedNext;
     });
-  }, [numPages, useSyncfusionRenderer]);
+  }, [numPages, usePdfjsRenderer]);
 
-  const queueSyncfusionPageContainerRefresh = useCallback(() => {
-    if (!useSyncfusionRenderer) return;
-    if (syncfusionRefreshFrameRef.current !== null) return;
-    emitPdfDebugEvent('app_syncfusion_refresh_queued');
+  const queuePdfjsPageContainerRefresh = useCallback(() => {
+    if (!usePdfjsRenderer) return;
+    if (pdfjsRefreshFrameRef.current !== null) return;
+    emitPdfDebugEvent('app_pdfjs_refresh_queued');
     const raf =
       typeof window !== 'undefined' && typeof window.requestAnimationFrame === 'function'
         ? window.requestAnimationFrame.bind(window)
         : (callback) => setTimeout(callback, 16);
-    syncfusionRefreshFrameRef.current = raf(() => {
-      syncfusionRefreshFrameRef.current = null;
-      emitPdfDebugEvent('app_syncfusion_refresh_flush');
-      refreshSyncfusionPageContainers();
+    pdfjsRefreshFrameRef.current = raf(() => {
+      pdfjsRefreshFrameRef.current = null;
+      emitPdfDebugEvent('app_pdfjs_refresh_flush');
+      refreshPdfjsPageContainers();
     });
-  }, [useSyncfusionRenderer, refreshSyncfusionPageContainers]);
+  }, [usePdfjsRenderer, refreshPdfjsPageContainers]);
 
-  const resolveSyncfusionLivePageHost = useCallback((pageNumber, candidateMap = null) => {
+  const resolvePdfjsLivePageHost = useCallback((pageNumber, candidateMap = null) => {
     const safePageNumber = Number(pageNumber);
     if (!(Number.isFinite(safePageNumber) && safePageNumber > 0)) {
       return null;
@@ -5962,11 +5967,11 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     if (refCandidate?.isConnected) {
       return refCandidate;
     }
-    if (!useSyncfusionRenderer) {
+    if (!usePdfjsRenderer) {
       return null;
     }
 
-    const viewer = syncfusionViewerRef.current;
+    const viewer = pdfjsViewerRef.current;
     const directCandidate = viewer?.getPageContainer?.(safePageNumber);
     if (directCandidate?.isConnected) {
       return directCandidate;
@@ -5974,8 +5979,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
     const viewerHost = [
       viewer?.element,
-      typeof document !== 'undefined' ? document.getElementById(syncfusionViewerElementId) : null,
-      typeof document !== 'undefined' ? document.querySelector?.('.survey-syncfusion-viewer.e-pdfviewer') : null
+      typeof document !== 'undefined' ? document.getElementById(pdfjsViewerElementId) : null,
+      typeof document !== 'undefined' ? document.querySelector?.('.survey-pdfjs-viewer') : null
     ].find((candidate) => candidate?.isConnected) || null;
     if (!viewerHost) {
       return null;
@@ -5988,14 +5993,14 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       return byDataAttr;
     }
 
-    const byId = viewerHost.querySelector?.(`#${syncfusionViewerElementId}_pageDiv_${safePageNumber - 1}`);
+    const byId = viewerHost.querySelector?.(`#${pdfjsViewerElementId}_pageDiv_${safePageNumber - 1}`);
     if (byId?.isConnected) {
       byId.dataset.pageNumber = String(safePageNumber);
       return byId;
     }
 
     const globalById = typeof document !== 'undefined'
-      ? document.getElementById(`${syncfusionViewerElementId}_pageDiv_${safePageNumber - 1}`)
+      ? document.getElementById(`${pdfjsViewerElementId}_pageDiv_${safePageNumber - 1}`)
       : null;
     if (globalById?.isConnected) {
       globalById.dataset.pageNumber = String(safePageNumber);
@@ -6003,7 +6008,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     }
 
     return null;
-  }, [syncfusionViewerElementId, useSyncfusionRenderer]);
+  }, [pdfjsViewerElementId, usePdfjsRenderer]);
 
   const attachOverlayToPageDiv = useCallback((pageNumber) => {
     const safePageNumber = Number(pageNumber);
@@ -6011,14 +6016,14 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       return null;
     }
 
-    const pageDiv = resolveSyncfusionLivePageHost(
+    const pageDiv = resolvePdfjsLivePageHost(
       safePageNumber,
-      syncfusionPageContainersStateRef.current || pageContainersRef.current || {}
+      pdfjsPageContainersStateRef.current || pageContainersRef.current || {}
     );
     const stableViewerHost = [
-      syncfusionWrapperRef.current,
+      pdfjsWrapperRef.current,
       typeof document !== 'undefined'
-        ? document.getElementById(syncfusionViewerElementId)?.closest?.('[data-testid="pdf-container"]')
+        ? document.getElementById(pdfjsViewerElementId)?.closest?.('[data-testid="pdf-container"]')
         : null,
       containerRef.current
     ].find((candidate) => candidate?.isConnected) || null;
@@ -6027,23 +6032,23 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       return null;
     }
 
-    let overlayRoot = syncfusionAppOverlayRootRef.current;
+    let overlayRoot = pdfjsAppOverlayRootRef.current;
     if (!overlayRoot) {
       overlayRoot = document.createElement('div');
       overlayRoot.setAttribute('data-betasafe-app-owned-overlay-root', 'true');
       overlayRoot.setAttribute('data-overlay-host-owner', 'app-stable-viewer');
       overlayRoot.style.cssText =
         'position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:30;overflow:visible;';
-      syncfusionAppOverlayRootRef.current = overlayRoot;
+      pdfjsAppOverlayRootRef.current = overlayRoot;
     }
 
     // Under the owned pdf.js engine, host the overlay INSIDE the engine's transformed
     // content (its stable overlay slot) so every layer rides the page's own zoom/scroll
-    // transform as one piece — the demo's structure, no per-frame chase. Under Syncfusion,
-    // keep the legacy stable-host placement (Syncfusion churns its page DOM during zoom).
-    const isPdfjsEngine = getPDFViewerEngine() === PDF_VIEWER_ENGINE_PDFJS;
+    // transform as one piece — the demo's structure, no per-frame chase. Under Pdfjs,
+    // keep the legacy stable-host placement (Pdfjs churns its page DOM during zoom).
+    const isPdfjsEngine = true;
     const engineOverlayHost = isPdfjsEngine
-      ? (syncfusionViewerRef.current?.getOverlayHost?.() || null)
+      ? (pdfjsViewerRef.current?.getOverlayHost?.() || null)
       : null;
     const overlayParentHost = engineOverlayHost?.isConnected ? engineOverlayHost : stableViewerHost;
 
@@ -6071,7 +6076,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       }
     }
 
-    syncfusionStablePortalHostsRef.current[safePageNumber] = overlayDiv;
+    pdfjsStablePortalHostsRef.current[safePageNumber] = overlayDiv;
 
     if (!overlayRoot?.isConnected || overlayDiv.parentElement !== overlayRoot) {
       overlayRoot.appendChild(overlayDiv);
@@ -6124,67 +6129,67 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     overlayDiv.setAttribute('data-source-page-connected', 'true');
 
     if (!zoomOverlayTransformActiveRef.current) {
-      const overlayContent = syncfusionOverlayContentRefs.current?.[safePageNumber];
+      const overlayContent = pdfjsOverlayContentRefs.current?.[safePageNumber];
       if (overlayContent?.style) {
         overlayContent.style.transform = '';
         overlayContent.style.transformOrigin = '';
         overlayContent.style.willChange = '';
         overlayContent.style.backfaceVisibility = '';
       }
-      const compensationContent = syncfusionOverlayLegacyCompensationRefs.current?.[safePageNumber];
+      const compensationContent = pdfjsOverlayLegacyCompensationRefs.current?.[safePageNumber];
       if (compensationContent?.style) {
         compensationContent.style.transform = '';
         compensationContent.style.transformOrigin = '';
         compensationContent.style.willChange = '';
         compensationContent.style.backfaceVisibility = '';
       }
-      if (syncfusionOverlayTransformRatioByPageRef.current?.[safePageNumber]) {
-        syncfusionOverlayTransformRatioByPageRef.current = {
-          ...(syncfusionOverlayTransformRatioByPageRef.current || {}),
+      if (pdfjsOverlayTransformRatioByPageRef.current?.[safePageNumber]) {
+        pdfjsOverlayTransformRatioByPageRef.current = {
+          ...(pdfjsOverlayTransformRatioByPageRef.current || {}),
           [safePageNumber]: 1
         };
       }
     }
 
     return overlayDiv;
-  }, [resolveSyncfusionLivePageHost, syncfusionViewerElementId]);
+  }, [resolvePdfjsLivePageHost, pdfjsViewerElementId]);
 
   // [Phase 11] Removed: applyOverlayZoomTransform, startOverlayZoomSettleTimer (old Phase 2 overlay div zoom — dead in SVG mode)
 
-  const sanitizeSyncfusionPageContainerMap = useCallback((containerMap) => {
+  const sanitizePdfjsPageContainerMap = useCallback((containerMap) => {
     const next = {};
     Object.entries(containerMap || {}).forEach(([pageKey, pageHost]) => {
       const pageNumber = Number(pageKey);
       if (!(Number.isFinite(pageNumber) && pageNumber > 0)) {
         return;
       }
-      const resolvedHost = resolveSyncfusionLivePageHost(pageNumber, containerMap) || pageHost;
+      const resolvedHost = resolvePdfjsLivePageHost(pageNumber, containerMap) || pageHost;
       if (resolvedHost?.isConnected) {
         next[pageNumber] = resolvedHost;
       }
     });
     return next;
-  }, [resolveSyncfusionLivePageHost]);
+  }, [resolvePdfjsLivePageHost]);
 
-  const resolveSyncfusionOverlayPortalHost = useCallback((pageNumber, freezeDuringInteraction = false, candidateMap = null) => {
+  const resolvePdfjsOverlayPortalHost = useCallback((pageNumber, freezeDuringInteraction = false, candidateMap = null) => {
     const safePageNumber = Number(pageNumber);
     if (!(Number.isFinite(safePageNumber) && safePageNumber > 0)) {
       return null;
     }
 
-    const portalHosts = syncfusionInteractionPortalHostsRef.current || {};
+    const portalHosts = pdfjsInteractionPortalHostsRef.current || {};
     const existingHost = portalHosts[safePageNumber];
     if (freezeDuringInteraction && existingHost?.isConnected) {
       return existingHost;
     }
 
-    const resolvedHost = resolveSyncfusionLivePageHost(
+    const resolvedHost = resolvePdfjsLivePageHost(
       safePageNumber,
-      candidateMap || syncfusionPageContainersStateRef.current || pageContainersRef.current || {}
+      candidateMap || pdfjsPageContainersStateRef.current || pageContainersRef.current || {}
     );
     // Always cache connected hosts so the cache is warm when freeze kicks in
     if (resolvedHost?.isConnected && portalHosts[safePageNumber] !== resolvedHost) {
-      syncfusionInteractionPortalHostsRef.current = {
+      pdfjsInteractionPortalHostsRef.current = {
         ...portalHosts,
         [safePageNumber]: resolvedHost
       };
@@ -6192,14 +6197,14 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     if (freezeDuringInteraction) {
       if (resolvedHost?.isConnected) {
         // Clean up any fallback host for this page since we have a real one
-        const fb = syncfusionFallbackHostsRef.current[safePageNumber];
+        const fb = pdfjsFallbackHostsRef.current[safePageNumber];
         if (fb?.isConnected) {
           fb.remove();
-          delete syncfusionFallbackHostsRef.current[safePageNumber];
+          delete pdfjsFallbackHostsRef.current[safePageNumber];
         }
         return resolvedHost;
       }
-      // All hosts disconnected — Syncfusion destroyed page containers during zoom.
+      // All hosts disconnected — Pdfjs destroyed page containers during zoom.
       // Return the disconnected host directly so React keeps the same portal
       // container reference. This prevents unmount/remount cycles that cause
       // transient cc=0 drops. The annotations won't be visible during the
@@ -6209,54 +6214,54 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       }
     }
     // Even outside freeze, if the live host is missing/disconnected but we have
-    // a cached host, return it to prevent React portal unmount during Syncfusion's
+    // a cached host, return it to prevent React portal unmount during Pdfjs's
     // late page re-renders (which can happen seconds after zoom settles).
     if (!resolvedHost?.isConnected && existingHost) {
       return existingHost;
     }
     return resolvedHost || null;
-  }, [resolveSyncfusionLivePageHost]);
+  }, [resolvePdfjsLivePageHost]);
 
-  const handleSyncfusionDebugEvent = useCallback((event) => {
+  const handlePdfjsDebugEvent = useCallback((event) => {
     const type = event?.type || 'unknown';
-    const key = `syncfusion_${type}`;
+    const key = `pdfjs_${type}`;
     emitPdfDebugEvent(key, event);
-    setDebugData({ lastSyncfusionEvent: type });
+    setDebugData({ lastPdfjsEvent: type });
 
     const now = Date.now();
-    const eventTimes = syncfusionEventTimesRef.current[key] || [];
+    const eventTimes = pdfjsEventTimesRef.current[key] || [];
     const nextTimes = [...eventTimes, now].filter((ts) => ts >= now - 2000);
-    syncfusionEventTimesRef.current[key] = nextTimes;
+    pdfjsEventTimesRef.current[key] = nextTimes;
   }, []);
 
-  const handleSyncfusionPageContainersChange = useCallback((pageContainerMap, meta = null) => {
-    if (!useSyncfusionRenderer) return;
+  const handlePdfjsPageContainersChange = useCallback((pageContainerMap, meta = null) => {
+    if (!usePdfjsRenderer) return;
     const nextRaw = pageContainerMap && typeof pageContainerMap === 'object'
       ? pageContainerMap
       : {};
-    const next = sanitizeSyncfusionPageContainerMap(nextRaw);
+    const next = sanitizePdfjsPageContainerMap(nextRaw);
     const reason = typeof meta?.reason === 'string' && meta.reason.trim()
       ? meta.reason.trim()
       : 'unspecified';
-    const reasonCounts = syncfusionContainerMutationReasonCountsRef.current || {};
+    const reasonCounts = pdfjsContainerMutationReasonCountsRef.current || {};
     reasonCounts[reason] = (reasonCounts[reason] || 0) + 1;
-    syncfusionContainerMutationReasonCountsRef.current = reasonCounts;
-    bumpOverlayLagEventTotal('syncfusionContainerMapChange');
+    pdfjsContainerMutationReasonCountsRef.current = reasonCounts;
+    bumpOverlayLagEventTotal('pdfjsContainerMapChange');
     if (reason === 'mutation') {
-      bumpOverlayLagEventTotal('syncfusionContainerMutation');
+      bumpOverlayLagEventTotal('pdfjsContainerMutation');
     }
-    if (debugLogging && syncfusionInteractionPhaseRef.current !== 'idle') {
-      setSyncfusionContainerMutationTick((prev) => prev + 1);
+    if (debugLogging && pdfjsInteractionPhaseRef.current !== 'idle') {
+      setPdfjsContainerMutationTick((prev) => prev + 1);
     }
 
     const freezeContainerIdentity =
-      (syncfusionLiveStableOverlayEnabled && syncfusionDualLayerEnabled &&
-        syncfusionInteractionPhaseRef.current !== 'idle') ||
-      (syncfusionInteractionIsZoomOnlyRef.current &&
-        syncfusionInteractionPhaseRef.current !== 'idle');
+      (pdfjsLiveStableOverlayEnabled && pdfjsDualLayerEnabled &&
+        pdfjsInteractionPhaseRef.current !== 'idle') ||
+      (pdfjsInteractionIsZoomOnlyRef.current &&
+        pdfjsInteractionPhaseRef.current !== 'idle');
     if (freezeContainerIdentity) {
-      const stableMap = syncfusionPageContainersStateRef.current || {};
-      const residentPages = Array.from(syncfusionInteractionResidentPagesRef.current || []);
+      const stableMap = pdfjsPageContainersStateRef.current || {};
+      const residentPages = Array.from(pdfjsInteractionResidentPagesRef.current || []);
       const merged = { ...stableMap };
       let changed = false;
       let unresolvedResidentHost = false;
@@ -6271,7 +6276,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
           changed = true;
           return;
         }
-        const resolvedHost = resolveSyncfusionLivePageHost(pageNumber, next);
+        const resolvedHost = resolvePdfjsLivePageHost(pageNumber, next);
         if (resolvedHost?.isConnected) {
           merged[pageNumber] = resolvedHost;
           changed = true;
@@ -6291,15 +6296,15 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
       if (!changed && sameRefs) {
         pageContainersRef.current = { ...stableMap };
-        bindSyncfusionViewerRefs();
+        bindPdfjsViewerRefs();
         if (unresolvedResidentHost) {
-          queueSyncfusionPageContainerRefresh();
+          queuePdfjsPageContainerRefresh();
         }
         return;
       }
 
       pageContainersRef.current = { ...merged };
-      setSyncfusionPageContainers((prev) => {
+      setPdfjsPageContainers((prev) => {
         const prevKeys = Object.keys(prev);
         const nextKeys = Object.keys(merged);
         if (
@@ -6310,12 +6315,12 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         }
         return merged;
       });
-      bindSyncfusionViewerRefs();
+      bindPdfjsViewerRefs();
       return;
     }
 
     pageContainersRef.current = { ...next };
-    setSyncfusionPageContainers((prev) => {
+    setPdfjsPageContainers((prev) => {
       const prevKeys = Object.keys(prev);
       const nextKeys = Object.keys(next);
       if (
@@ -6326,58 +6331,58 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       }
       return next;
     });
-    bindSyncfusionViewerRefs();
+    bindPdfjsViewerRefs();
     setDebugData({
-      syncfusionContainerMutationReason: reason,
-      syncfusionContainerMutationCounts: reasonCounts
+      pdfjsContainerMutationReason: reason,
+      pdfjsContainerMutationCounts: reasonCounts
     });
-    emitPdfDebugEvent('app_syncfusion_container_map_changed', {
+    emitPdfDebugEvent('app_pdfjs_container_map_changed', {
       count: Object.keys(next).length,
       reason
     });
   }, [
     bumpOverlayLagEventTotal,
-    bindSyncfusionViewerRefs,
+    bindPdfjsViewerRefs,
     debugLogging,
-    queueSyncfusionPageContainerRefresh,
-    resolveSyncfusionLivePageHost,
-    sanitizeSyncfusionPageContainerMap,
-    syncfusionDualLayerEnabled,
-    syncfusionLiveStableOverlayEnabled,
-    useSyncfusionRenderer
+    queuePdfjsPageContainerRefresh,
+    resolvePdfjsLivePageHost,
+    sanitizePdfjsPageContainerMap,
+    pdfjsDualLayerEnabled,
+    pdfjsLiveStableOverlayEnabled,
+    usePdfjsRenderer
   ]);
 
-  const reconcileSyncfusionScaleFromRenderedPage = useCallback((source = 'syncfusion-scale-reconcile', pageOverride = null) => {
-    if (!useSyncfusionRenderer) return null;
+  const reconcilePdfjsScaleFromRenderedPage = useCallback((source = 'pdfjs-scale-reconcile', pageOverride = null) => {
+    if (!usePdfjsRenderer) return null;
     if (zoomOverlayTransformActiveRef.current && source !== 'manual-zoom') return null;
 
     const pageNumber = coercePageNumber(
-      pageOverride ?? pageNumRef.current ?? syncfusionViewerRef.current?.getCurrentPage?.() ?? 1,
+      pageOverride ?? pageNumRef.current ?? pdfjsViewerRef.current?.getCurrentPage?.() ?? 1,
       Number.POSITIVE_INFINITY
     ) || 1;
-    const measured = measureSyncfusionPageScale(
+    const measured = measurePdfjsPageScale(
       pageNumber,
       pageSizesRef.current || {},
-      syncfusionPageContainersStateRef.current || pageContainersRef.current || {},
+      pdfjsPageContainersStateRef.current || pageContainersRef.current || {},
       0
     );
     if (!Number.isFinite(measured) || measured <= 0.05) return null;
 
     const rawViewerZoom = Number(
-      syncfusionViewerRef.current?.getZoomValue?.() ??
-      syncfusionViewerRef.current?.zoomValue ??
+      pdfjsViewerRef.current?.getZoomValue?.() ??
+      pdfjsViewerRef.current?.zoomValue ??
       NaN
     );
     const viewerScale = Number.isFinite(rawViewerZoom) && rawViewerZoom > 0
       ? clampScale(rawViewerZoom / 100)
       : null;
-    let electronFactor = syncfusionElectronFactorRef.current;
+    let electronFactor = pdfjsElectronFactorRef.current;
     let logicalScale = measured;
     if (viewerScale) {
       const inferredFactor = measured / viewerScale;
       if (inferredFactor > 0.3 && inferredFactor < 5) {
         electronFactor = inferredFactor;
-        syncfusionElectronFactorRef.current = inferredFactor;
+        pdfjsElectronFactorRef.current = inferredFactor;
         logicalScale = clampScale(measured / electronFactor);
       }
     } else if (electronFactor && electronFactor > 0) {
@@ -6393,11 +6398,11 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       setZoomInputValue(String(Math.round(logicalScale * 100)));
     }
     return logicalScale;
-  }, [useSyncfusionRenderer]);
+  }, [usePdfjsRenderer]);
 
-  const handleSyncfusionDocumentLoad = useCallback((payload) => {
-    const viewer = syncfusionViewerRef.current;
-    syncfusionPagePdfEverReadyRef.current = new Set();
+  const handlePdfjsDocumentLoad = useCallback((payload) => {
+    const viewer = pdfjsViewerRef.current;
+    pdfjsPagePdfEverReadyRef.current = new Set();
     const resolvedPageCount = coercePageNumber(
       payload?.pageCount ?? viewer?.getPageCount?.() ?? viewer?.pageCount,
       Number.POSITIVE_INFINITY
@@ -6435,11 +6440,11 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     // and every subsequent click reused it, producing the "click 3 times to
     // converge" bug. Clearing here forces re-calibration on the next fit.
     if (isFreshOpen) {
-      syncfusionElectronFactorRef.current = null;
+      pdfjsElectronFactorRef.current = null;
       pendingInitialFitPageRef.current = true;
     }
 
-    // Bug #1b — Syncfusion's React wrapper getZoomValue() lies at mount:
+    // Bug #1b — Pdfjs's React wrapper getZoomValue() lies at mount:
     // it reports the last-persisted value while the viewer itself already
     // rendered at its own fit-to-width default. Persisted 10% + actual 117%
     // means scaleRef=0.1 is wrong, and the next user zoom click multiplies on
@@ -6447,7 +6452,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     // scale from the DOM and reconcile React state. Do NOT call zoomTo — it
     // would trigger the zoom overlay transform flow with a bogus ratio.
     const reconcileScaleFromDOM = () => {
-      return reconcileSyncfusionScaleFromRenderedPage('document-load', restoredPage) !== null;
+      return reconcilePdfjsScaleFromRenderedPage('document-load', restoredPage) !== null;
     };
     // Trigger fit-page ONLY after reconcile has produced a trustworthy scaleRef —
     // otherwise the in-branch self-calibration computes the electron factor from a
@@ -6456,11 +6461,11 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       if (!pendingInitialFitPageRef.current) return;
       if (!handleZoomModeSelectRef.current) return;
       pendingInitialFitPageRef.current = false;
-      // 3-pass fit-page: Syncfusion's page layout settles asynchronously after each
+      // 3-pass fit-page: Pdfjs's page layout settles asynchronously after each
       // zoomTo call, so a single fit-page call reads stale wrapper/pageDiv dims and
       // produces a wrong scale. The user previously had to click fit-page 3 times
       // manually for it to converge — this fires those 3 passes automatically with
-      // delays long enough for Syncfusion's relayout to settle between passes.
+      // delays long enough for Pdfjs's relayout to settle between passes.
       const fire = () => handleZoomModeSelectRef.current?.(ZOOM_MODES.FIT_PAGE);
       setTimeout(fire, 0);
       setTimeout(fire, 250);
@@ -6488,16 +6493,16 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     setIsPageInputDirty(false);
 
     if (restoreSnapshot) {
-      const applySyncfusionRestore = () => {
-        const activeViewer = syncfusionViewerRef.current || viewer;
+      const applyPdfjsRestore = () => {
+        const activeViewer = pdfjsViewerRef.current || viewer;
         if (!activeViewer) return;
         const zoomPercent = restoredScale * 100;
-        syncfusionZoomSourceRef.current = restoreSnapshot.zoomMode || ZOOM_MODES.MANUAL;
+        pdfjsZoomSourceRef.current = restoreSnapshot.zoomMode || ZOOM_MODES.MANUAL;
         if (activeViewer?.magnificationModule?.zoomTo) {
           try {
             activeViewer.magnificationModule.zoomTo(zoomPercent);
           } catch (error) {
-            console.warn('Unable to apply Syncfusion zoom restore:', error);
+            console.warn('Unable to apply Pdfjs zoom restore:', error);
           }
         }
         if (activeViewer?.goToPage) {
@@ -6510,24 +6515,24 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         setIsPageInputDirty(false);
       };
 
-      applySyncfusionRestore();
-      setTimeout(applySyncfusionRestore, 120);
+      applyPdfjsRestore();
+      setTimeout(applyPdfjsRestore, 120);
       pendingRendererRestoreRef.current = null;
     }
 
-    emitPdfDebugEvent('app_syncfusion_document_load', {
+    emitPdfDebugEvent('app_pdfjs_document_load', {
       pageCount: resolvedPageCount || 0,
       currentPage: restoredPage
     });
 
     debugMark('pdf_loaded', { pageCount: resolvedPageCount || 0, currentPage: restoredPage });
 
-    bindSyncfusionViewerRefs();
-    queueSyncfusionPageContainerRefresh();
-  }, [bindSyncfusionViewerRefs, queueSyncfusionPageContainerRefresh, reconcileSyncfusionScaleFromRenderedPage]);
+    bindPdfjsViewerRefs();
+    queuePdfjsPageContainerRefresh();
+  }, [bindPdfjsViewerRefs, queuePdfjsPageContainerRefresh, reconcilePdfjsScaleFromRenderedPage]);
 
-  const handleSyncfusionDocumentLoadFailed = useCallback((args) => {
-    // UX: Phase 15 UAT-3 (2026-04-18) — Syncfusion's event args serialise
+  const handlePdfjsDocumentLoadFailed = useCallback((args) => {
+    // UX: Phase 15 UAT-3 (2026-04-18) — Pdfjs's event args serialise
     // to `{}` because fields are defined as non-enumerable getters. Pull
     // out the useful fields explicitly so the console actually shows the
     // reason the document failed to load.
@@ -6540,34 +6545,34 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       message: args.message,
       name: args.name,
     } : null;
-    console.error('Syncfusion documentLoadFailed:', detail, args);
-    setLastDebugError('SYNCFUSION_DOCUMENT_LOAD_FAILED', args);
-    emitPdfDebugEvent('app_syncfusion_document_load_failed');
-    syncfusionPagePdfEverReadyRef.current = new Set();
-    setSyncfusionPageContainers({});
-    setSyncfusionCommittedPageScales({});
-    finishSyncfusionInteractionWindow();
+    console.error('Pdfjs documentLoadFailed:', detail, args);
+    setLastDebugError('PDFJS_DOCUMENT_LOAD_FAILED', args);
+    emitPdfDebugEvent('app_pdfjs_document_load_failed');
+    pdfjsPagePdfEverReadyRef.current = new Set();
+    setPdfjsPageContainers({});
+    setPdfjsCommittedPageScales({});
+    finishPdfjsInteractionWindow();
     pendingRendererRestoreRef.current = null;
-    // KAL-21: surface unrecoverable Syncfusion render failures in the in-app
-    // failure panel. SyncfusionPDFContainer already performs one sanitize/retry
+    // KAL-21: surface unrecoverable Pdfjs render failures in the in-app
+    // failure panel. The pdf.js container owns sanitize/retry behavior now.
     // before calling this handler, so by here the document truly can't render.
     setIsLoadingPDF(false);
     setPdfLoadError({
-      kind: 'syncfusion',
+      kind: 'pdfjs',
       message: detail?.message || 'The PDF rendered as unreadable.',
     });
-  }, [finishSyncfusionInteractionWindow]);
+  }, [finishPdfjsInteractionWindow]);
 
-  const readSyncfusionPageVisitState = useCallback((pageNumber) => {
-    const pageContainerMap = syncfusionPageContainersStateRef.current || pageContainersRef.current || {};
+  const readPdfjsPageVisitState = useCallback((pageNumber) => {
+    const pageContainerMap = pdfjsPageContainersStateRef.current || pageContainersRef.current || {};
     const directHost = pageContainerMap[pageNumber] || pageContainersRef.current?.[pageNumber] || null;
     const domHost = typeof document !== 'undefined'
       ? document.querySelector(`.e-pv-page-div[data-page-number="${pageNumber}"]`)
       : null;
     const host = directHost?.isConnected ? directHost : domHost;
     const hasContainer = !!host?.isConnected;
-    const hasPdfSurface = hasSyncfusionPdfSurface(host);
-    const activeSpinner = hasVisibleSyncfusionSpinner(host);
+    const hasPdfSurface = hasPdfjsPdfSurface(host);
+    const activeSpinner = hasVisiblePdfjsSpinner(host);
     const hasAnnotationOverlay = !!host?.querySelector?.([
       '.canvas-container',
       '.annotation-layer',
@@ -6585,10 +6590,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     };
   }, []);
 
-  const startSyncfusionPageVisitPerf = useCallback((pageNumber, pageCount) => {
+  const startPdfjsPageVisitPerf = useCallback((pageNumber, pageCount) => {
     if (!Number.isFinite(pageNumber) || pageNumber <= 0) return;
 
-    const perfState = syncfusionPageVisitPerfRef.current;
+    const perfState = pdfjsPageVisitPerfRef.current;
     const previousPending = perfState.pending;
     if (previousPending?.timerId) {
       cancelAnimationFrame(previousPending.timerId);
@@ -6598,7 +6603,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     const seenBefore = perfState.seenPages.has(pageNumber);
     perfState.seenPages.add(pageNumber);
     const seq = perfState.seq + 1;
-    const initialState = readSyncfusionPageVisitState(pageNumber);
+    const initialState = readPdfjsPageVisitState(pageNumber);
     perfState.seq = seq;
     perfState.pending = { seq, pageNumber, startedAtMs: nowMs, timerId: null };
 
@@ -6613,13 +6618,13 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     });
 
     const checkReady = () => {
-      const pending = syncfusionPageVisitPerfRef.current.pending;
+      const pending = pdfjsPageVisitPerfRef.current.pending;
       if (!pending || pending.seq !== seq) return;
       const elapsedMs = performance.now() - nowMs;
-      const nextState = readSyncfusionPageVisitState(pageNumber);
+      const nextState = readPdfjsPageVisitState(pageNumber);
 
       if (nextState.ready || elapsedMs >= 2000) {
-        syncfusionPageVisitPerfRef.current.pending = null;
+        pdfjsPageVisitPerfRef.current.pending = null;
         debugMark(nextState.ready ? 'page_visit_ready' : 'page_visit_timeout', {
           page: pageNumber,
           pageCount: pageCount || 0,
@@ -6633,11 +6638,11 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       pending.timerId = requestAnimationFrame(checkReady);
     };
 
-    syncfusionPageVisitPerfRef.current.pending.timerId = requestAnimationFrame(checkReady);
-  }, [readSyncfusionPageVisitState]);
+    pdfjsPageVisitPerfRef.current.pending.timerId = requestAnimationFrame(checkReady);
+  }, [readPdfjsPageVisitState]);
 
   const scheduleTextSearchHighlightRefresh = useCallback((reason = 'refresh', delay = 120) => {
-    if (!useSyncfusionRenderer) return;
+    if (!usePdfjsRenderer) return;
     const query = activeTextSearchQueryRef.current;
     if (!query) return;
     if (textSearchRefreshTimerRef.current) {
@@ -6645,15 +6650,15 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     }
     textSearchRefreshTimerRef.current = setTimeout(() => {
       textSearchRefreshTimerRef.current = null;
-      syncfusionViewerRef.current?.refreshTextSearchHighlights?.(query, false, {
+      pdfjsViewerRef.current?.refreshTextSearchHighlights?.(query, false, {
         reason,
         activeMatchIndex: currentMatchIndexRef.current
       });
     }, delay);
-  }, [useSyncfusionRenderer]);
+  }, [usePdfjsRenderer]);
 
-  const handleSyncfusionPageChange = useCallback((payload) => {
-    const viewer = syncfusionViewerRef.current;
+  const handlePdfjsPageChange = useCallback((payload) => {
+    const viewer = pdfjsViewerRef.current;
     const reportedPageCount = coercePageNumber(
       payload?.pageCount ?? viewer?.getPageCount?.() ?? viewer?.pageCount,
       Number.POSITIVE_INFINITY
@@ -6670,30 +6675,30 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       setPageNum(currentPage);
       setPageInputValue(String(currentPage));
       setIsPageInputDirty(false);
-      emitPdfDebugEvent('app_syncfusion_page_change', {
+      emitPdfDebugEvent('app_pdfjs_page_change', {
         currentPage,
         pageCount: reportedPageCount || numPages || 0
       });
-      startSyncfusionPageVisitPerf(currentPage, reportedPageCount || numPages || 0);
+      startPdfjsPageVisitPerf(currentPage, reportedPageCount || numPages || 0);
     }
-    if (syncfusionNavigateResetTimerRef.current) {
-      clearTimeout(syncfusionNavigateResetTimerRef.current);
-      syncfusionNavigateResetTimerRef.current = null;
+    if (pdfjsNavigateResetTimerRef.current) {
+      clearTimeout(pdfjsNavigateResetTimerRef.current);
+      pdfjsNavigateResetTimerRef.current = null;
     }
-    bumpOverlayLagEventTotal('syncfusionPageChange');
-    markInteractionPerfActive('syncfusion-page-change', INTERACTION_PERF_SCROLL_HOLD_MS);
-    markSyncfusionInteractionActive('syncfusion-page-change');
+    bumpOverlayLagEventTotal('pdfjsPageChange');
+    markInteractionPerfActive('pdfjs-page-change', INTERACTION_PERF_SCROLL_HOLD_MS);
+    markPdfjsInteractionActive('pdfjs-page-change');
     scheduleTextSearchHighlightRefresh('page-change', 120);
-    // Release navigation guards after Syncfusion applies the page change.
+    // Release navigation guards after Pdfjs applies the page change.
     isNavigatingRef.current = false;
     targetPageRef.current = null;
-  }, [bumpOverlayLagEventTotal, markInteractionPerfActive, markSyncfusionInteractionActive, numPages, scheduleTextSearchHighlightRefresh, startSyncfusionPageVisitPerf]);
+  }, [bumpOverlayLagEventTotal, markInteractionPerfActive, markPdfjsInteractionActive, numPages, scheduleTextSearchHighlightRefresh, startPdfjsPageVisitPerf]);
 
-  const handleSyncfusionZoomChange = useCallback((payload) => {
+  const handlePdfjsZoomChange = useCallback((payload) => {
     const rawZoomValue = Number(
       payload?.zoomValue ??
-      syncfusionViewerRef.current?.getZoomValue?.() ??
-      syncfusionViewerRef.current?.zoomValue ??
+      pdfjsViewerRef.current?.getZoomValue?.() ??
+      pdfjsViewerRef.current?.zoomValue ??
       100
     );
     const nextScale = clampScale(rawZoomValue / 100);
@@ -6713,14 +6718,14 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     // PAL unmount/remount churn from React re-renders.
     if (!zoomOverlayTransformActiveRef.current) {
       zoomOverlayBaseScaleRef.current = prevScale;
-      captureSyncfusionZoomSnapshots(prevScale);
+      capturePdfjsZoomSnapshots(prevScale);
       zoomOverlayTransformActiveRef.current = true;
-      setSyncfusionZoomPreviewActive(true);
+      setPdfjsZoomPreviewActive(true);
       debugMark('zoom_start', { scale: prevScale, targetScale: nextScale, source: 'zoomChange' });
       // Cache page positions AND portal hosts for fallback containers during zoom.
-      // When Syncfusion destroys page containers, we use these rects to
+      // When Pdfjs destroys page containers, we use these rects to
       // position fallback hosts so annotations stay visually in place.
-      const pageContainersMap = syncfusionPageContainersStateRef.current || pageContainersRef.current || {};
+      const pageContainersMap = pdfjsPageContainersStateRef.current || pageContainersRef.current || {};
       const cachedRects = {};
       const portalHostSnapshot = {};
       Object.entries(pageContainersMap).forEach(([pageNum, el]) => {
@@ -6734,43 +6739,43 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
           portalHostSnapshot[Number(pageNum)] = el;
         }
       });
-      syncfusionCachedPageRectsRef.current = cachedRects;
+      pdfjsCachedPageRectsRef.current = cachedRects;
       // Populate portal hosts if cache is empty (idle state cleared it)
-      const existingHosts = syncfusionInteractionPortalHostsRef.current || {};
+      const existingHosts = pdfjsInteractionPortalHostsRef.current || {};
       if (Object.keys(existingHosts).length === 0) {
-        syncfusionInteractionPortalHostsRef.current = portalHostSnapshot;
+        pdfjsInteractionPortalHostsRef.current = portalHostSnapshot;
       }
     }
     // Now that zoomOverlayTransformActiveRef is set, check whether to defer scale
     const shouldDeferScaleCommit =
-      useSyncfusionRenderer && (
+      usePdfjsRenderer && (
         zoomOverlayTransformActiveRef.current ||
-        (syncfusionLiveStableOverlayEnabled &&
-          syncfusionDualLayerEnabled &&
-          syncfusionInteractionPhaseRef.current !== 'idle')
+        (pdfjsLiveStableOverlayEnabled &&
+          pdfjsDualLayerEnabled &&
+          pdfjsInteractionPhaseRef.current !== 'idle')
       );
     if (shouldDeferScaleCommit) {
-      syncfusionPendingZoomScaleRef.current = nextScale;
+      pdfjsPendingZoomScaleRef.current = nextScale;
     } else {
-      syncfusionPendingZoomScaleRef.current = null;
+      pdfjsPendingZoomScaleRef.current = null;
       setScale((prev) => (Math.abs(prev - nextScale) <= 0.0005 ? prev : nextScale));
       setManualZoomScale((prev) => (Math.abs(prev - nextScale) <= 0.0005 ? prev : nextScale));
     }
 
-    const sourceMode = syncfusionZoomSourceRef.current;
+    const sourceMode = pdfjsZoomSourceRef.current;
     if (sourceMode === ZOOM_MODES.MANUAL || !sourceMode) {
       setZoomMode((prev) => (prev === ZOOM_MODES.MANUAL ? prev : ZOOM_MODES.MANUAL));
     }
-    bumpOverlayLagEventTotal('syncfusionZoomChange');
-    emitPdfDebugEvent('app_syncfusion_zoom_change', { zoom: Number((nextScale * 100).toFixed(2)) });
-    syncfusionZoomSourceRef.current = null;
-    markInteractionPerfActive('syncfusion-zoom-change', INTERACTION_PERF_SCROLL_HOLD_MS);
-    markSyncfusionInteractionActive('syncfusion-zoom-change');
-    queueSyncfusionOverlayTransformSync(true);
-    updateSyncfusionZoomSnapshots(nextScale);
+    bumpOverlayLagEventTotal('pdfjsZoomChange');
+    emitPdfDebugEvent('app_pdfjs_zoom_change', { zoom: Number((nextScale * 100).toFixed(2)) });
+    pdfjsZoomSourceRef.current = null;
+    markInteractionPerfActive('pdfjs-zoom-change', INTERACTION_PERF_SCROLL_HOLD_MS);
+    markPdfjsInteractionActive('pdfjs-zoom-change');
+    queuePdfjsOverlayTransformSync(true);
+    updatePdfjsZoomSnapshots(nextScale);
 
-    // The real SVG annotation layer now lives inside Syncfusion's own zoom path.
-    // Do not add a second overlay scale here; Syncfusion has already resized the
+    // The real SVG annotation layer now lives inside Pdfjs's own zoom path.
+    // Do not add a second overlay scale here; Pdfjs has already resized the
     // page host during zoom, so an extra transform double-scales annotations.
     // (Re)start safety settle timer — releases zoom overlay transform after the
     // short zoom-settle window.
@@ -6782,82 +6787,82 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       // Zoom has settled. Release the layerScale freeze so the next render
       // passes the final scale, triggering Canvas resize via ResizeObserver.
       zoomOverlayTransformActiveRef.current = false;
-      setSyncfusionZoomPreviewActive(false);
-      clearSyncfusionZoomSnapshots();
-      resetSyncfusionOverlayTransformStyles();
+      setPdfjsZoomPreviewActive(false);
+      clearPdfjsZoomSnapshots();
+      resetPdfjsOverlayTransformStyles();
       debugMark('zoom_end', { source: 'zoomChange_settle' });
       // Flush deferred scale so components rebuild at final zoom level.
-      const pendingScale = syncfusionPendingZoomScaleRef.current;
+      const pendingScale = pdfjsPendingZoomScaleRef.current;
       if (pendingScale != null && Number.isFinite(pendingScale) && pendingScale > 0) {
-        syncfusionPendingZoomScaleRef.current = null;
+        pdfjsPendingZoomScaleRef.current = null;
         const finalScale = clampScale(pendingScale);
         setScale((prev) => (Math.abs(prev - finalScale) <= 0.0005 ? prev : finalScale));
         setManualZoomScale((prev) => (Math.abs(prev - finalScale) <= 0.0005 ? prev : finalScale));
       }
       // Signal zoom-start to Canvas components (increments zoomGeneration).
-      beginSyncfusionScaleConfirmPending('zoomChange_settle');
+      beginPdfjsScaleConfirmPending('zoomChange_settle');
       scheduleTextSearchHighlightRefresh('zoom-settle', 90);
-    }, SYNCFUSION_ZOOM_OVERLAY_SETTLE_MS);
+    }, PDFJS_ZOOM_OVERLAY_SETTLE_MS);
   }, [
-    beginSyncfusionScaleConfirmPending,
+    beginPdfjsScaleConfirmPending,
     bumpOverlayLagEventTotal,
-    captureSyncfusionZoomSnapshots,
-    clearSyncfusionZoomSnapshots,
+    capturePdfjsZoomSnapshots,
+    clearPdfjsZoomSnapshots,
     markInteractionPerfActive,
-    markSyncfusionInteractionActive,
-    queueSyncfusionOverlayTransformSync,
-    resetSyncfusionOverlayTransformStyles,
+    markPdfjsInteractionActive,
+    queuePdfjsOverlayTransformSync,
+    resetPdfjsOverlayTransformStyles,
     scheduleTextSearchHighlightRefresh,
     syncScaleConfirmHiddenPages,
-    syncfusionDualLayerEnabled,
-    syncfusionLiveStableOverlayEnabled,
-    updateSyncfusionZoomSnapshots,
-    useSyncfusionRenderer
+    pdfjsDualLayerEnabled,
+    pdfjsLiveStableOverlayEnabled,
+    updatePdfjsZoomSnapshots,
+    usePdfjsRenderer
   ]);
 
-  const handleSyncfusionPageRenderComplete = useCallback(() => {
-    reconcileSyncfusionScaleFromRenderedPage('page-render-complete');
+  const handlePdfjsPageRenderComplete = useCallback(() => {
+    reconcilePdfjsScaleFromRenderedPage('page-render-complete');
     scheduleTextSearchHighlightRefresh('page-render-complete', 80);
-  }, [reconcileSyncfusionScaleFromRenderedPage, scheduleTextSearchHighlightRefresh]);
+  }, [reconcilePdfjsScaleFromRenderedPage, scheduleTextSearchHighlightRefresh]);
 
-  const handleSyncfusionWrapperWheel = useCallback((event) => {
-    if (!useSyncfusionRenderer) return;
+  const handlePdfjsWrapperWheel = useCallback((event) => {
+    if (!usePdfjsRenderer) return;
     if (event.ctrlKey || event.metaKey) {
       const viewerContainer =
-        syncfusionInteractionListenersRef.current?.container ||
-        syncfusionViewerRef.current?.getViewerContainer?.() ||
-        syncfusionViewerRef.current?.viewerBase?.viewerContainer ||
-        syncfusionViewerRef.current?.pdfViewerBase?.viewerContainer ||
+        pdfjsInteractionListenersRef.current?.container ||
+        pdfjsViewerRef.current?.getViewerContainer?.() ||
+        pdfjsViewerRef.current?.viewerBase?.viewerContainer ||
+        pdfjsViewerRef.current?.pdfViewerBase?.viewerContainer ||
         containerRef.current;
-      performSyncfusionCursorWheelZoom(event, viewerContainer, 'overlay-wheel-zoom');
+      performPdfjsCursorWheelZoom(event, viewerContainer, 'overlay-wheel-zoom');
       return;
     }
-    if (syncfusionInteractionListenersRef.current?.container) return;
+    if (pdfjsInteractionListenersRef.current?.container) return;
     bumpOverlayLagEventTotal('overlayWheelScroll');
     markInteractionPerfActive('overlay-wheel-scroll', INTERACTION_PERF_SCROLL_HOLD_MS);
-    markSyncfusionInteractionActive('overlay-wheel-scroll');
+    markPdfjsInteractionActive('overlay-wheel-scroll');
   }, [
     bumpOverlayLagEventTotal,
     markInteractionPerfActive,
-    markSyncfusionInteractionActive,
-    performSyncfusionCursorWheelZoom,
-    useSyncfusionRenderer,
+    markPdfjsInteractionActive,
+    performPdfjsCursorWheelZoom,
+    usePdfjsRenderer,
   ]);
 
-  const handleSyncfusionWrapperPointerDown = useCallback(() => {
-    if (!useSyncfusionRenderer) return;
-    if (syncfusionInteractionListenersRef.current?.container) return;
+  const handlePdfjsWrapperPointerDown = useCallback(() => {
+    if (!usePdfjsRenderer) return;
+    if (pdfjsInteractionListenersRef.current?.container) return;
     const holdMs = activeToolRef.current === 'pan'
       ? INTERACTION_PERF_SCROLL_HOLD_MS
       : INTERACTION_PERF_DRAW_HOLD_MS;
     bumpOverlayLagEventTotal('overlayPointerDown');
     markInteractionPerfActive('overlay-pointer-down', holdMs);
-    markSyncfusionInteractionActive('overlay-pointer-down');
-  }, [bumpOverlayLagEventTotal, markInteractionPerfActive, markSyncfusionInteractionActive, useSyncfusionRenderer]);
+    markPdfjsInteractionActive('overlay-pointer-down');
+  }, [bumpOverlayLagEventTotal, markInteractionPerfActive, markPdfjsInteractionActive, usePdfjsRenderer]);
 
-  const handleSyncfusionWrapperPointerMove = useCallback((event) => {
-    if (!useSyncfusionRenderer) return;
-    if (syncfusionInteractionListenersRef.current?.container) return;
+  const handlePdfjsWrapperPointerMove = useCallback((event) => {
+    if (!usePdfjsRenderer) return;
+    if (pdfjsInteractionListenersRef.current?.container) return;
     if ((event.buttons & 1) === 0) return;
     const now = Date.now();
     if (now - wrapperDragEventAtRef.current < 96) return;
@@ -6867,22 +6872,22 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       : INTERACTION_PERF_DRAW_HOLD_MS;
     bumpOverlayLagEventTotal('overlayPointerDrag');
     markInteractionPerfActive('overlay-pointer-drag', holdMs);
-    markSyncfusionInteractionActive('overlay-pointer-drag');
-  }, [bumpOverlayLagEventTotal, markInteractionPerfActive, markSyncfusionInteractionActive, useSyncfusionRenderer]);
+    markPdfjsInteractionActive('overlay-pointer-drag');
+  }, [bumpOverlayLagEventTotal, markInteractionPerfActive, markPdfjsInteractionActive, usePdfjsRenderer]);
 
   useEffect(() => {
     return () => {
-      if (syncfusionNavigateResetTimerRef.current) {
-        clearTimeout(syncfusionNavigateResetTimerRef.current);
-        syncfusionNavigateResetTimerRef.current = null;
+      if (pdfjsNavigateResetTimerRef.current) {
+        clearTimeout(pdfjsNavigateResetTimerRef.current);
+        pdfjsNavigateResetTimerRef.current = null;
       }
-      if (syncfusionRefreshFrameRef.current === null) return;
+      if (pdfjsRefreshFrameRef.current === null) return;
       if (typeof window !== 'undefined' && typeof window.cancelAnimationFrame === 'function') {
-        window.cancelAnimationFrame(syncfusionRefreshFrameRef.current);
+        window.cancelAnimationFrame(pdfjsRefreshFrameRef.current);
       } else {
-        clearTimeout(syncfusionRefreshFrameRef.current);
+        clearTimeout(pdfjsRefreshFrameRef.current);
       }
-      syncfusionRefreshFrameRef.current = null;
+      pdfjsRefreshFrameRef.current = null;
       if (textSearchRefreshTimerRef.current) {
         clearTimeout(textSearchRefreshTimerRef.current);
         textSearchRefreshTimerRef.current = null;
@@ -7257,16 +7262,16 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   const scaleRef = useRef(initialZoomPreferences.manualScale);
   const pageNumRef = useRef(1);
   // Late-bound handler + flag for "apply fit-page on first open" (set in the
-  // Syncfusion document-load handler, consumed by an effect once pageSizes exist).
+  // Pdfjs document-load handler, consumed by an effect once pageSizes exist).
   const handleZoomModeSelectRef = useRef(null);
   const pendingInitialFitPageRef = useRef(false);
   const spacePageNavigationTimersRef = useRef([]);
   const pageSizesRef = useRef({});
   const manualZoomScaleRef = useRef(initialZoomPreferences.manualScale);
-  // Bug #2.6 calibration: Syncfusion's page div at 100% is pdfPageSize.width * electronFactor
+  // Bug #2.6 calibration: Pdfjs's page div at 100% is pdfPageSize.width * electronFactor
   // CSS pixels (Electron/browser zoom factor). Calibrated on first known-good measurement
   // and reused for fit-page/fit-height so we never divide pageDiv by the racy getZoomValue().
-  const syncfusionElectronFactorRef = useRef(null);
+  const pdfjsElectronFactorRef = useRef(null);
 
   const persistZoomPreferences = useCallback((overrides = {}) => {
     const merged = {
@@ -7289,31 +7294,31 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   }, []);
 
   const handleZoomModeSelect = useCallback((mode) => {
-    if (useSyncfusionRenderer) {
+    if (usePdfjsRenderer) {
       setIsZoomMenuOpen(false);
-      const viewer = syncfusionViewerRef.current;
+      const viewer = pdfjsViewerRef.current;
       const magnification = viewer?.magnificationModule;
       if (!magnification) return;
 
       // Bug #2.6 helper: calibrate the Electron zoom factor from a KNOWN commanded
       // scale. Scheduled via rAF so the DOM has relaid before we measure. Writes to
-      // syncfusionElectronFactorRef so fit-page/fit-height don't need to divide live
+      // pdfjsElectronFactorRef so fit-page/fit-height don't need to divide live
       // pageDiv by the racy getZoomValue() API (which leads the DOM re-layout).
       const calibrateElectronFactor = (knownScale) => {
         requestAnimationFrame(() => {
-          const pageDiv = syncfusionWrapperRef.current?.querySelector('.e-pv-page-div');
+          const pageDiv = pdfjsWrapperRef.current?.querySelector('.e-pv-page-div');
           const pdfPageSize = pageSizesRef.current?.[pageNumRef.current]
             || (pageSizesRef.current && Object.values(pageSizesRef.current)[0]);
           if (!pageDiv || !pdfPageSize?.width || !(knownScale > 0)) return;
           const factor = pageDiv.offsetWidth / (pdfPageSize.width * knownScale);
           if (factor > 0.3 && factor < 5) {
-            syncfusionElectronFactorRef.current = factor;
+            pdfjsElectronFactorRef.current = factor;
           }
         });
       };
 
       if (mode === ZOOM_MODES.MANUAL) {
-        syncfusionZoomSourceRef.current = ZOOM_MODES.MANUAL;
+        pdfjsZoomSourceRef.current = ZOOM_MODES.MANUAL;
         setZoomMode(ZOOM_MODES.MANUAL);
         const manualScale = manualZoomScaleRef.current || DEFAULT_ZOOM_PREFERENCES.manualScale;
         magnification.zoomTo(manualScale * 100);
@@ -7321,14 +7326,14 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         calibrateElectronFactor(manualScale);
         persistZoomPreferences({ mode: ZOOM_MODES.MANUAL, manualScale });
       } else {
-        syncfusionZoomSourceRef.current = mode;
+        pdfjsZoomSourceRef.current = mode;
         setZoomMode(mode);
 
         // Bug #2.6: derive real page dimensions from pdf.js pageSize (scale-invariant,
         // in PDF points) × calibrated Electron zoom factor. Never divide live pageDiv by
         // getZoomValue() — that API leads the DOM re-layout and produces catastrophic
         // values (e.g. 14360-px "real" page → clamped to 10% zoom).
-        const wrapperEl = syncfusionWrapperRef.current;
+        const wrapperEl = pdfjsWrapperRef.current;
         const wrapperW = wrapperEl?.clientWidth || 0;
         const wrapperH = wrapperEl?.clientHeight || 0;
         const pdfPageSize = pageSizesRef.current?.[pageNumRef.current]
@@ -7338,17 +7343,17 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         // caused the "click fit-page 3 times before it takes" convergence bug — each
         // click was effectively recalibrating from a wrong prior scale. Measure the live
         // page div against the known current scale to get the factor in one shot.
-        if (!syncfusionElectronFactorRef.current && scaleRef.current > 0 && pdfPageSize?.width > 0) {
-          const liveDiv = syncfusionWrapperRef.current?.querySelector('.e-pv-page-div');
+        if (!pdfjsElectronFactorRef.current && scaleRef.current > 0 && pdfPageSize?.width > 0) {
+          const liveDiv = pdfjsWrapperRef.current?.querySelector('.e-pv-page-div');
           if (liveDiv && liveDiv.offsetWidth > 0) {
             const inferred = liveDiv.offsetWidth / (pdfPageSize.width * scaleRef.current);
             if (inferred > 0.3 && inferred < 5) {
-              syncfusionElectronFactorRef.current = inferred;
+              pdfjsElectronFactorRef.current = inferred;
             }
           }
         }
         // Fallback to 1.0 if we still don't have one — e.g. page div not ready yet.
-        const electronFactor = syncfusionElectronFactorRef.current || 1.0;
+        const electronFactor = pdfjsElectronFactorRef.current || 1.0;
 
         if (mode === ZOOM_MODES.FIT_PAGE) {
           if (wrapperW > 0 && wrapperH > 0 && pdfPageSize?.width > 0 && pdfPageSize?.height > 0) {
@@ -7400,20 +7405,20 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     } else {
       controller.setMode(mode);
     }
-  }, [persistZoomPreferences, useSyncfusionRenderer]);
+  }, [persistZoomPreferences, usePdfjsRenderer]);
 
   // Keep a ref to the handler so the document-load callback (defined earlier,
   // before handleZoomModeSelect) can trigger fit-page without a circular dep.
   handleZoomModeSelectRef.current = handleZoomModeSelect;
 
   // (Default-open fit-page trigger now fires inline at the end of the reconcile cascade
-  // in handleSyncfusionDocumentLoad — the earlier useEffect version fired too early,
+  // in handlePdfjsDocumentLoad — the earlier useEffect version fired too early,
   // before scaleRef had been reconciled from the DOM, locking in a bad Electron factor.)
 
   const applyLayoutDrivenZoom = useCallback(() => {
-    if (useSyncfusionRenderer) {
+    if (usePdfjsRenderer) {
       const currentMode = zoomModeRef.current;
-      // In Syncfusion mode, manual trackpad/toolbar zoom must stay manual when
+      // In Pdfjs mode, manual trackpad/toolbar zoom must stay manual when
       // the window regains focus or layout changes. The generic zoom controller
       // can still hold an old fit-page mode, which caused the surprise zoom-out.
       if (!currentMode || currentMode === ZOOM_MODES.MANUAL) return;
@@ -7421,7 +7426,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       return;
     }
     zoomControllerRef.current?.applyZoom({ persist: false, force: true });
-  }, [useSyncfusionRenderer]);
+  }, [usePdfjsRenderer]);
 
   useEffect(() => {
     scaleRef.current = scale;
@@ -7429,20 +7434,20 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     // pdf.js pageSizes are available, measure the Electron factor from pageDiv vs
     // pdf.js pageSize. Trusts that onDocumentLoad's bug #1b reconciliation has put
     // React scale in sync with DOM by this point.
-    if (useSyncfusionRenderer && !syncfusionElectronFactorRef.current && scale > 0) {
+    if (usePdfjsRenderer && !pdfjsElectronFactorRef.current && scale > 0) {
       requestAnimationFrame(() => {
-        if (syncfusionElectronFactorRef.current) return;
-        const pageDiv = syncfusionWrapperRef.current?.querySelector('.e-pv-page-div');
+        if (pdfjsElectronFactorRef.current) return;
+        const pageDiv = pdfjsWrapperRef.current?.querySelector('.e-pv-page-div');
         const pdfPageSize = pageSizesRef.current?.[pageNumRef.current]
           || (pageSizesRef.current && Object.values(pageSizesRef.current)[0]);
         if (!pageDiv || !pdfPageSize?.width) return;
         const factor = pageDiv.offsetWidth / (pdfPageSize.width * scale);
         if (factor > 0.3 && factor < 5) {
-          syncfusionElectronFactorRef.current = factor;
+          pdfjsElectronFactorRef.current = factor;
         }
       });
     }
-  }, [scale, useSyncfusionRenderer]);
+  }, [scale, usePdfjsRenderer]);
 
   useEffect(() => {
     pageNumRef.current = pageNum;
@@ -7526,17 +7531,17 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   }, [applyLayoutDrivenZoom, pdfDoc, pageSizes]);
 
   useEffect(() => {
-    // In Syncfusion mode, the viewer owns zoom persistence across page navigation
+    // In Pdfjs mode, the viewer owns zoom persistence across page navigation
     // (fitToPage/fitToWidth maintain themselves as the user scrolls), and the
     // zoomController's internal mode is never updated from handleZoomModeSelect's
-    // Syncfusion branches — so applyZoom() here would use a stale mode and re-zoom
+    // Pdfjs branches — so applyZoom() here would use a stale mode and re-zoom
     // to the wrong value on every pageChange, disrupting scroll geometry and
     // cascading into runaway pageChange events at low zoom levels. See bug #2.5.
-    if (useSyncfusionRenderer) return;
+    if (usePdfjsRenderer) return;
     if (zoomMode !== ZOOM_MODES.MANUAL) {
       zoomControllerRef.current?.applyZoom({ persist: false, force: true });
     }
-  }, [pageNum, zoomMode, useSyncfusionRenderer]);
+  }, [pageNum, zoomMode, usePdfjsRenderer]);
 
   useEffect(() => {
     applyLayoutDrivenZoom();
@@ -7549,23 +7554,23 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   // Sidebar state: Pages, Bookmarks, Spaces
   const [pageNames, setPageNames] = useState({}); // { [pageNumber]: name }
   const [bookmarks, setBookmarks] = useState([]); // Array of { id, name, type: 'bookmark'|'folder', pageIds: [], parentId: null, children: [] }
-  const [pdfBookmarks, setPdfBookmarks] = useState([]); // Bookmarks extracted from the PDF (Syncfusion primary, PDF.js fallback)
+  const [pdfBookmarks, setPdfBookmarks] = useState([]); // Bookmarks extracted from the PDF (Pdfjs primary, PDF.js fallback)
   const [pdfOutlinePageLookup, setPdfOutlinePageLookup] = useState(null);
   const [hasImportedPdfBookmarks, setHasImportedPdfBookmarks] = useState(false);
   const pdfjsBookmarkAttemptRef = useRef(null);
   const [spaces, setSpaces] = useState([]); // Array of { id, name, assignedPages: [{ pageId, wholePageIncluded, regions: [] }] }
   const [activeSpaceId, setActiveSpaceId] = useState(null); // Currently active space for filtering
   useEffect(() => {
-    syncfusionActiveSpaceIdRef.current = activeSpaceId;
+    pdfjsActiveSpaceIdRef.current = activeSpaceId;
   }, [activeSpaceId]);
   const [showRegionSelection, setShowRegionSelection] = useState(false); // Show region selection tool
   const [regionSelectionPage, setRegionSelectionPage] = useState(null); // Page for region selection
 
-  // Syncfusion can render at a slightly different effective scale than the app's requested zoom.
+  // Pdfjs can render at a slightly different effective scale than the app's requested zoom.
   // Always prefer measured page scale for region editing/overlay alignment.
-  const getSyncfusionPageScale = useCallback((pageNumber, fallbackScale = scale) => {
-    return measureSyncfusionPageScale(pageNumber, pageSizes, syncfusionPageContainers, fallbackScale);
-  }, [pageSizes, scale, syncfusionPageContainers]);
+  const getPdfjsPageScale = useCallback((pageNumber, fallbackScale = scale) => {
+    return measurePdfjsPageScale(pageNumber, pageSizes, pdfjsPageContainers, fallbackScale);
+  }, [pageSizes, scale, pdfjsPageContainers]);
 
   const disconnectOverlayLagPerfObservers = useCallback(() => {
     const state = overlayLagPerfObserverRef.current;
@@ -7842,7 +7847,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       interactionEventDeltas[eventKey] = Math.max(0, nextValue - previousValue);
     });
     recorder.lastEventTotals = { ...currentEventTotals };
-    const currentTransformTotals = syncfusionOverlayTransformStatsRef.current || { ticks: 0, writes: 0, resets: 0, skips: 0 };
+    const currentTransformTotals = pdfjsOverlayTransformStatsRef.current || { ticks: 0, writes: 0, resets: 0, skips: 0 };
     const previousTransformTotals = recorder.lastTransformTotals || {};
     const overlayTransformDeltas = {
       ticks: Math.max(0, (Number(currentTransformTotals.ticks) || 0) - (Number(previousTransformTotals.ticks) || 0)),
@@ -7851,7 +7856,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       skips: Math.max(0, (Number(currentTransformTotals.skips) || 0) - (Number(previousTransformTotals.skips) || 0))
     };
     recorder.lastTransformTotals = { ...currentTransformTotals };
-    const currentWheelPerfTotals = syncfusionWheelPerfTotalsRef.current || {};
+    const currentWheelPerfTotals = pdfjsWheelPerfTotalsRef.current || {};
     const previousWheelPerfTotals = recorder.lastWheelPerfTotals || {};
     const wheelPerfDeltas = {};
     Object.keys(currentWheelPerfTotals).forEach((key) => {
@@ -7860,7 +7865,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       wheelPerfDeltas[key] = Math.max(0, nextValue - previousValue);
     });
     recorder.lastWheelPerfTotals = { ...currentWheelPerfTotals };
-    const currentIdleWorkTotals = syncfusionIdleWorkTotalsRef.current || {};
+    const currentIdleWorkTotals = pdfjsIdleWorkTotalsRef.current || {};
     const previousIdleWorkTotals = recorder.lastIdleWorkTotals || {};
     const idleWorkDeltas = {};
     Object.keys(currentIdleWorkTotals).forEach((key) => {
@@ -7871,13 +7876,13 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     recorder.lastIdleWorkTotals = { ...currentIdleWorkTotals };
 
     const container = containerRef.current;
-    const viewer = syncfusionViewerRef.current;
-    const overlayLayerRefs = syncfusionOverlayLayerRefs.current;
-    const overlayContentRefs = syncfusionOverlayContentRefs.current;
-    const pageContainerMap = syncfusionPageContainersStateRef.current || {};
-    const residentPages = syncfusionInteractionResidentPagesRef.current;
-    const visiblePages = syncfusionVisiblePagesRef.current || new Set();
-    const hiddenPendingPages = syncfusionScaleConfirmHiddenPagesRef.current || new Set();
+    const viewer = pdfjsViewerRef.current;
+    const overlayLayerRefs = pdfjsOverlayLayerRefs.current;
+    const overlayContentRefs = pdfjsOverlayContentRefs.current;
+    const pageContainerMap = pdfjsPageContainersStateRef.current || {};
+    const residentPages = pdfjsInteractionResidentPagesRef.current;
+    const visiblePages = pdfjsVisiblePagesRef.current || new Set();
+    const hiddenPendingPages = pdfjsScaleConfirmHiddenPagesRef.current || new Set();
     const containerRect = container?.getBoundingClientRect?.() || null;
 
     const viewerScale = clampScale(
@@ -7889,9 +7894,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     );
 
     const shouldCapturePageMetrics =
-      syncfusionInteractionActiveRef.current ||
+      pdfjsInteractionActiveRef.current ||
       zoomOverlayTransformActiveRef.current ||
-      (Number(interactionEventDeltas.syncfusionZoomChange) || 0) > 0 ||
+      (Number(interactionEventDeltas.pdfjsZoomChange) || 0) > 0 ||
       recorder.options?.captureIdlePageMetrics === true;
     const candidatePages = shouldCapturePageMetrics
       ? (residentPages && residentPages.size > 0
@@ -7985,7 +7990,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       const widthRatio = overlayRect.width / pageRect.width;
       const heightRatio = overlayRect.height / pageRect.height;
       const ratioMismatch = Math.max(Math.abs(widthRatio - 1), Math.abs(heightRatio - 1));
-      const presentationState = syncfusionZoomPresentationByPageRef.current?.[pageNumber] || null;
+      const presentationState = pdfjsZoomPresentationByPageRef.current?.[pageNumber] || null;
       const snapshotVisible = presentationState?.snapshotVisible === true;
       const snapshotAvailable = typeof presentationState?.snapshotUrl === 'string' && presentationState.snapshotUrl.length > 0;
       const snapshotStatus = typeof presentationState?.snapshotStatus === 'string' && presentationState.snapshotStatus.length > 0
@@ -7999,8 +8004,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       const presentationMode = snapshotVisible
         ? 'snapshot'
         : (liveHidden ? 'none' : 'live');
-      const hasPdfSurface = hasSyncfusionPdfSurface(pageHost);
-      const spinnerVisible = hasVisibleSyncfusionSpinner(pageHost);
+      const hasPdfSurface = hasPdfjsPdfSurface(pageHost);
+      const spinnerVisible = hasVisiblePdfjsSpinner(pageHost);
       const pdfReady = hasPdfSurface || snapshotVisible || paintReady;
       const overlayStyle = typeof window !== 'undefined' && window.getComputedStyle
         ? window.getComputedStyle(overlayLayer)
@@ -8012,7 +8017,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         overlayStyle?.display !== 'none' &&
         Number(overlayStyle?.opacity ?? 1) > 0.01
       );
-      const annotationObjects = syncfusionAnnotationsByPageRef.current?.[pageNumber]?.objects;
+      const annotationObjects = pdfjsAnnotationsByPageRef.current?.[pageNumber]?.objects;
       const hasAnnotationContent = Array.isArray(annotationObjects) && annotationObjects.length > 0;
       const hasPresentationGap = hasAnnotationContent && overlayVisible && !pdfReady;
       if (hasPresentationGap) {
@@ -8034,9 +8039,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       }
       const overlayContentHasScaleTransform = Math.abs(observedScale - 1) > 0.001;
 
-      const committedScales = syncfusionCommittedPageScalesRef.current || {};
-      const pageBaseScale = Number(committedScales[pageNumber]) || Number(syncfusionInteractionStartViewerZoomRef.current) || viewerScale || 1;
-      const liveScaleRaw = measureSyncfusionPageHostScale(
+      const committedScales = pdfjsCommittedPageScalesRef.current || {};
+      const pageBaseScale = Number(committedScales[pageNumber]) || Number(pdfjsInteractionStartViewerZoomRef.current) || viewerScale || 1;
+      const liveScaleRaw = measurePdfjsPageHostScale(
         pageNumber,
         pageSizesRef.current || {},
         pageContainerMap,
@@ -8046,7 +8051,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       const zoomOverlayBaseScale = Number(zoomOverlayBaseScaleRef.current) || pageBaseScale;
       const expectedScale = zoomOverlayTransformActiveRef.current && overlayContentHasScaleTransform
         ? (viewerScale / zoomOverlayBaseScale)
-        : ((syncfusionInteractionPhaseRef.current === 'interacting' || syncfusionInteractionPhaseRef.current === 'committing')
+        : ((pdfjsInteractionPhaseRef.current === 'interacting' || pdfjsInteractionPhaseRef.current === 'committing')
           ? (liveScale / pageBaseScale)
           : 1);
       const scaleMismatch = Math.abs(observedScale - expectedScale);
@@ -8090,7 +8095,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     });
 
     const pageModeCounts = { full: 0, proxy: 0 };
-    Object.values(syncfusionInteractionPageModesRef.current || {}).forEach((mode) => {
+    Object.values(pdfjsInteractionPageModesRef.current || {}).forEach((mode) => {
       if (mode === 'proxy') {
         pageModeCounts.proxy += 1;
       } else {
@@ -8110,21 +8115,21 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       rafFrameMsMax: roundOverlayRecorderValue(recorder.rafFrameMsMax, 3),
       appScale: roundOverlayRecorderValue(scaleRef.current || scale, 5),
       viewerScale: roundOverlayRecorderValue(viewerScale, 5),
-      interactionActive: syncfusionInteractionActiveRef.current,
-      interactionPhase: syncfusionInteractionPhaseRef.current,
-      interactionSessionId: syncfusionInteractionSessionIdRef.current,
-      interactionReason: syncfusionInteractionReasonRef.current,
+      interactionActive: pdfjsInteractionActiveRef.current,
+      interactionPhase: pdfjsInteractionPhaseRef.current,
+      interactionSessionId: pdfjsInteractionSessionIdRef.current,
+      interactionReason: pdfjsInteractionReasonRef.current,
       zoomOverlayTransformActive: zoomOverlayTransformActiveRef.current,
-      lightweightPages: syncfusionLightweightPagesRef.current.size,
-      residentPages: syncfusionInteractionResidentPagesRef.current.size,
+      lightweightPages: pdfjsLightweightPagesRef.current.size,
+      residentPages: pdfjsInteractionResidentPagesRef.current.size,
       pageModeCounts,
-      modeFlipCount: syncfusionInteractionModeFlipCountRef.current,
-      commitQueueDepth: syncfusionCommitQueueRef.current?.length || 0,
+      modeFlipCount: pdfjsInteractionModeFlipCountRef.current,
+      commitQueueDepth: pdfjsCommitQueueRef.current?.length || 0,
       interactionEventDeltas,
       overlayTransformDeltas,
       wheelPerfDeltas,
       idleWorkDeltas,
-      overlayWindowPages: syncfusionOverlayWindowPagesRef.current.size,
+      overlayWindowPages: pdfjsOverlayWindowPagesRef.current.size,
       sampleIntervalMs: recorder.options?.sampleIntervalMs || null,
       overlayLayerRefCount: Object.keys(overlayLayerRefs).length,
       currentPage: pageNumRef.current,
@@ -8154,7 +8159,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       visiblePresentationGapPages: visiblePresentationGapPages.slice(0, 8),
       viewportPresentationGapCount: viewportPresentationGapPages.length,
       viewportPresentationGapPages: viewportPresentationGapPages.slice(0, 8),
-      hiddenPendingPageCount: syncfusionScaleConfirmHiddenPagesRef.current.size,
+      hiddenPendingPageCount: pdfjsScaleConfirmHiddenPagesRef.current.size,
       snapshotAvailablePageCount: pageDetails.filter((page) => page.snapshotAvailable).length,
       snapshotVisiblePageCount: pageDetails.filter((page) => page.snapshotVisible).length,
       paintReadyPageCount: pageDetails.filter((page) => page.paintReady).length,
@@ -8175,8 +8180,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       );
       idleWorkDeltas.measurementWorkCount = (Number(idleWorkDeltas.measurementWorkCount) || 0) + 1;
     }
-    recordSyncfusionIdleWork('measurementWork', sample.sampleCaptureCostMs);
-    recorder.lastIdleWorkTotals = { ...(syncfusionIdleWorkTotalsRef.current || {}) };
+    recordPdfjsIdleWork('measurementWork', sample.sampleCaptureCostMs);
+    recorder.lastIdleWorkTotals = { ...(pdfjsIdleWorkTotalsRef.current || {}) };
 
     recorder.samples.push(sample);
     if (recorder.samples.length > recorder.options.maxSamples) {
@@ -8196,7 +8201,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         overlayLagSampleCaptureCostMs: sample.sampleCaptureCostMs
       });
     }
-  }, [consumeOverlayLagPerfAttribution, recordSyncfusionIdleWork, scale]);
+  }, [consumeOverlayLagPerfAttribution, recordPdfjsIdleWork, scale]);
 
   const startOverlayLagRecorder = useCallback((options = {}) => {
     const recorder = overlayLagRecorderRef.current;
@@ -8243,9 +8248,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     recorder.nextSampleAtMs = 0;
     recorder.lastSampleAtMs = 0;
     recorder.lastEventTotals = { ...(overlayLagEventTotalsRef.current || {}) };
-    recorder.lastTransformTotals = { ...(syncfusionOverlayTransformStatsRef.current || {}) };
-    recorder.lastWheelPerfTotals = { ...(syncfusionWheelPerfTotalsRef.current || {}) };
-    recorder.lastIdleWorkTotals = { ...(syncfusionIdleWorkTotalsRef.current || {}) };
+    recorder.lastTransformTotals = { ...(pdfjsOverlayTransformStatsRef.current || {}) };
+    recorder.lastWheelPerfTotals = { ...(pdfjsWheelPerfTotalsRef.current || {}) };
+    recorder.lastIdleWorkTotals = { ...(pdfjsIdleWorkTotalsRef.current || {}) };
 
     emitPdfDebugEvent('overlay_lag_recorder_start', {
       samplePageLimit,
@@ -9001,14 +9006,14 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   }, []);
 
   useEffect(() => {
-    // PERF (2026-06-03): the overlay-lag recorder is a Syncfusion-era debug tool.
-    // Its guard checked the hardcoded legacy `useSyncfusionRenderer` constant (always
+    // PERF (2026-06-03): the overlay-lag recorder is a Pdfjs-era debug tool.
+    // Its guard checked the hardcoded legacy `usePdfjsRenderer` constant (always
     // true), NOT the engine flag — so under the owned pdf.js engine it still auto-started
     // whenever its localStorage key was set, running a continuous per-frame rAF loop +
     // a longtask PerformanceObserver that starved the main thread (the real session's
     // ~5fps / 21s "unattributedRafPause"). pdf.js glues overlays via CSS transform and
     // needs no per-frame drift sampling. Hard-gate it OFF under pdf.js.
-    if (!useSyncfusionRenderer || !overlayLagAutoRecordEnabled || getPDFViewerEngine() === PDF_VIEWER_ENGINE_PDFJS) {
+    if (!usePdfjsRenderer || !overlayLagAutoRecordEnabled || true) {
       return;
     }
 
@@ -9041,7 +9046,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     pdfId,
     startOverlayLagRecorder,
     tabId,
-    useSyncfusionRenderer
+    usePdfjsRenderer
   ]);
 
   useEffect(() => {
@@ -9089,7 +9094,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
           }
         },
         interactionEventTotals: { ...overlayLagEventTotalsRef.current },
-        overlayTransformTotals: { ...(syncfusionOverlayTransformStatsRef.current || {}) }
+        overlayTransformTotals: { ...(pdfjsOverlayTransformStatsRef.current || {}) }
       })
     };
     const trackpadZoomDebugApi = {
@@ -9222,36 +9227,36 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   }, [disconnectOverlayLagPerfObservers]);
 
   useEffect(() => {
-    if (!useSyncfusionRenderer) {
-      setSyncfusionCommittedPageScales((prev) => (Object.keys(prev).length === 0 ? prev : {}));
+    if (!usePdfjsRenderer) {
+      setPdfjsCommittedPageScales((prev) => (Object.keys(prev).length === 0 ? prev : {}));
       return;
     }
 
-    const pageNumbers = Object.keys(syncfusionPageContainers)
+    const pageNumbers = Object.keys(pdfjsPageContainers)
       .map((pageKey) => Number(pageKey))
       .filter((pageNumber) => Number.isFinite(pageNumber));
 
     if (
       pageNumbers.length === 0 ||
-      (syncfusionLiveStableOverlayEnabled && syncfusionDualLayerEnabled && syncfusionInteractionPhase !== 'idle')
+      (pdfjsLiveStableOverlayEnabled && pdfjsDualLayerEnabled && pdfjsInteractionPhase !== 'idle')
     ) {
       return;
     }
 
     const viewerScale = clampScale(
       Number(
-        (syncfusionViewerRef.current?.getZoomValue?.() ??
-          syncfusionViewerRef.current?.zoomValue ??
+        (pdfjsViewerRef.current?.getZoomValue?.() ??
+          pdfjsViewerRef.current?.zoomValue ??
           scale * 100)
       ) / 100
     );
 
-    setSyncfusionCommittedPageScales((prev) => {
+    setPdfjsCommittedPageScales((prev) => {
       const next = {};
       let changed = false;
 
       pageNumbers.forEach((pageNumber) => {
-        const measuredScale = getSyncfusionPageScale(pageNumber, viewerScale);
+        const measuredScale = getPdfjsPageScale(pageNumber, viewerScale);
         const previousScale = prev[pageNumber];
         const resolvedScale = Number.isFinite(measuredScale) && measuredScale > 0
           ? measuredScale
@@ -9273,30 +9278,30 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       return changed ? next : prev;
     });
   }, [
-    getSyncfusionPageScale,
+    getPdfjsPageScale,
     scale,
-    syncfusionDualLayerEnabled,
-    syncfusionInteractionPhase,
-    syncfusionLiveStableOverlayEnabled,
-    syncfusionPageContainers,
-    useSyncfusionRenderer
+    pdfjsDualLayerEnabled,
+    pdfjsInteractionPhase,
+    pdfjsLiveStableOverlayEnabled,
+    pdfjsPageContainers,
+    usePdfjsRenderer
   ]);
 
   const regionSelectionScale = useMemo(() => {
-    if (!showRegionSelection || !regionSelectionPage || !useSyncfusionRenderer) {
+    if (!showRegionSelection || !regionSelectionPage || !usePdfjsRenderer) {
       return scale;
     }
 
     const viewerScale = clampScale(
       Number(
-        (syncfusionViewerRef.current?.getZoomValue?.() ??
-          syncfusionViewerRef.current?.zoomValue ??
+        (pdfjsViewerRef.current?.getZoomValue?.() ??
+          pdfjsViewerRef.current?.zoomValue ??
           scale * 100)
       ) / 100
     );
 
-    return getSyncfusionPageScale(regionSelectionPage, viewerScale);
-  }, [showRegionSelection, regionSelectionPage, useSyncfusionRenderer, scale, getSyncfusionPageScale]);
+    return getPdfjsPageScale(regionSelectionPage, viewerScale);
+  }, [showRegionSelection, regionSelectionPage, usePdfjsRenderer, scale, getPdfjsPageScale]);
 
   // Region editing temporarily owns pointer input. Keep the app in a dedicated
   // region-edit tool while the session is open, but still allow temporary
@@ -9415,8 +9420,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         bookmark?.isFromPDF === true ||
         (typeof bookmark?.id === 'string' && bookmark.id.startsWith('pdf:')) ||
         (typeof bookmark?.id === 'string' && bookmark.id.startsWith('pdf-outline-')) ||
-        (typeof bookmark?.sourceId === 'string' && bookmark.sourceId.startsWith('syncfusion:')) ||
         (typeof bookmark?.sourceId === 'string' && bookmark.sourceId.startsWith('pdfjs:')) ||
+        (typeof bookmark?.sourceId === 'string' && bookmark.sourceId.startsWith('syncfusion:')) ||
         Array.isArray(bookmark?.outlinePath) ||
         bookmark?.dest
       ));
@@ -9503,7 +9508,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
   useEffect(() => {
     annotationsByPageRef.current = annotationsByPage;
-    syncfusionAnnotationsByPageRef.current = annotationsByPage || {};
+    pdfjsAnnotationsByPageRef.current = annotationsByPage || {};
   }, [annotationsByPage]);
 
   const annotationOverlayWatchdogRef = useRef({
@@ -9512,7 +9517,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   });
 
   useEffect(() => {
-    if (typeof window === 'undefined' || !useSyncfusionRenderer) {
+    if (typeof window === 'undefined' || !usePdfjsRenderer) {
       return undefined;
     }
 
@@ -9565,7 +9570,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     }, 1000);
 
     return () => window.clearInterval(intervalId);
-  }, [attachOverlayToPageDiv, pageNum, pdfFile, pdfId, useSyncfusionRenderer]);
+  }, [attachOverlayToPageDiv, pageNum, pdfFile, pdfId, usePdfjsRenderer]);
 
   useEffect(() => {
     surveyMarkersRef.current = surveyMarkers;
@@ -9884,7 +9889,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     scale,
     pageNum,
     visiblePages: Array.from(visiblePagesSet || []),
-    syncfusionPageContainers
+    pdfjsPageContainers
   };
 
   useEffect(() => {
@@ -9895,12 +9900,12 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       register({
         refs: {
           zoomOverlayTransformActive: zoomOverlayTransformActiveRef,
-          portalHosts: syncfusionInteractionPortalHostsRef,
-          lastNonEmptyOverlayPages: syncfusionLastNonEmptyOverlayPagesRef,
+          portalHosts: pdfjsInteractionPortalHostsRef,
+          lastNonEmptyOverlayPages: pdfjsLastNonEmptyOverlayPagesRef,
           scale: scaleRef
         },
         getState: () => debugBridgeStateRef.current,
-        getPageLayerContainer: () => syncfusionViewerRef.current?.getPageLayerContainer?.() ?? null
+        getPageLayerContainer: () => pdfjsViewerRef.current?.getPageLayerContainer?.() ?? null
       });
       cleanup = unregister;
     });
@@ -11255,11 +11260,11 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       const updateByExistingId = new Map();
 
       const normalizeIncomingPageIds = (bookmark) => {
-        if (useSyncfusionRenderer) {
+        if (usePdfjsRenderer) {
           const sourceId = typeof bookmark?.sourceId === 'string' ? bookmark.sourceId : null;
           if (sourceId) {
             const viewerResolvedPage = coercePageNumber(
-              syncfusionViewerRef.current?.resolveBookmarkPageFromSource?.(
+              pdfjsViewerRef.current?.resolveBookmarkPageFromSource?.(
                 sourceId,
                 bookmark?.dest ?? null,
                 true
@@ -11406,7 +11411,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       const imported = deduped.map((bookmark, index) => {
         const sourceId = typeof bookmark?.sourceId === 'string' && bookmark.sourceId.trim()
           ? bookmark.sourceId
-          : `syncfusion:auto:${Date.now()}-${index}`;
+          : `pdfjs:auto:${Date.now()}-${index}`;
         const nextId = idMap.get(bookmark.id) || generateBookmarkId();
         const parentId = resolveParentId(bookmark);
         const baseOrder = Number.isFinite(bookmark?.order) ? bookmark.order : index;
@@ -11446,7 +11451,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
       return [...updatedExisting, ...imported];
     });
-  }, [generateBookmarkId, useSyncfusionRenderer]);
+  }, [generateBookmarkId, usePdfjsRenderer]);
 
   const handlePDFBookmarksAvailable = useCallback((bookmarksFromPDF) => {
     if (!Array.isArray(bookmarksFromPDF) || bookmarksFromPDF.length === 0) {
@@ -17315,7 +17320,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   }, [activeSpaceId, spaces]);
 
   useEffect(() => {
-    syncfusionActiveSpacePagesRef.current = Array.isArray(activeSpacePages) ? activeSpacePages : [];
+    pdfjsActiveSpacePagesRef.current = Array.isArray(activeSpacePages) ? activeSpacePages : [];
   }, [activeSpacePages]);
 
   const annotationSpaceId = activeSpaceId ?? selectedSpaceId ?? null;
@@ -17427,8 +17432,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   ]);
 
   useEffect(() => {
-    if (!useSyncfusionRenderer) return undefined;
-    if (syncfusionInteractionPhase === 'idle' && !zoomOverlayTransformActiveRef.current) {
+    if (!usePdfjsRenderer) return undefined;
+    if (pdfjsInteractionPhase === 'idle' && !zoomOverlayTransformActiveRef.current) {
       return undefined;
     }
 
@@ -17437,9 +17442,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       : (rendererMode === 'svg' ? 'svg' : 'canvas');
     const intervalId = window.setInterval(() => {
       const nowMs = Date.now();
-      const previous = syncfusionLiveZoomDebugLastLogRef.current || {};
+      const previous = pdfjsLiveZoomDebugLastLogRef.current || {};
       if (
-        previous.phase === syncfusionInteractionPhase &&
+        previous.phase === pdfjsInteractionPhase &&
         previous.branch === branch &&
         nowMs - (previous.atMs || 0) < 140
       ) {
@@ -17447,13 +17452,13 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       }
 
       const currentPage = Number(pageNumRef.current) || 1;
-      const viewerScale = getSyncfusionViewerScale();
+      const viewerScale = getPdfjsViewerScale();
       const pageHost =
-        syncfusionPageContainersStateRef.current?.[currentPage] ||
+        pdfjsPageContainersStateRef.current?.[currentPage] ||
         pageContainersRef.current?.[currentPage] ||
         null;
-      const overlayLayer = syncfusionOverlayLayerRefs.current?.[currentPage] || null;
-      const overlayContent = syncfusionOverlayContentRefs.current?.[currentPage] || null;
+      const overlayLayer = pdfjsOverlayLayerRefs.current?.[currentPage] || null;
+      const overlayContent = pdfjsOverlayContentRefs.current?.[currentPage] || null;
       const legacyCompensationRoot = overlayContent?.querySelector?.(`[data-legacy-overlay-compensation="${currentPage}"]`) || null;
       const palRoot = overlayContent?.querySelector?.(`[data-pal-root="${currentPage}"]`) || null;
       const canvasContainer = overlayContent?.querySelector?.('.canvas-container') || null;
@@ -17474,16 +17479,16 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       };
 
       const measuredScale = normalizeInteractionMeasuredScale(
-        measureSyncfusionPageHostScale(
+        measurePdfjsPageHostScale(
           currentPage,
           pageSizesRef.current || {},
-          syncfusionPageContainersStateRef.current || pageContainersRef.current || {},
+          pdfjsPageContainersStateRef.current || pageContainersRef.current || {},
           viewerScale
         ),
         viewerScale,
         viewerScale
       );
-      const committedScale = Number(syncfusionCommittedPageScalesRef.current?.[currentPage]) || null;
+      const committedScale = Number(pdfjsCommittedPageScalesRef.current?.[currentPage]) || null;
       const overlayTransform = typeof overlayContent?.style?.transform === 'string'
         ? overlayContent.style.transform
         : '';
@@ -17501,7 +17506,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
       // 2026-04-29: silenced per-zoom-frame; re-enable via window.__DIAG_ZOOM_LIVE = true.
       if (typeof window !== 'undefined' && window.__DIAG_ZOOM_LIVE) console.log(`[ZoomLive ${branch} p${currentPage}]`, {
-        interactionPhase: syncfusionInteractionPhase,
+        interactionPhase: pdfjsInteractionPhase,
         zoomOverlayTransformActive: zoomOverlayTransformActiveRef.current,
         viewerScale: roundOverlayRecorderValue(viewerScale, 5),
         measuredScale: roundOverlayRecorderValue(measuredScale, 5),
@@ -17526,9 +17531,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         showRegionSelection,
       });
 
-      syncfusionLiveZoomDebugLastLogRef.current = {
+      pdfjsLiveZoomDebugLastLogRef.current = {
         atMs: nowMs,
-        phase: syncfusionInteractionPhase,
+        phase: pdfjsInteractionPhase,
         branch,
         pageNumber: currentPage
       };
@@ -17540,12 +17545,12 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   }, [
     activeRegionId,
     activeSpaceId,
-    getSyncfusionViewerScale,
+    getPdfjsViewerScale,
     requiresLegacyAnnotationLayer,
     rendererMode,
     showRegionSelection,
-    syncfusionInteractionPhase,
-    useSyncfusionRenderer
+    pdfjsInteractionPhase,
+    usePdfjsRenderer
   ]);
 
 
@@ -17560,10 +17565,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       bookmarkDest = null,
       bookmarkFallbackPage = null
     } = options;
-    const viewerPageCount = useSyncfusionRenderer
+    const viewerPageCount = usePdfjsRenderer
       ? coercePageNumber(
-        syncfusionViewerRef.current?.getPageCount?.() ??
-        syncfusionViewerRef.current?.pageCount,
+        pdfjsViewerRef.current?.getPageCount?.() ??
+        pdfjsViewerRef.current?.pageCount,
         Number.POSITIVE_INFINITY
       )
       : null;
@@ -17597,8 +17602,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       if (directPage) return directPage;
       return null;
     };
-    if (useSyncfusionRenderer && preferBookmarkSource && (bookmarkSourceId || bookmarkDest)) {
-      const viewer = syncfusionViewerRef.current;
+    if (usePdfjsRenderer && preferBookmarkSource && (bookmarkSourceId || bookmarkDest)) {
+      const viewer = pdfjsViewerRef.current;
       const usedSourcePriority = typeof viewer?.goToBookmarkSource === 'function'
         ? viewer.goToBookmarkSource(bookmarkSourceId, bookmarkDest, true)
         : false;
@@ -17612,8 +17617,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         return;
       }
     }
-    if (!desiredPage && useSyncfusionRenderer && (bookmarkSourceId || bookmarkDest)) {
-      const viewer = syncfusionViewerRef.current;
+    if (!desiredPage && usePdfjsRenderer && (bookmarkSourceId || bookmarkDest)) {
+      const viewer = pdfjsViewerRef.current;
       const usedBookmarkFallback = typeof viewer?.goToBookmarkSource === 'function'
         ? viewer.goToBookmarkSource(bookmarkSourceId, bookmarkDest, preferBookmarkSource)
         : false;
@@ -17664,8 +17669,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     if (!normalizedDesiredPage) return;
     desiredPage = normalizedDesiredPage;
 
-    if (useSyncfusionRenderer) {
-      const viewer = syncfusionViewerRef.current;
+    if (usePdfjsRenderer) {
+      const viewer = pdfjsViewerRef.current;
       const invokeNavigation = (context, method, ...args) => {
         if (typeof method !== 'function') return false;
         try {
@@ -17701,15 +17706,15 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       if (!navigateWithPrimary()) return;
       isNavigatingRef.current = true;
       targetPageRef.current = desiredPage;
-      if (syncfusionNavigateResetTimerRef.current) {
-        clearTimeout(syncfusionNavigateResetTimerRef.current);
+      if (pdfjsNavigateResetTimerRef.current) {
+        clearTimeout(pdfjsNavigateResetTimerRef.current);
       }
-      syncfusionNavigateResetTimerRef.current = setTimeout(() => {
+      pdfjsNavigateResetTimerRef.current = setTimeout(() => {
         if (targetPageRef.current === desiredPage) {
           isNavigatingRef.current = false;
           targetPageRef.current = null;
         }
-        syncfusionNavigateResetTimerRef.current = null;
+        pdfjsNavigateResetTimerRef.current = null;
       }, 1500);
       setTimeout(() => {
         const currentAfterNavigate = coercePageNumber(
@@ -17771,7 +17776,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         setIsPageInputDirty(false);
       }
     }
-  }, [numPages, scrollMode, activeSpaceId, activeSpacePages, useSyncfusionRenderer]);
+  }, [numPages, scrollMode, activeSpaceId, activeSpacePages, usePdfjsRenderer]);
 
   // Phase 29 — sync goToPage + current page state into refs the cross-page-undo
   // listener (above) reads at fire time. Refs sidestep the temporal-dead-zone
@@ -17781,7 +17786,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   // window.__navigateToPage / window.__currentPageNumber are e2e test seams
   // (Plan 29-04 Info 1 resolution). Production code never reads them; they exist
   // so Playwright specs can drive page changes deterministically without scraping
-  // the Syncfusion DOM (UI-SPEC test-seams contract).
+  // the Pdfjs DOM (UI-SPEC test-seams contract).
   useEffect(() => {
     goToPageRef.current = goToPage;
     if (typeof window !== 'undefined') {
@@ -17856,8 +17861,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     };
   }, [annotationsByPage]);
 
-  const getSyncfusionThumbnail = useCallback((pageNumber) => {
-    const viewer = syncfusionViewerRef.current;
+  const getPdfjsThumbnail = useCallback((pageNumber) => {
+    const viewer = pdfjsViewerRef.current;
     if (!viewer?.getThumbnailDataUrl) return Promise.resolve(null);
     emitPdfDebugEvent('app_thumbnail_request', { pageNumber });
     return viewer.getThumbnailDataUrl(pageNumber, {
@@ -18153,13 +18158,13 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     annotationsByPageRef.current = {};
     surveyMarkersRef.current = {};
     spacesRef.current = isSamePdfReload ? previousSpacesForSamePdf : [];
-    setSyncfusionDocumentBytes(null);
-    setSyncfusionPageContainers({});
-    setSyncfusionCommittedPageScales({});
-    finishSyncfusionInteractionWindow();
+    setPdfjsDocumentBytes(null);
+    setPdfjsPageContainers({});
+    setPdfjsCommittedPageScales({});
+    finishPdfjsInteractionWindow();
     pageContainersRef.current = {};
     setRenderedPages(new Set());
-    syncfusionZoomSourceRef.current = null;
+    pdfjsZoomSourceRef.current = null;
     setActiveSpaceId(null);
     setBookmarks([]);
     setPdfBookmarks([]);
@@ -18183,7 +18188,6 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     setSurveyMarkerNameInput(null);
     setPendingEntitySelection(null);
     setShowSpaceSelection(false);
-    setShowTemplateSelection(false);
     setCopyModeActive(false);
     setCategorySelectModeActive(false);
     setCategorySelectModeForCategory(null);
@@ -18347,7 +18351,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       : loadCallouts(id);
     setCallouts(loadedCallouts);
     setHasUnsavedAnnotations(false); // Reset unsaved flag
-  }, [clearExcelSyncCheckpoint, finishSyncfusionInteractionWindow, pdfFile, pushHistoryDebugEvent]);
+  }, [clearExcelSyncCheckpoint, finishPdfjsInteractionWindow, pdfFile, pushHistoryDebugEvent]);
 
   // Save items and annotations to localStorage when they change
   useEffect(() => {
@@ -18612,7 +18616,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         note: 'Explicit export generates a PDF copy from original PDF bytes. Unedited imported PDF-native app copies are skipped to avoid duplication; edited imported copies are exported from app state.'
       }));
       const sourcePdfForExport = pdfFile;
-      if (typeof syncfusionViewerRef.current?.saveAsBlob === 'function') {
+      if (typeof pdfjsViewerRef.current?.saveAsBlob === 'function') {
         console.log('[PDFSaveExport] source PDF selection ' + JSON.stringify({
           actionType: 'pdf-export',
           documentId: pdfFile?.id || null,
@@ -18878,7 +18882,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     if (!pdfDoc) return undefined;
     // Under pdf.js the engine extracts the outline on document load and reports it via
     // onPDFBookmarksAvailable, so this 3.2s fallback would redundantly re-extract.
-    if (getPDFViewerEngine() === PDF_VIEWER_ENGINE_PDFJS) return undefined;
+    if (true) return undefined;
     if (Array.isArray(pdfBookmarks) && pdfBookmarks.length > 0) return undefined;
 
     const attemptKey = pdfId || `${pdfFile?.name || 'document'}:${pdfDoc?.numPages || 0}`;
@@ -18956,7 +18960,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
           Array.isArray(bookmark?.pageIds) ? bookmark.pageIds[0] : null,
           Number.POSITIVE_INFINITY
         );
-        const shouldDisableSourceNavigation = typeof bookmark?.sourceId === 'string' && bookmark.sourceId.startsWith('syncfusion:');
+        const shouldDisableSourceNavigation = typeof bookmark?.sourceId === 'string' && (
+          bookmark.sourceId.startsWith('pdfjs:') ||
+          bookmark.sourceId.startsWith('syncfusion:')
+        );
         const needsPageUpdate = currentPage !== resolvedPage;
         const needsSourceDisable = shouldDisableSourceNavigation && bookmark.disableSourceNavigation !== true;
 
@@ -19021,8 +19028,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
           throw new Error('Invalid file object: missing arrayBuffer and filePath');
         }
 
-        // Keep an immutable copy for Syncfusion client-side rendering so mode toggles can switch renderers.
-        setSyncfusionDocumentBytes(new Uint8Array(arrayBuffer.slice(0)));
+        // Keep an immutable copy for Pdfjs client-side rendering so mode toggles can switch renderers.
+        setPdfjsDocumentBytes(new Uint8Array(arrayBuffer.slice(0)));
 
         //   size: arrayBuffer.byteLength,
         //   version: pdfjsLib.version,
@@ -19085,10 +19092,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
                 stopAtErrors: false,
               });
               pdf = await rewriteTask.promise;
-              // Update the buffer downstream consumers see so Syncfusion and
+              // Update the buffer downstream consumers see so Pdfjs and
               // the annotation importer also read the rewritten bytes.
               arrayBuffer = rewritten.buffer;
-              setSyncfusionDocumentBytes(new Uint8Array(rewritten));
+              setPdfjsDocumentBytes(new Uint8Array(rewritten));
               perfLoad.mark(docName, 'PDF.js document parsed (rewrite mode)');
             } catch (rewriteError) {
               console.error('Rewrite-and-retry PDF load also failed:', rewriteError?.message);
@@ -19179,11 +19186,11 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
           // scans the WHOLE document (pdf-lib raw-bytes parse + getAnnotations on
           // every page ≈ 450ms warm on a 36-page / 3k-native-annot doc) ONLY to
           // compute nativeLayerPolicyByPage, whose sole consumers are a debug
-          // global and CSS that hides Syncfusion's native annotation canvas. Under
-          // the pdf.js engine Syncfusion is unmounted, so that work produces a
+          // global and CSS that hides Pdfjs's native annotation canvas. Under
+          // the pdf.js engine Pdfjs is unmounted, so that work produces a
           // value nothing uses — pure dead weight on every cloud-doc open. Skip it
           // and set the empty policy (already the catch-branch fallback below).
-          if (getPDFViewerEngine() === PDF_VIEWER_ENGINE_PDFJS) {
+          if (true) {
             setPdfNativeAnnotationLayerPolicyByPage({});
           } else {
           try {
@@ -19226,7 +19233,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
             documentId: pdfFile?.id || null,
             pdfName: pdfFile?.name || null,
             cloudAuthoritative: false,
-            reason: 'PDF-native annotations imported as editable app annotations hide Syncfusion native annotation and selection/adorner layers to avoid duplicate interaction chrome.',
+            reason: 'PDF-native annotations imported as editable app annotations hide Pdfjs native annotation and selection/adorner layers to avoid duplicate interaction chrome.',
             pages: Object.fromEntries(Object.entries(nativeLayerPolicyByPage || {}).map(([pageKey, policy]) => [pageKey, {
               hideNativeLayer: Boolean(policy?.hideNativeLayer),
               nativeRenderableAnnotationCount: Array.isArray(policy?.nativeRenderableAnnotationIds) ? policy.nativeRenderableAnnotationIds.length : 0,
@@ -19546,7 +19553,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   // NOTE: Rendering is now handled by PDFPageCanvas. This function is kept for compatibility
   // with preRenderNearbyPages and IntersectionObserver logic, but it no longer draws to canvas directly.
   const renderPage = useCallback(async (pageNumber, priority = 'normal') => {
-    if (useSyncfusionRenderer || !pdfDoc) return;
+    if (usePdfjsRenderer || !pdfDoc) return;
 
     // We can use this to trigger pre-fetching or other logic if needed,
     // but for now, PDFPageTiles handles the heavy lifting.
@@ -19555,11 +19562,11 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     // If we need to track "rendered" state for other logic:
     // setRenderedPages(prev => new Set([...prev, pageNumber]));
 
-  }, [pdfDoc, scale, useSyncfusionRenderer]);
+  }, [pdfDoc, scale, usePdfjsRenderer]);
 
   // Pre-render nearby pages for instant display
   const preRenderNearbyPages = useCallback((currentPage) => {
-    if (useSyncfusionRenderer || !pdfDoc || scrollMode !== 'continuous') return;
+    if (usePdfjsRenderer || !pdfDoc || scrollMode !== 'continuous') return;
 
     const preRenderDistance = 2; // Pre-render 2 pages ahead and behind
     const pagesToPreRender = [];
@@ -19586,11 +19593,11 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         });
       });
     });
-  }, [numPages, pdfDoc, renderPage, scale, scrollMode, useSyncfusionRenderer]);
+  }, [numPages, pdfDoc, renderPage, scale, scrollMode, usePdfjsRenderer]);
 
   // Optimized IntersectionObserver with debouncing
   useEffect(() => {
-    if (useSyncfusionRenderer || scrollMode !== 'continuous' || !pdfDoc) return;
+    if (usePdfjsRenderer || scrollMode !== 'continuous' || !pdfDoc) return;
 
     if (observerRef.current) {
       observerRef.current.disconnect();
@@ -19710,11 +19717,11 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       }
       clearTimeout(updateTimer);
     };
-  }, [pdfDoc, preRenderNearbyPages, renderPage, scrollMode, useSyncfusionRenderer]);
+  }, [pdfDoc, preRenderNearbyPages, renderPage, scrollMode, usePdfjsRenderer]);
 
   // Render single page mode with pre-rendering
   useEffect(() => {
-    if (useSyncfusionRenderer || scrollMode !== 'single' || !pdfDoc) return;
+    if (usePdfjsRenderer || scrollMode !== 'single' || !pdfDoc) return;
     renderPage(pageNum);
 
     // Pre-render adjacent pages for instant navigation
@@ -19724,7 +19731,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     if (pageNum < numPages) {
       renderPage(pageNum + 1, 'low');
     }
-  }, [numPages, pageNum, pdfDoc, renderPage, scale, scrollMode, useSyncfusionRenderer]);
+  }, [numPages, pageNum, pdfDoc, renderPage, scale, scrollMode, usePdfjsRenderer]);
 
   // Render first page when PDF loads in continuous mode
   // NOTE: PDFPageCanvas handles rendering automatically when mounted.
@@ -19735,7 +19742,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
   // Re-render all visible pages when scale changes
   useEffect(() => {
-    if (useSyncfusionRenderer || !pdfDoc) return;
+    if (usePdfjsRenderer || !pdfDoc) return;
 
     // Clear cache for old scale (keep cache for other scales in case user zooms back)
     // Only clear if scale changed significantly
@@ -19751,7 +19758,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       renderPage(pageNum);
     }
     // IntersectionObserver will handle continuous mode
-  }, [pageNum, pdfDoc, renderPage, scale, scrollMode, useSyncfusionRenderer]);
+  }, [pageNum, pdfDoc, renderPage, scale, scrollMode, usePdfjsRenderer]);
 
   // Re-render pages when transformations change (CSS transforms apply automatically, but this ensures consistency)
   useEffect(() => {
@@ -19807,9 +19814,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     const previousScale = scaleRef.current || 1.0;
     const safeScale = clampScale(incomingScale);
 
-    if (useSyncfusionRenderer) {
-      const viewer = syncfusionViewerRef.current;
-      markSyncfusionInteractionActive('set-scale-with-viewport');
+    if (usePdfjsRenderer) {
+      const viewer = pdfjsViewerRef.current;
+      markPdfjsInteractionActive('set-scale-with-viewport');
       if (container) {
         const rect = container.getBoundingClientRect();
         const anchor = options.anchor || {};
@@ -19827,22 +19834,22 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         });
       }
       // Pre-activate zoom overlay protection so portal hosts stay frozen when
-      // Syncfusion destroys/recreates page DOM during zoomTo(). Without this,
+      // Pdfjs destroys/recreates page DOM during zoomTo(). Without this,
       // keyboard/toolbar zoom race: zoomTo() fires before
-      // handleSyncfusionZoomChange sets the ref, leaving a gap where
+      // handlePdfjsZoomChange sets the ref, leaving a gap where
       // overlay containers drop to 0.
       if (Math.abs(safeScale - previousScale) > 0.0005) {
         if (!zoomOverlayTransformActiveRef.current) {
           zoomOverlayBaseScaleRef.current = previousScale;
-          captureSyncfusionZoomSnapshots(previousScale);
+          capturePdfjsZoomSnapshots(previousScale);
           zoomOverlayTransformActiveRef.current = true;
-          setSyncfusionZoomPreviewActive(true);
+          setPdfjsZoomPreviewActive(true);
           debugMark('zoom_start', { scale: previousScale, targetScale: safeScale, source: 'keyboard_toolbar' });
-          // Cache page rects AND portal hosts before Syncfusion destroys DOM.
+          // Cache page rects AND portal hosts before Pdfjs destroys DOM.
           // The portal hosts cache is cleared when interaction goes idle, so it
           // may be empty when pre-activation fires. We must populate it here so
           // the render loop can create fallback hosts for disconnected pages.
-          const pageContainersMap = syncfusionPageContainersStateRef.current || pageContainersRef.current || {};
+          const pageContainersMap = pdfjsPageContainersStateRef.current || pageContainersRef.current || {};
           const cachedRects = {};
           const portalHostSnapshot = {};
           Object.entries(pageContainersMap).forEach(([pageNum, el]) => {
@@ -19854,11 +19861,11 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
               portalHostSnapshot[Number(pageNum)] = el;
             }
           });
-          syncfusionCachedPageRectsRef.current = cachedRects;
+          pdfjsCachedPageRectsRef.current = cachedRects;
           // Only populate portal hosts if cache is empty (don't overwrite active interaction cache)
-          const existingHosts = syncfusionInteractionPortalHostsRef.current || {};
+          const existingHosts = pdfjsInteractionPortalHostsRef.current || {};
           if (Object.keys(existingHosts).length === 0) {
-            syncfusionInteractionPortalHostsRef.current = portalHostSnapshot;
+            pdfjsInteractionPortalHostsRef.current = portalHostSnapshot;
           }
         }
         // Restart settle timer on every zoom step so rapid keyboard/toolbar
@@ -19866,34 +19873,34 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         if (zoomOverlaySettleTimerRef.current) {
           clearTimeout(zoomOverlaySettleTimerRef.current);
         }
-        updateSyncfusionZoomSnapshots(safeScale);
+        updatePdfjsZoomSnapshots(safeScale);
         zoomOverlaySettleTimerRef.current = setTimeout(() => {
           zoomOverlaySettleTimerRef.current = null;
           zoomOverlayTransformActiveRef.current = false;
-          setSyncfusionZoomPreviewActive(false);
-          clearSyncfusionZoomSnapshots();
-          resetSyncfusionOverlayTransformStyles();
+          setPdfjsZoomPreviewActive(false);
+          clearPdfjsZoomSnapshots();
+          resetPdfjsOverlayTransformStyles();
           debugMark('zoom_end', { source: 'keyboard_toolbar_settle' });
-          const pendingScale = syncfusionPendingZoomScaleRef.current;
+          const pendingScale = pdfjsPendingZoomScaleRef.current;
           if (pendingScale != null && Number.isFinite(pendingScale) && pendingScale > 0) {
-            syncfusionPendingZoomScaleRef.current = null;
+            pdfjsPendingZoomScaleRef.current = null;
             const finalScale = clampScale(pendingScale);
             setScale((prev) => (Math.abs(prev - finalScale) <= 0.0005 ? prev : finalScale));
             setManualZoomScale((prev) => (Math.abs(prev - finalScale) <= 0.0005 ? prev : finalScale));
           }
-          beginSyncfusionScaleConfirmPending('keyboard_toolbar_settle');
-        }, SYNCFUSION_ZOOM_OVERLAY_SETTLE_MS);
+          beginPdfjsScaleConfirmPending('keyboard_toolbar_settle');
+        }, PDFJS_ZOOM_OVERLAY_SETTLE_MS);
       }
-      // Do not push the React scale into PAL ahead of Syncfusion's own
+      // Do not push the React scale into PAL ahead of Pdfjs's own
       // zoomChange callback. Pre-committing here lets PAL redraw before the
       // App-level settle/confirm-pending handoff starts, which recreates the
       // visible freeze-after-redraw flicker the Phase 4 contract is trying to remove.
-      syncfusionPendingZoomScaleRef.current = safeScale;
+      pdfjsPendingZoomScaleRef.current = safeScale;
 
       if (viewer?.magnificationModule) {
         const zoomPercent = safeScale * 100;
-        const zoomSource = options.mode || syncfusionZoomSourceRef.current || ZOOM_MODES.MANUAL;
-        syncfusionZoomSourceRef.current = zoomSource;
+        const zoomSource = options.mode || pdfjsZoomSourceRef.current || ZOOM_MODES.MANUAL;
+        pdfjsZoomSourceRef.current = zoomSource;
         if (options.anchor && viewer.magnificationModule.initiateMouseZoom) {
           const containerRect = container?.getBoundingClientRect?.();
           const anchor = options.anchor || {};
@@ -19973,7 +19980,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       isZoomingRef.current = false;
       perfZoom.end(safeScale);
     });
-  }, [beginSyncfusionScaleConfirmPending, captureSyncfusionZoomSnapshots, clearSyncfusionZoomSnapshots, markSyncfusionInteractionActive, resetSyncfusionOverlayTransformStyles, setScale, setAnchor, updateSyncfusionZoomSnapshots, useSyncfusionRenderer]);
+  }, [beginPdfjsScaleConfirmPending, capturePdfjsZoomSnapshots, clearPdfjsZoomSnapshots, markPdfjsInteractionActive, resetPdfjsOverlayTransformStyles, setScale, setAnchor, updatePdfjsZoomSnapshots, usePdfjsRenderer]);
 
   const centerPageBoundsInViewer = useCallback((pageNumber, bounds, options = {}) => {
     const targetPage = Number(pageNumber);
@@ -19982,14 +19989,14 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
     const {
       behavior = 'auto',
-      maxRetries = useSyncfusionRenderer ? 12 : 4,
-      retryDelay = useSyncfusionRenderer ? 80 : 40,
+      maxRetries = usePdfjsRenderer ? 12 : 4,
+      retryDelay = usePdfjsRenderer ? 80 : 40,
       rightInset = 0,
       leftInset = 0,
       bypassActiveSpace = true,
       navigateFirst = true,
       settlePasses = 0,
-      settleDelay = useSyncfusionRenderer ? 120 : 60,
+      settleDelay = usePdfjsRenderer ? 120 : 60,
       retryBehavior = 'auto',
       skipIfClosePx = 0
     } = options;
@@ -20002,24 +20009,24 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       const container = containerRef.current;
       let pageContainer =
         pageContainersRef.current?.[targetPage] ||
-        syncfusionPageContainersStateRef.current?.[targetPage] ||
+        pdfjsPageContainersStateRef.current?.[targetPage] ||
         null;
 
-      // The page-container ref map only tracks pages Syncfusion has already
+      // The page-container ref map only tracks pages Pdfjs has already
       // rendered, so jumping to a page that wasn't on screen finds nothing
       // there — the centering then falls back to a plain page jump that
       // lands on the page but NOT centred on the surveyMarker. When the map
       // misses, ask the viewer directly for the page element (the same API
-      // refreshSyncfusionPageContainers uses); once goToPage has rendered
+      // refreshPdfjsPageContainers uses); once goToPage has rendered
       // the page, a retry picks it up and the precise centring runs.
-      if (!pageContainer && useSyncfusionRenderer) {
-        const liveContainer = syncfusionViewerRef.current?.getPageContainer?.(targetPage);
+      if (!pageContainer && usePdfjsRenderer) {
+        const liveContainer = pdfjsViewerRef.current?.getPageContainer?.(targetPage);
         if (liveContainer && liveContainer.isConnected) {
           pageContainer = liveContainer;
         }
       }
 
-      if (attempt === 0 && useSyncfusionRenderer && navigateFirst && !pageContainer) {
+      if (attempt === 0 && usePdfjsRenderer && navigateFirst && !pageContainer) {
         goToPage(targetPage, { bypassActiveSpace });
         if (typeof window !== 'undefined') {
           window.setTimeout(() => run(attempt + 1), retryDelay);
@@ -20040,13 +20047,13 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       const pageContentElement = resolvePageContentElement(pageContainer);
       const pageRect = (pageContentElement || pageContainer).getBoundingClientRect();
 
-      // Syncfusion virtualizes pages: a page-container element can be present
+      // Pdfjs virtualizes pages: a page-container element can be present
       // in our ref map while the page itself is still unrendered, in which
       // case getBoundingClientRect() reports {0,0,0,0}. Running the centering
       // math against a zero rect yields a garbage scroll target — this was
       // the "Locate drifts right / jumps to the top" bug when jumping to a
       // page that wasn't currently on screen. Treat a zero-size rect exactly
-      // like a missing page: navigate to it so Syncfusion renders it, then
+      // like a missing page: navigate to it so Pdfjs renders it, then
       // retry the measurement until the rect is real.
       if (!(pageRect.width > 0) || !(pageRect.height > 0)) {
         if (attempt === 0 && navigateFirst) {
@@ -20103,15 +20110,15 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     };
 
     return run(0);
-  }, [getBoundsCenter, goToPage, pageSizes, resolvePageContentElement, scrollMode, useSyncfusionRenderer]);
+  }, [getBoundsCenter, goToPage, pageSizes, resolvePageContentElement, scrollMode, usePdfjsRenderer]);
 
   const centerSurveyMarkerElementInViewer = useCallback((annotationId, options = {}) => {
     if (!annotationId) return false;
     const {
       behavior = 'auto',
       retryBehavior = 'auto',
-      maxRetries = useSyncfusionRenderer ? 12 : 6,
-      retryDelay = useSyncfusionRenderer ? 80 : 40,
+      maxRetries = usePdfjsRenderer ? 12 : 6,
+      retryDelay = usePdfjsRenderer ? 80 : 40,
       leftInset = 0,
       rightInset = 0,
       skipIfClosePx = 0,
@@ -20193,7 +20200,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     };
 
     return run(0);
-  }, [useSyncfusionRenderer]);
+  }, [usePdfjsRenderer]);
 
   // Navigate to a search match with zoom and centering
   const navigateToMatch = useCallback((match, index) => {
@@ -20214,7 +20221,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       pageNumber: match.pageNumber,
       hasBounds: Boolean(match.bounds),
       currentScale: scaleRef.current,
-      targetRenderer: useSyncfusionRenderer ? 'syncfusion' : 'pdfjs',
+      targetRenderer: usePdfjsRenderer ? 'pdfjs' : 'pdfjs',
       pdfDocumentKey: pdfSearchDocumentKey
     });
 
@@ -20224,7 +20231,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     const pageNumber = match.pageNumber;
     const bounds = match.bounds;
 
-    if (useSyncfusionRenderer) {
+    if (usePdfjsRenderer) {
       const currentScale = Math.max(0.01, Number(scaleRef.current) || Number(scale) || 1);
       const targetScale = Math.max(currentScale, 1.5);
       const shouldZoom = targetScale > currentScale + 0.05;
@@ -20304,7 +20311,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         });
         setTimeout(() => {
           isNavigatingToMatchRef.current = false;
-        }, useSyncfusionRenderer ? 260 : 140);
+        }, usePdfjsRenderer ? 260 : 140);
         return;
       }
 
@@ -20364,7 +20371,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
       // If we zoomed, wait for the zoom to apply before scrolling
       if (shouldZoom) {
-        setTimeout(scrollToMatch, useSyncfusionRenderer ? 90 : 30);
+        setTimeout(scrollToMatch, usePdfjsRenderer ? 90 : 30);
       } else {
         scrollToMatch();
       }
@@ -20387,9 +20394,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
           behavior: 'auto' // Instant scroll to page first
         });
       }
-      setTimeout(performZoomAndCenter, useSyncfusionRenderer ? 60 : 20);
+      setTimeout(performZoomAndCenter, usePdfjsRenderer ? 60 : 20);
     } else {
-      setTimeout(performZoomAndCenter, useSyncfusionRenderer ? 40 : 10);
+      setTimeout(performZoomAndCenter, usePdfjsRenderer ? 40 : 10);
     }
   }, [
     centerPageBoundsInViewer,
@@ -20400,7 +20407,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     scheduleTextSearchHighlightRefresh,
     scrollMode,
     setScaleWithViewportPreservation,
-    useSyncfusionRenderer
+    usePdfjsRenderer
   ]);
 
   // Handler for search results change from SearchTextPanel
@@ -20435,7 +20442,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   const handleFindTextMatches = useCallback(async (query) => {
     const normalizedQuery = typeof query === 'string' ? query.trim() : '';
     if (!normalizedQuery) return null;
-    const viewer = syncfusionViewerRef.current;
+    const viewer = pdfjsViewerRef.current;
     activeTextSearchQueryRef.current = normalizedQuery;
     viewer?.searchText?.(normalizedQuery, false);
     scheduleTextSearchHighlightRefresh('search-start', 180);
@@ -20456,7 +20463,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       clearTimeout(textSearchRefreshTimerRef.current);
       textSearchRefreshTimerRef.current = null;
     }
-    syncfusionViewerRef.current?.cancelTextSearch?.();
+    pdfjsViewerRef.current?.cancelTextSearch?.();
   }, []);
 
   if (!zoomControllerRef.current) {
@@ -20514,12 +20521,12 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       console.log(`[InteractionDiag] zoom-intent @ ${Math.round(performance.now())}ms dir=in hasController=${!!controller}` + (gated ? ' [viewer still gated]' : ''));
     } catch (_e) { /* swallow */ }
     if (!controller) return;
-    const measuredScale = reconcileSyncfusionScaleFromRenderedPage('manual-zoom');
+    const measuredScale = reconcilePdfjsScaleFromRenderedPage('manual-zoom');
     const basisScale = measuredScale || scaleRef.current || manualZoomScaleRef.current || 1.0;
     const nextScale = clampScale(basisScale * TOOLBAR_ZOOM_STEP_FACTOR);
     controller.setScale(nextScale);
     try { console.log(`[InteractionDiag] zoom-applied @ ${Math.round(performance.now())}ms dir=in from=${basisScale.toFixed(3)} to=${nextScale.toFixed(3)}`); } catch (_e) { /* swallow */ }
-  }, [reconcileSyncfusionScaleFromRenderedPage]);
+  }, [reconcilePdfjsScaleFromRenderedPage]);
 
   const zoomOut = useCallback(() => {
     const controller = zoomControllerRef.current;
@@ -20528,12 +20535,12 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       console.log(`[InteractionDiag] zoom-intent @ ${Math.round(performance.now())}ms dir=out hasController=${!!controller}` + (gated ? ' [viewer still gated]' : ''));
     } catch (_e) { /* swallow */ }
     if (!controller) return;
-    const measuredScale = reconcileSyncfusionScaleFromRenderedPage('manual-zoom');
+    const measuredScale = reconcilePdfjsScaleFromRenderedPage('manual-zoom');
     const basisScale = measuredScale || scaleRef.current || manualZoomScaleRef.current || 1.0;
     const nextScale = clampScale(basisScale / TOOLBAR_ZOOM_STEP_FACTOR);
     controller.setScale(nextScale);
     try { console.log(`[InteractionDiag] zoom-applied @ ${Math.round(performance.now())}ms dir=out from=${basisScale.toFixed(3)} to=${nextScale.toFixed(3)}`); } catch (_e) { /* swallow */ }
-  }, [reconcileSyncfusionScaleFromRenderedPage]);
+  }, [reconcilePdfjsScaleFromRenderedPage]);
 
   const resetZoom = useCallback(() => {
     const controller = zoomControllerRef.current;
@@ -20545,7 +20552,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   // Using smaller increments and minimal throttle for fluid feel
   const wheelTimerRef = useRef(null);
   const handleWheel = useCallback((e) => {
-    if (useSyncfusionRenderer) return;
+    if (usePdfjsRenderer) return;
     if (e.ctrlKey || e.metaKey) {
       e.preventDefault();
 
@@ -20583,11 +20590,11 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         container.scrollLeft += e.deltaX;
       }
     }
-  }, [useSyncfusionRenderer]);
+  }, [usePdfjsRenderer]);
 
   // Attach wheel event listener with passive: false to allow preventDefault
   useEffect(() => {
-    if (useSyncfusionRenderer) return undefined;
+    if (usePdfjsRenderer) return undefined;
     const wheelHandler = (e) => {
       // Check if event target is within container OR if event coordinates are within container bounds
       // This handles cases where overlay divs (like region selection tool) are positioned over the container
@@ -20630,14 +20637,14 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     return () => {
       document.removeEventListener('wheel', wheelHandler, { capture: true });
     };
-  }, [handleWheel, useSyncfusionRenderer]);
+  }, [handleWheel, usePdfjsRenderer]);
 
   // Pre-activate zoom overlay protection for Ctrl+=/- keyboard zoom.
-  // Syncfusion handles these keys internally and may destroy/recreate page
-  // DOM before our handleSyncfusionZoomChange fires. This capture-phase
-  // handler ensures portal host freeze is active before Syncfusion touches DOM.
+  // Pdfjs handles these keys internally and may destroy/recreate page
+  // DOM before our handlePdfjsZoomChange fires. This capture-phase
+  // handler ensures portal host freeze is active before Pdfjs touches DOM.
   useEffect(() => {
-    if (!useSyncfusionRenderer) return;
+    if (!usePdfjsRenderer) return;
 
     const handleZoomKeyDown = (e) => {
       const isZoomIn = (e.ctrlKey || e.metaKey) && (e.key === '=' || e.key === '+');
@@ -20653,12 +20660,12 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       const prevScale = scaleRef.current || 1.0;
       if (!zoomOverlayTransformActiveRef.current) {
         zoomOverlayBaseScaleRef.current = prevScale;
-        captureSyncfusionZoomSnapshots(prevScale);
+        capturePdfjsZoomSnapshots(prevScale);
         zoomOverlayTransformActiveRef.current = true;
-        setSyncfusionZoomPreviewActive(true);
+        setPdfjsZoomPreviewActive(true);
         debugMark('zoom_start', { scale: prevScale, source: 'ctrl_key' });
-        // Cache page rects and portal hosts before Syncfusion destroys DOM
-        const pageContainersMap = syncfusionPageContainersStateRef.current || pageContainersRef.current || {};
+        // Cache page rects and portal hosts before Pdfjs destroys DOM
+        const pageContainersMap = pdfjsPageContainersStateRef.current || pageContainersRef.current || {};
         const cachedRects = {};
         const portalHostSnapshot = {};
         Object.entries(pageContainersMap).forEach(([pageNum, el]) => {
@@ -20670,10 +20677,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
             portalHostSnapshot[Number(pageNum)] = el;
           }
         });
-        syncfusionCachedPageRectsRef.current = cachedRects;
-        const existingHosts = syncfusionInteractionPortalHostsRef.current || {};
+        pdfjsCachedPageRectsRef.current = cachedRects;
+        const existingHosts = pdfjsInteractionPortalHostsRef.current || {};
         if (Object.keys(existingHosts).length === 0) {
-          syncfusionInteractionPortalHostsRef.current = portalHostSnapshot;
+          pdfjsInteractionPortalHostsRef.current = portalHostSnapshot;
         }
       }
       // Restart settle timer (same as setScaleWithViewportPreservation)
@@ -20681,35 +20688,35 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         clearTimeout(zoomOverlaySettleTimerRef.current);
       }
       const nextScale = clampScale(prevScale * (isZoomIn ? TOOLBAR_ZOOM_STEP_FACTOR : (1 / TOOLBAR_ZOOM_STEP_FACTOR)));
-      updateSyncfusionZoomSnapshots(nextScale);
+      updatePdfjsZoomSnapshots(nextScale);
       zoomOverlaySettleTimerRef.current = setTimeout(() => {
         zoomOverlaySettleTimerRef.current = null;
         zoomOverlayTransformActiveRef.current = false;
-        setSyncfusionZoomPreviewActive(false);
-        clearSyncfusionZoomSnapshots();
-        resetSyncfusionOverlayTransformStyles();
+        setPdfjsZoomPreviewActive(false);
+        clearPdfjsZoomSnapshots();
+        resetPdfjsOverlayTransformStyles();
         debugMark('zoom_end', { source: 'ctrl_key_settle' });
-        const pendingScale = syncfusionPendingZoomScaleRef.current;
+        const pendingScale = pdfjsPendingZoomScaleRef.current;
         if (pendingScale != null && Number.isFinite(pendingScale) && pendingScale > 0) {
-          syncfusionPendingZoomScaleRef.current = null;
+          pdfjsPendingZoomScaleRef.current = null;
           const finalScale = clampScale(pendingScale);
           setScale((prev) => (Math.abs(prev - finalScale) <= 0.0005 ? prev : finalScale));
           setManualZoomScale((prev) => (Math.abs(prev - finalScale) <= 0.0005 ? prev : finalScale));
         }
-        beginSyncfusionScaleConfirmPending('ctrl_key_settle');
-      }, SYNCFUSION_ZOOM_OVERLAY_SETTLE_MS);
+        beginPdfjsScaleConfirmPending('ctrl_key_settle');
+      }, PDFJS_ZOOM_OVERLAY_SETTLE_MS);
     };
 
-    // Capture phase: runs before Syncfusion's own handler
+    // Capture phase: runs before Pdfjs's own handler
     document.addEventListener('keydown', handleZoomKeyDown, { capture: true });
     return () => {
       document.removeEventListener('keydown', handleZoomKeyDown, { capture: true });
     };
-  }, [beginSyncfusionScaleConfirmPending, captureSyncfusionZoomSnapshots, clearSyncfusionZoomSnapshots, resetSyncfusionOverlayTransformStyles, updateSyncfusionZoomSnapshots, useSyncfusionRenderer]);
+  }, [beginPdfjsScaleConfirmPending, capturePdfjsZoomSnapshots, clearPdfjsZoomSnapshots, resetPdfjsOverlayTransformStyles, updatePdfjsZoomSnapshots, usePdfjsRenderer]);
 
   // Optimized pan handling
   const handleMouseDown = useCallback((e) => {
-    if (useSyncfusionRenderer) return;
+    if (usePdfjsRenderer) return;
     // Only allow pan when:
     // 1. Pan tool is active (spacebar pan should work even when region selection is active)
     // 2. Can pan (content exceeds viewport) OR showRegionSelection is true (allow panning in region selection mode)
@@ -20746,10 +20753,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       });
       e.preventDefault();
     }
-  }, [activeTool, showRegionSelection, canPan, useSyncfusionRenderer]);
+  }, [activeTool, showRegionSelection, canPan, usePdfjsRenderer]);
 
   const handleMouseMove = useCallback((e) => {
-    if (useSyncfusionRenderer) return;
+    if (usePdfjsRenderer) return;
     if (isPanning) {
       const container = containerRef.current;
       if (container) {
@@ -20775,13 +20782,13 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         canvasMouseDownRef.current = null; // Clear after starting pan
       }
     }
-  }, [isPanning, panStart, activeTool, canPan, showRegionSelection, useSyncfusionRenderer]);
+  }, [isPanning, panStart, activeTool, canPan, showRegionSelection, usePdfjsRenderer]);
 
   const handleMouseUp = useCallback(() => {
-    if (useSyncfusionRenderer) return;
+    if (usePdfjsRenderer) return;
     setIsPanning(false);
     canvasMouseDownRef.current = null; // Clear canvas mouse down tracking
-  }, [useSyncfusionRenderer]);
+  }, [usePdfjsRenderer]);
 
   // Stop panning if tool changes away from pan
   // Note: Don't stop panning when region selection becomes active - spacebar pan should work
@@ -20794,7 +20801,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   // Add native event listener as backup for panning when overlay has pointerEvents: none
   // This ensures events are caught even when they pass through the overlay
   useEffect(() => {
-    if (useSyncfusionRenderer) return undefined;
+    if (usePdfjsRenderer) return undefined;
     if (!showRegionSelection || activeTool !== 'pan') return;
 
     const container = containerRef.current;
@@ -20829,7 +20836,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     return () => {
       container.removeEventListener('mousedown', nativeMouseDown, { capture: true });
     };
-  }, [showRegionSelection, activeTool, canPan, useSyncfusionRenderer]);
+  }, [showRegionSelection, activeTool, canPan, usePdfjsRenderer]);
 
   // Track eraser cursor position when eraser tool is active
   useEffect(() => {
@@ -21405,7 +21412,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
             const { x, y } = lastPointerPosRef.current;
             const elAtCursor = document.elementFromPoint(x, y);
             // KAL-75: the annotation overlay tree is portalled OUTSIDE the
-            // Syncfusion page div (app-owned overlay root), so whenever
+            // Pdfjs page div (app-owned overlay root), so whenever
             // annotations are rendered the element under the cursor is the
             // overlay svg and closest('.e-pv-page-div') never matches —
             // which silently killed Cmd+V paste-at-cursor. Resolve the page
@@ -21468,7 +21475,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   // Memoized styles for performance
   // Memoized styles for performance
   const containerStyle = useMemo(() => {
-    if (useSyncfusionRenderer) {
+    if (usePdfjsRenderer) {
       const shouldShowGrabCursor = activeTool === 'pan' && !showRegionSelection;
       return {
         flex: 1,
@@ -21506,7 +21513,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       minHeight: 0,
       minWidth: 0
     };
-  }, [isPanning, canPan, activeTool, showRegionSelection, eraserCursorPos.visible, useSyncfusionRenderer]);
+  }, [isPanning, canPan, activeTool, showRegionSelection, eraserCursorPos.visible, usePdfjsRenderer]);
 
   const contentStyle = useMemo(() => ({
     minWidth: 'max-content',
@@ -23767,7 +23774,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     };
 
     // Capture-phase so the listener sees the event before any in-page
-    // handler that might stopPropagation (e.g. Syncfusion's own listeners).
+    // handler that might stopPropagation (e.g. Pdfjs's own listeners).
     window.addEventListener('keydown', onKeyDown, true);
     window.addEventListener('keyup', onKeyUp, true);
     return () => {
@@ -23873,8 +23880,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       return centerSurveyMarkerElementInViewer(annotationId, {
         behavior,
         retryBehavior,
-        maxRetries: useSyncfusionRenderer ? 14 : 8,
-        retryDelay: useSyncfusionRenderer ? 80 : 40,
+        maxRetries: usePdfjsRenderer ? 14 : 8,
+        retryDelay: usePdfjsRenderer ? 80 : 40,
         rightInset: 0,
         skipIfClosePx,
       });
@@ -23885,7 +23892,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       behavior = 'smooth',
       retryBehavior = 'smooth',
       skipIfClosePx = 0,
-      exactDelay = useSyncfusionRenderer ? 120 : 60,
+      exactDelay = usePdfjsRenderer ? 120 : 60,
       preferRenderedSurveyMarker = true,
     } = {}) => {
       const shouldRunExactPass = Number.isFinite(exactDelay) && exactDelay >= 0;
@@ -23906,13 +23913,13 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
       const centered = centerPageBoundsInViewer(pageNumber, bounds, {
         behavior,
-        maxRetries: useSyncfusionRenderer ? 18 : 8,
-        retryDelay: useSyncfusionRenderer ? 80 : 40,
+        maxRetries: usePdfjsRenderer ? 18 : 8,
+        retryDelay: usePdfjsRenderer ? 80 : 40,
         // The PDF area is already narrowed when the Survey panel is open.
         rightInset: 0,
         navigateFirst,
         settlePasses: 0,
-        settleDelay: useSyncfusionRenderer ? 140 : 70,
+        settleDelay: usePdfjsRenderer ? 140 : 70,
         retryBehavior,
         skipIfClosePx
       });
@@ -23930,8 +23937,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       if (typeof document === 'undefined') return null;
       const pageContainer =
         pageContainersRef.current?.[pageNumber] ||
-        syncfusionPageContainersStateRef.current?.[pageNumber] ||
-        syncfusionViewerRef.current?.getPageContainer?.(pageNumber) ||
+        pdfjsPageContainersStateRef.current?.[pageNumber] ||
+        pdfjsViewerRef.current?.getPageContainer?.(pageNumber) ||
         null;
       const pageElement = resolvePageContentElement(pageContainer) || pageContainer;
       const pageRect = pageElement?.getBoundingClientRect?.();
@@ -23944,8 +23951,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
     const centerAfterZoomSettles = () => {
       if (typeof window === 'undefined') return;
-      const maxAttempts = useSyncfusionRenderer ? 30 : 8;
-      const retryDelay = useSyncfusionRenderer ? 40 : 25;
+      const maxAttempts = usePdfjsRenderer ? 30 : 8;
+      const retryDelay = usePdfjsRenderer ? 40 : 25;
       const initialScrollWidth = Number(containerRef.current?.scrollWidth) || 0;
       const initialScrollHeight = Number(containerRef.current?.scrollHeight) || 0;
       const scaleRatio = currentScale > 0 ? targetScale / currentScale : 1;
@@ -23977,7 +23984,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       const run = (attempt = 0) => {
         const { renderedScale, scrollReady, toolbarReady } = readZoomDomState();
         const scaleReady =
-          !useSyncfusionRenderer ||
+          !usePdfjsRenderer ||
           (Number.isFinite(renderedScale) && Math.abs(renderedScale - targetScale) <= 0.08) ||
           scrollReady ||
           toolbarReady ||
@@ -24037,7 +24044,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     setActiveTool,
     setScaleWithViewportPreservation,
     setPendingSurveyMarkerSelection,
-    useSyncfusionRenderer
+    usePdfjsRenderer
   ]);
 
   const handlePendingSurveyMarkerSelectionConsumed = useCallback(() => {
@@ -24755,7 +24762,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   // change is big enough that FIT_* modes need to recompute). The survey panel
   // toggles are intentionally excluded: opening/collapsing the survey panel
   // only changes width by ~320px, which produces a scale delta under ~3% in
-  // practice — imperceptible, but the 1-second Syncfusion zoom-settle timer
+  // practice — imperceptible, but the 1-second Pdfjs zoom-settle timer
   // still fires and blocks dependent effects (e.g. the survey-marker paint)
   // from running until settle, making template open feel sluggish.
   useEffect(() => {
@@ -24801,8 +24808,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     }, 100);
   }, [getPageSurveyRegionId, selectedModuleId]);
 
-  const handleSyncfusionTextSelectionEnd = useCallback(() => {
-    // Selection-only mode for Syncfusion renderer:
+  const handlePdfjsTextSelectionEnd = useCallback(() => {
+    // Selection-only mode for Pdfjs renderer:
     // keep native text selection/copy behavior and do not create survey markers.
   }, []);
 
@@ -24843,7 +24850,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
   const selectImportedSelectDeleteOnlyTextMarkup = useCallback((hit, event) => {
     if (!hit || typeof hit.annotationIndex !== 'number' || !hit.pageNumber) return false;
-    syncfusionViewerRef.current?.clearTextSelection?.();
+    pdfjsViewerRef.current?.clearTextSelection?.();
     selectedNativeTextMarkupRef.current = null;
     setSelectedCalloutIds(new Set());
     setPendingSvgSelection({
@@ -24859,7 +24866,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
   const suppressNativeTextMarkupSelection = useCallback((event, options = {}) => {
     const clearNativeSelection = () => {
-      syncfusionViewerRef.current?.clearTextSelection?.();
+      pdfjsViewerRef.current?.clearTextSelection?.();
       selectedNativeTextMarkupRef.current = null;
     };
     clearNativeSelection();
@@ -24877,7 +24884,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     return true;
   }, []);
 
-  const handleSelectSyncfusionTextMarkup = useCallback((pageNumber, event, pageSize) => {
+  const handleSelectPdfjsTextMarkup = useCallback((pageNumber, event, pageSize) => {
     if (activeTool !== 'select' && activeTool !== 'text-select') return false;
     const target = event?.currentTarget;
     if (!target || !pageSize?.width || !pageSize?.height) return false;
@@ -24888,17 +24895,17 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       x: ((event.clientX - rect.left) / rect.width) * pageSize.width,
       y: ((event.clientY - rect.top) / rect.height) * pageSize.height
     };
-    const syncfusionTolerance = Math.max(4, 8 / Math.max(Number(scale) || 1, 0.1));
+    const pdfjsTolerance = Math.max(4, 8 / Math.max(Number(scale) || 1, 0.1));
     const importedTextMarkupTolerance = Math.max(1, 1.25 / Math.max(Number(scale) || 1, 0.1));
     const importedHit = getImportedSelectDeleteOnlyTextMarkupHitAtPoint(pageNumber, point, importedTextMarkupTolerance);
     if (importedHit) {
       return selectImportedSelectDeleteOnlyTextMarkup(importedHit, event.nativeEvent || event);
     }
     const rawEvent = event.nativeEvent || event;
-    const selected = syncfusionViewerRef.current?.selectTextMarkupAtPoint?.(
+    const selected = pdfjsViewerRef.current?.selectTextMarkupAtPoint?.(
       pageNumber,
       point,
-      syncfusionTolerance,
+      pdfjsTolerance,
       rawEvent
     );
     if (!selected) return false;
@@ -24942,15 +24949,15 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     return true;
   }, [activeTool, getImportedSelectDeleteOnlyTextMarkupHitAtPoint, isImportedSelectDeleteOnlyTextMarkupAtPoint, isImportedSelectDeleteOnlyTextMarkupSelection, scale, selectImportedSelectDeleteOnlyTextMarkup, suppressNativeTextMarkupSelection]);
 
-  const handleSelectSyncfusionTextMarkupFromClientPoint = useCallback((event) => {
+  const handleSelectPdfjsTextMarkupFromClientPoint = useCallback((event) => {
     if (activeTool !== 'select' && activeTool !== 'text-select') return false;
     if (!event || typeof event.clientX !== 'number' || typeof event.clientY !== 'number') return false;
     if (event.target?.closest?.('[data-annotation-context-menu], [data-toolbar], button, input, textarea, select, a[href], .e-pv-hyperlink, .e-pdfviewer-formFields')) return false;
     const isPlainPdfTextTarget = !!event.target?.closest?.('.e-pv-text-layer, .e-pv-text');
 
-    const containers = syncfusionViewerRef.current?.getPageContainers?.() || {};
+    const containers = pdfjsViewerRef.current?.getPageContainers?.() || {};
     const entries = Object.entries(containers);
-    const syncfusionTolerance = Math.max(4, 8 / Math.max(Number(scale) || 1, 0.1));
+    const pdfjsTolerance = Math.max(4, 8 / Math.max(Number(scale) || 1, 0.1));
     const importedTextMarkupTolerance = Math.max(1, 1.25 / Math.max(Number(scale) || 1, 0.1));
     for (const [pageKey, pageElement] of entries) {
       if (!pageElement?.getBoundingClientRect) continue;
@@ -24976,10 +24983,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       }
     }
 
-    const directSelected = syncfusionViewerRef.current?.selectTextMarkupAtClientPoint?.(
+    const directSelected = pdfjsViewerRef.current?.selectTextMarkupAtClientPoint?.(
       event.clientX,
       event.clientY,
-      syncfusionTolerance,
+      pdfjsTolerance,
       event
     );
     if (directSelected) {
@@ -25040,10 +25047,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         x: ((event.clientX - rect.left) / rect.width) * pageSize.width,
         y: ((event.clientY - rect.top) / rect.height) * pageSize.height
       };
-      const selected = syncfusionViewerRef.current?.selectTextMarkupAtPoint?.(
+      const selected = pdfjsViewerRef.current?.selectTextMarkupAtPoint?.(
         pageNumber,
         point,
-        syncfusionTolerance,
+        pdfjsTolerance,
         event
       );
       if (!selected) return false;
@@ -25094,13 +25101,13 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   useEffect(() => {
     if (activeTool !== 'select' && activeTool !== 'text-select') return undefined;
     const handlePointerDownCapture = (event) => {
-      handleSelectSyncfusionTextMarkupFromClientPoint(event);
+      handleSelectPdfjsTextMarkupFromClientPoint(event);
     };
     document.addEventListener('pointerdown', handlePointerDownCapture, true);
     return () => {
       document.removeEventListener('pointerdown', handlePointerDownCapture, true);
     };
-  }, [activeTool, handleSelectSyncfusionTextMarkupFromClientPoint]);
+  }, [activeTool, handleSelectPdfjsTextMarkupFromClientPoint]);
 
   useEffect(() => {
     const handleNativeTextMarkupDelete = (event) => {
@@ -25109,7 +25116,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       const tagName = event.target?.tagName?.toLowerCase?.();
       if (tagName === 'input' || tagName === 'textarea' || event.target?.isContentEditable) return;
 
-      const deleted = syncfusionViewerRef.current?.deleteSelectedTextMarkupAnnotation?.();
+      const deleted = pdfjsViewerRef.current?.deleteSelectedTextMarkupAnnotation?.();
       if (!deleted) return;
       event.preventDefault();
       event.stopPropagation();
@@ -25356,35 +25363,35 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   }, [activeSpaceId, activeSpacePages]);
 
   useEffect(() => {
-    if (!useSyncfusionRenderer || !syncfusionLiveStableOverlayEnabled || !syncfusionDualLayerEnabled) {
-      setSyncfusionInteractionResidentPages((prev) => (prev.size === 0 ? prev : new Set()));
-      syncfusionInteractionResidentPagesRef.current = new Set();
+    if (!usePdfjsRenderer || !pdfjsLiveStableOverlayEnabled || !pdfjsDualLayerEnabled) {
+      setPdfjsInteractionResidentPages((prev) => (prev.size === 0 ? prev : new Set()));
+      pdfjsInteractionResidentPagesRef.current = new Set();
       return;
     }
-    if (syncfusionInteractionPhase !== 'interacting') {
+    if (pdfjsInteractionPhase !== 'interacting') {
       return;
     }
 
-    const candidateResidentPages = computeSyncfusionInteractionResidentPages();
+    const candidateResidentPages = computePdfjsInteractionResidentPages();
     if (candidateResidentPages.size === 0) {
       return;
     }
 
-    const nextResidentPages = setSyncfusionInteractionResidentPagesStable(candidateResidentPages);
-    const knownModes = syncfusionInteractionPageModesRef.current || {};
+    const nextResidentPages = setPdfjsInteractionResidentPagesStable(candidateResidentPages);
+    const knownModes = pdfjsInteractionPageModesRef.current || {};
     const pagesMissingMode = Array.from(nextResidentPages).filter((pageNumber) => !knownModes[pageNumber]);
     if (pagesMissingMode.length > 0) {
-      const viewerScale = getSyncfusionViewerScale();
+      const viewerScale = getPdfjsViewerScale();
       const frozenScaleUpdates = {};
-      const portalHosts = syncfusionInteractionPortalHostsRef.current || {};
+      const portalHosts = pdfjsInteractionPortalHostsRef.current || {};
       let portalHostChanged = false;
       pagesMissingMode.forEach((pageNumber) => {
         if (!(Number.isFinite(pageNumber) && pageNumber > 0)) return;
         const measuredScale = normalizeInteractionMeasuredScale(
-          measureSyncfusionPageHostScale(
+          measurePdfjsPageHostScale(
             pageNumber,
             pageSizesRef.current || {},
-            syncfusionPageContainersStateRef.current || pageContainersRef.current || {},
+            pdfjsPageContainersStateRef.current || pageContainersRef.current || {},
             viewerScale
           ),
           viewerScale,
@@ -25392,7 +25399,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         );
         frozenScaleUpdates[pageNumber] = measuredScale;
         if (!portalHosts[pageNumber]?.isConnected) {
-          const stateHost = syncfusionPageContainersStateRef.current?.[pageNumber];
+          const stateHost = pdfjsPageContainersStateRef.current?.[pageNumber];
           if (stateHost?.isConnected) {
             portalHosts[pageNumber] = stateHost;
             portalHostChanged = true;
@@ -25406,70 +25413,70 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         }
       });
       if (portalHostChanged) {
-        syncfusionInteractionPortalHostsRef.current = { ...portalHosts };
+        pdfjsInteractionPortalHostsRef.current = { ...portalHosts };
       }
       if (Object.keys(frozenScaleUpdates).length > 0) {
-        syncfusionCommittedPageScalesRef.current = {
-          ...(syncfusionCommittedPageScalesRef.current || {}),
+        pdfjsCommittedPageScalesRef.current = {
+          ...(pdfjsCommittedPageScalesRef.current || {}),
           ...frozenScaleUpdates
         };
-        setSyncfusionCommittedPageScales((prev) => ({
+        setPdfjsCommittedPageScales((prev) => ({
           ...(prev || {}),
           ...frozenScaleUpdates
         }));
       }
-      freezeSyncfusionSessionPages(pagesMissingMode, { reset: false });
-      syncSyncfusionLightweightPages('interacting');
-      queueSyncfusionOverlayTransformSync(true);
+      freezePdfjsSessionPages(pagesMissingMode, { reset: false });
+      syncPdfjsLightweightPages('interacting');
+      queuePdfjsOverlayTransformSync(true);
     }
   }, [
-    computeSyncfusionInteractionResidentPages,
-    freezeSyncfusionSessionPages,
-    getSyncfusionViewerScale,
+    computePdfjsInteractionResidentPages,
+    freezePdfjsSessionPages,
+    getPdfjsViewerScale,
     pageNum,
-    queueSyncfusionOverlayTransformSync,
-    setSyncfusionInteractionResidentPagesStable,
-    syncSyncfusionLightweightPages,
-    syncfusionDualLayerEnabled,
-    syncfusionInteractionPhase,
-    syncfusionLiveStableOverlayEnabled,
-    syncfusionPageContainers,
-    syncfusionVisiblePagesVersion,
-    useSyncfusionRenderer
+    queuePdfjsOverlayTransformSync,
+    setPdfjsInteractionResidentPagesStable,
+    syncPdfjsLightweightPages,
+    pdfjsDualLayerEnabled,
+    pdfjsInteractionPhase,
+    pdfjsLiveStableOverlayEnabled,
+    pdfjsPageContainers,
+    pdfjsVisiblePagesVersion,
+    usePdfjsRenderer
   ]);
 
   useEffect(() => {
-    syncSyncfusionLightweightPages(syncfusionInteractionPhase);
+    syncPdfjsLightweightPages(pdfjsInteractionPhase);
   }, [
-    syncSyncfusionLightweightPages,
-    syncfusionCommittingProxyPages,
-    syncfusionInteractionPageModes,
-    syncfusionInteractionPhase
+    syncPdfjsLightweightPages,
+    pdfjsCommittingProxyPages,
+    pdfjsInteractionPageModes,
+    pdfjsInteractionPhase
   ]);
 
   useEffect(() => {
-    if (!useSyncfusionRenderer) return;
-    Object.entries(syncfusionPageContainers).forEach(([pageKey, pageDiv]) => {
+    if (!usePdfjsRenderer) return;
+    Object.entries(pdfjsPageContainers).forEach(([pageKey, pageDiv]) => {
       const pageNumber = Number(pageKey);
       if (!pageDiv || !Number.isFinite(pageNumber)) return;
       pageDiv.style.display = shouldShowPage(pageNumber) ? '' : 'none';
     });
-  }, [useSyncfusionRenderer, syncfusionPageContainers, shouldShowPage]);
+  }, [usePdfjsRenderer, pdfjsPageContainers, shouldShowPage]);
 
-  // Phase 1: attach overlay divs to page divs when Syncfusion reports them.
+  // Phase 1: attach overlay divs to page divs when Pdfjs reports them.
   // Overlay divs are inert in Phase 1 -- they become portal targets in Phase 3.
   useEffect(() => {
-    if (!useSyncfusionRenderer) return;
-    Object.entries(syncfusionPageContainers).forEach(([pageKey, pageDiv]) => {
+    if (!usePdfjsRenderer) return;
+    Object.entries(pdfjsPageContainers).forEach(([pageKey, pageDiv]) => {
       const pageNumber = Number(pageKey);
       if (!Number.isFinite(pageNumber) || pageNumber <= 0) return;
       if (!pageDiv?.isConnected) return;
       attachOverlayToPageDiv(pageNumber);
     });
-  }, [useSyncfusionRenderer, syncfusionPageContainers, attachOverlayToPageDiv]);
+  }, [usePdfjsRenderer, pdfjsPageContainers, attachOverlayToPageDiv]);
 
   useEffect(() => {
-    if (!useSyncfusionRenderer) return;
+    if (!usePdfjsRenderer) return;
     // KAL-241 lag fix — under pdf.js the overlay host is a child of the engine's
     // transformed/scrolled content, so each page overlay already rides the page
     // through every scroll and zoom (live dumps show worstDriftPx=0). The
@@ -25477,9 +25484,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     // for every resident page on every scroll frame — a forced synchronous layout
     // that the engine does NOT need and that the stripped demo never runs. New
     // pages scrolling in are still attached by the Phase 1 effect above
-    // (syncfusionPageContainers change), and zoom settle re-attaches as well, so
+    // (pdfjsPageContainers change), and zoom settle re-attaches as well, so
     // skipping the scroll-driven loop here is alignment-safe for pdf.js.
-    if (getPDFViewerEngine() === PDF_VIEWER_ENGINE_PDFJS) return;
+    if (true) return;
     const viewerContainer = containerRef.current;
     if (!viewerContainer) return;
 
@@ -25495,7 +25502,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       frameId = raf(() => {
         frameId = null;
         const pages = new Set([
-          ...Object.keys(syncfusionPageContainersStateRef.current || {}).map((pageKey) => Number(pageKey)),
+          ...Object.keys(pdfjsPageContainersStateRef.current || {}).map((pageKey) => Number(pageKey)),
           ...Object.keys(overlayDivsRef.current || {}).map((pageKey) => Number(pageKey))
         ]);
         pages.forEach((pageNumber) => {
@@ -25517,12 +25524,12 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         cancelRaf(frameId);
       }
     };
-  }, [useSyncfusionRenderer, attachOverlayToPageDiv, syncfusionPageContainers]);
+  }, [usePdfjsRenderer, attachOverlayToPageDiv, pdfjsPageContainers]);
 
   useEffect(() => {
-    if (!useSyncfusionRenderer || !containerRef.current) {
-      setSyncfusionOverlayWindowPages(new Set());
-      syncfusionVisiblePagesRef.current = new Set();
+    if (!usePdfjsRenderer || !containerRef.current) {
+      setPdfjsOverlayWindowPages(new Set());
+      pdfjsVisiblePagesRef.current = new Set();
       return;
     }
 
@@ -25532,7 +25539,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     }
 
     const visiblePages = new Set();
-    syncfusionVisiblePagesRef.current = new Set();
+    pdfjsVisiblePagesRef.current = new Set();
     const lingerUntilByPage = new Map();
     let pruneTimer = null;
     const clearPruneTimer = () => {
@@ -25548,17 +25555,17 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         const workEndMs = (typeof performance !== 'undefined' && typeof performance.now === 'function')
           ? performance.now()
           : Date.now();
-        recordSyncfusionIdleWork('pageRenderCatchup', workEndMs - workStartMs);
+        recordPdfjsIdleWork('pageRenderCatchup', workEndMs - workStartMs);
       };
-      if (syncfusionLiveStableOverlayEnabled && syncfusionDualLayerEnabled && syncfusionInteractionPhase !== 'idle') {
-        const residentSource = syncfusionInteractionResidentPagesRef.current?.size > 0
-          ? syncfusionInteractionResidentPagesRef.current
-          : syncfusionInteractionResidentPages;
+      if (pdfjsLiveStableOverlayEnabled && pdfjsDualLayerEnabled && pdfjsInteractionPhase !== 'idle') {
+        const residentSource = pdfjsInteractionResidentPagesRef.current?.size > 0
+          ? pdfjsInteractionResidentPagesRef.current
+          : pdfjsInteractionResidentPages;
         const residentPages = Array.from(residentSource)
           .filter((pageNumber) => shouldShowPage(pageNumber));
         const residentSet = new Set(residentPages);
         if (residentSet.size > 0) {
-          setSyncfusionOverlayWindowPages((prev) => {
+          setPdfjsOverlayWindowPages((prev) => {
             if (
               prev.size === residentSet.size &&
               [...residentSet].every((pageNumber) => prev.has(pageNumber))
@@ -25578,12 +25585,12 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
       const viewerScaleForWindow = clampScale(
         Number(
-          (syncfusionViewerRef.current?.getZoomValue?.() ??
-            syncfusionViewerRef.current?.zoomValue ??
+          (pdfjsViewerRef.current?.getZoomValue?.() ??
+            pdfjsViewerRef.current?.zoomValue ??
             (scaleRef.current || scale) * 100)
         ) / 100
       );
-      const overlayPrefetchPages = getSyncfusionOverlayPrefetchPages(viewerScaleForWindow);
+      const overlayPrefetchPages = getPdfjsOverlayPrefetchPages(viewerScaleForWindow);
       const requestedPages = new Set();
       visiblePages.forEach((pageNumber) => {
         for (let offset = -overlayPrefetchPages; offset <= overlayPrefetchPages; offset += 1) {
@@ -25606,7 +25613,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
       const now = Date.now();
       const windowPages = new Set(requestedPages);
-      const previousWindowPages = syncfusionOverlayWindowPagesRef.current;
+      const previousWindowPages = pdfjsOverlayWindowPagesRef.current;
       previousWindowPages.forEach((pageNumber) => {
         if (requestedPages.has(pageNumber)) {
           lingerUntilByPage.delete(pageNumber);
@@ -25616,7 +25623,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         const existingExpiry = lingerUntilByPage.get(pageNumber);
         const expiryAt = Number.isFinite(existingExpiry)
           ? existingExpiry
-          : (now + SYNCFUSION_OVERLAY_WINDOW_LINGER_MS);
+          : (now + PDFJS_OVERLAY_WINDOW_LINGER_MS);
 
         if (expiryAt > now) {
           lingerUntilByPage.set(pageNumber, expiryAt);
@@ -25627,7 +25634,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         lingerUntilByPage.delete(pageNumber);
       });
 
-      setSyncfusionOverlayWindowPages((prev) => {
+      setPdfjsOverlayWindowPages((prev) => {
         if (
           prev.size === windowPages.size &&
           [...windowPages].every((pageNumber) => prev.has(pageNumber))
@@ -25683,20 +25690,20 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       });
 
       if (changed) {
-        syncfusionVisiblePagesRef.current = new Set(visiblePages);
-        if (syncfusionInteractionPhaseRef.current === 'interacting') {
-          scheduleSyncfusionVisiblePagesRefresh();
+        pdfjsVisiblePagesRef.current = new Set(visiblePages);
+        if (pdfjsInteractionPhaseRef.current === 'interacting') {
+          schedulePdfjsVisiblePagesRefresh();
         }
         applyWindowPages();
       }
     }, {
       root: containerRef.current,
-      rootMargin: SYNCFUSION_OVERLAY_ROOT_MARGIN,
+      rootMargin: PDFJS_OVERLAY_ROOT_MARGIN,
       threshold: 0.01
     });
 
     overlayVisibilityObserverRef.current = observer;
-    Object.entries(syncfusionPageContainers).forEach(([pageKey, pageDiv]) => {
+    Object.entries(pdfjsPageContainers).forEach(([pageKey, pageDiv]) => {
       const pageNumber = Number(pageKey);
       if (!pageDiv || !Number.isFinite(pageNumber) || !shouldShowPage(pageNumber)) return;
       observer.observe(pageDiv);
@@ -25707,22 +25714,22 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     return () => {
       clearPruneTimer();
       observer.disconnect();
-      syncfusionVisiblePagesRef.current = new Set();
+      pdfjsVisiblePagesRef.current = new Set();
       if (overlayVisibilityObserverRef.current === observer) {
         overlayVisibilityObserverRef.current = null;
       }
     };
   }, [
     scale,
-    recordSyncfusionIdleWork,
-    scheduleSyncfusionVisiblePagesRefresh,
+    recordPdfjsIdleWork,
+    schedulePdfjsVisiblePagesRefresh,
     shouldShowPage,
-    syncfusionDualLayerEnabled,
-    syncfusionInteractionPhase,
-    syncfusionInteractionResidentPages,
-    syncfusionLiveStableOverlayEnabled,
-    syncfusionPageContainers,
-    useSyncfusionRenderer
+    pdfjsDualLayerEnabled,
+    pdfjsInteractionPhase,
+    pdfjsInteractionResidentPages,
+    pdfjsLiveStableOverlayEnabled,
+    pdfjsPageContainers,
+    usePdfjsRenderer
   ]);
 
   useEffect(() => {
@@ -25897,7 +25904,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   }, [setPageAnnotationVisibilityState]);
 
   // UX 2026-04-23: Cmd/Ctrl+P (or File → Print PDF…) opens the custom Print
-  // Panel. The renderer-side listener used to fire Syncfusion's built-in
+  // Panel. The renderer-side listener used to fire Pdfjs's built-in
   // printModule directly; that path is now gated behind the panel's Print
   // button so users can set page range, rotation, color, markups, copies,
   // etc. before anything actually prints.
@@ -25910,7 +25917,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
     // UX 2026-04-24: custom Print Panel temporarily disabled while we
     // ship the rest of the app. Cmd/Ctrl+P and File → Print now go
-    // straight to the OS native print dialog via Syncfusion's built-in
+    // straight to the OS native print dialog via Pdfjs's built-in
     // print module so users get a familiar, working print flow with
     // their system's own copies / duplex / destination controls. The
     // panel code is still wired up — flip PRINT_PANEL_ENABLED to true
@@ -26096,7 +26103,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         openPanel('window keydown');
       }
     };
-    // Capture phase so we beat Syncfusion's and the browser's default print.
+    // Capture phase so we beat Pdfjs's and the browser's default print.
     window.addEventListener('keydown', keyHandler, true);
 
     return () => {
@@ -26111,7 +26118,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [numPages, pageSizes, pdfFile]);
 
-  // Pages data fed to the PrintPanel — derived from the Syncfusion-reported
+  // Pages data fed to the PrintPanel — derived from the Pdfjs-reported
   // pageSizes map. Falls back to Letter portrait if sizes aren't populated yet
   // so the panel still opens cleanly.
   const printPanelPages = useMemo(() => {
@@ -26128,8 +26135,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   }, [numPages, pageSizes]);
 
   // UX 2026-04-23: the Print Panel's preview and thumbnail strip render every
-  // page on demand through PDF.js, NOT through Syncfusion's thumbnail cache.
-  // Syncfusion only holds a rendered canvas for pages the user has scrolled
+  // page on demand through PDF.js, NOT through Pdfjs's thumbnail cache.
+  // Pdfjs only holds a rendered canvas for pages the user has scrolled
   // near, so reading from it left most preview slots blank or returning null.
   // PDF.js is already loaded for the main app, so we reuse the same pdfDoc and
   // cache each rasterized page by (pageNumber, targetWidth) for instant
@@ -26791,7 +26798,9 @@ ${pageBlocks}
       onLiveSyncToggle: handleLiveSyncToggleRequest,
       // Slice 4: the read-only guided "Verify Live Sync" probe.
       onVerifyLiveSync: handleVerifyLiveSync,
+      onCloseSurveyMode: handleCloseSurveyMode,
       onRequestCreateTemplate,
+      onSelectSurveyTemplate: handleSelectSurveyTemplate,
       pdfFile,
       scale,
       selectedCategories,
@@ -26800,6 +26809,7 @@ ${pageBlocks}
       selectedModuleId,
       selectedSpaceId,
       selectedTemplate,
+      surveyTemplates: appTemplates,
       setActiveCategoryDropdown,
       // [InteractionDiag] route rail-driven tool selection through the logged
       // wrapper so survey-rail tool changes also emit a tool-intent marker.
@@ -26915,6 +26925,8 @@ ${pageBlocks}
     liveSyncVerify,
     handleLiveSyncToggleRequest,
     handleVerifyLiveSync,
+    handleCloseSurveyMode,
+    handleSelectSurveyTemplate,
     msLogin,
     msNeedsReconnect,
     normalizeSurveyMarkerColor,
@@ -26928,6 +26940,7 @@ ${pageBlocks}
     selectedModuleId,
     selectedSpaceId,
     selectedTemplate,
+    appTemplates,
     setActiveCategoryDropdown,
     setActiveTool,
     setAnnotations,
@@ -26968,7 +26981,7 @@ ${pageBlocks}
   ]);
 
   // KAL-21: in-app failure state — replaces the old browser alerts when the
-  // PDF parse path or Syncfusion render path cannot recover. Pre-empts the
+  // PDF parse path or Pdfjs render path cannot recover. Pre-empts the
   // loading/spinner branch so we never leave the viewer blank.
   if (pdfLoadError) {
     const docName = pdfFile?.name || 'this document';
@@ -27007,7 +27020,7 @@ ${pageBlocks}
               {docName}
             </div>
             <div style={{ fontSize: '13px', color: '#9a9a9a', marginBottom: '24px', lineHeight: 1.5 }}>
-              {pdfLoadError.kind === 'syncfusion'
+              {pdfLoadError.kind === 'pdfjs'
                 ? 'The viewer couldn’t render this file. It may be corrupted or use an unsupported PDF feature.'
                 : 'The file couldn’t be parsed. It may be corrupted, encrypted, or not a valid PDF.'}
             </div>
@@ -27017,8 +27030,8 @@ ${pageBlocks}
                 onClick={() => {
                   setPdfLoadError(null);
                   setIsLoadingPDF(true);
-                  setSyncfusionPageContainers({});
-                  setSyncfusionCommittedPageScales({});
+                  setPdfjsPageContainers({});
+                  setPdfjsCommittedPageScales({});
                   setLoadRetryToken((t) => t + 1);
                 }}
                 style={{
@@ -27125,7 +27138,7 @@ ${pageBlocks}
           UI including the context menu below. */}
       <SaveLogBanner />
       {/* UX 2026-04-23: custom Print Panel — replaces the OS print dialog and
-          Syncfusion's built-in print flow. Non-destructive: close/cancel
+          Pdfjs's built-in print flow. Non-destructive: close/cancel
           discards settings, Print fires to the selected printer. A temporary
           J ↔ K variant toggle lives in its titlebar while we compare layouts. */}
       <PrintPanel
@@ -27143,7 +27156,7 @@ ${pageBlocks}
           is a pure view that takes the viewer's action handlers as a bundle. */}
       {renderAnnotationContextMenu(annotationContextMenu, closeAnnotationContextMenu, {
         pasteAnnotationAt,
-        syncfusionViewerRef,
+        pdfjsViewerRef,
         selectedNativeTextMarkupRef,
         setHasUnsavedAnnotations,
         onUnsavedAnnotationsChange,
@@ -27374,14 +27387,14 @@ ${pageBlocks}
 
           {/* PDF Container - Optimized */}
           <div
-            ref={useSyncfusionRenderer ? syncfusionWrapperRef : containerRef}
-            onMouseDown={useSyncfusionRenderer ? undefined : handleMouseDown}
-            onMouseMove={useSyncfusionRenderer ? undefined : handleMouseMove}
-            onMouseUp={useSyncfusionRenderer ? undefined : handleMouseUp}
-            onMouseLeave={useSyncfusionRenderer ? undefined : handleMouseUp}
-            onWheelCapture={useSyncfusionRenderer ? handleSyncfusionWrapperWheel : undefined}
-            onPointerDown={useSyncfusionRenderer ? handleSyncfusionWrapperPointerDown : undefined}
-            onPointerMove={useSyncfusionRenderer ? handleSyncfusionWrapperPointerMove : undefined}
+            ref={usePdfjsRenderer ? pdfjsWrapperRef : containerRef}
+            onMouseDown={usePdfjsRenderer ? undefined : handleMouseDown}
+            onMouseMove={usePdfjsRenderer ? undefined : handleMouseMove}
+            onMouseUp={usePdfjsRenderer ? undefined : handleMouseUp}
+            onMouseLeave={usePdfjsRenderer ? undefined : handleMouseUp}
+            onWheelCapture={usePdfjsRenderer ? handlePdfjsWrapperWheel : undefined}
+            onPointerDown={usePdfjsRenderer ? handlePdfjsWrapperPointerDown : undefined}
+            onPointerMove={usePdfjsRenderer ? handlePdfjsWrapperPointerMove : undefined}
             style={containerStyle}
             data-testid="pdf-container"
           >
@@ -27391,14 +27404,14 @@ ${pageBlocks}
               const snapshot = getDebugSnapshot();
               const rates = snapshot.rates || {};
               const rateEntries = Object.entries(rates)
-                .filter(([name]) => name.startsWith('syncfusion_') || name.startsWith('app_syncfusion_'))
+                .filter(([name]) => name.startsWith('pdfjs_') || name.startsWith('app_pdfjs_'))
                 .sort((a, b) => b[1] - a[1])
                 .slice(0, 4);
 
-              const refreshFlushCount = snapshot.counters?.app_syncfusion_refresh_flush || 0;
-              const refreshQueueCount = snapshot.counters?.app_syncfusion_refresh_queued || 0;
-              const overlayPageCount = Object.keys(syncfusionPageContainers).length;
-              const overlayWindowCount = syncfusionOverlayWindowPages.size;
+              const refreshFlushCount = snapshot.counters?.app_pdfjs_refresh_flush || 0;
+              const refreshQueueCount = snapshot.counters?.app_pdfjs_refresh_queued || 0;
+              const overlayPageCount = Object.keys(pdfjsPageContainers).length;
+              const overlayWindowCount = pdfjsOverlayWindowPages.size;
 
               return (
                 <div
@@ -27425,20 +27438,20 @@ ${pageBlocks}
                   <div>Page: {pageNum}/{numPages || 0}</div>
                   <div>Zoom: {Math.round(scale * 100)}%</div>
                   <div>Overlay pages: {overlayWindowCount}/{overlayPageCount}</div>
-                  <div>Live-stable overlay: {syncfusionLiveStableOverlayEnabled ? 'on' : 'off'}</div>
-                  <div>Dual layer: {syncfusionDualLayerEnabled ? 'on' : 'off'}</div>
+                  <div>Live-stable overlay: {pdfjsLiveStableOverlayEnabled ? 'on' : 'off'}</div>
+                  <div>Dual layer: {pdfjsDualLayerEnabled ? 'on' : 'off'}</div>
                   <div>
-                    Syncfusion interaction: {syncfusionInteractionPhase}
-                    {syncfusionInteractionReasonRef.current ? ` (${syncfusionInteractionReasonRef.current})` : ''}
+                    Pdfjs interaction: {pdfjsInteractionPhase}
+                    {pdfjsInteractionReasonRef.current ? ` (${pdfjsInteractionReasonRef.current})` : ''}
                   </div>
                   <div>
-                    Resident pages: {syncfusionInteractionResidentPages.size}/{SYNCFUSION_INTERACTION_MAX_RESIDENT_PAGES}
-                    {' '}LW: {syncfusionLightweightPages.size}
+                    Resident pages: {pdfjsInteractionResidentPages.size}/{PDFJS_INTERACTION_MAX_RESIDENT_PAGES}
+                    {' '}LW: {pdfjsLightweightPages.size}
                   </div>
                   <div>
-                    Session: {syncfusionInteractionSessionId}
-                    {' '}queue={syncfusionCommitQueueDepth}
-                    {' '}flips={syncfusionInteractionModeFlipCount}
+                    Session: {pdfjsInteractionSessionId}
+                    {' '}queue={pdfjsCommitQueueDepth}
+                    {' '}flips={pdfjsInteractionModeFlipCount}
                   </div>
                   <div>
                     Recorder: {snapshot.data?.overlayLagRecorderActive ? 'on' : 'off'}
@@ -27473,47 +27486,46 @@ ${pageBlocks}
                 </div>
               );
             })()}
-            {useSyncfusionRenderer ? (
+            {usePdfjsRenderer ? (
               <>
                 <div
-                  className="syncfusion-renderer-only"
+                  className="pdf-engine-host"
                   style={{
                     position: 'absolute',
                     inset: 0
                   }}
                 >
-                  <PDFViewerEngineSelector
-                    id={syncfusionViewerElementId}
-                    ref={syncfusionViewerRef}
-                    className={`survey-syncfusion-viewer ${activeTool === 'select' ? 'survey-syncfusion-select-mode' : 'survey-syncfusion-standard-mode'}`}
-                    resourceUrl={syncfusionResourceUrl}
-                    documentSource={syncfusionDocumentBytes}
+                  <PdfjsViewerContainer
+                    id={pdfjsViewerElementId}
+                    ref={pdfjsViewerRef}
+                    className={`survey-pdfjs-viewer ${activeTool === 'select' ? 'survey-pdfjs-select-mode' : 'survey-pdfjs-standard-mode'}`}
+                    documentSource={pdfjsDocumentBytes}
                     style={{ width: '100%', height: '100%' }}
-                    initialRenderPages={SYNCFUSION_INITIAL_RENDER_PAGES}
-                    scrollDelayMs={SYNCFUSION_SCROLL_DELAY_MS}
+                    initialRenderPages={PDFJS_INITIAL_RENDER_PAGES}
+                    scrollDelayMs={PDFJS_SCROLL_DELAY_MS}
                     restrictZoomRequest={
-                      SYNCFUSION_RESTRICT_ZOOM_REQUEST_DURING_INTERACTION &&
-                      syncfusionLiveStableOverlayEnabled &&
-                      syncfusionDualLayerEnabled &&
-                      syncfusionInteractionPhase !== 'idle'
+                      PDFJS_RESTRICT_ZOOM_REQUEST_DURING_INTERACTION &&
+                      pdfjsLiveStableOverlayEnabled &&
+                      pdfjsDualLayerEnabled &&
+                      pdfjsInteractionPhase !== 'idle'
                     }
                     interactionMode={activeTool === 'pan' ? 'Pan' : 'TextSelection'}
                     textHighlightModeActive={activeTool === 'text-highlight'}
                     textHighlightColor={strokeColor}
                     textHighlightOpacity={Math.max(0, Math.min(1, Number(strokeOpacity) / 100 || 0.5))}
-                    textMarkupMode={getSyncfusionTextMarkupMode(activeTool)}
+                    textMarkupMode={getPdfjsTextMarkupMode(activeTool)}
                     textMarkupColor={strokeColor}
                     textMarkupOpacity={Math.max(0, Math.min(1, Number(strokeOpacity) / 100 || 1))}
-                    onDocumentLoaded={handleSyncfusionDocumentLoad}
-                    onDocumentLoadFailed={handleSyncfusionDocumentLoadFailed}
-                    onPageChanged={handleSyncfusionPageChange}
-                    onZoomChanged={getPDFViewerEngine() === PDF_VIEWER_ENGINE_PDFJS ? undefined : handleSyncfusionZoomChange}
+                    onDocumentLoaded={handlePdfjsDocumentLoad}
+                    onDocumentLoadFailed={handlePdfjsDocumentLoadFailed}
+                    onPageChanged={handlePdfjsPageChange}
+                    onZoomChanged={undefined}
                     onZoomPhase={handlePdfjsZoomPhase}
-                    onPageRendered={handleSyncfusionPageRenderComplete}
-                    onTextSelectionEnd={handleSyncfusionTextSelectionEnd}
+                    onPageRendered={handlePdfjsPageRenderComplete}
+                    onTextSelectionEnd={handlePdfjsTextSelectionEnd}
                     onPDFBookmarksAvailable={handlePDFBookmarksAvailable}
-                    onPageContainersChange={getPDFViewerEngine() === PDF_VIEWER_ENGINE_PDFJS ? undefined : handleSyncfusionPageContainersChange}
-                    onDebugEvent={handleSyncfusionDebugEvent}
+                    onPageContainersChange={undefined}
+                    onDebugEvent={handlePdfjsDebugEvent}
                     onDocumentUnload={handleDocumentUnload}
                     formDesignerEnabled={formModeActive}
                     onFormFieldAdd={handleFormFieldAdd}
@@ -27524,7 +27536,7 @@ ${pageBlocks}
                   />
                 </div>
                 {/* KAL-47: Survey-native form-field properties popover. Mounts
-                    only when a field is selected. The Syncfusion built-in
+                    only when a field is selected. The Pdfjs built-in
                     properties dialog stays disabled. */}
                 {selectedFormField && (
                   <FormFieldPropertiesPanel
@@ -27535,23 +27547,23 @@ ${pageBlocks}
                   />
                 )}
                 {numPages > 0 && (() => {
-                  const syncfusionViewerScale = clampScale(
+                  const pdfjsViewerScale = clampScale(
                     Number(
-                      (syncfusionViewerRef.current?.getZoomValue?.() ??
-                        syncfusionViewerRef.current?.zoomValue ??
+                      (pdfjsViewerRef.current?.getZoomValue?.() ??
+                        pdfjsViewerRef.current?.zoomValue ??
                         scale * 100)
                     ) / 100
                   );
-                  const useLiveStableOverlay = syncfusionLiveStableOverlayEnabled && syncfusionDualLayerEnabled;
-                  const isZoomOnlyInteraction = syncfusionInteractionIsZoomOnlyRef.current;
+                  const useLiveStableOverlay = pdfjsLiveStableOverlayEnabled && pdfjsDualLayerEnabled;
+                  const isZoomOnlyInteraction = pdfjsInteractionIsZoomOnlyRef.current;
 
                   // When a drawing/editing tool is active, always include the current page
                   // so the Canvas layer can mount even on pages with no existing annotations.
                   const toolNeedsCanvas = activeTool !== 'pan' && activeTool !== 'text-select';
                   const currentPage = pageNum;
                   const candidatePageNumbers = new Set([
-                    ...Object.keys(syncfusionPageContainers).map(k => Number(k)),
-                    ...Array.from(syncfusionOverlayWindowPages || []),
+                    ...Object.keys(pdfjsPageContainers).map(k => Number(k)),
+                    ...Array.from(pdfjsOverlayWindowPages || []),
                     ...Object.keys(annotationsByPage || {}).map(k => Number(k)),
                     ...Object.keys(newSurveyMarkersByPage || {}).map(k => Number(k)),
                     ...Object.keys(searchResultsByPage || {}).map(k => Number(k)),
@@ -27570,8 +27582,8 @@ ${pageBlocks}
                       // portal — even with no app annotations — so the link, form, and
                       // text layers mount on clean / link-only / pure-form pages too.
                       if (
-                        getPDFViewerEngine() === PDF_VIEWER_ENGINE_PDFJS &&
-                        syncfusionPageContainers[pageNumber]?.isConnected
+                        true &&
+                        pdfjsPageContainers[pageNumber]?.isConnected
                       ) {
                         return true;
                       }
@@ -27590,7 +27602,7 @@ ${pageBlocks}
                       if (hasAnnotations || hasSurveyMarkers || hasRegions || hasSearchHighlights) {
                         return true;
                       }
-                      if (!syncfusionOverlayWindowPages.has(pageNumber)) return false;
+                      if (!pdfjsOverlayWindowPages.has(pageNumber)) return false;
                       return hasAnnotations || hasSurveyMarkers || hasRegions || hasSearchHighlights;
                     })
                     .sort((a, b) => a - b)
@@ -27598,11 +27610,11 @@ ${pageBlocks}
                       // Phase 3: Portal target is the persistent overlay div (Phase 1)
                       const overlayDiv = attachOverlayToPageDiv(pageNumber);
                       if (!overlayDiv) return null;
-                      ensureSyncfusionStablePortalChildren(pageNumber, overlayDiv);
+                      ensurePdfjsStablePortalChildren(pageNumber, overlayDiv);
                       // Render the React annotation portal directly into the stable page overlay.
                       // The separate liveRoot/snapshot roots are managed imperatively for zoom
                       // presentation; using liveRoot as the React portal target can leave the
-                      // app annotation tree mounted into an empty detached root after Syncfusion
+                      // app annotation tree mounted into an empty detached root after Pdfjs
                       // rebuilds page DOM, which makes annotations look deleted while state still
                       // contains them.
                       const portalTarget = overlayDiv;
@@ -27612,26 +27624,26 @@ ${pageBlocks}
                       const pageAnnotations = annotationsByPage[pageNumber];
                       const pageSize = pageSizes[pageNumber];
                       if (!pageSize) return null;  // Page size not yet known -- skip this render
-                      const pagePdfReadyState = readSyncfusionPageVisitState(pageNumber);
+                      const pagePdfReadyState = readPdfjsPageVisitState(pageNumber);
                       const pageAnnotationObjects = Array.isArray(pageAnnotations?.objects) ? pageAnnotations.objects : [];
                       // Persisted form-field values for this page (pdf.js engine
                       // only). Fed to PdfjsFormLayer so reloaded widgets restore
                       // their saved value. Cheap filter — forms are rare.
-                      const pageFormFieldValues = getPDFViewerEngine() === PDF_VIEWER_ENGINE_PDFJS
+                      const pageFormFieldValues = true
                         ? pageAnnotationObjects
                             .filter((o) => o?.data?.type === 'form-field')
                             .map((o) => ({ fieldId: o.data.fieldId, value: o.data.value }))
                         : null;
                       if (pagePdfReadyState.ready) {
-                        syncfusionPagePdfEverReadyRef.current.add(pageNumber);
+                        pdfjsPagePdfEverReadyRef.current.add(pageNumber);
                       }
-                      const pagePdfHasEverBeenReady = syncfusionPagePdfEverReadyRef.current.has(pageNumber);
-                      // Under the owned pdf.js engine the Syncfusion page-surface
-                      // readiness probe never flips ready (it only matches Syncfusion's
+                      const pagePdfHasEverBeenReady = pdfjsPagePdfEverReadyRef.current.has(pageNumber);
+                      // Under the owned pdf.js engine the Pdfjs page-surface
+                      // readiness probe never flips ready (it only matches Pdfjs's
                       // own page surfaces), which would hide the entire overlay on any
                       // page that has annotations. pdf.js rasters its own pages quickly,
                       // so this load-flash gate does not apply there.
-                      const hideOverlayUntilPdfReady = getPDFViewerEngine() !== PDF_VIEWER_ENGINE_PDFJS &&
+                      const hideOverlayUntilPdfReady = false &&
                         pageAnnotationObjects.length > 0 &&
                         !pagePdfHasEverBeenReady &&
                         !pagePdfReadyState.ready;
@@ -27649,18 +27661,18 @@ ${pageBlocks}
 
                       const resolvedPageSize = pageSize;
 
-                      const committedPageScale = Number(syncfusionCommittedPageScales[pageNumber]);
+                      const committedPageScale = Number(pdfjsCommittedPageScales[pageNumber]);
                       const hasCommittedPageScale = Number.isFinite(committedPageScale) && committedPageScale > 0;
-                      const measuredPageScale = getSyncfusionPageScale(pageNumber, syncfusionViewerScale);
+                      const measuredPageScale = getPdfjsPageScale(pageNumber, pdfjsViewerScale);
                       const resolvedMeasuredPageScale = Number.isFinite(measuredPageScale) && measuredPageScale > 0
                         ? measuredPageScale
-                        : (hasCommittedPageScale ? committedPageScale : (syncfusionViewerScale > 0 ? syncfusionViewerScale : 1));
-                      const overlayContentNode = syncfusionOverlayContentRefs.current?.[pageNumber] || null;
+                        : (hasCommittedPageScale ? committedPageScale : (pdfjsViewerScale > 0 ? pdfjsViewerScale : 1));
+                      const overlayContentNode = pdfjsOverlayContentRefs.current?.[pageNumber] || null;
                       const overlayContentTransform = typeof overlayContentNode?.style?.transform === 'string'
                         ? overlayContentNode.style.transform
                         : '';
                       const overlayContentTransformScale = parseCssTransformScaleX(overlayContentTransform);
-                      const storedOverlayTransformScale = Number(syncfusionOverlayTransformRatioByPageRef.current?.[pageNumber]) || 1;
+                      const storedOverlayTransformScale = Number(pdfjsOverlayTransformRatioByPageRef.current?.[pageNumber]) || 1;
                       const activeOverlayTransformScale =
                         Math.abs(overlayContentTransformScale - 1) > 0.001
                           ? overlayContentTransformScale
@@ -27685,14 +27697,14 @@ ${pageBlocks}
                         pageNumber === (Number(pageNumRef.current) || 1)
                         && typeof window !== 'undefined' && window.__DIAG_PAL_RENDER
                       ) {
-                          appDebug(`[App-Debug p${pageNumber}] PAL render — pageSize={w:${pageSize.width}, h:${pageSize.height}}, layerScale=${layerScale}, measuredPageScale=${resolvedMeasuredPageScale}, committedPageScale=${hasCommittedPageScale ? committedPageScale : 'none'}, legacyCommitCompensationPending=${legacyCommitCompensationPending}, legacyCommitCompensationScale=${legacyCommitCompensationScale}, overlayContentTransformScale=${overlayContentTransformScale}, storedOverlayTransformScale=${storedOverlayTransformScale}, syncfusionViewerScale=${syncfusionViewerScale}, overlayDiv=${!!overlayDiv}, overlayDivW=${overlayDiv?.offsetWidth}, overlayDivH=${overlayDiv?.offsetHeight}, overlayDivTransform=${overlayDiv?.style?.transform || 'none'}, overlayContentTransform=${overlayContentTransform || 'none'}`);
+                          appDebug(`[App-Debug p${pageNumber}] PAL render — pageSize={w:${pageSize.width}, h:${pageSize.height}}, layerScale=${layerScale}, measuredPageScale=${resolvedMeasuredPageScale}, committedPageScale=${hasCommittedPageScale ? committedPageScale : 'none'}, legacyCommitCompensationPending=${legacyCommitCompensationPending}, legacyCommitCompensationScale=${legacyCommitCompensationScale}, overlayContentTransformScale=${overlayContentTransformScale}, storedOverlayTransformScale=${storedOverlayTransformScale}, pdfjsViewerScale=${pdfjsViewerScale}, overlayDiv=${!!overlayDiv}, overlayDivW=${overlayDiv?.offsetWidth}, overlayDivH=${overlayDiv?.offsetHeight}, overlayDivTransform=${overlayDiv?.style?.transform || 'none'}, overlayContentTransform=${overlayContentTransform || 'none'}`);
                       }
 
                       // Proxy rendering variables. In pan mode, zoom and scroll both use
                       // lightweight annotations during interaction to avoid SVG catch-up jank.
-                      const interactionPageMode = syncfusionInteractionPageModes[pageNumber] || 'full';
+                      const interactionPageMode = pdfjsInteractionPageModes[pageNumber] || 'full';
                       const isProxyPageWhileInteracting = interactionPageMode === 'proxy';
-                      const isProxyPageWhileCommitting = syncfusionCommittingProxyPages.has(pageNumber);
+                      const isProxyPageWhileCommitting = pdfjsCommittingProxyPages.has(pageNumber);
                       const pageCalloutCount = lightweightCalloutCountByPage[pageNumber] || 0;
                       const canRenderLightweightOverlay = Boolean(
                         !requiresLegacyAnnotationLayer &&
@@ -27700,15 +27712,15 @@ ${pageBlocks}
                       );
                       const shouldRenderZoomPreview = false;
                       const shouldRenderLightweightAnnotations = canRenderLightweightOverlay && (
-                        (syncfusionInteractionPhase === 'interacting' && isProxyPageWhileInteracting) ||
-                        (syncfusionInteractionPhase === 'committing' && isProxyPageWhileCommitting)
+                        (pdfjsInteractionPhase === 'interacting' && isProxyPageWhileInteracting) ||
+                        (pdfjsInteractionPhase === 'committing' && isProxyPageWhileCommitting)
                       );
                       const firstObject = pageAnnotationObjects.length > 0 ? pageAnnotationObjects[0] : null;
                       const lastObject = pageAnnotationObjects.length > 0 ? pageAnnotationObjects[pageAnnotationObjects.length - 1] : null;
                       const annotationRevision = `${pageAnnotationObjects.length}:${firstObject?.id || firstObject?.annotationId || firstObject?.pdfAnnotationId || firstObject?.type || ''}:${lastObject?.id || lastObject?.annotationId || lastObject?.pdfAnnotationId || lastObject?.type || ''}`;
                       const calloutRevision = `${pageCalloutCount}:${selectedModuleId || ''}:${showSurveyPanel ? 1 : 0}`;
-                      const proxyPayload = syncfusionInteractionProxyPayloads[pageNumber] || null;
-                      const proxyRevision = `${syncfusionInteractionSessionId}:${pageNumber}`;
+                      const proxyPayload = pdfjsInteractionProxyPayloads[pageNumber] || null;
+                      const proxyRevision = `${pdfjsInteractionSessionId}:${pageNumber}`;
                       const proxyHasRenderablePayload = !!(
                         proxyPayload &&
                         (
@@ -27716,7 +27728,7 @@ ${pageBlocks}
                           (Array.isArray(proxyPayload.callouts) && proxyPayload.callouts.length > 0)
                         )
                       );
-                      const isProxyReady = syncfusionProxyReadyPages.has(pageNumber);
+                      const isProxyReady = pdfjsProxyReadyPages.has(pageNumber);
                       const shouldHideFullLayer = (
                         shouldRenderLightweightAnnotations &&
                           (shouldRenderZoomPreview || proxyHasRenderablePayload) &&
@@ -27740,8 +27752,8 @@ ${pageBlocks}
                       const shouldHideNativePdfAnnotationLayer = Boolean(
                         nativePdfAnnotationPolicy?.hideNativeLayer
                       );
-                      const nativePdfAnnotationCanvasId = `${syncfusionViewerElementId}_annotationCanvas_${pageNumber - 1}`;
-                      const nativePdfPageDivId = `${syncfusionViewerElementId}_pageDiv_${pageNumber - 1}`;
+                      const nativePdfAnnotationCanvasId = `${pdfjsViewerElementId}_annotationCanvas_${pageNumber - 1}`;
+                      const nativePdfPageDivId = `${pdfjsViewerElementId}_pageDiv_${pageNumber - 1}`;
                       const nativePdfAnnotationLayerHideCss = `
                         [id="${nativePdfAnnotationCanvasId}"],
                         [id="${nativePdfAnnotationCanvasId}"] *,
@@ -27784,12 +27796,12 @@ ${pageBlocks}
 
                       return createPortal(
                         <div
-                          key={`syncfusion-overlay-${pageNumber}`}
+                          key={`pdfjs-overlay-${pageNumber}`}
                           ref={(node) => {
                             if (node) {
-                              syncfusionOverlayLayerRefs.current[pageNumber] = node;
+                              pdfjsOverlayLayerRefs.current[pageNumber] = node;
                             } else {
-                              delete syncfusionOverlayLayerRefs.current[pageNumber];
+                              delete pdfjsOverlayLayerRefs.current[pageNumber];
                             }
                           }}
                           style={{
@@ -27810,7 +27822,7 @@ ${pageBlocks}
                           data-annotation-visual-cover-active={annotationVisualCoverActive ? 'true' : 'false'}
                           data-native-pdf-annotation-layer-hidden={shouldHideNativePdfAnnotationLayer ? 'true' : 'false'}
                           data-native-pdf-annotation-layer-reason={nativePdfAnnotationPolicy?.reason || ''}
-                          data-zoom-preview-active={syncfusionZoomPreviewActive ? 'true' : 'false'}
+                          data-zoom-preview-active={pdfjsZoomPreviewActive ? 'true' : 'false'}
                           data-render-lightweight-annotations={shouldRenderLightweightAnnotations ? 'true' : 'false'}
                           data-render-zoom-preview={shouldRenderZoomPreview ? 'true' : 'false'}
                           data-use-live-stable-overlay={useLiveStableOverlay ? 'true' : 'false'}
@@ -27823,7 +27835,7 @@ ${pageBlocks}
                               {nativePdfAnnotationLayerHideCss}
                             </style>
                           )}
-                          {getPDFViewerEngine() === PDF_VIEWER_ENGINE_PDFJS && pdfDoc && activeTool === 'text-select' && (
+                          {true && pdfDoc && activeTool === 'text-select' && (
                             // Build the selectable text layer ONLY while the text tool is
                             // active. renderTextLayer + getTextContent per page is costly;
                             // mounting it on every page during normal viewing/zoom starves
@@ -27836,7 +27848,7 @@ ${pageBlocks}
                               interactive
                             />
                           )}
-                          {getPDFViewerEngine() === PDF_VIEWER_ENGINE_PDFJS && searchResultsByPage[pageNumber] && searchResultsByPage[pageNumber].length > 0 && (
+                          {true && searchResultsByPage[pageNumber] && searchResultsByPage[pageNumber].length > 0 && (
                             <SearchHighlightLayer
                               pageNumber={pageNumber}
                               width={resolvedPageSize.width}
@@ -27849,7 +27861,7 @@ ${pageBlocks}
                               fillContainer
                             />
                           )}
-                          {getPDFViewerEngine() === PDF_VIEWER_ENGINE_PDFJS && pdfDoc && (
+                          {true && pdfDoc && (
                             <PdfjsLinkLayer
                               pdf={pdfDoc}
                               pageNumber={pageNumber}
@@ -27857,7 +27869,7 @@ ${pageBlocks}
                               onInternalNavigate={(targetPage) => goToPage(targetPage, { fallback: 'nearest' })}
                             />
                           )}
-                          {getPDFViewerEngine() === PDF_VIEWER_ENGINE_PDFJS && pdfDoc && (
+                          {true && pdfDoc && (
                             <PdfjsFormLayer
                               pdf={pdfDoc}
                               pageNumber={pageNumber}
@@ -27871,12 +27883,12 @@ ${pageBlocks}
                           <div
                             ref={(node) => {
                               if (node) {
-                                syncfusionOverlayContentRefs.current[pageNumber] = node;
+                                pdfjsOverlayContentRefs.current[pageNumber] = node;
                               } else {
-                                delete syncfusionOverlayContentRefs.current[pageNumber];
+                                delete pdfjsOverlayContentRefs.current[pageNumber];
                               }
                             }}
-                            data-syncfusion-overlay-content={pageNumber}
+                            data-pdfjs-overlay-content={pageNumber}
                             style={{
                               position: 'absolute',
                               top: 0,
@@ -27888,9 +27900,9 @@ ${pageBlocks}
                             <div
                               ref={(node) => {
                                 if (node) {
-                                  syncfusionOverlayLegacyCompensationRefs.current[pageNumber] = node;
+                                  pdfjsOverlayLegacyCompensationRefs.current[pageNumber] = node;
                                 } else {
-                                  delete syncfusionOverlayLegacyCompensationRefs.current[pageNumber];
+                                  delete pdfjsOverlayLegacyCompensationRefs.current[pageNumber];
                                 }
                               }}
                               data-legacy-overlay-compensation={pageNumber}
@@ -27960,7 +27972,7 @@ ${pageBlocks}
                                 pageClipboard={pageClipboardPayload}
                                 onPastePageHere={handlePastePageHere}
                                 onPaintCommitted={handleLegacyOverlayPaintCommitted}
-                                isInteracting={syncfusionInteractionPhase === 'interacting' || zoomOverlayTransformActiveRef.current}
+                                isInteracting={pdfjsInteractionPhase === 'interacting' || zoomOverlayTransformActiveRef.current}
                                 isZooming={isZooming}
                                 preferImmediateVisibleZoomRender={true}
                               />
@@ -27973,7 +27985,7 @@ ${pageBlocks}
                                 width={resolvedPageSize.width}
                                 height={resolvedPageSize.height}
                                 scale={layerScale}
-                                interactionSessionId={syncfusionInteractionSessionId}
+                                interactionSessionId={pdfjsInteractionSessionId}
                                 proxyObjects={proxyPayload?.objects}
                                 proxyCallouts={proxyPayload?.callouts}
                                 annotations={pageAnnotations}
@@ -27991,7 +28003,7 @@ ${pageBlocks}
                                 layerVisibility={annotationLayerVisibility}
                                 annotationRevision={proxyPayload ? proxyRevision : annotationRevision}
                                 calloutRevision={proxyPayload ? proxyRevision : calloutRevision}
-                                onRenderReady={markSyncfusionProxyPageReady}
+                                onRenderReady={markPdfjsProxyPageReady}
                               />
                               )
                             ) : null}
@@ -28058,7 +28070,7 @@ ${pageBlocks}
                                 <div
                                   id="region-selection-target"
                                   data-region-selection-target={pageNumber}
-                                  data-region-selection-renderer={requiresLegacyAnnotationLayer ? 'syncfusion-legacy' : 'syncfusion-svg'}
+                                  data-region-selection-renderer={requiresLegacyAnnotationLayer ? 'pdfjs-legacy' : 'pdfjs-svg'}
                                   style={{
                                     position: 'absolute',
                                     top: 0,
@@ -28070,7 +28082,7 @@ ${pageBlocks}
                               </div>
                             )}
                             </div>
-                          {/* SVG layer + Drawing Canvas: inside the Syncfusion overlay-content
+                          {/* SVG layer + Drawing Canvas: inside the Pdfjs overlay-content
                               transform path so zoom uses the same smooth CSS scale as the PDF. */}
                           {!requiresLegacyAnnotationLayer && (() => {
                             // [OpenTiming] BUG#2 — first visible marks painted: page 1's
@@ -28091,7 +28103,7 @@ ${pageBlocks}
                             const isEditMode = editingAnnotation?.pageNumber === pageNumber;
                             const suspendFullSvgForProxy =
                               shouldRenderLightweightAnnotations &&
-                              syncfusionInteractionPhase === 'interacting' &&
+                              pdfjsInteractionPhase === 'interacting' &&
                               proxyHasRenderablePayload &&
                               isProxyReady;
                             // UX 2026-04-19: bbox edit mode (uniform resize + rotate chrome
@@ -28109,7 +28121,7 @@ ${pageBlocks}
                               <div
                                 data-annotation-real-surface={pageNumber}
                                 data-annotation-hydration-gated={annotationHydrationGated ? 'true' : 'false'}
-                                data-zoom-snapshot-hidden={syncfusionZoomPreviewActive ? 'true' : 'false'}
+                                data-zoom-snapshot-hidden={pdfjsZoomPreviewActive ? 'true' : 'false'}
                                 style={{
                                   position: 'absolute',
                                   top: 0,
@@ -28117,7 +28129,7 @@ ${pageBlocks}
                                   width: '100%',
                                   height: '100%',
                                   pointerEvents: 'none',
-                                  visibility: syncfusionZoomPreviewActive ? 'hidden' : undefined,
+                                  visibility: pdfjsZoomPreviewActive ? 'hidden' : undefined,
                                 }}
                               >
                               {pageRegions && pageRegions.length > 0 && !(showRegionSelection && regionSelectionPage === pageNumber) && (() => {
@@ -28181,7 +28193,7 @@ ${pageBlocks}
                                   <div
                                     id="region-selection-target"
                                     data-region-selection-target={pageNumber}
-                                    data-region-selection-renderer="syncfusion-svg-stable"
+                                    data-region-selection-renderer="pdfjs-svg-stable"
                                     style={{
                                       position: 'absolute',
                                       top: 0,
@@ -28224,7 +28236,7 @@ ${pageBlocks}
                                   cursor: (svgInteractive && !isFabricEditMode) ? 'default' : undefined,
                                 }}
                                 onPointerDown={(svgInteractive && !isFabricEditMode) ? (e) => {
-                                  if (handleSelectSyncfusionTextMarkup(pageNumber, e, resolvedPageSize)) return;
+                                  if (handleSelectPdfjsTextMarkup(pageNumber, e, resolvedPageSize)) return;
                                   e.stopPropagation();
                                 } : undefined}
                                 onMouseDown={(svgInteractive && !isFabricEditMode) ? (e) => e.stopPropagation() : undefined}
@@ -28981,7 +28993,7 @@ ${pageBlocks}
                             );
                           })()}
                           </div>
-                          {renderAnnotationHydrationPageCover(pageNumber, 'syncfusion', annotationVisualCoverActive)}
+                          {renderAnnotationHydrationPageCover(pageNumber, 'pdfjs', annotationVisualCoverActive)}
                         </div>,
                         portalTarget
                       );
@@ -29045,7 +29057,7 @@ ${pageBlocks}
                                   />
                                 )}
                                 {/* Search SurveyMarker Layer */}
-                                {!useSyncfusionRenderer && pageSizes[pageNumber] && searchResultsByPage[pageNumber] && searchResultsByPage[pageNumber].length > 0 && (
+                                {!usePdfjsRenderer && pageSizes[pageNumber] && searchResultsByPage[pageNumber] && searchResultsByPage[pageNumber].length > 0 && (
                                   <SearchHighlightLayer
                                     pageNumber={pageNumber}
                                     width={pageSizes[pageNumber].width}
@@ -29138,7 +29150,7 @@ ${pageBlocks}
                                       // skip happens inside SVGAnnotationLayer via editingCalloutId.
                                       style={{ position: 'relative', width: '100%', height: '100%', pointerEvents: 'none', zIndex: 100, visibility: annotationHydrationGated ? 'hidden' : undefined, cursor: (svgInteractive && !isFabricEditMode) ? 'default' : undefined }}
                                       onPointerDown={(svgInteractive && !isFabricEditMode) ? (e) => {
-                                        if (handleSelectSyncfusionTextMarkup(pageNumber, e, pageSizes[pageNumber])) return;
+                                        if (handleSelectPdfjsTextMarkup(pageNumber, e, pageSizes[pageNumber])) return;
                                         e.stopPropagation();
                                       } : undefined}
                                       onMouseDown={(svgInteractive && !isFabricEditMode) ? (e) => e.stopPropagation() : undefined}
@@ -29687,7 +29699,7 @@ ${pageBlocks}
                               />
                             )}
                             {/* Search SurveyMarker Layer */}
-                            {!useSyncfusionRenderer && pageSizes[pageNum] && searchResultsByPage[pageNum] && searchResultsByPage[pageNum].length > 0 && (
+                            {!usePdfjsRenderer && pageSizes[pageNum] && searchResultsByPage[pageNum] && searchResultsByPage[pageNum].length > 0 && (
                               <SearchHighlightLayer
                                 pageNumber={pageNum}
                                 width={pageSizes[pageNum].width}
@@ -29780,7 +29792,7 @@ ${pageBlocks}
                                       cursor: (svgInteractive && !isFabricEditMode) ? 'default' : undefined,
                                     }}
                                     onPointerDown={(svgInteractive && !isFabricEditMode) ? (e) => {
-                                      if (handleSelectSyncfusionTextMarkup(pageNum, e, pageSizes[pageNum])) return;
+                                      if (handleSelectPdfjsTextMarkup(pageNum, e, pageSizes[pageNum])) return;
                                       e.stopPropagation();
                                     } : undefined}
                                     onMouseDown={(svgInteractive && !isFabricEditMode) ? (e) => e.stopPropagation() : undefined}
@@ -31476,7 +31488,7 @@ ${pageBlocks}
 
             {/* KAL-47: Forms subtoolbar. Each button selects a form-field tool
                 (e.g. `form-textbox`), which triggers the useEffect that calls
-                Syncfusion's `setFormFieldMode`. Designer mode is toggled on
+                Pdfjs's `setFormFieldMode`. Designer mode is toggled on
                 automatically and the next click on the PDF places the field. */}
             {activeCategoryDropdown === 'forms' && (
               <>
@@ -32160,175 +32172,6 @@ ${pageBlocks}
                     </div>
                   );
                 })()}
-              </div>
-            </div>
-          </>
-        )}
-
-        {/* Template Selection Modal */}
-        {showTemplateSelection && (
-          <>
-            <div
-              onClick={() => setShowTemplateSelection(false)}
-              style={{
-                position: 'fixed',
-                top: 0,
-                left: 0,
-                right: 0,
-                bottom: 0,
-                background: COLORS.modal.overlay,
-                zIndex: 10000,
-                animation: 'fadeIn 0.2s ease-out',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center'
-              }}
-            >
-              <div
-                onClick={(e) => e.stopPropagation()}
-                style={{
-                  background: COLORS.modal.surface,
-                  border: `1px solid ${COLORS.modal.border}`,
-                  borderRadius: '8px',
-                  padding: '24px',
-                  width: '500px',
-                  maxWidth: '90vw',
-                  maxHeight: '80vh',
-                  overflow: 'auto',
-                  boxShadow: SHADOWS.xl,
-                  animation: 'fadeIn 0.2s ease-out'
-                }}
-              >
-                <div style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  marginBottom: '20px'
-                }}>
-                  <h2 style={{
-                    margin: 0,
-                    fontSize: '18px',
-                    fontWeight: '600',
-                    color: COLORS.modal.textPrimary,
-                    fontFamily: FONT_FAMILY
-                  }}>
-                    Select Template
-                  </h2>
-                  <button
-                    onClick={() => setShowTemplateSelection(false)}
-                    className="btn btn-icon btn-icon-sm"
-                    style={{
-                      background: 'transparent',
-                      border: 'none',
-                      color: '#999'
-                    }}
-                  >
-                    <Icon name="close" size={18} />
-                  </button>
-                </div>
-
-                {appTemplates.length === 0 ? (
-                  <div
-                    style={{
-                      textAlign: 'center',
-                      padding: '40px',
-                      color: COLORS.modal.textMuted,
-                      display: 'flex',
-                      flexDirection: 'column',
-                      alignItems: 'center',
-                      gap: '16px'
-                    }}
-                  >
-                    <p style={{ margin: 0 }}>No templates available.</p>
-                    <p style={{ margin: 0 }}>Please create a template first.</p>
-                    <button
-                      onClick={() => {
-                        setShowTemplateSelection(false);
-                        setShowSurveyPanel(false);
-                        setSelectedTemplate(null);
-                        setSelectedModuleId(null);
-                        setActiveTool('select');
-                        onRequestCreateTemplate?.();
-                      }}
-                      className="btn btn-md"
-                      style={{
-                        minWidth: '160px',
-                        background: COLORS.modal.primaryButton,
-                        border: `1px solid ${COLORS.modal.borderStrong}`,
-                        color: COLORS.modal.textPrimary
-                      }}
-                      onMouseEnter={handleModalPrimaryButtonMouseEnter}
-                      onMouseLeave={handleModalPrimaryButtonMouseLeave}
-                    >
-                      Create Template
-                    </button>
-                  </div>
-                ) : (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                      {appTemplates.map(template => (
-                        <button
-                          key={template.id}
-                          onClick={() => {
-                            const firstModuleId = (template.modules || template.spaces || [])?.[0]?.id || null;
-                            setSelectedTemplate(template);
-                            setSelectedModuleId(firstModuleId);
-                            setSelectedCategoryId(null);
-                            setActiveCategoryDropdown('survey');
-                            setActiveTool('survey-marker');
-                            setShowTemplateSelection(false);
-                            setShowSurveyPanel(true);
-                          }}
-                          className="btn btn-default btn-md"
-                          style={{
-                            textAlign: 'left',
-                            justifyContent: 'flex-start',
-                            padding: '12px 16px',
-                            background: COLORS.modal.panel,
-                            border: `1px solid ${COLORS.modal.borderStrong}`,
-                            transition: 'background 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease'
-                          }}
-                          onMouseEnter={handleModalOptionMouseEnter}
-                          onMouseLeave={handleModalOptionMouseLeave}
-                        >
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                            <Icon name="template" size={20} />
-                            <div>
-                              <div style={{ fontWeight: '500', color: COLORS.modal.textPrimary }}>
-                                {template.name || 'Untitled Template'}
-                              </div>
-                              <div style={{ fontSize: '12px', color: COLORS.modal.textMuted, marginTop: '2px' }}>
-                                {((template.modules || template.spaces) || []).length} module{((template.modules || template.spaces) || []).length !== 1 ? 's' : ''}
-                              </div>
-                            </div>
-                          </div>
-                        </button>
-                      ))}
-                    </div>
-                    <button
-                      onClick={() => {
-                        setShowTemplateSelection(false);
-                        setShowSurveyPanel(false);
-                        setSelectedTemplate(null);
-                        setSelectedModuleId(null);
-                        setActiveTool('select');
-                        onRequestCreateTemplate?.();
-                      }}
-                      className="btn btn-md"
-                      style={{
-                        alignSelf: 'center',
-                        minWidth: '160px',
-                        background: COLORS.modal.primaryButton,
-                        border: `1px solid ${COLORS.modal.borderStrong}`,
-                        color: COLORS.modal.textPrimary
-                      }}
-                      onMouseEnter={handleModalPrimaryButtonMouseEnter}
-                      onMouseLeave={handleModalPrimaryButtonMouseLeave}
-                    >
-                      Create Template
-                    </button>
-                  </div>
-                )}
               </div>
             </div>
           </>

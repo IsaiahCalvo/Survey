@@ -43,14 +43,6 @@ const ALLOWED_LICENSES = new Set([
   'Zlib',        // permissive — appears compound with MIT in `pako` (`(MIT AND Zlib)`)
 ]);
 
-// Syncfusion paid commercial license waiver.
-// All @syncfusion/* packages ship under a paid commercial EULA
-// (https://www.syncfusion.com/eula/es/). The repo holds a valid
-// VITE_SYNCFUSION_LICENSE_KEY (see .github/workflows/release.yml), so usage
-// is legally licensed. license-checker reports the EULA URL as the license
-// string, which fails any allowlist by design — we exempt the entire
-// @syncfusion namespace as a documented commercial-license waiver.
-//
 // OFL-1.1 font package waiver.
 // @embedpdf/fonts-arabic, @embedpdf/fonts-hebrew, @embedpdf/fonts-jp,
 // @embedpdf/fonts-kr, @embedpdf/fonts-latin are all licensed under the
@@ -67,9 +59,8 @@ const ALLOWED_LICENSES = new Set([
 // intact for all other packages.
 //
 // This waiver does NOT weaken the AGPL-contagion defense: AGPL/GPL/SSPL
-// licenses on any non-Syncfusion, non-font package will still hard-block the gate.
+// licenses on any non-font package will still hard-block the gate.
 const PACKAGE_NAME_WAIVERS = [
-  /^@syncfusion\//,
   /^@embedpdf\/fonts-/,  // OFL-1.1 — permissive font license, see waiver comment above
 ];
 
@@ -132,8 +123,8 @@ function isLicenseAllowed(licenseString) {
 
 function isPackageWaived(packageWithVersion) {
   if (PACKAGE_VERSION_WAIVERS.has(packageWithVersion)) return true;
-  // Strip @version to test name-pattern waivers (e.g. @syncfusion/* family).
-  // Package keys look like: '@syncfusion/ej2-base@32.1.19' or 'react@18.2.0'.
+  // Strip @version to test name-pattern waivers.
+  // Package keys look like: '@scope/package@1.2.3' or 'react@18.2.0'.
   const lastAt = packageWithVersion.lastIndexOf('@');
   const name = lastAt > 0 ? packageWithVersion.slice(0, lastAt) : packageWithVersion;
   return PACKAGE_NAME_WAIVERS.some((pattern) => pattern.test(name));
@@ -173,7 +164,7 @@ if (violations.length > 0) {
     console.error(`  ${v.pkg}  →  ${v.license}`);
   }
   console.error(`\nAllowed licenses (SPDX): ${[...ALLOWED_LICENSES].join(', ')}`);
-  console.error('Waivers: @syncfusion/* (paid commercial EULA), plus explicit per-package overrides — see scripts/check-licenses.mjs.');
+  console.error('Waivers: scoped package-name waivers plus explicit per-package overrides — see scripts/check-licenses.mjs.');
   console.error('Defends Pitfall 22 (AGPL contagion — commercially fatal in a Stripe-billed app).');
   console.error('To request a new waiver, add `@2tag-license-waiver: <reason>` to your PR body and update PACKAGE_VERSION_WAIVERS in scripts/check-licenses.mjs.');
   process.exit(1);

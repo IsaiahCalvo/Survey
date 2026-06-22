@@ -5,8 +5,8 @@ The original "throwaway, delete after verdict" note is void: the verdict landed 
 the **pdf.js path**, and the demos below are now the **gold-standard reference and
 regression test** that the real app's pdf.js engine is being brought up to match
 (see `.planning/phases/37-pdfjs-cutover/DEMO-PARITY-BLUEPRINT.md`). They load in
-isolation (no auth / Supabase / Syncfusion) so they stay a clean baseline to test
-against. A cleanup/Syncfusion-removal pass must leave these in place.
+isolation (no auth / Supabase / Pdfjs) so they stay a clean baseline to test
+against. A cleanup/Pdfjs-removal pass must leave these in place.
 
 ## The three demos (run the dev server, then append to the address)
 
@@ -22,7 +22,7 @@ verdict chose pdf.js, but the demos themselves stay.)
 
 ## The question
 
-Replace Syncfusion by **owning the renderer on pdf.js** (already in this app), or
+Replace Pdfjs by **owning the renderer on pdf.js** (already in this app), or
 adopt **EmbedPDF** (PDFium-WASM, ships a tiling pipeline)? The v1 spike was a
 single flattened page and couldn't answer it. This v2 is a real mini-viewer where
 **both arms do the same four hard things**, so the comparison is on data, not vibes:
@@ -35,7 +35,7 @@ single flattened page and couldn't answer it. This v2 is a real mini-viewer wher
 ## How to run
 
 Dev server, then open `…/?spike=renderer`. It loads in isolation — no auth, no
-Supabase, no Syncfusion, no touching `PDFViewer.jsx`.
+Supabase, no Pdfjs, no touching `PDFViewer.jsx`.
 
 - **Load PDF…** picks a local file; the four buttons load bundled fixtures
   (`debug/fixtures/`, served at `/debug-fixtures/`): a 120-page doc (scroll/virt

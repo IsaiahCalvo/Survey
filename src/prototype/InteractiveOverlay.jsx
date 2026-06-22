@@ -1,8 +1,8 @@
 // ============================================================================
-// PROTOTYPE — THROWAWAY. Imported-annotation layer, OWNED (no Syncfusion, no
+// PROTOTYPE — THROWAWAY. Imported-annotation layer, OWNED (no Pdfjs, no
 // baked pixels) — a faithful copy of the real app's import recipe.
 // ============================================================================
-// The real app does NOT let Syncfusion render imported markups: it reads them
+// The real app does NOT let Pdfjs render imported markups: it reads them
 // with pdf-lib and converts each into its own smooth, editable shape (see
 // src/utils/pdfAnnotationImporter.js → parseAppearanceStream +
 // convertAppearancePathToFabricPath). The SMOOTH geometry lives in each mark's

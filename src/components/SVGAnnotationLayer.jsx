@@ -4191,7 +4191,7 @@ const SVGAnnotationLayer = memo(({
       preserveAspectRatio="none"
       onPointerDown={(e) => {
         if (isInteractive) {
-          e.stopPropagation(); // Prevent Syncfusion from seeing SVG events (SVGAnimatedString crash)
+          e.stopPropagation(); // Prevent Pdfjs from seeing SVG events (SVGAnimatedString crash)
           // UX: Phase 14 CREATE-01 (callout half) — when the callout tool
           // is active and the click lands on empty SVG space (NOT inside
           // an existing callout), start a transient creation drag. If the

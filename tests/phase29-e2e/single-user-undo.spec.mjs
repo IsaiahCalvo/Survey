@@ -18,7 +18,7 @@ test('Cmd+Z undoes the local user\'s most recent action', async ({ page }) => {
 
   // Navigate to page 6 via the Phase 29 test seam exposed by App.jsx.
   await page.evaluate(() => window.__navigateToPage?.(6));
-  // Allow Syncfusion + SVG layer to settle.
+  // Allow Pdfjs + SVG layer to settle.
   await page.waitForTimeout(800);
 
   const before = await page.locator('svg [data-anno-id]').count();

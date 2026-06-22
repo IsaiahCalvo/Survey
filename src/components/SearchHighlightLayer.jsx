@@ -112,7 +112,7 @@ const SearchHighlightLayer = memo(({
     const layerRect = layerNode?.getBoundingClientRect?.() || null;
     const pageHostNode = layerNode?.closest?.('.e-pv-page-div') || null;
     const pageHostRect = pageHostNode?.getBoundingClientRect?.() || null;
-    const contentNode = layerNode?.closest?.('[data-syncfusion-overlay-content]') || null;
+    const contentNode = layerNode?.closest?.('[data-pdfjs-overlay-content]') || null;
     const contentRect = contentNode?.getBoundingClientRect?.() || null;
 
     return {

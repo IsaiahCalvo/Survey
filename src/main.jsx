@@ -95,35 +95,6 @@ import { sanitizeConsoleLogText, shouldCaptureConsoleLine } from './utils/consol
   console.error = (...args) => capture('console.error @ ', _error, args);
 })();
 
-// Cmd/Ctrl+Shift+E — toggle the PDF viewer engine (original Syncfusion <-> the
-// owned pdf.js engine) and reload. The choice is remembered in localStorage so
-// it survives reloads; Syncfusion stays the default fallback when unset. This is
-// the one-step way to run the new engine (where form fields + saving + the zoom
-// behavior live) in the desktop app without a URL param or devtools. Mirrors the
-// bulletproof Cmd+Shift+L pattern: capture-phase, install-once, every step
-// individually try/catch'd so it works no matter what state the app is in.
-(() => {
-  const handler = (event) => {
-    try {
-      const key = event.key || '';
-      const isShortcut = (event.metaKey || event.ctrlKey)
-        && event.shiftKey
-        && (key === 'E' || key === 'e' || event.code === 'KeyE');
-      if (!isShortcut) return;
-      try { event.preventDefault(); } catch (_e) { /* swallow */ }
-      try { event.stopPropagation(); } catch (_e) { /* swallow */ }
-      let current = 'syncfusion';
-      try { current = window.localStorage.getItem('pdfViewerEngine') || 'syncfusion'; } catch (_e) { /* swallow */ }
-      const next = current === 'pdfjs' ? 'syncfusion' : 'pdfjs';
-      try { window.localStorage.setItem('pdfViewerEngine', next); } catch (_e) { /* swallow */ }
-      try { console.log('[EngineToggle] switching PDF viewer engine to "' + next + '" and reloading'); } catch (_e) { /* swallow */ }
-      try { window.location.reload(); } catch (_e) { /* swallow */ }
-    } catch (_err) { /* never throw out of a global hotkey */ }
-  };
-  try { window.addEventListener('keydown', handler, true); } catch (_e) { /* swallow */ }
-  try { document.addEventListener('keydown', handler, true); } catch (_e) { /* swallow */ }
-})();
-
 // BULLETPROOF Cmd+Shift+L (2026-05-03) — capture-phase, install-once,
 // outside-React keydown handler. Lives at module-init level so it survives
 // any React crash, error-boundary fallback, route change, or unmount of
@@ -327,7 +298,6 @@ import { sanitizeConsoleLogText, shouldCaptureConsoleLine } from './utils/consol
 })();
 
 import { createRoot } from 'react-dom/client';
-import { registerLicense } from '@syncfusion/ej2-base';
 import App from './AppShell';
 import ErrorBoundary from './components/ErrorBoundary';
 // KeyboardShortcutsOverlay moved into App so it only renders on the home tab — UX 2026-05-13.
@@ -346,20 +316,7 @@ import './utils/cursorScoping';
 // observer so Cmd+Shift+L can ship a network trace alongside the console log.
 import { installNetworkLogger } from './utils/networkLogger';
 installNetworkLogger();
-import '@syncfusion/ej2-base/styles/material.css';
-import '@syncfusion/ej2-buttons/styles/material.css';
-import '@syncfusion/ej2-inputs/styles/material.css';
-import '@syncfusion/ej2-popups/styles/material.css';
-import '@syncfusion/ej2-lists/styles/material.css';
-import '@syncfusion/ej2-navigations/styles/material.css';
-import '@syncfusion/ej2-dropdowns/styles/material.css';
-import '@syncfusion/ej2-splitbuttons/styles/material.css';
-import '@syncfusion/ej2-notifications/styles/material.css';
-import '@syncfusion/ej2-pdfviewer/styles/material.css';
 import './styles.css';
-
-const FALLBACK_SYNCFUSION_LICENSE_KEY = 'Ix0oFS8QJAw9HSQvXkViQlBad1ZJXGFWfVJpTGpQdk5xdV9DaVZUTWY/P1ZhSXxVdkdiWX1dcHBXQ2hdUEJ9XEA=';
-registerLicense(import.meta.env.VITE_SYNCFUSION_LICENSE_KEY || FALLBACK_SYNCFUSION_LICENSE_KEY);
 
 // Suppress PDF.js "TT: undefined function" warnings
 // Suppress PDF.js "TT: undefined function" warnings
@@ -403,7 +360,7 @@ if (import.meta.env.DEV) {
 
   // DEV-ONLY PROTOTYPE: `?spike=renderer` renders the throwaway PDF-renderer
   // spike (pdf.js vs EmbedPDF) in isolation — no auth, no Supabase, no
-  // Syncfusion. See src/prototype/RendererSpike.jsx + src/prototype/NOTES.md.
+  // Pdfjs. See src/prototype/RendererSpike.jsx + src/prototype/NOTES.md.
   const spike = params.get('spike');
   if (!devRouteActive && spike === 'renderer') {
     devRouteActive = true;
@@ -422,7 +379,7 @@ if (import.meta.env.DEV) {
     });
   }
 
-  // DEV-ONLY PROTOTYPE: `?spike=features` — troubleshoot the features Syncfusion
+  // DEV-ONLY PROTOTYPE: `?spike=features` — troubleshoot the features Pdfjs
   // still owns (bookmarks, text select/copy, find, links, markup) on the pdf.js
   // renderer before the cutover. See src/prototype/FeatureSpike.jsx.
   if (!devRouteActive && spike === 'features') {

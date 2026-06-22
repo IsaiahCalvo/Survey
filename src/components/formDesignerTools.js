@@ -3,7 +3,7 @@
  *
  * Pure helpers for the custom Forms toolbar. Keeping field-type metadata
  * + tool-id mapping out of App.jsx makes the placement logic testable
- * without spinning the React/Syncfusion stack.
+ * without spinning the React/Pdfjs stack.
  */
 
 // Tool ids surfaced through the App's existing `activeTool` state. We
@@ -36,7 +36,7 @@ export function isFormTool(id) {
 }
 
 /**
- * Build the Syncfusion *FieldSettings payload for `addFormField`. Centralised
+ * Build the Pdfjs *FieldSettings payload for `addFormField`. Centralised
  * so the toolbar buttons + the unit tests + the right-click "place here"
  * path all produce identical shapes.
  *
@@ -49,7 +49,7 @@ export function buildFieldSettings(formFieldType, opts) {
   const baseName = opts?.name || `${formFieldType}_${Date.now().toString(36)}`;
 
   // Width/height defaults differ per type — checkboxes/radio are square,
-  // signatures are wider. Mirror what Syncfusion's own toolbar uses so the
+  // signatures are wider. Mirror what Pdfjs's own toolbar uses so the
   // placement feels familiar.
   const sized = sizeBoundsForType(formFieldType, bounds);
 

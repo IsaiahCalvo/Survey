@@ -32,7 +32,7 @@ test('Cmd+Z on empty stack is silent — zero DOM diff', async ({ page }) => {
 
   // Y.UndoManager.undo() is a clean no-op on empty undoStack — no error or warn
   // log should fire as a result of the Cmd+Z press itself. Note: pre-existing
-  // benign console traffic from Syncfusion / React HMR is NOT captured by the
+  // benign console traffic from Pdfjs / React HMR is NOT captured by the
   // listener because it was attached AFTER the page settled.
   expect(consoleMsgs).toEqual([]);
 });

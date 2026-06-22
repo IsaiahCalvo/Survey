@@ -1,23 +1,13 @@
 /**
  * pdfEngineContract.js — the single "doorway" interface contract for the PDF
- * page-drawing engine (Phase 37 — Syncfusion → owned pdf.js cutover).
+ * page-drawing engine.
  *
  * This file is DOCUMENTATION + a machine-checkable spec. It has no runtime
- * behavior and is intentionally not imported by PDFViewer's render path. Both
- * the current Syncfusion container (`SyncfusionPDFContainer.jsx`) and the future
+ * behavior and is intentionally not imported by PDFViewer's render path. The
  * pdf.js container must satisfy the imperative-ref shape and accept the props
- * described here, so that the engine can be swapped behind one seam without
- * touching the ~929 call sites in PDFViewer.jsx.
+ * described here.
  *
- * Source of truth: this contract was transcribed directly from the live
- * `useImperativeHandle` and props of `SyncfusionPDFContainer.jsx` (verified
- * 2026-06-01), NOT from an audit guess. When that component changes, update
- * this file in the same commit.
- *
- * IMPORTANT: the engine-selection flag lives in `viewerShared.js`
- * (`getPDFViewerEngine`), deliberately SEPARATE from the in-PDFViewer
- * `useSyncfusionRenderer` flag, which gates overlay/zoom *behavior*, not which
- * engine mounts. Do not conflate the two.
+ * Source of truth: keep this file in sync with `PdfjsViewerContainer.jsx`.
  */
 
 /**
@@ -32,7 +22,7 @@
  * @property {(sourceId:string, destOverride?:any, preferSourceLookup?:boolean)=>(number|null)} resolveBookmarkPageFromSource
  * @property {{goToPage:(page:number)=>boolean}} navigationModule
  *
- * State getters (both method and property forms exist on the Syncfusion handle):
+ * State getters (both method and property forms exist on the Pdfjs handle):
  * @property {()=>number} getPageCount
  * @property {()=>number} getCurrentPage
  * @property {()=>number} getZoomValue

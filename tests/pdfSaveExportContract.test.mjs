@@ -357,7 +357,7 @@ test('PDF export uses original PDF bytes as the source to avoid baked viewer ann
   assert.equal(
     /sourcePdfForExport\s*=\s*blob/.test(APP_SOURCE),
     false,
-    'explicit PDF export must not replace the source PDF with Syncfusion saveAsBlob output',
+    'explicit PDF export must not replace the source PDF with Pdfjs saveAsBlob output',
   );
   assert.match(APP_SOURCE, /skippedViewerSaveAsBlob:\s*true/);
   assert.match(APP_SOURCE, /prevents baked page artifacts plus duplicate editable app annotations/);

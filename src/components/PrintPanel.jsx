@@ -556,7 +556,7 @@ export default function PrintPanel({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, getPageContentRotation, effectivePages, currentPage]);
 
-  // Fetch thumbnails lazily. Syncfusion's `getThumbnailDataUrl` reads from
+  // Fetch thumbnails lazily. Pdfjs's `getThumbnailDataUrl` reads from
   // the already-rendered page canvas cache, so only pages the user has
   // scrolled near will resolve. For pages not yet in view, we retry briefly.
   useEffect(() => {

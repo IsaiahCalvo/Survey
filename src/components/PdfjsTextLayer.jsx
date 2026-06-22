@@ -1,7 +1,7 @@
 // Selectable text overlay for one pdf.js page.
 // ----------------------------------------------------------------------------
 // Lays pdf.js's own renderTextLayer transparent <span>s over the page so native
-// OS select + copy work — battle-tested glyph positioning, no Syncfusion. Sits
+// OS select + copy work — battle-tested glyph positioning, no Pdfjs. Sits
 // inside the per-page overlay div, so it rides the glued-zoom transform on the
 // app overlay root during a gesture and re-renders at the committed scale on
 // settle. There is NO div-level zoom transform here — positioning is driven by

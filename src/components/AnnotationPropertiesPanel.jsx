@@ -99,7 +99,7 @@ const AnnotationPropertiesPanel = ({
   }, []);
 
   // Dismiss on click-outside, escape.
-  // UX: the SVG selection layer + Syncfusion viewer aggressively call
+  // UX: the SVG selection layer + Pdfjs viewer aggressively call
   // stopPropagation on their own pointer handlers, which blocks bubble-
   // phase listeners at the document level. Binding in the CAPTURE phase
   // lets the panel see every outside click before descendants can swallow

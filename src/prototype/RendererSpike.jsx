@@ -2,7 +2,7 @@
 // PROTOTYPE — THROWAWAY. NOT PRODUCTION. Delete src/prototype/ + the
 // `?spike=renderer` block in src/main.jsx once the verdict is recorded.
 // ============================================================================
-// THE QUESTION: replace Syncfusion by OWNING the renderer on pdf.js, or adopt
+// THE QUESTION: replace Pdfjs by OWNING the renderer on pdf.js, or adopt
 // EmbedPDF (PDFium-WASM, ships tiling)? This is a real two-arm mini-viewer so the
 // comparison is on data, not vibes. Both arms do the SAME hard things:
 //   • continuous, virtualized multi-page scroll (100+ pages)

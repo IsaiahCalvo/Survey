@@ -149,7 +149,7 @@ export function summarizeOverlayLagSamples(samples = []) {
         count: roundOverlayRecorderValue(idleWorkTotals[workType.replace(/Ms$/, 'Count')] || 0, 3)
       }));
     const rawZoomSignalCount = (Number(interactionEventTotals.overlayWheelZoom) || 0) +
-      (Number(interactionEventTotals.syncfusionWheelZoom) || 0);
+      (Number(interactionEventTotals.pdfjsWheelZoom) || 0);
     const workReductionSummary = {
       rawZoomSignalCount,
       pdfZoomWorkCount: zoomEvents,
@@ -201,7 +201,7 @@ export function summarizeOverlayLagSamples(samples = []) {
       const measuredWork = [
         ['annotationRestoration', Number(idleWork.annotationRestorationMs) || 0],
         ['pageRenderCatchup', Number(idleWork.pageRenderCatchupMs) || 0],
-        ['syncfusionInternals', Number(idleWork.syncfusionInternalsMs) || 0],
+        ['pdfjsInternals', Number(idleWork.pdfjsInternalsMs) || 0],
         ['measurementWork', Math.max(Number(idleWork.measurementWorkMs) || 0, Number(sample?.sampleCaptureCostMs) || 0)]
       ].sort((left, right) => right[1] - left[1]);
       const strongestMeasuredMs = measuredWork[0]?.[1] || 0;
@@ -213,18 +213,18 @@ export function summarizeOverlayLagSamples(samples = []) {
         return measuredWork[0][0];
       }
       if (
-        Number(events.syncfusionContainerMutation) > 0 ||
-        Number(events.syncfusionContainerMapChange) > 0 ||
-        Number(events.syncfusionPageChange) > 0
+        Number(events.pdfjsContainerMutation) > 0 ||
+        Number(events.pdfjsContainerMapChange) > 0 ||
+        Number(events.pdfjsPageChange) > 0
       ) return 'pageRenderCatchup';
       if (
         Number(wheel.scrollEvents) > 0 ||
         Number(wheel.zoomEvents) > 0 ||
-        Number(events.syncfusionWheelScroll) > 0 ||
-        Number(events.syncfusionScroll) > 0 ||
-        Number(events.syncfusionZoomChange) > 0 ||
+        Number(events.pdfjsWheelScroll) > 0 ||
+        Number(events.pdfjsScroll) > 0 ||
+        Number(events.pdfjsZoomChange) > 0 ||
         Number(events.overlayWheelZoom) > 0
-      ) return 'syncfusionInternals';
+      ) return 'pdfjsInternals';
       return 'unattributedRafPause';
     };
     const slowFrameAttributionBuckets = {};

@@ -37,6 +37,15 @@ const ICON_RENDERERS = {
       </svg>
     ),
 
+    // Stacked layers icon used for Spaces.
+    layers: (size, color, style, className) => (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={style} className={className}>
+        <path d="M12.83 2.18C12.3 1.94 11.7 1.94 11.17 2.18L2.6 6.08C1.8 6.44 1.8 7.56 2.6 7.92L11.17 11.82C11.7 12.06 12.3 12.06 12.83 11.82L21.4 7.92C22.2 7.56 22.2 6.44 21.4 6.08L12.83 2.18Z" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+        <path d="M22 12.65L12.83 16.81C12.3 17.05 11.7 17.05 11.17 16.81L2 12.65" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+        <path d="M22 17.65L12.83 21.81C12.3 22.05 11.7 22.05 11.17 21.81L2 17.65" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+    ),
+
     // Template icon - simplified with just outlines and page lines
     template: (size, color, style, className) => (
       <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={style} className={className}>

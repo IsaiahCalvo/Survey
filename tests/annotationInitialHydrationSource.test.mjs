@@ -94,7 +94,7 @@ test('first visible page is visually covered while annotation hydration is gated
   assert.match(APP_SOURCE, /function renderAnnotationHydrationPageCover\(/);
   assert.match(APP_SOURCE, /data-annotation-hydration-cover="true"/);
   assert.match(APP_SOURCE, /data-annotation-visual-cover-active=\{annotationVisualCoverActive \? 'true' : 'false'\}/);
-  assert.match(APP_SOURCE, /renderAnnotationHydrationPageCover\(pageNumber, 'syncfusion', annotationVisualCoverActive\)/);
+  assert.match(APP_SOURCE, /renderAnnotationHydrationPageCover\(pageNumber, 'pdfjs', annotationVisualCoverActive\)/);
   assert.match(APP_SOURCE, /renderAnnotationHydrationPageCover\(pageNumber, 'pdfjs-continuous', annotationHydrationGated\)/);
   assert.match(APP_SOURCE, /renderAnnotationHydrationPageCover\(pageNum, 'pdfjs-single', annotationHydrationGated\)/);
   assert.match(APP_SOURCE, /visualCoverActive: !ready/);

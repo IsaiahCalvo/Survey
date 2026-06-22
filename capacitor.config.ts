@@ -4,17 +4,23 @@ import type { CapacitorConfig } from '@capacitor/cli';
 // Android apps. The same bundle ships to Electron (desktop) and the two
 // mobile targets without a fork. The `webDir` must match Vite's build output;
 // `appId` is the permanent store identifier — do not change after submission.
+const env = (globalThis as unknown as { process?: { env?: Record<string, string | undefined> } }).process?.env ?? {};
+const liveReloadUrl = env.CAPACITOR_SERVER_URL?.trim();
+
 const config: CapacitorConfig = {
   appId: 'com.kalvoe.survey',
   appName: 'Survey',
   webDir: 'dist',
-  server: {
-    // Dev convenience: when set, the app loads from this URL instead of the
-    // bundled dist/ folder — lets us point a simulator at the running Vite
-    // dev server for hot reload. Leave commented out for production builds.
-    // url: 'http://192.168.1.10:5173',
-    // cleartext: true,
-  },
+  ...(liveReloadUrl
+    ? {
+        server: {
+          // Dev-only live reload: set CAPACITOR_SERVER_URL to a LAN/Tailscale
+          // Vite URL before `npx cap sync`. Omit it for production builds.
+          url: liveReloadUrl,
+          cleartext: true
+        }
+      }
+    : {}),
   ios: {
     // UX 2026-04-22: Let the web view fill the whole screen edge-to-edge;
     // CSS safe-area insets inside the app handle the content padding. With

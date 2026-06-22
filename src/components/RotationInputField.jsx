@@ -45,7 +45,7 @@
  *   borderRadius 6px, boxShadow '0 4px 12px rgba(0,0,0,0.3)'
  * - Input value: 13px / 500 weight / -0.2px letter-spacing / #ddd / center-aligned
  * - ° suffix span: 12px / 400 weight / #999 / pointer-events none
- * - z-index 101 (one above the overlay div's 100, below Syncfusion controls)
+ * - z-index 101 (one above the overlay div's 100, below Pdfjs controls)
  * - FONT_FAMILY: project-wide stack re-declared locally (house style — used
  *   in 14+ files; the 2026-04-08 Fabric.js single-name gotcha does NOT apply
  *   to HTML <input>; the browser handles fallback stacks correctly)
@@ -320,7 +320,7 @@ function RotationInputField({
   }, [angle, isFocused, isRotating]);
 
   // Round 6 fix: window-capture keydown guard. Runs FIRST in the DOM event
-  // flow (before any document-capture listener including Syncfusion's PDF
+  // flow (before any document-capture listener including Pdfjs's PDF
   // viewer intercept). When our input has focus, this guard calls
   // e.stopPropagation() to prevent any downstream listener from firing —
   // crucially, no other listener can call preventDefault() on the keydown,
@@ -332,7 +332,7 @@ function RotationInputField({
     if (!isVisible) return;
     const guard = (e) => {
       if (!inputRef.current || document.activeElement !== inputRef.current) return;
-      // Stop propagation so Syncfusion / PAL / App handlers can't see this
+      // Stop propagation so Pdfjs / PAL / App handlers can't see this
       // event and can't preventDefault on it.
       e.stopPropagation();
       if (LOG) {
@@ -419,7 +419,7 @@ function RotationInputField({
   const handleKeyDown = useCallback((e) => {
     // React onKeyDown is a no-op now — all key handling moved to the
     // window-capture guard below (see Round 6 fix). Reason: something in the
-    // capture-phase chain (suspected: Syncfusion's PDF viewer document-level
+    // capture-phase chain (suspected: Pdfjs's PDF viewer document-level
     // listener, or Electron's keyboard intercept) was preventDefault-ing
     // digit keystrokes BEFORE they reached the input, blocking text
     // insertion entirely. The window-capture guard runs first in the event
@@ -576,7 +576,7 @@ function RotationInputField({
         boxShadow: '0 4px 12px rgba(0, 0, 0, 0.3)',
         // UX: zIndex 101 is one above the overlay div's 100 (App.jsx) so the
         // input sits visually above the SVG annotation layer inside the same
-        // host div. Below Syncfusion's native page controls (>1000) per the
+        // host div. Below Pdfjs's native page controls (>1000) per the
         // v2.0 portal architecture.
         zIndex: 101,
         fontFamily: FONT_FAMILY,

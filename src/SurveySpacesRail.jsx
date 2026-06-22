@@ -274,7 +274,9 @@ const SurveySpacesRail = ({
   numPages,
   onLiveSyncToggle,
   onVerifyLiveSync,
+  onCloseSurveyMode,
   onRequestCreateTemplate,
+  onSelectSurveyTemplate,
   pdfFile,
   scale,
   selectedCategories,
@@ -314,6 +316,7 @@ const SurveySpacesRail = ({
   showSurveyPanel,
   spaces,
   surveyMarkers,
+  surveyTemplates = [],
   surveyReviewByMarkerId = {},
   surveyConflictByMarkerId = {},
   onResolveExcelConflict = null,
@@ -323,8 +326,33 @@ const SurveySpacesRail = ({
 }) => {
   const [isSurveyPanelCollapsed, setIsSurveyPanelCollapsed] = useState(true);
   const [openEntityDropdownId, setOpenEntityDropdownId] = useState(null);
+  const [isModuleSelectorOpen, setIsModuleSelectorOpen] = useState(false);
   const [railIconHover, setRailIconHover] = useState(null);
+  const moduleSelectorRef = useRef(null);
   const surveyMarkerDragRestoreRef = useRef(null);
+  const availableSurveyTemplates = Array.isArray(surveyTemplates) ? surveyTemplates : [];
+  const surveyModuleOptions = selectedTemplate ? ((selectedTemplate.modules || selectedTemplate.spaces) || []) : [];
+  const selectedModuleIndex = surveyModuleOptions.findIndex((module) => module.id === selectedModuleId);
+  const activeSurveyModule = selectedModuleIndex >= 0 ? surveyModuleOptions[selectedModuleIndex] : null;
+  const canSelectPreviousModule = selectedModuleIndex > 0;
+  const canSelectNextModule = selectedModuleIndex >= 0 && selectedModuleIndex < surveyModuleOptions.length - 1;
+
+  const selectSurveyModule = (moduleId) => {
+    if (!moduleId || moduleId === selectedModuleId) {
+      setIsModuleSelectorOpen(false);
+      return;
+    }
+    setSelectedModuleId(moduleId);
+    setSelectedCategoryId(null);
+    setActiveCategoryDropdown('survey');
+    setActiveTool('survey-marker');
+    setCopyModeActive(false);
+    setCopiedItemSelection({});
+    if (categorySelectModeActive) {
+      setSelectedCategories({});
+    }
+    setIsModuleSelectorOpen(false);
+  };
 
   useEffect(() => {
     if (showSurveyPanel) {
@@ -337,6 +365,19 @@ const SurveySpacesRail = ({
       setIsSurveyPanelCollapsed(false);
     }
   }, [expandRequestKey]);
+
+  useEffect(() => {
+    if (!isModuleSelectorOpen) return undefined;
+
+    const handlePointerDown = (event) => {
+      if (!moduleSelectorRef.current?.contains(event.target)) {
+        setIsModuleSelectorOpen(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handlePointerDown);
+    return () => document.removeEventListener('mousedown', handlePointerDown);
+  }, [isModuleSelectorOpen]);
 
   useEffect(() => {
     if (typeof onCollapseChange === 'function') {
@@ -756,19 +797,22 @@ const SurveySpacesRail = ({
                     </div>
                     <button
                       onClick={() => {
-                        if (categorySelectModeActive) {
-                          setCategorySelectModeActive(false);
-                          setCategorySelectModeForCategory(null);
-                          setSelectedCategories({});
+                        if (typeof onCloseSurveyMode === 'function') {
+                          onCloseSurveyMode();
                         } else {
                           setShowSurveyPanel(false);
-                          setIsSurveyPanelCollapsed(true);
                           setSelectedSpaceId(null);
                           setSelectedModuleId(null);
                           setSelectedCategoryId(null);
                           setActiveCategoryDropdown(null);
+                          setCategorySelectModeActive(false);
+                          setCategorySelectModeForCategory(null);
+                          setSelectedCategories({});
+                          setCopyModeActive(false);
+                          setCopiedItemSelection({});
                           setActiveTool('select');
                         }
+                        setIsSurveyPanelCollapsed(true);
                       }}
                       className="btn btn-icon btn-icon-sm"
                       aria-label="Close Survey panel"
@@ -788,45 +832,168 @@ const SurveySpacesRail = ({
                     </button>
                   </div>
 
-                  {/* Modules Tabs */}
-                  {((selectedTemplate.modules || selectedTemplate.spaces) || []).length > 0 && (
+                  {/* Module navigator */}
+                  {surveyModuleOptions.length > 0 && (
                     <div style={{
                       padding: '8px 12px',
                       borderBottom: '1px solid #3a3a3a',
                       background: '#252525',
-                      display: 'flex',
-                      gap: '6px',
-                      overflowX: 'auto',
                       flexShrink: 0
                     }}>
-                      {(selectedTemplate.modules || selectedTemplate.spaces || []).map(module => (
+                      <div
+                        ref={moduleSelectorRef}
+                        style={{
+                          position: 'relative',
+                          display: 'grid',
+                          gridTemplateColumns: '32px minmax(0, 1fr) 32px',
+                          gap: '6px',
+                          alignItems: 'center'
+                        }}
+                      >
                         <button
-                          key={module.id}
+                          type="button"
+                          disabled={!canSelectPreviousModule}
+                          aria-label="Previous module"
                           onClick={() => {
-                            setSelectedModuleId(module.id);
-                            setSelectedCategoryId(null); // Reset category when switching modules
-                            setActiveCategoryDropdown('survey');
-                            setActiveTool('survey-marker');
-                            // Exit select mode when switching modules
-                            setCopyModeActive(false);
-                            setCopiedItemSelection({});
-                            if (categorySelectModeActive) {
-                              setSelectedCategories({});
+                            if (canSelectPreviousModule) {
+                              selectSurveyModule(surveyModuleOptions[selectedModuleIndex - 1]?.id);
                             }
                           }}
-                          className="btn btn-sm"
                           style={{
-                            background: selectedModuleId === module.id ? '#4A90E2' : '#3A3A3A',
-                            color: selectedModuleId === module.id ? '#fff' : '#DDD',
-                            border: selectedModuleId === module.id ? '1px solid #4A90E2' : '1px solid #444',
-                            whiteSpace: 'nowrap',
-                            flexShrink: 0,
-                            borderRadius: '6px'
+                            height: '30px',
+                            borderRadius: '6px',
+                            border: canSelectPreviousModule ? '1px solid #444' : '1px solid #303030',
+                            background: canSelectPreviousModule ? '#2A2D33' : '#222',
+                            color: canSelectPreviousModule ? '#ddd' : '#666',
+                            cursor: canSelectPreviousModule ? 'pointer' : 'not-allowed',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            padding: 0
                           }}
                         >
-                          {module.name}
+                          <Icon name="chevronLeft" size={14} />
                         </button>
-                      ))}
+
+                        <button
+                          type="button"
+                          aria-haspopup="listbox"
+                          aria-expanded={isModuleSelectorOpen}
+                          onClick={() => setIsModuleSelectorOpen((open) => !open)}
+                          style={{
+                            height: '30px',
+                            minWidth: 0,
+                            borderRadius: '6px',
+                            border: '1px solid #4A90E2',
+                            background: '#202832',
+                            color: '#fff',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            gap: '6px',
+                            padding: '0 10px',
+                            cursor: 'pointer',
+                            fontFamily: FONT_FAMILY,
+                            fontSize: '12px',
+                            fontWeight: 700
+                          }}
+                        >
+                          <span style={{
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            whiteSpace: 'nowrap',
+                            minWidth: 0
+                          }}>
+                            {activeSurveyModule?.name || 'Select module'}
+                          </span>
+                          <Icon name="chevronDown" size={12} />
+                        </button>
+
+                        <button
+                          type="button"
+                          disabled={!canSelectNextModule}
+                          aria-label="Next module"
+                          onClick={() => {
+                            if (canSelectNextModule) {
+                              selectSurveyModule(surveyModuleOptions[selectedModuleIndex + 1]?.id);
+                            }
+                          }}
+                          style={{
+                            height: '30px',
+                            borderRadius: '6px',
+                            border: canSelectNextModule ? '1px solid #444' : '1px solid #303030',
+                            background: canSelectNextModule ? '#2A2D33' : '#222',
+                            color: canSelectNextModule ? '#ddd' : '#666',
+                            cursor: canSelectNextModule ? 'pointer' : 'not-allowed',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            padding: 0
+                          }}
+                        >
+                          <Icon name="chevronRight" size={14} />
+                        </button>
+
+                        {isModuleSelectorOpen && (
+                          <div
+                            role="listbox"
+                            style={{
+                              position: 'absolute',
+                              top: '36px',
+                              left: '38px',
+                              right: '38px',
+                              zIndex: 20,
+                              background: '#1F2228',
+                              border: '1px solid #3A4250',
+                              borderRadius: '6px',
+                              padding: '4px',
+                              boxShadow: '0 10px 24px rgba(0, 0, 0, 0.32)',
+                              maxHeight: '190px',
+                              overflowY: 'auto'
+                            }}
+                          >
+                            {surveyModuleOptions.map(module => {
+                              const isActive = module.id === selectedModuleId;
+                              return (
+                                <button
+                                  key={module.id}
+                                  type="button"
+                                  role="option"
+                                  aria-selected={isActive}
+                                  onClick={() => selectSurveyModule(module.id)}
+                                  style={{
+                                    width: '100%',
+                                    minHeight: '28px',
+                                    border: 'none',
+                                    borderRadius: '4px',
+                                    background: isActive ? '#17324D' : 'transparent',
+                                    color: isActive ? '#fff' : '#ddd',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'space-between',
+                                    gap: '8px',
+                                    padding: '5px 8px',
+                                    cursor: 'pointer',
+                                    textAlign: 'left',
+                                    fontFamily: FONT_FAMILY,
+                                    fontSize: '12px',
+                                    fontWeight: isActive ? 700 : 500
+                                  }}
+                                >
+                                  <span style={{
+                                    overflow: 'hidden',
+                                    textOverflow: 'ellipsis',
+                                    whiteSpace: 'nowrap'
+                                  }}>
+                                    {module.name}
+                                  </span>
+                                  {isActive && <Icon name="check" size={12} />}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
                     </div>
                   )}
 
@@ -2654,32 +2821,85 @@ const SurveySpacesRail = ({
                       <div style={{
                         flex: 1,
                         minHeight: 0,
-                        display: 'flex',
-                        flexDirection: 'column',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        gap: '12px',
-                        padding: '24px',
-                        color: '#999',
-                        textAlign: 'center'
+                        overflowY: 'auto',
+                        padding: '12px 10px',
+                        color: '#ddd'
                       }}>
-                        <Icon name="survey" size={28} color="#999" />
-                        <div style={{ color: '#ddd', fontSize: '14px', fontWeight: 600 }}>
-                          No template selected
-                        </div>
-                        <button
-                          type="button"
-                          onClick={handleSurveyToggle}
-                          className="btn btn-sm btn-primary"
-                          style={{
-                            whiteSpace: 'nowrap',
-                            background: '#4A90E2',
-                            border: '1px solid #3277c7',
-                            color: '#fff'
-                          }}
-                        >
-                          Select Template
-                        </button>
+                        {availableSurveyTemplates.length === 0 ? (
+                          <div style={{
+                            minHeight: '160px',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            gap: '10px',
+                            color: '#999',
+                            textAlign: 'center'
+                          }}>
+                            <Icon name="survey" size={26} color="#999" />
+                            <div style={{ color: '#ddd', fontSize: '13px', fontWeight: 600 }}>
+                              No templates available
+                            </div>
+                          </div>
+                        ) : (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                            {availableSurveyTemplates.map(template => {
+                              const modules = (template.modules || template.spaces) || [];
+                              const moduleCount = modules.length;
+
+                              return (
+                                <button
+                                  key={template.id}
+                                  type="button"
+                                  onClick={() => {
+                                    onSelectSurveyTemplate?.(template);
+                                  }}
+                                  style={{
+                                    width: '100%',
+                                    minHeight: '58px',
+                                    textAlign: 'left',
+                                    padding: '10px 12px',
+                                    borderRadius: '6px',
+                                    border: '1px solid #3f3f3f',
+                                    background: '#2B2B2B',
+                                    color: '#ddd',
+                                    cursor: 'pointer',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '10px',
+                                    fontFamily: FONT_FAMILY,
+                                    transition: 'background 0.15s ease, border-color 0.15s ease'
+                                  }}
+                                  onMouseEnter={(event) => {
+                                    event.currentTarget.style.background = '#333';
+                                    event.currentTarget.style.borderColor = '#4A90E2';
+                                  }}
+                                  onMouseLeave={(event) => {
+                                    event.currentTarget.style.background = '#2B2B2B';
+                                    event.currentTarget.style.borderColor = '#3f3f3f';
+                                  }}
+                                >
+                                  <Icon name="template" size={18} color="#ddd" />
+                                  <span style={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: '3px' }}>
+                                    <span style={{
+                                      color: '#f2f2f2',
+                                      fontSize: '13px',
+                                      fontWeight: 600,
+                                      overflow: 'hidden',
+                                      textOverflow: 'ellipsis',
+                                      whiteSpace: 'nowrap'
+                                    }}>
+                                      {template.name || 'Untitled Template'}
+                                    </span>
+                                    <span style={{ color: '#999', fontSize: '11px', fontWeight: 500 }}>
+                                      {moduleCount} module{moduleCount === 1 ? '' : 's'}
+                                    </span>
+                                  </span>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        )}
                       </div>
                     </div>
                   )}

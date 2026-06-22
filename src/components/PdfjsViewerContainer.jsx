@@ -1,12 +1,9 @@
 /**
  * PdfjsViewerContainer.jsx — the owned pdf.js PDF engine container
- * (Phase 37 — Syncfusion → pdf.js cutover, Stage 2, OFF BY DEFAULT).
+ * (Phase 37 — owned pdf.js renderer).
  *
  * A production React component that renders PDF pages directly on pdfjs-dist and
- * satisfies the SAME imperative-ref contract + prop list as SyncfusionPDFContainer
- * (see pdfEngineContract.js). It is mounted only by PDFViewerEngineSelector when
- * getPDFViewerEngine() === 'pdfjs'. With the engine flag at its default the file
- * is never mounted, so it cannot affect production.
+ * satisfies the viewer imperative-ref contract used by PDFViewer.
  *
  * Ported from the proven throwaway prototype (src/prototype/PdfjsArm.jsx):
  *   • continuous, virtualized multi-page scroll (cumulative offsets + placeholders)
@@ -96,7 +93,7 @@ function pageRasterCacheSet(key, canvas) {
 }
 
 // Normalize the app's documentSource into pdf.js getDocument params. The app
-// passes a Uint8Array (PDFViewer setSyncfusionDocumentBytes); we also accept
+// passes a Uint8Array (PDFViewer setPdfjsDocumentBytes); we also accept
 // ArrayBuffer, a data: URI, or a plain URL string for parity. pdf.js neuters
 // the buffer it receives, so byte sources are CLONED here.
 function buildGetDocumentParams(source, password) {
@@ -170,7 +167,7 @@ function PdfPageCanvas({ pdf, pageIndex, pageW, pageH, renderScale, rotation, on
         const t0 = performance.now();
         // Draw the PAGE ONLY — do not bake annotation appearance into the raster.
         // The app reconstructs imported markups as its own editable SVG objects
-        // (matching the Syncfusion path, which hides the engine's native markup
+        // (matching the Pdfjs path, which hides the engine's native markup
         // layer); baking here would double them and make erase leave baked pixels.
         const task = page.render({ canvasContext: ctx, viewport, annotationMode: pdfjsLib.AnnotationMode.DISABLE });
         taskRef.current = task;
@@ -285,14 +282,13 @@ let pdfjsContainerSeq = 0;
 
 const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
   id,
-  // eslint-disable-next-line no-unused-vars -- accepted for parity; pdf.js needs no ej2 resource path
+  // eslint-disable-next-line no-unused-vars -- accepted for older callsites; pdf.js needs no resource path
   resourceUrl,
   documentSource,
-  // The following props are accepted for prop-parity with SyncfusionPDFContainer.
-  // pdf.js handles these concerns differently or defers them to Stage 4; we must
-  // never crash on a forwarded prop (the selector spreads {...props} blind).
-  // interactionMode === 'Pan' drives the drag-to-pan handler below (Syncfusion
-  // delegated this to its own viewerBase; the owned pdf.js engine implements it).
+  // The following props are accepted for compatibility with older PDFViewer callsites.
+  // pdf.js handles these concerns differently; do not crash on a forwarded prop.
+  // interactionMode === 'Pan' drives the drag-to-pan handler below (Pdfjs
+  // is implemented locally by the owned pdf.js engine.
   interactionMode = 'Pan',
   // eslint-disable-next-line no-unused-vars
   initialRenderPages = 6,
@@ -667,7 +663,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
   // ---- drag-to-pan (interactionMode === 'Pan') -----------------------------
   // The owned pdf.js engine owns its own pan: when the Pan tool is active,
   // pressing on the page and dragging scrolls the viewport by the inverse of the
-  // pointer delta. (Syncfusion delegated this to viewerBase.panOnMouseMove; that
+  // pointer delta. (Pdfjs delegated this to viewerBase.panOnMouseMove; that
   // path is dead under the pdf.js cutover, so nothing scrolled before this.)
   useEffect(() => {
     const el = scrollerRef.current;

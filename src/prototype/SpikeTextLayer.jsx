@@ -3,7 +3,7 @@
 // ============================================================================
 // Uses pdf.js's own renderTextLayer (battle-tested glyph positioning) to lay
 // transparent, selectable <span>s over the page canvas. Native OS selection +
-// copy work for free — no Syncfusion. Sits in page space (viewport at committed
+// copy work for free — no Pdfjs. Sits in page space (viewport at committed
 // `scale`) inside the page wrapper, so it CSS-scales with the live zoom like the
 // canvas. Re-renders on committed scale / rotation change.
 // ============================================================================

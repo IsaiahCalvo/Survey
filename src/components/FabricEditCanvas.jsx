@@ -482,7 +482,7 @@ const MiniToolbar = memo(({ fabricRef, containerRef, editCanvasStyle, onProperty
   }, [isCounter, counterRadius, strokeW, updateProperty, onCounterResize]);
 
   // Position: 8px above the edit Canvas container, using rAF-tracked screen coords.
-  // Portaled to document.body to escape Syncfusion stacking contexts.
+  // Portaled to document.body to escape Pdfjs stacking contexts.
   const toolbarWidth = 240;
   // UX: the mini-bar floats 44px above the edit container. When the user
   // drags the shape's TOP handle upward in edit mode, the shape grows past
@@ -1072,7 +1072,7 @@ const FabricEditCanvas = memo(({
   onEditCancel,        // () => void
   strokeColor,         // current stroke color (for new text creation)
   zoomGeneration,      // zoom signal from App.jsx
-  viewerScale,         // syncfusionViewerScale
+  viewerScale,         // pdfjsViewerScale
   isNewText,           // true when text tool click-to-place creates new annotation
   clickPosition,       // { x, y } in page coordinates for new text placement
   textBoxWidth,        // optional page-space width from drag-to-create
@@ -1582,7 +1582,7 @@ const FabricEditCanvas = memo(({
     const container = containerRef.current;
     if (!container) return;
 
-    // Find the portal host (parent element sized by Syncfusion)
+    // Find the portal host (parent element sized by Pdfjs)
     const parentEl = container.parentElement;
     if (!parentEl || parentEl.offsetWidth <= 0 || pageWidth <= 0) return;
 
@@ -2207,7 +2207,7 @@ const FabricEditCanvas = memo(({
               if (el) return el;
             }
             const pageWrapper = document.querySelector(
-              `[data-syncfusion-page-number="${pageNumber}"]`
+              `[data-pdfjs-page-number="${pageNumber}"]`
             ) || document;
             const byIndex = pageWrapper.querySelector(
               `[data-annotation-index="${annotationIndex}"] foreignObject > div`
@@ -3260,7 +3260,7 @@ const FabricEditCanvas = memo(({
   // -------------------------------------------------------------------------
   useEffect(() => {
     // Helper: check if click coordinates are inside an element's bounding rect.
-    // This works even when Syncfusion layers intercept the event target.
+    // This works even when Pdfjs layers intercept the event target.
     const isPointInRect = (x, y, el) => {
       if (!el) return false;
       const r = el.getBoundingClientRect();
@@ -3286,12 +3286,12 @@ const FabricEditCanvas = memo(({
       // Check if click is inside the mini-toolbar or its descendants (e.g. color picker dropdown).
       // Two checks needed:
       // 1. DOM containment (toolbar.contains) — catches dropdown children that overflow the toolbar rect
-      // 2. Rect-based (isPointInRect) — catches clicks when Syncfusion layers intercept event.target
+      // 2. Rect-based (isPointInRect) — catches clicks when Pdfjs layers intercept event.target
       const toolbar = document.querySelector('[data-mini-toolbar]');
       if (toolbar) {
         const targetInToolbar = toolbar.contains(e.target);
         if (targetInToolbar || isPointInRect(e.clientX, e.clientY, toolbar)) {
-          // If browser hit-testing resolved to a Syncfusion element underneath,
+          // If browser hit-testing resolved to a Pdfjs element underneath,
           // stop event and re-dispatch to the correct toolbar child.
           if (!targetInToolbar) {
             e.stopImmediatePropagation();
@@ -3410,7 +3410,7 @@ const FabricEditCanvas = memo(({
     const container = containerRef.current;
     if (!container) return;
 
-    // Observe the parent element (portal host that Syncfusion resizes)
+    // Observe the parent element (portal host that Pdfjs resizes)
     const parentEl = container.parentElement;
     if (!parentEl) return;
 

@@ -3,10 +3,10 @@
  *
  * Routes native contextmenu events to the correct PAL's handleContextMenu via
  * a per-page registry (contextMenuBridge). Works for both pan tool (SVG layer
- * is pointerEvents:none so click falls through to Syncfusion) and select tool
+ * is pointerEvents:none so click falls through to Pdfjs) and select tool
  * (SVG layer catches the click). Page number is discovered by walking the
  * event path / elementsFromPoint for either our own `[data-pal-root="N"]` /
- * `[data-diag-svg-wrapper="N"]` attrs, or Syncfusion's `pageDiv_N` id suffix.
+ * `[data-diag-svg-wrapper="N"]` attrs, or Pdfjs's `pageDiv_N` id suffix.
  *
  * Diagnostic logging is opt-in so normal right-clicks do not flood the console.
  * Enable with `window.__CTX_DIAG_CONSOLE = true` before reproducing.

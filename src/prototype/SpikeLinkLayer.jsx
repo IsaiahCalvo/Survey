@@ -3,7 +3,7 @@
 // ============================================================================
 // Reads the page's own link annotations (pdf.js page.getAnnotations()) and lays
 // transparent clickable boxes over them — external URLs open out, internal links
-// jump to their page. No Syncfusion. Authored in page space (scale 1) then scaled
+// jump to their page. No Pdfjs. Authored in page space (scale 1) then scaled
 // by the committed `scale`, so it rides the live zoom like every other layer.
 // Sits ON TOP so links win the click; empty areas fall through to text/annotations.
 // ============================================================================

@@ -1,0 +1,23 @@
+import { chromium } from 'playwright';
+const browser = await chromium.launch({ headless: true });
+const ctx = await browser.newContext({ viewport: { width: 1512, height: 900 } });
+const page = await ctx.newPage();
+const errs = [];
+page.on('pageerror', (e) => errs.push('PAGEERROR: ' + e.message));
+page.on('console', (m) => errs.push('[' + m.type() + '] ' + m.text().slice(0, 240)));
+await page.goto('http://localhost:5173/', { waitUntil: 'networkidle', timeout: 60000 }).catch((e) => errs.push('goto: ' + e.message));
+await page.waitForTimeout(8000);
+const title = await page.title().catch(() => '?');
+const info = await page.evaluate(() => {
+  const txt = (document.body.innerText || '').slice(0, 600);
+  const btns = Array.from(document.querySelectorAll('button')).map((b) => (b.innerText || b.getAttribute('aria-label') || '').trim()).filter(Boolean).slice(0, 25);
+  const inputs = Array.from(document.querySelectorAll('input')).map((i) => i.type + ':' + (i.placeholder || i.name || '')).slice(0, 10);
+  const hasPkg = document.body.innerText.includes('Package 2');
+  return { bodyTextHead: txt, buttons: btns, inputs, hasPackage2: hasPkg, canvases: document.querySelectorAll('canvas').length };
+});
+await page.screenshot({ path: 'agent-cli/diag-open.png', fullPage: false }).catch(() => {});
+console.log('TITLE:', title);
+console.log('INFO:', JSON.stringify(info, null, 2));
+console.log('--- first 30 console/errors ---');
+for (const e of errs.slice(0, 30)) console.log(e.slice(0, 200));
+await browser.close();

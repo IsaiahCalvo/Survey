@@ -84,7 +84,7 @@ const pendingWaiters = [];
 function getDomVisiblePages() {
   // Query the DOM directly for page divs that have data-page-number set.
   // This avoids relying on potentially stale React state (visiblePages from
-  // useVisiblePages can lag behind actual DOM after Syncfusion page navigation).
+  // useVisiblePages can lag behind actual DOM after Pdfjs page navigation).
   const pageDivs = document.querySelectorAll('.e-pv-page-div[data-page-number]');
   const pages = [];
   for (const div of pageDivs) {
@@ -552,16 +552,16 @@ export function snapshot(options) {
         const pageDiv = document.querySelector(
           `.e-pv-page-div[data-page-number="${page}"]`
         );
-        const syncfusionDom = !!pageDiv;
-        const palMounted = syncfusionDom ? pageHasAnnotationLayer(pageDiv) : false;
-        const fabricCanvas = syncfusionDom
+        const pdfjsDom = !!pageDiv;
+        const palMounted = pdfjsDom ? pageHasAnnotationLayer(pageDiv) : false;
+        const fabricCanvas = pdfjsDom
           ? !!pageDiv.querySelector('.canvas-container')
           : false;
 
         return {
           page,
           visible: true,
-          syncfusionDom,
+          pdfjsDom,
           palMounted,
           fabricCanvas
         };
