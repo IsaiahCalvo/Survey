@@ -28,6 +28,7 @@
     "mobile:android": "npx cap open android"
   },
   "dependencies": {
+    "@survey/shared": "file:packages/shared",
     "@azure/msal-browser": "^4.26.2",
     "@azure/msal-node": "^5.2.3",
     "@capacitor/android": "^8.3.1",
