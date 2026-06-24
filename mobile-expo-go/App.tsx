@@ -55,6 +55,20 @@ import {
   X,
 } from 'lucide-react-native';
 
+// Shared Survey domain contract — single source of truth with the desktop app.
+// Type-only import: erased at compile time, so the bundle is unchanged.
+import type {
+  Entity,
+  ChecklistSelection,
+  SurveyChecklistItem,
+  SurveyCategory,
+  SurveyModule,
+  SurveyTemplate,
+  RegionBounds,
+  RegionConfig,
+  SpaceConfig,
+} from '@survey/shared';
+
 type ToolId =
   | 'pan'
   | 'select'
@@ -94,32 +108,10 @@ type ContextMenuState = {
   actions: ContextMenuAction[];
 };
 
-type SurveyCategory = {
-  id: string;
-  name: string;
-  checklist: SurveyChecklistItem[];
-};
-
-type SurveyChecklistItem = {
-  id: string;
-  text: string;
-  archived?: boolean;
-};
-
-type SurveyModule = {
-  id: string;
-  name: string;
-  categories: SurveyCategory[];
-};
-
-type ChecklistSelection = 'Y' | 'N' | 'N/A';
-
-type Entity = {
-  id: string;
-  name: string;
-  color: string;
-};
-
+// SurveyCategory, SurveyChecklistItem, SurveyModule, SurveyTemplate,
+// ChecklistSelection, Entity, RegionBounds, RegionConfig, SpaceConfig now come
+// from @survey/shared (imported above). Marker stays app-local for now — its
+// model is scheduled to be unified with the desktop in a later phase.
 type Marker = {
   id: number;
   name: string;
@@ -136,13 +128,6 @@ type Marker = {
   done: Record<string, boolean>;
 };
 
-type SurveyTemplate = {
-  id: string;
-  name: string;
-  modules: SurveyModule[];
-  entities: Entity[];
-};
-
 type BookmarkEntry = {
   id: string;
   title: string;
@@ -153,31 +138,6 @@ type BookmarkEntry = {
   order: number;
   sourceId?: string;
   markerId?: number;
-};
-
-type RegionBounds = {
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-};
-
-type RegionConfig = {
-  id: string;
-  name: string;
-  page: number;
-  bounds: RegionBounds;
-  surveyBound: boolean;
-  showCanvasAnnotations: boolean;
-  showSurveyAnnotations: boolean;
-};
-
-type SpaceConfig = {
-  id: string;
-  name: string;
-  pages: number[];
-  expanded: boolean;
-  regions: RegionConfig[];
 };
 
 type InkMark = {

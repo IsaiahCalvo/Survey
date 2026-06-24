@@ -1,19 +1,14 @@
 // Survey Marker type identity.
 //
-// A Survey Marker is an area drawn in Survey mode over a real element of the
-// drawing, tagged with one Category and one Entity (see CONTEXT.md). It was
-// previously called a "Survey Highlight". In the database its annotation_type
-// is 'survey-marker'; rows created before the rename carry the legacy value
-// 'highlight'. Always test the type through isSurveyMarkerType so both are
-// recognised.
+// The single source of truth now lives in the shared package
+// (packages/shared/src/surveyMarker.ts → @survey/shared) so the desktop and
+// mobile apps agree on these values. This file is kept as a thin re-export so
+// the existing desktop imports of '../utils/surveyMarkerType.js' keep working
+// unchanged.
 
-export const SURVEY_MARKER_TYPE = 'survey-marker';
-export const LEGACY_SURVEY_MARKER_TYPE = 'highlight';
-
-// Both accepted annotation_type values, for use in Supabase .in() filters.
-export const SURVEY_MARKER_TYPE_VALUES = [SURVEY_MARKER_TYPE, LEGACY_SURVEY_MARKER_TYPE];
-
-export function isSurveyMarkerType(annotationType) {
-  return annotationType === SURVEY_MARKER_TYPE
-    || annotationType === LEGACY_SURVEY_MARKER_TYPE;
-}
+export {
+  SURVEY_MARKER_TYPE,
+  LEGACY_SURVEY_MARKER_TYPE,
+  SURVEY_MARKER_TYPE_VALUES,
+  isSurveyMarkerType,
+} from '@survey/shared';

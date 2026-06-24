@@ -9,6 +9,7 @@
     "web": "expo start --web"
   },
   "dependencies": {
+    "@survey/shared": "file:../packages/shared",
     "expo": "~54.0.34",
     "expo-image-picker": "~17.0.11",
     "expo-status-bar": "~3.0.9",

@@ -1,0 +1,34 @@
+// Annotation type identity — the canonical `annotation_type` values stored in
+// the document_annotations table.
+//
+// The value list is kept in lock-step with SUPPORTED_DB_TYPES in
+// src/services/annotationTypeSerializers.js. Sharing it here gives desktop and
+// mobile one source of truth for the annotation-type vocabulary.
+
+export const ANNOTATION_TYPES = [
+  'survey-marker',
+  'ink',
+  'freetext',
+  'square',
+  'circle',
+  'line',
+  'polyline',
+  'polygon',
+  'stamp',
+  'sticky_note',
+  'callout',
+  'counter',
+  'eraser',
+  'form-field',
+] as const;
+
+export type AnnotationType = (typeof ANNOTATION_TYPES)[number];
+
+// Set form, mirrors SUPPORTED_DB_TYPES in annotationTypeSerializers.js.
+export const SUPPORTED_DB_TYPES: ReadonlySet<AnnotationType> = new Set(
+  ANNOTATION_TYPES,
+);
+
+export function isSupportedAnnotationType(value: string): value is AnnotationType {
+  return (SUPPORTED_DB_TYPES as ReadonlySet<string>).has(value);
+}
