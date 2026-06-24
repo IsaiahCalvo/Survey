@@ -17,6 +17,21 @@ export type ChecklistResponse = {
 // Keyed by checklist-item id.
 export type ChecklistResponses = Record<string, ChecklistResponse>;
 
+// The survey-content fields a Survey Marker carries IDENTICALLY in both the
+// desktop and mobile apps. This is the shared CORE only — each app keeps its
+// own marker type that extends this with app-specific fields (desktop: Excel-
+// sync / audit / persistence columns; mobile: on-screen id, coordinates, notes,
+// photos). Deliberately excludes fields whose shape differs across apps
+// (entity reference, coordinates vs bounds, note string vs object). Full marker
+// unification (mobile fully adopting the desktop shape) is the deferred next
+// phase — see README. Touching this must not change any Excel-sync field.
+export type SurveyMarkerCore = {
+  moduleId: string;
+  categoryId: string | null;
+  name: string;
+  checklistResponses: ChecklistResponses;
+};
+
 export type Entity = {
   id: string;
   name: string;

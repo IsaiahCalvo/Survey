@@ -15,7 +15,7 @@ app (`mobile-expo-go`, Expo/React Native).
 | `surveyMarker` | `SURVEY_MARKER_TYPE`, `LEGACY_SURVEY_MARKER_TYPE`, `SURVEY_MARKER_TYPE_VALUES`, `isSurveyMarkerType()` |
 | `annotationTypes` | `ANNOTATION_TYPES`, `AnnotationType`, `SUPPORTED_DB_TYPES`, `isSupportedAnnotationType()` |
 | `geometry` | `Point`, `Bounds` |
-| `survey` | `ChecklistSelection`, `ChecklistResponse(s)`, `Entity`, `SurveyChecklistItem`, `SurveyCategory`, `SurveyModule`, `SurveyTemplate`, `RegionBounds`, `RegionConfig`, `SpaceConfig` |
+| `survey` | `ChecklistSelection`, `ChecklistResponse(s)`, `SurveyMarkerCore`, `Entity`, `SurveyChecklistItem`, `SurveyCategory`, `SurveyModule`, `SurveyTemplate`, `RegionBounds`, `RegionConfig`, `SpaceConfig` |
 
 **Rule for this package:** pure types + constants + pure functions only. **No
 platform-coupled code** — no `@supabase/supabase-js`, no `fs`/DOM/`window`, no
@@ -44,22 +44,33 @@ deliberate follow-up — see below.
 4. Have each app import it; verify `npm run build` (desktop) and
    `npx tsc --noEmit` + `npx expo export` (mobile) stay green.
 
-## Scheduled next phase — unify the full `Marker` model
+## Marker: shared core done; full unification still deferred
 
-The full `Marker` type is **intentionally NOT shared yet.** The desktop and
-mobile model it differently, and the desktop's marker shape is entangled with
-the **Excel-sync identity records** (`src/services/markerRowValues*`,
-`documentSurveyMarkerMapper.js`). Unifying it carelessly risks corrupting the
-Excel roundtrip.
+**Done (Option C):** `SurveyMarkerCore` shares the survey-content fields that
+both apps already carry identically — `moduleId`, `categoryId`, `name`,
+`checklistResponses`. Each app keeps its own marker type that extends this core
+with app-specific fields (mobile: `id`/coords/`notes`/`photos`/`done`; desktop:
+Excel-sync / audit / persistence columns). This deliberately excludes the
+fields whose shape differs (entity reference, coordinates vs bounds, note
+string vs object) — touching those is the risky part. Verified: the desktop's
+offline Excel-safety suites were byte-identical before and after (1,616 pass).
 
-**Do it when both are true:**
+**Still deferred — the FULL `Marker` unification (Option A):** mobile fully
+adopting the desktop's marker shape (entity id+name, bounds, note object, string
+id) via adapters. The desktop's marker is entangled with the **Excel-sync
+identity records** (`src/services/markerRowValues*`, `documentSurveyMarkerMapper.js`),
+which match spreadsheet rows by `name`, `entityName`, `note.text`, and
+`checklistResponses` — reshaping those risks corrupting the Excel roundtrip.
+
+**Do the full unification when both are true:**
 1. The mobile app reads/writes **real** marker data (connected to Supabase),
    not the current simulated data.
 2. The Excel-sync design is settled.
 
-**How:** as its own scoped task — decide the canonical `Marker` shape
-deliberately, and run the existing Excel **zero-loss verification harness**
-before and after to prove no roundtrip data is harmed.
+**How:** its own scoped task — adopt the desktop shape on mobile via adapters,
+and run the offline Excel-safety suites **before and after** (must stay
+byte-identical) PLUS a real xlsx export→edit→import roundtrip on a credentialed
+machine to prove no data is harmed.
 
 ## Also deferred (do not do casually)
 

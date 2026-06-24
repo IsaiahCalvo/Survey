@@ -4,6 +4,12 @@ export type ChecklistResponse = {
     note?: string;
 };
 export type ChecklistResponses = Record<string, ChecklistResponse>;
+export type SurveyMarkerCore = {
+    moduleId: string;
+    categoryId: string | null;
+    name: string;
+    checklistResponses: ChecklistResponses;
+};
 export type Entity = {
     id: string;
     name: string;

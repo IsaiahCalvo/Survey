@@ -67,6 +67,7 @@ import type {
   RegionBounds,
   RegionConfig,
   SpaceConfig,
+  SurveyMarkerCore,
 } from '@survey/shared';
 
 type ToolId =
@@ -110,21 +111,22 @@ type ContextMenuState = {
 
 // SurveyCategory, SurveyChecklistItem, SurveyModule, SurveyTemplate,
 // ChecklistSelection, Entity, RegionBounds, RegionConfig, SpaceConfig now come
-// from @survey/shared (imported above). Marker stays app-local for now — its
-// model is scheduled to be unified with the desktop in a later phase.
-type Marker = {
+// from @survey/shared (imported above).
+//
+// Marker stays app-local, but its survey-content fields (moduleId, categoryId,
+// name, checklistResponses) now come from the shared SurveyMarkerCore so they
+// can't drift from the desktop. The on-screen fields (id, coordinates, notes,
+// photos/videos) and the mobile-only `done` stay app-specific. Full marker
+// unification with the desktop shape is the deferred next phase.
+type Marker = SurveyMarkerCore & {
   id: number;
-  name: string;
   notes: string;
   photos?: string[];
   videos?: string[];
   page: number;
   x: number;
   y: number;
-  moduleId: string;
-  categoryId: string | null;
   entity: string | null;
-  checklistResponses: Record<string, { selection?: ChecklistSelection; note?: string }>;
   done: Record<string, boolean>;
 };
 
