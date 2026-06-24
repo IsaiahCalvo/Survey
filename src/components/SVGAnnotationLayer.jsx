@@ -41,7 +41,7 @@ import { useSVGInteraction } from '../hooks/useSVGInteraction';
 // PRESERVED Plan 14-01 shim (ARROWHEAD_STYLES + defaultCalloutStyle +
 // createCallout) — do NOT replace with the null stub.
 import { createCallout } from './Callout/types';
-import { screenToSVG, normalizeAngle } from '../utils/svgTransformMath';
+import { screenToSVG, normalizeAngle, clampInverseScale } from '../utils/svgTransformMath';
 import SVGSelectionOverlay from './SVGSelectionOverlay';
 import RotationInputField from './RotationInputField';
 import { getAnnotationBBox, getAnnotationWorldAABB, getGroupBBox, isImportedPath, isAbsoluteCoordPath, getLineEndpoints, computeLineBboxCenter } from '../utils/svgBoundingBox';
@@ -2398,7 +2398,9 @@ const SVGAnnotationLayer = memo(({
             fill="none"
             stroke="#4a90e2"
             strokeOpacity={0.4}
-            strokeWidth={2 * inverseScale}
+            // Zoom-out balloon fix: clamp inverseScale used for this visible
+            // hover halo so it stops growing on extreme zoom-out. No-op at rest.
+            strokeWidth={2 * clampInverseScale(inverseScale)}
             transform={rotationTransform}
             style={{ pointerEvents: 'none' }}
           />
@@ -2510,7 +2512,10 @@ const SVGAnnotationLayer = memo(({
     const ringColor = dragInvalid ? HANDLE_RING_INVALID : HANDLE_RING;
     // Handle radius — shared HANDLE_RADIUS, sqrt-dampened on zoom so callout
     // handles match every other handle in both size and zoom behaviour.
-    const calloutHandleR = HANDLE_RADIUS * Math.sqrt(inverseScale > 0 ? inverseScale : 1);
+    // Zoom-out balloon fix: clamp inverseScale first so the VISIBLE callout
+    // handles (and their matching transparent hit circles) stop growing on
+    // extreme zoom-out. No-op at rest (inverseScale ≈ 1) / on zoom-in.
+    const calloutHandleR = HANDLE_RADIUS * Math.sqrt(clampInverseScale(inverseScale));
     const { width: W, height: H } = pageSize;
     const atX = callout.arrowTip.x * W;
     const atY = callout.arrowTip.y * H;
@@ -3672,7 +3677,9 @@ const SVGAnnotationLayer = memo(({
                     // auto-scales via the SVG transform — matches generic rect
                     // hover outline below (~line 997). Using non-scaling-stroke
                     // + `2 * inverseScale` double-scaled the glow at low zoom.
-                    strokeWidth={2 * inverseScale}
+                    // Zoom-out balloon fix: clamp inverseScale so the visible
+                    // glow stops growing on extreme zoom-out. No-op at rest.
+                    strokeWidth={2 * clampInverseScale(inverseScale)}
                     style={{ pointerEvents: 'none' }}
                   />
                 )}
@@ -4069,8 +4076,12 @@ const SVGAnnotationLayer = memo(({
             if (pathScaleX !== 1 || pathScaleY !== 1) pathTransform += ` scale(${pathScaleX}, ${pathScaleY})`;
             pathTransform += ` translate(${-pathOffsetX}, ${-pathOffsetY})`;
             const sw = renderObj.strokeWidth || 1;
+            // Zoom-out balloon fix: clamp inverseScale for the VISIBLE filled-ink
+            // hover stroke so it stops growing on extreme zoom-out. The hit
+            // stroke below (hitStrokeWidth) is a transparent target — left as-is.
+            const hoverInv = clampInverseScale(inverseScale);
             const hoverStrokeWidth = isFilledPdfInkOutline
-              ? Math.max(1.25 * inverseScale, Math.min(2 * inverseScale, sw + 0.5))
+              ? Math.max(1.25 * hoverInv, Math.min(2 * hoverInv, sw + 0.5))
               : Math.max(6, sw + 4);
             const hitStrokeWidth = isFilledPdfInkOutline
               ? Math.max(0.75 * inverseScale, 0.75)
@@ -4134,7 +4145,10 @@ const SVGAnnotationLayer = memo(({
                   fill="none"
                   stroke="#4a90e2"
                   strokeOpacity={0.4}
-                  strokeWidth={2 * inverseScale}
+                  // Zoom-out balloon fix: clamp inverseScale used for this
+                  // visible hover outline so it stops growing on extreme
+                  // zoom-out. No-op at rest (inverseScale ≈ 1) / on zoom-in.
+                  strokeWidth={2 * clampInverseScale(inverseScale)}
                   style={{ pointerEvents: 'none' }}
                 />
               )}
@@ -4479,7 +4493,9 @@ const SVGAnnotationLayer = memo(({
           // UX: dampened handle sizing. The sqrt curve softens growth so the
           // handle feels proportional across zoom levels. Radius comes from
           // the shared HANDLE_RADIUS constant so every handle is one size.
-          const is = Math.sqrt(inverseScale);
+          // Zoom-out balloon fix: clamp inverseScale first so this visible
+          // handle + its shadow stop growing on extreme zoom-out (no-op at rest).
+          const is = Math.sqrt(clampInverseScale(inverseScale));
           const handleR = HANDLE_RADIUS * is;
           return (
             <g key={`counter-rotate-wrapper-${selectedIndex}`} transform={counterDragTransform}>
@@ -4709,8 +4725,10 @@ const SVGAnnotationLayer = memo(({
           const isArrow = selectionObj.tool === 'arrow';
           // Arrow: handle at arrowhead tip (ep2) and line start (ep1)
           // Line: handles at both endpoints
-          // Dampened inverse scale (sqrt) to match SVGSelectionOverlay handle sizing
-          const handleIs = Math.sqrt(inverseScale);
+          // Dampened inverse scale (sqrt) to match SVGSelectionOverlay handle sizing.
+          // Zoom-out balloon fix: clamp inverseScale first so these visible
+          // endpoint handles + shadows stop growing on extreme zoom-out (no-op at rest).
+          const handleIs = Math.sqrt(clampInverseScale(inverseScale));
           const handleR = HANDLE_RADIUS * handleIs;
           const handleStyle = {
             filter: `drop-shadow(0 ${1 * handleIs}px ${3 * handleIs}px rgba(0,0,0,0.15))`,
@@ -4846,7 +4864,9 @@ const SVGAnnotationLayer = memo(({
           });
           // Dampened inverse scale mirrors SVGSelectionOverlay + endpoint
           // handles so vertex dots feel proportional across zoom levels.
-          const vHandleIs = Math.sqrt(inverseScale);
+          // Zoom-out balloon fix: clamp inverseScale first so these visible
+          // vertex handles + shadows stop growing on extreme zoom-out (no-op at rest).
+          const vHandleIs = Math.sqrt(clampInverseScale(inverseScale));
           const vHandleR = HANDLE_RADIUS * vHandleIs;
           const vHandleStyle = {
             filter: `drop-shadow(0 ${1 * vHandleIs}px ${3 * vHandleIs}px rgba(0,0,0,0.15))`,

@@ -360,6 +360,12 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
   const [liveZoom, setLiveZoom] = useState(1);
   const [range, setRange] = useState([0, -1]);
   const [containerW, setContainerW] = useState(800);
+  const [containerH, setContainerH] = useState(600);
+  // Drives a `transition: transform` on the content node ONLY while the settle glide
+  // is running (never during the live gesture, where the transform must update
+  // per-frame with no transition). The ref is the synchronous source of truth used
+  // inside rAF; this state just mirrors it so the JSX re-renders the gated style.
+  const [settleAnimating, setSettleAnimating] = useState(false);
 
   // imperative document source (prop-driven, overridable via load())
   const [activeSource, setActiveSource] = useState(documentSource);
@@ -390,7 +396,23 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
   const gestureRef = useRef(null);
   const dimsPtRef = useRef([]);
   const containerWRef = useRef(800);
+  const containerHRef = useRef(600);
   const topsRef = useRef([]);
+  const padTopRef = useRef(0);
+  // ---- animated-settle state ------------------------------------------------
+  // The gesture's live CSS transform previews the new size on the OLD layout; the
+  // committed re-layout can land the anchored point at a clamped scroll (top of a
+  // multi-page doc, a centered page). A hard swap shows that delta as a snap. The
+  // settle TWEENS the scroll from the gesture-end position to the committed clamped
+  // target while the OLD painted content + transform stay visible (transition gates
+  // the transform glide), then swaps to the committed layout under cover of the
+  // glide so the re-raster appears in place. A generation counter aborts a stale
+  // tween the instant a new wheel gesture starts.
+  const settleAnimatingRef = useRef(false);
+  const settleRafRef = useRef(0);
+  const settleGenRef = useRef(0);
+  const settleTweenFromRef = useRef(null); // {left,top} captured at gesture-end to glide from
+  const SETTLE_ANIM_MS = 160;
 
   // ---- load document --------------------------------------------------------
   useEffect(() => {
@@ -472,12 +494,22 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
       maxW = Math.max(maxW, dims[i].w * scale);
     }
     const contentW = Math.max(containerW, maxW + 2 * PAD);
-    return { tops, dims, totalH: y - GAP + PAD, contentW };
-  }, [pageSizes, scale, rotation, containerW]);
+    // rawTotalH is the un-offset content height; the FIT predicate must use this,
+    // never the padTop-inclusive height. padTop vertically centers any document
+    // shorter than the viewport (single page / fitting page) via marginTop on the
+    // content node — NOT via scroll, so scroll stays in [0, scrollHeight-clientHeight]
+    // and never goes negative. Content taller than the viewport (overflow case)
+    // yields padTop=0 and the layout is unchanged.
+    const rawTotalH = y - GAP + PAD;
+    const padTop = Math.max(0, (containerH - rawTotalH) / 2);
+    return { tops, dims, totalH: rawTotalH, rawTotalH, padTop, contentW };
+  }, [pageSizes, scale, rotation, containerW, containerH]);
 
   dimsPtRef.current = layout.dims;
   containerWRef.current = containerW;
+  containerHRef.current = containerH;
   topsRef.current = layout.tops;
+  padTopRef.current = layout.padTop;
 
   // ---- current-page detection + onPageChanged ------------------------------
   const detectCurrentPage = useCallback(() => {
@@ -485,7 +517,10 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     const tops = topsRef.current;
     const dims = dimsPtRef.current;
     if (!el || !tops.length) return;
-    const mid = el.scrollTop + el.clientHeight / 2;
+    // tops are in raw content space; padTop (the centering margin) shifts the
+    // painted pages down by that much relative to the scroll origin.
+    const padTop = padTopRef.current;
+    const mid = el.scrollTop + el.clientHeight / 2 - padTop;
     let page = 1;
     for (let i = 0; i < tops.length; i += 1) {
       if (mid >= tops[i] && mid < tops[i] + dims[i].h * scaleRef.current + GAP) { page = i + 1; break; }
@@ -507,7 +542,10 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
   const recomputeWindow = useCallback(() => {
     const el = scrollerRef.current;
     if (!el || !layout.tops.length) return;
-    const top = el.scrollTop;
+    // layout.tops are raw-content-space; padTop shifts pages down relative to
+    // scroll, so the visibility window is expressed in raw space by subtracting it.
+    const padTop = layout.padTop;
+    const top = el.scrollTop - padTop;
     const vh = el.clientHeight;
     const over = vh * 1.2;
     const lo = top - over;
@@ -526,7 +564,13 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
   useLayoutEffect(() => {
     const el = scrollerRef.current;
     if (!el) return undefined;
-    const update = () => setContainerW(el.clientWidth);
+    const update = () => {
+      setContainerW(el.clientWidth);
+      // containerH drives padTop (vertical centering). Guard against a 0 height
+      // during mount/teardown so padTop doesn't transiently center against nothing.
+      const h = el.clientHeight;
+      if (h > 0) setContainerH(h);
+    };
     update();
     const ro = new ResizeObserver(update);
     ro.observe(el);
@@ -548,6 +592,13 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
   useEffect(() => { recomputeWindow(); }, [recomputeWindow]);
 
   // ---- apply cursor anchor after the new scale lays out --------------------
+  // The committed layout has been measured (scrollWidth/Height now reflect the new
+  // scale), so we can clamp the anchored scroll to valid bounds. For an imperative/
+  // toolbar zoom this snaps instantly. For a WHEEL gesture the settle requests a
+  // GLIDE: tween scrollTop/scrollLeft from the gesture-end position to this clamped
+  // target over SETTLE_ANIM_MS so the page eases into its (centered/clamped) resting
+  // spot instead of snapping. The page is already at the committed size, so only the
+  // position moves — no size jump, no blank flash (committed content is painted).
   useLayoutEffect(() => {
     const p = pendingAnchorRef.current;
     if (!p) return;
@@ -556,8 +607,53 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     if (!el) return;
     const maxLeft = Math.max(0, el.scrollWidth - el.clientWidth);
     const maxTop = Math.max(0, el.scrollHeight - el.clientHeight);
-    el.scrollLeft = Math.min(Math.max(0, p.left), maxLeft);
-    el.scrollTop = Math.min(Math.max(0, p.top), maxTop);
+    const targetLeft = Math.min(Math.max(0, p.left), maxLeft);
+    const targetTop = Math.min(Math.max(0, p.top), maxTop);
+
+    const tweenFrom = settleTweenFromRef.current;
+    settleTweenFromRef.current = null;
+    if (!tweenFrom) {
+      el.scrollLeft = targetLeft;
+      el.scrollTop = targetTop;
+      return;
+    }
+
+    // Animated settle: glide from the captured gesture-end scroll to the target.
+    const fromLeft = tweenFrom.left;
+    const fromTop = tweenFrom.top;
+    if (Math.abs(fromLeft - targetLeft) < 0.5 && Math.abs(fromTop - targetTop) < 0.5) {
+      el.scrollLeft = targetLeft;
+      el.scrollTop = targetTop;
+      settleAnimatingRef.current = false;
+      setSettleAnimating(false);
+      return;
+    }
+    const myGen = settleGenRef.current; // bumped on commit; a new gesture bumps again
+    settleAnimatingRef.current = true;
+    setSettleAnimating(true);
+    const t0 = (typeof performance !== 'undefined' ? performance.now() : Date.now());
+    const easeOut = (x) => 1 - (1 - x) * (1 - x) * (1 - x); // cubic ease-out
+    const finish = () => {
+      settleRafRef.current = 0;
+      settleAnimatingRef.current = false;
+      setSettleAnimating(false);
+    };
+    const step = () => {
+      // Abort the instant a newer gesture/commit superseded this tween.
+      if (myGen !== settleGenRef.current) { settleRafRef.current = 0; return; }
+      const elNow = scrollerRef.current;
+      if (!elNow) { finish(); return; }
+      const now = (typeof performance !== 'undefined' ? performance.now() : Date.now());
+      const k = Math.min(1, (now - t0) / SETTLE_ANIM_MS);
+      const e = easeOut(k);
+      const maxL = Math.max(0, elNow.scrollWidth - elNow.clientWidth);
+      const maxT = Math.max(0, elNow.scrollHeight - elNow.clientHeight);
+      elNow.scrollLeft = Math.min(Math.max(0, fromLeft + (targetLeft - fromLeft) * e), maxL);
+      elNow.scrollTop = Math.min(Math.max(0, fromTop + (targetTop - fromTop) * e), maxT);
+      if (k < 1) settleRafRef.current = requestAnimationFrame(step);
+      else finish();
+    };
+    settleRafRef.current = requestAnimationFrame(step);
   }, [scale]);
 
   // ---- layout-space anchoring helpers --------------------------------------
@@ -567,16 +663,28 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     for (const d of dims) maxW = Math.max(maxW, d.w * sc);
     return Math.max(containerWRef.current, maxW + 2 * PAD);
   };
-  const topAt = (i, sc) => {
+  // padTopFor recomputes the centering margin at an ARBITRARY scale (so the anchor
+  // math at the new scale uses the new padTop, matching the layout it will commit
+  // to). Mirrors the layout memo: max(0,(containerH - rawTotalH)/2) on RAW total.
+  const padTopFor = (sc) => {
     const dims = dimsPtRef.current;
     let y = PAD;
+    for (let k = 0; k < dims.length; k += 1) y += dims[k].h * sc + GAP;
+    const rawTotalH = y - GAP + PAD;
+    return Math.max(0, (containerHRef.current - rawTotalH) / 2);
+  };
+  // topAt returns the page's top in SCROLL space (padTop-inclusive) so cursor
+  // content-Y (el.scrollTop + cursorY) and the committed anchor are consistent.
+  const topAt = (i, sc) => {
+    const dims = dimsPtRef.current;
+    let y = PAD + padTopFor(sc);
     for (let k = 0; k < i; k += 1) y += dims[k].h * sc + GAP;
     return y;
   };
   const leftAt = (i, sc) => (contentWAt(sc) - dimsPtRef.current[i].w * sc) / 2;
   const pageUnderContentY = (cY, sc) => {
     const dims = dimsPtRef.current;
-    let y = PAD;
+    let y = PAD + padTopFor(sc);
     for (let i = 0; i < dims.length; i += 1) {
       const h = dims[i].h * sc;
       if (cY < y + h + GAP) return i;
@@ -614,13 +722,44 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     setLiveZoom(liveZoomRef.current);
   }, []);
 
+  // Cancel an in-flight settle glide and hand control back. Bumping the generation
+  // makes any queued rAF step bail; clearing the rAF stops the next frame. Called
+  // when a fresh wheel gesture starts mid-glide so a stale tween never fights it.
+  const abortSettle = useCallback(() => {
+    settleGenRef.current += 1;
+    if (settleRafRef.current) { cancelAnimationFrame(settleRafRef.current); settleRafRef.current = 0; }
+    settleTweenFromRef.current = null;
+    settleAnimatingRef.current = false;
+    setSettleAnimating(false);
+  }, []);
+
   const commitGesture = useCallback(() => {
     const g = gestureRef.current;
     const lz = liveZoomRef.current;
     gestureRef.current = null;
     liveZoomRef.current = 1;
     if (!g || Math.abs(lz - 1) < 1e-4) { setLiveZoom(1); return; }
-    applyAnchoredScale(scaleRef.current * lz, g.originCursorX, g.originCursorY);
+    const el = scrollerRef.current;
+    const oldScale = scaleRef.current;
+    const newScale = Math.min(MAX_SCALE, Math.max(MIN_SCALE, oldScale * lz));
+    // Only arm the GLIDE when the scale actually commits to a new value (otherwise
+    // applyAnchoredScale early-returns, no re-layout fires, and the layout effect
+    // would never consume the tween — leaving a stale settleTweenFromRef). Capture
+    // the gesture-end scroll so the post-commit layout effect eases the page from
+    // here to the clamped/centered committed position, instead of snapping when the
+    // live transform's anchor differs from the clamped committed scroll. Bump the
+    // settle generation so any earlier glide is superseded.
+    if (el && Math.abs(newScale - oldScale) >= 1e-4) {
+      settleGenRef.current += 1;
+      if (settleRafRef.current) { cancelAnimationFrame(settleRafRef.current); settleRafRef.current = 0; }
+      settleTweenFromRef.current = { left: el.scrollLeft, top: el.scrollTop };
+    }
+    // applyAnchoredScale writes scaleRef synchronously, sets pendingAnchor, and
+    // setScale → re-layout; the layout effect then reads settleTweenFromRef and
+    // tweens. Resetting liveZoom to 1 here swaps the committed (correctly-sized)
+    // raster in at the same paint, so there is no size jump and no blank flash —
+    // only the scroll position eases.
+    applyAnchoredScale(oldScale * lz, g.originCursorX, g.originCursorY);
     setLiveZoom(1);
   }, [applyAnchoredScale]);
 
@@ -634,6 +773,9 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
       const cursorX = e.clientX - rect.left;
       const cursorY = e.clientY - rect.top;
       if (!gestureRef.current) {
+        // A fresh gesture starts: kill any in-flight settle glide so a stale tween
+        // never fights the new live transform, then hand control to the gesture.
+        abortSettle();
         gestureRef.current = {
           originCursorX: cursorX,
           originCursorY: cursorY,
@@ -647,6 +789,38 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
       const committed = scaleRef.current;
       let lz = liveZoomRef.current * (1 - e.deltaY * WHEEL_GAIN);
       lz = Math.max(MIN_SCALE / committed, Math.min(MAX_SCALE / committed, lz));
+      // DRIFT CLAMP (rubber-band): the live transform is unbounded, so zooming can
+      // drag content far past where it can validly rest (above the top of a
+      // multi-page doc, or a centered page drifting off-center). Project where the
+      // anchored scroll WOULD land at this candidate lz; if it falls outside the
+      // valid [0, maxTop] band, ease lz back toward the value that keeps it just
+      // inside, so the preview can't run away and the settle has little to correct.
+      try {
+        const dims = dimsPtRef.current;
+        if (dims.length) {
+          const candScale = Math.min(MAX_SCALE, Math.max(MIN_SCALE, committed * lz));
+          const cX = el.scrollLeft + cursorX;
+          const cY = el.scrollTop + cursorY;
+          const pi = pageUnderContentY(cY, committed);
+          const fracY = (cY - topAt(pi, committed)) / (dims[pi].h * committed);
+          const projTop = topAt(pi, candScale) + fracY * dims[pi].h * candScale - cursorY;
+          // Project the new total content height to estimate the valid maxTop.
+          let yTot = PAD + padTopFor(candScale);
+          for (let k = 0; k < dims.length; k += 1) yTot += dims[k].h * candScale + GAP;
+          const projTotalH = yTot - GAP + PAD;
+          const projMaxTop = Math.max(0, projTotalH - el.clientHeight);
+          const SLACK = 48; // px of rubber-band the preview may exceed before resisting
+          let resist = 1;
+          if (projTop < -SLACK) resist = SLACK / Math.max(SLACK, -projTop); // over the top
+          else if (projTop > projMaxTop + SLACK) resist = SLACK / Math.max(SLACK, projTop - projMaxTop);
+          if (resist < 1) {
+            // Pull lz back toward the previous lz by the resistance factor (soft).
+            const prevLz = liveZoomRef.current;
+            lz = prevLz + (lz - prevLz) * resist;
+            lz = Math.max(MIN_SCALE / committed, Math.min(MAX_SCALE / committed, lz));
+          }
+        }
+      } catch { /* never throw from the wheel handler */ }
       liveZoomRef.current = lz;
       if (!wheelRafRef.current) wheelRafRef.current = requestAnimationFrame(applyWheelZoom);
       if (settleTimerRef.current) clearTimeout(settleTimerRef.current);
@@ -657,8 +831,11 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
       el.removeEventListener('wheel', onWheel);
       if (wheelRafRef.current) cancelAnimationFrame(wheelRafRef.current);
       if (settleTimerRef.current) clearTimeout(settleTimerRef.current);
+      // Tear down any in-flight settle glide so it can't fire after unmount.
+      settleGenRef.current += 1;
+      if (settleRafRef.current) { cancelAnimationFrame(settleRafRef.current); settleRafRef.current = 0; }
     };
-  }, [applyWheelZoom, commitGesture]);
+  }, [applyWheelZoom, commitGesture, abortSettle]);
 
   // ---- drag-to-pan (interactionMode === 'Pan') -----------------------------
   // The owned pdf.js engine owns its own pan: when the Pan tool is active,
@@ -730,7 +907,9 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     const tops = topsRef.current;
     if (!el || !tops.length) return false;
     const i = Math.max(0, Math.min(tops.length - 1, (Number(n) || 1) - 1));
-    el.scrollTop = Math.max(0, tops[i] - PAD);
+    // tops are raw-content-space; padTop shifts the painted page down by that much.
+    // (When padTop > 0 the whole doc fits and maxTop clamps this to 0 anyway.)
+    el.scrollTop = Math.max(0, padTopRef.current + tops[i] - PAD);
     return true;
   }, []);
 
@@ -889,8 +1068,23 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
           ref={contentRef}
           style={{
             position: 'relative', width: layout.contentW, height: layout.totalH,
+            // padTop vertically centers a document shorter than the viewport via
+            // margin (not scroll → scrollTop stays >= 0). Overflow docs get padTop=0.
+            marginTop: layout.padTop,
             transform: liveZoom !== 1 ? `scale(${liveZoom})` : 'none',
-            transformOrigin: gestureRef.current ? `${gestureRef.current.originContentX}px ${gestureRef.current.originContentY}px` : '0 0',
+            // transformOrigin is in the content node's OWN box space. originContentX/Y
+            // were captured in scroll space; marginTop (padTop) offsets the box top
+            // from the scroll origin, so the Y must subtract padTop to keep the
+            // cursor-anchored origin exact when a short/centered doc is padded.
+            // (padTop is 0 for any doc taller than the viewport, so this is a no-op
+            // in the common multi-page case.)
+            transformOrigin: gestureRef.current ? `${gestureRef.current.originContentX}px ${gestureRef.current.originContentY - layout.padTop}px` : '0 0',
+            // Transition is gated ON only while the settle glide runs — NEVER during
+            // the live gesture (where liveZoom updates per-frame and any transition
+            // would lag the cursor anchoring). During settle the transform is already
+            // 'none', so this only eases incidental transform changes, never the live
+            // preview. The position glide itself is driven by the scroll rAF tween.
+            transition: settleAnimating && liveZoom === 1 && !gestureRef.current ? 'transform 160ms ease-out' : 'none',
             willChange: liveZoom !== 1 ? 'transform' : 'auto',
           }}
         >

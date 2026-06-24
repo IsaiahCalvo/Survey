@@ -13,7 +13,7 @@
  * Phase 9 Plan 01: Selection overlay foundation.
  */
 import { memo } from 'react';
-import { getCursorForHandle } from '../utils/svgTransformMath';
+import { getCursorForHandle, clampInverseScale } from '../utils/svgTransformMath';
 import { getHandlePositions } from '../utils/svgBoundingBox';
 import {
   getAdaptiveSelectionHandleSpec,
@@ -54,10 +54,16 @@ const SVGSelectionOverlay = memo(({
   if (!bbox) return null;
 
   const { left, top, width, height, angle } = bbox;
+  // Zoom-out balloon fix: clamp the inverseScale used for VISUAL SIZING so
+  // halos/handles/shadows stop growing once zoomed out past the cap. At rest
+  // (inverseScale ≈ 1) and on zoom-in (< 1) the clamp is a no-op, so the
+  // appearance is unchanged there. The tier/visibility math below intentionally
+  // keeps the RAW inverseScale so crowded handles still hide on zoom-out.
+  const visualInverseScale = clampInverseScale(inverseScale);
   // Dampened inverse scale: sqrt curve softens handle sizing at extreme zooms
   // so handles don't balloon at low zoom or vanish at high zoom.
-  const is = Math.sqrt(inverseScale);
-  const handleMetrics = getSelectionHandleVisualMetrics(inverseScale);
+  const is = Math.sqrt(visualInverseScale);
+  const handleMetrics = getSelectionHandleVisualMetrics(visualInverseScale);
   const handleSpec = getAdaptiveSelectionHandleSpec({
     bboxWidth: width,
     bboxHeight: height,

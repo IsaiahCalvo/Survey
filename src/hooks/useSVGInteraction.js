@@ -9,7 +9,7 @@
  * Phase 9 Plan 03: Multi-select group ops (group-move, group-delete), double-click edit trigger.
  */
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { screenToSVG, normalizeAngle, getInverseScale, constrainToPage, snapAngleToNearest45 } from '../utils/svgTransformMath';
+import { screenToSVG, normalizeAngle, getInverseScale, constrainToPage, snapAngleToNearest45, clampInverseScale } from '../utils/svgTransformMath';
 import { getAnnotationBBox, getGroupBBox, getLineEndpoints, computeLineBboxCenter, isImportedPath, isAbsoluteCoordPath, translatePathData, scalePathData } from '../utils/svgBoundingBox';
 // Phase 15 LINE-01/02/03 + ARROW-01/02/03 — midpoint drag mode + endpoint
 // auto-revert on collinear geometry. Pure-math from lineGeometry, drag
@@ -2520,10 +2520,11 @@ export function useSVGInteraction({
       };
 
       // Collision distances must match the handle the user actually sees.
-      // Handles render at HANDLE_RADIUS * sqrt(inverseScale) in page units, so
-      // the rule uses that same effective radius — a static radius only lines
-      // up at 100% zoom and otherwise leaves a gap that can never be closed.
-      const effHandleR = HANDLE_RADIUS * Math.sqrt(inverseScale > 0 ? inverseScale : 1);
+      // Handles render at HANDLE_RADIUS * sqrt(clampInverseScale(inverseScale))
+      // in page units (the clamp is the zoom-out balloon fix), so the rule uses
+      // that same clamped effective radius — a static radius only lines up at
+      // 100% zoom and otherwise leaves a gap that can never be closed.
+      const effHandleR = HANDLE_RADIUS * Math.sqrt(clampInverseScale(inverseScale));
       const minHandleToBox = effHandleR;        // handle edge meets the border
       const minHandleToHandle = effHandleR * 2; // two handle circles edge-to-edge
       // Knee / arrow handles must also clear the four textbox CORNER handles.
@@ -3421,8 +3422,8 @@ export function useSVGInteraction({
             return t0 < t1 && t1 > 0.0001 && t0 < 0.9999;
           };
 
-          // Same zoom-aware effective handle radius the live drag check uses.
-          const effHandleR = HANDLE_RADIUS * Math.sqrt(inverseScale > 0 ? inverseScale : 1);
+          // Same zoom-aware (clamped) effective handle radius the live drag check uses.
+          const effHandleR = HANDLE_RADIUS * Math.sqrt(clampInverseScale(inverseScale));
           const minHandleToBox = effHandleR;
           const minHandleToHandle = effHandleR * 2;
           // Knee / arrow handles must also clear the four textbox corner

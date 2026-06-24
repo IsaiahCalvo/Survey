@@ -76,6 +76,37 @@ export function getInverseScale(svgElement, viewBoxWidth) {
 }
 
 /**
+ * Upper bound for `inverseScale` when it is used to SIZE a VISIBLE element
+ * (selection halos, resize/rotation handles, hover outlines, drop shadows).
+ *
+ * Why this exists — the zoom-out balloon bug:
+ *   During a ctrl/⌘+wheel zoom-out gesture the page (and its SVG) shrink via a
+ *   CSS `transform: scale(liveZoom)` on a parent, but `inverseScale` is
+ *   `1 / (clientWidth / viewBoxWidth)`. As clientWidth shrinks, inverseScale
+ *   GROWS without bound, so any visible element sized as `something * inverseScale`
+ *   (or `* sqrt(inverseScale)`) balloons to absurd on-screen sizes at low zoom.
+ *
+ * The fix is to cap the inverseScale value FED INTO visual sizing. At rest
+ * (inverseScale ≈ 1) and at any zoom-IN (inverseScale < 1) the cap never bites,
+ * so the at-rest / zoomed-in appearance is byte-for-byte unchanged. The cap
+ * only engages on extreme zoom-OUT, where it keeps strokes/handles reasonable.
+ *
+ * NOTE: this is for VISUAL SIZING only. The adaptive handle-visibility tier
+ * logic (getAdaptiveSelectionHandleSpec) intentionally keeps the RAW
+ * inverseScale so it still hides crowded handles as you zoom out.
+ *
+ * @param {number} inverseScale - Raw inverse scale factor
+ * @param {number} [max=3] - Upper cap (default 3 → handle scale sqrt(3) ≈ 1.73)
+ * @returns {number} inverseScale clamped to (0, max]
+ */
+export const MAX_VISUAL_INVERSE_SCALE = 3;
+export function clampInverseScale(inverseScale, max = MAX_VISUAL_INVERSE_SCALE) {
+  const inv = Number(inverseScale);
+  if (!Number.isFinite(inv) || inv <= 0) return 1;
+  return Math.min(inv, max);
+}
+
+/**
  * Return the CSS cursor string for a resize handle, accounting for
  * annotation rotation. Handles cycle through 8 directional cursors.
  *

@@ -1,6 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { snapAngleToNearest45 } from '../src/utils/svgTransformMath.js';
+import {
+  snapAngleToNearest45,
+  clampInverseScale,
+  MAX_VISUAL_INVERSE_SCALE,
+} from '../src/utils/svgTransformMath.js';
 
 test('snapAngleToNearest45 snaps 44° to 45° within 3° threshold', () => {
   assert.equal(snapAngleToNearest45(44, 3), 45);
@@ -44,4 +48,43 @@ test('snapAngleToNearest45 snaps 317° to 315°', () => {
 
 test('snapAngleToNearest45 leaves exact 135° unchanged', () => {
   assert.equal(snapAngleToNearest45(135, 3), 135);
+});
+
+// --- clampInverseScale: zoom-out balloon fix (BUG 1) ---------------------
+
+test('clampInverseScale is a no-op at rest (inverseScale ≈ 1)', () => {
+  // At rest the at-rest appearance MUST be byte-for-byte identical.
+  assert.equal(clampInverseScale(1), 1);
+  assert.equal(clampInverseScale(0.99), 0.99);
+});
+
+test('clampInverseScale is a no-op when zoomed IN (inverseScale < 1)', () => {
+  // Zoom-in shrinks handles via inverseScale < 1; the cap must never bite there.
+  assert.equal(clampInverseScale(0.5), 0.5);
+  assert.equal(clampInverseScale(0.1), 0.1);
+});
+
+test('clampInverseScale leaves values up to the cap unchanged', () => {
+  assert.equal(clampInverseScale(2), 2);
+  assert.equal(clampInverseScale(MAX_VISUAL_INVERSE_SCALE), MAX_VISUAL_INVERSE_SCALE);
+});
+
+test('clampInverseScale caps runaway zoom-out values at the max', () => {
+  // The bug: zooming out grows inverseScale without bound, ballooning handles.
+  assert.equal(clampInverseScale(4), MAX_VISUAL_INVERSE_SCALE);
+  assert.equal(clampInverseScale(50), MAX_VISUAL_INVERSE_SCALE);
+  assert.equal(clampInverseScale(1000), MAX_VISUAL_INVERSE_SCALE);
+});
+
+test('clampInverseScale honors a custom max', () => {
+  assert.equal(clampInverseScale(10, 2), 2);
+  assert.equal(clampInverseScale(1.5, 2), 1.5);
+});
+
+test('clampInverseScale falls back to 1 for non-finite / non-positive input', () => {
+  assert.equal(clampInverseScale(0), 1);
+  assert.equal(clampInverseScale(-3), 1);
+  assert.equal(clampInverseScale(NaN), 1);
+  assert.equal(clampInverseScale(undefined), 1);
+  assert.equal(clampInverseScale(Infinity), 1);
 });

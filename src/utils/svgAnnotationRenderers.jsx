@@ -261,9 +261,21 @@ export const renderRect = (obj, index) => {
   const shapeId = obj.id || obj.pdfAnnotationId || obj.annotationId || key;
   __logShapeRender(obj, 'rect');
 
-  const rotateTransform = obj.angle
-    ? `rotate(${obj.angle}, ${obj.left + effectiveWidth / 2}, ${obj.top + effectiveHeight / 2})`
-    : undefined;
+  // Zoom-position fix (BUG 2): position the rect via a transform CHAIN
+  // (translate → rotate-about-local-center) with the rect drawn at the local
+  // origin (x=0, y=0), instead of absolute x/y SVG attributes. Pen strokes
+  // (renderPath/renderLine) and cloud rects above already position this way,
+  // and absolute-x/y elements do not ride the parent `transform: scale(liveZoom)`
+  // consistently through a zoom gesture — they drift while transform-chained
+  // elements hold position. This is a positioning-MECHANISM change only:
+  //   old: rect @ (left,top,w,h) + rotate(angle, left+w/2, top+h/2)
+  //   new: rect @ (0,0,w,h)     + translate(left,top) rotate(angle, w/2, h/2)
+  // which is the identical world geometry at rest and at any angle.
+  const left = obj.left ?? 0;
+  const top = obj.top ?? 0;
+  const positionTransform = `translate(${left}, ${top})${
+    obj.angle ? ` rotate(${obj.angle}, ${effectiveWidth / 2}, ${effectiveHeight / 2})` : ''
+  }`;
 
   // UX 2026-04-21: Revision-cloud rectangles rebuild their scalloped path
   // from the current effective box size on every render. That way when the
@@ -323,11 +335,11 @@ export const renderRect = (obj, index) => {
 
   const rectEl = (
     <rect
-      x={obj.left}
-      y={obj.top}
+      x={0}
+      y={0}
       width={effectiveWidth}
       height={effectiveHeight}
-      transform={rotateTransform}
+      transform={positionTransform}
       fill={obj.fill || 'transparent'}
       stroke={obj.stroke || 'transparent'}
       strokeWidth={obj.strokeWidth || 0}
@@ -353,8 +365,12 @@ export const renderRect = (obj, index) => {
   // corners inside the visible area, so the full corner paints at every
   // angle AND the border still sits flush with the shape's edge.
   const sw = Math.max(0, Number(obj.strokeWidth) || 0);
-  const shrunkL = (obj.left ?? 0) + sw / 2;
-  const shrunkT = (obj.top ?? 0) + sw / 2;
+  // BUG 2: transform-chain positioning — the translate in positionTransform
+  // already places the box at (left, top), so the inset shrink is expressed in
+  // LOCAL coords (sw/2 from the local origin) instead of absolute (left+sw/2).
+  // World result is identical to the previous absolute-x/y version at rest.
+  const shrunkL = sw / 2;
+  const shrunkT = sw / 2;
   const shrunkW = Math.max(0, effectiveWidth - sw);
   const shrunkH = Math.max(0, effectiveHeight - sw);
   return (
@@ -364,7 +380,7 @@ export const renderRect = (obj, index) => {
       y={shrunkT}
       width={shrunkW}
       height={shrunkH}
-      transform={rotateTransform}
+      transform={positionTransform}
       fill={obj.fill || 'transparent'}
       stroke={obj.stroke || 'transparent'}
       strokeWidth={sw}
@@ -999,22 +1015,33 @@ export const renderText = (obj, index, liveBounds = null, hideText = false) => {
   const innerWidth = Math.max(0, effectiveWidth - 2 * pad);
   const innerHeight = Math.max(0, effectiveHeight - 2 * pad);
   const innerDisplayHeight = innerHeight + descenderBuffer;
-  // UX 2026-04-20: rotate around the textbox's logical center, NOT the
+  // Zoom-position fix (BUG 2): position the whole textbox via a transform
+  // CHAIN on the wrapper <g> — translate(left, top) then rotate about the
+  // LOCAL logical center — and draw every child (bg rect, border rect,
+  // foreignObject) in LOCAL coords (origin 0,0) instead of absolute x/y SVG
+  // attributes. Pen strokes (renderPath/renderLine) position this way; absolute
+  // x/y elements do not ride the parent `transform: scale(liveZoom)` consistently
+  // during a zoom gesture, so highlights/textboxes drifted while pen strokes held.
+  //   old: children @ absolute (left+…, top+…) + rotate(angle, left+w/2, top+h/2)
+  //   new: children @ local (0+…, 0+…)          + translate(left,top) rotate(angle, w/2, h/2)
+  // which is identical world geometry at rest and at any angle.
+  //
+  // UX 2026-04-20 (preserved): rotate around the textbox's logical center, NOT the
   // displayHeight center (which adds descenderBuffer / 2 below the logical
   // center). The live-preview wrapper + selection overlay both pivot around
   // bbox center (left + width/2, top + height/2), so renderText must too,
   // otherwise the text snaps vertically/horizontally on release when the
   // commit angle swaps the outer wrapper rotation for renderText's own.
-  const rotateTransform = angle !== 0
-    ? `rotate(${angle}, ${left + effectiveWidth / 2}, ${top + effectiveHeight / 2})`
-    : undefined;
+  const positionTransform = `translate(${left}, ${top})${
+    angle !== 0 ? ` rotate(${angle}, ${effectiveWidth / 2}, ${effectiveHeight / 2})` : ''
+  }`;
 
   return (
-    <g key={key} opacity={obj.opacity ?? 1} transform={rotateTransform}>
+    <g key={key} opacity={obj.opacity ?? 1} transform={positionTransform}>
       {obj.backgroundColor && obj.backgroundColor !== 'transparent' ? (
         <rect
-          x={left}
-          y={top}
+          x={0}
+          y={0}
           width={effectiveWidth}
           height={effectiveHeight}
           fill={obj.backgroundColor}
@@ -1029,8 +1056,8 @@ export const renderText = (obj, index, liveBounds = null, hideText = false) => {
           hugs Fabric's logical bounds and matches the eraser-canvas render. */}
       {obj.strokeWidth > 0 && obj.stroke ? (
         <rect
-          x={left}
-          y={top}
+          x={0}
+          y={0}
           width={effectiveWidth}
           height={effectiveHeight}
           fill="none"
@@ -1050,8 +1077,8 @@ export const renderText = (obj, index, liveBounds = null, hideText = false) => {
         // dimensions, forcing the browser to lay out from scratch.
         key={`fo-${Math.round(innerDisplayHeight)}-${(displayedText || '').length}`}
         data-annotation-text-bounds=""
-        x={left + pad}
-        y={top + pad}
+        x={pad}
+        y={pad}
         width={innerWidth}
         height={innerDisplayHeight}
         // UX 2026-04-19 — overflow:hidden so text that doesn't fit inside
