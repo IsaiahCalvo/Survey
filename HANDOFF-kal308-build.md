@@ -14,8 +14,14 @@ design. Don't ask permission to touch data; do confirm before push/publish.
 - [x] **P0 — UNDERSTAND (done):** signing-secret lifecycle + call sites mapped; Vault
   is disabled → restricted table chosen; build-step-0 SETTLED (markers owned by
   `annotationDocSync` Y.Map('surveyMarkers'), materialize via `applySurveyMarkers`).
-- [~] **KAL-308a (PRECONDITION) — signing secret → server:** PLAN-KAL308a.md
-  Codex-APPROVED (2 rounds, Model B). DONE + GATED (build clean, 1625 pass / 0 fail):
+- [x] **KAL-308a (PRECONDITION) — signing secret → server: DONE + LIVE-VERIFIED.**
+  Build clean, full suite 1625/0, and **6/6 integration tests PASS on survey-test**
+  (incl. the server-side S3 parity round-trip + viewer/anon forging wall + RLS).
+  Live-caught + fixed: `#variable_conflict use_column` in the get-or-create RPC (OUT
+  cols collided with table cols in ON CONFLICT). survey-test schema applied via the
+  dashboard SQL editor (browser-extension injection was blocked, so Isaiah pasted).
+  PDFViewer.jsx wiring still uncommitted in the tree with prior KAL-279/259 work.
+  PLAN-KAL308a.md Codex-APPROVED (2 rounds, Model B). Original NEXT list:
   migration + 3 RPCs; `rowIdServerSecretClient.js` (memoized); 9 unit tests incl. S3
   guard; PDFViewer.jsx WIRED — export uses server secret-or-blank (signs over frozen
   `signingDocId`); both import sites resolve the server secret + pass the frozen id;

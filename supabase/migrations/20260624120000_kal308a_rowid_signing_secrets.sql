@@ -71,6 +71,9 @@ LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = ''
 AS $$
+-- OUT columns (key_id, …) collide with table columns in ON CONFLICT/RETURNING;
+-- resolve ambiguous bare names to the column, not the OUT variable.
+#variable_conflict use_column
 BEGIN
   IF auth.uid() IS NULL THEN
     RAISE EXCEPTION 'kal308a: not authenticated';

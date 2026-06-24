@@ -97,6 +97,7 @@ CREATE OR REPLACE FUNCTION public.kal308a_get_or_create_signing_secret(
   p_document_id UUID, p_signing_id_seed TEXT)
 RETURNS TABLE (key_id TEXT, secret_b64 TEXT, signing_doc_id TEXT)
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
+#variable_conflict use_column
 BEGIN
   IF auth.uid() IS NULL THEN RAISE EXCEPTION 'kal308a: not authenticated'; END IF;
   IF NOT public.user_can_access_document(p_document_id, 'editor') THEN
