@@ -11,8 +11,9 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import App from './App';
 import GestureSandbox from './GestureSandbox';
 import SpikeRenderer from './SpikeRenderer';
+import SpikeSkia from './SpikeSkia';
 
-type Overlay = 'none' | 'sandbox' | 'spike';
+type Overlay = 'none' | 'sandbox' | 'spike' | 'skia';
 
 export default function DevRoot() {
   const [overlay, setOverlay] = useState<Overlay>('none');
@@ -28,10 +29,14 @@ export default function DevRoot() {
             <Pressable style={[styles.fab, styles.fabSpike]} onPress={() => setOverlay('spike')} hitSlop={8}>
               <Text style={styles.fabText}>📄</Text>
             </Pressable>
+            <Pressable style={[styles.fab, styles.fabSkia]} onPress={() => setOverlay('skia')} hitSlop={8}>
+              <Text style={styles.fabText}>🎨</Text>
+            </Pressable>
           </View>
         )}
         {overlay === 'sandbox' && <GestureSandbox onClose={() => setOverlay('none')} />}
         {overlay === 'spike' && <SpikeRenderer onClose={() => setOverlay('none')} />}
+        {overlay === 'skia' && <SpikeSkia onClose={() => setOverlay('none')} />}
       </SafeAreaProvider>
     </GestureHandlerRootView>
   );
@@ -40,6 +45,7 @@ export default function DevRoot() {
 const styles = StyleSheet.create({
   fabStack: { position: 'absolute', right: 14, top: 130, gap: 12, alignItems: 'flex-end', zIndex: 99999 },
   fabSpike: { backgroundColor: '#E0A22B' },
+  fabSkia: { backgroundColor: '#46B26B' },
   fab: {
     width: 46,
     height: 46,
