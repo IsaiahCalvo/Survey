@@ -24,11 +24,14 @@ import {
   localToNorm,
   newStrokeId,
   normToLocal,
+  pickStroke,
   screenToLocal,
   strokeToLocalSvg,
   type Stroke,
   type Transform,
 } from './pdfAnnotation';
+
+const HIT_PX = 22;
 
 const PDF_URL =
   'https://raw.githubusercontent.com/mozilla/pdf.js/master/web/compressed.tracemonkey-pldi-09.pdf';
@@ -46,13 +49,16 @@ function detectExpoGo(): boolean {
 
 export default function AnnotatablePdf({ onClose }: { onClose: () => void }) {
   const insets = useSafeAreaInsets();
-  const [mode, setMode] = useState<'draw' | 'pan'>('draw');
+  const [mode, setMode] = useState<'draw' | 'select' | 'pan'>('draw');
   const modeRef = useRef(mode);
   modeRef.current = mode;
+  const [selectedId, setSelectedId] = useState<string | null>(null);
 
   const [viewport, setViewport] = useState<LayoutRectangle | null>(null);
   const [nat, setNat] = useState<{ w: number; h: number } | null>(null);
   const [strokes, setStrokes] = useState<Stroke[]>([]);
+  const strokesRef = useRef(strokes);
+  strokesRef.current = strokes;
   const [, force] = useState(0);
   const repaint = () => force((n) => n + 1);
   const cur = useRef<Stroke | null>(null);
@@ -154,8 +160,22 @@ export default function AnnotatablePdf({ onClose }: { onClose: () => void }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   []);
 
+  // tap to select/deselect a stroke (select mode only); hit radius is screen-space
+  const selectTap = useMemo(() =>
+    Gesture.Tap()
+      .maxDistance(12)
+      .runOnJS(true)
+      .onEnd((e) => {
+        if (modeRef.current !== 'select') return;
+        const b = baseRef.current;
+        if (!b) return;
+        setSelectedId(pickStroke(strokesRef.current, e.x, e.y, b.w, b.h, committed.current, HIT_PX));
+      }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  []);
+
   const gesture = useMemo(
-    () => Gesture.Simultaneous(Gesture.Race(oneFinger, Gesture.Simultaneous(twoPan, pinch))),
+    () => Gesture.Simultaneous(selectTap, Gesture.Race(oneFinger, Gesture.Simultaneous(twoPan, pinch))),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [],
   );
@@ -194,18 +214,25 @@ export default function AnnotatablePdf({ onClose }: { onClose: () => void }) {
     <View style={[styles.root, { paddingTop: insets.top }]}>
       <Header onClose={onClose} />
       <View style={styles.bar}>
-        <Pressable style={[styles.btn, mode === 'draw' && styles.on]} onPress={() => setMode('draw')}>
-          <Text style={[styles.btnT, mode === 'draw' && styles.onT]}>✏️ Draw</Text>
+        <Pressable style={[styles.btn, mode === 'draw' && styles.on]} onPress={() => { setMode('draw'); setSelectedId(null); }}>
+          <Text style={[styles.btnT, mode === 'draw' && styles.onT]}>✏️</Text>
         </Pressable>
-        <Pressable style={[styles.btn, mode === 'pan' && styles.on]} onPress={() => setMode('pan')}>
-          <Text style={[styles.btnT, mode === 'pan' && styles.onT]}>✋ Pan</Text>
+        <Pressable style={[styles.btn, mode === 'select' && styles.on]} onPress={() => setMode('select')}>
+          <Text style={[styles.btnT, mode === 'select' && styles.onT]}>☞</Text>
+        </Pressable>
+        <Pressable style={[styles.btn, mode === 'pan' && styles.on]} onPress={() => { setMode('pan'); setSelectedId(null); }}>
+          <Text style={[styles.btnT, mode === 'pan' && styles.onT]}>✋</Text>
         </Pressable>
         <Pressable style={styles.btn} onPress={() => zoomBy(1 / 1.4)}><Text style={styles.btnT}>－</Text></Pressable>
         <Pressable style={styles.btn} onPress={() => zoomBy(1.4)}><Text style={styles.btnT}>＋</Text></Pressable>
         <Pressable style={styles.btn} onPress={resetZoom}><Text style={styles.btnT}>⤢</Text></Pressable>
-        <Pressable style={styles.clear} onPress={() => { setStrokes([]); cur.current = null; repaint(); }}><Text style={styles.clearT}>Clear</Text></Pressable>
+        {selectedId ? (
+          <Pressable style={styles.del} onPress={() => { setStrokes((s) => s.filter((x) => x.id !== selectedId)); setSelectedId(null); }}><Text style={styles.clearT}>Delete</Text></Pressable>
+        ) : (
+          <Pressable style={styles.del} onPress={() => { setStrokes([]); cur.current = null; setSelectedId(null); repaint(); }}><Text style={styles.clearT}>Clear</Text></Pressable>
+        )}
       </View>
-      <Text style={styles.hud}>zoom {zoomLabel}% · {strokes.length} strokes · {mode === 'draw' ? '1-finger draws, 2-finger pans/zooms' : '1-finger pans'} · ink stays glued to the page</Text>
+      <Text style={styles.hud}>zoom {zoomLabel}% · {strokes.length} strokes{selectedId ? ' · 1 selected' : ''} · {mode === 'draw' ? '1-finger draws' : mode === 'select' ? 'tap a stroke to select' : '1-finger pans'} · 2-finger pans/zooms · ink glued to page</Text>
 
       <View style={styles.stage} onLayout={(e) => setViewport(e.nativeEvent.layout)}>
         <GestureDetector gesture={gesture}>
@@ -233,7 +260,12 @@ export default function AnnotatablePdf({ onClose }: { onClose: () => void }) {
               {base && (
                 <Canvas style={StyleSheet.absoluteFill}>
                   {strokes.map((s) => (
-                    <Path key={s.id} path={strokeToLocalSvg(s, base.w, base.h)} style="stroke" strokeWidth={s.width} color={s.color} strokeJoin="round" strokeCap="round" />
+                    <React.Fragment key={s.id}>
+                      {s.id === selectedId && (
+                        <Path path={strokeToLocalSvg(s, base.w, base.h)} style="stroke" strokeWidth={s.width + 7} color="#E0A22B" opacity={0.45} strokeJoin="round" strokeCap="round" />
+                      )}
+                      <Path path={strokeToLocalSvg(s, base.w, base.h)} style="stroke" strokeWidth={s.width} color={s.color} strokeJoin="round" strokeCap="round" />
+                    </React.Fragment>
                   ))}
                   {cur.current && cur.current.pts.length > 1 && (
                     <Path path={strokeToLocalSvg(cur.current, base.w, base.h)} style="stroke" strokeWidth={3} color="#D9534F" strokeJoin="round" strokeCap="round" />
@@ -269,6 +301,7 @@ const styles = StyleSheet.create({
   btnT: { color: '#A8B0BF', fontSize: 13, fontWeight: '600' },
   onT: { color: '#F2F2F2' },
   clear: { paddingHorizontal: 12, paddingVertical: 7, backgroundColor: '#3a2226', borderRadius: 7, marginLeft: 'auto' },
+  del: { paddingHorizontal: 12, paddingVertical: 7, backgroundColor: '#3a2226', borderRadius: 7, marginLeft: 'auto' },
   clearT: { color: '#D9534F', fontSize: 12, fontWeight: '700' },
   hud: { color: '#A8B0BF', fontSize: 11, paddingHorizontal: 12, paddingVertical: 6, backgroundColor: '#1A1E25' },
   stage: { flex: 1, backgroundColor: '#0E1116', overflow: 'hidden' },

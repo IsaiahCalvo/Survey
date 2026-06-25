@@ -64,6 +64,40 @@ export const normToPdfUserSpace = (n: Norm, pageWidthPt: number, pageHeightPt: n
 let _idn = 0;
 export const newStrokeId = () => `ink_${_idn++}`;
 
+/** Shortest distance from point P to segment AB (all in the same space). */
+export function distToSegment(px: number, py: number, ax: number, ay: number, bx: number, by: number): number {
+  const dx = bx - ax, dy = by - ay;
+  const len2 = dx * dx + dy * dy;
+  let t = len2 ? ((px - ax) * dx + (py - ay) * dy) / len2 : 0;
+  t = Math.max(0, Math.min(1, t));
+  return Math.hypot(px - (ax + t * dx), py - (ay + t * dy));
+}
+
+/**
+ * Pick the nearest stroke to a SCREEN tap within thresholdPx, or null.
+ * Strokes are stored in norm space; we project them to screen via the current
+ * transform so the hit radius is a constant on-screen distance at any zoom.
+ */
+export function pickStroke(
+  strokes: Stroke[], sx: number, sy: number, pageW: number, pageH: number, t: Transform, thresholdPx: number,
+): string | null {
+  let best: string | null = null;
+  let bestD = thresholdPx;
+  for (const s of strokes) {
+    const scr = s.pts.map((n) => {
+      const l = normToLocal(n, pageW, pageH);
+      return localToScreen(l.x, l.y, t);
+    });
+    let d = Infinity;
+    if (scr.length === 1) d = Math.hypot(sx - scr[0].x, sy - scr[0].y);
+    for (let i = 0; i < scr.length - 1; i++) {
+      d = Math.min(d, distToSegment(sx, sy, scr[i].x, scr[i].y, scr[i + 1].x, scr[i + 1].y));
+    }
+    if (d < bestD) { bestD = d; best = s.id; }
+  }
+  return best;
+}
+
 // ponytail: one runnable self-check on the load-bearing coordinate math.
 // Run with:  node -r esbuild-register annotation/pdfAnnotation.ts   (or via the test runner)
 export function demo() {
@@ -106,5 +140,13 @@ export function demo() {
   const top = normToPdfUserSpace({ x: 0, y: 0 }, pageW, pageH);
   const bottom = normToPdfUserSpace({ x: 0, y: 1 }, pageW, pageH);
   assert(top.y === pageH && bottom.y === 0, 'y-flip to PDF user-space');
+  // hit-test: pick a stroke when the tap is near it, miss when far
+  const hs: Stroke = { id: 'h', color: '#000', width: 3, pts: [{ x: 0.2, y: 0.2 }, { x: 0.8, y: 0.2 }] };
+  const t3: Transform = { scale: 1, tx: 0, ty: 0 };
+  assert(pickStroke([hs], 200, 121, 400, 600, t3, 20) === 'h', 'pickStroke hits near (local y=120)');
+  assert(pickStroke([hs], 200, 400, 400, 600, t3, 20) === null, 'pickStroke misses far');
+  // hit radius is constant in SCREEN px regardless of zoom
+  const tz: Transform = { scale: 3, tx: 0, ty: 0 };
+  assert(pickStroke([hs], 600, 363, 400, 600, tz, 20) === 'h', 'pickStroke hits at 3x zoom (screen-space radius)');
   return 'pdfAnnotation self-check OK';
 }
