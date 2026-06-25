@@ -85,6 +85,7 @@ import { buildMarkerIdentityRecord, buildMarkerIdentityRecords, applyMarkerIdent
 import { loadBaseline, saveBaseline, clearBaseline } from './services/excelSyncBaselineStore';
 import { generateRowIdToken } from './services/rowIdToken';
 import { getOrCreateDocumentSecret, resolveDocumentSecret } from './services/rowIdSecretStore';
+import { fetchOrCreateSigningSecret, fetchSigningSecret } from './services/rowIdServerSecretClient';
 import { buildScopeImportPlans } from './services/buildScopeImportPlans';
 import { triageCandidateDelete, markPendingDelete, clearPendingDeleteMark } from './services/excelDeleteGrace';
 import { RECENCY, classifyWorkbookRecency, latestAppExportStamp, readWorkbookExportStamp, staleAutoSkipMessage, staleManualConfirmText } from './services/excelImportRecencyGuard';
@@ -12233,11 +12234,29 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       // build so the identity fingerprints are computed from the same strings the
       // importer reads back out of the cells. markerId → { values: {...} }.
       const markerRowValuesById = new Map();
-      let rowIdSigning = null;
-      try {
-        rowIdSigning = getOrCreateDocumentSecret(rowIdDocumentId);
-      } catch {
-        rowIdSigning = null; // no secure RNG / storage — write blank Row IDs, import recovers by fingerprint
+      // KAL-308a: for Supabase-backed docs the signing secret comes from the SERVER
+      // (so the Edge can verify these tokens later); local-only docs keep client
+      // localStorage signing. We sign over the FROZEN signing id the server returns
+      // (rename-stable), never the freshly-computed composite. On server failure we
+      // write BLANK Row IDs (import recovers by fingerprint) — NEVER localStorage
+      // signing on a registered doc, which would be Edge-unverifiable forever.
+      const rowIdSupabaseDocId = pdfFile?.id ?? null;
+      let rowIdSigning = null;                  // { keyId, secret }
+      let rowIdSigningDocId = rowIdDocumentId;  // the id we sign OVER
+      if (rowIdSupabaseDocId) {
+        try {
+          const serverSecret = await fetchOrCreateSigningSecret(rowIdSupabaseDocId, rowIdDocumentId);
+          rowIdSigning = { keyId: serverSecret.keyId, secret: serverSecret.secret };
+          rowIdSigningDocId = serverSecret.signingDocId;
+        } catch {
+          rowIdSigning = null; // server unreachable / denied — blank Row IDs, fingerprint recovery
+        }
+      } else {
+        try {
+          rowIdSigning = getOrCreateDocumentSecret(rowIdDocumentId); // local-only doc: client signing
+        } catch {
+          rowIdSigning = null; // no secure RNG / storage — blank Row IDs, fingerprint recovery
+        }
       }
       const rowIdTokensByMarkerId = new Map();
       if (rowIdSigning) {
@@ -12246,7 +12265,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
             const token = await generateRowIdToken({
               keyId: rowIdSigning.keyId,
               secret: rowIdSigning.secret,
-              documentId: rowIdDocumentId,
+              documentId: rowIdSigningDocId,
               scopeId: rowIdScopeId(marker.moduleId, marker.categoryId),
               markerId: annotationId
             });
@@ -13642,8 +13661,17 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     // row, or "needs your choice" — identity, never name. Scopes without the column
     // fall back to the legacy name-match below. Rows the matcher won't auto-apply,
     // and review-only candidate-deletes, are collected here and surfaced, never written.
-    const importDocumentId = `${pdfFile?.id || 'local'}:${pdfId || pdfFile?.name || 'pdf'}`;
-    const importResolveSecret = (keyId) => resolveDocumentSecret(importDocumentId, keyId);
+    // KAL-308a: verify against the SERVER secret for Supabase-backed docs, matching over
+    // the FROZEN signing id (build-note 1 — pass it as the matcher documentId, NOT the
+    // current composite). Local-only / no-server-key docs fall back to the same-browser
+    // localStorage secret (client-side legacy aid only; the Edge never uses localStorage).
+    const importSupabaseDocId = pdfFile?.id ?? null;
+    const importServerSecret = importSupabaseDocId ? await fetchSigningSecret(importSupabaseDocId) : null;
+    const importDocumentId = importServerSecret?.signingDocId
+      ?? `${pdfFile?.id || 'local'}:${pdfId || pdfFile?.name || 'pdf'}`;
+    const importResolveSecret = importServerSecret
+      ? (keyId) => (keyId === importServerSecret.keyId ? importServerSecret.secret : null)
+      : (keyId) => resolveDocumentSecret(importDocumentId, keyId);
     // One wall-clock reading per import, taken here at the executor boundary (the
     // services stay pure): orders this ingest's positional stamps (lastIngestSeq)
     // and keys the delete-grace pending marks (slice 4) so a mark stamped by THIS
@@ -14255,8 +14283,17 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     // Row ID identity plan — see executeExcelImport. Identity governs matching when a
     // Row ID column is present; legacy name-match is the fallback. Review-only rows and
     // candidate-deletes are surfaced, never written automatically.
-    const importDocumentId = `${pdfFile?.id || 'local'}:${pdfId || pdfFile?.name || 'pdf'}`;
-    const importResolveSecret = (keyId) => resolveDocumentSecret(importDocumentId, keyId);
+    // KAL-308a: verify against the SERVER secret for Supabase-backed docs, matching over
+    // the FROZEN signing id (build-note 1 — pass it as the matcher documentId, NOT the
+    // current composite). Local-only / no-server-key docs fall back to the same-browser
+    // localStorage secret (client-side legacy aid only; the Edge never uses localStorage).
+    const importSupabaseDocId = pdfFile?.id ?? null;
+    const importServerSecret = importSupabaseDocId ? await fetchSigningSecret(importSupabaseDocId) : null;
+    const importDocumentId = importServerSecret?.signingDocId
+      ?? `${pdfFile?.id || 'local'}:${pdfId || pdfFile?.name || 'pdf'}`;
+    const importResolveSecret = importServerSecret
+      ? (keyId) => (keyId === importServerSecret.keyId ? importServerSecret.secret : null)
+      : (keyId) => resolveDocumentSecret(importDocumentId, keyId);
     // One wall-clock reading per import, taken here at the executor boundary (the
     // services stay pure): orders this ingest's positional stamps (lastIngestSeq)
     // and keys the delete-grace pending marks (slice 4) so a mark stamped by THIS
