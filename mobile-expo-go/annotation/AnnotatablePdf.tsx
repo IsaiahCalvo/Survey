@@ -1,15 +1,14 @@
 /**
- * AnnotatablePdf — PRODUCTION FOUNDATION (Approach B, UI-thread feel pass).
+ * AnnotatablePdf — PRODUCTION FOUNDATION (Approach B).
  *
- * PDF render layer (<Pdf/>, touches disabled) + Skia ink layer in ONE container.
- * The transform (pan/zoom) and the LIVE ink stroke run on the UI THREAD via
- * Reanimated worklets + react-native-skia, so the pen and the zoom keep up with
- * the finger (the fix for the JS-thread v0 jank). CORE LAW: 1 finger = the tool's
- * action, 2 fingers always pan+pinch. Strokes stored NORMALIZED (zoom-independent,
- * @survey/shared-ready). Tap-to-select + Delete.
- *
- * Still v0: PDF bitmap-scales (softens at high zoom) — crispness = re-render the
- * PDF via its `scale` prop on zoom-settle (next). Single page only.
+ * PDF render layer (<Pdf/>, touches disabled) bitmap-transformed by Reanimated;
+ * the Skia ink layer lives in a VIEWPORT canvas and is transformed by a Skia
+ * <Group> (so vectors re-rasterize CRISP at any zoom — the PDF re-renders crisp
+ * natively). Both layers are driven by the SAME shared transform, so ink stays
+ * glued to the page. Transform + live ink run on the UI thread (Reanimated
+ * worklets + react-native-skia). CORE LAW: 1 finger = tool action, 2 fingers
+ * always pan+pinch; a stroke interrupted by a 2nd finger is discarded. Strokes
+ * stored NORMALIZED (zoom-independent, @survey/shared-ready). Tap-select + Delete.
  */
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { LayoutRectangle, Pressable, StyleSheet, Text, View } from 'react-native';
@@ -22,7 +21,7 @@ import Animated, {
   useSharedValue,
   withTiming,
 } from 'react-native-reanimated';
-import { Canvas, Path, Skia } from '@shopify/react-native-skia';
+import { Canvas, Group, Path, Skia } from '@shopify/react-native-skia';
 import {
   clampNorm,
   localToNorm,
@@ -35,8 +34,9 @@ import {
 const PDF_URL =
   'https://raw.githubusercontent.com/mozilla/pdf.js/master/web/compressed.tracemonkey-pldi-09.pdf';
 const MIN_S = 0.5;
-const MAX_S = 6;
+const MAX_S = 14; // (4) deeper zoom
 const HIT_PX = 22;
+const FOCAL_JUMP = 60; // (1) one-frame focal lurch (finger lift) guard, screen px
 
 function detectExpoGo(): boolean {
   try {
@@ -65,34 +65,43 @@ export default function AnnotatablePdf({ onClose }: { onClose: () => void }) {
   const baseRef = useRef(base);
   baseRef.current = base;
 
-  // UI-thread state (shared values)
+  // UI-thread state
   const tx = useSharedValue(0);
   const ty = useSharedValue(0);
   const sc = useSharedValue(1);
-  const stx = useSharedValue(0); // gesture-start snapshots
+  const stx = useSharedValue(0);
   const sty = useSharedValue(0);
   const ssc = useSharedValue(1);
-  const oLocalX = useSharedValue(0); // page-local point under the pinch focal at gesture start
+  const oLocalX = useSharedValue(0);
   const oLocalY = useSharedValue(0);
+  const lastFx = useSharedValue(0); // focal-jump guard
+  const lastFy = useSharedValue(0);
   const live = useSharedValue<{ x: number; y: number }[]>([]); // live stroke, page-local px
+  const committed = useSharedValue(false); // did the draw end cleanly (vs interrupted)?
+  const drawGen = useSharedValue(0); // generation, to clear live only after its own commit paints
   const modeSV = useSharedValue(0); // 0 draw, 1 select, 2 pan
   useEffect(() => {
     modeSV.value = mode === 'draw' ? 0 : mode === 'select' ? 1 : 2;
   }, [mode, modeSV]);
 
-  // JS-thread commit + select (called from worklets via runOnJS)
-  const commitLocalStroke = (pts: { x: number; y: number }[]) => {
+  // (3) clear the live stroke only AFTER its committed version has painted (no gap)
+  const commitLocalStroke = (pts: { x: number; y: number }[], gen: number) => {
     const b = baseRef.current;
-    if (!b || pts.length < 2) return;
-    const norm = pts.map((p) => clampNorm(localToNorm(p.x, p.y, b.w, b.h)));
-    setStrokes((s) => [...s, { id: newStrokeId(), color: '#2B6FB6', width: 3, pts: norm }]);
+    if (b && pts.length >= 2) {
+      const norm = pts.map((p) => clampNorm(localToNorm(p.x, p.y, b.w, b.h)));
+      setStrokes((s) => [...s, { id: newStrokeId(), color: '#2B6FB6', width: 3, pts: norm }]);
+    }
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        if (drawGen.value === gen) live.value = [];
+      });
+    });
   };
   const handleTap = (sx: number, sy: number) => {
     if (modeSV.value !== 1) return;
     const b = baseRef.current;
     if (!b) return;
-    const t = { scale: sc.value, tx: tx.value, ty: ty.value };
-    setSelectedId(pickStroke(strokesRef.current, sx, sy, b.w, b.h, t, HIT_PX));
+    setSelectedId(pickStroke(strokesRef.current, sx, sy, b.w, b.h, { scale: sc.value, tx: tx.value, ty: ty.value }, HIT_PX));
   };
 
   // ---- gestures (UI thread) ----
@@ -104,6 +113,8 @@ export default function AnnotatablePdf({ onClose }: { onClose: () => void }) {
         stx.value = tx.value;
         sty.value = ty.value;
         if (modeSV.value === 0) {
+          committed.value = false;
+          drawGen.value = drawGen.value + 1;
           live.value = [{ x: (e.x - tx.value) / sc.value, y: (e.y - ty.value) / sc.value }];
         }
       })
@@ -119,17 +130,18 @@ export default function AnnotatablePdf({ onClose }: { onClose: () => void }) {
       .onEnd(() => {
         'worklet';
         if (modeSV.value === 0) {
-          const pts = live.value;
-          live.value = [];
-          runOnJS(commitLocalStroke)(pts);
+          committed.value = true;
+          runOnJS(commitLocalStroke)(live.value, drawGen.value);
         }
+      })
+      .onFinalize(() => {
+        'worklet';
+        // (2) interrupted by a 2nd finger (gesture failed, onEnd never ran) → discard
+        if (modeSV.value === 0 && !committed.value) live.value = [];
       }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
   []);
 
-  // ONE 2-finger gesture owns both pan AND zoom (no fighting writers). The
-  // page-local point under the focal is captured at gesture START and kept under
-  // the (moving) focal — that gives focal-anchored zoom AND two-finger pan in one.
   const pinch = useMemo(() =>
     Gesture.Pinch()
       .onBegin((e) => {
@@ -137,9 +149,16 @@ export default function AnnotatablePdf({ onClose }: { onClose: () => void }) {
         ssc.value = sc.value;
         oLocalX.value = (e.focalX - tx.value) / sc.value;
         oLocalY.value = (e.focalY - ty.value) / sc.value;
+        lastFx.value = e.focalX;
+        lastFy.value = e.focalY;
       })
       .onUpdate((e) => {
         'worklet';
+        const dfx = e.focalX - lastFx.value;
+        const dfy = e.focalY - lastFy.value;
+        lastFx.value = e.focalX;
+        lastFy.value = e.focalY;
+        if (Math.abs(dfx) > FOCAL_JUMP || Math.abs(dfy) > FOCAL_JUMP) return; // (1) skip lurch frame
         const ns = Math.max(MIN_S, Math.min(MAX_S, ssc.value * e.scale));
         sc.value = ns;
         tx.value = e.focalX - oLocalX.value * ns;
@@ -154,15 +173,12 @@ export default function AnnotatablePdf({ onClose }: { onClose: () => void }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   []);
 
-  // 1-finger (draw/pan/select) and the 2-finger pinch are mutually exclusive by
-  // pointer count, so Simultaneous is safe and they never fight.
   const gesture = useMemo(
     () => Gesture.Simultaneous(selectTap, oneFinger, pinch),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [],
   );
 
-  // live stroke path, rebuilt on the UI thread
   const livePath = useDerivedValue(() => {
     const p = Skia.Path.Make();
     const pts = live.value;
@@ -176,16 +192,21 @@ export default function AnnotatablePdf({ onClose }: { onClose: () => void }) {
   const pageStyle = useAnimatedStyle(() => ({
     transform: [{ translateX: tx.value }, { translateY: ty.value }, { scale: sc.value }],
   }));
+  // (5) Skia transform for the ink — same math, but vectors re-rasterize crisp
+  const inkTransform = useDerivedValue(() => [
+    { translateX: tx.value },
+    { translateY: ty.value },
+    { scale: sc.value },
+  ]);
 
   const zoomBy = (factor: number) => {
     const vp = viewport;
     if (!vp) return;
     const cx = vp.width / 2;
     const cy = vp.height / 2;
-    const c = { scale: sc.value, tx: tx.value, ty: ty.value };
-    const ns = Math.max(MIN_S, Math.min(MAX_S, c.scale * factor));
-    const lx = (cx - c.tx) / c.scale;
-    const ly = (cy - c.ty) / c.scale;
+    const ns = Math.max(MIN_S, Math.min(MAX_S, sc.value * factor));
+    const lx = (cx - tx.value) / sc.value;
+    const ly = (cy - ty.value) / sc.value;
     sc.value = withTiming(ns, { duration: 140 });
     tx.value = withTiming(cx - lx * ns, { duration: 140 });
     ty.value = withTiming(cy - ly * ns, { duration: 140 });
@@ -194,7 +215,6 @@ export default function AnnotatablePdf({ onClose }: { onClose: () => void }) {
   const resetZoom = () => { sc.value = withTiming(1); tx.value = withTiming(0); ty.value = withTiming(0); setZoomLabel(100); };
 
   const Pdf = detectExpoGo() ? null : require('react-native-pdf').default;
-
   if (!Pdf) {
     return (
       <View style={[styles.root, { paddingTop: insets.top }]}>
@@ -220,11 +240,12 @@ export default function AnnotatablePdf({ onClose }: { onClose: () => void }) {
           <Pressable style={styles.del} onPress={() => { setStrokes([]); live.value = []; setSelectedId(null); }}><Text style={styles.clearT}>Clear</Text></Pressable>
         )}
       </View>
-      <Text style={styles.hud}>zoom {zoomLabel}% · {strokes.length} strokes{selectedId ? ' · 1 selected' : ''} · {mode === 'draw' ? '1-finger draws' : mode === 'select' ? 'tap a stroke' : '1-finger pans'} · 2-finger pans/zooms · UI-thread</Text>
+      <Text style={styles.hud}>zoom {zoomLabel}% · {strokes.length} strokes{selectedId ? ' · 1 selected' : ''} · {mode === 'draw' ? '1-finger draws' : mode === 'select' ? 'tap a stroke' : '1-finger pans'} · 2-finger pans/zooms</Text>
 
       <View style={styles.stage} onLayout={(e) => setViewport(e.nativeEvent.layout)}>
         <GestureDetector gesture={gesture}>
           <View style={StyleSheet.absoluteFill} collapsable={false}>
+            {/* PDF layer — native, re-renders crisp under the RN transform */}
             <Animated.View style={[base ? { width: base.w, height: base.h } : StyleSheet.absoluteFillObject, styles.page, pageStyle]}>
               <View style={StyleSheet.absoluteFill} pointerEvents="none">
                 <Pdf
@@ -235,8 +256,11 @@ export default function AnnotatablePdf({ onClose }: { onClose: () => void }) {
                   style={StyleSheet.absoluteFill}
                 />
               </View>
-              {base && (
-                <Canvas style={StyleSheet.absoluteFill}>
+            </Animated.View>
+            {/* Ink layer — viewport canvas, crisp via Skia <Group> transform */}
+            {base && (
+              <Canvas style={StyleSheet.absoluteFill} pointerEvents="none">
+                <Group transform={inkTransform}>
                   {strokes.map((s) => (
                     <React.Fragment key={s.id}>
                       {s.id === selectedId && (
@@ -246,9 +270,9 @@ export default function AnnotatablePdf({ onClose }: { onClose: () => void }) {
                     </React.Fragment>
                   ))}
                   <Path path={livePath} style="stroke" strokeWidth={3} color="#2B6FB6" strokeJoin="round" strokeCap="round" />
-                </Canvas>
-              )}
-            </Animated.View>
+                </Group>
+              </Canvas>
+            )}
           </View>
         </GestureDetector>
       </View>
