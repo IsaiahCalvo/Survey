@@ -72,6 +72,8 @@ export default function AnnotatablePdf({ onClose }: { onClose: () => void }) {
   const stx = useSharedValue(0); // gesture-start snapshots
   const sty = useSharedValue(0);
   const ssc = useSharedValue(1);
+  const oLocalX = useSharedValue(0); // page-local point under the pinch focal at gesture start
+  const oLocalY = useSharedValue(0);
   const live = useSharedValue<{ x: number; y: number }[]>([]); // live stroke, page-local px
   const modeSV = useSharedValue(0); // 0 draw, 1 select, 2 pan
   useEffect(() => {
@@ -125,26 +127,23 @@ export default function AnnotatablePdf({ onClose }: { onClose: () => void }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   []);
 
-  const twoPan = useMemo(() =>
-    Gesture.Pan()
-      .minPointers(2)
-      .maxPointers(2)
-      .onBegin(() => { 'worklet'; stx.value = tx.value; sty.value = ty.value; })
-      .onUpdate((e) => { 'worklet'; tx.value = stx.value + e.translationX; ty.value = sty.value + e.translationY; }),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  []);
-
+  // ONE 2-finger gesture owns both pan AND zoom (no fighting writers). The
+  // page-local point under the focal is captured at gesture START and kept under
+  // the (moving) focal — that gives focal-anchored zoom AND two-finger pan in one.
   const pinch = useMemo(() =>
     Gesture.Pinch()
-      .onBegin(() => { 'worklet'; ssc.value = sc.value; stx.value = tx.value; sty.value = ty.value; })
+      .onBegin((e) => {
+        'worklet';
+        ssc.value = sc.value;
+        oLocalX.value = (e.focalX - tx.value) / sc.value;
+        oLocalY.value = (e.focalY - ty.value) / sc.value;
+      })
       .onUpdate((e) => {
         'worklet';
         const ns = Math.max(MIN_S, Math.min(MAX_S, ssc.value * e.scale));
-        const lx = (e.focalX - stx.value) / ssc.value;
-        const ly = (e.focalY - sty.value) / ssc.value;
         sc.value = ns;
-        tx.value = e.focalX - lx * ns;
-        ty.value = e.focalY - ly * ns;
+        tx.value = e.focalX - oLocalX.value * ns;
+        ty.value = e.focalY - oLocalY.value * ns;
       })
       .onEnd(() => { 'worklet'; runOnJS(setZoomLabel)(Math.round(sc.value * 100)); }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -155,8 +154,10 @@ export default function AnnotatablePdf({ onClose }: { onClose: () => void }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   []);
 
+  // 1-finger (draw/pan/select) and the 2-finger pinch are mutually exclusive by
+  // pointer count, so Simultaneous is safe and they never fight.
   const gesture = useMemo(
-    () => Gesture.Simultaneous(selectTap, Gesture.Race(oneFinger, Gesture.Simultaneous(twoPan, pinch))),
+    () => Gesture.Simultaneous(selectTap, oneFinger, pinch),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [],
   );
@@ -244,7 +245,7 @@ export default function AnnotatablePdf({ onClose }: { onClose: () => void }) {
                       <Path path={strokeToLocalSvg(s, base.w, base.h)} style="stroke" strokeWidth={s.width} color={s.color} strokeJoin="round" strokeCap="round" />
                     </React.Fragment>
                   ))}
-                  <Path path={livePath} style="stroke" strokeWidth={3} color="#D9534F" strokeJoin="round" strokeCap="round" />
+                  <Path path={livePath} style="stroke" strokeWidth={3} color="#2B6FB6" strokeJoin="round" strokeCap="round" />
                 </Canvas>
               )}
             </Animated.View>
