@@ -66,3 +66,20 @@ Confirmed OK: rowid_signing_doc_id ALTER, safe_uuid strict, persist rowcount gua
 
 ## Migration SQL code-review round 3 — Codex (VERDICT: APPROVED — safe to apply to survey-test)
 4 refinements confirmed fixed; only a stale comment nit (fixed). Migration is Codex-clean as code; node suite 1625/0. Pending: apply to survey-test (needs account token) + integration tests, after the Edge fn + client are built.
+
+## Edge fn code-review round 1 — Codex (VERDICT: REVISE) — 5 data-threading bugs (security core OK)
+Checked OK: JWT auth rejects anon/service/invalid before body parse; p_actor_id=user.id; active registration hash/doc/template/revoked/expiry validated before secret/RPC; RPC arg names/types match; broadcast content-free.
+1. replay skips token persistence → retry after partial persist can broadcast with missing writeback_jobs. On replay, persist missing create-token jobs before broadcast.
+2. client fallback trusts rowIdToken as markerAnnotationId (UUID bypasses HMAC). Verify server-side or force fallback rows to review.
+3. matcher path sends fields:null for apply/create. Attach visible row values as `fields`.
+4. sends INCOMING fingerprints as baseFingerprints → real edits false-stale. Pass the matched STORED/export baseline fingerprints.
+5. hyphen scopeKey collision → opId collisions/wrong-scope. Use real scopeId + collision-free tuple keys.
+### Claude's response: sending 5 fixes to the Edge agent, then re-Codex.
+
+## Edge fn code-review round 2 — Codex (VERDICT: REVISE) — 1 finding
+Confirmed OK: replay token persist before broadcast; fallback→review; visible fields attached; base/incoming fingerprints separated; RPC args match; auth/registration/secret/broadcast safe.
+- scope collision not fully fixed: matcher (buildScopeImportPlans.js) still keys/overwrites plans by `${moduleId}-${categoryId}` (ambiguous; ids can contain '-'). Fix at the source: collision-free key + carry scopeId/worksheet metadata in the plan value; consumers read value.scopeId, never parse the key.
+### Claude's response: fixing the matcher's plan-Map key (shared src/services + re-sync guarded copy + update both consumers), then re-Codex.
+
+## Edge fn code-review round 3 — Codex (VERDICT: APPROVED — safe to deploy)
+Scope-key collision fixed at source (scopeKeyFor → JSON.stringify([m,c]); plan values carry scopeId/moduleId/categoryId; consumers read the value). Build note: scopeId stays the colon-joined contract. The keystone SERVER SIDE (migration + Edge) is Codex-approved as code.

@@ -259,35 +259,83 @@ Deno.serve(async (req: Request) => {
     const pRows: Array<Record<string, unknown>> = [];
 
     if (matcherRan) {
-      // The matcher keys scopePlans by scopeKey (`${moduleId}-${categoryId}`) but its decisions
-      // do NOT carry the real scopeId (`${moduleId}:${categoryId}`) the RPC state row is keyed
-      // on. scopeKey is NOT reliably reversible (ids may contain '-'), so rebuild a
-      // scopeKey → scopeId map from worksheetDataList, the same inputs the matcher used.
-      const scopeIdByKey = new Map<string, string>();
+      // Each plan VALUE is self-describing — buildScopeImportPlans now stamps scopeId
+      // (`${moduleId}:${categoryId}`, the value the matcher signs Row-ID tokens over), moduleId
+      // and categoryId onto it (Fix 5 / Codex round 2). We read identity straight off the value
+      // and NEVER reverse-split the collision-free Map key. The matching worksheet (for the
+      // visible row values, Fix 3) is found by moduleId/categoryId from the value.
+      const worksheetByScopeId = new Map<string, any>();
       for (const ws of worksheetDataList as Array<any>) {
         const moduleId = ws?.matchedModuleId;
         const categoryId = ws?.matchedCategory?.id;
         if (moduleId != null && categoryId != null) {
-          scopeIdByKey.set(`${moduleId}-${categoryId}`, `${moduleId}:${categoryId}`);
+          worksheetByScopeId.set(`${moduleId}:${categoryId}`, ws);
+        }
+      }
+
+      // Fix 4: the Excel-vs-Excel TOCTOU base is the matched marker's STORED export baseline,
+      // NOT the incoming row's fingerprints. Build markerId → its excelSync baseline from
+      // surveyMarkers (the matcher's own `stored` source). A create has no prior baseline.
+      const storedBaselineByMarkerId = new Map<
+        string,
+        { identityVector: string | null; fields: Record<string, string> | null }
+      >();
+      for (const [markerId, marker] of Object.entries(surveyMarkers as Record<string, any>)) {
+        const xs = marker?.excelSync;
+        if (xs) {
+          storedBaselineByMarkerId.set(markerId, {
+            identityVector: xs.identityVectorFingerprint ?? null,
+            fields: xs.fieldFingerprints ?? null,
+          });
         }
       }
 
       // Collapse every scope's per-row decisions into one ordered list. Token/secret material
       // is never placed into the payload (the RPC also sanitizes defensively). opId must be
-      // unique within the change-set (RPC UNIQUE (…, client_change_set_id, op_id)); rowIndex is
-      // per-scope, so scopeKey is part of the key to avoid cross-scope collisions.
-      for (const [scopeKey, plan] of scopePlans) {
-        const scopeId = scopeIdByKey.get(scopeKey) ?? null;
-        for (const [, decision] of plan.byRowIndex) {
+      // unique within the change-set (RPC UNIQUE (…, client_change_set_id, op_id)); the real
+      // scopeId + the byRowIndex Map key (a per-scope-unique json data-row index) form a
+      // collision-free tuple — no hyphen-splitting (Fix 5).
+      for (const [, plan] of scopePlans) {
+        // Read identity from the plan VALUE (never reverse-split the Map key).
+        const scopeId: string | null = (plan as any).scopeId ?? null;
+        // Collision-free fallback for opId when scopeId is somehow absent: a JSON tuple of the
+        // value's moduleId/categoryId — never a hyphen-join (the very ambiguity Fix 5 closes).
+        const scopeKeyFallback = JSON.stringify([
+          (plan as any).moduleId ?? null,
+          (plan as any).categoryId ?? null,
+        ]);
+        const worksheet = scopeId ? worksheetByScopeId.get(scopeId) : null;
+        // Per-scope visible-values resolver (Fix 3), mirroring buildScopeImportPlans' buildValues
+        // against the same header layout. jsonIndex is the byRowIndex Map key.
+        const valuesAt = worksheet
+          ? makeWorksheetValueResolver(worksheet, templateConfig)
+          : () => null;
+
+        for (const [jsonIndex, decision] of plan.byRowIndex) {
           const opType =
             decision.action === 'apply'
               ? 'apply'
               : decision.action === 'create'
                 ? 'create'
                 : 'review'; // matcher 'review' rows are sent so the RPC audits them as review.
+
+          // Fix 3: send the VISIBLE incoming row values so the RPC has values to apply.
+          //   - conflict-review rows already stash decision.excelValues; prefer it.
+          //   - otherwise rebuild from the worksheet row at jsonIndex.
+          const fields = decision.excelValues ?? valuesAt(jsonIndex);
+
+          // Fix 4: baseFingerprints = the matched marker's STORED baseline (apply only).
+          //   A create has no prior server/export baseline → null (RPC seeds state on insert).
+          const base =
+            opType === 'apply' && decision.markerId
+              ? storedBaselineByMarkerId.get(decision.markerId) ?? null
+              : null;
+
           const ir = decision.identityRecord ?? {};
           pRows.push({
-            opId: `${scopeKey}:${decision.rowIndex}:${decision.decision}`,
+            // Fix 5: collision-free tuple key (real scopeId from the plan value + json data-row
+            // index). scopeKeyFallback uses the value's module/category tuple, never a hyphen.
+            opId: `${scopeId ?? scopeKeyFallback}#${jsonIndex}#${decision.decision}`,
             opType,
             markerAnnotationId: decision.markerId ?? null,
             scopeId,
@@ -295,18 +343,17 @@ Deno.serve(async (req: Request) => {
             // changedFieldKeys: prefer the matcher's 3-way merge whitelist (excelChangedFields),
             // else the plain field diff (changedFields) — both are arrays of field keys.
             changedFieldKeys: decision.excelChangedFields ?? decision.changedFields ?? [],
-            fields: decision.excelValues ?? ir.values ?? null,
-            baseFingerprints: {
-              identityVector: ir.identityVectorFingerprint ?? null,
-              fields: ir.fieldFingerprints ?? null,
-            },
+            fields,
+            baseFingerprints: base,
+            // identityRecord carries the INCOMING row's fingerprints (used by the RPC to seed
+            // excel_sync_state on accept) — distinct from baseFingerprints (the diff base).
             identityRecord: ir,
           });
         }
         // candidateDeletes → review-only ops (F10). The RPC never auto-deletes.
         for (const markerId of plan.candidateDeletes ?? []) {
           pRows.push({
-            opId: `del:${scopeKey}:${markerId}`,
+            opId: `del#${scopeId ?? scopeKeyFallback}#${markerId}`,
             opType: 'candidateDelete',
             markerAnnotationId: markerId,
             scopeId,
@@ -315,18 +362,29 @@ Deno.serve(async (req: Request) => {
         }
       }
     } else {
-      // Client-declared rows path. Map the request contract straight onto p_rows.
+      // Fix 2: client-declared fallback path. The client's `rowIdToken` is NOT a verified
+      // markerAnnotationId — it has not passed HMAC verification against the server secret over
+      // the frozen signingDocId. Trusting it would let a UUID-shaped value bypass verification
+      // and would mis-route a real token (the RPC expects a UUID markerAnnotationId, not a
+      // token). The matcher path is the ONLY trusted classifier. So every fallback row is forced
+      // to 'review' — applied/created nothing, surfaced for the user. The client should re-send
+      // with worksheetDataList so the server-side matcher can verify + classify.
       for (const row of clientRows) {
         pRows.push({
           opId: row.opId,
-          opType: row.opType,
-          markerAnnotationId: row.opType === 'create' ? null : (row.rowIdToken ?? null),
+          // Force review: an unknown op_type routes to the RPC's review branch with no write.
+          opType: 'review',
+          // Never forward an unverified token as a markerAnnotationId.
+          markerAnnotationId: null,
           scopeId: row.scopeId ?? null,
           templateId,
-          changedFieldKeys: row.changedFieldKeys ?? [],
-          fields: row.values ?? null,
-          baseFingerprints: row.baseFingerprints ?? null,
+          changedFieldKeys: [],
+          fields: null,
+          baseFingerprints: null,
         });
+      }
+      if (clientRows.length > 0) {
+        log('fallback_path_forced_review', { rowCount: clientRows.length });
       }
     }
 
@@ -385,57 +443,71 @@ Deno.serve(async (req: Request) => {
     //    outcome, sign a Row-ID token over the FROZEN signingDocId with the resolved secret,
     //    then persist it via kal309_persist_created_token (writes assigned_token + the
     //    writeback job into the stored change-set). The token NEVER goes into the op log.
-    //    On a replay (result.replayed) the tokens were already persisted on the first apply and
-    //    are returned in result.writeback_jobs verbatim — do NOT re-mint/re-sign.
-    let writebackJobs: Array<Record<string, any>> = result?.writeback_jobs ?? [];
+    //
+    //    Fix 1 (replay safety): do NOT skip this on replay. A retry after a partial/crashed
+    //    persist replays the stored outcomes (with the minted ids) but its writeback_jobs may be
+    //    INCOMPLETE — the original run died after minting the id but before/partway through
+    //    persisting tokens. So on BOTH the first apply AND a replay, persist any create whose
+    //    token is not yet recorded in the stored writeback_jobs. kal309_persist_created_token is
+    //    idempotent + dedupes by markerAnnotationId (build note 2), so re-running an
+    //    already-persisted create is a safe no-op. This guarantees every create has a durable
+    //    token BEFORE we broadcast.
+    const startingJobs: Array<Record<string, any>> = result?.writeback_jobs ?? [];
+    const persistedMarkerIds = new Set<string>(
+      startingJobs
+        .map((j) => j?.markerAnnotationId)
+        .filter((m): m is string => typeof m === 'string'),
+    );
+    const writebackJobs: Array<Record<string, any>> = [...startingJobs];
     let allTokensPersisted = true;
 
-    if (!result?.replayed) {
-      const created = outcomes.filter((o) => o?.outcome === 'create' && o?.markerAnnotationId);
-      const newJobs: Array<Record<string, any>> = [];
-      for (const o of created) {
-        const markerId: string = o.markerAnnotationId;
-        const scopeId: string | null = o.scopeId ?? findScopeForOpId(pRows, o.opId);
-        if (!scopeId) {
-          // Without a scope we cannot key the state row — leave the token pending; the client
-          // retries the change-set (idempotent — F7 replays, persist re-runs for NULL tokens).
-          allTokensPersisted = false;
-          log('created_token_missing_scope', { opId: o.opId });
-          continue;
-        }
-        let assignedToken: string;
-        try {
-          assignedToken = await generateRowIdToken({
-            keyId: signingKeyId,
-            secret: signingSecret,
-            documentId: signingDocId, // FROZEN signing id (build-note) — never a client value.
-            scopeId,
-            markerId,
-          });
-        } catch (err) {
-          allTokensPersisted = false;
-          log('token_sign_failed', { name: (err as Error)?.name });
-          continue;
-        }
-        const { data: persisted, error: persistErr } = await service.rpc(
-          'kal309_persist_created_token',
-          {
-            p_document_id: documentId,
-            p_template_id: templateId,
-            p_scope_id: scopeId,
-            p_marker_annotation_id: markerId,
-            p_client_change_set_id: clientChangeSetId,
-            p_assigned_token: assignedToken,
-          },
-        );
-        if (persistErr || persisted === false) {
-          allTokensPersisted = false;
-          log('token_persist_failed', { hasError: Boolean(persistErr) });
-          continue;
-        }
-        newJobs.push({ markerAnnotationId: markerId, assignedToken, scopeId });
+    const created = outcomes.filter((o) => o?.outcome === 'create' && o?.markerAnnotationId);
+    for (const o of created) {
+      const markerId: string = o.markerAnnotationId;
+      // Already has a durable token from a prior (possibly first-apply) run → nothing to do.
+      if (persistedMarkerIds.has(markerId)) continue;
+
+      const scopeId: string | null = o.scopeId ?? findScopeForOpId(pRows, o.opId);
+      if (!scopeId) {
+        // Without a scope we cannot key the state row — leave the token pending; the client
+        // retries the change-set (idempotent — F7 replays, this persist re-runs for the
+        // still-missing token).
+        allTokensPersisted = false;
+        log('created_token_missing_scope', { opId: o.opId });
+        continue;
       }
-      writebackJobs = [...writebackJobs, ...newJobs];
+      let assignedToken: string;
+      try {
+        assignedToken = await generateRowIdToken({
+          keyId: signingKeyId,
+          secret: signingSecret,
+          documentId: signingDocId, // FROZEN signing id (build-note) — never a client value.
+          scopeId,
+          markerId,
+        });
+      } catch (err) {
+        allTokensPersisted = false;
+        log('token_sign_failed', { name: (err as Error)?.name });
+        continue;
+      }
+      const { data: persisted, error: persistErr } = await service.rpc(
+        'kal309_persist_created_token',
+        {
+          p_document_id: documentId,
+          p_template_id: templateId,
+          p_scope_id: scopeId,
+          p_marker_annotation_id: markerId,
+          p_client_change_set_id: clientChangeSetId,
+          p_assigned_token: assignedToken,
+        },
+      );
+      if (persistErr || persisted === false) {
+        allTokensPersisted = false;
+        log('token_persist_failed', { hasError: Boolean(persistErr) });
+        continue;
+      }
+      persistedMarkerIds.add(markerId);
+      writebackJobs.push({ markerAnnotationId: markerId, assignedToken, scopeId });
     }
 
     // If ANY created token failed to persist, do NOT broadcast (F20 — no hint before every
@@ -506,4 +578,71 @@ function findScopeForOpId(
   const match = pRows.find((r) => r.opId === opId);
   const scope = match?.scopeId;
   return typeof scope === 'string' && scope !== '' ? scope : null;
+}
+
+// Fix 3: per-worksheet resolver for the VISIBLE incoming row values at a given json data-row
+// index (the buildScopeImportPlans byRowIndex Map key). Mirrors buildScopeImportPlans' buildValues
+// + colToChecklistId resolution EXACTLY (system headers + template checklist text → id), so the
+// values the RPC applies are byte-for-byte what the matcher fingerprinted. We replicate the logic
+// here rather than editing the guarded matcher copy (which must stay byte-identical to
+// src/services/*). If the worksheet/header is malformed, returns null (RPC routes that row's
+// outcome accordingly — no crash).
+const SYSTEM_HEADERS = ['Row ID', 'Changed By', 'Changed Date', 'Item', 'Entity', 'Notes'];
+
+function resolveCategoryChecklist(templateToUse: any, matchedCategory: any): any[] {
+  const modules = templateToUse?.modules || templateToUse?.spaces || [];
+  for (const mod of modules) {
+    const cat = (mod?.categories || []).find((c: any) => c?.id === matchedCategory?.id);
+    if (cat) return cat.checklist || [];
+  }
+  return matchedCategory?.checklist || [];
+}
+
+function makeWorksheetValueResolver(
+  worksheet: any,
+  templateToUse: any,
+): (jsonIndex: number) => Record<string, unknown> | null {
+  const headerRow = worksheet?.headerRow;
+  const jsonData = worksheet?.jsonData;
+  if (!Array.isArray(headerRow) || !Array.isArray(jsonData)) {
+    return () => null;
+  }
+
+  const idxOf = (label: string) => headerRow.indexOf(label);
+  const changedByIdx = idxOf('Changed By');
+  const changedDateIdx = idxOf('Changed Date');
+  const itemIdx = idxOf('Item');
+  const entityIdx = idxOf('Entity');
+  const notesIdx = idxOf('Notes');
+
+  const checklistItems = resolveCategoryChecklist(templateToUse, worksheet?.matchedCategory);
+  const colToChecklistId: Record<number, string> = {};
+  headerRow.forEach((colText: unknown, index: number) => {
+    if (SYSTEM_HEADERS.includes(colText as string)) return;
+    const trimmed = colText?.toString().trim();
+    if (!trimmed) return;
+    const ci = checklistItems.find((c: any) => c?.text === trimmed);
+    if (ci) colToChecklistId[index] = ci.id;
+  });
+
+  const cellAt = (row: any, idx: number) => (idx >= 0 ? row[idx] : '');
+
+  return (jsonIndex: number) => {
+    const row = jsonData[jsonIndex];
+    // Rows are array-LIKE (ExcelJS row arrays carry an extra sheetRowNumber prop); the matcher
+    // indexes them numerically without an isArray guard, so accept any indexable non-null value.
+    if (row == null || typeof row !== 'object') return null;
+    const answers: Record<string, unknown> = {};
+    for (const [colIndex, checklistId] of Object.entries(colToChecklistId)) {
+      answers[checklistId] = row[Number(colIndex)];
+    }
+    return {
+      changedBy: cellAt(row, changedByIdx),
+      changedDate: cellAt(row, changedDateIdx),
+      item: cellAt(row, itemIdx),
+      entity: cellAt(row, entityIdx),
+      notes: cellAt(row, notesIdx),
+      answers,
+    };
+  };
 }

@@ -46,8 +46,15 @@ const defaultLogger = (entry) => {
   }
 };
 
-// scopeKey matches the existing excelItemsByScope key in PDFViewer's import loop.
-export const scopeKeyFor = (moduleId, categoryId) => `${moduleId}-${categoryId}`;
+// scopeKeyFor produces the COLLISION-FREE key the returned plan Map is keyed by. It uses
+// JSON.stringify of the [moduleId, categoryId] tuple so no character can bleed across the two
+// fields — a hyphen OR colon CAN appear inside an id, which made `${moduleId}-${categoryId}`
+// ambiguous (e.g. module 'a-b' + cat 'c' vs module 'a' + cat 'b-c' both collapsed to 'a-b-c',
+// letting two distinct scopes overwrite each other inside the Map). JSON array encoding is
+// deterministic + unambiguous (the same collision-proof slotting templatesEditorReload uses).
+// Consumers MUST look up plans with this helper (or iterate the Map values, which now carry
+// scopeId/moduleId/categoryId) and must NEVER reverse-split the key.
+export const scopeKeyFor = (moduleId, categoryId) => JSON.stringify([moduleId, categoryId]);
 
 const resolveUpdatedCategory = (templateToUse, matchedCategory) => {
   const modules = templateToUse?.modules || templateToUse?.spaces || [];
@@ -70,8 +77,11 @@ const resolveUpdatedCategory = (templateToUse, matchedCategory) => {
  *   a matched ('apply') row whose SAME field was edited on BOTH sides since last sync (PLAN
  *   Amendment #6) is downgraded to a 'conflict' REVIEW instead of silently overwriting the
  *   app — the user picks the winner. Omit it (current behavior) and no apply is reclassified.
- * @returns {Promise<Map<string, {byRowIndex:Map<number,object>, candidateDeletes:string[]}>>}
- *          keyed by scopeKey; only scopes WITH a Row ID column are present.
+ * @returns {Promise<Map<string, {scopeId:string, moduleId:string, categoryId:string,
+ *          byRowIndex:Map<number,object>, candidateDeletes:string[]}>>}
+ *          keyed by the collision-free scopeKey (scopeKeyFor); each VALUE carries scopeId /
+ *          moduleId / categoryId so consumers never reverse-split the key. Only scopes WITH a
+ *          Row ID column are present.
  */
 export const buildScopeImportPlans = async ({
   worksheetDataList = [],
@@ -187,13 +197,16 @@ export const buildScopeImportPlans = async ({
         }
       }
 
-      prepped.push({ scopeId, scopeKey, rows, jsonIndexByPos, stored, blankFps });
+      prepped.push({
+        scopeId, scopeKey, moduleId: matchedModuleId, categoryId: matchedCategory.id,
+        rows, jsonIndexByPos, stored, blankFps
+      });
   }
 
   // ---- Phase 2: run the matcher per scope, each told which blank-row fingerprints
   // exist in the OTHER scopes of this same import.
   await Promise.all(
-    prepped.map(async ({ scopeId, scopeKey, rows, jsonIndexByPos, stored, blankFps }) => {
+    prepped.map(async ({ scopeId, scopeKey, moduleId, categoryId, rows, jsonIndexByPos, stored, blankFps }) => {
       const crossScopeBlankFingerprints = new Set();
       for (const other of prepped) {
         if (other.blankFps === blankFps) continue;
@@ -259,7 +272,13 @@ export const buildScopeImportPlans = async ({
         const jsonIndex = jsonIndexByPos[d.rowIndex];
         if (jsonIndex != null) byRowIndex.set(jsonIndex, d);
       }
-      result.set(scopeKey, { byRowIndex, candidateDeletes: plan.candidateDeletes });
+      // Each plan VALUE is self-describing: scopeId (`${moduleId}:${categoryId}`, the value the
+      // matcher signs Row-ID tokens over), moduleId, and categoryId. Consumers read identity
+      // from here and never reverse-split the collision-free Map key (scopeKey).
+      result.set(scopeKey, {
+        scopeId, moduleId, categoryId,
+        byRowIndex, candidateDeletes: plan.candidateDeletes
+      });
 
       // Content-free observability: per-row decision + reason + short token hash, plus
       // a counts roll-up. Never logs the token, item name, notes, or any cell value.

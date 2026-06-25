@@ -86,7 +86,7 @@ import { loadBaseline, saveBaseline, clearBaseline } from './services/excelSyncB
 import { generateRowIdToken } from './services/rowIdToken';
 import { getOrCreateDocumentSecret, resolveDocumentSecret } from './services/rowIdSecretStore';
 import { fetchOrCreateSigningSecret, fetchSigningSecret } from './services/rowIdServerSecretClient';
-import { buildScopeImportPlans } from './services/buildScopeImportPlans';
+import { buildScopeImportPlans, scopeKeyFor } from './services/buildScopeImportPlans';
 import { triageCandidateDelete, markPendingDelete, clearPendingDeleteMark } from './services/excelDeleteGrace';
 import { RECENCY, classifyWorkbookRecency, latestAppExportStamp, readWorkbookExportStamp, staleAutoSkipMessage, staleManualConfirmText } from './services/excelImportRecencyGuard';
 import { buildMarkerRowValues, resolveMarkerModuleData } from './services/markerRowValues';
@@ -13744,7 +13744,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         let matchedSurveyMarkerKey = null;
         let rowIdentityRecord = null; // content fingerprint to remember this row by
         let excelChangedFields = null; // 3-way merge whitelist: the fields EXCEL changed since baseline
-        const planScopeKey = `${matchedModuleId}-${matchedCategory.id}`;
+        // Plan-Map lookup uses the collision-free key (scopeKeyFor); the hyphen `${m}-${c}` form
+        // is ambiguous and could alias two distinct scopes inside the Map (Codex round 2 / Fix 5).
+        const planScopeKey = scopeKeyFor(matchedModuleId, matchedCategory.id);
         const scopePlan = scopePlans.get(planScopeKey);
         if (scopePlan) {
           const decision = scopePlan.byRowIndex.get(i);
@@ -13964,7 +13966,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       // a stored marker absent from the sheet is a review-only candidate-delete (guard
       // ON this stage), never a name-based auto-delete. This is what stops an added
       // marker from silently vanishing on the next import.
-      if (scopePlans.has(scopeKey)) return;
+      // Plan-Map membership uses the collision-free key (scopeKeyFor), NOT the hyphen
+      // `scopeKey` (that local var still keys excelItemsByScope below, unchanged).
+      if (scopePlans.has(scopeKeyFor(annModuleId, ann.categoryId))) return;
 
       // Only check surveyMarkers in scopes that were covered by the Excel import
       if (excelItemsByScope[scopeKey]) {
@@ -13991,7 +13995,11 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     // Untrusted recency (accepted stale import, or missing export stamp) additionally
     // routes EVERY candidate to review — an old/foreign copy missing recently-exported
     // rows must not trash them.
-    scopePlans.forEach((plan, scopeKey) => {
+    scopePlans.forEach((plan) => {
+      // Identity comes from the plan VALUE (scopeId/moduleId/categoryId), never from
+      // reverse-splitting the collision-free Map key (Codex round 2). The review-item scopeKey
+      // matches the row-level items' collision-free key form (scopeKeyFor).
+      const reviewScopeKey = scopeKeyFor(plan.moduleId, plan.categoryId);
       (plan.candidateDeletes || []).forEach((markerId) => {
         const ann = newSurveyMarkers[markerId];
         if (!ann) return;
@@ -14014,7 +14022,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
             identityPersisted = true;
           }
         } else {
-          importReviewItems.push({ scopeKey, rowIndex: null, reason: 'candidate-delete', markerId });
+          importReviewItems.push({ scopeKey: reviewScopeKey, rowIndex: null, reason: 'candidate-delete', markerId });
         }
       });
     });
@@ -14366,7 +14374,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         let matchedSurveyMarkerKey = null;
         let rowIdentityRecord = null; // content fingerprint to remember this row by
         let excelChangedFields = null; // 3-way merge whitelist: the fields EXCEL changed since baseline
-        const planScopeKey = `${matchedModuleId}-${matchedCategory.id}`;
+        // Plan-Map lookup uses the collision-free key (scopeKeyFor); the hyphen `${m}-${c}` form
+        // is ambiguous and could alias two distinct scopes inside the Map (Codex round 2 / Fix 5).
+        const planScopeKey = scopeKeyFor(matchedModuleId, matchedCategory.id);
         const scopePlan = scopePlans.get(planScopeKey);
         if (scopePlan) {
           const decision = scopePlan.byRowIndex.get(i);
@@ -14602,7 +14612,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       // a stored marker absent from the sheet is a review-only candidate-delete (guard
       // ON this stage), never a name-based auto-delete. This is what stops an added
       // marker from silently vanishing on the next import.
-      if (scopePlans.has(scopeKey)) return;
+      // Plan-Map membership uses the collision-free key (scopeKeyFor), NOT the hyphen
+      // `scopeKey` (that local var still keys excelItemsByScope below, unchanged).
+      if (scopePlans.has(scopeKeyFor(annModuleId, ann.categoryId))) return;
 
       // Only check surveyMarkers in scopes that were covered by the Excel import
       if (excelItemsByScope[scopeKey]) {
@@ -14625,7 +14637,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     // Excel handed out (exportedAt) are auto-removed without a prompt but routed through the
     // History + 30-day-trash machinery below (one-click restorable); never-received markers
     // stay review-only.
-    scopePlans.forEach((plan, scopeKey) => {
+    scopePlans.forEach((plan) => {
+      // Identity from the plan VALUE (never reverse-split the collision-free Map key) — Codex
+      // round 2. reviewScopeKey matches the row-level items' key form (scopeKeyFor).
+      const reviewScopeKey = scopeKeyFor(plan.moduleId, plan.categoryId);
       (plan.candidateDeletes || []).forEach((markerId) => {
         const ann = newSurveyMarkers[markerId];
         if (!ann) return;
@@ -14644,7 +14659,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
             identityPersisted = true;
           }
         } else {
-          importReviewItems.push({ scopeKey, rowIndex: null, reason: 'candidate-delete', markerId });
+          importReviewItems.push({ scopeKey: reviewScopeKey, rowIndex: null, reason: 'candidate-delete', markerId });
         }
       });
     });
