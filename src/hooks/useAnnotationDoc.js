@@ -16,6 +16,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { supabase } from '../supabaseClient.js';
 import { openAnnotationDoc, getClientId } from '../services/annotationDocSync.js';
+import { setMetaValue as setMetaValueOnDoc } from '../services/annotationDocStore.js';
 
 const CALLOUTS_KEY = 'calloutsList';
 const SPACES_KEY = 'spaces';
@@ -179,5 +180,20 @@ export function useAnnotationDoc({
     await h.flushSnapshot();
   }, []);
 
-  return { initialHydration, forceFlush };
+  // KAL-309: expose the durable Y.Doc META map to the Excel-sync cutover so the
+  // single `excelSyncFrontier:${templateId}` cursor + the durable review set live
+  // in the same source-of-truth doc as the markers. `metaSet` takes an explicit
+  // origin (the handle's setMeta hardcodes 'local'); 'excel-import' keeps these
+  // writes additive + durable without tripping the survey-marker deletion gate.
+  const metaGet = useCallback((key) => {
+    const h = handleRef.current;
+    return h ? h.getMeta(key) : undefined;
+  }, []);
+  const metaSet = useCallback((key, value, origin = 'excel-import') => {
+    const h = handleRef.current;
+    if (!h || !h.doc) return false;
+    return setMetaValueOnDoc(h.doc, key, value, origin);
+  }, []);
+
+  return { initialHydration, forceFlush, metaGet, metaSet };
 }

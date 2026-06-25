@@ -83,3 +83,28 @@ Confirmed OK: replay token persist before broadcast; fallback→review; visible 
 
 ## Edge fn code-review round 3 — Codex (VERDICT: APPROVED — safe to deploy)
 Scope-key collision fixed at source (scopeKeyFor → JSON.stringify([m,c]); plan values carry scopeId/moduleId/categoryId; consumers read the value). Build note: scopeId stays the colon-joined contract. The keystone SERVER SIDE (migration + Edge) is Codex-approved as code.
+
+## Client cutover code-review round 1 — Codex (VERDICT: REVISE) — 7 findings
+OK: local-only/unregistered falls through; server rejection handled/no inline apply; TDZ avoided by refs.
+1. excelSyncClient.js:562 answer conflicts missed — base fields nest as fields.answers[id], code checks fields["answer:id"]. Read nested; compare via fingerprinting.
+2. :420 reducer ignores op_status — resolved keep-app/merged re-apply; client_conflict_review materialized. Normalize; halt on conflict-review; advance-without-overlay on resolved.
+3. :408 frontier advances without contiguity check. Require excelRevision===frontier+1; break/retry on gaps.
+4. index.ts:343 create rows send changedFieldKeys:[] → blank markers. Send all row field keys for create (or reducer treats create as full-row apply).
+5. :629 created marker lacks moduleId/categoryId + excelSync identity (export/UI filter by these). Include moduleId/categoryId/identityRecord in create payload + stamp on create.
+6. PDFViewer.jsx:12215 D.6 export seeding ABSENT — registers workbook but never seedSyncState/setRegistrationSigningId → first server import reviews everything (no baseline). Wire both on export success.
+7. PDFViewer.jsx:13732 writebackJobs + tokenWritebackIncomplete ignored. Retry same clientChangeSetId on incomplete; enqueue/stamp writeback jobs before success.
+### Claude's response: sending 7 fixes to the client agent; re-verify in MAIN (worktree lacks yjs) + re-Codex.
+
+## Client cutover code-review round 2 — Codex (VERDICT: REVISE) — 4 findings
+OK: single-marker overlay, contiguous frontier/HALT, registered returns before inline apply, unauthorized/locked no fallthrough.
+1. excelSyncClient.js:564 app-side CLEAR not a conflict — liveVal null/'' skips before baseline diff → Excel overwrites a user's clear. Only skip when live-blank matches the base fingerprint.
+2. PDFViewer.jsx:13817 after 3 tokenWritebackIncomplete retries still fetches/materializes with no durable token. Surface retry-needed + return before fetchSince.
+3. PDFViewer.jsx:13888 writeback enqueue keyed by Supabase documentId, but flushers (15667/16191) read the composite rowIdDocumentId key → never drained. Use the same rowIdDocumentId.
+4. index.ts:542 + PDFViewer.jsx:13888 writeback_jobs lack sheetName/rowLocator/expectedOldCellValue → drains mark invalid-entry. Carry sheet name + true sheet row through; enqueue full queue schema.
+### Claude's response: sending 4 fixes to client agent; consolidate v3 to main + re-verify + re-Codex.
+
+## Client cutover code-review round 3 — Codex (VERDICT: REVISE) — 2 replay-path findings
+Everything else OK: clear-conflict gate, reducer/frontier, no double-apply, queue key + full-entry shape for non-replay success.
+1. index.ts:491 replayed writeback_jobs (from DB) lack jsonIndex → PDFViewer enqueues rowLocator:null → drain invalid. Enrich startingJobs from the freshly-computed pRows (Edge ran the matcher even on replay), match by markerAnnotationId.
+2. PDFViewer.jsx:13791 after retry-cap return, clientChangeSetId is lost → "sync again" mints a NEW change-set, not an idempotent replay. Persist pending {documentId, templateId, workbookId, clientChangeSetId} until token writeback completes; reuse then clear.
+### Claude's response: sending 2 fixes; consolidate v4 + re-verify + re-Codex (last loop).

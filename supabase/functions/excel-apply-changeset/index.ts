@@ -332,6 +332,32 @@ Deno.serve(async (req: Request) => {
               : null;
 
           const ir = decision.identityRecord ?? {};
+          // changedFieldKeys whitelist. For an APPLY: the matcher's 3-way merge whitelist
+          // (excelChangedFields) else the plain diff (changedFields). For a CREATE there is no
+          // prior baseline to diff, so those are empty — but the client reducer overlays ONLY
+          // changedFieldKeys, so an empty list would yield a BLANK new marker (Codex finding #4).
+          // For a create, send EVERY visible field key present in `fields` (scalars + answer:*),
+          // so the reducer populates the whole new marker.
+          const changedFieldKeys =
+            opType === 'create'
+              ? allFieldKeysFromValues(fields)
+              : (decision.excelChangedFields ?? decision.changedFields ?? []);
+          // Non-sensitive identity for the marker (Codex finding #5). moduleId/categoryId let
+          // the Survey panel + export filters see a created row; the row fingerprints let the
+          // client seed excelSync so a re-import doesn't twin it. The assignedToken is NEVER
+          // here — it travels only via the writeback-job channel (E.1/F20).
+          const planModuleId = (plan as any).moduleId ?? null;
+          const planCategoryId = (plan as any).categoryId ?? null;
+          const identity = {
+            moduleId: planModuleId,
+            categoryId: planCategoryId,
+            version: ir.version ?? 'v1',
+            origin: ir.origin ?? 'import',
+            lastExportId: ir.lastExportId ?? null,
+            identityVectorFingerprint: ir.identityVectorFingerprint ?? null,
+            fullRowFingerprint: ir.fullRowFingerprint ?? null,
+            fieldFingerprints: ir.fieldFingerprints ?? null,
+          };
           pRows.push({
             // Fix 5: collision-free tuple key (real scopeId from the plan value + json data-row
             // index). scopeKeyFallback uses the value's module/category tuple, never a hyphen.
@@ -339,14 +365,24 @@ Deno.serve(async (req: Request) => {
             opType,
             markerAnnotationId: decision.markerId ?? null,
             scopeId,
+            // Codex round-2 finding #4: the json data-row index of THIS row, so the writeback
+            // job (below) carries it and the CLIENT can look up sheetName + the true sheet row
+            // (sheetRowNumber) + expectedOldCellValue from its own parsed worksheetDataList.
+            jsonIndex,
+            // Codex finding #5: surface module/category on the op so the SANITIZE-SAFE
+            // patch_payload (fetch_since) carries them to the client reducer.
+            moduleId: planModuleId,
+            categoryId: planCategoryId,
+            // Token-free identity block — survives kal309_sanitize_payload (which strips only
+            // identityRecord/token/secret), so fetch_since returns it for the client to seed excelSync.
+            identity,
             templateId,
-            // changedFieldKeys: prefer the matcher's 3-way merge whitelist (excelChangedFields),
-            // else the plain field diff (changedFields) — both are arrays of field keys.
-            changedFieldKeys: decision.excelChangedFields ?? decision.changedFields ?? [],
+            changedFieldKeys,
             fields,
             baseFingerprints: base,
             // identityRecord carries the INCOMING row's fingerprints (used by the RPC to seed
             // excel_sync_state on accept) — distinct from baseFingerprints (the diff base).
+            // It is STRIPPED by kal309_sanitize_payload, so it never reaches clients via fetch_since.
             identityRecord: ir,
           });
         }
@@ -507,7 +543,34 @@ Deno.serve(async (req: Request) => {
         continue;
       }
       persistedMarkerIds.add(markerId);
-      writebackJobs.push({ markerAnnotationId: markerId, assignedToken, scopeId });
+      // Codex round-2 finding #4: include the json data-row index so the client can resolve
+      // sheetName + true sheet row + expectedOldCellValue for this created row's Row-ID cell.
+      const jsonIndex = findJsonIndexForOpId(pRows, o.opId);
+      writebackJobs.push({ markerAnnotationId: markerId, assignedToken, scopeId, jsonIndex });
+    }
+
+    // Codex round-3 finding #1: ENRICH every writeback job (incl. REPLAY jobs read from the
+    // changeset DB, which carry no jsonIndex) with jsonIndex (+ scopeId when missing) from the
+    // freshly-computed pRows. The matcher runs on EVERY path (first apply AND replay), so pRows
+    // always has the json row index. Match by the outcome's opId for this marker
+    // (markerAnnotationId → opId → pRow.jsonIndex). Without this, a replay returns rowLocator:null
+    // and the client's drain marks the entry 'invalid-entry' (the Row ID is never written back).
+    const opIdByMarkerId = new Map<string, string>();
+    for (const o of outcomes) {
+      if (o?.markerAnnotationId && o?.opId) opIdByMarkerId.set(String(o.markerAnnotationId), String(o.opId));
+    }
+    for (const job of writebackJobs) {
+      const mId = job?.markerAnnotationId ? String(job.markerAnnotationId) : null;
+      if (!mId) continue;
+      const opId = opIdByMarkerId.get(mId);
+      if (job.jsonIndex == null && opId != null) {
+        const idx = findJsonIndexForOpId(pRows, opId);
+        if (idx != null) job.jsonIndex = idx;
+      }
+      if ((job.scopeId == null || job.scopeId === '') && opId != null) {
+        const sc = findScopeForOpId(pRows, opId);
+        if (sc != null) job.scopeId = sc;
+      }
     }
 
     // If ANY created token failed to persist, do NOT broadcast (F20 — no hint before every
@@ -568,6 +631,27 @@ Deno.serve(async (req: Request) => {
   }
 });
 
+// Codex finding #4: enumerate every visible field key a create row carries so the client
+// reducer (which overlays ONLY changedFieldKeys) populates the WHOLE new marker. Mirrors the
+// changedFieldKeys convention: scalar keys changedBy/changedDate/item/entity/notes plus
+// answer:<checklistItemId>. Skips empty/blank values (a blank cell is not a field to write).
+function allFieldKeysFromValues(fields: any): string[] {
+  if (!fields || typeof fields !== 'object') return [];
+  const keys: string[] = [];
+  const scalars = ['changedBy', 'changedDate', 'item', 'entity', 'notes'];
+  const nonEmpty = (v: unknown) => v != null && v !== '';
+  for (const k of scalars) {
+    if (nonEmpty(fields[k])) keys.push(k);
+  }
+  const answers = fields.answers;
+  if (answers && typeof answers === 'object') {
+    for (const id of Object.keys(answers)) {
+      if (nonEmpty(answers[id])) keys.push(`answer:${id}`);
+    }
+  }
+  return keys;
+}
+
 // Best-effort scope recovery for a created outcome whose RPC outcome omitted scopeId — read it
 // back from the p_rows we sent (the op carries scopeId). Content-free; no token material.
 function findScopeForOpId(
@@ -578,6 +662,18 @@ function findScopeForOpId(
   const match = pRows.find((r) => r.opId === opId);
   const scope = match?.scopeId;
   return typeof scope === 'string' && scope !== '' ? scope : null;
+}
+
+// Recover the json data-row index for a created outcome from the p_rows we sent (the create op
+// carries jsonIndex). Returns null when absent. Content-free; no token material.
+function findJsonIndexForOpId(
+  pRows: Array<Record<string, unknown>>,
+  opId: unknown,
+): number | null {
+  if (!opId) return null;
+  const match = pRows.find((r) => r.opId === opId);
+  const idx = match?.jsonIndex;
+  return typeof idx === 'number' && Number.isInteger(idx) ? idx : null;
 }
 
 // Fix 3: per-worksheet resolver for the VISIBLE incoming row values at a given json data-row

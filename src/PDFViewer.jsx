@@ -115,7 +115,20 @@ import {
   resolveRegionRestoreCascade,
 } from './services/annotationTrashHistory';
 // KAL-307: server-minted workbook registration (one live workbook per survey).
-import { registerWorkbook, embedRegistrationIntoMetaSheet } from './services/workbookRegistration';
+import { registerWorkbook, embedRegistrationIntoMetaSheet, readRegistrationFromMetaSheet } from './services/workbookRegistration';
+// KAL-309: server-authoritative Excel change-set transport + materialize reducer.
+import {
+  submitChangeSet,
+  fetchSince,
+  ackMaterialization,
+  resolveMaterializationConflict,
+  materializeAcceptedOps,
+  readFrontier,
+  seedSyncState,
+  setRegistrationSigningId,
+} from './services/excelSyncClient';
+import { enqueueWriteback } from './services/rowIdWritebackQueue';
+import { readPendingChangeset, writePendingChangeset, clearPendingChangeset } from './services/excelSyncPendingChangeset';
 import { getCounterSeriesList, pickNextSeriesColor, renumberCounters } from './utils/counterNumbering';
 import { getHistoryDebugRows, getHistoryFingerprint, getYjsHistoryTarget, isLegacyAnnotationHistoryMeta, migrateHistorySpaces, normalizeCanvasJsonForHistory, normalizeHistoryReason, summarizeAnnotationPageTransitionForDebug, summarizeHistoryDelta, summarizeHistorySnapshot } from './utils/historyHelpers';
 import { getHistoryOrder, shouldRedoLocalBeforeLegacy, shouldUndoLocalBeforeLegacy } from './utils/historyStacks';
@@ -294,6 +307,24 @@ import { renderAnnotationHydrationPageCover } from './components/annotationHydra
 import { getExportErrorMessage, isFileLocked } from './utils/exportHelpers';
 import { buildTrackpadInteractionDebugSummaryText, summarizeOverlayLagSamples } from './utils/overlayDebug';
 import { EXCEL_AUTOMATIC_WRITEBACK_ENABLED, isSilentWritebackBlocked } from './utils/excelWritebackGate';
+
+// KAL-309: read the workbook registration (workbook_id + sync_token) out of a
+// loaded ExcelJS workbook's hidden _SurveyMetadata sheet (cells B5/B6). Duck-typed
+// on getWorksheet/getCell so it never throws on a foreign/legacy workbook — a
+// missing sheet or cells yields { workbookId:null, syncToken:null }, which routes
+// the import to the local-only inline path (mirrors the KAL-308a split).
+function readWorkbookRegistration(workbook) {
+  try {
+    const sheet = workbook?.getWorksheet?.('_SurveyMetadata');
+    if (!sheet) return { workbookId: null, syncToken: null };
+    return readRegistrationFromMetaSheet({
+      B5: sheet.getCell?.('B5')?.value ?? null,
+      B6: sheet.getCell?.('B6')?.value ?? null,
+    });
+  } catch {
+    return { workbookId: null, syncToken: null };
+  }
+}
 
 export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, tabId, isActive, onTopToolbarApiChange, onBottomToolbarApiChange, onLeftRailApiChange, onRightRailApiChange, onPageDrop, onUpdatePDFFile, onRequestCreateTemplate, initialViewState, onViewStateChange, templates = [], onTemplatesChange, onRefetchTemplates, user, isMSAuthenticated, msLogin, graphClient, msAccount, msNeedsReconnect, ensureFreshToken, msGetAuthSignals, entities, setEntities, onUnsavedAnnotationsChange, onAnnotationsExistChange }) {
   // Phase 35 UAT diag — mirror current PDF filename to window so the dev-only
@@ -12177,6 +12208,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       // will be detected as 'unregistered-legacy' by detectLegacyWorkbook() on import.
       // TODO (slice 2): when the gate flip lands, route 'unregistered-legacy' into
       //   the preflight/quarantine UX (one-time re-export/re-link prompt).
+      // KAL-309 D.6: the workbookId from a successful registration, used AFTER the
+      // marker identity records exist to seed the server-side Excel baseline. The raw
+      // syncToken is NOT retained here (embedded then discarded — security contract).
+      let registeredWorkbookId = null;
       try {
         const supabaseDocId = pdfFile?.id ?? null;
         const supabaseTemplateId = selectedTemplate?.supabaseId || selectedTemplate?.id || null;
@@ -12193,6 +12228,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
             capabilityTier,
           });
           embedRegistrationIntoMetaSheet(metaSheet, registration.workbookId, registration.syncToken);
+          registeredWorkbookId = registration.workbookId; // workbookId only (NOT the token)
           // registration.syncToken is no longer referenced after embedRegistrationIntoMetaSheet returns.
         }
         // If documentId or templateId is absent (offline / local-only), silently skip registration.
@@ -12688,6 +12724,55 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         rows: Array.from(markerRowValuesById, ([markerId, entry]) => ({ markerId, values: entry.values })),
         exportId: rowIdExportId
       });
+
+      // KAL-309 D.6 — server-side baseline seeding at export (F18). With a successful
+      // registration AND the per-marker identity records in hand, freeze the canonical
+      // signing id on the registration (one-read resolve for the Edge) and upsert the
+      // server's Excel-side baseline for every exported marker. Without this the FIRST
+      // server import has no trusted baseline and routes every row to 'review'. Derives
+      // the registration server-side from workbookId (R2#3) — no registration.id/generation.
+      // Best-effort + non-blocking: a failure here must never fail the export.
+      try {
+        const seedDocId = pdfFile?.id ?? null;
+        const seedTemplateId = selectedTemplate?.supabaseId || selectedTemplate?.id || null;
+        if (registeredWorkbookId && seedDocId && seedTemplateId) {
+          // Freeze the canonical signing id (A.1(ii)) so the Edge resolves it in one read.
+          await setRegistrationSigningId({
+            supabaseClient: supabase,
+            documentId: seedDocId,
+            templateId: String(seedTemplateId),
+            workbookId: registeredWorkbookId,
+            signingDocId: rowIdSigningDocId,
+          });
+          // Build the seed payload: one entry per exported marker, carrying its scopeId,
+          // identity record (fingerprints + token memory) and the assigned Row-ID token.
+          const seedMarkers = Object.entries(identityRecordsByMarkerId).map(([markerId, record]) => {
+            const marker = surveyMarkers[markerId] || {};
+            const moduleId = marker.moduleId ?? marker.spaceId ?? null;
+            const categoryId = marker.categoryId ?? null;
+            return {
+              markerAnnotationId: markerId,
+              scopeId: (moduleId != null && categoryId != null) ? rowIdScopeId(moduleId, categoryId) : '',
+              identityRecord: {
+                ...record,
+                assignedToken: rowIdTokensByMarkerId.get(markerId) || record.assignedToken || null,
+              },
+              assignedToken: rowIdTokensByMarkerId.get(markerId) || record.assignedToken || null,
+            };
+          });
+          if (seedMarkers.length > 0) {
+            await seedSyncState({
+              supabaseClient: supabase,
+              documentId: seedDocId,
+              templateId: String(seedTemplateId),
+              workbookId: registeredWorkbookId,
+              markers: seedMarkers,
+            });
+          }
+        }
+      } catch (seedErr) {
+        console.warn('KAL-309 D.6: server baseline seeding failed — export proceeds:', seedErr?.message ?? seedErr);
+      }
 
       // NOTE: we deliberately do NOT lock the Row ID column or protect the sheet.
       // Excel sort physically rewrites every column in a row (including a locked one),
@@ -13585,6 +13670,32 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     return out;
   }, [items, ensureSurveyMarkerMetadata]);
 
+  // KAL-309: latest-refs to the reconcile fn + the durable Y.Doc META accessors —
+  // all are defined AFTER the useAnnotationDoc destructure (far below). The early
+  // import-apply callbacks reach them through these refs so neither the callback
+  // bodies nor their dependency arrays carry a forward (TDZ) reference at render.
+  const reconcileExcelSyncRef = useRef(null);
+  const excelSyncMetaGetRef = useRef(null);
+  const excelSyncMetaSetRef = useRef(null);
+  const excelSyncMetaGetStable = useCallback((key) => excelSyncMetaGetRef.current?.(key), []);
+  const excelSyncMetaSetStable = useCallback((key, value, origin) => excelSyncMetaSetRef.current?.(key, value, origin), []);
+  // KAL-309: per-run marker accessors backed by a local WORKING COPY seeded from the
+  // live ref. The reducer processes multiple ops per run; setSurveyMarkers is async so
+  // surveyMarkersRef wouldn't reflect a prior in-run write — the working copy makes
+  // intra-run getMarkers() see earlier overlays (correct accumulation for same-marker
+  // ops). Each write also fans out to setSurveyMarkers (functional updater → durable
+  // via the useAnnotationDoc capture effect).
+  const makeMaterializeAccessors = useCallback(() => {
+    const working = { ...(surveyMarkersRef.current || {}) };
+    return {
+      getMarkers: () => working,
+      writeMarker: (markerId, nextMarker) => {
+        working[markerId] = nextMarker;
+        setSurveyMarkers((prev) => ({ ...prev, [markerId]: nextMarker }));
+      },
+    };
+  }, []);
+
   // Resolve one both-sides conflict (PLAN Amendment #6 — one choice per item, whole row).
   // "use Excel's" applies Excel's content to the marker; "keep mine" leaves the marker as-is.
   // In BOTH cases the marker's excelSync baseline is re-stamped to the INCOMING Excel values
@@ -13595,7 +13706,36 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     const entry = (pendingImportReview || []).find(
       (e) => e && e.reason === 'conflict' && e.markerId === markerId
     );
-    if (!entry || !entry.excelValues || !entry.identityRecord) return;
+    if (!entry) return;
+
+    // KAL-309 (R2#4) — a server-synced conflict carries an opUuid (not the local
+    // excelValues/identityRecord). Resolve it server-side, drop it from the durable
+    // review meta, then re-reconcile: 'take-excel' flips the op back to 'accepted' so
+    // the next fetchSince re-materializes it; 'keep-app' just advances the frontier.
+    if (entry.opUuid) {
+      const documentId = pdfFile?.id || null;
+      const templateId = selectedTemplate?.supabaseId || selectedTemplate?.id || null;
+      if (!documentId || !templateId) return;
+      const resolution = choice === 'excel' ? 'take-excel' : 'keep-app';
+      const { ok, error } = await resolveMaterializationConflict({
+        supabaseClient: supabase, documentId, templateId, opUuid: entry.opUuid, resolution,
+      });
+      if (!ok) { showToast(`Could not resolve conflict${error ? `: ${error}` : ''}.`, 'error'); return; }
+      // Remove this op from the durable review set so the reducer flows PAST its revision.
+      const reviewMeta = { ...(excelSyncMetaGetStable(`excelSyncReview:${templateId}`) || {}) };
+      delete reviewMeta[entry.opUuid];
+      excelSyncMetaSetStable(`excelSyncReview:${templateId}`, reviewMeta);
+      setPendingImportReview((prev) =>
+        (prev || []).filter((e) => !(e && e.opUuid === entry.opUuid))
+      );
+      // reconcile through a latest-ref (the reconcile fn is defined later in the
+      // component; a direct forward reference would TDZ in this callback's dep array).
+      try { await reconcileExcelSyncRef.current?.(); } catch (err) { console.warn('[KAL-309] post-resolve reconcile failed', err?.message); }
+      return;
+    }
+
+    // Local-only conflict path (unchanged): requires the inline excelValues + record.
+    if (!entry.excelValues || !entry.identityRecord) return;
     const marker = surveyMarkers[markerId];
     if (!marker) return;
     const excelValues = entry.excelValues;
@@ -13614,10 +13754,218 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       (prev || []).filter((e) => !(e && e.reason === 'conflict' && e.markerId === markerId))
     );
     try { markExcelSyncCheckpoint(selectedTemplate, updatedMap); } catch { /* best-effort persist */ }
-  }, [pendingImportReview, surveyMarkers, selectedTemplate, markExcelSyncCheckpoint]);
+  }, [pendingImportReview, surveyMarkers, selectedTemplate, markExcelSyncCheckpoint, pdfFile, excelSyncMetaGetStable, excelSyncMetaSetStable]);
+
+  // KAL-309 — server-authoritative Excel import for REGISTERED Supabase-backed docs.
+  //
+  // Mirrors the KAL-308a local/server split: this path runs ONLY when the doc is
+  // Supabase-backed (pdfFile?.id present) AND the imported workbook carries a live
+  // registration (workbook_id + sync_token in _SurveyMetadata B5/B6, read at the
+  // orchestrator into importMeta). It packages the SAME raw matcher inputs the
+  // local executors already build (do NOT re-implement matching — the Edge runs the
+  // guarded matcher copy server-side), submits the change-set to the Edge, then
+  // materializes accepted/create ops into surveyMarkers via the per-marker
+  // field-level reducer. review/conflict/stale outcomes route to the EXISTING
+  // pendingImportReview surface. Returns true when it handled the import (caller
+  // returns early); false to fall through to today's inline local-apply path.
+  const runServerExcelSync = useCallback(async (worksheetDataList, templateToUse, importMeta = null) => {
+    const documentId = pdfFile?.id || null;
+    if (!documentId) return false; // local-only / unregistered → inline path (unchanged).
+
+    // The registration handle the client is allowed to send (F16): workbook_id +
+    // sync_token, read from the imported workbook's _SurveyMetadata B5/B6. Without a
+    // live registration this is not a server-synced doc → inline path.
+    const { workbookId, syncToken } = readRegistrationFromMetaSheet({
+      workbook_id: importMeta?.workbookId ?? null,
+      sync_token: importMeta?.syncToken ?? null,
+    });
+    if (!workbookId || !syncToken) return false;
+
+    const templateId = templateToUse?.supabaseId || templateToUse?.id || null;
+    if (!templateId) return false;
+
+    try {
+      const currentMarkers = surveyMarkersRef.current || surveyMarkers || {};
+      const ingestSeq = Date.now();
+      // One client_change_set_id PER import; a retry REUSES it so the Edge replays
+      // idempotently (F7) — never spawning duplicate markers (Codex finding #7).
+      //
+      // Codex round-3 finding #2: if a PRIOR sync of THIS SAME workbook left the created-row
+      // token writeback incomplete, we persisted its clientChangeSetId. REUSE it now so the
+      // Edge replays (F7) and completes the pending token persist — instead of minting a NEW id
+      // (a fresh change-set that would never finish the prior one). The descriptor is matched on
+      // (documentId, templateId, workbookId), so a re-export (new workbook) never reuses a stale id.
+      const pendingPrior = readPendingChangeset({ documentId, templateId, workbookId });
+      const clientChangeSetId =
+        pendingPrior?.clientChangeSetId
+        ?? ((typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID()
+          : `ccs-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+      const submitArgs = {
+        supabaseClient: supabase,
+        documentId,
+        templateId,
+        workbookId,
+        syncToken,
+        // The matcher is authoritative server-side; rows[] is advisory only.
+        rows: [],
+        worksheetDataList,
+        surveyMarkers: currentMarkers,
+        appValuesByMarkerId: buildAppValuesByMarkerId(currentMarkers, templateToUse),
+        templateConfig: templateToUse,
+        ingestSeq,
+        capabilityTier: importMeta?.capabilityTier || 'unknown',
+        clientChangeSetId,
+      };
+
+      let result = await submitChangeSet(submitArgs);
+      // tokenWritebackIncomplete (F20): the Edge applied + committed but could not durably
+      // persist every created-row token, so it withheld the writeback jobs and did NOT
+      // broadcast. Retry the SAME clientChangeSetId — the idempotent replay re-runs the
+      // token persist for the still-missing tokens and returns the completed jobs. Capped.
+      let retries = 0;
+      while (!result.error && result.tokenWritebackIncomplete && retries < 3) {
+        retries += 1;
+        result = await submitChangeSet(submitArgs); // same clientChangeSetId → replay
+      }
+
+      if (result.error) {
+        // Change-set-level rejection (unauthorized / locked / workbook_mismatch / token).
+        // Surface it; do NOT silently fall through to a client-side apply that would
+        // bypass the server authority for a registered doc.
+        showToast(`Excel sync rejected: ${result.error}.`, 'error');
+        return true;
+      }
+
+      // Codex round-2 finding #2: if created-row Row-ID tokens are STILL not durably
+      // persisted after the retry cap, do NOT materialize. Materializing now would
+      // surface created markers whose Row-ID writeback jobs were never queued (the Edge
+      // withheld them + did not broadcast), so the new rows would never get their Row ID
+      // and other clients would never reconcile. Surface a 'retry needed' state and RETURN
+      // BEFORE fetchSince/materialize — the next manual/auto sync (same workbook) re-runs
+      // the idempotent replay and completes the token persist.
+      if (result.tokenWritebackIncomplete) {
+        // Codex round-3 finding #2: persist this clientChangeSetId so the NEXT sync of this
+        // same workbook REUSES it (idempotent replay) and completes the pending token persist,
+        // instead of minting a fresh id. Keyed on (documentId, templateId, workbookId).
+        writePendingChangeset({ documentId, templateId, workbookId, clientChangeSetId });
+        showToast('Excel sync incomplete — some new rows are still finalizing. Please sync again in a moment.', 'warn');
+        return true;
+      }
+      // Writeback is complete (every created-row token is durable) → clear any prior pending
+      // descriptor for this document so the next sync mints a fresh change-set normally.
+      clearPendingChangeset(documentId);
+
+      // Materialize accepted/create ops via the per-marker field-level reducer. The
+      // Edge `outcomes` carry only routing metadata (opUuid / outcome / writeback) —
+      // the field-level patch_payload (changedFieldKeys / fields / baseFingerprints)
+      // lives in excel_sync_ops and is returned ONLY by kal309_fetch_since. So the
+      // authoritative materialize input is fetchSince from the SINGLE frontier (D.3),
+      // not the bare outcomes. fetchSince also self-heals a partial materialize on
+      // re-run (idempotent reducer). Each write goes through setSurveyMarkers; the
+      // useAnnotationDoc capture effect carries it durably (NOT a full-map apply).
+      const sinceRevision = readFrontier({ getMeta: excelSyncMetaGetStable, templateId });
+      const { ops: committedOps, error: fetchErr } =
+        await fetchSince({ supabaseClient: supabase, documentId, templateId, sinceRevision });
+      if (!fetchErr && Array.isArray(committedOps) && committedOps.length > 0) {
+        const { getMarkers, writeMarker } = makeMaterializeAccessors();
+        await materializeAcceptedOps({
+          ops: committedOps,
+          templateId,
+          getMarkers,
+          writeMarker,
+          getMeta: excelSyncMetaGetStable,
+          setMeta: excelSyncMetaSetStable,
+          ack: ({ opUuid, status }) =>
+            ackMaterialization({ supabaseClient: supabase, documentId, templateId, opUuid, status }),
+        });
+      }
+
+      // Route non-accepted server outcomes (review / stale / conflict) + any
+      // client-detected conflict-review ops to the EXISTING review surface.
+      const reviewItems = (result.outcomes || [])
+        .filter((o) => o && o.outcome && o.outcome !== 'applied' && o.outcome !== 'create')
+        .map((o) => ({
+          scopeKey: o.scopeId || null,
+          rowIndex: null,
+          itemName: null,
+          reason: o.outcome,                  // 'review' | 'stale' | ...
+          markerId: o.markerAnnotationId || null,
+          opUuid: o.opUuid || null,           // resolve action keys off this (R2#4)
+        }));
+      // Surface client_conflict_review ops recorded durably by the reducer for THIS mirror.
+      const reviewMeta = excelSyncMetaGetStable(`excelSyncReview:${templateId}`) || {};
+      for (const [opUuid, entry] of Object.entries(reviewMeta)) {
+        if (entry && entry.status === 'client_conflict_review') {
+          reviewItems.push({
+            scopeKey: null, rowIndex: null, itemName: null,
+            reason: 'conflict', markerId: entry.markerAnnotationId || null, opUuid,
+          });
+        }
+      }
+      setPendingImportReview(reviewItems);
+
+      // Enqueue the verified Row-ID writeback jobs for server-CREATED rows BEFORE
+      // declaring the import done (Codex finding #7). Each job is the signed, durably
+      // persisted token the Excel sheet must receive so the new row carries its Row ID.
+      // The flush path writes the token back on read-back verification. Best-effort —
+      // a localStorage failure is non-fatal (the token is already durable server-side).
+      //
+      // Codex round-2 finding #3: the drains (drainRowIdWritebackQueueLocal /
+      // drainRowIdWritebackQueue) read the queue keyed by the COMPOSITE rowIdDocumentId,
+      // NOT the bare Supabase documentId — so enqueue under the SAME composite key,
+      // computed identically to the export + flush sites, or the jobs never drain.
+      //
+      // Codex round-2 finding #4: the drains require a FULL entry (sheetName + rowLocator
+      // (true sheet row) + expectedOldCellValue), else they mark it 'invalid-entry' and
+      // never write the Row ID. Resolve those from the parsed worksheetDataList (which we
+      // already have) using the job's scopeId (→ worksheet) + jsonIndex (→ true sheet row).
+      const rowIdDocumentId = `${pdfFile?.id || 'local'}:${pdfId || pdfFile?.name || 'pdf'}`;
+      // Index worksheets by scopeId (`${moduleId}:${categoryId}`) for the per-job lookup.
+      const worksheetByScopeId = new Map();
+      for (const ws of (worksheetDataList || [])) {
+        const mId = ws?.matchedModuleId;
+        const cId = ws?.matchedCategory?.id;
+        if (mId != null && cId != null) worksheetByScopeId.set(`${mId}:${cId}`, ws);
+      }
+      for (const job of (result.writebackJobs || [])) {
+        if (!job || !job.markerAnnotationId || !job.assignedToken) continue;
+        // Resolve the worksheet + true sheet row for this created row.
+        const ws = job.scopeId ? worksheetByScopeId.get(job.scopeId) : null;
+        const jsonRow = (ws && Number.isInteger(job.jsonIndex)) ? ws.jsonData?.[job.jsonIndex] : null;
+        // sheetRowNumber is the TRUE 1-based sheet row stamped on each json row at parse time.
+        const sheetRowNumber = jsonRow ? jsonRow.sheetRowNumber : null;
+        // A server-created row was just ADDED by the user in Excel, so its Row-ID cell is
+        // blank — the drain writes the token only when the current cell equals this expected
+        // old value (here, empty). This is the safe precondition (never overwrites a value).
+        try {
+          enqueueWriteback(rowIdDocumentId, {
+            markerId: job.markerAnnotationId,
+            scope: job.scopeId || null,
+            sheetName: ws?.sheetName ?? null,
+            rowLocator: sheetRowNumber || null,
+            expectedOldCellValue: '',
+            newToken: job.assignedToken,
+            createdAt: Date.now(),
+          });
+        } catch { /* non-fatal: token is durable server-side; flush retries */ }
+      }
+
+      const reviewNote = reviewItems.length > 0 ? ` ${reviewItems.length} row(s) need your choice.` : '';
+      showToast(`Excel sync complete.${reviewNote}`, reviewItems.length > 0 ? 'info' : 'success');
+      return true;
+    } catch (err) {
+      console.error('[KAL-309] server Excel sync failed:', err);
+      showToast('Excel sync failed. Please try again.', 'error');
+      return true; // handled (error surfaced) — do not double-apply via the inline path.
+    }
+  }, [pdfFile, surveyMarkers, buildAppValuesByMarkerId, excelSyncMetaGetStable, excelSyncMetaSetStable, makeMaterializeAccessors]);
 
   // Helper: Execute the actual Excel import after new columns are handled
   const executeExcelImport = useCallback(async (worksheetDataList, templateToUse, importMeta = null) => {
+    // KAL-309: registered Supabase-backed docs go through the server-authoritative
+    // path (mirrors the KAL-308a split). It returns true when it handled the import;
+    // local-only / unregistered docs fall through to today's inline apply UNCHANGED.
+    if (await runServerExcelSync(worksheetDataList, templateToUse, importMeta)) return;
     // Stale / export-clock guard (open item 9, STAGE1 Step 0): compare the workbook's
     // hidden export stamp against the newest export stamp our markers carry. An OLDER
     // file (restored/outdated copy) must never silently overwrite newer app work.
@@ -14263,10 +14611,14 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         : 'Sync complete! No changes found.';
       showToast(reviewNote, 'info');
     }
-  }, [surveyMarkers, items, setItems, setAnnotations, scale, setAnnotationsByPage, markExcelSyncCheckpoint, pdfFile, pdfId]);
+  }, [surveyMarkers, items, setItems, setAnnotations, scale, setAnnotationsByPage, markExcelSyncCheckpoint, pdfFile, pdfId, runServerExcelSync]);
 
   // Helper: Execute auto-sync import with canvas color tracking
   const executeAutoExcelImport = useCallback(async (worksheetDataList, templateToUse, importMeta = null) => {
+    // KAL-309: registered Supabase-backed docs go through the server-authoritative
+    // path (mirrors the KAL-308a split). It returns true when it handled the import;
+    // local-only / unregistered docs fall through to today's inline apply UNCHANGED.
+    if (await runServerExcelSync(worksheetDataList, templateToUse, importMeta)) return;
     // Stale / export-clock guard (open item 9, STAGE1 Step 0): an auto-triggered import
     // from a workbook that is OLDER than our latest export (or carries no readable
     // export stamp) is refused outright — no writes, no deletes. The user can still
@@ -14934,7 +15286,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       setLastSyncMessage((importReviewItems.length > 0 ? `${importReviewItems.length} need your choice` : 'No changes found'));
       setTimeout(() => setLastSyncMessage(''), 5000);
     }
-  }, [surveyMarkers, items, setItems, setAnnotations, scale, setAnnotationsByPage, markExcelSyncCheckpoint, pdfFile, pdfId]);
+  }, [surveyMarkers, items, setItems, setAnnotations, scale, setAnnotationsByPage, markExcelSyncCheckpoint, pdfFile, pdfId, runServerExcelSync]);
 
   // Helper: Create new template with added checklist items from new columns
   const handleCreateNewTemplateFromColumns = useCallback(async (newColumnsByCategory, templateName) => {
@@ -15203,7 +15555,13 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         const workbook = new ExcelJS.Workbook();
         await workbook.xlsx.load(fileData);
         // Stale guard input: the export stamp this workbook carries (hidden metadata sheet).
-        const importMeta = { workbookExportStamp: readWorkbookExportStamp(workbook), trigger: importTrigger };
+        // KAL-309: also read the workbook registration (B5/B6 of _SurveyMetadata) so a
+        // registered Supabase-backed doc routes through the server-authoritative path.
+        const importReg = readWorkbookRegistration(workbook);
+        const importMeta = {
+          workbookExportStamp: readWorkbookExportStamp(workbook), trigger: importTrigger,
+          workbookId: importReg.workbookId, syncToken: importReg.syncToken,
+        };
 
         // Phase 1: Parse worksheets and detect new columns
         const allNewColumns = {}; // { categoryId: { displayName, columns: [{ columnIndex, text }] } }
@@ -15324,7 +15682,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
             jsonData,
             headerRow,
             matchedCategory,
-            matchedModuleId
+            matchedModuleId,
+            // KAL-309 finding #4: the source sheet name, so a server-created row's Row-ID
+            // writeback job can target the correct worksheet at flush time.
+            sheetName
           });
         });
 
@@ -15426,7 +15787,13 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         const workbook = new ExcelJS.Workbook();
         await workbook.xlsx.load(fileData);
         // Stale guard input: the export stamp this workbook carries (hidden metadata sheet).
-        const importMeta = { workbookExportStamp: readWorkbookExportStamp(workbook), trigger: 'auto' };
+        // KAL-309: also read the workbook registration (B5/B6 of _SurveyMetadata) so a
+        // registered Supabase-backed doc routes through the server-authoritative path.
+        const importReg = readWorkbookRegistration(workbook);
+        const importMeta = {
+          workbookExportStamp: readWorkbookExportStamp(workbook), trigger: 'auto',
+          workbookId: importReg.workbookId, syncToken: importReg.syncToken,
+        };
 
         // Phase 1: Parse worksheets and detect new columns
         const allNewColumns = {};
@@ -15543,7 +15910,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
             jsonData,
             headerRow,
             matchedCategory,
-            matchedModuleId
+            matchedModuleId,
+            // KAL-309 finding #4: the source sheet name, so a server-created row's Row-ID
+            // writeback job can target the correct worksheet at flush time.
+            sheetName
           });
         });
 
@@ -16974,6 +17344,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   const {
     initialHydration: normalAnnotationHydration,
     forceFlush: cloudSyncForceFlush,
+    // KAL-309: durable Y.Doc META accessors for the excelSyncFrontier cursor + review set.
+    metaGet: excelSyncMetaGet,
+    metaSet: excelSyncMetaSet,
   } = useAnnotationDoc({
     documentId: pdfFile?.id || null,
     userId: user?.id || null,
@@ -16987,6 +17360,73 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     surveyMarkers,
     setSurveyMarkers,
   });
+  // KAL-309: publish the durable META accessors to the latest-refs the early
+  // import-apply callbacks read through (avoids a forward TDZ reference).
+  excelSyncMetaGetRef.current = excelSyncMetaGet;
+  excelSyncMetaSetRef.current = excelSyncMetaSet;
+
+  // KAL-309 (D.4) — reconcile-on-open + broadcast-hint subscription. Replays any
+  // ops missed offline and converges open clients live. Pure read+materialize: it
+  // fetches committed ops from the stable head starting at the SINGLE persisted
+  // frontier cursor and runs the same per-marker field-level reducer the import
+  // executors use — NEVER a full-map apply, NEVER the local matcher. A failed fetch
+  // uses capped exponential backoff (F12 — no infinite loop).
+  const reconcileExcelSync = useCallback(async () => {
+    const documentId = pdfFile?.id || null;
+    const templateId = selectedTemplate?.supabaseId || selectedTemplate?.id || null;
+    if (!documentId || !templateId) return;
+    const sinceRevision = readFrontier({ getMeta: excelSyncMetaGet, templateId });
+    const { ops, error } = await fetchSince({ supabaseClient: supabase, documentId, templateId, sinceRevision });
+    if (error || !Array.isArray(ops) || ops.length === 0) return;
+    const { getMarkers, writeMarker } = makeMaterializeAccessors();
+    await materializeAcceptedOps({
+      ops,
+      templateId,
+      getMarkers,
+      writeMarker,
+      getMeta: excelSyncMetaGet,
+      setMeta: excelSyncMetaSet,
+      ack: ({ opUuid, status }) =>
+        ackMaterialization({ supabaseClient: supabase, documentId, templateId, opUuid, status }),
+    });
+  }, [pdfFile, selectedTemplate, excelSyncMetaGet, excelSyncMetaSet, makeMaterializeAccessors]);
+  // Keep the latest-ref current so the earlier conflict-resolver can re-reconcile.
+  reconcileExcelSyncRef.current = reconcileExcelSync;
+
+  useEffect(() => {
+    const documentId = pdfFile?.id || null;
+    if (!documentId || !user?.id || !cloudSyncEnabled) return undefined;
+    let cancelled = false;
+    let backoff = 1000;
+    const MAX_BACKOFF = 30000;
+    const runReconcile = async () => {
+      if (cancelled) return;
+      try {
+        await reconcileExcelSync();
+        backoff = 1000; // success resets backoff
+      } catch (err) {
+        console.warn('[KAL-309] reconcile failed; backing off', err?.message);
+        backoff = Math.min(backoff * 2, MAX_BACKOFF);
+      }
+    };
+    // 1) On open: replay anything missed offline.
+    void runReconcile();
+    // 2) Live: a content-free post-commit hint from the Edge (channel yjs:<documentId>,
+    //    event 'excel_sync_applied') → re-fetch + materialize missed ops.
+    const channel = supabase
+      .channel(`yjs:${documentId}`)
+      .on('broadcast', { event: 'excel_sync_applied' }, () => {
+        if (cancelled) return;
+        // Schedule with the current backoff so a flaky fetch can't hot-loop.
+        setTimeout(() => { void runReconcile(); }, backoff);
+      })
+      .subscribe();
+    return () => {
+      cancelled = true;
+      try { supabase.removeChannel(channel); } catch { /* */ }
+    };
+  }, [pdfFile?.id, user?.id, cloudSyncEnabled, reconcileExcelSync]);
+
   // Live presence list — feeds the stacked-avatars row in the toolbar.
   // Uses cloudSyncActive (operational flag) so presence stops fetching when
   // the sync layer auto-disables, but the row stays mounted via cloudSyncEnabled
