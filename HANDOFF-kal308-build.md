@@ -62,3 +62,14 @@ payload completeness, accepted≠materialized wording, step-0 mandatory.
 
 - 2026-06-24: PLAN-KAL308.md drafted + Codex-APPROVED (4 rounds). P0 understand
   workflow launched.
+- 2026-06-24: **KAL-308a COMPLETE + committed.** Commits c50ffc01 (migration +
+  client + unit tests), 5e56fb80 (apply script + integration test), 9a664e53
+  (column-ambiguity fix, live-verified), eb0a43b8 (PDFViewer wiring — filtered-patch
+  committed only my 5 hunks). Live: 6/6 survey-test integration pass. survey-test
+  schema applied via dashboard SQL editor (browser-extension injection blocked).
+  Pre-existing KAL-279/259 working-tree changes (AppShell.jsx, package.json,
+  PdfjsViewerContainer.jsx, PDFViewer.jsx lines 21117+/30562+) deliberately left
+  UNCOMMITTED + untouched. Local commits only (no push, per direct-to-main).
+  NEXT PHASE: the keystone — KAL-309 tables (excel_sync_state / excel_sync_ops /
+  excel_sync_audit + slice-1 additive touches) → kal308_apply_changeset RPC → Edge
+  fn → client materialize/reconcile. Plan→Codex→build per PLAN-KAL308.md.
