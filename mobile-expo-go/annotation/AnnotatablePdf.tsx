@@ -1,14 +1,16 @@
 /**
  * AnnotatablePdf — PRODUCTION FOUNDATION (Approach B).
  *
- * PDF render layer (<Pdf/>, touches disabled) bitmap-transformed by Reanimated;
- * the Skia ink layer lives in a VIEWPORT canvas and is transformed by a Skia
- * <Group> (so vectors re-rasterize CRISP at any zoom — the PDF re-renders crisp
- * natively). Both layers are driven by the SAME shared transform, so ink stays
- * glued to the page. Transform + live ink run on the UI thread (Reanimated
- * worklets + react-native-skia). CORE LAW: 1 finger = tool action, 2 fingers
- * always pan+pinch; a stroke interrupted by a 2nd finger is discarded. Strokes
- * stored NORMALIZED (zoom-independent, @survey/shared-ready). Tap-select + Delete.
+ * The <Pdf/> render layer (touches disabled) AND the Skia ink layer live in ONE
+ * Reanimated-transformed container, so they move as a single unit = zero lag,
+ * perfectly glued under zoom/pan. (Ink softens slightly at deep zoom because the
+ * layer is bitmap-scaled; crisp-AND-synced would require rendering the PDF into
+ * Skia too — a later step. Synced+smooth was the right call over crisp.)
+ *
+ * Transform + live ink run on the UI thread (Reanimated worklets + react-native-
+ * skia). CORE LAW: 1 finger = tool action, 2 fingers always pan+pinch; a stroke
+ * interrupted by a 2nd finger is discarded. Strokes stored NORMALIZED. Tap-select
+ * + Delete. No-flicker commit + focal-jump guard kept.
  */
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { LayoutRectangle, Pressable, StyleSheet, Text, View } from 'react-native';
@@ -21,7 +23,7 @@ import Animated, {
   useSharedValue,
   withTiming,
 } from 'react-native-reanimated';
-import { Canvas, Group, Path, Skia } from '@shopify/react-native-skia';
+import { Canvas, Path, Skia } from '@shopify/react-native-skia';
 import {
   clampNorm,
   localToNorm,
@@ -34,9 +36,9 @@ import {
 const PDF_URL =
   'https://raw.githubusercontent.com/mozilla/pdf.js/master/web/compressed.tracemonkey-pldi-09.pdf';
 const MIN_S = 0.5;
-const MAX_S = 14; // (4) deeper zoom
+const MAX_S = 8; // capped — 14x was crashing on the bitmap-scaled page
 const HIT_PX = 22;
-const FOCAL_JUMP = 60; // (1) one-frame focal lurch (finger lift) guard, screen px
+const FOCAL_JUMP = 60; // one-frame focal lurch (finger lift) guard, screen px
 
 function detectExpoGo(): boolean {
   try {
@@ -74,28 +76,23 @@ export default function AnnotatablePdf({ onClose }: { onClose: () => void }) {
   const ssc = useSharedValue(1);
   const oLocalX = useSharedValue(0);
   const oLocalY = useSharedValue(0);
-  const lastFx = useSharedValue(0); // focal-jump guard
+  const lastFx = useSharedValue(0);
   const lastFy = useSharedValue(0);
-  const live = useSharedValue<{ x: number; y: number }[]>([]); // live stroke, page-local px
-  const committed = useSharedValue(false); // did the draw end cleanly (vs interrupted)?
-  const drawGen = useSharedValue(0); // generation, to clear live only after its own commit paints
+  const live = useSharedValue<{ x: number; y: number }[]>([]);
+  const committed = useSharedValue(false);
+  const drawGen = useSharedValue(0);
   const modeSV = useSharedValue(0); // 0 draw, 1 select, 2 pan
   useEffect(() => {
     modeSV.value = mode === 'draw' ? 0 : mode === 'select' ? 1 : 2;
   }, [mode, modeSV]);
 
-  // (3) clear the live stroke only AFTER its committed version has painted (no gap)
   const commitLocalStroke = (pts: { x: number; y: number }[], gen: number) => {
     const b = baseRef.current;
     if (b && pts.length >= 2) {
       const norm = pts.map((p) => clampNorm(localToNorm(p.x, p.y, b.w, b.h)));
       setStrokes((s) => [...s, { id: newStrokeId(), color: '#2B6FB6', width: 3, pts: norm }]);
     }
-    requestAnimationFrame(() => {
-      requestAnimationFrame(() => {
-        if (drawGen.value === gen) live.value = [];
-      });
-    });
+    requestAnimationFrame(() => requestAnimationFrame(() => { if (drawGen.value === gen) live.value = []; }));
   };
   const handleTap = (sx: number, sy: number) => {
     if (modeSV.value !== 1) return;
@@ -136,8 +133,7 @@ export default function AnnotatablePdf({ onClose }: { onClose: () => void }) {
       })
       .onFinalize(() => {
         'worklet';
-        // (2) interrupted by a 2nd finger (gesture failed, onEnd never ran) → discard
-        if (modeSV.value === 0 && !committed.value) live.value = [];
+        if (modeSV.value === 0 && !committed.value) live.value = []; // interrupted by 2nd finger → discard
       }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
   []);
@@ -158,7 +154,7 @@ export default function AnnotatablePdf({ onClose }: { onClose: () => void }) {
         const dfy = e.focalY - lastFy.value;
         lastFx.value = e.focalX;
         lastFy.value = e.focalY;
-        if (Math.abs(dfx) > FOCAL_JUMP || Math.abs(dfy) > FOCAL_JUMP) return; // (1) skip lurch frame
+        if (Math.abs(dfx) > FOCAL_JUMP || Math.abs(dfy) > FOCAL_JUMP) return;
         const ns = Math.max(MIN_S, Math.min(MAX_S, ssc.value * e.scale));
         sc.value = ns;
         tx.value = e.focalX - oLocalX.value * ns;
@@ -192,12 +188,6 @@ export default function AnnotatablePdf({ onClose }: { onClose: () => void }) {
   const pageStyle = useAnimatedStyle(() => ({
     transform: [{ translateX: tx.value }, { translateY: ty.value }, { scale: sc.value }],
   }));
-  // (5) Skia transform for the ink — same math, but vectors re-rasterize crisp
-  const inkTransform = useDerivedValue(() => [
-    { translateX: tx.value },
-    { translateY: ty.value },
-    { scale: sc.value },
-  ]);
 
   const zoomBy = (factor: number) => {
     const vp = viewport;
@@ -245,7 +235,7 @@ export default function AnnotatablePdf({ onClose }: { onClose: () => void }) {
       <View style={styles.stage} onLayout={(e) => setViewport(e.nativeEvent.layout)}>
         <GestureDetector gesture={gesture}>
           <View style={StyleSheet.absoluteFill} collapsable={false}>
-            {/* PDF layer — native, re-renders crisp under the RN transform */}
+            {/* PDF + ink in ONE transformed container → move as a single unit (no desync) */}
             <Animated.View style={[base ? { width: base.w, height: base.h } : StyleSheet.absoluteFillObject, styles.page, pageStyle]}>
               <View style={StyleSheet.absoluteFill} pointerEvents="none">
                 <Pdf
@@ -256,11 +246,8 @@ export default function AnnotatablePdf({ onClose }: { onClose: () => void }) {
                   style={StyleSheet.absoluteFill}
                 />
               </View>
-            </Animated.View>
-            {/* Ink layer — viewport canvas, crisp via Skia <Group> transform */}
-            {base && (
-              <Canvas style={StyleSheet.absoluteFill} pointerEvents="none">
-                <Group transform={inkTransform}>
+              {base && (
+                <Canvas style={StyleSheet.absoluteFill} pointerEvents="none">
                   {strokes.map((s) => (
                     <React.Fragment key={s.id}>
                       {s.id === selectedId && (
@@ -270,9 +257,9 @@ export default function AnnotatablePdf({ onClose }: { onClose: () => void }) {
                     </React.Fragment>
                   ))}
                   <Path path={livePath} style="stroke" strokeWidth={3} color="#2B6FB6" strokeJoin="round" strokeCap="round" />
-                </Group>
-              </Canvas>
-            )}
+                </Canvas>
+              )}
+            </Animated.View>
           </View>
         </GestureDetector>
       </View>
