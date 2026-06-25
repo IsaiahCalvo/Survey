@@ -3,8 +3,9 @@
 -- Governing spec: PLAN-KAL309.md (Codex-APPROVED round-3) sections A (schema) + B
 -- (the apply RPC) + all helper RPCs.  Builds on:
 --   • KAL-307 (20260611120000_kal307_workbook_registrations.sql) — one-live-workbook
---     registry; this migration adds an active-unique index on workbook_id + the
---     frozen rowid_signing_doc_id column was ALREADY added by KAL-308a (do NOT re-add).
+--     registry; this migration adds an active-unique index on workbook_id AND the frozen
+--     rowid_signing_doc_id column (KAL-308a put signing_doc_id on rowid_signing_secrets,
+--     NOT on the registrations table, so this column is genuinely new here — see A.1 (ii)).
 --   • KAL-308a (20260624120000_kal308a_rowid_signing_secrets.sql) — server-held Row-ID
 --     signing secret + frozen signing_doc_id.  This migration mirrors that table's
 --     access model exactly (RLS on, REVOKE ALL from authenticated/anon, NO client
@@ -52,10 +53,13 @@ CREATE UNIQUE INDEX IF NOT EXISTS excel_workbook_registrations_workbook_id_activ
   ON public.excel_workbook_registrations (workbook_id)
   WHERE revoked_at IS NULL;
 
--- (ii) rowid_signing_doc_id was ALREADY added by KAL-308a — do NOT re-add it here.
---      (Defensive ADD … IF NOT EXISTS kept commented for documentation only.)
--- ALTER TABLE public.excel_workbook_registrations
---   ADD COLUMN IF NOT EXISTS rowid_signing_doc_id TEXT;  -- KAL-308a owns this.
+-- (ii) Store the FROZEN canonical signing-id captured at register/export so the Edge can
+--      resolve registration → signing-id in one read.  KAL-308a put signing_doc_id on the
+--      rowid_signing_secrets TABLE, NOT on excel_workbook_registrations — so this column does
+--      NOT exist yet and must be added here.  kal309_set_registration_signing_id populates it
+--      (freeze-once); NULL on legacy rows forces a re-export (308a legacy-preflight).
+ALTER TABLE public.excel_workbook_registrations
+  ADD COLUMN IF NOT EXISTS rowid_signing_doc_id TEXT;
 
 -- NOTE: excel_revision is DELIBERATELY NOT added here (F2 — it lives on
 -- excel_sync_head, keyed by the stable mirror, not the swappable registration row).
@@ -253,6 +257,57 @@ REVOKE ALL ON public.excel_sync_head, public.excel_sync_state, public.excel_sync
 REVOKE UPDATE, DELETE ON public.excel_sync_audit FROM PUBLIC;
 
 -- ===========================================================================
+-- Internal helpers (IMMUTABLE pure functions used by the RPCs below)
+-- ===========================================================================
+
+-- Fix 9: strict UUID validation.  The loose '^[0-9a-fA-F-]{36}$' shape accepts
+-- UUID-LENGTH junk (wrong dash positions) whose ::uuid cast would ABORT the whole RPC.
+-- Return the parsed uuid for a canonical 8-4-4-4-12 string, else NULL (→ route to review),
+-- so a malformed id can never crash the change-set.
+CREATE OR REPLACE FUNCTION public.kal309_safe_uuid(p_text TEXT)
+RETURNS UUID
+LANGUAGE plpgsql
+IMMUTABLE
+SET search_path = ''
+AS $$
+BEGIN
+  IF p_text IS NULL OR p_text !~
+     '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$' THEN
+    RETURN NULL;
+  END IF;
+  RETURN p_text::uuid;
+EXCEPTION WHEN others THEN
+  RETURN NULL;   -- belt-and-suspenders: any cast failure routes to review, never aborts
+END;
+$$;
+
+-- Fix 2: strip Row-ID token / secret material from a row's patch payload BEFORE it is
+-- persisted into excel_sync_ops.patch_payload (which kal309_fetch_since returns to clients).
+-- Tokens reach clients ONLY via the dedicated writeback-job channel, never the op log.
+CREATE OR REPLACE FUNCTION public.kal309_sanitize_payload(p_payload JSONB)
+RETURNS JSONB
+LANGUAGE plpgsql
+IMMUTABLE
+SET search_path = ''
+AS $$
+DECLARE
+  v_clean JSONB;
+BEGIN
+  IF p_payload IS NULL OR jsonb_typeof(p_payload) <> 'object' THEN
+    RETURN COALESCE(p_payload, '{}'::jsonb);
+  END IF;
+  -- Strip ONLY token/secret material + the identityRecord block (which carries assignedToken).
+  -- Fix 1 (round-3): KEEP baseFingerprints + changedFieldKeys + fields — the client's final
+  -- app-vs-Excel conflict check (D.3) needs baseFingerprints in patch_payload, and
+  -- changedFieldKeys is the field-by-field merge whitelist.  None of those are secrets.
+  v_clean := p_payload
+    - 'assignedToken' - 'syncToken' - 'token' - 'secret' - 'secret_b64'
+    - 'identityRecord';
+  RETURN v_clean;
+END;
+$$;
+
+-- ===========================================================================
 -- (B)  Keystone RPC — kal308_apply_changeset (service-role ONLY)
 -- ===========================================================================
 -- STEP ORDER IS LOAD-BEARING (R2#1): AUTH → REGISTRATION → LOCK → REPLAY → per-row.
@@ -286,6 +341,9 @@ DECLARE
   v_reg_gen      INTEGER;            -- R2#3: registration.generation DERIVED from workbook_id
   v_reg_doc      UUID;
   v_reg_tpl      TEXT;
+  v_reg_tier     TEXT;               -- Fix 6: capability tier DERIVED from the registration, never the client
+  v_reg_drive    TEXT;               -- Fix 6: graph_drive_id from the registration
+  v_reg_item     TEXT;               -- Fix 6: graph_item_id from the registration
   v_existing     RECORD;
   v_outcomes     JSONB := '[]'::jsonb;
   v_row          JSONB;
@@ -305,6 +363,13 @@ DECLARE
   v_inserted_uuid UUID;
   v_dup_revision BIGINT;   -- recovered revision of a duplicate op_id within the same change-set
   v_emit_revision BIGINT;  -- revision reported in this row's outcome
+  v_changed_keys JSONB;    -- the row's changedFieldKeys array (the merge whitelist)
+  v_key          TEXT;     -- loop var over changedFieldKeys / field-fingerprint keys
+  v_field_base   TEXT;     -- client-claimed per-field base fingerprint
+  v_field_stored TEXT;     -- server-stored per-field fingerprint (excel_sync_state)
+  v_payload      JSONB;    -- sanitized (token-stripped) patch payload actually persisted
+  v_checklist_id TEXT;     -- checklist id parsed from an 'answer:<id>' changed key
+  v_entity_val   TEXT;     -- the patch's changed entity value (validated vs template entity ids)
 BEGIN
   -- 0. SERVICE-ROLE GATE (defense in depth).  EXECUTE is service-role-only (grant below).
   --    If a future mis-grant lets an authenticated caller in, fail closed.
@@ -338,8 +403,12 @@ BEGIN
   --    The client only has {workbookId, syncToken}; it never sends registration.id/generation.
   --    Derive the live generation from workbook_id AND re-verify the registration's
   --    document_id/template_id match the args (build note 1 — reject mismatches).
-  SELECT r.generation, r.document_id, r.template_id
-    INTO v_reg_gen, v_reg_doc, v_reg_tpl
+  -- Fix 6: also pull capability_tier + graph ids from the registration — the SERVER-SIDE
+  -- source of truth for the business gate; never trust the client p_capability_tier.
+  SELECT r.generation, r.document_id, r.template_id,
+         r.capability_tier, r.graph_drive_id, r.graph_item_id
+    INTO v_reg_gen, v_reg_doc, v_reg_tpl,
+         v_reg_tier, v_reg_drive, v_reg_item
     FROM public.excel_workbook_registrations r
    WHERE r.workbook_id = p_workbook_id AND r.revoked_at IS NULL;   -- workbook_id UNIQUE on active rows (A.1)
   IF NOT FOUND THEN
@@ -353,7 +422,7 @@ BEGIN
     -- Codex build note 1: the resolved registration must match the document/template args.
     INSERT INTO public.excel_sync_audit(document_id, template_id, workbook_generation,
       actor_id, capability_tier, client_change_set_id, row_outcome)
-      VALUES (p_document_id, p_template_id, v_reg_gen, p_actor_id, p_capability_tier,
+      VALUES (p_document_id, p_template_id, v_reg_gen, p_actor_id, v_reg_tier,
               p_client_change_set_id, 'unauthorized');
     RETURN jsonb_build_object('error','workbook_mismatch','outcomes','[]'::jsonb);
   END IF;
@@ -362,7 +431,7 @@ BEGIN
   IF public.kal49_document_is_locked(p_document_id) THEN
     INSERT INTO public.excel_sync_audit(document_id, template_id, workbook_generation,
       actor_id, capability_tier, client_change_set_id, row_outcome)
-      VALUES (p_document_id, p_template_id, v_reg_gen, p_actor_id, p_capability_tier,
+      VALUES (p_document_id, p_template_id, v_reg_gen, p_actor_id, v_reg_tier,
               p_client_change_set_id, 'locked');
     RETURN jsonb_build_object('error','locked','outcomes','[]'::jsonb);
   END IF;
@@ -399,10 +468,14 @@ BEGIN
   -- 6. CONSERVATIVE SHARED-DOC GATE (Decision 8).  If >1 active collaborator AND the
   --    capability tier is not business-with-matching-graph-metadata → route ALL rows to
   --    'review', zero writes, store the change-set outcomes, return.
+  -- Fix 6: the business decision uses the SERVER-DERIVED registration tier + graph ids,
+  --    NEVER the client-supplied p_capability_tier (which an attacker could set to 'business').
   SELECT count(*) INTO v_active_count
     FROM public.document_collaborators dc
    WHERE dc.document_id = p_document_id AND dc.status = 'active';
-  v_business_ok := (p_capability_tier = 'business');
+  v_business_ok := (v_reg_tier = 'business'
+                    AND v_reg_drive IS NOT NULL AND v_reg_drive <> ''
+                    AND v_reg_item  IS NOT NULL AND v_reg_item  <> '');
   IF v_active_count > 1 AND NOT v_business_ok THEN
     FOR v_row IN SELECT * FROM jsonb_array_elements(COALESCE(p_rows, '[]'::jsonb)) LOOP
       v_op_id     := v_row->>'opId';
@@ -410,9 +483,9 @@ BEGIN
       v_claimed_id := v_row->>'markerAnnotationId';
       INSERT INTO public.excel_sync_audit(document_id, template_id, workbook_generation,
         actor_id, capability_tier, client_change_set_id, marker_annotation_id, row_outcome)
-        VALUES (p_document_id, p_template_id, v_reg_gen, p_actor_id, p_capability_tier,
+        VALUES (p_document_id, p_template_id, v_reg_gen, p_actor_id, v_reg_tier,
                 p_client_change_set_id,
-                CASE WHEN v_claimed_id ~ '^[0-9a-fA-F-]{36}$' THEN v_claimed_id::uuid ELSE NULL END,
+                public.kal309_safe_uuid(v_claimed_id),
                 'review');
       v_outcomes := v_outcomes || jsonb_build_object(
         'opId', v_op_id, 'markerAnnotationId', v_claimed_id,
@@ -443,12 +516,11 @@ BEGIN
       v_outcome := 'review';
 
     ELSIF v_op_type = 'apply' THEN
-      -- Must carry a well-formed marker id for apply.
-      IF v_claimed_id IS NULL OR v_claimed_id !~ '^[0-9a-fA-F-]{36}$' THEN
-        v_outcome := 'review';   -- legacy/no-Row-ID/foreign-token (Decisions 9,12)
+      -- Fix 9: strict UUID parse — UUID-shaped junk no longer aborts the RPC, it routes to review.
+      v_marker_id := public.kal309_safe_uuid(v_claimed_id);
+      IF v_marker_id IS NULL THEN
+        v_outcome := 'review';   -- legacy/no-Row-ID/foreign-token/malformed (Decisions 9,12)
       ELSE
-        v_marker_id := v_claimed_id::uuid;
-
         -- PRE-GATE (F13): block any NEW op for a marker with an OPEN client_conflict_review.
         SELECT s.* INTO v_state
           FROM public.excel_sync_state s
@@ -462,18 +534,81 @@ BEGIN
         ELSIF v_state.materialization_status = 'client_conflict_review' THEN
           v_outcome := 'review';   -- block-stacking guard (F13)
         ELSE
-          -- TOCTOU re-validate Excel-side base fingerprints (Excel-vs-Excel ONLY, F6).
-          v_base_iv     := v_row #>> '{baseFingerprints,identityVector}';
-          v_base_fields := v_row #> '{baseFingerprints,fields}';
-          IF v_base_iv IS NOT NULL
-             AND v_base_iv IS DISTINCT FROM v_state.identity_vector_fingerprint THEN
-            v_outcome := 'conflict';   -- Excel-side drift since baseline; no write
+          v_outcome := 'applied';   -- provisional; the checks below can downgrade it
+
+          -- Fix 2 (round-3): an 'apply' op MUST carry changedFieldKeys as a JSON array — without
+          -- a known change set we cannot validate or safely merge.  Missing / non-array → review.
+          v_changed_keys := v_row -> 'changedFieldKeys';
+          IF v_changed_keys IS NULL OR jsonb_typeof(v_changed_keys) <> 'array' THEN
+            v_outcome := 'review';
           ELSE
-            -- FIELD WHITELIST (F21): structural validation always; against the real
-            -- template when p_template_config is non-NULL.  Best-effort/structural per F21:
-            -- unknown keys are ignored, not failed.  (The matcher already narrowed the
-            -- patch to changedFieldKeys; the server just refuses to widen it.)
-            v_outcome := 'applied';
+            -- Fix 5: FIELD-KEY WHITELIST.  changedFieldKeys is the merge whitelist the client
+            -- reducer will overlay.  Allowed KEYS: the fixed marker fields + answer/checklist
+            -- keys ('answer:<id>').  Anything else → review the whole row.
+            -- Fix 3 (round-3): when p_template_config is non-NULL, ALSO validate values against
+            -- it — each answer's checklist id must exist in the template, and a changed entity
+            -- value must be a template entity id.  When NULL, structural-only (F21 fallback).
+            FOR v_key IN SELECT jsonb_array_elements_text(v_changed_keys) LOOP
+              IF v_key NOT IN ('changedBy','changedDate','item','entity','notes')
+                 AND v_key NOT LIKE 'answer:%'
+                 AND v_key NOT LIKE 'answer.%' THEN
+                v_outcome := 'review';   -- non-whitelisted key
+                EXIT;
+              END IF;
+
+              IF p_template_config IS NOT NULL THEN
+                -- answer:<checklistItemId> — the checklist id must exist in the template.
+                IF v_key LIKE 'answer:%' OR v_key LIKE 'answer.%' THEN
+                  v_checklist_id := substr(v_key, position(
+                    CASE WHEN v_key LIKE 'answer:%' THEN ':' ELSE '.' END IN v_key) + 1);
+                  IF v_checklist_id = '' OR NOT EXISTS (
+                    SELECT 1
+                      FROM jsonb_array_elements(COALESCE(p_template_config->'modules','[]'::jsonb)) m,
+                           jsonb_array_elements(COALESCE(m->'categories','[]'::jsonb)) c,
+                           jsonb_array_elements(COALESCE(c->'checklist','[]'::jsonb)) ci
+                     WHERE ci->>'id' = v_checklist_id
+                  ) THEN
+                    v_outcome := 'review';   -- unknown checklist id for this template
+                    EXIT;
+                  END IF;
+                -- entity — a CHANGED entity value must be one of the template's entity ids
+                -- (skip when the entity is being cleared to null/empty).
+                ELSIF v_key = 'entity' THEN
+                  v_entity_val := v_row #>> '{fields,entity}';
+                  IF v_entity_val IS NOT NULL AND v_entity_val <> '' AND NOT EXISTS (
+                    SELECT 1
+                      FROM jsonb_array_elements(COALESCE(p_template_config->'entities','[]'::jsonb)) e
+                     WHERE e->>'id' = v_entity_val OR e->>'name' = v_entity_val
+                  ) THEN
+                    v_outcome := 'review';   -- entity value not in the template
+                    EXIT;
+                  END IF;
+                END IF;
+              END IF;
+            END LOOP;
+          END IF;
+
+          IF v_outcome = 'applied' THEN
+            -- TOCTOU re-validate Excel-side base fingerprints (Excel-vs-Excel ONLY, F6).
+            v_base_iv     := v_row #>> '{baseFingerprints,identityVector}';
+            v_base_fields := v_row #> '{baseFingerprints,fields}';
+            IF v_base_iv IS NOT NULL
+               AND v_base_iv IS DISTINCT FROM v_state.identity_vector_fingerprint THEN
+              v_outcome := 'conflict';   -- identity-vector drift since baseline; no write
+            ELSIF v_base_fields IS NOT NULL AND jsonb_typeof(v_base_fields) = 'object' THEN
+              -- Fix 4: per-field Excel-vs-Excel drift.  For every claimed base field fingerprint,
+              -- compare against the server-stored field_fingerprints.  Any mismatch on a field
+              -- the client believes it is editing means the Excel side moved under it → stale.
+              FOR v_key IN SELECT jsonb_object_keys(v_base_fields) LOOP
+                v_field_base   := v_base_fields ->> v_key;
+                v_field_stored := v_state.field_fingerprints ->> v_key;
+                IF v_field_stored IS NOT NULL
+                   AND v_field_base IS DISTINCT FROM v_field_stored THEN
+                  v_outcome := 'stale';   -- field-level Excel drift; no write
+                  EXIT;
+                END IF;
+              END LOOP;
+            END IF;
           END IF;
         END IF;
       END IF;
@@ -494,12 +629,20 @@ BEGIN
     IF v_outcome IN ('applied','create') THEN
       v_head := v_head + 1;
 
+      -- Fix 2: persist a SANITIZED payload (strips assignedToken / token / secret / identityRecord;
+      --        KEEPS baseFingerprints + changedFieldKeys for the client's app-vs-Excel check) —
+      --        kal309_fetch_since returns patch_payload to clients.
+      -- Fix 3: stamp the (minted-for-create) marker id into the payload so every client
+      --        materializes the SAME marker id.
+      v_payload := public.kal309_sanitize_payload(v_row);
+      v_payload := jsonb_set(v_payload, '{markerAnnotationId}', to_jsonb(v_marker_id::text), true);
+
       INSERT INTO public.excel_sync_ops (
         document_id, template_id, scope_id, workbook_generation, excel_revision,
         op_id, marker_annotation_id, op_type, patch_payload, client_change_set_id, op_status)
         VALUES (
           p_document_id, p_template_id, v_scope_id, v_reg_gen, v_head,
-          v_op_id, v_marker_id, v_op_type, v_row, p_client_change_set_id, 'accepted')
+          v_op_id, v_marker_id, v_op_type, v_payload, p_client_change_set_id, 'accepted')
         ON CONFLICT (document_id, template_id, client_change_set_id, op_id) DO NOTHING
         RETURNING op_uuid INTO v_inserted_uuid;
 
@@ -573,7 +716,7 @@ BEGIN
         INSERT INTO public.excel_sync_audit(document_id, template_id, workbook_generation,
           actor_id, capability_tier, client_change_set_id, marker_annotation_id, row_outcome,
           device_hint)
-          VALUES (p_document_id, p_template_id, v_reg_gen, p_actor_id, p_capability_tier,
+          VALUES (p_document_id, p_template_id, v_reg_gen, p_actor_id, v_reg_tier,
                   p_client_change_set_id, v_marker_id, v_outcome, p_device_hint);
       END IF;
 
@@ -591,9 +734,9 @@ BEGIN
       INSERT INTO public.excel_sync_audit(document_id, template_id, workbook_generation,
         actor_id, capability_tier, client_change_set_id, marker_annotation_id, row_outcome,
         device_hint)
-        VALUES (p_document_id, p_template_id, v_reg_gen, p_actor_id, p_capability_tier,
+        VALUES (p_document_id, p_template_id, v_reg_gen, p_actor_id, v_reg_tier,
                 p_client_change_set_id,
-                CASE WHEN v_claimed_id ~ '^[0-9a-fA-F-]{36}$' THEN v_claimed_id::uuid ELSE NULL END,
+                public.kal309_safe_uuid(v_claimed_id),
                 v_outcome, p_device_hint);
       v_outcomes := v_outcomes || jsonb_build_object(
         'opId', v_op_id, 'markerAnnotationId', v_claimed_id,
@@ -744,9 +887,9 @@ BEGIN
   v_head := COALESCE(v_head, 0);
 
   FOR v_marker IN SELECT * FROM jsonb_array_elements(COALESCE(p_markers, '[]'::jsonb)) LOOP
-    CONTINUE WHEN (v_marker->>'markerAnnotationId') IS NULL
-              OR (v_marker->>'markerAnnotationId') !~ '^[0-9a-fA-F-]{36}$';
-    v_marker_id := (v_marker->>'markerAnnotationId')::uuid;
+    -- Fix 9: strict UUID parse — skip markers with a malformed id instead of aborting the seed.
+    v_marker_id := public.kal309_safe_uuid(v_marker->>'markerAnnotationId');
+    CONTINUE WHEN v_marker_id IS NULL;
 
     INSERT INTO public.excel_sync_state (
       document_id, template_id, scope_id, workbook_generation, marker_annotation_id,
@@ -871,7 +1014,8 @@ SECURITY DEFINER
 SET search_path = ''
 AS $$
 DECLARE
-  v_op        RECORD;
+  v_op          RECORD;
+  v_current_op  UUID;
 BEGIN
   IF auth.uid() IS NULL THEN
     RAISE EXCEPTION 'kal309: not authenticated';
@@ -899,16 +1043,32 @@ BEGIN
     RETURN FALSE;
   END IF;
 
+  -- Fix 4 (round-3): also require THIS op to be the CURRENT op for its marker before changing
+  -- ANY status.  Otherwise a stale ack for an OLD (still-'accepted') op could flip its op_status
+  -- to client_conflict_review while the state-row guard skips the marker — leaving an op-level
+  -- review the apply RPC's state-keyed pre-gate cannot see.  Lock the marker state row and
+  -- compare last_applied_op_uuid; a non-current op ack is a full no-op.
+  SELECT s.last_applied_op_uuid INTO v_current_op
+    FROM public.excel_sync_state s
+   WHERE s.document_id = p_document_id AND s.template_id = p_template_id
+     AND s.scope_id = v_op.scope_id AND s.marker_annotation_id = v_op.marker_annotation_id
+   FOR UPDATE;
+  IF NOT FOUND OR v_current_op IS DISTINCT FROM p_op_uuid THEN
+    RETURN FALSE;   -- not the current op for this marker → no-op (op_status unchanged too)
+  END IF;
+
   UPDATE public.excel_sync_ops
      SET op_status = p_status
    WHERE op_uuid = p_op_uuid;
 
+  -- The marker state row is already locked + confirmed current; update it in lock-step.
   UPDATE public.excel_sync_state
      SET materialization_status = p_status,
          op_status              = p_status,
          updated_at             = now()
    WHERE document_id = p_document_id AND template_id = p_template_id
-     AND scope_id = v_op.scope_id AND marker_annotation_id = v_op.marker_annotation_id;
+     AND scope_id = v_op.scope_id AND marker_annotation_id = v_op.marker_annotation_id
+     AND last_applied_op_uuid = p_op_uuid;
 
   RETURN TRUE;
 END;
@@ -941,6 +1101,7 @@ DECLARE
   v_jobs       JSONB;
   v_new_job    JSONB;
   v_exists     BOOLEAN;
+  v_state_rows INTEGER;
 BEGIN
   -- service-role only (grant below); no auth.uid() under the Edge.
 
@@ -951,6 +1112,13 @@ BEGIN
          updated_at              = now()
    WHERE document_id = p_document_id AND template_id = p_template_id
      AND scope_id = p_scope_id AND marker_annotation_id = p_marker_annotation_id;
+
+  -- Fix 10: if no state row matched, the marker does not exist server-side — do NOT
+  -- fabricate a writeback job for a phantom marker.  Bail.
+  GET DIAGNOSTICS v_state_rows = ROW_COUNT;
+  IF v_state_rows = 0 THEN
+    RETURN FALSE;
+  END IF;
 
   -- Append the writeback job to the change-set, deduped by markerAnnotationId
   -- (Codex build note 2 — idempotent; a retried persist must not double-append).
@@ -1051,10 +1219,12 @@ BEGIN
   END IF;
 
   IF p_resolution = 'take-excel' THEN
-    -- The Excel value wins; the client WILL re-materialize.  Reload-safe (build note 3):
-    -- op → 'resolved' (it has left conflict-review) BUT state → 'accepted' so the reducer
-    -- re-applies it on the next pass (then the normal materialized ack flips it).
-    v_op_new    := 'resolved';
+    -- The Excel value wins; the client WILL re-materialize.  Fix 8 / build note 3 — reload-safe:
+    -- set the OP back to 'accepted' (NOT 'resolved') so kal309_fetch_since re-surfaces it and the
+    -- reducer re-materializes it after a reload; state → 'accepted' too (then the normal
+    -- materialized ack flips both once the client re-applies).  Using 'resolved' here would make
+    -- fetch_since skip the op on reload, silently dropping the take-excel result.
+    v_op_new    := 'accepted';
     v_state_new := 'accepted';
   ELSE
     -- keep-app / merged: nothing is re-applied to app fields; op → resolved, state → materialized.
