@@ -1,43 +1,42 @@
 /**
- * AnnotatablePdf — PRODUCTION FOUNDATION (Approach B: own-the-transform).
+ * AnnotatablePdf — PRODUCTION FOUNDATION (Approach B, UI-thread feel pass).
  *
- * The PDF render layer (<Pdf/>, touches disabled) and the Skia ink layer live
- * inside ONE transformed container, so ink stays glued to the page under any
- * zoom/pan — the alignment the Spike-2 prototype lacked. We own pan/zoom via
- * react-native-gesture-handler (CORE LAW: 1 finger = the tool's action,
- * 2 fingers always pan+pinch). Strokes are stored NORMALIZED (zoom-independent,
- * @survey/shared-ready). Zoom +/− buttons exist for deterministic testing.
+ * PDF render layer (<Pdf/>, touches disabled) + Skia ink layer in ONE container.
+ * The transform (pan/zoom) and the LIVE ink stroke run on the UI THREAD via
+ * Reanimated worklets + react-native-skia, so the pen and the zoom keep up with
+ * the finger (the fix for the JS-thread v0 jank). CORE LAW: 1 finger = the tool's
+ * action, 2 fingers always pan+pinch. Strokes stored NORMALIZED (zoom-independent,
+ * @survey/shared-ready). Tap-to-select + Delete.
  *
- * KNOWN v0 LIMITATIONS (the overlay-alignment research will refine these):
- *  - The PDF (and the ink) bitmap-scale with the container, so both soften when
- *    zoomed in. Production crispness = re-render the PDF at the zoom DPI and draw
- *    ink in a viewport Skia canvas at the live transform (Reanimated worklet).
- *  - Single page only; multi-page paging is a later step.
+ * Still v0: PDF bitmap-scales (softens at high zoom) — crispness = re-render the
+ * PDF via its `scale` prop on zoom-settle (next). Single page only.
  */
-import React, { useMemo, useRef, useState } from 'react';
-import { Animated, LayoutRectangle, Pressable, StyleSheet, Text, View } from 'react-native';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { LayoutRectangle, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
-import { Canvas, Path } from '@shopify/react-native-skia';
+import Animated, {
+  runOnJS,
+  useAnimatedStyle,
+  useDerivedValue,
+  useSharedValue,
+  withTiming,
+} from 'react-native-reanimated';
+import { Canvas, Path, Skia } from '@shopify/react-native-skia';
 import {
   clampNorm,
   localToNorm,
   newStrokeId,
-  normToLocal,
   pickStroke,
-  screenToLocal,
   strokeToLocalSvg,
   type Stroke,
-  type Transform,
 } from './pdfAnnotation';
-
-const HIT_PX = 22;
 
 const PDF_URL =
   'https://raw.githubusercontent.com/mozilla/pdf.js/master/web/compressed.tracemonkey-pldi-09.pdf';
 const MIN_S = 0.5;
 const MAX_S = 6;
-const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
+const HIT_PX = 22;
 
 function detectExpoGo(): boolean {
   try {
@@ -50,79 +49,77 @@ function detectExpoGo(): boolean {
 export default function AnnotatablePdf({ onClose }: { onClose: () => void }) {
   const insets = useSafeAreaInsets();
   const [mode, setMode] = useState<'draw' | 'select' | 'pan'>('draw');
-  const modeRef = useRef(mode);
-  modeRef.current = mode;
   const [selectedId, setSelectedId] = useState<string | null>(null);
-
   const [viewport, setViewport] = useState<LayoutRectangle | null>(null);
   const [nat, setNat] = useState<{ w: number; h: number } | null>(null);
   const [strokes, setStrokes] = useState<Stroke[]>([]);
   const strokesRef = useRef(strokes);
   strokesRef.current = strokes;
-  const [, force] = useState(0);
-  const repaint = () => force((n) => n + 1);
-  const cur = useRef<Stroke | null>(null);
   const [zoomLabel, setZoomLabel] = useState(100);
 
-  // base page size (local space, scale 1) = fit page width to viewport
   const base = useMemo(() => {
     if (!viewport || !nat) return null;
     const w = viewport.width;
-    const h = w * (nat.h / nat.w);
-    return { w, h };
+    return { w, h: w * (nat.h / nat.w) };
   }, [viewport, nat]);
   const baseRef = useRef(base);
   baseRef.current = base;
 
-  // transform: committed numeric (for hit-testing/draw) + Animated (for render)
-  const committed = useRef<Transform>({ scale: 1, tx: 0, ty: 0 });
-  const start = useRef<Transform>({ scale: 1, tx: 0, ty: 0 });
-  const tx = useRef(new Animated.Value(0)).current;
-  const ty = useRef(new Animated.Value(0)).current;
-  const sc = useRef(new Animated.Value(1)).current;
-  const applyT = (t: Transform) => { tx.setValue(t.tx); ty.setValue(t.ty); sc.setValue(t.scale); setZoomLabel(Math.round(t.scale * 100)); };
+  // UI-thread state (shared values)
+  const tx = useSharedValue(0);
+  const ty = useSharedValue(0);
+  const sc = useSharedValue(1);
+  const stx = useSharedValue(0); // gesture-start snapshots
+  const sty = useSharedValue(0);
+  const ssc = useSharedValue(1);
+  const live = useSharedValue<{ x: number; y: number }[]>([]); // live stroke, page-local px
+  const modeSV = useSharedValue(0); // 0 draw, 1 select, 2 pan
+  useEffect(() => {
+    modeSV.value = mode === 'draw' ? 0 : mode === 'select' ? 1 : 2;
+  }, [mode, modeSV]);
 
-  const Pdf = detectExpoGo() ? null : require('react-native-pdf').default;
+  // JS-thread commit + select (called from worklets via runOnJS)
+  const commitLocalStroke = (pts: { x: number; y: number }[]) => {
+    const b = baseRef.current;
+    if (!b || pts.length < 2) return;
+    const norm = pts.map((p) => clampNorm(localToNorm(p.x, p.y, b.w, b.h)));
+    setStrokes((s) => [...s, { id: newStrokeId(), color: '#2B6FB6', width: 3, pts: norm }]);
+  };
+  const handleTap = (sx: number, sy: number) => {
+    if (modeSV.value !== 1) return;
+    const b = baseRef.current;
+    if (!b) return;
+    const t = { scale: sc.value, tx: tx.value, ty: ty.value };
+    setSelectedId(pickStroke(strokesRef.current, sx, sy, b.w, b.h, t, HIT_PX));
+  };
 
-  // ---- gestures (CORE LAW) ----
+  // ---- gestures (UI thread) ----
   const oneFinger = useMemo(() =>
     Gesture.Pan()
       .maxPointers(1)
-      .runOnJS(true)
       .onBegin((e) => {
-        if (modeRef.current === 'draw') {
-          const b = baseRef.current;
-          if (!b) return;
-          const l = screenToLocal(e.x, e.y, committed.current);
-          cur.current = { id: newStrokeId(), color: '#2B6FB6', width: 3, pts: [clampNorm(localToNorm(l.x, l.y, b.w, b.h))] };
-          repaint();
-        } else {
-          start.current = { ...committed.current };
+        'worklet';
+        stx.value = tx.value;
+        sty.value = ty.value;
+        if (modeSV.value === 0) {
+          live.value = [{ x: (e.x - tx.value) / sc.value, y: (e.y - ty.value) / sc.value }];
         }
       })
       .onUpdate((e) => {
-        if (modeRef.current === 'draw') {
-          const b = baseRef.current;
-          if (!b || !cur.current) return;
-          const l = screenToLocal(e.x, e.y, committed.current);
-          cur.current.pts.push(clampNorm(localToNorm(l.x, l.y, b.w, b.h)));
-          repaint();
+        'worklet';
+        if (modeSV.value === 0) {
+          live.value = [...live.value, { x: (e.x - tx.value) / sc.value, y: (e.y - ty.value) / sc.value }];
         } else {
-          tx.setValue(start.current.tx + e.translationX);
-          ty.setValue(start.current.ty + e.translationY);
+          tx.value = stx.value + e.translationX;
+          ty.value = sty.value + e.translationY;
         }
       })
-      .onEnd((e) => {
-        if (modeRef.current === 'draw') {
-          if (cur.current && cur.current.pts.length > 1) {
-            const done = cur.current;
-            setStrokes((s) => [...s, done]);
-          }
-          cur.current = null;
-          repaint();
-        } else {
-          committed.current.tx = start.current.tx + e.translationX;
-          committed.current.ty = start.current.ty + e.translationY;
+      .onEnd(() => {
+        'worklet';
+        if (modeSV.value === 0) {
+          const pts = live.value;
+          live.value = [];
+          runOnJS(commitLocalStroke)(pts);
         }
       }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -132,45 +129,29 @@ export default function AnnotatablePdf({ onClose }: { onClose: () => void }) {
     Gesture.Pan()
       .minPointers(2)
       .maxPointers(2)
-      .runOnJS(true)
-      .onBegin(() => { start.current = { ...committed.current }; })
-      .onUpdate((e) => {
-        tx.setValue(start.current.tx + e.translationX);
-        ty.setValue(start.current.ty + e.translationY);
-      })
-      .onEnd((e) => {
-        committed.current.tx = start.current.tx + e.translationX;
-        committed.current.ty = start.current.ty + e.translationY;
-      }),
+      .onBegin(() => { 'worklet'; stx.value = tx.value; sty.value = ty.value; })
+      .onUpdate((e) => { 'worklet'; tx.value = stx.value + e.translationX; ty.value = sty.value + e.translationY; }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
   []);
 
   const pinch = useMemo(() =>
     Gesture.Pinch()
-      .runOnJS(true)
-      .onBegin(() => { start.current = { ...committed.current }; })
+      .onBegin(() => { 'worklet'; ssc.value = sc.value; stx.value = tx.value; sty.value = ty.value; })
       .onUpdate((e) => {
-        const ns = clamp(start.current.scale * e.scale, MIN_S, MAX_S);
-        const lx = (e.focalX - start.current.tx) / start.current.scale;
-        const ly = (e.focalY - start.current.ty) / start.current.scale;
-        const nt = { scale: ns, tx: e.focalX - lx * ns, ty: e.focalY - ly * ns };
-        applyT(nt);
-        committed.current = nt;
-      }),
+        'worklet';
+        const ns = Math.max(MIN_S, Math.min(MAX_S, ssc.value * e.scale));
+        const lx = (e.focalX - stx.value) / ssc.value;
+        const ly = (e.focalY - sty.value) / ssc.value;
+        sc.value = ns;
+        tx.value = e.focalX - lx * ns;
+        ty.value = e.focalY - ly * ns;
+      })
+      .onEnd(() => { 'worklet'; runOnJS(setZoomLabel)(Math.round(sc.value * 100)); }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
   []);
 
-  // tap to select/deselect a stroke (select mode only); hit radius is screen-space
   const selectTap = useMemo(() =>
-    Gesture.Tap()
-      .maxDistance(12)
-      .runOnJS(true)
-      .onEnd((e) => {
-        if (modeRef.current !== 'select') return;
-        const b = baseRef.current;
-        if (!b) return;
-        setSelectedId(pickStroke(strokesRef.current, e.x, e.y, b.w, b.h, committed.current, HIT_PX));
-      }),
+    Gesture.Tap().maxDistance(12).onEnd((e) => { 'worklet'; runOnJS(handleTap)(e.x, e.y); }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
   []);
 
@@ -180,26 +161,38 @@ export default function AnnotatablePdf({ onClose }: { onClose: () => void }) {
     [],
   );
 
-  // zoom buttons (anchor at viewport center) — deterministic for testing
+  // live stroke path, rebuilt on the UI thread
+  const livePath = useDerivedValue(() => {
+    const p = Skia.Path.Make();
+    const pts = live.value;
+    if (pts.length > 0) {
+      p.moveTo(pts[0].x, pts[0].y);
+      for (let i = 1; i < pts.length; i++) p.lineTo(pts[i].x, pts[i].y);
+    }
+    return p;
+  });
+
+  const pageStyle = useAnimatedStyle(() => ({
+    transform: [{ translateX: tx.value }, { translateY: ty.value }, { scale: sc.value }],
+  }));
+
   const zoomBy = (factor: number) => {
     const vp = viewport;
     if (!vp) return;
     const cx = vp.width / 2;
     const cy = vp.height / 2;
-    const c = committed.current;
-    const ns = clamp(c.scale * factor, MIN_S, MAX_S);
+    const c = { scale: sc.value, tx: tx.value, ty: ty.value };
+    const ns = Math.max(MIN_S, Math.min(MAX_S, c.scale * factor));
     const lx = (cx - c.tx) / c.scale;
     const ly = (cy - c.ty) / c.scale;
-    const nt = { scale: ns, tx: cx - lx * ns, ty: cy - ly * ns };
-    committed.current = nt;
-    Animated.parallel([
-      Animated.timing(tx, { toValue: nt.tx, duration: 140, useNativeDriver: true }),
-      Animated.timing(ty, { toValue: nt.ty, duration: 140, useNativeDriver: true }),
-      Animated.timing(sc, { toValue: nt.scale, duration: 140, useNativeDriver: true }),
-    ]).start();
+    sc.value = withTiming(ns, { duration: 140 });
+    tx.value = withTiming(cx - lx * ns, { duration: 140 });
+    ty.value = withTiming(cy - ly * ns, { duration: 140 });
     setZoomLabel(Math.round(ns * 100));
   };
-  const resetZoom = () => { const nt = { scale: 1, tx: 0, ty: 0 }; committed.current = nt; applyT(nt); };
+  const resetZoom = () => { sc.value = withTiming(1); tx.value = withTiming(0); ty.value = withTiming(0); setZoomLabel(100); };
+
+  const Pdf = detectExpoGo() ? null : require('react-native-pdf').default;
 
   if (!Pdf) {
     return (
@@ -214,49 +207,33 @@ export default function AnnotatablePdf({ onClose }: { onClose: () => void }) {
     <View style={[styles.root, { paddingTop: insets.top }]}>
       <Header onClose={onClose} />
       <View style={styles.bar}>
-        <Pressable style={[styles.btn, mode === 'draw' && styles.on]} onPress={() => { setMode('draw'); setSelectedId(null); }}>
-          <Text style={[styles.btnT, mode === 'draw' && styles.onT]}>✏️</Text>
-        </Pressable>
-        <Pressable style={[styles.btn, mode === 'select' && styles.on]} onPress={() => setMode('select')}>
-          <Text style={[styles.btnT, mode === 'select' && styles.onT]}>☞</Text>
-        </Pressable>
-        <Pressable style={[styles.btn, mode === 'pan' && styles.on]} onPress={() => { setMode('pan'); setSelectedId(null); }}>
-          <Text style={[styles.btnT, mode === 'pan' && styles.onT]}>✋</Text>
-        </Pressable>
+        <Pressable style={[styles.btn, mode === 'draw' && styles.on]} onPress={() => { setMode('draw'); setSelectedId(null); }}><Text style={[styles.btnT, mode === 'draw' && styles.onT]}>✏️</Text></Pressable>
+        <Pressable style={[styles.btn, mode === 'select' && styles.on]} onPress={() => setMode('select')}><Text style={[styles.btnT, mode === 'select' && styles.onT]}>☞</Text></Pressable>
+        <Pressable style={[styles.btn, mode === 'pan' && styles.on]} onPress={() => { setMode('pan'); setSelectedId(null); }}><Text style={[styles.btnT, mode === 'pan' && styles.onT]}>✋</Text></Pressable>
         <Pressable style={styles.btn} onPress={() => zoomBy(1 / 1.4)}><Text style={styles.btnT}>－</Text></Pressable>
         <Pressable style={styles.btn} onPress={() => zoomBy(1.4)}><Text style={styles.btnT}>＋</Text></Pressable>
         <Pressable style={styles.btn} onPress={resetZoom}><Text style={styles.btnT}>⤢</Text></Pressable>
         {selectedId ? (
           <Pressable style={styles.del} onPress={() => { setStrokes((s) => s.filter((x) => x.id !== selectedId)); setSelectedId(null); }}><Text style={styles.clearT}>Delete</Text></Pressable>
         ) : (
-          <Pressable style={styles.del} onPress={() => { setStrokes([]); cur.current = null; setSelectedId(null); repaint(); }}><Text style={styles.clearT}>Clear</Text></Pressable>
+          <Pressable style={styles.del} onPress={() => { setStrokes([]); live.value = []; setSelectedId(null); }}><Text style={styles.clearT}>Clear</Text></Pressable>
         )}
       </View>
-      <Text style={styles.hud}>zoom {zoomLabel}% · {strokes.length} strokes{selectedId ? ' · 1 selected' : ''} · {mode === 'draw' ? '1-finger draws' : mode === 'select' ? 'tap a stroke to select' : '1-finger pans'} · 2-finger pans/zooms · ink glued to page</Text>
+      <Text style={styles.hud}>zoom {zoomLabel}% · {strokes.length} strokes{selectedId ? ' · 1 selected' : ''} · {mode === 'draw' ? '1-finger draws' : mode === 'select' ? 'tap a stroke' : '1-finger pans'} · 2-finger pans/zooms · UI-thread</Text>
 
       <View style={styles.stage} onLayout={(e) => setViewport(e.nativeEvent.layout)}>
         <GestureDetector gesture={gesture}>
           <View style={StyleSheet.absoluteFill} collapsable={false}>
-            <Animated.View
-              style={[
-                base ? { width: base.w, height: base.h } : StyleSheet.absoluteFillObject,
-                styles.page,
-                { transform: [{ translateX: tx }, { translateY: ty }, { scale: sc }] },
-              ]}
-            >
-              {/* render layer — touches disabled so RNGH owns all gestures */}
+            <Animated.View style={[base ? { width: base.w, height: base.h } : StyleSheet.absoluteFillObject, styles.page, pageStyle]}>
               <View style={StyleSheet.absoluteFill} pointerEvents="none">
                 <Pdf
                   source={{ uri: PDF_URL, cache: true }}
                   singlePage
                   scale={1}
-                  onLoadComplete={(_n: number, _p: string, size: { width: number; height: number }) =>
-                    setNat({ w: size.width, h: size.height })
-                  }
+                  onLoadComplete={(_n: number, _p: string, size: { width: number; height: number }) => setNat({ w: size.width, h: size.height })}
                   style={StyleSheet.absoluteFill}
                 />
               </View>
-              {/* ink layer (same container → aligned). bitmap-scales with zoom (v0). */}
               {base && (
                 <Canvas style={StyleSheet.absoluteFill}>
                   {strokes.map((s) => (
@@ -267,9 +244,7 @@ export default function AnnotatablePdf({ onClose }: { onClose: () => void }) {
                       <Path path={strokeToLocalSvg(s, base.w, base.h)} style="stroke" strokeWidth={s.width} color={s.color} strokeJoin="round" strokeCap="round" />
                     </React.Fragment>
                   ))}
-                  {cur.current && cur.current.pts.length > 1 && (
-                    <Path path={strokeToLocalSvg(cur.current, base.w, base.h)} style="stroke" strokeWidth={3} color="#D9534F" strokeJoin="round" strokeCap="round" />
-                  )}
+                  <Path path={livePath} style="stroke" strokeWidth={3} color="#D9534F" strokeJoin="round" strokeCap="round" />
                 </Canvas>
               )}
             </Animated.View>
@@ -283,7 +258,7 @@ export default function AnnotatablePdf({ onClose }: { onClose: () => void }) {
 function Header({ onClose }: { onClose: () => void }) {
   return (
     <View style={styles.header}>
-      <Text style={styles.title}>🏗️ AnnotatablePdf (production foundation)</Text>
+      <Text style={styles.title}>🏗️ AnnotatablePdf</Text>
       <Pressable onPress={onClose} style={styles.close} hitSlop={8}><Text style={styles.closeT}>Close ✕</Text></Pressable>
     </View>
   );
@@ -300,7 +275,6 @@ const styles = StyleSheet.create({
   on: { backgroundColor: '#132235', borderColor: '#2B6FB6' },
   btnT: { color: '#A8B0BF', fontSize: 13, fontWeight: '600' },
   onT: { color: '#F2F2F2' },
-  clear: { paddingHorizontal: 12, paddingVertical: 7, backgroundColor: '#3a2226', borderRadius: 7, marginLeft: 'auto' },
   del: { paddingHorizontal: 12, paddingVertical: 7, backgroundColor: '#3a2226', borderRadius: 7, marginLeft: 'auto' },
   clearT: { color: '#D9534F', fontSize: 12, fontWeight: '700' },
   hud: { color: '#A8B0BF', fontSize: 11, paddingHorizontal: 12, paddingVertical: 6, backgroundColor: '#1A1E25' },

@@ -24,15 +24,8 @@ export default function DevRoot() {
         <App />
         {overlay === 'none' && (
           <View style={styles.fabStack} pointerEvents="box-none">
-            <Pressable style={styles.fab} onPress={() => setOverlay('sandbox')} hitSlop={8}>
-              <Text style={styles.fabText}>🧪</Text>
-            </Pressable>
-            <Pressable style={[styles.fab, styles.fabSpike]} onPress={() => setOverlay('spike')} hitSlop={8}>
-              <Text style={styles.fabText}>📄</Text>
-            </Pressable>
-            <Pressable style={[styles.fab, styles.fabSkia]} onPress={() => setOverlay('skia')} hitSlop={8}>
-              <Text style={styles.fabText}>🎨</Text>
-            </Pressable>
+            {/* Only the real foundation is shown. The 3 throwaway spikes
+                (sandbox/spike/skia) stay wired below but are hidden to declutter. */}
             <Pressable style={[styles.fab, styles.fabBuild]} onPress={() => setOverlay('build')} hitSlop={8}>
               <Text style={styles.fabText}>🏗️</Text>
             </Pressable>
