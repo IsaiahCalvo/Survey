@@ -713,10 +713,21 @@ function overlayChangedFields(marker, op) {
   // so a re-import doesn't create a twin; always overlay the server op identity.
   // (The assignedToken arrives separately via the writeback-job channel — never here.)
   const priorSync = (next.excelSync && typeof next.excelSync === 'object') ? next.excelSync : {};
-  const seedSync = (op.opType === 'create' && op.identity) ? op.identity : {};
+  const opIdentity = (op.identity && typeof op.identity === 'object') ? op.identity : {};
+  const seedSync = (op.opType === 'create') ? opIdentity : {};
   next.excelSync = {
     ...seedSync,
     ...priorSync,
+    // Refresh the baseline fingerprints to the JUST-APPLIED row (the op identity the matcher built
+    // from the incoming Excel values) so the NEXT edit diffs against the new agreed point. Without
+    // this the stored baseline lags the last export, and the next same-field Excel edit reads as a
+    // both-sides conflict (Amendment #6 / F9) — the "applies once, then conflicts" symptom. Mirrors
+    // the legacy import + export per-marker identity stamp.
+    ...(opIdentity.fieldFingerprints ? {
+      fieldFingerprints: opIdentity.fieldFingerprints,
+      identityVectorFingerprint: opIdentity.identityVectorFingerprint ?? priorSync.identityVectorFingerprint,
+      fullRowFingerprint: opIdentity.fullRowFingerprint ?? priorSync.fullRowFingerprint,
+    } : {}),
     lastAppliedOpUuid: op.opUuid,
     lastAppliedExcelRevision: op.excelRevision,
     scopeId: op.scopeId ?? priorSync.scopeId ?? null,

@@ -258,6 +258,36 @@ test('materializeAcceptedOps overlays ONLY changedFieldKeys onto the live marker
   assert.deepEqual(stores.acks, [{ opUuid: 'u1', status: 'materialized' }]);
 });
 
+test('materializeAcceptedOps refreshes the stored baseline to the applied op identity (prevents the next-edit stale-baseline conflict)', async () => {
+  const stores = makeStores({
+    m1: {
+      id: 'm1', name: 'Door 1', entityName: 'Acme', note: { text: 'n' }, checklistResponses: {},
+      excelSync: { fieldFingerprints: { entity: 'v1:STALE' }, scopeId: 'mod:cat' },
+    },
+  });
+  // base == live (entity 'Acme') so the entity change is Excel-only → clean apply (no conflict).
+  const base = await baseFingerprintsFor({ item: 'Door 1', entity: 'Acme', notes: 'n', answers: {} });
+  const appliedIdentity = {
+    identityVectorFingerprint: 'v1:IVF-applied',
+    fullRowFingerprint: 'v1:FRF-applied',
+    fieldFingerprints: { item: 'v1:i', entity: 'v1:ENTITY-applied', notes: 'v1:n', answers: {} },
+  };
+  const res = await materializeAcceptedOps({
+    ops: [opRow({
+      opUuid: 'u1', revision: 1, markerId: 'm1', changedFieldKeys: ['entity'],
+      fields: { entity: 'NewCo' }, baseFingerprints: base, identity: appliedIdentity,
+    })],
+    templateId: 'tpl-1',
+    getMarkers: stores.getMarkers, writeMarker: stores.writeMarker,
+    getMeta: stores.getMeta, setMeta: stores.setMeta, ack: stores.ack,
+  });
+  const m = stores.markers.m1;
+  assert.equal(m.entityName, 'NewCo');                                      // change applied
+  assert.equal(m.excelSync.fieldFingerprints.entity, 'v1:ENTITY-applied');  // baseline REFRESHED (not 'v1:STALE')
+  assert.equal(m.excelSync.identityVectorFingerprint, 'v1:IVF-applied');
+  assert.deepEqual(res.materialized, ['u1']);
+});
+
 test('materializeAcceptedOps creates a new marker for a create op (full row + identity stamp)', async () => {
   const stores = makeStores({});
   await materializeAcceptedOps({
