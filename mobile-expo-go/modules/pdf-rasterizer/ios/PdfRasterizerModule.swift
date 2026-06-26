@@ -81,5 +81,36 @@ public class PdfRasterizerModule: Module {
         cg.drawPDFPage(cgPage)   // CoreGraphics: applies no transform of its own
       }   // Data -> Uint8Array
     }
+
+    // Rasterize ONLY a sub-rectangle of the page (the visible "detail tile"). rx/ry/rw/rh are
+    // in DISPLAY points (y-down, top-left, same space the JS coordinate model uses); scale is
+    // points->pixels. The CTM mirrors regionDrawAffine() in pdfAnnotation.ts (self-checked
+    // offline): translate(-rx*scale, H*scale - ry*scale) then scale(s,-s) puts the region's
+    // top-left at the bitmap origin, right-side-up. With rx=ry=0, rw/rh = page size this is
+    // identical to rasterizePage. Output pixels are ~viewport-bounded at any zoom -> crisp+cheap.
+    AsyncFunction("rasterizeRegion") {
+      (uri: String, pageIndex: Int, scale: Double, rx: Double, ry: Double, rw: Double, rh: Double) -> Data in
+      guard let doc = self.document(for: uri), let page = doc.page(at: pageIndex),
+            let cgPage = page.pageRef else {
+        throw Exception(name: "PAGE_NOT_FOUND", description: "page \(pageIndex) in \(uri)")
+      }
+      let pageHeight = page.bounds(for: .mediaBox).height
+      let size = CGSize(width:  max(1, (rw * scale).rounded(.up)),
+                        height: max(1, (rh * scale).rounded(.up)))
+
+      let fmt = UIGraphicsImageRendererFormat.default()
+      fmt.scale = 1
+      fmt.opaque = true
+      let renderer = UIGraphicsImageRenderer(size: size, format: fmt)
+      return renderer.pngData { rctx in
+        let cg = rctx.cgContext
+        cg.setFillColor(UIColor.white.cgColor)
+        cg.fill(CGRect(origin: .zero, size: size))
+        cg.translateBy(x: -CGFloat(rx) * CGFloat(scale),
+                       y: pageHeight * CGFloat(scale) - CGFloat(ry) * CGFloat(scale))
+        cg.scaleBy(x: CGFloat(scale), y: -CGFloat(scale))
+        cg.drawPDFPage(cgPage)
+      }   // Data -> Uint8Array
+    }
   }
 }

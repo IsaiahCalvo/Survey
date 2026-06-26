@@ -76,6 +76,53 @@ export function rasterScaleFor(
   return Math.min(wantPxPerPt, safePx / ptsW, safePx / ptsH);
 }
 
+// ---- Tiling: the visible-region detail tile (the deep-zoom fix) ----
+
+export type Rect = { x: number; y: number; w: number; h: number };
+export type Affine = { a: number; b: number; c: number; d: number; e: number; f: number };
+/** Apply a CoreGraphics-style affine (x' = a·x + c·y + e, y' = b·x + d·y + f). */
+export const applyAffine = (m: Affine, x: number, y: number) => ({
+  x: m.a * x + m.c * y + m.e,
+  y: m.b * x + m.d * y + m.f,
+});
+
+/**
+ * Visible page rectangle in LOCAL (base) coords, expanded by an `overscan` fraction
+ * (of the visible extent, to cover small pans) and clamped to the page. This is the
+ * region we rasterize at screen resolution as the "detail tile" — its pixel size is
+ * ~viewport-bounded at any zoom, which is what keeps tiling crisp AND cheap.
+ */
+export function visibleLocalRect(
+  t: Transform, vw: number, vh: number, baseW: number, baseH: number, overscan: number,
+): Rect {
+  let left = (0 - t.tx) / t.scale;
+  let top = (0 - t.ty) / t.scale;
+  let right = (vw - t.tx) / t.scale;
+  let bottom = (vh - t.ty) / t.scale;
+  const mx = (right - left) * overscan;
+  const my = (bottom - top) * overscan;
+  left -= mx; right += mx; top -= my; bottom += my;
+  left = Math.max(0, Math.min(baseW, left));
+  right = Math.max(0, Math.min(baseW, right));
+  top = Math.max(0, Math.min(baseH, top));
+  bottom = Math.max(0, Math.min(baseH, bottom));
+  return { x: left, y: top, w: Math.max(0, right - left), h: Math.max(0, bottom - top) };
+}
+
+/**
+ * The CoreGraphics CTM that maps PDF user-space points (y-up, bottom-left) into the
+ * bitmap pixels for a region [rx,ry,rw,rh] given in DISPLAY points (y-down, top-left).
+ * Mirrors the Swift rasterizeRegion composition EXACTLY:
+ *     translateBy(-rx·scale, pageHeightPt·scale - ry·scale); scaleBy(scale, -scale)
+ * Net effect: a display point (dx,dy) lands at device pixel ((dx-rx)·scale, (dy-ry)·scale),
+ * so the region's top-left maps to (0,0) and its bottom-right to (rw·scale, rh·scale).
+ * Exists so the spike's self-check verifies the crop transform offline (the part most
+ * likely to be wrong) before paying a native rebuild.
+ */
+export function regionDrawAffine(rx: number, ry: number, scale: number, pageHeightPt: number): Affine {
+  return { a: scale, b: 0, c: 0, d: -scale, e: -rx * scale, f: pageHeightPt * scale - ry * scale };
+}
+
 let _idn = 0;
 export const newStrokeId = () => `ink_${_idn++}`;
 
@@ -170,5 +217,20 @@ export function demo() {
   const highZoom = rasterScaleFor(8, baseW2, ptsW2, ptsH2, dpr2, safe2);
   assert(highZoom * ptsW2 <= safe2 + 1e-6 && highZoom * ptsH2 <= safe2 + 1e-6, 'raster never exceeds SAFE px/side');
   assert(highZoom < (baseW2 / ptsW2) * 8 * dpr2, 'cap actually clamps the deep-zoom request');
+  // region crop transform (the Swift rasterizeRegion mirror): region corners -> bitmap corners
+  const H = 792, s = 2.5, rxr = 100, ryr = 150, rwr = 200, rhr = 120;
+  const m = regionDrawAffine(rxr, ryr, s, H);
+  const dev = (dx: number, dy: number) => applyAffine(m, dx, H - dy); // display(y-down) -> PDF(y-up)
+  const tl = dev(rxr, ryr);                 // region top-left -> bitmap origin
+  const br = dev(rxr + rwr, ryr + rhr);     // region bottom-right -> bitmap far corner
+  assert(Math.abs(tl.x) < 1e-6 && Math.abs(tl.y) < 1e-6, 'region TL -> bitmap (0,0)');
+  assert(Math.abs(br.x - rwr * s) < 1e-6 && Math.abs(br.y - rhr * s) < 1e-6, 'region BR -> (rw*s, rh*s)');
+  const full = regionDrawAffine(0, 0, s, H); // region == full page reduces to the proven recipe
+  assert(full.e === 0 && Math.abs(full.f - H * s) < 1e-6, 'full-page region == translate(0,H*s)·scale(s,-s)');
+  // visibleLocalRect: clamps to the page, and at 2x shows viewport/2 of local space
+  const vr = visibleLocalRect({ scale: 1, tx: 0, ty: 0 }, 400, 600, 400, 520, 0);
+  assert(vr.x === 0 && vr.y === 0 && Math.abs(vr.w - 400) < 1e-6 && Math.abs(vr.h - 520) < 1e-6, 'visibleRect clamps to page');
+  const vr2 = visibleLocalRect({ scale: 2, tx: 0, ty: 0 }, 400, 600, 1000, 1000, 0);
+  assert(Math.abs(vr2.w - 200) < 1e-6 && Math.abs(vr2.h - 300) < 1e-6, 'visibleRect at 2x = viewport/2');
   return 'pdfAnnotation self-check OK';
 }

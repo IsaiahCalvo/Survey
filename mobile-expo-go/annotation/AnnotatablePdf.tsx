@@ -6,10 +6,13 @@
  * page image AND the vector ink as children of ONE Skia <Canvas> under ONE shared
  * <Group transform>. The page and ink are composited in a single draw call under
  * one matrix, so spatial desync is physically impossible (the desktop pdf.js model
- * on mobile). During a pinch only the Reanimated shared values change (GPU-cheap,
- * slightly soft); on pinch.onEnd we re-rasterize at the new scale and swap in a
- * crisp SkImage. Raster scale is CAPPED at SAFE px/side so deep zoom softens
- * gracefully instead of crashing the old bitmap-scaled GPU texture.
+ * on mobile).
+ *
+ * TILING: instead of one huge page texture (which lagged + capped zoom), we draw a
+ * cheap full-page BASE (fit-to-width, always present so pans never flash blank) plus a
+ * crisp DETAIL tile of just the visible region, re-rasterized at screen resolution on
+ * zoom/pan-settle. The detail tile is ~viewport-bounded at any zoom, so it stays crisp
+ * AND cheap — the CATiledLayer idea, one tile, inside the one Skia pipeline.
  *
  * Requires the dev build (custom native module — NOT Expo Go). Coordinate model,
  * NORMALIZED strokes, tap-select + delete, and the "1 finger = tool / 2 fingers =
@@ -44,6 +47,7 @@ import {
   pickStroke,
   rasterScaleFor,
   strokeToLocalSvg,
+  visibleLocalRect,
   type Stroke,
 } from './pdfAnnotation';
 
@@ -53,9 +57,11 @@ const MIN_S = 0.5;
 const MAX_S = 8; // display zoom; raster is capped separately (SAFE) so this no longer crashes
 const HIT_PX = 22;
 const FOCAL_JUMP = 80; // one-frame focal lurch guard (px); a fast pan moves ~40-50px/frame
-const SAFE = 4096; // max raster px/side — ~67 MB RGBA, comfortable on A14+; beyond this, soften
+const SAFE = 4096; // max raster px/side (defensive cap; the detail tile is already viewport-bounded)
 const DPR = PixelRatio.get();
 const RASTER_DEBOUNCE_MS = 90;
+const DETAIL_OVERSCAN = 0.25; // extra margin (fraction of the visible extent) so small pans stay covered
+const DETAIL_MIN_ZOOM = 1.2; // below this the fit-to-width base is already crisp — skip the detail tile
 
 // Load the native module lazily so Expo Go (no module) shows the notice instead of crashing.
 let PdfRasterizer: typeof import('../modules/pdf-rasterizer').default | null = null;
@@ -86,7 +92,9 @@ export default function AnnotatablePdf({ onClose }: { onClose: () => void }) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [viewport, setViewport] = useState<LayoutRectangle | null>(null);
   const [pagePts, setPagePts] = useState<{ w: number; h: number } | null>(null); // page size in points
-  const [pageImage, setPageImage] = useState<SkImage | null>(null);
+  const [baseImage, setBaseImage] = useState<SkImage | null>(null); // full page, fit-to-width res (always present)
+  // crisp visible-region tile, positioned in LOCAL coords
+  const [detail, setDetail] = useState<{ image: SkImage; x: number; y: number; w: number; h: number } | null>(null);
   const [strokes, setStrokes] = useState<Stroke[]>([]);
   const strokesRef = useRef(strokes);
   strokesRef.current = strokes;
@@ -123,6 +131,8 @@ export default function AnnotatablePdf({ onClose }: { onClose: () => void }) {
   baseRef.current = base;
   const pagePtsRef = useRef(pagePts);
   pagePtsRef.current = pagePts;
+  const viewportRef = useRef(viewport);
+  viewportRef.current = viewport;
   const localUriRef = useRef<string | null>(null);
 
   // UI-thread state (screen = (tx,ty) + sc * local; see pdfAnnotation.ts)
@@ -144,50 +154,67 @@ export default function AnnotatablePdf({ onClose }: { onClose: () => void }) {
     modeSV.value = mode === 'draw' ? 0 : mode === 'select' ? 1 : 2;
   }, [mode, modeSV]);
 
-  // ---- rasterize (JS thread): re-render the page crisply at the settled zoom ----
+  // ---- tiling: a cheap full-page base + a crisp visible-region "detail tile" ----
   const rasterSeq = useRef(0);
-  const lastRasterScale = useRef(0);
-  const rasterTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const detailTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const doRasterize = useCallback(async (displayScale: number) => {
+  // Full page at fit-to-width device resolution — drawn once, always present so a pan that
+  // outruns the detail tile shows the (soft) page instead of blank paper.
+  const rasterizeBase = useCallback(async () => {
     const b = baseRef.current;
     const pts = pagePtsRef.current;
     const uri = localUriRef.current;
     if (!b || !pts || !uri || !PdfRasterizer) return;
-    const rScale = rasterScaleFor(displayScale, b.w, pts.w, pts.h, DPR, SAFE);
-    // Skip re-raster when the scale barely moved (e.g. a pan that didn't change zoom).
-    if (lastRasterScale.current && Math.abs(rScale - lastRasterScale.current) / lastRasterScale.current < 0.04) return;
-    const seq = ++rasterSeq.current;
+    const rScale = rasterScaleFor(1, b.w, pts.w, pts.h, DPR, SAFE);
     try {
-      const t0 = Date.now();
       const bytes = await PdfRasterizer.rasterizePage(uri, 0, rScale);
-      // Instrumentation for the device investigation — shows in the Metro console.
-      console.log(
-        `[raster] sc=${displayScale.toFixed(2)} rScale=${rScale.toFixed(2)} ` +
-        `px=${Math.round(pts.w * rScale)}x${Math.round(pts.h * rScale)} ` +
-        `bytes=${(bytes.length / 1e6).toFixed(1)}MB took=${Date.now() - t0}ms`,
-      );
-      setRasterMs(Date.now() - t0);
-      if (seq !== rasterSeq.current) return; // superseded by a newer raster
-      // PNG decode is lazy (deferred to first GPU draw), so do NOT dispose `data` here —
-      // let GC reclaim it and the previous SkImage. Manual dispose is a Phase-4 memory
-      // opt (two-slot cap, §3.5) once a device shows real growth; premature dispose risks
-      // a use-after-free.
-      const data = Skia.Data.fromBytes(bytes);
-      const img = Skia.Image.MakeImageFromEncoded(data);
-      if (img) {
-        lastRasterScale.current = rScale;
-        setPageImage(img); // React swaps cleanly on the next render
-      }
+      const img = Skia.Image.MakeImageFromEncoded(Skia.Data.fromBytes(bytes));
+      if (img) setBaseImage(img);
     } catch (e) {
-      console.warn('[AnnotatablePdf] rasterizePage failed', e);
+      console.warn('[AnnotatablePdf] base raster failed', e);
     }
   }, []);
 
-  const triggerRasterize = useCallback((displayScale: number) => {
-    if (rasterTimer.current) clearTimeout(rasterTimer.current);
-    rasterTimer.current = setTimeout(() => { void doRasterize(displayScale); }, RASTER_DEBOUNCE_MS);
-  }, [doRasterize]);
+  // Visible region only, at screen resolution — bounded texture, crisp at any zoom.
+  const doDetail = useCallback(async (displayScale: number) => {
+    const b = baseRef.current;
+    const pts = pagePtsRef.current;
+    const uri = localUriRef.current;
+    const vp = viewportRef.current;
+    if (!b || !pts || !uri || !vp || !PdfRasterizer) return;
+    if (displayScale < DETAIL_MIN_ZOOM) { setDetail(null); return; } // base is already crisp here
+    const rect = visibleLocalRect(
+      { scale: sc.value, tx: tx.value, ty: ty.value }, vp.width, vp.height, b.w, b.h, DETAIL_OVERSCAN,
+    );
+    if (rect.w < 1 || rect.h < 1) return;
+    const ptsPerLocal = pts.w / b.w; // local px -> page points
+    const rxPt = rect.x * ptsPerLocal, ryPt = rect.y * ptsPerLocal;
+    const rwPt = rect.w * ptsPerLocal, rhPt = rect.h * ptsPerLocal;
+    // screen-DPR resolution for the region; clamp px to SAFE (defensive — the region is small)
+    let rScale = (b.w / pts.w) * displayScale * DPR;
+    rScale = Math.min(rScale, SAFE / rwPt, SAFE / rhPt);
+    const seq = ++rasterSeq.current;
+    try {
+      const t0 = Date.now();
+      const bytes = await PdfRasterizer.rasterizeRegion(uri, 0, rScale, rxPt, ryPt, rwPt, rhPt);
+      console.log(
+        `[detail] sc=${displayScale.toFixed(2)} rScale=${rScale.toFixed(2)} ` +
+        `px=${Math.round(rwPt * rScale)}x${Math.round(rhPt * rScale)} ` +
+        `bytes=${(bytes.length / 1e6).toFixed(1)}MB took=${Date.now() - t0}ms`,
+      );
+      setRasterMs(Date.now() - t0);
+      if (seq !== rasterSeq.current) return; // superseded by a newer settle
+      const img = Skia.Image.MakeImageFromEncoded(Skia.Data.fromBytes(bytes));
+      if (img) setDetail({ image: img, x: rect.x, y: rect.y, w: rect.w, h: rect.h });
+    } catch (e) {
+      console.warn('[AnnotatablePdf] rasterizeRegion failed', e);
+    }
+  }, []);
+
+  const triggerDetail = useCallback((displayScale: number) => {
+    if (detailTimer.current) clearTimeout(detailTimer.current);
+    detailTimer.current = setTimeout(() => { void doDetail(displayScale); }, RASTER_DEBOUNCE_MS);
+  }, [doDetail]);
 
   // Open the PDF (download -> native open -> page size) once.
   useEffect(() => {
@@ -209,13 +236,16 @@ export default function AnnotatablePdf({ onClose }: { onClose: () => void }) {
     return () => { alive = false; };
   }, []);
 
-  // First crisp raster once the page is laid out (base known) at the current zoom.
+  // Once the page is laid out: draw the base, then the first detail tile at the current zoom.
   useEffect(() => {
-    if (base && pagePts && localUriRef.current) void doRasterize(sc.value);
+    if (base && pagePts && localUriRef.current) {
+      void rasterizeBase();
+      void doDetail(sc.value);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [base, pagePts]);
 
-  useEffect(() => () => { if (rasterTimer.current) clearTimeout(rasterTimer.current); }, []);
+  useEffect(() => () => { if (detailTimer.current) clearTimeout(detailTimer.current); }, []);
 
   const commitLocalStroke = (pts: { x: number; y: number }[], gen: number) => {
     const b = baseRef.current;
@@ -261,6 +291,8 @@ export default function AnnotatablePdf({ onClose }: { onClose: () => void }) {
         if (modeSV.value === 0) {
           committed.value = true;
           runOnJS(commitLocalStroke)(live.value, drawGen.value);
+        } else {
+          runOnJS(triggerDetail)(sc.value); // a 1-finger pan moved the visible region
         }
       })
       .onFinalize(() => {
@@ -304,7 +336,7 @@ export default function AnnotatablePdf({ onClose }: { onClose: () => void }) {
       .onEnd(() => {
         'worklet';
         runOnJS(setZoomLabel)(Math.round(sc.value * 100));
-        runOnJS(triggerRasterize)(sc.value);
+        runOnJS(triggerDetail)(sc.value);
       })
       .onFinalize(() => { 'worklet'; ssc.value = sc.value; }), // clean base for the next pinch
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -346,13 +378,13 @@ export default function AnnotatablePdf({ onClose }: { onClose: () => void }) {
     const ns = Math.max(MIN_S, Math.min(MAX_S, sc.value * factor));
     const lx = (cx - tx.value) / sc.value;
     const ly = (cy - ty.value) / sc.value;
-    sc.value = withTiming(ns, { duration: 140 }, (fin) => { 'worklet'; if (fin) runOnJS(triggerRasterize)(ns); });
+    sc.value = withTiming(ns, { duration: 140 }, (fin) => { 'worklet'; if (fin) runOnJS(triggerDetail)(ns); });
     tx.value = withTiming(cx - lx * ns, { duration: 140 });
     ty.value = withTiming(cy - ly * ns, { duration: 140 });
     setZoomLabel(Math.round(ns * 100));
   };
   const resetZoom = () => {
-    sc.value = withTiming(1, undefined, (fin) => { 'worklet'; if (fin) runOnJS(triggerRasterize)(1); });
+    sc.value = withTiming(1, undefined, (fin) => { 'worklet'; if (fin) runOnJS(triggerDetail)(1); });
     tx.value = withTiming(0);
     ty.value = withTiming(0);
     setZoomLabel(100);
@@ -390,7 +422,7 @@ export default function AnnotatablePdf({ onClose }: { onClose: () => void }) {
           <Pressable style={styles.del} onPress={() => { setStrokes([]); live.value = []; setSelectedId(null); }}><Text style={styles.clearT}>Clear</Text></Pressable>
         )}
       </View>
-      <Text style={styles.hud}>{fpsLabel}fps · raster {rasterMs}ms · zoom {zoomLabel}% · ink ≈{Math.round(inkW * zoomLabel / 100)}px · {strokes.length} strokes{showPdf ? '' : ' · PDF off'} · {mode === 'draw' ? 'draw' : mode === 'select' ? 'select' : 'pan'}</Text>
+      <Text style={styles.hud}>{fpsLabel}fps · raster {rasterMs}ms · zoom {zoomLabel}% · tile {detail ? 'on' : 'base'} · ink ≈{Math.round(inkW * zoomLabel / 100)}px · {strokes.length} strokes{showPdf ? '' : ' · PDF off'} · {mode === 'draw' ? 'draw' : mode === 'select' ? 'select' : 'pan'}</Text>
 
       <View style={styles.stage} onLayout={(e) => setViewport(e.nativeEvent.layout)}>
         <GestureDetector gesture={gesture}>
@@ -400,13 +432,24 @@ export default function AnnotatablePdf({ onClose }: { onClose: () => void }) {
                 {/* ONE transform → page image and ink composited under the same matrix (sync is structural) */}
                 <Group transform={transform}>
                   <Rect x={0} y={0} width={base.w} height={base.h} color="#FFFFFF" />
-                  {showPdf && pageImage && (
+                  {showPdf && baseImage && (
                     <SkiaImage
-                      image={pageImage}
+                      image={baseImage}
                       x={0}
                       y={0}
                       width={base.w}
                       height={base.h}
+                      fit="fill"
+                      sampling={{ filter: FilterMode.Linear, mipmap: MipmapMode.None }}
+                    />
+                  )}
+                  {showPdf && detail && (
+                    <SkiaImage
+                      image={detail.image}
+                      x={detail.x}
+                      y={detail.y}
+                      width={detail.w}
+                      height={detail.h}
                       fit="fill"
                       sampling={{ filter: FilterMode.Linear, mipmap: MipmapMode.None }}
                     />

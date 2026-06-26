@@ -14,6 +14,15 @@ export type PdfRasterizer = {
    * reads its own dimensions, so width/height are not returned.
    */
   rasterizePage(uri: string, pageIndex: number, scale: number): Promise<Uint8Array>;
+  /**
+   * Rasterize only the sub-rectangle [rx,ry,rw,rh] of a page (the visible "detail tile").
+   * rx/ry/rw/rh are in DISPLAY points (y-down, top-left); `scale` is points -> pixels. Output
+   * is ~viewport-bounded at any zoom, so deep zoom stays crisp without a huge texture. With
+   * rx=ry=0 and rw/rh = page size this is identical to rasterizePage.
+   */
+  rasterizeRegion(
+    uri: string, pageIndex: number, scale: number, rx: number, ry: number, rw: number, rh: number,
+  ): Promise<Uint8Array>;
 };
 
 // Throws synchronously if the native module isn't in the build (e.g. Expo Go) —
