@@ -731,3 +731,80 @@ test('KAL-309 #12: RLS — authenticated direct SELECT on sync tables is denied/
     }
   } finally { await cleanup(admin, docId); }
 });
+
+// =============================================================================
+// 13. SIBLING of the "applies once, then false-conflicts" 26-fix, via the conflict-resolution
+//     path. A genuine conflict resolved 'take-excel' must NOT poison the next edit: after the
+//     conflict op is applied (AFTER fingerprints stored, per the 26-fix), the marker baseline
+//     already equals the op's AFTER state, so take-excel leaves it correct and a THIRD edit on
+//     the same marker APPLIES (no false conflict / stale). Guards that the 26-fix's AFTER-state
+//     storage closes the take-excel resolution path too (state-machine audit follow-up).
+// =============================================================================
+test('KAL-309 #13: conflict resolved take-excel does not false-conflict the next edit', { skip: skipReason }, async () => {
+  const admin = await makeServiceClient();
+  const { owner, password, ownerId } = await provisionUsers(admin);
+  const docId = await insertDoc(admin, ownerId);
+  const { client: ownerClient } = await makeUserClient(owner, password);
+  try {
+    const { workbookId } = await registerWorkbook(ownerClient, docId);
+    // base v0
+    const v0Vals = { item: 'Door', entity: 'Alpha', notes: '', answers: { c1: 'a' } };
+    const { markerAnnotationId, fp: v0 } = await seedOneMarker(ownerClient, { documentId: docId, workbookId, values: v0Vals });
+
+    // Conflict op O: c1 a→a2, carrying identityRecord = AFTER (exactly like the real Edge).
+    const vA = await fingerprintsFor({ item: 'Door', entity: 'Alpha', notes: '', answers: { c1: 'a2' } });
+    const r1 = await applyChangeset(admin, {
+      actorId: ownerId, documentId: docId, workbookId, clientChangeSetId: `ccs-${randomUUID()}`,
+      rows: [buildApplyRow({
+        opId: `${SCOPE}#1#apply`, markerAnnotationId, scopeId: SCOPE, changedFieldKeys: ['answer:c1'],
+        fields: { item: 'Door', entity: 'Alpha', notes: '', answers: { c1: 'a2' } },
+        baseFingerprints: { identityVector: v0.identityVectorFingerprint, fields: v0.fieldFingerprints },
+        identityRecord: {
+          identityVectorFingerprint: vA.identityVectorFingerprint,
+          fullRowFingerprint: vA.fullRowFingerprint, fieldFingerprints: vA.fieldFingerprints,
+        },
+      })],
+    });
+    assert.equal(r1.data.outcomes[0].outcome, 'applied', 'conflict op applies');
+    const opUuid = r1.data.outcomes[0].opUuid;
+
+    // The 26-fix precondition: state holds the AFTER (vA) fingerprints, not the BEFORE (v0).
+    const { data: sApply } = await admin.from('excel_sync_state')
+      .select('identity_vector_fingerprint').eq('document_id', docId).eq('marker_annotation_id', markerAnnotationId).single();
+    assert.equal(sApply.identity_vector_fingerprint, vA.identityVectorFingerprint,
+      'apply stored the AFTER identity vector (26-fix) — this is what makes take-excel safe');
+
+    // Drive to client_conflict_review (the reducer's path), then resolve take-excel (PDFViewer
+    // passes no resolvedFingerprints today).
+    const { data: ackCr } = await ownerClient.rpc('kal309_ack_materialization', {
+      p_document_id: docId, p_template_id: TEMPLATE_ID, p_op_uuid: opUuid, p_status: 'client_conflict_review' });
+    assert.equal(ackCr, true, 'op driven to client_conflict_review');
+    const { data: resolved } = await ownerClient.rpc('kal309_resolve_materialization_conflict', {
+      p_document_id: docId, p_template_id: TEMPLATE_ID, p_op_uuid: opUuid, p_resolution: 'take-excel', p_resolved_fingerprints: null });
+    assert.equal(resolved, true, 'take-excel resolve succeeds');
+
+    // Baseline must still equal vA (the agreed Excel-side state), so the next edit's base matches.
+    const { data: sResolve } = await admin.from('excel_sync_state')
+      .select('identity_vector_fingerprint, materialization_status').eq('document_id', docId).eq('marker_annotation_id', markerAnnotationId).single();
+    assert.equal(sResolve.materialization_status, 'accepted', 'state cleared out of conflict-review');
+    assert.equal(sResolve.identity_vector_fingerprint, vA.identityVectorFingerprint,
+      'take-excel left the baseline at the AFTER state (the new agreed point), not a stale BEFORE');
+
+    // THIRD edit: c1 a2→a3, based on vA (what the client holds after taking Excel). MUST apply.
+    const vB = await fingerprintsFor({ item: 'Door', entity: 'Alpha', notes: '', answers: { c1: 'a3' } });
+    const r3 = await applyChangeset(admin, {
+      actorId: ownerId, documentId: docId, workbookId, clientChangeSetId: `ccs-${randomUUID()}`,
+      rows: [buildApplyRow({
+        opId: `${SCOPE}#3#apply`, markerAnnotationId, scopeId: SCOPE, changedFieldKeys: ['answer:c1'],
+        fields: { item: 'Door', entity: 'Alpha', notes: '', answers: { c1: 'a3' } },
+        baseFingerprints: { identityVector: vA.identityVectorFingerprint, fields: vA.fieldFingerprints },
+        identityRecord: {
+          identityVectorFingerprint: vB.identityVectorFingerprint,
+          fullRowFingerprint: vB.fullRowFingerprint, fieldFingerprints: vB.fieldFingerprints,
+        },
+      })],
+    });
+    assert.equal(r3.data.outcomes[0].outcome, 'applied',
+      `third edit after take-excel must apply, got ${r3.data.outcomes[0].outcome}`);
+  } finally { await cleanup(admin, docId); }
+});
