@@ -149,6 +149,7 @@ export default function AnnotatablePdf({ onClose }: { onClose: () => void }) {
   const live = useSharedValue<{ x: number; y: number }[]>([]);
   const committed = useSharedValue(false);
   const drawGen = useSharedValue(0);
+  const drawingBlocked = useSharedValue(false); // true during a 2-finger pinch — blocks stray dot taps
   const modeSV = useSharedValue(0); // 0 draw, 1 select, 2 pan
   useEffect(() => {
     modeSV.value = mode === 'draw' ? 0 : mode === 'select' ? 1 : 2;
@@ -249,20 +250,30 @@ export default function AnnotatablePdf({ onClose }: { onClose: () => void }) {
 
   const commitLocalStroke = (pts: { x: number; y: number }[], gen: number) => {
     const b = baseRef.current;
-    if (b && pts.length >= 1) {
+    if (b && pts.length >= 2) {
       const norm = pts.map((p) => clampNorm(localToNorm(p.x, p.y, b.w, b.h)));
-      // A single point (a tap, no drag) becomes a dot: a zero-length segment whose round
-      // caps render as a filled circle of diameter strokeWidth.
-      const finalPts = norm.length === 1 ? [norm[0], norm[0]] : norm;
-      setStrokes((s) => [...s, { id: newStrokeId(), color: '#2B6FB6', width: 3, pts: finalPts }]);
+      setStrokes((s) => [...s, { id: newStrokeId(), color: '#2B6FB6', width: 3, pts: norm }]);
     }
     requestAnimationFrame(() => requestAnimationFrame(() => { if (drawGen.value === gen) live.value = []; }));
   };
-  const handleTap = (sx: number, sy: number) => {
-    if (modeSV.value !== 1) return;
+  // A tap (no drag) places a dot — stored as a zero-length [n,n] segment whose round caps
+  // render as a filled circle. Taps come from a dedicated Tap gesture (a Pan never activates
+  // without movement), composed Exclusive with the draw-Pan so exactly one fires.
+  const placeDot = (sx: number, sy: number) => {
     const b = baseRef.current;
     if (!b) return;
-    setSelectedId(pickStroke(strokesRef.current, sx, sy, b.w, b.h, { scale: sc.value, tx: tx.value, ty: ty.value }, HIT_PX));
+    const lx = (sx - tx.value) / sc.value;
+    const ly = (sy - ty.value) / sc.value;
+    const n = clampNorm(localToNorm(lx, ly, b.w, b.h));
+    setStrokes((s) => [...s, { id: newStrokeId(), color: '#2B6FB6', width: 3, pts: [n, n] }]);
+  };
+  const handleTap = (sx: number, sy: number) => {
+    const b = baseRef.current;
+    if (!b) return;
+    if (modeSV.value === 0) { placeDot(sx, sy); return; } // draw mode: dot
+    if (modeSV.value === 1) {                              // select mode: pick a stroke
+      setSelectedId(pickStroke(strokesRef.current, sx, sy, b.w, b.h, { scale: sc.value, tx: tx.value, ty: ty.value }, HIT_PX));
+    }
   };
 
   // ---- gestures (UI thread) ----
@@ -270,6 +281,7 @@ export default function AnnotatablePdf({ onClose }: { onClose: () => void }) {
     Gesture.Pan()
       .maxPointers(1)
       .averageTouches(true) // centroid stays stable across a 1<->2 finger transition (§4)
+      .minDistance(10)      // <10px of travel = a tap (the Tap gesture handles it as a dot)
       .onBegin((e) => {
         'worklet';
         stx.value = tx.value;
@@ -300,15 +312,7 @@ export default function AnnotatablePdf({ onClose }: { onClose: () => void }) {
       })
       .onFinalize(() => {
         'worklet';
-        if (modeSV.value === 0 && !committed.value) {
-          if (live.value.length === 1) {
-            // a tap that never activated the pan = a dot (onEnd doesn't fire without movement)
-            committed.value = true;
-            runOnJS(commitLocalStroke)(live.value, drawGen.value);
-          } else {
-            live.value = []; // interrupted mid-stroke by a 2nd finger -> discard
-          }
-        }
+        if (modeSV.value === 0 && !committed.value) live.value = []; // tap (no draw) or 2nd-finger interrupt -> discard
       }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
   []);
@@ -319,6 +323,7 @@ export default function AnnotatablePdf({ onClose }: { onClose: () => void }) {
     Gesture.Pinch()
       .onBegin((e) => {
         'worklet';
+        drawingBlocked.value = true; // 2 fingers down — suppress any dot tap until the pinch ends
         ssc.value = sc.value;
         oLocalX.value = (e.focalX - tx.value) / sc.value;
         oLocalY.value = (e.focalY - ty.value) / sc.value;
@@ -349,17 +354,23 @@ export default function AnnotatablePdf({ onClose }: { onClose: () => void }) {
         runOnJS(setZoomLabel)(Math.round(sc.value * 100));
         runOnJS(triggerDetail)(sc.value);
       })
-      .onFinalize(() => { 'worklet'; ssc.value = sc.value; }), // clean base for the next pinch
+      .onFinalize(() => { 'worklet'; ssc.value = sc.value; drawingBlocked.value = false; }), // clean base + re-allow taps
     // eslint-disable-next-line react-hooks/exhaustive-deps
   []);
 
-  const selectTap = useMemo(() =>
-    Gesture.Tap().maxDistance(12).onEnd((e) => { 'worklet'; runOnJS(handleTap)(e.x, e.y); }),
+  const tap = useMemo(() =>
+    Gesture.Tap()
+      .maxDistance(12)
+      .onEnd((e) => { 'worklet'; if (!drawingBlocked.value) runOnJS(handleTap)(e.x, e.y); }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
   []);
 
+  // Exclusive(pan, tap): a drag (>=10px) activates the pan -> line/pan; a tap (<10px) fails the
+  // pan and fires the tap -> dot/select. Exactly one wins, so no double stroke. Pinch runs
+  // simultaneously; during a 2-finger pinch the pan is cancelled (maxPointers) and the tap is
+  // suppressed by drawingBlocked.
   const gesture = useMemo(
-    () => Gesture.Simultaneous(selectTap, oneFinger, pinch),
+    () => Gesture.Simultaneous(pinch, Gesture.Exclusive(oneFinger, tap)),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [],
   );
