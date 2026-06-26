@@ -666,6 +666,61 @@ test('KAL-309 #10: resolve take-excel clears client_conflict_review (op→accept
 });
 
 // =============================================================================
+// 10b. resolve KEEP-APP advances the stored baseline to the kept APP values, so the next edit
+//      to that marker applies cleanly (sibling of the before/after fix; take-excel needs no advance).
+// =============================================================================
+test('KAL-309 #10b: resolve keep-app advances baseline to kept values; next edit applies', { skip: skipReason }, async () => {
+  const admin = await makeServiceClient();
+  const { owner, password, ownerId } = await provisionUsers(admin);
+  const docId = await insertDoc(admin, ownerId);
+  const { client: ownerClient } = await makeUserClient(owner, password);
+  try {
+    const { workbookId } = await registerWorkbook(ownerClient, docId);
+    const m = await seedOneMarker(ownerClient, { documentId: docId, workbookId, values: { item: 'Door', entity: 'Alpha', notes: '', answers: {} } });
+
+    // Excel change Alpha→Beta commits server-side (state = Beta); the client then hits an app-vs-Excel
+    // clash and acks the op to client_conflict_review.
+    const fpBeta = await fingerprintsFor({ item: 'Door', entity: 'Beta', notes: '', answers: {} });
+    const r1 = await applyChangeset(admin, {
+      actorId: ownerId, documentId: docId, workbookId, clientChangeSetId: `ccs-${randomUUID()}`,
+      rows: [buildApplyRow({ opId: `${SCOPE}#1#apply`, markerAnnotationId: m.markerAnnotationId, scopeId: SCOPE,
+        changedFieldKeys: ['entity'], fields: { item: 'Door', entity: 'Beta', notes: '', answers: {} },
+        baseFingerprints: { identityVector: m.fp.identityVectorFingerprint, fields: m.fp.fieldFingerprints },
+        identityRecord: { identityVectorFingerprint: fpBeta.identityVectorFingerprint, fullRowFingerprint: fpBeta.fullRowFingerprint, fieldFingerprints: fpBeta.fieldFingerprints } })],
+    });
+    const opUuid = r1.data.outcomes[0].opUuid;
+    await ownerClient.rpc('kal309_ack_materialization', {
+      p_document_id: docId, p_template_id: TEMPLATE_ID, p_op_uuid: opUuid, p_status: 'client_conflict_review',
+    });
+
+    // User keeps THEIR app version (Gamma). The client passes the kept marker's fingerprints; the
+    // server must advance the stored baseline to Gamma (not leave it at Beta).
+    const fpGamma = await fingerprintsFor({ item: 'Door', entity: 'Gamma', notes: '', answers: {} });
+    const { data: resolved, error: rErr } = await ownerClient.rpc('kal309_resolve_materialization_conflict', {
+      p_document_id: docId, p_template_id: TEMPLATE_ID, p_op_uuid: opUuid, p_resolution: 'keep-app',
+      p_resolved_fingerprints: { identityVector: fpGamma.identityVectorFingerprint, fields: fpGamma.fieldFingerprints },
+    });
+    assert.equal(rErr, null, `resolve error: ${rErr?.message}`);
+    assert.equal(resolved, true, 'resolve keep-app succeeds');
+    const { data: st } = await admin.from('excel_sync_state')
+      .select('field_fingerprints').eq('document_id', docId).eq('marker_annotation_id', m.markerAnnotationId).single();
+    assert.equal(st.field_fingerprints.entity, fpGamma.fieldFingerprints.entity,
+      'baseline advanced to the kept (Gamma) value, not left at the Excel (Beta) value');
+
+    // The next edit Gamma→Delta, based on Gamma, must APPLY (would false-conflict if baseline stayed at Beta).
+    const fpDelta = await fingerprintsFor({ item: 'Door', entity: 'Delta', notes: '', answers: {} });
+    const r3 = await applyChangeset(admin, {
+      actorId: ownerId, documentId: docId, workbookId, clientChangeSetId: `ccs-${randomUUID()}`,
+      rows: [buildApplyRow({ opId: `${SCOPE}#3#apply`, markerAnnotationId: m.markerAnnotationId, scopeId: SCOPE,
+        changedFieldKeys: ['entity'], fields: { item: 'Door', entity: 'Delta', notes: '', answers: {} },
+        baseFingerprints: { identityVector: fpGamma.identityVectorFingerprint, fields: fpGamma.fieldFingerprints },
+        identityRecord: { identityVectorFingerprint: fpDelta.identityVectorFingerprint, fullRowFingerprint: fpDelta.fullRowFingerprint, fieldFingerprints: fpDelta.fieldFingerprints } })],
+    });
+    assert.equal(r3.data.outcomes[0].outcome, 'applied', `next edit after keep-app must apply — got ${r3.data.outcomes[0].outcome}`);
+  } finally { await cleanup(admin, docId); }
+});
+
+// =============================================================================
 // 11. Audit immutability: service-client UPDATE and DELETE on excel_sync_audit both RAISE.
 // =============================================================================
 test('KAL-309 #11: excel_sync_audit is trigger-immutable (UPDATE + DELETE raise)', { skip: skipReason }, async () => {

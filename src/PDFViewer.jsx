@@ -82,6 +82,7 @@ import { isPlacedSurveyMarker } from './services/surveyMarkerSyncDiff';
 import { forceUnplacedImportedMarker, freezeGeometryFromOriginal } from './services/importFieldWhitelist';
 import { stampExportAck, wasReceivedByExcel } from './services/excelExportAck';
 import { buildMarkerIdentityRecord, buildMarkerIdentityRecords, applyMarkerIdentityRecords, applyWritebackVerification } from './services/excelIdentityRecord';
+import { computeRowFingerprints } from './services/rowFingerprint';
 import { loadBaseline, saveBaseline, clearBaseline } from './services/excelSyncBaselineStore';
 import { generateRowIdToken } from './services/rowIdToken';
 import { getOrCreateDocumentSecret, resolveDocumentSecret } from './services/rowIdSecretStore';
@@ -13746,8 +13747,23 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       const templateId = selectedTemplate?.supabaseId || selectedTemplate?.id || null;
       if (!documentId || !templateId) return;
       const resolution = choice === 'excel' ? 'take-excel' : 'keep-app';
+      // On 'keep-app' the user keeps the APP's version, so advance the server's stored baseline to the
+      // kept marker's current values — otherwise the server stays on the Excel value the apply committed
+      // and the NEXT edit to this marker false-conflicts. ('take-excel' needs none: the client adopts
+      // the Excel value, which already equals the stored state.)
+      let resolvedFingerprints = null;
+      if (resolution === 'keep-app') {
+        try {
+          const kept = surveyMarkers[markerId];
+          const appVals = kept ? buildAppValuesByMarkerId({ [markerId]: kept }, selectedTemplate)[markerId] : null;
+          if (appVals) {
+            const fp = await computeRowFingerprints(appVals);
+            resolvedFingerprints = { identityVector: fp.identityVectorFingerprint, fields: fp.fieldFingerprints };
+          }
+        } catch { /* leave null → server keeps the prior baseline (no worse than before the fix) */ }
+      }
       const { ok, error } = await resolveMaterializationConflict({
-        supabaseClient: supabase, documentId, templateId, opUuid: entry.opUuid, resolution,
+        supabaseClient: supabase, documentId, templateId, opUuid: entry.opUuid, resolution, resolvedFingerprints,
       });
       if (!ok) { showToast(`Could not resolve conflict${error ? `: ${error}` : ''}.`, 'error'); return; }
       // Remove this op from the durable review set so the reducer flows PAST its revision.
