@@ -1,0 +1,119 @@
+===== SurveyApp Save Log =====
+version:   0.1.46
+runtime:   dev-server
+platform:  desktop
+device:    Mac
+os:        macOS 10.15.7
+screen:    1512x982 @2x
+viewport:  1512x839
+locale:    en-US
+timestamp: 2026-06-26T18:06:41.642Z (6/26/2026, 2:06:41 PM)
+==============================
+[OpenTiming] doc-click @ 245585ms Benjamin Franklin Elementary.pdf
+[OpenTiming] pdfid-resolve @ 248667ms Benjamin Franklin Elementary.pdf-2401034
+%c[LOAD-TRACE +0ms] ════ OPEN START — Benjamin Franklin Elementary.pdf color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +0ms] watchdog armed — will check in 20s color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +34ms] Local file to ArrayBuffer color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +34ms] configuring pdf.js worker (loadPdfjs) color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +34ms] pdf.js worker ready color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +35ms] Starting PDF.js getDocument color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +148ms] PDF.js document parsed color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +612ms] Calculating page sizes color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +620ms] Page sizes calculated (4 pages) color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +620ms] Importing PDF annotations color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +621ms] PDF ready for rendering color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +621ms] ✅ LOAD COMPLETE — lifting the Loading curtain color:#2196F3;font-weight:bold
+[InteractionDiag] interactive-ready @ 249298ms (isLoadingPDF→false; loading curtain lifted, toolbar+page now accept input)
+[OpenTiming] first-marks-painted @ 249304ms pdfId=Benjamin Franklin Elementary.pdf-2401034
+console.warn @ [crdtBackfill] cutover sealed but Y.Map < legacy count — re-running import loop to recover {"yMapSize":0,"legacyCount":0}
+[DrawCanvas p1] MOUNT — tool=survey-marker, isShape=true, isDrawingMode=false
+[DrawCanvas p1] shape effect — tool=survey-marker, isShape=true, isDrawingMode=false
+[DrawCanvas p2] MOUNT — tool=survey-marker, isShape=true, isDrawingMode=false
+[DrawCanvas p2] shape effect — tool=survey-marker, isShape=true, isDrawingMode=false
+[DrawCanvas p3] MOUNT — tool=survey-marker, isShape=true, isDrawingMode=false
+[DrawCanvas p3] shape effect — tool=survey-marker, isShape=true, isDrawingMode=false
+[DrawCanvas p4] MOUNT — tool=survey-marker, isShape=true, isDrawingMode=false
+[DrawCanvas p4] shape effect — tool=survey-marker, isShape=true, isDrawingMode=false
+[InteractionDiag] tool-changed @ 251335ms from=pan to=survey-marker
+[PreviewDiag] sync push {"kind":"survey-marker","count":1,"surveyMarkerCount":2}
+[PreviewDiag] sync push {"kind":"survey-marker","count":1,"surveyMarkerCount":2}
+[KAL-309 conflict-diag] surveyMarker-1782454614902-qahblts0r hasBaseline= true fieldDiff= {} answerDiff= {}
+[PreviewDiag] sync push {"kind":"survey-marker","count":1,"surveyMarkerCount":2}
+[KAL-309 conflict-diag] surveyMarker-1782454614902-qahblts0r hasBaseline= true fieldDiff= {} answerDiff= {}
+[SaveLog] bulletproof local snapshot saved at /Users/isaiahcalvo/Documents/Projects/Active/Survey-BetaSafeS2/Logs/2026-06-26_17-20-22
+[SaveLog] runPush start {"hasElectronApi":true,"hasPushLogFn":true,"payloadLength":2957}
+[SaveLog] runPush start {"hasElectronApi":true,"hasPushLogFn":true,"payloadLength":2957}
+[SaveLogBanner] GitHub push OK {"url":"https://github.com/IsaiahCalvo/Survey/blob/logs/mac-isaiahs-macbook-pro-2026-06-26T17-23-24-308Z.log","filename":"mac-isaiahs-macbook-pro-2026-06-26T17-23-24-308Z.log"}
+[SaveLogBanner] GitHub push OK {"url":"https://github.com/IsaiahCalvo/Survey/blob/logs/mac-isaiahs-macbook-pro-2026-06-26T17-23-24-346Z-70712-mqv79k9n-1.log","filename":"mac-isaiahs-macbook-pro-2026-06-26T17-23-24-346Z-70712-mqv79k9n-1.log"}
+[OpenTiming] pdfid-resolve @ 1521666ms Benjamin Franklin Elementary.pdf-2401034
+%c[LOAD-TRACE +0ms] ════ OPEN START — Benjamin Franklin Elementary.pdf color:#2196F3;font-weight:bold
+[InteractionDiag] tool-changed @ 1521697ms from=survey-marker to=pan (pan-active → Pdfjs interactionMode=Pan)
+%c[LOAD-TRACE +27ms] watchdog armed — will check in 20s color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +52ms] Local file to ArrayBuffer color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +53ms] configuring pdf.js worker (loadPdfjs) color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +53ms] pdf.js worker ready color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +53ms] Starting PDF.js getDocument color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +148ms] PDF.js document parsed color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +391ms] Calculating page sizes color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +398ms] Page sizes calculated (4 pages) color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +398ms] Importing PDF annotations color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +398ms] PDF ready for rendering color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +398ms] ✅ LOAD COMPLETE — lifting the Loading curtain color:#2196F3;font-weight:bold
+[InteractionDiag] interactive-ready @ 1522076ms (isLoadingPDF→false; loading curtain lifted, toolbar+page now accept input)
+[OpenTiming] first-marks-painted @ 1522080ms pdfId=Benjamin Franklin Elementary.pdf-2401034
+[OpenTiming] pdfid-resolve @ 1538661ms Benjamin Franklin Elementary.pdf-2401034
+%c[LOAD-TRACE +0ms] ════ OPEN START — Benjamin Franklin Elementary.pdf color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +13ms] watchdog armed — will check in 20s color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +28ms] Local file to ArrayBuffer color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +28ms] configuring pdf.js worker (loadPdfjs) color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +28ms] pdf.js worker ready color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +28ms] Starting PDF.js getDocument color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +110ms] PDF.js document parsed color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +182ms] Calculating page sizes color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +188ms] Page sizes calculated (4 pages) color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +189ms] Importing PDF annotations color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +189ms] PDF ready for rendering color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +189ms] ✅ LOAD COMPLETE — lifting the Loading curtain color:#2196F3;font-weight:bold
+[InteractionDiag] interactive-ready @ 1538856ms (isLoadingPDF→false; loading curtain lifted, toolbar+page now accept input)
+[OpenTiming] first-marks-painted @ 1538860ms pdfId=Benjamin Franklin Elementary.pdf-2401034
+=== PAGE RELOAD (navigation) @ 2026-06-26T18:05:20.447Z ===
+[OpenTiming] doc-click @ 2089ms Benjamin Franklin Elementary.pdf
+[OpenTiming] pdfid-resolve @ 2497ms Benjamin Franklin Elementary.pdf-2401034
+%c[LOAD-TRACE +0ms] ════ OPEN START — Benjamin Franklin Elementary.pdf color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +0ms] watchdog armed — will check in 20s color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +42ms] Local file to ArrayBuffer color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +43ms] configuring pdf.js worker (loadPdfjs) color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +43ms] pdf.js worker ready color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +43ms] Starting PDF.js getDocument color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +162ms] PDF.js document parsed color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +366ms] Calculating page sizes color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +392ms] Page sizes calculated (4 pages) color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +393ms] Importing PDF annotations color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +393ms] PDF ready for rendering color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +393ms] ✅ LOAD COMPLETE — lifting the Loading curtain color:#2196F3;font-weight:bold
+[InteractionDiag] interactive-ready @ 2901ms (isLoadingPDF→false; loading curtain lifted, toolbar+page now accept input)
+[OpenTiming] first-marks-painted @ 2913ms pdfId=Benjamin Franklin Elementary.pdf-2401034
+console.warn @ [crdtBackfill] cutover sealed but Y.Map < legacy count — re-running import loop to recover {"yMapSize":0,"legacyCount":0}
+[DrawCanvas p1] MOUNT — tool=survey-marker, isShape=true, isDrawingMode=false
+[DrawCanvas p1] shape effect — tool=survey-marker, isShape=true, isDrawingMode=false
+[DrawCanvas p2] MOUNT — tool=survey-marker, isShape=true, isDrawingMode=false
+[DrawCanvas p2] shape effect — tool=survey-marker, isShape=true, isDrawingMode=false
+[DrawCanvas p3] MOUNT — tool=survey-marker, isShape=true, isDrawingMode=false
+[DrawCanvas p3] shape effect — tool=survey-marker, isShape=true, isDrawingMode=false
+[DrawCanvas p4] MOUNT — tool=survey-marker, isShape=true, isDrawingMode=false
+[DrawCanvas p4] shape effect — tool=survey-marker, isShape=true, isDrawingMode=false
+[InteractionDiag] tool-changed @ 4670ms from=pan to=survey-marker
+[PreviewDiag] sync push {"kind":"survey-marker","count":1,"surveyMarkerCount":2}
+[PreviewDiag] sync push {"kind":"survey-marker","count":1,"surveyMarkerCount":2}
+[PreviewDiag] sync push {"kind":"survey-marker","count":1,"surveyMarkerCount":2}
+[PreviewDiag] sync push {"kind":"survey-marker","count":1,"surveyMarkerCount":2}
+[PreviewDiag] sync push {"kind":"survey-marker","count":1,"surveyMarkerCount":2}
+[PreviewDiag] sync push {"kind":"survey-marker","count":1,"surveyMarkerCount":2}
+[PreviewDiag] sync push {"kind":"survey-marker","count":1,"surveyMarkerCount":2}
+[InteractionDiag] viewer-pointer-down @ 75665ms tool=survey-marker button=0 target=canvas
+[DrawCanvas p1] shape mousedown at (694.8, 667.7), tool=survey-marker
+[PreviewDiag] start {"pointerDown":true,"surface":"FabricDrawingCanvas","tool":"survey-marker","type":"survey-marker","action":"survey-marker-draw","pageNumber":1,"annotationId":null}
+[InteractionDiag] pointer-end @ 75706ms tool=survey-marker
+[PreviewDiag] pointer release {"id":"gesture-1","frames":0,"pointerDown":false,"surface":"FabricDrawingCanvas","tool":"survey-marker","type":"survey-marker","action":"survey-marker-draw","pageNumber":1,"annotationId":null}
+[DrawCanvas p1] shape mouseup — tool=survey-marker, hasSize=false {"left":694.815319148936,"top":667.7310638297872,"w":0,"h":0}
+[DrawCanvas p1] shape too small, discarded
