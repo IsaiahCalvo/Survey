@@ -21,13 +21,11 @@
    LANG=en_US.UTF-8 npx expo run:ios --device     # CocoaPods needs the UTF-8 locale
    ```
    (Metro over Wi-Fi: `--lan`, host was `192.168.1.220:8081`.)
-2. **Run the §5 checklist on the iPhone** — open 🏗️ → AnnotatablePdf, then on a floor-plan PDF:
-   - (a) zoom to 4–8×, stop → does the page become **crisp within ~200–300 ms**?
-   - (b) does the **ink stay glued** to the page through the whole gesture (no drift)?
-   - (c) does it **NOT crash** at `sc=8` (the old bitmap-scale crash should be gone)?
-   - (d) does the **2-finger pinch feel jump-free** (the §4 fix) on a 1↔2-finger handoff?
-   - Measure `rasterizePage` latency at scale 1/2/4/8 in Instruments. If a full-page raster >~300 ms on survey-class sheets → escalate to **Phase-3 tiling**.
-3. THEN port the real tools (shapes → text → eraser → Survey Marker → highlighter) and wire strokes to `@survey/shared` + Supabase/Yjs (annotations live in the DB over the PDF, NOT baked in).
+2. **Renderer foundation is DONE and device-confirmed** ("this feels good"): crisp glued vector ink, correct orientation, tiling (base + visible-region detail tile, no deep-zoom lag), 2-finger pinch/pan, tap-to-dot vs drag-to-line. Diagnostics stripped (commit 9e3eed55). The pen is the only tool; ink is hardcoded blue `INK_W=3`; the PDF is still the hardcoded tracemonkey URL.
+3. **Next — build out the real product:**
+   - **Tools**: shapes → text → eraser → Survey Marker → highlighter (the `@survey/shared` annotation contract is the source of truth — callout is the historical odd-one-out). A color + stroke-width picker is needed early since ink is hardcoded.
+   - **Real PDF + data**: load an actual survey PDF (Supabase storage) instead of the test URL, and wire strokes to `@survey/shared` + Supabase/Yjs so annotations live in the DB over the PDF (NOT baked in) and round-trip with the desktop owned-pdf.js renderer (strokes are already stored NORMALIZED for this).
+   - Gesture/tool dispatch will need a tool palette; the current mode SV (draw/select/pan) is the seed.
 
 **Watch out / deliberate deviations from the architecture doc**:
 - **Page image is React state, not a shared value.** The doc's `useSharedValue<SkImage>` + `runOnUI` swap is for per-frame UI-thread updates; here the image only changes on *settle* (a JS event), so plain `setPageImage` swaps cleanly and dodges the doc's flagged "SkImage-in-shared-value unverified for 2.2.12" risk. The per-frame zoom/pan animation is still 100% UI-thread (the `<Group transform>` reads `sc/tx/ty` shared values — same mechanism the foundation already proved with `livePath`).
