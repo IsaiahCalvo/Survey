@@ -61,6 +61,21 @@ export const normToPdfUserSpace = (n: Norm, pageWidthPt: number, pageHeightPt: n
   y: (1 - n.y) * pageHeightPt,
 });
 
+/**
+ * points->pixels raster scale to keep a fit-to-width page crisp at `displayScale`
+ * zoom, CAPPED so neither side exceeds `safePx` device pixels — the Approach-C
+ * deep-zoom crash guard. `devicePixels = pagePoints * returnedScale`. Below the cap
+ * the result is exactly the crisp target (`baseW/ptsW * displayScale * dpr`, the
+ * pdf.js outputScale=DPR invariant); above it the page upscales (soft) instead of
+ * allocating an SkImage that blows the GPU texture limit.
+ */
+export function rasterScaleFor(
+  displayScale: number, baseW: number, ptsW: number, ptsH: number, dpr: number, safePx: number,
+): number {
+  const wantPxPerPt = (baseW / ptsW) * displayScale * dpr;
+  return Math.min(wantPxPerPt, safePx / ptsW, safePx / ptsH);
+}
+
 let _idn = 0;
 export const newStrokeId = () => `ink_${_idn++}`;
 
@@ -148,5 +163,12 @@ export function demo() {
   // hit radius is constant in SCREEN px regardless of zoom
   const tz: Transform = { scale: 3, tx: 0, ty: 0 };
   assert(pickStroke([hs], 600, 363, 400, 600, tz, 20) === 'h', 'pickStroke hits at 3x zoom (screen-space radius)');
+  // raster cap (Approach-C crash guard): crisp target below the cap, clamped above it
+  const ptsW2 = 612, ptsH2 = 792, baseW2 = 390, dpr2 = 3, safe2 = 4096;
+  const lowZoom = rasterScaleFor(1, baseW2, ptsW2, ptsH2, dpr2, safe2);
+  assert(Math.abs(lowZoom - (baseW2 / ptsW2) * 1 * dpr2) < 1e-9, 'raster scale uncapped at fit-to-width');
+  const highZoom = rasterScaleFor(8, baseW2, ptsW2, ptsH2, dpr2, safe2);
+  assert(highZoom * ptsW2 <= safe2 + 1e-6 && highZoom * ptsH2 <= safe2 + 1e-6, 'raster never exceeds SAFE px/side');
+  assert(highZoom < (baseW2 / ptsW2) * 8 * dpr2, 'cap actually clamps the deep-zoom request');
   return 'pdfAnnotation self-check OK';
 }

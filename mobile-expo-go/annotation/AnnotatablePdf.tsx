@@ -1,34 +1,47 @@
 /**
- * AnnotatablePdf — PRODUCTION FOUNDATION (Approach B).
+ * AnnotatablePdf — APPROACH C (PDF rendered INTO Skia, re-raster on settle).
  *
- * The <Pdf/> render layer (touches disabled) AND the Skia ink layer live in ONE
- * Reanimated-transformed container, so they move as a single unit = zero lag,
- * perfectly glued under zoom/pan. (Ink softens slightly at deep zoom because the
- * layer is bitmap-scaled; crisp-AND-synced would require rendering the PDF into
- * Skia too — a later step. Synced+smooth was the right call over crisp.)
+ * The native <Pdf> view is GONE. A custom Swift module (modules/pdf-rasterizer)
+ * rasterizes the page to PNG bytes; JS uploads them as an SkImage and draws the
+ * page image AND the vector ink as children of ONE Skia <Canvas> under ONE shared
+ * <Group transform>. The page and ink are composited in a single draw call under
+ * one matrix, so spatial desync is physically impossible (the desktop pdf.js model
+ * on mobile). During a pinch only the Reanimated shared values change (GPU-cheap,
+ * slightly soft); on pinch.onEnd we re-rasterize at the new scale and swap in a
+ * crisp SkImage. Raster scale is CAPPED at SAFE px/side so deep zoom softens
+ * gracefully instead of crashing the old bitmap-scaled GPU texture.
  *
- * Transform + live ink run on the UI thread (Reanimated worklets + react-native-
- * skia). CORE LAW: 1 finger = tool action, 2 fingers always pan+pinch; a stroke
- * interrupted by a 2nd finger is discarded. Strokes stored NORMALIZED. Tap-select
- * + Delete. No-flicker commit + focal-jump guard kept.
+ * Requires the dev build (custom native module — NOT Expo Go). Coordinate model,
+ * NORMALIZED strokes, tap-select + delete, and the "1 finger = tool / 2 fingers =
+ * pan+pinch" core law are unchanged (see pdfAnnotation.ts).
  */
-import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { LayoutRectangle, Pressable, StyleSheet, Text, View } from 'react-native';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { LayoutRectangle, PixelRatio, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
-import Animated, {
+import {
   runOnJS,
-  useAnimatedStyle,
   useDerivedValue,
   useSharedValue,
   withTiming,
 } from 'react-native-reanimated';
-import { Canvas, Path, Skia } from '@shopify/react-native-skia';
+import {
+  Canvas,
+  FilterMode,
+  Group,
+  Image as SkiaImage,
+  MipmapMode,
+  Path,
+  Rect,
+  Skia,
+  type SkImage,
+} from '@shopify/react-native-skia';
 import {
   clampNorm,
   localToNorm,
   newStrokeId,
   pickStroke,
+  rasterScaleFor,
   strokeToLocalSvg,
   type Stroke,
 } from './pdfAnnotation';
@@ -36,16 +49,34 @@ import {
 const PDF_URL =
   'https://raw.githubusercontent.com/mozilla/pdf.js/master/web/compressed.tracemonkey-pldi-09.pdf';
 const MIN_S = 0.5;
-const MAX_S = 8; // capped — 14x was crashing on the bitmap-scaled page
+const MAX_S = 8; // display zoom; raster is capped separately (SAFE) so this no longer crashes
 const HIT_PX = 22;
-const FOCAL_JUMP = 60; // one-frame focal lurch (finger lift) guard, screen px
+const FOCAL_JUMP = 80; // one-frame focal lurch guard (px); a fast pan moves ~40-50px/frame
+const SAFE = 4096; // max raster px/side — ~67 MB RGBA, comfortable on A14+; beyond this, soften
+const DPR = PixelRatio.get();
+const RASTER_DEBOUNCE_MS = 90;
 
-function detectExpoGo(): boolean {
-  try {
-    return require('expo-constants').default?.executionEnvironment === 'storeClient';
-  } catch {
-    return false;
-  }
+// Load the native module lazily so Expo Go (no module) shows the notice instead of crashing.
+let PdfRasterizer: typeof import('../modules/pdf-rasterizer').default | null = null;
+try {
+  PdfRasterizer = require('../modules/pdf-rasterizer').default;
+} catch {
+  PdfRasterizer = null;
+}
+
+let ReactNativeBlobUtil: typeof import('react-native-blob-util').default | null = null;
+try {
+  ReactNativeBlobUtil = require('react-native-blob-util').default;
+} catch {
+  ReactNativeBlobUtil = null;
+}
+
+/** Download the PDF once to a local file and return a file:// URI the module can open. */
+async function downloadPdf(url: string): Promise<string> {
+  if (!ReactNativeBlobUtil) throw new Error('react-native-blob-util unavailable (need dev build)');
+  // ponytail: blob-util cache filenames are space-free, so no URL-encoding needed for the spike.
+  const res = await ReactNativeBlobUtil.config({ fileCache: true, appendExt: 'pdf' }).fetch('GET', url);
+  return 'file://' + res.path();
 }
 
 export default function AnnotatablePdf({ onClose }: { onClose: () => void }) {
@@ -53,21 +84,27 @@ export default function AnnotatablePdf({ onClose }: { onClose: () => void }) {
   const [mode, setMode] = useState<'draw' | 'select' | 'pan'>('draw');
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [viewport, setViewport] = useState<LayoutRectangle | null>(null);
-  const [nat, setNat] = useState<{ w: number; h: number } | null>(null);
+  const [pagePts, setPagePts] = useState<{ w: number; h: number } | null>(null); // page size in points
+  const [pageImage, setPageImage] = useState<SkImage | null>(null);
   const [strokes, setStrokes] = useState<Stroke[]>([]);
   const strokesRef = useRef(strokes);
   strokesRef.current = strokes;
   const [zoomLabel, setZoomLabel] = useState(100);
+  const [loadErr, setLoadErr] = useState<string | null>(null);
 
+  // base = the page laid out fit-to-width at zoom 1 (LOCAL/page space, screen px).
   const base = useMemo(() => {
-    if (!viewport || !nat) return null;
+    if (!viewport || !pagePts) return null;
     const w = viewport.width;
-    return { w, h: w * (nat.h / nat.w) };
-  }, [viewport, nat]);
+    return { w, h: w * (pagePts.h / pagePts.w) };
+  }, [viewport, pagePts]);
   const baseRef = useRef(base);
   baseRef.current = base;
+  const pagePtsRef = useRef(pagePts);
+  pagePtsRef.current = pagePts;
+  const localUriRef = useRef<string | null>(null);
 
-  // UI-thread state
+  // UI-thread state (screen = (tx,ty) + sc * local; see pdfAnnotation.ts)
   const tx = useSharedValue(0);
   const ty = useSharedValue(0);
   const sc = useSharedValue(1);
@@ -85,6 +122,71 @@ export default function AnnotatablePdf({ onClose }: { onClose: () => void }) {
   useEffect(() => {
     modeSV.value = mode === 'draw' ? 0 : mode === 'select' ? 1 : 2;
   }, [mode, modeSV]);
+
+  // ---- rasterize (JS thread): re-render the page crisply at the settled zoom ----
+  const rasterSeq = useRef(0);
+  const lastRasterScale = useRef(0);
+  const rasterTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const doRasterize = useCallback(async (displayScale: number) => {
+    const b = baseRef.current;
+    const pts = pagePtsRef.current;
+    const uri = localUriRef.current;
+    if (!b || !pts || !uri || !PdfRasterizer) return;
+    const rScale = rasterScaleFor(displayScale, b.w, pts.w, pts.h, DPR, SAFE);
+    // Skip re-raster when the scale barely moved (e.g. a pan that didn't change zoom).
+    if (lastRasterScale.current && Math.abs(rScale - lastRasterScale.current) / lastRasterScale.current < 0.04) return;
+    const seq = ++rasterSeq.current;
+    try {
+      const bytes = await PdfRasterizer.rasterizePage(uri, 0, rScale);
+      if (seq !== rasterSeq.current) return; // superseded by a newer raster
+      // PNG decode is lazy (deferred to first GPU draw), so do NOT dispose `data` here —
+      // let GC reclaim it and the previous SkImage. Manual dispose is a Phase-4 memory
+      // opt (two-slot cap, §3.5) once a device shows real growth; premature dispose risks
+      // a use-after-free.
+      const data = Skia.Data.fromBytes(bytes);
+      const img = Skia.Image.MakeImageFromEncoded(data);
+      if (img) {
+        lastRasterScale.current = rScale;
+        setPageImage(img); // React swaps cleanly on the next render
+      }
+    } catch (e) {
+      console.warn('[AnnotatablePdf] rasterizePage failed', e);
+    }
+  }, []);
+
+  const triggerRasterize = useCallback((displayScale: number) => {
+    if (rasterTimer.current) clearTimeout(rasterTimer.current);
+    rasterTimer.current = setTimeout(() => { void doRasterize(displayScale); }, RASTER_DEBOUNCE_MS);
+  }, [doRasterize]);
+
+  // Open the PDF (download -> native open -> page size) once.
+  useEffect(() => {
+    if (!PdfRasterizer) return;
+    let alive = true;
+    (async () => {
+      try {
+        const path = await downloadPdf(PDF_URL);
+        if (!alive) return;
+        await PdfRasterizer!.openDocument(path);
+        const size = await PdfRasterizer!.getPageSize(path, 0);
+        if (!alive) return;
+        localUriRef.current = path;
+        setPagePts({ w: size.width, h: size.height });
+      } catch (e) {
+        if (alive) setLoadErr(String(e));
+      }
+    })();
+    return () => { alive = false; };
+  }, []);
+
+  // First crisp raster once the page is laid out (base known) at the current zoom.
+  useEffect(() => {
+    if (base && pagePts && localUriRef.current) void doRasterize(sc.value);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [base, pagePts]);
+
+  useEffect(() => () => { if (rasterTimer.current) clearTimeout(rasterTimer.current); }, []);
 
   const commitLocalStroke = (pts: { x: number; y: number }[], gen: number) => {
     const b = baseRef.current;
@@ -105,6 +207,7 @@ export default function AnnotatablePdf({ onClose }: { onClose: () => void }) {
   const oneFinger = useMemo(() =>
     Gesture.Pan()
       .maxPointers(1)
+      .averageTouches(true) // centroid stays stable across a 1<->2 finger transition (§4)
       .onBegin((e) => {
         'worklet';
         stx.value = tx.value;
@@ -133,11 +236,13 @@ export default function AnnotatablePdf({ onClose }: { onClose: () => void }) {
       })
       .onFinalize(() => {
         'worklet';
-        if (modeSV.value === 0 && !committed.value) live.value = []; // interrupted by 2nd finger → discard
+        if (modeSV.value === 0 && !committed.value) live.value = []; // interrupted by 2nd finger -> discard
       }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
   []);
 
+  // §4 pinch-jump fix: on a focal teleport, RE-PIN the local origin at the new focal
+  // (page doesn't move that frame) instead of returning with a stale origin.
   const pinch = useMemo(() =>
     Gesture.Pinch()
       .onBegin((e) => {
@@ -152,15 +257,27 @@ export default function AnnotatablePdf({ onClose }: { onClose: () => void }) {
         'worklet';
         const dfx = e.focalX - lastFx.value;
         const dfy = e.focalY - lastFy.value;
+        if (Math.abs(dfx) > FOCAL_JUMP || Math.abs(dfy) > FOCAL_JUMP) {
+          oLocalX.value = (e.focalX - tx.value) / sc.value;
+          oLocalY.value = (e.focalY - ty.value) / sc.value;
+          ssc.value = sc.value;
+          lastFx.value = e.focalX;
+          lastFy.value = e.focalY;
+          return;
+        }
         lastFx.value = e.focalX;
         lastFy.value = e.focalY;
-        if (Math.abs(dfx) > FOCAL_JUMP || Math.abs(dfy) > FOCAL_JUMP) return;
         const ns = Math.max(MIN_S, Math.min(MAX_S, ssc.value * e.scale));
         sc.value = ns;
         tx.value = e.focalX - oLocalX.value * ns;
         ty.value = e.focalY - oLocalY.value * ns;
       })
-      .onEnd(() => { 'worklet'; runOnJS(setZoomLabel)(Math.round(sc.value * 100)); }),
+      .onEnd(() => {
+        'worklet';
+        runOnJS(setZoomLabel)(Math.round(sc.value * 100));
+        runOnJS(triggerRasterize)(sc.value);
+      })
+      .onFinalize(() => { 'worklet'; ssc.value = sc.value; }), // clean base for the next pinch
     // eslint-disable-next-line react-hooks/exhaustive-deps
   []);
 
@@ -175,6 +292,13 @@ export default function AnnotatablePdf({ onClose }: { onClose: () => void }) {
     [],
   );
 
+  // ---- Skia draw tree: ONE transform shared by the page image AND the ink ----
+  const transform = useDerivedValue(() => [
+    { translateX: tx.value },
+    { translateY: ty.value },
+    { scale: sc.value },
+  ]);
+
   const livePath = useDerivedValue(() => {
     const p = Skia.Path.Make();
     const pts = live.value;
@@ -185,10 +309,6 @@ export default function AnnotatablePdf({ onClose }: { onClose: () => void }) {
     return p;
   });
 
-  const pageStyle = useAnimatedStyle(() => ({
-    transform: [{ translateX: tx.value }, { translateY: ty.value }, { scale: sc.value }],
-  }));
-
   const zoomBy = (factor: number) => {
     const vp = viewport;
     if (!vp) return;
@@ -197,19 +317,28 @@ export default function AnnotatablePdf({ onClose }: { onClose: () => void }) {
     const ns = Math.max(MIN_S, Math.min(MAX_S, sc.value * factor));
     const lx = (cx - tx.value) / sc.value;
     const ly = (cy - ty.value) / sc.value;
-    sc.value = withTiming(ns, { duration: 140 });
+    sc.value = withTiming(ns, { duration: 140 }, (fin) => { 'worklet'; if (fin) runOnJS(triggerRasterize)(ns); });
     tx.value = withTiming(cx - lx * ns, { duration: 140 });
     ty.value = withTiming(cy - ly * ns, { duration: 140 });
     setZoomLabel(Math.round(ns * 100));
   };
-  const resetZoom = () => { sc.value = withTiming(1); tx.value = withTiming(0); ty.value = withTiming(0); setZoomLabel(100); };
+  const resetZoom = () => {
+    sc.value = withTiming(1, undefined, (fin) => { 'worklet'; if (fin) runOnJS(triggerRasterize)(1); });
+    tx.value = withTiming(0);
+    ty.value = withTiming(0);
+    setZoomLabel(100);
+  };
 
-  const Pdf = detectExpoGo() ? null : require('react-native-pdf').default;
-  if (!Pdf) {
+  if (!PdfRasterizer) {
     return (
       <View style={[styles.root, { paddingTop: insets.top }]}>
         <Header onClose={onClose} />
-        <View style={styles.notice}><Text style={styles.noticeBody}>react-native-pdf needs the dev build (npx expo run:ios).</Text></View>
+        <View style={styles.notice}>
+          <Text style={styles.noticeBody}>
+            Approach C needs the custom native PdfRasterizer module — rebuild the dev build with
+            {'\n'}`npx expo run:ios --device`. (Not available in Expo Go.)
+          </Text>
+        </View>
       </View>
     );
   }
@@ -235,19 +364,22 @@ export default function AnnotatablePdf({ onClose }: { onClose: () => void }) {
       <View style={styles.stage} onLayout={(e) => setViewport(e.nativeEvent.layout)}>
         <GestureDetector gesture={gesture}>
           <View style={StyleSheet.absoluteFill} collapsable={false}>
-            {/* PDF + ink in ONE transformed container → move as a single unit (no desync) */}
-            <Animated.View style={[base ? { width: base.w, height: base.h } : StyleSheet.absoluteFillObject, styles.page, pageStyle]}>
-              <View style={StyleSheet.absoluteFill} pointerEvents="none">
-                <Pdf
-                  source={{ uri: PDF_URL, cache: true }}
-                  singlePage
-                  scale={1}
-                  onLoadComplete={(_n: number, _p: string, size: { width: number; height: number }) => setNat({ w: size.width, h: size.height })}
-                  style={StyleSheet.absoluteFill}
-                />
-              </View>
-              {base && (
-                <Canvas style={StyleSheet.absoluteFill} pointerEvents="none">
+            {base ? (
+              <Canvas style={StyleSheet.absoluteFill}>
+                {/* ONE transform → page image and ink composited under the same matrix (sync is structural) */}
+                <Group transform={transform}>
+                  <Rect x={0} y={0} width={base.w} height={base.h} color="#FFFFFF" />
+                  {pageImage && (
+                    <SkiaImage
+                      image={pageImage}
+                      x={0}
+                      y={0}
+                      width={base.w}
+                      height={base.h}
+                      fit="fill"
+                      sampling={{ filter: FilterMode.Linear, mipmap: MipmapMode.None }}
+                    />
+                  )}
                   {strokes.map((s) => (
                     <React.Fragment key={s.id}>
                       {s.id === selectedId && (
@@ -257,9 +389,11 @@ export default function AnnotatablePdf({ onClose }: { onClose: () => void }) {
                     </React.Fragment>
                   ))}
                   <Path path={livePath} style="stroke" strokeWidth={3} color="#2B6FB6" strokeJoin="round" strokeCap="round" />
-                </Canvas>
-              )}
-            </Animated.View>
+                </Group>
+              </Canvas>
+            ) : (
+              <View style={styles.center}><Text style={styles.noticeBody}>{loadErr ? `Load failed: ${loadErr}` : 'Loading page…'}</Text></View>
+            )}
           </View>
         </GestureDetector>
       </View>
@@ -270,7 +404,7 @@ export default function AnnotatablePdf({ onClose }: { onClose: () => void }) {
 function Header({ onClose }: { onClose: () => void }) {
   return (
     <View style={styles.header}>
-      <Text style={styles.title}>🏗️ AnnotatablePdf</Text>
+      <Text style={styles.title}>🏗️ AnnotatablePdf · Approach C</Text>
       <Pressable onPress={onClose} style={styles.close} hitSlop={8}><Text style={styles.closeT}>Close ✕</Text></Pressable>
     </View>
   );
@@ -291,7 +425,7 @@ const styles = StyleSheet.create({
   clearT: { color: '#D9534F', fontSize: 12, fontWeight: '700' },
   hud: { color: '#A8B0BF', fontSize: 11, paddingHorizontal: 12, paddingVertical: 6, backgroundColor: '#1A1E25' },
   stage: { flex: 1, backgroundColor: '#0E1116', overflow: 'hidden' },
-  page: { position: 'absolute', left: 0, top: 0, transformOrigin: 'top left', backgroundColor: '#fff' },
+  center: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center' },
   notice: { margin: 16, padding: 16, backgroundColor: '#24272D', borderRadius: 10 },
   noticeBody: { color: '#D6DBE3', fontSize: 13, lineHeight: 20 },
 });

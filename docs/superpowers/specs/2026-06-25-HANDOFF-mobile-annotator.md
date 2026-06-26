@@ -1,9 +1,36 @@
 # Handoff: Mobile PDF annotator foundation
 
-**Goal**: Build the native mobile (Expo/RN) PDF annotator — render + ink + the real tools — on the validated `react-native-pdf` (PDFKit) + `@shopify/react-native-skia` + `react-native-reanimated` + `react-native-gesture-handler` stack, adapting desktop gestures to touch.
+**Goal**: Build the native mobile (Expo/RN) PDF annotator — render + ink + the real tools — adapting desktop gestures to touch. The render architecture is now **Approach C** (PDF rasterized INTO Skia; one pipeline), replacing the validated-but-blurry `react-native-pdf` overlay stack.
 
-**Done**: 4 spec/decision docs in `docs/superpowers/specs/2026-06-24-*` (gesture-adaptation design w/ §0.6 live-test verdicts; renderer research; overlay-alignment = Approach B; native-vs-webview = native wins); stack validated (Spike 1 react-native-pdf renders on New Arch; Spike 2 Skia ink over PDF); **`AnnotatablePdf`** foundation in `mobile-expo-go/annotation/{AnnotatablePdf.tsx, pdfAnnotation.ts}` = render + 1-finger draw + tap-select + delete, UI-thread (Reanimated worklets + Skia), ink glued to page, no-flicker commit, reliable 1-finger-draw vs 2-finger-pan/pinch, focal-jump guard; dev build runs on Isaiah's iPhone over Wi-Fi (Metro `192.168.1.220:8081 --lan`); throwaway test harnesses behind the 🏗️ button via `DevRoot.tsx` (`App.tsx` UNTOUCHED); idb + `ios-simulator-skill` installed for sim testing. All committed on branch `claude/nifty-burnell-c66ee5` (HEAD `531c1c0e`).
+**Done**:
+- 5 spec/decision docs in `docs/superpowers/specs/2026-06-24..25-*` (gesture-adaptation w/ §0.6 live-test verdicts; renderer research; overlay-alignment; native-vs-webview; **crisp-smooth-architecture = Approach C**). Stack validated (Spike 1 render, Spike 2 Skia ink).
+- **Foundation v0** (`AnnotatablePdf` on branch `claude/nifty-burnell-c66ee5`): the Approach-B bitmap-scaled version (render + 1-finger draw + tap-select + delete, UI-thread, no flicker). Superseded by the spike below but kept in history.
+- **Approach-C Phase-0 spike — CODE-COMPLETE, pending device test** (this branch, `claude/eager-antonelli-819afe`):
+  - New local Expo native module **`mobile-expo-go/modules/pdf-rasterizer/`** (`ios/PdfRasterizerModule.swift` + `index.ts` + podspec + `expo-module.config.json`). `CGContextDrawPDFPage` → CGBitmapContext → PNG; returns Swift **`Data` → JS `Uint8Array`** (the *tested* `DataUint8ArrayConvertiblesSpec` path, NOT `[String:Any]`). Funcs: `openDocument`, `getPageSize`, `rasterizePage(uri,page,scale)`. Autolinking-verified (`expo-modules-autolinking search -p apple` lists `PdfRasterizerModule`).
+  - **`AnnotatablePdf.tsx` rewired**: native `<Pdf>` REMOVED. One `<Canvas>` → one `<Group transform=[tx,ty,sc]>` containing the page `<Image>` (SkImage) + committed ink + live ink. Page rasterized at mount (after layout) and re-rasterized **debounced on settle** (pinch.onEnd / zoom buttons / reset), stale-guarded + skip-if-scale-unchanged. §3.4 **raster cap `SAFE=4096`** px/side (crash guard; pure `rasterScaleFor` in `pdfAnnotation.ts` with a self-check asserting the cap invariant). §4 **pinch-jump fix** (re-pin local origin on focal teleport instead of `return`; `FOCAL_JUMP=80`) + `.averageTouches(true)` on the pan.
+  - PDF fetched once to a local file via `react-native-blob-util` → `file://` path handed to the module.
+  - Gates: `npx tsc --noEmit` GREEN (whole program), `pdfAnnotation` self-check GREEN.
+  - DevRoot 🏗️ button still launches it; `App.tsx` UNTOUCHED.
 
-**Next** (priority — make it feel pro): build the crisp+smooth+synced fix = **Approach C** per `docs/superpowers/specs/2026-06-25-mobile-crisp-smooth-architecture.md`. Write a Swift `PdfRasterizerModule` (rasterize a PDF page → PNG/`Uint8Array` via `CGContextDrawPDFPage`), REMOVE the native `<Pdf>` view, and render the page `SkImage` + vector ink in ONE Skia `<Canvas>`/`<Group transform>`, re-rasterizing on `pinch.onEnd` (cap 4096 px). Apply the §4 pinch-jump fix (re-pin focal origin on teleport + `averageTouches`). Phase-0 spike ~1-2 days; needs a native dev-build rebuild (`npx expo run:ios --device`, NOT Expo Go). THEN port the real tools (shapes → text → eraser → Survey Marker → highlighter) and wire strokes to `@survey/shared` + Supabase/Yjs (annotations live in the DB over the PDF, NOT baked in).
+**Next** (priority — DEVICE TEST, this is the whole point of a spike):
+1. **Rebuild the dev build** — REQUIRED, this adds a brand-new native module (JS-only edits Fast-Refresh over Wi-Fi, but a native module needs a cable rebuild):
+   ```
+   cd mobile-expo-go
+   LANG=en_US.UTF-8 npx expo run:ios --device     # CocoaPods needs the UTF-8 locale
+   ```
+   (Metro over Wi-Fi: `--lan`, host was `192.168.1.220:8081`.)
+2. **Run the §5 checklist on the iPhone** — open 🏗️ → AnnotatablePdf, then on a floor-plan PDF:
+   - (a) zoom to 4–8×, stop → does the page become **crisp within ~200–300 ms**?
+   - (b) does the **ink stay glued** to the page through the whole gesture (no drift)?
+   - (c) does it **NOT crash** at `sc=8` (the old bitmap-scale crash should be gone)?
+   - (d) does the **2-finger pinch feel jump-free** (the §4 fix) on a 1↔2-finger handoff?
+   - Measure `rasterizePage` latency at scale 1/2/4/8 in Instruments. If a full-page raster >~300 ms on survey-class sheets → escalate to **Phase-3 tiling**.
+3. THEN port the real tools (shapes → text → eraser → Survey Marker → highlighter) and wire strokes to `@survey/shared` + Supabase/Yjs (annotations live in the DB over the PDF, NOT baked in).
 
-**Watch out**: The crisp-vs-synced tension is RESOLVED by Approach C (PDF rendered INTO Skia = ONE pipeline, desync impossible). BUT: (a) Phase-0's 4096 px cap gives only ~2.2× *display* zoom before softening — true floor-plan deep zoom needs **Phase-3 tiling** (~3-4 more days); (b) rasterization latency at survey-class zoom is the open question only a DEVICE test settles; (c) this is our FIRST custom native module → a one-time cable rebuild is required (JS-only edits still Fast-Refresh over Wi-Fi; CocoaPods needs `LANG=en_US.UTF-8`). The deep-zoom CRASH was the Reanimated container's GPU texture (Metal 16,384 px limit / ~1.1 GB at 14×), not PDFKit. Current `AnnotatablePdf` (HEAD) is the bitmap-scaled v0 to be replaced. Don't touch the root `HANDOFF.md` (Excel work, stale trap).
+**Watch out / deliberate deviations from the architecture doc**:
+- **Page image is React state, not a shared value.** The doc's `useSharedValue<SkImage>` + `runOnUI` swap is for per-frame UI-thread updates; here the image only changes on *settle* (a JS event), so plain `setPageImage` swaps cleanly and dodges the doc's flagged "SkImage-in-shared-value unverified for 2.2.12" risk. The per-frame zoom/pan animation is still 100% UI-thread (the `<Group transform>` reads `sc/tx/ty` shared values — same mechanism the foundation already proved with `livePath`).
+- **`rasterizePage` returns `Data` directly, not `{bytes,width,height}`.** A heterogeneous `[String:Any]`-with-`Data` return is NOT covered by Expo's conversion tests; a declared `Data` return IS. The PNG self-describes its size to Skia, and JS knows pts×scale, so dims aren't needed (raw-RGBA Phase-4 path would re-add them).
+- **No manual SkImage/SkData dispose.** PNG decode is lazy; premature dispose risks use-after-free. GC handles it. If a device shows real memory growth, add the §3.5 two-slot cap (dispose prev after 2 frames) — a Phase-4 opt, not a spike blocker.
+- **Honest cap headroom**: 4096 px on a 612 pt page = raster scale 6.7 / DPR 3 ≈ **2.2× display zoom before softening**. Fine to prove crisp+smooth+synced+no-crash; true floor-plan deep zoom needs **Phase-3 tiling** (~3–4 days).
+- Rasterization latency at survey-class zoom/sheet size is the open MEDIUM-confidence question — **only the device test settles it.** Build+typecheck gates answer none of (a)–(d).
+- Don't touch the root `HANDOFF.md` (Excel work, stale trap). This branch also carries `main`'s latest Excel/kal309 work (merged in cleanly; disjoint dirs).
