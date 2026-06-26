@@ -61,30 +61,25 @@ public class PdfRasterizerModule: Module {
         throw Exception(name: "PAGE_NOT_FOUND", description: "page \(pageIndex) in \(uri)")
       }
       let box = page.bounds(for: .mediaBox)
-      let w = max(1, Int((box.width  * scale).rounded(.up)))
-      let h = max(1, Int((box.height * scale).rounded(.up)))
+      let size = CGSize(width:  max(1, (box.width  * scale).rounded(.up)),
+                        height: max(1, (box.height * scale).rounded(.up)))
 
-      let cs = CGColorSpaceCreateDeviceRGB()
-      guard let ctx = CGContext(
-        data: nil, width: w, height: h,
-        bitsPerComponent: 8, bytesPerRow: w * 4, space: cs,
-        bitmapInfo: CGImageAlphaInfo.premultipliedFirst.rawValue
-                  | CGBitmapInfo.byteOrder32Little.rawValue   // BGRA for the raw-RGBA path
-      ) else {
-        throw Exception(name: "CTX_FAILED", description: "Cannot create \(w)x\(h) bitmap context")
-      }
-
-      // White paper (PDFs are transparent), then flip to PDF's bottom-left origin.
-      ctx.setFillColor(red: 1, green: 1, blue: 1, alpha: 1)
-      ctx.fill(CGRect(x: 0, y: 0, width: w, height: h))
-      ctx.translateBy(x: 0, y: CGFloat(h))
-      ctx.scaleBy(x: CGFloat(scale), y: -CGFloat(scale))
-      ctx.drawPDFPage(cgPage)   // CoreGraphics: applies no transform of its own
-
-      guard let cg = ctx.makeImage(), let png = UIImage(cgImage: cg).pngData() else {
-        throw Exception(name: "IMG_FAILED", description: "Cannot encode page \(pageIndex)")
-      }
-      return png   // Data -> Uint8Array
+      // UIGraphicsImageRenderer is the canonical, correctly-oriented PDF->image path. Its
+      // context is UIKit y-down/top-left, so translate+flip into the PDF's y-up/bottom-left
+      // space, then scale points->pixels. (A raw y-up CGBitmapContext + this SAME flip renders
+      // upside down — that was the bug.) Renderer also bakes the white page + PNG encode.
+      let fmt = UIGraphicsImageRendererFormat.default()
+      fmt.scale = 1        // DPI is baked into `size`; don't multiply by the screen scale again
+      fmt.opaque = true    // opaque white page, no alpha channel
+      let renderer = UIGraphicsImageRenderer(size: size, format: fmt)
+      return renderer.pngData { rctx in
+        let cg = rctx.cgContext
+        cg.setFillColor(UIColor.white.cgColor)
+        cg.fill(CGRect(origin: .zero, size: size))
+        cg.translateBy(x: 0, y: size.height)
+        cg.scaleBy(x: CGFloat(scale), y: -CGFloat(scale))
+        cg.drawPDFPage(cgPage)   // CoreGraphics: applies no transform of its own
+      }   // Data -> Uint8Array
     }
   }
 }
