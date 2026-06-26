@@ -73,3 +73,50 @@ payload completeness, accepted≠materialized wording, step-0 mandatory.
   NEXT PHASE: the keystone — KAL-309 tables (excel_sync_state / excel_sync_ops /
   excel_sync_audit + slice-1 additive touches) → kal308_apply_changeset RPC → Edge
   fn → client materialize/reconcile. Plan→Codex→build per PLAN-KAL308.md.
+
+- 2026-06-24: **KAL-309 keystone spec Codex-APPROVED (3 rounds + workflow critique).**
+  Committed 56dcadb2. ~25 design bugs caught on paper. Build STARTED: authoring the
+  migration (5 tables: excel_sync_state/_ops/_audit/_head/_changesets + additive
+  workbook_id UNIQUE + apply RPC kal308_apply_changeset + helper RPCs + audit trigger).
+  Then Edge fn excel-apply-changeset (matcher guarded-copy + drift test in gate),
+  client cutover (excelSyncClient, read-merge-write materialize, fetchSince reconcile,
+  resolve-conflict UI), tests. No DB/token/browser needed until the final survey-test
+  apply. Decision (Claude, structural-for-V1): server field-whitelist is best-effort
+  template (F21) — full template validation deferred (templates not yet in migrations).
+
+- 2026-06-24: **KAL-309 migration BUILT + Codex-APPROVED as code** (3 review rounds,
+  10->4->0 bugs incl. 2 security). supabase/migrations/20260625120000_kal309_excel_sync.sql,
+  node 1625/0, committed. NOT applied (survey-test needs the account token; same wall).
+  Edge fn build STARTED. Remaining: Edge excel-apply-changeset (+ matcher guarded-copy +
+  drift test in gate) -> client cutover (excelSyncClient, materialize, reconcile, resolve UI)
+  -> survey-test apply+integration verify.
+
+- 2026-06-24: **KAL-309 SERVER SIDE COMPLETE + Codex-approved as code.** Migration (3 SQL
+  review rounds) + Edge fn excel-apply-changeset (3 rounds) + matcher scope-key collision
+  fixed at source. Commits acb4fb96 (migration), 99dfbf2d (Edge draft), 9680e5bf (Edge
+  approved + matcher fix). node 1648/0, deno check clean, vite build green, drift gate in
+  suite. PDFViewer matcher-consumer hunks committed via filtered patch; pre-existing
+  KAL-279/259 (>20000) still untouched. NOT applied to any DB (survey-test needs the token).
+  Client cutover STARTED (excelSyncClient + materialize + reconcile + resolve UI). Then
+  tests + survey-test apply+verify.
+
+- 2026-06-25: **KEYSTONE CODE-COMPLETE — entire KAL-308/309 Codex-approved as code (server + client).**
+  Commits: acb4fb96 (migration), 9680e5bf (Edge), 9b5f1779 (client cutover). Across the build:
+  migration SQL review (3 rounds, 10->4->0), Edge review (3 rounds), client cutover review
+  (4 rounds, 7->4->2->0) — ~40 design/code bugs caught before any DB touch. Full suite 1662/0,
+  vite build green, deno check clean, matcher drift gate in suite. New: excelSyncClient.js,
+  excelSyncPendingChangeset.js, supabase/functions/excel-apply-changeset/, the migration +
+  guarded matcher copy; PDFViewer wired behind registered/local split with export-seeding +
+  reconcile + resolve UI + writeback. Pre-existing KAL-279/259 (>20000) untouched throughout.
+  REMAINING (needs Isaiah's machine): apply the migration to survey-test (account token/paste,
+  same wall) -> run integration tests -> browser multi-client verify. Then production apply +
+  in-app verification. The CODE is done.
+
+- 2026-06-25: **KEYSTONE LIVE-VERIFIED on survey-test.** Token in .env.test → self-service.
+  KAL-308a re-applied + 6/6 integration pass; KAL-309 migration applied (5 tables + apply RPC
+  + helpers + audit trigger, all verified); Edge fn excel-apply-changeset DEPLOYED; **12/12
+  KAL-309 apply-RPC integration tests pass on real Postgres** (scripts/apply-kal309-to-test-db.mjs,
+  tests/kal309ApplyChangesetIntegration.test.mjs). Visual recap published (recap-9747d0072cbd4a67).
+  REMAINING (human): production apply (KAL-307+308a+309 + Edge deploy to the real project — Isaiah's
+  go) + in-app export→re-import smoke test in the dev app. Pre-existing KAL-279/259 (>20000) still
+  untouched/uncommitted.
