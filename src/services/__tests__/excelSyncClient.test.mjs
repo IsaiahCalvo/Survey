@@ -175,6 +175,28 @@ test('submitChangeSet surfaces a server rejection via .error', async () => {
   assert.equal(res.excelRevision, 0);
 });
 
+test('submitChangeSet reads the server reason + detail from a FunctionsHttpError body (data null, body on error.context)', async () => {
+  // Real supabase-js shape on a non-2xx: data is null and the parsed body lives on
+  // error.context (the fetch Response). Without reading it the user only sees the opaque
+  // "Edge Function returned a non-2xx status code". This is the 2026-06-26 legacy_unsigned case.
+  const supabase = makeSupabaseMock({
+    invokeResult: {
+      data: null,
+      error: {
+        message: 'Edge Function returned a non-2xx status code',
+        context: { json: async () => ({ error: 'legacy_unsigned', detail: 're-export required' }) },
+      },
+    },
+  });
+  const res = await submitChangeSet({
+    supabaseClient: supabase,
+    documentId: 'doc-1', templateId: 'tpl-1', workbookId: 'wb_a', syncToken: 'st_b',
+  });
+  assert.equal(res.error, 'legacy_unsigned');
+  assert.equal(res.detail, 're-export required');
+  assert.equal(res.excelRevision, 0);
+});
+
 test('submitChangeSet throws without a functions.invoke-capable client', async () => {
   await assert.rejects(
     () => submitChangeSet({ supabaseClient: {}, documentId: 'd', templateId: 't', workbookId: 'w', syncToken: 's' }),

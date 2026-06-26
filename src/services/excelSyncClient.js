@@ -114,7 +114,7 @@ export async function submitChangeSet({
   if (error) {
     // The functions client surfaces a non-2xx as `error`; the structured body
     // (when present) carries the server's reason + any per-row outcomes.
-    return normalizeEdgeError(error, data, clientChangeSetId);
+    return await normalizeEdgeError(error, data, clientChangeSetId);
   }
 
   const result = data || {};
@@ -131,14 +131,22 @@ export async function submitChangeSet({
 
 // Normalize a FunctionsHttpError (or a thrown transport error) into the same
 // shape submitChangeSet returns on success, so callers branch on `.error`.
-function normalizeEdgeError(error, data, clientChangeSetId) {
+async function normalizeEdgeError(error, data, clientChangeSetId) {
   let serverReason = null;
+  let serverDetail = null;
   let outcomes = [];
-  // supabase-js FunctionsHttpError exposes the parsed body via `context` in some
-  // versions; the route also returns { error, outcomes } in the body. Be defensive.
-  const bodyish = (data && typeof data === 'object') ? data : null;
-  if (bodyish) {
+  // supabase-js exposes the parsed body via `data` in some versions, but on a
+  // FunctionsHttpError (non-2xx) `data` is usually null and the real body lives on
+  // `error.context` (the fetch Response). Read it so callers see the server's actual
+  // reason (e.g. 'legacy_unsigned' + 're-export required') instead of the opaque
+  // "Edge Function returned a non-2xx status code".
+  let bodyish = (data && typeof data === 'object') ? data : null;
+  if (!bodyish && error && error.context && typeof error.context.json === 'function') {
+    try { bodyish = await error.context.json(); } catch { /* body not JSON / already consumed */ }
+  }
+  if (bodyish && typeof bodyish === 'object') {
     serverReason = bodyish.error || null;
+    serverDetail = bodyish.detail || null;
     if (Array.isArray(bodyish.outcomes)) outcomes = bodyish.outcomes;
   }
   return {
@@ -149,6 +157,7 @@ function normalizeEdgeError(error, data, clientChangeSetId) {
     replayed: false,
     tokenWritebackIncomplete: false,
     error: serverReason || error?.message || 'edge_invoke_failed',
+    detail: serverDetail || null,
   };
 }
 

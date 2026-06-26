@@ -12284,7 +12284,12 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
           const serverSecret = await fetchOrCreateSigningSecret(rowIdSupabaseDocId, rowIdDocumentId);
           rowIdSigning = { keyId: serverSecret.keyId, secret: serverSecret.secret };
           rowIdSigningDocId = serverSecret.signingDocId;
-        } catch {
+        } catch (secretErr) {
+          // Don't swallow silently: a registered doc that can't resolve its server signing secret
+          // exports with BLANK Row IDs, and a later Excel sync then fails 'legacy_unsigned'
+          // ("re-export required"). Log loudly so this is diagnosable next time (this exact case
+          // bit us 2026-06-26 when the key existed in the app but not yet on the server).
+          console.warn('[ExcelExport] server Row-ID signing unavailable — exporting BLANK Row IDs; a re-export will be required once signing is reachable:', secretErr?.message ?? secretErr);
           rowIdSigning = null; // server unreachable / denied — blank Row IDs, fingerprint recovery
         }
       } else {
@@ -13831,8 +13836,18 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       if (result.error) {
         // Change-set-level rejection (unauthorized / locked / workbook_mismatch / token).
         // Surface it; do NOT silently fall through to a client-side apply that would
-        // bypass the server authority for a registered doc.
-        showToast(`Excel sync rejected: ${result.error}.`, 'error');
+        // bypass the server authority for a registered doc. Map the known server reasons
+        // to a plain-English, actionable message (most are fixed by re-exporting).
+        const SYNC_REJECT_MESSAGES = {
+          legacy_unsigned: 'This Excel was exported before sync was enabled. Re-export the survey, then edit the new file.',
+          sync_token_expired: 'This Excel’s sync link has expired. Re-export the survey, then edit the new file.',
+          no_active_registration: 'This Excel is no longer linked to the survey. Re-export, then edit the new file.',
+          workbook_mismatch: 'This Excel belongs to a different survey or template.',
+          sync_token_invalid: 'This Excel’s sync token doesn’t match this survey. Re-export the survey.',
+          unauthorized: 'You’re signed out or not allowed to edit this survey. Sign in and try again.',
+        };
+        const friendly = SYNC_REJECT_MESSAGES[result.error];
+        showToast(friendly || `Excel sync rejected: ${result.error}.`, 'error');
         return true;
       }
 
