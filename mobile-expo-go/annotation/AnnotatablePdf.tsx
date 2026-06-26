@@ -22,6 +22,7 @@ import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import {
   runOnJS,
   useDerivedValue,
+  useFrameCallback,
   useSharedValue,
   withTiming,
 } from 'react-native-reanimated';
@@ -91,6 +92,26 @@ export default function AnnotatablePdf({ onClose }: { onClose: () => void }) {
   strokesRef.current = strokes;
   const [zoomLabel, setZoomLabel] = useState(100);
   const [loadErr, setLoadErr] = useState<string | null>(null);
+  // ponytail: throwaway diagnostics for the "ink blurry at zoom" investigation. JS-only
+  // (Fast-Refreshes, no native rebuild). showPdf=off isolates whether the 87MB texture's
+  // memory pressure is what softens everything; thinInk shrinks the stroke to tell a real
+  // blur apart from a fat-stroke-reads-as-soft perception. Delete once root cause is known.
+  const [showPdf, setShowPdf] = useState(true);
+  const [thinInk, setThinInk] = useState(false);
+  const inkW = thinInk ? 0.6 : 3;
+  const [rasterMs, setRasterMs] = useState(0);
+  const [fpsLabel, setFpsLabel] = useState(0);
+  const fps = useSharedValue(0);
+  // EMA of the live frame rate (UI thread) — drops visibly when a zoom janks.
+  useFrameCallback((fi) => {
+    'worklet';
+    const dt = fi.timeSincePreviousFrame;
+    if (dt && dt > 0) fps.value = fps.value ? fps.value * 0.9 + (1000 / dt) * 0.1 : 1000 / dt;
+  });
+  useEffect(() => {
+    const id = setInterval(() => setFpsLabel(Math.round(fps.value)), 500);
+    return () => clearInterval(id);
+  }, [fps]);
 
   // base = the page laid out fit-to-width at zoom 1 (LOCAL/page space, screen px).
   const base = useMemo(() => {
@@ -138,7 +159,15 @@ export default function AnnotatablePdf({ onClose }: { onClose: () => void }) {
     if (lastRasterScale.current && Math.abs(rScale - lastRasterScale.current) / lastRasterScale.current < 0.04) return;
     const seq = ++rasterSeq.current;
     try {
+      const t0 = Date.now();
       const bytes = await PdfRasterizer.rasterizePage(uri, 0, rScale);
+      // Instrumentation for the device investigation — shows in the Metro console.
+      console.log(
+        `[raster] sc=${displayScale.toFixed(2)} rScale=${rScale.toFixed(2)} ` +
+        `px=${Math.round(pts.w * rScale)}x${Math.round(pts.h * rScale)} ` +
+        `bytes=${(bytes.length / 1e6).toFixed(1)}MB took=${Date.now() - t0}ms`,
+      );
+      setRasterMs(Date.now() - t0);
       if (seq !== rasterSeq.current) return; // superseded by a newer raster
       // PNG decode is lazy (deferred to first GPU draw), so do NOT dispose `data` here —
       // let GC reclaim it and the previous SkImage. Manual dispose is a Phase-4 memory
@@ -353,13 +382,15 @@ export default function AnnotatablePdf({ onClose }: { onClose: () => void }) {
         <Pressable style={styles.btn} onPress={() => zoomBy(1 / 1.4)}><Text style={styles.btnT}>－</Text></Pressable>
         <Pressable style={styles.btn} onPress={() => zoomBy(1.4)}><Text style={styles.btnT}>＋</Text></Pressable>
         <Pressable style={styles.btn} onPress={resetZoom}><Text style={styles.btnT}>⤢</Text></Pressable>
+        <Pressable style={[styles.btn, !showPdf && styles.on]} onPress={() => setShowPdf((v) => !v)}><Text style={[styles.btnT, !showPdf && styles.onT]}>PDF</Text></Pressable>
+        <Pressable style={[styles.btn, thinInk && styles.on]} onPress={() => setThinInk((v) => !v)}><Text style={[styles.btnT, thinInk && styles.onT]}>thin</Text></Pressable>
         {selectedId ? (
           <Pressable style={styles.del} onPress={() => { setStrokes((s) => s.filter((x) => x.id !== selectedId)); setSelectedId(null); }}><Text style={styles.clearT}>Delete</Text></Pressable>
         ) : (
           <Pressable style={styles.del} onPress={() => { setStrokes([]); live.value = []; setSelectedId(null); }}><Text style={styles.clearT}>Clear</Text></Pressable>
         )}
       </View>
-      <Text style={styles.hud}>zoom {zoomLabel}% · {strokes.length} strokes{selectedId ? ' · 1 selected' : ''} · {mode === 'draw' ? '1-finger draws' : mode === 'select' ? 'tap a stroke' : '1-finger pans'} · 2-finger pans/zooms</Text>
+      <Text style={styles.hud}>{fpsLabel}fps · raster {rasterMs}ms · zoom {zoomLabel}% · ink ≈{Math.round(inkW * zoomLabel / 100)}px · {strokes.length} strokes{showPdf ? '' : ' · PDF off'} · {mode === 'draw' ? 'draw' : mode === 'select' ? 'select' : 'pan'}</Text>
 
       <View style={styles.stage} onLayout={(e) => setViewport(e.nativeEvent.layout)}>
         <GestureDetector gesture={gesture}>
@@ -369,7 +400,7 @@ export default function AnnotatablePdf({ onClose }: { onClose: () => void }) {
                 {/* ONE transform → page image and ink composited under the same matrix (sync is structural) */}
                 <Group transform={transform}>
                   <Rect x={0} y={0} width={base.w} height={base.h} color="#FFFFFF" />
-                  {pageImage && (
+                  {showPdf && pageImage && (
                     <SkiaImage
                       image={pageImage}
                       x={0}
@@ -383,12 +414,12 @@ export default function AnnotatablePdf({ onClose }: { onClose: () => void }) {
                   {strokes.map((s) => (
                     <React.Fragment key={s.id}>
                       {s.id === selectedId && (
-                        <Path path={strokeToLocalSvg(s, base.w, base.h)} style="stroke" strokeWidth={s.width + 7} color="#E0A22B" opacity={0.45} strokeJoin="round" strokeCap="round" />
+                        <Path path={strokeToLocalSvg(s, base.w, base.h)} style="stroke" strokeWidth={inkW + 7} color="#E0A22B" opacity={0.45} strokeJoin="round" strokeCap="round" />
                       )}
-                      <Path path={strokeToLocalSvg(s, base.w, base.h)} style="stroke" strokeWidth={s.width} color={s.color} strokeJoin="round" strokeCap="round" />
+                      <Path path={strokeToLocalSvg(s, base.w, base.h)} style="stroke" strokeWidth={inkW} color={s.color} strokeJoin="round" strokeCap="round" />
                     </React.Fragment>
                   ))}
-                  <Path path={livePath} style="stroke" strokeWidth={3} color="#2B6FB6" strokeJoin="round" strokeCap="round" />
+                  <Path path={livePath} style="stroke" strokeWidth={inkW} color="#2B6FB6" strokeJoin="round" strokeCap="round" />
                 </Group>
               </Canvas>
             ) : (
