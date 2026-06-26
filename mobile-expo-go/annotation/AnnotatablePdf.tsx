@@ -249,9 +249,12 @@ export default function AnnotatablePdf({ onClose }: { onClose: () => void }) {
 
   const commitLocalStroke = (pts: { x: number; y: number }[], gen: number) => {
     const b = baseRef.current;
-    if (b && pts.length >= 2) {
+    if (b && pts.length >= 1) {
       const norm = pts.map((p) => clampNorm(localToNorm(p.x, p.y, b.w, b.h)));
-      setStrokes((s) => [...s, { id: newStrokeId(), color: '#2B6FB6', width: 3, pts: norm }]);
+      // A single point (a tap, no drag) becomes a dot: a zero-length segment whose round
+      // caps render as a filled circle of diameter strokeWidth.
+      const finalPts = norm.length === 1 ? [norm[0], norm[0]] : norm;
+      setStrokes((s) => [...s, { id: newStrokeId(), color: '#2B6FB6', width: 3, pts: finalPts }]);
     }
     requestAnimationFrame(() => requestAnimationFrame(() => { if (drawGen.value === gen) live.value = []; }));
   };
@@ -297,7 +300,15 @@ export default function AnnotatablePdf({ onClose }: { onClose: () => void }) {
       })
       .onFinalize(() => {
         'worklet';
-        if (modeSV.value === 0 && !committed.value) live.value = []; // interrupted by 2nd finger -> discard
+        if (modeSV.value === 0 && !committed.value) {
+          if (live.value.length === 1) {
+            // a tap that never activated the pan = a dot (onEnd doesn't fire without movement)
+            committed.value = true;
+            runOnJS(commitLocalStroke)(live.value, drawGen.value);
+          } else {
+            live.value = []; // interrupted mid-stroke by a 2nd finger -> discard
+          }
+        }
       }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
   []);
