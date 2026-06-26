@@ -148,11 +148,14 @@ async function seedSyncState(userClient, { documentId, workbookId, markers, temp
   return data; // count
 }
 
-// Build ONE p_rows entry exactly like the Edge does (index.ts §7).
-function buildApplyRow({ opId, markerAnnotationId, scopeId, changedFieldKeys, fields, baseFingerprints }) {
+// Build ONE p_rows entry exactly like the Edge does (index.ts §7). identityRecord carries the
+// AFTER-state fingerprints (the incoming row) the real Edge sends; the server stores them as the
+// new baseline so the NEXT edit's base matches. Omitting it (older tests) exercises only single applies.
+function buildApplyRow({ opId, markerAnnotationId, scopeId, changedFieldKeys, fields, baseFingerprints, identityRecord = null }) {
   return {
     opId, opType: 'apply', markerAnnotationId, scopeId, templateId: TEMPLATE_ID,
     changedFieldKeys, fields, baseFingerprints,
+    ...(identityRecord ? { identityRecord } : {}),
   };
 }
 function buildCreateRow({ opId, scopeId, moduleId, categoryId, fields, identity, identityRecord }) {
@@ -260,7 +263,65 @@ test('KAL-309 #1: owner apply → applied (state upserted, ops + audit + head)',
 });
 
 // =============================================================================
-// 2. Editor (collaborator) apply → applied.
+// 1b. Two sequential applies on the SAME marker both apply — the server must store the AFTER
+//     fingerprints so the next edit's base matches. Reproduces the live "applies once, then the
+//     next edit false-conflicts" bug (server was storing the BEFORE fingerprints).
+// =============================================================================
+test('KAL-309 #1b: back-to-back applies both apply (server stores AFTER state, no false conflict)', { skip: skipReason }, async () => {
+  const admin = await makeServiceClient();
+  const { owner, password, ownerId } = await provisionUsers(admin);
+  const docId = await insertDoc(admin, ownerId);
+  const { client: ownerClient } = await makeUserClient(owner, password);
+  try {
+    const { workbookId } = await registerWorkbook(ownerClient, docId);
+    const baseVals = { item: 'Door', entity: 'Alpha', notes: '', answers: {} };
+    const { markerAnnotationId, fp: fpBase } = await seedOneMarker(ownerClient, { documentId: docId, workbookId, values: baseVals });
+
+    const applyEntity = async (prevFp, nextVals, n) => {
+      const nextFp = await fingerprintsFor(nextVals);
+      const row = buildApplyRow({
+        opId: `${SCOPE}#${n}#apply`, markerAnnotationId, scopeId: SCOPE, changedFieldKeys: ['entity'],
+        fields: { item: nextVals.item, entity: nextVals.entity, notes: nextVals.notes, answers: nextVals.answers },
+        baseFingerprints: { identityVector: prevFp.identityVectorFingerprint, fields: prevFp.fieldFingerprints },
+        identityRecord: {
+          identityVectorFingerprint: nextFp.identityVectorFingerprint,
+          fullRowFingerprint: nextFp.fullRowFingerprint, fieldFingerprints: nextFp.fieldFingerprints,
+        },
+      });
+      const { data, error } = await applyChangeset(admin, {
+        actorId: ownerId, documentId: docId, workbookId, clientChangeSetId: `ccs-${randomUUID()}`, rows: [row],
+      });
+      assert.equal(error, null, `apply rpc error: ${error?.message}`);
+      assert.equal(data.error, undefined, `change-set rejected: ${data.error}`);
+      return { outcome: data.outcomes[0].outcome, nextFp };
+    };
+    const readState = async () => {
+      const { data } = await admin.from('excel_sync_state')
+        .select('field_fingerprints, identity_vector_fingerprint')
+        .eq('document_id', docId).eq('marker_annotation_id', markerAnnotationId).single();
+      return data;
+    };
+
+    // Change 1: Alpha → Beta. Applies, and the server stores BETA's fingerprints (AFTER), not Alpha's.
+    const r1 = await applyEntity(fpBase, { item: 'Door', entity: 'Beta', notes: '', answers: {} }, 1);
+    assert.equal(r1.outcome, 'applied', `change 1 should apply, got ${r1.outcome}`);
+    const s1 = await readState();
+    assert.equal(s1.field_fingerprints.entity, r1.nextFp.fieldFingerprints.entity,
+      'server stored the AFTER (Beta) entity fingerprint, not the BEFORE (Alpha)');
+    assert.equal(s1.identity_vector_fingerprint, r1.nextFp.identityVectorFingerprint,
+      'server stored the AFTER identity vector');
+
+    // Change 2: Beta → Gamma, based on Beta (the new agreed point). Must APPLY, not false-conflict.
+    const r2 = await applyEntity(r1.nextFp, { item: 'Door', entity: 'Gamma', notes: '', answers: {} }, 2);
+    assert.equal(r2.outcome, 'applied', `change 2 must apply (not a false conflict) — got ${r2.outcome}`);
+    const s2 = await readState();
+    assert.equal(s2.field_fingerprints.entity, r2.nextFp.fieldFingerprints.entity,
+      'server advanced to Gamma after change 2');
+  } finally { await cleanup(admin, docId); }
+});
+
+// =============================================================================
+// 2.Editor (collaborator) apply → applied.
 // =============================================================================
 test('KAL-309 #2: editor collaborator apply → applied', { skip: skipReason }, async () => {
   const admin = await makeServiceClient();
