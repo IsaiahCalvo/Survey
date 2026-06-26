@@ -1,0 +1,42 @@
+===== SurveyApp Save Log =====
+version:   0.1.46
+runtime:   dev-server
+platform:  desktop
+device:    Mac
+os:        macOS 10.15.7
+screen:    1512x982 @2x
+viewport:  1200x772
+locale:    en-US
+timestamp: 2026-06-26T17:23:24.307Z (6/26/2026, 1:23:24 PM)
+==============================
+[OpenTiming] doc-click @ 245585ms Benjamin Franklin Elementary.pdf
+[OpenTiming] pdfid-resolve @ 248667ms Benjamin Franklin Elementary.pdf-2401034
+%c[LOAD-TRACE +0ms] ════ OPEN START — Benjamin Franklin Elementary.pdf color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +0ms] watchdog armed — will check in 20s color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +34ms] Local file to ArrayBuffer color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +34ms] configuring pdf.js worker (loadPdfjs) color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +34ms] pdf.js worker ready color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +35ms] Starting PDF.js getDocument color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +148ms] PDF.js document parsed color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +612ms] Calculating page sizes color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +620ms] Page sizes calculated (4 pages) color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +620ms] Importing PDF annotations color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +621ms] PDF ready for rendering color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +621ms] ✅ LOAD COMPLETE — lifting the Loading curtain color:#2196F3;font-weight:bold
+[InteractionDiag] interactive-ready @ 249298ms (isLoadingPDF→false; loading curtain lifted, toolbar+page now accept input)
+[OpenTiming] first-marks-painted @ 249304ms pdfId=Benjamin Franklin Elementary.pdf-2401034
+console.warn @ [crdtBackfill] cutover sealed but Y.Map < legacy count — re-running import loop to recover {"yMapSize":0,"legacyCount":0}
+[DrawCanvas p1] MOUNT — tool=survey-marker, isShape=true, isDrawingMode=false
+[DrawCanvas p1] shape effect — tool=survey-marker, isShape=true, isDrawingMode=false
+[DrawCanvas p2] MOUNT — tool=survey-marker, isShape=true, isDrawingMode=false
+[DrawCanvas p2] shape effect — tool=survey-marker, isShape=true, isDrawingMode=false
+[DrawCanvas p3] MOUNT — tool=survey-marker, isShape=true, isDrawingMode=false
+[DrawCanvas p3] shape effect — tool=survey-marker, isShape=true, isDrawingMode=false
+[DrawCanvas p4] MOUNT — tool=survey-marker, isShape=true, isDrawingMode=false
+[DrawCanvas p4] shape effect — tool=survey-marker, isShape=true, isDrawingMode=false
+[InteractionDiag] tool-changed @ 251335ms from=pan to=survey-marker
+[PreviewDiag] sync push {"kind":"survey-marker","count":1,"surveyMarkerCount":2}
+[PreviewDiag] sync push {"kind":"survey-marker","count":1,"surveyMarkerCount":2}
+[KAL-309 conflict-diag] surveyMarker-1782454614902-qahblts0r hasBaseline= true fieldDiff= {} answerDiff= {}
+[PreviewDiag] sync push {"kind":"survey-marker","count":1,"surveyMarkerCount":2}
+[KAL-309 conflict-diag] surveyMarker-1782454614902-qahblts0r hasBaseline= true fieldDiff= {} answerDiff= {}
