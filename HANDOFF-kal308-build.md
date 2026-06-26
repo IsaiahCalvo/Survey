@@ -120,3 +120,17 @@ payload completeness, accepted≠materialized wording, step-0 mandatory.
   REMAINING (human): production apply (KAL-307+308a+309 + Edge deploy to the real project — Isaiah's
   go) + in-app export→re-import smoke test in the dev app. Pre-existing KAL-279/259 (>20000) still
   untouched/uncommitted.
+
+- 2026-06-26: **KEYSTONE LIVE ON PRODUCTION ("Survey", ref cvamwt…).** Isaiah green-lit the prod
+  apply. Read-only pre-flight confirmed prod already had the prereqs (pgcrypto, documents.locked_at,
+  kal49, excel_workbook_registrations [4 rows / 2 active, no dup active workbook_id], document_collaborators,
+  user_can_access_document) and that all 308a/309 objects were absent (clean apply). Adversarial 4-lens
+  workflow pre-flight (fail-on-prod/harm-data/security-grants all GO; completeness=caution) cleared it.
+  APPLIED via Management API: KAL-308a (rowid_signing_secrets + 3 RPCs) then KAL-309 (5/5 sync tables +
+  kal308_apply_changeset + 9 helpers + audit trigger + additive rowid_signing_doc_id col + active partial-
+  unique index), all verified; recorded both versions in schema_migrations (future-db-push guard).
+  DEPLOYED Edge fn excel-apply-changeset (ACTIVE, v1, verify_jwt=true; unauth POST → 401). Prod app
+  (real DB; not yet published) now has the full server-side Excel change-set validation + transactional
+  apply path live. REMAINING (human): in-app export→re-import smoke test + optional 2-browser convergence.
+  Deferred follow-on (non-blocking, pre-flight low/med): swap extensions.gen_random_uuid()→gen_random_uuid()
+  at kal309 L620; add REVOKE ALL …FROM PUBLIC on the new tables + 2 pure helpers for defense-in-depth.
