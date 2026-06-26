@@ -1,0 +1,460 @@
+===== SurveyApp Save Log =====
+version:   0.1.46
+runtime:   dev-server
+platform:  desktop
+device:    Mac
+os:        macOS 10.15.7
+screen:    1512x982 @2x
+viewport:  1203x839
+locale:    en-US
+timestamp: 2026-06-26T06:19:03.416Z (6/26/2026, 2:19:03 AM)
+==============================
+[2026-06-22T23:35:28.640Z] [info] http://localhost:5173/src/main.jsx?t=1782157063786:83 [InteractionDiag] tool-intent @ 13498751ms requested=eraser from=pan
+[2026-06-22T23:35:28.654Z] [info] http://localhost:5173/src/main.jsx?t=1782157063786:83 [FabricEraserCanvas p1] enliven — input=12 enlivenable=10 unsupported=2 output=10 nulls=0 types={"path":2,"rect":4,"polyline":1,"polygon":1,"form-field":2,"circle":2}→{"path":2,"rect":4,"polyline":1,"polygon":1,"circle":2}
+[2026-06-22T23:35:28.655Z] [info] http://localhost:5173/src/main.jsx?t=1782157063786:83 [InteractionDiag] tool-changed @ 13498766ms from=pan to=eraser (eraser-active → FabricEraserCanvas mounts)
+[2026-06-22T23:35:29.867Z] [info] http://localhost:5173/src/main.jsx?t=1782157063786:83 [DrawCanvas p1] MOUNT — tool=pen, isShape=false, isDrawingMode=true
+[2026-06-22T23:35:29.869Z] [info] http://localhost:5173/src/main.jsx?t=1782157063786:83 [DrawCanvas p1] shape effect — tool=pen, isShape=false, isDrawingMode=true
+[2026-06-22T23:35:29.869Z] [info] http://localhost:5173/src/main.jsx?t=1782157063786:83 [InteractionDiag] tool-changed @ 13499980ms from=eraser to=pen
+[2026-06-22T23:35:29.888Z] [info] http://localhost:5173/src/main.jsx?t=1782157063786:83 [DrawCanvas p1] shape effect — tool=pen, isShape=false, isDrawingMode=true
+[2026-06-22T23:35:30.810Z] [info] http://localhost:5173/src/main.jsx?t=1782157063786:83 [PreviewDiag] sync push [object Object]
+[2026-06-23T01:13:54.883Z] [info] http://localhost:5173/src/main.jsx?t=1782157063786:83 [InteractionDiag] tool-intent @ 19405041ms requested=callout from=pen
+[2026-06-23T01:13:54.890Z] [info] http://localhost:5173/src/main.jsx?t=1782157063786:83 [InteractionDiag] tool-changed @ 19405049ms from=pen to=callout
+[2026-06-23T01:13:58.897Z] [info] http://localhost:5173/src/main.jsx?t=1782157063786:83 [CalloutEditCanvasDiag] [object Object]
+[2026-06-23T01:13:58.908Z] [info] http://localhost:5173/src/main.jsx?t=1782157063786:83 [InteractionDiag] tool-changed @ 19409064ms from=callout to=select
+[2026-06-23T01:13:58.908Z] [info] http://localhost:5173/src/main.jsx?t=1782157063786:76 [TextCursorParity] [object Object]
+[2026-06-23T01:14:00.616Z] [info] http://localhost:5173/src/main.jsx?t=1782157063786:83 [InteractionDiag] viewer-pointer-down @ 19410775ms tool=select button=0 target=canvas
+[2026-06-23T01:14:00.625Z] [info] http://localhost:5173/src/main.jsx?t=1782157063786:83 [InteractionDiag] pointer-end @ 19410784ms tool=select
+[2026-06-23T01:14:00.697Z] [info] http://localhost:5173/src/main.jsx?t=1782157063786:83 [EditCanvas] COMMIT post-convert — text="" fontSize=14 width=120 height=32 scaleX=1 scaleY=1 left=479.09090909090907 top=231.51562499999997
+[2026-06-23T01:14:00.697Z] [info] http://localhost:5173/src/main.jsx?t=1782157063786:83 [EditCanvas] COMMIT pre-convert — text="" fontSize=14 width=108 height=15.82 scaleX=1 scaleY=1 left=38 top=42.54 isNewText=false
+[2026-06-23T01:14:08.254Z] [info] http://localhost:5173/src/main.jsx?t=1782157063786:83 [InteractionDiag] viewer-pointer-down @ 19418413ms tool=select button=0 target=div
+[2026-06-23T01:14:08.257Z] [info] http://localhost:5173/src/main.jsx?t=1782157063786:83 [InteractionDiag] pointer-end @ 19418416ms tool=select
+[2026-06-23T01:14:09.986Z] [info] http://localhost:5173/src/main.jsx?t=1782157063786:83 [InteractionDiag] viewer-pointer-down @ 19420145ms tool=select button=0 target=div
+[2026-06-23T01:14:09.988Z] [info] http://localhost:5173/src/main.jsx?t=1782157063786:83 [InteractionDiag] pointer-end @ 19420147ms tool=select
+[2026-06-23T01:14:10.899Z] [info] http://localhost:5173/src/main.jsx?t=1782157063786:83 [InteractionDiag] tool-intent @ 19421058ms requested=counter from=select
+[2026-06-23T01:14:10.919Z] [info] http://localhost:5173/src/main.jsx?t=1782157063786:83 [InteractionDiag] tool-changed @ 19421078ms from=select to=counter
+[2026-06-23T01:14:14.240Z] [info] http://localhost:5173/src/main.jsx?t=1782157063786:83 [InteractionDiag] tool-intent @ 19424399ms requested=callout from=counter
+[2026-06-23T01:14:14.251Z] [info] http://localhost:5173/src/main.jsx?t=1782157063786:83 [InteractionDiag] tool-changed @ 19424410ms from=counter to=callout
+[2026-06-23T01:14:18.752Z] [info] http://localhost:5173/src/main.jsx?t=1782157063786:83 [InteractionDiag] viewer-pointer-down @ 19428911ms tool=callout button=0 target=div
+[2026-06-23T01:14:18.759Z] [info] http://localhost:5173/src/main.jsx?t=1782157063786:83 [InteractionDiag] pointer-end @ 19428918ms tool=callout
+[2026-06-23T01:14:20.271Z] [info] http://localhost:5173/src/main.jsx?t=1782157063786:83 [CalloutEditCanvasDiag] [object Object]
+[2026-06-23T01:14:20.275Z] [info] http://localhost:5173/src/main.jsx?t=1782157063786:76 [TextCursorParity] [object Object]
+[2026-06-23T01:14:20.275Z] [info] http://localhost:5173/src/main.jsx?t=1782157063786:83 [InteractionDiag] tool-changed @ 19430434ms from=callout to=select
+[2026-06-23T01:14:24.129Z] [info] http://localhost:5173/src/main.jsx?t=1782157063786:76 [TextCursorParity] [object Object]
+[2026-06-23T01:14:24.440Z] [info] http://localhost:5173/src/main.jsx?t=1782157063786:76 [TextCursorParity] [object Object]
+[2026-06-23T01:14:24.636Z] [info] http://localhost:5173/src/main.jsx?t=1782157063786:76 [TextCursorParity] [object Object]
+[2026-06-23T01:14:27.895Z] [info] http://localhost:5173/src/main.jsx?t=1782157063786:83 [InteractionDiag] viewer-pointer-down @ 19438054ms tool=select button=0 target=canvas
+[2026-06-23T01:14:27.898Z] [info] http://localhost:5173/src/main.jsx?t=1782157063786:83 [InteractionDiag] pointer-end @ 19438058ms tool=select
+[2026-06-23T01:14:27.949Z] [info] http://localhost:5173/src/main.jsx?t=1782157063786:83 [EditCanvas] COMMIT pre-convert — text="tes" fontSize=14 width=108 height=15.82 scaleX=1 scaleY=1 left=38 top=42.54 isNewText=false
+[2026-06-23T01:14:27.949Z] [info] http://localhost:5173/src/main.jsx?t=1782157063786:83 [EditCanvas] COMMIT post-convert — text="tes" fontSize=14 width=120 height=32 scaleX=1 scaleY=1 left=197.8181818181818 top=240.79687499999997
+[2026-06-23T01:14:33.485Z] [info] http://localhost:5173/src/main.jsx?t=1782157063786:83 [CalloutEditCanvasDiag] [object Object]
+[2026-06-23T01:14:33.491Z] [info] http://localhost:5173/src/main.jsx?t=1782157063786:76 [TextCursorParity] [object Object]
+[2026-06-23T01:14:35.443Z] [info] http://localhost:5173/src/main.jsx?t=1782157063786:83 [EditCanvas] COMMIT post-convert — text="tes" fontSize=14 width=120 height=32 scaleX=1 scaleY=1 left=197.8181818181818 top=240.79687499999997
+[2026-06-23T01:14:35.443Z] [info] http://localhost:5173/src/main.jsx?t=1782157063786:83 [EditCanvas] COMMIT pre-convert — text="tes" fontSize=14 width=108 height=15.82 scaleX=1 scaleY=1 left=38 top=42.54 isNewText=false
+[2026-06-23T01:14:35.490Z] [info] http://localhost:5173/src/main.jsx?t=1782157063786:83 [CalloutEditCanvasDiag] [object Object]
+[2026-06-23T01:14:35.494Z] [info] http://localhost:5173/src/main.jsx?t=1782157063786:76 [TextCursorParity] [object Object]
+[2026-06-23T01:14:41.284Z] [info] http://localhost:5173/src/main.jsx?t=1782157063786:83 [InteractionDiag] viewer-pointer-down @ 19451443ms tool=select button=0 target=div
+[2026-06-23T01:14:41.287Z] [info] http://localhost:5173/src/main.jsx?t=1782157063786:83 [EditCanvas] COMMIT pre-convert — text="tes" fontSize=14 width=108 height=15.82 scaleX=1 scaleY=1 left=38 top=42.54 isNewText=false
+[2026-06-23T01:14:41.287Z] [info] http://localhost:5173/src/main.jsx?t=1782157063786:83 [EditCanvas] COMMIT post-convert — text="tes" fontSize=14 width=120 height=32 scaleX=1 scaleY=1 left=197.8181818181818 top=240.79687499999997
+[2026-06-23T01:14:41.304Z] [info] http://localhost:5173/src/main.jsx?t=1782157063786:83 [InteractionDiag] pointer-end @ 19451464ms tool=select
+[2026-06-23T02:27:00.438Z] [info] http://localhost:5173/src/main.jsx?t=1782157063786:83 [InteractionDiag] tool-intent @ 23790550ms requested=callout from=select
+[2026-06-23T02:27:00.456Z] [info] http://localhost:5173/src/main.jsx?t=1782157063786:83 [InteractionDiag] tool-changed @ 23790570ms from=select to=callout
+[2026-06-23T02:27:00.907Z] [info] http://localhost:5173/src/main.jsx?t=1782157063786:83 [InteractionDiag] tool-intent @ 23791021ms requested=counter from=callout
+[2026-06-23T02:27:00.912Z] [info] http://localhost:5173/src/main.jsx?t=1782157063786:83 [InteractionDiag] tool-changed @ 23791026ms from=callout to=counter
+[2026-06-23T02:27:03.691Z] [info] http://localhost:5173/src/main.jsx?t=1782157063786:83 [PreviewDiag] final commit [object Object]
+[2026-06-23T02:27:06.532Z] [info] http://localhost:5173/src/main.jsx?t=1782157063786:83 [InteractionDiag] tool-changed @ 23796647ms from=counter to=select
+[2026-06-23T02:27:20.941Z] [info] http://localhost:5173/src/main.jsx?t=1782157063786:83 [PreviewDiag] preview [object Object]
+[2026-06-23T02:27:20.941Z] [info] http://localhost:5173/src/main.jsx?t=1782157063786:83 [PreviewDiag] start [object Object]
+[2026-06-23T02:27:21.008Z] [info] http://localhost:5173/src/main.jsx?t=1782157063786:83 [PreviewDiag] pointer release [object Object]
+[2026-06-23T02:27:22.414Z] [info] http://localhost:5173/src/main.jsx?t=1782157063786:83 [PreviewDiag] summary move started, 1 preview frames, 0 sync writes during drag, 0 sync deferrals during drag, 0 backup writes during drag, 0 commits on release, 0 sync pushes after release, 0 backup writes after release [object Object]
+[2026-06-23T03:49:44.053Z] [info] http://localhost:5173/src/main.jsx?t=1782157063786:83 [DrawCanvas p1] MOUNT — tool=survey-marker, isShape=true, isDrawingMode=false
+[2026-06-23T03:49:44.063Z] [info] http://localhost:5173/src/main.jsx?t=1782157063786:83 [DrawCanvas p1] shape effect — tool=survey-marker, isShape=true, isDrawingMode=false
+[2026-06-23T03:49:44.064Z] [info] http://localhost:5173/src/main.jsx?t=1782157063786:83 [InteractionDiag] tool-changed @ 28754154ms from=select to=survey-marker
+[2026-06-23T03:49:46.602Z] [info] http://localhost:5173/src/main.jsx?t=1782157063786:83 [InteractionDiag] tool-intent @ 28756692ms requested=survey-marker from=survey-marker
+[2026-06-23T03:49:47.063Z] [info] http://localhost:5173/src/main.jsx?t=1782157063786:83 [InteractionDiag] viewer-pointer-down @ 28757153ms tool=survey-marker button=0 target=canvas
+[2026-06-23T03:49:47.067Z] [info] http://localhost:5173/src/main.jsx?t=1782157063786:83 [DrawCanvas p1] shape mousedown at (325.8, 314.3), tool=survey-marker
+[2026-06-23T03:49:47.067Z] [info] http://localhost:5173/src/main.jsx?t=1782157063786:83 [PreviewDiag] start [object Object]
+[2026-06-23T03:49:47.079Z] [info] http://localhost:5173/src/main.jsx?t=1782157063786:83 [PreviewDiag] preview [object Object]
+[2026-06-23T03:49:47.337Z] [info] http://localhost:5173/src/main.jsx?t=1782157063786:83 [InteractionDiag] pointer-end @ 28757427ms tool=survey-marker
+[2026-06-23T03:49:47.338Z] [info] http://localhost:5173/src/main.jsx?t=1782157063786:83 [PreviewDiag] pointer release [object Object]
+[2026-06-23T03:49:47.338Z] [info] http://localhost:5173/src/main.jsx?t=1782157063786:83 [DrawCanvas p1] shape mouseup — tool=survey-marker, hasSize=true [object Object]
+[2026-06-23T03:49:47.338Z] [info] http://localhost:5173/src/main.jsx?t=1782157063786:83 [PreviewDiag] final commit [object Object]
+[2026-06-23T03:49:48.739Z] [info] http://localhost:5173/src/main.jsx?t=1782157063786:83 [PreviewDiag] summary survey-marker-draw started, 5 preview frames, 0 sync writes during drag, 0 sync deferrals during drag, 0 backup writes during drag, 1 commit on release, 0 sync pushes after release, 0 backup writes after release [object Object]
+[2026-06-23T03:49:51.314Z] [info] http://localhost:5173/src/main.jsx?t=1782157063786:83 [PreviewDiag] sync push [object Object]
+[2026-06-23T03:49:59.261Z] [info] http://localhost:5173/src/main.jsx?t=1782157063786:83 [InteractionDiag] tool-intent @ 28769350ms requested=survey-marker from=survey-marker
+[2026-06-23T03:49:59.729Z] [info] http://localhost:5173/src/main.jsx?t=1782157063786:83 [InteractionDiag] viewer-pointer-down @ 28769819ms tool=survey-marker button=0 target=canvas
+[2026-06-23T03:49:59.733Z] [info] http://localhost:5173/src/main.jsx?t=1782157063786:83 [PreviewDiag] start [object Object]
+[2026-06-23T03:49:59.733Z] [info] http://localhost:5173/src/main.jsx?t=1782157063786:83 [DrawCanvas p1] shape mousedown at (370.9, 577.5), tool=survey-marker
+[2026-06-23T03:49:59.744Z] [info] http://localhost:5173/src/main.jsx?t=1782157063786:83 [PreviewDiag] preview [object Object]
+[2026-06-23T03:49:59.988Z] [info] http://localhost:5173/src/main.jsx?t=1782157063786:83 [InteractionDiag] pointer-end @ 28770077ms tool=survey-marker
+[2026-06-23T03:49:59.988Z] [info] http://localhost:5173/src/main.jsx?t=1782157063786:83 [PreviewDiag] pointer release [object Object]
+[2026-06-23T03:49:59.988Z] [info] http://localhost:5173/src/main.jsx?t=1782157063786:83 [DrawCanvas p1] shape mouseup — tool=survey-marker, hasSize=true [object Object]
+[2026-06-23T03:49:59.988Z] [info] http://localhost:5173/src/main.jsx?t=1782157063786:83 [PreviewDiag] final commit [object Object]
+[2026-06-23T03:50:01.389Z] [info] http://localhost:5173/src/main.jsx?t=1782157063786:83 [PreviewDiag] summary survey-marker-draw started, 23 preview frames, 0 sync writes during drag, 0 sync deferrals during drag, 0 backup writes during drag, 1 commit on release, 0 sync pushes after release, 0 backup writes after release [object Object]
+[2026-06-23T03:50:03.733Z] [info] http://localhost:5173/src/main.jsx?t=1782157063786:83 [PreviewDiag] sync push [object Object]
+[2026-06-23T03:50:25.597Z] [info] http://localhost:5173/src/main.jsx?t=1782157063786:83 [InteractionDiag] tool-changed @ 28795686ms from=survey-marker to=select
+[2026-06-23T03:50:32.397Z] [info] http://localhost:5173/src/main.jsx?t=1782157063786:83 [DrawCanvas p1] MOUNT — tool=survey-marker, isShape=true, isDrawingMode=false
+[2026-06-23T03:50:32.400Z] [info] http://localhost:5173/src/main.jsx?t=1782157063786:83 [DrawCanvas p1] shape effect — tool=survey-marker, isShape=true, isDrawingMode=false
+[2026-06-23T03:50:32.401Z] [info] http://localhost:5173/src/main.jsx?t=1782157063786:83 [InteractionDiag] tool-changed @ 28802490ms from=select to=survey-marker
+[2026-06-23T04:20:53.464Z] [warning] http://localhost:5173/src/main.jsx?t=1782157063786:83 @supabase/gotrue-js: Lock "lock:sb-cvamwtpsuvxvjdnotbeg-auth-token" was not released within 2500ms. This may indicate an orphaned lock from a component unmount (e.g., React Strict Mode). Forcefully acquiring the lock to recover.
+[2026-06-23T04:41:24.296Z] [info] http://localhost:5173/src/main.jsx?t=1782157063786:83 [OpenTiming] doc-click @ 31854382ms clickable-link-test.pdf
+[2026-06-23T04:41:27.840Z] [info] http://localhost:5173/src/main.jsx?t=1782157063786:83 [InteractionDiag] tool-changed @ 31857928ms from=survey-marker to=select
+[2026-06-23T04:41:29.798Z] [info] http://localhost:5173/src/main.jsx?t=1782157063786:83 [DrawCanvas p1] MOUNT — tool=survey-marker, isShape=true, isDrawingMode=false
+[2026-06-23T04:41:29.804Z] [info] http://localhost:5173/src/main.jsx?t=1782157063786:83 [DrawCanvas p1] shape effect — tool=survey-marker, isShape=true, isDrawingMode=false
+[2026-06-23T04:41:29.804Z] [info] http://localhost:5173/src/main.jsx?t=1782157063786:83 [InteractionDiag] tool-changed @ 31859892ms from=select to=survey-marker
+[2026-06-23T04:43:26.233Z] [verbose] http://localhost:5173/@vite/client:495 [vite] connecting...
+[2026-06-23T04:43:26.239Z] [info] main:0 === did-finish-load (navigation) http://localhost:5173/ ===
+[2026-06-23T04:43:26.243Z] [verbose] http://localhost:5173/@vite/client:618 [vite] connected.
+[2026-06-23T04:43:26.670Z] [info] http://localhost:5173/node_modules/.vite/deps/chunk-DSUIPI7G.js?v=8e4c3eb6:28429 %cDownload the React DevTools for a better development experience: https://reactjs.org/link/react-devtools font-weight:bold
+[2026-06-23T04:55:20.694Z] [verbose] http://localhost:5173/@vite/client:495 [vite] connecting...
+[2026-06-23T04:55:20.697Z] [info] main:0 === did-finish-load (navigation) http://localhost:5173/ ===
+[2026-06-23T04:55:20.700Z] [verbose] http://localhost:5173/@vite/client:618 [vite] connected.
+[2026-06-23T04:55:20.900Z] [info] http://localhost:5173/node_modules/.vite/deps/chunk-DSUIPI7G.js?v=8e4c3eb6:28429 %cDownload the React DevTools for a better development experience: https://reactjs.org/link/react-devtools font-weight:bold
+[2026-06-23T15:19:51.216Z] [info] main:0 === APP LAUNCH ===
+[2026-06-23T15:19:52.017Z] [verbose] http://localhost:5173/@vite/client:495 [vite] connecting...
+[2026-06-23T15:19:52.026Z] [verbose] http://localhost:5173/@vite/client:618 [vite] connected.
+[2026-06-23T15:19:55.407Z] [info] main:0 === did-finish-load (navigation) http://localhost:5173/ ===
+[2026-06-23T15:19:56.369Z] [info] http://localhost:5173/node_modules/.vite/deps/chunk-7MF2A3SU.js?v=3fc2b0ff:28429 %cDownload the React DevTools for a better development experience: https://reactjs.org/link/react-devtools font-weight:bold
+[2026-06-23T15:19:58.271Z] [info] http://localhost:5173/src/main.jsx:83 [OpenTiming] doc-click @ 7054ms clickable-link-test.pdf
+[2026-06-23T15:20:00.908Z] [info] http://localhost:5173/src/main.jsx:83 [OpenTiming] pdfid-resolve @ 9691ms clickable-link-test.pdf-23183
+[2026-06-23T15:20:00.909Z] [info] http://localhost:5173/src/main.jsx:83 %c[LOAD-TRACE +0ms] ════ OPEN START — clickable-link-test.pdf color:#2196F3;font-weight:bold
+[2026-06-23T15:20:00.909Z] [info] http://localhost:5173/src/main.jsx:83 %c[LOAD-TRACE +0ms] watchdog armed — will check in 20s color:#2196F3;font-weight:bold
+[2026-06-23T15:20:00.926Z] [info] http://localhost:5173/src/main.jsx:83 %c[LOAD-TRACE +18ms] configuring pdf.js worker (loadPdfjs) color:#2196F3;font-weight:bold
+[2026-06-23T15:20:00.926Z] [info] http://localhost:5173/src/main.jsx:83 %c[LOAD-TRACE +18ms] Local file to ArrayBuffer color:#2196F3;font-weight:bold
+[2026-06-23T15:20:00.927Z] [info] http://localhost:5173/src/main.jsx:83 %c[LOAD-TRACE +18ms] Starting PDF.js getDocument color:#2196F3;font-weight:bold
+[2026-06-23T15:20:00.926Z] [info] http://localhost:5173/src/main.jsx:83 %c[LOAD-TRACE +18ms] pdf.js worker ready color:#2196F3;font-weight:bold
+[2026-06-23T15:20:01.132Z] [info] http://localhost:5173/src/main.jsx:83 %c[LOAD-TRACE +224ms] Calculating page sizes color:#2196F3;font-weight:bold
+[2026-06-23T15:20:01.132Z] [info] http://localhost:5173/src/main.jsx:83 %c[LOAD-TRACE +223ms] PDF.js document parsed color:#2196F3;font-weight:bold
+[2026-06-23T15:20:01.138Z] [info] http://localhost:5173/src/main.jsx:83 %c[LOAD-TRACE +229ms] Page sizes calculated (1 pages) color:#2196F3;font-weight:bold
+[2026-06-23T15:20:01.138Z] [info] http://localhost:5173/src/main.jsx:83 %c[LOAD-TRACE +229ms] Importing PDF annotations color:#2196F3;font-weight:bold
+[2026-06-23T15:20:01.138Z] [info] http://localhost:5173/src/main.jsx:83 %c[LOAD-TRACE +229ms] PDF ready for rendering color:#2196F3;font-weight:bold
+[2026-06-23T15:20:01.138Z] [info] http://localhost:5173/src/main.jsx:83 %c[LOAD-TRACE +229ms] ✅ LOAD COMPLETE — lifting the Loading curtain color:#2196F3;font-weight:bold
+[2026-06-23T15:20:01.147Z] [info] http://localhost:5173/src/main.jsx:83 [InteractionDiag] interactive-ready @ 9931ms (isLoadingPDF→false; loading curtain lifted, toolbar+page now accept input)
+[2026-06-23T15:20:01.154Z] [info] http://localhost:5173/src/main.jsx:83 [OpenTiming] first-marks-painted @ 9937ms pdfId=clickable-link-test.pdf-23183
+[2026-06-23T15:20:03.245Z] [info] http://localhost:5173/src/main.jsx:83 [DrawCanvas p1] MOUNT — tool=survey-marker, isShape=true, isDrawingMode=false
+[2026-06-23T15:20:03.248Z] [info] http://localhost:5173/src/main.jsx:83 [DrawCanvas p1] shape effect — tool=survey-marker, isShape=true, isDrawingMode=false
+[2026-06-23T15:20:03.248Z] [info] http://localhost:5173/src/main.jsx:83 [InteractionDiag] tool-changed @ 12032ms from=pan to=survey-marker
+[2026-06-23T15:20:03.588Z] [info] http://localhost:5173/src/main.jsx:83 [PreviewDiag] sync push [object Object]
+[2026-06-23T15:48:18.468Z] [info] http://localhost:5173/src/main.jsx:83 [TextSearchDiag] document_key_ready {"at":"2026-06-23T15:48:18.466Z","documentKey":"explicit:e0686482-2307-4e3a-9dca-f3debc1fac84:clickable-link-test.pdf-23183:1","numPages":1}
+[2026-06-23T15:48:18.670Z] [info] http://localhost:5173/src/main.jsx:83 [TextSearchDiag] search_clear_empty_query {"at":"2026-06-23T15:48:18.670Z","previousResultCount":0,"previousIndex":-1,"documentKey":"explicit:e0686482-2307-4e3a-9dca-f3debc1fac84:clickable-link-test.pdf-23183:1"}
+[2026-06-23T15:48:43.139Z] [info] http://localhost:5173/src/main.jsx:83 [InteractionDiag] tool-changed @ 1731935ms from=survey-marker to=region-edit
+[2026-06-23T15:48:46.854Z] [info] http://localhost:5173/src/main.jsx:83 [DrawCanvas p1] MOUNT — tool=survey-marker, isShape=true, isDrawingMode=false
+[2026-06-23T15:48:46.859Z] [info] http://localhost:5173/src/main.jsx:83 [InteractionDiag] tool-changed @ 1735655ms from=region-edit to=survey-marker
+[2026-06-23T15:48:46.859Z] [info] http://localhost:5173/src/main.jsx:83 [DrawCanvas p1] shape effect — tool=survey-marker, isShape=true, isDrawingMode=false
+[2026-06-23T15:48:46.871Z] [info] http://localhost:5173/src/main.jsx:83 [InteractionDiag] tool-changed @ 1735667ms from=survey-marker to=region-edit
+[2026-06-23T15:49:01.514Z] [info] http://localhost:5173/src/main.jsx:83 [DrawCanvas p1] MOUNT — tool=survey-marker, isShape=true, isDrawingMode=false
+[2026-06-23T15:49:01.518Z] [info] http://localhost:5173/src/main.jsx:83 [DrawCanvas p1] shape effect — tool=survey-marker, isShape=true, isDrawingMode=false
+[2026-06-23T15:49:01.518Z] [info] http://localhost:5173/src/main.jsx:83 [InteractionDiag] tool-changed @ 1750314ms from=region-edit to=survey-marker
+[2026-06-23T15:49:10.822Z] [info] http://localhost:5173/src/main.jsx:83 [InteractionDiag] tool-changed @ 1759618ms from=survey-marker to=region-edit
+[2026-06-23T23:23:43.599Z] [info] http://localhost:5173/src/main.jsx:83 [DrawCanvas p1] MOUNT — tool=survey-marker, isShape=true, isDrawingMode=false
+[2026-06-23T23:23:43.629Z] [info] http://localhost:5173/src/main.jsx:83 [DrawCanvas p1] shape effect — tool=survey-marker, isShape=true, isDrawingMode=false
+[2026-06-23T23:23:43.629Z] [info] http://localhost:5173/src/main.jsx:83 [InteractionDiag] tool-changed @ 29032345ms from=region-edit to=survey-marker
+[2026-06-23T23:23:43.649Z] [info] http://localhost:5173/src/main.jsx:83 [InteractionDiag] tool-intent @ 29032368ms requested=survey-marker from=survey-marker
+[2026-06-23T23:23:44.679Z] [info] http://localhost:5173/src/main.jsx:83 [InteractionDiag] tool-intent @ 29033397ms requested=survey-marker from=survey-marker
+[2026-06-23T23:23:46.342Z] [info] http://localhost:5173/src/main.jsx:83 [InteractionDiag] tool-intent @ 29035061ms requested=survey-marker from=survey-marker
+[2026-06-23T23:23:48.368Z] [info] http://localhost:5173/src/main.jsx:83 [InteractionDiag] tool-changed @ 29037087ms from=survey-marker to=select
+[2026-06-23T23:23:51.962Z] [info] http://localhost:5173/src/main.jsx:83 [TextSearchDiag] document_key_ready {"at":"2026-06-23T23:23:51.961Z","documentKey":"explicit:e0686482-2307-4e3a-9dca-f3debc1fac84:clickable-link-test.pdf-23183:1","numPages":1}
+[2026-06-23T23:23:52.268Z] [info] http://localhost:5173/src/main.jsx:83 [TextSearchDiag] search_clear_empty_query {"at":"2026-06-23T23:23:52.268Z","previousResultCount":0,"previousIndex":-1,"documentKey":"explicit:e0686482-2307-4e3a-9dca-f3debc1fac84:clickable-link-test.pdf-23183:1"}
+[2026-06-23T23:23:58.230Z] [info] http://localhost:5173/src/main.jsx:83 [DrawCanvas p1] MOUNT — tool=survey-marker, isShape=true, isDrawingMode=false
+[2026-06-23T23:23:58.234Z] [info] http://localhost:5173/src/main.jsx:83 [InteractionDiag] tool-changed @ 29046953ms from=select to=survey-marker
+[2026-06-23T23:23:58.234Z] [info] http://localhost:5173/src/main.jsx:83 [DrawCanvas p1] shape effect — tool=survey-marker, isShape=true, isDrawingMode=false
+[2026-06-23T23:24:00.583Z] [info] http://localhost:5173/src/main.jsx:83 [InteractionDiag] tool-changed @ 29049302ms from=survey-marker to=select
+[2026-06-24T11:50:50.766Z] [error] http://localhost:5173/src/main.jsx:83 Error fetching subscription tier: [object Object]
+[2026-06-24T11:59:45.788Z] [error] http://localhost:5173/src/main.jsx:83 Error fetching subscription tier: [object Object]
+[2026-06-24T12:04:45.784Z] [error] http://localhost:5173/src/main.jsx:83 Error fetching subscription tier: [object Object]
+[2026-06-24T12:09:45.773Z] [error] http://localhost:5173/src/main.jsx:83 Error fetching subscription tier: [object Object]
+[2026-06-24T20:38:43.265Z] [info] main:0 === APP LAUNCH ===
+[2026-06-24T20:38:44.016Z] [verbose] http://localhost:5173/@vite/client:495 [vite] connecting...
+[2026-06-24T20:38:44.510Z] [info] main:0 === did-finish-load (navigation) http://localhost:5173/ ===
+[2026-06-24T20:38:44.524Z] [verbose] http://localhost:5173/@vite/client:618 [vite] connected.
+[2026-06-24T20:38:46.526Z] [info] http://localhost:5173/node_modules/.vite/deps/chunk-7MF2A3SU.js?v=41b8f4af:28429 %cDownload the React DevTools for a better development experience: https://reactjs.org/link/react-devtools font-weight:bold
+[2026-06-24T20:38:46.870Z] [error] http://localhost:5173/src/main.jsx:83 TypeError: Failed to fetch
+[2026-06-24T20:38:46.891Z] [verbose] http://localhost:5173/@vite/client:495 [vite] connecting...
+[2026-06-24T20:38:46.893Z] [info] main:0 === did-finish-load (navigation) http://localhost:5173/ ===
+[2026-06-24T20:38:46.896Z] [verbose] http://localhost:5173/@vite/client:618 [vite] connected.
+[2026-06-24T20:38:47.453Z] [info] http://localhost:5173/node_modules/.vite/deps/chunk-7MF2A3SU.js?v=3b483c4e:28429 %cDownload the React DevTools for a better development experience: https://reactjs.org/link/react-devtools font-weight:bold
+[2026-06-24T20:39:25.659Z] [info] http://localhost:5173/src/main.jsx:83 [OpenTiming] doc-click @ 38816ms clickable-link-test.pdf
+[2026-06-24T20:39:27.694Z] [info] http://localhost:5173/src/main.jsx:83 [OpenTiming] pdfid-resolve @ 40851ms clickable-link-test.pdf-23183
+[2026-06-24T20:39:27.695Z] [info] http://localhost:5173/src/main.jsx:83 %c[LOAD-TRACE +0ms] ════ OPEN START — clickable-link-test.pdf color:#2196F3;font-weight:bold
+[2026-06-24T20:39:27.695Z] [info] http://localhost:5173/src/main.jsx:83 %c[LOAD-TRACE +0ms] watchdog armed — will check in 20s color:#2196F3;font-weight:bold
+[2026-06-24T20:39:27.710Z] [info] http://localhost:5173/src/main.jsx:83 %c[LOAD-TRACE +16ms] Local file to ArrayBuffer color:#2196F3;font-weight:bold
+[2026-06-24T20:39:27.710Z] [info] http://localhost:5173/src/main.jsx:83 %c[LOAD-TRACE +16ms] configuring pdf.js worker (loadPdfjs) color:#2196F3;font-weight:bold
+[2026-06-24T20:39:27.710Z] [info] http://localhost:5173/src/main.jsx:83 %c[LOAD-TRACE +16ms] Starting PDF.js getDocument color:#2196F3;font-weight:bold
+[2026-06-24T20:39:27.710Z] [info] http://localhost:5173/src/main.jsx:83 %c[LOAD-TRACE +16ms] pdf.js worker ready color:#2196F3;font-weight:bold
+[2026-06-24T20:39:27.803Z] [info] http://localhost:5173/src/main.jsx:83 %c[LOAD-TRACE +108ms] PDF.js document parsed color:#2196F3;font-weight:bold
+[2026-06-24T20:39:27.803Z] [info] http://localhost:5173/src/main.jsx:83 %c[LOAD-TRACE +108ms] Calculating page sizes color:#2196F3;font-weight:bold
+[2026-06-24T20:39:27.807Z] [info] http://localhost:5173/src/main.jsx:83 %c[LOAD-TRACE +113ms] Page sizes calculated (1 pages) color:#2196F3;font-weight:bold
+[2026-06-24T20:39:27.808Z] [info] http://localhost:5173/src/main.jsx:83 %c[LOAD-TRACE +113ms] ✅ LOAD COMPLETE — lifting the Loading curtain color:#2196F3;font-weight:bold
+[2026-06-24T20:39:27.807Z] [info] http://localhost:5173/src/main.jsx:83 %c[LOAD-TRACE +113ms] PDF ready for rendering color:#2196F3;font-weight:bold
+[2026-06-24T20:39:27.807Z] [info] http://localhost:5173/src/main.jsx:83 %c[LOAD-TRACE +113ms] Importing PDF annotations color:#2196F3;font-weight:bold
+[2026-06-24T20:39:27.816Z] [info] http://localhost:5173/src/main.jsx:83 [InteractionDiag] interactive-ready @ 40974ms (isLoadingPDF→false; loading curtain lifted, toolbar+page now accept input)
+[2026-06-24T20:39:27.827Z] [info] http://localhost:5173/src/main.jsx:83 [OpenTiming] first-marks-painted @ 40984ms pdfId=clickable-link-test.pdf-23183
+[2026-06-24T20:39:30.153Z] [info] http://localhost:5173/src/main.jsx:83 [DrawCanvas p1] MOUNT — tool=survey-marker, isShape=true, isDrawingMode=false
+[2026-06-24T20:39:30.157Z] [info] http://localhost:5173/src/main.jsx:83 [DrawCanvas p1] shape effect — tool=survey-marker, isShape=true, isDrawingMode=false
+[2026-06-24T20:39:30.157Z] [info] http://localhost:5173/src/main.jsx:83 [InteractionDiag] tool-changed @ 43315ms from=pan to=survey-marker
+[2026-06-24T20:39:30.343Z] [info] http://localhost:5173/src/main.jsx:83 [PreviewDiag] sync push [object Object]
+[2026-06-24T20:39:47.042Z] [info] http://localhost:5173/src/main.jsx:83 [PreviewDiag] sync push [object Object]
+[2026-06-24T20:39:55.234Z] [info] http://localhost:5173/src/services/buildScopeImportPlans.js:43 [ImportPlan] {"scopeKey":"module-1777061292704-0.8552080516518852-cat-1777061339281-0.8845504114803249","storedCount":0,"rowCount":0,"counts":{},"candidateDeletes":0,"rows":[]}
+[2026-06-24T20:39:55.235Z] [info] http://localhost:5173/src/services/buildScopeImportPlans.js:43 [ImportPlan] {"scopeKey":"module-1777061292704-0.8552080516518852-cat-1777061339281-0.25133314375357063","storedCount":0,"rowCount":0,"counts":{},"candidateDeletes":0,"rows":[]}
+[2026-06-24T20:39:55.235Z] [info] http://localhost:5173/src/services/buildScopeImportPlans.js:43 [ImportPlan] {"scopeKey":"module-1777061284093-0.41898282043453206-cat-1777061305582-0.8135121775116416","storedCount":1,"rowCount":1,"counts":{"match":1},"candidateDeletes":0,"rows":[{"row":1,"decision":"match","action":"apply","rowIdHash":"aaf0ea70"}]}
+[2026-06-24T20:39:55.235Z] [info] http://localhost:5173/src/services/buildScopeImportPlans.js:43 [ImportPlan] {"scopeKey":"module-1777061284093-0.41898282043453206-cat-1777061311808-0.602779455896751","storedCount":1,"rowCount":1,"counts":{"match":1},"candidateDeletes":0,"rows":[{"row":1,"decision":"match","action":"apply","rowIdHash":"9bc4c8d9"}]}
+[2026-06-24T20:39:57.279Z] [info] http://localhost:5173/src/main.jsx:83 [PreviewDiag] sync push [object Object]
+[2026-06-24T20:40:07.927Z] [info] http://localhost:5173/src/services/buildScopeImportPlans.js:43 [ImportPlan] {"scopeKey":"module-1777061292704-0.8552080516518852-cat-1777061339281-0.25133314375357063","storedCount":0,"rowCount":0,"counts":{},"candidateDeletes":0,"rows":[]}
+[2026-06-24T20:40:07.927Z] [info] http://localhost:5173/src/services/buildScopeImportPlans.js:43 [ImportPlan] {"scopeKey":"module-1777061292704-0.8552080516518852-cat-1777061339281-0.8845504114803249","storedCount":0,"rowCount":0,"counts":{},"candidateDeletes":0,"rows":[]}
+[2026-06-24T20:40:07.928Z] [info] http://localhost:5173/src/services/buildScopeImportPlans.js:43 [ImportPlan] {"scopeKey":"module-1777061284093-0.41898282043453206-cat-1777061305582-0.8135121775116416","storedCount":1,"rowCount":1,"counts":{"match":1},"candidateDeletes":0,"rows":[{"row":1,"decision":"match","action":"apply","rowIdHash":"aaf0ea70"}]}
+[2026-06-24T20:40:07.928Z] [info] http://localhost:5173/src/services/buildScopeImportPlans.js:43 [ImportPlan] {"scopeKey":"module-1777061284093-0.41898282043453206-cat-1777061311808-0.602779455896751","storedCount":1,"rowCount":1,"counts":{"match":1},"candidateDeletes":0,"rows":[{"row":1,"decision":"match","action":"apply","rowIdHash":"9bc4c8d9"}]}
+[2026-06-24T20:40:09.983Z] [info] http://localhost:5173/src/main.jsx:83 [PreviewDiag] sync push [object Object]
+[2026-06-24T20:40:21.414Z] [error] http://localhost:5173/src/main.jsx:83 Failed to auto-sync from Excel: Error: Error invoking remote method 'fs:readFile': Error: ENOENT: no such file or directory, open '/Users/isaiahcalvo/Desktop/Security_export.xlsx'
+[2026-06-24T20:45:55.784Z] [verbose] http://localhost:5173/@vite/client:495 [vite] connecting...
+[2026-06-24T20:45:55.787Z] [info] main:0 === did-finish-load (navigation) http://localhost:5173/ ===
+[2026-06-24T20:45:55.790Z] [verbose] http://localhost:5173/@vite/client:618 [vite] connected.
+[2026-06-24T20:45:57.248Z] [info] http://localhost:5173/node_modules/.vite/deps/chunk-7MF2A3SU.js?v=3b483c4e:28429 %cDownload the React DevTools for a better development experience: https://reactjs.org/link/react-devtools font-weight:bold
+[2026-06-24T20:50:32.270Z] [verbose] http://localhost:5173/@vite/client:495 [vite] connecting...
+[2026-06-24T20:50:32.272Z] [info] main:0 === did-finish-load (navigation) http://localhost:5173/ ===
+[2026-06-24T20:50:32.273Z] [verbose] http://localhost:5173/@vite/client:618 [vite] connected.
+[2026-06-24T20:50:34.047Z] [info] http://localhost:5173/node_modules/.vite/deps/chunk-7MF2A3SU.js?v=3b483c4e:28429 %cDownload the React DevTools for a better development experience: https://reactjs.org/link/react-devtools font-weight:bold
+[2026-06-24T22:01:01.805Z] [error] http://localhost:5173/src/main.jsx:83 Error fetching subscription tier: [object Object]
+[2026-06-24T22:01:12.166Z] [error] http://localhost:5173/src/main.jsx:83 Error fetching subscription tier: [object Object]
+[2026-06-25T12:25:51.122Z] [error] http://localhost:5173/src/main.jsx:83 Error fetching subscription tier: [object Object]
+[2026-06-25T12:34:46.120Z] [error] http://localhost:5173/src/main.jsx:83 Error fetching subscription tier: [object Object]
+[2026-06-25T12:39:46.128Z] [error] http://localhost:5173/src/main.jsx:83 Error fetching subscription tier: [object Object]
+[2026-06-25T21:44:46.258Z] [error] http://localhost:5173/src/main.jsx:83 Error fetching subscription tier: [object Object]
+[2026-06-25T21:49:46.242Z] [error] http://localhost:5173/src/main.jsx:83 Error fetching subscription tier: [object Object]
+[2026-06-25T21:54:46.224Z] [error] http://localhost:5173/src/main.jsx:83 Error fetching subscription tier: [object Object]
+[2026-06-25T21:59:46.234Z] [error] http://localhost:5173/src/main.jsx:83 Error fetching subscription tier: [object Object]
+[2026-06-25T22:04:46.235Z] [error] http://localhost:5173/src/main.jsx:83 Error fetching subscription tier: [object Object]
+[2026-06-25T23:43:30.494Z] [verbose] http://localhost:5173/@vite/client:495 [vite] connecting...
+[2026-06-25T23:43:30.526Z] [info] main:0 === did-finish-load (navigation) http://localhost:5173/ ===
+[2026-06-25T23:43:30.535Z] [verbose] http://localhost:5173/@vite/client:618 [vite] connected.
+[2026-06-25T23:43:31.591Z] [info] http://localhost:5173/node_modules/.vite/deps/chunk-7MF2A3SU.js?v=3b483c4e:28429 %cDownload the React DevTools for a better development experience: https://reactjs.org/link/react-devtools font-weight:bold
+[2026-06-26T05:13:33.758Z] [info] http://localhost:5173/src/main.jsx?t=1782360666171:83 [OpenTiming] doc-click @ 19804304ms Benjamin Franklin Elementary.pdf
+[2026-06-26T05:13:33.878Z] [info] http://localhost:5173/src/main.jsx?t=1782360666171:83 [OpenTiming] doc-click @ 19804426ms Benjamin Franklin Elementary.pdf
+[2026-06-26T05:13:36.276Z] [info] http://localhost:5173/src/main.jsx?t=1782360666171:83 [OpenTiming] pdfid-resolve @ 19806825ms Benjamin Franklin Elementary.pdf-2401034
+[2026-06-26T05:13:36.277Z] [info] http://localhost:5173/src/main.jsx?t=1782360666171:83 %c[LOAD-TRACE +0ms] ════ OPEN START — Benjamin Franklin Elementary.pdf color:#2196F3;font-weight:bold
+[2026-06-26T05:13:36.283Z] [info] http://localhost:5173/src/main.jsx?t=1782360666171:83 %c[LOAD-TRACE +1ms] watchdog armed — will check in 20s color:#2196F3;font-weight:bold
+[2026-06-26T05:13:36.477Z] [info] http://localhost:5173/src/main.jsx?t=1782360666171:83 %c[LOAD-TRACE +199ms] Local file to ArrayBuffer color:#2196F3;font-weight:bold
+[2026-06-26T05:13:36.481Z] [info] http://localhost:5173/src/main.jsx?t=1782360666171:83 %c[LOAD-TRACE +203ms] configuring pdf.js worker (loadPdfjs) color:#2196F3;font-weight:bold
+[2026-06-26T05:13:36.481Z] [info] http://localhost:5173/src/main.jsx?t=1782360666171:83 %c[LOAD-TRACE +203ms] pdf.js worker ready color:#2196F3;font-weight:bold
+[2026-06-26T05:13:36.481Z] [info] http://localhost:5173/src/main.jsx?t=1782360666171:83 %c[LOAD-TRACE +203ms] Starting PDF.js getDocument color:#2196F3;font-weight:bold
+[2026-06-26T05:13:37.149Z] [warning] http://localhost:5173/src/main.jsx?t=1782360666171:83 [crdtBackfill] cutover sealed but Y.Map < legacy count — re-running import loop to recover {"yMapSize":0,"legacyCount":0}
+[2026-06-26T05:13:37.278Z] [info] http://localhost:5173/src/main.jsx?t=1782360666171:83 %c[LOAD-TRACE +1002ms] PDF.js document parsed color:#2196F3;font-weight:bold
+[2026-06-26T05:13:37.766Z] [info] http://localhost:5173/src/main.jsx?t=1782360666171:83 %c[LOAD-TRACE +1490ms] Calculating page sizes color:#2196F3;font-weight:bold
+[2026-06-26T05:13:37.788Z] [info] http://localhost:5173/src/main.jsx?t=1782360666171:83 %c[LOAD-TRACE +1509ms] Page sizes calculated (4 pages) color:#2196F3;font-weight:bold
+[2026-06-26T05:13:37.788Z] [info] http://localhost:5173/src/main.jsx?t=1782360666171:83 %c[LOAD-TRACE +1509ms] Importing PDF annotations color:#2196F3;font-weight:bold
+[2026-06-26T05:13:37.788Z] [info] http://localhost:5173/src/main.jsx?t=1782360666171:83 %c[LOAD-TRACE +1510ms] PDF ready for rendering color:#2196F3;font-weight:bold
+[2026-06-26T05:13:37.788Z] [info] http://localhost:5173/src/main.jsx?t=1782360666171:83 %c[LOAD-TRACE +1510ms] ✅ LOAD COMPLETE — lifting the Loading curtain color:#2196F3;font-weight:bold
+[2026-06-26T05:13:37.812Z] [info] http://localhost:5173/src/main.jsx?t=1782360666171:83 [InteractionDiag] interactive-ready @ 19808362ms (isLoadingPDF→false; loading curtain lifted, toolbar+page now accept input)
+[2026-06-26T05:13:38.416Z] [info] http://localhost:5173/src/main.jsx?t=1782360666171:83 [OpenTiming] first-marks-painted @ 19808964ms pdfId=Benjamin Franklin Elementary.pdf-2401034
+[2026-06-26T05:14:13.117Z] [info] http://localhost:5173/src/main.jsx?t=1782360666171:83 [TextSearchDiag] document_key_ready {"at":"2026-06-26T05:14:13.115Z","documentKey":"explicit:49962c53-465c-4b82-a497-ca568614ea41:Benjamin Franklin Elementary.pdf-2401034:4","numPages":4}
+[2026-06-26T05:14:13.317Z] [info] http://localhost:5173/src/main.jsx?t=1782360666171:83 [TextSearchDiag] search_clear_empty_query {"at":"2026-06-26T05:14:13.316Z","previousResultCount":0,"previousIndex":-1,"documentKey":"explicit:49962c53-465c-4b82-a497-ca568614ea41:Benjamin Franklin Elementary.pdf-2401034:4"}
+[2026-06-26T05:14:17.641Z] [info] http://localhost:5173/src/main.jsx?t=1782360666171:83 [DrawCanvas p1] MOUNT — tool=survey-marker, isShape=true, isDrawingMode=false
+[2026-06-26T05:14:17.661Z] [info] http://localhost:5173/src/main.jsx?t=1782360666171:83 [DrawCanvas p1] shape effect — tool=survey-marker, isShape=true, isDrawingMode=false
+[2026-06-26T05:14:17.704Z] [info] http://localhost:5173/src/main.jsx?t=1782360666171:83 [DrawCanvas p2] MOUNT — tool=survey-marker, isShape=true, isDrawingMode=false
+[2026-06-26T05:14:17.729Z] [info] http://localhost:5173/src/main.jsx?t=1782360666171:83 [DrawCanvas p2] shape effect — tool=survey-marker, isShape=true, isDrawingMode=false
+[2026-06-26T05:14:17.741Z] [info] http://localhost:5173/src/main.jsx?t=1782360666171:83 [DrawCanvas p3] MOUNT — tool=survey-marker, isShape=true, isDrawingMode=false
+[2026-06-26T05:14:17.787Z] [info] http://localhost:5173/src/main.jsx?t=1782360666171:83 [DrawCanvas p3] shape effect — tool=survey-marker, isShape=true, isDrawingMode=false
+[2026-06-26T05:14:17.826Z] [info] http://localhost:5173/src/main.jsx?t=1782360666171:83 [DrawCanvas p4] MOUNT — tool=survey-marker, isShape=true, isDrawingMode=false
+[2026-06-26T05:14:17.947Z] [info] http://localhost:5173/src/main.jsx?t=1782360666171:83 [DrawCanvas p4] shape effect — tool=survey-marker, isShape=true, isDrawingMode=false
+[2026-06-26T05:14:17.950Z] [info] http://localhost:5173/src/main.jsx?t=1782360666171:83 [InteractionDiag] tool-changed @ 19848499ms from=pan to=survey-marker
+[2026-06-26T05:14:20.449Z] [info] http://localhost:5173/src/main.jsx?t=1782360666171:83 [InteractionDiag] viewer-pointer-down @ 19850998ms tool=survey-marker button=0 target=canvas
+[2026-06-26T05:14:20.465Z] [info] http://localhost:5173/src/main.jsx?t=1782360666171:83 [DrawCanvas p1] shape mousedown at (408.3, 307.8), tool=survey-marker
+[2026-06-26T05:14:20.466Z] [info] http://localhost:5173/src/main.jsx?t=1782360666171:83 [PreviewDiag] start [object Object]
+[2026-06-26T05:14:20.489Z] [info] http://localhost:5173/src/main.jsx?t=1782360666171:83 [PreviewDiag] preview [object Object]
+[2026-06-26T05:14:21.035Z] [info] http://localhost:5173/src/main.jsx?t=1782360666171:83 [PreviewDiag] preview [object Object]
+[2026-06-26T05:14:21.255Z] [info] http://localhost:5173/src/main.jsx?t=1782360666171:83 [PreviewDiag] preview [object Object]
+[2026-06-26T05:14:22.250Z] [info] http://localhost:5173/src/main.jsx?t=1782360666171:83 [InteractionDiag] pointer-end @ 19852799ms tool=survey-marker
+[2026-06-26T05:14:22.253Z] [info] http://localhost:5173/src/main.jsx?t=1782360666171:83 [DrawCanvas p1] shape mouseup — tool=survey-marker, hasSize=true [object Object]
+[2026-06-26T05:14:22.253Z] [info] http://localhost:5173/src/main.jsx?t=1782360666171:83 [PreviewDiag] final commit [object Object]
+[2026-06-26T05:14:22.253Z] [info] http://localhost:5173/src/main.jsx?t=1782360666171:83 [PreviewDiag] pointer release [object Object]
+[2026-06-26T05:14:23.655Z] [info] http://localhost:5173/src/main.jsx?t=1782360666171:83 [PreviewDiag] summary survey-marker-draw started, 73 preview frames, 0 sync writes during drag, 0 sync deferrals during drag, 0 backup writes during drag, 1 commit on release, 0 sync pushes after release, 0 backup writes after release [object Object]
+[2026-06-26T05:14:25.769Z] [info] http://localhost:5173/src/main.jsx?t=1782360666171:83 [InteractionDiag] viewer-pointer-down @ 19856319ms tool=survey-marker button=0 target=canvas
+[2026-06-26T05:14:25.779Z] [info] http://localhost:5173/src/main.jsx?t=1782360666171:83 [DrawCanvas p1] shape mousedown at (495.0, 367.6), tool=survey-marker
+[2026-06-26T05:14:25.783Z] [info] http://localhost:5173/src/main.jsx?t=1782360666171:83 [PreviewDiag] start [object Object]
+[2026-06-26T05:14:25.918Z] [info] http://localhost:5173/src/main.jsx?t=1782360666171:83 [PreviewDiag] preview [object Object]
+[2026-06-26T05:14:26.163Z] [info] http://localhost:5173/src/main.jsx?t=1782360666171:83 [PreviewDiag] preview [object Object]
+[2026-06-26T05:14:26.576Z] [info] http://localhost:5173/src/main.jsx?t=1782360666171:83 [PreviewDiag] preview [object Object]
+[2026-06-26T05:14:27.108Z] [info] http://localhost:5173/src/main.jsx?t=1782360666171:83 [InteractionDiag] pointer-end @ 19857657ms tool=survey-marker
+[2026-06-26T05:14:27.109Z] [info] http://localhost:5173/src/main.jsx?t=1782360666171:83 [PreviewDiag] final commit [object Object]
+[2026-06-26T05:14:27.109Z] [info] http://localhost:5173/src/main.jsx?t=1782360666171:83 [PreviewDiag] pointer release [object Object]
+[2026-06-26T05:14:27.109Z] [info] http://localhost:5173/src/main.jsx?t=1782360666171:83 [DrawCanvas p1] shape mouseup — tool=survey-marker, hasSize=true [object Object]
+[2026-06-26T05:14:28.509Z] [info] http://localhost:5173/src/main.jsx?t=1782360666171:83 [PreviewDiag] summary survey-marker-draw started, 64 preview frames, 0 sync writes during drag, 0 sync deferrals during drag, 0 backup writes during drag, 1 commit on release, 0 sync pushes after release, 0 backup writes after release [object Object]
+[2026-06-26T05:14:32.642Z] [info] http://localhost:5173/src/main.jsx?t=1782360666171:83 [PreviewDiag] sync push [object Object]
+[2026-06-26T05:14:41.626Z] [info] http://localhost:5173/src/main.jsx?t=1782360666171:83 [PreviewDiag] sync push [object Object]
+[2026-06-26T05:14:46.850Z] [info] http://localhost:5173/src/main.jsx?t=1782360666171:83 [InteractionDiag] tool-intent @ 19877399ms requested=survey-marker from=survey-marker
+[2026-06-26T05:14:47.533Z] [info] http://localhost:5173/src/main.jsx?t=1782360666171:83 [InteractionDiag] tool-intent @ 19878082ms requested=survey-marker from=survey-marker
+[2026-06-26T05:14:48.769Z] [info] http://localhost:5173/src/main.jsx?t=1782360666171:83 [InteractionDiag] tool-intent @ 19879316ms requested=survey-marker from=survey-marker
+[2026-06-26T05:14:49.534Z] [info] http://localhost:5173/src/main.jsx?t=1782360666171:83 [InteractionDiag] tool-intent @ 19880083ms requested=survey-marker from=survey-marker
+[2026-06-26T05:21:04.093Z] [verbose] http://localhost:5173/@vite/client:495 [vite] connecting...
+[2026-06-26T05:21:04.114Z] [info] main:0 === did-finish-load (navigation) http://localhost:5173/ ===
+[2026-06-26T05:21:04.167Z] [verbose] http://localhost:5173/@vite/client:618 [vite] connected.
+[2026-06-26T05:21:05.524Z] [info] http://localhost:5173/node_modules/.vite/deps/chunk-7MF2A3SU.js?v=3b483c4e:28429 %cDownload the React DevTools for a better development experience: https://reactjs.org/link/react-devtools font-weight:bold
+[2026-06-26T05:35:33.174Z] [verbose] http://localhost:5173/@vite/client:495 [vite] connecting...
+[2026-06-26T05:35:33.193Z] [info] main:0 === did-finish-load (navigation) http://localhost:5173/ ===
+[2026-06-26T05:35:33.360Z] [verbose] http://localhost:5173/@vite/client:618 [vite] connected.
+[2026-06-26T05:35:33.921Z] [info] http://localhost:5173/node_modules/.vite/deps/chunk-7MF2A3SU.js?v=3b483c4e:28429 %cDownload the React DevTools for a better development experience: https://reactjs.org/link/react-devtools font-weight:bold
+[2026-06-26T05:54:03.864Z] [info] http://localhost:5173/src/main.jsx?t=1782360666171:83 [OpenTiming] doc-click @ 1111414ms Benjamin Franklin Elementary.pdf
+[2026-06-26T05:54:06.480Z] [warning] http://localhost:5173/src/main.jsx?t=1782360666171:83 [crdtBackfill] cutover sealed but Y.Map < legacy count — re-running import loop to recover {"yMapSize":0,"legacyCount":0}
+[2026-06-26T05:54:07.988Z] [info] http://localhost:5173/src/main.jsx?t=1782360666171:83 [OpenTiming] pdfid-resolve @ 1115540ms Benjamin Franklin Elementary.pdf-2401034
+[2026-06-26T05:54:07.989Z] [info] http://localhost:5173/src/main.jsx?t=1782360666171:83 %c[LOAD-TRACE +0ms] ════ OPEN START — Benjamin Franklin Elementary.pdf color:#2196F3;font-weight:bold
+[2026-06-26T05:54:07.989Z] [info] http://localhost:5173/src/main.jsx?t=1782360666171:83 %c[LOAD-TRACE +0ms] watchdog armed — will check in 20s color:#2196F3;font-weight:bold
+[2026-06-26T05:54:08.261Z] [info] http://localhost:5173/src/main.jsx?t=1782360666171:83 %c[LOAD-TRACE +271ms] Local file to ArrayBuffer color:#2196F3;font-weight:bold
+[2026-06-26T05:54:08.263Z] [info] http://localhost:5173/src/main.jsx?t=1782360666171:83 %c[LOAD-TRACE +273ms] configuring pdf.js worker (loadPdfjs) color:#2196F3;font-weight:bold
+[2026-06-26T05:54:08.345Z] [info] http://localhost:5173/src/main.jsx?t=1782360666171:83 %c[LOAD-TRACE +355ms] pdf.js worker ready color:#2196F3;font-weight:bold
+[2026-06-26T05:54:08.346Z] [info] http://localhost:5173/src/main.jsx?t=1782360666171:83 %c[LOAD-TRACE +355ms] Starting PDF.js getDocument color:#2196F3;font-weight:bold
+[2026-06-26T05:54:08.831Z] [info] http://localhost:5173/src/main.jsx?t=1782360666171:83 %c[LOAD-TRACE +831ms] PDF.js document parsed color:#2196F3;font-weight:bold
+[2026-06-26T05:54:09.336Z] [info] http://localhost:5173/src/main.jsx?t=1782360666171:83 %c[LOAD-TRACE +1346ms] Calculating page sizes color:#2196F3;font-weight:bold
+[2026-06-26T05:54:09.364Z] [info] http://localhost:5173/src/main.jsx?t=1782360666171:83 %c[LOAD-TRACE +1374ms] Page sizes calculated (4 pages) color:#2196F3;font-weight:bold
+[2026-06-26T05:54:09.366Z] [info] http://localhost:5173/src/main.jsx?t=1782360666171:83 %c[LOAD-TRACE +1375ms] Importing PDF annotations color:#2196F3;font-weight:bold
+[2026-06-26T05:54:09.383Z] [info] http://localhost:5173/src/main.jsx?t=1782360666171:83 %c[LOAD-TRACE +1375ms] PDF ready for rendering color:#2196F3;font-weight:bold
+[2026-06-26T05:54:09.387Z] [info] http://localhost:5173/src/main.jsx?t=1782360666171:83 %c[LOAD-TRACE +1376ms] ✅ LOAD COMPLETE — lifting the Loading curtain color:#2196F3;font-weight:bold
+[2026-06-26T05:54:09.454Z] [info] http://localhost:5173/src/main.jsx?t=1782360666171:83 [InteractionDiag] interactive-ready @ 1117005ms (isLoadingPDF→false; loading curtain lifted, toolbar+page now accept input)
+[2026-06-26T05:54:09.685Z] [info] http://localhost:5173/src/main.jsx?t=1782360666171:83 [OpenTiming] first-marks-painted @ 1117236ms pdfId=Benjamin Franklin Elementary.pdf-2401034
+[2026-06-26T05:54:10.071Z] [info] http://localhost:5173/src/main.jsx?t=1782360666171:83 [InteractionDiag] tool-intent @ 1117621ms requested=pen from=pan
+[2026-06-26T05:54:10.100Z] [info] http://localhost:5173/src/main.jsx?t=1782360666171:83 [DrawCanvas p1] MOUNT — tool=pen, isShape=false, isDrawingMode=true
+[2026-06-26T05:54:10.117Z] [info] http://localhost:5173/src/main.jsx?t=1782360666171:83 [DrawCanvas p1] shape effect — tool=pen, isShape=false, isDrawingMode=true
+[2026-06-26T05:54:10.124Z] [info] http://localhost:5173/src/main.jsx?t=1782360666171:83 [DrawCanvas p2] MOUNT — tool=pen, isShape=false, isDrawingMode=true
+[2026-06-26T05:54:10.158Z] [info] http://localhost:5173/src/main.jsx?t=1782360666171:83 [DrawCanvas p2] shape effect — tool=pen, isShape=false, isDrawingMode=true
+[2026-06-26T05:54:10.166Z] [info] http://localhost:5173/src/main.jsx?t=1782360666171:83 [DrawCanvas p3] MOUNT — tool=pen, isShape=false, isDrawingMode=true
+[2026-06-26T05:54:10.183Z] [info] http://localhost:5173/src/main.jsx?t=1782360666171:83 [DrawCanvas p3] shape effect — tool=pen, isShape=false, isDrawingMode=true
+[2026-06-26T05:54:10.200Z] [info] http://localhost:5173/src/main.jsx?t=1782360666171:83 [DrawCanvas p4] MOUNT — tool=pen, isShape=false, isDrawingMode=true
+[2026-06-26T05:54:10.224Z] [info] http://localhost:5173/src/main.jsx?t=1782360666171:83 [DrawCanvas p4] shape effect — tool=pen, isShape=false, isDrawingMode=true
+[2026-06-26T05:54:10.224Z] [info] http://localhost:5173/src/main.jsx?t=1782360666171:83 [InteractionDiag] tool-changed @ 1117775ms from=pan to=pen
+[2026-06-26T05:54:10.709Z] [info] http://localhost:5173/src/main.jsx?t=1782360666171:83 [InteractionDiag] viewer-pointer-down @ 1118259ms tool=pen button=0 target=canvas
+[2026-06-26T05:54:10.713Z] [info] http://localhost:5173/src/main.jsx?t=1782360666171:83 [PreviewDiag] start [object Object]
+[2026-06-26T05:54:10.788Z] [info] http://localhost:5173/src/main.jsx?t=1782360666171:83 [InteractionDiag] pointer-end @ 1118340ms tool=pen
+[2026-06-26T05:54:10.797Z] [info] http://localhost:5173/src/main.jsx?t=1782360666171:83 [PreviewDiag] pointer release [object Object]
+[2026-06-26T05:54:10.804Z] [info] http://localhost:5173/src/main.jsx?t=1782360666171:83 [PreviewDiag] final commit [object Object]
+[2026-06-26T05:54:11.257Z] [info] http://localhost:5173/src/main.jsx?t=1782360666171:83 [PreviewDiag] preview [object Object]
+[2026-06-26T05:54:11.348Z] [info] http://localhost:5173/src/main.jsx?t=1782360666171:83 [InteractionDiag] viewer-pointer-down @ 1118900ms tool=pen button=0 target=canvas
+[2026-06-26T05:54:11.349Z] [info] http://localhost:5173/src/main.jsx?t=1782360666171:83 [PreviewDiag] start [object Object]
+[2026-06-26T05:54:11.351Z] [info] http://localhost:5173/src/main.jsx?t=1782360666171:83 [PreviewDiag] preview [object Object]
+[2026-06-26T05:54:11.386Z] [info] http://localhost:5173/src/main.jsx?t=1782360666171:83 [InteractionDiag] pointer-end @ 1118938ms tool=pen
+[2026-06-26T05:54:11.390Z] [info] http://localhost:5173/src/main.jsx?t=1782360666171:83 [PreviewDiag] pointer release [object Object]
+[2026-06-26T05:54:11.390Z] [info] http://localhost:5173/src/main.jsx?t=1782360666171:83 [PreviewDiag] final commit [object Object]
+[2026-06-26T05:54:11.779Z] [info] http://localhost:5173/src/main.jsx?t=1782360666171:83 [InteractionDiag] viewer-pointer-down @ 1119331ms tool=pen button=0 target=canvas
+[2026-06-26T05:54:11.780Z] [info] http://localhost:5173/src/main.jsx?t=1782360666171:83 [PreviewDiag] start [object Object]
+[2026-06-26T05:54:11.783Z] [info] http://localhost:5173/src/main.jsx?t=1782360666171:83 [PreviewDiag] preview [object Object]
+[2026-06-26T05:54:11.838Z] [info] http://localhost:5173/src/main.jsx?t=1782360666171:83 [InteractionDiag] pointer-end @ 1119390ms tool=pen
+[2026-06-26T05:54:11.840Z] [info] http://localhost:5173/src/main.jsx?t=1782360666171:83 [PreviewDiag] pointer release [object Object]
+[2026-06-26T05:54:11.841Z] [info] http://localhost:5173/src/main.jsx?t=1782360666171:83 [PreviewDiag] final commit [object Object]
+[2026-06-26T05:54:12.199Z] [info] http://localhost:5173/src/main.jsx?t=1782360666171:83 [InteractionDiag] viewer-pointer-down @ 1119751ms tool=pen button=0 target=canvas
+[2026-06-26T05:54:12.199Z] [info] http://localhost:5173/src/main.jsx?t=1782360666171:83 [PreviewDiag] start [object Object]
+[2026-06-26T05:54:12.202Z] [info] http://localhost:5173/src/main.jsx?t=1782360666171:83 [PreviewDiag] summary path:created started, 2 preview frames, 0 sync writes during drag, 0 sync deferrals during drag, 0 backup writes during drag, 1 commit on release, 0 sync pushes after release, 0 backup writes after release [object Object]
+[2026-06-26T05:54:12.209Z] [info] http://localhost:5173/src/main.jsx?t=1782360666171:83 [PreviewDiag] preview [object Object]
+[2026-06-26T05:54:12.280Z] [info] http://localhost:5173/src/main.jsx?t=1782360666171:83 [InteractionDiag] pointer-end @ 1119832ms tool=pen
+[2026-06-26T05:54:12.281Z] [info] http://localhost:5173/src/main.jsx?t=1782360666171:83 [PreviewDiag] pointer release [object Object]
+[2026-06-26T05:54:12.282Z] [info] http://localhost:5173/src/main.jsx?t=1782360666171:83 [PreviewDiag] final commit [object Object]
+[2026-06-26T05:54:12.703Z] [info] http://localhost:5173/src/main.jsx?t=1782360666171:83 [InteractionDiag] viewer-pointer-down @ 1120255ms tool=pen button=0 target=canvas
+[2026-06-26T05:54:12.704Z] [info] http://localhost:5173/src/main.jsx?t=1782360666171:83 [PreviewDiag] start [object Object]
+[2026-06-26T05:54:12.707Z] [info] http://localhost:5173/src/main.jsx?t=1782360666171:83 [PreviewDiag] preview [object Object]
+[2026-06-26T05:54:12.788Z] [info] http://localhost:5173/src/main.jsx?t=1782360666171:83 [InteractionDiag] pointer-end @ 1120340ms tool=pen
+[2026-06-26T05:54:12.788Z] [info] http://localhost:5173/src/main.jsx?t=1782360666171:83 [PreviewDiag] pointer release [object Object]
+[2026-06-26T05:54:12.789Z] [info] http://localhost:5173/src/main.jsx?t=1782360666171:83 [PreviewDiag] final commit [object Object]
+[2026-06-26T05:54:12.837Z] [info] http://localhost:5173/src/main.jsx?t=1782360666171:83 [PreviewDiag] summary path:created started, 17 preview frames, 0 sync writes during drag, 0 sync deferrals during drag, 0 backup writes during drag, 1 commit on release, 0 sync pushes after release, 0 backup writes after release [object Object]
+[2026-06-26T05:54:13.190Z] [info] http://localhost:5173/src/main.jsx?t=1782360666171:83 [InteractionDiag] viewer-pointer-down @ 1120742ms tool=pen button=0 target=canvas
+[2026-06-26T05:54:13.191Z] [info] http://localhost:5173/src/main.jsx?t=1782360666171:83 [PreviewDiag] start [object Object]
+[2026-06-26T05:54:13.199Z] [info] http://localhost:5173/src/main.jsx?t=1782360666171:83 [PreviewDiag] preview [object Object]
+[2026-06-26T05:54:13.246Z] [info] http://localhost:5173/src/main.jsx?t=1782360666171:83 [PreviewDiag] summary path:created started, 22 preview frames, 0 sync writes during drag, 0 sync deferrals during drag, 0 backup writes during drag, 1 commit on release, 0 sync pushes after release, 0 backup writes after release [object Object]
+[2026-06-26T05:54:13.274Z] [info] http://localhost:5173/src/main.jsx?t=1782360666171:83 [InteractionDiag] pointer-end @ 1120826ms tool=pen
+[2026-06-26T05:54:13.277Z] [info] http://localhost:5173/src/main.jsx?t=1782360666171:83 [PreviewDiag] pointer release [object Object]
+[2026-06-26T05:54:13.278Z] [info] http://localhost:5173/src/main.jsx?t=1782360666171:83 [PreviewDiag] final commit [object Object]
+[2026-06-26T05:54:13.571Z] [info] http://localhost:5173/src/main.jsx?t=1782360666171:83 [InteractionDiag] viewer-pointer-down @ 1121123ms tool=pen button=0 target=canvas
+[2026-06-26T05:54:13.572Z] [info] http://localhost:5173/src/main.jsx?t=1782360666171:83 [PreviewDiag] start [object Object]
+[2026-06-26T05:54:13.683Z] [info] http://localhost:5173/src/main.jsx?t=1782360666171:83 [PreviewDiag] summary path:created started, 21 preview frames, 0 sync writes during drag, 0 sync deferrals during drag, 0 backup writes during drag, 1 commit on release, 0 sync pushes after release, 0 backup writes after release [object Object]
+[2026-06-26T05:54:13.752Z] [info] http://localhost:5173/src/main.jsx?t=1782360666171:83 [PreviewDiag] preview [object Object]
+[2026-06-26T05:54:13.958Z] [info] http://localhost:5173/src/main.jsx?t=1782360666171:83 [PreviewDiag] preview [object Object]
+[2026-06-26T05:54:14.166Z] [info] http://localhost:5173/src/main.jsx?t=1782360666171:83 [PreviewDiag] preview [object Object]
+[2026-06-26T05:54:14.190Z] [info] http://localhost:5173/src/main.jsx?t=1782360666171:83 [PreviewDiag] summary path:created started, 20 preview frames, 0 sync writes during drag, 0 sync deferrals during drag, 0 backup writes during drag, 1 commit on release, 0 sync pushes after release, 0 backup writes after release [object Object]
+[2026-06-26T05:54:14.313Z] [info] http://localhost:5173/src/main.jsx?t=1782360666171:83 [InteractionDiag] pointer-end @ 1121865ms tool=pen
+[2026-06-26T05:54:14.315Z] [info] http://localhost:5173/src/main.jsx?t=1782360666171:83 [PreviewDiag] pointer release [object Object]
+[2026-06-26T05:54:14.315Z] [info] http://localhost:5173/src/main.jsx?t=1782360666171:83 [PreviewDiag] final commit [object Object]
+[2026-06-26T05:54:14.625Z] [info] http://localhost:5173/src/main.jsx?t=1782360666171:83 [PreviewDiag] preview [object Object]
+[2026-06-26T05:54:14.679Z] [info] http://localhost:5173/src/main.jsx?t=1782360666171:83 [PreviewDiag] summary path:created started, 1 preview frames, 0 sync writes during drag, 0 sync deferrals during drag, 0 backup writes during drag, 1 commit on release, 0 sync pushes after release, 0 backup writes after release [object Object]
+[2026-06-26T05:54:14.716Z] [info] http://localhost:5173/src/main.jsx?t=1782360666171:83 [InteractionDiag] viewer-pointer-down @ 1122268ms tool=pen button=0 target=canvas
+[2026-06-26T05:54:14.717Z] [info] http://localhost:5173/src/main.jsx?t=1782360666171:83 [PreviewDiag] start [object Object]
+[2026-06-26T05:54:14.780Z] [info] http://localhost:5173/src/main.jsx?t=1782360666171:83 [InteractionDiag] pointer-end @ 1122332ms tool=pen
+[2026-06-26T05:54:14.781Z] [info] http://localhost:5173/src/main.jsx?t=1782360666171:83 [PreviewDiag] pointer release [object Object]
+[2026-06-26T05:54:14.783Z] [info] http://localhost:5173/src/main.jsx?t=1782360666171:83 [PreviewDiag] final commit [object Object]
+[2026-06-26T05:54:15.007Z] [info] http://localhost:5173/src/main.jsx?t=1782360666171:83 [PreviewDiag] preview [object Object]
+[2026-06-26T05:54:15.156Z] [info] http://localhost:5173/src/main.jsx?t=1782360666171:83 [InteractionDiag] viewer-pointer-down @ 1122708ms tool=pen button=0 target=canvas
+[2026-06-26T05:54:15.156Z] [info] http://localhost:5173/src/main.jsx?t=1782360666171:83 [PreviewDiag] start [object Object]
+[2026-06-26T05:54:15.166Z] [info] http://localhost:5173/src/main.jsx?t=1782360666171:83 [PreviewDiag] preview [object Object]
+[2026-06-26T05:54:15.245Z] [info] http://localhost:5173/src/main.jsx?t=1782360666171:83 [InteractionDiag] pointer-end @ 1122797ms tool=pen
+[2026-06-26T05:54:15.246Z] [info] http://localhost:5173/src/main.jsx?t=1782360666171:83 [PreviewDiag] pointer release [object Object]
+[2026-06-26T05:54:15.247Z] [info] http://localhost:5173/src/main.jsx?t=1782360666171:83 [PreviewDiag] final commit [object Object]
+[2026-06-26T05:54:15.641Z] [info] http://localhost:5173/src/main.jsx?t=1782360666171:83 [InteractionDiag] viewer-pointer-down @ 1123193ms tool=pen button=0 target=canvas
+[2026-06-26T05:54:15.643Z] [info] http://localhost:5173/src/main.jsx?t=1782360666171:83 [PreviewDiag] start [object Object]
+[2026-06-26T05:54:15.720Z] [info] http://localhost:5173/src/main.jsx?t=1782360666171:83 [PreviewDiag] summary path:created started, 84 preview frames, 0 sync writes during drag, 0 sync deferrals during drag, 0 backup writes during drag, 1 commit on release, 0 sync pushes after release, 0 backup writes after release [object Object]
+[2026-06-26T05:54:15.721Z] [info] http://localhost:5173/src/main.jsx?t=1782360666171:83 [InteractionDiag] pointer-end @ 1123273ms tool=pen
+[2026-06-26T05:54:15.723Z] [info] http://localhost:5173/src/main.jsx?t=1782360666171:83 [PreviewDiag] pointer release [object Object]
+[2026-06-26T05:54:15.724Z] [info] http://localhost:5173/src/main.jsx?t=1782360666171:83 [PreviewDiag] final commit [object Object]
+[2026-06-26T05:54:15.959Z] [info] http://localhost:5173/src/main.jsx?t=1782360666171:83 [PreviewDiag] preview [object Object]
+[2026-06-26T05:54:16.098Z] [info] http://localhost:5173/src/main.jsx?t=1782360666171:83 [InteractionDiag] viewer-pointer-down @ 1123650ms tool=pen button=0 target=canvas
+[2026-06-26T05:54:16.099Z] [info] http://localhost:5173/src/main.jsx?t=1782360666171:83 [PreviewDiag] start [object Object]
+[2026-06-26T05:54:16.108Z] [info] http://localhost:5173/src/main.jsx?t=1782360666171:83 [PreviewDiag] preview [object Object]
+[2026-06-26T05:54:16.180Z] [info] http://localhost:5173/src/main.jsx?t=1782360666171:83 [InteractionDiag] pointer-end @ 1123730ms tool=pen
+[2026-06-26T05:54:16.180Z] [info] http://localhost:5173/src/main.jsx?t=1782360666171:83 [PreviewDiag] final commit [object Object]
+[2026-06-26T05:54:16.180Z] [info] http://localhost:5173/src/main.jsx?t=1782360666171:83 [PreviewDiag] pointer release [object Object]
+[2026-06-26T05:54:16.225Z] [info] http://localhost:5173/src/main.jsx?t=1782360666171:83 [PreviewDiag] summary path:created started, 17 preview frames, 0 sync writes during drag, 0 sync deferrals during drag, 0 backup writes during drag, 1 commit on release, 0 sync pushes after release, 0 backup writes after release [object Object]
+[2026-06-26T05:54:16.648Z] [info] http://localhost:5173/src/main.jsx?t=1782360666171:83 [PreviewDiag] summary path:created started, 18 preview frames, 0 sync writes during drag, 0 sync deferrals during drag, 0 backup writes during drag, 1 commit on release, 0 sync pushes after release, 0 backup writes after release [object Object]
+[2026-06-26T05:54:17.129Z] [info] http://localhost:5173/src/main.jsx?t=1782360666171:83 [PreviewDiag] summary path:created started, 16 preview frames, 0 sync writes during drag, 0 sync deferrals during drag, 0 backup writes during drag, 1 commit on release, 0 sync pushes after release, 0 backup writes after release [object Object]
+[2026-06-26T05:54:17.581Z] [info] http://localhost:5173/src/main.jsx?t=1782360666171:83 [PreviewDiag] summary path:created started, 17 preview frames, 0 sync writes during drag, 0 sync deferrals during drag, 0 backup writes during drag, 1 commit on release, 0 sync pushes after release, 0 backup writes after release [object Object]
+[2026-06-26T05:54:18.146Z] [info] http://localhost:5173/src/main.jsx?t=1782360666171:83 [PreviewDiag] sync push [object Object]
+[2026-06-26T06:15:51.113Z] [info] http://localhost:5173/src/main.jsx?t=1782360666171:83 [OpenTiming] doc-click @ 2418675ms Benjamin Franklin Elementary.pdf
+[2026-06-26T06:15:51.404Z] [info] http://localhost:5173/src/main.jsx?t=1782360666171:83 [OpenTiming] pdfid-resolve @ 2418968ms Benjamin Franklin Elementary.pdf-2401034
+[2026-06-26T06:15:51.406Z] [info] http://localhost:5173/src/main.jsx?t=1782360666171:83 %c[LOAD-TRACE +0ms] ════ OPEN START — Benjamin Franklin Elementary.pdf color:#2196F3;font-weight:bold
+[2026-06-26T06:15:51.407Z] [info] http://localhost:5173/src/main.jsx?t=1782360666171:83 %c[LOAD-TRACE +1ms] watchdog armed — will check in 20s color:#2196F3;font-weight:bold
+[2026-06-26T06:15:51.538Z] [info] http://localhost:5173/src/main.jsx?t=1782360666171:83 %c[LOAD-TRACE +132ms] Local file to ArrayBuffer color:#2196F3;font-weight:bold
+[2026-06-26T06:15:51.539Z] [info] http://localhost:5173/src/main.jsx?t=1782360666171:83 %c[LOAD-TRACE +133ms] configuring pdf.js worker (loadPdfjs) color:#2196F3;font-weight:bold
+[2026-06-26T06:15:51.539Z] [info] http://localhost:5173/src/main.jsx?t=1782360666171:83 %c[LOAD-TRACE +133ms] pdf.js worker ready color:#2196F3;font-weight:bold
+[2026-06-26T06:15:51.539Z] [info] http://localhost:5173/src/main.jsx?t=1782360666171:83 %c[LOAD-TRACE +133ms] Starting PDF.js getDocument color:#2196F3;font-weight:bold
+[2026-06-26T06:15:51.921Z] [info] http://localhost:5173/src/main.jsx?t=1782360666171:83 %c[LOAD-TRACE +515ms] PDF.js document parsed color:#2196F3;font-weight:bold
+[2026-06-26T06:15:52.127Z] [info] http://localhost:5173/src/main.jsx?t=1782360666171:83 %c[LOAD-TRACE +721ms] Calculating page sizes color:#2196F3;font-weight:bold
+[2026-06-26T06:15:52.140Z] [info] http://localhost:5173/src/main.jsx?t=1782360666171:83 %c[LOAD-TRACE +733ms] Page sizes calculated (4 pages) color:#2196F3;font-weight:bold
+[2026-06-26T06:15:52.141Z] [info] http://localhost:5173/src/main.jsx?t=1782360666171:83 %c[LOAD-TRACE +734ms] ✅ LOAD COMPLETE — lifting the Loading curtain color:#2196F3;font-weight:bold
+[2026-06-26T06:15:52.141Z] [info] http://localhost:5173/src/main.jsx?t=1782360666171:83 %c[LOAD-TRACE +734ms] Importing PDF annotations color:#2196F3;font-weight:bold
+[2026-06-26T06:15:52.141Z] [info] http://localhost:5173/src/main.jsx?t=1782360666171:83 %c[LOAD-TRACE +734ms] PDF ready for rendering color:#2196F3;font-weight:bold
+[2026-06-26T06:15:52.151Z] [info] http://localhost:5173/src/main.jsx?t=1782360666171:83 [InteractionDiag] interactive-ready @ 2419715ms (isLoadingPDF→false; loading curtain lifted, toolbar+page now accept input)
+[2026-06-26T06:15:52.159Z] [info] http://localhost:5173/src/main.jsx?t=1782360666171:83 [OpenTiming] first-marks-painted @ 2419723ms pdfId=Benjamin Franklin Elementary.pdf-2401034
+[2026-06-26T06:15:56.916Z] [warning] http://localhost:5173/src/main.jsx?t=1782360666171:83 [crdtBackfill] cutover sealed but Y.Map < legacy count — re-running import loop to recover {"yMapSize":0,"legacyCount":0}
+[2026-06-26T06:15:56.969Z] [info] http://localhost:5173/src/main.jsx?t=1782360666171:83 [PreviewDiag] sync push [object Object]
+[2026-06-26T06:16:31.618Z] [info] http://localhost:5173/src/main.jsx?t=1782360666171:83 [DrawCanvas p1] MOUNT — tool=pen, isShape=false, isDrawingMode=true
+[2026-06-26T06:16:31.632Z] [info] http://localhost:5173/src/main.jsx?t=1782360666171:83 [DrawCanvas p1] shape effect — tool=pen, isShape=false, isDrawingMode=true
+[2026-06-26T06:16:31.636Z] [info] http://localhost:5173/src/main.jsx?t=1782360666171:83 [DrawCanvas p2] MOUNT — tool=pen, isShape=false, isDrawingMode=true
+[2026-06-26T06:16:31.642Z] [info] http://localhost:5173/src/main.jsx?t=1782360666171:83 [DrawCanvas p2] shape effect — tool=pen, isShape=false, isDrawingMode=true
+[2026-06-26T06:16:31.645Z] [info] http://localhost:5173/src/main.jsx?t=1782360666171:83 [DrawCanvas p3] MOUNT — tool=pen, isShape=false, isDrawingMode=true
+[2026-06-26T06:16:31.672Z] [info] http://localhost:5173/src/main.jsx?t=1782360666171:83 [DrawCanvas p3] shape effect — tool=pen, isShape=false, isDrawingMode=true
+[2026-06-26T06:16:31.677Z] [info] http://localhost:5173/src/main.jsx?t=1782360666171:83 [DrawCanvas p4] MOUNT — tool=pen, isShape=false, isDrawingMode=true
+[2026-06-26T06:16:31.692Z] [info] http://localhost:5173/src/main.jsx?t=1782360666171:83 [DrawCanvas p4] shape effect — tool=pen, isShape=false, isDrawingMode=true
+[2026-06-26T06:16:31.692Z] [info] http://localhost:5173/src/main.jsx?t=1782360666171:83 [InteractionDiag] tool-changed @ 2459257ms from=pan to=pen
+[2026-06-26T06:16:32.421Z] [info] http://localhost:5173/src/main.jsx?t=1782360666171:83 [InteractionDiag] viewer-pointer-down @ 2459986ms tool=pen button=0 target=canvas
+[2026-06-26T06:16:32.429Z] [info] http://localhost:5173/src/main.jsx?t=1782360666171:83 [PreviewDiag] start [object Object]
+[2026-06-26T06:16:32.437Z] [info] http://localhost:5173/src/main.jsx?t=1782360666171:83 [PreviewDiag] preview [object Object]
+[2026-06-26T06:16:32.728Z] [info] http://localhost:5173/src/main.jsx?t=1782360666171:83 [PreviewDiag] preview [object Object]
+[2026-06-26T06:16:32.887Z] [info] http://localhost:5173/src/main.jsx?t=1782360666171:83 [InteractionDiag] pointer-end @ 2460451ms tool=pen
+[2026-06-26T06:16:32.897Z] [info] http://localhost:5173/src/main.jsx?t=1782360666171:83 [PreviewDiag] pointer release [object Object]
+[2026-06-26T06:16:32.901Z] [info] http://localhost:5173/src/main.jsx?t=1782360666171:83 [PreviewDiag] final commit [object Object]
+[2026-06-26T06:16:33.387Z] [info] http://localhost:5173/src/main.jsx?t=1782360666171:83 [PreviewDiag] preview [object Object]
+[2026-06-26T06:16:34.311Z] [info] http://localhost:5173/src/main.jsx?t=1782360666171:83 [PreviewDiag] summary path:created started, 61 preview frames, 0 sync writes during drag, 0 sync deferrals during drag, 0 backup writes during drag, 1 commit on release, 0 sync pushes after release, 0 backup writes after release [object Object]
+[2026-06-26T06:16:46.401Z] [info] http://localhost:5173/src/main.jsx?t=1782360666171:83 [DrawCanvas p1] shape effect — tool=survey-marker, isShape=true, isDrawingMode=false
+[2026-06-26T06:16:46.402Z] [info] http://localhost:5173/src/main.jsx?t=1782360666171:83 [InteractionDiag] tool-changed @ 2473966ms from=pen to=survey-marker
+[2026-06-26T06:16:46.402Z] [info] http://localhost:5173/src/main.jsx?t=1782360666171:83 [DrawCanvas p3] shape effect — tool=survey-marker, isShape=true, isDrawingMode=false
+[2026-06-26T06:16:46.402Z] [info] http://localhost:5173/src/main.jsx?t=1782360666171:83 [DrawCanvas p2] shape effect — tool=survey-marker, isShape=true, isDrawingMode=false
+[2026-06-26T06:16:46.402Z] [info] http://localhost:5173/src/main.jsx?t=1782360666171:83 [DrawCanvas p4] shape effect — tool=survey-marker, isShape=true, isDrawingMode=false
+[2026-06-26T06:16:51.389Z] [info] http://localhost:5173/src/main.jsx?t=1782360666171:83 [InteractionDiag] tool-intent @ 2478953ms requested=survey-marker from=survey-marker
+[2026-06-26T06:16:53.704Z] [info] http://localhost:5173/src/main.jsx?t=1782360666171:83 [InteractionDiag] viewer-pointer-down @ 2481269ms tool=survey-marker button=0 target=canvas
+[2026-06-26T06:16:53.712Z] [info] http://localhost:5173/src/main.jsx?t=1782360666171:83 [DrawCanvas p1] shape mousedown at (678.1, 295.8), tool=survey-marker
+[2026-06-26T06:16:53.713Z] [info] http://localhost:5173/src/main.jsx?t=1782360666171:83 [PreviewDiag] start [object Object]
+[2026-06-26T06:16:53.727Z] [info] http://localhost:5173/src/main.jsx?t=1782360666171:83 [PreviewDiag] preview [object Object]
+[2026-06-26T06:16:54.054Z] [info] http://localhost:5173/src/main.jsx?t=1782360666171:83 [PreviewDiag] preview [object Object]
+[2026-06-26T06:16:54.353Z] [info] http://localhost:5173/src/main.jsx?t=1782360666171:83 [PreviewDiag] preview [object Object]
+[2026-06-26T06:16:54.834Z] [info] http://localhost:5173/src/main.jsx?t=1782360666171:83 [InteractionDiag] pointer-end @ 2482399ms tool=survey-marker
+[2026-06-26T06:16:54.836Z] [info] http://localhost:5173/src/main.jsx?t=1782360666171:83 [PreviewDiag] pointer release [object Object]
+[2026-06-26T06:16:54.836Z] [info] http://localhost:5173/src/main.jsx?t=1782360666171:83 [DrawCanvas p1] shape mouseup — tool=survey-marker, hasSize=true [object Object]
+[2026-06-26T06:16:54.836Z] [info] http://localhost:5173/src/main.jsx?t=1782360666171:83 [PreviewDiag] final commit [object Object]
+[2026-06-26T06:16:56.237Z] [info] http://localhost:5173/src/main.jsx?t=1782360666171:83 [PreviewDiag] summary survey-marker-draw started, 69 preview frames, 0 sync writes during drag, 0 sync deferrals during drag, 0 backup writes during drag, 1 commit on release, 0 sync pushes after release, 0 backup writes after release [object Object]
+[2026-06-26T06:17:00.096Z] [info] http://localhost:5173/src/main.jsx?t=1782360666171:83 [PreviewDiag] sync push [object Object]
+[2026-06-26T06:17:47.427Z] [error] http://localhost:5173/src/main.jsx?t=1782360666171:83 Login failed: Error: AADSTS65004: User declined to consent to access the app.
+[2026-06-26T06:18:11.708Z] [info] http://localhost:5173/src/main.jsx?t=1782360666171:83 [PreviewDiag] sync push [object Object]
+[2026-06-26T06:18:26.919Z] [error] http://localhost:5173/:0 Access to fetch at 'https://cvamwtpsuvxvjdnotbeg.supabase.co/functions/v1/excel-apply-changeset' from origin 'http://localhost:5173' has been blocked by CORS policy: Response to preflight request doesn't pass access control check: It does not have HTTP ok status.
+[2026-06-26T06:18:41.363Z] [error] http://localhost:5173/:0 Access to fetch at 'https://cvamwtpsuvxvjdnotbeg.supabase.co/functions/v1/excel-apply-changeset' from origin 'http://localhost:5173' has been blocked by CORS policy: Response to preflight request doesn't pass access control check: It does not have HTTP ok status.
+[2026-06-26T06:18:57.901Z] [info] :67 [preload] menu:save-log received, forwarding to renderer
