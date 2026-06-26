@@ -1,0 +1,461 @@
+===== SurveyApp Save Log =====
+version:   0.1.46
+runtime:   dev-server
+platform:  desktop
+device:    Mac
+os:        macOS 10.15.7
+screen:    1512x982 @2x
+viewport:  1512x839
+locale:    en-US
+timestamp: 2026-06-26T16:41:48.516Z (6/26/2026, 12:41:48 PM)
+==============================
+[PreviewDiag] pointer release {"id":"gesture-2","frames":64,"pointerDown":false,"surface":"FabricDrawingCanvas","tool":"survey-marker","type":"survey-marker","action":"survey-marker-draw","pageNumber":1,"annotationId":null}
+[DrawCanvas p1] shape mouseup — tool=survey-marker, hasSize=true {"left":494.9620893007582,"top":367.6124684077506,"w":56.71440606571184,"h":45.37152485256951}
+[PreviewDiag] final commit {"id":"gesture-2","commits":1,"pointerDown":false,"surface":"FabricDrawingCanvas","tool":"survey-marker","type":"survey-marker","action":"survey-marker-draw","pageNumber":1,"annotationId":null,"source":"survey-marker:create"}
+[PreviewDiag] summary survey-marker-draw started, 64 preview frames, 0 sync writes during drag, 0 sync deferrals during drag, 0 backup writes during drag, 1 commit on release, 0 sync pushes after release, 0 backup writes after release {"id":"gesture-2","durationMs":2729.3,"pointerDown":false,"surface":"FabricDrawingCanvas","tool":"survey-marker","type":"survey-marker","action":"survey-marker-draw","pageNumber":1,"annotationId":null,"source":"survey-marker:create","reason":"settled"}
+[PreviewDiag] sync push {"kind":"survey-marker","count":1,"surveyMarkerCount":1}
+[PreviewDiag] sync push {"kind":"survey-marker","count":1,"surveyMarkerCount":1}
+[InteractionDiag] tool-intent @ 19877399ms requested=survey-marker from=survey-marker
+[InteractionDiag] tool-intent @ 19878082ms requested=survey-marker from=survey-marker
+[InteractionDiag] tool-intent @ 19879316ms requested=survey-marker from=survey-marker
+[InteractionDiag] tool-intent @ 19880083ms requested=survey-marker from=survey-marker
+=== PAGE RELOAD (navigation) @ 2026-06-26T05:21:05.560Z ===
+=== PAGE RELOAD (navigation) @ 2026-06-26T05:35:33.951Z ===
+[OpenTiming] doc-click @ 1111414ms Benjamin Franklin Elementary.pdf
+console.warn @ [crdtBackfill] cutover sealed but Y.Map < legacy count — re-running import loop to recover {"yMapSize":0,"legacyCount":0}
+[OpenTiming] pdfid-resolve @ 1115540ms Benjamin Franklin Elementary.pdf-2401034
+%c[LOAD-TRACE +0ms] ════ OPEN START — Benjamin Franklin Elementary.pdf color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +0ms] watchdog armed — will check in 20s color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +271ms] Local file to ArrayBuffer color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +273ms] configuring pdf.js worker (loadPdfjs) color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +355ms] pdf.js worker ready color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +355ms] Starting PDF.js getDocument color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +831ms] PDF.js document parsed color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +1346ms] Calculating page sizes color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +1374ms] Page sizes calculated (4 pages) color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +1375ms] Importing PDF annotations color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +1375ms] PDF ready for rendering color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +1376ms] ✅ LOAD COMPLETE — lifting the Loading curtain color:#2196F3;font-weight:bold
+[InteractionDiag] interactive-ready @ 1117005ms (isLoadingPDF→false; loading curtain lifted, toolbar+page now accept input)
+[OpenTiming] first-marks-painted @ 1117236ms pdfId=Benjamin Franklin Elementary.pdf-2401034
+[InteractionDiag] tool-intent @ 1117621ms requested=pen from=pan
+[DrawCanvas p1] MOUNT — tool=pen, isShape=false, isDrawingMode=true
+[DrawCanvas p1] shape effect — tool=pen, isShape=false, isDrawingMode=true
+[DrawCanvas p2] MOUNT — tool=pen, isShape=false, isDrawingMode=true
+[DrawCanvas p2] shape effect — tool=pen, isShape=false, isDrawingMode=true
+[DrawCanvas p3] MOUNT — tool=pen, isShape=false, isDrawingMode=true
+[DrawCanvas p3] shape effect — tool=pen, isShape=false, isDrawingMode=true
+[DrawCanvas p4] MOUNT — tool=pen, isShape=false, isDrawingMode=true
+[DrawCanvas p4] shape effect — tool=pen, isShape=false, isDrawingMode=true
+[InteractionDiag] tool-changed @ 1117775ms from=pan to=pen
+[InteractionDiag] viewer-pointer-down @ 1118259ms tool=pen button=0 target=canvas
+[PreviewDiag] start {"pointerDown":true,"surface":"FabricDrawingCanvas","tool":"pen","type":"path","action":"pen-stroke","pageNumber":1,"annotationId":null}
+[InteractionDiag] pointer-end @ 1118340ms tool=pen
+[PreviewDiag] pointer release {"id":"gesture-1","frames":0,"pointerDown":false,"surface":"FabricDrawingCanvas","tool":"pen","type":"path","action":"pen-stroke","pageNumber":1,"annotationId":"c315ac47-96d5-43a3-a7c9-c34e131e2033"}
+[PreviewDiag] final commit {"id":"gesture-1","commits":1,"pointerDown":false,"surface":"App.handleSaveAnnotations","tool":"pen","type":"path","action":"path:created","pageNumber":1,"annotationId":"c315ac47-96d5-43a3-a7c9-c34e131e2033","source":"path:created","objectDelta":1,"previousObjectCount":0,"nextObjectCount":1,"changedObjectsCount":1,"checkpointPolicy":"normal"}
+[PreviewDiag] preview {"id":"gesture-1","frames":1,"pointerDown":false,"surface":"App.handleSaveAnnotations","tool":"pen","type":"path","action":"pen-stroke","pageNumber":1,"annotationId":"c315ac47-96d5-43a3-a7c9-c34e131e2033","source":"path:created","objectDelta":1,"previousObjectCount":0,"nextObjectCount":1,"changedObjectsCount":1,"checkpointPolicy":"normal"}
+[InteractionDiag] viewer-pointer-down @ 1118900ms tool=pen button=0 target=canvas
+[PreviewDiag] start {"pointerDown":true,"surface":"FabricDrawingCanvas","tool":"pen","type":"path","action":"pen-stroke","pageNumber":1,"annotationId":null}
+[PreviewDiag] preview {"id":"gesture-2","frames":1,"pointerDown":true,"surface":"FabricDrawingCanvas","tool":"pen","type":"path","action":"pen-stroke","pageNumber":1,"annotationId":null}
+[InteractionDiag] pointer-end @ 1118938ms tool=pen
+[PreviewDiag] pointer release {"id":"gesture-2","frames":1,"pointerDown":false,"surface":"FabricDrawingCanvas","tool":"pen","type":"path","action":"pen-stroke","pageNumber":1,"annotationId":"10cb2882-889f-4895-a7b3-e026fc198462"}
+[PreviewDiag] final commit {"id":"gesture-2","commits":1,"pointerDown":false,"surface":"App.handleSaveAnnotations","tool":"pen","type":"path","action":"path:created","pageNumber":1,"annotationId":"10cb2882-889f-4895-a7b3-e026fc198462","source":"path:created","objectDelta":1,"previousObjectCount":1,"nextObjectCount":2,"changedObjectsCount":1,"checkpointPolicy":"normal"}
+[InteractionDiag] viewer-pointer-down @ 1119331ms tool=pen button=0 target=canvas
+[PreviewDiag] start {"pointerDown":true,"surface":"FabricDrawingCanvas","tool":"pen","type":"path","action":"pen-stroke","pageNumber":1,"annotationId":null}
+[PreviewDiag] preview {"id":"gesture-3","frames":1,"pointerDown":true,"surface":"FabricDrawingCanvas","tool":"pen","type":"path","action":"pen-stroke","pageNumber":1,"annotationId":null}
+[InteractionDiag] pointer-end @ 1119390ms tool=pen
+[PreviewDiag] pointer release {"id":"gesture-3","frames":1,"pointerDown":false,"surface":"FabricDrawingCanvas","tool":"pen","type":"path","action":"pen-stroke","pageNumber":1,"annotationId":"a994e13d-e55e-4678-92ed-3d7b6f8af7da"}
+[PreviewDiag] final commit {"id":"gesture-3","commits":1,"pointerDown":false,"surface":"App.handleSaveAnnotations","tool":"pen","type":"path","action":"path:created","pageNumber":1,"annotationId":"a994e13d-e55e-4678-92ed-3d7b6f8af7da","source":"path:created","objectDelta":1,"previousObjectCount":2,"nextObjectCount":3,"changedObjectsCount":1,"checkpointPolicy":"normal"}
+[InteractionDiag] viewer-pointer-down @ 1119751ms tool=pen button=0 target=canvas
+[PreviewDiag] start {"pointerDown":true,"surface":"FabricDrawingCanvas","tool":"pen","type":"path","action":"pen-stroke","pageNumber":1,"annotationId":null}
+[PreviewDiag] summary path:created started, 2 preview frames, 0 sync writes during drag, 0 sync deferrals during drag, 0 backup writes during drag, 1 commit on release, 0 sync pushes after release, 0 backup writes after release {"id":"gesture-1","durationMs":1489.6,"pointerDown":false,"surface":"App.handleSaveAnnotations","tool":"pen","type":"path","action":"path:created","pageNumber":1,"annotationId":"c315ac47-96d5-43a3-a7c9-c34e131e2033","source":"path:created","objectDelta":1,"previousObjectCount":0,"nextObjectCount":1,"changedObjectsCount":1,"checkpointPolicy":"normal","reason":"settled"}
+[PreviewDiag] preview {"id":"gesture-4","frames":1,"pointerDown":true,"surface":"FabricDrawingCanvas","tool":"pen","type":"path","action":"pen-stroke","pageNumber":1,"annotationId":null}
+[InteractionDiag] pointer-end @ 1119832ms tool=pen
+[PreviewDiag] pointer release {"id":"gesture-4","frames":1,"pointerDown":false,"surface":"FabricDrawingCanvas","tool":"pen","type":"path","action":"pen-stroke","pageNumber":1,"annotationId":"2b4b59c6-e9a1-4d27-af1f-445f239eb219"}
+[PreviewDiag] final commit {"id":"gesture-4","commits":1,"pointerDown":false,"surface":"App.handleSaveAnnotations","tool":"pen","type":"path","action":"path:created","pageNumber":1,"annotationId":"2b4b59c6-e9a1-4d27-af1f-445f239eb219","source":"path:created","objectDelta":1,"previousObjectCount":3,"nextObjectCount":4,"changedObjectsCount":1,"checkpointPolicy":"normal"}
+[InteractionDiag] viewer-pointer-down @ 1120255ms tool=pen button=0 target=canvas
+[PreviewDiag] start {"pointerDown":true,"surface":"FabricDrawingCanvas","tool":"pen","type":"path","action":"pen-stroke","pageNumber":1,"annotationId":null}
+[PreviewDiag] preview {"id":"gesture-5","frames":1,"pointerDown":true,"surface":"FabricDrawingCanvas","tool":"pen","type":"path","action":"pen-stroke","pageNumber":1,"annotationId":null}
+[InteractionDiag] pointer-end @ 1120340ms tool=pen
+[PreviewDiag] pointer release {"id":"gesture-5","frames":1,"pointerDown":false,"surface":"FabricDrawingCanvas","tool":"pen","type":"path","action":"pen-stroke","pageNumber":1,"annotationId":"68c6de1f-5ba5-4b9b-ba2b-58fed771f068"}
+[PreviewDiag] final commit {"id":"gesture-5","commits":1,"pointerDown":false,"surface":"App.handleSaveAnnotations","tool":"pen","type":"path","action":"path:created","pageNumber":1,"annotationId":"68c6de1f-5ba5-4b9b-ba2b-58fed771f068","source":"path:created","objectDelta":1,"previousObjectCount":4,"nextObjectCount":5,"changedObjectsCount":1,"checkpointPolicy":"normal"}
+[PreviewDiag] summary path:created started, 17 preview frames, 0 sync writes during drag, 0 sync deferrals during drag, 0 backup writes during drag, 1 commit on release, 0 sync pushes after release, 0 backup writes after release {"id":"gesture-2","durationMs":1487.2,"pointerDown":false,"surface":"App.handleSaveAnnotations","tool":"pen","type":"path","action":"path:created","pageNumber":1,"annotationId":"10cb2882-889f-4895-a7b3-e026fc198462","source":"path:created","objectDelta":1,"previousObjectCount":1,"nextObjectCount":2,"changedObjectsCount":1,"checkpointPolicy":"normal","reason":"settled"}
+[InteractionDiag] viewer-pointer-down @ 1120742ms tool=pen button=0 target=canvas
+[PreviewDiag] start {"pointerDown":true,"surface":"FabricDrawingCanvas","tool":"pen","type":"path","action":"pen-stroke","pageNumber":1,"annotationId":null}
+[PreviewDiag] preview {"id":"gesture-6","frames":1,"pointerDown":true,"surface":"FabricDrawingCanvas","tool":"pen","type":"path","action":"pen-stroke","pageNumber":1,"annotationId":null}
+[PreviewDiag] summary path:created started, 22 preview frames, 0 sync writes during drag, 0 sync deferrals during drag, 0 backup writes during drag, 1 commit on release, 0 sync pushes after release, 0 backup writes after release {"id":"gesture-3","durationMs":1465.4,"pointerDown":false,"surface":"App.handleSaveAnnotations","tool":"pen","type":"path","action":"path:created","pageNumber":1,"annotationId":"a994e13d-e55e-4678-92ed-3d7b6f8af7da","source":"path:created","objectDelta":1,"previousObjectCount":2,"nextObjectCount":3,"changedObjectsCount":1,"checkpointPolicy":"normal","reason":"settled"}
+[InteractionDiag] pointer-end @ 1120826ms tool=pen
+[PreviewDiag] pointer release {"id":"gesture-6","frames":1,"pointerDown":false,"surface":"FabricDrawingCanvas","tool":"pen","type":"path","action":"pen-stroke","pageNumber":1,"annotationId":"570c7f08-6135-40fb-bc02-e62a215485e3"}
+[PreviewDiag] final commit {"id":"gesture-6","commits":1,"pointerDown":false,"surface":"App.handleSaveAnnotations","tool":"pen","type":"path","action":"path:created","pageNumber":1,"annotationId":"570c7f08-6135-40fb-bc02-e62a215485e3","source":"path:created","objectDelta":1,"previousObjectCount":5,"nextObjectCount":6,"changedObjectsCount":1,"checkpointPolicy":"normal"}
+[InteractionDiag] viewer-pointer-down @ 1121123ms tool=pen button=0 target=canvas
+[PreviewDiag] start {"pointerDown":true,"surface":"FabricDrawingCanvas","tool":"pen","type":"path","action":"pen-stroke","pageNumber":1,"annotationId":null}
+[PreviewDiag] summary path:created started, 21 preview frames, 0 sync writes during drag, 0 sync deferrals during drag, 0 backup writes during drag, 1 commit on release, 0 sync pushes after release, 0 backup writes after release {"id":"gesture-4","durationMs":1483.2,"pointerDown":false,"surface":"App.handleSaveAnnotations","tool":"pen","type":"path","action":"path:created","pageNumber":1,"annotationId":"2b4b59c6-e9a1-4d27-af1f-445f239eb219","source":"path:created","objectDelta":1,"previousObjectCount":3,"nextObjectCount":4,"changedObjectsCount":1,"checkpointPolicy":"normal","reason":"settled"}
+[PreviewDiag] preview {"id":"gesture-7","frames":1,"pointerDown":true,"surface":"FabricDrawingCanvas","tool":"pen","type":"path","action":"pen-stroke","pageNumber":1,"annotationId":null}
+[PreviewDiag] preview {"id":"gesture-7","frames":25,"pointerDown":true,"surface":"FabricDrawingCanvas","tool":"pen","type":"path","action":"pen-stroke","pageNumber":1,"annotationId":null}
+[PreviewDiag] preview {"id":"gesture-7","frames":50,"pointerDown":true,"surface":"FabricDrawingCanvas","tool":"pen","type":"path","action":"pen-stroke","pageNumber":1,"annotationId":null}
+[PreviewDiag] summary path:created started, 20 preview frames, 0 sync writes during drag, 0 sync deferrals during drag, 0 backup writes during drag, 1 commit on release, 0 sync pushes after release, 0 backup writes after release {"id":"gesture-5","durationMs":1486.3,"pointerDown":false,"surface":"App.handleSaveAnnotations","tool":"pen","type":"path","action":"path:created","pageNumber":1,"annotationId":"68c6de1f-5ba5-4b9b-ba2b-58fed771f068","source":"path:created","objectDelta":1,"previousObjectCount":4,"nextObjectCount":5,"changedObjectsCount":1,"checkpointPolicy":"normal","reason":"settled"}
+[InteractionDiag] pointer-end @ 1121865ms tool=pen
+[PreviewDiag] pointer release {"id":"gesture-7","frames":65,"pointerDown":false,"surface":"FabricDrawingCanvas","tool":"pen","type":"path","action":"pen-stroke","pageNumber":1,"annotationId":"cbbeaa40-44f9-461e-9f58-daf6a7efd07e"}
+[PreviewDiag] final commit {"id":"gesture-7","commits":1,"pointerDown":false,"surface":"App.handleSaveAnnotations","tool":"pen","type":"path","action":"path:created","pageNumber":1,"annotationId":"cbbeaa40-44f9-461e-9f58-daf6a7efd07e","source":"path:created","objectDelta":1,"previousObjectCount":6,"nextObjectCount":7,"changedObjectsCount":1,"checkpointPolicy":"normal"}
+[PreviewDiag] preview {"id":"gesture-7","frames":75,"pointerDown":false,"surface":"App.handleSaveAnnotations","tool":"pen","type":"path","action":"pen-stroke","pageNumber":1,"annotationId":"cbbeaa40-44f9-461e-9f58-daf6a7efd07e","source":"path:created","objectDelta":1,"previousObjectCount":6,"nextObjectCount":7,"changedObjectsCount":1,"checkpointPolicy":"normal"}
+[PreviewDiag] summary path:created started, 1 preview frames, 0 sync writes during drag, 0 sync deferrals during drag, 0 backup writes during drag, 1 commit on release, 0 sync pushes after release, 0 backup writes after release {"id":"gesture-6","durationMs":1488.1,"pointerDown":false,"surface":"App.handleSaveAnnotations","tool":"pen","type":"path","action":"path:created","pageNumber":1,"annotationId":"570c7f08-6135-40fb-bc02-e62a215485e3","source":"path:created","objectDelta":1,"previousObjectCount":5,"nextObjectCount":6,"changedObjectsCount":1,"checkpointPolicy":"normal","reason":"settled"}
+[InteractionDiag] viewer-pointer-down @ 1122268ms tool=pen button=0 target=canvas
+[PreviewDiag] start {"pointerDown":true,"surface":"FabricDrawingCanvas","tool":"pen","type":"path","action":"pen-stroke","pageNumber":1,"annotationId":null}
+[InteractionDiag] pointer-end @ 1122332ms tool=pen
+[PreviewDiag] pointer release {"id":"gesture-8","frames":0,"pointerDown":false,"surface":"FabricDrawingCanvas","tool":"pen","type":"path","action":"pen-stroke","pageNumber":1,"annotationId":"669d3403-f622-4d54-8b2a-27259318f8b3"}
+[PreviewDiag] final commit {"id":"gesture-8","commits":1,"pointerDown":false,"surface":"App.handleSaveAnnotations","tool":"pen","type":"path","action":"path:created","pageNumber":1,"annotationId":"669d3403-f622-4d54-8b2a-27259318f8b3","source":"path:created","objectDelta":1,"previousObjectCount":7,"nextObjectCount":8,"changedObjectsCount":1,"checkpointPolicy":"normal"}
+[PreviewDiag] preview {"id":"gesture-8","frames":1,"pointerDown":false,"surface":"App.handleSaveAnnotations","tool":"pen","type":"path","action":"pen-stroke","pageNumber":1,"annotationId":"669d3403-f622-4d54-8b2a-27259318f8b3","source":"path:created","objectDelta":1,"previousObjectCount":7,"nextObjectCount":8,"changedObjectsCount":1,"checkpointPolicy":"normal"}
+[InteractionDiag] viewer-pointer-down @ 1122708ms tool=pen button=0 target=canvas
+[PreviewDiag] start {"pointerDown":true,"surface":"FabricDrawingCanvas","tool":"pen","type":"path","action":"pen-stroke","pageNumber":1,"annotationId":null}
+[PreviewDiag] preview {"id":"gesture-9","frames":1,"pointerDown":true,"surface":"FabricDrawingCanvas","tool":"pen","type":"path","action":"pen-stroke","pageNumber":1,"annotationId":null}
+[InteractionDiag] pointer-end @ 1122797ms tool=pen
+[PreviewDiag] pointer release {"id":"gesture-9","frames":1,"pointerDown":false,"surface":"FabricDrawingCanvas","tool":"pen","type":"path","action":"pen-stroke","pageNumber":1,"annotationId":"d139d396-4d1d-4f61-a1e3-c8c747fee5eb"}
+[PreviewDiag] final commit {"id":"gesture-9","commits":1,"pointerDown":false,"surface":"App.handleSaveAnnotations","tool":"pen","type":"path","action":"path:created","pageNumber":1,"annotationId":"d139d396-4d1d-4f61-a1e3-c8c747fee5eb","source":"path:created","objectDelta":1,"previousObjectCount":8,"nextObjectCount":9,"changedObjectsCount":1,"checkpointPolicy":"normal"}
+[InteractionDiag] viewer-pointer-down @ 1123193ms tool=pen button=0 target=canvas
+[PreviewDiag] start {"pointerDown":true,"surface":"FabricDrawingCanvas","tool":"pen","type":"path","action":"pen-stroke","pageNumber":1,"annotationId":null}
+[PreviewDiag] summary path:created started, 84 preview frames, 0 sync writes during drag, 0 sync deferrals during drag, 0 backup writes during drag, 1 commit on release, 0 sync pushes after release, 0 backup writes after release {"id":"gesture-7","durationMs":2148.1,"pointerDown":false,"surface":"App.handleSaveAnnotations","tool":"pen","type":"path","action":"path:created","pageNumber":1,"annotationId":"cbbeaa40-44f9-461e-9f58-daf6a7efd07e","source":"path:created","objectDelta":1,"previousObjectCount":6,"nextObjectCount":7,"changedObjectsCount":1,"checkpointPolicy":"normal","reason":"settled"}
+[InteractionDiag] pointer-end @ 1123273ms tool=pen
+[PreviewDiag] pointer release {"id":"gesture-10","frames":0,"pointerDown":false,"surface":"FabricDrawingCanvas","tool":"pen","type":"path","action":"pen-stroke","pageNumber":1,"annotationId":"cdad342b-a9a1-42d1-9b42-6d6ffa439125"}
+[PreviewDiag] final commit {"id":"gesture-10","commits":1,"pointerDown":false,"surface":"App.handleSaveAnnotations","tool":"pen","type":"path","action":"path:created","pageNumber":1,"annotationId":"cdad342b-a9a1-42d1-9b42-6d6ffa439125","source":"path:created","objectDelta":1,"previousObjectCount":9,"nextObjectCount":10,"changedObjectsCount":1,"checkpointPolicy":"normal"}
+[PreviewDiag] preview {"id":"gesture-10","frames":1,"pointerDown":false,"surface":"App.handleSaveAnnotations","tool":"pen","type":"path","action":"pen-stroke","pageNumber":1,"annotationId":"cdad342b-a9a1-42d1-9b42-6d6ffa439125","source":"path:created","objectDelta":1,"previousObjectCount":9,"nextObjectCount":10,"changedObjectsCount":1,"checkpointPolicy":"normal"}
+[InteractionDiag] viewer-pointer-down @ 1123650ms tool=pen button=0 target=canvas
+[PreviewDiag] start {"pointerDown":true,"surface":"FabricDrawingCanvas","tool":"pen","type":"path","action":"pen-stroke","pageNumber":1,"annotationId":null}
+[PreviewDiag] preview {"id":"gesture-11","frames":1,"pointerDown":true,"surface":"FabricDrawingCanvas","tool":"pen","type":"path","action":"pen-stroke","pageNumber":1,"annotationId":null}
+[InteractionDiag] pointer-end @ 1123730ms tool=pen
+[PreviewDiag] pointer release {"id":"gesture-11","frames":1,"pointerDown":false,"surface":"FabricDrawingCanvas","tool":"pen","type":"path","action":"pen-stroke","pageNumber":1,"annotationId":"3bcbe67d-e7e7-46c8-ba00-a1481c10c972"}
+[PreviewDiag] final commit {"id":"gesture-11","commits":1,"pointerDown":false,"surface":"App.handleSaveAnnotations","tool":"pen","type":"path","action":"path:created","pageNumber":1,"annotationId":"3bcbe67d-e7e7-46c8-ba00-a1481c10c972","source":"path:created","objectDelta":1,"previousObjectCount":10,"nextObjectCount":11,"changedObjectsCount":1,"checkpointPolicy":"normal"}
+[PreviewDiag] summary path:created started, 17 preview frames, 0 sync writes during drag, 0 sync deferrals during drag, 0 backup writes during drag, 1 commit on release, 0 sync pushes after release, 0 backup writes after release {"id":"gesture-8","durationMs":1507.9,"pointerDown":false,"surface":"App.handleSaveAnnotations","tool":"pen","type":"path","action":"path:created","pageNumber":1,"annotationId":"669d3403-f622-4d54-8b2a-27259318f8b3","source":"path:created","objectDelta":1,"previousObjectCount":7,"nextObjectCount":8,"changedObjectsCount":1,"checkpointPolicy":"normal","reason":"settled"}
+[PreviewDiag] summary path:created started, 18 preview frames, 0 sync writes during drag, 0 sync deferrals during drag, 0 backup writes during drag, 1 commit on release, 0 sync pushes after release, 0 backup writes after release {"id":"gesture-9","durationMs":1491.2,"pointerDown":false,"surface":"App.handleSaveAnnotations","tool":"pen","type":"path","action":"path:created","pageNumber":1,"annotationId":"d139d396-4d1d-4f61-a1e3-c8c747fee5eb","source":"path:created","objectDelta":1,"previousObjectCount":8,"nextObjectCount":9,"changedObjectsCount":1,"checkpointPolicy":"normal","reason":"settled"}
+[PreviewDiag] summary path:created started, 16 preview frames, 0 sync writes during drag, 0 sync deferrals during drag, 0 backup writes during drag, 1 commit on release, 0 sync pushes after release, 0 backup writes after release {"id":"gesture-10","durationMs":1486,"pointerDown":false,"surface":"App.handleSaveAnnotations","tool":"pen","type":"path","action":"path:created","pageNumber":1,"annotationId":"cdad342b-a9a1-42d1-9b42-6d6ffa439125","source":"path:created","objectDelta":1,"previousObjectCount":9,"nextObjectCount":10,"changedObjectsCount":1,"checkpointPolicy":"normal","reason":"settled"}
+[PreviewDiag] summary path:created started, 17 preview frames, 0 sync writes during drag, 0 sync deferrals during drag, 0 backup writes during drag, 1 commit on release, 0 sync pushes after release, 0 backup writes after release {"id":"gesture-11","durationMs":1481.6,"pointerDown":false,"surface":"App.handleSaveAnnotations","tool":"pen","type":"path","action":"path:created","pageNumber":1,"annotationId":"3bcbe67d-e7e7-46c8-ba00-a1481c10c972","source":"path:created","objectDelta":1,"previousObjectCount":10,"nextObjectCount":11,"changedObjectsCount":1,"checkpointPolicy":"normal","reason":"settled"}
+[PreviewDiag] sync push {"kind":"survey-marker","count":1,"surveyMarkerCount":1}
+[OpenTiming] doc-click @ 2418675ms Benjamin Franklin Elementary.pdf
+[OpenTiming] pdfid-resolve @ 2418968ms Benjamin Franklin Elementary.pdf-2401034
+%c[LOAD-TRACE +0ms] ════ OPEN START — Benjamin Franklin Elementary.pdf color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +1ms] watchdog armed — will check in 20s color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +132ms] Local file to ArrayBuffer color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +133ms] configuring pdf.js worker (loadPdfjs) color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +133ms] pdf.js worker ready color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +133ms] Starting PDF.js getDocument color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +515ms] PDF.js document parsed color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +721ms] Calculating page sizes color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +733ms] Page sizes calculated (4 pages) color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +734ms] Importing PDF annotations color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +734ms] PDF ready for rendering color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +734ms] ✅ LOAD COMPLETE — lifting the Loading curtain color:#2196F3;font-weight:bold
+[InteractionDiag] interactive-ready @ 2419715ms (isLoadingPDF→false; loading curtain lifted, toolbar+page now accept input)
+[OpenTiming] first-marks-painted @ 2419723ms pdfId=Benjamin Franklin Elementary.pdf-2401034
+console.warn @ [crdtBackfill] cutover sealed but Y.Map < legacy count — re-running import loop to recover {"yMapSize":0,"legacyCount":0}
+[PreviewDiag] sync push {"kind":"survey-marker","count":1,"surveyMarkerCount":1}
+[DrawCanvas p1] MOUNT — tool=pen, isShape=false, isDrawingMode=true
+[DrawCanvas p1] shape effect — tool=pen, isShape=false, isDrawingMode=true
+[DrawCanvas p2] MOUNT — tool=pen, isShape=false, isDrawingMode=true
+[DrawCanvas p2] shape effect — tool=pen, isShape=false, isDrawingMode=true
+[DrawCanvas p3] MOUNT — tool=pen, isShape=false, isDrawingMode=true
+[DrawCanvas p3] shape effect — tool=pen, isShape=false, isDrawingMode=true
+[DrawCanvas p4] MOUNT — tool=pen, isShape=false, isDrawingMode=true
+[DrawCanvas p4] shape effect — tool=pen, isShape=false, isDrawingMode=true
+[InteractionDiag] tool-changed @ 2459257ms from=pan to=pen
+[InteractionDiag] viewer-pointer-down @ 2459986ms tool=pen button=0 target=canvas
+[PreviewDiag] start {"pointerDown":true,"surface":"FabricDrawingCanvas","tool":"pen","type":"path","action":"pen-stroke","pageNumber":1,"annotationId":null}
+[PreviewDiag] preview {"id":"gesture-12","frames":1,"pointerDown":true,"surface":"FabricDrawingCanvas","tool":"pen","type":"path","action":"pen-stroke","pageNumber":1,"annotationId":null}
+[PreviewDiag] preview {"id":"gesture-12","frames":25,"pointerDown":true,"surface":"FabricDrawingCanvas","tool":"pen","type":"path","action":"pen-stroke","pageNumber":1,"annotationId":null}
+[InteractionDiag] pointer-end @ 2460451ms tool=pen
+[PreviewDiag] pointer release {"id":"gesture-12","frames":40,"pointerDown":false,"surface":"FabricDrawingCanvas","tool":"pen","type":"path","action":"pen-stroke","pageNumber":1,"annotationId":"c1cbaa8b-62ee-4b45-a251-cfa2c4570b9e"}
+[PreviewDiag] final commit {"id":"gesture-12","commits":1,"pointerDown":false,"surface":"App.handleSaveAnnotations","tool":"pen","type":"path","action":"path:created","pageNumber":1,"annotationId":"c1cbaa8b-62ee-4b45-a251-cfa2c4570b9e","source":"path:created","objectDelta":1,"previousObjectCount":11,"nextObjectCount":12,"changedObjectsCount":1,"checkpointPolicy":"normal"}
+[PreviewDiag] preview {"id":"gesture-12","frames":50,"pointerDown":false,"surface":"App.handleSaveAnnotations","tool":"pen","type":"path","action":"pen-stroke","pageNumber":1,"annotationId":"c1cbaa8b-62ee-4b45-a251-cfa2c4570b9e","source":"path:created","objectDelta":1,"previousObjectCount":11,"nextObjectCount":12,"changedObjectsCount":1,"checkpointPolicy":"normal"}
+[PreviewDiag] summary path:created started, 61 preview frames, 0 sync writes during drag, 0 sync deferrals during drag, 0 backup writes during drag, 1 commit on release, 0 sync pushes after release, 0 backup writes after release {"id":"gesture-12","durationMs":1882.1,"pointerDown":false,"surface":"App.handleSaveAnnotations","tool":"pen","type":"path","action":"path:created","pageNumber":1,"annotationId":"c1cbaa8b-62ee-4b45-a251-cfa2c4570b9e","source":"path:created","objectDelta":1,"previousObjectCount":11,"nextObjectCount":12,"changedObjectsCount":1,"checkpointPolicy":"normal","reason":"settled"}
+[DrawCanvas p1] shape effect — tool=survey-marker, isShape=true, isDrawingMode=false
+[DrawCanvas p2] shape effect — tool=survey-marker, isShape=true, isDrawingMode=false
+[DrawCanvas p3] shape effect — tool=survey-marker, isShape=true, isDrawingMode=false
+[DrawCanvas p4] shape effect — tool=survey-marker, isShape=true, isDrawingMode=false
+[InteractionDiag] tool-changed @ 2473966ms from=pen to=survey-marker
+[InteractionDiag] tool-intent @ 2478953ms requested=survey-marker from=survey-marker
+[InteractionDiag] viewer-pointer-down @ 2481269ms tool=survey-marker button=0 target=canvas
+[DrawCanvas p1] shape mousedown at (678.1, 295.8), tool=survey-marker
+[PreviewDiag] start {"pointerDown":true,"surface":"FabricDrawingCanvas","tool":"survey-marker","type":"survey-marker","action":"survey-marker-draw","pageNumber":1,"annotationId":null}
+[PreviewDiag] preview {"id":"gesture-13","frames":1,"pointerDown":true,"surface":"FabricDrawingCanvas","tool":"survey-marker","type":"survey-marker","action":"survey-marker-draw","pageNumber":1,"annotationId":null}
+[PreviewDiag] preview {"id":"gesture-13","frames":25,"pointerDown":true,"surface":"FabricDrawingCanvas","tool":"survey-marker","type":"survey-marker","action":"survey-marker-draw","pageNumber":1,"annotationId":null}
+[PreviewDiag] preview {"id":"gesture-13","frames":50,"pointerDown":true,"surface":"FabricDrawingCanvas","tool":"survey-marker","type":"survey-marker","action":"survey-marker-draw","pageNumber":1,"annotationId":null}
+[InteractionDiag] pointer-end @ 2482399ms tool=survey-marker
+[PreviewDiag] pointer release {"id":"gesture-13","frames":69,"pointerDown":false,"surface":"FabricDrawingCanvas","tool":"survey-marker","type":"survey-marker","action":"survey-marker-draw","pageNumber":1,"annotationId":null}
+[DrawCanvas p1] shape mouseup — tool=survey-marker, hasSize=true {"left":678.148085106383,"top":295.8434042553191,"w":30.20936170212758,"h":34.37617021276594}
+[PreviewDiag] final commit {"id":"gesture-13","commits":1,"pointerDown":false,"surface":"FabricDrawingCanvas","tool":"survey-marker","type":"survey-marker","action":"survey-marker-draw","pageNumber":1,"annotationId":null,"source":"survey-marker:create"}
+[PreviewDiag] summary survey-marker-draw started, 69 preview frames, 0 sync writes during drag, 0 sync deferrals during drag, 0 backup writes during drag, 1 commit on release, 0 sync pushes after release, 0 backup writes after release {"id":"gesture-13","durationMs":2524,"pointerDown":false,"surface":"FabricDrawingCanvas","tool":"survey-marker","type":"survey-marker","action":"survey-marker-draw","pageNumber":1,"annotationId":null,"source":"survey-marker:create","reason":"settled"}
+[PreviewDiag] sync push {"kind":"survey-marker","count":1,"surveyMarkerCount":2}
+console.error @ Login failed: {"name":"Error","message":"AADSTS65004: User declined to consent to access the app.","stack":"Error: AADSTS65004: User declined to consent to access the app.\n    at http://localhost:5173/src/contexts/MSGraphContext.jsx:604:17\n    at async onClick (http://localhost:5173/src/PDFViewer.jsx?t=1782360666171:30232:17)","cause":null}
+[PreviewDiag] sync push {"kind":"survey-marker","count":1,"surveyMarkerCount":2}
+[SaveLog] wrote 449 lines locally (source: main-process-continuous)
+[SaveLog] local snapshot saved at /Users/isaiahcalvo/Documents/Projects/Active/Survey-BetaSafeS2/Logs/2026-06-26_06-18-58
+[SaveLog] runPush start {"hasElectronApi":true,"hasPushLogFn":true,"payloadLength":73497}
+[SaveLog] runPush start {"hasElectronApi":true,"hasPushLogFn":true,"payloadLength":73497}
+[SaveLogBanner] GitHub push OK {"url":"https://github.com/IsaiahCalvo/Survey/blob/logs/mac-isaiahs-macbook-pro-2026-06-26T06-19-03-621Z.log","filename":"mac-isaiahs-macbook-pro-2026-06-26T06-19-03-621Z.log"}
+[SaveLogBanner] GitHub push OK {"url":"https://github.com/IsaiahCalvo/Survey/blob/logs/mac-isaiahs-macbook-pro-2026-06-26T06-19-03-458Z-82633-mqujj9gz-1.log","filename":"mac-isaiahs-macbook-pro-2026-06-26T06-19-03-458Z-82633-mqujj9gz-1.log"}
+=== PAGE RELOAD (navigation) @ 2026-06-26T06:28:59.578Z ===
+[OpenTiming] doc-click @ 615158ms Benjamin Franklin Elementary.pdf
+[OpenTiming] pdfid-resolve @ 617960ms Benjamin Franklin Elementary.pdf-2401034
+%c[LOAD-TRACE +0ms] ════ OPEN START — Benjamin Franklin Elementary.pdf color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +1ms] watchdog armed — will check in 20s color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +129ms] Local file to ArrayBuffer color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +130ms] configuring pdf.js worker (loadPdfjs) color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +130ms] pdf.js worker ready color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +130ms] Starting PDF.js getDocument color:#2196F3;font-weight:bold
+console.warn @ [crdtBackfill] cutover sealed but Y.Map < legacy count — re-running import loop to recover {"yMapSize":0,"legacyCount":0}
+%c[LOAD-TRACE +611ms] PDF.js document parsed color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +921ms] Calculating page sizes color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +990ms] Page sizes calculated (4 pages) color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +992ms] Importing PDF annotations color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +996ms] PDF ready for rendering color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +996ms] ✅ LOAD COMPLETE — lifting the Loading curtain color:#2196F3;font-weight:bold
+[InteractionDiag] interactive-ready @ 619117ms (isLoadingPDF→false; loading curtain lifted, toolbar+page now accept input)
+[OpenTiming] first-marks-painted @ 619146ms pdfId=Benjamin Franklin Elementary.pdf-2401034
+[PreviewDiag] sync push {"kind":"survey-marker","count":1,"surveyMarkerCount":2}
+[DrawCanvas p1] MOUNT — tool=survey-marker, isShape=true, isDrawingMode=false
+[DrawCanvas p1] shape effect — tool=survey-marker, isShape=true, isDrawingMode=false
+[DrawCanvas p2] MOUNT — tool=survey-marker, isShape=true, isDrawingMode=false
+[DrawCanvas p2] shape effect — tool=survey-marker, isShape=true, isDrawingMode=false
+[DrawCanvas p3] MOUNT — tool=survey-marker, isShape=true, isDrawingMode=false
+[DrawCanvas p3] shape effect — tool=survey-marker, isShape=true, isDrawingMode=false
+[DrawCanvas p4] MOUNT — tool=survey-marker, isShape=true, isDrawingMode=false
+[DrawCanvas p4] shape effect — tool=survey-marker, isShape=true, isDrawingMode=false
+[InteractionDiag] tool-changed @ 623947ms from=pan to=survey-marker
+[SaveLog] bulletproof local snapshot saved at /Users/isaiahcalvo/Documents/Projects/Active/Survey-BetaSafeS2/Logs/2026-06-26_06-39-41
+[SaveLog] runPush start {"hasElectronApi":true,"hasPushLogFn":true,"payloadLength":50747}
+[SaveLog] runPush start {"hasElectronApi":true,"hasPushLogFn":true,"payloadLength":50747}
+[SaveLogBanner] GitHub push OK {"url":"https://github.com/IsaiahCalvo/Survey/blob/logs/mac-isaiahs-macbook-pro-2026-06-26T06-39-45-945Z.log","filename":"mac-isaiahs-macbook-pro-2026-06-26T06-39-45-945Z.log"}
+[SaveLogBanner] GitHub push OK {"url":"https://github.com/IsaiahCalvo/Survey/blob/logs/mac-isaiahs-macbook-pro-2026-06-26T06-39-45-938Z-82633-mquk9uzn-1.log","filename":"mac-isaiahs-macbook-pro-2026-06-26T06-39-45-938Z-82633-mquk9uzn-1.log"}
+[PDFSaveExport] action start {"actionType":"pdf-export","documentId":"49962c53-465c-4b82-a497-ca568614ea41","supabaseAnnotationSaveRan":false,"pdfBytesGenerated":false,"localFilesystemWrite":false,"outputPath":null,"annotationCountsByType":{"path":13,"surveyMarker":2},"annotationCountSummary":{"totalObjects":13,"calloutCount":0,"surveyMarkerCount":2,"importedPdfObjects":0,"byType":{"path":13,"surveyMarker":2}},"embeddedPdfNativeAnnotationHandling":"preserve-unedited-native-annots-skip-unedited-imported-copies-export-edited-imported-copies","note":"Explicit export generates a PDF copy from original PDF bytes. Unedited imported PDF-native app copies are skipped to avoid duplication; edited imported copies are exported from app state."}
+[PDFSaveExport] source PDF selection {"actionType":"pdf-export","documentId":"49962c53-465c-4b82-a497-ca568614ea41","source":"original-pdf-bytes","skippedViewerSaveAsBlob":true,"reason":"The viewer save blob can contain rendered annotation appearances; exporting from original bytes prevents baked page artifacts plus duplicate editable app annotations."}
+[PDFSaveExport] pdf bytes generated {"actionType":"pdf-export","documentId":"49962c53-465c-4b82-a497-ca568614ea41","pdfBytesGenerated":true,"byteLength":2403964,"exportContract":{"version":1,"defaultScope":"regular-viewer-annotations-only","includedScopes":["canvas"],"excludedScopes":["survey","region","survey-region"],"importedPdfNativeHandling":"preserve-unedited-native-annots-skip-unedited-imported-copies-export-edited-imported-copies","visibilityHandling":"export-regular-viewer-annotations-only-exclude-survey-spaces-regions"},"exportDiagnostics":{"totalObjectsConsidered":15,"objectsExported":13,"objectsSkipped":2,"pdfAnnotationsAdded":13,"importedNativeCopiesSkipped":0,"editedImportedCopiesExported":0,"editedImportedNativeCopiesRemoved":0,"editedImportedNativeCopiesRemoveMisses":0,"byScope":{"canvas":13,"survey":2},"byType":{"path":13,"survey-marker":2},"bySource":{"fabric":13,"survey-marker":2},"byRegion":{},"bySpace":{},"bySurvey":{"module-1763727070665-0.5714253201980415":1,"module-1777061284093-0.41898282043453206":1},"skippedByReason":{"survey-marker-export-excluded":2},"skipped":[{"source":"survey-marker","pageNumber":1,"id":"surveyMarker-1782450867108-oob25k13j","type":"survey-marker","scope":"survey","reason":"survey-marker-export-excluded"},{"source":"survey-marker","pageNumber":1,"id":"surveyMarker-1782454614902-qahblts0r","type":"survey-marker","scope":"survey","reason":"survey-marker-export-excluded"}]},"appObjectsSeen":15,"pdfAnnotationsAdded":13,"annotationCountsByType":{"path":13,"survey-marker":2},"annotationCountsByScope":{"canvas":13,"survey":2},"annotationCountsBySource":{"fabric":13,"survey-marker":2},"annotationSkippedByReason":{"survey-marker-export-excluded":2},"embeddedPdfNativeAnnotationHandling":"preserve-unedited-native-annots-skip-unedited-imported-copies-export-edited-imported-copies","appLayerStateEmbedded":true,"appLayerStateSummary":{"documentId":"49962c53-465c-4b82-a497-ca568614ea41","exportId":"49962c53-465c-4b82-a497-ca568614ea41-1782456808311","scopedAnnotationPages":0,"scopedCallouts":0,"surveyMarkers":2,"spaces":0},"importedAppAnnotationsSkipped":0,"editedImportedAppAnnotationsExported":0,"editedImportedNativeAnnotationsRemoved":0,"editedImportedNativeAnnotationRemoveMisses":0,"countersExported":0,"counterMetadataMarker":"survey-counter","counterMetadataKeys":["SurveyApp","Subj","NM","Contents"],"counterMetadataFailures":0,"localFilesystemWrite":false,"outputPath":null}
+=== PAGE RELOAD (navigation) @ 2026-06-26T06:53:33.731Z ===
+[OpenTiming] doc-click @ 508548ms Benjamin Franklin Elementary.pdf
+[OpenTiming] pdfid-resolve @ 509290ms Benjamin Franklin Elementary.pdf-2401034
+%c[LOAD-TRACE +0ms] ════ OPEN START — Benjamin Franklin Elementary.pdf color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +0ms] watchdog armed — will check in 20s color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +46ms] Local file to ArrayBuffer color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +47ms] configuring pdf.js worker (loadPdfjs) color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +47ms] pdf.js worker ready color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +47ms] Starting PDF.js getDocument color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +712ms] PDF.js document parsed color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +1003ms] Calculating page sizes color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +1012ms] Page sizes calculated (4 pages) color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +1012ms] Importing PDF annotations color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +1012ms] PDF ready for rendering color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +1012ms] ✅ LOAD COMPLETE — lifting the Loading curtain color:#2196F3;font-weight:bold
+[InteractionDiag] interactive-ready @ 510314ms (isLoadingPDF→false; loading curtain lifted, toolbar+page now accept input)
+[OpenTiming] first-marks-painted @ 510320ms pdfId=Benjamin Franklin Elementary.pdf-2401034
+console.warn @ [crdtBackfill] cutover sealed but Y.Map < legacy count — re-running import loop to recover {"yMapSize":0,"legacyCount":0}
+[PreviewDiag] sync push {"kind":"survey-marker","count":1,"surveyMarkerCount":2}
+[DrawCanvas p1] MOUNT — tool=survey-marker, isShape=true, isDrawingMode=false
+[DrawCanvas p1] shape effect — tool=survey-marker, isShape=true, isDrawingMode=false
+[DrawCanvas p2] MOUNT — tool=survey-marker, isShape=true, isDrawingMode=false
+[DrawCanvas p2] shape effect — tool=survey-marker, isShape=true, isDrawingMode=false
+[DrawCanvas p3] MOUNT — tool=survey-marker, isShape=true, isDrawingMode=false
+[DrawCanvas p3] shape effect — tool=survey-marker, isShape=true, isDrawingMode=false
+[DrawCanvas p4] MOUNT — tool=survey-marker, isShape=true, isDrawingMode=false
+[DrawCanvas p4] shape effect — tool=survey-marker, isShape=true, isDrawingMode=false
+[InteractionDiag] tool-changed @ 514765ms from=pan to=survey-marker
+[SaveLog] bulletproof local snapshot saved at /Users/isaiahcalvo/Documents/Projects/Active/Survey-BetaSafeS2/Logs/2026-06-26_07-02-35
+[SaveLog] runPush start {"hasElectronApi":true,"hasPushLogFn":true,"payloadLength":57429}
+[SaveLog] runPush start {"hasElectronApi":true,"hasPushLogFn":true,"payloadLength":57429}
+[SaveLogBanner] GitHub push OK {"url":"https://github.com/IsaiahCalvo/Survey/blob/logs/mac-isaiahs-macbook-pro-2026-06-26T07-02-40-281Z.log","filename":"mac-isaiahs-macbook-pro-2026-06-26T07-02-40-281Z.log"}
+[SaveLogBanner] GitHub push OK {"url":"https://github.com/IsaiahCalvo/Survey/blob/logs/mac-isaiahs-macbook-pro-2026-06-26T07-02-40-273Z-82633-mqul3afk-1.log","filename":"mac-isaiahs-macbook-pro-2026-06-26T07-02-40-273Z-82633-mqul3afk-1.log"}
+[OpenTiming] pdfid-resolve @ 1182426ms Benjamin Franklin Elementary.pdf-2401034
+%c[LOAD-TRACE +0ms] ════ OPEN START — Benjamin Franklin Elementary.pdf color:#2196F3;font-weight:bold
+[InteractionDiag] tool-changed @ 1182459ms from=survey-marker to=pan (pan-active → Pdfjs interactionMode=Pan)
+%c[LOAD-TRACE +34ms] watchdog armed — will check in 20s color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +62ms] Local file to ArrayBuffer color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +63ms] configuring pdf.js worker (loadPdfjs) color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +63ms] pdf.js worker ready color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +63ms] Starting PDF.js getDocument color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +160ms] PDF.js document parsed color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +523ms] Calculating page sizes color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +540ms] Page sizes calculated (4 pages) color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +540ms] Importing PDF annotations color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +540ms] PDF ready for rendering color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +540ms] ✅ LOAD COMPLETE — lifting the Loading curtain color:#2196F3;font-weight:bold
+[InteractionDiag] interactive-ready @ 1182980ms (isLoadingPDF→false; loading curtain lifted, toolbar+page now accept input)
+[OpenTiming] first-marks-painted @ 1182986ms pdfId=Benjamin Franklin Elementary.pdf-2401034
+[OpenTiming] pdfid-resolve @ 1197404ms Benjamin Franklin Elementary.pdf-2401034
+%c[LOAD-TRACE +0ms] ════ OPEN START — Benjamin Franklin Elementary.pdf color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +13ms] watchdog armed — will check in 20s color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +105ms] Local file to ArrayBuffer color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +105ms] configuring pdf.js worker (loadPdfjs) color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +105ms] pdf.js worker ready color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +105ms] Starting PDF.js getDocument color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +182ms] PDF.js document parsed color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +282ms] Calculating page sizes color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +290ms] Page sizes calculated (4 pages) color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +291ms] Importing PDF annotations color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +291ms] PDF ready for rendering color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +291ms] ✅ LOAD COMPLETE — lifting the Loading curtain color:#2196F3;font-weight:bold
+[InteractionDiag] interactive-ready @ 1197702ms (isLoadingPDF→false; loading curtain lifted, toolbar+page now accept input)
+[OpenTiming] first-marks-painted @ 1197706ms pdfId=Benjamin Franklin Elementary.pdf-2401034
+[OpenTiming] pdfid-resolve @ 1210418ms Benjamin Franklin Elementary.pdf-2401034
+%c[LOAD-TRACE +0ms] ════ OPEN START — Benjamin Franklin Elementary.pdf color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +24ms] watchdog armed — will check in 20s color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +34ms] Local file to ArrayBuffer color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +34ms] configuring pdf.js worker (loadPdfjs) color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +34ms] pdf.js worker ready color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +34ms] Starting PDF.js getDocument color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +131ms] PDF.js document parsed color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +192ms] Calculating page sizes color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +200ms] Page sizes calculated (4 pages) color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +201ms] Importing PDF annotations color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +201ms] PDF ready for rendering color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +201ms] ✅ LOAD COMPLETE — lifting the Loading curtain color:#2196F3;font-weight:bold
+[InteractionDiag] interactive-ready @ 1210626ms (isLoadingPDF→false; loading curtain lifted, toolbar+page now accept input)
+[OpenTiming] first-marks-painted @ 1210632ms pdfId=Benjamin Franklin Elementary.pdf-2401034
+[OpenTiming] pdfid-resolve @ 1222432ms Benjamin Franklin Elementary.pdf-2401034
+%c[LOAD-TRACE +0ms] ════ OPEN START — Benjamin Franklin Elementary.pdf color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +14ms] watchdog armed — will check in 20s color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +85ms] Local file to ArrayBuffer color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +86ms] configuring pdf.js worker (loadPdfjs) color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +86ms] pdf.js worker ready color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +86ms] Starting PDF.js getDocument color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +216ms] PDF.js document parsed color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +357ms] Calculating page sizes color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +367ms] Page sizes calculated (4 pages) color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +367ms] Importing PDF annotations color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +367ms] PDF ready for rendering color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +368ms] ✅ LOAD COMPLETE — lifting the Loading curtain color:#2196F3;font-weight:bold
+[InteractionDiag] interactive-ready @ 1222809ms (isLoadingPDF→false; loading curtain lifted, toolbar+page now accept input)
+[OpenTiming] first-marks-painted @ 1222817ms pdfId=Benjamin Franklin Elementary.pdf-2401034
+console.error @ Error fetching subscription tier: {"message":"TypeError: Failed to fetch","details":"TypeError: Failed to fetch\n    at instrumentedFetch (http://localhost:5173/src/utils/networkLogger.js:45:32)\n    at http://localhost:5173/node_modules/.vite/deps/@supabase_supabase-js.js?v=3b483c4e:12494:23\n    at http://localhost:5173/node_modules/.vite/deps/@supabase_supabase-js.js?v=3b483c4e:12519:12\n    at async executeWithRetry (http://localhost:5173/node_modules/.vite/deps/@supabase_supabase-js.js?v=3b483c4e:621:19)\n    at async resolveSubscriptionTier (http://localhost:5173/src/contexts/AuthContext.jsx:158:29)\n    at async fetchSubscriptionTier (http://localhost:5173/src/contexts/AuthContext.jsx:190:27)","hint":"","code":""}
+console.error @ Error fetching subscription tier: {"message":"TypeError: Failed to fetch","details":"TypeError: Failed to fetch\n    at instrumentedFetch (http://localhost:5173/src/utils/networkLogger.js:45:32)\n    at http://localhost:5173/node_modules/.vite/deps/@supabase_supabase-js.js?v=3b483c4e:12494:23\n    at http://localhost:5173/node_modules/.vite/deps/@supabase_supabase-js.js?v=3b483c4e:12519:12\n    at async executeWithRetry (http://localhost:5173/node_modules/.vite/deps/@supabase_supabase-js.js?v=3b483c4e:621:19)\n    at async resolveSubscriptionTier (http://localhost:5173/src/contexts/AuthContext.jsx:158:29)\n    at async fetchSubscriptionTier (http://localhost:5173/src/contexts/AuthContext.jsx:190:27)","hint":"","code":""}
+console.error @ Error fetching subscription tier: {"message":"TypeError: Failed to fetch","details":"TypeError: Failed to fetch\n    at instrumentedFetch (http://localhost:5173/src/utils/networkLogger.js:45:32)\n    at http://localhost:5173/node_modules/.vite/deps/@supabase_supabase-js.js?v=3b483c4e:12494:23\n    at http://localhost:5173/node_modules/.vite/deps/@supabase_supabase-js.js?v=3b483c4e:12519:12\n    at async executeWithRetry (http://localhost:5173/node_modules/.vite/deps/@supabase_supabase-js.js?v=3b483c4e:621:19)\n    at async resolveSubscriptionTier (http://localhost:5173/src/contexts/AuthContext.jsx:158:29)\n    at async fetchSubscriptionTier (http://localhost:5173/src/contexts/AuthContext.jsx:190:27)","hint":"","code":""}
+=== PAGE RELOAD (navigation) @ 2026-06-26T12:48:51.179Z ===
+[OpenTiming] doc-click @ 4478469ms Benjamin Franklin Elementary.pdf
+[OpenTiming] pdfid-resolve @ 4479615ms Benjamin Franklin Elementary.pdf-2401034
+%c[LOAD-TRACE +0ms] ════ OPEN START — Benjamin Franklin Elementary.pdf color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +1ms] watchdog armed — will check in 20s color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +46ms] Local file to ArrayBuffer color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +47ms] configuring pdf.js worker (loadPdfjs) color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +47ms] pdf.js worker ready color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +47ms] Starting PDF.js getDocument color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +173ms] PDF.js document parsed color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +414ms] Calculating page sizes color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +428ms] Page sizes calculated (4 pages) color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +428ms] Importing PDF annotations color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +428ms] PDF ready for rendering color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +428ms] ✅ LOAD COMPLETE — lifting the Loading curtain color:#2196F3;font-weight:bold
+[InteractionDiag] interactive-ready @ 4480052ms (isLoadingPDF→false; loading curtain lifted, toolbar+page now accept input)
+[OpenTiming] first-marks-painted @ 4480055ms pdfId=Benjamin Franklin Elementary.pdf-2401034
+console.warn @ [crdtBackfill] cutover sealed but Y.Map < legacy count — re-running import loop to recover {"yMapSize":0,"legacyCount":0}
+[DrawCanvas p1] MOUNT — tool=survey-marker, isShape=true, isDrawingMode=false
+[DrawCanvas p1] shape effect — tool=survey-marker, isShape=true, isDrawingMode=false
+[DrawCanvas p2] MOUNT — tool=survey-marker, isShape=true, isDrawingMode=false
+[DrawCanvas p2] shape effect — tool=survey-marker, isShape=true, isDrawingMode=false
+[DrawCanvas p3] MOUNT — tool=survey-marker, isShape=true, isDrawingMode=false
+[DrawCanvas p3] shape effect — tool=survey-marker, isShape=true, isDrawingMode=false
+[DrawCanvas p4] MOUNT — tool=survey-marker, isShape=true, isDrawingMode=false
+[DrawCanvas p4] shape effect — tool=survey-marker, isShape=true, isDrawingMode=false
+[InteractionDiag] tool-changed @ 4482516ms from=pan to=survey-marker
+[PreviewDiag] sync push {"kind":"survey-marker","count":1,"surveyMarkerCount":2}
+[PreviewDiag] sync push {"kind":"survey-marker","count":1,"surveyMarkerCount":2}
+[SaveLog] bulletproof local snapshot saved at /Users/isaiahcalvo/Documents/Projects/Active/Survey-BetaSafeS2/Logs/2026-06-26_14-04-31
+[SaveLog] runPush start {"hasElectronApi":true,"hasPushLogFn":true,"payloadLength":68181}
+[SaveLog] runPush start {"hasElectronApi":true,"hasPushLogFn":true,"payloadLength":68181}
+[SaveLogBanner] GitHub push OK {"url":"https://github.com/IsaiahCalvo/Survey/blob/logs/mac-isaiahs-macbook-pro-2026-06-26T14-04-35-884Z.log","filename":"mac-isaiahs-macbook-pro-2026-06-26T14-04-35-884Z.log"}
+[SaveLogBanner] GitHub push OK {"url":"https://github.com/IsaiahCalvo/Survey/blob/logs/mac-isaiahs-macbook-pro-2026-06-26T14-04-35-875Z-82633-mqv05w13-1.log","filename":"mac-isaiahs-macbook-pro-2026-06-26T14-04-35-875Z-82633-mqv05w13-1.log"}
+=== PAGE RELOAD (navigation) @ 2026-06-26T15:48:11.835Z ===
+[OpenTiming] doc-click @ 4245ms Benjamin Franklin Elementary.pdf
+[OpenTiming] pdfid-resolve @ 4648ms Benjamin Franklin Elementary.pdf-2401034
+%c[LOAD-TRACE +0ms] ════ OPEN START — Benjamin Franklin Elementary.pdf color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +0ms] watchdog armed — will check in 20s color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +69ms] Local file to ArrayBuffer color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +69ms] configuring pdf.js worker (loadPdfjs) color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +69ms] pdf.js worker ready color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +69ms] Starting PDF.js getDocument color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +192ms] PDF.js document parsed color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +377ms] Calculating page sizes color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +389ms] Page sizes calculated (4 pages) color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +389ms] Importing PDF annotations color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +390ms] PDF ready for rendering color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +390ms] ✅ LOAD COMPLETE — lifting the Loading curtain color:#2196F3;font-weight:bold
+[InteractionDiag] interactive-ready @ 5045ms (isLoadingPDF→false; loading curtain lifted, toolbar+page now accept input)
+[OpenTiming] first-marks-painted @ 5050ms pdfId=Benjamin Franklin Elementary.pdf-2401034
+console.warn @ [crdtBackfill] cutover sealed but Y.Map < legacy count — re-running import loop to recover {"yMapSize":0,"legacyCount":0}
+[DrawCanvas p1] MOUNT — tool=survey-marker, isShape=true, isDrawingMode=false
+[DrawCanvas p1] shape effect — tool=survey-marker, isShape=true, isDrawingMode=false
+[DrawCanvas p2] MOUNT — tool=survey-marker, isShape=true, isDrawingMode=false
+[DrawCanvas p2] shape effect — tool=survey-marker, isShape=true, isDrawingMode=false
+[DrawCanvas p3] MOUNT — tool=survey-marker, isShape=true, isDrawingMode=false
+[DrawCanvas p3] shape effect — tool=survey-marker, isShape=true, isDrawingMode=false
+[DrawCanvas p4] MOUNT — tool=survey-marker, isShape=true, isDrawingMode=false
+[DrawCanvas p4] shape effect — tool=survey-marker, isShape=true, isDrawingMode=false
+[InteractionDiag] tool-changed @ 6415ms from=pan to=survey-marker
+[PreviewDiag] sync push {"kind":"survey-marker","count":1,"surveyMarkerCount":2}
+[PreviewDiag] sync push {"kind":"survey-marker","count":1,"surveyMarkerCount":2}
+[PreviewDiag] sync push {"kind":"survey-marker","count":1,"surveyMarkerCount":2}
+[PreviewDiag] sync push {"kind":"survey-marker","count":1,"surveyMarkerCount":2}
+[SaveLog] bulletproof local snapshot saved at /Users/isaiahcalvo/Documents/Projects/Active/Survey-BetaSafeS2/Logs/2026-06-26_15-48-51
+[SaveLog] runPush start {"hasElectronApi":true,"hasPushLogFn":true,"payloadLength":70361}
+[SaveLog] runPush start {"hasElectronApi":true,"hasPushLogFn":true,"payloadLength":70361}
+[SaveLogBanner] GitHub push OK {"url":"https://github.com/IsaiahCalvo/Survey/blob/logs/mac-isaiahs-macbook-pro-2026-06-26T15-48-56-915Z.log","filename":"mac-isaiahs-macbook-pro-2026-06-26T15-48-56-915Z.log"}
+[SaveLogBanner] GitHub push OK {"url":"https://github.com/IsaiahCalvo/Survey/blob/logs/mac-isaiahs-macbook-pro-2026-06-26T15-48-56-906Z-82633-mqv3w33q-1.log","filename":"mac-isaiahs-macbook-pro-2026-06-26T15-48-56-906Z-82633-mqv3w33q-1.log"}
+[PreviewDiag] sync push {"kind":"survey-marker","count":1,"surveyMarkerCount":2}
+[OpenTiming] pdfid-resolve @ 610132ms Benjamin Franklin Elementary.pdf-2401034
+%c[LOAD-TRACE +0ms] ════ OPEN START — Benjamin Franklin Elementary.pdf color:#2196F3;font-weight:bold
+[InteractionDiag] tool-changed @ 610156ms from=survey-marker to=pan (pan-active → Pdfjs interactionMode=Pan)
+%c[LOAD-TRACE +26ms] watchdog armed — will check in 20s color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +53ms] Local file to ArrayBuffer color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +53ms] configuring pdf.js worker (loadPdfjs) color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +53ms] pdf.js worker ready color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +53ms] Starting PDF.js getDocument color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +143ms] PDF.js document parsed color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +446ms] Calculating page sizes color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +462ms] Page sizes calculated (4 pages) color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +462ms] Importing PDF annotations color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +462ms] PDF ready for rendering color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +462ms] ✅ LOAD COMPLETE — lifting the Loading curtain color:#2196F3;font-weight:bold
+[InteractionDiag] interactive-ready @ 610607ms (isLoadingPDF→false; loading curtain lifted, toolbar+page now accept input)
+[OpenTiming] first-marks-painted @ 610614ms pdfId=Benjamin Franklin Elementary.pdf-2401034
+[OpenTiming] pdfid-resolve @ 625127ms Benjamin Franklin Elementary.pdf-2401034
+%c[LOAD-TRACE +0ms] ════ OPEN START — Benjamin Franklin Elementary.pdf color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +17ms] watchdog armed — will check in 20s color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +27ms] Local file to ArrayBuffer color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +27ms] configuring pdf.js worker (loadPdfjs) color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +28ms] pdf.js worker ready color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +28ms] Starting PDF.js getDocument color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +271ms] PDF.js document parsed color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +364ms] Calculating page sizes color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +371ms] Page sizes calculated (4 pages) color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +371ms] Importing PDF annotations color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +371ms] PDF ready for rendering color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +371ms] ✅ LOAD COMPLETE — lifting the Loading curtain color:#2196F3;font-weight:bold
+[InteractionDiag] interactive-ready @ 625507ms (isLoadingPDF→false; loading curtain lifted, toolbar+page now accept input)
+[OpenTiming] first-marks-painted @ 625514ms pdfId=Benjamin Franklin Elementary.pdf-2401034
+=== PAGE RELOAD (navigation) @ 2026-06-26T16:40:44.659Z ===
+[OpenTiming] doc-click @ 2391ms Benjamin Franklin Elementary.pdf
+[OpenTiming] pdfid-resolve @ 2755ms Benjamin Franklin Elementary.pdf-2401034
+%c[LOAD-TRACE +0ms] ════ OPEN START — Benjamin Franklin Elementary.pdf color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +0ms] watchdog armed — will check in 20s color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +27ms] Local file to ArrayBuffer color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +27ms] configuring pdf.js worker (loadPdfjs) color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +28ms] pdf.js worker ready color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +28ms] Starting PDF.js getDocument color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +176ms] PDF.js document parsed color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +486ms] Calculating page sizes color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +495ms] Page sizes calculated (4 pages) color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +495ms] Importing PDF annotations color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +496ms] PDF ready for rendering color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +496ms] ✅ LOAD COMPLETE — lifting the Loading curtain color:#2196F3;font-weight:bold
+[InteractionDiag] interactive-ready @ 3260ms (isLoadingPDF→false; loading curtain lifted, toolbar+page now accept input)
+[OpenTiming] first-marks-painted @ 3264ms pdfId=Benjamin Franklin Elementary.pdf-2401034
+console.warn @ [crdtBackfill] cutover sealed but Y.Map < legacy count — re-running import loop to recover {"yMapSize":0,"legacyCount":0}
+[DrawCanvas p1] MOUNT — tool=survey-marker, isShape=true, isDrawingMode=false
+[DrawCanvas p1] shape effect — tool=survey-marker, isShape=true, isDrawingMode=false
+[DrawCanvas p2] MOUNT — tool=survey-marker, isShape=true, isDrawingMode=false
+[DrawCanvas p2] shape effect — tool=survey-marker, isShape=true, isDrawingMode=false
+[DrawCanvas p3] MOUNT — tool=survey-marker, isShape=true, isDrawingMode=false
+[DrawCanvas p3] shape effect — tool=survey-marker, isShape=true, isDrawingMode=false
+[DrawCanvas p4] MOUNT — tool=survey-marker, isShape=true, isDrawingMode=false
+[DrawCanvas p4] shape effect — tool=survey-marker, isShape=true, isDrawingMode=false
+[InteractionDiag] tool-changed @ 4438ms from=pan to=survey-marker
+[PreviewDiag] sync push {"kind":"survey-marker","count":1,"surveyMarkerCount":2}
+[PreviewDiag] sync push {"kind":"survey-marker","count":1,"surveyMarkerCount":2}
+console.error @ Failed to auto-sync from Excel: {"name":"Error","message":"Error invoking remote method 'fs:readFile': Error: ENOENT: no such file or directory, open '/Users/isaiahcalvo/Desktop/Paging_export.xlsx'","stack":"Error: Error invoking remote method 'fs:readFile': Error: ENOENT: no such file or directory, open '/Users/isaiahcalvo/Desktop/Paging_export.xlsx'","cause":null}
+[PreviewDiag] sync push {"kind":"survey-marker","count":1,"surveyMarkerCount":2}
+[PreviewDiag] sync push {"kind":"survey-marker","count":1,"surveyMarkerCount":2}
+[PreviewDiag] sync push {"kind":"survey-marker","count":1,"surveyMarkerCount":2}
