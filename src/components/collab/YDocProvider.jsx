@@ -1332,7 +1332,16 @@ function YDocProviderInner({ docId, children, closeDocument }) {
   // hasn't been acknowledged surfaces the banner. NB: the banner component itself
   // gates dismiss-button render for permission_revoked, so that code stays visible
   // even after a stale dismiss attempt.
-  const showBanner = storageState && storageState.code !== 'ok' && !bannerDismissed;
+  //
+  // EXCEPTION: 'transport_offline' (the realtime live-collaboration connection is down) is
+  // intentionally suppressed. Multi-user live collaboration + document sharing are not a
+  // shipped feature yet, so alarming the user that "live sync is offline / others can't see
+  // your edits" is noise about a capability they never use — and it falsely competes with the
+  // bottom-left save indicator (their work still saves via the cloud-save path). Re-enable this
+  // code when real-time collaboration actually ships. Every OTHER non-ok code (quota_exceeded /
+  // permission_revoked / login_expiry_failure / etc. — genuine save/access failures) still surfaces.
+  const showBanner = storageState && storageState.code !== 'ok'
+    && storageState.code !== 'transport_offline' && !bannerDismissed;
 
   return (
     <YDocContext.Provider value={value}>
