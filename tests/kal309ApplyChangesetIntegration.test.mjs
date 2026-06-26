@@ -184,8 +184,11 @@ const MODULE_ID = 'mod1';
 const CATEGORY_ID = 'cat1';
 
 // Seed one marker with a known baseline, returning its id + the fingerprints it was seeded with.
+// IMPORTANT: use the REAL app marker-id format (surveyMarker-<ts>-<rand>), NOT a UUID. The app never
+// mints UUID marker ids; an earlier all-UUID test masked the bug where the UUID-typed column + the
+// safe_uuid gate skipped every real marker and routed all syncs to review.
 async function seedOneMarker(userClient, { documentId, workbookId, values }) {
-  const markerAnnotationId = randomUUID();
+  const markerAnnotationId = `surveyMarker-${Date.now()}-${randomUUID().slice(0, 9)}`;
   const fp = await fingerprintsFor(values);
   const identityRecord = {
     version: 'v1', origin: 'export', lastExportId: 'exp-int',
