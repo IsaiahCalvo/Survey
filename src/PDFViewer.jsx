@@ -28534,6 +28534,7 @@ ${pageBlocks}
                                 setCallouts={setCallouts}
                                 selectedCalloutId={selectedCalloutId}
                                 setSelectedCalloutId={setSelectedCalloutId}
+                                onDeleteSelectedCallouts={handleDeleteSelectedCallouts}
                                 clipboardCallout={clipboardCallout}
                                 clipboardCalloutType={clipboardCalloutType}
                                 onCutCallout={handleCutCallout}

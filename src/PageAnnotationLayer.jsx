@@ -2772,6 +2772,7 @@ const PageAnnotationLayer = memo(({
   onCutCallout = () => { }, // Cut callout handler
   onCopyCallout = () => { }, // Copy callout handler
   onPasteCallout = () => { }, // Paste callout handler
+  onDeleteSelectedCallouts = () => { }, // Ownership-gated callout delete (routes through PDFViewer KAL-125 handler)
   // Properties panel positioning props
   middleAreaBounds = { top: 0, height: 500 }, // Bounds of the middle area ({top, height})
   surveyPanelWidth = 0, // Width of survey panel (0 when closed, 320 when open, 48 when collapsed)
@@ -3893,11 +3894,15 @@ const PageAnnotationLayer = memo(({
 
   const handleDeleteCalloutFromMenu = useCallback(() => {
     if (contextMenu?.calloutId) {
-      setCallouts(prev => prev.filter(c => c.id !== contextMenu.calloutId));
+      // Phase 1 callout-unification: route the context-menu delete through the
+      // ownership-gated handler (PDFViewer KAL-125) so it inherits canModify +
+      // undo + 30-day trash, instead of a raw local filter that ignored
+      // permissions (a collaborator could ghost-delete another user's callout).
+      onDeleteSelectedCallouts([contextMenu.calloutId]);
       setSelectedCalloutId(null);
     }
     closeContextMenu();
-  }, [contextMenu, setCallouts, setSelectedCalloutId, closeContextMenu]);
+  }, [contextMenu, onDeleteSelectedCallouts, setSelectedCalloutId, closeContextMenu]);
 
   const handleEditCalloutFromMenu = useCallback(() => {
     // For callouts, we'll open the edit modal with callout-specific values
