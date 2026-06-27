@@ -220,6 +220,9 @@ function YDocProviderInner({ docId, children, closeDocument }) {
   const [role, setRole] = useState('unknown');
   const [isHydrating, setIsHydrating] = useState(true);
   const [bannerDismissed, setBannerDismissed] = useState(false);
+  // Whether THIS document is actually shared (has active collaborators). The live-sync-offline
+  // banner only makes sense for a shared document — resolved once per open in the effect below.
+  const [isDocShared, setIsDocShared] = useState(false);
   // 2026-04-29 — when SyncStatusChip's manual retry exhausts (4 failed attempts),
   // it dispatches a window event so the banner surfaces immediately rather than
   // waiting the 30s stuck-queue threshold. Reset on document mount.
@@ -1327,21 +1330,38 @@ function YDocProviderInner({ docId, children, closeDocument }) {
     undoState,
   ]);
 
-  // Banner gates: must have a non-ok storage state AND user has not dismissed yet
-  // for this session. CONTEXT.md forbids silent fallback — every non-ok code that
-  // hasn't been acknowledged surfaces the banner. NB: the banner component itself
-  // gates dismiss-button render for permission_revoked, so that code stays visible
-  // even after a stale dismiss attempt.
-  //
-  // EXCEPTION: 'transport_offline' (the realtime live-collaboration connection is down) is
-  // intentionally suppressed. Multi-user live collaboration + document sharing are not a
-  // shipped feature yet, so alarming the user that "live sync is offline / others can't see
-  // your edits" is noise about a capability they never use — and it falsely competes with the
-  // bottom-left save indicator (their work still saves via the cloud-save path). Re-enable this
-  // code when real-time collaboration actually ships. Every OTHER non-ok code (quota_exceeded /
-  // permission_revoked / login_expiry_failure / etc. — genuine save/access failures) still surfaces.
-  const showBanner = storageState && storageState.code !== 'ok'
-    && storageState.code !== 'transport_offline' && !bannerDismissed;
+  // The "live sync is offline" banner (transport_offline) only makes sense for a SHARED document —
+  // one that actually has collaborators to sync WITH. If the document was never shared, there is no
+  // live sync to be offline, so the banner would be noise that wrongly competes with the bottom-left
+  // save indicator (the user's work still saves via the cloud-save path). Resolve "is this document
+  // shared" once per open from document_collaborators — a DB fact, independent of the realtime
+  // connection. Best-effort: any failure → treat as not shared → don't show the live-sync banner
+  // (never a false alarm). When sharing/collaboration actually ships, a shared doc that fails to live
+  // sync WILL show it. Genuine save/access failures (quota / permission_revoked / login_expiry / ...)
+  // are unaffected and always surface.
+  useEffect(() => {
+    if (!docId) { setIsDocShared(false); return undefined; }
+    let cancelled = false;
+    (async () => {
+      try {
+        const { count, error } = await supabase
+          .from('document_collaborators')
+          .select('user_id', { count: 'exact', head: true })
+          .eq('document_id', docId)
+          .eq('status', 'active');
+        if (!cancelled) setIsDocShared(!error && (count || 0) > 0);
+      } catch { if (!cancelled) setIsDocShared(false); }
+    })();
+    return () => { cancelled = true; };
+  }, [docId]);
+
+  // Banner gates: must have a non-ok storage state AND the user has not dismissed it this session.
+  // CONTEXT.md forbids silent fallback — every non-ok code surfaces, NB: the banner component itself
+  // gates the dismiss button for permission_revoked, so that code stays visible after a stale dismiss.
+  // EXCEPTION: 'transport_offline' (live realtime/collaboration down) only surfaces when the document
+  // is actually shared (isDocShared) — otherwise there is nothing to live-sync and it would be noise.
+  const showBanner = storageState && storageState.code !== 'ok' && !bannerDismissed
+    && (storageState.code !== 'transport_offline' || isDocShared);
 
   return (
     <YDocContext.Provider value={value}>
