@@ -17438,6 +17438,11 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     setSpaces,
     surveyMarkers,
     setSurveyMarkers,
+    // Callout-unification keystone (Phase 5): the unscaled per-page PDF pixel
+    // sizes the SVG layer inverts callouts with. Used (only when the shared-store
+    // flag is ON) to project cloud-hydrated callouts into annotationsByPage —
+    // same page-pixel source as PDFViewer's local point-A load projection.
+    pageSizesRef,
   });
   // KAL-309: publish the durable META accessors to the latest-refs the early
   // import-apply callbacks read through (avoids a forward TDZ reference).

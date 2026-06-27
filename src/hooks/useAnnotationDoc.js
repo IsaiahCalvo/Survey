@@ -17,6 +17,8 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 import { supabase } from '../supabaseClient.js';
 import { openAnnotationDoc, getClientId } from '../services/annotationDocSync.js';
 import { setMetaValue as setMetaValueOnDoc } from '../services/annotationDocStore.js';
+import { calloutsInSharedStore } from '../lib/calloutSharedStoreFlag.js';
+import { calloutToAnnotationObject } from '../utils/calloutAnnotationBridge.js';
 
 const CALLOUTS_KEY = 'calloutsList';
 const SPACES_KEY = 'spaces';
@@ -25,6 +27,91 @@ function pageCount(byPage) {
   let n = 0;
   for (const k of Object.keys(byPage || {})) n += (byPage[k]?.objects?.length || 0);
   return n;
+}
+
+// ---------------------------------------------------------------------------
+// Callout-unification keystone (Phase 5) — CLOUD hydrate → annotationsByPage
+// projection.
+//
+// `useAnnotationDoc` is the LIVE cloud hydration seam (the legacy
+// `useAnnotationCloudSync` hydrate effect is dead — invoked with
+// hydrateEnabled=false). Cloud docs deliver callouts as a document-level META
+// list (`calloutsList`), entirely separate from the per-page `byPage` map; they
+// are applied to React state via `setCallouts(...)`. When the shared store is
+// ON, the SVG render path renders callouts ONLY from `annotationsByPage`
+// (SVGAnnotationLayer's `data.type==='callout'` branch) and SUPPRESSES the
+// legacy `filteredCallouts` loop (`if (calloutsShared) return []`). So without
+// this projection a cloud doc's callouts would VANISH under the flag.
+//
+// `projectCalloutsIntoByPage` rebuilds the callout layer of `byPage` FROM the
+// authoritative callout list on every hydrate:
+//   • strips any pre-existing `data.type==='callout'` objects (so a re-hydrate
+//     with a removed callout doesn't leave a ghost), then
+//   • re-projects each callout via the round-trip-verified bridge,
+//     de-duplicating by id within the projection.
+// This rebuild-from-source design is inherently IDEMPOTENT across the multiple
+// hydrate fires (initial durable-wins + every remote `onChange`): the output is
+// a pure function of (non-callout objects, callout list), so re-running never
+// doubles a callout. Non-callout objects are always preserved untouched.
+//
+// pageSize per page = the unscaled PDF page-pixel size (pageSizesRef.current),
+// which is exactly the {width,height} the SVG layer inverts with — so the bridge
+// forward/inverse round-trip is lossless (mirrors PDFViewer's local point-A
+// projection). Flag OFF → returns `byPage` unchanged (referentially identical
+// when no callouts), so behavior is byte-for-byte the same.
+function projectCalloutsIntoByPage(byPage, calloutsList, pageSizes) {
+  if (!calloutsInSharedStore()) return byPage;
+  if (!Array.isArray(calloutsList) || calloutsList.length === 0) return byPage;
+
+  try {
+    const sizes = pageSizes || {};
+    const src = byPage || {};
+    const next = {};
+    // Start from a callout-free copy of every existing page so a re-hydrate
+    // can't leave behind a callout the new list no longer contains.
+    for (const key of Object.keys(src)) {
+      const page = src[key];
+      const objects = Array.isArray(page?.objects) ? page.objects : [];
+      const nonCallout = objects.filter((o) => !(o?.data?.type === 'callout'));
+      next[key] = { ...(page || {}), objects: nonCallout };
+    }
+
+    const seenIds = new Set();
+    let projectedCount = 0;
+    for (const callout of calloutsList) {
+      if (!callout) continue;
+      const page = callout.pageNumber;
+      if (!Number.isFinite(page)) continue;
+      // De-dupe by id within the projection (defends against a duplicated row
+      // in the source list).
+      const id = callout.id ?? null;
+      if (id != null) {
+        if (seenIds.has(id)) continue;
+        seenIds.add(id);
+      }
+      // Per-page unscaled PDF dims; fall back to US-Letter if not yet measured.
+      const pageSize = sizes[page] || { width: 612, height: 792 };
+      if (!Number.isFinite(pageSize.width) || !Number.isFinite(pageSize.height)) continue;
+      const obj = calloutToAnnotationObject(callout, pageSize);
+      const existing = next[page];
+      const existingObjects = Array.isArray(existing?.objects) ? existing.objects : [];
+      next[page] = {
+        ...(existing || {}),
+        objects: [...existingObjects, obj],
+      };
+      projectedCount += 1;
+    }
+
+    if (projectedCount === 0) return byPage;
+    return next;
+  } catch (err) {
+    // Never let projection failure blank the annotation layer — fall back to the
+    // un-projected byPage (callouts still live in callouts[] dual-rep; with the
+    // flag ON the legacy render is suppressed, but a build that throws here is a
+    // bug we want surfaced loudly rather than a silent blank).
+    console.error('[Callout keystone] cloud-hydrate projection failed; using un-projected byPage', err);
+    return byPage;
+  }
 }
 
 export function useAnnotationDoc({
@@ -39,6 +126,12 @@ export function useAnnotationDoc({
   setSpaces,
   surveyMarkers,
   setSurveyMarkers,
+  // Callout-unification keystone (Phase 5): the unscaled per-page PDF pixel sizes
+  // ({ [page]: { width, height } }) the SVG layer inverts callouts with. Passed
+  // as a ref so the projection reads the latest measured sizes at hydrate time
+  // (sizes may arrive after the doc opens). Only consulted when the shared-store
+  // flag is ON; safe to omit when the flag is OFF.
+  pageSizesRef,
 }) {
   const handleRef = useRef(null);
   const readyRef = useRef(false);
@@ -76,8 +169,14 @@ export function useAnnotationDoc({
       // Remote ops (other devices) → reflect into React state.
       handle.onChange((byPage) => {
         if (cancelled) return;
-        setAnnotationsByPage(byPage);
         const c = handle.getMeta(CALLOUTS_KEY);
+        // Keystone (flag ON): also project the realtime callout list into the
+        // shared byPage so a collaborator's callouts render via the shared
+        // dispatch (the legacy filteredCallouts loop is suppressed under the
+        // flag). callouts[] stays populated below (dual-rep). Flag OFF → byPage
+        // unchanged. Idempotent: projectCalloutsIntoByPage rebuilds the callout
+        // layer from `c` each time, so repeated remote ops never double-render.
+        setAnnotationsByPage(projectCalloutsIntoByPage(byPage, c, pageSizesRef?.current));
         if (Array.isArray(c)) setCallouts(c);
         const s = handle.getMeta(SPACES_KEY);
         if (Array.isArray(s)) setSpaces(s);
@@ -96,7 +195,15 @@ export function useAnnotationDoc({
 
       if (count > 0 || hasCallouts || hasSpaces || hasSurvey) {
         // Durable store wins — paint from it.
-        if (count > 0) setAnnotationsByPage(storeByPage);
+        // Keystone (flag ON): project the durable callout list into the store's
+        // byPage so callouts render via the shared dispatch. We may need to set
+        // byPage even when count === 0 (a callout-only cloud doc) so the
+        // projected callouts reach the layer. When the flag is OFF,
+        // projectCalloutsIntoByPage returns storeByPage unchanged, so the
+        // `count > 0` guard below is preserved byte-for-byte.
+        const projectedByPage = projectCalloutsIntoByPage(storeByPage, storeCallouts, pageSizesRef?.current);
+        const calloutsWereProjected = projectedByPage !== storeByPage;
+        if (count > 0 || calloutsWereProjected) setAnnotationsByPage(projectedByPage);
         if (hasCallouts) setCallouts(storeCallouts);
         if (hasSpaces) setSpaces(storeSpaces);
         if (hasSurvey) setSurveyMarkers(storeSurvey);
