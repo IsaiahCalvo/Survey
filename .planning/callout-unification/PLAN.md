@@ -63,6 +63,22 @@ Phases 1–4 are pre-keystone (no state shape change, no data migration). Phase 
 
 Each phase is independently shippable and testable. Implementation does not begin until this plan is approved.
 
+> **IMPLEMENTATION FINDING (2026-06-27, during Phase 1/2 build) — RE-SEQUENCED.**
+> Reading the actual code revealed the original order is inverted: Phases 2 (bulk-delete
+> modal), 3 (undo → shared delta lane), and 4 (render unification) all depend on callouts
+> living in `annotationsByPage`, because the shared machinery is hard-coupled to it —
+> `handleRequestBulkDelete`/`buildBulkDeletePlan` index authorship by `annotationsByPage`
+> and its undo restores into `annotationsByPage`; the shared delta lane and the shared
+> render dispatch both iterate `annotationsByPage`. Doing 2/3/4 BEFORE the keystone means
+> building throwaway bridges to the `callouts[]` store that the keystone then deletes.
+> **The keystone (Phase 5) is the linchpin, not the middle step.** Revised order:
+> **Phase 1 (done) → Phase 5 keystone, behind a feature flag with backward-compat reads
+> → 2/3/4/7 fall out almost for free once callouts are in the shared store → Phase 6 data
+> backfill → Phase 8 dead-code.** The keystone is implemented as a flagged dual-path
+> (new path OFF by default, old path intact) so it stays reversible and is proven via the
+> `agent-cli/callout-e2e.mjs` harness before the flag flips. Phase 1 stands (it routes the
+> context-menu delete through the existing gated handler and is valuable regardless).
+
 ---
 
 ### Phase 1 — Close the Context-Menu Delete Gap
