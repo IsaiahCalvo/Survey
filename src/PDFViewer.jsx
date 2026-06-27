@@ -13752,13 +13752,14 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       // and the NEXT edit to this marker false-conflicts. ('take-excel' needs none: the client adopts
       // the Excel value, which already equals the stored state.)
       let resolvedFingerprints = null;
+      let keptFp = null;
       if (resolution === 'keep-app') {
         try {
           const kept = surveyMarkers[markerId];
           const appVals = kept ? buildAppValuesByMarkerId({ [markerId]: kept }, selectedTemplate)[markerId] : null;
           if (appVals) {
-            const fp = await computeRowFingerprints(appVals);
-            resolvedFingerprints = { identityVector: fp.identityVectorFingerprint, fields: fp.fieldFingerprints };
+            keptFp = await computeRowFingerprints(appVals);
+            resolvedFingerprints = { identityVector: keptFp.identityVectorFingerprint, fields: keptFp.fieldFingerprints };
           }
         } catch { /* leave null → server keeps the prior baseline (no worse than before the fix) */ }
       }
@@ -13766,6 +13767,25 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         supabaseClient: supabase, documentId, templateId, opUuid: entry.opUuid, resolution, resolvedFingerprints,
       });
       if (!ok) { showToast(`Could not resolve conflict${error ? `: ${error}` : ''}.`, 'error'); return; }
+      // Mirror the server's advanced baseline LOCALLY (the missing half of the keep-mine fix): stamp the
+      // kept marker's fingerprints onto its excelSync so the NEXT edit's baseFingerprints — read from
+      // excelSync by the matcher — match the server's newly-advanced baseline. Without this the local
+      // baseline stays stale and the very next edit to this marker false-conflicts.
+      if (resolution === 'keep-app' && keptFp) {
+        setSurveyMarkers((prev) => {
+          const m = prev[markerId];
+          if (!m || !m.excelSync) return prev;
+          return {
+            ...prev,
+            [markerId]: { ...m, excelSync: {
+              ...m.excelSync,
+              fieldFingerprints: keptFp.fieldFingerprints,
+              identityVectorFingerprint: keptFp.identityVectorFingerprint,
+              fullRowFingerprint: keptFp.fullRowFingerprint,
+            } },
+          };
+        });
+      }
       // Remove this op from the durable review set so the reducer flows PAST its revision.
       const reviewMeta = { ...(excelSyncMetaGetStable(`excelSyncReview:${templateId}`) || {}) };
       delete reviewMeta[entry.opUuid];

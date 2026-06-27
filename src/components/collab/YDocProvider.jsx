@@ -1344,11 +1344,23 @@ function YDocProviderInner({ docId, children, closeDocument }) {
     let cancelled = false;
     (async () => {
       try {
+        // "Shared" = at least one active collaborator OTHER than me. Every doc has the current user's
+        // own active row (owner of their own doc, or a co-owner/editor/viewer of a shared one), so we
+        // exclude MY user_id — NOT role='owner': a doc shared only with co-owners (invite flow) has no
+        // editor/viewer rows, so excluding role='owner' would wrongly read as not-shared. If we cannot
+        // resolve the user id, treat as not shared (never a false offline alarm).
+        let myId = null;
+        try {
+          const session = await getSupabaseSession('YDocProvider.isDocShared');
+          myId = session?.user?.id ?? null;
+        } catch { myId = null; }
+        if (!myId) { if (!cancelled) setIsDocShared(false); return; }
         const { count, error } = await supabase
           .from('document_collaborators')
           .select('user_id', { count: 'exact', head: true })
           .eq('document_id', docId)
-          .eq('status', 'active');
+          .eq('status', 'active')
+          .neq('user_id', myId);
         if (!cancelled) setIsDocShared(!error && (count || 0) > 0);
       } catch { if (!cancelled) setIsDocShared(false); }
     })();
