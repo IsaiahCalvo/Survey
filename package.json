@@ -6,7 +6,6 @@
   "scripts": {
     "dev:ui": "vite",
     "dev:electron": "wait-on -t 30000 http://localhost:5173 && NODE_ENV=development electron .",
-    "dev:legacy": "concurrently -k \"npm:dev:ui\" \"npm:dev:electron\"",
     "predev": "node scripts/bootstrap-dev-env.mjs",
     "dev": "node find-port.js",
     "postinstall": "node scripts/bootstrap-dev-env.mjs",
@@ -33,7 +32,6 @@
     "@azure/msal-browser": "^4.26.2",
     "@azure/msal-node": "^5.2.3",
     "@capacitor/android": "^8.3.1",
-    "@capacitor/cli": "^8.3.1",
     "@capacitor/core": "^8.3.1",
     "@capacitor/ios": "^8.3.1",
     "@dnd-kit/core": "^6.3.1",
@@ -65,24 +63,18 @@
     "yjs": "^13.6.30"
   },
   "devDependencies": {
+    "@capacitor/cli": "^8.3.1",
     "@playwright/test": "^1.58.2",
     "@vitejs/plugin-react": "^4.2.1",
-    "buffer": "^6.0.3",
-    "concurrently": "^8.2.0",
-    "cross-env": "^7.0.3",
     "electron": "^25.2.1",
     "electron-builder": "^24.8.0",
-    "events": "^3.3.0",
     "license-checker": "^25.0.1",
     "react-scan": "^0.5.7",
     "sharp": "^0.34.5",
-    "stream-browserify": "^3.0.0",
     "to-ico": "^1.1.5",
-    "util": "^0.12.5",
     "vite": "^5.2.0",
     "vite-plugin-node-polyfills": "^0.24.0",
-    "wait-on": "^7.0.1",
-    "ws": "^8.18.3"
+    "wait-on": "^7.0.1"
   },
   "build": {
     "appId": "com.kalvoe.survey",
