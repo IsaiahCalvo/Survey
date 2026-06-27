@@ -100,5 +100,3 @@ export function useDualWriteQueue(userId) {
 
   return state;
 }
-
-export default useDualWriteQueue;

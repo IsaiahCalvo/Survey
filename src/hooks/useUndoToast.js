@@ -171,5 +171,3 @@ export function useUndoToast() {
 
   return { toast, enqueue, dismiss };
 }
-
-export default useUndoToast;

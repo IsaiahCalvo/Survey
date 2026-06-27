@@ -97,5 +97,3 @@ export function useRemoteEditors() {
 
   return editors;
 }
-
-export default useRemoteEditors;

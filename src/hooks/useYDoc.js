@@ -50,5 +50,3 @@ export function useYDoc() {
   const ctx = useContext(YDocContext);
   return ctx ?? NULL_VALUE;
 }
-
-export default useYDoc;

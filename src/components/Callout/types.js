@@ -143,52 +143,6 @@ export const defaultCalloutStyle = {
 };
 
 /**
- * Preset colors for border/line
- */
-export const presetBorderColors = [
-  '#1e293b', // slate-800
-  '#dc2626', // red-600
-  '#16a34a', // green-600
-  '#2563eb', // blue-600
-  '#9333ea', // purple-600
-  '#ea580c', // orange-600
-  '#0891b2', // cyan-600
-  '#000000', // black
-];
-
-/**
- * Preset colors for fill
- */
-export const presetFillColors = [
-  '#fef3c7', // amber-100
-  '#fee2e2', // red-100
-  '#dcfce7', // green-100
-  '#dbeafe', // blue-100
-  '#f3e8ff', // purple-100
-  '#ffedd5', // orange-100
-  '#cffafe', // cyan-100
-  '#ffffff', // white
-  'transparent',
-];
-
-/**
- * Preset font families
- */
-export const fontFamilies = [
-  'Inter, Arial, sans-serif',
-  'Arial, sans-serif',
-  'Georgia, serif',
-  'Times New Roman, serif',
-  'Courier New, monospace',
-  'Verdana, sans-serif',
-];
-
-/**
- * Preset font sizes
- */
-export const fontSizes = [10, 12, 14, 16, 18, 20, 24, 28, 32];
-
-/**
  * Convert hex color to rgba string
  * @param {string} hex - Hex color (e.g., '#ff0000')
  * @param {number} opacity - Opacity 0-1

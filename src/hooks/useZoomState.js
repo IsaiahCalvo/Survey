@@ -106,5 +106,3 @@ export function useZoomState(targetScale) {
     },
   };
 }
-
-export default useZoomState;

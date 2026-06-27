@@ -11,12 +11,12 @@
 // rendering and interaction now flows through SVGAnnotationLayer.
 //
 // types.js in this directory is PRESERVED as the enum/factory shim for
-// ARROWHEAD_STYLES, defaultCalloutStyle, createCallout, hexToRgba — those
+// ARROWHEAD_STYLES, defaultCalloutStyle, createCallout — those
 // are used by Plan 14-03 creation logic and by Phase 15 ARROW-04. Re-export
-// the same three symbols the legacy index.jsx did so existing
+// the same symbols the legacy index.jsx did so existing
 // `import { defaultCalloutStyle } from '../components/Callout'` callsites
 // (if any) keep resolving.
-export { defaultCalloutStyle, createCallout, hexToRgba } from './types';
+export { defaultCalloutStyle, createCallout } from './types';
 
 // UX: null-render stub — all callout UI is now in SVGAnnotationLayer.
 // eslint-disable-next-line no-unused-vars

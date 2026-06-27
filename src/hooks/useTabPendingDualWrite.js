@@ -188,5 +188,3 @@ export function useTabPendingDualWrite(documentId) {
 
   return hasPending;
 }
-
-export default useTabPendingDualWrite;
