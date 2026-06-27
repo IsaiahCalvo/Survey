@@ -58,6 +58,10 @@ import { areViewStatesEqual, normalizeViewState } from './utils/viewState';
 import { arrayMove } from '@dnd-kit/sortable';
 import { buildAnnotationSelectionContextKey, didAnnotationSelectionContextChange } from './utils/annotationSelectionContext';
 import { buildBulkDeletePlan } from './lib/collab/bulkDeletePlan.js';
+// Callout-unification keystone (Phase 5, point A) — flag-gated load projection
+// of saved callouts[] into the shared annotationsByPage store. DEFAULT OFF.
+import { calloutsInSharedStore } from './lib/calloutSharedStoreFlag';
+import { calloutToAnnotationObject } from './utils/calloutAnnotationBridge';
 import { buildHistoryEventRowFromDebugEvent, recordDocumentHistoryEvent, recordAndNotifyDocumentHistoryEvent } from './services/documentHistoryService.js';
 import { buildPrintableRegularAnnotationPayload, savePDFWithAnnotationsPdfLib, savePDFWithFlattenedRegularAnnotationsForPrint } from './utils/pdfAnnotationsPdfLib';
 import { buildTextSearchDiagLogSection, emitTextSearchDiag } from './utils/textSearchDiag';
@@ -18909,12 +18913,59 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       initialAnnotationsByPage = previouslyVisibleAnnotationsByPage;
       appDebug(`[Local annotation cache] doc=${id} preserving ${currentAnnotationCount} visible annotations until cloud/Y.Doc replacement arrives.`);
     }
-    setAnnotationsByPage(initialAnnotationsByPage);
-    savedAnnotationsByPageRef.current = initialAnnotationsByPage; // Track as saved
-    // Load callouts from localStorage
+    // Load callouts from localStorage (or carry forward on a same-PDF reload).
     const loadedCallouts = isCloudBackedDoc
       ? (isSamePdfReload ? previousCalloutsForSamePdf : [])
       : loadCallouts(id);
+
+    // Callout-unification keystone (Phase 5, point A) — when the shared store is
+    // ON, project each loaded callout through calloutToAnnotationObject(callout,
+    // pageSize) and merge into annotationsByPage[page].objects so callouts render
+    // via the shared dispatch (SVGAnnotationLayer's data.type==='callout' branch).
+    // pageSize per page = the unscaled PDF page-pixel size (pageSizesRef.current),
+    // which is exactly the {width,height} the SVG layer inverts with — so the
+    // bridge round-trip is lossless. callouts[] is still populated below (dual-rep
+    // during the transition; later increments switch the source of truth).
+    // Flag OFF: this whole block is skipped → byte-for-byte unchanged behavior.
+    if (calloutsInSharedStore() && Array.isArray(loadedCallouts) && loadedCallouts.length > 0) {
+      try {
+        const pageSizesNow = pageSizesRef.current || {};
+        const projected = { ...initialAnnotationsByPage };
+        let projectedCount = 0;
+        for (const callout of loadedCallouts) {
+          if (!callout) continue;
+          const page = callout.pageNumber;
+          if (!Number.isFinite(page)) continue;
+          // Per-page unscaled PDF dims; fall back to US-Letter if not yet measured.
+          const pageSize = pageSizesNow[page] || { width: 612, height: 792 };
+          if (!Number.isFinite(pageSize.width) || !Number.isFinite(pageSize.height)) continue;
+          const obj = calloutToAnnotationObject(callout, pageSize);
+          const existing = projected[page];
+          const existingObjects = Array.isArray(existing?.objects) ? existing.objects : [];
+          // Idempotency: don't double-project a callout already present (same id).
+          const alreadyProjected = existingObjects.some(
+            (o) => o?.data?.type === 'callout' && o?.data?.id != null && o.data.id === obj.data.id
+          );
+          if (alreadyProjected) continue;
+          projected[page] = {
+            ...(existing || {}),
+            objects: [...existingObjects, obj],
+          };
+          projectedCount += 1;
+        }
+        if (projectedCount > 0) {
+          initialAnnotationsByPage = projected;
+          appDebug(`[Callout keystone] doc=${id} projected ${projectedCount} callout(s) into annotationsByPage (flag ON).`);
+        }
+      } catch (err) {
+        // Never let projection failure blank the annotation layer — fall back to
+        // the un-projected annotations and the legacy callouts[] render path.
+        console.error('[Callout keystone] load projection failed; falling back to callouts[]', err);
+      }
+    }
+
+    setAnnotationsByPage(initialAnnotationsByPage);
+    savedAnnotationsByPageRef.current = initialAnnotationsByPage; // Track as saved
     setCallouts(loadedCallouts);
     setHasUnsavedAnnotations(false); // Reset unsaved flag
   }, [clearExcelSyncCheckpoint, finishPdfjsInteractionWindow, pdfFile, pushHistoryDebugEvent]);

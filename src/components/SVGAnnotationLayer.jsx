@@ -34,6 +34,13 @@ import {
   renderPolyline,
 } from '../utils/svgAnnotationRenderers';
 import { calculateCalloutConnection } from '../utils/calloutGeometry';
+// Callout-unification keystone (Phase 5) — flag-gated shared-store render path.
+// When calloutsInSharedStore() is ON, callouts live in annotationsByPage as
+// Fabric objects (data.type === 'callout', like counter) and render through the
+// shared dispatch below via annotationObjectToCallout → renderCallout. Default
+// OFF: every branch falls through to today's separate filteredCallouts loop.
+import { calloutsInSharedStore } from '../lib/calloutSharedStoreFlag';
+import { annotationObjectToCallout } from '../utils/calloutAnnotationBridge';
 import { HANDLE_FILL, HANDLE_RING, HANDLE_RING_INVALID, HANDLE_RADIUS, HANDLE_RADIUS_SECONDARY } from '../utils/handleStyle';
 import { useSVGInteraction } from '../hooks/useSVGInteraction';
 // Plan 14-03 Task 3 (CREATE-01 callout half): factory for constructing a
@@ -362,6 +369,16 @@ const SVGAnnotationLayer = memo(({
   // Adobe behavior where off-screen pages hold data only.
   isPageInRenderWindow = true,
 }) => {
+  // Callout-unification keystone (Phase 5) — read the kill switch once per mount.
+  // ON  → callouts render through the shared annotationsByPage dispatch
+  //        (data.type === 'callout', adapted via annotationObjectToCallout →
+  //        renderCallout) and the legacy filteredCallouts loop is suppressed so
+  //        callouts are not double-rendered.
+  // OFF → byte-for-byte unchanged: shared dispatch skips callouts, legacy loop runs.
+  // The flag reads localStorage/env which don't change at runtime, so a stable
+  // per-mount value is correct (and the e2e harness sets it before navigation).
+  const calloutsShared = useMemo(() => calloutsInSharedStore(), []);
+
   // ---------------------------------------------------------------------------
   // Refs
   // ---------------------------------------------------------------------------
@@ -1758,6 +1775,19 @@ const SVGAnnotationLayer = memo(({
           svgAnnotationDebug(`[Counter SVG p${pageNumber}] dispatching renderCounter — i=${i}, displayNumber=${obj.data.displayNumber}, fill=${obj.fill}, numberColor=${obj.data.numberColor || 'unset'}, left=${obj.left}, top=${obj.top}, radius=${obj.radius}`);
         }
         element = renderCounter(obj, i);
+      } else if (calloutsShared && obj.data && obj.data.type === 'callout') {
+        // Callout-unification keystone (Phase 5, point B) — shared-store callout.
+        // Sibling of the counter branch. Must precede the generic `group` branch
+        // below because a callout annotation object is `type: 'group'`. Adapt the
+        // page-pixel annotation object back to renderCallout's normalized shape
+        // via the round-trip-verified bridge, using this layer's page dims
+        // (= pageSizes[page], the same dims used for the forward load projection).
+        element = renderCallout(
+          annotationObjectToCallout(obj, { width, height }),
+          i,
+          { width, height },
+          calculateCalloutConnection
+        );
       } else if (objectType === 'path' && Array.isArray(obj.path) && obj.path.length > 0) {
         element = renderPath(obj, i);
       } else if (objectType === 'rect') {
@@ -1850,6 +1880,13 @@ const SVGAnnotationLayer = memo(({
     activeTool,
     editingAnnotationIndex,
     isPageInRenderWindow,
+    // Callout-unification keystone (Phase 5): the shared-store callout branch
+    // reads width/height (via annotationObjectToCallout + renderCallout), so the
+    // memo must recompute when the page dims change. calloutsShared is a stable
+    // per-mount value (useMemo []), so it never invalidates this memo.
+    width,
+    height,
+    calloutsShared,
   ]);
 
   useLayoutEffect(() => {
@@ -2837,6 +2874,11 @@ const SVGAnnotationLayer = memo(({
   // visible renderCallout chrome stays exactly as Plan 14-01 shipped it; the
   // hit overlays sit on top for pointer capture.
   const filteredCallouts = useMemo(() => {
+    // Callout-unification keystone (Phase 5, point B) — when the shared store is
+    // ON, callouts render through the shared annotationsByPage dispatch
+    // (filteredAnnotations) instead. Suppress this legacy loop entirely so
+    // callouts are not double-rendered. Flag OFF: unchanged behavior.
+    if (calloutsShared) return [];
     // 2026-05-03 — Viewport-culling fast exit (parity with filteredAnnotations).
     if (!isPageInRenderWindow) return [];
     if (!Array.isArray(callouts) || callouts.length === 0) return [];
@@ -3017,7 +3059,7 @@ const SVGAnnotationLayer = memo(({
     // here this memo holds a stale value and the handles swell on zoom while
     // every other shape's handles (which re-read it fresh) stay constant.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [callouts, pageNumber, selectedModuleId, showSurveyPanel, selectedSpaceId, activeSpaceId, activeRegions, activeRegionId, spaces, getCanvasAnnotationVisibilityState, getSurveyAnnotationVisibilityState, isRegionOverlayEnabled, layerVisibility, width, height, editingCalloutId, liveCalloutEditBounds, effectiveSelectedCalloutIds, activeCalloutDrag, visualTransform, inverseScale, isPageInRenderWindow]);
+  }, [callouts, pageNumber, selectedModuleId, showSurveyPanel, selectedSpaceId, activeSpaceId, activeRegions, activeRegionId, spaces, getCanvasAnnotationVisibilityState, getSurveyAnnotationVisibilityState, isRegionOverlayEnabled, layerVisibility, width, height, editingCalloutId, liveCalloutEditBounds, effectiveSelectedCalloutIds, activeCalloutDrag, visualTransform, inverseScale, isPageInRenderWindow, calloutsShared]);
 
   // Diagnostic: after the SVG callouts are laid out, walk the DOM and record
   // the source data + every rendered element's screen rect per callout id.
