@@ -21647,6 +21647,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       strokeOpacity,
       strokeWidthInputValue,
       eraserSizeInputValue,
+      eraserMode,
+      setEraserMode,
       arrowheadStyle,
       setArrowheadStyle: handleArrowheadStyleChange,
       onEnterTextEdit: handleEnterTextEditFromStrip,
@@ -21658,6 +21660,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       setLineBorderStyle: handleLineBorderStyleChange,
       cloudIntensity,
       setCloudIntensity: handleCloudIntensityChange,
+      counterSeriesList,
+      activeCounterSeriesId: activeCounterSeriesIdRef.current,
+      onNewCounterSeries: handleNewCounterSeries,
+      onSwitchCounterSeries: handleSwitchCounterSeries,
       fillColor,
       fillOpacity,
       handleFillColorChange,
@@ -21718,6 +21724,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     strokeOpacity,
     strokeWidthInputValue,
     eraserSizeInputValue,
+    eraserMode,
     arrowheadStyle,
     handleArrowheadStyleChange,
     handleEnterTextEditFromStrip,
@@ -21726,6 +21733,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     handleLineBorderStyleChange,
     cloudIntensity,
     handleCloudIntensityChange,
+    counterSeriesList,
+    counterUITick,
+    handleNewCounterSeries,
+    handleSwitchCounterSeries,
     fillColor,
     fillOpacity,
     handleFillColorChange,
@@ -31081,7 +31092,6 @@ ${pageBlocks}
                     <button
                       key={t.id}
                       data-highlighter-caret-button={isHighlighterSplitMenu ? 'true' : undefined}
-                      data-eraser-caret-button={isEraser ? 'true' : undefined}
                       onClick={(e) => {
                         if (isHighlighter) {
                           e.stopPropagation();
@@ -31092,7 +31102,7 @@ ${pageBlocks}
                         if (isEraser) {
                           e.stopPropagation();
                           setActiveTool('eraser');
-                          setEraserCaretPopupOpen((open) => !open);
+                          setEraserCaretPopupOpen(false);
                           return;
                         }
                         setActiveTool(t.id);
@@ -31118,19 +31128,13 @@ ${pageBlocks}
                       title={isHighlighter ? 'Highlighter' : isEraser ? (eraserMode === 'entire' ? 'Full Stroke Erase' : 'Partial Erase') : t.label}
                     >
                       <Icon name={t.iconName} size={20} />
-                      {(isHighlighterSplitMenu || isEraser) && (
+                      {isHighlighterSplitMenu && (
                         <div
                           data-highlighter-caret-button={isHighlighterSplitMenu ? 'true' : undefined}
-                          data-eraser-caret-button={isEraser ? 'true' : undefined}
                           onClick={(e) => {
                             e.stopPropagation();
-                            if (isHighlighterSplitMenu) {
-                              setActiveTool('highlighter');
-                              setHighlighterCaretPopupOpen((open) => !open);
-                            } else {
-                              setActiveTool('eraser');
-                              setEraserCaretPopupOpen((open) => !open);
-                            }
+                            setActiveTool('highlighter');
+                            setHighlighterCaretPopupOpen((open) => !open);
                           }}
                           style={{
                             position: 'absolute',
@@ -31151,7 +31155,7 @@ ${pageBlocks}
                     </button>
                   );
 
-                  if (!isHighlighterSplitMenu && !isEraser) {
+                  if (!isHighlighterSplitMenu) {
                     return (
                       <div key={t.id} style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
                         {button}
@@ -31327,7 +31331,7 @@ ${pageBlocks}
                   // popup buttons reuse the project's `.btn`/`.btn-ghost`/
                   // `.btn-active` styles instead of inline custom hovers.
                   const isCounter = t.id === 'counter';
-                  const showCaret = isCounter && counterSeriesList.length > 0;
+                  const showCaret = false;
                   const button = (
                     <button
                       key={t.id}

@@ -403,6 +403,40 @@ export default function App() {
     return () => document.removeEventListener('mousedown', onDown);
   }, [showStyleMenu]);
 
+  const [showCounterSeriesMenu, setShowCounterSeriesMenu] = useState(false);
+  useEffect(() => {
+    if (!showCounterSeriesMenu) return;
+    const onDown = (e) => {
+      if (e.target.closest && e.target.closest('[data-counter-series-menu]')) return;
+      setShowCounterSeriesMenu(false);
+    };
+    document.addEventListener('mousedown', onDown);
+    return () => document.removeEventListener('mousedown', onDown);
+  }, [showCounterSeriesMenu]);
+
+  useEffect(() => {
+    if (bottomToolbarApi?.contextTool !== 'counter') {
+      setShowCounterSeriesMenu(false);
+    }
+  }, [bottomToolbarApi?.contextTool]);
+
+  const [showEraserTypeMenu, setShowEraserTypeMenu] = useState(false);
+  useEffect(() => {
+    if (!showEraserTypeMenu) return;
+    const onDown = (e) => {
+      if (e.target.closest && e.target.closest('[data-eraser-type-menu]')) return;
+      setShowEraserTypeMenu(false);
+    };
+    document.addEventListener('mousedown', onDown);
+    return () => document.removeEventListener('mousedown', onDown);
+  }, [showEraserTypeMenu]);
+
+  useEffect(() => {
+    if (bottomToolbarApi?.activeTool !== 'eraser') {
+      setShowEraserTypeMenu(false);
+    }
+  }, [bottomToolbarApi?.activeTool]);
+
   /*
    * LeftRail/PDFSidebar API audit (UX 2026-05-13 chrome lift)
    *
@@ -1936,6 +1970,164 @@ export default function App() {
                   </button>
                 ) : null}
 
+                {!bottomToolbarApi.richTextEditor
+                  && bottomToolbarApi.contextTool === 'counter'
+                  && bottomToolbarApi.onNewCounterSeries
+                  && (() => {
+                    const seriesList = Array.isArray(bottomToolbarApi.counterSeriesList)
+                      ? bottomToolbarApi.counterSeriesList
+                      : [];
+                    const activeSeries = seriesList.find((s) => s.seriesId === bottomToolbarApi.activeCounterSeriesId);
+                    const seriesLabel = activeSeries?.label || 'Counter Series';
+                    return (
+                      <div data-counter-series-menu style={{ position: 'relative' }}>
+                        <button
+                          onClick={() => setShowCounterSeriesMenu((open) => !open)}
+                          onMouseDown={(e) => e.stopPropagation()}
+                          style={{
+                            height: '24px',
+                            padding: '0 22px 0 8px',
+                            background: '#444',
+                            color: '#ddd',
+                            border: '1px solid transparent',
+                            borderRadius: '5px',
+                            fontSize: '12px',
+                            fontFamily: FONT_FAMILY,
+                            cursor: 'pointer',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '6px',
+                            backgroundImage:
+                              'linear-gradient(45deg, transparent 50%, #aaa 50%), linear-gradient(135deg, #aaa 50%, transparent 50%)',
+                            backgroundPosition: 'calc(100% - 11px) 10px, calc(100% - 7px) 10px',
+                            backgroundSize: '4px 4px, 4px 4px',
+                            backgroundRepeat: 'no-repeat',
+                          }}
+                          title="Counter series"
+                          aria-label="Counter series"
+                          aria-expanded={showCounterSeriesMenu}
+                        >
+                          <span style={{
+                            width: '10px',
+                            height: '10px',
+                            borderRadius: '50%',
+                            background: activeSeries?.color || bottomToolbarApi.fillColor || '#ef4444',
+                            border: '1px solid rgba(255,255,255,0.15)',
+                            flexShrink: 0,
+                          }} />
+                          <span>{seriesLabel}</span>
+                        </button>
+                        {showCounterSeriesMenu && (
+                          <div style={{
+                            position: 'absolute',
+                            top: 'calc(100% + 4px)',
+                            left: 0,
+                            background: '#1e1e1e',
+                            border: '1px solid #444',
+                            borderRadius: '6px',
+                            boxShadow: '0 8px 24px rgba(0,0,0,0.45)',
+                            padding: '4px',
+                            zIndex: 5600,
+                            minWidth: '160px',
+                            color: '#DDD',
+                            fontFamily: FONT_FAMILY,
+                            fontSize: '12px',
+                          }}>
+                            <div style={{
+                              padding: '4px 8px',
+                              fontSize: '10px',
+                              color: '#888',
+                              textTransform: 'uppercase',
+                              fontWeight: 600,
+                              borderBottom: '1px solid #333',
+                              marginBottom: '4px',
+                            }}>
+                              Counter Series
+                            </div>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                bottomToolbarApi.onNewCounterSeries();
+                                setShowCounterSeriesMenu(false);
+                              }}
+                              style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                width: '100%',
+                                gap: '8px',
+                                padding: '6px 10px',
+                                background: 'transparent',
+                                border: 'none',
+                                borderRadius: '4px',
+                                color: '#DDD',
+                                textAlign: 'left',
+                                cursor: 'pointer',
+                                fontSize: '12px',
+                                fontFamily: 'inherit',
+                              }}
+                              onMouseEnter={(e) => { e.currentTarget.style.background = '#2a2a2a'; }}
+                              onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
+                            >
+                              + New Count
+                            </button>
+                            {seriesList.length > 0 && (
+                              <div style={{
+                                padding: '6px 8px 4px',
+                                color: '#888',
+                                fontSize: '10px',
+                                textTransform: 'uppercase',
+                                fontWeight: 600,
+                              }}>
+                                Continue Count
+                              </div>
+                            )}
+                            {seriesList.map((series) => {
+                              const isActive = series.seriesId === bottomToolbarApi.activeCounterSeriesId;
+                              return (
+                                <button
+                                  key={series.seriesId}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    bottomToolbarApi.onSwitchCounterSeries(series.seriesId);
+                                    setShowCounterSeriesMenu(false);
+                                  }}
+                                  style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    width: '100%',
+                                    gap: '8px',
+                                    padding: '6px 10px',
+                                    background: isActive ? '#2a2a2a' : 'transparent',
+                                    border: 'none',
+                                    borderRadius: '4px',
+                                    color: '#DDD',
+                                    textAlign: 'left',
+                                    cursor: 'pointer',
+                                    fontSize: '12px',
+                                    fontFamily: 'inherit',
+                                  }}
+                                  onMouseEnter={(e) => { e.currentTarget.style.background = '#2a2a2a'; }}
+                                  onMouseLeave={(e) => { e.currentTarget.style.background = isActive ? '#2a2a2a' : 'transparent'; }}
+                                >
+                                  <span style={{
+                                    width: '10px',
+                                    height: '10px',
+                                    borderRadius: '50%',
+                                    background: series.color,
+                                    border: '1px solid rgba(255,255,255,0.15)',
+                                    flexShrink: 0,
+                                  }} />
+                                  <span style={{ flex: 1 }}>{series.label}</span>
+                                  <span style={{ fontSize: '10px', color: '#888' }}>{series.count}</span>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()}
+
                 {bottomToolbarApi.showAnnotationColorPicker && (() => {
                   const isShape = (bottomToolbarApi.contextTool === 'rect' || bottomToolbarApi.contextTool === 'ellipse' || bottomToolbarApi.contextTool === 'text' || bottomToolbarApi.contextTool === 'callout' || bottomToolbarApi.contextTool === 'counter')
                     && bottomToolbarApi.handleFillColorChange;
@@ -2038,6 +2230,84 @@ export default function App() {
                   );
                 })()}
                   </>
+                )}
+
+                {bottomToolbarApi.activeTool === 'eraser' && bottomToolbarApi.setEraserMode && (
+                  <div data-eraser-type-menu style={{ position: 'relative' }}>
+                    <button
+                      onClick={() => setShowEraserTypeMenu((open) => !open)}
+                      onMouseDown={(e) => e.stopPropagation()}
+                      style={{
+                        height: '24px',
+                        padding: '0 22px 0 8px',
+                        background: '#444',
+                        color: '#ddd',
+                        border: '1px solid transparent',
+                        borderRadius: '5px',
+                        fontSize: '12px',
+                        fontFamily: FONT_FAMILY,
+                        cursor: 'pointer',
+                        backgroundImage:
+                          'linear-gradient(45deg, transparent 50%, #aaa 50%), linear-gradient(135deg, #aaa 50%, transparent 50%)',
+                        backgroundPosition: 'calc(100% - 11px) 10px, calc(100% - 7px) 10px',
+                        backgroundSize: '4px 4px, 4px 4px',
+                        backgroundRepeat: 'no-repeat'
+                      }}
+                      title="Eraser type"
+                      aria-label="Eraser type"
+                      aria-expanded={showEraserTypeMenu}
+                    >
+                      {bottomToolbarApi.eraserMode === 'entire' ? 'Full Stroke' : 'Partial Erase'}
+                    </button>
+                    {showEraserTypeMenu && (
+                      <div style={{
+                        position: 'absolute',
+                        top: 'calc(100% + 4px)',
+                        left: 0,
+                        background: '#1e1e1e',
+                        border: '1px solid #444',
+                        borderRadius: '6px',
+                        boxShadow: '0 8px 24px rgba(0,0,0,0.45)',
+                        padding: '4px',
+                        zIndex: 5600,
+                        minWidth: '142px',
+                        whiteSpace: 'nowrap'
+                      }}>
+                        {[
+                          ['partial', 'Partial Erase'],
+                          ['entire', 'Full Stroke Erase']
+                        ].map(([value, label]) => {
+                          const isOn = bottomToolbarApi.eraserMode === value;
+                          return (
+                            <button
+                              key={value}
+                              onClick={() => {
+                                bottomToolbarApi.setEraserMode(value);
+                                setShowEraserTypeMenu(false);
+                              }}
+                              style={{
+                                display: 'block',
+                                width: '100%',
+                                padding: '6px 10px',
+                                background: isOn ? 'rgba(216,168,78,0.12)' : 'transparent',
+                                color: isOn ? '#d8a84e' : '#ddd',
+                                border: 'none',
+                                borderRadius: '4px',
+                                fontSize: '12px',
+                                fontFamily: FONT_FAMILY,
+                                textAlign: 'left',
+                                cursor: 'pointer'
+                              }}
+                              onMouseEnter={(e) => { if (!isOn) e.currentTarget.style.background = 'rgba(255,255,255,0.05)'; }}
+                              onMouseLeave={(e) => { if (!isOn) e.currentTarget.style.background = 'transparent'; }}
+                            >
+                              {label}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
                 )}
 
                 {(bottomToolbarApi.contextTool === 'pen'

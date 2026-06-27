@@ -53,6 +53,7 @@ const DPR = Math.min(typeof window !== 'undefined' ? window.devicePixelRatio || 
 // Chromium canvas limits + smooth-area budget (ported from spikeMetrics).
 const MAX_CANVAS_DIM = 16384;
 const MAX_CANVAS_AREA = 80 * 1024 * 1024; // ~80 MP
+const MAX_MOUNTED = 12; // ponytail: cap pages rasterized at once (see recomputeWindow) — kills the zoom-out flicker burst
 function clampToBudget(backingW, backingH) {
   const dimOver = Math.max(backingW, backingH) / MAX_CANVAS_DIM;
   const areaOver = Math.sqrt((backingW * backingH) / MAX_CANVAS_AREA);
@@ -557,6 +558,18 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
       if (b >= lo && t <= hi) { if (first === -1) first = i; last = i; }
     }
     if (first === -1) { first = 0; last = -1; }
+    // ponytail: cap simultaneously-mounted pages. Zooming far out used to put 50+
+    // pages in the 1.2-viewport band → a single-frame raster burst = the flicker.
+    // Keep a bounded window centered on the viewport; far pages stay placeholders
+    // (only reachable at extreme zoom-out). Raise MAX_MOUNTED if scroll buffering
+    // ever feels thin.
+    else if (last - first + 1 > MAX_MOUNTED) {
+      const midY = top + vh / 2;
+      let anchor = first;
+      for (let i = first; i <= last; i += 1) { if (layout.tops[i] <= midY) anchor = i; else break; }
+      last = Math.min(layout.tops.length - 1, anchor + Math.ceil(MAX_MOUNTED / 2));
+      first = Math.max(0, last - MAX_MOUNTED + 1);
+    }
     setRange((prev) => (prev[0] === first && prev[1] === last ? prev : [first, last]));
     detectCurrentPage();
   }, [layout, scale, detectCurrentPage]);
@@ -1122,9 +1135,10 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
                     />
                   </>
                 ) : (
-                  <div style={{ width: '100%', height: '100%', background: '#33363b', border: '1px solid #2a2c30', display: 'grid', placeItems: 'center', color: '#6b7077', fontSize: 13 }}>
-                    Page {i + 1}
-                  </div>
+                  // ponytail: white blank-page placeholder (was a dark "Page N" box).
+                  // It flashes for ~1 frame when a page enters the window on zoom-settle;
+                  // white blends into the rasterized page so the pop is near-invisible.
+                  <div style={{ width: '100%', height: '100%', background: '#fff' }} />
                 )}
               </div>
             );
