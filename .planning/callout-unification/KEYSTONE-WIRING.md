@@ -62,3 +62,27 @@ exporting `calloutsInSharedStore()`. With flag OFF, every branch below falls thr
 ## Rollback
 Flag OFF restores today's behavior at every step. The keystone is not "done" until the flag is flipped ON
 by default AND the above acceptance criteria pass via the harness.
+
+## PRE-FLIP BLOCKERS (from ≥2 adversarial passes, 2026-06-27)
+All LATENT — they only fire with the flag ON (default OFF), so production is unaffected. MUST be fixed
+before the flag flips. Landed increments verified flag-OFF byte-identical (build + 1659 tests + harness).
+
+- **BLOCKER 1 (HIGH, write-contamination) — must fix with the serialize increment.** Projected
+  `data.type==='callout'` objects in `annotationsByPage` would be written into the Y.Doc `annotations`
+  flat map by `syncByPageToDoc` (`src/services/annotationDocStore.js:~180`, called from
+  `useAnnotationDoc.js:254`), AND serialized by the Supabase bulk push
+  (`serializeAnnotationsByPage`/`serializeFabricObjectToRow` — `'callout'` is in `SUPPORTED_DB_TYPES`),
+  duplicating the `calloutsList` META and overwriting the real `annotation_data.callout` row with a
+  `fabricObject`-shaped row on the same `annotation_id` (→ dual-write-queue-jam corruption).
+  FIX: filter `obj?.data?.type === 'callout'` out of `syncByPageToDoc` AND the Supabase push, mirroring
+  the existing CRDT fan-out gate `CRDT_FAN_OUT_EXCLUDED_TYPES` (`annotationSyncType.js:13`), UNTIL the
+  serialize path is fully switched to the shared callout representation (then re-enable deliberately).
+- **BLOCKER 2 (MED, stale pageSize on first paint).** The initial durable-wins hydration fires before
+  `pageSizes` is measured (`pageSizesRef.current = {}`), so callouts project at the US-Letter fallback —
+  correct for Letter docs, WRONG first-paint position on non-Letter pages (self-corrects on next sync).
+  FIX: re-project when `pageSizes` first becomes available (mirror PDFViewer's local point-A retry).
+- **MINOR:** `projectCalloutsIntoByPage` line ~105 should `return next` (not `byPage`) for unconditional
+  ghost-cleanup; the `catch` stays `return byPage` (safety net). `id == null` callouts bypass dedup
+  (upstream data issue, not introduced here).
+
+After these fixes: re-run ≥2 adversarial passes + harness flag-ON before flipping.
