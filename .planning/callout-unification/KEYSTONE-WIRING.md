@@ -1,5 +1,22 @@
 # Keystone Wiring Spec (Phase 5) — callouts[] → annotationsByPage
 
+## CURRENT STATE — 2026-06-27 (all behind `calloutsInSharedStore()`, DEFAULT OFF; production untouched)
+DONE + verified (flag-OFF byte-identical; flag-ON proven via agent-cli/callout-e2e.mjs):
+- Conversion bridge (`calloutAnnotationBridge.js`) + `projectCalloutsIntoByPage` (single canonical projector).
+- LOAD projection: local (PDFViewer) + cloud-hydration (useAnnotationDoc) → annotationsByPage.
+- RENDER: shared SVG dispatch (`data.type==='callout'`); legacy loop emits hit-targets only under the flag.
+- CREATE/EDIT/DELETE/SELECT: reactive `callouts[]`→annotationsByPage effect (draw renders instantly); interaction via kept legacy hit-targets; delete via gated `handleDeleteSelectedCallouts`. Persists across reload.
+- WRITE-PATH GUARDS: `syncByPageToDoc` + `serializeAnnotationsByPage` exclude `data.type==='callout'` (render-projection never contaminates storage) — regression-tested.
+- Pre-flip BLOCKERS 1+2 fixed. Dual-rep: `callouts[]` is the PERSISTED source of truth.
+
+REMAINING before the flag can flip (highest-data-risk — treat carefully, fresh focus + the full adversarial gate):
+- **Persistence switch (point D)** — make callouts persist via the shared annotation path (reverse the write-guard for callouts deliberately) AND **Phase 6 production data backfill** (existing calloutsList/document_callouts → annotation rows). This is the data-migration finale.
+- **Phases 2/3/7 collapse** — they only truly fall out AFTER the persistence switch (delete-modal, undo delta lane, sync still legacy in dual-rep; only render/Phase-4 fell out so far).
+- **Live-drag preview** under the flag (minor; positions commit correctly, just no per-frame preview).
+- **≥2 fresh adversarial passes** on the whole flag-ON path, then flip the default.
+
+
+
 Precise, file:line-anchored implementation spec for the keystone, behind a feature flag
 (`calloutsInSharedStore`, default OFF). Foundation already landed: `src/utils/calloutAnnotationBridge.js`
 (`calloutToAnnotationObject` / `annotationObjectToCallout`, round-trip verified <1px). Counter is the
