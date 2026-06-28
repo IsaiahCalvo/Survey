@@ -9061,49 +9061,14 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     return { files: written };
   }, []);
 
-  useEffect(() => {
-    // PERF (2026-06-03): the overlay-lag recorder is a Pdfjs-era debug tool.
-    // Its guard checked the hardcoded legacy `usePdfjsRenderer` constant (always
-    // true), NOT the engine flag — so under the owned pdf.js engine it still auto-started
-    // whenever its localStorage key was set, running a continuous per-frame rAF loop +
-    // a longtask PerformanceObserver that starved the main thread (the real session's
-    // ~5fps / 21s "unattributedRafPause"). pdf.js glues overlays via CSS transform and
-    // needs no per-frame drift sampling. Hard-gate it OFF under pdf.js.
-    if (!usePdfjsRenderer || !overlayLagAutoRecordEnabled || true) {
-      return;
-    }
-
-    const autoKey = `${tabId || 'tab'}:${pdfId || 'pdf'}`;
-    const recorder = overlayLagRecorderRef.current;
-    if (recorder.active && recorder.mode !== 'auto') {
-      overlayLagRecorderAutoKeyRef.current = autoKey;
-      return;
-    }
-    if (recorder.active && recorder.mode === 'auto' && overlayLagRecorderAutoKeyRef.current === autoKey) {
-      return;
-    }
-
-    if (recorder.active && recorder.mode === 'auto') {
-      clearOverlayLagRecorder();
-    }
-
-    startOverlayLagRecorder({
-      source: 'auto',
-      samplePageLimit: OVERLAY_LAG_RECORDER_AUTO_SAMPLE_PAGE_LIMIT,
-      maxSamples: OVERLAY_LAG_RECORDER_AUTO_MAX_SAMPLES,
-      sampleIntervalMs: OVERLAY_LAG_RECORDER_AUTO_SAMPLE_INTERVAL_MS,
-      captureIdlePageMetrics: false,
-      capturePerfAttribution: false
-    });
-    overlayLagRecorderAutoKeyRef.current = autoKey;
-  }, [
-    clearOverlayLagRecorder,
-    overlayLagAutoRecordEnabled,
-    pdfId,
-    startOverlayLagRecorder,
-    tabId,
-    usePdfjsRenderer
-  ]);
+  // PERF (removed 2026-06-28, owner-approved): the overlay-lag AUTO-recorder useEffect
+  // was a Pdfjs-era debug tool, already hard-disabled via `|| true`. It auto-started a
+  // continuous per-frame rAF loop + a longtask PerformanceObserver that starved the main
+  // thread (~5fps / 21s "unattributedRafPause"). pdf.js glues overlays via CSS transform
+  // and needs no per-frame drift sampling, so the auto-recorder is deleted outright. If a
+  // drift recorder is ever wanted again, reintroduce it behind a real feature flag (NOT a
+  // hardcoded constant). The manual start/clear helpers + the disable-cleanup effect below
+  // remain harmless.
 
   useEffect(() => {
     if (overlayLagAutoRecordEnabled) {

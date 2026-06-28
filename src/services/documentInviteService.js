@@ -26,13 +26,16 @@ function normalizeRole(role) {
 }
 
 function newToken() {
-  // 22-char url-safe random (~128 bits of entropy).
-  if (typeof crypto !== 'undefined' && crypto.getRandomValues) {
-    const buf = new Uint8Array(16);
-    crypto.getRandomValues(buf);
-    return Array.from(buf, (b) => b.toString(16).padStart(2, '0')).join('');
+  // 32-hex-char (128-bit) secure random invite token. FAIL CLOSED: never fall
+  // back to weak Math.random() — a guessable invite token (persisted + emailed)
+  // is a real security hole, and crypto.getRandomValues is present in every
+  // browser/Electron build we ship. (Security hardening 2026-06-28.)
+  if (typeof crypto === 'undefined' || !crypto.getRandomValues) {
+    throw new Error('secure RNG unavailable — refusing to mint a guessable invite token');
   }
-  return Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2);
+  const buf = new Uint8Array(16);
+  crypto.getRandomValues(buf);
+  return Array.from(buf, (b) => b.toString(16).padStart(2, '0')).join('');
 }
 
 /**
