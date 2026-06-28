@@ -43,3 +43,26 @@ jobs:
           VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
           VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
           VITE_SYNCFUSION_LICENSE_KEY: ${{ secrets.VITE_SYNCFUSION_LICENSE_KEY }}
+
+  # RLS permission regression — proves owner/editor/viewer/non-collaborator access
+  # stays correct (the app's permission layer is RLS-only). Runs tests/phase28/rls/05-10
+  # live against the dedicated survey-test project via the Supabase Management API; each
+  # file is BEGIN/ROLLBACK so nothing persists, and a probe makes a SKIPPED test fail the
+  # gate (not silently pass). Needs the SUPABASE_ACCESS_TOKEN secret — without it the job
+  # is a loud no-op (warning), so it never blocks forks/contributors lacking the secret.
+  rls-regression:
+    name: RLS permission regression (survey-test)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Run RLS regression suite (Management API → survey-test)
+        run: node scripts/rls-ci-run.mjs
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_TEST_REF: ${{ secrets.SUPABASE_TEST_REF }}
