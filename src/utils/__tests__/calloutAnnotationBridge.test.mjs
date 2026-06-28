@@ -103,6 +103,51 @@ describe('calloutToAnnotationObject — structure', () => {
 });
 
 // ---------------------------------------------------------------------------
+// R2 keystone: reload payload (data.legacyCallout) — makes runtime-persisted
+// .fabricObject callout rows recoverable by the deserializeRowToCallout shim,
+// byte-shape-identical to scripts/backfill-callouts-to-fabric.mjs output.
+// ---------------------------------------------------------------------------
+
+describe('calloutToAnnotationObject — R2 reload payload', () => {
+  it('embeds data.legacyCallout as a deep copy of the original callout', () => {
+    const obj = calloutToAnnotationObject(baseCallout, PAGE);
+    assert.ok(obj.data.legacyCallout, 'legacyCallout missing');
+    assert.equal(obj.data.legacyCallout.id, 'c-001');
+    assert.equal(obj.data.legacyCallout.text, 'Test callout');
+    assert.equal(obj.data.legacyCallout.style.strikethrough, true);
+    // deep copy: mutating the output must not touch the input
+    obj.data.legacyCallout.text = 'MUTATED';
+    assert.equal(baseCallout.text, 'Test callout', 'input callout was mutated');
+  });
+
+  it('lifts author chain to data.authorId (meta.authorId precedence)', () => {
+    const authored = { ...baseCallout, meta: { authorId: 'user-xyz' } };
+    assert.equal(calloutToAnnotationObject(authored, PAGE).data.authorId, 'user-xyz');
+    // bare authorId field also honored
+    const authored2 = { ...baseCallout, authorId: 'user-bare' };
+    assert.equal(calloutToAnnotationObject(authored2, PAGE).data.authorId, 'user-bare');
+  });
+
+  it('omits data.authorId when no author chain present', () => {
+    const obj = calloutToAnnotationObject(baseCallout, PAGE);
+    assert.equal('authorId' in obj.data, false);
+  });
+
+  it('lifts isPdfImported + pdfAnnotationId to the fabricObject root when imported', () => {
+    const imported = { ...baseCallout, isPdfImported: true, pdfAnnotationId: 'pdfanno-9' };
+    const obj = calloutToAnnotationObject(imported, PAGE);
+    assert.equal(obj.isPdfImported, true);
+    assert.equal(obj.pdfAnnotationId, 'pdfanno-9');
+  });
+
+  it('does not add a spurious isPdfImported flag for non-imported callouts', () => {
+    const obj = calloutToAnnotationObject(baseCallout, PAGE);
+    assert.equal('isPdfImported' in obj, false);
+    assert.equal('pdfAnnotationId' in obj, false);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Page-pixel geometry: PLAN §5a expected values for the base callout
 // ---------------------------------------------------------------------------
 

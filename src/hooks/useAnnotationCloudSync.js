@@ -89,6 +89,7 @@ import {
 import { shouldApplyDedupeResync } from '../utils/dedupeResyncSafety.js';
 import { resolveSafeSnapshot, mergePreservingImportedMarks } from '../utils/safeSnapshot.js';
 import { isSnapshotEnabled } from '../lib/collab/snapshotFeatureFlag.js';
+import { calloutsInSharedStore } from '../lib/calloutSharedStoreFlag.js';
 import {
   writeByPageSnapshot,
   readByPageSnapshot,
@@ -2330,6 +2331,15 @@ export function useAnnotationCloudSync({
 
   useEffect(() => {
     if (!enabled || !documentId || !userId) return;
+    // R2 keystone (2026-06-28): when callouts live in the shared annotationsByPage
+    // store, the SHARED fabric push (above) is the SOLE writer — it serializes
+    // callout objects into `.fabricObject` 'callout' rows (the serialize guard in
+    // annotationTypeSerializers.js is reversed flag-ON). This legacy callout push
+    // (upsertCallouts → callout rows + getMap('callouts') fan-out) MUST NOT also
+    // fire, or both writers race the same annotation_id (BLOCKER 1 corruption).
+    // Disabling it here is the other half of reversing that guard — the two are
+    // coupled. FLAG-OFF: unchanged, this is the live callout sync writer.
+    if (calloutsInSharedStore()) return;
     if (!hydratedRef.current) {
       cloudSyncHookDebug('[CloudSync][hook] callout push skipped — not hydrated yet');
       return;

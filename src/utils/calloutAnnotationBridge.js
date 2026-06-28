@@ -261,6 +261,18 @@ export function calloutToAnnotationObject(callout, pageSize) {
   const groupRight = Math.max(tbX + tbW, knX, atX);
   const groupBottom = Math.max(tbY + tbH, knY, atY);
 
+  // R2 keystone (2026-06-28): make the projected/serialized callout object
+  // self-describing so a runtime-persisted .fabricObject callout row reloads via
+  // the deserializeRowToCallout backward-read shim (reads fabricObject.data.
+  // legacyCallout). This makes runtime rows IDENTICAL in shape to what
+  // scripts/backfill-callouts-to-fabric.mjs writes — so backfilled and
+  // runtime-written rows are indistinguishable, and `shouldDeserializeAsFabricObject`
+  // can stay false for callout rows (single load path through callouts[], no
+  // nominal-dim re-projection, no double-load). Deep copy: never a live ref into
+  // the source callouts[] entry.
+  const legacyCallout = JSON.parse(JSON.stringify(callout));
+  const authorId = callout.meta?.authorId ?? callout.authorId ?? null;
+
   return {
     type: 'group',
     objects: [line1, line2, textbox, tipDot],
@@ -271,12 +283,25 @@ export function calloutToAnnotationObject(callout, pageSize) {
     width: groupRight - groupLeft,
     height: groupBottom - groupTop,
 
+    // Preserve PDF-import identity at the fabricObject root so
+    // getPdfImportDedupeKey (annotationTypeSerializers.js) dedupes imported
+    // callouts the same way it dedupes other imported fabric rows. Only present
+    // for imported callouts (mirrors the backfill — non-imported rows stay flagless).
+    ...(callout.isPdfImported
+      ? { isPdfImported: true, ...(callout.pdfAnnotationId != null ? { pdfAnnotationId: callout.pdfAnnotationId } : {}) }
+      : {}),
+
     // Required discriminator — mirrors counter's `data: { type: 'counter', ... }`.
     // fabricObjectToDbType() in annotationTypeSerializers.js dispatches on
     // data.type === 'callout' (line 147 of that file).
     data: {
       type: 'callout',
       id,
+      // Author chain for the shared canModify delete gate (matches backfill).
+      ...(authorId ? { authorId } : {}),
+      // Verbatim original normalized callout — the reload payload the
+      // deserializeRowToCallout shim recovers. Deep-cloned above.
+      legacyCallout,
       // PLAN.md §5a + leader-line preservation contract: backup the original
       // normalized fractions. Never deleted, even after Phase 8 dead-code removal.
       legacyNormalizedCoords: {
