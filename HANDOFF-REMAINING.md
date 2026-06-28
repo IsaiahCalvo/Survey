@@ -55,9 +55,9 @@ Authoritative detail with every file:line target: **`debug/ponytail-audit/REMAIN
 
 Remaining batches (safest first):
 1. **small-dead-bits** (LOW, no sign-off) — ~21 dead icon entries / dead exports / redundant `export default` lines across `Icons.jsx`, `Callout/types.js`, `excelLockFile.js`, `excelCapability.js`, `microsoftConnectionMarker.js`, 6 hook files. One commit.
-2. **deps** (LOW; one item NEEDS-OWNER) — remove redundant devDeps (`ws`, `cross-env`, `buffer`, `events`, `stream-browserify`, `util`), drop `dev:legacy`+`concurrently`, move `@capacitor/cli` to devDeps. `wait-on`/`dev:electron` removal is **owner-gated**.
-3. **stdlib-rewrites** (LOW–MED; 2 items NEEDS-OWNER) — ~25 hand-rolled ID generators → `crypto.randomUUID()`; `JSON.parse(JSON.stringify())` → the shared `deepClone`. **Touches `PDFViewer.jsx` + several callout files → conflicts with Track A; do after/around R2, not concurrently.** The invite-token security fix (`documentInviteService.js:35`) is owner-gated. Hex helpers HOLD (polyfill check).
-4. **pdfviewer-deadcode** (LOW–MED; 1 item NEEDS-OWNER) — dead branches behind the hardcoded-true `usePdfjsRenderer` flag, in atomic batches 4a–4e. **All in `PDFViewer.jsx` → conflicts with Track A; do after R2.** Overlay-recorder `|| true` (`:9068`) is owner-gated. NEVER touch the live KAL-241 lines (`5437`, `5609`, `1894–1899`).
+2. **deps** (LOW) — remove redundant devDeps (`ws`, `cross-env`, `buffer`, `events`, `stream-browserify`, `util`), drop `dev:legacy`+`concurrently`, move `@capacitor/cli` to devDeps. **`wait-on`/`dev:electron` → KEEP** (resolved 2026-06-28: that IS the owner's desktop test launcher — `wait-on … && electron .`).
+3. **stdlib-rewrites** (LOW–MED; 1 item HOLD) — ~25 hand-rolled ID generators → `crypto.randomUUID()`; `JSON.parse(JSON.stringify())` → the shared `deepClone`. **Touches `PDFViewer.jsx` + several callout files → conflicts with Track A; do after/around R2, not concurrently.** The invite-token security fix is **DONE** (`documentInviteService.js`, fail-closed, `f79a9a62`). Hex helpers HOLD (polyfill check).
+4. **pdfviewer-deadcode** (LOW–MED) — dead branches behind the hardcoded-true `usePdfjsRenderer` flag, in atomic batches 4a–4e. **All in `PDFViewer.jsx` → conflicts with Track A; do after R2.** The overlay-recorder item (4f) is **DONE** (deleted 2026-06-28, `f79a9a62`). NEVER touch the live KAL-241 lines (`5437`, `5609`, `1894–1899`).
 5. **mobile-monolith** (LOW steps 1–11; step 12 NEEDS-OWNER) — split `mobile-expo-go/App.tsx` (9,319 lines) into ~25 files via 12 ordered steps. **Entirely separate files → fully parallel-safe with everything else.**
 
 **Deferred / parked (NOT in scope):** the **PrintPanel** cleanup is owner-deferred (2026-06-28) — not happening today or soon. Tracked in **Linear KAL-315**, an Obsidian note, and a code marker above `PRINT_PANEL_ENABLED` in `PDFViewer.jsx`. Removal map (for when it's revived) stays in `debug/ponytail-audit/REMAINING-EXECUTION-PLAN.md` §6. Do not action it.
@@ -82,12 +82,9 @@ Net: you can have **3 lanes going at once** (Callout R2 + Mobile split + small d
 
 | # | Decision | Where |
 |---|---|---|
-| 1 | Does anyone run `npm run dev:electron`? (If no → remove `dev:electron` + `wait-on`) | `package.json` |
-| 2 | Approve swapping the emailed **invite token** off weak `Math.random()` to `crypto.getRandomValues` (security fix) | `documentInviteService.js:35` |
-| 3 | Overlay lag recorder `\|\| true`: permanently disable, or re-enable behind a proper flag? | `PDFViewer.jsx:9068` |
-| 4 | Mobile step 12 (`useDocumentState` hook extraction) needs you to test on a real device after | `mobile-expo-go/App.tsx` |
+| 1 | Mobile step 12 (`useDocumentState` hook extraction) needs you to test on a real device after | `mobile-expo-go/App.tsx` |
 
-_(PrintPanel was here — now deferred/parked as Linear KAL-315; not an active decision.)_
+**Resolved 2026-06-28:** dev:electron → KEEP (it's the test launcher); invite-token security fix → DONE (fail-closed); overlay lag recorder → REMOVED. PrintPanel → deferred (KAL-315).
 
 ---
 
