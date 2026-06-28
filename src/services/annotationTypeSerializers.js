@@ -492,6 +492,16 @@ export function serializeAnnotationsByPage(annotationsByPage, opts = {}) {
     const pageNumber = Number.parseInt(pageKey, 10) || 1;
     if (!page || !Array.isArray(page.objects)) continue;
     for (const obj of page.objects) {
+      // Callout-unification keystone (Phase 5) — write-contamination guard.
+      // `data.type==='callout'` objects only appear in annotationsByPage as a
+      // RENDER-ONLY projection (flag-gated, default OFF). Callouts persist via
+      // their own document_callouts/callout rows (serializeCalloutToRow); the
+      // bulk annotation push must NOT re-serialize them as a fabricObject-shaped
+      // 'callout' row on the same annotation_id (that overwrites the real row →
+      // dual-write-queue-jam corruption). Mirrors CRDT_FAN_OUT_EXCLUDED_TYPES
+      // ('callout') in ../utils/annotationSyncType.js. UNCONDITIONAL: with the
+      // flag OFF no such objects exist here, so this is a no-op → byte-identical.
+      if (obj?.data?.type === 'callout') continue;
       try {
         rows.push(serializeFabricObjectToRow(obj, { ...opts, pageNumber }));
       } catch (err) {

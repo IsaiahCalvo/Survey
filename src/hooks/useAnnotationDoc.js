@@ -102,7 +102,12 @@ function projectCalloutsIntoByPage(byPage, calloutsList, pageSizes) {
       projectedCount += 1;
     }
 
-    if (projectedCount === 0) return byPage;
+    // Unconditional ghost-cleanup: `next` is the callout-free copy of `byPage`
+    // plus any freshly-projected callouts. Returning `next` even when
+    // projectedCount === 0 (every callout dropped — unmeasured page, non-finite
+    // dims, or all de-duped) still strips any stale `data.type==='callout'`
+    // ghost from a prior projection. The `catch` below stays `return byPage`
+    // (safety net). Flag OFF returns earlier, so this stays byte-identical.
     return next;
   } catch (err) {
     // Never let projection failure blank the annotation layer — fall back to the
@@ -132,6 +137,14 @@ export function useAnnotationDoc({
   // (sizes may arrive after the doc opens). Only consulted when the shared-store
   // flag is ON; safe to omit when the flag is OFF.
   pageSizesRef,
+  // Callout-unification keystone (Phase 5) — BLOCKER 2 fix. A reactive count of
+  // how many pages have been MEASURED (Object.keys(pageSizes).length). The
+  // initial cloud-hydration projection (durable-wins, below) can fire before any
+  // page is measured (pageSizesRef.current === {}), projecting callouts at the
+  // US-Letter fallback — wrong first-paint position on non-Letter pages. This
+  // signal lets a re-projection effect re-run once real dims arrive. Only used
+  // when the shared-store flag is ON; flag OFF → effect early-returns (no-op).
+  pageSizesReady = 0,
 }) {
   const handleRef = useRef(null);
   const readyRef = useRef(false);
@@ -139,6 +152,11 @@ export function useAnnotationDoc({
   const calloutsRef = useRef(callouts);
   const spacesRef = useRef(spaces);
   const surveyMarkersRef = useRef(surveyMarkers);
+  // Callout-unification keystone (Phase 5) — BLOCKER 2 fix. Tracks whether the
+  // initial cloud-hydration projection ran while pageSizes was still empty, so
+  // the re-projection effect knows it has stale-pageSize work to redo. Reset on
+  // every doc open.
+  const calloutProjectedWithoutSizesRef = useRef(false);
   const [initialHydration, setInitialHydration] = useState({ ready: false, source: 'pending', count: 0, documentId: null });
 
   byPageRef.current = annotationsByPage;
@@ -153,6 +171,8 @@ export function useAnnotationDoc({
     if (!enabled || !documentId || !userId) return undefined;
     let cancelled = false;
     readyRef.current = false;
+    // BLOCKER 2: new doc — clear any "projected with stale pageSize" flag.
+    calloutProjectedWithoutSizesRef.current = false;
     setInitialHydration({ ready: false, source: 'pending', count: 0, documentId });
 
     (async () => {
@@ -203,6 +223,16 @@ export function useAnnotationDoc({
         // `count > 0` guard below is preserved byte-for-byte.
         const projectedByPage = projectCalloutsIntoByPage(storeByPage, storeCallouts, pageSizesRef?.current);
         const calloutsWereProjected = projectedByPage !== storeByPage;
+        // BLOCKER 2: if we projected callouts before any page was measured, the
+        // callouts landed at the US-Letter fallback. Remember so the re-projection
+        // effect can re-run once real dims arrive. (Idempotent + flag-gated; with
+        // the flag OFF calloutsWereProjected is false → never set.)
+        if (calloutsWereProjected && hasCallouts) {
+          const sizesNow = pageSizesRef?.current || {};
+          if (Object.keys(sizesNow).length === 0) {
+            calloutProjectedWithoutSizesRef.current = true;
+          }
+        }
         if (count > 0 || calloutsWereProjected) setAnnotationsByPage(projectedByPage);
         if (hasCallouts) setCallouts(storeCallouts);
         if (hasSpaces) setSpaces(storeSpaces);
@@ -246,6 +276,29 @@ export function useAnnotationDoc({
       if (h) { h.destroy().catch(() => {}); }
     };
   }, [enabled, documentId, userId, setAnnotationsByPage, setCallouts, setSpaces, setSurveyMarkers]);
+
+  // Callout-unification keystone (Phase 5) — BLOCKER 2 fix: re-project callouts
+  // once pageSizes first becomes available. The initial durable-wins hydration
+  // can project callouts before any page is measured (US-Letter fallback → wrong
+  // first-paint position on non-Letter pages). When real dims arrive we re-run
+  // the projection against the CURRENT annotationsByPage (which already holds any
+  // live non-callout work) using the CURRENT callout list and now-measured sizes.
+  // projectCalloutsIntoByPage strips existing callout objects and re-projects
+  // from the list, so this corrects positions while preserving everything else —
+  // it is idempotent and safe to run more than once. Flag OFF → early return
+  // (calloutsInSharedStore() false), so this is a no-op → byte-for-byte identical.
+  useEffect(() => {
+    if (!calloutsInSharedStore()) return;
+    if (!readyRef.current) return;
+    if (!calloutProjectedWithoutSizesRef.current) return;
+    const sizes = pageSizesRef?.current || {};
+    if (Object.keys(sizes).length === 0) return; // sizes still not measured
+    // One-shot: clear before re-projecting so we don't loop.
+    calloutProjectedWithoutSizesRef.current = false;
+    const curCallouts = calloutsRef.current;
+    if (!Array.isArray(curCallouts) || curCallouts.length === 0) return;
+    setAnnotationsByPage((prev) => projectCalloutsIntoByPage(prev, curCallouts, sizes));
+  }, [pageSizesReady, setAnnotationsByPage, pageSizesRef]);
 
   // Capture annotation changes into the durable store (no-op when unchanged).
   useEffect(() => {

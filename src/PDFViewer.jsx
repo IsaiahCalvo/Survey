@@ -17443,6 +17443,12 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     // flag is ON) to project cloud-hydrated callouts into annotationsByPage —
     // same page-pixel source as PDFViewer's local point-A load projection.
     pageSizesRef,
+    // Callout-unification keystone (Phase 5) — BLOCKER 2 fix: a reactive count of
+    // measured pages. When this flips from 0 to >0 (real page dims arrive after a
+    // cloud doc hydrated empty-sized), the hook re-projects callouts at the
+    // correct size. Reactive `pageSizes` state drives the re-run; pageSizesRef
+    // (above) still supplies the actual dims read inside the projection.
+    pageSizesReady: Object.keys(pageSizes).length,
   });
   // KAL-309: publish the durable META accessors to the latest-refs the early
   // import-apply callbacks read through (avoids a forward TDZ reference).

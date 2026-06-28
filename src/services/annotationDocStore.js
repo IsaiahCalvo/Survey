@@ -191,6 +191,15 @@ export function syncByPageToDoc(doc, byPage, { getId = extractAnnotationId, orig
     const objects = (bucket && Array.isArray(bucket.objects)) ? bucket.objects : [];
     const unchanged = prevByPage && prevByPage[pageKey] === bucket;
     for (const obj of objects) {
+      // Callout-unification keystone (Phase 5) — write-contamination guard.
+      // `data.type==='callout'` objects only ever appear in annotationsByPage as
+      // a RENDER-ONLY projection (flag-gated, default OFF). Callouts persist via
+      // their own `calloutsList` META + document_callouts rows; they must NEVER be
+      // written into the Y.Doc `annotations` flat map (that would duplicate the
+      // callout and corrupt its real row). Mirrors CRDT_FAN_OUT_EXCLUDED_TYPES
+      // ('callout') in ../utils/annotationSyncType.js. UNCONDITIONAL: when the flag
+      // is OFF there are no such objects here, so this is a no-op → byte-identical.
+      if (obj?.data?.type === 'callout') { skipped += 1; continue; }
       const id = getId(obj);
       if (!id) { skipped += 1; continue; }
       if (unchanged) { keepIds.add(id); continue; }

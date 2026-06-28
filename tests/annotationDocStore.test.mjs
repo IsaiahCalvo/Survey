@@ -361,3 +361,31 @@ test('concurrent edits on two clients merge with no lost update (CRDT)', () => {
   assert.deepEqual(idsA, ['fromA', 'fromB', 'shared']);
   assert.deepEqual(idsB, ['fromA', 'fromB', 'shared'], 'both devices converge, neither edit lost');
 });
+
+// Callout-unification keystone (Phase 5) — write-contamination guard.
+// A render-only projected `data.type==='callout'` object must NEVER be written
+// into the Y.Doc `annotations` flat map by syncByPageToDoc (callouts persist via
+// the separate calloutsList META + document_callouts rows). UNCONDITIONAL filter.
+test('syncByPageToDoc: excludes projected data.type===callout objects from the Y.Map', () => {
+  const doc = new Y.Doc();
+  const byPage = {
+    1: {
+      objects: [
+        mark('pen-1', 1),
+        { type: 'group', data: { id: 'co-1', type: 'callout' }, pageNumber: 1 },
+      ],
+    },
+  };
+  const res = syncByPageToDoc(doc, byPage);
+  // The pen is added; the callout is skipped (counted in `skipped`).
+  assert.equal(res.added, 1);
+  assert.ok(res.skipped >= 1);
+  const map = getAnnotationsMap(doc);
+  assert.equal(map.has('pen-1'), true);
+  assert.equal(map.has('co-1'), false);
+  // Materialized render shape contains the pen but no callout object.
+  const out = docToByPage(doc);
+  const objs = out[1].objects;
+  assert.equal(objs.length, 1);
+  assert.ok(!objs.some((o) => o?.data?.type === 'callout'));
+});

@@ -534,3 +534,26 @@ test('deserializeRowsToCallouts: pulls only callout rows', () => {
   assert.equal(callouts.length, 1);
   assert.equal(callouts[0].id, 'co-A');
 });
+
+// Callout-unification keystone (Phase 5) — write-contamination guard.
+// `data.type==='callout'` objects can appear in annotationsByPage as a
+// render-only projection (flag-gated). The Supabase bulk push must NEVER
+// serialize them as fabricObject-shaped 'callout' rows (that would overwrite the
+// real document_callouts row on the same annotation_id). Callouts persist via
+// serializeCalloutToRow only.
+test('serializeAnnotationsByPage: skips projected data.type===callout objects', () => {
+  const byPage = {
+    1: {
+      objects: [
+        { type: 'path', stroke: '#f00', data: { id: 'pen-1' } },
+        // A render-only projected callout — must be excluded from the bulk push.
+        { type: 'group', data: { type: 'callout', id: 'co-1' } },
+      ],
+    },
+  };
+  const rows = serializeAnnotationsByPage(byPage, { documentId: 'doc1', userId: 'u1' });
+  // Only the pen stroke serializes; the callout is dropped.
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].annotation_id, 'pen-1');
+  assert.ok(!rows.some((r) => r.annotation_type === 'callout'));
+});
