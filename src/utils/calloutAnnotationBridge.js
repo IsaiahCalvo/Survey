@@ -295,6 +295,81 @@ export function calloutToAnnotationObject(callout, pageSize) {
 }
 
 /**
+ * Rebuild the callout layer of an `annotationsByPage` map FROM the authoritative
+ * `callouts[]` list (Phase 5 keystone shared projector).
+ *
+ * This is the single canonical, idempotent projection used by BOTH the cloud
+ * hydrate seam (useAnnotationDoc) and the local reactive effect (PDFViewer) so
+ * the two never drift. It is a PURE function of (non-callout objects, callout
+ * list, pageSizes): every page is first copied callout-free (any pre-existing
+ * `data.type==='callout'` object is stripped), then each callout is re-projected
+ * via `calloutToAnnotationObject`. Re-running it never doubles a callout and a
+ * removed callout never leaves a ghost — that is what makes create/edit/delete on
+ * the legacy `callouts[]` path reflect immediately in the shared render.
+ *
+ * Flag gating is the CALLER's responsibility (this module stays zero-dependency
+ * on the flag so it remains importable in Node --test). Callers must check
+ * `calloutsInSharedStore()` before invoking; with the flag OFF they must not call
+ * this so behavior is byte-for-byte unchanged.
+ *
+ * @param {object} byPage — current annotationsByPage map ({ [page]: { objects } })
+ * @param {Array<object>} calloutsList — authoritative normalized callouts[]
+ * @param {object} pageSizes — { [page]: { width, height } } unscaled PDF px dims
+ * @returns {object} a NEW byPage map with the callout layer rebuilt from source.
+ *   When `calloutsList` is empty/non-array the input `byPage` is returned
+ *   unchanged (referentially identical) so an empty doc stays a no-op.
+ */
+export function projectCalloutsIntoByPage(byPage, calloutsList, pageSizes) {
+  if (!Array.isArray(calloutsList) || calloutsList.length === 0) return byPage;
+
+  try {
+    const sizes = pageSizes || {};
+    const src = byPage || {};
+    const next = {};
+    // Start from a callout-free copy of every existing page so a re-projection
+    // can't leave behind a callout the new list no longer contains.
+    for (const key of Object.keys(src)) {
+      const page = src[key];
+      const objects = Array.isArray(page?.objects) ? page.objects : [];
+      const nonCallout = objects.filter((o) => !(o?.data?.type === 'callout'));
+      next[key] = { ...(page || {}), objects: nonCallout };
+    }
+
+    const seenIds = new Set();
+    for (const callout of calloutsList) {
+      if (!callout) continue;
+      const page = callout.pageNumber;
+      if (!Number.isFinite(page)) continue;
+      // De-dupe by id within the projection (defends against a duplicated row).
+      const id = callout.id ?? null;
+      if (id != null) {
+        if (seenIds.has(id)) continue;
+        seenIds.add(id);
+      }
+      // Per-page unscaled PDF dims; fall back to US-Letter if not yet measured.
+      const pageSize = sizes[page] || { width: 612, height: 792 };
+      if (!Number.isFinite(pageSize.width) || !Number.isFinite(pageSize.height)) continue;
+      const obj = calloutToAnnotationObject(callout, pageSize);
+      const existing = next[page];
+      const existingObjects = Array.isArray(existing?.objects) ? existing.objects : [];
+      next[page] = {
+        ...(existing || {}),
+        objects: [...existingObjects, obj],
+      };
+    }
+
+    // Unconditional ghost-cleanup: returning `next` even when nothing projected
+    // still strips any stale callout object from a prior projection.
+    return next;
+  } catch (err) {
+    // Never let projection failure blank the annotation layer — fall back to the
+    // un-projected byPage (callouts still live in callouts[] dual-rep).
+    console.error('[Callout keystone] projectCalloutsIntoByPage failed; using un-projected byPage', err);
+    return byPage;
+  }
+}
+
+/**
  * Inverse: convert a Fabric annotation object (page-pixel coords) back to a
  * normalized (0-1) callout shape.
  *

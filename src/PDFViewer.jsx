@@ -61,7 +61,7 @@ import { buildBulkDeletePlan } from './lib/collab/bulkDeletePlan.js';
 // Callout-unification keystone (Phase 5, point A) — flag-gated load projection
 // of saved callouts[] into the shared annotationsByPage store. DEFAULT OFF.
 import { calloutsInSharedStore } from './lib/calloutSharedStoreFlag';
-import { calloutToAnnotationObject } from './utils/calloutAnnotationBridge';
+import { calloutToAnnotationObject, projectCalloutsIntoByPage } from './utils/calloutAnnotationBridge';
 import { buildHistoryEventRowFromDebugEvent, recordDocumentHistoryEvent, recordAndNotifyDocumentHistoryEvent } from './services/documentHistoryService.js';
 import { buildPrintableRegularAnnotationPayload, savePDFWithAnnotationsPdfLib, savePDFWithFlattenedRegularAnnotationsForPrint } from './utils/pdfAnnotationsPdfLib';
 import { buildTextSearchDiagLogSection, emitTextSearchDiag } from './utils/textSearchDiag';
@@ -18980,6 +18980,57 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     setCallouts(loadedCallouts);
     setHasUnsavedAnnotations(false); // Reset unsaved flag
   }, [clearExcelSyncCheckpoint, finishPdfjsInteractionWindow, pdfFile, pushHistoryDebugEvent]);
+
+  // Callout-unification keystone (Phase 5, point C — local reactive projection).
+  // The LOAD projection above runs once per doc-open. But callouts created,
+  // edited, or deleted AFTER load only mutate `callouts[]` (the legacy create /
+  // edit / delete paths all funnel through setCallouts/setCalloutsIfPersistedChanged).
+  // With the flag ON the legacy `filteredCallouts` visible-render loop is
+  // suppressed and the shared SVG dispatch renders callouts from
+  // `annotationsByPage` — so without re-projecting, a newly-drawn callout would
+  // never appear and a deleted one would linger. This effect mirrors `callouts[]`
+  // into `annotationsByPage` whenever the list changes (or page dims first
+  // measure), rebuilding the callout layer FROM SOURCE via the canonical
+  // idempotent projector: it strips every existing `data.type==='callout'` object
+  // per page and re-projects, preserving all non-callout objects untouched. The
+  // projected objects never reach storage — both write paths
+  // (annotationDocStore.syncByPageToDoc + annotationTypeSerializers.serializeAnnotationsByPage)
+  // unconditionally skip `data.type==='callout'`, so `callouts[]` stays the
+  // persisted source of truth (dual-rep). Flag OFF → early return, byte-for-byte
+  // unchanged. pageSizes (reactive state) is a dep so the projection re-runs once
+  // real page dims arrive (BLOCKER 2: first paint may project at the US-Letter
+  // fallback before measurement); pageSizesRef.current supplies the freshest dims.
+  useEffect(() => {
+    if (!calloutsInSharedStore()) return;
+    setAnnotationsByPage((prev) => {
+      if (Array.isArray(callouts) && callouts.length > 0) {
+        // Rebuild-from-source: strip + re-project. Referentially new when the
+        // callout layer changed; cheap no-op (React bails) when nothing did.
+        return projectCalloutsIntoByPage(prev, callouts, pageSizesRef.current || {});
+      }
+      // Empty list (e.g. the last callout was just deleted): the shared projector
+      // returns `prev` unchanged on an empty list, so strip any lingering ghost
+      // callout objects here. Only touch a page that actually holds a callout
+      // object so the returned map stays referentially identical otherwise.
+      const src = prev || {};
+      let changed = false;
+      const next = {};
+      for (const key of Object.keys(src)) {
+        const page = src[key];
+        const objects = Array.isArray(page?.objects) ? page.objects : [];
+        const hasCallout = objects.some((o) => o?.data?.type === 'callout');
+        if (hasCallout) {
+          changed = true;
+          next[key] = { ...(page || {}), objects: objects.filter((o) => !(o?.data?.type === 'callout')) };
+        } else {
+          next[key] = page;
+        }
+      }
+      return changed ? next : prev;
+    });
+    // pageSizes intentionally in deps so a late measurement re-projects (BLOCKER 2).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [callouts, pageSizes]);
 
   // Save items and annotations to localStorage when they change
   useEffect(() => {

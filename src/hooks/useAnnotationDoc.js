@@ -18,7 +18,7 @@ import { supabase } from '../supabaseClient.js';
 import { openAnnotationDoc, getClientId } from '../services/annotationDocSync.js';
 import { setMetaValue as setMetaValueOnDoc } from '../services/annotationDocStore.js';
 import { calloutsInSharedStore } from '../lib/calloutSharedStoreFlag.js';
-import { calloutToAnnotationObject } from '../utils/calloutAnnotationBridge.js';
+import { projectCalloutsIntoByPage as projectCalloutsIntoByPageShared } from '../utils/calloutAnnotationBridge.js';
 
 const CALLOUTS_KEY = 'calloutsList';
 const SPACES_KEY = 'spaces';
@@ -59,64 +59,15 @@ function pageCount(byPage) {
 // forward/inverse round-trip is lossless (mirrors PDFViewer's local point-A
 // projection). Flag OFF → returns `byPage` unchanged (referentially identical
 // when no callouts), so behavior is byte-for-byte the same.
+//
+// The actual rebuild-from-source logic now lives in the canonical
+// `projectCalloutsIntoByPage` exported from calloutAnnotationBridge.js, shared
+// verbatim with PDFViewer's local reactive effect so the two never drift. This
+// thin wrapper just adds the flag gate (the bridge stays flag-agnostic so it is
+// importable in Node --test).
 function projectCalloutsIntoByPage(byPage, calloutsList, pageSizes) {
   if (!calloutsInSharedStore()) return byPage;
-  if (!Array.isArray(calloutsList) || calloutsList.length === 0) return byPage;
-
-  try {
-    const sizes = pageSizes || {};
-    const src = byPage || {};
-    const next = {};
-    // Start from a callout-free copy of every existing page so a re-hydrate
-    // can't leave behind a callout the new list no longer contains.
-    for (const key of Object.keys(src)) {
-      const page = src[key];
-      const objects = Array.isArray(page?.objects) ? page.objects : [];
-      const nonCallout = objects.filter((o) => !(o?.data?.type === 'callout'));
-      next[key] = { ...(page || {}), objects: nonCallout };
-    }
-
-    const seenIds = new Set();
-    let projectedCount = 0;
-    for (const callout of calloutsList) {
-      if (!callout) continue;
-      const page = callout.pageNumber;
-      if (!Number.isFinite(page)) continue;
-      // De-dupe by id within the projection (defends against a duplicated row
-      // in the source list).
-      const id = callout.id ?? null;
-      if (id != null) {
-        if (seenIds.has(id)) continue;
-        seenIds.add(id);
-      }
-      // Per-page unscaled PDF dims; fall back to US-Letter if not yet measured.
-      const pageSize = sizes[page] || { width: 612, height: 792 };
-      if (!Number.isFinite(pageSize.width) || !Number.isFinite(pageSize.height)) continue;
-      const obj = calloutToAnnotationObject(callout, pageSize);
-      const existing = next[page];
-      const existingObjects = Array.isArray(existing?.objects) ? existing.objects : [];
-      next[page] = {
-        ...(existing || {}),
-        objects: [...existingObjects, obj],
-      };
-      projectedCount += 1;
-    }
-
-    // Unconditional ghost-cleanup: `next` is the callout-free copy of `byPage`
-    // plus any freshly-projected callouts. Returning `next` even when
-    // projectedCount === 0 (every callout dropped — unmeasured page, non-finite
-    // dims, or all de-duped) still strips any stale `data.type==='callout'`
-    // ghost from a prior projection. The `catch` below stays `return byPage`
-    // (safety net). Flag OFF returns earlier, so this stays byte-identical.
-    return next;
-  } catch (err) {
-    // Never let projection failure blank the annotation layer — fall back to the
-    // un-projected byPage (callouts still live in callouts[] dual-rep; with the
-    // flag ON the legacy render is suppressed, but a build that throws here is a
-    // bug we want surfaced loudly rather than a silent blank).
-    console.error('[Callout keystone] cloud-hydrate projection failed; using un-projected byPage', err);
-    return byPage;
-  }
+  return projectCalloutsIntoByPageShared(byPage, calloutsList, pageSizes);
 }
 
 export function useAnnotationDoc({

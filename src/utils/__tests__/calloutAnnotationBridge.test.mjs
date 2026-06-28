@@ -17,6 +17,7 @@ import assert from 'node:assert/strict';
 import {
   calloutToAnnotationObject,
   annotationObjectToCallout,
+  projectCalloutsIntoByPage,
 } from '../calloutAnnotationBridge.js';
 
 // ---------------------------------------------------------------------------
@@ -508,5 +509,66 @@ describe('multi-cycle stability', () => {
       PX_TOL,
       '10-cycle textBoxWidth'
     );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// projectCalloutsIntoByPage — shared rebuild-from-source projector (Phase 5
+// keystone). This is the single canonical projection used by BOTH PDFViewer's
+// local reactive effect AND useAnnotationDoc's cloud hydrate, so its contract is
+// load-bearing: idempotent, ghost-free on delete, non-callout objects preserved.
+// ---------------------------------------------------------------------------
+
+describe('projectCalloutsIntoByPage — shared projector', () => {
+  const SIZES = { 2: PAGE };
+
+  it('empty/non-array list returns the input byPage unchanged (referentially)', () => {
+    const byPage = { 2: { objects: [{ data: { type: 'pen' } }] } };
+    assert.equal(projectCalloutsIntoByPage(byPage, [], SIZES), byPage);
+    assert.equal(projectCalloutsIntoByPage(byPage, null, SIZES), byPage);
+  });
+
+  it('projects each callout into its page as a data.type===callout object', () => {
+    const next = projectCalloutsIntoByPage({}, [baseCallout], SIZES);
+    const objs = next[2].objects;
+    const callouts = objs.filter((o) => o?.data?.type === 'callout');
+    assert.equal(callouts.length, 1);
+    assert.equal(callouts[0].data.id, 'c-001');
+  });
+
+  it('preserves non-callout objects on the page untouched', () => {
+    const pen = { data: { type: 'pen' }, id: 'p1' };
+    const byPage = { 2: { objects: [pen] } };
+    const next = projectCalloutsIntoByPage(byPage, [baseCallout], SIZES);
+    const objs = next[2].objects;
+    assert.ok(objs.includes(pen), 'pen object kept by reference');
+    assert.equal(objs.filter((o) => o?.data?.type === 'callout').length, 1);
+  });
+
+  it('is idempotent: re-running never doubles a callout', () => {
+    const once = projectCalloutsIntoByPage({}, [baseCallout], SIZES);
+    const twice = projectCalloutsIntoByPage(once, [baseCallout], SIZES);
+    assert.equal(twice[2].objects.filter((o) => o?.data?.type === 'callout').length, 1);
+  });
+
+  it('strips a removed callout (ghost-cleanup) when the list shrinks', () => {
+    const c2 = { ...baseCallout, id: 'c-002' };
+    const both = projectCalloutsIntoByPage({}, [baseCallout, c2], SIZES);
+    assert.equal(both[2].objects.filter((o) => o?.data?.type === 'callout').length, 2);
+    // Re-project from a list that no longer contains c-002.
+    const after = projectCalloutsIntoByPage(both, [baseCallout], SIZES);
+    const ids = after[2].objects.filter((o) => o?.data?.type === 'callout').map((o) => o.data.id);
+    assert.deepEqual(ids, ['c-001']);
+  });
+
+  it('de-dupes a duplicated callout id within a single projection', () => {
+    const dup = { ...baseCallout };
+    const next = projectCalloutsIntoByPage({}, [baseCallout, dup], SIZES);
+    assert.equal(next[2].objects.filter((o) => o?.data?.type === 'callout').length, 1);
+  });
+
+  it('falls back to US-Letter dims when the page is unmeasured (no throw)', () => {
+    const next = projectCalloutsIntoByPage({}, [baseCallout], {});
+    assert.equal(next[2].objects.filter((o) => o?.data?.type === 'callout').length, 1);
   });
 });

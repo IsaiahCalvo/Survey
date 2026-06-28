@@ -2875,10 +2875,18 @@ const SVGAnnotationLayer = memo(({
   // hit overlays sit on top for pointer capture.
   const filteredCallouts = useMemo(() => {
     // Callout-unification keystone (Phase 5, point B) — when the shared store is
-    // ON, callouts render through the shared annotationsByPage dispatch
-    // (filteredAnnotations) instead. Suppress this legacy loop entirely so
-    // callouts are not double-rendered. Flag OFF: unchanged behavior.
-    if (calloutsShared) return [];
+    // ON, the VISIBLE callout chrome renders through the shared annotationsByPage
+    // dispatch (filteredAnnotations, data.type==='callout' → renderCallout). This
+    // loop no longer emits that visible chrome (it would double-render). BUT the
+    // INTERACTION layer (invisible hit-targets + selection handles that carry
+    // data-callout-id, drive pointerdown hit-testing, selection, and the
+    // double-click edit entry) is still owned here and MUST stay alive — the
+    // shared dispatch only draws pixels, it has no hit-targets. So with the flag
+    // ON we run the same loop over callouts[] but push ONLY the hit-targets,
+    // skipping the visible element. callouts[] is still populated (dual-rep), so
+    // selection/positions are exactly as before. Flag OFF: unchanged behavior
+    // (visible chrome + hit-targets both emitted, as Plan 14-01/14-03 shipped).
+    const interactionOnly = calloutsShared;
     // 2026-05-03 — Viewport-culling fast exit (parity with filteredAnnotations).
     if (!isPageInRenderWindow) return [];
     if (!Array.isArray(callouts) || callouts.length === 0) return [];
@@ -2952,9 +2960,18 @@ const SVGAnnotationLayer = memo(({
       // auto-route to follow the arrow. An arrow position that would make the
       // knee→arrow line cut through the textbox is rejected by the validator.
       const skipAutoRoute = !!dragPart;
-      // UX: CALL-10 — new signature takes pageSize object, emits data attributes
-      const element = renderCallout(displayCallout, i, pageSize, calculateCalloutConnection, hideText, liveBoundsForCallout, skipAutoRoute);
-      if (!element) continue;
+      // UX: CALL-10 — new signature takes pageSize object, emits data attributes.
+      // Keystone (flag ON, interactionOnly): the shared annotationsByPage dispatch
+      // owns the visible chrome, so we DON'T draw it here — only the hit-targets
+      // below. We still keep the per-callout loop running so selection/edit/delete
+      // hit-testing works off callouts[] exactly as before.
+      const element = interactionOnly
+        ? null
+        : renderCallout(displayCallout, i, pageSize, calculateCalloutConnection, hideText, liveBoundsForCallout, skipAutoRoute);
+      // Flag OFF: a null element means renderCallout declined (page/visibility) —
+      // skip the callout entirely. Flag ON: element is intentionally null, so the
+      // null check must NOT skip — the hit-targets still need to be emitted.
+      if (!interactionOnly && !element) continue;
 
       // UX: Phase 14 Task 2 — invisible hit-target overlays for callout
       // parts. The 12px radius / 12px line strokeWidth matches the deleted
