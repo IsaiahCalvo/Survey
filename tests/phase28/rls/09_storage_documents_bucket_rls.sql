@@ -206,14 +206,12 @@ BEGIN
       (v_doc_id, v_viewer_id, 'viewer', 'active')
     ON CONFLICT (document_id, user_id) DO UPDATE SET role = EXCLUDED.role, status = 'active';
 
-  -- Insert a storage.objects row whose name exactly matches documents.file_path.
-  -- DELETE-then-INSERT instead of ON CONFLICT (id) DO NOTHING: storage.objects has
-  -- a composite unique constraint on (bucket_id, name) in addition to the PK.
-  -- ON CONFLICT (id) would not catch a stale row with the same (bucket_id, name)
-  -- but a different id (e.g. left by a killed session), causing an unhandled
-  -- unique_violation ERROR. Delete first to make both constraints idempotent.
+  -- Insert a storage.objects row whose name matches documents.file_path.
+  -- NOTE: Supabase blocks direct DELETE FROM storage.objects (the storage.protect_delete
+  -- trigger raises 42501), so a DELETE-then-INSERT fixture cannot run here. Because this
+  -- whole test runs inside BEGIN/ROLLBACK, the row never persists between runs, so a plain
+  -- INSERT ... ON CONFLICT (id) DO NOTHING is both sufficient and idempotent.
   -- owner_id is TEXT in Supabase storage.objects; cast accordingly.
-  DELETE FROM storage.objects WHERE bucket_id = 'documents' AND name = v_file_path;
   INSERT INTO storage.objects (id, bucket_id, name, owner, owner_id)
     VALUES (
       v_storage_obj_id,
@@ -221,7 +219,8 @@ BEGIN
       v_file_path,
       v_owner_id,
       v_owner_id::text
-    );
+    )
+    ON CONFLICT (id) DO NOTHING;
 
   -- ============================================================================
   -- TEST 1: Owner can SELECT the storage object (ALLOW)
@@ -383,10 +382,11 @@ BEGIN
       ON CONFLICT (id) DO NOTHING;
     UPDATE public.documents SET file_path = v_other_file_path WHERE id = v_other_doc_id;
 
-    -- DELETE-then-INSERT for the same (bucket_id, name) idempotency reason as above.
-    DELETE FROM storage.objects WHERE bucket_id = 'documents' AND name = v_other_file_path;
+    -- Plain idempotent INSERT (see note above: direct DELETE FROM storage.objects is
+    -- blocked by storage.protect_delete; the BEGIN/ROLLBACK means nothing persists).
     INSERT INTO storage.objects (id, bucket_id, name, owner, owner_id)
-      VALUES (v_other_obj_id, 'documents', v_other_file_path, v_other_owner_id, v_other_owner_id::text);
+      VALUES (v_other_obj_id, 'documents', v_other_file_path, v_other_owner_id, v_other_owner_id::text)
+      ON CONFLICT (id) DO NOTHING;
 
     -- editor (0002) is a collaborator on doc 9999 but NOT on doc 8888
     PERFORM set_config('request.jwt.claim.sub', v_editor_id::text, true);
