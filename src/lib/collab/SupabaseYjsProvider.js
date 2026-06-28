@@ -265,10 +265,23 @@ export function connect(documentId, ydoc, options = {}) {
             const bytes = base64ToUint8Array(payload.update);
             const reply = decodeAndApply(ydoc, awareness, bytes, REMOTE_REALTIME_ORIGIN);
             if (reply && channel) {
-              sendBroadcast(channel, 'sync', {
-                update: uint8ArrayToBase64(reply),
-                originClientId: ydoc.clientID,
-              });
+              if (reply.byteLength > SOFT_PAYLOAD_CAP_BYTES) {
+                // The step2 reply is too large for realtime broadcast. The peer that
+                // sent the step1 frame converges via its Postgres cold-load (SELECT on
+                // doc_yjs_state.state binary bytea) instead; the realtime channel only
+                // needs to carry the post-cold-load delta. Skip + log once-shaped (warn).
+                // eslint-disable-next-line no-console
+                console.warn('[SupabaseYjsProvider] step2 reply exceeds cap — kept out of realtime broadcast', {
+                  bytes: reply.byteLength,
+                  capBytes: SOFT_PAYLOAD_CAP_BYTES,
+                  documentId,
+                });
+              } else {
+                sendBroadcast(channel, 'sync', {
+                  update: uint8ArrayToBase64(reply),
+                  originClientId: ydoc.clientID,
+                });
+              }
             }
           } catch (err) {
             // eslint-disable-next-line no-console
@@ -295,10 +308,25 @@ export function connect(documentId, ydoc, options = {}) {
             syncProtocol.writeSyncStep2(reply, ydoc, remoteSV);
             const replyBytes = encoding.toUint8Array(reply);
             if (replyBytes.byteLength > 1 && channel) {
-              sendBroadcast(channel, 'sync', {
-                update: uint8ArrayToBase64(replyBytes),
-                originClientId: ydoc.clientID,
-              });
+              if (replyBytes.byteLength > SOFT_PAYLOAD_CAP_BYTES) {
+                // Large doc: the full-state sync_request reply would exceed the
+                // Broadcast wire ceiling. Skip it — the reconnecting peer already
+                // cold-loads the full state via Postgres SELECT on doc_yjs_state.state
+                // (binary bytea) before it ever emits a sync_request, so the handshake
+                // converges through that path without this frame. Phase 32 compaction
+                // folds overflow into snapshots.
+                // eslint-disable-next-line no-console
+                console.warn('[SupabaseYjsProvider] sync_request reply exceeds cap — kept out of realtime broadcast', {
+                  bytes: replyBytes.byteLength,
+                  capBytes: SOFT_PAYLOAD_CAP_BYTES,
+                  documentId,
+                });
+              } else {
+                sendBroadcast(channel, 'sync', {
+                  update: uint8ArrayToBase64(replyBytes),
+                  originClientId: ydoc.clientID,
+                });
+              }
             }
           } catch (err) {
             // eslint-disable-next-line no-console

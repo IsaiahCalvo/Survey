@@ -86,3 +86,38 @@ When a future plan adds a new RLS scenario, add `0N_descriptive_name.sql` and `\
 3. `ROLLBACK;`
 
 The skip-guard pattern is what makes the suite green-or-skipped from Wave 0 forward.
+
+## Files 05–10 — the role-permission regression suite (added 2026-06-28)
+
+`05`–`10` extend the suite beyond `doc_yjs_updates` to the rest of the permission surface
+(RLS is the app's SOLE permission layer — no app-layer fallback):
+
+- `05_documents_rls.sql` — documents: owner full access, collaborator SELECT, viewer read-only, non-collaborator denied
+- `06_document_collaborators_rls.sql` — only owner can grant/revoke/change collaborators; last-owner guard
+- `07_document_annotations_rls.sql` — owner+editor write, viewer read-only, non-collaborator denied (the core data)
+- `08_document_invites_rls.sql` — owner creates/revokes invites; accept-RPC gating; no forging
+- `09_storage_documents_bucket_rls.sql` — private `documents` bucket; data-driven object ACL; cross-document bleed check
+- `10_excel_sync_audit_immutability.sql` — append-only audit (UPDATE/DELETE blocked); client lockout
+
+Each acts out owner/editor/viewer/non-collaborator, runs every persona under
+`SET LOCAL ROLE authenticated` (so RLS actually fires), and is skip-guarded (incl. an
+`auth.users` FK guard) → GREEN-OR-SKIPPED.
+
+### Status: LIVE-PASS on survey-test (verified 2026-06-28)
+
+All of 05–10 execute their assertions live and pass against the survey-test project. To
+provision a bare test DB so they run live (instead of skipping):
+
+```bash
+# 1. provision schema (idempotent; NEVER run against production):
+psql "$SUPABASE_TEST_URL" -f scripts/rls-test-db-provision.sql
+psql "$SUPABASE_TEST_URL" -f scripts/rls-test-db-personas.sql
+# 2. run the suite:
+psql "$SUPABASE_TEST_URL" -f tests/phase28/rls/run-all.sql
+# teardown: scripts/rls-test-db-teardown.sql
+```
+
+Without a psql connection string, each file's SQL can be POSTed to the Supabase
+Management API `/database/query` (the `SET LOCAL ROLE authenticated` inside still makes
+RLS fire); HTTP 201 = clean, HTTP 400 = a FAIL/error with the message. NOTE: `\i`/`\echo`
+are psql-only, so send the individual `05`–`10` files, not `run-all.sql`, via the API.
