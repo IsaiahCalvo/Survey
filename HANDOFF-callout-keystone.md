@@ -8,6 +8,23 @@ and all landed work is verified + flag-OFF byte-identical (production untouched)
 **data-sensitive finale** (persistence switch + production backfill → flip) plus the remaining Ponytail
 batches. Do the finale FRESH, not at the end of a long session — it mutates real callout data.
 
+## PROGRESS — 2026-06-28 (owner chose FULL `.fabricObject` migration)
+Owner picked the full plan-as-written migration (DB rows → `annotation_data.fabricObject`), not the
+lazier keep-normalized variant. **Census: prod = 11 callout rows / 8 docs, all `.callout`; survey-test
+empty.** Two increments LANDED (branch `claude/vibrant-lewin-6d7e06`, flag-OFF byte-identical, build +
+1680 tests green):
+- **Backfill** `scripts/backfill-callouts-to-fabric.mjs` (226a1391) — lossless, idempotent, default
+  `--dry-run`; validated on all 11 real rows (maxFracDelta ~1e-16). **`--apply` NOT run yet.**
+- **Backward-read shim** in `deserializeRowToCallout` (e76b7bc3) — migrated rows recover via
+  `fabricObject.data.legacyCallout`, so they load FLAG-INDEPENDENTLY. **This DECOUPLES the backfill
+  apply from the flag flip** (safer than the plan's flag-coupled switch).
+
+**NEXT (the big, risky core — do fresh + adversarial):** the R2 write-switch. Retire `callouts[]` as
+runtime source (≈53 `setCallouts` sites / 113 mentions in PDFViewer), reverse the 3 write-guards, make
+the shared push the single writer, disable the legacy callout push effect (`useAnnotationCloudSync.js:2331–2640`).
+The **surgical file:line execution map is in `.planning/callout-unification/KEYSTONE-WIRING.md`** (top
+section "R2 EXECUTION MAP"). Then adversarial gate, then flip flag + run `--apply` together.
+
 ## State at handoff
 - Branch/main: all work on local `main`, pushed to `origin` (IsaiahCalvo/Survey). Gates: `npx vite build`
   + `node scripts/run-node-tests.mjs` → **1668 pass / 0 fail**.
