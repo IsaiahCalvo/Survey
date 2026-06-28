@@ -277,7 +277,7 @@ Apply Phase 3 items 4–6 (the post-keystone undo changes that were deferred).
 
 1. **Pre-flight audit (no writes):** Query `SELECT COUNT(*), document_id FROM document_annotations WHERE annotation_type = 'callout' GROUP BY document_id`. Confirm all rows have `annotation_data.callout` (no hybrid rows). Count affected rows and documents. Record as backfill scope.
 
-2. **Page-dimension sourcing:** The converter needs `pageWidthPx` and `pageHeightPx`. Source from `document_pages` table if it exists, or from PDF metadata. If dimensions are unavailable for a document, write a `data.backfillStatus: 'pending-dimensions'` marker and skip — do not leave partially-converted rows. Log skipped documents for manual follow-up.
+2. **Page-dimension sourcing — RESOLVED 2026-06-27:** there is NO `document_pages` table (grep-confirmed, 0 refs repo-wide). Two options: (a, recommended) carry normalized 0-1 coords in backfilled rows and let the existing runtime LOAD projection (`projectCalloutsIntoByPage`, which uses the measured `pageSizesRef`) convert to pixels at display time — the bridge already writes `data.legacyNormalizedCoords`, so NO backfill-time dims are needed; (b) parse the PDF for dims at backfill via the `agent-cli/lib/pdfOpen.mjs` `getViewport({scale:1})` pattern. Either way, if a callout can't be converted write `data.backfillStatus: 'pending-dimensions'` and skip (never partial rows); log skipped docs.
 
 3. **Backfill script (run against survey-test first):**
    ```
@@ -469,7 +469,7 @@ The backward-read guard added in Phase 5b is the key insurance policy: it allows
 
 Before implementation begins, the following require a decision:
 
-1. **Page-dimension source for backfill.** Does a `document_pages` table exist with `width_px` and `height_px` per document? If not, what is the fallback? (Options: read from PDF metadata at backfill time; store dimensions during Phase 5 creates; require a manual dimensions audit first.)
+1. ~~**Page-dimension source for backfill.**~~ **RESOLVED 2026-06-27:** no `document_pages` table exists. Prefer carrying normalized coords + convert at LOAD via `projectCalloutsIntoByPage` (no backfill-time dims); alternative = parse PDF via `agent-cli/lib/pdfOpen.mjs` `getViewport`. See Phase 6 step 2.
 
 2. **Backfill timing.** Phase 6 requires the app to be at Phase 5 first. Is there a preferred maintenance window for the production backfill, or is it safe to run live (the backward-read guard keeps the app working with mixed row formats)?
 
