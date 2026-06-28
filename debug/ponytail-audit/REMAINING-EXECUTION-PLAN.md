@@ -555,7 +555,11 @@ mobile-expo-go/
 
 ---
 
-## 6. PrintPanel [HELD — do not proceed]
+## 6. PrintPanel [DEFERRED — parked 2026-06-28, do not proceed]
+
+> **Owner-deferred 2026-06-28 — not doing this today or soon.** Tracked as Linear **KAL-315**
+> + Obsidian note + a code marker above `PRINT_PANEL_ENABLED` in PDFViewer.jsx. The removal map
+> below is preserved for whenever it's revived; take no action until the owner reopens it.
 
 **Risk: N/A (blocked)**
 **Owner sign-off required: YES — full decision required before any work**

@@ -26611,6 +26611,12 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     // their system's own copies / duplex / destination controls. The
     // panel code is still wired up — flip PRINT_PANEL_ENABLED to true
     // to bring it back.
+    //
+    // DEFERRED 2026-06-28 (owner): we are NOT revisiting the Print Panel soon.
+    // Both layout variants (J and K) remain in the tree behind the `variant`
+    // toggle. Before any cleanup, the owner must enable this, try J vs K, and
+    // pick a winner; only then remove the loser (removal map:
+    // debug/ponytail-audit/REMAINING-EXECUTION-PLAN.md §6). Tracked: Linear KAL-315.
     const PRINT_PANEL_ENABLED = false;
     let printInFlight = false;
     const openPanel = (source, opts = {}) => {

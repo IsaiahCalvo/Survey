@@ -59,7 +59,8 @@ Remaining batches (safest first):
 3. **stdlib-rewrites** (LOW–MED; 2 items NEEDS-OWNER) — ~25 hand-rolled ID generators → `crypto.randomUUID()`; `JSON.parse(JSON.stringify())` → the shared `deepClone`. **Touches `PDFViewer.jsx` + several callout files → conflicts with Track A; do after/around R2, not concurrently.** The invite-token security fix (`documentInviteService.js:35`) is owner-gated. Hex helpers HOLD (polyfill check).
 4. **pdfviewer-deadcode** (LOW–MED; 1 item NEEDS-OWNER) — dead branches behind the hardcoded-true `usePdfjsRenderer` flag, in atomic batches 4a–4e. **All in `PDFViewer.jsx` → conflicts with Track A; do after R2.** Overlay-recorder `|| true` (`:9068`) is owner-gated. NEVER touch the live KAL-241 lines (`5437`, `5609`, `1894–1899`).
 5. **mobile-monolith** (LOW steps 1–11; step 12 NEEDS-OWNER) — split `mobile-expo-go/App.tsx` (9,319 lines) into ~25 files via 12 ordered steps. **Entirely separate files → fully parallel-safe with everything else.**
-6. **PrintPanel** — **HELD. Do not touch** until the owner picks the J or K variant (see below).
+
+**Deferred / parked (NOT in scope):** the **PrintPanel** cleanup is owner-deferred (2026-06-28) — not happening today or soon. Tracked in **Linear KAL-315**, an Obsidian note, and a code marker above `PRINT_PANEL_ENABLED` in `PDFViewer.jsx`. Removal map (for when it's revived) stays in `debug/ponytail-audit/REMAINING-EXECUTION-PLAN.md` §6. Do not action it.
 
 ---
 
@@ -85,7 +86,8 @@ Net: you can have **3 lanes going at once** (Callout R2 + Mobile split + small d
 | 2 | Approve swapping the emailed **invite token** off weak `Math.random()` to `crypto.getRandomValues` (security fix) | `documentInviteService.js:35` |
 | 3 | Overlay lag recorder `\|\| true`: permanently disable, or re-enable behind a proper flag? | `PDFViewer.jsx:9068` |
 | 4 | Mobile step 12 (`useDocumentState` hook extraction) needs you to test on a real device after | `mobile-expo-go/App.tsx` |
-| 5 | **PrintPanel**: flip `PRINT_PANEL_ENABLED=true`, try the J vs K variants, pick a winner | `PDFViewer.jsx:26490` |
+
+_(PrintPanel was here — now deferred/parked as Linear KAL-315; not an active decision.)_
 
 ---
 
@@ -95,4 +97,4 @@ Net: you can have **3 lanes going at once** (Callout R2 + Mobile split + small d
 - Keep every callout increment **flag-gated / flag-OFF byte-identical** until the deliberate flip.
 - Every batch passes the build + test gate; add `render-smoke.mjs` for `PDFViewer.jsx` batches.
 - Backfill `--apply` is the only prod-mutating step; data is disposable (app not published) but still validate logic first and run it coupled with the flip.
-- Never touch the live KAL-241 perf lines or `PrintPanel` (held).
+- Never touch the live KAL-241 perf lines. PrintPanel is deferred (KAL-315) — leave it alone.
