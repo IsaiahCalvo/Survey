@@ -24,10 +24,10 @@
 // Pitfall 1 defense: this provider does NOT manage token refresh — that's
 // authSessionBridge.js. The Realtime channel reuses the supabase client's auth state.
 //
-// Pitfall 2 defense: large initial state (>800KB on wire) is NOT carried by this
-// provider. Cold-load uses Postgres SELECT on doc_yjs_state.state column (binary
-// bytea, no base64 inflation). Phase 32 owns periodic compaction; Phase 28 ships
-// the soft cap (SOFT_PAYLOAD_CAP_BYTES = 600KB pre-base64 → ~800KB on wire).
+// Pitfall 2 defense: very large initial state is NOT carried by this provider.
+// Cold-load uses Postgres SELECT on doc_yjs_state.state column (binary bytea, no
+// base64 inflation). Phase 32 owns periodic compaction; Phase 28 ships the soft
+// cap (SOFT_PAYLOAD_CAP_BYTES, see below).
 //
 // Pitfall 4 defense: kicked-out detection has 2 paths.
 //   (a) postgres_changes channel on document_collaborators DELETE (proactive, <3s)
@@ -47,12 +47,17 @@ import { REMOTE_REALTIME_ORIGIN, REMOTE_BC_ORIGIN } from './originBuilder.js';
 const MESSAGE_SYNC = 0;
 const MESSAGE_AWARENESS = 1;
 
-// UX comment: 600KB pre-base64 cap leaves headroom for the ~33% base64 inflation
-// to land under Supabase Realtime Broadcast's documented ~1MB payload ceiling.
-// Updates exceeding this cap are skipped as realtime broadcasts and Phase 32
-// compaction folds pending overflow into snapshots. This is expected for large
-// imported Drawboard PDFs, so the provider logs one quiet info line per mount.
-const SOFT_PAYLOAD_CAP_BYTES = 600 * 1024;
+// Soft cap for per-frame realtime broadcasts. base64 inflates payloads ~33%, so
+// the on-wire size is ~cap * 1.33. The real Supabase Realtime Broadcast ceiling is
+// 3,000 KB on Pro/Team plans (Free is 256 KB); the 1,024 KB figure sometimes cited
+// is the *Postgres Changes* limit, NOT Broadcast. (Corrected 2026-06-28 — the prior
+// 600 KB cap assumed a mistaken ~1 MB Broadcast ceiling.) 1.5 MB raw → ~2 MB on
+// wire leaves comfortable margin under the 3 MB Pro/Team ceiling while keeping far
+// more Yjs frames on the realtime path. Frames over the cap are skipped for
+// broadcast (cloud/Y.Doc snapshots + row hydration still carry them; Phase 32
+// compaction folds overflow into snapshots) and logged once per mount.
+// NOTE: on the Free plan (256 KB Broadcast) this cap must be lowered.
+const SOFT_PAYLOAD_CAP_BYTES = 1.5 * 1024 * 1024;
 
 const sendBroadcast = (channel, event, payload, opts = {}) => {
   if (!channel) return Promise.resolve();
@@ -260,10 +265,23 @@ export function connect(documentId, ydoc, options = {}) {
             const bytes = base64ToUint8Array(payload.update);
             const reply = decodeAndApply(ydoc, awareness, bytes, REMOTE_REALTIME_ORIGIN);
             if (reply && channel) {
-              sendBroadcast(channel, 'sync', {
-                update: uint8ArrayToBase64(reply),
-                originClientId: ydoc.clientID,
-              });
+              if (reply.byteLength > SOFT_PAYLOAD_CAP_BYTES) {
+                // The step2 reply is too large for realtime broadcast. The peer that
+                // sent the step1 frame converges via its Postgres cold-load (SELECT on
+                // doc_yjs_state.state binary bytea) instead; the realtime channel only
+                // needs to carry the post-cold-load delta. Skip + log once-shaped (warn).
+                // eslint-disable-next-line no-console
+                console.warn('[SupabaseYjsProvider] step2 reply exceeds cap — kept out of realtime broadcast', {
+                  bytes: reply.byteLength,
+                  capBytes: SOFT_PAYLOAD_CAP_BYTES,
+                  documentId,
+                });
+              } else {
+                sendBroadcast(channel, 'sync', {
+                  update: uint8ArrayToBase64(reply),
+                  originClientId: ydoc.clientID,
+                });
+              }
             }
           } catch (err) {
             // eslint-disable-next-line no-console
@@ -290,10 +308,25 @@ export function connect(documentId, ydoc, options = {}) {
             syncProtocol.writeSyncStep2(reply, ydoc, remoteSV);
             const replyBytes = encoding.toUint8Array(reply);
             if (replyBytes.byteLength > 1 && channel) {
-              sendBroadcast(channel, 'sync', {
-                update: uint8ArrayToBase64(replyBytes),
-                originClientId: ydoc.clientID,
-              });
+              if (replyBytes.byteLength > SOFT_PAYLOAD_CAP_BYTES) {
+                // Large doc: the full-state sync_request reply would exceed the
+                // Broadcast wire ceiling. Skip it — the reconnecting peer already
+                // cold-loads the full state via Postgres SELECT on doc_yjs_state.state
+                // (binary bytea) before it ever emits a sync_request, so the handshake
+                // converges through that path without this frame. Phase 32 compaction
+                // folds overflow into snapshots.
+                // eslint-disable-next-line no-console
+                console.warn('[SupabaseYjsProvider] sync_request reply exceeds cap — kept out of realtime broadcast', {
+                  bytes: replyBytes.byteLength,
+                  capBytes: SOFT_PAYLOAD_CAP_BYTES,
+                  documentId,
+                });
+              } else {
+                sendBroadcast(channel, 'sync', {
+                  update: uint8ArrayToBase64(replyBytes),
+                  originClientId: ydoc.clientID,
+                });
+              }
             }
           } catch (err) {
             // eslint-disable-next-line no-console
