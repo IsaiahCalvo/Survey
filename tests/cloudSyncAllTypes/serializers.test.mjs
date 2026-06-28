@@ -482,6 +482,43 @@ test('round-trip: callout preserves anchor and knee', () => {
   assert.deepEqual(back, callout);
 });
 
+test('backward-read: migrated .fabricObject callout row recovers via legacyCallout', () => {
+  // Phase 6 transition: after backfill a callout row stores annotation_data.fabricObject
+  // (no .callout key) with the verbatim original at fabricObject.data.legacyCallout.
+  // deserializeRowToCallout must recover it so migrated rows still load flag-OFF.
+  const original = {
+    id: 'co-migrated',
+    pageNumber: 2,
+    arrowTip: { x: 0.5, y: 0.25 },
+    knee: { x: 0.3, y: 0.5 },
+    textBoxPosition: { x: 0.1, y: 0.6 },
+    textBoxWidth: 0.2,
+    textBoxHeight: 0.1,
+    text: 'migrated note',
+    style: { arrowheadStyle: 'solidTriangle', fillColor: 'transparent' },
+    meta: { authorId: USER_ID },
+  };
+  const migratedRow = {
+    annotation_id: 'co-migrated',
+    annotation_type: 'callout',
+    page_number: 2,
+    annotation_data: { fabricObject: { data: { type: 'callout', id: 'co-migrated', legacyCallout: original } } },
+  };
+  const back = deserializeRowToCallout(migratedRow);
+  assert.deepEqual(back, original);
+});
+
+test('backward-read: legacy .callout row still wins over any fabricObject', () => {
+  const calloutKey = { id: 'co-legacy', pageNumber: 1, anchor: { x: 1, y: 2 } };
+  const row = {
+    annotation_id: 'co-legacy',
+    annotation_type: 'callout',
+    page_number: 1,
+    annotation_data: { callout: calloutKey, fabricObject: { data: { legacyCallout: { id: 'WRONG' } } } },
+  };
+  assert.equal(deserializeRowToCallout(row).id, 'co-legacy');
+});
+
 test('callout bounds enclose anchor, knee, and label', () => {
   const callout = {
     id: 'co-2',

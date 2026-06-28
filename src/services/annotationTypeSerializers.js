@@ -400,7 +400,12 @@ export function deserializeRowToCallout(row) {
     throw new Error(`Expected annotation_type=callout, got ${row.annotation_type}`);
   }
   const data = row.annotation_data || {};
-  const callout = data.callout;
+  // Backward-read shim (Phase 6 transition): a migrated callout row stores
+  // annotation_data.fabricObject with the verbatim original normalized callout at
+  // fabricObject.data.legacyCallout. Recover it so migrated rows keep loading via
+  // the existing callout path (flag-OFF too) — this decouples the backfill from the
+  // flag flip. Legacy `.callout` rows are unchanged.
+  const callout = data.callout || data.fabricObject?.data?.legacyCallout;
   if (!callout) {
     throw new Error(`Callout row ${row.annotation_id} has no annotation_data.callout`);
   }
