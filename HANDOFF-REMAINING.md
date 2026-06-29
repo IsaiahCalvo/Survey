@@ -21,10 +21,10 @@ see **Owner decisions needed** near the bottom.
 
 ## Status snapshot
 
-- Branch: `claude/vibrant-lewin-6d7e06` (3 commits ahead of `origin/main` @ `707a9ffd`). **NOT pushed** (push only after owner approval).
-- This session's commits: `226a1391` (callout backfill script), `e76b7bc3` (callout backward-read shim), `dc28a390` (docs).
-- Gates everywhere: `npx vite build` && `node scripts/run-node-tests.mjs` → **1680 pass / 0 fail**. For any batch touching `src/PDFViewer.jsx`, also run `node agent-cli/render-smoke.mjs`.
-- Callout flag: `calloutsInSharedStore()` (`src/lib/calloutSharedStoreFlag.js`), DEFAULT OFF. `localStorage.CALLOUTS_SHARED_STORE='1'` to exercise locally; `CALLOUTS_SHARED=1 node agent-cli/callout-e2e.mjs` for the harness flag-ON.
+- Branch: `claude/hopeful-lewin-18894a` (FF'd from `claude/vibrant-lewin-6d7e06`; ahead of `origin/main` @ `707a9ffd`). **NOT pushed** (push only after owner approval — test on dev server first).
+- Callout keystone commits this session: `6c0e3074` (R2.1 Supabase sole-writer), `8900c16b` (comment), `776ce0c3` (**flip default ON**). Backfill `--apply` RAN against prod (11 rows → `.fabricObject`).
+- Gates everywhere: `npx vite build` && `node scripts/run-node-tests.mjs` → **1686 pass / 0 fail**. For any batch touching `src/PDFViewer.jsx`, also run `node agent-cli/render-smoke.mjs`.
+- Callout flag: `calloutsInSharedStore()` (`src/lib/calloutSharedStoreFlag.js`), now **DEFAULT ON** (flipped 2026-06-29). Kill switch: `localStorage.CALLOUTS_SHARED_STORE='0'` (or env `VITE_CALLOUTS_SHARED_STORE=0`).
 
 ---
 
@@ -35,17 +35,16 @@ Footprint: prod has **11 callout rows across 8 docs**; survey-test is empty.
 
 Authoritative detail: **`.planning/callout-unification/KEYSTONE-WIRING.md`** (top "UPDATE — 2026-06-28" block + the file:line **"R2 EXECUTION MAP"**) and `.planning/callout-unification/PLAN.md`.
 
-### Done (landed, flag-OFF byte-identical)
-- ✅ Load/render/create/edit/delete/persist behind the flag (dual-rep; verified earlier sessions).
-- ✅ **Backfill script** `scripts/backfill-callouts-to-fabric.mjs` — lossless, idempotent, default `--dry-run`; validated on all 11 real prod rows (maxFracDelta ~1e-16). **`--apply` NOT run yet** (gated — see coupling rule below).
-- ✅ **Backward-read shim** in `deserializeRowToCallout` — migrated rows recover via `fabricObject.data.legacyCallout`, so they load **flag-independently**. This **decouples the backfill from the flag flip** (safer than the plan's flag-coupled switch).
+### DONE — keystone LIVE (2026-06-29)
+- ✅ **R2.1 Supabase sole-writer** (`6c0e3074`): serialize guard flag-gated (flag-ON serializes callout objects into `.fabricObject` rows), legacy callout push disabled flag-ON, `calloutToAnnotationObject` embeds `data.legacyCallout`+`authorId`+root `isPdfImported` (byte-shape-identical to backfill). Y.Doc guard `:202` + `CRDT_FAN_OUT_EXCLUDED_TYPES` intentionally KEPT (Supabase-only for now; CRDT is R2.3).
+- ✅ **Adversarial gate passed** (3 passes: correctness + RLS + code-review). No single-user/data-loss blockers. Live RLS-enforced cloud-write proof. Collaborator-can't-delete-owner confirmed at the RLS layer.
+- ✅ **Flip** (`776ce0c3`): `calloutsInSharedStore()` DEFAULT ON; '0' kill switch.
+- ✅ **Backfill `--apply` RAN** against prod `cvamwtpsuvxvjdnotbeg`: 11/11 rows `.callout` → `.fabricObject`, 0 legacy remain, all 11 shim-reloadable. Backward-read shim + script were landed earlier (lossless, idempotent).
 
-### Left (in order)
-1. **R2 write-switch (the big, risky core).** Retire `callouts[]` as the runtime source of truth (~53 `setCallouts` sites / 113 mentions in `src/PDFViewer.jsx`), make `annotationsByPage` the source, reverse the 3 write-guards, and make the shared push the **sole** writer by disabling the legacy callout push effect (`src/hooks/useAnnotationCloudSync.js:2331–2640`). ~40 touch points / 9 clusters; 3 genuinely tricky realtime/undo seams (sync-delta, realtime echo-suppression, live-drag baseline). **Use the file:line R2 EXECUTION MAP.** Each cluster gated + committed.
-   - ⚠ Reverse the 3 write-guards ONLY together with disabling the legacy push, or you get a dual-write on the same row id (the documented "BLOCKER 1" corruption).
-2. **Phases 2/3/7 collapse** — bulk-delete modal via `handleRequestBulkDelete`/`buildBulkDeletePlan`, undo onto the shared delta lane, retire the forked CRDT/realtime/`upsertCallouts` sync. Falls out with R2. Plus minor: live-drag preview under the flag; delete the dead `loadCalloutAnnotation` branch in `FabricEditCanvas.jsx`; Phase-8 dead-code (`calloutHistoryScope.js`, `calloutSyncPayload.js`, `deserializeRowsToCallouts` etc.) one release after the flip.
-3. **Adversarial gate** — ≥2 independent refutation passes (correctness + RLS lenses) + a code-review pass on the whole flag-ON path; harness flag-ON; a save→reopen roundtrip; a 2-user collab delete-permission check. (Memory: `feedback_adversarial_verify_realtime`.)
-4. **Flip the flag default ON AND run `backfill --apply` together** (coupling rule). Once writes go `.fabricObject`, run `SUPABASE_ACCESS_TOKEN=… node scripts/backfill-callouts-to-fabric.mjs --ref cvamwtpsuvxvjdnotbeg --apply`. Idempotent — safe to re-run if a row drifted back to `.callout` from a flag-OFF edit during transition.
+### LEFT — POST-FLIP cleanup (owner chose gate→flip→THEN cleanup; do FRESH + adversarial)
+1. **R2.2 derive-model** — make `annotationsByPage` the IN-MEMORY source (callouts derive from `data.legacyCallout`; `setCallouts`→`projectCalloutsIntoByPage`), retire the ~25 `setCallouts` reads/writes, wire callout delete through `handleRequestBulkDelete`/`buildBulkDeletePlan` (this ADDS the missing cross-author confirm modal — gate Finding), undo onto the shared delta lane. Handle the undo snapshot/restore seam carefully (calloutsRef mirrors derived; avoid double-restore vs the annotationsByPage snapshot). Touches `PDFViewer.jsx` heavily.
+2. **R2.3 realtime/CRDT** — fix the KNOWN collab-only gate findings (all bounded / non-data-loss; multi-user is pro+ gated = NOT active): (a) **realtime echo re-push** — `onCalloutInsert/Update/Delete` (`useAnnotationCloudSync.js:2932-2951`) update `lastCalloutsRef` but NOT `lastByPageRef`, so the projection-driven shared push re-pushes echoed callouts (churns `last_modified_by`); fix = route remote callouts through the shared `lastByPageRef`-suppressed path like `onFabricInsert`. (b) **attribution-on-reload** — `legacyCallout` deep-copied before `meta.authorId` stamp. Reverse Y.Doc guard `annotationDocStore.js:202` + drop 'callout' from `CRDT_FAN_OUT_EXCLUDED_TYPES`. Each needs its own adversarial pass.
+3. **Phase 8 dead-code** — delete the forked sync (`upsertCallouts`, six fingerprint refs, `calloutSyncPayload.js`, `calloutHistoryScope.js`, `deserializeRowsToCallouts`, dead `loadCalloutAnnotation` in `FabricEditCanvas.jsx`, etc.) once R2.2/R2.3 land + a release cycle.
 
 ---
 
