@@ -18957,11 +18957,14 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   // into `annotationsByPage` whenever the list changes (or page dims first
   // measure), rebuilding the callout layer FROM SOURCE via the canonical
   // idempotent projector: it strips every existing `data.type==='callout'` object
-  // per page and re-projects, preserving all non-callout objects untouched. The
-  // projected objects never reach storage — both write paths
-  // (annotationDocStore.syncByPageToDoc + annotationTypeSerializers.serializeAnnotationsByPage)
-  // unconditionally skip `data.type==='callout'`, so `callouts[]` stays the
-  // persisted source of truth (dual-rep). Flag OFF → early return, byte-for-byte
+  // per page and re-projects, preserving all non-callout objects untouched. Storage
+  // routing (post R2.1): annotationDocStore.syncByPageToDoc STILL unconditionally
+  // skips `data.type==='callout'` (Y.Doc / CRDT path — callouts are Supabase-only
+  // for now; CRDT unification is R2.3), but serializeAnnotationsByPage now skips
+  // callouts ONLY flag-OFF — flag-ON it SERIALIZES them into `.fabricObject` rows
+  // (the R2.1 Supabase-sole-writer flip; the legacy callout push is disabled
+  // flag-ON to avoid a dual-write). `callouts[]` is still the in-memory source
+  // (dual-rep; derive-model retirement is post-flip R2.2). Flag OFF → early return, byte-for-byte
   // unchanged. pageSizes (reactive state) is a dep so the projection re-runs once
   // real page dims arrive (BLOCKER 2: first paint may project at the US-Letter
   // fallback before measurement); pageSizesRef.current supplies the freshest dims.
