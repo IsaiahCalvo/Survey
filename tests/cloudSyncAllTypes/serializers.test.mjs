@@ -572,63 +572,24 @@ test('deserializeRowsToCallouts: pulls only callout rows', () => {
   assert.equal(callouts[0].id, 'co-A');
 });
 
-// Callout-unification keystone (Phase 5) — flag-gated serialize routing.
-// The keystone flag `calloutsInSharedStore()` is DEFAULT ON (flipped 2026-06-29).
-// These two tests pin BOTH sides of the flag explicitly via a window.localStorage
-// stub, so they survive future default changes.
-//
-// Helper: run `fn` with the keystone flag forced to a given state.
-function withCalloutsSharedStore(value, fn) {
-  const original = globalThis.window;
-  globalThis.window = { localStorage: { getItem: (k) => (k === 'CALLOUTS_SHARED_STORE' ? value : null) } };
-  try {
-    return fn();
-  } finally {
-    globalThis.window = original;
-  }
-}
-
-// FLAG-ON (default, R2.1 Supabase sole-writer): callout objects in annotationsByPage
-// ARE serialized into `.fabricObject` 'callout' rows (the shared push is the sole
-// writer; the legacy callout push is disabled flag-ON). The projected object carries
+// Callout-unification keystone (Phase 5) — serialize routing.
+// `calloutsInSharedStore()` is PERMANENTLY ON (kill switch retired 2026-06-30), so
+// callout objects in annotationsByPage ARE serialized into `.fabricObject` 'callout'
+// rows (the shared push is the sole writer). The projected object carries
 // data.legacyCallout so the row reloads via the deserializeRowToCallout shim.
-test('serializeAnnotationsByPage: flag-ON serializes data.type===callout objects', () => {
-  withCalloutsSharedStore('1', () => {
-    const byPage = {
-      1: {
-        objects: [
-          { type: 'path', stroke: '#f00', data: { id: 'pen-1' } },
-          { type: 'group', data: { type: 'callout', id: 'co-1', legacyCallout: { id: 'co-1', anchor: { x: 0, y: 0 } } } },
-        ],
-      },
-    };
-    const rows = serializeAnnotationsByPage(byPage, { documentId: 'doc1', userId: 'u1' });
-    assert.equal(rows.length, 2);
-    const calloutRow = rows.find((r) => r.annotation_type === 'callout');
-    assert.ok(calloutRow, 'callout row serialized flag-ON');
-    assert.equal(calloutRow.annotation_id, 'co-1');
-    assert.ok(calloutRow.annotation_data.fabricObject, 'callout row carries .fabricObject');
-  });
-});
-
-// FLAG-OFF (kill switch '0') — write-contamination guard: callout objects in
-// annotationsByPage are a render-only projection and must NOT be re-serialized as
-// fabricObject-shaped 'callout' rows on the same annotation_id (that would overwrite
-// the real callout row). This is the pre-flip / kill-switch behavior.
-test('serializeAnnotationsByPage: flag-OFF (kill switch) skips data.type===callout objects', () => {
-  withCalloutsSharedStore('0', () => {
-    const byPage = {
-      1: {
-        objects: [
-          { type: 'path', stroke: '#f00', data: { id: 'pen-1' } },
-          { type: 'group', data: { type: 'callout', id: 'co-1' } },
-        ],
-      },
-    };
-    const rows = serializeAnnotationsByPage(byPage, { documentId: 'doc1', userId: 'u1' });
-    // Only the pen stroke serializes; the callout is dropped.
-    assert.equal(rows.length, 1);
-    assert.equal(rows[0].annotation_id, 'pen-1');
-    assert.ok(!rows.some((r) => r.annotation_type === 'callout'));
-  });
+test('serializeAnnotationsByPage: serializes data.type===callout objects', () => {
+  const byPage = {
+    1: {
+      objects: [
+        { type: 'path', stroke: '#f00', data: { id: 'pen-1' } },
+        { type: 'group', data: { type: 'callout', id: 'co-1', legacyCallout: { id: 'co-1', anchor: { x: 0, y: 0 } } } },
+      ],
+    },
+  };
+  const rows = serializeAnnotationsByPage(byPage, { documentId: 'doc1', userId: 'u1' });
+  assert.equal(rows.length, 2);
+  const calloutRow = rows.find((r) => r.annotation_type === 'callout');
+  assert.ok(calloutRow, 'callout row serialized');
+  assert.equal(calloutRow.annotation_id, 'co-1');
+  assert.ok(calloutRow.annotation_data.fabricObject, 'callout row carries .fabricObject');
 });
