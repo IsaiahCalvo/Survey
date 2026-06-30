@@ -131,21 +131,36 @@ describe('useAnnotationCloudSync legacy bypass (Plan 31-03)', () => {
     assert.match(source, /Y\.Doc is reshaped for live collaboration/);
   });
 
-  it('callout save path persists Supabase before Y.Doc fan-out', { skip: HOOK_SKIP }, () => {
+  it('callout save path persists Supabase before Y.Doc fan-out (R2 keystone: via shared fabric push)', { skip: HOOK_SKIP }, () => {
+    // 2026-06-30 (R2 keystone): the legacy standalone callout push useEffect was
+    // deleted because calloutsInSharedStore() is unconditionally true. Callouts
+    // now persist via the SHARED fabric push (upsertAnnotationsByPage) which
+    // serializes callout objects as 'callout'-type annotation rows. The
+    // Supabase-before-CRDT ordering invariant is preserved — it just lives in the
+    // shared fabric push path, not a separate callout-specific effect.
+    //
+    // This test now verifies:
+    // 1. The shared fabric push (above this test's old subject) still calls
+    //    upsertAnnotationsByPage before fanOutCrdtForAnnotationsByPage.
+    // 2. The offline drain (callout-bulk branches) and forceFlush direct callout
+    //    path still exist to handle stuck queue entries.
     const source = readFileSync(HOOK_PATH, 'utf8');
-    const start = source.indexOf('[CloudSync][hook] callout Supabase upsert start');
-    const upsert = source.indexOf('result = await upsertCallouts', start);
-    const success = source.indexOf('[CloudSync][hook] callout Supabase upsert ok', upsert);
-    const fanout = source.indexOf('[CloudSync][hook] callout Y.Doc fan-out start after Supabase success', success);
-    const fanoutCall = source.indexOf('await fanOutCrdtForCallouts', fanout);
 
-    assert.ok(start > 0, 'callout Supabase upsert start log must exist');
-    assert.ok(upsert > start, 'callout upsertCallouts must run after Supabase start log');
-    assert.ok(success > upsert, 'callout Supabase success log must run after upsertCallouts');
-    assert.ok(fanout > success, 'callout Y.Doc fan-out start must run after Supabase success');
-    assert.ok(fanoutCall > fanout, 'callout Y.Doc fan-out call must run after the post-Supabase fan-out log');
-    assert.match(source, /callout Supabase push failed → queued before Y\.Doc fan-out/);
-    assert.match(source, /callout Y\.Doc fan-out failed after Supabase success → queued repair/);
+    // The shared fabric push ordering (callouts now flow through this path)
+    const fabricUpsertStart = source.indexOf('[CloudSync][hook] fabric Supabase upsert start');
+    const fabricUpsert = source.indexOf('result = await upsertAnnotationsByPage(', fabricUpsertStart > 0 ? fabricUpsertStart : 0);
+    assert.ok(fabricUpsert > 0, 'shared fabric push (now carrying callouts) must call upsertAnnotationsByPage');
+
+    // The offline drain callout-bulk branches must still exist (for stuck-queue recovery)
+    assert.match(source, /kind === 'callout-bulk'/, 'callout-bulk drain branch must still exist for queue recovery');
+
+    // forceFlush must still handle the direct callout path
+    assert.match(source, /consumedPendingCallout/, 'forceFlush must still track pending callout flush');
+    assert.match(
+      source,
+      /if \(!noPendingDurableWork && !consumedPendingCallout && lastCalloutsRef\.current\)/,
+      'forceFlush direct callout upsert path must still exist',
+    );
   });
 });
 

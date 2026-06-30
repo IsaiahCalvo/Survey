@@ -42,19 +42,32 @@ test('fast successful sync stays visible for the minimum activity duration', () 
   assert.equal(getSyncedDelayMs(null, 1000), 0);
 });
 
-test('callout debounce scheduling marks sync pending before the timer fires', () => {
+test('callout debounce scheduling marks sync pending before the timer fires (R2: via shared fabric push)', () => {
+  // 2026-06-30 (R2 keystone): the standalone callout push useEffect was deleted —
+  // calloutsInSharedStore() is unconditionally true, so it was permanently dead.
+  // Callouts now flow through the shared fabric push (upsertAnnotationsByPage).
+  // The pending/syncing/synced/queued status transitions for annotations still
+  // exist in the fabric push path; kind:'callout' status markers from the old
+  // dedicated effect are gone. Verify the shared fabric push carries status markers.
   const src = hookSource();
   assert.match(
     src,
-    /pendingCalloutFlushRef\.current = runCalloutPush;[\s\S]{0,140}setSyncStatus\(\{ stage: 'pending', kind: 'callout' \}\);[\s\S]{0,140}calloutTimerHandle = setTimeout/,
+    /pendingFabricFlushRef\.current = runFabricPush;[\s\S]{0,200}setSyncStatus\(\{ stage: 'pending', kind: 'fabric' \}\);[\s\S]{0,200}debounceTimerRef\.current = setTimeout/,
+    'shared fabric push (now the sole callout writer) must mark pending before setTimeout',
   );
 });
 
-test('callout push success and failure drive synced or queued status through visible status helper', () => {
+test('callout push success and failure drive synced or queued status (R2: via shared fabric push)', () => {
+  // 2026-06-30 (R2 keystone): standalone callout push removed; callouts flow through
+  // the shared fabric push. Status markers kind:'callout' are gone; kind:'fabric'
+  // remains. Verify the fabric push path still has success/failure status transitions.
   const src = hookSource();
-  assert.match(src, /setSyncStatus\(\{ stage: 'syncing', kind: 'callout' \}\);/);
-  assert.match(src, /setSyncStatus\(\{ stage: 'queued', error: result\.error, kind: 'callout' \}\);/);
-  assert.match(src, /setSyncStatus\(\{ stage: 'synced', count: result\.data\?\.length \|\| 0, kind: 'callout' \}\);/);
+  assert.match(src, /setSyncStatus\(\{ stage: 'syncing', kind: 'fabric' \}\);/,
+    'fabric push must set syncing status');
+  assert.match(src, /setSyncStatus\(\{ stage: 'queued', error: result\.error, kind: 'fabric' \}\);/,
+    'fabric push must set queued status on failure');
+  assert.match(src, /setSyncStatus\(\{ stage: 'synced', count: result\.data\?\.length \|\| 0, kind: 'fabric' \}\);/,
+    'fabric push must set synced status on success');
 });
 
 test('manual forceFlush consumes pending fabric and callout runners before direct durable flush', () => {

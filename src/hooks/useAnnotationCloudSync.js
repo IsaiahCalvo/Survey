@@ -82,14 +82,13 @@ import {
 import { getSyncedDelayMs } from '../utils/syncStatusTiming.js';
 import {
   buildFabricSyncDelta,
-  buildCalloutSyncDelta,
   resolveFabricDeletedIds,
   shouldSuppressStaleCacheShrink,
 } from '../utils/annotationSyncDelta.js';
 import { shouldApplyDedupeResync } from '../utils/dedupeResyncSafety.js';
 import { resolveSafeSnapshot, mergePreservingImportedMarks } from '../utils/safeSnapshot.js';
 import { isSnapshotEnabled } from '../lib/collab/snapshotFeatureFlag.js';
-import { calloutsInSharedStore } from '../lib/calloutSharedStoreFlag.js';
+
 import {
   writeByPageSnapshot,
   readByPageSnapshot,
@@ -98,7 +97,6 @@ import {
 } from '../lib/collab/snapshotStore.js';
 
 const DEFAULT_DEBOUNCE_MS = 800; // mid-drag pushes are coalesced into one upsert
-const CALLOUT_WIPE_GRACE_MS = 2500;
 
 const cloudSyncHookDebug = (...args) => {
   if (typeof window === 'undefined' || window.__CLOUD_SYNC_DEBUG !== true) return;
@@ -900,21 +898,6 @@ export function useAnnotationCloudSync({
       yDocUpdateCount: upserted + deleted,
       yMapCalloutsSizeAfter: typeof yMapCallouts.size === 'number' ? yMapCallouts.size : null,
     }));
-  };
-
-  const queueCalloutDurableRetry = (payload, deletedCalloutIds, opts = {}) => {
-    enqueueSync(documentId, {
-      kind: 'callout-bulk',
-      payload: payload || [],
-      opts: {
-        documentId,
-        userId,
-        clientSessionId,
-        ...(opts || {}),
-        deletedCalloutIds: Array.isArray(deletedCalloutIds) ? deletedCalloutIds.filter(Boolean) : [],
-      }
-    });
-    setQueueSize(getQueueSize(documentId));
   };
 
   // ---- 2026-04-27 — state-mutation observer ------------------------------
@@ -2329,323 +2312,14 @@ export function useAnnotationCloudSync({
     };
   }, [enabled, documentId, userId, annotationsByPage, debounceMs, deferredPushTick]);
 
-  useEffect(() => {
-    if (!enabled || !documentId || !userId) return;
-    // R2 keystone (2026-06-28): when callouts live in the shared annotationsByPage
-    // store, the SHARED fabric push (above) is the SOLE writer — it serializes
-    // callout objects into `.fabricObject` 'callout' rows (the serialize guard in
-    // annotationTypeSerializers.js is reversed flag-ON). This legacy callout push
-    // (upsertCallouts → callout rows + getMap('callouts') fan-out) MUST NOT also
-    // fire, or both writers race the same annotation_id (BLOCKER 1 corruption).
-    // Disabling it here is the other half of reversing that guard — the two are
-    // coupled. FLAG-OFF: unchanged, this is the live callout sync writer.
-    if (calloutsInSharedStore()) return;
-    if (!hydratedRef.current) {
-      cloudSyncHookDebug('[CloudSync][hook] callout push skipped — not hydrated yet');
-      return;
-    }
-    const deferredCalloutPush = deferredCalloutPushRef.current;
-    const isFlushingDeferredCalloutPush = Boolean(deferredCalloutPush) && !pointerDownRef.current;
-    if (callouts === lastCalloutsRef.current && !isFlushingDeferredCalloutPush) return;
-
-    const priorCallouts = isFlushingDeferredCalloutPush
-      ? deferredCalloutPush.priorCallouts
-      : (deferredCalloutPush?.priorCallouts ?? lastCalloutsRef.current);
-    const pushCallouts = callouts;
-    const pushCalloutFingerprint = isFlushingDeferredCalloutPush
-      ? deferredCalloutPush.fingerprint
-      : getCalloutSyncFingerprint(pushCallouts);
-    const lastKnownCalloutFingerprint = lastCalloutSyncFingerprintRef.current
-      ?? getCalloutSyncFingerprint(lastCalloutsRef.current);
-    const inFlightCalloutFingerprint = inFlightCalloutSyncFingerprintRef.current;
-    if (
-      !isFlushingDeferredCalloutPush
-      && (
-        (pushCalloutFingerprint === lastKnownCalloutFingerprint && !inFlightCalloutFingerprint)
-        || pushCalloutFingerprint === pendingCalloutSyncFingerprintRef.current
-        || pushCalloutFingerprint === inFlightCalloutFingerprint
-      )
-    ) {
-      lastCalloutsRef.current = callouts;
-      lastCalloutSyncFingerprintRef.current = lastKnownCalloutFingerprint;
-      cloudSyncHookDebug('[CloudSync][hook] callout push skipped — persisted payload unchanged ' + JSON.stringify({
-        count: calloutCountSafe(pushCallouts),
-        pending: pushCalloutFingerprint === pendingCalloutSyncFingerprintRef.current,
-        inFlight: pushCalloutFingerprint === inFlightCalloutFingerprint,
-        blockedByDifferentInFlight: Boolean(inFlightCalloutFingerprint && pushCalloutFingerprint !== inFlightCalloutFingerprint),
-      }));
-      return;
-    }
-    lastCalloutsRef.current = callouts;
-    // 2026-04-26 — same wipe-push trace as fabric. Catches a callout-side
-    // destructive push that would clear another device's callouts.
-    const priorCalloutCount = calloutCountSafe(priorCallouts);
-    const currentCalloutCount = calloutCountSafe(pushCallouts);
-    const isCalloutWipePush = currentCalloutCount === 0 && priorCalloutCount > 0;
-    const plannedDeletedCalloutIds = diffCalloutIds(priorCallouts, pushCallouts);
-    const calloutRemovalIntent = getRecentCalloutRemovalIntent(typeof window !== 'undefined' ? window : null);
-    const calloutWipeClassification = classifyCalloutShrink({
-      priorCount: priorCalloutCount,
-      currentCount: currentCalloutCount,
-      deletedIds: plannedDeletedCalloutIds,
-      intent: calloutRemovalIntent,
-    });
-    if (isCalloutWipePush) {
-      const wipeRecord = {
-        priorCount: priorCalloutCount,
-        currentCount: currentCalloutCount,
-        priorRef: priorCallouts === null ? 'null' : 'array',
-        currentRef: callouts === null ? 'null' : 'array',
-        deletedCalloutIds: plannedDeletedCalloutIds,
-        intent: calloutRemovalIntent,
-        classification: calloutWipeClassification,
-      };
-      if (calloutWipeClassification.expected) {
-        cloudSyncHookDebug('[CloudSync][hook] callout wipe explained ' + JSON.stringify(wipeRecord));
-      } else {
-        console.warn('[CloudSync][hook][SUSPICIOUS] callout push scheduled with WIPE diff ' + JSON.stringify(wipeRecord));
-      }
-    }
-    if (!pointerDownRef.current || !deferredCalloutPush) {
-      cloudSyncHookDebug('[CloudSync][hook] callout state changed — debounce push scheduled ' + JSON.stringify({
-        count: currentCalloutCount,
-        priorCount: priorCalloutCount,
-        isCalloutWipePush,
-        deferredUntilPointerUp: pointerDownRef.current,
-        debounceMs: isCalloutWipePush ? Math.max(debounceMs, CALLOUT_WIPE_GRACE_MS) : debounceMs
-      }));
-    }
-    if (pointerDownRef.current) {
-      setSyncStatus({ stage: 'pending', kind: 'callout', deferred: true });
-      recordAnnotationSyncAttempt({
-        kind: 'callout',
-        pointerDown: true,
-        deferred: true,
-        count: 1,
-        calloutCount: currentCalloutCount,
-        priorCalloutCount,
-      });
-      deferredCalloutPushRef.current = {
-        priorCallouts,
-        callouts: pushCallouts,
-        fingerprint: pushCalloutFingerprint,
-        queuedAt: Date.now()
-      };
-      if (!deferredCalloutPush) {
-        cloudSyncHookDebug('[CloudSync][hook] callout push deferred — pointer is down ' + JSON.stringify({
-          count: currentCalloutCount,
-          priorCount: priorCalloutCount
-        }));
-      }
-      return;
-    }
-    if (isFlushingDeferredCalloutPush) {
-      deferredCalloutPushRef.current = null;
-    }
-    pendingCalloutSyncFingerprintRef.current = pushCalloutFingerprint;
-    // 2026-04-30 — Audit hardening (finding #10): same flush-on-unload
-    // pattern as the fabric push above. Factor the timer body into a named
-    // runner that beforeunload / unmount can fire synchronously, and stash
-    // it in pendingCalloutFlushRef. The runner self-clears the ref so a
-    // double invocation is a no-op.
-    let calloutTimerHandle = null;
-    const calloutScheduledAt = Date.now();
-    const runCalloutPush = async () => {
-      if (pendingCalloutFlushRef.current !== runCalloutPush) return;
-      pendingCalloutFlushRef.current = null;
-      if (pendingCalloutSyncFingerprintRef.current === pushCalloutFingerprint) {
-        pendingCalloutSyncFingerprintRef.current = null;
-      }
-      if (calloutTimerHandle) {
-        clearTimeout(calloutTimerHandle);
-        calloutTimerHandle = null;
-      }
-      inFlightCalloutSyncFingerprintRef.current = pushCalloutFingerprint;
-      recordAnnotationSyncAttempt({
-        kind: 'callout',
-        pointerDown: pointerDownRef.current,
-        deferred: false,
-        count: 1,
-        calloutCount: currentCalloutCount,
-        priorCalloutCount,
-      });
-      const calloutDebounceElapsedMs = Date.now() - calloutScheduledAt;
-      cloudSyncHookDebug('[CloudSync][hook] callout push debounce elapsed — pushing now ' + JSON.stringify({
-        debounceMs: isCalloutWipePush ? Math.max(debounceMs, CALLOUT_WIPE_GRACE_MS) : debounceMs,
-        debounceElapsedMs: calloutDebounceElapsedMs,
-        actionType: 'callout:delta',
-      }));
-      setSyncStatus({ stage: 'syncing', kind: 'callout' });
-      const currentCalloutIds = new Set(
-        (pushCallouts || []).map((c) => c?.id || c?.annotationId).filter(Boolean)
-      );
-
-      // Detect deleted callouts the same way as fabric annotations.
-      const deletedCalloutIds = [];
-      if (priorCallouts && priorCallouts !== pushCallouts) {
-        for (const c of priorCallouts) {
-          const id = c?.id || c?.annotationId;
-          if (id && !currentCalloutIds.has(id)) deletedCalloutIds.push(id);
-        }
-      }
-      const calloutSyncDelta = buildCalloutSyncDelta({
-        currentCallouts: pushCallouts,
-        priorCallouts,
-        deletedIds: deletedCalloutIds,
-        actionType: 'callout:delta',
-      });
-      if (calloutSyncDelta.fullFanOutReason) {
-        console.warn('[CloudSync][delta] callout full fan-out selected ' + JSON.stringify({
-          reason: calloutSyncDelta.fullFanOutReason,
-          actionType: calloutSyncDelta.actionType,
-          currentCalloutCount,
-          priorCalloutCount,
-          changedIds: calloutSyncDelta.changedIds,
-          deletedIds: calloutSyncDelta.deletedIds,
-        }));
-      }
-      cloudSyncHookDebug('[CloudSync][delta] callout prepared ' + JSON.stringify({
-        actionType: calloutSyncDelta.actionType,
-        changedIds: calloutSyncDelta.changedIds,
-        deletedIds: calloutSyncDelta.deletedIds,
-        changedCount: calloutSyncDelta.changedCount,
-        dispatchedCount: calloutSyncDelta.dispatchedCount,
-        supabaseUpsertCount: calloutSyncDelta.supabaseUpsertCount,
-        yDocUpdateCount: calloutSyncDelta.yDocUpdateCount,
-        debounceMs: isCalloutWipePush ? Math.max(debounceMs, CALLOUT_WIPE_GRACE_MS) : debounceMs,
-        debounceElapsedMs: calloutDebounceElapsedMs,
-        fullFanOutReason: calloutSyncDelta.fullFanOutReason,
-      }));
-      // 2026-04-30 (Phase 35 Plan 05) — RETIRED: 2026-04-27 callout wipe
-      // brake (mirror of the fabric brake removed above). Per-user delete
-      // authority replaces the brake's purpose; cloud callout deletes now
-      // propagate unconditionally on diff detection.
-      let calloutDeleteFailed = false;
-      if (deletedCalloutIds.length > 0) {
-        cloudSyncHookDebug('[CloudSync][hook] callout Supabase delete start ' + JSON.stringify({
-          count: deletedCalloutIds.length,
-          firstFew: deletedCalloutIds.slice(0, 5)
-        }));
-        try {
-          const delResult = await deleteAnnotations(documentId, deletedCalloutIds);
-          if (!delResult.success) {
-            calloutDeleteFailed = true;
-            console.warn('[CloudSync][hook] callout Supabase delete failed ' + JSON.stringify({
-              error: delResult.error?.message || String(delResult.error)
-            }));
-            // 2026-04-30 — same banner trigger as the fabric path above.
-            if (typeof window !== 'undefined') {
-              window.dispatchEvent(new CustomEvent('crdt:deletions-pending'));
-            }
-          } else {
-            cloudSyncHookDebug('[CloudSync][hook] callout Supabase delete ok ' + JSON.stringify({
-              count: deletedCalloutIds.length,
-              firstFew: deletedCalloutIds.slice(0, 5)
-            }));
-            // 2026-04-30 — callout delete made it through; clear any pending banner.
-            if (typeof window !== 'undefined') {
-              window.dispatchEvent(new CustomEvent('crdt:deletions-resolved'));
-            }
-          }
-        } catch (err) {
-          calloutDeleteFailed = true;
-          console.warn('[CloudSync][hook] callout Supabase delete threw ' + (err?.message || String(err)));
-          if (typeof window !== 'undefined') {
-            window.dispatchEvent(new CustomEvent('crdt:deletions-pending'));
-          }
-        }
-      }
-
-      let result;
-      try {
-        if (calloutDeleteFailed) {
-          result = { error: new Error('Callout delete backup failed') };
-        } else {
-          cloudSyncHookDebug('[CloudSync][hook] callout Supabase upsert start ' + JSON.stringify({
-            count: calloutSyncDelta.changedCount,
-            changedIds: calloutSyncDelta.changedIds,
-            deletedCount: deletedCalloutIds.length
-          }));
-          result = await upsertCallouts(normalizeCalloutsForSync(calloutSyncDelta.upsertCallouts), {
-            documentId,
-            userId,
-            clientSessionId,
-            actionType: calloutSyncDelta.actionType,
-            changedIds: calloutSyncDelta.changedIds,
-            changedCount: calloutSyncDelta.changedCount,
-            dispatchedCount: calloutSyncDelta.dispatchedCount,
-            fullFanOutReason: calloutSyncDelta.fullFanOutReason,
-            debounceMs: isCalloutWipePush ? Math.max(debounceMs, CALLOUT_WIPE_GRACE_MS) : debounceMs,
-            debounceElapsedMs: calloutDebounceElapsedMs,
-          });
-        }
-      } catch (err) {
-        result = { error: err };
-      } finally {
-        if (inFlightCalloutSyncFingerprintRef.current === pushCalloutFingerprint) {
-          inFlightCalloutSyncFingerprintRef.current = null;
-        }
-      }
-      if (result.error) {
-        console.warn('[CloudSync][hook] callout Supabase push failed → queued before Y.Doc fan-out ' + JSON.stringify({
-          error: result.error?.message || String(result.error)
-        }));
-        queueCalloutDurableRetry(calloutSyncDelta.upsertCallouts, deletedCalloutIds, {
-          actionType: calloutSyncDelta.actionType,
-          changedIds: calloutSyncDelta.changedIds,
-        });
-        setSyncStatus({ stage: 'queued', error: result.error, kind: 'callout' });
-      } else {
-        cloudSyncHookDebug('[CloudSync][hook] callout Supabase upsert ok ' + JSON.stringify({
-          count: result.data?.length || 0
-        }));
-        try {
-          cloudSyncHookDebug('[CloudSync][hook] callout Y.Doc fan-out start after Supabase success ' + JSON.stringify({
-            count: calloutSyncDelta.changedCount,
-            changedIds: calloutSyncDelta.changedIds,
-            deletedCount: deletedCalloutIds.length
-          }));
-          await fanOutCrdtForCallouts(normalizeCalloutsForSync(calloutSyncDelta.upsertCallouts), deletedCalloutIds, { documentId, userId, actionType: calloutSyncDelta.actionType });
-          lastCalloutSyncFingerprintRef.current = pushCalloutFingerprint;
-          cloudSyncHookDebug('[CloudSync][hook] callout push synced ' + JSON.stringify({
-            count: result.data?.length || 0
-          }));
-          recordAnnotationSyncPush({
-            kind: 'callout',
-            count: 1,
-            calloutCount: calloutSyncDelta.changedCount,
-            priorCalloutCount,
-            deletedCount: deletedCalloutIds.length,
-          });
-          setSyncStatus({ stage: 'synced', count: result.data?.length || 0, kind: 'callout' });
-        } catch (err) {
-          console.warn('[CloudSync][hook] callout Y.Doc fan-out failed after Supabase success → queued repair ' + JSON.stringify({
-            error: err?.message || String(err)
-          }));
-          queueCalloutDurableRetry(calloutSyncDelta.upsertCallouts, deletedCalloutIds, {
-            ydocRepairOnly: true,
-            actionType: calloutSyncDelta.actionType,
-            changedIds: calloutSyncDelta.changedIds,
-          });
-          setSyncStatus({ stage: 'queued', error: err, kind: 'callout', phase: 'ydoc-fan-out' });
-        }
-      }
-    };
-
-    pendingCalloutFlushRef.current = runCalloutPush;
-    setSyncStatus({ stage: 'pending', kind: 'callout' });
-    calloutTimerHandle = setTimeout(
-      runCalloutPush,
-      isCalloutWipePush ? Math.max(debounceMs, CALLOUT_WIPE_GRACE_MS) : debounceMs
-    );
-
-    return () => {
-      if (calloutTimerHandle) {
-        clearTimeout(calloutTimerHandle);
-        calloutTimerHandle = null;
-      }
-    };
-  }, [enabled, documentId, userId, callouts, debounceMs, deferredPushTick]);
+  // Legacy callout push useEffect deleted 2026-06-30: calloutsInSharedStore()
+  // is unconditionally true (R2 keystone landed), so the effect immediately
+  // returned on every render — its entire body was dead. The shared fabric
+  // push (above) is now the sole callout writer. Offline queue drain
+  // (callout-bulk branches) and forceFlush's direct upsertCallouts path are
+  // preserved to drain any entries stuck in localStorage from before the flip.
+  // Deleted: buildCalloutSyncDelta import, CALLOUT_WIPE_GRACE_MS constant,
+  // queueCalloutDurableRetry helper (no remaining callers after push deletion).
 
   useEffect(() => {
     return () => {
