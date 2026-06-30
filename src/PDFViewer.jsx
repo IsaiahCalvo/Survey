@@ -1745,87 +1745,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     // captures SVG markups but NOT the live HTML form widgets, so it covers the
     // form field + checkbox and they appear to vanish mid-zoom. Skip it entirely
     // under pdf.js — the live overlay stays visible and resyncs each zoom step.
+    // ponytail: body dead under owned pdf.js (see comment above) — kept as a no-op
+    // because it's still called + listed in zoom dep arrays.
     if (true) return;
-    clearPdfjsZoomSnapshots();
-    const layer = ensurePdfjsZoomSnapshotLayer();
-    if (!layer) return;
-    applyPdfjsZoomSnapshotClip(layer);
-    const viewport =
-      document.getElementById(`${pdfjsViewerElementId}_viewerContainer`) ||
-      pdfjsWrapperRef.current ||
-      containerRef.current;
-    const viewportRect = viewport?.getBoundingClientRect?.();
-    const captureRect = viewportRect && viewportRect.width > 0 && viewportRect.height > 0
-      ? {
-          left: viewportRect.left - PDFJS_ZOOM_SNAPSHOT_VIEWPORT_MARGIN_PX,
-          top: viewportRect.top - PDFJS_ZOOM_SNAPSHOT_VIEWPORT_MARGIN_PX,
-          right: viewportRect.right + PDFJS_ZOOM_SNAPSHOT_VIEWPORT_MARGIN_PX,
-          bottom: viewportRect.bottom + PDFJS_ZOOM_SNAPSHOT_VIEWPORT_MARGIN_PX,
-        }
-      : null;
-    const intersectsCaptureRect = (rect) => (
-      !captureRect ||
-      (
-        rect.right >= captureRect.left &&
-        rect.left <= captureRect.right &&
-        rect.bottom >= captureRect.top &&
-        rect.top <= captureRect.bottom
-      )
-    );
-    const surfaces = Array.from(document.querySelectorAll('[data-annotation-real-surface]'))
-      .filter((surface) => {
-        if (!surface?.isConnected || surface.getAttribute('data-annotation-hydration-gated') === 'true') return false;
-        const rect = surface.getBoundingClientRect();
-        return rect.width > 0 && rect.height > 0 && intersectsCaptureRect(rect);
-      });
-    const pages = {};
-    surfaces.forEach((surface) => {
-      const pageNumber = Number(surface.getAttribute('data-annotation-real-surface'));
-      if (!Number.isFinite(pageNumber) || pageNumber <= 0) return;
-      const rect = surface.getBoundingClientRect();
-      if (!(rect.width > 0 && rect.height > 0)) return;
-      const clone = surface.cloneNode(true);
-      clone.setAttribute('data-annotation-real-surface-clone', String(pageNumber));
-      clone.querySelectorAll('[id]').forEach((node) => node.removeAttribute('id'));
-      Object.assign(clone.style, {
-        position: 'absolute',
-        top: '0',
-        left: '0',
-        width: `${rect.width}px`,
-        height: `${rect.height}px`,
-        transform: 'none',
-        pointerEvents: 'none',
-        visibility: 'visible',
-      });
-      const host = document.createElement('div');
-      host.setAttribute('data-pdfjs-zoom-snapshot-page', String(pageNumber));
-      Object.assign(host.style, {
-        position: 'fixed',
-        top: '0',
-        left: '0',
-        width: `${rect.width}px`,
-        height: `${rect.height}px`,
-        transformOrigin: 'top left',
-        transform: `translate3d(${rect.left}px, ${rect.top}px, 0) scale(1)`,
-        willChange: 'transform',
-        backfaceVisibility: 'hidden',
-        pointerEvents: 'none',
-        overflow: 'hidden',
-      });
-      host.appendChild(clone);
-      layer.appendChild(host);
-      pages[pageNumber] = {
-        host,
-        rect: {
-          left: rect.left,
-          top: rect.top,
-          width: rect.width,
-          height: rect.height,
-        },
-      };
-    });
-    pdfjsZoomSnapshotBaseScaleRef.current = Number.isFinite(baseScale) && baseScale > 0 ? baseScale : 1;
-    pdfjsZoomSnapshotPagesRef.current = pages;
   }, [applyPdfjsZoomSnapshotClip, clearPdfjsZoomSnapshots, ensurePdfjsZoomSnapshotLayer, pdfjsViewerElementId]);
 
   const commitPdfjsOverlayScaleForPage = useCallback((pageNumber, appliedScale, source = 'unknown') => {
@@ -2749,29 +2671,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     // Pdfjs visible-page tracking is meaningless under the owned pdf.js
     // engine (pdf.js owns page visibility); the version bump only re-renders broad
     // subtrees for nothing. Bail under pdf.js.
+    // ponytail: body dead under owned pdf.js (see comment above) — kept as a no-op
+    // because it's still called from interaction/scroll effects.
     if (true) return;
-    const state = pdfjsVisiblePagesRefreshRef.current;
-    const now = Date.now();
-    const elapsed = now - (Number(state.lastAt) || 0);
-    const flush = () => {
-      state.timer = null;
-      state.lastAt = Date.now();
-      setPdfjsVisiblePagesVersion((prev) => prev + 1);
-    };
-    if (elapsed >= PDFJS_INTERACTION_VISIBLE_PAGE_REFRESH_MS) {
-      if (state.timer) {
-        clearTimeout(state.timer);
-        state.timer = null;
-      }
-      flush();
-      return;
-    }
-    if (!state.timer) {
-      state.timer = setTimeout(
-        flush,
-        Math.max(24, PDFJS_INTERACTION_VISIBLE_PAGE_REFRESH_MS - elapsed)
-      );
-    }
   }, []);
 
   const markPdfjsInteractionActive = useCallback((reason = 'interaction', holdMs = PDFJS_INTERACTION_SETTLE_MS) => {
