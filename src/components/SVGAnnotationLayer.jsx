@@ -21,6 +21,7 @@
  * Phase 9 Plan 03: Multi-select group ops (group-move visual, group bbox, delete)
  */
 import { memo, useMemo, useEffect, useLayoutEffect, useRef, useState, useCallback } from 'react';
+import { deepClone } from '../utils/deepClone.js';
 import {
   renderPath,
   renderRect,
@@ -1262,7 +1263,7 @@ const SVGAnnotationLayer = memo(({
     // Existing heavy save path — unchanged. Runs in parallel with the optimistic
     // paint; when the persisted annotation eventually reflects the new angle,
     // the cleanup useEffect below clears visualTransform.
-    const updatedAnnotations = JSON.parse(JSON.stringify(annotations));
+    const updatedAnnotations = deepClone(annotations);
     if (!updatedAnnotations.objects?.[annotationIndex]) {
       pendingOptimisticRotationRef.current = null;
       clearOptimisticRotation();
@@ -1348,7 +1349,7 @@ const SVGAnnotationLayer = memo(({
     if (!Number.isFinite(nextAngle)) return;
     if (Math.abs(currentAngle - nextAngle) < 0.001) return;
 
-    const updatedAnnotations = JSON.parse(JSON.stringify(currentAnnotations));
+    const updatedAnnotations = deepClone(currentAnnotations);
     const targetObj = updatedAnnotations.objects?.[preview.annotationIndex];
     if (!targetObj) return;
     targetObj.data = { ...(targetObj.data || {}), pointerAngle: nextAngle };

@@ -7,6 +7,8 @@
  * annotations-by-page map. Keyed by getAnnotationHistoryId; supports both precise
  * (explicit changed/created/deleted ids) and full-diff builders.
  */
+import { deepClone } from './deepClone.js';
+
 export function getAnnotationHistoryId(annotation) {
   return annotation?.data?.id
     || annotation?.data?.annoId
@@ -32,7 +34,7 @@ function isOwnAnnotation(annotation, userId) {
 }
 
 function cloneJson(value) {
-  return value == null ? value : JSON.parse(JSON.stringify(value));
+  return deepClone(value);
 }
 
 function getObjects(page) {

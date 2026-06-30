@@ -23,6 +23,7 @@
 // first-paint entry chunk. Worker config now happens lazily via
 // utils/pdfWorkerConfig.loadPdfjs(), called right before each getDocument.
 import { recordAnnotationBackupWrite } from './utils/annotationPreviewDiag';
+import { deepClone } from './utils/deepClone.js';
 import { normalizeCalloutsForSync } from './utils/calloutSyncPayload';
 import { getCalloutIdsFromHistoryMeta } from './utils/calloutHistoryScope';
 import { ZOOM_MODES } from './utils/zoomController';
@@ -582,26 +583,6 @@ const getHistoryPathVisualBounds = (path) => {
     width: Math.max(0, maxX - minX),
     height: Math.max(0, maxY - minY),
   };
-};
-
-// Canonical deep clone: structuredClone first (preserves Dates/undefined, handles
-// cycles), JSON fallback for values it rejects (e.g. functions get stripped), null
-// if neither works. Use this instead of inline JSON.parse(JSON.stringify(x)) for
-// plain (DB-serializable) POJOs — for those, structuredClone === the JSON round-trip.
-export const deepClone = (value) => {
-  if (value == null) return value;
-  if (typeof structuredClone === 'function') {
-    try {
-      return structuredClone(value);
-    } catch {
-      // fall through to JSON clone
-    }
-  }
-  try {
-    return JSON.parse(JSON.stringify(value));
-  } catch {
-    return null;
-  }
 };
 
 const cloneHistoryPayloadValue = (value) => deepClone(value);

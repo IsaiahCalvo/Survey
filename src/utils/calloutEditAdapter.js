@@ -47,6 +47,8 @@
  * @param {string|null|undefined} raw
  * @returns {string}
  */
+import { deepClone } from './deepClone.js';
+
 export function sanitizeFontFamily(raw) {
   if (raw == null) return 'Arial';
   const first = String(raw).split(',')[0];
@@ -205,7 +207,7 @@ export function toFabricGroup(reactCallout, pageSize) {
   const groupResult = {
     objects,
     reactCalloutId: reactCallout.id,
-    reactCalloutSnapshot: JSON.parse(JSON.stringify(reactCallout)),
+    reactCalloutSnapshot: deepClone(reactCallout),
     data: { type: 'callout' },
     // Convenience accessor so tests (and Plan 14-03 wiring code) can call
     // .getObjects() uniformly whether this is a plain shape or a live group.

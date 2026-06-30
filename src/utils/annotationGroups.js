@@ -17,6 +17,8 @@
  * Design reference: docs/superpowers/specs/2026-04-18-group-ungroup-design.md
  */
 
+import { deepClone } from './deepClone.js';
+
 /**
  * Mint a fresh group id.
  */
@@ -81,7 +83,7 @@ export function findGroupMembers(pageAnnotations, pageCallouts, groupIds) {
 export function applyAnnotationGroupId(pageAnnotations, indices, groupId) {
   if (!pageAnnotations || !Array.isArray(pageAnnotations.objects)) return pageAnnotations;
   const indexSet = indices instanceof Set ? indices : new Set(indices);
-  const next = JSON.parse(JSON.stringify(pageAnnotations));
+  const next = deepClone(pageAnnotations);
   for (let i = 0; i < next.objects.length; i++) {
     if (!indexSet.has(i)) continue;
     const obj = next.objects[i];

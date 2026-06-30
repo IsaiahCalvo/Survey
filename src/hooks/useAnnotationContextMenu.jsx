@@ -22,6 +22,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { appDebug } from '../viewerShared.js';
+import { deepClone } from '../utils/deepClone.js';
 
 export function useAnnotationContextMenu() {
   // UX: annotation right-click menu — anchored to the pointer.
@@ -215,11 +216,11 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
           const obj = page.objects[ctx.annotationIndex];
           if (!obj) return;
           setClipboardAnnotation({
-            object: JSON.parse(JSON.stringify(obj)),
+            object: deepClone(obj),
             sourcePageNumber: ctx.pageNumber,
             mode: 'cut',
           });
-          const next = JSON.parse(JSON.stringify(page));
+          const next = deepClone(page);
           next.objects.splice(ctx.annotationIndex, 1);
           handleSaveAnnotations(ctx.pageNumber, next, {
             source: 'object:modified',
@@ -241,7 +242,7 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
           const obj = page?.objects?.[ctx.annotationIndex];
           if (!obj) return;
           setClipboardAnnotation({
-            object: JSON.parse(JSON.stringify(obj)),
+            object: deepClone(obj),
             sourcePageNumber: ctx.pageNumber,
             mode: 'copy',
           });
@@ -264,7 +265,7 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
           const page = annotationsByPageRef.current?.[ctx.pageNumber];
           if (!page?.objects || ctx.annotationIndex == null) return;
           if (ctx.annotationIndex < 0 || ctx.annotationIndex >= page.objects.length) return;
-          const next = JSON.parse(JSON.stringify(page));
+          const next = deepClone(page);
           next.objects.splice(ctx.annotationIndex, 1);
           handleSaveAnnotations(ctx.pageNumber, next, {
             source: 'object:modified',
@@ -327,7 +328,7 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
         for (const idx of sortedAsc) {
           const obj = page.objects[idx];
           if (!obj) continue;
-          collected.push(JSON.parse(JSON.stringify(obj)));
+          collected.push(deepClone(obj));
           const l = typeof obj.left === 'number' ? obj.left : 0;
           const t = typeof obj.top === 'number' ? obj.top : 0;
           if (l < minLeft) minLeft = l;
@@ -351,7 +352,7 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
           setClipboardAnnotation({ ...copy, mode: 'cut' });
           const page = annotationsByPageRef.current?.[ctx.pageNumber];
           if (!page?.objects) return;
-          const next = JSON.parse(JSON.stringify(page));
+          const next = deepClone(page);
           for (const idx of sortedDesc) {
             if (idx >= 0 && idx < next.objects.length) next.objects.splice(idx, 1);
           }
@@ -375,7 +376,7 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
         item('Delete', 'delete', () => {
           const page = annotationsByPageRef.current?.[ctx.pageNumber];
           if (!page?.objects) return;
-          const next = JSON.parse(JSON.stringify(page));
+          const next = deepClone(page);
           for (const idx of sortedDesc) {
             if (idx >= 0 && idx < next.objects.length) next.objects.splice(idx, 1);
           }

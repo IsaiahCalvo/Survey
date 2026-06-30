@@ -23,6 +23,7 @@
 import { memo, useState, useEffect, useLayoutEffect, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { flushSync } from 'react-dom';
+import { deepClone } from '../utils/deepClone.js';
 import { fabric } from 'fabric';
 import { useFabricCanvas } from '../hooks/useFabricCanvas';
 import {
@@ -1382,7 +1383,7 @@ const FabricEditCanvas = memo(({
 
     // Build updated annotations
     const currentAnnotations = annotationsRef.current;
-    const updated = JSON.parse(JSON.stringify(currentAnnotations || { objects: [] }));
+    const updated = deepClone(currentAnnotations || { objects: [] });
 
     if (isNewText) {
       // Append new text annotation
@@ -2050,7 +2051,7 @@ const FabricEditCanvas = memo(({
       const annData = annotationDataRef.current;
       const es = canvas.getZoom();
       bboxOriginRef.current = { left: annData.left || 0, top: annData.top || 0, angle: annData.angle || 0 };
-      originalAnnotationRef.current = JSON.parse(JSON.stringify(annData));
+      originalAnnotationRef.current = deepClone(annData);
 
       fabric.util.enlivenObjects([annData], (objects) => {
         if (!mountedRef.current || objects.length === 0) return;
@@ -2366,7 +2367,7 @@ const FabricEditCanvas = memo(({
 
     const annData = annotationDataRef.current;
     bboxOriginRef.current = { left: annData.left || 0, top: annData.top || 0, angle: annData.angle || 0 };
-    originalAnnotationRef.current = JSON.parse(JSON.stringify(annData));
+    originalAnnotationRef.current = deepClone(annData);
 
     fabric.util.enlivenObjects([annData], (objects) => {
       if (!mountedRef.current || objects.length === 0) {
@@ -2582,7 +2583,7 @@ const FabricEditCanvas = memo(({
         }
 
         if (onLivePreview && annotationIndex >= 0) {
-          const updated = JSON.parse(JSON.stringify(annotationsRef.current || { objects: [] }));
+          const updated = deepClone(annotationsRef.current || { objects: [] });
           if (updated.objects[annotationIndex]) {
             updated.objects[annotationIndex].left = bboxOriginRef.current.left;
             updated.objects[annotationIndex].top = bboxOriginRef.current.top;
@@ -2688,7 +2689,7 @@ const FabricEditCanvas = memo(({
         };
 
         if (onLivePreview && annotationIndex >= 0) {
-          const updated = JSON.parse(JSON.stringify(annotationsRef.current || { objects: [] }));
+          const updated = deepClone(annotationsRef.current || { objects: [] });
           if (updated.objects[annotationIndex]) {
             updated.objects[annotationIndex].scaleX = newScaleX;
             updated.objects[annotationIndex].scaleY = newScaleY;
@@ -3608,7 +3609,7 @@ const FabricEditCanvas = memo(({
 
     // Push a live preview to the SVG layer with the recentered radius + position.
     if (onLivePreview && annotationIndex >= 0) {
-      const updated = JSON.parse(JSON.stringify(annotationsRef.current || { objects: [] }));
+      const updated = deepClone(annotationsRef.current || { objects: [] });
       if (updated.objects[annotationIndex]) {
         updated.objects[annotationIndex].radius = newRadius;
         updated.objects[annotationIndex].left = bboxOriginRef.current.left;
@@ -3636,7 +3637,7 @@ const FabricEditCanvas = memo(({
           onPropertyChange={(prop, value, extras) => {
             if (!onLivePreview || annotationIndex < 0) return;
             const current = annotationsRef.current;
-            const updated = JSON.parse(JSON.stringify(current || { objects: [] }));
+            const updated = deepClone(current || { objects: [] });
             if (updated.objects[annotationIndex]) {
               updated.objects[annotationIndex][prop] = value;
               // `extras` lets MiniToolbar push multiple linked fields atomically

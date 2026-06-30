@@ -5,6 +5,8 @@
  * (flattenBookmarkTreeForSort / buildSortableBookmarkTree), auto-expand targeting,
  * and applyBookmarkTreeProjection. Drives the bookmark sidebar's dnd-kit sortable tree.
  */
+import { deepClone } from '../utils/deepClone.js';
+
 export const BOOKMARK_INDENTATION_WIDTH = 24;
 export const GROUP_AUTO_EXPAND_OFFSET_PX = 18;
 
@@ -136,7 +138,7 @@ export const getAutoExpandTargetFolder = (items, activeId, overId, dragOffset) =
 export const applyBookmarkTreeProjection = (tree, activeId, overId, projection) => {
   if (!projection || !activeId || !overId) return tree;
 
-  const clonedItems = JSON.parse(JSON.stringify(flattenBookmarkTreeForSort(tree)));
+  const clonedItems = deepClone(flattenBookmarkTreeForSort(tree));
   const overIndex = clonedItems.findIndex(({ id }) => id === overId);
   const activeIndex = clonedItems.findIndex(({ id }) => id === activeId);
   if (overIndex === -1 || activeIndex === -1) return tree;

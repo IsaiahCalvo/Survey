@@ -11,6 +11,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { screenToSVG, normalizeAngle, getInverseScale, constrainToPage, snapAngleToNearest45, clampInverseScale } from '../utils/svgTransformMath';
 import { getAnnotationBBox, getGroupBBox, getLineEndpoints, computeLineBboxCenter, isImportedPath, isAbsoluteCoordPath, translatePathData, scalePathData } from '../utils/svgBoundingBox';
+import { deepClone } from '../utils/deepClone.js';
 // Phase 15 LINE-01/02/03 + ARROW-01/02/03 — midpoint drag mode + endpoint
 // auto-revert on collinear geometry. Pure-math from lineGeometry, drag
 // helpers from lineDragMath (unit-tested in tests/lineDragMath.test.mjs).
@@ -58,7 +59,7 @@ const isTransformLockedAnnotation = (obj) => Boolean(
   && obj?.lockRotation
 );
 
-const cloneAnnotations = (annotations) => JSON.parse(JSON.stringify(annotations));
+const cloneAnnotations = (annotations) => deepClone(annotations);
 
 const diagLog = (...args) => {
   if (!isAnnotationPreviewDiagEnabled()) return;
@@ -2787,7 +2788,7 @@ export function useSVGInteraction({
           const actualDy = constrained.top - bbox.top;
 
           // Deep clone annotations and apply position update
-          const updatedAnnotations = JSON.parse(JSON.stringify(annotations));
+          const updatedAnnotations = deepClone(annotations);
           const targetObj = updatedAnnotations.objects[ds.annotationIndex];
 
           // Absolute-coord path (user-drawn from FabricDrawingCanvas which
@@ -2910,7 +2911,7 @@ export function useSVGInteraction({
     } else if (ds.mode === 'endpoint' && ds.currentEndpoint) {
       // Pointermove is preview-only for lines/arrows; commit the real
       // annotation once here so sync + undo see one change per drag.
-      const updatedAnnotations = JSON.parse(JSON.stringify(annotations));
+      const updatedAnnotations = deepClone(annotations);
       const targetObj = updatedAnnotations.objects[ds.annotationIndex];
       const { midpoint, ...endpointData } = ds.currentEndpoint;
       Object.assign(targetObj, endpointData);
@@ -2935,7 +2936,7 @@ export function useSVGInteraction({
       // data.midpoint so the line re-enters the straight <line> render branch.
       // No visual indicator during drag (combined-tools behavior, 15-UI-SPEC §E).
       // Checkpoint policy 'normal' so this drag produces one undo entry.
-      const updatedAnnotations = JSON.parse(JSON.stringify(annotations));
+      const updatedAnnotations = deepClone(annotations);
       const targetObj = updatedAnnotations.objects[ds.annotationIndex];
       const { midpoint, ...midpointData } = ds.currentMidpoint;
       Object.assign(targetObj, midpointData);
@@ -3010,7 +3011,7 @@ export function useSVGInteraction({
       const dy = svgPoint.y - ds.startSVGPoint.y;
 
       if (Math.abs(dx) > 2 || Math.abs(dy) > 2) {
-        const updatedAnnotations = JSON.parse(JSON.stringify(annotations));
+        const updatedAnnotations = deepClone(annotations);
 
         for (const [idxStr, orig] of Object.entries(ds.groupOriginals)) {
           const idx = Number(idxStr);
@@ -3116,7 +3117,7 @@ export function useSVGInteraction({
     } else if (ds.mode === 'resize' && ds.currentResize) {
       const { newScaleX, newScaleY, newLeft, newTop, counterNewRadius } = ds.currentResize;
 
-      const updatedAnnotations = JSON.parse(JSON.stringify(annotations));
+      const updatedAnnotations = deepClone(annotations);
       const obj = updatedAnnotations.objects[ds.annotationIndex];
 
       if (isImportedPath(obj) || isAbsoluteCoordPath(obj)) {
@@ -3283,7 +3284,7 @@ export function useSVGInteraction({
         diagLog('[BboxScaleDiag] commit resize ' + JSON.stringify(commitPayload));
       } catch (err) { console.warn('[BboxScaleDiag] commit log failed', err); }
     } else if (ds.mode === 'rotate' && ds.currentAngle !== undefined) {
-      const updatedAnnotations = JSON.parse(JSON.stringify(annotations));
+      const updatedAnnotations = deepClone(annotations);
       const rotObj = updatedAnnotations.objects[ds.annotationIndex];
       const rotObjType = String(rotObj?.type || '').toLowerCase();
       // Counter handle rotation previews through visualTransform during
@@ -4247,7 +4248,7 @@ export function useSVGInteraction({
     const snapshotObjects = indicesToDelete
       .map((idx) => {
         const obj = annotations?.objects?.[idx];
-        return obj ? JSON.parse(JSON.stringify(obj)) : null;
+        return obj ? deepClone(obj) : null;
       })
       .filter(Boolean);
 
@@ -4256,7 +4257,7 @@ export function useSVGInteraction({
     // can layer the single-delete toast (deletedCount===1) and the
     // bulk-delete onUndo restoration (deletedSnapshot + deletedPageNumber).
     const runDelete = () => {
-      const updatedAnnotations = JSON.parse(JSON.stringify(annotations));
+      const updatedAnnotations = deepClone(annotations);
       for (const idx of indicesToDelete) {
         updatedAnnotations.objects.splice(idx, 1);
       }

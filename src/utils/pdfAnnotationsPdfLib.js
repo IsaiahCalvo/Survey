@@ -5,6 +5,7 @@
  */
 
 import { PDFDocument, PDFName, PDFNumber, PDFString, StandardFonts, rgb } from 'pdf-lib';
+import { deepClone } from './deepClone.js';
 import {
   PDF_COUNTER_METADATA_KEY,
   PDF_COUNTER_SUBJECT,
@@ -112,7 +113,7 @@ const getPrintableRegularScope = (obj) => {
   return ANNOTATION_VISIBILITY_SCOPE.CANVAS;
 };
 
-const clonePlain = (value) => JSON.parse(JSON.stringify(value));
+const clonePlain = (value) => deepClone(value);
 
 export function buildPrintableRegularAnnotationPayload({
   annotationsByPage = {},

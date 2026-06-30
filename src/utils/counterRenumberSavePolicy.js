@@ -8,6 +8,8 @@
  * summarizeCounterRenumberEffect. Used by the save pipeline to keep counter
  * series numbering stable across non-numbering edits.
  */
+import { deepClone } from './deepClone.js';
+
 function getCounterId(counter) {
   return counter?.data?.id
     || counter?.data?.annoId
@@ -29,7 +31,7 @@ function counterSeriesChanged(before, after) {
 
 function withoutCounterNumbering(annotation) {
   if (!isCounter(annotation)) return annotation;
-  const clone = JSON.parse(JSON.stringify(annotation));
+  const clone = deepClone(annotation);
   if (clone.data && typeof clone.data === 'object') {
     delete clone.data.displayNumber;
     delete clone.data.seriesStart;
@@ -227,7 +229,7 @@ export function preserveExistingCountersOnPage(nextPage, previousPage, options =
       return merged;
     }
     changed = true;
-    return JSON.parse(JSON.stringify(previousCounter));
+    return deepClone(previousCounter);
   });
 
   return changed ? { ...nextPage, objects } : nextPage;
