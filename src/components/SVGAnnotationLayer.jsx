@@ -34,13 +34,12 @@ import {
   renderPolyline,
 } from '../utils/svgAnnotationRenderers';
 import { calculateCalloutConnection } from '../utils/calloutGeometry';
-// Callout-unification keystone (Phase 5) — flag-gated shared-store render path.
-// When calloutsInSharedStore() is ON, callouts live in annotationsByPage as
-// Fabric objects (data.type === 'callout', like counter) and render through the
-// shared dispatch below via annotationObjectToCallout → renderCallout. Default
-// OFF: every branch falls through to today's separate filteredCallouts loop.
-import { calloutsInSharedStore } from '../lib/calloutSharedStoreFlag';
-import { annotationObjectToCallout } from '../utils/calloutAnnotationBridge';
+// Callout rendering is owned entirely by the dedicated `filteredCallouts` loop
+// below (visible chrome + interaction + live preview), independent of the
+// callout-unification keystone flag. The flag governs only persistence/sync:
+// callout objects are projected into annotationsByPage for the shared Supabase
+// push, but the shared dispatch SKIPS them (no double-render) — they are never
+// rendered through the generic path.
 import { HANDLE_FILL, HANDLE_RING, HANDLE_RING_INVALID, HANDLE_RADIUS, HANDLE_RADIUS_SECONDARY } from '../utils/handleStyle';
 import { useSVGInteraction } from '../hooks/useSVGInteraction';
 // Plan 14-03 Task 3 (CREATE-01 callout half): factory for constructing a
@@ -369,15 +368,6 @@ const SVGAnnotationLayer = memo(({
   // Adobe behavior where off-screen pages hold data only.
   isPageInRenderWindow = true,
 }) => {
-  // Callout-unification keystone (Phase 5) — read the kill switch once per mount.
-  // ON  → callouts render through the shared annotationsByPage dispatch
-  //        (data.type === 'callout', adapted via annotationObjectToCallout →
-  //        renderCallout) and the legacy filteredCallouts loop is suppressed so
-  //        callouts are not double-rendered.
-  // OFF → byte-for-byte unchanged: shared dispatch skips callouts, legacy loop runs.
-  // The flag reads localStorage/env which don't change at runtime, so a stable
-  // per-mount value is correct (and the e2e harness sets it before navigation).
-  const calloutsShared = useMemo(() => calloutsInSharedStore(), []);
 
   // ---------------------------------------------------------------------------
   // Refs
@@ -1775,19 +1765,18 @@ const SVGAnnotationLayer = memo(({
           svgAnnotationDebug(`[Counter SVG p${pageNumber}] dispatching renderCounter — i=${i}, displayNumber=${obj.data.displayNumber}, fill=${obj.fill}, numberColor=${obj.data.numberColor || 'unset'}, left=${obj.left}, top=${obj.top}, radius=${obj.radius}`);
         }
         element = renderCounter(obj, i);
-      } else if (calloutsShared && obj.data && obj.data.type === 'callout') {
-        // Callout-unification keystone (Phase 5, point B) — shared-store callout.
-        // Sibling of the counter branch. Must precede the generic `group` branch
-        // below because a callout annotation object is `type: 'group'`. Adapt the
-        // page-pixel annotation object back to renderCallout's normalized shape
-        // via the round-trip-verified bridge, using this layer's page dims
-        // (= pageSizes[page], the same dims used for the forward load projection).
-        element = renderCallout(
-          annotationObjectToCallout(obj, { width, height }),
-          i,
-          { width, height },
-          calculateCalloutConnection
-        );
+      } else if (obj.data && obj.data.type === 'callout') {
+        // Callouts render via the dedicated `filteredCallouts` loop (purpose-built
+        // for the leader-line + textbox shape, with interaction + live preview) —
+        // NOT the generic shared dispatch. Like the Counter tool, a callout is a
+        // complex multi-part annotation that needs its own renderer; routing it
+        // through the generic path dropped its interactivity and live preview.
+        // Callout objects live in annotationsByPage ONLY for the unified Supabase
+        // persistence path. Skip them here explicitly: must precede the `group`
+        // branch below (line1/line2 are type:'line', so `hasLineChild` would
+        // otherwise paint a callout as a stray arrow → double-render). Flag-OFF
+        // there are no callout objects in annotationsByPage, so this never matches.
+        element = null;
       } else if (objectType === 'path' && Array.isArray(obj.path) && obj.path.length > 0) {
         element = renderPath(obj, i);
       } else if (objectType === 'rect') {
@@ -1880,13 +1869,8 @@ const SVGAnnotationLayer = memo(({
     activeTool,
     editingAnnotationIndex,
     isPageInRenderWindow,
-    // Callout-unification keystone (Phase 5): the shared-store callout branch
-    // reads width/height (via annotationObjectToCallout + renderCallout), so the
-    // memo must recompute when the page dims change. calloutsShared is a stable
-    // per-mount value (useMemo []), so it never invalidates this memo.
     width,
     height,
-    calloutsShared,
   ]);
 
   useLayoutEffect(() => {
@@ -2874,19 +2858,15 @@ const SVGAnnotationLayer = memo(({
   // visible renderCallout chrome stays exactly as Plan 14-01 shipped it; the
   // hit overlays sit on top for pointer capture.
   const filteredCallouts = useMemo(() => {
-    // Callout-unification keystone (Phase 5, point B) — when the shared store is
-    // ON, the VISIBLE callout chrome renders through the shared annotationsByPage
-    // dispatch (filteredAnnotations, data.type==='callout' → renderCallout). This
-    // loop no longer emits that visible chrome (it would double-render). BUT the
-    // INTERACTION layer (invisible hit-targets + selection handles that carry
-    // data-callout-id, drive pointerdown hit-testing, selection, and the
-    // double-click edit entry) is still owned here and MUST stay alive — the
-    // shared dispatch only draws pixels, it has no hit-targets. So with the flag
-    // ON we run the same loop over callouts[] but push ONLY the hit-targets,
-    // skipping the visible element. callouts[] is still populated (dual-rep), so
-    // selection/positions are exactly as before. Flag OFF: unchanged behavior
-    // (visible chrome + hit-targets both emitted, as Plan 14-01/14-03 shipped).
-    const interactionOnly = calloutsShared;
+    // Callouts ALWAYS render here — this is their dedicated renderer (visible
+    // chrome + interaction hit-targets + live preview), the single owner of how a
+    // callout looks and behaves. The shared annotationsByPage dispatch explicitly
+    // SKIPS callout objects (it only carries them for the unified Supabase
+    // persistence path), so there is no double-render. This is flag-independent:
+    // the keystone flag governs persistence/sync, not rendering — forcing callouts
+    // through the generic shared dispatch (the earlier attempt) dropped the
+    // text-box hit zone and live preview, so callouts keep their own renderer the
+    // same way the Counter tool keeps renderCounter. (Plan 14-01/14-03.)
     // 2026-05-03 — Viewport-culling fast exit (parity with filteredAnnotations).
     if (!isPageInRenderWindow) return [];
     if (!Array.isArray(callouts) || callouts.length === 0) return [];
@@ -2961,17 +2941,15 @@ const SVGAnnotationLayer = memo(({
       // knee→arrow line cut through the textbox is rejected by the validator.
       const skipAutoRoute = !!dragPart;
       // UX: CALL-10 — new signature takes pageSize object, emits data attributes.
-      // Keystone (flag ON, interactionOnly): the shared annotationsByPage dispatch
-      // owns the visible chrome, so we DON'T draw it here — only the hit-targets
-      // below. We still keep the per-callout loop running so selection/edit/delete
-      // hit-testing works off callouts[] exactly as before.
-      const element = interactionOnly
-        ? null
-        : renderCallout(displayCallout, i, pageSize, calculateCalloutConnection, hideText, liveBoundsForCallout, skipAutoRoute);
-      // Flag OFF: a null element means renderCallout declined (page/visibility) —
-      // skip the callout entirely. Flag ON: element is intentionally null, so the
-      // null check must NOT skip — the hit-targets still need to be emitted.
-      if (!interactionOnly && !element) continue;
+      // renderCallout draws the visible chrome (textbox rect + text foreignObject +
+      // leader lines), each carrying data-callout-id / data-callout-part so pointer
+      // hit-testing, selection, whole-callout drag, and double-click edit entry all
+      // resolve off callouts[]. liveBoundsForCallout + skipAutoRoute feed the live
+      // text-grow and live-drag preview.
+      const element = renderCallout(displayCallout, i, pageSize, calculateCalloutConnection, hideText, liveBoundsForCallout, skipAutoRoute);
+      // A null element means renderCallout declined (off-page / not visible) — skip
+      // this callout entirely (no chrome, no hit-targets).
+      if (!element) continue;
 
       // UX: Phase 14 Task 2 — invisible hit-target overlays for callout
       // parts. The 12px radius / 12px line strokeWidth matches the deleted
@@ -3076,7 +3054,7 @@ const SVGAnnotationLayer = memo(({
     // here this memo holds a stale value and the handles swell on zoom while
     // every other shape's handles (which re-read it fresh) stay constant.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [callouts, pageNumber, selectedModuleId, showSurveyPanel, selectedSpaceId, activeSpaceId, activeRegions, activeRegionId, spaces, getCanvasAnnotationVisibilityState, getSurveyAnnotationVisibilityState, isRegionOverlayEnabled, layerVisibility, width, height, editingCalloutId, liveCalloutEditBounds, effectiveSelectedCalloutIds, activeCalloutDrag, visualTransform, inverseScale, isPageInRenderWindow, calloutsShared]);
+  }, [callouts, pageNumber, selectedModuleId, showSurveyPanel, selectedSpaceId, activeSpaceId, activeRegions, activeRegionId, spaces, getCanvasAnnotationVisibilityState, getSurveyAnnotationVisibilityState, isRegionOverlayEnabled, layerVisibility, width, height, editingCalloutId, liveCalloutEditBounds, effectiveSelectedCalloutIds, activeCalloutDrag, visualTransform, inverseScale, isPageInRenderWindow]);
 
   // Diagnostic: after the SVG callouts are laid out, walk the DOM and record
   // the source data + every rendered element's screen rect per callout id.
