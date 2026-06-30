@@ -1631,7 +1631,7 @@ export const MANUAL_ZOOM_SESSION_KEY = 'pdfViewerManualZoomScale';
 // DATA PERSISTENCE LAYER
 // ==========================================
 
-export const generateUUID = () => `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+export const generateUUID = () => crypto.randomUUID();
 
 // Store structure: { [pdfId]: { items: {}, annotations: {} } }
 // Items: { [itemId]: { itemId, itemType, name, quantity, installationData, commissioningData, ... } }
