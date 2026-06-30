@@ -1818,9 +1818,11 @@ const FabricEditCanvas = memo(({
       loadTextAnnotation(canvas, effectiveScale);
     } else if (editTypeRef.current === 'shape') {
       loadShapeAnnotation(canvas, effectiveScale);
-    } else if (editTypeRef.current === 'callout') {
-      loadCalloutAnnotation(canvas);
     }
+    // editType:'callout' branch removed 2026-06-30: Phase 15 UAT-1 (2026-04-17)
+    // restructured callout edit to route through loadTextAnnotation (editType:'text'
+    // with reactCalloutId set). No caller passes editType:'callout' — confirmed
+    // by grep. loadCalloutAnnotation function also removed below.
   }, []); // Mount only
 
   // -------------------------------------------------------------------------
@@ -2789,168 +2791,12 @@ const FabricEditCanvas = memo(({
     });
   }, [pageNumber]);
 
-  // -------------------------------------------------------------------------
-  // Callout loading -- full-page Canvas with all annotations
-  // -------------------------------------------------------------------------
-  const loadCalloutAnnotation = useCallback((canvas) => {
-    const objectsArray = annotationsRef.current?.objects || [];
-    if (objectsArray.length === 0) {
-      setIsLoading(false);
-      return;
-    }
-
-    originalAnnotationRef.current = JSON.parse(JSON.stringify(
-      objectsArray[annotationIndex] || null
-    ));
-
-    fabric.util.enlivenObjects(objectsArray, (enlivenedObjects) => {
-      if (!mountedRef.current) return;
-
-      enlivenedObjects.forEach((obj, index) => {
-        const objData = objectsArray[index];
-
-        // Copy metadata
-        if (objData.spaceId) obj.spaceId = objData.spaceId;
-        if (objData.moduleId) obj.moduleId = objData.moduleId;
-        if (objData.regionId) obj.regionId = objData.regionId;
-        if (objData.layer) obj.layer = objData.layer;
-        if (objData.annotationId) obj.annotationId = objData.annotationId;
-        if (objData.needsEntity) obj.needsEntity = objData.needsEntity;
-        if (objData.data) obj.data = objData.data;
-        if (objData.name) obj.name = objData.name;
-        if (objData.isPdfImported) obj.isPdfImported = objData.isPdfImported;
-        if (objData.pdfAnnotationId) obj.pdfAnnotationId = objData.pdfAnnotationId;
-        if (objData.pdfAnnotationType) obj.pdfAnnotationType = objData.pdfAnnotationType;
-        if (objData.globalCompositeOperation) {
-          obj.set({ globalCompositeOperation: objData.globalCompositeOperation });
-        }
-        if (obj.annotationId || obj.needsEntity) {
-          obj.set({ globalCompositeOperation: 'multiply' });
-        }
-
-        // Only the target annotation is interactive
-        if (index === annotationIndex) {
-          obj.set({
-            selectable: true,
-            evented: true,
-            // Phase 13 EDIT-14: no transform handles in edit mode (full-page
-            // callout path). Matches the shape-edit path above — edit mode is
-            // content editing only, transforms happen in select mode.
-            hasControls: false,
-            hasBorders: false,
-          });
-          // Plan 15-04 Step 2 — Callout's textbox child uses the same transparent
-          // glyph/stroke trick as plain text edit. The SVG callout renders
-          // underneath as the visible truth. Caret still paints via the
-          // renderCursor override. Original fill/stroke are restored in
-          // commitAndClose before persisting.
-          const objTypeLc = String(obj.type || '').toLowerCase();
-          if (objTypeLc === 'textbox' || objTypeLc === 'i-text' || objTypeLc === 'text') {
-            // UX 2026-04-20 (revised): Fabric's letters paint transparent
-            // during callout edit so the SVG callout renderer is the
-            // single visible source of truth in both view and edit. Canvas
-            // 2D and SVG foreignObject DOM text rasterize differently on
-            // macOS, so showing Fabric's glyphs made the user see a
-            // weight/spacing jump on edit entry/exit. SVG paints live via
-            // liveCalloutEditBounds so letters stay visible as the user
-            // types. The invisible-lines-past-imported-height issue that
-            // forced this back to visible-Fabric was caused by a
-            // percentage-height bug on the foreignObject container; that
-            // bug was fixed separately this session.
-            obj.set({
-              fill: 'rgba(0,0,0,0)',
-              stroke: 'rgba(0,0,0,0)',
-              strokeWidth: 0,
-            });
-          }
-        } else {
-          obj.set({
-            selectable: false,
-            evented: false,
-          });
-        }
-
-        canvas.add(obj);
-
-        // Fix coordinate space for path objects (same as FabricEraserCanvas)
-        if (obj.type === 'path' && obj.pathOffset) {
-          const pos = new fabric.Point(obj.pathOffset.x, obj.pathOffset.y);
-          obj.setPositionByOrigin(pos, 'center', 'center');
-          obj.setCoords();
-        }
-      });
-
-      // Select the target annotation
-      const targetObj = enlivenedObjects[annotationIndex];
-      if (targetObj) {
-        canvas.setActiveObject(targetObj);
-      }
-
-      canvas.renderAll();
-
-      // UX diag 2026-04-19: comprehensive cursor-parity dump — callout side.
-      // Paired with the text-side dumpCursorParity entries so the two sources
-      // can be diffed field-by-field in the saved console log.
-      {
-        const textChild =
-          (enlivenedObjects || []).find((o) => {
-            const t = String(o?.type || '').toLowerCase();
-            return t === 'textbox' || t === 'i-text' || t === 'text';
-          }) || null;
-        const findSvg = () => reactCalloutId
-          ? document.querySelector(`[data-callout-id="${reactCalloutId}"] [data-callout-part="text"] > div`)
-          : null;
-        dumpCursorParity('enter', 'callout', reactCalloutId || null, textChild, findSvg(), canvas, containerRef.current);
-        if (textChild) {
-          // UX 2026-04-20 (revised): broadcast live textbox bounds on every
-          // keystroke so the SVG callout renderer (which is now the single
-          // visible source of truth during edit) can grow the box and
-          // repaint the typed text in real time. Payload matches
-          // renderCallout's liveBounds contract (page-space left/top/width/
-          // height/text). Without this, the SVG callout would freeze on the
-          // pre-edit text while Fabric's cursor blinks over transparent
-          // glyphs.
-          const broadcastCalloutBounds = () => {
-            if (!onLiveTextGrow) return;
-            const innerW = (textChild.width || 0) * (textChild.scaleX || 1);
-            const innerH = textChild.calcTextHeight
-              ? textChild.calcTextHeight()
-              : (textChild.height || 0) * (textChild.scaleY || 1);
-            onLiveTextGrow({
-              left: textChild.left || 0,
-              top: textChild.top || 0,
-              width: innerW,
-              height: innerH,
-              text: textChild.text || '',
-              textLines: Array.isArray(textChild._textLines)
-                ? textChild._textLines.map(l => Array.isArray(l) ? l.join('') : String(l))
-                : null,
-              fontSize: textChild.fontSize,
-              lineHeight: textChild.lineHeight,
-            });
-          };
-          broadcastCalloutBounds();
-          editingTextboxRef.current = textChild;
-          publishRichTextEditor();
-          textChild.on('changed', () => {
-            if (!mountedRef.current) return;
-            editingTextboxRef.current = textChild;
-            publishRichTextEditor();
-            dumpCursorParity('keystroke', 'callout', reactCalloutId || null, textChild, findSvg(), canvas, containerRef.current);
-            broadcastCalloutBounds();
-          });
-          textChild.on('selection:changed', () => {
-            if (!mountedRef.current) return;
-            editingTextboxRef.current = textChild;
-            publishRichTextEditor();
-            dumpCursorParity('selection', 'callout', reactCalloutId || null, textChild, findSvg(), canvas, containerRef.current);
-          });
-        }
-      }
-
-      setIsLoading(false);
-    });
-  }, [annotationIndex, reactCalloutId]);
+  // loadCalloutAnnotation removed 2026-06-30: Phase 15 UAT-1 (2026-04-17)
+  // restructured callout editing to route through loadTextAnnotation (editType:'text'
+  // + reactCalloutId set). No caller passes editType:'callout' — grep confirmed zero
+  // live call sites. The else-if branch in canvasInit was also removed above.
+  // Do not recreate without re-reading PDFViewer.jsx handleRequestCalloutEditMode
+  // (~line 10453) which now routes callout edits via editType:'text'.
 
   // -------------------------------------------------------------------------
   // Sync refs to avoid stale closures
