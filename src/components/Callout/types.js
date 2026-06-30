@@ -143,21 +143,6 @@ export const defaultCalloutStyle = {
 };
 
 /**
- * Convert hex color to rgba string
- * @param {string} hex - Hex color (e.g., '#ff0000')
- * @param {number} opacity - Opacity 0-1
- * @returns {string} rgba color string
- */
-export const hexToRgba = (hex, opacity) => {
-  if (hex === 'transparent') return 'transparent';
-  if (!hex || !hex.startsWith('#')) return hex;
-  const r = parseInt(hex.slice(1, 3), 16);
-  const g = parseInt(hex.slice(3, 5), 16);
-  const b = parseInt(hex.slice(5, 7), 16);
-  return `rgba(${r}, ${g}, ${b}, ${opacity})`;
-};
-
-/**
  * Generate a unique ID for callouts
  * @returns {string}
  */
