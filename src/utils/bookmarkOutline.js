@@ -3,7 +3,7 @@
 import { coercePageNumber } from '../viewerShared';
 
 export function generateBookmarkId() {
-  return `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+  return crypto.randomUUID();
 }
 
 export async function resolvePdfOutlinePageNumber(pdf, destination) {

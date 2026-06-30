@@ -310,7 +310,7 @@ export const mergeRegions = (region1, region2) => {
     const shapeType = isRectangular && result[0].length === 5 ? 'rectangular' : 'polygon';
 
     // Generate a new regionId for the merged region
-    const newRegionId = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    const newRegionId = crypto.randomUUID();
 
     // Calculate center for origin tracking
     const originCenter = calculateRegionCenter(mergedCoords);
@@ -390,7 +390,7 @@ export const subtractRegionFromRegion = (subjectRegion, subtractRegion) => {
         const isRectangular = subjectRegion.shapeType === 'rectangular' && polygon.length === 5;
         const originCenter = calculateRegionCenter(coords);
         resultRegions.push({
-          regionId: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+          regionId: crypto.randomUUID(),
           pageId: subjectRegion.pageId,
           shapeType: isRectangular ? 'rectangular' : 'polygon',
           operation: subjectRegion.operation,

@@ -556,9 +556,7 @@ export function useAnnotationCloudSync({
   // updates. Generated once per hook lifetime; survives across documents.
   const sessionIdRef = useRef(null);
   if (sessionIdRef.current === null) {
-    const rnd = (typeof crypto !== 'undefined' && crypto.randomUUID)
-      ? crypto.randomUUID()
-      : `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+    const rnd = crypto.randomUUID();
     sessionIdRef.current = rnd;
     cloudSyncHookDebug('[CloudSync][hook] session id minted ' + JSON.stringify({ sessionId: rnd }));
   }

@@ -68,8 +68,7 @@ function pgHexToBytes(str) {
 }
 
 function randomClientId() {
-  if (typeof crypto !== 'undefined' && crypto.randomUUID) return crypto.randomUUID();
-  return `c-${Math.floor(Math.random() * 1e9).toString(36)}-${Date.now().toString(36)}`;
+  return crypto.randomUUID();
 }
 
 /** A per-install stable client id (browser). Node callers pass one in. */

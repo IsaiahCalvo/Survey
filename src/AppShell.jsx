@@ -527,7 +527,7 @@ export default function App() {
   }, [authLoading, isAuthenticated]);
 
   // Generate unique tab ID
-  const generateTabId = () => `tab-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+  const generateTabId = () => `tab-${crypto.randomUUID()}`;
 
   const handleDocumentSelect = (file, filePath = null) => {
     if (!file) {

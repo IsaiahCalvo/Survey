@@ -43,7 +43,7 @@ const bookmarkTreeMeasuring = {
 };
 
 // Helper to generate unique IDs
-const generateId = () => `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+const generateId = () => crypto.randomUUID();
 
 const BookmarkTreeRow = ({
   item,
@@ -1214,7 +1214,7 @@ const BookmarksPanel = ({
       initialPage = 1;
     }
     const newBookmark = {
-      id: `temp-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+      id: `temp-${crypto.randomUUID()}`,
       name: '',
       pageIds: initialPage ? [initialPage] : [],
       isExisting: false
@@ -1261,7 +1261,7 @@ const BookmarksPanel = ({
       initialPage = 1;
     }
     const newBookmark = {
-      id: `temp-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+      id: `temp-${crypto.randomUUID()}`,
       name: '',
       pageIds: initialPage ? [initialPage] : [],
       isExisting: false

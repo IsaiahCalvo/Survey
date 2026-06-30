@@ -1,0 +1,2821 @@
+{
+  "directed": false,
+  "multigraph": false,
+  "graph": {},
+  "nodes": [
+    {
+      "label": "viewerShared.js",
+      "file_type": "code",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L1",
+      "id": "src_viewershared",
+      "community": 0,
+      "norm_label": "viewershared.js"
+    },
+    {
+      "label": "NATIVE_TEXT_MARKUP_TOOLS",
+      "file_type": "code",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L47",
+      "id": "src_viewershared_native_text_markup_tools",
+      "community": 0,
+      "norm_label": "native_text_markup_tools"
+    },
+    {
+      "label": "SELECT_DELETE_ONLY_IMPORTED_TEXT_MARKUP_TYPES",
+      "file_type": "code",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L48",
+      "id": "src_viewershared_select_delete_only_imported_text_markup_types",
+      "community": 0,
+      "norm_label": "select_delete_only_imported_text_markup_types"
+    },
+    {
+      "label": "REVIEW_TOOL_IDS",
+      "file_type": "code",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L49",
+      "id": "src_viewershared_review_tool_ids",
+      "community": 0,
+      "norm_label": "review_tool_ids"
+    },
+    {
+      "label": "appDebug()",
+      "file_type": "code",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L51",
+      "id": "src_viewershared_appdebug",
+      "community": 9,
+      "norm_label": "appdebug()"
+    },
+    {
+      "label": "getWindowTrackpadInteractionDebugSavePayload()",
+      "file_type": "code",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L56",
+      "id": "src_viewershared_getwindowtrackpadinteractiondebugsavepayload",
+      "community": 0,
+      "norm_label": "getwindowtrackpadinteractiondebugsavepayload()"
+    },
+    {
+      "label": "writeSaveLogExtraFiles()",
+      "file_type": "code",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L118",
+      "id": "src_viewershared_writesavelogextrafiles",
+      "community": 0,
+      "norm_label": "writesavelogextrafiles()"
+    },
+    {
+      "label": "isSelectDeleteOnlyImportedTextMarkupType()",
+      "file_type": "code",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L131",
+      "id": "src_viewershared_isselectdeleteonlyimportedtextmarkuptype",
+      "community": 5,
+      "norm_label": "isselectdeleteonlyimportedtextmarkuptype()"
+    },
+    {
+      "label": "getSelectDeleteOnlyTextMarkupBounds()",
+      "file_type": "code",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L138",
+      "id": "src_viewershared_getselectdeleteonlytextmarkupbounds",
+      "community": 5,
+      "norm_label": "getselectdeleteonlytextmarkupbounds()"
+    },
+    {
+      "label": "distanceToSegment()",
+      "file_type": "code",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L178",
+      "id": "src_viewershared_distancetosegment",
+      "community": 0,
+      "norm_label": "distancetosegment()"
+    },
+    {
+      "label": "getPathPointDistance()",
+      "file_type": "code",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L187",
+      "id": "src_viewershared_getpathpointdistance",
+      "community": 5,
+      "norm_label": "getpathpointdistance()"
+    },
+    {
+      "label": "isPointOnSelectDeleteOnlyTextMarkup()",
+      "file_type": "code",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L234",
+      "id": "src_viewershared_ispointonselectdeleteonlytextmarkup",
+      "community": 5,
+      "norm_label": "ispointonselectdeleteonlytextmarkup()"
+    },
+    {
+      "label": "getPdfjsTextMarkupMode()",
+      "file_type": "code",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L248",
+      "id": "src_viewershared_getpdfjstextmarkupmode",
+      "community": 0,
+      "norm_label": "getpdfjstextmarkupmode()"
+    },
+    {
+      "label": "coercePdfjsZoomPercent()",
+      "file_type": "code",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L263",
+      "id": "src_viewershared_coercepdfjszoompercent",
+      "community": 0,
+      "norm_label": "coercepdfjszoompercent()"
+    },
+    {
+      "label": "isSuspiciousWheelZoomPercent()",
+      "file_type": "code",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L274",
+      "id": "src_viewershared_issuspiciouswheelzoompercent",
+      "community": 0,
+      "norm_label": "issuspiciouswheelzoompercent()"
+    },
+    {
+      "label": "PDFJS_PDF_SURFACE_SELECTOR",
+      "file_type": "code",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L282",
+      "id": "src_viewershared_pdfjs_pdf_surface_selector",
+      "community": 0,
+      "norm_label": "pdfjs_pdf_surface_selector"
+    },
+    {
+      "label": "hasPdfjsPdfSurface()",
+      "file_type": "code",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L291",
+      "id": "src_viewershared_haspdfjspdfsurface",
+      "community": 0,
+      "norm_label": "haspdfjspdfsurface()"
+    },
+    {
+      "label": "hasVisiblePdfjsSpinner()",
+      "file_type": "code",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L293",
+      "id": "src_viewershared_hasvisiblepdfjsspinner",
+      "community": 0,
+      "norm_label": "hasvisiblepdfjsspinner()"
+    },
+    {
+      "label": "hexToRgba()",
+      "file_type": "code",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L326",
+      "id": "src_viewershared_hextorgba",
+      "community": 8,
+      "norm_label": "hextorgba()"
+    },
+    {
+      "label": "ensureRgbaOpacity()",
+      "file_type": "code",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L339",
+      "id": "src_viewershared_ensurergbaopacity",
+      "community": 8,
+      "norm_label": "ensurergbaopacity()"
+    },
+    {
+      "label": "ZOOM_ONLY_INTERACTION_REASONS",
+      "file_type": "code",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L396",
+      "id": "src_viewershared_zoom_only_interaction_reasons",
+      "community": 0,
+      "norm_label": "zoom_only_interaction_reasons"
+    },
+    {
+      "label": "OVERLAY_LAG_RECORDER_WORK_CATEGORIES",
+      "file_type": "code",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L420",
+      "id": "src_viewershared_overlay_lag_recorder_work_categories",
+      "community": 0,
+      "norm_label": "overlay_lag_recorder_work_categories"
+    },
+    {
+      "label": "getSmoothPdfjsWheelZoom()",
+      "file_type": "code",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L432",
+      "id": "src_viewershared_getsmoothpdfjswheelzoom",
+      "community": 0,
+      "norm_label": "getsmoothpdfjswheelzoom()"
+    },
+    {
+      "label": "getPdfjsZoomAwareScrollGain()",
+      "file_type": "code",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L444",
+      "id": "src_viewershared_getpdfjszoomawarescrollgain",
+      "community": 0,
+      "norm_label": "getpdfjszoomawarescrollgain()"
+    },
+    {
+      "label": "getNormalizedWheelDeltas()",
+      "file_type": "code",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L453",
+      "id": "src_viewershared_getnormalizedwheeldeltas",
+      "community": 0,
+      "norm_label": "getnormalizedwheeldeltas()"
+    },
+    {
+      "label": "clampWheelDelta()",
+      "file_type": "code",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L466",
+      "id": "src_viewershared_clampwheeldelta",
+      "community": 0,
+      "norm_label": "clampwheeldelta()"
+    },
+    {
+      "label": "roundHistoryDebugNumber()",
+      "file_type": "code",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L478",
+      "id": "src_viewershared_roundhistorydebugnumber",
+      "community": 4,
+      "norm_label": "roundhistorydebugnumber()"
+    },
+    {
+      "label": "hashHistoryString()",
+      "file_type": "code",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L484",
+      "id": "src_viewershared_hashhistorystring",
+      "community": 0,
+      "norm_label": "hashhistorystring()"
+    },
+    {
+      "label": "toHistoryObjectDebug()",
+      "file_type": "code",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L493",
+      "id": "src_viewershared_tohistoryobjectdebug",
+      "community": 4,
+      "norm_label": "tohistoryobjectdebug()"
+    },
+    {
+      "label": "getHistoryObjectDiffType()",
+      "file_type": "code",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L509",
+      "id": "src_viewershared_gethistoryobjectdifftype",
+      "community": 0,
+      "norm_label": "gethistoryobjectdifftype()"
+    },
+    {
+      "label": "getHistoryObjectSignature()",
+      "file_type": "code",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L529",
+      "id": "src_viewershared_gethistoryobjectsignature",
+      "community": 0,
+      "norm_label": "gethistoryobjectsignature()"
+    },
+    {
+      "label": "getHistoryAnnotationId()",
+      "file_type": "code",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L544",
+      "id": "src_viewershared_gethistoryannotationid",
+      "community": 1,
+      "norm_label": "gethistoryannotationid()"
+    },
+    {
+      "label": "getHistoryAnnotationType()",
+      "file_type": "code",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L553",
+      "id": "src_viewershared_gethistoryannotationtype",
+      "community": 1,
+      "norm_label": "gethistoryannotationtype()"
+    },
+    {
+      "label": "getHistoryPathVisualBounds()",
+      "file_type": "code",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L561",
+      "id": "src_viewershared_gethistorypathvisualbounds",
+      "community": 4,
+      "norm_label": "gethistorypathvisualbounds()"
+    },
+    {
+      "label": "cloneHistoryPayloadValue()",
+      "file_type": "code",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L587",
+      "id": "src_viewershared_clonehistorypayloadvalue",
+      "community": 1,
+      "norm_label": "clonehistorypayloadvalue()"
+    },
+    {
+      "label": "getHistoryAnnotationVisualBounds()",
+      "file_type": "code",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L596",
+      "id": "src_viewershared_gethistoryannotationvisualbounds",
+      "community": 4,
+      "norm_label": "gethistoryannotationvisualbounds()"
+    },
+    {
+      "label": "buildHistoryRestoreAction()",
+      "file_type": "code",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L642",
+      "id": "src_viewershared_buildhistoryrestoreaction",
+      "community": 1,
+      "norm_label": "buildhistoryrestoreaction()"
+    },
+    {
+      "label": "normalizeHistoryLaneLabel()",
+      "file_type": "code",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L679",
+      "id": "src_viewershared_normalizehistorylanelabel",
+      "community": 1,
+      "norm_label": "normalizehistorylanelabel()"
+    },
+    {
+      "label": "normalizeHistoryActionType()",
+      "file_type": "code",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L688",
+      "id": "src_viewershared_normalizehistoryactiontype",
+      "community": 1,
+      "norm_label": "normalizehistoryactiontype()"
+    },
+    {
+      "label": "inferHistoryUpdateType()",
+      "file_type": "code",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L706",
+      "id": "src_viewershared_inferhistoryupdatetype",
+      "community": 1,
+      "norm_label": "inferhistoryupdatetype()"
+    },
+    {
+      "label": "summarizeHistoryActionForLog()",
+      "file_type": "code",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L723",
+      "id": "src_viewershared_summarizehistoryactionforlog",
+      "community": 1,
+      "norm_label": "summarizehistoryactionforlog()"
+    },
+    {
+      "label": "summarizeHistoryMetaForLog()",
+      "file_type": "code",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L759",
+      "id": "src_viewershared_summarizehistorymetaforlog",
+      "community": 1,
+      "norm_label": "summarizehistorymetaforlog()"
+    },
+    {
+      "label": "shouldScopeCalloutHistoryRestore()",
+      "file_type": "code",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L780",
+      "id": "src_viewershared_shouldscopecallouthistoryrestore",
+      "community": 0,
+      "norm_label": "shouldscopecallouthistoryrestore()"
+    },
+    {
+      "label": "shouldEchoHistoryDebugEvent()",
+      "file_type": "code",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L786",
+      "id": "src_viewershared_shouldechohistorydebugevent",
+      "community": 0,
+      "norm_label": "shouldechohistorydebugevent()"
+    },
+    {
+      "label": "compactHistoryEventForLog()",
+      "file_type": "code",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L800",
+      "id": "src_viewershared_compacthistoryeventforlog",
+      "community": 1,
+      "norm_label": "compacthistoryeventforlog()"
+    },
+    {
+      "label": "mapYjsMeta()",
+      "file_type": "code",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L835",
+      "id": "src_viewershared_mapyjsmeta",
+      "community": 0,
+      "norm_label": "mapyjsmeta()"
+    },
+    {
+      "label": "readHistoryDebugConsoleEnabled()",
+      "file_type": "code",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L846",
+      "id": "src_viewershared_readhistorydebugconsoleenabled",
+      "community": 0,
+      "norm_label": "readhistorydebugconsoleenabled()"
+    },
+    {
+      "label": "writeHistoryDebugConsoleEnabled()",
+      "file_type": "code",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L855",
+      "id": "src_viewershared_writehistorydebugconsoleenabled",
+      "community": 0,
+      "norm_label": "writehistorydebugconsoleenabled()"
+    },
+    {
+      "label": "readDocumentSyncStructuralDisabled()",
+      "file_type": "code",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L868",
+      "id": "src_viewershared_readdocumentsyncstructuraldisabled",
+      "community": 0,
+      "norm_label": "readdocumentsyncstructuraldisabled()"
+    },
+    {
+      "label": "writeDocumentSyncStructuralDisabled()",
+      "file_type": "code",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L881",
+      "id": "src_viewershared_writedocumentsyncstructuraldisabled",
+      "community": 0,
+      "norm_label": "writedocumentsyncstructuraldisabled()"
+    },
+    {
+      "label": "readPdfjsLiveStableOverlayEnabled()",
+      "file_type": "code",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L894",
+      "id": "src_viewershared_readpdfjslivestableoverlayenabled",
+      "community": 0,
+      "norm_label": "readpdfjslivestableoverlayenabled()"
+    },
+    {
+      "label": "readPdfjsDualLayerEnabled()",
+      "file_type": "code",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L906",
+      "id": "src_viewershared_readpdfjsduallayerenabled",
+      "community": 0,
+      "norm_label": "readpdfjsduallayerenabled()"
+    },
+    {
+      "label": "writePdfjsDualLayerEnabled()",
+      "file_type": "code",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L918",
+      "id": "src_viewershared_writepdfjsduallayerenabled",
+      "community": 0,
+      "norm_label": "writepdfjsduallayerenabled()"
+    },
+    {
+      "label": "readOverlayLagRecorderAutoEnabled()",
+      "file_type": "code",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L927",
+      "id": "src_viewershared_readoverlaylagrecorderautoenabled",
+      "community": 0,
+      "norm_label": "readoverlaylagrecorderautoenabled()"
+    },
+    {
+      "label": "writeOverlayLagRecorderAutoEnabled()",
+      "file_type": "code",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L939",
+      "id": "src_viewershared_writeoverlaylagrecorderautoenabled",
+      "community": 0,
+      "norm_label": "writeoverlaylagrecorderautoenabled()"
+    },
+    {
+      "label": "cloneOverlayRecorderPayload()",
+      "file_type": "code",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L948",
+      "id": "src_viewershared_cloneoverlayrecorderpayload",
+      "community": 0,
+      "norm_label": "cloneoverlayrecorderpayload()"
+    },
+    {
+      "label": "roundOverlayRecorderValue()",
+      "file_type": "code",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L963",
+      "id": "src_viewershared_roundoverlayrecordervalue",
+      "community": 0,
+      "norm_label": "roundoverlayrecordervalue()"
+    },
+    {
+      "label": "percentileOverlayRecorder()",
+      "file_type": "code",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L969",
+      "id": "src_viewershared_percentileoverlayrecorder",
+      "community": 0,
+      "norm_label": "percentileoverlayrecorder()"
+    },
+    {
+      "label": "getPdfjsOverlayPrefetchPages()",
+      "file_type": "code",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L976",
+      "id": "src_viewershared_getpdfjsoverlayprefetchpages",
+      "community": 0,
+      "norm_label": "getpdfjsoverlayprefetchpages()"
+    },
+    {
+      "label": "measurePdfjsPageScale()",
+      "file_type": "code",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L986",
+      "id": "src_viewershared_measurepdfjspagescale",
+      "community": 0,
+      "norm_label": "measurepdfjspagescale()"
+    },
+    {
+      "label": "measurePdfjsPageHostScale()",
+      "file_type": "code",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L1008",
+      "id": "src_viewershared_measurepdfjspagehostscale",
+      "community": 0,
+      "norm_label": "measurepdfjspagehostscale()"
+    },
+    {
+      "label": "normalizeInteractionMeasuredScale()",
+      "file_type": "code",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L1026",
+      "id": "src_viewershared_normalizeinteractionmeasuredscale",
+      "community": 0,
+      "norm_label": "normalizeinteractionmeasuredscale()"
+    },
+    {
+      "label": "parseCssTransformScaleX()",
+      "file_type": "code",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L1046",
+      "id": "src_viewershared_parsecsstransformscalex",
+      "community": 0,
+      "norm_label": "parsecsstransformscalex()"
+    },
+    {
+      "label": "normalizeSurveyMarkerColor()",
+      "file_type": "code",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L1094",
+      "id": "src_viewershared_normalizesurveymarkercolor",
+      "community": 8,
+      "norm_label": "normalizesurveymarkercolor()"
+    },
+    {
+      "label": "getCategoryGlyphLabel()",
+      "file_type": "code",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L1121",
+      "id": "src_viewershared_getcategoryglyphlabel",
+      "community": 0,
+      "norm_label": "getcategoryglyphlabel()"
+    },
+    {
+      "label": "getHexFromColor()",
+      "file_type": "code",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L1138",
+      "id": "src_viewershared_gethexfromcolor",
+      "community": 0,
+      "norm_label": "gethexfromcolor()"
+    },
+    {
+      "label": "getHexFromEntityColor()",
+      "file_type": "code",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L1155",
+      "id": "src_viewershared_gethexfromentitycolor",
+      "community": 0,
+      "norm_label": "gethexfromentitycolor()"
+    },
+    {
+      "label": "getOpacityFromEntityColor()",
+      "file_type": "code",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L1172",
+      "id": "src_viewershared_getopacityfromentitycolor",
+      "community": 0,
+      "norm_label": "getopacityfromentitycolor()"
+    },
+    {
+      "label": "handleModalOptionMouseEnter()",
+      "file_type": "code",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L1189",
+      "id": "src_viewershared_handlemodaloptionmouseenter",
+      "community": 0,
+      "norm_label": "handlemodaloptionmouseenter()"
+    },
+    {
+      "label": "handleModalOptionMouseLeave()",
+      "file_type": "code",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L1195",
+      "id": "src_viewershared_handlemodaloptionmouseleave",
+      "community": 0,
+      "norm_label": "handlemodaloptionmouseleave()"
+    },
+    {
+      "label": "handleModalSecondaryButtonMouseEnter()",
+      "file_type": "code",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L1205",
+      "id": "src_viewershared_handlemodalsecondarybuttonmouseenter",
+      "community": 0,
+      "norm_label": "handlemodalsecondarybuttonmouseenter()"
+    },
+    {
+      "label": "handleModalSecondaryButtonMouseLeave()",
+      "file_type": "code",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L1211",
+      "id": "src_viewershared_handlemodalsecondarybuttonmouseleave",
+      "community": 0,
+      "norm_label": "handlemodalsecondarybuttonmouseleave()"
+    },
+    {
+      "label": "handleModalPrimaryButtonMouseEnter()",
+      "file_type": "code",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L1217",
+      "id": "src_viewershared_handlemodalprimarybuttonmouseenter",
+      "community": 0,
+      "norm_label": "handlemodalprimarybuttonmouseenter()"
+    },
+    {
+      "label": "handleModalPrimaryButtonMouseLeave()",
+      "file_type": "code",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L1223",
+      "id": "src_viewershared_handlemodalprimarybuttonmouseleave",
+      "community": 0,
+      "norm_label": "handlemodalprimarybuttonmouseleave()"
+    },
+    {
+      "label": "coercePageNumber()",
+      "file_type": "code",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L1229",
+      "id": "src_viewershared_coercepagenumber",
+      "community": 0,
+      "norm_label": "coercepagenumber()"
+    },
+    {
+      "label": "coerceScrollMode()",
+      "file_type": "code",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L1239",
+      "id": "src_viewershared_coercescrollmode",
+      "community": 0,
+      "norm_label": "coercescrollmode()"
+    },
+    {
+      "label": "normalizeBookmarkPageIds()",
+      "file_type": "code",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L1241",
+      "id": "src_viewershared_normalizebookmarkpageids",
+      "community": 0,
+      "norm_label": "normalizebookmarkpageids()"
+    },
+    {
+      "label": "normalizeOutlinePathSegments()",
+      "file_type": "code",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L1294",
+      "id": "src_viewershared_normalizeoutlinepathsegments",
+      "community": 3,
+      "norm_label": "normalizeoutlinepathsegments()"
+    },
+    {
+      "label": "normalizeOutlineLooseKey()",
+      "file_type": "code",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L1301",
+      "id": "src_viewershared_normalizeoutlineloosekey",
+      "community": 3,
+      "norm_label": "normalizeoutlineloosekey()"
+    },
+    {
+      "label": "extractSourceLeafFromBookmark()",
+      "file_type": "code",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L1310",
+      "id": "src_viewershared_extractsourceleaffrombookmark",
+      "community": 3,
+      "norm_label": "extractsourceleaffrombookmark()"
+    },
+    {
+      "label": "buildOutlinePageLookup()",
+      "file_type": "code",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L1321",
+      "id": "src_viewershared_buildoutlinepagelookup",
+      "community": 0,
+      "norm_label": "buildoutlinepagelookup()"
+    },
+    {
+      "label": "resolveBookmarkPageFromOutlineLookup()",
+      "file_type": "code",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L1400",
+      "id": "src_viewershared_resolvebookmarkpagefromoutlinelookup",
+      "community": 3,
+      "norm_label": "resolvebookmarkpagefromoutlinelookup()"
+    },
+    {
+      "label": "escapeCSVValue()",
+      "file_type": "code",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L1464",
+      "id": "src_viewershared_escapecsvvalue",
+      "community": 0,
+      "norm_label": "escapecsvvalue()"
+    },
+    {
+      "label": "sanitizeFilename()",
+      "file_type": "code",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L1475",
+      "id": "src_viewershared_sanitizefilename",
+      "community": 0,
+      "norm_label": "sanitizefilename()"
+    },
+    {
+      "label": "dataURLToUint8Array()",
+      "file_type": "code",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L1481",
+      "id": "src_viewershared_dataurltouint8array",
+      "community": 0,
+      "norm_label": "dataurltouint8array()"
+    },
+    {
+      "label": "traceRegionPath()",
+      "file_type": "code",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L1492",
+      "id": "src_viewershared_traceregionpath",
+      "community": 0,
+      "norm_label": "traceregionpath()"
+    },
+    {
+      "label": "applyRegionMaskToCanvasContext()",
+      "file_type": "code",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L1506",
+      "id": "src_viewershared_applyregionmasktocanvascontext",
+      "community": 0,
+      "norm_label": "applyregionmasktocanvascontext()"
+    },
+    {
+      "label": "normalizeName()",
+      "file_type": "code",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L1561",
+      "id": "src_viewershared_normalizename",
+      "community": 11,
+      "norm_label": "normalizename()"
+    },
+    {
+      "label": "hasNameConflict()",
+      "file_type": "code",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L1566",
+      "id": "src_viewershared_hasnameconflict",
+      "community": 11,
+      "norm_label": "hasnameconflict()"
+    },
+    {
+      "label": "ZOOM_MODE_LABELS",
+      "file_type": "code",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L1591",
+      "id": "src_viewershared_zoom_mode_labels",
+      "community": 0,
+      "norm_label": "zoom_mode_labels"
+    },
+    {
+      "label": "ZOOM_MODE_DESCRIPTIONS",
+      "file_type": "code",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L1598",
+      "id": "src_viewershared_zoom_mode_descriptions",
+      "community": 0,
+      "norm_label": "zoom_mode_descriptions"
+    },
+    {
+      "label": "ZOOM_MODE_OPTIONS",
+      "file_type": "code",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L1605",
+      "id": "src_viewershared_zoom_mode_options",
+      "community": 0,
+      "norm_label": "zoom_mode_options"
+    },
+    {
+      "label": "generateUUID()",
+      "file_type": "code",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L1634",
+      "id": "src_viewershared_generateuuid",
+      "community": 2,
+      "norm_label": "generateuuid()"
+    },
+    {
+      "label": "getPDFId()",
+      "file_type": "code",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L1640",
+      "id": "src_viewershared_getpdfid",
+      "community": 0,
+      "norm_label": "getpdfid()"
+    },
+    {
+      "label": "loadPDFData()",
+      "file_type": "code",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L1646",
+      "id": "src_viewershared_loadpdfdata",
+      "community": 0,
+      "norm_label": "loadpdfdata()"
+    },
+    {
+      "label": "savePDFData()",
+      "file_type": "code",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L1662",
+      "id": "src_viewershared_savepdfdata",
+      "community": 0,
+      "norm_label": "savepdfdata()"
+    },
+    {
+      "label": "saveSurveyMarkers()",
+      "file_type": "code",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L1672",
+      "id": "src_viewershared_savesurveymarkers",
+      "community": 0,
+      "norm_label": "savesurveymarkers()"
+    },
+    {
+      "label": "saveAnnotationsByPage()",
+      "file_type": "code",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L1683",
+      "id": "src_viewershared_saveannotationsbypage",
+      "community": 0,
+      "norm_label": "saveannotationsbypage()"
+    },
+    {
+      "label": "loadAnnotationsByPage()",
+      "file_type": "code",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L1710",
+      "id": "src_viewershared_loadannotationsbypage",
+      "community": 0,
+      "norm_label": "loadannotationsbypage()"
+    },
+    {
+      "label": "cloudRenderCacheKey()",
+      "file_type": "code",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L1722",
+      "id": "src_viewershared_cloudrendercachekey",
+      "community": 7,
+      "norm_label": "cloudrendercachekey()"
+    },
+    {
+      "label": "countAnnotationPageObjects()",
+      "file_type": "code",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L1724",
+      "id": "src_viewershared_countannotationpageobjects",
+      "community": 0,
+      "norm_label": "countannotationpageobjects()"
+    },
+    {
+      "label": "summarizeAnnotationCountsForSaveExport()",
+      "file_type": "code",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L1729",
+      "id": "src_viewershared_summarizeannotationcountsforsaveexport",
+      "community": 0,
+      "norm_label": "summarizeannotationcountsforsaveexport()"
+    },
+    {
+      "label": "PDF_IMPORTED_EDIT_MARKER_KEYS",
+      "file_type": "code",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L1757",
+      "id": "src_viewershared_pdf_imported_edit_marker_keys",
+      "community": 0,
+      "norm_label": "pdf_imported_edit_marker_keys"
+    },
+    {
+      "label": "isPdfImportedAnnotationObject()",
+      "file_type": "code",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L1764",
+      "id": "src_viewershared_ispdfimportedannotationobject",
+      "community": 6,
+      "norm_label": "ispdfimportedannotationobject()"
+    },
+    {
+      "label": "getPdfImportedAnnotationKey()",
+      "file_type": "code",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L1766",
+      "id": "src_viewershared_getpdfimportedannotationkey",
+      "community": 0,
+      "norm_label": "getpdfimportedannotationkey()"
+    },
+    {
+      "label": "sanitizePdfImportedObjectForEditCompare()",
+      "file_type": "code",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L1773",
+      "id": "src_viewershared_sanitizepdfimportedobjectforeditcompare",
+      "community": 6,
+      "norm_label": "sanitizepdfimportedobjectforeditcompare()"
+    },
+    {
+      "label": "getPdfImportedEditComparable()",
+      "file_type": "code",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L1786",
+      "id": "src_viewershared_getpdfimportededitcomparable",
+      "community": 6,
+      "norm_label": "getpdfimportededitcomparable()"
+    },
+    {
+      "label": "shouldStampPdfImportedEditStateForSource()",
+      "file_type": "code",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L1794",
+      "id": "src_viewershared_shouldstamppdfimportededitstateforsource",
+      "community": 6,
+      "norm_label": "shouldstamppdfimportededitstateforsource()"
+    },
+    {
+      "label": "markEditedImportedPdfAnnotationsOnPage()",
+      "file_type": "code",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L1809",
+      "id": "src_viewershared_markeditedimportedpdfannotationsonpage",
+      "community": 9,
+      "norm_label": "markeditedimportedpdfannotationsonpage()"
+    },
+    {
+      "label": "saveCloudRenderAnnotationsByPage()",
+      "file_type": "code",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L1852",
+      "id": "src_viewershared_savecloudrenderannotationsbypage",
+      "community": 7,
+      "norm_label": "savecloudrenderannotationsbypage()"
+    },
+    {
+      "label": "loadCloudRenderAnnotationsByPage()",
+      "file_type": "code",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L1869",
+      "id": "src_viewershared_loadcloudrenderannotationsbypage",
+      "community": 7,
+      "norm_label": "loadcloudrenderannotationsbypage()"
+    },
+    {
+      "label": "loadSurveyMarkers()",
+      "file_type": "code",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L1884",
+      "id": "src_viewershared_loadsurveymarkers",
+      "community": 0,
+      "norm_label": "loadsurveymarkers()"
+    },
+    {
+      "label": "saveCallouts()",
+      "file_type": "code",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L1909",
+      "id": "src_viewershared_savecallouts",
+      "community": 0,
+      "norm_label": "savecallouts()"
+    },
+    {
+      "label": "loadCallouts()",
+      "file_type": "code",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L1928",
+      "id": "src_viewershared_loadcallouts",
+      "community": 0,
+      "norm_label": "loadcallouts()"
+    },
+    {
+      "label": "getModuleName()",
+      "file_type": "code",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L1945",
+      "id": "src_viewershared_getmodulename",
+      "community": 2,
+      "norm_label": "getmodulename()"
+    },
+    {
+      "label": "getCategoryName()",
+      "file_type": "code",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L1951",
+      "id": "src_viewershared_getcategoryname",
+      "community": 2,
+      "norm_label": "getcategoryname()"
+    },
+    {
+      "label": "escapeRegExp()",
+      "file_type": "code",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L1957",
+      "id": "src_viewershared_escaperegexp",
+      "community": 10,
+      "norm_label": "escaperegexp()"
+    },
+    {
+      "label": "generateDefaultSurveyMarkerName()",
+      "file_type": "code",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L1959",
+      "id": "src_viewershared_generatedefaultsurveymarkername",
+      "community": 10,
+      "norm_label": "generatedefaultsurveymarkername()"
+    },
+    {
+      "label": "getItemType()",
+      "file_type": "code",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L1981",
+      "id": "src_viewershared_getitemtype",
+      "community": 2,
+      "norm_label": "getitemtype()"
+    },
+    {
+      "label": "createItem()",
+      "file_type": "code",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L1986",
+      "id": "src_viewershared_createitem",
+      "community": 2,
+      "norm_label": "createitem()"
+    },
+    {
+      "label": "createAnnotation()",
+      "file_type": "code",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L2009",
+      "id": "src_viewershared_createannotation",
+      "community": 2,
+      "norm_label": "createannotation()"
+    },
+    {
+      "label": "getModuleDataKey()",
+      "file_type": "code",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L2032",
+      "id": "src_viewershared_getmoduledatakey",
+      "community": 0,
+      "norm_label": "getmoduledatakey()"
+    },
+    {
+      "label": "getModuleItems()",
+      "file_type": "code",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L2037",
+      "id": "src_viewershared_getmoduleitems",
+      "community": 0,
+      "norm_label": "getmoduleitems()"
+    },
+    {
+      "label": "filterAnnotationsByModule()",
+      "file_type": "code",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L2046",
+      "id": "src_viewershared_filterannotationsbymodule",
+      "community": 0,
+      "norm_label": "filterannotationsbymodule()"
+    },
+    {
+      "label": "categoryExists()",
+      "file_type": "code",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L2055",
+      "id": "src_viewershared_categoryexists",
+      "community": 0,
+      "norm_label": "categoryexists()"
+    },
+    {
+      "label": "transferItems()",
+      "file_type": "code",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L2062",
+      "id": "src_viewershared_transferitems",
+      "community": 0,
+      "norm_label": "transferitems()"
+    },
+    {
+      "label": "migrateLegacySurveyMarkers()",
+      "file_type": "code",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L2143",
+      "id": "src_viewershared_migratelegacysurveymarkers",
+      "community": 0,
+      "norm_label": "migratelegacysurveymarkers()"
+    }
+  ],
+  "links": [
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L51",
+      "weight": 1.0,
+      "source": "src_viewershared",
+      "target": "src_viewershared_appdebug",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L1506",
+      "weight": 1.0,
+      "source": "src_viewershared",
+      "target": "src_viewershared_applyregionmasktocanvascontext",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L642",
+      "weight": 1.0,
+      "source": "src_viewershared",
+      "target": "src_viewershared_buildhistoryrestoreaction",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L1321",
+      "weight": 1.0,
+      "source": "src_viewershared",
+      "target": "src_viewershared_buildoutlinepagelookup",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L2055",
+      "weight": 1.0,
+      "source": "src_viewershared",
+      "target": "src_viewershared_categoryexists",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L466",
+      "weight": 1.0,
+      "source": "src_viewershared",
+      "target": "src_viewershared_clampwheeldelta",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L587",
+      "weight": 1.0,
+      "source": "src_viewershared",
+      "target": "src_viewershared_clonehistorypayloadvalue",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L948",
+      "weight": 1.0,
+      "source": "src_viewershared",
+      "target": "src_viewershared_cloneoverlayrecorderpayload",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L1722",
+      "weight": 1.0,
+      "source": "src_viewershared",
+      "target": "src_viewershared_cloudrendercachekey",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L1229",
+      "weight": 1.0,
+      "source": "src_viewershared",
+      "target": "src_viewershared_coercepagenumber",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L263",
+      "weight": 1.0,
+      "source": "src_viewershared",
+      "target": "src_viewershared_coercepdfjszoompercent",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L1239",
+      "weight": 1.0,
+      "source": "src_viewershared",
+      "target": "src_viewershared_coercescrollmode",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L800",
+      "weight": 1.0,
+      "source": "src_viewershared",
+      "target": "src_viewershared_compacthistoryeventforlog",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L1724",
+      "weight": 1.0,
+      "source": "src_viewershared",
+      "target": "src_viewershared_countannotationpageobjects",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L2009",
+      "weight": 1.0,
+      "source": "src_viewershared",
+      "target": "src_viewershared_createannotation",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L1986",
+      "weight": 1.0,
+      "source": "src_viewershared",
+      "target": "src_viewershared_createitem",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L1481",
+      "weight": 1.0,
+      "source": "src_viewershared",
+      "target": "src_viewershared_dataurltouint8array",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L178",
+      "weight": 1.0,
+      "source": "src_viewershared",
+      "target": "src_viewershared_distancetosegment",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L339",
+      "weight": 1.0,
+      "source": "src_viewershared",
+      "target": "src_viewershared_ensurergbaopacity",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L1464",
+      "weight": 1.0,
+      "source": "src_viewershared",
+      "target": "src_viewershared_escapecsvvalue",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L1957",
+      "weight": 1.0,
+      "source": "src_viewershared",
+      "target": "src_viewershared_escaperegexp",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L1310",
+      "weight": 1.0,
+      "source": "src_viewershared",
+      "target": "src_viewershared_extractsourceleaffrombookmark",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L2046",
+      "weight": 1.0,
+      "source": "src_viewershared",
+      "target": "src_viewershared_filterannotationsbymodule",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L1959",
+      "weight": 1.0,
+      "source": "src_viewershared",
+      "target": "src_viewershared_generatedefaultsurveymarkername",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L1634",
+      "weight": 1.0,
+      "source": "src_viewershared",
+      "target": "src_viewershared_generateuuid",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L1121",
+      "weight": 1.0,
+      "source": "src_viewershared",
+      "target": "src_viewershared_getcategoryglyphlabel",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L1951",
+      "weight": 1.0,
+      "source": "src_viewershared",
+      "target": "src_viewershared_getcategoryname",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L1138",
+      "weight": 1.0,
+      "source": "src_viewershared",
+      "target": "src_viewershared_gethexfromcolor",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L1155",
+      "weight": 1.0,
+      "source": "src_viewershared",
+      "target": "src_viewershared_gethexfromentitycolor",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L544",
+      "weight": 1.0,
+      "source": "src_viewershared",
+      "target": "src_viewershared_gethistoryannotationid",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L553",
+      "weight": 1.0,
+      "source": "src_viewershared",
+      "target": "src_viewershared_gethistoryannotationtype",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L596",
+      "weight": 1.0,
+      "source": "src_viewershared",
+      "target": "src_viewershared_gethistoryannotationvisualbounds",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L509",
+      "weight": 1.0,
+      "source": "src_viewershared",
+      "target": "src_viewershared_gethistoryobjectdifftype",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L529",
+      "weight": 1.0,
+      "source": "src_viewershared",
+      "target": "src_viewershared_gethistoryobjectsignature",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L561",
+      "weight": 1.0,
+      "source": "src_viewershared",
+      "target": "src_viewershared_gethistorypathvisualbounds",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L1981",
+      "weight": 1.0,
+      "source": "src_viewershared",
+      "target": "src_viewershared_getitemtype",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L2032",
+      "weight": 1.0,
+      "source": "src_viewershared",
+      "target": "src_viewershared_getmoduledatakey",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L2037",
+      "weight": 1.0,
+      "source": "src_viewershared",
+      "target": "src_viewershared_getmoduleitems",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L1945",
+      "weight": 1.0,
+      "source": "src_viewershared",
+      "target": "src_viewershared_getmodulename",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L453",
+      "weight": 1.0,
+      "source": "src_viewershared",
+      "target": "src_viewershared_getnormalizedwheeldeltas",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L1172",
+      "weight": 1.0,
+      "source": "src_viewershared",
+      "target": "src_viewershared_getopacityfromentitycolor",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L187",
+      "weight": 1.0,
+      "source": "src_viewershared",
+      "target": "src_viewershared_getpathpointdistance",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L1640",
+      "weight": 1.0,
+      "source": "src_viewershared",
+      "target": "src_viewershared_getpdfid",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L1766",
+      "weight": 1.0,
+      "source": "src_viewershared",
+      "target": "src_viewershared_getpdfimportedannotationkey",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L1786",
+      "weight": 1.0,
+      "source": "src_viewershared",
+      "target": "src_viewershared_getpdfimportededitcomparable",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L976",
+      "weight": 1.0,
+      "source": "src_viewershared",
+      "target": "src_viewershared_getpdfjsoverlayprefetchpages",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L248",
+      "weight": 1.0,
+      "source": "src_viewershared",
+      "target": "src_viewershared_getpdfjstextmarkupmode",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L444",
+      "weight": 1.0,
+      "source": "src_viewershared",
+      "target": "src_viewershared_getpdfjszoomawarescrollgain",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L138",
+      "weight": 1.0,
+      "source": "src_viewershared",
+      "target": "src_viewershared_getselectdeleteonlytextmarkupbounds",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L432",
+      "weight": 1.0,
+      "source": "src_viewershared",
+      "target": "src_viewershared_getsmoothpdfjswheelzoom",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L56",
+      "weight": 1.0,
+      "source": "src_viewershared",
+      "target": "src_viewershared_getwindowtrackpadinteractiondebugsavepayload",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L1189",
+      "weight": 1.0,
+      "source": "src_viewershared",
+      "target": "src_viewershared_handlemodaloptionmouseenter",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L1195",
+      "weight": 1.0,
+      "source": "src_viewershared",
+      "target": "src_viewershared_handlemodaloptionmouseleave",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L1217",
+      "weight": 1.0,
+      "source": "src_viewershared",
+      "target": "src_viewershared_handlemodalprimarybuttonmouseenter",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L1223",
+      "weight": 1.0,
+      "source": "src_viewershared",
+      "target": "src_viewershared_handlemodalprimarybuttonmouseleave",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L1205",
+      "weight": 1.0,
+      "source": "src_viewershared",
+      "target": "src_viewershared_handlemodalsecondarybuttonmouseenter",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L1211",
+      "weight": 1.0,
+      "source": "src_viewershared",
+      "target": "src_viewershared_handlemodalsecondarybuttonmouseleave",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L484",
+      "weight": 1.0,
+      "source": "src_viewershared",
+      "target": "src_viewershared_hashhistorystring",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L1566",
+      "weight": 1.0,
+      "source": "src_viewershared",
+      "target": "src_viewershared_hasnameconflict",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L291",
+      "weight": 1.0,
+      "source": "src_viewershared",
+      "target": "src_viewershared_haspdfjspdfsurface",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L293",
+      "weight": 1.0,
+      "source": "src_viewershared",
+      "target": "src_viewershared_hasvisiblepdfjsspinner",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L326",
+      "weight": 1.0,
+      "source": "src_viewershared",
+      "target": "src_viewershared_hextorgba",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L706",
+      "weight": 1.0,
+      "source": "src_viewershared",
+      "target": "src_viewershared_inferhistoryupdatetype",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L1764",
+      "weight": 1.0,
+      "source": "src_viewershared",
+      "target": "src_viewershared_ispdfimportedannotationobject",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L234",
+      "weight": 1.0,
+      "source": "src_viewershared",
+      "target": "src_viewershared_ispointonselectdeleteonlytextmarkup",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L131",
+      "weight": 1.0,
+      "source": "src_viewershared",
+      "target": "src_viewershared_isselectdeleteonlyimportedtextmarkuptype",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L274",
+      "weight": 1.0,
+      "source": "src_viewershared",
+      "target": "src_viewershared_issuspiciouswheelzoompercent",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L1710",
+      "weight": 1.0,
+      "source": "src_viewershared",
+      "target": "src_viewershared_loadannotationsbypage",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L1928",
+      "weight": 1.0,
+      "source": "src_viewershared",
+      "target": "src_viewershared_loadcallouts",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L1869",
+      "weight": 1.0,
+      "source": "src_viewershared",
+      "target": "src_viewershared_loadcloudrenderannotationsbypage",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L1646",
+      "weight": 1.0,
+      "source": "src_viewershared",
+      "target": "src_viewershared_loadpdfdata",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L1884",
+      "weight": 1.0,
+      "source": "src_viewershared",
+      "target": "src_viewershared_loadsurveymarkers",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L835",
+      "weight": 1.0,
+      "source": "src_viewershared",
+      "target": "src_viewershared_mapyjsmeta",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L1809",
+      "weight": 1.0,
+      "source": "src_viewershared",
+      "target": "src_viewershared_markeditedimportedpdfannotationsonpage",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L1008",
+      "weight": 1.0,
+      "source": "src_viewershared",
+      "target": "src_viewershared_measurepdfjspagehostscale",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L986",
+      "weight": 1.0,
+      "source": "src_viewershared",
+      "target": "src_viewershared_measurepdfjspagescale",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L2143",
+      "weight": 1.0,
+      "source": "src_viewershared",
+      "target": "src_viewershared_migratelegacysurveymarkers",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L47",
+      "weight": 1.0,
+      "source": "src_viewershared",
+      "target": "src_viewershared_native_text_markup_tools",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L1241",
+      "weight": 1.0,
+      "source": "src_viewershared",
+      "target": "src_viewershared_normalizebookmarkpageids",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L688",
+      "weight": 1.0,
+      "source": "src_viewershared",
+      "target": "src_viewershared_normalizehistoryactiontype",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L679",
+      "weight": 1.0,
+      "source": "src_viewershared",
+      "target": "src_viewershared_normalizehistorylanelabel",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L1026",
+      "weight": 1.0,
+      "source": "src_viewershared",
+      "target": "src_viewershared_normalizeinteractionmeasuredscale",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L1561",
+      "weight": 1.0,
+      "source": "src_viewershared",
+      "target": "src_viewershared_normalizename",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L1301",
+      "weight": 1.0,
+      "source": "src_viewershared",
+      "target": "src_viewershared_normalizeoutlineloosekey",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L1294",
+      "weight": 1.0,
+      "source": "src_viewershared",
+      "target": "src_viewershared_normalizeoutlinepathsegments",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L1094",
+      "weight": 1.0,
+      "source": "src_viewershared",
+      "target": "src_viewershared_normalizesurveymarkercolor",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L420",
+      "weight": 1.0,
+      "source": "src_viewershared",
+      "target": "src_viewershared_overlay_lag_recorder_work_categories",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L1046",
+      "weight": 1.0,
+      "source": "src_viewershared",
+      "target": "src_viewershared_parsecsstransformscalex",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L1757",
+      "weight": 1.0,
+      "source": "src_viewershared",
+      "target": "src_viewershared_pdf_imported_edit_marker_keys",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L282",
+      "weight": 1.0,
+      "source": "src_viewershared",
+      "target": "src_viewershared_pdfjs_pdf_surface_selector",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L969",
+      "weight": 1.0,
+      "source": "src_viewershared",
+      "target": "src_viewershared_percentileoverlayrecorder",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L868",
+      "weight": 1.0,
+      "source": "src_viewershared",
+      "target": "src_viewershared_readdocumentsyncstructuraldisabled",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L846",
+      "weight": 1.0,
+      "source": "src_viewershared",
+      "target": "src_viewershared_readhistorydebugconsoleenabled",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L927",
+      "weight": 1.0,
+      "source": "src_viewershared",
+      "target": "src_viewershared_readoverlaylagrecorderautoenabled",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L906",
+      "weight": 1.0,
+      "source": "src_viewershared",
+      "target": "src_viewershared_readpdfjsduallayerenabled",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L894",
+      "weight": 1.0,
+      "source": "src_viewershared",
+      "target": "src_viewershared_readpdfjslivestableoverlayenabled",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L1400",
+      "weight": 1.0,
+      "source": "src_viewershared",
+      "target": "src_viewershared_resolvebookmarkpagefromoutlinelookup",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L49",
+      "weight": 1.0,
+      "source": "src_viewershared",
+      "target": "src_viewershared_review_tool_ids",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L478",
+      "weight": 1.0,
+      "source": "src_viewershared",
+      "target": "src_viewershared_roundhistorydebugnumber",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L963",
+      "weight": 1.0,
+      "source": "src_viewershared",
+      "target": "src_viewershared_roundoverlayrecordervalue",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L1475",
+      "weight": 1.0,
+      "source": "src_viewershared",
+      "target": "src_viewershared_sanitizefilename",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L1773",
+      "weight": 1.0,
+      "source": "src_viewershared",
+      "target": "src_viewershared_sanitizepdfimportedobjectforeditcompare",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L1683",
+      "weight": 1.0,
+      "source": "src_viewershared",
+      "target": "src_viewershared_saveannotationsbypage",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L1909",
+      "weight": 1.0,
+      "source": "src_viewershared",
+      "target": "src_viewershared_savecallouts",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L1852",
+      "weight": 1.0,
+      "source": "src_viewershared",
+      "target": "src_viewershared_savecloudrenderannotationsbypage",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L1662",
+      "weight": 1.0,
+      "source": "src_viewershared",
+      "target": "src_viewershared_savepdfdata",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L1672",
+      "weight": 1.0,
+      "source": "src_viewershared",
+      "target": "src_viewershared_savesurveymarkers",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L48",
+      "weight": 1.0,
+      "source": "src_viewershared",
+      "target": "src_viewershared_select_delete_only_imported_text_markup_types",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L786",
+      "weight": 1.0,
+      "source": "src_viewershared",
+      "target": "src_viewershared_shouldechohistorydebugevent",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L780",
+      "weight": 1.0,
+      "source": "src_viewershared",
+      "target": "src_viewershared_shouldscopecallouthistoryrestore",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L1794",
+      "weight": 1.0,
+      "source": "src_viewershared",
+      "target": "src_viewershared_shouldstamppdfimportededitstateforsource",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L1729",
+      "weight": 1.0,
+      "source": "src_viewershared",
+      "target": "src_viewershared_summarizeannotationcountsforsaveexport",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L723",
+      "weight": 1.0,
+      "source": "src_viewershared",
+      "target": "src_viewershared_summarizehistoryactionforlog",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L759",
+      "weight": 1.0,
+      "source": "src_viewershared",
+      "target": "src_viewershared_summarizehistorymetaforlog",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L493",
+      "weight": 1.0,
+      "source": "src_viewershared",
+      "target": "src_viewershared_tohistoryobjectdebug",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L1492",
+      "weight": 1.0,
+      "source": "src_viewershared",
+      "target": "src_viewershared_traceregionpath",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L2062",
+      "weight": 1.0,
+      "source": "src_viewershared",
+      "target": "src_viewershared_transferitems",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L881",
+      "weight": 1.0,
+      "source": "src_viewershared",
+      "target": "src_viewershared_writedocumentsyncstructuraldisabled",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L855",
+      "weight": 1.0,
+      "source": "src_viewershared",
+      "target": "src_viewershared_writehistorydebugconsoleenabled",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L939",
+      "weight": 1.0,
+      "source": "src_viewershared",
+      "target": "src_viewershared_writeoverlaylagrecorderautoenabled",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L918",
+      "weight": 1.0,
+      "source": "src_viewershared",
+      "target": "src_viewershared_writepdfjsduallayerenabled",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L118",
+      "weight": 1.0,
+      "source": "src_viewershared",
+      "target": "src_viewershared_writesavelogextrafiles",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L1598",
+      "weight": 1.0,
+      "source": "src_viewershared",
+      "target": "src_viewershared_zoom_mode_descriptions",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L1591",
+      "weight": 1.0,
+      "source": "src_viewershared",
+      "target": "src_viewershared_zoom_mode_labels",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L1605",
+      "weight": 1.0,
+      "source": "src_viewershared",
+      "target": "src_viewershared_zoom_mode_options",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L396",
+      "weight": 1.0,
+      "source": "src_viewershared",
+      "target": "src_viewershared_zoom_only_interaction_reasons",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L1840",
+      "weight": 1.0,
+      "source": "src_viewershared_markeditedimportedpdfannotationsonpage",
+      "target": "src_viewershared_appdebug",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L139",
+      "weight": 1.0,
+      "source": "src_viewershared_getselectdeleteonlytextmarkupbounds",
+      "target": "src_viewershared_isselectdeleteonlyimportedtextmarkuptype",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L235",
+      "weight": 1.0,
+      "source": "src_viewershared_ispointonselectdeleteonlytextmarkup",
+      "target": "src_viewershared_getselectdeleteonlytextmarkupbounds",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L240",
+      "weight": 1.0,
+      "source": "src_viewershared_ispointonselectdeleteonlytextmarkup",
+      "target": "src_viewershared_getpathpointdistance",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L352",
+      "weight": 1.0,
+      "source": "src_viewershared_ensurergbaopacity",
+      "target": "src_viewershared_hextorgba",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L1115",
+      "weight": 1.0,
+      "source": "src_viewershared_normalizesurveymarkercolor",
+      "target": "src_viewershared_hextorgba",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L634",
+      "weight": 1.0,
+      "source": "src_viewershared_gethistoryannotationvisualbounds",
+      "target": "src_viewershared_roundhistorydebugnumber",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L500",
+      "weight": 1.0,
+      "source": "src_viewershared_tohistoryobjectdebug",
+      "target": "src_viewershared_roundhistorydebugnumber",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L650",
+      "weight": 1.0,
+      "source": "src_viewershared_buildhistoryrestoreaction",
+      "target": "src_viewershared_gethistoryannotationid",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L748",
+      "weight": 1.0,
+      "source": "src_viewershared_summarizehistoryactionforlog",
+      "target": "src_viewershared_gethistoryannotationid",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L713",
+      "weight": 1.0,
+      "source": "src_viewershared_inferhistoryupdatetype",
+      "target": "src_viewershared_gethistoryannotationtype",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L747",
+      "weight": 1.0,
+      "source": "src_viewershared_summarizehistoryactionforlog",
+      "target": "src_viewershared_gethistoryannotationtype",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L622",
+      "weight": 1.0,
+      "source": "src_viewershared_gethistoryannotationvisualbounds",
+      "target": "src_viewershared_gethistorypathvisualbounds",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L645",
+      "weight": 1.0,
+      "source": "src_viewershared_buildhistoryrestoreaction",
+      "target": "src_viewershared_clonehistorypayloadvalue",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L754",
+      "weight": 1.0,
+      "source": "src_viewershared_summarizehistoryactionforlog",
+      "target": "src_viewershared_clonehistorypayloadvalue",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L753",
+      "weight": 1.0,
+      "source": "src_viewershared_summarizehistoryactionforlog",
+      "target": "src_viewershared_gethistoryannotationvisualbounds",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L755",
+      "weight": 1.0,
+      "source": "src_viewershared_summarizehistoryactionforlog",
+      "target": "src_viewershared_buildhistoryrestoreaction",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L813",
+      "weight": 1.0,
+      "source": "src_viewershared_compacthistoryeventforlog",
+      "target": "src_viewershared_normalizehistorylanelabel",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L807",
+      "weight": 1.0,
+      "source": "src_viewershared_compacthistoryeventforlog",
+      "target": "src_viewershared_normalizehistoryactiontype",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L743",
+      "weight": 1.0,
+      "source": "src_viewershared_summarizehistoryactionforlog",
+      "target": "src_viewershared_normalizehistoryactiontype",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L767",
+      "weight": 1.0,
+      "source": "src_viewershared_summarizehistorymetaforlog",
+      "target": "src_viewershared_normalizehistoryactiontype",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L742",
+      "weight": 1.0,
+      "source": "src_viewershared_summarizehistoryactionforlog",
+      "target": "src_viewershared_inferhistoryupdatetype",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L1402",
+      "weight": 1.0,
+      "source": "src_viewershared_resolvebookmarkpagefromoutlinelookup",
+      "target": "src_viewershared_normalizeoutlinepathsegments",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L1421",
+      "weight": 1.0,
+      "source": "src_viewershared_resolvebookmarkpagefromoutlinelookup",
+      "target": "src_viewershared_normalizeoutlineloosekey",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L1436",
+      "weight": 1.0,
+      "source": "src_viewershared_resolvebookmarkpagefromoutlinelookup",
+      "target": "src_viewershared_extractsourceleaffrombookmark",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L1577",
+      "weight": 1.0,
+      "source": "src_viewershared_hasnameconflict",
+      "target": "src_viewershared_normalizename",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L2010",
+      "weight": 1.0,
+      "source": "src_viewershared_createannotation",
+      "target": "src_viewershared_generateuuid",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L1987",
+      "weight": 1.0,
+      "source": "src_viewershared_createitem",
+      "target": "src_viewershared_generateuuid",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L1872",
+      "weight": 1.0,
+      "source": "src_viewershared_loadcloudrenderannotationsbypage",
+      "target": "src_viewershared_cloudrendercachekey",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L1855",
+      "weight": 1.0,
+      "source": "src_viewershared_savecloudrenderannotationsbypage",
+      "target": "src_viewershared_cloudrendercachekey",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L1795",
+      "weight": 1.0,
+      "source": "src_viewershared_shouldstamppdfimportededitstateforsource",
+      "target": "src_viewershared_ispdfimportedannotationobject",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L1788",
+      "weight": 1.0,
+      "source": "src_viewershared_getpdfimportededitcomparable",
+      "target": "src_viewershared_sanitizepdfimportedobjectforeditcompare",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L1806",
+      "weight": 1.0,
+      "source": "src_viewershared_shouldstamppdfimportededitstateforsource",
+      "target": "src_viewershared_getpdfimportededitcomparable",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L1989",
+      "weight": 1.0,
+      "source": "src_viewershared_createitem",
+      "target": "src_viewershared_getmodulename",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L1982",
+      "weight": 1.0,
+      "source": "src_viewershared_getitemtype",
+      "target": "src_viewershared_getcategoryname",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L1961",
+      "weight": 1.0,
+      "source": "src_viewershared_generatedefaultsurveymarkername",
+      "target": "src_viewershared_escaperegexp",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/viewerShared.js",
+      "source_location": "L1988",
+      "weight": 1.0,
+      "source": "src_viewershared_createitem",
+      "target": "src_viewershared_getitemtype",
+      "confidence_score": 1.0
+    }
+  ],
+  "hyperedges": [],
+  "built_at_commit": "ad564d672c4f44b4458e903daf88bfae7907561c"
+}

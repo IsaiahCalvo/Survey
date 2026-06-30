@@ -1087,7 +1087,7 @@ const RegionSelectionTool = ({
 
         const mergedRegion = {
           ...newRegion,
-          regionId: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+          regionId: crypto.randomUUID(),
           shapeType: 'polygon', // Union result is typically a polygon
           coordinates: mergedCoords
         };
@@ -1139,7 +1139,7 @@ const RegionSelectionTool = ({
             const isRectangular = region.shapeType === 'rectangular' && polygon.length === 5;
             resultRegions.push({
               ...region,
-              regionId: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+              regionId: crypto.randomUUID(),
               shapeType: isRectangular ? 'rectangular' : 'polygon',
               coordinates: simplifyPolygon(coords, 1.0)
             });
@@ -1653,7 +1653,7 @@ const RegionSelectionTool = ({
         `w=${currentRect.width.toFixed(2)}, h=${currentRect.height.toFixed(2)}, mode=${effectiveSelectionMode}`
       );
       const newRegion = {
-        regionId: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+        regionId: crypto.randomUUID(),
         pageId: currentPageId,
         shapeType: 'rectangular',
         operation: effectiveSelectionMode,
@@ -1698,7 +1698,7 @@ const RegionSelectionTool = ({
         `points=${polygonPoints.length}, mode=${effectiveSelectionMode}`
       );
       const newRegion = {
-        regionId: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+        regionId: crypto.randomUUID(),
         pageId: currentPageId,
         shapeType: 'polygon',
         operation: effectiveSelectionMode,
@@ -2113,7 +2113,7 @@ const RegionSelectionTool = ({
 
         return {
           ...r,
-          regionId: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}-${Math.random().toString(36).substr(2, 5)}`,
+          regionId: crypto.randomUUID(),
           coordinates: newCoords,
           pageId: currentPageId
         };
@@ -2185,7 +2185,7 @@ const RegionSelectionTool = ({
         };
 
         const newRegion = {
-          regionId: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+          regionId: crypto.randomUUID(),
           pageId: currentPageId,
           shapeType: 'polygon',
           operation: REGION_OPERATIONS.ADD,
@@ -2280,7 +2280,7 @@ const RegionSelectionTool = ({
       return {
         ...sourceRegion,
         coordinates: newCoords,
-        regionId: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}-${Math.random().toString(36).substr(2, 5)}`
+        regionId: crypto.randomUUID()
       };
     });
 

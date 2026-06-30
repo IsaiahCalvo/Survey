@@ -1707,7 +1707,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
   const hubDuplicateDocuments = (docs) => {
     const list = Array.isArray(docs) ? docs.filter(Boolean) : [];
     if (list.length === 0) return;
-    const copies = list.map(d => ({ ...d, id: `${Date.now()}-${Math.random()}`, name: `${d.name} (Copy)` }));
+    const copies = list.map(d => ({ ...d, id: crypto.randomUUID(), name: `${d.name} (Copy)` }));
     setDocuments(prev => [...copies, ...prev]);
   };
 
@@ -1729,7 +1729,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
       // behavior. Wire a real copy primitive if/when one is added.
       const copies = list.map(d => ({
         ...d,
-        id: `${Date.now()}-${Math.random()}`,
+        id: crypto.randomUUID(),
         name: `${d.name} (Copy)`,
         projectId,
         project_id: projectId,

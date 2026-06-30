@@ -117,7 +117,7 @@ function convertImportedCalloutToCalloutState(importedObj, pageNumber, pageWidth
   }
 
   const idSuffix = importedObj.pdfAnnotationId
-    || Math.random().toString(36).slice(2, 10);
+    || crypto.randomUUID();
 
   const result = {
     id: `callout-pdf-${pageNumber}-${idSuffix}`,

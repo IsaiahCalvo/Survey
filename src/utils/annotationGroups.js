@@ -17,16 +17,11 @@
  * Design reference: docs/superpowers/specs/2026-04-18-group-ungroup-design.md
  */
 
-let _groupIdCounter = 0;
-
 /**
- * Mint a fresh, page-unique-ish group id. Random + monotonic counter to
- * avoid collisions if two groups are minted in the same millisecond.
+ * Mint a fresh group id.
  */
 export function generateGroupId() {
-  _groupIdCounter = (_groupIdCounter + 1) % 1e6;
-  const rand = Math.random().toString(36).slice(2, 9);
-  return `grp-${Date.now().toString(36)}-${_groupIdCounter}-${rand}`;
+  return `grp-${crypto.randomUUID()}`;
 }
 
 /**
