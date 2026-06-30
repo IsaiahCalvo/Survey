@@ -20770,7 +20770,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       pageNumber: match.pageNumber,
       hasBounds: Boolean(match.bounds),
       currentScale: scaleRef.current,
-      targetRenderer: usePdfjsRenderer ? 'pdfjs' : 'pdfjs',
+      targetRenderer: 'pdfjs',
       pdfDocumentKey: pdfSearchDocumentKey
     });
 
@@ -27953,14 +27953,14 @@ ${pageBlocks}
 
           {/* PDF Container - Optimized */}
           <div
-            ref={usePdfjsRenderer ? pdfjsWrapperRef : containerRef}
+            ref={pdfjsWrapperRef}
             onMouseDown={usePdfjsRenderer ? undefined : handleMouseDown}
             onMouseMove={usePdfjsRenderer ? undefined : handleMouseMove}
             onMouseUp={usePdfjsRenderer ? undefined : handleMouseUp}
             onMouseLeave={usePdfjsRenderer ? undefined : handleMouseUp}
-            onWheelCapture={usePdfjsRenderer ? handlePdfjsWrapperWheel : undefined}
-            onPointerDown={usePdfjsRenderer ? handlePdfjsWrapperPointerDown : undefined}
-            onPointerMove={usePdfjsRenderer ? handlePdfjsWrapperPointerMove : undefined}
+            onWheelCapture={handlePdfjsWrapperWheel}
+            onPointerDown={handlePdfjsWrapperPointerDown}
+            onPointerMove={handlePdfjsWrapperPointerMove}
             style={containerStyle}
             data-testid="pdf-container"
           >
