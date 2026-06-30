@@ -3662,7 +3662,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     if (!clipboardCallout) return;
 
     // Generate new ID
-    const newId = `callout-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    const newId = `callout-${crypto.randomUUID()}`;
 
     // Create new callout with offset position
     const offsetX = 0.05; // 5% offset
@@ -11536,7 +11536,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       const newBookmark = {
         ...bookmark,
         name: trimmedName,
-        id: bookmark?.id || `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+        id: bookmark?.id || crypto.randomUUID(),
         parentId: bookmark?.parentId || null,
         children: bookmark?.children || []
       };
@@ -11641,7 +11641,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       const newSpace = {
         ...space,
         name: finalName,
-        id: space?.id || `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+        id: space?.id || crypto.randomUUID(),
         assignedPages: Array.isArray(space?.assignedPages) ? space.assignedPages : []
       };
       return [...prev, newSpace];
@@ -13833,7 +13833,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       const clientChangeSetId =
         pendingPrior?.clientChangeSetId
         ?? ((typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID()
-          : `ccs-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+          : `ccs-${crypto.randomUUID()}`);
       const submitArgs = {
         supabaseClient: supabase,
         documentId,
@@ -14276,7 +14276,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
           }
         } else {
           // Create new surveyMarker for new row
-          const newSurveyMarkerId = `surveyMarker-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`;
+          const newSurveyMarkerId = `surveyMarker-${crypto.randomUUID()}`;
 
           const checklistResponses = {};
           Object.entries(colToChecklistId).forEach(([colIndex, checklistId]) => {
@@ -14930,7 +14930,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
           }
         } else {
           // Create new surveyMarker for new row
-          const newSurveyMarkerId = `surveyMarker-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`;
+          const newSurveyMarkerId = `surveyMarker-${crypto.randomUUID()}`;
 
           const checklistResponses = {};
           Object.entries(colToChecklistId).forEach(([colIndex, checklistId]) => {
@@ -15366,7 +15366,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
               newChecklist.push(existingItemsById[col.existingItemId]);
             } else {
               // New item - create it
-              const newItemId = `item-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`;
+              const newItemId = `item-${crypto.randomUUID()}`;
               newChecklist.push({
                 id: newItemId,
                 text: col.text
@@ -15379,7 +15379,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
           // Fallback: append new columns at end (legacy behavior)
           const sortedColumns = [...catData.columns].sort((a, b) => a.columnIndex - b.columnIndex);
           for (const newCol of sortedColumns) {
-            const newItemId = `item-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`;
+            const newItemId = `item-${crypto.randomUUID()}`;
             cat.checklist = cat.checklist || [];
             cat.checklist.push({
               id: newItemId,
@@ -15463,7 +15463,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
               newChecklist.push(existingItemsById[col.existingItemId]);
             } else {
               // New item - create it
-              const newItemId = `item-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`;
+              const newItemId = `item-${crypto.randomUUID()}`;
               newChecklist.push({
                 id: newItemId,
                 text: col.text
@@ -15476,7 +15476,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
           // Fallback: append new columns at end (legacy behavior)
           const sortedColumns = [...catData.columns].sort((a, b) => a.columnIndex - b.columnIndex);
           for (const newCol of sortedColumns) {
-            const newItemId = `item-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`;
+            const newItemId = `item-${crypto.randomUUID()}`;
             cat.checklist = cat.checklist || [];
             cat.checklist.push({
               id: newItemId,
@@ -23840,7 +23840,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       } catch (_) { /* fallthrough to +20 offset */ }
 
       for (const c of clones) {
-        c.pdfAnnotationId = `paste-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+        c.pdfAnnotationId = `paste-${crypto.randomUUID()}`;
         if (c.id && typeof c.id === 'string') {
           c.id = `${c.id}-paste-${Date.now().toString(36)}`;
         }
@@ -23863,7 +23863,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     // UX: clone needs a fresh id so the SVG renderer and selection path
     // don't treat it as the same shape as the source. Keep `isPdfImported`
     // so imported shapes paste back through the same visual path.
-    pasted.pdfAnnotationId = `paste-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    pasted.pdfAnnotationId = `paste-${crypto.randomUUID()}`;
     if (pasted.id && typeof pasted.id === 'string') {
       pasted.id = `${pasted.id}-paste-${Date.now().toString(36)}`;
     }
@@ -25276,7 +25276,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     }
 
     // Create a unique ID for this surveyMarker
-    const annotationId = `surveyMarker-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    const annotationId = `surveyMarker-${crypto.randomUUID()}`;
     const moduleName = getModuleName(selectedTemplate, effectiveModuleId);
 
 
@@ -30955,7 +30955,7 @@ ${pageBlocks}
                                   }
 
                                   if (bounds) {
-                                    const annotationId = `surveyMarker-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+                                    const annotationId = `surveyMarker-${crypto.randomUUID()}`;
                                     const pageNum = sourceSurveyMarker?.pageNumber || destAnnotation?.pageNumber || 1;
 
                                     newSurveyMarkers[annotationId] = {
@@ -31036,7 +31036,7 @@ ${pageBlocks}
                                   const sourceCategoryName = getCategoryName(sourceTemplate, hModuleId, h.categoryId);
                                   const destCategory = destModule?.categories?.find(c => c.name === sourceCategoryName);
 
-                                  const newId = `surveyMarker-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+                                  const newId = `surveyMarker-${crypto.randomUUID()}`;
                                   newSurveyMarkers[newId] = {
                                     ...h,
                                     id: newId,
@@ -31211,7 +31211,7 @@ ${pageBlocks}
 
 
                                     if (bounds) {
-                                      const annotationId = `surveyMarker-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+                                      const annotationId = `surveyMarker-${crypto.randomUUID()}`;
                                       const pageNum = sourceSurveyMarker?.pageNumber || destAnnotation?.pageNumber || 1;
 
                                       // Create surveyMarker WITHOUT entity (starts blank in new space)
@@ -31301,7 +31301,7 @@ ${pageBlocks}
                                   const sourceCategoryName = getCategoryName(sourceTemplate, h.moduleId, h.categoryId);
                                   const destCategory = destSpace?.categories?.find(c => c.name === sourceCategoryName);
 
-                                  const newId = `surveyMarker-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+                                  const newId = `surveyMarker-${crypto.randomUUID()}`;
                                   newSurveyMarkers[newId] = {
                                     ...h,
                                     id: newId,
@@ -32917,7 +32917,7 @@ ${pageBlocks}
 
 
                                   if (bounds) {
-                                    const annotationId = `surveyMarker-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+                                    const annotationId = `surveyMarker-${crypto.randomUUID()}`;
                                     newSurveyMarkers[annotationId] = {
                                       id: annotationId,
                                       pageNumber: sourceSurveyMarker?.pageNumber || 1,
@@ -33144,7 +33144,7 @@ ${pageBlocks}
                             const destModule = ((selectedTemplate.modules || selectedTemplate.spaces) || []).find(m => m.id === transferState.destModuleId);
                             const destCategory = destModule?.categories?.find(c => c.name === item.itemType);
 
-                            const annotationId = `surveyMarker-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+                            const annotationId = `surveyMarker-${crypto.randomUUID()}`;
                             newSurveyMarkers[annotationId] = {
                               id: annotationId,
                               pageNumber: sourceSurveyMarker?.pageNumber || 1,
