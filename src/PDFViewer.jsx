@@ -14,6 +14,7 @@
 
 import * as pdfjsLib from 'pdfjs-dist';
 import { loadPdfjs } from './utils/pdfWorkerConfig';
+import { deepClone } from './utils/deepClone.js';
 import { showToast } from './utils/toast';
 import AnnotationPropertiesPanel from './components/AnnotationPropertiesPanel';
 import CalloutOverlay from './components/Callout';
@@ -9936,15 +9937,15 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const getHistorySnapshot = useCallback(() => ({
-    annotationsByPage: JSON.parse(JSON.stringify(annotationsByPageRef.current || {})),
-    surveyMarkers: JSON.parse(JSON.stringify(surveyMarkersRef.current || {})),
-    spaces: JSON.parse(JSON.stringify(spacesRef.current || [])),
+    annotationsByPage: deepClone(annotationsByPageRef.current || {}),
+    surveyMarkers: deepClone(surveyMarkersRef.current || {}),
+    spaces: deepClone(spacesRef.current || []),
     // UX 2026-04-21: callouts were previously left out of the undo snapshot,
     // so deleting a callout checkpointed only the shape/surveyMarker/space
     // slice and Cmd+Z brought back shapes but not the callout. Include the
     // full callout list in every checkpoint + restore so marquee
     // delete → undo resurrects both halves of the selection.
-    callouts: JSON.parse(JSON.stringify(calloutsRef.current || []))
+    callouts: deepClone(calloutsRef.current || [])
   }), []);
 
   const getAnnotationPageHistorySnapshot = useCallback((pageNumber) => {
@@ -9955,7 +9956,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     return {
       annotationsByPage: {
         ...annotationsState,
-        [pageKey]: JSON.parse(JSON.stringify(pageState || { objects: [] }))
+        [pageKey]: deepClone(pageState || { objects: [] })
       },
       surveyMarkers: surveyMarkersRef.current || {},
       spaces: spacesRef.current || [],
@@ -10036,7 +10037,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       context?.checkpointMode === 'annotation-create-fast'
       && Number.isFinite(Number(context?.pageNumber));
     const currentState = snapshotOverride
-      ? JSON.parse(JSON.stringify(snapshotOverride))
+      ? deepClone(snapshotOverride)
       : useFastAnnotationCheckpoint
       ? getAnnotationPageHistorySnapshot(context.pageNumber)
       : getHistorySnapshot();
@@ -10593,7 +10594,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       localHistoryAction: scopedAction,
     });
     if (counterRenumberDecision.shouldRenumber) {
-      const before = JSON.parse(JSON.stringify(nextAnnotationsByPage || {}));
+      const before = deepClone(nextAnnotationsByPage || {});
       renumberCounters(nextAnnotationsByPage);
       const effect = summarizeCounterRenumberEffect(before, nextAnnotationsByPage);
       try {
@@ -15338,7 +15339,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     const newTemplateId = `tpl-${Date.now()}`;
 
     // Deep clone the template's modules
-    const clonedModules = JSON.parse(JSON.stringify(selectedTemplate.modules || selectedTemplate.spaces || []));
+    const clonedModules = deepClone(selectedTemplate.modules || selectedTemplate.spaces || []);
 
     // Rebuild checklist for each category based on Excel column order
     for (const mod of clonedModules) {
@@ -15435,7 +15436,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   // Helper: Modify the current template and persist to Supabase
   const handleModifyCurrentTemplate = useCallback(async (newColumnsByCategory) => {
     // Deep clone the current template's modules
-    const updatedModules = JSON.parse(JSON.stringify(selectedTemplate.modules || selectedTemplate.spaces || []));
+    const updatedModules = deepClone(selectedTemplate.modules || selectedTemplate.spaces || []);
 
     // Rebuild checklist for each category based on Excel column order
     for (const mod of updatedModules) {
@@ -22321,7 +22322,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     if (checkpointPolicy === 'skip' && !hadPreviewBaseline) {
       previewBaselineByPageRef.current.set(
         interactionPageKey,
-        JSON.parse(JSON.stringify(normalizedCurrentAnnotations || { objects: [] }))
+        deepClone(normalizedCurrentAnnotations || { objects: [] })
       );
     }
     const previewBaseline = checkpointPolicy === 'skip'
@@ -22478,7 +22479,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       } catch (_) {}
     };
     const renumberCountersWithLog = (nextByPage, phase) => {
-      const before = JSON.parse(JSON.stringify(nextByPage || {}));
+      const before = deepClone(nextByPage || {});
       const result = renumberCounters(nextByPage);
       const effect = summarizeCounterRenumberEffect(before, result);
       try {
@@ -23795,7 +23796,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   const pasteAnnotationAt = useCallback((pageNumber, clientX, clientY) => {
     if (!clipboardAnnotation || pageNumber == null) return false;
     const page = annotationsByPageRef.current?.[pageNumber] || { objects: [] };
-    const next = JSON.parse(JSON.stringify(page));
+    const next = deepClone(page);
     if (!Array.isArray(next.objects)) next.objects = [];
     // UX: Phase 19 follow-up — multi-object paste. When clipboard holds
     // an array of objects (from group copy/cut), translate every item
@@ -23803,7 +23804,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     // commit one atomic save. Single-object path falls through to the
     // existing cursor-centered paste logic below.
     if (Array.isArray(clipboardAnnotation.objects) && clipboardAnnotation.objects.length > 0) {
-      const clones = clipboardAnnotation.objects.map((obj) => JSON.parse(JSON.stringify(obj)));
+      const clones = clipboardAnnotation.objects.map((obj) => deepClone(obj));
       // Compute the group's top-left from the stored source bbox (falls
       // back to scanning clones if missing).
       const srcBBox = clipboardAnnotation.bbox || (() => {
@@ -23859,7 +23860,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       return true;
     }
 
-    const pasted = JSON.parse(JSON.stringify(clipboardAnnotation.object));
+    const pasted = deepClone(clipboardAnnotation.object);
     // UX: clone needs a fresh id so the SVG renderer and selection path
     // don't treat it as the same shape as the source. Keep `isPdfImported`
     // so imported shapes paste back through the same visual path.
@@ -23934,7 +23935,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     const obj = page?.objects?.[annotationIndex];
     if (!obj) return;
     setClipboardAnnotation({
-      object: JSON.parse(JSON.stringify(obj)),
+      object: deepClone(obj),
       sourcePageNumber: pageNumber,
       mode: 'copy',
     });
@@ -23956,11 +23957,11 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     const obj = page.objects[annotationIndex];
     if (!obj) return;
     setClipboardAnnotation({
-      object: JSON.parse(JSON.stringify(obj)),
+      object: deepClone(obj),
       sourcePageNumber: pageNumber,
       mode: 'cut',
     });
-    const next = JSON.parse(JSON.stringify(page));
+    const next = deepClone(page);
     next.objects.splice(annotationIndex, 1);
     handleSaveAnnotations(pageNumber, next, {
       source: 'object:modified',
@@ -23989,7 +23990,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     const fieldId = payload?.fieldId;
     if (pageNumber == null || fieldId == null) return;
     const page = annotationsByPageRef.current?.[pageNumber];
-    const next = page ? JSON.parse(JSON.stringify(page)) : { objects: [] };
+    const next = page ? deepClone(page) : { objects: [] };
     if (!Array.isArray(next.objects)) next.objects = [];
     const dataId = `form-field:${pageNumber}:${fieldId}`;
     const rect = Array.isArray(payload.rect) ? payload.rect : null;
@@ -24123,7 +24124,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     const resolved = typeof target === 'string' ? resolveOverlapTarget(target) : target;
     const clamped = Math.max(0, Math.min(resolved, objectsLen - 1));
     if (clamped === fromIndex) return;
-    const next = JSON.parse(JSON.stringify(page));
+    const next = deepClone(page);
     const [moved] = next.objects.splice(fromIndex, 1);
     next.objects.splice(clamped, 0, moved);
     handleSaveAnnotations(pageNumber, next, {
@@ -27860,7 +27861,7 @@ ${pageBlocks}
           if (!freshPage?.objects) return;
           if (p.annotationIndex == null || p.annotationIndex < 0) return;
           if (p.annotationIndex >= freshPage.objects.length) return;
-          const next = JSON.parse(JSON.stringify(freshPage));
+          const next = deepClone(freshPage);
           const target = next.objects[p.annotationIndex];
           if (!target) return;
           for (const k of Object.keys(patch)) {
