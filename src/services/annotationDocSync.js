@@ -116,10 +116,21 @@ export async function openAnnotationDoc({
     opsSinceSnapshot: 0,
     lastByPage: null,      // last byPage applied — enables the per-page-ref fast diff
     snapshotTimer: null,   // debounced full-state checkpoint
+    snapshotChain: Promise.resolve(false), // serializes ALL snapshot writes so two
+                           // never overlap and clobber each other (debounce vs eager vs destroy)
+    editEpoch: 0,          // bumped on every local edit
+    snapshottedEpoch: 0,   // highest editEpoch a successful snapshot has captured;
+                           // editEpoch > snapshottedEpoch ⇒ uncaptured work remains.
+                           // A generation counter, NOT a boolean, so a stale in-flight
+                           // snapshot that completes after a newer edit can't wrongly
+                           // mark that newer edit as saved.
     destroyed: false,
     idbProvider: null,
     realtimeChannel: null,
     changeListeners: new Set(),
+    syncListeners: new Set(),
+    syncHealthy: true,     // false once an op append fails until it recovers (BL-24)
+    onPageHide: null,      // window listener that force-checkpoints on real tab close
     flushQueue: Promise.resolve(),
   };
 
@@ -156,6 +167,7 @@ export async function openAnnotationDoc({
     // hydrate, and the local IndexedDB replay (re-appending those would loop).
     if (origin === REMOTE_ORIGIN || origin === HYDRATE_ORIGIN || origin === state.idbProvider) return;
     if (supabase) {
+      state.editEpoch += 1;
       enqueueAppend(state, update);
       // The full-state checkpoint is the durability GUARANTEE: even if an
       // individual op insert fails (network), the next checkpoint re-captures
@@ -170,6 +182,23 @@ export async function openAnnotationDoc({
   // --- live multi-device: apply remote ops as they land ---
   if (enableRealtime && supabase && typeof supabase.channel === 'function') {
     subscribeRealtime(state);
+  }
+
+  // --- crash/tab-close durability: force a final checkpoint when the tab is
+  // actually being unloaded (navigation, close, bfcache). React's cleanup
+  // destroy() only fires on an orderly unmount; a tab-kill or navigation never
+  // runs it, leaving any op that failed to append (BL-24) unrecovered until the
+  // next open. We bind ONLY `pagehide` — NOT `visibilitychange` — so an ordinary
+  // alt-tab / tab-switch does not trigger a full snapshot upload, and only flush
+  // when there is uncaptured local work. Best-effort: the browser may not await
+  // an async write during unload, but the local IndexedDB copy already captured
+  // the mutation, so this is an extra guard, not the sole one.
+  if (supabase && typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
+    state.onPageHide = () => {
+      if (state.destroyed || state.editEpoch === state.snapshottedEpoch) return;
+      try { writeSnapshot(state); } catch { /* best-effort */ }
+    };
+    window.addEventListener('pagehide', state.onPageHide);
   }
 
   return makeHandle(state);
@@ -223,10 +252,31 @@ async function loadFromBackend(state) {
   }
 }
 
+// Notify sync-health listeners when the durable-append path flips between
+// healthy and failing, deduped so we only emit on an actual transition (BL-24).
+function markSyncHealth(state, healthy, error) {
+  if (state.syncHealthy === healthy) return;
+  state.syncHealthy = healthy;
+  const status = { healthy, error: healthy ? null : (error?.message || String(error || 'sync failed')) };
+  for (const cb of state.syncListeners) {
+    try { cb(status); } catch (err) { console.warn('[annotationDocSync] sync listener threw', err?.message); }
+  }
+}
+
 // Serialize appends so client_seq increments cleanly and ordering is stable.
 function enqueueAppend(state, update) {
-  state.flushQueue = state.flushQueue.then(() => appendOp(state, update)).catch((err) => {
-    console.warn('[annotationDocSync] append failed (will retry on next op)', err?.message);
+  state.flushQueue = state.flushQueue.then(() => appendOp(state, update)).catch(async (err) => {
+    // The individual op insert failed (usually network). The mutation is already
+    // applied to the in-memory doc, so an eager full-state checkpoint captures it
+    // durably NOW instead of waiting up to SNAPSHOT_DEBOUNCE_MS and hoping the tab
+    // survives — this is BL-24's fix: a dropped op no longer relies on the debounce
+    // + a clean unmount. Also surface the failure so the UI can stop claiming
+    // "saved" while writes are failing.
+    console.warn('[annotationDocSync] append failed — forcing checkpoint', err?.message);
+    markSyncHealth(state, false, err);
+    if (state.snapshotTimer) { clearTimeout(state.snapshotTimer); state.snapshotTimer = null; }
+    const ok = await writeSnapshot(state).catch(() => false);
+    if (ok) markSyncHealth(state, true);
   });
   return state.flushQueue;
 }
@@ -247,9 +297,12 @@ async function appendOp(state, update) {
     .single();
   if (error) {
     // 23505 = unique violation: this op already committed (reconnect re-send) → no-op.
-    if (error.code === '23505') return;
+    if (error.code === '23505') { markSyncHealth(state, true); return; }
     throw new Error(error.message);
   }
+  // A successful append means the durable path is healthy again after any prior
+  // failure (BL-24 recovery signal).
+  markSyncHealth(state, true);
   // Advance our log position so snapshots record the correct at_seq and a reopen
   // doesn't needlessly replay ops already folded into the snapshot.
   const assignedSeq = Number(data?.seq);
@@ -271,10 +324,31 @@ function scheduleSnapshot(state) {
   }, SNAPSHOT_DEBOUNCE_MS);
 }
 
+// Serialize ALL snapshot writes through one chain so two can never run at once.
+// Before BL-24 the only triggers were a self-cancelling debounce, the 40-op
+// compaction, and destroy(); BL-24 adds an eager write on append failure, which
+// clusters exactly with queued edits during flaky connections. Without this
+// serialization a stale in-flight write could land AFTER a fresher one and
+// overwrite it — rolling at_seq forward past ops the stale bytes don't contain,
+// which drops those ops on the next reopen (they're skipped by the seq>at_seq
+// tail read). The chain guarantees the last write to land is always the freshest.
+function writeSnapshot(state) {
+  state.snapshotChain = state.snapshotChain.then(() => writeSnapshotNow(state));
+  return state.snapshotChain;
+}
+
 // Write the full Y.Doc as one idempotent checkpoint. Retries hard — this is the
 // durability guarantee that makes dropped op inserts self-heal on next open.
-async function writeSnapshot(state) {
+async function writeSnapshotNow(state) {
   if (!state.supabase) return false;
+  // Capture at_seq AND the edit generation BEFORE encoding (same synchronous
+  // tick as encodeSnapshot, no await between). at_seq can then never claim an op
+  // not in these bytes; and epochAtStart records exactly which edits these bytes
+  // cover, so a stale in-flight snapshot that finishes AFTER a newer edit only
+  // advances snapshottedEpoch to what it actually captured — it can't mark the
+  // newer edit as saved and suppress the tab-close flush for it.
+  const atSeq = state.lastSeq;
+  const epochAtStart = state.editEpoch;
   let hex;
   try {
     hex = bytesToPgHex(await gzip(encodeSnapshot(state.doc)));
@@ -288,12 +362,17 @@ async function writeSnapshot(state) {
         .from('annotation_snapshots')
         .upsert({
           document_id: state.documentId,
-          at_seq: state.lastSeq,
+          at_seq: atSeq,
           snapshot: hex,
           encoding_version: SNAPSHOT_ENC_GZIP,
           updated_at: new Date().toISOString(),
         }, { onConflict: 'document_id' });
-      if (!error) return true;
+      if (!error) {
+        // Only advance the captured generation — never regress it — so a stale
+        // snapshot completing late can't clear a newer edit's dirty state.
+        if (epochAtStart > state.snapshottedEpoch) state.snapshottedEpoch = epochAtStart;
+        return true;
+      }
       console.warn(`[annotationDocSync] snapshot write failed (attempt ${attempt})`, error.message);
     } catch (err) {
       console.warn(`[annotationDocSync] snapshot threw (attempt ${attempt})`, err?.message);
@@ -364,6 +443,14 @@ function makeHandle(state) {
     /** Subscribe to changes (local or remote). Returns an unsubscribe fn. */
     onChange(cb) { state.changeListeners.add(cb); return () => state.changeListeners.delete(cb); },
 
+    /** True while durable op appends are succeeding; false after one fails until
+     *  it recovers. Lets the viewer stop showing "saved" when writes are failing. */
+    isSyncHealthy() { return state.syncHealthy; },
+
+    /** Subscribe to sync-health transitions ({ healthy, error }). Returns an
+     *  unsubscribe fn. Fires only on an actual healthy⇄failing transition. */
+    onSyncStatus(cb) { state.syncListeners.add(cb); return () => state.syncListeners.delete(cb); },
+
     /** Force a compacted snapshot now (e.g. on explicit save). */
     flushSnapshot() { return writeSnapshot(state); },
 
@@ -372,6 +459,10 @@ function makeHandle(state) {
 
     async destroy() {
       if (state.snapshotTimer) { clearTimeout(state.snapshotTimer); state.snapshotTimer = null; }
+      if (state.onPageHide && typeof window !== 'undefined' && typeof window.removeEventListener === 'function') {
+        window.removeEventListener('pagehide', state.onPageHide);
+        state.onPageHide = null;
+      }
       // Final checkpoint before teardown so the latest state is durable even if a
       // debounce was still pending. (Mark destroyed AFTER, so the write proceeds.)
       await state.flushQueue.catch(() => {});
