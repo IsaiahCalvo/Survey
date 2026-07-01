@@ -35,7 +35,7 @@ const GOOGLE_LOGO_SVG = (
 );
 
 export const AccountSettings = ({ isOpen, onClose }) => {
-  const { user, updateProfile, updatePassword, signOut, signInWithGoogle, refreshSubscriptionTier } = useAuth();
+  const { user, updateProfile, updatePassword, signIn, signOut, signInWithGoogle, refreshSubscriptionTier } = useAuth();
   const { isAuthenticated: isMSAuthenticated, login: msLogin, logout: msLogout, account: msAccount, needsReconnect: msNeedsReconnect } = useMSGraph();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -199,6 +199,17 @@ export const AccountSettings = ({ isOpen, onClose }) => {
 
         if (newPassword.length < 6) {
           setError('Password must be at least 6 characters');
+          setLoading(false);
+          return;
+        }
+
+        // Verify the current password server-side before changing anything —
+        // a live session alone must not authorize a password change (e.g. an
+        // unattended machine). A correct password just refreshes the session.
+        try {
+          await signIn(user.email, currentPassword);
+        } catch {
+          setError('Current password is incorrect');
           setLoading(false);
           return;
         }

@@ -409,6 +409,26 @@ if (!devRouteActive && isInviteRoute) {
   });
 }
 
+// Account-flow: `/reset-password` landing page for Supabase recovery links
+// (AuthContext.resetPassword redirects here). Rendered inside AuthProvider so
+// the page can read the recovery session established by detectSessionInUrl
+// and call updatePassword. Same standalone-mount pattern as /invite above.
+const isResetPasswordRoute = typeof window !== 'undefined'
+  && /^\/reset-password(?:\/|$)/.test(window.location.pathname || '');
+
+if (!devRouteActive && isResetPasswordRoute) {
+  devRouteActive = true;
+  import('./components/ResetPasswordPage').then(({ default: ResetPasswordPage }) => {
+    createRoot(document.getElementById('root')).render(
+      <ErrorBoundary>
+        <AuthProvider>
+          <ResetPasswordPage />
+        </AuthProvider>
+      </ErrorBoundary>
+    );
+  });
+}
+
 if (!devRouteActive) {
   createRoot(document.getElementById('root')).render(
     <ErrorBoundary>

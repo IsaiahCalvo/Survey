@@ -2,12 +2,14 @@
  * AuthModal.jsx — sign-in / sign-up / SSO / password-reset modal.
  *
  * Named export `AuthModal` ({ isOpen, onClose, onDismiss }); a single-form modal
- * with a `mode` switch (login / signup / sso / reset) wired to useAuth
- * (signIn, signUp, signInWithGoogle, signInWithSSO, resetPassword). onDismiss
- * (when present) lets unauthenticated users continue without an account.
+ * with a `mode` switch (login / signup / confirm / sso / reset) wired to useAuth
+ * (signIn, signUp, signInWithGoogle, signInWithSSO, resetPassword,
+ * resendConfirmation). onDismiss (when present) lets unauthenticated users
+ * continue without an account.
  */
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
+import { resendCooldownRemainingMs } from './authFlow';
 import './AuthModal.css';
 
 // Static brand logo — hoisted so it isn't recreated on every render.
@@ -21,7 +23,7 @@ const GOOGLE_LOGO_SVG = (
 );
 
 export const AuthModal = ({ isOpen, onClose, onDismiss }) => {
-  const [mode, setMode] = useState('login'); // 'login', 'signup', 'sso', 'reset'
+  const [mode, setMode] = useState('login'); // 'login', 'signup', 'confirm', 'sso', 'reset'
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -31,8 +33,26 @@ export const AuthModal = ({ isOpen, onClose, onDismiss }) => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
+  // Epoch-ms of the last confirmation email send (signUp counts as one) and
+  // the seconds left on the resend cooldown, ticked down by the effect below.
+  const [resendLastSentAt, setResendLastSentAt] = useState(0);
+  const [resendRemaining, setResendRemaining] = useState(0);
 
-  const { signIn, signUp, signInWithGoogle, signInWithSSO, resetPassword } = useAuth();
+  const { signIn, signUp, signInWithGoogle, signInWithSSO, resetPassword, resendConfirmation } = useAuth();
+
+  useEffect(() => {
+    if (!resendLastSentAt) return undefined;
+    const update = () => {
+      const remaining = Math.ceil(resendCooldownRemainingMs(resendLastSentAt, Date.now()) / 1000);
+      setResendRemaining(remaining);
+      return remaining;
+    };
+    if (update() === 0) return undefined;
+    const intervalId = setInterval(() => {
+      if (update() === 0) clearInterval(intervalId);
+    }, 1000);
+    return () => clearInterval(intervalId);
+  }, [resendLastSentAt]);
 
   if (!isOpen) return null;
 
@@ -52,15 +72,22 @@ export const AuthModal = ({ isOpen, onClose, onDismiss }) => {
           setLoading(false);
           return;
         }
-        await signUp(email, password, {
+        const data = await signUp(email, password, {
           first_name: firstName,
           last_name: lastName,
           full_name: `${firstName} ${lastName}`
         });
-        setMessage('Account created! Please check your email to verify your account.');
-        setTimeout(() => {
+        if (data?.session) {
+          // Email confirmation is disabled server-side — the user is already
+          // signed in, so there's no confirmation email to wait for.
           onClose();
-        }, 2000);
+        } else {
+          // Stay on a persistent "check your email" panel instead of dropping
+          // the user into the app unconfirmed. signUp already sent the first
+          // confirmation email, so the resend cooldown starts now.
+          setMode('confirm');
+          setResendLastSentAt(Date.now());
+        }
       } else if (mode === 'sso') {
         await signInWithSSO(ssoDomain);
         // SSO will redirect, so no need to close modal
@@ -102,6 +129,21 @@ export const AuthModal = ({ isOpen, onClose, onDismiss }) => {
     }
   };
 
+  const handleResendConfirmation = async () => {
+    setError('');
+    setMessage('');
+    setLoading(true);
+    try {
+      await resendConfirmation(email);
+      setResendLastSentAt(Date.now());
+      setMessage('Confirmation email sent! Check your inbox.');
+    } catch (err) {
+      setError(err.message || 'Failed to resend confirmation email');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleClose = () => {
     // If onDismiss is available (for non-authenticated users), use it
     // Otherwise use onClose (for authenticated users or when dismiss isn't available)
@@ -123,12 +165,14 @@ export const AuthModal = ({ isOpen, onClose, onDismiss }) => {
           <h2>
             {mode === 'login' && 'Welcome Back'}
             {mode === 'signup' && 'Create Account'}
+            {mode === 'confirm' && 'Check Your Email'}
             {mode === 'sso' && 'Company Sign-In'}
             {mode === 'reset' && 'Reset Password'}
           </h2>
           <p className="auth-modal-subtitle">
             {mode === 'login' && 'Sign in to save and sync your work'}
             {mode === 'signup' && 'Get started with a free account'}
+            {mode === 'confirm' && 'Verify your account to finish signing up'}
             {mode === 'sso' && 'Sign in with your company credentials'}
             {mode === 'reset' && 'We\'ll send you a password reset link'}
           </p>
@@ -137,6 +181,28 @@ export const AuthModal = ({ isOpen, onClose, onDismiss }) => {
         {error && <div className="auth-error">{error}</div>}
         {message && <div className="auth-message">{message}</div>}
 
+        {mode === 'confirm' && (
+          <div className="auth-form">
+            <p style={{ fontSize: '14px', lineHeight: 1.5, margin: '0 0 12px' }}>
+              We sent a confirmation link to <strong>{email}</strong>.
+              Click the link in that email to verify your account, then sign in.
+            </p>
+            <button
+              type="button"
+              className="auth-submit-btn"
+              onClick={handleResendConfirmation}
+              disabled={loading || resendRemaining > 0}
+            >
+              {loading
+                ? 'Please wait...'
+                : resendRemaining > 0
+                  ? `Resend available in ${resendRemaining}s`
+                  : 'Resend confirmation email'}
+            </button>
+          </div>
+        )}
+
+        {mode !== 'confirm' && (
         <form onSubmit={handleSubmit} className="auth-form">
           {mode !== 'sso' && (
             <div className="auth-form-group">
@@ -232,6 +298,7 @@ export const AuthModal = ({ isOpen, onClose, onDismiss }) => {
             {loading ? 'Please wait...' : mode === 'login' ? 'Sign In' : mode === 'signup' ? 'Create Account' : mode === 'sso' ? 'Continue with SSO' : 'Send Reset Link'}
           </button>
         </form>
+        )}
 
         {mode === 'login' && (
           <>
@@ -303,6 +370,39 @@ export const AuthModal = ({ isOpen, onClose, onDismiss }) => {
                 Sign in
               </button>
             </p>
+          )}
+
+          {mode === 'confirm' && (
+            <>
+              <p>
+                Wrong address?{' '}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMode('signup');
+                    setEmail('');
+                    setPassword('');
+                    setConfirmPassword('');
+                    setError('');
+                    setMessage('');
+                  }}
+                  className="auth-link-btn"
+                >
+                  Use a different email
+                </button>
+              </p>
+              <button
+                type="button"
+                onClick={() => {
+                  setMode('login');
+                  setError('');
+                  setMessage('');
+                }}
+                className="auth-link-btn"
+              >
+                ← Back to sign in
+              </button>
+            </>
           )}
 
           {(mode === 'sso' || mode === 'reset') && (

@@ -6,7 +6,8 @@
  * (with corrupted-token recovery and a DEV-only auto-login), listens to
  * onAuthStateChange, polls/refetches the tier (focus + every 5 min), and
  * exposes signUp/signIn/signInWithGoogle/signInWithSSO/signOut/resetPassword/
- * updatePassword/updateProfile plus derived `tier`/`features` gating flags.
+ * resendConfirmation/updatePassword/updateProfile plus derived `tier`/
+ * `features` gating flags.
  * Also pushes developer-mode state to the Electron main process.
  */
 import { createContext, useContext, useEffect, useRef, useState } from 'react';
@@ -463,6 +464,22 @@ export const AuthProvider = ({ children }) => {
     window.location.reload();
   };
 
+  // Resend the signup confirmation email (rate-limited server-side; the
+  // AuthModal also applies a client cooldown so users can't hammer it)
+  const resendConfirmation = async (email) => {
+    if (!isSupabaseAvailable()) {
+      throw new Error('Supabase is not configured');
+    }
+
+    const { data, error } = await supabase.auth.resend({
+      type: 'signup',
+      email,
+    });
+
+    if (error) throw error;
+    return data;
+  };
+
   // Reset password
   const resetPassword = async (email) => {
     if (!isSupabaseAvailable()) {
@@ -532,6 +549,7 @@ export const AuthProvider = ({ children }) => {
     signInWithGoogle,
     signInWithSSO,
     signOut,
+    resendConfirmation,
     resetPassword,
     updatePassword,
     updateProfile,
