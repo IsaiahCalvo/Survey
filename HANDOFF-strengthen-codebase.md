@@ -14,6 +14,27 @@ the same one already proven on the mobile app (9,319 → 1,816 lines, 25 modules
 extract cohesive pieces into small, single-purpose files so changes stay local, and
 delete code that no longer runs. Smaller files + good automated tests = not fragile.
 
+## RUN MODE — autonomous, do not stop until done
+
+- **Do not stop until the goal is fully met:** all dead zoom/scroll + recorder code
+  removed, and `PDFViewer.jsx` (plus the other >1k-line files) broken into small
+  modules. Work batch after batch, committing each, without pausing to ask the owner
+  to weigh in. Only stop for a genuine blocker you cannot resolve any other way, or an
+  explicit NEEDS-OWNER item (there are none left in this plan except the parked
+  PrintPanel + mobile step-12, both listed as out of scope).
+- **Never ask the owner to test.** The owner will not hand-test. You verify everything
+  yourself with the automated gates below.
+- **Build whatever tests are required — honestly, no cheating.** When you delete code
+  that had test coverage, or extract a module, add real tests that would actually FAIL
+  if the behavior broke. No tautological asserts, no `assert(true)`, no tests that skip
+  the hard path, no deleting a failing test to go green. A test that can't fail is a
+  lie; write the one that catches the regression.
+- **Green means green:** never mark a batch done while build, node tests, or the app
+  smoke/e2e are failing. If something breaks, fix it or revert that batch — do not
+  paper over it.
+- Keep going through the whole 28-file list. "Done" = the giant files are genuinely
+  broken down and the dead code is genuinely gone, verified.
+
 ## Verification model (owner doesn't manually test)
 
 Owner does NOT want to hand-test between batches. Self-verify with the automated
