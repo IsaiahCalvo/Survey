@@ -5770,30 +5770,6 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   ]);
 
   useEffect(() => {
-    if (usePdfjsRenderer) return;
-    detachPdfjsInteractionListeners();
-    clearPdfjsWheelZoomRaf();
-    finishPdfjsInteractionWindow();
-    if (pdfjsNavigateResetTimerRef.current) {
-      clearTimeout(pdfjsNavigateResetTimerRef.current);
-      pdfjsNavigateResetTimerRef.current = null;
-    }
-    if (pdfjsRefreshFrameRef.current !== null) {
-      if (typeof window !== 'undefined' && typeof window.cancelAnimationFrame === 'function') {
-        window.cancelAnimationFrame(pdfjsRefreshFrameRef.current);
-      } else {
-        clearTimeout(pdfjsRefreshFrameRef.current);
-      }
-      pdfjsRefreshFrameRef.current = null;
-    }
-    pdfjsZoomSourceRef.current = null;
-    wrapperDragEventAtRef.current = 0;
-    setPdfjsPageContainers((prev) => (Object.keys(prev).length === 0 ? prev : {}));
-    setPdfjsOverlayWindowPages((prev) => (prev.size === 0 ? prev : new Set()));
-    setPdfjsCommittedPageScales((prev) => (Object.keys(prev).length === 0 ? prev : {}));
-  }, [clearPdfjsWheelZoomRaf, detachPdfjsInteractionListeners, finishPdfjsInteractionWindow, usePdfjsRenderer]);
-
-  useEffect(() => {
     if (!usePdfjsRenderer || typeof document === 'undefined') return undefined;
 
     const onDocumentWheel = (event) => {
@@ -7490,19 +7466,6 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   }, [applyLayoutDrivenZoom, pdfDoc, pageSizes]);
 
   useEffect(() => {
-    // In Pdfjs mode, the viewer owns zoom persistence across page navigation
-    // (fitToPage/fitToWidth maintain themselves as the user scrolls), and the
-    // zoomController's internal mode is never updated from handleZoomModeSelect's
-    // Pdfjs branches — so applyZoom() here would use a stale mode and re-zoom
-    // to the wrong value on every pageChange, disrupting scroll geometry and
-    // cascading into runaway pageChange events at low zoom levels. See bug #2.5.
-    if (usePdfjsRenderer) return;
-    if (zoomMode !== ZOOM_MODES.MANUAL) {
-      zoomControllerRef.current?.applyZoom({ persist: false, force: true });
-    }
-  }, [pageNum, zoomMode, usePdfjsRenderer]);
-
-  useEffect(() => {
     applyLayoutDrivenZoom();
   }, [applyLayoutDrivenZoom, tabId]);
 
@@ -9151,11 +9114,6 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   }, [disconnectOverlayLagPerfObservers]);
 
   useEffect(() => {
-    if (!usePdfjsRenderer) {
-      setPdfjsCommittedPageScales((prev) => (Object.keys(prev).length === 0 ? prev : {}));
-      return;
-    }
-
     const pageNumbers = Object.keys(pdfjsPageContainers)
       .map((pageKey) => Number(pageKey))
       .filter((pageNumber) => Number.isFinite(pageNumber));
