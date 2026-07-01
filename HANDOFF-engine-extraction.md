@@ -3,7 +3,11 @@
 _Owner directive 2026-07-01: "Break the heavy machinery out of the giant files to make them
 stronger — but do it the safe way. First build automated tests that prove the risky behaviors
 still work, confirm those tests actually pass (fix them until they do), THEN extract the engines
-one step at a time, testing each step. Fully autonomous — no owner involvement, no owner testing."_
+one step at a time, testing each step. Run fully autonomously with ZERO involvement during the run.
+Do NOT leave anything deferred: extract everything you can. For the few things automated tests
+genuinely can't prove (mainly zoom FEEL), still do the extraction — just save those up and have me
+verify them hands-on in ONE guided test pass at the very end. So: do everything now, then test the
+un-automatable bits with me at the end."_
 
 This is the follow-on to `HANDOFF-strengthen-codebase.md`. That campaign finished Priority 1
 (all dead zoom/scroll code removed) and the CLEAN, safely-verifiable extractions from `PDFViewer.jsx`
@@ -20,10 +24,18 @@ ledger). Branch: `claude/magical-raman-95374e` (keep working here; do NOT push �
 
 ## RUN MODE — fully autonomous, do not stop, do not ask, owner never tests
 
-- **No owner involvement of any kind.** Never ask the owner to test, decide, or approve mid-run.
-  Verify everything yourself with the gates below. Do NOT add a React hook/component test framework
-  (that would need an owner waiver) — the whole safety net is built on the EXISTING `agent-cli`
-  Playwright end-to-end pattern (no new dependency) + node unit tests. This keeps the run unattended.
+- **No owner involvement DURING the run.** Never pause mid-run to ask the owner to test, decide, or
+  approve. Verify everything yourself with the gates below. Do NOT add a React hook/component test
+  framework (that would need an owner waiver) — the whole safety net is built on the EXISTING
+  `agent-cli` Playwright end-to-end pattern (no new dependency) + node unit tests.
+- **Nothing gets deferred; extract everything you can.** When a slice genuinely cannot be proven by an
+  automated test (mainly zoom FEEL — see the Playwright zoom limitation), STILL do the extraction
+  (verbatim, tiny slices, most conservative), commit it, and add a precise entry to the single
+  **owner final-test checklist** at `debug/defragilize/OWNER-FINAL-TEST.md` (create it; one line per
+  item: exact steps + what "good" looks like + which commit to revert if it's wrong).
+- **The ONE owner touchpoint is a guided hands-on test at the very END.** After all work is done and
+  the automated suite is green, the run's final action is to present that checklist and ask the owner
+  to walk through it with you. That is the only time you involve the owner. Everything else is yours.
 - **Phase A before Phase B, no exceptions.** Build/confirm the safety net FIRST. Do not extract any
   engine until the tests that would catch its regression exist and pass reliably.
 - **Honest tests only.** Every new test must actually drive the real behavior and FAIL if that
@@ -106,9 +118,10 @@ Write one honest e2e per gap (drive the real app, assert the observable outcome,
 4. **Form-field edit persistence** — type into a PDF form field, blur, reopen the doc → value persists.
    Guards the already-extracted `usePdfjsFormFieldPersistence` and the save pipeline.
 Note on ZOOM: synthetic wheel events CANNOT drive the real cursor-zoom path (memory: Playwright zoom
-limitation) — do NOT fake a zoom e2e. Zoom is guarded instead by the existing `zoomController` node
-unit tests + `render-smoke` (renders at scale) + strict verbatim-only moves. Keep zoom extractions the
-most conservative of all.
+limitation) — do NOT fake a zoom e2e (a test that can't fail is a lie). Auto-guard zoom as far as
+honestly possible: existing `zoomController` node unit tests + `render-smoke` (renders at scale) + add
+node unit tests for any pure zoom math you extract. The one thing tests can't prove is zoom FEEL
+(cursor-anchored pinch/scroll smoothness) — that goes on the owner final-test checklist, NOT deferred.
 
 ### A3. Assemble the full gate
 Add a small `agent-cli/full-e2e.mjs` (or a shell runner) that runs the whole suite (existing + new)
@@ -142,8 +155,9 @@ Suggested order (safest / best-covered first; each has its Phase-A guard):
 6. **Cloud realtime sync** — behind yjs-roundtrip; adversarially verify TWICE (CRDT/realtime — see memory
    "adversarial verify realtime": ≥2 adversarial passes + code review before shipping).
 7. **Overlay portal render loop / zoom-scale lifecycle** — LAST and most conservative. Weakest e2e
-   coverage (zoom limitation). Verbatim-only, tiny slices, lean on unit tests + render-smoke, and if a
-   slice can't be honestly verified, DOCUMENT it as still-deferred rather than shipping it blind.
+   coverage (zoom limitation). Verbatim-only, tiny slices, lean on unit tests + render-smoke. Do NOT
+   defer or skip: extract it carefully, commit, and add a precise line to the owner final-test
+   checklist for the feel-level behavior tests can't prove (name the commit to revert if it's wrong).
 
 Also opportunistically finish the CLEAN P2/P3 items unblocked by A0 (e.g. the space CSV/PDF export
 → tested util, once viewerShared is node-importable) and continue P3 on the tractable UI panels
@@ -151,10 +165,13 @@ Also opportunistically finish the CLEAN P2/P3 items unblocked by A0 (e.g. the sp
 panel-level smoke flow exists to catch prop-wiring regressions.
 
 ## "Done" =
-Every engine that CAN be honestly guarded is extracted behind a passing test that would fail if it
-broke; PDFViewer.jsx (and the other giant files) are materially smaller with cohesive engines in their
-own modules; the full suite (build + node tests + full e2e) is green; and anything genuinely
-un-guardable is explicitly documented as deferred with the reason — not shipped blind.
+EVERY engine is extracted into its own module (nothing deferred): the ones that can be auto-guarded sit
+behind a passing test that would fail if they broke; the few that can't be auto-verified (zoom feel)
+are still extracted and their exact hands-on checks are queued in `debug/defragilize/OWNER-FINAL-TEST.md`.
+PDFViewer.jsx and the other giant files are materially smaller with cohesive engines in their own
+modules; the full suite (build + node tests + full e2e) is green. The run's FINAL action is to present
+the owner final-test checklist and ask the owner to walk through it — that single hands-on pass is the
+only owner involvement, and it happens at the very end after everything else is complete and committed.
 
 ## Guardrails carried forward
 - Min-viable diff in `PDFViewer.jsx` / `PageAnnotationLayer.jsx` / the Fabric canvases /
