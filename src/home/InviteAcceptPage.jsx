@@ -14,10 +14,16 @@
  * "Sign in to accept" card with a button that flips into the normal login
  * flow. We carry the token through localStorage so the user lands back on
  * the same invite after auth.
+ *
+ * Token resolution: document, project, and template invites all share the
+ * /invite/<token> URL space. We try the document accept first; only a hard
+ * 'invalid' falls through to project, then template (see acceptAnyInvite).
  */
 import { useContext, useEffect, useState } from 'react';
 import { AuthContext } from '../contexts/AuthContext';
 import { acceptDocumentInvite } from '../services/documentInviteService';
+import { acceptProjectInvite } from '../services/projectInviteService';
+import { acceptTemplateInvite } from '../services/templateInviteService';
 import { supabase } from '../supabaseClient';
 
 const PENDING_KEY = 'kal31_pending_invite_token';
@@ -45,6 +51,21 @@ function goHome() {
     try { window.localStorage.removeItem(PENDING_KEY); } catch (_e) { /* ignore */ }
     window.location.assign('/');
   }
+}
+
+/* Resolve a token across all three invite kinds. Document, project, and
+ * template invites share the /invite/<token> URL space, so we try document
+ * first (the common case), and only on a hard 'invalid' fall through to
+ * project, then template. Any non-invalid status (expired, revoked,
+ * wrong_account, …) is a definitive answer for that kind — stop there. */
+async function acceptAnyInvite(token) {
+  const doc = await acceptDocumentInvite(token);
+  if (doc.status !== 'invalid') return { ...doc, kind: 'document' };
+  const proj = await acceptProjectInvite(token);
+  if (proj.status !== 'invalid') return { ...proj, kind: 'project' };
+  const tpl = await acceptTemplateInvite(token);
+  if (tpl.status !== 'invalid') return { ...tpl, kind: 'template' };
+  return { ...doc, status: 'invalid', kind: 'document' };
 }
 
 export default function InviteAcceptPage() {
@@ -75,7 +96,7 @@ export default function InviteAcceptPage() {
       }
       setPhase('loading');
       try {
-        const r = await acceptDocumentInvite(token);
+        const r = await acceptAnyInvite(token);
         if (cancelled) return;
         setResult(r);
         setPhase('result');
@@ -108,6 +129,10 @@ export default function InviteAcceptPage() {
     }
   })();
 
+  // Which kind of thing the token resolved to — names the noun in the copy
+  // and decides what "Open" does. Defaults to 'document' pre-resolution.
+  const kindNoun = result?.kind || 'document';
+
   const description = (() => {
     if (phase === 'loading') return 'Validating your invite. One moment…';
     if (phase === 'needs-auth') return 'Sign in or create a free Survey account to accept this invite.';
@@ -118,7 +143,7 @@ export default function InviteAcceptPage() {
           const intended = (result.intendedRole || 'editor').toLowerCase();
           return `You have Viewer access for now. Upgrade to Pro or higher to unlock ${intended.charAt(0).toUpperCase() + intended.slice(1)} access.`;
         }
-        return `You now have ${(result.effectiveRole || 'viewer')} access to this document.`;
+        return `You now have ${(result.effectiveRole || 'viewer')} access to this ${kindNoun}.`;
       case 'already_accepted':
         return 'This invite was used previously. Your access is still active.';
       case 'wrong_account':
@@ -140,13 +165,21 @@ export default function InviteAcceptPage() {
     return C.gold;
   })();
 
-  const openDocument = async () => {
-    if (!result?.documentId) { goHome(); return; }
-    if (typeof window !== 'undefined') {
-      // App.jsx reads ?docId= for direct-open. Fall back to home.
-      window.location.assign(`/?docId=${encodeURIComponent(result.documentId)}`);
+  const openTarget = async () => {
+    // Documents deep-open via ?docId=. Projects and templates land on the
+    // hub root — the shared item is now visible there (simplest correct
+    // behavior; no per-project/template deep link exists yet).
+    if (kindNoun === 'document' && result?.documentId) {
+      if (typeof window !== 'undefined') {
+        // App.jsx reads ?docId= for direct-open. Fall back to home.
+        window.location.assign(`/?docId=${encodeURIComponent(result.documentId)}`);
+      }
+      return;
     }
+    goHome();
   };
+
+  const openLabel = kindNoun === 'document' ? 'Open document' : 'Go to Survey';
 
   const switchAccount = async () => {
     try { await supabase.auth.signOut(); } catch (_e) { /* ignore */ }
@@ -210,10 +243,10 @@ export default function InviteAcceptPage() {
             {phase === 'result' && (
               <>
                 {result?.status === 'accepted' && (
-                  <button onClick={openDocument} style={btnPrimary(accent)}>Open document</button>
+                  <button onClick={openTarget} style={btnPrimary(accent)}>{openLabel}</button>
                 )}
                 {result?.status === 'already_accepted' && (
-                  <button onClick={openDocument} style={btnPrimary(accent)}>Open document</button>
+                  <button onClick={openTarget} style={btnPrimary(accent)}>{openLabel}</button>
                 )}
                 {result?.status === 'wrong_account' && (
                   <button onClick={switchAccount} style={btnPrimary(accent)}>Sign out and switch</button>

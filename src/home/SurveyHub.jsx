@@ -80,7 +80,9 @@ export default function SurveyHub({
     if (project) setShare({ kind: 'project', name: project.name, item: project, manage: false });
   };
   const shareTemplate = (template) => {
-    if (template) setShare({ kind: 'template', name: template.name, item: template, manage: !!template.shared });
+    // manage:false always — AccessManagementModal is document-only; template
+    // sharing goes through ShareModal (project/template invites are live).
+    if (template) setShare({ kind: 'template', name: template.name, item: template, manage: false });
   };
 
   const common = { onNav: setTab, user, templatesLocked: !isPro };

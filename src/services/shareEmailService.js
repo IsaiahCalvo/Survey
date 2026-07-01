@@ -57,6 +57,66 @@ export async function sendDocumentInviteEmail({
   });
 }
 
+/** Send the project-invite email. Best-effort; tolerates missing email.
+ *
+ * Reuses the deployed `document-invite` template (the only invite template
+ * the live send-email function ships) with the name phrased as
+ * `the project "X"`, so the email honestly reads
+ * "invited you to join the project "X" as <Role>". A dedicated
+ * project-invite template is a later edge-function change.
+ */
+export async function sendProjectInviteEmail({
+  email,
+  projectName,
+  inviterName,
+  role,
+  inviteUrl,
+  expiresAt,
+}) {
+  if (!email) return { success: false, error: 'no recipient' };
+  const displayName = projectName ? `the project "${projectName}"` : 'a project';
+  const subject = `${inviterName || 'A Survey user'} invited you to ${displayName} on Survey`;
+  return invokeSendEmail({
+    to: email,
+    subject,
+    template: 'document-invite',
+    data: {
+      documentName: displayName,
+      inviterName: inviterName || 'A Survey user',
+      role: role || 'Viewer',
+      inviteUrl: inviteUrl || appOrigin(),
+      expiresAt: expiresAt || null,
+    },
+  });
+}
+
+/** Send the template-invite email. Best-effort; tolerates missing email.
+ * Same deployed-template reuse as sendProjectInviteEmail. */
+export async function sendTemplateInviteEmail({
+  email,
+  templateName,
+  inviterName,
+  role,
+  inviteUrl,
+  expiresAt,
+}) {
+  if (!email) return { success: false, error: 'no recipient' };
+  const displayName = templateName ? `the template "${templateName}"` : 'a template';
+  const subject = `${inviterName || 'A Survey user'} invited you to ${displayName} on Survey`;
+  return invokeSendEmail({
+    to: email,
+    subject,
+    template: 'document-invite',
+    data: {
+      documentName: displayName,
+      inviterName: inviterName || 'A Survey user',
+      role: role || 'Viewer',
+      inviteUrl: inviteUrl || appOrigin(),
+      expiresAt: expiresAt || null,
+    },
+  });
+}
+
 /** Send the permission-changed email after a role update. */
 export async function sendPermissionChangedEmail({
   email,

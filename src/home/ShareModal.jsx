@@ -12,12 +12,17 @@
  *   - Invite link/email creation hits the backend (`document_invites` table +
  *     `kal31_*` RPCs from migration 20260521000100). Real Resend email delivery
  *     is wired in Phase C.
+ *   - kind='project' and kind='template' route to project_invites /
+ *     template_invites and their kal31_* RPCs (migration 20260701120000) —
+ *     same token shape, same /invite/<token> URL space, same tier gate.
  *
  * UI structure is preserved from the approved design — do not redesign.
  */
 import { useContext, useEffect, useMemo, useState } from 'react';
 import { AuthContext } from '../contexts/AuthContext';
 import { createDocumentInvite, buildInviteUrl } from '../services/documentInviteService';
+import { createProjectInvite } from '../services/projectInviteService';
+import { createTemplateInvite } from '../services/templateInviteService';
 
 const C = {
   scrim: 'rgba(13,15,20,0.55)',
@@ -80,10 +85,28 @@ export default function ShareModal({
   }, [open]);
 
   const noun = KIND_LABEL[kind] || 'item';
-  const documentId = useMemo(() => {
+  const targetId = useMemo(() => {
     if (!item) return null;
     return item.id || item.document_id || item.documentId || null;
   }, [item]);
+
+  // Route the invite mint to the right backend by kind. All three share the
+  // same token shape, RPC contract, and /invite/<token> URL space.
+  const mintInvite = (email) => {
+    const common = {
+      role: role.toLowerCase(),
+      email,
+      currentUser,
+      inviterName: currentUser?.user_metadata?.full_name || currentUser?.email || null,
+    };
+    if (kind === 'project') {
+      return createProjectInvite({ projectId: targetId, projectName: name || '', ...common });
+    }
+    if (kind === 'template') {
+      return createTemplateInvite({ templateId: targetId, templateName: name || '', ...common });
+    }
+    return createDocumentInvite({ documentId: targetId, documentName: name || '', ...common });
+  };
 
   // Honest placeholder until a real token is minted — never show a fake URL
   // that differs from what "Copy link" actually copies.
@@ -95,11 +118,9 @@ export default function ShareModal({
 
   const blockedReason = !canInvite
     ? 'Free plan accounts cannot create invite links. Upgrade to Pro or higher to share.'
-    : (kind !== 'document'
-        ? `Sharing for ${noun}s is rolling out in a follow-up — Phase A ships document sharing only.`
-        : (!documentId
-            ? 'This share dialog needs a target document id. Open the document and share from there.'
-            : ''));
+    : (!targetId
+        ? `This share dialog needs a target ${noun} id. Select the ${noun} and share from there.`
+        : '');
 
   const explicitLinkText = `Anyone with this invite link can join as ${role}.`;
   const freeNote = ' Free recipients enter as Viewer until they upgrade.';
@@ -108,14 +129,7 @@ export default function ShareModal({
     setError(''); setSuccess('');
     if (blockedReason) { setError(blockedReason); return; }
     setBusy(true);
-    const res = await createDocumentInvite({
-      documentId,
-      role: role.toLowerCase(),
-      email: null, // link-only
-      currentUser,
-      documentName: name || '',
-      inviterName: currentUser?.user_metadata?.full_name || currentUser?.email || null,
-    });
+    const res = await mintInvite(null); // link-only
     setBusy(false);
     if (!res.success) { setError(res.error || 'Could not create invite link.'); return; }
     setActiveInvite(res.invite);
@@ -132,15 +146,7 @@ export default function ShareModal({
     const list = parseEmails(emails);
     if (!list.length) { setError('Enter at least one valid email.'); return; }
     setBusy(true);
-    const results = await Promise.all(list.map((addr) =>
-      createDocumentInvite({
-        documentId,
-        role: role.toLowerCase(),
-        email: addr,
-        currentUser,
-        documentName: name || '',
-        inviterName: currentUser?.user_metadata?.full_name || currentUser?.email || null,
-      })));
+    const results = await Promise.all(list.map((addr) => mintInvite(addr)));
     setBusy(false);
     const failed = results.filter((r) => !r.success);
     if (failed.length) {

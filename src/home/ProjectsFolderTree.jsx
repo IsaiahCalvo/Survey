@@ -26,6 +26,7 @@ import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { HubShell, Icon, Avatar, AvatarStack, Search } from './HubShell';
 import ManageTeamModal from './ManageTeamModal';
+import { listProjectCollaboratorsForProjects } from '../services/projectInviteService';
 import { MoveCopyModal } from './BulkModals';
 import DragRearrangeHandle from '../reorder/DragRearrangeHandle';
 import { SortableRearrangeList, SortableRearrangeRow } from '../reorder/SortableRearrangeList';
@@ -267,13 +268,36 @@ export default function ProjectsFolderTree({
     [localDocs, open],
   );
 
+  // Real collaborators — one bulk query against `project_collaborators`
+  // (viewer-gated SELECT via RLS) for every uuid-backed project in the list.
+  // Local-only projects (numeric ids from nextLocalId) are skipped so the
+  // uuid column never sees a bad cast. Failure degrades to owner-only teams.
+  const [collabByProject, setCollabByProject] = useState(() => new Map());
+  useEffect(() => {
+    let cancelled = false;
+    const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    const ids = localProjects.map((p) => p.id).filter((id) => typeof id === 'string' && UUID_RE.test(id));
+    if (!ids.length) { setCollabByProject(new Map()); return undefined; }
+    (async () => {
+      const { data } = await listProjectCollaboratorsForProjects(ids);
+      if (cancelled) return;
+      const map = new Map();
+      (data || []).forEach((row) => {
+        if (!map.has(row.project_id)) map.set(row.project_id, []);
+        map.get(row.project_id).push(row);
+      });
+      setCollabByProject(map);
+    })();
+    return () => { cancelled = true; };
+  }, [localProjects]);
+
   // Member directory lookup — resolves a memberId to its { name, role, color,
   // online } record so avatars/team render the true owner + collaborators.
   //
   // Every project has at least one real member: its owner, the signed-in user.
-  // There is no teammates table yet, so the directory is seeded from the
-  // current user (as Owner). Any real collaborator records passed by the host
-  // are merged on top. No mock people are ever invented here.
+  // The directory is seeded from the current user (as Owner), any host-passed
+  // records, and the real `project_collaborators` rows fetched above. No mock
+  // people are ever invented here.
   const ownerMember = useMemo(() => (
     user?.id != null
       ? {
@@ -289,31 +313,63 @@ export default function ProjectsFolderTree({
       : null
   ), [user]);
 
+  // Deterministic avatar colors for real collaborators (owner keeps gold).
+  const COLLAB_COLORS = ['#5fbf83', '#7aa2f7', '#b48ead', '#8fbcbb', '#cf9f6f'];
+  const collabColor = (seed) => {
+    const s = String(seed || '');
+    let h = 0;
+    for (let i = 0; i < s.length; i += 1) h = (h * 31 + s.charCodeAt(i)) >>> 0;
+    return COLLAB_COLORS[h % COLLAB_COLORS.length];
+  };
+
   const memberById = useMemo(() => {
     const map = new Map();
     if (ownerMember) map.set(ownerMember.id, ownerMember);
     members.forEach((m) => { if (m && m.id != null) map.set(m.id, m); });
+    // Real collaborator rows → directory records (name from the stored email
+    // prefix; role capitalized). Owner/host records take precedence.
+    collabByProject.forEach((rows) => {
+      rows.forEach((r) => {
+        if (r?.user_id == null || map.has(r.user_id)) return;
+        const name = (r.email || '').split('@')[0] || 'Teammate';
+        const role = String(r.role || 'viewer');
+        map.set(r.user_id, {
+          id: r.user_id,
+          name,
+          email: r.email || '',
+          role: role.charAt(0).toUpperCase() + role.slice(1),
+          color: collabColor(r.user_id),
+          online: false,
+        });
+      });
+    });
     return map;
-  }, [members, ownerMember]);
+  }, [members, ownerMember, collabByProject]);
   const lookupMember = (id) => memberById.get(id) || null;
 
-  // Team member-ids for a project — owner first, then any real collaborator
-  // ids carried on the project row, deduped. A project's owner is the row's
-  // `user_id` (or `members[0]` for a freshly created local project); it falls
-  // back to the signed-in user so a project is never owner-less / empty.
+  // Team member-ids for a project — owner first, then real collaborator rows
+  // from `project_collaborators`, then any ids carried on the project row,
+  // deduped. A project's owner is the row's `user_id` (or `members[0]` for a
+  // freshly created local project); it falls back to the signed-in user so a
+  // project is never owner-less / empty.
   const projectTeam = useCallback((proj) => {
     if (!proj) return [];
     const projMembers = Array.isArray(proj.members) ? proj.members : [];
     const ownerId = proj.user_id ?? projMembers[0] ?? user?.id ?? null;
     const ids = [];
     if (ownerId != null) ids.push(ownerId);
+    (collabByProject.get(proj.id) || []).forEach((r) => {
+      if (r?.user_id != null && !ids.includes(r.user_id)) ids.push(r.user_id);
+    });
     projMembers.forEach((id) => { if (id != null && !ids.includes(id)) ids.push(id); });
     return ids;
-  }, [user?.id]);
+  }, [user?.id, collabByProject]);
 
-  // Real team-member records for the Manage Team modal — the project's team
-  // resolved against the directory. No invented people: today this is just the
-  // owner. Memoized so the modal keeps a stable list while it's open.
+  // Seed member records for the Manage Team modal — owner first, resolved
+  // against the directory. The modal fetches its own live collaborator +
+  // pending-invite rows; this seed mainly supplies the creator row (which is
+  // implicit owner and not a `project_collaborators` row). Memoized so the
+  // modal keeps a stable list while it's open.
   const teamModalMembers = useMemo(() => {
     if (!teamModalProject) return [];
     const added = teamModalProject.created_at
