@@ -19,6 +19,7 @@ import { boundsMatch } from './utils/pdfViewerGeometry.js';
 import { sanitizeTemplateConfig } from './utils/templateConfig.js';
 import { migrateSidebarData } from './utils/sidebarPersistence.js';
 import { resolveMarkerEntityFromName } from './utils/surveyMarkerEntityResolver.js';
+import { buildSpaceCSVContent } from './utils/spaceCSVExporter.js';
 import { showToast } from './utils/toast';
 import AnnotationPropertiesPanel from './components/AnnotationPropertiesPanel';
 import CalloutOverlay from './components/Callout';
@@ -150,7 +151,6 @@ import { perfLoad, perfZoom, setDebugEnabled as setPerfDebugEnabled } from './ut
 import { loadTrace } from './utils/loadTrace';
 import { preserveExistingCountersOnPage, shouldRenumberCountersForSave, summarizeCounterRenumberEffect } from './utils/counterRenumberSavePolicy';
 import { recordAnnotationCommit, recordAnnotationSyncPush, recordAnnotationUndoRedo } from './utils/annotationPreviewDiag';
-import { regionContainsPoint } from './utils/regionMath';
 import { resolveAnnotationAt } from './utils/annotationHitTest';
 import { resolveSafeSnapshot } from './utils/safeSnapshot';
 import { resolveSurveyMarkerPromptName } from './utils/surveyMarkerNamePrompt';
@@ -243,7 +243,6 @@ import {
   createAnnotation,
   createItem,
   dataURLToUint8Array,
-  escapeCSVValue,
   filterAnnotationsByModule,
   generateDefaultSurveyMarkerName,
   generateUUID,
@@ -17316,108 +17315,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       return;
     }
 
-    const headers = [
-      'Space Name',
-      'Page',
-      'Mode',
-      'Region Count',
-      'Annotation Type',
-      'Annotation ID',
-      'Left',
-      'Top',
-      'Width',
-      'Height',
-      'Stroke Color',
-      'Fill Color',
-      'Stroke Width',
-      'Notes',
-      'Checklist Items',
-      'Status',
-      'Attachments'
-    ];
-
-    const rows = [headers.map(escapeCSVValue).join(',')];
-
-    assignedPages.forEach(page => {
-      const pageNumber = page.pageId;
-      if (!pageNumber) {
-        return;
-      }
-
-      const mode = page.wholePageIncluded === false ? 'region' : 'full';
-      const regions = normalizePageRegions(page.regions || []);
-      const pageAnnotations = annotationsByPage[pageNumber]?.objects || [];
-
-      pageAnnotations.forEach(obj => {
-        if (!obj) return;
-        const objSpaceId = obj.spaceId || null;
-        if (space.id && objSpaceId && objSpaceId !== space.id) {
-          return;
-        }
-
-        const width = (obj.width || 0) * (obj.scaleX || 1);
-        const height = (obj.height || 0) * (obj.scaleY || 1);
-        const centerX = (obj.left || 0) + width / 2;
-        const centerY = (obj.top || 0) + height / 2;
-
-        if (mode === 'region' && regions.length > 0) {
-          const inRegion = regions.some(region => regionContainsPoint(centerX, centerY, region, 1));
-          if (!inRegion) {
-            return;
-          }
-        }
-
-        const attachmentsCount = Array.isArray(obj.attachments) ? obj.attachments.length : '';
-        const row = [
-          escapeCSVValue(space.name || ''),
-          escapeCSVValue(pageNumber),
-          escapeCSVValue(mode),
-          escapeCSVValue(regions.length),
-          escapeCSVValue(obj.type || ''),
-          escapeCSVValue(obj.id || ''),
-          escapeCSVValue(typeof obj.left === 'number' ? obj.left.toFixed(2) : obj.left || ''),
-          escapeCSVValue(typeof obj.top === 'number' ? obj.top.toFixed(2) : obj.top || ''),
-          escapeCSVValue(width ? width.toFixed(2) : ''),
-          escapeCSVValue(height ? height.toFixed(2) : ''),
-          escapeCSVValue(obj.stroke || ''),
-          escapeCSVValue(obj.fill || ''),
-          escapeCSVValue(obj.strokeWidth || ''),
-          escapeCSVValue(obj.note || ''),
-          escapeCSVValue((obj.checklistItems || []).join?.('; ') || ''),
-          escapeCSVValue(obj.status || ''),
-          escapeCSVValue(attachmentsCount)
-        ];
-        rows.push(row.join(','));
-      });
-    });
-
-    if (Array.isArray(space.categories)) {
-      space.categories.forEach(category => {
-        const checklistCount = category?.checklist?.length || 0;
-        const row = [
-          escapeCSVValue(space.name || ''),
-          '',
-          'category',
-          '',
-          '',
-          '',
-          '',
-          '',
-          '',
-          '',
-          '',
-          '',
-          '',
-          escapeCSVValue(category?.name || ''),
-          escapeCSVValue(checklistCount),
-          '',
-          ''
-        ];
-        rows.push(row.join(','));
-      });
-    }
-
-    const csvContent = rows.join('\n');
+    const csvContent = buildSpaceCSVContent(space, annotationsByPage);
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
