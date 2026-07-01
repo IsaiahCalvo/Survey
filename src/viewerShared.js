@@ -22,11 +22,11 @@
 // set GlobalWorkerOptions.workerSrc at module load, which forced pdf.js into the
 // first-paint entry chunk. Worker config now happens lazily via
 // utils/pdfWorkerConfig.loadPdfjs(), called right before each getDocument.
-import { recordAnnotationBackupWrite } from './utils/annotationPreviewDiag';
+import { recordAnnotationBackupWrite } from './utils/annotationPreviewDiag.js';
 import { deepClone } from './utils/deepClone.js';
-import { normalizeCalloutsForSync } from './utils/calloutSyncPayload';
-import { getCalloutIdsFromHistoryMeta } from './utils/calloutHistoryScope';
-import { ZOOM_MODES } from './utils/zoomController';
+import { normalizeCalloutsForSync } from './utils/calloutSyncPayload.js';
+import { getCalloutIdsFromHistoryMeta } from './utils/calloutHistoryScope.js';
+import { ZOOM_MODES } from './utils/zoomController.js';
 // Phase 29 — per-user Y.UndoManager hook + user-action wrappers. handleUndo and
 // handleRedo bodies route through these so trackedOrigins reference equality
 // (Pitfall 7) holds across the bridge and the keyboard handler call sites.
@@ -40,10 +40,10 @@ import { ZOOM_MODES } from './utils/zoomController';
 // FabricEditCanvas.jsx (protected file). toFabricGroup is used when
 // entering edit mode; fromFabricGroup is used in the save-callback
 // wrapper on edit-mode exit.
-import { COLORS } from './theme';
+import { COLORS } from './theme.js';
 // Phase 21: cloud sync for all annotation types — see
 // .planning/phases/21-cloud-sync-all-annotations/CONTEXT.md
-import { normalizePageRegions } from './utils/annotationVisibilityRules';
+import { normalizePageRegions } from './utils/annotationVisibilityRules.js';
 
 export const NATIVE_TEXT_MARKUP_TOOLS = new Set(['text-highlight', 'underline', 'strikeout', 'squiggly']);
 const SELECT_DELETE_ONLY_IMPORTED_TEXT_MARKUP_TYPES = new Set(['underline', 'strikeout', 'squiggly']);
