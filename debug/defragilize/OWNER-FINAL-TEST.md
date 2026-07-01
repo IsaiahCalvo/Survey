@@ -26,17 +26,48 @@ How to run the app for this test: the dev server is already up at http://localho
   in both places; delete removes it from both; after close+reopen the surviving markers are intact.
 - Guards extraction: B2 survey-marker CRUD handlers (commit named at B2 close).
 
-_(zoom/overlay feel entries appended when B7 lands)_
-
-<!-- TEMPLATE per item:
-### [ ] <behavior name>
-- Steps: <exact clicks/gestures>
-- Good looks like: <observable result>
-- Guards extraction: <which commit(s)>
-- If wrong, revert: <commit sha>
--->
+### [ ] Zoom FEEL sanity check (cursor-anchored smoothness)
+- Why hands-on: synthetic wheel/pinch events can't drive the real cursor-zoom path, so zoom
+  FEEL is the one behavior no automated test can prove (see memory: "Playwright zoom limitation").
+  NOTE: this run made NO changes to any zoom code — the zoom/scale lifecycle and the
+  container-sizing overlay loop were deliberately left untouched (they're protected correctness
+  invariants). This is a belt-and-suspenders confirmation that the run's other changes didn't
+  disturb zoom indirectly.
+- Steps: open a document → pinch-zoom in and out on a trackpad → scroll around while zoomed →
+  use the zoom-in / zoom-out buttons and the fit-page control → draw a shape, then zoom, and
+  confirm the shape stays anchored to the page.
+- Good looks like: zoom tracks the cursor smoothly with no lag, jump, or drift; annotations and
+  survey markers stay locked to their page positions at every zoom level; no flicker or blank
+  overlay during the zoom.
+- Guards: no zoom code changed this run; if anything feels off, the whole engine-extraction run
+  is the commit range from the sidebar-persistence extraction through the CSV-export extraction
+  (revert that range to rule the run out).
 
 ---
 
 ## Automated coverage summary (no hands-on needed — listed for confidence)
-_(filled in at the end: which engines are behind which passing e2e/unit guards)_
+
+Every extraction below was a VERBATIM move behind the green net; the full suite (build + node
+tests + 14-test e2e) passed after each. Engines whose pure logic was already modular by prior
+work were verified and left intact (moving their residual stateful/invariant-coupled wiring would
+be an unsafe restructure, forbidden by the verbatim + invariant rules).
+
+- Bookmarks / spaces — extracted the sidebar migration helper; guarded by the spaces CRUD e2e
+  (create/rename/persist-across-reopen/delete) + the reorder unit test + a helper unit test.
+- Survey markers — extracted the entity-color resolver; DATA path guarded by the survey-marker
+  roundtrip e2e (write → read → map → rename → delete) + a resolver unit test. (UI create/rename/
+  delete is the hands-on item above.)
+- Undo / redo — extracted the key-guard; guarded by the undo/redo e2e (all four redo chords) + a
+  guard unit test. Rest of the engine was already in dedicated modules.
+- Save / export — extracted the space-CSV builder; save path guarded by the save-reopen roundtrip,
+  re-upload survival, version-history revision checks, and the CSV builder unit test + source guard.
+- Excel sync/import/export — already fully modular (four dedicated modules + unit tests); guarded
+  by the Excel corruption + import-once e2e.
+- Cloud realtime sync — already fully modular (dedicated hooks + collab library); guarded by the
+  durable-sync roundtrip e2e.
+- Overlay / zoom-scale lifecycle — pure zoom math already extracted; the rest is invariant-protected
+  and left intact; guarded by render-smoke + zoom-while-locked + zoom-math unit tests + a source
+  tripwire. Zoom FEEL is the hands-on item above.
+
+Also verified green throughout: viewer renders real pixels, callouts (draw + interaction),
+document lock contract, form-field persistence across reopen, sleep/wake recovery.

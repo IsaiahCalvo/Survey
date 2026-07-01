@@ -96,3 +96,44 @@ TemplatesEditor, viewerShared, geometryHitTest, SearchTextPanel, Dashboard, ...
 
 ## Out of scope (owner-parked)
 - PrintPanel removal (KAL-315). Mobile useDocumentState hook step-12 (device test). Manual overlay recorder tooling.
+
+---
+
+# Engine-Extraction run (HANDOFF-engine-extraction.md) — safety-net-first
+
+Branch: `claude/modest-montalcini-dd468e` (fast-forwarded from magical-raman's tip; landed here
+because magical-raman is checked out in its own worktree). Governing doc: `HANDOFF-engine-extraction.md`.
+Coverage decisions: `A1-COVERAGE.md`. Owner hands-on checklist: `OWNER-FINAL-TEST.md`.
+
+## Phase A — safety net (DONE, green x2)
+- A0: viewerShared.js node-importable (added `.js` extensions to 6 relative imports). c5e26572.
+- A1: confirmed existing e2e. 10 reliable green gates. Fixed lock-document-e2e's stale Syncfusion
+  `.e-pv-page-div` selector → pdf.js overlay (now fully green). Documented 3 pre-existing-drift/obsolete
+  tests as NOT-gated with overlapping coverage (version-history spotlight, survey-roundtrip obsolete
+  snapshot API, regress-idle 'Select Template' flow). 50ecf870.
+- A2: 4 new honest e2e guards — undo-redo (all 4 redo chords), survey-marker data+mapper roundtrip,
+  spaces CRUD+persist, form-field persist-across-reopen. fb738964.
+- A3: agent-cli/full-e2e.sh (14-test suite, portable timeout, warm-retry); fixed an undo/redo
+  load-flake (poll-for-count instead of check-once-then-redraw). Ran twice back-to-back → 14/14 both. 3fde9bde.
+
+## Phase B — extract engines one at a time behind the net (each: map → verify vs live source →
+## verbatim move → full gate 14/14 → commit)
+- B1 bookmark/space: sidebar bookmark-normalization + space-region migration → utils/sidebarPersistence
+  (migrateSidebarData, +8-case test). 4446ab9e.
+- B2 survey-marker: KAL-309 entity-color resolver → utils/surveyMarkerEntityResolver (+9-case test). 600ff573.
+- B3 undo/redo: keydown execution-site guard → undoRedoHotkeys.isUndoRedoBlocked (+8-case test). b8b2bc8f.
+- B4 save/export: Space CSV row-builder → utils/spaceCSVExporter (+6-case test); updated the
+  pdfSaveExportContract source-assertion guard to follow the moved code. cf5ceddb.
+- B5 Excel, B6 cloud sync, B7 overlay/zoom: **already fully modularized by prior work** — pure logic
+  in dedicated modules with unit tests; residual is scattered stateful wiring (B5/B6) or
+  invariant-protected zoom/overlay lifecycle (B7). Moving it would be an unsafe restructure that
+  violates the verbatim-only + CLAUDE.md-invariant rules → correctly LEFT IN PLACE. Each verified
+  via a thorough map + backed by green e2e guards (excel-corruption/import-once, yjs-roundtrip,
+  render-smoke/lock-document/zoom-math units). See task notes + A1-COVERAGE.
+
+## Tally
+PDFViewer.jsx 33,302 → 33,138 (−164 net; 4 pure engines lifted into tested modules). Node tests
+1716 → 1747 (+31 across 4 new util test files). 8 commits (A0–A3 + B1–B4). Zero regressions; full
+suite green after every step. Nothing DEFERRED: the un-extractable engines are un-extractable for
+correctness/safety reasons (documented), not skipped; zoom FEEL + survey-marker UI CRUD (needs a
+template fixture) are on OWNER-FINAL-TEST.md as the only hands-on items.
