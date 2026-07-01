@@ -23,12 +23,17 @@ Gate helper: `bash <scratchpad>/gate.sh [--smoke]`.
 - §4f broken auto-recorder rAF loop: **DONE 2026-06-28** (comment at PDFViewer.jsx:8967). Remaining manual
   recorder tooling is harmless + deeply entangled via overlayLagRecorderRef → OUT OF SCOPE (min-diff guardrail).
 
-## Priority 1 — finish dead zoom/scroll clusters in PDFViewer.jsx (IN PROGRESS)
-Investigation workflow mapping: renderPage cluster (atomic), mouse/wheel cluster (atomic), 4b small dead effects, 4a if(true)return bodies.
-- [ ] renderPage cluster (H-L atomic)
-- [ ] mouse/wheel cluster (M-P + JSX props, atomic)
-- [ ] 4b small dead useEffects (F/G/Q/R)
-- [ ] 4a if(true)return dead bodies (D/E)
+## Priority 1 — dead zoom/scroll clusters in PDFViewer.jsx (DONE ✅)
+Read-only map+adversarial-verify workflow confirmed all 4 blocks SAFE (no live callers, no
+source-assertion guards). Executed one committed batch each, full gate (build+tests+smoke+e2e) after each.
+PDFViewer.jsx: 33,982 → 33,443 lines (539 dead lines gone).
+- [x] 4a if(true)return dead bodies (bookmark-fallback + scroll re-attach) — 8acd9f7d
+- [x] 4b small dead useEffects (interaction teardown, pageChange re-zoom, committed-scales branch) — 98a2cd06
+- [x] 4c renderPage cluster (atomic ~210 lines) — 517b2e7b
+- [x] 4d mouse/wheel cluster (handleWheel + pan handlers + native backup + JSX props, atomic) — 3f009198
+- [x] orphan cleanup (5 declaration-only refs/state) — dfa8595d
+Note: broken overlay auto-recorder rAF loop was already removed 2026-06-28; remaining manual recorder
+tooling is harmless + entangled → left in place (min-diff guardrail).
 
 ## Priority 2 — split PDFViewer.jsx into modules (PENDING)
 Leaf-first, behavior identical, one extraction/commit, full gate (+smoke) each.
