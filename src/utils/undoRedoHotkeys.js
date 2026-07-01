@@ -42,3 +42,24 @@ export const isRedoKeyEvent = (event) => {
 export const isUndoRedoKeyEvent = (event) => (
   isUndoKeyEvent(event) || isRedoKeyEvent(event)
 );
+
+/**
+ * True when a matched undo/redo hotkey must NOT execute. Three registration-order-proof
+ * execution-site guards (each a plain early-return in PDFViewer's capture handler):
+ *  - KAL-75 (G2): locked/read-only documents never execute undo/redo. The lock banner's
+ *    capture blocker registers AFTER PDFViewer's handler (banner mounts on the lock-state
+ *    fetch) so it can't preempt — this guard can.
+ *  - KAL-301: while the region-edit overlay is mounted, RegionSelectionTool owns Cmd+Z /
+ *    Cmd+Shift+Z via its own window-capture listener (registered when region edit activates,
+ *    i.e. AFTER this one). Same-target capture order runs PDFViewer's handler first, so it
+ *    bails here WITHOUT stopImmediatePropagation, letting the region handler run.
+ *  - Typing guard: skip while focus is in an INPUT / TEXTAREA / contentEditable element.
+ */
+export const isUndoRedoBlocked = (doc) => {
+  if (!doc) return false;
+  if (doc.body && doc.body.getAttribute('data-readonly') === 'true') return true;
+  if (typeof doc.querySelector === 'function' && doc.querySelector('[data-region-selection-ui="true"]')) return true;
+  const active = doc.activeElement;
+  if (active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.isContentEditable)) return true;
+  return false;
+};

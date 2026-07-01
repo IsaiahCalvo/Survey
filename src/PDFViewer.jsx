@@ -85,7 +85,7 @@ import { debugMark } from './utils/debugBridge';
 import { deleteAnnotations, removeDocumentPresence, subscribeToDocumentAnnotations, syncAnnotationsToSupabase, updateDocumentPresence } from './services/documentAnnotationService';
 import { fromFabricGroup, toFabricGroup } from './utils/calloutEditAdapter';
 import { getActivePageRegionId, getPageAnnotationVisibilityState, normalizePageRegions, normalizeRegionVisibility } from './utils/annotationVisibilityRules';
-import { isUndoKeyEvent, isRedoKeyEvent } from './utils/undoRedoHotkeys';
+import { isUndoKeyEvent, isRedoKeyEvent, isUndoRedoBlocked } from './utils/undoRedoHotkeys';
 import { getCalloutSyncFingerprint } from './utils/calloutSyncPayload';
 import { isPlacedSurveyMarker } from './services/surveyMarkerSyncDiff';
 import { forceUnplacedImportedMarker, freezeGeometryFromOriginal } from './services/importFieldWhitelist';
@@ -2808,24 +2808,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       const isRedoCombo = isRedoKeyEvent(e);
       if (!isUndoCombo && !isRedoCombo) return;
 
-      // KAL-75 (G2): locked/read-only documents never execute undo/redo. This
-      // execution-site guard is registration-order-proof — the lock banner's
-      // capture blocker registers AFTER this handler (banner mounts on the
-      // lock-state fetch) and therefore cannot preempt it; the guard can.
-      if (document.body.getAttribute('data-readonly') === 'true') return;
-
-      // KAL-301 REDO: while the region-edit overlay is mounted,
-      // RegionSelectionTool owns Cmd+Z / Cmd+Shift+Z through its own
-      // window-capture listener. That listener registers when region edit
-      // activates (i.e. AFTER this one), so same-target capture ordering
-      // runs this handler first — bail here WITHOUT stopImmediatePropagation
-      // so the region handler can run. Swallowing the event here was why
-      // undo did nothing in region edit mode.
-      if (document.querySelector('[data-region-selection-ui="true"]')) return;
-
-      // Skip if user is typing in an input
-      const active = document.activeElement;
-      if (active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.isContentEditable)) return;
+      // Registration-order-proof execution-site guards (read-only doc, region-edit
+      // overlay active, or focus in a text field) — see isUndoRedoBlocked's doc comment.
+      if (isUndoRedoBlocked(document)) return;
 
       e.preventDefault();
       if (typeof e.stopImmediatePropagation === 'function') {
