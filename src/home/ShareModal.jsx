@@ -85,13 +85,11 @@ export default function ShareModal({
     return item.id || item.document_id || item.documentId || null;
   }, [item]);
 
-  // Fallback display link (no backend round-trip yet) — replaced as soon as the
-  // user clicks "Copy link" and we mint a real token.
-  const previewSlug = (name || noun).toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 32) || noun;
+  // Honest placeholder until a real token is minted — never show a fake URL
+  // that differs from what "Copy link" actually copies.
   const linkText = activeInvite
     ? buildInviteUrl(activeInvite)
-    : `survey.app/${noun}/${previewSlug}?role=${role.toLowerCase()}`;
+    : `Press Copy link to create a secure ${role} link`;
 
   if (!open) return null;
 
