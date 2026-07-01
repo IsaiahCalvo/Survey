@@ -4,67 +4,211 @@
   "graph": {},
   "nodes": [
     {
+      "label": "PROGRESS.md",
+      "file_type": "document",
+      "source_file": "debug/defragilize/PROGRESS.md",
+      "source_location": "L1",
+      "id": "defragilize_progress",
+      "community": 12,
+      "norm_label": "progress.md"
+    },
+    {
+      "label": "De-Fragilize Campaign \u2014 Progress Ledger",
+      "file_type": "document",
+      "source_file": "debug/defragilize/PROGRESS.md",
+      "source_location": "L1",
+      "id": "defragilize_progress_de_fragilize_campaign_progress_ledger",
+      "community": 12,
+      "norm_label": "de-fragilize campaign \u2014 progress ledger"
+    },
+    {
+      "label": "Rules (from HANDOFF run-mode)",
+      "file_type": "document",
+      "source_file": "debug/defragilize/PROGRESS.md",
+      "source_location": "L10",
+      "id": "defragilize_progress_rules_from_handoff_run_mode",
+      "community": 12,
+      "norm_label": "rules (from handoff run-mode)"
+    },
+    {
+      "label": "Status of prior work (verified this session)",
+      "file_type": "document",
+      "source_file": "debug/defragilize/PROGRESS.md",
+      "source_location": "L17",
+      "id": "defragilize_progress_status_of_prior_work_verified_this_session",
+      "community": 12,
+      "norm_label": "status of prior work (verified this session)"
+    },
+    {
+      "label": "Priority 1 \u2014 dead zoom/scroll clusters in PDFViewer.jsx (DONE \u2705)",
+      "file_type": "document",
+      "source_file": "debug/defragilize/PROGRESS.md",
+      "source_location": "L26",
+      "id": "defragilize_progress_priority_1_dead_zoom_scroll_clusters_in_pdfviewer_jsx_done",
+      "community": 12,
+      "norm_label": "priority 1 \u2014 dead zoom/scroll clusters in pdfviewer.jsx (done \u2705)"
+    },
+    {
+      "label": "Priority 2 \u2014 split PDFViewer.jsx into modules (SAFE EXTRACTIONS DONE; bulk deferred)",
+      "file_type": "document",
+      "source_file": "debug/defragilize/PROGRESS.md",
+      "source_location": "L38",
+      "id": "defragilize_progress_priority_2_split_pdfviewer_jsx_into_modules_safe_extractions_done_bulk_deferred",
+      "community": 12,
+      "norm_label": "priority 2 \u2014 split pdfviewer.jsx into modules (safe extractions done; bulk deferred)"
+    },
+    {
+      "label": "Priority 3 \u2014 split other >1k-line files (IN PROGRESS)",
+      "file_type": "document",
+      "source_file": "debug/defragilize/PROGRESS.md",
+      "source_location": "L58",
+      "id": "defragilize_progress_priority_3_split_other_1k_line_files_in_progress",
+      "community": 12,
+      "norm_label": "priority 3 \u2014 split other >1k-line files (in progress)"
+    },
+    {
+      "label": "Priority 3 \u2014 split other >1k-line files (PENDING)",
+      "file_type": "document",
+      "source_file": "debug/defragilize/PROGRESS.md",
+      "source_location": "L64",
+      "id": "defragilize_progress_priority_3_split_other_1k_line_files_pending",
+      "community": 12,
+      "norm_label": "priority 3 \u2014 split other >1k-line files (pending)"
+    },
+    {
+      "label": "Out of scope (owner-parked)",
+      "file_type": "document",
+      "source_file": "debug/defragilize/PROGRESS.md",
+      "source_location": "L69",
+      "id": "defragilize_progress_out_of_scope_owner_parked",
+      "community": 12,
+      "norm_label": "out of scope (owner-parked)"
+    },
+    {
       "label": "PDFViewer.jsx",
       "file_type": "code",
       "source_file": "src/PDFViewer.jsx",
       "source_location": "L1",
-      "id": "src_pdfviewer",
       "community": 4,
-      "norm_label": "pdfviewer.jsx"
+      "norm_label": "pdfviewer.jsx",
+      "id": "src_pdfviewer"
     },
     {
       "label": "readWorkbookRegistration()",
       "file_type": "code",
       "source_file": "src/PDFViewer.jsx",
-      "source_location": "L324",
-      "id": "src_pdfviewer_readworkbookregistration",
+      "source_location": "L325",
       "community": 4,
-      "norm_label": "readworkbookregistration()"
+      "norm_label": "readworkbookregistration()",
+      "id": "src_pdfviewer_readworkbookregistration"
     },
     {
       "label": "resolveMarkerEntityFromName()",
       "file_type": "code",
       "source_file": "src/PDFViewer.jsx",
-      "source_location": "L343",
-      "id": "src_pdfviewer_resolvemarkerentityfromname",
+      "source_location": "L344",
       "community": 4,
-      "norm_label": "resolvemarkerentityfromname()"
+      "norm_label": "resolvemarkerentityfromname()",
+      "id": "src_pdfviewer_resolvemarkerentityfromname"
     },
     {
       "label": "PDFViewer()",
       "file_type": "code",
       "source_file": "src/PDFViewer.jsx",
-      "source_location": "L356",
-      "id": "src_pdfviewer_pdfviewer",
-      "community": 4,
-      "norm_label": "pdfviewer()"
+      "source_location": "L357",
+      "community": 15,
+      "norm_label": "pdfviewer()",
+      "id": "src_pdfviewer_pdfviewer"
+    },
+    {
+      "label": "useRegionOverlayVisibility.test.mjs",
+      "file_type": "code",
+      "source_file": "src/hooks/__tests__/useRegionOverlayVisibility.test.mjs",
+      "source_location": "L1",
+      "community": 15,
+      "norm_label": "useregionoverlayvisibility.test.mjs",
+      "id": "tests_useregionoverlayvisibility_test"
+    },
+    {
+      "label": "useRegionOverlayVisibility.js",
+      "file_type": "code",
+      "source_file": "src/hooks/useRegionOverlayVisibility.js",
+      "source_location": "L1",
+      "community": 15,
+      "norm_label": "useregionoverlayvisibility.js",
+      "id": "hooks_useregionoverlayvisibility"
+    },
+    {
+      "label": "storageKeyFor()",
+      "file_type": "code",
+      "source_file": "src/hooks/useRegionOverlayVisibility.js",
+      "source_location": "L11",
+      "community": 15,
+      "norm_label": "storagekeyfor()",
+      "id": "hooks_useregionoverlayvisibility_storagekeyfor"
+    },
+    {
+      "label": "parseRegionOverlayStates()",
+      "file_type": "code",
+      "source_file": "src/hooks/useRegionOverlayVisibility.js",
+      "source_location": "L17",
+      "community": 15,
+      "norm_label": "parseregionoverlaystates()",
+      "id": "hooks_useregionoverlayvisibility_parseregionoverlaystates"
+    },
+    {
+      "label": "serializeRegionOverlayStates()",
+      "file_type": "code",
+      "source_file": "src/hooks/useRegionOverlayVisibility.js",
+      "source_location": "L29",
+      "community": 15,
+      "norm_label": "serializeregionoverlaystates()",
+      "id": "hooks_useregionoverlayvisibility_serializeregionoverlaystates"
+    },
+    {
+      "label": "readRegionOverlayStates()",
+      "file_type": "code",
+      "source_file": "src/hooks/useRegionOverlayVisibility.js",
+      "source_location": "L33",
+      "community": 15,
+      "norm_label": "readregionoverlaystates()",
+      "id": "hooks_useregionoverlayvisibility_readregionoverlaystates"
+    },
+    {
+      "label": "useRegionOverlayVisibility()",
+      "file_type": "code",
+      "source_file": "src/hooks/useRegionOverlayVisibility.js",
+      "source_location": "L43",
+      "community": 15,
+      "norm_label": "useregionoverlayvisibility()",
+      "id": "hooks_useregionoverlayvisibility_useregionoverlayvisibility"
     },
     {
       "label": "templateConfig.test.mjs",
       "file_type": "code",
       "source_file": "src/utils/__tests__/templateConfig.test.mjs",
       "source_location": "L1",
-      "id": "tests_templateconfig_test",
       "community": 14,
-      "norm_label": "templateconfig.test.mjs"
+      "norm_label": "templateconfig.test.mjs",
+      "id": "tests_templateconfig_test"
     },
     {
       "label": "templateConfig.js",
       "file_type": "code",
       "source_file": "src/utils/templateConfig.js",
       "source_location": "L1",
-      "id": "utils_templateconfig",
       "community": 14,
-      "norm_label": "templateconfig.js"
+      "norm_label": "templateconfig.js",
+      "id": "utils_templateconfig"
     },
     {
       "label": "sanitizeTemplateConfig()",
       "file_type": "code",
       "source_file": "src/utils/templateConfig.js",
       "source_location": "L6",
-      "id": "utils_templateconfig_sanitizetemplateconfig",
       "community": 14,
-      "norm_label": "sanitizetemplateconfig()"
+      "norm_label": "sanitizetemplateconfig()",
+      "id": "utils_templateconfig_sanitizetemplateconfig"
     },
     {
       "label": "pdfViewerGeometry.test.mjs",
@@ -92,78 +236,6 @@
       "community": 13,
       "norm_label": "boundsmatch()",
       "id": "utils_pdfviewergeometry_boundsmatch"
-    },
-    {
-      "label": "PROGRESS.md",
-      "file_type": "document",
-      "source_file": "debug/defragilize/PROGRESS.md",
-      "source_location": "L1",
-      "community": 12,
-      "norm_label": "progress.md",
-      "id": "defragilize_progress"
-    },
-    {
-      "label": "De-Fragilize Campaign \u2014 Progress Ledger",
-      "file_type": "document",
-      "source_file": "debug/defragilize/PROGRESS.md",
-      "source_location": "L1",
-      "community": 12,
-      "norm_label": "de-fragilize campaign \u2014 progress ledger",
-      "id": "defragilize_progress_de_fragilize_campaign_progress_ledger"
-    },
-    {
-      "label": "Rules (from HANDOFF run-mode)",
-      "file_type": "document",
-      "source_file": "debug/defragilize/PROGRESS.md",
-      "source_location": "L10",
-      "community": 12,
-      "norm_label": "rules (from handoff run-mode)",
-      "id": "defragilize_progress_rules_from_handoff_run_mode"
-    },
-    {
-      "label": "Status of prior work (verified this session)",
-      "file_type": "document",
-      "source_file": "debug/defragilize/PROGRESS.md",
-      "source_location": "L17",
-      "community": 12,
-      "norm_label": "status of prior work (verified this session)",
-      "id": "defragilize_progress_status_of_prior_work_verified_this_session"
-    },
-    {
-      "label": "Priority 1 \u2014 dead zoom/scroll clusters in PDFViewer.jsx (DONE \u2705)",
-      "file_type": "document",
-      "source_file": "debug/defragilize/PROGRESS.md",
-      "source_location": "L26",
-      "community": 12,
-      "norm_label": "priority 1 \u2014 dead zoom/scroll clusters in pdfviewer.jsx (done \u2705)",
-      "id": "defragilize_progress_priority_1_dead_zoom_scroll_clusters_in_pdfviewer_jsx_done"
-    },
-    {
-      "label": "Priority 2 \u2014 split PDFViewer.jsx into modules (PENDING)",
-      "file_type": "document",
-      "source_file": "debug/defragilize/PROGRESS.md",
-      "source_location": "L38",
-      "community": 12,
-      "norm_label": "priority 2 \u2014 split pdfviewer.jsx into modules (pending)",
-      "id": "defragilize_progress_priority_2_split_pdfviewer_jsx_into_modules_pending"
-    },
-    {
-      "label": "Priority 3 \u2014 split other >1k-line files (PENDING)",
-      "file_type": "document",
-      "source_file": "debug/defragilize/PROGRESS.md",
-      "source_location": "L41",
-      "community": 12,
-      "norm_label": "priority 3 \u2014 split other >1k-line files (pending)",
-      "id": "defragilize_progress_priority_3_split_other_1k_line_files_pending"
-    },
-    {
-      "label": "Out of scope (owner-parked)",
-      "file_type": "document",
-      "source_file": "debug/defragilize/PROGRESS.md",
-      "source_location": "L46",
-      "community": 12,
-      "norm_label": "out of scope (owner-parked)",
-      "id": "defragilize_progress_out_of_scope_owner_parked"
     },
     {
       "label": "viewerShared.js",
@@ -197,7 +269,7 @@
       "file_type": "code",
       "source_file": "src/viewerShared.js",
       "source_location": "L49",
-      "community": 0,
+      "community": 4,
       "norm_label": "review_tool_ids",
       "id": "src_viewershared_review_tool_ids"
     },
@@ -278,7 +350,7 @@
       "file_type": "code",
       "source_file": "src/viewerShared.js",
       "source_location": "L248",
-      "community": 4,
+      "community": 0,
       "norm_label": "getpdfjstextmarkupmode()",
       "id": "src_viewershared_getpdfjstextmarkupmode"
     },
@@ -287,7 +359,7 @@
       "file_type": "code",
       "source_file": "src/viewerShared.js",
       "source_location": "L263",
-      "community": 0,
+      "community": 4,
       "norm_label": "coercepdfjszoompercent()",
       "id": "src_viewershared_coercepdfjszoompercent"
     },
@@ -359,7 +431,7 @@
       "file_type": "code",
       "source_file": "src/viewerShared.js",
       "source_location": "L420",
-      "community": 0,
+      "community": 4,
       "norm_label": "overlay_lag_recorder_work_categories",
       "id": "src_viewershared_overlay_lag_recorder_work_categories"
     },
@@ -368,7 +440,7 @@
       "file_type": "code",
       "source_file": "src/viewerShared.js",
       "source_location": "L432",
-      "community": 0,
+      "community": 4,
       "norm_label": "getsmoothpdfjswheelzoom()",
       "id": "src_viewershared_getsmoothpdfjswheelzoom"
     },
@@ -377,7 +449,7 @@
       "file_type": "code",
       "source_file": "src/viewerShared.js",
       "source_location": "L444",
-      "community": 0,
+      "community": 4,
       "norm_label": "getpdfjszoomawarescrollgain()",
       "id": "src_viewershared_getpdfjszoomawarescrollgain"
     },
@@ -386,7 +458,7 @@
       "file_type": "code",
       "source_file": "src/viewerShared.js",
       "source_location": "L453",
-      "community": 4,
+      "community": 0,
       "norm_label": "getnormalizedwheeldeltas()",
       "id": "src_viewershared_getnormalizedwheeldeltas"
     },
@@ -548,7 +620,7 @@
       "file_type": "code",
       "source_file": "src/viewerShared.js",
       "source_location": "L780",
-      "community": 0,
+      "community": 4,
       "norm_label": "shouldscopecallouthistoryrestore()",
       "id": "src_viewershared_shouldscopecallouthistoryrestore"
     },
@@ -557,7 +629,7 @@
       "file_type": "code",
       "source_file": "src/viewerShared.js",
       "source_location": "L786",
-      "community": 0,
+      "community": 4,
       "norm_label": "shouldechohistorydebugevent()",
       "id": "src_viewershared_shouldechohistorydebugevent"
     },
@@ -575,7 +647,7 @@
       "file_type": "code",
       "source_file": "src/viewerShared.js",
       "source_location": "L835",
-      "community": 4,
+      "community": 0,
       "norm_label": "mapyjsmeta()",
       "id": "src_viewershared_mapyjsmeta"
     },
@@ -584,7 +656,7 @@
       "file_type": "code",
       "source_file": "src/viewerShared.js",
       "source_location": "L846",
-      "community": 4,
+      "community": 0,
       "norm_label": "readhistorydebugconsoleenabled()",
       "id": "src_viewershared_readhistorydebugconsoleenabled"
     },
@@ -611,7 +683,7 @@
       "file_type": "code",
       "source_file": "src/viewerShared.js",
       "source_location": "L881",
-      "community": 4,
+      "community": 0,
       "norm_label": "writedocumentsyncstructuraldisabled()",
       "id": "src_viewershared_writedocumentsyncstructuraldisabled"
     },
@@ -620,7 +692,7 @@
       "file_type": "code",
       "source_file": "src/viewerShared.js",
       "source_location": "L894",
-      "community": 4,
+      "community": 0,
       "norm_label": "readpdfjslivestableoverlayenabled()",
       "id": "src_viewershared_readpdfjslivestableoverlayenabled"
     },
@@ -674,7 +746,7 @@
       "file_type": "code",
       "source_file": "src/viewerShared.js",
       "source_location": "L963",
-      "community": 4,
+      "community": 0,
       "norm_label": "roundoverlayrecordervalue()",
       "id": "src_viewershared_roundoverlayrecordervalue"
     },
@@ -692,7 +764,7 @@
       "file_type": "code",
       "source_file": "src/viewerShared.js",
       "source_location": "L976",
-      "community": 0,
+      "community": 4,
       "norm_label": "getpdfjsoverlayprefetchpages()",
       "id": "src_viewershared_getpdfjsoverlayprefetchpages"
     },
@@ -701,7 +773,7 @@
       "file_type": "code",
       "source_file": "src/viewerShared.js",
       "source_location": "L986",
-      "community": 4,
+      "community": 0,
       "norm_label": "measurepdfjspagescale()",
       "id": "src_viewershared_measurepdfjspagescale"
     },
@@ -710,7 +782,7 @@
       "file_type": "code",
       "source_file": "src/viewerShared.js",
       "source_location": "L1008",
-      "community": 4,
+      "community": 0,
       "norm_label": "measurepdfjspagehostscale()",
       "id": "src_viewershared_measurepdfjspagehostscale"
     },
@@ -719,7 +791,7 @@
       "file_type": "code",
       "source_file": "src/viewerShared.js",
       "source_location": "L1026",
-      "community": 0,
+      "community": 4,
       "norm_label": "normalizeinteractionmeasuredscale()",
       "id": "src_viewershared_normalizeinteractionmeasuredscale"
     },
@@ -728,7 +800,7 @@
       "file_type": "code",
       "source_file": "src/viewerShared.js",
       "source_location": "L1046",
-      "community": 4,
+      "community": 0,
       "norm_label": "parsecsstransformscalex()",
       "id": "src_viewershared_parsecsstransformscalex"
     },
@@ -746,7 +818,7 @@
       "file_type": "code",
       "source_file": "src/viewerShared.js",
       "source_location": "L1121",
-      "community": 0,
+      "community": 4,
       "norm_label": "getcategoryglyphlabel()",
       "id": "src_viewershared_getcategoryglyphlabel"
     },
@@ -755,7 +827,7 @@
       "file_type": "code",
       "source_file": "src/viewerShared.js",
       "source_location": "L1138",
-      "community": 0,
+      "community": 4,
       "norm_label": "gethexfromcolor()",
       "id": "src_viewershared_gethexfromcolor"
     },
@@ -791,7 +863,7 @@
       "file_type": "code",
       "source_file": "src/viewerShared.js",
       "source_location": "L1195",
-      "community": 4,
+      "community": 0,
       "norm_label": "handlemodaloptionmouseleave()",
       "id": "src_viewershared_handlemodaloptionmouseleave"
     },
@@ -854,7 +926,7 @@
       "file_type": "code",
       "source_file": "src/viewerShared.js",
       "source_location": "L1241",
-      "community": 0,
+      "community": 4,
       "norm_label": "normalizebookmarkpageids()",
       "id": "src_viewershared_normalizebookmarkpageids"
     },
@@ -890,7 +962,7 @@
       "file_type": "code",
       "source_file": "src/viewerShared.js",
       "source_location": "L1321",
-      "community": 4,
+      "community": 0,
       "norm_label": "buildoutlinepagelookup()",
       "id": "src_viewershared_buildoutlinepagelookup"
     },
@@ -926,7 +998,7 @@
       "file_type": "code",
       "source_file": "src/viewerShared.js",
       "source_location": "L1481",
-      "community": 0,
+      "community": 4,
       "norm_label": "dataurltouint8array()",
       "id": "src_viewershared_dataurltouint8array"
     },
@@ -944,7 +1016,7 @@
       "file_type": "code",
       "source_file": "src/viewerShared.js",
       "source_location": "L1506",
-      "community": 0,
+      "community": 4,
       "norm_label": "applyregionmasktocanvascontext()",
       "id": "src_viewershared_applyregionmasktocanvascontext"
     },
@@ -971,7 +1043,7 @@
       "file_type": "code",
       "source_file": "src/viewerShared.js",
       "source_location": "L1591",
-      "community": 4,
+      "community": 0,
       "norm_label": "zoom_mode_labels",
       "id": "src_viewershared_zoom_mode_labels"
     },
@@ -1007,7 +1079,7 @@
       "file_type": "code",
       "source_file": "src/viewerShared.js",
       "source_location": "L1640",
-      "community": 4,
+      "community": 0,
       "norm_label": "getpdfid()",
       "id": "src_viewershared_getpdfid"
     },
@@ -1016,7 +1088,7 @@
       "file_type": "code",
       "source_file": "src/viewerShared.js",
       "source_location": "L1646",
-      "community": 0,
+      "community": 4,
       "norm_label": "loadpdfdata()",
       "id": "src_viewershared_loadpdfdata"
     },
@@ -1034,7 +1106,7 @@
       "file_type": "code",
       "source_file": "src/viewerShared.js",
       "source_location": "L1672",
-      "community": 4,
+      "community": 0,
       "norm_label": "savesurveymarkers()",
       "id": "src_viewershared_savesurveymarkers"
     },
@@ -1052,7 +1124,7 @@
       "file_type": "code",
       "source_file": "src/viewerShared.js",
       "source_location": "L1710",
-      "community": 0,
+      "community": 4,
       "norm_label": "loadannotationsbypage()",
       "id": "src_viewershared_loadannotationsbypage"
     },
@@ -1070,7 +1142,7 @@
       "file_type": "code",
       "source_file": "src/viewerShared.js",
       "source_location": "L1724",
-      "community": 0,
+      "community": 4,
       "norm_label": "countannotationpageobjects()",
       "id": "src_viewershared_countannotationpageobjects"
     },
@@ -1259,7 +1331,7 @@
       "file_type": "code",
       "source_file": "src/viewerShared.js",
       "source_location": "L2032",
-      "community": 4,
+      "community": 0,
       "norm_label": "getmoduledatakey()",
       "id": "src_viewershared_getmoduledatakey"
     },
@@ -1277,7 +1349,7 @@
       "file_type": "code",
       "source_file": "src/viewerShared.js",
       "source_location": "L2046",
-      "community": 4,
+      "community": 0,
       "norm_label": "filterannotationsbymodule()",
       "id": "src_viewershared_filterannotationsbymodule"
     },
@@ -1295,7 +1367,7 @@
       "file_type": "code",
       "source_file": "src/viewerShared.js",
       "source_location": "L2062",
-      "community": 0,
+      "community": 4,
       "norm_label": "transferitems()",
       "id": "src_viewershared_transferitems"
     },
@@ -1304,12 +1376,114 @@
       "file_type": "code",
       "source_file": "src/viewerShared.js",
       "source_location": "L2143",
-      "community": 4,
+      "community": 0,
       "norm_label": "migratelegacysurveymarkers()",
       "id": "src_viewershared_migratelegacysurveymarkers"
     }
   ],
   "links": [
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "debug/defragilize/PROGRESS.md",
+      "source_location": "L1",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "defragilize_progress",
+      "target": "defragilize_progress_de_fragilize_campaign_progress_ledger"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "debug/defragilize/PROGRESS.md",
+      "source_location": "L41",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "defragilize_progress_de_fragilize_campaign_progress_ledger",
+      "target": "defragilize_progress_out_of_scope_owner_parked"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "debug/defragilize/PROGRESS.md",
+      "source_location": "L26",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "defragilize_progress_de_fragilize_campaign_progress_ledger",
+      "target": "defragilize_progress_priority_1_dead_zoom_scroll_clusters_in_pdfviewer_jsx_done"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "debug/defragilize/PROGRESS.md",
+      "source_location": "L38",
+      "weight": 1.0,
+      "source": "defragilize_progress_de_fragilize_campaign_progress_ledger",
+      "target": "defragilize_progress_priority_2_split_pdfviewer_jsx_into_modules_safe_extractions_done_bulk_deferred",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "debug/defragilize/PROGRESS.md",
+      "source_location": "L58",
+      "weight": 1.0,
+      "source": "defragilize_progress_de_fragilize_campaign_progress_ledger",
+      "target": "defragilize_progress_priority_3_split_other_1k_line_files_in_progress",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "debug/defragilize/PROGRESS.md",
+      "source_location": "L36",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "defragilize_progress_de_fragilize_campaign_progress_ledger",
+      "target": "defragilize_progress_priority_3_split_other_1k_line_files_pending"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "debug/defragilize/PROGRESS.md",
+      "source_location": "L10",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "defragilize_progress_de_fragilize_campaign_progress_ledger",
+      "target": "defragilize_progress_rules_from_handoff_run_mode"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "debug/defragilize/PROGRESS.md",
+      "source_location": "L17",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "defragilize_progress_de_fragilize_campaign_progress_ledger",
+      "target": "defragilize_progress_status_of_prior_work_verified_this_session"
+    },
+    {
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "src/PDFViewer.jsx",
+      "source_location": "L172",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "src_pdfviewer",
+      "target": "hooks_useregionoverlayvisibility"
+    },
+    {
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "src/PDFViewer.jsx",
+      "source_location": "L172",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "src_pdfviewer",
+      "target": "hooks_useregionoverlayvisibility_useregionoverlayvisibility"
+    },
     {
       "relation": "contains",
       "confidence": "EXTRACTED",
@@ -2304,9 +2478,9 @@
       "source_file": "src/PDFViewer.jsx",
       "source_location": "L19",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "src_pdfviewer",
-      "target": "utils_templateconfig",
-      "confidence_score": 1.0
+      "target": "utils_templateconfig"
     },
     {
       "relation": "imports",
@@ -2315,9 +2489,125 @@
       "source_file": "src/PDFViewer.jsx",
       "source_location": "L19",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "src_pdfviewer",
-      "target": "utils_templateconfig_sanitizetemplateconfig",
-      "confidence_score": 1.0
+      "target": "utils_templateconfig_sanitizetemplateconfig"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "src/PDFViewer.jsx",
+      "source_location": "L9198",
+      "weight": 1.0,
+      "source": "src_pdfviewer_pdfviewer",
+      "target": "hooks_useregionoverlayvisibility_useregionoverlayvisibility"
+    },
+    {
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "src/hooks/__tests__/useRegionOverlayVisibility.test.mjs",
+      "source_location": "L3",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "tests_useregionoverlayvisibility_test",
+      "target": "hooks_useregionoverlayvisibility"
+    },
+    {
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "src/hooks/__tests__/useRegionOverlayVisibility.test.mjs",
+      "source_location": "L3",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "tests_useregionoverlayvisibility_test",
+      "target": "hooks_useregionoverlayvisibility_parseregionoverlaystates"
+    },
+    {
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "src/hooks/__tests__/useRegionOverlayVisibility.test.mjs",
+      "source_location": "L3",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "tests_useregionoverlayvisibility_test",
+      "target": "hooks_useregionoverlayvisibility_serializeregionoverlaystates"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/hooks/useRegionOverlayVisibility.js",
+      "source_location": "L17",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "hooks_useregionoverlayvisibility",
+      "target": "hooks_useregionoverlayvisibility_parseregionoverlaystates"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/hooks/useRegionOverlayVisibility.js",
+      "source_location": "L33",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "hooks_useregionoverlayvisibility",
+      "target": "hooks_useregionoverlayvisibility_readregionoverlaystates"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/hooks/useRegionOverlayVisibility.js",
+      "source_location": "L29",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "hooks_useregionoverlayvisibility",
+      "target": "hooks_useregionoverlayvisibility_serializeregionoverlaystates"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/hooks/useRegionOverlayVisibility.js",
+      "source_location": "L11",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "hooks_useregionoverlayvisibility",
+      "target": "hooks_useregionoverlayvisibility_storagekeyfor"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/hooks/useRegionOverlayVisibility.js",
+      "source_location": "L43",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "hooks_useregionoverlayvisibility",
+      "target": "hooks_useregionoverlayvisibility_useregionoverlayvisibility"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/hooks/useRegionOverlayVisibility.js",
+      "source_location": "L36",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "hooks_useregionoverlayvisibility_readregionoverlaystates",
+      "target": "hooks_useregionoverlayvisibility_storagekeyfor"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/hooks/useRegionOverlayVisibility.js",
+      "source_location": "L36",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "hooks_useregionoverlayvisibility_readregionoverlaystates",
+      "target": "hooks_useregionoverlayvisibility_parseregionoverlaystates"
     },
     {
       "relation": "imports_from",
@@ -2326,9 +2616,9 @@
       "source_file": "src/utils/__tests__/templateConfig.test.mjs",
       "source_location": "L3",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "tests_templateconfig_test",
-      "target": "utils_templateconfig",
-      "confidence_score": 1.0
+      "target": "utils_templateconfig"
     },
     {
       "relation": "imports",
@@ -2337,9 +2627,9 @@
       "source_file": "src/utils/__tests__/templateConfig.test.mjs",
       "source_location": "L3",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "tests_templateconfig_test",
-      "target": "utils_templateconfig_sanitizetemplateconfig",
-      "confidence_score": 1.0
+      "target": "utils_templateconfig_sanitizetemplateconfig"
     },
     {
       "relation": "contains",
@@ -2347,9 +2637,9 @@
       "source_file": "src/utils/templateConfig.js",
       "source_location": "L6",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "utils_templateconfig",
-      "target": "utils_templateconfig_sanitizetemplateconfig",
-      "confidence_score": 1.0
+      "target": "utils_templateconfig_sanitizetemplateconfig"
     },
     {
       "relation": "imports_from",
@@ -2382,76 +2672,6 @@
       "confidence_score": 1.0,
       "source": "utils_pdfviewergeometry",
       "target": "utils_pdfviewergeometry_boundsmatch"
-    },
-    {
-      "relation": "contains",
-      "confidence": "EXTRACTED",
-      "source_file": "debug/defragilize/PROGRESS.md",
-      "source_location": "L1",
-      "weight": 1.0,
-      "confidence_score": 1.0,
-      "source": "defragilize_progress",
-      "target": "defragilize_progress_de_fragilize_campaign_progress_ledger"
-    },
-    {
-      "relation": "contains",
-      "confidence": "EXTRACTED",
-      "source_file": "debug/defragilize/PROGRESS.md",
-      "source_location": "L41",
-      "weight": 1.0,
-      "confidence_score": 1.0,
-      "source": "defragilize_progress_de_fragilize_campaign_progress_ledger",
-      "target": "defragilize_progress_out_of_scope_owner_parked"
-    },
-    {
-      "relation": "contains",
-      "confidence": "EXTRACTED",
-      "source_file": "debug/defragilize/PROGRESS.md",
-      "source_location": "L26",
-      "weight": 1.0,
-      "confidence_score": 1.0,
-      "source": "defragilize_progress_de_fragilize_campaign_progress_ledger",
-      "target": "defragilize_progress_priority_1_dead_zoom_scroll_clusters_in_pdfviewer_jsx_done"
-    },
-    {
-      "relation": "contains",
-      "confidence": "EXTRACTED",
-      "source_file": "debug/defragilize/PROGRESS.md",
-      "source_location": "L33",
-      "weight": 1.0,
-      "confidence_score": 1.0,
-      "source": "defragilize_progress_de_fragilize_campaign_progress_ledger",
-      "target": "defragilize_progress_priority_2_split_pdfviewer_jsx_into_modules_pending"
-    },
-    {
-      "relation": "contains",
-      "confidence": "EXTRACTED",
-      "source_file": "debug/defragilize/PROGRESS.md",
-      "source_location": "L36",
-      "weight": 1.0,
-      "confidence_score": 1.0,
-      "source": "defragilize_progress_de_fragilize_campaign_progress_ledger",
-      "target": "defragilize_progress_priority_3_split_other_1k_line_files_pending"
-    },
-    {
-      "relation": "contains",
-      "confidence": "EXTRACTED",
-      "source_file": "debug/defragilize/PROGRESS.md",
-      "source_location": "L10",
-      "weight": 1.0,
-      "confidence_score": 1.0,
-      "source": "defragilize_progress_de_fragilize_campaign_progress_ledger",
-      "target": "defragilize_progress_rules_from_handoff_run_mode"
-    },
-    {
-      "relation": "contains",
-      "confidence": "EXTRACTED",
-      "source_file": "debug/defragilize/PROGRESS.md",
-      "source_location": "L17",
-      "weight": 1.0,
-      "confidence_score": 1.0,
-      "source": "defragilize_progress_de_fragilize_campaign_progress_ledger",
-      "target": "defragilize_progress_status_of_prior_work_verified_this_session"
     },
     {
       "relation": "contains",
@@ -4122,5 +4342,5 @@
     }
   ],
   "hyperedges": [],
-  "built_at_commit": "3d96ac238fc4b23401959e5e1b140a7adf6f4453"
+  "built_at_commit": "82c8c4357ccbd37b7b574377327e65820144d087"
 }

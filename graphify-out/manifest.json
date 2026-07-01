@@ -1160,8 +1160,8 @@
     "semantic_hash": ""
   },
   "src/PDFViewer.jsx": {
-    "mtime": 1782883549.1582103,
-    "ast_hash": "cda5d2928bad9f6dd4756537ed84202f",
+    "mtime": 1782884011.9339724,
+    "ast_hash": "89337b1ae5d1eb6f82366616f39321c2",
     "semantic_hash": ""
   },
   "src/PageAnnotationLayer.jsx": {
@@ -7380,17 +7380,17 @@
     "semantic_hash": ""
   },
   "debug/defragilize/PROGRESS.md": {
-    "mtime": 1782882489.2288172,
-    "ast_hash": "e730afb3c85ac1b3aae7d0f49f0be580",
+    "mtime": 1782884178.319447,
+    "ast_hash": "abf093a8a1e2b36e92c0031e2573a273",
     "semantic_hash": ""
   },
   "agent-cli/callout-interaction-e2e-result.png": {
-    "mtime": 1782883628.615483,
-    "ast_hash": "0d8b61cfacd9f37850d0707e42fb48b5",
+    "mtime": 1782884095.1532817,
+    "ast_hash": "40ab402d5cbf73ab87d62d9283828580",
     "semantic_hash": ""
   },
   "agent-cli/render-smoke-result.png": {
-    "mtime": 1782883575.1575096,
+    "mtime": 1782884041.2028897,
     "ast_hash": "1e9813fa7c7ce048652c208fa934cc17",
     "semantic_hash": ""
   },
@@ -7412,6 +7412,16 @@
   "src/utils/templateConfig.js": {
     "mtime": 1782883527.4084733,
     "ast_hash": "a35c025d980b4d0481245b92619eeaa1",
+    "semantic_hash": ""
+  },
+  "src/hooks/__tests__/useRegionOverlayVisibility.test.mjs": {
+    "mtime": 1782883968.8776944,
+    "ast_hash": "a175158e9211cf4acebb22cb7e56ee9a",
+    "semantic_hash": ""
+  },
+  "src/hooks/useRegionOverlayVisibility.js": {
+    "mtime": 1782883951.399174,
+    "ast_hash": "3d205c4c79f64d23d1ee778bbf5a8338",
     "semantic_hash": ""
   }
 }
