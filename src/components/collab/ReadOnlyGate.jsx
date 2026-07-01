@@ -39,6 +39,7 @@
 
 import { useEffect } from 'react';
 import { useYDoc } from '../../hooks/useYDoc.js';
+import { resolveReadOnlyReason } from '../../lib/collab/documentRole.js';
 import './ReadOnlyGate.css';
 
 /**
@@ -46,17 +47,27 @@ import './ReadOnlyGate.css';
  * YDocProvider. Renders null — all effects are body-attribute + window
  * keydown listener.
  *
+ * 2026-07-01 — generalized from the single accessRevoked trigger to a reason
+ * resolved by resolveReadOnlyReason:
+ *   - 'revoked' — Phase 28 kicked-out path (accessRevoked), unchanged.
+ *   - 'viewer'  — the user's effective role on this document is 'viewer'
+ *     (get_my_document_role RPC, resolved once per open in YDocProvider).
+ * The presentation (dim + keystroke suppression) is identical for both; only
+ * the banner copy differs (YDocProvider renders permission_revoked vs
+ * viewer_access). 'revoked' wins when both are true.
+ *
  * @returns {null}
  */
 export function ReadOnlyGate() {
-  const { accessRevoked } = useYDoc();
+  const { accessRevoked, docRole } = useYDoc();
+  const readOnlyReason = resolveReadOnlyReason({ accessRevoked, docRole });
 
   useEffect(() => {
-    if (!accessRevoked) {
+    if (!readOnlyReason) {
       // UX: defensive cleanup. If a previous mount left body[data-readonly]
-      // set (e.g. accessRevoked flipped true → false within the same session),
-      // remove it now. Otherwise the toolbar would stay dimmed even though
-      // the user is back to read-write.
+      // set (e.g. the read-only reason flipped truthy → null within the same
+      // session), remove it now. Otherwise the toolbar would stay dimmed even
+      // though the user is back to read-write.
       if (typeof document !== 'undefined') {
         document.body?.removeAttribute('data-readonly');
       }
@@ -141,7 +152,7 @@ export function ReadOnlyGate() {
         document.body?.removeAttribute('data-readonly');
       }
     };
-  }, [accessRevoked]);
+  }, [readOnlyReason]);
 
   return null;
 }

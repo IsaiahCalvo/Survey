@@ -152,6 +152,17 @@ const COPY = {
     action: 'Clean up',
     reviewLabel: 'Review',
   },
+
+  // 2026-07-01 — viewer-role read-only notice. The user was INVITED as a
+  // viewer — nothing was revoked, nothing failed. Calm informational register,
+  // deliberately distinct from permission_revoked's "removed your access"
+  // copy. No action link (there is nothing to retry, sign into, or close);
+  // the × dismiss hides the notice while ReadOnlyGate keeps the toolbar
+  // dimmed and mutation keystrokes suppressed for the whole session.
+  viewer_access: {
+    body: "You have view-only access to this document. You can look through everything here, but you can't make changes.",
+    action: null,
+  },
 };
 
 // Phase 28 — per-variant headings (Phase 27 originally used a single shared
@@ -184,6 +195,8 @@ const HEADING_BY_CODE = {
   sync_deletions_pending: "Some changes haven't saved yet",
   // 2026-04-30 (Phase 35 Plan 05) — owner-only cleanup banner heading.
   sync_residue_cleanup: 'Old annotations to clean up',
+  // 2026-07-01 — viewer-role read-only notice (informational, not a failure).
+  viewer_access: 'View-only access',
 };
 
 // Phase 28 — per-variant secondary metadata. Phase 27 codes share the original
@@ -214,6 +227,9 @@ const SECONDARY_BY_CODE = {
   // so collaborators (who never see this banner) and the owner both understand
   // the audience.
   sync_residue_cleanup: 'Only you (the document owner) see this notice',
+  // 2026-07-01 — viewer-role notice: point at the escalation path rather than
+  // implying the app is broken.
+  viewer_access: 'Ask the document owner for edit access if you need to make changes',
 };
 
 // Inline 16x16 warning icon — matches existing project pattern (AuthModal.jsx,
@@ -244,7 +260,7 @@ const WarningIcon = () => (
  * any future CRDT-layer failure mode that wants the same chrome.
  *
  * @param {object} props
- * @param {'quota_exceeded'|'invalid_state'|'version_mismatch'|'blocked'|'transport_offline'|'permission_revoked'|'login_expiry_failure'|'annotation_remote_deleted'|'sync_queue_stuck'|'sync_deletions_pending'|'sync_residue_cleanup'} props.code
+ * @param {'quota_exceeded'|'invalid_state'|'version_mismatch'|'blocked'|'transport_offline'|'permission_revoked'|'login_expiry_failure'|'annotation_remote_deleted'|'sync_queue_stuck'|'sync_deletions_pending'|'sync_residue_cleanup'|'viewer_access'} props.code
  * @param {() => void} props.onDismiss - hides banner for this session only.
  *   IGNORED for `permission_revoked` — kicked-out is a permanent state for
  *   the session; banner stays until the user closes the document.
@@ -436,8 +452,10 @@ export function StorageFailureBanner({
             {copy.action}
           </button>
         </span>
-      ) : (
-        // Phase 27 + 28 single-action render — preserved verbatim.
+      ) : copy.action ? (
+        // Phase 27 + 28 single-action render — preserved verbatim. 2026-07-01:
+        // gated on copy.action so action-less codes (viewer_access) render no
+        // empty button — the × dismiss is that variant's only affordance.
         <button
           type="button"
           className="storage-banner__action"
@@ -445,7 +463,7 @@ export function StorageFailureBanner({
         >
           {copy.action}
         </button>
-      )}
+      ) : null}
       {showDismiss && !isRemoteDelete && !confirmingDismiss && (
         <button
           type="button"

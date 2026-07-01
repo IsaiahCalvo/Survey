@@ -19,6 +19,9 @@ const NULL_VALUE = Object.freeze({
   // Phase 28 fields (kept on the null shape so callers can safely destructure
   // without branching on "is the provider mounted").
   accessRevoked: false,
+  // 2026-07-01 — effective document role ('owner'|'editor'|'viewer'|null).
+  // null on the null shape = fail open (read-write presentation).
+  docRole: null,
   transportState: 'connecting',
   loginExpired: false,
   // Phase 29 additions — undoManager / undoCtx are null until YDocProvider's
@@ -40,6 +43,7 @@ const NULL_VALUE = Object.freeze({
  *   isCRDTEnabled: boolean,
  *   dismissBanner: () => void,
  *   accessRevoked: boolean,
+ *   docRole: 'owner' | 'editor' | 'viewer' | null,
  *   transportState: 'connecting' | 'connected' | 'offline' | string,
  *   loginExpired: boolean,
  *   undoManager: import('yjs').UndoManager | null,

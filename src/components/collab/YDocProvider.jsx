@@ -103,6 +103,7 @@ import { applyFabricCommit } from '../../lib/collab/crdtAnnotationBridge.js';
 // surface (per checker W5: ship an actual surface, not paper-over).
 import { auditResidue } from '../../lib/collab/cleanupResidueAudit.js';
 import { isOwner } from '../../lib/collab/permissionScope.js';
+import { fetchMyDocumentRole } from '../../lib/collab/documentRole.js';
 import { CleanupResidueReviewPanel } from './CleanupResidueReviewPanel.jsx';
 
 // Phase 35 Plan 05 — sticky-per-document dismissal persistence. Stored as a
@@ -159,6 +160,9 @@ const NULL_CTX_DISABLED = Object.freeze({
   // Phase 28 additions — kept on the null-shape too so callers can safely
   // destructure even when CRDT is off.
   accessRevoked: false,
+  // 2026-07-01 — effective document role ('owner'|'editor'|'viewer'|null).
+  // null on the disabled shape = fail open (read-write presentation).
+  docRole: null,
   transportState: null,
   loginExpired: false,
   reSignInModalOpen: false,
@@ -252,6 +256,18 @@ function YDocProviderInner({ docId, children, closeDocument }) {
   const [transportState, setTransportState] = useState(null);
   const [loginExpired, setLoginExpired] = useState(false);
   const [reSignInModalOpen, setReSignInModalOpen] = useState(false);
+
+  // 2026-07-01 — effective document role for THIS user, resolved once per
+  // document open via the get_my_document_role RPC (creator > direct
+  // document_collaborators > project_collaborators > project creator).
+  // null = unknown / no answer — fail open to the read-write presentation
+  // (the server still rejects viewer writes; this gate is honest UI, not the
+  // security boundary). 'viewer' drives ReadOnlyGate's view-only presentation
+  // plus the viewer_access banner below. A viewer promoted mid-session picks
+  // up edit access on reload (deliberate — the Phase 28 accessRevoked path
+  // stays the only live mid-session flip and takes precedence).
+  const [docRole, setDocRole] = useState(null);
+  const [viewerBannerDismissed, setViewerBannerDismissed] = useState(false);
 
   // Phase 29 — per-user Y.UndoManager mount.
   //
@@ -1255,6 +1271,10 @@ function YDocProviderInner({ docId, children, closeDocument }) {
     // (ReadOnlyGate, future sync-chip in Phase 33, etc.) can read without
     // additional providers.
     accessRevoked,
+    // 2026-07-01 — effective document role ('owner'|'editor'|'viewer'|null).
+    // ReadOnlyGate reads this to engage the view-only presentation for
+    // role === 'viewer'; null fails open to read-write.
+    docRole,
     transportState,
     loginExpired,
     reSignInModalOpen,
@@ -1322,6 +1342,7 @@ function YDocProviderInner({ docId, children, closeDocument }) {
     storageState,
     role,
     accessRevoked,
+    docRole,
     transportState,
     loginExpired,
     reSignInModalOpen,
@@ -1363,6 +1384,20 @@ function YDocProviderInner({ docId, children, closeDocument }) {
           .neq('user_id', myId);
         if (!cancelled) setIsDocShared(!error && (count || 0) > 0);
       } catch { if (!cancelled) setIsDocShared(false); }
+    })();
+    return () => { cancelled = true; };
+  }, [docId]);
+
+  // 2026-07-01 — resolve the caller's effective role once per document open.
+  // Fail-open: any error → null → the read-write presentation stands (the
+  // server keeps rejecting viewer writes either way). fetchMyDocumentRole
+  // swallows RPC/network errors internally, so no try/catch needed here.
+  useEffect(() => {
+    if (!docId) { setDocRole(null); return undefined; }
+    let cancelled = false;
+    (async () => {
+      const resolved = await fetchMyDocumentRole(supabase, docId);
+      if (!cancelled) setDocRole(resolved);
     })();
     return () => { cancelled = true; };
   }, [docId]);
@@ -1430,6 +1465,20 @@ function YDocProviderInner({ docId, children, closeDocument }) {
               }
             }
           }}
+        />
+      )}
+      {/* 2026-07-01 — view-only notice for collaborators whose effective role
+          is 'viewer'. Distinct copy from permission_revoked (they were never
+          editors — nothing was taken away). Dismissable: ReadOnlyGate keeps
+          the toolbar dimmed and mutation keystrokes suppressed either way, so
+          the banner is informative, not load-bearing. Hidden while any
+          storage-failure banner shows (no stacking) and when accessRevoked
+          takes over (the revoked copy wins). */}
+      {docRole === 'viewer' && !accessRevoked && !viewerBannerDismissed &&
+       (!storageState || storageState.code === 'ok') && (
+        <StorageFailureBanner
+          code="viewer_access"
+          onDismiss={() => setViewerBannerDismissed(true)}
         />
       )}
       {/* Phase 30 — sync-queue-stuck banner gate.

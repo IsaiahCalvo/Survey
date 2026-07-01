@@ -213,7 +213,9 @@ Deno.serve(async (req) => {
         console.log(`Sending ${template} email to ${to}`);
 
         const result = await resend.emails.send({
-            from: 'Survey <onboarding@resend.dev>',
+            // SEND_EMAIL_FROM must be on a Resend-verified domain for real
+            // recipients; the sandbox default only delivers to the account owner.
+            from: Deno.env.get('SEND_EMAIL_FROM') || 'Survey <onboarding@resend.dev>',
             to: [to],
             subject: subject,
             html: html,
