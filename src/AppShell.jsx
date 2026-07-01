@@ -1171,6 +1171,25 @@ export default function App() {
                   </div>
                 );
               })()}
+
+              {/* Export annotated PDF — browser-visible entry point for the
+                  same handler the desktop File menu drives. Lives in the
+                  top-right pill so it is always reachable while a PDF is
+                  open (the survey rail's EXPORT is Excel-only and gated on
+                  a linked template). */}
+              {typeof bottomToolbarApi.exportAnnotatedPdf === 'function' && (
+                <>
+                  <div style={{ width: '1px', height: '24px', background: 'rgba(255,255,255,0.18)' }} />
+                  <button
+                    onClick={bottomToolbarApi.exportAnnotatedPdf}
+                    title="Export annotated PDF"
+                    aria-label="Export annotated PDF"
+                    style={{ height: '30px', width: '30px', display: 'grid', placeItems: 'center', border: 'none', background: 'transparent', color: '#cfcfcf', borderRadius: '4px', cursor: 'pointer' }}
+                  >
+                    <Icon name="download" size={15} />
+                  </button>
+                </>
+              )}
             </div>
           )}
 
