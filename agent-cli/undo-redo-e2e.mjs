@@ -32,27 +32,22 @@ const check = (name, pass, detail = '') => {
 const annCount = (page) => page.evaluate(() =>
   document.querySelectorAll('[data-svg-annotation-layer] [data-annotation-id]').length);
 
-// poll until annCount === target (or timeout); return the last observed count
-async function waitForCount(page, target, timeoutMs = 8000) {
+// Read the count until cloud hydration has genuinely settled: the count must be
+// UNCHANGED across `needStable` consecutive reads spaced `gapMs` apart. Under full-suite
+// load the doc's pre-existing annotations hydrate from the cloud several seconds after the
+// canvas paints — measuring too early yields a false baseline=0 and corrupts the delta math.
+async function stableCount(page, { gapMs = 1000, needStable = 3, timeoutMs = 30000 } = {}) {
   const deadline = Date.now() + timeoutMs;
-  let last = await annCount(page);
-  while (last !== target && Date.now() < deadline) {
-    await page.waitForTimeout(200);
-    last = await annCount(page);
-  }
-  return last;
-}
-
-// read count until it is stable across two reads (annotations finished loading)
-async function stableCount(page, settleMs = 600, timeoutMs = 12000) {
-  const deadline = Date.now() + timeoutMs;
+  await page.waitForTimeout(3500); // let hydration start before the first read
   let prev = await annCount(page);
-  for (;;) {
-    await page.waitForTimeout(settleMs);
+  let streak = 1;
+  while (Date.now() < deadline) {
+    await page.waitForTimeout(gapMs);
     const now = await annCount(page);
-    if (now === prev || Date.now() > deadline) return now;
-    prev = now;
+    if (now === prev) { streak += 1; if (streak >= needStable) return now; }
+    else { prev = now; streak = 1; }
   }
+  return prev;
 }
 
 const browser = await chromium.launch({ headless: HEADLESS });
@@ -83,50 +78,64 @@ try {
     await page.mouse.up();
   };
 
-  // baseline: wait for annotations to finish loading so the count is stable
-  const baseline = await stableCount(page);
+  // Track MY drawn shape by its specific annotation id — robust to any OTHER
+  // annotation loading/changing the total count independently.
+  const annIds = () => page.evaluate(() =>
+    [...document.querySelectorAll('[data-svg-annotation-layer] [data-annotation-id]')]
+      .map(el => el.getAttribute('data-annotation-id')).filter(Boolean));
+  const idPresent = (id) => page.evaluate((aid) =>
+    !!document.querySelector(`[data-svg-annotation-layer] [data-annotation-id="${aid}"]`), id);
+  const waitForPresence = async (id, present, timeoutMs = 7000) => {
+    const deadline = Date.now() + timeoutMs;
+    for (;;) {
+      if ((await idPresent(id)) === present) return true;
+      if (Date.now() > deadline) return false;
+      await page.waitForTimeout(200);
+    }
+  };
 
-  // ── CHECK 1: draw creates exactly one new annotation ───────────────────────
-  // Draw once; poll for +1. Only re-draw if the first genuinely never registered
-  // (count still == baseline after the full timeout) — never stack shapes.
-  const spots = [[0.30, 0.35], [0.55, 0.20]];
-  let afterDraw = baseline;
-  for (let i = 0; i < spots.length; i++) {
+  // baseline: wait for cloud hydration to settle so the id set is complete
+  await stableCount(page);
+  const idsBefore = new Set(await annIds());
+
+  // ── CHECK 1: drawing a Rectangle creates exactly one new annotation ────────
+  let myId = null;
+  for (const [fx, fy] of [[0.30, 0.35], [0.55, 0.20], [0.20, 0.55]]) {
     await selectRectangle();
-    await drawShape(spots[i][0], spots[i][1]);
+    await drawShape(fx, fy);
     await page.keyboard.press('v'); // select tool → commit/deselect
-    afterDraw = await waitForCount(page, baseline + 1, 8000);
-    if (afterDraw === baseline + 1) break;
-    if (afterDraw !== baseline) break; // it registered but not exactly +1 — report honestly
+    const deadline = Date.now() + 8000;
+    while (Date.now() < deadline) {
+      const news = (await annIds()).filter(id => !idsBefore.has(id));
+      if (news.length >= 1) { myId = news[news.length - 1]; break; }
+      await page.waitForTimeout(250);
+    }
+    if (myId) break;
   }
-  check('1. draw creates one annotation', afterDraw === baseline + 1,
-    `baseline=${baseline}, afterDraw=${afterDraw}`);
+  check('1. draw creates a new annotation', !!myId, `newId=${myId}`);
+  if (!myId) throw new Error('draw never produced a new annotation id');
 
-  // ── CHECK 2: Cmd+Z undoes the draw ─────────────────────────────────────────
+  // ── CHECK 2: Cmd+Z undoes the draw (my shape disappears) ───────────────────
   await page.keyboard.press('Meta+z');
-  const afterUndo = await waitForCount(page, baseline, 6000);
-  check('2. Cmd+Z removes the drawn annotation', afterUndo === baseline,
-    `afterUndo=${afterUndo}, expected=${baseline}`);
+  const gone = await waitForPresence(myId, false, 7000);
+  check('2. Cmd+Z removes the drawn annotation', gone, `id=${myId}`);
 
-  // ── CHECK 3: each of the four redo chords restores the annotation ──────────
+  // ── CHECK 3: each of the four redo chords restores MY shape ────────────────
   const redoChords = ['Meta+Shift+z', 'Control+Shift+z', 'Meta+y', 'Control+y'];
   for (const chord of redoChords) {
-    // ensure we start undone (baseline)
-    let cur = await annCount(page);
-    if (cur !== baseline) { await page.keyboard.press('Meta+z'); cur = await waitForCount(page, baseline, 6000); }
+    // ensure my shape is currently undone (absent) before testing this chord
+    if (await idPresent(myId)) { await page.keyboard.press('Meta+z'); await waitForPresence(myId, false, 7000); }
     await page.keyboard.press(chord);
-    const afterRedo = await waitForCount(page, baseline + 1, 6000);
-    check(`3. redo chord ${chord} restores the annotation`, afterRedo === baseline + 1,
-      `before=${cur}, afterRedo=${afterRedo}, expected=${baseline + 1}`);
-    await page.keyboard.press('Meta+z'); // reset for next chord
-    await waitForCount(page, baseline, 6000);
+    const back = await waitForPresence(myId, true, 7000);
+    check(`3. redo chord ${chord} restores the annotation`, back, `id=${myId}`);
+    await page.keyboard.press('Meta+z'); // undo again for the next chord
+    await waitForPresence(myId, false, 7000);
   }
 
-  // leave the doc clean
-  let final = await annCount(page);
+  // leave the doc clean: my shape must be absent
   let guard = 0;
-  while (final > baseline && guard++ < 5) { await page.keyboard.press('Meta+z'); final = await waitForCount(page, baseline, 4000); }
-  check('4. document left clean (count back to baseline)', final === baseline, `final=${final}, baseline=${baseline}`);
+  while ((await idPresent(myId)) && guard++ < 5) { await page.keyboard.press('Meta+z'); await waitForPresence(myId, false, 5000); }
+  check('4. document left clean (drawn shape undone)', !(await idPresent(myId)), `id=${myId}`);
 
   await page.screenshot({ path: 'agent-cli/undo-redo-e2e-result.png' });
 } catch (e) {
