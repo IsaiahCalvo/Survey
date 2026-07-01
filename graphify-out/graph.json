@@ -40,19 +40,19 @@
       "norm_label": "status of prior work (verified this session)"
     },
     {
-      "label": "Priority 1 \u2014 finish dead zoom/scroll clusters in PDFViewer.jsx (IN PROGRESS)",
+      "label": "Priority 1 \u2014 dead zoom/scroll clusters in PDFViewer.jsx (DONE \u2705)",
       "file_type": "document",
       "source_file": "debug/defragilize/PROGRESS.md",
       "source_location": "L26",
-      "id": "defragilize_progress_priority_1_finish_dead_zoom_scroll_clusters_in_pdfviewer_jsx_in_progress",
+      "id": "defragilize_progress_priority_1_dead_zoom_scroll_clusters_in_pdfviewer_jsx_done",
       "community": 12,
-      "norm_label": "priority 1 \u2014 finish dead zoom/scroll clusters in pdfviewer.jsx (in progress)"
+      "norm_label": "priority 1 \u2014 dead zoom/scroll clusters in pdfviewer.jsx (done \u2705)"
     },
     {
       "label": "Priority 2 \u2014 split PDFViewer.jsx into modules (PENDING)",
       "file_type": "document",
       "source_file": "debug/defragilize/PROGRESS.md",
-      "source_location": "L33",
+      "source_location": "L38",
       "id": "defragilize_progress_priority_2_split_pdfviewer_jsx_into_modules_pending",
       "community": 12,
       "norm_label": "priority 2 \u2014 split pdfviewer.jsx into modules (pending)"
@@ -61,7 +61,7 @@
       "label": "Priority 3 \u2014 split other >1k-line files (PENDING)",
       "file_type": "document",
       "source_file": "debug/defragilize/PROGRESS.md",
-      "source_location": "L36",
+      "source_location": "L41",
       "id": "defragilize_progress_priority_3_split_other_1k_line_files_pending",
       "community": 12,
       "norm_label": "priority 3 \u2014 split other >1k-line files (pending)"
@@ -70,7 +70,7 @@
       "label": "Out of scope (owner-parked)",
       "file_type": "document",
       "source_file": "debug/defragilize/PROGRESS.md",
-      "source_location": "L41",
+      "source_location": "L46",
       "id": "defragilize_progress_out_of_scope_owner_parked",
       "community": 12,
       "norm_label": "out of scope (owner-parked)"
@@ -80,36 +80,36 @@
       "file_type": "code",
       "source_file": "src/PDFViewer.jsx",
       "source_location": "L1",
-      "id": "src_pdfviewer",
       "community": 4,
-      "norm_label": "pdfviewer.jsx"
+      "norm_label": "pdfviewer.jsx",
+      "id": "src_pdfviewer"
     },
     {
       "label": "readWorkbookRegistration()",
       "file_type": "code",
       "source_file": "src/PDFViewer.jsx",
       "source_location": "L322",
-      "id": "src_pdfviewer_readworkbookregistration",
       "community": 4,
-      "norm_label": "readworkbookregistration()"
+      "norm_label": "readworkbookregistration()",
+      "id": "src_pdfviewer_readworkbookregistration"
     },
     {
       "label": "resolveMarkerEntityFromName()",
       "file_type": "code",
       "source_file": "src/PDFViewer.jsx",
       "source_location": "L341",
-      "id": "src_pdfviewer_resolvemarkerentityfromname",
       "community": 4,
-      "norm_label": "resolvemarkerentityfromname()"
+      "norm_label": "resolvemarkerentityfromname()",
+      "id": "src_pdfviewer_resolvemarkerentityfromname"
     },
     {
       "label": "PDFViewer()",
       "file_type": "code",
       "source_file": "src/PDFViewer.jsx",
       "source_location": "L354",
-      "id": "src_pdfviewer_pdfviewer",
       "community": 4,
-      "norm_label": "pdfviewer()"
+      "norm_label": "pdfviewer()",
+      "id": "src_pdfviewer_pdfviewer"
     },
     {
       "label": "viewerShared.js",
@@ -1262,9 +1262,9 @@
       "source_file": "debug/defragilize/PROGRESS.md",
       "source_location": "L1",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "defragilize_progress",
-      "target": "defragilize_progress_de_fragilize_campaign_progress_ledger",
-      "confidence_score": 1.0
+      "target": "defragilize_progress_de_fragilize_campaign_progress_ledger"
     },
     {
       "relation": "contains",
@@ -1272,9 +1272,9 @@
       "source_file": "debug/defragilize/PROGRESS.md",
       "source_location": "L41",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "defragilize_progress_de_fragilize_campaign_progress_ledger",
-      "target": "defragilize_progress_out_of_scope_owner_parked",
-      "confidence_score": 1.0
+      "target": "defragilize_progress_out_of_scope_owner_parked"
     },
     {
       "relation": "contains",
@@ -1283,7 +1283,7 @@
       "source_location": "L26",
       "weight": 1.0,
       "source": "defragilize_progress_de_fragilize_campaign_progress_ledger",
-      "target": "defragilize_progress_priority_1_finish_dead_zoom_scroll_clusters_in_pdfviewer_jsx_in_progress",
+      "target": "defragilize_progress_priority_1_dead_zoom_scroll_clusters_in_pdfviewer_jsx_done",
       "confidence_score": 1.0
     },
     {
@@ -1292,9 +1292,9 @@
       "source_file": "debug/defragilize/PROGRESS.md",
       "source_location": "L33",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "defragilize_progress_de_fragilize_campaign_progress_ledger",
-      "target": "defragilize_progress_priority_2_split_pdfviewer_jsx_into_modules_pending",
-      "confidence_score": 1.0
+      "target": "defragilize_progress_priority_2_split_pdfviewer_jsx_into_modules_pending"
     },
     {
       "relation": "contains",
@@ -1302,9 +1302,9 @@
       "source_file": "debug/defragilize/PROGRESS.md",
       "source_location": "L36",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "defragilize_progress_de_fragilize_campaign_progress_ledger",
-      "target": "defragilize_progress_priority_3_split_other_1k_line_files_pending",
-      "confidence_score": 1.0
+      "target": "defragilize_progress_priority_3_split_other_1k_line_files_pending"
     },
     {
       "relation": "contains",
@@ -1312,9 +1312,9 @@
       "source_file": "debug/defragilize/PROGRESS.md",
       "source_location": "L10",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "defragilize_progress_de_fragilize_campaign_progress_ledger",
-      "target": "defragilize_progress_rules_from_handoff_run_mode",
-      "confidence_score": 1.0
+      "target": "defragilize_progress_rules_from_handoff_run_mode"
     },
     {
       "relation": "contains",
@@ -1322,9 +1322,9 @@
       "source_file": "debug/defragilize/PROGRESS.md",
       "source_location": "L17",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "defragilize_progress_de_fragilize_campaign_progress_ledger",
-      "target": "defragilize_progress_status_of_prior_work_verified_this_session",
-      "confidence_score": 1.0
+      "target": "defragilize_progress_status_of_prior_work_verified_this_session"
     },
     {
       "relation": "contains",
@@ -1332,9 +1332,9 @@
       "source_file": "src/PDFViewer.jsx",
       "source_location": "L354",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "src_pdfviewer",
-      "target": "src_pdfviewer_pdfviewer",
-      "confidence_score": 1.0
+      "target": "src_pdfviewer_pdfviewer"
     },
     {
       "relation": "contains",
@@ -1342,9 +1342,9 @@
       "source_file": "src/PDFViewer.jsx",
       "source_location": "L322",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "src_pdfviewer",
-      "target": "src_pdfviewer_readworkbookregistration",
-      "confidence_score": 1.0
+      "target": "src_pdfviewer_readworkbookregistration"
     },
     {
       "relation": "contains",
@@ -1352,9 +1352,9 @@
       "source_file": "src/PDFViewer.jsx",
       "source_location": "L341",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "src_pdfviewer",
-      "target": "src_pdfviewer_resolvemarkerentityfromname",
-      "confidence_score": 1.0
+      "target": "src_pdfviewer_resolvemarkerentityfromname"
     },
     {
       "relation": "imports",
@@ -1363,9 +1363,9 @@
       "source_file": "src/PDFViewer.jsx",
       "source_location": "L173",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "src_pdfviewer",
-      "target": "src_viewershared_appdebug",
-      "confidence_score": 1.0
+      "target": "src_viewershared_appdebug"
     },
     {
       "relation": "imports",
@@ -1374,9 +1374,9 @@
       "source_file": "src/PDFViewer.jsx",
       "source_location": "L173",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "src_pdfviewer",
-      "target": "src_viewershared_applyregionmasktocanvascontext",
-      "confidence_score": 1.0
+      "target": "src_viewershared_applyregionmasktocanvascontext"
     },
     {
       "relation": "imports",
@@ -1385,9 +1385,9 @@
       "source_file": "src/PDFViewer.jsx",
       "source_location": "L173",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "src_pdfviewer",
-      "target": "src_viewershared_buildoutlinepagelookup",
-      "confidence_score": 1.0
+      "target": "src_viewershared_buildoutlinepagelookup"
     },
     {
       "relation": "imports",
@@ -1396,9 +1396,9 @@
       "source_file": "src/PDFViewer.jsx",
       "source_location": "L173",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "src_pdfviewer",
-      "target": "src_viewershared_categoryexists",
-      "confidence_score": 1.0
+      "target": "src_viewershared_categoryexists"
     },
     {
       "relation": "imports",
@@ -1407,9 +1407,9 @@
       "source_file": "src/PDFViewer.jsx",
       "source_location": "L173",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "src_pdfviewer",
-      "target": "src_viewershared_clampwheeldelta",
-      "confidence_score": 1.0
+      "target": "src_viewershared_clampwheeldelta"
     },
     {
       "relation": "imports",
@@ -1418,9 +1418,9 @@
       "source_file": "src/PDFViewer.jsx",
       "source_location": "L173",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "src_pdfviewer",
-      "target": "src_viewershared_cloneoverlayrecorderpayload",
-      "confidence_score": 1.0
+      "target": "src_viewershared_cloneoverlayrecorderpayload"
     },
     {
       "relation": "imports",
@@ -1429,9 +1429,9 @@
       "source_file": "src/PDFViewer.jsx",
       "source_location": "L173",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "src_pdfviewer",
-      "target": "src_viewershared_coercepagenumber",
-      "confidence_score": 1.0
+      "target": "src_viewershared_coercepagenumber"
     },
     {
       "relation": "imports",
@@ -1440,9 +1440,9 @@
       "source_file": "src/PDFViewer.jsx",
       "source_location": "L173",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "src_pdfviewer",
-      "target": "src_viewershared_coercepdfjszoompercent",
-      "confidence_score": 1.0
+      "target": "src_viewershared_coercepdfjszoompercent"
     },
     {
       "relation": "imports",
@@ -1451,9 +1451,9 @@
       "source_file": "src/PDFViewer.jsx",
       "source_location": "L173",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "src_pdfviewer",
-      "target": "src_viewershared_compacthistoryeventforlog",
-      "confidence_score": 1.0
+      "target": "src_viewershared_compacthistoryeventforlog"
     },
     {
       "relation": "imports",
@@ -1462,9 +1462,9 @@
       "source_file": "src/PDFViewer.jsx",
       "source_location": "L173",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "src_pdfviewer",
-      "target": "src_viewershared_countannotationpageobjects",
-      "confidence_score": 1.0
+      "target": "src_viewershared_countannotationpageobjects"
     },
     {
       "relation": "imports",
@@ -1473,9 +1473,9 @@
       "source_file": "src/PDFViewer.jsx",
       "source_location": "L173",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "src_pdfviewer",
-      "target": "src_viewershared_createannotation",
-      "confidence_score": 1.0
+      "target": "src_viewershared_createannotation"
     },
     {
       "relation": "imports",
@@ -1484,9 +1484,9 @@
       "source_file": "src/PDFViewer.jsx",
       "source_location": "L173",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "src_pdfviewer",
-      "target": "src_viewershared_createitem",
-      "confidence_score": 1.0
+      "target": "src_viewershared_createitem"
     },
     {
       "relation": "imports",
@@ -1495,9 +1495,9 @@
       "source_file": "src/PDFViewer.jsx",
       "source_location": "L173",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "src_pdfviewer",
-      "target": "src_viewershared_dataurltouint8array",
-      "confidence_score": 1.0
+      "target": "src_viewershared_dataurltouint8array"
     },
     {
       "relation": "imports",
@@ -1506,9 +1506,9 @@
       "source_file": "src/PDFViewer.jsx",
       "source_location": "L173",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "src_pdfviewer",
-      "target": "src_viewershared_escapecsvvalue",
-      "confidence_score": 1.0
+      "target": "src_viewershared_escapecsvvalue"
     },
     {
       "relation": "imports",
@@ -1517,9 +1517,9 @@
       "source_file": "src/PDFViewer.jsx",
       "source_location": "L173",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "src_pdfviewer",
-      "target": "src_viewershared_filterannotationsbymodule",
-      "confidence_score": 1.0
+      "target": "src_viewershared_filterannotationsbymodule"
     },
     {
       "relation": "imports",
@@ -1528,9 +1528,9 @@
       "source_file": "src/PDFViewer.jsx",
       "source_location": "L173",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "src_pdfviewer",
-      "target": "src_viewershared_generatedefaultsurveymarkername",
-      "confidence_score": 1.0
+      "target": "src_viewershared_generatedefaultsurveymarkername"
     },
     {
       "relation": "imports",
@@ -1539,9 +1539,9 @@
       "source_file": "src/PDFViewer.jsx",
       "source_location": "L173",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "src_pdfviewer",
-      "target": "src_viewershared_generateuuid",
-      "confidence_score": 1.0
+      "target": "src_viewershared_generateuuid"
     },
     {
       "relation": "imports",
@@ -1550,9 +1550,9 @@
       "source_file": "src/PDFViewer.jsx",
       "source_location": "L173",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "src_pdfviewer",
-      "target": "src_viewershared_getcategoryglyphlabel",
-      "confidence_score": 1.0
+      "target": "src_viewershared_getcategoryglyphlabel"
     },
     {
       "relation": "imports",
@@ -1561,9 +1561,9 @@
       "source_file": "src/PDFViewer.jsx",
       "source_location": "L173",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "src_pdfviewer",
-      "target": "src_viewershared_getcategoryname",
-      "confidence_score": 1.0
+      "target": "src_viewershared_getcategoryname"
     },
     {
       "relation": "imports",
@@ -1572,9 +1572,9 @@
       "source_file": "src/PDFViewer.jsx",
       "source_location": "L173",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "src_pdfviewer",
-      "target": "src_viewershared_gethexfromcolor",
-      "confidence_score": 1.0
+      "target": "src_viewershared_gethexfromcolor"
     },
     {
       "relation": "imports",
@@ -1583,9 +1583,9 @@
       "source_file": "src/PDFViewer.jsx",
       "source_location": "L173",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "src_pdfviewer",
-      "target": "src_viewershared_gethistoryannotationid",
-      "confidence_score": 1.0
+      "target": "src_viewershared_gethistoryannotationid"
     },
     {
       "relation": "imports",
@@ -1594,9 +1594,9 @@
       "source_file": "src/PDFViewer.jsx",
       "source_location": "L173",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "src_pdfviewer",
-      "target": "src_viewershared_getmoduledatakey",
-      "confidence_score": 1.0
+      "target": "src_viewershared_getmoduledatakey"
     },
     {
       "relation": "imports",
@@ -1605,9 +1605,9 @@
       "source_file": "src/PDFViewer.jsx",
       "source_location": "L173",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "src_pdfviewer",
-      "target": "src_viewershared_getmodulename",
-      "confidence_score": 1.0
+      "target": "src_viewershared_getmodulename"
     },
     {
       "relation": "imports",
@@ -1616,9 +1616,9 @@
       "source_file": "src/PDFViewer.jsx",
       "source_location": "L173",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "src_pdfviewer",
-      "target": "src_viewershared_getnormalizedwheeldeltas",
-      "confidence_score": 1.0
+      "target": "src_viewershared_getnormalizedwheeldeltas"
     },
     {
       "relation": "imports",
@@ -1627,9 +1627,9 @@
       "source_file": "src/PDFViewer.jsx",
       "source_location": "L173",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "src_pdfviewer",
-      "target": "src_viewershared_getopacityfromentitycolor",
-      "confidence_score": 1.0
+      "target": "src_viewershared_getopacityfromentitycolor"
     },
     {
       "relation": "imports",
@@ -1638,9 +1638,9 @@
       "source_file": "src/PDFViewer.jsx",
       "source_location": "L173",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "src_pdfviewer",
-      "target": "src_viewershared_getpdfid",
-      "confidence_score": 1.0
+      "target": "src_viewershared_getpdfid"
     },
     {
       "relation": "imports",
@@ -1649,9 +1649,9 @@
       "source_file": "src/PDFViewer.jsx",
       "source_location": "L173",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "src_pdfviewer",
-      "target": "src_viewershared_getpdfjsoverlayprefetchpages",
-      "confidence_score": 1.0
+      "target": "src_viewershared_getpdfjsoverlayprefetchpages"
     },
     {
       "relation": "imports",
@@ -1660,9 +1660,9 @@
       "source_file": "src/PDFViewer.jsx",
       "source_location": "L173",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "src_pdfviewer",
-      "target": "src_viewershared_getpdfjstextmarkupmode",
-      "confidence_score": 1.0
+      "target": "src_viewershared_getpdfjstextmarkupmode"
     },
     {
       "relation": "imports",
@@ -1671,9 +1671,9 @@
       "source_file": "src/PDFViewer.jsx",
       "source_location": "L173",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "src_pdfviewer",
-      "target": "src_viewershared_getpdfjszoomawarescrollgain",
-      "confidence_score": 1.0
+      "target": "src_viewershared_getpdfjszoomawarescrollgain"
     },
     {
       "relation": "imports",
@@ -1682,9 +1682,9 @@
       "source_file": "src/PDFViewer.jsx",
       "source_location": "L173",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "src_pdfviewer",
-      "target": "src_viewershared_getsmoothpdfjswheelzoom",
-      "confidence_score": 1.0
+      "target": "src_viewershared_getsmoothpdfjswheelzoom"
     },
     {
       "relation": "imports",
@@ -1693,9 +1693,9 @@
       "source_file": "src/PDFViewer.jsx",
       "source_location": "L173",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "src_pdfviewer",
-      "target": "src_viewershared_handlemodaloptionmouseenter",
-      "confidence_score": 1.0
+      "target": "src_viewershared_handlemodaloptionmouseenter"
     },
     {
       "relation": "imports",
@@ -1704,9 +1704,9 @@
       "source_file": "src/PDFViewer.jsx",
       "source_location": "L173",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "src_pdfviewer",
-      "target": "src_viewershared_handlemodaloptionmouseleave",
-      "confidence_score": 1.0
+      "target": "src_viewershared_handlemodaloptionmouseleave"
     },
     {
       "relation": "imports",
@@ -1715,9 +1715,9 @@
       "source_file": "src/PDFViewer.jsx",
       "source_location": "L173",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "src_pdfviewer",
-      "target": "src_viewershared_handlemodalprimarybuttonmouseenter",
-      "confidence_score": 1.0
+      "target": "src_viewershared_handlemodalprimarybuttonmouseenter"
     },
     {
       "relation": "imports",
@@ -1726,9 +1726,9 @@
       "source_file": "src/PDFViewer.jsx",
       "source_location": "L173",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "src_pdfviewer",
-      "target": "src_viewershared_handlemodalprimarybuttonmouseleave",
-      "confidence_score": 1.0
+      "target": "src_viewershared_handlemodalprimarybuttonmouseleave"
     },
     {
       "relation": "imports",
@@ -1737,9 +1737,9 @@
       "source_file": "src/PDFViewer.jsx",
       "source_location": "L173",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "src_pdfviewer",
-      "target": "src_viewershared_handlemodalsecondarybuttonmouseenter",
-      "confidence_score": 1.0
+      "target": "src_viewershared_handlemodalsecondarybuttonmouseenter"
     },
     {
       "relation": "imports",
@@ -1748,9 +1748,9 @@
       "source_file": "src/PDFViewer.jsx",
       "source_location": "L173",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "src_pdfviewer",
-      "target": "src_viewershared_handlemodalsecondarybuttonmouseleave",
-      "confidence_score": 1.0
+      "target": "src_viewershared_handlemodalsecondarybuttonmouseleave"
     },
     {
       "relation": "imports",
@@ -1759,9 +1759,9 @@
       "source_file": "src/PDFViewer.jsx",
       "source_location": "L173",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "src_pdfviewer",
-      "target": "src_viewershared_hasnameconflict",
-      "confidence_score": 1.0
+      "target": "src_viewershared_hasnameconflict"
     },
     {
       "relation": "imports",
@@ -1770,9 +1770,9 @@
       "source_file": "src/PDFViewer.jsx",
       "source_location": "L173",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "src_pdfviewer",
-      "target": "src_viewershared_haspdfjspdfsurface",
-      "confidence_score": 1.0
+      "target": "src_viewershared_haspdfjspdfsurface"
     },
     {
       "relation": "imports",
@@ -1781,9 +1781,9 @@
       "source_file": "src/PDFViewer.jsx",
       "source_location": "L173",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "src_pdfviewer",
-      "target": "src_viewershared_hasvisiblepdfjsspinner",
-      "confidence_score": 1.0
+      "target": "src_viewershared_hasvisiblepdfjsspinner"
     },
     {
       "relation": "imports",
@@ -1792,9 +1792,9 @@
       "source_file": "src/PDFViewer.jsx",
       "source_location": "L173",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "src_pdfviewer",
-      "target": "src_viewershared_hextorgba",
-      "confidence_score": 1.0
+      "target": "src_viewershared_hextorgba"
     },
     {
       "relation": "imports",
@@ -1803,9 +1803,9 @@
       "source_file": "src/PDFViewer.jsx",
       "source_location": "L173",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "src_pdfviewer",
-      "target": "src_viewershared_ispointonselectdeleteonlytextmarkup",
-      "confidence_score": 1.0
+      "target": "src_viewershared_ispointonselectdeleteonlytextmarkup"
     },
     {
       "relation": "imports",
@@ -1814,9 +1814,9 @@
       "source_file": "src/PDFViewer.jsx",
       "source_location": "L173",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "src_pdfviewer",
-      "target": "src_viewershared_isselectdeleteonlyimportedtextmarkuptype",
-      "confidence_score": 1.0
+      "target": "src_viewershared_isselectdeleteonlyimportedtextmarkuptype"
     },
     {
       "relation": "imports",
@@ -1825,9 +1825,9 @@
       "source_file": "src/PDFViewer.jsx",
       "source_location": "L173",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "src_pdfviewer",
-      "target": "src_viewershared_issuspiciouswheelzoompercent",
-      "confidence_score": 1.0
+      "target": "src_viewershared_issuspiciouswheelzoompercent"
     },
     {
       "relation": "imports",
@@ -1836,9 +1836,9 @@
       "source_file": "src/PDFViewer.jsx",
       "source_location": "L173",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "src_pdfviewer",
-      "target": "src_viewershared_loadannotationsbypage",
-      "confidence_score": 1.0
+      "target": "src_viewershared_loadannotationsbypage"
     },
     {
       "relation": "imports",
@@ -1847,9 +1847,9 @@
       "source_file": "src/PDFViewer.jsx",
       "source_location": "L173",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "src_pdfviewer",
-      "target": "src_viewershared_loadcallouts",
-      "confidence_score": 1.0
+      "target": "src_viewershared_loadcallouts"
     },
     {
       "relation": "imports",
@@ -1858,9 +1858,9 @@
       "source_file": "src/PDFViewer.jsx",
       "source_location": "L173",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "src_pdfviewer",
-      "target": "src_viewershared_loadcloudrenderannotationsbypage",
-      "confidence_score": 1.0
+      "target": "src_viewershared_loadcloudrenderannotationsbypage"
     },
     {
       "relation": "imports",
@@ -1869,9 +1869,9 @@
       "source_file": "src/PDFViewer.jsx",
       "source_location": "L173",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "src_pdfviewer",
-      "target": "src_viewershared_loadpdfdata",
-      "confidence_score": 1.0
+      "target": "src_viewershared_loadpdfdata"
     },
     {
       "relation": "imports",
@@ -1880,9 +1880,9 @@
       "source_file": "src/PDFViewer.jsx",
       "source_location": "L173",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "src_pdfviewer",
-      "target": "src_viewershared_loadsurveymarkers",
-      "confidence_score": 1.0
+      "target": "src_viewershared_loadsurveymarkers"
     },
     {
       "relation": "imports",
@@ -1891,9 +1891,9 @@
       "source_file": "src/PDFViewer.jsx",
       "source_location": "L173",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "src_pdfviewer",
-      "target": "src_viewershared_mapyjsmeta",
-      "confidence_score": 1.0
+      "target": "src_viewershared_mapyjsmeta"
     },
     {
       "relation": "imports",
@@ -1902,9 +1902,9 @@
       "source_file": "src/PDFViewer.jsx",
       "source_location": "L173",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "src_pdfviewer",
-      "target": "src_viewershared_markeditedimportedpdfannotationsonpage",
-      "confidence_score": 1.0
+      "target": "src_viewershared_markeditedimportedpdfannotationsonpage"
     },
     {
       "relation": "imports",
@@ -1913,9 +1913,9 @@
       "source_file": "src/PDFViewer.jsx",
       "source_location": "L173",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "src_pdfviewer",
-      "target": "src_viewershared_measurepdfjspagehostscale",
-      "confidence_score": 1.0
+      "target": "src_viewershared_measurepdfjspagehostscale"
     },
     {
       "relation": "imports",
@@ -1924,9 +1924,9 @@
       "source_file": "src/PDFViewer.jsx",
       "source_location": "L173",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "src_pdfviewer",
-      "target": "src_viewershared_measurepdfjspagescale",
-      "confidence_score": 1.0
+      "target": "src_viewershared_measurepdfjspagescale"
     },
     {
       "relation": "imports",
@@ -1935,9 +1935,9 @@
       "source_file": "src/PDFViewer.jsx",
       "source_location": "L173",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "src_pdfviewer",
-      "target": "src_viewershared_migratelegacysurveymarkers",
-      "confidence_score": 1.0
+      "target": "src_viewershared_migratelegacysurveymarkers"
     },
     {
       "relation": "imports",
@@ -1946,9 +1946,9 @@
       "source_file": "src/PDFViewer.jsx",
       "source_location": "L173",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "src_pdfviewer",
-      "target": "src_viewershared_native_text_markup_tools",
-      "confidence_score": 1.0
+      "target": "src_viewershared_native_text_markup_tools"
     },
     {
       "relation": "imports",
@@ -1957,9 +1957,9 @@
       "source_file": "src/PDFViewer.jsx",
       "source_location": "L173",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "src_pdfviewer",
-      "target": "src_viewershared_normalizebookmarkpageids",
-      "confidence_score": 1.0
+      "target": "src_viewershared_normalizebookmarkpageids"
     },
     {
       "relation": "imports",
@@ -1968,9 +1968,9 @@
       "source_file": "src/PDFViewer.jsx",
       "source_location": "L173",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "src_pdfviewer",
-      "target": "src_viewershared_normalizeinteractionmeasuredscale",
-      "confidence_score": 1.0
+      "target": "src_viewershared_normalizeinteractionmeasuredscale"
     },
     {
       "relation": "imports",
@@ -1979,9 +1979,9 @@
       "source_file": "src/PDFViewer.jsx",
       "source_location": "L173",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "src_pdfviewer",
-      "target": "src_viewershared_normalizesurveymarkercolor",
-      "confidence_score": 1.0
+      "target": "src_viewershared_normalizesurveymarkercolor"
     },
     {
       "relation": "imports",
@@ -1990,9 +1990,9 @@
       "source_file": "src/PDFViewer.jsx",
       "source_location": "L173",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "src_pdfviewer",
-      "target": "src_viewershared_overlay_lag_recorder_work_categories",
-      "confidence_score": 1.0
+      "target": "src_viewershared_overlay_lag_recorder_work_categories"
     },
     {
       "relation": "imports",
@@ -2001,9 +2001,9 @@
       "source_file": "src/PDFViewer.jsx",
       "source_location": "L173",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "src_pdfviewer",
-      "target": "src_viewershared_parsecsstransformscalex",
-      "confidence_score": 1.0
+      "target": "src_viewershared_parsecsstransformscalex"
     },
     {
       "relation": "imports",
@@ -2012,9 +2012,9 @@
       "source_file": "src/PDFViewer.jsx",
       "source_location": "L173",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "src_pdfviewer",
-      "target": "src_viewershared_readdocumentsyncstructuraldisabled",
-      "confidence_score": 1.0
+      "target": "src_viewershared_readdocumentsyncstructuraldisabled"
     },
     {
       "relation": "imports",
@@ -2023,9 +2023,9 @@
       "source_file": "src/PDFViewer.jsx",
       "source_location": "L173",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "src_pdfviewer",
-      "target": "src_viewershared_readhistorydebugconsoleenabled",
-      "confidence_score": 1.0
+      "target": "src_viewershared_readhistorydebugconsoleenabled"
     },
     {
       "relation": "imports",
@@ -2034,9 +2034,9 @@
       "source_file": "src/PDFViewer.jsx",
       "source_location": "L173",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "src_pdfviewer",
-      "target": "src_viewershared_readoverlaylagrecorderautoenabled",
-      "confidence_score": 1.0
+      "target": "src_viewershared_readoverlaylagrecorderautoenabled"
     },
     {
       "relation": "imports",
@@ -2045,9 +2045,9 @@
       "source_file": "src/PDFViewer.jsx",
       "source_location": "L173",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "src_pdfviewer",
-      "target": "src_viewershared_readpdfjsduallayerenabled",
-      "confidence_score": 1.0
+      "target": "src_viewershared_readpdfjsduallayerenabled"
     },
     {
       "relation": "imports",
@@ -2056,9 +2056,9 @@
       "source_file": "src/PDFViewer.jsx",
       "source_location": "L173",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "src_pdfviewer",
-      "target": "src_viewershared_readpdfjslivestableoverlayenabled",
-      "confidence_score": 1.0
+      "target": "src_viewershared_readpdfjslivestableoverlayenabled"
     },
     {
       "relation": "imports",
@@ -2067,9 +2067,9 @@
       "source_file": "src/PDFViewer.jsx",
       "source_location": "L173",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "src_pdfviewer",
-      "target": "src_viewershared_resolvebookmarkpagefromoutlinelookup",
-      "confidence_score": 1.0
+      "target": "src_viewershared_resolvebookmarkpagefromoutlinelookup"
     },
     {
       "relation": "imports",
@@ -2078,9 +2078,9 @@
       "source_file": "src/PDFViewer.jsx",
       "source_location": "L173",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "src_pdfviewer",
-      "target": "src_viewershared_review_tool_ids",
-      "confidence_score": 1.0
+      "target": "src_viewershared_review_tool_ids"
     },
     {
       "relation": "imports",
@@ -2089,9 +2089,9 @@
       "source_file": "src/PDFViewer.jsx",
       "source_location": "L173",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "src_pdfviewer",
-      "target": "src_viewershared_roundoverlayrecordervalue",
-      "confidence_score": 1.0
+      "target": "src_viewershared_roundoverlayrecordervalue"
     },
     {
       "relation": "imports",
@@ -2100,9 +2100,9 @@
       "source_file": "src/PDFViewer.jsx",
       "source_location": "L173",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "src_pdfviewer",
-      "target": "src_viewershared_sanitizefilename",
-      "confidence_score": 1.0
+      "target": "src_viewershared_sanitizefilename"
     },
     {
       "relation": "imports",
@@ -2111,9 +2111,9 @@
       "source_file": "src/PDFViewer.jsx",
       "source_location": "L173",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "src_pdfviewer",
-      "target": "src_viewershared_saveannotationsbypage",
-      "confidence_score": 1.0
+      "target": "src_viewershared_saveannotationsbypage"
     },
     {
       "relation": "imports",
@@ -2122,9 +2122,9 @@
       "source_file": "src/PDFViewer.jsx",
       "source_location": "L173",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "src_pdfviewer",
-      "target": "src_viewershared_savecallouts",
-      "confidence_score": 1.0
+      "target": "src_viewershared_savecallouts"
     },
     {
       "relation": "imports",
@@ -2133,9 +2133,9 @@
       "source_file": "src/PDFViewer.jsx",
       "source_location": "L173",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "src_pdfviewer",
-      "target": "src_viewershared_savecloudrenderannotationsbypage",
-      "confidence_score": 1.0
+      "target": "src_viewershared_savecloudrenderannotationsbypage"
     },
     {
       "relation": "imports",
@@ -2144,9 +2144,9 @@
       "source_file": "src/PDFViewer.jsx",
       "source_location": "L173",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "src_pdfviewer",
-      "target": "src_viewershared_savepdfdata",
-      "confidence_score": 1.0
+      "target": "src_viewershared_savepdfdata"
     },
     {
       "relation": "imports",
@@ -2155,9 +2155,9 @@
       "source_file": "src/PDFViewer.jsx",
       "source_location": "L173",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "src_pdfviewer",
-      "target": "src_viewershared_savesurveymarkers",
-      "confidence_score": 1.0
+      "target": "src_viewershared_savesurveymarkers"
     },
     {
       "relation": "imports",
@@ -2166,9 +2166,9 @@
       "source_file": "src/PDFViewer.jsx",
       "source_location": "L173",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "src_pdfviewer",
-      "target": "src_viewershared_shouldechohistorydebugevent",
-      "confidence_score": 1.0
+      "target": "src_viewershared_shouldechohistorydebugevent"
     },
     {
       "relation": "imports",
@@ -2177,9 +2177,9 @@
       "source_file": "src/PDFViewer.jsx",
       "source_location": "L173",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "src_pdfviewer",
-      "target": "src_viewershared_shouldscopecallouthistoryrestore",
-      "confidence_score": 1.0
+      "target": "src_viewershared_shouldscopecallouthistoryrestore"
     },
     {
       "relation": "imports",
@@ -2188,9 +2188,9 @@
       "source_file": "src/PDFViewer.jsx",
       "source_location": "L173",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "src_pdfviewer",
-      "target": "src_viewershared_summarizeannotationcountsforsaveexport",
-      "confidence_score": 1.0
+      "target": "src_viewershared_summarizeannotationcountsforsaveexport"
     },
     {
       "relation": "imports",
@@ -2199,9 +2199,9 @@
       "source_file": "src/PDFViewer.jsx",
       "source_location": "L173",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "src_pdfviewer",
-      "target": "src_viewershared_summarizehistoryactionforlog",
-      "confidence_score": 1.0
+      "target": "src_viewershared_summarizehistoryactionforlog"
     },
     {
       "relation": "imports",
@@ -2210,9 +2210,9 @@
       "source_file": "src/PDFViewer.jsx",
       "source_location": "L173",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "src_pdfviewer",
-      "target": "src_viewershared_summarizehistorymetaforlog",
-      "confidence_score": 1.0
+      "target": "src_viewershared_summarizehistorymetaforlog"
     },
     {
       "relation": "imports",
@@ -2221,9 +2221,9 @@
       "source_file": "src/PDFViewer.jsx",
       "source_location": "L173",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "src_pdfviewer",
-      "target": "src_viewershared_transferitems",
-      "confidence_score": 1.0
+      "target": "src_viewershared_transferitems"
     },
     {
       "relation": "imports",
@@ -2232,9 +2232,9 @@
       "source_file": "src/PDFViewer.jsx",
       "source_location": "L173",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "src_pdfviewer",
-      "target": "src_viewershared_writedocumentsyncstructuraldisabled",
-      "confidence_score": 1.0
+      "target": "src_viewershared_writedocumentsyncstructuraldisabled"
     },
     {
       "relation": "imports",
@@ -2243,9 +2243,9 @@
       "source_file": "src/PDFViewer.jsx",
       "source_location": "L173",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "src_pdfviewer",
-      "target": "src_viewershared_writehistorydebugconsoleenabled",
-      "confidence_score": 1.0
+      "target": "src_viewershared_writehistorydebugconsoleenabled"
     },
     {
       "relation": "imports",
@@ -2254,9 +2254,9 @@
       "source_file": "src/PDFViewer.jsx",
       "source_location": "L173",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "src_pdfviewer",
-      "target": "src_viewershared_writeoverlaylagrecorderautoenabled",
-      "confidence_score": 1.0
+      "target": "src_viewershared_writeoverlaylagrecorderautoenabled"
     },
     {
       "relation": "imports",
@@ -2265,9 +2265,9 @@
       "source_file": "src/PDFViewer.jsx",
       "source_location": "L173",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "src_pdfviewer",
-      "target": "src_viewershared_writepdfjsduallayerenabled",
-      "confidence_score": 1.0
+      "target": "src_viewershared_writepdfjsduallayerenabled"
     },
     {
       "relation": "imports",
@@ -2276,9 +2276,9 @@
       "source_file": "src/PDFViewer.jsx",
       "source_location": "L173",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "src_pdfviewer",
-      "target": "src_viewershared_zoom_mode_labels",
-      "confidence_score": 1.0
+      "target": "src_viewershared_zoom_mode_labels"
     },
     {
       "relation": "imports",
@@ -2287,9 +2287,9 @@
       "source_file": "src/PDFViewer.jsx",
       "source_location": "L173",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "src_pdfviewer",
-      "target": "src_viewershared_zoom_only_interaction_reasons",
-      "confidence_score": 1.0
+      "target": "src_viewershared_zoom_only_interaction_reasons"
     },
     {
       "relation": "contains",
@@ -3960,5 +3960,5 @@
     }
   ],
   "hyperedges": [],
-  "built_at_commit": "8acd9f7dc39f246e127f10cda6f220c1925e452f"
+  "built_at_commit": "9ff3d843e7ac251f4519eed12843af30f1867ac9"
 }

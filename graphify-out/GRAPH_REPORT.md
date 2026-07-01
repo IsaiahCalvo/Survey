@@ -1,7 +1,7 @@
 # Graph Report - magical-raman-95374e  (2026-07-01)
 
 ## Corpus Check
-- 1370 files · ~2,974,198 words
+- 1370 files · ~2,972,191 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
@@ -10,7 +10,7 @@
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `8acd9f7d`
+- Built from commit: `9ff3d843`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -87,10 +87,10 @@ Nodes (3): ensureRgbaOpacity(), hexToRgba(), normalizeSurveyMarkerColor()
 
 ### Community 12 - "Community 12"
 Cohesion: 0.25
-Nodes (7): De-Fragilize Campaign — Progress Ledger, Out of scope (owner-parked), Priority 1 — finish dead zoom/scroll clusters in PDFViewer.jsx (IN PROGRESS), Priority 2 — split PDFViewer.jsx into modules (PENDING), Priority 3 — split other >1k-line files (PENDING), Rules (from HANDOFF run-mode), Status of prior work (verified this session)
+Nodes (7): De-Fragilize Campaign — Progress Ledger, Out of scope (owner-parked), Priority 1 — dead zoom/scroll clusters in PDFViewer.jsx (DONE ✅), Priority 2 — split PDFViewer.jsx into modules (PENDING), Priority 3 — split other >1k-line files (PENDING), Rules (from HANDOFF run-mode), Status of prior work (verified this session)
 
 ## Knowledge Gaps
-- **11 isolated node(s):** `Rules (from HANDOFF run-mode)`, `Status of prior work (verified this session)`, `Priority 1 — finish dead zoom/scroll clusters in PDFViewer.jsx (IN PROGRESS)`, `Priority 2 — split PDFViewer.jsx into modules (PENDING)`, `Priority 3 — split other >1k-line files (PENDING)` (+6 more)
+- **11 isolated node(s):** `Rules (from HANDOFF run-mode)`, `Status of prior work (verified this session)`, `Priority 1 — dead zoom/scroll clusters in PDFViewer.jsx (DONE ✅)`, `Priority 2 — split PDFViewer.jsx into modules (PENDING)`, `Priority 3 — split other >1k-line files (PENDING)` (+6 more)
   These have ≤1 connection - possible missing edges or undocumented components.
 - **3 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
@@ -101,7 +101,7 @@ _Questions this graph is uniquely positioned to answer:_
   _High betweenness centrality (0.003) - this node is a cross-community bridge._
 - **Why does `resolveBookmarkPageFromOutlineLookup()` connect `Community 3` to `Community 0`, `Community 4`?**
   _High betweenness centrality (0.002) - this node is a cross-community bridge._
-- **What connects `Rules (from HANDOFF run-mode)`, `Status of prior work (verified this session)`, `Priority 1 — finish dead zoom/scroll clusters in PDFViewer.jsx (IN PROGRESS)` to the rest of the system?**
+- **What connects `Rules (from HANDOFF run-mode)`, `Status of prior work (verified this session)`, `Priority 1 — dead zoom/scroll clusters in PDFViewer.jsx (DONE ✅)` to the rest of the system?**
   _11 weakly-connected nodes found - possible documentation gaps or missing edges._
 - **Should `Community 0` be split into smaller, more focused modules?**
   _Cohesion score 0.046511627906976744 - nodes in this community are weakly interconnected._

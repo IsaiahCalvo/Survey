@@ -15,6 +15,7 @@
 import * as pdfjsLib from 'pdfjs-dist';
 import { loadPdfjs } from './utils/pdfWorkerConfig';
 import { deepClone } from './utils/deepClone.js';
+import { boundsMatch } from './utils/pdfViewerGeometry.js';
 import { showToast } from './utils/toast';
 import AnnotationPropertiesPanel from './components/AnnotationPropertiesPanel';
 import CalloutOverlay from './components/Callout';
@@ -23845,17 +23846,6 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     };
   }, [activeTool, applyCounterDragMove, cancelCounterDrag]);
 
-  // Helper function to check if two bounds match (with tolerance for floating point)
-  const boundsMatch = (bounds1, bounds2, tolerance = 5) => {
-    if (!bounds1 || !bounds2) return false;
-    return (
-      Math.abs((bounds1.x || bounds1.left) - (bounds2.x || bounds2.left)) < tolerance &&
-      Math.abs((bounds1.y || bounds1.top) - (bounds2.y || bounds2.top)) < tolerance &&
-      Math.abs((bounds1.width || bounds1.right - bounds1.left) - (bounds2.width || bounds2.right - bounds2.left)) < tolerance &&
-      Math.abs((bounds1.height || bounds1.bottom - bounds1.top) - (bounds2.height || bounds2.bottom - bounds2.top)) < tolerance
-    );
-  };
-
   // Navigate to survey item when surveyMarker is clicked (reverse navigation)
   const handleSurveyMarkerClicked = useCallback((annotationId) => {
     if (!annotationId || !selectedTemplate) return;
@@ -24436,7 +24426,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         });
       }, 100);
     }
-  }, [addHistoryCheckpoint, selectedModuleId, selectedTemplate, surveyMarkers, items, boundsMatch, getCategoryName, getModuleName, getModuleDataKey, pdfFile?.id, user?.id, documentSyncEnabled]);
+  }, [addHistoryCheckpoint, selectedModuleId, selectedTemplate, surveyMarkers, items, getCategoryName, getModuleName, getModuleDataKey, pdfFile?.id, user?.id, documentSyncEnabled]);
 
   // After a Survey Marker delete commits to surveyMarkers, re-export the
   // linked Excel so the deleted marker's row is removed there too. The
