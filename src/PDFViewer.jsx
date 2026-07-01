@@ -17,6 +17,7 @@ import { loadPdfjs } from './utils/pdfWorkerConfig';
 import { deepClone } from './utils/deepClone.js';
 import { boundsMatch } from './utils/pdfViewerGeometry.js';
 import { sanitizeTemplateConfig } from './utils/templateConfig.js';
+import { migrateSidebarData } from './utils/sidebarPersistence.js';
 import { showToast } from './utils/toast';
 import AnnotationPropertiesPanel from './components/AnnotationPropertiesPanel';
 import CalloutOverlay from './components/Callout';
@@ -9226,52 +9227,22 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     if (!pdfId) return;
     try {
       const sidebarData = JSON.parse(localStorage.getItem(`pdfSidebar_${pdfId}`) || '{}');
-      setPageNames(sidebarData.pageNames || {});
-      const storedBookmarksRaw = Array.isArray(sidebarData.bookmarks) ? sidebarData.bookmarks : [];
-      const storedBookmarks = storedBookmarksRaw.map((bookmark) => {
-        const nextPageIds = normalizeBookmarkPageIds(bookmark, Number.POSITIVE_INFINITY);
-
-        if (bookmark?.source === 'pdf' || bookmark?.isFromPDF === true) {
-          return {
-            ...bookmark,
-            pageIds: nextPageIds,
-            source: 'user',
-            isFromPDF: false
-          };
-        }
-
-        return {
-          ...bookmark,
-          pageIds: nextPageIds
-        };
-      });
-      setBookmarks(storedBookmarks);
-      const hasStoredPdfBookmarks = storedBookmarksRaw.some((bookmark) => (
-        bookmark?.source === 'pdf' ||
-        bookmark?.isFromPDF === true ||
-        (typeof bookmark?.id === 'string' && bookmark.id.startsWith('pdf:')) ||
-        (typeof bookmark?.id === 'string' && bookmark.id.startsWith('pdf-outline-')) ||
-        (typeof bookmark?.sourceId === 'string' && bookmark.sourceId.startsWith('pdfjs:')) ||
-        Array.isArray(bookmark?.outlinePath) ||
-        bookmark?.dest
-      ));
-      setHasImportedPdfBookmarks(hasStoredPdfBookmarks);
-      // Migrate spaces: ensure page visibility state is explicit in the region data.
-      // Requirement: "A region can contain multiple areas (polygons) within it"
-      // Keep all regions as they represent multiple areas within the same logical region
-      const migratedSpaces = (sidebarData.spaces || []).map(space => ({
-        ...space,
-        assignedPages: (space.assignedPages || []).map(page => {
-          return {
-            ...page,
-            regions: normalizePageRegions(page.regions || [])
-          };
-        })
-      }));
-      setSpaces(migratedSpaces);
+      // Deserialize + migrate the blob (bookmark normalization + space region
+      // migration) via the extracted pure helper; setters stay here.
+      const {
+        pageNames: loadedPageNames,
+        bookmarks: loadedBookmarks,
+        hasImportedPdfBookmarks: loadedHasImportedPdfBookmarks,
+        spaces: loadedSpaces,
+        pageTransformations: loadedPageTransformations,
+      } = migrateSidebarData(sidebarData);
+      setPageNames(loadedPageNames);
+      setBookmarks(loadedBookmarks);
+      setHasImportedPdfBookmarks(loadedHasImportedPdfBookmarks);
+      setSpaces(loadedSpaces);
       // Always start in regular mode when opening a PDF; do not restore an active space
       setActiveSpaceId(null);
-      setPageTransformations(sidebarData.pageTransformations || {});
+      setPageTransformations(loadedPageTransformations);
     } catch (e) {
       console.error('Error loading sidebar data:', e);
     }
