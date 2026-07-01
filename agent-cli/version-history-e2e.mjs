@@ -238,14 +238,16 @@ async function main() {
 
     // ---- draw gesture (KAL-75-proven: `p`, drag, Escape) ---------------------
     const pageDivRect = () => page.evaluate(() => {
-      const d = document.querySelector('.e-pv-page-div');
+      // pdf.js migration: the old Syncfusion `.e-pv-page-div` is gone; draw on the
+      // SVG annotation layer (the pointer-event surface for annotation drawing).
+      const d = document.querySelector('[data-svg-annotation-layer]');
       if (!d) return null;
       const r = d.getBoundingClientRect();
       return { x: r.x, y: r.y, w: r.width, h: r.height };
     });
     const drawStroke = async (fx, fy) => {
       const pr = await pageDivRect();
-      if (!pr) throw new Error('no .e-pv-page-div to draw on');
+      if (!pr) throw new Error('no annotation layer to draw on');
       const from = { x: pr.x + pr.w * fx, y: pr.y + pr.h * fy };
       const before = await fabricCount();
       await page.keyboard.press('p');

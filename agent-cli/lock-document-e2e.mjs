@@ -579,7 +579,10 @@ async function main() {
     // proves the fix does not over-block; result review r1 finding 1). These
     // run BEFORE the zero-writes gate so any write they provoke fails the run.
     const pageWidth = () => page.evaluate(() => {
-      const d = document.querySelector('.e-pv-page-div');
+      // pdf.js migration: measure the page overlay (sizes to the page host, which
+      // resizes on app zoom) instead of the removed Syncfusion `.e-pv-page-div`.
+      const d = document.querySelector('[data-svg-annotation-layer]')
+        || document.querySelector('.survey-pdfjs-viewer canvas, .pdf-engine-host canvas');
       return d ? Math.round(d.getBoundingClientRect().width) : 0;
     });
     const wBefore = await pageWidth();
