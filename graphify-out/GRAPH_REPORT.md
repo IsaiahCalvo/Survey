@@ -1,16 +1,16 @@
 # Graph Report - magical-raman-95374e  (2026-07-01)
 
 ## Corpus Check
-- 1376 files · ~2,973,447 words
+- 1378 files · ~2,973,786 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 153 nodes · 282 edges · 16 communities (11 shown, 5 thin omitted)
+- 238 nodes · 523 edges · 21 communities (16 shown, 5 thin omitted)
 - Extraction: 100% EXTRACTED · 0% INFERRED · 0% AMBIGUOUS
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `82c8c435`
+- Built from commit: `dd72ac52`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -31,31 +31,44 @@
 - [[_COMMUNITY_Community 13|Community 13]]
 - [[_COMMUNITY_Community 14|Community 14]]
 - [[_COMMUNITY_Community 15|Community 15]]
+- [[_COMMUNITY_Community 16|Community 16]]
+- [[_COMMUNITY_Community 17|Community 17]]
+- [[_COMMUNITY_Community 18|Community 18]]
+- [[_COMMUNITY_Community 19|Community 19]]
+- [[_COMMUNITY_Community 20|Community 20]]
 
 ## God Nodes (most connected - your core abstractions)
-1. `summarizeHistoryActionForLog()` - 9 edges
-2. `De-Fragilize Campaign — Progress Ledger` - 8 edges
-3. `resolveBookmarkPageFromOutlineLookup()` - 5 edges
-4. `createItem()` - 5 edges
-5. `isPointOnSelectDeleteOnlyTextMarkup()` - 4 edges
-6. `hexToRgba()` - 4 edges
-7. `getHistoryAnnotationId()` - 4 edges
-8. `getHistoryAnnotationVisualBounds()` - 4 edges
-9. `buildHistoryRestoreAction()` - 4 edges
-10. `normalizeHistoryActionType()` - 4 edges
+1. `convertPdfAnnotationToFabric()` - 16 edges
+2. `convertFreeTextToFabricTextbox()` - 15 edges
+3. `pdfColorToHex()` - 14 edges
+4. `extractAnnotationOpacity()` - 13 edges
+5. `hexToRgba()` - 13 edges
+6. `convertPdfRectToViewportRect()` - 12 edges
+7. `convertPolygonToFabricPolygon()` - 12 edges
+8. `getBorderWidth()` - 11 edges
+9. `buildRawAnnotationMetadataById()` - 11 edges
+10. `convertPolyLineToFabricPolyline()` - 11 edges
 
 ## Surprising Connections (you probably didn't know these)
-- `PDFViewer()` --calls--> `useRegionOverlayVisibility()`  [EXTRACTED]
-  src/PDFViewer.jsx → src/hooks/useRegionOverlayVisibility.js
+- `buildRawAnnotationMetadataById()` --calls--> `normalizePdfLineEndings()`  [EXTRACTED]
+  src/utils/pdfAnnotationImporter.js → src/utils/pdfLibValueReaders.js
+- `buildRawAnnotationMetadataById()` --calls--> `normalizePdfNameToken()`  [EXTRACTED]
+  src/utils/pdfAnnotationImporter.js → src/utils/pdfLibValueReaders.js
+- `applyRawMetadataToAnnotation()` --calls--> `normalizePdfLineEndings()`  [EXTRACTED]
+  src/utils/pdfAnnotationImporter.js → src/utils/pdfLibValueReaders.js
+- `convertFreeTextToFabricTextbox()` --calls--> `normalizePdfNameToken()`  [EXTRACTED]
+  src/utils/pdfAnnotationImporter.js → src/utils/pdfLibValueReaders.js
+- `convertTextToFabricNote()` --calls--> `normalizePdfNameToken()`  [EXTRACTED]
+  src/utils/pdfAnnotationImporter.js → src/utils/pdfLibValueReaders.js
 
 ## Import Cycles
 - None detected.
 
-## Communities (16 total, 5 thin omitted)
+## Communities (21 total, 5 thin omitted)
 
 ### Community 0 - "Community 0"
 Cohesion: 0.05
-Nodes (30): buildOutlinePageLookup(), cloneOverlayRecorderPayload(), escapeCSVValue(), filterAnnotationsByModule(), getModuleDataKey(), getNormalizedWheelDeltas(), getPDFId(), getPdfjsTextMarkupMode() (+22 more)
+Nodes (28): applyRegionMaskToCanvasContext(), countAnnotationPageObjects(), escapeCSVValue(), getNormalizedWheelDeltas(), getOpacityFromEntityColor(), getPDFId(), getPdfjsZoomAwareScrollGain(), getSmoothPdfjsWheelZoom() (+20 more)
 
 ### Community 1 - "Community 1"
 Cohesion: 0.18
@@ -70,8 +83,8 @@ Cohesion: 0.50
 Nodes (4): extractSourceLeafFromBookmark(), normalizeOutlineLooseKey(), normalizeOutlinePathSegments(), resolveBookmarkPageFromOutlineLookup()
 
 ### Community 4 - "Community 4"
-Cohesion: 0.05
-Nodes (40): applyRegionMaskToCanvasContext(), categoryExists(), clampWheelDelta(), coercePageNumber(), coercePdfjsZoomPercent(), countAnnotationPageObjects(), dataURLToUint8Array(), getCategoryGlyphLabel() (+32 more)
+Cohesion: 0.04
+Nodes (42): buildOutlinePageLookup(), categoryExists(), clampWheelDelta(), cloneOverlayRecorderPayload(), coercePageNumber(), coercePdfjsZoomPercent(), dataURLToUint8Array(), filterAnnotationsByModule() (+34 more)
 
 ### Community 5 - "Community 5"
 Cohesion: 0.50
@@ -97,8 +110,28 @@ Nodes (8): De-Fragilize Campaign — Progress Ledger, Out of scope (owner-parked
 Cohesion: 0.39
 Nodes (6): parseRegionOverlayStates(), readRegionOverlayStates(), serializeRegionOverlayStates(), storageKeyFor(), useRegionOverlayVisibility(), PDFViewer()
 
+### Community 16 - "Community 16"
+Cohesion: 0.09
+Nodes (20): applyRawMetadataToAnnotation(), clamp01(), convertAppearancePathToFabricPath(), convertAutoCadShxTextToFabricProxy(), coordinateArrayToPoints(), getAnnotationContents(), getAnnotationTitle(), getInkPathEndpoint() (+12 more)
+
+### Community 17 - "Community 17"
+Cohesion: 0.16
+Nodes (14): buildRawAnnotationMetadataById(), decodeStreamBytesToLatin1(), extractAppearanceMetadataForAnnotation(), importAnnotationsFromPdf(), loadPdfLibCore(), parseAppearanceStream(), pdfImportDebug(), readAppLayerStateFromPdf() (+6 more)
+
+### Community 18 - "Community 18"
+Cohesion: 0.42
+Nodes (15): convertCaretToFabricPolyline(), convertCircleToFabricCircle(), convertInkToFabricPath(), convertPdfAnnotationToFabric(), convertPdfRectToViewportRect(), convertSquareToFabricRect(), convertSquigglyToFabricPath(), convertSurveyMarkerToFabricRect() (+7 more)
+
+### Community 19 - "Community 19"
+Cohesion: 0.33
+Nodes (11): buildCloudPathCommands(), convertLineToFabricLine(), convertPdfPointListToViewportPoints(), convertPdfPointToViewport(), convertPolygonToFabricPolygon(), convertPolyLineToFabricPolyline(), extractAnnotationDashArray(), getAnnotationPolylinePoints() (+3 more)
+
+### Community 20 - "Community 20"
+Cohesion: 0.29
+Nodes (7): computeAppearanceRotationTransform(), convertFreeTextToFabricTextbox(), extractCalloutTextBoxRectFromAppearance(), getShapeFillHex(), isNearWhiteHexColor(), parseDefaultAppearanceString(), parseDefaultStyleString()
+
 ## Knowledge Gaps
-- **12 isolated node(s):** `Rules (from HANDOFF run-mode)`, `Status of prior work (verified this session)`, `Priority 1 — dead zoom/scroll clusters in PDFViewer.jsx (DONE ✅)`, `Priority 2 — split PDFViewer.jsx into modules (SAFE EXTRACTIONS DONE; bulk deferred)`, `Priority 3 — split other >1k-line files (IN PROGRESS)` (+7 more)
+- **18 isolated node(s):** `SUPPORTED_SUBTYPES`, `SELECT_DELETE_ONLY_TEXT_MARKUP_TYPES`, `LINE_CAP_MAP`, `LINE_JOIN_MAP`, `UNSUPPORTED_SUBTYPES` (+13 more)
   These have ≤1 connection - possible missing edges or undocumented components.
 - **5 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
@@ -106,14 +139,16 @@ Nodes (6): parseRegionOverlayStates(), readRegionOverlayStates(), serializeRegio
 _Questions this graph is uniquely positioned to answer:_
 
 - **Why does `summarizeHistoryActionForLog()` connect `Community 1` to `Community 0`, `Community 4`?**
-  _High betweenness centrality (0.008) - this node is a cross-community bridge._
+  _High betweenness centrality (0.003) - this node is a cross-community bridge._
+- **Why does `normalizePdfNameToken()` connect `Community 19` to `Community 16`, `Community 17`, `Community 18`, `Community 20`?**
+  _High betweenness centrality (0.003) - this node is a cross-community bridge._
 - **Why does `sanitizeTemplateConfig()` connect `Community 14` to `Community 4`?**
-  _High betweenness centrality (0.006) - this node is a cross-community bridge._
-- **Why does `boundsMatch()` connect `Community 13` to `Community 4`?**
-  _High betweenness centrality (0.006) - this node is a cross-community bridge._
-- **What connects `Rules (from HANDOFF run-mode)`, `Status of prior work (verified this session)`, `Priority 1 — dead zoom/scroll clusters in PDFViewer.jsx (DONE ✅)` to the rest of the system?**
-  _12 weakly-connected nodes found - possible documentation gaps or missing edges._
+  _High betweenness centrality (0.003) - this node is a cross-community bridge._
+- **What connects `SUPPORTED_SUBTYPES`, `SELECT_DELETE_ONLY_TEXT_MARKUP_TYPES`, `LINE_CAP_MAP` to the rest of the system?**
+  _18 weakly-connected nodes found - possible documentation gaps or missing edges._
 - **Should `Community 0` be split into smaller, more focused modules?**
-  _Cohesion score 0.046511627906976744 - nodes in this community are weakly interconnected._
+  _Cohesion score 0.04878048780487805 - nodes in this community are weakly interconnected._
 - **Should `Community 4` be split into smaller, more focused modules?**
-  _Cohesion score 0.046511627906976744 - nodes in this community are weakly interconnected._
+  _Cohesion score 0.044444444444444446 - nodes in this community are weakly interconnected._
+- **Should `Community 16` be split into smaller, more focused modules?**
+  _Cohesion score 0.08817204301075268 - nodes in this community are weakly interconnected._

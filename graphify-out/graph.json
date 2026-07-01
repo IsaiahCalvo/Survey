@@ -4,85 +4,850 @@
   "graph": {},
   "nodes": [
     {
+      "label": "pdfLibValueReaders.test.mjs",
+      "file_type": "code",
+      "source_file": "src/utils/__tests__/pdfLibValueReaders.test.mjs",
+      "source_location": "L1",
+      "id": "tests_pdflibvaluereaders_test",
+      "community": 17,
+      "norm_label": "pdflibvaluereaders.test.mjs"
+    },
+    {
+      "label": "num()",
+      "file_type": "code",
+      "source_file": "src/utils/__tests__/pdfLibValueReaders.test.mjs",
+      "source_location": "L15",
+      "id": "tests_pdflibvaluereaders_test_num",
+      "community": 17,
+      "norm_label": "num()"
+    },
+    {
+      "label": "txt()",
+      "file_type": "code",
+      "source_file": "src/utils/__tests__/pdfLibValueReaders.test.mjs",
+      "source_location": "L16",
+      "id": "tests_pdflibvaluereaders_test_txt",
+      "community": 17,
+      "norm_label": "txt()"
+    },
+    {
+      "label": "arr()",
+      "file_type": "code",
+      "source_file": "src/utils/__tests__/pdfLibValueReaders.test.mjs",
+      "source_location": "L17",
+      "id": "tests_pdflibvaluereaders_test_arr",
+      "community": 17,
+      "norm_label": "arr()"
+    },
+    {
+      "label": "asNumber()",
+      "file_type": "code",
+      "source_file": "src/utils/__tests__/pdfLibValueReaders.test.mjs",
+      "source_location": "L37",
+      "id": "tests_pdflibvaluereaders_test_asnumber",
+      "community": 17,
+      "norm_label": "asnumber()"
+    },
+    {
+      "label": "toString()",
+      "file_type": "code",
+      "source_file": "src/utils/__tests__/pdfLibValueReaders.test.mjs",
+      "source_location": "L37",
+      "id": "tests_pdflibvaluereaders_test_tostring",
+      "community": 17,
+      "norm_label": "tostring()"
+    },
+    {
+      "label": "pdfAnnotationImporter.js",
+      "file_type": "code",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L1",
+      "id": "utils_pdfannotationimporter",
+      "community": 16,
+      "norm_label": "pdfannotationimporter.js"
+    },
+    {
+      "label": "pdfImportDebug()",
+      "file_type": "code",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L43",
+      "id": "utils_pdfannotationimporter_pdfimportdebug",
+      "community": 17,
+      "norm_label": "pdfimportdebug()"
+    },
+    {
+      "label": "SUPPORTED_SUBTYPES",
+      "file_type": "code",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L67",
+      "id": "utils_pdfannotationimporter_supported_subtypes",
+      "community": 16,
+      "norm_label": "supported_subtypes"
+    },
+    {
+      "label": "SELECT_DELETE_ONLY_TEXT_MARKUP_TYPES",
+      "file_type": "code",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L83",
+      "id": "utils_pdfannotationimporter_select_delete_only_text_markup_types",
+      "community": 16,
+      "norm_label": "select_delete_only_text_markup_types"
+    },
+    {
+      "label": "LINE_CAP_MAP",
+      "file_type": "code",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L85",
+      "id": "utils_pdfannotationimporter_line_cap_map",
+      "community": 16,
+      "norm_label": "line_cap_map"
+    },
+    {
+      "label": "LINE_JOIN_MAP",
+      "file_type": "code",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L86",
+      "id": "utils_pdfannotationimporter_line_join_map",
+      "community": 16,
+      "norm_label": "line_join_map"
+    },
+    {
+      "label": "loadPdfLibCore()",
+      "file_type": "code",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L90",
+      "id": "utils_pdfannotationimporter_loadpdflibcore",
+      "community": 17,
+      "norm_label": "loadpdflibcore()"
+    },
+    {
+      "label": "UNSUPPORTED_SUBTYPES",
+      "file_type": "code",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L98",
+      "id": "utils_pdfannotationimporter_unsupported_subtypes",
+      "community": 16,
+      "norm_label": "unsupported_subtypes"
+    },
+    {
+      "label": "summarizePdfAnnotationForDiag()",
+      "file_type": "code",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L103",
+      "id": "utils_pdfannotationimporter_summarizepdfannotationfordiag",
+      "community": 16,
+      "norm_label": "summarizepdfannotationfordiag()"
+    },
+    {
+      "label": "summarizeFabricImportForDiag()",
+      "file_type": "code",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L149",
+      "id": "utils_pdfannotationimporter_summarizefabricimportfordiag",
+      "community": 16,
+      "norm_label": "summarizefabricimportfordiag()"
+    },
+    {
+      "label": "isPotentiallyVisibleNativeAnnotation()",
+      "file_type": "code",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L176",
+      "id": "utils_pdfannotationimporter_ispotentiallyvisiblenativeannotation",
+      "community": 16,
+      "norm_label": "ispotentiallyvisiblenativeannotation()"
+    },
+    {
+      "label": "extractAnnotationsFromPage()",
+      "file_type": "code",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L201",
+      "id": "utils_pdfannotationimporter_extractannotationsfrompage",
+      "community": 16,
+      "norm_label": "extractannotationsfrompage()"
+    },
+    {
+      "label": "pdfColorToHex()",
+      "file_type": "code",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L218",
+      "id": "utils_pdfannotationimporter_pdfcolortohex",
+      "community": 18,
+      "norm_label": "pdfcolortohex()"
+    },
+    {
+      "label": "clamp01()",
+      "file_type": "code",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L293",
+      "id": "utils_pdfannotationimporter_clamp01",
+      "community": 16,
+      "norm_label": "clamp01()"
+    },
+    {
+      "label": "normalizeOpacityValue()",
+      "file_type": "code",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L300",
+      "id": "utils_pdfannotationimporter_normalizeopacityvalue",
+      "community": 16,
+      "norm_label": "normalizeopacityvalue()"
+    },
+    {
+      "label": "extractAnnotationOpacity()",
+      "file_type": "code",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L314",
+      "id": "utils_pdfannotationimporter_extractannotationopacity",
+      "community": 18,
+      "norm_label": "extractannotationopacity()"
+    },
+    {
+      "label": "hexToRgba()",
+      "file_type": "code",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L338",
+      "id": "utils_pdfannotationimporter_hextorgba",
+      "community": 18,
+      "norm_label": "hextorgba()"
+    },
+    {
+      "label": "getBorderWidth()",
+      "file_type": "code",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L351",
+      "id": "utils_pdfannotationimporter_getborderwidth",
+      "community": 18,
+      "norm_label": "getborderwidth()"
+    },
+    {
+      "label": "getShapeFillHex()",
+      "file_type": "code",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L365",
+      "id": "utils_pdfannotationimporter_getshapefillhex",
+      "community": 20,
+      "norm_label": "getshapefillhex()"
+    },
+    {
+      "label": "getShapeFillColor()",
+      "file_type": "code",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L379",
+      "id": "utils_pdfannotationimporter_getshapefillcolor",
+      "community": 18,
+      "norm_label": "getshapefillcolor()"
+    },
+    {
+      "label": "getAnnotationTitle()",
+      "file_type": "code",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L396",
+      "id": "utils_pdfannotationimporter_getannotationtitle",
+      "community": 16,
+      "norm_label": "getannotationtitle()"
+    },
+    {
+      "label": "getAnnotationContents()",
+      "file_type": "code",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L412",
+      "id": "utils_pdfannotationimporter_getannotationcontents",
+      "community": 16,
+      "norm_label": "getannotationcontents()"
+    },
+    {
+      "label": "isAutoCadShxTextAnnotation()",
+      "file_type": "code",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L428",
+      "id": "utils_pdfannotationimporter_isautocadshxtextannotation",
+      "community": 16,
+      "norm_label": "isautocadshxtextannotation()"
+    },
+    {
+      "label": "convertAutoCadShxTextToFabricProxy()",
+      "file_type": "code",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L441",
+      "id": "utils_pdfannotationimporter_convertautocadshxtexttofabricproxy",
+      "community": 16,
+      "norm_label": "convertautocadshxtexttofabricproxy()"
+    },
+    {
+      "label": "buildCloudPathCommands()",
+      "file_type": "code",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L500",
+      "id": "utils_pdfannotationimporter_buildcloudpathcommands",
+      "community": 19,
+      "norm_label": "buildcloudpathcommands()"
+    },
+    {
+      "label": "isNearWhiteHexColor()",
+      "file_type": "code",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L566",
+      "id": "utils_pdfannotationimporter_isnearwhitehexcolor",
+      "community": 20,
+      "norm_label": "isnearwhitehexcolor()"
+    },
+    {
+      "label": "parseDefaultAppearanceString()",
+      "file_type": "code",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L582",
+      "id": "utils_pdfannotationimporter_parsedefaultappearancestring",
+      "community": 20,
+      "norm_label": "parsedefaultappearancestring()"
+    },
+    {
+      "label": "parseRichContentFirstColor()",
+      "file_type": "code",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L628",
+      "id": "utils_pdfannotationimporter_parserichcontentfirstcolor",
+      "community": 16,
+      "norm_label": "parserichcontentfirstcolor()"
+    },
+    {
+      "label": "parseDefaultStyleString()",
+      "file_type": "code",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L653",
+      "id": "utils_pdfannotationimporter_parsedefaultstylestring",
+      "community": 20,
+      "norm_label": "parsedefaultstylestring()"
+    },
+    {
+      "label": "toNumericArray()",
+      "file_type": "code",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L693",
+      "id": "utils_pdfannotationimporter_tonumericarray",
+      "community": 16,
+      "norm_label": "tonumericarray()"
+    },
+    {
+      "label": "coordinateArrayToPoints()",
+      "file_type": "code",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L726",
+      "id": "utils_pdfannotationimporter_coordinatearraytopoints",
+      "community": 16,
+      "norm_label": "coordinatearraytopoints()"
+    },
+    {
+      "label": "normalizePdfPointList()",
+      "file_type": "code",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L740",
+      "id": "utils_pdfannotationimporter_normalizepdfpointlist",
+      "community": 16,
+      "norm_label": "normalizepdfpointlist()"
+    },
+    {
+      "label": "convertPdfPointListToViewportPoints()",
+      "file_type": "code",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L773",
+      "id": "utils_pdfannotationimporter_convertpdfpointlisttoviewportpoints",
+      "community": 19,
+      "norm_label": "convertpdfpointlisttoviewportpoints()"
+    },
+    {
+      "label": "roundWithTolerance()",
+      "file_type": "code",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L780",
+      "id": "utils_pdfannotationimporter_roundwithtolerance",
+      "community": 16,
+      "norm_label": "roundwithtolerance()"
+    },
+    {
+      "label": "extractCalloutTextBoxRectFromAppearance()",
+      "file_type": "code",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L785",
+      "id": "utils_pdfannotationimporter_extractcallouttextboxrectfromappearance",
+      "community": 20,
+      "norm_label": "extractcallouttextboxrectfromappearance()"
+    },
+    {
+      "label": "toRelativeFabricPoints()",
+      "file_type": "code",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L875",
+      "id": "utils_pdfannotationimporter_torelativefabricpoints",
+      "community": 19,
+      "norm_label": "torelativefabricpoints()"
+    },
+    {
+      "label": "extractAnnotationDashArray()",
+      "file_type": "code",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L895",
+      "id": "utils_pdfannotationimporter_extractannotationdasharray",
+      "community": 19,
+      "norm_label": "extractannotationdasharray()"
+    },
+    {
+      "label": "decodeStreamBytesToLatin1()",
+      "file_type": "code",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L929",
+      "id": "utils_pdfannotationimporter_decodestreambytestolatin1",
+      "community": 17,
+      "norm_label": "decodestreambytestolatin1()"
+    },
+    {
+      "label": "parseAppearanceStream()",
+      "file_type": "code",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L943",
+      "id": "utils_pdfannotationimporter_parseappearancestream",
+      "community": 17,
+      "norm_label": "parseappearancestream()"
+    },
+    {
+      "label": "extractAppearanceMetadataForAnnotation()",
+      "file_type": "code",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L1166",
+      "id": "utils_pdfannotationimporter_extractappearancemetadataforannotation",
+      "community": 17,
+      "norm_label": "extractappearancemetadataforannotation()"
+    },
+    {
+      "label": "buildRawAnnotationMetadataById()",
+      "file_type": "code",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L1214",
+      "id": "utils_pdfannotationimporter_buildrawannotationmetadatabyid",
+      "community": 17,
+      "norm_label": "buildrawannotationmetadatabyid()"
+    },
+    {
+      "label": "readAppLayerStateFromPdf()",
+      "file_type": "code",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L1384",
+      "id": "utils_pdfannotationimporter_readapplayerstatefrompdf",
+      "community": 17,
+      "norm_label": "readapplayerstatefrompdf()"
+    },
+    {
+      "label": "getRawAnnotationMetadataForAnnotation()",
+      "file_type": "code",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L1402",
+      "id": "utils_pdfannotationimporter_getrawannotationmetadataforannotation",
+      "community": 16,
+      "norm_label": "getrawannotationmetadataforannotation()"
+    },
+    {
+      "label": "applyRawMetadataToAnnotation()",
+      "file_type": "code",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L1419",
+      "id": "utils_pdfannotationimporter_applyrawmetadatatoannotation",
+      "community": 16,
+      "norm_label": "applyrawmetadatatoannotation()"
+    },
+    {
+      "label": "convertAppearancePathToFabricPath()",
+      "file_type": "code",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L1511",
+      "id": "utils_pdfannotationimporter_convertappearancepathtofabricpath",
+      "community": 16,
+      "norm_label": "convertappearancepathtofabricpath()"
+    },
+    {
+      "label": "convertPdfPointToViewport()",
+      "file_type": "code",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L1547",
+      "id": "utils_pdfannotationimporter_convertpdfpointtoviewport",
+      "community": 19,
+      "norm_label": "convertpdfpointtoviewport()"
+    },
+    {
+      "label": "convertPdfRectToViewportRect()",
+      "file_type": "code",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L1557",
+      "id": "utils_pdfannotationimporter_convertpdfrecttoviewportrect",
+      "community": 18,
+      "norm_label": "convertpdfrecttoviewportrect()"
+    },
+    {
+      "label": "getInkPathEndpoint()",
+      "file_type": "code",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L1591",
+      "id": "utils_pdfannotationimporter_getinkpathendpoint",
+      "community": 16,
+      "norm_label": "getinkpathendpoint()"
+    },
+    {
+      "label": "distanceBetweenPoints()",
+      "file_type": "code",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L1599",
+      "id": "utils_pdfannotationimporter_distancebetweenpoints",
+      "community": 16,
+      "norm_label": "distancebetweenpoints()"
+    },
+    {
+      "label": "pathSubpathsAreClosed()",
+      "file_type": "code",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L1605",
+      "id": "utils_pdfannotationimporter_pathsubpathsareclosed",
+      "community": 16,
+      "norm_label": "pathsubpathsareclosed()"
+    },
+    {
+      "label": "convertInkToFabricPath()",
+      "file_type": "code",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L1649",
+      "id": "utils_pdfannotationimporter_convertinktofabricpath",
+      "community": 18,
+      "norm_label": "convertinktofabricpath()"
+    },
+    {
+      "label": "convertSurveyMarkerToFabricRect()",
+      "file_type": "code",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L1893",
+      "id": "utils_pdfannotationimporter_convertsurveymarkertofabricrect",
+      "community": 18,
+      "norm_label": "convertsurveymarkertofabricrect()"
+    },
+    {
+      "label": "convertFreeTextToFabricTextbox()",
+      "file_type": "code",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L1928",
+      "id": "utils_pdfannotationimporter_convertfreetexttofabrictextbox",
+      "community": 20,
+      "norm_label": "convertfreetexttofabrictextbox()"
+    },
+    {
+      "label": "getAnnotationPolylinePoints()",
+      "file_type": "code",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L2182",
+      "id": "utils_pdfannotationimporter_getannotationpolylinepoints",
+      "community": 19,
+      "norm_label": "getannotationpolylinepoints()"
+    },
+    {
+      "label": "convertPolyLineToFabricPolyline()",
+      "file_type": "code",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L2213",
+      "id": "utils_pdfannotationimporter_convertpolylinetofabricpolyline",
+      "community": 19,
+      "norm_label": "convertpolylinetofabricpolyline()"
+    },
+    {
+      "label": "convertPolygonToFabricPolygon()",
+      "file_type": "code",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L2260",
+      "id": "utils_pdfannotationimporter_convertpolygontofabricpolygon",
+      "community": 19,
+      "norm_label": "convertpolygontofabricpolygon()"
+    },
+    {
+      "label": "convertTextToFabricNote()",
+      "file_type": "code",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L2325",
+      "id": "utils_pdfannotationimporter_converttexttofabricnote",
+      "community": 18,
+      "norm_label": "converttexttofabricnote()"
+    },
+    {
+      "label": "computeAppearanceRotationTransform()",
+      "file_type": "code",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L2382",
+      "id": "utils_pdfannotationimporter_computeappearancerotationtransform",
+      "community": 20,
+      "norm_label": "computeappearancerotationtransform()"
+    },
+    {
+      "label": "convertSquareToFabricRect()",
+      "file_type": "code",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L2400",
+      "id": "utils_pdfannotationimporter_convertsquaretofabricrect",
+      "community": 18,
+      "norm_label": "convertsquaretofabricrect()"
+    },
+    {
+      "label": "convertCircleToFabricCircle()",
+      "file_type": "code",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L2488",
+      "id": "utils_pdfannotationimporter_convertcircletofabriccircle",
+      "community": 18,
+      "norm_label": "convertcircletofabriccircle()"
+    },
+    {
+      "label": "convertLineToFabricLine()",
+      "file_type": "code",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L2624",
+      "id": "utils_pdfannotationimporter_convertlinetofabricline",
+      "community": 19,
+      "norm_label": "convertlinetofabricline()"
+    },
+    {
+      "label": "convertUnderlineToFabricRect()",
+      "file_type": "code",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L2740",
+      "id": "utils_pdfannotationimporter_convertunderlinetofabricrect",
+      "community": 18,
+      "norm_label": "convertunderlinetofabricrect()"
+    },
+    {
+      "label": "convertSquigglyToFabricPath()",
+      "file_type": "code",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L2784",
+      "id": "utils_pdfannotationimporter_convertsquigglytofabricpath",
+      "community": 18,
+      "norm_label": "convertsquigglytofabricpath()"
+    },
+    {
+      "label": "convertCaretToFabricPolyline()",
+      "file_type": "code",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L2852",
+      "id": "utils_pdfannotationimporter_convertcarettofabricpolyline",
+      "community": 18,
+      "norm_label": "convertcarettofabricpolyline()"
+    },
+    {
+      "label": "convertPdfAnnotationToFabric()",
+      "file_type": "code",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L2897",
+      "id": "utils_pdfannotationimporter_convertpdfannotationtofabric",
+      "community": 18,
+      "norm_label": "convertpdfannotationtofabric()"
+    },
+    {
+      "label": "SILENT_IGNORE_SUBTYPES",
+      "file_type": "code",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L2942",
+      "id": "utils_pdfannotationimporter_silent_ignore_subtypes",
+      "community": 16,
+      "norm_label": "silent_ignore_subtypes"
+    },
+    {
+      "label": "categorizeAnnotations()",
+      "file_type": "code",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L2949",
+      "id": "utils_pdfannotationimporter_categorizeannotations",
+      "community": 16,
+      "norm_label": "categorizeannotations()"
+    },
+    {
+      "label": "normalizeImportedAppCallout()",
+      "file_type": "code",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L2965",
+      "id": "utils_pdfannotationimporter_normalizeimportedappcallout",
+      "community": 16,
+      "norm_label": "normalizeimportedappcallout()"
+    },
+    {
+      "label": "importAnnotationsFromPdf()",
+      "file_type": "code",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L3022",
+      "id": "utils_pdfannotationimporter_importannotationsfrompdf",
+      "community": 17,
+      "norm_label": "importannotationsfrompdf()"
+    },
+    {
+      "label": "pdfHasAnnotations()",
+      "file_type": "code",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L3288",
+      "id": "utils_pdfannotationimporter_pdfhasannotations",
+      "community": 16,
+      "norm_label": "pdfhasannotations()"
+    },
+    {
+      "label": "pdfLibValueReaders.js",
+      "file_type": "code",
+      "source_file": "src/utils/pdfLibValueReaders.js",
+      "source_location": "L1",
+      "id": "utils_pdflibvaluereaders",
+      "community": 17,
+      "norm_label": "pdflibvaluereaders.js"
+    },
+    {
+      "label": "toUint8Array()",
+      "file_type": "code",
+      "source_file": "src/utils/pdfLibValueReaders.js",
+      "source_location": "L7",
+      "id": "utils_pdflibvaluereaders_touint8array",
+      "community": 17,
+      "norm_label": "touint8array()"
+    },
+    {
+      "label": "readPdfLibNumber()",
+      "file_type": "code",
+      "source_file": "src/utils/pdfLibValueReaders.js",
+      "source_location": "L25",
+      "id": "utils_pdflibvaluereaders_readpdflibnumber",
+      "community": 17,
+      "norm_label": "readpdflibnumber()"
+    },
+    {
+      "label": "readPdfLibNumberArray()",
+      "file_type": "code",
+      "source_file": "src/utils/pdfLibValueReaders.js",
+      "source_location": "L41",
+      "id": "utils_pdflibvaluereaders_readpdflibnumberarray",
+      "community": 17,
+      "norm_label": "readpdflibnumberarray()"
+    },
+    {
+      "label": "readPdfLibText()",
+      "file_type": "code",
+      "source_file": "src/utils/pdfLibValueReaders.js",
+      "source_location": "L54",
+      "id": "utils_pdflibvaluereaders_readpdflibtext",
+      "community": 17,
+      "norm_label": "readpdflibtext()"
+    },
+    {
+      "label": "normalizePdfNameToken()",
+      "file_type": "code",
+      "source_file": "src/utils/pdfLibValueReaders.js",
+      "source_location": "L70",
+      "id": "utils_pdflibvaluereaders_normalizepdfnametoken",
+      "community": 19,
+      "norm_label": "normalizepdfnametoken()"
+    },
+    {
+      "label": "readPdfLibNameArray()",
+      "file_type": "code",
+      "source_file": "src/utils/pdfLibValueReaders.js",
+      "source_location": "L77",
+      "id": "utils_pdflibvaluereaders_readpdflibnamearray",
+      "community": 17,
+      "norm_label": "readpdflibnamearray()"
+    },
+    {
+      "label": "readPdfLibDashArray()",
+      "file_type": "code",
+      "source_file": "src/utils/pdfLibValueReaders.js",
+      "source_location": "L90",
+      "id": "utils_pdflibvaluereaders_readpdflibdasharray",
+      "community": 17,
+      "norm_label": "readpdflibdasharray()"
+    },
+    {
+      "label": "normalizePdfLineEndings()",
+      "file_type": "code",
+      "source_file": "src/utils/pdfLibValueReaders.js",
+      "source_location": "L108",
+      "id": "utils_pdflibvaluereaders_normalizepdflineendings",
+      "community": 19,
+      "norm_label": "normalizepdflineendings()"
+    },
+    {
       "label": "PROGRESS.md",
       "file_type": "document",
       "source_file": "debug/defragilize/PROGRESS.md",
       "source_location": "L1",
-      "id": "defragilize_progress",
       "community": 12,
-      "norm_label": "progress.md"
+      "norm_label": "progress.md",
+      "id": "defragilize_progress"
     },
     {
       "label": "De-Fragilize Campaign \u2014 Progress Ledger",
       "file_type": "document",
       "source_file": "debug/defragilize/PROGRESS.md",
       "source_location": "L1",
-      "id": "defragilize_progress_de_fragilize_campaign_progress_ledger",
       "community": 12,
-      "norm_label": "de-fragilize campaign \u2014 progress ledger"
+      "norm_label": "de-fragilize campaign \u2014 progress ledger",
+      "id": "defragilize_progress_de_fragilize_campaign_progress_ledger"
     },
     {
       "label": "Rules (from HANDOFF run-mode)",
       "file_type": "document",
       "source_file": "debug/defragilize/PROGRESS.md",
       "source_location": "L10",
-      "id": "defragilize_progress_rules_from_handoff_run_mode",
       "community": 12,
-      "norm_label": "rules (from handoff run-mode)"
+      "norm_label": "rules (from handoff run-mode)",
+      "id": "defragilize_progress_rules_from_handoff_run_mode"
     },
     {
       "label": "Status of prior work (verified this session)",
       "file_type": "document",
       "source_file": "debug/defragilize/PROGRESS.md",
       "source_location": "L17",
-      "id": "defragilize_progress_status_of_prior_work_verified_this_session",
       "community": 12,
-      "norm_label": "status of prior work (verified this session)"
+      "norm_label": "status of prior work (verified this session)",
+      "id": "defragilize_progress_status_of_prior_work_verified_this_session"
     },
     {
       "label": "Priority 1 \u2014 dead zoom/scroll clusters in PDFViewer.jsx (DONE \u2705)",
       "file_type": "document",
       "source_file": "debug/defragilize/PROGRESS.md",
       "source_location": "L26",
-      "id": "defragilize_progress_priority_1_dead_zoom_scroll_clusters_in_pdfviewer_jsx_done",
       "community": 12,
-      "norm_label": "priority 1 \u2014 dead zoom/scroll clusters in pdfviewer.jsx (done \u2705)"
+      "norm_label": "priority 1 \u2014 dead zoom/scroll clusters in pdfviewer.jsx (done \u2705)",
+      "id": "defragilize_progress_priority_1_dead_zoom_scroll_clusters_in_pdfviewer_jsx_done"
     },
     {
       "label": "Priority 2 \u2014 split PDFViewer.jsx into modules (SAFE EXTRACTIONS DONE; bulk deferred)",
       "file_type": "document",
       "source_file": "debug/defragilize/PROGRESS.md",
       "source_location": "L38",
-      "id": "defragilize_progress_priority_2_split_pdfviewer_jsx_into_modules_safe_extractions_done_bulk_deferred",
       "community": 12,
-      "norm_label": "priority 2 \u2014 split pdfviewer.jsx into modules (safe extractions done; bulk deferred)"
+      "norm_label": "priority 2 \u2014 split pdfviewer.jsx into modules (safe extractions done; bulk deferred)",
+      "id": "defragilize_progress_priority_2_split_pdfviewer_jsx_into_modules_safe_extractions_done_bulk_deferred"
     },
     {
       "label": "Priority 3 \u2014 split other >1k-line files (IN PROGRESS)",
       "file_type": "document",
       "source_file": "debug/defragilize/PROGRESS.md",
       "source_location": "L58",
-      "id": "defragilize_progress_priority_3_split_other_1k_line_files_in_progress",
       "community": 12,
-      "norm_label": "priority 3 \u2014 split other >1k-line files (in progress)"
+      "norm_label": "priority 3 \u2014 split other >1k-line files (in progress)",
+      "id": "defragilize_progress_priority_3_split_other_1k_line_files_in_progress"
     },
     {
       "label": "Priority 3 \u2014 split other >1k-line files (PENDING)",
       "file_type": "document",
       "source_file": "debug/defragilize/PROGRESS.md",
       "source_location": "L64",
-      "id": "defragilize_progress_priority_3_split_other_1k_line_files_pending",
       "community": 12,
-      "norm_label": "priority 3 \u2014 split other >1k-line files (pending)"
+      "norm_label": "priority 3 \u2014 split other >1k-line files (pending)",
+      "id": "defragilize_progress_priority_3_split_other_1k_line_files_pending"
     },
     {
       "label": "Out of scope (owner-parked)",
       "file_type": "document",
       "source_file": "debug/defragilize/PROGRESS.md",
       "source_location": "L69",
-      "id": "defragilize_progress_out_of_scope_owner_parked",
       "community": 12,
-      "norm_label": "out of scope (owner-parked)"
+      "norm_label": "out of scope (owner-parked)",
+      "id": "defragilize_progress_out_of_scope_owner_parked"
     },
     {
       "label": "PDFViewer.jsx",
@@ -350,7 +1115,7 @@
       "file_type": "code",
       "source_file": "src/viewerShared.js",
       "source_location": "L248",
-      "community": 0,
+      "community": 4,
       "norm_label": "getpdfjstextmarkupmode()",
       "id": "src_viewershared_getpdfjstextmarkupmode"
     },
@@ -386,7 +1151,7 @@
       "file_type": "code",
       "source_file": "src/viewerShared.js",
       "source_location": "L291",
-      "community": 4,
+      "community": 0,
       "norm_label": "haspdfjspdfsurface()",
       "id": "src_viewershared_haspdfjspdfsurface"
     },
@@ -440,7 +1205,7 @@
       "file_type": "code",
       "source_file": "src/viewerShared.js",
       "source_location": "L432",
-      "community": 4,
+      "community": 0,
       "norm_label": "getsmoothpdfjswheelzoom()",
       "id": "src_viewershared_getsmoothpdfjswheelzoom"
     },
@@ -449,7 +1214,7 @@
       "file_type": "code",
       "source_file": "src/viewerShared.js",
       "source_location": "L444",
-      "community": 4,
+      "community": 0,
       "norm_label": "getpdfjszoomawarescrollgain()",
       "id": "src_viewershared_getpdfjszoomawarescrollgain"
     },
@@ -647,7 +1412,7 @@
       "file_type": "code",
       "source_file": "src/viewerShared.js",
       "source_location": "L835",
-      "community": 0,
+      "community": 4,
       "norm_label": "mapyjsmeta()",
       "id": "src_viewershared_mapyjsmeta"
     },
@@ -656,7 +1421,7 @@
       "file_type": "code",
       "source_file": "src/viewerShared.js",
       "source_location": "L846",
-      "community": 0,
+      "community": 4,
       "norm_label": "readhistorydebugconsoleenabled()",
       "id": "src_viewershared_readhistorydebugconsoleenabled"
     },
@@ -665,7 +1430,7 @@
       "file_type": "code",
       "source_file": "src/viewerShared.js",
       "source_location": "L855",
-      "community": 4,
+      "community": 0,
       "norm_label": "writehistorydebugconsoleenabled()",
       "id": "src_viewershared_writehistorydebugconsoleenabled"
     },
@@ -674,7 +1439,7 @@
       "file_type": "code",
       "source_file": "src/viewerShared.js",
       "source_location": "L868",
-      "community": 4,
+      "community": 0,
       "norm_label": "readdocumentsyncstructuraldisabled()",
       "id": "src_viewershared_readdocumentsyncstructuraldisabled"
     },
@@ -683,7 +1448,7 @@
       "file_type": "code",
       "source_file": "src/viewerShared.js",
       "source_location": "L881",
-      "community": 0,
+      "community": 4,
       "norm_label": "writedocumentsyncstructuraldisabled()",
       "id": "src_viewershared_writedocumentsyncstructuraldisabled"
     },
@@ -692,7 +1457,7 @@
       "file_type": "code",
       "source_file": "src/viewerShared.js",
       "source_location": "L894",
-      "community": 0,
+      "community": 4,
       "norm_label": "readpdfjslivestableoverlayenabled()",
       "id": "src_viewershared_readpdfjslivestableoverlayenabled"
     },
@@ -701,7 +1466,7 @@
       "file_type": "code",
       "source_file": "src/viewerShared.js",
       "source_location": "L906",
-      "community": 4,
+      "community": 0,
       "norm_label": "readpdfjsduallayerenabled()",
       "id": "src_viewershared_readpdfjsduallayerenabled"
     },
@@ -719,7 +1484,7 @@
       "file_type": "code",
       "source_file": "src/viewerShared.js",
       "source_location": "L927",
-      "community": 0,
+      "community": 4,
       "norm_label": "readoverlaylagrecorderautoenabled()",
       "id": "src_viewershared_readoverlaylagrecorderautoenabled"
     },
@@ -737,7 +1502,7 @@
       "file_type": "code",
       "source_file": "src/viewerShared.js",
       "source_location": "L948",
-      "community": 0,
+      "community": 4,
       "norm_label": "cloneoverlayrecorderpayload()",
       "id": "src_viewershared_cloneoverlayrecorderpayload"
     },
@@ -746,7 +1511,7 @@
       "file_type": "code",
       "source_file": "src/viewerShared.js",
       "source_location": "L963",
-      "community": 0,
+      "community": 4,
       "norm_label": "roundoverlayrecordervalue()",
       "id": "src_viewershared_roundoverlayrecordervalue"
     },
@@ -782,7 +1547,7 @@
       "file_type": "code",
       "source_file": "src/viewerShared.js",
       "source_location": "L1008",
-      "community": 0,
+      "community": 4,
       "norm_label": "measurepdfjspagehostscale()",
       "id": "src_viewershared_measurepdfjspagehostscale"
     },
@@ -800,7 +1565,7 @@
       "file_type": "code",
       "source_file": "src/viewerShared.js",
       "source_location": "L1046",
-      "community": 0,
+      "community": 4,
       "norm_label": "parsecsstransformscalex()",
       "id": "src_viewershared_parsecsstransformscalex"
     },
@@ -845,7 +1610,7 @@
       "file_type": "code",
       "source_file": "src/viewerShared.js",
       "source_location": "L1172",
-      "community": 4,
+      "community": 0,
       "norm_label": "getopacityfromentitycolor()",
       "id": "src_viewershared_getopacityfromentitycolor"
     },
@@ -854,7 +1619,7 @@
       "file_type": "code",
       "source_file": "src/viewerShared.js",
       "source_location": "L1189",
-      "community": 0,
+      "community": 4,
       "norm_label": "handlemodaloptionmouseenter()",
       "id": "src_viewershared_handlemodaloptionmouseenter"
     },
@@ -899,7 +1664,7 @@
       "file_type": "code",
       "source_file": "src/viewerShared.js",
       "source_location": "L1223",
-      "community": 0,
+      "community": 4,
       "norm_label": "handlemodalprimarybuttonmouseleave()",
       "id": "src_viewershared_handlemodalprimarybuttonmouseleave"
     },
@@ -926,7 +1691,7 @@
       "file_type": "code",
       "source_file": "src/viewerShared.js",
       "source_location": "L1241",
-      "community": 4,
+      "community": 0,
       "norm_label": "normalizebookmarkpageids()",
       "id": "src_viewershared_normalizebookmarkpageids"
     },
@@ -962,7 +1727,7 @@
       "file_type": "code",
       "source_file": "src/viewerShared.js",
       "source_location": "L1321",
-      "community": 0,
+      "community": 4,
       "norm_label": "buildoutlinepagelookup()",
       "id": "src_viewershared_buildoutlinepagelookup"
     },
@@ -1016,7 +1781,7 @@
       "file_type": "code",
       "source_file": "src/viewerShared.js",
       "source_location": "L1506",
-      "community": 4,
+      "community": 0,
       "norm_label": "applyregionmasktocanvascontext()",
       "id": "src_viewershared_applyregionmasktocanvascontext"
     },
@@ -1097,7 +1862,7 @@
       "file_type": "code",
       "source_file": "src/viewerShared.js",
       "source_location": "L1662",
-      "community": 4,
+      "community": 0,
       "norm_label": "savepdfdata()",
       "id": "src_viewershared_savepdfdata"
     },
@@ -1106,7 +1871,7 @@
       "file_type": "code",
       "source_file": "src/viewerShared.js",
       "source_location": "L1672",
-      "community": 0,
+      "community": 4,
       "norm_label": "savesurveymarkers()",
       "id": "src_viewershared_savesurveymarkers"
     },
@@ -1142,7 +1907,7 @@
       "file_type": "code",
       "source_file": "src/viewerShared.js",
       "source_location": "L1724",
-      "community": 4,
+      "community": 0,
       "norm_label": "countannotationpageobjects()",
       "id": "src_viewershared_countannotationpageobjects"
     },
@@ -1151,7 +1916,7 @@
       "file_type": "code",
       "source_file": "src/viewerShared.js",
       "source_location": "L1729",
-      "community": 4,
+      "community": 0,
       "norm_label": "summarizeannotationcountsforsaveexport()",
       "id": "src_viewershared_summarizeannotationcountsforsaveexport"
     },
@@ -1241,7 +2006,7 @@
       "file_type": "code",
       "source_file": "src/viewerShared.js",
       "source_location": "L1884",
-      "community": 4,
+      "community": 0,
       "norm_label": "loadsurveymarkers()",
       "id": "src_viewershared_loadsurveymarkers"
     },
@@ -1331,7 +2096,7 @@
       "file_type": "code",
       "source_file": "src/viewerShared.js",
       "source_location": "L2032",
-      "community": 0,
+      "community": 4,
       "norm_label": "getmoduledatakey()",
       "id": "src_viewershared_getmoduledatakey"
     },
@@ -1349,7 +2114,7 @@
       "file_type": "code",
       "source_file": "src/viewerShared.js",
       "source_location": "L2046",
-      "community": 0,
+      "community": 4,
       "norm_label": "filterannotationsbymodule()",
       "id": "src_viewershared_filterannotationsbymodule"
     },
@@ -1367,7 +2132,7 @@
       "file_type": "code",
       "source_file": "src/viewerShared.js",
       "source_location": "L2062",
-      "community": 4,
+      "community": 0,
       "norm_label": "transferitems()",
       "id": "src_viewershared_transferitems"
     },
@@ -1382,6 +2147,2575 @@
     }
   ],
   "links": [
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/__tests__/pdfLibValueReaders.test.mjs",
+      "source_location": "L17",
+      "weight": 1.0,
+      "source": "tests_pdflibvaluereaders_test",
+      "target": "tests_pdflibvaluereaders_test_arr",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/__tests__/pdfLibValueReaders.test.mjs",
+      "source_location": "L37",
+      "weight": 1.0,
+      "source": "tests_pdflibvaluereaders_test",
+      "target": "tests_pdflibvaluereaders_test_asnumber",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/__tests__/pdfLibValueReaders.test.mjs",
+      "source_location": "L15",
+      "weight": 1.0,
+      "source": "tests_pdflibvaluereaders_test",
+      "target": "tests_pdflibvaluereaders_test_num",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/__tests__/pdfLibValueReaders.test.mjs",
+      "source_location": "L52",
+      "weight": 1.0,
+      "source": "tests_pdflibvaluereaders_test",
+      "target": "tests_pdflibvaluereaders_test_tostring",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/__tests__/pdfLibValueReaders.test.mjs",
+      "source_location": "L16",
+      "weight": 1.0,
+      "source": "tests_pdflibvaluereaders_test",
+      "target": "tests_pdflibvaluereaders_test_txt",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/__tests__/pdfLibValueReaders.test.mjs",
+      "source_location": "L3",
+      "weight": 1.0,
+      "source": "tests_pdflibvaluereaders_test",
+      "target": "utils_pdflibvaluereaders",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/__tests__/pdfLibValueReaders.test.mjs",
+      "source_location": "L3",
+      "weight": 1.0,
+      "source": "tests_pdflibvaluereaders_test",
+      "target": "utils_pdflibvaluereaders_normalizepdflineendings",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/__tests__/pdfLibValueReaders.test.mjs",
+      "source_location": "L3",
+      "weight": 1.0,
+      "source": "tests_pdflibvaluereaders_test",
+      "target": "utils_pdflibvaluereaders_normalizepdfnametoken",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/__tests__/pdfLibValueReaders.test.mjs",
+      "source_location": "L3",
+      "weight": 1.0,
+      "source": "tests_pdflibvaluereaders_test",
+      "target": "utils_pdflibvaluereaders_readpdflibdasharray",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/__tests__/pdfLibValueReaders.test.mjs",
+      "source_location": "L3",
+      "weight": 1.0,
+      "source": "tests_pdflibvaluereaders_test",
+      "target": "utils_pdflibvaluereaders_readpdflibnamearray",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/__tests__/pdfLibValueReaders.test.mjs",
+      "source_location": "L3",
+      "weight": 1.0,
+      "source": "tests_pdflibvaluereaders_test",
+      "target": "utils_pdflibvaluereaders_readpdflibnumber",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/__tests__/pdfLibValueReaders.test.mjs",
+      "source_location": "L3",
+      "weight": 1.0,
+      "source": "tests_pdflibvaluereaders_test",
+      "target": "utils_pdflibvaluereaders_readpdflibnumberarray",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/__tests__/pdfLibValueReaders.test.mjs",
+      "source_location": "L3",
+      "weight": 1.0,
+      "source": "tests_pdflibvaluereaders_test",
+      "target": "utils_pdflibvaluereaders_readpdflibtext",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/__tests__/pdfLibValueReaders.test.mjs",
+      "source_location": "L3",
+      "weight": 1.0,
+      "source": "tests_pdflibvaluereaders_test",
+      "target": "utils_pdflibvaluereaders_touint8array",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L1419",
+      "weight": 1.0,
+      "source": "utils_pdfannotationimporter",
+      "target": "utils_pdfannotationimporter_applyrawmetadatatoannotation",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L500",
+      "weight": 1.0,
+      "source": "utils_pdfannotationimporter",
+      "target": "utils_pdfannotationimporter_buildcloudpathcommands",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L1214",
+      "weight": 1.0,
+      "source": "utils_pdfannotationimporter",
+      "target": "utils_pdfannotationimporter_buildrawannotationmetadatabyid",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L2949",
+      "weight": 1.0,
+      "source": "utils_pdfannotationimporter",
+      "target": "utils_pdfannotationimporter_categorizeannotations",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L293",
+      "weight": 1.0,
+      "source": "utils_pdfannotationimporter",
+      "target": "utils_pdfannotationimporter_clamp01",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L2382",
+      "weight": 1.0,
+      "source": "utils_pdfannotationimporter",
+      "target": "utils_pdfannotationimporter_computeappearancerotationtransform",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L1511",
+      "weight": 1.0,
+      "source": "utils_pdfannotationimporter",
+      "target": "utils_pdfannotationimporter_convertappearancepathtofabricpath",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L441",
+      "weight": 1.0,
+      "source": "utils_pdfannotationimporter",
+      "target": "utils_pdfannotationimporter_convertautocadshxtexttofabricproxy",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L2852",
+      "weight": 1.0,
+      "source": "utils_pdfannotationimporter",
+      "target": "utils_pdfannotationimporter_convertcarettofabricpolyline",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L2488",
+      "weight": 1.0,
+      "source": "utils_pdfannotationimporter",
+      "target": "utils_pdfannotationimporter_convertcircletofabriccircle",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L1928",
+      "weight": 1.0,
+      "source": "utils_pdfannotationimporter",
+      "target": "utils_pdfannotationimporter_convertfreetexttofabrictextbox",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L1649",
+      "weight": 1.0,
+      "source": "utils_pdfannotationimporter",
+      "target": "utils_pdfannotationimporter_convertinktofabricpath",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L2624",
+      "weight": 1.0,
+      "source": "utils_pdfannotationimporter",
+      "target": "utils_pdfannotationimporter_convertlinetofabricline",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L2897",
+      "weight": 1.0,
+      "source": "utils_pdfannotationimporter",
+      "target": "utils_pdfannotationimporter_convertpdfannotationtofabric",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L773",
+      "weight": 1.0,
+      "source": "utils_pdfannotationimporter",
+      "target": "utils_pdfannotationimporter_convertpdfpointlisttoviewportpoints",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L1547",
+      "weight": 1.0,
+      "source": "utils_pdfannotationimporter",
+      "target": "utils_pdfannotationimporter_convertpdfpointtoviewport",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L1557",
+      "weight": 1.0,
+      "source": "utils_pdfannotationimporter",
+      "target": "utils_pdfannotationimporter_convertpdfrecttoviewportrect",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L2260",
+      "weight": 1.0,
+      "source": "utils_pdfannotationimporter",
+      "target": "utils_pdfannotationimporter_convertpolygontofabricpolygon",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L2213",
+      "weight": 1.0,
+      "source": "utils_pdfannotationimporter",
+      "target": "utils_pdfannotationimporter_convertpolylinetofabricpolyline",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L2400",
+      "weight": 1.0,
+      "source": "utils_pdfannotationimporter",
+      "target": "utils_pdfannotationimporter_convertsquaretofabricrect",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L2784",
+      "weight": 1.0,
+      "source": "utils_pdfannotationimporter",
+      "target": "utils_pdfannotationimporter_convertsquigglytofabricpath",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L1893",
+      "weight": 1.0,
+      "source": "utils_pdfannotationimporter",
+      "target": "utils_pdfannotationimporter_convertsurveymarkertofabricrect",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L2325",
+      "weight": 1.0,
+      "source": "utils_pdfannotationimporter",
+      "target": "utils_pdfannotationimporter_converttexttofabricnote",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L2740",
+      "weight": 1.0,
+      "source": "utils_pdfannotationimporter",
+      "target": "utils_pdfannotationimporter_convertunderlinetofabricrect",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L726",
+      "weight": 1.0,
+      "source": "utils_pdfannotationimporter",
+      "target": "utils_pdfannotationimporter_coordinatearraytopoints",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L929",
+      "weight": 1.0,
+      "source": "utils_pdfannotationimporter",
+      "target": "utils_pdfannotationimporter_decodestreambytestolatin1",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L1599",
+      "weight": 1.0,
+      "source": "utils_pdfannotationimporter",
+      "target": "utils_pdfannotationimporter_distancebetweenpoints",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L895",
+      "weight": 1.0,
+      "source": "utils_pdfannotationimporter",
+      "target": "utils_pdfannotationimporter_extractannotationdasharray",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L314",
+      "weight": 1.0,
+      "source": "utils_pdfannotationimporter",
+      "target": "utils_pdfannotationimporter_extractannotationopacity",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L201",
+      "weight": 1.0,
+      "source": "utils_pdfannotationimporter",
+      "target": "utils_pdfannotationimporter_extractannotationsfrompage",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L1166",
+      "weight": 1.0,
+      "source": "utils_pdfannotationimporter",
+      "target": "utils_pdfannotationimporter_extractappearancemetadataforannotation",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L785",
+      "weight": 1.0,
+      "source": "utils_pdfannotationimporter",
+      "target": "utils_pdfannotationimporter_extractcallouttextboxrectfromappearance",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L412",
+      "weight": 1.0,
+      "source": "utils_pdfannotationimporter",
+      "target": "utils_pdfannotationimporter_getannotationcontents",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L2182",
+      "weight": 1.0,
+      "source": "utils_pdfannotationimporter",
+      "target": "utils_pdfannotationimporter_getannotationpolylinepoints",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L396",
+      "weight": 1.0,
+      "source": "utils_pdfannotationimporter",
+      "target": "utils_pdfannotationimporter_getannotationtitle",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L351",
+      "weight": 1.0,
+      "source": "utils_pdfannotationimporter",
+      "target": "utils_pdfannotationimporter_getborderwidth",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L1591",
+      "weight": 1.0,
+      "source": "utils_pdfannotationimporter",
+      "target": "utils_pdfannotationimporter_getinkpathendpoint",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L1402",
+      "weight": 1.0,
+      "source": "utils_pdfannotationimporter",
+      "target": "utils_pdfannotationimporter_getrawannotationmetadataforannotation",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L379",
+      "weight": 1.0,
+      "source": "utils_pdfannotationimporter",
+      "target": "utils_pdfannotationimporter_getshapefillcolor",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L365",
+      "weight": 1.0,
+      "source": "utils_pdfannotationimporter",
+      "target": "utils_pdfannotationimporter_getshapefillhex",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L338",
+      "weight": 1.0,
+      "source": "utils_pdfannotationimporter",
+      "target": "utils_pdfannotationimporter_hextorgba",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L3022",
+      "weight": 1.0,
+      "source": "utils_pdfannotationimporter",
+      "target": "utils_pdfannotationimporter_importannotationsfrompdf",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L428",
+      "weight": 1.0,
+      "source": "utils_pdfannotationimporter",
+      "target": "utils_pdfannotationimporter_isautocadshxtextannotation",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L566",
+      "weight": 1.0,
+      "source": "utils_pdfannotationimporter",
+      "target": "utils_pdfannotationimporter_isnearwhitehexcolor",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L176",
+      "weight": 1.0,
+      "source": "utils_pdfannotationimporter",
+      "target": "utils_pdfannotationimporter_ispotentiallyvisiblenativeannotation",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L85",
+      "weight": 1.0,
+      "source": "utils_pdfannotationimporter",
+      "target": "utils_pdfannotationimporter_line_cap_map",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L86",
+      "weight": 1.0,
+      "source": "utils_pdfannotationimporter",
+      "target": "utils_pdfannotationimporter_line_join_map",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L90",
+      "weight": 1.0,
+      "source": "utils_pdfannotationimporter",
+      "target": "utils_pdfannotationimporter_loadpdflibcore",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L2965",
+      "weight": 1.0,
+      "source": "utils_pdfannotationimporter",
+      "target": "utils_pdfannotationimporter_normalizeimportedappcallout",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L300",
+      "weight": 1.0,
+      "source": "utils_pdfannotationimporter",
+      "target": "utils_pdfannotationimporter_normalizeopacityvalue",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L740",
+      "weight": 1.0,
+      "source": "utils_pdfannotationimporter",
+      "target": "utils_pdfannotationimporter_normalizepdfpointlist",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L943",
+      "weight": 1.0,
+      "source": "utils_pdfannotationimporter",
+      "target": "utils_pdfannotationimporter_parseappearancestream",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L582",
+      "weight": 1.0,
+      "source": "utils_pdfannotationimporter",
+      "target": "utils_pdfannotationimporter_parsedefaultappearancestring",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L653",
+      "weight": 1.0,
+      "source": "utils_pdfannotationimporter",
+      "target": "utils_pdfannotationimporter_parsedefaultstylestring",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L628",
+      "weight": 1.0,
+      "source": "utils_pdfannotationimporter",
+      "target": "utils_pdfannotationimporter_parserichcontentfirstcolor",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L1605",
+      "weight": 1.0,
+      "source": "utils_pdfannotationimporter",
+      "target": "utils_pdfannotationimporter_pathsubpathsareclosed",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L218",
+      "weight": 1.0,
+      "source": "utils_pdfannotationimporter",
+      "target": "utils_pdfannotationimporter_pdfcolortohex",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L3288",
+      "weight": 1.0,
+      "source": "utils_pdfannotationimporter",
+      "target": "utils_pdfannotationimporter_pdfhasannotations",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L43",
+      "weight": 1.0,
+      "source": "utils_pdfannotationimporter",
+      "target": "utils_pdfannotationimporter_pdfimportdebug",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L1384",
+      "weight": 1.0,
+      "source": "utils_pdfannotationimporter",
+      "target": "utils_pdfannotationimporter_readapplayerstatefrompdf",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L780",
+      "weight": 1.0,
+      "source": "utils_pdfannotationimporter",
+      "target": "utils_pdfannotationimporter_roundwithtolerance",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L83",
+      "weight": 1.0,
+      "source": "utils_pdfannotationimporter",
+      "target": "utils_pdfannotationimporter_select_delete_only_text_markup_types",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L2942",
+      "weight": 1.0,
+      "source": "utils_pdfannotationimporter",
+      "target": "utils_pdfannotationimporter_silent_ignore_subtypes",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L149",
+      "weight": 1.0,
+      "source": "utils_pdfannotationimporter",
+      "target": "utils_pdfannotationimporter_summarizefabricimportfordiag",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L103",
+      "weight": 1.0,
+      "source": "utils_pdfannotationimporter",
+      "target": "utils_pdfannotationimporter_summarizepdfannotationfordiag",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L67",
+      "weight": 1.0,
+      "source": "utils_pdfannotationimporter",
+      "target": "utils_pdfannotationimporter_supported_subtypes",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L693",
+      "weight": 1.0,
+      "source": "utils_pdfannotationimporter",
+      "target": "utils_pdfannotationimporter_tonumericarray",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L875",
+      "weight": 1.0,
+      "source": "utils_pdfannotationimporter",
+      "target": "utils_pdfannotationimporter_torelativefabricpoints",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L98",
+      "weight": 1.0,
+      "source": "utils_pdfannotationimporter",
+      "target": "utils_pdfannotationimporter_unsupported_subtypes",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L14",
+      "weight": 1.0,
+      "source": "utils_pdfannotationimporter",
+      "target": "utils_pdflibvaluereaders",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L14",
+      "weight": 1.0,
+      "source": "utils_pdfannotationimporter",
+      "target": "utils_pdflibvaluereaders_normalizepdflineendings",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L14",
+      "weight": 1.0,
+      "source": "utils_pdfannotationimporter",
+      "target": "utils_pdflibvaluereaders_normalizepdfnametoken",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L14",
+      "weight": 1.0,
+      "source": "utils_pdfannotationimporter",
+      "target": "utils_pdflibvaluereaders_readpdflibdasharray",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L14",
+      "weight": 1.0,
+      "source": "utils_pdfannotationimporter",
+      "target": "utils_pdflibvaluereaders_readpdflibnamearray",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L14",
+      "weight": 1.0,
+      "source": "utils_pdfannotationimporter",
+      "target": "utils_pdflibvaluereaders_readpdflibnumber",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L14",
+      "weight": 1.0,
+      "source": "utils_pdfannotationimporter",
+      "target": "utils_pdflibvaluereaders_readpdflibnumberarray",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L14",
+      "weight": 1.0,
+      "source": "utils_pdfannotationimporter",
+      "target": "utils_pdflibvaluereaders_readpdflibtext",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L14",
+      "weight": 1.0,
+      "source": "utils_pdfannotationimporter",
+      "target": "utils_pdflibvaluereaders_touint8array",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L3247",
+      "weight": 1.0,
+      "source": "utils_pdfannotationimporter_importannotationsfrompdf",
+      "target": "utils_pdfannotationimporter_pdfimportdebug",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L1219",
+      "weight": 1.0,
+      "source": "utils_pdfannotationimporter_buildrawannotationmetadatabyid",
+      "target": "utils_pdfannotationimporter_loadpdflibcore",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L107",
+      "weight": 1.0,
+      "source": "utils_pdfannotationimporter_summarizepdfannotationfordiag",
+      "target": "utils_pdfannotationimporter_applyrawmetadatatoannotation",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L143",
+      "weight": 1.0,
+      "source": "utils_pdfannotationimporter_summarizepdfannotationfordiag",
+      "target": "utils_pdfannotationimporter_getannotationcontents",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L142",
+      "weight": 1.0,
+      "source": "utils_pdfannotationimporter_summarizepdfannotationfordiag",
+      "target": "utils_pdfannotationimporter_getannotationtitle",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L106",
+      "weight": 1.0,
+      "source": "utils_pdfannotationimporter_summarizepdfannotationfordiag",
+      "target": "utils_pdfannotationimporter_getborderwidth",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L125",
+      "weight": 1.0,
+      "source": "utils_pdfannotationimporter_summarizepdfannotationfordiag",
+      "target": "utils_pdfannotationimporter_normalizepdfpointlist",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L115",
+      "weight": 1.0,
+      "source": "utils_pdfannotationimporter_summarizepdfannotationfordiag",
+      "target": "utils_pdfannotationimporter_tonumericarray",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L2860",
+      "weight": 1.0,
+      "source": "utils_pdfannotationimporter_convertcarettofabricpolyline",
+      "target": "utils_pdfannotationimporter_pdfcolortohex",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L2509",
+      "weight": 1.0,
+      "source": "utils_pdfannotationimporter_convertcircletofabriccircle",
+      "target": "utils_pdfannotationimporter_pdfcolortohex",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L1982",
+      "weight": 1.0,
+      "source": "utils_pdfannotationimporter_convertfreetexttofabrictextbox",
+      "target": "utils_pdfannotationimporter_pdfcolortohex",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L1770",
+      "weight": 1.0,
+      "source": "utils_pdfannotationimporter_convertinktofabricpath",
+      "target": "utils_pdfannotationimporter_pdfcolortohex",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L2669",
+      "weight": 1.0,
+      "source": "utils_pdfannotationimporter_convertlinetofabricline",
+      "target": "utils_pdfannotationimporter_pdfcolortohex",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L2271",
+      "weight": 1.0,
+      "source": "utils_pdfannotationimporter_convertpolygontofabricpolygon",
+      "target": "utils_pdfannotationimporter_pdfcolortohex",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L2224",
+      "weight": 1.0,
+      "source": "utils_pdfannotationimporter_convertpolylinetofabricpolyline",
+      "target": "utils_pdfannotationimporter_pdfcolortohex",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L2414",
+      "weight": 1.0,
+      "source": "utils_pdfannotationimporter_convertsquaretofabricrect",
+      "target": "utils_pdfannotationimporter_pdfcolortohex",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L2816",
+      "weight": 1.0,
+      "source": "utils_pdfannotationimporter_convertsquigglytofabricpath",
+      "target": "utils_pdfannotationimporter_pdfcolortohex",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L1899",
+      "weight": 1.0,
+      "source": "utils_pdfannotationimporter_convertsurveymarkertofabricrect",
+      "target": "utils_pdfannotationimporter_pdfcolortohex",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L2334",
+      "weight": 1.0,
+      "source": "utils_pdfannotationimporter_converttexttofabricnote",
+      "target": "utils_pdfannotationimporter_pdfcolortohex",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L2748",
+      "weight": 1.0,
+      "source": "utils_pdfannotationimporter_convertunderlinetofabricrect",
+      "target": "utils_pdfannotationimporter_pdfcolortohex",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L376",
+      "weight": 1.0,
+      "source": "utils_pdfannotationimporter_getshapefillhex",
+      "target": "utils_pdfannotationimporter_pdfcolortohex",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L347",
+      "weight": 1.0,
+      "source": "utils_pdfannotationimporter_hextorgba",
+      "target": "utils_pdfannotationimporter_clamp01",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L308",
+      "weight": 1.0,
+      "source": "utils_pdfannotationimporter_normalizeopacityvalue",
+      "target": "utils_pdfannotationimporter_clamp01",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L329",
+      "weight": 1.0,
+      "source": "utils_pdfannotationimporter_extractannotationopacity",
+      "target": "utils_pdfannotationimporter_normalizeopacityvalue",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L2861",
+      "weight": 1.0,
+      "source": "utils_pdfannotationimporter_convertcarettofabricpolyline",
+      "target": "utils_pdfannotationimporter_extractannotationopacity",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L2551",
+      "weight": 1.0,
+      "source": "utils_pdfannotationimporter_convertcircletofabriccircle",
+      "target": "utils_pdfannotationimporter_extractannotationopacity",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L2046",
+      "weight": 1.0,
+      "source": "utils_pdfannotationimporter_convertfreetexttofabrictextbox",
+      "target": "utils_pdfannotationimporter_extractannotationopacity",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L1771",
+      "weight": 1.0,
+      "source": "utils_pdfannotationimporter_convertinktofabricpath",
+      "target": "utils_pdfannotationimporter_extractannotationopacity",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L2670",
+      "weight": 1.0,
+      "source": "utils_pdfannotationimporter_convertlinetofabricline",
+      "target": "utils_pdfannotationimporter_extractannotationopacity",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L2272",
+      "weight": 1.0,
+      "source": "utils_pdfannotationimporter_convertpolygontofabricpolygon",
+      "target": "utils_pdfannotationimporter_extractannotationopacity",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L2225",
+      "weight": 1.0,
+      "source": "utils_pdfannotationimporter_convertpolylinetofabricpolyline",
+      "target": "utils_pdfannotationimporter_extractannotationopacity",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L2415",
+      "weight": 1.0,
+      "source": "utils_pdfannotationimporter_convertsquaretofabricrect",
+      "target": "utils_pdfannotationimporter_extractannotationopacity",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L2817",
+      "weight": 1.0,
+      "source": "utils_pdfannotationimporter_convertsquigglytofabricpath",
+      "target": "utils_pdfannotationimporter_extractannotationopacity",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L1900",
+      "weight": 1.0,
+      "source": "utils_pdfannotationimporter_convertsurveymarkertofabricrect",
+      "target": "utils_pdfannotationimporter_extractannotationopacity",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L381",
+      "weight": 1.0,
+      "source": "utils_pdfannotationimporter_getshapefillcolor",
+      "target": "utils_pdfannotationimporter_extractannotationopacity",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L2874",
+      "weight": 1.0,
+      "source": "utils_pdfannotationimporter_convertcarettofabricpolyline",
+      "target": "utils_pdfannotationimporter_hextorgba",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L2576",
+      "weight": 1.0,
+      "source": "utils_pdfannotationimporter_convertcircletofabriccircle",
+      "target": "utils_pdfannotationimporter_hextorgba",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L2054",
+      "weight": 1.0,
+      "source": "utils_pdfannotationimporter_convertfreetexttofabrictextbox",
+      "target": "utils_pdfannotationimporter_hextorgba",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L1786",
+      "weight": 1.0,
+      "source": "utils_pdfannotationimporter_convertinktofabricpath",
+      "target": "utils_pdfannotationimporter_hextorgba",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L2668",
+      "weight": 1.0,
+      "source": "utils_pdfannotationimporter_convertlinetofabricline",
+      "target": "utils_pdfannotationimporter_hextorgba",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L2307",
+      "weight": 1.0,
+      "source": "utils_pdfannotationimporter_convertpolygontofabricpolygon",
+      "target": "utils_pdfannotationimporter_hextorgba",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L2242",
+      "weight": 1.0,
+      "source": "utils_pdfannotationimporter_convertpolylinetofabricpolyline",
+      "target": "utils_pdfannotationimporter_hextorgba",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L2466",
+      "weight": 1.0,
+      "source": "utils_pdfannotationimporter_convertsquaretofabricrect",
+      "target": "utils_pdfannotationimporter_hextorgba",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L2822",
+      "weight": 1.0,
+      "source": "utils_pdfannotationimporter_convertsquigglytofabricpath",
+      "target": "utils_pdfannotationimporter_hextorgba",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L2343",
+      "weight": 1.0,
+      "source": "utils_pdfannotationimporter_converttexttofabricnote",
+      "target": "utils_pdfannotationimporter_hextorgba",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L384",
+      "weight": 1.0,
+      "source": "utils_pdfannotationimporter_getshapefillcolor",
+      "target": "utils_pdfannotationimporter_hextorgba",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L2862",
+      "weight": 1.0,
+      "source": "utils_pdfannotationimporter_convertcarettofabricpolyline",
+      "target": "utils_pdfannotationimporter_getborderwidth",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L2553",
+      "weight": 1.0,
+      "source": "utils_pdfannotationimporter_convertcircletofabriccircle",
+      "target": "utils_pdfannotationimporter_getborderwidth",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L2044",
+      "weight": 1.0,
+      "source": "utils_pdfannotationimporter_convertfreetexttofabrictextbox",
+      "target": "utils_pdfannotationimporter_getborderwidth",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L1657",
+      "weight": 1.0,
+      "source": "utils_pdfannotationimporter_convertinktofabricpath",
+      "target": "utils_pdfannotationimporter_getborderwidth",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L2672",
+      "weight": 1.0,
+      "source": "utils_pdfannotationimporter_convertlinetofabricline",
+      "target": "utils_pdfannotationimporter_getborderwidth",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L2274",
+      "weight": 1.0,
+      "source": "utils_pdfannotationimporter_convertpolygontofabricpolygon",
+      "target": "utils_pdfannotationimporter_getborderwidth",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L2226",
+      "weight": 1.0,
+      "source": "utils_pdfannotationimporter_convertpolylinetofabricpolyline",
+      "target": "utils_pdfannotationimporter_getborderwidth",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L2417",
+      "weight": 1.0,
+      "source": "utils_pdfannotationimporter_convertsquaretofabricrect",
+      "target": "utils_pdfannotationimporter_getborderwidth",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L2818",
+      "weight": 1.0,
+      "source": "utils_pdfannotationimporter_convertsquigglytofabricpath",
+      "target": "utils_pdfannotationimporter_getborderwidth",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L2045",
+      "weight": 1.0,
+      "source": "utils_pdfannotationimporter_convertfreetexttofabrictextbox",
+      "target": "utils_pdfannotationimporter_getshapefillhex",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L380",
+      "weight": 1.0,
+      "source": "utils_pdfannotationimporter_getshapefillcolor",
+      "target": "utils_pdfannotationimporter_getshapefillhex",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L2509",
+      "weight": 1.0,
+      "source": "utils_pdfannotationimporter_convertcircletofabriccircle",
+      "target": "utils_pdfannotationimporter_getshapefillcolor",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L2273",
+      "weight": 1.0,
+      "source": "utils_pdfannotationimporter_convertpolygontofabricpolygon",
+      "target": "utils_pdfannotationimporter_getshapefillcolor",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L2416",
+      "weight": 1.0,
+      "source": "utils_pdfannotationimporter_convertsquaretofabricrect",
+      "target": "utils_pdfannotationimporter_getshapefillcolor",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L433",
+      "weight": 1.0,
+      "source": "utils_pdfannotationimporter_isautocadshxtextannotation",
+      "target": "utils_pdfannotationimporter_getannotationtitle",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L471",
+      "weight": 1.0,
+      "source": "utils_pdfannotationimporter_convertautocadshxtexttofabricproxy",
+      "target": "utils_pdfannotationimporter_getannotationcontents",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L2356",
+      "weight": 1.0,
+      "source": "utils_pdfannotationimporter_converttexttofabricnote",
+      "target": "utils_pdfannotationimporter_getannotationcontents",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L2914",
+      "weight": 1.0,
+      "source": "utils_pdfannotationimporter_convertpdfannotationtofabric",
+      "target": "utils_pdfannotationimporter_isautocadshxtextannotation",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L442",
+      "weight": 1.0,
+      "source": "utils_pdfannotationimporter_convertautocadshxtexttofabricproxy",
+      "target": "utils_pdfannotationimporter_convertpdfrecttoviewportrect",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L2915",
+      "weight": 1.0,
+      "source": "utils_pdfannotationimporter_convertpdfannotationtofabric",
+      "target": "utils_pdfannotationimporter_convertautocadshxtexttofabricproxy",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L2291",
+      "weight": 1.0,
+      "source": "utils_pdfannotationimporter_convertpolygontofabricpolygon",
+      "target": "utils_pdfannotationimporter_buildcloudpathcommands",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L2434",
+      "weight": 1.0,
+      "source": "utils_pdfannotationimporter_convertsquaretofabricrect",
+      "target": "utils_pdfannotationimporter_buildcloudpathcommands",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L2036",
+      "weight": 1.0,
+      "source": "utils_pdfannotationimporter_convertfreetexttofabrictextbox",
+      "target": "utils_pdfannotationimporter_isnearwhitehexcolor",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L1980",
+      "weight": 1.0,
+      "source": "utils_pdfannotationimporter_convertfreetexttofabrictextbox",
+      "target": "utils_pdfannotationimporter_parsedefaultappearancestring",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L1981",
+      "weight": 1.0,
+      "source": "utils_pdfannotationimporter_convertfreetexttofabrictextbox",
+      "target": "utils_pdfannotationimporter_parsedefaultstylestring",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L918",
+      "weight": 1.0,
+      "source": "utils_pdfannotationimporter_extractannotationdasharray",
+      "target": "utils_pdfannotationimporter_tonumericarray",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L769",
+      "weight": 1.0,
+      "source": "utils_pdfannotationimporter_normalizepdfpointlist",
+      "target": "utils_pdfannotationimporter_tonumericarray",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L747",
+      "weight": 1.0,
+      "source": "utils_pdfannotationimporter_normalizepdfpointlist",
+      "target": "utils_pdfannotationimporter_coordinatearraytopoints",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L774",
+      "weight": 1.0,
+      "source": "utils_pdfannotationimporter_convertpdfpointlisttoviewportpoints",
+      "target": "utils_pdfannotationimporter_normalizepdfpointlist",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L1935",
+      "weight": 1.0,
+      "source": "utils_pdfannotationimporter_convertfreetexttofabrictextbox",
+      "target": "utils_pdfannotationimporter_convertpdfpointlisttoviewportpoints",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L2647",
+      "weight": 1.0,
+      "source": "utils_pdfannotationimporter_convertlinetofabricline",
+      "target": "utils_pdfannotationimporter_convertpdfpointlisttoviewportpoints",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L2261",
+      "weight": 1.0,
+      "source": "utils_pdfannotationimporter_convertpolygontofabricpolygon",
+      "target": "utils_pdfannotationimporter_convertpdfpointlisttoviewportpoints",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L2183",
+      "weight": 1.0,
+      "source": "utils_pdfannotationimporter_getannotationpolylinepoints",
+      "target": "utils_pdfannotationimporter_convertpdfpointlisttoviewportpoints",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L1940",
+      "weight": 1.0,
+      "source": "utils_pdfannotationimporter_convertfreetexttofabrictextbox",
+      "target": "utils_pdfannotationimporter_extractcallouttextboxrectfromappearance",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L872",
+      "weight": 1.0,
+      "source": "utils_pdfannotationimporter_extractcallouttextboxrectfromappearance",
+      "target": "utils_pdfannotationimporter_convertpdfrecttoviewportrect",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L2266",
+      "weight": 1.0,
+      "source": "utils_pdfannotationimporter_convertpolygontofabricpolygon",
+      "target": "utils_pdfannotationimporter_torelativefabricpoints",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L2219",
+      "weight": 1.0,
+      "source": "utils_pdfannotationimporter_convertpolylinetofabricpolyline",
+      "target": "utils_pdfannotationimporter_torelativefabricpoints",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L2645",
+      "weight": 1.0,
+      "source": "utils_pdfannotationimporter_convertlinetofabricline",
+      "target": "utils_pdfannotationimporter_extractannotationdasharray",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L2277",
+      "weight": 1.0,
+      "source": "utils_pdfannotationimporter_convertpolygontofabricpolygon",
+      "target": "utils_pdfannotationimporter_extractannotationdasharray",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L2228",
+      "weight": 1.0,
+      "source": "utils_pdfannotationimporter_convertpolylinetofabricpolyline",
+      "target": "utils_pdfannotationimporter_extractannotationdasharray",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L905",
+      "weight": 1.0,
+      "source": "utils_pdfannotationimporter_extractannotationdasharray",
+      "target": "utils_pdflibvaluereaders_normalizepdfnametoken",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L1200",
+      "weight": 1.0,
+      "source": "utils_pdfannotationimporter_extractappearancemetadataforannotation",
+      "target": "utils_pdfannotationimporter_decodestreambytestolatin1",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L1201",
+      "weight": 1.0,
+      "source": "utils_pdfannotationimporter_extractappearancemetadataforannotation",
+      "target": "utils_pdfannotationimporter_parseappearancestream",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L1189",
+      "weight": 1.0,
+      "source": "utils_pdfannotationimporter_extractappearancemetadataforannotation",
+      "target": "utils_pdflibvaluereaders_readpdflibnumberarray",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L1251",
+      "weight": 1.0,
+      "source": "utils_pdfannotationimporter_buildrawannotationmetadatabyid",
+      "target": "utils_pdflibvaluereaders_normalizepdflineendings",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L1250",
+      "weight": 1.0,
+      "source": "utils_pdfannotationimporter_buildrawannotationmetadatabyid",
+      "target": "utils_pdflibvaluereaders_normalizepdfnametoken",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L1295",
+      "weight": 1.0,
+      "source": "utils_pdfannotationimporter_buildrawannotationmetadatabyid",
+      "target": "utils_pdflibvaluereaders_readpdflibdasharray",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L1251",
+      "weight": 1.0,
+      "source": "utils_pdfannotationimporter_buildrawannotationmetadatabyid",
+      "target": "utils_pdflibvaluereaders_readpdflibnamearray",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L1247",
+      "weight": 1.0,
+      "source": "utils_pdfannotationimporter_buildrawannotationmetadatabyid",
+      "target": "utils_pdflibvaluereaders_readpdflibnumber",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L1244",
+      "weight": 1.0,
+      "source": "utils_pdfannotationimporter_buildrawannotationmetadatabyid",
+      "target": "utils_pdflibvaluereaders_readpdflibnumberarray",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L1232",
+      "weight": 1.0,
+      "source": "utils_pdfannotationimporter_buildrawannotationmetadatabyid",
+      "target": "utils_pdflibvaluereaders_readpdflibtext",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L1215",
+      "weight": 1.0,
+      "source": "utils_pdfannotationimporter_buildrawannotationmetadatabyid",
+      "target": "utils_pdflibvaluereaders_touint8array",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L3028",
+      "weight": 1.0,
+      "source": "utils_pdfannotationimporter_importannotationsfrompdf",
+      "target": "utils_pdfannotationimporter_buildrawannotationmetadatabyid",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L3029",
+      "weight": 1.0,
+      "source": "utils_pdfannotationimporter_importannotationsfrompdf",
+      "target": "utils_pdfannotationimporter_readapplayerstatefrompdf",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L1394",
+      "weight": 1.0,
+      "source": "utils_pdfannotationimporter_readapplayerstatefrompdf",
+      "target": "utils_pdflibvaluereaders_readpdflibtext",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L1458",
+      "weight": 1.0,
+      "source": "utils_pdfannotationimporter_applyrawmetadatatoannotation",
+      "target": "utils_pdflibvaluereaders_normalizepdflineendings",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L2898",
+      "weight": 1.0,
+      "source": "utils_pdfannotationimporter_convertpdfannotationtofabric",
+      "target": "utils_pdfannotationimporter_applyrawmetadatatoannotation",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L1658",
+      "weight": 1.0,
+      "source": "utils_pdfannotationimporter_convertinktofabricpath",
+      "target": "utils_pdfannotationimporter_convertappearancepathtofabricpath",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L2679",
+      "weight": 1.0,
+      "source": "utils_pdfannotationimporter_convertlinetofabricline",
+      "target": "utils_pdfannotationimporter_convertpdfpointtoviewport",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L2189",
+      "weight": 1.0,
+      "source": "utils_pdfannotationimporter_getannotationpolylinepoints",
+      "target": "utils_pdfannotationimporter_convertpdfpointtoviewport",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L2853",
+      "weight": 1.0,
+      "source": "utils_pdfannotationimporter_convertcarettofabricpolyline",
+      "target": "utils_pdfannotationimporter_convertpdfrecttoviewportrect",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L2489",
+      "weight": 1.0,
+      "source": "utils_pdfannotationimporter_convertcircletofabriccircle",
+      "target": "utils_pdfannotationimporter_convertpdfrecttoviewportrect",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L1929",
+      "weight": 1.0,
+      "source": "utils_pdfannotationimporter_convertfreetexttofabrictextbox",
+      "target": "utils_pdfannotationimporter_convertpdfrecttoviewportrect",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L2401",
+      "weight": 1.0,
+      "source": "utils_pdfannotationimporter_convertsquaretofabricrect",
+      "target": "utils_pdfannotationimporter_convertpdfrecttoviewportrect",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L2785",
+      "weight": 1.0,
+      "source": "utils_pdfannotationimporter_convertsquigglytofabricpath",
+      "target": "utils_pdfannotationimporter_convertpdfrecttoviewportrect",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L1894",
+      "weight": 1.0,
+      "source": "utils_pdfannotationimporter_convertsurveymarkertofabricrect",
+      "target": "utils_pdfannotationimporter_convertpdfrecttoviewportrect",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L2326",
+      "weight": 1.0,
+      "source": "utils_pdfannotationimporter_converttexttofabricnote",
+      "target": "utils_pdfannotationimporter_convertpdfrecttoviewportrect",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L2741",
+      "weight": 1.0,
+      "source": "utils_pdfannotationimporter_convertunderlinetofabricrect",
+      "target": "utils_pdfannotationimporter_convertpdfrecttoviewportrect",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L2204",
+      "weight": 1.0,
+      "source": "utils_pdfannotationimporter_getannotationpolylinepoints",
+      "target": "utils_pdfannotationimporter_convertpdfrecttoviewportrect",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L1626",
+      "weight": 1.0,
+      "source": "utils_pdfannotationimporter_pathsubpathsareclosed",
+      "target": "utils_pdfannotationimporter_getinkpathendpoint",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L1785",
+      "weight": 1.0,
+      "source": "utils_pdfannotationimporter_convertinktofabricpath",
+      "target": "utils_pdfannotationimporter_pathsubpathsareclosed",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L2908",
+      "weight": 1.0,
+      "source": "utils_pdfannotationimporter_convertpdfannotationtofabric",
+      "target": "utils_pdfannotationimporter_convertinktofabricpath",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L2910",
+      "weight": 1.0,
+      "source": "utils_pdfannotationimporter_convertpdfannotationtofabric",
+      "target": "utils_pdfannotationimporter_convertsurveymarkertofabricrect",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L2122",
+      "weight": 1.0,
+      "source": "utils_pdfannotationimporter_convertfreetexttofabrictextbox",
+      "target": "utils_pdfannotationimporter_computeappearancerotationtransform",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L1936",
+      "weight": 1.0,
+      "source": "utils_pdfannotationimporter_convertfreetexttofabrictextbox",
+      "target": "utils_pdflibvaluereaders_normalizepdfnametoken",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L2912",
+      "weight": 1.0,
+      "source": "utils_pdfannotationimporter_convertpdfannotationtofabric",
+      "target": "utils_pdfannotationimporter_convertfreetexttofabrictextbox",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L2214",
+      "weight": 1.0,
+      "source": "utils_pdfannotationimporter_convertpolylinetofabricpolyline",
+      "target": "utils_pdfannotationimporter_getannotationpolylinepoints",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L2923",
+      "weight": 1.0,
+      "source": "utils_pdfannotationimporter_convertpdfannotationtofabric",
+      "target": "utils_pdfannotationimporter_convertpolylinetofabricpolyline",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L2227",
+      "weight": 1.0,
+      "source": "utils_pdfannotationimporter_convertpolylinetofabricpolyline",
+      "target": "utils_pdflibvaluereaders_normalizepdflineendings",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L2229",
+      "weight": 1.0,
+      "source": "utils_pdfannotationimporter_convertpolylinetofabricpolyline",
+      "target": "utils_pdflibvaluereaders_normalizepdfnametoken",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L2925",
+      "weight": 1.0,
+      "source": "utils_pdfannotationimporter_convertpdfannotationtofabric",
+      "target": "utils_pdfannotationimporter_convertpolygontofabricpolygon",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L2278",
+      "weight": 1.0,
+      "source": "utils_pdfannotationimporter_convertpolygontofabricpolygon",
+      "target": "utils_pdflibvaluereaders_normalizepdfnametoken",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L2927",
+      "weight": 1.0,
+      "source": "utils_pdfannotationimporter_convertpdfannotationtofabric",
+      "target": "utils_pdfannotationimporter_converttexttofabricnote",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L2335",
+      "weight": 1.0,
+      "source": "utils_pdfannotationimporter_converttexttofabricnote",
+      "target": "utils_pdflibvaluereaders_normalizepdfnametoken",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L2561",
+      "weight": 1.0,
+      "source": "utils_pdfannotationimporter_convertcircletofabriccircle",
+      "target": "utils_pdfannotationimporter_computeappearancerotationtransform",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L2412",
+      "weight": 1.0,
+      "source": "utils_pdfannotationimporter_convertsquaretofabricrect",
+      "target": "utils_pdfannotationimporter_computeappearancerotationtransform",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L2917",
+      "weight": 1.0,
+      "source": "utils_pdfannotationimporter_convertpdfannotationtofabric",
+      "target": "utils_pdfannotationimporter_convertsquaretofabricrect",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L2919",
+      "weight": 1.0,
+      "source": "utils_pdfannotationimporter_convertpdfannotationtofabric",
+      "target": "utils_pdfannotationimporter_convertcircletofabriccircle",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L2627",
+      "weight": 1.0,
+      "source": "utils_pdfannotationimporter_convertlinetofabricline",
+      "target": "utils_pdflibvaluereaders_normalizepdflineendings",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L2646",
+      "weight": 1.0,
+      "source": "utils_pdfannotationimporter_convertlinetofabricline",
+      "target": "utils_pdflibvaluereaders_normalizepdfnametoken",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L2921",
+      "weight": 1.0,
+      "source": "utils_pdfannotationimporter_convertpdfannotationtofabric",
+      "target": "utils_pdfannotationimporter_convertlinetofabricline",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L2930",
+      "weight": 1.0,
+      "source": "utils_pdfannotationimporter_convertpdfannotationtofabric",
+      "target": "utils_pdfannotationimporter_convertunderlinetofabricrect",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L2932",
+      "weight": 1.0,
+      "source": "utils_pdfannotationimporter_convertpdfannotationtofabric",
+      "target": "utils_pdfannotationimporter_convertsquigglytofabricpath",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfAnnotationImporter.js",
+      "source_location": "L2934",
+      "weight": 1.0,
+      "source": "utils_pdfannotationimporter_convertpdfannotationtofabric",
+      "target": "utils_pdfannotationimporter_convertcarettofabricpolyline",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfLibValueReaders.js",
+      "source_location": "L108",
+      "weight": 1.0,
+      "source": "utils_pdflibvaluereaders",
+      "target": "utils_pdflibvaluereaders_normalizepdflineendings",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfLibValueReaders.js",
+      "source_location": "L70",
+      "weight": 1.0,
+      "source": "utils_pdflibvaluereaders",
+      "target": "utils_pdflibvaluereaders_normalizepdfnametoken",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfLibValueReaders.js",
+      "source_location": "L90",
+      "weight": 1.0,
+      "source": "utils_pdflibvaluereaders",
+      "target": "utils_pdflibvaluereaders_readpdflibdasharray",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfLibValueReaders.js",
+      "source_location": "L77",
+      "weight": 1.0,
+      "source": "utils_pdflibvaluereaders",
+      "target": "utils_pdflibvaluereaders_readpdflibnamearray",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfLibValueReaders.js",
+      "source_location": "L25",
+      "weight": 1.0,
+      "source": "utils_pdflibvaluereaders",
+      "target": "utils_pdflibvaluereaders_readpdflibnumber",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfLibValueReaders.js",
+      "source_location": "L41",
+      "weight": 1.0,
+      "source": "utils_pdflibvaluereaders",
+      "target": "utils_pdflibvaluereaders_readpdflibnumberarray",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfLibValueReaders.js",
+      "source_location": "L54",
+      "weight": 1.0,
+      "source": "utils_pdflibvaluereaders",
+      "target": "utils_pdflibvaluereaders_readpdflibtext",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfLibValueReaders.js",
+      "source_location": "L7",
+      "weight": 1.0,
+      "source": "utils_pdflibvaluereaders",
+      "target": "utils_pdflibvaluereaders_touint8array",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/pdfLibValueReaders.js",
+      "source_location": "L98",
+      "weight": 1.0,
+      "source": "utils_pdflibvaluereaders_readpdflibdasharray",
+      "target": "utils_pdflibvaluereaders_readpdflibnumberarray",
+      "confidence_score": 1.0
+    },
     {
       "relation": "contains",
       "confidence": "EXTRACTED",
@@ -1418,9 +4752,9 @@
       "source_file": "debug/defragilize/PROGRESS.md",
       "source_location": "L38",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "defragilize_progress_de_fragilize_campaign_progress_ledger",
-      "target": "defragilize_progress_priority_2_split_pdfviewer_jsx_into_modules_safe_extractions_done_bulk_deferred",
-      "confidence_score": 1.0
+      "target": "defragilize_progress_priority_2_split_pdfviewer_jsx_into_modules_safe_extractions_done_bulk_deferred"
     },
     {
       "relation": "contains",
@@ -1428,9 +4762,9 @@
       "source_file": "debug/defragilize/PROGRESS.md",
       "source_location": "L58",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "defragilize_progress_de_fragilize_campaign_progress_ledger",
-      "target": "defragilize_progress_priority_3_split_other_1k_line_files_in_progress",
-      "confidence_score": 1.0
+      "target": "defragilize_progress_priority_3_split_other_1k_line_files_in_progress"
     },
     {
       "relation": "contains",
@@ -4342,5 +7676,5 @@
     }
   ],
   "hyperedges": [],
-  "built_at_commit": "82c8c4357ccbd37b7b574377327e65820144d087"
+  "built_at_commit": "dd72ac52b75fdd4baa35e2c960c6023bb99d0496"
 }

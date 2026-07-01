@@ -2670,8 +2670,8 @@
     "semantic_hash": ""
   },
   "src/utils/pdfAnnotationImporter.js": {
-    "mtime": 1782880590.1622488,
-    "ast_hash": "5bede71c7108a16c54d7609a53707221",
+    "mtime": 1782884440.2443035,
+    "ast_hash": "4ba36641da7c8f4331b833a632cd67ef",
     "semantic_hash": ""
   },
   "src/utils/pdfAnnotationsPdfLib.js": {
@@ -7385,12 +7385,12 @@
     "semantic_hash": ""
   },
   "agent-cli/callout-interaction-e2e-result.png": {
-    "mtime": 1782884095.1532817,
-    "ast_hash": "40ab402d5cbf73ab87d62d9283828580",
+    "mtime": 1782884516.491145,
+    "ast_hash": "e3ab8316122bc1c4fa4815343a12b5fc",
     "semantic_hash": ""
   },
   "agent-cli/render-smoke-result.png": {
-    "mtime": 1782884041.2028897,
+    "mtime": 1782884463.595137,
     "ast_hash": "1e9813fa7c7ce048652c208fa934cc17",
     "semantic_hash": ""
   },
@@ -7422,6 +7422,16 @@
   "src/hooks/useRegionOverlayVisibility.js": {
     "mtime": 1782883951.399174,
     "ast_hash": "3d205c4c79f64d23d1ee778bbf5a8338",
+    "semantic_hash": ""
+  },
+  "src/utils/__tests__/pdfLibValueReaders.test.mjs": {
+    "mtime": 1782884388.8763595,
+    "ast_hash": "09932ffbb0342987570378cb3c7e053f",
+    "semantic_hash": ""
+  },
+  "src/utils/pdfLibValueReaders.js": {
+    "mtime": 1782884354.6344972,
+    "ast_hash": "dd611a5280434f403a4c10b41b94c899",
     "semantic_hash": ""
   }
 }
