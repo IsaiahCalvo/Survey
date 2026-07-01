@@ -1,16 +1,16 @@
 # Graph Report - magical-raman-95374e  (2026-07-01)
 
 ## Corpus Check
-- 1370 files · ~2,972,191 words
+- 1372 files · ~2,972,702 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 139 nodes · 258 edges · 13 communities (10 shown, 3 thin omitted)
+- 142 nodes · 263 edges · 14 communities (10 shown, 4 thin omitted)
 - Extraction: 100% EXTRACTED · 0% INFERRED · 0% AMBIGUOUS
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `9ff3d843`
+- Built from commit: `fbac4769`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -28,6 +28,7 @@
 - [[_COMMUNITY_Community 10|Community 10]]
 - [[_COMMUNITY_Community 11|Community 11]]
 - [[_COMMUNITY_Community 12|Community 12]]
+- [[_COMMUNITY_Community 13|Community 13]]
 
 ## God Nodes (most connected - your core abstractions)
 1. `summarizeHistoryActionForLog()` - 9 edges
@@ -47,11 +48,11 @@
 ## Import Cycles
 - None detected.
 
-## Communities (13 total, 3 thin omitted)
+## Communities (14 total, 4 thin omitted)
 
 ### Community 0 - "Community 0"
 Cohesion: 0.05
-Nodes (30): applyRegionMaskToCanvasContext(), cloneOverlayRecorderPayload(), coercePdfjsZoomPercent(), countAnnotationPageObjects(), dataURLToUint8Array(), escapeCSVValue(), getCategoryGlyphLabel(), getHexFromColor() (+22 more)
+Nodes (30): buildOutlinePageLookup(), coercePdfjsZoomPercent(), countAnnotationPageObjects(), dataURLToUint8Array(), escapeCSVValue(), getModuleDataKey(), getNormalizedWheelDeltas(), getPdfjsOverlayPrefetchPages() (+22 more)
 
 ### Community 1 - "Community 1"
 Cohesion: 0.18
@@ -67,7 +68,7 @@ Nodes (4): extractSourceLeafFromBookmark(), normalizeOutlineLooseKey(), normaliz
 
 ### Community 4 - "Community 4"
 Cohesion: 0.05
-Nodes (40): buildOutlinePageLookup(), categoryExists(), clampWheelDelta(), coercePageNumber(), filterAnnotationsByModule(), getModuleDataKey(), getNormalizedWheelDeltas(), getOpacityFromEntityColor() (+32 more)
+Nodes (40): applyRegionMaskToCanvasContext(), categoryExists(), clampWheelDelta(), cloneOverlayRecorderPayload(), coercePageNumber(), filterAnnotationsByModule(), getCategoryGlyphLabel(), getHexFromColor() (+32 more)
 
 ### Community 5 - "Community 5"
 Cohesion: 0.50
@@ -92,13 +93,15 @@ Nodes (7): De-Fragilize Campaign — Progress Ledger, Out of scope (owner-parked
 ## Knowledge Gaps
 - **11 isolated node(s):** `Rules (from HANDOFF run-mode)`, `Status of prior work (verified this session)`, `Priority 1 — dead zoom/scroll clusters in PDFViewer.jsx (DONE ✅)`, `Priority 2 — split PDFViewer.jsx into modules (PENDING)`, `Priority 3 — split other >1k-line files (PENDING)` (+6 more)
   These have ≤1 connection - possible missing edges or undocumented components.
-- **3 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
+- **4 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
+- **Why does `boundsMatch()` connect `Community 13` to `Community 4`?**
+  _High betweenness centrality (0.007) - this node is a cross-community bridge._
 - **Why does `summarizeHistoryActionForLog()` connect `Community 1` to `Community 0`, `Community 4`?**
-  _High betweenness centrality (0.003) - this node is a cross-community bridge._
+  _High betweenness centrality (0.005) - this node is a cross-community bridge._
 - **Why does `resolveBookmarkPageFromOutlineLookup()` connect `Community 3` to `Community 0`, `Community 4`?**
   _High betweenness centrality (0.002) - this node is a cross-community bridge._
 - **What connects `Rules (from HANDOFF run-mode)`, `Status of prior work (verified this session)`, `Priority 1 — dead zoom/scroll clusters in PDFViewer.jsx (DONE ✅)` to the rest of the system?**

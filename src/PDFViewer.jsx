@@ -16,6 +16,7 @@ import * as pdfjsLib from 'pdfjs-dist';
 import { loadPdfjs } from './utils/pdfWorkerConfig';
 import { deepClone } from './utils/deepClone.js';
 import { boundsMatch } from './utils/pdfViewerGeometry.js';
+import { sanitizeTemplateConfig } from './utils/templateConfig.js';
 import { showToast } from './utils/toast';
 import AnnotationPropertiesPanel from './components/AnnotationPropertiesPanel';
 import CalloutOverlay from './components/Callout';
@@ -4708,13 +4709,6 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     setActiveTool('survey-marker');
     setShowSurveyPanel(true);
   }, []);
-
-  // Helper to sanitize template config before saving to Supabase
-  const sanitizeTemplateConfig = (template) => {
-    if (!template || typeof template !== 'object') return template;
-    const { supabaseId, ...rest } = template;
-    return rest;
-  };
 
   // Restore scroll position when PDF loads or tab/document context changes.
   useEffect(() => {
