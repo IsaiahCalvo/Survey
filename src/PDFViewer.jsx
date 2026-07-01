@@ -19433,39 +19433,6 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     // Under pdf.js the engine extracts the outline on document load and reports it via
     // onPDFBookmarksAvailable, so this 3.2s fallback would redundantly re-extract.
     if (true) return undefined;
-    if (Array.isArray(pdfBookmarks) && pdfBookmarks.length > 0) return undefined;
-
-    const attemptKey = pdfId || `${pdfFile?.name || 'document'}:${pdfDoc?.numPages || 0}`;
-    if (pdfjsBookmarkAttemptRef.current === attemptKey) {
-      return undefined;
-    }
-    pdfjsBookmarkAttemptRef.current = attemptKey;
-
-    let cancelled = false;
-    const fallbackTimer = setTimeout(async () => {
-      try {
-        const outlineBookmarks = await extractPdfOutlineBookmarks(pdfDoc);
-        if (cancelled || !Array.isArray(outlineBookmarks) || outlineBookmarks.length === 0) {
-          return;
-        }
-        setPdfBookmarks((prev) => {
-          if (Array.isArray(prev) && prev.length > 0) {
-            return prev;
-          }
-          return outlineBookmarks.map((bookmark, index) => ({
-            ...bookmark,
-            source: 'pdf',
-            sourceId: bookmark.sourceId || `pdfjs:${bookmark.id || index}`,
-            isFromPDF: true
-          }));
-        });
-      } catch { }
-    }, 3200);
-
-    return () => {
-      cancelled = true;
-      clearTimeout(fallbackTimer);
-    };
   }, [extractPdfOutlineBookmarks, pdfBookmarks, pdfDoc, pdfFile?.name, pdfId]);
 
   useEffect(() => {
@@ -26047,43 +26014,6 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     // (pdfjsPageContainers change), and zoom settle re-attaches as well, so
     // skipping the scroll-driven loop here is alignment-safe for pdf.js.
     if (true) return;
-    const viewerContainer = containerRef.current;
-    if (!viewerContainer) return;
-
-    let frameId = null;
-    const raf = typeof window.requestAnimationFrame === 'function'
-      ? window.requestAnimationFrame.bind(window)
-      : (callback) => window.setTimeout(callback, 16);
-    const cancelRaf = typeof window.cancelAnimationFrame === 'function'
-      ? window.cancelAnimationFrame.bind(window)
-      : (id) => window.clearTimeout(id);
-    const scheduleOverlayPositionSync = () => {
-      if (frameId !== null) return;
-      frameId = raf(() => {
-        frameId = null;
-        const pages = new Set([
-          ...Object.keys(pdfjsPageContainersStateRef.current || {}).map((pageKey) => Number(pageKey)),
-          ...Object.keys(overlayDivsRef.current || {}).map((pageKey) => Number(pageKey))
-        ]);
-        pages.forEach((pageNumber) => {
-          if (Number.isFinite(pageNumber) && pageNumber > 0) {
-            attachOverlayToPageDiv(pageNumber);
-          }
-        });
-      });
-    };
-
-    viewerContainer.addEventListener('scroll', scheduleOverlayPositionSync, { passive: true });
-    window.addEventListener('resize', scheduleOverlayPositionSync);
-    scheduleOverlayPositionSync();
-
-    return () => {
-      viewerContainer.removeEventListener('scroll', scheduleOverlayPositionSync);
-      window.removeEventListener('resize', scheduleOverlayPositionSync);
-      if (frameId !== null) {
-        cancelRaf(frameId);
-      }
-    };
   }, [usePdfjsRenderer, attachOverlayToPageDiv, pdfjsPageContainers]);
 
   useEffect(() => {
