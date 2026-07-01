@@ -55,11 +55,39 @@ owner-facing behavioral coverage, exactly like the callout unification is scoped
 Remaining safe-ish hooks (form-field persistence, page-transformations, space CSV export, selection guard)
 are lower-value and left as follow-ups. Full ranked seam map: workflow wtxzbbu8u output.
 
-## Priority 3 — split other >1k-line files (IN PROGRESS)
-Strategy: safety×value order (not strictly largest-first, since the largest are the high-risk canvas/
-overlay files). Do testable util splits + gate-verified UI component splits first; approach the big
-canvas files (PageAnnotationLayer, SVGAnnotationLayer, useSVGInteraction, FabricEditCanvas) with the
-same map→adversarial-verify→gate discipline used for PDFViewer P1.
+## Priority 3 — split other >1k-line files (STARTED)
+- [x] pdfAnnotationImporter: pdf-lib value readers → utils/pdfLibValueReaders.js (+8-case test; still
+      covered end-to-end by the existing import round-trip test) — dd72ac52. Importer 3418 → 3301.
+
+## Session tally (all gates green every batch; zero regressions)
+PDFViewer.jsx: 33,982 → 33,302 (−680). pdfAnnotationImporter: 3418 → 3301 (−117). 13 commits.
+New tested modules: pdfViewerGeometry, templateConfig, useRegionOverlayVisibility,
+usePdfjsFormFieldPersistence, pdfLibValueReaders. Node tests 1685 → 1716.
+
+## Ceiling reached for CLEAN autonomous extraction — why, and what's next
+The remaining safe extractions all hit friction that blocks honest verification:
+- **No React-hook/component/Fabric test harness** in the repo (handoff bars adding one) → hook/component
+  extractions are build+mount-verified only; behavior on uncovered paths (undo/redo, save, Excel, sync,
+  most panels) isn't gate-checked.
+- **viewerShared.js is NOT node-importable** (extensionless import `./utils/annotationPreviewDiag`), so any
+  new util that imports from it can't be node-tested — this blocked a clean space-CSV export extraction.
+  FIXABLE follow-up: add explicit `.js` extensions to viewerShared's local imports to unlock node testing.
+- **hexToRgba name collision** between the importer's local copy and viewerShared's canonical one → the
+  importer color cluster needs a de-dup decision, not a blind lift.
+- The big-file **bulk lives in DEFER-RISKY engines** (zoom/scale lifecycle, overlay portal render loop,
+  undo/redo+save history, Excel sync/import/export, cloud realtime sync) that hit the CLAUDE.md invariants
+  and are load-bearing → dedicated, owner-verified migrations with behavioral coverage, not opportunistic lifts.
+
+**Recommended next moves (each its own verified batch):**
+1. Add `.js` extensions to viewerShared local imports → unlock node-testing → then extract space CSV/PDF
+   export, and other viewerShared-dependent pure logic, WITH tests.
+2. Build a minimal hook-render harness (owner call: is a tiny react test-renderer dev-dep acceptable? the
+   handoff said no new frameworks — needs owner waiver) OR add targeted agent-cli e2e flows for form fields,
+   undo/redo, survey markers, bookmarks, so hook/engine extractions become gate-verifiable.
+3. With coverage in place, migrate the DEFER-RISKY engines one at a time (map → adversarial-verify → gate),
+   same discipline as the P1 dead-code removal.
+4. Continue P3 on the tractable UI panels (TemplatesEditor, BookmarksPanel, SearchTextPanel, Dashboard) as
+   mechanical sub-component splits once a panel-level smoke flow exists to catch prop-wiring regressions.
 
 ## Priority 3 — split other >1k-line files (PENDING)
 28 files >1k lines; largest-first. PageAnnotationLayer, SVGAnnotationLayer, useSVGInteraction, FabricEditCanvas,
