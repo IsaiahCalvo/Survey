@@ -20811,97 +20811,6 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     controller.setScale(DEFAULT_ZOOM_PREFERENCES.manualScale);
   }, []);
 
-  // OPTIMIZED: Wheel handler with smooth cursor-centered zoom
-  // Using smaller increments and minimal throttle for fluid feel
-  const wheelTimerRef = useRef(null);
-  const handleWheel = useCallback((e) => {
-    if (usePdfjsRenderer) return;
-    if (e.ctrlKey || e.metaKey) {
-      e.preventDefault();
-
-      // Minimal throttle (16ms = 1 frame) for smooth but not overwhelming updates
-      if (wheelTimerRef.current) return;
-      wheelTimerRef.current = setTimeout(() => {
-        wheelTimerRef.current = null;
-      }, 16);
-
-      // Smaller zoom increments for smoother feel (5% instead of 10%)
-      const deltaFactor = e.deltaY > 0 ? 0.95 : 1.05;
-      const currentScale = scaleRef.current || manualZoomScaleRef.current || 1.0;
-      const nextScale = clampScale(currentScale * deltaFactor);
-
-      if (Math.abs(nextScale - currentScale) > 0.0001) {
-        // Get cursor position relative to the container for centered zoom
-        const container = containerRef.current;
-        if (container) {
-          const rect = container.getBoundingClientRect();
-          const cursorX = e.clientX - rect.left;
-          const cursorY = e.clientY - rect.top;
-          zoomControllerRef.current?.setScale(nextScale, { anchor: { x: cursorX, y: cursorY } });
-        } else {
-          zoomControllerRef.current?.setScale(nextScale);
-        }
-      }
-    } else {
-      // Regular scroll (no Ctrl/Cmd) - manually scroll the container
-      // This is needed because the overlay div blocks events from reaching the container
-      const container = containerRef.current;
-      if (container) {
-        // Prevent default to avoid double scrolling, then manually scroll
-        e.preventDefault();
-        container.scrollTop += e.deltaY;
-        container.scrollLeft += e.deltaX;
-      }
-    }
-  }, [usePdfjsRenderer]);
-
-  // Attach wheel event listener with passive: false to allow preventDefault
-  useEffect(() => {
-    if (usePdfjsRenderer) return undefined;
-    const wheelHandler = (e) => {
-      // Check if event target is within container OR if event coordinates are within container bounds
-      // This handles cases where overlay divs (like region selection tool) are positioned over the container
-      const container = containerRef.current;
-      if (!container) return;
-
-      // Fast path: when the wheel target is inside the PDF container (the common
-      // case during scroll/zoom, 60+ events/sec) we know it can't be inside an
-      // overlay modal, so skip the page-wide querySelector + getBoundingClientRect
-      // entirely. Those only run in the rare case the target is outside the container.
-      if (container.contains(e.target)) {
-        handleWheel(e);
-        return;
-      }
-
-      // Target is outside the container. Don't hijack wheel events that belong to
-      // an overlay modal (e.g. the keyboard shortcuts modal) sitting over the PDF.
-      const modalOverlay = document.querySelector('[data-keyboard-shortcuts-modal="true"]');
-      if (modalOverlay && modalOverlay.contains(e.target)) {
-        return;
-      }
-
-      // Otherwise, only handle it if the pointer coordinates fall within the
-      // container bounds (covers transparent overlays positioned over the PDF).
-      const rect = container.getBoundingClientRect();
-      const isCoordInContainer = (
-        e.clientX >= rect.left &&
-        e.clientX <= rect.right &&
-        e.clientY >= rect.top &&
-        e.clientY <= rect.bottom
-      );
-      if (isCoordInContainer) {
-        handleWheel(e);
-      }
-    };
-
-    // Listen on document with capture phase to catch events before they bubble
-    document.addEventListener('wheel', wheelHandler, { passive: false, capture: true });
-
-    return () => {
-      document.removeEventListener('wheel', wheelHandler, { capture: true });
-    };
-  }, [handleWheel, usePdfjsRenderer]);
-
   // Pre-activate zoom overlay protection for Ctrl+=/- keyboard zoom.
   // Pdfjs handles these keys internally and may destroy/recreate page
   // DOM before our handlePdfjsZoomChange fires. This capture-phase
@@ -20977,82 +20886,6 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     };
   }, [beginPdfjsScaleConfirmPending, capturePdfjsZoomSnapshots, clearPdfjsZoomSnapshots, resetPdfjsOverlayTransformStyles, updatePdfjsZoomSnapshots, usePdfjsRenderer]);
 
-  // Optimized pan handling
-  const handleMouseDown = useCallback((e) => {
-    if (usePdfjsRenderer) return;
-    // Only allow pan when:
-    // 1. Pan tool is active (spacebar pan should work even when region selection is active)
-    // 2. Can pan (content exceeds viewport) OR showRegionSelection is true (allow panning in region selection mode)
-    // 3. Left mouse button
-    // Note: Allow pan even when showRegionSelection is true (spacebar pan override)
-    // Also allow panning in region selection mode even if canPan is false (content might not exceed viewport but user wants to pan)
-    if (activeTool === 'pan' && (canPan || showRegionSelection) && e.button === 0) {
-      // Check if click is on an annotation layer canvas
-      // Annotation layers use canvas elements for Fabric.js
-      const target = e.target;
-      const isOnAnnotationCanvas = target.tagName === 'CANVAS' &&
-        target.closest('.page-container') !== null;
-
-      if (isOnAnnotationCanvas) {
-        // Track canvas mouse down - we'll start panning in handleMouseMove if mouse moves
-        // (indicating empty space drag, not annotation interaction)
-        canvasMouseDownRef.current = {
-          x: e.clientX + containerRef.current.scrollLeft,
-          y: e.clientY + containerRef.current.scrollTop,
-          clientX: e.clientX,
-          clientY: e.clientY
-        };
-        // Don't prevent default - let annotation layer handle it
-        // If annotation layer prevents default (annotation interaction), it will handle it
-        // If annotation layer doesn't prevent default (empty space), we'll pan on mouse move
-        return;
-      }
-
-      // Click is on empty space or PDF background - allow container panning
-      setIsPanning(true);
-      setPanStart({
-        x: e.clientX + containerRef.current.scrollLeft,
-        y: e.clientY + containerRef.current.scrollTop
-      });
-      e.preventDefault();
-    }
-  }, [activeTool, showRegionSelection, canPan, usePdfjsRenderer]);
-
-  const handleMouseMove = useCallback((e) => {
-    if (usePdfjsRenderer) return;
-    if (isPanning) {
-      const container = containerRef.current;
-      if (container) {
-        container.scrollLeft = panStart.x - e.clientX;
-        container.scrollTop = panStart.y - e.clientY;
-      }
-    } else if (activeTool === 'pan' && (canPan || showRegionSelection) && canvasMouseDownRef.current) {
-      // Check if mouse has moved enough to start panning (empty space drag on canvas)
-      const start = canvasMouseDownRef.current;
-      const moveDistance = Math.sqrt(
-        Math.pow(e.clientX - start.clientX, 2) +
-        Math.pow(e.clientY - start.clientY, 2)
-      );
-
-
-      // Start panning if mouse moved more than 5px (same threshold as annotation selection)
-      if (moveDistance > 5) {
-        setIsPanning(true);
-        setPanStart({
-          x: start.x,
-          y: start.y
-        });
-        canvasMouseDownRef.current = null; // Clear after starting pan
-      }
-    }
-  }, [isPanning, panStart, activeTool, canPan, showRegionSelection, usePdfjsRenderer]);
-
-  const handleMouseUp = useCallback(() => {
-    if (usePdfjsRenderer) return;
-    setIsPanning(false);
-    canvasMouseDownRef.current = null; // Clear canvas mouse down tracking
-  }, [usePdfjsRenderer]);
-
   // Stop panning if tool changes away from pan
   // Note: Don't stop panning when region selection becomes active - spacebar pan should work
   useEffect(() => {
@@ -21060,46 +20893,6 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       setIsPanning(false);
     }
   }, [activeTool]);
-
-  // Add native event listener as backup for panning when overlay has pointerEvents: none
-  // This ensures events are caught even when they pass through the overlay
-  useEffect(() => {
-    if (usePdfjsRenderer) return undefined;
-    if (!showRegionSelection || activeTool !== 'pan') return;
-
-    const container = containerRef.current;
-    if (!container) return;
-
-    const nativeMouseDown = (e) => {
-      if (activeTool === 'pan' && (canPan || showRegionSelection) && e.button === 0) {
-        // Check if event is within container bounds
-        const rect = container.getBoundingClientRect();
-        const isWithinContainer = (
-          e.clientX >= rect.left &&
-          e.clientX <= rect.right &&
-          e.clientY >= rect.top &&
-          e.clientY <= rect.bottom
-        );
-
-        if (isWithinContainer) {
-          setIsPanning(true);
-          setPanStart({
-            x: e.clientX + container.scrollLeft,
-            y: e.clientY + container.scrollTop
-          });
-          e.preventDefault();
-          e.stopPropagation();
-        }
-      }
-    };
-
-    // Use capture phase to catch events before they reach other handlers
-    container.addEventListener('mousedown', nativeMouseDown, { capture: true, passive: false });
-
-    return () => {
-      container.removeEventListener('mousedown', nativeMouseDown, { capture: true });
-    };
-  }, [showRegionSelection, activeTool, canPan, usePdfjsRenderer]);
 
   // Track eraser cursor position when eraser tool is active
   useEffect(() => {
@@ -27631,10 +27424,6 @@ ${pageBlocks}
           {/* PDF Container - Optimized */}
           <div
             ref={pdfjsWrapperRef}
-            onMouseDown={usePdfjsRenderer ? undefined : handleMouseDown}
-            onMouseMove={usePdfjsRenderer ? undefined : handleMouseMove}
-            onMouseUp={usePdfjsRenderer ? undefined : handleMouseUp}
-            onMouseLeave={usePdfjsRenderer ? undefined : handleMouseUp}
             onWheelCapture={handlePdfjsWrapperWheel}
             onPointerDown={handlePdfjsWrapperPointerDown}
             onPointerMove={handlePdfjsWrapperPointerMove}

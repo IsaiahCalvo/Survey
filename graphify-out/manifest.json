@@ -1160,8 +1160,8 @@
     "semantic_hash": ""
   },
   "src/PDFViewer.jsx": {
-    "mtime": 1782881776.4102688,
-    "ast_hash": "a4852032d4e61a9232d458941a81a919",
+    "mtime": 1782881929.3014143,
+    "ast_hash": "111135d8c0dd057012b3fd9b15c96f62",
     "semantic_hash": ""
   },
   "src/PageAnnotationLayer.jsx": {
@@ -7385,12 +7385,12 @@
     "semantic_hash": ""
   },
   "agent-cli/callout-interaction-e2e-result.png": {
-    "mtime": 1782881850.9436414,
-    "ast_hash": "5e676bcc0790a5d576fc1fe4396d4a08",
+    "mtime": 1782882006.235701,
+    "ast_hash": "aa3c3144d1fd849239d4e4c1800151da",
     "semantic_hash": ""
   },
   "agent-cli/render-smoke-result.png": {
-    "mtime": 1782881798.0513904,
+    "mtime": 1782882028.968706,
     "ast_hash": "1e9813fa7c7ce048652c208fa934cc17",
     "semantic_hash": ""
   }
