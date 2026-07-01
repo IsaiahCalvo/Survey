@@ -35,8 +35,31 @@ PDFViewer.jsx: 33,982 → 33,443 lines (539 dead lines gone).
 Note: broken overlay auto-recorder rAF loop was already removed 2026-06-28; remaining manual recorder
 tooling is harmless + entangled → left in place (min-diff guardrail).
 
-## Priority 2 — split PDFViewer.jsx into modules (PENDING)
-Leaf-first, behavior identical, one extraction/commit, full gate (+smoke) each.
+## Priority 2 — split PDFViewer.jsx into modules (SAFE EXTRACTIONS DONE; bulk deferred)
+Read-only 8-scanner + synthesis workflow ranked every seam. Executed the safe wins:
+- [x] boundsMatch → utils/pdfViewerGeometry.js (+7-case test) — fbac4769
+- [x] sanitizeTemplateConfig → utils/templateConfig.js (+test) — 3d96ac23
+- [x] region-overlay visibility → hooks/useRegionOverlayVisibility.js (+pure parse/serialize tests) — 2cc4dcb9
+PDFViewer.jsx: 33,443 → 33,385.
+Skipped (deliberate): colLetter (would force a behavior-changing single→multi-char consolidation),
+PAPER_DIM_INCHES (parked-PrintPanel-adjacent), invokeNavigation (trivial + risky-adjacent).
+
+**Honest assessment (why the bulk is deferred):** the file's reducible mass lives in DEFER-RISKY
+engines — the zoom/scale lifecycle, per-page overlay portal render loop, undo/redo + save/sync history
+engine, the Excel sync/import/export engine, and document/survey-marker cloud realtime sync. These hit
+the CLAUDE.md correctness invariants (zoomGeneration / SVG viewBox / container sizing) and/or are
+load-bearing engines. There is NO React-hook test harness in the repo (and the handoff bars adding one),
+so a hook's effect wiring can't be unit-tested and render-smoke/callout-e2e don't exercise these paths —
+extracting them blind would be unverifiable. They need dedicated, adversarially-verified migrations with
+owner-facing behavioral coverage, exactly like the callout unification is scoped as its own migration.
+Remaining safe-ish hooks (form-field persistence, page-transformations, space CSV export, selection guard)
+are lower-value and left as follow-ups. Full ranked seam map: workflow wtxzbbu8u output.
+
+## Priority 3 — split other >1k-line files (IN PROGRESS)
+Strategy: safety×value order (not strictly largest-first, since the largest are the high-risk canvas/
+overlay files). Do testable util splits + gate-verified UI component splits first; approach the big
+canvas files (PageAnnotationLayer, SVGAnnotationLayer, useSVGInteraction, FabricEditCanvas) with the
+same map→adversarial-verify→gate discipline used for PDFViewer P1.
 
 ## Priority 3 — split other >1k-line files (PENDING)
 28 files >1k lines; largest-first. PageAnnotationLayer, SVGAnnotationLayer, useSVGInteraction, FabricEditCanvas,
