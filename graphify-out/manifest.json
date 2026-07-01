@@ -1160,8 +1160,8 @@
     "semantic_hash": ""
   },
   "src/PDFViewer.jsx": {
-    "mtime": 1782883178.3264284,
-    "ast_hash": "1bde6cf0d954985c852341df4d65b231",
+    "mtime": 1782883549.1582103,
+    "ast_hash": "cda5d2928bad9f6dd4756537ed84202f",
     "semantic_hash": ""
   },
   "src/PageAnnotationLayer.jsx": {
@@ -7385,12 +7385,12 @@
     "semantic_hash": ""
   },
   "agent-cli/callout-interaction-e2e-result.png": {
-    "mtime": 1782883420.1051133,
-    "ast_hash": "faf1d83f9a15779df423eb24e901e3af",
+    "mtime": 1782883628.615483,
+    "ast_hash": "0d8b61cfacd9f37850d0707e42fb48b5",
     "semantic_hash": ""
   },
   "agent-cli/render-smoke-result.png": {
-    "mtime": 1782883440.7984946,
+    "mtime": 1782883575.1575096,
     "ast_hash": "1e9813fa7c7ce048652c208fa934cc17",
     "semantic_hash": ""
   },
@@ -7402,6 +7402,16 @@
   "src/utils/pdfViewerGeometry.js": {
     "mtime": 1782883134.874307,
     "ast_hash": "0c2235f442600e978a3869827e45e2b7",
+    "semantic_hash": ""
+  },
+  "src/utils/__tests__/templateConfig.test.mjs": {
+    "mtime": 1782883535.9752014,
+    "ast_hash": "f112adfda1cd2d8aa552afa382f8b3cc",
+    "semantic_hash": ""
+  },
+  "src/utils/templateConfig.js": {
+    "mtime": 1782883527.4084733,
+    "ast_hash": "a35c025d980b4d0481245b92619eeaa1",
     "semantic_hash": ""
   }
 }

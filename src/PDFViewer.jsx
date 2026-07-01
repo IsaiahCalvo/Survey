@@ -169,6 +169,7 @@ import { useYDoc } from './hooks/useYDoc.js';
 import { useZoomState } from './hooks/useZoomState';
 import { useAnnotationContextMenu, renderAnnotationContextMenu } from './hooks/useAnnotationContextMenu.jsx';
 import { usePageOperations } from './hooks/usePageOperations.js';
+import { useRegionOverlayVisibility } from './hooks/useRegionOverlayVisibility.js';
 import { userRedo, userUndo } from './lib/collab/crdtUndoManager.js';
 import { moveItemById } from './reorder/flatReorderUtils.js';
 
@@ -9192,52 +9193,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     }
   }, [showRegionSelection, activeTool]);
 
-  // Region overlay visibility state - persists across sessions
-  // Key format: `${spaceId}-${pageId}`, value: true = disabled, false/undefined/null = enabled (default)
-  const [regionOverlayDisabled, setRegionOverlayDisabled] = useState(() => {
-    if (!pdfId) return new Map();
-    try {
-      const stored = localStorage.getItem(`regionOverlayStates_${pdfId}`);
-      if (stored) {
-        const parsed = JSON.parse(stored);
-        return new Map(Object.entries(parsed).map(([k, v]) => [k, v === true]));
-      }
-    } catch (e) {
-      console.error('Error loading region overlay states:', e);
-    }
-    return new Map();
-  });
-
-  // Save to localStorage whenever it changes
-  useEffect(() => {
-    if (!pdfId) return;
-    try {
-      const serializable = Object.fromEntries(regionOverlayDisabled);
-      localStorage.setItem(`regionOverlayStates_${pdfId}`, JSON.stringify(serializable));
-    } catch (e) {
-      console.error('Error saving region overlay states:', e);
-    }
-  }, [regionOverlayDisabled, pdfId]);
-
-  // Reload overlay states when pdfId changes
-  useEffect(() => {
-    if (!pdfId) {
-      setRegionOverlayDisabled(new Map());
-      return;
-    }
-    try {
-      const stored = localStorage.getItem(`regionOverlayStates_${pdfId}`);
-      if (stored) {
-        const parsed = JSON.parse(stored);
-        setRegionOverlayDisabled(new Map(Object.entries(parsed).map(([k, v]) => [k, v === true])));
-      } else {
-        setRegionOverlayDisabled(new Map());
-      }
-    } catch (e) {
-      console.error('Error loading region overlay states:', e);
-      setRegionOverlayDisabled(new Map());
-    }
-  }, [pdfId]);
+  // Region overlay visibility state (Map keyed by `${spaceId}-${pageId}`, true = disabled),
+  // persisted per-document in localStorage. Extracted to useRegionOverlayVisibility.
+  const [regionOverlayDisabled, setRegionOverlayDisabled] = useRegionOverlayVisibility(pdfId);
 
   // Clipboard state for cut/copy operations
   const [clipboardPage, setClipboardPage] = useState(null);

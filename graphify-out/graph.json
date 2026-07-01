@@ -16,7 +16,7 @@
       "label": "readWorkbookRegistration()",
       "file_type": "code",
       "source_file": "src/PDFViewer.jsx",
-      "source_location": "L323",
+      "source_location": "L324",
       "id": "src_pdfviewer_readworkbookregistration",
       "community": 4,
       "norm_label": "readworkbookregistration()"
@@ -25,7 +25,7 @@
       "label": "resolveMarkerEntityFromName()",
       "file_type": "code",
       "source_file": "src/PDFViewer.jsx",
-      "source_location": "L342",
+      "source_location": "L343",
       "id": "src_pdfviewer_resolvemarkerentityfromname",
       "community": 4,
       "norm_label": "resolvemarkerentityfromname()"
@@ -34,37 +34,64 @@
       "label": "PDFViewer()",
       "file_type": "code",
       "source_file": "src/PDFViewer.jsx",
-      "source_location": "L355",
+      "source_location": "L356",
       "id": "src_pdfviewer_pdfviewer",
       "community": 4,
       "norm_label": "pdfviewer()"
+    },
+    {
+      "label": "templateConfig.test.mjs",
+      "file_type": "code",
+      "source_file": "src/utils/__tests__/templateConfig.test.mjs",
+      "source_location": "L1",
+      "id": "tests_templateconfig_test",
+      "community": 14,
+      "norm_label": "templateconfig.test.mjs"
+    },
+    {
+      "label": "templateConfig.js",
+      "file_type": "code",
+      "source_file": "src/utils/templateConfig.js",
+      "source_location": "L1",
+      "id": "utils_templateconfig",
+      "community": 14,
+      "norm_label": "templateconfig.js"
+    },
+    {
+      "label": "sanitizeTemplateConfig()",
+      "file_type": "code",
+      "source_file": "src/utils/templateConfig.js",
+      "source_location": "L6",
+      "id": "utils_templateconfig_sanitizetemplateconfig",
+      "community": 14,
+      "norm_label": "sanitizetemplateconfig()"
     },
     {
       "label": "pdfViewerGeometry.test.mjs",
       "file_type": "code",
       "source_file": "src/utils/__tests__/pdfViewerGeometry.test.mjs",
       "source_location": "L1",
-      "id": "tests_pdfviewergeometry_test",
       "community": 13,
-      "norm_label": "pdfviewergeometry.test.mjs"
+      "norm_label": "pdfviewergeometry.test.mjs",
+      "id": "tests_pdfviewergeometry_test"
     },
     {
       "label": "pdfViewerGeometry.js",
       "file_type": "code",
       "source_file": "src/utils/pdfViewerGeometry.js",
       "source_location": "L1",
-      "id": "utils_pdfviewergeometry",
       "community": 13,
-      "norm_label": "pdfviewergeometry.js"
+      "norm_label": "pdfviewergeometry.js",
+      "id": "utils_pdfviewergeometry"
     },
     {
       "label": "boundsMatch()",
       "file_type": "code",
       "source_file": "src/utils/pdfViewerGeometry.js",
       "source_location": "L7",
-      "id": "utils_pdfviewergeometry_boundsmatch",
       "community": 13,
-      "norm_label": "boundsmatch()"
+      "norm_label": "boundsmatch()",
+      "id": "utils_pdfviewergeometry_boundsmatch"
     },
     {
       "label": "PROGRESS.md",
@@ -296,7 +323,7 @@
       "file_type": "code",
       "source_file": "src/viewerShared.js",
       "source_location": "L293",
-      "community": 0,
+      "community": 4,
       "norm_label": "hasvisiblepdfjsspinner()",
       "id": "src_viewershared_hasvisiblepdfjsspinner"
     },
@@ -323,7 +350,7 @@
       "file_type": "code",
       "source_file": "src/viewerShared.js",
       "source_location": "L396",
-      "community": 0,
+      "community": 4,
       "norm_label": "zoom_only_interaction_reasons",
       "id": "src_viewershared_zoom_only_interaction_reasons"
     },
@@ -332,7 +359,7 @@
       "file_type": "code",
       "source_file": "src/viewerShared.js",
       "source_location": "L420",
-      "community": 4,
+      "community": 0,
       "norm_label": "overlay_lag_recorder_work_categories",
       "id": "src_viewershared_overlay_lag_recorder_work_categories"
     },
@@ -341,7 +368,7 @@
       "file_type": "code",
       "source_file": "src/viewerShared.js",
       "source_location": "L432",
-      "community": 4,
+      "community": 0,
       "norm_label": "getsmoothpdfjswheelzoom()",
       "id": "src_viewershared_getsmoothpdfjswheelzoom"
     },
@@ -350,7 +377,7 @@
       "file_type": "code",
       "source_file": "src/viewerShared.js",
       "source_location": "L444",
-      "community": 4,
+      "community": 0,
       "norm_label": "getpdfjszoomawarescrollgain()",
       "id": "src_viewershared_getpdfjszoomawarescrollgain"
     },
@@ -359,7 +386,7 @@
       "file_type": "code",
       "source_file": "src/viewerShared.js",
       "source_location": "L453",
-      "community": 0,
+      "community": 4,
       "norm_label": "getnormalizedwheeldeltas()",
       "id": "src_viewershared_getnormalizedwheeldeltas"
     },
@@ -530,7 +557,7 @@
       "file_type": "code",
       "source_file": "src/viewerShared.js",
       "source_location": "L786",
-      "community": 4,
+      "community": 0,
       "norm_label": "shouldechohistorydebugevent()",
       "id": "src_viewershared_shouldechohistorydebugevent"
     },
@@ -548,7 +575,7 @@
       "file_type": "code",
       "source_file": "src/viewerShared.js",
       "source_location": "L835",
-      "community": 0,
+      "community": 4,
       "norm_label": "mapyjsmeta()",
       "id": "src_viewershared_mapyjsmeta"
     },
@@ -584,7 +611,7 @@
       "file_type": "code",
       "source_file": "src/viewerShared.js",
       "source_location": "L881",
-      "community": 0,
+      "community": 4,
       "norm_label": "writedocumentsyncstructuraldisabled()",
       "id": "src_viewershared_writedocumentsyncstructuraldisabled"
     },
@@ -602,7 +629,7 @@
       "file_type": "code",
       "source_file": "src/viewerShared.js",
       "source_location": "L906",
-      "community": 0,
+      "community": 4,
       "norm_label": "readpdfjsduallayerenabled()",
       "id": "src_viewershared_readpdfjsduallayerenabled"
     },
@@ -611,7 +638,7 @@
       "file_type": "code",
       "source_file": "src/viewerShared.js",
       "source_location": "L918",
-      "community": 0,
+      "community": 4,
       "norm_label": "writepdfjsduallayerenabled()",
       "id": "src_viewershared_writepdfjsduallayerenabled"
     },
@@ -620,7 +647,7 @@
       "file_type": "code",
       "source_file": "src/viewerShared.js",
       "source_location": "L927",
-      "community": 4,
+      "community": 0,
       "norm_label": "readoverlaylagrecorderautoenabled()",
       "id": "src_viewershared_readoverlaylagrecorderautoenabled"
     },
@@ -629,7 +656,7 @@
       "file_type": "code",
       "source_file": "src/viewerShared.js",
       "source_location": "L939",
-      "community": 0,
+      "community": 4,
       "norm_label": "writeoverlaylagrecorderautoenabled()",
       "id": "src_viewershared_writeoverlaylagrecorderautoenabled"
     },
@@ -638,7 +665,7 @@
       "file_type": "code",
       "source_file": "src/viewerShared.js",
       "source_location": "L948",
-      "community": 4,
+      "community": 0,
       "norm_label": "cloneoverlayrecorderpayload()",
       "id": "src_viewershared_cloneoverlayrecorderpayload"
     },
@@ -683,7 +710,7 @@
       "file_type": "code",
       "source_file": "src/viewerShared.js",
       "source_location": "L1008",
-      "community": 0,
+      "community": 4,
       "norm_label": "measurepdfjspagehostscale()",
       "id": "src_viewershared_measurepdfjspagehostscale"
     },
@@ -719,7 +746,7 @@
       "file_type": "code",
       "source_file": "src/viewerShared.js",
       "source_location": "L1121",
-      "community": 4,
+      "community": 0,
       "norm_label": "getcategoryglyphlabel()",
       "id": "src_viewershared_getcategoryglyphlabel"
     },
@@ -728,7 +755,7 @@
       "file_type": "code",
       "source_file": "src/viewerShared.js",
       "source_location": "L1138",
-      "community": 4,
+      "community": 0,
       "norm_label": "gethexfromcolor()",
       "id": "src_viewershared_gethexfromcolor"
     },
@@ -764,7 +791,7 @@
       "file_type": "code",
       "source_file": "src/viewerShared.js",
       "source_location": "L1195",
-      "community": 0,
+      "community": 4,
       "norm_label": "handlemodaloptionmouseleave()",
       "id": "src_viewershared_handlemodaloptionmouseleave"
     },
@@ -773,7 +800,7 @@
       "file_type": "code",
       "source_file": "src/viewerShared.js",
       "source_location": "L1205",
-      "community": 4,
+      "community": 0,
       "norm_label": "handlemodalsecondarybuttonmouseenter()",
       "id": "src_viewershared_handlemodalsecondarybuttonmouseenter"
     },
@@ -800,7 +827,7 @@
       "file_type": "code",
       "source_file": "src/viewerShared.js",
       "source_location": "L1223",
-      "community": 4,
+      "community": 0,
       "norm_label": "handlemodalprimarybuttonmouseleave()",
       "id": "src_viewershared_handlemodalprimarybuttonmouseleave"
     },
@@ -863,7 +890,7 @@
       "file_type": "code",
       "source_file": "src/viewerShared.js",
       "source_location": "L1321",
-      "community": 0,
+      "community": 4,
       "norm_label": "buildoutlinepagelookup()",
       "id": "src_viewershared_buildoutlinepagelookup"
     },
@@ -917,7 +944,7 @@
       "file_type": "code",
       "source_file": "src/viewerShared.js",
       "source_location": "L1506",
-      "community": 4,
+      "community": 0,
       "norm_label": "applyregionmasktocanvascontext()",
       "id": "src_viewershared_applyregionmasktocanvascontext"
     },
@@ -989,7 +1016,7 @@
       "file_type": "code",
       "source_file": "src/viewerShared.js",
       "source_location": "L1646",
-      "community": 4,
+      "community": 0,
       "norm_label": "loadpdfdata()",
       "id": "src_viewershared_loadpdfdata"
     },
@@ -1016,7 +1043,7 @@
       "file_type": "code",
       "source_file": "src/viewerShared.js",
       "source_location": "L1683",
-      "community": 0,
+      "community": 4,
       "norm_label": "saveannotationsbypage()",
       "id": "src_viewershared_saveannotationsbypage"
     },
@@ -1025,7 +1052,7 @@
       "file_type": "code",
       "source_file": "src/viewerShared.js",
       "source_location": "L1710",
-      "community": 4,
+      "community": 0,
       "norm_label": "loadannotationsbypage()",
       "id": "src_viewershared_loadannotationsbypage"
     },
@@ -1160,7 +1187,7 @@
       "file_type": "code",
       "source_file": "src/viewerShared.js",
       "source_location": "L1928",
-      "community": 4,
+      "community": 0,
       "norm_label": "loadcallouts()",
       "id": "src_viewershared_loadcallouts"
     },
@@ -1232,7 +1259,7 @@
       "file_type": "code",
       "source_file": "src/viewerShared.js",
       "source_location": "L2032",
-      "community": 0,
+      "community": 4,
       "norm_label": "getmoduledatakey()",
       "id": "src_viewershared_getmoduledatakey"
     },
@@ -1277,7 +1304,7 @@
       "file_type": "code",
       "source_file": "src/viewerShared.js",
       "source_location": "L2143",
-      "community": 0,
+      "community": 4,
       "norm_label": "migratelegacysurveymarkers()",
       "id": "src_viewershared_migratelegacysurveymarkers"
     }
@@ -2255,9 +2282,9 @@
       "source_file": "src/PDFViewer.jsx",
       "source_location": "L18",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "src_pdfviewer",
-      "target": "utils_pdfviewergeometry",
-      "confidence_score": 1.0
+      "target": "utils_pdfviewergeometry"
     },
     {
       "relation": "imports",
@@ -2266,8 +2293,62 @@
       "source_file": "src/PDFViewer.jsx",
       "source_location": "L18",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "src_pdfviewer",
-      "target": "utils_pdfviewergeometry_boundsmatch",
+      "target": "utils_pdfviewergeometry_boundsmatch"
+    },
+    {
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "src/PDFViewer.jsx",
+      "source_location": "L19",
+      "weight": 1.0,
+      "source": "src_pdfviewer",
+      "target": "utils_templateconfig",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "src/PDFViewer.jsx",
+      "source_location": "L19",
+      "weight": 1.0,
+      "source": "src_pdfviewer",
+      "target": "utils_templateconfig_sanitizetemplateconfig",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/__tests__/templateConfig.test.mjs",
+      "source_location": "L3",
+      "weight": 1.0,
+      "source": "tests_templateconfig_test",
+      "target": "utils_templateconfig",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/__tests__/templateConfig.test.mjs",
+      "source_location": "L3",
+      "weight": 1.0,
+      "source": "tests_templateconfig_test",
+      "target": "utils_templateconfig_sanitizetemplateconfig",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/utils/templateConfig.js",
+      "source_location": "L6",
+      "weight": 1.0,
+      "source": "utils_templateconfig",
+      "target": "utils_templateconfig_sanitizetemplateconfig",
       "confidence_score": 1.0
     },
     {
@@ -2277,9 +2358,9 @@
       "source_file": "src/utils/__tests__/pdfViewerGeometry.test.mjs",
       "source_location": "L3",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "tests_pdfviewergeometry_test",
-      "target": "utils_pdfviewergeometry",
-      "confidence_score": 1.0
+      "target": "utils_pdfviewergeometry"
     },
     {
       "relation": "imports",
@@ -2288,9 +2369,9 @@
       "source_file": "src/utils/__tests__/pdfViewerGeometry.test.mjs",
       "source_location": "L3",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "tests_pdfviewergeometry_test",
-      "target": "utils_pdfviewergeometry_boundsmatch",
-      "confidence_score": 1.0
+      "target": "utils_pdfviewergeometry_boundsmatch"
     },
     {
       "relation": "contains",
@@ -2298,9 +2379,9 @@
       "source_file": "src/utils/pdfViewerGeometry.js",
       "source_location": "L7",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "utils_pdfviewergeometry",
-      "target": "utils_pdfviewergeometry_boundsmatch",
-      "confidence_score": 1.0
+      "target": "utils_pdfviewergeometry_boundsmatch"
     },
     {
       "relation": "contains",
@@ -4041,5 +4122,5 @@
     }
   ],
   "hyperedges": [],
-  "built_at_commit": "fbac4769ade2c8200aea7556d88cf20e59b84f23"
+  "built_at_commit": "3d96ac238fc4b23401959e5e1b140a7adf6f4453"
 }
