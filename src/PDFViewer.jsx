@@ -362,7 +362,6 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   const containerRef = useRef();
   const contentRef = useRef();
   const pageContainersRef = useRef({});
-  const canvasRef = useRef({});
   const pdfjsViewerRef = useRef(null);
   const pdfSidebarRef = useRef(null);
   const pdfjsWrapperRef = useRef(null);
@@ -864,7 +863,6 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   const renderTasksRef = useRef({});
   const isNavigatingRef = useRef(false);
   const isZoomingRef = useRef(false);
-  const observerRef = useRef(null);
   const targetPageRef = useRef(null);
   const [showLocateModal, setShowLocateModal] = useState(false);
   const [locateSearchQuery, setLocateSearchQuery] = useState('');
@@ -876,7 +874,6 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   const pageInputRef = useRef(null);
   const zoomInputRef = useRef(null);
   const pageRenderCacheRef = useRef(new PageRenderCache(100)); // Cache up to 100 pages
-  const preRenderQueueRef = useRef(new Set()); // Track pages being pre-rendered
   const lastScaleRef = useRef(1.0); // Track last scale for cache management
 
   const { uploadDataFile, downloadDocument: downloadFromStorage } = useStorage();
@@ -926,7 +923,6 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   const [scrollMode, setScrollMode] = useState('continuous');
   const usePdfjsRenderer = true;
   const [isPanning, setIsPanning] = useState(false);
-  const [panStart, setPanStart] = useState({ x: 0, y: 0 });
   const [renderedPages, setRenderedPages] = useState(new Set());
   const [debugLogging, setDebugLogging] = useState(false);
   const [overlayLagAutoRecordEnabled, setOverlayLagAutoRecordEnabled] = useState(() => readOverlayLagRecorderAutoEnabled());
@@ -3952,7 +3948,6 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   const regionEditReturnToolRef = useRef(null);
   const isPanningRef = useRef(false);
   // Track canvas mouse down for pan tool empty space panning
-  const canvasMouseDownRef = useRef(null);
 
   const [tooltip, setTooltip] = useState({ visible: false, text: '', x: 0, y: 0 });
   const [showAnnotationColorPicker, setShowAnnotationColorPicker] = useState(false);
