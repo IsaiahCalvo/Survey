@@ -597,20 +597,11 @@ export const useStorage = () => {
     if (error) throw error;
   }, []);
 
-  const getDocumentUrl = useCallback((filePath) => {
-    if (!isSupabaseAvailable()) return null;
-
-    const { data } = supabase.storage.from('documents').getPublicUrl(filePath);
-
-    return data.publicUrl;
-  }, []);
-
   return {
     uploadDocument,
     uploadDataFile,
     downloadDocument,
     deleteDocumentFile,
-    getDocumentUrl,
   };
 };
 

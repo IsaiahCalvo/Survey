@@ -149,9 +149,9 @@ export default function DocumentsLedger({
   const [docMenu, setDocMenu] = useState(null);
   const [clipboardDoc, setClipboardDoc] = useState(null);
 
-  /* Supabase storage helpers — let PdfPageThumb fetch a document's bytes to
-     render its real first page (download first, public URL as a fallback). */
-  const { downloadDocument, getDocumentUrl } = useStorage();
+  /* Supabase storage helper — let PdfPageThumb fetch a document's bytes to
+     render its real first page via the authenticated download (private bucket). */
+  const { downloadDocument } = useStorage();
 
   const projectNameById = useMemo(() => {
     const m = new Map();
@@ -333,7 +333,6 @@ export default function DocumentsLedger({
                       <PdfPageThumb
                         doc={d.raw}
                         downloadDocument={downloadDocument}
-                        getDocumentUrl={getDocumentUrl}
                         variant="row"
                         height={30}
                         fallback={<div style={{ width: 23, height: 30, flex: 'none' }}><PdfThumb height={30} stamp="" color={d.color} /></div>}
@@ -376,7 +375,6 @@ export default function DocumentsLedger({
                   key={sel.id}
                   doc={sel.raw}
                   downloadDocument={downloadDocument}
-                  getDocumentUrl={getDocumentUrl}
                   variant="preview"
                   fill
                   fallback={

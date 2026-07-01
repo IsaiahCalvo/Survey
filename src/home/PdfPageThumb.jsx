@@ -42,7 +42,7 @@ const releaseSlot = () => {
 
 /* Resolve a document object to PDF bytes — faithful to App.jsx's PDFThumbnail.
    Returns an ArrayBuffer, or null when there is no usable source. */
-const resolvePdfBytes = async (doc, downloadDocument, getDocumentUrl) => {
+const resolvePdfBytes = async (doc, downloadDocument) => {
   if (!doc) return null;
 
   // 1. A local File object (present right after an upload).
@@ -56,23 +56,15 @@ const resolvePdfBytes = async (doc, downloadDocument, getDocumentUrl) => {
     return res.arrayBuffer();
   }
 
-  // 3. A Supabase storage path. A local filesystem path is not a storage key.
+  // 3. A Supabase storage path via the authenticated download only. The bucket
+  // is private, so a getPublicUrl() fetch can never succeed — no public fallback.
   const filePath = doc.file_path || doc.filePath;
   if (filePath) {
     const looksLocal = filePath.includes('/Users/') || filePath.includes('\\')
       || filePath.startsWith('/') || filePath.includes(':');
     if (!looksLocal && downloadDocument) {
-      try {
-        const blob = await downloadDocument(filePath);
-        return await blob.arrayBuffer();
-      } catch { /* fall through to the public-URL fetch */ }
-    }
-    if (!looksLocal && getDocumentUrl) {
-      const url = getDocumentUrl(filePath);
-      if (url) {
-        const res = await fetch(url);
-        if (res.ok) return res.arrayBuffer();
-      }
+      const blob = await downloadDocument(filePath);
+      return await blob.arrayBuffer();
     }
   }
 
@@ -131,7 +123,6 @@ const DEFAULT_ASPECT = 612 / 792;
 export default function PdfPageThumb({
   doc,
   downloadDocument,
-  getDocumentUrl,
   variant = 'preview',
   height = variant === 'row' ? 30 : 460,
   fill = false,
@@ -155,7 +146,7 @@ export default function PdfPageThumb({
     let slotHeld = false;
     (async () => {
       try {
-        const arrayBuffer = await resolvePdfBytes(doc, downloadDocument, getDocumentUrl);
+        const arrayBuffer = await resolvePdfBytes(doc, downloadDocument);
         if (cancelled) return;
         if (!arrayBuffer) {
           if (docId) thumbCache.set(docId, 'FAILED');
@@ -183,7 +174,7 @@ export default function PdfPageThumb({
     })();
 
     return () => { cancelled = true; };
-  }, [docId, doc?.file, doc?.file_path, doc?.filePath, doc?.dataUrl, downloadDocument, getDocumentUrl]);
+  }, [docId, doc?.file, doc?.file_path, doc?.filePath, doc?.dataUrl, downloadDocument]);
 
   if (failed) return fallback;
 
