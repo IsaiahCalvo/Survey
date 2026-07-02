@@ -42,35 +42,45 @@ at the deployed payments listener → then hand the five live values to the agen
 them in and run the one real checkout with you.
 Product choice first: **free/trial vs paid at launch** — if free, skip all this.
 
-## 3. Email + web address — updated 2026-07-02 after the inbox investigation
+## 3. Email + web address — updated 2026-07-02 (late-night session)
 
-**What's true now (found + fixed during the email assessment):**
-- Account emails (confirm/reset) WORK again — rolled back to the built-in
-  sender after discovering Gmail silently drops mail from `walkthru.tools`
-  (verified: a real reset email landed in your inbox; the two earlier "test"
-  emails never arrived anywhere despite the mail service reporting delivered).
-  The built-in sender is rate-limited (~a few emails/hour) — fine for testing,
-  not for launch volume.
+**What's confirmed working:**
+- Account emails (confirm/sign-up, password reset) — reliable, on the
+  built-in sender. Verified live: a real reset email landed in your inbox.
+  Rate-limited (~a few per hour) — fine pre-launch, not for launch volume.
 - The recurring **Supabase "action required" security emails** were the
-  security advisor's 141 findings (zero critical). Hardened 2026-07-02:
-  141 → 81, everything remaining is by-design. Those emails should quiet down.
-- The recurring **Vercel "2 domains need configuration"** emails: your app IS
-  set up on Vercel deploying to `surveytool.app` — but that domain has NO
-  nameservers anywhere (likely never delegated or lapsed at the registrar), so
-  the site is unreachable and Vercel keeps nagging. `survey-app.app` is in the
-  same state.
+  security advisor's 141 findings (zero critical). Hardened: 141 → 81,
+  everything remaining is by-design. Those emails should quiet down.
+- The recurring **Vercel "2 domains need configuration"** emails: explained,
+  not yet fixed — see below.
+- The missing anti-spoofing record (DMARC) for `walkthru.tools` was added in
+  Cloudflare and is confirmed live in DNS.
 
-**Your 2-minute fixes (agent's browser is bot-blocked from Cloudflare):**
-1. **Invite emails** — in Cloudflare → walkthru.tools → DNS → Add record:
-   Type `TXT`, Name `_dmarc`, Content `v=DMARC1; p=none;`
-   That's the missing anti-spoofing record; without it Gmail eats the mail.
-   Tell the agent when it's added and it will re-test end-to-end.
-2. **The web address** — log into wherever you bought `surveytool.app` and
-   either point its nameservers at the intended host or add the pointer record
-   Vercel asks for (`A @ 76.76.21.21`). If the domain lapsed, renew or pick a
-   new one. Once it resolves, the agent finishes the sign-up settings
-   (site URL + redirect allow-list) and can also switch email sending to the
-   Survey-branded domain in minutes.
+**What's still NOT working, and why — invite/share emails:**
+Even after adding DMARC, two more test invite emails (one with a real invite
+link, not a placeholder) still never reached your Gmail inbox — the sending
+service reports them as delivered, but Gmail shows no trace at all, not even
+spam. DMARC was necessary but wasn't sufficient. The most likely remaining
+cause: `walkthru.tools` has zero sending history with Gmail — a brand-new
+domain gets silently filtered on its first sends even with every technical box
+checked, and this typically self-resolves after a handful of real, human-opened
+sends build up trust (there's no single flag to flip for this — reputation
+just has to accrue). If you want a concrete signal instead of guessing, add
+`walkthru.tools` in **Google Postmaster Tools** (postmaster.google.com,
+free, just requires a DNS ownership check) — it shows Gmail's actual trust
+score for the domain. Deliberately stopped further synthetic test-sending
+tonight rather than keep guessing at your inbox — the DNS fix is correctly in
+place; the next real invite you send from actual app use is the real test.
+
+**Your fix when ready — the web address (also unlocks a Survey-branded
+sending domain instead of borrowing Walkthru's):**
+Log into wherever you bought `surveytool.app` and either point its
+nameservers at the intended host or add the pointer record Vercel asks for
+(`A @ 76.76.21.21`). If the domain lapsed, renew it or pick a new one — this
+is also what's silencing the Vercel nag emails (the domain has no working DNS
+anywhere, so the site is unreachable). Once it resolves, the agent finishes
+the sign-up settings (site URL + redirect allow-list) and can set up a
+Survey-branded sending domain with its own reputation, separate from Walkthru.
 
 ## 4. Small product choices (decide one at a time, as they come up)
 
