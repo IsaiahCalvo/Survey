@@ -291,6 +291,27 @@ export const useDocuments = (projectId = null) => {
         .select()
         .single();
 
+      // KAL-267: two near-simultaneous uploads of identical bytes can both pass
+      // the SELECT dedup check above; the loser's insert then trips the unique
+      // content-hash index (23505). That's a dedup HIT, not a failure — fetch
+      // and reuse the winner's row.
+      if (error && error.code === '23505' && sha) {
+        let retry = supabase
+          .from('documents')
+          .select('*')
+          .eq('user_id', user.id)
+          .eq('content_sha256', sha)
+          .limit(1);
+        retry = (documentData.project_id == null)
+          ? retry.is('project_id', null)
+          : retry.eq('project_id', documentData.project_id);
+        const { data: winner, error: retryErr } = await retry.maybeSingle();
+        if (!retryErr && winner) {
+          setDocuments([winner, ...documents.filter((d) => d.id !== winner.id)]);
+          return winner;
+        }
+      }
+
       if (error) throw error;
       setDocuments([data, ...documents]);
       return data;
