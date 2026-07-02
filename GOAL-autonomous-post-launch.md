@@ -56,9 +56,27 @@ Full ticket list is in `HANDOFF-post-launch-push.md` section 2 (palette
 unification, empty-state redesign, Survey panel polish, copy-tone pass,
 confirm-dialog consistency). Pull each ticket's current description from
 Linear before starting — do not work from a summary that might have drifted.
-No product decision is needed for any of these; if you find one that
-actually does require a call, skip it and log why in this file's log below —
-do not guess on a genuine design decision.
+
+**Two decisions Isaiah made explicitly on 2026-07-02 — these are settled,
+do not re-ask or second-guess them:**
+
+- **Palette unification (KAL-56, KAL-64, KAL-70, KAL-71, KAL-73):** the
+  document viewer's cooler blue-gray chrome gets replaced with the home
+  screen's warm gold identity — not the other way around. Pull the actual
+  color/spacing values from wherever the home screen already defines them
+  (its existing theme/token source, not the viewer's) so the viewer ends up
+  matching real, already-in-use values rather than newly-invented ones.
+  Every screen should read as one app when you're done.
+- **Empty-state redesign (KAL-58):** the original design mockup this ticket
+  pointed at no longer exists in the repo. Design it yourself — icon,
+  a short friendly headline, one primary button — using the now-decided
+  warm gold style. No preview/approval gate; it goes through the same
+  build+test+browser-verify gate as everything else and counts as done.
+
+For anything else in this backlog: if you hit a REAL judgment call not
+covered above or by an obvious existing pattern elsewhere in the app, skip
+that specific item and log why below — do not guess on a genuine decision
+that wasn't actually settled.
 
 ## Work item 3 — minor cleanup (only after 1 and 2, only if time allows)
 
