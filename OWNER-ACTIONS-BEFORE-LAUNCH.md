@@ -1,80 +1,61 @@
 # Owner actions before launch — the human-only steps
 
-_Compiled 2026-07-01 during the MVP-wrapup build. Everything an agent could
-build/verify is done and committed on `claude/quirky-taussig-7fda28`; the items
-below need Isaiah's hands (accounts, portals, secrets, live money) and cannot be
-done by an agent._
+_Compiled 2026-07-01 during the MVP-wrapup build; UPDATED same evening after the
+secrets/email work. Everything an agent could build/verify is done and committed
+on `claude/quirky-taussig-7fda28`; the items below need Isaiah's hands (accounts,
+portals, live money) and cannot be done by an agent._
 
-## 1. Microsoft 365 + Excel live two-way sync — the core selling point
+## ✅ Done by the agent 2026-07-01 evening (was on this list, now off it)
 
-All the code is built, wired, and dormant behind a master gate; it waits ONLY on
-these two human steps, then a live pass.
+- **Both secret rotations**: the leaked GitHub log token was REVOKED (confirmed
+  dead) and scrubbed from every local env copy; the dev app-account password was
+  ROTATED server-side, sign-in verified, and every local env copy updated (dev
+  auto-login keeps working — the new password lives in `.env.local`).
+- **Real email delivery**: Isaiah's Resend account already had a VERIFIED
+  sending domain (`walkthru.tools`). The agent set the share/invite sender to
+  `Survey <notifications@walkthru.tools>` (function secret `SEND_EMAIL_FROM`)
+  and configured Supabase auth SMTP with a freshly-minted sending-only Resend
+  key (named `survey-supabase-smtp` in the Resend dashboard). Confirmation,
+  password-reset, and invite emails now deliver to ANY address. Two live test
+  emails were sent to isaiahcalvo123@gmail.com as eyewitness proof.
+  _Note: the sender domain is the Walkthru brand — swap to a Survey/Kalvoe
+  domain later by verifying it in Resend and updating one secret + one setting._
 
-- **Azure app-registration change** (app `0da81a9e-2b05-46ee-b826-5efc5114c765`):
-  add a **"Mobile and desktop applications"** platform with redirect
-  `http://localhost`, and enable **"Allow public client flows"**. For the
-  browser build also add the hosted web origin(s) as redirect URIs once the site
-  URL is known.
-- **Sign in with a real work/school Microsoft account** in the app (system
-  browser; passkey / Windows Hello should render).
-- Then the 6-step **Verify Live Sync** checklist on a SCRATCH OneDrive-for-Business
-  / SharePoint workbook (never the production survey file), per
-  `HANDOFF-excel-sync-next.md` §"Recommended order". Only after it passes green:
-  authorize flipping the live write-back master gate
-  (`LIVE_WRITEBACK_ENABLED` in `src/services/excelCapability.js`), then re-run
-  the drain on the scratch workbook and confirm Row IDs land in column A with
-  read-back before touching a real file.
+## 1. Microsoft 365 + Excel live sync — PARKED (company tenant blocks the app)
 
-## 2. Stripe / payments — go live (currently TEST mode)
+Isaiah's company M365 blocks the app registration, so the Azure change + work
+sign-in cannot happen right now. The entire sync engine stays built, wired, and
+dormant behind its master gate — zero code work remains. Paths forward when
+ready: ask the company tenant admin to approve/consent the app; OR use a
+personal Microsoft 365 Business tenant for the launch pitch; OR park live
+write-back and launch with "Excel import + review" wording. Full checklist for
+whenever it unblocks: `HANDOFF-excel-sync-next.md` §"Recommended order".
 
-The client key is a `pk_test_…` key and the deployed function secrets are
-test-mode. To sell a paid tier on day one:
+## 2. Stripe / payments — go live (currently TEST mode; only you can)
 
-- In the Stripe dashboard, switch to **live mode** and create the live
-  products/prices.
-- Replace the deployed function secrets on the production Supabase project with
-  **live** values: `STRIPE_SECRET_KEY` (`sk_live_…`), the three price IDs
-  (`STRIPE_PRO_MONTHLY_PRICE_ID`, `STRIPE_PRO_ANNUAL_PRICE_ID`,
-  `STRIPE_ENTERPRISE_PRICE_ID`), and `STRIPE_WEBHOOK_SECRET` from a **live**
-  webhook endpoint pointed at the deployed `stripe-webhook` function.
-- Replace `VITE_STRIPE_PUBLISHABLE_KEY` in the client env with the `pk_live_…`
-  key.
-- Run **one real checkout** and confirm the account upgrades.
-- Product choice: **free/trial vs paid at launch** — if free/trial-only, nothing
-  to flip.
+There are no live keys anywhere on this machine, and creating them requires
+your Stripe dashboard login (and possibly Stripe's business-verification step).
+In the dashboard: activate live mode → create the live products/prices
+(Pro $9.99/mo, Pro $99/yr, Enterprise $20/user/mo) → add a live webhook pointed
+at the deployed payments listener → then hand the five live values to the agent
+(publishable key, secret key, webhook secret, three price IDs) and it will wire
+them in and run the one real checkout with you.
+Product choice first: **free/trial vs paid at launch** — if free, skip all this.
 
-## 3. New-user sign-up on the live site (Supabase dashboard config)
+## 3. Pick the app's web address (blocks the last two sign-up settings)
 
-The account screens are all built and browser-verified (sign up, "check your
-email" with resend, password reset page, change password with current-password
-check). But production auth config is still dev defaults:
+The sign-up system's site URL is still a localhost placeholder and the redirect
+allow-list is empty — both need the real hosted web address, and none exists
+yet. Decision needed: host the web app now on a free temporary address (agent
+can do it, swap in a branded domain later) or wait until you pick/buy the
+domain. Once an address exists, the agent finishes both settings in minutes.
 
-- Site URL is still `http://localhost:3000` → set it to the real hosted URL.
-- No SMTP sender configured → configure a real email sender, OR set a verified
-  Resend domain and set the `SEND_EMAIL_FROM` function secret (the invite/share
-  emails currently send from Resend's sandbox address, which only delivers to the
-  account owner).
-- Redirect allow-list is empty → add the production URL plus the
-  `/reset-password` and `/invite/<token>` return links.
-- Confirm the email-confirmation on/off setting matches the "check your email"
-  copy.
+## 4. Small product choices (decide one at a time, as they come up)
 
-## 4. Rotate two dev secrets (hygiene — not a public leak)
-
-Both live only in the git-ignored local env, but rotate for hygiene:
-
-- Revoke the old **GitHub personal-access token**; if you still want the
-  push-logs-to-GitHub debug feature, store the new one as a **non-`VITE_`** env
-  var so it never enters a browser bundle.
-- Rotate the **dev Supabase database password**.
-
-## 5. Small product choices (decide one at a time)
-
-Not blockers, but each needs your call before the relevant screen ships:
-image/stamp annotations in or out; the exact print/export options; the
+Image/stamp annotations in or out; the exact print/export options; the
 imported-ink policy; the few dead-end buttons; free vs paid at launch.
 
-## 6. Mobile stores (only if shipping the phone/tablet apps day one)
+## 5. Mobile stores (only if shipping the phone/tablet apps day one)
 
 Apple Developer membership + signing identity → TestFlight/App Store; Google
 Play Console + signing key → Play. The current bundle builds into both native
