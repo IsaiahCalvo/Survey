@@ -42,13 +42,35 @@ at the deployed payments listener → then hand the five live values to the agen
 them in and run the one real checkout with you.
 Product choice first: **free/trial vs paid at launch** — if free, skip all this.
 
-## 3. Pick the app's web address (blocks the last two sign-up settings)
+## 3. Email + web address — updated 2026-07-02 after the inbox investigation
 
-The sign-up system's site URL is still a localhost placeholder and the redirect
-allow-list is empty — both need the real hosted web address, and none exists
-yet. Decision needed: host the web app now on a free temporary address (agent
-can do it, swap in a branded domain later) or wait until you pick/buy the
-domain. Once an address exists, the agent finishes both settings in minutes.
+**What's true now (found + fixed during the email assessment):**
+- Account emails (confirm/reset) WORK again — rolled back to the built-in
+  sender after discovering Gmail silently drops mail from `walkthru.tools`
+  (verified: a real reset email landed in your inbox; the two earlier "test"
+  emails never arrived anywhere despite the mail service reporting delivered).
+  The built-in sender is rate-limited (~a few emails/hour) — fine for testing,
+  not for launch volume.
+- The recurring **Supabase "action required" security emails** were the
+  security advisor's 141 findings (zero critical). Hardened 2026-07-02:
+  141 → 81, everything remaining is by-design. Those emails should quiet down.
+- The recurring **Vercel "2 domains need configuration"** emails: your app IS
+  set up on Vercel deploying to `surveytool.app` — but that domain has NO
+  nameservers anywhere (likely never delegated or lapsed at the registrar), so
+  the site is unreachable and Vercel keeps nagging. `survey-app.app` is in the
+  same state.
+
+**Your 2-minute fixes (agent's browser is bot-blocked from Cloudflare):**
+1. **Invite emails** — in Cloudflare → walkthru.tools → DNS → Add record:
+   Type `TXT`, Name `_dmarc`, Content `v=DMARC1; p=none;`
+   That's the missing anti-spoofing record; without it Gmail eats the mail.
+   Tell the agent when it's added and it will re-test end-to-end.
+2. **The web address** — log into wherever you bought `surveytool.app` and
+   either point its nameservers at the intended host or add the pointer record
+   Vercel asks for (`A @ 76.76.21.21`). If the domain lapsed, renew or pick a
+   new one. Once it resolves, the agent finishes the sign-up settings
+   (site URL + redirect allow-list) and can also switch email sending to the
+   Survey-branded domain in minutes.
 
 ## 4. Small product choices (decide one at a time, as they come up)
 
