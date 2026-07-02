@@ -1,8 +1,8 @@
 # Loop Baton — Survey queue (scheduled sessions read this FIRST)
 
 **active_since:** none
-**session_title:** pick next from board (queue THIN — everything remaining awaits Isaiah decisions/acks or burns the held last cap slot; ALSO: as of 22:02 Isaiah has live UNCOMMITTED WIP in src/sidebar/SpacesPanel.jsx + styles.css + BookmarksPanel/SearchTextPanel — do not touch those files or commit anything that sweeps them up until he lands it)
-**last_session_ended:** 2026-06-11 ~22:10 (idle re-sweep — board unchanged since 20:20, no new commits, nothing eligible; exited immediately per idle rule. Isaiah actively editing the app at 22:02: large uncommitted sidebar/SpacesPanel rework + styles.css, dev server/renderer log live)
+**session_title:** pick next from HANDOFF-post-launch-push.md — invite-email routing investigation is scoped and ready to build (see that doc's "Do this first" section); design-polish backlog after that
+**last_session_ended:** 2026-07-02 ~12:30 (MVP-wrapup interactive session wound down cleanly. Full product is LIVE on main/production, commit ea3d61b8, verified by fetching the real served bundle. Isaiah explicitly approved the production push. Wrote HANDOFF-post-launch-push.md as the entry point for whatever picks this up next — read it before touching anything. Owner-gated items (Stripe live, Microsoft/Excel) are explicitly parked, do not re-surface. Baseline: 1810 tests / 1726 pass / 0 fail / 84 skipped.)
 **code-change cap used:** 5 of 6 — KAL-298 (71a82125), KAL-302 (9183e7c9), KAL-75 src guards+fixes (1838f3cf), KAL-304 (666f1c5f), KAL-303 (30c9bf53). KAL-287 + KAL-288 were cap-free audit work.
 
 ## Session title protocol
@@ -26,6 +26,48 @@ CONTEXT BUDGET (hard rule): check remaining context after every task. At 50% rem
 IDLE RULE: when no eligible tasks remain, write the wind-down summary into this file, set active_since to none, and END the session — no heartbeating.
 
 CAP: audits/test-only work doesn't count; after 6 completed code-change tasks total (5 now used), do test/audit-only work until Isaiah confirms testing.
+
+## MVP-wrapup takeover progress (2026-07-01, branch claude/quirky-taussig-7fda28)
+
+Long-running interactive launch push. LANDED + browser-verified this session
+(all gated on clean build + node tests, ending baseline 1808/1724/0/84):
+- **Browser export** of the annotated PDF (was desktop-only). Verified live:
+  real download, 17 annotations baked into page 1. (fe85c5fb)
+- **Project + template sharing** backend live on prod (project_invites,
+  template_invites, template_collaborators, accept/resend/revoke RPCs,
+  user_can_access_template) + closed live RLS gaps (projects SELECT via
+  collaborators; documents/projects co-owner rename/delete; project→document
+  flow-through). 17-step RLS smoke green on survey-test. (92b2d86b, migration
+  20260701120000). Sharing UI made real end-to-end incl. the old decoy Manage
+  Team modal. (77a7a9c3) Verified live: 2nd real account accepted a UI-minted
+  project invite, 0→1 projects.
+- **Viewer-role read-only gating**: get_my_document_role RPC (20260701130000) +
+  ReadOnlyGate viewer trigger. Verified live: 2nd user (viewer) sees dimmed
+  toolbar + "View-only access" banner; server-side viewer INSERT = 403.
+  (fa66acd6, a483db27)
+- **Account flows**: /reset-password page, resend-confirmation panel, verify
+  current password. Verified live (reset invalid-state + signup check-email +
+  resend cooldown). (4e2ffd4a)
+- **Security**: bucket confirmed private; removed dead public-URL thumbnail
+  fallback. (9b29417a)
+- **Save-restore epic (KAL-254)**: reconciled A–F — forward reliability is
+  done-by-rebuild + proven (yjs-roundtrip live). Built **BL-24** durable
+  op-append fix (eager checkpoint on failed op + pagehide/visibility flush +
+  sync-health signal, +3 tests) — under adversarial review, NOT yet committed.
+  Landed KAL-274 lock-gate on annotation_updates (prod). (8d342346)
+- **Linear**: KAL-254 confirmed Pre-MVP; KAL-61/288 → In Progress w/ comments;
+  KAL-259/287/295 comments; BL-24 filed as KAL-316.
+- **Owner blockers** written to OWNER-ACTIONS-BEFORE-LAUNCH.md (839b964b):
+  Microsoft Azure app-reg + work sign-in (M365 live sync — the one true blocker
+  on the core selling point), Stripe live-key flip, Supabase auth prod config
+  (site_url still localhost:3000, no SMTP, empty redirect allowlist),
+  2 secret rotations.
+
+STILL OPEN (buildable, deferrable, or disposable): KAL-266 backfill of ~489
+live + 418 archived pre-rebuild user-drawn marks (Isaiah's OWN test data —
+app unpublished, disposable, NOT a real-user data-loss risk); KAL-267 atomic
+upsert race; KAL-275 dead-code deletion (partly blocked by source-assertion
+tests); KAL-277 same-name-upload UX modal.
 
 ## In-flight / next recommendation
 
