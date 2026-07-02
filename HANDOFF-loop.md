@@ -1,8 +1,8 @@
 # Loop Baton — Survey queue (scheduled sessions read this FIRST)
 
 **active_since:** none
-**session_title:** pick next from HANDOFF-post-launch-push.md — invite-email routing investigation is scoped and ready to build (see that doc's "Do this first" section); design-polish backlog after that
-**last_session_ended:** 2026-07-02 ~12:30 (MVP-wrapup interactive session wound down cleanly. Full product is LIVE on main/production, commit ea3d61b8, verified by fetching the real served bundle. Isaiah explicitly approved the production push. Wrote HANDOFF-post-launch-push.md as the entry point for whatever picks this up next — read it before touching anything. Owner-gated items (Stripe live, Microsoft/Excel) are explicitly parked, do not re-surface. Baseline: 1810 tests / 1726 pass / 0 fail / 84 skipped.)
+**session_title:** work GOAL-autonomous-post-launch.md unattended — do NOT push to main for any item in it, commit+gate+verify then mark DONE-AWAITING-PUSH and continue
+**last_session_ended:** 2026-07-02 ~13:00 (MVP-wrapup interactive session wound down cleanly. Full product is LIVE on main/production, commit ea3d61b8, verified by fetching the real served bundle. Isaiah explicitly approved that production push — a ONE-TIME approval for that batch, not standing permission. Immediately after, Isaiah asked for a genuinely autonomous queue with the push question resolved explicitly: he chose "commit + gate + wait for my OK", NOT auto-publish. GOAL-autonomous-post-launch.md is the authoritative unattended spec — read it first, it supersedes the interactive-session framing in HANDOFF-post-launch-push.md (still useful for full technical context, just not the directive). Owner-gated items (Stripe live, Microsoft/Excel) are explicitly parked, do not re-surface, do not push. Baseline: 1810 tests / 1726 pass / 0 fail / 84 skipped.)
 **code-change cap used:** 5 of 6 — KAL-298 (71a82125), KAL-302 (9183e7c9), KAL-75 src guards+fixes (1838f3cf), KAL-304 (666f1c5f), KAL-303 (30c9bf53). KAL-287 + KAL-288 were cap-free audit work.
 
 ## Session title protocol
