@@ -390,6 +390,19 @@ if (import.meta.env.DEV) {
   }
 }
 
+// Recovery/confirm links that expired or were already used bounce back to the
+// site root with an `#error=...&error_code=otp_expired` hash. Route those to the
+// reset-password page so the user sees a clear "request a new link" screen
+// instead of the bare app with an unexplained error in the URL.
+if (!devRouteActive && typeof window !== 'undefined') {
+  const errHash = window.location.hash || '';
+  const onAuthRoute = /^\/(invite|reset-password)/.test(window.location.pathname || '');
+  if (!onAuthRoute && /error_code=otp_expired|error=access_denied/.test(errHash)) {
+    devRouteActive = true;
+    window.location.replace('/reset-password' + errHash);
+  }
+}
+
 // KAL-31 Phase D: `/invite/<token>` landing page. Rendered inside AuthProvider
 // so the page can read the current user and call the accept RPC. Mounted at
 // the same root, replacing the App until the user is done with the invite.

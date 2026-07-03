@@ -35,7 +35,7 @@ const GOOGLE_LOGO_SVG = (
 );
 
 export const AccountSettings = ({ isOpen, onClose }) => {
-  const { user, updateProfile, updatePassword, signIn, signOut, signInWithGoogle, refreshSubscriptionTier } = useAuth();
+  const { user, updateProfile, updatePassword, signIn, signOut, signInWithGoogle, resetPassword, refreshSubscriptionTier } = useAuth();
   const { isAuthenticated: isMSAuthenticated, login: msLogin, logout: msLogout, account: msAccount, needsReconnect: msNeedsReconnect } = useMSGraph();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -316,6 +316,21 @@ export const AccountSettings = ({ isOpen, onClose }) => {
     }
   };
 
+  const handleSendResetLink = async () => {
+    setError('');
+    setMessage('');
+    if (!email) { setError('No email on file to send a reset link to.'); return; }
+    setLoading(true);
+    try {
+      await resetPassword(email);
+      setMessage(`A password reset link has been sent to ${email}. Check your inbox and follow the link to set a new password.`);
+    } catch (err) {
+      setError(err?.message || 'Could not send a reset link. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <div className="account-settings-overlay" onClick={onClose}>
       <div className="account-settings-modal" onClick={(e) => e.stopPropagation()}>
@@ -324,7 +339,7 @@ export const AccountSettings = ({ isOpen, onClose }) => {
         <div className="account-settings-header">
           <h2>Settings</h2>
           <button className="account-settings-close" onClick={onClose} aria-label="Close">
-            ×
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"><path d="M3 3l8 8M11 3l-8 8" /></svg>
           </button>
         </div>
 
@@ -490,6 +505,15 @@ export const AccountSettings = ({ isOpen, onClose }) => {
                             autoComplete="new-password"
                           />
                         </div>
+
+                        <button
+                          type="button"
+                          onClick={handleSendResetLink}
+                          disabled={loading}
+                          style={{ display: 'inline-block', background: 'none', border: 'none', color: '#d8a84e', fontSize: '12px', fontWeight: 600, cursor: 'pointer', padding: '2px 0', textDecoration: 'underline' }}
+                        >
+                          Forgot your current password? Email me a reset link
+                        </button>
                       </div>
 
                       <div className="account-btn-group">
@@ -509,6 +533,8 @@ export const AccountSettings = ({ isOpen, onClose }) => {
                   )}
                 </section>
 
+                {!isEditing && (
+                  <>
                 {/* Danger Zone */}
                 <section className="account-section account-danger-zone">
                   {!showDeleteConfirm ? (
@@ -561,6 +587,8 @@ export const AccountSettings = ({ isOpen, onClose }) => {
                     Sign Out
                   </button>
                 </section>
+                  </>
+                )}
               </>
             )}
 
