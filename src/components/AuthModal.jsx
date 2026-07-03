@@ -9,7 +9,8 @@
  */
 import { useEffect, useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
-import { resendCooldownRemainingMs } from './authFlow';
+import { resendCooldownRemainingMs, passwordMeetsRequirements } from './authFlow';
+import PasswordRequirements from './PasswordRequirements';
 import './AuthModal.css';
 
 // Static brand logo — hoisted so it isn't recreated on every render.
@@ -69,6 +70,11 @@ export const AuthModal = ({ isOpen, onClose, onDismiss }) => {
       } else if (mode === 'signup') {
         if (password !== confirmPassword) {
           setError('Passwords do not match');
+          setLoading(false);
+          return;
+        }
+        if (!passwordMeetsRequirements(password, { email, firstName, lastName })) {
+          setError('Password does not meet requirements');
           setLoading(false);
           return;
         }
@@ -261,6 +267,11 @@ export const AuthModal = ({ isOpen, onClose, onDismiss }) => {
                 required
                 disabled={loading}
               />
+              {mode === 'signup' && (
+                <div style={{ marginTop: 6 }}>
+                  <PasswordRequirements password={password} email={email} firstName={firstName} lastName={lastName} />
+                </div>
+              )}
             </div>
           )}
 

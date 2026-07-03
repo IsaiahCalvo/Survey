@@ -18,6 +18,7 @@
 import { useContext, useEffect, useState } from 'react';
 import { AuthContext } from '../contexts/AuthContext';
 import { RECOVERY_SESSION_GRACE_MS, resolveRecoveryPhase, validateNewPassword } from './authFlow';
+import PasswordRequirements from './PasswordRequirements';
 
 const C = {
   bg: '#12151c',
@@ -72,7 +73,7 @@ export default function ResetPasswordPage() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    const validationError = validateNewPassword(password, confirmPassword);
+    const validationError = validateNewPassword(password, confirmPassword, { email: session?.user?.email });
     if (validationError) {
       setError(validationError);
       return;
@@ -185,6 +186,7 @@ export default function ResetPasswordPage() {
                   style={inputStyle()}
                 />
               </label>
+              <PasswordRequirements password={password} email={session?.user?.email} theme={C} />
               <label style={labelStyle()}>
                 Confirm new password
                 <input

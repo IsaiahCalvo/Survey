@@ -14,6 +14,9 @@ import {
   resendCooldownRemainingMs,
   resolveRecoveryPhase,
   validateNewPassword,
+  passwordRequirements,
+  passwordMeetsRequirements,
+  PASSWORD_MIN_LENGTH,
 } from '../src/components/authFlow.js';
 
 const MAIN_SOURCE = readFileSync(new URL('../src/main.jsx', import.meta.url), 'utf8');
@@ -58,11 +61,38 @@ test('recovery phase: no session after boot + grace means the link is invalid', 
   assert.equal(resolveRecoveryPhase({ hasSession: false, bootFinished: true, graceElapsed: true }), 'invalid');
 });
 
-test('new-password validation mirrors the AccountSettings rules', () => {
+test('new-password validation enforces the full requirement set', () => {
+  const strong = 'Str0ng!Passw0rd';
   assert.equal(validateNewPassword('', ''), 'Please enter a new password');
-  assert.equal(validateNewPassword('12345', '12345'), 'Password must be at least 6 characters');
-  assert.equal(validateNewPassword('123456', '654321'), 'Passwords do not match');
-  assert.equal(validateNewPassword('123456', '123456'), null);
+  // Too short / missing classes → "does not meet requirements" (not the raw server message)
+  assert.equal(validateNewPassword('12345', '12345'), 'Password does not meet requirements');
+  assert.equal(validateNewPassword('short1!A', 'short1!A'), 'Password does not meet requirements');
+  // Strong password but mismatched confirm.
+  assert.equal(validateNewPassword(strong, 'different'), 'Passwords do not match');
+  // Strong + matching passes.
+  assert.equal(validateNewPassword(strong, strong), null);
+});
+
+test('password requirements checklist reflects each rule', () => {
+  assert.equal(PASSWORD_MIN_LENGTH, 12);
+  const met = (pw, opts) => Object.fromEntries(passwordRequirements(pw, opts).map((r) => [r.id, r.met]));
+  const weak = met('abc');
+  assert.equal(weak.length, false);
+  assert.equal(weak.upper, false);
+  assert.equal(weak.special, false);
+  const good = met('Str0ng!Passw0rd');
+  assert.equal(good.length, true);
+  assert.equal(good.upper, true);
+  assert.equal(good.lower, true);
+  assert.equal(good.number, true);
+  assert.equal(good.special, true);
+  assert.equal(good.nospace, true);
+  // Spaces and personal info are rejected.
+  assert.equal(met('Str0ng! Passw0rd').nospace, false);
+  assert.equal(met('Isaiah!2026aaaa', { firstName: 'Isaiah' }).nopersonal, false);
+  assert.equal(met('Str0ng!Passw0rd', { firstName: 'Isaiah' }).nopersonal, true);
+  assert.equal(passwordMeetsRequirements('Str0ng!Passw0rd'), true);
+  assert.equal(passwordMeetsRequirements('weak'), false);
 });
 
 // --- wiring: /reset-password route + page -----------------------------------

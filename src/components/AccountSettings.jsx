@@ -14,6 +14,8 @@ import { getSupabaseSession, supabase } from '../supabaseClient';
 import StripeCheckout from './StripeCheckout';
 import UsageIndicator from './UsageIndicator';
 import './AccountSettings.css';
+import PasswordRequirements from './PasswordRequirements';
+import { passwordMeetsRequirements } from './authFlow';
 
 // Static brand logos — hoisted so they aren't recreated on every render.
 const MICROSOFT_LOGO_SVG = (
@@ -197,8 +199,8 @@ export const AccountSettings = ({ isOpen, onClose }) => {
           return;
         }
 
-        if (newPassword.length < 6) {
-          setError('Password must be at least 6 characters');
+        if (!passwordMeetsRequirements(newPassword, { email, firstName, lastName })) {
+          setError('Password does not meet requirements');
           setLoading(false);
           return;
         }
@@ -491,6 +493,9 @@ export const AccountSettings = ({ isOpen, onClose }) => {
                             disabled={loading}
                             autoComplete="new-password"
                           />
+                          <div style={{ marginTop: 6 }}>
+                            <PasswordRequirements password={newPassword} email={email} firstName={firstName} lastName={lastName} />
+                          </div>
                         </div>
 
                         <div className="account-form-group">
