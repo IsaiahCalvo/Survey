@@ -56,16 +56,20 @@ serve(async (req) => {
             throw new Error('Invalid tier. Must be "pro" or "enterprise"');
         }
 
-        // Get price ID based on tier and billing period
+        // Get price ID based on tier and billing period. Fail loudly if the
+        // required price secret is unset — never silently fall back to a shared
+        // placeholder price, which would charge the pro-monthly amount for an
+        // annual/enterprise checkout while still granting the higher tier.
+        const requirePrice = (name: string): string => {
+            const v = Deno.env.get(name);
+            if (!v) throw new Error(`Billing is not fully configured (missing ${name})`);
+            return v;
+        };
         let priceId: string;
         if (tier === 'pro') {
-            if (billingPeriod === 'annual') {
-                priceId = Deno.env.get('STRIPE_PRO_ANNUAL_PRICE_ID') || 'price_1SRsPPJrmRKkLZPfiAwkHYT6';
-            } else {
-                priceId = Deno.env.get('STRIPE_PRO_MONTHLY_PRICE_ID') || 'price_1SRsPPJrmRKkLZPfiAwkHYT6';
-            }
+            priceId = requirePrice(billingPeriod === 'annual' ? 'STRIPE_PRO_ANNUAL_PRICE_ID' : 'STRIPE_PRO_MONTHLY_PRICE_ID');
         } else if (tier === 'enterprise') {
-            priceId = Deno.env.get('STRIPE_ENTERPRISE_PRICE_ID') || 'price_1SRsPPJrmRKkLZPfiAwkHYT6';
+            priceId = requirePrice('STRIPE_ENTERPRISE_PRICE_ID');
         } else {
             throw new Error('Invalid tier');
         }

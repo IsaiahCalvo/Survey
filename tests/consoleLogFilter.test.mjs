@@ -1,10 +1,28 @@
 import test from 'node:test';
 import { equal } from 'node:assert/strict';
 
+import { equal as eq, match, doesNotMatch } from 'node:assert/strict';
 import {
   sanitizeConsoleLogText,
   shouldCaptureConsoleLine,
+  redactSecrets,
 } from '../src/utils/consoleLogFilter.js';
+
+test('redactSecrets scrubs credential-shaped strings', () => {
+  const jwt = 'eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c';
+  doesNotMatch(redactSecrets(`token is ${jwt}`), /eyJhbGci/);
+  match(redactSecrets(`token is ${jwt}`), /\[REDACTED_JWT\]/);
+  doesNotMatch(redactSecrets('Authorization: Bearer sbp_e4d2abcd1234deadbeef'), /sbp_e4d2/);
+  doesNotMatch(redactSecrets('key sk_live_51ABCdefGhiJK'), /sk_live_51ABC/);
+  doesNotMatch(redactSecrets('smtp xsmtpsib-abcd1234efgh-WkrRsTaT'), /xsmtpsib-abcd/);
+  doesNotMatch(redactSecrets('...&access_token=abcdef123456&type=recovery'), /abcdef123456/);
+  eq(redactSecrets('plain non-secret line'), 'plain non-secret line');
+});
+
+test('sanitizeConsoleLogText redacts secrets before output', () => {
+  const out = sanitizeConsoleLogText('user logged in Bearer sbp_deadbeefdeadbeef1234');
+  doesNotMatch(out, /sbp_deadbeef/);
+});
 
 test('captures useful undo logs', () => {
   equal(shouldCaptureConsoleLine('[UndoDiag] {"event":"undo_choice"}'), true);

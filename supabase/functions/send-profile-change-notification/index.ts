@@ -3,14 +3,26 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
 const RESEND_API_KEY = Deno.env.get('RESEND_API_KEY')
 
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+}
+
+const escapeHtml = (v: unknown) => String(v ?? '')
+  .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+  .replace(/"/g, '&quot;').replace(/'/g, '&#39;')
+
 serve(async (req) => {
+  if (req.method === 'OPTIONS') {
+    return new Response(null, { headers: corsHeaders })
+  }
   try {
     // Get the authorization header
     const authHeader = req.headers.get('Authorization')
     if (!authHeader) {
       return new Response(JSON.stringify({ error: 'No authorization header' }), {
         status: 401,
-        headers: { 'Content-Type': 'application/json' },
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       })
     }
 
@@ -34,7 +46,7 @@ serve(async (req) => {
     if (userError || !user) {
       return new Response(JSON.stringify({ error: 'Unauthorized' }), {
         status: 401,
-        headers: { 'Content-Type': 'application/json' },
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       })
     }
 
@@ -44,7 +56,7 @@ serve(async (req) => {
     if (!changedFields || changedFields.length === 0) {
       return new Response(JSON.stringify({ error: 'No changed fields provided' }), {
         status: 400,
-        headers: { 'Content-Type': 'application/json' },
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       })
     }
 
@@ -115,11 +127,11 @@ serve(async (req) => {
             <h1>Account Security Alert</h1>
           </div>
           <div class="content">
-            <p>Hello ${userName},</p>
+            <p>Hello ${escapeHtml(userName)},</p>
 
             <p>This email confirms that the following information on your Survey account was recently changed:</p>
 
-            <p><strong>Changed: ${fieldList}</strong></p>
+            <p><strong>Changed: ${escapeHtml(fieldList)}</strong></p>
 
             <div class="alert-box">
               <strong>⚠️ If this wasn't you:</strong>
@@ -165,7 +177,7 @@ serve(async (req) => {
         JSON.stringify({ error: 'Failed to send email', details: error }),
         {
           status: 500,
-          headers: { 'Content-Type': 'application/json' },
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         }
       )
     }
@@ -173,13 +185,13 @@ serve(async (req) => {
     const data = await res.json()
 
     return new Response(JSON.stringify({ success: true, data }), {
-      headers: { 'Content-Type': 'application/json' },
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     })
   } catch (error) {
     console.error('Error:', error)
     return new Response(JSON.stringify({ error: error.message }), {
       status: 500,
-      headers: { 'Content-Type': 'application/json' },
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     })
   }
 })

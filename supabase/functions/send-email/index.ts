@@ -208,7 +208,23 @@ Deno.serve(async (req) => {
             );
         }
 
-        const html = getTemplate(data || {});
+        // SECURITY: user-controlled fields (display names, document/project/
+        // template titles) are interpolated into the HTML email body, so escape
+        // every string value before building the template to prevent HTML/link
+        // injection in recipients' inboxes. URL fields must be http(s) or are
+        // dropped to '#'.
+        const escapeHtml = (v: unknown) => String(v ?? '')
+            .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+        const URL_FIELDS = new Set(['inviteUrl', 'documentUrl', 'portalUrl', 'appUrl']);
+        const safeData: Record<string, unknown> = {};
+        for (const [k, val] of Object.entries(data || {})) {
+            if (typeof val !== 'string') { safeData[k] = val; continue; }
+            safeData[k] = URL_FIELDS.has(k)
+                ? (/^https?:\/\//i.test(val) ? escapeHtml(val) : '#')
+                : escapeHtml(val);
+        }
+        const html = getTemplate(safeData);
 
         console.log(`Sending ${template} email to ${to}`);
 

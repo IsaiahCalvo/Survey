@@ -27,6 +27,32 @@ const DEFAULT_MAX_LINES = 450;
 const DEFAULT_MAX_CHARS = 200_000;
 const DEFAULT_MAX_LINE_CHARS = 4_000;
 
+// SECURITY: captured console output can be saved to disk AND pushed to a GitHub
+// repo, so scrub credential-shaped strings before anything leaves the app. Any
+// token/key/password that a log line, thrown error, or SDK diagnostic surfaces
+// is replaced with a placeholder so it can never be committed.
+const SECRET_PATTERNS = [
+  // JSON Web Tokens — Supabase access/refresh tokens, service-role keys.
+  [/\beyJ[A-Za-z0-9_-]{6,}\.[A-Za-z0-9_-]{6,}\.[A-Za-z0-9_-]{6,}/g, '[REDACTED_JWT]'],
+  // Authorization: Bearer <token>
+  [/(bearer\s+)[A-Za-z0-9._~+/=-]{10,}/gi, '$1[REDACTED]'],
+  // Provider secret keys: Stripe (sk_/pk_/rk_/whsec_), Brevo (xsmtpsib-/xkeysib-),
+  // Supabase management (sbp_), generic long hex/base64 secrets.
+  [/\b(?:sk|pk|rk)_(?:live|test)_[A-Za-z0-9]{6,}/g, '[REDACTED_KEY]'],
+  [/\bwhsec_[A-Za-z0-9]{6,}/g, '[REDACTED_KEY]'],
+  [/\bx(?:smtp|key)sib-[A-Za-z0-9-]{6,}/g, '[REDACTED_KEY]'],
+  [/\bsbp_[A-Za-z0-9]{6,}/g, '[REDACTED_KEY]'],
+  // access_token= / refresh_token= / api_key= / password= / secret= / token= pairs.
+  [/((?:access_token|refresh_token|api[_-]?key|apikey|password|passwd|secret|token)\s*["'`]?\s*[:=]\s*["'`]?)[A-Za-z0-9._~+/=-]{6,}/gi, '$1[REDACTED]'],
+];
+
+// Replace any credential-shaped substrings in a single line/string.
+export function redactSecrets(value) {
+  let s = String(value ?? '');
+  for (const [re, rep] of SECRET_PATTERNS) s = s.replace(re, rep);
+  return s;
+}
+
 function isNoisyConsoleLine(line) {
   const text = String(line || '');
   return NOISY_LOG_PATTERNS.some((pattern) => pattern.test(text));
@@ -53,9 +79,10 @@ export function sanitizeConsoleLogText(text, options = {}) {
       dropped += 1;
       continue;
     }
-    const line = rawLine.length > maxLineChars
-      ? `${rawLine.slice(0, maxLineChars)}... [truncated ${rawLine.length - maxLineChars} chars]`
-      : rawLine;
+    const scrubbed = redactSecrets(rawLine);
+    const line = scrubbed.length > maxLineChars
+      ? `${scrubbed.slice(0, maxLineChars)}... [truncated ${scrubbed.length - maxLineChars} chars]`
+      : scrubbed;
     filtered.push(line);
   }
 
