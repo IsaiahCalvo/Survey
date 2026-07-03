@@ -205,6 +205,12 @@ export const AccountSettings = ({ isOpen, onClose }) => {
           return;
         }
 
+        if (newPassword === currentPassword) {
+          setError('Your new password must be different from your current password');
+          setLoading(false);
+          return;
+        }
+
         // Verify the current password server-side before changing anything —
         // a live session alone must not authorize a password change (e.g. an
         // unattended machine). A correct password just refreshes the session.

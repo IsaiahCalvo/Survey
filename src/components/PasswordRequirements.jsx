@@ -76,9 +76,8 @@ export default function PasswordRequirements({
             </div>
           ))}
           <div style={{ fontSize: 10.5, color: t.muted, marginTop: 8, lineHeight: 1.45, borderTop: `1px solid ${t.rule}`, paddingTop: 7 }}>
-            It must also differ from your current password and not be a common or
-            previously-breached password. Choose a unique password you don't use
-            anywhere else.
+            It must also be different from your current password, and can't be a
+            common or breached password.
           </div>
         </div>
       )}
