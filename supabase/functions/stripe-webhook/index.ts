@@ -148,7 +148,6 @@ async function handleCheckoutCompleted(supabase: any, session: Stripe.Checkout.S
     console.log('Metadata:', session.metadata);
 
     const userId = session.metadata?.user_id;
-    const tier = session.metadata?.tier || 'pro';
 
     if (!userId) {
         console.error('CRITICAL: No user_id in checkout session metadata');
@@ -166,6 +165,15 @@ async function handleCheckoutCompleted(supabase: any, session: Stripe.Checkout.S
 
     // Determine status based on trial
     const status = subscription.status === 'trialing' ? 'trialing' : 'active';
+
+    // SECURITY: grant the tier that matches the ACTUAL price paid, never the
+    // client-supplied metadata.tier — a price/tier mismatch must never grant an
+    // unpaid tier. (handleSubscriptionUpdate already derives tier this way.)
+    const actualPriceId = subscription.items.data[0].price.id;
+    const tier = getTierFromPriceId(actualPriceId);
+    if (tier === 'free') {
+        console.error('WARNING: checkout price', actualPriceId, 'maps to no configured tier (metadata said', session.metadata?.tier, ') — granting free; check STRIPE_*_PRICE_ID secrets');
+    }
 
     const updateData = {
         tier: tier,
