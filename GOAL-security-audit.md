@@ -54,7 +54,17 @@ the fixes that are safe to make unattended. Isaiah reviews + deploys in the AM.
   documented, don't force green.
 
 ## Log (newest first)
-_(empty — run starts here)_
+
+- **2026-07-03 ~01:30 — DONE.** 8-dimension audit workflow (25 agents, adversarial
+  verify): 17 raised → 14 confirmed / 3 rejected. Implemented + gated (build clean,
+  1777 tests / 0 fail) + committed on `claude/security-audit`, NOT deployed:
+  2 blocker DB migrations (tier self-escalation; documents file_path IDOR — both
+  validated on survey-test), HIGH log-secret redaction, email HTML-escaping,
+  profile-notification CORS, checkout price-fallback removal, safe security headers.
+  Full findings + prioritized go-live steps + owner-only items in
+  `SECURITY-AUDIT-REPORT.md`. Owner still needs: apply the 2 migrations to prod,
+  deploy the branch, make the logs repo private, enable CAPTCHA, codify storage
+  write policies. Ended cleanly per stop condition.
 
 ## Baseline
 Build: `npx vite build` clean. Tests: `node scripts/run-node-tests.mjs`.
