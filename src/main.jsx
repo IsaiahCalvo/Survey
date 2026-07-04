@@ -1,6 +1,25 @@
 // src/main.jsx
 import { sanitizeConsoleLogText, shouldCaptureConsoleLine } from './utils/consoleLogFilter';
 
+// Stale-deploy recovery: when a lazy-loaded code chunk fails to load (usually a
+// new version deployed while this tab was open, so the old hashed chunk is
+// gone — e.g. clicking a PDF and the viewer chunk 404s), reload once to fetch
+// the current version instead of showing a broken screen. Guarded against
+// reload loops (won't re-reload within 20s of the last recovery).
+if (typeof window !== 'undefined') {
+  const RELOAD_KEY = '__vite_preload_reloaded_at';
+  window.addEventListener('vite:preloadError', (event) => {
+    try {
+      const last = Number(window.sessionStorage.getItem(RELOAD_KEY) || 0);
+      if (!Number.isFinite(last) || Date.now() - last > 20000) {
+        window.sessionStorage.setItem(RELOAD_KEY, String(Date.now()));
+        if (event && typeof event.preventDefault === 'function') event.preventDefault();
+        window.location.reload();
+      }
+    } catch (_e) { /* never let recovery logic itself break boot */ }
+  });
+}
+
 // Console log capture — stores all console output for "Save Log" button
 // Writes to /Users/isaiahcalvo/Desktop/Survey-BetaSafeS2/1.log
 (() => {
