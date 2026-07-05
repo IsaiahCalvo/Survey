@@ -107,7 +107,8 @@ test('main.jsx mounts ResetPasswordPage standalone inside ErrorBoundary+AuthProv
 test('ResetPasswordPage talks to supabase.auth only through AuthContext', () => {
   assert.match(RESET_PAGE_SOURCE, /from '\.\.\/contexts\/AuthContext'/);
   assert.match(RESET_PAGE_SOURCE, /updatePassword\(password\)/);
-  assert.match(RESET_PAGE_SOURCE, /resetPassword\(resendEmail\)/);
+  // resetPassword now forwards a Turnstile token as its second arg.
+  assert.match(RESET_PAGE_SOURCE, /resetPassword\(resendEmail, captchaToken\)/);
   assert.doesNotMatch(RESET_PAGE_SOURCE, /supabaseClient/);
   assert.doesNotMatch(RESET_PAGE_SOURCE, /supabase\.auth\./);
 });
@@ -141,9 +142,10 @@ test('AuthModal signup lands on a persistent confirm panel, not a timed close', 
 // --- wiring: change-password verifies the current password -------------------
 
 test('AccountSettings verifies the current password server-side before updating', () => {
-  assert.match(ACCOUNT_SETTINGS_SOURCE, /await signIn\(user\.email, currentPassword\)/);
+  // signIn now forwards a Turnstile token as its third arg (re-auth is captcha-gated).
+  assert.match(ACCOUNT_SETTINGS_SOURCE, /await signIn\(user\.email, currentPassword, captchaToken\)/);
   assert.match(ACCOUNT_SETTINGS_SOURCE, /Current password is incorrect/);
-  const verifyIndex = ACCOUNT_SETTINGS_SOURCE.indexOf('signIn(user.email, currentPassword)');
+  const verifyIndex = ACCOUNT_SETTINGS_SOURCE.indexOf('signIn(user.email, currentPassword');
   const updateIndex = ACCOUNT_SETTINGS_SOURCE.indexOf('updatePassword(newPassword)');
   assert.ok(verifyIndex > -1 && updateIndex > -1 && verifyIndex < updateIndex,
     'current-password verification must run before updatePassword');

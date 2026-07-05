@@ -19,6 +19,7 @@ import { useContext, useEffect, useState } from 'react';
 import { AuthContext } from '../contexts/AuthContext';
 import { RECOVERY_SESSION_GRACE_MS, resolveRecoveryPhase, validateNewPassword } from './authFlow';
 import PasswordRequirements from './PasswordRequirements';
+import TurnstileWidget, { TURNSTILE_ENABLED } from './TurnstileWidget';
 
 const C = {
   bg: '#12151c',
@@ -47,6 +48,11 @@ export default function ResetPasswordPage() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
   const [graceElapsed, setGraceElapsed] = useState(false);
+  // Cloudflare Turnstile — the "request a new link" call hits /recover, a
+  // captcha-protected endpoint. Set-new-password (updateUser) is not gated.
+  const [captchaToken, setCaptchaToken] = useState('');
+  const [captchaNonce, setCaptchaNonce] = useState(0);
+  const [captchaBroken, setCaptchaBroken] = useState(false);
 
   // Start the grace clock only once the AuthProvider finished booting — the
   // boot itself (which performs the URL code exchange) can take arbitrarily
@@ -96,13 +102,21 @@ export default function ResetPasswordPage() {
       setError('Enter your email address to request a new link');
       return;
     }
+    if (TURNSTILE_ENABLED && !captchaToken && !captchaBroken) {
+      setError('Please complete the "I\'m human" check below, then try again.');
+      return;
+    }
     setError('');
     setSubmitting(true);
     try {
-      await resetPassword(resendEmail);
+      await resetPassword(resendEmail, captchaToken);
       setPhase('link-sent');
     } catch (err) {
-      setError(err?.message || 'Failed to send a new reset link');
+      setCaptchaToken(''); setCaptchaNonce((n) => n + 1); // single-use token spent
+      const rmsg = (err?.message || '').toLowerCase();
+      setError(/captcha|verification|human/.test(rmsg)
+        ? 'Verification failed — please redo the "I\'m human" check and try again.'
+        : (err?.message || 'Failed to send a new reset link'));
     } finally {
       setSubmitting(false);
     }
@@ -222,6 +236,14 @@ export default function ResetPasswordPage() {
                   style={inputStyle()}
                 />
               </label>
+              {TURNSTILE_ENABLED && (
+                <TurnstileWidget
+                  key={captchaNonce}
+                  onToken={setCaptchaToken}
+                  onError={() => setCaptchaBroken(true)}
+                  action="recover"
+                />
+              )}
               <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 4 }}>
                 <button type="submit" disabled={submitting} style={btnPrimary(accent)}>
                   {submitting ? 'Sending…' : 'Request a new link'}

@@ -11,6 +11,7 @@ import { useEffect, useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { resendCooldownRemainingMs, passwordMeetsRequirements } from './authFlow';
 import PasswordRequirements from './PasswordRequirements';
+import TurnstileWidget, { TURNSTILE_ENABLED } from './TurnstileWidget';
 import './AuthModal.css';
 
 // Static brand logo — hoisted so it isn't recreated on every render.
@@ -38,8 +39,20 @@ export const AuthModal = ({ isOpen, onClose, onDismiss }) => {
   // the seconds left on the resend cooldown, ticked down by the effect below.
   const [resendLastSentAt, setResendLastSentAt] = useState(0);
   const [resendRemaining, setResendRemaining] = useState(0);
+  // Cloudflare Turnstile: token for the current attempt, a nonce to remount the
+  // widget for a fresh single-use token, and a fail-open flag if it can't load.
+  const [captchaToken, setCaptchaToken] = useState('');
+  const [captchaNonce, setCaptchaNonce] = useState(0);
+  const [captchaBroken, setCaptchaBroken] = useState(false);
 
   const { signIn, signUp, signInWithGoogle, signInWithSSO, resetPassword, resendConfirmation } = useAuth();
+
+  // Modes that hit a captcha-protected endpoint (signin / signup / recover).
+  const captchaMode = mode === 'login' || mode === 'signup' || mode === 'reset';
+  const resetCaptcha = () => {
+    setCaptchaToken('');
+    setCaptchaNonce((n) => n + 1);
+  };
 
   useEffect(() => {
     if (!resendLastSentAt) return undefined;
@@ -61,11 +74,19 @@ export const AuthModal = ({ isOpen, onClose, onDismiss }) => {
     e.preventDefault();
     setError('');
     setMessage('');
+
+    // Gate captcha-protected modes on a completed check. Fail open if Turnstile
+    // itself couldn't load (captchaBroken) so a blocked CDN never locks anyone out.
+    if (TURNSTILE_ENABLED && captchaMode && !captchaToken && !captchaBroken) {
+      setError('Please complete the "I\'m human" check below, then try again.');
+      return;
+    }
+
     setLoading(true);
 
     try {
       if (mode === 'login') {
-        await signIn(email, password);
+        await signIn(email, password, captchaToken);
         onClose();
       } else if (mode === 'signup') {
         if (password !== confirmPassword) {
@@ -82,7 +103,7 @@ export const AuthModal = ({ isOpen, onClose, onDismiss }) => {
           first_name: firstName,
           last_name: lastName,
           full_name: `${firstName} ${lastName}`
-        });
+        }, captchaToken);
         if (data?.session) {
           // Email confirmation is disabled server-side — the user is already
           // signed in, so there's no confirmation email to wait for.
@@ -98,7 +119,7 @@ export const AuthModal = ({ isOpen, onClose, onDismiss }) => {
         await signInWithSSO(ssoDomain);
         // SSO will redirect, so no need to close modal
       } else if (mode === 'reset') {
-        await resetPassword(email);
+        await resetPassword(email, captchaToken);
         setMessage('Password reset link sent! Check your email.');
         setTimeout(() => {
           setMode('login');
@@ -106,7 +127,13 @@ export const AuthModal = ({ isOpen, onClose, onDismiss }) => {
         }, 3000);
       }
     } catch (err) {
-      setError(err.message || 'An error occurred');
+      const msg = err.message || 'An error occurred';
+      // Turnstile tokens are single-use; a failed attempt burns this one, so
+      // always issue a fresh widget before the user retries.
+      if (captchaMode) resetCaptcha();
+      setError(/captcha|verification|human/i.test(msg)
+        ? 'Verification failed — please redo the "I\'m human" check and try again.'
+        : msg);
     } finally {
       setLoading(false);
     }
@@ -303,6 +330,15 @@ export const AuthModal = ({ isOpen, onClose, onDismiss }) => {
                 disabled={loading}
               />
             </div>
+          )}
+
+          {captchaMode && (
+            <TurnstileWidget
+              key={captchaNonce}
+              onToken={setCaptchaToken}
+              onError={() => setCaptchaBroken(true)}
+              action={mode}
+            />
           )}
 
           <button type="submit" className="auth-submit-btn" disabled={loading}>

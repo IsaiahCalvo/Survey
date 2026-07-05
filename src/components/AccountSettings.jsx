@@ -16,6 +16,7 @@ import UsageIndicator from './UsageIndicator';
 import './AccountSettings.css';
 import PasswordRequirements from './PasswordRequirements';
 import { passwordMeetsRequirements } from './authFlow';
+import TurnstileWidget, { TURNSTILE_ENABLED } from './TurnstileWidget';
 
 // Static brand logos — hoisted so they aren't recreated on every render.
 const MICROSOFT_LOGO_SVG = (
@@ -54,6 +55,12 @@ export const AccountSettings = ({ isOpen, onClose }) => {
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  // Cloudflare Turnstile — shared by the password-change re-auth and the
+  // "email me a reset link" button (both hit captcha-protected endpoints).
+  const [captchaToken, setCaptchaToken] = useState('');
+  const [captchaNonce, setCaptchaNonce] = useState(0);
+  const [captchaBroken, setCaptchaBroken] = useState(false);
+  const resetCaptcha = () => { setCaptchaToken(''); setCaptchaNonce((n) => n + 1); };
 
   // Subscription state
   const [subscription, setSubscription] = useState(null);
@@ -211,13 +218,24 @@ export const AccountSettings = ({ isOpen, onClose }) => {
           return;
         }
 
+        // Bot check gates the re-auth (a captcha-protected endpoint).
+        if (TURNSTILE_ENABLED && !captchaToken && !captchaBroken) {
+          setError('Please complete the "I\'m human" check below, then save again.');
+          setLoading(false);
+          return;
+        }
+
         // Verify the current password server-side before changing anything —
         // a live session alone must not authorize a password change (e.g. an
         // unattended machine). A correct password just refreshes the session.
         try {
-          await signIn(user.email, currentPassword);
-        } catch {
-          setError('Current password is incorrect');
+          await signIn(user.email, currentPassword, captchaToken);
+        } catch (reauthErr) {
+          resetCaptcha(); // single-use token is now spent
+          const rmsg = (reauthErr?.message || '').toLowerCase();
+          setError(/captcha|verification|human/.test(rmsg)
+            ? 'Verification failed — please redo the "I\'m human" check and save again.'
+            : 'Current password is incorrect');
           setLoading(false);
           return;
         }
@@ -279,6 +297,7 @@ export const AccountSettings = ({ isOpen, onClose }) => {
       setCurrentPassword('');
       setNewPassword('');
       setConfirmPassword('');
+      resetCaptcha();
     } catch (err) {
       setError(err.message || 'Failed to update profile');
     } finally {
@@ -296,6 +315,7 @@ export const AccountSettings = ({ isOpen, onClose }) => {
     setIsEditing(false);
     setError('');
     setMessage('');
+    resetCaptcha();
   };
 
   const handleDeleteAccount = async () => {
@@ -328,12 +348,21 @@ export const AccountSettings = ({ isOpen, onClose }) => {
     setError('');
     setMessage('');
     if (!email) { setError('No email on file to send a reset link to.'); return; }
+    if (TURNSTILE_ENABLED && !captchaToken && !captchaBroken) {
+      setError('Please complete the "I\'m human" check below, then request the link.');
+      return;
+    }
     setLoading(true);
     try {
-      await resetPassword(email);
+      await resetPassword(email, captchaToken);
       setMessage(`A password reset link has been sent to ${email}. Check your inbox and follow the link to set a new password.`);
+      resetCaptcha();
     } catch (err) {
-      setError(err?.message || 'Could not send a reset link. Please try again.');
+      resetCaptcha(); // single-use token is now spent
+      const rmsg = (err?.message || '').toLowerCase();
+      setError(/captcha|verification|human/.test(rmsg)
+        ? 'Verification failed — please redo the "I\'m human" check and try again.'
+        : (err?.message || 'Could not send a reset link. Please try again.'));
     } finally {
       setLoading(false);
     }
@@ -525,6 +554,15 @@ export const AccountSettings = ({ isOpen, onClose }) => {
                         >
                           Forgot your current password? Email me a reset link
                         </button>
+
+                        {TURNSTILE_ENABLED && (
+                          <TurnstileWidget
+                            key={captchaNonce}
+                            onToken={setCaptchaToken}
+                            onError={() => setCaptchaBroken(true)}
+                            action="account"
+                          />
+                        )}
                       </div>
 
                       <div className="account-btn-group">

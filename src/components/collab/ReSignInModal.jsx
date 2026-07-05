@@ -22,6 +22,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { useAuth } from '../../contexts/AuthContext.jsx';
+import TurnstileWidget, { TURNSTILE_ENABLED } from '../TurnstileWidget';
 import './ReSignInModal.css';
 
 /**
@@ -40,6 +41,11 @@ export function ReSignInModal({ isOpen, onSignedIn, onCloseDocument, prefillEmai
   const [submitting, setSubmitting] = useState(false);
   // 'bad_password' | 'network' | 'account_locked' | null — error code drives copy below.
   const [errorCode, setErrorCode] = useState(null);
+  // Cloudflare Turnstile — token for this attempt, nonce to remount for a fresh
+  // single-use token, fail-open flag if the widget can't load.
+  const [captchaToken, setCaptchaToken] = useState('');
+  const [captchaNonce, setCaptchaNonce] = useState(0);
+  const [captchaBroken, setCaptchaBroken] = useState(false);
   const passwordRef = useRef(null);
   const emailRef = useRef(null);
 
@@ -76,6 +82,11 @@ export function ReSignInModal({ isOpen, onSignedIn, onCloseDocument, prefillEmai
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!canSubmit) return;
+    // Gate on a completed captcha; fail open if Turnstile itself couldn't load.
+    if (TURNSTILE_ENABLED && !captchaToken && !captchaBroken) {
+      setErrorCode('captcha');
+      return;
+    }
     setSubmitting(true);
     setErrorCode(null);
     try {
@@ -84,11 +95,16 @@ export function ReSignInModal({ isOpen, onSignedIn, onCloseDocument, prefillEmai
       // surrounding try/catch is the canonical error gate; we never see
       // a {error: ...} return shape from this hook. Branch on err.message
       // tags to map onto the UI-SPEC error copy.
-      await signIn(email, password);
+      await signIn(email, password, captchaToken);
       onSignedIn?.();
     } catch (err) {
+      // Turnstile tokens are single-use — refresh the widget before a retry.
+      setCaptchaToken('');
+      setCaptchaNonce((n) => n + 1);
       const msg = (err?.message || '').toLowerCase();
-      if (msg.includes('network') || err?.name === 'TypeError' || msg.includes('fetch')) {
+      if (msg.includes('captcha') || msg.includes('verification') || msg.includes('human')) {
+        setErrorCode('captcha');
+      } else if (msg.includes('network') || err?.name === 'TypeError' || msg.includes('fetch')) {
         // UX: network failure — the server is unreachable. Tells the user to
         // check their connection rather than blaming their credentials.
         setErrorCode('network');
@@ -112,6 +128,7 @@ export function ReSignInModal({ isOpen, onSignedIn, onCloseDocument, prefillEmai
     if (errorCode === 'bad_password') return "That email and password don't match. Try again.";
     if (errorCode === 'network') return "We couldn't reach the server. Check your connection and try again.";
     if (errorCode === 'account_locked') return "This account is locked. Contact your administrator.";
+    if (errorCode === 'captcha') return 'Please complete the "I\'m human" check below, then try again.';
     return null;
   })();
 
@@ -159,6 +176,14 @@ export function ReSignInModal({ isOpen, onSignedIn, onCloseDocument, prefillEmai
           disabled={submitting}
           autoComplete="current-password"
         />
+        {TURNSTILE_ENABLED && (
+          <TurnstileWidget
+            key={captchaNonce}
+            onToken={setCaptchaToken}
+            onError={() => setCaptchaBroken(true)}
+            action="resignin"
+          />
+        )}
         <button
           type="submit"
           className="re-signin-modal__cta"

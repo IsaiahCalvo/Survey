@@ -360,7 +360,7 @@ export const AuthProvider = ({ children }) => {
   }, [user?.id]);
 
   // Sign up with email and password
-  const signUp = async (email, password, metadata = {}) => {
+  const signUp = async (email, password, metadata = {}, captchaToken) => {
     if (!isSupabaseAvailable()) {
       throw new Error('Supabase is not configured');
     }
@@ -370,6 +370,7 @@ export const AuthProvider = ({ children }) => {
       password,
       options: {
         data: metadata,
+        ...(captchaToken ? { captchaToken } : {}),
       },
     });
 
@@ -378,7 +379,7 @@ export const AuthProvider = ({ children }) => {
   };
 
   // Sign in with email and password
-  const signIn = async (email, password) => {
+  const signIn = async (email, password, captchaToken) => {
     if (!isSupabaseAvailable()) {
       throw new Error('Supabase is not configured');
     }
@@ -386,6 +387,7 @@ export const AuthProvider = ({ children }) => {
     const { data, error } = await supabase.auth.signInWithPassword({
       email,
       password,
+      ...(captchaToken ? { options: { captchaToken } } : {}),
     });
 
     if (error) throw error;
@@ -481,13 +483,14 @@ export const AuthProvider = ({ children }) => {
   };
 
   // Reset password
-  const resetPassword = async (email) => {
+  const resetPassword = async (email, captchaToken) => {
     if (!isSupabaseAvailable()) {
       throw new Error('Supabase is not configured');
     }
 
     const { data, error } = await supabase.auth.resetPasswordForEmail(email, {
       redirectTo: `${window.location.origin}/reset-password`,
+      ...(captchaToken ? { captchaToken } : {}),
     });
 
     if (error) throw error;
