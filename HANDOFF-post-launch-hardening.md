@@ -7,69 +7,52 @@ Everything the owner asked for this session is **done, verified, and live on pro
 security-audit fixes, private repo, PDF-open regression fix, Cloudflare Turnstile
 bot protection on every auth surface — tested both directions + zero hot-path cost).
 
-Two items were deliberately parked. After investigation, **only one is real**.
+Both items were investigated on 2026-07-05. **Neither is worth doing** — details below.
+This section exists so a future session does NOT "clean up" the wildcard CORS and
+silently break the desktop + mobile apps.
 
 ---
 
-## Item 1 — Tighten edge-function CORS from `*` to an origin allowlist  ·  LOW priority, optional
+## Item 1 — Tighten edge-function CORS from `*` to an allowlist  ·  ❌ DO NOT DO (leave `*`)
 
-### What
+### Verdict: the wildcard is CORRECT for this app. Leave it.
+
 Five Supabase edge functions return `Access-Control-Allow-Origin: *`:
+`create-checkout-session`, `create-portal-session`, `send-email`,
+`send-profile-change-notification`, `excel-apply-changeset` (all in
+`supabase/functions/*/index.ts`, called from the shared web bundle via
+`supabase.functions.invoke(...)`).
 
-- `supabase/functions/create-checkout-session/index.ts`
-- `supabase/functions/create-portal-session/index.ts`
-- `supabase/functions/send-email/index.ts`
-- `supabase/functions/send-profile-change-notification/index.ts`
-- `supabase/functions/excel-apply-changeset/index.ts`
+### Why tightening is wrong here (investigated 2026-07-05)
+The same `dist` bundle ships to **four runtimes**, each with a different Origin, and
+all four hit these functions:
 
-Replace the wildcard with an allowlist that reflects the request `Origin` only when
-it's one of ours, else omits the header.
+| Runtime | How it loads | Origin sent to the function |
+|---|---|---|
+| Web prod | Vercel | `https://surveytool.app` |
+| Web dev / Electron dev | Vite | `http://localhost:5173` |
+| **Electron prod** | `loadFile(distPath)` (`file://`) | **`null`** (opaque) |
+| iOS (Capacitor) | webview | `capacitor://localhost` |
+| Android (Capacitor) | webview | `https://localhost` |
 
-### Why it's LOW (read before spending effort)
-This is **best-practice hardening, not a live vulnerability.** These functions
-authenticate via the `Authorization: Bearer <jwt>` header, not cookies. A browser
-will **not** attach a user's Supabase JWT to a cross-origin request from a malicious
-site, so wildcard CORS does **not** enable CSRF-style abuse here. Every function also
-independently checks `auth.getUser()`. So the wildcard is untidy, not exploitable.
-Don't let it block anything more important.
+- Electron prod runs `webSecurity:true`, `nodeIntegration:false`,
+  `contextIsolation:true` → the renderer **enforces CORS**, and its origin is the
+  opaque `null` (file://). Mobile has **no** `@capacitor/http`, so the webview
+  **also enforces CORS**. So a specific-origin allowlist would CORS-**block** email,
+  Excel sync, and payments on desktop + iOS + Android.
+- The only way to keep Electron prod working under an allowlist is to allow
+  `Origin: null` — which is the **exact loophole** tightening is meant to close (any
+  sandboxed/opaque context sends `null`). So the "tightened" version is barely more
+  secure than `*` while adding real breakage + maintenance surface.
+- It fixes **nothing exploitable**: these functions auth via `Authorization: Bearer
+  <jwt>` (not cookies) and each calls `auth.getUser()`. A browser never attaches that
+  JWT to a cross-origin request, so wildcard CORS grants an attacker no capability.
 
-### Target origins (confirm before shipping)
-- Prod: `https://surveytool.app` (confirm whether `www.surveytool.app` / apex also serve the app)
-- Dev: `http://localhost:5173` (Vite default — confirm the port actually used)
-- Vercel preview deploys use dynamic `*.vercel.app` URLs. If you lock to prod only,
-  these functions will CORS-fail inside preview builds. Decide: add a `.vercel.app`
-  suffix match, or accept that previews can't call them (fine — previews rarely do).
-
-### Suggested shape (per function, or factor a shared helper)
-```ts
-const ALLOWED = new Set([
-  'https://surveytool.app',
-  'http://localhost:5173',
-]);
-const origin = req.headers.get('Origin') ?? '';
-const allowOrigin = ALLOWED.has(origin) ? origin : '';
-const corsHeaders = {
-  'Access-Control-Allow-Origin': allowOrigin,
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-  'Vary': 'Origin',
-};
-```
-(If `allowOrigin` is empty, the browser blocks it — that's the point. Keep the OPTIONS
-preflight branch these functions already have.)
-
-### RISK when doing this
-Getting the allowlist wrong **silently breaks real flows** (the browser blocks the
-response; the app sees a network error). This is exactly the "don't break things"
-trap — test every function's caller after changing:
-
-- `send-email` → trigger an invite send + a signup confirmation
-- `send-profile-change-notification` → edit your name in Settings and save
-- `create-checkout-session` + `create-portal-session` → open the subscribe/manage flow
-- `excel-apply-changeset` → apply an edit to a linked Excel survey
-
-Watch the browser console for CORS errors on each. Deploy functions one at a time
-(`supabase functions deploy <name>` via the same Management API / CLI path used this
-session) and re-test between each. Instant revert = redeploy the prior version.
+**Conclusion:** for a Bearer-token API consumed by web + Electron(`file://`) +
+Capacitor, `Access-Control-Allow-Origin: *` is the standard, correct choice. Do not
+change it. (Proper long-term fix, if ever wanted, is to give Electron prod a stable
+custom-protocol origin instead of `file://` — a bigger, separate effort with full
+cross-platform QA, not a "quick tidy".)
 
 ---
 
@@ -91,8 +74,9 @@ save, reopen.
 
 ## Quick start next session
 1. Read this file + `memory/session-moments/2026-07-05.md`.
-2. Item 1 only. It's optional/low-priority — confirm with the owner it's worth doing
-   before spending the testing effort.
+2. **There is no outstanding hardening work.** Both parked items were investigated and
+   closed (Item 1 = leave the wildcard, Item 2 = already latest). Don't reopen either
+   without a new, specific reason.
 3. All prod config (Supabase Auth CAPTCHA, Brevo SMTP) is live and correct; don't touch
    unless a specific problem surfaces. Turnstile revert (if ever needed) = Management API
    PATCH `security_captcha_enabled:false` on project `cvamwtpsuvxvjdnotbeg`.
