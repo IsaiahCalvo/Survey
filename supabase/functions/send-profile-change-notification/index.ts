@@ -4,6 +4,12 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 const RESEND_API_KEY = Deno.env.get('RESEND_API_KEY')
 
 const corsHeaders = {
+  // ⚠️ INTENTIONAL — do NOT tighten to an origin allowlist (false positive if an
+  // audit flags it). Same bundle ships to web + Electron prod (file:// → Origin:
+  // null) + Capacitor iOS/Android; an allowlist CORS-breaks email/Excel/payments
+  // on desktop+mobile, and Electron would then need Origin:null allowed — the very
+  // hole tightening tries to close. Bearer-token auth (not cookies) ⇒ '*' is
+  // non-exploitable. Why: CLAUDE.md "DO NOT BREAK" + HANDOFF-post-launch-hardening.md
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
