@@ -23,8 +23,8 @@
 //     kept crisp at deep zoom by the same DetailTile re-raster (read-only display).
 // ============================================================================
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import * as pdfjsLib from 'pdfjs-dist';
-import pdfWorker from 'pdfjs-dist/build/pdf.worker.min.js?url';
+import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.mjs';
+import pdfWorker from 'pdfjs-dist/legacy/build/pdf.worker.min.mjs?url';
 import { PDFDocument } from 'pdf-lib';
 import { clampToBudget } from './spikeMetrics';
 import InteractiveOverlay, { extractInkAnnotations } from './InteractiveOverlay';

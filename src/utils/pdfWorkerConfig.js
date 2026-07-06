@@ -20,8 +20,8 @@ let pdfjsPromise;
 export const loadPdfjs = () => {
   if (!pdfjsPromise) {
     pdfjsPromise = (async () => {
-      const pdfjsLib = await import('pdfjs-dist');
-      const { default: pdfWorker } = await import('pdfjs-dist/build/pdf.worker.min.js?url');
+      const pdfjsLib = await import('pdfjs-dist/legacy/build/pdf.mjs');
+      const { default: pdfWorker } = await import('pdfjs-dist/legacy/build/pdf.worker.min.mjs?url');
       if (!pdfjsLib.GlobalWorkerOptions.workerSrc) {
         pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorker;
       }

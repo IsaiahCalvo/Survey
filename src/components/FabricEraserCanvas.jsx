@@ -18,7 +18,7 @@
  * Phase 10 Plan 02: Eraser Canvas mount/unmount mechanism.
  */
 import { memo, useState, useEffect, useRef } from 'react';
-import { fabric } from 'fabric';
+import { fabric } from '../utils/fabricCompat';
 import { useFabricCanvas } from '../hooks/useFabricCanvas';
 import { booleanErasePath } from '../utils/geometryEraser';
 import { calculateCalloutConnection } from '../utils/calloutGeometry';

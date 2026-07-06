@@ -1,12 +1,44 @@
 const sharp = require('sharp');
 const fs = require('fs');
 const path = require('path');
-const toIco = require('to-ico');
 
 const svgPath = path.join(__dirname, '../build/Survey Icon.svg');
 const buildDir = path.join(__dirname, '../build');
 const publicDir = path.join(__dirname, '../public');
 const distDir = path.join(__dirname, '../dist');
+
+function createIcoFromPngBuffers(pngBuffers, sizes) {
+  const headerSize = 6;
+  const entrySize = 16;
+  const imageOffsetStart = headerSize + pngBuffers.length * entrySize;
+  const totalSize = imageOffsetStart + pngBuffers.reduce((sum, buffer) => sum + buffer.length, 0);
+  const ico = Buffer.alloc(totalSize);
+
+  ico.writeUInt16LE(0, 0);
+  ico.writeUInt16LE(1, 2);
+  ico.writeUInt16LE(pngBuffers.length, 4);
+
+  let imageOffset = imageOffsetStart;
+
+  pngBuffers.forEach((buffer, index) => {
+    const size = sizes[index];
+    const entryOffset = headerSize + index * entrySize;
+
+    ico.writeUInt8(size >= 256 ? 0 : size, entryOffset);
+    ico.writeUInt8(size >= 256 ? 0 : size, entryOffset + 1);
+    ico.writeUInt8(0, entryOffset + 2);
+    ico.writeUInt8(0, entryOffset + 3);
+    ico.writeUInt16LE(1, entryOffset + 4);
+    ico.writeUInt16LE(32, entryOffset + 6);
+    ico.writeUInt32LE(buffer.length, entryOffset + 8);
+    ico.writeUInt32LE(imageOffset, entryOffset + 12);
+
+    buffer.copy(ico, imageOffset);
+    imageOffset += buffer.length;
+  });
+
+  return ico;
+}
 
 async function convertIcons() {
   try {
@@ -62,8 +94,8 @@ async function convertIcons() {
       faviconBuffers.push(buffer);
     }
     
-    // Create favicon.ico with multiple sizes
-    const icoBuffer = await toIco(faviconBuffers);
+    // Create favicon.ico with multiple PNG images.
+    const icoBuffer = createIcoFromPngBuffers(faviconBuffers, faviconSizes);
     fs.writeFileSync(path.join(publicDir, 'favicon.ico'), icoBuffer);
     fs.writeFileSync(path.join(distDir, 'favicon.ico'), icoBuffer);
     console.log('✓ Created favicon.ico with multiple sizes');
@@ -125,4 +157,3 @@ async function convertIcons() {
 }
 
 convertIcons();
-

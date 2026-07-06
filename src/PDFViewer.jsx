@@ -12,7 +12,7 @@
 // NO-GO banners in the code below — never relocate or rewrite them.
 // HIGH-RISK FILE: keep diffs minimal and run `npm test` after every change.
 
-import * as pdfjsLib from 'pdfjs-dist';
+import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.mjs';
 import { loadPdfjs } from './utils/pdfWorkerConfig';
 import { deepClone } from './utils/deepClone.js';
 import { showToast } from './utils/toast';

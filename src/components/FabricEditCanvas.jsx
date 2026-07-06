@@ -24,7 +24,7 @@ import { memo, useState, useEffect, useLayoutEffect, useRef, useCallback } from 
 import { createPortal } from 'react-dom';
 import { flushSync } from 'react-dom';
 import { deepClone } from '../utils/deepClone.js';
-import { fabric } from 'fabric';
+import { fabric } from '../utils/fabricCompat';
 import { useFabricCanvas } from '../hooks/useFabricCanvas';
 import {
   beginAnnotationGesture,

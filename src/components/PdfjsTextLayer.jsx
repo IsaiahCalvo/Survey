@@ -12,7 +12,7 @@
 // links, or pan — it is pointer-events:none unless explicitly interactive.
 // ----------------------------------------------------------------------------
 import { useEffect, useRef } from 'react';
-import * as pdfjsLib from 'pdfjs-dist';
+import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.mjs';
 
 // Inject the glyph-positioning + selection CSS once for the whole app.
 let stylesInjected = false;
@@ -66,12 +66,12 @@ export default function PdfjsTextLayer({ pdf, pageNumber, scale, rotation = 0, i
         if (cancelled || !ref.current) return;
         const viewport = page.getViewport({ scale, rotation: page.rotate + rotation });
         el.innerHTML = '';
-        // pdf.js 3.x positions glyphs using this CSS var; it must equal viewport.scale.
+        // pdf.js positions glyphs using this CSS var; it must equal viewport.scale.
         el.style.setProperty('--scale-factor', String(scale));
         el.style.width = `${Math.floor(viewport.width)}px`;
         el.style.height = `${Math.floor(viewport.height)}px`;
-        task = pdfjsLib.renderTextLayer({ textContentSource: textContent, container: el, viewport, textDivs: [] });
-        await task.promise;
+        task = new pdfjsLib.TextLayer({ textContentSource: textContent, container: el, viewport });
+        await task.render();
       } catch { /* cancelled or unsupported render — ignore */ }
     })();
     return () => { cancelled = true; try { task?.cancel?.(); } catch { /* noop */ } };

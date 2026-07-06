@@ -7,7 +7,7 @@
  * mt/mb/ml/mr corner and mtr rotation controls' render functions with pill,
  * shadowed-circle, and SVG-rotate-icon renderers. Called once at app init.
  */
-import { fabric } from 'fabric';
+import { fabric } from './fabricCompat';
 import rotateIconSvg from '../assets/rotate-icon.svg';
 import { HANDLE_FILL, HANDLE_RING } from './handleStyle';
 
@@ -207,8 +207,7 @@ export const configureFabricOverrides = () => {
         // Icon loaded and cached
     });
 
-    // -- 1. Global Object Styling --
-    fabric.Object.prototype.set({
+    const objectDefaults = {
         transparentCorners: false,
         cornerColor: HANDLE_FILL,
         cornerStrokeColor: HANDLE_RING, // Unified white-fill / blue-ring handle look
@@ -218,15 +217,23 @@ export const configureFabricOverrides = () => {
         padding: 6,
         borderScaleFactor: 2,         // Thicker border for better visibility
         cornerSize: 12,               // Slightly larger handles
-    });
+    };
+
+    // -- 1. Global Object Styling --
+    fabric.Object.prototype.set(objectDefaults);
+    Object.assign(fabric.Object.ownDefaults || {}, objectDefaults);
+    if (fabric.FabricObject && fabric.FabricObject !== fabric.Object) {
+        fabric.FabricObject.prototype.set(objectDefaults);
+        Object.assign(fabric.FabricObject.ownDefaults || {}, objectDefaults);
+    }
 
     // -- 2. Custom Controls --
 
     // We need to define positioning handlers/functions for the new controls
     // or just reuse standard ones but with custom 'render'
 
-    // Copy existing controls to access standard handlers
-    const standardControls = fabric.Object.prototype.controls;
+    // Fabric 7 creates controls per class instead of keeping them on Object.prototype.
+    const standardControls = fabric.controlsUtils.createObjectDefaultControls();
 
     // Helper to apply common pill styling
     const pillStyle = {
@@ -288,6 +295,14 @@ export const configureFabricOverrides = () => {
         standardControls.mtr.render = renderRotationControl;
         standardControls.mtr.cornerSize = 24;
         standardControls.mtr.offsetY = -40; // Position 40px above the top edge
+    }
+
+    const createControls = () => ({ ...standardControls });
+    fabric.Object.createControls = createControls;
+    fabric.Object.prototype.controls = standardControls;
+    if (fabric.FabricObject && fabric.FabricObject !== fabric.Object) {
+        fabric.FabricObject.createControls = createControls;
+        fabric.FabricObject.prototype.controls = standardControls;
     }
 
 };

@@ -8,10 +8,7 @@
 import { readFileSync, writeFileSync, readdirSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { PNG } from 'pngjs';
-import { createRequire } from 'node:module';
-
-const require = createRequire(import.meta.url);
-const pixelmatch = require('pixelmatch');
+import pixelmatch from 'pixelmatch';
 
 /** Screenshot filename pattern: step-NN_MMMMMms_timing-description.png */
 const SCREENSHOT_REGEX = /^step-(\d{2})_(\d+)ms_(\w+)-(.+)\.png$/;

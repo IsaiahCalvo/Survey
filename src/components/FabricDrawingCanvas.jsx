@@ -18,7 +18,7 @@
  */
 import { memo, useEffect, useRef } from 'react';
 import { flushSync } from 'react-dom';
-import { fabric } from 'fabric';
+import { fabric } from '../utils/fabricCompat';
 import { useFabricCanvas } from '../hooks/useFabricCanvas';
 import {
   computeDrawnBoundaryShapePreviewGeometry,

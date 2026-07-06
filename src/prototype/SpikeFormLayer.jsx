@@ -8,7 +8,7 @@
 // drawn by our own overlay, so we filter to Widget here to avoid double-rendering.
 // ============================================================================
 import { useEffect, useRef } from 'react';
-import * as pdfjsLib from 'pdfjs-dist';
+import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.mjs';
 
 // AnnotationLayer wants a linkService; widgets barely use it, so a no-op stub is fine.
 const LINK_SERVICE_STUB = {

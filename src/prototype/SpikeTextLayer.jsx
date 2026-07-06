@@ -8,7 +8,7 @@
 // canvas. Re-renders on committed scale / rotation change.
 // ============================================================================
 import { useEffect, useRef } from 'react';
-import * as pdfjsLib from 'pdfjs-dist';
+import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.mjs';
 
 // paint a yellow background on every span whose text contains the query (find-in-doc)
 function applySearchHighlight(container, query) {
@@ -37,13 +37,13 @@ export default function SpikeTextLayer({ pdf, pageIndex, scale, rotation, search
       if (cancelled || !ref.current) return;
       const viewport = page.getViewport({ scale, rotation: page.rotate + rotation });
       el.innerHTML = '';
-      // pdf.js 3.11 positions glyphs via this CSS var; must equal viewport.scale.
+      // pdf.js positions glyphs via this CSS var; must equal viewport.scale.
       el.style.setProperty('--scale-factor', String(scale));
       el.style.width = `${Math.floor(viewport.width)}px`;
       el.style.height = `${Math.floor(viewport.height)}px`;
       try {
-        task = pdfjsLib.renderTextLayer({ textContentSource: textContent, container: el, viewport, textDivs: [] });
-        await task.promise;
+        task = new pdfjsLib.TextLayer({ textContentSource: textContent, container: el, viewport });
+        await task.render();
         if (!cancelled) applySearchHighlight(el, queryRef.current);
       } catch { /* cancelled or unsupported — ignore */ }
     })();

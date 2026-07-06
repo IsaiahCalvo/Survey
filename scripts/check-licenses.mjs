@@ -29,8 +29,11 @@ import { spawnSync } from 'node:child_process';
 // drop-in replacement for ISC across npm-org packages 2024+). Used by chownr,
 // glob@13+, lru-cache@11+, minimatch@10+, minipass@7+, path-scurry@2+,
 // rimraf@6+, sax@1.6+, tar@7+, yallist@5+, package-json-from-dist.
+// MIT-0 is an attribution-free MIT-family permissive license used by modern
+// CSS tooling packages.
 const ALLOWED_LICENSES = new Set([
   'MIT',
+  'MIT-0',
   'ISC',
   'BSD-2-Clause',
   'BSD-3-Clause',

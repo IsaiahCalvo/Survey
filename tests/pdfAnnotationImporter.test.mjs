@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
-import pdfjsLib from 'pdfjs-dist/legacy/build/pdf.js';
+import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.mjs';
 import { PDFDocument } from 'pdf-lib';
 
 import {
@@ -13,6 +13,16 @@ import {
 import { savePDFWithAnnotationsPdfLib } from '../src/utils/pdfAnnotationsPdfLib.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
+
+const cloneBytesForPdfjs = (bytes) => {
+  if (typeof Buffer !== 'undefined' && Buffer.isBuffer(bytes)) return Uint8Array.from(bytes);
+  if (bytes instanceof Uint8Array) return bytes.slice();
+  if (bytes instanceof ArrayBuffer) return bytes.slice(0);
+  if (ArrayBuffer.isView(bytes)) {
+    return new Uint8Array(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength));
+  }
+  return bytes;
+};
 
 const makeViewport = ({ xOffset = 0, yOffset = 0, pageHeight = 100 } = {}) => {
   const convertToViewportPoint = (x, y) => [x + xOffset, (pageHeight - y) + yOffset];
@@ -208,7 +218,7 @@ test('exported counter PDF reimports as a counter, not a generic circle', async 
     );
 
     const loadingTask = pdfjsLib.getDocument({
-      data: exportedBytes,
+      data: cloneBytesForPdfjs(exportedBytes),
       disableWorker: true,
       verbosity: pdfjsLib.VerbosityLevel.ERRORS,
     });
@@ -273,7 +283,7 @@ test('exported app-created PDF annotations reimport as editable supported annota
     );
 
     const loadingTask = pdfjsLib.getDocument({
-      data: exportedBytes,
+      data: cloneBytesForPdfjs(exportedBytes),
       disableWorker: true,
       verbosity: pdfjsLib.VerbosityLevel.ERRORS,
     });
@@ -352,7 +362,7 @@ test('exported app-created pen stroke reimports with original app geometry', asy
     );
 
     const loadingTask = pdfjsLib.getDocument({
-      data: exportedBytes,
+      data: cloneBytesForPdfjs(exportedBytes),
       disableWorker: true,
       verbosity: pdfjsLib.VerbosityLevel.ERRORS,
     });
@@ -422,7 +432,7 @@ test('exported app-created callout reimports as one app callout without loose Li
     );
 
     const loadingTask = pdfjsLib.getDocument({
-      data: exportedBytes,
+      data: cloneBytesForPdfjs(exportedBytes),
       disableWorker: true,
       verbosity: pdfjsLib.VerbosityLevel.ERRORS,
     });
@@ -506,7 +516,7 @@ test('exported hidden app layer state reimports separately from regular PDF anno
     );
 
     const loadingTask = pdfjsLib.getDocument({
-      data: exportedBytes,
+      data: cloneBytesForPdfjs(exportedBytes),
       disableWorker: true,
       verbosity: pdfjsLib.VerbosityLevel.ERRORS,
     });
@@ -1127,14 +1137,14 @@ test('[KAL-256] patch-deletion safety: self-heal effect — importAnnotationsFro
   const bytes = readFileSync(fixturePath);
 
   const loadingTask = pdfjsLib.getDocument({
-    data: new Uint8Array(bytes),
+    data: cloneBytesForPdfjs(bytes),
     disableWorker: true,
     verbosity: pdfjsLib.VerbosityLevel.ERRORS,
   });
   const pdfDoc = await loadingTask.promise;
 
   // This is the exact call the self-heal effect makes (PDFViewer.jsx:20632-20633).
-  const result = await importAnnotationsFromPdf(pdfDoc, { rawPdfBytes: bytes.buffer });
+  const result = await importAnnotationsFromPdf(pdfDoc, { rawPdfBytes: bytes });
 
   const allObjects = Object.values(result.annotationsByPage || {})
     .flatMap((pg) => (Array.isArray(pg?.objects) ? pg.objects : []));

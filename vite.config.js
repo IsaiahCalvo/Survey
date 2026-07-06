@@ -1,6 +1,5 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
-import { nodePolyfills } from 'vite-plugin-node-polyfills';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -85,10 +84,6 @@ export default defineConfig({
   base: './', // Use relative paths for Electron file:// protocol
   plugins: [
     react(),
-    nodePolyfills({
-      // Whether to polyfill `node:` protocol imports.
-      protocolImports: true,
-    }),
     debugFixturesPlugin(),
     spikeLogSavePlugin()
   ],

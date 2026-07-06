@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef } from 'react';
-import * as pdfjsLib from 'pdfjs-dist';
+import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.mjs';
 
 /**
  * PdfjsFormLayer — interactive form-field (Widget) overlay for one page under

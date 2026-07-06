@@ -7,7 +7,7 @@
  * Phase 10 Plan 01: Canvas creation/disposal for FabricDrawingCanvas and FabricEraserCanvas.
  */
 import { useEffect, useRef } from 'react';
-import { fabric } from 'fabric';
+import { fabric } from '../utils/fabricCompat';
 
 /**
  * @param {object} params

@@ -127,7 +127,9 @@ COMMENT ON COLUMN activity_log.server_ts IS
 
 -- Test-only introspection view: PostgREST does not expose information_schema,
 -- so the schema-shape tests read this instead. TEST PROJECTS ONLY.
-CREATE OR REPLACE VIEW public.test_schema_columns AS
+CREATE OR REPLACE VIEW public.test_schema_columns
+WITH (security_invoker = true) AS
   SELECT table_schema, table_name, column_name, data_type, is_nullable, column_default
   FROM information_schema.columns;
+REVOKE ALL ON public.test_schema_columns FROM anon, authenticated, service_role;
 GRANT SELECT ON public.test_schema_columns TO anon, authenticated, service_role;

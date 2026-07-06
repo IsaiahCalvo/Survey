@@ -8,7 +8,7 @@
  * onNavigateToMatch/onNavigateToPage and emits diagnostics through textSearchDiag.
  */
 import { memo, useState, useCallback, useEffect, useMemo, useRef } from 'react';
-import * as pdfjsLib from 'pdfjs-dist';
+import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.mjs';
 import Icon from '../Icons';
 import { emitTextSearchDiag } from '../utils/textSearchDiag';
 
@@ -546,7 +546,7 @@ const ensureTextLayerMeasurement = async (pageData) => {
   if (pageData.textLayerMeasurementPromise) {
     return pageData.textLayerMeasurementPromise;
   }
-  if (typeof pdfjsLib.renderTextLayer !== 'function') {
+  if (typeof pdfjsLib.TextLayer !== 'function') {
     return null;
   }
 
@@ -554,20 +554,15 @@ const ensureTextLayerMeasurement = async (pageData) => {
     const container = createSearchTextMeasureLayer(pageData.viewport);
     if (!container) return null;
 
-    const textDivs = [];
-    const textDivProperties = new WeakMap();
-    const textContentItemsStr = [];
-    const task = pdfjsLib.renderTextLayer({
+    const task = new pdfjsLib.TextLayer({
       textContentSource: pageData.textContent,
       container,
-      viewport: pageData.viewport,
-      textDivs,
-      textDivProperties,
-      textContentItemsStr
+      viewport: pageData.viewport
     });
 
     try {
-      await withSearchTextMeasurementTimeout(task.promise);
+      await withSearchTextMeasurementTimeout(task.render());
+      const textDivs = Array.from(task.textDivs || []);
       normalizeSearchTextMeasurementDivStyles(textDivs);
       await waitForSearchTextFonts();
       await waitForSearchTextLayout();
@@ -575,8 +570,7 @@ const ensureTextLayerMeasurement = async (pageData) => {
         container,
         task,
         textDivs,
-        textDivProperties,
-        textContentItemsStr
+        textContentItemsStr: Array.from(task.textContentItemsStr || [])
       };
       return pageData.textLayerMeasurement;
     } catch (error) {

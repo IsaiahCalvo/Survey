@@ -5,4 +5,4 @@
  * main thread can offload PDF parsing/rendering. Referenced as the worker
  * source for PDF.js page rendering in the v2.0 viewer.
  */
-importScripts('pdfjs-dist/build/pdf.worker.mjs');
+importScripts('pdfjs-dist/legacy/build/pdf.worker.mjs');

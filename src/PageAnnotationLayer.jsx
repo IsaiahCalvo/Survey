@@ -42,7 +42,7 @@ if (typeof HTMLCanvasElement !== 'undefined' && !HTMLCanvasElement.prototype._wi
   HTMLCanvasElement.prototype._willReadFrequentlyPatched = true;
 }
 
-import { fabric as fabricLib } from 'fabric';
+import { fabric as fabricLib } from './utils/fabricCompat';
 const { Canvas, Rect, Circle, Line, Triangle, Textbox, PencilBrush, Polyline, Group, Control, util, Path } = fabricLib;
 // Note: polygon-clipping removed - using clipPath-based erasing instead
 import {
@@ -6034,8 +6034,8 @@ const PageAnnotationLayer = memo(({
             const textBorder = target.getObjects().find(o => o.name === 'calloutTextBorder');
             if (textObj) {
               const groupMatrix = target.calcTransformMatrix();
-              const invertedMatrix = fabric.util.invertTransform(groupMatrix);
-              const localPointer = fabric.util.transformPoint(pointer, invertedMatrix);
+              const invertedMatrix = fabricLib.util.invertTransform(groupMatrix);
+              const localPointer = fabricLib.util.transformPoint(pointer, invertedMatrix);
 
               // Use border bounds if available (slightly larger than text), otherwise use text bounds
               const hitBox = textBorder || textObj;
@@ -6998,7 +6998,7 @@ const PageAnnotationLayer = memo(({
             const y = pathCmd[i + 1];
             if (typeof x === 'number' && typeof y === 'number') {
               // Transform each point to canvas coordinates
-              const transformed = fabric.util.transformPoint({ x, y }, obj.calcTransformMatrix());
+              const transformed = fabricLib.util.transformPoint({ x, y }, obj.calcTransformMatrix());
               minX = Math.min(minX, transformed.x);
               maxX = Math.max(maxX, transformed.x);
               minY = Math.min(minY, transformed.y);
@@ -7445,7 +7445,7 @@ const PageAnnotationLayer = memo(({
         if (objectsToSelect.length === 1) {
           canvas.setActiveObject(objectsToSelect[0]);
         } else if (objectsToSelect.length > 1) {
-          const activeSelection = new fabric.ActiveSelection(objectsToSelect, { canvas });
+          const activeSelection = new fabricLib.ActiveSelection(objectsToSelect, { canvas });
           canvas.setActiveObject(activeSelection);
         }
         canvas.requestRenderAll();
@@ -8410,7 +8410,7 @@ const PageAnnotationLayer = memo(({
 
   // Filter objects by selected space and regions
   useEffect(() => {
-    if (!canvasRef.current || !fabric) return;
+    if (!canvasRef.current || !fabricLib) return;
 
     const canvas = fabricRef.current;
     const objects = canvas.getObjects();
