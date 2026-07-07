@@ -348,6 +348,13 @@ verify_jwt = false
 [functions.excel-apply-changeset]
 verify_jwt = false
 
+# Browser-invoked (same reasoning as excel-apply-changeset): the gateway JWT check
+# rejects the CORS preflight OPTIONS, breaking invoke() from the app. The function
+# does its OWN auth (auth.getUser on the Bearer JWT) plus a caller-scoped RLS
+# invite-row lookup, and answers OPTIONS with CORS headers.
+[functions.send-invite-email]
+verify_jwt = false
+
 [analytics]
 enabled = true
 port = 54327

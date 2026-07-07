@@ -32,89 +32,47 @@ async function invokeSendEmail({ to, subject, template, data }) {
   }
 }
 
-/** Send the document-invite email. Best-effort; tolerates missing email. */
-export async function sendDocumentInviteEmail({
-  email,
-  documentName,
-  inviterName,
-  role,
-  inviteUrl,
-  expiresAt,
-}) {
-  if (!email) return { success: false, error: 'no recipient' };
-  const subject = `${inviterName || 'A Survey user'} invited you to ${documentName || 'a document'} on Survey`;
-  return invokeSendEmail({
-    to: email,
-    subject,
-    template: 'document-invite',
-    data: {
-      documentName: documentName || 'a document',
-      inviterName: inviterName || 'A Survey user',
-      role: role || 'Viewer',
-      inviteUrl: inviteUrl || appOrigin(),
-      expiresAt: expiresAt || null,
-    },
-  });
-}
-
-/** Send the project-invite email. Best-effort; tolerates missing email.
+/** GOAL-1 — smart invite-email send, replacing the old client-side
+ * document/project/template invite senders.
  *
- * Reuses the deployed `document-invite` template (the only invite template
- * the live send-email function ships) with the name phrased as
- * `the project "X"`, so the email honestly reads
- * "invited you to join the project "X" as <Role>". A dedicated
- * project-invite template is a later edge-function change.
+ * One call to the `send-invite-email` edge function, which handles BOTH
+ * delivery branches server-side (new user → Supabase auth mailer invite;
+ * existing account → Resend via send-email) and derives recipient, role,
+ * and every emailed URL from the invite row — so a dev/localhost origin can
+ * never leak into an email and the response never reveals whether the
+ * invitee already has an account. Only `token` is security-relevant;
+ * name/inviterName are cosmetic copy (escaped + length-capped server-side).
+ *
+ * Deliberately NO client-side fallback send on failure: a refusal means the
+ * server saw a revoked/accepted/expired/not-owned invite (or the send
+ * failed) and a client-built email could carry a stale or wrong-origin
+ * link. Email stays best-effort by contract — warn and move on, exactly
+ * like the failure mode this app has always had.
  */
-export async function sendProjectInviteEmail({
-  email,
-  projectName,
-  inviterName,
-  role,
-  inviteUrl,
-  expiresAt,
-}) {
-  if (!email) return { success: false, error: 'no recipient' };
-  const displayName = projectName ? `the project "${projectName}"` : 'a project';
-  const subject = `${inviterName || 'A Survey user'} invited you to ${displayName} on Survey`;
-  return invokeSendEmail({
-    to: email,
-    subject,
-    template: 'document-invite',
-    data: {
-      documentName: displayName,
-      inviterName: inviterName || 'A Survey user',
-      role: role || 'Viewer',
-      inviteUrl: inviteUrl || appOrigin(),
-      expiresAt: expiresAt || null,
-    },
-  });
-}
-
-/** Send the template-invite email. Best-effort; tolerates missing email.
- * Same deployed-template reuse as sendProjectInviteEmail. */
-export async function sendTemplateInviteEmail({
-  email,
-  templateName,
-  inviterName,
-  role,
-  inviteUrl,
-  expiresAt,
-}) {
-  if (!email) return { success: false, error: 'no recipient' };
-  const displayName = templateName ? `the template "${templateName}"` : 'a template';
-  const subject = `${inviterName || 'A Survey user'} invited you to ${displayName} on Survey`;
-  return invokeSendEmail({
-    to: email,
-    subject,
-    template: 'document-invite',
-    data: {
-      documentName: displayName,
-      inviterName: inviterName || 'A Survey user',
-      role: role || 'Viewer',
-      inviteUrl: inviteUrl || appOrigin(),
-      expiresAt: expiresAt || null,
-    },
-  });
+export async function sendInviteEmailSmart({ token, kind, name, inviterName }) {
+  if (!token) return { success: false, error: 'missing token' };
+  const displayName = kind === 'project'
+    ? (name ? `the project "${name}"` : 'a project')
+    : kind === 'template'
+      ? (name ? `the template "${name}"` : 'a template')
+      : (name || 'a document');
+  try {
+    const { data, error } = await supabase.functions.invoke('send-invite-email', {
+      body: {
+        token,
+        displayName,
+        inviterName: inviterName || 'A Survey user',
+      },
+    });
+    if (error) {
+      console.warn('[GOAL-1] send-invite-email invoke error:', error?.message || error);
+      return { success: false, error: error.message || String(error) };
+    }
+    return { success: !!data?.sent, response: data };
+  } catch (err) {
+    console.warn('[GOAL-1] send-invite-email threw:', err?.message || err);
+    return { success: false, error: err?.message || String(err) };
+  }
 }
 
 /** Send the permission-changed email after a role update. */

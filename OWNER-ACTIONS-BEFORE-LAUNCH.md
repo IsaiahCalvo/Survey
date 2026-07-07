@@ -42,7 +42,35 @@ at the deployed payments listener → then hand the five live values to the agen
 them in and run the one real checkout with you.
 Product choice first: **free/trial vs paid at launch** — if free, skip all this.
 
-## 3. Email + web address — updated 2026-07-02 (late-night session)
+## 3. Email + web address — updated 2026-07-07 (invite-delivery fix session)
+
+**2026-07-07 update — most of the below is now resolved:**
+- You (Isaiah) configured **Brevo SMTP** for account emails (verified live:
+  smtp-relay.brevo.com:587, sender `Survey <no-reply@surveytool.app>`), set
+  the site URL to https://surveytool.app, allowlisted its redirect links, and
+  installed a branded gold Invite email template. Nothing in that config was
+  changed by the agent (before/after snapshots byte-identical).
+- **New-user invites now ride that reliable channel**: a new server function
+  invites brand-new email addresses through the Supabase auth mailer (your
+  Brevo setup + your template), landing them on the live accept page.
+  Existing-account invites still go via Resend/walkthru.tools per the decided
+  default. Committed locally, awaiting your push (see
+  GOAL-autonomous-post-launch.md log).
+- **One thing only you can check:** a real invite email was sent to
+  isaiahcalvo123@gmail.com via Resend on 2026-07-07 (~4:48 PM your time,
+  subject "Isaiah Calvo invited you to Package 2 - Rev 4 -- IC.pdf on
+  Survey"). If it's in your Gmail (not spam), Resend delivery has recovered
+  and nothing more is needed. If it's still missing, the 5-minute fix is
+  yours: verify `mail.surveytool.app` in the Resend dashboard and update the
+  `SEND_EMAIL_FROM` function secret.
+- **Also in your inbox:** two invite emails to your plus-aliases
+  (+survey-invite-a / +survey-invite-b) — those are the new reliable-channel
+  invites; the "-a" one is untouched, so you can click "Accept invite" in it
+  to see the whole flow yourself once you've pushed (the accept page on the
+  live site is blank until the push — see the hosting fix in the same
+  commit).
+
+_Original 2026-07-02 notes below for history:_
 
 **What's confirmed working:**
 - Account emails (confirm/sign-up, password reset) — reliable, on the

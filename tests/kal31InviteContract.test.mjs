@@ -138,7 +138,8 @@ test('KAL-31 Phase C/E: shareEmailService exists and wraps send-email', () => {
     path.join(repoRoot, 'src/services/shareEmailService.js'),
     'utf8',
   );
-  match(src, /sendDocumentInviteEmail/);
+  // GOAL-1: invite emails now go through the send-invite-email edge fn.
+  match(src, /sendInviteEmailSmart/);
   match(src, /sendPermissionChangedEmail/);
   match(src, /sendAccessRemovedEmail/);
   match(src, /functions\.invoke\('send-email'/);

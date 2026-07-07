@@ -14,7 +14,7 @@
  *   - Invites expire after 7 days; resend refreshes the window.
  */
 import { supabase } from '../supabaseClient';
-import { sendDocumentInviteEmail } from './shareEmailService';
+import { sendInviteEmailSmart } from './shareEmailService';
 
 const ROLE_SET = new Set(['viewer', 'editor', 'owner']);
 const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
@@ -75,16 +75,14 @@ export async function createDocumentInvite({ documentId, role, email = null, cur
   }
 
   // Phase C: fire invite email (best-effort) for email-bound invites.
+  // GOAL-1: one server-side call — recipient/role/URL derived from the row.
   if (email) {
     try {
-      const inviteUrl = buildInviteUrl(data);
-      await sendDocumentInviteEmail({
-        email,
-        documentName: documentName || 'a document',
+      await sendInviteEmailSmart({
+        token: data.token,
+        kind: 'document',
+        name: documentName || '',
         inviterName: inviterName || currentUser.email || 'A Survey user',
-        role: normRole.charAt(0).toUpperCase() + normRole.slice(1),
-        inviteUrl,
-        expiresAt: expiresAt,
       });
     } catch (mailErr) {
       console.warn('[KAL-31] invite email send failed (best-effort):', mailErr?.message || mailErr);
@@ -136,14 +134,11 @@ export async function resendDocumentInvite(inviteId, { documentName = null, invi
       .eq('id', inviteId)
       .single();
     if (row?.target_email && row?.token) {
-      const inviteUrl = buildInviteUrl(row);
-      await sendDocumentInviteEmail({
-        email: row.target_email,
-        documentName: documentName || 'a document',
+      await sendInviteEmailSmart({
+        token: row.token,
+        kind: 'document',
+        name: documentName || '',
         inviterName: inviterName || 'A Survey user',
-        role: (row.intended_role || 'viewer').charAt(0).toUpperCase() + (row.intended_role || 'viewer').slice(1),
-        inviteUrl,
-        expiresAt: data,
       });
     }
   } catch (mailErr) {

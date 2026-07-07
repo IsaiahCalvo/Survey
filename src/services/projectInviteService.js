@@ -16,7 +16,7 @@
  */
 import { supabase } from '../supabaseClient';
 import { buildInviteUrl } from './documentInviteService';
-import { sendProjectInviteEmail } from './shareEmailService';
+import { sendInviteEmailSmart } from './shareEmailService';
 
 // Re-export so UI layers can import one URL builder per service. Project and
 // template invites share the /invite/<token> URL space with documents — the
@@ -82,16 +82,14 @@ export async function createProjectInvite({ projectId, role, email = null, curre
   }
 
   // Fire invite email (best-effort) for email-bound invites.
+  // GOAL-1: one server-side call — recipient/role/URL derived from the row.
   if (email) {
     try {
-      const inviteUrl = buildInviteUrl(data);
-      await sendProjectInviteEmail({
-        email,
-        projectName: projectName || 'a project',
+      await sendInviteEmailSmart({
+        token: data.token,
+        kind: 'project',
+        name: projectName || '',
         inviterName: inviterName || currentUser.email || 'A Survey user',
-        role: normRole.charAt(0).toUpperCase() + normRole.slice(1),
-        inviteUrl,
-        expiresAt: expiresAt,
       });
     } catch (mailErr) {
       console.warn('[KAL-31] project invite email send failed (best-effort):', mailErr?.message || mailErr);
@@ -142,14 +140,11 @@ export async function resendProjectInvite(inviteId, { projectName = null, invite
       .eq('id', inviteId)
       .single();
     if (row?.target_email && row?.token) {
-      const inviteUrl = buildInviteUrl(row);
-      await sendProjectInviteEmail({
-        email: row.target_email,
-        projectName: projectName || 'a project',
+      await sendInviteEmailSmart({
+        token: row.token,
+        kind: 'project',
+        name: projectName || '',
         inviterName: inviterName || 'A Survey user',
-        role: (row.intended_role || 'viewer').charAt(0).toUpperCase() + (row.intended_role || 'viewer').slice(1),
-        inviteUrl,
-        expiresAt: data,
       });
     }
   } catch (mailErr) {

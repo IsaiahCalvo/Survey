@@ -1,0 +1,91 @@
+/* GOAL-1 — send-invite-email: thin Deno wrapper.
+ *
+ * All decision logic lives in ./handler.js (pure, dependency-injected,
+ * covered by tests/goal1SendInviteEmailFn.test.mjs in the node suite).
+ * This file only wires real dependencies:
+ *   - caller-scoped client (ANON key + the caller's own Authorization
+ *     header) for the invite-row lookup, so RLS owner-select policies
+ *     decide visibility — NEVER the service role;
+ *   - service-role client ONLY for auth.admin.inviteUserByEmail;
+ *   - service-role fetch to the deployed send-email function for the
+ *     existing-account (Resend) branch.
+ */
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.47.10';
+import { handleSendInviteEmail, CORS_HEADERS } from './handler.js';
+
+const SUPABASE_URL = Deno.env.get('SUPABASE_URL') ?? '';
+const ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY') ?? '';
+const SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
+
+const adminClient = createClient(SUPABASE_URL, SERVICE_ROLE_KEY, {
+  auth: { persistSession: false, autoRefreshToken: false },
+});
+
+const INVITE_COLUMNS = 'token,target_email,revoked_at,accepted_at,expires_at,intended_role,role';
+
+Deno.serve(async (req) => {
+  const authHeader = req.headers.get('Authorization') || '';
+
+  let body: unknown = null;
+  try { body = await req.json(); } catch { /* handler 400s on missing token */ }
+
+  // Caller-scoped client: RLS runs as the calling user.
+  const callerClient = createClient(SUPABASE_URL, ANON_KEY, {
+    global: { headers: { Authorization: authHeader } },
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
+
+  const deps = {
+    anonKey: ANON_KEY,
+    getUserFromToken: async (jwt: string) => {
+      try {
+        const { data, error } = await createClient(SUPABASE_URL, ANON_KEY).auth.getUser(jwt);
+        return error ? null : (data?.user ?? null);
+      } catch {
+        return null;
+      }
+    },
+    selectInviteRow: async (table: string, token: string) => {
+      const { data, error } = await callerClient
+        .from(table)
+        .select(INVITE_COLUMNS)
+        .eq('token', token)
+        .maybeSingle();
+      if (error) return null;
+      return data ?? null;
+    },
+    inviteUserByEmail: async (email: string, redirectTo: string) => {
+      try {
+        const { error } = await adminClient.auth.admin.inviteUserByEmail(email, { redirectTo });
+        return { error };
+      } catch (e) {
+        // auth-js re-throws non-Auth errors (e.g. network) — normalize so the
+        // handler returns its clean 502 instead of an uncaught 500 sans CORS.
+        return { error: { code: 'invite_threw', message: String(e) } };
+      }
+    },
+    sendFallbackEmail: async (payload: { to: string; subject: string; template: string; data: object }) => {
+      try {
+        const res = await fetch(`${SUPABASE_URL}/functions/v1/send-email`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${SERVICE_ROLE_KEY}`,
+          },
+          body: JSON.stringify(payload),
+        });
+        return res.ok;
+      } catch {
+        return false;
+      }
+    },
+  };
+
+  const out = await handleSendInviteEmail({ method: req.method, authHeader, body }, deps);
+  return new Response(out.body == null ? null : JSON.stringify(out.body), {
+    status: out.status,
+    headers: out.body == null
+      ? { ...CORS_HEADERS }
+      : { ...CORS_HEADERS, 'Content-Type': 'application/json' },
+  });
+});

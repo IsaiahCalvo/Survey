@@ -83,8 +83,8 @@ test('projectInviteService mirrors the document invite contract', () => {
   // Shared /invite/<token> URL space — reuse the document URL builder.
   match(src, /import \{ buildInviteUrl \} from '\.\/documentInviteService'/);
   match(src, /export \{ buildInviteUrl \}/);
-  // Email path mirrors documents.
-  match(src, /sendProjectInviteEmail/);
+  // Email path mirrors documents (GOAL-1: via the send-invite-email edge fn).
+  match(src, /sendInviteEmailSmart/);
 });
 
 test('templateInviteService mirrors the document invite contract', () => {
@@ -101,20 +101,22 @@ test('templateInviteService mirrors the document invite contract', () => {
   match(src, /crypto\.getRandomValues/);
   ok(!/Math\.random/.test(stripComments(src)), 'no weak RNG fallback');
   match(src, /import \{ buildInviteUrl \} from '\.\/documentInviteService'/);
-  match(src, /sendTemplateInviteEmail/);
+  match(src, /sendInviteEmailSmart/);
 });
 
-test('shareEmailService sends project/template invites through the deployed template', () => {
+test('shareEmailService routes all three invite kinds through the smart server-side sender', () => {
   const src = read('src/services/shareEmailService.js');
-  match(src, /export async function sendProjectInviteEmail/);
-  match(src, /export async function sendTemplateInviteEmail/);
-  // Both reuse the only deployed invite template — the live send-email
-  // function has no project/template-specific template yet.
-  const uses = src.match(/template: 'document-invite'/g) || [];
-  ok(uses.length >= 3, 'document/project/template invite emails all use the deployed template');
-  // Honest naming so the email copy reads correctly.
+  // GOAL-1: one smart sender invoking the send-invite-email edge fn; the
+  // legacy per-kind client senders are gone (see goal1InviteClientContract).
+  match(src, /export async function sendInviteEmailSmart/);
+  match(src, /functions\.invoke\('send-invite-email'/);
+  // Honest per-kind naming so the email copy reads correctly.
   match(src, /the project "/);
   match(src, /the template "/);
+  // The existing-account branch still reuses the deployed document-invite
+  // template — server-side now (edge fn handler).
+  const fn = read('supabase/functions/send-invite-email/handler.js');
+  match(fn, /template: 'document-invite'/);
 });
 
 test('ShareModal routes project/template kinds to the right service (no Phase-A block)', () => {
