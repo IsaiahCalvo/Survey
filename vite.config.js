@@ -65,7 +65,13 @@ function debugFixturesPlugin() {
     name: 'serve-debug-fixtures',
     configureServer(server) {
       server.middlewares.use('/debug-fixtures', (req, res, next) => {
-        const filePath = path.join(__dirname, 'debug', 'fixtures', decodeURIComponent(req.url));
+        const fixturesRoot = path.resolve(__dirname, 'debug', 'fixtures');
+        const filePath = path.resolve(fixturesRoot, '.' + decodeURIComponent(req.url));
+        if (filePath !== fixturesRoot && !filePath.startsWith(fixturesRoot + path.sep)) {
+          res.statusCode = 403;
+          res.end('Forbidden');
+          return;
+        }
         if (!fs.existsSync(filePath)) {
           res.statusCode = 404;
           res.end('Not found');
