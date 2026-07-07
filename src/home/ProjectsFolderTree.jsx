@@ -31,7 +31,7 @@ import { MoveCopyModal } from './BulkModals';
 import DragRearrangeHandle from '../reorder/DragRearrangeHandle';
 import { SortableRearrangeList, SortableRearrangeRow } from '../reorder/SortableRearrangeList';
 import { pickByIds } from './selectionById';
-import { ROW_DRAG_OPACITY, miniButtonStyle, miniSelectButtonStyle, moreButtonStyle } from './hubControls';
+import { miniButtonStyle, miniSelectButtonStyle, moreButtonStyle } from './hubControls';
 
 /* Literal palette — used by the portal popups, which render outside the
    `.survey-hub` root and therefore cannot inherit its CSS variables. */
@@ -647,14 +647,7 @@ export default function ProjectsFolderTree({
                 {localProjects.length === 0 ? 'No projects yet — create one to group your documents.' : 'No projects match your search.'}
               </div>
             )}
-            <SortableRearrangeList
-              ids={filtered.map((p) => p.id)}
-              onReorder={reorderProjects}
-              onDragStart={({ activeId }) => setDraggingProjectId(activeId)}
-              onDragOver={({ overId }) => setDragOverProjectId(overId)}
-              onDragEnd={() => { setDraggingProjectId(null); setDragOverProjectId(null); }}
-              onDragCancel={() => { setDraggingProjectId(null); setDragOverProjectId(null); }}
-            >
+            <SortableRearrangeList ids={filtered.map((p) => p.id)} onReorder={reorderProjects}>
             {filtered.map((p) => {
               const isOpen = open && p.id === open.id;
               const isSel = selProj.has(p.id);
@@ -680,7 +673,7 @@ export default function ProjectsFolderTree({
                       cursor: isDragging ? 'grabbing' : 'pointer',
                       borderLeft: !jobsEdit && isOpen ? '2px solid var(--gold)' : '2px solid transparent',
                       height: 50, boxSizing: 'border-box',
-                      opacity: isDragging ? ROW_DRAG_OPACITY : 1,
+                      opacity: isDragging ? 0.82 : 1,
                       transition: isDragging ? 'none' : 'background 0.15s ease, opacity 0.15s ease',
                     }}
                   >
@@ -853,14 +846,7 @@ export default function ProjectsFolderTree({
                   {openFiles.length === 0 ? (
                     <div className="meta" style={{ fontSize: 11.5, padding: '12px 10px' }}>No files in this project yet.</div>
                   ) : (
-                    <SortableRearrangeList
-                      ids={openFiles.map((f) => f.id)}
-                      onReorder={reorderFiles}
-                      onDragStart={({ activeId }) => setDraggingFileId(activeId)}
-                      onDragOver={({ overId }) => setDragOverFileId(overId)}
-                      onDragEnd={() => { setDraggingFileId(null); setDragOverFileId(null); }}
-                      onDragCancel={() => { setDraggingFileId(null); setDragOverFileId(null); }}
-                    >
+                    <SortableRearrangeList ids={openFiles.map((f) => f.id)} onReorder={reorderFiles}>
                     <div style={{ display: 'grid', gap: 1 }}>
                       {openFiles.map((f, i) => {
                         const isChecked = selFiles.has(f.id);
@@ -889,7 +875,7 @@ export default function ProjectsFolderTree({
                               gap: 12, alignItems: 'center', padding: '8px 10px', fontSize: 12,
                               height: 42, boxSizing: 'border-box',
                               cursor: isDragging ? 'grabbing' : 'pointer',
-                              opacity: isDragging ? ROW_DRAG_OPACITY : 1,
+                              opacity: isDragging ? 0.82 : 1,
                               transition: isDragging ? 'none' : 'background 0.15s ease, opacity 0.15s ease',
                             }}
                           >

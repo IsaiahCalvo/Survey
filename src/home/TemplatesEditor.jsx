@@ -1542,14 +1542,7 @@ export default function TemplatesEditor({
                   {rich.length === 0 ? 'No templates yet — create one to get started.' : 'No templates match your search.'}
                 </div>
               )}
-              <SortableRearrangeList
-                ids={visibleTemplates.map((t) => t.id)}
-                onReorder={reorderTemplates}
-                onDragStart={({ activeId }) => setDragTpl(activeId)}
-                onDragOver={({ overId }) => setDragOverTpl(overId)}
-                onDragEnd={() => { setDragTpl(null); setDragOverTpl(null); }}
-                onDragCancel={() => { setDragTpl(null); setDragOverTpl(null); }}
-              >
+              <SortableRearrangeList ids={visibleTemplates.map((t) => t.id)} onReorder={reorderTemplates}>
               {visibleTemplates.map((t) => {
                 const active = t.id === selectedId;
                 const isSel = selTpls.has(t.id);
@@ -1571,7 +1564,7 @@ export default function TemplatesEditor({
                         background: dragOverTpl === t.id && dragTpl !== t.id
                           ? 'rgba(216,168,78,0.10)'
                           : tplEdit ? (isSel ? 'var(--ink-600)' : 'transparent') : (active ? 'var(--ink-600)' : 'transparent'),
-                        opacity: isDragging ? ROW_DRAG_OPACITY : 1,
+                        opacity: isDragging ? 0.72 : 1,
                         cursor: 'pointer',
                         borderLeft: !tplEdit && active ? '2px solid var(--accent)' : '2px solid transparent',
                         transition: isDragging ? 'none' : 'background 0.15s ease, opacity 0.15s ease',
@@ -1737,10 +1730,6 @@ export default function TemplatesEditor({
                 <SortableRearrangeList
                   ids={visibleCats.map((c) => c.id)}
                   onReorder={reorderCategories}
-                  onDragStart={({ activeId }) => setDragCat(activeId)}
-                  onDragOver={({ overId }) => setDragOverCat(overId)}
-                  onDragEnd={() => { setDragCat(null); setDragOverCat(null); }}
-                  onDragCancel={() => { setDragCat(null); setDragOverCat(null); }}
                   variableHeight
                   gap={6}
                 >
@@ -1767,7 +1756,7 @@ export default function TemplatesEditor({
                       style={{
                         overflow: 'hidden',
                         flexShrink: 0,
-                        opacity: isDragging ? ROW_DRAG_OPACITY : 1,
+                        opacity: isDragging ? 0.72 : 1,
                         transition: isDragging ? 'none' : 'background 0.15s ease, opacity 0.15s ease',
                       }}
                     >
@@ -1779,9 +1768,7 @@ export default function TemplatesEditor({
                           width: '100%', display: 'grid', gridTemplateColumns: catEdit ? '24px 20px 1fr auto 16px' : '24px 20px 1fr auto', gap: 8,
                           alignItems: 'center', padding: '3px 10px',
                           cursor: catEdit ? 'pointer' : 'default',
-                          background: dragOverCat === c.id && dragCat !== c.id
-                            ? 'rgba(216,168,78,0.10)'
-                            : (catEdit && isSel ? 'rgba(216,168,78,0.08)' : 'transparent'),
+                          background: catEdit && isSel ? 'rgba(216,168,78,0.08)' : 'transparent',
                         }}
                       >
                         <DragRearrangeHandle
@@ -1863,7 +1850,7 @@ export default function TemplatesEditor({
                                   display: 'grid', gridTemplateColumns: '24px 1fr 16px',
                                   alignItems: 'center', gap: 6, padding: '3px 0',
                                   borderBottom: j === items.length - 1 ? 0 : '1px dashed var(--rule)',
-                                  opacity: isDragging ? ROW_DRAG_OPACITY : 1,
+                                  opacity: isDragging ? 0.8 : 1,
                                 }}
                               >
                                 <DragRearrangeHandle
@@ -2018,15 +2005,7 @@ export default function TemplatesEditor({
                   <div className="meta" style={{ fontSize: 11.5, padding: '12px 2px' }}>No entities on this template yet.</div>
                 )}
                 {tpl && (
-                <SortableRearrangeList
-                  ids={tpl.roster.map((r) => r.id)}
-                  onReorder={reorderEntities}
-                  onDragStart={({ activeId }) => setDragEntity(activeId)}
-                  onDragOver={({ overId }) => setDragOverEntity(overId)}
-                  onDragEnd={() => { setDragEntity(null); setDragOverEntity(null); }}
-                  onDragCancel={() => { setDragEntity(null); setDragOverEntity(null); }}
-                  gap={4}
-                >
+                <SortableRearrangeList ids={tpl.roster.map((r) => r.id)} onReorder={reorderEntities} gap={4}>
                 {tpl.roster.map((r) => {
                   const c = roleColors[r.id]?.color || r.color || '#8c8c8a';
                   const op = roleColors[r.id]?.opacity ?? 0.35;
@@ -2049,8 +2028,7 @@ export default function TemplatesEditor({
                         display: 'grid', gridTemplateColumns: '24px 18px 1fr 16px', gap: 10,
                         padding: '8px 10px', alignItems: 'center',
                         height: 38, boxSizing: 'border-box',
-                        opacity: isDragging ? ROW_DRAG_OPACITY : 1,
-                        background: dragOverEntity === r.id && dragEntity !== r.id ? 'rgba(216,168,78,0.10)' : undefined,
+                        opacity: isDragging ? 0.72 : 1,
                         transition: isDragging ? 'none' : 'background 0.15s ease, opacity 0.15s ease',
                       }}>
                         <DragRearrangeHandle

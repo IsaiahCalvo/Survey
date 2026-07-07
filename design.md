@@ -452,8 +452,11 @@ Entities rail:
 - Use subtle `0.15s` background/opacity transitions.
 - Category expand/collapse can use about `0.18s`.
 - Avoid global animation or decorative motion.
-- Reorderable row lists use the shared drag handle and shared drag opacity.
-- Drag-over feedback should be wired where a row exposes that visual state.
+- Reorderable row lists use the shared drag handle.
+- Preserve each row family's existing drag opacity and drop feedback unless the
+  home page has already accepted a deliberate change there.
+- Do not add new drag-over highlights only for uniformity; drag feel matters
+  more than making every list visually identical.
 - Horizontal module tabs may use whole-tab dragging because the tab shape is the
   affordance, but module rows inside dialogs use the shared row drag handle.
 
