@@ -1588,7 +1588,6 @@ const SurveySpacesRail = ({
                                     <div
                                       className={`survey-marker-category-card${isCategoryActive ? ' is-active' : ''}`}
                                       style={{
-                                        opacity: isDragging ? 0.72 : 1,
                                         transition: isDragging ? 'none' : undefined
                                       }}
                                     >
@@ -1928,7 +1927,6 @@ const SurveySpacesRail = ({
                                                 borderRadius: '4px',
                                                 overflow: (isEntityDropdownOpenForMarker || reviewMessage) ? 'visible' : 'hidden',
                                                 flexShrink: 0,
-                                                opacity: isDragging ? 0.72 : 1,
                                                 boxShadow: isDragging ? '0 10px 22px rgba(0, 0, 0, 0.34), inset 0 0 0 1px rgba(74, 144, 226, 0.3)' : 'none',
                                                 transition: isDragging ? 'none' : 'background 0.15s ease, opacity 0.15s ease, box-shadow 0.15s ease'
                                               }}>

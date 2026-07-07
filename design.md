@@ -340,7 +340,8 @@ Entity swatches:
 Drag-reorder affordances are small and quiet. The handle is separate from the
 row click target so rows can still open/select normally.
 
-Dragging uses subtle opacity reduction and a warm gold-tinted hover/drop state.
+Dense row dragging uses one shared opacity value from the sortable wrapper. Child
+rows must not set their own drag opacity, because nested opacity multiplies.
 
 ## Tab Designs
 
@@ -453,8 +454,10 @@ Entities rail:
 - Category expand/collapse can use about `0.18s`.
 - Avoid global animation or decorative motion.
 - Reorderable row lists use the shared drag handle.
-- Preserve each row family's existing drag opacity and drop feedback unless the
-  home page has already accepted a deliberate change there.
+- Dense reorderable row lists use the shared sortable wrapper opacity only
+  (`DENSE_ROW_DRAG_OPACITY`, currently `0.62`). Do not add child-row drag opacity.
+- Preserve each row family's existing drop feedback unless the home page has
+  already accepted a deliberate change there.
 - Do not add new drag-over highlights only for uniformity; drag feel matters
   more than making every list visually identical.
 - Horizontal module tabs may use whole-tab dragging because the tab shape is the

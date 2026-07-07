@@ -673,7 +673,6 @@ export default function ProjectsFolderTree({
                       cursor: isDragging ? 'grabbing' : 'pointer',
                       borderLeft: !jobsEdit && isOpen ? '2px solid var(--gold)' : '2px solid transparent',
                       height: 50, boxSizing: 'border-box',
-                      opacity: isDragging ? 0.82 : 1,
                       transition: isDragging ? 'none' : 'background 0.15s ease, opacity 0.15s ease',
                     }}
                   >
@@ -875,7 +874,6 @@ export default function ProjectsFolderTree({
                               gap: 12, alignItems: 'center', padding: '8px 10px', fontSize: 12,
                               height: 42, boxSizing: 'border-box',
                               cursor: isDragging ? 'grabbing' : 'pointer',
-                              opacity: isDragging ? 0.82 : 1,
                               transition: isDragging ? 'none' : 'background 0.15s ease, opacity 0.15s ease',
                             }}
                           >

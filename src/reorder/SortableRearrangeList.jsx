@@ -27,6 +27,8 @@ import {
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 
+export const DENSE_ROW_DRAG_OPACITY = 0.62;
+
 const restrictToVerticalAxis = ({ transform }) => ({
   ...transform,
   x: 0,
@@ -350,7 +352,7 @@ export function SortableRearrangeRow({
   animateLayoutChanges,
   customLayout = false,
   disableSettledTransition = false,
-  draggingOpacity = 0.8,
+  draggingOpacity = DENSE_ROW_DRAG_OPACITY,
   forceDraggingVisual = false,
   transition: transitionOption,
   wrapperStyle = null,

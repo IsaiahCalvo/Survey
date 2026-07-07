@@ -3,8 +3,6 @@ const DEFAULT_MUTED = 'var(--ink-200)';
 const DEFAULT_TEXT = 'var(--bone-100)';
 const DEFAULT_DISABLED = 'var(--ink-300)';
 
-export const ROW_DRAG_OPACITY = 0.82;
-
 export const moreButtonStyle = ({
   color = DEFAULT_MUTED,
   size = 24,

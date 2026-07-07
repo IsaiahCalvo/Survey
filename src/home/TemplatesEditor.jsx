@@ -76,7 +76,7 @@ import {
 } from '../services/checklistOrphanCleanup';
 import { moveItemById } from '../reorder/flatReorderUtils.js';
 import { pickByIds, removeByIds, duplicateAfterByIds } from './selectionById.js';
-import { ROW_DRAG_OPACITY, closeButtonStyle, miniButtonStyle, miniSelectButtonStyle, moreButtonStyle } from './hubControls';
+import { closeButtonStyle, miniButtonStyle, miniSelectButtonStyle, moreButtonStyle } from './hubControls';
 
 const CATEGORY_COLLAPSE_TRANSITION = 'grid-template-rows 0.18s ease, opacity 0.16s ease';
 const TEMPLATE_ORDER_STORAGE_KEY = 'surveyHub.templateOrder';
@@ -1564,7 +1564,6 @@ export default function TemplatesEditor({
                         background: dragOverTpl === t.id && dragTpl !== t.id
                           ? 'rgba(216,168,78,0.10)'
                           : tplEdit ? (isSel ? 'var(--ink-600)' : 'transparent') : (active ? 'var(--ink-600)' : 'transparent'),
-                        opacity: isDragging ? 0.72 : 1,
                         cursor: 'pointer',
                         borderLeft: !tplEdit && active ? '2px solid var(--accent)' : '2px solid transparent',
                         transition: isDragging ? 'none' : 'background 0.15s ease, opacity 0.15s ease',
@@ -1756,7 +1755,6 @@ export default function TemplatesEditor({
                       style={{
                         overflow: 'hidden',
                         flexShrink: 0,
-                        opacity: isDragging ? 0.72 : 1,
                         transition: isDragging ? 'none' : 'background 0.15s ease, opacity 0.15s ease',
                       }}
                     >
@@ -1850,7 +1848,6 @@ export default function TemplatesEditor({
                                   display: 'grid', gridTemplateColumns: '24px 1fr 16px',
                                   alignItems: 'center', gap: 6, padding: '3px 0',
                                   borderBottom: j === items.length - 1 ? 0 : '1px dashed var(--rule)',
-                                  opacity: isDragging ? 0.8 : 1,
                                 }}
                               >
                                 <DragRearrangeHandle
@@ -2028,7 +2025,6 @@ export default function TemplatesEditor({
                         display: 'grid', gridTemplateColumns: '24px 18px 1fr 16px', gap: 10,
                         padding: '8px 10px', alignItems: 'center',
                         height: 38, boxSizing: 'border-box',
-                        opacity: isDragging ? 0.72 : 1,
                         transition: isDragging ? 'none' : 'background 0.15s ease, opacity 0.15s ease',
                       }}>
                         <DragRearrangeHandle
@@ -2327,7 +2323,6 @@ export default function TemplatesEditor({
                           alignItems: 'center', padding: '7px 8px', borderRadius: 6,
                           background: isSel ? '#181c24' : '#12151c',
                           border: '1px solid #2a3140',
-                          opacity: isDragging ? ROW_DRAG_OPACITY : 1,
                           transition: isDragging ? 'none' : 'background 0.15s ease, opacity 0.15s ease',
                         }}
                       >
