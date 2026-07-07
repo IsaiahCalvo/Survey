@@ -1026,67 +1026,6 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
   const exitSelectionMode = useCallback(() => {}, []);
 
 
-  // Persist projects to Supabase
-  const persistProjects = async (projectsToSave) => {
-    if (!user) {
-      return;
-    }
-
-    // This function is called with an array of projects
-    // We need to sync each project to Supabase
-    try {
-      const currentProjectIds = new Set(projects.map(p => p.id));
-      const newProjectIds = new Set(projectsToSave.map(p => p.id));
-
-      // Delete projects that were removed
-      for (const project of projects) {
-        if (!newProjectIds.has(project.id)) {
-          try {
-            await deleteSupabaseProject(project.id);
-          } catch (err) {
-            console.error('Error deleting project:', err);
-          }
-        }
-      }
-
-      // Update or create projects
-      for (const project of projectsToSave) {
-        if (currentProjectIds.has(project.id)) {
-          // Update existing project
-          try {
-            await updateSupabaseProject(project.id, {
-              name: project.name,
-              config: {
-                pdfs: project.pdfs || [],
-                createdAt: project.createdAt
-              }
-            });
-          } catch (err) {
-            console.error('Error updating project:', err);
-          }
-        } else {
-          // Create new project
-          try {
-            await createSupabaseProject({
-              name: project.name,
-              config: {
-                pdfs: project.pdfs || [],
-                createdAt: project.createdAt
-              }
-            });
-          } catch (err) {
-            console.error('Error creating project:', err);
-          }
-        }
-      }
-
-      // Refetch to sync state
-      await refetchProjects();
-    } catch (err) {
-      console.error('Error persisting projects:', err);
-    }
-  };
-
   // Persist templates to Supabase
   const persistTemplates = async (templatesToSave) => {
     if (!user) {
