@@ -31,6 +31,7 @@ import { MoveCopyModal } from './BulkModals';
 import DragRearrangeHandle from '../reorder/DragRearrangeHandle';
 import { SortableRearrangeList, SortableRearrangeRow } from '../reorder/SortableRearrangeList';
 import { pickByIds } from './selectionById';
+import { ROW_DRAG_OPACITY, miniButtonStyle, miniSelectButtonStyle, moreButtonStyle } from './hubControls';
 
 /* Literal palette — used by the portal popups, which render outside the
    `.survey-hub` root and therefore cannot inherit its CSS variables. */
@@ -601,7 +602,7 @@ export default function ProjectsFolderTree({
             <div style={{ display: 'flex', alignItems: 'center', gap: 3, flexWrap: 'nowrap', height: 22, overflow: 'hidden' }}>
               <button
                 onClick={() => { const next = !jobsEdit; setJobsEdit(next); if (!next) setSelProj(new Set()); }}
-                style={{ background: 'transparent', border: 0, color: 'var(--gold)', borderRadius: 2, padding: '2px 5px', fontSize: 10, cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap', fontWeight: 600, lineHeight: 1 }}
+                style={miniSelectButtonStyle()}
               >
                 {jobsEdit ? 'Done' : 'Select'}
               </button>
@@ -612,7 +613,7 @@ export default function ProjectsFolderTree({
                     return (
                       <button
                         onClick={() => setSelProj(allSel ? new Set() : new Set(filtered.map((p) => p.id)))}
-                        style={{ background: 'transparent', border: '1px solid var(--ink-500)', color: 'var(--bone-100)', borderRadius: 2, padding: '2px 5px', fontSize: 10, cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' }}
+                        style={miniButtonStyle()}
                       >{allSel ? 'None' : 'All'}</button>
                     );
                   })()}
@@ -620,20 +621,20 @@ export default function ProjectsFolderTree({
                   <button
                     disabled={!selCount}
                     onClick={() => { duplicateProjects([...selProj]); setSelProj(new Set()); }}
-                    style={{ background: 'transparent', border: '1px solid var(--ink-500)', color: selCount ? 'var(--bone-100)' : 'var(--ink-300)', borderRadius: 2, padding: '2px 5px', fontSize: 10, cursor: selCount ? 'pointer' : 'not-allowed', fontFamily: 'inherit', whiteSpace: 'nowrap' }}
+                    style={miniButtonStyle({ disabled: !selCount })}
                   >Duplicate</button>
                   {/* Share — opens the share flow for the first selected project. */}
                   <button
                     disabled={!selCount}
                     onClick={() => { const first = filtered.find((p) => selProj.has(p.id)); if (first) onShare && onShare(first); }}
-                    style={{ background: 'transparent', border: '1px solid var(--ink-500)', color: selCount ? 'var(--bone-100)' : 'var(--ink-300)', borderRadius: 2, padding: '2px 5px', fontSize: 10, cursor: selCount ? 'pointer' : 'not-allowed', fontFamily: 'inherit', whiteSpace: 'nowrap', display: 'inline-flex', alignItems: 'center' }}
+                    style={miniButtonStyle({ disabled: !selCount, iconOnly: true })}
                     title="Share"
                   ><Icon name="share" size={11} /></button>
                   {/* Delete — removes each selected project and lets the host persist it when wired. */}
                   <button
                     disabled={!selCount}
                     onClick={() => { void deleteProjects([...selProj]); }}
-                    style={{ background: 'transparent', border: '1px solid var(--ink-500)', color: selCount ? '#cf6f6f' : 'var(--ink-300)', borderRadius: 2, padding: '2px 5px', fontSize: 10, cursor: selCount ? 'pointer' : 'not-allowed', fontFamily: 'inherit', whiteSpace: 'nowrap', display: 'inline-flex', alignItems: 'center' }}
+                    style={miniButtonStyle({ disabled: !selCount, danger: true, iconOnly: true })}
                     title="Delete"
                   ><Icon name="trash" size={11} /></button>
                 </>
@@ -646,7 +647,14 @@ export default function ProjectsFolderTree({
                 {localProjects.length === 0 ? 'No projects yet — create one to group your documents.' : 'No projects match your search.'}
               </div>
             )}
-            <SortableRearrangeList ids={filtered.map((p) => p.id)} onReorder={reorderProjects}>
+            <SortableRearrangeList
+              ids={filtered.map((p) => p.id)}
+              onReorder={reorderProjects}
+              onDragStart={({ activeId }) => setDraggingProjectId(activeId)}
+              onDragOver={({ overId }) => setDragOverProjectId(overId)}
+              onDragEnd={() => { setDraggingProjectId(null); setDragOverProjectId(null); }}
+              onDragCancel={() => { setDraggingProjectId(null); setDragOverProjectId(null); }}
+            >
             {filtered.map((p) => {
               const isOpen = open && p.id === open.id;
               const isSel = selProj.has(p.id);
@@ -672,7 +680,7 @@ export default function ProjectsFolderTree({
                       cursor: isDragging ? 'grabbing' : 'pointer',
                       borderLeft: !jobsEdit && isOpen ? '2px solid var(--gold)' : '2px solid transparent',
                       height: 50, boxSizing: 'border-box',
-                      opacity: isDragging ? 0.82 : 1,
+                      opacity: isDragging ? ROW_DRAG_OPACITY : 1,
                       transition: isDragging ? 'none' : 'background 0.15s ease, opacity 0.15s ease',
                     }}
                   >
@@ -721,9 +729,9 @@ export default function ProjectsFolderTree({
                           setFileMenu(null);
                           setTeamMenu((cur) => (cur && cur.id === p.id ? null : { id: p.id, rect }));
                         }}
-                        style={{ background: 'transparent', border: 0, color: 'var(--ink-200)', cursor: 'pointer', fontSize: 14, lineHeight: 1, padding: '2px 4px', borderRadius: 4 }}
+                        style={moreButtonStyle()}
                         title="More"
-                      >⋯</button>
+                      ><Icon name="more" size={14} /></button>
                     )}
                   </div>
                   )}
@@ -789,7 +797,7 @@ export default function ProjectsFolderTree({
                         const selectedFiles = openFiles.filter((f) => selFiles.has(f.id));
                         const c = selectedFiles.length;
                         const allSel = c === openFiles.length && openFiles.length > 0;
-                        const baseBtn = { background: 'transparent', border: '1px solid var(--ink-500)', borderRadius: 2, padding: '1px 7px', fontSize: 10.5, cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap', height: 18, lineHeight: 1, boxSizing: 'border-box' };
+                        const baseBtn = miniButtonStyle();
                         return (
                           <>
                             <button
@@ -800,7 +808,7 @@ export default function ProjectsFolderTree({
                             <button
                               disabled={!c}
                               onClick={() => { duplicateFiles(selectedFiles.map((f) => f.id)); setSelFiles(new Set()); }}
-                              style={{ ...baseBtn, color: c ? 'var(--bone-100)' : 'var(--ink-300)', cursor: c ? 'pointer' : 'not-allowed' }}
+                              style={miniButtonStyle({ disabled: !c })}
                             >Duplicate</button>
                             {/* Move/Copy — opens the Move/Copy picker so the
                                 user chooses a destination project and moves or
@@ -812,20 +820,20 @@ export default function ProjectsFolderTree({
                                 setMoveIds(selectedFiles.map((f) => f.id));
                                 setMoveOpen(true);
                               }}
-                              style={{ ...baseBtn, color: c ? 'var(--bone-100)' : 'var(--ink-300)', cursor: c ? 'pointer' : 'not-allowed' }}
+                              style={miniButtonStyle({ disabled: !c })}
                             >Move/Copy</button>
                             {/* Share — opens the share flow for this project. */}
                             <button
                               disabled={!c}
                               onClick={() => onShare && onShare(open)}
-                              style={{ ...baseBtn, color: c ? 'var(--bone-100)' : 'var(--ink-300)', cursor: c ? 'pointer' : 'not-allowed', display: 'inline-flex', alignItems: 'center' }}
+                              style={miniButtonStyle({ disabled: !c, iconOnly: true })}
                               title="Share"
                             ><Icon name="share" size={11} /></button>
                             {/* Delete — removes each selected file locally. */}
                             <button
                               disabled={!c}
                               onClick={() => deleteFiles(selectedFiles.map((f) => f.id))}
-                              style={{ ...baseBtn, color: c ? '#cf6f6f' : 'var(--ink-300)', cursor: c ? 'pointer' : 'not-allowed', display: 'inline-flex', alignItems: 'center' }}
+                              style={miniButtonStyle({ disabled: !c, danger: true, iconOnly: true })}
                               title="Delete"
                             ><Icon name="trash" size={11} /></button>
                           </>
@@ -833,7 +841,7 @@ export default function ProjectsFolderTree({
                       })()}
                       <button
                         onClick={() => { const next = !fileSelect; setFileSelect(next); if (!next) setSelFiles(new Set()); }}
-                        style={{ background: 'transparent', border: 0, color: 'var(--gold)', borderRadius: 2, padding: '2px 5px', fontSize: 11, cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap', fontWeight: 600, lineHeight: 1 }}
+                        style={miniSelectButtonStyle()}
                       >
                         {fileSelect ? 'Done' : 'Select'}
                       </button>
@@ -845,7 +853,14 @@ export default function ProjectsFolderTree({
                   {openFiles.length === 0 ? (
                     <div className="meta" style={{ fontSize: 11.5, padding: '12px 10px' }}>No files in this project yet.</div>
                   ) : (
-                    <SortableRearrangeList ids={openFiles.map((f) => f.id)} onReorder={reorderFiles}>
+                    <SortableRearrangeList
+                      ids={openFiles.map((f) => f.id)}
+                      onReorder={reorderFiles}
+                      onDragStart={({ activeId }) => setDraggingFileId(activeId)}
+                      onDragOver={({ overId }) => setDragOverFileId(overId)}
+                      onDragEnd={() => { setDraggingFileId(null); setDragOverFileId(null); }}
+                      onDragCancel={() => { setDraggingFileId(null); setDragOverFileId(null); }}
+                    >
                     <div style={{ display: 'grid', gap: 1 }}>
                       {openFiles.map((f, i) => {
                         const isChecked = selFiles.has(f.id);
@@ -874,7 +889,7 @@ export default function ProjectsFolderTree({
                               gap: 12, alignItems: 'center', padding: '8px 10px', fontSize: 12,
                               height: 42, boxSizing: 'border-box',
                               cursor: isDragging ? 'grabbing' : 'pointer',
-                              opacity: isDragging ? 0.82 : 1,
+                              opacity: isDragging ? ROW_DRAG_OPACITY : 1,
                               transition: isDragging ? 'none' : 'background 0.15s ease, opacity 0.15s ease',
                             }}
                           >
@@ -909,9 +924,9 @@ export default function ProjectsFolderTree({
                                   setTeamMenu(null);
                                   setFileMenu((cur) => (cur && cur.id === f.id ? null : { id: f.id, rect }));
                                 }}
-                                style={{ background: 'transparent', border: 0, color: 'var(--ink-200)', cursor: 'pointer', fontSize: 16, lineHeight: 1, padding: '2px 6px', borderRadius: 4 }}
+                                style={moreButtonStyle()}
                                 title="More"
-                              >⋯</button>
+                              ><Icon name="more" size={14} /></button>
                             )}
                           </div>
                             )}

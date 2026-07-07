@@ -20,6 +20,7 @@
 import React from 'react';
 import { Icon } from './HubShell';
 import { AuthContext } from '../contexts/AuthContext';
+import { closeButtonStyle, moreButtonStyle } from './hubControls';
 import {
   createProjectInvite,
   listProjectInvites,
@@ -138,7 +139,7 @@ const ActivityModal = ({ member, onClose }) => {
             <div style={{ fontSize: 10.5, letterSpacing: 0.14, textTransform: "uppercase", color: INK_200, fontWeight: 700 }}>Activity</div>
             <div style={{ fontSize: 17, fontWeight: 700, letterSpacing: -0.015, marginTop: 4 }}>{member.name} · activity</div>
           </div>
-          <button onClick={onClose} title="Close" style={{ background: "transparent", border: `1px solid ${INK_500}`, color: INK_200, width: 24, height: 24, borderRadius: 6, cursor: "pointer", fontSize: 14, lineHeight: 1, padding: 0, display: "grid", placeItems: "center", fontFamily: "inherit", flex: "none" }}>×</button>
+          <button onClick={onClose} title="Close" style={closeButtonStyle({ borderColor: INK_500, color: INK_200 })}>×</button>
         </div>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 130px", gap: 14, padding: "8px 18px 6px", borderBottom: `1px solid ${INK_500}`, fontSize: 10.5, letterSpacing: 0.14, textTransform: "uppercase", color: INK_200, fontWeight: 700 }}>
           <span onClick={() => click("file")} style={{ cursor: "pointer", userSelect: "none", color: sortKey === "file" ? BONE_100 : "inherit" }}>File{arrow("file")}</span>
@@ -271,7 +272,7 @@ const InviteModal = ({ project, onClose, currentUser, canInvite, onChanged }) =>
             <div style={{ fontSize: 10.5, letterSpacing: 0.14, textTransform: "uppercase", color: INK_200, fontWeight: 700 }}>Invite User</div>
             <div style={{ fontSize: 17, fontWeight: 700, letterSpacing: -0.015, marginTop: 4, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{project.name}</div>
           </div>
-          <button onClick={onClose} title="Close" style={{ background: "transparent", border: `1px solid ${INK_500}`, color: INK_200, width: 24, height: 24, borderRadius: 6, cursor: "pointer", fontSize: 14, lineHeight: 1, padding: 0, display: "grid", placeItems: "center", fontFamily: "inherit", flex: "none" }}>×</button>
+          <button onClick={onClose} title="Close" style={closeButtonStyle({ borderColor: INK_500, color: INK_200 })}>×</button>
         </div>
         <div style={{ padding: "16px 18px", display: "flex", flexDirection: "column", gap: 18 }}>
           <div>
@@ -691,7 +692,7 @@ export default function ManageTeamModal({ open, onClose, project, members }) {
                     ) : (
                       <button onClick={(e) => { e.stopPropagation(); setOpenInviteMenu(null); setOpenMenu(openMenu === m.id ? null : m.id); }}
                         title="More"
-                        style={{ width: 24, height: 24, borderRadius: 6, padding: 0, background: "transparent", border: 0, color: INK_200, cursor: "pointer", fontSize: 16, lineHeight: 1, fontFamily: "inherit" }}>⋯</button>
+                        style={moreButtonStyle({ color: INK_200 })}><Icon name="more" size={14} /></button>
                     )}
                   </div>
                   {!editMode && openMenu === m.id && (
@@ -727,7 +728,7 @@ export default function ManageTeamModal({ open, onClose, project, members }) {
                     <div style={{ fontSize: 11.5, color: GOLD, fontWeight: 600 }}>Pending</div>
                     <button onClick={(e) => { e.stopPropagation(); setOpenMenu(null); setOpenInviteMenu(openInviteMenu === inv.id ? null : inv.id); }}
                       title="More"
-                      style={{ width: 24, height: 24, borderRadius: 6, padding: 0, background: "transparent", border: 0, color: INK_200, cursor: "pointer", fontSize: 16, lineHeight: 1, fontFamily: "inherit" }}>⋯</button>
+                      style={moreButtonStyle({ color: INK_200 })}><Icon name="more" size={14} /></button>
                   </div>
                   {openInviteMenu === inv.id && (
                     <div onClick={(e) => e.stopPropagation()} style={{ position: "absolute", right: 14, top: 38, zIndex: 20, background: INK_700, border: `1px solid ${INK_500}`, borderRadius: 8, padding: 4, minWidth: 150, boxShadow: "0 12px 30px rgba(0,0,0,0.45)" }}>

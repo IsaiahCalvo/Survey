@@ -31,6 +31,7 @@ import {
   sendPermissionChangedEmail,
   sendAccessRemovedEmail,
 } from '../services/shareEmailService';
+import { closeButtonStyle } from './hubControls';
 
 const C = {
   scrim: 'rgba(13,15,20,0.55)',
@@ -230,7 +231,7 @@ export default function AccessManagementModal({ open, onClose, kind = 'document'
               <div style={{ fontSize: 17, fontWeight: 700, letterSpacing: -0.015, marginTop: 4, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{documentName}</div>
             </div>
             <button onClick={() => setInviteOpen(true)} data-kal31-invite-btn="true" style={{ flex: 'none', background: C.gold, color: '#15110a', border: 0, borderRadius: 6, padding: '5px 11px', height: 28, fontSize: 11.5, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>Invite</button>
-            <button onClick={onClose} title="Close" style={{ background: 'transparent', border: `1px solid ${C.rule}`, color: C.muted, width: 24, height: 24, borderRadius: 6, cursor: 'pointer', fontSize: 14, lineHeight: 1, padding: 0, display: 'grid', placeItems: 'center', fontFamily: 'inherit', flex: 'none' }}>x</button>
+            <button onClick={onClose} title="Close" style={closeButtonStyle({ borderColor: C.rule, color: C.muted })}>×</button>
           </div>
 
           <div style={{ display: 'grid', gridTemplateColumns: '30px 1fr 1fr 1fr 90px', gap: 14, alignItems: 'center', padding: '8px 18px 6px', borderBottom: `1px solid ${C.rule}`, fontSize: 10.5, letterSpacing: 0.14, textTransform: 'uppercase', color: C.muted, fontWeight: 700 }}>

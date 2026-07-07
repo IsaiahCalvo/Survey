@@ -8,6 +8,7 @@
    where the palette CSS variables are not in scope.
 */
 import { useEffect, useRef, useState } from 'react';
+import { closeButtonStyle } from './hubControls';
 
 const C = {
   scrim: 'rgba(13,15,20,0.55)',
@@ -73,9 +74,12 @@ export function MoveCopyModal({ open, onClose, projects = [], count = 0, onConfi
   return (
     <div onClick={onClose} style={overlay}>
       <div onClick={(e) => e.stopPropagation()} style={{ width: 420, maxWidth: '92vw', background: C.card, border: `1px solid ${C.rule}`, borderRadius: 10, boxShadow: '0 24px 60px rgba(0,0,0,0.55)', color: C.ink, overflow: 'hidden' }}>
-        <div style={{ padding: '16px 18px 14px', borderBottom: `1px solid ${C.rule}` }}>
-          <div style={{ fontSize: 10.5, letterSpacing: '0.14em', textTransform: 'uppercase', color: C.muted, fontWeight: 700 }}>Move or copy</div>
-          <div style={{ fontSize: 17, fontWeight: 700, letterSpacing: '-0.015em', marginTop: 4 }}>{count} {count === 1 ? 'document' : 'documents'}</div>
+        <div style={{ padding: '16px 18px 14px', borderBottom: `1px solid ${C.rule}`, display: 'flex', justifyContent: 'space-between', gap: 12 }}>
+          <div>
+            <div style={{ fontSize: 10.5, letterSpacing: '0.14em', textTransform: 'uppercase', color: C.muted, fontWeight: 700 }}>Move or copy</div>
+            <div style={{ fontSize: 17, fontWeight: 700, letterSpacing: '-0.015em', marginTop: 4 }}>{count} {count === 1 ? 'document' : 'documents'}</div>
+          </div>
+          <button onClick={onClose} title="Close" style={closeButtonStyle({ borderColor: C.rule, color: C.muted })}>×</button>
         </div>
         <div style={{ padding: '16px 18px', display: 'flex', flexDirection: 'column', gap: 14 }}>
           <div style={{ display: 'flex', gap: 6 }}>
@@ -147,9 +151,12 @@ export function ConfirmModal({ open, onClose, title = 'Are you sure?', message =
   return (
     <div onClick={onClose} style={overlay}>
       <div onClick={(e) => e.stopPropagation()} style={{ width: 380, maxWidth: '92vw', background: C.card, border: `1px solid ${C.rule}`, borderRadius: 10, boxShadow: '0 24px 60px rgba(0,0,0,0.55)', color: C.ink, overflow: 'hidden' }}>
-        <div style={{ padding: '18px 18px 14px' }}>
-          <div style={{ fontSize: 16, fontWeight: 700, letterSpacing: '-0.015em' }}>{title}</div>
-          {message && <div style={{ fontSize: 12, color: C.muted, marginTop: 8, lineHeight: 1.5 }}>{message}</div>}
+        <div style={{ padding: '18px 18px 14px', display: 'flex', justifyContent: 'space-between', gap: 12 }}>
+          <div style={{ minWidth: 0 }}>
+            <div style={{ fontSize: 16, fontWeight: 700, letterSpacing: '-0.015em' }}>{title}</div>
+            {message && <div style={{ fontSize: 12, color: C.muted, marginTop: 8, lineHeight: 1.5 }}>{message}</div>}
+          </div>
+          <button onClick={onClose} title="Close" style={closeButtonStyle({ borderColor: C.rule, color: C.muted })}>×</button>
         </div>
         <div style={{ padding: '12px 16px', borderTop: `1px solid ${C.rule}`, background: C.deep, display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
           <button onClick={onClose} style={{ background: 'transparent', border: 0, color: C.muted, padding: '6px 10px', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit', borderRadius: 6 }}>Cancel</button>

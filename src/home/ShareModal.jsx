@@ -23,6 +23,7 @@ import { AuthContext } from '../contexts/AuthContext';
 import { createDocumentInvite, buildInviteUrl } from '../services/documentInviteService';
 import { createProjectInvite } from '../services/projectInviteService';
 import { createTemplateInvite } from '../services/templateInviteService';
+import { closeButtonStyle } from './hubControls';
 
 const C = {
   scrim: 'rgba(13,15,20,0.55)',
@@ -201,7 +202,7 @@ export default function ShareModal({
             <div style={{ fontSize: 10.5, letterSpacing: '0.14em', textTransform: 'uppercase', color: C.muted, fontWeight: 700 }}>Share {noun}</div>
             <div style={{ fontSize: 17, fontWeight: 700, letterSpacing: '-0.015em', marginTop: 4, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{name || 'Untitled'}</div>
           </div>
-          <button onClick={onClose} title="Close" style={{ background: 'transparent', border: `1px solid ${C.rule}`, color: C.muted, width: 24, height: 24, borderRadius: 6, cursor: 'pointer', fontSize: 14, lineHeight: 1, padding: 0, display: 'grid', placeItems: 'center', fontFamily: 'inherit', flex: 'none' }}>×</button>
+          <button onClick={onClose} title="Close" style={closeButtonStyle({ borderColor: C.rule, color: C.muted })}>×</button>
         </div>
 
         {/* Single role selector — applies to both link and email per locked spec. */}

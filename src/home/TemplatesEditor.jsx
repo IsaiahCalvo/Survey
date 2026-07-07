@@ -76,10 +76,27 @@ import {
 } from '../services/checklistOrphanCleanup';
 import { moveItemById } from '../reorder/flatReorderUtils.js';
 import { pickByIds, removeByIds, duplicateAfterByIds } from './selectionById.js';
+import { ROW_DRAG_OPACITY, closeButtonStyle, miniButtonStyle, miniSelectButtonStyle, moreButtonStyle } from './hubControls';
 
 const CATEGORY_COLLAPSE_TRANSITION = 'grid-template-rows 0.18s ease, opacity 0.16s ease';
 const TEMPLATE_ORDER_STORAGE_KEY = 'surveyHub.templateOrder';
 const animateCategoryLayoutChanges = undefined;
+
+const templateMatchesSearch = (template, query) => {
+  if (!query) return true;
+  const haystack = [
+    template.name,
+    ...(template.modules || []).flatMap((mod) => [
+      mod.name,
+      ...(mod.categories || []).flatMap((cat) => [
+        cat.name,
+        ...(cat.items || []).map((item) => item.text || item.lastKnownLabel),
+      ]),
+    ]),
+    ...(template.roster || []).map((entity) => entity.role),
+  ];
+  return haystack.some((value) => String(value || '').toLowerCase().includes(query));
+};
 
 const restrictSortableToHorizontalAxis = ({ transform }) => ({
   ...transform,
@@ -800,6 +817,8 @@ export default function TemplatesEditor({
   if (mintIdRef.current === null) mintIdRef.current = createStableIdMint(new Map(), newId);
   const mintId = mintIdRef.current;
   const [rich, setRich] = useState(() => buildRich(applyTemplateOrderPreference(templates, user), mintId));
+  const [search, setSearch] = useState('');
+  const [modSearch, setModSearch] = useState('');
   /* True once the user edits anything; drives the Save / Cancel bar. Reset
      whenever the editor reloads from props, or on Save / Cancel. */
   const [dirty, setDirty] = useState(false);
@@ -835,7 +854,6 @@ export default function TemplatesEditor({
   const [tplEdit, setTplEdit] = useState(false);
   const [selTpls, setSelTpls] = useState(() => new Set());
   const toggleTplSel = (id) => setSelTpls((prev) => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
-  const tplSelCount = selTpls.size;
   const [tplMenu, setTplMenu] = useState(null);       // { id, rect }
   const [entityMenu, setEntityMenu] = useState(null); // { id, rect }
   const [dragTpl, setDragTpl] = useState(null);
@@ -869,6 +887,10 @@ export default function TemplatesEditor({
   const [layerTab, setLayerTab] = useState({});       // { entityId: 'fill' | 'border' }
   const [borderColors, setBorderColors] = useState({});
   const [matchFill, setMatchFill] = useState({});     // { entityId: bool }
+
+  useEffect(() => {
+    if (!modEdit) setModSearch('');
+  }, [modEdit]);
 
   /* Rebuild the working copy + colour-picker maps from the templates prop.
      Seeds the maps from each entity's persisted refinements so saved colours
@@ -959,7 +981,21 @@ export default function TemplatesEditor({
     }
   }, [rich, selectedId]);
 
-  const tpl = rich.find((t) => t.id === selectedId) || rich[0] || null;
+  const visibleTemplates = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return rich.filter((template) => templateMatchesSearch(template, q));
+  }, [rich, search]);
+
+  useEffect(() => {
+    if (!visibleTemplates.length || selectedId == null) return;
+    if (!visibleTemplates.some((template) => template.id === selectedId)) {
+      setSelected(visibleTemplates[0].id);
+      setOpenMod(0);
+      setOpenCat(-1);
+    }
+  }, [visibleTemplates, selectedId]);
+
+  const tpl = rich.find((t) => t.id === selectedId) || visibleTemplates[0] || rich[0] || null;
   const orderedMods = tpl ? tpl.modules : [];
 
   /* When the Move/Copy modal opens, seed its destination picks: default
@@ -1425,9 +1461,9 @@ export default function TemplatesEditor({
   };
 
   const subtitle = (
-    <span><b>{rich.length}</b> templates · reusable category + checklist sets</span>
+    <span><b>{visibleTemplates.length}</b> templates · reusable category + checklist sets</span>
   );
-  const actions = <><Search placeholder="Search Templates..." /></>;
+  const actions = <Search placeholder="Search Templates..." value={search} onChange={setSearch} />;
 
   /* Categories shown for the open module. */
   const activeMod = orderedMods[openMod] || orderedMods[0] || { categories: [] };
@@ -1465,34 +1501,56 @@ export default function TemplatesEditor({
               <div style={{ display: 'flex', alignItems: 'center', gap: 3, flexWrap: 'nowrap', height: 22, overflow: 'hidden' }}>
                 <button
                   onClick={() => { const next = !tplEdit; setTplEdit(next); if (!next) setSelTpls(new Set()); }}
-                  style={{ background: 'transparent', border: 0, color: 'var(--accent)', borderRadius: 2, padding: '2px 5px', fontSize: 10, cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap', fontWeight: 600, lineHeight: 1 }}
+                  style={miniSelectButtonStyle({ color: 'var(--accent)' })}
                 >
                   {tplEdit ? 'Done' : 'Select'}
                 </button>
                 {tplEdit && (
                   <>
                     {(() => {
-                      const allSel = tplSelCount === rich.length && rich.length > 0;
+                      const visibleSelectedIds = new Set(visibleTemplates.filter((t) => selTpls.has(t.id)).map((t) => t.id));
+                      const visibleSelCount = visibleSelectedIds.size;
+                      const allSel = visibleSelCount === visibleTemplates.length && visibleTemplates.length > 0;
                       return (
-                        <button
-                          onClick={() => setSelTpls(allSel ? new Set() : new Set(rich.map((t) => t.id)))}
-                          style={{ background: 'transparent', border: '1px solid var(--rule-strong)', color: 'var(--ink-soft)', borderRadius: 2, padding: '2px 5px', fontSize: 10, cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' }}
-                        >{allSel ? 'None' : 'All'}</button>
+                        <>
+                          <button
+                            onClick={() => {
+                              setSelTpls((prev) => {
+                                const next = new Set(prev);
+                                visibleTemplates.forEach((template) => {
+                                  if (allSel) next.delete(template.id);
+                                  else next.add(template.id);
+                                });
+                                return next;
+                              });
+                            }}
+                            style={miniButtonStyle({ borderColor: 'var(--rule-strong)', color: 'var(--ink-soft)' })}
+                          >{allSel ? 'None' : 'All'}</button>
+                          <button onClick={() => { if (visibleSelCount) { duplicateTemplates(visibleSelectedIds); setSelTpls(new Set()); } }} disabled={!visibleSelCount} style={miniButtonStyle({ borderColor: 'var(--rule-strong)', color: 'var(--ink-soft)', disabled: !visibleSelCount })}>Duplicate</button>
+                          <button disabled={!visibleSelCount} onClick={() => { const first = visibleTemplates.find((t) => visibleSelectedIds.has(t.id)); if (first) onShare && onShare(first); }} style={miniButtonStyle({ borderColor: 'var(--rule-strong)', color: 'var(--ink-soft)', disabled: !visibleSelCount, iconOnly: true })} title="Share"><Icon name="share" size={11} /></button>
+                          <button onClick={() => { if (visibleSelCount) { deleteTemplates(visibleSelectedIds); setSelTpls(new Set()); } }} disabled={!visibleSelCount} style={miniButtonStyle({ borderColor: 'var(--rule-strong)', color: 'var(--ink-soft)', disabled: !visibleSelCount, danger: true, iconOnly: true })} title="Delete"><Icon name="trash" size={11} /></button>
+                        </>
                       );
                     })()}
-                    <button onClick={() => { if (tplSelCount) { duplicateTemplates(selTpls); setSelTpls(new Set()); } }} disabled={!tplSelCount} style={{ background: 'transparent', border: '1px solid var(--rule-strong)', color: tplSelCount ? 'var(--ink-soft)' : 'var(--ink-quiet)', borderRadius: 2, padding: '2px 5px', fontSize: 10, cursor: tplSelCount ? 'pointer' : 'not-allowed', fontFamily: 'inherit', whiteSpace: 'nowrap' }}>Duplicate</button>
-                    <button disabled={!tplSelCount} onClick={() => { const first = rich.find((t) => selTpls.has(t.id)); if (first) onShare && onShare(first); }} style={{ background: 'transparent', border: '1px solid var(--rule-strong)', color: tplSelCount ? 'var(--ink-soft)' : 'var(--ink-quiet)', borderRadius: 2, padding: '2px 5px', fontSize: 10, cursor: tplSelCount ? 'pointer' : 'not-allowed', fontFamily: 'inherit', whiteSpace: 'nowrap', display: 'inline-flex', alignItems: 'center' }} title="Share"><Icon name="share" size={11} /></button>
-                    <button onClick={() => { if (tplSelCount) { deleteTemplates(selTpls); setSelTpls(new Set()); } }} disabled={!tplSelCount} style={{ background: 'transparent', border: '1px solid var(--rule-strong)', color: tplSelCount ? '#cf6f6f' : 'var(--ink-quiet)', borderRadius: 2, padding: '2px 5px', fontSize: 10, cursor: tplSelCount ? 'pointer' : 'not-allowed', fontFamily: 'inherit', whiteSpace: 'nowrap', display: 'inline-flex', alignItems: 'center' }} title="Delete"><Icon name="trash" size={11} /></button>
                   </>
                 )}
               </div>
             </div>
             <div className="slim-scroll" style={{ display: 'flex', flexDirection: 'column', gap: 2, flex: 1, minHeight: 0, overflow: 'auto', paddingRight: 4 }}>
-              {rich.length === 0 && (
-                <div className="meta" style={{ padding: '20px 8px', fontSize: 11.5 }}>No templates yet — create one to get started.</div>
+              {visibleTemplates.length === 0 && (
+                <div className="meta" style={{ padding: '20px 8px', fontSize: 11.5 }}>
+                  {rich.length === 0 ? 'No templates yet — create one to get started.' : 'No templates match your search.'}
+                </div>
               )}
-              <SortableRearrangeList ids={rich.map((t) => t.id)} onReorder={reorderTemplates}>
-              {rich.map((t) => {
+              <SortableRearrangeList
+                ids={visibleTemplates.map((t) => t.id)}
+                onReorder={reorderTemplates}
+                onDragStart={({ activeId }) => setDragTpl(activeId)}
+                onDragOver={({ overId }) => setDragOverTpl(overId)}
+                onDragEnd={() => { setDragTpl(null); setDragOverTpl(null); }}
+                onDragCancel={() => { setDragTpl(null); setDragOverTpl(null); }}
+              >
+              {visibleTemplates.map((t) => {
                 const active = t.id === selectedId;
                 const isSel = selTpls.has(t.id);
                 return (
@@ -1513,7 +1571,7 @@ export default function TemplatesEditor({
                         background: dragOverTpl === t.id && dragTpl !== t.id
                           ? 'rgba(216,168,78,0.10)'
                           : tplEdit ? (isSel ? 'var(--ink-600)' : 'transparent') : (active ? 'var(--ink-600)' : 'transparent'),
-                        opacity: isDragging ? 0.72 : 1,
+                        opacity: isDragging ? ROW_DRAG_OPACITY : 1,
                         cursor: 'pointer',
                         borderLeft: !tplEdit && active ? '2px solid var(--accent)' : '2px solid transparent',
                         transition: isDragging ? 'none' : 'background 0.15s ease, opacity 0.15s ease',
@@ -1557,9 +1615,9 @@ export default function TemplatesEditor({
                             const rect = e.currentTarget.getBoundingClientRect();
                             setTplMenu((m) => (m && m.id === t.id ? null : { id: t.id, rect }));
                           }}
-                          style={{ background: 'transparent', border: 0, color: 'var(--ink-200)', cursor: 'pointer', fontSize: 14, lineHeight: 1, padding: '2px 4px', borderRadius: 4 }}
+                          style={moreButtonStyle()}
                           title="More"
-                        >⋯</button>
+                        ><Icon name="more" size={14} /></button>
                       )}
                     </div>
                     )}
@@ -1644,23 +1702,23 @@ export default function TemplatesEditor({
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 4, minWidth: 0, flex: 1 }}>
                   <p className="micro" style={{ margin: 0 }}>Categories</p>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 4, height: 20, overflow: 'hidden', flexWrap: 'nowrap' }}>
-                    <button
-                      onClick={() => { const next = !catEdit; setCatEdit(next); if (!next) setSelCats(new Set()); }}
-                      style={{ background: 'transparent', border: 0, color: 'var(--accent)', borderRadius: 2, padding: '2px 5px', fontSize: 11, cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap', fontWeight: 600, lineHeight: 1, flex: 'none' }}
-                    >
+                  <button
+                    onClick={() => { const next = !catEdit; setCatEdit(next); if (!next) setSelCats(new Set()); }}
+                    style={{ ...miniSelectButtonStyle({ color: 'var(--accent)' }), flex: 'none' }}
+                  >
                       {catEdit ? 'Done' : 'Select'}
                     </button>
                     {catEdit && (() => {
                       const c = selCats.size;
                       const allSel = c === visibleCats.length && visibleCats.length > 0;
-                      const baseBtn = { background: 'transparent', border: '1px solid var(--rule-strong)', borderRadius: 2, padding: '1px 7px', fontSize: 10.5, cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap', height: 18, lineHeight: 1, boxSizing: 'border-box', flex: 'none' };
+                      const baseBtn = miniButtonStyle({ borderColor: 'var(--rule-strong)', color: 'var(--ink-soft)' });
                       return (
                         <>
                           <button onClick={() => setSelCats(allSel ? new Set() : new Set(visibleCats.map((cat) => cat.id)))} style={{ ...baseBtn, color: 'var(--ink-soft)' }}>{allSel ? 'None' : 'All'}</button>
-                          <button disabled={!c} onClick={() => duplicateCategories(selCats)} style={{ ...baseBtn, color: c ? 'var(--ink-soft)' : 'var(--ink-quiet)', cursor: c ? 'pointer' : 'not-allowed' }}>Duplicate</button>
-                          <button disabled={!c} onClick={() => setMoveModal({ count: c, kind: 'category' })} style={{ ...baseBtn, color: c ? 'var(--ink-soft)' : 'var(--ink-quiet)', cursor: c ? 'pointer' : 'not-allowed' }}>Move/Copy</button>
-                          <button disabled={!c} onClick={() => { if (c && tpl) onShare && onShare(tpl); }} style={{ ...baseBtn, color: c ? 'var(--ink-soft)' : 'var(--ink-quiet)', cursor: c ? 'pointer' : 'not-allowed', display: 'inline-flex', alignItems: 'center' }} title="Share"><Icon name="share" size={11} /></button>
-                          <button disabled={!c} onClick={() => deleteCategories(selCats)} style={{ ...baseBtn, color: c ? '#cf6f6f' : 'var(--ink-quiet)', cursor: c ? 'pointer' : 'not-allowed', display: 'inline-flex', alignItems: 'center' }} title="Delete"><Icon name="trash" size={11} /></button>
+                          <button disabled={!c} onClick={() => duplicateCategories(selCats)} style={miniButtonStyle({ borderColor: 'var(--rule-strong)', color: 'var(--ink-soft)', disabled: !c })}>Duplicate</button>
+                          <button disabled={!c} onClick={() => setMoveModal({ count: c, kind: 'category' })} style={miniButtonStyle({ borderColor: 'var(--rule-strong)', color: 'var(--ink-soft)', disabled: !c })}>Move/Copy</button>
+                          <button disabled={!c} onClick={() => { if (c && tpl) onShare && onShare(tpl); }} style={miniButtonStyle({ borderColor: 'var(--rule-strong)', color: 'var(--ink-soft)', disabled: !c, iconOnly: true })} title="Share"><Icon name="share" size={11} /></button>
+                          <button disabled={!c} onClick={() => deleteCategories(selCats)} style={miniButtonStyle({ borderColor: 'var(--rule-strong)', color: 'var(--ink-soft)', disabled: !c, danger: true, iconOnly: true })} title="Delete"><Icon name="trash" size={11} /></button>
                         </>
                       );
                     })()}
@@ -1679,6 +1737,10 @@ export default function TemplatesEditor({
                 <SortableRearrangeList
                   ids={visibleCats.map((c) => c.id)}
                   onReorder={reorderCategories}
+                  onDragStart={({ activeId }) => setDragCat(activeId)}
+                  onDragOver={({ overId }) => setDragOverCat(overId)}
+                  onDragEnd={() => { setDragCat(null); setDragOverCat(null); }}
+                  onDragCancel={() => { setDragCat(null); setDragOverCat(null); }}
                   variableHeight
                   gap={6}
                 >
@@ -1705,7 +1767,7 @@ export default function TemplatesEditor({
                       style={{
                         overflow: 'hidden',
                         flexShrink: 0,
-                        opacity: isDragging ? 0.72 : 1,
+                        opacity: isDragging ? ROW_DRAG_OPACITY : 1,
                         transition: isDragging ? 'none' : 'background 0.15s ease, opacity 0.15s ease',
                       }}
                     >
@@ -1717,7 +1779,9 @@ export default function TemplatesEditor({
                           width: '100%', display: 'grid', gridTemplateColumns: catEdit ? '24px 20px 1fr auto 16px' : '24px 20px 1fr auto', gap: 8,
                           alignItems: 'center', padding: '3px 10px',
                           cursor: catEdit ? 'pointer' : 'default',
-                          background: catEdit && isSel ? 'rgba(216,168,78,0.08)' : 'transparent',
+                          background: dragOverCat === c.id && dragCat !== c.id
+                            ? 'rgba(216,168,78,0.10)'
+                            : (catEdit && isSel ? 'rgba(216,168,78,0.08)' : 'transparent'),
                         }}
                       >
                         <DragRearrangeHandle
@@ -1799,7 +1863,7 @@ export default function TemplatesEditor({
                                   display: 'grid', gridTemplateColumns: '24px 1fr 16px',
                                   alignItems: 'center', gap: 6, padding: '3px 0',
                                   borderBottom: j === items.length - 1 ? 0 : '1px dashed var(--rule)',
-                                  opacity: isDragging ? 0.8 : 1,
+                                  opacity: isDragging ? ROW_DRAG_OPACITY : 1,
                                 }}
                               >
                                 <DragRearrangeHandle
@@ -1911,23 +1975,23 @@ export default function TemplatesEditor({
                 </button>
               </div>
               <div style={{ padding: '6px 8px 4px', display: 'flex', alignItems: 'center', gap: 2, height: 28, flexWrap: 'nowrap', flex: 'none' }}>
-                <button
-                  onClick={() => { const next = !entityEdit; setEntityEdit(next); if (!next) setSelEntities(new Set()); }}
-                  style={{ background: 'transparent', border: 0, color: 'var(--accent)', borderRadius: 2, padding: '0 4px 0 0', fontSize: 10.5, cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap', fontWeight: 600, lineHeight: 1, flex: 'none' }}
-                >
+              <button
+                onClick={() => { const next = !entityEdit; setEntityEdit(next); if (!next) setSelEntities(new Set()); }}
+                style={{ ...miniSelectButtonStyle({ color: 'var(--accent)' }), padding: '0 4px 0 0', flex: 'none' }}
+              >
                   {entityEdit ? 'Done' : 'Select'}
                 </button>
                 {entityEdit && tpl && (() => {
                   const c = selEntities.size;
                   const allSel = c === tpl.roster.length && tpl.roster.length > 0;
-                  const baseBtn = { background: 'transparent', border: '1px solid var(--rule-strong)', borderRadius: 2, padding: '1px 5px', fontSize: 10, cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap', height: 18, lineHeight: 1, boxSizing: 'border-box', flex: 'none' };
+                  const baseBtn = miniButtonStyle({ borderColor: 'var(--rule-strong)', color: 'var(--ink-soft)' });
                   return (
                     <>
                       <button onClick={() => setSelEntities(allSel ? new Set() : new Set(tpl.roster.map((r) => r.id)))} style={{ ...baseBtn, color: 'var(--ink-soft)' }}>{allSel ? 'None' : 'All'}</button>
-                      <button disabled={!c} onClick={() => duplicateEntities(selEntities)} style={{ ...baseBtn, color: c ? 'var(--ink-soft)' : 'var(--ink-quiet)', cursor: c ? 'pointer' : 'not-allowed' }}>Duplicate</button>
-                      <button disabled={!c} onClick={() => setMoveModal({ count: c, kind: 'entity' })} style={{ ...baseBtn, color: c ? 'var(--ink-soft)' : 'var(--ink-quiet)', cursor: c ? 'pointer' : 'not-allowed' }}>Move/Copy</button>
-                      <button disabled={!c} onClick={() => { if (c && tpl) onShare && onShare(tpl); }} style={{ ...baseBtn, color: c ? 'var(--ink-soft)' : 'var(--ink-quiet)', cursor: c ? 'pointer' : 'not-allowed', display: 'inline-flex', alignItems: 'center' }} title="Share"><Icon name="share" size={10} /></button>
-                      <button disabled={!c} onClick={() => deleteEntities(selEntities)} style={{ ...baseBtn, color: c ? '#cf6f6f' : 'var(--ink-quiet)', cursor: c ? 'pointer' : 'not-allowed', display: 'inline-flex', alignItems: 'center' }} title="Delete"><Icon name="trash" size={10} /></button>
+                      <button disabled={!c} onClick={() => duplicateEntities(selEntities)} style={miniButtonStyle({ borderColor: 'var(--rule-strong)', color: 'var(--ink-soft)', disabled: !c })}>Duplicate</button>
+                      <button disabled={!c} onClick={() => setMoveModal({ count: c, kind: 'entity' })} style={miniButtonStyle({ borderColor: 'var(--rule-strong)', color: 'var(--ink-soft)', disabled: !c })}>Move/Copy</button>
+                      <button disabled={!c} onClick={() => { if (c && tpl) onShare && onShare(tpl); }} style={miniButtonStyle({ borderColor: 'var(--rule-strong)', color: 'var(--ink-soft)', disabled: !c, iconOnly: true })} title="Share"><Icon name="share" size={10} /></button>
+                      <button disabled={!c} onClick={() => deleteEntities(selEntities)} style={miniButtonStyle({ borderColor: 'var(--rule-strong)', color: 'var(--ink-soft)', disabled: !c, danger: true, iconOnly: true })} title="Delete"><Icon name="trash" size={10} /></button>
                     </>
                   );
                 })()}
@@ -1954,7 +2018,15 @@ export default function TemplatesEditor({
                   <div className="meta" style={{ fontSize: 11.5, padding: '12px 2px' }}>No entities on this template yet.</div>
                 )}
                 {tpl && (
-                <SortableRearrangeList ids={tpl.roster.map((r) => r.id)} onReorder={reorderEntities} gap={4}>
+                <SortableRearrangeList
+                  ids={tpl.roster.map((r) => r.id)}
+                  onReorder={reorderEntities}
+                  onDragStart={({ activeId }) => setDragEntity(activeId)}
+                  onDragOver={({ overId }) => setDragOverEntity(overId)}
+                  onDragEnd={() => { setDragEntity(null); setDragOverEntity(null); }}
+                  onDragCancel={() => { setDragEntity(null); setDragOverEntity(null); }}
+                  gap={4}
+                >
                 {tpl.roster.map((r) => {
                   const c = roleColors[r.id]?.color || r.color || '#8c8c8a';
                   const op = roleColors[r.id]?.opacity ?? 0.35;
@@ -1977,7 +2049,8 @@ export default function TemplatesEditor({
                         display: 'grid', gridTemplateColumns: '24px 18px 1fr 16px', gap: 10,
                         padding: '8px 10px', alignItems: 'center',
                         height: 38, boxSizing: 'border-box',
-                        opacity: isDragging ? 0.72 : 1,
+                        opacity: isDragging ? ROW_DRAG_OPACITY : 1,
+                        background: dragOverEntity === r.id && dragEntity !== r.id ? 'rgba(216,168,78,0.10)' : undefined,
                         transition: isDragging ? 'none' : 'background 0.15s ease, opacity 0.15s ease',
                       }}>
                         <DragRearrangeHandle
@@ -2024,8 +2097,8 @@ export default function TemplatesEditor({
                                 const rect = e.currentTarget.getBoundingClientRect();
                                 setEntityMenu((m) => (m && m.id === r.id ? null : { id: r.id, rect }));
                               }}
-                              style={{ background: 'transparent', border: 0, color: 'var(--ink-muted)', cursor: 'pointer', fontSize: 14, padding: '2px 4px', lineHeight: 1, fontFamily: 'inherit', borderRadius: 4 }}
-                            >⋯</button>
+                              style={moreButtonStyle({ color: 'var(--ink-muted)' })}
+                            ><Icon name="more" size={14} /></button>
                           )
                         )}
                       </div>
@@ -2220,6 +2293,10 @@ export default function TemplatesEditor({
     {/* Edit modules modal */}
     {modEdit && tpl && (() => {
       const mods = orderedMods;
+      const moduleQuery = modSearch.trim().toLowerCase();
+      const visibleMods = moduleQuery
+        ? mods.filter((mod) => (mod.name || '').toLowerCase().includes(moduleQuery))
+        : mods;
       // Effective selection is DERIVED from the current modules — never the
       // raw id set, which may hold stale ids after a working-copy rebuild.
       const selectedMods = mods.filter((m) => selMods.has(m.id));
@@ -2238,36 +2315,66 @@ export default function TemplatesEditor({
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: '#0d0f14', border: '1px solid #2a3140', borderRadius: 6, padding: '4px 8px', height: 26, boxSizing: 'border-box', flex: 1, maxWidth: 220 }}>
                 <Icon name="search" size={12} color="#8d96a6" />
                 <input
+                  value={modSearch}
+                  onChange={(e) => setModSearch(e.currentTarget.value)}
                   placeholder="Search modules..."
                   style={{ background: 'transparent', border: 0, outline: 'none', color: '#f4f1ea', fontFamily: 'inherit', fontSize: 11.5, flex: 1, width: '100%', padding: 0 }}
                 />
               </div>
             </div>
             <div className="slim-scroll" style={{ padding: '8px 10px', display: 'flex', flexDirection: 'column', gap: 4, maxHeight: 420, overflowY: 'auto', flex: '0 1 auto', minHeight: 0 }}>
-              {mods.map((mod) => {
+              {visibleMods.length === 0 && (
+                <div className="meta" style={{ padding: '14px 4px', fontSize: 11.5, color: '#8d96a6' }}>
+                  {mods.length === 0 ? 'No modules yet.' : 'No modules match your search.'}
+                </div>
+              )}
+              <SortableRearrangeList
+                ids={visibleMods.map((mod) => mod.id)}
+                onReorder={(activeId, overId) => {
+                  const from = mods.findIndex((mod) => mod.id === activeId);
+                  const to = mods.findIndex((mod) => mod.id === overId);
+                  reorderMods(from, to);
+                }}
+                gap={4}
+              >
+              {visibleMods.map((mod) => {
                 const isSel = selMods.has(mod.id);
                 return (
-                  <div key={mod.id} draggable style={{
-                    display: 'grid', gridTemplateColumns: '14px 14px 1fr auto', gap: 10,
-                    alignItems: 'center', padding: '7px 8px', borderRadius: 6,
-                    background: isSel ? '#181c24' : '#12151c',
-                    border: '1px solid #2a3140',
-                  }}>
-                    <span title="Drag" style={{ color: '#8d96a6', cursor: 'grab', lineHeight: 1, textAlign: 'center', fontSize: 11 }}>⋮⋮</span>
-                    <span onClick={() => toggleModSel(mod.id)} style={{ width: 14, height: 14, border: `1.4px solid ${isSel ? '#d8a84e' : '#3a4252'}`, background: isSel ? '#d8a84e' : 'transparent', borderRadius: 2, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                      {isSel && <span style={{ color: '#0d0f14', fontSize: 10, lineHeight: 1 }}>✓</span>}
-                    </span>
-                    <input
-                      defaultValue={mod.name}
-                      key={mod.id + ':' + mod.name}
-                      onBlur={(e) => renameModule(mod.id, e.currentTarget.value)}
-                      onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); else if (e.key === 'Escape') { e.currentTarget.value = mod.name; e.currentTarget.blur(); } }}
-                      style={{ background: 'transparent', border: 0, borderBottom: '1px solid transparent', color: '#f4f1ea', font: 'inherit', fontSize: 12.5, fontWeight: 500, padding: '4px 0', width: '100%', outline: 'none' }}
-                    />
-                    <span style={{ fontSize: 10, color: '#5a6473', fontFamily: '"JetBrains Mono", ui-monospace, monospace' }}>{(mod.categories || []).length}</span>
-                  </div>
+                  <SortableRearrangeRow key={mod.id} id={mod.id}>
+                    {({ attributes, listeners, isDragging }) => (
+                      <div
+                        data-drag-rearrange-row
+                        style={{
+                          display: 'grid', gridTemplateColumns: '24px 14px 1fr auto', gap: 10,
+                          alignItems: 'center', padding: '7px 8px', borderRadius: 6,
+                          background: isSel ? '#181c24' : '#12151c',
+                          border: '1px solid #2a3140',
+                          opacity: isDragging ? ROW_DRAG_OPACITY : 1,
+                          transition: isDragging ? 'none' : 'background 0.15s ease, opacity 0.15s ease',
+                        }}
+                      >
+                        <DragRearrangeHandle
+                          {...attributes}
+                          {...listeners}
+                          isDragging={isDragging}
+                        />
+                        <span onClick={() => toggleModSel(mod.id)} style={{ width: 14, height: 14, border: `1.4px solid ${isSel ? '#d8a84e' : '#3a4252'}`, background: isSel ? '#d8a84e' : 'transparent', borderRadius: 2, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                          {isSel && <span style={{ color: '#0d0f14', fontSize: 10, lineHeight: 1 }}>✓</span>}
+                        </span>
+                        <input
+                          defaultValue={mod.name}
+                          key={mod.id + ':' + mod.name}
+                          onBlur={(e) => renameModule(mod.id, e.currentTarget.value)}
+                          onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); else if (e.key === 'Escape') { e.currentTarget.value = mod.name; e.currentTarget.blur(); } }}
+                          style={{ background: 'transparent', border: 0, borderBottom: '1px solid transparent', color: '#f4f1ea', font: 'inherit', fontSize: 12.5, fontWeight: 500, padding: '4px 0', width: '100%', outline: 'none' }}
+                        />
+                        <span style={{ fontSize: 10, color: '#5a6473', fontFamily: '"JetBrains Mono", ui-monospace, monospace' }}>{(mod.categories || []).length}</span>
+                      </div>
+                    )}
+                  </SortableRearrangeRow>
                 );
               })}
+              </SortableRearrangeList>
             </div>
             <div style={{ padding: '0 10px 8px', flex: 'none' }}>
               <button onClick={addModule} style={{ width: '100%', padding: '6px 10px', border: '1px dashed #3a4252', background: 'transparent', color: '#8d96a6', borderRadius: 2, fontSize: 11.5, cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
@@ -2303,7 +2410,7 @@ export default function TemplatesEditor({
               <p style={{ margin: 0, fontSize: 10.5, letterSpacing: '0.14em', textTransform: 'uppercase', color: '#8d96a6', fontWeight: 700, fontFamily: '"JetBrains Mono", ui-monospace, monospace' }}>Move/Copy</p>
               <h3 style={{ fontSize: 14, fontWeight: 700, margin: '2px 0 0', color: '#f4f1ea', letterSpacing: '-0.025em', fontFamily: '"Helvetica Neue", Helvetica, Arial, sans-serif' }}>{moveModal.count} item{moveModal.count === 1 ? '' : 's'}</h3>
             </div>
-            <button onClick={() => setMoveModal(null)} style={{ background: 'transparent', border: 0, color: '#8d96a6', fontSize: 18, cursor: 'pointer' }}>×</button>
+            <button onClick={() => setMoveModal(null)} title="Close" style={closeButtonStyle({ borderColor: '#2a3140', color: '#8d96a6' })}>×</button>
           </div>
           {/* Destination fields depend on WHAT is being moved/copied:
               - Category → pick a Destination Template, then a Destination

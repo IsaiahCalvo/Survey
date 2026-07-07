@@ -14,6 +14,7 @@ import { HubShell, Icon, Avatar, PdfThumb, Search } from './HubShell';
 import { MoveCopyModal, ConfirmModal } from './BulkModals';
 import PdfPageThumb from './PdfPageThumb';
 import { useStorage } from '../hooks/useDatabase';
+import { closeButtonStyle, miniButtonStyle, moreButtonStyle } from './hubControls';
 
 const ledgerHeader = {
   background: 'var(--ink-700)',
@@ -238,14 +239,14 @@ export default function DocumentsLedger({
       {docSelectMode && (() => {
         const docSelCount = selDocs.size;
         const allSel = docSelCount === docs.length && docs.length > 0;
-        const baseBtn = { background: 'transparent', border: '1px solid var(--ink-500)', borderRadius: 2, padding: '1px 7px', fontSize: 10.5, cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap', height: 18, lineHeight: 1, boxSizing: 'border-box', flex: 'none', display: 'inline-flex', alignItems: 'center' };
+        const baseBtn = miniButtonStyle();
         return (
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, marginLeft: 4 }}>
             <button onClick={() => setSelDocs(allSel ? new Set() : new Set(docs.map((d) => d.id)))} style={{ ...baseBtn, color: 'var(--bone-100)' }}>{allSel ? 'None' : 'All'}</button>
-            <button disabled={!docSelCount} onClick={() => { onDuplicate && onDuplicate(selectedRaw()); clearSel(); }} style={{ ...baseBtn, color: docSelCount ? 'var(--bone-100)' : 'var(--ink-300)', cursor: docSelCount ? 'pointer' : 'not-allowed' }}>Duplicate</button>
-            <button disabled={!docSelCount} onClick={() => setMoveOpen(true)} style={{ ...baseBtn, color: docSelCount ? 'var(--bone-100)' : 'var(--ink-300)', cursor: docSelCount ? 'pointer' : 'not-allowed' }}>Move/Copy</button>
-            <button disabled={!docSelCount} title="Share" onClick={() => onShare && onShare(selectedRaw())} style={{ ...baseBtn, color: docSelCount ? 'var(--bone-100)' : 'var(--ink-300)', cursor: docSelCount ? 'pointer' : 'not-allowed' }}><Icon name="share" size={12} /></button>
-            <button disabled={!docSelCount} title="Delete" onClick={() => setConfirmDelete(true)} style={{ ...baseBtn, color: docSelCount ? '#cf6f6f' : 'var(--ink-300)', cursor: docSelCount ? 'pointer' : 'not-allowed' }}><Icon name="trash" size={12} /></button>
+            <button disabled={!docSelCount} onClick={() => { onDuplicate && onDuplicate(selectedRaw()); clearSel(); }} style={miniButtonStyle({ disabled: !docSelCount })}>Duplicate</button>
+            <button disabled={!docSelCount} onClick={() => setMoveOpen(true)} style={miniButtonStyle({ disabled: !docSelCount })}>Move/Copy</button>
+            <button disabled={!docSelCount} title="Share" onClick={() => onShare && onShare(selectedRaw())} style={miniButtonStyle({ disabled: !docSelCount, iconOnly: true })}><Icon name="share" size={12} /></button>
+            <button disabled={!docSelCount} title="Delete" onClick={() => setConfirmDelete(true)} style={miniButtonStyle({ disabled: !docSelCount, danger: true, iconOnly: true })}><Icon name="trash" size={12} /></button>
           </span>
         );
       })()}
@@ -318,9 +319,9 @@ export default function DocumentsLedger({
                             const rect = e.currentTarget.getBoundingClientRect();
                             setDocMenu((cur) => (cur && cur.id === d.id ? null : { id: d.id, rect }));
                           }}
-                          style={{ background: 'transparent', border: 0, color: 'var(--ink-200)', cursor: 'pointer', fontSize: 16, lineHeight: 1, padding: '2px 6px', borderRadius: 4 }}
+                          style={moreButtonStyle()}
                           title="More"
-                        >⋯</button>
+                        ><Icon name="more" size={14} /></button>
                       )}
                     </div>
                     {/* Thumbnail column — its own cell, centred so every
@@ -361,7 +362,7 @@ export default function DocumentsLedger({
             <aside style={{ padding: 18, position: 'relative', height: '100%', boxSizing: 'border-box', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flex: 'none' }}>
                 <div className="section-label">Preview</div>
-                <button onClick={() => setPreviewOpen(false)} title="Close preview" style={{ background: 'transparent', border: '1px solid var(--ink-500)', color: 'var(--ink-200)', width: 22, height: 22, borderRadius: 6, cursor: 'pointer', fontSize: 14, lineHeight: 1, display: 'grid', placeItems: 'center', padding: 0 }}>×</button>
+                <button onClick={() => setPreviewOpen(false)} title="Close preview" style={closeButtonStyle()}>×</button>
               </div>
               <div style={{ marginTop: 10, fontSize: 15, fontWeight: 700, flex: 'none', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{sel.name}</div>
               <div className="meta" style={{ marginTop: 4, fontSize: 11.5, flex: 'none' }}>
