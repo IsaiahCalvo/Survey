@@ -19,6 +19,36 @@ import {
 
 const SUPABASE_PAGE_SIZE = 1000;
 
+// KAL-285 — small helper to run batch upserts with bounded concurrency
+// instead of one-at-a-time. Keeps the existing "stop on first error" and
+// in-order `data` accumulation semantics: results are collected per-batch,
+// and once any batch errors, no further batches are started (batches already
+// in flight are allowed to settle).
+const BATCH_UPSERT_CONCURRENCY = 4;
+
+async function runWithConcurrency(items, worker, concurrency) {
+  const results = new Array(items.length);
+  let nextIndex = 0;
+  let failed = false;
+
+  async function runNext() {
+    while (!failed) {
+      const i = nextIndex++;
+      if (i >= items.length) return;
+      const result = await worker(items[i], i);
+      results[i] = result;
+      if (result?.error) {
+        failed = true;
+        return;
+      }
+    }
+  }
+
+  const workers = Array.from({ length: Math.min(concurrency, items.length) }, runNext);
+  await Promise.all(workers);
+  return results;
+}
+
 const isLegacyFabricSurveyMarkerRow = (row) =>
   isSurveyMarkerType(row?.annotation_type) && !!row.annotation_data?.fabricObject;
 
@@ -161,17 +191,26 @@ export async function upsertAnnotations(annotations) {
   const data = [];
   let error = null;
   const batches = chunkRowsForAnnotationUpsert(annotations);
-  for (const batch of batches) {
-    const result = await supabase
+  // KAL-285 — up to BATCH_UPSERT_CONCURRENCY batches in flight at once
+  // instead of strictly sequential. Order of `data` accumulation below no
+  // longer matches batch order under concurrency, which is fine: callers only
+  // use the combined array's length/contents, never per-batch ordering.
+  const results = await runWithConcurrency(
+    batches,
+    (batch) => supabase
       .from('document_annotations')
       .upsert(batch, {
         onConflict: 'document_id,annotation_id',
         ignoreDuplicates: false
       })
-      .select();
+      .select(),
+    BATCH_UPSERT_CONCURRENCY
+  );
+  for (const result of results) {
+    if (!result) continue; // batch never started (short-circuited after an earlier error)
     if (result.error) {
       error = result.error;
-      break;
+      continue;
     }
     data.push(...(result.data || []));
   }

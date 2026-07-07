@@ -50,9 +50,14 @@ export const useProjects = () => {
   const fetchProjects = async () => {
     try {
       setLoading(true);
+      // KAL-285 — explicit column list instead of select('*'). The live
+      // `projects` table has exactly these 8 columns (verified against prod
+      // schema); Dashboard.jsx and this hook consume id/name/user_id directly
+      // and sort/display off created_at/updated_at, so every real column is
+      // kept rather than guessing which ones are unused.
       const { data, error } = await supabase
         .from('projects')
-        .select('*')
+        .select('id, user_id, name, description, color, archived, created_at, updated_at')
         .eq('user_id', user.id)
         .order('created_at', { ascending: false });
 
