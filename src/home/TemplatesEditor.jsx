@@ -856,12 +856,6 @@ export default function TemplatesEditor({
   const toggleTplSel = (id) => setSelTpls((prev) => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
   const [tplMenu, setTplMenu] = useState(null);       // { id, rect }
   const [entityMenu, setEntityMenu] = useState(null); // { id, rect }
-  const [dragTpl, setDragTpl] = useState(null);
-  const [dragOverTpl, setDragOverTpl] = useState(null);
-  const [dragCat, setDragCat] = useState(null);
-  const [dragOverCat, setDragOverCat] = useState(null);
-  const [dragEntity, setDragEntity] = useState(null);
-  const [dragOverEntity, setDragOverEntity] = useState(null);
   const [entityEdit, setEntityEdit] = useState(false);
   const [selEntities, setSelEntities] = useState(() => new Set());
   const toggleEntitySel = (id) => setSelEntities((prev) => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
@@ -1561,9 +1555,7 @@ export default function TemplatesEditor({
                         gap: 8, alignItems: 'center',
                         padding: '8px 8px', borderRadius: 6,
                         height: 50, boxSizing: 'border-box',
-                        background: dragOverTpl === t.id && dragTpl !== t.id
-                          ? 'rgba(216,168,78,0.10)'
-                          : tplEdit ? (isSel ? 'var(--ink-600)' : 'transparent') : (active ? 'var(--ink-600)' : 'transparent'),
+                        background: tplEdit ? (isSel ? 'var(--ink-600)' : 'transparent') : (active ? 'var(--ink-600)' : 'transparent'),
                         cursor: 'pointer',
                         borderLeft: !tplEdit && active ? '2px solid var(--accent)' : '2px solid transparent',
                         transition: isDragging ? 'none' : 'background 0.15s ease, opacity 0.15s ease',

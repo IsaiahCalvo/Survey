@@ -220,12 +220,6 @@ export default function ProjectsFolderTree({
   const fileInputRef = useRef(null);
   const pendingPickProject = useRef(null);
 
-  // Drag-reorder bookkeeping.
-  const [draggingProjectId, setDraggingProjectId] = useState(null);
-  const [dragOverProjectId, setDragOverProjectId] = useState(null);
-  const [draggingFileId, setDraggingFileId] = useState(null);
-  const [dragOverFileId, setDragOverFileId] = useState(null);
-
   // Selection is keyed by document id (never array index) so a reorder or
   // re-derive of `openFiles` between selecting and acting can't retarget the
   // bulk actions. Actions resolve ids → docs at action time via pickByIds.
@@ -667,9 +661,7 @@ export default function ProjectsFolderTree({
                       gridTemplateColumns: '28px 1fr auto',
                       gap: 8, alignItems: 'center',
                       padding: '8px 8px', borderRadius: 6,
-                      background: dragOverProjectId === p.id && draggingProjectId !== p.id
-                        ? 'rgba(216,168,78,0.10)'
-                        : jobsEdit ? (isSel ? 'var(--ink-600)' : 'transparent') : (isOpen ? 'var(--ink-600)' : 'transparent'),
+                      background: jobsEdit ? (isSel ? 'var(--ink-600)' : 'transparent') : (isOpen ? 'var(--ink-600)' : 'transparent'),
                       cursor: isDragging ? 'grabbing' : 'pointer',
                       borderLeft: !jobsEdit && isOpen ? '2px solid var(--gold)' : '2px solid transparent',
                       height: 50, boxSizing: 'border-box',
@@ -866,9 +858,7 @@ export default function ProjectsFolderTree({
                             data-drag-rearrange-row
                             onClick={() => { if (fileSelect) { toggleFileSel(f.id); return; } onOpenDocument && onOpenDocument(f); }}
                             style={{
-                              background: dragOverFileId === f.id && draggingFileId !== f.id
-                                ? 'rgba(216,168,78,0.10)'
-                                : fileSelect && isChecked ? 'rgba(216,168,78,0.10)' : (i % 2 ? 'transparent' : 'rgba(255,255,255,0.02)'),
+                              background: fileSelect && isChecked ? 'rgba(216,168,78,0.10)' : (i % 2 ? 'transparent' : 'rgba(255,255,255,0.02)'),
                               borderRadius: 6,
                               display: 'grid', gridTemplateColumns: '24px 1fr 90px 90px 28px',
                               gap: 12, alignItems: 'center', padding: '8px 10px', fontSize: 12,
