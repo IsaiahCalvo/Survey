@@ -112,6 +112,11 @@ export async function openAnnotationDoc({
     doc: activeDoc,
     map: getAnnotationsMap(activeDoc),
     lastSeq: 0,            // highest annotation_updates.seq we've applied
+    coveredSeq: 0,         // highest seq covered by a CONTIGUOUS read (hydrate or
+                           // catch-up). Realtime events never advance this: a
+                           // delivered seq N doesn't prove N-1 arrived, so the
+                           // post-subscribe catch-up always re-reads from here.
+    catchupChain: Promise.resolve(), // serializes catch-up reads across reconnects
     clientSeq: 0,          // our monotonic per-(doc,client) op counter
     opsSinceSnapshot: 0,
     lastByPage: null,      // last byPage applied — enables the per-page-ref fast diff
@@ -250,6 +255,54 @@ async function loadFromBackend(state) {
     state.lastSeq = cursor;
     if (batch.length < 1000) break;
   }
+  state.coveredSeq = cursor;
+}
+
+// Close the hydrate-vs-subscribe gap: Postgres realtime only forwards rows
+// inserted AFTER the channel is live, so an op another device commits between
+// our tail read and the SUBSCRIBED confirmation would otherwise stay invisible
+// until the next full reopen. Whenever the channel (re)confirms SUBSCRIBED we
+// re-read the log from coveredSeq. Y.applyUpdate is idempotent, so overlap with
+// concurrently-delivered realtime events is harmless; reading from coveredSeq
+// (never advanced by realtime) means an out-of-order realtime delivery can't
+// make us skip an earlier missed op.
+function catchUpTail(state) {
+  state.catchupChain = state.catchupChain.then(async () => {
+    if (state.destroyed || !state.supabase) return;
+    let cursor = state.coveredSeq;
+    let applied = 0;
+    for (;;) {
+      const { data: rows, error } = await state.supabase
+        .from('annotation_updates')
+        .select('seq, data, client_id')
+        .eq('document_id', state.documentId)
+        .gt('seq', cursor)
+        .order('seq', { ascending: true })
+        .limit(1000);
+      if (error) {
+        console.warn('[annotationDocSync] post-subscribe catch-up read failed', error.message);
+        return; // coveredSeq untouched — the next SUBSCRIBED retries from here
+      }
+      const batch = rows || [];
+      for (const row of batch) {
+        cursor = Number(row.seq);
+        if (row.client_id === state.clientId) continue; // our own op — already in the doc
+        try {
+          Y.applyUpdate(state.doc, pgHexToBytes(row.data), REMOTE_ORIGIN);
+          applied += 1;
+        } catch (err) {
+          console.warn('[annotationDocSync] catch-up apply failed', err?.message);
+        }
+      }
+      if (cursor > state.lastSeq) state.lastSeq = cursor;
+      state.coveredSeq = cursor;
+      if (batch.length < 1000) break;
+    }
+    if (applied > 0) notifyChange(state);
+  }).catch((err) => {
+    console.warn('[annotationDocSync] catch-up failed', err?.message);
+  });
+  return state.catchupChain;
 }
 
 // Notify sync-health listeners when the durable-append path flips between
@@ -401,7 +454,11 @@ function subscribeRealtime(state) {
         console.warn('[annotationDocSync] remote apply failed', err?.message);
       }
     })
-    .subscribe();
+    .subscribe((status) => {
+      // Fires on the initial join AND after every reconnect re-join. Each time,
+      // sweep the log for ops that landed while we weren't listening.
+      if (status === 'SUBSCRIBED') catchUpTail(state);
+    });
   state.realtimeChannel = ch;
 }
 
