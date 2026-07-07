@@ -95,6 +95,28 @@ function parseEmails(raw) {
 const ActivityModal = ({ member, onClose }) => {
   const [sortKey, setSortKey] = React.useState("edited");
   const [sortDir, setSortDir] = React.useState("desc");
+  const previouslyFocusedRef = React.useRef(null);
+
+  // Accessibility: Escape closes the modal, and focus returns to whatever
+  // triggered it once it closes (minimal per-modal patch, no shared modal
+  // primitive/focus trap).
+  React.useEffect(() => {
+    if (!member) return undefined;
+    previouslyFocusedRef.current = document.activeElement;
+    const handleKey = (e) => {
+      if (e.key === 'Escape') {
+        e.stopPropagation();
+        onClose?.();
+      }
+    };
+    window.addEventListener('keydown', handleKey, true);
+    return () => {
+      window.removeEventListener('keydown', handleKey, true);
+      previouslyFocusedRef.current?.focus?.();
+      previouslyFocusedRef.current = null;
+    };
+  }, [member, onClose]);
+
   if (!member) return null;
   const arrow = (k) => sortKey === k ? (sortDir === "asc" ? " ↑" : " ↓") : "";
   const click = (k) => {
@@ -158,6 +180,27 @@ const InviteModal = ({ project, onClose, currentUser, canInvite, onChanged }) =>
   const [error, setError] = React.useState("");
   const [success, setSuccess] = React.useState("");
   const [activeInvite, setActiveInvite] = React.useState(null); // last minted link invite
+  const previouslyFocusedRef = React.useRef(null);
+
+  // Accessibility: Escape closes the modal, and focus returns to whatever
+  // triggered it once it closes (minimal per-modal patch, no shared modal
+  // primitive/focus trap). This component is only mounted while open (the
+  // parent gates it behind `inviteOpen &&`), so the effect runs once on mount.
+  React.useEffect(() => {
+    previouslyFocusedRef.current = document.activeElement;
+    const handleKey = (e) => {
+      if (e.key === 'Escape') {
+        e.stopPropagation();
+        onClose?.();
+      }
+    };
+    window.addEventListener('keydown', handleKey, true);
+    return () => {
+      window.removeEventListener('keydown', handleKey, true);
+      previouslyFocusedRef.current?.focus?.();
+      previouslyFocusedRef.current = null;
+    };
+  }, [onClose]);
 
   const projectId = project?.id || null;
   const inviterName = currentUser?.user_metadata?.full_name || currentUser?.email || null;
@@ -313,6 +356,28 @@ export default function ManageTeamModal({ open, onClose, project, members }) {
   const [inviteOpen, setInviteOpen] = React.useState(false);
   const [sortKey, setSortKey] = React.useState("default");
   const [sortDir, setSortDir] = React.useState("asc");
+  const previouslyFocusedRef = React.useRef(null);
+
+  // Accessibility: Escape closes the modal, and focus returns to whatever
+  // triggered it once it closes (minimal per-modal patch, no shared modal
+  // primitive/focus trap). Skipped while a nested sub-modal (Activity or
+  // Invite) is open so Escape closes that one first.
+  React.useEffect(() => {
+    if (!open) return undefined;
+    previouslyFocusedRef.current = document.activeElement;
+    const handleKey = (e) => {
+      if (e.key === 'Escape' && !activityFor && !inviteOpen) {
+        e.stopPropagation();
+        onClose?.();
+      }
+    };
+    window.addEventListener('keydown', handleKey, true);
+    return () => {
+      window.removeEventListener('keydown', handleKey, true);
+      previouslyFocusedRef.current?.focus?.();
+      previouslyFocusedRef.current = null;
+    };
+  }, [open, onClose, activityFor, inviteOpen]);
 
   const refresh = React.useCallback(async () => {
     if (!projectId) { setCollabRows([]); setInvites([]); return; }

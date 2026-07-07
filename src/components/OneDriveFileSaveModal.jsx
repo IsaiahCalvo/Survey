@@ -5,7 +5,7 @@
  * chars, enforces .xlsx) and embeds OneDriveFolderBrowser for destination selection, then
  * calls onSave({ fileName, folder }). Used by the Excel export flow to save to OneDrive.
  */
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { COLORS, TYPOGRAPHY, BORDERS, SHADOWS } from '../theme';
 import OneDriveFolderBrowser from './OneDriveFolderBrowser';
 import { showToast } from '../utils/toast';
@@ -21,6 +21,7 @@ const OneDriveFileSaveModal = ({
   const [fileName, setFileName] = useState(defaultFileName);
   const [selectedFolder, setSelectedFolder] = useState(null);
   const [fileNameError, setFileNameError] = useState('');
+  const previouslyFocusedRef = useRef(null);
 
   // Reset state when modal opens
   useEffect(() => {
@@ -30,6 +31,26 @@ const OneDriveFileSaveModal = ({
       setFileNameError('');
     }
   }, [isOpen, defaultFileName]);
+
+  // Accessibility: Escape closes the modal, and focus returns to whatever
+  // triggered it once it closes (minimal per-modal patch, no shared modal
+  // primitive/focus trap).
+  useEffect(() => {
+    if (!isOpen) return undefined;
+    previouslyFocusedRef.current = document.activeElement;
+    const handleKey = (e) => {
+      if (e.key === 'Escape') {
+        e.stopPropagation();
+        onClose?.();
+      }
+    };
+    window.addEventListener('keydown', handleKey, true);
+    return () => {
+      window.removeEventListener('keydown', handleKey, true);
+      previouslyFocusedRef.current?.focus?.();
+      previouslyFocusedRef.current = null;
+    };
+  }, [isOpen, onClose]);
 
   // Validate filename
   const validateFileName = (name) => {

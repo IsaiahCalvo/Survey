@@ -2132,7 +2132,8 @@ const SurveySpacesRail = ({
                                                   </button>
 
                                                   {/* Locate Button (Magnifying Glass) */}
-                                                  <div
+                                                  <button
+                                                    type="button"
                                                     onClick={(e) => {
                                                       e.stopPropagation();
                                                       // Check if item has location (bounds and pageNumber)
@@ -2147,6 +2148,8 @@ const SurveySpacesRail = ({
                                                     }}
                                                     style={{
                                                       ...surveyMarkerRowActionStyle,
+                                                      background: 'transparent',
+                                                      border: 'none',
                                                       color: (surveyMarker.bounds && surveyMarker.pageNumber) ? '#4A90E2' : '#F5A623', // Blue if located, Orange if not
                                                     }}
                                                     onMouseEnter={(e) => {
@@ -2156,9 +2159,10 @@ const SurveySpacesRail = ({
                                                       e.currentTarget.style.background = 'transparent';
                                                     }}
                                                     title={surveyMarker.bounds && surveyMarker.pageNumber ? "Jump to this marker" : "Set location on PDF"}
+                                                    aria-label={surveyMarker.bounds && surveyMarker.pageNumber ? "Jump to this marker" : "Set location on PDF"}
                                                   >
                                                     <Icon name="search" size={14} />
-                                                  </div>
+                                                  </button>
 
                                                 </div>
 

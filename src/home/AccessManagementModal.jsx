@@ -13,7 +13,7 @@
  *   - Active share links are listed grouped (link-only invites with no
  *     target_email).
  */
-import { useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import { useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { AuthContext } from '../contexts/AuthContext';
 import ShareModal from './ShareModal';
 import {
@@ -79,6 +79,28 @@ export default function AccessManagementModal({ open, onClose, kind = 'document'
   const [error, setError] = useState('');
   const [status, setStatus] = useState('');
   const [linksOpen, setLinksOpen] = useState(false);
+  const previouslyFocusedRef = useRef(null);
+
+  // Accessibility: Escape closes the modal, and focus returns to whatever
+  // triggered it once it closes (minimal per-modal patch, no shared modal
+  // primitive/focus trap). Skipped while the nested ShareModal (invite
+  // popup) is open so Escape closes that one first.
+  useEffect(() => {
+    if (!open) return undefined;
+    previouslyFocusedRef.current = document.activeElement;
+    const handleKey = (e) => {
+      if (e.key === 'Escape' && !inviteOpen) {
+        e.stopPropagation();
+        onClose?.();
+      }
+    };
+    window.addEventListener('keydown', handleKey, true);
+    return () => {
+      window.removeEventListener('keydown', handleKey, true);
+      previouslyFocusedRef.current?.focus?.();
+      previouslyFocusedRef.current = null;
+    };
+  }, [open, onClose, inviteOpen]);
 
   const refresh = useCallback(async () => {
     if (!documentId) { setMembers([]); setInvites([]); return; }

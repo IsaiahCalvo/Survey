@@ -7,7 +7,7 @@
  * blocked when getOtherSurveysUsingTemplate reports other surveys depend on the template;
  * calls onConfirm(option, newTemplateName) or onClose (Skip Import).
  */
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { COLORS, TYPOGRAPHY, BORDERS, SHADOWS } from '../theme';
 import { getOtherSurveysUsingTemplate } from '../hooks/useDatabase';
 import { showToast } from '../utils/toast';
@@ -27,6 +27,27 @@ const NewColumnsModal = ({
   const [nameError, setNameError] = useState('');
   const [otherSurveys, setOtherSurveys] = useState([]);
   const [isCheckingUsage, setIsCheckingUsage] = useState(false);
+  const previouslyFocusedRef = useRef(null);
+
+  // Accessibility: Escape closes the modal (Skip Import), and focus returns
+  // to whatever triggered it once it closes (minimal per-modal patch, no
+  // shared modal primitive/focus trap).
+  useEffect(() => {
+    if (!isOpen) return undefined;
+    previouslyFocusedRef.current = document.activeElement;
+    const handleKey = (e) => {
+      if (e.key === 'Escape') {
+        e.stopPropagation();
+        onClose?.();
+      }
+    };
+    window.addEventListener('keydown', handleKey, true);
+    return () => {
+      window.removeEventListener('keydown', handleKey, true);
+      previouslyFocusedRef.current?.focus?.();
+      previouslyFocusedRef.current = null;
+    };
+  }, [isOpen, onClose]);
 
   // Calculate totals for different change types
   const changeSummary = useMemo(() => {

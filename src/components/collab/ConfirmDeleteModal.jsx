@@ -34,9 +34,15 @@ export function ConfirmDeleteModal({ plan, onConfirm, onCancel }) {
   // mouse-or-Tab to reach — keyboard Enter on the modal accidentally cannot
   // delete. Focus runs once when the modal opens (plan transitions from null
   // to non-null).
+  const previouslyFocusedRef = useRef(null);
   useEffect(() => {
     if (plan && cancelRef.current) {
+      previouslyFocusedRef.current = document.activeElement;
       cancelRef.current.focus();
+    } else if (!plan && previouslyFocusedRef.current) {
+      // Accessibility: return focus to whatever triggered the modal once it closes.
+      previouslyFocusedRef.current.focus?.();
+      previouslyFocusedRef.current = null;
     }
   }, [plan]);
 

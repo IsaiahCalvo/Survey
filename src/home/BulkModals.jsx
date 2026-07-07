@@ -7,7 +7,7 @@
    Literal hex colors: these overlays render outside the `.survey-hub` root,
    where the palette CSS variables are not in scope.
 */
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 const C = {
   scrim: 'rgba(13,15,20,0.55)',
@@ -31,6 +31,27 @@ const overlay = {
 export function MoveCopyModal({ open, onClose, projects = [], count = 0, onConfirm }) {
   const [mode, setMode] = useState('move'); // 'move' | 'copy'
   const [destId, setDestId] = useState(null);
+  const previouslyFocusedRef = useRef(null);
+
+  // Accessibility: Escape closes the modal, and focus returns to whatever
+  // triggered it once it closes (minimal per-modal patch, no shared modal
+  // primitive/focus trap).
+  useEffect(() => {
+    if (!open) return undefined;
+    previouslyFocusedRef.current = document.activeElement;
+    const handleKey = (e) => {
+      if (e.key === 'Escape') {
+        e.stopPropagation();
+        onClose?.();
+      }
+    };
+    window.addEventListener('keydown', handleKey, true);
+    return () => {
+      window.removeEventListener('keydown', handleKey, true);
+      previouslyFocusedRef.current?.focus?.();
+      previouslyFocusedRef.current = null;
+    };
+  }, [open, onClose]);
 
   if (!open) return null;
 
@@ -100,6 +121,28 @@ export function MoveCopyModal({ open, onClose, projects = [], count = 0, onConfi
 }
 
 export function ConfirmModal({ open, onClose, title = 'Are you sure?', message = '', confirmLabel = 'Confirm', danger = false, onConfirm }) {
+  const previouslyFocusedRef = useRef(null);
+
+  // Accessibility: Escape closes the modal, and focus returns to whatever
+  // triggered it once it closes (minimal per-modal patch, no shared modal
+  // primitive/focus trap).
+  useEffect(() => {
+    if (!open) return undefined;
+    previouslyFocusedRef.current = document.activeElement;
+    const handleKey = (e) => {
+      if (e.key === 'Escape') {
+        e.stopPropagation();
+        onClose?.();
+      }
+    };
+    window.addEventListener('keydown', handleKey, true);
+    return () => {
+      window.removeEventListener('keydown', handleKey, true);
+      previouslyFocusedRef.current?.focus?.();
+      previouslyFocusedRef.current = null;
+    };
+  }, [open, onClose]);
+
   if (!open) return null;
   return (
     <div onClick={onClose} style={overlay}>

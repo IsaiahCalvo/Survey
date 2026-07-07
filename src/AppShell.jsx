@@ -1001,6 +1001,7 @@ export default function App() {
                 <button
                   onClick={bottomToolbarApi.zoomOut}
                   title="Zoom out"
+                  aria-label="Zoom out"
                   style={{ height: '28px', width: '28px', display: 'grid', placeItems: 'center', border: 'none', background: 'transparent', color: '#cfcfcf', borderRadius: '4px', fontSize: '14px', lineHeight: 1, cursor: 'pointer' }}
                 >−</button>
                 {isEditingRailZoom ? (
@@ -1038,6 +1039,7 @@ export default function App() {
                 <button
                   onClick={bottomToolbarApi.zoomIn}
                   title="Zoom in"
+                  aria-label="Zoom in"
                   style={{ height: '28px', width: '28px', display: 'grid', placeItems: 'center', border: 'none', background: 'transparent', color: '#cfcfcf', borderRadius: '4px', fontSize: '14px', lineHeight: 1, cursor: 'pointer' }}
                 >+</button>
               </div>
@@ -1050,6 +1052,7 @@ export default function App() {
                   onClick={bottomToolbarApi.goToPreviousPage}
                   disabled={bottomToolbarApi.pageNum <= 1}
                   title="Previous page"
+                  aria-label="Previous page"
                   style={{ height: '24px', width: '24px', display: 'grid', placeItems: 'center', border: 'none', background: 'transparent', color: '#cfcfcf', borderRadius: '4px', cursor: bottomToolbarApi.pageNum <= 1 ? 'not-allowed' : 'pointer', opacity: bottomToolbarApi.pageNum <= 1 ? 0.35 : 1 }}
                 >
                   <Icon name="chevronLeft" size={14} />
@@ -1095,6 +1098,7 @@ export default function App() {
                   onClick={bottomToolbarApi.goToNextPage}
                   disabled={bottomToolbarApi.pageNum >= bottomToolbarApi.numPages}
                   title="Next page"
+                  aria-label="Next page"
                   style={{ height: '24px', width: '24px', display: 'grid', placeItems: 'center', border: 'none', background: 'transparent', color: '#cfcfcf', borderRadius: '4px', cursor: bottomToolbarApi.pageNum >= bottomToolbarApi.numPages ? 'not-allowed' : 'pointer', opacity: bottomToolbarApi.pageNum >= bottomToolbarApi.numPages ? 0.35 : 1 }}
                 >
                   <Icon name="chevronRight" size={14} />

@@ -7,7 +7,7 @@
  * is disabled until an option is selected. Renders null unless isOpen. Part of the
  * Excel two-way sync flow.
  */
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { COLORS, TYPOGRAPHY, BORDERS, SHADOWS } from '../theme';
 
 const ExcelSyncConfirmModal = ({
@@ -17,6 +17,27 @@ const ExcelSyncConfirmModal = ({
   fileName = 'Excel file'
 }) => {
   const [selectedOption, setSelectedOption] = useState(null);
+  const previouslyFocusedRef = useRef(null);
+
+  // Accessibility: Escape closes the modal, and focus returns to whatever
+  // triggered it once it closes (minimal per-modal patch, no shared modal
+  // primitive/focus trap).
+  useEffect(() => {
+    if (!isOpen) return undefined;
+    previouslyFocusedRef.current = document.activeElement;
+    const handleKey = (e) => {
+      if (e.key === 'Escape') {
+        e.stopPropagation();
+        onClose?.();
+      }
+    };
+    window.addEventListener('keydown', handleKey, true);
+    return () => {
+      window.removeEventListener('keydown', handleKey, true);
+      previouslyFocusedRef.current?.focus?.();
+      previouslyFocusedRef.current = null;
+    };
+  }, [isOpen, onClose]);
 
   if (!isOpen) return null;
 

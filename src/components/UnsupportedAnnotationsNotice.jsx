@@ -133,6 +133,7 @@ const UnsupportedAnnotationsNotice = ({ unsupportedTypes, onDismiss }) => {
           justifyContent: 'center',
         }}
         title="Dismiss"
+        aria-label="Dismiss"
       >
         <svg
           width="16"

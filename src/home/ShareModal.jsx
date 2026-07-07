@@ -18,7 +18,7 @@
  *
  * UI structure is preserved from the approved design — do not redesign.
  */
-import { useContext, useEffect, useMemo, useState } from 'react';
+import { useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { AuthContext } from '../contexts/AuthContext';
 import { createDocumentInvite, buildInviteUrl } from '../services/documentInviteService';
 import { createProjectInvite } from '../services/projectInviteService';
@@ -71,6 +71,7 @@ export default function ShareModal({
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [activeInvite, setActiveInvite] = useState(null); // last link-invite for share-link display
+  const previouslyFocusedRef = useRef(null);
 
   useEffect(() => {
     if (!open) {
@@ -83,6 +84,26 @@ export default function ShareModal({
       setBusy(false);
     }
   }, [open]);
+
+  // Accessibility: Escape closes the modal, and focus returns to whatever
+  // triggered it once it closes (minimal per-modal patch, no shared modal
+  // primitive/focus trap).
+  useEffect(() => {
+    if (!open) return undefined;
+    previouslyFocusedRef.current = document.activeElement;
+    const handleKey = (e) => {
+      if (e.key === 'Escape') {
+        e.stopPropagation();
+        onClose?.();
+      }
+    };
+    window.addEventListener('keydown', handleKey, true);
+    return () => {
+      window.removeEventListener('keydown', handleKey, true);
+      previouslyFocusedRef.current?.focus?.();
+      previouslyFocusedRef.current = null;
+    };
+  }, [open, onClose]);
 
   const noun = KIND_LABEL[kind] || 'item';
   const targetId = useMemo(() => {
