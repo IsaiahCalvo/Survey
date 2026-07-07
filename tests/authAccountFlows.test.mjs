@@ -18,8 +18,14 @@ import {
   passwordMeetsRequirements,
   PASSWORD_MIN_LENGTH,
 } from '../src/components/authFlow.js';
+import {
+  DEFAULT_TURNSTILE_SITE_KEY,
+  isTurnstileEnabled,
+  resolveTurnstileSiteKey,
+} from '../src/components/turnstileConfig.js';
 
 const MAIN_SOURCE = readFileSync(new URL('../src/main.jsx', import.meta.url), 'utf8');
+const VITE_CONFIG_SOURCE = readFileSync(new URL('../vite.config.js', import.meta.url), 'utf8');
 const AUTH_CONTEXT_SOURCE = readFileSync(new URL('../src/contexts/AuthContext.jsx', import.meta.url), 'utf8');
 const AUTH_MODAL_SOURCE = readFileSync(new URL('../src/components/AuthModal.jsx', import.meta.url), 'utf8');
 const ACCOUNT_SETTINGS_SOURCE = readFileSync(new URL('../src/components/AccountSettings.jsx', import.meta.url), 'utf8');
@@ -93,6 +99,28 @@ test('password requirements checklist reflects each rule', () => {
   assert.equal(met('Str0ng!Passw0rd', { firstName: 'Isaiah' }).nopersonal, true);
   assert.equal(passwordMeetsRequirements('Str0ng!Passw0rd'), true);
   assert.equal(passwordMeetsRequirements('weak'), false);
+});
+
+test('Turnstile can be disabled locally with an explicit empty env value', () => {
+  assert.equal(resolveTurnstileSiteKey({}), DEFAULT_TURNSTILE_SITE_KEY);
+  assert.equal(resolveTurnstileSiteKey({ VITE_TURNSTILE_SITE_KEY: '' }), '');
+  assert.equal(resolveTurnstileSiteKey({ VITE_TURNSTILE_SITE_KEY: '   ' }), '');
+  assert.equal(isTurnstileEnabled(''), false);
+  assert.equal(isTurnstileEnabled(DEFAULT_TURNSTILE_SITE_KEY), true);
+});
+
+test('dev auth bootstrap endpoint mints only a token hash through server-side Supabase admin', () => {
+  assert.match(VITE_CONFIG_SOURCE, /\/__dev-auth\/session/);
+  assert.match(VITE_CONFIG_SOURCE, /SUPABASE_SERVICE_ROLE_KEY/);
+  assert.match(VITE_CONFIG_SOURCE, /admin\.auth\.admin\.generateLink\(\{\s*type: 'magiclink'/);
+  assert.match(VITE_CONFIG_SOURCE, /data\?\.properties\?\.hashed_token/);
+  assert.match(VITE_CONFIG_SOURCE, /sendJson\(res, 200, \{ token_hash: tokenHash, type: 'magiclink' \}\)/);
+});
+
+test('dev auto-login falls back to magic-link bootstrap after captcha failure', () => {
+  assert.match(AUTH_CONTEXT_SOURCE, /runDevAuthBootstrapIfCaptchaBlocked\(error, devEmail\)/);
+  assert.match(AUTH_CONTEXT_SOURCE, /X-Dev-Auth-Bootstrap/);
+  assert.match(AUTH_CONTEXT_SOURCE, /supabase\.auth\.verifyOtp\(\{\s*token_hash: payload\.token_hash,\s*type: payload\.type \|\| 'magiclink'/);
 });
 
 // --- wiring: /reset-password route + page -----------------------------------

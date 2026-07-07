@@ -33,6 +33,53 @@ const authDebug = (...args) => {
   try { console.debug(...args); } catch { /* ignore debug logging failures */ }
 };
 
+const DEV_AUTH_BOOTSTRAP_TOKEN = typeof __DEV_AUTH_BOOTSTRAP_TOKEN__ === 'string'
+  ? __DEV_AUTH_BOOTSTRAP_TOKEN__
+  : '';
+
+const isCaptchaBlockedAuthError = (error) => {
+  const code = String(error?.code || '').toLowerCase();
+  const message = String(error?.message || error || '').toLowerCase();
+  return code.includes('captcha')
+    || message.includes('captcha')
+    || message.includes('captcha_token')
+    || message.includes('human');
+};
+
+const runDevAuthBootstrapIfCaptchaBlocked = async (error, email) => {
+  if (!import.meta.env.DEV || !DEV_AUTH_BOOTSTRAP_TOKEN || !isCaptchaBlockedAuthError(error) || !email) {
+    return null;
+  }
+  try {
+    const response = await fetch('/__dev-auth/session', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Dev-Auth-Bootstrap': DEV_AUTH_BOOTSTRAP_TOKEN,
+      },
+      body: JSON.stringify({ email }),
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw new Error(payload?.error || `dev auth bootstrap failed (${response.status})`);
+    }
+    if (!payload?.token_hash) {
+      throw new Error('dev auth bootstrap response missing token_hash');
+    }
+    const { data, error: verifyError } = await supabase.auth.verifyOtp({
+      token_hash: payload.token_hash,
+      type: payload.type || 'magiclink',
+    });
+    if (verifyError) throw verifyError;
+    return data?.session || null;
+  } catch (bootstrapError) {
+    console.warn('[dev-auto-login] captcha fallback failed ' + JSON.stringify({
+      message: bootstrapError?.message || String(bootstrapError),
+    }));
+    return null;
+  }
+};
+
 // In-flight subscription-tier reads keyed by userId. The two BOOT paths
 // (finishAuthBoot + onAuthStateChange) can fire fetchSubscriptionTier for the
 // same user within ~2ms of each other — this collapses that pair into one
@@ -150,11 +197,20 @@ export const AuthProvider = ({ children }) => {
           password: devPassword
         });
         if (error) {
-          console.warn('[dev-auto-login] sign-in FAILED ' + JSON.stringify({
-            code: error.code || null,
-            status: error.status || null,
-            message: error.message || String(error)
-          }));
+          const bootstrapSession = await runDevAuthBootstrapIfCaptchaBlocked(error, devEmail);
+          if (bootstrapSession) {
+            authDebug('[dev-auto-login] captcha fallback OK ' + JSON.stringify({
+              userId: bootstrapSession?.user?.id || null,
+              email: bootstrapSession?.user?.email || null
+            }));
+            session = bootstrapSession;
+          } else {
+            console.warn('[dev-auto-login] sign-in FAILED ' + JSON.stringify({
+              code: error.code || null,
+              status: error.status || null,
+              message: error.message || String(error)
+            }));
+          }
         } else {
           authDebug('[dev-auto-login] sign-in OK ' + JSON.stringify({
             userId: data?.user?.id || null,
@@ -163,9 +219,18 @@ export const AuthProvider = ({ children }) => {
           session = data?.session ?? session;
         }
       } catch (err) {
-        console.warn('[dev-auto-login] sign-in THREW ' + JSON.stringify({
-          message: err?.message || String(err)
-        }));
+        const bootstrapSession = await runDevAuthBootstrapIfCaptchaBlocked(err, devEmail);
+        if (bootstrapSession) {
+          authDebug('[dev-auto-login] captcha fallback OK ' + JSON.stringify({
+            userId: bootstrapSession?.user?.id || null,
+            email: bootstrapSession?.user?.email || null
+          }));
+          session = bootstrapSession;
+        } else {
+          console.warn('[dev-auto-login] sign-in THREW ' + JSON.stringify({
+            message: err?.message || String(err)
+          }));
+        }
       }
     } else {
       console.warn('[dev-auto-login] needed sign-in but creds NOT loaded — skipped. Restart the dev server / Electron app to pick up .env.local.');

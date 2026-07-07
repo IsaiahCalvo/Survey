@@ -14,12 +14,12 @@
  * still reject a tokenless request, but the client never adds an *extra* lockout.
  */
 import { useEffect, useRef } from 'react';
+import { isTurnstileEnabled, resolveTurnstileSiteKey } from './turnstileConfig';
 
 // Public site key — safe to ship in client code (Cloudflare renders it in HTML).
 // Empty string disables the widget entirely (renders nothing, no gate).
-export const TURNSTILE_SITE_KEY =
-  import.meta.env.VITE_TURNSTILE_SITE_KEY || '0x4AAAAAADvT0lMMs6ifYoKO';
-export const TURNSTILE_ENABLED = Boolean(TURNSTILE_SITE_KEY);
+export const TURNSTILE_SITE_KEY = resolveTurnstileSiteKey(import.meta.env);
+export const TURNSTILE_ENABLED = isTurnstileEnabled(TURNSTILE_SITE_KEY);
 
 const SCRIPT_SRC =
   'https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit';
