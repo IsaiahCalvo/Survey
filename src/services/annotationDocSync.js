@@ -285,20 +285,30 @@ function catchUpTail(state) {
       }
       const batch = rows || [];
       for (const row of batch) {
-        cursor = Number(row.seq);
-        if (row.client_id === state.clientId) continue; // our own op — already in the doc
-        try {
-          Y.applyUpdate(state.doc, pgHexToBytes(row.data), REMOTE_ORIGIN);
-          applied += 1;
-        } catch (err) {
-          console.warn('[annotationDocSync] catch-up apply failed', err?.message);
+        if (state.destroyed) return; // handle torn down mid-sweep — stop touching the doc
+        if (row.client_id !== state.clientId) { // our own ops are already in the doc
+          try {
+            Y.applyUpdate(state.doc, pgHexToBytes(row.data), REMOTE_ORIGIN);
+            applied += 1;
+          } catch (err) {
+            // Do NOT advance past bytes that never made it into the doc: cursor
+            // stays on the last good row, so this seq is retried on the next
+            // SUBSCRIBED instead of being permanently marked covered (and a
+            // snapshot's at_seq can never over-claim it).
+            console.warn('[annotationDocSync] catch-up apply failed — will retry from seq', cursor, err?.message);
+            if (cursor > state.lastSeq) state.lastSeq = cursor;
+            state.coveredSeq = cursor;
+            if (applied > 0) notifyChange(state);
+            return;
+          }
         }
+        cursor = Number(row.seq);
       }
       if (cursor > state.lastSeq) state.lastSeq = cursor;
       state.coveredSeq = cursor;
       if (batch.length < 1000) break;
     }
-    if (applied > 0) notifyChange(state);
+    if (applied > 0 && !state.destroyed) notifyChange(state);
   }).catch((err) => {
     console.warn('[annotationDocSync] catch-up failed', err?.message);
   });
@@ -523,6 +533,7 @@ function makeHandle(state) {
       // Final checkpoint before teardown so the latest state is durable even if a
       // debounce was still pending. (Mark destroyed AFTER, so the write proceeds.)
       await state.flushQueue.catch(() => {});
+      await state.catchupChain.catch(() => {}); // let an in-flight catch-up page finish cleanly
       if (state.supabase) { try { await writeSnapshot(state); } catch { /* */ } }
       state.destroyed = true;
       if (state.realtimeChannel) { try { await state.supabase.removeChannel(state.realtimeChannel); } catch { /* */ } }

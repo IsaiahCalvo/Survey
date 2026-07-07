@@ -104,6 +104,34 @@ test('reconnect: a re-fired SUBSCRIBED sweeps ops missed while the channel was d
   await handle.destroy();
 });
 
+test('a row whose bytes fail to apply is retried on the next sweep — never permanently skipped', async () => {
+  const supabase = makeSupabase();
+  const doc = new Y.Doc();
+  const handle = await openAnnotationDoc({
+    documentId: 'doc-poison', supabase, clientId: 'me',
+    enableLocal: false, enableRealtime: true, doc,
+  });
+
+  supabase.log.push({ seq: 1, data: makeRemoteOpHex('good-1'), client_id: 'other' });
+  supabase.log.push({ seq: 2, data: '\\xdeadbeef', client_id: 'other' }); // corrupt bytes — apply throws
+  supabase.log.push({ seq: 3, data: makeRemoteOpHex('good-3'), client_id: 'other' });
+
+  supabase.fireSubscribed();
+  await new Promise((r) => setTimeout(r, 10));
+  assert.ok(doc.getMap('annotations').has('good-1'), 'rows before the bad one are applied');
+  assert.ok(!doc.getMap('annotations').has('good-3'), 'sweep stops AT the bad row instead of advancing past it');
+
+  // The row is fixed server-side (e.g. it was a transient decode issue) — the
+  // next SUBSCRIBED must resume from seq 1, not from past the bad row.
+  supabase.log[1] = { seq: 2, data: makeRemoteOpHex('good-2'), client_id: 'other' };
+  supabase.fireSubscribed();
+  await new Promise((r) => setTimeout(r, 10));
+  assert.ok(doc.getMap('annotations').has('good-2'), 'the previously-failing seq is retried');
+  assert.ok(doc.getMap('annotations').has('good-3'), 'rows after it are then applied too');
+
+  await handle.destroy();
+});
+
 test('catch-up skips our own rows and does not notify when nothing new applied', async () => {
   const supabase = makeSupabase();
   const doc = new Y.Doc();
