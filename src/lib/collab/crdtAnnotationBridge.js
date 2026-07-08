@@ -119,17 +119,14 @@ const FABRIC_CUSTOM_PROPS = [
 /**
  * Serialize a Fabric.js object to a plain JSON snapshot for Y.Doc storage.
  *
- * UX comment: prefers toObject() over toJSON() because Fabric.js 5.5.2's
- * toJSON() internally calls toObject(propertiesToInclude) and adds nothing
- * we need; tests stub toObject() directly. Defensive fallback to toJSON()
- * for any future Fabric API drift.
+ * UX comment: uses toObject() only — fabric 7's toJSON() ignores
+ * propertiesToInclude and would silently drop the custom props, so a toJSON
+ * fallback is worse than the plain copy. Every real Fabric object has
+ * toObject(); tests stub it directly.
  */
 function serializeFabricObject(fabricObject) {
   if (typeof fabricObject?.toObject === 'function') {
     return fabricObject.toObject(FABRIC_CUSTOM_PROPS);
-  }
-  if (typeof fabricObject?.toJSON === 'function') {
-    return fabricObject.toJSON(FABRIC_CUSTOM_PROPS);
   }
   // Last-resort plain copy — should never hit this with real Fabric objects.
   return { ...fabricObject };
