@@ -273,7 +273,7 @@ export function calloutToAnnotationObject(callout, pageSize) {
   const legacyCallout = JSON.parse(JSON.stringify(callout));
   const authorId = callout.meta?.authorId ?? callout.authorId ?? null;
 
-  return {
+  const annotationObject = {
     type: 'group',
     objects: [line1, line2, textbox, tipDot],
 
@@ -320,10 +320,18 @@ export function calloutToAnnotationObject(callout, pageSize) {
       },
     },
 
-    // Convenience accessor matching calloutEditAdapter.toFabricGroup so callers
-    // can use .getObjects() uniformly on both plain shapes and live groups.
-    getObjects() { return this.objects; },
   };
+
+  // Keep the convenience accessor for callout adapters, but do not serialize it.
+  // Fabric 7's enlivenObjects treats an enumerable function prop as object data
+  // and drops the whole group.
+  Object.defineProperty(annotationObject, 'getObjects', {
+    value() { return this.objects; },
+    enumerable: false,
+    configurable: true,
+  });
+
+  return annotationObject;
 }
 
 /**

@@ -209,10 +209,15 @@ export function toFabricGroup(reactCallout, pageSize) {
     reactCalloutId: reactCallout.id,
     reactCalloutSnapshot: deepClone(reactCallout),
     data: { type: 'callout' },
-    // Convenience accessor so tests (and Plan 14-03 wiring code) can call
-    // .getObjects() uniformly whether this is a plain shape or a live group.
-    getObjects() { return this.objects; },
   };
+
+  // Convenience accessor for tests/wiring. Non-enumerable because Fabric 7
+  // enlivenObjects drops groups when plain JSON includes function-valued props.
+  Object.defineProperty(groupResult, 'getObjects', {
+    value() { return this.objects; },
+    enumerable: false,
+    configurable: true,
+  });
 
   // UX 2026-04-22: diagnostic log gated behind window.__CALLOUT_LIFECYCLE_DIAG = true.
   // Dumps the full React->Fabric edit-entry snapshot so any divergence between
