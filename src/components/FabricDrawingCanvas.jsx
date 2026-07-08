@@ -32,6 +32,7 @@ import {
   recordAnnotationCommit,
   updateAnnotationGesture,
 } from '../utils/annotationPreviewDiag';
+import { shouldStampActiveRegionId } from '../utils/annotationVisibilityRules';
 
 // Custom properties to include in path serialization (matches PAL pattern)
 const CUSTOM_PROPS = [
@@ -234,30 +235,16 @@ const FabricDrawingCanvas = memo(({
   const initialZoomGenRef = useRef(zoomGeneration);
   const drawDiagGestureRef = useRef(null);
 
-  const shouldAssignRegionId = () => {
-    const regionId = activeRegionIdRef.current;
-    const spaceId = selectedSpaceIdRef.current;
-    if (!regionId || !spaceId) return false;
-
-    const currentSpaces = Array.isArray(spacesRef.current) ? spacesRef.current : [];
-    const space = currentSpaces.find((entry) => entry?.id === spaceId);
-    if (!space) return false;
-
-    const assignedPage = space.assignedPages?.find((page) => page?.pageId === pageNumber);
-    if (!assignedPage) return false;
-
-    const pageRegions = Array.isArray(assignedPage.regions) ? assignedPage.regions : [];
-    if (!pageRegions.some((region) => region?.regionId === regionId)) {
-      return false;
-    }
-
-    const overlayToggle = isRegionOverlayEnabledRef.current;
-    if (typeof overlayToggle === 'function') {
-      return overlayToggle(spaceId, pageNumber, assignedPage) !== false;
-    }
-
-    return true;
-  };
+  // Decision 11 companion: the region-stamp rule now lives in
+  // annotationVisibilityRules.shouldStampActiveRegionId so callout creation
+  // (SVGAnnotationLayer) stamps from the exact same source of truth.
+  const shouldAssignRegionId = () => shouldStampActiveRegionId({
+    regionId: activeRegionIdRef.current,
+    spaceId: selectedSpaceIdRef.current,
+    pageNumber,
+    spaces: spacesRef.current,
+    isRegionOverlayEnabled: isRegionOverlayEnabledRef.current,
+  });
 
   const composeColor = (hex, opacityPct) => {
     if (!hex || hex === 'transparent') return 'transparent';
@@ -378,7 +365,12 @@ const FabricDrawingCanvas = memo(({
       // be 0 to avoid double-counting the position already in the path data.
       // pathOffset is NOT serialized by toJSON(), so it defaults to 0 in the
       // SVG renderer — this means the path data's absolute coords render directly.
-      const pathJSON = e.path.toJSON(CUSTOM_PROPS);
+      // fabric 7: toJSON() takes NO arguments (JSON.stringify protocol) and
+      // silently DROPS propertiesToInclude — toObject(CUSTOM_PROPS) is the
+      // correct call and is what fabric 5's toJSON delegated to. Using toJSON
+      // here lost id/moduleId/regionId on every pen stroke after the 7.4.0
+      // upgrade (survey/region scoping broke).
+      const pathJSON = e.path.toObject(CUSTOM_PROPS);
       pathJSON.left = 0;
       pathJSON.top = 0;
       pathJSON.tool = activeToolRef.current;
@@ -473,7 +465,8 @@ const FabricDrawingCanvas = memo(({
       updateAnnotationGesture(drawDiagGestureRef.current, {
         annotationId,
       });
-      let shapeJSON = shape.toJSON(CUSTOM_PROPS);
+      // fabric 7: toObject(CUSTOM_PROPS), not toJSON — see path:created note.
+      let shapeJSON = shape.toObject(CUSTOM_PROPS);
       const tool = activeToolRef.current;
       if (tool === 'rect' || tool === 'ellipse') {
         shapeJSON = tagDrawnCenteredStrokeGeometry(shapeJSON);
@@ -713,7 +706,7 @@ const FabricDrawingCanvas = memo(({
       if (hasSize) {
         // UX: CREATE-01 — reset dashed preview style BEFORE commitShape() so
         // the preview dashing does NOT persist into saved JSON. commitShape()
-        // calls shape.toJSON(CUSTOM_PROPS) which serializes whatever is
+        // calls shape.toObject(CUSTOM_PROPS) which serializes whatever is
         // currently on the object. Line/arrow only — rect/ellipse never
         // applied the preview style in the first place. See 14-RESEARCH.md
         // Pitfall 1 (commitShape serialization timing) and 14-UI-SPEC.md

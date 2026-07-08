@@ -62,7 +62,8 @@ import {
   getAnnotationVisibilityScope,
   getSpaceIdForRegionFromSpaces,
   isAnnotationVisibleInContext,
-  isAnnotationVisibleByPageControl
+  isAnnotationVisibleByPageControl,
+  shouldStampActiveRegionId
 } from '../utils/annotationVisibilityRules';
 // Diagnostic: record every SVG callout's source data + DOM rects so Save Log
 // can dump a full geometry comparison against the Fabric edit-mode capture.
@@ -983,6 +984,24 @@ const SVGAnnotationLayer = memo(({
         120 / W, // default textbox width ~120px normalized
         32 / H   // default textbox height ~32px normalized
       );
+      // Decision 11 companion — stamp the active survey/region scope at
+      // creation, mirroring the pen-stroke stamping in FabricDrawingCanvas's
+      // path:created handler (same sources of truth: selectedModuleId for
+      // survey scope; shouldStampActiveRegionId for region scope). Without
+      // these stamps a callout is always canvas-scoped and ignores the
+      // survey/region mode filters that pen strokes obey.
+      if (selectedModuleId) {
+        newCallout.moduleId = selectedModuleId;
+      }
+      if (shouldStampActiveRegionId({
+        regionId: activeRegionId,
+        spaceId: selectedSpaceId,
+        pageNumber,
+        spaces,
+        isRegionOverlayEnabled,
+      })) {
+        newCallout.regionId = activeRegionId;
+      }
       if (onCreateCallout) onCreateCallout(newCallout);
     };
     window.addEventListener('pointermove', onMove);
@@ -991,7 +1010,10 @@ const SVGAnnotationLayer = memo(({
       window.removeEventListener('pointermove', onMove);
       window.removeEventListener('pointerup', onUp);
     };
-  }, [calloutCreation, width, height, pageNumber, onCreateCallout, svgRef]);
+  }, [calloutCreation, width, height, pageNumber, onCreateCallout, svgRef,
+    // Decision 11 companion — scope-stamping inputs. The listeners re-register
+    // when these change so the commit closure stamps from current values.
+    selectedModuleId, selectedSpaceId, activeRegionId, spaces, isRegionOverlayEnabled]);
 
   // UX: Phase 14 CREATE-01 — clear preview state on tool switch mid-drag.
   // Without this, switching from callout tool to select mid-drag would

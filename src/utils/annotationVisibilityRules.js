@@ -163,6 +163,55 @@ export function getSpaceIdForRegionFromSpaces(regionId, spaces = []) {
   return null;
 }
 
+/**
+ * Decision 11 companion — single source of truth for whether a NEWLY CREATED
+ * annotation should be stamped with the active regionId.
+ *
+ * Mirrors the pen-stroke rule that has always lived inline in
+ * FabricDrawingCanvas.shouldAssignRegionId (which now delegates here): stamp
+ * only when a region is active AND its space is the annotation-scoping space
+ * AND that space has the page assigned AND the region actually exists on the
+ * page AND the region overlay toggle is not off. Callout creation
+ * (SVGAnnotationLayer) uses the same helper so callouts and pen strokes can
+ * never drift apart.
+ *
+ * @param {object} args
+ * @param {string|null} args.regionId — the active region id (activeRegionId)
+ * @param {string|null} args.spaceId — the annotation-scoping space id
+ *   (activeSpaceId ?? selectedSpaceId, i.e. PDFViewer's annotationSpaceId)
+ * @param {number} args.pageNumber — page the annotation is being created on
+ * @param {Array} args.spaces — current spaces array
+ * @param {Function|null} args.isRegionOverlayEnabled — overlay toggle checker
+ * @returns {boolean}
+ */
+export function shouldStampActiveRegionId({
+  regionId = null,
+  spaceId = null,
+  pageNumber,
+  spaces = [],
+  isRegionOverlayEnabled = null
+} = {}) {
+  if (!regionId || !spaceId) return false;
+
+  const currentSpaces = Array.isArray(spaces) ? spaces : [];
+  const space = currentSpaces.find((entry) => entry?.id === spaceId);
+  if (!space) return false;
+
+  const assignedPage = space.assignedPages?.find((page) => page?.pageId === pageNumber);
+  if (!assignedPage) return false;
+
+  const pageRegions = Array.isArray(assignedPage.regions) ? assignedPage.regions : [];
+  if (!pageRegions.some((region) => region?.regionId === regionId)) {
+    return false;
+  }
+
+  if (typeof isRegionOverlayEnabled === 'function') {
+    return isRegionOverlayEnabled(spaceId, pageNumber, assignedPage) !== false;
+  }
+
+  return true;
+}
+
 export function isAnnotationVisibleInContext({
   annotation,
   pageNumber,

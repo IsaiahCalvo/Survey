@@ -13,6 +13,7 @@ import {
   isAnnotationVisibleInContext,
   normalizePageRegions,
   normalizeRegionVisibility,
+  shouldStampActiveRegionId,
 } from '../src/utils/annotationVisibilityRules.js';
 
 describe('getAnnotationVisibilityScope', () => {
@@ -456,6 +457,66 @@ describe('isAnnotationVisibleInContext', () => {
         showSurveyPanel: true,
       }),
       false
+    );
+  });
+});
+
+// Decision 11 companion — the shared creation-time region-stamp rule used by
+// BOTH pen strokes (FabricDrawingCanvas.shouldAssignRegionId) and callout
+// creation (SVGAnnotationLayer). Mirrors the historical inline pen rule.
+describe('shouldStampActiveRegionId', () => {
+  const spaces = [
+    {
+      id: 'space-1',
+      assignedPages: [
+        {
+          pageId: 3,
+          regions: [{ regionId: 'region-1' }],
+        },
+      ],
+    },
+  ];
+  const base = {
+    regionId: 'region-1',
+    spaceId: 'space-1',
+    pageNumber: 3,
+    spaces,
+    isRegionOverlayEnabled: () => true,
+  };
+
+  it('stamps when the active region exists on the page of the active space and overlay is on', () => {
+    assert.equal(shouldStampActiveRegionId(base), true);
+  });
+
+  it('does not stamp without an active region or space', () => {
+    assert.equal(shouldStampActiveRegionId({ ...base, regionId: null }), false);
+    assert.equal(shouldStampActiveRegionId({ ...base, spaceId: null }), false);
+    assert.equal(shouldStampActiveRegionId(), false);
+  });
+
+  it('does not stamp when the space is unknown', () => {
+    assert.equal(shouldStampActiveRegionId({ ...base, spaceId: 'space-2' }), false);
+  });
+
+  it('does not stamp on a page the space does not include', () => {
+    assert.equal(shouldStampActiveRegionId({ ...base, pageNumber: 4 }), false);
+  });
+
+  it('does not stamp when the region does not exist on that page', () => {
+    assert.equal(shouldStampActiveRegionId({ ...base, regionId: 'region-9' }), false);
+  });
+
+  it('does not stamp when the overlay toggle is off', () => {
+    assert.equal(
+      shouldStampActiveRegionId({ ...base, isRegionOverlayEnabled: () => false }),
+      false
+    );
+  });
+
+  it('stamps when no overlay checker is provided (default-on parity with the pen rule)', () => {
+    assert.equal(
+      shouldStampActiveRegionId({ ...base, isRegionOverlayEnabled: null }),
+      true
     );
   });
 });

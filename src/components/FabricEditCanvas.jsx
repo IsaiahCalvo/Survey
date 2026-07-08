@@ -69,7 +69,11 @@ import CompactColorPicker from './CompactColorPicker';
 // Patch: place cursor at the right edge of the boundary instead of centering.
 // Ref: fabric.js GitHub issues #5008, #6168, #4479
 const _origRenderCursor = fabric.IText.prototype.renderCursor;
-fabric.IText.prototype.renderCursor = function(boundaries, ctx) {
+// fabric 7 SWAPPED the parameter order to renderCursor(ctx, boundaries)
+// (fabric 5 was (boundaries, ctx)). Keeping the old order made `ctx` receive
+// the boundaries object and threw "ctx.fillRect is not a function" on every
+// caret paint after the 7.4.0 upgrade.
+fabric.IText.prototype.renderCursor = function(ctx, boundaries) {
   const cursorLocation = this.get2DCursorLocation();
   const lineIndex = cursorLocation.lineIndex;
   const charIndex = cursorLocation.charIndex > 0 ? cursorLocation.charIndex - 1 : 0;
@@ -80,7 +84,7 @@ fabric.IText.prototype.renderCursor = function(boundaries, ctx) {
   const dy = this.getValueOfPropertyAt(lineIndex, charIndex, 'deltaY');
   topOffset += (1 - this._fontSizeFraction) * this.getHeightOfLine(lineIndex) / this.lineHeight
     - charHeight * (1 - this._fontSizeFraction);
-  if (this.inCompositionMode) { this.renderSelection(boundaries, ctx); }
+  if (this.inCompositionMode) { this.renderSelection(ctx, boundaries); } // fabric 7 order
   ctx.fillStyle = this.cursorColor || this.getValueOfPropertyAt(lineIndex, charIndex, 'fill');
   ctx.globalAlpha = this.__isMousedown ? 1 : this._currentCursorOpacity;
   // FIX: place cursor at right edge of boundary (removed `- cursorWidth / 2`)
@@ -1208,8 +1212,11 @@ const FabricEditCanvas = memo(({
       return;
     }
 
-    // Serialize with custom properties
-    const json = activeObj.toJSON(CUSTOM_PROPS);
+    // Serialize with custom properties.
+    // fabric 7: toObject(CUSTOM_PROPS) — toJSON() ignores arguments and drops
+    // the custom props (id/moduleId/regionId/data...), which stripped scope
+    // stamps from every edited annotation after the 7.4.0 upgrade.
+    const json = activeObj.toObject(CUSTOM_PROPS);
     // Shape edit uses opacity:0 on the Fabric object to hide its raster while keeping
     // handles interactive — restore the original opacity before persisting so SVG
     // display is unaffected.
@@ -1852,8 +1859,12 @@ const FabricEditCanvas = memo(({
       // shift the textbox inward by PAD so Fabric's caret lands at the first
       // inner column (which is where SVG renderText paints the glyph).
       const visibleOuterW = textBoxWidth || 160;
+      // fabric 7: NEVER pass `type` in constructor options — `type` is a
+      // getter-only accessor and setOptions throws "Cannot set property type
+      // ... which has only a getter", which crashed this component (and killed
+      // brand-new callouts via the blank-commit rollback) after the 7.4.0
+      // upgrade. The class sets its own type.
       const textObj = new fabric.Textbox('', {
-        type: 'textbox',
         left: BBOX_PADDING + TEXT_PADDING,
         top: BBOX_PADDING + TEXT_PADDING,
         angle: 0,
@@ -2066,7 +2077,9 @@ const FabricEditCanvas = memo(({
         // where the object briefly renders at its original page-space coordinates
         // before being repositioned to BBOX_PADDING.
         {
-          const json = textObj.toJSON(CUSTOM_PROPS);
+          // fabric 7: toObject(CUSTOM_PROPS) — toJSON() ignores arguments and
+          // drops the custom props (id/moduleId/regionId/data...).
+          const json = textObj.toObject(CUSTOM_PROPS);
           // Plan 15-04 Issue 4 — both plain text and callouts carry a
           // TEXT_PADDING gutter on the LEFT/RIGHT so view + edit share one
           // contract. 2026-04-19: callouts don't use a vertical gutter (the
@@ -2077,10 +2090,12 @@ const FabricEditCanvas = memo(({
           const padX = TEXT_PADDING;
           const padY = reactCalloutId ? 0 : TEXT_PADDING;
           const outerW = json.width || 160;
-          const { styles: _s, left: _l, top: _t, angle: _a, ...rest } = json;
+          // fabric 7: strip `type` from the spread too — passing it into a
+          // constructor throws (getter-only accessor). See note at the
+          // brand-new-textbox constructor above.
+          const { styles: _s, left: _l, top: _t, angle: _a, type: _type, ...rest } = json;
           textObj = new fabric.Textbox(json.text || '', {
             ...rest,
-            type: 'textbox',
             left: BBOX_PADDING + padX,
             top: BBOX_PADDING + padY,
             angle: 0,

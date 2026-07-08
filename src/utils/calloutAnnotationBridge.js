@@ -291,6 +291,13 @@ export function calloutToAnnotationObject(callout, pageSize) {
       ? { isPdfImported: true, ...(callout.pdfAnnotationId != null ? { pdfAnnotationId: callout.pdfAnnotationId } : {}) }
       : {}),
 
+    // Decision 11 companion — carry the survey/region scope stamps onto the
+    // projected object so byPage consumers (eraser canvas, diag captures,
+    // proxy payloads) see the same scope the callouts[] entry has. The
+    // authoritative copy still round-trips via data.legacyCallout below.
+    ...(callout.moduleId != null ? { moduleId: callout.moduleId } : {}),
+    ...(callout.regionId != null ? { regionId: callout.regionId } : {}),
+
     // Required discriminator — mirrors counter's `data: { type: 'counter', ... }`.
     // fabricObjectToDbType() in annotationTypeSerializers.js dispatches on
     // data.type === 'callout' (line 147 of that file).
@@ -486,6 +493,11 @@ export function annotationObjectToCallout(obj, pageSize) {
   return {
     id: obj.data?.id ?? null,
     pageNumber: obj.pageNumber ?? null,
+
+    // Decision 11 companion — recover the survey/region scope stamps so a
+    // byPage→callout round trip never strips them.
+    ...(obj.moduleId != null ? { moduleId: obj.moduleId } : {}),
+    ...(obj.regionId != null ? { regionId: obj.regionId } : {}),
 
     arrowTip: { x: atX / W, y: atY / H },
     knee: { x: knX / W, y: knY / H },

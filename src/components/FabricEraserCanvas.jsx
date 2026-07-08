@@ -277,7 +277,11 @@ const FabricEraserCanvas = memo(({
       if (obj.type === 'textbox' && obj.__importedJSON) {
         return { ...obj.__importedJSON };
       }
-      const json = obj.toJSON(CUSTOM_PROPS);
+      // fabric 7: toObject(CUSTOM_PROPS) — toJSON() ignores arguments and
+      // drops the custom props (id/moduleId/regionId/data...), which stripped
+      // scope stamps from every SURVIVING annotation on any erase after the
+      // 7.4.0 upgrade.
+      const json = obj.toObject(CUSTOM_PROPS);
       if (json.type === 'path' && !obj.isPdfImported) {
         json.left = 0;
         json.top = 0;
