@@ -200,7 +200,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
         ...config,
         id: templateId,
         supabaseId: templateRow.id,
-        name: config.name || templateRow.name || 'Untitled template',
+        name: config.name || templateRow.name || 'Untitled Template',
         createdAt: config.createdAt || templateRow.created_at || templateRow.updated_at || new Date().toISOString(),
         updatedAt: config.updatedAt || templateRow.updated_at || config.createdAt || templateRow.created_at || new Date().toISOString()
       };

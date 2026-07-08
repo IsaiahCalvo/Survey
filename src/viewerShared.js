@@ -1925,20 +1925,20 @@ export const loadCallouts = (pdfId) => {
 // Get module name from template (for readable IDs)
 export const getModuleName = (template, moduleId) => {
   const module = template?.modules?.find(m => m.id === moduleId);
-  return module?.name || 'Unknown module';
+  return module?.name || 'Unknown Module';
 };
 
 // Get category name from template
 export const getCategoryName = (template, moduleId, categoryId) => {
   const module = template?.modules?.find(m => m.id === moduleId);
   const category = module?.categories?.find(c => c.id === categoryId);
-  return category?.name || 'Unknown category';
+  return category?.name || 'Unknown Category';
 };
 
 const escapeRegExp = (value = '') => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 export const generateDefaultSurveyMarkerName = (categoryName, surveyMarkers = []) => {
-  const baseName = (categoryName && typeof categoryName === 'string' && categoryName.trim()) ? categoryName.trim() : 'Untitled category';
+  const baseName = (categoryName && typeof categoryName === 'string' && categoryName.trim()) ? categoryName.trim() : 'Untitled Category';
   const pattern = new RegExp(`^${escapeRegExp(baseName)}\\s+(\\d+)$`, 'i');
   let maxNumber = 0;
 
@@ -2158,7 +2158,7 @@ export const migrateLegacySurveyMarkers = (legacySurveyMarkers, items, annotatio
         template,
         surveyMarker.moduleId,
         surveyMarker.categoryId,
-        surveyMarker.name || 'Untitled item',
+        surveyMarker.name || 'Untitled Item',
         1
       );
 

@@ -22962,16 +22962,22 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
     // (b) Survey/region mode: activate the mark's space, or exit space mode
     // for document-level marks (explicit null stamp).
+    let spaceContextRestored = true;
     if (resolved.hasSpaceTarget) {
-      if (resolved.spaceId && resolved.spaceId !== activeSpaceId) {
-        // Only activate spaces that still exist — a deleted space can't be entered.
-        const spaceExists = (spacesRef.current || []).some((space) => space?.id === resolved.spaceId);
-        if (spaceExists) handleSetActiveSpace(resolved.spaceId);
-      } else if (!resolved.spaceId && activeSpaceId) {
-        handleExitSpaceMode();
-      }
-      if (resolved.spaceId) {
+      // Only activate spaces that still exist — a deleted space can't be entered.
+      const spaceExists = resolved.spaceId
+        ? (spacesRef.current || []).some((space) => space?.id === resolved.spaceId)
+        : false;
+      if (resolved.spaceId && !spaceExists) {
+        // The mark's space was deleted: don't select the dead id, don't leave an
+        // unrelated space active, and don't report a full context restore.
+        if (activeSpaceId) handleExitSpaceMode();
+        spaceContextRestored = false;
+      } else if (resolved.spaceId) {
+        if (resolved.spaceId !== activeSpaceId) handleSetActiveSpace(resolved.spaceId);
         setSelectedSpaceId(resolved.spaceId);
+      } else if (activeSpaceId) {
+        handleExitSpaceMode();
       }
     }
 
@@ -22996,7 +23002,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     if (resolved.hasCategory && (resolved.surveyPanelOpen ?? true)) {
       setSelectedCategoryId(resolved.categoryId);
     }
-    return true;
+    return spaceContextRestored;
   }, [activeSpaceId, handleSetActiveSpace, handleExitSpaceMode, handleSelectSurveyTemplate, handleCloseSurveyMode, selectedTemplate, templates, showSurveyPanel]);
 
   // Embedded import — exactly once per document, durably.
@@ -30978,7 +30984,7 @@ ${pageBlocks}
                                       moduleId: module.id,
                                       regionId: sourceSurveyMarker?.regionId ?? null,
                                       categoryId: destCategory?.id || null,
-                                      name: item.name || sourceSurveyMarker?.name || 'Untitled item',
+                                      name: item.name || sourceSurveyMarker?.name || 'Untitled Item',
                                       checklistResponses: {}
                                     };
 
@@ -31235,7 +31241,7 @@ ${pageBlocks}
                                         moduleId: space.id,
                                         regionId: sourceSurveyMarker?.regionId ?? null,
                                         categoryId: destCategory?.id || null,
-                                        name: item.name || sourceSurveyMarker?.name || 'Untitled item',
+                                        name: item.name || sourceSurveyMarker?.name || 'Untitled Item',
                                         // Do NOT copy entity properties - item starts blank in new space
                                         checklistResponses: {}
                                       };
@@ -31773,7 +31779,7 @@ ${pageBlocks}
           pendingSurveyMarkerName && selectedTemplate && selectedModuleId && (() => {
             const module = ((selectedTemplate.modules || selectedTemplate.spaces) || [])?.find(m => m.id === selectedModuleId);
             const category = module?.categories?.find(c => c.id === pendingSurveyMarkerName.categoryId);
-            const categoryName = category?.name?.trim() || 'Untitled category';
+            const categoryName = category?.name?.trim() || 'Untitled Category';
             const existingSurveyMarkers = Object.values(surveyMarkers).filter(h => h.categoryId === pendingSurveyMarkerName.categoryId);
             const defaultName = generateDefaultSurveyMarkerName(categoryName, existingSurveyMarkers);
 
@@ -32948,7 +32954,7 @@ ${pageBlocks}
                                       moduleId: module.id,
                                       regionId: sourceSurveyMarker?.regionId ?? null,
                                       categoryId: destCategory?.id || null,
-                                      name: item.name || sourceSurveyMarker?.name || 'Untitled item',
+                                      name: item.name || sourceSurveyMarker?.name || 'Untitled Item',
                                       checklistResponses: {}
                                     };
                                   } else {
@@ -33176,7 +33182,7 @@ ${pageBlocks}
                               bounds: destAnnotation.pdfCoordinates,
                               moduleId: transferState.destModuleId,
                               categoryId: destCategory?.id || null,
-                              name: item.name || sourceSurveyMarker?.name || 'Untitled item',
+                              name: item.name || sourceSurveyMarker?.name || 'Untitled Item',
                               checklistResponses: {}
                             };
                           }

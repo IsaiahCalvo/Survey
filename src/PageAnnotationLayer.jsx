@@ -3270,7 +3270,7 @@ const PageAnnotationLayer = memo(({
     const canvas = fabricRef.current;
     if (!canvas) return;
     sanitizeTextStyles(canvas);
-    const canvasJSON = canvas.toJSON(['strokeUniform', 'spaceId', 'moduleId', 'regionId', 'data', 'name', 'annotationId', 'needsEntity', 'globalCompositeOperation', 'layer', 'isPdfImported', 'pdfAnnotationId', 'pdfAnnotationType', 'pdfInkRenderMode']);
+    const canvasJSON = canvas.toObject(['strokeUniform', 'spaceId', 'moduleId', 'regionId', 'data', 'name', 'annotationId', 'needsEntity', 'globalCompositeOperation', 'layer', 'isPdfImported', 'pdfAnnotationId', 'pdfAnnotationType', 'pdfInkRenderMode']);
     onSaveAnnotations(pageNumber, canvasJSON, buildHistorySaveContext(source, context));
   }, [pageNumber, onSaveAnnotations]);
 
@@ -5019,7 +5019,7 @@ const PageAnnotationLayer = memo(({
         sanitizeTextStyles(fabricRef.current);
 
         // Include spaceId in the saved JSON to preserve space associations
-        const canvasJSON = fabricRef.current.toJSON(['strokeUniform', 'spaceId', 'moduleId', 'regionId', 'data', 'name', 'annotationId', 'needsEntity', 'globalCompositeOperation', 'layer', 'isPdfImported', 'pdfAnnotationId', 'pdfAnnotationType', 'pdfInkRenderMode']);
+        const canvasJSON = fabricRef.current.toObject(['strokeUniform', 'spaceId', 'moduleId', 'regionId', 'data', 'name', 'annotationId', 'needsEntity', 'globalCompositeOperation', 'layer', 'isPdfImported', 'pdfAnnotationId', 'pdfAnnotationType', 'pdfInkRenderMode']);
         lastSavedAnnotationsRef.current = canvasJSON; // Update last saved ref
         onSaveAnnotations(pageNumber, canvasJSON, buildHistorySaveContext(source, context));
       } catch (e) {
@@ -8299,7 +8299,7 @@ const PageAnnotationLayer = memo(({
       // Save annotations
       try {
         sanitizeTextStyles(canvas);
-        const canvasJSON = canvas.toJSON(['strokeUniform', 'spaceId', 'moduleId', 'regionId', 'data', 'name', 'annotationId', 'needsEntity', 'layer', 'isPdfImported', 'pdfAnnotationId', 'pdfAnnotationType', 'pdfInkRenderMode']);
+        const canvasJSON = canvas.toObject(['strokeUniform', 'spaceId', 'moduleId', 'regionId', 'data', 'name', 'annotationId', 'needsEntity', 'layer', 'isPdfImported', 'pdfAnnotationId', 'pdfAnnotationType', 'pdfInkRenderMode']);
         onSaveAnnotations(pageNumber, canvasJSON, buildHistorySaveContext('surveyMarker:apply', {
           addedCount: newSurveyMarkers.length
         }));
@@ -8380,7 +8380,7 @@ const PageAnnotationLayer = memo(({
       // Save annotations
       try {
         sanitizeTextStyles(canvas);
-        const canvasJSON = canvas.toJSON(['strokeUniform', 'spaceId', 'moduleId', 'regionId', 'data', 'name', 'layer', 'isPdfImported', 'pdfAnnotationId', 'pdfAnnotationType', 'pdfInkRenderMode']);
+        const canvasJSON = canvas.toObject(['strokeUniform', 'spaceId', 'moduleId', 'regionId', 'data', 'name', 'layer', 'isPdfImported', 'pdfAnnotationId', 'pdfAnnotationType', 'pdfInkRenderMode']);
         onSaveAnnotations(pageNumber, canvasJSON, buildHistorySaveContext('surveyMarker:remove', {
           removedCount: surveyMarkersToRemove.length
         }));
@@ -8693,7 +8693,7 @@ const PageAnnotationLayer = memo(({
       // Save the canvas state
       try {
         sanitizeTextStyles(canvas);
-        const canvasJSON = canvas.toJSON(['strokeUniform', 'spaceId', 'moduleId', 'regionId', 'data', 'name', 'annotationId', 'needsEntity', 'globalCompositeOperation', 'layer', 'isPdfImported', 'pdfAnnotationId', 'pdfAnnotationType', 'pdfInkRenderMode']);
+        const canvasJSON = canvas.toObject(['strokeUniform', 'spaceId', 'moduleId', 'regionId', 'data', 'name', 'annotationId', 'needsEntity', 'globalCompositeOperation', 'layer', 'isPdfImported', 'pdfAnnotationId', 'pdfAnnotationType', 'pdfInkRenderMode']);
         onSaveAnnotations(pageNumber, canvasJSON, buildHistorySaveContext('keyboard:delete', {
           deletedObjectsCount: activeObjects.length
         }));

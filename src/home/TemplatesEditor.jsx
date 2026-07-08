@@ -360,7 +360,7 @@ const buildRich = (templates, mint = (_key, prefix) => newId(prefix)) => templat
   }));
   return {
     id: t?.id ?? `t${i}`,
-    name: t?.name || 'Untitled template',
+    name: t?.name || 'Untitled Template',
     accent: t?.accent || ACCENTS[i % ACCENTS.length],
     modules: mods,
     roster,
