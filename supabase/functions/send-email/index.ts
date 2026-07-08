@@ -1,7 +1,9 @@
-import { Resend } from 'https://esm.sh/resend@2.0.0';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.47.10';
 
-const resend = new Resend(Deno.env.get('RESEND_API_KEY'));
+// Transactional email via Brevo. Consolidated 2026-07-05 so the whole app uses
+// ONE email service — Brevo also sends the Supabase Auth login/reset emails.
+const BREVO_API_KEY = Deno.env.get('BREVO_API_KEY');
+const EMAIL_SENDER = { name: 'Survey', email: 'no-reply@surveytool.app' };
 
 // Authorize the caller before sending anything. Two legitimate callers exist:
 //   1. The stripe-webhook function, which calls us with the service-role key.
@@ -234,23 +236,35 @@ Deno.serve(async (req) => {
 
         console.log(`Sending ${template} email to ${to}`);
 
-        const result = await resend.emails.send({
-            // SEND_EMAIL_FROM must be on a Resend-verified domain for real
-            // recipients; the sandbox default only delivers to the account owner.
-            from: Deno.env.get('SEND_EMAIL_FROM') || 'Survey <onboarding@resend.dev>',
-            to: [to],
-            subject: subject,
-            html: html,
+        const brevoRes = await fetch('https://api.brevo.com/v3/smtp/email', {
+            method: 'POST',
+            headers: {
+                'api-key': BREVO_API_KEY,
+                'content-type': 'application/json',
+                'accept': 'application/json',
+            },
+            body: JSON.stringify({
+                sender: EMAIL_SENDER,
+                to: [{ email: to }],
+                subject,
+                htmlContent: html,
+            }),
         });
 
+        if (!brevoRes.ok) {
+            const errText = await brevoRes.text();
+            console.error('Brevo API error:', brevoRes.status, errText);
+            throw new Error(`Brevo send failed (${brevoRes.status})`);
+        }
+        const result = await brevoRes.json();
+
         console.log('Email sent successfully!');
-        console.log('Resend Response:', JSON.stringify(result, null, 2));
-        console.log('Email ID:', result.data?.id);
+        console.log('Brevo messageId:', result.messageId);
         console.log('To:', to);
         console.log('Subject:', subject);
 
         return new Response(
-            JSON.stringify({ success: true, id: result.data?.id }),
+            JSON.stringify({ success: true, id: result.messageId }),
             {
                 headers: { ...corsHeaders, 'Content-Type': 'application/json' },
                 status: 200,

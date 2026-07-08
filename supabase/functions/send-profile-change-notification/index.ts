@@ -1,7 +1,8 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
-const RESEND_API_KEY = Deno.env.get('RESEND_API_KEY')
+// Transactional email via Brevo (consolidated to one email service 2026-07-05).
+const BREVO_API_KEY = Deno.env.get('BREVO_API_KEY')
 
 const corsHeaders = {
   // ⚠️ INTENTIONAL — do NOT tighten to an origin allowlist (false positive if an
@@ -161,18 +162,19 @@ serve(async (req) => {
       </html>
     `
 
-    // Send email using Resend API
-    const res = await fetch('https://api.resend.com/emails', {
+    // Send email via Brevo transactional API (one email service across the app)
+    const res = await fetch('https://api.brevo.com/v3/smtp/email', {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${RESEND_API_KEY}`,
+        'api-key': BREVO_API_KEY,
+        'content-type': 'application/json',
+        'accept': 'application/json',
       },
       body: JSON.stringify({
-        from: 'Survey <onboarding@resend.dev>', // Update this with your verified domain
-        to: [userEmail],
+        sender: { name: 'Survey', email: 'no-reply@surveytool.app' },
+        to: [{ email: userEmail }],
         subject: `Security Alert: Your ${fieldList} Was Changed`,
-        html: emailHtml,
+        htmlContent: emailHtml,
       }),
     })
 
