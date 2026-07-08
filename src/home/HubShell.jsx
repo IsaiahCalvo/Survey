@@ -105,6 +105,20 @@ export const Search = ({ placeholder = 'Search…', width = 240, value, onChange
   </div>
 );
 
+/* Shared empty state — icon + one short line + one primary action.
+   (Design decision 4: every empty tab surface uses this exact shape.) */
+export const EmptyState = ({ icon, line, actionLabel, actionIcon = 'plus', onAction }) => (
+  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 10, padding: '40px 16px', textAlign: 'center', letterSpacing: 0 }}>
+    <div style={{ width: 44, height: 44, borderRadius: 10, background: 'var(--ink-600)', border: '1px solid var(--ink-500)', display: 'grid', placeItems: 'center' }}>
+      <Icon name={icon} size={20} color="var(--ink-200)" />
+    </div>
+    <div style={{ fontSize: 12.5, color: 'var(--ink-200)' }}>{line}</div>
+    <button className="btn primary" type="button" onClick={() => onAction && onAction()}>
+      <Icon name={actionIcon} size={12} />{actionLabel}
+    </button>
+  </div>
+);
+
 /* Word-initials, e.g. "Isaiah Calvo" -> "IC". */
 const initialsOf = (name) => (name || 'You')
   .trim().split(/\s+/).map((w) => w[0] || '').join('').slice(0, 2).toUpperCase() || 'YOU';

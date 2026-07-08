@@ -139,8 +139,13 @@ let copyCounter = 0;
 const newId = () => `d-copy-${Date.now()}-${copyCounter++}`;
 
 export default function HubPreview() {
-  const [documents, setDocuments] = useState(INITIAL_DOCUMENTS);
-  const initialTab = new URLSearchParams(window.location.search).get('tab');
+  /* `?empty=1` renders the hub with zero documents/projects/templates so the
+     three empty states can be reviewed with real code (dev-only, like the rest
+     of this harness). */
+  const params = new URLSearchParams(window.location.search);
+  const emptyFixture = params.get('empty') === '1';
+  const [documents, setDocuments] = useState(emptyFixture ? [] : INITIAL_DOCUMENTS);
+  const initialTab = params.get('tab');
 
   const handleDuplicate = (docs) => {
     const copies = docs.map((d) => ({ ...d, id: newId(), name: copyName(d.name), updated_at: new Date().toISOString() }));
@@ -168,8 +173,8 @@ export default function HubPreview() {
         <div style={{ width: '100vw', height: '100vh' }}>
           <SurveyHub
             documents={documents}
-            projects={MOCK_PROJECTS}
-            templates={MOCK_TEMPLATES}
+            projects={emptyFixture ? [] : MOCK_PROJECTS}
+            templates={emptyFixture ? [] : MOCK_TEMPLATES}
             members={MOCK_MEMBERS}
             user={{ name: 'Isaiah Calvo', email: 'isaiahcalvo123@gmail.com' }}
             isPro

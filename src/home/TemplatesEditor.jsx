@@ -57,7 +57,7 @@ import {
   useSortable,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { HubShell, Icon, Search } from './HubShell';
+import { HubShell, Icon, Search, EmptyState } from './HubShell';
 import {
   resolveTemplatesReload,
   createStableIdMint,
@@ -1533,7 +1533,7 @@ export default function TemplatesEditor({
             <div className="slim-scroll" style={{ display: 'flex', flexDirection: 'column', gap: 2, flex: 1, minHeight: 0, overflow: 'auto', paddingRight: 4 }}>
               {visibleTemplates.length === 0 && (
                 <div className="meta" style={{ padding: '20px 8px', fontSize: 11.5 }}>
-                  {rich.length === 0 ? 'No templates yet — create one to get started.' : 'No templates match your search.'}
+                  {rich.length === 0 ? 'No templates yet.' : 'No templates match your search.'}
                 </div>
               )}
               <SortableRearrangeList ids={visibleTemplates.map((t) => t.id)} onReorder={reorderTemplates}>
@@ -1618,7 +1618,16 @@ export default function TemplatesEditor({
             background: '#181c24', border: '1px solid #2a3140', borderRadius: 10,
           }}>
             {!tpl ? (
-              <div className="meta" style={{ padding: '24px 18px', fontSize: 12 }}>Select a template to edit.</div>
+              /* `tpl` is only null when there are zero templates (selection
+                 falls back to the first visible/rich template otherwise). */
+              <div style={{ flex: 1, display: 'grid', placeItems: 'center' }}>
+                <EmptyState
+                  icon="template"
+                  line="No templates yet"
+                  actionLabel="New template"
+                  onAction={() => onCreateTemplate && onCreateTemplate()}
+                />
+              </div>
             ) : (
             <>
             <div style={{ padding: '14px 18px', borderBottom: '1px solid var(--rule)', display: 'flex', alignItems: 'center', gap: 14 }}>

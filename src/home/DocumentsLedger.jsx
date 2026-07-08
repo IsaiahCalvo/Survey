@@ -10,7 +10,7 @@
 */
 import { useState, useMemo, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { HubShell, Icon, Avatar, PdfThumb, Search } from './HubShell';
+import { HubShell, Icon, Avatar, PdfThumb, Search, EmptyState } from './HubShell';
 import { MoveCopyModal, ConfirmModal } from './BulkModals';
 import PdfPageThumb from './PdfPageThumb';
 import { useStorage } from '../hooks/useDatabase';
@@ -213,7 +213,10 @@ export default function DocumentsLedger({
   // [Project] [Last edited] [Size]. The thumbnail has its own column so the
   // "File" header sits over the name, and every thumbnail is centred in a
   // fixed-width column, aligned under one another.
-  const grid = previewOpen
+  // With nothing selectable (empty ledger) the preview pane never renders —
+  // don't reserve a blank grid column/border for it.
+  const showPreview = previewOpen && docs.length > 0;
+  const grid = showPreview
     ? '32px 54px minmax(150px,1fr) 124px 124px 72px'
     : '32px 54px 2fr 1fr 1fr 1fr';
   const stickyCell = (selected) => ({
@@ -272,8 +275,8 @@ export default function DocumentsLedger({
       templatesLocked={templatesLocked}
     >
       <div style={{ padding: '0 8px 8px 8px', flex: 1, minHeight: 0 }}>
-        <div className="card" style={{ display: 'grid', gridTemplateColumns: previewOpen ? '2.2fr 1fr' : '1fr', height: '100%', overflow: 'hidden' }}>
-          <div className="slim-scroll" style={{ overflow: 'auto', borderRight: previewOpen ? '1px solid var(--ink-500)' : 0 }}>
+        <div className="card" style={{ display: 'grid', gridTemplateColumns: showPreview ? '2.2fr 1fr' : '1fr', height: '100%', overflow: 'hidden' }}>
+          <div className="slim-scroll" style={{ overflow: 'auto', borderRight: showPreview ? '1px solid var(--ink-500)' : 0 }}>
             <div>
               <div style={{ ...ledgerHeader, display: 'grid', gridTemplateColumns: grid, position: 'sticky', top: 0, zIndex: 3 }}>
                 <span></span>
@@ -284,7 +287,19 @@ export default function DocumentsLedger({
                 <span onClick={() => onHeaderClick('size')} style={{ cursor: 'pointer', userSelect: 'none', color: sortKey === 'size' ? 'var(--bone-100)' : 'inherit' }}>Size{arrow('size')}</span>
               </div>
               {docs.length === 0 && (
-                <div className="meta" style={{ padding: '24px 16px', fontSize: 12 }}>No documents yet — upload a PDF to get started.</div>
+                mapped.length === 0 ? (
+                  <div style={{ paddingTop: 96 }}>
+                    <EmptyState
+                      icon="doc"
+                      line="No documents yet"
+                      actionIcon="upload"
+                      actionLabel="Upload PDF"
+                      onAction={() => onUpload && onUpload()}
+                    />
+                  </div>
+                ) : (
+                  <div className="meta" style={{ padding: '24px 16px', fontSize: 12 }}>No documents match your search.</div>
+                )
               )}
               {docs.map((d) => {
                 const isSel = sel && d.id === sel.id;
@@ -353,7 +368,7 @@ export default function DocumentsLedger({
               })}
             </div>
           </div>
-          {previewOpen && sel && (
+          {showPreview && sel && (
             /* Preview pane — a fixed-height flex column that NEVER scrolls.
                The preview sits at a set size with a flexible gap below it;
                the details, Collaborators (when shared), Recent activity and

@@ -24,7 +24,7 @@
 */
 import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
-import { HubShell, Icon, Avatar, AvatarStack, Search } from './HubShell';
+import { HubShell, Icon, Avatar, AvatarStack, Search, EmptyState } from './HubShell';
 import ManageTeamModal from './ManageTeamModal';
 import { listProjectCollaboratorsForProjects } from '../services/projectInviteService';
 import { MoveCopyModal } from './BulkModals';
@@ -638,7 +638,7 @@ export default function ProjectsFolderTree({
           <div className="slim-scroll" style={{ display: 'flex', flexDirection: 'column', gap: 2, flex: 1, minHeight: 0, overflow: 'auto', paddingRight: 4 }}>
             {filtered.length === 0 && (
               <div className="meta" style={{ fontSize: 11.5, padding: '14px 8px' }}>
-                {localProjects.length === 0 ? 'No projects yet — create one to group your documents.' : 'No projects match your search.'}
+                {localProjects.length === 0 ? 'No projects yet.' : 'No projects match your search.'}
               </div>
             )}
             <SortableRearrangeList ids={filtered.map((p) => p.id)} onReorder={reorderProjects}>
@@ -954,8 +954,17 @@ export default function ProjectsFolderTree({
             </>
           )}
           {!open && (
-            <div style={{ flex: 1, display: 'grid', placeItems: 'center', color: 'var(--ink-200)', fontSize: 13 }}>
-              No projects yet — create one to group your documents.
+            <div style={{ flex: 1, display: 'grid', placeItems: 'center' }}>
+              {localProjects.length === 0 ? (
+                <EmptyState
+                  icon="folder"
+                  line="No projects yet"
+                  actionLabel="New project"
+                  onAction={handleNewProject}
+                />
+              ) : (
+                <div style={{ color: 'var(--ink-200)', fontSize: 13 }}>No projects match your search.</div>
+              )}
             </div>
           )}
         </div>
