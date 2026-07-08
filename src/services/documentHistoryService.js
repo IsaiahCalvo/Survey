@@ -134,6 +134,8 @@ function trimPayload(payload) {
       // Restore data must survive trimming or a deleted item becomes
       // unrecoverable from History. A single-marker restoreAction is small.
       restoreAction: payload?.restoreAction || null,
+      // Decision 10 (KAL-90): the context stamp drives click-to-restore.
+      uiContext: payload?.uiContext || null,
     };
   }
   if (serialized.length <= MAX_PAYLOAD_CHARS) return payload || {};
@@ -154,6 +156,8 @@ function trimPayload(payload) {
     // History-audit P3: preserve the spotlight preview (bounded) so the
     // History highlight still works for large (path-heavy) events.
     previewAnnotation: clampPreviewAnnotation(payload?.previewAnnotation),
+    // Decision 10 (KAL-90): the context stamp is tiny and drives click-to-restore.
+    uiContext: payload?.uiContext || null,
   };
 }
 
@@ -265,12 +269,20 @@ export function buildHistoryEventRowFromDebugEvent(event, { documentId, user } =
   const compactPayload = trimPayload(event);
   const order = event.order ?? event.checkpointId ?? event.seq ?? Date.now();
   const source = event.historySource || event.lane || event.chosenSource || null;
+  const occurredAt = event.timestamp || event.at || new Date().toISOString();
   const clientEventId = [
     'history',
     event.type,
     order,
     event.annotationId || event.context?.annotationId || 'document',
     Number.isFinite(pageNumber) ? pageNumber : 'no-page',
+    // KAL-90 follow-up (2026-07-07): checkpoint counters restart at 1 every
+    // session, so ids built only from (type, order, annotation, page) COLLIDE
+    // with rows from earlier sessions — and the ignoreDuplicates upsert then
+    // silently drops every new event that reuses a counter value. Suffix the
+    // event's timestamp so ids are unique across sessions while staying stable
+    // for the same event object (dispatch + record share one row).
+    Date.parse(occurredAt) || occurredAt,
   ].join(':');
 
   return {
@@ -286,8 +298,8 @@ export function buildHistoryEventRowFromDebugEvent(event, { documentId, user } =
     payload: compactPayload,
     is_undoable: event.type !== 'yjs_history_popped',
     is_checkpoint: event.type === 'checkpoint_added' || event.type === 'checkpoint_added_annotation_fast',
-    occurred_at: event.timestamp || event.at || new Date().toISOString(),
-    created_at: event.timestamp || event.at || new Date().toISOString(),
+    occurred_at: occurredAt,
+    created_at: occurredAt,
   };
 }
 

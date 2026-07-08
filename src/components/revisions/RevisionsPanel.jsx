@@ -137,6 +137,9 @@ export default function RevisionsPanel({
   onNavigateToPage = null,
   onRestoreHistoryActivity = null,
   onCascadeRestoreRegion = null,
+  // Decision 10 (KAL-90): before jumping to the entry's page, restore the full
+  // context the mark belongs to (survey/region mode + selected category).
+  onRestoreHistoryContext = null,
 }) {
   const [open, setOpen] = useState(false);
   const [isOwner, setIsOwner] = useState(false);
@@ -320,11 +323,18 @@ export default function RevisionsPanel({
   // native viewBox. There is no screen-pixel fallback — falling back to
   // hostRect dimensions produced misaligned highlights. If the SVG hasn't
   // painted yet (zero/absent viewBox), skip the spotlight rather than misalign.
-  const resolveSpotlightHost = useCallback((pageElement) => {
+  const resolveSpotlightHost = useCallback((pageElement, pageNumber = null) => {
     if (!pageElement) return null;
-    const annotationSvg = pageElement.matches?.('svg[data-svg-annotation-layer]')
+    // Decision 10 (KAL-90): in the pdf.js viewer the annotation SVG lives in an
+    // overlay portal, NOT inside the page div — its data-svg-annotation-layer
+    // attribute value is the page number, so fall back to a document query.
+    const normalizedPage = Number(pageNumber);
+    const annotationSvg = (pageElement.matches?.('svg[data-svg-annotation-layer]')
       ? pageElement
-      : pageElement.querySelector?.('svg[data-svg-annotation-layer]');
+      : pageElement.querySelector?.('svg[data-svg-annotation-layer]'))
+      || (Number.isFinite(normalizedPage) && normalizedPage > 0
+        ? document.querySelector(`svg[data-svg-annotation-layer="${normalizedPage}"]`)
+        : null);
     if (!annotationSvg) return null;
     const nativeViewBox = annotationSvg.viewBox?.baseVal;
     if (!nativeViewBox || !(nativeViewBox.width > 0) || !(nativeViewBox.height > 0)) return null;
@@ -348,7 +358,7 @@ export default function RevisionsPanel({
     const pageElement = findPageElement(active.pageNumber, active.pageElement);
     if (!pageElement) return false;
     active.pageElement = pageElement;
-    const host = resolveSpotlightHost(pageElement);
+    const host = resolveSpotlightHost(pageElement, active.pageNumber);
     if (!host?.hostElement?.isConnected) return false;
     const { svg } = active;
     const { hostRect, viewBoxWidth, viewBoxHeight } = host;
@@ -417,7 +427,7 @@ export default function RevisionsPanel({
     if (typeof document === 'undefined' || !pageElement) return null;
     ensureSpotlightStyle();
     stopSpotlightTracking();
-    const host = resolveSpotlightHost(pageElement);
+    const host = resolveSpotlightHost(pageElement, pageNumber);
     if (!host) return null; // annotation SVG absent or viewBox not painted — skip, never misalign
     const { hostRect, viewBoxWidth, viewBoxHeight } = host;
     const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
@@ -546,15 +556,25 @@ export default function RevisionsPanel({
     return true;
   }, [createPageSpotlightSvg]);
 
-  const renderDomPathFallbackSpotlight = useCallback((target) => {
+  const renderDomPathFallbackSpotlight = useCallback((target, pageNumber = null) => {
     if (typeof document === 'undefined' || !target) return false;
     const path = target.matches?.('path, line, polyline, polygon, rect, circle, ellipse')
       ? target
       : target.querySelector?.('path, line, polyline, polygon, rect, circle, ellipse');
-    const pageElement = target.closest?.('.survey-pdfjs-page-div, [data-page-number], [id*="_pageDiv_"]');
+    // Decision 10 (KAL-90): overlay layers render annotations in a portal that
+    // is NOT a DOM descendant of the page div (e.g. Survey Marker <g> nodes),
+    // so closest() can come up empty — fall back to resolving the page element
+    // by the event's page number. Both SVGs share the page-dimension viewBox,
+    // so the cloned geometry stays aligned.
+    const normalizedPage = Number(pageNumber);
+    const pageElement = target.closest?.('.survey-pdfjs-page-div, [data-page-number], [id*="_pageDiv_"]')
+      || (Number.isFinite(normalizedPage) && normalizedPage > 0
+        ? document.querySelector(`.survey-pdfjs-page-div[data-page-number="${normalizedPage}"]`)
+          || document.querySelector(`[data-page-number="${normalizedPage}"]`)
+        : null);
     if (!path || !pageElement) return false;
     const clone = path.cloneNode(false);
-    const svg = createPageSpotlightSvg(pageElement);
+    const svg = createPageSpotlightSvg(pageElement, Number.isFinite(normalizedPage) && normalizedPage > 0 ? normalizedPage : null);
     if (!svg) return false;
     clone.removeAttribute('fill');
     clone.setAttribute('fill', 'none');
@@ -569,7 +589,7 @@ export default function RevisionsPanel({
     return true;
   }, [createPageSpotlightSvg]);
 
-  const spotlightAnnotation = useCallback((annotationId) => {
+  const spotlightAnnotation = useCallback((annotationId, pageNumber = null) => {
     if (typeof document === 'undefined' || !annotationId) return false;
     const escaped = typeof CSS !== 'undefined' && CSS.escape
       ? CSS.escape(annotationId)
@@ -587,7 +607,7 @@ export default function RevisionsPanel({
       })
       .find(Boolean);
     if (!target) return false;
-    return renderDomPathFallbackSpotlight(target);
+    return renderDomPathFallbackSpotlight(target, pageNumber);
   }, [renderDomPathFallbackSpotlight]);
 
   const spotlightHistoryPreview = useCallback((pageNumber, event) => {
@@ -639,20 +659,41 @@ export default function RevisionsPanel({
     if (!event) return;
     setSelectedEventId(event.client_event_id || event.id || null);
     setSelectedEventDetail(event);
+    // Decision 10 (KAL-90): restore the exact context the mark belongs to —
+    // survey/region mode and the selected template/module/category — BEFORE
+    // the page jump, so the mark is actually visible when we land on it.
+    let contextRestored = false;
+    if (typeof onRestoreHistoryContext === 'function') {
+      try {
+        contextRestored = Boolean(onRestoreHistoryContext(event));
+      } catch (_err) {
+        // Context restore is best-effort; the page jump below must still run.
+      }
+    }
     const pageNumber = Number(event.page_number ?? event.payload?.pageNumber);
     if (Number.isFinite(pageNumber) && pageNumber > 0 && typeof onNavigateToPage === 'function') {
       onNavigateToPage(pageNumber, { fallback: 'nearest', bypassActiveSpace: true });
-      window.setTimeout(() => {
+      // Decision 10 (KAL-90): the context restore above can re-render the page
+      // (space activation mounts the mark's overlay), so the mark may not be in
+      // the DOM yet on the first attempt — retry the spotlight briefly instead
+      // of giving up after one shot.
+      const trySpotlight = (attempt) => {
         const didSpotlight = spotlightHistoryPreview(pageNumber, event)
-          || spotlightAnnotation(event.annotation_id || event.payload?.annotationId);
+          || spotlightAnnotation(event.annotation_id || event.payload?.annotationId, pageNumber);
+        if (!didSpotlight && attempt < 6) {
+          window.setTimeout(() => trySpotlight(attempt + 1), 250);
+          return;
+        }
+        const restoredSuffix = contextRestored ? ' Context restored.' : '';
         setStatusMsg(didSpotlight
-          ? `${isDeleteHistoryEvent(event) ? 'Showing where the deleted item was' : 'Showing the edited item'} on page ${pageNumber}.`
-          : `Showing page ${pageNumber} for this history item.`);
-      }, 250);
+          ? `${isDeleteHistoryEvent(event) ? 'Showing where the deleted item was' : 'Showing the edited item'} on page ${pageNumber}.${restoredSuffix}`
+          : `Showing page ${pageNumber} for this history item.${restoredSuffix}`);
+      };
+      window.setTimeout(() => trySpotlight(1), 250);
       return;
     }
     setStatusMsg('This history item is not tied to a specific page.');
-  }, [onNavigateToPage, spotlightAnnotation, spotlightHistoryPreview]);
+  }, [onNavigateToPage, onRestoreHistoryContext, spotlightAnnotation, spotlightHistoryPreview]);
 
   const handleRestoreActivity = useCallback(async (event) => {
     if (!event || typeof onRestoreHistoryActivity !== 'function' || busy) return;

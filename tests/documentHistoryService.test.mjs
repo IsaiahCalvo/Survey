@@ -28,7 +28,9 @@ test('document history describes completed pen strokes as user activity', () => 
   equal(row.document_id, 'doc-1');
   equal(row.user_id, 'user-1');
   equal(row.event_type, 'local_annotation_history_added');
-  equal(row.client_event_id, 'history:local_annotation_history_added:12:stroke-1:1');
+  // KAL-90 follow-up: ids carry a trailing timestamp so counter reuse across
+  // sessions can't collide (colliding ids were silently dropped by the upsert).
+  match(row.client_event_id, /^history:local_annotation_history_added:12:stroke-1:1:\d+$/);
   equal(row.page_number, 1);
   equal(row.annotation_id, 'stroke-1');
   equal(row.summary, 'Isaiah Calvo drew a pen stroke on page 1');

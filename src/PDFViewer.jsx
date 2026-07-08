@@ -82,6 +82,7 @@ import { debugMark } from './utils/debugBridge';
 import { deleteAnnotations, removeDocumentPresence, subscribeToDocumentAnnotations, syncAnnotationsToSupabase, updateDocumentPresence } from './services/documentAnnotationService';
 import { fromFabricGroup, toFabricGroup } from './utils/calloutEditAdapter';
 import { getActivePageRegionId, getPageAnnotationVisibilityState, normalizePageRegions, normalizeRegionVisibility } from './utils/annotationVisibilityRules';
+import { resolveHistoryEntryContext } from './utils/historyContextRestore';
 import { isUndoKeyEvent, isRedoKeyEvent } from './utils/undoRedoHotkeys';
 import { getCalloutSyncFingerprint } from './utils/calloutSyncPayload';
 import { isPlacedSurveyMarker } from './services/surveyMarkerSyncDiff';
@@ -7523,6 +7524,21 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   useEffect(() => {
     pdfjsActiveSpaceIdRef.current = activeSpaceId;
   }, [activeSpaceId]);
+  // Decision 10 (KAL-90): live UI-context snapshot, stamped onto every history
+  // debug event (payload.uiContext) so clicking a history entry later can
+  // restore the exact space/survey-mode/category context the mark was made in.
+  // Ref-mirrored so pushHistoryDebugEvent's identity never churns on selection.
+  const historyUiContextRef = useRef(null);
+  useEffect(() => {
+    historyUiContextRef.current = {
+      spaceId: activeSpaceId ?? null,
+      selectedSpaceId: selectedSpaceId ?? null,
+      surveyPanelOpen: Boolean(showSurveyPanel),
+      templateId: selectedTemplate?.id ?? selectedTemplate?.supabaseId ?? null,
+      moduleId: selectedModuleId ?? null,
+      categoryId: selectedCategoryId ?? null,
+    };
+  }, [activeSpaceId, selectedSpaceId, showSurveyPanel, selectedTemplate, selectedModuleId, selectedCategoryId]);
   const [showRegionSelection, setShowRegionSelection] = useState(false); // Show region selection tool
   const [regionSelectionPage, setRegionSelectionPage] = useState(null); // Page for region selection
 
@@ -9643,6 +9659,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       seq: historyDebugSeqRef.current + 1,
       at: new Date().toISOString(),
       type,
+      // Decision 10 (KAL-90): stamp the live UI context so the History panel
+      // can restore space/survey-mode/category when the entry is clicked later.
+      // Callers may override by providing their own uiContext in payload.
+      uiContext: historyUiContextRef.current ? { ...historyUiContextRef.current } : null,
       ...payload
     };
     historyDebugSeqRef.current = event.seq;
@@ -22930,6 +22950,55 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     return { ok: true, pageNumber: Number.isFinite(Number(pageId)) ? Number(pageId) : null };
   }, [handleRestoreSpace, handleSpaceUpdate]);
 
+  // Decision 10 (KAL-90): clicking a history entry restores the EXACT context
+  // the mark belongs to — (a) the RevisionsPanel handles the page jump and
+  // spotlight; this handler covers (b) the survey/region mode (active space)
+  // and (c) the selected survey template/module/category. Resolution logic is
+  // pure + node-tested in utils/historyContextRestore.js; this callback only
+  // applies the resolved context to live viewer state.
+  const handleRestoreHistoryContext = useCallback((event) => {
+    const resolved = resolveHistoryEntryContext(event, { spaces: spacesRef.current || [] });
+    if (!resolved) return false;
+
+    // (b) Survey/region mode: activate the mark's space, or exit space mode
+    // for document-level marks (explicit null stamp).
+    if (resolved.hasSpaceTarget) {
+      if (resolved.spaceId && resolved.spaceId !== activeSpaceId) {
+        // Only activate spaces that still exist — a deleted space can't be entered.
+        const spaceExists = (spacesRef.current || []).some((space) => space?.id === resolved.spaceId);
+        if (spaceExists) handleSetActiveSpace(resolved.spaceId);
+      } else if (!resolved.spaceId && activeSpaceId) {
+        handleExitSpaceMode();
+      }
+      if (resolved.spaceId) {
+        setSelectedSpaceId(resolved.spaceId);
+      }
+    }
+
+    // (c) Survey panel + selected template/module/category.
+    if (resolved.hasSurveyPanel) {
+      if (resolved.surveyPanelOpen) {
+        if (resolved.hasTemplate
+          && (!selectedTemplate || (selectedTemplate.id !== resolved.templateId && selectedTemplate.supabaseId !== resolved.templateId))) {
+          const template = (templates || []).find(
+            (candidate) => candidate?.id === resolved.templateId || candidate?.supabaseId === resolved.templateId,
+          );
+          if (template) handleSelectSurveyTemplate(template);
+        }
+        setShowSurveyPanel(true);
+      } else if (showSurveyPanel) {
+        handleCloseSurveyMode();
+      }
+    }
+    if (resolved.hasModule && (resolved.surveyPanelOpen ?? true)) {
+      setSelectedModuleId(resolved.moduleId);
+    }
+    if (resolved.hasCategory && (resolved.surveyPanelOpen ?? true)) {
+      setSelectedCategoryId(resolved.categoryId);
+    }
+    return true;
+  }, [activeSpaceId, handleSetActiveSpace, handleExitSpaceMode, handleSelectSurveyTemplate, handleCloseSurveyMode, selectedTemplate, templates, showSurveyPanel]);
+
   // Embedded import — exactly once per document, durably.
   //
   // A PDF can carry its own embedded annotations (e.g. markups on pages 6-11).
@@ -25117,11 +25186,17 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
   // Handle surveyMarker creation from annotation tool
   const handleSurveyMarkerCreated = useCallback((pageNumber, bounds) => {
+    // Decision 10 (KAL-90): generate the marker id up-front so the pre-creation
+    // checkpoint can stamp it — the History panel needs annotation_id on the
+    // "created a survey marker" row to spotlight the mark on click. The locate
+    // branch reuses the pending item's id; the standard branch uses this one.
+    const newMarkerId = pendingLocationItem?.id || `surveyMarker-${crypto.randomUUID()}`;
     // Checkpoint history before creation
     addHistoryCheckpoint('highlight:create', {
       pageNumber,
       hasPendingLocationItem: Boolean(pendingLocationItem),
-      selectedCategoryId: selectedCategoryId || null
+      selectedCategoryId: selectedCategoryId || null,
+      annotationId: newMarkerId
     });
 
 
@@ -25207,8 +25282,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       return;
     }
 
-    // Create a unique ID for this surveyMarker
-    const annotationId = `surveyMarker-${crypto.randomUUID()}`;
+    // Unique ID for this surveyMarker (generated up-front for the checkpoint stamp)
+    const annotationId = newMarkerId;
     const moduleName = getModuleName(selectedTemplate, effectiveModuleId);
 
 
@@ -27230,6 +27305,7 @@ ${pageBlocks}
       user,
       onRestoreHistoryActivity: handleRestoreHistoryActivity,
       onCascadeRestoreRegion: handleCascadeRestoreRegion,
+      onRestoreHistoryContext: handleRestoreHistoryContext,
     };
     onLeftRailApiChange((prev) => {
       if (prev) {
@@ -27323,6 +27399,7 @@ ${pageBlocks}
     handleLeftRailToggleCollapse,
     handleRestoreHistoryActivity,
     handleCascadeRestoreRegion,
+    handleRestoreHistoryContext,
   ]);
 
   // UX 2026-05-29: Publish the active PDF viewer's right-rail data to the App

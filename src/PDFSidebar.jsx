@@ -132,6 +132,7 @@ const PDFSidebar = React.forwardRef(({
   user = null,
   onRestoreHistoryActivity = null,
   onCascadeRestoreRegion = null,
+  onRestoreHistoryContext = null,
 }, ref) => {
   const [isCollapsed, setIsCollapsed] = useState(true);
   // 2026-04-29: publish the live sidebar width as a CSS variable so the
@@ -448,6 +449,7 @@ const PDFSidebar = React.forwardRef(({
                 onNavigateToPage={onNavigateToPage}
                 onRestoreHistoryActivity={onRestoreHistoryActivity}
                 onCascadeRestoreRegion={onCascadeRestoreRegion}
+                onRestoreHistoryContext={onRestoreHistoryContext}
               />
             </div>
           </div>
