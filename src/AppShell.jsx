@@ -315,6 +315,29 @@ export default function App() {
   // input. Typing is clamped to 10–500 (the app's allowable zoom range).
   const [isEditingRailZoom, setIsEditingRailZoom] = useState(false);
 
+  // UX 2026-07-08 (mobile design pass): on narrow viewports (Capacitor phones,
+  // narrow browser windows) the top toolbar's absolutely-pinned clusters
+  // (undo/redo left, pan/select and tool-properties flanking the centered
+  // icons, zoom/page/fit/export right) collide and overlap. Below 720px the
+  // clusters flow inline instead and the zoom pill wraps onto its own row —
+  // same controls, stacked mobile layout per docs/design/design.md
+  // ("Adapting Other Surfaces").
+  const [isNarrowShell, setIsNarrowShell] = useState(() => (
+    typeof window !== 'undefined' && typeof window.matchMedia === 'function'
+      ? window.matchMedia('(max-width: 720px)').matches
+      : false
+  ));
+  useEffect(() => {
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return undefined;
+    const mq = window.matchMedia('(max-width: 720px)');
+    const onChange = () => setIsNarrowShell(mq.matches);
+    if (mq.addEventListener) mq.addEventListener('change', onChange);
+    else mq.addListener(onChange);
+    return () => {
+      if (mq.removeEventListener) mq.removeEventListener('change', onChange);
+      else mq.removeListener(onChange);
+    };
+  }, []);
 
   // UX 2026-05-13: App-level bottom toolbar state. The chrome-bottom host
   // mounts with final rail dimensions as soon as a PDF tab is active; the active
@@ -847,6 +870,17 @@ export default function App() {
   const activeTab = tabs.find(t => t.id === activeTabId);
   const isViewerVisible = activeTab && !activeTab.isHome && selectedPDF && currentView === 'viewer';
 
+  // UX 2026-07-08 (mobile design pass): the hub stays mounted underneath the
+  // viewer overlay. On narrow screens the hub's mobile layout fixes its header
+  // and tab bar to the viewport and switches the page to document scrolling,
+  // which bleeds through and breaks the viewer's frame. Stamp a class on
+  // <html> so hub.css can neutralize those overrides while a document is open.
+  useEffect(() => {
+    if (typeof document === 'undefined') return undefined;
+    document.documentElement.classList.toggle('survey-viewer-open', !!isViewerVisible);
+    return () => document.documentElement.classList.remove('survey-viewer-open');
+  }, [isViewerVisible]);
+
   useEffect(() => {
     if (typeof document === 'undefined') return undefined;
 
@@ -986,10 +1020,11 @@ export default function App() {
               the buttons moved. The fit popup opens DOWNWARD now (top:100%). */}
           {bottomToolbarApi && (
             <div style={{
-              position: 'absolute',
-              right: '12px',
-              top: '50%',
-              transform: 'translateY(-50%)',
+              // Narrow shells: flow in the wrapping toolbar on a full-width
+              // second row instead of pinning over the tool cluster.
+              ...(isNarrowShell
+                ? { position: 'static', flexBasis: '100%', justifyContent: 'center' }
+                : { position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)' }),
               display: 'flex',
               alignItems: 'center',
               gap: '6px',
@@ -1213,10 +1248,10 @@ export default function App() {
             // drive the region history while region editing is active).
             data-undo-redo-controls="true"
             style={{
-            position: 'absolute',
-            left: '12px',
-            top: 0,
-            bottom: 0,
+            // Narrow shells: flow inline with the tool cluster (no pinning).
+            ...(isNarrowShell
+              ? { position: 'static' }
+              : { position: 'absolute', left: '12px', top: 0, bottom: 0 }),
             display: 'flex',
             alignItems: 'center',
             gap: '8px'
@@ -1273,10 +1308,10 @@ export default function App() {
                   icons stay centered on the screen — only the side blocks
                   shift as their contents change. */}
               <div style={{
-                position: 'absolute',
-                right: '100%',
-                top: '50%',
-                transform: 'translateY(-50%)',
+                // Narrow shells: flow inline before the annotation icons.
+                ...(isNarrowShell
+                  ? { position: 'static' }
+                  : { position: 'absolute', right: '100%', top: '50%', transform: 'translateY(-50%)' }),
                 display: 'flex',
                 alignItems: 'center',
                 gap: '6px',
@@ -1452,10 +1487,10 @@ export default function App() {
                   the left without nudging the pan-select or annotation icons.
                   User priority is icon stability over visual centering. */}
               <div style={{
-                position: 'absolute',
-                left: '100%',
-                top: '50%',
-                transform: 'translateY(-50%)',
+                // Narrow shells: flow inline after the annotation icons.
+                ...(isNarrowShell
+                  ? { position: 'static' }
+                  : { position: 'absolute', left: '100%', top: '50%', transform: 'translateY(-50%)' }),
                 display: 'flex',
                 alignItems: 'center',
                 gap: '6px',

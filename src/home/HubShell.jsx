@@ -133,10 +133,15 @@ const ProfileMenu = ({ userName, userMeta }) => {
   const auth = useAuth();
   const resolvedMeta = userMeta || `Synced · ${tierLabelFromAuth(auth?.tier)}`;
   const [open, setOpen] = useState(false);
+  const [confirmSignOut, setConfirmSignOut] = useState(false);
   const ref = useRef(null);
   useEffect(() => {
     if (!open) return undefined;
-    const onDoc = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    const onDoc = (e) => {
+      if (!ref.current || ref.current.contains(e.target)) return;
+      setOpen(false);
+      setConfirmSignOut(false);
+    };
     document.addEventListener('mousedown', onDoc);
     return () => document.removeEventListener('mousedown', onDoc);
   }, [open]);
@@ -147,7 +152,11 @@ const ProfileMenu = ({ userName, userMeta }) => {
   return (
     <div className="who" ref={ref} style={{ position: 'relative' }}>
       <button
-        onClick={() => setOpen((o) => !o)}
+        onClick={() => setOpen((o) => {
+          const next = !o;
+          if (!next) setConfirmSignOut(false);
+          return next;
+        })}
         title={email || name}
         style={{ display: 'flex', alignItems: 'center', gap: 7, width: '100%', background: open ? 'var(--ink-600)' : 'transparent', border: 0, borderRadius: 6, padding: '4px 6px', cursor: 'pointer', fontFamily: 'inherit', color: 'inherit', textAlign: 'left' }}
       >
@@ -167,13 +176,23 @@ const ProfileMenu = ({ userName, userMeta }) => {
             </div>
           </div>
           <div style={{ height: 1, background: 'var(--ink-500)' }} />
-          <div style={{ padding: 4 }}>
-            <button style={itemStyle} onClick={() => { setOpen(false); onSettings && onSettings(); }}>
+          <div className="profile-menu-actions" style={{ padding: 4 }}>
+            <button style={itemStyle} onClick={() => { setOpen(false); setConfirmSignOut(false); onSettings && onSettings(); }}>
               <Icon name="settings" size={15} color="var(--ink-200)" />Settings
             </button>
-            <button style={itemStyle} onClick={() => { setOpen(false); onSignOut && onSignOut(); }}>
-              <Icon name="signout" size={15} color="var(--ink-200)" />Sign Out
-            </button>
+            {confirmSignOut ? (
+              <div className="profile-signout-confirm">
+                <div className="profile-signout-copy">Sign out of Survey?</div>
+                <div className="profile-signout-buttons">
+                  <button type="button" onClick={() => setConfirmSignOut(false)}>Cancel</button>
+                  <button type="button" className="danger" onClick={() => { setOpen(false); onSignOut && onSignOut(); }}>Sign Out</button>
+                </div>
+              </div>
+            ) : (
+              <button className="profile-menu-signout" style={{ ...itemStyle, color: '#cf6f6f' }} onClick={() => setConfirmSignOut(true)}>
+                <Icon name="signout" size={15} color="#cf6f6f" />Sign Out
+              </button>
+            )}
           </div>
           <div style={{ borderTop: '1px solid var(--ink-500)', padding: '7px 12px', fontSize: 10, color: 'var(--ink-300)' }}>Survey App v1.0</div>
         </div>
@@ -185,8 +204,26 @@ const ProfileMenu = ({ userName, userMeta }) => {
 /* Sidebar + header frame. The three tabs are always rendered so the chrome
    feels permanent; only the body content (children) changes per tab. */
 export const HubShell = ({ tab, onNav, title, subtitle, actions, children, userName = 'You', userMeta = undefined, templatesLocked = false }) => {
+  useEffect(() => {
+    const root = typeof document !== 'undefined' ? document.getElementById('root') : null;
+    document.documentElement.classList.add('survey-hub-mobile-scroll-page');
+    document.body.classList.add('survey-hub-mobile-scroll-page');
+    root?.classList.add('survey-hub-mobile-scroll-root');
+    return () => {
+      document.documentElement.classList.remove('survey-hub-mobile-scroll-page');
+      document.body.classList.remove('survey-hub-mobile-scroll-page');
+      root?.classList.remove('survey-hub-mobile-scroll-root');
+    };
+  }, []);
+
+  const navItems = [
+    ['documents', 'doc', 'Documents', false],
+    ['projects', 'folder', 'Projects', false],
+    ['templates', 'template', 'Templates', templatesLocked],
+  ];
   const navBtn = (key, icon, label, disabled = false) => (
     <button
+      key={key}
       className={tab === key ? 'active' : ''}
       disabled={disabled}
       onClick={() => !disabled && onNav && onNav(key)}
@@ -198,27 +235,33 @@ export const HubShell = ({ tab, onNav, title, subtitle, actions, children, userN
     </button>
   );
   return (
-    <div className="survey-hub">
+    // The hub-tab-* class lets mobile CSS size the fixed header per tab
+    // (Documents carries an extra select/bulk row; the others don't).
+    <div className={`survey-hub hub-tab-${tab}`}>
       <div className="shell">
         <aside className="side">
           <div className="brand"><span className="brand-dot"></span>Survey</div>
           <nav className="nav">
-            {navBtn('documents', 'doc', 'Documents')}
-            {navBtn('projects', 'folder', 'Projects')}
-            {navBtn('templates', 'template', 'Templates', templatesLocked)}
+            {navItems.map(([key, icon, label, disabled]) => navBtn(key, icon, label, disabled))}
           </nav>
           <ProfileMenu userName={userName} userMeta={userMeta} />
         </aside>
         <main className="main paper">
           <div className="header">
-            <div>
+            <div className="header-title-block">
               <h1 className="title">{title}</h1>
-              {subtitle ? <div className="crumb" style={{ marginTop: 6 }}>{subtitle}</div> : null}
+              {subtitle ? <div className="crumb header-subtitle" style={{ marginTop: 6 }}>{subtitle}</div> : null}
+            </div>
+            <div className="mobile-profile">
+              <ProfileMenu userName={userName} userMeta={userMeta} />
             </div>
             <div className="actions">{actions}</div>
           </div>
           {children}
         </main>
+        <nav className="mobile-home-tabs" aria-label="Home sections">
+          {navItems.map(([key, icon, label, disabled]) => navBtn(key, icon, label, disabled))}
+        </nav>
       </div>
     </div>
   );

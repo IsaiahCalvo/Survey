@@ -3,6 +3,8 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="theme-color" content="#0d0f14" />
+    <meta name="color-scheme" content="dark" />
     <style>
       /* UX 2026-04-22: Respect iPad/iPhone safe area so the home bar doesn't
          clip the bottom of the sidebar (Sign In button was cut in half). */
@@ -12,7 +14,8 @@
         /* UX 2026-04-22: Match app's dark surface so iPad safe-area strips
            (status bar at top, home indicator at bottom) blend with the UI
            rather than showing the native white root view. */
-        background: #1E1E1E;
+        background: #0d0f14;
+        color-scheme: dark;
         /* UX 2026-05-15: Default body font so content rendered outside the
            app's scoped containers (e.g. popups/menus portaled to <body>)
            never falls back to the browser serif (Times New Roman). */

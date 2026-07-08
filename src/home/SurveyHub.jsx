@@ -8,7 +8,7 @@
      projects   — array of the user's projects
      templates  — array of the user's templates
      user       — { name, email } for the sidebar identity row
-     isPro      — gates the Templates tab (matches current app behavior)
+     isPro      — legacy prop; templates now stay visible in the hub
      onOpenDocument(doc)   — open a document in the PDF viewer
      onUpload()            — start the upload flow
      onCreateProject()     — start the new-project flow
@@ -59,10 +59,6 @@ export default function SurveyHub({
   const [settingsOpen, setSettingsOpen] = useState(false); // settings page shown over the hub
 
   useEffect(() => {
-    if (tab === 'templates' && !isPro) setTab('documents');
-  }, [tab, isPro]);
-
-  useEffect(() => {
     try { localStorage.setItem(TAB_KEY, tab); } catch { /* storage unavailable — non-fatal */ }
   }, [tab]);
 
@@ -85,7 +81,7 @@ export default function SurveyHub({
     if (template) setShare({ kind: 'template', name: template.name, item: template, manage: false });
   };
 
-  const common = { onNav: setTab, user, templatesLocked: !isPro };
+  const common = { onNav: setTab, user, templatesLocked: false };
 
   /* Clicking "Settings" in the profile menu opens the settings page as a
      full-screen view over the hub. We still forward to the parent's

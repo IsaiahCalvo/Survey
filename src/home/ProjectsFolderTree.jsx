@@ -582,7 +582,8 @@ export default function ProjectsFolderTree({
       userName={user?.name || user?.email?.split('@')[0] || 'You'}
       templatesLocked={templatesLocked}
     >
-      <div style={{ padding: '0 8px 8px 8px', display: 'grid', gridTemplateColumns: '260px 1fr', gap: 8, flex: 1, minHeight: 0 }}>
+      <div className="projects-tab-body" style={{ padding: '0 8px 8px 8px', flex: 1, minHeight: 0, overflow: 'hidden' }}>
+      <div className="projects-desktop-layout" style={{ display: 'grid', gridTemplateColumns: '260px 1fr', gap: 8, height: '100%', minHeight: 0 }}>
         {/* LEFT — tree */}
         <div className="card" style={{ padding: 8, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
           <div style={{ padding: '4px 6px 6px', display: 'flex', flexDirection: 'column', gap: 6 }}>
@@ -968,6 +969,174 @@ export default function ProjectsFolderTree({
             </div>
           )}
         </div>
+      </div>
+      <div className="projects-mobile-layout slim-scroll">
+        <button
+          className="btn primary"
+          style={{ justifyContent: 'center', width: '100%' }}
+          onClick={handleNewProject}
+        >
+          <Icon name="plus" size={12} />New Project
+        </button>
+        {filtered.length === 0 && (
+          localProjects.length === 0 ? (
+            <EmptyState icon="folder" line="No projects yet" actionLabel="New project" onAction={handleNewProject} />
+          ) : (
+            <div className="meta" style={{ fontSize: 12, padding: '14px 4px' }}>No projects match your search.</div>
+          )
+        )}
+        {filtered.map((p) => {
+          const isOpen = open && p.id === open.id;
+          const isSel = selProj.has(p.id);
+          const projMembers = projectTeam(p);
+          return (
+            <div
+              key={`mobile-project-${p.id}`}
+              className="mobile-project-card"
+              onClick={() => { if (jobsEdit) toggleProjSel(p.id); else setOpenId(p.id); }}
+              style={{
+                borderColor: isOpen ? 'var(--gold)' : 'var(--ink-500)',
+                background: jobsEdit && isSel ? 'var(--ink-600)' : 'var(--ink-700)',
+              }}
+            >
+              <div style={{ minWidth: 0 }}>
+                <div className="mobile-card-title">{p.name}</div>
+                <div className="mobile-card-meta" style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+                  <AvatarStack
+                    members={projMembers.slice(0, 3).map((id) => initialsOf(lookupMember(id)?.name))}
+                    size={14}
+                  />
+                  <span>{openFiles.filter((d) => d.project_id === p.id).length || localDocs.filter((d) => d.project_id === p.id).length} files</span>
+                </div>
+              </div>
+              {jobsEdit ? (
+                <span
+                  onClick={(e) => { e.stopPropagation(); toggleProjSel(p.id); }}
+                  style={{ width: 16, height: 16, border: `1.4px solid ${isSel ? 'var(--gold)' : 'var(--ink-300)'}`, background: isSel ? 'var(--gold)' : 'transparent', borderRadius: 3, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                >
+                  {isSel && <span style={{ color: '#15110a', fontSize: 10, lineHeight: 1 }}>✓</span>}
+                </span>
+              ) : (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    const rect = e.currentTarget.getBoundingClientRect();
+                    setFileMenu(null);
+                    setTeamMenu((cur) => (cur && cur.id === p.id ? null : { id: p.id, rect }));
+                  }}
+                  style={moreButtonStyle()}
+                  title="More"
+                ><Icon name="more" size={14} /></button>
+              )}
+            </div>
+          );
+        })}
+
+        {open && (
+          <div className="mobile-project-detail">
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
+              <span style={{ width: 4, height: 32, background: 'var(--gold)', borderRadius: 2, flex: 'none' }}></span>
+              <input
+                key={`mobile-${open.id}`}
+                defaultValue={open.name}
+                title="Click to rename"
+                style={{
+                  background: 'transparent',
+                  color: 'var(--bone-100)',
+                  border: 0,
+                  borderBottom: '1px solid var(--ink-500)',
+                  padding: '3px 0',
+                  fontSize: 18,
+                  fontWeight: 700,
+                  outline: 'none',
+                  width: '100%',
+                  fontFamily: 'inherit',
+                }}
+                onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }}
+                onBlur={(e) => {
+                  const name = e.currentTarget.value.trim();
+                  if (name && name !== open.name) renameProject(open.id, name);
+                  else e.currentTarget.value = open.name;
+                }}
+              />
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 14 }}>
+              <button className="btn" style={{ justifyContent: 'center' }} onClick={() => addFiles(open)}><Icon name="upload" size={12} />Add files</button>
+              <button className="btn" style={{ justifyContent: 'center' }} onClick={() => setTeamModalProject(open)}><Icon name="users" size={12} />Team</button>
+            </div>
+
+            <div className="mobile-section-title" style={{ marginBottom: 8 }}>Files</div>
+            <div style={{ display: 'grid', gap: 6 }}>
+              {openFiles.length === 0 ? (
+                <div className="meta" style={{ fontSize: 12, padding: '4px 0 10px' }}>No files in this project yet.</div>
+              ) : openFiles.map((f) => {
+                const isChecked = selFiles.has(f.id);
+                const ownerId = f.user_id ?? f.owner ?? projectTeam(open)[0] ?? null;
+                const owner = lookupMember(ownerId);
+                return (
+                  <div
+                    key={`mobile-file-${f.id}`}
+                    onClick={() => { if (fileSelect) { toggleFileSel(f.id); return; } onOpenDocument && onOpenDocument(f); }}
+                    style={{
+                      display: 'grid',
+                      gridTemplateColumns: '1fr 28px',
+                      gap: 8,
+                      alignItems: 'center',
+                      border: '1px solid var(--ink-500)',
+                      borderRadius: 7,
+                      padding: '9px 10px',
+                      background: fileSelect && isChecked ? 'rgba(216,168,78,0.10)' : 'var(--ink-800)',
+                    }}
+                  >
+                    <div style={{ minWidth: 0 }}>
+                      <div className="mobile-card-title" style={{ fontSize: 12.5 }}>{f.name}</div>
+                      <div className="mobile-card-meta">
+                        {[owner?.name?.split(' ')[0], shortWhen(f)].filter(Boolean).join(' · ')}
+                      </div>
+                    </div>
+                    {fileSelect ? (
+                      <span
+                        onClick={(e) => { e.stopPropagation(); toggleFileSel(f.id); }}
+                        style={{ width: 16, height: 16, border: `1.4px solid ${isChecked ? 'var(--gold)' : 'var(--ink-300)'}`, background: isChecked ? 'var(--gold)' : 'transparent', borderRadius: 3, display: 'flex', alignItems: 'center', justifyContent: 'center', justifySelf: 'center' }}
+                      >
+                        {isChecked && <span style={{ color: '#15110a', fontSize: 10, lineHeight: 1 }}>✓</span>}
+                      </span>
+                    ) : (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          const rect = e.currentTarget.getBoundingClientRect();
+                          setTeamMenu(null);
+                          setFileMenu((cur) => (cur && cur.id === f.id ? null : { id: f.id, rect }));
+                        }}
+                        style={moreButtonStyle()}
+                        title="More"
+                      ><Icon name="more" size={14} /></button>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+
+            <div className="mobile-section-title" style={{ margin: '16px 0 8px' }}>Team</div>
+            <div style={{ display: 'grid', gap: 8 }}>
+              {projectTeam(open).map((m) => {
+                const mem = lookupMember(m);
+                const memName = mem?.name || 'Teammate';
+                return (
+                  <div key={`mobile-team-${m}`} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <Avatar initials={mem ? initialsOf(mem.name) : '—'} size={22} color={mem?.color} />
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ fontSize: 12, fontWeight: 600 }}>{memName}</div>
+                      <div className="meta" style={{ fontSize: 10.5 }}>{mem?.role || 'Member'}</div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+      </div>
       </div>
 
       {/* Per-project "more" menu — portalled to <body>, fixed-positioned from

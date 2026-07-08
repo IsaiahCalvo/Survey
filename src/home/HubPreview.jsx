@@ -89,6 +89,15 @@ const INITIAL_DOCUMENTS = [
   { id: 'd6', name: 'test.pdf', file_size: 2_400, project_id: null, owner: 'IC', pages: 1, created_at: iso(12), updated_at: iso(5, 13, 51), shared: false },
 ];
 
+const makeLongDocumentFixture = () => Array.from({ length: 3 }).flatMap((_, batch) => (
+  INITIAL_DOCUMENTS.map((doc, index) => ({
+    ...doc,
+    id: `${doc.id}-long-${batch}`,
+    name: batch === 0 ? doc.name : copyName(doc.name).replace('-copy', ` demo ${batch + 1}`),
+    updated_at: iso((batch * INITIAL_DOCUMENTS.length) + index, 9 + (index % 7), 10 + (index * 3) % 40),
+  }))
+));
+
 const MOCK_TEMPLATES = [
   {
     id: 't1', name: 'Security Walk-Through', created_at: iso(28),
@@ -144,7 +153,8 @@ export default function HubPreview() {
      of this harness). */
   const params = new URLSearchParams(window.location.search);
   const emptyFixture = params.get('empty') === '1';
-  const [documents, setDocuments] = useState(emptyFixture ? [] : INITIAL_DOCUMENTS);
+  const longDocsFixture = params.get('longDocs') === '1';
+  const [documents, setDocuments] = useState(emptyFixture ? [] : (longDocsFixture ? makeLongDocumentFixture() : INITIAL_DOCUMENTS));
   const initialTab = params.get('tab');
 
   const handleDuplicate = (docs) => {

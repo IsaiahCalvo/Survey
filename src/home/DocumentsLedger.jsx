@@ -149,6 +149,8 @@ export default function DocumentsLedger({
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [docMenu, setDocMenu] = useState(null);
   const [clipboardDoc, setClipboardDoc] = useState(null);
+  const [mobileSortOpen, setMobileSortOpen] = useState(false);
+  const mobileSortRef = useRef(null);
 
   /* Supabase storage helper — let PdfPageThumb fetch a document's bytes to
      render its real first page via the authenticated download (private bucket). */
@@ -206,6 +208,15 @@ export default function DocumentsLedger({
     if (selId == null && docs.length) setSelId(docs[0].id);
   }, [docs, selId]);
 
+  useEffect(() => {
+    if (!mobileSortOpen) return undefined;
+    const onDown = (e) => {
+      if (mobileSortRef.current && !mobileSortRef.current.contains(e.target)) setMobileSortOpen(false);
+    };
+    document.addEventListener('mousedown', onDown, true);
+    return () => document.removeEventListener('mousedown', onDown, true);
+  }, [mobileSortOpen]);
+
   const sel = docs.find((d) => d.id === selId) || docs[0];
   const toggleDocSel = (id) => setSelDocs((prev) => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
 
@@ -231,37 +242,149 @@ export default function DocumentsLedger({
   const clearSel = () => setSelDocs(new Set());
 
   const subtitle = (
-    <span style={{ display: 'inline-flex', alignItems: 'baseline', gap: 10 }}>
-      <span><b>{docs.length}</b> files</span>
-      <button
-        onClick={() => { const next = !docSelectMode; setDocSelectMode(next); if (!next) setSelDocs(new Set()); }}
-        style={{ background: 'transparent', border: 0, color: 'var(--gold)', borderRadius: 2, padding: 0, fontSize: 11.5, cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap', fontWeight: 600 }}
-      >
-        {docSelectMode ? 'Done' : 'Select'}
-      </button>
-      {docSelectMode && (() => {
-        const docSelCount = selDocs.size;
-        const allSel = docSelCount === docs.length && docs.length > 0;
-        const baseBtn = miniButtonStyle();
-        return (
-          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, marginLeft: 4 }}>
-            <button onClick={() => setSelDocs(allSel ? new Set() : new Set(docs.map((d) => d.id)))} style={{ ...baseBtn, color: 'var(--bone-100)' }}>{allSel ? 'None' : 'All'}</button>
-            <button disabled={!docSelCount} onClick={() => { onDuplicate && onDuplicate(selectedRaw()); clearSel(); }} style={miniButtonStyle({ disabled: !docSelCount })}>Duplicate</button>
-            <button disabled={!docSelCount} onClick={() => setMoveOpen(true)} style={miniButtonStyle({ disabled: !docSelCount })}>Move/Copy</button>
-            <button disabled={!docSelCount} title="Share" onClick={() => onShare && onShare(selectedRaw())} style={miniButtonStyle({ disabled: !docSelCount, iconOnly: true })}><Icon name="share" size={12} /></button>
-            <button disabled={!docSelCount} title="Delete" onClick={() => setConfirmDelete(true)} style={miniButtonStyle({ disabled: !docSelCount, danger: true, iconOnly: true })}><Icon name="trash" size={12} /></button>
-          </span>
-        );
-      })()}
+    <span className="documents-mobile-summary" style={{ display: 'inline-flex', alignItems: 'baseline', gap: 10 }}>
+      <span className="documents-file-count"><b>{docs.length}</b> files</span>
+      <span className="documents-select-row">
+        <button
+          onClick={() => { const next = !docSelectMode; setDocSelectMode(next); if (!next) setSelDocs(new Set()); }}
+          style={{ background: 'transparent', border: 0, color: 'var(--gold)', borderRadius: 2, padding: 0, fontSize: 11.5, cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap', fontWeight: 600 }}
+        >
+          {docSelectMode ? 'Done' : 'Select'}
+        </button>
+        {docSelectMode && (() => {
+          const docSelCount = selDocs.size;
+          const allSel = docSelCount === docs.length && docs.length > 0;
+          const baseBtn = miniButtonStyle();
+          return (
+            <span className="documents-select-actions" style={{ display: 'inline-flex', alignItems: 'center', gap: 4, marginLeft: 8 }}>
+              <button onClick={() => setSelDocs(allSel ? new Set() : new Set(docs.map((d) => d.id)))} style={{ ...baseBtn, color: 'var(--bone-100)' }}>{allSel ? 'None' : 'All'}</button>
+              <button disabled={!docSelCount} onClick={() => { onDuplicate && onDuplicate(selectedRaw()); clearSel(); }} style={miniButtonStyle({ disabled: !docSelCount })}>Duplicate</button>
+              <button disabled={!docSelCount} onClick={() => setMoveOpen(true)} style={miniButtonStyle({ disabled: !docSelCount })}>Move/Copy</button>
+              <button disabled={!docSelCount} title="Share" onClick={() => onShare && onShare(selectedRaw())} style={miniButtonStyle({ disabled: !docSelCount, iconOnly: true })}><Icon name="share" size={12} /></button>
+              <button disabled={!docSelCount} title="Delete" onClick={() => setConfirmDelete(true)} style={miniButtonStyle({ disabled: !docSelCount, danger: true, iconOnly: true })}><Icon name="trash" size={12} /></button>
+            </span>
+          );
+        })()}
+      </span>
     </span>
   );
 
+  const sortOptions = [
+    ['name', 'File'],
+    ['project', 'Project'],
+    ['edited', 'Last edited'],
+    ['size', 'Size'],
+  ];
+  const activeSortLabel = sortOptions.find(([key]) => key === sortKey)?.[1] || 'Sort';
   const actions = (
     <>
-      <Search placeholder="Search Documents..." value={search} onChange={setSearch} />
+      <div className="documents-mobile-search-row" ref={mobileSortRef}>
+        <button
+          className="btn documents-mobile-filter"
+          type="button"
+          aria-haspopup="menu"
+          aria-expanded={mobileSortOpen}
+          onClick={() => setMobileSortOpen((open) => !open)}
+        >
+          <Icon name="filter" size={12} />
+          <span>{activeSortLabel}</span>
+        </button>
+        {mobileSortOpen && (
+          <div className="documents-mobile-sort-menu" role="menu">
+            {sortOptions.map(([key, label]) => (
+              <button
+                key={key}
+                type="button"
+                role="menuitem"
+                className={sortKey === key ? 'active' : ''}
+                onClick={() => { onHeaderClick(key); setMobileSortOpen(false); }}
+              >
+                <span>{label}</span>
+                <span>{sortKey === key ? (sortDir === 'asc' ? '↑' : '↓') : ''}</span>
+              </button>
+            ))}
+          </div>
+        )}
+        <Search placeholder="Search Documents..." value={search} onChange={setSearch} width="100%" />
+      </div>
+      <div className="documents-desktop-search">
+        <Search placeholder="Search Documents..." value={search} onChange={setSearch} />
+      </div>
       <button className="btn primary" onClick={() => onUpload && onUpload()}><Icon name="upload" size={12} />Upload</button>
     </>
   );
+
+  const mobileDocMeta = (d) => (
+    [d.project === 'Sandbox' ? null : d.project, d.touchedAbs || d.lastEditedAbs, d.size]
+      .filter(Boolean)
+      .join(' · ') || 'No details'
+  );
+  const openMobileDoc = (d) => {
+    if (docSelectMode) { toggleDocSel(d.id); return; }
+    onOpenDocument && onOpenDocument(d.raw);
+  };
+  const openDocMenu = (e, d) => {
+    e.stopPropagation();
+    const rect = e.currentTarget.getBoundingClientRect();
+    setDocMenu((cur) => (cur && cur.id === d.id ? null : { id: d.id, rect }));
+  };
+  const renderMobileMore = (d) => (
+    <button
+      type="button"
+      onClick={(e) => openDocMenu(e, d)}
+      style={moreButtonStyle()}
+      title="More"
+    ><Icon name="more" size={14} /></button>
+  );
+  const renderMobileCheck = (d, size = 18) => {
+    const isChecked = selDocs.has(d.id);
+    return (
+      <span style={{ width: size, height: size, border: `1.4px solid ${isChecked ? 'var(--gold)' : 'var(--ink-300)'}`, background: isChecked ? 'var(--gold)' : 'transparent', borderRadius: 3, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        {isChecked && <span style={{ color: '#15110a', fontSize: 11, lineHeight: 1 }}>✓</span>}
+      </span>
+    );
+  };
+  const renderMobileThumb = (d, height = 54) => (
+    <PdfPageThumb
+      doc={d.raw}
+      downloadDocument={downloadDocument}
+      variant="row"
+      height={height}
+      fallback={<div style={{ width: Math.round(height * 0.74), height, flex: 'none' }}><PdfThumb height={height} stamp="" color={d.color} /></div>}
+    />
+  );
+  const renderMobileCard = (d) => {
+    const isChecked = selDocs.has(d.id);
+    return (
+      <div
+        key={`mobile-${d.id}`}
+        className="mobile-doc-card"
+        onClick={() => openMobileDoc(d)}
+        role="button"
+        tabIndex={0}
+        onKeyDown={(e) => {
+          if (e.key !== 'Enter' && e.key !== ' ') return;
+          e.preventDefault();
+          openMobileDoc(d);
+        }}
+        style={{
+          borderColor: docSelectMode && isChecked ? 'var(--gold)' : 'var(--ink-500)',
+          background: docSelectMode && isChecked ? 'var(--ink-600)' : 'var(--ink-700)',
+        }}
+      >
+        <div style={{ display: 'grid', placeItems: 'center', minWidth: 0 }}>
+          {docSelectMode ? renderMobileCheck(d) : renderMobileMore(d)}
+        </div>
+        <div style={{ minWidth: 0 }}>
+          <div className="mobile-card-title">{d.name}</div>
+          <div className="mobile-card-meta">{mobileDocMeta(d)}</div>
+        </div>
+        <div style={{ display: 'grid', placeItems: 'center', minWidth: 0 }}>
+          {renderMobileThumb(d)}
+        </div>
+      </div>
+    );
+  };
 
   return (
     <>
@@ -274,8 +397,8 @@ export default function DocumentsLedger({
       userName={user?.name || user?.email?.split('@')[0] || 'You'}
       templatesLocked={templatesLocked}
     >
-      <div style={{ padding: '0 8px 8px 8px', flex: 1, minHeight: 0 }}>
-        <div className="card" style={{ display: 'grid', gridTemplateColumns: showPreview ? '2.2fr 1fr' : '1fr', height: '100%', overflow: 'hidden' }}>
+      <div className="documents-ledger-body" style={{ padding: '0 8px 8px 8px', flex: 1, minHeight: 0 }}>
+        <div className="card documents-desktop-card" style={{ display: 'grid', gridTemplateColumns: showPreview ? '2.2fr 1fr' : '1fr', height: '100%', overflow: 'hidden' }}>
           <div className="slim-scroll" style={{ overflow: 'auto', borderRight: showPreview ? '1px solid var(--ink-500)' : 0 }}>
             <div>
               <div style={{ ...ledgerHeader, display: 'grid', gridTemplateColumns: grid, position: 'sticky', top: 0, zIndex: 3 }}>
@@ -438,6 +561,22 @@ export default function DocumentsLedger({
               </div>
             </aside>
           )}
+        </div>
+        <div className="documents-mobile-list slim-scroll">
+          {docs.length === 0 && (
+            mapped.length === 0 ? (
+              <EmptyState
+                icon="doc"
+                line="No documents yet"
+                actionIcon="upload"
+                actionLabel="Upload PDF"
+                onAction={() => onUpload && onUpload()}
+              />
+            ) : (
+              <div className="meta" style={{ padding: '18px 4px', fontSize: 12 }}>No documents match your search.</div>
+            )
+          )}
+          {docs.length > 0 && docs.map(renderMobileCard)}
         </div>
       </div>
     </HubShell>
