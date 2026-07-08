@@ -13,6 +13,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
 import Icon from './Icons';
 import EntityIndicator from './components/EntityIndicator';
+import Spinner from './components/Spinner';
 import DragRearrangeHandle from './reorder/DragRearrangeHandle';
 import { SortableRearrangeList, SortableRearrangeRow } from './reorder/SortableRearrangeList';
 import { moveItemById } from './reorder/flatReorderUtils.js';
@@ -3058,25 +3059,10 @@ const SurveySpacesRail = ({
                         }}
                       >
                         {isExporting ? (
-                          <div
-                            style={{
-                              width: '14px',
-                              height: '14px',
-                              border: '2px solid rgba(255,255,255,0.3)',
-                              borderTop: '2px solid #fff',
-                              borderRadius: '50%',
-                              animation: 'spin 0.8s linear infinite'
-                            }}
-                          />
+                          <Spinner size={14} color="#fff" trackColor="rgba(255,255,255,0.3)" />
                         ) : (
                           <Icon name={showExportMenu ? "chevronUp" : "chevronDown"} size={16} />
                         )}
-                        <style>{`
-                          @keyframes spin {
-                            0% { transform: rotate(0deg); }
-                            100% { transform: rotate(360deg); }
-                          }
-                        `}</style>
                       </button>
 
                       {showExportMenu && (

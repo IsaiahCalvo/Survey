@@ -41,6 +41,10 @@ export function ReSignInModal({ isOpen, onSignedIn, onCloseDocument, prefillEmai
   const [submitting, setSubmitting] = useState(false);
   // 'bad_password' | 'network' | 'account_locked' | null — error code drives copy below.
   const [errorCode, setErrorCode] = useState(null);
+  // Informational inline banner (e.g. "Forgot password?" explainer). Rendered
+  // in-modal instead of a native alert() — master plan decision 3: one unified
+  // feedback system, no browser system dialogs.
+  const [notice, setNotice] = useState(null);
   // Cloudflare Turnstile — token for this attempt, nonce to remount for a fresh
   // single-use token, fail-open flag if the widget can't load.
   const [captchaToken, setCaptchaToken] = useState('');
@@ -89,6 +93,7 @@ export function ReSignInModal({ isOpen, onSignedIn, onCloseDocument, prefillEmai
     }
     setSubmitting(true);
     setErrorCode(null);
+    setNotice(null);
     try {
       // useAuth().signIn signature throws on error in this project (see
       // AuthContext.jsx:226 — signInWithPassword, throws on error). The
@@ -150,6 +155,11 @@ export function ReSignInModal({ isOpen, onSignedIn, onCloseDocument, prefillEmai
         // when it appears. aria-live is implicit on role="alert".
         <div className="re-signin-modal__error" role="alert">{errorMessage}</div>
       )}
+      {notice && (
+        // UX: informational inline banner (gold status style per
+        // docs/design/design.md) — replaces the old native alert().
+        <div className="re-signin-modal__notice" role="status">{notice}</div>
+      )}
       <form onSubmit={handleSubmit} className="re-signin-modal__form">
         <label className="re-signin-modal__label" htmlFor="re-signin-email">Email</label>
         <input
@@ -204,10 +214,11 @@ export function ReSignInModal({ isOpen, onSignedIn, onCloseDocument, prefillEmai
             // UX: Phase 33 wires this to the password reset flow. Until then,
             // tell the user the only path: close the document and use the
             // dashboard sign-in. Honest-over-silent — don't pretend the link
-            // works when it doesn't.
+            // works when it doesn't. Shown as an inline banner (not a native
+            // alert) per the unified feedback system.
             // TODO(Phase 33): wire to AuthContext.resetPassword(email) once
             // the inline reset surface is designed.
-            window.alert(
+            setNotice(
               'Password reset is not wired up yet — close the document and use the dashboard sign-in to reset your password.'
             );
           }}

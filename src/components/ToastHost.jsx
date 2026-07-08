@@ -1,15 +1,18 @@
 import { useEffect, useState, useCallback } from 'react';
 
 // KAL-57 — single mounted host for the in-app toast bus (see utils/toast.js).
-// Listens for 'app-toast' events, stacks them top-right, auto-dismisses each,
-// and dismisses on click. Visual language matches SaveLogBanner (dark pill,
-// left accent stripe, blur) so notifications feel like one system.
+// Listens for 'app-toast' events, stacks them bottom-center, auto-dismisses
+// each, and dismisses on click.
+//
+// Visual language follows docs/design/design.md (master plan decision 3: ONE
+// feedback system): warm dark surface #181c24, border #2a3140, gold accent for
+// success/status, #cf6f6f for danger, compact type, letter-spacing 0.
 
 const TYPE_ACCENT = {
-  info: '#60a5fa',
-  success: '#22c55e',
-  error: '#ef4444',
-  warn: '#f59e0b',
+  info: '#d8a84e',    // gold — status (design.md: success/status uses gold)
+  success: '#d8a84e', // gold
+  error: '#cf6f6f',   // danger
+  warn: '#e69a7a',    // rose supporting accent — caution, softer than danger
 };
 const AUTO_DISMISS_MS = 4500; // UX: long enough to read a short error, short enough not to nag.
 
@@ -45,13 +48,15 @@ export default function ToastHost() {
     <div
       style={{
         position: 'fixed',
-        top: 20,
-        right: 20,
+        bottom: 24, // design decision 3: the ONE toast lives at the bottom
+        left: '50%',
+        transform: 'translateX(-50%)',
         zIndex: 100000, // UX: above floating chrome so an error is never hidden.
         display: 'flex',
         flexDirection: 'column',
+        alignItems: 'center',
         gap: 8,
-        maxWidth: 'min(92vw, 380px)',
+        maxWidth: 'min(92vw, 420px)',
         pointerEvents: 'none',
       }}
     >
@@ -67,18 +72,18 @@ export default function ToastHost() {
             style={{
               pointerEvents: 'auto',
               cursor: 'pointer',
-              background: 'rgba(24,28,40,0.97)',
-              color: '#e8eefb',
-              padding: '11px 14px',
-              borderRadius: 10,
+              background: '#181c24', // --ink-700 panel surface
+              color: '#f4f1ea', // --bone-100 primary text
+              border: '1px solid #2a3140', // --ink-500 rule
               borderLeft: `3px solid ${accent}`,
-              boxShadow: '0 12px 30px rgba(0,0,0,0.35), 0 2px 6px rgba(0,0,0,0.15)',
-              backdropFilter: 'blur(6px)',
-              WebkitBackdropFilter: 'blur(6px)',
-              fontSize: 13,
+              padding: '9px 14px',
+              borderRadius: 8,
+              boxShadow: '0 12px 30px rgba(0,0,0,0.5)',
+              fontFamily: '"Helvetica Neue", Helvetica, Arial, sans-serif',
+              fontSize: 12.5,
               fontWeight: 500,
-              lineHeight: 1.4,
-              letterSpacing: 0.1,
+              lineHeight: 1.45,
+              letterSpacing: 0,
             }}
           >
             {t.message}

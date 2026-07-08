@@ -11,6 +11,7 @@
  */
 import { useState, useRef } from 'react';
 import { getSyncStatusViewModel } from '../utils/syncStatusViewModel.js';
+import Spinner from './Spinner';
 
 /**
  * Cloud sync status indicator.
@@ -131,14 +132,7 @@ function CompactSyncStatusChip({ state, label, color, onRetry }) {
       }}
     >
       {state === 'syncing' ? (
-        <span aria-hidden="true" style={{
-          width: '14px',
-          height: '14px',
-          border: '2px solid currentColor',
-          borderTopColor: 'transparent',
-          borderRadius: '50%',
-          animation: 'sync-chip-spin 0.8s linear infinite'
-        }} />
+        <Spinner size={14} color="currentColor" />
       ) : (
         <span aria-hidden="true" style={{
           width: '10px',
@@ -168,9 +162,6 @@ function CompactSyncStatusChip({ state, label, color, onRetry }) {
           {label}
         </div>
       )}
-      <style>{`
-        @keyframes sync-chip-spin { to { transform: rotate(360deg); } }
-      `}</style>
     </div>
   );
 }
@@ -203,14 +194,7 @@ function ExpandedSyncStatusChip({ state, label, color, onRetry }) {
       }}
     >
       {state === 'syncing' ? (
-        <span aria-hidden="true" style={{
-          width: '12px',
-          height: '12px',
-          border: '2px solid currentColor',
-          borderTopColor: 'transparent',
-          borderRadius: '50%',
-          animation: 'sync-chip-spin 0.8s linear infinite'
-        }} />
+        <Spinner size={12} color="currentColor" />
       ) : (
         <span aria-hidden="true" style={{
           width: '8px',
@@ -220,11 +204,6 @@ function ExpandedSyncStatusChip({ state, label, color, onRetry }) {
         }} />
       )}
       <span>{label}</span>
-      <style>{`
-        @keyframes sync-chip-spin {
-          to { transform: rotate(360deg); }
-        }
-      `}</style>
     </div>
   );
 }

@@ -19,6 +19,7 @@ import Icon from './Icons';
 import KeyboardShortcutsOverlay from './components/KeyboardShortcutsOverlay';
 import PDFSidebar from './PDFSidebar';
 import SaveLogBanner from './components/SaveLogBanner';
+import Spinner from './components/Spinner';
 import ToastHost from './components/ToastHost';
 import SurveySpacesRail from './SurveySpacesRail';
 import TabBar from './TabBar';
@@ -900,20 +901,22 @@ export default function App() {
   ]);
 
   if (isLoading) {
+    // Full-screen document loading state — warm-dark surface + the ONE shared
+    // spinner per docs/design/design.md (master plan decision 3).
     return (
       <div style={{
         height: '100vh',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        background: '#F5F5F5',
+        background: '#0d0f14', // --ink-900 page background
         fontFamily: FONT_FAMILY
       }}>
         <div style={{ textAlign: 'center' }}>
-          <div style={{ marginBottom: '10px', display: 'flex', justifyContent: 'center' }}>
-            <Icon name="document" size={24} />
+          <div style={{ marginBottom: '12px', display: 'flex', justifyContent: 'center' }}>
+            <Spinner size={22} thickness={2} />
           </div>
-          <div style={{ fontSize: '16px', color: '#666' }}>Loading document...</div>
+          <div style={{ fontSize: '13px', color: '#8d96a6', letterSpacing: 0 }}>Loading document...</div>
         </div>
       </div>
     );

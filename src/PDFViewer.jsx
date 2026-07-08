@@ -36,6 +36,7 @@ import PrintPanel from './components/PrintPanel';
 import RegionSelectionTool from './RegionSelectionTool';
 import SVGAnnotationLayer from './components/SVGAnnotationLayer';
 import SaveLogBanner from './components/SaveLogBanner';
+import Spinner from './components/Spinner';
 import SearchHighlightLayer from './components/SearchHighlightLayer';
 import PdfjsLinkLayer from './components/PdfjsLinkLayer';
 import PdfjsFormLayer from './components/PdfjsFormLayer';
@@ -33593,21 +33594,8 @@ ${pageBlocks}
                     justifyContent: 'center',
                     gap: '10px'
                   }}>
-                    <span style={{
-                      width: '16px',
-                      height: '16px',
-                      border: `2px solid ${COLORS.modal.textPrimary}`,
-                      borderTopColor: 'transparent',
-                      borderRadius: '50%',
-                      animation: 'spin 1s linear infinite'
-                    }} />
+                    <Spinner size={16} color={COLORS.modal.textPrimary} />
                     <span style={{ fontSize: '14px', fontWeight: 600 }}>Preparing OneDrive export...</span>
-                    <style>{`
-                      @keyframes spin {
-                        0% { transform: rotate(0deg); }
-                        100% { transform: rotate(360deg); }
-                      }
-                    `}</style>
                   </div>
                 ) : (
                   <div style={{

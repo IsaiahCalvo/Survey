@@ -9,6 +9,7 @@
    run on local state so duplicate / move / copy / delete are demonstrable. */
 import { useState } from 'react';
 import SurveyHub from './SurveyHub';
+import ToastHost from '../components/ToastHost';
 import { AuthContext } from '../contexts/AuthContext';
 import { MSGraphContext } from '../contexts/MSGraphContext';
 
@@ -183,6 +184,9 @@ export default function HubPreview() {
             onSettings={() => console.log('[hub preview] open settings page')}
             onSignOut={() => console.log('[hub preview] sign out')}
           />
+          {/* Toast bus host — in the real app AppShell mounts this; mount it
+              here too so hub actions (and design review) can show toasts. */}
+          <ToastHost />
         </div>
       </MSGraphContext.Provider>
     </AuthContext.Provider>

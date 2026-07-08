@@ -1,6 +1,7 @@
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { buildLogPreamble } from '../utils/logPreamble';
 import { sanitizeConsoleLogText } from '../utils/consoleLogFilter';
+import Spinner from './Spinner';
 
 // UX 2026-04-22: Evolution of the old Save Log toast. When the user triggers
 // Save Log, a banner slides in from the LEFT with a 5-second progress bar
@@ -550,17 +551,7 @@ export default function SaveLogBanner() {
 
         {state === 'submitting' && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <span
-              aria-hidden="true"
-              style={{
-                width: 14,
-                height: 14,
-                borderRadius: '50%',
-                border: '2px solid rgba(255,255,255,0.25)',
-                borderTopColor: colors.accent,
-                animation: 'save-log-spin 0.8s linear infinite'
-              }}
-            />
+            <Spinner size={14} color={colors.accent} trackColor="rgba(255,255,255,0.25)" />
             <span>Submitting to GitHub…</span>
           </div>
         )}
@@ -669,11 +660,6 @@ export default function SaveLogBanner() {
         </div>
       )}
 
-      <style>{`
-        @keyframes save-log-spin {
-          to { transform: rotate(360deg); }
-        }
-      `}</style>
     </>
   );
 }
