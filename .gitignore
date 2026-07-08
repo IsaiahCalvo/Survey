@@ -91,3 +91,6 @@ ms-auth-cache.bin.tmp
 
 # Renderer-parity harness screenshots (regenerated each run)
 agent-cli/artifacts/
+
+# content-hash maintenance reports carry live doc names/paths — local artifacts only
+debug/content-hash/
