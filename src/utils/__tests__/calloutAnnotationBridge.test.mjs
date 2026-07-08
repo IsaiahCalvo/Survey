@@ -19,6 +19,7 @@ import {
   annotationObjectToCallout,
   projectCalloutsIntoByPage,
 } from '../calloutAnnotationBridge.js';
+import { fabric } from '../fabricCompat.js';
 
 // ---------------------------------------------------------------------------
 // Shared test fixtures
@@ -99,6 +100,15 @@ describe('calloutToAnnotationObject — structure', () => {
   it('getObjects() returns the same array as objects', () => {
     const obj = calloutToAnnotationObject(baseCallout, PAGE);
     assert.strictEqual(obj.getObjects(), obj.objects);
+  });
+
+  it('keeps getObjects() non-enumerable so Fabric 7 can enliven projected callout groups', async () => {
+    const obj = calloutToAnnotationObject(baseCallout, PAGE);
+    assert.equal(Object.prototype.propertyIsEnumerable.call(obj, 'getObjects'), false);
+
+    const enlivened = await fabric.util.enlivenObjects([obj]);
+    assert.equal(enlivened.length, 1);
+    assert.equal(enlivened[0].type, 'group');
   });
 });
 

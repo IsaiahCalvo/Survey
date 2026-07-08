@@ -208,7 +208,7 @@ export function getHandlePositions(bbox, padding = 6) {
  * @returns {boolean}
  */
 export function isImportedPath(obj) {
-  return obj?.type === 'path' && obj.left == null && Array.isArray(obj.path);
+  return String(obj?.type || '').toLowerCase() === 'path' && obj.left == null && Array.isArray(obj.path);
 }
 
 /**
@@ -219,7 +219,7 @@ export function isImportedPath(obj) {
 export function isAbsoluteCoordPath(obj) {
   const leftZero = obj?.left == null || obj.left === 0;
   const topZero = obj?.top == null || obj.top === 0;
-  return obj?.type === 'path'
+  return String(obj?.type || '').toLowerCase() === 'path'
     && Array.isArray(obj.path)
     && leftZero
     && topZero

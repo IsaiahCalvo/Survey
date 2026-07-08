@@ -26,3 +26,19 @@ test('drawing canvas reconfigures from current activeTool prop, not a stale ref,
     'shape-mode effect must not read activeToolRef.current before the ref-sync effect runs'
   );
 });
+
+test('drawing canvas creates a PencilBrush when switching from a shape tool to pen or highlighter', () => {
+  const src = readFileSync(TARGET, 'utf8');
+
+  assert.match(
+    src,
+    /function\s+ensureFreeDrawingBrush\s*\(/,
+    'expected a lazy brush creator for shape-tool mounts'
+  );
+
+  assert.match(
+    src,
+    /if\s*\(\s*!isShape\s*\)\s*{\s*ensureFreeDrawingBrush\s*\(\s*canvas\s*\);\s*return;\s*}/s,
+    'expected non-shape tool switch to create a missing brush before free drawing'
+  );
+});

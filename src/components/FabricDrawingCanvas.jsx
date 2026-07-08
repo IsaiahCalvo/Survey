@@ -52,6 +52,14 @@ export function configureCanvasForDrawingTool(canvas, activeTool) {
   return isShape;
 }
 
+function ensureFreeDrawingBrush(canvas) {
+  if (!canvas) return null;
+  if (!canvas.freeDrawingBrush) {
+    canvas.freeDrawingBrush = new fabric.PencilBrush(canvas);
+  }
+  return canvas.freeDrawingBrush;
+}
+
 function createAnnotationId(prefix = 'anno') {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
     return crypto.randomUUID();
@@ -308,8 +316,7 @@ const FabricDrawingCanvas = memo(({
 
     // Set up PencilBrush for pen/highlighter (shape tools use mouse handlers instead)
     if (!SHAPE_TOOLS.includes(activeToolRef.current)) {
-      canvas.freeDrawingBrush = new fabric.PencilBrush(canvas);
-      const brush = canvas.freeDrawingBrush;
+      const brush = ensureFreeDrawingBrush(canvas);
       if (activeToolRef.current === 'highlighter') {
         brush.color = highlightColor;
         brush.width = Math.max(strokeWidth, 8);
@@ -441,7 +448,10 @@ const FabricDrawingCanvas = memo(({
     activeToolRef.current = activeTool;
     const isShape = configureCanvasForDrawingTool(canvas, activeTool);
     console.log(`[DrawCanvas p${pageNumber}] shape effect — tool=${activeTool}, isShape=${isShape}, isDrawingMode=${canvas.isDrawingMode}`);
-    if (!isShape) return;
+    if (!isShape) {
+      ensureFreeDrawingBrush(canvas);
+      return;
+    }
 
     const getPointer = (e) => canvas.getPointer(e.e);
 
