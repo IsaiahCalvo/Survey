@@ -1058,7 +1058,7 @@ const PagesPanel = ({
             onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
           >
             <Icon name="flipHorizontal" size={14} color="#8d96a6" />
-            Mirror Horizontally
+            Mirror horizontally
           </button>
           <button
             onClick={() => handleMirrorVertical(contextMenu.pageNumber)}
@@ -1080,7 +1080,7 @@ const PagesPanel = ({
             onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
           >
             <Icon name="flipVertical" size={14} color="#8d96a6" />
-            Mirror Vertically
+            Mirror vertically
           </button>
           <button
             onClick={() => handleReset(contextMenu.pageNumber)}

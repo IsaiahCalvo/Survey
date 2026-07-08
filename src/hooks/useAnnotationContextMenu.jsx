@@ -197,7 +197,7 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
       ];
     } else if (ctx.kind === 'counter') {
       items = [
-        item('Continue Pin', 'continuePin'),
+        item('Continue pin', 'continuePin'),
       ];
     } else if (ctx.kind === 'annotation') {
       items = [
@@ -291,18 +291,18 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
         //   Cmd+]        → Bring Forward
         //   Cmd+[        → Send Backward
         //   Cmd+Shift+[  → Send to Back
-        item('Bring to Front', 'bringToFront', () => {
+        item('Bring to front', 'bringToFront', () => {
           handleReorderAnnotation(ctx.pageNumber, ctx.annotationIndex, 'front');
         }),
-        item('Bring Forward', 'bringForward', () => {
+        item('Bring forward', 'bringForward', () => {
           if (ctx.annotationIndex == null) return;
           handleReorderAnnotation(ctx.pageNumber, ctx.annotationIndex, 'forward');
         }),
-        item('Send Backward', 'sendBackward', () => {
+        item('Send backward', 'sendBackward', () => {
           if (ctx.annotationIndex == null) return;
           handleReorderAnnotation(ctx.pageNumber, ctx.annotationIndex, 'backward');
         }),
-        item('Send to Back', 'sendToBack', () => {
+        item('Send to back', 'sendToBack', () => {
           handleReorderAnnotation(ctx.pageNumber, ctx.annotationIndex, 'back');
         }),
         // UX: 2026-04-21 — Group / Ungroup items intentionally omitted
@@ -392,24 +392,24 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
           });
         }),
         sep(),
-        item('Bring to Front', 'bringToFront', () => {
+        item('Bring to front', 'bringToFront', () => {
           // Top-most selected ends on top; keep relative order by
           // processing from topmost (largest index) downward.
           for (const idx of sortedDesc) {
             handleReorderAnnotation(ctx.pageNumber, idx, 'front');
           }
         }),
-        item('Bring Forward', 'bringForward', () => {
+        item('Bring forward', 'bringForward', () => {
           for (const idx of sortedDesc) {
             handleReorderAnnotation(ctx.pageNumber, idx, 'forward');
           }
         }),
-        item('Send Backward', 'sendBackward', () => {
+        item('Send backward', 'sendBackward', () => {
           for (const idx of sortedAsc) {
             handleReorderAnnotation(ctx.pageNumber, idx, 'backward');
           }
         }),
-        item('Send to Back', 'sendToBack', () => {
+        item('Send to back', 'sendToBack', () => {
           for (const idx of sortedAsc) {
             handleReorderAnnotation(ctx.pageNumber, idx, 'back');
           }

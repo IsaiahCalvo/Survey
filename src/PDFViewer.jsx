@@ -4683,7 +4683,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   // The handler stays in PDFViewer because it owns the survey/template state.
   const handleSurveyToggle = useCallback(() => {
     if (!features?.advancedSurvey) {
-      showToast('Survey Templates are a Pro feature. Please upgrade to use this tool.', 'warn');
+      showToast('Survey templates are a Pro feature. Please upgrade to use this tool.', 'warn');
       return;
     }
     if (!showSurveyPanel) {
@@ -7247,7 +7247,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     if (zoomMode === ZOOM_MODES.MANUAL) {
       return `Manual ${Math.round((manualZoomScale || 1) * 100)}%`;
     }
-    return ZOOM_MODE_LABELS[zoomMode] || 'Zoom Mode';
+    return ZOOM_MODE_LABELS[zoomMode] || 'Zoom mode';
   }, [zoomMode, manualZoomScale]);
 
   const toggleZoomMenu = useCallback(() => {
@@ -12065,7 +12065,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   const handleExportSurveyToExcel = useCallback(async (targetPath = null, options = {}) => {
     const { silent = false } = options;
     if (!features?.excelExport) {
-      if (!silent) showToast('Excel Export is a Pro feature. Please upgrade to use this tool.', 'warn');
+      if (!silent) showToast('Excel export is a Pro feature. Please upgrade to use this tool.', 'warn');
       return;
     }
     // If called from event handler, targetPath will be the event object
@@ -12443,7 +12443,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
                       formulae: ['"Y,N,N/A"'],
                       showErrorMessage: true,
                       errorStyle: 'error',
-                      errorTitle: 'Invalid Selection',
+                      errorTitle: 'Invalid selection',
                       error: 'Please select Y, N, or N/A'
                     };
                   }
@@ -12463,7 +12463,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
                       formulae: [validationFormula],
                       showErrorMessage: true,
                       errorStyle: 'error',
-                      errorTitle: 'Invalid Selection',
+                      errorTitle: 'Invalid selection',
                       error: 'Please select a valid entity from the list.'
                     };
                   }
@@ -13511,8 +13511,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
           // Different template detected - show warning modal
           setTemplateOverwriteData({
             fileName: fileName,
-            existingTemplateName: existingMeta.templateName || 'Unknown Template',
-            currentTemplateName: selectedTemplate?.name || 'Current Template',
+            existingTemplateName: existingMeta.templateName || 'Unknown template',
+            currentTemplateName: selectedTemplate?.name || 'Current template',
             folder: folder,
             selection: selection
           });
@@ -18427,7 +18427,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       setActiveTool(REGION_EDIT_TOOL);
       setShowRegionSelection(true);
     } else {
-      showToast('The Region Selection Tool is a Pro feature. Please upgrade to use this tool.', 'warn');
+      showToast('The region selection tool is a Pro feature. Please upgrade to use this tool.', 'warn');
     }
     goToPage(pageId, { fallback: 'nearest' });
   }, [spaces, goToPage, features, getRegionEditReturnTool, showSurveyPanel, selectedModuleId, activeRegionId, clearAnnotationSelectionForContextChange]);
@@ -19215,9 +19215,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       if (api?.saveFile) {
         const bytes = Array.from(new Uint8Array(buffer));
         const result = await api.saveFile({
-          title: 'Export Annotated PDF',
+          title: 'Export annotated PDF',
           defaultPath: defaultName,
-          filters: [{ name: 'PDF Files', extensions: ['pdf'] }],
+          filters: [{ name: 'PDF files', extensions: ['pdf'] }],
           data: bytes
         });
         if (result?.canceled) return;
@@ -29758,7 +29758,7 @@ ${pageBlocks}
                         minWidth: '40px',
                         width: '40px'
                       }}
-                      title={isHighlighter ? 'Highlighter' : isEraser ? (eraserMode === 'entire' ? 'Full Stroke Erase' : 'Partial Erase') : t.label}
+                      title={isHighlighter ? 'Highlighter' : isEraser ? (eraserMode === 'entire' ? 'Full stroke erase' : 'Partial erase') : t.label}
                     >
                       <Icon name={t.iconName} size={20} />
                       {isHighlighterSplitMenu && (
@@ -29885,7 +29885,7 @@ ${pageBlocks}
                                 onMouseLeave={(e) => { e.currentTarget.style.background = activeTool === 'highlighter' ? '#1f2430' : 'transparent'; }}
                                 style={optionStyle(activeTool === 'highlighter')}
                               >
-                                Freehand Highlight
+                                Freehand highlight
                               </button>
                               <button
                                 onClick={(e) => {
@@ -29897,7 +29897,7 @@ ${pageBlocks}
                                 onMouseLeave={(e) => { e.currentTarget.style.background = activeTool === 'text-highlight' ? '#1f2430' : 'transparent'; }}
                                 style={optionStyle(activeTool === 'text-highlight')}
                               >
-                                Text Highlight
+                                Text highlight
                               </button>
                             </>
                           ) : (
@@ -29913,7 +29913,7 @@ ${pageBlocks}
                                 onMouseLeave={(e) => { e.currentTarget.style.background = eraserMode === 'partial' ? '#1f2430' : 'transparent'; }}
                                 style={optionStyle(eraserMode === 'partial')}
                               >
-                                Partial Erase
+                                Partial erase
                               </button>
                               <button
                                 onClick={(e) => {
@@ -29926,7 +29926,7 @@ ${pageBlocks}
                                 onMouseLeave={(e) => { e.currentTarget.style.background = eraserMode === 'entire' ? '#1f2430' : 'transparent'; }}
                                 style={optionStyle(eraserMode === 'entire')}
                               >
-                                Full Stroke Erase
+                                Full stroke erase
                               </button>
                             </>
                           )}
@@ -30211,7 +30211,7 @@ ${pageBlocks}
                               outline: 'none',
                             }}
                           >
-                            + New Count
+                            + New count
                           </button>
                           <button
                             onClick={(e) => {
@@ -30244,7 +30244,7 @@ ${pageBlocks}
                               outline: 'none',
                             }}
                           >
-                            <span>Continue Count</span>
+                            <span>Continue count</span>
                             <span style={{ fontSize: '10px', color: '#8d96a6' }}>{'\u25B6'}</span>
                           </button>
                           {counterCaretSubmenu === 'continue' && (
@@ -30418,7 +30418,7 @@ ${pageBlocks}
                         minWidth: '40px',
                         width: (isUnderlineMenu || isStrikeMenu) ? '40px' : undefined
                       }}
-                      title={isUnderlineMenu ? (activeTool === 'squiggly' ? 'Wavy Underline' : 'Underline') : isStrikeMenu ? 'Strike Through' : t.label}
+                      title={isUnderlineMenu ? (activeTool === 'squiggly' ? 'Wavy underline' : 'Underline') : isStrikeMenu ? 'Strike through' : t.label}
                     >
                       <Icon name={t.iconName} size={20} />
                       {(isUnderlineMenu || isStrikeMenu) && (
@@ -30540,15 +30540,15 @@ ${pageBlocks}
                           </div>
                           {isUnderlineMenu ? (
                             <>
-                              {renderOption({ tool: 'underline', label: 'Regular Underline' })}
-                              {renderOption({ tool: 'squiggly', label: 'Wavy Underline' })}
-                              {renderOption({ tool: 'underline', label: 'Dashed Underline', disabled: true })}
+                              {renderOption({ tool: 'underline', label: 'Regular underline' })}
+                              {renderOption({ tool: 'squiggly', label: 'Wavy underline' })}
+                              {renderOption({ tool: 'underline', label: 'Dashed underline', disabled: true })}
                             </>
                           ) : (
                             <>
-                              {renderOption({ tool: 'strikeout', label: 'Straight Strike Through' })}
-                              {renderOption({ tool: 'strikeout', label: 'Dashed Strike Through', disabled: true })}
-                              {renderOption({ tool: 'strikeout', label: 'Wavy Strike Through', disabled: true })}
+                              {renderOption({ tool: 'strikeout', label: 'Straight strike through' })}
+                              {renderOption({ tool: 'strikeout', label: 'Dashed strike through', disabled: true })}
+                              {renderOption({ tool: 'strikeout', label: 'Wavy strike through', disabled: true })}
                             </>
                           )}
                         </div>,
@@ -30596,7 +30596,7 @@ ${pageBlocks}
 	                        <option value="">No modules</option>
 	                      ) : modules.map((module) => (
 	                        <option key={module.id} value={module.id}>
-	                          {module.name || 'Untitled Module'}
+	                          {module.name || 'Untitled module'}
 	                        </option>
 	                      ))}
 	                    </select>
@@ -30620,14 +30620,14 @@ ${pageBlocks}
 	                              const rect = e.currentTarget.getBoundingClientRect();
 	                              setTooltip({
 	                                visible: true,
-	                                text: category.name || 'Untitled Category',
+	                                text: category.name || 'Untitled category',
 	                                x: rect.left + rect.width / 2,
 	                                y: rect.top - 10
 	                              });
 	                            }}
 	                            onMouseLeave={() => setTooltip({ visible: false, text: '', x: 0, y: 0 })}
 	                            className={`btn ${isActive ? 'btn-active' : 'btn-ghost'}`}
-	                            title={category.name || 'Untitled Category'}
+	                            title={category.name || 'Untitled category'}
 	                            style={{
 	                              width: '30px',
 	                              height: '30px',
@@ -30782,7 +30782,7 @@ ${pageBlocks}
                     color: COLORS.modal.textPrimary,
                     fontFamily: FONT_FAMILY
                   }}>
-                    Select Space
+                    Select space
                   </h2>
                   <button
                     onClick={() => setShowSpaceSelection(false)}
@@ -30978,7 +30978,7 @@ ${pageBlocks}
                                       moduleId: module.id,
                                       regionId: sourceSurveyMarker?.regionId ?? null,
                                       categoryId: destCategory?.id || null,
-                                      name: item.name || sourceSurveyMarker?.name || 'Untitled Item',
+                                      name: item.name || sourceSurveyMarker?.name || 'Untitled item',
                                       checklistResponses: {}
                                     };
 
@@ -31235,7 +31235,7 @@ ${pageBlocks}
                                         moduleId: space.id,
                                         regionId: sourceSurveyMarker?.regionId ?? null,
                                         categoryId: destCategory?.id || null,
-                                        name: item.name || sourceSurveyMarker?.name || 'Untitled Item',
+                                        name: item.name || sourceSurveyMarker?.name || 'Untitled item',
                                         // Do NOT copy entity properties - item starts blank in new space
                                         checklistResponses: {}
                                       };
@@ -31364,10 +31364,10 @@ ${pageBlocks}
                             <Icon name="template" size={20} />
                             <div>
                               <div style={{ fontWeight: '500', color: COLORS.modal.textPrimary }}>
-                                {module.name || 'Untitled Space'}
+                                {module.name || 'Untitled space'}
                               </div>
                               <div style={{ fontSize: '12px', color: COLORS.modal.textMuted, marginTop: '2px' }}>
-                                {module.templateName || 'Untitled Template'}
+                                {module.templateName || 'Untitled template'}
                               </div>
                             </div>
                           </div>
@@ -31457,7 +31457,7 @@ ${pageBlocks}
                       color: COLORS.modal.textPrimary,
                       fontFamily: FONT_FAMILY
                     }}>
-                      Categorize Highlight
+                      Categorize highlight
                     </h3>
                     <button
                       onClick={() => {
@@ -31550,7 +31550,7 @@ ${pageBlocks}
                             onMouseLeave={handleModalOptionMouseLeave}
                           >
                             <div style={{ fontWeight: '500', color: COLORS.modal.textPrimary }}>
-                              {category.name || 'Untitled Category'}
+                              {category.name || 'Untitled category'}
                             </div>
                             {(() => {
                               /* KAL-44: count only active (non-archived) items here so the
@@ -31773,7 +31773,7 @@ ${pageBlocks}
           pendingSurveyMarkerName && selectedTemplate && selectedModuleId && (() => {
             const module = ((selectedTemplate.modules || selectedTemplate.spaces) || [])?.find(m => m.id === selectedModuleId);
             const category = module?.categories?.find(c => c.id === pendingSurveyMarkerName.categoryId);
-            const categoryName = category?.name?.trim() || 'Untitled Category';
+            const categoryName = category?.name?.trim() || 'Untitled category';
             const existingSurveyMarkers = Object.values(surveyMarkers).filter(h => h.categoryId === pendingSurveyMarkerName.categoryId);
             const defaultName = generateDefaultSurveyMarkerName(categoryName, existingSurveyMarkers);
 
@@ -31863,7 +31863,7 @@ ${pageBlocks}
                         color: COLORS.modal.textPrimary,
                         fontFamily: FONT_FAMILY
                       }}>
-                        Name Highlight
+                        Name highlight
                       </h3>
                       <button
                         onClick={() => {
@@ -31999,7 +31999,7 @@ ${pageBlocks}
                     </div>
 
                     <p style={{ color: COLORS.modal.textMuted, fontSize: '14px', marginBottom: '16px' }}>
-                      Category: <strong style={{ color: COLORS.modal.textPrimary }}>{category?.name || 'Untitled Category'}</strong>
+                      Category: <strong style={{ color: COLORS.modal.textPrimary }}>{category?.name || 'Untitled category'}</strong>
                     </p>
 
                     <input
@@ -32103,7 +32103,7 @@ ${pageBlocks}
                         outline: 'none',
                         marginBottom: '16px'
                       }}
-                      placeholder="Enter Name"
+                      placeholder="Enter name"
                     />
 
                     <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
@@ -32517,7 +32517,7 @@ ${pageBlocks}
                       className="btn btn-secondary btn-md"
                       style={{ cursor: 'pointer', display: 'inline-block' }}
                     >
-                      Upload Photos
+                      Upload photos
                     </label>
                     {noteDialogContent.photos.length > 0 && (
                       <div style={{ marginTop: '12px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
@@ -32598,7 +32598,7 @@ ${pageBlocks}
                       className="btn btn-secondary btn-md"
                       style={{ cursor: 'pointer', display: 'inline-block' }}
                     >
-                      Upload Videos
+                      Upload videos
                     </label>
                     {noteDialogContent.videos.length > 0 && (
                       <div style={{ marginTop: '12px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
@@ -32948,7 +32948,7 @@ ${pageBlocks}
                                       moduleId: module.id,
                                       regionId: sourceSurveyMarker?.regionId ?? null,
                                       categoryId: destCategory?.id || null,
-                                      name: item.name || sourceSurveyMarker?.name || 'Untitled Item',
+                                      name: item.name || sourceSurveyMarker?.name || 'Untitled item',
                                       checklistResponses: {}
                                     };
                                   } else {
@@ -33024,7 +33024,7 @@ ${pageBlocks}
                           onMouseLeave={handleModalOptionMouseLeave}
                         >
                           <div style={{ fontWeight: '500', color: COLORS.modal.textPrimary }}>
-                            {module.name || 'Untitled Module'}
+                            {module.name || 'Untitled module'}
                           </div>
                         </button>
                       ))}
@@ -33083,7 +33083,7 @@ ${pageBlocks}
                       color: COLORS.modal.textPrimary,
                       fontFamily: FONT_FAMILY
                     }}>
-                      Missing Categories Detected
+                      Missing categories detected
                     </h3>
                     <button
                       onClick={() => setTransferState(null)}
@@ -33176,7 +33176,7 @@ ${pageBlocks}
                               bounds: destAnnotation.pdfCoordinates,
                               moduleId: transferState.destModuleId,
                               categoryId: destCategory?.id || null,
-                              name: item.name || sourceSurveyMarker?.name || 'Untitled Item',
+                              name: item.name || sourceSurveyMarker?.name || 'Untitled item',
                               checklistResponses: {}
                             };
                           }
@@ -33272,7 +33272,7 @@ ${pageBlocks}
                   color: COLORS.modal.textPrimary,
                   fontFamily: FONT_FAMILY
                 }}>
-                  Locate Item
+                  Locate item
                 </h2>
                 <button
                   onClick={() => setShowLocateModal(false)}
@@ -33433,7 +33433,7 @@ ${pageBlocks}
                         color: COLORS.modal.textPrimary,
                         marginBottom: '4px'
                       }}>
-                        {surveyMarker.name || 'Untitled Item'}
+                        {surveyMarker.name || 'Untitled item'}
                       </div>
                       <div style={{
                         fontSize: '12px',
@@ -33506,7 +33506,7 @@ ${pageBlocks}
               lineHeight: TYPOGRAPHY.lineHeight.tight,
               fontFamily: FONT_FAMILY
             }}>
-              Choose Export Location
+              Choose export location
             </h2>
             <p style={{
               color: COLORS.modal.textMuted,
@@ -33526,9 +33526,9 @@ ${pageBlocks}
                   try {
                     const defaultName = `${exportPendingData.fileName}_export.xlsx`;
                     const result = await window.electronAPI.saveFile({
-                      title: 'Save Survey Export',
+                      title: 'Save survey export',
                       defaultPath: defaultName,
-                      filters: [{ name: 'Excel Files', extensions: ['xlsx'] }],
+                      filters: [{ name: 'Excel files', extensions: ['xlsx'] }],
                       data: exportPendingData.buffer
                     });
 
@@ -33773,8 +33773,8 @@ ${pageBlocks}
         onConfirm={handleTemplateOverwriteConfirm}
         onCancel={handleTemplateOverwriteCancel}
         fileName={templateOverwriteData?.fileName || ''}
-        existingTemplateName={templateOverwriteData?.existingTemplateName || 'Unknown Template'}
-        currentTemplateName={templateOverwriteData?.currentTemplateName || 'Current Template'}
+        existingTemplateName={templateOverwriteData?.existingTemplateName || 'Unknown template'}
+        currentTemplateName={templateOverwriteData?.currentTemplateName || 'Current template'}
       />
 
       {/* Microsoft Login Modal */}
@@ -33811,7 +33811,7 @@ ${pageBlocks}
               lineHeight: TYPOGRAPHY.lineHeight.tight,
               fontFamily: FONT_FAMILY
             }}>
-              Microsoft Account Required
+              Microsoft account required
             </h2>
             <p style={{
               color: COLORS.modal.textMuted,
@@ -33912,7 +33912,7 @@ ${pageBlocks}
                     e.currentTarget.style.boxShadow = 'none';
                   }}
                 >
-                  Reconnect Microsoft Account
+                  Reconnect Microsoft account
                 </button>
                 <button
                   onClick={() => setShowMSLoginModal(false)}
@@ -33980,7 +33980,7 @@ ${pageBlocks}
                     e.currentTarget.style.boxShadow = 'none';
                   }}
                 >
-                  Connect Microsoft Account
+                  Connect Microsoft account
                 </button>
                 <button
                   onClick={() => {

@@ -134,7 +134,7 @@ export default function ShareModal({
   // that differs from what "Copy link" actually copies.
   const linkText = activeInvite
     ? buildInviteUrl(activeInvite)
-    : `Press Copy link to create a secure ${role} link`;
+    : `Press Copy link to create a secure ${role.toLowerCase()} link`;
 
   if (!open) return null;
 
@@ -144,8 +144,8 @@ export default function ShareModal({
         ? `This share dialog needs a target ${noun} id. Select the ${noun} and share from there.`
         : '');
 
-  const explicitLinkText = `Anyone with this invite link can join as ${role}.`;
-  const freeNote = ' Free recipients enter as Viewer until they upgrade.';
+  const explicitLinkText = `Anyone with this invite link can join as ${role.toLowerCase()}.`;
+  const freeNote = ' Free recipients enter as viewer until they upgrade.';
 
   const copyLink = async () => {
     setError(''); setSuccess('');
@@ -174,7 +174,7 @@ export default function ShareModal({
     if (failed.length) {
       setError(`Sent ${results.length - failed.length} of ${results.length}. First failure: ${failed[0].error || 'unknown'}.`);
     } else {
-      setSuccess(`Sent ${results.length} ${role} invite${results.length === 1 ? '' : 's'}.`);
+      setSuccess(`Sent ${results.length} ${role.toLowerCase()} invite${results.length === 1 ? '' : 's'}.`);
       setEmails('');
     }
   };
@@ -237,7 +237,7 @@ export default function ShareModal({
               rows={3}
               style={{ width: '100%', background: C.deep, border: `1px solid ${C.rule}`, borderRadius: 6, padding: '9px 11px', fontSize: 12.5, fontFamily: 'inherit', color: C.ink, resize: 'vertical', outline: 'none', minHeight: 72, lineHeight: 1.45, boxSizing: 'border-box' }}
             />
-            <div style={{ fontSize: 11, color: C.muted, marginTop: 8, lineHeight: 1.4 }}>Separate addresses with commas. Each invitee gets an email with a link to join as {role}.</div>
+            <div style={{ fontSize: 11, color: C.muted, marginTop: 8, lineHeight: 1.4 }}>Separate addresses with commas. Each invitee gets an email with a link to join as {role.toLowerCase()}.</div>
           </div>
 
           {blockedReason && (
@@ -265,7 +265,7 @@ export default function ShareModal({
             onClick={sendInvite}
             style={{ opacity: busy || !emails.trim() || blockedReason ? 0.45 : 1, cursor: busy || !emails.trim() || blockedReason ? 'not-allowed' : 'pointer', background: C.gold, color: '#15110a', border: 0, borderRadius: 6, padding: '5px 14px', height: 28, fontSize: 11.5, fontWeight: 600, fontFamily: 'inherit' }}
           >
-            {busy ? 'Sending…' : `Send ${role} invite`}
+            {busy ? 'Sending…' : `Send ${role.toLowerCase()} invite`}
           </button>
         </div>
       </div>

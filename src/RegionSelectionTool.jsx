@@ -2533,7 +2533,7 @@ const RegionSelectionTool = ({
         }}
       >
         <div style={{ fontSize: '13px', color: '#fff', marginRight: '6px' }}>
-          Region Selection
+          Region selection
         </div>
 
         {/* Select Button - Separate button for selecting/transforming regions */}
@@ -2786,7 +2786,7 @@ const RegionSelectionTool = ({
                 fontFamily: FONT_FAMILY
               }}
             >
-              Full Page
+              Full page
             </button>
           )}
           <button

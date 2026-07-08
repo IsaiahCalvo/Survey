@@ -123,7 +123,7 @@ const KeyboardShortcutsOverlay = () => {
               fontFamily: TYPOGRAPHY.fontFamily.default,
             }}
           >
-            Keyboard Shortcuts
+            Keyboard shortcuts
           </h2>
           <button
             onClick={() => setIsOpen(false)}

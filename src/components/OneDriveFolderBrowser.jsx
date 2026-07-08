@@ -87,7 +87,7 @@ const OneDriveFolderBrowser = ({
 
   // Navigation state for My Drive
   const [currentPath, setCurrentPath] = useState('/');
-  const [pathHistory, setPathHistory] = useState([{ path: '/', name: 'My Files' }]);
+  const [pathHistory, setPathHistory] = useState([{ path: '/', name: 'My files' }]);
   const [folders, setFolders] = useState([]);
 
   // Navigation state for SharePoint
@@ -236,7 +236,7 @@ const OneDriveFolderBrowser = ({
       setSelectedFolder({
         type: SOURCE_TYPES.MY_DRIVE,
         path: '/',
-        name: 'My Files'
+        name: 'My files'
       });
     }
 
@@ -426,7 +426,7 @@ const OneDriveFolderBrowser = ({
             transition: 'all 0.15s ease',
           }}
         >
-          SharePoint Sites
+          SharePoint sites
         </button>
       </div>
 
@@ -631,7 +631,7 @@ const OneDriveFolderBrowser = ({
             {/* Libraries list */}
             {selectedSite && !selectedLibrary && (
               <>
-                <BackButton onClick={handleBackToSites} label="Back to Sites" />
+                <BackButton onClick={handleBackToSites} label="Back to sites" />
                 <div style={{
                   fontSize: TYPOGRAPHY.fontSize.sm,
                   fontWeight: TYPOGRAPHY.fontWeight.medium,
@@ -697,7 +697,7 @@ const OneDriveFolderBrowser = ({
             {/* Folders within a library */}
             {selectedLibrary && (
               <>
-                <BackButton onClick={handleBackToLibraries} label="Back to Libraries" />
+                <BackButton onClick={handleBackToLibraries} label="Back to libraries" />
 
                 {/* Library breadcrumb */}
                 <div style={{

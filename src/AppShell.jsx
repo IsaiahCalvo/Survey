@@ -272,7 +272,7 @@ export default function App() {
       } else {
         // Web build / no Electron shell — local save wasn't possible either.
         window.dispatchEvent(new CustomEvent('save-log-toast', {
-          detail: { type: 'error', message: 'Save Log unavailable outside desktop app' }
+          detail: { type: 'error', message: 'Save log unavailable outside desktop app' }
         }));
       }
     });
@@ -2039,7 +2039,7 @@ export default function App() {
                       ? bottomToolbarApi.counterSeriesList
                       : [];
                     const activeSeries = seriesList.find((s) => s.seriesId === bottomToolbarApi.activeCounterSeriesId);
-                    const seriesLabel = activeSeries?.label || 'Counter Series';
+                    const seriesLabel = activeSeries?.label || 'Counter series';
                     return (
                       <div data-counter-series-menu style={{ position: 'relative' }}>
                         <button
@@ -2318,7 +2318,7 @@ export default function App() {
                       aria-label="Eraser type"
                       aria-expanded={showEraserTypeMenu}
                     >
-                      {bottomToolbarApi.eraserMode === 'entire' ? 'Full Stroke' : 'Partial Erase'}
+                      {bottomToolbarApi.eraserMode === 'entire' ? 'Full stroke' : 'Partial erase'}
                     </button>
                     {showEraserTypeMenu && (
                       <div style={{
@@ -2335,8 +2335,8 @@ export default function App() {
                         whiteSpace: 'nowrap'
                       }}>
                         {[
-                          ['partial', 'Partial Erase'],
-                          ['entire', 'Full Stroke Erase']
+                          ['partial', 'Partial erase'],
+                          ['entire', 'Full stroke erase']
                         ].map(([value, label]) => {
                           const isOn = bottomToolbarApi.eraserMode === value;
                           return (
@@ -2556,7 +2556,7 @@ export default function App() {
                       title="Arrowhead"
                       aria-label="Arrowhead"
                     >
-                      {ARROWHEAD_STYLE_LABELS[bottomToolbarApi.arrowheadStyle] || 'Solid Triangle'}
+                      {ARROWHEAD_STYLE_LABELS[bottomToolbarApi.arrowheadStyle] || 'Solid triangle'}
                     </button>
                     {showArrowheadMenu && (
                       <div style={{

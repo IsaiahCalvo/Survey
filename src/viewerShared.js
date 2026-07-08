@@ -1570,9 +1570,9 @@ export const hasNameConflict = (
 };
 
 export const ZOOM_MODE_LABELS = {
-  [ZOOM_MODES.FIT_PAGE]: 'Fit Page',
-  [ZOOM_MODES.FIT_WIDTH]: 'Fit Width',
-  [ZOOM_MODES.FIT_HEIGHT]: 'Fit Height',
+  [ZOOM_MODES.FIT_PAGE]: 'Fit page',
+  [ZOOM_MODES.FIT_WIDTH]: 'Fit width',
+  [ZOOM_MODES.FIT_HEIGHT]: 'Fit height',
   [ZOOM_MODES.MANUAL]: 'Manual %'
 };
 
@@ -1925,20 +1925,20 @@ export const loadCallouts = (pdfId) => {
 // Get module name from template (for readable IDs)
 export const getModuleName = (template, moduleId) => {
   const module = template?.modules?.find(m => m.id === moduleId);
-  return module?.name || 'Unknown Module';
+  return module?.name || 'Unknown module';
 };
 
 // Get category name from template
 export const getCategoryName = (template, moduleId, categoryId) => {
   const module = template?.modules?.find(m => m.id === moduleId);
   const category = module?.categories?.find(c => c.id === categoryId);
-  return category?.name || 'Unknown Category';
+  return category?.name || 'Unknown category';
 };
 
 const escapeRegExp = (value = '') => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 export const generateDefaultSurveyMarkerName = (categoryName, surveyMarkers = []) => {
-  const baseName = (categoryName && typeof categoryName === 'string' && categoryName.trim()) ? categoryName.trim() : 'Untitled Category';
+  const baseName = (categoryName && typeof categoryName === 'string' && categoryName.trim()) ? categoryName.trim() : 'Untitled category';
   const pattern = new RegExp(`^${escapeRegExp(baseName)}\\s+(\\d+)$`, 'i');
   let maxNumber = 0;
 
@@ -2158,7 +2158,7 @@ export const migrateLegacySurveyMarkers = (legacySurveyMarkers, items, annotatio
         template,
         surveyMarker.moduleId,
         surveyMarker.categoryId,
-        surveyMarker.name || 'Untitled Item',
+        surveyMarker.name || 'Untitled item',
         1
       );
 

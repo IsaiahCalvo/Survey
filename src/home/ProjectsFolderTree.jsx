@@ -570,7 +570,7 @@ export default function ProjectsFolderTree({
   const subtitle = (
     <span><b>{filtered.length}</b> projects · expand any to see its files and team</span>
   );
-  const actions = <Search placeholder="Search Projects..." value={search} onChange={setSearch} />;
+  const actions = <Search placeholder="Search projects..." value={search} onChange={setSearch} />;
 
   return (
     <HubShell
@@ -592,7 +592,7 @@ export default function ProjectsFolderTree({
               style={{ padding: '4px 8px', fontSize: 11, gap: 4, whiteSpace: 'nowrap', alignSelf: 'flex-start' }}
               onClick={handleNewProject}
             >
-              <Icon name="plus" size={11} />New Project
+              <Icon name="plus" size={11} />New project
             </button>
             <div style={{ display: 'flex', alignItems: 'center', gap: 3, flexWrap: 'nowrap', height: 22, overflow: 'hidden' }}>
               <button
@@ -765,7 +765,7 @@ export default function ProjectsFolderTree({
                   <button className="btn" onClick={() => addFiles(open)}><Icon name="upload" size={12} />Add files</button>
                   {/* Manage Team — opens the Manage Team modal (NOT the share
                       link modal) for the currently open project. */}
-                  <button className="btn" onClick={() => setTeamModalProject(open)}><Icon name="users" size={12} />Manage Team</button>
+                  <button className="btn" onClick={() => setTeamModalProject(open)}><Icon name="users" size={12} />Manage team</button>
                 </div>
               </div>
 
@@ -976,7 +976,7 @@ export default function ProjectsFolderTree({
           style={{ justifyContent: 'center', width: '100%' }}
           onClick={handleNewProject}
         >
-          <Icon name="plus" size={12} />New Project
+          <Icon name="plus" size={12} />New project
         </button>
         {filtered.length === 0 && (
           localProjects.length === 0 ? (
@@ -1189,7 +1189,7 @@ export default function ProjectsFolderTree({
               { label: 'Delete', danger: true, onClick: () => deleteFiles([fileMenu.id]) },
               { label: 'Share', onClick: () => onShareDocument ? onShareDocument([f]) : onShare && onShare(open) },
               {
-                label: locked ? 'Unlock Document' : 'Lock Document',
+                label: locked ? 'Unlock document' : 'Lock document',
                 disabled: !canLock,
                 onClick: () => onLockDocument && onLockDocument(f),
               },

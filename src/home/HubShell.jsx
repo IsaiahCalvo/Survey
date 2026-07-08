@@ -185,12 +185,12 @@ const ProfileMenu = ({ userName, userMeta }) => {
                 <div className="profile-signout-copy">Sign out of Survey?</div>
                 <div className="profile-signout-buttons">
                   <button type="button" onClick={() => setConfirmSignOut(false)}>Cancel</button>
-                  <button type="button" className="danger" onClick={() => { setOpen(false); onSignOut && onSignOut(); }}>Sign Out</button>
+                  <button type="button" className="danger" onClick={() => { setOpen(false); onSignOut && onSignOut(); }}>Sign out</button>
                 </div>
               </div>
             ) : (
               <button className="profile-menu-signout" style={{ ...itemStyle, color: '#cf6f6f' }} onClick={() => setConfirmSignOut(true)}>
-                <Icon name="signout" size={15} color="#cf6f6f" />Sign Out
+                <Icon name="signout" size={15} color="#cf6f6f" />Sign out
               </button>
             )}
           </div>

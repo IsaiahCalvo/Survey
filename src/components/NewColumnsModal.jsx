@@ -125,10 +125,12 @@ const NewColumnsModal = ({
   // Build dynamic title based on change types
   const getModalTitle = () => {
     const parts = [];
-    if (totalNew > 0) parts.push('New Columns');
-    if (totalRemoved > 0) parts.push('Removed Columns');
-    if (hasReordering) parts.push('Reordering');
-    return parts.length > 0 ? `${parts.join(', ')} Detected` : 'Column Changes Detected';
+    if (totalNew > 0) parts.push('new columns');
+    if (totalRemoved > 0) parts.push('removed columns');
+    if (hasReordering) parts.push('reordering');
+    if (parts.length === 0) return 'Column changes detected';
+    const sentence = `${parts.join(', ')} detected`;
+    return sentence.charAt(0).toUpperCase() + sentence.slice(1);
   };
 
   // Build dynamic description
@@ -376,7 +378,7 @@ const NewColumnsModal = ({
               marginBottom: '4px',
               fontFamily: TYPOGRAPHY.fontFamily.default,
             }}>
-              Create New Template
+              Create new template
             </div>
             <div style={{
               fontSize: TYPOGRAPHY.fontSize.sm,
@@ -397,7 +399,7 @@ const NewColumnsModal = ({
                   marginBottom: '4px',
                   fontFamily: TYPOGRAPHY.fontFamily.default,
                 }}>
-                  New Template Name
+                  New template name
                 </div>
                 <input
                   type="text"
@@ -555,7 +557,7 @@ const NewColumnsModal = ({
               e.currentTarget.style.borderColor = COLORS.border.default;
             }}
           >
-            Skip Import
+            Skip import
           </button>
           <button
             onClick={handleConfirm}
@@ -583,7 +585,7 @@ const NewColumnsModal = ({
               e.currentTarget.style.boxShadow = 'none';
             }}
           >
-            Continue Import
+            Continue import
           </button>
         </div>
       </div>

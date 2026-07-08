@@ -138,7 +138,7 @@ function setupAutoUpdater(win) {
         buttons: ['Install', 'Later'],
         defaultId: 0,
         cancelId: 1,
-        title: 'Update Available',
+        title: 'Update available',
         message: `A new version (${info.version}) is available.`,
         detail: 'Download and install it now? The app will restart automatically when done.'
       });
@@ -182,10 +182,10 @@ function setupAutoUpdater(win) {
     try {
       const { response } = await dialog.showMessageBox(win, {
         type: 'info',
-        buttons: ['Restart Now', 'Later'],
+        buttons: ['Restart now', 'Later'],
         defaultId: 0,
         cancelId: 1,
-        title: 'Update Ready',
+        title: 'Update ready',
         message: `Version ${info.version} is ready to install.`,
         detail: 'Restart the app now to finish installing, or close the app later to apply on next launch.'
       });
@@ -459,7 +459,7 @@ function createAppMenu() {
         dialog.showMessageBox(win, {
           type: 'info',
           buttons: ['OK'],
-          title: 'Developer Build',
+          title: 'Developer build',
           message: 'Auto-update only works in installed builds.',
           detail: 'You\'re running the app in development mode, which cannot be updated.'
         });
@@ -475,7 +475,7 @@ function createAppMenu() {
         dialog.showMessageBox(win, {
           type: 'error',
           buttons: ['OK'],
-          title: 'Update Check Failed',
+          title: 'Update check failed',
           message: 'Could not check for updates.',
           detail: err?.message || String(err)
         });
@@ -535,7 +535,7 @@ function createAppMenu() {
           }
         },
         {
-          label: 'Export Annotated PDF…',
+          label: 'Export annotated PDF…',
           accelerator: 'CmdOrCtrl+Shift+E',
           click: () => {
             const win = getTargetWindow();
@@ -567,7 +567,7 @@ function createAppMenu() {
           }
         },
         {
-          label: 'Print PDF with Annotations…',
+          label: 'Print PDF with annotations…',
           accelerator: 'CmdOrCtrl+Shift+P',
           click: () => {
             const win = getTargetWindow();
@@ -579,7 +579,7 @@ function createAppMenu() {
         },
         { type: 'separator' },
         {
-          label: 'Save Log',
+          label: 'Save log',
           accelerator: 'CmdOrCtrl+Shift+L',
           click: () => {
             const win = getTargetWindow();
@@ -810,9 +810,9 @@ function assertAllowedPath(p, { forWrite = false } = {}) {
 
 ipcMain.handle('dialog:openFile', async (event, options = {}) => {
   const { canceled, filePaths } = await dialog.showOpenDialog({
-    title: options.title || 'Open File',
+    title: options.title || 'Open file',
     defaultPath: options.defaultPath,
-    filters: options.filters || [{ name: 'PDF Files', extensions: ['pdf'] }],
+    filters: options.filters || [{ name: 'PDF files', extensions: ['pdf'] }],
     properties: ['openFile']
   });
 

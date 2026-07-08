@@ -151,7 +151,7 @@ class ErrorBoundary extends React.Component {
                     userSelect: 'none',
                   }}
                 >
-                  Error Details
+                  Error details
                 </summary>
                 <pre
                   style={{
@@ -203,7 +203,7 @@ class ErrorBoundary extends React.Component {
                   e.currentTarget.style.background = COLORS.accent.primary;
                 }}
               >
-                Reload Page
+                Reload page
               </button>
               <button
                 onClick={this.handleReset}
@@ -226,7 +226,7 @@ class ErrorBoundary extends React.Component {
                   e.currentTarget.style.background = COLORS.background.elevated;
                 }}
               >
-                Try Again
+                Try again
               </button>
             </div>
           </div>

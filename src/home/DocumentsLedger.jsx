@@ -305,10 +305,10 @@ export default function DocumentsLedger({
             ))}
           </div>
         )}
-        <Search placeholder="Search Documents..." value={search} onChange={setSearch} width="100%" />
+        <Search placeholder="Search documents..." value={search} onChange={setSearch} width="100%" />
       </div>
       <div className="documents-desktop-search">
-        <Search placeholder="Search Documents..." value={search} onChange={setSearch} />
+        <Search placeholder="Search documents..." value={search} onChange={setSearch} />
       </div>
       <button className="btn primary" onClick={() => onUpload && onUpload()}><Icon name="upload" size={12} />Upload</button>
     </>
@@ -611,7 +611,7 @@ export default function DocumentsLedger({
             { label: 'Delete', danger: true, onClick: () => onDelete && onDelete([doc.raw]) },
             { label: 'Share', onClick: () => onShare && onShare([doc.raw]) },
             {
-              label: locked ? 'Unlock Document' : 'Lock Document',
+              label: locked ? 'Unlock document' : 'Lock document',
               disabled: !canLock,
               onClick: () => onLockDocument && onLockDocument(doc.raw),
             },

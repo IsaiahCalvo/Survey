@@ -1039,7 +1039,7 @@ const BookmarksPanel = ({
 
     onBookmarkCreate({
       id: generateId(),
-      name: 'New Bookmark',
+      name: 'New bookmark',
       type: 'bookmark',
       pageIds: initialPage ? [initialPage] : [],
       parentId: folderId,
@@ -1542,7 +1542,7 @@ const BookmarksPanel = ({
             onMouseLeave={(e) => e.currentTarget.style.background = '#d8a84e'}
           >
             <Icon name="plus" size={14} color="#15110a" />
-            Add Bookmark
+            Add bookmark
           </button>
           {showCreateMenu && (
             <div style={{
@@ -1578,7 +1578,7 @@ const BookmarksPanel = ({
                 onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
               >
                 <Icon name="folder" size={14} color="#8d96a6" />
-                New Bookmark Group
+                New bookmark group
               </button>
               <div style={{ padding: '8px 12px', borderTop: '1px solid #2a3140' }}>
                 <input
@@ -1651,7 +1651,7 @@ const BookmarksPanel = ({
                   onMouseEnter={(e) => e.currentTarget.style.background = '#3a4252'}
                   onMouseLeave={(e) => e.currentTarget.style.background = '#2a3140'}
                 >
-                  Current Page
+                  Current page
                 </button>
                 <button
                   onClick={handleCreateBookmark}
@@ -1670,7 +1670,7 @@ const BookmarksPanel = ({
                   onMouseEnter={(e) => e.currentTarget.style.background = '#b6904a'}
                   onMouseLeave={(e) => e.currentTarget.style.background = '#d8a84e'}
                 >
-                  Create Bookmark
+                  Create bookmark
                 </button>
               </div>
             </div>
@@ -1716,7 +1716,7 @@ const BookmarksPanel = ({
                 fontWeight: '600',
                 color: '#e8e2d4'
               }}>
-                Create Bookmark Group
+                Create bookmark group
               </h3>
               <button
                 onClick={() => {
@@ -1756,7 +1756,7 @@ const BookmarksPanel = ({
                 color: '#8d96a6',
                 marginBottom: '8px'
               }}>
-                Group Name
+                Group name
               </label>
               <input
                 type="text"
@@ -1815,7 +1815,7 @@ const BookmarksPanel = ({
                   onMouseLeave={(e) => e.currentTarget.style.background = '#2a3140'}
                 >
                   <Icon name="plus" size={12} />
-                  New Bookmark
+                  New bookmark
                 </button>
               </div>
 
@@ -1954,7 +1954,7 @@ const BookmarksPanel = ({
                   color: '#8d96a6',
                   marginBottom: '8px'
                 }}>
-                  Add Existing Bookmarks
+                  Add existing bookmarks
                 </label>
                 <div style={{
                   maxHeight: '150px',
@@ -2053,7 +2053,7 @@ const BookmarksPanel = ({
                 onMouseEnter={(e) => e.currentTarget.style.background = '#b6904a'}
                 onMouseLeave={(e) => e.currentTarget.style.background = '#d8a84e'}
               >
-                Create Group
+                Create group
               </button>
             </div>
           </div>
@@ -2101,7 +2101,7 @@ const BookmarksPanel = ({
                 fontWeight: '600',
                 color: '#e8e2d4'
               }}>
-                Add Bookmarks to Group
+                Add bookmarks to group
               </h3>
               <button
                 onClick={() => {
@@ -2144,7 +2144,7 @@ const BookmarksPanel = ({
                     color: '#8d96a6',
                     marginBottom: '8px'
                   }}>
-                    Group Name
+                    Group name
                   </label>
                   <div style={{
                     padding: '10px 12px',
@@ -2195,7 +2195,7 @@ const BookmarksPanel = ({
                   onMouseLeave={(e) => e.currentTarget.style.background = '#2a3140'}
                 >
                   <Icon name="plus" size={12} />
-                  New Bookmark
+                  New bookmark
                 </button>
               </div>
 
@@ -2334,7 +2334,7 @@ const BookmarksPanel = ({
                   color: '#8d96a6',
                   marginBottom: '8px'
                 }}>
-                  Add Existing Bookmarks
+                  Add existing bookmarks
                 </label>
                 <div style={{
                   maxHeight: '150px',
@@ -2440,7 +2440,7 @@ const BookmarksPanel = ({
                 onMouseEnter={(e) => e.currentTarget.style.background = '#b6904a'}
                 onMouseLeave={(e) => e.currentTarget.style.background = '#d8a84e'}
               >
-                Add Bookmarks
+                Add bookmarks
               </button>
             </div>
           </div>

@@ -190,7 +190,7 @@ const AnnotationPropertiesPanel = ({
   const typeLabel = (() => {
     switch (targetKind) {
       case 'callout': return 'Callout';
-      case 'counter': return 'Counter Pin';
+      case 'counter': return 'Counter pin';
       case 'rect': return 'Rectangle';
       case 'ellipse': return 'Circle';
       case 'triangle': return 'Triangle';

@@ -818,7 +818,7 @@ export default function RevisionsPanel({
           justifyContent: 'space-between',
         }}
       >
-        <strong style={{ fontSize: 14 }}>Version History</strong>
+        <strong style={{ fontSize: 14 }}>Version history</strong>
         {!embedded && (
           <button
             type="button"

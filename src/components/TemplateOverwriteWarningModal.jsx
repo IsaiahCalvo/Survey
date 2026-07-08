@@ -15,8 +15,8 @@ const TemplateOverwriteWarningModal = ({
   onConfirm,
   onCancel,
   fileName = '',
-  existingTemplateName = 'Unknown Template',
-  currentTemplateName = 'Current Template',
+  existingTemplateName = 'Unknown template',
+  currentTemplateName = 'Current template',
 }) => {
   const previouslyFocusedRef = useRef(null);
 
@@ -95,7 +95,7 @@ const TemplateOverwriteWarningModal = ({
             color: COLORS.text.secondary,
             fontFamily: TYPOGRAPHY.fontFamily.default,
           }}>
-            Different Template Detected
+            Different template detected
           </h3>
         </div>
 
@@ -126,7 +126,7 @@ const TemplateOverwriteWarningModal = ({
               marginBottom: '4px',
               fontFamily: TYPOGRAPHY.fontFamily.default,
             }}>
-              Existing File Template
+              Existing file template
             </div>
             <div style={{
               fontSize: TYPOGRAPHY.fontSize.md,
@@ -149,7 +149,7 @@ const TemplateOverwriteWarningModal = ({
               marginBottom: '4px',
               fontFamily: TYPOGRAPHY.fontFamily.default,
             }}>
-              Your Current Template
+              Your current template
             </div>
             <div style={{
               fontSize: TYPOGRAPHY.fontSize.md,
@@ -236,7 +236,7 @@ const TemplateOverwriteWarningModal = ({
               e.currentTarget.style.boxShadow = 'none';
             }}
           >
-            Overwrite File
+            Overwrite file
           </button>
         </div>
       </div>

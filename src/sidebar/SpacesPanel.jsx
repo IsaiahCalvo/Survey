@@ -377,8 +377,8 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
                     onAssignPages(space.id);
                   }}
                   className="space-add-pages-icon-button"
-                  title="Add Pages"
-                  aria-label="Add Pages"
+                  title="Add pages"
+                  aria-label="Add pages"
                 >
                   <Icon name="plus" size={13} />
                 </button>
@@ -631,8 +631,8 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
                               const isDisabled = !isActive || activeSpaceId === null;
                               const title = !isDisabled
                                 ? (isSurveyContext
-                                  ? (visibilityState ? 'Hide Survey Annotations' : 'Show Survey Annotations')
-                                  : (visibilityState ? 'Hide Canvas Annotations' : 'Show Canvas Annotations'))
+                                  ? (visibilityState ? 'Hide survey annotations' : 'Show survey annotations')
+                                  : (visibilityState ? 'Hide canvas annotations' : 'Show canvas annotations'))
                                 : 'Toggle is only available when a space is active';
 
                               return (
@@ -1266,8 +1266,8 @@ const SpacesPanel = ({
             type="button"
             onClick={handleCreateSpace}
             className="survey-marker-category-create-button"
-            title={features?.advancedSurvey ? 'Create Space' : 'Upgrade to Pro to create Spaces'}
-            aria-label={features?.advancedSurvey ? 'Create Space' : 'Upgrade to Pro to create Spaces'}
+            title={features?.advancedSurvey ? 'Create space' : 'Upgrade to Pro to create spaces'}
+            aria-label={features?.advancedSurvey ? 'Create space' : 'Upgrade to Pro to create spaces'}
           >
             <Icon name="plus" size={14} />
           </button>
@@ -1287,7 +1287,7 @@ const SpacesPanel = ({
               onClick={() => {
                 if (!spacesExportTarget) return;
                 if (!features?.excelExport) {
-                  showToast('Exporting Spaces is a Pro feature.', 'error');
+                  showToast('Exporting spaces is a Pro feature.', 'error');
                   return;
                 }
                 setIsSpacesExportMenuOpen((open) => !open);

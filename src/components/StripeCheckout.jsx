@@ -59,7 +59,7 @@ const StripeCheckout = (props) => {
                 disabled={loading}
                 className={props.className || 'px-4 py-2 bg-blue-600 text-white rounded'}
             >
-                {loading ? 'Processing...' : (props.children || 'Subscribe Now')}
+                {loading ? 'Processing...' : (props.children || 'Subscribe now')}
             </button>
             {error && (
                 <div style={{ color: 'red', marginTop: '8px', fontSize: '13px' }}>

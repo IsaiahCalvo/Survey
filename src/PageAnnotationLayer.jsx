@@ -248,11 +248,11 @@ const DRAWING_TOOLS = new Set(['pen', 'highlighter']);
 
 export const ARROWHEAD_STYLE_LABELS = {
   [ARROWHEAD_STYLES.NONE]: 'None',
-  [ARROWHEAD_STYLES.SOLID_TRIANGLE]: 'Solid Triangle',
-  [ARROWHEAD_STYLES.V_SHAPE]: 'V-Shape',
-  [ARROWHEAD_STYLES.OPEN_CIRCLE]: 'Open Circle',
-  [ARROWHEAD_STYLES.OPEN_TRIANGLE]: 'Open Triangle',
-  [ARROWHEAD_STYLES.HORIZONTAL_LINE]: 'Horizontal Line'
+  [ARROWHEAD_STYLES.SOLID_TRIANGLE]: 'Solid triangle',
+  [ARROWHEAD_STYLES.V_SHAPE]: 'V-shape',
+  [ARROWHEAD_STYLES.OPEN_CIRCLE]: 'Open circle',
+  [ARROWHEAD_STYLES.OPEN_TRIANGLE]: 'Open triangle',
+  [ARROWHEAD_STYLES.HORIZONTAL_LINE]: 'Horizontal line'
 };
 
 const PDF_LINE_ENDING_TO_ARROW_STYLE = {
@@ -9160,7 +9160,7 @@ const PageAnnotationLayer = memo(({
                     onMouseEnter={(e) => e.currentTarget.style.background = '#3a3a3a'}
                     onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
                   >
-                    Paste Page
+                    Paste page
                   </button>
                   <div style={{ height: '1px', background: '#444', margin: '4px 0' }} />
                 </>
@@ -9184,7 +9184,7 @@ const PageAnnotationLayer = memo(({
                 onMouseEnter={(e) => e.currentTarget.style.background = '#3a3a3a'}
                 onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
               >
-                Duplicate Page
+                Duplicate page
               </button>
               <div style={{ height: '1px', background: '#444', margin: '4px 0' }} />
               <button
@@ -9206,7 +9206,7 @@ const PageAnnotationLayer = memo(({
                 onMouseEnter={(e) => e.currentTarget.style.background = '#3a3a3a'}
                 onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
               >
-                Rotate Clockwise
+                Rotate clockwise
               </button>
               <button
                 onClick={() => { onRotatePageCCW(pageNumber); closeContextMenu(); }}
@@ -9249,7 +9249,7 @@ const PageAnnotationLayer = memo(({
                 onMouseEnter={(e) => e.currentTarget.style.background = '#3a3a3a'}
                 onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
               >
-                Insert Blank Page
+                Insert blank page
               </button>
             </>
           )}
@@ -9311,7 +9311,7 @@ const PageAnnotationLayer = memo(({
               userSelect: 'none'
             }}
           >
-            <h3 style={{ margin: 0, fontSize: 14, fontWeight: 600, color: '#ddd' }}>Edit Property</h3>
+            <h3 style={{ margin: 0, fontSize: 14, fontWeight: 600, color: '#ddd' }}>Edit property</h3>
             <button
               onClick={cancelEdit}
               onMouseDown={(e) => {
@@ -9428,7 +9428,7 @@ const PageAnnotationLayer = memo(({
                     <div style={{ display: 'flex', alignItems: 'center', gap: '4px', position: 'relative' }}>
                       <button
                         onClick={() => setEditColorField(editColorField === 'fill' ? null : 'fill')}
-                        title="Text Color"
+                        title="Text color"
                         style={{ width: '24px', height: '24px', borderRadius: '4px', border: '1px solid #555', padding: 0, cursor: 'pointer', background: editValues.fill || '#000000' }}
                       />
                       {editColorField === 'fill' && (
@@ -9448,7 +9448,7 @@ const PageAnnotationLayer = memo(({
                       value={editValues.fontFamily || 'Arial'}
                       onChange={(e) => setEditValues(prev => ({ ...prev, fontFamily: e.target.value }))}
                       style={{ height: '24px', borderRadius: '4px', border: '1px solid #555', fontSize: '12px', cursor: 'pointer', background: '#333', color: '#ddd' }}
-                      title="Font Family"
+                      title="Font family"
                     >
                       <option value="Arial">Arial</option>
                       <option value="Helvetica">Helvetica</option>
@@ -9466,7 +9466,7 @@ const PageAnnotationLayer = memo(({
                       value={editValues.fontSize || 16}
                       onChange={(e) => setEditValues(prev => ({ ...prev, fontSize: parseInt(e.target.value, 10) }))}
                       style={{ width: '50px', height: '24px', borderRadius: '4px', border: '1px solid #555', padding: '0 4px', fontSize: '12px', background: '#333', color: '#ddd' }}
-                      title="Font Size"
+                      title="Font size"
                     />
 
                     {/* Bold */}
@@ -9527,7 +9527,7 @@ const PageAnnotationLayer = memo(({
                       }}
                     />
                     <span style={{ fontSize: '12px', fontFamily: 'monospace', color: '#ddd' }}>
-                      {editValues.fillColor === 'transparent' ? 'No Fill' : (editValues.fillColor || '#ffffff').toUpperCase()}
+                      {editValues.fillColor === 'transparent' ? 'No fill' : (editValues.fillColor || '#ffffff').toUpperCase()}
                     </span>
                     <button
                       onClick={() => setEditValues(prev => ({ ...prev, fillColor: 'transparent' }))}
@@ -9537,7 +9537,7 @@ const PageAnnotationLayer = memo(({
                         color: editValues.fillColor === 'transparent' ? 'white' : '#ddd',
                         cursor: 'pointer', fontSize: '11px'
                       }}
-                    >No Fill</button>
+                    >No fill</button>
                     {editColorField === 'fillColor' && (
                       <div style={{ position: 'absolute', top: '36px', left: 0, zIndex: 10001 }}>
                         <CompactColorPicker

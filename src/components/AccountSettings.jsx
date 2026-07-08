@@ -393,13 +393,13 @@ export const AccountSettings = ({ isOpen, onClose }) => {
               onClick={() => setActiveTab('connected-services')}
               className={`account-sidebar-btn ${activeTab === 'connected-services' ? 'active' : ''}`}
             >
-              Connected Services
+              Connected services
             </button>
             <button
               onClick={() => setActiveTab('subscription')}
               className={`account-sidebar-btn ${activeTab === 'subscription' ? 'active' : ''}`}
             >
-              Manage Subscription
+              Manage subscription
             </button>
           </div>
 
@@ -412,20 +412,20 @@ export const AccountSettings = ({ isOpen, onClose }) => {
               <>
                 {/* Profile Section */}
                 <section className="account-section">
-                  <h3>Profile Information</h3>
+                  <h3>Profile information</h3>
 
                   {!isEditing ? (
                     /* View Mode */
                     <div>
                       <div className="account-form-group">
-                        <label>First Name</label>
+                        <label>First name</label>
                         <div className={`account-field-display ${!firstName ? 'account-field-display-empty' : ''}`}>
                           {firstName || 'Not set'}
                         </div>
                       </div>
 
                       <div className="account-form-group">
-                        <label>Last Name</label>
+                        <label>Last name</label>
                         <div className={`account-field-display ${!lastName ? 'account-field-display-empty' : ''}`}>
                           {lastName || 'Not set'}
                         </div>
@@ -445,7 +445,7 @@ export const AccountSettings = ({ isOpen, onClose }) => {
                         onClick={() => setIsEditing(true)}
                         className="account-btn-primary"
                       >
-                        Edit Profile
+                        Edit profile
                       </button>
                     </div>
                   ) : (
@@ -453,7 +453,7 @@ export const AccountSettings = ({ isOpen, onClose }) => {
                     <form onSubmit={handleSaveChanges}>
                       <div className="account-form-row">
                         <div className="account-form-group">
-                          <label htmlFor="firstName">First Name</label>
+                          <label htmlFor="firstName">First name</label>
                           <input
                             id="firstName"
                             type="text"
@@ -466,7 +466,7 @@ export const AccountSettings = ({ isOpen, onClose }) => {
                         </div>
 
                         <div className="account-form-group">
-                          <label htmlFor="lastName">Last Name</label>
+                          <label htmlFor="lastName">Last name</label>
                           <input
                             id="lastName"
                             type="text"
@@ -498,14 +498,14 @@ export const AccountSettings = ({ isOpen, onClose }) => {
 
                       <div className="account-subsection">
                         <div className="account-subsection-header">
-                          <div className="account-subsection-title">Change Password (Optional)</div>
+                          <div className="account-subsection-title">Change password (optional)</div>
                           <p className="account-subsection-description">
                             Leave blank if you don't want to change your password
                           </p>
                         </div>
 
                         <div className="account-form-group">
-                          <label htmlFor="currentPassword">Current Password</label>
+                          <label htmlFor="currentPassword">Current password</label>
                           <input
                             id="currentPassword"
                             type="password"
@@ -518,7 +518,7 @@ export const AccountSettings = ({ isOpen, onClose }) => {
                         </div>
 
                         <div className="account-form-group">
-                          <label htmlFor="newPassword">New Password</label>
+                          <label htmlFor="newPassword">New password</label>
                           <input
                             id="newPassword"
                             type="password"
@@ -534,7 +534,7 @@ export const AccountSettings = ({ isOpen, onClose }) => {
                         </div>
 
                         <div className="account-form-group">
-                          <label htmlFor="confirmPassword">Confirm New Password</label>
+                          <label htmlFor="confirmPassword">Confirm new password</label>
                           <input
                             id="confirmPassword"
                             type="password"
@@ -567,7 +567,7 @@ export const AccountSettings = ({ isOpen, onClose }) => {
 
                       <div className="account-btn-group">
                         <button type="submit" className="account-btn-primary" disabled={loading}>
-                          {loading ? 'Saving...' : 'Save Changes'}
+                          {loading ? 'Saving...' : 'Save changes'}
                         </button>
                         <button
                           type="button"
@@ -593,7 +593,7 @@ export const AccountSettings = ({ isOpen, onClose }) => {
                         onClick={() => setShowDeleteConfirm(true)}
                         disabled={loading}
                       >
-                        Delete Account
+                        Delete account
                       </button>
                       <p className="account-danger-zone-description">
                         Permanently delete your account. This action cannot be undone.
@@ -633,7 +633,7 @@ export const AccountSettings = ({ isOpen, onClose }) => {
                     className="account-btn-secondary account-btn-secondary-full"
                     onClick={handleSignOut}
                   >
-                    Sign Out
+                    Sign out
                   </button>
                 </section>
                   </>
@@ -649,7 +649,7 @@ export const AccountSettings = ({ isOpen, onClose }) => {
                     onClick={() => setSubscriptionViewTab('manage')}
                     className={`account-subscription-tab ${subscriptionViewTab === 'manage' ? 'active' : ''}`}
                   >
-                    Manage Subscription
+                    Manage subscription
                   </button>
                   <button
                     onClick={() => setSubscriptionViewTab('usage')}
@@ -832,25 +832,25 @@ export const AccountSettings = ({ isOpen, onClose }) => {
                         </div>
                         <div className="account-subscription-features">
                           <ul>
-                            <li>1 Project</li>
-                            <li>5 Documents</li>
-                            <li>100MB Storage</li>
-                            <li>Basic Annotations</li>
-                            <li>PDF Viewer</li>
+                            <li>1 project</li>
+                            <li>5 documents</li>
+                            <li>100MB storage</li>
+                            <li>Basic annotations</li>
+                            <li>PDF viewer</li>
                           </ul>
                         </div>
                         <div className="account-subscription-actions">
                           {subscription?.tier === 'free' ? (
                             <button className="account-btn-outline-green" disabled>
-                              Current Plan
+                              Current plan
                             </button>
                           ) : subscription?.tier === 'developer' ? (
                             <button className="account-btn-secondary" disabled style={{ opacity: 0.5 }}>
-                              Developer Account
+                              Developer account
                             </button>
                           ) : (
                             <button className="account-btn-secondary" disabled style={{ opacity: 0.5 }}>
-                              Downgrade Available
+                              Downgrade available
                             </button>
                           )}
                         </div>
@@ -887,27 +887,27 @@ export const AccountSettings = ({ isOpen, onClose }) => {
                         </div>
                         <div className="account-subscription-features">
                           <ul>
-                            <li>Unlimited Projects</li>
-                            <li>Unlimited Documents</li>
+                            <li>Unlimited projects</li>
+                            <li>Unlimited documents</li>
                             <li>10GB Storage</li>
-                            <li>Survey Tools</li>
+                            <li>Survey tools</li>
                             <li>Templates & Regions</li>
-                            <li>Excel Export</li>
-                            <li>OneDrive Integration</li>
+                            <li>Excel export</li>
+                            <li>OneDrive integration</li>
                           </ul>
                         </div>
                         <div className="account-subscription-actions">
                           {subscription?.tier === 'pro' ? (
                             <button className="account-btn-outline-green" disabled>
-                              Current Plan
+                              Current plan
                             </button>
                           ) : subscription?.tier === 'developer' ? (
                             <button className="account-btn-secondary" disabled style={{ opacity: 0.5 }}>
-                              Developer Account
+                              Developer account
                             </button>
                           ) : subscription?.tier === 'enterprise' ? (
                             <button className="account-btn-secondary" disabled style={{ opacity: 0.5 }}>
-                              On Higher Plan
+                              On higher plan
                             </button>
                           ) : (
                             <StripeCheckout
@@ -915,7 +915,7 @@ export const AccountSettings = ({ isOpen, onClose }) => {
                               billingPeriod={billingPeriod}
                               className="account-btn-purple"
                             >
-                              {billingPeriod === 'annual' ? 'Start Annual Trial' : 'Start 7-Day Trial'}
+                              {billingPeriod === 'annual' ? 'Start annual trial' : 'Start 7-day trial'}
                             </StripeCheckout>
                           )}
                         </div>
@@ -938,29 +938,29 @@ export const AccountSettings = ({ isOpen, onClose }) => {
                         <div className="account-subscription-features">
                           <ul>
                             <li>Everything in Pro</li>
-                            <li>Team Collaboration</li>
+                            <li>Team collaboration</li>
                             <li>Real-time Editing</li>
                             <li>1TB Team Storage</li>
                             <li>SSO & Admin Tools</li>
-                            <li>Priority Support</li>
-                            <li>Custom Integrations</li>
+                            <li>Priority support</li>
+                            <li>Custom integrations</li>
                           </ul>
                         </div>
                         <div className="account-subscription-actions">
                           {subscription?.tier === 'enterprise' ? (
                             <button className="account-btn-outline-green" disabled>
-                              Current Plan
+                              Current plan
                             </button>
                           ) : subscription?.tier === 'developer' ? (
                             <button className="account-btn-secondary" disabled style={{ opacity: 0.5 }}>
-                              Developer Account
+                              Developer account
                             </button>
                           ) : (
                             <button
                               className="account-btn-secondary"
                               onClick={() => window.open('mailto:support@yourcompany.com?subject=Enterprise Plan Inquiry', '_blank')}
                             >
-                              Contact Sales
+                              Contact sales
                             </button>
                           )}
                         </div>
@@ -978,7 +978,7 @@ export const AccountSettings = ({ isOpen, onClose }) => {
 
             {activeTab === 'connected-services' && (
               <section className="account-section">
-                <h3>Connected Services</h3>
+                <h3>Connected services</h3>
                 <p className="account-section-description">
                   Manage your connections to external services.
                 </p>

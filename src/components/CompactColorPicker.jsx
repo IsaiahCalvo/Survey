@@ -345,7 +345,7 @@ const CompactColorPicker = ({
                                 backgroundPosition: '0 0, 0 4px, 4px -4px, -4px 0'
                             }
                             : (matchBg || { background: c });
-                        const title = isMatchSlot ? 'Match Fill' : (isTransparent ? 'Transparent' : c);
+                        const title = isMatchSlot ? 'Match fill' : (isTransparent ? 'Transparent' : c);
                         return (
                             <button
                                 key={isMatchSlot ? '__match__' : c}

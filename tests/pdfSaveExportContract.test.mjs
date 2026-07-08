@@ -149,12 +149,12 @@ test('Electron File menu wires the annotated PDF export path with the documented
     false,
     'File menu export item must not use the bare ambiguous "Export" label (KAL-51)',
   );
-  assert.match(ELECTRON_MAIN_SOURCE, /label:\s*'Export Annotated PDF/);
+  assert.match(ELECTRON_MAIN_SOURCE, /label:\s*'Export annotated PDF/);
 });
 
 test('current print-with-annotations path prints regular app annotations through flattened temporary PDF bytes', () => {
   assert.match(ELECTRON_MAIN_SOURCE, /label:\s*'Print PDF…'/);
-  assert.match(ELECTRON_MAIN_SOURCE, /label:\s*'Print PDF with Annotations…'/);
+  assert.match(ELECTRON_MAIN_SOURCE, /label:\s*'Print PDF with annotations…'/);
   assert.equal(
     ELECTRON_MAIN_SOURCE.includes("label: 'Print with Markup"),
     false,

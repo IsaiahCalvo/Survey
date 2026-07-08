@@ -200,7 +200,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
         ...config,
         id: templateId,
         supabaseId: templateRow.id,
-        name: config.name || templateRow.name || 'Untitled Template',
+        name: config.name || templateRow.name || 'Untitled template',
         createdAt: config.createdAt || templateRow.created_at || templateRow.updated_at || new Date().toISOString(),
         updatedAt: config.updatedAt || templateRow.updated_at || config.createdAt || templateRow.created_at || new Date().toISOString()
       };
@@ -406,8 +406,8 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
       try {
         perfUpload.start('electron-dialog');
         const result = await window.electronAPI.openFile({
-          title: 'Open PDF Document',
-          filters: [{ name: 'PDF Files', extensions: ['pdf'] }]
+          title: 'Open PDF document',
+          filters: [{ name: 'PDF files', extensions: ['pdf'] }]
         });
         perfUpload.mark('electron-dialog', 'Dialog closed');
 

@@ -1180,8 +1180,8 @@ const SurveySpacesRail = ({
                                   type="button"
                                   onClick={createCategory}
                                   className="survey-marker-category-create-button"
-                                  title="Create Category"
-                                  aria-label="Create Category"
+                                  title="Create category"
+                                  aria-label="Create category"
                                 >
                                   <Icon name="plus" size={14} />
                                 </button>
@@ -1233,7 +1233,7 @@ const SurveySpacesRail = ({
                                       style={{ cursor: 'pointer' }}
                                     />
                                     <span style={{ color: '#e8e2d4', fontSize: '13px', fontWeight: '400' }}>
-                                      Select All
+                                      Select all
                                     </span>
                                   </label>
                                 );
@@ -1602,7 +1602,7 @@ const SurveySpacesRail = ({
                                             category
                                             onClick={toggleCategorySelection}
                                             title={isCategorySelectionSelected ? 'Deselect category' : 'Select category'}
-                                            ariaLabel={`${isCategorySelectionSelected ? 'Deselect' : 'Select'} ${category.name || 'Untitled Category'}`}
+                                            ariaLabel={`${isCategorySelectionSelected ? 'Deselect' : 'Select'} ${category.name || 'Untitled category'}`}
                                           />
                                         ) : (
                                           <DragRearrangeHandle
@@ -1640,7 +1640,7 @@ const SurveySpacesRail = ({
                                               }}
                                             >
                                               <span className="survey-marker-category-main-label">
-                                                {category.name || 'Untitled Category'}
+                                                {category.name || 'Untitled category'}
                                               </span>
                                               <span
                                                 className="survey-marker-category-main-count"
@@ -1850,7 +1850,7 @@ const SurveySpacesRail = ({
                                           {categorySurveyMarkers.map((surveyMarker, surveyMarkerIndex) => {
                                             const annotationId = surveyMarker.id;
                                             const isSurveyMarkerExpanded = expandedSurveyMarkers[annotationId];
-                                            const baseCategoryName = category?.name?.trim() || 'Untitled Category';
+                                            const baseCategoryName = category?.name?.trim() || 'Untitled category';
                                             const fallbackName = `${baseCategoryName} ${surveyMarkerIndex + 1}`;
                                             const surveyMarkerName = surveyMarkers[annotationId]?.name || surveyMarker.name || fallbackName;
                                             const entityDropdownId = `${annotationId}:entity`;
@@ -2775,7 +2775,7 @@ const SurveySpacesRail = ({
                                       event.currentTarget.style.borderColor = '#d8a84e';
                                     }}
                                   >
-                                    Create Category
+                                    Create category
                                   </button>
                                 )}
                               </div>
@@ -2892,7 +2892,7 @@ const SurveySpacesRail = ({
                                       textOverflow: 'ellipsis',
                                       whiteSpace: 'nowrap'
                                     }}>
-                                      {template.name || 'Untitled Template'}
+                                      {template.name || 'Untitled template'}
                                     </span>
                                     <span style={{ color: '#8d96a6', fontSize: '11px', fontWeight: 500 }}>
                                       {moduleCount} module{moduleCount === 1 ? '' : 's'}

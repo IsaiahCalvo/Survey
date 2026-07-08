@@ -220,7 +220,7 @@ export default function SaveLogBanner() {
       }
     }
 
-    setResult({ message: 'Save Log unavailable in this build', url: null });
+    setResult({ message: 'Save log unavailable in this build', url: null });
     setState('error');
   }, [dismiss, savePushFailureSnapshot]);
 

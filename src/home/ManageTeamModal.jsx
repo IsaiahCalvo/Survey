@@ -698,7 +698,7 @@ export default function ManageTeamModal({ open, onClose, project, members }) {
                   {!editMode && openMenu === m.id && (
                     <div onClick={(e) => e.stopPropagation()} style={{ position: "absolute", right: 14, top: 38, zIndex: 20, background: INK_700, border: `1px solid ${INK_500}`, borderRadius: 8, padding: 4, minWidth: 150, boxShadow: "0 12px 30px rgba(0,0,0,0.45)" }}>
                       {[
-                        { label: "Invite User", onClick: () => { setOpenMenu(null); setInviteOpen(true); } },
+                        { label: "Invite user", onClick: () => { setOpenMenu(null); setInviteOpen(true); } },
                         ...(m.isCreator ? [] : [{ label: "Change role", onClick: () => { setOpenMenu(null); setEditMode(true); setOpenRoleSel(m.id); } }]),
                         { label: "View activity", onClick: () => { setOpenMenu(null); setActivityFor(m); } },
                         { label: "Copy email", disabled: !m.email, onClick: () => { setOpenMenu(null); if (navigator.clipboard && m.email) navigator.clipboard.writeText(m.email); } },

@@ -25,8 +25,8 @@ const FONT_FAMILY = '-apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pr
 const HistoryButton = ({ isActive, onClick }) => (
   <button
     type="button"
-    title="Version History"
-    aria-label="Version History"
+    title="Version history"
+    aria-label="Version history"
     onClick={onClick}
     style={{
       width: '28px',
@@ -182,7 +182,7 @@ const PDFSidebar = React.forwardRef(({
   // tab content carries the sync status chip + live presence row instead.
   const tabs = [
     { id: 'pages', label: 'Pages', icon: 'pages' },
-    { id: 'search', label: 'Search Text', icon: 'search' },
+    { id: 'search', label: 'Search text', icon: 'search' },
     { id: 'bookmarks', label: 'Bookmarks', icon: 'bookmark' },
     { id: 'spaces', label: 'Spaces', icon: 'layers' }
   ];
@@ -254,7 +254,7 @@ const PDFSidebar = React.forwardRef(({
             `}</style>
             {tabs.concat(
               typeof window !== 'undefined' && window.Capacitor?.isNativePlatform?.()
-                ? [{ id: '__savelog', label: 'Save Log', icon: 'document' }]
+                ? [{ id: '__savelog', label: 'Save log', icon: 'document' }]
                 : []
             ).map(tab => {
               const isActive = activeTab === tab.id;
@@ -472,7 +472,7 @@ const PDFSidebar = React.forwardRef(({
         }}>
           {tabs.concat(
             typeof window !== 'undefined' && window.Capacitor?.isNativePlatform?.()
-              ? [{ id: '__savelog', label: 'Save Log', icon: 'document' }]
+              ? [{ id: '__savelog', label: 'Save log', icon: 'document' }]
               : []
           ).map(tab => (
             <div

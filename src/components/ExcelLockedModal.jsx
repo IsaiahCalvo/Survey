@@ -129,7 +129,7 @@ const ExcelLockedModal = ({
             marginBottom: '4px',
             fontFamily: TYPOGRAPHY.fontFamily.default,
           }}>
-            File Location
+            File location
           </div>
           <div style={{
             fontSize: TYPOGRAPHY.fontSize.md,
@@ -191,7 +191,7 @@ const ExcelLockedModal = ({
               e.currentTarget.style.boxShadow = 'none';
             }}
           >
-            Try Again
+            Try again
           </button>
         </div>
       </div>

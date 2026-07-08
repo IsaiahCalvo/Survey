@@ -196,11 +196,11 @@ export const AuthModal = ({ isOpen, onClose, onDismiss }) => {
 
         <div className="auth-modal-header">
           <h2>
-            {mode === 'login' && 'Welcome Back'}
-            {mode === 'signup' && 'Create Account'}
-            {mode === 'confirm' && 'Check Your Email'}
-            {mode === 'sso' && 'Company Sign-In'}
-            {mode === 'reset' && 'Reset Password'}
+            {mode === 'login' && 'Welcome back'}
+            {mode === 'signup' && 'Create account'}
+            {mode === 'confirm' && 'Check your email'}
+            {mode === 'sso' && 'Company sign-in'}
+            {mode === 'reset' && 'Reset password'}
           </h2>
           <p className="auth-modal-subtitle">
             {mode === 'login' && 'Sign in to save and sync your work'}
@@ -255,7 +255,7 @@ export const AuthModal = ({ isOpen, onClose, onDismiss }) => {
           {mode === 'signup' && (
             <>
               <div className="auth-form-group">
-                <label htmlFor="firstName">First Name</label>
+                <label htmlFor="firstName">First name</label>
                 <input
                   id="firstName"
                   type="text"
@@ -268,7 +268,7 @@ export const AuthModal = ({ isOpen, onClose, onDismiss }) => {
               </div>
 
               <div className="auth-form-group">
-                <label htmlFor="lastName">Last Name</label>
+                <label htmlFor="lastName">Last name</label>
                 <input
                   id="lastName"
                   type="text"
@@ -304,7 +304,7 @@ export const AuthModal = ({ isOpen, onClose, onDismiss }) => {
 
           {mode === 'signup' && (
             <div className="auth-form-group">
-              <label htmlFor="confirmPassword">Confirm Password</label>
+              <label htmlFor="confirmPassword">Confirm password</label>
               <input
                 id="confirmPassword"
                 type="password"
@@ -319,7 +319,7 @@ export const AuthModal = ({ isOpen, onClose, onDismiss }) => {
 
           {mode === 'sso' && (
             <div className="auth-form-group">
-              <label htmlFor="ssoDomain">Company Domain</label>
+              <label htmlFor="ssoDomain">Company domain</label>
               <input
                 id="ssoDomain"
                 type="text"
@@ -342,7 +342,7 @@ export const AuthModal = ({ isOpen, onClose, onDismiss }) => {
           )}
 
           <button type="submit" className="auth-submit-btn" disabled={loading}>
-            {loading ? 'Please wait...' : mode === 'login' ? 'Sign In' : mode === 'signup' ? 'Create Account' : mode === 'sso' ? 'Continue with SSO' : 'Send Reset Link'}
+            {loading ? 'Please wait...' : mode === 'login' ? 'Sign in' : mode === 'signup' ? 'Create account' : mode === 'sso' ? 'Continue with SSO' : 'Send reset link'}
           </button>
         </form>
         )}

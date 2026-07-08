@@ -360,7 +360,7 @@ const buildRich = (templates, mint = (_key, prefix) => newId(prefix)) => templat
   }));
   return {
     id: t?.id ?? `t${i}`,
-    name: t?.name || 'Untitled Template',
+    name: t?.name || 'Untitled template',
     accent: t?.accent || ACCENTS[i % ACCENTS.length],
     modules: mods,
     roster,
@@ -1457,7 +1457,7 @@ export default function TemplatesEditor({
   const subtitle = (
     <span><b>{visibleTemplates.length}</b> templates · reusable category + checklist sets</span>
   );
-  const actions = <Search placeholder="Search Templates..." value={search} onChange={setSearch} />;
+  const actions = <Search placeholder="Search templates..." value={search} onChange={setSearch} />;
 
   /* Categories shown for the open module. */
   const activeMod = orderedMods[openMod] || orderedMods[0] || { categories: [] };
@@ -1490,7 +1490,7 @@ export default function TemplatesEditor({
                 onClick={() => onCreateTemplate && onCreateTemplate()}
                 style={{ padding: '4px 8px', fontSize: 11, gap: 4, display: 'inline-flex', alignItems: 'center', alignSelf: 'flex-start', whiteSpace: 'nowrap' }}
               >
-                <Icon name="plus" size={11} />New Template
+                <Icon name="plus" size={11} />New template
               </button>
               <div style={{ display: 'flex', alignItems: 'center', gap: 3, flexWrap: 'nowrap', height: 22, overflow: 'hidden' }}>
                 <button
@@ -1718,7 +1718,7 @@ export default function TemplatesEditor({
                   </div>
                 </div>
                 <button onClick={addCategory} className="btn-ink" style={{ padding: '4px 8px', fontSize: 11, gap: 4, display: 'inline-flex', alignItems: 'center', whiteSpace: 'nowrap', flex: 'none' }}>
-                  <Icon name="plus" size={11} />New Category
+                  <Icon name="plus" size={11} />New category
                 </button>
               </div>
 
@@ -1886,7 +1886,7 @@ export default function TemplatesEditor({
                                 display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
                               }}
                             >
-                              <span style={{ fontSize: 13 }}>+</span> Add Checklist Item
+                              <span style={{ fontSize: 13 }}>+</span> Add checklist item
                             </button>
 
                             {/* KAL-44 — Archived items live in the template
@@ -1956,7 +1956,7 @@ export default function TemplatesEditor({
                   <p className="micro" style={{ margin: 0 }}>Entities <span className="mono" style={{ fontSize: 10, color: 'var(--ink-quiet)', letterSpacing: 0, fontWeight: 500, marginLeft: 4 }}>{tpl ? tpl.roster.length : 0}</span></p>
                 </div>
                 <button onClick={addEntity} disabled={!tpl} className="btn-ink" style={{ padding: '4px 8px', fontSize: 11, gap: 4, display: 'inline-flex', alignItems: 'center', whiteSpace: 'nowrap', flex: 'none', opacity: tpl ? 1 : 0.5, cursor: tpl ? 'pointer' : 'not-allowed' }}>
-                  <Icon name="plus" size={11} />New Entity
+                  <Icon name="plus" size={11} />New entity
                 </button>
               </div>
               <div style={{ padding: '6px 8px 4px', display: 'flex', alignItems: 'center', gap: 2, height: 28, flexWrap: 'nowrap', flex: 'none' }}>
@@ -2137,7 +2137,7 @@ export default function TemplatesEditor({
                                     onChange={(e) => { setMatchFill({ ...matchFill, [r.id]: e.target.checked }); markEdited(); }}
                                     style={{ width: 13, height: 13, margin: 0, accentColor: 'var(--accent)' }}
                                   />
-                                  <span style={{ fontSize: 11, fontWeight: 600, color: match ? 'var(--ink)' : 'var(--ink-soft)' }}>Match Fill</span>
+                                  <span style={{ fontSize: 11, fontWeight: 600, color: match ? 'var(--ink)' : 'var(--ink-soft)' }}>Match fill</span>
                                   {match && <span style={{ fontSize: 10, color: 'var(--ink-muted)', marginLeft: 'auto' }}>using fill color &amp; opacity</span>}
                                 </label>
                               )}
@@ -2352,7 +2352,7 @@ export default function TemplatesEditor({
             </div>
             <div style={{ padding: '0 10px 8px', flex: 'none' }}>
               <button onClick={addModule} style={{ width: '100%', padding: '6px 10px', border: '1px dashed #3a4252', background: 'transparent', color: '#8d96a6', borderRadius: 2, fontSize: 11.5, cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
-                <span style={{ fontSize: 13 }}>+</span> New Module
+                <span style={{ fontSize: 13 }}>+</span> New module
               </button>
             </div>
             <div style={{ padding: '10px 12px', borderTop: '1px solid #2a3140', background: '#12151c', display: 'flex', gap: 6, alignItems: 'center', flex: 'none' }}>
