@@ -9487,12 +9487,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       const wrapper = document.querySelector(`[data-diag-svg-wrapper="${pageNumber}"]`);
       const groupCount = wrapper?.querySelectorAll?.('[data-annotation-index]')?.length ?? 0;
       const isGated = wrapper?.getAttribute?.('data-annotation-hydration-gated') === 'true';
-      // Live-erase gesture intentionally hides the wrapper (FabricEraserCanvas
-      // gesture-scoped visual swap) — not a mismatch, do not "recover" from it.
-      const isEraserGesture = wrapper?.getAttribute?.('data-eraser-gesture') === 'true';
       const wrapperStyle = wrapper ? window.getComputedStyle(wrapper) : null;
       const visibleWrapper = !!wrapper && wrapperStyle?.display !== 'none' && wrapperStyle?.visibility !== 'hidden';
-      const mismatch = !overlay?.isConnected || !wrapper || (!isGated && !isEraserGesture && (!visibleWrapper || groupCount === 0));
+      const mismatch = !overlay?.isConnected || !wrapper || (!isGated && (!visibleWrapper || groupCount === 0));
 
       if (!mismatch) {
         annotationOverlayWatchdogRef.current.consecutiveMismatch = 0;

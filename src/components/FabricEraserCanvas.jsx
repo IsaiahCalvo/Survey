@@ -37,6 +37,13 @@ import {
   getEraserStrokeBounds,
 } from '../utils/eraserHitTest.js';
 
+// Live-preview node ownership (module scope — survives unmount/remount and is
+// shared across page instances). Each element an eraser gesture styles is
+// owned by that gesture's sequence id; only the owner may clear it, so a
+// detached grace-period clear can never wipe a newer gesture's styling.
+const ERASER_PREVIEW_NODE_OWNERS = new Map(); // element -> gesture seq id
+let ERASER_PREVIEW_GESTURE_SEQ = 0;
+
 // Custom properties to include in object serialization (matches PAL / FabricDrawingCanvas pattern)
 // UX 2026-04-25: 'tool' added so arrows survive an erase commit. Without it,
 // Fabric's toJSON strips the 'tool' field that FabricDrawingCanvas sets when
@@ -198,7 +205,6 @@ const FabricEraserCanvas = memo(({
   // whole-removed on release). The durable result is still computed ONCE at
   // gesture end by applyEraserAndCommit — the preview never writes anything.
   const eraserTrailRef = useRef(null);
-  const ghostedObjectsRef = useRef(new Set());
   const lastPreviewIndexRef = useRef(0);
   // Set by the mount effect; lets the window-blur safety net finish an
   // interrupted gesture (commit + visual restore) from outside the handlers.
@@ -243,91 +249,278 @@ const FabricEraserCanvas = memo(({
   };
 
   // ---------------------------------------------------------------------------
-  // Live-preview helpers (never touch the store; visual only)
+  // Live-preview helpers (visual only — the preview NEVER touches the store)
   //
-  // Eraser-mode standing state: every Fabric object sits at opacity 0 and the
-  // SVG layer below is the visual truth (rasterizer-parity design, see the
-  // enliven block). A destination-out trail on invisible objects shows
-  // nothing — so DURING a gesture we swap visual authority: SVG hidden,
-  // Fabric objects revealed at their real opacity. The swap back happens two
-  // frames AFTER the commit so the SVG never flashes the pre-erase state.
+  // Selective preview (v2): the SVG layer stays the standing visual truth for
+  // everything EXCEPT freehand strokes during a partial-mode gesture. Fabric
+  // renders compound annotations without their SVG-side dressing (arrows lose
+  // arrowheads, counters lose numbers, text re-lays-out), so revealing them
+  // mid-gesture visibly changes them — the "click flicker" bug. Instead:
+  //   - partial mode: ONLY pen/highlighter strokes swap to the Fabric canvas
+  //     (sub-pixel rasterizer delta) so the destination-out trail can carve
+  //     their pixels live; their SVG twins hide for the gesture. Strokes the
+  //     commit would refuse (permission/space gates) never swap — the trail
+  //     cannot show an erase that will not happen.
+  //   - whole-object erase targets ghost IN PLACE on the SVG layer
+  //     (style.opacity on their [data-annotation-id] group) — arrowheads and
+  //     every SVG-only detail stay pixel-identical while fading.
+  //   - restore is DATA-DRIVEN: after a commit, swapped strokes stay on the
+  //     Fabric canvas until the annotations prop re-renders the SVG with the
+  //     post-erase data (fallback timeout 1200ms) — the pre-erase state can
+  //     never flash back ("erase comes back" bug).
   // ---------------------------------------------------------------------------
-  const gestureVisualsActiveRef = useRef(false);
-  // Monotonic token: a new gesture invalidates any still-pending deferred
-  // swap-back, so a fast second gesture can't have the OLD swap-back re-hide
-  // objects / re-show the SVG in the middle of it.
   const gestureSwapTokenRef = useRef(0);
+  const strokeSwapsRef = useRef(new Set()); // fabric objs swapped to this canvas
+  const ghostedObjsRef = useRef(new Set()); // fabric objs whose SVG twin is ghosted
+  const pendingRestoreRef = useRef(null);   // { token, run } awaiting annotations change
+  const restoreTimerRef = useRef(null);
+  // The exact annotations object the mount-time enliven consumed.
+  // __sourceIndex values index THIS array — the data-annotation-index
+  // fallback is only trustworthy while the SVG still renders it. Any commit
+  // (compaction/reorder) breaks positional addressing for the REST of the
+  // mount, so after one the id-less strokes simply stop swapping (no preview
+  // is better than a wrong one).
+  const enlivenSourceRef = useRef(null);
+  // Every SVG element this gesture writes an inline opacity on. React REUSES
+  // <g> nodes across re-renders (keyed by id-or-index), so an inline style
+  // can outlive its annotation and hide the node's NEXT occupant — the final
+  // cleanup clears inline opacity on these exact elements, skipping any that
+  // a newer gesture is actively styling.
+  const gestureStyledNodesRef = useRef(new Set());
 
-  const beginGestureVisuals = useRef((canvas) => {
-    gestureSwapTokenRef.current += 1; // cancel pending deferred swap-backs
-    if (gestureVisualsActiveRef.current) return;
-    gestureVisualsActiveRef.current = true;
-    const svgWrapper = typeof document !== 'undefined'
-      ? document.querySelector(`[data-diag-svg-wrapper="${pageNumber}"]`)
-      : null;
-    if (svgWrapper) {
-      svgWrapper.style.visibility = 'hidden';
-      // Tells the PDFViewer overlay watchdog this hide is intentional —
-      // otherwise a >2s drag triggers its recovery (zoomGeneration bump),
-      // which force-flushes the gesture mid-stroke.
-      svgWrapper.setAttribute('data-eraser-gesture', 'true');
-    }
-    canvas.getObjects().forEach((obj) => {
-      if (obj.__isEraserTrail) return;
-      try { obj.set('opacity', obj.__origOpacity !== undefined ? obj.__origOpacity : obj.opacity); } catch (_) { /* ignore */ }
-    });
-    canvas.requestRenderAll();
-  }).current;
-
-  // sync=true (unmount/dispose): restore immediately — the SVG layer must
-  // NEVER be left hidden once this canvas is gone.
-  const endGestureVisuals = useRef((canvas, { sync = false } = {}) => {
-    if (!gestureVisualsActiveRef.current) return;
-    gestureVisualsActiveRef.current = false;
-    const token = gestureSwapTokenRef.current;
-    const swapBack = () => {
-      // A newer gesture started while this swap-back was pending — it owns
-      // the visuals now; do nothing.
-      if (gestureSwapTokenRef.current !== token) return;
-      try {
-        canvas.getObjects().forEach((obj) => {
-          if (obj.__isEraserTrail) return;
-          try { obj.set('opacity', 0); } catch (_) { /* ignore */ }
-        });
-        canvas.requestRenderAll();
-      } catch (_) { /* canvas may be disposed */ }
-      const svgWrapper = typeof document !== 'undefined'
-        ? document.querySelector(`[data-diag-svg-wrapper="${pageNumber}"]`)
-        : null;
-      if (svgWrapper) {
-        svgWrapper.style.visibility = '';
-        svgWrapper.removeAttribute('data-eraser-gesture');
+  // The SVG twin of a fabric object: by annotation id when the serialized
+  // object carries one, else by source-array index (pen strokes have no
+  // top-level id; data-annotation-index uses the same array index that
+  // enliven recorded as __sourceIndex).
+  const svgNodeForObj = (obj) => {
+    if (!obj || typeof document === 'undefined') return null;
+    try {
+      if (obj.id) {
+        const byId = document.querySelector(
+          `[data-diag-svg-wrapper="${pageNumber}"] [data-annotation-id="${CSS.escape(String(obj.id))}"]`
+        );
+        if (byId) return byId;
       }
-    };
-    if (sync || typeof requestAnimationFrame === 'undefined') {
-      swapBack();
-    } else {
-      // Two frames: the commit's React state propagation re-renders the SVG
-      // with the POST-erase data before it becomes visible again. Until
-      // then the Fabric canvas (already showing the bitten/removed result)
-      // stays the visual truth — no resurrect-flash.
-      requestAnimationFrame(() => requestAnimationFrame(swapBack));
+      // Index addressing is positional — valid ONLY while the SVG still
+      // renders the exact array the enliven stamped __sourceIndex from.
+      if (
+        Number.isInteger(obj.__sourceIndex)
+        && annotationsRef.current === enlivenSourceRef.current
+      ) {
+        return document.querySelector(
+          `[data-diag-svg-wrapper="${pageNumber}"] [data-annotation-index="${obj.__sourceIndex}"]`
+        );
+      }
+    } catch (_) { /* fall through */ }
+    return null;
+  };
+
+  const gestureIdRef = useRef(0);
+
+  const setNodeOpacity = (node, value) => {
+    if (!node) return;
+    try {
+      node.style.opacity = value;
+      if (value !== '') {
+        gestureStyledNodesRef.current.add(node);
+        ERASER_PREVIEW_NODE_OWNERS.set(node, gestureIdRef.current);
+      }
+    } catch (_) { /* detached */ }
+  };
+
+  // Clears inline opacity on a past gesture's styled elements — element-refs,
+  // so React node reuse can't strand a hide on the wrong annotation. Only the
+  // OWNING gesture may clear (module-scope registry), so this is safe from
+  // detached timers, unmounts, remounts, and overlapping gestures.
+  const clearStyledNodes = (nodes, ownerId) => {
+    nodes.forEach((n) => {
+      if (ERASER_PREVIEW_NODE_OWNERS.get(n) !== ownerId) return;
+      ERASER_PREVIEW_NODE_OWNERS.delete(n);
+      try { n.style.opacity = ''; } catch (_) { /* detached */ }
+    });
+  };
+
+  const isStrokePathObj = (obj) => obj.type === 'path' && (
+    obj.tool === 'pen'
+    || obj.tool === 'highlighter'
+    || obj.pdfAnnotationType === 'Ink'
+    || (!obj.pdfAnnotationType && !obj.annotationId && !obj.moduleId)
+  );
+
+  // Mirrors applyEraserAndCommit's permission + space-scope gates so the
+  // preview never advertises an erase the commit will refuse.
+  const passesEraseGates = (obj) => {
+    const _vId = viewerIdRef.current;
+    const _oId = documentOwnerIdRef.current;
+    if (_vId && _oId && !canModify({
+      annotation: { id: obj.id, authorId: obj.authorId, data: obj.data, meta: obj.meta },
+      viewerId: _vId,
+      documentOwnerId: _oId,
+    })) return false;
+    const objSpaceId = obj.spaceId || null;
+    const objRegionId = obj.regionId || null;
+    if (activeSpaceIdRef.current !== null) {
+      if (objRegionId !== null) {
+        const derivedSpaceId = getSpaceIdForRegion(objRegionId);
+        if (derivedSpaceId !== null && derivedSpaceId !== activeSpaceIdRef.current) return false;
+      } else if (objSpaceId !== null) {
+        if (objSpaceId !== activeSpaceIdRef.current) return false;
+      } else {
+        return false;
+      }
+    } else if (selectedSpaceIdRef.current !== null && objSpaceId !== null) {
+      if (objSpaceId !== selectedSpaceIdRef.current) return false;
+    }
+    return true;
+  };
+
+  const beginGesturePreview = useRef((canvas) => {
+    gestureSwapTokenRef.current += 1; // invalidates any pending deferred restore
+    ERASER_PREVIEW_GESTURE_SEQ += 1;
+    gestureIdRef.current = ERASER_PREVIEW_GESTURE_SEQ;
+    if (restoreTimerRef.current) {
+      clearTimeout(restoreTimerRef.current);
+      restoreTimerRef.current = null;
+    }
+    // A previous gesture's data-driven restore still pending? Run it NOW
+    // (full flavor — SVG writes stay guarded inside svgNodeForObj by the
+    // mount-time enliven-source identity).
+    if (pendingRestoreRef.current) {
+      const pending = pendingRestoreRef.current;
+      pendingRestoreRef.current = null;
+      try { (pending.runFull || pending.run)(); } catch (_) { /* never break a gesture */ }
+    }
+    if (eraserModeRef.current !== 'entire') {
+      canvas.getObjects().forEach((obj) => {
+        if (obj.__isEraserTrail || !isStrokePathObj(obj)) return;
+        if (!passesEraseGates(obj)) return;
+        const node = svgNodeForObj(obj);
+        // No addressable SVG twin -> do NOT swap (revealing the fabric copy
+        // would double-render on top of a still-visible SVG twin).
+        if (!node) return;
+        try { obj.set('opacity', obj.__origOpacity !== undefined ? obj.__origOpacity : obj.opacity); } catch (_) { /* ignore */ }
+        setNodeOpacity(node, '0');
+        strokeSwapsRef.current.add(obj);
+      });
+      canvas.requestRenderAll();
     }
   }).current;
 
-  const clearErasePreview = useRef((canvas, { restoreGhosts = true } = {}) => {
+  const clearErasePreview = useRef((canvas) => {
     if (eraserTrailRef.current) {
       try { canvas.remove(eraserTrailRef.current); } catch (_) { /* disposed */ }
       eraserTrailRef.current = null;
     }
-    ghostedObjectsRef.current.forEach((obj) => {
-      if (restoreGhosts && obj.__eraserGhostPrevOpacity !== undefined) {
-        try { obj.set('opacity', obj.__eraserGhostPrevOpacity); } catch (_) { /* removed */ }
-      }
-      delete obj.__eraserGhostPrevOpacity;
-    });
-    ghostedObjectsRef.current = new Set();
     lastPreviewIndexRef.current = 0;
+  }).current;
+
+  // Restores SVG/fabric visual state after a gesture. Deleted-ness is derived
+  // from canvas membership (removed objects = erased) — no id-scheme coupling.
+  // committed + !sync => stroke swap-back waits for the annotations prop
+  // (data-driven) so the SVG never shows pre-erase data.
+  const restorePreview = useRef((canvas, { committed = false, sync = false } = {}) => {
+    // Flush any previous gesture's still-pending deferred restore first —
+    // its timer must never outlive this call (or the component).
+    if (restoreTimerRef.current) {
+      clearTimeout(restoreTimerRef.current);
+      restoreTimerRef.current = null;
+    }
+    if (pendingRestoreRef.current) {
+      const stale = pendingRestoreRef.current;
+      pendingRestoreRef.current = null;
+      try { (stale.runFull || stale.run)(); } catch (_) { /* ignore */ }
+    }
+    const token = gestureSwapTokenRef.current;
+    const ghostEntries = [...ghostedObjsRef.current];
+    ghostedObjsRef.current = new Set();
+    const strokeEntries = [...strokeSwapsRef.current];
+    strokeSwapsRef.current = new Set();
+    const ownerId = gestureIdRef.current;
+    const styledNodes = [...gestureStyledNodesRef.current];
+    gestureStyledNodesRef.current = new Set();
+    // Restore-time writes must stay tracked + owned so the final clear
+    // covers them too.
+    const writeTracked = (node, value) => {
+      if (!node) return;
+      try {
+        node.style.opacity = value;
+        if (!styledNodes.includes(node)) styledNodes.push(node);
+        ERASER_PREVIEW_NODE_OWNERS.set(node, ownerId);
+      } catch (_) { /* detached */ }
+    };
+    let survivors = new Set();
+    try { survivors = new Set(canvas.getObjects()); } catch (_) { /* disposed */ }
+
+    // Ghosts live on SVG nodes. Erased ones go fully hidden until the
+    // re-render drops their node; survivors (shouldn't happen — ghosting is
+    // gate- and touch-filtered) restore immediately.
+    ghostEntries.forEach((obj) => {
+      const node = svgNodeForObj(obj);
+      if (!node) return;
+      writeTracked(node, survivors.has(obj) ? '' : '0');
+    });
+
+    // Final element-level cleanup: once the SVG re-renders (or after a grace
+    // period on paths with no re-render signal), NO inline opacity from this
+    // gesture may remain — React node reuse would otherwise hide whichever
+    // annotation inherits the element.
+    const scheduleStyledClear = (delayMs) => {
+      if (!styledNodes.length) return;
+      setTimeout(() => clearStyledNodes(styledNodes, ownerId), delayMs);
+    };
+
+    // svgSafe: SVG-side writes are allowed only while the DOM still renders
+    // the gesture-time annotations array (svgNodeForObj enforces the same
+    // guard). After a committed re-render the fresh nodes carry no inline
+    // styles — only the fabric side needs re-hiding.
+    const runStrokeRestore = (svgSafe) => {
+      strokeEntries.forEach((obj) => {
+        try { obj.set('opacity', 0); } catch (_) { /* removed/disposed */ }
+        if (!svgSafe) return;
+        const node = svgNodeForObj(obj); // identity-guarded re-query
+        if (!node) return;
+        writeTracked(node, survivors.has(obj) ? '' : '0');
+      });
+      try { canvas.requestRenderAll(); } catch (_) { /* disposed */ }
+    };
+
+    if (!committed) {
+      // No data change is coming: restore in place and drop the bookkeeping.
+      runStrokeRestore(true);
+      // Nothing was erased, so every styled element goes straight back to ''.
+      clearStyledNodes(styledNodes, ownerId);
+      return;
+    }
+    if (sync) {
+      runStrokeRestore(true);
+      // The commit's re-render lands after this tick (or never reaches this
+      // unmounted component) — a detached grace-period clear guarantees no
+      // stranded inline style on a reused element.
+      scheduleStyledClear(600);
+      return;
+    }
+    const pending = {
+      token,
+      // annotations changed -> SVG re-rendered -> fabric re-hide + clear the
+      // exact elements this gesture styled (reused nodes lose the stale hide).
+      run: () => {
+        runStrokeRestore(false);
+        clearStyledNodes(styledNodes, ownerId);
+      },
+      // timeout with NO annotations change -> old DOM still up -> full
+      // restore now, grace-period clear for a late re-render.
+      runFull: () => {
+        runStrokeRestore(true);
+        scheduleStyledClear(600);
+      },
+    };
+    pendingRestoreRef.current = pending;
+    restoreTimerRef.current = setTimeout(() => {
+      if (pendingRestoreRef.current === pending && gestureSwapTokenRef.current === token) {
+        pendingRestoreRef.current = null;
+        pending.runFull();
+      }
+    }, 1200);
   }).current;
 
   const updateErasePreview = useRef((canvas) => {
@@ -340,8 +533,8 @@ const FabricEraserCanvas = memo(({
     const radius = eraserSizeRef.current * (vs / es);
     const mode = eraserModeRef.current === 'entire' ? 'entire' : 'partial';
 
-    // 1. Ghost newly-touched whole-object erase targets. Incremental: only
-    //    hit-test the segment added since the last preview tick.
+    // 1. Ghost newly-touched whole-object erase targets IN PLACE on the SVG
+    //    layer. Incremental: only the segment added since the last tick.
     const from = Math.max(0, lastPreviewIndexRef.current - 1);
     const recent = [];
     for (let i = from; i < pathData.length; i += 1) {
@@ -349,68 +542,48 @@ const FabricEraserCanvas = memo(({
       if (cmd[0] === 'M' || cmd[0] === 'L') recent.push({ x: cmd[1], y: cmd[2] });
     }
     lastPreviewIndexRef.current = pathData.length;
+    // An external SVG re-render mid-gesture replaces nodes and drops our
+    // inline styles — re-assert them every tick (bounded by swap/ghost counts).
+    strokeSwapsRef.current.forEach((obj) => {
+      const n = svgNodeForObj(obj);
+      if (n && n.style.opacity !== '0') setNodeOpacity(n, '0');
+    });
+    ghostedObjsRef.current.forEach((obj) => {
+      const n = svgNodeForObj(obj);
+      if (n && n.style.opacity !== '0.15') setNodeOpacity(n, '0.15');
+    });
     const allObjects = canvas.getObjects();
     // ponytail: skip the ghost pass on very heavy pages (12k-stroke imported
     // docs) — O(objects) hit tests per mousemove would hitch; the trail and
-    // the commit stay exact. Precompute per-object bboxes at enliven if
-    // ghosting on heavy pages ever matters.
+    // the commit stay exact.
     if (recent.length > 0 && allObjects.length <= 2000) {
       for (const obj of allObjects) {
-        if (obj.__isEraserTrail || ghostedObjectsRef.current.has(obj)) continue;
-        const isStrokePath = obj.type === 'path' && (
-          obj.tool === 'pen'
-          || obj.tool === 'highlighter'
-          || obj.pdfAnnotationType === 'Ink'
-          || (!obj.pdfAnnotationType && !obj.annotationId && !obj.moduleId)
-        );
-        // Partial mode BITES stroke paths instead of removing them — the
-        // destination-out trail below is their live preview. Everything else
-        // (and everything in entire mode) is a whole-object target: ghost it.
-        if (mode === 'partial' && isStrokePath) continue;
-        // HONEST feedback: never ghost what the commit will refuse to erase —
-        // same gates as applyEraserAndCommit (permission, then space scope).
-        const _vId = viewerIdRef.current;
-        const _oId = documentOwnerIdRef.current;
-        if (_vId && _oId && !canModify({
-          annotation: { id: obj.id, authorId: obj.authorId, data: obj.data, meta: obj.meta },
-          viewerId: _vId,
-          documentOwnerId: _oId,
-        })) continue;
-        const objSpaceId = obj.spaceId || null;
-        const objRegionId = obj.regionId || null;
-        if (activeSpaceIdRef.current !== null) {
-          if (objRegionId !== null) {
-            const derivedSpaceId = getSpaceIdForRegion(objRegionId);
-            if (derivedSpaceId !== null && derivedSpaceId !== activeSpaceIdRef.current) continue;
-          } else if (objSpaceId !== null) {
-            if (objSpaceId !== activeSpaceIdRef.current) continue;
-          } else {
-            continue;
-          }
-        } else if (selectedSpaceIdRef.current !== null && objSpaceId !== null) {
-          if (objSpaceId !== selectedSpaceIdRef.current) continue;
-        }
+        if (obj.__isEraserTrail || ghostedObjsRef.current.has(obj)) continue;
+        // Partial mode BITES stroke paths (trail is their live preview);
+        // everything else — and everything in entire mode — ghosts whole.
+        if (mode === 'partial' && isStrokePathObj(obj)) continue;
+        if (!passesEraseGates(obj)) continue;
         let touches = false;
         try {
           touches = eraserStrokeTouchesObject({ eraserPoints: recent, eraserRadius: radius, object: obj });
-        } catch (_) { /* defensive: preview must never break the gesture */ }
+        } catch (_) { /* preview must never break the gesture */ }
         if (touches) {
-          obj.__eraserGhostPrevOpacity = obj.opacity;
-          try { obj.set('opacity', (obj.opacity ?? 1) * 0.15); } catch (_) { /* ignore */ }
-          ghostedObjectsRef.current.add(obj);
+          const node = svgNodeForObj(obj);
+          if (node) {
+            setNodeOpacity(node, '0.15');
+            ghostedObjsRef.current.add(obj);
+          }
         }
       }
     }
 
-    // 2. Partial mode: destination-out trail — annotation pixels visibly
-    //    vanish under the exact swath the commit will erase.
-    // ponytail: the trail Path is rebuilt from the full gesture each tick
-    // (O(n²) over very long scribbles); switch to incremental contextTop
-    // painting if a marathon gesture ever measures janky.
+    // 2. Partial mode: destination-out trail — ONLY swapped-in stroke pixels
+    //    live on this canvas, so the trail carves exactly what the commit can
+    //    actually bite.
     if (mode === 'partial') {
       // ponytail: marathon gestures stop extending the visual trail past
       // 1500 points (the O(n²) rebuild would hitch); the commit still uses
-      // the FULL path, so nothing is lost — only preview length is capped.
+      // the FULL path — only preview length is capped.
       if (pathData.length > 1500 && eraserTrailRef.current) {
         canvas.requestRenderAll();
         return;
@@ -855,11 +1028,13 @@ const FabricEraserCanvas = memo(({
       const willCommit = deletedN > 0 || changedN > 0;
       console.log(`[InteractionDiag] eraser-apply @ ${Math.round(performance.now())}ms page=${pageNumber} mode=${mode} candidates=${candN} deleted=${deletedN} changed=${changedN} callouts=${calloutN} rejected=${rejN} ${willCommit ? 'COMMIT' : (candN > 0 || calloutN > 0 ? 'NO-OP (had targets, removed nothing)' : 'NO-OP (empty space)')}`);
     } catch (_e) { /* swallow */ }
+    let didCommit = false;
     if (
       eraserDiagnostics.finalDeletedAnnotationIds.length > 0
       || eraserDiagnostics.finalChangedAnnotationIds.length > 0
     ) {
       onEraseCommitRef.current(updatedJSON, eraserDiagnostics);
+      didCommit = true;
     }
 
     if (calloutCallback && calloutHitIds.length > 0) {
@@ -874,6 +1049,7 @@ const FabricEraserCanvas = memo(({
         textMarkupCallback(pageNumber, eraserPoints, currentEraserSize);
       } catch (_) {}
     }
+    return didCommit;
   }).current;
 
   // Pre-dispose callback: flush in-progress erase gesture before canvas.off()/dispose()
@@ -888,8 +1064,8 @@ const FabricEraserCanvas = memo(({
       }
       eraserPathRef.current = [];
     }
-    // sync: the SVG layer must never be left hidden after this canvas dies.
-    endGestureVisuals(canvas, { sync: true });
+    // sync: no SVG node may stay hidden/ghosted after this canvas dies.
+    restorePreview(canvas, { committed: true, sync: true });
     mountedRef.current = false;
   });
 
@@ -935,6 +1111,8 @@ const FabricEraserCanvas = memo(({
     // Load annotations via enlivenObjects
     // -----------------------------------------------------------------------
     const annotationsToLoad = annotationsRef.current;
+    // __sourceIndex positional addressing is anchored to THIS object.
+    enlivenSourceRef.current = annotationsToLoad;
     const objectsArray = annotationsToLoad?.objects || [];
     const enlivenableEntries = [];
     const unsupportedEntries = [];
@@ -1044,6 +1222,11 @@ const FabricEraserCanvas = memo(({
           if (!obj) return;
           const objData = enlivenableEntries[index]?.object;
           if (!objData) return;
+
+          // Source-array index — the SVG layer stamps the same index as
+          // data-annotation-index, which is the live-preview's addressing
+          // fallback for objects without a top-level id (pen strokes).
+          obj.__sourceIndex = enlivenableEntries[index]?.originalIndex;
 
           obj.set({
             strokeUniform: true,
@@ -1260,10 +1443,9 @@ const FabricEraserCanvas = memo(({
 
       isErasingRef.current = true;
       // Safety: a leaked preview from an interrupted gesture must never
-      // bleed into this one.
+      // bleed into this one; begin also flushes any pending deferred restore.
       clearErasePreview(canvas);
-      // Live feedback: swap visual authority to this canvas for the gesture.
-      beginGestureVisuals(canvas);
+      beginGesturePreview(canvas);
       eraserDiagGestureRef.current = beginAnnotationGesture({
         surface: 'FabricEraserCanvas',
         tool: 'eraser',
@@ -1287,12 +1469,13 @@ const FabricEraserCanvas = memo(({
         action: 'eraser-stroke',
       });
       clearErasePreview(canvas);
+      let committed = false;
       try {
-        applyEraserAndCommit(canvas);
+        committed = applyEraserAndCommit(canvas) === true;
       } catch (err) {
         console.error('Eraser commit error:', err);
       } finally {
-        endGestureVisuals(canvas);
+        restorePreview(canvas, { committed });
         eraserPathRef.current = [];
       }
     };
@@ -1331,6 +1514,17 @@ const FabricEraserCanvas = memo(({
   // ---------------------------------------------------------------------------
   useEffect(() => {
     annotationsRef.current = annotations;
+    // Data-driven stroke swap-back: the SVG has re-rendered with the
+    // committed (post-erase) data — safe to hand the visuals back.
+    if (pendingRestoreRef.current && gestureSwapTokenRef.current === pendingRestoreRef.current.token) {
+      const pending = pendingRestoreRef.current;
+      pendingRestoreRef.current = null;
+      if (restoreTimerRef.current) {
+        clearTimeout(restoreTimerRef.current);
+        restoreTimerRef.current = null;
+      }
+      try { pending.run(); } catch (_) { /* never throw in an effect */ }
+    }
   }, [annotations]);
 
   useEffect(() => {
@@ -1436,7 +1630,7 @@ const FabricEraserCanvas = memo(({
       } finally {
         // sync: the container is mid-resize; leave no async restore pending
         // that a fast unmount could orphan.
-        endGestureVisuals(canvas, { sync: true });
+        restorePreview(canvas, { committed: true, sync: true });
         eraserPathRef.current = [];
       }
     }
@@ -1450,7 +1644,16 @@ const FabricEraserCanvas = memo(({
       try { finishGestureRef.current?.(); } catch (_) { /* never throw from a listener */ }
     };
     window.addEventListener('blur', onBlur);
-    return () => window.removeEventListener('blur', onBlur);
+    return () => {
+      window.removeEventListener('blur', onBlur);
+      // No deferred restore may outlive the component: a surviving timer
+      // would mutate a REMOUNTED page's SVG nodes.
+      if (restoreTimerRef.current) {
+        clearTimeout(restoreTimerRef.current);
+        restoreTimerRef.current = null;
+      }
+      pendingRestoreRef.current = null;
+    };
   }, []);
 
   // ---------------------------------------------------------------------------
