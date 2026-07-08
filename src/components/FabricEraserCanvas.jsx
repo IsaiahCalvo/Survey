@@ -282,7 +282,9 @@ const FabricEraserCanvas = memo(({
       // scope stamps from every SURVIVING annotation on any erase after the
       // 7.4.0 upgrade.
       const json = obj.toObject(CUSTOM_PROPS);
-      if (json.type === 'path' && !obj.isPdfImported) {
+      // fabric 7: toObject() emits capitalized type ('Path') — compare against
+      // the live instance's lowercase type, not the serialized casing.
+      if (obj.type === 'path' && !obj.isPdfImported) {
         json.left = 0;
         json.top = 0;
       }
@@ -749,10 +751,40 @@ const FabricEraserCanvas = memo(({
     });
 
     if (enlivenableEntries.length > 0) {
-      const enlivenableObjects = enlivenableEntries.map((entry) => entry.object);
-      fabric.util.enlivenObjects(enlivenableObjects, (enlivenedObjects) => {
+      // fabric 7: Group.fromObject spreads unrecognized props onto the new
+      // instance, so the projected callout's `getObjects()` convenience method
+      // (calloutAnnotationBridge / calloutEditAdapter) SHADOWS the real
+      // Group#getObjects — groupInit then reads undefined and throws, and
+      // allSettled silently drops the whole callout group. Strip it here;
+      // entry.object keeps the original for metadata pairing below.
+      const enlivenableObjects = enlivenableEntries.map((entry) => {
+        if (typeof entry.object?.getObjects === 'function') {
+          const { getObjects: _getObjects, ...rest } = entry.object;
+          return rest;
+        }
+        return entry.object;
+      });
+      // fabric 7: enlivenObjects uses Promise.allSettled and silently COMPACTS
+      // rejected objects out of the resolved array — which both hides the
+      // failure and shifts every later object off its enlivenableEntries[index]
+      // pairing. The reviver runs once per input in order, so build an
+      // index-aligned array (null = rejected) and log what fabric swallowed.
+      const alignedEnlivenedObjects = [];
+      const enlivenReviver = (serialized, instance, error) => {
+        if (error) {
+          console.error(
+            `[FabricEraserCanvas p${pageNumber}] enliven rejected type=${serialized?.type || 'null'} dataType=${serialized?.data?.type || 'null'}:`,
+            error
+          );
+          alignedEnlivenedObjects.push(null);
+          return;
+        }
+        alignedEnlivenedObjects.push(instance);
+      };
+      fabric.util.enlivenObjects(enlivenableObjects, () => {
         // Guard: component may have unmounted during async load
         if (!mountedRef.current) return;
+        const enlivenedObjects = alignedEnlivenedObjects;
 
         // Diagnostics: compare input vs enlivened. Any array-length mismatch
         // or null slots means enlivenObjects silently dropped something.
@@ -981,7 +1013,7 @@ const FabricEraserCanvas = memo(({
         // handler (bound in this useEffect) reads the current value via the ref.
         setIsLoading(false);
         isLoadingRef.current = false;
-      });
+      }, { reviver: enlivenReviver });
     } else {
       // No annotations to load -- immediately ready
       canvas.renderAll();

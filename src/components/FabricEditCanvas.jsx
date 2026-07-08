@@ -1381,8 +1381,10 @@ const FabricEditCanvas = memo(({
 
     console.log(`[EditCanvas] COMMIT post-convert — text="${(json.text||'').slice(0,20)}" fontSize=${json.fontSize} width=${json.width} height=${json.height} scaleX=${json.scaleX} scaleY=${json.scaleY} left=${json.left} top=${json.top}`);
 
-    // For paths: normalize left/top to 0 for SVG renderer compatibility
-    if (json.type === 'path') {
+    // For paths: normalize left/top to 0 for SVG renderer compatibility.
+    // fabric 7: toObject() emits capitalized type ('Path') — compare against
+    // the live instance's lowercase type, not the serialized casing.
+    if (activeObj.type === 'path') {
       json.left = 0;
       json.top = 0;
     }

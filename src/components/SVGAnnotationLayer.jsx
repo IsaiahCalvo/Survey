@@ -1811,8 +1811,11 @@ const SVGAnnotationLayer = memo(({
         Array.isArray(obj.objects) &&
         obj.objects.length > 0
       ) {
+        // fabric 7: toObject() emits capitalized types ('Line'), so a group
+        // that round-trips through the eraser/edit canvases saves capitalized
+        // children while legacy saves stay lowercase — compare case-insensitively.
         const hasLineChild = obj.objects.some(
-          (o) => o && (o.type === 'line' || o.type === 'polyline' || o.type === 'path')
+          (o) => o && ['line', 'polyline', 'path'].includes(String(o.type || '').toLowerCase())
         );
         if (hasLineChild) {
           element = renderArrow(obj, i);
@@ -3759,11 +3762,13 @@ const SVGAnnotationLayer = memo(({
           }
 
           if (objTypeLower === 'group' && Array.isArray(renderObj.objects) && renderObj.objects.length > 0) {
+            // fabric 7: toObject() emits capitalized child types — compare
+            // case-insensitively (legacy saves stay lowercase).
             const lineChild = renderObj.objects.find(
-              (o) => o && (o.type === 'line' || o.type === 'polyline' || o.type === 'path')
+              (o) => o && ['line', 'polyline', 'path'].includes(String(o.type || '').toLowerCase())
             );
             const arrowHead = renderObj.objects.find(
-              (o) => o && (o.name === 'arrowHead' || o.type === 'triangle')
+              (o) => o && (o.name === 'arrowHead' || String(o.type || '').toLowerCase() === 'triangle')
             );
             if (lineChild) {
               const x1 = (renderObj.left || 0) + (lineChild.x1 || 0);

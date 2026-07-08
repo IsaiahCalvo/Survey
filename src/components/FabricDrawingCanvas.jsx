@@ -855,7 +855,15 @@ const FabricDrawingCanvas = memo(({
   // -------------------------------------------------------------------------
   useEffect(() => {
     const canvas = fabricRef.current;
-    if (!canvas || !canvas.freeDrawingBrush) return;
+    if (!canvas || SHAPE_TOOLS.includes(activeTool)) return;
+
+    // The mount effect skips brush creation when the canvas mounts under a
+    // shape tool (e.g. survey-marker). If the user then switches to
+    // pen/highlighter without a remount, freeDrawingBrush is undefined and
+    // free drawing silently does nothing — create it here on demand.
+    if (!canvas.freeDrawingBrush) {
+      canvas.freeDrawingBrush = new fabric.PencilBrush(canvas);
+    }
 
     const brush = canvas.freeDrawingBrush;
     if (activeTool === 'highlighter') {
