@@ -180,7 +180,7 @@ serve(async (req) => {
 
     if (!res.ok) {
       const error = await res.text()
-      console.error('Resend API error:', error)
+      console.error('Brevo API error:', error)
       return new Response(
         JSON.stringify({ error: 'Failed to send email', details: error }),
         {
