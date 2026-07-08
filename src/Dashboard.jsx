@@ -9,7 +9,8 @@
 // singleton in the Vite module graph, so no re-init is needed here.
 
 import { loadPdfjs } from './utils/pdfWorkerConfig';
-import { classifyIncomingFile } from './utils/incomingFileResolver';
+import { resolveIncomingUpload, shouldOfferAlias, nextAvailableName } from './utils/incomingFileResolver';
+import DuplicateUploadModal from './components/DuplicateUploadModal';
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
 import SurveyHub from './home/SurveyHub';
 import { useAuth } from './contexts/AuthContext';
@@ -283,6 +284,98 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
     refetch: refetchAllDocuments
   } = useDocuments(null);
 
+  // Duplicate-upload ASK flows (decision 6). One modal, promise-shaped so the
+  // upload paths can simply `await` the user's answer mid-flow. If a second
+  // ask ever lands while one is open (two concurrent upload flows), the first
+  // resolves as a cancel instead of hanging its awaiting upload forever.
+  const [duplicateModal, setDuplicateModal] = useState(null);
+  const duplicateModalRef = useRef(null);
+  const askDuplicateUpload = (mode, incomingName, existingName, knownDifferent = true) =>
+    new Promise((resolve) => {
+      duplicateModalRef.current?.resolve?.(duplicateModalRef.current.mode === 'alias' ? 'skip-alias' : 'cancel');
+      const next = { mode, incomingName, existingName, knownDifferent, resolve };
+      duplicateModalRef.current = next;
+      setDuplicateModal(next);
+    });
+  const settleDuplicateModal = (choice) => {
+    duplicateModalRef.current?.resolve?.(choice);
+    duplicateModalRef.current = null;
+    setDuplicateModal(null);
+  };
+
+  // Same name + different (or unknown) contents must PAUSE and ask before any
+  // row is created (decision 6). Candidates come from a FRESH owner-scoped
+  // query — the client-side lists can be stale, scoped to another project, or
+  // include collaborator-owned rows this user must never archive.
+  // Never throws. Returns:
+  //   { proceed: true, archiveDocId? }  — continue; archive that id AFTER the
+  //                                       new row is created (never before,
+  //                                       so a failed create can't hide the
+  //                                       old document)
+  //   { proceed: false }                — handled here (opened existing) or canceled
+  const confirmSameNameDifferentContent = async ({ fileName, contentSha, projectId, openAfterUpload }) => {
+    try {
+      let query = supabase
+        .from('documents')
+        .select('id, name, file_path, content_sha256, archived, project_id, user_id, created_at')
+        .eq('user_id', user.id)
+        .eq('name', fileName)
+        .eq('archived', false)
+        .limit(50);
+      query = projectId ? query.eq('project_id', projectId) : query.is('project_id', null);
+      const { data: candidates, error } = await query;
+      if (error) throw error;
+
+      const decision = resolveIncomingUpload(
+        { name: fileName, sha: contentSha, projectId: projectId || null },
+        candidates || []
+      );
+      if (decision.kind !== 'version-ask') return { proceed: true };
+      const choice = await askDuplicateUpload('version', fileName, decision.doc.name, decision.knownDifferent);
+      if (choice === 'open-existing') {
+        if (openAfterUpload) await handleDocumentClick(decision.doc);
+        return { proceed: false };
+      }
+      if (choice !== 'new-version') return { proceed: false }; // Escape/backdrop = cancel
+      return { proceed: true, archiveDocId: decision.doc.id };
+    } catch (err) {
+      // Fail SAFE: cancel the upload rather than risk a silent duplicate or a
+      // stuck file input further down the path.
+      console.error('Duplicate check failed:', err);
+      showToast('Couldn’t check for duplicates — upload canceled. Please try again.');
+      return { proceed: false };
+    }
+  };
+
+  // After the new row exists: archive the old same-name copy the user chose to
+  // replace. Non-fatal on failure (both copies stay visible — recoverable).
+  const archiveReplacedDocument = async (archiveDocId) => {
+    if (!archiveDocId) return;
+    try {
+      await deleteSupabaseDocument(archiveDocId);
+    } catch (err) {
+      console.error('Could not archive the previous version:', err);
+      showToast('The new version was added, but the old copy could not be archived.');
+    }
+  };
+
+  // Same contents came back deduped under a DIFFERENT name -> offer to keep the
+  // new name as an alias (decision 6 / KAL-290). Non-destructive either way.
+  const maybeOfferAlias = async (resolvedDoc, incomingName, contentSha) => {
+    if (!shouldOfferAlias(resolvedDoc, { name: incomingName, sha: contentSha })) return;
+    const choice = await askDuplicateUpload('alias', incomingName, resolvedDoc.name);
+    if (choice !== 'add-alias') return;
+    try {
+      await updateSupabaseDocument(resolvedDoc.id, {
+        name_aliases: [...(resolvedDoc.name_aliases || []), incomingName],
+      });
+      showToast(`Also keeping the name “${incomingName}”`, 'success');
+    } catch (err) {
+      console.error('Could not save the extra name:', err);
+      showToast('Couldn’t save the extra name for this document.');
+    }
+  };
+
   const navIconWrapperStyle = {
     width: '20px',
     height: '20px',
@@ -436,21 +529,6 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
         perfUpload.mark('electron-dialog', 'File object created');
         perfUpload.end('electron-dialog');
 
-        // Recognize a file we already have (same name + exact byte size) and
-        // reopen THAT copy instead of uploading a blank duplicate. This is the
-        // root-cause fix for the blank-pages bug, where every open created a new
-        // empty cloud document.
-        const incomingDecision = classifyIncomingFile(file, supabaseDocuments);
-        if (incomingDecision.kind === 'reuse') {
-          const existing = incomingDecision.doc;
-          file.id = existing.id;
-          file.projectId = existing.project_id ?? existing.projectId ?? null;
-          file.supabaseFilePath = existing.file_path ?? existing.filePath ?? null;
-          file.user_id = existing.user_id ?? existing.userId ?? file.user_id ?? null;
-          if (openAfterUpload) onDocumentSelect(file, filePath);
-          return;
-        }
-
         // Start upload timing for this specific file
         perfUpload.start(file.name);
 
@@ -478,6 +556,18 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
           return;
         }
 
+        // Decision 6 gate: same name + different contents -> ask first.
+        const duplicateGate = await confirmSameNameDifferentContent({
+          fileName: file.name,
+          contentSha,
+          projectId,
+          openAfterUpload,
+        });
+        if (!duplicateGate.proceed) {
+          perfUpload.end(file.name);
+          return;
+        }
+
         let resolvedDoc;
         try {
           resolvedDoc = await createSupabaseDocument({
@@ -491,6 +581,37 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
         } catch (createErr) {
           console.error('Could not create/resolve document before open:', createErr);
           setDashboardError('Couldn’t prepare the document in the cloud: ' + (createErr.message || 'Unknown error'));
+          perfUpload.end(file.name);
+          return;
+        }
+
+        // Decision 6: identical bytes deduped to a doc with a different name ->
+        // offer to keep the new name as an alias, then open the EXISTING
+        // document by its own identity. Opening the picked File here would
+        // spawn a second tab of the same document under the new name (the
+        // tab-matcher keys on the name), double-mounting the viewer.
+        if (resolvedDoc.content_sha256 === contentSha && resolvedDoc.name !== file.name) {
+          // A deduped row does not GUARANTEE a durable object (a prior failed
+          // upload can leave a row whose object is missing). We hold identical
+          // bytes — store them AT THE ROW'S OWN file_path (which is what the
+          // open below reads; it may still be a legacy pre-rekey path) so the
+          // open can't hit file-not-found and cascade into deleting the very
+          // row we're reusing. Idempotent upsert: same bytes, same key.
+          try {
+            const { error: healErr } = await supabase.storage
+              .from('documents')
+              .upload(resolvedDoc.file_path, file, { upsert: true, contentType: 'application/pdf' });
+            if (healErr) throw healErr;
+          } catch (upErr) {
+            console.error('Could not store the file bytes:', upErr);
+            setDashboardError('Couldn’t save the document to the cloud: ' + (upErr.message || 'Unknown error'));
+            perfUpload.end(file.name);
+            return; // nothing archived, nothing opened — safe retry
+          }
+          await archiveReplacedDocument(duplicateGate.archiveDocId);
+          await maybeOfferAlias(resolvedDoc, file.name, contentSha);
+          if (openAfterUpload) await handleDocumentClick(resolvedDoc);
+          refetchAllDocuments();
           perfUpload.end(file.name);
           return;
         }
@@ -550,8 +671,15 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
               return pdfDoc.numPages;
             })();
 
-            const [, pageCount] = await Promise.all([uploadPromise, pageCountPromise]);
+            // A page-count parse failure must not reject the join — the archive
+            // below depends only on the UPLOAD being durable.
+            const [, pageCount] = await Promise.all([uploadPromise, pageCountPromise.catch(() => null)]);
             perfUpload.mark(file.name, 'Cloud upload + page count complete');
+
+            // "Upload as new version": archive the replaced copy only now that
+            // the new bytes are DURABLE in storage — a failed upload must never
+            // leave the old document hidden and the new row pointing at nothing.
+            await archiveReplacedDocument(duplicateGate.archiveDocId);
 
             if (pageCount && pageCount !== resolvedDoc.page_count) {
               try { await updateSupabaseDocument(resolvedDoc.id, { page_count: pageCount }); } catch { /* non-fatal */ }
@@ -611,21 +739,6 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
         projectId = selectedProjectId;
       }
 
-      // Recognize a file we already have (same name + exact byte size) and
-      // reopen THAT copy instead of uploading a blank duplicate (root-cause fix
-      // for the blank-pages bug — every open used to create a new empty doc).
-      const incomingDecision = classifyIncomingFile(file, supabaseDocuments);
-      if (incomingDecision.kind === 'reuse') {
-        const existing = incomingDecision.doc;
-        file.id = existing.id;
-        file.projectId = existing.project_id ?? existing.projectId ?? null;
-        file.supabaseFilePath = existing.file_path ?? existing.filePath ?? null;
-        file.user_id = existing.user_id ?? existing.userId ?? file.user_id ?? null;
-        if (openAfterUpload) onDocumentSelect(file);
-        event.target.value = '';
-        return;
-      }
-
       // Content fingerprint → resolve the document's identity BEFORE opening, so
       // the viewer opens with a real id (durable store + save shortcut work on a
       // fresh upload) and identical bytes dedup to one document.
@@ -636,6 +749,18 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
       } catch (hashErr) {
         console.error('Content hashing failed:', hashErr);
         setDashboardError('Couldn’t read that file for upload. Please try again.');
+        event.target.value = '';
+        return;
+      }
+
+      // Decision 6 gate: same name + different contents -> ask first.
+      const duplicateGate = await confirmSameNameDifferentContent({
+        fileName: file.name,
+        contentSha,
+        projectId,
+        openAfterUpload,
+      });
+      if (!duplicateGate.proceed) {
         event.target.value = '';
         return;
       }
@@ -653,6 +778,36 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
       } catch (createErr) {
         console.error('Could not create/resolve document before open:', createErr);
         setDashboardError('Couldn’t prepare the document in the cloud: ' + (createErr.message || 'Unknown error'));
+        event.target.value = '';
+        return;
+      }
+
+      // Decision 6: identical bytes deduped to a doc with a different name ->
+      // offer to keep the new name as an alias, then open the EXISTING document
+      // by its own identity (a second same-document tab under the new name
+      // double-mounts the viewer — see the Electron path note).
+      if (resolvedDoc.content_sha256 === contentSha && resolvedDoc.name !== file.name) {
+        // A deduped row does not GUARANTEE a durable object (a prior failed
+        // upload can leave a row whose object is missing). We hold identical
+        // bytes — store them AT THE ROW'S OWN file_path (which is what the
+        // open below reads; it may still be a legacy pre-rekey path) so the
+        // open can't hit file-not-found and cascade into deleting the very
+        // row we're reusing. Idempotent upsert: same bytes, same key.
+        try {
+          const { error: healErr } = await supabase.storage
+            .from('documents')
+            .upload(resolvedDoc.file_path, file, { upsert: true, contentType: 'application/pdf' });
+          if (healErr) throw healErr;
+        } catch (upErr) {
+          console.error('Could not store the file bytes:', upErr);
+          setDashboardError('Couldn’t save the document to the cloud: ' + (upErr.message || 'Unknown error'));
+          event.target.value = '';
+          return; // nothing archived, nothing opened — safe retry
+        }
+        await archiveReplacedDocument(duplicateGate.archiveDocId);
+        await maybeOfferAlias(resolvedDoc, file.name, contentSha);
+        if (openAfterUpload) await handleDocumentClick(resolvedDoc);
+        refetchAllDocuments();
         event.target.value = '';
         return;
       }
@@ -713,6 +868,12 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
           })();
 
           await uploadPromise;
+
+          // "Upload as new version": archive the replaced copy only now that
+          // the new bytes are DURABLE in storage — a failed upload must never
+          // leave the old document hidden and the new row pointing at nothing.
+          await archiveReplacedDocument(duplicateGate.archiveDocId);
+
           pageCountPromise.then(async (pageCount) => {
             if (pageCount !== null && pageCount !== resolvedDoc.page_count) {
               try { await updateSupabaseDocument(resolvedDoc.id, { page_count: pageCount }); } catch (err) { console.error('Error updating page count:', err); }
@@ -820,11 +981,25 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
     const uploadErrors = [];
     let successCount = 0;
 
-    // Process files in parallel for better performance
-    const filePromises = files.map(async (file) => {
+    // Process files in parallel for better performance.
+    // Decision 6, bulk flavor: the project is brand-new so there's nothing to
+    // collide WITH, but two picked files can share a NAME between themselves —
+    // number the later ones like a desktop OS instead of silently creating
+    // twin same-name rows. (Identical BYTES in the batch still dedup server-side.)
+    const usedNames = new Set();
+    const batchEntries = files.map((file) => {
+      const name = nextAvailableName(file.name, usedNames);
+      usedNames.add(name);
+      return { file, name };
+    });
+    const filePromises = batchEntries.map(async ({ file, name }) => {
       try {
+        // Content-address these uploads too (decision 6): hash first so the
+        // stored object lands at {user}/{sha}.pdf, never a new time-named file.
+        const contentSha = await computeContentSha256(new Uint8Array(await file.arrayBuffer()));
+
         // Start upload and page count in parallel
-        const uploadPromise = uploadToStorage(file, newProject.id);
+        const uploadPromise = uploadToStorage(file, newProject.id, undefined, contentSha);
         const pageCountPromise = (async () => {
           try {
             const arrayBuffer = await file.arrayBuffer();
@@ -860,12 +1035,23 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
         // Create document record immediately after upload
         // Use null for page_count initially, will update in background
         const doc = await createSupabaseDocument({
-          name: file.name,
+          name,
           file_path: filePath,
           file_size: file.size,
           page_count: null,
-          project_id: newProject.id
+          project_id: newProject.id,
+          content_sha256: contentSha,
         });
+
+        // Two picked files with identical bytes dedup to ONE row — keep the
+        // second file's name as an alias automatically (decision 6; bulk flow
+        // has no room for the ask-modal, and adding a name is non-destructive).
+        if (doc && doc.content_sha256 === contentSha && doc.name !== name
+            && 'name_aliases' in doc && !(doc.name_aliases || []).includes(name)) {
+          try {
+            await updateSupabaseDocument(doc.id, { name_aliases: [...(doc.name_aliases || []), name] });
+          } catch (aliasErr) { console.warn(`Could not record alias "${name}":`, aliasErr?.message); }
+        }
 
         // Update page count in background (non-blocking)
         pageCountPromise.then(async (pageCount) => {
@@ -1158,9 +1344,29 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
     }
 
     // Remove the stored PDF bytes (best effort — never blocks the delete).
+    // Content-addressed storage means the SAME object can back several rows
+    // (same bytes in two projects share one {user}/{sha}.pdf) — only remove it
+    // when no other row still points at it.
     if (storagePath) {
-      try { await deleteFromStorage(storagePath); }
-      catch (storageErr) { console.warn('[DocumentDelete] storage remove failed', storageErr?.message); }
+      try {
+        const { data: sharer, error: sharerErr } = await supabase
+          .from('documents')
+          .select('id')
+          .eq('file_path', storagePath)
+          .neq('id', docId)
+          .limit(1)
+          .maybeSingle();
+        if (sharerErr) {
+          // Can't PROVE the object is unshared -> keep it. An orphaned object
+          // is GC territory later; a deleted shared object is another
+          // document's bytes gone.
+          console.warn('[DocumentDelete] sharer check failed — keeping storage object', sharerErr.message);
+        } else if (sharer) {
+          console.log('[DocumentDelete] storage kept — object shared with', sharer.id);
+        } else {
+          await deleteFromStorage(storagePath);
+        }
+      } catch (storageErr) { console.warn('[DocumentDelete] storage remove failed', storageErr?.message); }
     }
 
     // Purge the local durable copy (IndexedDB + in-memory doc).
@@ -1228,7 +1434,8 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
     if (!searchQuery) return documents;
     const lq = searchQuery.toLowerCase();
     return documents.filter(doc =>
-      doc.name.toLowerCase().includes(lq)
+      doc.name.toLowerCase().includes(lq) ||
+      (doc.name_aliases || []).some((a) => String(a).toLowerCase().includes(lq))
     );
   }, [documents, searchQuery]);
 
@@ -1786,6 +1993,15 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
         onLockDocument={hubToggleDocumentLock}
         onSettings={() => setShowAccountSettings(true)}
         onSignOut={signOut}
+      />
+      <DuplicateUploadModal
+        isOpen={!!duplicateModal}
+        mode={duplicateModal?.mode}
+        incomingName={duplicateModal?.incomingName}
+        existingName={duplicateModal?.existingName}
+        contentsKnownDifferent={duplicateModal?.knownDifferent !== false}
+        onResolve={settleDuplicateModal}
+        onClose={() => settleDuplicateModal(duplicateModal?.mode === 'alias' ? 'skip-alias' : 'cancel')}
       />
       {dashboardError && (
         <div

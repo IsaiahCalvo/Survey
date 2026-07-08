@@ -88,3 +88,6 @@ public/debug-fixtures/
 # Main-process MSAL token cache (only ever in userData; ignore if a dev profile points into the repo)
 ms-auth-cache.bin
 ms-auth-cache.bin.tmp
+
+# content-hash maintenance reports carry live doc names/paths — local artifacts only
+debug/content-hash/

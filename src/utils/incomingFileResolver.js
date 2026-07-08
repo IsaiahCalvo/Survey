@@ -1,41 +1,68 @@
 // incomingFileResolver — decide what to do when a user brings a PDF into the app.
 //
-// Root cause of the "blank pages" bug: every time a file was opened from disk the
-// app uploaded it and created a brand-new empty cloud document, with no check for
-// one it already had. Blank duplicates piled up and opening landed on an empty one.
+// Decision 6 (DECISION-BATCH-2026-07-07, locked): duplicates are recognized by
+// CONTENT HASH, never by name/size guessing, and the app never silently blocks
+// and never silently duplicates:
+//   - identical bytes, same name      -> reuse/unarchive the existing document
+//   - identical bytes, different name -> reuse + offer the new name as an alias
+//   - same name, different bytes      -> ask: open existing vs upload new version
+//   - otherwise                       -> new document
 //
-// A file is recognized by its NAME + exact byte SIZE, which in practice uniquely
-// identifies the same file (two different PDFs sharing a name AND an identical byte
-// count effectively never happens). Same name but a different size means the user
-// brought in genuinely different content under a familiar name.
+// The server is the authority for byte-identity (unique index on
+// user/project/content_sha256; createDocument dedups on it). This module only
+// answers the one question the server can't: "does an ACTIVE document already
+// use this name in this project with different (or unknown) contents?" — the
+// case that must PAUSE the upload and ask, before any row is created.
+
+const docName = (d) => d?.name ?? d?.fileName ?? null;
+const docSha = (d) => d?.content_sha256 ?? null;
+const docCreated = (d) => new Date(d?.created_at ?? d?.createdAt ?? 0).getTime();
+const docProject = (d) => d?.project_id ?? d?.projectId ?? null;
+const isArchived = (d) => d?.archived === true;
 
 /**
- * @param {{name?: string, size?: number}} file - the incoming File
- * @param {Array<object>} existingDocs - the user's existing documents (raw rows)
- * @returns {{kind:'new'} | {kind:'reuse', doc:object} | {kind:'name-collision', collisions:object[]}}
+ * Find the active same-name document whose contents differ (or are unknown —
+ * legacy rows without a backfilled hash count as "unknown", and unknown must
+ * ask rather than silently duplicate).
+ *
+ * @param {{name: string, sha: string, projectId: string|null}} incoming
+ * @param {Array<object>} existingDocs - raw document rows (any project; filtered here)
+ * @returns {{kind:'proceed'} | {kind:'version-ask', doc:object}}
  */
-export function classifyIncomingFile(file, existingDocs = []) {
-  const name = file?.name;
-  const size = Number(file?.size);
-  if (!name || !Number.isFinite(size)) return { kind: 'new' };
+export function resolveIncomingUpload({ name, sha, projectId = null }, existingDocs = []) {
+  if (!name || !sha) return { kind: 'proceed' };
+  const scope = (Array.isArray(existingDocs) ? existingDocs : []).filter(
+    (d) => !isArchived(d) && docName(d) === name && (docProject(d) ?? null) === (projectId ?? null)
+  );
+  if (scope.length === 0) return { kind: 'proceed' };
 
-  const docName = (d) => d?.name ?? d?.fileName ?? null;
-  const docSize = (d) => Number(d?.file_size ?? d?.size ?? NaN);
-  const docCreated = (d) => new Date(d?.created_at ?? d?.createdAt ?? 0).getTime();
+  // Same name + identical bytes -> let the server-side dedup reuse it.
+  if (scope.some((d) => docSha(d) === sha)) return { kind: 'proceed' };
 
-  const sameName = (Array.isArray(existingDocs) ? existingDocs : []).filter((d) => docName(d) === name);
-  if (sameName.length === 0) return { kind: 'new' };
+  // Same name, different (or unknown) bytes -> ask. Oldest copy is "the"
+  // existing document the user thinks of. knownDifferent distinguishes a row
+  // with a real mismatching hash from a legacy row with no hash yet — the
+  // modal must not claim "contents are different" when it can't know.
+  const doc = scope.slice().sort((a, b) => docCreated(a) - docCreated(b))[0];
+  return { kind: 'version-ask', doc, knownDifferent: docSha(doc) !== null };
+}
 
-  const sameFile = sameName.filter((d) => docSize(d) === size);
-  if (sameFile.length > 0) {
-    // It's the same file — reopen the original (the oldest matching copy) so we
-    // land on the one that has been around the longest (and holds the marks).
-    const chosen = sameFile.slice().sort((a, b) => docCreated(a) - docCreated(b))[0];
-    return { kind: 'reuse', doc: chosen };
-  }
-
-  // Same name, different content.
-  return { kind: 'name-collision', collisions: sameName };
+/**
+ * After createDocument resolved/deduped the row: did the user's file come back
+ * as an existing document under a DIFFERENT name? Then offer an alias
+ * (decision 6). Requires the aliases column to exist on the returned row so a
+ * client running ahead of the migration can't issue a failing update.
+ *
+ * @param {object} resolvedDoc - the row returned by createDocument
+ * @param {{name: string, sha: string}} incoming
+ * @returns {boolean}
+ */
+export function shouldOfferAlias(resolvedDoc, { name, sha }) {
+  if (!resolvedDoc || !name || !sha) return false;
+  if (docSha(resolvedDoc) !== sha) return false;
+  if (!('name_aliases' in resolvedDoc)) return false;
+  const known = [resolvedDoc.name, ...(resolvedDoc.name_aliases || [])];
+  return !known.includes(name);
 }
 
 /**
