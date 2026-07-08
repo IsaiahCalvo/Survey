@@ -320,7 +320,7 @@ export const hasVisiblePdfjsSpinner = (host) => {
 // stays out of the first-paint bundle). Verbosity stays at the pdf.js default.
 
 // Consistent font stack for the entire application
-export const FONT_FAMILY = '-apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", "Segoe UI", Roboto, Ubuntu, "Noto Sans", Arial, sans-serif';
+export const FONT_FAMILY = '"Helvetica Neue", Helvetica, Arial, sans-serif'; // design.md primary stack (DOM CSS only — never feed into Fabric)
 export const REGION_EDIT_TOOL = 'region-edit';
 
 // Convert hex color to rgba with default opacity (default 0.2, but surveyMarkers use 1.0)

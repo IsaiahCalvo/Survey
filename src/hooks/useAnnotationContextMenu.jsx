@@ -498,23 +498,27 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
           el.style.top = `${nextTop}px`;
         }}
         style={{
+          // Design.md menu spec: dark card, ink border, small radius,
+          // deep soft shadow — matches the home page's portalled menus.
           position: 'fixed',
           left: ctx.x,
           top: ctx.y,
-          background: '#fff',
-          border: '1px solid #ccc',
-          borderRadius: 4,
-          boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
+          background: '#181c24',
+          border: '1px solid #2a3140',
+          borderRadius: 8,
+          boxShadow: '0 12px 30px rgba(0,0,0,0.5)',
           zIndex: 10000,
           minWidth: 160,
-          padding: '4px 0',
-          fontSize: 13,
-          fontFamily: 'system-ui, sans-serif',
+          padding: 4,
+          fontSize: 12.5,
+          color: '#e8e2d4',
+          letterSpacing: 0,
+          fontFamily: '"Helvetica Neue", Helvetica, Arial, sans-serif',
         }}
       >
         {items.map((it) => (
           it.separator
-            ? <div key={it.key} style={{ height: 1, background: '#eee', margin: '4px 0' }} />
+            ? <div key={it.key} style={{ height: 1, background: '#2a3140', margin: '4px 0' }} />
             : (
               <div
                 key={it.key}
@@ -523,14 +527,16 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
                 // empty) render in muted gray with a default cursor and no
                 // hover surveyMarker — the user can see the option exists but
                 // that it's not currently actionable. Matches standard
-                // desktop-app menu behavior.
+                // desktop-app menu behavior. Danger items (Delete) use the
+                // design.md danger color like the home page menus.
                 style={{
-                  padding: '6px 14px',
+                  padding: '7px 12px',
+                  borderRadius: 5,
                   cursor: it.disabled ? 'default' : 'pointer',
                   userSelect: 'none',
-                  color: it.disabled ? '#999' : 'inherit',
+                  color: it.disabled ? '#5a6473' : (it.key === 'delete' ? '#cf6f6f' : '#e8e2d4'),
                 }}
-                onMouseEnter={(e) => { if (!it.disabled) e.currentTarget.style.background = '#eef'; }}
+                onMouseEnter={(e) => { if (!it.disabled) e.currentTarget.style.background = '#1f2430'; }}
                 onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
               >
                 {it.label}

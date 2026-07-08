@@ -741,7 +741,7 @@ const PagesPanel = ({
       flexDirection: 'column',
       height: '100%',
       fontFamily: FONT_FAMILY,
-      background: '#252525'
+      background: '#12151c'
     }}>
       {/* Thumbnail List */}
       <div
@@ -801,8 +801,8 @@ const PagesPanel = ({
               style={{
                 position: 'relative',
                 padding: '4px',
-                background: isSelected ? '#3a3a3a' : (dragOverPage === pageNumber ? '#2b4a5a' : 'transparent'),
-                border: isSelected ? '1px solid #4A90E2' : (dragOverPage === pageNumber ? '1px solid #4A90E2' : '1px solid transparent'),
+                background: isSelected ? '#2a3140' : (dragOverPage === pageNumber ? '#2b4a5a' : 'transparent'),
+                border: isSelected ? '1px solid #d8a84e' : (dragOverPage === pageNumber ? '1px solid #d8a84e' : '1px solid transparent'),
                 borderRadius: '4px',
                 cursor: draggedPage === pageNumber ? 'grabbing' : 'grab',
                 opacity: draggedPage === pageNumber ? 0.82 : 1,
@@ -813,7 +813,7 @@ const PagesPanel = ({
               }}
               onMouseEnter={(e) => {
                 if (!isSelected) {
-                  e.currentTarget.style.background = '#2b2b2b';
+                  e.currentTarget.style.background = '#181c24';
                 }
               }}
               onMouseLeave={(e) => {
@@ -830,8 +830,8 @@ const PagesPanel = ({
                 width: '20px',
                 height: '20px',
                 borderRadius: '50%',
-                background: '#4a4a4a',
-                color: '#ffffff',
+                background: '#3a4252',
+                color: '#f4f1ea',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
@@ -875,7 +875,7 @@ const PagesPanel = ({
                     top: '50%',
                     left: '50%',
                     transform: 'translate(-50%, -50%)',
-                    color: '#666',
+                    color: '#5a6473',
                     fontSize: '10px'
                   }}>
                     Loading...
@@ -889,7 +889,7 @@ const PagesPanel = ({
           <div style={{
             padding: '32px 16px',
             textAlign: 'center',
-            color: '#777',
+            color: '#5a6473',
             fontSize: '12px'
           }}>
             No pages are visible in this space. Add pages to the active space to see them here.
@@ -905,8 +905,8 @@ const PagesPanel = ({
             position: 'fixed',
             left: contextMenu.x,
             top: contextMenu.y,
-            background: '#333',
-            border: '1px solid #444',
+            background: '#2a3140',
+            border: '1px solid #3a4252',
             borderRadius: '6px',
             padding: '4px',
             zIndex: 10000,
@@ -926,15 +926,15 @@ const PagesPanel = ({
               fontSize: '13px',
               textAlign: 'left',
               cursor: 'pointer',
-              color: '#ddd',
+              color: '#e8e2d4',
               display: 'flex',
               alignItems: 'center',
               gap: '8px'
             }}
-            onMouseEnter={(e) => e.currentTarget.style.background = '#3a3a3a'}
+            onMouseEnter={(e) => e.currentTarget.style.background = '#2a3140'}
             onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
           >
-            <Icon name="scissors" size={14} color="#999" />
+            <Icon name="scissors" size={14} color="#8d96a6" />
             Cut
           </button>
           <button
@@ -948,15 +948,15 @@ const PagesPanel = ({
               fontSize: '13px',
               textAlign: 'left',
               cursor: 'pointer',
-              color: '#ddd',
+              color: '#e8e2d4',
               display: 'flex',
               alignItems: 'center',
               gap: '8px'
             }}
-            onMouseEnter={(e) => e.currentTarget.style.background = '#3a3a3a'}
+            onMouseEnter={(e) => e.currentTarget.style.background = '#2a3140'}
             onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
           >
-            <Icon name="copy" size={14} color="#999" />
+            <Icon name="copy" size={14} color="#8d96a6" />
             Copy
           </button>
           <button
@@ -971,7 +971,7 @@ const PagesPanel = ({
               fontSize: '13px',
               textAlign: 'left',
               cursor: clipboardPage ? 'pointer' : 'not-allowed',
-              color: clipboardPage ? '#ddd' : '#666',
+              color: clipboardPage ? '#e8e2d4' : '#5a6473',
               display: 'flex',
               alignItems: 'center',
               gap: '8px',
@@ -979,14 +979,14 @@ const PagesPanel = ({
             }}
             onMouseEnter={(e) => {
               if (clipboardPage) {
-                e.currentTarget.style.background = '#3a3a3a';
+                e.currentTarget.style.background = '#2a3140';
               }
             }}
             onMouseLeave={(e) => {
               e.currentTarget.style.background = 'transparent';
             }}
           >
-            <Icon name="paste" size={14} color={clipboardPage ? "#999" : "#555"} />
+            <Icon name="paste" size={14} color={clipboardPage ? "#8d96a6" : "#5a6473"} />
             Paste
           </button>
           <button
@@ -1000,20 +1000,20 @@ const PagesPanel = ({
               fontSize: '13px',
               textAlign: 'left',
               cursor: 'pointer',
-              color: '#ddd',
+              color: '#e8e2d4',
               display: 'flex',
               alignItems: 'center',
               gap: '8px'
             }}
-            onMouseEnter={(e) => e.currentTarget.style.background = '#3a3a3a'}
+            onMouseEnter={(e) => e.currentTarget.style.background = '#2a3140'}
             onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
           >
-            <Icon name="duplicate" size={14} color="#999" />
+            <Icon name="duplicate" size={14} color="#8d96a6" />
             Duplicate
           </button>
           <div style={{
             height: '1px',
-            background: '#444',
+            background: '#3a4252',
             margin: '4px 0'
           }} />
           <button
@@ -1027,15 +1027,15 @@ const PagesPanel = ({
               fontSize: '13px',
               textAlign: 'left',
               cursor: 'pointer',
-              color: '#ddd',
+              color: '#e8e2d4',
               display: 'flex',
               alignItems: 'center',
               gap: '8px'
             }}
-            onMouseEnter={(e) => e.currentTarget.style.background = '#3a3a3a'}
+            onMouseEnter={(e) => e.currentTarget.style.background = '#2a3140'}
             onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
           >
-            <Icon name="rotate" size={14} color="#999" />
+            <Icon name="rotate" size={14} color="#8d96a6" />
             Rotate
           </button>
           <button
@@ -1049,15 +1049,15 @@ const PagesPanel = ({
               fontSize: '13px',
               textAlign: 'left',
               cursor: 'pointer',
-              color: '#ddd',
+              color: '#e8e2d4',
               display: 'flex',
               alignItems: 'center',
               gap: '8px'
             }}
-            onMouseEnter={(e) => e.currentTarget.style.background = '#3a3a3a'}
+            onMouseEnter={(e) => e.currentTarget.style.background = '#2a3140'}
             onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
           >
-            <Icon name="flipHorizontal" size={14} color="#999" />
+            <Icon name="flipHorizontal" size={14} color="#8d96a6" />
             Mirror Horizontally
           </button>
           <button
@@ -1071,15 +1071,15 @@ const PagesPanel = ({
               fontSize: '13px',
               textAlign: 'left',
               cursor: 'pointer',
-              color: '#ddd',
+              color: '#e8e2d4',
               display: 'flex',
               alignItems: 'center',
               gap: '8px'
             }}
-            onMouseEnter={(e) => e.currentTarget.style.background = '#3a3a3a'}
+            onMouseEnter={(e) => e.currentTarget.style.background = '#2a3140'}
             onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
           >
-            <Icon name="flipVertical" size={14} color="#999" />
+            <Icon name="flipVertical" size={14} color="#8d96a6" />
             Mirror Vertically
           </button>
           <button
@@ -1093,20 +1093,20 @@ const PagesPanel = ({
               fontSize: '13px',
               textAlign: 'left',
               cursor: 'pointer',
-              color: '#ddd',
+              color: '#e8e2d4',
               display: 'flex',
               alignItems: 'center',
               gap: '8px'
             }}
-            onMouseEnter={(e) => e.currentTarget.style.background = '#3a3a3a'}
+            onMouseEnter={(e) => e.currentTarget.style.background = '#2a3140'}
             onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
           >
-            <Icon name="reset" size={14} color="#999" />
+            <Icon name="reset" size={14} color="#8d96a6" />
             Reset
           </button>
           <div style={{
             height: '1px',
-            background: '#444',
+            background: '#3a4252',
             margin: '4px 0'
           }} />
           <button
@@ -1120,15 +1120,15 @@ const PagesPanel = ({
               fontSize: '13px',
               textAlign: 'left',
               cursor: 'pointer',
-              color: '#ff6b6b',
+              color: '#cf6f6f',
               display: 'flex',
               alignItems: 'center',
               gap: '8px'
             }}
-            onMouseEnter={(e) => e.currentTarget.style.background = '#3a3a3a'}
+            onMouseEnter={(e) => e.currentTarget.style.background = '#2a3140'}
             onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
           >
-            <Icon name="trash" size={14} color="#ff6b6b" />
+            <Icon name="trash" size={14} color="#cf6f6f" />
             Delete
           </button>
         </div>

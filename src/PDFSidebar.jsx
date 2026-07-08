@@ -36,7 +36,7 @@ const HistoryButton = ({ isActive, onClick }) => (
       justifyContent: 'center',
       background: 'transparent',
       border: 0,
-      color: isActive ? '#4A90E2' : '#ddd',
+      color: isActive ? '#d8a84e' : '#e8e2d4',
       borderRadius: '6px',
       cursor: 'pointer',
       fontSize: '12px',
@@ -196,8 +196,8 @@ const PDFSidebar = React.forwardRef(({
     <div style={{
       width: isCollapsed ? '48px' : '272px',
       height: '100%',
-      background: '#252525',
-      borderRight: '1px solid #3a3a3a',
+      background: '#12151c',
+      borderRight: '1px solid #2a3140',
       display: 'flex',
       flexDirection: 'column',
       transition: 'width 0.2s ease',
@@ -207,18 +207,18 @@ const PDFSidebar = React.forwardRef(({
       <div style={{
         height: '35px',
         padding: '0 8px',
-        borderBottom: '1px solid #3a3a3a',
+        borderBottom: '1px solid #2a3140',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'flex-end',
-        background: '#252525'
+        background: '#12151c'
       }}>
         <button
           onClick={toggleCollapse}
           style={{
             background: 'transparent',
             border: 'none',
-            color: '#999',
+            color: '#8d96a6',
             cursor: 'pointer',
             padding: '4px',
             borderRadius: '4px',
@@ -227,10 +227,10 @@ const PDFSidebar = React.forwardRef(({
             justifyContent: 'center',
             transition: 'background 0.15s ease'
           }}
-          onMouseEnter={(e) => e.currentTarget.style.background = '#333'}
+          onMouseEnter={(e) => e.currentTarget.style.background = '#2a3140'}
           onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
         >
-          <Icon name={isCollapsed ? 'chevronRight' : 'chevronLeft'} size={16} color="#999" />
+          <Icon name={isCollapsed ? 'chevronRight' : 'chevronLeft'} size={16} color="#8d96a6" />
         </button>
       </div>
 
@@ -239,8 +239,8 @@ const PDFSidebar = React.forwardRef(({
           {/* Tab Navigation */}
           <div style={{
             display: 'flex',
-            borderBottom: '1px solid #3a3a3a',
-            background: '#252525',
+            borderBottom: '1px solid #2a3140',
+            background: '#12151c',
             overflow: 'hidden',
             scrollbarWidth: 'none',
             msOverflowStyle: 'none',
@@ -284,9 +284,9 @@ const PDFSidebar = React.forwardRef(({
                     minWidth: 0,
                     maxWidth: 'none',
                     padding: '10px 2px',
-                    background: isActive ? '#2b2b2b' : 'transparent',
+                    background: isActive ? '#181c24' : 'transparent',
                     border: 'none',
-                    borderBottom: isActive ? '2px solid #4A90E2' : '2px solid transparent',
+                    borderBottom: isActive ? '2px solid #d8a84e' : '2px solid transparent',
                     boxSizing: 'border-box',
                     overflow: 'hidden',
                     cursor: 'pointer',
@@ -296,7 +296,7 @@ const PDFSidebar = React.forwardRef(({
                     justifyContent: 'center',
                     gap: '4px',
                     fontSize: '11px',
-                    color: isActive ? '#ddd' : '#999',
+                    color: isActive ? '#e8e2d4' : '#8d96a6',
                     fontWeight: isActive ? '500' : '400',
                     fontFamily: FONT_FAMILY,
                     transition: 'all 0.15s ease',
@@ -304,7 +304,7 @@ const PDFSidebar = React.forwardRef(({
                   }}
                   onMouseEnter={(e) => {
                     if (!isActive) {
-                      e.currentTarget.style.background = '#2b2b2b';
+                      e.currentTarget.style.background = '#181c24';
                     }
                   }}
                   onMouseLeave={(e) => {
@@ -316,7 +316,7 @@ const PDFSidebar = React.forwardRef(({
                   <Icon
                     name={tab.icon}
                     size={16}
-                    color={isActive ? '#4A90E2' : '#999'}
+                    color={isActive ? '#d8a84e' : '#8d96a6'}
                     style={tab.icon === 'pages' ? { boxSizing: 'content-box', marginTop: '3px' } : undefined}
                   />
                   <span style={{
@@ -336,7 +336,7 @@ const PDFSidebar = React.forwardRef(({
             overflow: 'hidden',
             display: 'flex',
             flexDirection: 'column',
-            background: '#252525'
+            background: '#12151c'
           }}>
             {/* Persistence: Keep all panels mounted but hide inactive ones using display: none */}
 
@@ -463,7 +463,7 @@ const PDFSidebar = React.forwardRef(({
           flexDirection: 'column',
           padding: '8px',
           gap: '4px',
-          background: '#252525',
+          background: '#12151c',
           position: 'relative',
           // 2026-04-25 — flex:1 lets the collaboration footer at the bottom
           // sit at the actual bottom of the rail instead of stacking right
@@ -517,7 +517,7 @@ const PDFSidebar = React.forwardRef(({
                   width: '100%'
                 }}
                 onMouseEnter={(e) => {
-                  e.currentTarget.style.background = '#2b2b2b';
+                  e.currentTarget.style.background = '#181c24';
                 }}
                 onMouseLeave={(e) => {
                   e.currentTarget.style.background = 'transparent';
@@ -526,7 +526,7 @@ const PDFSidebar = React.forwardRef(({
                 <Icon
                   name={tab.icon}
                   size={20}
-                  color="#999"
+                  color="#8d96a6"
                   style={{ width: '20px', height: '20px', flexShrink: 0 }}
                 />
               </button>
@@ -538,8 +538,8 @@ const PDFSidebar = React.forwardRef(({
                     top: '50%',
                     transform: 'translateY(-50%)',
                     marginLeft: '8px',
-                    background: '#1a1a1a',
-                    color: '#ddd',
+                    background: '#181c24',
+                    color: '#e8e2d4',
                     padding: '6px 10px',
                     borderRadius: '4px',
                     fontSize: '12px',
@@ -548,7 +548,7 @@ const PDFSidebar = React.forwardRef(({
                     zIndex: 1000,
                     pointerEvents: 'none',
                     boxShadow: '0 2px 8px rgba(0, 0, 0, 0.3)',
-                    border: '1px solid #3a3a3a'
+                    border: '1px solid #2a3140'
                   }}
                 >
                   {tab.label}
@@ -566,13 +566,13 @@ const PDFSidebar = React.forwardRef(({
           Hidden entirely when cloud sync is disabled (free tier or no PDF). */}
       {cloudSyncEnabled && (
         <div style={{
-          borderTop: '1px solid #3a3a3a',
+          borderTop: '1px solid #2a3140',
           padding: isCollapsed ? '10px 6px' : '12px',
           display: 'flex',
           flexDirection: 'column',
           alignItems: 'center',
           gap: '10px',
-          background: '#252525'
+          background: '#12151c'
         }}>
           <SyncStatusChip
             status={cloudSyncStatus}

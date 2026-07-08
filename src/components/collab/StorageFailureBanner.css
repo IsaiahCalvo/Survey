@@ -32,11 +32,11 @@
   /* md vertical / lg horizontal padding per spec spacing scale (xs=4 sm=8 md=16 lg=24) */
   padding: 16px 24px;
 
-  background: var(--bg-secondary, #252525);
+  background: var(--bg-secondary, #12151c);
   /* 4px solid red left border signals "something is broken" without screaming —
      matches the destructive-warning convention used by Linear / Notion / Figma. */
-  border-left: 4px solid var(--accent-red, #DC3545);
-  border-bottom: 1px solid var(--border-primary, #3A3A3A);
+  border-left: 4px solid var(--accent-red, #cf6f6f);
+  border-bottom: 1px solid var(--border-primary, #2a3140);
   box-shadow: var(--shadow-md, 0 4px 16px rgba(0, 0, 0, 0.4));
 
   /* Reuse the app font stack so banner type matches the rest of the surface. */
@@ -50,7 +50,7 @@
   flex-shrink: 0;
   margin-top: 2px;
   margin-right: 8px;
-  color: var(--accent-red, #DC3545);
+  color: var(--accent-red, #cf6f6f);
 }
 
 .storage-banner__text {
@@ -78,7 +78,7 @@
   font-size: 13px;
   font-weight: 400;
   line-height: 1.5;
-  color: var(--text-secondary, #C8C8C8);
+  color: var(--text-secondary, #e8e2d4);
 }
 
 .storage-banner__secondary {
@@ -87,7 +87,7 @@
   font-size: 12px;
   font-weight: 400;
   line-height: 1.4;
-  color: var(--text-muted, #9A9A9A);
+  color: var(--text-muted, #8d96a6);
   margin-top: 4px;
 }
 
@@ -105,7 +105,7 @@
   font-size: 13px;
   font-weight: 400;
   line-height: 1.5;
-  color: var(--accent-primary, #4A90E2);
+  color: var(--accent-primary, #d8a84e);
   text-decoration: underline;
   font-family: inherit;
   margin-left: 8px;
@@ -116,7 +116,7 @@
   /* UX: keyboard focus ring matching existing input focus pattern (src/styles.css).
      2px halo at 0.4 opacity reads clearly without overpowering surrounding chrome. */
   outline: none;
-  box-shadow: 0 0 0 2px rgba(74, 144, 226, 0.4);
+  box-shadow: 0 0 0 2px rgba(216, 168, 78, 0.4);
   border-radius: 2px;
 }
 
@@ -135,7 +135,7 @@
   background: none;
   border: none;
   cursor: pointer;
-  color: var(--text-muted, #9A9A9A);
+  color: var(--text-muted, #8d96a6);
   font-size: 20px;
   line-height: 1;
   font-family: inherit;
@@ -150,7 +150,7 @@
 
 .storage-banner__dismiss:focus {
   outline: none;
-  box-shadow: 0 0 0 2px rgba(74, 144, 226, 0.4);
+  box-shadow: 0 0 0 2px rgba(216, 168, 78, 0.4);
   border-radius: 2px;
 }
 

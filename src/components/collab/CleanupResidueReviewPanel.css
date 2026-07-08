@@ -44,8 +44,8 @@
      because the body text here is shorter and the sample list reads more
      comfortably at this width. 16/24 padding keeps the rhythm of the
      existing modal family. */
-  background: var(--bg-secondary, #252525);
-  border: 1px solid var(--border-primary, #3A3A3A);
+  background: var(--bg-secondary, #12151c);
+  border: 1px solid var(--border-primary, #2a3140);
   border-radius: 8px;
   box-shadow: var(--shadow-lg, 0 8px 24px rgba(0, 0, 0, 0.5));
 
@@ -79,7 +79,7 @@
   font-size: 14px;
   font-weight: 400;
   line-height: 1.5;
-  color: var(--text-secondary, #C8C8C8);
+  color: var(--text-secondary, #e8e2d4);
   margin: 0;
 }
 
@@ -107,7 +107,7 @@
      <code> child. */
   font-size: 13px;
   line-height: 1.4;
-  color: var(--text-secondary, #C8C8C8);
+  color: var(--text-secondary, #e8e2d4);
 }
 
 .cleanup-residue-review__sample-row code {
@@ -115,11 +115,11 @@
      the existing diagnostic copy (e.g. error codes in StorageFailureBanner).
      Slightly muted background so the ID reads as a token, not body text. */
   font-family: var(--font-mono, "SF Mono", "Monaco", "Consolas", "Liberation Mono", monospace);
-  background: var(--bg-tertiary, #1F1F1F);
-  border: 1px solid var(--border-primary, #3A3A3A);
+  background: var(--bg-tertiary, #12151c);
+  border: 1px solid var(--border-primary, #2a3140);
   border-radius: 3px;
   padding: 2px 6px;
-  color: var(--text-primary, #E8E8E8);
+  color: var(--text-primary, #e8e2d4);
   font-size: 12px;
 }
 
@@ -128,7 +128,7 @@
      it's a summary, not another entry. Italic to further differentiate from
      the data rows. */
   font-style: italic;
-  color: var(--text-tertiary, #888888);
+  color: var(--text-tertiary, #8d96a6);
   padding-left: 6px;
 }
 
@@ -160,27 +160,27 @@
   /* UX: keyboard focus ring — same shape as the rest of the collab surface
      family. */
   outline: none;
-  box-shadow: 0 0 0 2px rgba(74, 144, 226, 0.4);
+  box-shadow: 0 0 0 2px rgba(216, 168, 78, 0.4);
 }
 
 .cleanup-residue-review__action--secondary {
   /* UX: Close — neutral outline. Default focus per accessibility (the user
      can dismiss without committing to a destructive action). */
   background: transparent;
-  border-color: var(--border-primary, #3A3A3A);
+  border-color: var(--border-primary, #2a3140);
   color: var(--text-primary, #FFFFFF);
 }
 
 .cleanup-residue-review__action--secondary:hover {
-  background: var(--bg-tertiary, #1F1F1F);
+  background: var(--bg-tertiary, #12151c);
 }
 
 .cleanup-residue-review__action--primary {
   /* UX: red destructive primary — same accent-red token ConfirmDeleteModal
      uses so cleaning up brake-suppressed residue and bulk-deleting feel
      like the same destructive surface family. */
-  background: var(--accent-red, #DC3545);
-  border-color: var(--accent-red, #DC3545);
+  background: var(--accent-red, #cf6f6f);
+  border-color: var(--accent-red, #cf6f6f);
   color: #FFFFFF;
 }
 

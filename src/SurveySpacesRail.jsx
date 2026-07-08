@@ -484,7 +484,7 @@ const SurveySpacesRail = ({
     const exactColor = color || null;
     return {
       backgroundColor: '#fff',
-      borderColor: exactColor ? 'rgba(255, 255, 255, 0.58)' : '#777',
+      borderColor: exactColor ? 'rgba(255, 255, 255, 0.58)' : '#5a6473',
       '--survey-marker-entity-swatch-color': exactColor || 'transparent'
     };
   };
@@ -603,8 +603,8 @@ const SurveySpacesRail = ({
                 right: 0,
                 height: '100%',
                 width: isSurveyPanelCollapsed ? '48px' : '320px',
-                background: '#252525',
-                borderLeft: '1px solid #3a3a3a',
+                background: '#12151c',
+                borderLeft: '1px solid #2a3140',
                 zIndex: 1,
                 display: 'flex',
                 flexDirection: 'column',
@@ -620,11 +620,11 @@ const SurveySpacesRail = ({
                   <div style={{
                     height: '35px',
                     padding: '0 8px',
-                    borderBottom: '1px solid #3a3a3a',
+                    borderBottom: '1px solid #2a3140',
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'flex-start',
-                    background: '#252525',
+                    background: '#12151c',
                     flexShrink: 0
                   }}>
                     <button
@@ -633,11 +633,11 @@ const SurveySpacesRail = ({
                         requestAnimationFrame(() => { applyLayoutDrivenZoom(); });
                       }}
                       aria-label="Expand Survey panel"
-                      style={{ background: 'transparent', border: 'none', color: '#999', cursor: 'pointer', padding: '4px', borderRadius: '4px', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'background 0.15s' }}
-                      onMouseEnter={(e) => e.currentTarget.style.background = '#333'}
+                      style={{ background: 'transparent', border: 'none', color: '#8d96a6', cursor: 'pointer', padding: '4px', borderRadius: '4px', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'background 0.15s' }}
+                      onMouseEnter={(e) => e.currentTarget.style.background = '#2a3140'}
                       onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
                     >
-                      <Icon name="chevronLeft" size={16} color="#999" />
+                      <Icon name="chevronLeft" size={16} color="#8d96a6" />
                     </button>
                   </div>
                   <div style={{
@@ -645,7 +645,7 @@ const SurveySpacesRail = ({
                     flexDirection: 'column',
                     padding: '8px',
                     gap: '4px',
-                    background: '#252525',
+                    background: '#12151c',
                     position: 'relative',
                     flex: 1
                   }}>
@@ -666,7 +666,7 @@ const SurveySpacesRail = ({
                         style={{
                           background: 'transparent',
                           border: 'none',
-                          color: showSurveyPanel ? '#4A90E2' : '#999',
+                          color: showSurveyPanel ? '#d8a84e' : '#8d96a6',
                           cursor: 'pointer',
                           padding: '10px',
                           borderRadius: '6px',
@@ -680,7 +680,7 @@ const SurveySpacesRail = ({
                         }}
                         onMouseEnter={(e) => {
                           setRailIconHover('survey');
-                          e.currentTarget.style.background = '#2b2b2b';
+                          e.currentTarget.style.background = '#181c24';
                         }}
                         onMouseLeave={(e) => {
                           setRailIconHover(null);
@@ -695,7 +695,7 @@ const SurveySpacesRail = ({
                         />
                       </button>
                       {railIconHover === 'survey' && (
-                        <div style={{ position: 'absolute', right: '100%', top: '50%', transform: 'translateY(-50%)', marginRight: '8px', background: '#1a1a1a', color: '#ddd', padding: '6px 10px', fontSize: '12px', borderRadius: '4px', border: '1px solid #3a3a3a', whiteSpace: 'nowrap', fontFamily: FONT_FAMILY, pointerEvents: 'none', zIndex: 10000, boxShadow: '0 2px 8px rgba(0, 0, 0, 0.3)' }}>
+                        <div style={{ position: 'absolute', right: '100%', top: '50%', transform: 'translateY(-50%)', marginRight: '8px', background: '#181c24', color: '#e8e2d4', padding: '6px 10px', fontSize: '12px', borderRadius: '4px', border: '1px solid #2a3140', whiteSpace: 'nowrap', fontFamily: FONT_FAMILY, pointerEvents: 'none', zIndex: 10000, boxShadow: '0 2px 8px rgba(0, 0, 0, 0.3)' }}>
                           Survey
                         </div>
                       )}
@@ -711,11 +711,11 @@ const SurveySpacesRail = ({
                     style={{
                       height: '35px',
                       padding: '0 8px',
-                      borderBottom: '1px solid #3a3a3a',
+                      borderBottom: '1px solid #2a3140',
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'flex-start',
-                      background: '#252525',
+                      background: '#12151c',
                       flexShrink: 0
                     }}
                   >
@@ -739,10 +739,10 @@ const SurveySpacesRail = ({
                         justifyContent: 'center',
                         transition: 'background 0.15s'
                       }}
-                      onMouseEnter={(e) => e.currentTarget.style.background = '#333'}
+                      onMouseEnter={(e) => e.currentTarget.style.background = '#2a3140'}
                       onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
                     >
-                      <Icon name="chevronRight" size={16} color="#999" />
+                      <Icon name="chevronRight" size={16} color="#8d96a6" />
                     </button>
                   </div>
 
@@ -751,8 +751,8 @@ const SurveySpacesRail = ({
                   {/* Template title lives below the rail tabs, not in the collapse row. */}
                   <div style={{
                     padding: '12px 12px 10px',
-                    borderBottom: '1px solid #3a3a3a',
-                    background: '#252525',
+                    borderBottom: '1px solid #2a3140',
+                    background: '#12151c',
                     display: 'flex',
                     alignItems: 'center',
                     gap: '10px',
@@ -764,7 +764,7 @@ const SurveySpacesRail = ({
                           margin: 0,
                           fontSize: '18px',
                           fontWeight: '600',
-                          color: '#fff',
+                          color: '#f4f1ea',
                           fontFamily: FONT_FAMILY,
                           letterSpacing: '-0.2px',
                           overflow: 'hidden',
@@ -820,7 +820,7 @@ const SurveySpacesRail = ({
                       style={{
                         background: 'transparent',
                         border: 'none',
-                        color: '#ddd',
+                        color: '#e8e2d4',
                         padding: '4px',
                         cursor: 'pointer',
                         display: 'flex',
@@ -837,8 +837,8 @@ const SurveySpacesRail = ({
                   {surveyModuleOptions.length > 0 && (
                     <div style={{
                       padding: '8px 12px',
-                      borderBottom: '1px solid #3a3a3a',
-                      background: '#252525',
+                      borderBottom: '1px solid #2a3140',
+                      background: '#12151c',
                       flexShrink: 0
                     }}>
                       <div
@@ -863,9 +863,9 @@ const SurveySpacesRail = ({
                           style={{
                             height: '30px',
                             borderRadius: '6px',
-                            border: canSelectPreviousModule ? '1px solid #444' : '1px solid #303030',
-                            background: canSelectPreviousModule ? '#2A2D33' : '#222',
-                            color: canSelectPreviousModule ? '#ddd' : '#666',
+                            border: canSelectPreviousModule ? '1px solid #3a4252' : '1px solid #1f2430',
+                            background: canSelectPreviousModule ? '#1f2430' : '#12151c',
+                            color: canSelectPreviousModule ? '#e8e2d4' : '#5a6473',
                             cursor: canSelectPreviousModule ? 'pointer' : 'not-allowed',
                             display: 'flex',
                             alignItems: 'center',
@@ -885,9 +885,9 @@ const SurveySpacesRail = ({
                             height: '30px',
                             minWidth: 0,
                             borderRadius: '6px',
-                            border: '1px solid #4A90E2',
+                            border: '1px solid #d8a84e',
                             background: '#202832',
-                            color: '#fff',
+                            color: '#f4f1ea',
                             display: 'flex',
                             alignItems: 'center',
                             justifyContent: 'center',
@@ -922,9 +922,9 @@ const SurveySpacesRail = ({
                           style={{
                             height: '30px',
                             borderRadius: '6px',
-                            border: canSelectNextModule ? '1px solid #444' : '1px solid #303030',
-                            background: canSelectNextModule ? '#2A2D33' : '#222',
-                            color: canSelectNextModule ? '#ddd' : '#666',
+                            border: canSelectNextModule ? '1px solid #3a4252' : '1px solid #1f2430',
+                            background: canSelectNextModule ? '#1f2430' : '#12151c',
+                            color: canSelectNextModule ? '#e8e2d4' : '#5a6473',
                             cursor: canSelectNextModule ? 'pointer' : 'not-allowed',
                             display: 'flex',
                             alignItems: 'center',
@@ -968,7 +968,7 @@ const SurveySpacesRail = ({
                                     border: 'none',
                                     borderRadius: '4px',
                                     background: isActive ? '#17324D' : 'transparent',
-                                    color: isActive ? '#fff' : '#ddd',
+                                    color: isActive ? '#fff' : '#e8e2d4',
                                     display: 'flex',
                                     alignItems: 'center',
                                     justifyContent: 'space-between',
@@ -1194,7 +1194,7 @@ const SurveySpacesRail = ({
                               gap: '8px',
                               alignItems: 'center',
                               paddingBottom: '8px',
-                              borderBottom: '1px solid #333'
+                              borderBottom: '1px solid #2a3140'
                             }}>
                               {/* Select All checkbox */}
                               {(() => {
@@ -1232,14 +1232,14 @@ const SurveySpacesRail = ({
                                       }}
                                       style={{ cursor: 'pointer' }}
                                     />
-                                    <span style={{ color: '#ddd', fontSize: '13px', fontWeight: '400' }}>
+                                    <span style={{ color: '#e8e2d4', fontSize: '13px', fontWeight: '400' }}>
                                       Select All
                                     </span>
                                   </label>
                                 );
                               })()}
 
-                              <div style={{ width: '1px', height: '16px', background: '#444' }} />
+                              <div style={{ width: '1px', height: '16px', background: '#3a4252' }} />
 
                               {/* Copy to Spaces button */}
                               <button
@@ -1255,19 +1255,19 @@ const SurveySpacesRail = ({
                                   padding: 0,
                                   background: 'transparent',
                                   border: 'none',
-                                  color: Object.values(copiedItemSelection).some(Boolean) ? '#999' : '#555',
+                                  color: Object.values(copiedItemSelection).some(Boolean) ? '#8d96a6' : '#5a6473',
                                   fontSize: '13px',
                                   fontWeight: '400',
                                   cursor: Object.values(copiedItemSelection).some(Boolean) ? 'pointer' : 'not-allowed'
                                 }}
                                 onMouseEnter={(e) => {
                                   if (Object.values(copiedItemSelection).some(Boolean)) {
-                                    e.currentTarget.style.color = '#ddd';
+                                    e.currentTarget.style.color = '#e8e2d4';
                                   }
                                 }}
                                 onMouseLeave={(e) => {
                                   if (Object.values(copiedItemSelection).some(Boolean)) {
-                                    e.currentTarget.style.color = '#999';
+                                    e.currentTarget.style.color = '#8d96a6';
                                   }
                                 }}
                               >
@@ -1465,19 +1465,19 @@ const SurveySpacesRail = ({
                                   padding: 0,
                                   background: 'transparent',
                                   border: 'none',
-                                  color: Object.values(copiedItemSelection).some(Boolean) ? '#cc4444' : '#555',
+                                  color: Object.values(copiedItemSelection).some(Boolean) ? '#c25858' : '#5a6473',
                                   fontSize: '13px',
                                   fontWeight: '400',
                                   cursor: Object.values(copiedItemSelection).some(Boolean) ? 'pointer' : 'not-allowed'
                                 }}
                                 onMouseEnter={(e) => {
                                   if (Object.values(copiedItemSelection).some(Boolean)) {
-                                    e.currentTarget.style.color = '#ff6666';
+                                    e.currentTarget.style.color = '#c25858';
                                   }
                                 }}
                                 onMouseLeave={(e) => {
                                   if (Object.values(copiedItemSelection).some(Boolean)) {
-                                    e.currentTarget.style.color = '#cc4444';
+                                    e.currentTarget.style.color = '#c25858';
                                   }
                                 }}
                               >
@@ -1496,13 +1496,13 @@ const SurveySpacesRail = ({
                                   padding: 0,
                                   background: 'transparent',
                                   border: 'none',
-                                  color: '#999',
+                                  color: '#8d96a6',
                                   fontSize: '13px',
                                   fontWeight: '400',
                                   cursor: 'pointer'
                                 }}
-                                onMouseEnter={(e) => e.currentTarget.style.color = '#ddd'}
-                                onMouseLeave={(e) => e.currentTarget.style.color = '#999'}
+                                onMouseEnter={(e) => e.currentTarget.style.color = '#e8e2d4'}
+                                onMouseLeave={(e) => e.currentTarget.style.color = '#8d96a6'}
                               >
                                 Cancel
                               </button>
@@ -1514,7 +1514,7 @@ const SurveySpacesRail = ({
                             <h3 style={{
                               fontSize: '13px',
                               fontWeight: '600',
-                              color: '#e8e8e8',
+                              color: '#e8e2d4',
                               margin: '0 2px 8px',
                               fontFamily: FONT_FAMILY
                             }}>
@@ -1544,8 +1544,8 @@ const SurveySpacesRail = ({
                                   const isCategorySelected = selectedCategories[category.id] === true;
                                   const isCategorySelectModeActive = categorySelectModeActive;
                                   const isCategoryActive = (isCategorySelectModeActive && isCategorySelected) || selectedCategoryId === category.id;
-                                  const buttonTextColor = isCategoryActive ? '#4A90E2' : '#ddd';
-                                  const buttonSubTextColor = isCategoryActive ? '#4A90E2' : '#999';
+                                  const buttonTextColor = isCategoryActive ? '#d8a84e' : '#e8e2d4';
+                                  const buttonSubTextColor = isCategoryActive ? '#d8a84e' : '#8d96a6';
 
                                   // Item-level selection state
                                   const isItemSelectModeActiveForCategory = itemSelectModeActive[category.id] === true;
@@ -1660,7 +1660,7 @@ const SurveySpacesRail = ({
                                                   }));
                                                 }}
                                                 style={{
-                                                  color: isArrowActive ? '#4A90E2' : '#fff'
+                                                  color: isArrowActive ? '#d8a84e' : '#fff'
                                                 }}
                                               >
                                                 <span
@@ -1923,12 +1923,12 @@ const SurveySpacesRail = ({
                                                 id={`highlight-item-${surveyMarker.id}`}
                                                 data-drag-rearrange-row
                                                 style={{
-                                                background: isDragging ? 'rgba(74, 144, 226, 0.12)' : 'transparent',
-                                                border: '1px solid #444',
+                                                background: isDragging ? 'rgba(216, 168, 78, 0.12)' : 'transparent',
+                                                border: '1px solid #3a4252',
                                                 borderRadius: '4px',
                                                 overflow: (isEntityDropdownOpenForMarker || reviewMessage) ? 'visible' : 'hidden',
                                                 flexShrink: 0,
-                                                boxShadow: isDragging ? '0 10px 22px rgba(0, 0, 0, 0.34), inset 0 0 0 1px rgba(74, 144, 226, 0.3)' : 'none',
+                                                boxShadow: isDragging ? '0 10px 22px rgba(0, 0, 0, 0.34), inset 0 0 0 1px rgba(216, 168, 78, 0.3)' : 'none',
                                                 transition: isDragging ? 'none' : 'background 0.15s ease, opacity 0.15s ease, box-shadow 0.15s ease'
                                               }}>
                                                 {/* SurveyMarker header - clickable to expand */}
@@ -2015,7 +2015,7 @@ const SurveySpacesRail = ({
                                                           padding: 0,
                                                           background: 'transparent',
                                                           border: 0,
-                                                          color: isSurveyMarkerExpanded ? '#4A90E2' : '#bbb',
+                                                          color: isSurveyMarkerExpanded ? '#d8a84e' : '#8d96a6',
                                                           cursor: 'pointer',
                                                           display: 'flex',
                                                           alignItems: 'center',
@@ -2113,12 +2113,12 @@ const SurveySpacesRail = ({
                                                       ...surveyMarkerRowActionStyle,
                                                       background: 'transparent',
                                                       border: 'none',
-                                                      color: surveyMarkers[annotationId]?.note?.text ? '#4A90E2' : '#999',
+                                                      color: surveyMarkers[annotationId]?.note?.text ? '#d8a84e' : '#8d96a6',
                                                       opacity: 0.78
                                                     }}
                                                     onMouseEnter={(e) => {
                                                       e.currentTarget.style.opacity = '1';
-                                                      e.currentTarget.style.background = '#444';
+                                                      e.currentTarget.style.background = '#3a4252';
                                                     }}
                                                     onMouseLeave={(e) => {
                                                       e.currentTarget.style.opacity = '0.78';
@@ -2149,10 +2149,10 @@ const SurveySpacesRail = ({
                                                       ...surveyMarkerRowActionStyle,
                                                       background: 'transparent',
                                                       border: 'none',
-                                                      color: (surveyMarker.bounds && surveyMarker.pageNumber) ? '#4A90E2' : '#F5A623', // Blue if located, Orange if not
+                                                      color: (surveyMarker.bounds && surveyMarker.pageNumber) ? '#d8a84e' : '#F5A623', // Blue if located, Orange if not
                                                     }}
                                                     onMouseEnter={(e) => {
-                                                      e.currentTarget.style.background = '#444';
+                                                      e.currentTarget.style.background = '#3a4252';
                                                     }}
                                                     onMouseLeave={(e) => {
                                                       e.currentTarget.style.background = 'transparent';
@@ -2284,8 +2284,8 @@ const SurveySpacesRail = ({
                                                     return (
                                                       <div style={{
                                                         padding: '6px 8px',
-                                                        background: '#333',
-                                                        borderTop: '1px solid #444',
+                                                        background: '#2a3140',
+                                                        borderTop: '1px solid #3a4252',
                                                         marginTop: '0'
                                                       }}>
                                                         <div className="survey-marker-entity-row">
@@ -2369,8 +2369,8 @@ const SurveySpacesRail = ({
                                                     return (
                                                       <div key={item.id} style={{
                                                         padding: '6px 8px',
-                                                        background: '#333',
-                                                        borderTop: '1px solid #444',
+                                                        background: '#2a3140',
+                                                        borderTop: '1px solid #3a4252',
                                                         marginTop: '0'
                                                       }}>
                                                         <div style={{
@@ -2381,7 +2381,7 @@ const SurveySpacesRail = ({
                                                           flexWrap: 'wrap'
                                                         }}>
                                                           <span style={{
-                                                            color: '#DDD',
+                                                            color: '#e8e2d4',
                                                             fontSize: '12px',
                                                             flex: '1',
                                                             minWidth: '150px'
@@ -2606,9 +2606,9 @@ const SurveySpacesRail = ({
                                                                       ? '#B8E6D4'
                                                                       : option === 'N'
                                                                         ? '#FFB3BA'
-                                                                        : '#777'
+                                                                        : '#5a6473'
                                                                     : '#D3D3D3',
-                                                                  color: isSelected === option ? '#FFFFFF' : '#333333',
+                                                                  color: isSelected === option ? '#FFFFFF' : '#2a3140',
                                                                   transition: 'all 0.2s ease'
                                                                 }}
                                                               >
@@ -2643,14 +2643,14 @@ const SurveySpacesRail = ({
                                                         data-testid={`archived-checklist-${annotationId}`}
                                                         style={{
                                                           padding: '6px 8px',
-                                                          background: '#2a2a2a',
-                                                          borderTop: '2px solid #555',
+                                                          background: '#1f2430',
+                                                          borderTop: '2px solid #5a6473',
                                                           marginTop: '0',
                                                         }}
                                                       >
                                                         <div style={{
                                                           fontSize: '10px',
-                                                          color: '#888',
+                                                          color: '#8d96a6',
                                                           textTransform: 'uppercase',
                                                           letterSpacing: '0.6px',
                                                           marginBottom: '4px',
@@ -2677,12 +2677,12 @@ const SurveySpacesRail = ({
                                                               <span
                                                                 title={`Archived${item.archivedAt ? ` ${new Date(item.archivedAt).toLocaleString()}` : ''} — read-only historical response`}
                                                                 style={{
-                                                                  color: '#bbb',
+                                                                  color: '#8d96a6',
                                                                   fontSize: '12px',
                                                                   flex: 1,
                                                                   fontStyle: 'italic',
                                                                   textDecoration: 'line-through',
-                                                                  textDecorationColor: '#666',
+                                                                  textDecorationColor: '#5a6473',
                                                                 }}
                                                               >
                                                                 {label}
@@ -2699,9 +2699,9 @@ const SurveySpacesRail = ({
                                                                     : sel === 'N'
                                                                       ? '#a77a7a'
                                                                       : sel
-                                                                        ? '#666'
-                                                                        : '#444',
-                                                                  color: sel ? '#FFFFFF' : '#999',
+                                                                        ? '#5a6473'
+                                                                        : '#3a4252',
+                                                                  color: sel ? '#FFFFFF' : '#8d96a6',
                                                                   textAlign: 'center',
                                                                 }}
                                                               >
@@ -2732,7 +2732,7 @@ const SurveySpacesRail = ({
                                 })}
                               </SortableRearrangeList>
                             ) : (
-                              <div style={{ color: '#999', fontSize: '14px', padding: '20px', textAlign: 'center' }}>
+                              <div style={{ color: '#8d96a6', fontSize: '14px', padding: '20px', textAlign: 'center' }}>
                                 <div>No categories available for this space.</div>
                                 {selectedTemplate && selectedModuleId && (
                                   <button
@@ -2754,9 +2754,9 @@ const SurveySpacesRail = ({
                                       marginTop: '12px',
                                       padding: '10px 18px',
                                       borderRadius: '20px',
-                                      border: '1px solid #4A90E2',
-                                      background: '#2a2a2a',
-                                      color: '#FFFFFF',
+                                      border: '1px solid #d8a84e',
+                                      background: '#1f2430',
+                                      color: '#f4f1ea',
                                       fontSize: '13px',
                                       fontWeight: 500,
                                       cursor: 'pointer',
@@ -2767,12 +2767,12 @@ const SurveySpacesRail = ({
                                       transition: 'background 0.2s ease, border-color 0.2s ease'
                                     }}
                                     onMouseEnter={(event) => {
-                                      event.currentTarget.style.background = '#3a3a3a';
+                                      event.currentTarget.style.background = '#2a3140';
                                       event.currentTarget.style.borderColor = '#5AA0F2';
                                     }}
                                     onMouseLeave={(event) => {
-                                      event.currentTarget.style.background = '#2a2a2a';
-                                      event.currentTarget.style.borderColor = '#4A90E2';
+                                      event.currentTarget.style.background = '#1f2430';
+                                      event.currentTarget.style.borderColor = '#d8a84e';
                                     }}
                                   >
                                     Create Category
@@ -2784,7 +2784,7 @@ const SurveySpacesRail = ({
                         </div>
                       );
                     })() : (
-                      <div style={{ textAlign: 'center', padding: '40px', color: '#999' }}>
+                      <div style={{ textAlign: 'center', padding: '40px', color: '#8d96a6' }}>
                         <p>Select a space to view categories</p>
                       </div>
                     )}
@@ -2796,13 +2796,13 @@ const SurveySpacesRail = ({
                       minHeight: 0,
                       display: 'flex',
                       flexDirection: 'column',
-                      background: '#252525',
+                      background: '#12151c',
                       fontFamily: FONT_FAMILY
                     }}>
                       <div style={{
                         padding: '12px 12px 10px',
-                        borderBottom: '1px solid #3a3a3a',
-                        background: '#252525',
+                        borderBottom: '1px solid #2a3140',
+                        background: '#12151c',
                         display: 'flex',
                         alignItems: 'center',
                         gap: '10px',
@@ -2814,7 +2814,7 @@ const SurveySpacesRail = ({
                           margin: 0,
                           fontSize: '18px',
                           fontWeight: '600',
-                          color: '#fff',
+                          color: '#f4f1ea',
                           fontFamily: FONT_FAMILY,
                           letterSpacing: '-0.2px'
                         }}>
@@ -2826,7 +2826,7 @@ const SurveySpacesRail = ({
                         minHeight: 0,
                         overflowY: 'auto',
                         padding: '12px 10px',
-                        color: '#ddd'
+                        color: '#e8e2d4'
                       }}>
                         {availableSurveyTemplates.length === 0 ? (
                           <div style={{
@@ -2836,11 +2836,11 @@ const SurveySpacesRail = ({
                             alignItems: 'center',
                             justifyContent: 'center',
                             gap: '10px',
-                            color: '#999',
+                            color: '#8d96a6',
                             textAlign: 'center'
                           }}>
-                            <Icon name="survey" size={26} color="#999" />
-                            <div style={{ color: '#ddd', fontSize: '13px', fontWeight: 600 }}>
+                            <Icon name="survey" size={26} color="#8d96a6" />
+                            <div style={{ color: '#e8e2d4', fontSize: '13px', fontWeight: 600 }}>
                               No templates available
                             </div>
                           </div>
@@ -2863,9 +2863,9 @@ const SurveySpacesRail = ({
                                     textAlign: 'left',
                                     padding: '10px 12px',
                                     borderRadius: '6px',
-                                    border: '1px solid #3f3f3f',
-                                    background: '#2B2B2B',
-                                    color: '#ddd',
+                                    border: '1px solid #3a4252',
+                                    background: '#181c24',
+                                    color: '#e8e2d4',
                                     cursor: 'pointer',
                                     display: 'flex',
                                     alignItems: 'center',
@@ -2874,18 +2874,18 @@ const SurveySpacesRail = ({
                                     transition: 'background 0.15s ease, border-color 0.15s ease'
                                   }}
                                   onMouseEnter={(event) => {
-                                    event.currentTarget.style.background = '#333';
-                                    event.currentTarget.style.borderColor = '#4A90E2';
+                                    event.currentTarget.style.background = '#2a3140';
+                                    event.currentTarget.style.borderColor = '#d8a84e';
                                   }}
                                   onMouseLeave={(event) => {
-                                    event.currentTarget.style.background = '#2B2B2B';
-                                    event.currentTarget.style.borderColor = '#3f3f3f';
+                                    event.currentTarget.style.background = '#181c24';
+                                    event.currentTarget.style.borderColor = '#3a4252';
                                   }}
                                 >
-                                  <Icon name="template" size={18} color="#ddd" />
+                                  <Icon name="template" size={18} color="#e8e2d4" />
                                   <span style={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: '3px' }}>
                                     <span style={{
-                                      color: '#f2f2f2',
+                                      color: '#e8e2d4',
                                       fontSize: '13px',
                                       fontWeight: 600,
                                       overflow: 'hidden',
@@ -2894,7 +2894,7 @@ const SurveySpacesRail = ({
                                     }}>
                                       {template.name || 'Untitled Template'}
                                     </span>
-                                    <span style={{ color: '#999', fontSize: '11px', fontWeight: 500 }}>
+                                    <span style={{ color: '#8d96a6', fontSize: '11px', fontWeight: 500 }}>
                                       {moduleCount} module{moduleCount === 1 ? '' : 's'}
                                     </span>
                                   </span>
@@ -2915,7 +2915,7 @@ const SurveySpacesRail = ({
               {!isSurveyPanelCollapsed && msNeedsReconnect && selectedTemplate?.isOneDrive && (
                 <div style={{
                   padding: '10px 12px',
-                  borderTop: '1px solid #3a3a3a',
+                  borderTop: '1px solid #2a3140',
                   background: COLORS.modal.panel,
                   display: 'flex',
                   alignItems: 'center',
@@ -2962,8 +2962,8 @@ const SurveySpacesRail = ({
               {!isSurveyPanelCollapsed && selectedTemplate && (
                 <div style={{
                   padding: '12px',
-                  borderTop: '1px solid #3a3a3a',
-                  background: '#252525',
+                  borderTop: '1px solid #2a3140',
+                  background: '#12151c',
                   position: 'relative' // For dropdown positioning
                 }}>
                   {/* Only show dropdown when file exists (linkedExcelExists === true) */}
@@ -2974,24 +2974,24 @@ const SurveySpacesRail = ({
                       disabled={isExporting}
                       style={{
                         width: '100%',
-                        background: isExporting ? '#6c7a89' : '#4A90E2',
-                        border: isExporting ? '1px solid #5a6673' : '1px solid #3277c7',
-                        color: '#fff',
+                        background: isExporting ? '#5a6473' : '#d8a84e',
+                        border: isExporting ? '1px solid #5a6473' : '1px solid #b6904a',
+                        color: isExporting ? '#e8e2d4' : '#15110a',
                         fontSize: '14px',
                         fontWeight: 600,
                         padding: '10px 16px',
                         borderRadius: '6px',
                         textTransform: 'uppercase',
-                        letterSpacing: '0.08em',
+                        letterSpacing: 0,
                         cursor: isExporting ? 'not-allowed' : 'pointer',
                         transition: 'all 0.2s',
                         opacity: isExporting ? 0.7 : 1
                       }}
                       onMouseEnter={(e) => {
-                        if (!isExporting) e.currentTarget.style.background = '#357abd';
+                        if (!isExporting) e.currentTarget.style.background = '#b6904a';
                       }}
                       onMouseLeave={(e) => {
-                        if (!isExporting) e.currentTarget.style.background = '#4A90E2';
+                        if (!isExporting) e.currentTarget.style.background = '#d8a84e';
                       }}
                     >
                       {isExporting ? 'EXPORTING...' : 'EXPORT'}
@@ -3004,14 +3004,14 @@ const SurveySpacesRail = ({
                         disabled={isExporting}
                         style={{
                           flex: 1,
-                          background: isExporting ? '#6c7a89' : '#4A90E2',
-                          borderTop: isExporting ? '1px solid #5a6673' : '1px solid #3277c7',
-                          borderBottom: isExporting ? '1px solid #5a6673' : '1px solid #3277c7',
-                          borderLeft: isExporting ? '1px solid #5a6673' : '1px solid #3277c7',
+                          background: isExporting ? '#5a6473' : '#d8a84e',
+                          borderTop: isExporting ? '1px solid #5a6473' : '1px solid #b6904a',
+                          borderBottom: isExporting ? '1px solid #5a6473' : '1px solid #b6904a',
+                          borderLeft: isExporting ? '1px solid #5a6473' : '1px solid #b6904a',
                           borderRight: 'none',
                           borderTopLeftRadius: '6px',
                           borderBottomLeftRadius: '6px',
-                          color: '#fff',
+                          color: '#f4f1ea',
                           fontSize: '14px',
                           fontWeight: 600,
                           padding: '10px 16px',
@@ -3022,10 +3022,10 @@ const SurveySpacesRail = ({
                           opacity: isExporting ? 0.7 : 1
                         }}
                         onMouseEnter={(e) => {
-                          if (!isExporting) e.currentTarget.style.background = '#357abd';
+                          if (!isExporting) e.currentTarget.style.background = '#b6904a';
                         }}
                         onMouseLeave={(e) => {
-                          if (!isExporting) e.currentTarget.style.background = '#4A90E2';
+                          if (!isExporting) e.currentTarget.style.background = '#d8a84e';
                         }}
                       >
                         {isExporting ? 'EXPORTING...' : 'EXPORT'}
@@ -3036,14 +3036,14 @@ const SurveySpacesRail = ({
                         disabled={isExporting}
                         style={{
                           width: '40px',
-                          background: isExporting ? '#6c7a89' : '#4A90E2',
-                          borderTop: isExporting ? '1px solid #5a6673' : '1px solid #3277c7',
-                          borderBottom: isExporting ? '1px solid #5a6673' : '1px solid #3277c7',
-                          borderRight: isExporting ? '1px solid #5a6673' : '1px solid #3277c7',
+                          background: isExporting ? '#5a6473' : '#d8a84e',
+                          borderTop: isExporting ? '1px solid #5a6473' : '1px solid #b6904a',
+                          borderBottom: isExporting ? '1px solid #5a6473' : '1px solid #b6904a',
+                          borderRight: isExporting ? '1px solid #5a6473' : '1px solid #b6904a',
                           borderLeft: '1px solid rgba(0,0,0,0.1)',
                           borderTopRightRadius: '6px',
                           borderBottomRightRadius: '6px',
-                          color: '#fff',
+                          color: '#f4f1ea',
                           display: 'flex',
                           alignItems: 'center',
                           justifyContent: 'center',
@@ -3052,10 +3052,10 @@ const SurveySpacesRail = ({
                           opacity: isExporting ? 0.7 : 1
                         }}
                         onMouseEnter={(e) => {
-                          if (!isExporting) e.currentTarget.style.background = '#357abd';
+                          if (!isExporting) e.currentTarget.style.background = '#b6904a';
                         }}
                         onMouseLeave={(e) => {
-                          if (!isExporting) e.currentTarget.style.background = '#4A90E2';
+                          if (!isExporting) e.currentTarget.style.background = '#d8a84e';
                         }}
                       >
                         {isExporting ? (
@@ -3072,8 +3072,8 @@ const SurveySpacesRail = ({
                           left: '12px',
                           right: '12px',
                           marginBottom: '8px',
-                          background: '#333',
-                          border: '1px solid #444',
+                          background: '#2a3140',
+                          border: '1px solid #3a4252',
                           borderRadius: '6px',
                           boxShadow: '0 -4px 12px rgba(0,0,0,0.3)',
                           zIndex: 100,
@@ -3257,15 +3257,15 @@ const SurveySpacesRail = ({
                             }}
                             style={{
                               padding: '12px 16px',
-                              color: '#fff',
+                              color: '#f4f1ea',
                               fontSize: '14px',
                               cursor: 'pointer',
-                              borderBottom: '1px solid #444',
+                              borderBottom: '1px solid #3a4252',
                               display: 'flex',
                               alignItems: 'center',
                               gap: '8px'
                             }}
-                            onMouseEnter={(e) => e.currentTarget.style.background = '#444'}
+                            onMouseEnter={(e) => e.currentTarget.style.background = '#3a4252'}
                             onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
                           >
                             <Icon name="document" size={16} />
@@ -3278,15 +3278,15 @@ const SurveySpacesRail = ({
                             }}
                             style={{
                               padding: '12px 16px',
-                              color: '#fff',
+                              color: '#f4f1ea',
                               fontSize: '14px',
                               cursor: 'pointer',
-                              borderBottom: '1px solid #444',
+                              borderBottom: '1px solid #3a4252',
                               display: 'flex',
                               alignItems: 'center',
                               gap: '8px'
                             }}
-                            onMouseEnter={(e) => e.currentTarget.style.background = '#444'}
+                            onMouseEnter={(e) => e.currentTarget.style.background = '#3a4252'}
                             onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
                           >
                             <Icon name="upload" size={16} />
@@ -3303,15 +3303,15 @@ const SurveySpacesRail = ({
                             }}
                             style={{
                               padding: '12px 16px',
-                              color: '#fff',
+                              color: '#f4f1ea',
                               fontSize: '14px',
                               cursor: 'pointer',
-                              borderBottom: '1px solid #444',
+                              borderBottom: '1px solid #3a4252',
                               display: 'flex',
                               alignItems: 'center',
                               gap: '8px'
                             }}
-                            onMouseEnter={(e) => e.currentTarget.style.background = '#444'}
+                            onMouseEnter={(e) => e.currentTarget.style.background = '#3a4252'}
                             onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
                           >
                             <Icon name="download" size={16} />
@@ -3339,7 +3339,7 @@ const SurveySpacesRail = ({
                                   : liveSyncStatus === 'connecting' || gateChecking
                                     ? '#f39c12'
                                     : liveSyncStatus === 'error' || liveSyncSupported === false
-                                      ? '#e74c3c'
+                                      ? '#cf6f6f'
                                       : '#fff',
                                 fontSize: '14px',
                                 cursor: liveSyncSupported === false ? 'not-allowed' : 'pointer',
@@ -3350,7 +3350,7 @@ const SurveySpacesRail = ({
                               }}
                               onMouseEnter={(e) => {
                                 if (liveSyncSupported !== false) {
-                                  e.currentTarget.style.background = '#444';
+                                  e.currentTarget.style.background = '#3a4252';
                                 }
                               }}
                               onMouseLeave={(e) => {
@@ -3402,12 +3402,12 @@ const SurveySpacesRail = ({
                                 color: verifying ? '#f39c12' : (verdictColor || '#fff'),
                                 fontSize: '14px',
                                 cursor: verifying ? 'wait' : 'pointer',
-                                borderTop: '1px solid #444',
+                                borderTop: '1px solid #3a4252',
                                 display: 'flex',
                                 alignItems: 'center',
                                 gap: '8px'
                               }}
-                              onMouseEnter={(e) => e.currentTarget.style.background = '#444'}
+                              onMouseEnter={(e) => e.currentTarget.style.background = '#3a4252'}
                               onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
                               title={
                                 verifying

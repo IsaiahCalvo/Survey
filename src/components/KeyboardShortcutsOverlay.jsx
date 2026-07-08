@@ -72,11 +72,12 @@ const KeyboardShortcutsOverlay = () => {
         right: 0,
         bottom: 0,
         background: COLORS.background.overlay,
+        backdropFilter: 'blur(8px)',
+        WebkitBackdropFilter: 'blur(8px)',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
         zIndex: 10001,
-        backdropFilter: 'blur(2px)',
       }}
       onClick={() => setIsOpen(false)}
     >

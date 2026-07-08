@@ -257,8 +257,8 @@ const CompactColorPicker = ({
             ref={containerRef}
             style={{
             width: '260px',
-            background: '#1e1e1e',
-            border: '1px solid #333',
+            background: '#0d0f14',
+            border: '1px solid #2a3140',
             borderRadius: '8px',
             boxShadow: '0 8px 32px rgba(0,0,0,0.4)',
             padding: '12px',
@@ -272,12 +272,12 @@ const CompactColorPicker = ({
         >
             {/* Header */}
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <span style={{ color: '#eee', fontSize: '13px', fontWeight: 600 }}>Color</span>
-                <div style={{ display: 'flex', gap: '4px', background: '#333', padding: '2px', borderRadius: '4px' }}>
+                <span style={{ color: '#e8e2d4', fontSize: '13px', fontWeight: 600 }}>Color</span>
+                <div style={{ display: 'flex', gap: '4px', background: '#2a3140', padding: '2px', borderRadius: '4px' }}>
                     <button
                         onClick={() => setMode('grid')}
                         style={{
-                            background: mode === 'grid' ? '#555' : 'transparent',
+                            background: mode === 'grid' ? '#5a6473' : 'transparent',
                             border: 'none',
                             borderRadius: '2px',
                             padding: '4px',
@@ -296,7 +296,7 @@ const CompactColorPicker = ({
                     <button
                         onClick={() => setMode('spectrum')}
                         style={{
-                            background: mode === 'spectrum' ? '#555' : 'transparent',
+                            background: mode === 'spectrum' ? '#5a6473' : 'transparent',
                             border: 'none',
                             borderRadius: '2px',
                             padding: '4px',
@@ -356,7 +356,7 @@ const CompactColorPicker = ({
                                     aspectRatio: '1',
                                     borderRadius: '4px',
                                     ...transparentBg,
-                                    border: isSelected ? '2px solid white' : '1px solid #444',
+                                    border: isSelected ? '2px solid white' : '1px solid #3a4252',
                                     cursor: 'pointer',
                                     position: 'relative',
                                     display: 'flex',
@@ -415,7 +415,7 @@ const CompactColorPicker = ({
 
                     {/* Hue Slider */}
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <span style={{ color: '#888', fontSize: '10px', width: '20px' }}>HUE</span>
+                        <span style={{ color: '#8d96a6', fontSize: '10px', width: '20px' }}>HUE</span>
                         <div
                             ref={hueRef}
                             onMouseDown={handleMouseDownHue}
@@ -440,7 +440,7 @@ const CompactColorPicker = ({
                                 boxShadow: '0 1px 3px rgba(0,0,0,0.3)'
                             }} />
                         </div>
-                        <span style={{ color: '#ccc', fontSize: '11px', width: '24px', textAlign: 'right' }}>{Math.round(hue)}°</span>
+                        <span style={{ color: '#e8e2d4', fontSize: '11px', width: '24px', textAlign: 'right' }}>{Math.round(hue)}°</span>
                     </div>
                 </>
             )}
@@ -453,7 +453,7 @@ const CompactColorPicker = ({
                     gap: '8px',
                     opacity: transparentMode ? 0.4 : 1,
                 }}>
-                    <span style={{ color: '#888', fontSize: '10px', width: '40px' }}>OPACITY</span>
+                    <span style={{ color: '#8d96a6', fontSize: '10px', width: '40px' }}>OPACITY</span>
                     <input
                         type="range"
                         min={Math.round(minOpacity * 100)}
@@ -469,29 +469,29 @@ const CompactColorPicker = ({
                         style={{
                             flex: 1,
                             height: '4px',
-                            accentColor: '#4a90e2',
-                            background: '#333',
+                            accentColor: '#d8a84e',
+                            background: '#2a3140',
                             borderRadius: '2px',
                             appearance: 'auto',
                             cursor: transparentMode ? 'not-allowed' : 'pointer',
                         }}
                     />
-                    <span style={{ color: '#ccc', fontSize: '11px', width: '24px', textAlign: 'right' }}>{localOpacity}%</span>
+                    <span style={{ color: '#e8e2d4', fontSize: '11px', width: '24px', textAlign: 'right' }}>{localOpacity}%</span>
                 </div>
             )}
 
             {/* Footer: Hex Input */}
-            <div style={{ display: 'flex', gap: '8px', paddingTop: '8px', borderTop: '1px solid #333' }}>
+            <div style={{ display: 'flex', gap: '8px', paddingTop: '8px', borderTop: '1px solid #2a3140' }}>
                 <div style={{
                     background: localHex,
                     width: '32px',
                     height: '32px',
                     borderRadius: '4px',
-                    border: '1px solid #444',
+                    border: '1px solid #3a4252',
                     opacity: transparentMode ? 0 : (showOpacity ? localOpacity / 100 : 1)
                 }} />
-                <div style={{ flex: 1, background: '#111', borderRadius: '4px', display: 'flex', alignItems: 'center', padding: '0 8px', border: '1px solid #333' }}>
-                    <span style={{ color: '#666', fontSize: '12px', marginRight: '4px' }}>#</span>
+                <div style={{ flex: 1, background: '#111', borderRadius: '4px', display: 'flex', alignItems: 'center', padding: '0 8px', border: '1px solid #2a3140' }}>
+                    <span style={{ color: '#5a6473', fontSize: '12px', marginRight: '4px' }}>#</span>
                     <input
                         type="text"
                         value={localHex.replace('#', '')}
@@ -505,7 +505,7 @@ const CompactColorPicker = ({
                         style={{
                             background: 'transparent',
                             border: 'none',
-                            color: '#ddd',
+                            color: '#e8e2d4',
                             width: '100%',
                             fontSize: '12px',
                             outline: 'none',
@@ -514,7 +514,7 @@ const CompactColorPicker = ({
                     />
                 </div>
                 {showOpacity && (
-                    <div style={{ background: '#111', borderRadius: '4px', display: 'flex', alignItems: 'center', padding: '0 8px', border: '1px solid #333', width: '50px' }}>
+                    <div style={{ background: '#111', borderRadius: '4px', display: 'flex', alignItems: 'center', padding: '0 8px', border: '1px solid #2a3140', width: '50px' }}>
                         <input
                             type="number"
                             min="0"
@@ -528,14 +528,14 @@ const CompactColorPicker = ({
                             style={{
                                 background: 'transparent',
                                 border: 'none',
-                                color: '#ddd',
+                                color: '#e8e2d4',
                                 width: '100%',
                                 fontSize: '12px',
                                 outline: 'none',
                                 textAlign: 'center'
                             }}
                         />
-                        <span style={{ color: '#666', fontSize: '10px' }}>%</span>
+                        <span style={{ color: '#5a6473', fontSize: '10px' }}>%</span>
                     </div>
                 )}
             </div>

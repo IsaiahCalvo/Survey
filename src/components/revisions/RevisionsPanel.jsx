@@ -464,7 +464,7 @@ export default function RevisionsPanel({
     const strokeWidth = Math.max(6, Number(annotation.strokeWidth || 2) + 4);
     const addGlowAttrs = (node) => {
       node.setAttribute('fill', 'none');
-      node.setAttribute('stroke', '#4a90e2');
+      node.setAttribute('stroke', '#d8a84e');
       node.setAttribute('stroke-opacity', '0.4');
       node.setAttribute('stroke-width', `${strokeWidth}`);
       node.setAttribute('stroke-linecap', 'round');
@@ -578,7 +578,7 @@ export default function RevisionsPanel({
     if (!svg) return false;
     clone.removeAttribute('fill');
     clone.setAttribute('fill', 'none');
-    clone.setAttribute('stroke', '#4a90e2');
+    clone.setAttribute('stroke', '#d8a84e');
     clone.setAttribute('stroke-opacity', '0.4');
     clone.setAttribute('stroke-width', `${Math.max(6, Number(path.getAttribute('stroke-width') || 2) + 4)}`);
     clone.setAttribute('stroke-linecap', 'round');
@@ -800,19 +800,19 @@ export default function RevisionsPanel({
         bottom: embedded ? 'auto' : 0,
         width: embedded ? '100%' : DRAWER_WIDTH,
         height: embedded ? '100%' : 'auto',
-        background: embedded ? '#252525' : '#1a1a1a',
+        background: embedded ? '#12151c' : '#1a1a1a',
         color: '#e9e6df',
         zIndex: embedded ? 'auto' : 9050,
         boxShadow: embedded ? 'none' : '-4px 0 16px rgba(0,0,0,0.5)',
         display: 'flex',
         flexDirection: 'column',
-        borderLeft: embedded ? 0 : '1px solid #333',
+        borderLeft: embedded ? 0 : '1px solid #2a3140',
       }}
     >
       <div
         style={{
           padding: 14,
-          borderBottom: '1px solid #333',
+          borderBottom: '1px solid #2a3140',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
@@ -828,8 +828,8 @@ export default function RevisionsPanel({
             }}
             style={{
               background: 'transparent',
-              color: '#bbb',
-              border: '1px solid #444',
+              color: '#8d96a6',
+              border: '1px solid #3a4252',
               borderRadius: 4,
               padding: '2px 8px',
               cursor: 'pointer',
@@ -842,10 +842,10 @@ export default function RevisionsPanel({
       </div>
 
       <div style={{ flex: 1, overflowY: 'auto', padding: 8 }}>
-        {loading && <div style={{ padding: 10, fontSize: 12, color: '#999' }}>Loading…</div>}
+        {loading && <div style={{ padding: 10, fontSize: 12, color: '#8d96a6' }}>Loading…</div>}
         {err && <div style={{ padding: 10, color: '#ff8a8a', fontSize: 12 }}>Error: {err}</div>}
         {!loading && !err && timelineItems.length === 0 && (
-          <div style={{ padding: 10, color: '#999', fontSize: 12 }}>
+          <div style={{ padding: 10, color: '#8d96a6', fontSize: 12 }}>
             No history yet. Edit the document or save a named version to start the timeline.
           </div>
         )}
@@ -882,7 +882,7 @@ export default function RevisionsPanel({
                   padding: 10,
                   marginBottom: 6,
                   borderRadius: 6,
-                  border: isSelected ? '1px solid #6f8fcb' : '1px solid #303030',
+                  border: isSelected ? '1px solid #6f8fcb' : '1px solid #1f2430',
                   background: isSelected ? '#243044' : '#202020',
                   cursor: 'pointer',
                   outline: 'none',
@@ -894,7 +894,7 @@ export default function RevisionsPanel({
                 <div style={{ fontSize: 12, color: '#e0ddd6', lineHeight: 1.35 }}>
                   {event.summary}
                 </div>
-                <div style={{ fontSize: 11, color: '#888', marginTop: 5 }}>
+                <div style={{ fontSize: 11, color: '#8d96a6', marginTop: 5 }}>
                   {formatDate(event.occurred_at || event.created_at)}
                   {event.is_undoable ? ' · undoable edit' : ''}
                   {event.page_number ? ` · page ${event.page_number}` : ''}
@@ -999,9 +999,9 @@ export default function RevisionsPanel({
                 >
                   {badge.label}
                 </span>
-                {rev.label && <span style={{ fontSize: 12, color: '#cfcfcf' }}>{rev.label}</span>}
+                {rev.label && <span style={{ fontSize: 12, color: '#e8e2d4' }}>{rev.label}</span>}
               </div>
-              <div style={{ fontSize: 11, color: '#888', marginBottom: 6 }}>
+              <div style={{ fontSize: 11, color: '#8d96a6', marginBottom: 6 }}>
                 {formatDate(rev.createdAt)} · restore point · {rev.annotationCount} annotation(s)
               </div>
               <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
@@ -1015,9 +1015,9 @@ export default function RevisionsPanel({
                   disabled={busy}
                   style={{
                     fontSize: 11,
-                    background: '#2d2d2d',
+                    background: '#181c24',
                     color: '#e9e6df',
-                    border: '1px solid #444',
+                    border: '1px solid #3a4252',
                     borderRadius: 4,
                     padding: '3px 8px',
                     cursor: busy ? 'wait' : 'pointer',
@@ -1053,7 +1053,7 @@ export default function RevisionsPanel({
         })}
       </div>
 
-      <div style={{ borderTop: '1px solid #333', padding: 10 }}>
+      <div style={{ borderTop: '1px solid #2a3140', padding: 10 }}>
         {statusMsg && (
           <div data-testid="kal48-status" style={{ fontSize: 11, color: '#9ec', marginBottom: 6 }}>
             {statusMsg}
@@ -1067,10 +1067,10 @@ export default function RevisionsPanel({
             disabled={busy}
             style={{
               width: '100%',
-              background: '#3c5a3c',
-              color: '#e9f5e9',
-              border: '1px solid #4e7e4e',
-              borderRadius: 4,
+              background: '#d8a84e',
+              color: '#15110a',
+              border: '1px solid #b6904a',
+              borderRadius: 6,
               padding: '8px 12px',
               fontSize: 12,
               fontWeight: 600,
@@ -1081,7 +1081,7 @@ export default function RevisionsPanel({
           </button>
         )}
         {!isOwner && (
-          <div style={{ fontSize: 11, color: '#888' }}>
+          <div style={{ fontSize: 11, color: '#8d96a6' }}>
             Only the document owner can save or restore versions.
           </div>
         )}
@@ -1111,8 +1111,8 @@ export default function RevisionsPanel({
     >
       <div
         style={{
-          background: 'var(--bg-secondary, #252525)',
-          border: '1px solid var(--border-primary, #3A3A3A)',
+          background: 'var(--bg-secondary, #12151c)',
+          border: '1px solid var(--border-primary, #2a3140)',
           borderRadius: 8,
           boxShadow: 'var(--shadow-lg, 0 8px 24px rgba(0,0,0,0.5))',
           width: '100%',
@@ -1147,7 +1147,7 @@ export default function RevisionsPanel({
               fontSize: 13,
               background: 'transparent',
               color: '#c8c4bc',
-              border: '1px solid #555',
+              border: '1px solid #5a6473',
               borderRadius: 4,
               padding: '6px 14px',
               cursor: 'pointer',
@@ -1237,9 +1237,9 @@ export default function RevisionsPanel({
           right: 14,
           bottom: 80,
           zIndex: 9000,
-          background: '#2d2d2d',
+          background: '#181c24',
           color: '#e9e6df',
-          border: '1px solid #444',
+          border: '1px solid #3a4252',
           borderRadius: 8,
           padding: '8px 12px',
           fontSize: 12,

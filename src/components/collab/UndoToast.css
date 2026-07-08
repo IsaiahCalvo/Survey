@@ -37,8 +37,8 @@
 
   /* Same surface palette as the storage-failure banner so the toast reads
      as part of the same status family. */
-  background: var(--bg-secondary, #252525);
-  border: 1px solid var(--border-primary, #3A3A3A);
+  background: var(--bg-secondary, #12151c);
+  border: 1px solid var(--border-primary, #2a3140);
   border-radius: 6px;
   box-shadow: var(--shadow-md, 0 4px 16px rgba(0, 0, 0, 0.4));
 
@@ -80,7 +80,7 @@
   font-size: 13px;
   font-weight: 400;
   line-height: 1.4;
-  color: var(--accent-primary, #4A90E2);
+  color: var(--accent-primary, #d8a84e);
   text-decoration: underline;
   font-family: inherit;
 }
@@ -97,6 +97,6 @@
      (src/styles.css). 2px halo at 0.4 opacity reads clearly without
      overpowering surrounding chrome. */
   outline: none;
-  box-shadow: 0 0 0 2px rgba(74, 144, 226, 0.4);
+  box-shadow: 0 0 0 2px rgba(216, 168, 78, 0.4);
   border-radius: 2px;
 }

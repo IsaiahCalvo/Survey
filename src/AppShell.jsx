@@ -962,7 +962,7 @@ export default function App() {
             display: isViewerVisible ? 'flex' : 'none',
             flexShrink: 0,
             padding: '8px 12px',
-            background: '#2d2d2d',
+            background: '#181c24',
             alignItems: 'center',
             justifyContent: 'center',
             flexWrap: 'wrap',
@@ -970,7 +970,7 @@ export default function App() {
             columnGap: '8px',
             fontSize: '13px',
             fontFamily: FONT_FAMILY,
-            color: '#ddd',
+            color: '#e8e2d4',
             position: 'relative',
             zIndex: 5500
           }}
@@ -1005,7 +1005,7 @@ export default function App() {
                   onClick={bottomToolbarApi.zoomOut}
                   title="Zoom out"
                   aria-label="Zoom out"
-                  style={{ height: '28px', width: '28px', display: 'grid', placeItems: 'center', border: 'none', background: 'transparent', color: '#cfcfcf', borderRadius: '4px', fontSize: '14px', lineHeight: 1, cursor: 'pointer' }}
+                  style={{ height: '28px', width: '28px', display: 'grid', placeItems: 'center', border: 'none', background: 'transparent', color: '#e8e2d4', borderRadius: '4px', fontSize: '14px', lineHeight: 1, cursor: 'pointer' }}
                 >−</button>
                 {isEditingRailZoom ? (
                   <input
@@ -1025,7 +1025,7 @@ export default function App() {
                     inputMode="numeric"
                     pattern="[0-9]*"
                     aria-label="Zoom percentage"
-                    style={{ width: '5ch', background: 'transparent', color: '#cfcfcf', border: 'none', padding: 0, margin: 0, fontSize: '11px', fontFamily: FONT_FAMILY, fontVariantNumeric: 'tabular-nums', textAlign: 'center', outline: 'none', lineHeight: 1 }}
+                    style={{ width: '5ch', background: 'transparent', color: '#e8e2d4', border: 'none', padding: 0, margin: 0, fontSize: '11px', fontFamily: FONT_FAMILY, fontVariantNumeric: 'tabular-nums', textAlign: 'center', outline: 'none', lineHeight: 1 }}
                   />
                 ) : (
                   <button
@@ -1034,7 +1034,7 @@ export default function App() {
                     onDoubleClick={() => setIsEditingRailZoom(true)}
                     aria-label="Edit zoom percentage"
                     title="Click to type a zoom percentage"
-                    style={{ minWidth: '5ch', textAlign: 'center', background: 'transparent', border: 'none', color: '#cfcfcf', fontSize: '11px', fontFamily: FONT_FAMILY, fontVariantNumeric: 'tabular-nums', padding: '0 2px', cursor: 'pointer', lineHeight: 1 }}
+                    style={{ minWidth: '5ch', textAlign: 'center', background: 'transparent', border: 'none', color: '#e8e2d4', fontSize: '11px', fontFamily: FONT_FAMILY, fontVariantNumeric: 'tabular-nums', padding: '0 2px', cursor: 'pointer', lineHeight: 1 }}
                   >
                     {bottomToolbarApi.zoomInputValue || Math.round((bottomToolbarApi.manualZoomScale || 1) * 100)}%
                   </button>
@@ -1043,7 +1043,7 @@ export default function App() {
                   onClick={bottomToolbarApi.zoomIn}
                   title="Zoom in"
                   aria-label="Zoom in"
-                  style={{ height: '28px', width: '28px', display: 'grid', placeItems: 'center', border: 'none', background: 'transparent', color: '#cfcfcf', borderRadius: '4px', fontSize: '14px', lineHeight: 1, cursor: 'pointer' }}
+                  style={{ height: '28px', width: '28px', display: 'grid', placeItems: 'center', border: 'none', background: 'transparent', color: '#e8e2d4', borderRadius: '4px', fontSize: '14px', lineHeight: 1, cursor: 'pointer' }}
                 >+</button>
               </div>
 
@@ -1056,7 +1056,7 @@ export default function App() {
                   disabled={bottomToolbarApi.pageNum <= 1}
                   title="Previous page"
                   aria-label="Previous page"
-                  style={{ height: '24px', width: '24px', display: 'grid', placeItems: 'center', border: 'none', background: 'transparent', color: '#cfcfcf', borderRadius: '4px', cursor: bottomToolbarApi.pageNum <= 1 ? 'not-allowed' : 'pointer', opacity: bottomToolbarApi.pageNum <= 1 ? 0.35 : 1 }}
+                  style={{ height: '24px', width: '24px', display: 'grid', placeItems: 'center', border: 'none', background: 'transparent', color: '#e8e2d4', borderRadius: '4px', cursor: bottomToolbarApi.pageNum <= 1 ? 'not-allowed' : 'pointer', opacity: bottomToolbarApi.pageNum <= 1 ? 0.35 : 1 }}
                 >
                   <Icon name="chevronLeft" size={14} />
                 </button>
@@ -1080,7 +1080,7 @@ export default function App() {
                       inputMode="numeric"
                       pattern="[0-9]*"
                       aria-label="Current page"
-                      style={{ width: '3ch', padding: 0, background: 'transparent', color: '#4A90E2', border: 'none', fontSize: '11px', fontFamily: FONT_FAMILY, fontWeight: '600', fontVariantNumeric: 'tabular-nums', textAlign: 'center', outline: 'none', lineHeight: 1 }}
+                      style={{ width: '3ch', padding: 0, background: 'transparent', color: '#d8a84e', border: 'none', fontSize: '11px', fontFamily: FONT_FAMILY, fontWeight: '600', fontVariantNumeric: 'tabular-nums', textAlign: 'center', outline: 'none', lineHeight: 1 }}
                     />
                   ) : (
                     <button
@@ -1089,20 +1089,20 @@ export default function App() {
                       onDoubleClick={() => setIsEditingRailPage(true)}
                       aria-label="Edit page number"
                       title="Click to jump to a page"
-                      style={{ background: 'transparent', border: 'none', color: '#4A90E2', fontSize: '11px', fontFamily: FONT_FAMILY, fontWeight: '600', fontVariantNumeric: 'tabular-nums', padding: '0 2px', cursor: 'pointer', lineHeight: 1 }}
+                      style={{ background: 'transparent', border: 'none', color: '#d8a84e', fontSize: '11px', fontFamily: FONT_FAMILY, fontWeight: '600', fontVariantNumeric: 'tabular-nums', padding: '0 2px', cursor: 'pointer', lineHeight: 1 }}
                     >
                       {bottomToolbarApi.pageNum}
                     </button>
                   )}
-                  <span aria-hidden="true" style={{ color: '#888' }}>·</span>
-                  <span style={{ color: '#888' }}>{bottomToolbarApi.numPages}</span>
+                  <span aria-hidden="true" style={{ color: '#8d96a6' }}>·</span>
+                  <span style={{ color: '#8d96a6' }}>{bottomToolbarApi.numPages}</span>
                 </span>
                 <button
                   onClick={bottomToolbarApi.goToNextPage}
                   disabled={bottomToolbarApi.pageNum >= bottomToolbarApi.numPages}
                   title="Next page"
                   aria-label="Next page"
-                  style={{ height: '24px', width: '24px', display: 'grid', placeItems: 'center', border: 'none', background: 'transparent', color: '#cfcfcf', borderRadius: '4px', cursor: bottomToolbarApi.pageNum >= bottomToolbarApi.numPages ? 'not-allowed' : 'pointer', opacity: bottomToolbarApi.pageNum >= bottomToolbarApi.numPages ? 0.35 : 1 }}
+                  style={{ height: '24px', width: '24px', display: 'grid', placeItems: 'center', border: 'none', background: 'transparent', color: '#e8e2d4', borderRadius: '4px', cursor: bottomToolbarApi.pageNum >= bottomToolbarApi.numPages ? 'not-allowed' : 'pointer', opacity: bottomToolbarApi.pageNum >= bottomToolbarApi.numPages ? 0.35 : 1 }}
                 >
                   <Icon name="chevronRight" size={14} />
                 </button>
@@ -1148,7 +1148,7 @@ export default function App() {
                       aria-label="Fit options"
                       data-active={mode !== ZOOM_MODES.MANUAL}
                       title={`Page fit: ${bottomToolbarApi.zoomDropdownLabel}`}
-                      style={{ height: '30px', display: 'flex', alignItems: 'center', gap: '6px', padding: '0 10px', border: 'none', background: 'transparent', color: mode !== ZOOM_MODES.MANUAL ? '#e0e0e0' : '#cfcfcf', borderRadius: '4px', fontSize: '11px', fontFamily: FONT_FAMILY, cursor: 'pointer' }}
+                      style={{ height: '30px', display: 'flex', alignItems: 'center', gap: '6px', padding: '0 10px', border: 'none', background: 'transparent', color: mode !== ZOOM_MODES.MANUAL ? '#e8e2d4' : '#e8e2d4', borderRadius: '4px', fontSize: '11px', fontFamily: FONT_FAMILY, cursor: 'pointer' }}
                     >
                       {renderFitIcon(iconMode)}
                       <span>{bottomToolbarApi.zoomDropdownLabel}</span>
@@ -1157,7 +1157,7 @@ export default function App() {
                       </svg>
                     </button>
                     {bottomToolbarApi.isZoomMenuOpen && (
-                      <div style={{ position: 'absolute', top: '100%', right: 0, marginTop: '6px', background: 'rgb(30, 30, 30)', border: '1px solid #3a3a3a', borderRadius: '2px', boxShadow: '0 10px 24px rgba(0,0,0,0.45)', width: '144px', zIndex: 6000, padding: '2px' }}>
+                      <div style={{ position: 'absolute', top: '100%', right: 0, marginTop: '6px', background: 'rgb(30, 30, 30)', border: '1px solid #2a3140', borderRadius: '2px', boxShadow: '0 10px 24px rgba(0,0,0,0.45)', width: '144px', zIndex: 6000, padding: '2px' }}>
                         {ZOOM_MODE_OPTIONS.map((option) => {
                           if (option.id === ZOOM_MODES.MANUAL) return null;
                           const isActive = option.id === bottomToolbarApi.zoomMode;
@@ -1166,7 +1166,7 @@ export default function App() {
                               key={option.id}
                               onClick={() => bottomToolbarApi.handleZoomModeSelect(option.id)}
                               data-active={isActive}
-                              style={{ width: '100%', display: 'flex', alignItems: 'center', gap: '6px', padding: '6px 8px', background: 'transparent', border: 'none', borderRadius: '2px', textAlign: 'left', cursor: 'pointer', color: isActive ? '#e0e0e0' : '#bbb', fontSize: '11px', fontFamily: FONT_FAMILY }}
+                              style={{ width: '100%', display: 'flex', alignItems: 'center', gap: '6px', padding: '6px 8px', background: 'transparent', border: 'none', borderRadius: '2px', textAlign: 'left', cursor: 'pointer', color: isActive ? '#e8e2d4' : '#8d96a6', fontSize: '11px', fontFamily: FONT_FAMILY }}
                             >
                               {renderFitIcon(option.id)}
                               <span>{option.label}</span>
@@ -1191,7 +1191,7 @@ export default function App() {
                     onClick={bottomToolbarApi.exportAnnotatedPdf}
                     title="Export annotated PDF"
                     aria-label="Export annotated PDF"
-                    style={{ height: '30px', width: '30px', display: 'grid', placeItems: 'center', border: 'none', background: 'transparent', color: '#cfcfcf', borderRadius: '4px', cursor: 'pointer' }}
+                    style={{ height: '30px', width: '30px', display: 'grid', placeItems: 'center', border: 'none', background: 'transparent', color: '#e8e2d4', borderRadius: '4px', cursor: 'pointer' }}
                   >
                     <Icon name="download" size={15} />
                   </button>
@@ -1310,7 +1310,7 @@ export default function App() {
                 </button>
               ))}
 
-              <div style={{ width: '1px', height: '20px', background: '#555', margin: '0 4px' }} />
+              <div style={{ width: '1px', height: '20px', background: '#5a6473', margin: '0 4px' }} />
               </div>
 
               {/* Draw category */}
@@ -1462,7 +1462,7 @@ export default function App() {
                 paddingLeft: '8px',
                 whiteSpace: 'nowrap'
               }}>
-              <div style={{ width: '1px', height: '20px', background: '#555', margin: '0 4px' }} />
+              <div style={{ width: '1px', height: '20px', background: '#5a6473', margin: '0 4px' }} />
 
               {/* Color swatch + Width input. Color picker now flips DOWN
                   (top: 100%) since the swatch lives at the top of the
@@ -1488,7 +1488,7 @@ export default function App() {
                      attribute opts these buttons out of FabricEditCanvas's
                      document-level click-outside handler so clicks don't
                      commit-and-close the editor. */
-                  <div data-rich-text-toolbar style={{ width: '100%', height: '34px', background: '#2b2b2b', borderBottom: '1px solid #3a3a3a', borderTop: 'none', cursor: 'default', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', zIndex: 10, boxSizing: 'border-box' }}>
+                  <div data-rich-text-toolbar style={{ width: '100%', height: '34px', background: '#181c24', borderBottom: '1px solid #2a3140', borderTop: 'none', cursor: 'default', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', zIndex: 10, boxSizing: 'border-box' }}>
                     {/* 2026-05-26: Order — font color, font size, B / I / U / S,
                         alignment. Matches the user's requested left-to-right
                         sequence so the chrome reads as one cohesive row. Font
@@ -1562,8 +1562,8 @@ export default function App() {
                               height: '24px',
                               padding: '0 8px',
                               minWidth: '110px',
-                              background: '#444',
-                              color: '#ddd',
+                              background: '#3a4252',
+                              color: '#e8e2d4',
                               border: '1px solid transparent',
                               borderRadius: '5px',
                               fontSize: '12px',
@@ -1578,7 +1578,7 @@ export default function App() {
                             aria-label="Font"
                           >
                             <span style={{ fontFamily: currentFamily, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{currentFamily}</span>
-                            <span style={{ color: '#888', fontSize: '9px' }}>▼</span>
+                            <span style={{ color: '#8d96a6', fontSize: '9px' }}>▼</span>
                           </button>
                           {showFontFamilyMenu && (
                             <div style={{
@@ -1586,8 +1586,8 @@ export default function App() {
                               top: 'calc(100% + 6px)',
                               left: 0,
                               zIndex: 5600,
-                              background: '#1e2026',
-                              border: '1px solid #383d46',
+                              background: '#181c24',
+                              border: '1px solid #2a3140',
                               borderRadius: '6px',
                               padding: '4px',
                               boxShadow: '0 12px 36px rgba(0,0,0,0.5)',
@@ -1611,7 +1611,7 @@ export default function App() {
                                       textAlign: 'left',
                                       padding: '6px 10px',
                                       background: on ? 'rgba(216,168,78,0.12)' : 'transparent',
-                                      color: on ? '#d8a84e' : '#ddd',
+                                      color: on ? '#d8a84e' : '#e8e2d4',
                                       border: 'none',
                                       borderRadius: '4px',
                                       cursor: 'pointer',
@@ -1648,8 +1648,8 @@ export default function App() {
                               height: '24px',
                               padding: '0 8px',
                               minWidth: '58px',
-                              background: '#444',
-                              color: '#ddd',
+                              background: '#3a4252',
+                              color: '#e8e2d4',
                               border: '1px solid transparent',
                               borderRadius: '5px',
                               fontSize: '12px',
@@ -1664,7 +1664,7 @@ export default function App() {
                             aria-label="Font size"
                           >
                             <span>{currentSize}</span>
-                            <span style={{ color: '#888', fontSize: '9px' }}>▼</span>
+                            <span style={{ color: '#8d96a6', fontSize: '9px' }}>▼</span>
                           </button>
                           {showFontSizeMenu && (
                             <div style={{
@@ -1672,8 +1672,8 @@ export default function App() {
                               top: 'calc(100% + 6px)',
                               left: 0,
                               zIndex: 5600,
-                              background: '#1e2026',
-                              border: '1px solid #383d46',
+                              background: '#181c24',
+                              border: '1px solid #2a3140',
                               borderRadius: '6px',
                               padding: '4px',
                               boxShadow: '0 12px 36px rgba(0,0,0,0.5)',
@@ -1697,7 +1697,7 @@ export default function App() {
                                       textAlign: 'left',
                                       padding: '6px 10px',
                                       background: on ? 'rgba(216,168,78,0.12)' : 'transparent',
-                                      color: on ? '#d8a84e' : '#ddd',
+                                      color: on ? '#d8a84e' : '#e8e2d4',
                                       border: 'none',
                                       borderRadius: '4px',
                                       cursor: 'pointer',
@@ -1738,8 +1738,8 @@ export default function App() {
                             width: '28px',
                             height: '24px',
                             padding: 0,
-                            background: isOn ? 'rgba(216,168,78,0.18)' : '#444',
-                            color: isOn ? '#d8a84e' : '#ddd',
+                            background: isOn ? 'rgba(216,168,78,0.18)' : '#3a4252',
+                            color: isOn ? '#d8a84e' : '#e8e2d4',
                             border: '1px solid transparent',
                             borderRadius: '5px',
                             fontSize: '13px',
@@ -1772,7 +1772,7 @@ export default function App() {
                             fontSize: '10.5px',
                             letterSpacing: '0.04em',
                             textTransform: 'uppercase',
-                            color: '#9ca3af',
+                            color: '#8d96a6',
                             fontFamily: FONT_FAMILY,
                           }}>Align</span>
                           <button
@@ -1782,8 +1782,8 @@ export default function App() {
                               width: '28px',
                               height: '26px',
                               padding: 0,
-                              background: '#2a2e36',
-                              border: '1px solid #383d46',
+                              background: '#1f2430',
+                              border: '1px solid #2a3140',
                               borderRadius: '5px',
                               cursor: 'pointer',
                               display: 'inline-flex',
@@ -1819,8 +1819,8 @@ export default function App() {
                               top: 'calc(100% + 6px)',
                               right: 0,
                               zIndex: 5600,
-                              background: '#1e2026',
-                              border: '1px solid #383d46',
+                              background: '#181c24',
+                              border: '1px solid #2a3140',
                               borderRadius: '8px',
                               padding: '10px',
                               boxShadow: '0 12px 36px rgba(0,0,0,0.5)',
@@ -1829,7 +1829,7 @@ export default function App() {
                                 fontSize: '10.5px',
                                 letterSpacing: '0.04em',
                                 textTransform: 'uppercase',
-                                color: '#9ca3af',
+                                color: '#8d96a6',
                                 marginBottom: '8px',
                                 fontFamily: FONT_FAMILY,
                               }}>Text alignment</div>
@@ -1854,7 +1854,7 @@ export default function App() {
                                         width: '26px',
                                         height: '26px',
                                         background: on ? 'rgba(216,168,78,0.10)' : '#14171c',
-                                        border: on ? '1px solid #d8a84e' : '1px solid #2a2e36',
+                                        border: on ? '1px solid #d8a84e' : '1px solid #2a3140',
                                         borderRadius: '4px',
                                         cursor: 'pointer',
                                         display: 'flex',
@@ -2013,8 +2013,8 @@ export default function App() {
                           style={{
                             height: '24px',
                             padding: '0 22px 0 8px',
-                            background: '#444',
-                            color: '#ddd',
+                            background: '#3a4252',
+                            color: '#e8e2d4',
                             border: '1px solid transparent',
                             borderRadius: '5px',
                             fontSize: '12px',
@@ -2024,7 +2024,7 @@ export default function App() {
                             alignItems: 'center',
                             gap: '6px',
                             backgroundImage:
-                              'linear-gradient(45deg, transparent 50%, #aaa 50%), linear-gradient(135deg, #aaa 50%, transparent 50%)',
+                              'linear-gradient(45deg, transparent 50%, #8d96a6 50%), linear-gradient(135deg, #8d96a6 50%, transparent 50%)',
                             backgroundPosition: 'calc(100% - 11px) 10px, calc(100% - 7px) 10px',
                             backgroundSize: '4px 4px, 4px 4px',
                             backgroundRepeat: 'no-repeat',
@@ -2048,24 +2048,24 @@ export default function App() {
                             position: 'absolute',
                             top: 'calc(100% + 4px)',
                             left: 0,
-                            background: '#1e1e1e',
-                            border: '1px solid #444',
+                            background: '#0d0f14',
+                            border: '1px solid #3a4252',
                             borderRadius: '6px',
                             boxShadow: '0 8px 24px rgba(0,0,0,0.45)',
                             padding: '4px',
                             zIndex: 5600,
                             minWidth: '160px',
-                            color: '#DDD',
+                            color: '#e8e2d4',
                             fontFamily: FONT_FAMILY,
                             fontSize: '12px',
                           }}>
                             <div style={{
                               padding: '4px 8px',
                               fontSize: '10px',
-                              color: '#888',
+                              color: '#8d96a6',
                               textTransform: 'uppercase',
                               fontWeight: 600,
-                              borderBottom: '1px solid #333',
+                              borderBottom: '1px solid #2a3140',
                               marginBottom: '4px',
                             }}>
                               Counter Series
@@ -2085,13 +2085,13 @@ export default function App() {
                                 background: 'transparent',
                                 border: 'none',
                                 borderRadius: '4px',
-                                color: '#DDD',
+                                color: '#e8e2d4',
                                 textAlign: 'left',
                                 cursor: 'pointer',
                                 fontSize: '12px',
                                 fontFamily: 'inherit',
                               }}
-                              onMouseEnter={(e) => { e.currentTarget.style.background = '#2a2a2a'; }}
+                              onMouseEnter={(e) => { e.currentTarget.style.background = '#1f2430'; }}
                               onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
                             >
                               + New Count
@@ -2099,7 +2099,7 @@ export default function App() {
                             {seriesList.length > 0 && (
                               <div style={{
                                 padding: '6px 8px 4px',
-                                color: '#888',
+                                color: '#8d96a6',
                                 fontSize: '10px',
                                 textTransform: 'uppercase',
                                 fontWeight: 600,
@@ -2123,17 +2123,17 @@ export default function App() {
                                     width: '100%',
                                     gap: '8px',
                                     padding: '6px 10px',
-                                    background: isActive ? '#2a2a2a' : 'transparent',
+                                    background: isActive ? '#1f2430' : 'transparent',
                                     border: 'none',
                                     borderRadius: '4px',
-                                    color: '#DDD',
+                                    color: '#e8e2d4',
                                     textAlign: 'left',
                                     cursor: 'pointer',
                                     fontSize: '12px',
                                     fontFamily: 'inherit',
                                   }}
-                                  onMouseEnter={(e) => { e.currentTarget.style.background = '#2a2a2a'; }}
-                                  onMouseLeave={(e) => { e.currentTarget.style.background = isActive ? '#2a2a2a' : 'transparent'; }}
+                                  onMouseEnter={(e) => { e.currentTarget.style.background = '#1f2430'; }}
+                                  onMouseLeave={(e) => { e.currentTarget.style.background = isActive ? '#1f2430' : 'transparent'; }}
                                 >
                                   <span style={{
                                     width: '10px',
@@ -2144,7 +2144,7 @@ export default function App() {
                                     flexShrink: 0,
                                   }} />
                                   <span style={{ flex: 1 }}>{series.label}</span>
-                                  <span style={{ fontSize: '10px', color: '#888' }}>{series.count}</span>
+                                  <span style={{ fontSize: '10px', color: '#8d96a6' }}>{series.count}</span>
                                 </button>
                               );
                             })}
@@ -2201,8 +2201,8 @@ export default function App() {
                         <div style={{
                           display: 'grid',
                           gridTemplateColumns: '1fr 1fr',
-                          background: '#1e1e1e',
-                          border: '1px solid #333',
+                          background: '#0d0f14',
+                          border: '1px solid #2a3140',
                           borderBottom: 'none',
                           borderRadius: '8px 8px 0 0',
                           overflow: 'hidden',
@@ -2218,12 +2218,12 @@ export default function App() {
                                 onMouseDown={(e) => e.stopPropagation()}
                                 style={{
                                   background: on ? 'rgba(216,168,78,0.08)' : 'transparent',
-                                  color: on ? '#eee' : '#888',
+                                  color: on ? '#e8e2d4' : '#8d96a6',
                                   fontWeight: 600,
                                   fontSize: 12,
                                   padding: '8px 0',
                                   border: 0,
-                                  borderRight: i === 0 ? '1px solid #333' : 0,
+                                  borderRight: i === 0 ? '1px solid #2a3140' : 0,
                                   cursor: 'pointer',
                                   position: 'relative'
                                 }}
@@ -2266,15 +2266,15 @@ export default function App() {
                       style={{
                         height: '24px',
                         padding: '0 22px 0 8px',
-                        background: '#444',
-                        color: '#ddd',
+                        background: '#3a4252',
+                        color: '#e8e2d4',
                         border: '1px solid transparent',
                         borderRadius: '5px',
                         fontSize: '12px',
                         fontFamily: FONT_FAMILY,
                         cursor: 'pointer',
                         backgroundImage:
-                          'linear-gradient(45deg, transparent 50%, #aaa 50%), linear-gradient(135deg, #aaa 50%, transparent 50%)',
+                          'linear-gradient(45deg, transparent 50%, #8d96a6 50%), linear-gradient(135deg, #8d96a6 50%, transparent 50%)',
                         backgroundPosition: 'calc(100% - 11px) 10px, calc(100% - 7px) 10px',
                         backgroundSize: '4px 4px, 4px 4px',
                         backgroundRepeat: 'no-repeat'
@@ -2290,8 +2290,8 @@ export default function App() {
                         position: 'absolute',
                         top: 'calc(100% + 4px)',
                         left: 0,
-                        background: '#1e1e1e',
-                        border: '1px solid #444',
+                        background: '#0d0f14',
+                        border: '1px solid #3a4252',
                         borderRadius: '6px',
                         boxShadow: '0 8px 24px rgba(0,0,0,0.45)',
                         padding: '4px',
@@ -2316,7 +2316,7 @@ export default function App() {
                                 width: '100%',
                                 padding: '6px 10px',
                                 background: isOn ? 'rgba(216,168,78,0.12)' : 'transparent',
-                                color: isOn ? '#d8a84e' : '#ddd',
+                                color: isOn ? '#d8a84e' : '#e8e2d4',
                                 border: 'none',
                                 borderRadius: '4px',
                                 fontSize: '12px',
@@ -2364,8 +2364,8 @@ export default function App() {
                     width: '36px',
                     height: '20px',
                     padding: '4px 4px',
-                    background: '#444',
-                    color: '#ddd',
+                    background: '#3a4252',
+                    color: '#e8e2d4',
                     border: '1px solid transparent',
                     borderRadius: '5px',
                     fontSize: '12px',
@@ -2386,15 +2386,15 @@ export default function App() {
                       style={{
                         height: '24px',
                         padding: '0 22px 0 8px',
-                        background: '#444',
-                        color: '#ddd',
+                        background: '#3a4252',
+                        color: '#e8e2d4',
                         border: '1px solid transparent',
                         borderRadius: '5px',
                         fontSize: '12px',
                         fontFamily: FONT_FAMILY,
                         cursor: 'pointer',
                         backgroundImage:
-                          'linear-gradient(45deg, transparent 50%, #aaa 50%), linear-gradient(135deg, #aaa 50%, transparent 50%)',
+                          'linear-gradient(45deg, transparent 50%, #8d96a6 50%), linear-gradient(135deg, #8d96a6 50%, transparent 50%)',
                         backgroundPosition: 'calc(100% - 11px) 10px, calc(100% - 7px) 10px',
                         backgroundSize: '4px 4px, 4px 4px',
                         backgroundRepeat: 'no-repeat'
@@ -2409,8 +2409,8 @@ export default function App() {
                         position: 'absolute',
                         top: 'calc(100% + 4px)',
                         left: 0,
-                        background: '#1e1e1e',
-                        border: '1px solid #444',
+                        background: '#0d0f14',
+                        border: '1px solid #3a4252',
                         borderRadius: '6px',
                         boxShadow: '0 8px 24px rgba(0,0,0,0.45)',
                         padding: '4px',
@@ -2437,7 +2437,7 @@ export default function App() {
                                 width: '100%',
                                 padding: '6px 10px',
                                 background: isOn ? 'rgba(216,168,78,0.12)' : 'transparent',
-                                color: isOn ? '#d8a84e' : '#ddd',
+                                color: isOn ? '#d8a84e' : '#e8e2d4',
                                 border: 'none',
                                 borderRadius: '4px',
                                 fontSize: '12px',
@@ -2460,7 +2460,7 @@ export default function App() {
                     the border style is Cloud. Drives how big the cloud's wave
                     bumps render. Mirrors the width input visual. */}
                 {bottomToolbarApi.contextTool === 'rect' && bottomToolbarApi.lineBorderStyle === 'cloud' && bottomToolbarApi.setCloudIntensity && (
-                  <label style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', color: '#bbb', fontSize: '11px', fontFamily: FONT_FAMILY }}>
+                  <label style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', color: '#8d96a6', fontSize: '11px', fontFamily: FONT_FAMILY }}>
                     Bump
                     <input
                       type="text"
@@ -2480,8 +2480,8 @@ export default function App() {
                         width: '36px',
                         height: '20px',
                         padding: '4px 4px',
-                        background: '#444',
-                        color: '#ddd',
+                        background: '#3a4252',
+                        color: '#e8e2d4',
                         border: '1px solid transparent',
                         borderRadius: '5px',
                         fontSize: '12px',
@@ -2505,15 +2505,15 @@ export default function App() {
                       style={{
                         height: '24px',
                         padding: '0 22px 0 8px',
-                        background: '#444',
-                        color: '#ddd',
+                        background: '#3a4252',
+                        color: '#e8e2d4',
                         border: '1px solid transparent',
                         borderRadius: '5px',
                         fontSize: '12px',
                         fontFamily: FONT_FAMILY,
                         cursor: 'pointer',
                         backgroundImage:
-                          'linear-gradient(45deg, transparent 50%, #aaa 50%), linear-gradient(135deg, #aaa 50%, transparent 50%)',
+                          'linear-gradient(45deg, transparent 50%, #8d96a6 50%), linear-gradient(135deg, #8d96a6 50%, transparent 50%)',
                         backgroundPosition: 'calc(100% - 11px) 10px, calc(100% - 7px) 10px',
                         backgroundSize: '4px 4px, 4px 4px',
                         backgroundRepeat: 'no-repeat'
@@ -2528,8 +2528,8 @@ export default function App() {
                         position: 'absolute',
                         top: 'calc(100% + 4px)',
                         left: 0,
-                        background: '#1e1e1e',
-                        border: '1px solid #444',
+                        background: '#0d0f14',
+                        border: '1px solid #3a4252',
                         borderRadius: '6px',
                         boxShadow: '0 8px 24px rgba(0,0,0,0.45)',
                         padding: '4px',
@@ -2551,7 +2551,7 @@ export default function App() {
                                 width: '100%',
                                 padding: '6px 10px',
                                 background: isOn ? 'rgba(216,168,78,0.12)' : 'transparent',
-                                color: isOn ? '#d8a84e' : '#ddd',
+                                color: isOn ? '#d8a84e' : '#e8e2d4',
                                 border: 'none',
                                 borderRadius: '4px',
                                 fontSize: '12px',
@@ -2590,10 +2590,10 @@ export default function App() {
                     style={{
                       height: '24px',
                       padding: '0 8px',
-                      background: bottomToolbarApi.richTextEditor ? 'rgba(216,168,78,0.18)' : '#444',
+                      background: bottomToolbarApi.richTextEditor ? 'rgba(216,168,78,0.18)' : '#3a4252',
                       color: bottomToolbarApi.richTextEditor
                         ? '#d8a84e'
-                        : bottomToolbarApi.canEnterTextEdit ? '#ddd' : '#666',
+                        : bottomToolbarApi.canEnterTextEdit ? '#e8e2d4' : '#5a6473',
                       border: '1px solid transparent',
                       borderRadius: '5px',
                       fontSize: '13px',
@@ -2628,8 +2628,8 @@ export default function App() {
               flexShrink: 0,
               minWidth: '48px',
               alignSelf: 'stretch',
-              background: '#252525',
-              color: '#ddd',
+              background: '#12151c',
+              color: '#e8e2d4',
               fontFamily: FONT_FAMILY,
               overflow: 'visible',
               position: 'relative',
@@ -2656,7 +2656,7 @@ export default function App() {
                 top: 0,
                 left: 0,
                 right: 0,
-                background: '#2b2b2b',
+                background: '#181c24',
                 cursor: 'default',
                 zIndex: 5400
               }}
@@ -2686,7 +2686,7 @@ export default function App() {
                   style={{
                     position: 'absolute',
                     inset: 0,
-                    background: '#1f1f1f',
+                    background: '#12151c',
                     zIndex: isVisible ? 5000 : 4000, // Keep lower z-index when hidden
                     display: isVisible ? 'block' : 'none'
                   }}
@@ -2753,8 +2753,8 @@ export default function App() {
               minWidth: '48px',
               overflow: 'visible',
               alignSelf: 'stretch',
-              background: '#252525',
-              color: '#ddd',
+              background: '#12151c',
+              color: '#e8e2d4',
               fontFamily: FONT_FAMILY,
               flexDirection: 'column',
               alignItems: 'center',
@@ -2792,7 +2792,7 @@ export default function App() {
                     background: 'transparent',
                     border: 'none',
                     borderRadius: '4px',
-                    color: '#bbb',
+                    color: '#8d96a6',
                     cursor: bottomToolbarApi.pageNum <= 1 ? 'not-allowed' : 'pointer',
                     opacity: bottomToolbarApi.pageNum <= 1 ? 0.35 : 1
                   }}
@@ -2830,7 +2830,7 @@ export default function App() {
                       width: '28px',
                       padding: 0,
                       background: 'transparent',
-                      color: '#4A90E2',
+                      color: '#d8a84e',
                       border: 'none',
                       fontSize: '11px',
                       fontFamily: FONT_FAMILY,
@@ -2851,7 +2851,7 @@ export default function App() {
                     style={{
                       background: 'transparent',
                       border: 'none',
-                      color: '#4A90E2',
+                      color: '#d8a84e',
                       fontSize: '11px',
                       fontFamily: FONT_FAMILY,
                       fontWeight: '600',
@@ -2871,13 +2871,13 @@ export default function App() {
                     rail convention. Tabular-nums on the total keeps "9"
                     and "99" centered identically. */}
                 <span aria-hidden="true" style={{
-                  color: '#888',
+                  color: '#8d96a6',
                   fontSize: '14px',
                   lineHeight: 0.5,
                   fontFamily: FONT_FAMILY
                 }}>·</span>
                 <span style={{
-                  color: '#888',
+                  color: '#8d96a6',
                   fontSize: '10px',
                   fontFamily: FONT_FAMILY,
                   fontVariantNumeric: 'tabular-nums',
@@ -2901,7 +2901,7 @@ export default function App() {
                     background: 'transparent',
                     border: 'none',
                     borderRadius: '4px',
-                    color: '#bbb',
+                    color: '#8d96a6',
                     cursor: bottomToolbarApi.pageNum >= bottomToolbarApi.numPages ? 'not-allowed' : 'pointer',
                     opacity: bottomToolbarApi.pageNum >= bottomToolbarApi.numPages ? 0.35 : 1
                   }}
@@ -2911,7 +2911,7 @@ export default function App() {
 
                 {/* Divider between page nav and zoom — Walkthrough's
                     rail-collapsed divider style (1px tall, 32px wide). */}
-                <div style={{ width: '32px', height: '1px', background: '#3a3a3a', margin: '4px 0' }} />
+                <div style={{ width: '32px', height: '1px', background: '#2a3140', margin: '4px 0' }} />
 
                 {/* Zoom in (plus). 28×28 button, plain English '+' glyph so
                     the rail reads cleanly without leaning on the icon set
@@ -2929,7 +2929,7 @@ export default function App() {
                     background: 'transparent',
                     border: 'none',
                     borderRadius: '4px',
-                    color: '#bbb',
+                    color: '#8d96a6',
                     fontSize: '16px',
                     lineHeight: 1,
                     cursor: 'pointer'
@@ -2966,7 +2966,7 @@ export default function App() {
                     style={{
                       width: '36px',
                       background: 'transparent',
-                      color: '#bbb',
+                      color: '#8d96a6',
                       border: 'none',
                       padding: 0,
                       margin: 0,
@@ -2989,7 +2989,7 @@ export default function App() {
                     style={{
                       background: 'transparent',
                       border: 'none',
-                      color: '#bbb',
+                      color: '#8d96a6',
                       fontSize: '10px',
                       fontFamily: FONT_FAMILY,
                       fontWeight: '500',
@@ -3019,7 +3019,7 @@ export default function App() {
                     background: 'transparent',
                     border: 'none',
                     borderRadius: '4px',
-                    color: '#bbb',
+                    color: '#8d96a6',
                     fontSize: '16px',
                     lineHeight: 1,
                     cursor: 'pointer'
@@ -3090,7 +3090,7 @@ export default function App() {
                           background: 'transparent',
                           border: 'none',
                           borderRadius: '2px',
-                          color: mode !== ZOOM_MODES.MANUAL ? '#e0e0e0' : '#bbb',
+                          color: mode !== ZOOM_MODES.MANUAL ? '#e8e2d4' : '#8d96a6',
                           cursor: 'pointer'
                         }}
                       >
@@ -3137,7 +3137,7 @@ export default function App() {
                         right: '100%',
                         marginRight: '6px',
                         background: 'rgb(30, 30, 30)',
-                        border: '1px solid #3a3a3a',
+                        border: '1px solid #2a3140',
                         borderRadius: '2px',
                         boxShadow: '0 10px 24px rgba(0,0,0,0.45)',
                         width: '144px',
@@ -3164,7 +3164,7 @@ export default function App() {
                               borderRadius: '2px',
                               textAlign: 'left',
                               cursor: 'pointer',
-                              color: isActive ? '#e0e0e0' : '#bbb',
+                              color: isActive ? '#e8e2d4' : '#8d96a6',
                               fontSize: '11px',
                               fontFamily: FONT_FAMILY
                             }}

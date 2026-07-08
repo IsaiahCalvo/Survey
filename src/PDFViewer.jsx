@@ -22091,7 +22091,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         overflow: 'hidden',
         overflowAnchor: 'none',
         cursor: shouldShowGrabCursor ? 'grab' : 'default',
-        background: '#2b2b2b',
+        background: '#181c24',
         position: 'relative',
         fontFamily: FONT_FAMILY,
         minHeight: 0,
@@ -22115,7 +22115,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       overflow: 'auto',
       overflowAnchor: 'none',
       cursor: cursorStyle,
-      background: '#2b2b2b',
+      background: '#181c24',
       padding: '20px',
       position: 'relative',
       fontFamily: FONT_FAMILY,
@@ -24486,7 +24486,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         element.scrollIntoView({ behavior: 'smooth', block: 'center' });
         // Flash effect
         element.style.transition = 'box-shadow 0.5s';
-        element.style.boxShadow = '0 0 0 2px #4A90E2';
+        element.style.boxShadow = '0 0 0 2px #d8a84e';
         setTimeout(() => {
           element.style.boxShadow = 'none';
         }, 2000);
@@ -27662,8 +27662,8 @@ ${pageBlocks}
         height: '100vh',
         display: 'flex',
         flexDirection: 'row',
-        background: '#2b2b2b',
-        color: '#ddd',
+        background: '#181c24',
+        color: '#e8e2d4',
         fontFamily: FONT_FAMILY
       }}>
         <div style={{
@@ -27675,8 +27675,8 @@ ${pageBlocks}
         }}>
           <div style={{
             maxWidth: '480px',
-            background: '#1f1f1f',
-            border: '1px solid #3a3a3a',
+            background: '#12151c',
+            border: '1px solid #2a3140',
             borderRadius: '8px',
             padding: '32px',
             textAlign: 'center',
@@ -27685,13 +27685,13 @@ ${pageBlocks}
             <div style={{ marginBottom: '16px', display: 'flex', justifyContent: 'center' }}>
               <Icon name="document" size={48} />
             </div>
-            <div style={{ fontSize: '18px', color: '#eee', marginBottom: '8px', fontWeight: 500 }}>
+            <div style={{ fontSize: '18px', color: '#e8e2d4', marginBottom: '8px', fontWeight: 500 }}>
               Couldn’t open this PDF
             </div>
-            <div style={{ fontSize: '13px', color: '#a8a8a8', marginBottom: '8px' }}>
+            <div style={{ fontSize: '13px', color: '#8d96a6', marginBottom: '8px' }}>
               {docName}
             </div>
-            <div style={{ fontSize: '13px', color: '#9a9a9a', marginBottom: '24px', lineHeight: 1.5 }}>
+            <div style={{ fontSize: '13px', color: '#8d96a6', marginBottom: '24px', lineHeight: 1.5 }}>
               {pdfLoadError.kind === 'pdfjs'
                 ? 'The viewer couldn’t render this file. It may be corrupted or use an unsupported PDF feature.'
                 : 'The file couldn’t be parsed. It may be corrupted, encrypted, or not a valid PDF.'}
@@ -27707,13 +27707,13 @@ ${pageBlocks}
                   setLoadRetryToken((t) => t + 1);
                 }}
                 style={{
-                  background: '#3b82f6',
-                  color: '#fff',
+                  background: '#d8a84e',
+                  color: '#15110a',
                   border: 'none',
                   borderRadius: '6px',
                   padding: '10px 18px',
                   fontSize: '13px',
-                  fontWeight: 500,
+                  fontWeight: 600,
                   cursor: 'pointer',
                   fontFamily: FONT_FAMILY
                 }}
@@ -27743,8 +27743,8 @@ ${pageBlocks}
                 }}
                 style={{
                   background: 'transparent',
-                  color: '#ddd',
-                  border: '1px solid #4a4a4a',
+                  color: '#e8e2d4',
+                  border: '1px solid #3a4252',
                   borderRadius: '6px',
                   padding: '10px 18px',
                   fontSize: '13px',
@@ -27769,8 +27769,8 @@ ${pageBlocks}
         height: '100vh',
         display: 'flex',
         flexDirection: 'row',
-        background: '#2b2b2b',
-        color: '#ddd',
+        background: '#181c24',
+        color: '#e8e2d4',
         fontFamily: FONT_FAMILY
       }}>
         {/* Loading content */}
@@ -27779,7 +27779,7 @@ ${pageBlocks}
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          color: '#999',
+          color: '#8d96a6',
           fontSize: '15px',
           letterSpacing: '-0.2px'
         }}>
@@ -27788,8 +27788,8 @@ ${pageBlocks}
               <div style={{ marginBottom: '20px', display: 'flex', justifyContent: 'center' }}>
                 <Icon name="document" size={48} />
               </div>
-              <div style={{ fontSize: '18px', color: '#999' }}>Loading PDF...</div>
-              <div style={{ fontSize: '14px', color: '#666', marginTop: '10px' }}>
+              <div style={{ fontSize: '18px', color: '#8d96a6' }}>Loading PDF...</div>
+              <div style={{ fontSize: '14px', color: '#5a6473', marginTop: '10px' }}>
                 {pdfFile?.name || 'document.pdf'}
               </div>
             </div>
@@ -27942,8 +27942,8 @@ ${pageBlocks}
         height: '100%',
         display: 'flex',
         flexDirection: 'column',
-        background: '#2b2b2b',
-        color: '#ddd',
+        background: '#181c24',
+        color: '#e8e2d4',
         fontFamily: FONT_FAMILY,
         position: 'relative'
       }}>
@@ -27965,16 +27965,18 @@ ${pageBlocks}
             left: tooltip.x,
             top: tooltip.y,
             transform: tooltip.placement === 'below' ? 'translate(-50%, 0)' : 'translate(-50%, -100%)',
-            background: '#222',
-            color: '#fff',
+            background: '#181c24',
+            color: '#e8e2d4',
+            border: '1px solid #2a3140',
             padding: '4px 8px',
-            borderRadius: '4px',
-            fontSize: '12px',
+            borderRadius: '6px',
+            fontSize: '11.5px',
+            letterSpacing: 0,
             fontFamily: FONT_FAMILY,
             pointerEvents: 'none',
             zIndex: 10000,
             whiteSpace: 'nowrap',
-            boxShadow: '0 2px 8px rgba(0,0,0,0.3)'
+            boxShadow: '0 12px 30px rgba(0,0,0,0.5)'
           }}>
             {tooltip.text}
           </div>
@@ -28021,7 +28023,7 @@ ${pageBlocks}
               left: '50%',
               transform: 'translateX(-50%)',
               zIndex: 2000,
-              background: 'rgba(74, 144, 226, 0.9)',
+              background: 'rgba(216, 168, 78, 0.9)',
               color: 'white',
               padding: '8px 16px',
               borderRadius: '20px',
@@ -28095,7 +28097,7 @@ ${pageBlocks}
                     background: 'rgba(15, 15, 15, 0.86)',
                     border: '1px solid rgba(255,255,255,0.16)',
                     borderRadius: 8,
-                    color: '#d8d8d8',
+                    color: '#e8e2d4',
                     fontFamily: FONT_FAMILY,
                     fontSize: 11,
                     lineHeight: 1.4,
@@ -28149,7 +28151,7 @@ ${pageBlocks}
                     {snapshot.data?.historyEventReason ? ` (${snapshot.data.historyEventReason})` : ''}
                   </div>
                   {rateEntries.length > 0 && (
-                    <div style={{ marginTop: 4, color: '#a9a9a9' }}>
+                    <div style={{ marginTop: 4, color: '#8d96a6' }}>
                       {rateEntries.map(([name, rate]) => (
                         <div key={name}>{name}: {rate}/s</div>
                       ))}
@@ -29692,8 +29694,8 @@ ${pageBlocks}
             style={{
               width: '100%',
               height: '34px',
-              background: '#2b2b2b',
-              borderBottom: '1px solid #3a3a3a',
+              background: '#181c24',
+              borderBottom: '1px solid #2a3140',
               borderTop: 'none',
               cursor: 'default',
               display: 'flex',
@@ -29780,7 +29782,7 @@ ${pageBlocks}
                             cursor: 'pointer'
                           }}
                         >
-                          <Icon name="chevronDown" size={12} color="#888888" />
+                          <Icon name="chevronDown" size={12} color="#8d96a6" />
                         </div>
                       )}
                     </button>
@@ -29818,10 +29820,10 @@ ${pageBlocks}
                     justifyContent: 'flex-start',
                     gap: '8px',
                     padding: '6px 10px',
-                    background: selected ? '#2a2a2a' : 'transparent',
+                    background: selected ? '#1f2430' : 'transparent',
                     border: 'none',
                     borderRadius: '4px',
-                    color: '#DDD',
+                    color: '#e8e2d4',
                     textAlign: 'left',
                     cursor: 'pointer',
                     fontSize: '12px',
@@ -29845,7 +29847,7 @@ ${pageBlocks}
                             transform: 'translate(-50%, 0)',
                             backgroundColor: 'rgb(30, 30, 30)',
                             backgroundImage: 'none',
-                            border: '1px solid #333',
+                            border: '1px solid #2a3140',
                             borderRadius: '6px',
                             boxShadow: '0 4px 16px rgba(0,0,0,0.6)',
                             zIndex: 999999,
@@ -29853,7 +29855,7 @@ ${pageBlocks}
                             flexDirection: 'column',
                             padding: '4px',
                             minWidth: isHighlighterSplitMenu ? '150px' : '142px',
-                            color: '#DDD',
+                            color: '#e8e2d4',
                             pointerEvents: 'auto',
                             cursor: 'default',
                             fontFamily: '-apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", "Segoe UI", Roboto, Ubuntu, "Noto Sans", Arial, sans-serif',
@@ -29863,10 +29865,10 @@ ${pageBlocks}
                           <div style={{
                             padding: '4px 8px',
                             fontSize: '10px',
-                            color: '#888',
+                            color: '#8d96a6',
                             textTransform: 'uppercase',
                             fontWeight: 600,
-                            borderBottom: '1px solid #333',
+                            borderBottom: '1px solid #2a3140',
                             marginBottom: '4px'
                           }}>
                             {isHighlighterSplitMenu ? 'SurveyMarker Type' : 'Eraser Type'}
@@ -29879,8 +29881,8 @@ ${pageBlocks}
                                   setActiveTool('highlighter');
                                   setHighlighterCaretPopupOpen(false);
                                 }}
-                                onMouseEnter={(e) => { e.currentTarget.style.background = '#2a2a2a'; }}
-                                onMouseLeave={(e) => { e.currentTarget.style.background = activeTool === 'highlighter' ? '#2a2a2a' : 'transparent'; }}
+                                onMouseEnter={(e) => { e.currentTarget.style.background = '#1f2430'; }}
+                                onMouseLeave={(e) => { e.currentTarget.style.background = activeTool === 'highlighter' ? '#1f2430' : 'transparent'; }}
                                 style={optionStyle(activeTool === 'highlighter')}
                               >
                                 Freehand Highlight
@@ -29891,8 +29893,8 @@ ${pageBlocks}
                                   setActiveTool('text-highlight');
                                   setHighlighterCaretPopupOpen(false);
                                 }}
-                                onMouseEnter={(e) => { e.currentTarget.style.background = '#2a2a2a'; }}
-                                onMouseLeave={(e) => { e.currentTarget.style.background = activeTool === 'text-highlight' ? '#2a2a2a' : 'transparent'; }}
+                                onMouseEnter={(e) => { e.currentTarget.style.background = '#1f2430'; }}
+                                onMouseLeave={(e) => { e.currentTarget.style.background = activeTool === 'text-highlight' ? '#1f2430' : 'transparent'; }}
                                 style={optionStyle(activeTool === 'text-highlight')}
                               >
                                 Text Highlight
@@ -29907,8 +29909,8 @@ ${pageBlocks}
                                   setEraserMode('partial');
                                   setEraserCaretPopupOpen(false);
                                 }}
-                                onMouseEnter={(e) => { e.currentTarget.style.background = '#2a2a2a'; }}
-                                onMouseLeave={(e) => { e.currentTarget.style.background = eraserMode === 'partial' ? '#2a2a2a' : 'transparent'; }}
+                                onMouseEnter={(e) => { e.currentTarget.style.background = '#1f2430'; }}
+                                onMouseLeave={(e) => { e.currentTarget.style.background = eraserMode === 'partial' ? '#1f2430' : 'transparent'; }}
                                 style={optionStyle(eraserMode === 'partial')}
                               >
                                 Partial Erase
@@ -29920,8 +29922,8 @@ ${pageBlocks}
                                   setEraserMode('entire');
                                   setEraserCaretPopupOpen(false);
                                 }}
-                                onMouseEnter={(e) => { e.currentTarget.style.background = '#2a2a2a'; }}
-                                onMouseLeave={(e) => { e.currentTarget.style.background = eraserMode === 'entire' ? '#2a2a2a' : 'transparent'; }}
+                                onMouseEnter={(e) => { e.currentTarget.style.background = '#1f2430'; }}
+                                onMouseLeave={(e) => { e.currentTarget.style.background = eraserMode === 'entire' ? '#1f2430' : 'transparent'; }}
                                 style={optionStyle(eraserMode === 'entire')}
                               >
                                 Full Stroke Erase
@@ -29958,7 +29960,7 @@ ${pageBlocks}
                   // ~/Desktop/Survey-Experimental/src/App.jsx (the user's
                   // reference). Visual parity: same chevron position
                   // (right-of-center, vertical-center), same popup palette
-                  // (#1e1e1e/#333), same header divider treatment, and the
+                  // (#0d0f14/#2a3140), same header divider treatment, and the
                   // popup buttons reuse the project's `.btn`/`.btn-ghost`/
                   // `.btn-active` styles instead of inline custom hovers.
                   const isCounter = t.id === 'counter';
@@ -30044,7 +30046,7 @@ ${pageBlocks}
                             cursor: 'pointer'
                           }}
                         >
-                          <Icon name="chevronDown" size={12} color="#888888" />
+                          <Icon name="chevronDown" size={12} color="#8d96a6" />
                         </div>
                       )}
                     </button>
@@ -30101,7 +30103,7 @@ ${pageBlocks}
                           // UX: popup floats ABOVE the toolbar (toolbar is
                           // at the bottom of the screen). Visual palette
                           // matches the eraser popup in Survey-Experimental
-                          // exactly: rgb(30,30,30) bg (#1E1E1E), #333
+                          // exactly: rgb(30,30,30) bg (#0d0f14), #2a3140
                           // border, 0 4px 16px shadow, zIndex 1000,
                           // minWidth 140px.
                           //
@@ -30112,7 +30114,7 @@ ${pageBlocks}
                           // through. The user reported a slight bluish
                           // tint on the previous render — these belt-
                           // and-suspenders properties guarantee a flat
-                          // #1E1E1E fill identical to the reference.
+                          // #0d0f14 fill identical to the reference.
                           //
                           // pointerEvents: 'auto' + cursor: 'default' are
                           // defensive: the popup floats over the counter
@@ -30139,7 +30141,7 @@ ${pageBlocks}
                             transform: 'translate(-50%, 0)',
                             backgroundColor: 'rgb(30, 30, 30)',
                             backgroundImage: 'none',
-                            border: '1px solid #333',
+                            border: '1px solid #2a3140',
                             borderRadius: '6px',
                             boxShadow: '0 4px 16px rgba(0,0,0,0.6)',
                             zIndex: 999999,
@@ -30147,7 +30149,7 @@ ${pageBlocks}
                             flexDirection: 'column',
                             padding: '4px',
                             minWidth: '140px',
-                            color: '#DDD',
+                            color: '#e8e2d4',
                             pointerEvents: 'auto',
                             cursor: 'default',
                             // UX: portaled popup lives at body level.
@@ -30168,10 +30170,10 @@ ${pageBlocks}
                           <div style={{
                             padding: '4px 8px',
                             fontSize: '10px',
-                            color: '#888',
+                            color: '#8d96a6',
                             textTransform: 'uppercase',
                             fontWeight: 600,
-                            borderBottom: '1px solid #333',
+                            borderBottom: '1px solid #2a3140',
                             marginBottom: '4px'
                           }}>
                             Counter Series
@@ -30179,18 +30181,18 @@ ${pageBlocks}
                           {/* UX: popup rows are inline-styled, NOT using
                               the project's `.btn` class. Reason: `.btn`
                               has a translateY(-1px) hover lift and
-                              `.btn-active` paints text #4A90E2 (blue),
+                              `.btn-active` paints text #d8a84e (blue),
                               which together created a "blue haze" that
                               doesn't match the eraser reference. Inline
                               styles give us full color control: muted
-                              gray text (#DDD), subtle white-tint hover
-                              (#2a2a2a), no transform, no blue. */}
+                              gray text (#e8e2d4), subtle white-tint hover
+                              (#1f2430), no transform, no blue. */}
                           <button
                             onClick={(e) => {
                               e.stopPropagation();
                               handleNewCounterSeries();
                             }}
-                            onMouseEnter={(e) => { e.currentTarget.style.background = '#2a2a2a'; }}
+                            onMouseEnter={(e) => { e.currentTarget.style.background = '#1f2430'; }}
                             onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
                             style={{
                               display: 'flex',
@@ -30201,7 +30203,7 @@ ${pageBlocks}
                               background: 'transparent',
                               border: 'none',
                               borderRadius: '4px',
-                              color: '#DDD',
+                              color: '#e8e2d4',
                               textAlign: 'left',
                               cursor: 'pointer',
                               fontSize: '12px',
@@ -30218,7 +30220,7 @@ ${pageBlocks}
                             }}
                             onMouseEnter={(e) => {
                               setCounterCaretSubmenu('continue');
-                              e.currentTarget.style.background = '#2a2a2a';
+                              e.currentTarget.style.background = '#1f2430';
                             }}
                             onMouseLeave={(e) => {
                               if (counterCaretSubmenu !== 'continue') {
@@ -30231,10 +30233,10 @@ ${pageBlocks}
                               justifyContent: 'space-between',
                               gap: '8px',
                               padding: '6px 10px',
-                              background: counterCaretSubmenu === 'continue' ? '#2a2a2a' : 'transparent',
+                              background: counterCaretSubmenu === 'continue' ? '#1f2430' : 'transparent',
                               border: 'none',
                               borderRadius: '4px',
-                              color: '#DDD',
+                              color: '#e8e2d4',
                               textAlign: 'left',
                               cursor: 'pointer',
                               fontSize: '12px',
@@ -30243,7 +30245,7 @@ ${pageBlocks}
                             }}
                           >
                             <span>Continue Count</span>
-                            <span style={{ fontSize: '10px', color: '#888' }}>{'\u25B6'}</span>
+                            <span style={{ fontSize: '10px', color: '#8d96a6' }}>{'\u25B6'}</span>
                           </button>
                           {counterCaretSubmenu === 'continue' && (
                             <div
@@ -30277,7 +30279,7 @@ ${pageBlocks}
                                 marginLeft: '4px',
                                 backgroundColor: 'rgb(30, 30, 30)',
                                 backgroundImage: 'none',
-                                border: '1px solid #333',
+                                border: '1px solid #2a3140',
                                 borderRadius: '6px',
                                 boxShadow: '0 4px 16px rgba(0,0,0,0.6)',
                                 padding: '4px',
@@ -30286,7 +30288,7 @@ ${pageBlocks}
                                 flexDirection: 'column',
                                 maxHeight: '60vh',
                                 overflowY: 'auto',
-                                color: '#DDD',
+                                color: '#e8e2d4',
                                 pointerEvents: 'auto',
                                 cursor: 'default',
                                 fontFamily: 'inherit',
@@ -30302,17 +30304,17 @@ ${pageBlocks}
                                       e.stopPropagation();
                                       handleSwitchCounterSeries(s.seriesId);
                                     }}
-                                    onMouseEnter={(e) => { e.currentTarget.style.background = '#2a2a2a'; }}
-                                    onMouseLeave={(e) => { e.currentTarget.style.background = isActive ? '#2a2a2a' : 'transparent'; }}
+                                    onMouseEnter={(e) => { e.currentTarget.style.background = '#1f2430'; }}
+                                    onMouseLeave={(e) => { e.currentTarget.style.background = isActive ? '#1f2430' : 'transparent'; }}
                                     style={{
                                       display: 'flex',
                                       alignItems: 'center',
                                       gap: '8px',
                                       padding: '6px 10px',
-                                      background: isActive ? '#2a2a2a' : 'transparent',
+                                      background: isActive ? '#1f2430' : 'transparent',
                                       border: 'none',
                                       borderRadius: '4px',
-                                      color: '#DDD',
+                                      color: '#e8e2d4',
                                       textAlign: 'left',
                                       cursor: 'pointer',
                                       fontSize: '12px',
@@ -30337,7 +30339,7 @@ ${pageBlocks}
                                       }}
                                     />
                                     <span style={{ flex: 1 }}>{s.label}</span>
-                                    <span style={{ fontSize: '10px', color: '#888' }}>{s.count}</span>
+                                    <span style={{ fontSize: '10px', color: '#8d96a6' }}>{s.count}</span>
                                   </button>
                                 );
                               })}
@@ -30436,7 +30438,7 @@ ${pageBlocks}
                             cursor: 'pointer'
                           }}
                         >
-                          <Icon name="chevronDown" size={12} color="#888888" />
+                          <Icon name="chevronDown" size={12} color="#8d96a6" />
                         </div>
                       )}
                     </button>
@@ -30464,10 +30466,10 @@ ${pageBlocks}
                     justifyContent: 'flex-start',
                     gap: '8px',
                     padding: '6px 10px',
-                    background: selected ? '#2a2a2a' : 'transparent',
+                    background: selected ? '#1f2430' : 'transparent',
                     border: 'none',
                     borderRadius: '4px',
-                    color: disabled ? '#666' : '#DDD',
+                    color: disabled ? '#5a6473' : '#e8e2d4',
                     textAlign: 'left',
                     cursor: disabled ? 'not-allowed' : 'pointer',
                     fontSize: '12px',
@@ -30487,8 +30489,8 @@ ${pageBlocks}
                         setUnderlineCaretPopupOpen(false);
                         setStrikeCaretPopupOpen(false);
                       }}
-                      onMouseEnter={(e) => { if (!disabled) e.currentTarget.style.background = '#2a2a2a'; }}
-                      onMouseLeave={(e) => { e.currentTarget.style.background = activeTool === tool ? '#2a2a2a' : 'transparent'; }}
+                      onMouseEnter={(e) => { if (!disabled) e.currentTarget.style.background = '#1f2430'; }}
+                      onMouseLeave={(e) => { e.currentTarget.style.background = activeTool === tool ? '#1f2430' : 'transparent'; }}
                       style={optionStyle(activeTool === tool, disabled)}
                     >
                       {label}
@@ -30510,7 +30512,7 @@ ${pageBlocks}
                             transform: 'translate(-50%, 0)',
                             backgroundColor: 'rgb(30, 30, 30)',
                             backgroundImage: 'none',
-                            border: '1px solid #333',
+                            border: '1px solid #2a3140',
                             borderRadius: '6px',
                             boxShadow: '0 4px 16px rgba(0,0,0,0.6)',
                             zIndex: 999999,
@@ -30518,7 +30520,7 @@ ${pageBlocks}
                             flexDirection: 'column',
                             padding: '4px',
                             minWidth: isUnderlineMenu ? '150px' : '166px',
-                            color: '#DDD',
+                            color: '#e8e2d4',
                             pointerEvents: 'auto',
                             cursor: 'default',
                             fontFamily: '-apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", "Segoe UI", Roboto, Ubuntu, "Noto Sans", Arial, sans-serif',
@@ -30528,10 +30530,10 @@ ${pageBlocks}
                           <div style={{
                             padding: '4px 8px',
                             fontSize: '10px',
-                            color: '#888',
+                            color: '#8d96a6',
                             textTransform: 'uppercase',
                             fontWeight: 600,
-                            borderBottom: '1px solid #333',
+                            borderBottom: '1px solid #2a3140',
                             marginBottom: '4px'
                           }}>
                             {isUnderlineMenu ? 'Underline Type' : 'Strike Type'}
@@ -30580,9 +30582,9 @@ ${pageBlocks}
 	                        width: '160px',
 	                        maxWidth: '220px',
 	                        padding: '2px 28px 2px 10px',
-	                        background: '#3A3A3A',
-	                        color: '#DDD',
-	                        border: '1px solid #444',
+	                        background: '#2a3140',
+	                        color: '#e8e2d4',
+	                        border: '1px solid #3a4252',
 	                        borderRadius: '6px',
 	                        fontSize: '12px',
 	                        fontFamily: FONT_FAMILY,
@@ -30601,7 +30603,7 @@ ${pageBlocks}
 	                  </div>
 
 	                  <div style={{ position: 'relative', minWidth: '154px', minHeight: '30px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', padding: '0 16px', boxSizing: 'border-box' }}>
-	                    <div style={{ position: 'absolute', left: 0, top: '50%', transform: 'translateY(-50%)', width: '1px', height: '20px', background: '#555' }} />
+	                    <div style={{ position: 'absolute', left: 0, top: '50%', transform: 'translateY(-50%)', width: '1px', height: '20px', background: '#5a6473' }} />
 	                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
 	                      {categories.length > 0 ? categories.map((category) => {
 	                        const isActive = selectedCategoryId === category.id && activeTool === 'survey-marker';
@@ -30640,9 +30642,9 @@ ${pageBlocks}
 	                              letterSpacing: 0,
 	                              lineHeight: 1,
 	                              fontFamily: FONT_FAMILY,
-	                              border: isActive ? '1px solid #4A90E2' : '1px solid #555',
-	                              background: isActive ? '#4A90E2' : '#3A3A3A',
-	                              color: '#fff',
+	                              border: isActive ? '1px solid #d8a84e' : '1px solid #5a6473',
+	                              background: isActive ? '#d8a84e' : '#2a3140',
+	                              color: isActive ? '#15110a' : '#e8e2d4',
 	                              cursor: 'pointer'
 	                            }}
 	                          >
@@ -30650,12 +30652,12 @@ ${pageBlocks}
 	                          </button>
 	                        );
 	                      }) : (
-	                        <span style={{ color: '#888', fontSize: '12px', padding: '0 6px' }}>
+	                        <span style={{ color: '#8d96a6', fontSize: '12px', padding: '0 6px' }}>
 	                          No categories
 	                        </span>
 	                      )}
 	                    </div>
-	                    <div style={{ position: 'absolute', right: 0, top: '50%', transform: 'translateY(-50%)', width: '1px', height: '20px', background: '#555' }} />
+	                    <div style={{ position: 'absolute', right: 0, top: '50%', transform: 'translateY(-50%)', width: '1px', height: '20px', background: '#5a6473' }} />
 	                  </div>
 
 	                  <div style={{ position: 'absolute', left: '100%', top: '50%', transform: 'translateY(-50%)', display: 'flex', alignItems: 'center', paddingLeft: '12px', whiteSpace: 'nowrap' }}>
@@ -30665,7 +30667,7 @@ ${pageBlocks}
 	                        display: 'flex',
 	                        alignItems: 'center',
 	                        gap: '6px',
-	                        color: '#DDD',
+	                        color: '#e8e2d4',
 	                        fontSize: '12px',
 	                        fontFamily: FONT_FAMILY,
 	                        cursor: 'pointer',
@@ -30677,7 +30679,7 @@ ${pageBlocks}
 	                        type="checkbox"
 	                        checked={surveyKeepCategoryActive}
 	                        onChange={(e) => setSurveyKeepCategoryActive(e.target.checked)}
-	                        style={{ margin: 0, accentColor: '#4A90E2', cursor: 'pointer' }}
+	                        style={{ margin: 0, accentColor: '#d8a84e', cursor: 'pointer' }}
 	                      />
 	                      Keep active
 	                    </label>
@@ -30743,6 +30745,8 @@ ${pageBlocks}
                 right: 0,
                 bottom: 0,
                 background: COLORS.modal.overlay,
+                backdropFilter: 'blur(8px)',
+                WebkitBackdropFilter: 'blur(8px)',
                 zIndex: 10000,
                 animation: 'fadeIn 0.2s ease-out',
                 display: 'flex',
@@ -30786,7 +30790,7 @@ ${pageBlocks}
                     style={{
                       background: 'transparent',
                       border: 'none',
-                      color: '#999'
+                      color: '#8d96a6'
                     }}
                   >
                     <Icon name="close" size={18} />
@@ -31416,6 +31420,8 @@ ${pageBlocks}
                   right: 0,
                   bottom: 0,
                   background: COLORS.modal.overlay,
+                  backdropFilter: 'blur(8px)',
+                  WebkitBackdropFilter: 'blur(8px)',
                   zIndex: 10001,
                   animation: 'fadeIn 0.2s ease-out',
                   display: 'flex',
@@ -31485,7 +31491,7 @@ ${pageBlocks}
                       style={{
                         background: 'transparent',
                         border: 'none',
-                        color: '#999'
+                        color: '#8d96a6'
                       }}
                     >
                       <Icon name="close" size={18} />
@@ -31593,6 +31599,8 @@ ${pageBlocks}
                     right: 0,
                     bottom: 0,
                     background: COLORS.modal.overlay,
+                    backdropFilter: 'blur(8px)',
+                    WebkitBackdropFilter: 'blur(8px)',
                     zIndex: 10003,
                     animation: 'fadeIn 0.2s ease-out',
                     display: 'flex',
@@ -31642,7 +31650,7 @@ ${pageBlocks}
                         style={{
                           background: 'transparent',
                           border: 'none',
-                          color: '#999'
+                          color: '#8d96a6'
                         }}
                       >
                         <Icon name="close" size={18} />
@@ -31820,6 +31828,8 @@ ${pageBlocks}
                     right: 0,
                     bottom: 0,
                     background: COLORS.modal.overlay,
+                    backdropFilter: 'blur(8px)',
+                    WebkitBackdropFilter: 'blur(8px)',
                     zIndex: 10002,
                     animation: 'fadeIn 0.2s ease-out',
                     display: 'flex',
@@ -31981,7 +31991,7 @@ ${pageBlocks}
                         style={{
                           background: 'transparent',
                           border: 'none',
-                          color: '#999'
+                          color: '#8d96a6'
                         }}
                       >
                         <Icon name="close" size={18} />
@@ -32084,7 +32094,7 @@ ${pageBlocks}
                       style={{
                         width: '100%',
                         padding: '12px 16px',
-                        background: '#1b1b1b',
+                        background: '#0d0f14',
                         border: `1px solid ${COLORS.modal.borderStrong}`,
                         borderRadius: '6px',
                         color: COLORS.modal.textPrimary,
@@ -32386,6 +32396,8 @@ ${pageBlocks}
                   right: 0,
                   bottom: 0,
                   background: COLORS.modal.overlay,
+                  backdropFilter: 'blur(8px)',
+                  WebkitBackdropFilter: 'blur(8px)',
                   zIndex: 10001,
                   animation: 'fadeIn 0.2s ease-out',
                   display: 'flex',
@@ -32429,7 +32441,7 @@ ${pageBlocks}
                       style={{
                         background: 'transparent',
                         border: 'none',
-                        color: '#999'
+                        color: '#8d96a6'
                       }}
                     >
                       <Icon name="close" size={18} />
@@ -32714,6 +32726,8 @@ ${pageBlocks}
                   right: 0,
                   bottom: 0,
                   background: COLORS.modal.overlay,
+                  backdropFilter: 'blur(8px)',
+                  WebkitBackdropFilter: 'blur(8px)',
                   zIndex: 10003,
                   animation: 'fadeIn 0.2s ease-out',
                   display: 'flex',
@@ -32755,7 +32769,7 @@ ${pageBlocks}
                       style={{
                         background: 'transparent',
                         border: 'none',
-                        color: '#999'
+                        color: '#8d96a6'
                       }}
                     >
                       <Icon name="close" size={18} />
@@ -33034,6 +33048,8 @@ ${pageBlocks}
                   right: 0,
                   bottom: 0,
                   background: COLORS.modal.overlay,
+                  backdropFilter: 'blur(8px)',
+                  WebkitBackdropFilter: 'blur(8px)',
                   zIndex: 10004,
                   animation: 'fadeIn 0.2s ease-out',
                   display: 'flex',
@@ -33075,7 +33091,7 @@ ${pageBlocks}
                       style={{
                         background: 'transparent',
                         border: 'none',
-                        color: '#999'
+                        color: '#8d96a6'
                       }}
                     >
                       <Icon name="close" size={18} />
@@ -33218,11 +33234,12 @@ ${pageBlocks}
               right: 0,
               bottom: 0,
               background: COLORS.modal.overlay,
+              backdropFilter: 'blur(8px)',
+              WebkitBackdropFilter: 'blur(8px)',
               zIndex: 10000,
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              backdropFilter: 'blur(4px)'
             }}
             onClick={() => setShowLocateModal(false)}
           >
@@ -33263,7 +33280,7 @@ ${pageBlocks}
                   style={{
                     background: 'transparent',
                     border: 'none',
-                    color: '#999'
+                    color: '#8d96a6'
                   }}
                 >
                   <Icon name="close" size={18} />
@@ -33280,7 +33297,7 @@ ${pageBlocks}
                   style={{
                     width: '100%',
                     padding: '12px',
-                    background: '#1b1b1b',
+                    background: '#0d0f14',
                     border: `1px solid ${COLORS.modal.borderStrong}`,
                     borderRadius: '6px',
                     color: COLORS.modal.textPrimary,
@@ -33389,7 +33406,7 @@ ${pageBlocks}
                             element.scrollIntoView({ behavior: 'smooth', block: 'center' });
                             // Flash effect
                             element.style.transition = 'box-shadow 0.5s';
-                            element.style.boxShadow = '0 0 0 2px #4A90E2';
+                            element.style.boxShadow = '0 0 0 2px #d8a84e';
                             setTimeout(() => {
                               element.style.boxShadow = 'none';
                             }, 2000);
@@ -33461,11 +33478,12 @@ ${pageBlocks}
           right: 0,
           bottom: 0,
           background: COLORS.modal.overlay,
+          backdropFilter: 'blur(8px)',
+          WebkitBackdropFilter: 'blur(8px)',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
           zIndex: 10000,
-          backdropFilter: 'blur(3px)',
           animation: 'fadeIn 0.2s ease-out'
         }}>
           <div style={{
@@ -33768,11 +33786,12 @@ ${pageBlocks}
           right: 0,
           bottom: 0,
           background: COLORS.modal.overlay,
+          backdropFilter: 'blur(8px)',
+          WebkitBackdropFilter: 'blur(8px)',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
           zIndex: 10000,
-          backdropFilter: 'blur(3px)'
         }}>
           <div style={{
             background: COLORS.modal.surface,

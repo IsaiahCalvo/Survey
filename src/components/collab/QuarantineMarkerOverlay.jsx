@@ -8,7 +8,7 @@
 // next to quarantined annotations.
 //
 // 30-UI-SPEC.md Surface 2:
-//   - 4px-diameter solid red dot (#DC3545) at the annotation's top-right
+//   - 4px-diameter solid red dot (#cf6f6f) at the annotation's top-right
 //     corner, offset 8px outside the bounding box.
 //   - Inline label "didn't save, please try redrawing" at 11px / weight 400 /
 //     color var(--text-muted).

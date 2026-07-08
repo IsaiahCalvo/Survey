@@ -216,7 +216,7 @@ function TabItem({
             width: '6px',
             height: '6px',
             borderRadius: '50%',
-            background: '#DC3545',
+            background: '#cf6f6f',
             display: 'inline-block',
             marginRight: '7px',
             flexShrink: 0
@@ -238,7 +238,7 @@ function TabItem({
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            color: '#666',
+            color: '#5a6473',
             transition: 'all 0.15s ease',
             flexShrink: 0
           }}

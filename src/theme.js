@@ -1,97 +1,103 @@
 // Theme Constants for Survey PDF Viewer
 // Centralized design tokens for colors, spacing, typography, and other UI elements
+//
+// 2026-07-07 — retinted to the locked home-page design language
+// (docs/design/design.md): warm dark slate ("ink") surfaces, bone text,
+// gold action/accent. The viewer adapts TOWARD the home page, never the
+// reverse. Token STRUCTURE is unchanged so all consumers keep working.
 
 export const COLORS = {
-  // Background colors
+  // Background colors (ink scale)
   background: {
-    primary: '#1E1E1E',
-    secondary: '#252525',
-    tertiary: '#2b2b2b',
-    quaternary: '#1f1f1f',
-    elevated: '#3a3a3a',
-    dark: '#141414',
-    overlay: 'rgba(0, 0, 0, 0.7)',
+    primary: '#0d0f14',      // ink-900 — page background
+    secondary: '#12151c',    // ink-800 — sidebar/deeper panel
+    tertiary: '#181c24',     // ink-700 — card/panel surface
+    quaternary: '#12151c',   // deep panel surface
+    elevated: '#1f2430',     // ink-600 — active row/raised surface
+    dark: '#0d0f14',
+    overlay: 'rgba(13, 15, 20, 0.55)',
   },
 
   // Border colors
   border: {
-    default: '#3a3a3a',
-    light: '#444',
-    dark: '#2f2f2f',
-    focus: '#4A90E2',
-    subtle: '#333',
+    default: '#2a3140',      // ink-500 — main border/rule
+    light: '#3a4252',        // ink-400 — stronger border
+    dark: '#2a3140',
+    focus: '#d8a84e',        // gold
+    subtle: '#2a3140',
   },
 
   // Text colors
   text: {
-    primary: '#FFFFFF',
-    secondary: '#eaeaea',
-    tertiary: '#ddd',
-    muted: '#999',
-    disabled: '#666',
-    dark: '#333',
-    error: '#ff8a80',
+    primary: '#f4f1ea',      // bone-100
+    secondary: '#e8e2d4',    // bone-200
+    tertiary: '#e8e2d4',
+    muted: '#8d96a6',        // ink-200
+    disabled: '#5a6473',     // ink-300
+    dark: '#15110a',         // dark text on gold surfaces
+    error: '#cf6f6f',
   },
 
   // Brand/Accent colors
   accent: {
-    primary: '#4A90E2',
-    primaryHover: '#357abd',
-    primaryDark: '#3A7BC8',
-    secondary: '#E3D1FB',
+    primary: '#d8a84e',      // gold — action/selection/active
+    primaryHover: '#b6904a', // gold-soft
+    primaryDark: '#b6904a',
+    secondary: '#c293e6',    // lilac support accent
   },
 
   // Status colors
   status: {
-    success: '#28A745',
-    successHover: '#218838',
-    danger: '#DC3545',
-    dangerHover: '#C82333',
-    dangerText: '#d32f2f',
-    dangerBg: '#ffebee',
-    dangerBgDark: '#3a1f1f',
-    warning: '#ff8a80',
-    info: '#4A90E2',
+    success: '#a6e07a',
+    successHover: '#93cf68',
+    danger: '#cf6f6f',
+    dangerHover: '#c25858',
+    dangerText: '#cf6f6f',
+    dangerBg: 'rgba(207, 111, 111, 0.12)',
+    dangerBgDark: '#2a1a1c',
+    warning: '#e69a7a',
+    info: '#7ab7e6',
   },
 
   // Component-specific colors
   component: {
-    scrollbarTrack: '#181818',
-    scrollbarThumb: '#3A3A3A',
-    scrollbarThumbHover: '#555',
+    scrollbarTrack: '#12151c',
+    scrollbarThumb: '#3a4252',
+    scrollbarThumbHover: '#5a6473',
     shadow: 'rgba(0, 0, 0, 0.45)',
     shadowLight: 'rgba(0, 0, 0, 0.2)',
-    hoverBg: '#2a2a2a',
-    dragOverlay: 'rgba(43, 43, 43, 0.9)',
+    hoverBg: '#1f2430',
+    dragOverlay: 'rgba(24, 28, 36, 0.9)',
   },
 
-  // Unified modal colors
+  // Unified modal colors (menu/modal spec: card #181c24, border #2a3140)
   modal: {
-    overlay: 'rgba(0, 0, 0, 0.7)',
-    surface: '#1f1f1f',
-    panel: '#2b2b2b',
-    panelHover: 'rgba(74, 144, 226, 0.14)',
-    border: '#333',
-    borderStrong: '#444',
-    borderActive: '#4A90E2',
-    textPrimary: '#eaeaea',
-    textMuted: '#999',
-    primaryButton: '#3a3a3a',
-    primaryButtonHover: 'rgba(74, 144, 226, 0.2)',
-    primaryButtonDisabled: '#2f2f2f',
-    secondaryButton: '#2a2a2a',
-    secondaryButtonHover: 'rgba(74, 144, 226, 0.14)',
-    optionSelectedBg: 'rgba(74, 144, 226, 0.16)',
-    optionSelectedBorder: '#4A90E2',
-    hoverGlow: '0 0 0 1px rgba(74, 144, 226, 0.35)',
+    overlay: 'rgba(13, 15, 20, 0.55)',
+    surface: '#181c24',
+    panel: '#1f2430',
+    panelHover: 'rgba(216, 168, 78, 0.14)',
+    border: '#2a3140',
+    borderStrong: '#3a4252',
+    borderActive: '#d8a84e',
+    textPrimary: '#e8e2d4',
+    textMuted: '#8d96a6',
+    primaryButton: '#2a3140',
+    primaryButtonHover: 'rgba(216, 168, 78, 0.2)',
+    primaryButtonDisabled: '#1a1f29',
+    secondaryButton: '#1f2430',
+    secondaryButtonHover: 'rgba(216, 168, 78, 0.14)',
+    optionSelectedBg: 'rgba(216, 168, 78, 0.16)',
+    optionSelectedBorder: '#d8a84e',
+    hoverGlow: '0 0 0 1px rgba(216, 168, 78, 0.35)',
   },
 };
 
 export const TYPOGRAPHY = {
-  // Font families
+  // Font families (DOM CSS only — NEVER feed a fallback stack into Fabric.js;
+  // Fabric requires single-name fonts, see CLAUDE.md)
   fontFamily: {
-    default: '-apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", "Segoe UI", Roboto, Ubuntu, "Noto Sans", Arial, sans-serif',
-    mono: 'Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
+    default: '"Helvetica Neue", Helvetica, Arial, sans-serif',
+    mono: '"JetBrains Mono", "SF Mono", ui-monospace, Menlo, monospace',
   },
 
   // Font sizes
@@ -137,12 +143,12 @@ export const SPACING = {
 };
 
 export const BORDERS = {
-  // Border radius
+  // Border radius (design.md: small radii — controls 2-6px, panels 8-10px)
   radius: {
     sm: '4px',
     md: '6px',
     lg: '8px',
-    xl: '12px',
+    xl: '10px',
     full: '9999px',
   },
 
@@ -157,10 +163,10 @@ export const BORDERS = {
 export const SHADOWS = {
   sm: '0 1px 2px rgba(0, 0, 0, 0.05)',
   md: '0 4px 12px rgba(0, 0, 0, 0.15)',
-  lg: '0 8px 24px rgba(0, 0, 0, 0.45)',
-  xl: '0 12px 36px rgba(0, 0, 0, 0.45)',
+  lg: '0 12px 30px rgba(0, 0, 0, 0.5)',
+  xl: '0 24px 60px rgba(0, 0, 0, 0.55)',
   inner: 'inset 0 2px 4px rgba(0, 0, 0, 0.06)',
-  focus: '0 0 0 1px rgba(74, 144, 226, 0.35)',
+  focus: '0 0 0 1px rgba(216, 168, 78, 0.35)',
 };
 
 export const TRANSITIONS = {

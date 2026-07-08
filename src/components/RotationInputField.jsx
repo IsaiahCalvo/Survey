@@ -41,10 +41,10 @@
  *   character-by-character.
  *
  * Visual contract (UI-SPEC LOCKED — no new tokens may be introduced here):
- * - Container: 60×28px, #2D2D2D bg, 1px solid #3A3A3A border (focused: #4A9EFF),
+ * - Container: 60×28px, #181c24 bg, 1px solid #2a3140 border (focused: #4A9EFF),
  *   borderRadius 6px, boxShadow '0 4px 12px rgba(0,0,0,0.3)'
- * - Input value: 13px / 500 weight / -0.2px letter-spacing / #ddd / center-aligned
- * - ° suffix span: 12px / 400 weight / #999 / pointer-events none
+ * - Input value: 13px / 500 weight / -0.2px letter-spacing / #e8e2d4 / center-aligned
+ * - ° suffix span: 12px / 400 weight / #8d96a6 / pointer-events none
  * - z-index 101 (one above the overlay div's 100, below Pdfjs controls)
  * - FONT_FAMILY: project-wide stack re-declared locally (house style — used
  *   in 14+ files; the 2026-04-08 Fabric.js single-name gotcha does NOT apply
@@ -570,8 +570,8 @@ function RotationInputField({
         gap: 4,
         padding: '0 8px',
         // UI-SPEC LOCKED tokens — DO NOT change without re-running the UI checker.
-        background: '#2D2D2D',
-        border: isFocused ? '1px solid #4A9EFF' : '1px solid #3A3A3A',
+        background: '#181c24',
+        border: isFocused ? '1px solid #4A9EFF' : '1px solid #2a3140',
         borderRadius: 6,
         boxShadow: '0 4px 12px rgba(0, 0, 0, 0.3)',
         // UX: zIndex 101 is one above the overlay div's 100 (App.jsx) so the
@@ -611,10 +611,10 @@ function RotationInputField({
           background: 'transparent',
           border: 'none',
           // UX: outline none — focus is expressed by the container border swap
-          // (#3A3A3A → #4A9EFF), not the browser default outline. Matches the
+          // (#2a3140 → #4A9EFF), not the browser default outline. Matches the
           // zoom-input precedent at App.jsx:26468-26470.
           outline: 'none',
-          color: '#ddd',
+          color: '#e8e2d4',
           fontFamily: FONT_FAMILY,
           fontSize: 13,
           fontWeight: 500,
@@ -628,7 +628,7 @@ function RotationInputField({
           fontFamily: FONT_FAMILY,
           fontSize: 12,
           fontWeight: 400,
-          color: '#999',
+          color: '#8d96a6',
           // UX: ° suffix is decorative — pointerEvents none so clicks pass
           // through to the input below it; userSelect none prevents accidental
           // text-selection drag on the symbol.

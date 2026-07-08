@@ -278,7 +278,7 @@ const AnnotationPropertiesPanel = ({
           border: '1px solid #d1d5db',
           background: value === 'transparent' ? '#fff' : value,
           backgroundImage: value === 'transparent'
-            ? 'linear-gradient(45deg,#ddd 25%,transparent 25%,transparent 75%,#ddd 75%),linear-gradient(45deg,#ddd 25%,transparent 25%,transparent 75%,#ddd 75%)'
+            ? 'linear-gradient(45deg,#e8e2d4 25%,transparent 25%,transparent 75%,#e8e2d4 75%),linear-gradient(45deg,#e8e2d4 25%,transparent 25%,transparent 75%,#e8e2d4 75%)'
             : undefined,
           backgroundSize: value === 'transparent' ? '8px 8px' : undefined,
           backgroundPosition: value === 'transparent' ? '0 0, 4px 4px' : undefined,

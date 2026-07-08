@@ -107,8 +107,8 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
   }, []);
 
   const isHighlighted = isSelected || isActive;
-  const headerBackground = isHighlighted ? '#3a3a3a' : 'transparent';
-  const headerHoverBackground = isHighlighted ? '#3a3a3a' : '#2b2b2b';
+  const headerBackground = isHighlighted ? '#2a3140' : 'transparent';
+  const headerHoverBackground = isHighlighted ? '#2a3140' : '#181c24';
   const regionCountText = String(regionCount);
   const regionCountDigits = regionCountText.length;
   const regionCountFontSize = regionCountDigits >= 4 ? '6px' : (regionCountDigits >= 3 ? '7.5px' : '10px');
@@ -130,8 +130,8 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
       <div
         data-drag-rearrange-row
         style={{
-          background: '#2b2b2b',
-          border: isHighlighted ? '1px solid transparent' : '1px solid #3a3a3a',
+          background: '#181c24',
+          border: isHighlighted ? '1px solid transparent' : '1px solid #2a3140',
           borderRadius: '5px',
           overflow: isExpanded ? 'visible' : 'hidden',
           boxShadow: isHighlighted
@@ -174,7 +174,7 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
               style={{
                 width: '24px',
                 height: '24px',
-                color: '#666',
+                color: '#5a6473',
               }}
             />
 
@@ -196,7 +196,7 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
               style={{
                 background: 'none',
                 border: 'none',
-                color: '#666',
+                color: '#5a6473',
                 cursor: 'pointer',
                 padding: '2px 4px',
                 display: 'flex',
@@ -204,7 +204,7 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
                 justifyContent: 'center',
                 borderRadius: '4px'
               }}
-              onMouseEnter={(e) => e.currentTarget.style.background = '#f0f0f0'}
+              onMouseEnter={(e) => e.currentTarget.style.background = '#1f2430'}
               onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
               title={isExpanded ? 'Collapse' : 'Expand'}
             >
@@ -262,10 +262,10 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
                 width: '28px',
                 height: '16px',
                 borderRadius: '8px',
-                background: isActive ? '#4A90E2' : '#3a3a3a',
+                background: isActive ? '#d8a84e' : '#2a3140',
                 cursor: 'pointer',
                 transition: 'background 0.2s ease',
-                border: isActive ? '1px solid #357abd' : '1px solid #4a4a4a',
+                border: isActive ? '1px solid #b6904a' : '1px solid #3a4252',
                 display: 'flex',
                 alignItems: 'center',
                 padding: '2px',
@@ -273,13 +273,13 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
               }}
               onMouseEnter={(e) => {
                 if (!isActive) {
-                  e.currentTarget.style.background = '#4a4a4a';
+                  e.currentTarget.style.background = '#3a4252';
                 } else {
-                  e.currentTarget.style.background = '#357abd';
+                  e.currentTarget.style.background = '#b6904a';
                 }
               }}
               onMouseLeave={(e) => {
-                e.currentTarget.style.background = isActive ? '#4A90E2' : '#3a3a3a';
+                e.currentTarget.style.background = isActive ? '#d8a84e' : '#2a3140';
               }}
               title={isActive ? 'Turn off space' : 'Turn on space'}
             >
@@ -314,11 +314,11 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
                 alignItems: 'center',
                 justifyContent: 'center'
               }}
-              onMouseEnter={(e) => e.currentTarget.style.background = '#ffebee'}
+              onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(207, 111, 111, 0.15)'}
               onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
               title="Delete"
             >
-              <Icon name="trash" size={12} color="#d32f2f" />
+              <Icon name="trash" size={12} color="#cf6f6f" />
             </button>
           </div>
         </div>
@@ -327,13 +327,13 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
           <div
             style={{
             padding: '10px 12px 16px 12px',
-            background: '#2b2b2b',
-            borderTop: '1px solid #3a3a3a',
+            background: '#181c24',
+            borderTop: '1px solid #2a3140',
             display: 'flex',
             flexDirection: 'column',
             gap: '12px',
             fontSize: '12px',
-            color: '#999',
+            color: '#8d96a6',
             position: 'relative'
           }}>
             <div style={{ position: 'relative', height: '24px', flex: '0 0 24px' }}>
@@ -361,9 +361,9 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
                     minWidth: 0,
                     height: '24px',
                     padding: '2px 8px',
-                    background: '#1f1f1f',
-                    color: '#ddd',
-                    border: '1px solid #3a3a3a',
+                    background: '#12151c',
+                    color: '#e8e2d4',
+                    border: '1px solid #2a3140',
                     borderRadius: '4px',
                     fontSize: '11px',
                     fontFamily: FONT_FAMILY,
@@ -392,7 +392,7 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
               {pageCount === 0 ? (
-                <div style={{ color: '#777', fontSize: '12px' }}>
+                <div style={{ color: '#5a6473', fontSize: '12px' }}>
                   No pages added yet.
                 </div>
               ) : (
@@ -422,8 +422,8 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
                             gap: '8px',
                             padding: '4px 8px',
                             minHeight: '34px',
-                            background: '#1f1f1f',
-                            border: '1px solid #333',
+                            background: '#12151c',
+                            border: '1px solid #2a3140',
                             borderRadius: '6px'
                           }}
                         >
@@ -463,10 +463,10 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
                                     width: '28px',
                                     height: '16px',
                                     borderRadius: '8px',
-                                    background: isToggleEnabled && isOverlayEnabled ? '#4A90E2' : '#3a3a3a',
+                                    background: isToggleEnabled && isOverlayEnabled ? '#d8a84e' : '#2a3140',
                                     cursor: isToggleEnabled ? 'pointer' : 'not-allowed',
                                     transition: 'background 0.2s ease',
-                                    border: isToggleEnabled && isOverlayEnabled ? '1px solid #357abd' : '1px solid #4a4a4a',
+                                    border: isToggleEnabled && isOverlayEnabled ? '1px solid #b6904a' : '1px solid #3a4252',
                                     display: 'flex',
                                     alignItems: 'center',
                                     padding: '2px',
@@ -476,14 +476,14 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
                                   onMouseEnter={(e) => {
                                     if (!isToggleEnabled) return;
                                     if (!isOverlayEnabled) {
-                                      e.currentTarget.style.background = '#4a4a4a';
+                                      e.currentTarget.style.background = '#3a4252';
                                     } else {
-                                      e.currentTarget.style.background = '#357abd';
+                                      e.currentTarget.style.background = '#b6904a';
                                     }
                                   }}
                                   onMouseLeave={(e) => {
                                     if (!isToggleEnabled) return;
-                                    e.currentTarget.style.background = isOverlayEnabled ? '#4A90E2' : '#3a3a3a';
+                                    e.currentTarget.style.background = isOverlayEnabled ? '#d8a84e' : '#2a3140';
                                   }}
                                   title={
                                     !hasProps
@@ -595,15 +595,15 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
                                     }
                                   }}
                                   style={{
-                                    background: isActiveRegionEdit ? 'rgba(74, 144, 226, 0.18)' : 'transparent',
-                                    border: isActiveRegionEdit ? '1px solid rgba(74, 144, 226, 0.55)' : '1px solid transparent',
+                                    background: isActiveRegionEdit ? 'rgba(216, 168, 78, 0.18)' : 'transparent',
+                                    border: isActiveRegionEdit ? '1px solid rgba(216, 168, 78, 0.55)' : '1px solid transparent',
                                     borderRadius: '4px',
                                     padding: '2px',
                                     display: 'inline-flex',
                                     alignItems: 'center',
                                     justifyContent: 'center',
                                     cursor: 'pointer',
-                                    color: isActiveRegionEdit ? '#4A90E2' : '#999'
+                                    color: isActiveRegionEdit ? '#d8a84e' : '#8d96a6'
                                   }}
                                 >
                                   <Icon name="edit" size={12} color="currentColor" />
@@ -657,7 +657,7 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
                                   className="region-visibility-button"
                                   style={{
                                     cursor: isDisabled ? 'not-allowed' : 'pointer',
-                                    color: isDisabled ? '#666' : (visibilityState ? '#4A90E2' : '#999'),
+                                    color: isDisabled ? '#5a6473' : (visibilityState ? '#d8a84e' : '#8d96a6'),
                                     opacity: isDisabled ? 0.5 : 1,
                                     pointerEvents: isDisabled ? 'none' : 'auto'
                                   }}
@@ -667,7 +667,7 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
                                     }
                                   }}
                                   onMouseLeave={(e) => {
-                                    e.currentTarget.style.color = visibilityState ? '#4A90E2' : '#999';
+                                    e.currentTarget.style.color = visibilityState ? '#d8a84e' : '#8d96a6';
                                   }}
                                   title={title}
                                 >
@@ -709,7 +709,7 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
                               onClick={() => onRemovePage(space.id, page.pageId)}
                               className="region-delete-button"
                             >
-                              <Icon name="trash" size={12} color="#d32f2f" />
+                              <Icon name="trash" size={12} color="#cf6f6f" />
                             </button>
                           </div>
                         </li>
@@ -1237,15 +1237,15 @@ const SpacesPanel = ({
       flexDirection: 'column',
       height: '100%',
       fontFamily: FONT_FAMILY,
-      background: '#252525'
+      background: '#12151c'
     }}>
       {/* Header */}
       <div style={{
         padding: '12px',
         height: '50px',
         boxSizing: 'border-box',
-        background: '#252525',
-        borderBottom: '1px solid #3a3a3a',
+        background: '#12151c',
+        borderBottom: '1px solid #2a3140',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
@@ -1255,7 +1255,7 @@ const SpacesPanel = ({
           margin: 0,
           fontSize: '13px',
           fontWeight: '600',
-          color: '#ddd',
+          color: '#e8e2d4',
           lineHeight: 1
         }}>
           Spaces
@@ -1336,7 +1336,7 @@ const SpacesPanel = ({
           <div style={{
             textAlign: 'center',
             padding: '40px 20px',
-            color: '#999',
+            color: '#8d96a6',
             fontSize: '13px'
           }}>
             No spaces yet. Create a space to filter pages by visibility.

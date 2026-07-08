@@ -132,11 +132,12 @@ const OneDriveFileSaveModal = ({
         right: 0,
         bottom: 0,
         background: COLORS.modal.overlay,
+        backdropFilter: 'blur(8px)',
+        WebkitBackdropFilter: 'blur(8px)',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
         zIndex: 10000,
-        backdropFilter: 'blur(3px)',
       }}
       onClick={onClose}
     >

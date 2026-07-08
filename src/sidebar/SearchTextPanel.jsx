@@ -1003,7 +1003,7 @@ const highlightMatch = (text, matchIndex, queryLength) => {
   return (
     <>
       {beforeMatch}
-      <strong style={{ background: '#4A90E2', color: '#ffffff', padding: '0 2px', borderRadius: '2px' }}>{match}</strong>
+      <strong style={{ background: '#d8a84e', color: '#15110a', padding: '0 2px', borderRadius: '2px' }}>{match}</strong>
       {afterMatch}
     </>
   );
@@ -1019,13 +1019,13 @@ const SearchResultRow = memo(function SearchResultRow({ result, index, isActive,
       onClick={() => onSelect(result, index)}
       style={{
         padding: '10px 12px',
-        background: isActive ? '#3a5070' : '#2b2b2b',
-        border: isActive ? '1px solid #4A90E2' : '1px solid #3a3a3a',
+        background: isActive ? '#3a5070' : '#181c24',
+        border: isActive ? '1px solid #d8a84e' : '1px solid #2a3140',
         borderRadius: '6px',
         cursor: 'pointer',
         transition: 'all 0.15s ease',
         fontSize: '12px',
-        color: '#ddd',
+        color: '#e8e2d4',
         // Off-screen result rows skip layout/paint on big searches.
         // 'auto' lets the browser remember each row's real height.
         contentVisibility: 'auto',
@@ -1033,12 +1033,12 @@ const SearchResultRow = memo(function SearchResultRow({ result, index, isActive,
       }}
       onMouseEnter={(e) => {
         if (!isActive) {
-          e.currentTarget.style.background = '#333';
+          e.currentTarget.style.background = '#2a3140';
         }
       }}
       onMouseLeave={(e) => {
         if (!isActive) {
-          e.currentTarget.style.background = '#2b2b2b';
+          e.currentTarget.style.background = '#181c24';
         }
       }}
     >
@@ -1051,8 +1051,8 @@ const SearchResultRow = memo(function SearchResultRow({ result, index, isActive,
         <span style={{
           fontSize: '10px',
           fontWeight: '600',
-          color: '#fff',
-          background: isActive ? '#4A90E2' : '#666',
+          color: '#f4f1ea',
+          background: isActive ? '#d8a84e' : '#5a6473',
           padding: '2px 6px',
           borderRadius: '4px',
           minWidth: '20px',
@@ -1063,8 +1063,8 @@ const SearchResultRow = memo(function SearchResultRow({ result, index, isActive,
         <span style={{
           fontSize: '11px',
           fontWeight: '600',
-          color: '#4A90E2',
-          background: '#e8f0fe',
+          color: '#d8a84e',
+          background: 'rgba(216, 168, 78, 0.15)',
           padding: '2px 6px',
           borderRadius: '4px'
         }}>
@@ -1074,7 +1074,7 @@ const SearchResultRow = memo(function SearchResultRow({ result, index, isActive,
       <div style={{
         fontSize: '12px',
         lineHeight: '1.4',
-        color: '#999',
+        color: '#8d96a6',
         overflow: 'hidden',
         textOverflow: 'ellipsis'
       }}>
@@ -1673,14 +1673,14 @@ const SearchTextPanel = ({
       flexDirection: 'column',
       height: '100%',
       fontFamily: FONT_FAMILY,
-      background: '#252525'
+      background: '#12151c'
     }}>
       {/* Search Bar */}
       <div style={{
         padding: '12px',
         boxSizing: 'border-box',
-        background: '#252525',
-        borderBottom: '1px solid #3a3a3a',
+        background: '#12151c',
+        borderBottom: '1px solid #2a3140',
         flexShrink: 0
       }}>
         <div style={{
@@ -1691,7 +1691,7 @@ const SearchTextPanel = ({
           <Icon
             name="search"
             size={16}
-            color="#999"
+            color="#8d96a6"
             style={{
               position: 'absolute',
               left: '10px',
@@ -1709,17 +1709,17 @@ const SearchTextPanel = ({
               height: '25px',
               boxSizing: 'border-box',
               padding: '0 10px 0 36px',
-              background: '#2b2b2b',
-              border: '1px solid #3a3a3a',
+              background: '#181c24',
+              border: '1px solid #2a3140',
               borderRadius: '6px',
               fontSize: '13px',
               fontFamily: FONT_FAMILY,
-              color: '#ddd',
+              color: '#e8e2d4',
               outline: 'none',
               transition: 'border-color 0.15s ease'
             }}
-            onFocus={(e) => e.currentTarget.style.borderColor = '#4A90E2'}
-            onBlur={(e) => e.currentTarget.style.borderColor = '#3a3a3a'}
+            onFocus={(e) => e.currentTarget.style.borderColor = '#d8a84e'}
+            onBlur={(e) => e.currentTarget.style.borderColor = '#2a3140'}
           />
           {internalSearchQuery && (
             <button
@@ -1736,10 +1736,10 @@ const SearchTextPanel = ({
                 justifyContent: 'center',
                 borderRadius: '4px'
               }}
-              onMouseEnter={(e) => e.currentTarget.style.background = '#333'}
+              onMouseEnter={(e) => e.currentTarget.style.background = '#2a3140'}
               onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
             >
-              <Icon name="close" size={14} color="#999" />
+              <Icon name="close" size={14} color="#8d96a6" />
             </button>
           )}
         </div>
@@ -1752,24 +1752,24 @@ const SearchTextPanel = ({
             justifyContent: 'space-between',
             marginTop: '10px',
             padding: '6px 8px',
-            background: '#2b2b2b',
+            background: '#181c24',
             borderRadius: '6px',
-            border: '1px solid #3a3a3a'
+            border: '1px solid #2a3140'
           }}>
             {/* Result Counter */}
             <div style={{
               fontSize: '12px',
-              color: '#ddd',
+              color: '#e8e2d4',
               fontWeight: '500'
             }}>
               {currentMatchIndex >= 0 ? (
                 <span>
-                  <span style={{ color: '#4A90E2' }}>{currentMatchIndex + 1}</span>
-                  <span style={{ color: '#999' }}> of </span>
-                  <span style={{ color: '#4A90E2' }}>{searchResults.length}</span>
+                  <span style={{ color: '#d8a84e' }}>{currentMatchIndex + 1}</span>
+                  <span style={{ color: '#8d96a6' }}> of </span>
+                  <span style={{ color: '#d8a84e' }}>{searchResults.length}</span>
                 </span>
               ) : (
-                <span style={{ color: '#999' }}>{searchResults.length} results</span>
+                <span style={{ color: '#8d96a6' }}>{searchResults.length} results</span>
               )}
             </div>
 
@@ -1784,7 +1784,7 @@ const SearchTextPanel = ({
                 title="Previous match (Shift+Enter)"
                 style={{
                   background: 'transparent',
-                  border: '1px solid #3a3a3a',
+                  border: '1px solid #2a3140',
                   borderRadius: '4px',
                   cursor: searchResults.length > 0 ? 'pointer' : 'not-allowed',
                   padding: '4px 8px',
@@ -1794,11 +1794,11 @@ const SearchTextPanel = ({
                   opacity: searchResults.length > 0 ? 1 : 0.5
                 }}
                 onMouseEnter={(e) => {
-                  if (searchResults.length > 0) e.currentTarget.style.background = '#333';
+                  if (searchResults.length > 0) e.currentTarget.style.background = '#2a3140';
                 }}
                 onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
               >
-                <Icon name="chevronUp" size={14} color="#ddd" />
+                <Icon name="chevronUp" size={14} color="#e8e2d4" />
               </button>
               <button
                 onClick={goToNextMatch}
@@ -1806,7 +1806,7 @@ const SearchTextPanel = ({
                 title="Next match (Enter)"
                 style={{
                   background: 'transparent',
-                  border: '1px solid #3a3a3a',
+                  border: '1px solid #2a3140',
                   borderRadius: '4px',
                   cursor: searchResults.length > 0 ? 'pointer' : 'not-allowed',
                   padding: '4px 8px',
@@ -1816,11 +1816,11 @@ const SearchTextPanel = ({
                   opacity: searchResults.length > 0 ? 1 : 0.5
                 }}
                 onMouseEnter={(e) => {
-                  if (searchResults.length > 0) e.currentTarget.style.background = '#333';
+                  if (searchResults.length > 0) e.currentTarget.style.background = '#2a3140';
                 }}
                 onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
               >
-                <Icon name="chevronDown" size={14} color="#ddd" />
+                <Icon name="chevronDown" size={14} color="#e8e2d4" />
               </button>
             </div>
           </div>
@@ -1831,14 +1831,14 @@ const SearchTextPanel = ({
           <div style={{
             marginTop: '8px',
             height: '3px',
-            background: '#3a3a3a',
+            background: '#2a3140',
             borderRadius: '2px',
             overflow: 'hidden'
           }}>
             <div style={{
               width: `${(searchProgress.current / searchProgress.total) * 100}%`,
               height: '100%',
-              background: '#4A90E2',
+              background: '#d8a84e',
               transition: 'width 0.1s ease'
             }} />
           </div>
@@ -1858,7 +1858,7 @@ const SearchTextPanel = ({
           <div style={{
             padding: '20px',
             textAlign: 'center',
-            color: '#999',
+            color: '#8d96a6',
             fontSize: '13px'
           }}>
             Searching... ({searchProgress.current}/{searchProgress.total} pages)
@@ -1869,7 +1869,7 @@ const SearchTextPanel = ({
           <div style={{
             padding: '40px 20px',
             textAlign: 'center',
-            color: '#999',
+            color: '#8d96a6',
             fontSize: '13px'
           }}>
             No results found
@@ -1880,7 +1880,7 @@ const SearchTextPanel = ({
           <div style={{
             padding: '40px 20px',
             textAlign: 'center',
-            color: '#999',
+            color: '#8d96a6',
             fontSize: '13px'
           }}>
             Enter a search term to find text in the PDF

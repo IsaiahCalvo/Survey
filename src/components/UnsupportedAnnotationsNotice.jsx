@@ -51,7 +51,7 @@ const UnsupportedAnnotationsNotice = ({ unsupportedTypes, onDismiss }) => {
         right: 20,
         maxWidth: 400,
         backgroundColor: '#1a1a1a',
-        border: '1px solid #333',
+        border: '1px solid #2a3140',
         borderRadius: 8,
         padding: '12px 16px',
         boxShadow: '0 4px 20px rgba(0, 0, 0, 0.4)',
@@ -83,10 +83,10 @@ const UnsupportedAnnotationsNotice = ({ unsupportedTypes, onDismiss }) => {
           fill="none"
           xmlns="http://www.w3.org/2000/svg"
         >
-          <circle cx="10" cy="10" r="9" stroke="#4A90E2" strokeWidth="1.5" fill="none" />
+          <circle cx="10" cy="10" r="9" stroke="#d8a84e" strokeWidth="1.5" fill="none" />
           <path
             d="M10 6V6.5M10 9V14"
-            stroke="#4A90E2"
+            stroke="#d8a84e"
             strokeWidth="1.5"
             strokeLinecap="round"
           />
@@ -99,7 +99,7 @@ const UnsupportedAnnotationsNotice = ({ unsupportedTypes, onDismiss }) => {
           style={{
             fontSize: 13,
             fontWeight: 500,
-            color: '#e0e0e0',
+            color: '#e8e2d4',
             marginBottom: 4,
           }}
         >
@@ -108,7 +108,7 @@ const UnsupportedAnnotationsNotice = ({ unsupportedTypes, onDismiss }) => {
         <div
           style={{
             fontSize: 12,
-            color: '#888',
+            color: '#8d96a6',
             lineHeight: 1.4,
           }}
         >
@@ -127,7 +127,7 @@ const UnsupportedAnnotationsNotice = ({ unsupportedTypes, onDismiss }) => {
           border: 'none',
           padding: 4,
           cursor: 'pointer',
-          color: '#666',
+          color: '#5a6473',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',

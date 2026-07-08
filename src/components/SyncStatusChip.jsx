@@ -149,7 +149,7 @@ function CompactSyncStatusChip({ state, label, color, onRetry }) {
           transform: 'translateY(-50%)',
           marginLeft: '8px',
           background: '#1a1a1a',
-          color: '#ddd',
+          color: '#e8e2d4',
           padding: '6px 10px',
           borderRadius: '4px',
           fontSize: '12px',
@@ -157,7 +157,7 @@ function CompactSyncStatusChip({ state, label, color, onRetry }) {
           zIndex: 1000,
           pointerEvents: 'none',
           boxShadow: '0 2px 8px rgba(0, 0, 0, 0.3)',
-          border: '1px solid #3a3a3a'
+          border: '1px solid #2a3140'
         }}>
           {label}
         </div>

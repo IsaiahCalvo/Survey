@@ -87,9 +87,9 @@ export default function FormFieldPropertiesPanel({
         right: '24px',
         zIndex: 1200,
         width: '260px',
-        background: '#2A2A2A',
-        color: '#DDD',
-        border: '1px solid #444',
+        background: '#1f2430',
+        color: '#e8e2d4',
+        border: '1px solid #3a4252',
         borderRadius: '8px',
         boxShadow: '0 8px 24px rgba(0,0,0,0.45)',
         padding: '12px',
@@ -108,7 +108,7 @@ export default function FormFieldPropertiesPanel({
           style={{
             background: 'transparent',
             border: 'none',
-            color: '#999',
+            color: '#8d96a6',
             cursor: 'pointer',
             fontSize: '14px',
             padding: '2px 6px'
@@ -119,7 +119,7 @@ export default function FormFieldPropertiesPanel({
       </div>
 
       <label style={{ display: 'block', marginBottom: '8px' }}>
-        <div style={{ color: '#AAA', marginBottom: '4px' }}>Name</div>
+        <div style={{ color: '#8d96a6', marginBottom: '4px' }}>Name</div>
         <input
           type="text"
           value={name}
@@ -127,9 +127,9 @@ export default function FormFieldPropertiesPanel({
           onBlur={() => apply({ name })}
           style={{
             width: '100%',
-            background: '#1F1F1F',
-            color: '#EEE',
-            border: '1px solid #444',
+            background: '#12151c',
+            color: '#e8e2d4',
+            border: '1px solid #3a4252',
             borderRadius: '4px',
             padding: '4px 6px',
             fontFamily: PANEL_FONT,
@@ -141,7 +141,7 @@ export default function FormFieldPropertiesPanel({
 
       {showValueField && (
         <label style={{ display: 'block', marginBottom: '8px' }}>
-          <div style={{ color: '#AAA', marginBottom: '4px' }}>Default value</div>
+          <div style={{ color: '#8d96a6', marginBottom: '4px' }}>Default value</div>
           <input
             type="text"
             value={value}
@@ -149,9 +149,9 @@ export default function FormFieldPropertiesPanel({
             onBlur={() => apply({ value })}
             style={{
               width: '100%',
-              background: '#1F1F1F',
-              color: '#EEE',
-              border: '1px solid #444',
+              background: '#12151c',
+              color: '#e8e2d4',
+              border: '1px solid #3a4252',
               borderRadius: '4px',
               padding: '4px 6px',
               fontFamily: PANEL_FONT,
@@ -163,7 +163,7 @@ export default function FormFieldPropertiesPanel({
       )}
 
       <label style={{ display: 'block', marginBottom: '8px' }}>
-        <div style={{ color: '#AAA', marginBottom: '4px' }}>Tooltip</div>
+        <div style={{ color: '#8d96a6', marginBottom: '4px' }}>Tooltip</div>
         <input
           type="text"
           value={tooltip}
@@ -171,9 +171,9 @@ export default function FormFieldPropertiesPanel({
           onBlur={() => apply({ tooltip })}
           style={{
             width: '100%',
-            background: '#1F1F1F',
-            color: '#EEE',
-            border: '1px solid #444',
+            background: '#12151c',
+            color: '#e8e2d4',
+            border: '1px solid #3a4252',
             borderRadius: '4px',
             padding: '4px 6px',
             fontFamily: PANEL_FONT,
