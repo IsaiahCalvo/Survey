@@ -41,7 +41,12 @@ export default function PdfjsLinkLayer({ pdf, pageNumber, interactive = true, on
         for (const a of annots) {
           if (a.subtype !== 'Link') continue;
           if (!a.url && a.dest == null) continue;
-          const r = viewport.convertToViewportRectangle(a.rect);
+          // pdf.js v6 removed convertToViewportRectangle; map both corners.
+          // (The old call threw, the catch below swallowed it, and every page
+          // silently rendered zero links.)
+          const [rx1, ry1] = viewport.convertToViewportPoint(a.rect[0], a.rect[1]);
+          const [rx2, ry2] = viewport.convertToViewportPoint(a.rect[2], a.rect[3]);
+          const r = [rx1, ry1, rx2, ry2];
           const x = Math.min(r[0], r[2]);
           const y = Math.min(r[1], r[3]);
           const w = Math.abs(r[2] - r[0]);

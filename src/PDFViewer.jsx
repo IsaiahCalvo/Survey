@@ -6361,6 +6361,22 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     return logicalScale;
   }, [usePdfjsRenderer]);
 
+  // Owned-engine zoom commit (wheel settle, toolbar, fit, keyboard): the engine
+  // fires onZoomChanged right after the committed layout renders, so reconcile
+  // the app's scale state immediately instead of waiting for a page re-raster
+  // (raster-cache hits never fire onPageRendered, which left the toolbar %
+  // and scale-dependent overlays stale after a wheel zoom).
+  const handlePdfjsEngineZoomCommitted = useCallback(() => {
+    reconcilePdfjsScaleFromRenderedPage('engine-zoom-commit');
+  }, [reconcilePdfjsScaleFromRenderedPage]);
+
+  // Keep the {pageNumber: element} container map engine-owned: the engine
+  // diff-emits on layout changes; the rAF-debounced refresh re-probes and
+  // shallow-diffs, so this stays cheap and the map can never go stale.
+  const handlePdfjsEngineContainersChanged = useCallback(() => {
+    queuePdfjsPageContainerRefresh();
+  }, [queuePdfjsPageContainerRefresh]);
+
   const handlePdfjsDocumentLoad = useCallback((payload) => {
     const viewer = pdfjsViewerRef.current;
     pdfjsPagePdfEverReadyRef.current = new Set();
@@ -28199,12 +28215,12 @@ ${pageBlocks}
                     onDocumentLoaded={handlePdfjsDocumentLoad}
                     onDocumentLoadFailed={handlePdfjsDocumentLoadFailed}
                     onPageChanged={handlePdfjsPageChange}
-                    onZoomChanged={undefined}
+                    onZoomChanged={handlePdfjsEngineZoomCommitted}
                     onZoomPhase={handlePdfjsZoomPhase}
                     onPageRendered={handlePdfjsPageRenderComplete}
                     onTextSelectionEnd={handlePdfjsTextSelectionEnd}
                     onPDFBookmarksAvailable={handlePDFBookmarksAvailable}
-                    onPageContainersChange={undefined}
+                    onPageContainersChange={handlePdfjsEngineContainersChanged}
                     onDebugEvent={handlePdfjsDebugEvent}
                     onDocumentUnload={handleDocumentUnload}
                     formDesignerEnabled={formModeActive}

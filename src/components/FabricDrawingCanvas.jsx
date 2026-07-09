@@ -875,6 +875,13 @@ const FabricDrawingCanvas = memo(({
       brush.color = strokeColor;
       brush.width = strokeWidth;
     }
+    // Live-preview parity: committed highlighter strokes render in SVG with
+    // mix-blend-mode: multiply, but the live brush paints source-over on the
+    // upper canvas — the stroke visibly lightens/thins at release. Blend the
+    // live brush layer the same way the committed SVG does.
+    if (canvas.upperCanvasEl) {
+      canvas.upperCanvasEl.style.mixBlendMode = activeTool === 'highlighter' ? 'multiply' : '';
+    }
   }, [activeTool, strokeColor, highlightColor, strokeWidth]);
 
   // -------------------------------------------------------------------------

@@ -283,7 +283,7 @@ const subtractEraserFromPolyline = (polyline, eraserCircles) => {
 /**
  * Creates a circular polygon (approximate)
  */
-const createCirclePolygon = (cx, cy, r, segments = 16) => {
+const createCirclePolygon = (cx, cy, r, segments = 32) => {
     const points = [];
     for (let i = 0; i < segments; i++) {
         const angle = (i / segments) * Math.PI * 2;
@@ -292,6 +292,86 @@ const createCirclePolygon = (cx, cy, r, segments = 16) => {
     // Close loop
     points.push([points[0][0], points[0][1]]);
     return [points]; // Martinez expects array of rings (multipolygon structure)
+};
+
+/**
+ * Capsule (stadium) polygon covering the swept disk between two points: a
+ * semicircle behind p1, straight flanks, a semicircle past p2. This is the
+ * true area a round eraser covers moving from p1 to p2 — subtracting isolated
+ * disks at sparse pointer samples left un-erased gaps on fast swipes.
+ */
+const CAP_ARC_SEGMENTS = 16; // per semicircle → 32-gon resolution end-to-end
+const createCapsulePolygon = (p1, p2, r) => {
+    const dx = p2.x - p1.x;
+    const dy = p2.y - p1.y;
+    const len = Math.hypot(dx, dy);
+    if (len < 1e-9) return createCirclePolygon(p1.x, p1.y, r);
+    // unit normal (perpendicular to travel direction)
+    const a1 = Math.atan2(dx / len, -dy / len); // angle of normal n = (-dy, dx)/len
+    const ring = [];
+    // back semicircle around p1: from +n CCW through -direction to -n
+    for (let i = 0; i <= CAP_ARC_SEGMENTS; i++) {
+        const ang = a1 + (i / CAP_ARC_SEGMENTS) * Math.PI;
+        ring.push([p1.x + Math.cos(ang) * r, p1.y + Math.sin(ang) * r]);
+    }
+    // front semicircle around p2: from -n CCW through +direction back to +n
+    for (let i = 0; i <= CAP_ARC_SEGMENTS; i++) {
+        const ang = a1 + Math.PI + (i / CAP_ARC_SEGMENTS) * Math.PI;
+        ring.push([p2.x + Math.cos(ang) * r, p2.y + Math.sin(ang) * r]);
+    }
+    ring.push([ring[0][0], ring[0][1]]);
+    return [ring];
+};
+
+/**
+ * Groups closed rings into martinez polygons-with-holes by even-odd nesting.
+ * A previous erase persists the stroke as a filled outline whose hole rings
+ * are separate M…Z subpaths; feeding each ring to martinez as its own
+ * positively-filled polygon made a later erase treat holes as solid ink.
+ */
+const groupRingsIntoPolygons = (rings) => {
+    const ringContains = (ring, x, y) => {
+        let inside = false;
+        for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+            const [xi, yi] = ring[i];
+            const [xj, yj] = ring[j];
+            if ((yi > y) !== (yj > y) && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) inside = !inside;
+        }
+        return inside;
+    };
+    const ringArea = (ring) => {
+        let s = 0;
+        for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+            s += (ring[j][0] * ring[i][1]) - (ring[i][0] * ring[j][1]);
+        }
+        return Math.abs(s / 2);
+    };
+    const entries = rings
+        .map((ring) => ({ ring, area: ringArea(ring) }))
+        .sort((a, b) => b.area - a.area);
+    const polygons = []; // [{ rings: [outer, hole...], entryIndexes }]
+    const meta = [];     // parallel: { entry, depth, polygonIndex }
+    for (const entry of entries) {
+        const [px, py] = entry.ring[0];
+        // Count how many already-placed (strictly larger) rings contain this one;
+        // the smallest such ring is the immediate parent.
+        let depth = 0;
+        let parent = null;
+        for (const m of meta) {
+            if (ringContains(m.entry.ring, px, py)) {
+                depth += 1;
+                if (!parent || m.entry.area < parent.entry.area) parent = m;
+            }
+        }
+        if (depth % 2 === 0) {
+            polygons.push([entry.ring]);
+            meta.push({ entry, depth, polygonIndex: polygons.length - 1 });
+        } else {
+            polygons[parent.polygonIndex].push(entry.ring);
+            meta.push({ entry, depth, polygonIndex: parent.polygonIndex });
+        }
+    }
+    return polygons;
 };
 
 /**
@@ -384,10 +464,32 @@ const strokeToPolygon = (polyline, width) => {
         rightSide[i] = { x: p.x - offX, y: p.y - offY };
     }
 
-    // Construct polygon ring (CCW: leftSide forward, then rightSide reversed).
+    // Construct polygon ring: leftSide forward, round END cap, rightSide
+    // reversed, round START cap. The browser renders the live stroke with
+    // round caps (strokeLinecap: round); a butt-capped ribbon made the
+    // subtracted geometry visibly disagree with the rendered ink at both ends.
+    const CAP_STEPS = 12;
+    const appendCap = (ring, center, fromPt, sweepCW) => {
+        // semicircle from fromPt around center; sweepCW rotates clockwise
+        const sx = fromPt.x - center.x;
+        const sy = fromPt.y - center.y;
+        const startAng = Math.atan2(sy, sx);
+        const dir = sweepCW ? -1 : 1;
+        for (let s = 1; s < CAP_STEPS; s++) {
+            const ang = startAng + dir * (s / CAP_STEPS) * Math.PI;
+            const r = Math.hypot(sx, sy);
+            ring.push([center.x + Math.cos(ang) * r, center.y + Math.sin(ang) * r]);
+        }
+    };
     const ring = [];
     for (let i = 0; i < n; i++) ring.push([leftSide[i].x, leftSide[i].y]);
+    // end cap: from leftSide[n-1] around the last point to rightSide[n-1],
+    // bulging along the outgoing tangent (CW sweep reaches +tangent halfway)
+    appendCap(ring, polyline[n - 1], leftSide[n - 1], true);
     for (let i = n - 1; i >= 0; i--) ring.push([rightSide[i].x, rightSide[i].y]);
+    // start cap: from rightSide[0] around the first point back to leftSide[0],
+    // bulging along the reversed tangent
+    appendCap(ring, polyline[0], rightSide[0], true);
     if (ring.length > 0) ring.push([ring[0][0], ring[0][1]]); // close
 
     return [ring];
@@ -407,42 +509,40 @@ export const booleanErasePath = (pathObj, eraserPath, eraserRadius) => {
     const matrix = pathObj.calcTransformMatrix();
     const pathOffset = pathObj.pathOffset || { x: 0, y: 0 };
 
-    // Transform eraser to local space
-    // Assuming uniform scale for simplicity of radius
-    const scaleX = Math.sqrt(matrix[0] * matrix[0] + matrix[1] * matrix[1]);
-    const localEraserRadius = eraserRadius / scaleX;
-
-    const localEraserCircles = eraserPath.points.map(p => {
-        const localP = transformPointInverse(p, matrix);
-        return {
-            x: localP.x + pathOffset.x,
-            y: localP.y + pathOffset.y,
-            r: localEraserRadius
-        };
-    });
+    // Build the eraser geometry in WORLD space — a disk for a single sample,
+    // swept capsules between consecutive samples (a fast swipe used to leave
+    // un-erased gaps between sparse pointer disks) — then inverse-transform
+    // every vertex into the object's local space. Mapping vertices (instead of
+    // scaling a radius by scaleX only) keeps the eraser shape exact under
+    // rotation and non-uniform scale.
+    const toLocal = (x, y) => {
+        const localP = transformPointInverse({ x, y }, matrix);
+        return [localP.x + pathOffset.x, localP.y + pathOffset.y];
+    };
+    const worldEraserPolys = [];
+    const pts = eraserPath.points;
+    if (pts.length === 1) {
+        worldEraserPolys.push(createCirclePolygon(pts[0].x, pts[0].y, eraserRadius));
+    } else {
+        for (let i = 0; i < pts.length - 1; i++) {
+            worldEraserPolys.push(createCapsulePolygon(pts[i], pts[i + 1], eraserRadius));
+        }
+    }
+    let combinedEraserPoly = [];
+    for (const poly of worldEraserPolys) {
+        const localPoly = poly.map((ring) => ring.map(([x, y]) => toLocal(x, y)));
+        combinedEraserPoly = combinedEraserPoly.length === 0
+            ? localPoly
+            : union(combinedEraserPoly, localPoly);
+    }
 
     // Convert path to polygons (outlines)
-    // If already filled, use fill geometry? Fabric paths are weird. 
+    // If already filled, use fill geometry? Fabric paths are weird.
     // Usually ink is M...L... with no fill.
     const polylines = flattenPathToPolylines(pathObj.path);
 
-    // Create union of all eraser circles to form one big eraser polygon
-    // Optimization: Unions are expensive. Maybe just union them first?
-    let eraserPoly = null;
-
-    // Create polygon for first circle
-    if (localEraserCircles.length > 0) {
-        eraserPoly = createCirclePolygon(localEraserCircles[0].x, localEraserCircles[0].y, localEraserCircles[0].r);
-
-        // Union subsequent circles - NAIEVE. 
-        // Better to check which actually intersect bounds
-        // For performance, we might just loop subtraction?
-        // Or union them in chunks?
-        // Let's rely on iterating subtraction for now, it's safer than massive union if not optimized
-    }
-
     // Convert stroke to explicit polygon outline
-    let subjectPolys = []; // Array of multipolygons
+    let subjectPolys = []; // Array of polygons (each = [outer, hole...])
 
     if (strokeWidth > 0) {
         for (const poly of polylines) {
@@ -450,35 +550,24 @@ export const booleanErasePath = (pathObj, eraserPath, eraserRadius) => {
             if (outline) subjectPolys.push(outline);
         }
     } else {
-        // strokeWidth=0: path is already a filled polygon (e.g., after a previous
-        // erase converted stroke→outline). Use the path data directly as the
-        // subject polygon for boolean subtraction.
+        // strokeWidth=0: path is already a filled outline (a previous erase
+        // converted stroke→outline, possibly with hole rings as separate M…Z
+        // subpaths). Regroup rings into polygons-with-holes so martinez treats
+        // holes as holes — feeding each ring as its own solid polygon made a
+        // repeat erase resurrect ink inside previously punched holes.
+        const rings = [];
         for (const poly of polylines) {
             if (poly.length >= 3) {
                 const ring = poly.map(p => [p.x, p.y]);
                 ring.push([ring[0][0], ring[0][1]]); // close ring
-                subjectPolys.push([ring]);
+                rings.push(ring);
             }
         }
-        if (subjectPolys.length === 0) return null;
+        if (rings.length === 0) return null;
+        subjectPolys = groupRingsIntoPolygons(rings);
     }
 
-    // Iterate eraser circles and subtract from subjectPolys
-    let resultPolys = subjectPolys;
-
-    // Optimization: Filter circles that don't touch bounds
-    // We can also union the eraser circles first if they are many
-    // But martinez union is robust.
-
-    // Let's create a single eraser multipolygon by unioning all circles
-    let combinedEraserPoly = [];
-    if (localEraserCircles.length > 0) {
-        combinedEraserPoly = createCirclePolygon(localEraserCircles[0].x, localEraserCircles[0].y, localEraserCircles[0].r);
-        for (let i = 1; i < localEraserCircles.length; i++) {
-            const nextCircle = createCirclePolygon(localEraserCircles[i].x, localEraserCircles[i].y, localEraserCircles[i].r);
-            combinedEraserPoly = union(combinedEraserPoly, nextCircle);
-        }
-    }
+    const resultPolys = subjectPolys;
 
     // Subtract combined eraser from each subject poly
     const finalPolys = [];
