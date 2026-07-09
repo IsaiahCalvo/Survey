@@ -1032,6 +1032,17 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
       getPageLayerContainer: () => contentRef.current,
       // Stable slot inside the transformed content for the app's overlay layers.
       getOverlayHost: () => overlayHostRef.current,
+      // Per-page overlay slot INSIDE the page div — overlay geometry becomes
+      // CSS inheritance (inset:0), atomic with the page's own zoom re-layout.
+      getPageOverlayHost: (page) => {
+        const target = Number(page);
+        if (!Number.isFinite(target) || target < 1) return null;
+        const known = pageContainerMapRef.current[target];
+        const pageDiv = known?.isConnected
+          ? known
+          : contentRef.current?.querySelector(`.survey-pdfjs-page-div[data-page-number="${target}"]`);
+        return pageDiv?.querySelector(':scope > [data-page-overlay-host]') || null;
+      },
       // zoom
       magnificationModule: {
         zoomTo: (pct) => { const s = Number(pct) / 100; if (Number.isFinite(s)) zoomToScale(s); },
@@ -1146,6 +1157,19 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
                   // white blends into the rasterized page so the pop is near-invisible.
                   <div style={{ width: '100%', height: '100%', background: '#fff' }} />
                 )}
+                {/* React-owned, always-empty slot for the app's per-page overlay
+                    subtree (annotations, text, links, forms). It lives INSIDE the
+                    page div, so its size/position are pure CSS inheritance — the
+                    overlay resizes in the SAME paint as the page on every zoom
+                    commit. The old model (sibling divs px-copied from measured
+                    page geometry) lagged the engine's atomic re-layout by a
+                    frame+, which read as annotation jitter on every wheel notch.
+                    No React children here, so an imperatively-appended subtree
+                    is never disturbed by reconciliation. */}
+                <div
+                  data-page-overlay-host=""
+                  style={{ position: 'absolute', inset: 0, pointerEvents: 'none', zIndex: 30 }}
+                />
               </div>
             );
           })}

@@ -6039,53 +6039,72 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
     pdfjsStablePortalHostsRef.current[safePageNumber] = overlayDiv;
 
-    if (!overlayRoot?.isConnected || overlayDiv.parentElement !== overlayRoot) {
-      overlayRoot.appendChild(overlayDiv);
-    }
-
     if (!pageDiv?.isConnected) {
+      if (!overlayRoot?.isConnected || overlayDiv.parentElement !== overlayRoot) {
+        overlayRoot.appendChild(overlayDiv);
+      }
       overlayDiv.setAttribute('data-source-page-connected', 'false');
       return overlayDiv;
     }
 
-    let left;
-    let top;
-    let width;
-    let height;
-    if (engineOverlayHost?.isConnected) {
-      // Overlay rides inside the transformed content node, so position it in the page's
-      // LAYOUT (offset) coordinates — these are independent of the live CSS zoom
-      // transform, so reading them during or after a gesture is always correct, and the
-      // overlay scales with the page automatically.
-      left = Number(pageDiv.offsetLeft) || 0;
-      top = Number(pageDiv.offsetTop) || 0;
-      width = Number(pageDiv.offsetWidth) || 0;
-      height = Number(pageDiv.offsetHeight) || 0;
+    // Preferred host: the engine's React-owned slot INSIDE the page div.
+    // Geometry becomes pure CSS inheritance (inset:0 / 100%): the overlay
+    // resizes in the SAME style/layout pass as the page on every zoom commit.
+    // The old measure-then-write model (px-copying pageDiv.offset* onto a
+    // sibling div) lagged the engine's atomic re-layout by a frame+ — that lag
+    // WAS the annotation jitter on every wheel-zoom settle.
+    const pageOverlayHost = pdfjsViewerRef.current?.getPageOverlayHost?.(safePageNumber) || null;
+    if (pageOverlayHost?.isConnected) {
+      if (overlayDiv.parentElement !== pageOverlayHost) {
+        pageOverlayHost.appendChild(overlayDiv);
+      }
+      if (overlayDiv.__lastOverlayGeom !== 'css-inherit') {
+        overlayDiv.style.left = '0px';
+        overlayDiv.style.top = '0px';
+        overlayDiv.style.width = '100%';
+        overlayDiv.style.height = '100%';
+        overlayDiv.__lastOverlayGeom = 'css-inherit';
+      }
     } else {
-      const pageRect = pageDiv.getBoundingClientRect?.();
-      const rootRect = overlayRoot?.getBoundingClientRect?.();
-      left = pageRect && rootRect
-        ? pageRect.left - rootRect.left
-        : (Number(pageDiv.offsetLeft) || 0);
-      top = pageRect && rootRect
-        ? pageRect.top - rootRect.top
-        : (Number(pageDiv.offsetTop) || 0);
-      width = Number(pageRect?.width) || Number(pageDiv.offsetWidth) || 0;
-      height = Number(pageRect?.height) || Number(pageDiv.offsetHeight) || 0;
-    }
-    // PERF (2026-06-03): this runs during render for every visible page. Writing
-    // these positions unconditionally dirties layout, so the next page's offset
-    // reads force a fresh reflow — layout thrash that stutters scroll on heavier
-    // hardware. The page's layout position only changes on zoom-commit / rotate /
-    // resize, NOT on scroll, so skip the writes when nothing moved: identical-value
-    // writes are a no-op for correctness but keep layout clean and reads cheap.
-    const prevGeom = overlayDiv.__lastOverlayGeom;
-    if (!prevGeom || prevGeom.left !== left || prevGeom.top !== top || prevGeom.width !== width || prevGeom.height !== height) {
-      overlayDiv.style.left = `${left}px`;
-      overlayDiv.style.top = `${top}px`;
-      if (width > 0) overlayDiv.style.width = `${width}px`;
-      if (height > 0) overlayDiv.style.height = `${height}px`;
-      overlayDiv.__lastOverlayGeom = { left, top, width, height };
+      // Fallback (page slot missing — e.g. engine still mounting): legacy
+      // sibling placement with measured px geometry.
+      if (!overlayRoot?.isConnected || overlayDiv.parentElement !== overlayRoot) {
+        overlayRoot.appendChild(overlayDiv);
+      }
+      let left;
+      let top;
+      let width;
+      let height;
+      if (engineOverlayHost?.isConnected) {
+        // Overlay rides inside the transformed content node, so position it in the
+        // page's LAYOUT (offset) coordinates — independent of the live CSS zoom
+        // transform, so reading them during or after a gesture is always correct.
+        left = Number(pageDiv.offsetLeft) || 0;
+        top = Number(pageDiv.offsetTop) || 0;
+        width = Number(pageDiv.offsetWidth) || 0;
+        height = Number(pageDiv.offsetHeight) || 0;
+      } else {
+        const pageRect = pageDiv.getBoundingClientRect?.();
+        const rootRect = overlayRoot?.getBoundingClientRect?.();
+        left = pageRect && rootRect
+          ? pageRect.left - rootRect.left
+          : (Number(pageDiv.offsetLeft) || 0);
+        top = pageRect && rootRect
+          ? pageRect.top - rootRect.top
+          : (Number(pageDiv.offsetTop) || 0);
+        width = Number(pageRect?.width) || Number(pageDiv.offsetWidth) || 0;
+        height = Number(pageRect?.height) || Number(pageDiv.offsetHeight) || 0;
+      }
+      // PERF (2026-06-03): skip identical-value writes — keeps layout clean and
+      // reads cheap (this runs during render for every visible page).
+      const prevGeom = overlayDiv.__lastOverlayGeom;
+      if (!prevGeom || typeof prevGeom !== 'object' || prevGeom.left !== left || prevGeom.top !== top || prevGeom.width !== width || prevGeom.height !== height) {
+        overlayDiv.style.left = `${left}px`;
+        overlayDiv.style.top = `${top}px`;
+        if (width > 0) overlayDiv.style.width = `${width}px`;
+        if (height > 0) overlayDiv.style.height = `${height}px`;
+        overlayDiv.__lastOverlayGeom = { left, top, width, height };
+      }
     }
     overlayDiv.setAttribute('data-source-page-connected', 'true');
 
