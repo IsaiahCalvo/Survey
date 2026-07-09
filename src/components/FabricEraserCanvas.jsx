@@ -35,7 +35,16 @@ import {
   getEraserCandidateId,
   getEraserDeleteDiagnostics,
   getEraserStrokeBounds,
+  sampleEraserStroke,
 } from '../utils/eraserHitTest.js';
+import { erasePathWithCapsules } from '../utils/inkEraser.js';
+
+// Live-preview node ownership (module scope — survives unmount/remount and is
+// shared across page instances). Each element an eraser gesture styles is
+// owned by that gesture's sequence id; only the owner may clear it, so a
+// detached grace-period clear can never wipe a newer gesture's styling.
+const ERASER_PREVIEW_NODE_OWNERS = new Map(); // element -> gesture seq id
+let ERASER_PREVIEW_GESTURE_SEQ = 0;
 
 // Custom properties to include in object serialization (matches PAL / FabricDrawingCanvas pattern)
 // UX 2026-04-25: 'tool' added so arrows survive an erase commit. Without it,
@@ -191,6 +200,35 @@ const FabricEraserCanvas = memo(({
 
   const eraserPathRef = useRef([]);
   const isErasingRef = useRef(false);
+  // Live erase feedback (2026-07-08): the drag itself shows its effect —
+  // a destination-out trail cuts annotation pixels under the swath (partial
+  // mode), and any object the gesture has touched fades to a ghost (both
+  // modes; in partial that covers the non-stroke objects that will be
+  // whole-removed on release). The durable result is still computed ONCE at
+  // gesture end by applyEraserAndCommit — the preview never writes anything.
+  const eraserTrailRef = useRef(null);
+  const lastPreviewIndexRef = useRef(0);
+  // Set by the mount effect; lets the window-blur safety net finish an
+  // interrupted gesture (commit + visual restore) from outside the handlers.
+  const finishGestureRef = useRef(null);
+  // Set by the mount effect; re-runs the annotation loader when the
+  // annotations prop changes EXTERNALLY (undo, collab) — a stale canvas
+  // would otherwise hit-test and COMMIT against pre-undo state.
+  const loadAnnotationsRef = useRef(null);
+  const needsReloadRef = useRef(false);
+  // Per-gesture bbox cache for the live-erase broad phase (C-3: one
+  // getBoundingRect per object per GESTURE, not per mousemove).
+  const gestureBBoxCacheRef = useRef(new Map());
+  // Reload generation: a stale async enliven callback must never dump the
+  // previous load's objects on top of a newer load.
+  const loadGenRef = useRef(0);
+  // Live partial erase (swept-capsule splitting, src/utils/inkEraser.js):
+  // pre-gesture serialized snapshots of live-bitten strokes (the commit's
+  // before/after diff needs the PRE-gesture state), and the before-jsons of
+  // strokes fully erased mid-gesture (they are gone from the canvas by
+  // commit time but must still count as deletions).
+  const gestureBeforeJsonRef = useRef(new Map());
+  const gestureRemovedRef = useRef([]);
   const eraserDiagGestureRef = useRef(null);
 
   // Closure-safe refs for props
@@ -231,6 +269,464 @@ const FabricEraserCanvas = memo(({
   };
 
   // ---------------------------------------------------------------------------
+  // Live-preview helpers (visual only — the preview NEVER touches the store)
+  //
+  // Selective preview (v2): the SVG layer stays the standing visual truth for
+  // everything EXCEPT freehand strokes during a partial-mode gesture. Fabric
+  // renders compound annotations without their SVG-side dressing (arrows lose
+  // arrowheads, counters lose numbers, text re-lays-out), so revealing them
+  // mid-gesture visibly changes them — the "click flicker" bug. Instead:
+  //   - partial mode: ONLY pen/highlighter strokes swap to the Fabric canvas
+  //     (sub-pixel rasterizer delta) so the destination-out trail can carve
+  //     their pixels live; their SVG twins hide for the gesture. Strokes the
+  //     commit would refuse (permission/space gates) never swap — the trail
+  //     cannot show an erase that will not happen.
+  //   - whole-object erase targets ghost IN PLACE on the SVG layer
+  //     (style.opacity on their [data-annotation-id] group) — arrowheads and
+  //     every SVG-only detail stay pixel-identical while fading.
+  //   - restore is DATA-DRIVEN: after a commit, swapped strokes stay on the
+  //     Fabric canvas until the annotations prop re-renders the SVG with the
+  //     post-erase data (fallback timeout 1200ms) — the pre-erase state can
+  //     never flash back ("erase comes back" bug).
+  // ---------------------------------------------------------------------------
+  const gestureSwapTokenRef = useRef(0);
+  const strokeSwapsRef = useRef(new Set()); // fabric objs swapped to this canvas
+  const ghostedObjsRef = useRef(new Set()); // fabric objs whose SVG twin is ghosted
+  const pendingRestoreRef = useRef(null);   // { token, run } awaiting annotations change
+  const restoreTimerRef = useRef(null);
+  // The exact annotations object the mount-time enliven consumed.
+  // __sourceIndex values index THIS array — the data-annotation-index
+  // fallback is only trustworthy while the SVG still renders it. Any commit
+  // (compaction/reorder) breaks positional addressing for the REST of the
+  // mount, so after one the id-less strokes simply stop swapping (no preview
+  // is better than a wrong one).
+  const enlivenSourceRef = useRef(null);
+  // Every SVG element this gesture writes an inline opacity on. React REUSES
+  // <g> nodes across re-renders (keyed by id-or-index), so an inline style
+  // can outlive its annotation and hide the node's NEXT occupant — the final
+  // cleanup clears inline opacity on these exact elements, skipping any that
+  // a newer gesture is actively styling.
+  const gestureStyledNodesRef = useRef(new Set());
+
+  // The SVG twin of a fabric object: by annotation id when the serialized
+  // object carries one, else by source-array index (pen strokes have no
+  // top-level id; data-annotation-index uses the same array index that
+  // enliven recorded as __sourceIndex).
+  const svgNodeForObj = (obj) => {
+    if (!obj || typeof document === 'undefined') return null;
+    try {
+      if (obj.id) {
+        const byId = document.querySelector(
+          `[data-diag-svg-wrapper="${pageNumber}"] [data-annotation-id="${CSS.escape(String(obj.id))}"]`
+        );
+        if (byId) return byId;
+      }
+      // Index addressing is positional — valid ONLY while the SVG still
+      // renders the exact array the enliven stamped __sourceIndex from.
+      if (
+        Number.isInteger(obj.__sourceIndex)
+        && annotationsRef.current === enlivenSourceRef.current
+      ) {
+        return document.querySelector(
+          `[data-diag-svg-wrapper="${pageNumber}"] [data-annotation-index="${obj.__sourceIndex}"]`
+        );
+      }
+    } catch (_) { /* fall through */ }
+    return null;
+  };
+
+  const gestureIdRef = useRef(0);
+
+  const setNodeOpacity = (node, value) => {
+    if (!node) return;
+    try {
+      node.style.opacity = value;
+      if (value !== '') {
+        gestureStyledNodesRef.current.add(node);
+        ERASER_PREVIEW_NODE_OWNERS.set(node, gestureIdRef.current);
+      }
+    } catch (_) { /* detached */ }
+  };
+
+  // Clears inline opacity on a past gesture's styled elements — element-refs,
+  // so React node reuse can't strand a hide on the wrong annotation. Only the
+  // OWNING gesture may clear (module-scope registry), so this is safe from
+  // detached timers, unmounts, remounts, and overlapping gestures.
+  const clearStyledNodes = (nodes, ownerId) => {
+    nodes.forEach((n) => {
+      if (ERASER_PREVIEW_NODE_OWNERS.get(n) !== ownerId) return;
+      ERASER_PREVIEW_NODE_OWNERS.delete(n);
+      try { n.style.opacity = ''; } catch (_) { /* detached */ }
+    });
+  };
+
+  const isStrokePathObj = (obj) => obj.type === 'path' && (
+    obj.tool === 'pen'
+    || obj.tool === 'highlighter'
+    || obj.pdfAnnotationType === 'Ink'
+    || (!obj.pdfAnnotationType && !obj.annotationId && !obj.moduleId)
+  );
+
+  // Mirrors applyEraserAndCommit's permission + space-scope gates so the
+  // preview never advertises an erase the commit will refuse.
+  const passesEraseGates = (obj) => {
+    const _vId = viewerIdRef.current;
+    const _oId = documentOwnerIdRef.current;
+    if (_vId && _oId && !canModify({
+      annotation: { id: obj.id, authorId: obj.authorId, data: obj.data, meta: obj.meta },
+      viewerId: _vId,
+      documentOwnerId: _oId,
+    })) return false;
+    const objSpaceId = obj.spaceId || null;
+    const objRegionId = obj.regionId || null;
+    if (activeSpaceIdRef.current !== null) {
+      if (objRegionId !== null) {
+        const derivedSpaceId = getSpaceIdForRegion(objRegionId);
+        if (derivedSpaceId !== null && derivedSpaceId !== activeSpaceIdRef.current) return false;
+      } else if (objSpaceId !== null) {
+        if (objSpaceId !== activeSpaceIdRef.current) return false;
+      } else {
+        return false;
+      }
+    } else if (selectedSpaceIdRef.current !== null && objSpaceId !== null) {
+      if (objSpaceId !== selectedSpaceIdRef.current) return false;
+    }
+    return true;
+  };
+
+  const beginGesturePreview = useRef((canvas) => {
+    gestureSwapTokenRef.current += 1; // invalidates any pending deferred restore
+    ERASER_PREVIEW_GESTURE_SEQ += 1;
+    gestureIdRef.current = ERASER_PREVIEW_GESTURE_SEQ;
+    if (restoreTimerRef.current) {
+      clearTimeout(restoreTimerRef.current);
+      restoreTimerRef.current = null;
+    }
+    // A previous gesture's data-driven restore still pending? Run it NOW
+    // (full flavor — SVG writes stay guarded inside svgNodeForObj by the
+    // mount-time enliven-source identity).
+    if (pendingRestoreRef.current) {
+      const pending = pendingRestoreRef.current;
+      pendingRestoreRef.current = null;
+      try { (pending.runFull || pending.run)(); } catch (_) { /* never break a gesture */ }
+    }
+    if (eraserModeRef.current !== 'entire') {
+      canvas.getObjects().forEach((obj) => {
+        if (obj.__isEraserTrail || !isStrokePathObj(obj)) return;
+        // Legacy fill-ribbons get no live carve (boolean at release only) —
+        // swapping them would just show an un-carved fabric copy mid-gesture.
+        if ((obj.strokeWidth || 0) === 0) return;
+        if (!passesEraseGates(obj)) return;
+        const node = svgNodeForObj(obj);
+        // No addressable SVG twin -> do NOT swap (revealing the fabric copy
+        // would double-render on top of a still-visible SVG twin).
+        if (!node) return;
+        try { obj.set('opacity', obj.__origOpacity !== undefined ? obj.__origOpacity : obj.opacity); } catch (_) { /* ignore */ }
+        setNodeOpacity(node, '0');
+        strokeSwapsRef.current.add(obj);
+      });
+      canvas.requestRenderAll();
+    }
+  }).current;
+
+  const clearErasePreview = useRef((canvas) => {
+    if (eraserTrailRef.current) {
+      try { canvas.remove(eraserTrailRef.current); } catch (_) { /* disposed */ }
+      eraserTrailRef.current = null;
+    }
+    lastPreviewIndexRef.current = 0;
+  }).current;
+
+  // Restores SVG/fabric visual state after a gesture. Deleted-ness is derived
+  // from canvas membership (removed objects = erased) — no id-scheme coupling.
+  // committed + !sync => stroke swap-back waits for the annotations prop
+  // (data-driven) so the SVG never shows pre-erase data.
+  const restorePreview = useRef((canvas, { committed = false, sync = false } = {}) => {
+    // Flush any previous gesture's still-pending deferred restore first —
+    // its timer must never outlive this call (or the component).
+    if (restoreTimerRef.current) {
+      clearTimeout(restoreTimerRef.current);
+      restoreTimerRef.current = null;
+    }
+    if (pendingRestoreRef.current) {
+      const stale = pendingRestoreRef.current;
+      pendingRestoreRef.current = null;
+      try { (stale.runFull || stale.run)(); } catch (_) { /* ignore */ }
+    }
+    const token = gestureSwapTokenRef.current;
+    const ghostEntries = [...ghostedObjsRef.current];
+    ghostedObjsRef.current = new Set();
+    const strokeEntries = [...strokeSwapsRef.current];
+    strokeSwapsRef.current = new Set();
+    const ownerId = gestureIdRef.current;
+    const styledNodes = [...gestureStyledNodesRef.current];
+    gestureStyledNodesRef.current = new Set();
+    // Restore-time writes must stay tracked + owned so the final clear
+    // covers them too.
+    const writeTracked = (node, value) => {
+      if (!node) return;
+      try {
+        node.style.opacity = value;
+        if (!styledNodes.includes(node)) styledNodes.push(node);
+        ERASER_PREVIEW_NODE_OWNERS.set(node, ownerId);
+      } catch (_) { /* detached */ }
+    };
+    let survivors = new Set();
+    try { survivors = new Set(canvas.getObjects()); } catch (_) { /* disposed */ }
+
+    // Ghosts live on SVG nodes. Erased ones go fully hidden until the
+    // re-render drops their node; survivors (shouldn't happen — ghosting is
+    // gate- and touch-filtered) restore immediately.
+    ghostEntries.forEach((obj) => {
+      const node = svgNodeForObj(obj);
+      if (!node) return;
+      writeTracked(node, survivors.has(obj) ? '' : '0');
+    });
+
+    // Final element-level cleanup: once the SVG re-renders (or after a grace
+    // period on paths with no re-render signal), NO inline opacity from this
+    // gesture may remain — React node reuse would otherwise hide whichever
+    // annotation inherits the element.
+    const scheduleStyledClear = (delayMs) => {
+      if (!styledNodes.length) return;
+      setTimeout(() => clearStyledNodes(styledNodes, ownerId), delayMs);
+    };
+
+    // svgSafe: SVG-side writes are allowed only while the DOM still renders
+    // the gesture-time annotations array (svgNodeForObj enforces the same
+    // guard). After a committed re-render the fresh nodes carry no inline
+    // styles — only the fabric side needs re-hiding.
+    const runStrokeRestore = (svgSafe) => {
+      strokeEntries.forEach((obj) => {
+        try { obj.set('opacity', 0); } catch (_) { /* removed/disposed */ }
+        if (!svgSafe) return;
+        const node = svgNodeForObj(obj); // identity-guarded re-query
+        if (!node) return;
+        writeTracked(node, survivors.has(obj) ? '' : '0');
+      });
+      try { canvas.requestRenderAll(); } catch (_) { /* disposed */ }
+    };
+
+    if (!committed) {
+      // No data change is coming: restore in place and drop the bookkeeping.
+      runStrokeRestore(true);
+      // Nothing was erased, so every styled element goes straight back to ''.
+      clearStyledNodes(styledNodes, ownerId);
+      return;
+    }
+    if (sync) {
+      runStrokeRestore(true);
+      // The commit's re-render lands after this tick (or never reaches this
+      // unmounted component) — a detached grace-period clear guarantees no
+      // stranded inline style on a reused element.
+      scheduleStyledClear(600);
+      return;
+    }
+    const pending = {
+      token,
+      // annotations changed -> SVG re-rendered -> fabric re-hide + clear the
+      // exact elements this gesture styled (reused nodes lose the stale hide).
+      run: () => {
+        runStrokeRestore(false);
+        clearStyledNodes(styledNodes, ownerId);
+      },
+      // timeout with NO annotations change -> old DOM still up -> full
+      // restore now, grace-period clear for a late re-render.
+      runFull: () => {
+        runStrokeRestore(true);
+        scheduleStyledClear(600);
+      },
+    };
+    pendingRestoreRef.current = pending;
+    restoreTimerRef.current = setTimeout(() => {
+      if (pendingRestoreRef.current === pending && gestureSwapTokenRef.current === token) {
+        pendingRestoreRef.current = null;
+        pending.runFull();
+      }
+    }, 1200);
+  }).current;
+
+  const updateErasePreview = useRef((canvas) => {
+    const pathData = eraserPathRef.current;
+    if (!pathData || pathData.length === 0) return;
+    // Same radius formula as applyEraserAndCommit — the preview swath, the
+    // cursor circle, and the committed hit test must all agree.
+    const vs = viewerScaleRef.current || 1;
+    const es = effectiveScaleRef.current || 1;
+    const radius = eraserSizeRef.current * (vs / es);
+    const mode = eraserModeRef.current === 'entire' ? 'entire' : 'partial';
+
+    // 1. Ghost newly-touched whole-object erase targets IN PLACE on the SVG
+    //    layer. Incremental: only the segment added since the last tick.
+    const from = Math.max(0, lastPreviewIndexRef.current - 1);
+    const recent = [];
+    for (let i = from; i < pathData.length; i += 1) {
+      const cmd = pathData[i];
+      if (cmd[0] === 'M' || cmd[0] === 'L') recent.push({ x: cmd[1], y: cmd[2] });
+    }
+    lastPreviewIndexRef.current = pathData.length;
+    // An external SVG re-render mid-gesture replaces nodes and drops our
+    // inline styles — re-assert them every tick (bounded by swap/ghost counts).
+    strokeSwapsRef.current.forEach((obj) => {
+      const n = svgNodeForObj(obj);
+      if (n && n.style.opacity !== '0') setNodeOpacity(n, '0');
+    });
+    ghostedObjsRef.current.forEach((obj) => {
+      const n = svgNodeForObj(obj);
+      if (n && n.style.opacity !== '0.15') setNodeOpacity(n, '0.15');
+    });
+    const allObjects = canvas.getObjects();
+    // ponytail: skip the ghost pass on very heavy pages (12k-stroke imported
+    // docs) — O(objects) hit tests per mousemove would hitch; the trail and
+    // the commit stay exact.
+    if (recent.length > 0 && allObjects.length <= 2000) {
+      for (const obj of allObjects) {
+        if (obj.__isEraserTrail || ghostedObjsRef.current.has(obj)) continue;
+        // Partial mode BITES stroke paths (trail is their live preview);
+        // everything else — and everything in entire mode — ghosts whole.
+        if (mode === 'partial' && isStrokePathObj(obj)) continue;
+        if (!passesEraseGates(obj)) continue;
+        let touches = false;
+        try {
+          touches = eraserStrokeTouchesObject({ eraserPoints: recent, eraserRadius: radius, object: obj });
+        } catch (_) { /* preview must never break the gesture */ }
+        if (touches) {
+          const node = svgNodeForObj(obj);
+          if (node) {
+            setNodeOpacity(node, '0.15');
+            ghostedObjsRef.current.add(obj);
+          }
+        }
+      }
+    }
+
+    // (The old destination-out trail is gone: partial mode now REALLY bites
+    // strokes live via applyLiveInkErase — the ink itself is the preview.)
+    canvas.requestRenderAll();
+  }).current;
+
+  // Serialize one canvas object back to its stored-annotation JSON shape.
+  // Component-scope: the live erase path needs pre-mutation snapshots.
+  const serializeObjectForCommitFn = useRef((obj) => {
+    if (obj.type === 'textbox' && obj.__importedJSON) {
+      return { ...obj.__importedJSON };
+    }
+    // fabric 7: toObject(CUSTOM_PROPS) — toJSON() ignores arguments and
+    // drops the custom props (id/moduleId/regionId/data...).
+    const json = obj.toObject(CUSTOM_PROPS);
+    // fabric 7: toObject() emits capitalized type ('Path') — compare against
+    // the live instance's lowercase type, not the serialized casing.
+    if (obj.type === 'path' && !obj.isPdfImported) {
+      json.left = 0;
+      json.top = 0;
+    }
+    if (obj.isPdfImported && obj.__origOpacity !== undefined) {
+      json.opacity = obj.__origOpacity;
+      const wasConverted = (obj.strokeWidth || 0) === 0 && !!obj.fill && obj.fill !== 'transparent';
+      if (!wasConverted) {
+        if (obj.__origStroke !== undefined) json.stroke = obj.__origStroke;
+        if (obj.__origStrokeWidth !== undefined) json.strokeWidth = obj.__origStrokeWidth;
+      }
+    } else if (obj.__origOpacity !== undefined) {
+      json.opacity = obj.__origOpacity;
+    }
+    return json;
+  }).current;
+
+  // Transform a scene-space capsule step into an object's PATH-DATA space
+  // (inverse transform + pathOffset, radius scaled) — the same mapping
+  // booleanErasePath uses, shared by the live and commit erase paths.
+  const toLocalCapsuleFn = useRef((obj, aScene, bScene, sceneRadius) => {
+    const matrix = obj.calcTransformMatrix();
+    const pathOffset = obj.pathOffset || { x: 0, y: 0 };
+    const scale = Math.sqrt(matrix[0] * matrix[0] + matrix[1] * matrix[1]) || 1;
+    const inv = (pt) => {
+      const [a, b, c, d, e, f] = matrix;
+      const det = a * d - b * c;
+      if (Math.abs(det) < 1e-10) return { x: pt.x, y: pt.y };
+      const px = pt.x - e;
+      const py = pt.y - f;
+      return {
+        x: (d * px - c * py) / det + pathOffset.x,
+        y: (-b * px + a * py) / det + pathOffset.y,
+      };
+    };
+    return {
+      capsule: { a: inv(aScene), b: inv(bScene) },
+      localRadius: sceneRadius / scale,
+    };
+  }).current;
+
+  // LIVE partial erase: bite the newest pointer segment out of every eligible
+  // freehand stroke, exactly as the commit will (same math, incremental).
+  const applyLiveInkErase = useRef((canvas) => {
+    if (eraserModeRef.current === 'entire') return;
+    const pts = eraserPathRef.current;
+    if (!pts || pts.length < 2) return;
+    // ponytail: no live carve above 2000 objects (matches the ghost-pass
+    // guard) — the commit stays exact; heavy imported pages skip preview.
+    if (canvas.getObjects().length > 2000) return;
+    const n = pts.length;
+    const aScene = { x: pts[n - 2][1], y: pts[n - 2][2] };
+    const bScene = { x: pts[n - 1][1], y: pts[n - 1][2] };
+    const vs = viewerScaleRef.current || 1;
+    const es = effectiveScaleRef.current || 1;
+    const sceneRadius = eraserSizeRef.current * (vs / es);
+    const capMinX = Math.min(aScene.x, bScene.x) - sceneRadius;
+    const capMaxX = Math.max(aScene.x, bScene.x) + sceneRadius;
+    const capMinY = Math.min(aScene.y, bScene.y) - sceneRadius;
+    const capMaxY = Math.max(aScene.y, bScene.y) + sceneRadius;
+    let anyChange = false;
+    for (const obj of [...canvas.getObjects()]) {
+      if (obj.__isEraserTrail || obj.type !== 'path' || !obj.path) continue;
+      const isStroke = (obj.strokeWidth || 0) > 0 && (
+        obj.tool === 'pen'
+        || obj.tool === 'highlighter'
+        || obj.pdfAnnotationType === 'Ink'
+        || (!obj.pdfAnnotationType && !obj.annotationId && !obj.moduleId)
+      );
+      if (!isStroke) continue; // legacy fill-ribbons keep the boolean commit path
+      if (!passesEraseGates(obj)) continue;
+      // Cheap absolute-bbox reject (scene units), inflated by half stroke
+      // width. Cached per gesture: strokes only SHRINK during a gesture, so
+      // the first-seen bbox stays a valid conservative bound.
+      try {
+        let br = gestureBBoxCacheRef.current.get(obj);
+        if (!br) {
+          br = obj.getBoundingRect(true);
+          gestureBBoxCacheRef.current.set(obj, br);
+        }
+        const inflate = (obj.strokeWidth || 0) / 2 + 1;
+        if (br.left > capMaxX + inflate || br.left + br.width < capMinX - inflate
+          || br.top > capMaxY + inflate || br.top + br.height < capMinY - inflate) continue;
+      } catch (_) { /* fall through to exact math */ }
+      const { capsule, localRadius } = toLocalCapsuleFn(obj, aScene, bScene, sceneRadius);
+      const rEff = localRadius + (obj.strokeWidth || 0) / 2;
+      let result;
+      try {
+        result = erasePathWithCapsules(obj.path, [capsule], rEff);
+      } catch (err) {
+        console.error('[FabricEraserCanvas] live ink erase failed:', err);
+        continue;
+      }
+      if (!result.changed) continue;
+      // First mutation: stash the PRE-gesture serialized state for the commit diff.
+      if (!gestureBeforeJsonRef.current.has(obj)) {
+        try { gestureBeforeJsonRef.current.set(obj, serializeObjectForCommitFn(obj)); } catch (_) { /* best effort */ }
+      }
+      if (!result.pathData.length) {
+        gestureRemovedRef.current.push(gestureBeforeJsonRef.current.get(obj) || null);
+        canvas.remove(obj);
+      } else {
+        obj.path = result.pathData;
+        obj.dirty = true;
+      }
+      anyChange = true;
+    }
+    if (anyChange) canvas.requestRenderAll();
+  }).current;
+
+  // ---------------------------------------------------------------------------
   // Helper: apply eraser path to canvas objects and commit
   // ---------------------------------------------------------------------------
   const applyEraserAndCommit = useRef((canvas) => {
@@ -266,46 +762,24 @@ const FabricEraserCanvas = memo(({
     const eraserPath = { points: eraserPoints };
     const mode = eraserModeRef.current === 'entire' ? 'entire' : 'partial';
 
-    const objects = [...canvas.getObjects()];
+    // Belt-and-braces: the live-preview trail is torn down by every caller
+    // before this runs, but it must NEVER be treated as an annotation.
+    const objects = [...canvas.getObjects()].filter((o) => !o.__isEraserTrail);
     const beforeSerializedObjects = [];
     const candidateAnnotationIds = [];
     const rejectedAnnotations = [];
     const touchedAnnotationIds = [];
     let changed = false;
 
-    const serializeObjectForCommit = (obj) => {
-      if (obj.type === 'textbox' && obj.__importedJSON) {
-        return { ...obj.__importedJSON };
-      }
-      // fabric 7: toObject(CUSTOM_PROPS) — toJSON() ignores arguments and
-      // drops the custom props (id/moduleId/regionId/data...), which stripped
-      // scope stamps from every SURVIVING annotation on any erase after the
-      // 7.4.0 upgrade.
-      const json = obj.toObject(CUSTOM_PROPS);
-      // fabric 7: toObject() emits capitalized type ('Path') — compare against
-      // the live instance's lowercase type, not the serialized casing.
-      if (obj.type === 'path' && !obj.isPdfImported) {
-        json.left = 0;
-        json.top = 0;
-      }
-      if (obj.isPdfImported && obj.__origOpacity !== undefined) {
-        json.opacity = obj.__origOpacity;
-        const wasConverted = (obj.strokeWidth || 0) === 0 && !!obj.fill && obj.fill !== 'transparent';
-        if (!wasConverted) {
-          if (obj.__origStroke !== undefined) json.stroke = obj.__origStroke;
-          if (obj.__origStrokeWidth !== undefined) json.strokeWidth = obj.__origStrokeWidth;
-        }
-      } else if (obj.__origOpacity !== undefined) {
-        json.opacity = obj.__origOpacity;
-      }
-      return json;
-    };
+    const serializeObjectForCommit = serializeObjectForCommitFn;
 
     for (let objectIndex = 0; objectIndex < objects.length; objectIndex += 1) {
       const obj = objects[objectIndex];
       const candidateId = getEraserCandidateId(obj, objectIndex);
       try {
-        beforeSerializedObjects.push(serializeObjectForCommit(obj));
+        beforeSerializedObjects.push(
+          gestureBeforeJsonRef.current.get(obj) || serializeObjectForCommit(obj)
+        );
       } catch (_) {
         beforeSerializedObjects.push(obj?.__importedJSON ? { ...obj.__importedJSON } : null);
       }
@@ -356,7 +830,8 @@ const FabricEraserCanvas = memo(({
         object: obj,
       });
 
-      if (!isTouchingObject) {
+      const liveBitten = gestureBeforeJsonRef.current.has(obj);
+      if (!isTouchingObject && !liveBitten) {
         rejectedAnnotations.push({ id: candidateId, reason: 'geometry-miss' });
         continue;
       }
@@ -375,64 +850,48 @@ const FabricEraserCanvas = memo(({
           continue;
         }
 
-        // Short-circuit: booleanErasePath unconditionally converts a stroked
-        // polyline into a filled cookie-cutter outline. When the eraser
-        // doesn't overlap the path's bounding box at all, that conversion
-        // adds no semantic value but visually turns a stroked scribble into
-        // a filled polygon whose interior loops show as holes — the
-        // "hollow stripe through imported pen stroke" symptom. Guard: only
-        // run booleanErasePath when at least one eraser sample is within
-        // radius of the path's world-space bounding rect.
-        // This branch is now only reached by partial-erasable pen/highlighter
-        // strokes. Shapes represented as paths and every non-path annotation
-        // are whole-object erase targets.
-
-        // Use booleanErasePath (cookie-cutter) for ALL pen strokes, imported
-        // or native. Rationale: once a native pen stroke has been erased
-        // once, it's stored as a filled polygon (strokeWidth=0, fill=color)
-        // because booleanErasePath's first pass converts the stroked
-        // polyline into a filled ribbon outline. Every SUBSEQUENT erase on
-        // that stroke then acts on a filled polygon, which is what lets the
-        // user carve a crescent-shaped bite from the side of a stroke
-        // without cutting through it. The earlier split-path approach
-        // avoided the first-erase thickening on imported strokes but also
-        // meant imported strokes could never be partially bitten —
-        // they always fully split. Switching imported strokes to the same
-        // code path restores parity. Any slight thickening on the very
-        // first erase is the same transition every native stroke already
-        // goes through the first time it's erased.
-        let result = booleanErasePath(obj, eraserPath, currentEraserSize);
-        let isConverted = false;
-
-        if (result) {
-          let newPathData = null;
-
-          if (Array.isArray(result)) {
-            // Fully erased (empty array) or direct array return
-            if (result.length === 0) {
-              canvas.remove(obj);
-              changed = true;
-              continue;
+        // STROKED ink (pen/highlighter/imported Ink with strokeWidth > 0):
+        // exact swept-capsule centerline splitting (src/utils/inkEraser.js).
+        // The stroke STAYS a stroked multi-subpath path — no ribbon
+        // conversion, ever. The live handler already applied every capsule
+        // incrementally; re-running the FULL chain here is idempotent and
+        // also covers flush paths that skipped a final segment.
+        // LEGACY fill-ribbons (strokeWidth 0 + fill — output of the old
+        // boolean eraser) keep the boolean path, with the eraser DENSIFIED
+        // so fast drags can no longer bead/skip.
+        const isLegacyRibbon = (obj.strokeWidth || 0) === 0 && !!obj.fill && obj.fill !== 'transparent';
+        if (!isLegacyRibbon) {
+          let capsuleChanged = gestureBeforeJsonRef.current.has(obj);
+          try {
+            const localCaps = [];
+            let localREff = null;
+            for (let pi = 0; pi + 1 < eraserPoints.length; pi += 1) {
+              const { capsule, localRadius } = toLocalCapsuleFn(obj, eraserPoints[pi], eraserPoints[pi + 1], currentEraserSize);
+              localCaps.push(capsule);
+              if (localREff === null) localREff = localRadius + (obj.strokeWidth || 0) / 2;
             }
-            newPathData = result;
-          } else {
-            newPathData = result.pathData;
-            isConverted = result.isConvertedToOutline;
+            if (localCaps.length && localREff !== null) {
+              const res = erasePathWithCapsules(obj.path, localCaps, localREff);
+              if (res.changed) {
+                capsuleChanged = true;
+                if (!res.pathData.length) {
+                  canvas.remove(obj);
+                  changed = true;
+                  continue;
+                }
+                obj.path = res.pathData;
+              }
+            }
+          } catch (err) {
+            console.error('[FabricEraserCanvas] capsule erase failed at commit:', err);
           }
-
-          if (newPathData && newPathData.length > 0) {
-            // Update the path data
-            obj.path = newPathData;
-
-            // If converted to outline, swap stroke and fill (same as PAL erasePathSegment)
-            if (isConverted && obj.strokeWidth > 0) {
-              const originalStroke = obj.stroke;
-              obj.set({
-                stroke: 'transparent',
-                strokeWidth: 0,
-                fill: originalStroke || obj.fill,
-              });
-            }
+          if (!capsuleChanged) {
+            // touched by the gate but nothing actually cut (rim graze past
+            // rEff after inflation) — leave the stroke byte-identical.
+            continue;
+          }
+          {
+            const newPathData = obj.path;
 
             // Recalculate dimensions and offsets for the new path.
             // Imported pen strokes obey a different storage convention from
@@ -494,6 +953,34 @@ const FabricEraserCanvas = memo(({
             obj.dirty = true;
             changed = true;
           }
+          continue;
+        }
+
+        // Legacy ribbon: boolean cookie-cutter with a DENSIFIED eraser chain
+        // (the old per-raw-point circles beaded/skipped on fast drags).
+        const densePoints = sampleEraserStroke(eraserPoints, currentEraserSize);
+        let result = booleanErasePath(obj, { points: densePoints }, currentEraserSize);
+        if (result) {
+          let newPathData = Array.isArray(result) ? result : result.pathData;
+          if (Array.isArray(result) && result.length === 0) {
+            canvas.remove(obj);
+            changed = true;
+            continue;
+          }
+          if (newPathData && newPathData.length > 0) {
+            obj.path = newPathData;
+            if (obj._calcDimensions) {
+              const dims = obj._calcDimensions();
+              const newPathOffsetX = dims.left + dims.width / 2;
+              const newPathOffsetY = dims.top + dims.height / 2;
+              obj.set({ width: dims.width, height: dims.height, pathOffset: { x: newPathOffsetX, y: newPathOffsetY } });
+              const newPos = new fabric.Point(newPathOffsetX, newPathOffsetY);
+              obj.setPositionByOrigin(newPos, 'center', 'center');
+            }
+            obj.setCoords();
+            obj.dirty = true;
+            changed = true;
+          }
         }
       } else {
         // Non-path objects are erased only when the eraser stroke touches
@@ -510,6 +997,18 @@ const FabricEraserCanvas = memo(({
     unsupportedAnnotationObjects.forEach((entry, index) => {
       beforeSerializedObjects.push({ ...entry.object });
     });
+
+    // Strokes fully erased LIVE are gone from the canvas — their pre-gesture
+    // snapshots must still enter the before-list so they count as deletions.
+    // Appended AFTER the unsupported entries so both lists share the
+    // [survivors, unsupported] positional prefix (index:N candidate ids of
+    // every surviving entry align between before and after).
+    for (const removedJson of gestureRemovedRef.current) {
+      if (removedJson) {
+        beforeSerializedObjects.push(removedJson);
+        changed = true;
+      }
+    }
     let calloutHitIds = [];
     const calloutCallback = onEraseCalloutRef.current;
     if (calloutCallback) {
@@ -563,7 +1062,7 @@ const FabricEraserCanvas = memo(({
     // Normalize path left/top back to 0 for SVG renderer compatibility.
     // Canvas uses left=pathOffset for display, but SVG expects left=0 with
     // absolute path data (translate(0,0) is a no-op, path coords render directly).
-    const canvasObjects = canvas.getObjects();
+    const canvasObjects = canvas.getObjects().filter((o) => !o.__isEraserTrail);
     const serializedObjects = canvasObjects.map((obj) => serializeObjectForCommit(obj));
     unsupportedAnnotationObjects.forEach((entry) => {
       const legacyCallout = getLegacyCalloutPayload(entry.object, pageNumber);
@@ -640,11 +1139,17 @@ const FabricEraserCanvas = memo(({
       const willCommit = deletedN > 0 || changedN > 0;
       console.log(`[InteractionDiag] eraser-apply @ ${Math.round(performance.now())}ms page=${pageNumber} mode=${mode} candidates=${candN} deleted=${deletedN} changed=${changedN} callouts=${calloutN} rejected=${rejN} ${willCommit ? 'COMMIT' : (candN > 0 || calloutN > 0 ? 'NO-OP (had targets, removed nothing)' : 'NO-OP (empty space)')}`);
     } catch (_e) { /* swallow */ }
+    let didCommit = false;
     if (
       eraserDiagnostics.finalDeletedAnnotationIds.length > 0
       || eraserDiagnostics.finalChangedAnnotationIds.length > 0
     ) {
+      // Refresh each object's __sourceIndex to its position in the committed
+      // array so SVG-twin index addressing stays valid for the NEXT gesture's
+      // live preview (repeat bites showed only at release without this).
+      canvasObjects.forEach((o, i) => { o.__sourceIndex = i; });
       onEraseCommitRef.current(updatedJSON, eraserDiagnostics);
+      didCommit = true;
     }
 
     if (calloutCallback && calloutHitIds.length > 0) {
@@ -659,6 +1164,7 @@ const FabricEraserCanvas = memo(({
         textMarkupCallback(pageNumber, eraserPoints, currentEraserSize);
       } catch (_) {}
     }
+    return didCommit;
   }).current;
 
   // Pre-dispose callback: flush in-progress erase gesture before canvas.off()/dispose()
@@ -666,12 +1172,19 @@ const FabricEraserCanvas = memo(({
     if (isErasingRef.current) {
       isErasingRef.current = false;
       try {
-        applyEraserAndCommit(canvas);
+        clearErasePreview(canvas);
+        if (!needsReloadRef.current) {
+          applyEraserAndCommit(canvas);
+        } else {
+          console.warn('[FabricEraserCanvas] dispose gesture dropped: external annotations change mid-gesture');
+        }
       } catch (err) {
         console.error('Pre-unmount eraser flush error:', err);
       }
       eraserPathRef.current = [];
     }
+    // sync: no SVG node may stay hidden/ghosted after this canvas dies.
+    restorePreview(canvas, { committed: true, sync: true });
     mountedRef.current = false;
   });
 
@@ -714,9 +1227,21 @@ const FabricEraserCanvas = memo(({
     canvas.moveCursor = 'none';
 
     // -----------------------------------------------------------------------
-    // Load annotations via enlivenObjects
+    // Load annotations via enlivenObjects. Wrapped in a function so the
+    // annotations-change effect can RELOAD after an external change (undo,
+    // collab) — a stale canvas would hit-test and commit pre-undo state.
     // -----------------------------------------------------------------------
+    const loadAnnotations = () => {
+    const loadGen = ++loadGenRef.current;
+    // Reset any prior canvas + gesture state (reload path).
+    try { canvas.getObjects().slice().forEach((o) => canvas.remove(o)); } catch (_) { /* fresh mount */ }
+    gestureBeforeJsonRef.current = new Map();
+    gestureRemovedRef.current = [];
+    setIsLoading(true);
+    isLoadingRef.current = true;
     const annotationsToLoad = annotationsRef.current;
+    // __sourceIndex positional addressing is anchored to THIS object.
+    enlivenSourceRef.current = annotationsToLoad;
     const objectsArray = annotationsToLoad?.objects || [];
     const enlivenableEntries = [];
     const unsupportedEntries = [];
@@ -782,8 +1307,9 @@ const FabricEraserCanvas = memo(({
         alignedEnlivenedObjects.push(instance);
       };
       fabric.util.enlivenObjects(enlivenableObjects, () => {
-        // Guard: component may have unmounted during async load
-        if (!mountedRef.current) return;
+        // Guard: component unmounted OR a newer reload superseded this one —
+        // a stale enliven must never dump old objects onto the new canvas.
+        if (!mountedRef.current || loadGen !== loadGenRef.current) return;
         const enlivenedObjects = alignedEnlivenedObjects;
 
         // Diagnostics: compare input vs enlivened. Any array-length mismatch
@@ -826,6 +1352,11 @@ const FabricEraserCanvas = memo(({
           if (!obj) return;
           const objData = enlivenableEntries[index]?.object;
           if (!objData) return;
+
+          // Source-array index — the SVG layer stamps the same index as
+          // data-annotation-index, which is the live-preview's addressing
+          // fallback for objects without a top-level id (pen strokes).
+          obj.__sourceIndex = enlivenableEntries[index]?.originalIndex;
 
           obj.set({
             strokeUniform: true,
@@ -1020,6 +1551,9 @@ const FabricEraserCanvas = memo(({
       setIsLoading(false);
       isLoadingRef.current = false;
     }
+    };
+    loadAnnotationsRef.current = loadAnnotations;
+    loadAnnotations();
 
     // -----------------------------------------------------------------------
     // Eraser gesture handling: mouse:down, mouse:move, mouse:up
@@ -1040,7 +1574,21 @@ const FabricEraserCanvas = memo(({
       // [InteractionDiag] erase gesture START (mouse:down on the eraser canvas).
       try { console.log(`[InteractionDiag] eraser-down @ ${Math.round(performance.now())}ms page=${pageNumber} mode=${eraserModeRef.current}`); } catch (_e) { /* swallow */ }
 
+      // Known-stale canvas (deferred external change): reload instead of
+      // starting a gesture that would hit-test and commit stale state.
+      if (needsReloadRef.current && loadAnnotationsRef.current) {
+        needsReloadRef.current = false;
+        try { loadAnnotationsRef.current(); } catch (err) { console.error('Eraser canvas reload failed:', err); }
+        return;
+      }
       isErasingRef.current = true;
+      gestureBeforeJsonRef.current = new Map();
+      gestureRemovedRef.current = [];
+      gestureBBoxCacheRef.current = new Map();
+      // Safety: a leaked preview from an interrupted gesture must never
+      // bleed into this one; begin also flushes any pending deferred restore.
+      clearErasePreview(canvas);
+      beginGesturePreview(canvas);
       eraserDiagGestureRef.current = beginAnnotationGesture({
         surface: 'FabricEraserCanvas',
         tool: 'eraser',
@@ -1053,28 +1601,68 @@ const FabricEraserCanvas = memo(({
       eraserPathRef.current = [['M', pointer.x, pointer.y]];
     });
 
+    // Shared gesture finisher: tears the preview down BEFORE computing the
+    // durable result (the trail must not be serialized), commits, THEN swaps
+    // visual authority back to the SVG layer. finally: a commit throw must
+    // NEVER leave the SVG hidden. Idempotent via isErasingRef.
+    const finishGesture = () => {
+      if (!isErasingRef.current) return;
+      isErasingRef.current = false;
+      markAnnotationPointerRelease(eraserDiagGestureRef.current, {
+        action: 'eraser-stroke',
+      });
+      clearErasePreview(canvas);
+      let committed = false;
+      // C-1: an external annotations change landed mid-gesture — this canvas
+      // is stale; committing it would overwrite/resurrect the external edit.
+      // Drop the gesture (the external edit wins) and reload below.
+      const staleCanvas = needsReloadRef.current;
+      try {
+        if (!staleCanvas) {
+          committed = applyEraserAndCommit(canvas) === true;
+        } else {
+          console.warn('[FabricEraserCanvas] gesture dropped: external annotations change mid-gesture');
+        }
+      } catch (err) {
+        console.error('Eraser commit error:', err);
+      } finally {
+        restorePreview(canvas, { committed });
+        eraserPathRef.current = [];
+        gestureBeforeJsonRef.current = new Map();
+        gestureRemovedRef.current = [];
+        if (needsReloadRef.current && loadAnnotationsRef.current) {
+          needsReloadRef.current = false;
+          try { loadAnnotationsRef.current(); } catch (err2) { console.error('Eraser canvas reload failed:', err2); }
+        }
+      }
+    };
+    finishGestureRef.current = finishGesture;
+
     // mouse:move
     canvas.on('mouse:move', (opt) => {
       if (!isErasingRef.current) return;
+      // Missed mouse:up (released outside the window, alt-tab, OS interrupt):
+      // the first hover move with NO buttons down finishes the gesture instead
+      // of ghost-erasing under a bare cursor forever.
+      if (opt.e && typeof opt.e.buttons === 'number' && opt.e.buttons === 0) {
+        finishGesture();
+        return;
+      }
       markAnnotationPreviewFrame(eraserDiagGestureRef.current, {
         action: 'eraser-stroke',
       });
       const pointer = canvas.getPointer(opt.e);
       eraserPathRef.current.push(['L', pointer.x, pointer.y]);
+      // LIVE erase: really bite the newest capsule out of eligible strokes —
+      // the drag shows the exact committed result as it happens.
+      applyLiveInkErase(canvas);
+      // Whole-object targets ghost in place on the SVG layer.
+      updateErasePreview(canvas);
     });
 
     // mouse:up
     canvas.on('mouse:up', () => {
-      if (!isErasingRef.current) {
-        return;
-      }
-      isErasingRef.current = false;
-      markAnnotationPointerRelease(eraserDiagGestureRef.current, {
-        action: 'eraser-stroke',
-      });
-
-      applyEraserAndCommit(canvas);
-      eraserPathRef.current = [];
+      finishGesture();
     });
 
     // Pre-unmount flush is handled by onBeforeDisposeRef (runs before canvas.off()).
@@ -1086,6 +1674,79 @@ const FabricEraserCanvas = memo(({
   // ---------------------------------------------------------------------------
   useEffect(() => {
     annotationsRef.current = annotations;
+    // Data-driven stroke swap-back: the SVG has re-rendered with the
+    // committed (post-erase) data — safe to hand the visuals back.
+    if (pendingRestoreRef.current && gestureSwapTokenRef.current === pendingRestoreRef.current.token) {
+      const pending = pendingRestoreRef.current;
+      pendingRestoreRef.current = null;
+      if (restoreTimerRef.current) {
+        clearTimeout(restoreTimerRef.current);
+        restoreTimerRef.current = null;
+      }
+      try { pending.run(); } catch (_) { /* never throw in an effect */ }
+    }
+    // EXTERNAL annotations change (undo, collab, another tool's commit):
+    // reload the canvas or every later hit-test/commit runs against stale
+    // objects — the "eraser dead after undo" / resurrect-on-commit bug.
+    // Our OWN commit's echo is recognized by CONTENT EQUIVALENCE with the
+    // live canvas (id + path-command-count + first-coordinate per entry) —
+    // an undo restoring the SAME ids with DIFFERENT geometry does not match
+    // and correctly reloads. False-skip requires a full scalar-fingerprint
+    // collision (negligible, and bounded: canvas ≈ store by fingerprint).
+    if (annotations !== enlivenSourceRef.current && loadAnnotationsRef.current) {
+      // Type-aware scalar fingerprint, computed IDENTICALLY from a stored
+      // JSON entry and from a live canvas object:
+      //  - paths: command count + first/mid/last rounded coords (+ world
+      //    left/top for imported paths — internal paths serialize left/top
+      //    as 0 while live objects hold pathOffset-anchored values, so
+      //    left/top is only comparable for the imported convention);
+      //  - everything else: type + left/top/width/height/angle/strokeWidth.
+      // Undo restoring same ids with different geometry mismatches on the
+      // coordinate scalars; same-id shape moves mismatch on left/top.
+      const entryPrint = (o, i) => {
+        const id = o?.data?.id || o?.id || `@${i}`;
+        const type = String(o?.type || '').toLowerCase();
+        const r = (v) => Math.round(Number(v) || 0);
+        const paint = `${o?.stroke || ''}~${o?.fill || ''}`;
+        if (type === 'path' && Array.isArray(o?.path) && o.path.length) {
+          const pathArr = o.path;
+          const coord = (cmd) => cmd ? `${r(cmd[cmd.length - 2])},${r(cmd[cmd.length - 1])}` : '-';
+          const base = `${id}:P${pathArr.length}:${coord(pathArr[0])}:${coord(pathArr[pathArr.length >> 1])}:${coord(pathArr[pathArr.length - 1])}:${r(o.strokeWidth)}:${paint}`;
+          return o?.isPdfImported ? `${base}:${r(o.left)}:${r(o.top)}` : base;
+        }
+        return `${id}:${type}:${r(o?.left)}:${r(o?.top)}:${r(o?.width)}:${r(o?.height)}:${r(o?.angle)}:${r(o?.strokeWidth)}:${paint}`;
+      };
+      const annotationsPrint = (() => {
+        const objs = annotations?.objects;
+        if (!Array.isArray(objs)) return null;
+        return objs.map((o, i) => entryPrint(o, i)).join('|');
+      })();
+      const canvasPrint = (() => {
+        const canvas = fabricRef.current;
+        if (!canvas) return undefined;
+        try {
+          const live = canvas.getObjects()
+            .filter((o) => !o.__isEraserTrail)
+            .map((o, i) => entryPrint(o, i));
+          const liveCount = live.length;
+          const unsupported = (unsupportedAnnotationObjectsRef.current || [])
+            .map((entry, i) => entryPrint(entry?.object, liveCount + i));
+          // Unsupported (callout) entries live at the END of committed
+          // arrays; before any commit an external change mismatches anyway.
+          return live.concat(unsupported).join('|');
+        } catch (_) { return undefined; }
+      })();
+      const isOwnEcho = annotationsPrint !== null
+        && canvasPrint !== undefined
+        && annotationsPrint === canvasPrint;
+      if (isOwnEcho) {
+        enlivenSourceRef.current = annotations; // canvas already IS this content
+      } else if (isErasingRef.current) {
+        needsReloadRef.current = true; // defer: never yank objects mid-gesture
+      } else {
+        try { loadAnnotationsRef.current(); } catch (err) { console.error('Eraser canvas reload failed:', err); }
+      }
+    }
   }, [annotations]);
 
   useEffect(() => {
@@ -1184,13 +1845,46 @@ const FabricEraserCanvas = memo(({
     if (canvas && isErasingRef.current) {
       isErasingRef.current = false;
       try {
-        applyEraserAndCommit(canvas);
+        clearErasePreview(canvas);
+        if (!needsReloadRef.current) {
+          applyEraserAndCommit(canvas);
+        } else {
+          console.warn('[FabricEraserCanvas] zoom-flush gesture dropped: external annotations change mid-gesture');
+        }
       } catch (err) {
         console.error('Zoom-triggered eraser flush error:', err);
+      } finally {
+        // sync: the container is mid-resize; leave no async restore pending
+        // that a fast unmount could orphan.
+        restorePreview(canvas, { committed: true, sync: true });
+        eraserPathRef.current = [];
+        if (needsReloadRef.current && loadAnnotationsRef.current) {
+          needsReloadRef.current = false;
+          try { loadAnnotationsRef.current(); } catch (err2) { console.error('Eraser canvas reload failed:', err2); }
+        }
       }
-      eraserPathRef.current = [];
     }
   }, [zoomGeneration]);
+
+  // Safety net (window blur / OS interruption mid-drag): finish the gesture —
+  // commit what was erased and restore visual authority to the SVG layer.
+  useEffect(() => {
+    if (typeof window === 'undefined') return undefined;
+    const onBlur = () => {
+      try { finishGestureRef.current?.(); } catch (_) { /* never throw from a listener */ }
+    };
+    window.addEventListener('blur', onBlur);
+    return () => {
+      window.removeEventListener('blur', onBlur);
+      // No deferred restore may outlive the component: a surviving timer
+      // would mutate a REMOUNTED page's SVG nodes.
+      if (restoreTimerRef.current) {
+        clearTimeout(restoreTimerRef.current);
+        restoreTimerRef.current = null;
+      }
+      pendingRestoreRef.current = null;
+    };
+  }, []);
 
   // ---------------------------------------------------------------------------
   // Render

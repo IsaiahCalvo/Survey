@@ -259,8 +259,11 @@ export const isPointOnPath = (point, pathObj, tolerance = DEFAULT_TOLERANCE) => 
     y: localPoint.y + pathOffset.y
   };
 
-  // For filled paths, also collect vertices to check if point is inside
-  const vertices = [];
+  // For filled paths, collect vertices PER SUBPATH (ring). Pooling every
+  // subpath into one polygon bridged fragments with phantom edges — false
+  // insides between pieces and parity-flipped misses inside real fill.
+  const rings = [];
+  let ring = null;
   let currentX = 0, currentY = 0;
   let startX = 0, startY = 0;
   let minDistance = Infinity;
@@ -276,12 +279,17 @@ export const isPointOnPath = (point, pathObj, tolerance = DEFAULT_TOLERANCE) => 
       currentY = endY;
       startX = endX;
       startY = endY;
-      if (hasFill) vertices.push({ x: endX, y: endY });
+      if (hasFill) {
+        ring = [{ x: endX, y: endY }];
+        rings.push(ring);
+      }
     } else if (command === 'L' || command === 'l') {
       const endX = command === 'L' ? cmd[1] : currentX + cmd[1];
       const endY = command === 'L' ? cmd[2] : currentY + cmd[2];
 
-      if (hasStroke || !hasFill) {
+      {
+        // Always track boundary distance — fill-only converted ribbons need
+        // rim tolerance too (eraser circle touching the edge must count).
         const dist = distanceToLineSegment(pathLocalPoint,
           { x: currentX, y: currentY },
           { x: endX, y: endY }
@@ -289,7 +297,7 @@ export const isPointOnPath = (point, pathObj, tolerance = DEFAULT_TOLERANCE) => 
         minDistance = Math.min(minDistance, dist);
       }
 
-      if (hasFill) vertices.push({ x: endX, y: endY });
+      if (hasFill && ring) ring.push({ x: endX, y: endY });
       currentX = endX;
       currentY = endY;
     } else if (command === 'C' || command === 'c') {
@@ -315,12 +323,12 @@ export const isPointOnPath = (point, pathObj, tolerance = DEFAULT_TOLERANCE) => 
         const x = mt3 * currentX + 3 * mt2 * tt * cp1x + 3 * mt * tt2 * cp2x + tt3 * endX;
         const y = mt3 * currentY + 3 * mt2 * tt * cp1y + 3 * mt * tt2 * cp2y + tt3 * endY;
 
-        if (hasStroke || !hasFill) {
+        if (true) { // boundary distance always (rim tolerance for fill-only)
           const dist = distanceToLineSegment(pathLocalPoint, { x: prevX, y: prevY }, { x, y });
           minDistance = Math.min(minDistance, dist);
         }
 
-        if (hasFill) vertices.push({ x, y });
+        if (hasFill && ring) ring.push({ x, y });
         prevX = x;
         prevY = y;
       }
@@ -344,12 +352,12 @@ export const isPointOnPath = (point, pathObj, tolerance = DEFAULT_TOLERANCE) => 
         const x = mt * mt * currentX + 2 * mt * tt * cpx + tt * tt * endX;
         const y = mt * mt * currentY + 2 * mt * tt * cpy + tt * tt * endY;
 
-        if (hasStroke || !hasFill) {
+        if (true) { // boundary distance always (rim tolerance for fill-only)
           const dist = distanceToLineSegment(pathLocalPoint, { x: prevX, y: prevY }, { x, y });
           minDistance = Math.min(minDistance, dist);
         }
 
-        if (hasFill) vertices.push({ x, y });
+        if (hasFill && ring) ring.push({ x, y });
         prevX = x;
         prevY = y;
       }
@@ -358,7 +366,7 @@ export const isPointOnPath = (point, pathObj, tolerance = DEFAULT_TOLERANCE) => 
       currentY = endY;
     } else if (command === 'Z' || command === 'z') {
       // Close path - add line back to start for stroke distance calculation
-      if ((hasStroke || !hasFill) && (currentX !== startX || currentY !== startY)) {
+      if (currentX !== startX || currentY !== startY) { // closing edge distance always
         const dist = distanceToLineSegment(pathLocalPoint,
           { x: currentX, y: currentY },
           { x: startX, y: startY }
@@ -375,11 +383,30 @@ export const isPointOnPath = (point, pathObj, tolerance = DEFAULT_TOLERANCE) => 
     return true;
   }
 
-  // Check if point is inside filled area using ray casting
-  if (hasFill && vertices.length >= 3) {
-    if (isPointInPolygon(pathLocalPoint, vertices)) {
-      return true;
+  // Filled area: NONZERO winding across all rings (matches the SVG default
+  // fill-rule the renderer uses), so holes stay holes and fragments never
+  // bridge. Plus rim tolerance: a point within `tolerance` of any boundary
+  // counts — the eraser circle touching a converted ribbon's edge must hit.
+  if (hasFill) {
+    let winding = 0;
+    for (const r of rings) {
+      if (!r || r.length < 3) continue;
+      for (let vi = 0, vj = r.length - 1; vi < r.length; vj = vi, vi += 1) {
+        const a = r[vj];
+        const b = r[vi];
+        if (a.y <= pathLocalPoint.y) {
+          if (b.y > pathLocalPoint.y
+            && (b.x - a.x) * (pathLocalPoint.y - a.y) - (pathLocalPoint.x - a.x) * (b.y - a.y) > 0) {
+            winding += 1;
+          }
+        } else if (b.y <= pathLocalPoint.y
+          && (b.x - a.x) * (pathLocalPoint.y - a.y) - (pathLocalPoint.x - a.x) * (b.y - a.y) < 0) {
+          winding -= 1;
+        }
+      }
     }
+    if (winding !== 0) return true;
+    if (minDistance <= tolerance) return true;
   }
 
   // For paths with only stroke (no fill), check stroke distance with default tolerance
