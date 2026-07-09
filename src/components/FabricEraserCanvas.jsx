@@ -1359,7 +1359,12 @@ const FabricEraserCanvas = memo(({
           obj.__sourceIndex = enlivenableEntries[index]?.originalIndex;
 
           obj.set({
-            strokeUniform: true,
+            // Preserve the SOURCE object's strokeUniform — forcing true here
+            // leaked into the commit serialization, and the SVG renderer maps
+            // strokeUniform → vector-effect:non-scaling-stroke, so any erase
+            // visibly changed the on-screen weight of every re-serialized
+            // stroke at zoom ≠ 100% (owner: "click alters nearby line height").
+            strokeUniform: objData.strokeUniform === true,
             selectable: false,
             evented: false,
           });

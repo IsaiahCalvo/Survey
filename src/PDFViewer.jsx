@@ -29107,8 +29107,12 @@ ${pageBlocks}
                               </div>
                               )}
 
-                              {/* Drawing Canvas -- transparent overlay for pen + highlighter */}
-                              {isDrawingTool && (
+                              {/* Drawing Canvas -- transparent overlay for pen + highlighter.
+                                  Mount only on pages in/near the viewport: arming a tool used
+                                  to build a Fabric canvas on EVERY page (36 canvases, ~0.7s
+                                  main-thread stall). The IntersectionObserver-maintained
+                                  window keeps the pages the user can actually touch. */}
+                              {isDrawingTool && (pdfjsOverlayWindowPages.has(pageNumber) || pageNumber === currentPage) && (
                                 <FabricDrawingCanvas
                                   key={`draw-${pageNumber}`}
                                   pageNumber={pageNumber}
@@ -29136,8 +29140,9 @@ ${pageBlocks}
                                 />
                               )}
 
-                              {/* Eraser Canvas -- loads all annotations, SVG hidden via wrapper visibility above */}
-                              {isEraserTool && (
+                              {/* Eraser Canvas -- loads all annotations, SVG hidden via wrapper visibility above.
+                                  Same viewport gate as the drawing canvas (instant tool switch). */}
+                              {isEraserTool && (pdfjsOverlayWindowPages.has(pageNumber) || pageNumber === currentPage) && (
                                 <FabricEraserCanvas
                                   key={`erase-${pageNumber}`}
                                   pageNumber={pageNumber}
