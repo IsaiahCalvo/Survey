@@ -375,7 +375,11 @@ export const PDFJS_INTERACTION_COMMIT_FRAME_SPACING_MS = 24;
 export const PDFJS_INTERACTION_EVENT_THROTTLE_MS = 96;
 export const PDFJS_INTERACTION_MARK_THROTTLE_MS = 96;
 export const PDFJS_INTERACTION_VISIBLE_PAGE_REFRESH_MS = 160;
-export const PDFJS_ZOOM_OVERLAY_SETTLE_MS = 1400;
+// 1400ms was Syncfusion-era: the owned pdf.js engine commits ~110ms after the
+// last wheel tick and re-rasters within a frame or two; 250ms covers that with
+// margin. The old value kept keyboard/toolbar zoom in its "interaction" state
+// (stale toolbar %, suppressed reconcile) for 1.4s per zoom step.
+export const PDFJS_ZOOM_OVERLAY_SETTLE_MS = 250;
 const PDFJS_BASE_SCROLL_SENSITIVITY = 1.08;
 const PDFJS_SCROLL_ZOOM_OUT_GAIN = 1;
 const PDFJS_SCROLL_ZOOM_IN_GAIN = 0.9;

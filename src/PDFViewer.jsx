@@ -28826,7 +28826,12 @@ ${pageBlocks}
                                   width: '100%',
                                   height: '100%',
                                   pointerEvents: 'none',
-                                  visibility: pdfjsZoomPreviewActive ? 'hidden' : undefined,
+                                  // NOTE: never hide this surface during zoom. The old
+                                  // visibility gate (Syncfusion snapshot-preview era) blanked
+                                  // every committed annotation for the whole settle window on
+                                  // keyboard/toolbar zoom — with snapshots dead under pdf.js
+                                  // there is nothing shown in its place, i.e. pure flicker.
+                                  // SVG viewBox scaling needs no protection window.
                                 }}
                               >
                               {pageRegions && pageRegions.length > 0 && !(showRegionSelection && regionSelectionPage === pageNumber) && (() => {

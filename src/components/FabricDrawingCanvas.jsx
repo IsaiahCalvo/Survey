@@ -295,6 +295,50 @@ const FabricDrawingCanvas = memo(({
   });
 
   // -------------------------------------------------------------------------
+  // Live SVG stroke preview — the user must never see two renderers. Fabric's
+  // Canvas2D live brush rasterizes strokes visibly bolder than the committed
+  // SVG path (different anti-aliasing engines — CLAUDE.md 2026-04-10), so for
+  // ink tools the upper canvas is opacity:0 and this SVG path (same viewBox,
+  // same attrs as the committed stroke) is the only live ink the user sees.
+  // -------------------------------------------------------------------------
+  const previewPathRef = useRef(null);
+  const previewPointsRef = useRef([]);
+  const previewRafRef = useRef(0);
+  const buildPreviewD = (pts) => {
+    if (!pts.length) return '';
+    if (pts.length === 1) {
+      // zero-length subpath + round linecap renders a dot
+      return `M ${pts[0].x} ${pts[0].y} L ${pts[0].x + 0.001} ${pts[0].y}`;
+    }
+    // PencilBrush smoothing shape: quadratics through segment midpoints
+    let d = `M ${pts[0].x} ${pts[0].y}`;
+    for (let i = 1; i < pts.length - 1; i += 1) {
+      const mx = (pts[i].x + pts[i + 1].x) / 2;
+      const my = (pts[i].y + pts[i + 1].y) / 2;
+      d += ` Q ${pts[i].x} ${pts[i].y} ${mx} ${my}`;
+    }
+    const last = pts[pts.length - 1];
+    d += ` L ${last.x} ${last.y}`;
+    return d;
+  };
+  const schedulePreviewDraw = () => {
+    if (previewRafRef.current) return;
+    previewRafRef.current = requestAnimationFrame(() => {
+      previewRafRef.current = 0;
+      const p = previewPathRef.current;
+      if (p) p.setAttribute('d', buildPreviewD(previewPointsRef.current));
+    });
+  };
+  const clearStrokePreview = () => {
+    if (previewRafRef.current) {
+      cancelAnimationFrame(previewRafRef.current);
+      previewRafRef.current = 0;
+    }
+    previewPointsRef.current = [];
+    if (previewPathRef.current) previewPathRef.current.setAttribute('d', '');
+  };
+
+  // -------------------------------------------------------------------------
   // Canvas initialization: container-aware sizing, PencilBrush, path:created
   // -------------------------------------------------------------------------
   useEffect(() => {
@@ -401,9 +445,13 @@ const FabricDrawingCanvas = memo(({
       flushSync(() => onStrokeCommitRef.current(updated));
       canvas.remove(e.path);
       canvas.renderAll();
+      // Committed SVG is in the DOM (flushSync above) — drop the live preview
+      // in the same tick. Also covers the zoom-flush programmatic commit,
+      // where fabric never emits mouse:up.
+      clearStrokePreview();
     });
 
-    const onFreeDrawMouseDown = () => {
+    const onFreeDrawMouseDown = (opt) => {
       if (SHAPE_TOOLS.includes(activeToolRef.current)) return;
       drawDiagGestureRef.current = beginAnnotationGesture({
         surface: 'FabricDrawingCanvas',
@@ -413,18 +461,31 @@ const FabricDrawingCanvas = memo(({
         pointerDown: true,
         pageNumber,
       });
+      // Live SVG preview: start collecting page-space points. The SVG preview
+      // (same renderer + attrs as the committed stroke) is the ONLY visible
+      // live ink — Fabric's Canvas2D upper canvas is opacity:0 for ink tools,
+      // so live and released strokes can never differ in weight again.
+      previewPointsRef.current = [canvas.getPointer(opt.e)];
+      schedulePreviewDraw();
     };
-    const onFreeDrawMouseMove = () => {
+    const onFreeDrawMouseMove = (opt) => {
       if (SHAPE_TOOLS.includes(activeToolRef.current)) return;
       markAnnotationPreviewFrame(drawDiagGestureRef.current, {
         action: activeToolRef.current === 'highlighter' ? 'highlight-stroke' : 'pen-stroke',
       });
+      if (canvas._isCurrentlyDrawing && previewPointsRef.current.length) {
+        previewPointsRef.current.push(canvas.getPointer(opt.e));
+        schedulePreviewDraw();
+      }
     };
     const onFreeDrawMouseUp = () => {
       if (SHAPE_TOOLS.includes(activeToolRef.current)) return;
       markAnnotationPointerRelease(drawDiagGestureRef.current, {
         action: activeToolRef.current === 'highlighter' ? 'highlight-stroke' : 'pen-stroke',
       });
+      // path:created (commit → SVG layer) has already fired synchronously
+      // before fabric emits mouse:up, so clearing here can't blank a frame.
+      clearStrokePreview();
     };
     canvas.on('mouse:down', onFreeDrawMouseDown);
     canvas.on('mouse:move', onFreeDrawMouseMove);
@@ -875,12 +936,19 @@ const FabricDrawingCanvas = memo(({
       brush.color = strokeColor;
       brush.width = strokeWidth;
     }
-    // Live-preview parity: committed highlighter strokes render in SVG with
-    // mix-blend-mode: multiply, but the live brush paints source-over on the
-    // upper canvas — the stroke visibly lightens/thins at release. Blend the
-    // live brush layer the same way the committed SVG does.
+    // Single visible renderer: for ink tools hide Fabric's Canvas2D live paint
+    // (opacity keeps pointer events + cursor) — the SVG preview path below is
+    // what the user sees, with the exact attrs the committed stroke will have.
+    const isInk = activeTool === 'pen' || activeTool === 'highlighter';
     if (canvas.upperCanvasEl) {
-      canvas.upperCanvasEl.style.mixBlendMode = activeTool === 'highlighter' ? 'multiply' : '';
+      canvas.upperCanvasEl.style.opacity = isInk ? '0' : '';
+    }
+    const preview = previewPathRef.current;
+    if (preview) {
+      const isHl = activeTool === 'highlighter';
+      preview.setAttribute('stroke', isHl ? highlightColor : strokeColor);
+      preview.setAttribute('stroke-width', String(isHl ? Math.max(strokeWidth, 8) : strokeWidth));
+      preview.style.mixBlendMode = isHl ? 'multiply' : '';
     }
   }, [activeTool, strokeColor, highlightColor, strokeWidth]);
 
@@ -939,6 +1007,30 @@ const FabricDrawingCanvas = memo(({
       }}
     >
       <canvas ref={canvasElRef} />
+      {/* Live ink preview — same renderer (SVG) + same attrs as the committed
+          stroke, so live and released weight are identical by construction. */}
+      <svg
+        viewBox={`0 0 ${pageWidth} ${pageHeight}`}
+        preserveAspectRatio="none"
+        aria-hidden="true"
+        style={{
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          width: '100%',
+          height: '100%',
+          pointerEvents: 'none',
+          overflow: 'visible',
+        }}
+      >
+        <path
+          ref={previewPathRef}
+          d=""
+          fill="none"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      </svg>
     </div>
   );
 });

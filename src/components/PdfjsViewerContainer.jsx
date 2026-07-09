@@ -131,7 +131,13 @@ function PdfPageCanvas({ pdf, pageIndex, pageW, pageH, renderScale, rotation, on
   const baseScale = Math.min(renderScale, BASE_MAX_SCALE);
   const tiled = renderScale > BASE_MAX_SCALE;
 
-  useEffect(() => {
+  // useLayoutEffect (not useEffect): a page re-entering the mount window
+  // (scroll return, MAX_MOUNTED window shift on zoom) starts as a blank
+  // canvas; a passive effect paints it one frame AFTER mount — a visible
+  // white flash. The cache blit below is synchronous, so running it before
+  // the browser paints makes a cache-hit remount pixel-perfect on its very
+  // first frame. The raster path stays async and double-buffered.
+  useLayoutEffect(() => {
     let cancelled = false;
     const myGen = ++genRef.current;
 

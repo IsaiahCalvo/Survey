@@ -455,7 +455,22 @@ export const AuthProvider = ({ children }) => {
       ...(captchaToken ? { options: { captchaToken } } : {}),
     });
 
-    if (error) throw error;
+    if (error) {
+      // Local dev only: the server-side captcha (Cloudflare Turnstile) can't
+      // be satisfied on localhost. Reuse the existing dev bootstrap (vite
+      // /__dev-auth/session middleware) so a MANUAL sign-in works locally the
+      // same way the boot-time auto-login already does. Hard no-op in
+      // production builds (guarded inside the helper by import.meta.env.DEV).
+      // Restricted to the configured dev account: the bootstrap mints a
+      // session WITHOUT a password check, so it must never apply to an
+      // arbitrary typed email.
+      const devEmail = String(import.meta.env.VITE_DEV_AUTO_LOGIN_EMAIL || '').trim().toLowerCase();
+      if (devEmail && String(email).trim().toLowerCase() === devEmail) {
+        const devSession = await runDevAuthBootstrapIfCaptchaBlocked(error, email);
+        if (devSession) return { session: devSession, user: devSession.user };
+      }
+      throw error;
+    }
     return data;
   };
 

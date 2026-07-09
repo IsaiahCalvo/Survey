@@ -39,6 +39,14 @@ test('zoom commit handler reconciles scale immediately', () => {
   );
 });
 
+test('annotations are never hidden during zoom (no flicker gate)', () => {
+  assert.ok(
+    !/visibility:\s*pdfjsZoomPreviewActive/.test(src),
+    'the committed-annotation surface must never be visibility-gated on zoom — ' +
+    'the old Syncfusion-era gate blanked every annotation for the whole settle window'
+  );
+});
+
 test('page container map stays engine-owned', () => {
   assert.ok(
     src.includes('onPageContainersChange={handlePdfjsEngineContainersChanged}'),
