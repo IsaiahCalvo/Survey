@@ -13,6 +13,8 @@ import {
   resolveAnnotationName,
   getStrokeWidth,
   getFabricStroke,
+  isFilledOutlinePath,
+  buildFillAppearanceStream,
 } from './shared.js';
 
 export const FABRIC_TYPE = 'path';
@@ -53,7 +55,12 @@ export function adaptInk(fabricObj, { pdfDoc, page, pageHeight }) {
   if (currentPath.length > 0) inkList.push(currentPath);
   if (inkList.length === 0) return null;
 
-  const stroke = hexToRgbTriplet(getFabricStroke(fabricObj));
+  // Filled zero-width outlines (erased strokes / imported pressure-ink
+  // dots) carry their real color in `fill`, not `stroke` — `stroke` is
+  // typically null for these (see isFilledOutlinePath in shared.js).
+  const filledOutline = isFilledOutlinePath(fabricObj);
+  const paintSource = filledOutline ? fabricObj.fill : getFabricStroke(fabricObj);
+  const stroke = hexToRgbTriplet(paintSource);
 
   const dict = {
     Type: 'Annot',
@@ -66,6 +73,16 @@ export function adaptInk(fabricObj, { pdfDoc, page, pageHeight }) {
     NM: pdfStringOrEmpty(resolveAnnotationName(fabricObj, 'ink')),
     P: page.ref,
   };
+
+  if (filledOutline) {
+    const apRef = buildFillAppearanceStream(pdfDoc, pathData, pageHeight, stroke, [minX, minY, maxX, maxY]);
+    if (apRef) {
+      dict.AP = { N: apRef };
+      dict.CA = Number.isFinite(fabricObj?.opacity)
+        ? Math.max(0, Math.min(1, fabricObj.opacity))
+        : 1;
+    }
+  }
 
   return registerAnnotationDict(pdfDoc, dict);
 }

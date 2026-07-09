@@ -481,6 +481,130 @@ const hexToRGB = (hex) => {
 };
 
 /**
+ * UX 2026-07-09 (erased-outline PDF export): a previously-erased pen stroke
+ * (or a PDF-imported Drawboard/Adobe pressure-ink dot) is stored in Fabric
+ * as a FILLED zero-width outline — {strokeWidth: 0, fill: <color>}, possibly
+ * with hole rings as separate M...Z subpaths (see
+ * src/utils/geometryEraser.js booleanErasePath / groupRingsIntoPolygons).
+ * Mirrors isErasedOutline in src/utils/svgAnnotationRenderers.jsx so export
+ * detection agrees with what the renderer already treats as "filled."
+ */
+const isFilledOutlineInkPath = (fabricObj) => {
+  const strokeWidth = Number(fabricObj?.strokeWidth);
+  const strokeIsZeroish = !Number.isFinite(strokeWidth) || strokeWidth <= 0;
+  const fill = fabricObj?.fill;
+  const hasVisibleFill = fill !== null && fill !== undefined && fill !== '' && fill !== 'none' && fill !== 'transparent';
+  return strokeIsZeroish && hasVisibleFill;
+};
+
+const formatPdfNum = (n) => {
+  if (!Number.isFinite(n)) return '0';
+  // Fixed precision keeps the content stream compact and avoids float noise.
+  return String(Math.round(n * 1000) / 1000);
+};
+
+/**
+ * Converts Fabric path commands (M/L/Q/C/Z) into PDF content-stream path
+ * operators for a FILL-only appearance (no stroke). Quadratic (Q) segments
+ * are degree-elevated to exact cubic Beziers — PDF content streams only
+ * support cubic curves ('c') — via the standard elevation formula:
+ *   C1 = P0 + 2/3*(P1-P0),  C2 = P2 + 2/3*(P1-P2)
+ * which reproduces the same curve as the source quadratic exactly.
+ */
+const buildInkFillAppearanceOps = (pathData, pageHeight) => {
+  if (!Array.isArray(pathData) || pathData.length === 0) return null;
+
+  const ops = [];
+  let cur = null;
+  let hasDrawableSegment = false;
+  const flip = (y) => pageHeight - y;
+
+  pathData.forEach((cmd) => {
+    if (!Array.isArray(cmd) || cmd.length === 0) return;
+    const type = cmd[0];
+
+    if (type === 'M') {
+      const x = Number(cmd[1]) || 0;
+      const y = Number(cmd[2]) || 0;
+      ops.push(`${formatPdfNum(x)} ${formatPdfNum(flip(y))} m`);
+      cur = { x, y };
+    } else if (type === 'L') {
+      const x = Number(cmd[1]) || 0;
+      const y = Number(cmd[2]) || 0;
+      ops.push(`${formatPdfNum(x)} ${formatPdfNum(flip(y))} l`);
+      cur = { x, y };
+      hasDrawableSegment = true;
+    } else if (type === 'Q') {
+      const qx = Number(cmd[1]) || 0;
+      const qy = Number(cmd[2]) || 0;
+      const ex = Number(cmd[3]) || 0;
+      const ey = Number(cmd[4]) || 0;
+      const startX = cur ? cur.x : qx;
+      const startY = cur ? cur.y : qy;
+      const c1x = startX + (2 / 3) * (qx - startX);
+      const c1y = startY + (2 / 3) * (qy - startY);
+      const c2x = ex + (2 / 3) * (qx - ex);
+      const c2y = ey + (2 / 3) * (qy - ey);
+      ops.push(
+        `${formatPdfNum(c1x)} ${formatPdfNum(flip(c1y))} ${formatPdfNum(c2x)} ${formatPdfNum(flip(c2y))} ${formatPdfNum(ex)} ${formatPdfNum(flip(ey))} c`
+      );
+      cur = { x: ex, y: ey };
+      hasDrawableSegment = true;
+    } else if (type === 'C') {
+      const c1x = Number(cmd[1]) || 0;
+      const c1y = Number(cmd[2]) || 0;
+      const c2x = Number(cmd[3]) || 0;
+      const c2y = Number(cmd[4]) || 0;
+      const ex = Number(cmd[5]) || 0;
+      const ey = Number(cmd[6]) || 0;
+      ops.push(
+        `${formatPdfNum(c1x)} ${formatPdfNum(flip(c1y))} ${formatPdfNum(c2x)} ${formatPdfNum(flip(c2y))} ${formatPdfNum(ex)} ${formatPdfNum(flip(ey))} c`
+      );
+      cur = { x: ex, y: ey };
+      hasDrawableSegment = true;
+    } else if (type === 'Z') {
+      ops.push('h');
+    }
+  });
+
+  if (!hasDrawableSegment) return null;
+  return ops.join('\n');
+};
+
+/**
+ * Builds and registers a Form XObject /AP /N appearance stream that fills
+ * the path with an even-odd winding rule — matches the SVG renderer's
+ * fillRule for erased/filled-outline ink (src/utils/svgAnnotationRenderers.jsx,
+ * isErasedOutline branch: `fillRule={erased ? 'evenodd' : attrs.fillRule}`) so
+ * hole rings (a ring erased out of the middle of a stroke) render as holes
+ * instead of solid fill.
+ *
+ * Rect and the Form's BBox are set to the SAME bounds with an identity
+ * Matrix so, per PDF spec 12.5.5, the appearance's BBox-to-Rect fit
+ * transform collapses to identity: content-stream coordinates equal page
+ * coordinates directly. This matches how
+ * pdfAnnotationImporter.convertAppearancePathToFabricPath treats /AP path
+ * coordinates as already being in page space.
+ */
+const buildFilledInkAppearanceStream = (pdfDoc, pathData, pageHeight, fillColor, rect) => {
+  const ops = buildInkFillAppearanceOps(pathData, pageHeight);
+  if (!ops) return null;
+
+  const content = `${formatPdfNum(fillColor.red)} ${formatPdfNum(fillColor.green)} ${formatPdfNum(fillColor.blue)} rg\n${ops}\nf*`;
+
+  const apStream = pdfDoc.context.stream(content, {
+    Type: 'XObject',
+    Subtype: 'Form',
+    FormType: 1,
+    BBox: rect,
+    Matrix: [1, 0, 0, 1, 0, 0],
+    Resources: {},
+  });
+
+  return pdfDoc.context.register(apStream);
+};
+
+/**
  * Convert Fabric.js path to PDF Ink annotation
  */
 const createInkAnnotation = (pdfDoc, page, fabricObj, pageHeight, options = {}) => {
@@ -547,8 +671,14 @@ const createInkAnnotation = (pdfDoc, page, fabricObj, pageHeight, options = {}) 
       }
     });
 
-    // Get color
-    const color = hexToRGB(fabricObj.stroke || '#000000');
+    // Filled zero-width outlines (erased strokes / imported pressure-ink
+    // dots) carry their real color in `fill`, not `stroke` — `stroke` is
+    // typically null for these (see isFilledOutlineInkPath above).
+    const filledOutline = isFilledOutlineInkPath(fabricObj);
+    const fillHex = fabricObj.fill && fabricObj.fill !== 'transparent' ? fabricObj.fill : null;
+    const color = filledOutline && fillHex
+      ? hexToRGB(fillHex)
+      : hexToRGB(fabricObj.stroke || '#000000');
 
     // Create InkList PDF array
     const inkListArray = pdfDoc.context.obj(
@@ -562,10 +692,23 @@ const createInkAnnotation = (pdfDoc, page, fabricObj, pageHeight, options = {}) 
       Rect: [minX, minY, maxX, maxY],
       InkList: inkListArray,
       C: [color.red, color.green, color.blue],
-      Border: [0, 0, fabricObj.strokeWidth || 1],
+      // `fabricObj.strokeWidth || 1` previously collapsed an intentional
+      // strokeWidth:0 (filled outline) to 1 — a falsy-zero bug that made
+      // erased strokes export with the wrong border width.
+      Border: [0, 0, Number.isFinite(fabricObj.strokeWidth) ? fabricObj.strokeWidth : 1],
       Contents: PDFString.of(''),
       P: page.ref, // Reference to page
     };
+
+    if (filledOutline && fillHex) {
+      const apRef = buildFilledInkAppearanceStream(pdfDoc, pathData, pageHeight, color, [minX, minY, maxX, maxY]);
+      if (apRef) {
+        annotationDict.AP = { N: apRef };
+        annotationDict.CA = Number.isFinite(fabricObj.opacity)
+          ? Math.max(0, Math.min(1, fabricObj.opacity))
+          : 1;
+      }
+    }
 
     applyAppAnnotationMetadataToDict(annotationDict, options);
 

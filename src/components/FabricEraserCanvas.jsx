@@ -37,7 +37,7 @@ import {
   getEraserStrokeBounds,
   sampleEraserStroke,
 } from '../utils/eraserHitTest.js';
-import { erasePathWithCapsules } from '../utils/inkEraser.js';
+import { eraseInkCrescent } from '../utils/crescentErase.js';
 
 // Live-preview node ownership (module scope — survives unmount/remount and is
 // shared across page instances). Each element an eraser gesture styles is
@@ -633,30 +633,6 @@ const FabricEraserCanvas = memo(({
     return json;
   }).current;
 
-  // Transform a scene-space capsule step into an object's PATH-DATA space
-  // (inverse transform + pathOffset, radius scaled) — the same mapping
-  // booleanErasePath uses, shared by the live and commit erase paths.
-  const toLocalCapsuleFn = useRef((obj, aScene, bScene, sceneRadius) => {
-    const matrix = obj.calcTransformMatrix();
-    const pathOffset = obj.pathOffset || { x: 0, y: 0 };
-    const scale = Math.sqrt(matrix[0] * matrix[0] + matrix[1] * matrix[1]) || 1;
-    const inv = (pt) => {
-      const [a, b, c, d, e, f] = matrix;
-      const det = a * d - b * c;
-      if (Math.abs(det) < 1e-10) return { x: pt.x, y: pt.y };
-      const px = pt.x - e;
-      const py = pt.y - f;
-      return {
-        x: (d * px - c * py) / det + pathOffset.x,
-        y: (-b * px + a * py) / det + pathOffset.y,
-      };
-    };
-    return {
-      capsule: { a: inv(aScene), b: inv(bScene) },
-      localRadius: sceneRadius / scale,
-    };
-  }).current;
-
   // LIVE partial erase: bite the newest pointer segment out of every eligible
   // freehand stroke, exactly as the commit will (same math, incremental).
   const applyLiveInkErase = useRef((canvas) => {
@@ -679,7 +655,12 @@ const FabricEraserCanvas = memo(({
     let anyChange = false;
     for (const obj of [...canvas.getObjects()]) {
       if (obj.__isEraserTrail || obj.type !== 'path' || !obj.path) continue;
-      const isStroke = (obj.strokeWidth || 0) > 0 && (
+      // A stroke already bitten earlier THIS gesture converts to
+      // strokeWidth:0 on first contact (see eraseInkCrescent below) — it
+      // must stay eligible for live bites for the rest of the gesture, or
+      // the preview would freeze the instant the crescent shape appears.
+      const convertedThisGesture = gestureBeforeJsonRef.current.has(obj);
+      const isStroke = ((obj.strokeWidth || 0) > 0 || convertedThisGesture) && (
         obj.tool === 'pen'
         || obj.tool === 'highlighter'
         || obj.pdfAnnotationType === 'Ink'
@@ -700,11 +681,9 @@ const FabricEraserCanvas = memo(({
         if (br.left > capMaxX + inflate || br.left + br.width < capMinX - inflate
           || br.top > capMaxY + inflate || br.top + br.height < capMinY - inflate) continue;
       } catch (_) { /* fall through to exact math */ }
-      const { capsule, localRadius } = toLocalCapsuleFn(obj, aScene, bScene, sceneRadius);
-      const rEff = localRadius + (obj.strokeWidth || 0) / 2;
       let result;
       try {
-        result = erasePathWithCapsules(obj.path, [capsule], rEff);
+        result = eraseInkCrescent(obj, [aScene, bScene], sceneRadius);
       } catch (err) {
         console.error('[FabricEraserCanvas] live ink erase failed:', err);
         continue;
@@ -719,6 +698,12 @@ const FabricEraserCanvas = memo(({
         canvas.remove(obj);
       } else {
         obj.path = result.pathData;
+        if (result.isConvertedToOutline) {
+          // First-contact stroke->fill conversion: persist in the EXISTING
+          // legacy-ribbon format (strokeWidth:0, fill:<original stroke>) —
+          // the codebase already re-erases/hit-tests/renders/syncs it.
+          obj.set({ strokeWidth: 0, fill: obj.stroke });
+        }
         obj.dirty = true;
       }
       anyChange = true;
@@ -851,27 +836,24 @@ const FabricEraserCanvas = memo(({
         }
 
         // STROKED ink (pen/highlighter/imported Ink with strokeWidth > 0):
-        // exact swept-capsule centerline splitting (src/utils/inkEraser.js).
-        // The stroke STAYS a stroked multi-subpath path — no ribbon
-        // conversion, ever. The live handler already applied every capsule
-        // incrementally; re-running the FULL chain here is idempotent and
-        // also covers flush paths that skipped a final segment.
-        // LEGACY fill-ribbons (strokeWidth 0 + fill — output of the old
-        // boolean eraser) keep the boolean path, with the eraser DENSIFIED
-        // so fast drags can no longer bead/skip.
+        // crescent-erase pipeline (src/utils/crescentErase.js) — a cheap
+        // centerline gate decides if the stroke needs work, then a TRUE
+        // boolean subtraction bites a rounded, partial-width crescent out of
+        // the stroke's outline, converting it ONCE (lazily, on first
+        // contact) from a stroked path to a filled outline in the existing
+        // legacy-ribbon format. The live handler already applied every
+        // capsule incrementally; re-running the FULL chain here is
+        // idempotent and also covers flush paths that skipped a final
+        // segment.
+        // LEGACY fill-ribbons (strokeWidth 0 + fill — output of an earlier
+        // gesture's conversion, this one included) keep the boolean path,
+        // with the eraser DENSIFIED so fast drags can no longer bead/skip.
         const isLegacyRibbon = (obj.strokeWidth || 0) === 0 && !!obj.fill && obj.fill !== 'transparent';
         if (!isLegacyRibbon) {
           let capsuleChanged = gestureBeforeJsonRef.current.has(obj);
           try {
-            const localCaps = [];
-            let localREff = null;
-            for (let pi = 0; pi + 1 < eraserPoints.length; pi += 1) {
-              const { capsule, localRadius } = toLocalCapsuleFn(obj, eraserPoints[pi], eraserPoints[pi + 1], currentEraserSize);
-              localCaps.push(capsule);
-              if (localREff === null) localREff = localRadius + (obj.strokeWidth || 0) / 2;
-            }
-            if (localCaps.length && localREff !== null) {
-              const res = erasePathWithCapsules(obj.path, localCaps, localREff);
+            if (eraserPoints.length > 1) {
+              const res = eraseInkCrescent(obj, eraserPoints, currentEraserSize);
               if (res.changed) {
                 capsuleChanged = true;
                 if (!res.pathData.length) {
@@ -880,6 +862,12 @@ const FabricEraserCanvas = memo(({
                   continue;
                 }
                 obj.path = res.pathData;
+                if (res.isConvertedToOutline) {
+                  // First-contact stroke->fill conversion (e.g. a flush that
+                  // never got a live mousemove tick, or a single-click
+                  // erase): same legacy-ribbon format as the live path.
+                  obj.set({ strokeWidth: 0, fill: obj.stroke });
+                }
               }
             }
           } catch (err) {

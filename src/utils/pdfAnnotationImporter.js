@@ -1270,7 +1270,7 @@ function parseAppearanceStream(content) {
   };
 }
 
-function extractAppearanceMetadataForAnnotation(annotationDict, context, pdfLib) {
+export function extractAppearanceMetadataForAnnotation(annotationDict, context, pdfLib) {
   const { PDFName, decodePDFRawStream } = pdfLib;
   const ap = annotationDict?.get?.(PDFName.of('AP'));
   if (!ap) return null;
