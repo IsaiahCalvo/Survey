@@ -76,7 +76,6 @@ Survey-BetaSafeS2/
 │   │   └── DropSlot.jsx        # Drag-and-drop target placeholder
 │   ├── utils/                 # Utility modules (24 files)
 │   │   ├── zoomController.js   # Zoom logic (fit-page, fit-width, manual)
-│   │   ├── pdfCache.js         # PageRenderCache for rendered pages
 │   │   ├── PDFWorkerManager.js # pdf.js worker pool management
 │   │   ├── pdfAnnotations.js   # Annotation serialization
 │   │   ├── pdfAnnotationsPdfLib.js # Embed annotations into PDF using pdf-lib
@@ -279,7 +278,7 @@ Survey-BetaSafeS2/
 **Utilities:**
 - Shared helpers: `src/utils/[category][Feature].js` (e.g., `geometryHitTest.js`)
 - Geometry/math: `src/utils/` (e.g., `lineGeometry.js`, `regionMath.js`)
-- PDF operations: `src/utils/pdf*.js` (e.g., `pdfAnnotations.js`, `pdfCache.js`)
+- PDF operations: `src/utils/pdf*.js` (e.g., `pdfAnnotations.js`, `pdfAnnotationsPdfLib.js`)
 - Performance: `src/utils/performanceLogger.js` or `layerPerformance.js`
 
 **Tests:**

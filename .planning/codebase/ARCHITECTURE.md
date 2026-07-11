@@ -109,11 +109,6 @@
 - Exports: Canvas object handles selection, serialization, undo/redo
 - Key methods: `getCanvasState()`, `setCanvasState()`, `updateDrawingTool()`
 
-**PDF Page Cache (PageRenderCache):**
-- Purpose: Caches rendered PDF page canvases to avoid re-rendering on zoom/pan
-- Pattern: Keyed by page number + zoom level
-- Used by: `PDFPageCanvas` checks cache before calling pdf.js render
-
 **Annotation Store (AnnotationContext):**
 - Purpose: Decoupled store allowing components to subscribe to specific pages
 - Pattern: Pub-sub model — pages only re-render if their annotations changed
