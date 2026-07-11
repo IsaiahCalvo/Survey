@@ -218,8 +218,6 @@ import {
   PDFJS_SCROLL_MAX_STEP_PX,
   PDFJS_SCROLL_MIN_STEP_PX,
   PDFJS_WHEEL_SCROLL_BATCH_MS,
-  PDFJS_WHEEL_ZOOM_BATCH_MS,
-  PDFJS_WHEEL_ZOOM_STALE_DROP_MS,
   PDFJS_ZOOM_OVERLAY_SETTLE_MS,
   PDFJS_ZOOM_SNAPSHOT_VIEWPORT_MARGIN_PX,
   TOOLBAR_ZOOM_STEP_FACTOR,
@@ -255,7 +253,6 @@ import {
   getNormalizedWheelDeltas,
   getOpacityFromEntityColor,
   getPDFId,
-  getSmoothPdfjsWheelZoom,
   getPdfjsOverlayPrefetchPages,
   getPdfjsTextMarkupMode,
   getPdfjsZoomAwareScrollGain,
@@ -271,7 +268,6 @@ import {
   hexToRgba,
   isPointOnSelectDeleteOnlyTextMarkup,
   isSelectDeleteOnlyImportedTextMarkupType,
-  isSuspiciousWheelZoomPercent,
   loadAnnotationsByPage,
   loadCallouts,
   loadCloudRenderAnnotationsByPage,
@@ -382,7 +378,6 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   const pdfjsWheelZoomRafRef = useRef(null);
   const pdfjsWheelZoomDeltaRef = useRef(0);
   const pdfjsWheelZoomAnchorRef = useRef(null);
-  const pdfjsLastCursorPageRef = useRef(null);
   const skipNextViewStateEmitRef = useRef(true);
   const presenceAutoDisabledRef = useRef(false);
   const presenceStructuralWarningShownRef = useRef(false);
@@ -4771,417 +4766,20 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     pdfjsWheelZoomAnchorRef.current = null;
   }, []);
 
-  const findPdfjsPageAtClientPoint = useCallback((clientX, clientY) => {
-    if (typeof document === 'undefined' || !Number.isFinite(clientX) || !Number.isFinite(clientY)) {
-      return null;
-    }
-    const direct = document.elementFromPoint?.(clientX, clientY)?.closest?.('.survey-pdfjs-page-div');
-    if (direct) {
-      pdfjsLastCursorPageRef.current = direct;
-      return direct;
-    }
-
-    const cached = pdfjsLastCursorPageRef.current;
-    const cachedRect = cached?.isConnected ? cached.getBoundingClientRect?.() : null;
-    if (
-      cachedRect &&
-      cachedRect.width > 0 &&
-      cachedRect.height > 0 &&
-      clientX >= cachedRect.left &&
-      clientX <= cachedRect.right &&
-      clientY >= cachedRect.top &&
-      clientY <= cachedRect.bottom
-    ) {
-      return cached;
-    }
-
-    // Annotation/selection overlays sit above Pdfjs's page divs, so
-    // elementFromPoint can return our overlay instead of the PDF page. For
-    // cursor-centric zoom we still need the real page under that screen point;
-    // otherwise zoom falls back to rough scroll-ratio math and drifts down/right.
-    const pages = Array.from(document.querySelectorAll('.survey-pdfjs-page-div'));
-    for (const page of pages) {
-      const rect = page.getBoundingClientRect?.();
-      if (!rect || rect.width <= 0 || rect.height <= 0) continue;
-      if (clientX >= rect.left && clientX <= rect.right && clientY >= rect.top && clientY <= rect.bottom) {
-        pdfjsLastCursorPageRef.current = page;
-        return page;
-      }
-    }
-    return null;
-  }, []);
-
-  const performPdfjsCursorWheelZoom = useCallback((event, viewerContainer, reason = 'overlay-wheel-zoom') => {
+  const performPdfjsCursorWheelZoom = useCallback(() => {
     // Under the owned pdf.js engine, let the engine's OWN cursor-anchored smooth
     // wheel zoom (CSS transform during gesture + re-raster on settle) own the
-    // gesture. Bail BEFORE the preventDefault/stopPropagation below so the
+    // gesture. Return false WITHOUT preventDefault/stopPropagation so the
     // ctrl/meta wheel event keeps propagating in the capture phase down to the
     // engine's scroller listener (PdfjsViewerContainer's onWheel). The engine
     // still preventDefaults native pinch-zoom itself and fires
     // onZoomPhase('gesture-start') -> handlePdfjsZoomPhase -> zoomGeneration bump,
     // so the Canvas auto-commit invariant is preserved. This covers both wheel
     // entry paths (the document capture listener and handlePdfjsWrapperWheel)
-    // because neither calls preventDefault itself. See HANDOFF.md "make pdf.js zoom smooth".
-    if (true) return false;
-    if (!event || !viewerContainer || !(event.ctrlKey || event.metaKey)) return false;
-    if (event.__surveyCursorZoomHandled) return true;
-    event.__surveyCursorZoomHandled = true;
-    // [InteractionDiag] ZOOM intent via Ctrl/Cmd+wheel / pinch, throttled to
-    // ~150ms so a continuous pinch gesture does not flood the log.
-    try {
-      const nowMs = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
-      if (nowMs - (interactionDiagZoomLogAtRef.current || 0) >= 150) {
-        interactionDiagZoomLogAtRef.current = nowMs;
-        const dir = (Number(event.deltaY) || 0) < 0 ? 'in' : 'out';
-        console.log(`[InteractionDiag] zoom-intent @ ${Math.round(nowMs)}ms dir=${dir} via=ctrl-wheel/pinch (cursor-zoom path)`);
-      }
-    } catch (_e) { /* swallow */ }
-
-    event.preventDefault?.();
-    event.stopPropagation?.();
-    const rawEventAtMs = (typeof performance !== 'undefined' && typeof performance.now === 'function')
-      ? performance.now()
-      : Date.now();
-    const rawDeltaX = Number(event.deltaX) || 0;
-    const rawDeltaY = Number(event.deltaY) || 0;
-    const rawZoomState = readTrackpadDebugState(viewerContainer);
-    const rawZoomDirection = rawDeltaY < 0 ? 'zoom-in' : rawDeltaY > 0 ? 'zoom-out' : 'zoom-flat';
-    trackpadInteractionDebugRef.current.totals.rawWheel += 1;
-    trackpadInteractionDebugRef.current.totals.rawZoomWheel += 1;
-    recordTrackpadInteractionEvent('raw-wheel', {
-      family: 'zoom',
-      direction: rawZoomDirection,
-      reason,
-      rawDeltaX,
-      rawDeltaY,
-      deltaMode: event.deltaMode,
-      ctrlKey: !!event.ctrlKey,
-      metaKey: !!event.metaKey,
-      shiftKey: !!event.shiftKey,
-      altKey: !!event.altKey,
-      clientX: roundOverlayRecorderValue(event.clientX, 3),
-      clientY: roundOverlayRecorderValue(event.clientY, 3),
-      defaultPrevented: !!event.defaultPrevented,
-      before: rawZoomState
-    });
-
-    const tool = activeToolRef.current;
-    if (tool === 'pen' || tool === 'highlighter' || tool === 'eraser') {
-      setActiveTool('pan');
-    }
-    bumpOverlayLagEventTotal(reason === 'pdfjs-wheel-zoom' ? 'pdfjsWheelZoom' : 'overlayWheelZoom');
-    markInteractionPerfActive(reason, INTERACTION_PERF_SCROLL_HOLD_MS);
-    markPdfjsInteractionActive(reason);
-
-    const containerRect = viewerContainer.getBoundingClientRect();
-    const pointerX = Number.isFinite(event.clientX) ? event.clientX - containerRect.left : containerRect.width / 2;
-    const pointerY = Number.isFinite(event.clientY) ? event.clientY - containerRect.top : containerRect.height / 2;
-    const clientXForAnchor = Number.isFinite(event.clientX) ? event.clientX : (containerRect.left + containerRect.width / 2);
-    const clientYForAnchor = Number.isFinite(event.clientY) ? event.clientY : (containerRect.top + containerRect.height / 2);
-    const pageElementAtCursor = findPdfjsPageAtClientPoint(clientXForAnchor, clientYForAnchor);
-    const pageRectAtCursor = pageElementAtCursor?.getBoundingClientRect?.();
-    const pageAnchor = pageElementAtCursor && pageRectAtCursor?.width > 0 && pageRectAtCursor?.height > 0
-      ? {
-          id: pageElementAtCursor.id || null,
-          ratioX: (clientXForAnchor - pageRectAtCursor.left) / pageRectAtCursor.width,
-          ratioY: (clientYForAnchor - pageRectAtCursor.top) / pageRectAtCursor.height,
-        }
-      : null;
-    pdfjsWheelZoomAnchorRef.current = {
-      x: pointerX + viewerContainer.scrollLeft,
-      y: pointerY + viewerContainer.scrollTop,
-      cursorX: pointerX,
-      cursorY: pointerY,
-      clientX: clientXForAnchor,
-      clientY: clientYForAnchor,
-      pageAnchor,
-      scrollLeftAtEvent: viewerContainer.scrollLeft,
-      scrollTopAtEvent: viewerContainer.scrollTop,
-    };
-    pdfjsWheelZoomDeltaRef.current += (-event.deltaY);
-
-    if (pdfjsWheelZoomRafRef.current !== null) return true;
-
-    pdfjsWheelZoomRafRef.current = setTimeout(() => {
-      const workStartMs = (typeof performance !== 'undefined' && typeof performance.now === 'function')
-        ? performance.now()
-        : Date.now();
-      const queuedLatencyMs = workStartMs - rawEventAtMs;
-      pdfjsWheelZoomRafRef.current = null;
-      const delta = Number(pdfjsWheelZoomDeltaRef.current) || 0;
-      pdfjsWheelZoomDeltaRef.current = 0;
-      if (queuedLatencyMs > PDFJS_WHEEL_ZOOM_STALE_DROP_MS) {
-        trackpadInteractionDebugRef.current.totals.skippedZoom += 1;
-        recordTrackpadInteractionEvent('zoom-skipped', {
-          family: 'zoom',
-          direction: delta < 0 ? 'zoom-out' : delta > 0 ? 'zoom-in' : 'zoom-flat',
-          skipped: true,
-          note: 'dropped stale zoom batch after main-thread delay',
-          rawDeltaY: delta,
-          latencyMs: roundOverlayRecorderValue(queuedLatencyMs, 3),
-          before: readTrackpadDebugState(viewerContainer)
-        });
-        return;
-      }
-      if (Math.abs(delta) < 0.01) {
-        trackpadInteractionDebugRef.current.totals.skippedZoom += 1;
-        recordTrackpadInteractionEvent('zoom-skipped', {
-          family: 'zoom',
-          direction: delta < 0 ? 'zoom-out' : delta > 0 ? 'zoom-in' : 'zoom-flat',
-          skipped: true,
-          note: 'batched delta below threshold',
-          rawDeltaY: delta,
-          before: readTrackpadDebugState(viewerContainer)
-        });
-        return;
-      }
-
-      const anchor = pdfjsWheelZoomAnchorRef.current;
-      if (anchor) setAnchor(anchor);
-
-      const viewer = pdfjsViewerRef.current;
-      if (!viewer) return;
-      const rawGetZoomValue = typeof viewer.getZoomValue === 'function' ? viewer.getZoomValue() : null;
-      const rawViewerZoomValue = viewer.zoomValue;
-      const rawMagnificationZoom = viewer.magnificationModule?.zoomFactor
-        ? viewer.magnificationModule.zoomFactor * 100
-        : null;
-      const trustedReactZoom = scaleRef.current ? scaleRef.current * 100 : null;
-      const reportedZoom = coercePdfjsZoomPercent(
-        rawGetZoomValue,
-        rawViewerZoomValue,
-        rawMagnificationZoom,
-        null
-      );
-      const correctedSuspiciousZoom = isSuspiciousWheelZoomPercent(reportedZoom, trustedReactZoom);
-      const reportedCurrentZoom = correctedSuspiciousZoom
-        ? trustedReactZoom
-        : coercePdfjsZoomPercent(
-          rawGetZoomValue,
-          rawViewerZoomValue,
-          rawMagnificationZoom,
-          trustedReactZoom,
-          100
-        );
-      // Wheel zoom must advance from the live React zoom, not Pdfjs's rounded
-      // reported value, otherwise trackpads feel like they move in tiny stale steps.
-      const currentZoom = Number.isFinite(Number(trustedReactZoom))
-        ? Number(trustedReactZoom)
-        : reportedCurrentZoom;
-
-      const nextZoom = getSmoothPdfjsWheelZoom(currentZoom, delta);
-      const zoomRequestedDeltaAbs = Math.abs(nextZoom - currentZoom);
-      const zoomReportedLagAbs = Math.abs(currentZoom - reportedCurrentZoom);
-      const wheelPerfTotals = pdfjsWheelPerfTotalsRef.current;
-      wheelPerfTotals.zoomEvents += 1;
-      wheelPerfTotals.zoomRawDeltaAbs += Math.abs(delta);
-      wheelPerfTotals.zoomRequestedDeltaAbs += zoomRequestedDeltaAbs;
-      wheelPerfTotals.zoomReportedLagAbs += zoomReportedLagAbs;
-      wheelPerfTotals.zoomReportedLagMax = Math.max(wheelPerfTotals.zoomReportedLagMax || 0, zoomReportedLagAbs);
-      wheelPerfTotals.zoomRequestedDeltaMax = Math.max(wheelPerfTotals.zoomRequestedDeltaMax || 0, zoomRequestedDeltaAbs);
-      if (zoomRequestedDeltaAbs >= 25) {
-        wheelPerfTotals.zoomBigJumpEvents += 1;
-      }
-      const recorder = overlayLagRecorderRef.current;
-      if (recorder?.active && recorder.options?.captureWheelEvents === true) {
-        const wheelEvents = recorder.wheelEvents || (recorder.wheelEvents = []);
-        wheelEvents.push({
-          tMs: Math.round((performance.now() - (recorder.startedAtMs || 0)) * 10) / 10,
-          type: 'zoom',
-          rawDeltaY: delta,
-          requestedDeltaAbs: zoomRequestedDeltaAbs,
-          reportedLagAbs: zoomReportedLagAbs,
-          currentZoom,
-          nextZoom
-        });
-        if (wheelEvents.length > 6000) {
-          wheelEvents.splice(0, wheelEvents.length - 6000);
-        }
-      }
-      debugMark('zoom_wheel_request', {
-        rawDeltaY: delta,
-        reportedZoom,
-        trustedReactZoom,
-        currentZoom,
-        reportedCurrentZoom,
-        nextZoom,
-        requestedDeltaAbs: zoomRequestedDeltaAbs,
-        reportedLagAbs: zoomReportedLagAbs,
-        rawGetZoomValue,
-        rawViewerZoomValue,
-        rawMagnificationZoom,
-        correctedSuspiciousZoom
-      });
-
-      if (Math.abs(nextZoom - currentZoom) < 0.02) {
-        trackpadInteractionDebugRef.current.totals.skippedZoom += 1;
-        recordTrackpadInteractionEvent('zoom-skipped', {
-          family: 'zoom',
-          direction: delta > 0 ? 'zoom-in' : 'zoom-out',
-          skipped: true,
-          note: 'computed zoom delta below threshold',
-          rawDeltaY: delta,
-          currentZoom,
-          nextZoom,
-          requestedZoomDelta: nextZoom - currentZoom,
-          latencyMs: roundOverlayRecorderValue(workStartMs - rawEventAtMs, 3),
-          before: readTrackpadDebugState(viewerContainer)
-        });
-        return;
-      }
-
-      // Under pdf.js, never enter the snapshot/overlay-preview mode (see
-      // capturePdfjsZoomSnapshots) — it hides/covers the live form widgets
-      // mid-zoom. Leave the overlay live; it resyncs on each committed step.
-      if (false && !zoomOverlayTransformActiveRef.current) {
-        zoomOverlayBaseScaleRef.current = currentZoom / 100;
-        capturePdfjsZoomSnapshots(currentZoom / 100);
-        zoomOverlayTransformActiveRef.current = true;
-        setPdfjsZoomPreviewActive(true);
-        debugMark('zoom_start', {
-          scale: currentZoom / 100,
-          source: 'overlay_wheel_zoom_pre',
-          reportedScale: reportedZoom / 100,
-          correctedSuspiciousZoom
-        });
-        const pcMap = pdfjsPageContainersStateRef.current || pageContainersRef.current || {};
-        const cachedRects = {};
-        const portalHostSnapshot = {};
-        Object.entries(pcMap).forEach(([pn, el]) => {
-          if (el?.isConnected) {
-            cachedRects[pn] = { top: el.offsetTop, left: el.offsetLeft, width: el.offsetWidth, height: el.offsetHeight };
-            portalHostSnapshot[Number(pn)] = el;
-          }
-        });
-        pdfjsCachedPageRectsRef.current = cachedRects;
-        const existingHosts = pdfjsInteractionPortalHostsRef.current || {};
-        if (Object.keys(existingHosts).length === 0) {
-          pdfjsInteractionPortalHostsRef.current = portalHostSnapshot;
-        }
-      }
-
-      const cursorX = (anchor && Number.isFinite(anchor.cursorX)) ? anchor.cursorX : 0;
-      const cursorY = (anchor && Number.isFinite(anchor.cursorY)) ? anchor.cursorY : 0;
-      const scrollLeftAtEvent = (anchor && Number.isFinite(anchor.scrollLeftAtEvent)) ? anchor.scrollLeftAtEvent : viewerContainer.scrollLeft;
-      const scrollTopAtEvent = (anchor && Number.isFinite(anchor.scrollTopAtEvent)) ? anchor.scrollTopAtEvent : viewerContainer.scrollTop;
-      const ratio = nextZoom > 0 && currentZoom > 0 ? (nextZoom / currentZoom) : 1;
-      if (false) updatePdfjsZoomSnapshots(nextZoom / 100);
-      const targetScrollLeft = (scrollLeftAtEvent + cursorX) * ratio - cursorX;
-      const targetScrollTop = (scrollTopAtEvent + cursorY) * ratio - cursorY;
-
-      const mag = viewer.magnificationModule;
-      const clientX = (anchor && Number.isFinite(anchor.clientX)) ? anchor.clientX : null;
-      const clientY = (anchor && Number.isFinite(anchor.clientY)) ? anchor.clientY : null;
-      // Pdfjs exposes a native cursor-aware zoom entry point. We still
-      // reapply scroll below because mixed-size/portrait documents can be
-      // re-centered by Pdfjs after zoom, which breaks cursor-centric zoom.
-      if (mag && typeof mag.initiateMouseZoom === 'function' && clientX !== null && clientY !== null) {
-        mag.initiateMouseZoom(clientX, clientY, nextZoom);
-      } else if (mag && typeof mag.zoomTo === 'function') {
-        mag.zoomTo(nextZoom);
-      }
-
-      const applyAnchor = () => {
-        const maxScrollLeft = Math.max(0, (viewerContainer.scrollWidth || 0) - viewerContainer.clientWidth);
-        const maxScrollTop = Math.max(0, (viewerContainer.scrollHeight || 0) - viewerContainer.clientHeight);
-        let nextLeft = targetScrollLeft;
-        let nextTop = targetScrollTop;
-        const pageAnchorInfo = anchor?.pageAnchor;
-        const pageEl = pageAnchorInfo?.id && typeof document !== 'undefined'
-          ? document.getElementById(pageAnchorInfo.id)
-          : null;
-        const pageRect = pageEl?.getBoundingClientRect?.();
-        if (pageRect && Number.isFinite(pageAnchorInfo.ratioX) && Number.isFinite(pageAnchorInfo.ratioY)) {
-          const anchoredClientX = pageRect.left + (pageRect.width * pageAnchorInfo.ratioX);
-          const anchoredClientY = pageRect.top + (pageRect.height * pageAnchorInfo.ratioY);
-          nextLeft = viewerContainer.scrollLeft + (anchoredClientX - clientX);
-          nextTop = viewerContainer.scrollTop + (anchoredClientY - clientY);
-        }
-        viewerContainer.scrollLeft = Math.min(Math.max(0, nextLeft), maxScrollLeft);
-        viewerContainer.scrollTop = Math.min(Math.max(0, nextTop), maxScrollTop);
-        updatePdfjsZoomSnapshots(nextZoom / 100);
-      };
-      applyAnchor();
-      if (typeof window !== 'undefined' && typeof window.requestAnimationFrame === 'function') {
-        window.requestAnimationFrame(() => {
-          applyAnchor();
-          window.requestAnimationFrame(() => {
-            applyAnchor();
-          });
-        });
-      }
-      const workEndMs = (typeof performance !== 'undefined' && typeof performance.now === 'function')
-        ? performance.now()
-        : Date.now();
-      trackpadInteractionDebugRef.current.totals.processedZoom += 1;
-      const afterImmediate = readTrackpadDebugState(viewerContainer);
-      recordTrackpadInteractionEvent('zoom-processed', {
-        family: 'zoom',
-        direction: nextZoom > currentZoom ? 'zoom-in' : 'zoom-out',
-        processed: true,
-        reason,
-        rawDeltaY: delta,
-        currentZoom,
-        reportedZoom,
-        reportedCurrentZoom,
-        trustedReactZoom,
-        nextZoom,
-        requestedZoomDelta: roundOverlayRecorderValue(nextZoom - currentZoom, 3),
-        requestedDeltaAbs: roundOverlayRecorderValue(zoomRequestedDeltaAbs, 3),
-        reportedLagAbs: roundOverlayRecorderValue(zoomReportedLagAbs, 3),
-        actualZoomDelta: roundOverlayRecorderValue((afterImmediate.zoomPercent || 0) - currentZoom, 3),
-        latencyMs: roundOverlayRecorderValue(workEndMs - rawEventAtMs, 3),
-        workMs: roundOverlayRecorderValue(workEndMs - workStartMs, 3),
-        before: rawZoomState,
-        after: afterImmediate,
-        targetScrollLeft: roundOverlayRecorderValue(targetScrollLeft, 3),
-        targetScrollTop: roundOverlayRecorderValue(targetScrollTop, 3),
-        anchor: anchor || null
-      });
-      if (typeof window !== 'undefined') {
-        [120, 500].forEach((delayMs) => {
-          window.setTimeout(() => {
-            const observed = readTrackpadDebugState(viewerContainer);
-            recordTrackpadInteractionEvent('zoom-observed', {
-              family: 'zoom',
-              direction: nextZoom > currentZoom ? 'zoom-in' : 'zoom-out',
-              processed: true,
-              reason,
-              delayMs,
-              rawDeltaY: delta,
-              currentZoom,
-              nextZoom,
-              requestedZoomDelta: roundOverlayRecorderValue(nextZoom - currentZoom, 3),
-              actualZoomDelta: roundOverlayRecorderValue((observed.zoomPercent || 0) - currentZoom, 3),
-              responsivenessRatio: roundOverlayRecorderValue(
-                Math.abs(nextZoom - currentZoom) > 0.001
-                  ? (((observed.zoomPercent || 0) - currentZoom) / (nextZoom - currentZoom))
-                  : null,
-                4
-              ),
-              latencyMs: roundOverlayRecorderValue(((typeof performance !== 'undefined' && typeof performance.now === 'function') ? performance.now() : Date.now()) - rawEventAtMs, 3),
-              after: observed
-            });
-          }, delayMs);
-        });
-      }
-      recordPdfjsIdleWork('pdfjsInternals', workEndMs - workStartMs);
-    }, PDFJS_WHEEL_ZOOM_BATCH_MS);
-
-    return true;
-  }, [
-    bumpOverlayLagEventTotal,
-    capturePdfjsZoomSnapshots,
-    findPdfjsPageAtClientPoint,
-    markInteractionPerfActive,
-    markPdfjsInteractionActive,
-    readTrackpadDebugState,
-    recordPdfjsIdleWork,
-    recordTrackpadInteractionEvent,
-    setAnchor,
-    setActiveTool,
-    updatePdfjsZoomSnapshots,
-  ]);
+    // because neither calls preventDefault itself. The old JS cursor-zoom body
+    // was deleted 2026-07-11 (de-fragilize P1 batch F); see HANDOFF.md 'make pdf.js zoom smooth'.
+    return false;
+  }, []);
 
   // Memoize document unload handler to prevent re-renders
   const handleDocumentUnload = useCallback(() => {
@@ -5712,7 +5310,6 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     bumpOverlayLagEventTotal,
     clearPdfjsWheelZoomRaf,
     detachPdfjsInteractionListeners,
-    findPdfjsPageAtClientPoint,
     markInteractionPerfActive,
     markPdfjsInteractionActive,
     readTrackpadDebugState,

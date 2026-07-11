@@ -272,14 +272,6 @@ export const coercePdfjsZoomPercent = (...values) => {
   return 100;
 };
 
-export const isSuspiciousWheelZoomPercent = (reportedPercent, trustedPercent) => (
-  Number.isFinite(reportedPercent) &&
-  Number.isFinite(trustedPercent) &&
-  reportedPercent <= 10 &&
-  trustedPercent >= 25 &&
-  trustedPercent / Math.max(1, reportedPercent) >= 2
-);
-
 const PDFJS_PDF_SURFACE_SELECTOR = [
   'img[id*="_tileimg_"]',
   'img[id*="_pageCanvas_"]',
@@ -385,12 +377,6 @@ export const PDFJS_SCROLL_MAX_STEP_PX = 220;
 export const PDFJS_SCROLL_MIN_STEP_PX = 16;
 export const PDFJS_SCROLL_FRAME_MAX_PX = 180;
 export const PDFJS_WHEEL_SCROLL_BATCH_MS = 24;
-// Trackpad pinch/wheel zoom sensitivity. Keep this centralized so both
-// Pdfjs wheel paths stay cursor-anchored and feel equally responsive.
-const PDFJS_WHEEL_ZOOM_EXPONENT = 0.004;
-const PDFJS_WHEEL_ZOOM_MAX_STEP_PERCENT = 24;
-export const PDFJS_WHEEL_ZOOM_BATCH_MS = 3;
-export const PDFJS_WHEEL_ZOOM_STALE_DROP_MS = 260;
 export const PDFJS_ZOOM_SNAPSHOT_VIEWPORT_MARGIN_PX = 420;
 export const TOOLBAR_ZOOM_STEP_FACTOR = 1.25;
 export const PDFJS_INTERACTION_FORCE_PROXY_ALL_PAGES = true;
@@ -429,18 +415,6 @@ export const OVERLAY_LAG_RECORDER_ATTRIBUTION_MIN_FRAME_RATIO = 0.2;
 const DOCUMENT_SYNC_STRUCTURAL_DISABLED_KEY = 'document_sync_structural_disabled';
 const DOCUMENT_SYNC_STRUCTURAL_DISABLED_TTL_MS = 10 * 60 * 1000;
 const HISTORY_DEBUG_CONSOLE_KEY = 'pdf_history_debug_console';
-
-export const getSmoothPdfjsWheelZoom = (currentZoom, wheelDelta) => {
-  const safeCurrent = Number.isFinite(Number(currentZoom)) ? Number(currentZoom) : 100;
-  const safeDelta = Number.isFinite(Number(wheelDelta)) ? Number(wheelDelta) : 0;
-  const factor = Math.exp(safeDelta * PDFJS_WHEEL_ZOOM_EXPONENT);
-  const targetZoom = safeCurrent * factor;
-  const cappedZoom = safeCurrent + Math.max(
-    -PDFJS_WHEEL_ZOOM_MAX_STEP_PERCENT,
-    Math.min(PDFJS_WHEEL_ZOOM_MAX_STEP_PERCENT, targetZoom - safeCurrent)
-  );
-  return Math.max(10, Math.min(400, cappedZoom));
-};
 
 export const getPdfjsZoomAwareScrollGain = (zoomScale) => {
   const safeZoom = Math.max(0.5, Math.min(4, Number(zoomScale) || 1));

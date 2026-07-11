@@ -39,24 +39,16 @@ test('page visit diagnostics treat painted pages as ready even if a spinner ling
   assert.match(APP_SOURCE, /ready: hasContainer && hasPdfSurface/);
 });
 
-test('cursor wheel zoom rejects suspicious 10 percent reports', () => {
-  assert.match(APP_SOURCE, /const isSuspiciousWheelZoomPercent = \(reportedPercent, trustedPercent\) =>/);
-  assert.match(APP_SOURCE, /reportedPercent <= 10/);
-  assert.match(APP_SOURCE, /const correctedSuspiciousZoom = isSuspiciousWheelZoomPercent\(reportedZoom, trustedReactZoom\);/);
-  assert.match(APP_SOURCE, /correctedSuspiciousZoom\s*\?\s*trustedReactZoom/);
-  assert.match(APP_SOURCE, /debugMark\('zoom_wheel_request'/);
-});
-
-test('cursor wheel zoom response stays capped below runaway speed', () => {
-  const match = APP_SOURCE.match(/const PDFJS_WHEEL_ZOOM_EXPONENT = ([0-9.]+);/);
-  assert.ok(match, 'PDFJS_WHEEL_ZOOM_EXPONENT constant should exist');
-  const exponent = Number(match[1]);
-  assert.ok(exponent > 0, 'wheel zoom exponent should stay positive');
-  assert.ok(exponent <= 0.004, `wheel zoom exponent should not exceed 0.004, got ${exponent}`);
-  const maxStepMatch = APP_SOURCE.match(/const PDFJS_WHEEL_ZOOM_MAX_STEP_PERCENT = (\d+);/);
-  assert.ok(maxStepMatch, 'wheel zoom max-step cap should exist');
-  const maxStepPercent = Number(maxStepMatch[1]);
-  assert.ok(maxStepPercent < 25, `wheel zoom max step should stay below the recorder's big-jump threshold, got ${maxStepPercent}%`);
+test('legacy JS cursor wheel zoom stays deleted (engine owns the gesture)', () => {
+  // De-fragilize P1 batch F (2026-07-11, owner-approved 2026-06-30): the parked
+  // JS cursor-zoom body and its viewerShared helpers (isSuspiciousWheelZoomPercent,
+  // getSmoothPdfjsWheelZoom, PDFJS_WHEEL_ZOOM_* constants) were deleted — the
+  // pdf.js engine (PdfjsViewerContainer onWheel) owns wheel zoom entirely.
+  // performPdfjsCursorWheelZoom must stay a propagation-preserving no-op:
+  // no preventDefault before the engine's capture-phase listener sees the event.
+  assert.match(APP_SOURCE, /const performPdfjsCursorWheelZoom = useCallback\(\(\) => \{/);
+  assert.doesNotMatch(APP_SOURCE, /isSuspiciousWheelZoomPercent/);
+  assert.doesNotMatch(APP_SOURCE, /getSmoothPdfjsWheelZoom/);
 });
 
 test('overlay recorder expected scale accounts for active zoom transform', () => {
