@@ -27,13 +27,14 @@ const ANNOTATION_WORKER_SOURCE = readFileSync(
 );
 
 test('production eraser cursor renders the selected diameter', () => {
-  assert.match(VIEWER_SOURCE, /eraserDiameterToScreenRadius/);
-  assert.match(VIEWER_SOURCE, /data-eraser-cursor="true"/);
-  assert.match(VIEWER_SOURCE, /boxSizing:\s*'border-box'/);
+  // The eraser cursor is page-local (FabricEraserCanvas). The legacy
+  // document-level ring in PDFViewer was dead under pdf.js and removed
+  // (de-fragilize P1 batch E) — the diameter contract lives on the
+  // page-local cursor: size must route through the diameter→radius helper.
+  assert.match(ERASER_SOURCE, /eraserDiameterToPageRadius/);
+  assert.match(ERASER_SOURCE, /data-eraser-cursor="true"/);
   assert.match(PDFJS_ENGINE_SOURCE, /surveyPdfjsPanActive/);
   assert.match(PDFJS_ENGINE_SOURCE, /data-survey-pdfjs-pan-active='true'/);
-  assert.doesNotMatch(VIEWER_SOURCE, /width:\s*eraserSize \* 2 \* scale/);
-  assert.doesNotMatch(VIEWER_SOURCE, /height:\s*eraserSize \* 2 \* scale/);
 });
 
 test('pdf.js eraser cursor is page-local and advances on the same pointer stream as erase samples', () => {
@@ -41,8 +42,10 @@ test('pdf.js eraser cursor is page-local and advances on the same pointer stream
   assert.match(ERASER_SOURCE, /const updateEraserCursor = useCallback/);
   assert.match(ERASER_SOURCE, /const handlePointerMove[\s\S]*?updateEraserCursor\(point, true\)[\s\S]*?const pointer = pointerRef\.current/);
   assert.match(ERASER_SOURCE, /data-eraser-cursor="true"/);
-  assert.match(VIEWER_SOURCE, /if \(activeTool !== 'eraser' \|\| usePdfjsRenderer\)/);
-  assert.match(VIEWER_SOURCE, /!usePdfjsRenderer && activeTool === 'eraser'/);
+  // PDFViewer must NOT own a document-level eraser cursor: the legacy
+  // tracker effect + ring overlay were removed outright (de-fragilize P1
+  // batch E), so the page-local canvas is the only cursor owner.
+  assert.doesNotMatch(VIEWER_SOURCE, /data-eraser-cursor="true"/);
   assert.match(VIEWER_SOURCE, /viewerScale=\{layerScale\}/);
   assert.doesNotMatch(ERASER_SOURCE, /viewerScaleRef\.current\s*\|\|\s*getInteractionScale/);
 });

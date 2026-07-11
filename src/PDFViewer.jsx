@@ -15,7 +15,6 @@
 import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.mjs';
 import { loadPdfjs } from './utils/pdfWorkerConfig';
 import { deepClone } from './utils/deepClone.js';
-import { eraserDiameterToScreenRadius } from './utils/eraserSizing.js';
 import {
   createProductionBenchmarkPage,
   parseProductionBenchmarkConfig,
@@ -921,8 +920,6 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   const { renderedScale, cssScale, isZooming, zoomStyle, setAnchor } = useZoomState(scale);
   const [scrollMode, setScrollMode] = useState('continuous');
   const usePdfjsRenderer = true;
-  const [isPanning, setIsPanning] = useState(false);
-  const [panStart, setPanStart] = useState({ x: 0, y: 0 });
   const [debugLogging, setDebugLogging] = useState(false);
   // Latest-ref pattern (render-phase write is intentional): read by
   // markInteractionPerfActive to skip the HUD-only setState when the debug
@@ -1010,7 +1007,6 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     });
     return value;
   }, [getProductionBenchmarkPage]);
-  const [canPan, setCanPan] = useState(false);
   // UX 2026-04-23: custom Print Panel state. Cmd/Ctrl+P opens it; closing or
   // canceling throws all settings away so the source PDF is never modified.
   const [printPanelOpen, setPrintPanelOpen] = useState(false);
@@ -3900,8 +3896,6 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     }
   }); // 'partial' | 'entire'
   const [eraserSize, setEraserSize] = useState(20); // Diameter in page pixels
-  const [eraserCursorPos, setEraserCursorPos] = useState({ visible: false });
-  const eraserCursorRef = useRef(null);
 
   // Spacebar Pan state
   const previousToolRef = useRef(null);
@@ -19990,27 +19984,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   // isLoadingPDF is already true (a genuinely hung first-open after a dead
   // socket), so it can never re-download a doc that is already rendered.
 
-  // Check if panning is available
-  useEffect(() => {
-    const checkCanPan = () => {
-      const container = containerRef.current;
-      const content = contentRef.current || container;
-      if (!container) return;
-
-      const contentExceedsViewport =
-        content.scrollWidth > container.clientWidth ||
-        content.scrollHeight > container.clientHeight;
-
-      setCanPan(contentExceedsViewport);
-    };
-
-    checkCanPan();
-
-    window.addEventListener('resize', checkCanPan);
-    return () => window.removeEventListener('resize', checkCanPan);
-  }, [scale, pdfDoc, scrollMode]);
-
-  // Store zoom adjustment data  
+  // Store zoom adjustment data
   const zoomDataRef = useRef(null);
 
   const goToPreviousPage = useCallback(() => {
@@ -20701,73 +20675,6 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     controller.setScale(DEFAULT_ZOOM_PREFERENCES.manualScale);
   }, []);
 
-  // Stop panning if tool changes away from pan
-  // Note: Don't stop panning when region selection becomes active - spacebar pan should work
-  useEffect(() => {
-    if (activeTool !== 'pan') {
-      setIsPanning(false);
-    }
-  }, [activeTool]);
-
-  // Track eraser cursor position when eraser tool is active
-  useEffect(() => {
-    if (activeTool !== 'eraser' || usePdfjsRenderer) {
-      setEraserCursorPos({ visible: false });
-      return;
-    }
-
-    // Immediately check if pointer is within viewport so cursor hides
-    // without waiting for the first real mousemove event.
-    const { x, y } = lastPointerPosRef.current;
-    const elUnder = document.elementFromPoint(x, y);
-    if (elUnder && elUnder.closest('[data-testid="pdf-container"]')) {
-      setEraserCursorPos({ visible: true });
-      if (eraserCursorRef.current) {
-        const radius = eraserDiameterToScreenRadius(eraserSize, scale);
-        eraserCursorRef.current.style.transform = `translate3d(${x - radius}px, ${y - radius}px, 0)`;
-      }
-    }
-
-    const handleMouseMove = (e) => {
-      // Optimized visibility check using target presence instead of geometry calculation.
-      // UX 2026-05-14: also hide the eraser ring when the cursor is over any
-      // chrome strip (top bar, sub-toolbar, rails) — the sub-toolbar floats
-      // over the canvas with position: absolute so it's NOT a descendant of
-      // pdf-container, but the user expects the ring to vanish there too so
-      // they can pick a new tool with the regular pointer.
-      const overChromeStrip = !!e.target.closest('[data-chrome-strip="true"]');
-      const isWithinViewport = !overChromeStrip && !!e.target.closest('[data-testid="pdf-container"]');
-
-      // Update state only if visibility changes
-      setEraserCursorPos(prev => {
-        if (prev.visible !== isWithinViewport) {
-          return { visible: isWithinViewport };
-        }
-        return prev;
-      });
-
-      // Direct DOM manipulation for performance (no react render loop)
-      if (eraserCursorRef.current && isWithinViewport) {
-        const radius = eraserDiameterToScreenRadius(eraserSize, scale);
-        // Use translate3d to force GPU acceleration
-        eraserCursorRef.current.style.transform = `translate3d(${e.clientX - radius}px, ${e.clientY - radius}px, 0)`;
-      }
-    };
-
-    const handleMouseLeave = () => {
-      setEraserCursorPos(prev => ({ ...prev, visible: false }));
-    };
-
-    // Use passive: true where possible, though mousemove usually doesn't block scroll unless preventing default
-    document.addEventListener('mousemove', handleMouseMove, { passive: true });
-    document.addEventListener('mouseleave', handleMouseLeave);
-
-    return () => {
-      document.removeEventListener('mousemove', handleMouseMove);
-      document.removeEventListener('mouseleave', handleMouseLeave);
-    };
-  }, [activeTool, eraserSize, scale, usePdfjsRenderer]);
-
   // Input handlers with validation
   const handlePageInputChange = useCallback((e) => {
     const digitsOnly = e.target.value.replace(/\D/g, '');
@@ -21398,47 +21305,20 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   }, [scrollMode]);
 
   // Memoized styles for performance
-  // Memoized styles for performance
   const containerStyle = useMemo(() => {
-    if (usePdfjsRenderer) {
-      const shouldShowGrabCursor = activeTool === 'pan' && !showRegionSelection;
-      return {
-        flex: 1,
-        overflow: 'hidden',
-        overflowAnchor: 'none',
-        cursor: shouldShowGrabCursor ? 'grab' : 'default',
-        background: '#181c24',
-        position: 'relative',
-        fontFamily: FONT_FAMILY,
-        minHeight: 0,
-        minWidth: 0
-      };
-    }
-
-    // Only show grab cursor when pan tool is active and region selection is not active
     const shouldShowGrabCursor = activeTool === 'pan' && !showRegionSelection;
-
-    // Determine cursor style
-    let cursorStyle = 'default';
-    if (activeTool === 'eraser') {
-      cursorStyle = 'none'; // Hide native cursor for eraser (circle overlay provides visual cursor)
-    } else if (shouldShowGrabCursor) {
-      cursorStyle = isPanning ? 'grabbing' : (canPan ? 'grab' : 'default');
-    }
-
     return {
       flex: 1,
-      overflow: 'auto',
+      overflow: 'hidden',
       overflowAnchor: 'none',
-      cursor: cursorStyle,
+      cursor: shouldShowGrabCursor ? 'grab' : 'default',
       background: '#181c24',
-      padding: '20px',
       position: 'relative',
       fontFamily: FONT_FAMILY,
       minHeight: 0,
       minWidth: 0
     };
-  }, [isPanning, canPan, activeTool, showRegionSelection, eraserCursorPos.visible, usePdfjsRenderer]);
+  }, [activeTool, showRegionSelection]);
 
   const contentStyle = useMemo(() => ({
     minWidth: 'max-content',
@@ -27240,43 +27120,6 @@ ${pageBlocks}
         />
       )}
 
-      {/* Eraser Cursor Overlay */}
-      {/*
-        UX: circular ring showing the selected eraser diameter, centered on the pointer,
-        rendered only while the eraser tool is active. The ring MUST appear at
-        the pointer on the first render (not at top-left) — the fix-me race was
-        that the ref-based transform write at 22437 runs before the ref is
-        attached (setState is async, element mounts next tick), so we seed the
-        transform inline from lastPointerPosRef so React mounts the div in the
-        correct spot. Subsequent moves use the direct-DOM transform path in
-        handleMouseMove for perf.
-      */}
-      {!usePdfjsRenderer && activeTool === 'eraser' && eraserCursorPos.visible && (
-        (() => {
-          const cursorRadius = eraserDiameterToScreenRadius(eraserSize, scale);
-          return (
-        <div
-          ref={eraserCursorRef}
-          data-eraser-cursor="true"
-          style={{
-            position: 'fixed',
-            left: 0,
-            top: 0,
-            width: cursorRadius * 2,
-            height: cursorRadius * 2,
-            boxSizing: 'border-box',
-            transform: `translate3d(${lastPointerPosRef.current.x - cursorRadius}px, ${lastPointerPosRef.current.y - cursorRadius}px, 0)`,
-            borderRadius: '50%',
-            backgroundColor: 'rgba(128, 128, 128, 0.2)',
-            border: `${Math.max(1, 2 * scale)}px solid rgba(100, 100, 100, 0.6)`,
-            pointerEvents: 'none',
-            zIndex: 99999,
-            willChange: 'transform',
-          }}
-        />
-          );
-        })()
-      )}
       <div style={{
         // UX 2026-05-13: Fill container, not viewport. Tab bar + App-level chrome
         // host sit above this wrapper; 100vh used to overflow the absolute parent
