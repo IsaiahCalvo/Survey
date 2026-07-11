@@ -71,8 +71,12 @@ try {
 
   // ── Draw a callout in a CLEAR area (avoid existing annotations/shapes that
   //    would otherwise swallow the pointerdown so no callout gets created) ─────
-  await page.waitForSelector('[data-svg-annotation-layer="1"]', { timeout: 20000 });
-  const box = await page.locator('[data-svg-annotation-layer="1"]').boundingBox();
+  // Canvas-presentation era (a3380bbf): with no SVG-interactive tool active the
+  // page presents annotations via canvas2d and [data-svg-annotation-layer] is NOT
+  // mounted. Anchor geometry to the page container (same box) instead; the SVG
+  // layer mounts once the Callout tool is selected inside drawCallout().
+  await page.waitForSelector('[data-page-number="1"]', { timeout: 20000 });
+  const box = await page.locator('[data-page-number="1"]').boundingBox();
   const drawCallout = async (fx, fy) => {
     await page.locator('button[title="Text"]').first().click(); await page.waitForTimeout(300);
     await page.locator('button[title="Callout"]').first().click(); await page.waitForTimeout(300);
