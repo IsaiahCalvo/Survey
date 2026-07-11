@@ -11,16 +11,26 @@
 //   extractPdfOutlineBookmarks (pdf.js getOutline walk) + buildSortableBookmarkTree.
 // Route: ?spike=features
 // ============================================================================
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import PdfjsArm from './PdfjsArm';
 import { extractPdfOutlineBookmarks } from '../utils/bookmarkOutline';
 import { buildSortableBookmarkTree, BOOKMARK_INDENTATION_WIDTH } from '../sidebar/bookmarkReorderUtils';
 
 const FIXTURES = [
   { label: 'Real package (36pg)', url: '/debug-fixtures/Package%202%20-%20Rev%204%20--%20IC.pdf' },
+  { label: 'Stress PDF (120pg)', url: '/debug-fixtures/spike-120-pages.pdf' },
   { label: 'Annotation test', url: '/debug-fixtures/clickable-link-test.pdf' },
   { label: 'SE-011 (markups)', url: '/debug-fixtures/se011.pdf' },
 ];
+
+const STRESS_DENSITIES = [0, 100, 500, 1000, 2000];
+
+function editableTarget(target) {
+  return target instanceof HTMLInputElement
+    || target instanceof HTMLTextAreaElement
+    || target instanceof HTMLSelectElement
+    || target?.isContentEditable;
+}
 
 // recursive nested-tree row — folders expand/collapse, bookmarks jump to their page
 function BookmarkNode({ node, depth, collapsed, onToggle, onJump }) {
@@ -63,6 +73,21 @@ export default function FeatureSpike() {
   const [bookmarkMsg, setBookmarkMsg] = useState('');
   const [annsByPage, setAnnsByPage] = useState({}); // imported markups, kept interactive
   const onAnns = useCallback((idx, next) => setAnnsByPage((prev) => ({ ...prev, [idx]: next })), []);
+  const [tool, setTool] = useState('pen');
+  const [penColor, setPenColor] = useState('#e11d48');
+  const [penWidth, setPenWidth] = useState(10);
+  const [eraserWidth, setEraserWidth] = useState(24);
+  const [eraseMode, setEraseMode] = useState('partial');
+  const [sloppiness, setSloppiness] = useState(0);
+  const [stressDensity, setStressDensity] = useState(0);
+  const [pageCount, setPageCount] = useState(0);
+  const [viewerMetrics, setViewerMetrics] = useState({ zoomPct: 100, mounted: 0 });
+  const [annotationMetrics, setAnnotationMetrics] = useState({ ms: 0, count: 0, tiled: false });
+  const viewerMetricTimerRef = useRef(0);
+  const viewerMetricPendingRef = useRef(null);
+  const annotationMetricTimerRef = useRef(0);
+  const annotationMetricPendingRef = useRef(null);
+  const annotationMetricsByPageRef = useRef(new Map());
   const [pdfDoc, setPdfDoc] = useState(null);
   const [searchBox, setSearchBox] = useState(''); // input text
   const [query, setQuery] = useState('');         // applied query (drives highlight)
@@ -74,12 +99,61 @@ export default function FeatureSpike() {
   const revokePrev = () => { if (objUrlRef.url) { URL.revokeObjectURL(objUrlRef.url); objUrlRef.url = null; } };
   useEffect(() => () => revokePrev(), []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const loadFixture = (f) => { revokePrev(); setTree(null); setBookmarkMsg(''); setAnnsByPage({}); setFile((p) => ({ src: f.url, key: p.key + 1, name: f.label })); };
+  useEffect(() => {
+    const onKeyDown = (event) => {
+      if (editableTarget(event.target) || event.metaKey || event.ctrlKey || event.altKey) return;
+      const key = event.key.toLowerCase();
+      if (key === 'p') setTool('pen');
+      else if (key === 'e') setTool('erase');
+      else if (key === 'v') setTool('select');
+      else return;
+      event.preventDefault();
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, []);
+
+  useEffect(() => () => {
+    if (viewerMetricTimerRef.current) clearTimeout(viewerMetricTimerRef.current);
+    if (annotationMetricTimerRef.current) clearTimeout(annotationMetricTimerRef.current);
+  }, []);
+
+  const onViewerMetrics = useCallback((metrics) => {
+    viewerMetricPendingRef.current = metrics;
+    if (viewerMetricTimerRef.current) return;
+    viewerMetricTimerRef.current = setTimeout(() => {
+      viewerMetricTimerRef.current = 0;
+      setViewerMetrics((previous) => ({ ...previous, ...viewerMetricPendingRef.current }));
+    }, 120);
+  }, []);
+
+  const onAnnotationMetrics = useCallback((_pageIndex, metrics) => {
+    annotationMetricsByPageRef.current.set(_pageIndex, metrics);
+    annotationMetricPendingRef.current = metrics.mountedRange;
+    if (annotationMetricTimerRef.current) return;
+    annotationMetricTimerRef.current = setTimeout(() => {
+      annotationMetricTimerRef.current = 0;
+      const [first, last] = annotationMetricPendingRef.current || [0, -1];
+      let count = 0;
+      let ms = 0;
+      let tiled = false;
+      for (const [pageIndex, info] of annotationMetricsByPageRef.current) {
+        if (pageIndex < first || pageIndex > last) continue;
+        count += info.count || 0;
+        ms = Math.max(ms, info.ms || 0);
+        tiled = tiled || Boolean(info.tiled);
+      }
+      setAnnotationMetrics({ count, ms, tiled });
+    }, 180);
+  }, []);
+
+  const loadFixture = (f) => { revokePrev(); annotationMetricsByPageRef.current.clear(); setTree(null); setBookmarkMsg(''); setPageCount(0); setAnnsByPage({}); setFile((p) => ({ src: f.url, key: p.key + 1, name: f.label })); };
   const loadLocal = (f) => {
     revokePrev();
     const url = URL.createObjectURL(f);
     objUrlRef.url = url;
-    setTree(null); setBookmarkMsg(''); setAnnsByPage({});
+    annotationMetricsByPageRef.current.clear();
+    setTree(null); setBookmarkMsg(''); setPageCount(0); setAnnsByPage({});
     setFile((p) => ({ src: url, key: p.key + 1, name: f.name }));
   };
 
@@ -118,6 +192,7 @@ export default function FeatureSpike() {
   // when the renderer hands us the loaded document, pull its outline (nested/grouped)
   const onDocument = useCallback(async (pdf) => {
     setPdfDoc(pdf);
+    setPageCount(pdf.numPages);
     try {
       const flat = await extractPdfOutlineBookmarks(pdf);
       if (!flat.length) { setTree([]); setBookmarkMsg('No embedded bookmarks in this PDF.'); return; }
@@ -141,9 +216,18 @@ export default function FeatureSpike() {
   const C = { panel: '#1c1e21', text: '#9aa0a6', accent: '#3a7afe' };
 
   return (
-    <div style={{ position: 'fixed', inset: 0, display: 'flex', flexDirection: 'column', background: '#2a2d31', color: '#e8e8e8', fontFamily: 'system-ui, sans-serif' }}>
+    <div className="feature-spike-root" style={{ position: 'fixed', inset: 0, display: 'flex', flexDirection: 'column', background: '#2a2d31', color: '#e8e8e8', fontFamily: 'system-ui, sans-serif' }}>
+      <style>{`
+        @media (max-width: 640px) {
+          .feature-spike-bookmarks { display: none !important; }
+          .feature-spike-topbar { gap: 6px !important; padding: 6px 8px !important; }
+          .feature-spike-search { order: 10; margin-left: 0 !important; width: 100%; }
+          .feature-spike-search input { flex: 1; min-width: 0; width: auto !important; }
+          .feature-spike-file-status { max-width: 100% !important; }
+        }
+      `}</style>
       {/* top bar */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 14px', background: C.panel, borderBottom: '1px solid #000', flexWrap: 'wrap' }}>
+      <div className="feature-spike-topbar" style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 14px', background: C.panel, borderBottom: '1px solid #000', flexWrap: 'wrap' }}>
         <strong style={{ color: '#ffcf5c' }}>🧪 Feature Spike</strong>
         <label style={{ cursor: 'pointer', background: C.accent, padding: '5px 10px', borderRadius: 5, fontSize: 13 }}>
           Load PDF…
@@ -156,7 +240,7 @@ export default function FeatureSpike() {
             {f.label}
           </button>
         ))}
-        <span style={{ display: 'flex', alignItems: 'center', gap: 6, marginLeft: 'auto' }}>
+        <span className="feature-spike-search" style={{ display: 'flex', alignItems: 'center', gap: 6, marginLeft: 'auto' }}>
           <input
             value={searchBox}
             onChange={(e) => setSearchBox(e.target.value)}
@@ -170,14 +254,128 @@ export default function FeatureSpike() {
           )}
           <span style={{ fontSize: 11, color: '#9aa0a6', minWidth: 90 }}>{searchInfo}</span>
         </span>
-        <span style={{ fontSize: 12, opacity: 0.8, maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+        <span className="feature-spike-file-status" style={{ fontSize: 12, opacity: 0.8, maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
           {file.name} · {status}
+        </span>
+      </div>
+
+      <div
+        data-testid="annotation-toolbar"
+        style={{
+          display: 'flex', alignItems: 'center', gap: 10, padding: '7px 14px',
+          background: '#16181a', borderBottom: '1px solid #000', flexWrap: 'nowrap',
+          height: 40, minHeight: 40, overflowX: 'auto', overflowY: 'hidden',
+          boxSizing: 'border-box', fontSize: 12, color: '#c7cbd1',
+        }}
+      >
+        {[
+          ['pen', 'Pen', 'P'],
+          ['erase', 'Erase', 'E'],
+          ['select', 'Select', 'V'],
+        ].map(([value, label, key]) => (
+          <button
+            key={value}
+            type="button"
+            data-tool={value}
+            aria-pressed={tool === value}
+            onClick={() => setTool(value)}
+            style={{
+              height: 28, padding: '0 9px', borderRadius: 4, cursor: 'pointer',
+              border: tool === value ? '1px solid #79a2ff' : '1px solid #4b5058',
+              background: tool === value ? '#2458bd' : '#2b2e33',
+              color: '#f4f6f8', fontSize: 12, fontWeight: tool === value ? 650 : 450,
+            }}
+          >
+            {label} <span style={{ opacity: 0.62 }}>{key}</span>
+          </button>
+        ))}
+
+        <span style={{ width: 1, height: 22, background: '#3d4148' }} />
+
+        <label style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          Pen
+          <input
+            aria-label="Pen width"
+            type="range"
+            min="2"
+            max="36"
+            value={penWidth}
+            onChange={(event) => setPenWidth(Number(event.target.value))}
+            style={{ width: 78 }}
+          />
+          <output style={{ minWidth: 28 }}>{penWidth}px</output>
+        </label>
+        <input
+          aria-label="Pen color"
+          type="color"
+          value={penColor}
+          onChange={(event) => setPenColor(event.target.value)}
+          style={{ width: 28, height: 24, border: 0, padding: 0, background: 'transparent', cursor: 'pointer' }}
+        />
+
+        <label style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          Eraser
+          <input
+            aria-label="Eraser diameter"
+            type="range"
+            min="4"
+            max="80"
+            value={eraserWidth}
+            onChange={(event) => setEraserWidth(Number(event.target.value))}
+            style={{ width: 78 }}
+          />
+          <output style={{ minWidth: 30 }}>{eraserWidth}px</output>
+        </label>
+        <select
+          aria-label="Erase mode"
+          value={eraseMode}
+          onChange={(event) => setEraseMode(event.target.value)}
+          style={{ height: 28, borderRadius: 4, border: '1px solid #4b5058', background: '#2b2e33', color: '#f4f6f8', padding: '0 6px', fontSize: 12 }}
+        >
+          <option value="partial">Partial erase</option>
+          <option value="full">Full erase</option>
+        </select>
+
+        <label style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          Sloppiness
+          <input
+            aria-label="Stroke sloppiness"
+            type="range"
+            min="0"
+            max="100"
+            value={sloppiness}
+            onChange={(event) => setSloppiness(Number(event.target.value))}
+            style={{ width: 72 }}
+          />
+          <output style={{ minWidth: 24 }}>{sloppiness}</output>
+        </label>
+
+        <span style={{ width: 1, height: 22, background: '#3d4148' }} />
+
+        <label style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          Stress
+          <select
+            aria-label="Synthetic annotations per page"
+            value={stressDensity}
+            onChange={(event) => setStressDensity(Number(event.target.value))}
+            style={{ height: 28, borderRadius: 4, border: '1px solid #4b5058', background: '#2b2e33', color: '#f4f6f8', padding: '0 6px', fontSize: 12 }}
+          >
+            {STRESS_DENSITIES.map((density) => (
+              <option key={density} value={density}>{density ? `${density.toLocaleString()} / page` : 'Off'}</option>
+            ))}
+          </select>
+        </label>
+
+        <span data-testid="viewer-metrics" style={{ marginLeft: 'auto', color: '#9ea4ad', whiteSpace: 'nowrap' }}>
+          {viewerMetrics.zoomPct || 100}% · {viewerMetrics.mounted || 0} pages · {viewerMetrics.annotationCount || 0} visible · {annotationMetrics.ms || 0}ms
+          {stressDensity && pageCount ? ` · ${(stressDensity * pageCount).toLocaleString()} virtual` : ''}
+          {annotationMetrics.tiled ? ' · tiled' : ''}
         </span>
       </div>
 
       {/* body: bookmark panel + viewer */}
       <div style={{ flex: 1, display: 'flex', minHeight: 0 }}>
-        <div style={{ width: 280, background: '#202327', borderRight: '1px solid #000', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+        <div className="feature-spike-bookmarks" style={{ width: 280, background: '#202327', borderRight: '1px solid #000', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
           <div style={{ padding: '8px 12px', borderBottom: '1px solid #000', fontSize: 12, color: C.text, display: 'flex', alignItems: 'center', gap: 6 }}>
             <strong style={{ color: '#dfe2e6' }}>Bookmarks</strong>
             <span style={{ marginLeft: 'auto', fontSize: 11 }}>{bookmarkMsg}</span>
@@ -204,8 +402,17 @@ export default function FeatureSpike() {
             showLinks
             showForms
             searchQuery={query}
+            annotationTool={tool}
+            penColor={penColor}
+            penWidth={penWidth}
+            eraserWidth={eraserWidth}
+            eraseMode={eraseMode}
+            sloppiness={sloppiness}
+            stressShapesPerPage={stressDensity}
             annsByPage={annsByPage}
             onAnnsChange={onAnns}
+            onMetrics={onViewerMetrics}
+            onAnnotationRender={onAnnotationMetrics}
             onStatus={setStatus}
             onDocument={onDocument}
           />

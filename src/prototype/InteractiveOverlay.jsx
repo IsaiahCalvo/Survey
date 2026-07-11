@@ -217,7 +217,7 @@ export function extractInkAnnotations(pdfLibPage, viewport, ctx) {
     // Text markups (underline/strikeout/squiggly/highlight) are anchored to text — they
     // should be selectable + deletable but NOT draggable.
     const TEXT_MARKUP = new Set(['/Underline', '/StrikeOut', '/Squiggly', '/Highlight']);
-    out.push({ id: `${sub.slice(1)}${i}`, type: 'mark', cmds, stroke, fill, strokeWidth: strokeWidth > 0 ? strokeWidth : 1, noDrag: TEXT_MARKUP.has(sub) });
+    out.push({ id: `${sub.slice(1)}${i}`, type: 'mark', source: 'pdf', cmds, stroke, fill, strokeWidth: strokeWidth > 0 ? strokeWidth : 1, noDrag: TEXT_MARKUP.has(sub) });
   }
   return out;
 }

@@ -57,11 +57,14 @@ describe('pen-stroke scope stamping stays on the shared rule (FabricDrawingCanva
   });
 });
 
-describe('fabric 7 custom-prop serialization guard (eraser + edit canvases)', () => {
-  it('FabricEraserCanvas serializes with toObject(CUSTOM_PROPS)', () => {
+describe('annotation metadata preservation guards (eraser + edit canvases)', () => {
+  it('FabricEraserCanvas edits the latest page JSON without Fabric serialization', () => {
     const src = read('src/components/FabricEraserCanvas.jsx');
     assert.doesNotMatch(src, /toJSON\(CUSTOM_PROPS\)/);
-    assert.match(src, /toObject\(CUSTOM_PROPS\)/);
+    assert.doesNotMatch(src, /toObject\(CUSTOM_PROPS\)/);
+    assert.doesNotMatch(src, /canvas\.getObjects\(\)/);
+    assert.match(src, /erasePageAnnotations/);
+    assert.match(src, /annotationsRef\.current/);
   });
 
   it('FabricEditCanvas serializes with toObject(CUSTOM_PROPS) and never passes `type` into a Textbox constructor', () => {

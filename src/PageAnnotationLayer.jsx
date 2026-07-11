@@ -52,6 +52,7 @@ import {
 } from './utils/annotationVisibilityRules';
 import { isPointOnObject, doesRectIntersectObject } from './utils/geometryHitTest';
 import { booleanErasePath } from './utils/geometryEraser';
+import { getEraserOperation } from './utils/eraserPolicy.js';
 import { configureFabricOverrides } from './utils/fabricCustomization';
 import { calculateViewportSafePosition } from './utils/menuPositioning';
 import { getMidpoint, shouldSnapToLinear, getCurvedPath, getCurveEndAngle } from './utils/lineGeometry';
@@ -2758,7 +2759,7 @@ const PageAnnotationLayer = memo(({
   activeRegionId = null, // NEW: ID of currently active region for scoping
   isRegionSelectionActive = false, // NEW: Whether region selection/editing is currently active
   eraserMode = 'partial', // 'partial' | 'entire'
-  eraserSize = 20, // Eraser radius in pixels
+  eraserSize = 20, // Eraser diameter in page pixels
   showSurveyPanel = false, // Whether survey mode is active
   isRegionOverlayEnabled = null, // Function to check if overlay is enabled: (spaceId, pageId, page) => boolean
   layerVisibility = { 'native': true, 'pdf-annotations': true }, // Layer visibility toggles
@@ -3270,7 +3271,7 @@ const PageAnnotationLayer = memo(({
     const canvas = fabricRef.current;
     if (!canvas) return;
     sanitizeTextStyles(canvas);
-    const canvasJSON = canvas.toObject(['strokeUniform', 'spaceId', 'moduleId', 'regionId', 'data', 'name', 'annotationId', 'needsEntity', 'globalCompositeOperation', 'layer', 'isPdfImported', 'pdfAnnotationId', 'pdfAnnotationType', 'pdfInkRenderMode']);
+    const canvasJSON = canvas.toObject(['strokeUniform', 'spaceId', 'moduleId', 'regionId', 'data', 'name', 'annotationId', 'needsEntity', 'globalCompositeOperation', 'layer', 'isPdfImported', 'pdfAnnotationId', 'pdfAnnotationType', 'pdfInkRenderMode', 'tool']);
     onSaveAnnotations(pageNumber, canvasJSON, buildHistorySaveContext(source, context));
   }, [pageNumber, onSaveAnnotations]);
 
@@ -5019,7 +5020,7 @@ const PageAnnotationLayer = memo(({
         sanitizeTextStyles(fabricRef.current);
 
         // Include spaceId in the saved JSON to preserve space associations
-        const canvasJSON = fabricRef.current.toObject(['strokeUniform', 'spaceId', 'moduleId', 'regionId', 'data', 'name', 'annotationId', 'needsEntity', 'globalCompositeOperation', 'layer', 'isPdfImported', 'pdfAnnotationId', 'pdfAnnotationType', 'pdfInkRenderMode']);
+        const canvasJSON = fabricRef.current.toObject(['strokeUniform', 'spaceId', 'moduleId', 'regionId', 'data', 'name', 'annotationId', 'needsEntity', 'globalCompositeOperation', 'layer', 'isPdfImported', 'pdfAnnotationId', 'pdfAnnotationType', 'pdfInkRenderMode', 'tool']);
         lastSavedAnnotationsRef.current = canvasJSON; // Update last saved ref
         onSaveAnnotations(pageNumber, canvasJSON, buildHistorySaveContext(source, context));
       } catch (e) {
@@ -5202,6 +5203,7 @@ const PageAnnotationLayer = memo(({
       if (e.path) {
         e.path.set({
           strokeUniform: true,
+          tool: toolRef.current === 'highlighter' ? 'highlighter' : 'pen',
           perPixelTargetFind: true, // Enable pixel-perfect hit detection for selection
           targetFindTolerance: 5, // Add small tolerance for easier selection
           uniformScaling: false,  // Allow free scaling by default
@@ -6070,7 +6072,7 @@ const PageAnnotationLayer = memo(({
       if (currentTool === 'eraser') {
         // Start erasing mode for drag-to-erase (both partial and entire modes)
         // We defer the actual erasure or splitting to mouseUp to allow the user to see the stroke
-        const eraserRadius = eraserSizeRef.current || 20;
+        const eraserRadius = (eraserSizeRef.current || 20) / 2;
         isErasingRef.current = true;
         // Use getPointer with false to get viewport-transformed coordinates (matches canvas object coordinates)
         // This ensures eraser points are in the same coordinate space as callout positions
@@ -6457,7 +6459,7 @@ const PageAnnotationLayer = memo(({
 
         // Apply deletion on mouse up
         if (eraserPath && eraserPath.points.length > 0) {
-          const eraserRadius = eraserSizeRef.current || 20;
+          const eraserRadius = (eraserSizeRef.current || 20) / 2;
           const objects = [...canvas.getObjects()];
           let needsRenderAndSave = false;
 
@@ -6584,22 +6586,13 @@ const PageAnnotationLayer = memo(({
               continue;
             }
 
-            if (currentEraserMode === 'partial') {
+            if (getEraserOperation(obj, currentEraserMode) === 'partial') {
               if (obj.type === 'path') {
                 const wasErased = erasePathSegment(obj, eraserPath, eraserRadius, canvas);
                 if (wasErased) needsRenderAndSave = true;
-              } else {
-                // Non-paths in partial mode: remove if touched (fallback)
-                // Or should we ignore? Usually partial eraser on infinite objects (images/text) 
-                // might behave like eraser or be ignored. Let's assume remove-if-touched for now to match consistency.
-                const isTouching = eraserPath.points.some(point => isPointOnObject(point, obj, eraserRadius));
-                if (isTouching) {
-                  canvas.remove(obj);
-                  needsRenderAndSave = true;
-                }
               }
             } else {
-              // Entire mode: Remove object if touched
+              // Full mode, plus every annotation that is not free-hand ink.
               const isTouching = eraserPath.points.some(point => isPointOnObject(point, obj, eraserRadius));
               if (isTouching) {
                 canvas.remove(obj);
@@ -8299,7 +8292,7 @@ const PageAnnotationLayer = memo(({
       // Save annotations
       try {
         sanitizeTextStyles(canvas);
-        const canvasJSON = canvas.toObject(['strokeUniform', 'spaceId', 'moduleId', 'regionId', 'data', 'name', 'annotationId', 'needsEntity', 'layer', 'isPdfImported', 'pdfAnnotationId', 'pdfAnnotationType', 'pdfInkRenderMode']);
+        const canvasJSON = canvas.toObject(['strokeUniform', 'spaceId', 'moduleId', 'regionId', 'data', 'name', 'annotationId', 'needsEntity', 'layer', 'isPdfImported', 'pdfAnnotationId', 'pdfAnnotationType', 'pdfInkRenderMode', 'tool']);
         onSaveAnnotations(pageNumber, canvasJSON, buildHistorySaveContext('surveyMarker:apply', {
           addedCount: newSurveyMarkers.length
         }));
@@ -8380,7 +8373,7 @@ const PageAnnotationLayer = memo(({
       // Save annotations
       try {
         sanitizeTextStyles(canvas);
-        const canvasJSON = canvas.toObject(['strokeUniform', 'spaceId', 'moduleId', 'regionId', 'data', 'name', 'layer', 'isPdfImported', 'pdfAnnotationId', 'pdfAnnotationType', 'pdfInkRenderMode']);
+        const canvasJSON = canvas.toObject(['strokeUniform', 'spaceId', 'moduleId', 'regionId', 'data', 'name', 'layer', 'isPdfImported', 'pdfAnnotationId', 'pdfAnnotationType', 'pdfInkRenderMode', 'tool']);
         onSaveAnnotations(pageNumber, canvasJSON, buildHistorySaveContext('surveyMarker:remove', {
           removedCount: surveyMarkersToRemove.length
         }));
@@ -8693,7 +8686,7 @@ const PageAnnotationLayer = memo(({
       // Save the canvas state
       try {
         sanitizeTextStyles(canvas);
-        const canvasJSON = canvas.toObject(['strokeUniform', 'spaceId', 'moduleId', 'regionId', 'data', 'name', 'annotationId', 'needsEntity', 'globalCompositeOperation', 'layer', 'isPdfImported', 'pdfAnnotationId', 'pdfAnnotationType', 'pdfInkRenderMode']);
+        const canvasJSON = canvas.toObject(['strokeUniform', 'spaceId', 'moduleId', 'regionId', 'data', 'name', 'annotationId', 'needsEntity', 'globalCompositeOperation', 'layer', 'isPdfImported', 'pdfAnnotationId', 'pdfAnnotationType', 'pdfInkRenderMode', 'tool']);
         onSaveAnnotations(pageNumber, canvasJSON, buildHistorySaveContext('keyboard:delete', {
           deletedObjectsCount: activeObjects.length
         }));

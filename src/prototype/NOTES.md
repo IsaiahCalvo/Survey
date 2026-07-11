@@ -13,9 +13,20 @@ against. A cleanup/Pdfjs-removal pass must leave these in place.
 - `?spike=renderer` — the two-arm mini-viewer below: pdf.js vs EmbedPDF on scroll,
   cursor-anchored zoom, page-locked overlays, and fps/frame/heap meters.
 - `?spike=perfgate` — the renderer-ownership zoom-smoothness / perf gate.
-- `?spike=features` — the full feature demo (glued-during-zoom annotations, text
-  search + select/copy, clickable links, interactive form fields). This is THE
-  parity target for the real app.
+- `?spike=features` — the full feature demo: pdf.js pages plus one editable
+  Canvas2D annotation model/renderer per mounted page, imported PDF markups,
+  pen/select, partial or full erase, space-drag pan, cursor-anchored zoom, text
+  search + select/copy, clickable links, and interactive form fields. This is
+  THE parity target for the real app.
+
+## Annotation editing stress target
+
+The feature spike includes the 120-page fixture and a stress selector up to
+2,000 annotations per page (240,000 document-wide). Pages remain virtualized;
+high-density static annotation paints run in an OffscreenCanvas worker and swap
+atomically. Filled/thick ink uses polygon subtraction for a real rounded eraser
+bite; thin imported ink uses exact swept-capsule centerline cutting. Shortcuts:
+`P` pen, `E` erase, `V` select, and hold Space while dragging to pan.
 
 (The EmbedPDF arm and `public/pdfium.wasm` may be retired separately since the
 verdict chose pdf.js, but the demos themselves stay.)

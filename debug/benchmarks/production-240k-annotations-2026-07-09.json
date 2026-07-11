@@ -1,0 +1,266 @@
+{
+  "benchmark": "production-240k-annotation-presentation",
+  "status": "pass-with-frame-pacing-note",
+  "recordedAtUtc": "2026-07-10T05:13:30.671Z",
+  "environment": {
+    "browser": "147.0.7727.15",
+    "viewportCssPixels": {
+      "width": 1280,
+      "height": 720
+    },
+    "devicePixelRatio": 1,
+    "jsHeapBytesAfterRun": {
+      "used": 103000000,
+      "total": 157000000,
+      "limit": 3760000000
+    }
+  },
+  "workload": {
+    "fixture": "debug/fixtures/spike-120-pages.pdf",
+    "pageCount": 120,
+    "annotationsPerPage": 2000,
+    "virtualAnnotationCount": 240000,
+    "productionPath": "pdf.js page canvas plus page-local worker Canvas2D annotations"
+  },
+  "load": {
+    "pageStackReadyMs": 1330,
+    "firstMarksPaintedMs": 1531
+  },
+  "functionalChecks": {
+    "initial": {
+      "zoom": "81%",
+      "virtualAnnotationTotal": 240000,
+      "pageCount": 120,
+      "pageLocalHostCount": 120,
+      "mountedPages": [
+        1,
+        2,
+        3
+      ],
+      "visiblePages": [
+        1
+      ],
+      "visibleNotMounted": [],
+      "workerPages": [
+        1,
+        2,
+        3
+      ],
+      "mountedAnnotationCounts": [
+        2000,
+        2000,
+        2000
+      ],
+      "svgPresentationNodeCount": 0,
+      "maxHostDrift": 0,
+      "scrollLeft": 0,
+      "scrollTop": 0,
+      "spacePan": "armed"
+    },
+    "page120": {
+      "zoom": "81%",
+      "virtualAnnotationTotal": 240000,
+      "pageCount": 120,
+      "pageLocalHostCount": 120,
+      "mountedPages": [
+        118,
+        119,
+        120
+      ],
+      "visiblePages": [
+        120
+      ],
+      "visibleNotMounted": [],
+      "workerPages": [
+        118,
+        119,
+        120
+      ],
+      "mountedAnnotationCounts": [
+        2000,
+        2000,
+        2000
+      ],
+      "svgPresentationNodeCount": 0,
+      "maxHostDrift": 0,
+      "scrollLeft": 0,
+      "scrollTop": 78283,
+      "spacePan": "armed"
+    }
+  },
+  "panAt500Percent": {
+    "startScrollTop": 1560,
+    "during": {
+      "zoom": "500%",
+      "virtualAnnotationTotal": 240000,
+      "pageCount": 120,
+      "pageLocalHostCount": 120,
+      "mountedPages": [
+        1
+      ],
+      "visiblePages": [
+        1
+      ],
+      "visibleNotMounted": [],
+      "workerPages": [
+        1
+      ],
+      "mountedAnnotationCounts": [
+        2000
+      ],
+      "svgPresentationNodeCount": 0,
+      "maxHostDrift": 0,
+      "scrollLeft": 1036,
+      "scrollTop": 1960,
+      "spacePan": "dragging"
+    },
+    "after": {
+      "zoom": "500%",
+      "virtualAnnotationTotal": 240000,
+      "pageCount": 120,
+      "pageLocalHostCount": 120,
+      "mountedPages": [
+        1
+      ],
+      "visiblePages": [
+        1
+      ],
+      "visibleNotMounted": [],
+      "workerPages": [
+        1
+      ],
+      "mountedAnnotationCounts": [
+        2000
+      ],
+      "svgPresentationNodeCount": 0,
+      "maxHostDrift": 0,
+      "scrollLeft": 1036,
+      "scrollTop": 1960,
+      "spacePan": "off"
+    },
+    "performance": {
+      "sampleCount": 49,
+      "durationMs": 1297.3,
+      "fpsAverage": 101.37,
+      "frameMsAverage": 9.865,
+      "frameMsP95": 14.3,
+      "frameMsMaximum": 25.6,
+      "jankFrameRatePercent": 0,
+      "jankFrameCount": 0,
+      "longTaskCount": 0,
+      "longTaskTotalMs": 0,
+      "worstDriftPxMaximum": 0,
+      "scaleMismatchMaximum": 0,
+      "missingOverlayCountMaximum": 0,
+      "visiblePresentationGapMaximum": 0,
+      "viewportPresentationGapMaximum": 0,
+      "rawZoomSignalCount": 0
+    }
+  },
+  "aggressiveZoomStress": {
+    "endState": {
+      "zoom": "10%",
+      "virtualAnnotationTotal": 240000,
+      "pageCount": 120,
+      "pageLocalHostCount": 120,
+      "mountedPages": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10
+      ],
+      "visiblePages": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7
+      ],
+      "visibleNotMounted": [],
+      "workerPages": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10
+      ],
+      "mountedAnnotationCounts": [
+        2000,
+        2000,
+        2000,
+        2000,
+        2000,
+        2000,
+        2000,
+        2000,
+        2000,
+        2000
+      ],
+      "svgPresentationNodeCount": 0,
+      "maxHostDrift": 0,
+      "scrollLeft": 0,
+      "scrollTop": 0,
+      "spacePan": "off"
+    },
+    "performance": {
+      "sampleCount": 89,
+      "durationMs": 4967.2,
+      "fpsAverage": 29.78,
+      "frameMsAverage": 33.584,
+      "frameMsP95": 76.3,
+      "frameMsMaximum": 1111.8,
+      "jankFrameRatePercent": 2.91,
+      "jankFrameCount": 10,
+      "longTaskCount": 3,
+      "longTaskTotalMs": 518,
+      "worstDriftPxMaximum": 0,
+      "scaleMismatchMaximum": 0,
+      "missingOverlayCountMaximum": 0,
+      "visiblePresentationGapMaximum": 0,
+      "viewportPresentationGapMaximum": 0,
+      "rawZoomSignalCount": 25
+    }
+  },
+  "consoleErrors": [],
+  "gates": {
+    "exactly240000VirtualAnnotations": true,
+    "pageLocalOverlayPerPage": true,
+    "productionCanvasOnlyPresentation": true,
+    "workerRendererUsed": true,
+    "pageVirtualizationUsed": true,
+    "page120Rendered": true,
+    "everyVisiblePageMounted": true,
+    "alignmentAtMostOnePixel": true,
+    "panMoved": true,
+    "panP95AtMost25Ms": true,
+    "panHasNoLongTasks": true,
+    "aggressiveZoomJankAtMostFivePercent": true,
+    "noMissingOverlays": true,
+    "noPresentationGaps": true,
+    "noConsoleErrors": true,
+    "strict60FpsZoomP95": {
+      "required": false,
+      "thresholdMs": 16.7,
+      "actualMs": 76.3,
+      "pass": false
+    }
+  },
+  "framePacingNote": "The aggressive zoom burst intentionally drives 240,000 virtual marks between deep zoom and the 10% floor. Functional alignment and pan are hard gates; strict 60 fps zoom p95 is reported honestly but is not a pass gate for this synthetic burst.",
+  "reproduce": {
+    "url": "http://127.0.0.1:5178/?testPdf=spike-120-pages.pdf&annotationBenchmarkPerPage=2000",
+    "command": "BENCHMARK_BASE_URL=http://127.0.0.1:5178 npm run benchmark:pdf-annotations"
+  }
+}

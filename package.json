@@ -16,6 +16,7 @@
     "test:integration": "SUPABASE_INTEGRATION=1 node --env-file-if-exists=.env.test --test tests/phase27/byteaRoundTrip.test.mjs tests/phase27/schemaPresence.test.mjs tests/phase27/cryptYjsUpdatesSchema.test.mjs tests/storagePrivacyTripwire.test.mjs",
     "test:privacy": "SUPABASE_INTEGRATION=1 node --env-file-if-exists=.env.test --test tests/storagePrivacyTripwire.test.mjs",
     "test:mobile-annotations": "node agent-cli/mobile-annotations-e2e.mjs",
+    "benchmark:pdf-annotations": "node debug/benchmarks/run-production-240k.mjs",
     "audit:code": "npx fallow",
     "audit:dead": "npx fallow dead-code",
     "audit:dupes": "npx fallow dupes",

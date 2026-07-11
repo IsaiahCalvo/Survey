@@ -98,10 +98,12 @@ fabric.IText.prototype.renderCursor = function(ctx, boundaries) {
 
 // Custom properties to include in object serialization (matches FabricDrawingCanvas/FabricEraserCanvas)
 const CUSTOM_PROPS = [
-  'strokeUniform', 'spaceId', 'moduleId', 'regionId',
+  'id', 'tool', 'strokeUniform', 'spaceId', 'moduleId', 'regionId',
   'data', 'name', 'annotationId', 'needsEntity',
   'globalCompositeOperation', 'layer',
   'isPdfImported', 'pdfAnnotationId', 'pdfAnnotationType', 'pdfInkRenderMode',
+  'paperInkGeometry', 'paperEraserGeometry',
+  'polygons', 'paperCenterline', 'sourceWidth', 'fillRule',
 ];
 
 function createAnnotationId(prefix = 'anno') {

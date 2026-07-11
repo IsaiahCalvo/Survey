@@ -80,6 +80,8 @@ const isEditableKeyboardTarget = () => {
 
 const RegionSelectionTool = ({
   active,
+  mobileMode = false,
+  onMobileToolbarApiChange = null,
   onRegionComplete,
   onCancel,
   currentSpaceId,
@@ -1805,6 +1807,38 @@ const RegionSelectionTool = ({
     handleCancel();
   }, [onSetFullPage, handleCancel, regions.length]);
 
+  useEffect(() => {
+    if (typeof onMobileToolbarApiChange !== 'function') return;
+    if (!active || !mobileMode) {
+      onMobileToolbarApiChange(null);
+      return;
+    }
+    onMobileToolbarApiChange({
+      toolType,
+      selectionMode,
+      canSetFullPage,
+      setToolType,
+      setSelectionMode,
+      confirm: handleConfirm,
+      cancel: handleCancel,
+      setFullPage: handleSetFullPage,
+    });
+  }, [
+    active,
+    mobileMode,
+    onMobileToolbarApiChange,
+    toolType,
+    selectionMode,
+    canSetFullPage,
+    handleConfirm,
+    handleCancel,
+    handleSetFullPage,
+  ]);
+
+  useEffect(() => () => {
+    if (typeof onMobileToolbarApiChange === 'function') onMobileToolbarApiChange(null);
+  }, [onMobileToolbarApiChange]);
+
   const handleRegionPointerDown = useCallback((region, event) => {
     if (!active || effectiveToolType !== 'move' || !targetElement) {
       return;
@@ -2510,7 +2544,7 @@ const RegionSelectionTool = ({
   return (
     <>
       {/* Toolbar */}
-      <div
+      {!mobileMode && <div
         data-region-selection-ui="true"
         style={{
           position: 'fixed',
@@ -2804,7 +2838,7 @@ const RegionSelectionTool = ({
             Cancel
           </button>
         </div>
-      </div>
+      </div>}
 
       {/* Canvas Interaction Layer */}
       {canvasRect && (

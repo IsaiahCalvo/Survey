@@ -28,11 +28,12 @@ export default function SpikeLinkLayer({ pdf, pageIndex, scale, rotation }) {
       for (const a of annots) {
         if (a.subtype !== 'Link') continue;
         if (!a.url && a.dest == null) continue;
-        const r = vp.convertToViewportRectangle(a.rect);
-        const x = Math.min(r[0], r[2]);
-        const y = Math.min(r[1], r[3]);
-        const w = Math.abs(r[2] - r[0]);
-        const h = Math.abs(r[3] - r[1]);
+        const first = vp.convertToViewportPoint(a.rect[0], a.rect[1]);
+        const second = vp.convertToViewportPoint(a.rect[2], a.rect[3]);
+        const x = Math.min(first[0], second[0]);
+        const y = Math.min(first[1], second[1]);
+        const w = Math.abs(second[0] - first[0]);
+        const h = Math.abs(second[1] - first[1]);
         if (w < 1 || h < 1) continue;
         out.push({ x, y, w, h, url: a.url || null, dest: a.dest != null ? a.dest : null });
       }

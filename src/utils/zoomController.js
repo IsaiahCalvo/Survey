@@ -1,7 +1,7 @@
 /**
  * zoomController.js — zoom-mode state machine and localStorage persistence for the PDF viewer.
  *
- * Exports ZOOM_MODES, DEFAULT_ZOOM_PREFERENCES, clampScale (0.1–5.0), load/saveZoomPreferences,
+ * Exports ZOOM_MODES, DEFAULT_ZOOM_PREFERENCES, clampScale (0.01-40.0), load/saveZoomPreferences,
  * and createZoomController({...}) which tracks mode (fitPage/fitWidth/fitHeight/manual) + manual
  * scale, derives fit scales from viewport/page size, and applies them via injected setScale/getter
  * callbacks. Pure scale math only — does not own SVG viewBox zoom rendering.
@@ -20,8 +20,8 @@ export const DEFAULT_ZOOM_PREFERENCES = {
   manualScale: 1.0
 };
 
-const MIN_SCALE = 0.1;
-const MAX_SCALE = 5.0;
+const MIN_SCALE = 0.01;
+const MAX_SCALE = 40.0;
 const SCALE_EPSILON = 0.0001;
 
 export const clampScale = (value) => {
@@ -241,4 +241,3 @@ export function createZoomController({
 
   return controller;
 }
-

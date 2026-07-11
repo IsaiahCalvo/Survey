@@ -110,10 +110,12 @@ function shallowEqual(a, b) {
  * either would corrupt the annotation on first remote sync.
  */
 const FABRIC_CUSTOM_PROPS = [
-  'strokeUniform', 'spaceId', 'moduleId', 'regionId',
+  'id', 'tool', 'strokeUniform', 'spaceId', 'moduleId', 'regionId',
   'data', 'name', 'annotationId', 'needsEntity',
   'globalCompositeOperation', 'layer',
   'isPdfImported', 'pdfAnnotationId', 'pdfAnnotationType', 'pdfInkRenderMode',
+  'paperInkGeometry', 'paperEraserGeometry',
+  'polygons', 'paperCenterline', 'sourceWidth', 'fillRule',
 ];
 
 /**

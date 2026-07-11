@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { PDFDocument, PDFName } from 'pdf-lib';
+import { PDFDocument, PDFName, decodePDFRawStream } from 'pdf-lib';
 import {
   buildPdfExportAnnotationPlan,
   buildPrintableRegularAnnotationPayload,
@@ -26,6 +26,8 @@ import {
   parsePdfAppLayerStateMetadata,
   parsePdfAppAnnotationMetadata,
 } from '../src/utils/pdfAppAnnotationMetadata.js';
+import { createProductionPaperInk } from '../src/utils/productionPaperInk.js';
+import { erasePageAnnotations } from '../src/utils/pageSpaceEraser.js';
 
 const APP_SOURCE = readFileSync(new URL('../src/viewerShared.js', import.meta.url), 'utf8')
   + '\n' + readFileSync(new URL('../src/PDFViewer.jsx', import.meta.url), 'utf8');
@@ -814,6 +816,56 @@ test('PDF export embeds app annotation metadata on ordinary app-created annotati
     assert.equal(highlightMetadata.appType, 'survey-marker');
     assert.equal(highlightMetadata.style.fill, '#facc15');
     assert.equal(highlightMetadata.style.opacity, 0.35);
+  } finally {
+    globalThis.window = originalWindow;
+  }
+});
+
+test('PDF export preserves partially erased filled ink with an even-odd appearance stream', async () => {
+  const originalWindow = globalThis.window;
+  globalThis.window = {};
+  try {
+    const original = createProductionPaperInk({
+      id: 'paper-ink-export',
+      tool: 'pen',
+      points: [{ x: 20, y: 70 }, { x: 180, y: 70 }],
+      color: 'rgba(255, 0, 0, 0.5)',
+      width: 20,
+    });
+    const erased = erasePageAnnotations({
+      pageAnnotations: { objects: [original] },
+      eraserPoints: [{ x: 90, y: 58 }],
+      eraserRadius: 7,
+      mode: 'partial',
+    }).pageAnnotations.objects[0];
+    const bytes = await savePDFWithAnnotationsPdfLib(
+      await makePdfFile(),
+      { 1: { objects: [erased] } },
+      { 1: { width: 200, height: 200 } },
+      null,
+      { returnBytes: true, actionType: 'pdf-export', documentId: 'doc-paper-ink' },
+    );
+
+    const doc = await PDFDocument.load(bytes);
+    const annots = doc.getPage(0).node.lookup(PDFName.of('Annots'));
+    const annotation = doc.context.lookup(annots.asArray()[0]);
+    const appearance = doc.context.lookup(annotation.get(PDFName.of('AP')));
+    const normal = appearance && doc.context.lookup(appearance.get(PDFName.of('N')));
+    const content = normal
+      ? new TextDecoder().decode(decodePDFRawStream(normal).decode())
+      : '';
+    const metadata = parsePdfAppAnnotationMetadata(
+      annotation.get(PDFName.of(PDF_APP_ANNOTATION_METADATA_KEY))?.decodeText?.(),
+    );
+
+    assert.equal(annotation.get(PDFName.of('Subtype')).decodeText(), 'Ink');
+    assert.ok(appearance, 'filled ink must have an AP dictionary');
+    assert.ok(normal, 'filled ink must have a normal appearance stream');
+    assert.match(content, /f\*/);
+    assert.match(content, /1 0 0 rg/);
+    assert.deepEqual(metadata.geometry.polygons, erased.polygons);
+    assert.equal(metadata.geometry.paperEraserGeometry, 'v1');
+    assert.equal(metadata.style.fillRule, 'evenodd');
   } finally {
     globalThis.window = originalWindow;
   }

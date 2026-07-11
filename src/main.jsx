@@ -1,4 +1,6 @@
 // src/main.jsx
+import './utils/randomUUIDPolyfill';
+import './utils/blobArrayBuffer';
 import { sanitizeConsoleLogText, shouldCaptureConsoleLine } from './utils/consoleLogFilter';
 
 // Stale-deploy recovery: when a lazy-loaded code chunk fails to load (usually a
@@ -362,7 +364,11 @@ if (import.meta.env.DEV) {
     devRouteActive = true;
     import('./DevTestRoute').then(({ DevTestRoute }) => {
       createRoot(document.getElementById('root')).render(
-        <DevTestRoute pdfName={testPdf} />
+        <DevTestRoute
+          pdfName={testPdf}
+          displayName={params.get('previewName')}
+          returnTab={params.get('returnTab')}
+        />
       );
     });
   }

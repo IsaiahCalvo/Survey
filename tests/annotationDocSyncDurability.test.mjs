@@ -174,8 +174,12 @@ test('BL-24 fix: a stale snapshot completing after a newer edit still leaves a t
   g.document = { visibilityState: 'hidden' };
 
   let releaseFirstUpsert;
+  let markFirstUpsertStarted;
+  let markSubsequentUpsertStarted;
   let upsertCount = 0;
   const gate = new Promise((r) => { releaseFirstUpsert = r; });
+  const firstUpsertStarted = new Promise((r) => { markFirstUpsertStarted = r; });
+  const subsequentUpsertStarted = new Promise((r) => { markSubsequentUpsertStarted = r; });
   const supabase = {
     from(table) {
       if (table === 'annotation_updates') {
@@ -193,7 +197,12 @@ test('BL-24 fix: a stale snapshot completing after a newer edit still leaves a t
           select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: null }) }) }),
           upsert: async () => {
             const n = ++snapUpserts;
-            if (n === 1) await gate; // hold the first snapshot in flight
+            if (n === 1) {
+              markFirstUpsertStarted();
+              await gate; // hold the first snapshot in flight
+            } else {
+              markSubsequentUpsertStarted();
+            }
             return { error: null };
           },
         };
@@ -211,7 +220,10 @@ test('BL-24 fix: a stale snapshot completing after a newer edit still leaves a t
     // Edit A → start a snapshot that will hang on the gate.
     handle.applyByPage({ 1: { objects: [{ type: 'path', data: { id: 'A' }, pageNumber: 1 }] } });
     const firstSnap = handle.flushSnapshot();
-    await new Promise((r) => setTimeout(r, 5));
+    await Promise.race([
+      firstUpsertStarted,
+      new Promise((_, reject) => setTimeout(() => reject(new Error('first snapshot did not start')), 1000)),
+    ]);
     // Edit B arrives while A's snapshot is still in flight.
     handle.applyByPage({ 1: { objects: [
       { type: 'path', data: { id: 'A' }, pageNumber: 1 },
@@ -224,7 +236,10 @@ test('BL-24 fix: a stale snapshot completing after a newer edit still leaves a t
     const before = snapUpserts;
     // Tab close: because B is uncaptured, a flush MUST run.
     listeners.pagehide?.();
-    await new Promise((r) => setTimeout(r, 5));
+    await Promise.race([
+      subsequentUpsertStarted,
+      new Promise((_, reject) => setTimeout(() => reject(new Error('tab-close snapshot did not start')), 1000)),
+    ]);
     assert.ok(snapUpserts > before, 'a tab-close flush runs because the newer edit was not captured');
   } finally {
     await handle.destroy();

@@ -1,43 +1,78 @@
 /**
- * LightweightAnnotationOverlay.jsx — read-only SVG/div preview overlay for a single PDF page.
+ * Persistent Canvas2D annotation presentation for one PDF page.
  *
- * Default-exports a memoized component that renders fast, non-interactive previews of
- * Fabric annotation objects (paths, lines, arrows, polygons, shapes, text, counters)
- * and callout connectors for one page, filtered via isAnnotationVisibleInContext and
- * scaled by `scale`. Used as a placeholder layer during interaction/zoom before the
- * full per-page canvas/SVG layers mount.
+ * Annotation data remains the source of truth. This component paints one bitmap
+ * per mounted page so pan, scroll, and live zoom move the PDF and marks together.
  */
-import { memo, useEffect, useMemo } from 'react';
-import { calculateCalloutConnection } from '../utils/calloutGeometry';
+import { memo, useEffect, useLayoutEffect, useMemo, useRef } from 'react';
+import {
+  calculateAnnotationCanvasBackingStore,
+  paintAnnotationCanvas,
+} from '../utils/annotationCanvasPainter.js';
+import { calculateAnnotationDetailTile } from '../utils/annotationDetailTile.js';
 import { isAnnotationVisibleInContext } from '../utils/annotationVisibilityRules';
+import { projectPaperInkForPresentation } from '../utils/paperInkPresentation.js';
 
-const MAX_PREVIEW_OBJECTS = 420;
-const MAX_PREVIEW_CALLOUTS = 140;
-const DEFAULT_CALLOUT_COLOR = '#4A90E2';
-const DEFAULT_CALLOUT_FILL = 'rgba(255,255,255,0.22)';
 const EMPTY_ARR = [];
+const WORKER_OBJECT_THRESHOLD = 500;
+const ZOOM_START_EVENT = 'survey-pdfjs-zoom-start';
+const ZOOM_END_EVENT = 'survey-pdfjs-zoom-end';
+const PAN_START_EVENT = 'survey-pdfjs-pan-start';
+const PAN_END_EVENT = 'survey-pdfjs-pan-end';
+const ZOOM_INTERACTION = 1;
+const PAN_INTERACTION = 2;
 
-const toNumber = (value, fallback = 0) => {
-  const numeric = Number(value);
-  return Number.isFinite(numeric) ? numeric : fallback;
+const paintPayloadToCanvas = (canvas, payload, renderer = 'main') => {
+  if (!canvas || !payload) return false;
+  if (canvas.width !== payload.width) canvas.width = payload.width;
+  if (canvas.height !== payload.height) canvas.height = payload.height;
+  const context = canvas.getContext('2d');
+  if (!context) return false;
+  paintAnnotationCanvas(context, {
+    canvasWidth: payload.width,
+    canvasHeight: payload.height,
+    drawScale: payload.drawScale,
+    displayScale: payload.displayScale,
+    pageWidth: payload.pageWidth,
+    pageHeight: payload.pageHeight,
+    offsetX: payload.offsetX,
+    offsetY: payload.offsetY,
+    objects: payload.objects,
+    callouts: payload.callouts,
+  });
+  canvas.dataset.canvasClamped = payload.clamped ? 'true' : 'false';
+  canvas.dataset.canvasRenderer = renderer;
+  canvas.dataset.canvasPaintGeneration = String(
+    (Number(canvas.dataset.canvasPaintGeneration) || 0) + 1,
+  );
+  canvas.dataset.canvasAnnotationRevision = String(payload.annotationRevision ?? '');
+  canvas.dataset.canvasDrawScale = String(payload.drawScale);
+  canvas.dataset.canvasPageOffsetX = String(payload.offsetX || 0);
+  canvas.dataset.canvasPageOffsetY = String(payload.offsetY || 0);
+  return true;
 };
 
-const isTransparentColor = (value) => {
-  if (typeof value !== 'string') return true;
-  const normalized = value.trim().toLowerCase();
-  if (!normalized || normalized === 'transparent' || normalized === 'none') return true;
-  if (normalized === 'rgba(0,0,0,0)' || normalized === 'rgba(0, 0, 0, 0)') return true;
-  return false;
-};
-
-const normalizeBounds = (object) => {
-  const scaleX = Math.abs(toNumber(object?.scaleX, 1));
-  const scaleY = Math.abs(toNumber(object?.scaleY, 1));
-  const left = toNumber(object?.left, 0);
-  const top = toNumber(object?.top, 0);
-  const width = Math.max(1, Math.abs(toNumber(object?.width, 0) * (scaleX || 1)));
-  const height = Math.max(1, Math.abs(toNumber(object?.height, 0) * (scaleY || 1)));
-  return { left, top, width, height };
+const presentPaintedCanvas = ({ baseCanvas, detailCanvas, canvas, payload }) => {
+  if (!baseCanvas || !detailCanvas || !canvas || !payload) return;
+  const isDetail = payload.target === 'detail';
+  canvas.dataset.annotationDetailActive = isDetail ? 'true' : 'false';
+  if (isDetail) {
+    canvas.style.left = `${payload.tile.left}px`;
+    canvas.style.top = `${payload.tile.top}px`;
+    canvas.style.width = `${payload.tile.width}px`;
+    canvas.style.height = `${payload.tile.height}px`;
+    canvas.style.display = 'block';
+    baseCanvas.style.display = 'none';
+    baseCanvas.dataset.annotationDetailActive = 'false';
+  } else {
+    canvas.style.left = '0px';
+    canvas.style.top = '0px';
+    canvas.style.width = '100%';
+    canvas.style.height = '100%';
+    canvas.style.display = 'block';
+    detailCanvas.style.display = 'none';
+    detailCanvas.dataset.annotationDetailActive = 'false';
+  }
 };
 
 const LightweightAnnotationOverlay = memo(({
@@ -50,6 +85,8 @@ const LightweightAnnotationOverlay = memo(({
   proxyCallouts = null,
   annotations,
   callouts = EMPTY_ARR,
+  surveyMarkers = EMPTY_ARR,
+  visible = true,
   selectedModuleId = null,
   showSurveyPanel = false,
   selectedSpaceId = null,
@@ -63,300 +100,421 @@ const LightweightAnnotationOverlay = memo(({
   layerVisibility = null,
   annotationRevision = null,
   calloutRevision = null,
-  onRenderReady = null
+  onRenderReady = null,
 }) => {
-  const safeScale = Number.isFinite(scale) && scale > 0 ? scale : 1;
-  const overlayWidth = Math.max(1, toNumber(width, 0) * safeScale);
-  const overlayHeight = Math.max(1, toNumber(height, 0) * safeScale);
+  const overlayRef = useRef(null);
+  const canvasRef = useRef(null);
+  const detailCanvasRef = useRef(null);
+  const detailTileRef = useRef(null);
+  const renderViewportRef = useRef(null);
+  const viewportInteractionRef = useRef(0);
+  const scrollRafRef = useRef(0);
+  const workerRef = useRef(null);
+  const workerRequestRef = useRef(0);
+  const workerSentDataRevisionRef = useRef(null);
+  const workerDataVersionRef = useRef(0);
+  const workerFailedRef = useRef(false);
+  const workerFallbackRef = useRef(null);
+  const latestPayloadRef = useRef(null);
+  const readyRafRef = useRef(0);
+  const renderReadyStateRef = useRef({ onRenderReady, pageNumber });
+  renderReadyStateRef.current = { onRenderReady, pageNumber };
+  const safeWidth = Math.max(1, Number(width) || 1);
+  const safeHeight = Math.max(1, Number(height) || 1);
+  const safeScale = Number.isFinite(Number(scale)) && Number(scale) > 0 ? Number(scale) : 1;
+  const overlayWidth = safeWidth * safeScale;
+  const overlayHeight = safeHeight * safeScale;
 
-  const objectPreviewBase = useMemo(() => {
-    const useProxyPayload = Array.isArray(proxyObjects);
-    const objects = useProxyPayload
-      ? proxyObjects
-      : (Array.isArray(annotations?.objects) ? annotations.objects : []);
-    if (objects.length === 0) return [];
-
-    const previews = [];
-
-    for (let index = 0; index < objects.length; index += 1) {
-      const object = objects[index];
-      if (!object) continue;
-      if (object.annotationId) continue;
-      if (previews.length >= MAX_PREVIEW_OBJECTS) break;
-      if (!isAnnotationVisibleInContext({
-        annotation: object,
-        pageNumber,
-        selectedModuleId,
-        showSurveyPanel,
-        selectedSpaceId,
-        activeSpaceId,
-        activeRegions,
-        activeRegionId,
-        spaces,
-        getCanvasAnnotationVisibilityState,
-        getSurveyAnnotationVisibilityState,
-        isRegionOverlayEnabled,
-        layerVisibility
-      })) {
-        continue;
-      }
-
-      const objectType = String(object.type || '').toLowerCase();
-      const bounds = normalizeBounds(object);
-      const stroke = !isTransparentColor(object.stroke)
-        ? object.stroke
-        : (!isTransparentColor(object.fill) ? object.fill : 'rgba(255, 255, 255, 0.55)');
-      const fill = !isTransparentColor(object.fill) ? object.fill : 'transparent';
-
-      // Detect object type for SVG rendering
-      const isPath = objectType === 'path' && Array.isArray(object.path) && object.path.length > 0;
-      const isLine = objectType === 'line';
-      const isGroup = objectType === 'group' && Array.isArray(object.objects) && object.objects.length > 0;
-      const lineChild = isGroup ? object.objects.find(o => o && (o.type === 'line' || o.type === 'polyline' || o.type === 'path')) : null;
-      const arrowHeadChild = isGroup ? object.objects.find(o => o && (o.name === 'arrowHead' || o.type === 'triangle')) : null;
-      const isArrow = isGroup && lineChild;
-      const isPolygon = objectType === 'polygon' && Array.isArray(object.points) && object.points.length > 0;
-      const isPolyline = objectType === 'polyline' && Array.isArray(object.points) && object.points.length > 0;
-      const isCounter = object?.data?.type === 'counter';
-
-      // Determine render type
-      let renderType = 'shape';
-      if (isPath) renderType = 'path';
-      else if (isLine) renderType = 'line';
-      else if (isArrow) renderType = 'arrow';
-      else if (isPolygon) renderType = 'polygon';
-      else if (isPolyline) renderType = 'polyline';
-      else if (isCounter) renderType = 'counter';
-
-      // Build type-specific data
-      let pathData = null;
-      if (isPath) {
-        pathData = object.path.map(seg => seg.join(' ')).join(' ');
-      }
-      const pointData = (isPolygon || isPolyline)
-        ? object.points
-          .map((point) => `${toNumber(point?.x, 0)},${toNumber(point?.y, 0)}`)
-          .join(' ')
-        : null;
-
-      // For path objects, capture object scaleX/scaleY for SVG transform
-      const objScaleX = toNumber(object.scaleX, 1);
-      const objScaleY = toNumber(object.scaleY, 1);
-
-      previews.push({
-        key: object.id || object.annotationId || object.pdfAnnotationId || `obj-${index}`,
-        left: bounds.left,
-        top: bounds.top,
-        width: bounds.width,
-        height: bounds.height,
-        stroke,
-        fill,
-        strokeWidth: Math.max(1, toNumber(object.strokeWidth, 1)),
-        opacity: Math.max(0.08, Math.min(1, toNumber(object.opacity, 1))),
-        borderRadius: objectType === 'circle' || objectType === 'ellipse' ? '999px' : '2px',
-        angle: toNumber(object.angle, 0),
-        blendMode: object.globalCompositeOperation === 'multiply' ? 'multiply' : 'normal',
-        text: (objectType === 'textbox' || objectType === 'i-text' || objectType === 'text')
-          ? String(object.text || '')
-          : '',
-        fontSizeBase: Math.max(9, toNumber(object.fontSize, 12)),
-        // SVG rendering fields
-        renderType,
-        pathData,
-        pointData,
-        objScaleX,
-        objScaleY,
-        // Line coordinates (for line objects)
-        x1: isLine ? toNumber(object.x1, 0) : 0,
-        y1: isLine ? toNumber(object.y1, 0) : 0,
-        x2: isLine ? toNumber(object.x2, 0) : 0,
-        y2: isLine ? toNumber(object.y2, 0) : 0,
-        // Arrow coordinates (from group's line child)
-        lineX1: isArrow ? toNumber(lineChild.x1, 0) : 0,
-        lineY1: isArrow ? toNumber(lineChild.y1, 0) : 0,
-        lineX2: isArrow ? toNumber(lineChild.x2, 0) : 0,
-        lineY2: isArrow ? toNumber(lineChild.y2, 0) : 0,
-        hasArrowHead: isArrow && !!arrowHeadChild,
-        counterText: isCounter ? String(object?.data?.displayNumber ?? object?.text ?? '') : ''
-      });
-    }
-
-    return previews;
-  }, [
-    annotationRevision,
-    annotations?.objects,
+  const visibilityContext = useMemo(() => ({
+    pageNumber,
+    selectedModuleId,
+    showSurveyPanel,
+    selectedSpaceId,
+    activeSpaceId,
     activeRegions,
     activeRegionId,
+    spaces,
+    getCanvasAnnotationVisibilityState,
+    getSurveyAnnotationVisibilityState,
+    isRegionOverlayEnabled,
+    layerVisibility,
+  }), [
+    activeRegionId,
+    activeRegions,
     activeSpaceId,
     getCanvasAnnotationVisibilityState,
     getSurveyAnnotationVisibilityState,
     isRegionOverlayEnabled,
-    interactionSessionId,
     layerVisibility,
     pageNumber,
-    proxyObjects,
     selectedModuleId,
     selectedSpaceId,
     showSurveyPanel,
-    spaces
+    spaces,
   ]);
 
-  const objectPreviews = useMemo(() => objectPreviewBase.map((preview) => {
-    const scaled = {
-      ...preview,
-      left: preview.left * safeScale,
-      top: preview.top * safeScale,
-      width: preview.width * safeScale,
-      height: preview.height * safeScale,
-      fontSize: Math.max(9, preview.fontSizeBase * safeScale * 0.92)
-    };
+  const surveyMarkerObjects = useMemo(() => surveyMarkers
+    .filter((marker) => marker && isAnnotationVisibleInContext({
+      annotation: marker,
+      ...visibilityContext,
+    }))
+    .map((marker, index) => ({
+      type: 'rect',
+      annotationId: marker.annotationId || `survey-marker-${pageNumber}-${index}`,
+      moduleId: marker.moduleId ?? null,
+      regionId: marker.regionId ?? null,
+      layer: marker.layer || null,
+      left: Number(marker.x) || 0,
+      top: Number(marker.y) || 0,
+      width: Number(marker.width) || 0,
+      height: Number(marker.height) || 0,
+      fill: marker.needsEntity ? 'transparent' : (marker.color || 'rgba(255,235,59,0.25)'),
+      stroke: marker.needsEntity ? '#4A90E2' : 'transparent',
+      strokeWidth: marker.needsEntity ? 2 : 0,
+      strokeDashArray: marker.needsEntity ? [5, 5] : null,
+      globalCompositeOperation: 'multiply',
+      opacity: 1,
+      scaleX: 1,
+      scaleY: 1,
+      angle: Number(marker.angle) || 0,
+    })), [pageNumber, surveyMarkers, visibilityContext]);
 
-    // Scale line coordinates (absolute endpoints)
-    if (preview.renderType === 'line') {
-      scaled.x1 = (preview.left + preview.x1) * safeScale;
-      scaled.y1 = (preview.top + preview.y1) * safeScale;
-      scaled.x2 = (preview.left + preview.x2) * safeScale;
-      scaled.y2 = (preview.top + preview.y2) * safeScale;
-    }
+  const visibleObjects = useMemo(() => {
+    const source = Array.isArray(proxyObjects)
+      ? proxyObjects
+      : (Array.isArray(annotations?.objects) ? annotations.objects : EMPTY_ARR);
+    const normalObjects = source
+      .filter((object) => (
+        object
+        && !object.annotationId
+        && isAnnotationVisibleInContext({ annotation: object, ...visibilityContext })
+      ))
+      .map(projectPaperInkForPresentation);
+    return normalObjects.concat(surveyMarkerObjects);
+  }, [
+    annotationRevision,
+    annotations?.objects,
+    interactionSessionId,
+    proxyObjects,
+    surveyMarkerObjects,
+    visibilityContext,
+  ]);
 
-    // Scale arrow line coordinates (group left/top + child coords)
-    if (preview.renderType === 'arrow') {
-      scaled.lineX1 = (preview.left + preview.lineX1) * safeScale;
-      scaled.lineY1 = (preview.top + preview.lineY1) * safeScale;
-      scaled.lineX2 = (preview.left + preview.lineX2) * safeScale;
-      scaled.lineY2 = (preview.top + preview.lineY2) * safeScale;
-    }
-
-    // Path coordinates are NOT scaled here -- SVG transform handles it
-    return scaled;
-  }), [objectPreviewBase, safeScale]);
-
-  const calloutPreviewBase = useMemo(() => {
-    const useProxyPayload = Array.isArray(proxyCallouts);
-    const calloutSource = useProxyPayload ? proxyCallouts : callouts;
-    if (!Array.isArray(calloutSource) || calloutSource.length === 0) return [];
-
-    const pageCallouts = useProxyPayload
-      ? calloutSource.slice(0, MAX_PREVIEW_CALLOUTS)
-      : calloutSource
-        .filter((callout) => callout?.pageNumber === pageNumber)
-        .slice(0, MAX_PREVIEW_CALLOUTS);
-
-    return pageCallouts.filter((callout) => (
-      callout?.pageNumber === undefined ||
-      Number(callout.pageNumber) === Number(pageNumber)
-    )).filter((callout) => isAnnotationVisibleInContext({
-      annotation: callout,
-      pageNumber,
-      selectedModuleId,
-      showSurveyPanel,
-      selectedSpaceId,
-      activeSpaceId,
-      activeRegions,
-      activeRegionId,
-      spaces,
-      getCanvasAnnotationVisibilityState,
-      getSurveyAnnotationVisibilityState,
-      isRegionOverlayEnabled,
-      layerVisibility
-    })).map((callout, index) => {
-      const style = callout?.style || {};
-      return {
-        key: callout.id || `callout-${index}`,
-        arrowTip: {
-          x: toNumber(callout?.arrowTip?.x, 0),
-          y: toNumber(callout?.arrowTip?.y, 0)
-        },
-        knee: {
-          x: toNumber(callout?.knee?.x, 0),
-          y: toNumber(callout?.knee?.y, 0)
-        },
-        textBox: {
-          x: toNumber(callout?.textBoxPosition?.x ?? callout?.textBox?.x, 0),
-          y: toNumber(callout?.textBoxPosition?.y ?? callout?.textBox?.y, 0),
-          width: Math.max(0.015, toNumber(callout?.textBoxWidth ?? callout?.textBox?.width, 0)),
-          height: Math.max(0.015, toNumber(callout?.textBoxHeight ?? callout?.textBox?.height, 0))
-        },
-        lineColor: !isTransparentColor(style.borderColor) ? style.borderColor : DEFAULT_CALLOUT_COLOR,
-        lineThickness: Math.max(1, toNumber(style.lineThickness, 2)),
-        borderOpacity: Math.max(0.2, Math.min(1, toNumber(style.borderOpacity, 1))),
-        fillColor: !isTransparentColor(style.fillColor) ? style.fillColor : DEFAULT_CALLOUT_FILL,
-        fillOpacity: Math.max(0.08, Math.min(1, toNumber(style.fillOpacity, 0.4)))
-      };
-    });
+  const visibleCallouts = useMemo(() => {
+    const source = Array.isArray(proxyCallouts)
+      ? proxyCallouts
+      : callouts.filter((callout) => Number(callout?.pageNumber) === Number(pageNumber));
+    return source.filter((callout) => (
+      callout
+      && (callout.pageNumber == null || Number(callout.pageNumber) === Number(pageNumber))
+      && isAnnotationVisibleInContext({ annotation: callout, ...visibilityContext })
+    ));
   }, [
     calloutRevision,
     callouts,
-    activeRegions,
-    activeRegionId,
-    activeSpaceId,
-    getCanvasAnnotationVisibilityState,
-    getSurveyAnnotationVisibilityState,
-    isRegionOverlayEnabled,
-    layerVisibility,
     interactionSessionId,
     pageNumber,
     proxyCallouts,
-    selectedModuleId,
-    selectedSpaceId,
-    showSurveyPanel
+    visibilityContext,
   ]);
 
-  const calloutPreviews = useMemo(() => calloutPreviewBase.map((callout) => {
-    const arrowTip = {
-      x: callout.arrowTip.x * overlayWidth,
-      y: callout.arrowTip.y * overlayHeight
+  const workerDataRevision = useMemo(() => {
+    workerDataVersionRef.current += 1;
+    return workerDataVersionRef.current;
+  }, [visibleCallouts, visibleObjects]);
+
+  const hasRenderablePreview = visibleObjects.length > 0 || visibleCallouts.length > 0;
+  const useWorkerPaint = visibleObjects.length + visibleCallouts.length >= WORKER_OBJECT_THRESHOLD;
+
+  useLayoutEffect(() => {
+    if (
+      !useWorkerPaint
+      || typeof Worker === 'undefined'
+      || typeof OffscreenCanvas === 'undefined'
+    ) {
+      return undefined;
+    }
+
+    let failed = false;
+    let worker;
+    try {
+      worker = new Worker(new URL('./annotationCanvasWorker.js', import.meta.url), { type: 'module' });
+    } catch (_error) {
+      workerFailedRef.current = true;
+      return undefined;
+    }
+
+    workerFailedRef.current = false;
+    workerSentDataRevisionRef.current = null;
+    workerRef.current = worker;
+    const notifyReady = (interactionSessionId) => {
+      if (readyRafRef.current) cancelAnimationFrame(readyRafRef.current);
+      readyRafRef.current = requestAnimationFrame(() => {
+        readyRafRef.current = 0;
+        const readyState = renderReadyStateRef.current;
+        readyState.onRenderReady?.(readyState.pageNumber, interactionSessionId);
+      });
     };
-    const knee = {
-      x: callout.knee.x * overlayWidth,
-      y: callout.knee.y * overlayHeight
+    const failWorker = () => {
+      if (failed) return;
+      failed = true;
+      workerFailedRef.current = true;
+      workerRequestRef.current += 1;
+      worker.terminate();
+      if (workerRef.current === worker) workerRef.current = null;
+      const payload = latestPayloadRef.current;
+      const canvas = payload?.target === 'detail' ? detailCanvasRef.current : canvasRef.current;
+      if (paintPayloadToCanvas(canvas, payload, 'main-fallback')) {
+        presentPaintedCanvas({
+          baseCanvas: canvasRef.current,
+          detailCanvas: detailCanvasRef.current,
+          canvas,
+          payload,
+        });
+        notifyReady(payload?.interactionSessionId);
+      }
     };
-    const textBox = {
-      x: callout.textBox.x * overlayWidth,
-      y: callout.textBox.y * overlayHeight,
-      width: Math.max(18, callout.textBox.width * overlayWidth),
-      height: Math.max(18, callout.textBox.height * overlayHeight)
+    workerFallbackRef.current = failWorker;
+
+    worker.onmessage = (event) => {
+      const message = event.data;
+      if (message?.type === 'error') {
+        failWorker();
+        return;
+      }
+      if (message?.type !== 'rendered') return;
+      const payload = latestPayloadRef.current;
+      if (message.requestId !== workerRequestRef.current || message.requestId !== payload?.requestId) {
+        message.bitmap?.close?.();
+        return;
+      }
+      const canvas = payload.target === 'detail' ? detailCanvasRef.current : canvasRef.current;
+      if (!canvas) {
+        message.bitmap?.close?.();
+        return;
+      }
+      if (canvas.width !== message.width) canvas.width = message.width;
+      if (canvas.height !== message.height) canvas.height = message.height;
+      const context = canvas.getContext('2d');
+      if (!context) {
+        message.bitmap?.close?.();
+        failWorker();
+        return;
+      }
+      context.setTransform(1, 0, 0, 1, 0, 0);
+      context.clearRect(0, 0, message.width, message.height);
+      context.drawImage(message.bitmap, 0, 0);
+      message.bitmap.close?.();
+      canvas.dataset.canvasClamped = message.clamped ? 'true' : 'false';
+      canvas.dataset.canvasRenderer = 'worker';
+      canvas.dataset.canvasPaintGeneration = String(
+        (Number(canvas.dataset.canvasPaintGeneration) || 0) + 1,
+      );
+      canvas.dataset.canvasAnnotationRevision = String(payload.annotationRevision ?? '');
+      canvas.dataset.canvasDrawScale = String(payload.drawScale);
+      canvas.dataset.canvasPageOffsetX = String(payload.offsetX || 0);
+      canvas.dataset.canvasPageOffsetY = String(payload.offsetY || 0);
+      presentPaintedCanvas({
+        baseCanvas: canvasRef.current,
+        detailCanvas: detailCanvasRef.current,
+        canvas,
+        payload,
+      });
+      notifyReady(payload.interactionSessionId);
+    };
+    worker.onerror = failWorker;
+
+    return () => {
+      failed = true;
+      workerRequestRef.current += 1;
+      worker.terminate();
+      if (workerRef.current === worker) workerRef.current = null;
+      if (workerFallbackRef.current === failWorker) workerFallbackRef.current = null;
+    };
+  }, [useWorkerPaint]);
+
+  useLayoutEffect(() => {
+    if (!hasRenderablePreview) return undefined;
+    if (!canvasRef.current || !detailCanvasRef.current || !overlayRef.current) return undefined;
+    let readyFrame = 0;
+
+    const requestPaint = (payload) => {
+      const canvas = payload.target === 'detail' ? detailCanvasRef.current : canvasRef.current;
+      if (!canvas) return;
+      latestPayloadRef.current = payload;
+      const worker = useWorkerPaint && !workerFailedRef.current ? workerRef.current : null;
+      if (worker) {
+        payload.requestId = workerRequestRef.current + 1;
+        workerRequestRef.current = payload.requestId;
+        canvas.dataset.canvasClamped = payload.clamped ? 'true' : 'false';
+        canvas.dataset.canvasRenderer = 'worker-pending';
+        try {
+          const alreadyCached = workerSentDataRevisionRef.current === workerDataRevision;
+          const { objects, callouts: payloadCallouts, ...renderOnlyPayload } = payload;
+          worker.postMessage(alreadyCached
+            ? { type: 'render', ...renderOnlyPayload }
+            : { type: 'render', ...renderOnlyPayload, objects, callouts: payloadCallouts });
+          workerSentDataRevisionRef.current = workerDataRevision;
+          return;
+        } catch (_error) {
+          workerFallbackRef.current?.();
+          return;
+        }
+      }
+
+      workerRequestRef.current += 1;
+      if (!paintPayloadToCanvas(canvas, payload)) return;
+      presentPaintedCanvas({
+        baseCanvas: canvasRef.current,
+        detailCanvas: detailCanvasRef.current,
+        canvas,
+        payload,
+      });
+      if (readyFrame) cancelAnimationFrame(readyFrame);
+      readyFrame = requestAnimationFrame(() => {
+        readyFrame = 0;
+        const readyState = renderReadyStateRef.current;
+        readyState.onRenderReady?.(readyState.pageNumber, payload.interactionSessionId);
+      });
     };
 
-    const connection = calculateCalloutConnection(
-      textBox.x,
-      textBox.y,
-      textBox.width,
-      textBox.height,
-      knee,
-      arrowTip,
-      callout.lineThickness
-    );
+    const renderViewport = (force = false) => {
+      if (viewportInteractionRef.current) return;
+      const devicePixelRatio = typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1;
+      const backingStore = calculateAnnotationCanvasBackingStore({
+        pageWidth: safeWidth,
+        pageHeight: safeHeight,
+        displayScale: safeScale,
+        devicePixelRatio,
+      });
+      let tile = null;
+      if (backingStore.clamped) {
+        const overlay = overlayRef.current;
+        const scroller = overlay?.closest?.('.survey-pdfjs-viewer');
+        tile = calculateAnnotationDetailTile({
+          pageWidth: safeWidth,
+          pageHeight: safeHeight,
+          pageRect: overlay?.getBoundingClientRect?.(),
+          viewportRect: scroller?.getBoundingClientRect?.(),
+          devicePixelRatio,
+          previousTile: detailTileRef.current,
+          force,
+        });
+        if (!force && tile && tile === detailTileRef.current) return;
+        if (!tile && !force) return;
+      }
+      detailTileRef.current = tile;
 
-    return {
-      ...callout,
-      arrowTip,
-      knee,
-      textBox,
-      line1Start: connection.line1Start,
-      line2Start: connection.line2Start,
-      effectiveKnee: connection.effectiveKnee,
-      shouldHideLine1: connection.shouldHideLine1
+      requestPaint({
+        requestId: 0,
+        target: tile ? 'detail' : 'base',
+        tile,
+        width: tile?.backingWidth ?? backingStore.width,
+        height: tile?.backingHeight ?? backingStore.height,
+        drawScale: tile?.drawScale ?? backingStore.drawScale,
+        displayScale: safeScale,
+        pageWidth: safeWidth,
+        pageHeight: safeHeight,
+        offsetX: tile?.pageOffsetX ?? 0,
+        offsetY: tile?.pageOffsetY ?? 0,
+        objects: visibleObjects,
+        callouts: visibleCallouts,
+        clamped: backingStore.clamped,
+        interactionSessionId,
+        annotationRevision: annotations?.eraserPresentationRevision ?? annotationRevision,
+        dataRevision: workerDataRevision,
+      });
     };
-  }), [calloutPreviewBase, overlayHeight, overlayWidth]);
 
-  const hasRenderablePreview = objectPreviews.length > 0 || calloutPreviews.length > 0;
+    renderViewportRef.current = renderViewport;
+    renderViewport(true);
+    return () => {
+      if (renderViewportRef.current === renderViewport) renderViewportRef.current = null;
+      if (readyFrame) cancelAnimationFrame(readyFrame);
+    };
+  }, [
+    annotationRevision,
+    annotations?.eraserPresentationRevision,
+    hasRenderablePreview,
+    interactionSessionId,
+    safeHeight,
+    safeScale,
+    safeWidth,
+    useWorkerPaint,
+    visibleCallouts,
+    visibleObjects,
+    workerDataRevision,
+  ]);
 
   useEffect(() => {
-    if (!hasRenderablePreview) return;
-    if (typeof onRenderReady !== 'function') return;
-    onRenderReady(pageNumber, interactionSessionId);
-  }, [hasRenderablePreview, interactionSessionId, onRenderReady, pageNumber]);
+    if (!hasRenderablePreview) return undefined;
+    const begin = (flag) => {
+      viewportInteractionRef.current |= flag;
+      if (scrollRafRef.current) cancelAnimationFrame(scrollRafRef.current);
+      scrollRafRef.current = 0;
+    };
+    const finish = (flag) => {
+      viewportInteractionRef.current &= ~flag;
+      if (viewportInteractionRef.current || scrollRafRef.current) return;
+      scrollRafRef.current = requestAnimationFrame(() => {
+        scrollRafRef.current = 0;
+        renderViewportRef.current?.(true);
+      });
+    };
+    const onZoomStart = () => begin(ZOOM_INTERACTION);
+    const onZoomEnd = () => finish(ZOOM_INTERACTION);
+    const onPanStart = () => begin(PAN_INTERACTION);
+    const onPanEnd = () => finish(PAN_INTERACTION);
+    window.addEventListener(ZOOM_START_EVENT, onZoomStart);
+    window.addEventListener(ZOOM_END_EVENT, onZoomEnd);
+    window.addEventListener(PAN_START_EVENT, onPanStart);
+    window.addEventListener(PAN_END_EVENT, onPanEnd);
+    return () => {
+      window.removeEventListener(ZOOM_START_EVENT, onZoomStart);
+      window.removeEventListener(ZOOM_END_EVENT, onZoomEnd);
+      window.removeEventListener(PAN_START_EVENT, onPanStart);
+      window.removeEventListener(PAN_END_EVENT, onPanEnd);
+      viewportInteractionRef.current = 0;
+    };
+  }, [hasRenderablePreview]);
 
-  if (!hasRenderablePreview) {
-    return null;
-  }
+  useEffect(() => {
+    if (!hasRenderablePreview) return undefined;
+    const scroller = overlayRef.current?.closest?.('.survey-pdfjs-viewer');
+    if (!scroller) return undefined;
+    const scheduleViewportRender = () => {
+      if (viewportInteractionRef.current) return;
+      if (scrollRafRef.current) return;
+      scrollRafRef.current = requestAnimationFrame(() => {
+        scrollRafRef.current = 0;
+        renderViewportRef.current?.(false);
+      });
+    };
+    scroller.addEventListener('scroll', scheduleViewportRender, { passive: true });
+    window.addEventListener('resize', scheduleViewportRender, { passive: true });
+    return () => {
+      scroller.removeEventListener('scroll', scheduleViewportRender);
+      window.removeEventListener('resize', scheduleViewportRender);
+      if (scrollRafRef.current) cancelAnimationFrame(scrollRafRef.current);
+      scrollRafRef.current = 0;
+    };
+  }, [hasRenderablePreview, safeScale]);
+
+  useLayoutEffect(() => () => {
+    if (readyRafRef.current) cancelAnimationFrame(readyRafRef.current);
+    if (scrollRafRef.current) cancelAnimationFrame(scrollRafRef.current);
+  }, []);
+
+  if (!hasRenderablePreview) return null;
 
   return (
     <div
+      ref={overlayRef}
       data-lightweight-annotation-overlay={pageNumber}
-      data-lightweight-object-count={objectPreviews.length}
-      data-lightweight-callout-count={calloutPreviews.length}
+      data-lightweight-renderer="canvas2d"
+      data-lightweight-object-count={visibleObjects.length}
+      data-lightweight-callout-count={visibleCallouts.length}
+      data-canvas-visible={visible ? 'true' : 'false'}
       style={{
         position: 'absolute',
         top: 0,
@@ -366,254 +524,35 @@ const LightweightAnnotationOverlay = memo(({
         pointerEvents: 'none',
         zIndex: 10,
         overflow: 'hidden',
-        contain: 'layout style paint'
+        visibility: visible ? 'visible' : 'hidden',
       }}
     >
-      {objectPreviews.map((preview) => {
-        // SVG path rendering for freehand/ink annotations
-        if (preview.renderType === 'path' && preview.pathData) {
-          return (
-            <svg
-              key={preview.key}
-              style={{
-                position: 'absolute',
-                left: 0,
-                top: 0,
-                width: overlayWidth,
-                height: overlayHeight,
-                pointerEvents: 'none',
-                overflow: 'visible'
-              }}
-            >
-              <path
-                d={preview.pathData}
-                stroke={preview.stroke}
-                strokeWidth={preview.strokeWidth}
-                fill="none"
-                opacity={preview.opacity}
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                transform={`translate(${preview.left}, ${preview.top}) scale(${preview.objScaleX * safeScale}, ${preview.objScaleY * safeScale})`}
-              />
-            </svg>
-          );
-        }
-
-        // SVG line rendering for line annotations
-        if (preview.renderType === 'line') {
-          return (
-            <svg
-              key={preview.key}
-              style={{
-                position: 'absolute',
-                left: 0,
-                top: 0,
-                width: overlayWidth,
-                height: overlayHeight,
-                pointerEvents: 'none',
-                overflow: 'visible'
-              }}
-            >
-              <line
-                x1={preview.x1}
-                y1={preview.y1}
-                x2={preview.x2}
-                y2={preview.y2}
-                stroke={preview.stroke}
-                strokeWidth={preview.strokeWidth}
-                opacity={preview.opacity}
-                strokeLinecap="round"
-              />
-            </svg>
-          );
-        }
-
-        // SVG arrow rendering for arrow (group) annotations
-        if (preview.renderType === 'arrow') {
-          const dx = preview.lineX2 - preview.lineX1;
-          const dy = preview.lineY2 - preview.lineY1;
-          const angle = Math.atan2(dy, dx) * (180 / Math.PI);
-          const headSize = Math.max(6, preview.strokeWidth * 3);
-          return (
-            <svg
-              key={preview.key}
-              style={{
-                position: 'absolute',
-                left: 0,
-                top: 0,
-                width: overlayWidth,
-                height: overlayHeight,
-                pointerEvents: 'none',
-                overflow: 'visible'
-              }}
-            >
-              <line
-                x1={preview.lineX1}
-                y1={preview.lineY1}
-                x2={preview.lineX2}
-                y2={preview.lineY2}
-                stroke={preview.stroke}
-                strokeWidth={preview.strokeWidth}
-                opacity={preview.opacity}
-                strokeLinecap="round"
-              />
-              {preview.hasArrowHead && (
-                <polygon
-                  points={`0,${-headSize / 2} ${headSize},0 0,${headSize / 2}`}
-                  fill={preview.stroke}
-                  opacity={preview.opacity}
-                  transform={`translate(${preview.lineX2},${preview.lineY2}) rotate(${angle})`}
-                />
-              )}
-            </svg>
-          );
-        }
-
-        if ((preview.renderType === 'polygon' || preview.renderType === 'polyline') && preview.pointData) {
-          const ShapeTag = preview.renderType === 'polygon' ? 'polygon' : 'polyline';
-          return (
-            <svg
-              key={preview.key}
-              style={{
-                position: 'absolute',
-                left: 0,
-                top: 0,
-                width: overlayWidth,
-                height: overlayHeight,
-                pointerEvents: 'none',
-                overflow: 'visible'
-              }}
-            >
-              <ShapeTag
-                points={preview.pointData}
-                stroke={preview.stroke}
-                strokeWidth={preview.strokeWidth}
-                fill={preview.renderType === 'polygon' ? preview.fill : 'none'}
-                opacity={preview.opacity}
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                transform={`translate(${preview.left}, ${preview.top}) scale(${preview.objScaleX * safeScale}, ${preview.objScaleY * safeScale})`}
-              />
-            </svg>
-          );
-        }
-
-        // Default: div-based rendering for shapes, text, and other types
-        return (
-          <div
-            key={preview.key}
-            style={{
-              position: 'absolute',
-              left: `${preview.left}px`,
-              top: `${preview.top}px`,
-              width: `${preview.width}px`,
-              height: `${preview.height}px`,
-              border: `${preview.strokeWidth}px solid ${preview.stroke}`,
-              borderRadius: preview.borderRadius,
-              background: preview.fill,
-              opacity: preview.opacity,
-              boxSizing: 'border-box',
-              transform: preview.angle ? `rotate(${preview.angle}deg)` : undefined,
-              transformOrigin: 'top left',
-              mixBlendMode: preview.blendMode
-            }}
-          >
-            {preview.counterText ? (
-              <span
-                style={{
-                  display: 'flex',
-                  width: '100%',
-                  height: '100%',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  fontSize: `${preview.fontSize}px`,
-                  lineHeight: 1,
-                  color: preview.stroke,
-                  fontWeight: 700,
-                  opacity: 0.92
-                }}
-              >
-                {preview.counterText}
-              </span>
-            ) : preview.text ? (
-              <span
-                style={{
-                  display: 'inline-block',
-                  maxWidth: '100%',
-                  whiteSpace: 'nowrap',
-                  overflow: 'hidden',
-                  textOverflow: 'ellipsis',
-                  fontSize: `${preview.fontSize}px`,
-                  lineHeight: 1.2,
-                  color: preview.stroke,
-                  opacity: 0.92
-                }}
-              >
-                {preview.text}
-              </span>
-            ) : null}
-          </div>
-        );
-      })}
-
-      {calloutPreviews.length > 0 ? (
-        <svg
-          width={overlayWidth}
-          height={overlayHeight}
-          style={{
-            position: 'absolute',
-            top: 0,
-            left: 0,
-            pointerEvents: 'none',
-            overflow: 'visible'
-          }}
-        >
-          {calloutPreviews.map((callout) => (
-            <g key={callout.key} opacity={callout.borderOpacity}>
-              {!callout.shouldHideLine1 && (
-                <line
-                  x1={callout.line1Start.x}
-                  y1={callout.line1Start.y}
-                  x2={callout.effectiveKnee.x}
-                  y2={callout.effectiveKnee.y}
-                  stroke={callout.lineColor}
-                  strokeWidth={callout.lineThickness}
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
-              )}
-              <line
-                x1={callout.line2Start.x}
-                y1={callout.line2Start.y}
-                x2={callout.arrowTip.x}
-                y2={callout.arrowTip.y}
-                stroke={callout.lineColor}
-                strokeWidth={callout.lineThickness}
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-              <circle
-                cx={callout.arrowTip.x}
-                cy={callout.arrowTip.y}
-                r={Math.max(2, callout.lineThickness + 0.4)}
-                fill={callout.lineColor}
-              />
-              <rect
-                x={callout.textBox.x}
-                y={callout.textBox.y}
-                width={callout.textBox.width}
-                height={callout.textBox.height}
-                fill={callout.fillColor}
-                fillOpacity={callout.fillOpacity}
-                stroke={callout.lineColor}
-                strokeWidth={Math.max(1, callout.lineThickness * 0.7)}
-                rx={3}
-                ry={3}
-              />
-            </g>
-          ))}
-        </svg>
-      ) : null}
+      <canvas
+        ref={canvasRef}
+        data-annotation-presentation-canvas={pageNumber}
+        data-annotation-detail-active="false"
+        style={{
+          position: 'absolute',
+          left: 0,
+          top: 0,
+          display: 'block',
+          width: '100%',
+          height: '100%',
+          pointerEvents: 'none',
+        }}
+      />
+      <canvas
+        ref={detailCanvasRef}
+        data-annotation-detail-canvas={pageNumber}
+        data-annotation-detail-active="false"
+        style={{
+          position: 'absolute',
+          left: 0,
+          top: 0,
+          display: 'none',
+          pointerEvents: 'none',
+        }}
+      />
     </div>
   );
 });

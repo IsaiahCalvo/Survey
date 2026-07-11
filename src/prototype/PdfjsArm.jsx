@@ -27,7 +27,8 @@ import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.mjs';
 import pdfWorker from 'pdfjs-dist/legacy/build/pdf.worker.min.mjs?url';
 import { PDFDocument } from 'pdf-lib';
 import { clampToBudget } from './spikeMetrics';
-import InteractiveOverlay, { extractInkAnnotations } from './InteractiveOverlay';
+import { extractInkAnnotations } from './InteractiveOverlay';
+import CanvasAnnotationLayer from './CanvasAnnotationLayer';
 import SpikeTextLayer from './SpikeTextLayer';
 import SpikeLinkLayer from './SpikeLinkLayer';
 import SpikeFormLayer from './SpikeFormLayer';
@@ -48,6 +49,14 @@ const BASE_MAX_SCALE = 2.5;
 const SETTLE_MS = 110;          // commit the gesture this long after the last wheel tick
 const WHEEL_GAIN = 0.01;        // matches EmbedPDF: factor = 1 - deltaY * WHEEL_GAIN
 const DPR = Math.min(typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1, 2);
+const PAN_START_EVENT = 'spike-pdf-pan-start';
+const PAN_END_EVENT = 'spike-pdf-pan-end';
+
+const isSpaceKey = (event) => event.code === 'Space' || event.key === ' ' || event.key === 'Spacebar';
+const isEditableTarget = (target) => target instanceof HTMLInputElement
+  || target instanceof HTMLTextAreaElement
+  || target instanceof HTMLSelectElement
+  || target?.isContentEditable;
 
 // --- PERF-GATE STRESS SEED ----------------------------------------------------
 // Synthetic dense annotation swarm in PAGE SPACE (points, scale-independent) so it
@@ -73,7 +82,7 @@ function makeStressShapes(n, w, h, pageIndex) {
     const col = STRESS_PALETTE[(i + pageIndex) % STRESS_PALETTE.length];
     if (i % 3 === 0) {
       const s = 6 + rnd() * 22;
-      out.push({ id: `st${pageIndex}_${i}`, type: 'mark', cmds: [['M', cx, cy], ['L', cx + s, cy], ['L', cx + s, cy + s], ['L', cx, cy + s], ['Z']], filled: true, paint: `rgba(${col},0.5)`, strokeWidth: 1 });
+      out.push({ id: `st${pageIndex}_${i}`, type: 'mark', source: 'stress', cmds: [['M', cx, cy], ['L', cx + s, cy], ['L', cx + s, cy + s], ['L', cx, cy + s], ['Z']], filled: true, paint: `rgba(${col},0.5)`, strokeWidth: 1 });
     } else {
       const cmds = [['M', cx, cy]];
       let px = cx; let py = cy;
@@ -84,7 +93,7 @@ function makeStressShapes(n, w, h, pageIndex) {
         cmds.push(['C', px + (rnd() - 0.5) * 90, py + (rnd() - 0.5) * 90, nx + (rnd() - 0.5) * 90, ny + (rnd() - 0.5) * 90, nx, ny]);
         px = nx; py = ny;
       }
-      out.push({ id: `st${pageIndex}_${i}`, type: 'mark', cmds, filled: false, paint: `rgba(${col},0.9)`, strokeWidth: 1.2 + rnd() * 1.6 });
+      out.push({ id: `st${pageIndex}_${i}`, type: 'mark', source: 'stress', cmds, filled: false, paint: `rgba(${col},0.9)`, strokeWidth: 1.2 + rnd() * 1.6 });
     }
   }
   return out;
@@ -132,6 +141,7 @@ function PdfPageCanvas({ pdf, pageIndex, pageW, pageH, renderScale, rotation, ba
       const t0 = performance.now();
       const annotationMode = bakeAnnotations ? undefined : pdfjsLib.AnnotationMode.DISABLE;
       const task = page.render({ canvasContext: ctx, viewport, annotationMode });
+      task.onContinue = (resume) => requestAnimationFrame(resume);
       taskRef.current = task;
       try {
         await task.promise;
@@ -162,7 +172,7 @@ function PdfPageCanvas({ pdf, pageIndex, pageW, pageH, renderScale, rotation, ba
 // the pixel count is bounded and never hits the canvas budget = crisp deep zoom.
 // Re-renders on settle (committed scale) and on scroll; idle during a live gesture
 // (the base canvas CSS-scales meanwhile, then this re-sharpens on settle).
-function DetailTile({ pdf, pageIndex, scale, rotation, liveZoom, bakeAnnotations, scrollerRef, onRasterEvent }) {
+function DetailTile({ pdf, pageIndex, scale, rotation, liveZoom, interactionRef, bakeAnnotations, scrollerRef, onRasterEvent }) {
   const hostRef = useRef(null);
   const canvasRef = useRef(null);
   const taskRef = useRef(null);
@@ -173,7 +183,7 @@ function DetailTile({ pdf, pageIndex, scale, rotation, liveZoom, bakeAnnotations
     const host = hostRef.current;
     const scroller = scrollerRef.current;
     const canvas = canvasRef.current;
-    if (!host || !scroller || !canvas || !pdf || liveZoom !== 1) return;
+    if (!host || !scroller || !canvas || !pdf || liveZoom !== 1 || interactionRef?.current) return;
 
     const hr = host.getBoundingClientRect();
     const sr = scroller.getBoundingClientRect();
@@ -209,6 +219,7 @@ function DetailTile({ pdf, pageIndex, scale, rotation, liveZoom, bakeAnnotations
     // vector marks scale crisply on their own.
     const annotationMode = bakeAnnotations ? undefined : pdfjsLib.AnnotationMode.DISABLE;
     const task = page.render({ canvasContext: ctx, viewport, transform, annotationMode });
+    task.onContinue = (resume) => requestAnimationFrame(resume);
     taskRef.current = task;
     const t0 = performance.now();
     try { await task.promise; } catch (e) { if (e?.name === 'RenderingCancelledException') return; throw e; }
@@ -220,7 +231,7 @@ function DetailTile({ pdf, pageIndex, scale, rotation, liveZoom, bakeAnnotations
     c.getContext('2d', { alpha: false }).drawImage(off, 0, 0);
     setTile({ left: vx, top: vy, w: vw, h: vh });
     onRasterEvent?.({ kind: 'tile', page: pageIndex + 1, ms: Math.round(performance.now() - t0), tiled: true, mp: Math.round((cw * ch) / 1048576), zoomPct: Math.round(scale * 100) });
-  }, [pdf, pageIndex, scale, rotation, liveZoom, bakeAnnotations, scrollerRef, onRasterEvent]);
+  }, [pdf, pageIndex, scale, rotation, liveZoom, interactionRef, bakeAnnotations, scrollerRef, onRasterEvent]);
 
   // re-render on scale / rotation / settle
   useEffect(() => { render(); }, [render]);
@@ -230,10 +241,28 @@ function DetailTile({ pdf, pageIndex, scale, rotation, liveZoom, bakeAnnotations
     const scroller = scrollerRef.current;
     if (!scroller) return;
     let t;
-    const onScroll = () => { clearTimeout(t); t = setTimeout(() => render(), 70); };
+    const onScroll = () => {
+      if (interactionRef?.current) return;
+      clearTimeout(t);
+      t = setTimeout(() => render(), 70);
+    };
     scroller.addEventListener('scroll', onScroll, { passive: true });
     return () => { scroller.removeEventListener('scroll', onScroll); clearTimeout(t); };
-  }, [render, scrollerRef]);
+  }, [render, scrollerRef, interactionRef]);
+
+  useEffect(() => {
+    const onPanStart = () => {
+      if (!taskRef.current) return;
+      try { taskRef.current.cancel(); } catch { /* already settled */ }
+    };
+    const onPanEnd = () => render();
+    window.addEventListener(PAN_START_EVENT, onPanStart);
+    window.addEventListener(PAN_END_EVENT, onPanEnd);
+    return () => {
+      window.removeEventListener(PAN_START_EVENT, onPanStart);
+      window.removeEventListener(PAN_END_EVENT, onPanEnd);
+    };
+  }, [render]);
 
   useEffect(() => () => { if (taskRef.current) { try { taskRef.current.cancel(); } catch {} } }, []);
 
@@ -247,7 +276,30 @@ function DetailTile({ pdf, pageIndex, scale, rotation, liveZoom, bakeAnnotations
   );
 }
 
-export default function PdfjsArm({ fileSrc, fileKey, editMode = false, stressShapesPerPage = 0, textSelectable = false, showLinks = false, showForms = false, searchQuery = '', annsByPage, onAnnsChange, onMetrics, onStatus, onRasterEvent, onZoomPhase, onDocument }) {
+export default function PdfjsArm({
+  fileSrc,
+  fileKey,
+  editMode = false,
+  stressShapesPerPage = 0,
+  textSelectable = false,
+  showLinks = false,
+  showForms = false,
+  searchQuery = '',
+  annotationTool = 'select',
+  penColor = '#e11d48',
+  penWidth = 10,
+  eraserWidth = 24,
+  eraseMode = 'partial',
+  sloppiness = 0,
+  annsByPage,
+  onAnnsChange,
+  onAnnotationRender,
+  onMetrics,
+  onStatus,
+  onRasterEvent,
+  onZoomPhase,
+  onDocument,
+}) {
   const scrollerRef = useRef(null);
   const pdfRef = useRef(null);
   const [numPages, setNumPages] = useState(0);
@@ -257,12 +309,14 @@ export default function PdfjsArm({ fileSrc, fileKey, editMode = false, stressSha
   const [rotation, setRotation] = useState(0);
   const [range, setRange] = useState([0, -1]);    // [firstMounted, lastMounted]
   const [containerW, setContainerW] = useState(800);
-  // EDIT MODE (owned by the shell): the page ALWAYS shows the PDF's own smooth
-  // baked markups (identical in view + edit). In edit mode an invisible hit-target
-  // overlay is added on top so the marks become selectable/movable WITHOUT changing
-  // how they look (the Walkthrough way — baked appearance is the visual truth).
+  // Edit mode disables pdf.js annotation baking. Imported and native marks share
+  // one page-space model and one Canvas2D renderer, so there is no duplicate visual
+  // while zooming or panning and no SVG/Fabric handoff during editing.
   const anns = annsByPage || {};
+  const annsRef = useRef(anns);
+  annsRef.current = anns;
   const extractingRef = useRef(new Set()); // pages with an in-flight extraction
+  const stressAppliedRef = useRef(new Map());
   const pdfLibRef = useRef(null);          // pdf-lib doc (real annotation dicts: pts, color, /CA opacity)
   const [libReady, setLibReady] = useState(false);
 
@@ -271,7 +325,12 @@ export default function PdfjsArm({ fileSrc, fileKey, editMode = false, stressSha
   // Debug hooks captured in refs so wiring them never re-runs the zoom/raster effects.
   const onRasterEventRef = useRef(onRasterEvent);
   const onZoomPhaseRef = useRef(onZoomPhase);
-  useEffect(() => { onRasterEventRef.current = onRasterEvent; onZoomPhaseRef.current = onZoomPhase; }, [onRasterEvent, onZoomPhase]);
+  const onAnnotationRenderRef = useRef(onAnnotationRender);
+  useEffect(() => {
+    onRasterEventRef.current = onRasterEvent;
+    onZoomPhaseRef.current = onZoomPhase;
+    onAnnotationRenderRef.current = onAnnotationRender;
+  }, [onRasterEvent, onZoomPhase, onAnnotationRender]);
   const settleTimerRef = useRef(null);
   const pendingAnchorRef = useRef(null);
   const wheelRafRef = useRef(0);
@@ -284,11 +343,18 @@ export default function PdfjsArm({ fileSrc, fileKey, editMode = false, stressSha
   const dimsPtRef = useRef([]);
   const containerWRef = useRef(800);
   const topsRef = useRef([]); // current per-page top offsets (for goToPage)
+  const rangeRef = useRef(range);
+  rangeRef.current = range;
+  const spacePanRef = useRef(false);
+  const panPointerRef = useRef(null);
+  const panDeltaRef = useRef({ x: 0, y: 0 });
+  const panRafRef = useRef(0);
 
   // ---- load document --------------------------------------------------------
   useEffect(() => {
     let cancelled = false;
     setPageSizes([]); setNumPages(0); setRange([0, -1]);
+    stressAppliedRef.current.clear();
     pdfLibRef.current = null; setLibReady(false);
     onStatus?.('loading…');
     // pdf-lib reads the REAL annotation dicts (points, /C color, /CA opacity, /BS
@@ -396,6 +462,124 @@ export default function PdfjsArm({ fileSrc, fileKey, editMode = false, stressSha
 
   // recompute window whenever layout changes (scale/sizes/rotation)
   useEffect(() => { recomputeWindow(); }, [recomputeWindow]);
+
+  // ---- space-hold pan: native screen deltas, one scroll write per frame -----
+  const flushPan = useCallback(() => {
+    if (panRafRef.current) {
+      cancelAnimationFrame(panRafRef.current);
+      panRafRef.current = 0;
+    }
+    const el = scrollerRef.current;
+    const delta = panDeltaRef.current;
+    panDeltaRef.current = { x: 0, y: 0 };
+    if (!el || (!delta.x && !delta.y)) return;
+    el.scrollLeft -= delta.x;
+    el.scrollTop -= delta.y;
+  }, []);
+
+  const schedulePan = useCallback((dx, dy) => {
+    panDeltaRef.current.x += dx;
+    panDeltaRef.current.y += dy;
+    if (panRafRef.current) return;
+    panRafRef.current = requestAnimationFrame(() => {
+      panRafRef.current = 0;
+      const el = scrollerRef.current;
+      const delta = panDeltaRef.current;
+      panDeltaRef.current = { x: 0, y: 0 };
+      if (!el) return;
+      el.scrollLeft -= delta.x;
+      el.scrollTop -= delta.y;
+    });
+  }, []);
+
+  const finishPan = useCallback(() => {
+    flushPan();
+    const pointer = panPointerRef.current;
+    const el = scrollerRef.current;
+    if (pointer && el) {
+      try { el.releasePointerCapture(pointer.id); } catch { /* already released */ }
+    }
+    panPointerRef.current = null;
+    if (el) {
+      el.dataset.spacePan = spacePanRef.current ? 'armed' : 'off';
+      el.style.cursor = spacePanRef.current ? 'grab' : 'default';
+      el.style.userSelect = spacePanRef.current ? 'none' : 'auto';
+    }
+  }, [flushPan]);
+
+  useEffect(() => {
+    const activate = (event) => {
+      if (!isSpaceKey(event) || isEditableTarget(event.target)) return;
+      event.preventDefault();
+      event.stopPropagation();
+      if (spacePanRef.current) return;
+      spacePanRef.current = true;
+      const el = scrollerRef.current;
+      if (el) {
+        el.dataset.spacePan = 'armed';
+        el.style.cursor = 'grab';
+        el.style.userSelect = 'none';
+      }
+      window.dispatchEvent(new Event(PAN_START_EVENT));
+    };
+    const release = (event) => {
+      if (event && !isSpaceKey(event)) return;
+      if (event) {
+        event.preventDefault();
+        event.stopPropagation();
+      }
+      if (!spacePanRef.current && !panPointerRef.current) return;
+      spacePanRef.current = false;
+      finishPan();
+      window.dispatchEvent(new Event(PAN_END_EVENT));
+    };
+    const onVisibility = () => { if (document.hidden) release(); };
+    window.addEventListener('keydown', activate, true);
+    window.addEventListener('keyup', release, true);
+    window.addEventListener('blur', release);
+    window.addEventListener('pagehide', release);
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => {
+      window.removeEventListener('keydown', activate, true);
+      window.removeEventListener('keyup', release, true);
+      window.removeEventListener('blur', release);
+      window.removeEventListener('pagehide', release);
+      document.removeEventListener('visibilitychange', onVisibility);
+      finishPan();
+    };
+  }, [finishPan]);
+
+  const onPanPointerDown = useCallback((event) => {
+    if (!spacePanRef.current || event.button !== 0) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const el = scrollerRef.current;
+    if (!el) return;
+    el.setPointerCapture(event.pointerId);
+    panPointerRef.current = { id: event.pointerId, x: event.clientX, y: event.clientY };
+    el.dataset.spacePan = 'dragging';
+    el.style.cursor = 'grabbing';
+  }, []);
+
+  const onPanPointerMove = useCallback((event) => {
+    const pointer = panPointerRef.current;
+    if (!pointer || pointer.id !== event.pointerId) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const dx = event.clientX - pointer.x;
+    const dy = event.clientY - pointer.y;
+    pointer.x = event.clientX;
+    pointer.y = event.clientY;
+    schedulePan(dx, dy);
+  }, [schedulePan]);
+
+  const onPanPointerEnd = useCallback((event) => {
+    const pointer = panPointerRef.current;
+    if (!pointer || pointer.id !== event.pointerId) return;
+    event.preventDefault();
+    event.stopPropagation();
+    finishPan();
+  }, [finishPan]);
 
   // ---- apply the cursor anchor AFTER the new scale lays out ------------------
   useLayoutEffect(() => {
@@ -540,7 +724,20 @@ export default function PdfjsArm({ fileSrc, fileKey, editMode = false, stressSha
     if (!editMode || !pdfRef.current || !pdfLibRef.current || range[1] < range[0]) return;
     const lib = pdfLibRef.current;
     for (let i = range[0]; i <= range[1]; i++) {
-      if (anns[i] !== undefined || extractingRef.current.has(i)) continue;
+      const stressKey = `${fileKey}:${rotation}:${stressShapesPerPage}`;
+      if (anns[i] !== undefined) {
+        if (stressAppliedRef.current.get(i) !== stressKey) {
+          const base = anns[i].filter((annotation) => annotation.source !== 'stress');
+          const dim = layout.dims[i];
+          const synthetic = stressShapesPerPage > 0
+            ? makeStressShapes(stressShapesPerPage, dim.w, dim.h, i)
+            : [];
+          stressAppliedRef.current.set(i, stressKey);
+          onAnnsChange?.(i, [...base, ...synthetic]);
+        }
+        continue;
+      }
+      if (extractingRef.current.has(i)) continue;
       extractingRef.current.add(i);
       // Marks are valid page data regardless of effect re-runs (no cancelled-flag
       // gate — that once silently dropped the heavy page and never retried). pdf-lib
@@ -556,12 +753,13 @@ export default function PdfjsArm({ fileSrc, fileKey, editMode = false, stressSha
           // swarm is layered ON TOP (additive, same page space) so we exercise import
           // + add-on annotations together — never replacing the imported ones.
           const synthetic = stressShapesPerPage > 0 ? makeStressShapes(stressShapesPerPage, vp.width, vp.height, i) : [];
+          stressAppliedRef.current.set(i, stressKey);
           onAnnsChange?.(i, [...real, ...synthetic]);
         } catch { /* ignore — page may have unmounted */ }
         finally { extractingRef.current.delete(i); }
       })();
     }
-  }, [editMode, libReady, range, rotation, anns, onAnnsChange, stressShapesPerPage]);
+  }, [editMode, libReady, range, rotation, anns, onAnnsChange, stressShapesPerPage, fileKey, layout.dims]);
 
   // ---- metrics reporting ----------------------------------------------------
   const onRaster = useCallback((idx, info) => {
@@ -571,8 +769,20 @@ export default function PdfjsArm({ fileSrc, fileKey, editMode = false, stressSha
   }, [onMetrics, range]);
 
   useEffect(() => {
-    onMetrics?.({ zoomPct: Math.round(scale * liveZoom * 100), mounted: Math.max(0, range[1] - range[0] + 1), rasterMs: rasterInfoRef.current.ms, clamped: rasterInfoRef.current.clamped, backingW: rasterInfoRef.current.backingW, backingH: rasterInfoRef.current.backingH });
-  }, [scale, liveZoom, range, onMetrics]);
+    let annotationCount = 0;
+    for (let i = range[0]; i <= range[1]; i += 1) {
+      annotationCount += anns[i]?.length ?? stressShapesPerPage;
+    }
+    onMetrics?.({
+      zoomPct: Math.round(scale * liveZoom * 100),
+      mounted: Math.max(0, range[1] - range[0] + 1),
+      annotationCount,
+      rasterMs: rasterInfoRef.current.ms,
+      clamped: rasterInfoRef.current.clamped,
+      backingW: rasterInfoRef.current.backingW,
+      backingH: rasterInfoRef.current.backingH,
+    });
+  }, [scale, liveZoom, range, anns, stressShapesPerPage, onMetrics]);
 
   // jump the scroller so page N lands at the top (bookmark / outline navigation)
   const goToPage = useCallback((n) => {
@@ -601,6 +811,9 @@ export default function PdfjsArm({ fileSrc, fileKey, editMode = false, stressSha
       }
       .spikeFormLayer .buttonWidgetAnnotation.checkBox input,
       .spikeFormLayer .buttonWidgetAnnotation.radioButton input { appearance: auto; -webkit-appearance: auto; background: #fff; }
+      [data-space-pan='armed'], [data-space-pan='armed'] * { cursor: grab !important; }
+      [data-space-pan='dragging'], [data-space-pan='dragging'] * { cursor: grabbing !important; }
+      [data-space-pan]:not([data-space-pan='off']) [data-eraser-cursor] { display: none !important; }
     `;
     document.head.appendChild(style);
     return () => { style.remove(); };
@@ -608,7 +821,19 @@ export default function PdfjsArm({ fileSrc, fileKey, editMode = false, stressSha
 
   // ---- expose controls to parent via window (simple for a throwaway) --------
   useEffect(() => {
-    const api = { zoomTo, goToPage, rotate: () => setRotation((r) => (r === 0 ? 90 : r === 90 ? 270 : 0)) };
+    const api = {
+      zoomTo,
+      goToPage,
+      rotate: () => setRotation((r) => (r === 0 ? 90 : r === 90 ? 270 : 0)),
+      getAnnotations: (pageIndex = 0) => annsRef.current[pageIndex] || [],
+      getViewportState: () => ({
+        scale: scaleRef.current,
+        liveZoom: liveZoomRef.current,
+        mountedRange: rangeRef.current,
+        scrollLeft: scrollerRef.current?.scrollLeft || 0,
+        scrollTop: scrollerRef.current?.scrollTop || 0,
+      }),
+    };
     window.__spikePdfjs = api;
     return () => { if (window.__spikePdfjs === api) delete window.__spikePdfjs; };
   }, [zoomTo, goToPage]);
@@ -618,7 +843,20 @@ export default function PdfjsArm({ fileSrc, fileKey, editMode = false, stressSha
   return (
     <div
       ref={scrollerRef}
-      style={{ position: 'absolute', inset: 0, overflow: 'auto', background: '#3a3d42', contain: 'strict' }}
+      data-space-pan={spacePanRef.current ? (panPointerRef.current ? 'dragging' : 'armed') : 'off'}
+      onPointerDownCapture={onPanPointerDown}
+      onPointerMoveCapture={onPanPointerMove}
+      onPointerUpCapture={onPanPointerEnd}
+      onPointerCancelCapture={onPanPointerEnd}
+      style={{
+        position: 'absolute',
+        inset: 0,
+        overflow: 'auto',
+        background: '#3a3d42',
+        contain: 'strict',
+        cursor: spacePanRef.current ? (panPointerRef.current ? 'grabbing' : 'grab') : 'default',
+        userSelect: spacePanRef.current ? 'none' : 'auto',
+      }}
     >
       {loading ? (
         <div style={{ position: 'absolute', inset: 0, display: 'grid', placeItems: 'center', color: '#cfd2d6' }}>
@@ -662,6 +900,7 @@ export default function PdfjsArm({ fileSrc, fileKey, editMode = false, stressSha
                       scale={scale}
                       rotation={rotation}
                       liveZoom={liveZoom}
+                      interactionRef={spacePanRef}
                       bakeAnnotations={!editMode}
                       scrollerRef={scrollerRef}
                       onRasterEvent={onRasterEvent}
@@ -676,12 +915,23 @@ export default function PdfjsArm({ fileSrc, fileKey, editMode = false, stressSha
                       />
                     )}
                     {editMode && (
-                      <InteractiveOverlay
+                      <CanvasAnnotationLayer
                         pageWidth={dim.w}
                         pageHeight={dim.h}
+                        renderScale={scale}
+                        liveZoom={liveZoom}
                         annotations={anns[i] || []}
                         interactive
+                        tool={annotationTool}
+                        penColor={penColor}
+                        penWidth={penWidth}
+                        eraserWidth={eraserWidth}
+                        eraseMode={eraseMode}
+                        sloppiness={sloppiness}
+                        panActiveRef={spacePanRef}
+                        scrollerRef={scrollerRef}
                         onChange={(next) => onAnnsChange?.(i, next)}
+                        onRenderMetrics={(info) => onAnnotationRenderRef.current?.(i, { ...info, mountedRange: range })}
                       />
                     )}
                     {showForms && (

@@ -15,6 +15,11 @@
 import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.mjs';
 import { loadPdfjs } from './utils/pdfWorkerConfig';
 import { deepClone } from './utils/deepClone.js';
+import { eraserDiameterToScreenRadius } from './utils/eraserSizing.js';
+import {
+  createProductionBenchmarkPage,
+  parseProductionBenchmarkConfig,
+} from './utils/productionAnnotationBenchmark.js';
 import { showToast } from './utils/toast';
 import AnnotationPropertiesPanel from './components/AnnotationPropertiesPanel';
 import CalloutOverlay from './components/Callout';
@@ -353,7 +358,7 @@ function resolveMarkerEntityFromName(marker, entities) {
   return { ...marker, entityId: entity.id, entityName: entity.name, entityColor: entity.color };
 }
 
-export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, tabId, isActive, onTopToolbarApiChange, onBottomToolbarApiChange, onLeftRailApiChange, onRightRailApiChange, onPageDrop, onUpdatePDFFile, onRequestCreateTemplate, initialViewState, onViewStateChange, templates = [], onTemplatesChange, onRefetchTemplates, user, isMSAuthenticated, msLogin, graphClient, msAccount, msNeedsReconnect, ensureFreshToken, msGetAuthSignals, entities, setEntities, onUnsavedAnnotationsChange, onAnnotationsExistChange }) {
+export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, tabId, isActive, mobileMode = false, onTopToolbarApiChange, onBottomToolbarApiChange, onLeftRailApiChange, onRightRailApiChange, onPageDrop, onUpdatePDFFile, onRequestCreateTemplate, initialViewState, onViewStateChange, templates = [], onTemplatesChange, onRefetchTemplates, user, isMSAuthenticated, msLogin, graphClient, msAccount, msNeedsReconnect, ensureFreshToken, msGetAuthSignals, entities, setEntities, onUnsavedAnnotationsChange, onAnnotationsExistChange }) {
   // Phase 35 UAT diag — mirror current PDF filename to window so the dev-only
   // phase35Diag logger can prefix every gate decision with the file under test.
   // Production-stripped via import.meta.env.MODE check; tree-shakes from prod.
@@ -406,11 +411,6 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   const pdfjsStablePortalHostsRef = useRef({});
   const pdfjsStablePortalLiveRootsRef = useRef({});
   const pdfjsStablePortalSnapshotHostsRef = useRef({});
-  const pdfjsAppOverlayRootRef = useRef(null);
-  // Overlay divs: persistent direct-child divs inside Pdfjs page divs.
-  // Phase 1: created and attached but inert (not used for rendering).
-  // Phase 2+: zoom handler applies CSS transforms; render loop creates portals into these.
-  const overlayDivsRef = useRef({});
   const pdfjsLastNonEmptyOverlayPagesRef = useRef([]);
   const pdfjsScaleConfirmHiddenPagesRef = useRef(new Set());
   const pdfjsScaleConfirmVisibleSwapPagesRef = useRef(new Set());
@@ -875,6 +875,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   const pendingRendererRestoreRef = useRef(null);
   const [pdfjsDocumentBytes, setPdfjsDocumentBytes] = useState(null);
   const [pdfjsPageContainers, setPdfjsPageContainers] = useState({});
+  const [pdfjsMountedPages, setPdfjsMountedPages] = useState(new Set());
   const pageInputRef = useRef(null);
   const zoomInputRef = useRef(null);
   const pageRenderCacheRef = useRef(new PageRenderCache(100)); // Cache up to 100 pages
@@ -931,6 +932,11 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   const [panStart, setPanStart] = useState({ x: 0, y: 0 });
   const [renderedPages, setRenderedPages] = useState(new Set());
   const [debugLogging, setDebugLogging] = useState(false);
+  // Latest-ref pattern (render-phase write is intentional): read by
+  // markInteractionPerfActive to skip the HUD-only setState when the debug
+  // HUD is hidden. Worst case of a torn read is one skipped/extra HUD render.
+  const debugLoggingRef = useRef(debugLogging);
+  debugLoggingRef.current = debugLogging;
   const [overlayLagAutoRecordEnabled, setOverlayLagAutoRecordEnabled] = useState(() => readOverlayLagRecorderAutoEnabled());
   const [debugHudTick, setDebugHudTick] = useState(0);
   const [interactionPerfActive, setInteractionPerfActive] = useState(false);
@@ -966,6 +972,53 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   const [pdfjsContainerMutationTick, setPdfjsContainerMutationTick] = useState(0);
   const [pageHeights, setPageHeights] = useState({});
   const [pageSizes, setPageSizes] = useState({}); // { [page]: { width, height } }
+  const productionAnnotationBenchmarkConfig = useMemo(() => {
+    if (!import.meta.env.DEV || typeof window === 'undefined') return null;
+    return parseProductionBenchmarkConfig(window.location.search, numPages);
+  }, [numPages]);
+  const productionAnnotationBenchmarkCacheRef = useRef(new Map());
+  const productionAnnotationBenchmarkMergeCacheRef = useRef(new Map());
+  useEffect(() => {
+    productionAnnotationBenchmarkCacheRef.current.clear();
+    productionAnnotationBenchmarkMergeCacheRef.current.clear();
+  }, [pdfFile?.id, pdfFile?.name, productionAnnotationBenchmarkConfig?.perPage]);
+  const getProductionBenchmarkPage = useCallback((pageNumber, pageSize) => {
+    const config = productionAnnotationBenchmarkConfig;
+    if (!config || !pageSize) return [];
+    const key = `${pageNumber}:${pageSize.width}:${pageSize.height}:${config.perPage}`;
+    const cached = productionAnnotationBenchmarkCacheRef.current.get(key);
+    if (cached) return cached;
+    const objects = createProductionBenchmarkPage({
+      pageNumber,
+      count: config.perPage,
+      width: pageSize.width,
+      height: pageSize.height,
+    });
+    productionAnnotationBenchmarkCacheRef.current.set(key, objects);
+    return objects;
+  }, [productionAnnotationBenchmarkConfig]);
+  const getProductionBenchmarkAnnotations = useCallback((pageNumber, pageSize, pageAnnotations) => {
+    const benchmarkObjects = getProductionBenchmarkPage(pageNumber, pageSize);
+    if (benchmarkObjects.length === 0) return pageAnnotations;
+
+    const key = `${pageNumber}:${pageSize.width}:${pageSize.height}`;
+    const sourceObjects = Array.isArray(pageAnnotations?.objects) ? pageAnnotations.objects : null;
+    const cached = productionAnnotationBenchmarkMergeCacheRef.current.get(key);
+    if (cached?.pageAnnotations === pageAnnotations && cached?.sourceObjects === sourceObjects) {
+      return cached.value;
+    }
+
+    const value = {
+      ...(pageAnnotations || {}),
+      objects: (sourceObjects || []).concat(benchmarkObjects),
+    };
+    productionAnnotationBenchmarkMergeCacheRef.current.set(key, {
+      pageAnnotations,
+      sourceObjects,
+      value,
+    });
+    return value;
+  }, [getProductionBenchmarkPage]);
   const [canPan, setCanPan] = useState(false);
   // UX 2026-04-23: custom Print Panel state. Cmd/Ctrl+P opens it; closing or
   // canceling throws all settings away so the source PDF is never modified.
@@ -1214,7 +1267,12 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     if (!state.active) {
       state.active = true;
       emitPdfDebugEvent('interaction_perf_mode_on', { reason, holdMs: safeHold });
-      setInteractionPerfActive(true);
+      // The interactionPerfActive React state is consumed ONLY by the debug
+      // HUD. Flipping it when the HUD is hidden costs a synchronous full
+      // PDFViewer render in the opening frames of every zoom/scroll gesture —
+      // the demo-vs-app "zoom start hiccup". Ref bookkeeping above stays
+      // unconditional; only the render is skipped.
+      if (debugLoggingRef.current) setInteractionPerfActive(true);
       setDebugData({
         interactionPerfMode: 'active',
         interactionReason: reason
@@ -1854,6 +1912,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   // beginPdfjsScaleConfirmPending. Engine-gated: only runs under pdf.js;
   // under Pdfjs this is never wired (the prop is undefined), so it is inert.
   const handlePdfjsZoomPhase = useCallback((phase) => {
+    if (phase === 'gesture-start') cancelInitialFitPageRef.current?.();
     if (false) return;
     // INVARIANT: keep this bump — Canvas tools (Fabric draw/eraser/edit) watch
     // zoomGeneration to auto-commit in-progress work before the host re-layouts.
@@ -1906,63 +1965,19 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     const objects = Array.isArray(annotations?.objects) ? annotations.objects : [];
     const proxyObjects = objects
       .filter((object) => !!object)
-      .slice(0, 520)
-      .map((object, index) => ({
-        id: object?.id || object?.annotationId || object?.pdfAnnotationId || `obj-${pageNumber}-${index}`,
-        annotationId: object?.annotationId || null,
-        pdfAnnotationId: object?.pdfAnnotationId || null,
-        type: object?.type || null,
-        moduleId: object?.moduleId ?? null,
-        regionId: object?.regionId ?? null,
-        layer: object?.layer || null,
-        data: object?.data || null,
-        text: typeof object?.text === 'string' ? object.text : '',
-        left: Number(object?.left) || 0,
-        top: Number(object?.top) || 0,
-        width: Number(object?.width) || 0,
-        height: Number(object?.height) || 0,
-        scaleX: Number.isFinite(Number(object?.scaleX)) ? Number(object.scaleX) : 1,
-        scaleY: Number.isFinite(Number(object?.scaleY)) ? Number(object.scaleY) : 1,
-        stroke: object?.stroke ?? null,
-        fill: object?.fill ?? null,
-        strokeWidth: Number(object?.strokeWidth) || 1,
-        opacity: Number.isFinite(Number(object?.opacity)) ? Number(object.opacity) : 1,
-        angle: Number.isFinite(Number(object?.angle)) ? Number(object.angle) : 0,
-        fontSize: Number.isFinite(Number(object?.fontSize)) ? Number(object.fontSize) : 12,
-        globalCompositeOperation: object?.globalCompositeOperation || null,
-        x1: Number.isFinite(Number(object?.x1)) ? Number(object.x1) : undefined,
-        y1: Number.isFinite(Number(object?.y1)) ? Number(object.y1) : undefined,
-        x2: Number.isFinite(Number(object?.x2)) ? Number(object.x2) : undefined,
-        y2: Number.isFinite(Number(object?.y2)) ? Number(object.y2) : undefined,
-        path: Array.isArray(object?.path) ? object.path : undefined,
-        points: Array.isArray(object?.points) ? object.points : undefined,
-        objects: Array.isArray(object?.objects) ? object.objects : undefined
-      }));
+      // Keep a detached top-level snapshot without dropping renderer-specific
+      // fields such as pathOffset, tool, stroke caps, imported PDF metadata,
+      // or future annotation properties. Nested geometry is immutable here.
+      .map((object) => ({ ...object }));
 
     const proxyCallouts = (calloutsRef.current || [])
       .filter((callout) => Number(callout?.pageNumber) === pageNumber)
-      .slice(0, 180)
-      .map((callout, index) => ({
-        id: callout?.id || `callout-${pageNumber}-${index}`,
-        pageNumber,
-        moduleId: callout?.moduleId ?? null,
-        regionId: callout?.regionId ?? null,
-        layer: callout?.layer || null,
-        arrowTip: {
-          x: Number(callout?.arrowTip?.x) || 0,
-          y: Number(callout?.arrowTip?.y) || 0
-        },
-        knee: {
-          x: Number(callout?.knee?.x) || 0,
-          y: Number(callout?.knee?.y) || 0
-        },
-        textBoxPosition: {
-          x: Number(callout?.textBoxPosition?.x) || 0,
-          y: Number(callout?.textBoxPosition?.y) || 0
-        },
-        textBoxWidth: Number(callout?.textBoxWidth) || 0,
-        textBoxHeight: Number(callout?.textBoxHeight) || 0,
-        style: callout?.style || null
+      .map((callout) => ({
+        ...callout,
+        arrowTip: callout?.arrowTip ? { ...callout.arrowTip } : null,
+        knee: callout?.knee ? { ...callout.knee } : null,
+        textBoxPosition: callout?.textBoxPosition ? { ...callout.textBoxPosition } : null,
+        style: callout?.style ? { ...callout.style } : null,
       }));
 
     return {
@@ -2648,19 +2663,16 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       sessionId: nextSessionId,
       transitions: { ...pdfjsInteractionTransitionsRef.current }
     });
-    startPdfjsOverlayTransformLoop();
-    applyPdfjsOverlayTransformSync();
-    queuePdfjsOverlayTransformSync(true);
+    // The overlay host is inside the owned PDF.js content transform. The frozen
+    // Canvas2D page therefore rides the same compositor transform as the PDF;
+    // no second per-frame transform loop is needed or allowed here.
     schedulePdfjsInteractionSettleCheck();
   }, [
-    applyPdfjsOverlayTransformSync,
     computePdfjsInteractionResidentPages,
     freezePdfjsSessionPages,
     getPdfjsViewerScale,
-    queuePdfjsOverlayTransformSync,
     resetPdfjsZoomPresentationPages,
     schedulePdfjsInteractionSettleCheck,
-    startPdfjsOverlayTransformLoop,
     syncScaleConfirmHiddenPages,
     syncPdfjsLightweightPages
   ]);
@@ -2678,58 +2690,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     if (true) return;
   }, []);
 
-  const markPdfjsInteractionActive = useCallback((reason = 'interaction', holdMs = PDFJS_INTERACTION_SETTLE_MS) => {
-    // Under the owned pdf.js engine, the engine owns overlay positioning, scroll
-    // and zoom natively — overlays ride the engine transform with zero drift. The
-    // entire legacy Pdfjs interaction session (per-frame overlay transform
-    // rAF loop, visible-pages version bumps, settle bookkeeping) is pure wasted
-    // forced-layout + setState churn here. Bail before starting any of it so the
-    // pdf.js path matches the stripped demo's scroll/zoom feel. Zoom is unaffected:
-    // it runs in performPdfjsCursorWheelZoom, which already bails under pdf.js.
-    if (true) return;
-    if (!usePdfjsRenderer || !pdfjsLiveStableOverlayEnabled || !pdfjsDualLayerEnabled) {
-      return;
-    }
-
-    const safeHoldMs = Math.max(120, Number(holdMs) || PDFJS_INTERACTION_SETTLE_MS);
-    pdfjsInteractionUntilRef.current = Math.max(
-      pdfjsInteractionUntilRef.current || 0,
-      Date.now() + safeHoldMs
-    );
-    pdfjsInteractionReasonRef.current = reason;
-    // If a non-zoom reason arrives during an existing zoom-only session, escalate
-    if (pdfjsInteractionIsZoomOnlyRef.current && !ZOOM_ONLY_INTERACTION_REASONS.has(reason)) {
-      pdfjsInteractionIsZoomOnlyRef.current = false;
-    }
-
-    if (pdfjsInteractionPhaseRef.current === 'committing') {
-      clearPdfjsCommitRaf();
-      pdfjsCommitQueueRef.current = [];
-      pdfjsLastCommitFrameAtRef.current = 0;
-      setPdfjsCommitQueueDepth(0);
-      setPdfjsCommittingProxyPages(new Set());
-      pdfjsCommittingProxyPagesRef.current = new Set();
-      pdfjsInteractionPhaseRef.current = 'idle';
-      setPdfjsInteractionPhase('idle');
-    }
-
-    if (pdfjsInteractionPhaseRef.current !== 'interacting') {
-      startPdfjsInteractionSession(reason, safeHoldMs);
-      return;
-    }
-    startPdfjsOverlayTransformLoop();
-    queuePdfjsOverlayTransformSync();
-    schedulePdfjsInteractionSettleCheck();
-  }, [
-    clearPdfjsCommitRaf,
-    queuePdfjsOverlayTransformSync,
-    schedulePdfjsInteractionSettleCheck,
-    startPdfjsOverlayTransformLoop,
-    startPdfjsInteractionSession,
-    pdfjsDualLayerEnabled,
-    pdfjsLiveStableOverlayEnabled,
-    usePdfjsRenderer
-  ]);
+  // The demo-style Canvas2D presentation is persistent. Legacy callers may still
+  // report interaction activity, but viewport movement never starts a renderer swap.
+  const markPdfjsInteractionActive = useCallback(() => {}, []);
 
   useEffect(() => {
     if (usePdfjsRenderer && pdfjsLiveStableOverlayEnabled && pdfjsDualLayerEnabled) {
@@ -3945,7 +3908,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       return 'partial';
     }
   }); // 'partial' | 'entire'
-  const [eraserSize, setEraserSize] = useState(20); // Default 20px radius
+  const [eraserSize, setEraserSize] = useState(20); // Diameter in page pixels
   const [eraserCursorPos, setEraserCursorPos] = useState({ visible: false });
   const eraserCursorRef = useRef(null);
 
@@ -4576,6 +4539,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
   // Spacebar Pan feature
   useEffect(() => {
+    if (usePdfjsRenderer) return undefined;
+
     const handleKeyDown = (e) => {
       // Only handle space key
       if (e.key !== ' ' && e.code !== 'Space') {
@@ -4655,7 +4620,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       document.removeEventListener('keyup', handleKeyUp);
       window.removeEventListener('blur', handleWindowBlur);
     };
-  }, [activeTool]);
+  }, [activeTool, usePdfjsRenderer]);
 
   const [pendingLocationItem, setPendingLocationItem] = useState(null);
   const topToolbarRef = useRef(null);
@@ -5236,6 +5201,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
   // Memoize document unload handler to prevent re-renders
   const handleDocumentUnload = useCallback(() => {
+    pdfjsDocumentReadyRef.current = false;
+    pendingManualZoomBeforeLoadRef.current = null;
     pageContainersRef.current = {};
     pdfjsPagePdfEverReadyRef.current = new Set();
     setPdfjsPageContainers({});
@@ -5981,112 +5948,14 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       safePageNumber,
       pdfjsPageContainersStateRef.current || pageContainersRef.current || {}
     );
-    const stableViewerHost = [
-      pdfjsWrapperRef.current,
-      typeof document !== 'undefined'
-        ? document.getElementById(pdfjsViewerElementId)?.closest?.('[data-testid="pdf-container"]')
-        : null,
-      containerRef.current
-    ].find((candidate) => candidate?.isConnected) || null;
-
-    if (!stableViewerHost?.isConnected) {
-      return null;
-    }
-
-    let overlayRoot = pdfjsAppOverlayRootRef.current;
-    if (!overlayRoot) {
-      overlayRoot = document.createElement('div');
-      overlayRoot.setAttribute('data-betasafe-app-owned-overlay-root', 'true');
-      overlayRoot.setAttribute('data-overlay-host-owner', 'app-stable-viewer');
-      overlayRoot.style.cssText =
-        'position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:30;overflow:visible;';
-      pdfjsAppOverlayRootRef.current = overlayRoot;
-    }
-
-    // Under the owned pdf.js engine, host the overlay INSIDE the engine's transformed
-    // content (its stable overlay slot) so every layer rides the page's own zoom/scroll
-    // transform as one piece — the demo's structure, no per-frame chase. Under Pdfjs,
-    // keep the legacy stable-host placement (Pdfjs churns its page DOM during zoom).
-    const isPdfjsEngine = true;
-    const engineOverlayHost = isPdfjsEngine
-      ? (pdfjsViewerRef.current?.getOverlayHost?.() || null)
-      : null;
-    const overlayParentHost = engineOverlayHost?.isConnected ? engineOverlayHost : stableViewerHost;
-
-    const overlayParentStyle = window.getComputedStyle(overlayParentHost);
-    if (overlayParentStyle.position === 'static') {
-      overlayParentHost.style.position = 'relative';
-    }
-    if (overlayRoot.parentElement !== overlayParentHost) {
-      overlayParentHost.appendChild(overlayRoot);
-    }
-
-    let overlayDiv = overlayDivsRef.current[safePageNumber];
-    if (!overlayDiv) {
-      overlayDiv = document.createElement('div');
-      overlayDiv.setAttribute('data-overlay-page', String(safePageNumber));
-      overlayDiv.setAttribute('data-overlay-host-owner', 'app-stable-viewer');
-      overlayDiv.style.cssText =
-        'position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:30;overflow:visible;';
-      overlayDivsRef.current[safePageNumber] = overlayDiv;
-
-      // Phase 2 debug: make overlay divs visible during testing
-      if (PHASE_2_DEBUG_INDICATORS) {
-        overlayDiv.style.background = 'rgba(0, 128, 255, 0.1)';
-        overlayDiv.style.border = '1px dashed rgba(0, 128, 255, 0.5)';
-      }
-    }
-
-    pdfjsStablePortalHostsRef.current[safePageNumber] = overlayDiv;
-
-    if (!overlayRoot?.isConnected || overlayDiv.parentElement !== overlayRoot) {
-      overlayRoot.appendChild(overlayDiv);
-    }
-
     if (!pageDiv?.isConnected) {
-      overlayDiv.setAttribute('data-source-page-connected', 'false');
-      return overlayDiv;
+      const existingHost = pdfjsStablePortalHostsRef.current[safePageNumber];
+      return existingHost?.isConnected ? existingHost : null;
     }
 
-    let left;
-    let top;
-    let width;
-    let height;
-    if (engineOverlayHost?.isConnected) {
-      // Overlay rides inside the transformed content node, so position it in the page's
-      // LAYOUT (offset) coordinates — these are independent of the live CSS zoom
-      // transform, so reading them during or after a gesture is always correct, and the
-      // overlay scales with the page automatically.
-      left = Number(pageDiv.offsetLeft) || 0;
-      top = Number(pageDiv.offsetTop) || 0;
-      width = Number(pageDiv.offsetWidth) || 0;
-      height = Number(pageDiv.offsetHeight) || 0;
-    } else {
-      const pageRect = pageDiv.getBoundingClientRect?.();
-      const rootRect = overlayRoot?.getBoundingClientRect?.();
-      left = pageRect && rootRect
-        ? pageRect.left - rootRect.left
-        : (Number(pageDiv.offsetLeft) || 0);
-      top = pageRect && rootRect
-        ? pageRect.top - rootRect.top
-        : (Number(pageDiv.offsetTop) || 0);
-      width = Number(pageRect?.width) || Number(pageDiv.offsetWidth) || 0;
-      height = Number(pageRect?.height) || Number(pageDiv.offsetHeight) || 0;
-    }
-    // PERF (2026-06-03): this runs during render for every visible page. Writing
-    // these positions unconditionally dirties layout, so the next page's offset
-    // reads force a fresh reflow — layout thrash that stutters scroll on heavier
-    // hardware. The page's layout position only changes on zoom-commit / rotate /
-    // resize, NOT on scroll, so skip the writes when nothing moved: identical-value
-    // writes are a no-op for correctness but keep layout clean and reads cheap.
-    const prevGeom = overlayDiv.__lastOverlayGeom;
-    if (!prevGeom || prevGeom.left !== left || prevGeom.top !== top || prevGeom.width !== width || prevGeom.height !== height) {
-      overlayDiv.style.left = `${left}px`;
-      overlayDiv.style.top = `${top}px`;
-      if (width > 0) overlayDiv.style.width = `${width}px`;
-      if (height > 0) overlayDiv.style.height = `${height}px`;
-      overlayDiv.__lastOverlayGeom = { left, top, width, height };
-    }
+    const overlayDiv = pageDiv.querySelector?.('[data-pdfjs-page-overlay-host="true"]');
+    if (!overlayDiv?.isConnected) return null;
+    pdfjsStablePortalHostsRef.current[safePageNumber] = overlayDiv;
     overlayDiv.setAttribute('data-source-page-connected', 'true');
 
     if (!zoomOverlayTransformActiveRef.current) {
@@ -6113,7 +5982,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     }
 
     return overlayDiv;
-  }, [resolvePdfjsLivePageHost, pdfjsViewerElementId]);
+  }, [resolvePdfjsLivePageHost]);
 
   // [Phase 11] Removed: applyOverlayZoomTransform, startOverlayZoomSettleTimer (old Phase 2 overlay div zoom — dead in SVG mode)
 
@@ -6313,6 +6182,17 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     usePdfjsRenderer
   ]);
 
+  const handlePdfjsMountedPagesChange = useCallback((pageNumbers) => {
+    const next = new Set((Array.isArray(pageNumbers) ? pageNumbers : [])
+      .map((pageNumber) => Number(pageNumber))
+      .filter((pageNumber) => Number.isFinite(pageNumber) && pageNumber > 0));
+    setPdfjsMountedPages((previous) => (
+      previous.size === next.size && [...next].every((pageNumber) => previous.has(pageNumber))
+        ? previous
+        : next
+    ));
+  }, []);
+
   const reconcilePdfjsScaleFromRenderedPage = useCallback((source = 'pdfjs-scale-reconcile', pageOverride = null) => {
     if (!usePdfjsRenderer) return null;
     if (zoomOverlayTransformActiveRef.current && source !== 'manual-zoom') return null;
@@ -6363,6 +6243,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
   const handlePdfjsDocumentLoad = useCallback((payload) => {
     const viewer = pdfjsViewerRef.current;
+    const pendingManualScale = Number(pendingManualZoomBeforeLoadRef.current);
+    const hasPendingManualZoom = Number.isFinite(pendingManualScale) && pendingManualScale > 0;
+    pendingManualZoomBeforeLoadRef.current = null;
+    pdfjsDocumentReadyRef.current = true;
     pdfjsPagePdfEverReadyRef.current = new Set();
     const resolvedPageCount = coercePageNumber(
       payload?.pageCount ?? viewer?.getPageCount?.() ?? viewer?.pageCount,
@@ -6380,7 +6264,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     const restoreSnapshot = pendingRendererRestoreRef.current?.targetMode === 'continuous'
       ? pendingRendererRestoreRef.current
       : null;
-    const restoredScale = restoreSnapshot ? clampScale(restoreSnapshot.scale) : nextScale;
+    const restoredScale = hasPendingManualZoom
+      ? clampScale(pendingManualScale)
+      : (restoreSnapshot ? clampScale(restoreSnapshot.scale) : nextScale);
     const restoredPage = restoreSnapshot
       ? (coercePageNumber(restoreSnapshot.pageNum, resolvedPageCount || Number.POSITIVE_INFINITY) || currentPage)
       : currentPage;
@@ -6388,12 +6274,16 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     // Default to Fit Page on first open of a PDF when no saved view state exists.
     // If the tab has a restored zoom (restoreSnapshot) or saved initialViewState.scale,
     // respect that instead — user had already customized the zoom for this PDF.
-    const isFreshOpen = !restoreSnapshot && !(initialViewState && Number.isFinite(initialViewState.scale));
+    const isFreshOpen = !hasPendingManualZoom
+      && !restoreSnapshot
+      && !(initialViewState && Number.isFinite(initialViewState.scale));
 
     scaleRef.current = restoredScale;
     setScale(restoredScale);
     setManualZoomScale(restoredScale);
-    setZoomMode(isFreshOpen ? ZOOM_MODES.FIT_PAGE : ZOOM_MODES.MANUAL);
+    const restoredZoomMode = isFreshOpen ? ZOOM_MODES.FIT_PAGE : ZOOM_MODES.MANUAL;
+    zoomModeRef.current = restoredZoomMode;
+    setZoomMode(restoredZoomMode);
     setRenderedPages(new Set());
 
     // Every fresh PDF open must start with an uncalibrated Electron factor.
@@ -6403,6 +6293,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     if (isFreshOpen) {
       pdfjsElectronFactorRef.current = null;
       pendingInitialFitPageRef.current = true;
+    } else if (hasPendingManualZoom) {
+      cancelInitialFitPageRef.current?.();
     }
 
     // Bug #1b — Pdfjs's React wrapper getZoomValue() lies at mount:
@@ -6427,27 +6319,34 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       // produces a wrong scale. The user previously had to click fit-page 3 times
       // manually for it to converge — this fires those 3 passes automatically with
       // delays long enough for Pdfjs's relayout to settle between passes.
-      const fire = () => handleZoomModeSelectRef.current?.(ZOOM_MODES.FIT_PAGE);
-      setTimeout(fire, 0);
-      setTimeout(fire, 250);
-      setTimeout(fire, 550);
+      const fire = () => {
+        if (zoomModeRef.current !== ZOOM_MODES.FIT_PAGE) return;
+        handleZoomModeSelectRef.current?.(ZOOM_MODES.FIT_PAGE);
+      };
+      initialFitPageTimersRef.current = [
+        setTimeout(fire, 0),
+        setTimeout(fire, 250),
+        setTimeout(fire, 550),
+      ];
     };
-    requestAnimationFrame(() => requestAnimationFrame(() => {
-      if (reconcileScaleFromDOM()) {
-        triggerInitialFitPageIfPending();
-      } else {
-        setTimeout(() => {
-          if (reconcileScaleFromDOM()) {
-            triggerInitialFitPageIfPending();
-          } else {
-            setTimeout(() => {
-              reconcileScaleFromDOM();
+    if (!hasPendingManualZoom) {
+      requestAnimationFrame(() => requestAnimationFrame(() => {
+        if (reconcileScaleFromDOM()) {
+          triggerInitialFitPageIfPending();
+        } else {
+          setTimeout(() => {
+            if (reconcileScaleFromDOM()) {
               triggerInitialFitPageIfPending();
-            }, 500);
-          }
-        }, 150);
-      }
-    }));
+            } else {
+              setTimeout(() => {
+                reconcileScaleFromDOM();
+                triggerInitialFitPageIfPending();
+              }, 500);
+            }
+          }, 150);
+        }
+      }));
+    }
 
     setPageNum(restoredPage);
     setPageInputValue(String(restoredPage));
@@ -6479,6 +6378,17 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       applyPdfjsRestore();
       setTimeout(applyPdfjsRestore, 120);
       pendingRendererRestoreRef.current = null;
+    }
+
+    if (hasPendingManualZoom) {
+      const applyPendingManualZoom = () => {
+        const activeViewer = pdfjsViewerRef.current || viewer;
+        if (!activeViewer?.magnificationModule?.zoomTo) return;
+        pdfjsZoomSourceRef.current = ZOOM_MODES.MANUAL;
+        activeViewer.magnificationModule.zoomTo(restoredScale * 100);
+      };
+      applyPendingManualZoom();
+      setTimeout(applyPendingManualZoom, 120);
     }
 
     emitPdfDebugEvent('app_pdfjs_document_load', {
@@ -6780,6 +6690,36 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     updatePdfjsZoomSnapshots,
     usePdfjsRenderer
   ]);
+
+  const handlePdfjsEngineZoomCommitted = useCallback((payload) => {
+    const rawZoomValue = Number(
+      payload?.zoomValue ??
+      pdfjsViewerRef.current?.getZoomValue?.() ??
+      pdfjsViewerRef.current?.zoomValue
+    );
+    if (!Number.isFinite(rawZoomValue) || rawZoomValue <= 0) return;
+
+    const rawScale = Number(payload?.raw?.scale);
+    const nextScale = clampScale(
+      Number.isFinite(rawScale) && rawScale > 0 ? rawScale : rawZoomValue / 100
+    );
+    scaleRef.current = nextScale;
+    setScale((prev) => (Math.abs(prev - nextScale) <= 0.0001 ? prev : nextScale));
+    setManualZoomScale((prev) => (Math.abs(prev - nextScale) <= 0.0001 ? prev : nextScale));
+    if (document.activeElement !== zoomInputRef.current) {
+      setZoomInputValue(String(Math.round(nextScale * 100)));
+    }
+
+    const sourceMode = pdfjsZoomSourceRef.current;
+    const nextMode = sourceMode && sourceMode !== ZOOM_MODES.MANUAL
+      ? sourceMode
+      : ZOOM_MODES.MANUAL;
+    if (nextMode === ZOOM_MODES.MANUAL) cancelInitialFitPageRef.current?.();
+    zoomModeRef.current = nextMode;
+    setZoomMode(nextMode);
+    pdfjsZoomSourceRef.current = null;
+    scheduleTextSearchHighlightRefresh('engine-zoom-commit', 0);
+  }, [scheduleTextSearchHighlightRefresh]);
 
   const handlePdfjsPageRenderComplete = useCallback(() => {
     reconcilePdfjsScaleFromRenderedPage('page-render-complete');
@@ -7221,11 +7161,20 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   const zoomPreferencesRef = useRef(initialZoomPreferences);
   const zoomModeRef = useRef(initialZoomPreferences.mode);
   const scaleRef = useRef(initialZoomPreferences.manualScale);
+  const pdfjsDocumentReadyRef = useRef(false);
+  const pendingManualZoomBeforeLoadRef = useRef(null);
   const pageNumRef = useRef(1);
   // Late-bound handler + flag for "apply fit-page on first open" (set in the
   // Pdfjs document-load handler, consumed by an effect once pageSizes exist).
   const handleZoomModeSelectRef = useRef(null);
   const pendingInitialFitPageRef = useRef(false);
+  const initialFitPageTimersRef = useRef([]);
+  const cancelInitialFitPageRef = useRef(() => {});
+  cancelInitialFitPageRef.current = () => {
+    pendingInitialFitPageRef.current = false;
+    initialFitPageTimersRef.current.forEach((timerId) => clearTimeout(timerId));
+    initialFitPageTimersRef.current = [];
+  };
   const spacePageNavigationTimersRef = useRef([]);
   const pageSizesRef = useRef({});
   const manualZoomScaleRef = useRef(initialZoomPreferences.manualScale);
@@ -7233,6 +7182,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   // CSS pixels (Electron/browser zoom factor). Calibrated on first known-good measurement
   // and reused for fit-page/fit-height so we never divide pageDiv by the racy getZoomValue().
   const pdfjsElectronFactorRef = useRef(null);
+
+  useEffect(() => () => cancelInitialFitPageRef.current?.(), []);
 
   const persistZoomPreferences = useCallback((overrides = {}) => {
     const merged = {
@@ -7279,6 +7230,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       };
 
       if (mode === ZOOM_MODES.MANUAL) {
+        cancelInitialFitPageRef.current?.();
+        zoomModeRef.current = ZOOM_MODES.MANUAL;
         pdfjsZoomSourceRef.current = ZOOM_MODES.MANUAL;
         setZoomMode(ZOOM_MODES.MANUAL);
         const manualScale = manualZoomScaleRef.current || DEFAULT_ZOOM_PREFERENCES.manualScale;
@@ -7287,6 +7240,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         calibrateElectronFactor(manualScale);
         persistZoomPreferences({ mode: ZOOM_MODES.MANUAL, manualScale });
       } else {
+        zoomModeRef.current = mode;
         pdfjsZoomSourceRef.current = mode;
         setZoomMode(mode);
 
@@ -7322,7 +7276,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
             const realPageH = pdfPageSize.height * electronFactor;
             const widthScale = wrapperW / realPageW;
             const heightScale = wrapperH / realPageH;
-            const pageScale = Math.max(0.1, Math.min(5.0, Math.min(widthScale, heightScale)));
+            const pageScale = clampScale(Math.min(widthScale, heightScale));
             magnification.zoomTo(Math.round(pageScale * 100));
             setScale(pageScale);
             calibrateElectronFactor(pageScale);
@@ -7345,7 +7299,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         } else if (mode === ZOOM_MODES.FIT_HEIGHT) {
           if (wrapperH > 0 && pdfPageSize?.height > 0) {
             const realPageH = pdfPageSize.height * electronFactor;
-            const heightScale = Math.max(0.1, Math.min(5.0, wrapperH / realPageH));
+            const heightScale = clampScale(wrapperH / realPageH);
             magnification.zoomTo(Math.round(heightScale * 100));
             setScale(heightScale);
             calibrateElectronFactor(heightScale);
@@ -7541,6 +7495,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   }, [activeSpaceId, selectedSpaceId, showSurveyPanel, selectedTemplate, selectedModuleId, selectedCategoryId]);
   const [showRegionSelection, setShowRegionSelection] = useState(false); // Show region selection tool
   const [regionSelectionPage, setRegionSelectionPage] = useState(null); // Page for region selection
+  const [mobileRegionToolbarApi, setMobileRegionToolbarApi] = useState(null);
 
   // Pdfjs can render at a slightly different effective scale than the app's requested zoom.
   // Always prefer measured page scale for region editing/overlay alignment.
@@ -9062,7 +9017,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     };
     const trackpadStressTestApi = {
       async run(options = {}) {
-        const viewerContainer = containerRef.current || document.querySelector('.survey-pdfjs-viewer-container');
+        const viewerContainer = pdfjsViewerRef.current?.getViewerContainer?.()
+          || document.querySelector('.survey-pdfjs-viewer');
         if (!viewerContainer) {
           return { ok: false, error: 'viewer container not found' };
         }
@@ -20407,91 +20363,17 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     const container = containerRef.current;
     const previousScale = scaleRef.current || 1.0;
     const safeScale = clampScale(incomingScale);
+    if (options.mode === ZOOM_MODES.MANUAL) {
+      cancelInitialFitPageRef.current?.();
+      zoomModeRef.current = ZOOM_MODES.MANUAL;
+      if (usePdfjsRenderer && !pdfjsDocumentReadyRef.current) {
+        pendingManualZoomBeforeLoadRef.current = safeScale;
+      }
+    }
 
     if (usePdfjsRenderer) {
       const viewer = pdfjsViewerRef.current;
-      markPdfjsInteractionActive('set-scale-with-viewport');
-      if (container) {
-        const rect = container.getBoundingClientRect();
-        const anchor = options.anchor || {};
-        const hasAnchor = typeof anchor.x === 'number' && typeof anchor.y === 'number';
-        const anchorUsesClientCoordinates = anchor.coordinateSpace === 'client';
-        const cursorX = hasAnchor
-          ? (anchorUsesClientCoordinates ? anchor.x - rect.left : anchor.x)
-          : rect.width / 2;
-        const cursorY = hasAnchor
-          ? (anchorUsesClientCoordinates ? anchor.y - rect.top : anchor.y)
-          : rect.height / 2;
-        setAnchor({
-          x: cursorX + container.scrollLeft,
-          y: cursorY + container.scrollTop
-        });
-      }
-      // Pre-activate zoom overlay protection so portal hosts stay frozen when
-      // Pdfjs destroys/recreates page DOM during zoomTo(). Without this,
-      // keyboard/toolbar zoom race: zoomTo() fires before
-      // handlePdfjsZoomChange sets the ref, leaving a gap where
-      // overlay containers drop to 0.
-      if (Math.abs(safeScale - previousScale) > 0.0005) {
-        if (!zoomOverlayTransformActiveRef.current) {
-          zoomOverlayBaseScaleRef.current = previousScale;
-          capturePdfjsZoomSnapshots(previousScale);
-          zoomOverlayTransformActiveRef.current = true;
-          setPdfjsZoomPreviewActive(true);
-          debugMark('zoom_start', { scale: previousScale, targetScale: safeScale, source: 'keyboard_toolbar' });
-          // Cache page rects AND portal hosts before Pdfjs destroys DOM.
-          // The portal hosts cache is cleared when interaction goes idle, so it
-          // may be empty when pre-activation fires. We must populate it here so
-          // the render loop can create fallback hosts for disconnected pages.
-          const pageContainersMap = pdfjsPageContainersStateRef.current || pageContainersRef.current || {};
-          const cachedRects = {};
-          const portalHostSnapshot = {};
-          Object.entries(pageContainersMap).forEach(([pageNum, el]) => {
-            if (el?.isConnected) {
-              cachedRects[pageNum] = {
-                top: el.offsetTop, left: el.offsetLeft,
-                width: el.offsetWidth, height: el.offsetHeight
-              };
-              portalHostSnapshot[Number(pageNum)] = el;
-            }
-          });
-          pdfjsCachedPageRectsRef.current = cachedRects;
-          // Only populate portal hosts if cache is empty (don't overwrite active interaction cache)
-          const existingHosts = pdfjsInteractionPortalHostsRef.current || {};
-          if (Object.keys(existingHosts).length === 0) {
-            pdfjsInteractionPortalHostsRef.current = portalHostSnapshot;
-          }
-        }
-        // Restart settle timer on every zoom step so rapid keyboard/toolbar
-        // presses don't leave a stale timer that releases the ref mid-sequence.
-        if (zoomOverlaySettleTimerRef.current) {
-          clearTimeout(zoomOverlaySettleTimerRef.current);
-        }
-        updatePdfjsZoomSnapshots(safeScale);
-        zoomOverlaySettleTimerRef.current = setTimeout(() => {
-          zoomOverlaySettleTimerRef.current = null;
-          zoomOverlayTransformActiveRef.current = false;
-          setPdfjsZoomPreviewActive(false);
-          clearPdfjsZoomSnapshots();
-          resetPdfjsOverlayTransformStyles();
-          debugMark('zoom_end', { source: 'keyboard_toolbar_settle' });
-          const pendingScale = pdfjsPendingZoomScaleRef.current;
-          if (pendingScale != null && Number.isFinite(pendingScale) && pendingScale > 0) {
-            pdfjsPendingZoomScaleRef.current = null;
-            const finalScale = clampScale(pendingScale);
-            setScale((prev) => (Math.abs(prev - finalScale) <= 0.0005 ? prev : finalScale));
-            setManualZoomScale((prev) => (Math.abs(prev - finalScale) <= 0.0005 ? prev : finalScale));
-          }
-          beginPdfjsScaleConfirmPending('keyboard_toolbar_settle');
-        }, PDFJS_ZOOM_OVERLAY_SETTLE_MS);
-      }
-      // Do not push the React scale into PAL ahead of Pdfjs's own
-      // zoomChange callback. Pre-committing here lets PAL redraw before the
-      // App-level settle/confirm-pending handoff starts, which recreates the
-      // visible freeze-after-redraw flicker the Phase 4 contract is trying to remove.
-      pdfjsPendingZoomScaleRef.current = safeScale;
-
-      if (viewer?.magnificationModule) {
+      if (Math.abs(safeScale - previousScale) > 0.0001 && viewer?.magnificationModule) {
         const zoomPercent = safeScale * 100;
         const zoomSource = options.mode || pdfjsZoomSourceRef.current || ZOOM_MODES.MANUAL;
         pdfjsZoomSourceRef.current = zoomSource;
@@ -20574,7 +20456,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       isZoomingRef.current = false;
       perfZoom.end(safeScale);
     });
-  }, [beginPdfjsScaleConfirmPending, capturePdfjsZoomSnapshots, clearPdfjsZoomSnapshots, markPdfjsInteractionActive, resetPdfjsOverlayTransformStyles, setScale, setAnchor, updatePdfjsZoomSnapshots, usePdfjsRenderer]);
+  }, [setScale, setAnchor, usePdfjsRenderer]);
 
   const centerPageBoundsInViewer = useCallback((pageNumber, bounds, options = {}) => {
     const targetPage = Number(pageNumber);
@@ -21093,8 +20975,13 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         return firstKey ? sizes[firstKey] : null;
       },
       getCurrentScale: () => scaleRef.current,
-      setScale: (value, context) => setScaleWithViewportPreservation(value, context),
+      setScale: (value, context = {}) => setScaleWithViewportPreservation(value, {
+        ...context,
+        mode: context?.mode || ZOOM_MODES.MANUAL,
+      }),
       onModeChange: (mode) => {
+        zoomModeRef.current = mode;
+        if (mode === ZOOM_MODES.MANUAL) cancelInitialFitPageRef.current?.();
         setZoomMode((prev) => (prev === mode ? prev : mode));
       },
       onManualScaleChange: (value) => {
@@ -21233,81 +21120,6 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     };
   }, [handleWheel, usePdfjsRenderer]);
 
-  // Pre-activate zoom overlay protection for Ctrl+=/- keyboard zoom.
-  // Pdfjs handles these keys internally and may destroy/recreate page
-  // DOM before our handlePdfjsZoomChange fires. This capture-phase
-  // handler ensures portal host freeze is active before Pdfjs touches DOM.
-  useEffect(() => {
-    if (!usePdfjsRenderer) return;
-
-    const handleZoomKeyDown = (e) => {
-      const isZoomIn = (e.ctrlKey || e.metaKey) && (e.key === '=' || e.key === '+');
-      const isZoomOut = (e.ctrlKey || e.metaKey) && e.key === '-';
-      if (!isZoomIn && !isZoomOut) return;
-
-      // If drawing/eraser tool is active, switch to pan immediately on zoom start.
-      const tool = activeToolRef.current;
-      if (tool === 'pen' || tool === 'highlighter' || tool === 'eraser') {
-        setActiveTool('pan');
-      }
-
-      const prevScale = scaleRef.current || 1.0;
-      if (!zoomOverlayTransformActiveRef.current) {
-        zoomOverlayBaseScaleRef.current = prevScale;
-        capturePdfjsZoomSnapshots(prevScale);
-        zoomOverlayTransformActiveRef.current = true;
-        setPdfjsZoomPreviewActive(true);
-        debugMark('zoom_start', { scale: prevScale, source: 'ctrl_key' });
-        // Cache page rects and portal hosts before Pdfjs destroys DOM
-        const pageContainersMap = pdfjsPageContainersStateRef.current || pageContainersRef.current || {};
-        const cachedRects = {};
-        const portalHostSnapshot = {};
-        Object.entries(pageContainersMap).forEach(([pageNum, el]) => {
-          if (el?.isConnected) {
-            cachedRects[pageNum] = {
-              top: el.offsetTop, left: el.offsetLeft,
-              width: el.offsetWidth, height: el.offsetHeight
-            };
-            portalHostSnapshot[Number(pageNum)] = el;
-          }
-        });
-        pdfjsCachedPageRectsRef.current = cachedRects;
-        const existingHosts = pdfjsInteractionPortalHostsRef.current || {};
-        if (Object.keys(existingHosts).length === 0) {
-          pdfjsInteractionPortalHostsRef.current = portalHostSnapshot;
-        }
-      }
-      // Restart settle timer (same as setScaleWithViewportPreservation)
-      if (zoomOverlaySettleTimerRef.current) {
-        clearTimeout(zoomOverlaySettleTimerRef.current);
-      }
-      const nextScale = clampScale(prevScale * (isZoomIn ? TOOLBAR_ZOOM_STEP_FACTOR : (1 / TOOLBAR_ZOOM_STEP_FACTOR)));
-      updatePdfjsZoomSnapshots(nextScale);
-      zoomOverlaySettleTimerRef.current = setTimeout(() => {
-        zoomOverlaySettleTimerRef.current = null;
-        zoomOverlayTransformActiveRef.current = false;
-        setPdfjsZoomPreviewActive(false);
-        clearPdfjsZoomSnapshots();
-        resetPdfjsOverlayTransformStyles();
-        debugMark('zoom_end', { source: 'ctrl_key_settle' });
-        const pendingScale = pdfjsPendingZoomScaleRef.current;
-        if (pendingScale != null && Number.isFinite(pendingScale) && pendingScale > 0) {
-          pdfjsPendingZoomScaleRef.current = null;
-          const finalScale = clampScale(pendingScale);
-          setScale((prev) => (Math.abs(prev - finalScale) <= 0.0005 ? prev : finalScale));
-          setManualZoomScale((prev) => (Math.abs(prev - finalScale) <= 0.0005 ? prev : finalScale));
-        }
-        beginPdfjsScaleConfirmPending('ctrl_key_settle');
-      }, PDFJS_ZOOM_OVERLAY_SETTLE_MS);
-    };
-
-    // Capture phase: runs before Pdfjs's own handler
-    document.addEventListener('keydown', handleZoomKeyDown, { capture: true });
-    return () => {
-      document.removeEventListener('keydown', handleZoomKeyDown, { capture: true });
-    };
-  }, [beginPdfjsScaleConfirmPending, capturePdfjsZoomSnapshots, clearPdfjsZoomSnapshots, resetPdfjsOverlayTransformStyles, updatePdfjsZoomSnapshots, usePdfjsRenderer]);
-
   // Optimized pan handling
   const handleMouseDown = useCallback((e) => {
     if (usePdfjsRenderer) return;
@@ -21434,7 +21246,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
   // Track eraser cursor position when eraser tool is active
   useEffect(() => {
-    if (activeTool !== 'eraser') {
+    if (activeTool !== 'eraser' || usePdfjsRenderer) {
       setEraserCursorPos({ visible: false });
       return;
     }
@@ -21446,7 +21258,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     if (elUnder && elUnder.closest('[data-testid="pdf-container"]')) {
       setEraserCursorPos({ visible: true });
       if (eraserCursorRef.current) {
-        const radius = eraserSize * scale;
+        const radius = eraserDiameterToScreenRadius(eraserSize, scale);
         eraserCursorRef.current.style.transform = `translate3d(${x - radius}px, ${y - radius}px, 0)`;
       }
     }
@@ -21471,7 +21283,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
       // Direct DOM manipulation for performance (no react render loop)
       if (eraserCursorRef.current && isWithinViewport) {
-        const radius = eraserSize * scale;
+        const radius = eraserDiameterToScreenRadius(eraserSize, scale);
         // Use translate3d to force GPU acceleration
         eraserCursorRef.current.style.transform = `translate3d(${e.clientX - radius}px, ${e.clientY - radius}px, 0)`;
       }
@@ -21489,7 +21301,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       document.removeEventListener('mousemove', handleMouseMove);
       document.removeEventListener('mouseleave', handleMouseLeave);
     };
-  }, [activeTool, eraserSize, scale]);
+  }, [activeTool, eraserSize, scale, usePdfjsRenderer]);
 
   // Input handlers with validation
   const handlePageInputChange = useCallback((e) => {
@@ -21578,8 +21390,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
   const handleZoomInputChange = useCallback((e) => {
     const digitsOnly = e.target.value.replace(/\D/g, '');
-    // UX 2026-05-14: clamp the max while typing so a stray "5000" snaps
-    // to "500" before the user even tabs out. Min is not clamped here;
+    // Keep typed zoom inside the same 1%-4000% contract as the PDF engine.
+    // Min is not clamped here;
     // typing "5" should not jump to "10" mid-keystroke. Final min clamp
     // happens on commit in commitZoomInput.
     if (digitsOnly === '') {
@@ -21587,8 +21399,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       return;
     }
     const numeric = parseInt(digitsOnly, 10);
-    if (Number.isFinite(numeric) && numeric > 500) {
-      setZoomInputValue('500');
+    if (Number.isFinite(numeric) && numeric > 4000) {
+      setZoomInputValue('4000');
     } else {
       setZoomInputValue(digitsOnly);
     }
@@ -21606,7 +21418,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       return;
     }
 
-    const clamped = Math.min(Math.max(parsed, 10), 500);
+    const clamped = Math.min(Math.max(parsed, 1), 4000);
     const controller = zoomControllerRef.current;
     if (controller) {
       const normalized = clampScale(clamped / 100);
@@ -21631,6 +21443,24 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   const handleZoomInputBlur = useCallback(() => {
     commitZoomInput();
   }, [commitZoomInput]);
+
+  const mobileSurveyModules = useMemo(
+    () => selectedTemplate?.modules || selectedTemplate?.spaces || [],
+    [selectedTemplate]
+  );
+  const mobileSurveyCategories = useMemo(
+    () => mobileSurveyModules.find((module) => module.id === selectedModuleId)?.categories || [],
+    [mobileSurveyModules, selectedModuleId]
+  );
+  const handleMobileSurveyModuleSelect = useCallback((moduleId) => {
+    setSelectedModuleId(moduleId || null);
+    setSelectedCategoryId(null);
+    setActiveToolLogged('survey-marker');
+  }, [setActiveToolLogged]);
+  const handleMobileSurveyCategorySelect = useCallback((categoryId) => {
+    setSelectedCategoryId(categoryId || null);
+    setActiveToolLogged('survey-marker');
+  }, [setActiveToolLogged]);
 
   // UX 2026-05-13: Publish bottom toolbar state to the App shell when this tab
   // is active. Keep this effect below every value in the API object to avoid
@@ -21671,6 +21501,18 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       lastShapeTool,
       lastReviewTool,
       showSurveyPanel,
+      surveyToolbar: selectedTemplate ? {
+        modules: mobileSurveyModules,
+        categories: mobileSurveyCategories,
+        selectedModuleId,
+        selectedCategoryId,
+        onSelectModule: handleMobileSurveyModuleSelect,
+        onSelectCategory: handleMobileSurveyCategorySelect,
+        keepCategoryActive: surveyKeepCategoryActive,
+        onKeepCategoryActiveChange: setSurveyKeepCategoryActive,
+      } : null,
+      regionEditing: showRegionSelection,
+      regionToolbarApi: mobileRegionToolbarApi,
       showAnnotationColorPicker,
       strokeColor,
       strokeOpacity,
@@ -21751,6 +21593,16 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     lastShapeTool,
     lastReviewTool,
     showSurveyPanel,
+    selectedTemplate,
+    mobileSurveyModules,
+    mobileSurveyCategories,
+    selectedModuleId,
+    selectedCategoryId,
+    handleMobileSurveyModuleSelect,
+    handleMobileSurveyCategorySelect,
+    surveyKeepCategoryActive,
+    showRegionSelection,
+    mobileRegionToolbarApi,
     showAnnotationColorPicker,
     strokeColor,
     strokeOpacity,
@@ -21875,10 +21727,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
           return; // Don't trigger tool switch if focused on input
         }
 
-        // Prevent default behavior and switch to eraser tool, set mode to entire
+        // Activate the eraser without changing the mode selected in its menu.
         e.preventDefault();
         setActiveTool('eraser');
-        setEraserMode('entire');
         return;
       }
 
@@ -22504,6 +22355,25 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         objectDelta,
         changedObjectsCount: finalPageTransition.changedObjectsCount,
         pageTransition: finalPageTransition,
+        previousPageHash: previousPageFingerprint.hash,
+        nextPageHash: finalNextPageFingerprint.hash,
+        undoDepth: undoHistoryRef.current.length,
+        redoDepth: redoHistoryRef.current.length,
+        saveContext: normalizedSaveContext
+      });
+    } else if (isEraserCommit) {
+      // The precise local action above already stores exactly the changed/deleted
+      // annotation geometry as one undo step. A second legacy checkpoint clones
+      // and fingerprints the entire document on pointer-up, causing a visible
+      // quarter-second stall without adding any undo coverage.
+      pushHistoryDebugEvent('annotations_checkpoint_skipped_precise_eraser_history', {
+        reason: 'annotations:save',
+        source,
+        pageNumber,
+        previousObjectCount,
+        nextObjectCount,
+        objectDelta,
+        changedObjectsCount: finalPageTransition.changedObjectsCount,
         previousPageHash: previousPageFingerprint.hash,
         nextPageHash: finalNextPageFingerprint.hash,
         undoDepth: undoHistoryRef.current.length,
@@ -25117,6 +24987,48 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     }
   }, [selectedTemplate, handleTemplatesChange, appTemplates, updateSupabaseTemplate, sanitizeTemplateConfig]);
 
+  const handleDeleteSurveyCategoryDefinition = useCallback((moduleId, categoryId) => {
+    if (!selectedTemplate || !moduleId || !categoryId) return;
+    const sourceModules = selectedTemplate.modules || selectedTemplate.spaces || [];
+    let changed = false;
+    const updatedModules = sourceModules.map((module) => {
+      if (module.id !== moduleId) return module;
+      const categories = module.categories || [];
+      const nextCategories = categories.filter((category) => category.id !== categoryId);
+      if (nextCategories.length === categories.length) return module;
+      changed = true;
+      return { ...module, categories: nextCategories };
+    });
+    if (!changed) return;
+
+    const updatedAt = new Date().toISOString();
+    const updatedTemplate = {
+      ...selectedTemplate,
+      modules: updatedModules,
+      spaces: updatedModules,
+      updatedAt,
+    };
+    const templateId = selectedTemplate.supabaseId || selectedTemplate.id;
+    setSelectedTemplate(updatedTemplate);
+    setSelectedCategoryId((current) => current === categoryId ? null : current);
+
+    if (handleTemplatesChange && appTemplates) {
+      handleTemplatesChange(appTemplates.map((template) => (
+        template.id === updatedTemplate.id || template.supabaseId === templateId
+          ? updatedTemplate
+          : template
+      )));
+    }
+
+    if (updateSupabaseTemplate && templateId) {
+      const config = sanitizeTemplateConfig(updatedTemplate);
+      updateSupabaseTemplate(templateId, { config, updated_at: updatedAt }).catch((error) => {
+        console.warn('Failed to persist survey category deletion:', error);
+        showToast('Category deleted locally but could not be saved to the cloud.', 'error');
+      });
+    }
+  }, [selectedTemplate, handleTemplatesChange, appTemplates, updateSupabaseTemplate, sanitizeTemplateConfig, showToast]);
+
   const handleDeleteSurveyMarker = useCallback((annotationId) => {
     if (!annotationId) return;
 
@@ -26133,8 +26045,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     });
   }, [usePdfjsRenderer, pdfjsPageContainers, shouldShowPage]);
 
-  // Phase 1: attach overlay divs to page divs when Pdfjs reports them.
-  // Overlay divs are inert in Phase 1 -- they become portal targets in Phase 3.
+  // Resolve each React-owned page-local overlay host as page containers arrive.
   useEffect(() => {
     if (!usePdfjsRenderer) return;
     Object.entries(pdfjsPageContainers).forEach(([pageKey, pageDiv]) => {
@@ -26144,57 +26055,6 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       attachOverlayToPageDiv(pageNumber);
     });
   }, [usePdfjsRenderer, pdfjsPageContainers, attachOverlayToPageDiv]);
-
-  useEffect(() => {
-    if (!usePdfjsRenderer) return;
-    // KAL-241 lag fix — under pdf.js the overlay host is a child of the engine's
-    // transformed/scrolled content, so each page overlay already rides the page
-    // through every scroll and zoom (live dumps show worstDriftPx=0). The
-    // per-frame re-attach below re-reads offsetLeft/offsetTop/getBoundingClientRect
-    // for every resident page on every scroll frame — a forced synchronous layout
-    // that the engine does NOT need and that the stripped demo never runs. New
-    // pages scrolling in are still attached by the Phase 1 effect above
-    // (pdfjsPageContainers change), and zoom settle re-attaches as well, so
-    // skipping the scroll-driven loop here is alignment-safe for pdf.js.
-    if (true) return;
-    const viewerContainer = containerRef.current;
-    if (!viewerContainer) return;
-
-    let frameId = null;
-    const raf = typeof window.requestAnimationFrame === 'function'
-      ? window.requestAnimationFrame.bind(window)
-      : (callback) => window.setTimeout(callback, 16);
-    const cancelRaf = typeof window.cancelAnimationFrame === 'function'
-      ? window.cancelAnimationFrame.bind(window)
-      : (id) => window.clearTimeout(id);
-    const scheduleOverlayPositionSync = () => {
-      if (frameId !== null) return;
-      frameId = raf(() => {
-        frameId = null;
-        const pages = new Set([
-          ...Object.keys(pdfjsPageContainersStateRef.current || {}).map((pageKey) => Number(pageKey)),
-          ...Object.keys(overlayDivsRef.current || {}).map((pageKey) => Number(pageKey))
-        ]);
-        pages.forEach((pageNumber) => {
-          if (Number.isFinite(pageNumber) && pageNumber > 0) {
-            attachOverlayToPageDiv(pageNumber);
-          }
-        });
-      });
-    };
-
-    viewerContainer.addEventListener('scroll', scheduleOverlayPositionSync, { passive: true });
-    window.addEventListener('resize', scheduleOverlayPositionSync);
-    scheduleOverlayPositionSync();
-
-    return () => {
-      viewerContainer.removeEventListener('scroll', scheduleOverlayPositionSync);
-      window.removeEventListener('resize', scheduleOverlayPositionSync);
-      if (frameId !== null) {
-        cancelRaf(frameId);
-      }
-    };
-  }, [usePdfjsRenderer, attachOverlayToPageDiv, pdfjsPageContainers]);
 
   useEffect(() => {
     if (!usePdfjsRenderer || !containerRef.current) {
@@ -27283,6 +27143,7 @@ ${pageBlocks}
       onExportSpaceCSV: handleExportSpaceToCSV,
       onExportSpacePDF: handleExportSpaceToPDF,
       isRegionSelectionActive: showRegionSelection,
+      regionSelectionPage,
       shouldShowPage,
       activeSpacePages,
       scale,
@@ -27380,6 +27241,7 @@ ${pageBlocks}
     handleExportSpaceToCSV,
     handleExportSpaceToPDF,
     showRegionSelection,
+    regionSelectionPage,
     shouldShowPage,
     activeSpacePages,
     scale,
@@ -27421,6 +27283,7 @@ ${pageBlocks}
       copyModeActive,
       DEFAULT_SURVEY_MARKER_OPACITY,
       deleteAnnotations,
+      deleteCategory: handleDeleteSurveyCategoryDefinition,
       documentSyncEnabled,
       expandedCategories,
       expandedSurveyMarkers,
@@ -27555,6 +27418,7 @@ ${pageBlocks}
     copyModeActive,
     DEFAULT_SURVEY_MARKER_OPACITY,
     deleteAnnotations,
+    handleDeleteSurveyCategoryDefinition,
     documentSyncEnabled,
     expandedCategories,
     expandedSurveyMarkers,
@@ -27913,7 +27777,7 @@ ${pageBlocks}
 
       {/* Eraser Cursor Overlay */}
       {/*
-        UX: circular ring showing the eraser radius, centered on the pointer,
+        UX: circular ring showing the selected eraser diameter, centered on the pointer,
         rendered only while the eraser tool is active. The ring MUST appear at
         the pointer on the first render (not at top-left) — the fix-me race was
         that the ref-based transform write at 22437 runs before the ref is
@@ -27922,16 +27786,21 @@ ${pageBlocks}
         correct spot. Subsequent moves use the direct-DOM transform path in
         handleMouseMove for perf.
       */}
-      {activeTool === 'eraser' && eraserCursorPos.visible && (
+      {!usePdfjsRenderer && activeTool === 'eraser' && eraserCursorPos.visible && (
+        (() => {
+          const cursorRadius = eraserDiameterToScreenRadius(eraserSize, scale);
+          return (
         <div
           ref={eraserCursorRef}
+          data-eraser-cursor="true"
           style={{
             position: 'fixed',
             left: 0,
             top: 0,
-            width: eraserSize * 2 * scale,
-            height: eraserSize * 2 * scale,
-            transform: `translate3d(${lastPointerPosRef.current.x - eraserSize * scale}px, ${lastPointerPosRef.current.y - eraserSize * scale}px, 0)`,
+            width: cursorRadius * 2,
+            height: cursorRadius * 2,
+            boxSizing: 'border-box',
+            transform: `translate3d(${lastPointerPosRef.current.x - cursorRadius}px, ${lastPointerPosRef.current.y - cursorRadius}px, 0)`,
             borderRadius: '50%',
             backgroundColor: 'rgba(128, 128, 128, 0.2)',
             border: `${Math.max(1, 2 * scale)}px solid rgba(100, 100, 100, 0.6)`,
@@ -27940,6 +27809,8 @@ ${pageBlocks}
             willChange: 'transform',
           }}
         />
+          );
+        })()
       )}
       <div style={{
         // UX 2026-05-13: Fill container, not viewport. Tab bar + App-level chrome
@@ -27992,6 +27863,8 @@ ${pageBlocks}
         {showRegionSelection && (
           <RegionSelectionTool
             active={showRegionSelection}
+            mobileMode={mobileMode}
+            onMobileToolbarApiChange={setMobileRegionToolbarApi}
             activeTool={activeTool}
             onRegionComplete={handleRegionComplete}
             onCancel={handleCancelRegionEdit}
@@ -28183,12 +28056,6 @@ ${pageBlocks}
                     style={{ width: '100%', height: '100%' }}
                     initialRenderPages={PDFJS_INITIAL_RENDER_PAGES}
                     scrollDelayMs={PDFJS_SCROLL_DELAY_MS}
-                    restrictZoomRequest={
-                      PDFJS_RESTRICT_ZOOM_REQUEST_DURING_INTERACTION &&
-                      pdfjsLiveStableOverlayEnabled &&
-                      pdfjsDualLayerEnabled &&
-                      pdfjsInteractionPhase !== 'idle'
-                    }
                     interactionMode={activeTool === 'pan' ? 'Pan' : 'TextSelection'}
                     textHighlightModeActive={activeTool === 'text-highlight'}
                     textHighlightColor={strokeColor}
@@ -28199,12 +28066,13 @@ ${pageBlocks}
                     onDocumentLoaded={handlePdfjsDocumentLoad}
                     onDocumentLoadFailed={handlePdfjsDocumentLoadFailed}
                     onPageChanged={handlePdfjsPageChange}
-                    onZoomChanged={undefined}
+                    onZoomChanged={handlePdfjsEngineZoomCommitted}
                     onZoomPhase={handlePdfjsZoomPhase}
                     onPageRendered={handlePdfjsPageRenderComplete}
                     onTextSelectionEnd={handlePdfjsTextSelectionEnd}
                     onPDFBookmarksAvailable={handlePDFBookmarksAvailable}
-                    onPageContainersChange={undefined}
+                    onPageContainersChange={handlePdfjsPageContainersChange}
+                    onMountedPagesChange={handlePdfjsMountedPagesChange}
                     onDebugEvent={handlePdfjsDebugEvent}
                     onDocumentUnload={handleDocumentUnload}
                     formDesignerEnabled={formModeActive}
@@ -28247,6 +28115,7 @@ ${pageBlocks}
                     ...Object.keys(annotationsByPage || {}).map(k => Number(k)),
                     ...Object.keys(newSurveyMarkersByPage || {}).map(k => Number(k)),
                     ...Object.keys(searchResultsByPage || {}).map(k => Number(k)),
+                    ...Array.from(pdfjsMountedPages),
                     currentPage
                   ]);
                   if (showRegionSelection && regionSelectionPage) {
@@ -28258,15 +28127,10 @@ ${pageBlocks}
                   return contentPageNumbers
                     .filter(pageNumber => {
                       if (!shouldShowPage(pageNumber)) return false;
-                      // Under pdf.js, give every page the engine has rendered an overlay
-                      // portal — even with no app annotations — so the link, form, and
-                      // text layers mount on clean / link-only / pure-form pages too.
-                      if (
-                        true &&
-                        pdfjsPageContainers[pageNumber]?.isConnected
-                      ) {
-                        return true;
-                      }
+                      // Match the reference demo's virtualization window. Placeholder
+                      // page divs stay connected for scrollbar stability, but only the
+                      // engine's mounted raster window gets live annotation portals.
+                      if (pdfjsMountedPages.has(pageNumber)) return true;
                       const isActiveRegionSelectionPage = showRegionSelection && regionSelectionPage === pageNumber;
                       if (isActiveRegionSelectionPage) {
                         return true;
@@ -28274,16 +28138,7 @@ ${pageBlocks}
                       // Always include current page when a tool that needs Canvas is active
                       if (toolNeedsCanvas && pageNumber === currentPage) return true;
                       if (isFirstVisibleAnnotationPageGated(pageNumber)) return true;
-                      // Limit portals to pages with content to avoid unbounded memory growth
-                      const hasAnnotations = annotationsByPage[pageNumber]?.objects?.length > 0;
-                      const hasSurveyMarkers = (newSurveyMarkersByPage[pageNumber]?.length ?? 0) > 0;
-                      const hasRegions = getPageRegions(pageNumber)?.length > 0;
-                      const hasSearchHighlights = searchResultsByPage[pageNumber]?.length > 0;
-                      if (hasAnnotations || hasSurveyMarkers || hasRegions || hasSearchHighlights) {
-                        return true;
-                      }
-                      if (!pdfjsOverlayWindowPages.has(pageNumber)) return false;
-                      return hasAnnotations || hasSurveyMarkers || hasRegions || hasSearchHighlights;
+                      return false;
                     })
                     .sort((a, b) => a - b)
                     .map(pageNumber => {
@@ -28306,6 +28161,11 @@ ${pageBlocks}
                       if (!pageSize) return null;  // Page size not yet known -- skip this render
                       const pagePdfReadyState = readPdfjsPageVisitState(pageNumber);
                       const pageAnnotationObjects = Array.isArray(pageAnnotations?.objects) ? pageAnnotations.objects : [];
+                      const benchmarkPageAnnotations = getProductionBenchmarkAnnotations(
+                        pageNumber,
+                        pageSize,
+                        pageAnnotations,
+                      );
                       // Persisted form-field values for this page (pdf.js engine
                       // only). Fed to PdfjsFormLayer so reloaded widgets restore
                       // their saved value. Cheap filter — forms are rare.
@@ -28659,35 +28519,6 @@ ${pageBlocks}
                               />
                             </div>
                             )}
-                            {shouldRenderLightweightAnnotations ? (
-                              annotationHydrationGated ? null : (
-                              <LightweightAnnotationOverlay
-                                pageNumber={pageNumber}
-                                width={resolvedPageSize.width}
-                                height={resolvedPageSize.height}
-                                scale={layerScale}
-                                interactionSessionId={pdfjsInteractionSessionId}
-                                proxyObjects={proxyPayload?.objects}
-                                proxyCallouts={proxyPayload?.callouts}
-                                annotations={pageAnnotations}
-                                callouts={callouts}
-                                selectedModuleId={selectedModuleId}
-                                showSurveyPanel={showSurveyPanel}
-                                selectedSpaceId={annotationSpaceId}
-                                activeSpaceId={activeSpaceId}
-                                activeRegions={pageRegions}
-                                activeRegionId={activeRegionId}
-                                spaces={spaces}
-                                getCanvasAnnotationVisibilityState={getCanvasAnnotationVisibilityState}
-                                getSurveyAnnotationVisibilityState={getSurveyAnnotationVisibilityState}
-                                isRegionOverlayEnabled={isRegionOverlayEnabled}
-                                layerVisibility={annotationLayerVisibility}
-                                annotationRevision={proxyPayload ? proxyRevision : annotationRevision}
-                                calloutRevision={proxyPayload ? proxyRevision : calloutRevision}
-                                onRenderReady={markPdfjsProxyPageReady}
-                              />
-                              )
-                            ) : null}
                             {/* SVGAnnotationLayer moved outside this div — see sibling below */}
                             {requiresLegacyAnnotationLayer && pageRegions && pageRegions.length > 0 && !(showRegionSelection && regionSelectionPage === pageNumber) && (() => {
                               const space = spaces.find(s => s.id === activeSpaceId);
@@ -28796,6 +28627,7 @@ ${pageBlocks}
                             // to drive state that still applies (like passing the edit
                             // annotation index to the selection overlay).
                             const isFabricEditMode = isEditMode && editingAnnotation?.editType !== 'bbox';
+                            const useCanvasPresentation = !svgInteractive && !isEditMode;
 
                             return (
                             <>
@@ -28803,6 +28635,9 @@ ${pageBlocks}
                                 data-annotation-real-surface={pageNumber}
                                 data-annotation-hydration-gated={annotationHydrationGated ? 'true' : 'false'}
                                 data-zoom-snapshot-hidden={pdfjsZoomPreviewActive ? 'true' : 'false'}
+                                data-annotation-presentation={useCanvasPresentation ? 'canvas2d' : 'svg-edit'}
+                                data-production-annotation-benchmark-total={productionAnnotationBenchmarkConfig?.total || undefined}
+                                data-production-annotation-benchmark-per-page={productionAnnotationBenchmarkConfig?.perPage || undefined}
                                 style={{
                                   position: 'absolute',
                                   top: 0,
@@ -28813,6 +28648,31 @@ ${pageBlocks}
                                   visibility: pdfjsZoomPreviewActive ? 'hidden' : undefined,
                                 }}
                               >
+                              {!annotationHydrationGated && (
+                                <LightweightAnnotationOverlay
+                                  pageNumber={pageNumber}
+                                  width={resolvedPageSize.width}
+                                  height={resolvedPageSize.height}
+                                  scale={layerScale}
+                                  annotations={isEraserTool ? pageAnnotations : benchmarkPageAnnotations}
+                                  callouts={callouts}
+                                  surveyMarkers={newSurveyMarkersByPage[pageNumber]}
+                                  selectedModuleId={selectedModuleId}
+                                  showSurveyPanel={showSurveyPanel}
+                                  selectedSpaceId={annotationSpaceId}
+                                  activeSpaceId={activeSpaceId}
+                                  activeRegions={pageRegions}
+                                  activeRegionId={activeRegionId}
+                                  spaces={spaces}
+                                  getCanvasAnnotationVisibilityState={getCanvasAnnotationVisibilityState}
+                                  getSurveyAnnotationVisibilityState={getSurveyAnnotationVisibilityState}
+                                  isRegionOverlayEnabled={isRegionOverlayEnabled}
+                                  layerVisibility={annotationLayerVisibility}
+                                  annotationRevision={annotationRevision}
+                                  calloutRevision={calloutRevision}
+                                  visible={useCanvasPresentation}
+                                />
+                              )}
                               {pageRegions && pageRegions.length > 0 && !(showRegionSelection && regionSelectionPage === pageNumber) && (() => {
                                 const space = spaces.find(s => s.id === activeSpaceId);
                                 const page = space?.assignedPages?.find(p => p.pageId === pageNumber);
@@ -28892,7 +28752,7 @@ ${pageBlocks}
                                   'none' for eraser because svgInteractive is false, so clicks still
                                   reach the eraser canvas at zIndex 101. Ref CLAUDE.md 2026-04-10
                                   rasterizer-mismatch gotcha + FabricEraserCanvas.jsx textbox override. */}
-                              {!suspendFullSvgForProxy && (
+                              {!useCanvasPresentation && !suspendFullSvgForProxy && (
                               <div
                                 data-diag-svg-wrapper={pageNumber}
                                 data-annotation-hydration-gated={annotationHydrationGated ? 'true' : 'false'}
@@ -29128,7 +28988,7 @@ ${pageBlocks}
                                   onEraseCallout={handleDeleteSelectedCallouts}
                                   eraserMode={eraserMode}
                                   eraserSize={eraserSize}
-                                  viewerScale={scale}
+                                  viewerScale={layerScale}
                                   selectedSpaceId={annotationSpaceId}
                                   activeSpaceId={activeSpaceId}
                                   spaces={spaces}
@@ -29725,6 +29585,7 @@ ${pageBlocks}
                   // highlighter UI is freehand-only so testing stays focused.
                   const showTextMarkupHighlightMenu = false;
                   const isHighlighterSplitMenu = isHighlighter && showTextMarkupHighlightMenu;
+                  const hasSplitMenu = isEraser || isHighlighterSplitMenu;
                   const isActiveHighlighter = activeTool === 'highlighter';
                   const isActive = isHighlighter ? isActiveHighlighter : activeTool === t.id;
                   const button = (
@@ -29767,13 +29628,19 @@ ${pageBlocks}
                       title={isHighlighter ? 'Highlighter' : isEraser ? (eraserMode === 'entire' ? 'Full stroke erase' : 'Partial erase') : t.label}
                     >
                       <Icon name={t.iconName} size={20} />
-                      {isHighlighterSplitMenu && (
+                      {hasSplitMenu && (
                         <div
                           data-highlighter-caret-button={isHighlighterSplitMenu ? 'true' : undefined}
+                          data-eraser-caret-button={isEraser ? 'true' : undefined}
                           onClick={(e) => {
                             e.stopPropagation();
-                            setActiveTool('highlighter');
-                            setHighlighterCaretPopupOpen((open) => !open);
+                            if (isEraser) {
+                              setActiveTool('eraser');
+                              setEraserCaretPopupOpen((open) => !open);
+                            } else {
+                              setActiveTool('highlighter');
+                              setHighlighterCaretPopupOpen((open) => !open);
+                            }
                           }}
                           style={{
                             position: 'absolute',
@@ -29794,7 +29661,7 @@ ${pageBlocks}
                     </button>
                   );
 
-                  if (!isHighlighterSplitMenu) {
+                  if (!hasSplitMenu) {
                     return (
                       <div key={t.id} style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
                         {button}

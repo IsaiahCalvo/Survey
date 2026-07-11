@@ -52,7 +52,7 @@ const mockMSGraphValue = {
   ensureFreshToken: async () => true,
 };
 
-export function DevTestRoute({ pdfName }) {
+export function DevTestRoute({ pdfName, displayName = null, returnTab = null }) {
   const [status, setStatus] = useState('loading');
   const [error, setError] = useState(null);
 
@@ -67,7 +67,7 @@ export function DevTestRoute({ pdfName }) {
           throw new Error(`Failed to fetch test PDF: ${resp.status} ${resp.statusText}`);
         }
         const blob = await resp.blob();
-        const file = new File([blob], pdfName, { type: 'application/pdf' });
+        const file = new File([blob], displayName || pdfName, { type: 'application/pdf' });
 
         if (cancelled) return;
 
@@ -84,7 +84,7 @@ export function DevTestRoute({ pdfName }) {
 
     loadPdf();
     return () => { cancelled = true; };
-  }, [pdfName]);
+  }, [pdfName, displayName]);
 
   if (status === 'loading') {
     return (
@@ -130,7 +130,7 @@ export function DevTestRoute({ pdfName }) {
     <ErrorBoundary>
       <AuthContext.Provider value={mockAuthValue}>
         <MSGraphContext.Provider value={mockMSGraphValue}>
-          <App />
+          <App devPreviewReturnTab={returnTab} />
           <KeyboardShortcutsOverlay />
         </MSGraphContext.Provider>
       </AuthContext.Provider>

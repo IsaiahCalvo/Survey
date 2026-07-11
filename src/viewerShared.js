@@ -364,7 +364,7 @@ export const INTERACTION_PERF_DRAW_HOLD_MS = 1600;
 const PDFJS_OVERLAY_PREFETCH_PAGES = 2;
 export const PDFJS_OVERLAY_ROOT_MARGIN = '720px 0px';
 export const PDFJS_OVERLAY_WINDOW_LINGER_MS = 260;
-export const PDFJS_INTERACTION_SETTLE_MS = 1800;
+export const PDFJS_INTERACTION_SETTLE_MS = 240;
 export const PDFJS_INTERACTION_PROXY_OBJECT_THRESHOLD = 180;
 export const PDFJS_INTERACTION_PROXY_CALLOUT_THRESHOLD = 30;
 export const PDFJS_INTERACTION_PROXY_FORCE_OBJECT_THRESHOLD = 320;
@@ -406,7 +406,7 @@ export const PDFJS_SCROLL_DELAY_MS = 8;
 // without making Pdfjs keep too many offscreen canvases/spinners busy.
 export const PDFJS_INITIAL_RENDER_PAGES = 10;
 export const PDFJS_RESTRICT_ZOOM_REQUEST_DURING_INTERACTION = true;
-const PDFJS_DUAL_LAYER_ENABLED_KEY = 'pdfjs_interaction_dual_layer_enabled';
+const PDFJS_CANVAS_PRESENTATION_ENABLED_KEY = 'pdfjs_canvas_presentation_enabled_v1';
 const OVERLAY_LAG_RECORDER_AUTO_KEY = 'pdfjs_overlay_lag_auto_v2';
 export const OVERLAY_LAG_RECORDER_AUTO_SAMPLE_PAGE_LIMIT = 6;
 export const OVERLAY_LAG_RECORDER_AUTO_MAX_SAMPLES = 12000;
@@ -888,8 +888,8 @@ export const writeDocumentSyncStructuralDisabled = (disabled) => {
 export const readPdfjsLiveStableOverlayEnabled = () => {
   if (typeof window === 'undefined') return false;
   try {
-    const raw = window.localStorage.getItem('pdfjs_live_stable_overlay');
-    if (raw === null || raw === undefined) return false;
+    const raw = window.localStorage.getItem(PDFJS_CANVAS_PRESENTATION_ENABLED_KEY);
+    if (raw === null || raw === undefined) return true;
     const normalized = String(raw).trim().toLowerCase();
     return normalized !== '0' && normalized !== 'false' && normalized !== 'off';
   } catch {
@@ -900,8 +900,8 @@ export const readPdfjsLiveStableOverlayEnabled = () => {
 export const readPdfjsDualLayerEnabled = () => {
   if (typeof window === 'undefined') return false;
   try {
-    const raw = window.localStorage.getItem(PDFJS_DUAL_LAYER_ENABLED_KEY);
-    if (raw === null || raw === undefined) return false;
+    const raw = window.localStorage.getItem(PDFJS_CANVAS_PRESENTATION_ENABLED_KEY);
+    if (raw === null || raw === undefined) return true;
     const normalized = String(raw).trim().toLowerCase();
     return normalized !== '0' && normalized !== 'false' && normalized !== 'off';
   } catch {
@@ -912,7 +912,7 @@ export const readPdfjsDualLayerEnabled = () => {
 export const writePdfjsDualLayerEnabled = (enabled) => {
   if (typeof window === 'undefined') return;
   try {
-    window.localStorage.setItem(PDFJS_DUAL_LAYER_ENABLED_KEY, enabled ? '1' : '0');
+    window.localStorage.setItem(PDFJS_CANVAS_PRESENTATION_ENABLED_KEY, enabled ? '1' : '0');
   } catch {
     // Ignore storage errors.
   }

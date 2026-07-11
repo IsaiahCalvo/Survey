@@ -3,7 +3,7 @@
  * geometry, producing new path commands ("cookie-cutter" erase).
  *
  * Exports booleanErasePath (flattens the path, converts the stroke to a constant-
- * width ribbon polygon via bisector miter offsets, unions eraser circles, and
+ * width ribbon polygon via bisector miter offsets, unions swept eraser capsules, and
  * Martinez-diffs them; returns { pathData, isConvertedToOutline }) and
  * splitPathDataByEraser (a simpler segment-cutting fallback). Used by the eraser
  * tool to reshape ink strokes in local path space.
@@ -283,7 +283,7 @@ const subtractEraserFromPolyline = (polyline, eraserCircles) => {
 /**
  * Creates a circular polygon (approximate)
  */
-const createCirclePolygon = (cx, cy, r, segments = 16) => {
+const createCirclePolygon = (cx, cy, r, segments = 36) => {
     const points = [];
     for (let i = 0; i < segments; i++) {
         const angle = (i / segments) * Math.PI * 2;
@@ -292,6 +292,63 @@ const createCirclePolygon = (cx, cy, r, segments = 16) => {
     // Close loop
     points.push([points[0][0], points[0][1]]);
     return [points]; // Martinez expects array of rings (multipolygon structure)
+};
+
+/**
+ * A pointer stream can be sparse during a fast swipe. Joining sampled circles
+ * leaves untouched gaps, so each consecutive pair becomes a round-ended
+ * capsule and the capsules are unioned into one continuous swept disk.
+ */
+const createCapsulePolygon = (start, end, radius, arcSegments = 18) => {
+    const dx = end.x - start.x;
+    const dy = end.y - start.y;
+    if (Math.hypot(dx, dy) < 1e-6) {
+        return createCirclePolygon(start.x, start.y, radius, arcSegments * 2);
+    }
+
+    const direction = Math.atan2(dy, dx);
+    const startAngle = direction + Math.PI / 2;
+    const ring = [];
+    for (let i = 0; i <= arcSegments; i++) {
+        const angle = startAngle + (i / arcSegments) * Math.PI;
+        ring.push([
+            start.x + Math.cos(angle) * radius,
+            start.y + Math.sin(angle) * radius,
+        ]);
+    }
+    for (let i = 0; i <= arcSegments; i++) {
+        const angle = startAngle + Math.PI + (i / arcSegments) * Math.PI;
+        ring.push([
+            end.x + Math.cos(angle) * radius,
+            end.y + Math.sin(angle) * radius,
+        ]);
+    }
+    ring.push([ring[0][0], ring[0][1]]);
+    return [ring];
+};
+
+const createSweptEraserPolygon = (samples) => {
+    const compacted = [];
+    for (const sample of samples || []) {
+        const previous = compacted[compacted.length - 1];
+        if (!previous || Math.hypot(sample.x - previous.x, sample.y - previous.y) >= 0.1) {
+            compacted.push(sample);
+        }
+    }
+    if (compacted.length === 0) return [];
+    if (compacted.length === 1) {
+        const sample = compacted[0];
+        return createCirclePolygon(sample.x, sample.y, sample.r);
+    }
+
+    let swept = null;
+    for (let i = 1; i < compacted.length; i++) {
+        const previous = compacted[i - 1];
+        const current = compacted[i];
+        const capsule = createCapsulePolygon(previous, current, Math.max(previous.r, current.r));
+        swept = swept ? union(swept, capsule) : capsule;
+    }
+    return swept || [];
 };
 
 /**
@@ -426,28 +483,20 @@ export const booleanErasePath = (pathObj, eraserPath, eraserRadius) => {
     // Usually ink is M...L... with no fill.
     const polylines = flattenPathToPolylines(pathObj.path);
 
-    // Create union of all eraser circles to form one big eraser polygon
-    // Optimization: Unions are expensive. Maybe just union them first?
-    let eraserPoly = null;
-
-    // Create polygon for first circle
-    if (localEraserCircles.length > 0) {
-        eraserPoly = createCirclePolygon(localEraserCircles[0].x, localEraserCircles[0].y, localEraserCircles[0].r);
-
-        // Union subsequent circles - NAIEVE. 
-        // Better to check which actually intersect bounds
-        // For performance, we might just loop subtraction?
-        // Or union them in chunks?
-        // Let's rely on iterating subtraction for now, it's safer than massive union if not optimized
-    }
-
     // Convert stroke to explicit polygon outline
     let subjectPolys = []; // Array of multipolygons
 
     if (strokeWidth > 0) {
+        // Match the demo's paper-ink model: the visible stroke is the union of
+        // round swept disks around its centerline. This preserves round caps
+        // and joins on the first partial erase instead of converting the path
+        // to a square-ended miter ribbon.
         for (const poly of polylines) {
-            const outline = strokeToPolygon(poly, strokeWidth);
-            if (outline) subjectPolys.push(outline);
+            const outline = createSweptEraserPolygon(poly.map((point) => ({
+                ...point,
+                r: strokeWidth / 2,
+            })));
+            if (outline?.length) subjectPolys.push(outline);
         }
     } else {
         // strokeWidth=0: path is already a filled polygon (e.g., after a previous
@@ -470,15 +519,7 @@ export const booleanErasePath = (pathObj, eraserPath, eraserRadius) => {
     // We can also union the eraser circles first if they are many
     // But martinez union is robust.
 
-    // Let's create a single eraser multipolygon by unioning all circles
-    let combinedEraserPoly = [];
-    if (localEraserCircles.length > 0) {
-        combinedEraserPoly = createCirclePolygon(localEraserCircles[0].x, localEraserCircles[0].y, localEraserCircles[0].r);
-        for (let i = 1; i < localEraserCircles.length; i++) {
-            const nextCircle = createCirclePolygon(localEraserCircles[i].x, localEraserCircles[i].y, localEraserCircles[i].r);
-            combinedEraserPoly = union(combinedEraserPoly, nextCircle);
-        }
-    }
+    const combinedEraserPoly = createSweptEraserPolygon(localEraserCircles);
 
     // Subtract combined eraser from each subject poly
     const finalPolys = [];

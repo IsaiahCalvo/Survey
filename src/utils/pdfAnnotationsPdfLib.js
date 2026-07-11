@@ -30,6 +30,10 @@ import {
   getAnnotationVisibilityScope,
   getSpaceIdForRegionFromSpaces,
 } from './annotationVisibilityRules.js';
+import {
+  commandsToPolygonSet,
+  normalizeMultiPolygon,
+} from './paperAnnotationGeometry.js';
 
 const pdfExportDebug = (...args) => {
   if (typeof window === 'undefined' || window.__PDF_EXPORT_DEBUG !== true) return;
@@ -480,11 +484,151 @@ const hexToRGB = (hex) => {
   return rgb(0, 0, 0);
 };
 
+const pdfNumberText = (value) => {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return '0';
+  const rounded = Math.abs(numeric) < 1e-8 ? 0 : Number(numeric.toFixed(5));
+  return String(rounded);
+};
+
+const paintAlpha = (paint, opacity = 1) => {
+  const rgba = typeof paint === 'string'
+    ? paint.match(/rgba\(\s*[+-]?\d*\.?\d+\s*,\s*[+-]?\d*\.?\d+\s*,\s*[+-]?\d*\.?\d+\s*,\s*([+-]?\d*\.?\d+)\s*\)/i)
+    : null;
+  const paintOpacity = rgba ? Number(rgba[1]) : 1;
+  const objectOpacity = Number.isFinite(Number(opacity)) ? Number(opacity) : 1;
+  return Math.max(0, Math.min(1, paintOpacity * objectOpacity));
+};
+
+const isFilledPaperInk = (fabricObj) => Boolean(
+  fabricObj?.paperInkGeometry
+  || fabricObj?.paperEraserGeometry
+  || (
+    Array.isArray(fabricObj?.polygons)
+    && fabricObj.polygons.length > 0
+    && fabricObj.fill
+    && fabricObj.fill !== 'none'
+    && fabricObj.fill !== 'transparent'
+    && Number(fabricObj.strokeWidth || 0) === 0
+  )
+);
+
+const paperInkPolygons = (fabricObj) => {
+  const persisted = normalizeMultiPolygon(fabricObj?.polygons);
+  if (persisted.length) return persisted;
+  return commandsToPolygonSet(fabricObj?.path, { fill: true });
+};
+
+const polygonBounds = (polygons) => {
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  for (const polygon of normalizeMultiPolygon(polygons)) {
+    for (const ring of polygon) {
+      for (const point of ring) {
+        minX = Math.min(minX, point[0]);
+        minY = Math.min(minY, point[1]);
+        maxX = Math.max(maxX, point[0]);
+        maxY = Math.max(maxY, point[1]);
+      }
+    }
+  }
+  return Number.isFinite(minX) ? { minX, minY, maxX, maxY } : null;
+};
+
+const createFilledPaperInkAnnotation = (pdfDoc, page, fabricObj, pageHeight, options = {}) => {
+  const polygons = paperInkPolygons(fabricObj);
+  const bounds = polygonBounds(polygons);
+  if (!bounds) return null;
+
+  const width = Math.max(0.01, bounds.maxX - bounds.minX);
+  const height = Math.max(0.01, bounds.maxY - bounds.minY);
+  const color = hexToRGB(fabricObj.fill || fabricObj.stroke || '#000000');
+  const alpha = paintAlpha(fabricObj.fill, fabricObj.opacity);
+  const useMultiply = fabricObj.globalCompositeOperation === 'multiply'
+    || fabricObj.tool === 'highlighter';
+  const needsGraphicsState = alpha < 0.99999 || useMultiply;
+  const content = ['q'];
+  if (needsGraphicsState) content.push('/GS0 gs');
+  content.push(`${pdfNumberText(color.red)} ${pdfNumberText(color.green)} ${pdfNumberText(color.blue)} rg`);
+
+  for (const polygon of polygons) {
+    for (const ring of polygon) {
+      if (!Array.isArray(ring) || ring.length < 3) continue;
+      content.push(`${pdfNumberText(ring[0][0] - bounds.minX)} ${pdfNumberText(bounds.maxY - ring[0][1])} m`);
+      const end = ring.length > 1
+        && ring[0][0] === ring[ring.length - 1][0]
+        && ring[0][1] === ring[ring.length - 1][1]
+        ? ring.length - 1
+        : ring.length;
+      for (let index = 1; index < end; index += 1) {
+        content.push(`${pdfNumberText(ring[index][0] - bounds.minX)} ${pdfNumberText(bounds.maxY - ring[index][1])} l`);
+      }
+      content.push('h');
+    }
+  }
+  content.push('f*', 'Q');
+
+  const resources = {};
+  if (needsGraphicsState) {
+    resources.ExtGState = {
+      GS0: {
+        Type: 'ExtGState',
+        ca: alpha,
+        CA: alpha,
+        ...(useMultiply ? { BM: 'Multiply' } : {}),
+      },
+    };
+  }
+  const appearance = pdfDoc.context.flateStream(`${content.join('\n')}\n`, {
+    Type: 'XObject',
+    Subtype: 'Form',
+    FormType: 1,
+    BBox: [0, 0, width, height],
+    Resources: resources,
+  });
+  const appearanceRef = pdfDoc.context.register(appearance);
+
+  const useCenterlineFallback = !fabricObj.paperEraserGeometry
+    && Array.isArray(fabricObj.paperCenterline)
+    && fabricObj.paperCenterline.length > 0;
+  const fallbackPaths = useCenterlineFallback
+    ? [fabricObj.paperCenterline.map((point) => [point.x, point.y])]
+    : polygons.flatMap((polygon) => polygon);
+  const inkListArray = pdfDoc.context.obj(fallbackPaths.map((path) => (
+    path.flatMap(([x, y]) => [PDFNumber.of(x), PDFNumber.of(pageHeight - y)])
+  )));
+  const fallbackWidth = useCenterlineFallback ? Number(fabricObj.sourceWidth || 1) : 0;
+  const annotationDict = {
+    Type: 'Annot',
+    Subtype: 'Ink',
+    Rect: [
+      bounds.minX,
+      pageHeight - bounds.maxY,
+      bounds.maxX,
+      pageHeight - bounds.minY,
+    ],
+    InkList: inkListArray,
+    C: [color.red, color.green, color.blue],
+    CA: alpha,
+    Border: [0, 0, fallbackWidth],
+    AP: pdfDoc.context.obj({ N: appearanceRef }),
+    Contents: PDFString.of(''),
+    P: page.ref,
+  };
+  applyAppAnnotationMetadataToDict(annotationDict, options);
+  return pdfDoc.context.register(pdfDoc.context.obj(annotationDict));
+};
+
 /**
  * Convert Fabric.js path to PDF Ink annotation
  */
 const createInkAnnotation = (pdfDoc, page, fabricObj, pageHeight, options = {}) => {
   try {
+    if (isFilledPaperInk(fabricObj)) {
+      return createFilledPaperInkAnnotation(pdfDoc, page, fabricObj, pageHeight, options);
+    }
     const pathData = fabricObj.path;
     if (!pathData || pathData.length === 0) {
       return null;

@@ -15,6 +15,8 @@ export const PDF_APP_ANNOTATION_SUBJECT = 'survey-app-annotation';
 export const PDF_APP_ANNOTATION_METADATA_VERSION = 1;
 export const PDF_APP_LAYER_STATE_KEY = 'SurveyAppLayerState';
 export const PDF_APP_LAYER_STATE_VERSION = 1;
+const DEFAULT_METADATA_ARRAY_LIMIT = 500;
+const GEOMETRY_METADATA_ARRAY_LIMIT = 50000;
 
 const DATA_ALLOWLIST = [
   'id',
@@ -56,6 +58,8 @@ const STYLE_KEYS = [
   'linethrough',
   'lineHeight',
   'charSpacing',
+  'fillRule',
+  'globalCompositeOperation',
   'rx',
   'ry',
 ];
@@ -77,6 +81,11 @@ const GEOMETRY_KEYS = [
   'y2',
   'points',
   'path',
+  'polygons',
+  'paperCenterline',
+  'sourceWidth',
+  'paperInkGeometry',
+  'paperEraserGeometry',
   'text',
   'lineEnding1',
   'lineEnding2',
@@ -94,21 +103,21 @@ const OWNER_KEYS = [
   'userId',
 ];
 
-function jsonSafe(value, depth = 0) {
+function jsonSafe(value, depth = 0, arrayLimit = DEFAULT_METADATA_ARRAY_LIMIT) {
   if (value === null || value === undefined) return value;
   if (typeof value === 'string' || typeof value === 'boolean') return value;
   if (typeof value === 'number') return Number.isFinite(value) ? value : null;
   if (depth > 8) return null;
 
   if (Array.isArray(value)) {
-    return value.slice(0, 500).map((entry) => jsonSafe(entry, depth + 1));
+    return value.slice(0, arrayLimit).map((entry) => jsonSafe(entry, depth + 1, arrayLimit));
   }
 
   if (typeof value === 'object') {
     const out = {};
     Object.entries(value).forEach(([key, entry]) => {
       if (typeof entry === 'function') return;
-      out[key] = jsonSafe(entry, depth + 1);
+      out[key] = jsonSafe(entry, depth + 1, arrayLimit);
     });
     return out;
   }
@@ -116,11 +125,11 @@ function jsonSafe(value, depth = 0) {
   return null;
 }
 
-function pick(source, keys) {
+function pick(source, keys, arrayLimit = DEFAULT_METADATA_ARRAY_LIMIT) {
   const out = {};
   keys.forEach((key) => {
     if (source?.[key] !== undefined) {
-      out[key] = jsonSafe(source[key]);
+      out[key] = jsonSafe(source[key], 0, arrayLimit);
     }
   });
   return out;
@@ -158,7 +167,7 @@ export function buildPdfAppAnnotationMetadata(fabricObj, item = {}) {
   const pageNumber = Number(item.pageNumber ?? fabricObj.pageNumber);
   const data = pickData(fabricObj.data);
   const style = pick(fabricObj, STYLE_KEYS);
-  const geometry = pick(fabricObj, GEOMETRY_KEYS);
+  const geometry = pick(fabricObj, GEOMETRY_KEYS, GEOMETRY_METADATA_ARRAY_LIMIT);
   const ownership = {
     ...pick(fabricObj, OWNER_KEYS),
     ...pick(fabricObj.meta, OWNER_KEYS),
@@ -259,7 +268,9 @@ export function applyPdfAppAnnotationMetadata(fabricObj, metadata) {
 
   if (geometry) {
     GEOMETRY_KEYS.forEach((key) => {
-      if (geometry[key] !== undefined) out[key] = jsonSafe(geometry[key]);
+      if (geometry[key] !== undefined) {
+        out[key] = jsonSafe(geometry[key], 0, GEOMETRY_METADATA_ARRAY_LIMIT);
+      }
     });
   }
 

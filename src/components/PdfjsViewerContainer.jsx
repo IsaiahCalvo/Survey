@@ -43,17 +43,68 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorker;
 // --- layout + zoom constants (ported from the prototype) ---------------------
 const GAP = 16;
 const PAD = 20;
-const MIN_SCALE = 0.1;
+const MOBILE_GAP = 12;
+const MOBILE_PAD_X = 14;
+const MOBILE_PAD_TOP = 52;
+const MOBILE_PAD_BOTTOM = 88;
+const MOBILE_PAGE_MAX_WIDTH = 390;
+const MIN_SCALE = 0.01;
 const MAX_SCALE = 40;
 const BASE_MAX_SCALE = 2.5; // above this the base canvas is a cheap backdrop; the detail tile owns sharpness
 const SETTLE_MS = 110;      // commit the gesture this long after the last wheel tick
 const WHEEL_GAIN = 0.01;    // factor = 1 - deltaY * WHEEL_GAIN
 const DPR = Math.min(typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1, 2);
+const PAN_START_EVENT = 'survey-pdfjs-pan-start';
+const PAN_END_EVENT = 'survey-pdfjs-pan-end';
+const ZOOM_START_EVENT = 'survey-pdfjs-zoom-start';
+const ZOOM_END_EVENT = 'survey-pdfjs-zoom-end';
+
+const isSpaceKey = (event) => event?.code === 'Space' || event?.key === ' ' || event?.key === 'Spacebar';
+const isEditableTarget = (target) => {
+  const tagName = String(target?.tagName || '').toLowerCase();
+  return tagName === 'input'
+    || tagName === 'textarea'
+    || tagName === 'select'
+    || target?.isContentEditable === true;
+};
+const getTouchCenter = (touches, rect) => ({
+  x: ((touches[0].clientX + touches[1].clientX) / 2) - rect.left,
+  y: ((touches[0].clientY + touches[1].clientY) / 2) - rect.top,
+});
+const getTouchDistance = (touches) => Math.hypot(
+  touches[1].clientX - touches[0].clientX,
+  touches[1].clientY - touches[0].clientY
+);
 
 // Chromium canvas limits + smooth-area budget (ported from spikeMetrics).
 const MAX_CANVAS_DIM = 16384;
 const MAX_CANVAS_AREA = 80 * 1024 * 1024; // ~80 MP
-const MAX_MOUNTED = 12; // ponytail: cap pages rasterized at once (see recomputeWindow) — kills the zoom-out flicker burst
+const MAX_OVERSCAN_PAGES = 3;
+function isMobilePdfSurfaceViewport() {
+  if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return false;
+  return window.matchMedia('(max-width: 720px), (pointer: coarse)').matches;
+}
+function resolveLayoutMetrics(isMobileSurface) {
+  return isMobileSurface
+    ? {
+        gap: MOBILE_GAP,
+        padX: MOBILE_PAD_X,
+        padTop: MOBILE_PAD_TOP,
+        padBottom: MOBILE_PAD_BOTTOM,
+        maxPageWidth: MOBILE_PAGE_MAX_WIDTH,
+      }
+    : {
+        gap: GAP,
+        padX: PAD,
+        padTop: PAD,
+        padBottom: PAD,
+        maxPageWidth: null,
+      };
+}
+function getFitWidthForContainer(containerWidth, metrics) {
+  const available = Math.max(1, Number(containerWidth) - metrics.padX * 2);
+  return metrics.maxPageWidth ? Math.min(available, metrics.maxPageWidth) : available;
+}
 function clampToBudget(backingW, backingH) {
   const dimOver = Math.max(backingW, backingH) / MAX_CANVAS_DIM;
   const areaOver = Math.sqrt((backingW * backingH) / MAX_CANVAS_AREA);
@@ -171,6 +222,7 @@ function PdfPageCanvas({ pdf, pageIndex, pageW, pageH, renderScale, rotation, on
         // (matching the Pdfjs path, which hides the engine's native markup
         // layer); baking here would double them and make erase leave baked pixels.
         const task = page.render({ canvasContext: ctx, viewport, annotationMode: pdfjsLib.AnnotationMode.DISABLE });
+        task.onContinue = (resume) => requestAnimationFrame(resume);
         taskRef.current = task;
         try {
           await task.promise;
@@ -207,7 +259,7 @@ function PdfPageCanvas({ pdf, pageIndex, pageW, pageH, renderScale, rotation, on
 }
 
 // --- deep-zoom detail tile: crisp visible slice over the soft base -----------
-function DetailTile({ pdf, pageIndex, scale, rotation, liveZoom, scrollerRef }) {
+function DetailTile({ pdf, pageIndex, scale, rotation, liveZoom, interactionRef, scrollerRef }) {
   const hostRef = useRef(null);
   const canvasRef = useRef(null);
   const taskRef = useRef(null);
@@ -219,6 +271,7 @@ function DetailTile({ pdf, pageIndex, scale, rotation, liveZoom, scrollerRef }) 
     const scroller = scrollerRef.current;
     const canvas = canvasRef.current;
     if (!host || !scroller || !canvas || !pdf || liveZoom !== 1) return;
+    if (interactionRef?.current) return;
     if (scale <= BASE_MAX_SCALE) { setTile(null); return; }
 
     const hr = host.getBoundingClientRect();
@@ -243,6 +296,7 @@ function DetailTile({ pdf, pageIndex, scale, rotation, liveZoom, scrollerRef }) 
       const transform = [DPR, 0, 0, DPR, -vx * DPR, -vy * DPR];
       // Page only, no baked annotation appearance — see PdfPageCanvas note.
       const task = page.render({ canvasContext: ctx, viewport, transform, annotationMode: pdfjsLib.AnnotationMode.DISABLE });
+      task.onContinue = (resume) => requestAnimationFrame(resume);
       taskRef.current = task;
       try { await task.promise; } catch (e) { if (e?.name === 'RenderingCancelledException') return; throw e; }
       if (myGen !== genRef.current) return;
@@ -254,7 +308,7 @@ function DetailTile({ pdf, pageIndex, scale, rotation, liveZoom, scrollerRef }) 
     } catch {
       /* never throw out of the engine */
     }
-  }, [pdf, pageIndex, scale, rotation, liveZoom, scrollerRef]);
+  }, [pdf, pageIndex, scale, rotation, liveZoom, interactionRef, scrollerRef]);
 
   useEffect(() => { render(); }, [render]);
 
@@ -262,10 +316,28 @@ function DetailTile({ pdf, pageIndex, scale, rotation, liveZoom, scrollerRef }) 
     const scroller = scrollerRef.current;
     if (!scroller) return undefined;
     let t;
-    const onScroll = () => { clearTimeout(t); t = setTimeout(() => render(), 70); };
+    const onScroll = () => {
+      if (interactionRef?.current) return;
+      clearTimeout(t);
+      t = setTimeout(() => render(), 70);
+    };
     scroller.addEventListener('scroll', onScroll, { passive: true });
     return () => { scroller.removeEventListener('scroll', onScroll); clearTimeout(t); };
-  }, [render, scrollerRef]);
+  }, [render, scrollerRef, interactionRef]);
+
+  useEffect(() => {
+    const onPanStart = () => {
+      if (!taskRef.current) return;
+      try { taskRef.current.cancel(); } catch { /* already settled */ }
+    };
+    const onPanEnd = () => render();
+    window.addEventListener(PAN_START_EVENT, onPanStart);
+    window.addEventListener(PAN_END_EVENT, onPanEnd);
+    return () => {
+      window.removeEventListener(PAN_START_EVENT, onPanStart);
+      window.removeEventListener(PAN_END_EVENT, onPanEnd);
+    };
+  }, [render]);
 
   useEffect(() => () => { if (taskRef.current) { try { taskRef.current.cancel(); } catch { /* noop */ } } }, []);
 
@@ -320,11 +392,13 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
   onPageChanged,
   onZoomChanged,
   onZoomPhase, // Stage 3: 'gesture-start' | 'settle' — lets PDFViewer bump the zoomGeneration signal
+  onPanStateChange,
   onPageRendered,
   // eslint-disable-next-line no-unused-vars
   onTextSelectionEnd,
   onPDFBookmarksAvailable,
   onPageContainersChange,
+  onMountedPagesChange,
   // eslint-disable-next-line no-unused-vars
   onDebugEvent,
   onDocumentUnload,
@@ -349,11 +423,6 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
   const scrollerRef = useRef(null);
   const contentRef = useRef(null);
   const pdfRef = useRef(null);
-  // Stable, React-owned slot INSIDE the transformed content node. The app appends its
-  // annotation/form/link/text overlay here so it rides the page's own zoom/scroll
-  // transform as one piece (the demo's structure). It has no React children, so an
-  // imperatively-appended subtree inside it is never disturbed by reconciliation.
-  const overlayHostRef = useRef(null);
 
   const [numPages, setNumPages] = useState(0);
   const [pageSizes, setPageSizes] = useState([]);
@@ -362,12 +431,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
   const [range, setRange] = useState([0, -1]);
   const [containerW, setContainerW] = useState(800);
   const [containerH, setContainerH] = useState(600);
-  // Drives a `transition: transform` on the content node ONLY while the settle glide
-  // is running (never during the live gesture, where the transform must update
-  // per-frame with no transition). The ref is the synchronous source of truth used
-  // inside rAF; this state just mirrors it so the JSX re-renders the gated style.
-  const [settleAnimating, setSettleAnimating] = useState(false);
-
+  const [isMobileSurface, setIsMobileSurface] = useState(() => isMobilePdfSurfaceViewport());
   // imperative document source (prop-driven, overridable via load())
   const [activeSource, setActiveSource] = useState(documentSource);
   const [activePassword, setActivePassword] = useState('');
@@ -387,33 +451,82 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
   const cb = useRef({});
   cb.current = {
     onDocumentLoaded, onDocumentLoadFailed, onPageChanged, onZoomChanged, onZoomPhase,
-    onPageRendered, onPDFBookmarksAvailable, onPageContainersChange, onDocumentUnload,
+    onPanStateChange, onPageRendered, onPDFBookmarksAvailable, onPageContainersChange,
+    onMountedPagesChange, onDocumentUnload,
   };
 
   const settleTimerRef = useRef(null);
   const pendingAnchorRef = useRef(null);
   const wheelRafRef = useRef(0);
   const liveZoomRef = useRef(1);
+  const zoomInteractionRef = useRef(false);
   const gestureRef = useRef(null);
   const dimsPtRef = useRef([]);
   const containerWRef = useRef(800);
   const containerHRef = useRef(600);
   const topsRef = useRef([]);
   const padTopRef = useRef(0);
-  // ---- animated-settle state ------------------------------------------------
-  // The gesture's live CSS transform previews the new size on the OLD layout; the
-  // committed re-layout can land the anchored point at a clamped scroll (top of a
-  // multi-page doc, a centered page). A hard swap shows that delta as a snap. The
-  // settle TWEENS the scroll from the gesture-end position to the committed clamped
-  // target while the OLD painted content + transform stay visible (transition gates
-  // the transform glide), then swaps to the committed layout under cover of the
-  // glide so the re-raster appears in place. A generation counter aborts a stale
-  // tween the instant a new wheel gesture starts.
-  const settleAnimatingRef = useRef(false);
-  const settleRafRef = useRef(0);
-  const settleGenRef = useRef(0);
-  const settleTweenFromRef = useRef(null); // {left,top} captured at gesture-end to glide from
-  const SETTLE_ANIM_MS = 160;
+  const interactionModeRef = useRef(interactionMode);
+  interactionModeRef.current = interactionMode;
+  const spacePanRef = useRef(false);
+  const panInteractionRef = useRef(false);
+  const panPointerRef = useRef(null);
+  const panDeltaRef = useRef({ x: 0, y: 0 });
+  const panRafRef = useRef(0);
+  const mobileTouchRef = useRef(null);
+  const suppressMobileTouchUntilRef = useRef(0);
+  const layoutMetrics = useMemo(() => resolveLayoutMetrics(isMobileSurface), [isMobileSurface]);
+  const layoutMetricsRef = useRef(layoutMetrics);
+  layoutMetricsRef.current = layoutMetrics;
+
+  const getPageLeftAtScale = useCallback((pageIndex, nextScale) => {
+    const dim = dimsPtRef.current[pageIndex];
+    if (!dim) return 0;
+    const metrics = layoutMetricsRef.current;
+    const viewportWidth = containerWRef.current;
+    const pageWidth = dim.w * nextScale;
+    return pageWidth + metrics.padX * 2 <= viewportWidth
+      ? (viewportWidth - pageWidth) / 2
+      : metrics.padX;
+  }, []);
+
+  const getPageHorizontalScrollMax = useCallback((pageIndex, nextScale) => {
+    const dim = dimsPtRef.current[pageIndex];
+    if (!dim) return 0;
+    const metrics = layoutMetricsRef.current;
+    return Math.max(0, dim.w * nextScale + metrics.padX * 2 - containerWRef.current);
+  }, []);
+
+  const clampHorizontalScrollForPage = useCallback((pageIndex = currentPageRef.current - 1) => {
+    const el = scrollerRef.current;
+    if (!el || zoomInteractionRef.current || mobileTouchRef.current?.mode === 'pinch') return;
+    const safePageIndex = Math.max(0, Math.min(dimsPtRef.current.length - 1, pageIndex));
+    const maxLeft = getPageHorizontalScrollMax(safePageIndex, scaleRef.current);
+    const nextLeft = Math.min(Math.max(0, el.scrollLeft), maxLeft);
+    if (Math.abs(el.scrollLeft - nextLeft) > 0.5) el.scrollLeft = nextLeft;
+  }, [getPageHorizontalScrollMax]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return undefined;
+    const mediaQueries = [
+      window.matchMedia('(max-width: 720px)'),
+      window.matchMedia('(pointer: coarse)'),
+    ];
+    const updateMobileSurface = () => {
+      setIsMobileSurface(mediaQueries.some((mq) => mq.matches));
+    };
+    updateMobileSurface();
+    mediaQueries.forEach((mq) => {
+      if (mq.addEventListener) mq.addEventListener('change', updateMobileSurface);
+      else mq.addListener(updateMobileSurface);
+    });
+    return () => {
+      mediaQueries.forEach((mq) => {
+        if (mq.removeEventListener) mq.removeEventListener('change', updateMobileSurface);
+        else mq.removeListener(updateMobileSurface);
+      });
+    };
+  }, []);
 
   // ---- load document --------------------------------------------------------
   useEffect(() => {
@@ -444,10 +557,15 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
 
         const el = scrollerRef.current;
         const cw = el ? el.clientWidth : 800;
-        const fit = Math.max(0.2, Math.min(2, (cw - 2 * PAD) / (sizes[0]?.w || 612)));
+        const fitWidth = getFitWidthForContainer(cw, layoutMetricsRef.current);
+        const fit = Math.max(0.2, Math.min(2, fitWidth / (sizes[0]?.w || 612)));
         setScale(fit); scaleRef.current = fit; prevScaleRef.current = fit;
         setLiveZoom(1); liveZoomRef.current = 1;
         currentPageRef.current = 1;
+        if (el) {
+          el.scrollLeft = 0;
+          el.scrollTop = 0;
+        }
 
         cb.current.onDocumentLoaded?.({
           pageCount: pdf.numPages,
@@ -484,27 +602,28 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
 
   // ---- layout: cumulative offsets ------------------------------------------
   const layout = useMemo(() => {
+    const metrics = layoutMetrics;
     const rot90 = rotation === 90 || rotation === 270;
     const dims = pageSizes.map((s) => (rot90 ? { w: s.h, h: s.w } : { w: s.w, h: s.h }));
-    let y = PAD;
+    let y = metrics.padTop;
     const tops = [];
     let maxW = 0;
     for (let i = 0; i < dims.length; i += 1) {
       tops.push(y);
-      y += dims[i].h * scale + GAP;
+      y += dims[i].h * scale + metrics.gap;
       maxW = Math.max(maxW, dims[i].w * scale);
     }
-    const contentW = Math.max(containerW, maxW + 2 * PAD);
+    const contentW = Math.max(containerW, maxW + 2 * metrics.padX);
     // rawTotalH is the un-offset content height; the FIT predicate must use this,
     // never the padTop-inclusive height. padTop vertically centers any document
     // shorter than the viewport (single page / fitting page) via marginTop on the
     // content node — NOT via scroll, so scroll stays in [0, scrollHeight-clientHeight]
     // and never goes negative. Content taller than the viewport (overflow case)
     // yields padTop=0 and the layout is unchanged.
-    const rawTotalH = y - GAP + PAD;
+    const rawTotalH = y - metrics.gap + metrics.padBottom;
     const padTop = Math.max(0, (containerH - rawTotalH) / 2);
     return { tops, dims, totalH: rawTotalH, rawTotalH, padTop, contentW };
-  }, [pageSizes, scale, rotation, containerW, containerH]);
+  }, [pageSizes, scale, rotation, containerW, containerH, layoutMetrics]);
 
   dimsPtRef.current = layout.dims;
   containerWRef.current = containerW;
@@ -523,10 +642,12 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     const padTop = padTopRef.current;
     const mid = el.scrollTop + el.clientHeight / 2 - padTop;
     let page = 1;
+    const metrics = layoutMetricsRef.current;
     for (let i = 0; i < tops.length; i += 1) {
-      if (mid >= tops[i] && mid < tops[i] + dims[i].h * scaleRef.current + GAP) { page = i + 1; break; }
+      if (mid >= tops[i] && mid < tops[i] + dims[i].h * scaleRef.current + metrics.gap) { page = i + 1; break; }
       if (mid >= tops[i]) page = i + 1;
     }
+    clampHorizontalScrollForPage(page - 1);
     if (page !== currentPageRef.current) {
       const prev = currentPageRef.current;
       currentPageRef.current = page;
@@ -537,7 +658,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
         raw: { scrollTop: el.scrollTop },
       });
     }
-  }, []);
+  }, [clampHorizontalScrollForPage]);
 
   // ---- which pages are mounted ---------------------------------------------
   const recomputeWindow = useCallback(() => {
@@ -552,23 +673,31 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     const lo = top - over;
     const hi = top + vh + over;
     let first = -1; let last = -1;
+    let visibleFirst = -1; let visibleLast = -1;
     for (let i = 0; i < layout.tops.length; i += 1) {
       const t = layout.tops[i];
       const b = t + layout.dims[i].h * scale;
       if (b >= lo && t <= hi) { if (first === -1) first = i; last = i; }
+      if (b >= top && t <= top + vh) {
+        if (visibleFirst === -1) visibleFirst = i;
+        visibleLast = i;
+      }
     }
     if (first === -1) { first = 0; last = -1; }
-    // ponytail: cap simultaneously-mounted pages. Zooming far out used to put 50+
-    // pages in the 1.2-viewport band → a single-frame raster burst = the flicker.
-    // Keep a bounded window centered on the viewport; far pages stay placeholders
-    // (only reachable at extreme zoom-out). Raise MAX_MOUNTED if scroll buffering
-    // ever feels thin.
-    else if (last - first + 1 > MAX_MOUNTED) {
-      const midY = top + vh / 2;
-      let anchor = first;
-      for (let i = first; i <= last; i += 1) { if (layout.tops[i] <= midY) anchor = i; else break; }
-      last = Math.min(layout.tops.length - 1, anchor + Math.ceil(MAX_MOUNTED / 2));
-      first = Math.max(0, last - MAX_MOUNTED + 1);
+    else if (visibleFirst !== -1 && visibleLast !== -1) {
+      const visibleCount = visibleLast - visibleFirst + 1;
+      const availableBefore = visibleFirst - first;
+      const availableAfter = last - visibleLast;
+      let beforeCount = Math.min(availableBefore, Math.floor(MAX_OVERSCAN_PAGES / 2));
+      let afterCount = Math.min(availableAfter, MAX_OVERSCAN_PAGES - beforeCount);
+      beforeCount = Math.min(availableBefore, MAX_OVERSCAN_PAGES - afterCount);
+      first = visibleFirst - beforeCount;
+      last = visibleLast + afterCount;
+      // Keep this explicit: visible pages are never sacrificed to the overscan budget.
+      if (last - first + 1 < visibleCount) {
+        first = visibleFirst;
+        last = visibleLast;
+      }
     }
     setRange((prev) => (prev[0] === first && prev[1] === last ? prev : [first, last]));
     detectCurrentPage();
@@ -596,7 +725,10 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     let raf = 0;
     const onScroll = () => {
       if (raf) return;
-      raf = requestAnimationFrame(() => { raf = 0; recomputeWindow(); });
+      raf = requestAnimationFrame(() => {
+        raf = 0;
+        recomputeWindow();
+      });
     };
     el.addEventListener('scroll', onScroll, { passive: true });
     return () => { el.removeEventListener('scroll', onScroll); if (raf) cancelAnimationFrame(raf); };
@@ -604,109 +736,56 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
 
   useEffect(() => { recomputeWindow(); }, [recomputeWindow]);
 
-  // ---- apply cursor anchor after the new scale lays out --------------------
-  // The committed layout has been measured (scrollWidth/Height now reflect the new
-  // scale), so we can clamp the anchored scroll to valid bounds. For an imperative/
-  // toolbar zoom this snaps instantly. For a WHEEL gesture the settle requests a
-  // GLIDE: tween scrollTop/scrollLeft from the gesture-end position to this clamped
-  // target over SETTLE_ANIM_MS so the page eases into its (centered/clamped) resting
-  // spot instead of snapping. The page is already at the committed size, so only the
-  // position moves — no size jump, no blank flash (committed content is painted).
+  // Apply the cursor anchor after the committed scale lays out. This is the
+  // reference demo's single settle: one layout commit and one clamped scroll write.
   useLayoutEffect(() => {
     const p = pendingAnchorRef.current;
     if (!p) return;
     pendingAnchorRef.current = null;
     const el = scrollerRef.current;
     if (!el) return;
-    const maxLeft = Math.max(0, el.scrollWidth - el.clientWidth);
+    const pageIndex = Math.max(0, currentPageRef.current - 1);
+    const maxLeft = getPageHorizontalScrollMax(pageIndex, scale);
     const maxTop = Math.max(0, el.scrollHeight - el.clientHeight);
-    const targetLeft = Math.min(Math.max(0, p.left), maxLeft);
-    const targetTop = Math.min(Math.max(0, p.top), maxTop);
-
-    const tweenFrom = settleTweenFromRef.current;
-    settleTweenFromRef.current = null;
-    if (!tweenFrom) {
-      el.scrollLeft = targetLeft;
-      el.scrollTop = targetTop;
-      return;
-    }
-
-    // Animated settle: glide from the captured gesture-end scroll to the target.
-    const fromLeft = tweenFrom.left;
-    const fromTop = tweenFrom.top;
-    if (Math.abs(fromLeft - targetLeft) < 0.5 && Math.abs(fromTop - targetTop) < 0.5) {
-      el.scrollLeft = targetLeft;
-      el.scrollTop = targetTop;
-      settleAnimatingRef.current = false;
-      setSettleAnimating(false);
-      return;
-    }
-    const myGen = settleGenRef.current; // bumped on commit; a new gesture bumps again
-    settleAnimatingRef.current = true;
-    setSettleAnimating(true);
-    const t0 = (typeof performance !== 'undefined' ? performance.now() : Date.now());
-    const easeOut = (x) => 1 - (1 - x) * (1 - x) * (1 - x); // cubic ease-out
-    const finish = () => {
-      settleRafRef.current = 0;
-      settleAnimatingRef.current = false;
-      setSettleAnimating(false);
-    };
-    const step = () => {
-      // Abort the instant a newer gesture/commit superseded this tween.
-      if (myGen !== settleGenRef.current) { settleRafRef.current = 0; return; }
-      const elNow = scrollerRef.current;
-      if (!elNow) { finish(); return; }
-      const now = (typeof performance !== 'undefined' ? performance.now() : Date.now());
-      const k = Math.min(1, (now - t0) / SETTLE_ANIM_MS);
-      const e = easeOut(k);
-      const maxL = Math.max(0, elNow.scrollWidth - elNow.clientWidth);
-      const maxT = Math.max(0, elNow.scrollHeight - elNow.clientHeight);
-      elNow.scrollLeft = Math.min(Math.max(0, fromLeft + (targetLeft - fromLeft) * e), maxL);
-      elNow.scrollTop = Math.min(Math.max(0, fromTop + (targetTop - fromTop) * e), maxT);
-      if (k < 1) settleRafRef.current = requestAnimationFrame(step);
-      else finish();
-    };
-    settleRafRef.current = requestAnimationFrame(step);
-  }, [scale]);
+    el.scrollLeft = Math.min(Math.max(0, p.left), maxLeft);
+    el.scrollTop = Math.min(Math.max(0, p.top), maxTop);
+  }, [getPageHorizontalScrollMax, scale]);
 
   // ---- layout-space anchoring helpers --------------------------------------
-  const contentWAt = (sc) => {
-    const dims = dimsPtRef.current;
-    let maxW = 0;
-    for (const d of dims) maxW = Math.max(maxW, d.w * sc);
-    return Math.max(containerWRef.current, maxW + 2 * PAD);
-  };
   // padTopFor recomputes the centering margin at an ARBITRARY scale (so the anchor
   // math at the new scale uses the new padTop, matching the layout it will commit
   // to). Mirrors the layout memo: max(0,(containerH - rawTotalH)/2) on RAW total.
   const padTopFor = (sc) => {
+    const metrics = layoutMetricsRef.current;
     const dims = dimsPtRef.current;
-    let y = PAD;
-    for (let k = 0; k < dims.length; k += 1) y += dims[k].h * sc + GAP;
-    const rawTotalH = y - GAP + PAD;
+    let y = metrics.padTop;
+    for (let k = 0; k < dims.length; k += 1) y += dims[k].h * sc + metrics.gap;
+    const rawTotalH = y - metrics.gap + metrics.padBottom;
     return Math.max(0, (containerHRef.current - rawTotalH) / 2);
   };
   // topAt returns the page's top in SCROLL space (padTop-inclusive) so cursor
   // content-Y (el.scrollTop + cursorY) and the committed anchor are consistent.
   const topAt = (i, sc) => {
+    const metrics = layoutMetricsRef.current;
     const dims = dimsPtRef.current;
-    let y = PAD + padTopFor(sc);
-    for (let k = 0; k < i; k += 1) y += dims[k].h * sc + GAP;
+    let y = metrics.padTop + padTopFor(sc);
+    for (let k = 0; k < i; k += 1) y += dims[k].h * sc + metrics.gap;
     return y;
   };
-  const leftAt = (i, sc) => (contentWAt(sc) - dimsPtRef.current[i].w * sc) / 2;
+  const leftAt = (i, sc) => getPageLeftAtScale(i, sc);
   const pageUnderContentY = (cY, sc) => {
+    const metrics = layoutMetricsRef.current;
     const dims = dimsPtRef.current;
-    let y = PAD + padTopFor(sc);
+    let y = metrics.padTop + padTopFor(sc);
     for (let i = 0; i < dims.length; i += 1) {
       const h = dims[i].h * sc;
-      if (cY < y + h + GAP) return i;
-      y += h + GAP;
+      if (cY < y + h + metrics.gap) return i;
+      y += h + metrics.gap;
     }
     return Math.max(0, dims.length - 1);
   };
 
-  const applyAnchoredScale = useCallback((targetScale, cursorX, cursorY) => {
+  const applyAnchoredScale = useCallback((targetScale, cursorX, cursorY, signalStart = true) => {
     const el = scrollerRef.current;
     const dims = dimsPtRef.current;
     if (!el || !dims.length) return;
@@ -716,11 +795,13 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     // Stage 3: imperative zoom (toolbar/keyboard/fit) commits instantly — signal
     // gesture-start here so Canvas tools flush before the host re-layouts. (Wheel
     // gestures already signalled on their first frame; an extra signal is harmless.)
-    cb.current.onZoomPhase?.('gesture-start', { atPct: Math.round(oldScale * 100) });
+    if (signalStart) {
+      cb.current.onZoomPhase?.('gesture-start', { atPct: Math.round(oldScale * 100) });
+    }
     const cX = el.scrollLeft + cursorX;
     const cY = el.scrollTop + cursorY;
     const i = pageUnderContentY(cY, oldScale);
-    const fracX = (cX - leftAt(i, oldScale)) / (dims[i].w * oldScale);
+    const fracX = Math.max(0, Math.min(1, (cX - leftAt(i, oldScale)) / (dims[i].w * oldScale)));
     const fracY = (cY - topAt(i, oldScale)) / (dims[i].h * oldScale);
     const newX = leftAt(i, newScale) + fracX * dims[i].w * newScale;
     const newY = topAt(i, newScale) + fracY * dims[i].h * newScale;
@@ -735,15 +816,10 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     setLiveZoom(liveZoomRef.current);
   }, []);
 
-  // Cancel an in-flight settle glide and hand control back. Bumping the generation
-  // makes any queued rAF step bail; clearing the rAF stops the next frame. Called
-  // when a fresh wheel gesture starts mid-glide so a stale tween never fights it.
-  const abortSettle = useCallback(() => {
-    settleGenRef.current += 1;
-    if (settleRafRef.current) { cancelAnimationFrame(settleRafRef.current); settleRafRef.current = 0; }
-    settleTweenFromRef.current = null;
-    settleAnimatingRef.current = false;
-    setSettleAnimating(false);
+  const setZoomInteraction = useCallback((active) => {
+    if (zoomInteractionRef.current === active) return;
+    zoomInteractionRef.current = active;
+    window.dispatchEvent(new Event(active ? ZOOM_START_EVENT : ZOOM_END_EVENT));
   }, []);
 
   const commitGesture = useCallback(() => {
@@ -751,30 +827,17 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     const lz = liveZoomRef.current;
     gestureRef.current = null;
     liveZoomRef.current = 1;
+    setZoomInteraction(false);
     if (!g || Math.abs(lz - 1) < 1e-4) { setLiveZoom(1); return; }
-    const el = scrollerRef.current;
     const oldScale = scaleRef.current;
     const newScale = Math.min(MAX_SCALE, Math.max(MIN_SCALE, oldScale * lz));
-    // Only arm the GLIDE when the scale actually commits to a new value (otherwise
-    // applyAnchoredScale early-returns, no re-layout fires, and the layout effect
-    // would never consume the tween — leaving a stale settleTweenFromRef). Capture
-    // the gesture-end scroll so the post-commit layout effect eases the page from
-    // here to the clamped/centered committed position, instead of snapping when the
-    // live transform's anchor differs from the clamped committed scroll. Bump the
-    // settle generation so any earlier glide is superseded.
-    if (el && Math.abs(newScale - oldScale) >= 1e-4) {
-      settleGenRef.current += 1;
-      if (settleRafRef.current) { cancelAnimationFrame(settleRafRef.current); settleRafRef.current = 0; }
-      settleTweenFromRef.current = { left: el.scrollLeft, top: el.scrollTop };
-    }
-    // applyAnchoredScale writes scaleRef synchronously, sets pendingAnchor, and
-    // setScale → re-layout; the layout effect then reads settleTweenFromRef and
-    // tweens. Resetting liveZoom to 1 here swaps the committed (correctly-sized)
-    // raster in at the same paint, so there is no size jump and no blank flash —
-    // only the scroll position eases.
-    applyAnchoredScale(oldScale * lz, g.originCursorX, g.originCursorY);
+    cb.current.onZoomPhase?.('settle', {
+      fromPct: Math.round(oldScale * 100),
+      toPct: Math.round(newScale * 100),
+    });
+    applyAnchoredScale(newScale, g.originCursorX, g.originCursorY, false);
     setLiveZoom(1);
-  }, [applyAnchoredScale]);
+  }, [applyAnchoredScale, setZoomInteraction]);
 
   useEffect(() => {
     const el = scrollerRef.current;
@@ -786,9 +849,6 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
       const cursorX = e.clientX - rect.left;
       const cursorY = e.clientY - rect.top;
       if (!gestureRef.current) {
-        // A fresh gesture starts: kill any in-flight settle glide so a stale tween
-        // never fights the new live transform, then hand control to the gesture.
-        abortSettle();
         gestureRef.current = {
           originCursorX: cursorX,
           originCursorY: cursorY,
@@ -798,42 +858,11 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
         // Stage 3: a zoom gesture has started — let the host flush in-progress
         // Canvas drawing before the page hosts re-layout on settle.
         cb.current.onZoomPhase?.('gesture-start', { atPct: Math.round(scaleRef.current * 100) });
+        setZoomInteraction(true);
       }
       const committed = scaleRef.current;
       let lz = liveZoomRef.current * (1 - e.deltaY * WHEEL_GAIN);
       lz = Math.max(MIN_SCALE / committed, Math.min(MAX_SCALE / committed, lz));
-      // DRIFT CLAMP (rubber-band): the live transform is unbounded, so zooming can
-      // drag content far past where it can validly rest (above the top of a
-      // multi-page doc, or a centered page drifting off-center). Project where the
-      // anchored scroll WOULD land at this candidate lz; if it falls outside the
-      // valid [0, maxTop] band, ease lz back toward the value that keeps it just
-      // inside, so the preview can't run away and the settle has little to correct.
-      try {
-        const dims = dimsPtRef.current;
-        if (dims.length) {
-          const candScale = Math.min(MAX_SCALE, Math.max(MIN_SCALE, committed * lz));
-          const cX = el.scrollLeft + cursorX;
-          const cY = el.scrollTop + cursorY;
-          const pi = pageUnderContentY(cY, committed);
-          const fracY = (cY - topAt(pi, committed)) / (dims[pi].h * committed);
-          const projTop = topAt(pi, candScale) + fracY * dims[pi].h * candScale - cursorY;
-          // Project the new total content height to estimate the valid maxTop.
-          let yTot = PAD + padTopFor(candScale);
-          for (let k = 0; k < dims.length; k += 1) yTot += dims[k].h * candScale + GAP;
-          const projTotalH = yTot - GAP + PAD;
-          const projMaxTop = Math.max(0, projTotalH - el.clientHeight);
-          const SLACK = 48; // px of rubber-band the preview may exceed before resisting
-          let resist = 1;
-          if (projTop < -SLACK) resist = SLACK / Math.max(SLACK, -projTop); // over the top
-          else if (projTop > projMaxTop + SLACK) resist = SLACK / Math.max(SLACK, projTop - projMaxTop);
-          if (resist < 1) {
-            // Pull lz back toward the previous lz by the resistance factor (soft).
-            const prevLz = liveZoomRef.current;
-            lz = prevLz + (lz - prevLz) * resist;
-            lz = Math.max(MIN_SCALE / committed, Math.min(MAX_SCALE / committed, lz));
-          }
-        }
-      } catch { /* never throw from the wheel handler */ }
       liveZoomRef.current = lz;
       if (!wheelRafRef.current) wheelRafRef.current = requestAnimationFrame(applyWheelZoom);
       if (settleTimerRef.current) clearTimeout(settleTimerRef.current);
@@ -844,60 +873,366 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
       el.removeEventListener('wheel', onWheel);
       if (wheelRafRef.current) cancelAnimationFrame(wheelRafRef.current);
       if (settleTimerRef.current) clearTimeout(settleTimerRef.current);
-      // Tear down any in-flight settle glide so it can't fire after unmount.
-      settleGenRef.current += 1;
-      if (settleRafRef.current) { cancelAnimationFrame(settleRafRef.current); settleRafRef.current = 0; }
+      setZoomInteraction(false);
     };
-  }, [applyWheelZoom, commitGesture, abortSettle]);
+  }, [applyWheelZoom, commitGesture, setZoomInteraction]);
 
-  // ---- drag-to-pan (interactionMode === 'Pan') -----------------------------
-  // The owned pdf.js engine owns its own pan: when the Pan tool is active,
-  // pressing on the page and dragging scrolls the viewport by the inverse of the
-  // pointer delta. (Pdfjs delegated this to viewerBase.panOnMouseMove; that
-  // path is dead under the pdf.js cutover, so nothing scrolled before this.)
+  // ---- pan: Space always overrides the active tool; writes are rAF-batched --
+  const setPanInteraction = useCallback((active) => {
+    if (panInteractionRef.current === active) return;
+    panInteractionRef.current = active;
+    if (document.documentElement) {
+      if (active) document.documentElement.dataset.surveyPdfjsPanActive = 'true';
+      else delete document.documentElement.dataset.surveyPdfjsPanActive;
+    }
+    cb.current.onPanStateChange?.(active);
+    window.dispatchEvent(new Event(active ? PAN_START_EVENT : PAN_END_EVENT));
+  }, []);
+
+  const updatePanPresentation = useCallback(() => {
+    const el = scrollerRef.current;
+    if (!el) return;
+    const dragging = Boolean(panPointerRef.current);
+    const armed = spacePanRef.current || interactionModeRef.current === 'Pan';
+    el.dataset.spacePan = dragging ? 'dragging' : (armed ? 'armed' : 'off');
+    el.style.cursor = dragging ? 'grabbing' : (armed ? 'grab' : '');
+    el.style.userSelect = armed ? 'none' : '';
+  }, []);
+
+  const flushPan = useCallback(() => {
+    if (panRafRef.current) {
+      cancelAnimationFrame(panRafRef.current);
+      panRafRef.current = 0;
+    }
+    const el = scrollerRef.current;
+    const delta = panDeltaRef.current;
+    panDeltaRef.current = { x: 0, y: 0 };
+    if (!el || (!delta.x && !delta.y)) return;
+    el.scrollLeft -= delta.x;
+    el.scrollTop -= delta.y;
+    clampHorizontalScrollForPage();
+  }, [clampHorizontalScrollForPage]);
+
+  const schedulePan = useCallback((dx, dy) => {
+    panDeltaRef.current.x += dx;
+    panDeltaRef.current.y += dy;
+    if (panRafRef.current) return;
+    panRafRef.current = requestAnimationFrame(() => {
+      panRafRef.current = 0;
+      const el = scrollerRef.current;
+      const delta = panDeltaRef.current;
+      panDeltaRef.current = { x: 0, y: 0 };
+      if (!el) return;
+      el.scrollLeft -= delta.x;
+      el.scrollTop -= delta.y;
+      clampHorizontalScrollForPage();
+    });
+  }, [clampHorizontalScrollForPage]);
+
+  const finishPan = useCallback(() => {
+    flushPan();
+    const pointer = panPointerRef.current;
+    const el = scrollerRef.current;
+    panPointerRef.current = null;
+    if (pointer && el) {
+      try { el.releasePointerCapture(pointer.id); } catch { /* already released */ }
+    }
+    updatePanPresentation();
+    setPanInteraction(spacePanRef.current);
+  }, [flushPan, setPanInteraction, updatePanPresentation]);
+
+  useEffect(() => {
+    const activateSpacePan = (event) => {
+      if (!isSpaceKey(event)) return;
+      if (isEditableTarget(event.target) || isEditableTarget(document.activeElement)) return;
+      event.preventDefault();
+      event.stopPropagation();
+      if (spacePanRef.current) return;
+      spacePanRef.current = true;
+      setPanInteraction(true);
+      updatePanPresentation();
+    };
+    const releaseSpacePan = (event) => {
+      if (event?.type === 'keyup' && !isSpaceKey(event)) return;
+      if (event?.type === 'keyup') {
+        event.preventDefault();
+        event.stopPropagation();
+      }
+      if (!spacePanRef.current && !panPointerRef.current) return;
+      spacePanRef.current = false;
+      finishPan();
+      setPanInteraction(false);
+    };
+    const onVisibilityChange = () => {
+      if (document.hidden) releaseSpacePan();
+    };
+    window.addEventListener('keydown', activateSpacePan, true);
+    window.addEventListener('keyup', releaseSpacePan, true);
+    window.addEventListener('blur', releaseSpacePan);
+    window.addEventListener('pagehide', releaseSpacePan);
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    return () => {
+      window.removeEventListener('keydown', activateSpacePan, true);
+      window.removeEventListener('keyup', releaseSpacePan, true);
+      window.removeEventListener('blur', releaseSpacePan);
+      window.removeEventListener('pagehide', releaseSpacePan);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+      spacePanRef.current = false;
+      finishPan();
+      setPanInteraction(false);
+    };
+  }, [finishPan, setPanInteraction, updatePanPresentation]);
+
   useEffect(() => {
     const el = scrollerRef.current;
-    if (!el || interactionMode !== 'Pan') return undefined;
-    let dragging = false;
-    let lastX = 0;
-    let lastY = 0;
-    let pid = null;
-    const onDown = (e) => {
-      if (e.button !== 0) return;
-      dragging = true;
-      lastX = e.clientX;
-      lastY = e.clientY;
-      pid = e.pointerId;
-      try { el.setPointerCapture(e.pointerId); } catch (_e) { /* not capturable */ }
-      el.style.cursor = 'grabbing';
+    if (!el) return undefined;
+
+    const onPointerDown = (event) => {
+      const armed = spacePanRef.current || interactionModeRef.current === 'Pan';
+      if (!armed || event.button !== 0 || event.pointerType === 'touch') return;
+      event.preventDefault();
+      event.stopPropagation();
+      panPointerRef.current = {
+        id: event.pointerId,
+        x: event.clientX,
+        y: event.clientY,
+      };
+      try { el.setPointerCapture(event.pointerId); } catch { /* not capturable */ }
+      setPanInteraction(true);
+      updatePanPresentation();
     };
-    const onMove = (e) => {
-      if (!dragging) return;
-      el.scrollLeft -= e.clientX - lastX;
-      el.scrollTop -= e.clientY - lastY;
-      lastX = e.clientX;
-      lastY = e.clientY;
+    const onPointerMove = (event) => {
+      const pointer = panPointerRef.current;
+      if (!pointer || pointer.id !== event.pointerId) return;
+      event.preventDefault();
+      event.stopPropagation();
+      const dx = event.clientX - pointer.x;
+      const dy = event.clientY - pointer.y;
+      pointer.x = event.clientX;
+      pointer.y = event.clientY;
+      schedulePan(dx, dy);
     };
-    const onUp = (e) => {
-      if (!dragging) return;
-      dragging = false;
-      try { if (pid != null) el.releasePointerCapture(pid); } catch (_e) { /* already released */ }
-      pid = null;
-      el.style.cursor = 'grab';
+    const onPointerEnd = (event) => {
+      const pointer = panPointerRef.current;
+      if (!pointer || pointer.id !== event.pointerId) return;
+      event.preventDefault();
+      event.stopPropagation();
+      finishPan();
     };
-    el.style.cursor = 'grab';
-    el.addEventListener('pointerdown', onDown, { passive: true });
-    el.addEventListener('pointermove', onMove, { passive: true });
-    el.addEventListener('pointerup', onUp, { passive: true });
-    el.addEventListener('pointercancel', onUp, { passive: true });
+
+    el.addEventListener('pointerdown', onPointerDown, { capture: true, passive: false });
+    el.addEventListener('pointermove', onPointerMove, { capture: true, passive: false });
+    el.addEventListener('pointerup', onPointerEnd, { capture: true, passive: false });
+    el.addEventListener('pointercancel', onPointerEnd, { capture: true, passive: false });
+    el.addEventListener('lostpointercapture', onPointerEnd, { capture: true, passive: false });
     return () => {
-      el.removeEventListener('pointerdown', onDown);
-      el.removeEventListener('pointermove', onMove);
-      el.removeEventListener('pointerup', onUp);
-      el.removeEventListener('pointercancel', onUp);
-      el.style.cursor = '';
+      el.removeEventListener('pointerdown', onPointerDown, true);
+      el.removeEventListener('pointermove', onPointerMove, true);
+      el.removeEventListener('pointerup', onPointerEnd, true);
+      el.removeEventListener('pointercancel', onPointerEnd, true);
+      el.removeEventListener('lostpointercapture', onPointerEnd, true);
+      finishPan();
     };
-  }, [interactionMode]);
+  }, [finishPan, schedulePan, setPanInteraction, updatePanPresentation]);
+
+  useEffect(() => {
+    if (interactionMode !== 'Pan' && !spacePanRef.current && panPointerRef.current) {
+      finishPan();
+    } else {
+      updatePanPresentation();
+    }
+  }, [finishPan, interactionMode, updatePanPresentation]);
+
+  // Mobile interaction contract: one finger performs the active tool; two
+  // fingers always pan/pinch the PDF. Safari's page pinch and native text/image
+  // callouts are cancelled only inside this viewer surface.
+  useEffect(() => {
+    const el = scrollerRef.current;
+    if (!el || !isMobileSurface) return undefined;
+
+    const setMobileTouchMode = (mode) => {
+      if (mode) el.dataset.mobileTouchMode = mode;
+      else delete el.dataset.mobileTouchMode;
+    };
+
+    const startPinch = (touches) => {
+      if (!touches || touches.length < 2) return;
+      const rect = el.getBoundingClientRect();
+      const center = getTouchCenter(touches, rect);
+      const distance = Math.max(1, getTouchDistance(touches));
+      mobileTouchRef.current = {
+        mode: 'pinch',
+        startDistance: distance,
+        lastCenterX: center.x,
+        lastCenterY: center.y,
+      };
+      gestureRef.current = {
+        originCursorX: center.x,
+        originCursorY: center.y,
+        originContentX: el.scrollLeft + center.x,
+        originContentY: el.scrollTop + center.y,
+      };
+      liveZoomRef.current = 1;
+      setLiveZoom(1);
+      if (settleTimerRef.current) clearTimeout(settleTimerRef.current);
+      cb.current.onZoomPhase?.('gesture-start', { atPct: Math.round(scaleRef.current * 100) });
+      setZoomInteraction(true);
+      setPanInteraction(true);
+      setMobileTouchMode('pinch');
+    };
+
+    const onTouchStart = (event) => {
+      if (isEditableTarget(event.target)) return;
+      // Required by Safari to stop native page zoom / Tab Expose and the
+      // long-press loupe before either recognizer claims the sequence.
+      event.preventDefault();
+      if (event.touches.length >= 2) {
+        event.stopPropagation();
+        startPinch(event.touches);
+        return;
+      }
+      if (event.touches.length === 1 && interactionModeRef.current === 'Pan') {
+        event.stopPropagation();
+        const touch = event.touches[0];
+        mobileTouchRef.current = { mode: 'pan', lastX: touch.clientX, lastY: touch.clientY };
+        setPanInteraction(true);
+        setMobileTouchMode('pan');
+        return;
+      }
+
+      if (event.touches.length === 1) {
+        mobileTouchRef.current = { mode: 'tool' };
+        setMobileTouchMode('tool');
+      }
+    };
+
+    const onTouchMove = (event) => {
+      if (isEditableTarget(event.target)) return;
+      event.preventDefault();
+      if (event.touches.length >= 2) {
+        event.stopPropagation();
+        if (mobileTouchRef.current?.mode !== 'pinch') startPinch(event.touches);
+        const touchState = mobileTouchRef.current;
+        if (!touchState || touchState.mode !== 'pinch') return;
+
+        const rect = el.getBoundingClientRect();
+        const center = getTouchCenter(event.touches, rect);
+        const committedScale = scaleRef.current;
+        let nextLiveZoom = getTouchDistance(event.touches) / touchState.startDistance;
+        nextLiveZoom = Math.max(MIN_SCALE / committedScale, Math.min(MAX_SCALE / committedScale, nextLiveZoom));
+        liveZoomRef.current = nextLiveZoom;
+
+        el.scrollLeft -= center.x - touchState.lastCenterX;
+        el.scrollTop -= center.y - touchState.lastCenterY;
+        touchState.lastCenterX = center.x;
+        touchState.lastCenterY = center.y;
+
+        if (!wheelRafRef.current) wheelRafRef.current = requestAnimationFrame(applyWheelZoom);
+        return;
+      }
+
+      const touchState = mobileTouchRef.current;
+      if (touchState?.mode === 'pinch') {
+        event.stopPropagation();
+        return;
+      }
+      if (touchState?.mode === 'pan' && event.touches.length === 1) {
+        event.stopPropagation();
+        const touch = event.touches[0];
+        schedulePan(touch.clientX - touchState.lastX, touch.clientY - touchState.lastY);
+        touchState.lastX = touch.clientX;
+        touchState.lastY = touch.clientY;
+        return;
+      }
+      // Tool gestures continue to the native Fabric/SVG handlers.
+    };
+
+    const onTouchEnd = (event) => {
+      if (isEditableTarget(event.target)) return;
+      event.preventDefault();
+      const touchState = mobileTouchRef.current;
+      if (!touchState) return;
+
+      if (touchState.mode === 'tool') {
+        mobileTouchRef.current = null;
+        setMobileTouchMode(null);
+        return;
+      }
+
+      event.stopPropagation();
+      if (touchState.mode === 'pinch') {
+        mobileTouchRef.current = null;
+        suppressMobileTouchUntilRef.current = performance.now() + 450;
+        setMobileTouchMode(null);
+        setPanInteraction(false);
+        commitGesture();
+        return;
+      }
+
+      if (touchState.mode === 'pan' && event.touches.length === 0) {
+        mobileTouchRef.current = null;
+        suppressMobileTouchUntilRef.current = performance.now() + 180;
+        setMobileTouchMode(null);
+        flushPan();
+        setPanInteraction(false);
+      }
+    };
+
+    const stopNativeGesture = (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+    };
+    const stopNativeSelection = (event) => {
+      if (isEditableTarget(event.target)) return;
+      event.preventDefault();
+    };
+    const stopPostGestureClick = (event) => {
+      if (performance.now() >= suppressMobileTouchUntilRef.current) return;
+      event.preventDefault();
+      event.stopPropagation();
+    };
+    const stopPinchPointer = (event) => {
+      if (event.pointerType !== 'touch') return;
+      if (mobileTouchRef.current?.mode !== 'pinch' && performance.now() >= suppressMobileTouchUntilRef.current) return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+    };
+
+    el.addEventListener('touchstart', onTouchStart, { capture: true, passive: false });
+    el.addEventListener('touchmove', onTouchMove, { capture: true, passive: false });
+    el.addEventListener('touchend', onTouchEnd, { capture: true, passive: false });
+    el.addEventListener('touchcancel', onTouchEnd, { capture: true, passive: false });
+    el.addEventListener('gesturestart', stopNativeGesture, { capture: true, passive: false });
+    el.addEventListener('gesturechange', stopNativeGesture, { capture: true, passive: false });
+    el.addEventListener('gestureend', stopNativeGesture, { capture: true, passive: false });
+    el.addEventListener('selectstart', stopNativeSelection, true);
+    el.addEventListener('contextmenu', stopNativeSelection, true);
+    el.addEventListener('dragstart', stopNativeSelection, true);
+    el.addEventListener('click', stopPostGestureClick, true);
+    el.addEventListener('pointermove', stopPinchPointer, true);
+    el.addEventListener('pointerup', stopPinchPointer, true);
+    el.addEventListener('pointercancel', stopPinchPointer, true);
+
+    return () => {
+      el.removeEventListener('touchstart', onTouchStart, true);
+      el.removeEventListener('touchmove', onTouchMove, true);
+      el.removeEventListener('touchend', onTouchEnd, true);
+      el.removeEventListener('touchcancel', onTouchEnd, true);
+      el.removeEventListener('gesturestart', stopNativeGesture, true);
+      el.removeEventListener('gesturechange', stopNativeGesture, true);
+      el.removeEventListener('gestureend', stopNativeGesture, true);
+      el.removeEventListener('selectstart', stopNativeSelection, true);
+      el.removeEventListener('contextmenu', stopNativeSelection, true);
+      el.removeEventListener('dragstart', stopNativeSelection, true);
+      el.removeEventListener('click', stopPostGestureClick, true);
+      el.removeEventListener('pointermove', stopPinchPointer, true);
+      el.removeEventListener('pointerup', stopPinchPointer, true);
+      el.removeEventListener('pointercancel', stopPinchPointer, true);
+      mobileTouchRef.current = null;
+      setMobileTouchMode(null);
+      setPanInteraction(false);
+    };
+  }, [applyWheelZoom, commitGesture, flushPan, isMobileSurface, schedulePan, setPanInteraction, setZoomInteraction]);
 
   // ---- imperative zoom / nav -----------------------------------------------
   const zoomToScale = useCallback((target) => {
@@ -905,12 +1240,14 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     if (!el) return;
     let newScale = target;
     if (target === 'fit' || target === 'fitw') {
+      const metrics = layoutMetricsRef.current;
       const s0 = pageSizes[Math.max(0, range[0])] || pageSizes[0] || { w: 612, h: 792 };
       const rot90 = rotation === 90 || rotation === 270;
       const pw = rot90 ? s0.h : s0.w;
       const ph = rot90 ? s0.w : s0.h;
-      const fw = (el.clientWidth - 2 * PAD) / pw;
-      newScale = target === 'fitw' ? fw : Math.min(fw, (el.clientHeight - 2 * PAD) / ph);
+      const fw = getFitWidthForContainer(el.clientWidth, metrics) / pw;
+      const fh = Math.max(1, el.clientHeight - metrics.padTop - metrics.padBottom) / ph;
+      newScale = target === 'fitw' ? fw : Math.min(fw, fh);
     }
     applyAnchoredScale(newScale, el.clientWidth / 2, el.clientHeight / 2);
   }, [pageSizes, range, applyAnchoredScale]);
@@ -922,12 +1259,13 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     const i = Math.max(0, Math.min(tops.length - 1, (Number(n) || 1) - 1));
     // tops are raw-content-space; padTop shifts the painted page down by that much.
     // (When padTop > 0 the whole doc fits and maxTop clamps this to 0 anyway.)
-    el.scrollTop = Math.max(0, padTopRef.current + tops[i] - PAD);
+    el.scrollTop = Math.max(0, padTopRef.current + tops[i] - layoutMetricsRef.current.padTop);
+    el.scrollLeft = Math.min(el.scrollLeft, getPageHorizontalScrollMax(i, scaleRef.current));
     return true;
-  }, []);
+  }, [getPageHorizontalScrollMax]);
 
   // ---- onZoomChanged (settle only — scale changes only on commit) ----------
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (prevScaleRef.current == null) { prevScaleRef.current = scale; return; }
     if (Math.abs(prevScaleRef.current - scale) > 1e-4) {
       const from = prevScaleRef.current;
@@ -959,6 +1297,14 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
       cb.current.onPageContainersChange?.({ ...next }, { reason: 'layout', count: nextKeys.length });
     }
   }, [range, numPages, scale]);
+
+  useEffect(() => {
+    const mountedPages = [];
+    for (let index = range[0]; index <= range[1]; index += 1) {
+      if (index >= 0 && index < numPages) mountedPages.push(index + 1);
+    }
+    cb.current.onMountedPagesChange?.(mountedPages);
+  }, [numPages, range]);
 
   // ---- thumbnails -----------------------------------------------------------
   const getThumbnailDataUrl = useCallback(async (pageNumber, opts = {}) => {
@@ -1024,8 +1370,13 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
       getPageContainers: () => ({ ...pageContainerMapRef.current }),
       getViewerContainer: () => scrollerRef.current,
       getPageLayerContainer: () => contentRef.current,
-      // Stable slot inside the transformed content for the app's overlay layers.
-      getOverlayHost: () => overlayHostRef.current,
+      getPageOverlayHost: (page) => {
+        const target = Number(page);
+        if (!Number.isFinite(target) || target < 1) return null;
+        const pageDiv = pageContainerMapRef.current[target]
+          || contentRef.current?.querySelector(`.survey-pdfjs-page-div[data-page-number="${target}"]`);
+        return pageDiv?.querySelector?.('[data-pdfjs-page-overlay-host="true"]') || null;
+      },
       // zoom
       magnificationModule: {
         zoomTo: (pct) => { const s = Number(pct) / 100; if (Number.isFinite(s)) zoomToScale(s); },
@@ -1069,9 +1420,46 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     <div
       ref={scrollerRef}
       id={viewerId}
-      className={className}
-      style={{ position: 'absolute', inset: 0, overflow: 'auto', background: '#3a3d42', contain: 'strict', ...style }}
+      className={`${className}${isMobileSurface ? ' survey-pdfjs-mobile-surface' : ''}`}
+      data-mobile-pdf-surface={isMobileSurface ? 'true' : 'false'}
+      style={{
+        position: 'absolute',
+        inset: 0,
+        overflow: 'auto',
+        background: isMobileSurface ? '#070A0D' : '#3a3d42',
+        contain: 'strict',
+        overscrollBehavior: 'contain',
+        WebkitOverflowScrolling: 'touch',
+        touchAction: isMobileSurface ? 'none' : 'pan-x pan-y pinch-zoom',
+        WebkitTouchCallout: isMobileSurface ? 'none' : undefined,
+        WebkitUserSelect: isMobileSurface ? 'none' : undefined,
+        WebkitUserDrag: isMobileSurface ? 'none' : undefined,
+        userSelect: isMobileSurface ? 'none' : undefined,
+        ...style
+      }}
     >
+      <style>{`
+        [data-space-pan='armed'], [data-space-pan='armed'] * { cursor: grab !important; }
+        [data-space-pan='dragging'], [data-space-pan='dragging'] * { cursor: grabbing !important; }
+        html[data-survey-pdfjs-pan-active='true'] [data-eraser-cursor] { display: none !important; }
+        .survey-pdfjs-mobile-surface,
+        .survey-pdfjs-mobile-surface canvas,
+        .survey-pdfjs-mobile-surface svg,
+        .survey-pdfjs-mobile-surface img,
+        .survey-pdfjs-mobile-surface .textLayer {
+          -webkit-user-select: none !important;
+          user-select: none !important;
+          -webkit-touch-callout: none !important;
+          -webkit-user-drag: none !important;
+        }
+        .survey-pdfjs-mobile-surface input,
+        .survey-pdfjs-mobile-surface textarea,
+        .survey-pdfjs-mobile-surface [contenteditable='true'] {
+          -webkit-user-select: text !important;
+          user-select: text !important;
+          -webkit-touch-callout: default !important;
+        }
+      `}</style>
       {loading ? (
         <div style={{ position: 'absolute', inset: 0, display: 'grid', placeItems: 'center', color: '#cfd2d6' }}>
           Loading…
@@ -1079,6 +1467,8 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
       ) : (
         <div
           ref={contentRef}
+          data-pdfjs-content="true"
+          data-pdfjs-live-zoom={liveZoom !== 1 ? 'true' : 'false'}
           style={{
             position: 'relative', width: layout.contentW, height: layout.totalH,
             // padTop vertically centers a document shorter than the viewport via
@@ -1092,27 +1482,32 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
             // (padTop is 0 for any doc taller than the viewport, so this is a no-op
             // in the common multi-page case.)
             transformOrigin: gestureRef.current ? `${gestureRef.current.originContentX}px ${gestureRef.current.originContentY - layout.padTop}px` : '0 0',
-            // Transition is gated ON only while the settle glide runs — NEVER during
-            // the live gesture (where liveZoom updates per-frame and any transition
-            // would lag the cursor anchoring). During settle the transform is already
-            // 'none', so this only eases incidental transform changes, never the live
-            // preview. The position glide itself is driven by the scroll rAF tween.
-            transition: settleAnimating && liveZoom === 1 && !gestureRef.current ? 'transform 160ms ease-out' : 'none',
             willChange: liveZoom !== 1 ? 'transform' : 'auto',
           }}
         >
           {pageSizes.map((s, i) => {
             const dim = layout.dims[i];
-            const left = (layout.contentW - dim.w * scale) / 2;
+            const left = getPageLeftAtScale(i, scale);
             const top = layout.tops[i];
             const mounted = i >= range[0] && i <= range[1];
             return (
               <div
                 key={i}
                 data-page-number={i + 1}
+                data-page-mounted={mounted ? 'true' : 'false'}
                 className="survey-pdfjs-page-div"
                 id={`${viewerId}_pageDiv_${i}`}
-                style={{ position: 'absolute', left, top, width: dim.w * scale, height: dim.h * scale }}
+                style={{
+                  position: 'absolute',
+                  left,
+                  top,
+                  width: dim.w * scale,
+                  height: dim.h * scale,
+                  background: '#fff',
+                  boxShadow: isMobileSurface
+                    ? '0 0 0 1px #D8D8D0, 0 10px 28px rgba(0,0,0,0.35)'
+                    : undefined,
+                }}
               >
                 {mounted ? (
                   <>
@@ -1131,25 +1526,27 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
                       scale={scale}
                       rotation={rotation}
                       liveZoom={liveZoom}
+                      interactionRef={panInteractionRef}
                       scrollerRef={scrollerRef}
                     />
                   </>
                 ) : (
-                  // ponytail: white blank-page placeholder (was a dark "Page N" box).
-                  // It flashes for ~1 frame when a page enters the window on zoom-settle;
-                  // white blends into the rasterized page so the pop is near-invisible.
                   <div style={{ width: '100%', height: '100%', background: '#fff' }} />
                 )}
+                <div
+                  data-pdfjs-page-overlay-host="true"
+                  data-overlay-page={i + 1}
+                  style={{
+                    position: 'absolute',
+                    inset: 0,
+                    pointerEvents: 'none',
+                    zIndex: 30,
+                    overflow: 'visible',
+                  }}
+                />
               </div>
             );
           })}
-          {/* Stable overlay slot — rides the same scale(liveZoom) transform as the pages.
-              The app mounts its overlay layers in here so they zoom as one piece. */}
-          <div
-            ref={overlayHostRef}
-            data-pdfjs-overlay-host="true"
-            style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', pointerEvents: 'none' }}
-          />
         </div>
       )}
     </div>

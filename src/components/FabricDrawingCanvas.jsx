@@ -33,6 +33,7 @@ import {
   updateAnnotationGesture,
 } from '../utils/annotationPreviewDiag';
 import { shouldStampActiveRegionId } from '../utils/annotationVisibilityRules';
+import { createProductionPaperInk } from '../utils/productionPaperInk';
 
 // Custom properties to include in path serialization (matches PAL pattern)
 const CUSTOM_PROPS = [
@@ -40,7 +41,8 @@ const CUSTOM_PROPS = [
   'data', 'name', 'annotationId', 'needsEntity',
   'globalCompositeOperation', 'layer',
   'isPdfImported', 'pdfAnnotationId', 'pdfAnnotationType', 'pdfInkRenderMode',
-  'tool',
+  'tool', 'paperInkGeometry', 'paperEraserGeometry',
+  'polygons', 'paperCenterline', 'sourceWidth', 'fillRule',
 ];
 
 const SHAPE_TOOLS = ['rect', 'ellipse', 'line', 'arrow', 'survey-marker'];
@@ -224,6 +226,7 @@ const FabricDrawingCanvas = memo(({
   const annotationsRef = useRef(annotations);
   const previousObjectCountRef = useRef(annotations?.objects?.length ?? 0);
   const shapeDrawingRef = useRef({ isDrawing: false, startX: 0, startY: 0, shape: null });
+  const rawInkGestureRef = useRef({ pointerId: null, points: [] });
 
   // Refs to avoid stale closures in event handlers
   const activeToolRef = useRef(activeTool);
@@ -314,6 +317,52 @@ const FabricDrawingCanvas = memo(({
     canvas.defaultCursor = 'crosshair';
     canvas.freeDrawingCursor = 'crosshair';
 
+    const upperCanvas = canvas.upperCanvasEl;
+    const pagePointFromEvent = (event) => {
+      const rect = upperCanvas?.getBoundingClientRect();
+      if (!rect?.width || !rect?.height) return null;
+      return {
+        x: (event.clientX - rect.left) * (pageWidth / rect.width),
+        y: (event.clientY - rect.top) * (pageHeight / rect.height),
+      };
+    };
+    const appendPointerSamples = (event) => {
+      const gesture = rawInkGestureRef.current;
+      const coalesced = event.getCoalescedEvents?.() || [];
+      const events = coalesced.length ? coalesced : [event];
+      for (const sample of events) {
+        const point = pagePointFromEvent(sample);
+        const previous = gesture.points[gesture.points.length - 1];
+        if (point && (!previous || Math.hypot(point.x - previous.x, point.y - previous.y) >= 0.2)) {
+          gesture.points.push(point);
+        }
+      }
+    };
+    const onNativePointerDown = (event) => {
+      if (SHAPE_TOOLS.includes(activeToolRef.current) || event.button !== 0) return;
+      rawInkGestureRef.current = { pointerId: event.pointerId, points: [] };
+      appendPointerSamples(event);
+      try { upperCanvas.setPointerCapture(event.pointerId); } catch { /* capture is best effort */ }
+    };
+    const onNativePointerMove = (event) => {
+      if (rawInkGestureRef.current.pointerId !== event.pointerId || event.buttons === 0) return;
+      appendPointerSamples(event);
+    };
+    const onNativePointerUp = (event) => {
+      if (rawInkGestureRef.current.pointerId !== event.pointerId) return;
+      appendPointerSamples(event);
+      rawInkGestureRef.current.pointerId = null;
+      try { upperCanvas.releasePointerCapture(event.pointerId); } catch { /* already released */ }
+    };
+    const onNativePointerCancel = (event) => {
+      if (rawInkGestureRef.current.pointerId !== event.pointerId) return;
+      rawInkGestureRef.current = { pointerId: null, points: [] };
+    };
+    upperCanvas?.addEventListener('pointerdown', onNativePointerDown, true);
+    upperCanvas?.addEventListener('pointermove', onNativePointerMove, true);
+    upperCanvas?.addEventListener('pointerup', onNativePointerUp, true);
+    upperCanvas?.addEventListener('pointercancel', onNativePointerCancel, true);
+
     // Set up PencilBrush for pen/highlighter (shape tools use mouse handlers instead)
     if (!SHAPE_TOOLS.includes(activeToolRef.current)) {
       const brush = ensureFreeDrawingBrush(canvas);
@@ -377,10 +426,21 @@ const FabricDrawingCanvas = memo(({
       // correct call and is what fabric 5's toJSON delegated to. Using toJSON
       // here lost id/moduleId/regionId on every pen stroke after the 7.4.0
       // upgrade (survey/region scoping broke).
-      const pathJSON = e.path.toObject(CUSTOM_PROPS);
-      pathJSON.left = 0;
-      pathJSON.top = 0;
-      pathJSON.tool = activeToolRef.current;
+      const sourcePathJSON = e.path.toObject(CUSTOM_PROPS);
+      const pathJSON = createProductionPaperInk({
+        ...sourcePathJSON,
+        id: e.path.id || e.path.annotationId || e.path.data?.id,
+        tool: activeToolRef.current,
+        points: rawInkGestureRef.current.points,
+        color: sourcePathJSON.stroke,
+        width: sourcePathJSON.strokeWidth,
+      });
+      rawInkGestureRef.current = { pointerId: null, points: [] };
+      if (!pathJSON) {
+        canvas.remove(e.path);
+        canvas.renderAll();
+        return;
+      }
 
       // Track session path for undo sync (count-based, object not needed on Canvas)
       sessionPathsRef.current.push(e.path);
@@ -432,6 +492,10 @@ const FabricDrawingCanvas = memo(({
 
     // Pre-unmount flush is handled by onBeforeDisposeRef (runs before canvas.off()).
     return () => {
+      upperCanvas?.removeEventListener('pointerdown', onNativePointerDown, true);
+      upperCanvas?.removeEventListener('pointermove', onNativePointerMove, true);
+      upperCanvas?.removeEventListener('pointerup', onNativePointerUp, true);
+      upperCanvas?.removeEventListener('pointercancel', onNativePointerCancel, true);
       canvas.off('mouse:down', onFreeDrawMouseDown);
       canvas.off('mouse:move', onFreeDrawMouseMove);
       canvas.off('mouse:up', onFreeDrawMouseUp);

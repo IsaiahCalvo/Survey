@@ -469,6 +469,18 @@ export function renderPathToSvgAttrs(obj) {
     obj?.layer === 'pdf-annotations' ||
     obj?.data?.pdfAnnotationType === 'Ink';
   const fillPdfInkOutline = shouldFillPdfInkOutline(obj);
+  if (obj?.fillRule === 'evenodd' || obj?.paperEraserGeometry === 'v1') {
+    return {
+      stroke: 'none',
+      strokeWidth: 0,
+      fill: isVisiblePaint(obj.fill) ? obj.fill : (obj.stroke ?? '#000'),
+      fillRule: 'evenodd',
+      strokeLinecap: obj.strokeLineCap ?? 'round',
+      strokeLinejoin: obj.strokeLineJoin ?? 'round',
+      vectorEffect: undefined,
+      opacity: obj.opacity ?? 1,
+    };
+  }
   if (fillPdfInkOutline) {
     const fill = isVisiblePaint(obj.fill) ? obj.fill : (obj.stroke ?? '#000');
     return {
