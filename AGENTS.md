@@ -35,12 +35,26 @@ runs `scripts/bootstrap-dev-env.mjs` (via `postinstall`), which auto-creates a g
   by a dev Vite middleware at `/debug-fixtures/`. Other dev routes: `?hubPreview=1` (home
   redesign with mock data) and `?spike=renderer|perfgate|features` (throwaway PDF-render
   prototypes). These routes only exist when running the Vite dev server (`import.meta.env.DEV`).
-- To drive the REAL auth-gated flows in dev, the intended bypass is the dev auto-login in
-  `src/contexts/AuthContext.jsx`: set `VITE_DEV_AUTO_LOGIN_EMAIL` (an existing user),
-  `VITE_DEV_AUTO_LOGIN_PASSWORD`, and `SUPABASE_SERVICE_ROLE_KEY` in a gitignored
-  `.env.local`. On captcha failure the app falls back to the Vite `/__dev-auth/session`
-  plugin, which mints a service-role magic link and verifies it (captcha-free). Without the
-  service-role key this fallback is disabled and auth-gated flows cannot run in the VM.
+- To drive the REAL auth-gated flows in dev, use the dev auto-login in
+  `src/contexts/AuthContext.jsx`. It needs `VITE_DEV_AUTO_LOGIN_EMAIL` (an existing user),
+  `VITE_DEV_AUTO_LOGIN_PASSWORD`, and (for the captcha fallback) `SUPABASE_SERVICE_ROLE_KEY`.
+  On boot it calls `signInWithPassword`; on a captcha error it falls back to the Vite
+  `/__dev-auth/session` plugin, which mints a service-role magic link and verifies it
+  (captcha-free). Verified working: this signs in as the real user and loads documents
+  from Supabase.
+  - **These must live in a gitignored `.env.local`, NOT just as process env vars.** Vite
+    only exposes `VITE_*` vars to the browser (`import.meta.env`) when they come from a
+    `.env` file, so the injected process-env secrets alone do not reach the client and
+    auto-login silently no-ops (profile stays guest "You"). Write them to `.env.local`:
+    `VITE_DEV_AUTO_LOGIN_EMAIL`, `VITE_DEV_AUTO_LOGIN_PASSWORD`, `SUPABASE_SERVICE_ROLE_KEY`.
+  - **Gotcha:** if a secret value arrives wrapped in literal quotes (e.g. the service-role
+    key came through as `"eyJ..."`), strip the surrounding quotes. `.env.local` values are
+    fine quoted (dotenv strips them), but a quoted value left in process env is passed
+    through verbatim by the dev-auth plugin and Supabase rejects it as "Invalid API key".
+  - After creating/editing `.env.local`, restart the Vite dev server so it re-reads env.
+    Do this from a stable shell and then do a FRESH full page load — restarting Vite while a
+    tab is open can leave a stale module graph ("Failed to fetch dynamically imported module
+    .../PDFViewer.jsx"); a clean reload fixes it.
 
 ### Tests
 - `npm test` runs the Node built-in test runner over `tests/**` and `src/**/__tests__/**`
