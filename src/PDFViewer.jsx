@@ -5739,30 +5739,6 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   ]);
 
   useEffect(() => {
-    if (usePdfjsRenderer) return;
-    detachPdfjsInteractionListeners();
-    clearPdfjsWheelZoomRaf();
-    finishPdfjsInteractionWindow();
-    if (pdfjsNavigateResetTimerRef.current) {
-      clearTimeout(pdfjsNavigateResetTimerRef.current);
-      pdfjsNavigateResetTimerRef.current = null;
-    }
-    if (pdfjsRefreshFrameRef.current !== null) {
-      if (typeof window !== 'undefined' && typeof window.cancelAnimationFrame === 'function') {
-        window.cancelAnimationFrame(pdfjsRefreshFrameRef.current);
-      } else {
-        clearTimeout(pdfjsRefreshFrameRef.current);
-      }
-      pdfjsRefreshFrameRef.current = null;
-    }
-    pdfjsZoomSourceRef.current = null;
-    wrapperDragEventAtRef.current = 0;
-    setPdfjsPageContainers((prev) => (Object.keys(prev).length === 0 ? prev : {}));
-    setPdfjsOverlayWindowPages((prev) => (prev.size === 0 ? prev : new Set()));
-    setPdfjsCommittedPageScales((prev) => (Object.keys(prev).length === 0 ? prev : {}));
-  }, [clearPdfjsWheelZoomRaf, detachPdfjsInteractionListeners, finishPdfjsInteractionWindow, usePdfjsRenderer]);
-
-  useEffect(() => {
     if (!usePdfjsRenderer || typeof document === 'undefined') return undefined;
 
     const onDocumentWheel = (event) => {
@@ -5894,9 +5870,6 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     const refCandidate = pageContainersRef.current?.[safePageNumber];
     if (refCandidate?.isConnected) {
       return refCandidate;
-    }
-    if (!usePdfjsRenderer) {
-      return null;
     }
 
     const viewer = pdfjsViewerRef.current;
@@ -7444,19 +7417,6 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     if (!pageSizes || Object.keys(pageSizes).length === 0) return;
     applyLayoutDrivenZoom();
   }, [applyLayoutDrivenZoom, pdfDoc, pageSizes]);
-
-  useEffect(() => {
-    // In Pdfjs mode, the viewer owns zoom persistence across page navigation
-    // (fitToPage/fitToWidth maintain themselves as the user scrolls), and the
-    // zoomController's internal mode is never updated from handleZoomModeSelect's
-    // Pdfjs branches — so applyZoom() here would use a stale mode and re-zoom
-    // to the wrong value on every pageChange, disrupting scroll geometry and
-    // cascading into runaway pageChange events at low zoom levels. See bug #2.5.
-    if (usePdfjsRenderer) return;
-    if (zoomMode !== ZOOM_MODES.MANUAL) {
-      zoomControllerRef.current?.applyZoom({ persist: false, force: true });
-    }
-  }, [pageNum, zoomMode, usePdfjsRenderer]);
 
   useEffect(() => {
     applyLayoutDrivenZoom();
@@ -9124,11 +9084,6 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   }, [disconnectOverlayLagPerfObservers]);
 
   useEffect(() => {
-    if (!usePdfjsRenderer) {
-      setPdfjsCommittedPageScales((prev) => (Object.keys(prev).length === 0 ? prev : {}));
-      return;
-    }
-
     const pageNumbers = Object.keys(pdfjsPageContainers)
       .map((pageKey) => Number(pageKey))
       .filter((pageNumber) => Number.isFinite(pageNumber));
@@ -21203,46 +21158,6 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       setIsPanning(false);
     }
   }, [activeTool]);
-
-  // Add native event listener as backup for panning when overlay has pointerEvents: none
-  // This ensures events are caught even when they pass through the overlay
-  useEffect(() => {
-    if (usePdfjsRenderer) return undefined;
-    if (!showRegionSelection || activeTool !== 'pan') return;
-
-    const container = containerRef.current;
-    if (!container) return;
-
-    const nativeMouseDown = (e) => {
-      if (activeTool === 'pan' && (canPan || showRegionSelection) && e.button === 0) {
-        // Check if event is within container bounds
-        const rect = container.getBoundingClientRect();
-        const isWithinContainer = (
-          e.clientX >= rect.left &&
-          e.clientX <= rect.right &&
-          e.clientY >= rect.top &&
-          e.clientY <= rect.bottom
-        );
-
-        if (isWithinContainer) {
-          setIsPanning(true);
-          setPanStart({
-            x: e.clientX + container.scrollLeft,
-            y: e.clientY + container.scrollTop
-          });
-          e.preventDefault();
-          e.stopPropagation();
-        }
-      }
-    };
-
-    // Use capture phase to catch events before they reach other handlers
-    container.addEventListener('mousedown', nativeMouseDown, { capture: true, passive: false });
-
-    return () => {
-      container.removeEventListener('mousedown', nativeMouseDown, { capture: true });
-    };
-  }, [showRegionSelection, activeTool, canPan, usePdfjsRenderer]);
 
   // Track eraser cursor position when eraser tool is active
   useEffect(() => {
