@@ -7421,7 +7421,6 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   const [pdfBookmarks, setPdfBookmarks] = useState([]); // Bookmarks extracted from the PDF (Pdfjs primary, PDF.js fallback)
   const [pdfOutlinePageLookup, setPdfOutlinePageLookup] = useState(null);
   const [hasImportedPdfBookmarks, setHasImportedPdfBookmarks] = useState(false);
-  const pdfjsBookmarkAttemptRef = useRef(null);
   const [spaces, setSpaces] = useState([]); // Array of { id, name, assignedPages: [{ pageId, wholePageIncluded, regions: [] }] }
   const [activeSpaceId, setActiveSpaceId] = useState(null); // Currently active space for filtering
   useEffect(() => {
@@ -18538,7 +18537,6 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     setBookmarks([]);
     setPdfBookmarks([]);
     setHasImportedPdfBookmarks(false);
-    pdfjsBookmarkAttemptRef.current = null;
     setSpaces(isSamePdfReload ? previousSpacesForSamePdf : []);
     setPageNames({});
     setPageTransformations({});
@@ -19371,46 +19369,6 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       // setSurveyMarkers({});
     }
   }, [selectedTemplate, pdfId]); // Only run when template changes
-
-  useEffect(() => {
-    if (!pdfDoc) return undefined;
-    // Under pdf.js the engine extracts the outline on document load and reports it via
-    // onPDFBookmarksAvailable, so this 3.2s fallback would redundantly re-extract.
-    if (true) return undefined;
-    if (Array.isArray(pdfBookmarks) && pdfBookmarks.length > 0) return undefined;
-
-    const attemptKey = pdfId || `${pdfFile?.name || 'document'}:${pdfDoc?.numPages || 0}`;
-    if (pdfjsBookmarkAttemptRef.current === attemptKey) {
-      return undefined;
-    }
-    pdfjsBookmarkAttemptRef.current = attemptKey;
-
-    let cancelled = false;
-    const fallbackTimer = setTimeout(async () => {
-      try {
-        const outlineBookmarks = await extractPdfOutlineBookmarks(pdfDoc);
-        if (cancelled || !Array.isArray(outlineBookmarks) || outlineBookmarks.length === 0) {
-          return;
-        }
-        setPdfBookmarks((prev) => {
-          if (Array.isArray(prev) && prev.length > 0) {
-            return prev;
-          }
-          return outlineBookmarks.map((bookmark, index) => ({
-            ...bookmark,
-            source: 'pdf',
-            sourceId: bookmark.sourceId || `pdfjs:${bookmark.id || index}`,
-            isFromPDF: true
-          }));
-        });
-      } catch { }
-    }, 3200);
-
-    return () => {
-      cancelled = true;
-      clearTimeout(fallbackTimer);
-    };
-  }, [extractPdfOutlineBookmarks, pdfBookmarks, pdfDoc, pdfFile?.name, pdfId]);
 
   useEffect(() => {
     let cancelled = false;
