@@ -57,7 +57,6 @@ import { ConfirmDeleteModal } from './components/collab/ConfirmDeleteModal.jsx';
 import { DEFAULT_ZOOM_PREFERENCES, ZOOM_MODES, clampScale, createZoomController, loadZoomPreferences, saveZoomPreferences } from './utils/zoomController';
 import { FORM_TOOLS as FORM_DESIGNER_TOOLS, getFormFieldTypeForTool, isFormTool } from './components/formDesignerTools';
 import { PDFDocument } from 'pdf-lib';
-import { PageRenderCache } from './utils/pdfCache';
 import { UndoToast } from './components/collab/UndoToast.jsx';
 import { applyAnnotationGroupId, findGroupMembers, generateGroupId, getAnnotationGroupId, getCalloutGroupId } from './utils/annotationGroups';
 import { applyAnnotationHistoryAction, buildAnnotationHistoryAction, buildPreciseAnnotationHistoryAction, filterAnnotationHistoryActionByOwner, invertAnnotationHistoryAction } from './utils/annotationLocalHistory';
@@ -369,7 +368,6 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   const containerRef = useRef();
   const contentRef = useRef();
   const pageContainersRef = useRef({});
-  const canvasRef = useRef({});
   const pdfjsViewerRef = useRef(null);
   const pdfSidebarRef = useRef(null);
   const pdfjsWrapperRef = useRef(null);
@@ -863,10 +861,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     return { cleared: true, startedAt: debug.startedAtIso };
   }, []);
 
-  const renderTasksRef = useRef({});
   const isNavigatingRef = useRef(false);
   const isZoomingRef = useRef(false);
-  const observerRef = useRef(null);
   const targetPageRef = useRef(null);
   const [showLocateModal, setShowLocateModal] = useState(false);
   const [locateSearchQuery, setLocateSearchQuery] = useState('');
@@ -878,9 +874,6 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   const [pdfjsMountedPages, setPdfjsMountedPages] = useState(new Set());
   const pageInputRef = useRef(null);
   const zoomInputRef = useRef(null);
-  const pageRenderCacheRef = useRef(new PageRenderCache(100)); // Cache up to 100 pages
-  const preRenderQueueRef = useRef(new Set()); // Track pages being pre-rendered
-  const lastScaleRef = useRef(1.0); // Track last scale for cache management
 
   const { uploadDataFile, downloadDocument: downloadFromStorage } = useStorage();
   const { updateDocument: updateSupabaseDocument } = useDocuments(null);
@@ -930,7 +923,6 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   const usePdfjsRenderer = true;
   const [isPanning, setIsPanning] = useState(false);
   const [panStart, setPanStart] = useState({ x: 0, y: 0 });
-  const [renderedPages, setRenderedPages] = useState(new Set());
   const [debugLogging, setDebugLogging] = useState(false);
   // Latest-ref pattern (render-phase write is intentional): read by
   // markInteractionPerfActive to skip the HUD-only setState when the debug
@@ -940,7 +932,6 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   const [overlayLagAutoRecordEnabled, setOverlayLagAutoRecordEnabled] = useState(() => readOverlayLagRecorderAutoEnabled());
   const [debugHudTick, setDebugHudTick] = useState(0);
   const [interactionPerfActive, setInteractionPerfActive] = useState(false);
-  const [mountedPages, setMountedPages] = useState(new Set([1])); // Track which pages should be mounted (DOM created)
   const [visiblePagesSet, setVisiblePagesSet] = useState(new Set([1])); // Track currently visible pages for render priority
   const [pdfjsOverlayWindowPages, setPdfjsOverlayWindowPages] = useState(new Set());
   const pdfjsOverlayWindowPagesRef = useRef(new Set());
@@ -6257,7 +6248,6 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     const restoredZoomMode = isFreshOpen ? ZOOM_MODES.FIT_PAGE : ZOOM_MODES.MANUAL;
     zoomModeRef.current = restoredZoomMode;
     setZoomMode(restoredZoomMode);
-    setRenderedPages(new Set());
 
     // Every fresh PDF open must start with an uncalibrated Electron factor.
     // Previously a wrong first-fit-page call could lock in a bogus factor
@@ -18544,7 +18534,6 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     setPdfjsCommittedPageScales({});
     finishPdfjsInteractionWindow();
     pageContainersRef.current = {};
-    setRenderedPages(new Set());
     pdfjsZoomSourceRef.current = null;
     setActiveSpaceId(null);
     setBookmarks([]);
@@ -19675,10 +19664,6 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
         perfLoad.mark(docName, `Page sizes calculated (${pdf.numPages} pages)`);
 
-        // Clear render cache when new PDF loads
-        pageRenderCacheRef.current.clear();
-        setRenderedPages(new Set());
-        lastScaleRef.current = scale;
 
         // Import existing PDF annotations as editable Fabric.js objects
         perfLoad.mark(docName, 'Importing PDF annotations');
@@ -19914,12 +19899,6 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         loadTrace('✅ LOAD COMPLETE — lifting the Loading curtain');
         setIsLoadingPDF(false);
 
-        // Pre-mount first 5 pages for faster initial scrolling
-        const initialPages = new Set();
-        for (let i = 1; i <= Math.min(5, pdf.numPages); i++) {
-          initialPages.add(i);
-        }
-        setMountedPages(initialPages);
         setVisiblePagesSet(new Set([1])); // Mark page 1 as visible for priority rendering
 
       } catch (error) {
@@ -20053,225 +20032,6 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   // watchdog above remains as a PURE safety net: it only ever acts while
   // isLoadingPDF is already true (a genuinely hung first-open after a dead
   // socket), so it can never re-download a doc that is already rendered.
-
-  // Memoized render page function with caching
-  // NOTE: Rendering is now handled by PDFPageCanvas. This function is kept for compatibility
-  // with preRenderNearbyPages and IntersectionObserver logic, but it no longer draws to canvas directly.
-  const renderPage = useCallback(async (pageNumber, priority = 'normal') => {
-    if (usePdfjsRenderer || !pdfDoc) return;
-
-    // We can use this to trigger pre-fetching or other logic if needed,
-    // but for now, PDFPageTiles handles the heavy lifting.
-    // We might want to ensure the page is loaded in pageObjects though.
-
-    // If we need to track "rendered" state for other logic:
-    // setRenderedPages(prev => new Set([...prev, pageNumber]));
-
-  }, [pdfDoc, scale, usePdfjsRenderer]);
-
-  // Pre-render nearby pages for instant display
-  const preRenderNearbyPages = useCallback((currentPage) => {
-    if (usePdfjsRenderer || !pdfDoc || scrollMode !== 'continuous') return;
-
-    const preRenderDistance = 2; // Pre-render 2 pages ahead and behind
-    const pagesToPreRender = [];
-
-    for (let i = Math.max(1, currentPage - preRenderDistance);
-      i <= Math.min(numPages, currentPage + preRenderDistance);
-      i++) {
-      // Use functional approach to avoid renderedPages dependency
-      if (i !== currentPage &&
-        !preRenderQueueRef.current.has(i) &&
-        !pageRenderCacheRef.current.has(i, scale)) {
-        pagesToPreRender.push(i);
-      }
-    }
-
-    // Pre-render pages in background (lower priority)
-    pagesToPreRender.forEach(pageNum => {
-      preRenderQueueRef.current.add(pageNum);
-      // Use requestIdleCallback if available, otherwise setTimeout
-      const scheduleRender = window.requestIdleCallback || ((fn) => setTimeout(fn, 0));
-      scheduleRender(() => {
-        renderPage(pageNum, 'low').finally(() => {
-          preRenderQueueRef.current.delete(pageNum);
-        });
-      });
-    });
-  }, [numPages, pdfDoc, renderPage, scale, scrollMode, usePdfjsRenderer]);
-
-  // Optimized IntersectionObserver with debouncing
-  useEffect(() => {
-    if (usePdfjsRenderer || scrollMode !== 'continuous' || !pdfDoc) return;
-
-    if (observerRef.current) {
-      observerRef.current.disconnect();
-    }
-
-    let visiblePages = new Map(); // Map of pageNumber -> intersectionRatio
-    let updateTimer = null;
-
-    const observer = new IntersectionObserver((entries) => {
-      // Always process entries to ensure pages are rendered even during navigation.
-      // We only gate the pageNum update below, not rendering.
-      const pagesToMount = new Set();
-
-      entries.forEach(entry => {
-        const pageNumber = parseInt(entry.target.dataset.pageNum);
-
-        if (entry.isIntersecting) {
-          // Store the intersection ratio for this page
-          visiblePages.set(pageNumber, entry.intersectionRatio);
-
-          // Mount this page and nearby pages
-          const mountDistance = 3; // Mount pages within 3 pages of visible
-          for (let i = Math.max(1, pageNumber - mountDistance);
-            i <= Math.min(numPages, pageNumber + mountDistance);
-            i++) {
-            pagesToMount.add(i);
-          }
-
-          setRenderedPages(prev => {
-            if (!prev.has(pageNumber)) {
-              // Check if canvas exists before trying to render
-              const canvas = canvasRef.current[pageNumber];
-              if (canvas) {
-                renderPage(pageNumber, 'high'); // High priority for visible pages
-              }
-            }
-            return prev;
-          });
-
-          // Pre-render nearby pages for instant scrolling
-          preRenderNearbyPages(pageNumber);
-        } else {
-          visiblePages.delete(pageNumber);
-        }
-      });
-
-      // Update visible pages state for render prioritization
-      setVisiblePagesSet(new Set(visiblePages.keys()));
-
-      // Update mounted pages if any changes
-      if (pagesToMount.size > 0) {
-        setMountedPages(prev => {
-          const newSet = new Set([...prev, ...pagesToMount]);
-          return newSet.size === prev.size ? prev : newSet;
-        });
-      }
-
-      // Debounce page number updates
-      clearTimeout(updateTimer);
-      updateTimer = setTimeout(() => {
-        // Only update pageNum if we're not navigating programmatically
-        // and if there are visible pages to check
-        if (visiblePages.size > 0 && !isNavigatingRef.current && targetPageRef.current === null && !isZoomingRef.current) {
-          // Find the page with the highest intersection ratio (most visible)
-          let maxRatio = 0;
-          let mostVisiblePage = 1;
-          visiblePages.forEach((ratio, pageNum) => {
-            if (ratio > maxRatio) {
-              maxRatio = ratio;
-              mostVisiblePage = pageNum;
-            }
-          });
-          // Only update if the detected page is different from current
-          // This prevents unnecessary updates that might interfere with navigation
-          setPageNum(prevPage => {
-            if (prevPage !== mostVisiblePage) {
-              return mostVisiblePage;
-            }
-            return prevPage;
-          });
-        }
-      }, 50);
-    }, {
-      root: containerRef.current,
-      rootMargin: '2000px', // Increased to pre-render pages earlier
-      threshold: [0, 0.1, 0.25, 0.5, 0.75, 1.0]
-    });
-
-    observerRef.current = observer;
-
-    // Use a small timeout to ensure DOM elements are mounted
-    const setupTimer = setTimeout(() => {
-      const containers = Object.values(pageContainersRef.current).filter(Boolean);
-      containers.forEach(container => {
-        if (container) {
-          observer.observe(container);
-        }
-      });
-    }, 100);
-
-    // Failsafe: Reset navigation guards if they're stuck for too long
-    // This ensures page number updates always resume after a reasonable timeout
-    const failsafeTimer = setInterval(() => {
-      if (isNavigatingRef.current || targetPageRef.current !== null || isZoomingRef.current) {
-        console.warn('Navigation guards have been active for >2s, resetting for safety');
-        isNavigatingRef.current = false;
-        targetPageRef.current = null;
-        isZoomingRef.current = false;
-      }
-    }, 2000);
-
-    return () => {
-      clearTimeout(setupTimer);
-      clearInterval(failsafeTimer);
-      if (observerRef.current) {
-        observerRef.current.disconnect();
-      }
-      clearTimeout(updateTimer);
-    };
-  }, [pdfDoc, preRenderNearbyPages, renderPage, scrollMode, usePdfjsRenderer]);
-
-  // Render single page mode with pre-rendering
-  useEffect(() => {
-    if (usePdfjsRenderer || scrollMode !== 'single' || !pdfDoc) return;
-    renderPage(pageNum);
-
-    // Pre-render adjacent pages for instant navigation
-    if (pageNum > 1) {
-      renderPage(pageNum - 1, 'low');
-    }
-    if (pageNum < numPages) {
-      renderPage(pageNum + 1, 'low');
-    }
-  }, [numPages, pageNum, pdfDoc, renderPage, scale, scrollMode, usePdfjsRenderer]);
-
-  // Render first page when PDF loads in continuous mode
-  // NOTE: PDFPageCanvas handles rendering automatically when mounted.
-  // We don't need to manually trigger renderPage(1) here anymore.
-  useEffect(() => {
-    // Legacy cleanup
-  }, []);
-
-  // Re-render all visible pages when scale changes
-  useEffect(() => {
-    if (usePdfjsRenderer || !pdfDoc) return;
-
-    // Clear cache for old scale (keep cache for other scales in case user zooms back)
-    // Only clear if scale changed significantly
-    const prevScale = lastScaleRef.current;
-    if (Math.abs(prevScale - scale) > 0.1) {
-      // Clear cache entries that are far from current scale
-      lastScaleRef.current = scale;
-    }
-
-    setRenderedPages(new Set());
-
-    if (scrollMode === 'single') {
-      renderPage(pageNum);
-    }
-    // IntersectionObserver will handle continuous mode
-  }, [pageNum, pdfDoc, renderPage, scale, scrollMode, usePdfjsRenderer]);
-
-  // Re-render pages when transformations change (CSS transforms apply automatically, but this ensures consistency)
-  useEffect(() => {
-    if (!pdfDoc) return;
-
-    // CSS transforms will apply automatically, no need to re-render canvas
-    // This effect is here for potential future enhancements
-  }, [pageTransformations, pdfDoc]);
 
   // Check if panning is available
   useEffect(() => {
