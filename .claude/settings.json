@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"/Users/isaiahcalvo/Documents/Projects/Active/Survey-BetaSafeS2/.claude/hooks/guard-invariants.py\""
+            "command": "python3 \".claude/hooks/guard-invariants.py\""
           }
         ]
       },
@@ -35,7 +35,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"/Users/isaiahcalvo/Documents/Projects/Active/Survey-BetaSafeS2/.claude/hooks/test-reminder.py\""
+            "command": "python3 \".claude/hooks/test-reminder.py\""
           }
         ]
       }
