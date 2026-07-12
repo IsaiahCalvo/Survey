@@ -139,8 +139,8 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 
 .mobile-pdf-header__page-pill.is-open {
   color: #f2f2f2;
-  border-color: #2b6fb6;
-  background: #121b2a;
+  border-color: var(--gold-soft, #b6904a);
+  background: var(--gold-bg, #2a2218);
 }
 
 .mobile-pdf-header__page-total { color: #a8b0bf; }
@@ -178,8 +178,8 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 }
 
 .mobile-pdf-header__page-menu > button.is-active {
-  color: #4a90e2;
-  background: #132135;
+  color: var(--accent-primary, #d8a84e);
+  background: var(--gold-bg, #2a2218);
 }
 
 .mobile-pdf-header__page-jump {
@@ -261,9 +261,9 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 }
 
 .mobile-pdf-tools__button.is-active {
-  color: #4a90e2;
+  color: var(--accent-primary, #d8a84e);
   background: #111820;
-  border-color: #2b6fb6;
+  border-color: var(--gold-soft, #b6904a);
 }
 
 .mobile-pdf-tools__button:disabled { opacity: 0.35; }
@@ -321,9 +321,9 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 }
 
 .mobile-pdf-tools__survey-categories button.is-active {
-  color: #fff;
-  background: #4a90e2;
-  border-color: #4a90e2;
+  color: #17120a;
+  background: var(--accent-primary, #d8a84e);
+  border-color: var(--accent-primary, #d8a84e);
 }
 
 .mobile-pdf-tools__survey-entities {
@@ -351,7 +351,7 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 
 .mobile-pdf-tools__survey-entities button.is-active {
   background: #111820;
-  border-color: #4a90e2;
+  border-color: var(--accent-primary, #d8a84e);
 }
 
 .mobile-pdf-tools__survey-entities button span {
@@ -419,8 +419,8 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   display: grid;
   place-items: center;
   color: #e8e2d4;
-  background: #2a3b54;
-  border: 1px solid #4a90e2;
+  background: var(--gold-bg, #2a2218);
+  border: 1px solid var(--accent-primary, #d8a84e);
   border-radius: 50%;
   font-size: 10px;
   font-weight: 800;
@@ -436,8 +436,8 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   box-sizing: border-box;
   display: grid;
   place-items: center;
-  color: #fff;
-  background: #4a90e2;
+  color: #17120a;
+  background: var(--accent-primary, #d8a84e);
   border: 1px solid #20242c;
   border-radius: 9px;
   font-size: 9px;
@@ -552,9 +552,9 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 .mobile-pdf-properties--actions > button:disabled { opacity: 0.4; }
 
 .mobile-pdf-properties--actions > .mobile-pdf-properties__primary {
-  color: #fff;
-  background: #4a90e2;
-  border-color: #4a90e2;
+  color: #17120a;
+  background: var(--accent-primary, #d8a84e);
+  border-color: var(--accent-primary, #d8a84e);
 }
 
 .mobile-pdf-properties__keep {
@@ -574,15 +574,15 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 }
 
 .mobile-pdf-properties__keep.is-active {
-  color: #4a90e2;
-  background: #132235;
-  border-color: #2b6fb6;
+  color: var(--accent-primary, #d8a84e);
+  background: var(--gold-bg, #2a2218);
+  border-color: var(--gold-soft, #b6904a);
 }
 
 .mobile-pdf-properties__keep.is-active > span {
-  color: #fff;
-  background: #4a90e2;
-  border-color: #4a90e2;
+  color: #17120a;
+  background: var(--accent-primary, #d8a84e);
+  border-color: var(--accent-primary, #d8a84e);
 }
 
 .mobile-pdf-properties::-webkit-scrollbar { display: none; }
@@ -815,8 +815,8 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 }
 
 .mobile-pdf-properties__format.is-active {
-  color: #4a90e2;
-  background: #132135;
+  color: var(--accent-primary, #d8a84e);
+  background: var(--gold-bg, #2a2218);
 }
 
 .mobile-pdf-properties__menu-anchor {
@@ -866,12 +866,12 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 }
 
 .mobile-pdf-properties__menu > button:first-of-type { grid-template-columns: 1fr; }
-.mobile-pdf-properties__menu > button.is-active { color: #4a90e2; background: #132135; }
+.mobile-pdf-properties__menu > button.is-active { color: var(--accent-primary, #d8a84e); background: var(--gold-bg, #2a2218); }
 .mobile-pdf-properties__menu i { width: 9px; height: 9px; border-radius: 50%; }
 .mobile-pdf-properties__menu b { overflow: hidden; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
 .mobile-pdf-properties__menu em { color: #919aa8; font-style: normal; }
 
-.mobile-pdf-properties__edit.is-active { color: #4a90e2; background: #132135; }
+.mobile-pdf-properties__edit.is-active { color: var(--accent-primary, #d8a84e); background: var(--gold-bg, #2a2218); }
 .mobile-pdf-properties__edit:disabled { opacity: 0.4; }
 
 .mobile-pdf-text-defaults {
@@ -970,7 +970,7 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 
 .mobile-pdf-text-defaults__tabs > button.is-active {
   color: #f2f2f2;
-  background: #132135;
+  background: var(--gold-bg, #2a2218);
 }
 
 .mobile-pdf-text-defaults__tabs > button:focus {
@@ -1101,8 +1101,8 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 }
 
 .mobile-pdf-text-card__colors > button.is-active {
-  background: #122238;
-  border-color: #4a90e2;
+  background: var(--gold-bg, #2a2218);
+  border-color: var(--accent-primary, #d8a84e);
 }
 
 .mobile-pdf-text-card__colors > button > span {
@@ -1171,8 +1171,8 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 
 .mobile-pdf-text-defaults__format > button.is-active {
   color: #f2f2f2;
-  background: #132135;
-  border-color: #2b6fb6;
+  background: var(--gold-bg, #2a2218);
+  border-color: var(--gold-soft, #b6904a);
 }
 
 .mobile-pdf-text-card__size > input,
@@ -1221,9 +1221,9 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 }
 
 .mobile-pdf-text-defaults__alignments > button.is-active {
-  color: #4a90e2;
-  background: #132135;
-  border-color: #2b6fb6;
+  color: var(--accent-primary, #d8a84e);
+  background: var(--gold-bg, #2a2218);
+  border-color: var(--gold-soft, #b6904a);
 }
 
 .mobile-pdf-text-card__color-tabs {
@@ -1251,7 +1251,7 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 }
 
 .mobile-pdf-text-card__color-tabs > button + button { border-left: 1px solid #343a45; }
-.mobile-pdf-text-card__color-tabs > button.is-active { color: #f2f2f2; background: #132135; }
+.mobile-pdf-text-card__color-tabs > button.is-active { color: #f2f2f2; background: var(--gold-bg, #2a2218); }
 
 .mobile-pdf-text-card__color-tabs i {
   width: 11px;
@@ -1320,9 +1320,9 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 
 .mobile-pdf-dock__side.is-active,
 .mobile-pdf-dock__center.is-active {
-  color: #4a90e2;
-  background: #162236;
-  border-color: #315f91;
+  color: var(--accent-primary, #d8a84e);
+  background: var(--gold-bg, #2a2218);
+  border-color: var(--gold-soft, #b6904a);
 }
 
 .mobile-pdf-dock__center {
@@ -1458,8 +1458,8 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   display: grid;
   place-items: center;
   color: #f2f2f2;
-  background: #2a3b54;
-  border: 1px solid #4a90e2;
+  background: var(--gold-bg, #2a2218);
+  border: 1px solid var(--accent-primary, #d8a84e);
   border-radius: 50%;
   font-size: 10px;
   font-weight: 900;
@@ -1468,7 +1468,7 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 .mobile-pdf-users-sheet__row p { min-width: 0; margin: 0; display: grid; gap: 2px; }
 .mobile-pdf-users-sheet__row p strong { overflow: hidden; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
 .mobile-pdf-users-sheet__row p span { color: #a8b0bf; font-size: 10px; }
-.mobile-pdf-users-sheet__row em { color: #4a90e2; font-size: 10px; font-style: normal; font-weight: 800; }
+.mobile-pdf-users-sheet__row em { color: var(--accent-primary, #d8a84e); font-size: 10px; font-style: normal; font-weight: 800; }
 
 .mobile-survey-sheet-header,
 .mobile-survey-picker-header,
@@ -1560,8 +1560,8 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 }
 
 .mobile-survey-template-menu > button.is-active {
-  color: #4a90e2;
-  background: #132135;
+  color: var(--accent-primary, #d8a84e);
+  background: var(--gold-bg, #2a2218);
 }
 
 .mobile-survey-sheet-header-actions {
@@ -1633,9 +1633,9 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 }
 
 .mobile-pdf-sheet .btn-active {
-  color: #fff !important;
-  background: #4a90e2 !important;
-  border-color: #4a90e2 !important;
+  color: #17120a !important;
+  background: var(--accent-primary, #d8a84e) !important;
+  border-color: var(--accent-primary, #d8a84e) !important;
 }
 
 .mobile-survey-exit-footer {
@@ -1859,8 +1859,8 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 }
 
 .mobile-page-card.is-active {
-  background: #1d2740 !important;
-  border-color: #2f6bb8 !important;
+  background: var(--gold-bg, #2a2218) !important;
+  border-color: var(--accent-primary, #d8a84e) !important;
 }
 
 .mobile-page-card.is-active::before {
