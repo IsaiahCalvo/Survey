@@ -55,6 +55,19 @@ try {
   const flag = await page.evaluate(() => window.localStorage.getItem('CALLOUTS_SHARED_STORE'));
   console.log(`[flag] CALLOUTS_SHARED_STORE = ${flag === null ? 'null (default)' : flag}`);
 
+  // Canvas-presentation era (a3380bbf): right after open no tool is active, so
+  // callouts present via canvas2d and have NO [data-callout-id] DOM — an
+  // idsBefore read here would be empty and the new-id diff below would then
+  // pick a PRE-EXISTING callout as "ours". Switch to Select (mounts the SVG
+  // layer) so idsBefore captures the doc's real callout set. Mount alone isn't
+  // hydration: also wait for the CRDT backfill to complete (same signal the
+  // sibling harnesses use) so a late-hydrating pre-existing callout can't
+  // arrive AFTER this snapshot and get mistaken for the freshly drawn one.
+  await page.keyboard.press('v');
+  await page.waitForSelector('[data-svg-annotation-layer="1"]', { timeout: 20000 });
+  await page.waitForFunction(() => window.__crdtBackfillDone === true, undefined, { timeout: 20000 })
+    .catch(() => console.log('[warn] __crdtBackfillDone not seen within 20s (continuing)'));
+  await page.waitForTimeout(500);
   const idsBefore = await page.evaluate(() =>
     [...document.querySelectorAll('[data-callout-id]')].map(e => e.getAttribute('data-callout-id')));
 
@@ -78,8 +91,14 @@ try {
   await page.waitForSelector('[data-page-number="1"]', { timeout: 20000 });
   const box = await page.locator('[data-page-number="1"]').boundingBox();
   const drawCallout = async (fx, fy) => {
-    await page.locator('button[title="Text"]').first().click(); await page.waitForTimeout(300);
-    await page.locator('button[title="Callout"]').first().click(); await page.waitForTimeout(300);
+    // The "Text" category button TOGGLES the review sub-toolbar: clicking it
+    // again on a retry (sub-toolbar already open) closes it and the Callout
+    // button vanishes. Only click the category when Callout isn't visible.
+    const calloutBtn = page.locator('button[title="Callout"]').first();
+    if (!(await calloutBtn.isVisible().catch(() => false))) {
+      await page.locator('button[title="Text"]').first().click(); await page.waitForTimeout(300);
+    }
+    await calloutBtn.click(); await page.waitForTimeout(300);
     const ax = box.x + box.width * fx, ay = box.y + box.height * fy;
     const tx = ax + 130, ty = ay - 55;
     await page.mouse.move(ax, ay); await page.mouse.down();
@@ -168,6 +187,22 @@ try {
     `center=${c ? `${Math.round(c.x)},${Math.round(c.y)}` : 'not-found'}`);
 
   await page.screenshot({ path: 'agent-cli/callout-interaction-e2e-result.png' });
+
+  // ── best-effort cleanup: delete OUR callout so repeated runs don't litter
+  //    the shared doc until every draw spot is occupied (that exact
+  //    accumulation made the retry loop exhaust all three spots on
+  //    2026-07-12). Non-fatal — checks above already recorded their verdicts.
+  try {
+    await page.keyboard.press('Escape'); await page.waitForTimeout(300);
+    await page.keyboard.press('v'); await page.waitForTimeout(200);
+    c = await boxCenter(newId);
+    if (c) {
+      await page.mouse.click(c.x, c.y); await page.waitForTimeout(400);
+      await page.keyboard.press('Delete'); await page.waitForTimeout(600);
+      const gone = await page.evaluate((id) => !document.querySelector(`[data-callout-id="${id}"]`), newId);
+      console.log(`[cleanup] test callout ${gone ? 'deleted' : 'NOT deleted (leftover)'}`);
+    }
+  } catch (e) { console.log(`[cleanup] skipped: ${e.message}`); }
 } catch (e) {
   check('harness completed without error', false, e.message);
 } finally {

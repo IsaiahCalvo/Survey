@@ -1,14 +1,14 @@
 // agent-cli/diag-kal75-paste.mjs — one-off diagnostic for the KAL-75 S5 paste
 // positive. Answers: does Cmd+C→Cmd+V fail because (a) the clipboard state
 // hasn't propagated to the re-registered keydown handler yet (race), or
-// (b) elementFromPoint→closest('.e-pv-page-div') resolves no page at the
+// (b) elementFromPoint→closest('.survey-pdfjs-page-div') resolves no page at the
 // cursor point? Throwaway — delete after the harness fix lands.
 import { spawn } from 'node:child_process';
 import { chromium } from 'playwright';
 import { createSupabaseMock } from './lib/supabaseMock.mjs';
 import { buildFixtures, buildLockRpcHandlers, DOC_OWNED_NAME } from './lib/kal75Fixtures.mjs';
 
-const PORT = 5176;
+const PORT = Number(process.env.PORT || 5176);
 const BASE = `http://localhost:${PORT}/`;
 const log = (...a) => console.log(...a);
 
@@ -42,13 +42,17 @@ async function main() {
     await tile.click(); await page.waitForTimeout(600); await tile.dblclick().catch(() => {});
     await page.waitForFunction(() => Array.from(document.querySelectorAll('canvas')).some((c) => c.width > 100), undefined, { timeout: 45000 });
     await page.waitForTimeout(2500);
+    // Canvas-presentation era (a3380bbf): g[data-annotation-index] only exists
+    // while the SVG layer is mounted — 'v' switches to Select, which mounts it.
+    await page.keyboard.press('v');
+    await page.waitForTimeout(400);
 
     const fabricCount = () => page.evaluate(() => document.querySelectorAll('g[data-annotation-index]').length);
     const cornerOf = (i) => page.evaluate((idx) => {
       const gs = Array.from(document.querySelectorAll('g[data-annotation-index]'));
       const g = gs[idx]; if (!g) return null;
       const r = g.getBoundingClientRect();
-      return { x: r.x + r.width - 8, y: r.y + r.height - 8 };
+      return { x: r.x + r.width * 0.4, y: r.y + r.height - 1 };
     }, i);
 
     log(`annotations rendered: ${await fabricCount()}`);
@@ -68,7 +72,7 @@ async function main() {
     const target = { x: selPt.x + 40, y: selPt.y + 60 };
     const resolution = await page.evaluate(({ x, y }) => {
       const el = document.elementFromPoint(x, y);
-      const pageDiv = el?.closest?.('.e-pv-page-div') || null;
+      const pageDiv = el?.closest?.('.survey-pdfjs-page-div') || null;
       const palWrap = pageDiv?.querySelector?.('[data-diag-svg-wrapper], [data-pal-root]');
       const attr = palWrap?.getAttribute?.('data-diag-svg-wrapper') || palWrap?.getAttribute?.('data-pal-root');
       return {

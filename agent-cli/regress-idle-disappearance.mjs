@@ -124,24 +124,29 @@ async function main() {
       await page.waitForFunction(() => window.__crdtBackfillDone === true, undefined, { timeout: 20000 })
         .catch(() => log('  [warn] __crdtBackfillDone not seen within 20s (continuing)'));
       await page.waitForTimeout(1500); // hydrate paint settle
+      // Canvas-presentation era (a3380bbf): with no tool active the page
+      // presents annotations via canvas2d and the SVG layer — where
+      // fabricCount's g[data-annotation-index] elements live — is NOT
+      // mounted. 'v' switches to Select, which mounts it.
+      await page.keyboard.press('v');
+      await page.waitForTimeout(400);
     };
 
     // Survey activation: rail toggle → template-selection modal → template click
     // (auto-selects first module + opens the panel).
     const openSurveyModule = async () => {
-      const selectTemplateBtn = page.locator('button', { hasText: 'Select Template' }).first();
-      if (await selectTemplateBtn.isVisible().catch(() => false)) {
-        await selectTemplateBtn.click();
-      } else {
-        // collapsed rail: expand first, then toggle
-        const expand = page.locator('[aria-label="Expand panel"]').first();
-        if (await expand.isVisible().catch(() => false)) await expand.click();
-        await page.waitForTimeout(400);
-        const btn = page.locator('button', { hasText: 'Select Template' }).first();
-        await btn.waitFor({ state: 'visible', timeout: 10000 });
-        await btn.click();
+      // Current survey activation: the right-rail "Survey" toggle opens the
+      // rail, which lists available templates DIRECTLY as buttons
+      // (SurveySpacesRail.jsx ~2854) — the old "Select Template" button +
+      // template-selection modal flow no longer exists.
+      let templateBtn = page.locator('button', { hasText: TEMPLATE_NAME }).first();
+      if (!(await templateBtn.isVisible().catch(() => false))) {
+        const surveyToggle = page.locator('button[title="Survey"]').first();
+        await surveyToggle.waitFor({ state: 'visible', timeout: 10000 });
+        await surveyToggle.click();
+        await page.waitForTimeout(600);
       }
-      const templateBtn = page.locator('button', { hasText: TEMPLATE_NAME }).first();
+      templateBtn = page.locator('button', { hasText: TEMPLATE_NAME }).first();
       await templateBtn.waitFor({ state: 'visible', timeout: 10000 });
       await templateBtn.click();
       await page.waitForTimeout(800);
@@ -150,6 +155,13 @@ async function main() {
       const moduleBtn = page.locator('button', { hasText: MODULE_NAME }).first();
       if (await moduleBtn.isVisible().catch(() => false)) await moduleBtn.click();
       await page.waitForTimeout(600);
+      // Canvas-presentation era (a3380bbf): module selection arms the
+      // survey-marker placement tool (a drawing tool → canvas2d presentation),
+      // which unmounts the SVG layer where [data-survey-marker-id] elements
+      // live. 'v' returns to Select — module selection is PANEL state and
+      // survives the tool switch — so marker counts stay measurable.
+      await page.keyboard.press('v');
+      await page.waitForTimeout(400);
     };
 
     const closeSurveyPanel = async () => {
@@ -168,6 +180,9 @@ async function main() {
 
     const destructiveIn = (windowName) => mock.mutationsIn(windowName).filter((m) => {
       const t = m.table;
+      // Read-only RPCs served by the mock's default handlers (viewer-role
+      // resolve + Excel delta poll) land in the ledger but mutate nothing.
+      if (m.method === 'RPC' && (t === 'rpc/get_my_document_role' || t === 'rpc/kal309_fetch_since')) return false;
       // presence is whitelisted INCLUDING deletes (rows are removed on tab
       // close — expected teardown); history/activity allow POST upserts ONLY
       // (a DELETE on an audit table is a violation — Codex result r4).
