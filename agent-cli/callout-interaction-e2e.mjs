@@ -43,7 +43,9 @@ const page = await ctx.newPage();
 try {
   await page.goto(APP_URL + '/', { waitUntil: 'domcontentloaded', timeout: 60000 });
   // Clear any leftover localStorage callouts so we measure only our fresh one.
-  await page.evaluate(() => { for (const k of Object.keys(localStorage)) { if (/allout/i.test(k)) localStorage.removeItem(k); } });
+  // NB: keep CALLOUTS_SHARED_STORE — /allout/i matches it, and wiping it here
+  // silently disarmed the documented FORCE_FLAG kill-switch mode.
+  await page.evaluate(() => { for (const k of Object.keys(localStorage)) { if (/allout/i.test(k) && k !== 'CALLOUTS_SHARED_STORE') localStorage.removeItem(k); } });
 
   const tile = page.getByText(DOC_NAME, { exact: false }).first();
   await tile.waitFor({ state: 'visible', timeout: 45000 }); await tile.click();
@@ -54,9 +56,6 @@ try {
 
   const flag = await page.evaluate(() => window.localStorage.getItem('CALLOUTS_SHARED_STORE'));
   console.log(`[flag] CALLOUTS_SHARED_STORE = ${flag === null ? 'null (default)' : flag}`);
-
-  const idsBefore = await page.evaluate(() =>
-    [...document.querySelectorAll('[data-callout-id]')].map(e => e.getAttribute('data-callout-id')));
 
   // Live DOM position of a callout's text-box centre (re-query before every
   // interaction so a moved/re-rendered callout never desyncs the click coords).
@@ -71,20 +70,49 @@ try {
 
   // ── Draw a callout in a CLEAR area (avoid existing annotations/shapes that
   //    would otherwise swallow the pointerdown so no callout gets created) ─────
+  // Post-a3380bbf the SVG layer only mounts under svg-interactive tools (the
+  // default tool at open is pan → canvas presentation, no SVG DOM). Arm
+  // Select ('v') so the layer exists before measuring its bounding box.
+  await page.keyboard.press('v'); await page.waitForTimeout(300);
   await page.waitForSelector('[data-svg-annotation-layer="1"]', { timeout: 20000 });
   const box = await page.locator('[data-svg-annotation-layer="1"]').boundingBox();
-  const drawCallout = async (fx, fy) => {
-    await page.locator('button[title="Text"]').first().click(); await page.waitForTimeout(300);
+  // Capture pre-existing callout ids ONLY after the SVG layer is mounted
+  // (under Select) — capturing while canvas presentation is up sees zero
+  // callout DOM, and the later new-id diff then latches onto a stale
+  // server-persisted callout instead of the one this run draws.
+  const idsBefore = await page.evaluate(() =>
+    [...document.querySelectorAll('[data-callout-id]')].map(e => e.getAttribute('data-callout-id')));
+  const armCallout = async () => {
+    // The Text category button TOGGLES the review dropdown — clicking it
+    // while the dropdown is already open closes it and hides the Callout
+    // button. Only open the dropdown when Callout isn't reachable yet.
+    if (await page.locator('button[title="Callout"]').count() === 0) {
+      await page.locator('button[title="Text"]').first().click(); await page.waitForTimeout(300);
+    }
     await page.locator('button[title="Callout"]').first().click(); await page.waitForTimeout(300);
+  };
+  const drawCallout = async (fx, fy) => {
+    await armCallout();
     const ax = box.x + box.width * fx, ay = box.y + box.height * fy;
     const tx = ax + 130, ty = ay - 55;
     await page.mouse.move(ax, ay); await page.mouse.down();
     for (let i = 1; i <= 8; i++) { await page.mouse.move(ax + (tx - ax) * i / 8, ay + (ty - ay) * i / 8); await page.waitForTimeout(20); }
     await page.mouse.up(); await page.waitForTimeout(800);
   };
-  // try a couple of clear spots until one auto-enters edit (proves a callout was created)
+  // A spot only creates a callout if BOTH the drag start and the drag end
+  // land on empty SVG — a pointerdown inside an existing callout DRAGS that
+  // callout (by design), and every prior green run leaves its callout
+  // persisted on the server, so fixed spots poison over time. Hit-test each
+  // candidate and use the first clear one.
+  const spotClear = (fx, fy) => page.evaluate(([px, py]) => {
+    const hit = (x, y) => document.elementFromPoint(x, y)?.closest?.('[data-callout-id],[data-annotation-index]') || null;
+    return !hit(px, py) && !hit(px + 130, py - 55);
+  }, [box.x + box.width * fx, box.y + box.height * fy]);
+  const SPOTS = [[0.12, 0.80], [0.55, 0.10], [0.12, 0.30], [0.75, 0.75], [0.35, 0.55], [0.60, 0.40], [0.20, 0.55], [0.80, 0.25]];
   let editOnCreate = false;
-  for (const [fx, fy] of [[0.12, 0.80], [0.55, 0.10], [0.12, 0.30]]) {
+  await armCallout(); // arm first so the SVG layer (and callout DOM) is up for hit-testing
+  for (const [fx, fy] of SPOTS) {
+    if (!(await spotClear(fx, fy))) continue;
     await drawCallout(fx, fy);
     editOnCreate = await page.evaluate(() => !!document.querySelector('.upper-canvas, [class*="fabric"]'));
     if (editOnCreate) break;

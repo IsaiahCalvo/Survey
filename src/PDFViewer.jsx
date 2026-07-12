@@ -28669,6 +28669,14 @@ ${pageBlocks}
                               } catch (_e) { /* swallow */ }
                             }
                             const svgInteractive = activeTool === 'select' || activeTool === 'text-select';
+                            // UX: callout creation has NO Fabric canvas — the drag that
+                            // places arrowTip→textBox starts on the SVG layer itself
+                            // (SVGAnnotationLayer isCreationTool / onPointerDown callout
+                            // branch), so the layer must stay mounted while the callout
+                            // tool is armed. Kept separate from svgInteractive so the
+                            // wrapper's select-mode handlers (text-markup select, cursor)
+                            // stay select/text-select-only.
+                            const svgServesCalloutCreation = activeTool === 'callout';
                             const isTextTool = activeTool === 'text';
                             const isDrawingTool = activeTool === 'pen' || activeTool === 'highlighter' || activeTool === 'rect' || activeTool === 'ellipse' || activeTool === 'line' || activeTool === 'arrow' || activeTool === 'survey-marker';
                             const isEraserTool = activeTool === 'eraser';
@@ -28687,7 +28695,7 @@ ${pageBlocks}
                             // to drive state that still applies (like passing the edit
                             // annotation index to the selection overlay).
                             const isFabricEditMode = isEditMode && editingAnnotation?.editType !== 'bbox';
-                            const useCanvasPresentation = !svgInteractive && !isEditMode;
+                            const useCanvasPresentation = !svgInteractive && !svgServesCalloutCreation && !isEditMode;
 
                             return (
                             <>
