@@ -757,6 +757,7 @@ const SpacesPanel = ({
   showSurveyPanel = false,
   selectedModuleId = null,
   mobileMode = false,
+  mobilePanelVisible = false,
   onMobilePanelMetricsChange = null,
 }) => {
   const [expandedSpaces, setExpandedSpaces] = useState(() => new Set());
@@ -791,16 +792,55 @@ const SpacesPanel = ({
   const spacesReorderDebugSessionRef = useRef(null);
   const spacesReorderMoveCountRef = useRef(0);
 
+  // 2026-07-12 (demo parity defect #4): report the panel's MEASURED natural
+  // height so the mobile spaces sheet hugs its real content, instead of the
+  // sheet predicting row heights that drifted from these restyled desktop
+  // rows. expandedPageRows is kept as the pre-measurement fallback signal.
+  const mobilePanelRootRef = useRef(null);
+  const mobileSpacesListRef = useRef(null);
   React.useEffect(() => {
     if (!mobileMode || typeof onMobilePanelMetricsChange !== 'function') return;
+    // Skip while hidden (display:none tab) — rects read 0 there; the effect
+    // re-runs when mobilePanelVisible flips true and measures real layout.
+    if (!mobilePanelVisible) return;
     const expandedPageRows = spaces.reduce((sum, space) => {
       const pageCount = Array.isArray(space.assignedPages)
         ? space.assignedPages.length
         : (Array.isArray(space.pages) ? space.pages.length : 0);
       return sum + (expandedSpaces.has(space.id) ? Math.max(1, pageCount) : 0);
     }, 0);
-    onMobilePanelMetricsChange({ expandedPageRows });
-  }, [expandedSpaces, mobileMode, onMobilePanelMetricsChange, spaces]);
+    // Measure synchronously — the DOM is committed by the time effects run,
+    // and requestAnimationFrame stalls entirely in backgrounded/paused
+    // WebViews, which would leave the sheet stuck on the fallback height.
+    const rootEl = mobilePanelRootRef.current;
+    const listEl = mobileSpacesListRef.current;
+    let contentHeight = null;
+    if (rootEl && listEl) {
+      const rootH = rootEl.getBoundingClientRect().height;
+      const listH = listEl.getBoundingClientRect().height;
+      const listStyles = window.getComputedStyle(listEl);
+      const listPadY = (parseFloat(listStyles.paddingTop) || 0) + (parseFloat(listStyles.paddingBottom) || 0);
+      // Natural height of the list content: the sortable wrapper stretches
+      // to minHeight:100%, so measure first-row top -> last-row bottom
+      // (includes gaps); the empty-state block is naturally sized.
+      const inner = listEl.firstElementChild;
+      let listContentH = 0;
+      if (inner) {
+        const rows = inner.children;
+        if (rows.length > 0) {
+          listContentH = rows[rows.length - 1].getBoundingClientRect().bottom
+            - rows[0].getBoundingClientRect().top;
+        } else {
+          listContentH = inner.getBoundingClientRect().height;
+        }
+      }
+      // (rootH - listH) = the panel chrome above the list (header row),
+      // independent of whatever height the sheet imposed on the list.
+      const natural = (rootH - listH) + listPadY + listContentH;
+      if (Number.isFinite(natural) && natural > 0) contentHeight = Math.ceil(natural);
+    }
+    onMobilePanelMetricsChange({ expandedPageRows, contentHeight });
+  }, [expandedSpaces, mobileMode, mobilePanelVisible, onMobilePanelMetricsChange, spaces]);
   const spacesDropFrameCaptureRef = useRef(null);
   const spacesExportAnchorRef = useRef(null);
 
@@ -1245,7 +1285,7 @@ const SpacesPanel = ({
   const isSpacesExportActive = isSpacesExportHovered || isSpacesExportMenuOpen;
 
   return (
-    <div style={{
+    <div ref={mobilePanelRootRef} style={{
       display: 'flex',
       flexDirection: 'column',
       height: mobileMode ? 'auto' : '100%',
@@ -1347,7 +1387,7 @@ const SpacesPanel = ({
       </div>
 
       {/* Spaces List */}
-      <div style={{
+      <div ref={mobileSpacesListRef} style={{
         flex: 1,
         overflowY: 'auto',
         padding: '8px'

@@ -14,17 +14,30 @@ function SurveyApp() {
   const [webViewKey, setWebViewKey] = useState(0);
   const insets = useSafeAreaInsets();
   const nativeBottomInset = Math.max(insets.bottom, 10);
+  // 2026-07-12 (S2 device-adaptive safe areas): publish ALL four device-
+  // reported insets so the web side can be curve-aware (rounded corners,
+  // notch) everywhere. The shell still pads the TOP natively (paddingTop
+  // below), so --native-safe-area-top is informational — web chrome must not
+  // consume it while running inside the shell (html[data-native-shell] rules
+  // pin the header to 34px). Portrait is locked in app.json, so left/right
+  // are normally 0; they exist for corner-curve awareness only.
+  const nativeTopInset = Math.max(insets.top, 0);
+  const nativeLeftInset = Math.max(insets.left, 0);
+  const nativeRightInset = Math.max(insets.right, 0);
   const nativeSafeAreaScript = useMemo(() => `
     (() => {
       const root = document.documentElement;
       root.style.setProperty('--native-safe-area-bottom', '${nativeBottomInset}px');
+      root.style.setProperty('--native-safe-area-top', '${nativeTopInset}px');
+      root.style.setProperty('--native-safe-area-left', '${nativeLeftInset}px');
+      root.style.setProperty('--native-safe-area-right', '${nativeRightInset}px');
       root.dataset.nativeShell = 'expo';
       window.dispatchEvent(new CustomEvent('survey-native-safe-area-change', {
-        detail: { bottom: ${nativeBottomInset} }
+        detail: { bottom: ${nativeBottomInset}, top: ${nativeTopInset}, left: ${nativeLeftInset}, right: ${nativeRightInset} }
       }));
     })();
     true;
-  `, [nativeBottomInset]);
+  `, [nativeBottomInset, nativeTopInset, nativeLeftInset, nativeRightInset]);
 
   useEffect(() => {
     const subscription = BackHandler.addEventListener('hardwareBackPress', () => {

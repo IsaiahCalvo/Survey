@@ -32,7 +32,47 @@
         padding-right: env(safe-area-inset-right);
         box-sizing: border-box;
       }
+      /* UX 2026-07-12 (mobile demo parity, S1 "one inset owner"): inside the
+         native Expo shell the WebView injects --native-safe-area-bottom and the
+         shell itself pads the top natively, so #root must NOT also consume the
+         raw env() insets — on iOS the bottom inset was counted twice (whole
+         viewer floated ~34px too high). Fixed mobile chrome (viewer header,
+         dock, sheets, home tab bar) owns its own inset via
+         var(--native-safe-area-top/bottom, env(...)) chains. */
+      html[data-native-shell] #root {
+        padding-top: 0;
+        padding-bottom: 0;
+      }
+      /* UX 2026-07-12 (S1, PWA/plain-browser case): when the MOBILE viewer is
+         active, its header consumes the top inset and its dock/sheets consume
+         the bottom inset, so #root padding would double-count both edges.
+         Scoped to <=720px so desktop/iPad rendering is untouched. */
+      @media (max-width: 720px) {
+        html.survey-viewer-open #root {
+          padding-top: 0;
+          padding-bottom: 0;
+        }
+      }
     </style>
+    <script>
+      /* UX 2026-07-12 (mobile demo parity, S5 first-paint determinism): the
+         Expo shell loads the app with ?nativeShell=expo and later injects the
+         real safe-area values via WebView JS. Stamp the shell marker + a 10px
+         bottom-inset floor synchronously at boot so the FIRST paint already
+         lays out shell-style instead of depending on injection timing. The
+         shell's injection overwrites the floor with the device's real inset. */
+      (function () {
+        try {
+          if (new URLSearchParams(window.location.search).get('nativeShell') === 'expo') {
+            var root = document.documentElement;
+            root.dataset.nativeShell = 'expo';
+            if (!root.style.getPropertyValue('--native-safe-area-bottom')) {
+              root.style.setProperty('--native-safe-area-bottom', '10px');
+            }
+          }
+        } catch (e) { /* never block boot on URL parsing */ }
+      })();
+    </script>
     <!-- UX 2026-05-15: JetBrains Mono powers the monospace text in the home
          redesign (timestamps, sizes, codes); without it those fall back to a
          generic monospace that doesn't match the design. -->

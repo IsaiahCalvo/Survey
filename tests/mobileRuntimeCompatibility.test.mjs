@@ -169,7 +169,13 @@ test('mobile Survey and Spaces drawers follow their content', () => {
   assert.match(SURVEY_RAIL_SOURCE, /mobile-survey-template-menu/);
   assert.match(SURVEY_RAIL_SOURCE, /Tap category to place marker/);
   assert.match(SPACES_PANEL_SOURCE, /Array\.isArray\(space\.assignedPages\)/);
-  assert.match(SPACES_PANEL_SOURCE, /onMobilePanelMetricsChange\(\{ expandedPageRows \}\)/);
+  // 2026-07-12 Phase B (defect #4): the spaces sheet now follows MEASURED
+  // panel content instead of predicted row heights — the metrics callback
+  // reports contentHeight alongside the legacy expandedPageRows fallback.
+  assert.match(SPACES_PANEL_SOURCE, /onMobilePanelMetricsChange\(\{ expandedPageRows, contentHeight \}\)/);
+  // 2026-07-12 Phase B (S3): every bottom sheet bakes home-indicator
+  // clearance into itself, like the demo's paddingBottom: inset + 10..14.
+  assert.match(MOBILE_VIEWER_CSS_SOURCE, /\.mobile-pdf-sheet \{[\s\S]{0,1200}padding-bottom: calc\(12px \+ var\(--mobile-bottom-inset\)\)/);
 });
 
 test('mobile viewer sync presentation consumes the structured sync state', () => {

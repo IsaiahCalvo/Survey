@@ -55,17 +55,17 @@ Every item cites the appendix that holds its file:line evidence.
 The re-skin never happened inside `src/mobile/`: **3 gold occurrences vs 55 hard blue leftovers**,
 all verbatim copies of the demo's blue palette. Full table with per-line targets: `audit-colors.md` §2–§3.
 
-- [ ] Swap all 46 blue declarations in `src/mobile/mobilePdfViewer.css` (28 distinct UI elements —
-      every `.is-active`/selected state: tool rail, page pill/menu, survey category/entity chips,
-      keep-active toggle, format buttons, alignment picker, dock actives, page thumbnails,
-      presence avatars, users sheet, template menu, survey `.btn-active`).
-      Mapping: blue text/icon/border → gold accent; solid blue fills → gold + dark text `#17120a`;
-      navy tint backgrounds → gold-tint dark (`#2a2218`); dark blue borders → `--gold-soft #b6904a`.
-- [ ] Swap the 9 blue SVG fills in the text-alignment glyphs (`MobilePdfViewerChrome.jsx`).
-- [ ] Recolor toggle-switch active tracks (`#28598D` demo-blue) in the mobile spaces rows.
-- [ ] **Tokenize while there**: `src/mobile/` uses zero `var(--...)` today. Point everything at the
-      hub tokens (`hub.css` / `docs/design/design.md` table). Note: `src/App.css` is dead-but-retinted —
-      do NOT treat it as the live token source (`audit-history.md` smell #2).
+- [x] Swap all 46 blue declarations in `src/mobile/mobilePdfViewer.css` — DONE 2026-07-12,
+      commit 19b31a2d. Adversarial review PASS; build + 1991-test suite green; browser-verified.
+- [x] Swap the 9 blue SVG fills in the text-alignment glyphs — DONE, same commit.
+- [x] Toggle-switch track `#28598D` — RESOLVED: value no longer exists anywhere in src/
+      (already remediated by the earlier desktop retint); nothing to do.
+- [ ] **Full tokenization** (remaining, downgraded to nice-to-have): blue swaps now use
+      `var(--accent-primary, ...)` / literal-fallback forms, but the rest of `src/mobile/` neutrals
+      are still hardcoded. Note: `--gold-soft`/`--gold-bg` are scoped to `.survey-hub` and do NOT
+      resolve in the viewer — the literal fallbacks carry the value there. `src/App.css` is
+      dead-but-retinted — NOT the live token source (`audit-history.md` smell #2); `--accent-primary`
+      does ship via the built bundle.
 - [ ] Audit the 3 stray light-bone text hexes + swatch shadow against the demo's no-shadow rule
       (`matrix.md` §10).
 

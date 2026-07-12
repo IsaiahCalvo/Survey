@@ -782,7 +782,7 @@ const SurveySpacesRail = ({
                 <>
                   {/* Collapse row: mirrors the left rail's top strip. */}
                   <div
-                    className={mobileMode ? 'mobile-pdf-sheet__handle' : undefined}
+                    className={mobileMode ? 'mobile-pdf-sheet__handle mobile-pdf-sheet__handle--wide' : undefined}
                     onTouchStart={mobileMode ? handleMobileSheetTouchStart : undefined}
                     onTouchEnd={mobileMode ? handleMobileSheetTouchEnd : undefined}
                     style={{

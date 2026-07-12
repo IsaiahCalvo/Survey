@@ -151,6 +151,11 @@ const PDFSidebar = React.forwardRef(({
   const [searchFocusRequestToken, setSearchFocusRequestToken] = useState(0);
   const [searchSelectOnFocus, setSearchSelectOnFocus] = useState(true);
   const [mobileSpacesPageRows, setMobileSpacesPageRows] = useState(0);
+  // 2026-07-12 (demo parity defect #4): the spaces sheet follows its REAL
+  // rendered content height (measured by SpacesPanel) instead of predicting
+  // row heights that drifted from the restyled desktop rows. Null until the
+  // first measurement lands; the predicted formula is the fallback.
+  const [mobileSpacesContentHeight, setMobileSpacesContentHeight] = useState(null);
   const onToggleCollapseRef = React.useRef(onToggleCollapse);
 
   React.useEffect(() => {
@@ -186,8 +191,11 @@ const PDFSidebar = React.forwardRef(({
     setIsCollapsed(true);
   }, []);
 
-  const handleMobileSpacesMetricsChange = useCallback(({ expandedPageRows = 0 } = {}) => {
+  const handleMobileSpacesMetricsChange = useCallback(({ expandedPageRows = 0, contentHeight = null } = {}) => {
     setMobileSpacesPageRows(expandedPageRows);
+    setMobileSpacesContentHeight(
+      Number.isFinite(contentHeight) && contentHeight > 0 ? Math.ceil(contentHeight) : null
+    );
   }, []);
 
   const togglePanel = useCallback((panelId, options = {}) => {
@@ -253,10 +261,24 @@ const PDFSidebar = React.forwardRef(({
   const mobilePanelBaseHeight = (() => {
     if (activeTab === 'history') return 264;
     if (activeTab === 'spaces') {
+      // 2026-07-12 (demo parity defect #4): size the sheet from the panel's
+      // MEASURED content, so it hugs real rows like the demo drawer hugged its
+      // known-height RN rows. Chrome around the measured panel: 18px grab
+      // handle (.mobile-pdf-sheet__handle) + 44px exit footer
+      // (.mobile-spaces-exit-footer) + 12px sheet bottom padding (S3). The
+      // shared .mobile-pdf-sheet max-height (100dvh - chrome top - 18px)
+      // still clamps tall content. Predicted formula remains as the
+      // pre-measurement fallback for the first frame.
+      if (mobileSpacesContentHeight != null) {
+        return 18 + mobileSpacesContentHeight + 44 + 12;
+      }
       return Math.max(238, 106 + (spaces?.length || 0) * 54 + mobileSpacesPageRows * 50);
     }
     if (activeTab === 'search') return searchResults?.length ? 232 : 292;
-    if (activeTab === 'bookmarks') return Math.min(286, Math.max(238, 84 + (bookmarks?.length || 0) * 42));
+    // 2026-07-12 (demo parity defect #5): drop the 238px floor — the demo
+    // sizes bookmarks as min(286, 84 + max(n,1)*42) so one bookmark gets a
+    // snug 126px sheet instead of a mostly-empty 238px one.
+    if (activeTab === 'bookmarks') return Math.min(286, 84 + Math.max(bookmarks?.length || 0, 1) * 42);
     return 310;
   })();
 
@@ -543,6 +565,7 @@ const PDFSidebar = React.forwardRef(({
                 showSurveyPanel={showSurveyPanel}
                 selectedModuleId={selectedModuleId}
                 mobileMode={mobileMode}
+                mobilePanelVisible={mobileMode && activeTab === 'spaces' && !isCollapsed}
                 onMobilePanelMetricsChange={handleMobileSpacesMetricsChange}
               />
               {mobileMode && (

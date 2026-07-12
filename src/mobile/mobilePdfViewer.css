@@ -21,8 +21,12 @@ html.survey-viewer-open #root {
 }
 
 .mobile-pdf-header {
-  height: calc(34px + env(safe-area-inset-top, 0px));
-  min-height: calc(34px + env(safe-area-inset-top, 0px));
+  /* UX 2026-07-12 (S1 one inset owner): the header is the single top-inset
+     consumer in the mobile viewer (#root env() padding is zeroed while the
+     mobile viewer is open — see index.html). var-first so a native shell can
+     publish the device-reported inset; env() is the PWA fallback. */
+  height: calc(34px + var(--native-safe-area-top, env(safe-area-inset-top, 0px)));
+  min-height: calc(34px + var(--native-safe-area-top, env(safe-area-inset-top, 0px)));
   padding: 0;
   box-sizing: border-box;
   display: block;
@@ -1366,6 +1370,14 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   border-radius: 14px 14px 0 0;
   box-shadow: 0 -15px 38px rgba(0, 0, 0, 0.5);
   overflow: hidden;
+  /* UX 2026-07-12 (S3, demo parity): every bottom sheet bakes the home-
+     indicator clearance into itself, exactly like the demo's RN sheets
+     (paddingBottom: bottomInset + 10..14). Sheet heights already include
+     the inset (base + --mobile-bottom-inset), so the footer rows (Exit
+     Spaces, Exit Survey, pages action pills) land above the unsafe zone
+     instead of flush against the physical screen bottom. The users sheet
+     keeps its own equivalent padding override below (css order wins). */
+  padding-bottom: calc(12px + var(--mobile-bottom-inset));
   z-index: 6500 !important;
   animation: mobilePdfSheetIn 180ms ease-out !important;
 }
@@ -1387,6 +1399,16 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   height: 4px;
   border-radius: 2px;
   background: #68707a;
+}
+
+/* UX 2026-07-12 (demo parity, defect #12): the demo's survey + format sheets
+   use a wider 42x4 grab handle (styles.ts sheetHandle); the hub tray keeps
+   34x4. Deliberate deviation from the demo: the spaces sheet KEEPS its handle
+   (the demo drawer had none) because it carries swipe-to-dismiss, and the
+   content-measured sheet height absorbs the 18px it costs. */
+.mobile-pdf-sheet__handle--wide::before,
+.mobile-pdf-text-defaults .mobile-pdf-sheet__handle::before {
+  width: 42px;
 }
 
 .mobile-pdf-sheet__handle button {
