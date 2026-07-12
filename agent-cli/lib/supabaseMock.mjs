@@ -155,6 +155,19 @@ function wantsCount(headers) {
 // onMutation (KAL-74): callback invoked after every ledger record with the
 // recorded entry ({ window, method, table, filters, body }) — default no-op.
 export function createSupabaseMock({ fixtures, pdfPath, log = () => {}, rpcHandlers = {}, readHandlerOverrides = {}, onMutation = () => {} }) {
+  // Defaults for app-wide RPCs that post-date the per-harness handler maps —
+  // merged UNDER the provided rpcHandlers so any harness can override:
+  // - get_my_document_role (2026-07-01 viewer-role gate, resolved once per
+  //   document open): 'owner' reproduces the pre-RPC fail-open read-write
+  //   presentation every harness was built against; lock/read-only gates are
+  //   fixture-driven, not role-driven.
+  // - kal309_fetch_since (Excel keystone delta poll): empty array = no
+  //   pending committed ops.
+  rpcHandlers = {
+    get_my_document_role: () => ({ status: 200, json: 'owner' }),
+    kal309_fetch_since: () => ({ status: 200, json: [] }),
+    ...rpcHandlers,
+  };
   const pdfBytes = readFileSync(pdfPath);
 
   const state = {

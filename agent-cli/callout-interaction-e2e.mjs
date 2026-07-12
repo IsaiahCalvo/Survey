@@ -57,6 +57,21 @@ try {
   const flag = await page.evaluate(() => window.localStorage.getItem('CALLOUTS_SHARED_STORE'));
   console.log(`[flag] CALLOUTS_SHARED_STORE = ${flag === null ? 'null (default)' : flag}`);
 
+  // Canvas-presentation era (a3380bbf): right after open no tool is active, so
+  // callouts present via canvas2d and have NO [data-callout-id] DOM — an
+  // idsBefore read here would be empty and the new-id diff below would then
+  // pick a PRE-EXISTING callout as "ours". Switch to Select (mounts the SVG
+  // layer) so idsBefore captures the doc's real callout set. Mount alone isn't
+  // hydration: also wait for the CRDT backfill to complete (same signal the
+  // sibling harnesses use) so a late-hydrating pre-existing callout can't
+  // arrive AFTER this snapshot and get mistaken for the freshly drawn one.
+  await page.keyboard.press('v');
+  await page.waitForSelector('[data-svg-annotation-layer="1"]', { timeout: 20000 });
+  await page.waitForFunction(() => window.__crdtBackfillDone === true, undefined, { timeout: 20000 })
+    .catch(() => console.log('[warn] __crdtBackfillDone not seen within 20s (continuing)'));
+  await page.waitForTimeout(500);
+  const idsBefore = await page.evaluate(() =>
+    [...document.querySelectorAll('[data-callout-id]')].map(e => e.getAttribute('data-callout-id')));
   // Live DOM position of a callout's text-box centre (re-query before every
   // interaction so a moved/re-rendered callout never desyncs the click coords).
   const boxCenter = (id) => page.evaluate((cid) => {
@@ -70,18 +85,9 @@ try {
 
   // ── Draw a callout in a CLEAR area (avoid existing annotations/shapes that
   //    would otherwise swallow the pointerdown so no callout gets created) ─────
-  // Post-a3380bbf the SVG layer only mounts under svg-interactive tools (the
-  // default tool at open is pan → canvas presentation, no SVG DOM). Arm
-  // Select ('v') so the layer exists before measuring its bounding box.
-  await page.keyboard.press('v'); await page.waitForTimeout(300);
-  await page.waitForSelector('[data-svg-annotation-layer="1"]', { timeout: 20000 });
+  // The SVG layer is already mounted (Select armed above for the idsBefore
+  // snapshot) — anchor the draw geometry to its bounding box.
   const box = await page.locator('[data-svg-annotation-layer="1"]').boundingBox();
-  // Capture pre-existing callout ids ONLY after the SVG layer is mounted
-  // (under Select) — capturing while canvas presentation is up sees zero
-  // callout DOM, and the later new-id diff then latches onto a stale
-  // server-persisted callout instead of the one this run draws.
-  const idsBefore = await page.evaluate(() =>
-    [...document.querySelectorAll('[data-callout-id]')].map(e => e.getAttribute('data-callout-id')));
   const armCallout = async () => {
     // The Text category button TOGGLES the review dropdown — clicking it
     // while the dropdown is already open closes it and hides the Callout
@@ -192,6 +198,22 @@ try {
     `center=${c ? `${Math.round(c.x)},${Math.round(c.y)}` : 'not-found'}`);
 
   await page.screenshot({ path: 'agent-cli/callout-interaction-e2e-result.png' });
+
+  // ── best-effort cleanup: delete OUR callout so repeated runs don't litter
+  //    the shared doc until every draw spot is occupied (that exact
+  //    accumulation made the retry loop exhaust all three spots on
+  //    2026-07-12). Non-fatal — checks above already recorded their verdicts.
+  try {
+    await page.keyboard.press('Escape'); await page.waitForTimeout(300);
+    await page.keyboard.press('v'); await page.waitForTimeout(200);
+    c = await boxCenter(newId);
+    if (c) {
+      await page.mouse.click(c.x, c.y); await page.waitForTimeout(400);
+      await page.keyboard.press('Delete'); await page.waitForTimeout(600);
+      const gone = await page.evaluate((id) => !document.querySelector(`[data-callout-id="${id}"]`), newId);
+      console.log(`[cleanup] test callout ${gone ? 'deleted' : 'NOT deleted (leftover)'}`);
+    }
+  } catch (e) { console.log(`[cleanup] skipped: ${e.message}`); }
 } catch (e) {
   check('harness completed without error', false, e.message);
 } finally {

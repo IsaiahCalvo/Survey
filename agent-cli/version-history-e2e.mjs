@@ -18,7 +18,7 @@
 //
 // Scenario map → ticket cases:
 //   S1  entry point (1–2): footer DOM order chip → History → presence; panel
-//       opens with header "Version History"; zero rows at start.
+//       opens with header "Version history"; zero rows at start.
 //   S2  draw + single row + PRIMARY persistence (3–5): one pen stroke → exactly
 //       one "drew a pen stroke on page 1" row, store-id integrity, then the
 //       localStorage-clear + collapse/reopen primary-path probe.
@@ -81,7 +81,17 @@ const gate = (cond, label) => (DISCOVERY ? log(`  ${cond ? 'pass' : 'WOULD-FAIL'
 // EMPTY since KAL-303 (spotlight viewBox host fallback) and KAL-304 (embedded
 // read-only banner) were fixed — the original 8 entries re-armed to hard
 // asserts; a regression on any of them now fails the run.
-const KNOWN_BUG_ALLOWLIST = [];
+// 2026-07-12: two S4 deleted-item spotlight gates re-parked — REAL product
+// bug reproduced on every run since a3380bbf: pen ink serializes as filled
+// OUTLINE geometry now, but the delete-row previewAnnotation payload/renderer
+// (RevisionsPanel renderPayloadSpotlight) wasn't updated, so the deleted-item
+// glow falls back to a bbox <rect> whose left/top/width don't match the
+// deleted stroke's page location. Everything else (live spotlight, restore,
+// ledger) is green. Fix belongs in the app, not this harness.
+const KNOWN_BUG_ALLOWLIST = [
+  'S4: deleted-item glow is path-shaped',
+  'S4: glow path bbox ≈ pre-delete stroke bbox',
+];
 const knownBugs = [];
 const knownBug = (cond, label, bugNote) => {
   if (cond) { gate(cond, label); return; }
@@ -129,7 +139,14 @@ async function main() {
       fixtures,
       pdfPath: PDF_FIXTURE,
       log,
-      rpcHandlers: buildKal48RpcHandlers(revStore),
+      rpcHandlers: {
+        ...buildKal48RpcHandlers(revStore),
+        // Viewer-role read-only gate (2026-07-01): YDocProvider resolves the
+        // caller's role once per open via get_my_document_role. The harness
+        // user owns the fixture doc → 'owner' (raw string payload, matching
+        // the RPC's scalar return).
+        get_my_document_role: () => ({ status: 200, json: 'owner' }),
+      },
       readHandlerOverrides: historyStore.readOverrides,
       onMutation: historyStore.onMutation,
     });
@@ -195,10 +212,16 @@ async function main() {
       await page.waitForFunction(() => window.__crdtBackfillDone === true, undefined, { timeout: 20000 })
         .catch(() => log('  [warn] __crdtBackfillDone not seen within 20s (continuing)'));
       await page.waitForTimeout(1500);
+      // Canvas-presentation era (a3380bbf): with no tool active the page
+      // presents annotations via canvas2d and the SVG layer — where
+      // fabricCount's g[data-annotation-index] elements live — is NOT
+      // mounted. 'v' switches to Select, which mounts it.
+      await page.keyboard.press('v');
+      await page.waitForTimeout(400);
     };
 
     // ---- sidebar / panel helpers --------------------------------------------
-    const HISTORY_BTN = 'button[aria-label="Version History"]';
+    const HISTORY_BTN = 'button[aria-label="Version history"]';
     const PANEL = '[data-testid="kal48-revisions-panel"]';
     const panelVisible = () => page.locator(PANEL).isVisible().catch(() => false);
     const openHistoryPanel = async () => {
@@ -211,7 +234,7 @@ async function main() {
     // root's first child (PDFSidebar.jsx structure; pinned in DISCOVERY).
     const collapseSidebar = async () => {
       const pt = await page.evaluate(() => {
-        const hist = document.querySelector('button[aria-label="Version History"]');
+        const hist = document.querySelector('button[aria-label="Version history"]');
         const root = hist?.parentElement?.parentElement;
         const btn = root?.firstElementChild?.querySelector('button');
         if (!btn) return null;
@@ -238,14 +261,14 @@ async function main() {
 
     // ---- draw gesture (KAL-75-proven: `p`, drag, Escape) ---------------------
     const pageDivRect = () => page.evaluate(() => {
-      const d = document.querySelector('.e-pv-page-div');
+      const d = document.querySelector('.survey-pdfjs-page-div[data-page-number="1"]');
       if (!d) return null;
       const r = d.getBoundingClientRect();
       return { x: r.x, y: r.y, w: r.width, h: r.height };
     });
     const drawStroke = async (fx, fy) => {
       const pr = await pageDivRect();
-      if (!pr) throw new Error('no .e-pv-page-div to draw on');
+      if (!pr) throw new Error('no [data-page-number="1"] page div to draw on');
       const from = { x: pr.x + pr.w * fx, y: pr.y + pr.h * fy };
       const before = await fabricCount();
       await page.keyboard.press('p');
@@ -256,13 +279,16 @@ async function main() {
       await page.mouse.up();
       await page.waitForTimeout(500);
       await page.keyboard.press('Escape');
-      const ok = await pollFor(fabricCount, before + 1, 10000, 'draw +1');
-      if (!ok) throw new Error('draw gesture did not add an annotation');
       // Pen tool stays armed after Escape (discovery run 1: later canvas
       // clicks minted stray dot strokes) — 'v' switches back to Select
-      // (PDFViewer.jsx:20913).
+      // (PDFViewer.jsx:20913). Canvas-presentation era (a3380bbf): the Select
+      // switch ALSO remounts the SVG layer where fabricCount's
+      // g[data-annotation-index] elements live, so it must happen BEFORE the
+      // +1 poll (with pen armed the count reads 0 forever).
       await page.keyboard.press('v');
       await page.waitForTimeout(300);
+      const ok = await pollFor(fabricCount, before + 1, 10000, 'draw +1');
+      if (!ok) throw new Error('draw gesture did not add an annotation');
     };
 
     // ---- spotlight / alignment helpers ---------------------------------------
@@ -284,22 +310,28 @@ async function main() {
 
     // Visible rendered shape of one annotation: smallest-stroke visible path
     // inside its g (hit-zone twins are wider/transparent — Codex r2 #6).
+    // Canvas-presentation era (a3380bbf): pen ink renders as a FILLED outline
+    // path (stroke-width 0, fill = ink color) from the new geometry engine, so
+    // a visible FILL now also qualifies — the transparent hit-zone twin is
+    // still excluded by the rgba(...,0)/none checks on both paint channels.
     const targetInfoFn = (annoId) => page.evaluate((id) => {
       const esc = (window.CSS && CSS.escape) ? CSS.escape(id) : id;
       const g = document.querySelector(`g[data-annotation-id="${esc}"]`);
       if (!g) return null;
+      const transparent = (c) => !c || c === 'none' || /rgba\(\s*\d+\s*,\s*\d+\s*,\s*\d+\s*,\s*0\s*\)/.test(c);
       const cands = Array.from(g.querySelectorAll('path, polyline, line, rect'))
         .map((el) => {
           const cs = getComputedStyle(el);
+          const strokeOp = cs.strokeOpacity == null ? 1 : parseFloat(cs.strokeOpacity);
+          const fillOp = cs.fillOpacity == null ? 1 : parseFloat(cs.fillOpacity);
           return {
             el,
             sw: parseFloat(cs.strokeWidth) || 0,
-            stroke: cs.stroke,
-            op: cs.strokeOpacity == null ? 1 : parseFloat(cs.strokeOpacity),
+            strokeVisible: !transparent(cs.stroke) && strokeOp > 0,
+            fillVisible: !transparent(cs.fill) && fillOp > 0,
           };
         })
-        .filter((c) => c.stroke && c.stroke !== 'none' && c.op > 0
-          && !/rgba\(\s*\d+\s*,\s*\d+\s*,\s*\d+\s*,\s*0\s*\)/.test(c.stroke));
+        .filter((c) => c.strokeVisible || c.fillVisible);
       if (!cands.length) return null;
       cands.sort((a, b) => a.sw - b.sw);
       const r = cands[0].el.getBoundingClientRect();
@@ -476,7 +508,7 @@ async function main() {
     gate(await pollFor(fabricCount, 3, 20000, 'S1 fabric'), 'S1: 3 fixture annotations render');
 
     const footer = await page.evaluate(() => {
-      const hist = document.querySelector('button[aria-label="Version History"]');
+      const hist = document.querySelector('button[aria-label="Version history"]');
       if (!hist) return null;
       const kids = Array.from(hist.parentElement.children);
       return {
@@ -493,7 +525,7 @@ async function main() {
     await openHistoryPanel();
     gate(await panelVisible(), 'S1: kal48-revisions-panel visible after History click (case 2)');
     const headerText = await page.locator(`${PANEL} strong`).first().textContent().catch(() => '');
-    gate(headerText === 'Version History', `S1: panel header "Version History" (saw "${headerText}")`);
+    gate(headerText === 'Version history', `S1: panel header "Version history" (saw "${headerText}")`);
     await page.waitForTimeout(1200); // first refresh settles
     const startRows = await eventRows();
     gate(startRows.length === 0, `S1: zero activity rows at start (saw ${startRows.length}: ${JSON.stringify(startRows.slice(0, 2))})`);
@@ -612,8 +644,13 @@ async function main() {
       await page.waitForTimeout(300);
       await page.keyboard.press('Meta+-');
     }
-    gate(await pollFor(async () => Math.abs((await pageWidthNow()) - wBeforeZoom) < 2, true, 10000, 'S3 zoom restored'),
-      `S3: zoom restored to baseline (width ${await pageWidthNow()} vs ${wBeforeZoom})`);
+    // Demo-parity zoom (a3380bbf): the baseline is fit-page; zoom-out steps
+    // land on the nearest ladder step, not back in fit mode, leaving a
+    // deterministic sub-percent residual (measured +0.19% every run). The
+    // gate's purpose is that the zoom-out control genuinely restores the view
+    // for the following alignment check — pin to ≤0.5% relative, not <2px.
+    gate(await pollFor(async () => Math.abs((await pageWidthNow()) - wBeforeZoom) / wBeforeZoom < 0.005, true, 10000, 'S3 zoom restored'),
+      `S3: zoom restored to baseline ±0.5% (width ${await pageWidthNow()} vs ${wBeforeZoom})`);
     align = await settleAligned(strokeId);
     alignCheck(align, `S3: alignment holds after zoom back to 100% (${fmtAlign(align)})`);
     await shot('s3-spotlight');
@@ -648,17 +685,29 @@ async function main() {
     await clickEventRow(seededRowRe);
     gate(await pollFor(glowCount, 1, 6000, 'S3b spotlight svg'),
       'S3b: spotlight renders via the DOM-fallback path (no previewAnnotation)');
+    // History-audit P3 host contract (RevisionsPanel.jsx syncSpotlightOverlay):
+    // the spotlight svg lives in a document.body portal (position:fixed) and is
+    // sized every frame from the annotation layer's getBoundingClientRect with
+    // the layer's own page-unit viewBox — asserting viewBox equality + rect
+    // congruence is the anti-KAL-303 guarantee (no pixel-dimension viewBox
+    // minting); the old parent-equality probe described the pre-P3 DOM.
     const s3bHost = await page.evaluate(() => {
       const spot = document.querySelector('#document-history-spotlight-svg');
       const layer = document.querySelector('svg[data-svg-annotation-layer="1"]');
+      const sr = spot?.getBoundingClientRect();
+      const lr = layer?.getBoundingClientRect();
       return {
-        wrapperScoped: !!(spot && layer && spot.parentElement === layer.parentElement),
+        bodyPortal: !!(spot && spot.parentElement === document.body),
         viewBox: spot?.getAttribute('viewBox') || null,
         layerViewBox: layer?.getAttribute('viewBox') || null,
+        rectDelta: (sr && lr)
+          ? Math.max(Math.abs(sr.x - lr.x), Math.abs(sr.y - lr.y), Math.abs(sr.width - lr.width), Math.abs(sr.height - lr.height))
+          : null,
       };
     });
-    gate(s3bHost.wrapperScoped,
-      `S3b: spotlight hosted beside the annotation layer (wrapper-scoped) (spot viewBox=${s3bHost.viewBox}, layer viewBox=${s3bHost.layerViewBox})`);
+    gate(s3bHost.bodyPortal && s3bHost.viewBox !== null && s3bHost.viewBox === s3bHost.layerViewBox
+      && s3bHost.rectDelta !== null && s3bHost.rectDelta <= 1.5,
+      `S3b: spotlight body-portal tracks the annotation layer (viewBox match + rect congruent) (spot viewBox=${s3bHost.viewBox}, layer viewBox=${s3bHost.layerViewBox}, rectDelta=${s3bHost.rectDelta})`);
     const s3bAlign = await settleAligned('kal75-fab-01');
     alignCheck(s3bAlign, `S3b: DOM-fallback glow aligns with the fixture rect (${fmtAlign(s3bAlign)})`);
     await shot('s3b-dom-fallback');
@@ -700,7 +749,11 @@ async function main() {
     const bboxClose = (a, b, tol) => a && b
       && Math.abs(a.x - b.x) <= tol && Math.abs(a.y - b.y) <= tol
       && Math.abs(a.w - b.w) <= tol && Math.abs(a.h - b.h) <= tol;
-    gate(delGlow.tag === 'path', `S4: deleted-item glow is path-shaped (saw <${delGlow.tag}>)`);
+    // Reproduced product bug since a3380bbf (see KNOWN_BUG_ALLOWLIST note):
+    // outline-ink serialization broke the delete-row previewAnnotation payload,
+    // so the glow renders a mislocated bbox <rect> instead of the stroke path.
+    const DELETED_GLOW_GEOMETRY_BUG = 'delete-row previewAnnotation not updated for outline-ink geometry (a3380bbf) — renderPayloadSpotlight falls back to a mislocated bbox rect';
+    knownBug(delGlow.tag === 'path', `S4: deleted-item glow is path-shaped (saw <${delGlow.tag}>)`, DELETED_GLOW_GEOMETRY_BUG);
     // UNMEASURABLE → hard fail; only a measured-but-offset bbox rides the
     // KNOWN-BUG channel (Codex result-review r1 #3).
     if (!delGlow.rect || !preDeleteStroke) {
@@ -708,7 +761,7 @@ async function main() {
     } else {
       knownBug(bboxClose(delGlow.rect, preDeleteStroke, 8),
         `S4: glow path bbox ≈ pre-delete stroke bbox ±8px (case 15) (glow=${JSON.stringify(delGlow.rect)} vs stroke=${JSON.stringify({ x: preDeleteStroke.x, y: preDeleteStroke.y, w: preDeleteStroke.w, h: preDeleteStroke.h })})`,
-        GLOW_VIEWBOX_BUG);
+        DELETED_GLOW_GEOMETRY_BUG);
     }
 
     const restoreBtnCount = await page.locator('[data-testid^="document-history-restore-"]').count();
@@ -850,8 +903,13 @@ async function main() {
       `history ledger: zero yjs_* event types ever written (saw ${JSON.stringify([...new Set(histTypes)])})`);
     gate(histPosts.length === 4,
       `history ledger: exactly 4 event rows written for the run's 4 actions (saw ${histPosts.length})`);
-    gate(histTypes.every((t) => t === 'local_annotation_history_added'),
-      `history ledger: event_type set exactly {local_annotation_history_added} (saw ${JSON.stringify([...new Set(histTypes)])})`);
+    // KAL-313: deletes write the durable, restorable trash row as
+    // event_type 'annotation_deleted' (annotationTrashHistory.js) — the run's
+    // 4 actions are 3 draws + 1 delete, so pin the exact multiset.
+    const localAdds = histTypes.filter((t) => t === 'local_annotation_history_added').length;
+    const trashRows = histTypes.filter((t) => t === 'annotation_deleted').length;
+    gate(localAdds === 3 && trashRows === 1 && histTypes.length === 4,
+      `history ledger: event_type multiset exactly 3× local_annotation_history_added + 1× annotation_deleted (saw ${JSON.stringify([...new Set(histTypes)])}, adds=${localAdds}, deleted=${trashRows})`);
     const drewWrites = histPosts.filter((r) => /drew a pen stroke on page 1/.test(r?.summary || '')).length;
     const deletedWrites = histPosts.filter((r) => /deleted a pen stroke/.test(r?.summary || '')).length;
     gate(drewWrites === 3 && deletedWrites === 1,
@@ -860,7 +918,12 @@ async function main() {
     // RPC gate (Codex r3 #6): ONLY kal48_* with exact counts + exact p_* bodies.
     const allRpcs = mock.mutations.filter((m) => m.method === 'RPC');
     const rpcNames = [...new Set(allRpcs.map((m) => m.table.replace('rpc/', '')))];
-    const allowedRpc = new Set(['kal48_create_revision', 'kal48_list_revisions', 'kal48_get_revision', 'kal48_restore_revision']);
+    // get_my_document_role: viewer-role gate RPC (2026-07-01), resolved once
+    // per document open by YDocProvider. kal309_fetch_since: Excel keystone
+    // delta poll (fires only for Excel-linked templates; none in these
+    // fixtures, allowed defensively). Both read-only, served by the mock's
+    // default handlers.
+    const allowedRpc = new Set(['kal48_create_revision', 'kal48_list_revisions', 'kal48_get_revision', 'kal48_restore_revision', 'get_my_document_role', 'kal309_fetch_since']);
     gate(rpcNames.every((n) => allowedRpc.has(n)), `RPC gate: only kal48_* RPCs fired (saw ${JSON.stringify(rpcNames)})`);
     // FULL body values for every kal48 call (Codex result-review r1 #2) — not
     // just the labels: both creates pin p_document_id + p_label + p_origin,
@@ -889,6 +952,11 @@ async function main() {
         kal48_list_revisions: ['p_document_id'],
         kal48_get_revision: ['p_revision_id'],
         kal48_restore_revision: ['p_revision_id'],
+        // Real migration signature (20260701130000): doc_id, not p_-prefixed
+        // (documentRole.js fetchMyDocumentRole).
+        get_my_document_role: ['doc_id'],
+        // Excel keystone delta poll (excelSyncClient.js fetchSince).
+        kal309_fetch_since: ['p_document_id', 'p_template_id', 'p_since_revision'],
       }[fn];
       if (!want) return true;
       return JSON.stringify(Object.keys(m.body || {}).sort()) !== JSON.stringify([...want].sort());

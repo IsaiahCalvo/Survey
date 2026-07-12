@@ -88,6 +88,10 @@ async function main() {
     const fixtures = buildFixtures();
     const mock = createSupabaseMock({
       fixtures, pdfPath: PDF_FIXTURE, log, rpcHandlers: buildLockRpcHandlers(fixtures),
+      // Permissions-model read (post-dates these fixtures): the Projects page
+      // resolves active project collaborators. The foreign doc here is shared
+      // DIRECTLY (document_collaborators), so the project has none.
+      readHandlerOverrides: { project_collaborators: () => [] },
     });
 
     const ctx = await browser.newContext({ viewport: { width: 1512, height: 900 } });
@@ -162,6 +166,12 @@ async function main() {
       await page.waitForFunction(() => window.__crdtBackfillDone === true, undefined, { timeout: 20000 })
         .catch(() => log('  [warn] __crdtBackfillDone not seen within 20s (continuing)'));
       await page.waitForTimeout(1500);
+      // Canvas-presentation era (a3380bbf): with no tool active the page
+      // presents annotations via canvas2d and the SVG layer — where
+      // fabricCount's g[data-annotation-index] elements live — is NOT
+      // mounted. 'v' switches to Select, which mounts it.
+      await page.keyboard.press('v');
+      await page.waitForTimeout(400);
     };
 
     // Reload → lands on the hub (Documents tab). Also defeats the 5s metadata
@@ -212,6 +222,9 @@ async function main() {
     // benign documents PATCH on fixture ids (KAL-92-proven set).
     const isBenign = (m) => {
       const t = m.table;
+      // Read-only RPCs served by the mock's default handlers (viewer-role
+      // resolve + Excel delta poll) are recorded but mutate nothing.
+      if (m.method === 'RPC' && (t === 'rpc/get_my_document_role' || t === 'rpc/kal309_fetch_since')) return true;
       if (t === 'document_presence') return true;
       if ((t === 'document_history_events' || t === 'activity_log') && m.method === 'POST') return true;
       if (t === 'documents' && m.method === 'PATCH') {
@@ -245,6 +258,11 @@ async function main() {
       const els = Array.from(document.querySelectorAll('button, [role="menuitem"], [role="button"]'));
       return els
         .filter((el) => !el.closest('[data-testid="kal49-lock-banner"]'))
+        // Visible-only: the tabbed shell keeps the Home ledger mounted (but
+        // hidden) behind the viewer, and the "KAL75 Foreign Locked.pdf"
+        // fixture ROW matches /lock/i by document NAME — a hidden home row is
+        // not viewer chrome. A real lock affordance would be visible.
+        .filter((el) => el.offsetParent !== null)
         .map((el) => `${el.textContent.trim()}|${el.getAttribute('title') || ''}|${el.getAttribute('aria-label') || ''}`)
         .filter((s) => /lock/i.test(s));
     });
@@ -274,11 +292,11 @@ async function main() {
     expect(mock.mutationsIn('S3').length === mutsBeforeMenu, 'S3: opening the menu fires zero mutations');
     let items = await menuItems();
     expect(
-      JSON.stringify(items.map((i) => i.label)) === JSON.stringify(['Copy', 'Paste', 'Delete', 'Share', 'Lock Document']),
+      JSON.stringify(items.map((i) => i.label)) === JSON.stringify(['Copy', 'Paste', 'Delete', 'Share', 'Lock document']),
       `S3: exact items [Copy, Paste, Delete, Share, Lock Document] (saw ${JSON.stringify(items.map((i) => i.label))})`,
     );
     expect(items.find((i) => i.label === 'Paste')?.disabled === true, 'S3: Paste disabled before Copy');
-    expect(items.find((i) => i.label === 'Lock Document')?.disabled === false, 'S3: Lock Document enabled for owner');
+    expect(items.find((i) => i.label === 'Lock document')?.disabled === false, 'S3: Lock Document enabled for owner');
     await page.keyboard.press('Escape');
     await page.waitForTimeout(300);
     expect(!(await menuOpen()), 'S3: Escape closes the menu');
@@ -325,7 +343,7 @@ async function main() {
     mock.setWindow('S4');
     await openRowMenu(DOC_OWNED_NAME);
     dialogQueue.push({ type: 'prompt', contains: 'Lock this document?', response: LOCK_LABEL });
-    await clickMenuItem('Lock Document');
+    await clickMenuItem('Lock document');
     await page.waitForTimeout(1200);
     const lockCalls = rpcCalls('S4', 'kal49_lock_document');
     expect(lockCalls.length === 1, `S4: exactly one lock RPC (saw ${lockCalls.length})`);
@@ -333,14 +351,14 @@ async function main() {
       `S4: lock RPC body {doc_id, label} correct (saw ${JSON.stringify(lockCalls[0]?.body)})`);
     await openRowMenu(DOC_OWNED_NAME);
     items = await menuItems();
-    expect(items.some((i) => i.label === 'Unlock Document'), 'S4: menu label flips to Unlock Document');
+    expect(items.some((i) => i.label === 'Unlock document'), 'S4: menu label flips to Unlock Document');
     await page.keyboard.press('Escape');
 
     // Cancel probe on DOC_PROJ: dismissed prompt → no RPC.
     const rpcsBeforeCancel = rpcCalls('S4', 'kal49_lock_document').length;
     await openRowMenu(DOC_PROJ_NAME);
     dialogQueue.push({ type: 'prompt', contains: 'Lock this document?', response: false });
-    await clickMenuItem('Lock Document');
+    await clickMenuItem('Lock document');
     await page.waitForTimeout(800);
     expect(rpcCalls('S4', 'kal49_lock_document').length === rpcsBeforeCancel, 'S4: cancelled prompt fires no RPC');
 
@@ -378,7 +396,7 @@ async function main() {
       const g = gs[gs.length - 1];
       if (!g) return null;
       const r = g.getBoundingClientRect();
-      return { x: r.x + r.width - 8, y: r.y + r.height - 8 };
+      return { x: r.x + r.width * 0.4, y: r.y + r.height - 1 };
     });
     // Whole-shape drag start point: on the bottom-edge STROKE at 40% width —
     // inside the stroke hit zone but away from the selection overlay's corner
@@ -405,7 +423,7 @@ async function main() {
       const g = gs[i];
       if (!g) return null;
       const r = g.getBoundingClientRect();
-      return { x: r.x + r.width - 8, y: r.y + r.height - 8 };
+      return { x: r.x + r.width * 0.4, y: r.y + r.height - 1 };
     }, idx);
     const selectVerified = async () => {
       for (let attempt = 0; attempt < 2; attempt += 1) {
@@ -517,6 +535,12 @@ async function main() {
     await page.mouse.up();
     await page.keyboard.press('Escape');
     await page.waitForTimeout(800);
+    // Canvas-presentation era (a3380bbf): if the locked `p` press armed the
+    // pen tool anyway, the SVG layer (fabricCount's DOM) is unmounted and the
+    // count would read 0 regardless of the draw gate. Return to Select so the
+    // no-new-annotation assertion measures the real element count.
+    await page.keyboard.press('v');
+    await page.waitForTimeout(400);
     gate((await fabricCount()) === pre.count, 'S4-HARD: draw gesture produces no annotation (case 16 drawing blocked)');
 
     // Gate: drag-move.
@@ -579,7 +603,7 @@ async function main() {
     // proves the fix does not over-block; result review r1 finding 1). These
     // run BEFORE the zero-writes gate so any write they provoke fails the run.
     const pageWidth = () => page.evaluate(() => {
-      const d = document.querySelector('.e-pv-page-div');
+      const d = document.querySelector('.survey-pdfjs-page-div[data-page-number="1"]');
       return d ? Math.round(d.getBoundingClientRect().width) : 0;
     });
     const wBefore = await pageWidth();
@@ -639,12 +663,12 @@ async function main() {
     await backToHub();
     await openRowMenu(DOC_OWNED_NAME);
     dialogQueue.push({ type: 'confirm', contains: 'Unlock for editing?', response: true });
-    await clickMenuItem('Unlock Document');
+    await clickMenuItem('Unlock document');
     await page.waitForTimeout(1200);
     expect(rpcCalls('S5', 'kal49_unlock_document').length === 1, 'S5: exactly one unlock RPC');
     await openRowMenu(DOC_OWNED_NAME);
     items = await menuItems();
-    expect(items.some((i) => i.label === 'Lock Document'), 'S5: menu label back to Lock Document');
+    expect(items.some((i) => i.label === 'Lock document'), 'S5: menu label back to Lock Document');
     await page.keyboard.press('Escape');
 
     await openDoc(DOC_OWNED_NAME);
@@ -803,6 +827,11 @@ async function main() {
     await page.mouse.up();
     await page.waitForTimeout(500);
     await page.keyboard.press('Escape');
+    // Canvas-presentation era (a3380bbf): pen stays armed after Escape, which
+    // keeps the SVG layer (fabricCount's DOM) unmounted — switch back to
+    // Select BEFORE polling for the +1.
+    await page.keyboard.press('v');
+    await page.waitForTimeout(400);
     expect(await pollFor(fabricCount, preDraw + 1, 10000, 'S5 draw'), 'S5-POSITIVE: draw gesture adds an annotation (proves S4 draw gate)');
     await shot('s5-unlocked-controls');
 
@@ -813,7 +842,7 @@ async function main() {
     expect(await page.getByText(DOC_FOREIGN_NAME).count() > 0, 'S6: foreign doc reaches the ledger via collaborator probe');
     await openRowMenu(DOC_FOREIGN_NAME);
     items = await menuItems();
-    const foreignLockItem = items.find((i) => i.label === 'Unlock Document');
+    const foreignLockItem = items.find((i) => i.label === 'Unlock document');
     expect(!!foreignLockItem, 'S6: foreign locked doc shows Unlock Document item');
     expect(foreignLockItem?.disabled === true, 'S6: Unlock Document DISABLED for non-owner (case 20)');
     await page.keyboard.press('Escape');
@@ -844,10 +873,10 @@ async function main() {
     await openRowMenu(DOC_PROJ_NAME);
     items = await menuItems();
     expect(
-      JSON.stringify(items.map((i) => i.label)) === JSON.stringify(['Copy', 'Paste', 'Delete', 'Share', 'Lock Document']),
+      JSON.stringify(items.map((i) => i.label)) === JSON.stringify(['Copy', 'Paste', 'Delete', 'Share', 'Lock document']),
       `S7: file-row menu matches Documents menu (saw ${JSON.stringify(items.map((i) => i.label))})`,
     );
-    expect(items.find((i) => i.label === 'Lock Document')?.disabled === false, 'S7: Lock Document enabled for owner on file row');
+    expect(items.find((i) => i.label === 'Lock document')?.disabled === false, 'S7: Lock Document enabled for owner on file row');
     await page.keyboard.press('Escape');
     await page.waitForTimeout(300);
     expect(!(await menuOpen()), 'S7: Escape closes the file-row menu');

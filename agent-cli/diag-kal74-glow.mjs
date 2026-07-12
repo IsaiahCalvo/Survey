@@ -52,12 +52,16 @@ async function main() {
     await tile.dblclick().catch(() => {});
     await page.waitForFunction(() => Array.from(document.querySelectorAll('canvas')).some((c) => c.width > 100 && c.height > 100), undefined, { timeout: 45000 });
     await page.waitForFunction(() => window.__crdtBackfillDone === true, undefined, { timeout: 30000 }).catch(() => {});
+    // Canvas-presentation era (a3380bbf): with no tool active the page
+    // presents annotations via canvas2d — g[data-annotation-index] only
+    // exists while the SVG layer is mounted. 'v' switches to Select first.
+    await page.keyboard.press('v');
     await page.waitForFunction(() => document.querySelectorAll('g[data-annotation-index]').length >= 3, undefined, { timeout: 20000 });
     await page.waitForTimeout(2000);
 
     const idsBefore = await page.evaluate(() => [...document.querySelectorAll('g[data-annotation-id]')].map((g) => g.getAttribute('data-annotation-id')));
     const pr = await page.evaluate(() => {
-      const d = document.querySelector('.e-pv-page-div');
+      const d = document.querySelector('.survey-pdfjs-page-div[data-page-number="1"]');
       const r = d.getBoundingClientRect();
       return { x: r.x, y: r.y, w: r.width, h: r.height };
     });
@@ -77,7 +81,7 @@ async function main() {
     const strokeId = idsAfter.find((id) => !idsBefore.includes(id));
     log('strokeId:', strokeId);
 
-    await page.locator('button[aria-label="Version History"]').first().click();
+    await page.locator('button[aria-label="Version history"]').first().click();
     await page.locator('[data-testid="kal48-revisions-panel"]').waitFor({ state: 'visible', timeout: 10000 });
     await page.waitForTimeout(1500);
     await page.locator('[data-testid^="document-history-event-"]').filter({ hasText: /drew a pen stroke/ }).first().click();
@@ -131,7 +135,7 @@ async function main() {
         }
       }
       // the page div
-      const pd = document.querySelector('.e-pv-page-div');
+      const pd = document.querySelector('.survey-pdfjs-page-div[data-page-number="1"]');
       const pdr = pd?.getBoundingClientRect();
       out.pageDiv = pdr ? { x: pdr.x, y: pdr.y, w: pdr.width, h: pdr.height } : null;
       // containment probes (spotlight host-resolution bug)
@@ -149,7 +153,7 @@ async function main() {
           return chain;
         })(),
         firstDataPageNumberEl: (() => {
-          const el = document.querySelector('[data-page-number="1"]');
+          const el = document.querySelector('.survey-pdfjs-page-div[data-page-number="1"]');
           if (!el) return null;
           const r = el.getBoundingClientRect();
           return { tag: el.tagName, cls: String(el.className).slice(0, 60), rect: { x: +r.x.toFixed(1), y: +r.y.toFixed(1), w: +r.width.toFixed(1), h: +r.height.toFixed(1) }, containsHostSvg: el.contains(hostSvgEl) };

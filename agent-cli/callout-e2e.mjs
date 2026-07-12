@@ -313,6 +313,11 @@ try {
       if (await reOpen.isVisible().catch(() => false)) await reOpen.click();
     }
     await page.waitForSelector('.survey-pdfjs-viewer', { timeout: 30000 });
+    // Canvas-presentation era (a3380bbf): right after (re)open no tool is
+    // active, so annotations present via canvas2d and the SVG layer (with its
+    // [data-callout-id] subtrees) is NOT mounted. Switch to the Select tool
+    // first; the SVG layer mounting in select mode is part of the assertion.
+    await page.keyboard.press('v');
     await waitForSVGLayer();
     await page.waitForTimeout(1500);
 
