@@ -380,6 +380,19 @@ async function main() {
     const fmtAlign = (m) => m
       ? `dcx=${m.dcx} dcy=${m.dcy} dw=${m.dw} dh=${m.dh} allow=${m.allow}`
       : 'no measurement';
+    // [discovery] one-line viewer-state dump for UNMEASURABLE samples — which
+    // surface is live (canvas2d vs svg-edit), whether the SVG layer is
+    // mounted, and whether the spotlight svg exists.
+    const dumpViewerState = async (label) => {
+      const st = await page.evaluate(() => ({
+        presentation: document.querySelector('[data-annotation-real-surface]')?.getAttribute('data-annotation-presentation') || null,
+        annoGroups: document.querySelectorAll('g[data-annotation-index]').length,
+        svgWrapper: document.querySelectorAll('[data-diag-svg-wrapper]').length,
+        glow: document.querySelectorAll('#document-history-spotlight-svg').length,
+        readonly: document.body.getAttribute('data-readonly'),
+      })).catch(() => null);
+      log(`  [discovery] viewer-state ${label}: ${JSON.stringify(st)}`);
+    };
     // Bug-note for the spotlight misalignment (see the S3 comment block) and
     // the alignment gate wrapper (Codex result-review r1 #3): an UNMEASURABLE
     // sample (glow svg or target path missing) is a HARD FAILURE — only a
@@ -387,6 +400,7 @@ async function main() {
     const GLOW_VIEWBOX_BUG = 'spotlight viewBox uses page-div pixel dims, not the annotation layer page units (RevisionsPanel.jsx:302-318 host fallback)';
     const alignCheck = (m, label) => {
       if (!m || !m.measured) {
+        void dumpViewerState('unmeasurable');
         gate(false, `${label} — UNMEASURABLE: glow.rect=${JSON.stringify(m?.glow?.rect ?? null)} target=${JSON.stringify(m?.target ?? null)}`);
         return;
       }
@@ -786,7 +800,9 @@ async function main() {
     log('\n=== S5: glow replaced not stacked; sidebar collapse tears it down ===');
     mock.setWindow('S5');
     await clickEventRow(deleteRowRe);
-    gate(await pollFor(glowCount, 1, 6000, 'S5 glow A'), 'S5: spotlight present after clicking delete row');
+    const s5GlowA = await pollFor(glowCount, 1, 6000, 'S5 glow A');
+    if (!s5GlowA) await dumpViewerState('S5-glow-A-missing');
+    gate(s5GlowA, 'S5: spotlight present after clicking delete row');
     await clickEventRow(drawRowRe);
     await page.waitForTimeout(800);
     gate((await glowCount()) === 1, `S5: exactly ONE spotlight svg after switching rows — replaced, not stacked (case 18) (saw ${await glowCount()})`);
@@ -948,6 +964,7 @@ async function main() {
     const keyDrift = allRpcs.filter((m) => {
       const fn = m.table.replace('rpc/', '');
       const want = {
+        get_my_document_role: ['doc_id'],
         kal48_create_revision: ['p_document_id', 'p_label', 'p_origin'],
         kal48_list_revisions: ['p_document_id'],
         kal48_get_revision: ['p_revision_id'],
@@ -968,6 +985,8 @@ async function main() {
       for (const b of knownBugs) log('  * ' + b);
     }
 
+    log('\n[discovery] tool-changed timeline (page console):');
+    for (const l of logs.filter((t) => t.includes('tool-changed') || t.includes('PAGEERROR'))) log('  ' + l.slice(0, 200));
     log('\nDialog log:');
     for (const d of dialogLog) log(`  ${d.type}: ${d.message.slice(0, 100)}`);
     log('\nMutation summary by window:');

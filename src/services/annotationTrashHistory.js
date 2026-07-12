@@ -16,6 +16,7 @@
 //         only when no space record is available (aged out / never journaled).
 
 import { invertAnnotationHistoryAction } from '../utils/annotationLocalHistory.js';
+import { projectAnnotationForHistoryPreview } from '../utils/historyPreviewAnnotation.js';
 
 // ─── Annotation type labels ────────────────────────────────────────────────
 
@@ -100,6 +101,10 @@ export function buildAnnotationDeleteHistoryRow({
       annotationId,
       pageNumber,
       deletedBy: userId,
+      // Spotlight geometry for the History panel's "show where it was" glow —
+      // the deleted object is gone from the DOM, so the row must carry it.
+      // Outline ink is projected to a compact fabric-shaped preview.
+      previewAnnotation: projectAnnotationForHistoryPreview(annotation),
       restoreAction,
     },
     is_undoable: true,
