@@ -308,6 +308,18 @@ function MobileToolProperties({ api }) {
 
   if (api.regionEditing && api.regionToolbarApi) {
     const region = api.regionToolbarApi;
+    // UX (demo parity): tapping "Full Page" swaps this strip into an inline
+    // "Make region full page?" Confirm/Cancel step instead of a browser
+    // dialog — matches demo App.tsx:1644-1658 / AnnotationFormattingBar.tsx:195-207.
+    if (region.fullPageConfirmPending) {
+      return (
+        <div className="mobile-pdf-properties mobile-pdf-properties--actions" data-mobile-tool-properties="true" role="toolbar" aria-label="Confirm full page region">
+          <span className="mobile-pdf-properties__confirm-label">Make region full page?</span>
+          <button type="button" className="mobile-pdf-properties__primary" onClick={region.confirmFullPage}>Confirm</button>
+          <button type="button" onClick={region.cancelFullPage}>Cancel</button>
+        </div>
+      );
+    }
     return (
       <div className="mobile-pdf-properties mobile-pdf-properties--actions" data-mobile-tool-properties="true" role="toolbar" aria-label="Region editing">
         <button type="button" className="mobile-pdf-properties__primary" onClick={region.confirm}>Confirm</button>

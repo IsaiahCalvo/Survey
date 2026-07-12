@@ -331,9 +331,20 @@ const SurveySpacesRail = ({
   const [openEntityDropdownId, setOpenEntityDropdownId] = useState(null);
   const [isModuleSelectorOpen, setIsModuleSelectorOpen] = useState(false);
   const [isTemplateSelectorOpen, setIsTemplateSelectorOpen] = useState(false);
+  // Mobile-only export menu in the sheet header (demo SurveySheet.tsx:324-348);
+  // desktop keeps its bottom EXPORT bar untouched.
+  const [isMobileExportMenuOpen, setIsMobileExportMenuOpen] = useState(false);
+  // Mobile-only Survey Marker detail view state (demo SurveySheet.tsx):
+  // which small dropdown is open inside the detail view, and the in-sheet
+  // notes editor takeover with its local drafts (committed only on Save,
+  // mirroring the desktop Note dialog's draft-then-save behavior).
+  const [mobileDetailDropdown, setMobileDetailDropdown] = useState(null); // 'entity' | 'markerItem' | null
+  const [mobileNotesEditorOpen, setMobileNotesEditorOpen] = useState(false);
+  const [mobileNoteDraft, setMobileNoteDraft] = useState({ text: '', photos: [], videos: [] });
   const [railIconHover, setRailIconHover] = useState(null);
   const moduleSelectorRef = useRef(null);
   const templateSelectorRef = useRef(null);
+  const mobileExportMenuRef = useRef(null);
   const mobileSheetTouchStartYRef = useRef(null);
   const surveyMarkerDragRestoreRef = useRef(null);
   const availableSurveyTemplates = Array.isArray(surveyTemplates) ? surveyTemplates : [];
@@ -342,9 +353,35 @@ const SurveySpacesRail = ({
   const activeSurveyModule = selectedModuleIndex >= 0 ? surveyModuleOptions[selectedModuleIndex] : null;
   const canSelectPreviousModule = selectedModuleIndex > 0;
   const canSelectNextModule = selectedModuleIndex >= 0 && selectedModuleIndex < surveyModuleOptions.length - 1;
-  const mobileSurveyPanelBaseHeight = selectedTemplate
-    ? 392
-    : 154 + Math.max(availableSurveyTemplates.length, 1) * 48;
+  // UX (mobile demo parity): when exactly one Survey Marker is flagged expanded
+  // on mobile, the sheet swaps its category list for a marker DETAIL view
+  // (demo SurveySheet.tsx). Selection rides the existing expandedSurveyMarkers
+  // state — the same state PDFViewer already sets when a placed Survey Marker
+  // is tapped or a newly placed one commits — so no new plumbing is needed.
+  const mobileDetailMarkerId = mobileMode
+    ? (Object.keys(expandedSurveyMarkers || {}).find((id) => expandedSurveyMarkers[id] && surveyMarkers?.[id]) || null)
+    : null;
+  const mobileDetailMarker = mobileDetailMarkerId
+    ? { ...surveyMarkers[mobileDetailMarkerId], id: mobileDetailMarkerId }
+    : null;
+  const mobileDetailModule = mobileDetailMarker
+    ? (surveyModuleOptions.find((module) => module.id === mobileDetailMarker.moduleId) || null)
+    : null;
+  const mobileDetailCategory = mobileDetailModule
+    ? ((mobileDetailModule.categories || []).find((category) => category.id === mobileDetailMarker.categoryId) || null)
+    : null;
+  const mobileDetailChecklist = mobileDetailCategory
+    ? (mobileDetailCategory.checklist || []).filter((item) => item && item.archived !== true)
+    : [];
+  // Demo pageUtils.ts:1-12 — detail sheet = 314px fixed body + a checklist
+  // window of 36px rows with 5px gaps, max 4 visible before it scrolls.
+  const mobileChecklistVisibleCount = Math.min(4, Math.max(1, mobileDetailChecklist.length));
+  const mobileChecklistWindowHeight = (mobileChecklistVisibleCount * 36) + ((mobileChecklistVisibleCount - 1) * 5);
+  const mobileSurveyPanelBaseHeight = mobileDetailMarker
+    ? 314 + mobileChecklistWindowHeight
+    : selectedTemplate
+      ? 392
+      : 154 + Math.max(availableSurveyTemplates.length, 1) * 48;
 
   const handleMobileSheetTouchStart = useCallback((event) => {
     mobileSheetTouchStartYRef.current = event.touches?.[0]?.clientY ?? null;
@@ -372,6 +409,15 @@ const SurveySpacesRail = ({
     setCopiedItemSelection({});
     if (categorySelectModeActive) {
       setSelectedCategories({});
+    }
+    if (mobileMode) {
+      // UX: flipping modules while the Survey Marker detail view is open must
+      // return to the new module's category list. Keeping the detail open
+      // would leave selectedModuleId pointing at a different module than the
+      // shown marker, and commitSurveyMarkerName resolves the marker's linked
+      // item via selectedModuleId — a rename in that state silently breaks
+      // the marker <-> item link (adversarial review, 2026-07-12).
+      setExpandedSurveyMarkers((prev) => (Object.keys(prev || {}).length ? {} : prev));
     }
     setIsModuleSelectorOpen(false);
   };
@@ -436,6 +482,54 @@ const SurveySpacesRail = ({
     document.addEventListener('mousedown', handlePointerDown);
     return () => document.removeEventListener('mousedown', handlePointerDown);
   }, [isTemplateSelectorOpen]);
+
+  useEffect(() => {
+    if (!isMobileExportMenuOpen) return undefined;
+
+    const handlePointerDown = (event) => {
+      if (!mobileExportMenuRef.current?.contains(event.target)) {
+        setIsMobileExportMenuOpen(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handlePointerDown);
+    return () => document.removeEventListener('mousedown', handlePointerDown);
+  }, [isMobileExportMenuOpen]);
+
+  useEffect(() => {
+    if (isSurveyPanelCollapsed) setIsMobileExportMenuOpen(false);
+  }, [isSurveyPanelCollapsed]);
+
+  // Reset detail-local UI whenever the selected Survey Marker changes so the
+  // notes takeover / dropdowns never carry over to another marker.
+  useEffect(() => {
+    setMobileDetailDropdown(null);
+    setMobileNotesEditorOpen(false);
+  }, [mobileDetailMarkerId]);
+
+  // UX (mobile demo parity): collapsing the sheet clears the marker selection
+  // so the next open starts on the category list — mirrors the demo survey
+  // dock button clearing the selected marker before opening the setup sheet
+  // (demo App.tsx:389-393).
+  useEffect(() => {
+    if (mobileMode && isSurveyPanelCollapsed) {
+      setExpandedSurveyMarkers((prev) => (Object.keys(prev || {}).length ? {} : prev));
+      setMobileNotesEditorOpen(false);
+      setMobileDetailDropdown(null);
+    }
+  }, [mobileMode, isSurveyPanelCollapsed, setExpandedSurveyMarkers]);
+
+  // Outside-tap closes the detail view's entity / sibling-marker dropdowns.
+  useEffect(() => {
+    if (!mobileDetailDropdown) return undefined;
+    const handlePointerDown = (event) => {
+      if (!event.target?.closest?.('.mobile-survey-detail-dropdown-wrap')) {
+        setMobileDetailDropdown(null);
+      }
+    };
+    document.addEventListener('mousedown', handlePointerDown);
+    return () => document.removeEventListener('mousedown', handlePointerDown);
+  }, [mobileDetailDropdown]);
 
   useEffect(() => {
     if (typeof onCollapseChange === 'function') {
@@ -511,6 +605,324 @@ const SurveySpacesRail = ({
         name: nextName
       }
     }));
+  };
+
+  // ——— Shared Survey Marker mutation helpers ———
+  // UX (mobile demo parity): the mobile marker detail view re-houses the
+  // desktop expanded-row logic (demo SurveySheet.tsx) with the SAME store
+  // writes. These helpers are the single source for those writes so the
+  // CRDT/sync layer sees identical operations from both surfaces.
+  const findMarkerMatchingItem = (annotationId, markerModuleId, category) => {
+    if (!selectedTemplate || !markerModuleId || !category) {
+      return { matchingItem: null, moduleData: {}, dataKey: null };
+    }
+    const surveyMarkerData = surveyMarkers[annotationId];
+    const categoryName = getCategoryName(selectedTemplate, markerModuleId, category.id);
+    const markerName = surveyMarkerData?.name || '';
+    const matchingItem = itemsByNameType.get(`${markerName}\0${categoryName}`) || null;
+    const moduleName = getModuleName(selectedTemplate, markerModuleId);
+    const dataKey = getModuleDataKey(moduleName);
+    const moduleData = matchingItem?.[dataKey] || {};
+    return { matchingItem, moduleData, dataKey };
+  };
+
+  // Same writes as the desktop expanded-row entity dropdown (handleEntitySelection
+  // below): patch the marker annotation, then mirror onto the linked item's
+  // module-specific data and its annotations. entityId '' / null clears.
+  const applyEntitySelectionForMarker = (annotationId, markerModuleId, category, entityId) => {
+    const { matchingItem, moduleData, dataKey } = findMarkerMatchingItem(annotationId, markerModuleId, category);
+    const entities = selectedTemplate?.entities || [];
+    const entity = entityId ? entities.find(e => e.id === entityId) : null;
+
+    setSurveyMarkers(prev => ({
+      ...prev,
+      [annotationId]: {
+        ...prev[annotationId],
+        entityId: entity?.id,
+        entityName: entity?.name,
+        entityColor: entity?.color
+      }
+    }));
+
+    if (matchingItem) {
+      const updatedItem = {
+        ...matchingItem,
+        [dataKey]: {
+          ...moduleData,
+          entityId: entity ? entity.id : undefined,
+          entityName: entity ? entity.name : undefined,
+          entityColor: entity ? entity.color : undefined
+        }
+      };
+      setItems(prev => ({
+        ...prev,
+        [matchingItem.itemId]: updatedItem
+      }));
+      setAnnotations(prev => {
+        const updated = { ...prev };
+        Object.values(updated).forEach(ann => {
+          if (ann.itemId === matchingItem.itemId && ann.spaceId === selectedSpaceId) {
+            updated[ann.annotationId] = {
+              ...ann,
+              entityId: entity ? entity.id : undefined,
+              entityName: entity ? entity.name : undefined,
+              entityColor: entity ? entity.color : undefined
+            };
+          }
+        });
+        return updated;
+      });
+    }
+  };
+
+  // Verbatim re-housing of the desktop checklist Y/N/N-A click handler
+  // (previously inline in the expanded marker row) so the mobile detail view
+  // and the desktop row share one implementation, including the KAL-44
+  // auto-"Complete"-entity behavior when every active item is Y or N/A.
+  const applyChecklistResponseSelection = (annotationId, markerModuleId, category, markerRowName, checklistItemId, option) => {
+    setSurveyMarkers(prev => {
+      const updated = {
+        ...prev,
+        [annotationId]: {
+          ...prev[annotationId],
+          checklistResponses: {
+            ...prev[annotationId]?.checklistResponses,
+            [checklistItemId]: {
+              ...prev[annotationId]?.checklistResponses?.[checklistItemId],
+              selection: option
+            }
+          }
+        }
+      };
+
+      // Check if all checklist items are Y or N/A.
+      // KAL-44: archived items don't gate auto-complete; only
+      // active items count toward "all complete".
+      const updatedSurveyMarker = updated[annotationId];
+      const activeChecklist = (category.checklist || []).filter(it => it && it.archived !== true);
+      if (updatedSurveyMarker && activeChecklist.length > 0 && selectedTemplate && selectedSpaceId) {
+        const allItemsComplete = activeChecklist.every(checklistItem => {
+          const response = updatedSurveyMarker.checklistResponses?.[checklistItem.id];
+          const selection = response?.selection;
+          return selection === 'Y' || selection === 'N/A';
+        });
+
+        // Find the item associated with this surveyMarker
+        const surveyMarkerData = updated[annotationId];
+        const categoryName = getCategoryName(selectedTemplate, markerModuleId, category.id);
+        const surveyMarkerName = surveyMarkerData?.name || markerRowName || '';
+        const matchingItem = itemsByNameType.get(`${surveyMarkerName}\0${categoryName}`);
+
+        // Get module-specific data
+        const moduleName = getModuleName(selectedTemplate, markerModuleId);
+        const dataKey = getModuleDataKey(moduleName);
+        const moduleData = matchingItem?.[dataKey] || {};
+
+        // If all items are Y or N/A, automatically set entity to "Complete"
+        if (allItemsComplete) {
+          // Find the "Complete" entity
+          const entities = selectedTemplate.entities || [];
+          const completeEntity = entities.find(e =>
+            e.name.toLowerCase().includes('complete')
+          );
+
+          if (completeEntity) {
+            const entityColor = normalizeSurveyMarkerColor(completeEntity.color) || completeEntity.color || hexToRgba('#E3D1FB', DEFAULT_SURVEY_MARKER_OPACITY);
+            // Update item's module-specific data with Complete entity status
+            if (matchingItem) {
+              const updatedItem = {
+                ...matchingItem,
+                [dataKey]: {
+                  ...moduleData,
+                  entityId: completeEntity.id,
+                  entityName: completeEntity.name,
+                  entityColor: entityColor
+                }
+              };
+
+              setItems(prev2 => ({
+                ...prev2,
+                [matchingItem.itemId]: updatedItem
+              }));
+
+              // Update all annotations for this item in this module with the new color
+              setAnnotations(prev2 => {
+                const updatedAnns = { ...prev2 };
+                Object.values(updatedAnns).forEach(ann => {
+                  const annModuleId = ann.moduleId || ann.spaceId; // Support legacy spaceId
+                  if (ann.itemId === matchingItem.itemId && annModuleId === markerModuleId) {
+                    updatedAnns[ann.annotationId] = {
+                      ...ann,
+                      entityId: completeEntity.id,
+                      entityName: completeEntity.name,
+                      entityColor: entityColor
+                    };
+                  }
+                });
+                return updatedAnns;
+              });
+
+              // Update surveyMarker color on PDF
+              if (surveyMarkerData?.pageNumber && surveyMarkerData?.bounds) {
+                setNewSurveyMarkersByPage(prev2 => {
+                  const pageSurveyMarkers = prev2[surveyMarkerData.pageNumber] || [];
+                  // Remove any existing surveyMarker with this annotationId or same bounds (regardless of needsEntity or color)
+                  const filtered = pageSurveyMarkers.filter(h => {
+                    // Keep surveyMarkers that don't match by ID or bounds
+                    const hasMatchingId = h.annotationId === annotationId;
+                    const hasMatchingBounds = h.x === surveyMarkerData.bounds.x &&
+                      h.y === surveyMarkerData.bounds.y &&
+                      h.width === surveyMarkerData.bounds.width &&
+                      h.height === surveyMarkerData.bounds.height;
+                    // Remove if it matches by ID or bounds
+                    return !hasMatchingId && !hasMatchingBounds;
+                  });
+                  return {
+                    ...prev2,
+                    [surveyMarkerData.pageNumber]: [
+                      ...filtered,
+                      {
+                        ...surveyMarkerData.bounds,
+                        color: entityColor,
+                        annotationId: annotationId
+                      }
+                    ]
+                  };
+                });
+              }
+            }
+
+            // Update survey marker annotation with Complete entity status
+            updated[annotationId] = {
+              ...updated[annotationId],
+              entityId: completeEntity.id,
+              entityName: completeEntity.name,
+              entityColor: entityColor
+            };
+          }
+        } else {
+          // Not all items are Y or N/A - remove entity status (set to None)
+          if (matchingItem) {
+            const updatedItem = {
+              ...matchingItem,
+              [dataKey]: {
+                ...moduleData,
+                entityId: undefined,
+                entityName: undefined,
+                entityColor: undefined
+              }
+            };
+
+            setItems(prev2 => ({
+              ...prev2,
+              [matchingItem.itemId]: updatedItem
+            }));
+
+            // Update all annotations for this item in this space
+            setAnnotations(prev2 => {
+              const updatedAnns = { ...prev2 };
+              Object.values(updatedAnns).forEach(ann => {
+                if (ann.itemId === matchingItem.itemId && ann.spaceId === selectedSpaceId) {
+                  updatedAnns[ann.annotationId] = {
+                    ...ann,
+                    entityId: undefined,
+                    entityName: undefined,
+                    entityColor: undefined
+                  };
+                }
+              });
+              return updatedAnns;
+            });
+
+            // Update surveyMarker on PDF - revert to "needs entity" state (transparent with dashed outline)
+            if (surveyMarkerData?.pageNumber && surveyMarkerData?.bounds) {
+              setNewSurveyMarkersByPage(prev2 => {
+                const pageSurveyMarkers = prev2[surveyMarkerData.pageNumber] || [];
+                // Remove any existing surveyMarker with this annotationId or same bounds (regardless of needsEntity or color)
+                const filtered = pageSurveyMarkers.filter(h => {
+                  // Keep surveyMarkers that don't match by ID or bounds
+                  const hasMatchingId = h.annotationId === annotationId;
+                  const hasMatchingBounds = h.x === surveyMarkerData.bounds.x &&
+                    h.y === surveyMarkerData.bounds.y &&
+                    h.width === surveyMarkerData.bounds.width &&
+                    h.height === surveyMarkerData.bounds.height;
+                  // Remove if it matches by ID or bounds
+                  return !hasMatchingId && !hasMatchingBounds;
+                });
+                // Add "needs entity" surveyMarker (transparent with dashed outline)
+                return {
+                  ...prev2,
+                  [surveyMarkerData.pageNumber]: [
+                    ...filtered,
+                    {
+                      ...surveyMarkerData.bounds,
+                      needsEntity: true,
+                      annotationId: annotationId
+                    }
+                  ]
+                };
+              });
+            }
+          }
+
+          // Update survey marker annotation to remove entity status
+          updated[annotationId] = {
+            ...updated[annotationId],
+            entityId: undefined,
+            entityName: undefined,
+            entityColor: undefined
+          };
+        }
+      }
+
+      return updated;
+    });
+  };
+
+  // ——— Mobile in-sheet notes editor (demo SurveySheet.tsx:191-283) ———
+  const openMobileNotesEditor = () => {
+    const note = surveyMarkers?.[mobileDetailMarkerId]?.note || {};
+    setMobileNoteDraft({
+      text: note.text || '',
+      photos: Array.isArray(note.photos) ? note.photos : [],
+      videos: Array.isArray(note.videos) ? note.videos : []
+    });
+    setMobileDetailDropdown(null);
+    setMobileNotesEditorOpen(true);
+  };
+
+  // Same write as the desktop Note dialog's Save (PDFViewer Note Dialog):
+  // patch the marker's `note` through setSurveyMarkers so persistence and
+  // sync see the identical operation.
+  const saveMobileNotes = () => {
+    const annotationId = mobileDetailMarkerId;
+    if (!annotationId) return;
+    setSurveyMarkers(prev => ({
+      ...prev,
+      [annotationId]: {
+        ...(prev[annotationId] || {}),
+        note: {
+          text: mobileNoteDraft.text,
+          photos: mobileNoteDraft.photos,
+          videos: mobileNoteDraft.videos
+        }
+      }
+    }));
+    setMobileNotesEditorOpen(false);
+  };
+
+  // Reuses the desktop Note dialog's FileReader/dataUrl attachment shape
+  // ({ name, dataUrl }) so saved attachments render in both editors.
+  const addMobileNoteMedia = (kind, fileList) => {
+    const files = Array.from(fileList || []);
+    if (!files.length) return;
+    Promise.all(files.map(file => new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onload = (event) => resolve({ name: file.name, dataUrl: event.target.result });
+      reader.readAsDataURL(file);
+    }))).then(media => {
+      setMobileNoteDraft(prev => ({ ...prev, [kind]: [...prev[kind], ...media] }));
+    });
   };
 
   const surveyMarkerRowActionStyle = {
@@ -914,6 +1326,57 @@ const SurveySpacesRail = ({
                       })()}
                     </div>
                     <div className={mobileMode ? 'mobile-survey-sheet-header-actions' : undefined}>
+                      {/* UX (mobile demo parity): 34px round export button in the sheet
+                          header opening a 218px menu with 48px rows (demo
+                          SurveySheet.tsx:324-348, styles.ts:2731-2775; accent gold, not
+                          demo blue). Wires the SAME handlers as the desktop bottom
+                          export bar: "Export Excel" = handleExportSurveyToExcel(),
+                          "Sync Microsoft 365" = push to the linked workbook. */}
+                      {mobileMode && (
+                        <div className="mobile-survey-sheet-export-wrap" ref={mobileExportMenuRef}>
+                          <button
+                            type="button"
+                            className={`mobile-survey-sheet-export${isMobileExportMenuOpen ? ' is-open' : ''}`}
+                            aria-label="Export survey data"
+                            aria-haspopup="menu"
+                            aria-expanded={isMobileExportMenuOpen}
+                            disabled={isExporting}
+                            onClick={() => setIsMobileExportMenuOpen((open) => !open)}
+                          >
+                            {isExporting
+                              ? <Spinner size={14} color="#f2f2f2" trackColor="rgba(255,255,255,0.3)" />
+                              : <Icon name="upload" size={17} color="currentColor" />}
+                          </button>
+                          {isMobileExportMenuOpen && (
+                            <div className="mobile-survey-sheet-export-menu" role="menu">
+                              <button
+                                type="button"
+                                role="menuitem"
+                                disabled={isExporting}
+                                onClick={() => {
+                                  setIsMobileExportMenuOpen(false);
+                                  handleExportSurveyToExcel();
+                                }}
+                              >
+                                <strong>Export Excel</strong>
+                                <span>Create workbook from survey data</span>
+                              </button>
+                              <button
+                                type="button"
+                                role="menuitem"
+                                disabled={isExporting || !selectedTemplate.linkedExcelPath || linkedExcelExists !== true}
+                                onClick={() => {
+                                  setIsMobileExportMenuOpen(false);
+                                  handleExportSurveyToExcel(selectedTemplate.linkedExcelPath);
+                                }}
+                              >
+                                <strong>Sync Microsoft 365</strong>
+                                <span>Update the shared workbook location</span>
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      )}
                       <button
                         onClick={() => {
                           if (mobileMode) {
@@ -1108,6 +1571,329 @@ const SurveySpacesRail = ({
                   )}
 
                   {/* Panel Content */}
+                  {/* UX (mobile demo parity): when a Survey Marker is selected on
+                      mobile, the sheet swaps the category list for a marker DETAIL
+                      view — mobile-scaled re-housing of the desktop expanded-row
+                      controls (rename, entity picker, sibling nav, locate, notes,
+                      checklist) modeled on demo SurveySheet.tsx:285-568 /
+                      styles.ts:2870-3401. Same handlers + store writes as the
+                      desktop rows; the desktop rail is unchanged. */}
+                  {mobileDetailMarker ? (() => {
+                    const annotationId = mobileDetailMarker.id;
+                    const detailCategory = mobileDetailCategory;
+                    const detailModuleId = mobileDetailMarker.moduleId;
+                    const { moduleData } = findMarkerMatchingItem(annotationId, detailModuleId, detailCategory);
+                    const currentEntityId = moduleData.entityId || mobileDetailMarker.entityId;
+                    const currentEntity = currentEntityId ? entitiesMap.get(currentEntityId) : null;
+                    const detailEntityColor = currentEntity?.color || moduleData.entityColor || mobileDetailMarker.entityColor || null;
+                    const detailEntityName = currentEntity?.name || moduleData.entityName || mobileDetailMarker.entityName || 'None';
+                    const entityOptions = [
+                      { id: '', name: 'None', color: null },
+                      ...((selectedTemplate?.entities || []).map(entity => ({ id: entity.id, name: entity.name, color: entity.color })))
+                    ];
+                    // Sibling nav: every Survey Marker of this category in this
+                    // module, in rail order (demo SurveySheet.tsx:459-491).
+                    const siblingMarkers = Object.entries(surveyMarkers)
+                      .filter(([, marker]) => marker.moduleId === detailModuleId && marker.categoryId === mobileDetailMarker.categoryId)
+                      .map(([id, marker]) => ({ ...marker, id }))
+                      .sort(compareSurveyMarkersForOrder);
+                    const siblingIndex = siblingMarkers.findIndex(marker => marker.id === annotationId);
+                    const baseCategoryName = detailCategory?.name?.trim() || 'Untitled Category';
+                    const fallbackName = `${baseCategoryName} ${siblingIndex >= 0 ? siblingIndex + 1 : siblingMarkers.length + 1}`;
+                    const detailMarkerName = mobileDetailMarker.name || fallbackName;
+                    const hasNoteText = Boolean(surveyMarkers[annotationId]?.note?.text);
+                    const imageGlyph = (
+                      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                        <rect x="3" y="3" width="18" height="18" rx="2" />
+                        <circle cx="9" cy="9" r="2" />
+                        <path d="m21 15-3.5-3.5L6 23" />
+                      </svg>
+                    );
+                    const videoGlyph = (
+                      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                        <rect x="2" y="6" width="14" height="12" rx="2" />
+                        <path d="m22 8-6 4 6 4V8Z" />
+                      </svg>
+                    );
+
+                    if (mobileNotesEditorOpen) {
+                      // UX (mobile demo parity): full-sheet notes takeover instead of
+                      // the 600px desktop Note modal — multiline input, Photo/Video
+                      // pickers, attachment rows with remove, Cancel/Save footer
+                      // (demo SurveySheet.tsx:191-283; Save accent is the app's gold,
+                      // not demo blue, per the parity color rule).
+                      return (
+                        <div className="mobile-survey-detail mobile-survey-notes">
+                          <div className="mobile-survey-notes-title">
+                            <span className="mobile-survey-detail-label">Survey Marker notes</span>
+                            <span className="mobile-survey-notes-name">{detailMarkerName}</span>
+                          </div>
+                          <div className="mobile-survey-notes-scroll">
+                            <div className="mobile-survey-notes-card">
+                              <textarea
+                                aria-label="Survey Marker notes"
+                                value={mobileNoteDraft.text}
+                                onChange={(e) => setMobileNoteDraft(prev => ({ ...prev, text: e.target.value }))}
+                                placeholder="Add details..."
+                              />
+                            </div>
+                            <div className="mobile-survey-notes-card">
+                              <div className="mobile-survey-notes-attach-header">
+                                <span className="mobile-survey-detail-label">Attachments</span>
+                                <div className="mobile-survey-notes-upload-row">
+                                  <input
+                                    type="file"
+                                    accept="image/*"
+                                    multiple
+                                    style={{ display: 'none' }}
+                                    id={`mobile-note-photos-${annotationId}`}
+                                    onChange={(e) => {
+                                      addMobileNoteMedia('photos', e.target.files);
+                                      e.target.value = '';
+                                    }}
+                                  />
+                                  <label htmlFor={`mobile-note-photos-${annotationId}`} className="mobile-survey-notes-upload">
+                                    {imageGlyph}
+                                    <span>Photo</span>
+                                  </label>
+                                  <input
+                                    type="file"
+                                    accept="video/*"
+                                    multiple
+                                    style={{ display: 'none' }}
+                                    id={`mobile-note-videos-${annotationId}`}
+                                    onChange={(e) => {
+                                      addMobileNoteMedia('videos', e.target.files);
+                                      e.target.value = '';
+                                    }}
+                                  />
+                                  <label htmlFor={`mobile-note-videos-${annotationId}`} className="mobile-survey-notes-upload">
+                                    {videoGlyph}
+                                    <span>Video</span>
+                                  </label>
+                                </div>
+                              </div>
+                              {mobileNoteDraft.photos.map((photo, index) => (
+                                <div key={`photo-${index}`} className="mobile-survey-notes-attachment">
+                                  <span className="mobile-survey-notes-thumb">{imageGlyph}</span>
+                                  <span className="mobile-survey-notes-attachment-name">{photo?.name || 'Photo'}</span>
+                                  <button
+                                    type="button"
+                                    aria-label={`Remove ${photo?.name || 'photo'}`}
+                                    onClick={() => setMobileNoteDraft(prev => ({ ...prev, photos: prev.photos.filter((_, itemIndex) => itemIndex !== index) }))}
+                                  >
+                                    <Icon name="close" size={13} />
+                                  </button>
+                                </div>
+                              ))}
+                              {mobileNoteDraft.videos.map((video, index) => (
+                                <div key={`video-${index}`} className="mobile-survey-notes-attachment">
+                                  <span className="mobile-survey-notes-thumb">{videoGlyph}</span>
+                                  <span className="mobile-survey-notes-attachment-name">{video?.name || 'Video'}</span>
+                                  <button
+                                    type="button"
+                                    aria-label={`Remove ${video?.name || 'video'}`}
+                                    onClick={() => setMobileNoteDraft(prev => ({ ...prev, videos: prev.videos.filter((_, itemIndex) => itemIndex !== index) }))}
+                                  >
+                                    <Icon name="close" size={13} />
+                                  </button>
+                                </div>
+                              ))}
+                              {!mobileNoteDraft.photos.length && !mobileNoteDraft.videos.length && (
+                                <span className="mobile-survey-notes-empty">No attachments.</span>
+                              )}
+                            </div>
+                          </div>
+                          <div className="mobile-survey-notes-footer">
+                            <button type="button" className="mobile-survey-notes-cancel" onClick={() => setMobileNotesEditorOpen(false)}>
+                              Cancel
+                            </button>
+                            <button type="button" className="mobile-survey-notes-save" onClick={saveMobileNotes}>
+                              Save
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    }
+
+                    return (
+                      <div className="mobile-survey-detail">
+                        <span className="mobile-survey-detail-label">Category</span>
+                        {/* Category re-assign is DEFERRED: the new side has no existing
+                            mutation that moves a Survey Marker between categories
+                            (item/Excel linkage is keyed by category), so this field is
+                            read-only for now — demo SurveySheet.tsx:396-425 offers a
+                            dropdown. Do not wire a raw categoryId patch here. */}
+                        <div className="mobile-survey-detail-field is-static">
+                          <span>{detailCategory?.name || 'No category'}</span>
+                          {detailCategory ? (
+                            <span className="mobile-survey-detail-field-meta">{mobileDetailChecklist.length}</span>
+                          ) : null}
+                        </div>
+
+                        <span className="mobile-survey-detail-label">Category item</span>
+                        <div className="mobile-survey-detail-tools mobile-survey-detail-dropdown-wrap">
+                          <button
+                            type="button"
+                            className="mobile-survey-detail-swatch-btn"
+                            aria-label="Choose Survey Marker entity"
+                            aria-haspopup="listbox"
+                            aria-expanded={mobileDetailDropdown === 'entity'}
+                            onClick={() => setMobileDetailDropdown(prev => (prev === 'entity' ? null : 'entity'))}
+                          >
+                            <span
+                              className="mobile-survey-detail-swatch"
+                              style={{ background: detailEntityColor || 'transparent' }}
+                            />
+                          </button>
+                          <div className="mobile-survey-detail-name-wrap">
+                            <input
+                              type="text"
+                              className="mobile-survey-detail-name"
+                              defaultValue={detailMarkerName}
+                              key={`${annotationId}:${detailMarkerName}`}
+                              aria-label={`Rename ${detailMarkerName}`}
+                              placeholder="Category item"
+                              onFocus={() => setMobileDetailDropdown(null)}
+                              onBlur={(e) => {
+                                const nextName = (e.currentTarget.value || '').trim() || fallbackName;
+                                e.currentTarget.value = nextName;
+                                commitSurveyMarkerName(annotationId, mobileDetailMarker.categoryId, detailMarkerName, nextName, fallbackName);
+                              }}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') {
+                                  e.currentTarget.blur();
+                                } else if (e.key === 'Escape') {
+                                  e.currentTarget.value = detailMarkerName;
+                                  e.currentTarget.blur();
+                                }
+                              }}
+                            />
+                            <button
+                              type="button"
+                              className="mobile-survey-detail-name-dd"
+                              aria-label="Choose Survey Marker"
+                              aria-haspopup="listbox"
+                              aria-expanded={mobileDetailDropdown === 'markerItem'}
+                              onClick={() => setMobileDetailDropdown(prev => (prev === 'markerItem' ? null : 'markerItem'))}
+                            >
+                              <Icon name="chevronDown" size={13} />
+                            </button>
+                            {mobileDetailDropdown === 'markerItem' && (
+                              <div className="mobile-survey-detail-menu" role="listbox" aria-label="Survey Markers in this category">
+                                {siblingMarkers.length ? siblingMarkers.map(sibling => (
+                                  <button
+                                    key={sibling.id}
+                                    type="button"
+                                    role="option"
+                                    aria-selected={sibling.id === annotationId}
+                                    className={sibling.id === annotationId ? 'is-active' : ''}
+                                    onClick={() => {
+                                      // Jump the detail view to a sibling Survey Marker.
+                                      setExpandedSurveyMarkers({ [sibling.id]: true });
+                                      setMobileDetailDropdown(null);
+                                    }}
+                                  >
+                                    <span>{sibling.name || 'Untitled Survey Marker'}</span>
+                                  </button>
+                                )) : (
+                                  <div className="mobile-survey-detail-menu-empty">No Survey Markers yet</div>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                          <button
+                            type="button"
+                            className="mobile-survey-detail-icon-btn"
+                            aria-label="Jump to this Survey Marker"
+                            onClick={() => {
+                              if (mobileDetailMarker.bounds && mobileDetailMarker.pageNumber) {
+                                handleLocateItemOnPDF(mobileDetailMarker);
+                              } else {
+                                setPendingLocationItem(mobileDetailMarker);
+                              }
+                            }}
+                          >
+                            <Icon name="search" size={15} />
+                          </button>
+                          <button
+                            type="button"
+                            className={`mobile-survey-detail-icon-btn${hasNoteText ? ' has-note' : ''}`}
+                            aria-label={hasNoteText ? 'Edit Survey Marker notes' : 'Add Survey Marker notes'}
+                            onClick={openMobileNotesEditor}
+                          >
+                            <Icon name="pen" size={14} />
+                          </button>
+                          {mobileDetailDropdown === 'entity' && (
+                            <div className="mobile-survey-detail-menu mobile-survey-detail-entity-menu" role="listbox" aria-label="Entity">
+                              {entityOptions.map(option => {
+                                const isSelectedOption = (currentEntityId || '') === (option.id || '');
+                                return (
+                                  <button
+                                    key={option.id || 'none'}
+                                    type="button"
+                                    role="option"
+                                    aria-selected={isSelectedOption}
+                                    className={isSelectedOption ? 'is-active' : ''}
+                                    onClick={() => {
+                                      applyEntitySelectionForMarker(annotationId, detailModuleId, detailCategory, option.id);
+                                      setMobileDetailDropdown(null);
+                                    }}
+                                  >
+                                    <span
+                                      className="mobile-survey-detail-entity-dot"
+                                      style={{
+                                        background: option.color || 'transparent',
+                                        borderColor: option.color ? 'rgba(255, 255, 255, 0.4)' : '#5a6473'
+                                      }}
+                                    />
+                                    <span>{option.name}</span>
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </div>
+
+                        <div className="mobile-survey-detail-check-header">
+                          <span className="mobile-survey-detail-label">Checklist</span>
+                          {/* Demo caption reads "Court: {entity}" — a demo-sample domain
+                              term; the product term is Entity (vocabulary rule). */}
+                          <span className="mobile-survey-detail-assigned">Entity: {detailEntityName}</span>
+                        </div>
+                        {detailCategory ? (
+                          <div className="mobile-survey-detail-checklist" style={{ height: `${mobileChecklistWindowHeight}px` }}>
+                            {mobileDetailChecklist.length ? mobileDetailChecklist.map(item => {
+                              const response = surveyMarkers[annotationId]?.checklistResponses?.[item.id]?.selection;
+                              return (
+                                <div key={item.id} className="mobile-survey-check-item">
+                                  <span className="mobile-survey-check-text">{item.text}</span>
+                                  <div className="mobile-survey-check-group">
+                                    {['Y', 'N', 'N/A'].map(option => (
+                                      <button
+                                        key={option}
+                                        type="button"
+                                        className={`mobile-survey-check-btn${response === option ? ` is-active is-${option === 'Y' ? 'yes' : option === 'N' ? 'no' : 'na'}` : ''}`}
+                                        aria-pressed={response === option}
+                                        aria-label={`${item.text} ${option}`}
+                                        onClick={() => applyChecklistResponseSelection(annotationId, detailModuleId, detailCategory, mobileDetailMarker.name || '', item.id, option)}
+                                      >
+                                        {option}
+                                      </button>
+                                    ))}
+                                  </div>
+                                </div>
+                              );
+                            }) : (
+                              <div className="mobile-survey-detail-empty" style={{ height: `${mobileChecklistWindowHeight}px` }}>No checklist items</div>
+                            )}
+                          </div>
+                        ) : (
+                          <div className="mobile-survey-detail-empty" style={{ height: `${mobileChecklistWindowHeight}px` }}>Choose category first</div>
+                        )}
+                      </div>
+                    );
+                  })() : (
                   <div style={{
                     flex: categorySelectModeActive ? '1 1 auto' : 1,
                     overflowY: 'auto',
@@ -1148,8 +1934,14 @@ const SurveySpacesRail = ({
 
                       return (
                         <div>
-                          {/* Select toggle button + Create Category */}
-                          {!copyModeActive ? (() => {
+                          {/* Select toggle button + Create Category.
+                              UX (mobile demo parity): the select/copy-mode admin
+                              toolbars are desktop-only — the demo's survey sheet has
+                              no category admin chrome, and these desktop-scaled
+                              controls crowded the 392px mobile sheet. Guarded at the
+                              JSX level (not CSS-hidden) so select/copy mode can never
+                              engage on mobile. */}
+                          {mobileMode ? null : !copyModeActive ? (() => {
                             const categoriesForModule = module.categories || [];
                             const selectedCategoryCount = Object.keys(selectedCategories).filter(id => selectedCategories[id]).length;
                             const hasSelectedCategories = selectedCategoryCount > 0;
@@ -1217,7 +2009,7 @@ const SurveySpacesRail = ({
                             };
 
                             return (
-                              <div className={`survey-marker-category-action-row${mobileMode ? ' mobile-survey-category-actions' : ''}`}>
+                              <div className="survey-marker-category-action-row">
                                 <div className="survey-marker-category-action-strip">
                                   {categorySelectModeActive ? (
                                     <div className="survey-marker-select-toolbar" role="toolbar" aria-label="Category selection actions">
@@ -1627,8 +2419,10 @@ const SurveySpacesRail = ({
                               margin: '0 2px 8px',
                               fontFamily: FONT_FAMILY
                             }}>
-                              <span>Select Category to Highlight</span>
-                              {mobileMode ? <small>Tap category to place marker</small> : null}
+                              {/* Vocabulary rule: "Survey Marker" in full on mobile copy —
+                                  never bare "marker"/"highlight". Desktop copy unchanged. */}
+                              <span>{mobileMode ? 'Select category' : 'Select Category to Highlight'}</span>
+                              {mobileMode ? <small>Tap category to place a Survey Marker</small> : null}
                             </h3>
 
                             {module.categories && module.categories.length > 0 ? (
@@ -1706,7 +2500,11 @@ const SurveySpacesRail = ({
                                         data-drag-rearrange-row
                                         className="survey-marker-category-row"
                                       >
-                                        {isCategorySelectable ? (
+                                        {/* UX (mobile demo parity): no drag-reorder handle or
+                                            select circle on mobile — demo category rows lead
+                                            straight with the name (styles.ts:3113-3126); reorder
+                                            stays a desktop affordance. */}
+                                        {mobileMode ? null : isCategorySelectable ? (
                                           <SurveyMarkerLeadingSelect
                                             selected={isCategorySelectionSelected}
                                             category
@@ -1812,7 +2610,10 @@ const SurveySpacesRail = ({
                                           border: '1px solid transparent',
                                           borderRadius: '4px'
                                         }}>
-                                          {!copyModeActive && (
+                                          {/* UX (mobile demo parity): the inline item Select /
+                                              All / Copy / Delete toolbar is desktop-only admin
+                                              chrome — not part of the demo's mobile sheet. */}
+                                          {!copyModeActive && !mobileMode && (
                                             <div
                                               className={`survey-marker-inline-select-row${categorySelectModeActive ? ' is-placeholder' : ''}`}
                                               aria-hidden={categorySelectModeActive ? 'true' : undefined}
@@ -2033,17 +2834,51 @@ const SurveySpacesRail = ({
                                                 id={`highlight-item-${surveyMarker.id}`}
                                                 data-drag-rearrange-row
                                                 style={{
-                                                background: isDragging ? 'rgba(216, 168, 78, 0.12)' : 'transparent',
-                                                border: '1px solid #3a4252',
-                                                borderRadius: '4px',
+                                                background: mobileMode ? '#171b22' : (isDragging ? 'rgba(216, 168, 78, 0.12)' : 'transparent'),
+                                                border: mobileMode ? '1px solid #303743' : '1px solid #3a4252',
+                                                borderRadius: mobileMode ? '6px' : '4px',
                                                 overflow: (isEntityDropdownOpenForMarker || reviewMessage) ? 'visible' : 'hidden',
                                                 flexShrink: 0,
                                                 boxShadow: isDragging ? '0 10px 22px rgba(0, 0, 0, 0.34), inset 0 0 0 1px rgba(216, 168, 78, 0.3)' : 'none',
                                                 transition: isDragging ? 'none' : 'background 0.15s ease, opacity 0.15s ease, box-shadow 0.15s ease'
                                               }}>
+                                                {/* UX (mobile demo parity): expanded-category item rows are
+                                                    plain tap rows — entity dot + name — that open the marker
+                                                    DETAIL view (demo SurveySetupSheet.tsx:221-243,
+                                                    styles.ts:3155-3165). The desktop inline controls below
+                                                    stay desktop-only. */}
+                                                {mobileMode && (() => {
+                                                  const { moduleData } = findMarkerMatchingItem(annotationId, selectedModuleId, category);
+                                                  const rowEntityId = moduleData.entityId || surveyMarkers[annotationId]?.entityId;
+                                                  const dotColor = (rowEntityId ? entitiesMap.get(rowEntityId)?.color : null)
+                                                    || moduleData.entityColor
+                                                    || surveyMarkers[annotationId]?.entityColor
+                                                    || null;
+                                                  return (
+                                                    <button
+                                                      type="button"
+                                                      className="mobile-survey-item-row"
+                                                      aria-label={`Open ${surveyMarkerName}`}
+                                                      onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        // Exclusive expansion drives the detail view.
+                                                        setExpandedSurveyMarkers({ [annotationId]: true });
+                                                      }}
+                                                    >
+                                                      <span className="mobile-survey-item-dot" style={{ background: dotColor || '#5a6473' }} aria-hidden="true" />
+                                                      <span className="mobile-survey-item-name">{surveyMarkerName}</span>
+                                                      <Icon name="chevronRight" size={12} color="#8d96a6" />
+                                                    </button>
+                                                  );
+                                                })()}
                                                 {/* SurveyMarker header - clickable to expand */}
+                                                {!mobileMode && (
                                                 <div style={{ display: 'flex', alignItems: 'center', gap: '2px' }}>
-                                                  {isMarkerSelectable ? (
+                                                  {/* UX (mobile demo parity): marker rows lose the
+                                                      desktop drag handle / select circle on mobile —
+                                                      demo item rows are plain tap rows
+                                                      (styles.ts:3155-3165). */}
+                                                  {mobileMode ? null : isMarkerSelectable ? (
                                                     <SurveyMarkerLeadingSelect
                                                       selected={isMarkerSelected}
                                                       onClick={toggleMarkerSelection}
@@ -2267,17 +3102,18 @@ const SurveySpacesRail = ({
                                                     onMouseLeave={(e) => {
                                                       e.currentTarget.style.background = 'transparent';
                                                     }}
-                                                    title={surveyMarker.bounds && surveyMarker.pageNumber ? "Jump to this marker" : "Set location on PDF"}
-                                                    aria-label={surveyMarker.bounds && surveyMarker.pageNumber ? "Jump to this marker" : "Set location on PDF"}
+                                                    title={surveyMarker.bounds && surveyMarker.pageNumber ? "Jump to this Survey Marker" : "Set location on PDF"}
+                                                    aria-label={surveyMarker.bounds && surveyMarker.pageNumber ? "Jump to this Survey Marker" : "Set location on PDF"}
                                                   >
                                                     <Icon name="search" size={14} />
                                                   </button>
 
                                                 </div>
+                                                )}
 
                                                 {/* Entity selector */}
                                                 {
-                                                  isSurveyMarkerExpanded && selectedTemplate && selectedModuleId && (() => {
+                                                  !mobileMode && isSurveyMarkerExpanded && selectedTemplate && selectedModuleId && (() => {
                                                     // Find the item associated with this surveyMarker
                                                     const surveyMarkerData = surveyMarkers[annotationId];
                                                     const categoryName = getCategoryName(selectedTemplate, selectedModuleId, category.id);
@@ -2304,91 +3140,11 @@ const SurveySpacesRail = ({
                                                         color: entity.color
                                                       }))
                                                     ];
+                                                    // Delegates to the shared helper (see applyEntitySelectionForMarker
+                                                    // above) so the mobile detail view and this desktop row perform
+                                                    // byte-identical store writes.
                                                     const handleEntitySelection = (entityId) => {
-                                                      const entity = entityId ? entities.find(e => e.id === entityId) : null;
-
-                                                      // Update survey marker annotation - the useEffect will automatically rebuild newSurveyMarkersByPage
-                                                      setSurveyMarkers(prev => {
-                                                        const updated = {
-                                                          ...prev,
-                                                          [annotationId]: {
-                                                            ...prev[annotationId],
-                                                            entityId: entity?.id,
-                                                            entityName: entity?.name,
-                                                            entityColor: entity?.color
-                                                          }
-                                                        };
-                                                        return updated;
-                                                      });
-
-                                                      // Update item's module-specific data if matchingItem exists
-                                                      if (matchingItem) {
-                                                        if (entity) {
-                                                          // Update item with entity status
-                                                          const updatedItem = {
-                                                            ...matchingItem,
-                                                            [dataKey]: {
-                                                              ...moduleData,
-                                                              entityId: entity.id,
-                                                              entityName: entity.name,
-                                                              entityColor: entity.color
-                                                            }
-                                                          };
-
-                                                          setItems(prev => ({
-                                                            ...prev,
-                                                            [matchingItem.itemId]: updatedItem
-                                                          }));
-
-                                                          // Update all annotations for this item in this space with the new color
-                                                          setAnnotations(prev => {
-                                                            const updated = { ...prev };
-                                                            Object.values(updated).forEach(ann => {
-                                                              if (ann.itemId === matchingItem.itemId && ann.spaceId === selectedSpaceId) {
-                                                                updated[ann.annotationId] = {
-                                                                  ...ann,
-                                                                  entityId: entity.id,
-                                                                  entityName: entity.name,
-                                                                  entityColor: entity.color
-                                                                };
-                                                              }
-                                                            });
-                                                            return updated;
-                                                          });
-                                                        } else {
-                                                          // Remove entity status from item
-                                                          const updatedItem = {
-                                                            ...matchingItem,
-                                                            [dataKey]: {
-                                                              ...moduleData,
-                                                              entityId: undefined,
-                                                              entityName: undefined,
-                                                              entityColor: undefined
-                                                            }
-                                                          };
-
-                                                          setItems(prev => ({
-                                                            ...prev,
-                                                            [matchingItem.itemId]: updatedItem
-                                                          }));
-
-                                                          // Update all annotations for this item in this space
-                                                          setAnnotations(prev => {
-                                                            const updated = { ...prev };
-                                                            Object.values(updated).forEach(ann => {
-                                                              if (ann.itemId === matchingItem.itemId && ann.spaceId === selectedSpaceId) {
-                                                                updated[ann.annotationId] = {
-                                                                  ...ann,
-                                                                  entityId: undefined,
-                                                                  entityName: undefined,
-                                                                  entityColor: undefined
-                                                                };
-                                                              }
-                                                            });
-                                                            return updated;
-                                                          });
-                                                        }
-                                                      }
+                                                      applyEntitySelectionForMarker(annotationId, selectedModuleId, category, entityId);
                                                     };
 
                                                     return (
@@ -2473,7 +3229,7 @@ const SurveySpacesRail = ({
                                                     below so new markers don't see them as active
                                                     prompts, but old responses still surface. */}
                                                 {
-                                                  isSurveyMarkerExpanded && category.checklist && category.checklist.filter(item => item && item.archived !== true).map(item => {
+                                                  !mobileMode && isSurveyMarkerExpanded && category.checklist && category.checklist.filter(item => item && item.archived !== true).map(item => {
                                                     const response = surveyMarkers[annotationId]?.checklistResponses?.[item.id] || {};
                                                     const isSelected = response.selection;
                                                     return (
@@ -2505,203 +3261,10 @@ const SurveySpacesRail = ({
                                                                 type="button"
                                                                 onClick={(e) => {
                                                                   e.stopPropagation();
-                                                                  setSurveyMarkers(prev => {
-                                                                    const updated = {
-                                                                      ...prev,
-                                                                      [annotationId]: {
-                                                                        ...prev[annotationId],
-                                                                        checklistResponses: {
-                                                                          ...prev[annotationId]?.checklistResponses,
-                                                                          [item.id]: {
-                                                                            ...prev[annotationId]?.checklistResponses?.[item.id],
-                                                                            selection: option
-                                                                          }
-                                                                        }
-                                                                      }
-                                                                    };
-
-                                                                    // Check if all checklist items are Y or N/A.
-                                                                    // KAL-44: archived items don't gate auto-complete; only
-                                                                    // active items count toward "all complete".
-                                                                    const updatedSurveyMarker = updated[annotationId];
-                                                                    const activeChecklist = (category.checklist || []).filter(it => it && it.archived !== true);
-                                                                    if (updatedSurveyMarker && activeChecklist.length > 0 && selectedTemplate && selectedSpaceId) {
-                                                                      const allItemsComplete = activeChecklist.every(checklistItem => {
-                                                                        const response = updatedSurveyMarker.checklistResponses?.[checklistItem.id];
-                                                                        const selection = response?.selection;
-                                                                        return selection === 'Y' || selection === 'N/A';
-                                                                      });
-
-                                                                      // Find the item associated with this surveyMarker
-                                                                      const surveyMarkerData = updated[annotationId];
-                                                                      const categoryName = getCategoryName(selectedTemplate, selectedModuleId, category.id);
-                                                                      const surveyMarkerName = surveyMarkerData?.name || surveyMarker.name || '';
-                                                                      const matchingItem = itemsByNameType.get(`${surveyMarkerName}\0${categoryName}`);
-
-                                                                      // Get module-specific data
-                                                                      const moduleName = getModuleName(selectedTemplate, selectedModuleId);
-                                                                      const dataKey = getModuleDataKey(moduleName);
-                                                                      const moduleData = matchingItem?.[dataKey] || {};
-
-                                                                      // If all items are Y or N/A, automatically set entity to "Complete"
-                                                                      if (allItemsComplete) {
-                                                                        // Find the "Complete" entity
-                                                                        const entities = selectedTemplate.entities || [];
-                                                                        const completeEntity = entities.find(e =>
-                                                                          e.name.toLowerCase().includes('complete')
-                                                                        );
-
-                                                                        if (completeEntity) {
-                                                                          const entityColor = normalizeSurveyMarkerColor(completeEntity.color) || completeEntity.color || hexToRgba('#E3D1FB', DEFAULT_SURVEY_MARKER_OPACITY);
-                                                                          // Update item's module-specific data with Complete entity status
-                                                                          if (matchingItem) {
-                                                                            const updatedItem = {
-                                                                              ...matchingItem,
-                                                                              [dataKey]: {
-                                                                                ...moduleData,
-                                                                                entityId: completeEntity.id,
-                                                                                entityName: completeEntity.name,
-                                                                                entityColor: entityColor
-                                                                              }
-                                                                            };
-
-                                                                            setItems(prev => ({
-                                                                              ...prev,
-                                                                              [matchingItem.itemId]: updatedItem
-                                                                            }));
-
-                                                                            // Update all annotations for this item in this module with the new color
-                                                                            setAnnotations(prev => {
-                                                                              const updatedAnns = { ...prev };
-                                                                              Object.values(updatedAnns).forEach(ann => {
-                                                                                const annModuleId = ann.moduleId || ann.spaceId; // Support legacy spaceId
-                                                                                if (ann.itemId === matchingItem.itemId && annModuleId === selectedModuleId) {
-                                                                                  updatedAnns[ann.annotationId] = {
-                                                                                    ...ann,
-                                                                                    entityId: completeEntity.id,
-                                                                                    entityName: completeEntity.name,
-                                                                                    entityColor: entityColor
-                                                                                  };
-                                                                                }
-                                                                              });
-                                                                              return updatedAnns;
-                                                                            });
-
-                                                                            // Update surveyMarker color on PDF
-                                                                            if (surveyMarkerData?.pageNumber && surveyMarkerData?.bounds) {
-                                                                              setNewSurveyMarkersByPage(prev => {
-                                                                                const pageSurveyMarkers = prev[surveyMarkerData.pageNumber] || [];
-                                                                                // Remove any existing surveyMarker with this annotationId or same bounds (regardless of needsEntity or color)
-                                                                                const filtered = pageSurveyMarkers.filter(h => {
-                                                                                  // Keep surveyMarkers that don't match by ID or bounds
-                                                                                  const hasMatchingId = h.annotationId === annotationId;
-                                                                                  const hasMatchingBounds = h.x === surveyMarkerData.bounds.x &&
-                                                                                    h.y === surveyMarkerData.bounds.y &&
-                                                                                    h.width === surveyMarkerData.bounds.width &&
-                                                                                    h.height === surveyMarkerData.bounds.height;
-                                                                                  // Remove if it matches by ID or bounds
-                                                                                  return !hasMatchingId && !hasMatchingBounds;
-                                                                                });
-                                                                                return {
-                                                                                  ...prev,
-                                                                                  [surveyMarkerData.pageNumber]: [
-                                                                                    ...filtered,
-                                                                                    {
-                                                                                      ...surveyMarkerData.bounds,
-                                                                                      color: entityColor,
-                                                                                      annotationId: annotationId
-                                                                                    }
-                                                                                  ]
-                                                                                };
-                                                                              });
-                                                                            }
-                                                                          }
-
-                                                                          // Update survey marker annotation with Complete entity status
-                                                                          updated[annotationId] = {
-                                                                            ...updated[annotationId],
-                                                                            entityId: completeEntity.id,
-                                                                            entityName: completeEntity.name,
-                                                                            entityColor: entityColor
-                                                                          };
-                                                                        }
-                                                                      } else {
-                                                                        // Not all items are Y or N/A - remove entity status (set to None)
-                                                                        if (matchingItem) {
-                                                                          const updatedItem = {
-                                                                            ...matchingItem,
-                                                                            [dataKey]: {
-                                                                              ...moduleData,
-                                                                              entityId: undefined,
-                                                                              entityName: undefined,
-                                                                              entityColor: undefined
-                                                                            }
-                                                                          };
-
-                                                                          setItems(prev => ({
-                                                                            ...prev,
-                                                                            [matchingItem.itemId]: updatedItem
-                                                                          }));
-
-                                                                          // Update all annotations for this item in this space
-                                                                          setAnnotations(prev => {
-                                                                            const updatedAnns = { ...prev };
-                                                                            Object.values(updatedAnns).forEach(ann => {
-                                                                              if (ann.itemId === matchingItem.itemId && ann.spaceId === selectedSpaceId) {
-                                                                                updatedAnns[ann.annotationId] = {
-                                                                                  ...ann,
-                                                                                  entityId: undefined,
-                                                                                  entityName: undefined,
-                                                                                  entityColor: undefined
-                                                                                };
-                                                                              }
-                                                                            });
-                                                                            return updatedAnns;
-                                                                          });
-
-                                                                          // Update surveyMarker on PDF - revert to "needs entity" state (transparent with dashed outline)
-                                                                          if (surveyMarkerData?.pageNumber && surveyMarkerData?.bounds) {
-                                                                            setNewSurveyMarkersByPage(prev => {
-                                                                              const pageSurveyMarkers = prev[surveyMarkerData.pageNumber] || [];
-                                                                              // Remove any existing surveyMarker with this annotationId or same bounds (regardless of needsEntity or color)
-                                                                              const filtered = pageSurveyMarkers.filter(h => {
-                                                                                // Keep surveyMarkers that don't match by ID or bounds
-                                                                                const hasMatchingId = h.annotationId === annotationId;
-                                                                                const hasMatchingBounds = h.x === surveyMarkerData.bounds.x &&
-                                                                                  h.y === surveyMarkerData.bounds.y &&
-                                                                                  h.width === surveyMarkerData.bounds.width &&
-                                                                                  h.height === surveyMarkerData.bounds.height;
-                                                                                // Remove if it matches by ID or bounds
-                                                                                return !hasMatchingId && !hasMatchingBounds;
-                                                                              });
-                                                                              // Add "needs entity" surveyMarker (transparent with dashed outline)
-                                                                              return {
-                                                                                ...prev,
-                                                                                [surveyMarkerData.pageNumber]: [
-                                                                                  ...filtered,
-                                                                                  {
-                                                                                    ...surveyMarkerData.bounds,
-                                                                                    needsEntity: true,
-                                                                                    annotationId: annotationId
-                                                                                  }
-                                                                                ]
-                                                                              };
-                                                                            });
-                                                                          }
-                                                                        }
-
-                                                                        // Update survey marker annotation to remove entity status
-                                                                        updated[annotationId] = {
-                                                                          ...updated[annotationId],
-                                                                          entityId: undefined,
-                                                                          entityName: undefined,
-                                                                          entityColor: undefined
-                                                                        };
-                                                                      }
-                                                                    }
-
-                                                                    return updated;
-                                                                  });
+                                                                  // Shared with the mobile detail view — see
+                                                                  // applyChecklistResponseSelection above (verbatim
+                                                                  // re-housing of the old inline handler).
+                                                                  applyChecklistResponseSelection(annotationId, selectedModuleId, category, surveyMarker.name || '', item.id, option);
                                                                 }}
                                                                 style={{
                                                                   minWidth: '28px',
@@ -2742,8 +3305,12 @@ const SurveySpacesRail = ({
                                                     for new markers (new markers won't have a
                                                     response under that id, so this section is
                                                     empty for them). */}
+                                                {/* UX (mobile demo parity): archived-checklist admin is
+                                                    desktop-only — read-only historical data has no surface
+                                                    in the demo's mobile sheet and crowded the 392px window.
+                                                    Data stays intact; inspect on desktop. */}
                                                 {
-                                                  isSurveyMarkerExpanded && (() => {
+                                                  !mobileMode && isSurveyMarkerExpanded && (() => {
                                                     const responses = surveyMarkers[annotationId]?.checklistResponses || {};
                                                     const archivedItems = (category.checklist || []).filter(it => it && it.archived === true);
                                                     const archivedWithResponses = archivedItems.filter(it => Object.prototype.hasOwnProperty.call(responses, it.id));
@@ -2899,6 +3466,7 @@ const SurveySpacesRail = ({
                       </div>
                     )}
                   </div>
+                  )}
                   </>
                   ) : (
                     <div style={{
@@ -2980,6 +3548,10 @@ const SurveySpacesRail = ({
                                 <button
                                   key={template.id}
                                   type="button"
+                                  /* UX (mobile demo parity): 42px rows with a :active pressed
+                                     state (demo styles.ts:2694-2705) — hover styling is a dead
+                                     affordance on touch, so the mouse handlers are desktop-only. */
+                                  className={mobileMode ? 'mobile-survey-template-row' : undefined}
                                   onClick={() => {
                                     onSelectSurveyTemplate?.(template);
                                   }}
@@ -2999,11 +3571,11 @@ const SurveySpacesRail = ({
                                     fontFamily: FONT_FAMILY,
                                     transition: 'background 0.15s ease, border-color 0.15s ease'
                                   }}
-                                  onMouseEnter={(event) => {
+                                  onMouseEnter={mobileMode ? undefined : (event) => {
                                     event.currentTarget.style.background = '#2a3140';
                                     event.currentTarget.style.borderColor = '#d8a84e';
                                   }}
-                                  onMouseLeave={(event) => {
+                                  onMouseLeave={mobileMode ? undefined : (event) => {
                                     event.currentTarget.style.background = '#181c24';
                                     event.currentTarget.style.borderColor = '#3a4252';
                                   }}

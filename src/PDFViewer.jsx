@@ -24376,8 +24376,12 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     // expanding the category alone only reveals the collapsed row.
     setExpandedSurveyMarkers({ [annotationId]: true });
 
-    // 3. Ensure Survey Panel is open
-    if (!showSurveyPanel || rightRailCollapsed) {
+    // 3. Ensure Survey Panel is open. On mobile the sheet's collapsed state is
+    // rail-internal and independent of showSurveyPanel/rightRailCollapsed, so
+    // always request an expand there — fixes taps on a placed Survey Marker
+    // being swallowed when the sheet was collapsed while showSurveyPanel
+    // stayed true (matrix §5 "Tap placed marker"; demo App.tsx:1621-1624).
+    if (mobileMode || !showSurveyPanel || rightRailCollapsed) {
       setShowSurveyPanel(true);
       requestRightRailExpand();
     }
@@ -24395,7 +24399,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         }, 2000);
       }
     }, 300);
-  }, [surveyMarkers, selectedTemplate, showSurveyPanel, rightRailCollapsed, requestRightRailExpand]);
+  }, [surveyMarkers, selectedTemplate, showSurveyPanel, rightRailCollapsed, requestRightRailExpand, mobileMode]);
 
   // Locate item on PDF (Forward Navigation)
   const handleLocateItemOnPDF = useCallback((surveyMarker) => {
@@ -25129,6 +25133,110 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     return preview;
   }, [selectedModuleId]);
 
+  // UX (mobile demo parity): on mobile, a placed Survey Marker commits
+  // immediately with the next default name and opens the sheet's marker detail
+  // view — no centered Categorize/Entity/Name modals (demo App.tsx:1132-1162
+  // places, auto-names, and opens SurveySheet in one step). Desktop keeps its
+  // modal chain unchanged. Reuses the exact store writes of the desktop name
+  // prompt's save path so sync sees identical operations.
+  const commitMobileSurveyMarker = useCallback((surveyMarker, categoryId) => {
+    if (!selectedTemplate || !surveyMarker?.id || !categoryId) return;
+    const moduleId = surveyMarker.moduleId || selectedModuleId;
+    const categoryName = getCategoryName(selectedTemplate, moduleId, categoryId);
+    const existingSurveyMarkers = Object.values(surveyMarkers).filter(h => h.categoryId === categoryId);
+    const defaultName = generateDefaultSurveyMarkerName(categoryName, existingSurveyMarkers);
+    const highlightColor = surveyMarker.entityColor
+      ? (normalizeSurveyMarkerColor(surveyMarker.entityColor) || surveyMarker.entityColor)
+      : null; // No Entity yet — render as needs-Entity (dashed)
+    const surveyMarkerData = {
+      ...surveyMarker,
+      categoryId,
+      name: defaultName,
+      checklistResponses: {},
+      color: highlightColor
+    };
+    setSurveyMarkers(prev => ({
+      ...prev,
+      [surveyMarker.id]: surveyMarkerData
+    }));
+
+    // If an entity was pre-selected (mobile entity strip), mirror the desktop
+    // name-prompt save path: store it on the item's module-specific data too.
+    if (surveyMarkerData.entityId && moduleId) {
+      const moduleName = getModuleName(selectedTemplate, moduleId);
+      const dataKey = getModuleDataKey(moduleName);
+      const existingItem = Object.values(items).find(item =>
+        item.name === defaultName &&
+        item.itemType === categoryName
+      );
+      const entity = selectedTemplate.entities?.find(e => e.id === surveyMarkerData.entityId);
+      if (existingItem) {
+        if (entity) {
+          const moduleData = existingItem[dataKey] || {};
+          setItems(prev => ({
+            ...prev,
+            [existingItem.itemId]: {
+              ...existingItem,
+              [dataKey]: {
+                ...moduleData,
+                entityId: entity.id,
+                entityName: entity.name,
+                entityColor: entity.color
+              }
+            }
+          }));
+        }
+      } else {
+        const newItem = createItem(selectedTemplate, moduleId, categoryId, defaultName, 1);
+        if (entity) {
+          newItem[dataKey] = {
+            entityId: entity.id,
+            entityName: entity.name,
+            entityColor: entity.color
+          };
+        }
+        setItems(prev => ({
+          ...prev,
+          [newItem.itemId]: newItem
+        }));
+        const annotation = createAnnotation(surveyMarker.bounds, 'highlight', selectedTemplate, selectedSpaceId, newItem.itemId, categoryName);
+        if (entity) {
+          annotation.entityId = entity.id;
+          annotation.entityName = entity.name;
+          annotation.entityColor = entity.color;
+        }
+        setAnnotations(prev => ({
+          ...prev,
+          [annotation.annotationId]: annotation
+        }));
+      }
+    }
+
+    // Replace the pending page preview with the committed one (colored, or
+    // needs-Entity dashed) — same as the desktop save paths.
+    setNewSurveyMarkersByPage(prev => {
+      const pageSurveyMarkers = prev[surveyMarker.pageNumber] || [];
+      const filtered = pageSurveyMarkers.filter(h => h.annotationId !== surveyMarker.id);
+      return {
+        ...prev,
+        [surveyMarker.pageNumber]: [
+          ...filtered,
+          buildSurveyMarkerPreview(
+            surveyMarker,
+            (highlightColor ? { color: highlightColor } : { needsEntity: true })
+          )
+        ]
+      };
+    });
+
+    // Open the mobile sheet's detail view for the new Survey Marker
+    // (demo App.tsx:1155 — openSurvey(next.id) right after placement).
+    setExpandedCategories({ [categoryId]: true });
+    setExpandedSurveyMarkers({ [surveyMarker.id]: true });
+    setShowSurveyPanel(true);
+    requestRightRailExpand();
+  }, [selectedTemplate, selectedModuleId, surveyMarkers, items, selectedSpaceId, normalizeSurveyMarkerColor, buildSurveyMarkerPreview, requestRightRailExpand]);
+
   // Handle surveyMarker creation from annotation tool
   const handleSurveyMarkerCreated = useCallback((pageNumber, bounds) => {
     // Decision 10 (KAL-90): generate the marker id up-front so the pre-creation
@@ -25210,17 +25318,29 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       const entities = selectedTemplate?.entities || [];
 
       if (!hasEntity && entities.length > 0) {
-        // Prompt for Entity since it wasn't set in Excel
-        setPendingEntitySelection({
-          surveyMarker: {
-            id: annotationId,
-            pageNumber,
-            bounds,
-            moduleId: effectiveModuleId,
-            regionId: pageRegionId
-          },
-          categoryId: pendingLocationItem.categoryId
-        });
+        if (mobileMode) {
+          // UX: on mobile the entity is assigned in the Survey Marker detail
+          // sheet (which has the entity picker), never the desktop centered
+          // modal — open the detail view for the just-located marker instead
+          // (same sequence as commitMobileSurveyMarker; adversarial review
+          // defect 2, 2026-07-12).
+          setExpandedCategories({ [pendingLocationItem.categoryId]: true });
+          setExpandedSurveyMarkers({ [annotationId]: true });
+          setShowSurveyPanel(true);
+          requestRightRailExpand();
+        } else {
+          // Prompt for Entity since it wasn't set in Excel
+          setPendingEntitySelection({
+            surveyMarker: {
+              id: annotationId,
+              pageNumber,
+              bounds,
+              moduleId: effectiveModuleId,
+              regionId: pageRegionId
+            },
+            categoryId: pendingLocationItem.categoryId
+          });
+        }
       }
 
       setPendingLocationItem(null);
@@ -25280,7 +25400,23 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     if (selectedCategoryId) {
       // Check if template has Entities
       const entities = selectedTemplate?.entities || [];
-      if (mobileSelectedEntity) {
+      if (mobileMode) {
+        // UX (mobile demo parity): commit instantly with the default name and
+        // open the marker detail sheet (demo App.tsx:1155) — the desktop
+        // Entity/Name modal chain below stays desktop-only.
+        commitMobileSurveyMarker({
+          id: annotationId,
+          pageNumber,
+          bounds,
+          moduleId: effectiveModuleId,
+          regionId: pageRegionId,
+          ...(mobileSelectedEntity ? {
+            entityId: mobileSelectedEntity.id,
+            entityName: mobileSelectedEntity.name,
+            entityColor: mobileSelectedEntityColor,
+          } : {})
+        }, selectedCategoryId);
+      } else if (mobileSelectedEntity) {
         setPendingSurveyMarkerName({
           surveyMarker: {
             id: annotationId,
@@ -25325,6 +25461,11 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       if (!surveyKeepCategoryActive) {
         setSelectedCategoryId(null);
         setMobileSurveyEntityId(null);
+        // UX (mobile demo parity): with "Keep active" unchecked, the tool
+        // reverts to pan after each placement (demo App.tsx:1156-1161) so the
+        // next touch scrolls the page instead of drawing another Survey
+        // Marker. Desktop keeps the survey-marker tool armed (unchanged).
+        if (mobileMode) setActiveTool('pan');
       }
       setShowSurveyPanel(true);
     } else {
@@ -25344,7 +25485,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         });
       }
     }
-  }, [addHistoryCheckpoint, selectedModuleId, selectedTemplate, selectedCategoryId, surveyKeepCategoryActive, showSurveyPanel, pendingLocationItem, activeSpaceId, selectedSpaceId, getPageSurveyRegionId, buildSurveyMarkerPreview, mobileSurveyEntityId, normalizeSurveyMarkerColor, hexToRgba, DEFAULT_SURVEY_MARKER_OPACITY]);
+  }, [addHistoryCheckpoint, selectedModuleId, selectedTemplate, selectedCategoryId, surveyKeepCategoryActive, showSurveyPanel, pendingLocationItem, activeSpaceId, selectedSpaceId, getPageSurveyRegionId, buildSurveyMarkerPreview, mobileSurveyEntityId, normalizeSurveyMarkerColor, hexToRgba, DEFAULT_SURVEY_MARKER_OPACITY, mobileMode, commitMobileSurveyMarker, requestRightRailExpand]);
 
   // Auto-switch to surveyMarker tool when template is selected in survey mode (only on initial entry)
   useEffect(() => {
@@ -31399,7 +31540,9 @@ ${pageBlocks}
                       color: COLORS.modal.textPrimary,
                       fontFamily: FONT_FAMILY
                     }}>
-                      Categorize highlight
+                      {/* Vocabulary rule: the product term is "Survey Marker" —
+                          never bare "highlight"/"marker" in user-facing copy. */}
+                      Categorize Survey Marker
                     </h3>
                     <button
                       onClick={() => {
@@ -31441,7 +31584,7 @@ ${pageBlocks}
                   </div>
 
                   <p style={{ color: COLORS.modal.textMuted, fontSize: '14px', marginBottom: '20px' }}>
-                    Select a category for this highlighted item:
+                    Select a category for this Survey Marker:
                   </p>
 
                   {(() => {
@@ -31460,6 +31603,15 @@ ${pageBlocks}
                           <button
                             key={category.id}
                             onClick={() => {
+                              if (mobileMode) {
+                                // UX (mobile demo parity): once categorized on mobile,
+                                // commit with the default name and open the marker
+                                // detail sheet instead of chaining the desktop
+                                // Entity/Name modals (demo App.tsx:1155).
+                                commitMobileSurveyMarker(pendingSurveyMarker, category.id);
+                                setPendingSurveyMarker(null);
+                                return;
+                              }
                               // Check if template has Entities
                               const entities = selectedTemplate?.entities || [];
                               if (pendingSurveyMarker.entityId || pendingSurveyMarker.entityColor) {

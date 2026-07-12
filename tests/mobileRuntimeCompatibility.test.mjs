@@ -167,7 +167,9 @@ test('native mobile home remains viewport-contained with a solid full-width tab 
 test('mobile Survey and Spaces drawers follow their content', () => {
   assert.match(MOBILE_VIEWER_CHROME_SOURCE, /else \{\s*setOpenCategory\(null\)/);
   assert.match(SURVEY_RAIL_SOURCE, /mobile-survey-template-menu/);
-  assert.match(SURVEY_RAIL_SOURCE, /Tap category to place marker/);
+  // 2026-07-12 Phase C (vocabulary rule): the mobile hint spells out the full
+  // product term "Survey Marker" — never bare "marker".
+  assert.match(SURVEY_RAIL_SOURCE, /Tap category to place a Survey Marker/);
   assert.match(SPACES_PANEL_SOURCE, /Array\.isArray\(space\.assignedPages\)/);
   // 2026-07-12 Phase B (defect #4): the spaces sheet now follows MEASURED
   // panel content instead of predicted row heights — the metrics callback

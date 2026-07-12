@@ -1793,8 +1793,37 @@ const RegionSelectionTool = ({
     }
   }, [onCancel]);
 
+  // UX (mobile demo parity): on mobile, "Full Page" never raises a browser
+  // window.confirm() dialog. Instead it flips the mobile region strip into an
+  // inline "Make region full page?" Confirm/Cancel step, matching the demo's
+  // in-toolbar confirm flow (mobile-expo-go App.tsx:652-677 + 1644-1658,
+  // AnnotationFormattingBar.tsx:195-207). Desktop keeps window.confirm.
+  const [isFullPageConfirmPending, setIsFullPageConfirmPending] = useState(false);
+
+  const applyFullPage = useCallback(() => {
+    if (!onSetFullPage) return;
+    setIsFullPageConfirmPending(false);
+    onSetFullPage();
+    handleCancel();
+  }, [onSetFullPage, handleCancel]);
+
+  const cancelFullPageConfirm = useCallback(() => {
+    setIsFullPageConfirmPending(false);
+  }, []);
+
+  useEffect(() => {
+    if (!active) setIsFullPageConfirmPending(false);
+  }, [active]);
+
   const handleSetFullPage = useCallback(() => {
     if (!onSetFullPage) return;
+
+    if (mobileMode) {
+      // Demo parity: every Full Page press routes through the inline confirm
+      // step in the strip (the demo always confirms, not only when areas exist).
+      setIsFullPageConfirmPending(true);
+      return;
+    }
 
     // Warn user if they have existing selections that will be cleared
     if (regions.length > 0) {
@@ -1805,7 +1834,7 @@ const RegionSelectionTool = ({
 
     onSetFullPage();
     handleCancel();
-  }, [onSetFullPage, handleCancel, regions.length]);
+  }, [onSetFullPage, handleCancel, regions.length, mobileMode]);
 
   useEffect(() => {
     if (typeof onMobileToolbarApiChange !== 'function') return;
@@ -1822,6 +1851,10 @@ const RegionSelectionTool = ({
       confirm: handleConfirm,
       cancel: handleCancel,
       setFullPage: handleSetFullPage,
+      // Inline full-page confirm step (mobile only — see handleSetFullPage).
+      fullPageConfirmPending: isFullPageConfirmPending,
+      confirmFullPage: applyFullPage,
+      cancelFullPage: cancelFullPageConfirm,
     });
   }, [
     active,
@@ -1833,6 +1866,9 @@ const RegionSelectionTool = ({
     handleConfirm,
     handleCancel,
     handleSetFullPage,
+    isFullPageConfirmPending,
+    applyFullPage,
+    cancelFullPageConfirm,
   ]);
 
   useEffect(() => () => {
