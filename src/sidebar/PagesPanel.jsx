@@ -25,6 +25,7 @@ const PagesPanel = ({
   pageNum,
   onNavigateToPage,
   onDuplicatePage,
+  onInsertBlankPage,
   onDeletePage,
   onCutPage,
   onCopyPage,
@@ -41,12 +42,15 @@ const PagesPanel = ({
   activeSpacePages,
   scale,
   onPageDragStart,
-  tabId
+  tabId,
+  mobileMode = false,
 }) => {
   const [thumbnails, setThumbnails] = useState({});
   const [pageAspectRatios, setPageAspectRatios] = useState({});
   const [contextMenu, setContextMenu] = useState(null);
   const [selectedPage, setSelectedPage] = useState(pageNum);
+  const [mobileSelectMode, setMobileSelectMode] = useState(false);
+  const [mobileSelectedPages, setMobileSelectedPages] = useState(() => new Set());
   const [draggedPage, setDraggedPage] = useState(null);
   const [dragOverPage, setDragOverPage] = useState(null);
   const contextMenuRef = useRef(null);
@@ -584,19 +588,38 @@ const PagesPanel = ({
   const handleContextMenu = useCallback((e, pageNumber) => {
     e.preventDefault();
     e.stopPropagation();
+    const viewportWidth = typeof window !== 'undefined' ? window.innerWidth : 1000;
+    const viewportHeight = typeof window !== 'undefined' ? window.innerHeight : 800;
     setContextMenu({
       pageNumber,
-      x: e.clientX,
-      y: e.clientY
+      x: Math.max(8, Math.min(e.clientX, viewportWidth - 196)),
+      y: Math.max(8, Math.min(e.clientY, viewportHeight - 420))
     });
   }, []);
 
+  const movePageByOffset = useCallback((pageNumber, offset) => {
+    const index = allowedPages.indexOf(pageNumber);
+    const targetPage = allowedPages[index + offset];
+    if (index < 0 || !targetPage || !onReorderPages) return;
+    onReorderPages(pageNumber, targetPage);
+    setContextMenu(null);
+  }, [allowedPages, onReorderPages]);
+
   const handlePageClick = useCallback((pageNumber) => {
+    if (mobileMode && mobileSelectMode) {
+      setMobileSelectedPages((current) => {
+        const next = new Set(current);
+        if (next.has(pageNumber)) next.delete(pageNumber);
+        else next.add(pageNumber);
+        return next;
+      });
+      return;
+    }
     setSelectedPage(pageNumber);
     if (onNavigateToPage) {
       onNavigateToPage(pageNumber);
     }
-  }, [onNavigateToPage]);
+  }, [mobileMode, mobileSelectMode, onNavigateToPage]);
 
   const handlePageDoubleClick = useCallback((pageNumber) => {
     if (onNavigateToPage) {
@@ -736,16 +759,23 @@ const PagesPanel = ({
   }, []);
 
   return (
-    <div style={{
+    <div className={mobileMode ? 'mobile-pages-panel' : undefined} style={{
       display: 'flex',
       flexDirection: 'column',
       height: '100%',
       fontFamily: FONT_FAMILY,
       background: '#12151c'
     }}>
+      {mobileMode && (
+        <div className="mobile-pages-counter">
+          <span>{pageNum}</span>
+          <strong>/ {numPages} pages</strong>
+        </div>
+      )}
       {/* Thumbnail List */}
       <div
         ref={containerRef}
+        className={mobileMode ? 'mobile-pages-track' : undefined}
         style={{
           flex: 1,
           overflowY: 'auto',
@@ -757,6 +787,7 @@ const PagesPanel = ({
       >
         {allowedPages.map(pageNumber => {
           const isSelected = pageNumber === selectedPage;
+          const isMobileSelected = mobileSelectedPages.has(pageNumber);
           const thumbnailMeta = thumbnails[pageNumber];
           const thumbnailSrc = typeof thumbnailMeta === 'string' ? thumbnailMeta : thumbnailMeta?.src;
           const rawRatio = pageAspectRatios[pageNumber] || 129;
@@ -782,9 +813,10 @@ const PagesPanel = ({
           return (
             <div
               key={pageNumber}
+              className={mobileMode ? `mobile-page-card${isSelected ? ' is-active' : ''}${isMobileSelected ? ' is-selected' : ''}` : undefined}
               ref={el => { thumbnailRefs.current[pageNumber] = el; }}
               data-page-number={pageNumber}
-              draggable={true}
+              draggable={!mobileMode}
               onDragStart={(e) => {
                 handleDragStart(e, pageNumber);
                 if (onPageDragStart && tabId) {
@@ -800,15 +832,20 @@ const PagesPanel = ({
               onDoubleClick={() => handlePageDoubleClick(pageNumber)}
               style={{
                 position: 'relative',
-                padding: '4px',
+                padding: mobileMode ? '8px' : '4px',
+                flex: mobileMode ? '0 0 130px' : undefined,
+                width: mobileMode ? '130px' : undefined,
+                height: mobileMode ? '146px' : undefined,
+                boxSizing: 'border-box',
                 background: isSelected ? '#2a3140' : (dragOverPage === pageNumber ? '#2b4a5a' : 'transparent'),
                 border: isSelected ? '1px solid #d8a84e' : (dragOverPage === pageNumber ? '1px solid #d8a84e' : '1px solid transparent'),
                 borderRadius: '4px',
-                cursor: draggedPage === pageNumber ? 'grabbing' : 'grab',
+                cursor: mobileMode ? 'pointer' : (draggedPage === pageNumber ? 'grabbing' : 'grab'),
+                touchAction: mobileMode ? 'pan-x' : undefined,
                 opacity: draggedPage === pageNumber ? 0.82 : 1,
                 zIndex: draggedPage === pageNumber ? 1 : 'auto',
                 transition: draggedPage === pageNumber ? 'none' : 'background 0.15s ease, border-color 0.15s ease, opacity 0.15s ease',
-                contentVisibility: 'auto',
+                contentVisibility: mobileMode ? 'visible' : 'auto',
                 containIntrinsicSize: `0 ${estimatedRowHeight}px`
               }}
               onMouseEnter={(e) => {
@@ -844,8 +881,40 @@ const PagesPanel = ({
                 {pageNumber}
               </div>
 
+              {mobileMode && (
+                <button
+                  type="button"
+                  aria-label={`Page ${pageNumber} actions`}
+                  title={`Page ${pageNumber} actions`}
+                  onClick={(event) => handleContextMenu(event, pageNumber)}
+                  style={{
+                    position: 'absolute',
+                    right: 6,
+                    bottom: 6,
+                    width: 30,
+                    height: 30,
+                    padding: 0,
+                    display: 'grid',
+                    placeItems: 'center',
+                    color: '#e8e2d4',
+                    background: 'rgba(18,21,28,0.84)',
+                    border: '1px solid #3a4252',
+                    borderRadius: 6,
+                    zIndex: 2,
+                  }}
+                >
+                  <Icon name="more" size={16} color="currentColor" />
+                </button>
+              )}
+
+              {mobileMode && mobileSelectMode && (
+                <span className={`mobile-page-select-indicator${isMobileSelected ? ' is-selected' : ''}`} aria-hidden="true">
+                  {isMobileSelected ? <Icon name="check" size={13} color="currentColor" /> : null}
+                </span>
+              )}
+
               {/* Thumbnail */}
-              <div style={{
+              <div className={mobileMode ? 'mobile-page-preview' : undefined} style={{
                 position: 'relative',
                 width: '100%',
                 paddingBottom: `${displayRatio}%`,
@@ -897,6 +966,42 @@ const PagesPanel = ({
         )}
       </div>
 
+      {mobileMode && (
+        <div className="mobile-pages-actions" role="toolbar" aria-label="Page actions">
+          <button
+            type="button"
+            onClick={() => onInsertBlankPage?.(pageNum)}
+            disabled={!onInsertBlankPage}
+          >
+            <Icon name="plus" size={16} color="currentColor" />
+            <span>Add</span>
+          </button>
+          <i />
+          <button
+            type="button"
+            onClick={() => handlePaste(pageNum)}
+            disabled={!clipboardPage}
+          >
+            <Icon name="copy" size={15} color="currentColor" />
+            <span>Paste</span>
+          </button>
+          <i />
+          <button
+            type="button"
+            aria-pressed={mobileSelectMode}
+            onClick={() => {
+              setMobileSelectMode((active) => {
+                if (active) setMobileSelectedPages(new Set());
+                return !active;
+              });
+            }}
+          >
+            <Icon name="check" size={16} color="currentColor" />
+            <span>{mobileSelectMode ? 'Done' : 'Select'}</span>
+          </button>
+        </div>
+      )}
+
       {/* Context Menu */}
       {contextMenu && (
         <div
@@ -911,10 +1016,35 @@ const PagesPanel = ({
             padding: '4px',
             zIndex: 10000,
             minWidth: '180px',
+            maxHeight: 'calc(100dvh - 16px)',
+            overflowY: 'auto',
             boxShadow: '0 4px 12px rgba(0, 0, 0, 0.3)',
             fontFamily: FONT_FAMILY
           }}
         >
+          {mobileMode && (
+            <>
+              <button
+                type="button"
+                disabled={allowedPages.indexOf(contextMenu.pageNumber) <= 0}
+                onClick={() => movePageByOffset(contextMenu.pageNumber, -1)}
+                style={{ width: '100%', padding: '8px 12px', background: 'transparent', border: 0, borderRadius: 4, color: '#e8e2d4', display: 'flex', alignItems: 'center', gap: 8, textAlign: 'left', opacity: allowedPages.indexOf(contextMenu.pageNumber) <= 0 ? 0.4 : 1 }}
+              >
+                <Icon name="chevronUp" size={14} color="currentColor" />
+                Move up
+              </button>
+              <button
+                type="button"
+                disabled={allowedPages.indexOf(contextMenu.pageNumber) >= allowedPages.length - 1}
+                onClick={() => movePageByOffset(contextMenu.pageNumber, 1)}
+                style={{ width: '100%', padding: '8px 12px', background: 'transparent', border: 0, borderRadius: 4, color: '#e8e2d4', display: 'flex', alignItems: 'center', gap: 8, textAlign: 'left', opacity: allowedPages.indexOf(contextMenu.pageNumber) >= allowedPages.length - 1 ? 0.4 : 1 }}
+              >
+                <Icon name="chevronDown" size={14} color="currentColor" />
+                Move down
+              </button>
+              <div style={{ height: 1, margin: '3px 5px', background: '#3a4252' }} />
+            </>
+          )}
           <button
             onClick={() => handleCut(contextMenu.pageNumber)}
             style={{

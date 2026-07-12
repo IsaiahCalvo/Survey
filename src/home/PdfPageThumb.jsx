@@ -19,6 +19,7 @@
    node is rendered instead — the existing stylised placeholder. */
 import { useState, useEffect } from 'react';
 import { loadPdfjs } from '../utils/pdfWorkerConfig';
+import { readBlobAsArrayBuffer } from '../utils/blobArrayBuffer';
 
 /* Rendered thumbnails cached by document id for the lifetime of the page, so
    each PDF is rendered at most once (no re-render on search keystrokes or
@@ -46,8 +47,8 @@ const resolvePdfBytes = async (doc, downloadDocument) => {
   if (!doc) return null;
 
   // 1. A local File object (present right after an upload).
-  if (doc.file && typeof doc.file.arrayBuffer === 'function') {
-    return doc.file.arrayBuffer();
+  if (doc.file) {
+    return readBlobAsArrayBuffer(doc.file);
   }
 
   // 2. An inline data URL.
@@ -64,7 +65,7 @@ const resolvePdfBytes = async (doc, downloadDocument) => {
       || filePath.startsWith('/') || filePath.includes(':');
     if (!looksLocal && downloadDocument) {
       const blob = await downloadDocument(filePath);
-      return await blob.arrayBuffer();
+      return await readBlobAsArrayBuffer(blob);
     }
   }
 

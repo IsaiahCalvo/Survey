@@ -58,7 +58,7 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
   getRegionOverlayEnabled = null,
   isRegionOverlayToggleEnabled = null,
   showSurveyPanel = false,
-  selectedModuleId = null
+  selectedModuleId = null,
 }) {
   const [editingRegionId, setEditingRegionId] = useState(null);
   const [editingRegionValue, setEditingRegionValue] = useState('');
@@ -755,7 +755,9 @@ const SpacesPanel = ({
   getRegionOverlayEnabled = null,
   isRegionOverlayToggleEnabled = null,
   showSurveyPanel = false,
-  selectedModuleId = null
+  selectedModuleId = null,
+  mobileMode = false,
+  onMobilePanelMetricsChange = null,
 }) => {
   const [expandedSpaces, setExpandedSpaces] = useState(() => new Set());
   const [selectedSpaceId, setSelectedSpaceId] = useState(null);
@@ -788,6 +790,17 @@ const SpacesPanel = ({
   const previousSpaceIdsRef = useRef(new Set(spaces.map(space => space.id)));
   const spacesReorderDebugSessionRef = useRef(null);
   const spacesReorderMoveCountRef = useRef(0);
+
+  React.useEffect(() => {
+    if (!mobileMode || typeof onMobilePanelMetricsChange !== 'function') return;
+    const expandedPageRows = spaces.reduce((sum, space) => {
+      const pageCount = Array.isArray(space.assignedPages)
+        ? space.assignedPages.length
+        : (Array.isArray(space.pages) ? space.pages.length : 0);
+      return sum + (expandedSpaces.has(space.id) ? Math.max(1, pageCount) : 0);
+    }, 0);
+    onMobilePanelMetricsChange({ expandedPageRows });
+  }, [expandedSpaces, mobileMode, onMobilePanelMetricsChange, spaces]);
   const spacesDropFrameCaptureRef = useRef(null);
   const spacesExportAnchorRef = useRef(null);
 
@@ -1235,12 +1248,14 @@ const SpacesPanel = ({
     <div style={{
       display: 'flex',
       flexDirection: 'column',
-      height: '100%',
+      height: mobileMode ? 'auto' : '100%',
+      flex: mobileMode ? 1 : undefined,
+      minHeight: 0,
       fontFamily: FONT_FAMILY,
-      background: '#12151c'
+      background: mobileMode ? '#24272d' : '#12151c'
     }}>
       {/* Header */}
-      <div style={{
+      <div className={mobileMode ? 'mobile-spaces-header' : undefined} style={{
         padding: '12px',
         height: '50px',
         boxSizing: 'border-box',
@@ -1251,15 +1266,20 @@ const SpacesPanel = ({
         justifyContent: 'space-between',
         flexShrink: 0
       }}>
-        <h3 style={{
-          margin: 0,
-          fontSize: '13px',
-          fontWeight: '600',
-          color: '#e8e2d4',
-          lineHeight: 1
-        }}>
-          Spaces
-        </h3>
+        <div className={mobileMode ? 'mobile-spaces-title' : undefined}>
+          <h3 style={{
+            margin: 0,
+            fontSize: '13px',
+            fontWeight: '600',
+            color: '#e8e2d4',
+            lineHeight: 1
+          }}>
+            Spaces
+          </h3>
+          {mobileMode ? (
+            <span>{isRegionSelectionActive ? 'Region active' : (activeSpaceId || selectedSpaceId) ? 'Space active' : 'No space active'}</span>
+          ) : null}
+        </div>
 
         <div className="spaces-header-actions">
           <button

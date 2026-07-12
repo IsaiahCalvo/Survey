@@ -156,6 +156,16 @@ export default function HubPreview() {
   const longDocsFixture = params.get('longDocs') === '1';
   const [documents, setDocuments] = useState(emptyFixture ? [] : (longDocsFixture ? makeLongDocumentFixture() : INITIAL_DOCUMENTS));
   const initialTab = params.get('tab');
+  const initialMobileDetailOpen = params.get('mobileState') === 'detail';
+
+  const handleOpenDocument = (document, returnTab = 'documents') => {
+    const viewerParams = new URLSearchParams({
+      testPdf: 'Package 2 - Rev 4 -- IC.pdf',
+      previewName: document?.name || 'Document.pdf',
+      returnTab,
+    });
+    window.location.assign(`/?${viewerParams.toString()}`);
+  };
 
   const handleDuplicate = (docs) => {
     const copies = docs.map((d) => ({ ...d, id: newId(), name: copyName(d.name), updated_at: new Date().toISOString() }));
@@ -189,7 +199,8 @@ export default function HubPreview() {
             user={{ name: 'Isaiah Calvo', email: 'isaiahcalvo123@gmail.com' }}
             isPro
             initialTab={initialTab}
-            onOpenDocument={(d) => console.log('[hub preview] open document:', d.name)}
+            initialMobileDetailOpen={initialMobileDetailOpen}
+            onOpenDocument={handleOpenDocument}
             onUpload={() => console.log('[hub preview] upload')}
             onCreateProject={() => console.log('[hub preview] new project')}
             onCreateTemplate={() => console.log('[hub preview] new template')}

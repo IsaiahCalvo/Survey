@@ -24,6 +24,7 @@ import { purgeAnnotationDoc } from './services/annotationDocSync';
 import { lockDocument, unlockDocument } from './services/documentLockService.js';
 import { perfUpload } from './utils/performanceLogger';
 import { showToast } from './utils/toast';
+import { readBlobAsArrayBuffer } from './utils/blobArrayBuffer.js';
 
 // --- helpers (shared small utilities; FONT_FAMILY/hexToRgba/normalizeName/
 //     hasNameConflict also live in App.jsx for the viewer) ---
@@ -528,7 +529,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
             perfUpload.mark(file.name, 'Starting cloud upload');
             const uploadPromise = uploadToStorage(file, projectId || 'general', undefined, contentSha);
             const pageCountPromise = (async () => {
-              const arrayBuffer = await file.arrayBuffer();
+              const arrayBuffer = await readBlobAsArrayBuffer(file);
               perfUpload.mark(file.name, 'ArrayBuffer ready for page count');
               const pdfjsLib = await loadPdfjs();
               let pdfDoc;
@@ -631,7 +632,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
       // fresh upload) and identical bytes dedup to one document.
       let contentSha;
       try {
-        const bytes = new Uint8Array(await file.arrayBuffer());
+        const bytes = new Uint8Array(await readBlobAsArrayBuffer(file));
         contentSha = await computeContentSha256(bytes);
       } catch (hashErr) {
         console.error('Content hashing failed:', hashErr);
@@ -687,7 +688,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
           const uploadPromise = uploadToStorage(file, projectId || 'general', undefined, contentSha);
           const pageCountPromise = (async () => {
             try {
-              const arrayBuffer = await file.arrayBuffer();
+              const arrayBuffer = await readBlobAsArrayBuffer(file);
               const pdfjsLib = await loadPdfjs();
               let pdfDoc;
               try {
@@ -827,7 +828,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
         const uploadPromise = uploadToStorage(file, newProject.id);
         const pageCountPromise = (async () => {
           try {
-            const arrayBuffer = await file.arrayBuffer();
+            const arrayBuffer = await readBlobAsArrayBuffer(file);
             const pdfjsLib = await loadPdfjs();
             let pdfDoc;
             try {

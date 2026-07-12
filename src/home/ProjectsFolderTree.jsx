@@ -155,6 +155,7 @@ export default function ProjectsFolderTree({
   members = [],
   user = null,
   templatesLocked = false,
+  initialMobileOpen = false,
   onNav,
   onOpenDocument,
   onCreateProject,
@@ -166,6 +167,7 @@ export default function ProjectsFolderTree({
   onShareDocument,
 }) {
   const [search, setSearch] = useState('');
+  const [fileSearch, setFileSearch] = useState('');
 
   // Local, mutable copy of the project list. Seeded from the `projects` prop
   // and re-synced when the prop changes; New Project / Duplicate / Delete /
@@ -180,6 +182,11 @@ export default function ProjectsFolderTree({
   useEffect(() => { setLocalDocs(documents); }, [documents]);
 
   const [openId, setOpenId] = useState(projects[0]?.id ?? null);
+  const [mobileProjectLayout, setMobileProjectLayout] = useState('drill');
+  const [mobileDrillOpenId, setMobileDrillOpenId] = useState(() => (
+    initialMobileOpen ? (projects[0]?.id ?? null) : null
+  ));
+  const [mobileRailOpen, setMobileRailOpen] = useState(false);
   const [jobsEdit, setJobsEdit] = useState(false);
   const [selProj, setSelProj] = useState(() => new Set());
   const [fileSelect, setFileSelect] = useState(false);
@@ -257,10 +264,51 @@ export default function ProjectsFolderTree({
     if (filtered.length && !filtered.some((p) => p.id === openId)) setOpenId(filtered[0].id);
   }, [filtered, openId]);
 
+  useEffect(() => {
+    if (mobileDrillOpenId && !filtered.some((p) => p.id === mobileDrillOpenId)) {
+      setMobileDrillOpenId(null);
+    }
+  }, [filtered, mobileDrillOpenId]);
+
   const open = filtered.find((p) => p.id === openId) || filtered[0] || null;
   const openFiles = useMemo(
     () => (open ? localDocs.filter((d) => d.project_id === open.id) : []),
     [localDocs, open],
+  );
+  const mobileDrillProject = mobileDrillOpenId
+    ? filtered.find((p) => p.id === mobileDrillOpenId) || null
+    : null;
+  const mobileDrillAllFiles = useMemo(
+    () => (mobileDrillProject ? localDocs.filter((d) => d.project_id === mobileDrillProject.id) : []),
+    [localDocs, mobileDrillProject],
+  );
+  const mobileDrillFiles = useMemo(() => {
+    const q = fileSearch.trim().toLowerCase();
+    if (!q) return mobileDrillAllFiles;
+    return mobileDrillAllFiles.filter((d) => (d.name || '').toLowerCase().includes(q));
+  }, [mobileDrillAllFiles, fileSearch]);
+  const recentFiles = useMemo(
+    () => [...localDocs].sort((a, b) => editedMs(b) - editedMs(a)).slice(0, 6),
+    [localDocs],
+  );
+  const projectFileCount = useCallback(
+    (projectId) => localDocs.filter((d) => d.project_id === projectId).length,
+    [localDocs],
+  );
+  const projectLastEditedLabel = useCallback((projectId) => {
+    const ms = localDocs
+      .filter((d) => d.project_id === projectId)
+      .reduce((max, d) => Math.max(max, editedMs(d)), 0);
+    return ms ? shortWhen({ updated_at: new Date(ms).toISOString() }) : 'No files';
+  }, [localDocs]);
+  const projectById = useMemo(() => {
+    const map = new Map();
+    localProjects.forEach((p) => { if (p?.id != null) map.set(p.id, p); });
+    return map;
+  }, [localProjects]);
+  const projectNameForFile = useCallback(
+    (file) => projectById.get(file?.project_id)?.name || 'No project',
+    [projectById],
   );
 
   // Real collaborators — one bulk query against `project_collaborators`
@@ -350,7 +398,10 @@ export default function ProjectsFolderTree({
   const projectTeam = useCallback((proj) => {
     if (!proj) return [];
     const projMembers = Array.isArray(proj.members) ? proj.members : [];
-    const ownerId = proj.user_id ?? projMembers[0] ?? user?.id ?? null;
+    const rawOwnerId = proj.user_id ?? null;
+    const ownerId = rawOwnerId != null && memberById.has(rawOwnerId)
+      ? rawOwnerId
+      : (projMembers[0] ?? user?.id ?? rawOwnerId ?? null);
     const ids = [];
     if (ownerId != null) ids.push(ownerId);
     (collabByProject.get(proj.id) || []).forEach((r) => {
@@ -358,7 +409,7 @@ export default function ProjectsFolderTree({
     });
     projMembers.forEach((id) => { if (id != null && !ids.includes(id)) ids.push(id); });
     return ids;
-  }, [user?.id, collabByProject]);
+  }, [user?.id, memberById, collabByProject]);
 
   // Seed member records for the Manage Team modal — owner first, resolved
   // against the directory. The modal fetches its own live collaborator +
@@ -567,10 +618,184 @@ export default function ProjectsFolderTree({
 
   /* ---- Render ---------------------------------------------------------- */
 
-  const subtitle = (
-    <span><b>{filtered.length}</b> projects · expand any to see its files and team</span>
+  const actions = (
+    <>
+      <div className={`projects-mobile-search-actions ${mobileDrillProject ? 'with-back' : 'with-create'}`}>
+        {mobileDrillProject ? (
+          <button
+            type="button"
+            className="projects-mobile-back-button"
+            onClick={() => {
+              setMobileDrillOpenId(null);
+              setFileMenu(null);
+              setFileSelect(false);
+              setFileSearch('');
+              setSelFiles(new Set());
+            }}
+          >
+            <span className="projects-mobile-back-icon"><Icon name="arrow-r" size={13} /></span>Projects
+          </button>
+        ) : null}
+        <Search
+          placeholder={mobileDrillProject ? 'Search files...' : 'Search projects...'}
+          width="100%"
+          value={mobileDrillProject ? fileSearch : search}
+          onChange={mobileDrillProject ? setFileSearch : setSearch}
+        />
+        {!mobileDrillProject ? (
+          <button className="btn primary projects-mobile-create-button" onClick={handleNewProject}>
+            <Icon name="plus" size={12} />New project
+          </button>
+        ) : null}
+      </div>
+      <div className="projects-desktop-search">
+        <Search placeholder="Search projects..." value={search} onChange={setSearch} />
+      </div>
+    </>
   );
-  const actions = <Search placeholder="Search projects..." value={search} onChange={setSearch} />;
+  const mobileProjectActions = (
+    <div className="projects-mobile-select-row mobile-header-select-row">
+      <button
+        className="mobile-header-select-button"
+        onClick={() => { const next = !jobsEdit; setJobsEdit(next); if (!next) setSelProj(new Set()); }}
+      >
+        {jobsEdit ? 'Done' : 'Select'}
+      </button>
+      {jobsEdit && (() => {
+        const allSel = selCount === filtered.length && filtered.length > 0;
+        return (
+          <span className="documents-select-actions projects-mobile-select-actions mobile-header-select-actions">
+            <button
+              onClick={() => setSelProj(allSel ? new Set() : new Set(filtered.map((p) => p.id)))}
+              style={{ ...miniButtonStyle(), color: 'var(--bone-100)' }}
+            >{allSel ? 'None' : 'All'}</button>
+            <button
+              disabled={!selCount}
+              onClick={() => { duplicateProjects([...selProj]); setSelProj(new Set()); }}
+              style={miniButtonStyle({ disabled: !selCount })}
+            >Duplicate</button>
+            <button
+              disabled={!selCount}
+              onClick={() => { const first = filtered.find((p) => selProj.has(p.id)); if (first) onShare && onShare(first); }}
+              style={miniButtonStyle({ disabled: !selCount, iconOnly: true })}
+              title="Share"
+            ><Icon name="share" size={12} /></button>
+            <button
+              disabled={!selCount}
+              onClick={() => { void deleteProjects([...selProj]); }}
+              style={miniButtonStyle({ disabled: !selCount, danger: true, iconOnly: true })}
+              title="Delete"
+            ><Icon name="trash" size={12} /></button>
+          </span>
+        );
+      })()}
+    </div>
+  );
+  const mobileFileSelectRow = mobileDrillProject ? (
+    <div className="projects-mobile-select-row mobile-header-select-row">
+      <button
+        className="mobile-header-select-button"
+        onClick={() => { const next = !fileSelect; setFileSelect(next); if (!next) setSelFiles(new Set()); }}
+      >
+        {fileSelect ? 'Done' : 'Select'}
+      </button>
+      {fileSelect && (() => {
+        const selectedFiles = mobileDrillFiles.filter((f) => selFiles.has(f.id));
+        const c = selectedFiles.length;
+        const allSel = c === mobileDrillFiles.length && mobileDrillFiles.length > 0;
+        return (
+          <span className="documents-select-actions projects-mobile-select-actions mobile-header-select-actions">
+            <button
+              onClick={() => setSelFiles(allSel ? new Set() : new Set(mobileDrillFiles.map((f) => f.id)))}
+              style={{ ...miniButtonStyle(), color: 'var(--bone-100)' }}
+            >{allSel ? 'None' : 'All'}</button>
+            <button
+              disabled={!c}
+              onClick={() => { duplicateFiles(selectedFiles.map((f) => f.id)); setSelFiles(new Set()); }}
+              style={miniButtonStyle({ disabled: !c })}
+            >Duplicate</button>
+            <button
+              disabled={!c}
+              onClick={() => {
+                if (!c) return;
+                setMoveIds(selectedFiles.map((f) => f.id));
+                setMoveOpen(true);
+              }}
+              style={miniButtonStyle({ disabled: !c })}
+            >Move/Copy</button>
+            <button
+              disabled={!c}
+              onClick={() => onShare && onShare(mobileDrillProject)}
+              style={miniButtonStyle({ disabled: !c, iconOnly: true })}
+              title="Share"
+            ><Icon name="share" size={12} /></button>
+            <button
+              disabled={!c}
+              onClick={() => deleteFiles(selectedFiles.map((f) => f.id))}
+              style={miniButtonStyle({ disabled: !c, danger: true, iconOnly: true })}
+              title="Delete"
+            ><Icon name="trash" size={12} /></button>
+          </span>
+        );
+      })()}
+    </div>
+  ) : null;
+  const mobileFileActions = open ? (
+    <div className="projects-mobile-action-row two">
+      <button className="btn" onClick={() => addFiles(open)}><Icon name="upload" size={12} />Add files</button>
+      <button className="btn" onClick={() => setTeamModalProject(open)}><Icon name="users" size={12} />Team</button>
+    </div>
+  ) : null;
+  const mobileHeaderSelectRow = mobileDrillProject ? mobileFileSelectRow : mobileProjectActions;
+  const subtitle = (
+    <>
+      <span className="projects-desktop-summary"><b>{filtered.length}</b> projects · expand any to see its files and team</span>
+      <span className="projects-mobile-summary" style={{ display: 'inline-flex', alignItems: 'baseline', gap: 10 }}>
+        <span className="projects-mobile-count">
+          <b>{mobileDrillProject ? mobileDrillFiles.length : filtered.length}</b> {mobileDrillProject ? 'files' : 'projects'}
+        </span>
+        {mobileHeaderSelectRow}
+      </span>
+    </>
+  );
+  const renderMobileFileRow = (f, keyPrefix = 'mobile-file', dragHandle = null) => {
+    const isChecked = selFiles.has(f.id);
+    const ownerId = f.user_id ?? f.owner ?? projectTeam(projectById.get(f.project_id))[0] ?? null;
+    const owner = lookupMember(ownerId);
+    return (
+      <div
+        key={`${keyPrefix}-${f.id}`}
+        className={`projects-mobile-file-row ${dragHandle ? 'reorderable' : ''}`}
+        onClick={() => { if (fileSelect) { toggleFileSel(f.id); return; } onOpenDocument && onOpenDocument(f); }}
+      >
+        {dragHandle}
+        <span className="projects-mobile-file-icon"><Icon name="doc" size={15} /></span>
+        <div className="projects-mobile-file-copy">
+          <div>{f.name}</div>
+          <span>{[projectNameForFile(f), owner?.name?.split(' ')[0], shortWhen(f)].filter(Boolean).join(' · ')}</span>
+        </div>
+        {fileSelect ? (
+          <span
+            onClick={(e) => { e.stopPropagation(); toggleFileSel(f.id); }}
+            className={`projects-mobile-check ${isChecked ? 'checked' : ''}`}
+          >
+            {isChecked ? '✓' : ''}
+          </span>
+        ) : (
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              const rect = e.currentTarget.getBoundingClientRect();
+              setTeamMenu(null);
+              setFileMenu((cur) => (cur && cur.id === f.id ? null : { id: f.id, rect }));
+            }}
+            style={moreButtonStyle()}
+            title="More"
+          ><Icon name="more" size={14} /></button>
+        )}
+      </div>
+    );
+  };
 
   return (
     <HubShell
@@ -971,13 +1196,6 @@ export default function ProjectsFolderTree({
         </div>
       </div>
       <div className="projects-mobile-layout slim-scroll">
-        <button
-          className="btn primary"
-          style={{ justifyContent: 'center', width: '100%' }}
-          onClick={handleNewProject}
-        >
-          <Icon name="plus" size={12} />New project
-        </button>
         {filtered.length === 0 && (
           localProjects.length === 0 ? (
             <EmptyState icon="folder" line="No projects yet" actionLabel="New project" onAction={handleNewProject} />
@@ -985,7 +1203,357 @@ export default function ProjectsFolderTree({
             <div className="meta" style={{ fontSize: 12, padding: '14px 4px' }}>No projects match your search.</div>
           )
         )}
-        {filtered.map((p) => {
+        {mobileProjectLayout === 'drill' && filtered.length > 0 && (
+          <div className="projects-mobile-browser projects-mobile-drill-view">
+            {mobileDrillProject ? (
+              <>
+                <div className="projects-mobile-drill-header project-tools">
+                  <div>
+                    <input
+                      key={`mobile-project-name-${mobileDrillProject.id}`}
+                      className="projects-mobile-title-input"
+                      defaultValue={mobileDrillProject.name}
+                      title="Tap to rename"
+                      onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }}
+                      onBlur={(e) => {
+                        const name = e.currentTarget.value.trim();
+                        if (name && name !== mobileDrillProject.name) renameProject(mobileDrillProject.id, name);
+                        else e.currentTarget.value = mobileDrillProject.name;
+                      }}
+                    />
+                    <span>{mobileDrillAllFiles.length} files · {projectLastEditedLabel(mobileDrillProject.id)}</span>
+                  </div>
+                  <button className="btn" onClick={() => addFiles(mobileDrillProject)}><Icon name="upload" size={12} />Add files</button>
+                  <button className="btn" onClick={() => setTeamModalProject(mobileDrillProject)}><Icon name="users" size={12} />Team</button>
+                </div>
+                <div className="projects-mobile-file-list">
+                  {mobileDrillFiles.length === 0 ? (
+                    <div className="projects-mobile-empty-card">
+                      <Icon name="doc" size={18} />
+                      <span>{mobileDrillAllFiles.length === 0 ? 'No files in this project yet.' : 'No files match your search.'}</span>
+                      {mobileDrillAllFiles.length === 0 ? (
+                        <button type="button" onClick={() => addFiles(mobileDrillProject)}>Add files</button>
+                      ) : null}
+                    </div>
+                  ) : (
+                    <SortableRearrangeList ids={mobileDrillFiles.map((f) => f.id)} onReorder={reorderFiles}>
+                      {mobileDrillFiles.map((f) => (
+                        <SortableRearrangeRow key={`drill-file-${f.id}`} id={f.id}>
+                          {({ attributes, listeners, isDragging }) => renderMobileFileRow(
+                            f,
+                            'drill-file',
+                            <DragRearrangeHandle
+                              {...attributes}
+                              {...listeners}
+                              isDragging={isDragging}
+                              style={{ width: 24, height: 24 }}
+                            />,
+                          )}
+                        </SortableRearrangeRow>
+                      ))}
+                    </SortableRearrangeList>
+                  )}
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="projects-mobile-browser-label">Project folders</div>
+                <SortableRearrangeList ids={filtered.map((p) => p.id)} onReorder={reorderProjects}>
+                  {filtered.map((p) => {
+                    const isSel = selProj.has(p.id);
+                    const isPinned = pinnedIds.has(p.id);
+                    return (
+                      <SortableRearrangeRow key={`drill-folder-${p.id}`} id={p.id}>
+                        {({ attributes, listeners, isDragging }) => (
+                          <div
+                            data-drag-rearrange-row
+                            role="button"
+                            tabIndex={0}
+                            className="projects-mobile-folder-row drill reorderable"
+                            onClick={() => {
+                              if (jobsEdit) {
+                                toggleProjSel(p.id);
+                                return;
+                              }
+                              setOpenId(p.id);
+                              setMobileDrillOpenId(p.id);
+                              setFileSearch('');
+                              setFileSelect(false);
+                              setSelFiles(new Set());
+                            }}
+                            onKeyDown={(e) => {
+                              if (e.key !== 'Enter' && e.key !== ' ') return;
+                              e.preventDefault();
+                              e.currentTarget.click();
+                            }}
+                          >
+                            {isPinned ? (
+                              <span title="Pinned" className="projects-mobile-drag-slot">
+                                <PinIcon size={12} color="var(--gold)" />
+                              </span>
+                            ) : (
+                              <DragRearrangeHandle
+                                {...attributes}
+                                {...listeners}
+                                isDragging={isDragging}
+                                style={{ width: 24, height: 24 }}
+                              />
+                            )}
+                            <span className="projects-mobile-folder-glyph"><Icon name="folder" size={17} /></span>
+                            <span className="projects-mobile-folder-copy">
+                              <strong>{p.name}</strong>
+                              <small>{projectFileCount(p.id)} files · {projectLastEditedLabel(p.id)}</small>
+                            </span>
+                            {jobsEdit ? (
+                              <span className={`projects-mobile-check ${isSel ? 'checked' : ''}`}>{isSel ? '✓' : ''}</span>
+                            ) : (
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  const rect = e.currentTarget.getBoundingClientRect();
+                                  setFileMenu(null);
+                                  setTeamMenu((cur) => (cur && cur.id === p.id ? null : { id: p.id, rect }));
+                                }}
+                                style={moreButtonStyle()}
+                                title="More"
+                              ><Icon name="more" size={14} /></button>
+                            )}
+                          </div>
+                        )}
+                      </SortableRearrangeRow>
+                    );
+                  })}
+                </SortableRearrangeList>
+              </>
+            )}
+          </div>
+        )}
+
+        {mobileProjectLayout === 'rail' && filtered.length > 0 && open && (
+          <div className="projects-mobile-browser projects-mobile-rail-view">
+            <div className="projects-mobile-rail-toolbar">
+              <button type="button" onClick={() => setMobileRailOpen(true)}>
+                <Icon name="folder" size={14} />Projects
+              </button>
+              <div>
+                <strong>{open.name}</strong>
+                <span>{openFiles.length} files · {projectLastEditedLabel(open.id)}</span>
+              </div>
+            </div>
+            {mobileFileActions}
+            <div className="projects-mobile-file-list">
+              {openFiles.length === 0 ? (
+                <div className="meta" style={{ fontSize: 12, padding: '8px 2px' }}>No files in this project yet.</div>
+              ) : openFiles.map((f) => renderMobileFileRow(f, 'rail-file'))}
+            </div>
+            {mobileRailOpen && (
+              <div className="projects-mobile-rail-layer">
+                <button
+                  type="button"
+                  aria-label="Close projects"
+                  className="projects-mobile-rail-scrim"
+                  onClick={() => setMobileRailOpen(false)}
+                />
+                <div className="projects-mobile-rail-panel">
+                  <div className="projects-mobile-browser-label">Projects</div>
+                  {mobileProjectActions}
+                  <div className="projects-mobile-rail-list">
+                    {filtered.map((p) => {
+                      const isOpen = open && p.id === open.id;
+                      const isSel = selProj.has(p.id);
+                      return (
+                        <button
+                          key={`rail-folder-${p.id}`}
+                          type="button"
+                          className={isOpen ? 'active' : ''}
+                          onClick={() => {
+                            if (jobsEdit) {
+                              toggleProjSel(p.id);
+                              return;
+                            }
+                            setOpenId(p.id);
+                            setMobileRailOpen(false);
+                          }}
+                        >
+                          <span>{p.name}</span>
+                          <small>{projectFileCount(p.id)} files</small>
+                          {jobsEdit && <i className={`projects-mobile-check ${isSel ? 'checked' : ''}`}>{isSel ? '✓' : ''}</i>}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {mobileProjectLayout === 'teams' && (
+          <div className="projects-mobile-browser projects-mobile-teams-view">
+            <div className="projects-mobile-browser-label">Places</div>
+            {filtered.map((p) => {
+              const isOpen = open && p.id === open.id;
+              const isSel = selProj.has(p.id);
+              return (
+                <div key={`teams-folder-${p.id}`} className={`projects-mobile-folder-section ${isOpen ? 'active' : ''}`}>
+                  <button
+                    type="button"
+                    className="projects-mobile-folder-row"
+                    onClick={() => { if (jobsEdit) toggleProjSel(p.id); else setOpenId(p.id); }}
+                  >
+                    <span className="projects-mobile-folder-glyph"><Icon name="folder" size={17} /></span>
+                    <span className="projects-mobile-folder-copy">
+                      <strong>{p.name}</strong>
+                      <small>{projectFileCount(p.id)} files · {projectLastEditedLabel(p.id)}</small>
+                    </span>
+                    {jobsEdit ? (
+                      <span className={`projects-mobile-check ${isSel ? 'checked' : ''}`}>{isSel ? '✓' : ''}</span>
+                    ) : (
+                      <span className="projects-mobile-disclosure">{isOpen ? 'Open' : 'View'}</span>
+                    )}
+                  </button>
+                  {isOpen && (
+                    <div className="projects-mobile-folder-files">
+                      <div className="projects-mobile-browser-label">Files</div>
+                      {openFiles.length === 0 ? (
+                        <div className="meta" style={{ fontSize: 12, padding: '8px 2px' }}>No files in this project yet.</div>
+                      ) : openFiles.map((f) => renderMobileFileRow(f, 'teams-file'))}
+                      {mobileFileActions}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {mobileProjectLayout === 'drive' && (
+          <div className="projects-mobile-browser projects-mobile-drive-view">
+            <div className="projects-mobile-browser-label">Folders</div>
+            <div className="projects-mobile-folder-grid">
+              {filtered.map((p) => (
+                <button
+                  key={`drive-folder-${p.id}`}
+                  type="button"
+                  className={open && p.id === open.id ? 'active' : ''}
+                  onClick={() => setOpenId(p.id)}
+                >
+                  <span className="projects-mobile-folder-glyph"><Icon name="folder" size={18} /></span>
+                  <strong>{p.name}</strong>
+                  <small>{projectFileCount(p.id)} files</small>
+                </button>
+              ))}
+            </div>
+            {open && (
+              <>
+                <div className="projects-mobile-browser-row-heading">
+                  <span>Files in {open.name}</span>
+                  <button type="button" onClick={() => addFiles(open)}>Add</button>
+                </div>
+                <div className="projects-mobile-file-list">
+                  {openFiles.length === 0 ? (
+                    <div className="meta" style={{ fontSize: 12, padding: '8px 2px' }}>No files in this project yet.</div>
+                  ) : openFiles.map((f) => renderMobileFileRow(f, 'drive-file'))}
+                </div>
+              </>
+            )}
+          </div>
+        )}
+
+        {mobileProjectLayout === 'browse' && (
+          <div className="projects-mobile-browser projects-mobile-browse-view">
+            <div className="projects-mobile-path-card">
+              <div className="projects-mobile-browser-label">Browse</div>
+              <div className="projects-mobile-path">Projects / {open?.name || 'Select a folder'}</div>
+            </div>
+            {filtered.map((p) => (
+              <button
+                key={`browse-folder-${p.id}`}
+                type="button"
+                className={`projects-mobile-folder-row ${open && p.id === open.id ? 'active' : ''}`}
+                onClick={() => setOpenId(p.id)}
+              >
+                <span className="projects-mobile-folder-glyph"><Icon name="folder" size={17} /></span>
+                <span className="projects-mobile-folder-copy">
+                  <strong>{p.name}</strong>
+                  <small>{projectFileCount(p.id)} files · {projectTeam(p).length} members</small>
+                </span>
+                <span className="projects-mobile-chevron">›</span>
+              </button>
+            ))}
+            {open && (
+              <div className="projects-mobile-folder-files raised">
+                <div className="projects-mobile-browser-row-heading">
+                  <span>{open.name}</span>
+                  <button type="button" onClick={() => setTeamModalProject(open)}>Team</button>
+                </div>
+                {openFiles.map((f) => renderMobileFileRow(f, 'browse-file'))}
+                {openFiles.length === 0 ? <div className="meta" style={{ fontSize: 12, padding: '8px 2px' }}>No files in this project yet.</div> : null}
+              </div>
+            )}
+          </div>
+        )}
+
+        {mobileProjectLayout === 'grid' && (
+          <div className="projects-mobile-browser projects-mobile-grid-view">
+            <div className="projects-mobile-browser-label">Folders</div>
+            <div className="projects-mobile-tile-grid">
+              {filtered.map((p) => (
+                <button
+                  key={`grid-folder-${p.id}`}
+                  type="button"
+                  className={open && p.id === open.id ? 'active folder' : 'folder'}
+                  onClick={() => setOpenId(p.id)}
+                >
+                  <span className="projects-mobile-folder-art"><Icon name="folder" size={30} /></span>
+                  <strong>{p.name}</strong>
+                  <small>{projectFileCount(p.id)} files</small>
+                </button>
+              ))}
+            </div>
+            {open && openFiles.length > 0 && (
+              <>
+                <div className="projects-mobile-browser-label">Files in {open.name}</div>
+                <div className="projects-mobile-tile-grid files">
+                  {openFiles.map((f) => (
+                    <button key={`grid-file-${f.id}`} type="button" onClick={() => onOpenDocument && onOpenDocument(f)}>
+                      <span className="projects-mobile-file-thumb"><Icon name="doc" size={20} /></span>
+                      <strong>{f.name}</strong>
+                      <small>{shortWhen(f)}</small>
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
+        )}
+
+        {mobileProjectLayout === 'recent' && (
+          <div className="projects-mobile-browser projects-mobile-recent-view">
+            <div className="projects-mobile-browser-row-heading">
+              <span>Recent files</span>
+            </div>
+            <div className="projects-mobile-file-list">
+              {(recentFiles.length ? recentFiles : openFiles).map((f) => renderMobileFileRow(f, 'recent-file'))}
+            </div>
+            <div className="projects-mobile-browser-label">Project folders</div>
+            {filtered.map((p) => (
+              <button
+                key={`recent-folder-${p.id}`}
+                type="button"
+                className={`projects-mobile-folder-row ${open && p.id === open.id ? 'active' : ''}`}
+                onClick={() => setOpenId(p.id)}
+              >
+                <span className="projects-mobile-folder-glyph"><Icon name="folder" size={17} /></span>
+                <span className="projects-mobile-folder-copy">
+                  <strong>{p.name}</strong>
+                  <small>{projectFileCount(p.id)} files · {projectLastEditedLabel(p.id)}</small>
+                </span>
+              </button>
+            ))}
+          </div>
+        )}
+        {mobileProjectLayout === 'cards' && filtered.map((p) => {
           const isOpen = open && p.id === open.id;
           const isSel = selProj.has(p.id);
           const projMembers = projectTeam(p);
@@ -1006,7 +1574,7 @@ export default function ProjectsFolderTree({
                     members={projMembers.slice(0, 3).map((id) => initialsOf(lookupMember(id)?.name))}
                     size={14}
                   />
-                  <span>{openFiles.filter((d) => d.project_id === p.id).length || localDocs.filter((d) => d.project_id === p.id).length} files</span>
+                  <span>{projectFileCount(p.id)} files · {projectLastEditedLabel(p.id)}</span>
                 </div>
               </div>
               {jobsEdit ? (
@@ -1032,7 +1600,86 @@ export default function ProjectsFolderTree({
           );
         })}
 
-        {open && (
+        {mobileProjectLayout === 'compact' && (
+          <div className="projects-mobile-compact-list">
+            {filtered.map((p) => {
+              const isOpen = open && p.id === open.id;
+              const projMembers = projectTeam(p);
+              return (
+                <button
+                  key={`mobile-project-compact-${p.id}`}
+                  type="button"
+                  className={isOpen ? 'active' : ''}
+                  onClick={() => setOpenId(p.id)}
+                >
+                  <span className="projects-mobile-compact-title">{p.name}</span>
+                  <span>{projectFileCount(p.id)} files</span>
+                  <AvatarStack members={projMembers.slice(0, 3).map((id) => initialsOf(lookupMember(id)?.name))} size={14} />
+                </button>
+              );
+            })}
+          </div>
+        )}
+
+        {mobileProjectLayout === 'focus' && open && (
+          <div className="projects-mobile-focus-card">
+            <div className="projects-mobile-focus-kicker">Current project</div>
+            <input
+              key={`mobile-focus-${open.id}`}
+              defaultValue={open.name}
+              onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }}
+              onBlur={(e) => {
+                const name = e.currentTarget.value.trim();
+                if (name && name !== open.name) renameProject(open.id, name);
+                else e.currentTarget.value = open.name;
+              }}
+            />
+            <div className="projects-mobile-focus-stats">
+              <span>{openFiles.length} files</span>
+              <span>{projectTeam(open).length} members</span>
+              <span>{projectLastEditedLabel(open.id)}</span>
+            </div>
+            {mobileFileActions}
+          </div>
+        )}
+
+        {mobileProjectLayout === 'files' && (
+          <div className="projects-mobile-project-strip">
+            {filtered.map((p) => (
+              <button
+                key={`mobile-project-strip-${p.id}`}
+                className={open && p.id === open.id ? 'active' : ''}
+                type="button"
+                onClick={() => setOpenId(p.id)}
+              >
+                <span>{p.name}</span>
+                <small>{projectFileCount(p.id)}</small>
+              </button>
+            ))}
+          </div>
+        )}
+
+        {mobileProjectLayout === 'team' && (
+          <div className="projects-mobile-team-board">
+            {filtered.map((p) => {
+              const team = projectTeam(p);
+              return (
+                <button
+                  key={`mobile-team-board-${p.id}`}
+                  type="button"
+                  className={open && p.id === open.id ? 'active' : ''}
+                  onClick={() => setOpenId(p.id)}
+                >
+                  <span className="projects-mobile-team-name">{p.name}</span>
+                  <AvatarStack members={team.slice(0, 4).map((id) => initialsOf(lookupMember(id)?.name))} size={16} />
+                  <span>{team.length} members · {projectFileCount(p.id)} files</span>
+                </button>
+              );
+            })}
+          </div>
+        )}
+
+        {open && ['cards', 'focus', 'files'].includes(mobileProjectLayout) && (
           <div className="mobile-project-detail">
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
               <span style={{ width: 4, height: 32, background: 'var(--gold)', borderRadius: 2, flex: 'none' }}></span>
@@ -1133,6 +1780,56 @@ export default function ProjectsFolderTree({
                   </div>
                 );
               })}
+            </div>
+          </div>
+        )}
+        {open && mobileProjectLayout === 'compact' && (
+          <div className="mobile-project-detail compact">
+            <div className="mobile-section-title" style={{ marginBottom: 8 }}>{open.name}</div>
+            {mobileFileActions}
+            <div className="projects-mobile-file-mini-list">
+              {openFiles.length === 0 ? (
+                <div className="meta" style={{ fontSize: 12, padding: '4px 0' }}>No files in this project yet.</div>
+              ) : openFiles.slice(0, 5).map((f) => (
+                <button key={`compact-file-${f.id}`} type="button" onClick={() => onOpenDocument && onOpenDocument(f)}>
+                  <span>{f.name}</span>
+                  <small>{shortWhen(f)}</small>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+        {open && mobileProjectLayout === 'team' && (
+          <div className="mobile-project-detail compact">
+            <div className="mobile-section-title" style={{ marginBottom: 8 }}>{open.name} team</div>
+            <div style={{ display: 'grid', gap: 8 }}>
+              {projectTeam(open).map((m) => {
+                const mem = lookupMember(m);
+                const memName = mem?.name || 'Teammate';
+                return (
+                  <div key={`team-layout-${m}`} className="projects-mobile-member-row">
+                    <Avatar initials={mem ? initialsOf(mem.name) : '—'} size={24} color={mem?.color} />
+                    <div>
+                      <div>{memName}</div>
+                      <span>{mem?.role || 'Member'}</span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+            {mobileFileActions}
+          </div>
+        )}
+        {mobileProjectLayout === 'files' && (
+          <div className="mobile-project-detail compact">
+            <div className="mobile-section-title" style={{ marginBottom: 8 }}>Recent files</div>
+            <div className="projects-mobile-file-mini-list">
+              {(openFiles.length ? openFiles : recentFiles).map((f) => (
+                <button key={`files-layout-${f.id}`} type="button" onClick={() => onOpenDocument && onOpenDocument(f)}>
+                  <span>{f.name}</span>
+                  <small>{shortWhen(f)}</small>
+                </button>
+              ))}
             </div>
           </div>
         )}

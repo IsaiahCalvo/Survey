@@ -35,6 +35,7 @@ export const Icon = ({ name, size = 14, color = 'currentColor' }) => {
     case 'plus': return <svg viewBox="0 0 24 24" style={s}><path d="M12 5v14M5 12h14"/></svg>;
     case 'upload': return <svg viewBox="0 0 24 24" style={s}><path d="M12 16V4M6 10l6-6 6 6M4 20h16"/></svg>;
     case 'filter': return <svg viewBox="0 0 24 24" style={s}><path d="M3 5h18M6 12h12M10 19h4"/></svg>;
+    case 'menu': return <svg viewBox="0 0 24 24" style={s}><path d="M4 7h16M4 12h16M4 17h16"/></svg>;
     case 'more': return <svg viewBox="0 0 24 24" style={s}><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></svg>;
     case 'clock': return <svg viewBox="0 0 24 24" style={s}><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>;
     case 'users': return <svg viewBox="0 0 24 24" style={s}><circle cx="9" cy="8" r="3.5"/><path d="M2 20a7 7 0 0 1 14 0"/><path d="M17 11a3 3 0 1 0-2-5"/><path d="M22 19a5 5 0 0 0-5-5"/></svg>;
@@ -123,6 +124,18 @@ export const EmptyState = ({ icon, line, actionLabel, actionIcon = 'plus', onAct
 const initialsOf = (name) => (name || 'You')
   .trim().split(/\s+/).map((w) => w[0] || '').join('').slice(0, 2).toUpperCase() || 'YOU';
 
+const mobileNavModeFromUrl = () => {
+  if (typeof window === 'undefined') return 'tabs';
+  const explicit = new URLSearchParams(window.location.search).get('mobileNav');
+  if (explicit === 'rail' || explicit === 'tabs') return explicit;
+  return window.Capacitor?.isNativePlatform?.() ? 'tabs' : 'rail';
+};
+
+const isExpoNativeShell = () => {
+  if (typeof window === 'undefined') return false;
+  return new URLSearchParams(window.location.search).get('nativeShell') === 'expo';
+};
+
 /* Bottom-left profile control — a button that opens a Settings / Sign Out
    popup (matching the menu the app had before, restyled to the hub palette).
    Reads the user and the two callbacks from HubChromeContext. */
@@ -185,12 +198,12 @@ const ProfileMenu = ({ userName, userMeta }) => {
                 <div className="profile-signout-copy">Sign out of Survey?</div>
                 <div className="profile-signout-buttons">
                   <button type="button" onClick={() => setConfirmSignOut(false)}>Cancel</button>
-                  <button type="button" className="danger" onClick={() => { setOpen(false); onSignOut && onSignOut(); }}>Sign out</button>
+                  <button type="button" className="danger" onClick={() => { setOpen(false); onSignOut && onSignOut(); }}>Sign Out</button>
                 </div>
               </div>
             ) : (
               <button className="profile-menu-signout" style={{ ...itemStyle, color: '#cf6f6f' }} onClick={() => setConfirmSignOut(true)}>
-                <Icon name="signout" size={15} color="#cf6f6f" />Sign out
+                <Icon name="signout" size={15} color="#cf6f6f" />Sign Out
               </button>
             )}
           </div>
@@ -201,26 +214,102 @@ const ProfileMenu = ({ userName, userMeta }) => {
   );
 };
 
+const MobileRailNav = ({ mode, title, tab, navItems, onNav }) => {
+  const [open, setOpen] = useState(false);
+  const touchStart = useRef(null);
+
+  if (mode !== 'rail') return null;
+
+  const choose = (key, disabled) => {
+    if (disabled) return;
+    setOpen(false);
+    onNav && onNav(key);
+  };
+
+  const onTouchStart = (e) => {
+    const touch = e.touches?.[0];
+    if (touch) touchStart.current = { x: touch.clientX, y: touch.clientY };
+  };
+
+  const onTouchEnd = (e) => {
+    const start = touchStart.current;
+    const touch = e.changedTouches?.[0];
+    touchStart.current = null;
+    if (!start || !touch) return;
+    const dx = touch.clientX - start.x;
+    const dy = touch.clientY - start.y;
+    if (dx < -36 && Math.abs(dx) > Math.abs(dy)) setOpen(false);
+  };
+
+  return (
+    <div className="mobile-rail-nav">
+      <button
+        type="button"
+        className="mobile-rail-nav-trigger"
+        aria-label="Open navigation"
+        aria-expanded={open}
+        onClick={() => setOpen((value) => !value)}
+      >
+        <Icon name="menu" size={16} />
+      </button>
+      {open && (
+        <div className="mobile-rail-nav-scrim" onClick={() => setOpen(false)}>
+          <aside
+            className="mobile-rail-nav-panel"
+            aria-label="Mobile navigation"
+            onClick={(e) => e.stopPropagation()}
+            onTouchStart={onTouchStart}
+            onTouchEnd={onTouchEnd}
+          >
+            <div className="mobile-rail-nav-label">Navigate</div>
+            <div className="mobile-rail-nav-title">{title}</div>
+            <div className="mobile-rail-nav-options">
+              {navItems.map(([key, icon, label, disabled]) => (
+                <button
+                  key={key}
+                  type="button"
+                  className={tab === key ? 'active' : ''}
+                  disabled={disabled}
+                  onClick={() => choose(key, disabled)}
+                >
+                  <Icon name={icon} size={15} />
+                  <span>{label}</span>
+                  {disabled ? <Icon name="lock" size={12} color="var(--ink-200)" /> : null}
+                </button>
+              ))}
+            </div>
+          </aside>
+        </div>
+      )}
+    </div>
+  );
+};
+
 /* Sidebar + header frame. The three tabs are always rendered so the chrome
    feels permanent; only the body content (children) changes per tab. */
 export const HubShell = ({ tab, onNav, title, subtitle, actions, children, userName = 'You', userMeta = undefined, templatesLocked = false }) => {
+  const expoNativeShell = isExpoNativeShell();
+
   useEffect(() => {
     const root = typeof document !== 'undefined' ? document.getElementById('root') : null;
-    document.documentElement.classList.add('survey-hub-mobile-scroll-page');
-    document.body.classList.add('survey-hub-mobile-scroll-page');
-    root?.classList.add('survey-hub-mobile-scroll-root');
+    const pageClass = expoNativeShell ? 'survey-hub-native-frame' : 'survey-hub-mobile-scroll-page';
+    const rootClass = expoNativeShell ? 'survey-hub-native-root' : 'survey-hub-mobile-scroll-root';
+    document.documentElement.classList.add(pageClass);
+    document.body.classList.add(pageClass);
+    root?.classList.add(rootClass);
     return () => {
-      document.documentElement.classList.remove('survey-hub-mobile-scroll-page');
-      document.body.classList.remove('survey-hub-mobile-scroll-page');
-      root?.classList.remove('survey-hub-mobile-scroll-root');
+      document.documentElement.classList.remove(pageClass);
+      document.body.classList.remove(pageClass);
+      root?.classList.remove(rootClass);
     };
-  }, []);
+  }, [expoNativeShell]);
 
   const navItems = [
     ['documents', 'doc', 'Documents', false],
     ['projects', 'folder', 'Projects', false],
     ['templates', 'template', 'Templates', templatesLocked],
   ];
+  const mobileNavMode = mobileNavModeFromUrl();
   const navBtn = (key, icon, label, disabled = false) => (
     <button
       key={key}
@@ -237,7 +326,7 @@ export const HubShell = ({ tab, onNav, title, subtitle, actions, children, userN
   return (
     // The hub-tab-* class lets mobile CSS size the fixed header per tab
     // (Documents carries an extra select/bulk row; the others don't).
-    <div className={`survey-hub hub-tab-${tab}`}>
+    <div className={`survey-hub hub-tab-${tab} ${mobileNavMode === 'rail' ? 'hub-mobile-nav-rail' : ''} ${expoNativeShell ? 'hub-native-shell-expo' : ''}`}>
       <div className="shell">
         <aside className="side">
           <div className="brand"><span className="brand-dot"></span>Survey</div>
@@ -249,6 +338,7 @@ export const HubShell = ({ tab, onNav, title, subtitle, actions, children, userN
         <main className="main paper">
           <div className="header">
             <div className="header-title-block">
+              <MobileRailNav mode={mobileNavMode} title={title} tab={tab} navItems={navItems} onNav={onNav} />
               <h1 className="title">{title}</h1>
               {subtitle ? <div className="crumb header-subtitle" style={{ marginTop: 6 }}>{subtitle}</div> : null}
             </div>

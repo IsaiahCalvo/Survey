@@ -163,7 +163,6 @@ import { shouldRunSurveyMarkerSync } from './utils/surveyMarkerSyncSafety';
 import { compareSurveyMarkersForOrder } from './utils/surveyMarkerOrdering';
 import { splitImportedCalloutsFromPage } from './utils/calloutImportAdapter';
 import { supabase } from './supabaseClient';
-import { useAnnotationCloudSync } from './hooks/useAnnotationCloudSync.js';
 import { useAnnotationDoc } from './hooks/useAnnotationDoc.js';
 import { useAuth } from './contexts/AuthContext';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
@@ -873,7 +872,6 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   const scrollDataRef = useRef({ left: 0, top: 0 });
   const wrapperDragEventAtRef = useRef(0);
   const pendingRendererRestoreRef = useRef(null);
-  const [pdfjsDocumentBytes, setPdfjsDocumentBytes] = useState(null);
   const [pdfjsPageContainers, setPdfjsPageContainers] = useState({});
   const [pdfjsMountedPages, setPdfjsMountedPages] = useState(new Set());
   const pageInputRef = useRef(null);
@@ -3048,6 +3046,17 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   const [fillOpacity, setFillOpacity] = useState(100);
   const [strokeWidth, setStrokeWidth] = useState(3);
   const [cloudIntensity, setCloudIntensity] = useState(2);
+  const [textStyleDefaults, setTextStyleDefaults] = useState({
+    fontColor: '#1e293b',
+    fontFamily: 'Arial',
+    fontSize: 16,
+    bold: true,
+    italic: false,
+    underline: false,
+    strike: false,
+    textAlign: 'left',
+    verticalAlign: 'top',
+  });
   const [selectedToolbarAnnotation, setSelectedToolbarAnnotation] = useState(null);
   const handleSelectionForToolbar = useCallback((payload) => {
     if (!payload) {
@@ -6314,20 +6323,14 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       if (!pendingInitialFitPageRef.current) return;
       if (!handleZoomModeSelectRef.current) return;
       pendingInitialFitPageRef.current = false;
-      // 3-pass fit-page: Pdfjs's page layout settles asynchronously after each
-      // zoomTo call, so a single fit-page call reads stale wrapper/pageDiv dims and
-      // produces a wrong scale. The user previously had to click fit-page 3 times
-      // manually for it to converge — this fires those 3 passes automatically with
-      // delays long enough for Pdfjs's relayout to settle between passes.
+      // PdfjsViewerContainer owns the live page and viewport measurements, so its
+      // native fit command settles in one pass. Repeating the command here used to
+      // make a fresh document visibly grow through several incorrect sizes.
       const fire = () => {
         if (zoomModeRef.current !== ZOOM_MODES.FIT_PAGE) return;
         handleZoomModeSelectRef.current?.(ZOOM_MODES.FIT_PAGE);
       };
-      initialFitPageTimersRef.current = [
-        setTimeout(fire, 0),
-        setTimeout(fire, 250),
-        setTimeout(fire, 550),
-      ];
+      initialFitPageTimersRef.current = [setTimeout(fire, 0)];
     };
     if (!hasPendingManualZoom) {
       requestAnimationFrame(() => requestAnimationFrame(() => {
@@ -6815,6 +6818,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   const [pendingSurveyMarkerName, setPendingSurveyMarkerName] = useState(null); // { surveyMarker, categoryId } when prompting for name
   const [surveyMarkerNameInput, setSurveyMarkerNameInput] = useState(null); // Name prompt input; null = untouched (show category-derived default), any string ('' included) = user's text
   const [pendingEntitySelection, setPendingEntitySelection] = useState(null); // { surveyMarker, categoryId } when prompting for Entity
+  const [mobileSurveyEntityId, setMobileSurveyEntityId] = useState(null);
 
   // NEW: Item and Annotation system state
   const [pdfId, setPdfId] = useState(null);
@@ -7248,9 +7252,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         // in PDF points) × calibrated Electron zoom factor. Never divide live pageDiv by
         // getZoomValue() — that API leads the DOM re-layout and produces catastrophic
         // values (e.g. 14360-px "real" page → clamped to 10% zoom).
-        const wrapperEl = pdfjsWrapperRef.current;
-        const wrapperW = wrapperEl?.clientWidth || 0;
-        const wrapperH = wrapperEl?.clientHeight || 0;
+        const wrapperH = pdfjsWrapperRef.current?.clientHeight || 0;
         const pdfPageSize = pageSizesRef.current?.[pageNumRef.current]
           || (pageSizesRef.current && Object.values(pageSizesRef.current)[0]);
         // Self-calibrate Electron factor BEFORE the first fit calculation if it hasn't
@@ -7271,18 +7273,18 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         const electronFactor = pdfjsElectronFactorRef.current || 1.0;
 
         if (mode === ZOOM_MODES.FIT_PAGE) {
-          if (wrapperW > 0 && wrapperH > 0 && pdfPageSize?.width > 0 && pdfPageSize?.height > 0) {
-            const realPageW = pdfPageSize.width * electronFactor;
-            const realPageH = pdfPageSize.height * electronFactor;
-            const widthScale = wrapperW / realPageW;
-            const heightScale = wrapperH / realPageH;
-            const pageScale = clampScale(Math.min(widthScale, heightScale));
-            magnification.zoomTo(Math.round(pageScale * 100));
-            setScale(pageScale);
-            calibrateElectronFactor(pageScale);
-          } else {
-            magnification.fitToPage();
-          }
+          // PdfjsViewerContainer computes this from its current page metrics and
+          // viewport. The former manual calculation depended on a stale calibration
+          // factor and required repeated presses before converging.
+          magnification.fitToPage();
+          requestAnimationFrame(() => requestAnimationFrame(() => {
+            const postZoom = (typeof viewer.getZoomValue === 'function' ? viewer.getZoomValue() : null);
+            if (typeof postZoom === 'number' && postZoom > 0) {
+              const postScale = postZoom / 100;
+              setScale(postScale);
+              calibrateElectronFactor(postScale);
+            }
+          }));
         } else if (mode === ZOOM_MODES.FIT_WIDTH) {
           magnification.fitToWidth();
           // fitToWidth() works natively and doesn't have the scroll-cascade bug fit-page had.
@@ -10246,6 +10248,16 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         fillColor,
         fillOpacity: (fillOpacity ?? 100) / 100,
         lineThickness: Math.max(1, Number(strokeWidth) || 2),
+        ...(mobileMode ? {
+          fontColor: textStyleDefaults.fontColor,
+          fontFamily: textStyleDefaults.fontFamily,
+          fontSize: textStyleDefaults.fontSize,
+          bold: textStyleDefaults.bold,
+          italic: textStyleDefaults.italic,
+          underline: textStyleDefaults.underline,
+          strikethrough: textStyleDefaults.strike,
+          textAlign: textStyleDefaults.textAlign,
+        } : {}),
       },
     };
     addHistoryCheckpoint('callouts:create', {
@@ -10264,7 +10276,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     };
     newlyCreatedCalloutIdsRef.current.add(newCallout.id);
     setCallouts((prev) => [...prev, newCallout]);
-  }, [addHistoryCheckpoint, strokeColor, strokeOpacity, fillColor, fillOpacity, strokeWidth]);
+  }, [addHistoryCheckpoint, strokeColor, strokeOpacity, fillColor, fillOpacity, mobileMode, strokeWidth, textStyleDefaults]);
 
   // UX: Phase 14 CALL-10 (drag MVP) — commit checkpoint for a callout drag.
   // Called from useSVGInteraction's 'callout-part' drag mode on pointerup
@@ -17242,25 +17254,6 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     [annotationsByPage, user, documentOwnerId, enqueueUndoToast, pdfFile?.id, registerBulkJournaledAnnotationIds],
   );
 
-  // Legacy cloud sync — its annotation HYDRATE + PUSH are retired by the Yjs
-  // source-of-truth rebuild (kept inert here only for its status return; removed
-  // entirely in the patch-cleanup step). The durable store below now owns
-  // annotation + callout persistence.
-  const {
-    status: cloudSyncStatus,
-    queueSize: cloudSyncQueueSize,
-  } = useAnnotationCloudSync({
-    documentId: pdfFile?.id || null,
-    userId: user?.id || null,
-    pdfId,
-    annotationsByPage,
-    callouts,
-    setAnnotationsByPage,
-    setCallouts,
-    enabled: false,
-    hydrateEnabled: false
-  });
-
   // The rebuild: Yjs Y.Doc + append-only op-log is the single source of truth
   // for annotations (and callouts). Captures every change durably the instant it
   // happens and hydrates from the durable store on open — no clear-and-refan, no
@@ -17268,6 +17261,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   const {
     initialHydration: normalAnnotationHydration,
     forceFlush: cloudSyncForceFlush,
+    status: cloudSyncStatus,
+    queueSize: cloudSyncQueueSize,
     // KAL-309: durable Y.Doc META accessors for the excelSyncFrontier cursor + review set.
     metaGet: excelSyncMetaGet,
     metaSet: excelSyncMetaSet,
@@ -18584,7 +18579,6 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     annotationsByPageRef.current = {};
     surveyMarkersRef.current = {};
     spacesRef.current = isSamePdfReload ? previousSpacesForSamePdf : [];
-    setPdfjsDocumentBytes(null);
     setPdfjsPageContainers({});
     setPdfjsCommittedPageScales({});
     finishPdfjsInteractionWindow();
@@ -19578,9 +19572,6 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
           throw new Error('Invalid file object: missing arrayBuffer and filePath');
         }
 
-        // Keep an immutable copy for Pdfjs client-side rendering so mode toggles can switch renderers.
-        setPdfjsDocumentBytes(new Uint8Array(arrayBuffer.slice(0)));
-
         //   size: arrayBuffer.byteLength,
         //   version: pdfjsLib.version,
         //   workerSrc: pdfjsLib.GlobalWorkerOptions.workerSrc
@@ -19642,10 +19633,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
                 stopAtErrors: false,
               });
               pdf = await rewriteTask.promise;
-              // Update the buffer downstream consumers see so Pdfjs and
-              // the annotation importer also read the rewritten bytes.
+              // Update the buffer downstream consumers see so the annotation
+              // importer also reads the rewritten bytes.
               arrayBuffer = rewritten.buffer;
-              setPdfjsDocumentBytes(new Uint8Array(rewritten));
               perfLoad.mark(docName, 'PDF.js document parsed (rewrite mode)');
             } catch (rewriteError) {
               console.error('Rewrite-and-retry PDF load also failed:', rewriteError?.message);
@@ -19653,7 +19643,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
             }
           }
         }
-        if (isCancelled) return;
+        if (isCancelled) {
+          try { await pdf.destroy(); } catch { /* noop */ }
+          return;
+        }
         setPdfDoc(pdf);
         setNumPages(pdf.numPages);
         setPageNum(1);
@@ -20032,6 +20025,13 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       isCancelled = true;
     };
   }, [pdfFile, loadRetryToken]);
+
+  // PDFViewer owns the single pdf.js document proxy. The mobile renderer reuses
+  // it instead of parsing and retaining a second copy of the same PDF.
+  useEffect(() => () => {
+    if (!pdfDoc) return;
+    try { pdfDoc.destroy(); } catch { /* noop */ }
+  }, [pdfDoc]);
 
   // KAL-46 / sleep-wake recovery watchdog.
   //
@@ -21452,15 +21452,33 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     () => mobileSurveyModules.find((module) => module.id === selectedModuleId)?.categories || [],
     [mobileSurveyModules, selectedModuleId]
   );
+  const mobileSurveyEntities = useMemo(
+    () => selectedTemplate?.entities || [],
+    [selectedTemplate]
+  );
   const handleMobileSurveyModuleSelect = useCallback((moduleId) => {
     setSelectedModuleId(moduleId || null);
     setSelectedCategoryId(null);
+    setMobileSurveyEntityId(null);
     setActiveToolLogged('survey-marker');
   }, [setActiveToolLogged]);
   const handleMobileSurveyCategorySelect = useCallback((categoryId) => {
     setSelectedCategoryId(categoryId || null);
+    setMobileSurveyEntityId(null);
     setActiveToolLogged('survey-marker');
   }, [setActiveToolLogged]);
+  const handleMobileSurveyEntitySelect = useCallback((entityId) => {
+    setMobileSurveyEntityId(entityId || null);
+    setSelectedCategoryId(null);
+    setActiveToolLogged('survey-marker');
+  }, [setActiveToolLogged]);
+
+  useEffect(() => {
+    if (!mobileSurveyEntityId) return;
+    if (!mobileSurveyEntities.some((entity) => entity.id === mobileSurveyEntityId)) {
+      setMobileSurveyEntityId(null);
+    }
+  }, [mobileSurveyEntities, mobileSurveyEntityId]);
 
   // UX 2026-05-13: Publish bottom toolbar state to the App shell when this tab
   // is active. Keep this effect below every value in the API object to avoid
@@ -21504,10 +21522,13 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       surveyToolbar: selectedTemplate ? {
         modules: mobileSurveyModules,
         categories: mobileSurveyCategories,
+        entities: mobileSurveyEntities,
         selectedModuleId,
         selectedCategoryId,
+        selectedEntityId: mobileSurveyEntityId,
         onSelectModule: handleMobileSurveyModuleSelect,
         onSelectCategory: handleMobileSurveyCategorySelect,
+        onSelectEntity: handleMobileSurveyEntitySelect,
         keepCategoryActive: surveyKeepCategoryActive,
         onKeepCategoryActiveChange: setSurveyKeepCategoryActive,
       } : null,
@@ -21527,6 +21548,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         || (selectedToolbarAnnotation
           && String(selectedToolbarAnnotation.annotation?.type || '').toLowerCase() === 'textbox')),
       richTextEditor,
+      textStyleDefaults,
+      onTextStyleDefaultsChange: setTextStyleDefaults,
       lineBorderStyle,
       setLineBorderStyle: handleLineBorderStyleChange,
       cloudIntensity,
@@ -21596,10 +21619,13 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     selectedTemplate,
     mobileSurveyModules,
     mobileSurveyCategories,
+    mobileSurveyEntities,
     selectedModuleId,
     selectedCategoryId,
+    mobileSurveyEntityId,
     handleMobileSurveyModuleSelect,
     handleMobileSurveyCategorySelect,
+    handleMobileSurveyEntitySelect,
     surveyKeepCategoryActive,
     showRegionSelection,
     mobileRegionToolbarApi,
@@ -21613,6 +21639,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     handleArrowheadStyleChange,
     handleEnterTextEditFromStrip,
     richTextEditor,
+    textStyleDefaults,
     lineBorderStyle,
     handleLineBorderStyleChange,
     cloudIntensity,
@@ -25203,6 +25230,14 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     // Unique ID for this surveyMarker (generated up-front for the checkpoint stamp)
     const annotationId = newMarkerId;
     const moduleName = getModuleName(selectedTemplate, effectiveModuleId);
+    const mobileSelectedEntity = (selectedTemplate?.entities || []).find(
+      (entity) => entity.id === mobileSurveyEntityId
+    ) || null;
+    const mobileSelectedEntityColor = mobileSelectedEntity
+      ? (normalizeSurveyMarkerColor(mobileSelectedEntity.color)
+        || mobileSelectedEntity.color
+        || hexToRgba('#E3D1FB', DEFAULT_SURVEY_MARKER_OPACITY))
+      : null;
 
 
     // Immediately add surveyMarker to canvas (always show selection feedback)
@@ -25226,7 +25261,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         },
         {
           needsCategory: !selectedCategoryId, // Flag to indicate it needs category selection
-          needsEntity: true // Use needsEntity rendering style (transparent with dashed outline) initially
+          ...(mobileSelectedEntityColor
+            ? { color: mobileSelectedEntityColor, needsEntity: false }
+            : { needsEntity: true })
         }
       );
 
@@ -25243,7 +25280,22 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     if (selectedCategoryId) {
       // Check if template has Entities
       const entities = selectedTemplate?.entities || [];
-      if (entities.length > 0) {
+      if (mobileSelectedEntity) {
+        setPendingSurveyMarkerName({
+          surveyMarker: {
+            id: annotationId,
+            pageNumber,
+            bounds,
+            moduleId: effectiveModuleId,
+            regionId: pageRegionId,
+            entityId: mobileSelectedEntity.id,
+            entityName: mobileSelectedEntity.name,
+            entityColor: mobileSelectedEntityColor,
+          },
+          categoryId: selectedCategoryId
+        });
+        setSurveyMarkerNameInput(null);
+      } else if (entities.length > 0) {
         // Show Entity selection dialog
         setPendingEntitySelection({
           surveyMarker: {
@@ -25272,6 +25324,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
       if (!surveyKeepCategoryActive) {
         setSelectedCategoryId(null);
+        setMobileSurveyEntityId(null);
       }
       setShowSurveyPanel(true);
     } else {
@@ -25282,11 +25335,16 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
           pageNumber,
           bounds,
           moduleId: effectiveModuleId,
-          regionId: pageRegionId
+          regionId: pageRegionId,
+          ...(mobileSelectedEntity ? {
+            entityId: mobileSelectedEntity.id,
+            entityName: mobileSelectedEntity.name,
+            entityColor: mobileSelectedEntityColor,
+          } : {})
         });
       }
     }
-  }, [addHistoryCheckpoint, selectedModuleId, selectedTemplate, selectedCategoryId, surveyKeepCategoryActive, showSurveyPanel, pendingLocationItem, activeSpaceId, selectedSpaceId, getPageSurveyRegionId, buildSurveyMarkerPreview]);
+  }, [addHistoryCheckpoint, selectedModuleId, selectedTemplate, selectedCategoryId, surveyKeepCategoryActive, showSurveyPanel, pendingLocationItem, activeSpaceId, selectedSpaceId, getPageSurveyRegionId, buildSurveyMarkerPreview, mobileSurveyEntityId, normalizeSurveyMarkerColor, hexToRgba, DEFAULT_SURVEY_MARKER_OPACITY]);
 
   // Auto-switch to surveyMarker tool when template is selected in survey mode (only on initial entry)
   useEffect(() => {
@@ -27110,6 +27168,7 @@ ${pageBlocks}
       onSearchResultsChange: handleSearchResultsChange,
       onCurrentMatchIndexChange: handleCurrentMatchIndexChange,
       onDuplicatePage: handleDuplicatePage,
+      onInsertBlankPage: handleInsertBlankPage,
       onDeletePage: handleDeletePage,
       onCutPage: handleCutPage,
       onCopyPage: handleCopyPage,
@@ -27208,6 +27267,7 @@ ${pageBlocks}
     handleFindTextMatches,
     handleClearTextSearch,
     handleDuplicatePage,
+    handleInsertBlankPage,
     handleDeletePage,
     handleCutPage,
     handleCopyPage,
@@ -28052,7 +28112,7 @@ ${pageBlocks}
                     id={pdfjsViewerElementId}
                     ref={pdfjsViewerRef}
                     className={`survey-pdfjs-viewer ${activeTool === 'select' ? 'survey-pdfjs-select-mode' : 'survey-pdfjs-standard-mode'}`}
-                    documentSource={pdfjsDocumentBytes}
+                    documentSource={pdfDoc}
                     style={{ width: '100%', height: '100%' }}
                     initialRenderPages={PDFJS_INITIAL_RENDER_PAGES}
                     scrollDelayMs={PDFJS_SCROLL_DELAY_MS}
@@ -29352,6 +29412,7 @@ ${pageBlocks}
                                   isNewText={editingAnnotation.isNewText || false}
                                   clickPosition={editingAnnotation.clickPosition || null}
                                   textBoxWidth={editingAnnotation.textBoxWidth}
+                                  newTextStyle={mobileMode ? textStyleDefaults : null}
                                   // UX: Phase 15 UAT-2 — match the edit-mode outline
                                   // to the callout's own border color so view and
                                   // edit look identical. Text edits keep the default
@@ -31393,7 +31454,13 @@ ${pageBlocks}
                             onClick={() => {
                               // Check if template has Entities
                               const entities = selectedTemplate?.entities || [];
-                              if (entities.length > 0) {
+                              if (pendingSurveyMarker.entityId || pendingSurveyMarker.entityColor) {
+                                setPendingSurveyMarkerName({
+                                  surveyMarker: pendingSurveyMarker,
+                                  categoryId: category.id
+                                });
+                                setSurveyMarkerNameInput(null);
+                              } else if (entities.length > 0) {
                                 // Show Entity selection dialog first
                                 setPendingEntitySelection({
                                   surveyMarker: pendingSurveyMarker,

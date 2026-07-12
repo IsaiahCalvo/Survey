@@ -19,7 +19,8 @@ Never close a phase without writing `<phase>/<phase>-RECONCILIATION.md`.
 
 These files are load-bearing for v2.0 and remain high-risk. The user has granted
 a standing waiver to edit them without per-edit approval — see
-`memory/feedback_protected_files_waiver.md`. Treat them as high-risk: keep edits
+`~/.claude/projects/-Users-isaiahcalvo-Documents-Projects-Active-Survey-BetaSafeS2/memory/feedback_protected_files_waiver.md`.
+Treat them as high-risk: keep edits
 small, scoped, and never refactor while you're in there. Always run `npm test`
 after touching them and report baseline state before declaring done.
 
@@ -51,7 +52,7 @@ not protection-list items — they are correctness invariants.
 ### Session Moments
 
 Follow the PSMM logging rules in `~/.claude/CLAUDE.md`. Today's file is at
-`~/.claude/projects/-Users-isaiahcalvo-Desktop-Survey-BetaSafeS2/memory/session-moments/YYYY-MM-DD.md`
+`~/.claude/projects/-Users-isaiahcalvo-Documents-Projects-Active-Survey-BetaSafeS2/memory/session-moments/YYYY-MM-DD.md`
 and is auto-created at session start.
 
 ## CRITICAL — DO NOT BREAK (Enforced Rules)

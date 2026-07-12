@@ -64,6 +64,7 @@ const PDFSidebar = React.forwardRef(({
   onSearchResultsChange,
   onCurrentMatchIndexChange,
   onDuplicatePage,
+  onInsertBlankPage,
   onDeletePage,
   onCutPage,
   onCopyPage,
@@ -133,6 +134,8 @@ const PDFSidebar = React.forwardRef(({
   onRestoreHistoryActivity = null,
   onCascadeRestoreRegion = null,
   onRestoreHistoryContext = null,
+  mobileMode = false,
+  onPanelStateChange = null,
 }, ref) => {
   const [isCollapsed, setIsCollapsed] = useState(true);
   // 2026-04-29: publish the live sidebar width as a CSS variable so the
@@ -141,12 +144,13 @@ const PDFSidebar = React.forwardRef(({
   // Bookmarks / Spaces).
   React.useEffect(() => {
     if (typeof document === 'undefined' || !document.documentElement) return;
-    document.documentElement.style.setProperty('--app-sidebar-width', isCollapsed ? '48px' : '272px');
-  }, [isCollapsed]);
+    document.documentElement.style.setProperty('--app-sidebar-width', mobileMode ? '44px' : (isCollapsed ? '48px' : '272px'));
+  }, [isCollapsed, mobileMode]);
   const [activeTab, setActiveTab] = useState('pages'); // 'pages' | 'search' | 'bookmarks' | 'spaces' | 'history'
   const [hoveredTabId, setHoveredTabId] = useState(null);
   const [searchFocusRequestToken, setSearchFocusRequestToken] = useState(0);
   const [searchSelectOnFocus, setSearchSelectOnFocus] = useState(true);
+  const [mobileSpacesPageRows, setMobileSpacesPageRows] = useState(0);
   const onToggleCollapseRef = React.useRef(onToggleCollapse);
 
   React.useEffect(() => {
@@ -166,23 +170,54 @@ const PDFSidebar = React.forwardRef(({
     setIsCollapsed(prev => !prev);
   }, [activeTab, isCollapsed]);
 
-  useImperativeHandle(ref, () => ({
-    openSearchPanel: ({ focus = true, select = true } = {}) => {
-      setIsCollapsed(false);
-      setActiveTab('search');
-      if (focus) {
-        setSearchSelectOnFocus(Boolean(select));
-        setSearchFocusRequestToken((prev) => prev + 1);
-      }
+  const openPanel = useCallback((panelId = 'pages', { focus = panelId === 'search', select = true } = {}) => {
+    const validPanel = ['pages', 'search', 'bookmarks', 'spaces', 'history'].includes(panelId)
+      ? panelId
+      : 'pages';
+    setIsCollapsed(false);
+    setActiveTab(validPanel);
+    if (validPanel === 'search' && focus) {
+      setSearchSelectOnFocus(Boolean(select));
+      setSearchFocusRequestToken((prev) => prev + 1);
     }
-  }), [onToggleCollapse]);
+  }, []);
+
+  const closePanel = useCallback(() => {
+    setIsCollapsed(true);
+  }, []);
+
+  const handleMobileSpacesMetricsChange = useCallback(({ expandedPageRows = 0 } = {}) => {
+    setMobileSpacesPageRows(expandedPageRows);
+  }, []);
+
+  const togglePanel = useCallback((panelId, options = {}) => {
+    if (!isCollapsed && activeTab === panelId) {
+      closePanel();
+      return;
+    }
+    openPanel(panelId, options);
+  }, [activeTab, closePanel, isCollapsed, openPanel]);
+
+  useImperativeHandle(ref, () => ({
+    openPanel,
+    closePanel,
+    togglePanel,
+    openSearchPanel: ({ focus = true, select = true } = {}) => {
+      openPanel('search', { focus, select });
+    }
+  }), [closePanel, openPanel, togglePanel]);
+
+  React.useEffect(() => {
+    if (!mobileMode || typeof onPanelStateChange !== 'function') return;
+    onPanelStateChange({ isOpen: !isCollapsed, activePanel: activeTab });
+  }, [activeTab, isCollapsed, mobileMode, onPanelStateChange]);
 
   // 2026-04-25 (revised) — Survey is back in the top toolbar; this rail
   // owns the four navigation tabs only. The collaboration footer below the
   // tab content carries the sync status chip + live presence row instead.
   const tabs = [
     { id: 'pages', label: 'Pages', icon: 'pages' },
-    { id: 'search', label: 'Search text', icon: 'search' },
+    { id: 'search', label: mobileMode ? 'Search' : 'Search text', icon: 'search' },
     { id: 'bookmarks', label: 'Bookmarks', icon: 'bookmark' },
     { id: 'spaces', label: 'Spaces', icon: 'layers' }
   ];
@@ -192,19 +227,68 @@ const PDFSidebar = React.forwardRef(({
     setActiveTab('history');
   }, []);
 
+  const mobileSheetTouchStartYRef = React.useRef(null);
+  const handleMobileSheetTouchStart = useCallback((event) => {
+    mobileSheetTouchStartYRef.current = event.touches?.[0]?.clientY ?? null;
+  }, []);
+  const handleMobileSheetTouchEnd = useCallback((event) => {
+    const startY = mobileSheetTouchStartYRef.current;
+    mobileSheetTouchStartYRef.current = null;
+    const endY = event.changedTouches?.[0]?.clientY;
+    if (startY != null && endY != null && endY - startY > 48) closePanel();
+  }, [closePanel]);
+
+  const mobileStandalonePanel = mobileMode && activeTab === 'spaces'
+    ? { label: 'Spaces', icon: 'layers' }
+    : mobileMode && activeTab === 'history'
+      ? { label: 'Version history', icon: 'history' }
+      : null;
+  const expandedNavigationTabs = mobileMode
+    ? tabs.filter((tab) => tab.id !== 'spaces')
+    : tabs.concat(
+      typeof window !== 'undefined' && window.Capacitor?.isNativePlatform?.()
+        ? [{ id: '__savelog', label: 'Save log', icon: 'document' }]
+        : []
+    );
+  const mobilePanelBaseHeight = (() => {
+    if (activeTab === 'history') return 264;
+    if (activeTab === 'spaces') {
+      return Math.max(238, 106 + (spaces?.length || 0) * 54 + mobileSpacesPageRows * 50);
+    }
+    if (activeTab === 'search') return searchResults?.length ? 232 : 292;
+    if (activeTab === 'bookmarks') return Math.min(286, Math.max(238, 84 + (bookmarks?.length || 0) * 42));
+    return 310;
+  })();
+
   return (
-    <div style={{
-      width: isCollapsed ? '48px' : '272px',
+    <>
+    {mobileMode && !isCollapsed && (
+      <button
+        type="button"
+        className="mobile-pdf-sheet-backdrop"
+        aria-label="Close document panel"
+        onClick={closePanel}
+      />
+    )}
+    <div className={`${mobileMode ? 'mobile-pdf-sheet ' : ''}${isCollapsed ? 'is-collapsed' : ''}`} style={{
+      '--mobile-sheet-height': mobileMode
+        ? `calc(${mobilePanelBaseHeight}px + var(--mobile-bottom-inset))`
+        : undefined,
+      width: mobileMode ? (isCollapsed ? '0px' : '100%') : (isCollapsed ? '48px' : '272px'),
       height: '100%',
       background: '#12151c',
-      borderRight: '1px solid #2a3140',
+      borderRight: mobileMode ? 'none' : '1px solid #2a3140',
       display: 'flex',
       flexDirection: 'column',
       transition: 'width 0.2s ease',
       flexShrink: 0
     }}>
       {/* Collapse/Expand Button */}
-      <div style={{
+      <div
+        className={mobileMode ? 'mobile-pdf-sheet__handle' : undefined}
+        onTouchStart={mobileMode ? handleMobileSheetTouchStart : undefined}
+        onTouchEnd={mobileMode ? handleMobileSheetTouchEnd : undefined}
+        style={{
         height: '35px',
         padding: '0 8px',
         borderBottom: '1px solid #2a3140',
@@ -230,14 +314,25 @@ const PDFSidebar = React.forwardRef(({
           onMouseEnter={(e) => e.currentTarget.style.background = '#2a3140'}
           onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
         >
-          <Icon name={isCollapsed ? 'chevronRight' : 'chevronLeft'} size={16} color="#8d96a6" />
+          <Icon name={mobileMode ? 'chevronDown' : (isCollapsed ? 'chevronRight' : 'chevronLeft')} size={16} color="#8d96a6" />
         </button>
       </div>
 
       {!isCollapsed && (
         <>
+          {mobileMode && activeTab === 'history' && (
+            <button
+              type="button"
+              className="mobile-history-close"
+              aria-label="Close version history"
+              onClick={closePanel}
+            >
+              <Icon name="close" size={17} color="currentColor" />
+            </button>
+          )}
           {/* Tab Navigation */}
-          <div style={{
+          {mobileStandalonePanel ? null : (
+          <div className={mobileMode ? 'mobile-pdf-hub-tabs' : undefined} style={{
             display: 'flex',
             borderBottom: '1px solid #2a3140',
             background: '#12151c',
@@ -252,15 +347,12 @@ const PDFSidebar = React.forwardRef(({
                 display: none;
               }
             `}</style>
-            {tabs.concat(
-              typeof window !== 'undefined' && window.Capacitor?.isNativePlatform?.()
-                ? [{ id: '__savelog', label: 'Save log', icon: 'document' }]
-                : []
-            ).map(tab => {
+            {expandedNavigationTabs.map(tab => {
               const isActive = activeTab === tab.id;
               return (
                 <button
                   key={tab.id}
+                  className={mobileMode ? `mobile-pdf-hub-tab${isActive ? ' is-active' : ''}` : undefined}
                   title={tab.label}
                   onClick={() => {
                     if (tab.id === '__savelog') {
@@ -328,7 +420,18 @@ const PDFSidebar = React.forwardRef(({
                 </button>
               );
             })}
+            {mobileMode && (
+              <button
+                type="button"
+                className="mobile-pdf-hub-close"
+                aria-label="Close document hub"
+                onClick={closePanel}
+              >
+                <Icon name="close" size={16} color="currentColor" />
+              </button>
+            )}
           </div>
+          )}
 
           {/* Panel Content */}
           <div style={{
@@ -348,6 +451,7 @@ const PDFSidebar = React.forwardRef(({
                 pageNum={pageNum}
                 onNavigateToPage={onNavigateToPage}
                 onDuplicatePage={onDuplicatePage}
+                onInsertBlankPage={onInsertBlankPage}
                 onDeletePage={onDeletePage}
                 onCutPage={onCutPage}
                 onCopyPage={onCopyPage}
@@ -365,6 +469,7 @@ const PDFSidebar = React.forwardRef(({
                 scale={scale}
                 tabId={tabId}
                 onPageDragStart={onPageDrop ? () => { } : undefined}
+                mobileMode={mobileMode}
               />
             </div>
 
@@ -386,6 +491,7 @@ const PDFSidebar = React.forwardRef(({
                 isActive={activeTab === 'search'}
                 focusRequestToken={searchFocusRequestToken}
                 selectOnFocus={searchSelectOnFocus}
+                mobileMode={mobileMode}
               />
               </Suspense>
             </div>
@@ -436,7 +542,22 @@ const PDFSidebar = React.forwardRef(({
                 isRegionOverlayToggleEnabled={isRegionOverlayToggleEnabled}
                 showSurveyPanel={showSurveyPanel}
                 selectedModuleId={selectedModuleId}
+                mobileMode={mobileMode}
+                onMobilePanelMetricsChange={handleMobileSpacesMetricsChange}
               />
+              {mobileMode && (
+                <div className="mobile-spaces-exit-footer">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onExitSpaceMode?.();
+                      closePanel();
+                    }}
+                  >
+                    Exit Spaces / Regions
+                  </button>
+                </div>
+              )}
             </div>
 
             {/* Version History Panel */}
@@ -564,7 +685,7 @@ const PDFSidebar = React.forwardRef(({
           on screen for every page — the previous top-toolbar location
           scrolled off with the PDF area on page change.
           Hidden entirely when cloud sync is disabled (free tier or no PDF). */}
-      {cloudSyncEnabled && (
+      {cloudSyncEnabled && !mobileMode && (
         <div style={{
           borderTop: '1px solid #2a3140',
           padding: isCollapsed ? '10px 6px' : '12px',
@@ -593,6 +714,7 @@ const PDFSidebar = React.forwardRef(({
         </div>
       )}
     </div>
+    </>
   );
 });
 

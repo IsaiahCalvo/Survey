@@ -34,6 +34,7 @@ export default function SurveyHub({
   user = null,
   isPro = true,
   initialTab = null,
+  initialMobileDetailOpen = false,
   onOpenDocument,
   onUpload,
   onCreateProject,
@@ -98,7 +99,7 @@ export default function SurveyHub({
           {...common}
           documents={documents}
           projects={projects}
-          onOpenDocument={onOpenDocument}
+          onOpenDocument={(document) => onOpenDocument?.(document, 'documents')}
           onUpload={onUpload}
           onShare={shareDocuments}
           onDuplicate={onDuplicateDocuments}
@@ -114,7 +115,8 @@ export default function SurveyHub({
             projects={projects}
             documents={documents}
             members={members}
-            onOpenDocument={onOpenDocument}
+            initialMobileOpen={initialMobileDetailOpen}
+            onOpenDocument={(document) => onOpenDocument?.(document, 'projects')}
             onCreateProject={onCreateProject}
             onUpload={onUpload}
             onDeleteProjects={onDeleteProjects}
@@ -130,6 +132,7 @@ export default function SurveyHub({
           <TemplatesEditor
             {...common}
             templates={templates}
+            initialMobileOpen={initialMobileDetailOpen}
             onCreateTemplate={onCreateTemplate}
             onSaveTemplates={onSaveTemplates}
             onShare={shareTemplate}

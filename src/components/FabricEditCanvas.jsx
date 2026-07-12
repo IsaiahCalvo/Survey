@@ -1083,6 +1083,7 @@ const FabricEditCanvas = memo(({
   isNewText,           // true when text tool click-to-place creates new annotation
   clickPosition,       // { x, y } in page coordinates for new text placement
   textBoxWidth,        // optional page-space width from drag-to-create
+  newTextStyle = null, // creation defaults from the mobile text-format panel
   onLivePreview,       // (updatedAnnotationsJSON) => void -- live SVG update during shape edit
   // Counter Step 7 — group-wide propagation hook. Called from the counter
   // mini-toolbar's Fill / Stroke / Number-input handlers. App.jsx walks
@@ -1854,7 +1855,7 @@ const FabricEditCanvas = memo(({
       // visibly "pop" into SVG form. Intended final colors stash in
       // originalAnnotationRef so commitAndClose (lines 978-983) restores them
       // onto the persisted annotation.
-      const intendedFill = strokeColor || '#007AFF';
+      const intendedFill = newTextStyle?.fontColor || strokeColor || '#007AFF';
       const intendedStroke = '#000000';
 
       // Plan 15-04 Issue 4 — visibleOuterW is what the user draws by drag.
@@ -1873,11 +1874,15 @@ const FabricEditCanvas = memo(({
         top: BBOX_PADDING + TEXT_PADDING,
         angle: 0,
         width: Math.max(8, visibleOuterW - 2 * TEXT_PADDING),
-        fontSize: 16,
+        fontSize: Number(newTextStyle?.fontSize) || 16,
         fill: 'rgba(0,0,0,0)',
-        fontFamily: DEFAULT_FONT_FAMILY,
+        fontFamily: newTextStyle?.fontFamily || DEFAULT_FONT_FAMILY,
         splitByGrapheme: true,
-        fontWeight: 'normal',
+        fontWeight: newTextStyle?.bold ? 'bold' : 'normal',
+        fontStyle: newTextStyle?.italic ? 'italic' : 'normal',
+        underline: Boolean(newTextStyle?.underline),
+        linethrough: Boolean(newTextStyle?.strike),
+        textAlign: newTextStyle?.textAlign || 'left',
         styles: {},
         charSpacing: 0,
         // Default 1px black border on brand-new textboxes created via edit

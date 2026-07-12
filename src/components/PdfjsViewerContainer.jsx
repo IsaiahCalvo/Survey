@@ -58,6 +58,7 @@ const PAN_START_EVENT = 'survey-pdfjs-pan-start';
 const PAN_END_EVENT = 'survey-pdfjs-pan-end';
 const ZOOM_START_EVENT = 'survey-pdfjs-zoom-start';
 const ZOOM_END_EVENT = 'survey-pdfjs-zoom-end';
+const PINCH_START_EVENT = 'survey-pdfjs-pinch-start';
 
 const isSpaceKey = (event) => event?.code === 'Space' || event?.key === ' ' || event?.key === 'Spacebar';
 const isEditableTarget = (target) => {
@@ -78,8 +79,10 @@ const getTouchDistance = (touches) => Math.hypot(
 
 // Chromium canvas limits + smooth-area budget (ported from spikeMetrics).
 const MAX_CANVAS_DIM = 16384;
-const MAX_CANVAS_AREA = 80 * 1024 * 1024; // ~80 MP
-const MAX_OVERSCAN_PAGES = 3;
+const DESKTOP_MAX_CANVAS_AREA = 80 * 1024 * 1024; // ~80 MP
+const MOBILE_MAX_CANVAS_AREA = 8 * 1024 * 1024; // ~32 MiB RGBA
+const DESKTOP_MAX_OVERSCAN_PAGES = 3;
+const MOBILE_MAX_OVERSCAN_PAGES = 1;
 function isMobilePdfSurfaceViewport() {
   if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return false;
   return window.matchMedia('(max-width: 720px), (pointer: coarse)').matches;
@@ -105,9 +108,10 @@ function getFitWidthForContainer(containerWidth, metrics) {
   const available = Math.max(1, Number(containerWidth) - metrics.padX * 2);
   return metrics.maxPageWidth ? Math.min(available, metrics.maxPageWidth) : available;
 }
-function clampToBudget(backingW, backingH) {
+function clampToBudget(backingW, backingH, isMobileSurface = false) {
+  const maxArea = isMobileSurface ? MOBILE_MAX_CANVAS_AREA : DESKTOP_MAX_CANVAS_AREA;
   const dimOver = Math.max(backingW, backingH) / MAX_CANVAS_DIM;
-  const areaOver = Math.sqrt((backingW * backingH) / MAX_CANVAS_AREA);
+  const areaOver = Math.sqrt((backingW * backingH) / maxArea);
   const over = Math.max(dimOver, areaOver, 1);
   return { factor: over > 1 ? 1 / over : 1, clamped: over > 1 };
 }
@@ -125,6 +129,11 @@ function clampToBudget(backingW, backingH) {
 const PAGE_RASTER_CACHE = new Map(); // key -> { canvas, bytes }
 let pageRasterCacheBytes = 0;
 const PAGE_RASTER_CACHE_MAX_BYTES = 256 * 1024 * 1024;
+function releaseRasterCanvas(canvas) {
+  if (!canvas) return;
+  canvas.width = 0;
+  canvas.height = 0;
+}
 function pageRasterCacheGet(key) {
   const v = PAGE_RASTER_CACHE.get(key);
   if (v) { PAGE_RASTER_CACHE.delete(key); PAGE_RASTER_CACHE.set(key, v); } // touch = most-recent
@@ -133,15 +142,38 @@ function pageRasterCacheGet(key) {
 function pageRasterCacheSet(key, canvas) {
   const bytes = (canvas.width * canvas.height * 4) || 0;
   const existing = PAGE_RASTER_CACHE.get(key);
-  if (existing) { pageRasterCacheBytes -= existing.bytes; PAGE_RASTER_CACHE.delete(key); }
+  if (existing) {
+    pageRasterCacheBytes -= existing.bytes;
+    PAGE_RASTER_CACHE.delete(key);
+    releaseRasterCanvas(existing.canvas);
+  }
+  if (!bytes || bytes > PAGE_RASTER_CACHE_MAX_BYTES) {
+    releaseRasterCanvas(canvas);
+    return;
+  }
   PAGE_RASTER_CACHE.set(key, { canvas, bytes });
   pageRasterCacheBytes += bytes;
-  while (pageRasterCacheBytes > PAGE_RASTER_CACHE_MAX_BYTES && PAGE_RASTER_CACHE.size > 1) {
+  while (pageRasterCacheBytes > PAGE_RASTER_CACHE_MAX_BYTES && PAGE_RASTER_CACHE.size > 0) {
     const oldestKey = PAGE_RASTER_CACHE.keys().next().value;
     const oldest = PAGE_RASTER_CACHE.get(oldestKey);
     PAGE_RASTER_CACHE.delete(oldestKey);
     pageRasterCacheBytes -= oldest.bytes;
+    releaseRasterCanvas(oldest.canvas);
   }
+}
+function pageRasterCacheClearDocument(docKey) {
+  const prefix = `${docKey}:`;
+  for (const [key, entry] of PAGE_RASTER_CACHE.entries()) {
+    if (!key.startsWith(prefix)) continue;
+    PAGE_RASTER_CACHE.delete(key);
+    pageRasterCacheBytes -= entry.bytes;
+    releaseRasterCanvas(entry.canvas);
+  }
+  pageRasterCacheBytes = Math.max(0, pageRasterCacheBytes);
+}
+
+function isPdfDocumentProxy(source) {
+  return Boolean(source && typeof source.getPage === 'function' && Number.isFinite(source.numPages));
 }
 
 // Normalize the app's documentSource into pdf.js getDocument params. The app
@@ -190,7 +222,8 @@ function PdfPageCanvas({ pdf, pageIndex, pageW, pageH, renderScale, rotation, on
     // no re-raster, no "loading" flash on scroll-return.
     const docKey = (pdf?.fingerprints && pdf.fingerprints[0]) || pdf?.fingerprint || 'doc';
     const cacheKey = `${docKey}:${pageIndex}:${baseScale.toFixed(3)}:${DPR}:${rotation}`;
-    const cachedCanvas = pageRasterCacheGet(cacheKey);
+    const isMobileSurface = isMobilePdfSurfaceViewport();
+    const cachedCanvas = isMobileSurface ? null : pageRasterCacheGet(cacheKey);
     if (cachedCanvas) {
       const c = canvasRef.current;
       if (c) {
@@ -206,14 +239,18 @@ function PdfPageCanvas({ pdf, pageIndex, pageW, pageH, renderScale, rotation, on
         const page = await pdf.getPage(pageIndex + 1);
         if (cancelled || myGen !== genRef.current) return;
         const want = baseScale * DPR;
-        const { factor } = clampToBudget(pageW * want, pageH * want);
+        const { factor } = clampToBudget(pageW * want, pageH * want, isMobileSurface);
         const rasterScale = want * factor;
         const viewport = page.getViewport({ scale: rasterScale, rotation: page.rotate + rotation });
 
-        const off = document.createElement('canvas');
-        off.width = Math.max(1, Math.floor(viewport.width));
-        off.height = Math.max(1, Math.floor(viewport.height));
-        const ctx = off.getContext('2d', { alpha: false });
+        // WKWebView has a much smaller memory ceiling than desktop browsers.
+        // Render directly into the visible canvas there so a page never exists
+        // twice as an offscreen + onscreen RGBA bitmap.
+        const target = isMobileSurface ? canvasRef.current : document.createElement('canvas');
+        if (!target) return;
+        target.width = Math.max(1, Math.floor(viewport.width));
+        target.height = Math.max(1, Math.floor(viewport.height));
+        const ctx = target.getContext('2d', { alpha: false });
 
         if (taskRef.current) { try { taskRef.current.cancel(); } catch { /* noop */ } }
         const t0 = performance.now();
@@ -232,13 +269,15 @@ function PdfPageCanvas({ pdf, pageIndex, pageW, pageH, renderScale, rotation, on
         }
         if (cancelled || myGen !== genRef.current) return;
 
-        const c = canvasRef.current;
-        if (!c) return;
-        c.width = off.width;
-        c.height = off.height;
-        c.getContext('2d', { alpha: false }).drawImage(off, 0, 0);
-        // Keep the rendered bitmap so a scroll-return repaints instantly.
-        pageRasterCacheSet(cacheKey, off);
+        if (!isMobileSurface) {
+          const c = canvasRef.current;
+          if (!c) return;
+          c.width = target.width;
+          c.height = target.height;
+          c.getContext('2d', { alpha: false }).drawImage(target, 0, 0);
+          // Desktop keeps the rendered bitmap so a scroll-return repaints instantly.
+          pageRasterCacheSet(cacheKey, target);
+        }
         onRaster?.(pageIndex, { ms: Math.round(performance.now() - t0), clamped: tiled });
       } catch {
         /* a page may unmount mid-render; never throw out of the engine */
@@ -531,16 +570,20 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
   // ---- load document --------------------------------------------------------
   useEffect(() => {
     let cancelled = false;
+    const externalPdf = isPdfDocumentProxy(activeSource) ? activeSource : null;
     const params = buildGetDocumentParams(activeSource, activePassword);
     setPageSizes([]); setNumPages(0); setRange([0, -1]);
     pageContainerMapRef.current = {};
-    if (!params) return undefined;
+    if (!externalPdf && !params) return undefined;
 
-    const task = pdfjsLib.getDocument(params);
+    const task = externalPdf ? null : pdfjsLib.getDocument(params);
     (async () => {
       try {
-        const pdf = await task.promise;
-        if (cancelled) { try { pdf.destroy(); } catch { /* noop */ } return; }
+        const pdf = externalPdf || await task.promise;
+        if (cancelled) {
+          if (!externalPdf) { try { pdf.destroy(); } catch { /* noop */ } }
+          return;
+        }
         pdfRef.current = pdf;
         numPagesRef.current = pdf.numPages;
         setNumPages(pdf.numPages);
@@ -590,11 +633,15 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
 
     return () => {
       cancelled = true;
-      try { task.destroy?.(); } catch { /* noop */ }
+      try { task?.destroy?.(); } catch { /* noop */ }
       const prev = pdfRef.current;
       pdfRef.current = null;
       thumbCacheRef.current.clear();
-      if (prev) { try { prev.destroy(); } catch { /* noop */ } }
+      if (prev) {
+        const docKey = (prev.fingerprints && prev.fingerprints[0]) || prev.fingerprint || 'doc';
+        pageRasterCacheClearDocument(docKey);
+        if (prev !== externalPdf) { try { prev.destroy(); } catch { /* noop */ } }
+      }
       cb.current.onPageContainersChange?.({}, { reason: 'document_unload', count: 0 });
       cb.current.onDocumentUnload?.();
     };
@@ -685,12 +732,15 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     }
     if (first === -1) { first = 0; last = -1; }
     else if (visibleFirst !== -1 && visibleLast !== -1) {
+      const maxOverscanPages = isMobileSurface
+        ? MOBILE_MAX_OVERSCAN_PAGES
+        : DESKTOP_MAX_OVERSCAN_PAGES;
       const visibleCount = visibleLast - visibleFirst + 1;
       const availableBefore = visibleFirst - first;
       const availableAfter = last - visibleLast;
-      let beforeCount = Math.min(availableBefore, Math.floor(MAX_OVERSCAN_PAGES / 2));
-      let afterCount = Math.min(availableAfter, MAX_OVERSCAN_PAGES - beforeCount);
-      beforeCount = Math.min(availableBefore, MAX_OVERSCAN_PAGES - afterCount);
+      let beforeCount = Math.min(availableBefore, Math.floor(maxOverscanPages / 2));
+      let afterCount = Math.min(availableAfter, maxOverscanPages - beforeCount);
+      beforeCount = Math.min(availableBefore, maxOverscanPages - afterCount);
       first = visibleFirst - beforeCount;
       last = visibleLast + afterCount;
       // Keep this explicit: visible pages are never sacrificed to the overscan budget.
@@ -701,7 +751,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     }
     setRange((prev) => (prev[0] === first && prev[1] === last ? prev : [first, last]));
     detectCurrentPage();
-  }, [layout, scale, detectCurrentPage]);
+  }, [layout, scale, detectCurrentPage, isMobileSurface]);
 
   useLayoutEffect(() => {
     const el = scrollerRef.current;
@@ -1075,14 +1125,22 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
       liveZoomRef.current = 1;
       setLiveZoom(1);
       if (settleTimerRef.current) clearTimeout(settleTimerRef.current);
+      window.dispatchEvent(new Event(PINCH_START_EVENT));
       cb.current.onZoomPhase?.('gesture-start', { atPct: Math.round(scaleRef.current * 100) });
       setZoomInteraction(true);
       setPanInteraction(true);
       setMobileTouchMode('pinch');
     };
 
+    const isNativeInteractionTarget = (target) => {
+      if (isEditableTarget(target)) return true;
+      if (target?.closest?.('a[href], .linkAnnotation, [data-element-id="link"]')) return true;
+      return interactionModeRef.current === 'TextSelection'
+        && Boolean(target?.closest?.('.textLayer, .textLayer span, .annotationLayer'));
+    };
+
     const onTouchStart = (event) => {
-      if (isEditableTarget(event.target)) return;
+      if (isNativeInteractionTarget(event.target)) return;
       // Required by Safari to stop native page zoom / Tab Expose and the
       // long-press loupe before either recognizer claims the sequence.
       event.preventDefault();
@@ -1107,7 +1165,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     };
 
     const onTouchMove = (event) => {
-      if (isEditableTarget(event.target)) return;
+      if (isNativeInteractionTarget(event.target)) return;
       event.preventDefault();
       if (event.touches.length >= 2) {
         event.stopPropagation();
@@ -1148,7 +1206,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     };
 
     const onTouchEnd = (event) => {
-      if (isEditableTarget(event.target)) return;
+      if (isNativeInteractionTarget(event.target)) return;
       event.preventDefault();
       const touchState = mobileTouchRef.current;
       if (!touchState) return;
@@ -1183,7 +1241,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
       event.stopPropagation();
     };
     const stopNativeSelection = (event) => {
-      if (isEditableTarget(event.target)) return;
+      if (isNativeInteractionTarget(event.target)) return;
       event.preventDefault();
     };
     const stopPostGestureClick = (event) => {

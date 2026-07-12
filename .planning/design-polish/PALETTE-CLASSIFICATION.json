@@ -1,0 +1,3782 @@
+{
+ "counts": {
+  "CHROME": 447,
+  "CANVAS_CONTENT": 53,
+  "NON_UI": 7,
+  "UNSURE": 0
+ },
+ "missing": [],
+ "files": [
+  {
+   "file": "src/App.css",
+   "fileSummary": "src/App.css is NOT one of the protected high-risk files (those are PDFViewer.jsx, PageAnnotationLayer.jsx, the Fabric Canvas components, and SVGAnnotationLayer.jsx); it's the global root theme stylesheet, and all 12 color-literal hits here are CHROME \u2014 they're the :root CSS custom-property definitions (backgrounds, accent, borders, accent shadow) consumed app-wide by DOM chrome components like toasts/modals/banners/sidebar, none of them touch the PDF canvas or SVG annotation layer.",
+   "sites": [
+    {
+     "line": 14,
+     "literal": "#1E1E1E",
+     "classification": "CHROME",
+     "reason": "--bg-primary root token; PDF-viewer dark-theme background variable consumed by chrome panels/toolbars, not the canvas content itself.",
+     "snippet": "--bg-primary: #1E1E1E;"
+    },
+    {
+     "line": 15,
+     "literal": "#252525",
+     "classification": "CHROME",
+     "reason": "--bg-secondary root token; secondary chrome background surface.",
+     "snippet": "--bg-secondary: #252525;"
+    },
+    {
+     "line": 16,
+     "literal": "#2D2D2D",
+     "classification": "CHROME",
+     "reason": "--bg-tertiary root token; tertiary chrome background surface.",
+     "snippet": "--bg-tertiary: #2D2D2D;"
+    },
+    {
+     "line": 20,
+     "literal": "#1E1E1E",
+     "classification": "CHROME",
+     "reason": "--bg-light root token used for dashboard/home-screen chrome background (duplicate value of --bg-primary).",
+     "snippet": "--bg-light: #1E1E1E;"
+    },
+    {
+     "line": 21,
+     "literal": "#252525",
+     "classification": "CHROME",
+     "reason": "--bg-white root token, dashboard chrome surface background.",
+     "snippet": "--bg-white: #252525;"
+    },
+    {
+     "line": 32,
+     "literal": "#4A90E2",
+     "classification": "CHROME",
+     "reason": "--accent-primary token; grep confirms it's consumed by chrome components (UndoToast, ReSignInModal, CollaboratorOutlineOverlay wrapper CSS, StorageFailureBanner) \u2014 DOM UI accent, the blue slated to become gold.",
+     "snippet": "--accent-primary: #4A90E2;"
+    },
+    {
+     "line": 33,
+     "literal": "#4A90E2",
+     "classification": "CHROME",
+     "reason": "--accent-blue token, same value/usage pattern as --accent-primary, feeds chrome UI accents.",
+     "snippet": "--accent-blue: #4A90E2;"
+    },
+    {
+     "line": 38,
+     "literal": "#3A3A3A",
+     "classification": "CHROME",
+     "reason": "--border-primary root token; general chrome border color.",
+     "snippet": "--border-primary: #3A3A3A;"
+    },
+    {
+     "line": 39,
+     "literal": "#2D2D2D",
+     "classification": "CHROME",
+     "reason": "--border-secondary root token; chrome border color, duplicate of bg-tertiary value.",
+     "snippet": "--border-secondary: #2D2D2D;"
+    },
+    {
+     "line": 40,
+     "literal": "#252525",
+     "classification": "CHROME",
+     "reason": "--border-light root token; chrome border color.",
+     "snippet": "--border-light: #252525;"
+    },
+    {
+     "line": 41,
+     "literal": "#1E1E1E",
+     "classification": "CHROME",
+     "reason": "--border-lighter root token; chrome border color.",
+     "snippet": "--border-lighter: #1E1E1E;"
+    },
+    {
+     "line": 47,
+     "literal": "rgba(74, 144, 226, 0.2)",
+     "classification": "CHROME",
+     "reason": "--shadow-accent token, a glow/shadow built from the blue accent, used on chrome elements (e.g. CollaboratorOutlineOverlay.css references shadow-accent) for hover/focus emphasis, not baked into PDF/canvas output.",
+     "snippet": "--shadow-accent: 0 4px 20px rgba(74, 144, 226, 0.2);"
+    }
+   ]
+  },
+  {
+   "file": "src/AppShell.jsx",
+   "fileSummary": "AppShell.jsx is NOT one of the project's designated high-risk/protected files (those are PDFViewer.jsx, PageAnnotationLayer.jsx, the Fabric*Canvas.jsx trio, and SVGAnnotationLayer.jsx) \u2014 it's the app-shell chrome host (top/left/right toolbar rails, dropdown menus, page-nav, zoom controls); every matched color site here is DOM-rendered UI chrome outside the pdf-container/canvas subtree, so the dominant (and only) classification is CHROME.",
+   "sites": [
+    {
+     "line": 962,
+     "literal": "#2d2d2d",
+     "classification": "CHROME",
+     "reason": "background of #chrome-top-host, the app-level top toolbar bar container",
+     "snippet": "id=\"chrome-top-host\" ... background: '#2d2d2d'"
+    },
+    {
+     "line": 1080,
+     "literal": "#4A90E2",
+     "classification": "CHROME",
+     "reason": "text color of the current-page-number <input> in the top toolbar's page nav pill",
+     "snippet": "data-page-number-input ... color: '#4A90E2' ... aria-label=\"Current page\""
+    },
+    {
+     "line": 1089,
+     "literal": "#4A90E2",
+     "classification": "CHROME",
+     "reason": "text color of the page-number button (click-to-edit page nav) in the top toolbar",
+     "snippet": "onClick={() => setIsEditingRailPage(true)} ... color: '#4A90E2' ... aria-label=\"Edit page number\""
+    },
+    {
+     "line": 1157,
+     "literal": "#3a3a3a",
+     "classification": "CHROME",
+     "reason": "border color of the zoom/fit-mode dropdown menu panel that floats below the toolbar zoom button",
+     "snippet": "bottomToolbarApi.isZoomMenuOpen && (<div style={{ position: 'absolute', ... background: 'rgb(30, 30, 30)', border: '1px solid #3a3a3a' ..."
+    },
+    {
+     "line": 1488,
+     "literal": "#2b2b2b",
+     "classification": "CHROME",
+     "reason": "background of the rich-text formatting toolbar strip (font color/size/B-I-U-S/alignment row) rendered above the PDF, not into it",
+     "snippet": "data-rich-text-toolbar style={{ width: '100%', height: '34px', background: '#2b2b2b', borderBottom: '1px solid #3a3a3a' ..."
+    },
+    {
+     "line": 1488,
+     "literal": "#3a3a3a",
+     "classification": "CHROME",
+     "reason": "border-bottom of the same rich-text formatting toolbar strip",
+     "snippet": "data-rich-text-toolbar style={{ ... background: '#2b2b2b', borderBottom: '1px solid #3a3a3a', borderTop: 'none' ..."
+    },
+    {
+     "line": 2048,
+     "literal": "#1e1e1e",
+     "classification": "CHROME",
+     "reason": "background of the counter-series selection dropdown menu panel (a UI list/menu, distinct from the series' own data color shown via a swatch dot elsewhere on this same block)",
+     "snippet": "showCounterSeriesMenu && (<div style={{ position: 'absolute', ... background: '#1e1e1e', border: '1px solid #444' ..."
+    },
+    {
+     "line": 2201,
+     "literal": "#1e1e1e",
+     "classification": "CHROME",
+     "reason": "background of the shape fill/border tab-picker dropdown panel in the top toolbar's shape-color popup chrome",
+     "snippet": "isShape && (<div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', background: '#1e1e1e', border: '1px solid #333' ..."
+    },
+    {
+     "line": 2290,
+     "literal": "#1e1e1e",
+     "classification": "CHROME",
+     "reason": "background of the eraser-type ('Full Stroke'/'Partial Erase') dropdown menu panel",
+     "snippet": "showEraserTypeMenu && (<div style={{ position: 'absolute', ... background: '#1e1e1e', border: '1px solid #444' ..."
+    },
+    {
+     "line": 2409,
+     "literal": "#1e1e1e",
+     "classification": "CHROME",
+     "reason": "background of the line-style (Solid/Dashed/Dotted/Cloud) dropdown menu panel",
+     "snippet": "showStyleMenu && (<div style={{ position: 'absolute', ... background: '#1e1e1e', border: '1px solid #444' ..."
+    },
+    {
+     "line": 2528,
+     "literal": "#1e1e1e",
+     "classification": "CHROME",
+     "reason": "background of the arrowhead-style dropdown menu panel",
+     "snippet": "showArrowheadMenu && (<div style={{ position: 'absolute', ... background: '#1e1e1e', border: '1px solid #444' ..."
+    },
+    {
+     "line": 2628,
+     "literal": "#252525",
+     "classification": "CHROME",
+     "reason": "background of #chrome-left-host, the left rail container hosting PDFSidebar",
+     "snippet": "id=\"chrome-left-host\" style={{ ... background: '#252525', color: '#ddd' ..."
+    },
+    {
+     "line": 2656,
+     "literal": "#2b2b2b",
+     "classification": "CHROME",
+     "reason": "background of #chrome-sub-toolbar-host, the absolutely-positioned sub-toolbar strip mount (Draw/Shapes/Text category expansion) overlaying the canvas area from the chrome layer",
+     "snippet": "id=\"chrome-sub-toolbar-host\" data-chrome-strip=\"true\" style={{ ... background: '#2b2b2b', cursor: 'default' ..."
+    },
+    {
+     "line": 2753,
+     "literal": "#252525",
+     "classification": "CHROME",
+     "reason": "background of #chrome-right-host, the right rail container hosting SurveySpacesRail plus page-nav/zoom bottom slot",
+     "snippet": "id=\"chrome-right-host\" style={{ ... background: '#252525', color: '#ddd' ..."
+    },
+    {
+     "line": 2830,
+     "literal": "#4A90E2",
+     "classification": "CHROME",
+     "reason": "text color of the current-page-number <input> in the right rail's bottom page-nav slot (duplicate of the top-toolbar page input)",
+     "snippet": "aria-label=\"Current page\" style={{ width: '28px', ... color: '#4A90E2' ..."
+    },
+    {
+     "line": 2851,
+     "literal": "#4A90E2",
+     "classification": "CHROME",
+     "reason": "text color of the page-number button in the right rail's bottom page-nav slot",
+     "snippet": "onClick={() => setIsEditingRailPage(true)} ... style={{ background: 'transparent', border: 'none', color: '#4A90E2' ..."
+    },
+    {
+     "line": 2911,
+     "literal": "#3a3a3a",
+     "classification": "CHROME",
+     "reason": "background of the 1px divider line between page-nav and zoom controls in the collapsed right rail",
+     "snippet": "{/* Divider between page nav and zoom */} <div style={{ width: '32px', height: '1px', background: '#3a3a3a', margin: '4px 0' }} />"
+    },
+    {
+     "line": 3137,
+     "literal": "#3a3a3a",
+     "classification": "CHROME",
+     "reason": "border color of the right-rail's zoom/fit-mode dropdown flyout menu (mirrors the line-1157 top-toolbar dropdown)",
+     "snippet": "bottomToolbarApi.isZoomMenuOpen && (<div style={{ position: 'absolute', bottom: 0, right: '100%', ... background: 'rgb(30, 30, 30)', border: '1px solid #3a3a3a' ..."
+    }
+   ]
+  },
+  {
+   "file": "src/PDFSidebar.jsx",
+   "fileSummary": "Not on the high-risk/protected list (PDFViewer.jsx, PageAnnotationLayer.jsx, Fabric*Canvas.jsx, SVGAnnotationLayer.jsx) \u2014 this is the left-rail sidebar chrome component; every hit is DOM UI chrome (backgrounds, borders, tab/button states, tooltip), dominant classification CHROME with zero CANVAS_CONTENT.",
+   "sites": [
+    {
+     "line": 39,
+     "literal": "#4A90E2",
+     "classification": "CHROME",
+     "reason": "Icon color for the Version History button in its active state; plain DOM button in the sidebar footer.",
+     "snippet": "color: isActive ? '#4A90E2' : '#ddd',"
+    },
+    {
+     "line": 198,
+     "literal": "#252525",
+     "classification": "CHROME",
+     "reason": "Root sidebar panel background color.",
+     "snippet": "background: '#252525',"
+    },
+    {
+     "line": 199,
+     "literal": "#3a3a3a",
+     "classification": "CHROME",
+     "reason": "Right border of the sidebar panel separating it from the PDF viewport.",
+     "snippet": "borderRight: '1px solid #3a3a3a',"
+    },
+    {
+     "line": 209,
+     "literal": "#3a3a3a",
+     "classification": "CHROME",
+     "reason": "Bottom border under the collapse/expand button header row.",
+     "snippet": "borderBottom: '1px solid #3a3a3a',"
+    },
+    {
+     "line": 213,
+     "literal": "#252525",
+     "classification": "CHROME",
+     "reason": "Background of the collapse/expand header row.",
+     "snippet": "background: '#252525'"
+    },
+    {
+     "line": 241,
+     "literal": "#3a3a3a",
+     "classification": "CHROME",
+     "reason": "Bottom border under the tab navigation row.",
+     "snippet": "borderBottom: '1px solid #3a3a3a',"
+    },
+    {
+     "line": 242,
+     "literal": "#252525",
+     "classification": "CHROME",
+     "reason": "Background of the tab navigation row.",
+     "snippet": "background: '#252525',"
+    },
+    {
+     "line": 286,
+     "literal": "#2b2b2b",
+     "classification": "CHROME",
+     "reason": "Active-tab background highlight in the sidebar tab bar.",
+     "snippet": "background: isActive ? '#2b2b2b' : 'transparent',"
+    },
+    {
+     "line": 288,
+     "literal": "#4A90E2",
+     "classification": "CHROME",
+     "reason": "Bottom border accent under the active sidebar tab.",
+     "snippet": "borderBottom: isActive ? '2px solid #4A90E2' : '2px solid transparent',"
+    },
+    {
+     "line": 306,
+     "literal": "#2b2b2b",
+     "classification": "CHROME",
+     "reason": "Hover background applied to a sidebar tab button via mouse handler.",
+     "snippet": "e.currentTarget.style.background = '#2b2b2b';"
+    },
+    {
+     "line": 318,
+     "literal": "#4A90E2",
+     "classification": "CHROME",
+     "reason": "Tab icon color when the tab is active, in the DOM tab bar.",
+     "snippet": "color={isActive ? '#4A90E2' : '#999'}"
+    },
+    {
+     "line": 338,
+     "literal": "#252525",
+     "classification": "CHROME",
+     "reason": "Background of the panel-content wrapper below the tab bar.",
+     "snippet": "background: '#252525'"
+    },
+    {
+     "line": 464,
+     "literal": "#252525",
+     "classification": "CHROME",
+     "reason": "Background of the collapsed (icon-only) sidebar state.",
+     "snippet": "background: '#252525',"
+    },
+    {
+     "line": 518,
+     "literal": "#2b2b2b",
+     "classification": "CHROME",
+     "reason": "Hover background for icon buttons in the collapsed sidebar rail.",
+     "snippet": "e.currentTarget.style.background = '#2b2b2b';"
+    },
+    {
+     "line": 549,
+     "literal": "#3a3a3a",
+     "classification": "CHROME",
+     "reason": "Border on the flyout tooltip shown for a collapsed-rail tab icon.",
+     "snippet": "border: '1px solid #3a3a3a'"
+    },
+    {
+     "line": 567,
+     "literal": "#3a3a3a",
+     "classification": "CHROME",
+     "reason": "Top border of the collaboration footer (sync chip + presence avatars) at the bottom of the rail.",
+     "snippet": "borderTop: '1px solid #3a3a3a',"
+    },
+    {
+     "line": 573,
+     "literal": "#252525",
+     "classification": "CHROME",
+     "reason": "Background of the collaboration footer.",
+     "snippet": "background: '#252525'"
+    }
+   ]
+  },
+  {
+   "file": "src/PDFViewer.jsx",
+   "fileSummary": "PDFViewer.jsx is explicitly flagged high-risk/protected in project docs (the ~34k-line Syncfusion/pdf.js viewer core with the zoom lifecycle and history engine, minimum-viable-diff only); every hit found is DOM chrome (viewer background, error/loading screens, toolbar strips, popups, buttons, list-row flash highlights, banners) \u2014 the dominant classification is CHROME, with 3 comment-only mentions (NON_UI) and zero canvas-content hits.",
+   "sites": [
+    {
+     "line": 22073,
+     "literal": "#2b2b2b",
+     "classification": "CHROME",
+     "reason": "Background of the main PDF container div (pdf.js render path), the scrollable viewer surface behind the pages.",
+     "snippet": "background: '#2b2b2b', position: 'relative', fontFamily: FONT_FAMILY"
+    },
+    {
+     "line": 22097,
+     "literal": "#2b2b2b",
+     "classification": "CHROME",
+     "reason": "Same container background, non-pdf.js branch of the same containerStyle memo.",
+     "snippet": "background: '#2b2b2b', padding: '20px', position: 'relative'"
+    },
+    {
+     "line": 24419,
+     "literal": "#4A90E2",
+     "classification": "CHROME",
+     "reason": "boxShadow flash highlight applied via DOM style to a survey panel list row (`highlight-item-*` element) when jumping to it \u2014 a side-panel UX affordance, not drawn on the PDF canvas.",
+     "snippet": "element.style.boxShadow = '0 0 0 2px #4A90E2';"
+    },
+    {
+     "line": 27587,
+     "literal": "#2b2b2b",
+     "classification": "CHROME",
+     "reason": "Full-height background of the in-app PDF-load-error screen.",
+     "snippet": "background: '#2b2b2b', color: '#ddd', fontFamily: FONT_FAMILY"
+    },
+    {
+     "line": 27601,
+     "literal": "#3a3a3a",
+     "classification": "CHROME",
+     "reason": "Border on the error-state message card.",
+     "snippet": "background: '#1f1f1f', border: '1px solid #3a3a3a', borderRadius: '8px'"
+    },
+    {
+     "line": 27694,
+     "literal": "#2b2b2b",
+     "classification": "CHROME",
+     "reason": "Background of the PDF loading-spinner screen.",
+     "snippet": "background: '#2b2b2b', color: '#ddd', fontFamily: FONT_FAMILY"
+    },
+    {
+     "line": 27867,
+     "literal": "#2b2b2b",
+     "classification": "CHROME",
+     "reason": "Background of the main viewer wrapper div that hosts the toolbar/sidebar/PDF area.",
+     "snippet": "background: '#2b2b2b', color: '#ddd', fontFamily: FONT_FAMILY, position: 'relative'"
+    },
+    {
+     "line": 27946,
+     "literal": "rgba(74, 144, 226, 0.9)",
+     "classification": "CHROME",
+     "reason": "Background of the floating 'Pending Location' banner overlaying the viewer \u2014 a DOM UX banner, not annotation content.",
+     "snippet": "background: 'rgba(74, 144, 226, 0.9)', color: 'white', padding: '8px 16px'"
+    },
+    {
+     "line": 29617,
+     "literal": "#2b2b2b",
+     "classification": "CHROME",
+     "reason": "Background of the secondary sub-toolbar strip (portaled tool-category bar: pen/highlighter/eraser etc.).",
+     "snippet": "background: '#2b2b2b', borderBottom: '1px solid #3a3a3a'"
+    },
+    {
+     "line": 29618,
+     "literal": "#3a3a3a",
+     "classification": "CHROME",
+     "reason": "Bottom border of the same sub-toolbar strip.",
+     "snippet": "background: '#2b2b2b', borderBottom: '1px solid #3a3a3a', borderTop: 'none'"
+    },
+    {
+     "line": 29883,
+     "literal": "#1e1e1e/#333",
+     "classification": "NON_UI",
+     "reason": "Inside a code comment describing visual parity intent, not an actual color literal assignment.",
+     "snippet": "// popup palette (#1e1e1e/#333), same header divider treatment"
+    },
+    {
+     "line": 30026,
+     "literal": "#1E1E1E",
+     "classification": "NON_UI",
+     "reason": "Inside a code comment describing the popup's target palette; the actual literal is on line 30062 as rgb(30,30,30) which is outside the grep pattern scope of this classification pass.",
+     "snippet": "// exactly: rgb(30,30,30) bg (#1E1E1E), #333"
+    },
+    {
+     "line": 30037,
+     "literal": "#1E1E1E",
+     "classification": "NON_UI",
+     "reason": "Code comment reiterating the target fill color; not a literal in executable style.",
+     "snippet": "// #1E1E1E fill identical to the reference."
+    },
+    {
+     "line": 30104,
+     "literal": "#4A90E2",
+     "classification": "NON_UI",
+     "reason": "Code comment explaining why `.btn-active`'s blue text was avoided in this popup; not an active literal assignment.",
+     "snippet": "// `.btn-active` paints text #4A90E2 (blue),"
+    },
+    {
+     "line": 30505,
+     "literal": "#3A3A3A",
+     "classification": "CHROME",
+     "reason": "Background of the survey-module <select> dropdown in the sub-toolbar.",
+     "snippet": "background: '#3A3A3A', color: '#DDD', border: '1px solid #444'"
+    },
+    {
+     "line": 30565,
+     "literal": "#4A90E2",
+     "classification": "CHROME",
+     "reason": "Active-state border color of the survey-category picker button in the sub-toolbar (selects which category the survey-marker tool will place, not the marker's own rendered color).",
+     "snippet": "border: isActive ? '1px solid #4A90E2' : '1px solid #555',"
+    },
+    {
+     "line": 30566,
+     "literal": "#4A90E2",
+     "classification": "CHROME",
+     "reason": "Active-state background of the same category picker button \u2014 toolbar UI, not canvas-rendered marker styling.",
+     "snippet": "background: isActive ? '#4A90E2' : '#3A3A3A',"
+    },
+    {
+     "line": 30602,
+     "literal": "#4A90E2",
+     "classification": "CHROME",
+     "reason": "accentColor of the 'Keep active' checkbox in the survey sub-toolbar.",
+     "snippet": "style={{ margin: 0, accentColor: '#4A90E2', cursor: 'pointer' }}"
+    },
+    {
+     "line": 33314,
+     "literal": "#4A90E2",
+     "classification": "CHROME",
+     "reason": "Same pattern as line 24419 \u2014 boxShadow flash highlight on a survey-panel list row when locating an item from the Locate modal, applied via direct DOM style manipulation.",
+     "snippet": "element.style.boxShadow = '0 0 0 2px #4A90E2';"
+    }
+   ]
+  },
+  {
+   "file": "src/PageAnnotationLayer.jsx",
+   "fileSummary": "PageAnnotationLayer.jsx is one of the project's explicitly protected/high-risk files (per CLAUDE.md); dominant classification here is a clean split \u2014 the four fabric.js Control-handle renderers and the three survey-marker/eraser drawn-shape colors are CANVAS_CONTENT (must stay untouched), while every hit inside the right-click context menu and the \"Edit Property\" modal (hover states, panel backgrounds, active-toggle borders/backgrounds, Save button) is CHROME (safe to retheme to gold/warm-dark tokens).",
+   "sites": [
+    {
+     "line": 1040,
+     "literal": "#4a90e2",
+     "classification": "CANVAS_CONTENT",
+     "reason": "ctx.strokeStyle inside renderControl, a shared fabric.js Control render function used for the callout group's custom resize/handle controls drawn directly on the annotation canvas.",
+     "snippet": "ctx.fillStyle = '#ffffff'; ctx.strokeStyle = '#4a90e2';"
+    },
+    {
+     "line": 1415,
+     "literal": "#4a90e2",
+     "classification": "CANVAS_CONTENT",
+     "reason": "Same shared renderControl pattern for line/arrow control handles rendered on the fabric.js canvas.",
+     "snippet": "ctx.fillStyle = '#ffffff'; ctx.strokeStyle = '#4a90e2';"
+    },
+    {
+     "line": 1975,
+     "literal": "#4a90e2",
+     "classification": "CANVAS_CONTENT",
+     "reason": "renderControlHandle for the line tool's start/end drag handles, drawn on the annotation canvas.",
+     "snippet": "ctx.fillStyle = '#ffffff'; ctx.strokeStyle = '#4a90e2';"
+    },
+    {
+     "line": 2314,
+     "literal": "#4a90e2",
+     "classification": "CANVAS_CONTENT",
+     "reason": "renderControlHandle for the arrow tool's control handles, drawn on the annotation canvas.",
+     "snippet": "ctx.fillStyle = '#ffffff'; ctx.strokeStyle = '#4a90e2';"
+    },
+    {
+     "line": 6087,
+     "literal": "rgba(74, 144, 226, 0.3)",
+     "classification": "CANVAS_CONTENT",
+     "reason": "Stroke color of the live eraser-path Polyline overlay drawn on the fabric.js canvas while erasing (excludeFromExport visual feedback), i.e. drawn-content styling.",
+     "snippet": "const eraserStroke = new Polyline(..., { stroke: 'rgba(74, 144, 226, 0.3)', ... });"
+    },
+    {
+     "line": 6173,
+     "literal": "#4A90E2",
+     "classification": "CANVAS_CONTENT",
+     "reason": "Stroke color of the temporary selection rectangle drawn while creating a survey-marker annotation \u2014 a survey marker entity/drawn-shape color, explicitly out of scope.",
+     "snippet": "temp = new Rect({ ..., fill: 'transparent', stroke: '#4A90E2', strokeWidth: 2, strokeDashArray: [5,5], ... });"
+    },
+    {
+     "line": 8140,
+     "literal": "#4A90E2",
+     "classification": "CANVAS_CONTENT",
+     "reason": "Stroke color of the rendered rect for a survey marker that needsEntity (dashed outline drawn on the PDF canvas) \u2014 survey marker entity color.",
+     "snippet": "const rect = new Rect({ ..., fill: 'transparent', stroke: '#4A90E2', strokeWidth: 2, strokeDashArray: [5,5], ... });"
+    },
+    {
+     "line": 8856,
+     "literal": "#3a3a3a",
+     "classification": "CHROME",
+     "reason": "Hover background for the 'Cut' button in the right-click annotation context menu \u2014 DOM-rendered UI chrome.",
+     "snippet": "onMouseEnter={(e) => e.currentTarget.style.background = '#3a3a3a'}"
+    },
+    {
+     "line": 8877,
+     "literal": "#3a3a3a",
+     "classification": "CHROME",
+     "reason": "Hover background for the 'Copy' button in the same context menu.",
+     "snippet": "onMouseEnter={(e) => e.currentTarget.style.background = '#3a3a3a'}"
+    },
+    {
+     "line": 8899,
+     "literal": "#3a3a3a",
+     "classification": "CHROME",
+     "reason": "Hover background for the 'Paste' button in the same context menu.",
+     "snippet": "onMouseEnter={(e) => e.currentTarget.style.background = '#3a3a3a'}"
+    },
+    {
+     "line": 8923,
+     "literal": "#3a3a3a",
+     "classification": "CHROME",
+     "reason": "Hover background for a 'Group' or similar action button in the context menu (same button pattern repeated throughout the menu).",
+     "snippet": "onMouseEnter={(e) => e.currentTarget.style.background = '#3a3a3a'}"
+    },
+    {
+     "line": 8946,
+     "literal": "#3a3a3a",
+     "classification": "CHROME",
+     "reason": "Hover background for another context-menu action button (same repeated pattern).",
+     "snippet": "onMouseEnter={(e) => e.currentTarget.style.background = '#3a3a3a'}"
+    },
+    {
+     "line": 8968,
+     "literal": "#3a3a3a",
+     "classification": "CHROME",
+     "reason": "Hover background for another context-menu action button.",
+     "snippet": "onMouseEnter={(e) => e.currentTarget.style.background = '#3a3a3a'}"
+    },
+    {
+     "line": 8990,
+     "literal": "#3a3a3a",
+     "classification": "CHROME",
+     "reason": "Hover background for another context-menu action button.",
+     "snippet": "onMouseEnter={(e) => e.currentTarget.style.background = '#3a3a3a'}"
+    },
+    {
+     "line": 9017,
+     "literal": "#3a3a3a",
+     "classification": "CHROME",
+     "reason": "Hover background for another context-menu action button.",
+     "snippet": "onMouseEnter={(e) => e.currentTarget.style.background = '#3a3a3a'}"
+    },
+    {
+     "line": 9038,
+     "literal": "#3a3a3a",
+     "classification": "CHROME",
+     "reason": "Hover background for another context-menu action button.",
+     "snippet": "onMouseEnter={(e) => e.currentTarget.style.background = '#3a3a3a'}"
+    },
+    {
+     "line": 9060,
+     "literal": "#3a3a3a",
+     "classification": "CHROME",
+     "reason": "Hover background for another context-menu action button.",
+     "snippet": "onMouseEnter={(e) => e.currentTarget.style.background = '#3a3a3a'}"
+    },
+    {
+     "line": 9083,
+     "literal": "#3a3a3a",
+     "classification": "CHROME",
+     "reason": "Hover background for another context-menu action button.",
+     "snippet": "onMouseEnter={(e) => e.currentTarget.style.background = '#3a3a3a'}"
+    },
+    {
+     "line": 9105,
+     "literal": "#3a3a3a",
+     "classification": "CHROME",
+     "reason": "Hover background for another context-menu action button.",
+     "snippet": "onMouseEnter={(e) => e.currentTarget.style.background = '#3a3a3a'}"
+    },
+    {
+     "line": 9134,
+     "literal": "#3a3a3a",
+     "classification": "CHROME",
+     "reason": "Hover background for another context-menu action button (likely a submenu/delete item given deeper indentation).",
+     "snippet": "onMouseEnter={(e) => e.currentTarget.style.background = '#3a3a3a'}"
+    },
+    {
+     "line": 9160,
+     "literal": "#3a3a3a",
+     "classification": "CHROME",
+     "reason": "Hover background for another context-menu action button.",
+     "snippet": "onMouseEnter={(e) => e.currentTarget.style.background = '#3a3a3a'}"
+    },
+    {
+     "line": 9184,
+     "literal": "#3a3a3a",
+     "classification": "CHROME",
+     "reason": "Hover background for another context-menu action button.",
+     "snippet": "onMouseEnter={(e) => e.currentTarget.style.background = '#3a3a3a'}"
+    },
+    {
+     "line": 9206,
+     "literal": "#3a3a3a",
+     "classification": "CHROME",
+     "reason": "Hover background for another context-menu action button.",
+     "snippet": "onMouseEnter={(e) => e.currentTarget.style.background = '#3a3a3a'}"
+    },
+    {
+     "line": 9227,
+     "literal": "#3a3a3a",
+     "classification": "CHROME",
+     "reason": "Hover background for another context-menu action button.",
+     "snippet": "onMouseEnter={(e) => e.currentTarget.style.background = '#3a3a3a'}"
+    },
+    {
+     "line": 9249,
+     "literal": "#3a3a3a",
+     "classification": "CHROME",
+     "reason": "Hover background for the final context-menu action button (menu closes right after this block).",
+     "snippet": "onMouseEnter={(e) => e.currentTarget.style.background = '#3a3a3a'}"
+    },
+    {
+     "line": 9267,
+     "literal": "#2b2b2b",
+     "classification": "CHROME",
+     "reason": "Panel background of the 'Edit Property' modal \u2014 a DOM dialog for editing an annotation's properties (color, opacity, font).",
+     "snippet": "background: '#2b2b2b', border: '1px solid #444', borderRadius: '8px', ... /* Edit Modal */"
+    },
+    {
+     "line": 9309,
+     "literal": "#252525",
+     "classification": "CHROME",
+     "reason": "Header/title-bar background of the same 'Edit Property' modal (draggable header row).",
+     "snippet": "background: '#252525', cursor: 'move', ... <h3>Edit Property</h3>"
+    },
+    {
+     "line": 9337,
+     "literal": "#2b2b2b",
+     "classification": "CHROME",
+     "reason": "Content-body background of the 'Edit Property' modal.",
+     "snippet": "<div style={{ padding: '12px', background: '#2b2b2b' }}>"
+    },
+    {
+     "line": 9476,
+     "literal": "#4A90E2",
+     "classification": "CHROME",
+     "reason": "Active-state border color for the Bold toggle button in the Edit Property modal's text controls.",
+     "snippet": "border: editValues.fontWeight === 'bold' ? '1px solid #4A90E2' : '1px solid #555',"
+    },
+    {
+     "line": 9477,
+     "literal": "#4A90E2",
+     "classification": "CHROME",
+     "reason": "Active-state background color for the same Bold toggle button.",
+     "snippet": "background: editValues.fontWeight === 'bold' ? '#4A90E2' : '#333',"
+    },
+    {
+     "line": 9487,
+     "literal": "#4A90E2",
+     "classification": "CHROME",
+     "reason": "Active-state border color for the Italic toggle button.",
+     "snippet": "border: editValues.fontStyle === 'italic' ? '1px solid #4A90E2' : '1px solid #555',"
+    },
+    {
+     "line": 9488,
+     "literal": "#4A90E2",
+     "classification": "CHROME",
+     "reason": "Active-state background color for the same Italic toggle button.",
+     "snippet": "background: editValues.fontStyle === 'italic' ? '#4A90E2' : '#333',"
+    },
+    {
+     "line": 9502,
+     "literal": "#4A90E2",
+     "classification": "CHROME",
+     "reason": "Active-state border color for a text-alignment toggle button (left/center/right).",
+     "snippet": "border: editValues.textAlign === align ? '1px solid #4A90E2' : '1px solid #555',"
+    },
+    {
+     "line": 9503,
+     "literal": "#4A90E2",
+     "classification": "CHROME",
+     "reason": "Active-state background color for the same alignment toggle button.",
+     "snippet": "background: editValues.textAlign === align ? '#4A90E2' : '#333',"
+    },
+    {
+     "line": 9535,
+     "literal": "#4A90E2",
+     "classification": "CHROME",
+     "reason": "Active-state border color for the 'No Fill' toggle button in the modal's Fill Color control.",
+     "snippet": "border: editValues.fillColor === 'transparent' ? '1px solid #4A90E2' : '1px solid #555',"
+    },
+    {
+     "line": 9536,
+     "literal": "#4A90E2",
+     "classification": "CHROME",
+     "reason": "Active-state background color for the same 'No Fill' toggle button.",
+     "snippet": "background: editValues.fillColor === 'transparent' ? '#4A90E2' : '#333',"
+    },
+    {
+     "line": 9604,
+     "literal": "#4A90E2",
+     "classification": "CHROME",
+     "reason": "Background color of the primary 'Save' button in the Edit Property modal footer.",
+     "snippet": "onClick={saveEdit} style={{ ..., background: '#4A90E2', color: 'white', ... }}>Save</button>"
+    }
+   ]
+  },
+  {
+   "file": "src/RegionSelectionTool.jsx",
+   "fileSummary": "Not on the project's explicit high-risk/protected list (that's PDFViewer.jsx, PageAnnotationLayer.jsx, Fabric*Canvas.jsx, SVGAnnotationLayer.jsx); this file is a mixed bag \u2014 a floating DOM toolbar (CHROME) plus an SVG overlay that draws the actual region-selection marquee/shapes over the PDF (CANVAS_CONTENT).",
+   "sites": [
+    {
+     "line": 2520,
+     "literal": "#2b2b2b",
+     "classification": "CHROME",
+     "reason": "Background of the fixed floating region-selection toolbar div (the toolbar chrome, not drawn on the PDF).",
+     "snippet": "background: '#2b2b2b',"
+    },
+    {
+     "line": 2553,
+     "literal": "#4a90e2 / #3a3a3a",
+     "classification": "CHROME",
+     "reason": "Active/inactive background of the 'Select' toolbar button.",
+     "snippet": "background: toolType === 'move' ? '#4a90e2' : '#3a3a3a',"
+    },
+    {
+     "line": 2597,
+     "literal": "#4a90e2",
+     "classification": "CHROME",
+     "reason": "Active background of the tool-type dropdown trigger button in the toolbar.",
+     "snippet": "background: (toolType === 'rectangular' || toolType === 'freehand') ? '#4a90e2' : '#555',"
+    },
+    {
+     "line": 2654,
+     "literal": "#3a3a3a",
+     "classification": "CHROME",
+     "reason": "Background of the tool-type dropdown menu panel.",
+     "snippet": "background: '#3a3a3a',"
+    },
+    {
+     "line": 2671,
+     "literal": "#4a90e2",
+     "classification": "CHROME",
+     "reason": "Active-state background of the 'Rectangular' dropdown menu item.",
+     "snippet": "background: toolType === 'rectangular' ? '#4a90e2' : 'transparent',"
+    },
+    {
+     "line": 2701,
+     "literal": "#4a90e2",
+     "classification": "CHROME",
+     "reason": "Active-state background of the 'Freehand' dropdown menu item.",
+     "snippet": "background: toolType === 'freehand' ? '#4a90e2' : 'transparent',"
+    },
+    {
+     "line": 2736,
+     "literal": "#3a3a3a",
+     "classification": "CHROME",
+     "reason": "Background of the Additive/Subtractive selection-mode <select> element in the toolbar.",
+     "snippet": "background: toolType === 'move' ? '#2a2a2a' : '#3a3a3a',"
+    },
+    {
+     "line": 2852,
+     "literal": "rgba(74, 144, 226, 0.12)",
+     "classification": "CANVAS_CONTENT",
+     "reason": "Fill of the live rectangular marquee drawn in the SVG overlay directly over the PDF page while the user drags out a region selection.",
+     "snippet": "fill={... : \"rgba(74, 144, 226, 0.12)\"}"
+    },
+    {
+     "line": 2853,
+     "literal": "#4A90E2",
+     "classification": "CANVAS_CONTENT",
+     "reason": "Stroke of the live rectangular region-selection marquee drawn over the PDF content in the overlay SVG.",
+     "snippet": "stroke={... : \"#4A90E2\"}"
+    },
+    {
+     "line": 2862,
+     "literal": "rgba(74, 144, 226, 0.12)",
+     "classification": "CANVAS_CONTENT",
+     "reason": "Fill of the freehand polygon-preview path drawn over the PDF in the same overlay SVG as the marquee.",
+     "snippet": "fill={... : \"rgba(74, 144, 226, 0.12)\"}"
+    },
+    {
+     "line": 2863,
+     "literal": "#4A90E2",
+     "classification": "CANVAS_CONTENT",
+     "reason": "Stroke of the freehand polygon-preview path drawn over the PDF content.",
+     "snippet": "stroke={... : \"#4A90E2\"}"
+    },
+    {
+     "line": 2926,
+     "literal": "rgba(74, 144, 226, 0.22)",
+     "classification": "CANVAS_CONTENT",
+     "reason": "Fill of the unified/merged region shape rendered over the PDF page showing the combined selection area.",
+     "snippet": "fill=\"rgba(74, 144, 226, 0.22)\""
+    },
+    {
+     "line": 2927,
+     "literal": "#4A90E2",
+     "classification": "CANVAS_CONTENT",
+     "reason": "Stroke of the unified/merged region shape rendered over the PDF page.",
+     "snippet": "stroke=\"#4A90E2\""
+    }
+   ]
+  },
+  {
+   "file": "src/SurveySpacesRail.jsx",
+   "fileSummary": "Not on the project's high-risk/protected list (that's PDFViewer.jsx, PageAnnotationLayer.jsx, Fabric*Canvas.jsx, SVGAnnotationLayer.jsx); this is a plain right-rail side-panel React component. Every hit in this file is DOM-rendered panel chrome (backgrounds, borders, hover states, buttons, tooltips, list rows) \u2014 dominant classification is CHROME, safe to retheme to gold/warm-dark tokens.",
+   "sites": [
+    {
+     "line": 605,
+     "literal": "#252525",
+     "classification": "CHROME",
+     "reason": "Right-rail panel container background.",
+     "snippet": "background: '#252525',"
+    },
+    {
+     "line": 606,
+     "literal": "#3a3a3a",
+     "classification": "CHROME",
+     "reason": "Right-rail panel left border.",
+     "snippet": "borderLeft: '1px solid #3a3a3a',"
+    },
+    {
+     "line": 622,
+     "literal": "#3a3a3a",
+     "classification": "CHROME",
+     "reason": "Collapsed-strip header row bottom border.",
+     "snippet": "borderBottom: '1px solid #3a3a3a',"
+    },
+    {
+     "line": 626,
+     "literal": "#252525",
+     "classification": "CHROME",
+     "reason": "Collapsed-strip header row background.",
+     "snippet": "background: '#252525',"
+    },
+    {
+     "line": 647,
+     "literal": "#252525",
+     "classification": "CHROME",
+     "reason": "Collapsed-strip icon column background.",
+     "snippet": "background: '#252525',"
+    },
+    {
+     "line": 668,
+     "literal": "#4A90E2",
+     "classification": "CHROME",
+     "reason": "Active-state color for the collapsed Survey icon button.",
+     "snippet": "color: showSurveyPanel ? '#4A90E2' : '#999',"
+    },
+    {
+     "line": 682,
+     "literal": "#2b2b2b",
+     "classification": "CHROME",
+     "reason": "Hover background for the collapsed Survey icon button.",
+     "snippet": "e.currentTarget.style.background = '#2b2b2b';"
+    },
+    {
+     "line": 697,
+     "literal": "#3a3a3a",
+     "classification": "CHROME",
+     "reason": "Hover tooltip border (also bg #1a1a1a not in the searched pattern list, but same tooltip).",
+     "snippet": "border: '1px solid #3a3a3a', ... }}>"
+    },
+    {
+     "line": 713,
+     "literal": "#3a3a3a",
+     "classification": "CHROME",
+     "reason": "Expanded panel collapse-row bottom border.",
+     "snippet": "borderBottom: '1px solid #3a3a3a',"
+    },
+    {
+     "line": 717,
+     "literal": "#252525",
+     "classification": "CHROME",
+     "reason": "Expanded panel collapse-row background.",
+     "snippet": "background: '#252525',"
+    },
+    {
+     "line": 753,
+     "literal": "#3a3a3a",
+     "classification": "CHROME",
+     "reason": "Template title row bottom border.",
+     "snippet": "borderBottom: '1px solid #3a3a3a',"
+    },
+    {
+     "line": 754,
+     "literal": "#252525",
+     "classification": "CHROME",
+     "reason": "Template title row background.",
+     "snippet": "background: '#252525',"
+    },
+    {
+     "line": 839,
+     "literal": "#3a3a3a",
+     "classification": "CHROME",
+     "reason": "Module navigator row bottom border.",
+     "snippet": "borderBottom: '1px solid #3a3a3a',"
+    },
+    {
+     "line": 840,
+     "literal": "#252525",
+     "classification": "CHROME",
+     "reason": "Module navigator row background.",
+     "snippet": "background: '#252525',"
+    },
+    {
+     "line": 887,
+     "literal": "#4A90E2",
+     "classification": "CHROME",
+     "reason": "Module selector dropdown button border/accent.",
+     "snippet": "border: '1px solid #4A90E2',"
+    },
+    {
+     "line": 1546,
+     "literal": "#4A90E2",
+     "classification": "CHROME",
+     "reason": "Active-state text color for category row main label in side panel list.",
+     "snippet": "const buttonTextColor = isCategoryActive ? '#4A90E2' : '#ddd';"
+    },
+    {
+     "line": 1547,
+     "literal": "#4A90E2",
+     "classification": "CHROME",
+     "reason": "Active-state text color for category row count sub-label.",
+     "snippet": "const buttonSubTextColor = isCategoryActive ? '#4A90E2' : '#999';"
+    },
+    {
+     "line": 1662,
+     "literal": "#4A90E2",
+     "classification": "CHROME",
+     "reason": "Active-state color for category expand/collapse arrow button.",
+     "snippet": "color: isArrowActive ? '#4A90E2' : '#fff'"
+    },
+    {
+     "line": 1925,
+     "literal": "rgba(74, 144, 226, 0.12)",
+     "classification": "CHROME",
+     "reason": "Drag-highlight background tint on a survey-marker list row being reordered inside the DOM side-panel list (not drawn on the PDF canvas).",
+     "snippet": "background: isDragging ? 'rgba(74, 144, 226, 0.12)' : 'transparent',"
+    },
+    {
+     "line": 1930,
+     "literal": "rgba(74, 144, 226, 0.3)",
+     "classification": "CHROME",
+     "reason": "Drag box-shadow inset ring on the same DOM list row.",
+     "snippet": "boxShadow: isDragging ? '0 10px 22px rgba(0, 0, 0, 0.34), inset 0 0 0 1px rgba(74, 144, 226, 0.3)' : 'none',"
+    },
+    {
+     "line": 2017,
+     "literal": "#4A90E2",
+     "classification": "CHROME",
+     "reason": "Expand-toggle button active color on a marker list row.",
+     "snippet": "color: isSurveyMarkerExpanded ? '#4A90E2' : '#bbb',"
+    },
+    {
+     "line": 2115,
+     "literal": "#4A90E2",
+     "classification": "CHROME",
+     "reason": "Note-icon button active color (has-note state) in the row action toolbar.",
+     "snippet": "color: surveyMarkers[annotationId]?.note?.text ? '#4A90E2' : '#999',"
+    },
+    {
+     "line": 2151,
+     "literal": "#4A90E2",
+     "classification": "CHROME",
+     "reason": "Locate-icon button color indicating a located marker, in the row action toolbar (DOM button icon, not the marker itself drawn on the PDF).",
+     "snippet": "color: (surveyMarker.bounds && surveyMarker.pageNumber) ? '#4A90E2' : '#F5A623', // Blue if located, Orange if not"
+    },
+    {
+     "line": 2756,
+     "literal": "#4A90E2",
+     "classification": "CHROME",
+     "reason": "'Create Category' button border in empty-state panel.",
+     "snippet": "border: '1px solid #4A90E2',"
+    },
+    {
+     "line": 2769,
+     "literal": "#3a3a3a",
+     "classification": "CHROME",
+     "reason": "Hover background for 'Create Category' button.",
+     "snippet": "event.currentTarget.style.background = '#3a3a3a';"
+    },
+    {
+     "line": 2774,
+     "literal": "#4A90E2",
+     "classification": "CHROME",
+     "reason": "Mouse-leave restores border color of 'Create Category' button.",
+     "snippet": "event.currentTarget.style.borderColor = '#4A90E2';"
+    },
+    {
+     "line": 2798,
+     "literal": "#252525",
+     "classification": "CHROME",
+     "reason": "Template-picker panel background.",
+     "snippet": "background: '#252525',"
+    },
+    {
+     "line": 2803,
+     "literal": "#3a3a3a",
+     "classification": "CHROME",
+     "reason": "Template-picker header bottom border.",
+     "snippet": "borderBottom: '1px solid #3a3a3a',"
+    },
+    {
+     "line": 2804,
+     "literal": "#252525",
+     "classification": "CHROME",
+     "reason": "Template-picker header background.",
+     "snippet": "background: '#252525',"
+    },
+    {
+     "line": 2866,
+     "literal": "#2B2B2B",
+     "classification": "CHROME",
+     "reason": "Template list item button background.",
+     "snippet": "background: '#2B2B2B',"
+    },
+    {
+     "line": 2877,
+     "literal": "#4A90E2",
+     "classification": "CHROME",
+     "reason": "Hover border color for template list item button.",
+     "snippet": "event.currentTarget.style.borderColor = '#4A90E2';"
+    },
+    {
+     "line": 2880,
+     "literal": "#2B2B2B",
+     "classification": "CHROME",
+     "reason": "Mouse-leave restores template list item button background.",
+     "snippet": "event.currentTarget.style.background = '#2B2B2B';"
+    },
+    {
+     "line": 2917,
+     "literal": "#3a3a3a",
+     "classification": "CHROME",
+     "reason": "Microsoft reconnect banner top border.",
+     "snippet": "borderTop: '1px solid #3a3a3a',"
+    },
+    {
+     "line": 2964,
+     "literal": "#3a3a3a",
+     "classification": "CHROME",
+     "reason": "Bottom export bar top border.",
+     "snippet": "borderTop: '1px solid #3a3a3a',"
+    },
+    {
+     "line": 2965,
+     "literal": "#252525",
+     "classification": "CHROME",
+     "reason": "Bottom export bar background.",
+     "snippet": "background: '#252525',"
+    },
+    {
+     "line": 2976,
+     "literal": "#4A90E2",
+     "classification": "CHROME",
+     "reason": "Export button primary background color.",
+     "snippet": "background: isExporting ? '#6c7a89' : '#4A90E2',"
+    },
+    {
+     "line": 2990,
+     "literal": "#357abd",
+     "classification": "CHROME",
+     "reason": "Export button hover background (darker blue shade).",
+     "snippet": "if (!isExporting) e.currentTarget.style.background = '#357abd';"
+    },
+    {
+     "line": 2993,
+     "literal": "#4A90E2",
+     "classification": "CHROME",
+     "reason": "Export button mouse-leave restores background.",
+     "snippet": "if (!isExporting) e.currentTarget.style.background = '#4A90E2';"
+    },
+    {
+     "line": 3006,
+     "literal": "#4A90E2",
+     "classification": "CHROME",
+     "reason": "Export split-button (left segment) background.",
+     "snippet": "background: isExporting ? '#6c7a89' : '#4A90E2',"
+    },
+    {
+     "line": 3024,
+     "literal": "#357abd",
+     "classification": "CHROME",
+     "reason": "Export split-button left segment hover background.",
+     "snippet": "if (!isExporting) e.currentTarget.style.background = '#357abd';"
+    },
+    {
+     "line": 3027,
+     "literal": "#4A90E2",
+     "classification": "CHROME",
+     "reason": "Export split-button left segment mouse-leave restore.",
+     "snippet": "if (!isExporting) e.currentTarget.style.background = '#4A90E2';"
+    },
+    {
+     "line": 3038,
+     "literal": "#4A90E2",
+     "classification": "CHROME",
+     "reason": "Export split-button dropdown-arrow segment background.",
+     "snippet": "background: isExporting ? '#6c7a89' : '#4A90E2',"
+    },
+    {
+     "line": 3054,
+     "literal": "#357abd",
+     "classification": "CHROME",
+     "reason": "Export split-button dropdown-arrow segment hover background.",
+     "snippet": "if (!isExporting) e.currentTarget.style.background = '#357abd';"
+    },
+    {
+     "line": 3057,
+     "literal": "#4A90E2",
+     "classification": "CHROME",
+     "reason": "Export split-button dropdown-arrow segment mouse-leave restore.",
+     "snippet": "if (!isExporting) e.currentTarget.style.background = '#4A90E2';"
+    }
+   ]
+  },
+  {
+   "file": "src/components/AccountSettings.jsx",
+   "fileSummary": "AccountSettings.jsx is NOT one of the protected high-risk files (not PDFViewer/PageAnnotationLayer/Fabric canvases/SVGAnnotationLayer); it's a settings/billing screen, and all 6 color hits are CHROME (buttons, borders, toggle backgrounds) safe to swap to gold tokens.",
+   "sites": [
+    {
+     "line": 750,
+     "literal": "#4A90E2",
+     "classification": "CHROME",
+     "reason": "Border color of the 'Manage Billing & Payments' button, a DOM button in the billing settings panel.",
+     "snippet": "border: '1px solid #4A90E2',"
+    },
+    {
+     "line": 752,
+     "literal": "#4A90E2",
+     "classification": "CHROME",
+     "reason": "Text color of the same billing-management button.",
+     "snippet": "color: '#4A90E2',"
+    },
+    {
+     "line": 759,
+     "literal": "rgba(74, 144, 226, 0.1)",
+     "classification": "CHROME",
+     "reason": "Hover background tint applied to the billing-management button via onMouseEnter.",
+     "snippet": "e.target.style.background = 'rgba(74, 144, 226, 0.1)';"
+    },
+    {
+     "line": 779,
+     "literal": "#4A90E2",
+     "classification": "CHROME",
+     "reason": "Active-state background for the 'Monthly' segment of a billing-period toggle control.",
+     "snippet": "background: billingPeriod === 'monthly' ? '#4A90E2' : 'transparent',"
+    },
+    {
+     "line": 795,
+     "literal": "#4A90E2",
+     "classification": "CHROME",
+     "reason": "Active-state background for the 'Annual' segment of the same billing-period toggle control.",
+     "snippet": "background: billingPeriod === 'annual' ? '#4A90E2' : 'transparent',"
+    },
+    {
+     "line": 861,
+     "literal": "#4A90E2",
+     "classification": "CHROME",
+     "reason": "Selected-state border highlight on the Pro subscription plan card in the account/billing UI.",
+     "snippet": "border: (subscription?.tier === 'pro' || subscription?.status === 'trialing') ? '2px solid #4A90E2' : '1px solid #333',"
+    }
+   ]
+  },
+  {
+   "file": "src/components/AuthModal.css",
+   "fileSummary": "Not a protected/high-risk file (it's the login/signup modal's stylesheet, unrelated to PDFViewer/PageAnnotationLayer/Fabric canvases/SVGAnnotationLayer); every color hit is DOM modal/form/button chrome, so the file is 100% CHROME.",
+   "sites": [
+    {
+     "line": 25,
+     "literal": "#252525",
+     "classification": "CHROME",
+     "reason": "Background of the .auth-modal dialog container itself.",
+     "snippet": ".auth-modal { background: #252525; ... }"
+    },
+    {
+     "line": 35,
+     "literal": "#3A3A3A",
+     "classification": "CHROME",
+     "reason": "Border color of the auth modal dialog card.",
+     "snippet": ".auth-modal { ... border: 1px solid #3A3A3A; ... }"
+    },
+    {
+     "line": 74,
+     "literal": "#2D2D2D",
+     "classification": "CHROME",
+     "reason": "Hover background of the modal's close (X) button.",
+     "snippet": ".auth-modal-close:hover { background: #2D2D2D; color: #FFFFFF; }"
+    },
+    {
+     "line": 150,
+     "literal": "#3A3A3A",
+     "classification": "CHROME",
+     "reason": "Border color of text input fields in the auth form.",
+     "snippet": ".auth-form-group input { ... border: 1px solid #3A3A3A; ... }"
+    },
+    {
+     "line": 155,
+     "literal": "#2D2D2D",
+     "classification": "CHROME",
+     "reason": "Background fill of text input fields in the auth form.",
+     "snippet": ".auth-form-group input { ... background: #2D2D2D; color: #FFFFFF; }"
+    },
+    {
+     "line": 167,
+     "literal": "#4A90E2",
+     "classification": "CHROME",
+     "reason": "Focus border color on a text input in the auth form \u2014 DOM form chrome, not annotation content.",
+     "snippet": ".auth-form-group input:focus { outline: none; border-color: #4A90E2; ... }"
+    },
+    {
+     "line": 168,
+     "literal": "rgba(74, 144, 226, 0.2)",
+     "classification": "CHROME",
+     "reason": "Focus-ring box-shadow glow around a text input, matches the #4A90E2 accent.",
+     "snippet": "box-shadow: 0 0 0 3px rgba(74, 144, 226, 0.2);"
+    },
+    {
+     "line": 173,
+     "literal": "#252525",
+     "classification": "CHROME",
+     "reason": "Background of a disabled text input.",
+     "snippet": ".auth-form-group input:disabled { background: #252525; ... }"
+    },
+    {
+     "line": 180,
+     "literal": "#4A90E2",
+     "classification": "CHROME",
+     "reason": "Primary background color of the auth submit button.",
+     "snippet": ".auth-submit-btn { ... background: #4A90E2; color: white; ... }"
+    },
+    {
+     "line": 194,
+     "literal": "#3A7BC8",
+     "classification": "CHROME",
+     "reason": "Hover-state darker shade of the submit button's blue background.",
+     "snippet": ".auth-submit-btn:hover:not(:disabled) { background: #3A7BC8; ... }"
+    },
+    {
+     "line": 196,
+     "literal": "rgba(74, 144, 226, 0.3)",
+     "classification": "CHROME",
+     "reason": "Hover box-shadow glow on the submit button, matches the blue accent.",
+     "snippet": "box-shadow: 0 4px 12px rgba(74, 144, 226, 0.3);"
+    },
+    {
+     "line": 204,
+     "literal": "#3A3A3A",
+     "classification": "CHROME",
+     "reason": "Background of the disabled submit button.",
+     "snippet": ".auth-submit-btn:disabled { background: #3A3A3A; ... }"
+    },
+    {
+     "line": 227,
+     "literal": "#3A3A3A",
+     "classification": "CHROME",
+     "reason": "Divider line color ('or' separator) in the auth form.",
+     "snippet": ".auth-divider::before, .auth-divider::after { ... background: #3A3A3A; }"
+    },
+    {
+     "line": 233,
+     "literal": "#2D2D2D",
+     "classification": "CHROME",
+     "reason": "Background of the Google sign-in button.",
+     "snippet": ".auth-google-btn { ... background: #2D2D2D; border: 1px solid #3A3A3A; ... }"
+    },
+    {
+     "line": 234,
+     "literal": "#3A3A3A",
+     "classification": "CHROME",
+     "reason": "Border color of the Google sign-in button.",
+     "snippet": ".auth-google-btn { background: #2D2D2D; border: 1px solid #3A3A3A; ... }"
+    },
+    {
+     "line": 268,
+     "literal": "#4A90E2",
+     "classification": "CHROME",
+     "reason": "Text color of the SSO link button.",
+     "snippet": ".auth-sso-link { ... color: #4A90E2; ... }"
+    },
+    {
+     "line": 281,
+     "literal": "#3A7BC8",
+     "classification": "CHROME",
+     "reason": "Hover text color of the SSO link button.",
+     "snippet": ".auth-sso-link:hover:not(:disabled) { color: #3A7BC8; }"
+    },
+    {
+     "line": 287,
+     "literal": "#3A3A3A",
+     "classification": "CHROME",
+     "reason": "Top border of the auth modal footer section.",
+     "snippet": ".auth-footer { ... border-top: 1px solid #3A3A3A; ... }"
+    },
+    {
+     "line": 303,
+     "literal": "#4A90E2",
+     "classification": "CHROME",
+     "reason": "Text color of a link button (e.g. 'Sign up'/'Log in' toggle link) in the footer.",
+     "snippet": ".auth-link-btn { ... color: #4A90E2; ... }"
+    },
+    {
+     "line": 315,
+     "literal": "#3A7BC8",
+     "classification": "CHROME",
+     "reason": "Hover text color of the footer link button.",
+     "snippet": ".auth-link-btn:hover { color: #3A7BC8; }"
+    }
+   ]
+  },
+  {
+   "file": "src/components/CompactColorPicker.jsx",
+   "fileSummary": "Not on the project's high-risk/protected list (not PDFViewer/PageAnnotationLayer/FabricCanvas*/SVGAnnotationLayer); this is the DOM color-picker popover UI itself, so both hits are CHROME (the picker panel's own background and its opacity-slider accent color).",
+   "sites": [
+    {
+     "line": 260,
+     "literal": "#1e1e1e",
+     "classification": "CHROME",
+     "reason": "Background of the CompactColorPicker popover panel container (a DOM <div> overlay with border/boxShadow/padding) \u2014 this is the picker's own UI chrome, not anything drawn into the PDF/annotation canvas.",
+     "snippet": "style={{ width: '260px', background: '#1e1e1e', border: '1px solid #333', borderRadius: '8px', boxShadow: '0 8px 32px rgba(0,0,0,0.4)', ... }}"
+    },
+    {
+     "line": 472,
+     "literal": "#4a90e2",
+     "classification": "CHROME",
+     "reason": "accentColor on an HTML <input type=range> opacity slider inside the picker panel \u2014 a native browser form-control accent used for UI chrome styling, not an annotation stroke/fill default.",
+     "snippet": "style={{ flex: 1, height: '4px', accentColor: '#4a90e2', background: '#333', borderRadius: '2px', appearance: 'auto', cursor: transparentMode ? 'not-allowed' : 'pointer' }}"
+    }
+   ]
+  },
+  {
+   "file": "src/components/FabricDrawingCanvas.jsx",
+   "fileSummary": "High-risk/protected per project docs (Fabric canvas overlay component); the single color hit is a Fabric.js shape-style default drawn onto the annotation canvas, so the file is dominantly CANVAS_CONTENT.",
+   "sites": [
+    {
+     "line": 604,
+     "literal": "#4A90E2",
+     "classification": "CANVAS_CONTENT",
+     "reason": "Fabric.js Rect stroke color for the live preview shape of the 'survey-marker' drawing tool (dashed rectangle), rendered directly onto the Fabric annotation canvas overlay \u2014 a fabric.js per-shape style default, not DOM chrome.",
+     "snippet": "state.shape = new fabric.Rect({\n  left: pointer.x, top: pointer.y, width: 0, height: 0,\n  fill: 'transparent',\n  stroke: '#4A90E2',\n  strokeWidth: 2,\n  strokeDashArray: [5, 5],\n  ...\n});"
+    }
+   ]
+  },
+  {
+   "file": "src/components/FabricEditCanvas.jsx",
+   "fileSummary": "This is one of the project's explicitly listed high-risk files (Fabric.js per-shape edit canvas); most hits here are the DOM-rendered mini-toolbar chrome (CHROME), with one true canvas-drawn rotation-handle color kept as CANVAS_CONTENT.",
+   "sites": [
+    {
+     "line": 584,
+     "literal": "#2D2D2D",
+     "classification": "CHROME",
+     "reason": "background of the counter mini-toolbar, a React-portal <div> rendered to document.body (floating property editor UI), not drawn on the canvas.",
+     "snippet": "background: '#2D2D2D',"
+    },
+    {
+     "line": 585,
+     "literal": "#3A3A3A",
+     "classification": "CHROME",
+     "reason": "border color of the same mini-toolbar DOM panel.",
+     "snippet": "border: '1px solid #3A3A3A',"
+    },
+    {
+     "line": 626,
+     "literal": "#3A3A3A",
+     "classification": "CHROME",
+     "reason": "separator divider inside the mini-toolbar DOM panel.",
+     "snippet": "<div style={{ width: 1, height: 20, backgroundColor: '#3A3A3A' }} />"
+    },
+    {
+     "line": 669,
+     "literal": "#3A3A3A",
+     "classification": "CHROME",
+     "reason": "separator divider inside the mini-toolbar DOM panel.",
+     "snippet": "<div style={{ width: 1, height: 20, backgroundColor: '#3A3A3A' }} />"
+    },
+    {
+     "line": 702,
+     "literal": "#3A3A3A",
+     "classification": "CHROME",
+     "reason": "separator divider inside the mini-toolbar DOM panel.",
+     "snippet": "<div style={{ width: 1, height: 20, backgroundColor: '#3A3A3A' }} />"
+    },
+    {
+     "line": 781,
+     "literal": "#2D2D2D",
+     "classification": "CHROME",
+     "reason": "background of the non-counter mini-toolbar, same DOM-portal property editor panel.",
+     "snippet": "background: '#2D2D2D',"
+    },
+    {
+     "line": 782,
+     "literal": "#3A3A3A",
+     "classification": "CHROME",
+     "reason": "border color of the non-counter mini-toolbar DOM panel.",
+     "snippet": "border: '1px solid #3A3A3A',"
+    },
+    {
+     "line": 819,
+     "literal": "#3A3A3A",
+     "classification": "CHROME",
+     "reason": "separator divider inside the mini-toolbar DOM panel.",
+     "snippet": "<div style={{ width: 1, height: 20, backgroundColor: '#3A3A3A' }} />"
+    },
+    {
+     "line": 844,
+     "literal": "#3A3A3A",
+     "classification": "CHROME",
+     "reason": "separator divider inside the mini-toolbar DOM panel.",
+     "snippet": "<div style={{ width: 1, height: 20, backgroundColor: '#3A3A3A' }} />"
+    },
+    {
+     "line": 2514,
+     "literal": "#4a90e2",
+     "classification": "NON_UI",
+     "reason": "this is a code comment describing the render function below, not a literal color declaration itself; the actual color value is at line 2529.",
+     "snippet": "// UX: white-fill / #4a90e2-outline dot, fixed 7px screen radius"
+    },
+    {
+     "line": 2529,
+     "literal": "#4a90e2",
+     "classification": "CANVAS_CONTENT",
+     "reason": "strokeStyle used inside a Fabric.js custom control render() callback that draws a rotation-handle dot directly onto the canvas 2D context, explicitly matching the SVG selection-mode rotation handle color \u2014 this is annotation/selection-handle rendering, not DOM chrome.",
+     "snippet": "ctx.strokeStyle = '#4a90e2';"
+    }
+   ]
+  },
+  {
+   "file": "src/components/LightweightAnnotationOverlay.jsx",
+   "fileSummary": "Not on the project's explicit high-risk/protected file list (PDFViewer.jsx, PageAnnotationLayer.jsx, Fabric*Canvas, SVGAnnotationLayer.jsx), but it is a read-only preview renderer for PDF-page annotations (callouts, shapes, counters); its one color hit is CANVAS_CONTENT (annotation default color), so nothing in this file should be touched by the chrome palette migration.",
+   "sites": [
+    {
+     "line": 16,
+     "literal": "#4A90E2",
+     "classification": "CANVAS_CONTENT",
+     "reason": "DEFAULT_CALLOUT_COLOR is the fallback stroke/line color for a callout annotation's connector line (used at line 280: lineColor: !isTransparentColor(style.borderColor) ? style.borderColor : DEFAULT_CALLOUT_COLOR), rendered into the lightweight preview overlay that stands in for the real per-page annotation canvas/SVG layer. This is drawn annotation content (per project docs, callout color is explicitly annotation-domain, the historical fork noted in project_annotation_contract), not DOM UI chrome, so it must stay untouched.",
+     "snippet": "const DEFAULT_CALLOUT_COLOR = '#4A90E2';"
+    }
+   ]
+  },
+  {
+   "file": "src/components/PresenceAvatars.jsx",
+   "fileSummary": "Not a high-risk/protected file (not PDFViewer/PageAnnotationLayer/Fabric canvases/SVGAnnotationLayer); dominant classification is CHROME \u2014 all 3 hits are DOM-rendered presence-avatar/tooltip borders, not canvas content.",
+   "sites": [
+    {
+     "line": 150,
+     "literal": "#1E1E1E",
+     "snippet": "border: '2px solid #1E1E1E',",
+     "classification": "CHROME",
+     "reason": "Border on the '+N overflow' avatar-stack chip (a DOM div in a toolbar/sidebar presence indicator), matching the app chrome background so overlapping avatars read as separated circles. Not drawn into the PDF canvas."
+    },
+    {
+     "line": 269,
+     "literal": "#1E1E1E",
+     "snippet": "border: '2px solid #1E1E1E',",
+     "classification": "CHROME",
+     "reason": "Same pattern on an individual collaborator avatar span \u2014 a dark ring matching chrome background to visually separate stacked avatar chips. The avatar's actual per-user identity color comes from the dynamic `background` prop, not this literal."
+    },
+    {
+     "line": 285,
+     "literal": "#3a3a3a",
+     "snippet": "border: '1px solid #3a3a3a',",
+     "classification": "CHROME",
+     "reason": "Border on a hover tooltip showing a collaborator's email \u2014 a standard DOM tooltip chrome element, not canvas/annotation content."
+    }
+   ]
+  },
+  {
+   "file": "src/components/PrintPanel.css",
+   "fileSummary": "PrintPanel.css is not one of the project's flagged high-risk files (PDFViewer.jsx, PageAnnotationLayer.jsx, Fabric*Canvas.jsx, SVGAnnotationLayer.jsx) \u2014 it's standalone CSS for the custom print dialog; every hit is CHROME (dialog panel tokens, thumbnail strip, rail scrollbar, footer buttons, and the \"Bigger Preview\" pop-out header/zoom/nav controls) with no PDF-canvas/annotation-content styling present.",
+   "sites": [
+    {
+     "line": 14,
+     "literal": "#1E1E1E",
+     "classification": "CHROME",
+     "reason": "--pp-bg token: print dialog panel background.",
+     "snippet": "--pp-bg: #1E1E1E;"
+    },
+    {
+     "line": 15,
+     "literal": "#252525",
+     "classification": "CHROME",
+     "reason": "--pp-panel token: print dialog panel surface.",
+     "snippet": "--pp-panel: #252525;"
+    },
+    {
+     "line": 16,
+     "literal": "#2b2b2b",
+     "classification": "CHROME",
+     "reason": "--pp-panel-2 token: print dialog secondary surface.",
+     "snippet": "--pp-panel-2: #2b2b2b;"
+    },
+    {
+     "line": 17,
+     "literal": "#3a3a3a",
+     "classification": "CHROME",
+     "reason": "--pp-panel-elev token: print dialog elevated surface.",
+     "snippet": "--pp-panel-elev: #3a3a3a;"
+    },
+    {
+     "line": 18,
+     "literal": "#3a3a3a",
+     "classification": "CHROME",
+     "reason": "--pp-border token: print dialog border color.",
+     "snippet": "--pp-border: #3a3a3a;"
+    },
+    {
+     "line": 26,
+     "literal": "#4A90E2",
+     "classification": "CHROME",
+     "reason": "--pp-accent token used throughout the print dialog for focus rings, buttons, badges.",
+     "snippet": "--pp-accent: #4A90E2;"
+    },
+    {
+     "line": 27,
+     "literal": "#357abd",
+     "classification": "CHROME",
+     "reason": "--pp-accent-hover token, hover state of the print dialog accent button/link.",
+     "snippet": "--pp-accent-hover: #357abd;"
+    },
+    {
+     "line": 28,
+     "literal": "rgba(74, 144, 226, 0.16)",
+     "classification": "CHROME",
+     "reason": "--pp-accent-soft token, soft accent background used in dialog chrome.",
+     "snippet": "--pp-accent-soft: rgba(74, 144, 226, 0.16);"
+    },
+    {
+     "line": 29,
+     "literal": "rgba(74, 144, 226, 0.35)",
+     "classification": "CHROME",
+     "reason": "--pp-accent-glow token, focus/current-state glow on dialog thumbnails.",
+     "snippet": "--pp-accent-glow: 0 0 0 1px rgba(74, 144, 226, 0.35);"
+    },
+    {
+     "line": 221,
+     "literal": "#3A3A3A",
+     "classification": "CHROME",
+     "reason": "Scrollbar thumb color for the print dialog's page-thumbnail strip.",
+     "snippet": ".pp-strip::-webkit-scrollbar-thumb { background: #3A3A3A; border-radius: 6px; }"
+    },
+    {
+     "line": 261,
+     "literal": "#2d2d2d",
+     "classification": "CHROME",
+     "reason": "Background of an excluded-page thumbnail cell in the print dialog's page strip (dialog UI state, not annotation content).",
+     "snippet": ".pp-thumb-cell.is-excluded .pp-thumb {\n  background: #2d2d2d; border-color: #333; opacity: 0.55;\n}"
+    },
+    {
+     "line": 284,
+     "literal": "rgba(74, 144, 226, 0.95)",
+     "classification": "CHROME",
+     "reason": "Default badge background on print-dialog page thumbnails (small UI badge overlay in the dialog, not rendered into the PDF/annotation canvas).",
+     "snippet": ".pp-thumb-bd {\n  background: rgba(74, 144, 226, 0.95); color: #fff;\n  ...\n}"
+    },
+    {
+     "line": 288,
+     "literal": "#4A90E2",
+     "classification": "CHROME",
+     "reason": "Rotate badge (bd-rot) color on a print-dialog page thumbnail \u2014 dialog UI chip, not canvas content.",
+     "snippet": ".pp-thumb-bd.bd-rot { background: #4A90E2; }"
+    },
+    {
+     "line": 290,
+     "literal": "#4A90E2",
+     "classification": "CHROME",
+     "reason": "Selected badge (bd-sel) color on a print-dialog page thumbnail \u2014 dialog UI chip.",
+     "snippet": ".pp-thumb-bd.bd-sel { background: #4A90E2; }"
+    },
+    {
+     "line": 485,
+     "literal": "#3A3A3A",
+     "classification": "CHROME",
+     "reason": "Scrollbar thumb color for the print dialog's right-rail options panel.",
+     "snippet": ".pp-rail::-webkit-scrollbar-thumb { background: #3A3A3A; border-radius: 6px; }"
+    },
+    {
+     "line": 734,
+     "literal": "rgba(74, 144, 226, 0.35)",
+     "classification": "CHROME",
+     "reason": "Box-shadow glow on the print dialog's primary Print button.",
+     "snippet": ".pp-btn-print {\n  ...\n  box-shadow: 0 2px 6px rgba(74, 144, 226, 0.35);\n}"
+    },
+    {
+     "line": 758,
+     "literal": "#1E1E1E",
+     "classification": "CHROME",
+     "reason": "Header background of the 'Bigger Preview' pop-out overlay within the print dialog.",
+     "snippet": ".pp-bigprev-head {\n  ...\n  background: #1E1E1E;\n  border-bottom: 1px solid #333;\n}"
+    },
+    {
+     "line": 791,
+     "literal": "#3a3a3a",
+     "classification": "CHROME",
+     "reason": "Hover background for Bigger Preview zoom control buttons (dialog chrome, not canvas).",
+     "snippet": ".pp-bigprev-head .pp-bigprev-zoom button:hover:not(:disabled) {\n  background: #3a3a3a;\n  color: #fff;\n}"
+    },
+    {
+     "line": 827,
+     "literal": "#3a3a3a",
+     "classification": "CHROME",
+     "reason": "Hover background for the Bigger Preview close button.",
+     "snippet": ".pp-bigprev-head .pp-bigprev-close:hover {\n  background: #3a3a3a;\n  color: #fff;\n}"
+    },
+    {
+     "line": 865,
+     "literal": "#2b2b2b",
+     "classification": "CHROME",
+     "reason": "Background of zoom buttons in the Bigger Preview overlay footer/zoom group.",
+     "snippet": ".pp-bigprev-zoom button {\n  background: #2b2b2b; color: #ddd; border: 1px solid #555;\n  ...\n}"
+    },
+    {
+     "line": 869,
+     "literal": "#3a3a3a",
+     "classification": "CHROME",
+     "reason": "Hover background for Bigger Preview zoom buttons.",
+     "snippet": ".pp-bigprev-zoom button:hover { background: #3a3a3a; color: #fff; }"
+    },
+    {
+     "line": 888,
+     "literal": "#2b2b2b",
+     "classification": "CHROME",
+     "reason": "Background of the pager button in the Bigger Preview nav row.",
+     "snippet": ".pp-bigprev-nav .pp-pager-btn {\n  ...\n  background: #2b2b2b; border-color: #555; color: #ddd;\n}"
+    }
+   ]
+  },
+  {
+   "file": "src/components/RotationInputField.jsx",
+   "fileSummary": "Not one of the project's designated high-risk/protected files (those are PDFViewer.jsx, PageAnnotationLayer.jsx, the Fabric*Canvas components, and SVGAnnotationLayer.jsx); this is a small, separate HTML-portal input component, and all its color hits are CHROME (a floating degree-input pill styled like a toolbar/tooltip, not drawn annotation content).",
+   "sites": [
+    {
+     "line": 44,
+     "literal": "#2D2D2D / #3A3A3A / #4A9EFF (doc comment)",
+     "classification": "CHROME",
+     "reason": "JSDoc block documenting the visual contract of the rotation-degree input pill (container bg/border/focus colors) \u2014 describes the same DOM chrome styled below, not canvas-drawn content.",
+     "snippet": "* - Container: 60\u00d728px, #2D2D2D bg, 1px solid #3A3A3A border (focused: #4A9EFF),"
+    },
+    {
+     "line": 573,
+     "literal": "#2D2D2D",
+     "classification": "CHROME",
+     "reason": "Background color of the floating HTML <input> pill (portaled DOM overlay, not inside the SVG <g>) that lets the user type an exact rotation angle \u2014 analogous to MiniToolbar/zoom-input precedent, i.e. app UI chrome, not a shape/handle drawn on the annotation layer.",
+     "snippet": "background: '#2D2D2D',"
+    },
+    {
+     "line": 574,
+     "literal": "#4A9EFF / #3A3A3A",
+     "classification": "CHROME",
+     "reason": "Border color of the input pill, swapping to a blue focus color when focused \u2014 this is a standard input focus-ring/border pattern (explicitly listed as CHROME in the guide), not an annotation stroke or handle color.",
+     "snippet": "border: isFocused ? '1px solid #4A9EFF' : '1px solid #3A3A3A',"
+    },
+    {
+     "line": 614,
+     "literal": "#3A3A3A / #4A9EFF (comment)",
+     "classification": "CHROME",
+     "reason": "Comment explaining the same container border/focus color swap referenced at line 574 (outline:none is used instead, focus expressed via the container border) \u2014 describes CHROME input styling, not canvas content.",
+     "snippet": "// (#3A3A3A \u2192 #4A9EFF), not the browser default outline. Matches the"
+    }
+   ]
+  },
+  {
+   "file": "src/components/SVGAnnotationLayer.jsx",
+   "fileSummary": "SVGAnnotationLayer.jsx is one of the project's explicitly high-risk/protected files (per CLAUDE.md: \"SVG viewBox owns all zoom scaling \u2014 never reintroduce JS zoom coordination here\"); every #4A90E2 hit in this file is CANVAS_CONTENT \u2014 hover glows, selection/vertex handles, and survey-marker entity-status outlines drawn directly onto the SVG overlay over the PDF \u2014 no cool-gray dark-surface (#1E1E1E/#252525/#2b2b2b/#2d2d2d/#3a3a3a) literals exist in this file, and no DOM chrome sites were found at all.",
+   "sites": [
+    {
+     "line": 2026,
+     "literal": "#4A90E2",
+     "classification": "CANVAS_CONTENT",
+     "reason": "Dashed outline stroke on a pseudo-rect for a survey marker highlight that 'needsEntity' \u2014 an entity-assignment status indicator drawn onto the annotation/SVG layer over the PDF, not DOM chrome.",
+     "snippet": "stroke: h.needsEntity ? '#4A90E2' : 'transparent',"
+    },
+    {
+     "line": 2421,
+     "literal": "#4a90e2",
+     "classification": "CANVAS_CONTENT",
+     "reason": "Hover halo stroke around a survey-marker rect rendered in the SVG overlay.",
+     "snippet": "stroke=\"#4a90e2\" strokeOpacity={0.4} ... hover halo"
+    },
+    {
+     "line": 2656,
+     "literal": "#4a90e2",
+     "classification": "CANVAS_CONTENT",
+     "reason": "Callout hover/multi-select glow outline around the callout textbox, drawn in the SVG annotation overlay.",
+     "snippet": "fill=\"none\" stroke=\"#4a90e2\" strokeOpacity={0.45} strokeWidth={3} (glow rect around callout textbox)"
+    },
+    {
+     "line": 2670,
+     "literal": "#4a90e2",
+     "classification": "CANVAS_CONTENT",
+     "reason": "Same callout glow treatment applied to connector line1, drawn on the SVG overlay.",
+     "snippet": "stroke=\"#4a90e2\" strokeOpacity={0.45} strokeWidth={5} strokeLinecap=\"round\""
+    },
+    {
+     "line": 2683,
+     "literal": "#4a90e2",
+     "classification": "CANVAS_CONTENT",
+     "reason": "Callout glow on connector line2.",
+     "snippet": "stroke=\"#4a90e2\" strokeOpacity={0.45} strokeWidth={5}"
+    },
+    {
+     "line": 2705,
+     "literal": "#4a90e2",
+     "classification": "CANVAS_CONTENT",
+     "reason": "Color passed into buildArrowheadRenderSpec to render the callout arrowhead glow shape.",
+     "snippet": "const spec = buildArrowheadRenderSpec(style, atX, atY, angleDeg, '#4a90e2', lineThickness);"
+    },
+    {
+     "line": 2715,
+     "literal": "#4a90e2",
+     "classification": "CANVAS_CONTENT",
+     "reason": "Arrowhead glow polygon stroke (solid/open triangle case) for callout.",
+     "snippet": "stroke=\"#4a90e2\" strokeOpacity={0.45} strokeWidth={glowSw}"
+    },
+    {
+     "line": 2730,
+     "literal": "#4a90e2",
+     "classification": "CANVAS_CONTENT",
+     "reason": "Arrowhead glow circle stroke (openCircle case) for callout.",
+     "snippet": "fill=\"none\" stroke=\"#4a90e2\" strokeOpacity={0.45}"
+    },
+    {
+     "line": 2742,
+     "literal": "#4a90e2",
+     "classification": "CANVAS_CONTENT",
+     "reason": "Arrowhead glow polyline stroke (vShape case) for callout.",
+     "snippet": "fill=\"none\" stroke=\"#4a90e2\" strokeOpacity={0.45}"
+    },
+    {
+     "line": 2756,
+     "literal": "#4a90e2",
+     "classification": "CANVAS_CONTENT",
+     "reason": "Arrowhead glow line stroke (horizontalLine case) for callout.",
+     "snippet": "stroke=\"#4a90e2\" strokeOpacity={0.45} strokeWidth={glowSw}"
+    },
+    {
+     "line": 3551,
+     "literal": "#4a90e2",
+     "classification": "CANVAS_CONTENT",
+     "reason": "Hover glow along a curved line/arrow annotation, drawn in SVG overlay tracing the bezier path.",
+     "snippet": "stroke=\"#4a90e2\" strokeOpacity={0.4} strokeWidth={Math.max(6, ...)}"
+    },
+    {
+     "line": 3562,
+     "literal": "#4a90e2",
+     "classification": "CANVAS_CONTENT",
+     "reason": "Hover glow along a straight line annotation.",
+     "snippet": "stroke=\"#4a90e2\" strokeOpacity={0.4} strokeWidth={Math.max(6, ...)}"
+    },
+    {
+     "line": 3577,
+     "literal": "#4a90e2",
+     "classification": "CANVAS_CONTENT",
+     "reason": "Color passed to buildArrowheadRenderSpec for arrow-annotation hover glow.",
+     "snippet": "buildArrowheadRenderSpec(arrowStyle, ep.x2, ep.y2, arrowAngleDeg, '#4a90e2', ...)"
+    },
+    {
+     "line": 3589,
+     "literal": "#4a90e2",
+     "classification": "CANVAS_CONTENT",
+     "reason": "Arrow annotation glow polygon (triangle head) stroke.",
+     "snippet": "fill=\"none\" stroke=\"#4a90e2\" strokeOpacity={0.45}"
+    },
+    {
+     "line": 3601,
+     "literal": "#4a90e2",
+     "classification": "CANVAS_CONTENT",
+     "reason": "Arrow annotation glow circle (openCircle head) stroke.",
+     "snippet": "fill=\"none\" stroke=\"#4a90e2\" strokeOpacity={0.45}"
+    },
+    {
+     "line": 3611,
+     "literal": "#4a90e2",
+     "classification": "CANVAS_CONTENT",
+     "reason": "Arrow annotation glow polyline (vShape head) stroke.",
+     "snippet": "fill=\"none\" stroke=\"#4a90e2\" strokeOpacity={0.45}"
+    },
+    {
+     "line": 3623,
+     "literal": "#4a90e2",
+     "classification": "CANVAS_CONTENT",
+     "reason": "Arrow annotation glow line (horizontalLine head) stroke.",
+     "snippet": "stroke=\"#4a90e2\" strokeOpacity={0.45}"
+    },
+    {
+     "line": 3712,
+     "literal": "#4a90e2",
+     "classification": "CANVAS_CONTENT",
+     "reason": "Pin/counter annotation hover glow stroke, path drawn onto SVG overlay.",
+     "snippet": "stroke=\"#4a90e2\" strokeOpacity={0.4} // pin-shaped hover glow"
+    },
+    {
+     "line": 3767,
+     "literal": "#4a90e2",
+     "classification": "CANVAS_CONTENT",
+     "reason": "Group-line (line+arrowhead group annotation) hover glow line stroke.",
+     "snippet": "stroke=\"#4a90e2\" strokeOpacity={0.4} strokeWidth={Math.max(6, ...)}"
+    },
+    {
+     "line": 3778,
+     "literal": "#4a90e2",
+     "classification": "CANVAS_CONTENT",
+     "reason": "Group-line arrowhead hover glow polygon stroke.",
+     "snippet": "fill=\"none\" stroke=\"#4a90e2\" strokeOpacity={0.45}"
+    },
+    {
+     "line": 3885,
+     "literal": "#4a90e2",
+     "classification": "CANVAS_CONTENT",
+     "reason": "Polygon shape hover halo stroke tracing the shape's own geometry.",
+     "snippet": "fill=\"none\" stroke=\"#4a90e2\" strokeOpacity={0.4} strokeWidth={Math.max(6, sw+4)}"
+    },
+    {
+     "line": 3898,
+     "literal": "#4a90e2",
+     "classification": "CANVAS_CONTENT",
+     "reason": "Polyline shape hover halo stroke tracing the shape's own geometry.",
+     "snippet": "fill=\"none\" stroke=\"#4a90e2\" strokeOpacity={0.4} strokeWidth={Math.max(6, sw+4)}"
+    },
+    {
+     "line": 3977,
+     "literal": "#4a90e2",
+     "classification": "CANVAS_CONTENT",
+     "reason": "Rect shape hover halo stroke.",
+     "snippet": "fill=\"none\" stroke=\"#4a90e2\" strokeOpacity={0.4} strokeWidth={Math.max(6, sw+4)}"
+    },
+    {
+     "line": 4040,
+     "literal": "#4a90e2",
+     "classification": "CANVAS_CONTENT",
+     "reason": "Ellipse/circle shape hover halo stroke.",
+     "snippet": "fill=\"none\" stroke=\"#4a90e2\" strokeOpacity={0.4} strokeWidth={Math.max(6, sw+4)}"
+    },
+    {
+     "line": 4138,
+     "literal": "#4a90e2",
+     "classification": "CANVAS_CONTENT",
+     "reason": "Pen-stroke/path annotation hover halo stroke.",
+     "snippet": "stroke=\"#4a90e2\" strokeOpacity={0.4} strokeWidth={hoverStrokeWidth}"
+    },
+    {
+     "line": 4141,
+     "literal": "#4a90e2",
+     "classification": "CANVAS_CONTENT",
+     "reason": "Fill color used for filled PDF-ink outline hover state on a path annotation.",
+     "snippet": "fill={isFilledPdfInkOutline ? '#4a90e2' : 'none'}"
+    },
+    {
+     "line": 4184,
+     "literal": "#4a90e2",
+     "classification": "CANVAS_CONTENT",
+     "reason": "Generic fallback hover-outline stroke for any annotation object type, drawn onto SVG overlay.",
+     "snippet": "fill=\"none\" stroke=\"#4a90e2\" strokeOpacity={0.4} strokeWidth={2*clampInverseScale(inverseScale)}"
+    },
+    {
+     "line": 4923,
+     "literal": "#4a90e2",
+     "classification": "CANVAS_CONTENT",
+     "reason": "Vertex selection handle stroke on the SVG selection overlay \u2014 explicit example of the CANVAS_CONTENT judgment guide (selection handles drawn on the annotation/SVG overlay).",
+     "snippet": "fill=\"#ffffff\" stroke=\"#4a90e2\" strokeWidth={1.5} vectorEffect=\"non-scaling-stroke\" // vertex handle"
+    }
+   ]
+  },
+  {
+   "file": "src/components/SVGSelectionOverlay.jsx",
+   "fileSummary": "Not on the explicit high-risk list, but it's the SVG-rendered selection bounding-box/handle overlay drawn directly over PDF annotation content (sibling to the protected SVGAnnotationLayer.jsx) \u2014 both hits are CANVAS_CONTENT (selection outline/glow color drawn on the annotation canvas).",
+   "sites": [
+    {
+     "line": 126,
+     "literal": "#4a90e2",
+     "classification": "CANVAS_CONTENT",
+     "reason": "Stroke color of the SVG bounding-box <rect> that outlines a selected annotation shape directly in the SVG overlay layered over the PDF page \u2014 this is a selection-handle/marquee style drawn on the annotation canvas, not DOM chrome.",
+     "snippet": "stroke=\"#4a90e2\""
+    },
+    {
+     "line": 135,
+     "literal": "rgba(74,144,226,0.75)",
+     "classification": "CANVAS_CONTENT",
+     "reason": "drop-shadow glow filter applied to the same selection bounding-box rect (selectionGlowOnly mode) \u2014 same selection-outline UX rendered into the SVG annotation overlay, must match the stroke color it accompanies.",
+     "snippet": "filter: selectionGlowOnly ? `drop-shadow(0 0 ${4 * is}px rgba(74,144,226,0.75))` : undefined,"
+    }
+   ]
+  },
+  {
+   "file": "src/components/SyncStatusChip.jsx",
+   "fileSummary": "SyncStatusChip.jsx is not on the project's high-risk/protected list (not PDFViewer, PageAnnotationLayer, Fabric*Canvas, or SVGAnnotationLayer); it's a small DOM status-chip/tooltip component, and its single color hit is CHROME.",
+   "sites": [
+    {
+     "line": 166,
+     "literal": "#3a3a3a",
+     "classification": "CHROME",
+     "reason": "Border color on a hover tooltip <div> rendered next to the sync status chip \u2014 plain DOM UI chrome, not canvas/annotation content.",
+     "snippet": "boxShadow: '0 2px 8px rgba(0, 0, 0, 0.3)', border: '1px solid #3a3a3a'"
+    }
+   ]
+  },
+  {
+   "file": "src/components/UnsupportedAnnotationsNotice.jsx",
+   "fileSummary": "Not a listed high-risk/protected file; it's a small standalone toast-notification component (unrelated to PDFViewer/PageAnnotationLayer/Fabric canvases), and both color hits are CHROME (toast info-icon stroke).",
+   "sites": [
+    {
+     "line": 86,
+     "literal": "#4A90E2",
+     "classification": "CHROME",
+     "reason": "Stroke color for the circle of an info icon inside a fixed-position bottom-right toast banner (UI notification chrome, not rendered onto the PDF canvas).",
+     "snippet": "<circle cx=\"10\" cy=\"10\" r=\"9\" stroke=\"#4A90E2\" strokeWidth=\"1.5\" fill=\"none\" />"
+    },
+    {
+     "line": 89,
+     "literal": "#4A90E2",
+     "classification": "CHROME",
+     "reason": "Stroke color for the exclamation-mark line of the same toast info icon; same chrome UI element as line 86.",
+     "snippet": "stroke=\"#4A90E2\""
+    }
+   ]
+  },
+  {
+   "file": "src/components/collab/CleanupResidueReviewPanel.css",
+   "fileSummary": "Not a protected/high-risk file (no PDFViewer/PageAnnotationLayer/Fabric/SVGAnnotationLayer involvement) \u2014 it's a modal review-panel stylesheet for the sync_residue_cleanup banner; all 5 color-literal hits are DOM chrome (card, borders, focus ring) and classified CHROME.",
+   "sites": [
+    {
+     "line": 47,
+     "literal": "#252525",
+     "classification": "CHROME",
+     "reason": "Fallback for var(--bg-secondary) background of the modal card container \u2014 DOM chrome surface.",
+     "snippet": "background: var(--bg-secondary, #252525);"
+    },
+    {
+     "line": 48,
+     "literal": "#3A3A3A",
+     "classification": "CHROME",
+     "reason": "Fallback for var(--border-primary) border on the modal card \u2014 DOM chrome border.",
+     "snippet": "border: 1px solid var(--border-primary, #3A3A3A);"
+    },
+    {
+     "line": 119,
+     "literal": "#3A3A3A",
+     "classification": "CHROME",
+     "reason": "Fallback for var(--border-primary) border around the monospaced annotation-ID chip inside the modal list row \u2014 DOM chrome, not canvas content.",
+     "snippet": "border: 1px solid var(--border-primary, #3A3A3A);"
+    },
+    {
+     "line": 163,
+     "literal": "rgba(74, 144, 226, 0.4)",
+     "classification": "CHROME",
+     "reason": "Keyboard focus ring (box-shadow) on the modal's action button \u2014 standard accessibility focus indicator on DOM chrome, becomes gold per the palette unification.",
+     "snippet": "box-shadow: 0 0 0 2px rgba(74, 144, 226, 0.4);"
+    },
+    {
+     "line": 170,
+     "literal": "#3A3A3A",
+     "classification": "CHROME",
+     "reason": "Fallback for var(--border-primary) border-color on the secondary (Close) action button \u2014 DOM chrome.",
+     "snippet": "border-color: var(--border-primary, #3A3A3A);"
+    }
+   ]
+  },
+  {
+   "file": "src/components/collab/CollaboratorOutlineOverlay.css",
+   "fileSummary": "Not itself in the CLAUDE.md protected-files list, but by its own header comment it's a sibling overlay to the protected SVGAnnotationLayer.jsx, rendering collaborator presence outlines directly over the PDF; both #4A90E2 hits are CANVAS_CONTENT (per-user outline color), not chrome.",
+   "sites": [
+    {
+     "line": 40,
+     "literal": "#4A90E2",
+     "classification": "CANVAS_CONTENT",
+     "reason": "Fallback stroke color for a per-page SVG rect that outlines a remote collaborator's active edit-canvas selection, rendered as a sibling overlay directly on top of SVGAnnotationLayer in the same per-page PDF coordinate space. This is collaborator presence/annotation UX drawn into the canvas overlay, not DOM chrome.",
+     "snippet": ".collaborator-outline-overlay__rect {\n  fill: none;\n  stroke-width: 2px;\n  stroke: var(--user-color-1, #4A90E2);"
+    },
+    {
+     "line": 76,
+     "literal": "#4A90E2",
+     "classification": "CANVAS_CONTENT",
+     "reason": "Defines --user-color-1, one of 6 per-user outline color slots used to color remote collaborators' outlines/cursor pills/presence indicators over the PDF content; it happens to numerically match --accent-primary only because the local user is filtered out and never sees slot 1, but the variable itself is consumed as an entity/presence color on the annotation overlay, not as UI chrome.",
+     "snippet": ":root {\n  --user-color-1: #4A90E2;   /* same as --accent-primary; local user never sees own outline */\n  --user-color-2: #E29B4A;   /* warm orange */"
+    }
+   ]
+  },
+  {
+   "file": "src/components/collab/CollaboratorOutlineOverlay.jsx",
+   "fileSummary": "Not one of the project's explicitly protected high-risk files (PDFViewer.jsx, PageAnnotationLayer.jsx, Fabric*Canvas.jsx, SVGAnnotationLayer.jsx), but it renders an SVG overlay drawn directly over the PDF page; its single color hit is CANVAS_CONTENT (collaborator presence/outline color keyed to a user slot).",
+   "sites": [
+    {
+     "line": 70,
+     "literal": "#4A90E2",
+     "classification": "CANVAS_CONTENT",
+     "reason": "Fallback color for `var(--user-color-${slot}, #4A90E2)`, used as the stroke/outline color for a remote collaborator's active-edit outline drawn in the SVG overlay directly on top of the PDF page content (see surrounding rect/offset math for the outline drawn per UI-SPEC \u00a72). This is a collaborator presence color keyed to a user slot, explicitly called out as CANVAS_CONTENT \u2014 kept as-is, not part of chrome/blue-to-gold rebrand.",
+     "snippet": "colorVar: `var(--user-color-${slot}, #4A90E2)`,"
+    }
+   ]
+  },
+  {
+   "file": "src/components/collab/ConfirmDeleteModal.css",
+   "fileSummary": "Not a protected file (not PDFViewer/PageAnnotationLayer/Fabric*/SVGAnnotationLayer); this is a plain modal-chrome CSS stylesheet for a bulk-delete confirmation dialog, and all 4 color-literal hits are CHROME (modal card background/border and button focus ring/border).",
+   "sites": [
+    {
+     "line": 46,
+     "literal": "#252525",
+     "classification": "CHROME",
+     "reason": "Fallback value for var(--bg-secondary) used as the confirmation modal card's background \u2014 a DOM dialog surface, not canvas content.",
+     "snippet": "background: var(--bg-secondary, #252525);"
+    },
+    {
+     "line": 47,
+     "literal": "#3A3A3A",
+     "classification": "CHROME",
+     "reason": "Fallback value for var(--border-primary) used as the modal card's border \u2014 DOM dialog chrome.",
+     "snippet": "border: 1px solid var(--border-primary, #3A3A3A);"
+    },
+    {
+     "line": 132,
+     "literal": "rgba(74, 144, 226, 0.4)",
+     "classification": "CHROME",
+     "reason": "Blue box-shadow used as the keyboard focus ring on the modal's buttons (:focus state) \u2014 standard DOM UI focus indicator, explicitly called out in the CSS comment as matching the app-wide input focus pattern.",
+     "snippet": "box-shadow: 0 0 0 2px rgba(74, 144, 226, 0.4);"
+    },
+    {
+     "line": 139,
+     "literal": "#3A3A3A",
+     "classification": "CHROME",
+     "reason": "Fallback value for var(--border-primary) used as the Cancel button's border color \u2014 DOM button chrome in the modal.",
+     "snippet": "border-color: var(--border-primary, #3A3A3A);"
+    }
+   ]
+  },
+  {
+   "file": "src/components/collab/ReSignInModal.css",
+   "fileSummary": "Not a protected/high-risk file (not PDFViewer/PageAnnotationLayer/Fabric*/SVGAnnotationLayer) \u2014 it's the CSS for the inline re-sign-in auth modal; every color hit is DOM chrome (modal surface, border, input, CTA button, focus rings, links), dominant classification CHROME.",
+   "sites": [
+    {
+     "line": 38,
+     "literal": "#252525",
+     "classification": "CHROME",
+     "reason": "Comment describing the modal's secondary background surface (matches the banner) \u2014 DOM modal chrome.",
+     "snippet": "/* UX: same secondary surface as the banner (#252525 dark gray) \u2014 modal"
+    },
+    {
+     "line": 40,
+     "literal": "#252525",
+     "classification": "CHROME",
+     "reason": "Modal background color fallback for --bg-secondary token; DOM modal surface.",
+     "snippet": "background: var(--bg-secondary, #252525);"
+    },
+    {
+     "line": 46,
+     "literal": "#3A3A3A",
+     "classification": "CHROME",
+     "reason": "Modal border color fallback for --border-primary token; DOM chrome border.",
+     "snippet": "border: 1px solid var(--border-primary, #3A3A3A);"
+    },
+    {
+     "line": 156,
+     "literal": "#2D2D2D",
+     "classification": "CHROME",
+     "reason": "Text input background fallback for --bg-tertiary token; DOM form input chrome.",
+     "snippet": "background: var(--bg-tertiary, #2D2D2D);"
+    },
+    {
+     "line": 157,
+     "literal": "#3A3A3A",
+     "classification": "CHROME",
+     "reason": "Text input border fallback for --border-primary token; DOM form input chrome.",
+     "snippet": "border: 1px solid var(--border-primary, #3A3A3A);"
+    },
+    {
+     "line": 167,
+     "literal": "rgba(74, 144, 226, 0.4)",
+     "classification": "CHROME",
+     "reason": "Focus halo box-shadow on the modal's text input; DOM focus ring chrome.",
+     "snippet": "box-shadow: 0 0 0 2px rgba(74, 144, 226, 0.4);"
+    },
+    {
+     "line": 185,
+     "literal": "#4A90E2",
+     "classification": "CHROME",
+     "reason": "Primary CTA button background fallback for --accent-primary token; DOM button chrome.",
+     "snippet": "background: var(--accent-primary, #4A90E2);"
+    },
+    {
+     "line": 206,
+     "literal": "rgba(74, 144, 226, 0.4)",
+     "classification": "CHROME",
+     "reason": "Focus halo on the CTA button; DOM focus ring chrome.",
+     "snippet": "box-shadow: 0 0 0 2px rgba(74, 144, 226, 0.4);"
+    },
+    {
+     "line": 234,
+     "literal": "#4A90E2",
+     "classification": "CHROME",
+     "reason": "'Forgot password?' link text color fallback for --accent-primary token; DOM link chrome.",
+     "snippet": "color: var(--accent-primary, #4A90E2);"
+    },
+    {
+     "line": 241,
+     "literal": "rgba(74, 144, 226, 0.4)",
+     "classification": "CHROME",
+     "reason": "Focus halo on the primary link; DOM focus ring chrome.",
+     "snippet": "box-shadow: 0 0 0 2px rgba(74, 144, 226, 0.4);"
+    },
+    {
+     "line": 270,
+     "literal": "rgba(74, 144, 226, 0.4)",
+     "classification": "CHROME",
+     "reason": "Focus halo on the secondary 'switch account' link; DOM focus ring chrome.",
+     "snippet": "box-shadow: 0 0 0 2px rgba(74, 144, 226, 0.4);"
+    }
+   ]
+  },
+  {
+   "file": "src/components/collab/StorageFailureBanner.css",
+   "fileSummary": "Not in the project's high-risk/protected list; this is a small, standard CSS file for a collaboration storage-failure banner (toast-style overlay UI) \u2014 every color hit is DOM chrome, no annotation/canvas rendering involved.",
+   "sites": [
+    {
+     "line": 35,
+     "literal": "#252525",
+     "classification": "CHROME",
+     "reason": "Fallback background color for var(--bg-secondary) on the fixed-position .storage-banner overlay \u2014 a DOM toast/banner surface, not canvas content.",
+     "snippet": "background: var(--bg-secondary, #252525);"
+    },
+    {
+     "line": 39,
+     "literal": "#3A3A3A",
+     "classification": "CHROME",
+     "reason": "Fallback border-bottom color for var(--border-primary) on the banner container \u2014 chrome border styling.",
+     "snippet": "border-bottom: 1px solid var(--border-primary, #3A3A3A);"
+    },
+    {
+     "line": 108,
+     "literal": "#4A90E2",
+     "classification": "CHROME",
+     "reason": "Fallback text color for var(--accent-primary) on the banner's action link (.storage-banner__action) \u2014 a DOM link/button, part of UI chrome, not annotation content.",
+     "snippet": "color: var(--accent-primary, #4A90E2);"
+    },
+    {
+     "line": 119,
+     "literal": "rgba(74, 144, 226, 0.4)",
+     "classification": "CHROME",
+     "reason": "Keyboard focus ring box-shadow on the action link (.storage-banner__action:focus) \u2014 DOM focus-visible styling, standard chrome pattern per the file's own comment referencing src/styles.css input focus.",
+     "snippet": "box-shadow: 0 0 0 2px rgba(74, 144, 226, 0.4);"
+    },
+    {
+     "line": 153,
+     "literal": "rgba(74, 144, 226, 0.4)",
+     "classification": "CHROME",
+     "reason": "Keyboard focus ring box-shadow on the dismiss button (.storage-banner__dismiss:focus) \u2014 same chrome focus-ring pattern as line 119.",
+     "snippet": "box-shadow: 0 0 0 2px rgba(74, 144, 226, 0.4);"
+    }
+   ]
+  },
+  {
+   "file": "src/components/collab/UndoToast.css",
+   "fileSummary": "Not a protected/high-risk file (not PDFViewer/PageAnnotationLayer/Fabric*/SVGAnnotationLayer); it's a small toast-notification stylesheet for the collab undo action. Dominant classification: CHROME (100% of hits) \u2014 background/border surface colors and the accent link/focus-ring color, all on a DOM toast overlay unrelated to canvas content.",
+   "sites": [
+    {
+     "line": 40,
+     "literal": "#252525",
+     "classification": "CHROME",
+     "reason": "Fallback value for --bg-secondary, the toast's card background \u2014 DOM chrome surface color, not rendered into the PDF/canvas.",
+     "snippet": "background: var(--bg-secondary, #252525);"
+    },
+    {
+     "line": 41,
+     "literal": "#3A3A3A",
+     "classification": "CHROME",
+     "reason": "Fallback value for --border-primary, the toast's card border \u2014 DOM chrome, cool-gray surface color slated for warm-dark swap.",
+     "snippet": "border: 1px solid var(--border-primary, #3A3A3A);"
+    },
+    {
+     "line": 83,
+     "literal": "#4A90E2",
+     "classification": "CHROME",
+     "reason": "Fallback value for --accent-primary, used as the color of the 'Undo' text-link action inside the toast \u2014 DOM UI accent, not annotation content.",
+     "snippet": "color: var(--accent-primary, #4A90E2);"
+    },
+    {
+     "line": 100,
+     "literal": "rgba(74, 144, 226, 0.4)",
+     "classification": "CHROME",
+     "reason": "Keyboard focus ring halo on the Undo link/button \u2014 a DOM chrome affordance (focus indicator), not drawn onto the PDF canvas.",
+     "snippet": "box-shadow: 0 0 0 2px rgba(74, 144, 226, 0.4);"
+    }
+   ]
+  },
+  {
+   "file": "src/components/revisions/RevisionsPanel.jsx",
+   "fileSummary": "Not one of the project's protected/high-risk files (those are PDFViewer.jsx, PageAnnotationLayer.jsx, the Fabric*Canvas.jsx trio, and SVGAnnotationLayer.jsx); dominant classification here is CHROME (drawer/button/modal styling), with two CANVAS_CONTENT sites for the SVG \"spotlight\" glow drawn directly over the PDF page.",
+   "sites": [
+    {
+     "line": 457,
+     "literal": "#4a90e2",
+     "classification": "CANVAS_CONTENT",
+     "reason": "Stroke color for a glowing SVG path/shape appended into an SVG overlay positioned and tracked over the actual PDF page element (createPageSpotlightSvg), used to spotlight/highlight a specific annotation's geometry during revision review. This renders directly over the PDF content analogous to a selection marquee, not app chrome.",
+     "snippet": "node.setAttribute('stroke', '#4a90e2');"
+    },
+    {
+     "line": 561,
+     "literal": "#4a90e2",
+     "classification": "CANVAS_CONTENT",
+     "reason": "Same spotlight-glow mechanism as line 457 (DOM path fallback path): clones an annotation's SVG path and strokes it in blue as a glow highlight drawn into the SVG overlay tracking the PDF page \u2014 content-over-canvas highlight, not chrome.",
+     "snippet": "clone.setAttribute('stroke', '#4a90e2');"
+    },
+    {
+     "line": 762,
+     "literal": "#252525",
+     "classification": "CHROME",
+     "reason": "Background color of the Revisions drawer/panel container itself (embedded vs fixed-drawer mode) \u2014 a DOM side panel, standard UI chrome.",
+     "snippet": "background: embedded ? '#252525' : '#1a1a1a',"
+    },
+    {
+     "line": 977,
+     "literal": "#2d2d2d",
+     "classification": "CHROME",
+     "reason": "Background of the 'Open read-only' button in a revision list row \u2014 DOM button chrome.",
+     "snippet": "background: '#2d2d2d',"
+    },
+    {
+     "line": 1073,
+     "literal": "#252525",
+     "classification": "CHROME",
+     "reason": "Background of the cascade-restore confirmation modal's content box (dialog chrome), with CSS var fallback.",
+     "snippet": "background: 'var(--bg-secondary, #252525)',"
+    },
+    {
+     "line": 1074,
+     "literal": "#3A3A3A",
+     "classification": "CHROME",
+     "reason": "Border color of the same cascade-restore modal box \u2014 dialog chrome border, CSS var fallback.",
+     "snippet": "border: '1px solid var(--border-primary, #3A3A3A)',"
+    },
+    {
+     "line": 1199,
+     "literal": "#2d2d2d",
+     "classification": "CHROME",
+     "reason": "Background of the fixed 'Revisions' launcher button (bottom-right floating button) \u2014 DOM button chrome.",
+     "snippet": "background: '#2d2d2d',"
+    }
+   ]
+  },
+  {
+   "file": "src/electron/msalAuthMain.js",
+   "fileSummary": "Not a listed high-risk/protected file; dominant classification is NON_UI \u2014 the only hits are inline HTML strings for a standalone auth-success/error page rendered in the system browser during Microsoft sign-in, unrelated to the app's own React/PDF-viewer chrome.",
+   "sites": [
+    {
+     "line": 30,
+     "literal": "#1e1e1e",
+     "classification": "NON_UI",
+     "reason": "Inline background color in a raw HTML string (SUCCESS_TEMPLATE) served as a standalone success page in the system browser after Microsoft loopback sign-in completes \u2014 not part of the app's own DOM/chrome or the PDF/annotation canvas.",
+     "snippet": "'<html><body style=\"font-family:-apple-system,sans-serif;text-align:center;padding-top:18vh;background:#1e1e1e;color:#eee\">' + '<h2>Signed in</h2>...'"
+    },
+    {
+     "line": 33,
+     "literal": "#1e1e1e",
+     "classification": "NON_UI",
+     "reason": "Same pattern as line 30, but for ERROR_TEMPLATE \u2014 the sign-in failure page shown in the external system browser, not app UI chrome.",
+     "snippet": "'<html><body style=\"font-family:-apple-system,sans-serif;text-align:center;padding-top:18vh;background:#1e1e1e;color:#eee\">' + '<h2>Sign-in did not complete</h2>...'"
+    }
+   ]
+  },
+  {
+   "file": "src/sidebar/BookmarksPanel.jsx",
+   "fileSummary": "Not a listed high-risk file (not PDFViewer/PageAnnotationLayer/Fabric*/SVGAnnotationLayer) \u2014 it's the bookmarks sidebar panel; every color hit is DOM chrome (list rows, header, add-bookmark dropdown, create/edit/add-to-group modals, inputs, buttons) with 100% CHROME classification.",
+   "sites": [
+    {
+     "line": 197,
+     "literal": "#2b2b2b / #252525",
+     "classification": "CHROME",
+     "reason": "Bookmark tree row background (clone/selected/default states) in the sidebar list.",
+     "snippet": "background: isClone ? '#2b2b2b' : isSelected ? '#30343a' : '#252525',"
+    },
+    {
+     "line": 212,
+     "literal": "#2b2b2b",
+     "classification": "CHROME",
+     "reason": "Row hover background for bookmark list item.",
+     "snippet": "event.currentTarget.style.background = '#2b2b2b';"
+    },
+    {
+     "line": 215,
+     "literal": "#252525",
+     "classification": "CHROME",
+     "reason": "Row mouse-leave (revert) background for bookmark list item.",
+     "snippet": "event.currentTarget.style.background = '#252525';"
+    },
+    {
+     "line": 279,
+     "literal": "#3a3a3a",
+     "classification": "CHROME",
+     "reason": "Border of inline rename text input on a bookmark row.",
+     "snippet": "border: '1px solid #3a3a3a',"
+    },
+    {
+     "line": 326,
+     "literal": "#3a3a3a",
+     "classification": "CHROME",
+     "reason": "Border of inline page-number input on a bookmark row.",
+     "snippet": "border: '1px solid #3a3a3a',"
+    },
+    {
+     "line": 356,
+     "literal": "#3a3a3a",
+     "classification": "CHROME",
+     "reason": "Border of the 'add bookmark to group' icon button.",
+     "snippet": "border: '1px solid #3a3a3a',"
+    },
+    {
+     "line": 399,
+     "literal": "#4A90E2",
+     "classification": "CHROME",
+     "reason": "Badge background showing child count on a dragged folder clone \u2014 DOM UI badge, not canvas content.",
+     "snippet": "background: '#4A90E2',"
+    },
+    {
+     "line": 1363,
+     "literal": "#252525",
+     "classification": "CHROME",
+     "reason": "Root panel background of the Bookmarks sidebar.",
+     "snippet": "background: '#252525'"
+    },
+    {
+     "line": 1370,
+     "literal": "#252525",
+     "classification": "CHROME",
+     "reason": "Panel header background.",
+     "snippet": "background: '#252525',"
+    },
+    {
+     "line": 1371,
+     "literal": "#3a3a3a",
+     "classification": "CHROME",
+     "reason": "Header bottom border.",
+     "snippet": "borderBottom: '1px solid #3a3a3a',"
+    },
+    {
+     "line": 1390,
+     "literal": "#4A90E2 / #3a3a3a",
+     "classification": "CHROME",
+     "reason": "Edit/Done toggle button background (active vs inactive state).",
+     "snippet": "background: isEditMode ? '#4A90E2' : '#3a3a3a',"
+    },
+    {
+     "line": 1407,
+     "literal": "#357abd",
+     "classification": "CHROME",
+     "reason": "Hover state (darker blue) for the active Edit/Done button.",
+     "snippet": "e.currentTarget.style.background = '#357abd';"
+    },
+    {
+     "line": 1412,
+     "literal": "#3a3a3a",
+     "classification": "CHROME",
+     "reason": "Mouse-leave revert background for inactive Edit/Done button.",
+     "snippet": "e.currentTarget.style.background = '#3a3a3a';"
+    },
+    {
+     "line": 1414,
+     "literal": "#4A90E2",
+     "classification": "CHROME",
+     "reason": "Mouse-leave revert background for active Edit/Done button.",
+     "snippet": "e.currentTarget.style.background = '#4A90E2';"
+    },
+    {
+     "line": 1519,
+     "literal": "#252525",
+     "classification": "CHROME",
+     "reason": "Footer bar background behind Add Bookmark button.",
+     "snippet": "background: '#252525',"
+    },
+    {
+     "line": 1520,
+     "literal": "#3a3a3a",
+     "classification": "CHROME",
+     "reason": "Footer bar top border.",
+     "snippet": "borderTop: '1px solid #3a3a3a'"
+    },
+    {
+     "line": 1527,
+     "literal": "#4A90E2",
+     "classification": "CHROME",
+     "reason": "Primary 'Add Bookmark' button background.",
+     "snippet": "background: '#4A90E2',"
+    },
+    {
+     "line": 1541,
+     "literal": "#357abd",
+     "classification": "CHROME",
+     "reason": "Hover state for 'Add Bookmark' button.",
+     "snippet": "onMouseEnter={(e) => e.currentTarget.style.background = '#357abd'}"
+    },
+    {
+     "line": 1577,
+     "literal": "#2b2b2b",
+     "classification": "CHROME",
+     "reason": "Hover background for 'New Bookmark Group' menu item.",
+     "snippet": "onMouseEnter={(e) => e.currentTarget.style.background = '#2b2b2b'}"
+    },
+    {
+     "line": 1583,
+     "literal": "#3a3a3a",
+     "classification": "CHROME",
+     "reason": "Divider border inside create-bookmark dropdown menu.",
+     "snippet": "<div style={{ padding: '8px 12px', borderTop: '1px solid #3a3a3a' }}>"
+    },
+    {
+     "line": 1592,
+     "literal": "#2b2b2b",
+     "classification": "CHROME",
+     "reason": "Background of bookmark-name text input in create dropdown.",
+     "snippet": "background: '#2b2b2b',"
+    },
+    {
+     "line": 1594,
+     "literal": "#3a3a3a",
+     "classification": "CHROME",
+     "reason": "Border of bookmark-name text input.",
+     "snippet": "border: '1px solid #3a3a3a',"
+    },
+    {
+     "line": 1602,
+     "literal": "#4A90E2",
+     "classification": "CHROME",
+     "reason": "Focus-state border color for bookmark-name input.",
+     "snippet": "onFocus={(e) => e.currentTarget.style.borderColor = '#4A90E2'}"
+    },
+    {
+     "line": 1613,
+     "literal": "#2b2b2b",
+     "classification": "CHROME",
+     "reason": "Background of page-number text input in create dropdown.",
+     "snippet": "background: '#2b2b2b',"
+    },
+    {
+     "line": 1615,
+     "literal": "#3a3a3a",
+     "classification": "CHROME",
+     "reason": "Border of page-number text input.",
+     "snippet": "border: '1px solid #3a3a3a',"
+    },
+    {
+     "line": 1623,
+     "literal": "#4A90E2",
+     "classification": "CHROME",
+     "reason": "Focus-state border color for page-number input.",
+     "snippet": "onFocus={(e) => e.currentTarget.style.borderColor = '#4A90E2'}"
+    },
+    {
+     "line": 1640,
+     "literal": "#3a3a3a",
+     "classification": "CHROME",
+     "reason": "'Current Page' secondary button background.",
+     "snippet": "background: '#3a3a3a',"
+    },
+    {
+     "line": 1652,
+     "literal": "#3a3a3a",
+     "classification": "CHROME",
+     "reason": "Mouse-leave revert for 'Current Page' button.",
+     "snippet": "onMouseLeave={(e) => e.currentTarget.style.background = '#3a3a3a'}"
+    },
+    {
+     "line": 1661,
+     "literal": "#4A90E2",
+     "classification": "CHROME",
+     "reason": "'Create Bookmark' primary button background.",
+     "snippet": "background: '#4A90E2',"
+    },
+    {
+     "line": 1670,
+     "literal": "#357abd",
+     "classification": "CHROME",
+     "reason": "Hover state for 'Create Bookmark' button.",
+     "snippet": "onMouseEnter={(e) => e.currentTarget.style.background = '#357abd'}"
+    },
+    {
+     "line": 1697,
+     "literal": "#252525",
+     "classification": "CHROME",
+     "reason": "Create Bookmark Group modal panel background.",
+     "snippet": "background: '#252525',"
+    },
+    {
+     "line": 1704,
+     "literal": "#3a3a3a",
+     "classification": "CHROME",
+     "reason": "Modal panel border.",
+     "snippet": "border: '1px solid #3a3a3a',"
+    },
+    {
+     "line": 1739,
+     "literal": "#3a3a3a",
+     "classification": "CHROME",
+     "reason": "Hover background for modal close (X) button.",
+     "snippet": "e.currentTarget.style.background = '#3a3a3a';"
+    },
+    {
+     "line": 1769,
+     "literal": "#2b2b2b",
+     "classification": "CHROME",
+     "reason": "Group Name input background in modal.",
+     "snippet": "background: '#2b2b2b',"
+    },
+    {
+     "line": 1771,
+     "literal": "#3a3a3a",
+     "classification": "CHROME",
+     "reason": "Group Name input border.",
+     "snippet": "border: '1px solid #3a3a3a',"
+    },
+    {
+     "line": 1778,
+     "literal": "#4A90E2",
+     "classification": "CHROME",
+     "reason": "Focus border color for Group Name input.",
+     "snippet": "onFocus={(e) => e.currentTarget.style.borderColor = '#4A90E2'}"
+    },
+    {
+     "line": 1801,
+     "literal": "#3a3a3a",
+     "classification": "CHROME",
+     "reason": "'New Bookmark' button background inside modal.",
+     "snippet": "background: '#3a3a3a',"
+    },
+    {
+     "line": 1815,
+     "literal": "#3a3a3a",
+     "classification": "CHROME",
+     "reason": "Mouse-leave revert for 'New Bookmark' button.",
+     "snippet": "onMouseLeave={(e) => e.currentTarget.style.background = '#3a3a3a'}"
+    },
+    {
+     "line": 1825,
+     "literal": "#3a3a3a",
+     "classification": "CHROME",
+     "reason": "Border of scrollable bookmarks-in-group list container.",
+     "snippet": "border: '1px solid #3a3a3a',"
+    },
+    {
+     "line": 1874,
+     "literal": "#2b2b2b",
+     "classification": "CHROME",
+     "reason": "Background of per-item name input within group modal list.",
+     "snippet": "background: '#2b2b2b',"
+    },
+    {
+     "line": 1876,
+     "literal": "#3a3a3a",
+     "classification": "CHROME",
+     "reason": "Border of per-item name input.",
+     "snippet": "border: '1px solid #3a3a3a',"
+    },
+    {
+     "line": 1882,
+     "literal": "#4A90E2",
+     "classification": "CHROME",
+     "reason": "Focus border color for per-item name input.",
+     "snippet": "onFocus={(e) => e.currentTarget.style.borderColor = '#4A90E2'}"
+    },
+    {
+     "line": 1906,
+     "literal": "#2b2b2b",
+     "classification": "CHROME",
+     "reason": "Background of per-item page-number input within group modal list.",
+     "snippet": "background: '#2b2b2b',"
+    },
+    {
+     "line": 1908,
+     "literal": "#3a3a3a",
+     "classification": "CHROME",
+     "reason": "Border of per-item page-number input.",
+     "snippet": "border: '1px solid #3a3a3a',"
+    },
+    {
+     "line": 1914,
+     "literal": "#4A90E2",
+     "classification": "CHROME",
+     "reason": "Focus border color for per-item page-number input.",
+     "snippet": "onFocus={(e) => e.currentTarget.style.borderColor = '#4A90E2'}"
+    },
+    {
+     "line": 1962,
+     "literal": "#3a3a3a",
+     "classification": "CHROME",
+     "reason": "Border of 'Add Existing Bookmarks' list container.",
+     "snippet": "border: '1px solid #3a3a3a',"
+    },
+    {
+     "line": 1999,
+     "literal": "#2b2b2b",
+     "classification": "CHROME",
+     "reason": "Hover background for existing-bookmark list item button.",
+     "snippet": "onMouseEnter={(e) => e.currentTarget.style.background = '#2b2b2b'}"
+    },
+    {
+     "line": 2026,
+     "literal": "#3a3a3a",
+     "classification": "CHROME",
+     "reason": "Modal 'Cancel' button background.",
+     "snippet": "background: '#3a3a3a',"
+    },
+    {
+     "line": 2036,
+     "literal": "#3a3a3a",
+     "classification": "CHROME",
+     "reason": "Mouse-leave revert for 'Cancel' button.",
+     "snippet": "onMouseLeave={(e) => e.currentTarget.style.background = '#3a3a3a'}"
+    },
+    {
+     "line": 2044,
+     "literal": "#4A90E2",
+     "classification": "CHROME",
+     "reason": "'Create Group' primary button background.",
+     "snippet": "background: '#4A90E2',"
+    },
+    {
+     "line": 2053,
+     "literal": "#357abd",
+     "classification": "CHROME",
+     "reason": "Hover state for 'Create Group' button.",
+     "snippet": "onMouseEnter={(e) => e.currentTarget.style.background = '#357abd'}"
+    },
+    {
+     "line": 2082,
+     "literal": "#252525",
+     "classification": "CHROME",
+     "reason": "'Add Bookmarks to Existing Group' modal panel background.",
+     "snippet": "background: '#252525',"
+    },
+    {
+     "line": 2089,
+     "literal": "#3a3a3a",
+     "classification": "CHROME",
+     "reason": "Modal panel border.",
+     "snippet": "border: '1px solid #3a3a3a',"
+    },
+    {
+     "line": 2124,
+     "literal": "#3a3a3a",
+     "classification": "CHROME",
+     "reason": "Hover background for modal close (X) button.",
+     "snippet": "e.currentTarget.style.background = '#3a3a3a';"
+    },
+    {
+     "line": 2151,
+     "literal": "#2b2b2b",
+     "classification": "CHROME",
+     "reason": "Text input background within add-to-group modal.",
+     "snippet": "background: '#2b2b2b',"
+    },
+    {
+     "line": 2153,
+     "literal": "#3a3a3a",
+     "classification": "CHROME",
+     "reason": "Text input border within add-to-group modal.",
+     "snippet": "border: '1px solid #3a3a3a',"
+    },
+    {
+     "line": 2181,
+     "literal": "#3a3a3a",
+     "classification": "CHROME",
+     "reason": "Secondary button background in add-to-group modal.",
+     "snippet": "background: '#3a3a3a',"
+    },
+    {
+     "line": 2195,
+     "literal": "#3a3a3a",
+     "classification": "CHROME",
+     "reason": "Mouse-leave revert for secondary button.",
+     "snippet": "onMouseLeave={(e) => e.currentTarget.style.background = '#3a3a3a'}"
+    },
+    {
+     "line": 2205,
+     "literal": "#3a3a3a",
+     "classification": "CHROME",
+     "reason": "Border of scrollable list container in add-to-group modal.",
+     "snippet": "border: '1px solid #3a3a3a',"
+    },
+    {
+     "line": 2254,
+     "literal": "#2b2b2b",
+     "classification": "CHROME",
+     "reason": "Per-item name input background in add-to-group modal list.",
+     "snippet": "background: '#2b2b2b',"
+    },
+    {
+     "line": 2256,
+     "literal": "#3a3a3a",
+     "classification": "CHROME",
+     "reason": "Per-item name input border.",
+     "snippet": "border: '1px solid #3a3a3a',"
+    },
+    {
+     "line": 2262,
+     "literal": "#4A90E2",
+     "classification": "CHROME",
+     "reason": "Focus border color for per-item name input.",
+     "snippet": "onFocus={(e) => e.currentTarget.style.borderColor = '#4A90E2'}"
+    },
+    {
+     "line": 2286,
+     "literal": "#2b2b2b",
+     "classification": "CHROME",
+     "reason": "Per-item page-number input background.",
+     "snippet": "background: '#2b2b2b',"
+    },
+    {
+     "line": 2288,
+     "literal": "#3a3a3a",
+     "classification": "CHROME",
+     "reason": "Per-item page-number input border.",
+     "snippet": "border: '1px solid #3a3a3a',"
+    },
+    {
+     "line": 2294,
+     "literal": "#4A90E2",
+     "classification": "CHROME",
+     "reason": "Focus border color for per-item page-number input.",
+     "snippet": "onFocus={(e) => e.currentTarget.style.borderColor = '#4A90E2'}"
+    },
+    {
+     "line": 2342,
+     "literal": "#3a3a3a",
+     "classification": "CHROME",
+     "reason": "Border of 'Add Existing Bookmarks' list container (second modal).",
+     "snippet": "border: '1px solid #3a3a3a',"
+    },
+    {
+     "line": 2386,
+     "literal": "#2b2b2b",
+     "classification": "CHROME",
+     "reason": "Hover background for existing-bookmark list item button (second modal).",
+     "snippet": "onMouseEnter={(e) => e.currentTarget.style.background = '#2b2b2b'}"
+    },
+    {
+     "line": 2413,
+     "literal": "#3a3a3a",
+     "classification": "CHROME",
+     "reason": "'Cancel' button background (second modal).",
+     "snippet": "background: '#3a3a3a',"
+    },
+    {
+     "line": 2423,
+     "literal": "#3a3a3a",
+     "classification": "CHROME",
+     "reason": "Mouse-leave revert for 'Cancel' button.",
+     "snippet": "onMouseLeave={(e) => e.currentTarget.style.background = '#3a3a3a'}"
+    },
+    {
+     "line": 2431,
+     "literal": "#4A90E2",
+     "classification": "CHROME",
+     "reason": "Primary confirm button background (second modal).",
+     "snippet": "background: '#4A90E2',"
+    },
+    {
+     "line": 2440,
+     "literal": "#357abd",
+     "classification": "CHROME",
+     "reason": "Hover state for primary confirm button.",
+     "snippet": "onMouseEnter={(e) => e.currentTarget.style.background = '#357abd'}"
+    }
+   ]
+  },
+  {
+   "file": "src/sidebar/PagesPanel.jsx",
+   "fileSummary": "Not on the protected/high-risk list (not PDFViewer/PageAnnotationLayer/Fabric*/SVGAnnotationLayer); this is the pages sidebar thumbnail panel and its right-click context menu, and every color hit is DOM chrome.",
+   "sites": [
+    {
+     "line": 744,
+     "literal": "#252525",
+     "classification": "CHROME",
+     "reason": "Root panel background of the pages sidebar (thumbnail list container) \u2014 DOM chrome surface color.",
+     "snippet": "background: '#252525'"
+    },
+    {
+     "line": 804,
+     "literal": "#3a3a3a",
+     "classification": "CHROME",
+     "reason": "Selected-state background fill of a page thumbnail row in the sidebar list \u2014 DOM list-row chrome, not annotation content.",
+     "snippet": "background: isSelected ? '#3a3a3a' : (dragOverPage === pageNumber ? '#2b4a5a' : 'transparent'),"
+    },
+    {
+     "line": 805,
+     "literal": "#4A90E2",
+     "classification": "CHROME",
+     "reason": "Blue accent border on the selected/drag-over thumbnail row in the sidebar list \u2014 a DOM list-selection outline, not a canvas/SVG annotation stroke.",
+     "snippet": "border: isSelected ? '1px solid #4A90E2' : (dragOverPage === pageNumber ? '1px solid #4A90E2' : '1px solid transparent'),"
+    },
+    {
+     "line": 816,
+     "literal": "#2b2b2b",
+     "classification": "CHROME",
+     "reason": "Hover background applied via inline style mutation on the thumbnail row div \u2014 DOM chrome hover state.",
+     "snippet": "e.currentTarget.style.background = '#2b2b2b';"
+    },
+    {
+     "line": 934,
+     "literal": "#3a3a3a",
+     "classification": "CHROME",
+     "reason": "Hover background for the 'Cut' button in the right-click context menu \u2014 DOM menu chrome.",
+     "snippet": "onMouseEnter={(e) => e.currentTarget.style.background = '#3a3a3a'}"
+    },
+    {
+     "line": 956,
+     "literal": "#3a3a3a",
+     "classification": "CHROME",
+     "reason": "Hover background for the 'Copy' button in the right-click context menu \u2014 DOM menu chrome.",
+     "snippet": "onMouseEnter={(e) => e.currentTarget.style.background = '#3a3a3a'}"
+    },
+    {
+     "line": 982,
+     "literal": "#3a3a3a",
+     "classification": "CHROME",
+     "reason": "Hover background for the 'Paste' button (enabled state) in the context menu \u2014 DOM menu chrome.",
+     "snippet": "e.currentTarget.style.background = '#3a3a3a';"
+    },
+    {
+     "line": 1008,
+     "literal": "#3a3a3a",
+     "classification": "CHROME",
+     "reason": "Hover background for the 'Duplicate' button in the context menu \u2014 DOM menu chrome.",
+     "snippet": "onMouseEnter={(e) => e.currentTarget.style.background = '#3a3a3a'}"
+    },
+    {
+     "line": 1035,
+     "literal": "#3a3a3a",
+     "classification": "CHROME",
+     "reason": "Hover background for the 'Rotate' button in the context menu \u2014 DOM menu chrome.",
+     "snippet": "onMouseEnter={(e) => e.currentTarget.style.background = '#3a3a3a'}"
+    },
+    {
+     "line": 1057,
+     "literal": "#3a3a3a",
+     "classification": "CHROME",
+     "reason": "Hover background for the 'Mirror Horizontally' button in the context menu \u2014 DOM menu chrome.",
+     "snippet": "onMouseEnter={(e) => e.currentTarget.style.background = '#3a3a3a'}"
+    },
+    {
+     "line": 1079,
+     "literal": "#3a3a3a",
+     "classification": "CHROME",
+     "reason": "Hover background for the 'Mirror Vertically' button in the context menu \u2014 DOM menu chrome.",
+     "snippet": "onMouseEnter={(e) => e.currentTarget.style.background = '#3a3a3a'}"
+    },
+    {
+     "line": 1101,
+     "literal": "#3a3a3a",
+     "classification": "CHROME",
+     "reason": "Hover background for the 'Reset' button in the context menu \u2014 DOM menu chrome.",
+     "snippet": "onMouseEnter={(e) => e.currentTarget.style.background = '#3a3a3a'}"
+    },
+    {
+     "line": 1128,
+     "literal": "#3a3a3a",
+     "classification": "CHROME",
+     "reason": "Hover background for the 'Delete' button in the context menu \u2014 DOM menu chrome.",
+     "snippet": "onMouseEnter={(e) => e.currentTarget.style.background = '#3a3a3a'}"
+    }
+   ]
+  },
+  {
+   "file": "src/sidebar/SearchTextPanel.jsx",
+   "fileSummary": "Not in the project's high-risk/protected list; this is the sidebar text-search panel and every hit is DOM-rendered UI chrome (search input, nav buttons, result-row list, progress bar), so the whole file classifies CHROME.",
+   "sites": [
+    {
+     "line": 1006,
+     "literal": "#4A90E2",
+     "classification": "CHROME",
+     "reason": "Highlight background on matched substring <strong> in the search results text \u2014 DOM UI chrome, not canvas content.",
+     "snippet": "<strong style={{ background: '#4A90E2', color: '#ffffff', ... }}>{match}</strong>"
+    },
+    {
+     "line": 1022,
+     "literal": "#2b2b2b",
+     "classification": "CHROME",
+     "reason": "Result row background (inactive state) in the search results list.",
+     "snippet": "background: isActive ? '#3a5070' : '#2b2b2b',"
+    },
+    {
+     "line": 1023,
+     "literal": "#4A90E2 / #3a3a3a",
+     "classification": "CHROME",
+     "reason": "Result row border color, active vs inactive state.",
+     "snippet": "border: isActive ? '1px solid #4A90E2' : '1px solid #3a3a3a',"
+    },
+    {
+     "line": 1041,
+     "literal": "#2b2b2b",
+     "classification": "CHROME",
+     "reason": "onMouseLeave restores result row background to base chrome color.",
+     "snippet": "e.currentTarget.style.background = '#2b2b2b';"
+    },
+    {
+     "line": 1055,
+     "literal": "#4A90E2",
+     "classification": "CHROME",
+     "reason": "Index badge background when row is active, in the results list chrome.",
+     "snippet": "background: isActive ? '#4A90E2' : '#666',"
+    },
+    {
+     "line": 1066,
+     "literal": "#4A90E2",
+     "classification": "CHROME",
+     "reason": "Page-number chip text color in a result row.",
+     "snippet": "color: '#4A90E2',\n  background: '#e8f0fe',"
+    },
+    {
+     "line": 1676,
+     "literal": "#252525",
+     "classification": "CHROME",
+     "reason": "Root panel container background of the search sidebar.",
+     "snippet": "background: '#252525'"
+    },
+    {
+     "line": 1682,
+     "literal": "#252525",
+     "classification": "CHROME",
+     "reason": "Search bar section background, same panel chrome.",
+     "snippet": "background: '#252525',"
+    },
+    {
+     "line": 1683,
+     "literal": "#3a3a3a",
+     "classification": "CHROME",
+     "reason": "Search bar bottom border.",
+     "snippet": "borderBottom: '1px solid #3a3a3a',"
+    },
+    {
+     "line": 1712,
+     "literal": "#2b2b2b",
+     "classification": "CHROME",
+     "reason": "Search text input field background.",
+     "snippet": "background: '#2b2b2b',"
+    },
+    {
+     "line": 1713,
+     "literal": "#3a3a3a",
+     "classification": "CHROME",
+     "reason": "Search input border (default state).",
+     "snippet": "border: '1px solid #3a3a3a',"
+    },
+    {
+     "line": 1721,
+     "literal": "#4A90E2",
+     "classification": "CHROME",
+     "reason": "Search input focus-ring border color.",
+     "snippet": "onFocus={(e) => e.currentTarget.style.borderColor = '#4A90E2'}"
+    },
+    {
+     "line": 1722,
+     "literal": "#3a3a3a",
+     "classification": "CHROME",
+     "reason": "Search input blur restores default border color.",
+     "snippet": "onBlur={(e) => e.currentTarget.style.borderColor = '#3a3a3a'}"
+    },
+    {
+     "line": 1755,
+     "literal": "#2b2b2b",
+     "classification": "CHROME",
+     "reason": "Nav-controls bar background (prev/next/count row).",
+     "snippet": "background: '#2b2b2b',"
+    },
+    {
+     "line": 1757,
+     "literal": "#3a3a3a",
+     "classification": "CHROME",
+     "reason": "Nav-controls bar border.",
+     "snippet": "border: '1px solid #3a3a3a'"
+    },
+    {
+     "line": 1767,
+     "literal": "#4A90E2",
+     "classification": "CHROME",
+     "reason": "Current match index number color in results counter.",
+     "snippet": "<span style={{ color: '#4A90E2' }}>{currentMatchIndex + 1}</span>"
+    },
+    {
+     "line": 1769,
+     "literal": "#4A90E2",
+     "classification": "CHROME",
+     "reason": "Total results count color in results counter.",
+     "snippet": "<span style={{ color: '#4A90E2' }}>{searchResults.length}</span>"
+    },
+    {
+     "line": 1787,
+     "literal": "#3a3a3a",
+     "classification": "CHROME",
+     "reason": "Prev-match nav button border.",
+     "snippet": "border: '1px solid #3a3a3a',"
+    },
+    {
+     "line": 1809,
+     "literal": "#3a3a3a",
+     "classification": "CHROME",
+     "reason": "Next-match nav button border.",
+     "snippet": "border: '1px solid #3a3a3a',"
+    },
+    {
+     "line": 1834,
+     "literal": "#3a3a3a",
+     "classification": "CHROME",
+     "reason": "Search progress bar track background.",
+     "snippet": "background: '#3a3a3a',"
+    },
+    {
+     "line": 1841,
+     "literal": "#4A90E2",
+     "classification": "CHROME",
+     "reason": "Search progress bar fill color.",
+     "snippet": "background: '#4A90E2',"
+    }
+   ]
+  },
+  {
+   "file": "src/sidebar/SpacesPanel.jsx",
+   "fileSummary": "Not a protected/high-risk file per project docs (not PDFViewer/PageAnnotationLayer/Fabric canvases/SVGAnnotationLayer); it's the Spaces sidebar list panel and every color hit is DOM chrome (rows, toggle switches, buttons, borders, header) \u2014 dominant classification CHROME (20/20 hits).",
+   "sites": [
+    {
+     "line": 110,
+     "literal": "#3a3a3a",
+     "classification": "CHROME",
+     "reason": "Space row header background when highlighted/selected \u2014 sidebar list row chrome",
+     "snippet": "const headerBackground = isHighlighted ? '#3a3a3a' : 'transparent';"
+    },
+    {
+     "line": 111,
+     "literal": "#3a3a3a / #2b2b2b",
+     "classification": "CHROME",
+     "reason": "Space row header hover background \u2014 sidebar list row chrome",
+     "snippet": "const headerHoverBackground = isHighlighted ? '#3a3a3a' : '#2b2b2b';"
+    },
+    {
+     "line": 133,
+     "literal": "#2b2b2b",
+     "classification": "CHROME",
+     "reason": "Space card container background in the sidebar drag-rearrange row",
+     "snippet": "background: '#2b2b2b',"
+    },
+    {
+     "line": 134,
+     "literal": "#3a3a3a",
+     "classification": "CHROME",
+     "reason": "Space card container border when not highlighted",
+     "snippet": "border: isHighlighted ? '1px solid transparent' : '1px solid #3a3a3a',"
+    },
+    {
+     "line": 265,
+     "literal": "#4A90E2 / #3a3a3a",
+     "classification": "CHROME",
+     "reason": "Space on/off toggle switch background (DOM control), not annotation content",
+     "snippet": "background: isActive ? '#4A90E2' : '#3a3a3a',"
+    },
+    {
+     "line": 268,
+     "literal": "#357abd",
+     "classification": "CHROME",
+     "reason": "Space toggle switch border, active state",
+     "snippet": "border: isActive ? '1px solid #357abd' : '1px solid #4a4a4a',"
+    },
+    {
+     "line": 278,
+     "literal": "#357abd",
+     "classification": "CHROME",
+     "reason": "Space toggle switch hover background",
+     "snippet": "e.currentTarget.style.background = '#357abd';"
+    },
+    {
+     "line": 282,
+     "literal": "#4A90E2 / #3a3a3a",
+     "classification": "CHROME",
+     "reason": "Space toggle switch mouse-leave background reset",
+     "snippet": "e.currentTarget.style.background = isActive ? '#4A90E2' : '#3a3a3a';"
+    },
+    {
+     "line": 330,
+     "literal": "#2b2b2b",
+     "classification": "CHROME",
+     "reason": "Expanded space card body background",
+     "snippet": "background: '#2b2b2b',"
+    },
+    {
+     "line": 331,
+     "literal": "#3a3a3a",
+     "classification": "CHROME",
+     "reason": "Expanded space card top border",
+     "snippet": "borderTop: '1px solid #3a3a3a',"
+    },
+    {
+     "line": 366,
+     "literal": "#3a3a3a",
+     "classification": "CHROME",
+     "reason": "Add-pages text input border",
+     "snippet": "border: '1px solid #3a3a3a',"
+    },
+    {
+     "line": 466,
+     "literal": "#4A90E2 / #3a3a3a",
+     "classification": "CHROME",
+     "reason": "Region overlay toggle switch background (DOM control that shows/hides an overlay, itself not drawn content)",
+     "snippet": "background: isToggleEnabled && isOverlayEnabled ? '#4A90E2' : '#3a3a3a',"
+    },
+    {
+     "line": 469,
+     "literal": "#357abd",
+     "classification": "CHROME",
+     "reason": "Region overlay toggle switch border, enabled state",
+     "snippet": "border: isToggleEnabled && isOverlayEnabled ? '1px solid #357abd' : '1px solid #4a4a4a',"
+    },
+    {
+     "line": 481,
+     "literal": "#357abd",
+     "classification": "CHROME",
+     "reason": "Region overlay toggle switch hover background",
+     "snippet": "e.currentTarget.style.background = '#357abd';"
+    },
+    {
+     "line": 486,
+     "literal": "#4A90E2 / #3a3a3a",
+     "classification": "CHROME",
+     "reason": "Region overlay toggle switch mouse-leave background reset",
+     "snippet": "e.currentTarget.style.background = isOverlayEnabled ? '#4A90E2' : '#3a3a3a';"
+    },
+    {
+     "line": 598,
+     "literal": "rgba(74, 144, 226, 0.18)",
+     "classification": "CHROME",
+     "reason": "Region-edit sidebar button active-state background tint, a DOM button in the list row not the annotation canvas",
+     "snippet": "background: isActiveRegionEdit ? 'rgba(74, 144, 226, 0.18)' : 'transparent',"
+    },
+    {
+     "line": 599,
+     "literal": "rgba(74, 144, 226, 0.55)",
+     "classification": "CHROME",
+     "reason": "Region-edit sidebar button active-state border",
+     "snippet": "border: isActiveRegionEdit ? '1px solid rgba(74, 144, 226, 0.55)' : '1px solid transparent',"
+    },
+    {
+     "line": 606,
+     "literal": "#4A90E2",
+     "classification": "CHROME",
+     "reason": "Region-edit sidebar button icon color when active",
+     "snippet": "color: isActiveRegionEdit ? '#4A90E2' : '#999'"
+    },
+    {
+     "line": 660,
+     "literal": "#4A90E2",
+     "classification": "CHROME",
+     "reason": "Visibility toggle button icon color in sidebar list row",
+     "snippet": "color: isDisabled ? '#666' : (visibilityState ? '#4A90E2' : '#999'),"
+    },
+    {
+     "line": 670,
+     "literal": "#4A90E2",
+     "classification": "CHROME",
+     "reason": "Visibility toggle button mouse-leave color reset",
+     "snippet": "e.currentTarget.style.color = visibilityState ? '#4A90E2' : '#999';"
+    },
+    {
+     "line": 1240,
+     "literal": "#252525",
+     "classification": "CHROME",
+     "reason": "Root panel container background \u2014 Spaces sidebar chrome",
+     "snippet": "background: '#252525'"
+    },
+    {
+     "line": 1247,
+     "literal": "#252525",
+     "classification": "CHROME",
+     "reason": "Panel header background",
+     "snippet": "background: '#252525',"
+    },
+    {
+     "line": 1248,
+     "literal": "#3a3a3a",
+     "classification": "CHROME",
+     "reason": "Panel header bottom border",
+     "snippet": "borderBottom: '1px solid #3a3a3a',"
+    }
+   ]
+  },
+  {
+   "file": "src/styles.css",
+   "fileSummary": "Not on the high-risk protected list (PDFViewer.jsx / PageAnnotationLayer.jsx / Fabric*Canvas.jsx / SVGAnnotationLayer.jsx) \u2014 this is the global CSS file for DOM chrome (buttons, panels, list rows, inputs, tooltips, dropdowns); every hit found is CHROME (blue accent #4A90E2/#3A7BC8 and cool-gray surfaces #1E1E1E/#252525/#2D2D2D/#3a3a3a used across buttons, focus rings, side-panel rows, checkboxes, dropdown menus, and card backgrounds) \u2014 none render into the PDF canvas or SVG annotation layer.",
+   "sites": [
+    {
+     "line": 8,
+     "literal": "#1E1E1E",
+     "classification": "CHROME",
+     "snippet": ".App { background-color: #1E1E1E; color: #FFFFFF; ... }",
+     "reason": "Root app shell background (whole-app chrome), becomes warm dark surface."
+    },
+    {
+     "line": 122,
+     "literal": "rgba(74, 144, 226, 0.14)",
+     "classification": "CHROME",
+     "snippet": ".btn-default:hover:not(:disabled) { background: rgba(74, 144, 226, 0.14); border-color: #4A90E2; ... }",
+     "reason": "Default button hover state background wash."
+    },
+    {
+     "line": 123,
+     "literal": "#4A90E2",
+     "classification": "CHROME",
+     "snippet": ".btn-default:hover:not(:disabled) { ...border-color: #4A90E2; box-shadow: 0 0 0 1px rgba(74, 144, 226, 0.35); }",
+     "reason": "Button hover border accent."
+    },
+    {
+     "line": 124,
+     "literal": "rgba(74, 144, 226, 0.35)",
+     "classification": "CHROME",
+     "snippet": "box-shadow: 0 0 0 1px rgba(74, 144, 226, 0.35);",
+     "reason": "Button hover focus-ring glow."
+    },
+    {
+     "line": 128,
+     "literal": "#4A90E2",
+     "classification": "CHROME",
+     "snippet": ".btn-primary { background: #4A90E2; color: white; border: 1px solid #4A90E2; }",
+     "reason": "Primary button fill/border \u2014 core CTA accent color."
+    },
+    {
+     "line": 130,
+     "literal": "#4A90E2",
+     "classification": "CHROME",
+     "snippet": ".btn-primary { background: #4A90E2; color: white; border: 1px solid #4A90E2; }",
+     "reason": "Primary button border, same rule as line 128."
+    },
+    {
+     "line": 134,
+     "literal": "#3A7BC8",
+     "classification": "CHROME",
+     "snippet": ".btn-primary:hover:not(:disabled) { background: #3A7BC8; border-color: #3A7BC8; }",
+     "reason": "Primary button hover shade (darker blue variant)."
+    },
+    {
+     "line": 135,
+     "literal": "#3A7BC8",
+     "classification": "CHROME",
+     "snippet": ".btn-primary:hover:not(:disabled) { background: #3A7BC8; border-color: #3A7BC8; }",
+     "reason": "Primary button hover border, same rule."
+    },
+    {
+     "line": 139,
+     "literal": "#2D2D2D",
+     "classification": "CHROME",
+     "snippet": ".btn-secondary { background: #2D2D2D; color: #C8C8C8; border: 1px solid transparent; }",
+     "reason": "Secondary button surface (cool-gray chrome)."
+    },
+    {
+     "line": 145,
+     "literal": "rgba(74, 144, 226, 0.14)",
+     "classification": "CHROME",
+     "snippet": ".btn-secondary:hover:not(:disabled) { background: rgba(74, 144, 226, 0.14); border-color: #4A90E2; ... }",
+     "reason": "Secondary button hover wash."
+    },
+    {
+     "line": 146,
+     "literal": "#4A90E2",
+     "classification": "CHROME",
+     "snippet": ".btn-secondary:hover:not(:disabled) { ... border-color: #4A90E2; box-shadow: 0 0 0 1px rgba(74, 144, 226, 0.35); }",
+     "reason": "Secondary button hover border accent."
+    },
+    {
+     "line": 147,
+     "literal": "rgba(74, 144, 226, 0.35)",
+     "classification": "CHROME",
+     "snippet": "box-shadow: 0 0 0 1px rgba(74, 144, 226, 0.35);",
+     "reason": "Secondary button hover focus-ring glow."
+    },
+    {
+     "line": 194,
+     "literal": "rgba(74, 144, 226, 0.14)",
+     "classification": "CHROME",
+     "snippet": ".btn-icon:hover:not(:disabled) { background: rgba(74, 144, 226, 0.14); border-color: #4A90E2; ... }",
+     "reason": "Icon button hover wash (toolbar icon buttons)."
+    },
+    {
+     "line": 195,
+     "literal": "#4A90E2",
+     "classification": "CHROME",
+     "snippet": ".btn-icon:hover:not(:disabled) { ... border-color: #4A90E2; box-shadow: 0 0 0 1px rgba(74, 144, 226, 0.35); }",
+     "reason": "Icon button hover border accent."
+    },
+    {
+     "line": 196,
+     "literal": "rgba(74, 144, 226, 0.35)",
+     "classification": "CHROME",
+     "snippet": "box-shadow: 0 0 0 1px rgba(74, 144, 226, 0.35);",
+     "reason": "Icon button hover focus-ring glow."
+    },
+    {
+     "line": 278,
+     "literal": "#4A90E2",
+     "classification": "CHROME",
+     "snippet": ".survey-marker-name-inline:focus, ... { border-bottom-color: #4A90E2; color: #fff; box-shadow: none; }",
+     "reason": "Focus underline on the Survey Marker name text field in the side panel \u2014 DOM input chrome, not the on-canvas marker."
+    },
+    {
+     "line": 340,
+     "literal": "#4A90E2",
+     "classification": "CHROME",
+     "snippet": ".space-name-inline:focus, ... { border-bottom-color: #4A90E2; color: #fff; box-shadow: none; }",
+     "reason": "Focus underline on the Space name text field in the side panel."
+    },
+    {
+     "line": 452,
+     "literal": "#4A90E2",
+     "classification": "CHROME",
+     "snippet": ".region-name-inline { ... border-bottom: 1px dashed #4A90E2; border-radius: 0; color: #fff; ... }",
+     "reason": "Active edit-mode underline for a region name input in the panel (DOM text field, not drawn region geometry)."
+    },
+    {
+     "line": 501,
+     "literal": "rgba(74, 144, 226, 0.18)",
+     "classification": "CHROME",
+     "snippet": ".region-page-pill:hover, :focus-visible { background: rgba(74, 144, 226, 0.18); border-color: rgba(74, 144, 226, 0.65); color: #fff; }",
+     "reason": "Hover/focus state of a page-number chip/pill in the side panel."
+    },
+    {
+     "line": 502,
+     "literal": "rgba(74, 144, 226, 0.65)",
+     "classification": "CHROME",
+     "snippet": "border-color: rgba(74, 144, 226, 0.65);",
+     "reason": "Same page-pill hover rule."
+    },
+    {
+     "line": 694,
+     "literal": "#4A90E2",
+     "classification": "CHROME",
+     "snippet": ".survey-marker-review-tooltip-actions button:hover { border-color: #4A90E2; background: rgba(74, 144, 226, 0.18); }",
+     "reason": "Hover state of action buttons inside a review tooltip popover."
+    },
+    {
+     "line": 695,
+     "literal": "rgba(74, 144, 226, 0.18)",
+     "classification": "CHROME",
+     "snippet": "background: rgba(74, 144, 226, 0.18);",
+     "reason": "Same tooltip button hover rule."
+    },
+    {
+     "line": 741,
+     "literal": "#4A90E2",
+     "classification": "CHROME",
+     "snippet": ".survey-marker-leading-check.is-selected .survey-marker-leading-checkbox { border-color: #4A90E2; background: #4A90E2; }",
+     "reason": "Selected-state fill of a list-row checkbox used to multi-select survey marker entries \u2014 a UI control, not the marker's rendered map/PDF color."
+    },
+    {
+     "line": 742,
+     "literal": "#4A90E2",
+     "classification": "CHROME",
+     "snippet": "background: #4A90E2;",
+     "reason": "Same checkbox selected-state rule."
+    },
+    {
+     "line": 753,
+     "literal": "#4A90E2",
+     "classification": "CHROME",
+     "snippet": ".survey-marker-leading-check:focus-visible { outline: 1px solid #4A90E2; outline-offset: 2px; }",
+     "reason": "Keyboard focus outline on the row checkbox."
+    },
+    {
+     "line": 780,
+     "literal": "#4A90E2",
+     "classification": "CHROME",
+     "snippet": ".survey-marker-select-mode-toggle { ... color: #4A90E2; border-radius: 2px; ... }",
+     "reason": "Text color of a mode-toggle link/button in the panel."
+    },
+    {
+     "line": 803,
+     "literal": "rgba(74, 144, 226, 0.1)",
+     "classification": "CHROME",
+     "snippet": ".survey-marker-select-mode-toggle:hover { color: #76adf0; background: rgba(74, 144, 226, 0.1); }",
+     "reason": "Hover wash for the same mode-toggle control."
+    },
+    {
+     "line": 826,
+     "literal": "#4A90E2",
+     "classification": "CHROME",
+     "snippet": ".survey-marker-select-action:hover:not(:disabled) { border-color: #4A90E2; color: #fff; background: rgba(74, 144, 226, 0.12); }",
+     "reason": "Hover border on a select-toolbar action button."
+    },
+    {
+     "line": 828,
+     "literal": "rgba(74, 144, 226, 0.12)",
+     "classification": "CHROME",
+     "snippet": "background: rgba(74, 144, 226, 0.12);",
+     "reason": "Same action button hover rule."
+    },
+    {
+     "line": 896,
+     "literal": "#4A90E2",
+     "classification": "CHROME",
+     "snippet": ".survey-marker-category-select-button:hover { border-color: #4A90E2; color: #fff; background: #3a3a3a; }",
+     "reason": "Hover border on the category-select dropdown button."
+    },
+    {
+     "line": 898,
+     "literal": "#3a3a3a",
+     "classification": "CHROME",
+     "snippet": ".survey-marker-category-select-button:hover { ... background: #3a3a3a; }",
+     "reason": "Hover surface color of the category-select button \u2014 cool-gray chrome surface."
+    },
+    {
+     "line": 906,
+     "literal": "#4A90E2",
+     "classification": "CHROME",
+     "snippet": ".survey-marker-category-create-button { ... background: #4A90E2; border: 1px solid #4A90E2; color: #fff; ... }",
+     "reason": "\"Create category\" icon button fill/border."
+    },
+    {
+     "line": 907,
+     "literal": "#4A90E2",
+     "classification": "CHROME",
+     "snippet": "border: 1px solid #4A90E2;",
+     "reason": "Same create-category button rule."
+    },
+    {
+     "line": 938,
+     "literal": "#3a3a3a",
+     "classification": "CHROME",
+     "snippet": ".spaces-header-export-button { ... background: #3a3a3a; border: 1px solid #4A90E2; color: #4A90E2; ... }",
+     "reason": "Export-button surface color in the header \u2014 cool-gray chrome."
+    },
+    {
+     "line": 939,
+     "literal": "#4A90E2",
+     "classification": "CHROME",
+     "snippet": "border: 1px solid #4A90E2;",
+     "reason": "Export button border accent."
+    },
+    {
+     "line": 941,
+     "literal": "#4A90E2",
+     "classification": "CHROME",
+     "snippet": "color: #4A90E2;",
+     "reason": "Export button icon/text color."
+    },
+    {
+     "line": 951,
+     "literal": "#4A90E2",
+     "classification": "CHROME",
+     "snippet": ".spaces-header-export-button:hover, .is-active { background: #4A90E2; border-color: #4A90E2; color: #fff; }",
+     "reason": "Export button hover/active fill."
+    },
+    {
+     "line": 952,
+     "literal": "#4A90E2",
+     "classification": "CHROME",
+     "snippet": "border-color: #4A90E2;",
+     "reason": "Same export button hover/active rule."
+    },
+    {
+     "line": 971,
+     "literal": "#3a3a3a",
+     "classification": "CHROME",
+     "snippet": ".spaces-header-export-menu { ... background: #1f1f1f; border: 1px solid #3a3a3a; border-radius: 6px; ... }",
+     "reason": "Dropdown menu border \u2014 cool-gray chrome surface."
+    },
+    {
+     "line": 1004,
+     "literal": "#3a3a3a",
+     "classification": "CHROME",
+     "snippet": "input[type=\"text\"].space-add-pages-input:focus, :focus-visible { outline: none; box-shadow: none; border-color: #3a3a3a; }",
+     "reason": "Focus border of a page-range text input."
+    },
+    {
+     "line": 1014,
+     "literal": "#4A90E2",
+     "classification": "CHROME",
+     "snippet": ".space-add-pages-icon-button { ... background: #4A90E2; border: 1px solid #4A90E2; color: #fff; ... }",
+     "reason": "\"Add pages\" icon button fill/border."
+    },
+    {
+     "line": 1015,
+     "literal": "#4A90E2",
+     "classification": "CHROME",
+     "snippet": "border: 1px solid #4A90E2;",
+     "reason": "Same add-pages button rule."
+    },
+    {
+     "line": 1058,
+     "literal": "#4A90E2",
+     "classification": "CHROME",
+     "snippet": ".survey-marker-category-card.is-active { border-color: #4A90E2; background: rgba(74, 144, 226, 0.035); }",
+     "reason": "Active-state border of a category card panel."
+    },
+    {
+     "line": 1059,
+     "literal": "rgba(74, 144, 226, 0.035)",
+     "classification": "CHROME",
+     "snippet": "background: rgba(74, 144, 226, 0.035);",
+     "reason": "Same active category card rule, faint tint."
+    },
+    {
+     "line": 1166,
+     "literal": "#3a3a3a",
+     "classification": "CHROME",
+     "snippet": ".survey-marker-entity-trigger { ... background: #3a3a3a; color: #e5e5e5; border: 1px solid #555; ... }",
+     "reason": "Background of the entity-color dropdown trigger box itself (the swatch inside uses a CSS variable, not this literal) \u2014 DOM dropdown chrome."
+    },
+    {
+     "line": 1189,
+     "literal": "#4A90E2",
+     "classification": "CHROME",
+     "snippet": ".survey-marker-entity-trigger:focus, [aria-expanded=\"true\"] { border-color: #4A90E2; box-shadow: 0 0 0 1px rgba(74, 144, 226, 0.3); }",
+     "reason": "Focus/open border of the entity dropdown trigger."
+    },
+    {
+     "line": 1190,
+     "literal": "rgba(74, 144, 226, 0.3)",
+     "classification": "CHROME",
+     "snippet": "box-shadow: 0 0 0 1px rgba(74, 144, 226, 0.3);",
+     "reason": "Same dropdown focus-ring glow."
+    },
+    {
+     "line": 1291,
+     "literal": "#4A90E2",
+     "classification": "CHROME",
+     "snippet": ".btn-active, .btn-active:hover { background: transparent; color: #4A90E2; border-color: transparent; }",
+     "reason": "Active-state text color for a toggle button."
+    },
+    {
+     "line": 1298,
+     "literal": "#252525",
+     "classification": "CHROME",
+     "snippet": ".btn-card { padding: 16px 24px; background: #252525; border: 1px solid #3A3A3A; border-radius: 8px; ... }",
+     "reason": "\"Action Card Buttons\" surface \u2014 large home/dashboard-style card chrome, prime candidate for the warm dark treatment."
+    },
+    {
+     "line": 1299,
+     "literal": "#3A3A3A",
+     "classification": "CHROME",
+     "snippet": "border: 1px solid #3A3A3A;",
+     "reason": "Action card border \u2014 cool-gray chrome surface."
+    },
+    {
+     "line": 1312,
+     "literal": "#2D2D2D",
+     "classification": "CHROME",
+     "snippet": ".btn-card:hover { background: #2D2D2D; transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3); border-color: #4A90E2; }",
+     "reason": "Action card hover surface."
+    },
+    {
+     "line": 1315,
+     "literal": "#4A90E2",
+     "classification": "CHROME",
+     "snippet": "border-color: #4A90E2;",
+     "reason": "Action card hover border accent."
+    }
+   ]
+  },
+  {
+   "file": "src/theme.js",
+   "fileSummary": "Not a listed high-risk file; it is the shared design-token module (COLORS/TYPOGRAPHY/SPACING/etc.) consumed only by DOM chrome components (modals, side rail, indicators, keyboard-shortcuts overlay, viewerShared/PDFViewer's chrome bits) \u2014 dominant classification is CHROME, all 20 hits swap to gold/warm tokens.",
+   "sites": [
+    {
+     "line": 7,
+     "literal": "'#1E1E1E'",
+     "classification": "CHROME",
+     "reason": "COLORS.background.primary \u2014 base app-shell background token, consumed by modal/panel chrome components (e.g. modal.surface uses sibling '#1f1f1f').",
+     "snippet": "primary: '#1E1E1E',"
+    },
+    {
+     "line": 8,
+     "literal": "'#252525'",
+     "classification": "CHROME",
+     "reason": "COLORS.background.secondary \u2014 chrome background token.",
+     "snippet": "secondary: '#252525',"
+    },
+    {
+     "line": 9,
+     "literal": "'#2b2b2b'",
+     "classification": "CHROME",
+     "reason": "COLORS.background.tertiary \u2014 chrome background token; same value reused at modal.panel (line 72) for modal surfaces.",
+     "snippet": "tertiary: '#2b2b2b',"
+    },
+    {
+     "line": 11,
+     "literal": "'#3a3a3a'",
+     "classification": "CHROME",
+     "reason": "COLORS.background.elevated \u2014 used by EntityIndicator.jsx badge background (DOM chrome), confirmed via grep.",
+     "snippet": "elevated: '#3a3a3a',"
+    },
+    {
+     "line": 18,
+     "literal": "'#3a3a3a'",
+     "classification": "CHROME",
+     "reason": "COLORS.border.default \u2014 generic DOM border token used across modal/overlay components (e.g. EntityIndicator border).",
+     "snippet": "default: '#3a3a3a',"
+    },
+    {
+     "line": 21,
+     "literal": "'#4A90E2'",
+     "classification": "CHROME",
+     "reason": "COLORS.border.focus \u2014 focus-ring border color for DOM inputs/controls, classic chrome affordance.",
+     "snippet": "focus: '#4A90E2',"
+    },
+    {
+     "line": 38,
+     "literal": "'#4A90E2'",
+     "classification": "CHROME",
+     "reason": "COLORS.accent.primary \u2014 primary brand/accent color for buttons and UI chrome; this is the blue accent the ticket explicitly targets to become gold.",
+     "snippet": "primary: '#4A90E2',"
+    },
+    {
+     "line": 39,
+     "literal": "'#357abd'",
+     "classification": "CHROME",
+     "reason": "COLORS.accent.primaryHover \u2014 hover state of the chrome accent button/link color.",
+     "snippet": "primaryHover: '#357abd',"
+    },
+    {
+     "line": 40,
+     "literal": "'#3A7BC8'",
+     "classification": "CHROME",
+     "reason": "COLORS.accent.primaryDark \u2014 darker variant of the chrome accent color, used for pressed/active button states.",
+     "snippet": "primaryDark: '#3A7BC8',"
+    },
+    {
+     "line": 54,
+     "literal": "'#4A90E2'",
+     "classification": "CHROME",
+     "reason": "COLORS.status.info \u2014 info-status color for toasts/banners/badges in DOM chrome, not annotation content.",
+     "snippet": "info: '#4A90E2',"
+    },
+    {
+     "line": 60,
+     "literal": "'#3A3A3A'",
+     "classification": "CHROME",
+     "reason": "COLORS.component.scrollbarThumb \u2014 scrollbar styling, explicit chrome category per instructions.",
+     "snippet": "scrollbarThumb: '#3A3A3A',"
+    },
+    {
+     "line": 72,
+     "literal": "'#2b2b2b'",
+     "classification": "CHROME",
+     "reason": "COLORS.modal.panel \u2014 modal panel background, DOM dialog chrome.",
+     "snippet": "panel: '#2b2b2b',"
+    },
+    {
+     "line": 73,
+     "literal": "'rgba(74, 144, 226, 0.14)'",
+     "classification": "CHROME",
+     "reason": "COLORS.modal.panelHover \u2014 modal panel hover tint using the blue accent at low opacity, DOM chrome.",
+     "snippet": "panelHover: 'rgba(74, 144, 226, 0.14)',"
+    },
+    {
+     "line": 76,
+     "literal": "'#4A90E2'",
+     "classification": "CHROME",
+     "reason": "COLORS.modal.borderActive \u2014 active/focused border for modal form elements.",
+     "snippet": "borderActive: '#4A90E2',"
+    },
+    {
+     "line": 79,
+     "literal": "'#3a3a3a'",
+     "classification": "CHROME",
+     "reason": "COLORS.modal.primaryButton \u2014 modal primary button background.",
+     "snippet": "primaryButton: '#3a3a3a',"
+    },
+    {
+     "line": 80,
+     "literal": "'rgba(74, 144, 226, 0.2)'",
+     "classification": "CHROME",
+     "reason": "COLORS.modal.primaryButtonHover \u2014 button hover tint, DOM chrome.",
+     "snippet": "primaryButtonHover: 'rgba(74, 144, 226, 0.2)',"
+    },
+    {
+     "line": 83,
+     "literal": "'rgba(74, 144, 226, 0.14)'",
+     "classification": "CHROME",
+     "reason": "COLORS.modal.secondaryButtonHover \u2014 button hover tint, DOM chrome.",
+     "snippet": "secondaryButtonHover: 'rgba(74, 144, 226, 0.14)',"
+    },
+    {
+     "line": 84,
+     "literal": "'rgba(74, 144, 226, 0.16)'",
+     "classification": "CHROME",
+     "reason": "COLORS.modal.optionSelectedBg \u2014 selected-option background in a modal list/dropdown, DOM chrome.",
+     "snippet": "optionSelectedBg: 'rgba(74, 144, 226, 0.16)',"
+    },
+    {
+     "line": 85,
+     "literal": "'#4A90E2'",
+     "classification": "CHROME",
+     "reason": "COLORS.modal.optionSelectedBorder \u2014 selected-option border in a modal list, DOM chrome.",
+     "snippet": "optionSelectedBorder: '#4A90E2',"
+    },
+    {
+     "line": 86,
+     "literal": "rgba(74, 144, 226, 0.35) inside '0 0 0 1px rgba(74, 144, 226, 0.35)'",
+     "classification": "CHROME",
+     "reason": "COLORS.modal.hoverGlow \u2014 box-shadow glow effect for modal hover state, DOM chrome.",
+     "snippet": "hoverGlow: '0 0 0 1px rgba(74, 144, 226, 0.35)',"
+    },
+    {
+     "line": 163,
+     "literal": "rgba(74, 144, 226, 0.35) inside '0 0 0 1px rgba(74, 144, 226, 0.35)'",
+     "classification": "CHROME",
+     "reason": "SHADOWS.focus \u2014 generic focus-ring box-shadow token used by DOM form controls/buttons.",
+     "snippet": "focus: '0 0 0 1px rgba(74, 144, 226, 0.35)',"
+    }
+   ]
+  },
+  {
+   "file": "src/utils/fabricCustomization.js",
+   "fileSummary": "Not in the CLAUDE.md high-risk protected list (PDFViewer.jsx, PageAnnotationLayer.jsx, FabricDrawingCanvas/EraserCanvas/EditCanvas, SVGAnnotationLayer.jsx), but it configures fabric.js Object defaults consumed by those canvases; the single color hit found is CANVAS_CONTENT (fabric.js selection border default), so dominant/only classification is CANVAS_CONTENT \u2014 no chrome swap applies here.",
+   "sites": [
+    {
+     "line": 214,
+     "literal": "#4a90e2",
+     "classification": "CANVAS_CONTENT",
+     "reason": "Sets borderColor in fabric.Object.prototype defaults (objectDefaults applied via fabric.Object.set / ownDefaults) \u2014 this is the selection border color for annotation shapes drawn on the Fabric.js canvas overlay, not DOM chrome.",
+     "snippet": "borderColor: '#4a90e2',      // Drawboard blue"
+    }
+   ]
+  },
+  {
+   "file": "src/utils/handleStyle.js",
+   "fileSummary": "Not on the explicit high-risk/protected file list (PDFViewer.jsx, PageAnnotationLayer.jsx, Fabric*Canvas.jsx, SVGAnnotationLayer.jsx), but it is the single shared source of truth consumed by those protected surfaces; dominant/sole classification here is CANVAS_CONTENT (annotation handle ring color drawn on SVG/Fabric/region-editor surfaces over the PDF).",
+   "sites": [
+    {
+     "line": 23,
+     "literal": "#4a90e2",
+     "classification": "CANVAS_CONTENT",
+     "reason": "HANDLE_RING is the blue ring color for draggable annotation handles (shape resize handles, rotation handles, callout knee/arrow/textbox handles, line endpoint handles, region editor handles) drawn directly on the SVG annotation layer, Fabric.js canvas controls, and HTML region-tool boxes overlaid on the PDF content \u2014 not DOM toolbar/panel/dialog chrome. Per the classification guide, selection/resize/rotation handles drawn on the annotation canvas or SVG overlay are CANVAS_CONTENT and must stay untouched.",
+     "snippet": "export const HANDLE_RING = '#4a90e2';"
+    }
+   ]
+  }
+ ]
+}

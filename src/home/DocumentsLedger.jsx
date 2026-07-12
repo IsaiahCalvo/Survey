@@ -149,6 +149,7 @@ export default function DocumentsLedger({
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [docMenu, setDocMenu] = useState(null);
   const [clipboardDoc, setClipboardDoc] = useState(null);
+  const [mobileDetailId, setMobileDetailId] = useState(null);
   const [mobileSortOpen, setMobileSortOpen] = useState(false);
   const mobileSortRef = useRef(null);
 
@@ -203,6 +204,7 @@ export default function DocumentsLedger({
     else if (sortKey === 'size') arr.sort((a, b) => sign * (a.sizeBytes - b.sizeBytes));
     return arr;
   }, [mapped, search, sortKey, sortDir]);
+  const mobileDetailDoc = docs.find((d) => d.id === mobileDetailId) || null;
 
   useEffect(() => {
     if (selId == null && docs.length) setSelId(docs[0].id);
@@ -240,12 +242,21 @@ export default function DocumentsLedger({
 
   const selectedRaw = () => docs.filter((d) => selDocs.has(d.id)).map((d) => d.raw);
   const clearSel = () => setSelDocs(new Set());
+  const showDocumentDetails = (doc) => {
+    if (typeof window !== 'undefined' && window.matchMedia('(max-width: 720px)').matches) {
+      setMobileDetailId(doc.id);
+      return;
+    }
+    setSelId(doc.id);
+    setPreviewOpen(true);
+  };
 
   const subtitle = (
     <span className="documents-mobile-summary" style={{ display: 'inline-flex', alignItems: 'baseline', gap: 10 }}>
       <span className="documents-file-count"><b>{docs.length}</b> files</span>
-      <span className="documents-select-row">
+      <span className="documents-select-row mobile-header-select-row">
         <button
+          className="mobile-header-select-button"
           onClick={() => { const next = !docSelectMode; setDocSelectMode(next); if (!next) setSelDocs(new Set()); }}
           style={{ background: 'transparent', border: 0, color: 'var(--gold)', borderRadius: 2, padding: 0, fontSize: 11.5, cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap', fontWeight: 600 }}
         >
@@ -256,7 +267,7 @@ export default function DocumentsLedger({
           const allSel = docSelCount === docs.length && docs.length > 0;
           const baseBtn = miniButtonStyle();
           return (
-            <span className="documents-select-actions" style={{ display: 'inline-flex', alignItems: 'center', gap: 4, marginLeft: 8 }}>
+            <span className="documents-select-actions mobile-header-select-actions" style={{ display: 'inline-flex', alignItems: 'center', gap: 4, marginLeft: 8 }}>
               <button onClick={() => setSelDocs(allSel ? new Set() : new Set(docs.map((d) => d.id)))} style={{ ...baseBtn, color: 'var(--bone-100)' }}>{allSel ? 'None' : 'All'}</button>
               <button disabled={!docSelCount} onClick={() => { onDuplicate && onDuplicate(selectedRaw()); clearSel(); }} style={miniButtonStyle({ disabled: !docSelCount })}>Duplicate</button>
               <button disabled={!docSelCount} onClick={() => setMoveOpen(true)} style={miniButtonStyle({ disabled: !docSelCount })}>Move/Copy</button>
@@ -345,13 +356,16 @@ export default function DocumentsLedger({
     );
   };
   const renderMobileThumb = (d, height = 54) => (
-    <PdfPageThumb
-      doc={d.raw}
-      downloadDocument={downloadDocument}
-      variant="row"
-      height={height}
-      fallback={<div style={{ width: Math.round(height * 0.74), height, flex: 'none' }}><PdfThumb height={height} stamp="" color={d.color} /></div>}
-    />
+    <div className="mobile-doc-thumbnail" style={{ height }}>
+      <PdfPageThumb
+        doc={d.raw}
+        downloadDocument={downloadDocument}
+        variant="preview"
+        height={height}
+        fill
+        fallback={<PdfThumb height={height} stamp="" color={d.color} />}
+      />
+    </div>
   );
   const renderMobileCard = (d) => {
     const isChecked = selDocs.has(d.id);
@@ -578,6 +592,52 @@ export default function DocumentsLedger({
           )}
           {docs.length > 0 && docs.map(renderMobileCard)}
         </div>
+        {mobileDetailDoc ? (
+          <div className="documents-mobile-detail-scrim" onClick={() => setMobileDetailId(null)}>
+            <section
+              className="documents-mobile-detail-modal slim-scroll"
+              role="dialog"
+              aria-modal="true"
+              aria-label={`${mobileDetailDoc.name} details`}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="documents-mobile-detail-head">
+                <div>
+                  <span>Document details</span>
+                  <strong>{mobileDetailDoc.name}</strong>
+                </div>
+                <button type="button" title="Close details" onClick={() => setMobileDetailId(null)} style={closeButtonStyle()}>×</button>
+              </div>
+              <div className="documents-mobile-detail-meta">
+                {[mobileDetailDoc.project === 'Sandbox' ? null : mobileDetailDoc.project, mobileDetailDoc.size, mobileDetailDoc.pages != null ? `${mobileDetailDoc.pages} pages` : null].filter(Boolean).join(' · ')}
+              </div>
+              <div className="documents-mobile-detail-preview">
+                <PdfPageThumb
+                  doc={mobileDetailDoc.raw}
+                  downloadDocument={downloadDocument}
+                  variant="preview"
+                  fill
+                  fallback={<PdfThumb height="100%" color={mobileDetailDoc.color} stamp={(mobileDetailDoc.rev || '').replace(' ', '')} />}
+                />
+              </div>
+              <div className="documents-mobile-detail-facts">
+                <div>
+                  <span>Team</span>
+                  <div className="documents-mobile-detail-owner">
+                    <Avatar initials={initialsOf(user?.name || user?.email || 'You')} size={22} color="#d8a84e" />
+                    <strong>{user?.name || user?.email?.split('@')[0] || 'You'}</strong>
+                  </div>
+                </div>
+                <div><span>Last edited</span><strong>{mobileDetailDoc.lastEditedAbs}</strong></div>
+                <div><span>Uploaded</span><strong>{mobileDetailDoc.uploadedAbs}</strong></div>
+              </div>
+              <div className="documents-mobile-detail-actions">
+                <button type="button" className="btn" onClick={() => { setMobileDetailId(null); onShare && onShare([mobileDetailDoc.raw]); }}><Icon name="share" size={12} />Share</button>
+                <button type="button" className="btn primary" onClick={() => { setMobileDetailId(null); onOpenDocument && onOpenDocument(mobileDetailDoc.raw); }}>Open file</button>
+              </div>
+            </section>
+          </div>
+        ) : null}
       </div>
     </HubShell>
     <MoveCopyModal
@@ -606,6 +666,7 @@ export default function DocumentsLedger({
           anchorRect={docMenu.rect}
           onClose={() => setDocMenu(null)}
           items={[
+            { label: 'Preview & details', onClick: () => showDocumentDetails(doc) },
             { label: 'Copy', onClick: () => setClipboardDoc(doc.raw) },
             { label: 'Paste', disabled: !clipboardDoc, onClick: () => clipboardDoc && onDuplicate && onDuplicate([clipboardDoc]) },
             { label: 'Delete', danger: true, onClick: () => onDelete && onDelete([doc.raw]) },

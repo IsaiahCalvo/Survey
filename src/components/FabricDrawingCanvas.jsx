@@ -961,6 +961,30 @@ const FabricDrawingCanvas = memo(({
     }
   }, [annotations]);
 
+  // A second finger means the user is pinching the PDF, not finishing a mark.
+  // Clear Fabric's temporary brush state before the zoom-generation flush can
+  // turn the first finger's partial gesture into a stray annotation.
+  useEffect(() => {
+    const cancelPinchStroke = () => {
+      const canvas = fabricRef.current;
+      const brush = canvas?.freeDrawingBrush;
+      if (!canvas?._isCurrentlyDrawing || !brush) return;
+      try {
+        canvas._isCurrentlyDrawing = false;
+        brush.drawStraightLine = false;
+        brush.oldEnd = undefined;
+        if (typeof brush._reset === 'function') brush._reset();
+        else if (Array.isArray(brush._points)) brush._points = [];
+        canvas.clearContext(canvas.contextTop);
+        canvas.requestRenderAll();
+      } catch (err) {
+        console.error('Pinch-triggered stroke cancel error:', err);
+      }
+    };
+    window.addEventListener('survey-pdfjs-pinch-start', cancelPinchStroke);
+    return () => window.removeEventListener('survey-pdfjs-pinch-start', cancelPinchStroke);
+  }, [fabricRef]);
+
   // -------------------------------------------------------------------------
   // Zoom-triggered flush: force-complete in-progress stroke on zoom start
   // -------------------------------------------------------------------------

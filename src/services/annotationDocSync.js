@@ -135,6 +135,8 @@ export async function openAnnotationDoc({
     changeListeners: new Set(),
     syncListeners: new Set(),
     syncHealthy: true,     // false once an op append fails until it recovers (BL-24)
+    pendingAppends: 0,
+    lastSyncError: null,
     onPageHide: null,      // window listener that force-checkpoints on real tab close
     flushQueue: Promise.resolve(),
   };
@@ -315,31 +317,55 @@ function catchUpTail(state) {
   return state.catchupChain;
 }
 
-// Notify sync-health listeners when the durable-append path flips between
-// healthy and failing, deduped so we only emit on an actual transition (BL-24).
-function markSyncHealth(state, healthy, error) {
-  if (state.syncHealthy === healthy) return;
-  state.syncHealthy = healthy;
-  const status = { healthy, error: healthy ? null : (error?.message || String(error || 'sync failed')) };
+function currentSyncStatus(state) {
+  const queueSize = Math.max(0, Number(state.pendingAppends) || 0);
+  return {
+    healthy: state.syncHealthy,
+    error: state.syncHealthy ? null : state.lastSyncError,
+    stage: state.syncHealthy ? (queueSize > 0 ? 'pending' : 'idle') : 'error',
+    queueSize,
+  };
+}
+
+function notifySyncStatus(state) {
+  const status = currentSyncStatus(state);
   for (const cb of state.syncListeners) {
     try { cb(status); } catch (err) { console.warn('[annotationDocSync] sync listener threw', err?.message); }
   }
 }
 
+// Notify sync-health listeners when the durable-append path flips between
+// healthy and failing, deduped so we only emit on an actual transition (BL-24).
+function markSyncHealth(state, healthy, error) {
+  const changed = state.syncHealthy !== healthy;
+  state.syncHealthy = healthy;
+  state.lastSyncError = healthy ? null : (error?.message || String(error || 'sync failed'));
+  if (changed) notifySyncStatus(state);
+}
+
 // Serialize appends so client_seq increments cleanly and ordering is stable.
 function enqueueAppend(state, update) {
-  state.flushQueue = state.flushQueue.then(() => appendOp(state, update)).catch(async (err) => {
-    // The individual op insert failed (usually network). The mutation is already
-    // applied to the in-memory doc, so an eager full-state checkpoint captures it
-    // durably NOW instead of waiting up to SNAPSHOT_DEBOUNCE_MS and hoping the tab
-    // survives — this is BL-24's fix: a dropped op no longer relies on the debounce
-    // + a clean unmount. Also surface the failure so the UI can stop claiming
-    // "saved" while writes are failing.
-    console.warn('[annotationDocSync] append failed — forcing checkpoint', err?.message);
-    markSyncHealth(state, false, err);
-    if (state.snapshotTimer) { clearTimeout(state.snapshotTimer); state.snapshotTimer = null; }
-    const ok = await writeSnapshot(state).catch(() => false);
-    if (ok) markSyncHealth(state, true);
+  state.pendingAppends += 1;
+  notifySyncStatus(state);
+  state.flushQueue = state.flushQueue.then(async () => {
+    try {
+      await appendOp(state, update);
+    } catch (err) {
+      // The individual op insert failed (usually network). The mutation is already
+      // applied to the in-memory doc, so an eager full-state checkpoint captures it
+      // durably NOW instead of waiting up to SNAPSHOT_DEBOUNCE_MS and hoping the tab
+      // survives — this is BL-24's fix: a dropped op no longer relies on the debounce
+      // + a clean unmount. Also surface the failure so the UI can stop claiming
+      // "saved" while writes are failing.
+      console.warn('[annotationDocSync] append failed — forcing checkpoint', err?.message);
+      markSyncHealth(state, false, err);
+      if (state.snapshotTimer) { clearTimeout(state.snapshotTimer); state.snapshotTimer = null; }
+      const ok = await writeSnapshot(state).catch(() => false);
+      if (ok) markSyncHealth(state, true);
+    } finally {
+      state.pendingAppends = Math.max(0, state.pendingAppends - 1);
+      notifySyncStatus(state);
+    }
   });
   return state.flushQueue;
 }
@@ -513,6 +539,9 @@ function makeHandle(state) {
     /** True while durable op appends are succeeding; false after one fails until
      *  it recovers. Lets the viewer stop showing "saved" when writes are failing. */
     isSyncHealthy() { return state.syncHealthy; },
+
+    /** Current durable-write state for user-facing status. */
+    getSyncStatus() { return currentSyncStatus(state); },
 
     /** Subscribe to sync-health transitions ({ healthy, error }). Returns an
      *  unsubscribe fn. Fires only on an actual healthy⇄failing transition. */

@@ -1098,7 +1098,8 @@ const SearchTextPanel = ({
   isActive = true,
   focusRequestToken = 0,
   selectOnFocus = false,
-  pdfDocumentKey = null
+  pdfDocumentKey = null,
+  mobileMode = false
 }) => {
   // Internal state for standalone use
   const [internalSearchQuery, setInternalSearchQuery] = useState('');
@@ -1668,7 +1669,7 @@ const SearchTextPanel = ({
   }, [clearSearch]);
 
   return (
-    <div style={{
+    <div className={mobileMode ? 'mobile-search-panel' : undefined} style={{
       display: 'flex',
       flexDirection: 'column',
       height: '100%',
@@ -1676,7 +1677,7 @@ const SearchTextPanel = ({
       background: '#12151c'
     }}>
       {/* Search Bar */}
-      <div style={{
+      <div className={mobileMode ? 'mobile-search-panel__bar' : undefined} style={{
         padding: '12px',
         boxSizing: 'border-box',
         background: '#12151c',
@@ -1703,7 +1704,7 @@ const SearchTextPanel = ({
             type="text"
             value={internalSearchQuery}
             onChange={(e) => setInternalSearchQuery(e.target.value)}
-            placeholder="Search text in PDF..."
+            placeholder={mobileMode ? 'Search text' : 'Search text in PDF...'}
             style={{
               width: '100%',
               height: '25px',
@@ -1848,6 +1849,7 @@ const SearchTextPanel = ({
       {/* Search Results */}
       <div
         ref={resultsContainerRef}
+        className={mobileMode ? 'mobile-search-panel__results' : undefined}
         style={{
           flex: 1,
           overflowY: 'auto',
@@ -1866,25 +1868,41 @@ const SearchTextPanel = ({
         )}
 
         {!isSearching && internalSearchQuery && searchResults.length === 0 && (
-          <div style={{
-            padding: '40px 20px',
-            textAlign: 'center',
-            color: '#8d96a6',
-            fontSize: '13px'
-          }}>
-            No results found
-          </div>
+          mobileMode ? (
+            <div className="mobile-search-empty">
+              <Icon name="search" size={44} color="#58d976" />
+              <strong>No text matches</strong>
+              <span>Try another word from the PDF.</span>
+            </div>
+          ) : (
+            <div style={{
+              padding: '40px 20px',
+              textAlign: 'center',
+              color: '#8d96a6',
+              fontSize: '13px'
+            }}>
+              No results found
+            </div>
+          )
         )}
 
         {!isSearching && !internalSearchQuery && (
-          <div style={{
-            padding: '40px 20px',
-            textAlign: 'center',
-            color: '#8d96a6',
-            fontSize: '13px'
-          }}>
-            Enter a search term to find text in the PDF
-          </div>
+          mobileMode ? (
+            <div className="mobile-search-empty">
+              <Icon name="search" size={54} color="#58d976" />
+              <strong>Looking for a specific word?</strong>
+              <span>Search visible PDF text and jump to the matching page.</span>
+            </div>
+          ) : (
+            <div style={{
+              padding: '40px 20px',
+              textAlign: 'center',
+              color: '#8d96a6',
+              fontSize: '13px'
+            }}>
+              Enter a search term to find text in the PDF
+            </div>
+          )
         )}
 
         {!isSearching && searchResults.length > 0 && (

@@ -323,13 +323,18 @@ const SurveySpacesRail = ({
   onResolveExcelConflict = null,
   user,
   expandRequestKey = 0,
+  collapseRequestKey = 0,
   onCollapseChange = null,
+  mobileMode = false,
 }) => {
   const [isSurveyPanelCollapsed, setIsSurveyPanelCollapsed] = useState(true);
   const [openEntityDropdownId, setOpenEntityDropdownId] = useState(null);
   const [isModuleSelectorOpen, setIsModuleSelectorOpen] = useState(false);
+  const [isTemplateSelectorOpen, setIsTemplateSelectorOpen] = useState(false);
   const [railIconHover, setRailIconHover] = useState(null);
   const moduleSelectorRef = useRef(null);
+  const templateSelectorRef = useRef(null);
+  const mobileSheetTouchStartYRef = useRef(null);
   const surveyMarkerDragRestoreRef = useRef(null);
   const availableSurveyTemplates = Array.isArray(surveyTemplates) ? surveyTemplates : [];
   const surveyModuleOptions = selectedTemplate ? ((selectedTemplate.modules || selectedTemplate.spaces) || []) : [];
@@ -337,6 +342,22 @@ const SurveySpacesRail = ({
   const activeSurveyModule = selectedModuleIndex >= 0 ? surveyModuleOptions[selectedModuleIndex] : null;
   const canSelectPreviousModule = selectedModuleIndex > 0;
   const canSelectNextModule = selectedModuleIndex >= 0 && selectedModuleIndex < surveyModuleOptions.length - 1;
+  const mobileSurveyPanelBaseHeight = selectedTemplate
+    ? 392
+    : 154 + Math.max(availableSurveyTemplates.length, 1) * 48;
+
+  const handleMobileSheetTouchStart = useCallback((event) => {
+    mobileSheetTouchStartYRef.current = event.touches?.[0]?.clientY ?? null;
+  }, []);
+
+  const handleMobileSheetTouchEnd = useCallback((event) => {
+    const startY = mobileSheetTouchStartYRef.current;
+    mobileSheetTouchStartYRef.current = null;
+    const endY = event.changedTouches?.[0]?.clientY;
+    if (startY == null || endY == null || endY - startY <= 48) return;
+    setIsSurveyPanelCollapsed(true);
+    requestAnimationFrame(() => { applyLayoutDrivenZoom(); });
+  }, [applyLayoutDrivenZoom]);
 
   const selectSurveyModule = (moduleId) => {
     if (!moduleId || moduleId === selectedModuleId) {
@@ -355,6 +376,25 @@ const SurveySpacesRail = ({
     setIsModuleSelectorOpen(false);
   };
 
+  const exitSurveyMode = () => {
+    if (typeof onCloseSurveyMode === 'function') {
+      onCloseSurveyMode();
+    } else {
+      setShowSurveyPanel(false);
+      setSelectedSpaceId(null);
+      setSelectedModuleId(null);
+      setSelectedCategoryId(null);
+      setActiveCategoryDropdown(null);
+      setCategorySelectModeActive(false);
+      setCategorySelectModeForCategory(null);
+      setSelectedCategories({});
+      setCopyModeActive(false);
+      setCopiedItemSelection({});
+      setActiveTool('select');
+    }
+    setIsSurveyPanelCollapsed(true);
+  };
+
   useEffect(() => {
     if (showSurveyPanel) {
       setIsSurveyPanelCollapsed(false);
@@ -368,6 +408,10 @@ const SurveySpacesRail = ({
   }, [expandRequestKey]);
 
   useEffect(() => {
+    if (collapseRequestKey > 0) setIsSurveyPanelCollapsed(true);
+  }, [collapseRequestKey]);
+
+  useEffect(() => {
     if (!isModuleSelectorOpen) return undefined;
 
     const handlePointerDown = (event) => {
@@ -379,6 +423,19 @@ const SurveySpacesRail = ({
     document.addEventListener('mousedown', handlePointerDown);
     return () => document.removeEventListener('mousedown', handlePointerDown);
   }, [isModuleSelectorOpen]);
+
+  useEffect(() => {
+    if (!isTemplateSelectorOpen) return undefined;
+
+    const handlePointerDown = (event) => {
+      if (!templateSelectorRef.current?.contains(event.target)) {
+        setIsTemplateSelectorOpen(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handlePointerDown);
+    return () => document.removeEventListener('mousedown', handlePointerDown);
+  }, [isTemplateSelectorOpen]);
 
   useEffect(() => {
     if (typeof onCollapseChange === 'function') {
@@ -591,21 +648,38 @@ const SurveySpacesRail = ({
 
   return (
           <>
+            {mobileMode && !isSurveyPanelCollapsed && (
+              <button
+                type="button"
+                className="mobile-pdf-sheet-backdrop"
+                aria-label="Close Survey panel"
+                onClick={() => {
+                  setIsSurveyPanelCollapsed(true);
+                  requestAnimationFrame(() => { applyLayoutDrivenZoom(); });
+                }}
+              />
+            )}
             {/* Panel */}
             {/* UX 2026-05-29: the right rail starts at the same y-coordinate as
                 chrome-sub-toolbar-host. It overlays the right edge of that strip
                 instead of pushing or sitting below it, mirroring the left rail's
                 top collapse row. */}
             <div
+              className={`${mobileMode ? 'mobile-pdf-sheet ' : ''}${isSurveyPanelCollapsed ? 'is-collapsed' : ''}`}
               style={{
-                position: 'absolute',
-                top: 0,
+                '--mobile-sheet-height': mobileMode
+                  ? `calc(${mobileSurveyPanelBaseHeight}px + var(--mobile-bottom-inset))`
+                  : undefined,
+                position: mobileMode ? 'fixed' : 'absolute',
+                top: mobileMode ? 'auto' : 0,
                 right: 0,
-                height: '100%',
-                width: isSurveyPanelCollapsed ? '48px' : '320px',
+                bottom: mobileMode ? 0 : 'auto',
+                left: mobileMode ? 0 : 'auto',
+                height: mobileMode ? 'var(--mobile-sheet-height)' : '100%',
+                width: mobileMode ? '100%' : (isSurveyPanelCollapsed ? '48px' : '320px'),
                 background: '#12151c',
-                borderLeft: '1px solid #2a3140',
-                zIndex: 1,
+                borderLeft: mobileMode ? 'none' : '1px solid #2a3140',
+                zIndex: mobileMode ? 6500 : 1,
                 display: 'flex',
                 flexDirection: 'column',
 	                animation: 'slideInRight 0.3s ease-out',
@@ -617,7 +691,7 @@ const SurveySpacesRail = ({
                   Survey in its own persistent right-side home. */}
               {isSurveyPanelCollapsed && (
                 <>
-                  <div style={{
+                  <div className={mobileMode ? 'mobile-survey-sheet-header' : undefined} style={{
                     height: '35px',
                     padding: '0 8px',
                     borderBottom: '1px solid #2a3140',
@@ -708,6 +782,9 @@ const SurveySpacesRail = ({
                 <>
                   {/* Collapse row: mirrors the left rail's top strip. */}
                   <div
+                    className={mobileMode ? 'mobile-pdf-sheet__handle' : undefined}
+                    onTouchStart={mobileMode ? handleMobileSheetTouchStart : undefined}
+                    onTouchEnd={mobileMode ? handleMobileSheetTouchEnd : undefined}
                     style={{
                       height: '35px',
                       padding: '0 8px',
@@ -721,7 +798,7 @@ const SurveySpacesRail = ({
                   >
                     <button
                       onClick={() => {
-                        setIsSurveyPanelCollapsed(prev => !prev);
+                        setIsSurveyPanelCollapsed(true);
                         requestAnimationFrame(() => {
                           applyLayoutDrivenZoom();
                         });
@@ -742,7 +819,7 @@ const SurveySpacesRail = ({
                       onMouseEnter={(e) => e.currentTarget.style.background = '#2a3140'}
                       onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
                     >
-                      <Icon name="chevronRight" size={16} color="#8d96a6" />
+                      <Icon name={mobileMode ? 'chevronDown' : 'chevronRight'} size={16} color="#8d96a6" />
                     </button>
                   </div>
 
@@ -758,24 +835,64 @@ const SurveySpacesRail = ({
                     gap: '10px',
                     flexShrink: 0
                   }}>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <h2
-                        style={{
-                          margin: 0,
-                          fontSize: '18px',
-                          fontWeight: '600',
-                          color: '#f4f1ea',
-                          fontFamily: FONT_FAMILY,
-                          letterSpacing: '-0.2px',
-                          overflow: 'hidden',
-                          textOverflow: 'ellipsis',
-                          whiteSpace: 'nowrap'
-                        }}
-                      >
-                        {categorySelectModeActive && selectedModuleId
-                          ? ((selectedTemplate.modules || selectedTemplate.spaces || []).find(m => m.id === selectedModuleId)?.name || 'Survey')
-                          : (selectedTemplate.name || 'Survey')}
-                      </h2>
+                    <div
+                      ref={mobileMode ? templateSelectorRef : undefined}
+                      className={mobileMode ? 'mobile-survey-sheet-title' : undefined}
+                      style={{ flex: 1, minWidth: 0, position: 'relative' }}
+                    >
+                      {mobileMode ? <span className="mobile-survey-sheet-eyebrow">Survey template</span> : null}
+                      {mobileMode ? (
+                        <>
+                          <button
+                            type="button"
+                            className="mobile-survey-template-button"
+                            aria-label="Choose survey template"
+                            aria-expanded={isTemplateSelectorOpen}
+                            onClick={() => setIsTemplateSelectorOpen((open) => !open)}
+                          >
+                            <span>{selectedTemplate.name || 'Survey'}</span>
+                            <Icon name="chevronDown" size={13} color="currentColor" />
+                          </button>
+                          {isTemplateSelectorOpen && (
+                            <div className="mobile-survey-template-menu" role="listbox">
+                              {availableSurveyTemplates.map((template) => (
+                                <button
+                                  key={template.id}
+                                  type="button"
+                                  role="option"
+                                  aria-selected={template.id === selectedTemplate.id}
+                                  className={template.id === selectedTemplate.id ? 'is-active' : ''}
+                                  onClick={() => {
+                                    onSelectSurveyTemplate?.(template);
+                                    setIsTemplateSelectorOpen(false);
+                                  }}
+                                >
+                                  <span>{template.name || 'Untitled Template'}</span>
+                                  {template.id === selectedTemplate.id ? <Icon name="check" size={13} color="currentColor" /> : null}
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                        </>
+                      ) : (
+                        <h2
+                          style={{
+                            margin: 0,
+                            fontSize: '18px',
+                            fontWeight: '600',
+                            color: '#f4f1ea',
+                            fontFamily: FONT_FAMILY,
+                            letterSpacing: '-0.2px',
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            whiteSpace: 'nowrap'
+                          }}
+                        >
+                          {categorySelectModeActive && selectedModuleId
+                            ? ((selectedTemplate.modules || selectedTemplate.spaces || []).find(m => m.id === selectedModuleId)?.name || 'Survey')
+                            : (selectedTemplate.name || 'Survey')}
+                        </h2>
+                      )}
                       {!categorySelectModeActive && selectedTemplate.linkedExcelPath && lastSyncMessage && (() => {
                         // Color the banner by the message's tone so warnings (close Excel,
                         // needs your choice, queued) and successes (synced/saved) no longer
@@ -796,46 +913,38 @@ const SurveySpacesRail = ({
                         );
                       })()}
                     </div>
-                    <button
-                      onClick={() => {
-                        if (typeof onCloseSurveyMode === 'function') {
-                          onCloseSurveyMode();
-                        } else {
-                          setShowSurveyPanel(false);
-                          setSelectedSpaceId(null);
-                          setSelectedModuleId(null);
-                          setSelectedCategoryId(null);
-                          setActiveCategoryDropdown(null);
-                          setCategorySelectModeActive(false);
-                          setCategorySelectModeForCategory(null);
-                          setSelectedCategories({});
-                          setCopyModeActive(false);
-                          setCopiedItemSelection({});
-                          setActiveTool('select');
-                        }
-                        setIsSurveyPanelCollapsed(true);
-                      }}
-                      className="btn btn-icon btn-icon-sm"
-                      aria-label="Close Survey panel"
-                      style={{
-                        background: 'transparent',
-                        border: 'none',
-                        color: '#e8e2d4',
-                        padding: '4px',
-                        cursor: 'pointer',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        flexShrink: 0
-                      }}
-                    >
-                      <Icon name="close" size={18} />
-                    </button>
+                    <div className={mobileMode ? 'mobile-survey-sheet-header-actions' : undefined}>
+                      <button
+                        onClick={() => {
+                          if (mobileMode) {
+                            setIsSurveyPanelCollapsed(true);
+                            requestAnimationFrame(() => { applyLayoutDrivenZoom(); });
+                          } else {
+                            exitSurveyMode();
+                          }
+                        }}
+                        className="btn btn-icon btn-icon-sm"
+                        aria-label="Close Survey panel"
+                        style={{
+                          background: 'transparent',
+                          border: 'none',
+                          color: '#e8e2d4',
+                          padding: '4px',
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          flexShrink: 0
+                        }}
+                      >
+                        <Icon name="close" size={18} />
+                      </button>
+                    </div>
                   </div>
 
                   {/* Module navigator */}
                   {surveyModuleOptions.length > 0 && (
-                    <div style={{
+                    <div className={mobileMode ? 'mobile-survey-module-row' : undefined} style={{
                       padding: '8px 12px',
                       borderBottom: '1px solid #2a3140',
                       background: '#12151c',
@@ -1108,7 +1217,7 @@ const SurveySpacesRail = ({
                             };
 
                             return (
-                              <div className="survey-marker-category-action-row">
+                              <div className={`survey-marker-category-action-row${mobileMode ? ' mobile-survey-category-actions' : ''}`}>
                                 <div className="survey-marker-category-action-strip">
                                   {categorySelectModeActive ? (
                                     <div className="survey-marker-select-toolbar" role="toolbar" aria-label="Category selection actions">
@@ -1511,14 +1620,15 @@ const SurveySpacesRail = ({
 
                           {/* Categories List */}
                           <div style={{ marginBottom: '20px' }}>
-                            <h3 style={{
+                            <h3 className={mobileMode ? 'mobile-survey-categories-heading' : undefined} style={{
                               fontSize: '13px',
                               fontWeight: '600',
                               color: '#e8e2d4',
                               margin: '0 2px 8px',
                               fontFamily: FONT_FAMILY
                             }}>
-                              Select Category to Highlight
+                              <span>Select Category to Highlight</span>
+                              {mobileMode ? <small>Tap category to place marker</small> : null}
                             </h3>
 
                             {module.categories && module.categories.length > 0 ? (
@@ -2799,7 +2909,7 @@ const SurveySpacesRail = ({
                       background: '#12151c',
                       fontFamily: FONT_FAMILY
                     }}>
-                      <div style={{
+                      <div className={mobileMode ? 'mobile-survey-picker-header' : undefined} style={{
                         padding: '12px 12px 10px',
                         borderBottom: '1px solid #2a3140',
                         background: '#12151c',
@@ -2808,6 +2918,8 @@ const SurveySpacesRail = ({
                         gap: '10px',
                         flexShrink: 0
                       }}>
+                        <div className={mobileMode ? 'mobile-survey-sheet-title' : undefined} style={{ flex: 1, minWidth: 0 }}>
+                        {mobileMode ? <span className="mobile-survey-sheet-eyebrow">Survey template</span> : null}
                         <h2 style={{
                           flex: 1,
                           minWidth: 0,
@@ -2818,8 +2930,22 @@ const SurveySpacesRail = ({
                           fontFamily: FONT_FAMILY,
                           letterSpacing: '-0.2px'
                         }}>
-                          Survey
+                          Choose survey template
                         </h2>
+                        </div>
+                        {mobileMode && (
+                          <button
+                            type="button"
+                            className="mobile-survey-picker-close"
+                            aria-label="Close Survey panel"
+                            onClick={() => {
+                              setIsSurveyPanelCollapsed(true);
+                              requestAnimationFrame(() => { applyLayoutDrivenZoom(); });
+                            }}
+                          >
+                            <Icon name="close" size={18} color="currentColor" />
+                          </button>
+                        )}
                       </div>
                       <div style={{
                         flex: 1,
@@ -2959,7 +3085,7 @@ const SurveySpacesRail = ({
               )}
 
               {/* Export / Sync Button at Bottom */}
-              {!isSurveyPanelCollapsed && selectedTemplate && (
+              {!mobileMode && !isSurveyPanelCollapsed && selectedTemplate && (
                 <div style={{
                   padding: '12px',
                   borderTop: '1px solid #2a3140',
@@ -3428,6 +3554,12 @@ const SurveySpacesRail = ({
                       )}
                     </div>
                   )}
+                </div>
+              )}
+
+              {mobileMode && !isSurveyPanelCollapsed && (
+                <div className="mobile-survey-exit-footer">
+                  <button type="button" onClick={exitSurveyMode}>Exit Survey</button>
                 </div>
               )}
             </div>

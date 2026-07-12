@@ -109,6 +109,8 @@ export function useAnnotationDoc({
   // every doc open.
   const calloutProjectedWithoutSizesRef = useRef(false);
   const [initialHydration, setInitialHydration] = useState({ ready: false, source: 'pending', count: 0, documentId: null });
+  const [syncStatus, setSyncStatus] = useState({ stage: 'idle', healthy: true, error: null });
+  const [syncQueueSize, setSyncQueueSize] = useState(0);
 
   byPageRef.current = annotationsByPage;
   calloutsRef.current = callouts;
@@ -119,12 +121,19 @@ export function useAnnotationDoc({
   // it with whatever the viewer already has (covers marks drawn/imported before
   // the id resolved).
   useEffect(() => {
-    if (!enabled || !documentId || !userId) return undefined;
+    if (!enabled || !documentId || !userId) {
+      setSyncStatus({ stage: 'idle', healthy: true, error: null });
+      setSyncQueueSize(0);
+      return undefined;
+    }
     let cancelled = false;
+    let unsubscribeSync = null;
     readyRef.current = false;
     // BLOCKER 2: new doc — clear any "projected with stale pageSize" flag.
     calloutProjectedWithoutSizesRef.current = false;
     setInitialHydration({ ready: false, source: 'pending', count: 0, documentId });
+    setSyncStatus({ stage: 'hydrating', healthy: true, error: null });
+    setSyncQueueSize(0);
 
     (async () => {
       let handle;
@@ -132,10 +141,25 @@ export function useAnnotationDoc({
         handle = await openAnnotationDoc({ documentId, supabase, clientId: getClientId() });
       } catch (err) {
         console.error('[useAnnotationDoc] open failed', err?.message);
+        if (!cancelled) {
+          setSyncStatus({ stage: 'error', healthy: false, error: err?.message || 'sync failed' });
+          setSyncQueueSize(0);
+        }
         return;
       }
       if (cancelled) { try { await handle.destroy(); } catch { /* */ } return; }
       handleRef.current = handle;
+      const updateSyncStatus = (next) => {
+        if (cancelled || !next) return;
+        setSyncStatus({
+          stage: next.stage || (next.healthy === false ? 'error' : 'idle'),
+          healthy: next.healthy !== false,
+          error: next.error || null,
+        });
+        setSyncQueueSize(Math.max(0, Number(next.queueSize) || 0));
+      };
+      updateSyncStatus(handle.getSyncStatus?.());
+      unsubscribeSync = handle.onSyncStatus?.(updateSyncStatus) || null;
 
       // Remote ops (other devices) → reflect into React state.
       handle.onChange((byPage) => {
@@ -224,6 +248,7 @@ export function useAnnotationDoc({
       const h = handleRef.current;
       handleRef.current = null;
       readyRef.current = false;
+      unsubscribeSync?.();
       if (h) { h.destroy().catch(() => {}); }
     };
   }, [enabled, documentId, userId, setAnnotationsByPage, setCallouts, setSpaces, setSurveyMarkers]);
@@ -287,8 +312,16 @@ export function useAnnotationDoc({
   const forceFlush = useCallback(async () => {
     const h = handleRef.current;
     if (!h) return;
+    setSyncStatus((prev) => ({ ...prev, stage: 'syncing' }));
     await h.drain();
-    await h.flushSnapshot();
+    const saved = await h.flushSnapshot();
+    const next = h.getSyncStatus?.() || {};
+    setSyncStatus({
+      stage: saved && next.healthy !== false ? 'idle' : 'error',
+      healthy: saved && next.healthy !== false,
+      error: saved ? null : (next.error || 'sync failed'),
+    });
+    setSyncQueueSize(Math.max(0, Number(next.queueSize) || 0));
   }, []);
 
   // KAL-309: expose the durable Y.Doc META map to the Excel-sync cutover so the
@@ -306,5 +339,12 @@ export function useAnnotationDoc({
     return setMetaValueOnDoc(h.doc, key, value, origin);
   }, []);
 
-  return { initialHydration, forceFlush, metaGet, metaSet };
+  return {
+    initialHydration,
+    forceFlush,
+    metaGet,
+    metaSet,
+    status: syncStatus,
+    queueSize: syncQueueSize,
+  };
 }

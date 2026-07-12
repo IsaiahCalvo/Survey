@@ -406,6 +406,7 @@ function SortableModuleTab({
   index,
   isOn,
   catCount,
+  showCount = true,
   isRenaming,
   onOpen,
   onStartRename,
@@ -509,9 +510,11 @@ function SortableModuleTab({
           {mod.name}
         </button>
       )}
-      <span className="mono" style={{ fontSize: 9.5, color: 'var(--ink-quiet)', padding: '0 6px 0 2px', flex: 'none' }}>
-        {catCount}
-      </span>
+      {showCount ? (
+        <span className="mono" style={{ fontSize: 9.5, color: 'var(--ink-quiet)', padding: '0 6px 0 2px', flex: 'none' }}>
+          {catCount}
+        </span>
+      ) : null}
     </div>
   );
 }
@@ -525,6 +528,7 @@ function SortableModuleTabs({
   onRenameModule,
   onCancelRename,
   onReorderModules,
+  showCounts = true,
   children,
 }) {
   const [activeId, setActiveId] = useState(null);
@@ -586,6 +590,7 @@ function SortableModuleTabs({
               index={mi}
               isOn={openMod === mi}
               catCount={(mod.categories || []).length}
+              showCount={showCounts}
               isRenaming={modRename === mod.id}
               onOpen={onOpenModule}
               onStartRename={onStartRename}
@@ -793,6 +798,7 @@ export default function TemplatesEditor({
   templates = [],
   user = null,
   templatesLocked = false,
+  initialMobileOpen = false,
   onNav,
   onCreateTemplate,
   onSaveTemplates,
@@ -849,7 +855,10 @@ export default function TemplatesEditor({
   }, [onSaveTemplates]);
 
   /* ---- selection / edit state ---- */
-  const [selectedId, setSelected] = useState(null);
+  const [selectedId, setSelected] = useState(() => (initialMobileOpen ? (templates[0]?.id ?? null) : null));
+  const [mobileTemplateOpen, setMobileTemplateOpen] = useState(initialMobileOpen);
+  const [mobileEntitiesOpen, setMobileEntitiesOpen] = useState(false);
+  const [templateContentSearch, setTemplateContentSearch] = useState('');
   const [openCat, setOpenCat] = useState(-1);
   const [tplEdit, setTplEdit] = useState(false);
   const [selTpls, setSelTpls] = useState(() => new Set());
@@ -986,6 +995,8 @@ export default function TemplatesEditor({
       setSelected(visibleTemplates[0].id);
       setOpenMod(0);
       setOpenCat(-1);
+      setMobileTemplateOpen(false);
+      setMobileEntitiesOpen(false);
     }
   }, [visibleTemplates, selectedId]);
 
@@ -1164,37 +1175,41 @@ export default function TemplatesEditor({
     setSelMods(new Set());
   };
 
-  /* --- category-level (always scoped to the open module) --- */
-  const mutateOpenModule = (fn) => {
+  /* --- category-level (desktop scopes to open module; mobile can target any module) --- */
+  const mutateModuleAt = (moduleIndex, fn) => {
     if (!tpl) return;
     mutateTpl(tpl.id, (t) => {
       const modules = t.modules.slice();
-      if (!modules[openMod]) return t;
-      modules[openMod] = fn(modules[openMod]);
+      if (!modules[moduleIndex]) return t;
+      modules[moduleIndex] = fn(modules[moduleIndex]);
       return { ...t, modules };
     });
   };
-  const addCategory = () => {
-    if (!tpl || !orderedMods[openMod]) return;
-    const existing = (orderedMods[openMod].categories || []).map((c) => c.name);
+  const mutateOpenModule = (fn) => mutateModuleAt(openMod, fn);
+  const addCategoryToModule = (moduleIndex) => {
+    if (!tpl || !orderedMods[moduleIndex]) return;
+    const existing = (orderedMods[moduleIndex].categories || []).map((c) => c.name);
     let n = 1, name;
     do { name = `Category ${n++}`; } while (existing.includes(name));
-    mutateOpenModule((m) => ({
+    mutateModuleAt(moduleIndex, (m) => ({
       ...m,
       categories: [...m.categories, { id: newId('c'), name, items: [] }],
     }));
     /* Open the new category so its (empty) checklist is immediately visible. */
-    setTimeout(() => setOpenCat((orderedMods[openMod].categories || []).length), 0);
+    setOpenMod(moduleIndex);
+    setTimeout(() => setOpenCat((orderedMods[moduleIndex].categories || []).length), 0);
   };
-  const renameCategory = (ci, name) => {
+  const addCategory = () => addCategoryToModule(openMod);
+  const renameCategoryInModule = (moduleIndex, ci, name) => {
     const v = name.trim();
     if (!v) return;
-    mutateOpenModule((m) => {
+    mutateModuleAt(moduleIndex, (m) => {
       const categories = m.categories.slice();
       if (categories[ci] && categories[ci].name !== v) categories[ci] = { ...categories[ci], name: v };
       return { ...m, categories };
     });
   };
+  const renameCategory = (ci, name) => renameCategoryInModule(openMod, ci, name);
   const deleteCategories = (ids) => {
     if (!ids.size) return;
     mutateOpenModule((m) => ({ ...m, categories: m.categories.filter((c) => !ids.has(c.id)) }));
@@ -1218,44 +1233,51 @@ export default function TemplatesEditor({
     });
     setSelCats(new Set());
   };
-  const reorderCategories = (activeId, overId) => {
+  const reorderCategoriesInModule = (moduleIndex, activeId, overId) => {
     if (!activeId || !overId || activeId === overId) return;
-    const categories = orderedMods[openMod]?.categories || [];
+    const categories = orderedMods[moduleIndex]?.categories || [];
     const from = categories.findIndex((category) => category.id === activeId);
     const to = categories.findIndex((category) => category.id === overId);
 
-    mutateOpenModule((module) => {
+    mutateModuleAt(moduleIndex, (module) => {
       const nextCategories = moveItemById(module.categories || [], activeId, overId);
       return nextCategories === module.categories ? module : { ...module, categories: nextCategories };
     });
 
-    if (openCat === from) setOpenCat(to);
-    else if (from < openCat && to >= openCat) setOpenCat(openCat - 1);
-    else if (from > openCat && to <= openCat) setOpenCat(openCat + 1);
+    if (openMod === moduleIndex) {
+      if (openCat === from) setOpenCat(to);
+      else if (from < openCat && to >= openCat) setOpenCat(openCat - 1);
+      else if (from > openCat && to <= openCat) setOpenCat(openCat + 1);
+    }
   };
+  const reorderCategories = (activeId, overId) => reorderCategoriesInModule(openMod, activeId, overId);
 
   /* --- checklist-item-level (scoped to a category in the open module) --- */
-  const mutateCategory = (ci, fn) => {
-    mutateOpenModule((m) => {
+  const mutateCategoryInModule = (moduleIndex, ci, fn) => {
+    mutateModuleAt(moduleIndex, (m) => {
       const categories = m.categories.slice();
       if (!categories[ci]) return m;
       categories[ci] = fn(categories[ci]);
       return { ...m, categories };
     });
   };
-  const addItem = (ci) => mutateCategory(ci, (c) => ({ ...c, items: [...c.items, { id: newId('i'), text: '' }] }));
-  const renameItem = (ci, itemId, text) => mutateCategory(ci, (c) => ({
+  const mutateCategory = (ci, fn) => mutateCategoryInModule(openMod, ci, fn);
+  const addItemToModule = (moduleIndex, ci) => mutateCategoryInModule(moduleIndex, ci, (c) => ({ ...c, items: [...c.items, { id: newId('i'), text: '' }] }));
+  const addItem = (ci) => addItemToModule(openMod, ci);
+  const renameItemInModule = (moduleIndex, ci, itemId, text) => mutateCategoryInModule(moduleIndex, ci, (c) => ({
     ...c, items: c.items.map((it) => (it.id === itemId ? { ...it, text } : it)),
   }));
-  const reorderItems = (ci, activeId, overId) => {
+  const renameItem = (ci, itemId, text) => renameItemInModule(openMod, ci, itemId, text);
+  const reorderItemsInModule = (moduleIndex, ci, activeId, overId) => {
     if (!activeId || !overId || activeId === overId) return;
-    mutateCategory(ci, (c) => {
+    mutateCategoryInModule(moduleIndex, ci, (c) => {
       const activeItems = (c.items || []).filter(isActiveChecklistItem);
       const archivedItems = (c.items || []).filter(isArchivedChecklistItem);
       const nextActiveItems = moveItemById(activeItems, activeId, overId);
       return nextActiveItems === activeItems ? c : { ...c, items: [...nextActiveItems, ...archivedItems] };
     });
   };
+  const reorderItems = (ci, activeId, overId) => reorderItemsInModule(openMod, ci, activeId, overId);
 
   /* KAL-44 archive flow state. When the user clicks the "×" delete button on
      a checklist item that has marker responses, we open this confirmation
@@ -1268,19 +1290,21 @@ export default function TemplatesEditor({
      marker references, or as the resolved action from the archive modal's
      "Permanently delete" path (currently unused — the modal only offers
      Cancel / Archive). */
-  const hardDeleteItem = (ci, itemId) => mutateCategory(ci, (c) => ({
+  const hardDeleteItemInModule = (moduleIndex, ci, itemId) => mutateCategoryInModule(moduleIndex, ci, (c) => ({
     ...c, items: c.items.filter((it) => it.id !== itemId),
   }));
+  const hardDeleteItem = (ci, itemId) => hardDeleteItemInModule(openMod, ci, itemId);
 
   /* Mark an item as archived in the rich tree. The marker UI keeps showing
      its responses under an "Archived" section using lastKnownLabel. */
-  const archiveItem = (ci, itemId) => mutateCategory(ci, (c) => ({
+  const archiveItemInModule = (moduleIndex, ci, itemId) => mutateCategoryInModule(moduleIndex, ci, (c) => ({
     ...c,
     items: c.items.map((it) => (it.id === itemId ? archiveChecklistItem(it) : it)),
   }));
+  const archiveItem = (ci, itemId) => archiveItemInModule(openMod, ci, itemId);
 
-  const deleteItem = async (ci, itemId) => {
-    const cat = (orderedMods[openMod]?.categories || [])[ci];
+  const deleteItemInModule = async (moduleIndex, ci, itemId) => {
+    const cat = (orderedMods[moduleIndex]?.categories || [])[ci];
     const item = cat?.items?.find((x) => x.id === itemId);
     if (!item) return;
     /* If the item is already archived, "×" just removes it permanently —
@@ -1299,6 +1323,7 @@ export default function TemplatesEditor({
     }
     if (usage > 0 && !item.archived) {
       setArchiveConfirm({
+        moduleIndex,
         categoryIndex: ci,
         itemId,
         label: item.text || item.lastKnownLabel || 'this item',
@@ -1306,8 +1331,9 @@ export default function TemplatesEditor({
       });
       return;
     }
-    hardDeleteItem(ci, itemId);
+    hardDeleteItemInModule(moduleIndex, ci, itemId);
   };
+  const deleteItem = (ci, itemId) => deleteItemInModule(openMod, ci, itemId);
 
   /* --- entity-level --- */
   const addEntity = () => {
@@ -1454,14 +1480,125 @@ export default function TemplatesEditor({
     reloadFromProps();
   };
 
-  const subtitle = (
-    <span><b>{visibleTemplates.length}</b> templates · reusable category + checklist sets</span>
+  const selectLinkStyle = {
+    background: 'transparent',
+    border: 0,
+    color: 'var(--accent)',
+    borderRadius: 2,
+    padding: 0,
+    fontSize: 11.5,
+    cursor: 'pointer',
+    fontFamily: 'inherit',
+    whiteSpace: 'nowrap',
+    fontWeight: 600,
+  };
+  const mobileTemplateSelectRow = (
+    <div className="templates-mobile-select-row mobile-header-select-row">
+      <button
+        className="mobile-header-select-button"
+        onClick={() => { const next = !tplEdit; setTplEdit(next); if (!next) setSelTpls(new Set()); }}
+      >
+        {tplEdit ? 'Done' : 'Select'}
+      </button>
+      {tplEdit && (() => {
+        const visibleSelectedIds = new Set(visibleTemplates.filter((t) => selTpls.has(t.id)).map((t) => t.id));
+        const visibleSelCount = visibleSelectedIds.size;
+        const allSel = visibleSelCount === visibleTemplates.length && visibleTemplates.length > 0;
+        return (
+          <span className="documents-select-actions templates-mobile-select-actions mobile-header-select-actions">
+            <button
+              onClick={() => {
+                setSelTpls((prev) => {
+                  const next = new Set(prev);
+                  visibleTemplates.forEach((template) => {
+                    if (allSel) next.delete(template.id);
+                    else next.add(template.id);
+                  });
+                  return next;
+                });
+              }}
+              style={{ ...miniButtonStyle(), color: 'var(--bone-100)' }}
+            >{allSel ? 'None' : 'All'}</button>
+            <button onClick={() => { if (visibleSelCount) { duplicateTemplates(visibleSelectedIds); setSelTpls(new Set()); } }} disabled={!visibleSelCount} style={miniButtonStyle({ disabled: !visibleSelCount })}>Duplicate</button>
+            <button disabled={!visibleSelCount} onClick={() => { const first = visibleTemplates.find((t) => visibleSelectedIds.has(t.id)); if (first) onShare && onShare(first); }} style={miniButtonStyle({ disabled: !visibleSelCount, iconOnly: true })} title="Share"><Icon name="share" size={12} /></button>
+            <button onClick={() => { if (visibleSelCount) { deleteTemplates(visibleSelectedIds); setSelTpls(new Set()); } }} disabled={!visibleSelCount} style={miniButtonStyle({ disabled: !visibleSelCount, danger: true, iconOnly: true })} title="Delete"><Icon name="trash" size={12} /></button>
+          </span>
+        );
+      })()}
+    </div>
   );
-  const actions = <Search placeholder="Search templates..." value={search} onChange={setSearch} />;
+  const subtitle = (
+    <>
+      <span className="templates-desktop-summary"><b>{visibleTemplates.length}</b> templates · reusable category + checklist sets</span>
+      <span className="templates-mobile-summary" style={{ display: 'inline-flex', alignItems: 'baseline', gap: 10 }}>
+        <span className="templates-mobile-count">
+          <b>{mobileTemplateOpen && tpl ? orderedMods.length : visibleTemplates.length}</b> {mobileTemplateOpen && tpl ? 'modules' : 'templates'}
+        </span>
+        {mobileTemplateOpen && dirty ? (
+          <span className="templates-mobile-save-row">
+            <button type="button" onClick={handleCancelEdits}>Cancel</button>
+            <button type="button" className="primary" onClick={handleSaveTemplates}>Save</button>
+          </span>
+        ) : null}
+        {!mobileTemplateOpen ? mobileTemplateSelectRow : null}
+      </span>
+    </>
+  );
+  const actions = (
+    <>
+      <div className={`templates-mobile-search-actions ${mobileTemplateOpen ? 'with-back' : 'with-create'}`}>
+        {mobileTemplateOpen ? (
+          <button
+            type="button"
+            className="templates-mobile-back-button"
+            onClick={() => {
+              setMobileTemplateOpen(false);
+              setMobileEntitiesOpen(false);
+              setTemplateContentSearch('');
+              setOpenColor(null);
+              setCatEdit(false);
+              setEntityEdit(false);
+              setSelCats(new Set());
+              setSelEntities(new Set());
+            }}
+          >
+            <span className="templates-mobile-back-icon"><Icon name="arrow-r" size={13} /></span>Templates
+          </button>
+        ) : null}
+        <Search
+          placeholder={mobileTemplateOpen ? 'Search template...' : 'Search templates...'}
+          value={mobileTemplateOpen ? templateContentSearch : search}
+          onChange={mobileTemplateOpen ? setTemplateContentSearch : setSearch}
+          width="100%"
+        />
+        {!mobileTemplateOpen ? (
+          <button className="btn primary templates-mobile-create-button" onClick={() => onCreateTemplate && onCreateTemplate()}>
+            <Icon name="plus" size={12} />New template
+          </button>
+        ) : null}
+      </div>
+      <div className="templates-desktop-search">
+        <Search placeholder="Search templates..." value={search} onChange={setSearch} />
+      </div>
+    </>
+  );
 
   /* Categories shown for the open module. */
   const activeMod = orderedMods[openMod] || orderedMods[0] || { categories: [] };
   const visibleCats = activeMod.categories || [];
+  const totalCategoryCount = orderedMods.reduce((sum, mod) => sum + ((mod.categories || []).length), 0);
+  const templateQuery = templateContentSearch.trim().toLowerCase();
+  const mobileVisibleCats = templateQuery
+    ? visibleCats.filter((cat) => [
+      cat.name,
+      ...(cat.items || []).map((item) => item.text || item.lastKnownLabel),
+    ].some((value) => String(value || '').toLowerCase().includes(templateQuery)))
+    : visibleCats;
+  const mobileVisibleEntities = tpl
+    ? (templateQuery
+      ? tpl.roster.filter((entity) => String(entity.role || '').toLowerCase().includes(templateQuery))
+      : tpl.roster)
+    : [];
 
   return (
     <>
@@ -2167,6 +2304,439 @@ export default function TemplatesEditor({
           </aside>
 
         </div>
+        <div className="templates-mobile-layout slim-scroll">
+          {!mobileTemplateOpen ? (
+            <div className="templates-mobile-browser">
+              {visibleTemplates.length === 0 ? (
+                <EmptyState
+                  icon="template"
+                  line={rich.length === 0 ? 'No templates yet' : 'No templates match your search'}
+                  actionLabel="New template"
+                  onAction={() => onCreateTemplate && onCreateTemplate()}
+                />
+              ) : (
+                <>
+                  <div className="templates-mobile-label">Template sets</div>
+                  <SortableRearrangeList ids={visibleTemplates.map((t) => t.id)} onReorder={reorderTemplates}>
+                    {visibleTemplates.map((t) => {
+                      const isSel = selTpls.has(t.id);
+                      return (
+                        <SortableRearrangeRow key={`mobile-template-${t.id}`} id={t.id}>
+                          {({ attributes, listeners, isDragging }) => (
+                            <div
+                              data-drag-rearrange-row
+                              role="button"
+                              tabIndex={0}
+                              className="templates-mobile-row reorderable"
+                              onClick={() => {
+                                if (tplEdit) {
+                                  toggleTplSel(t.id);
+                                  return;
+                                }
+                                setSelected(t.id);
+                                setOpenCat(-1);
+                                setOpenMod(0);
+                                setMobileEntitiesOpen(false);
+                                setTemplateContentSearch('');
+                                setMobileTemplateOpen(true);
+                              }}
+                              onKeyDown={(e) => {
+                                if (e.key !== 'Enter' && e.key !== ' ') return;
+                                e.preventDefault();
+                                e.currentTarget.click();
+                              }}
+                            >
+                              <DragRearrangeHandle
+                                {...attributes}
+                                {...listeners}
+                                isDragging={isDragging}
+                                style={{ width: 24, height: 24 }}
+                              />
+                              <span className="templates-mobile-glyph"><Icon name="template" size={16} /></span>
+                              <span className="templates-mobile-copy">
+                                <strong>{t.name}</strong>
+                                <small>{t.modules.length} modules · {t.modules.reduce((sum, mod) => sum + (mod.categories || []).length, 0)} categories · {t.roster.length} entities</small>
+                                <span className="templates-mobile-swatches">
+                                  {t.roster.slice(0, 8).map((r) => {
+                                    const sw = entitySwatch(r);
+                                    return <i key={r.id} style={{ background: sw.fill, borderColor: sw.border }} />;
+                                  })}
+                                  {t.roster.length > 8 ? <em>+{t.roster.length - 8}</em> : null}
+                                </span>
+                              </span>
+                              {tplEdit ? (
+                                <span className={`templates-mobile-check ${isSel ? 'checked' : ''}`}>{isSel ? '✓' : ''}</span>
+                              ) : (
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    const rect = e.currentTarget.getBoundingClientRect();
+                                    setTplMenu((m) => (m && m.id === t.id ? null : { id: t.id, rect }));
+                                  }}
+                                  style={moreButtonStyle({ color: 'var(--ink-muted)' })}
+                                  title="More"
+                                ><Icon name="more" size={14} /></button>
+                              )}
+                            </div>
+                          )}
+                        </SortableRearrangeRow>
+                      );
+                    })}
+                  </SortableRearrangeList>
+                </>
+              )}
+            </div>
+          ) : tpl ? (
+            <div className="templates-mobile-detail">
+              <div className="templates-mobile-template-card">
+                <div className="templates-mobile-title-stack">
+                  <input
+                    key={`mobile-template-title-${tpl.id}`}
+                    className="templates-mobile-title-input"
+                    defaultValue={tpl.name}
+                    title="Tap to rename"
+                    onBlur={(e) => renameTemplate(tpl.id, e.currentTarget.value)}
+                    onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); else if (e.key === 'Escape') { e.currentTarget.value = tpl.name; e.currentTarget.blur(); } }}
+                  />
+                  <span>{orderedMods.length} modules · {totalCategoryCount} categories · {tpl.roster.length} entities</span>
+                </div>
+                <button
+                  type="button"
+                  className="templates-mobile-entities-button"
+                  onClick={() => {
+                    setMobileEntitiesOpen(true);
+                    setOpenColor(null);
+                    setEntityEdit(false);
+                    setSelEntities(new Set());
+                  }}
+                >
+                  <Icon name="users" size={12} />Entities
+                </button>
+              </div>
+
+              <section className="templates-mobile-section templates-mobile-modules-section">
+                <div className="templates-mobile-section-head">
+                  <span>Modules</span>
+                  <div className="templates-mobile-section-actions">
+                    <button
+                      type="button"
+                      className="templates-mobile-section-select"
+                      onClick={() => { setModEdit(true); setSelMods(new Set()); }}
+                    >Select</button>
+                    <button type="button" onClick={addModule}><Icon name="plus" size={11} />New module</button>
+                  </div>
+                </div>
+                <div className="templates-mobile-module-tabs">
+                  <SortableModuleTabs
+                    modules={orderedMods}
+                    openMod={openMod}
+                    modRename={modRename}
+                    onOpenModule={(mi) => {
+                      setOpenMod(mi);
+                      setOpenCat(-1);
+                    }}
+                    onStartRename={setModRename}
+                    onRenameModule={renameModule}
+                    onCancelRename={() => setModRename(null)}
+                    onReorderModules={reorderMods}
+                    showCounts={false}
+                  />
+                </div>
+              </section>
+
+              <section className="templates-mobile-section templates-mobile-categories-section">
+                <div className="templates-mobile-section-head">
+                  <span>Categories</span>
+                  <button type="button" onClick={addCategory}><Icon name="plus" size={11} />New category</button>
+                </div>
+                <div className="templates-mobile-select-inline">
+                  <button
+                    style={selectLinkStyle}
+                    onClick={() => { const next = !catEdit; setCatEdit(next); if (!next) setSelCats(new Set()); }}
+                  >
+                    {catEdit ? 'Done' : 'Select'}
+                  </button>
+                  {catEdit && (() => {
+                    const visibleSelectedIds = new Set(mobileVisibleCats.filter((cat) => selCats.has(cat.id)).map((cat) => cat.id));
+                    const c = visibleSelectedIds.size;
+                    const allSel = c === mobileVisibleCats.length && mobileVisibleCats.length > 0;
+                    return (
+                      <span className="templates-mobile-select-actions">
+                        <button
+                          onClick={() => setSelCats((prev) => {
+                            const next = new Set(prev);
+                            mobileVisibleCats.forEach((cat) => {
+                              if (allSel) next.delete(cat.id);
+                              else next.add(cat.id);
+                            });
+                            return next;
+                          })}
+                          style={miniButtonStyle({ borderColor: 'var(--rule-strong)', color: 'var(--ink-soft)' })}
+                        >{allSel ? 'None' : 'All'}</button>
+                        <button disabled={!c} onClick={() => duplicateCategories(visibleSelectedIds)} style={miniButtonStyle({ borderColor: 'var(--rule-strong)', color: 'var(--ink-soft)', disabled: !c })}>Duplicate</button>
+                        <button disabled={!c} onClick={() => setMoveModal({ count: c, kind: 'category' })} style={miniButtonStyle({ borderColor: 'var(--rule-strong)', color: 'var(--ink-soft)', disabled: !c })}>Move/Copy</button>
+                        <button disabled={!c} onClick={() => { if (c && tpl) onShare && onShare(tpl); }} style={miniButtonStyle({ borderColor: 'var(--rule-strong)', color: 'var(--ink-soft)', disabled: !c, iconOnly: true })} title="Share"><Icon name="share" size={11} /></button>
+                        <button disabled={!c} onClick={() => deleteCategories(visibleSelectedIds)} style={miniButtonStyle({ borderColor: 'var(--rule-strong)', color: 'var(--ink-soft)', disabled: !c, danger: true, iconOnly: true })} title="Delete"><Icon name="trash" size={11} /></button>
+                      </span>
+                    );
+                  })()}
+                </div>
+                {mobileVisibleCats.length === 0 ? (
+                  <div className="templates-mobile-empty">No categories match this view.</div>
+                ) : (
+                  <SortableRearrangeList ids={mobileVisibleCats.map((c) => c.id)} onReorder={reorderCategories} variableHeight gap={7}>
+                    {mobileVisibleCats.map((c) => {
+                      const ci = visibleCats.findIndex((cat) => cat.id === c.id);
+                      const allItems = c.items || [];
+                      const items = allItems.filter(isActiveChecklistItem);
+                      const archivedItems = allItems.filter(isArchivedChecklistItem);
+                      const open = openCat === ci;
+                      const isSel = selCats.has(c.id);
+                      return (
+                        <SortableRearrangeRow key={`mobile-category-${c.id}`} id={c.id}>
+                          {({ attributes, listeners, isDragging }) => (
+                            <div className="templates-mobile-category-card">
+                              <div
+                                data-drag-rearrange-row
+                                className="templates-mobile-category-row"
+                                onClick={() => { if (catEdit) toggleCatSel(c.id); }}
+                              >
+                                <DragRearrangeHandle {...attributes} {...listeners} isDragging={isDragging} style={{ width: 24, height: 24 }} />
+                                <button
+                                  type="button"
+                                  className={open ? 'open' : ''}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setOpenCat(open ? -1 : ci);
+                                  }}
+                                >›</button>
+                                <input
+                                  className="templates-mobile-inline-input"
+                                  defaultValue={c.name}
+                                  key={`mobile-cat-${c.id}:${c.name}`}
+                                  onClick={(e) => e.stopPropagation()}
+                                  onBlur={(e) => {
+                                    const r = resolveTitleCommit(e.currentTarget.value, c.name);
+                                    if (r.action === 'commit') renameCategory(ci, r.name);
+                                    e.currentTarget.value = r.name;
+                                  }}
+                                  onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); else if (e.key === 'Escape') { e.currentTarget.value = c.name; e.currentTarget.blur(); } }}
+                                />
+                                <span title={archivedItems.length ? `${items.length} active, ${archivedItems.length} archived` : `${items.length} active`}>{items.length}{archivedItems.length ? ` +${archivedItems.length}` : ''}</span>
+                                {catEdit ? (
+                                  <i className={`templates-mobile-check ${isSel ? 'checked' : ''}`}>{isSel ? '✓' : ''}</i>
+                                ) : null}
+                              </div>
+                              {open ? (
+                                <div className="templates-mobile-items">
+                                  {items.length === 0 ? <div className="templates-mobile-empty">No checklist items yet.</div> : null}
+                                  <SortableRearrangeList ids={items.map((it) => it.id)} onReorder={(activeId, overId) => reorderItems(ci, activeId, overId)} gap={0}>
+                                    {items.map((it) => (
+                                      <SortableRearrangeRow key={`mobile-item-${it.id}`} id={it.id}>
+                                        {({ attributes, listeners, isDragging }) => (
+                                          <div data-drag-rearrange-row className="templates-mobile-item-row">
+                                            <DragRearrangeHandle {...attributes} {...listeners} isDragging={isDragging} style={{ width: 20, height: 20 }} />
+                                            <input
+                                              className="templates-mobile-inline-input"
+                                              defaultValue={it.text}
+                                              placeholder="Checklist item"
+                                              onBlur={(e) => renameItem(ci, it.id, e.currentTarget.value)}
+                                              onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); else if (e.key === 'Escape') { e.currentTarget.value = it.text; e.currentTarget.blur(); } }}
+                                            />
+                                            <button type="button" onClick={(e) => { e.stopPropagation(); deleteItem(ci, it.id); }}>×</button>
+                                          </div>
+                                        )}
+                                      </SortableRearrangeRow>
+                                    ))}
+                                  </SortableRearrangeList>
+                                  <button type="button" className="templates-mobile-add-line" onClick={() => addItem(ci)}>+ Add checklist item</button>
+                                  {archivedItems.length > 0 ? (
+                                    <div className="templates-mobile-archived" data-testid={`mobile-archived-items-${c.id}`}>
+                                      <div>Archived ({archivedItems.length})</div>
+                                      {archivedItems.map((it) => (
+                                        <div key={`mobile-archived-${it.id}`} data-archived-item-id={it.id}>
+                                          <span>{archivedItemLabel(it)}</span>
+                                          <button
+                                            type="button"
+                                            title="Permanently delete"
+                                            onClick={(e) => { e.stopPropagation(); hardDeleteItem(ci, it.id); }}
+                                          >×</button>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  ) : null}
+                                </div>
+                              ) : null}
+                            </div>
+                          )}
+                        </SortableRearrangeRow>
+                      );
+                    })}
+                  </SortableRearrangeList>
+                )}
+              </section>
+
+              {mobileEntitiesOpen ? (
+                <div
+                  className="templates-mobile-modal-scrim"
+                  onClick={() => {
+                    setMobileEntitiesOpen(false);
+                    setOpenColor(null);
+                    setEntityEdit(false);
+                    setSelEntities(new Set());
+                  }}
+                >
+                  <div className="templates-mobile-entity-modal" onClick={(e) => e.stopPropagation()}>
+                    <div className="templates-mobile-entity-modal-head">
+                      <div>
+                        <strong>Entities</strong>
+                        <span>{tpl.roster.length} entities in {tpl.name}</span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setMobileEntitiesOpen(false);
+                          setOpenColor(null);
+                          setEntityEdit(false);
+                          setSelEntities(new Set());
+                        }}
+                      >
+                        Close
+                      </button>
+                    </div>
+                    <section className="templates-mobile-section templates-mobile-entity-panel">
+                <div className="templates-mobile-section-head">
+                  <span>Entities</span>
+                  <button type="button" onClick={addEntity}><Icon name="plus" size={11} />New entity</button>
+                </div>
+                <div className="templates-mobile-select-inline">
+                  <button
+                    style={selectLinkStyle}
+                    onClick={() => { const next = !entityEdit; setEntityEdit(next); if (!next) setSelEntities(new Set()); }}
+                  >
+                    {entityEdit ? 'Done' : 'Select'}
+                  </button>
+                  {entityEdit && (() => {
+                    const visibleSelectedIds = new Set(mobileVisibleEntities.filter((entity) => selEntities.has(entity.id)).map((entity) => entity.id));
+                    const c = visibleSelectedIds.size;
+                    const allSel = c === mobileVisibleEntities.length && mobileVisibleEntities.length > 0;
+                    return (
+                      <span className="templates-mobile-select-actions">
+                        <button onClick={() => setSelEntities((prev) => {
+                          const next = new Set(prev);
+                          mobileVisibleEntities.forEach((entity) => {
+                            if (allSel) next.delete(entity.id);
+                            else next.add(entity.id);
+                          });
+                          return next;
+                        })} style={miniButtonStyle({ borderColor: 'var(--rule-strong)', color: 'var(--ink-soft)' })}>{allSel ? 'None' : 'All'}</button>
+                        <button disabled={!c} onClick={() => duplicateEntities(visibleSelectedIds)} style={miniButtonStyle({ borderColor: 'var(--rule-strong)', color: 'var(--ink-soft)', disabled: !c })}>Duplicate</button>
+                        <button disabled={!c} onClick={() => setMoveModal({ count: c, kind: 'entity' })} style={miniButtonStyle({ borderColor: 'var(--rule-strong)', color: 'var(--ink-soft)', disabled: !c })}>Move/Copy</button>
+                        <button disabled={!c} onClick={() => { if (c && tpl) onShare && onShare(tpl); }} style={miniButtonStyle({ borderColor: 'var(--rule-strong)', color: 'var(--ink-soft)', disabled: !c, iconOnly: true })} title="Share"><Icon name="share" size={11} /></button>
+                        <button disabled={!c} onClick={() => deleteEntities(visibleSelectedIds)} style={miniButtonStyle({ borderColor: 'var(--rule-strong)', color: 'var(--ink-soft)', disabled: !c, danger: true, iconOnly: true })} title="Delete"><Icon name="trash" size={11} /></button>
+                      </span>
+                    );
+                  })()}
+                </div>
+                {mobileVisibleEntities.length === 0 ? (
+                  <div className="templates-mobile-empty">No entities match this view.</div>
+                ) : (
+                  <SortableRearrangeList ids={mobileVisibleEntities.map((r) => r.id)} onReorder={reorderEntities} gap={7}>
+                    {mobileVisibleEntities.map((r) => {
+                      const c = roleColors[r.id]?.color || r.color || '#8c8c8a';
+                      const op = roleColors[r.id]?.opacity ?? 0.35;
+                      const rowBorderColor = !!matchFill[r.id] ? c : ((borderColors[r.id] || {}).color || c);
+                      const isOpen = openColor === r.id;
+                      const isSel = selEntities.has(r.id);
+                      return (
+                        <SortableRearrangeRow key={`mobile-entity-${r.id}`} id={r.id}>
+                          {({ attributes, listeners, isDragging }) => (
+                            <>
+                              <div data-drag-rearrange-row className="templates-mobile-entity-row">
+                                <DragRearrangeHandle {...attributes} {...listeners} isDragging={isDragging} style={{ width: 24, height: 24 }} />
+                                <button
+                                  type="button"
+                                  title="Edit color"
+                                  onClick={() => setOpenColor(isOpen ? null : r.id)}
+                                  style={{ background: c, borderColor: rowBorderColor }}
+                                />
+                                <input
+                                  className="templates-mobile-inline-input"
+                                  defaultValue={r.role}
+                                  key={`mobile-entity-${r.id}:${r.role}`}
+                                  onBlur={(e) => renameEntity(r.id, e.currentTarget.value)}
+                                  onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); else if (e.key === 'Escape') { e.currentTarget.value = r.role; e.currentTarget.blur(); } }}
+                                />
+                                {entityEdit ? (
+                                  <i className={`templates-mobile-check ${isSel ? 'checked' : ''}`}>{isSel ? '✓' : ''}</i>
+                                ) : (
+                                  <button
+                                    type="button"
+                                    className="templates-mobile-more"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      const rect = e.currentTarget.getBoundingClientRect();
+                                      setEntityMenu((m) => (m && m.id === r.id ? null : { id: r.id, rect }));
+                                    }}
+                                  ><Icon name="more" size={14} /></button>
+                                )}
+                              </div>
+                              {isOpen ? (() => {
+                                const layer = layerTab[r.id] || 'fill';
+                                const match = !!matchFill[r.id];
+                                const fillData = { color: c, opacity: op };
+                                const borderData = borderColors[r.id] || { color: c, opacity: op };
+                                const isBorderMatched = layer === 'border' && match;
+                                const activeData = isBorderMatched ? fillData : (layer === 'border' ? borderData : fillData);
+                                const applyColor = (color, opacity) => {
+                                  if (isBorderMatched) return;
+                                  if (layer === 'border') setBorderColors({ ...borderColors, [r.id]: { color, opacity } });
+                                  else {
+                                    setRoleColors({ ...roleColors, [r.id]: { color, opacity } });
+                                    setEntityColor(r.id, color);
+                                  }
+                                  markEdited();
+                                };
+                                return (
+                                  <div className="templates-mobile-color-panel">
+                                    <div className="templates-mobile-color-tabs">
+                                      {['fill', 'border'].map((k) => (
+                                        <button key={k} type="button" className={layer === k ? 'active' : ''} onClick={() => setLayerTab({ ...layerTab, [r.id]: k })}>{k === 'fill' ? 'Fill' : 'Border'}</button>
+                                      ))}
+                                    </div>
+                                    {layer === 'border' ? (
+                                      <label className="templates-mobile-match-fill">
+                                        <input type="checkbox" checked={match} onChange={(e) => { setMatchFill({ ...matchFill, [r.id]: e.target.checked }); markEdited(); }} />
+                                        <span>Match fill</span>
+                                      </label>
+                                    ) : null}
+                                    <div style={{ opacity: isBorderMatched ? 0.4 : 1, pointerEvents: isBorderMatched ? 'none' : 'auto' }}>
+                                      <CompactColorPicker color={activeData.color} opacity={activeData.opacity} onChange={applyColor} onClose={() => {}} />
+                                    </div>
+                                  </div>
+                                );
+                              })() : null}
+                            </>
+                          )}
+                        </SortableRearrangeRow>
+                      );
+                    })}
+                  </SortableRearrangeList>
+                )}
+                    </section>
+                  </div>
+                </div>
+              ) : null}
+            </div>
+          ) : (
+            <EmptyState
+              icon="template"
+              line="No templates yet"
+              actionLabel="New template"
+              onAction={() => onCreateTemplate && onCreateTemplate()}
+            />
+          )}
+        </div>
         </div>
       </div>
     </HubShell>
@@ -2251,8 +2821,8 @@ export default function TemplatesEditor({
               type="button"
               data-testid="archive-confirm-archive"
               onClick={() => {
-                const { categoryIndex, itemId } = archiveConfirm;
-                archiveItem(categoryIndex, itemId);
+                const { moduleIndex = openMod, categoryIndex, itemId } = archiveConfirm;
+                archiveItemInModule(moduleIndex, categoryIndex, itemId);
                 setArchiveConfirm(null);
               }}
               style={{ background: '#d8a84e', border: '1px solid #b8893a', color: '#0d0f14', borderRadius: 6, padding: '7px 14px', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}
@@ -2282,8 +2852,9 @@ export default function TemplatesEditor({
           style={{ position: 'fixed', inset: 0, background: 'rgba(13, 15, 20, 0.45)', backdropFilter: 'blur(6px)', WebkitBackdropFilter: 'blur(6px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100 }}
         >
           <div
+            className="templates-module-edit-modal"
             onClick={(e) => e.stopPropagation()}
-            style={{ width: 400, maxHeight: 'calc(100vh - 80px)', overflow: 'hidden', display: 'flex', flexDirection: 'column', background: '#181c24', border: '1px solid #2a3140', borderRadius: 10 }}
+            style={{ width: 400, maxWidth: 'calc(100vw - 24px)', maxHeight: 'calc(100dvh - 32px)', overflow: 'hidden', display: 'flex', flexDirection: 'column', background: '#181c24', border: '1px solid #2a3140', borderRadius: 10 }}
           >
             <div style={{ padding: '10px 12px', borderBottom: '1px solid #2a3140', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
               <h3 style={{ margin: 0, fontSize: 13, fontWeight: 700, letterSpacing: '-0.025em', flex: 'none', color: '#f4f1ea', fontFamily: '"Helvetica Neue", Helvetica, Arial, sans-serif' }}>Edit modules</h3>
@@ -2355,7 +2926,7 @@ export default function TemplatesEditor({
                 <span style={{ fontSize: 13 }}>+</span> New module
               </button>
             </div>
-            <div style={{ padding: '10px 12px', borderTop: '1px solid #2a3140', background: '#12151c', display: 'flex', gap: 6, alignItems: 'center', flex: 'none' }}>
+            <div className="templates-module-edit-actions" style={{ padding: '10px 12px', borderTop: '1px solid #2a3140', background: '#12151c', display: 'flex', gap: 6, alignItems: 'center', flex: 'none' }}>
               <button onClick={() => { const allSel = selectedMods.length === mods.length; setSelMods(allSel ? new Set() : new Set(mods.map((m) => m.id))); }} style={{ background: 'transparent', border: '1px solid #3a4252', color: '#e8e2d4', borderRadius: 4, padding: '5px 9px', fontSize: 11.5, cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' }}>{selectedMods.length === mods.length && mods.length > 0 ? 'None' : 'All'}</button>
               <button onClick={() => duplicateModules(selMods)} disabled={!selCount} style={{ background: 'transparent', border: '1px solid #3a4252', color: selCount ? '#e8e2d4' : '#5a6473', borderRadius: 4, padding: '5px 9px', fontSize: 11.5, cursor: selCount ? 'pointer' : 'not-allowed', fontFamily: 'inherit', whiteSpace: 'nowrap' }}>Duplicate</button>
               <button onClick={() => { if (selCount) setMoveModal({ count: selCount, kind: 'module' }); }} disabled={!selCount} style={{ background: 'transparent', border: '1px solid #3a4252', color: selCount ? '#e8e2d4' : '#5a6473', borderRadius: 4, padding: '5px 9px', fontSize: 11.5, cursor: selCount ? 'pointer' : 'not-allowed', fontFamily: 'inherit', whiteSpace: 'nowrap' }}>Move/Copy</button>

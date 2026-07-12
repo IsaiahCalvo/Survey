@@ -23,6 +23,11 @@ import Spinner from './components/Spinner';
 import ToastHost from './components/ToastHost';
 import SurveySpacesRail from './SurveySpacesRail';
 import TabBar from './TabBar';
+import {
+  MobilePdfViewerDock,
+  MobilePdfViewerHeader,
+  MobilePdfViewerToolRail,
+} from './mobile/MobilePdfViewerChrome';
 import YDocProvider from './components/collab/YDocProvider.jsx';
 import { ARROWHEAD_STYLE_LABELS } from './components/Callout/types';
 import { AuthModal } from './components/AuthModal';
@@ -32,6 +37,7 @@ import { createPortal } from 'react-dom';
 import { getNetworkLogSnapshot } from './utils/networkLogger';
 import { sanitizeConsoleLogText } from './utils/consoleLogFilter';
 import { showToast } from './utils/toast';
+import { randomUUID } from './utils/randomUUIDPolyfill';
 import { useAuth } from './contexts/AuthContext';
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import { useMSGraph } from './contexts/MSGraphContext';
@@ -47,7 +53,7 @@ const PDFViewer = lazy(() => import('./PDFViewer').then((m) => ({ default: m.PDF
 // toolbar when a rich-text or annotation color picker is explicitly opened.
 const CompactColorPicker = lazy(() => import('./components/CompactColorPicker'));
 
-export default function App() {
+export default function App({ devPreviewReturnTab = null }) {
   // Microsoft Graph authentication hook
   const { graphClient, isAuthenticated: isMSAuthenticated, login: msLogin, account: msAccount, needsReconnect: msNeedsReconnect, ensureFreshToken, getAuthSignals: msGetAuthSignals } = useMSGraph();
 
@@ -312,7 +318,7 @@ export default function App() {
 
   // UX 2026-05-14: right-rail zoom percentage editing state. Same pattern
   // as the page number — plain "100%" by default, click to swap to an
-  // input. Typing is clamped to 10–500 (the app's allowable zoom range).
+  // input. Typing is clamped to 1-4000 (the PDF engine's zoom range).
   const [isEditingRailZoom, setIsEditingRailZoom] = useState(false);
 
   // UX 2026-07-08 (mobile design pass): on narrow viewports (Capacitor phones,
@@ -495,6 +501,11 @@ export default function App() {
    */
   const [leftRailApi, setLeftRailApi] = useState(null);
   const [rightRailApi, setRightRailApi] = useState(null);
+  const [mobileSurveyRequestKey, setMobileSurveyRequestKey] = useState(0);
+  const [mobileSurveyCollapseRequestKey, setMobileSurveyCollapseRequestKey] = useState(0);
+  const [mobileSurveyPanelOpen, setMobileSurveyPanelOpen] = useState(false);
+  const [mobileDocumentPanelState, setMobileDocumentPanelState] = useState({ isOpen: false, activePanel: 'pages' });
+  const [mobileAuxPanel, setMobileAuxPanel] = useState(null);
 
   // Tab management state
   const HOME_TAB_ID = 'home-tab';
@@ -551,7 +562,7 @@ export default function App() {
   }, [authLoading, isAuthenticated]);
 
   // Generate unique tab ID
-  const generateTabId = () => `tab-${crypto.randomUUID()}`;
+  const generateTabId = () => `tab-${randomUUID()}`;
 
   const handleDocumentSelect = (file, filePath = null) => {
     if (!file) {
@@ -644,6 +655,18 @@ export default function App() {
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  const returnToDevHubPreview = () => {
+    if (!import.meta.env.DEV || !devPreviewReturnTab) return false;
+    const params = new URLSearchParams({
+      hubPreview: '1',
+      longDocs: '1',
+      tab: devPreviewReturnTab,
+      mobileNav: 'rail',
+    });
+    window.location.assign(`/?${params.toString()}`);
+    return true;
+  };
+
   const handleTabClick = (tabId) => {
     const tab = tabs.find(t => t.id === tabId);
     if (tab) {
@@ -654,6 +677,7 @@ export default function App() {
 
       setActiveTabId(tabId);
       if (tab.isHome) {
+        if (returnToDevHubPreview()) return;
         // Home tab - show dashboard
         // setSelectedPDF(null); // Keep selectedPDF to prevent unmounting
         setCurrentView('dashboard');
@@ -848,6 +872,7 @@ export default function App() {
   };
 
   const handleBack = () => {
+    if (returnToDevHubPreview()) return;
     // Switch to home tab instead of closing all tabs
     setActiveTabId(HOME_TAB_ID);
     // setSelectedPDF(null); // Keep selectedPDF to prevent unmounting
@@ -869,6 +894,49 @@ export default function App() {
   // conditional return because hooks below depend on it.
   const activeTab = tabs.find(t => t.id === activeTabId);
   const isViewerVisible = activeTab && !activeTab.isHome && selectedPDF && currentView === 'viewer';
+  const isMobileViewer = Boolean(isNarrowShell && isViewerVisible);
+  const mobileViewerPanelOpen = Boolean(
+    mobileDocumentPanelState.isOpen
+    || mobileSurveyPanelOpen
+    || mobileAuxPanel
+  );
+
+  const openMobileDocumentPanel = useCallback((panelId) => {
+    setMobileSurveyCollapseRequestKey((key) => key + 1);
+    leftRailApi?.ref?.current?.togglePanel?.(panelId);
+  }, [leftRailApi]);
+
+  const toggleMobileDocumentHub = useCallback(() => {
+    const activePanel = ['pages', 'search', 'bookmarks'].includes(mobileDocumentPanelState.activePanel)
+      ? mobileDocumentPanelState.activePanel
+      : 'pages';
+    openMobileDocumentPanel(activePanel);
+  }, [mobileDocumentPanelState.activePanel, openMobileDocumentPanel]);
+
+  const openMobileSurveyPanel = useCallback(() => {
+    leftRailApi?.ref?.current?.closePanel?.();
+    if (mobileSurveyPanelOpen) {
+      setMobileSurveyCollapseRequestKey((key) => key + 1);
+      return;
+    }
+    setMobileSurveyRequestKey((key) => key + 1);
+    if (!rightRailApi?.showSurveyPanel) {
+      rightRailApi?.handleSurveyToggle?.();
+    }
+  }, [leftRailApi, mobileSurveyPanelOpen, rightRailApi]);
+
+  useEffect(() => {
+    if (isViewerVisible) return;
+    setMobileSurveyPanelOpen(false);
+    setMobileDocumentPanelState({ isOpen: false, activePanel: 'pages' });
+    setMobileAuxPanel(null);
+  }, [isViewerVisible]);
+
+  useEffect(() => {
+    if (!mobileAuxPanel) return;
+    leftRailApi?.ref?.current?.closePanel?.();
+    setMobileSurveyCollapseRequestKey((key) => key + 1);
+  }, [mobileAuxPanel]);
 
   // UX 2026-07-08 (mobile design pass): the hub stays mounted underneath the
   // viewer overlay. On narrow screens the hub's mobile layout fixes its header
@@ -971,7 +1039,7 @@ export default function App() {
       <SaveLogBanner />
       <ToastHost />
       <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
-        {tabs.length > 0 && ( // Show tab bar if there are any tabs (including home)
+        {tabs.length > 0 && !isNarrowShell && ( // Desktop-only: mobile navigation lives inside the home/viewer chrome.
           <TabBar
             tabs={tabs}
             activeTabId={activeTabId}
@@ -990,6 +1058,15 @@ export default function App() {
             color picker and category popups float above the PDF. Tool
             handlers come from bottomToolbarApi which PDFViewer continues to
             publish even though the bottom-host is now gone. */}
+        {isMobileViewer ? (
+          <MobilePdfViewerHeader
+            id="chrome-top-host"
+            documentName={selectedPDF?.name || activeTab?.name || 'Document'}
+            onBack={handleBack}
+            topToolbarApi={topToolbarApi}
+            bottomToolbarApi={bottomToolbarApi}
+          />
+        ) : (
         <div
           id="chrome-top-host"
           style={{
@@ -2653,17 +2730,18 @@ export default function App() {
             </div>
           )}
         </div>
-        <div style={{ flex: 1, overflow: 'hidden', position: 'relative', display: 'flex' }}>
+        )}
+        <div className={isMobileViewer ? 'mobile-pdf-work-area' : undefined} style={{ flex: 1, overflow: 'hidden', position: 'relative', display: 'flex' }}>
           <div
             id="chrome-left-host"
             style={{
               display: isViewerVisible ? 'flex' : 'none',
-              flex: '0 0 48px',
-              width: '48px',
+              flex: isMobileViewer ? '0 0 44px' : '0 0 48px',
+              width: isMobileViewer ? '44px' : '48px',
               flexShrink: 0,
-              minWidth: '48px',
+              minWidth: isMobileViewer ? '44px' : '48px',
               alignSelf: 'stretch',
-              background: '#12151c',
+              background: isMobileViewer ? '#20242c' : '#12151c',
               color: '#e8e2d4',
               fontFamily: FONT_FAMILY,
               overflow: 'visible',
@@ -2671,7 +2749,21 @@ export default function App() {
               zIndex: 5600
             }}
           >
-            {leftRailApi && <PDFSidebar {...leftRailApi} />}
+            {isMobileViewer && (
+              <MobilePdfViewerToolRail
+                bottomToolbarApi={bottomToolbarApi}
+                leftRailApi={leftRailApi}
+                onOpenPanel={openMobileDocumentPanel}
+                onAuxPanelStateChange={setMobileAuxPanel}
+              />
+            )}
+            {leftRailApi && (
+              <PDFSidebar
+                {...leftRailApi}
+                mobileMode={isMobileViewer}
+                onPanelStateChange={setMobileDocumentPanelState}
+              />
+            )}
           </div>
           <div style={{ flex: 1, minWidth: 0, overflow: 'hidden', position: 'relative', display: 'flex', flexDirection: 'column' }}>
             {/* UX 2026-05-14: chrome-sub-toolbar-host — App-level mount point
@@ -2686,7 +2778,7 @@ export default function App() {
               id="chrome-sub-toolbar-host"
               data-chrome-strip="true"
               style={{
-                display: isViewerVisible ? 'block' : 'none',
+                display: isViewerVisible && !isMobileViewer ? 'block' : 'none',
                 position: 'absolute',
                 top: 0,
                 left: 0,
@@ -2742,6 +2834,7 @@ export default function App() {
                       onBack={handleBack}
                       tabId={tab.id}
                       isActive={isVisible}
+                      mobileMode={isNarrowShell}
                       onTopToolbarApiChange={setTopToolbarApi}
                       onBottomToolbarApiChange={setBottomToolbarApi}
                       onLeftRailApiChange={setLeftRailApi}
@@ -2782,13 +2875,13 @@ export default function App() {
             id="chrome-right-host"
             style={{
               display: isViewerVisible ? 'flex' : 'none',
-              flex: '0 0 48px',
+              flex: isMobileViewer ? '0 0 0px' : '0 0 48px',
               flexShrink: 0,
-              width: '48px',
-              minWidth: '48px',
+              width: isMobileViewer ? '0px' : '48px',
+              minWidth: isMobileViewer ? '0px' : '48px',
               overflow: 'visible',
               alignSelf: 'stretch',
-              background: '#12151c',
+              background: isMobileViewer ? 'transparent' : '#12151c',
               color: '#e8e2d4',
               fontFamily: FONT_FAMILY,
               flexDirection: 'column',
@@ -2799,7 +2892,18 @@ export default function App() {
               zIndex: 5600
             }}
           >
-            {rightRailApi && <SurveySpacesRail {...rightRailApi} />}
+            {rightRailApi && (
+              <SurveySpacesRail
+                {...rightRailApi}
+                mobileMode={isMobileViewer}
+                expandRequestKey={(rightRailApi.expandRequestKey || 0) + mobileSurveyRequestKey}
+                collapseRequestKey={mobileSurveyCollapseRequestKey}
+                onCollapseChange={(collapsed) => {
+                  setMobileSurveyPanelOpen(!collapsed);
+                  rightRailApi.onCollapseChange?.(collapsed);
+                }}
+              />
+            )}
             {/* Spacer pushes the bottom slot to the bottom of the rail. */}
             <div style={{ flex: 1 }} />
 
@@ -2976,8 +3080,8 @@ export default function App() {
                 {/* Zoom percentage — Walkthrough-style: shows the value as
                     "100%" with no input box by default, click swaps to an
                     editable input. Centered in the rail. The handlers
-                    already clamp on commit (10%–500%) and during typing
-                    (max 500%), matching the app's actual zoom range. */}
+                    already clamp on commit (1%-4000%) and during typing,
+                    matching the PDF engine's actual zoom range. */}
                 {isEditingRailZoom ? (
                   <input
                     ref={bottomToolbarApi.zoomInputRef}
@@ -3218,6 +3322,17 @@ export default function App() {
             )}
           </div>
         </div>
+        {isMobileViewer && !mobileViewerPanelOpen && (
+          <MobilePdfViewerDock
+            onOpenPanel={openMobileDocumentPanel}
+            onToggleHub={toggleMobileDocumentHub}
+            onOpenSurvey={openMobileSurveyPanel}
+            hubMode={['pages', 'search', 'bookmarks'].includes(mobileDocumentPanelState.activePanel) ? mobileDocumentPanelState.activePanel : 'pages'}
+            hubOpen={mobileDocumentPanelState.isOpen && ['pages', 'search', 'bookmarks'].includes(mobileDocumentPanelState.activePanel)}
+            spacesActive={Boolean(leftRailApi?.activeSpaceId) || (mobileDocumentPanelState.isOpen && mobileDocumentPanelState.activePanel === 'spaces')}
+            surveyActive={Boolean(rightRailApi?.showSurveyPanel)}
+          />
+        )}
         {/* UX 2026-05-14: chrome-bottom-host deleted. Every tool that lived
             here moved up to chrome-top-host so the rails can extend to the
             viewport bottom. PDFViewer still publishes bottomToolbarApi so
