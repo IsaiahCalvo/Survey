@@ -139,6 +139,11 @@ export function buildKal48RpcHandlers(store) {
   });
 
   return {
+    // 2026-07-01 viewer-role gate: YDocProvider resolves the caller's role on
+    // every document open. The harness doc is creator-owned, so answer
+    // 'owner' (the RPC itself fails open to read-write on error, but an
+    // unhandled call would trip the zero-unmatched verdict gate).
+    get_my_document_role: () => ({ status: 200, json: 'owner' }),
     kal48_create_revision: (body, ctx) => {
       assertExactKeys('kal48_create_revision', body);
       if (store.consumeFailure('kal48_create_revision')) {

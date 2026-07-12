@@ -195,10 +195,16 @@ async function main() {
       await page.waitForFunction(() => window.__crdtBackfillDone === true, undefined, { timeout: 20000 })
         .catch(() => log('  [warn] __crdtBackfillDone not seen within 20s (continuing)'));
       await page.waitForTimeout(1500);
+      // Since a3380bbf the default (pan-tool) presentation paints annotations
+      // to a canvas — the SVG layer (g[data-annotation-index], the DOM surface
+      // every count/geometry assert here reads) only mounts while the Select
+      // tool is active. Switch to Select right after open.
+      await page.keyboard.press('v');
+      await page.waitForTimeout(400);
     };
 
     // ---- sidebar / panel helpers --------------------------------------------
-    const HISTORY_BTN = 'button[aria-label="Version History"]';
+    const HISTORY_BTN = 'button[aria-label="Version history"]';
     const PANEL = '[data-testid="kal48-revisions-panel"]';
     const panelVisible = () => page.locator(PANEL).isVisible().catch(() => false);
     const openHistoryPanel = async () => {
@@ -211,7 +217,7 @@ async function main() {
     // root's first child (PDFSidebar.jsx structure; pinned in DISCOVERY).
     const collapseSidebar = async () => {
       const pt = await page.evaluate(() => {
-        const hist = document.querySelector('button[aria-label="Version History"]');
+        const hist = document.querySelector('button[aria-label="Version history"]');
         const root = hist?.parentElement?.parentElement;
         const btn = root?.firstElementChild?.querySelector('button');
         if (!btn) return null;
@@ -238,14 +244,14 @@ async function main() {
 
     // ---- draw gesture (KAL-75-proven: `p`, drag, Escape) ---------------------
     const pageDivRect = () => page.evaluate(() => {
-      const d = document.querySelector('.e-pv-page-div');
+      const d = document.querySelector('.survey-pdfjs-page-div');
       if (!d) return null;
       const r = d.getBoundingClientRect();
       return { x: r.x, y: r.y, w: r.width, h: r.height };
     });
     const drawStroke = async (fx, fy) => {
       const pr = await pageDivRect();
-      if (!pr) throw new Error('no .e-pv-page-div to draw on');
+      if (!pr) throw new Error('no .survey-pdfjs-page-div to draw on');
       const from = { x: pr.x + pr.w * fx, y: pr.y + pr.h * fy };
       const before = await fabricCount();
       await page.keyboard.press('p');
@@ -256,13 +262,15 @@ async function main() {
       await page.mouse.up();
       await page.waitForTimeout(500);
       await page.keyboard.press('Escape');
-      const ok = await pollFor(fabricCount, before + 1, 10000, 'draw +1');
-      if (!ok) throw new Error('draw gesture did not add an annotation');
       // Pen tool stays armed after Escape (discovery run 1: later canvas
       // clicks minted stray dot strokes) — 'v' switches back to Select
-      // (PDFViewer.jsx:20913).
+      // (PDFViewer.jsx:20913). Since a3380bbf this must ALSO happen before the
+      // count poll: with a non-Select tool armed the annotations paint on the
+      // presentation canvas and the SVG surface the poll reads is unmounted.
       await page.keyboard.press('v');
       await page.waitForTimeout(300);
+      const ok = await pollFor(fabricCount, before + 1, 10000, 'draw +1');
+      if (!ok) throw new Error('draw gesture did not add an annotation');
     };
 
     // ---- spotlight / alignment helpers ---------------------------------------
@@ -284,28 +292,42 @@ async function main() {
 
     // Visible rendered shape of one annotation: smallest-stroke visible path
     // inside its g (hit-zone twins are wider/transparent — Codex r2 #6).
+    // Since a3380bbf pen ink is FILLED outline geometry (stroke: transparent,
+    // stroke-width 0, fill = ink color), so filled shapes are visible
+    // candidates too; stroked candidates still win (legacy shapes/fixtures).
     const targetInfoFn = (annoId) => page.evaluate((id) => {
       const esc = (window.CSS && CSS.escape) ? CSS.escape(id) : id;
       const g = document.querySelector(`g[data-annotation-id="${esc}"]`);
       if (!g) return null;
-      const cands = Array.from(g.querySelectorAll('path, polyline, line, rect'))
+      const transparent = (paint) => !paint || paint === 'none'
+        || /rgba\(\s*\d+\s*,\s*\d+\s*,\s*\d+\s*,\s*0\s*\)/.test(paint)
+        || paint === 'transparent';
+      const all = Array.from(g.querySelectorAll('path, polyline, line, rect'))
         .map((el) => {
           const cs = getComputedStyle(el);
           return {
             el,
             sw: parseFloat(cs.strokeWidth) || 0,
             stroke: cs.stroke,
-            op: cs.strokeOpacity == null ? 1 : parseFloat(cs.strokeOpacity),
+            strokeOp: cs.strokeOpacity == null ? 1 : parseFloat(cs.strokeOpacity),
+            fill: cs.fill,
+            fillOp: cs.fillOpacity == null ? 1 : parseFloat(cs.fillOpacity),
           };
-        })
-        .filter((c) => c.stroke && c.stroke !== 'none' && c.op > 0
-          && !/rgba\(\s*\d+\s*,\s*\d+\s*,\s*\d+\s*,\s*0\s*\)/.test(c.stroke));
-      if (!cands.length) return null;
-      cands.sort((a, b) => a.sw - b.sw);
-      const r = cands[0].el.getBoundingClientRect();
+        });
+      const stroked = all.filter((c) => !transparent(c.stroke) && c.strokeOp > 0);
+      const filled = all.filter((c) => !transparent(c.fill) && c.fillOp > 0);
+      let pick = null;
+      if (stroked.length) {
+        stroked.sort((a, b) => a.sw - b.sw);
+        pick = stroked[0];
+      } else if (filled.length) {
+        pick = { ...filled[0], sw: 0 };
+      }
+      if (!pick) return null;
+      const r = pick.el.getBoundingClientRect();
       return {
-        tag: cands[0].el.tagName.toLowerCase(),
-        sw: cands[0].sw,
+        tag: pick.el.tagName.toLowerCase(),
+        sw: pick.sw,
         x: r.x, y: r.y, w: r.width, h: r.height,
         cx: r.x + r.width / 2, cy: r.y + r.height / 2,
       };
@@ -348,6 +370,19 @@ async function main() {
     const fmtAlign = (m) => m
       ? `dcx=${m.dcx} dcy=${m.dcy} dw=${m.dw} dh=${m.dh} allow=${m.allow}`
       : 'no measurement';
+    // [discovery] one-line viewer-state dump for UNMEASURABLE samples — which
+    // surface is live (canvas2d vs svg-edit), whether the SVG layer is
+    // mounted, and whether the spotlight svg exists.
+    const dumpViewerState = async (label) => {
+      const st = await page.evaluate(() => ({
+        presentation: document.querySelector('[data-annotation-real-surface]')?.getAttribute('data-annotation-presentation') || null,
+        annoGroups: document.querySelectorAll('g[data-annotation-index]').length,
+        svgWrapper: document.querySelectorAll('[data-diag-svg-wrapper]').length,
+        glow: document.querySelectorAll('#document-history-spotlight-svg').length,
+        readonly: document.body.getAttribute('data-readonly'),
+      })).catch(() => null);
+      log(`  [discovery] viewer-state ${label}: ${JSON.stringify(st)}`);
+    };
     // Bug-note for the spotlight misalignment (see the S3 comment block) and
     // the alignment gate wrapper (Codex result-review r1 #3): an UNMEASURABLE
     // sample (glow svg or target path missing) is a HARD FAILURE — only a
@@ -355,6 +390,7 @@ async function main() {
     const GLOW_VIEWBOX_BUG = 'spotlight viewBox uses page-div pixel dims, not the annotation layer page units (RevisionsPanel.jsx:302-318 host fallback)';
     const alignCheck = (m, label) => {
       if (!m || !m.measured) {
+        void dumpViewerState('unmeasurable');
         gate(false, `${label} — UNMEASURABLE: glow.rect=${JSON.stringify(m?.glow?.rect ?? null)} target=${JSON.stringify(m?.target ?? null)}`);
         return;
       }
@@ -476,7 +512,7 @@ async function main() {
     gate(await pollFor(fabricCount, 3, 20000, 'S1 fabric'), 'S1: 3 fixture annotations render');
 
     const footer = await page.evaluate(() => {
-      const hist = document.querySelector('button[aria-label="Version History"]');
+      const hist = document.querySelector('button[aria-label="Version history"]');
       if (!hist) return null;
       const kids = Array.from(hist.parentElement.children);
       return {
@@ -493,7 +529,7 @@ async function main() {
     await openHistoryPanel();
     gate(await panelVisible(), 'S1: kal48-revisions-panel visible after History click (case 2)');
     const headerText = await page.locator(`${PANEL} strong`).first().textContent().catch(() => '');
-    gate(headerText === 'Version History', `S1: panel header "Version History" (saw "${headerText}")`);
+    gate(headerText === 'Version history', `S1: panel header "Version history" (saw "${headerText}")`);
     await page.waitForTimeout(1200); // first refresh settles
     const startRows = await eventRows();
     gate(startRows.length === 0, `S1: zero activity rows at start (saw ${startRows.length}: ${JSON.stringify(startRows.slice(0, 2))})`);
@@ -648,17 +684,24 @@ async function main() {
     await clickEventRow(seededRowRe);
     gate(await pollFor(glowCount, 1, 6000, 'S3b spotlight svg'),
       'S3b: spotlight renders via the DOM-fallback path (no previewAnnotation)');
+    // KAL-303 invariant, updated for the History-audit P3 spotlight rework:
+    // the spotlight now lives in a fixed-position document-body portal (no
+    // page-container reparenting), so sibling-DOM placement no longer applies.
+    // The regression KAL-303 actually guarded against is the viewBox source —
+    // the spotlight MUST inherit the annotation layer's page-unit viewBox
+    // (never the page div's pixel dims), which viewBox equality pins exactly.
     const s3bHost = await page.evaluate(() => {
       const spot = document.querySelector('#document-history-spotlight-svg');
       const layer = document.querySelector('svg[data-svg-annotation-layer="1"]');
       return {
-        wrapperScoped: !!(spot && layer && spot.parentElement === layer.parentElement),
+        viewBoxMatch: !!(spot && layer
+          && spot.getAttribute('viewBox') === layer.getAttribute('viewBox')),
         viewBox: spot?.getAttribute('viewBox') || null,
         layerViewBox: layer?.getAttribute('viewBox') || null,
       };
     });
-    gate(s3bHost.wrapperScoped,
-      `S3b: spotlight hosted beside the annotation layer (wrapper-scoped) (spot viewBox=${s3bHost.viewBox}, layer viewBox=${s3bHost.layerViewBox})`);
+    gate(s3bHost.viewBoxMatch,
+      `S3b: spotlight viewBox inherits the annotation layer's page units (KAL-303) (spot viewBox=${s3bHost.viewBox}, layer viewBox=${s3bHost.layerViewBox})`);
     const s3bAlign = await settleAligned('kal75-fab-01');
     alignCheck(s3bAlign, `S3b: DOM-fallback glow aligns with the fixture rect (${fmtAlign(s3bAlign)})`);
     await shot('s3b-dom-fallback');
@@ -733,7 +776,9 @@ async function main() {
     log('\n=== S5: glow replaced not stacked; sidebar collapse tears it down ===');
     mock.setWindow('S5');
     await clickEventRow(deleteRowRe);
-    gate(await pollFor(glowCount, 1, 6000, 'S5 glow A'), 'S5: spotlight present after clicking delete row');
+    const s5GlowA = await pollFor(glowCount, 1, 6000, 'S5 glow A');
+    if (!s5GlowA) await dumpViewerState('S5-glow-A-missing');
+    gate(s5GlowA, 'S5: spotlight present after clicking delete row');
     await clickEventRow(drawRowRe);
     await page.waitForTimeout(800);
     gate((await glowCount()) === 1, `S5: exactly ONE spotlight svg after switching rows — replaced, not stacked (case 18) (saw ${await glowCount()})`);
@@ -850,8 +895,13 @@ async function main() {
       `history ledger: zero yjs_* event types ever written (saw ${JSON.stringify([...new Set(histTypes)])})`);
     gate(histPosts.length === 4,
       `history ledger: exactly 4 event rows written for the run's 4 actions (saw ${histPosts.length})`);
-    gate(histTypes.every((t) => t === 'local_annotation_history_added'),
-      `history ledger: event_type set exactly {local_annotation_history_added} (saw ${JSON.stringify([...new Set(histTypes)])})`);
+    // KAL-313 / history F2: a single-annotation delete's ONE durable row is
+    // the annotation_deleted trash row (the activity-pipeline row is
+    // suppressed), so the expected multiset is 3× draw + 1× delete.
+    const histTypeCounts = histTypes.reduce((acc, t) => ({ ...acc, [t]: (acc[t] || 0) + 1 }), {});
+    gate(histTypeCounts.local_annotation_history_added === 3 && histTypeCounts.annotation_deleted === 1
+      && Object.keys(histTypeCounts).length === 2,
+      `history ledger: event_type multiset exactly {local_annotation_history_added ×3, annotation_deleted ×1} (saw ${JSON.stringify(histTypeCounts)})`);
     const drewWrites = histPosts.filter((r) => /drew a pen stroke on page 1/.test(r?.summary || '')).length;
     const deletedWrites = histPosts.filter((r) => /deleted a pen stroke/.test(r?.summary || '')).length;
     gate(drewWrites === 3 && deletedWrites === 1,
@@ -860,8 +910,10 @@ async function main() {
     // RPC gate (Codex r3 #6): ONLY kal48_* with exact counts + exact p_* bodies.
     const allRpcs = mock.mutations.filter((m) => m.method === 'RPC');
     const rpcNames = [...new Set(allRpcs.map((m) => m.table.replace('rpc/', '')))];
-    const allowedRpc = new Set(['kal48_create_revision', 'kal48_list_revisions', 'kal48_get_revision', 'kal48_restore_revision']);
-    gate(rpcNames.every((n) => allowedRpc.has(n)), `RPC gate: only kal48_* RPCs fired (saw ${JSON.stringify(rpcNames)})`);
+    // get_my_document_role: viewer-role gate added 2026-07-01 — fires once per
+    // document open (YDocProvider) and is expected alongside the kal48_* set.
+    const allowedRpc = new Set(['get_my_document_role', 'kal48_create_revision', 'kal48_list_revisions', 'kal48_get_revision', 'kal48_restore_revision']);
+    gate(rpcNames.every((n) => allowedRpc.has(n)), `RPC gate: only kal48_* + role RPCs fired (saw ${JSON.stringify(rpcNames)})`);
     // FULL body values for every kal48 call (Codex result-review r1 #2) — not
     // just the labels: both creates pin p_document_id + p_label + p_origin,
     // get/restore pin p_revision_id, every list pins p_document_id.
@@ -885,6 +937,7 @@ async function main() {
     const keyDrift = allRpcs.filter((m) => {
       const fn = m.table.replace('rpc/', '');
       const want = {
+        get_my_document_role: ['doc_id'],
         kal48_create_revision: ['p_document_id', 'p_label', 'p_origin'],
         kal48_list_revisions: ['p_document_id'],
         kal48_get_revision: ['p_revision_id'],
@@ -900,6 +953,8 @@ async function main() {
       for (const b of knownBugs) log('  * ' + b);
     }
 
+    log('\n[discovery] tool-changed timeline (page console):');
+    for (const l of logs.filter((t) => t.includes('tool-changed') || t.includes('PAGEERROR'))) log('  ' + l.slice(0, 200));
     log('\nDialog log:');
     for (const d of dialogLog) log(`  ${d.type}: ${d.message.slice(0, 100)}`);
     log('\nMutation summary by window:');

@@ -23,6 +23,7 @@
 // first-paint entry chunk. Worker config now happens lazily via
 // utils/pdfWorkerConfig.loadPdfjs(), called right before each getDocument.
 import { recordAnnotationBackupWrite } from './utils/annotationPreviewDiag';
+import { projectAnnotationForHistoryPreview } from './utils/historyPreviewAnnotation.js';
 import { deepClone } from './utils/deepClone.js';
 import { normalizeCalloutsForSync } from './utils/calloutSyncPayload';
 import { getCalloutIdsFromHistoryMeta } from './utils/calloutHistoryScope';
@@ -721,11 +722,16 @@ export const summarizeHistoryActionForLog = (action) => {
   const batchDeleted = Array.isArray(action.deleted) ? action.deleted : [];
   const batchUpdated = Array.isArray(action.updated) ? action.updated : [];
   const batchFirst = batchCreated[0]?.annotation || batchDeleted[0]?.annotation || batchUpdated[0]?.after || batchUpdated[0]?.before || null;
-  const previewAnnotation = action.type === 'fabric:delete'
-    ? action.annotation
-    : action.type === 'fabric:update'
-      ? action.after
-      : firstAnnotation || batchFirst;
+  // Outline ink (capsule eraser, a3380bbf) breaks the spotlight's fabric-shaped
+  // contract (absolute path commands, left/top of 0, duplicate geometry) —
+  // project it down to a compact preview; other types pass through unchanged.
+  const previewAnnotation = projectAnnotationForHistoryPreview(
+    action.type === 'fabric:delete'
+      ? action.annotation
+      : action.type === 'fabric:update'
+        ? action.after
+        : firstAnnotation || batchFirst,
+  );
   const ids = [
     action.annotationId,
     ...batchCreated.map((entry) => entry?.id),
