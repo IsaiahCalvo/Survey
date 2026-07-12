@@ -13,13 +13,7 @@
 // Detection is best-effort: missing values fall back to 'unknown' rather
 // than null so analytics queries can grep cleanly.
 
-const APP_VERSION = (() => {
-  try {
-    return (typeof __APP_VERSION__ !== 'undefined' && __APP_VERSION__) || 'unknown';
-  } catch (_) {
-    return 'unknown';
-  }
-})();
+const APP_VERSION = (typeof __APP_VERSION__ !== 'undefined' && __APP_VERSION__) || 'unknown';
 
 /**
  * Detect the device the user is currently on.
@@ -35,10 +29,11 @@ const APP_VERSION = (() => {
  */
 export function detectDevice() {
   if (typeof window === 'undefined') return 'unknown';
+  const viteEnv = globalThis.__VITE_IMPORT_META_ENV__ ?? import.meta?.env;
+  if (viteEnv?.DEV) {
+    return 'dev';
+  }
   try {
-    if (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.DEV) {
-      return 'dev';
-    }
     const isElectron =
       !!window.electronAPI ||
       (typeof navigator !== 'undefined' && /Electron/i.test(navigator.userAgent || ''));

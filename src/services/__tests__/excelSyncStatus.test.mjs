@@ -75,3 +75,11 @@ test('Row ID writeback banner strings color honestly through syncMessageTone', (
     if (msg) assert.ok(!/[a-z][A-Z]/.test(msg), `label "${msg}" looks like camelCase`);
   }
 });
+
+
+test('rowIdWritebackMessage covers local flush refusal codes', () => {
+  assert.match(rowIdWritebackMessage({ status: 'excel-open', remaining: 2 }), /Close Excel/);
+  assert.match(rowIdWritebackMessage({ status: 'unsafe-unknown', remaining: 1 }), /Not sure Excel is closed/);
+  assert.match(rowIdWritebackMessage({ status: 'workbook-drifted', remaining: 3 }), /changed outside the app/);
+  assert.match(rowIdWritebackMessage({ status: 'drifted-during-flush', remaining: 1 }), /changed outside the app/);
+});

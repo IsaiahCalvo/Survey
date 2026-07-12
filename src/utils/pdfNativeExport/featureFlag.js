@@ -13,8 +13,9 @@ function readEnv() {
   if (typeof process !== 'undefined' && process.env?.ENABLE_PDF_NATIVE_EXPORT !== undefined) {
     return process.env.ENABLE_PDF_NATIVE_EXPORT;
   }
-  if (typeof import.meta !== 'undefined' && import.meta.env?.VITE_ENABLE_PDF_NATIVE_EXPORT !== undefined) {
-    return import.meta.env.VITE_ENABLE_PDF_NATIVE_EXPORT;
+  const viteEnv = globalThis.__VITE_IMPORT_META_ENV__ ?? import.meta?.env;
+  if (viteEnv?.VITE_ENABLE_PDF_NATIVE_EXPORT !== undefined) {
+    return viteEnv.VITE_ENABLE_PDF_NATIVE_EXPORT;
   }
   return undefined;
 }

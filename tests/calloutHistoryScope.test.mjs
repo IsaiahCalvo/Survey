@@ -185,3 +185,30 @@ test('delete:batch redo removes only current user callouts involved in the batch
     { id: 'foreign-unrelated', text: 'current value', meta: { authorId: 'user-b' } },
   ]);
 });
+
+test('callout undo update replaces owned callout from target snapshot', () => {
+  const currentState = {
+    callouts: [
+      { id: 'mine', text: 'edited', meta: { authorId: 'user-a' } },
+      { id: 'other', text: 'keep', meta: { authorId: 'user-b' } },
+    ],
+  };
+  const targetState = {
+    callouts: [
+      { id: 'mine', text: 'original', meta: { authorId: 'user-a' } },
+      { id: 'other', text: 'old other', meta: { authorId: 'user-b' } },
+    ],
+  };
+
+  const scoped = scopeHistoryStateForCalloutRestore({
+    currentState,
+    targetState,
+    meta: { reason: 'callouts:update', context: { calloutId: 'mine' } },
+    userId: 'user-a',
+  });
+
+  deepStrictEqual(scoped.callouts, [
+    { id: 'mine', text: 'original', meta: { authorId: 'user-a' } },
+    { id: 'other', text: 'keep', meta: { authorId: 'user-b' } },
+  ]);
+});

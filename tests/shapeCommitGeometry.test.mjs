@@ -166,3 +166,40 @@ test('mouseup can recompute ellipse preview from the final release pointer', () 
     ry: 32,
   });
 });
+
+test('circle commit + unknown tool preview + guards', () => {
+  const circle = normalizeDrawnBoundaryShapeCommitGeometry({
+    type: 'circle',
+    left: 1,
+    top: 2,
+    radius: 5,
+    strokeWidth: 2,
+  }, { left: 10, top: 20, width: 40, height: 30 });
+  assert.equal(circle.left, 10);
+  assert.equal(circle.top, 20);
+  assert.equal(circle.radius, 20);
+
+  const viaRadius = normalizeDrawnBoundaryShapeCommitGeometry({
+    radius: 3,
+    strokeWidth: 1,
+  }, { left: 0, top: 0, width: 10, height: 8 });
+  assert.equal(viaRadius.radius, 5);
+
+  assert.equal(normalizeDrawnBoundaryShapeCommitGeometry(null), null);
+  assert.equal(tagDrawnCenteredStrokeGeometry(null), null);
+  const unchanged = { type: 'rect', strokeWidth: 2, left: 1 };
+  assert.equal(
+    normalizeDrawnBoundaryShapeCommitGeometry(unchanged, { left: 'x' }),
+    unchanged,
+  );
+
+  const other = computeDrawnBoundaryShapePreviewGeometry({
+    tool: 'freehand',
+    startX: 5,
+    startY: 5,
+    pointerX: 15,
+    pointerY: 25,
+    strokeWidth: 2,
+  });
+  assert.deepEqual(other.fabricProps, { left: 5, top: 5, width: 10, height: 20 });
+});

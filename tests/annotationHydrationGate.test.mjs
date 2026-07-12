@@ -119,5 +119,17 @@ describe('annotation hydration first-paint gate', () => {
       visiblePages: new Set(),
       currentPage: 7,
     }), 7);
+
+    assert.equal(resolveFirstVisibleAnnotationPage({
+      visiblePages: new Set(),
+      currentPage: 0,
+      fallbackPage: 4,
+    }), 4);
+
+    assert.equal(resolveFirstVisibleAnnotationPage({
+      visiblePages: null,
+      currentPage: 'x',
+      fallbackPage: 'y',
+    }), 1);
   });
 });

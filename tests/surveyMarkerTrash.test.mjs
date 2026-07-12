@@ -103,3 +103,40 @@ test('trash store: missing id or storage is safe', () => {
   clearTrash('doc1', s);
   assert.deepEqual(loadTrash('doc1', s), {});
 });
+
+test('trash store tolerates corrupt JSON and throwing storage', () => {
+  const corrupt = {
+    getItem: () => '{not-json',
+    setItem() {},
+    removeItem() {},
+  };
+  assert.deepEqual(loadTrash('doc1', corrupt), {});
+
+  const boom = {
+    getItem() { throw new Error('x'); },
+    setItem() { throw new Error('x'); },
+    removeItem() { throw new Error('x'); },
+  };
+  assert.deepEqual(loadTrash('doc1', boom), {});
+  assert.doesNotThrow(() => saveTrash('doc1', { a: 1 }, boom));
+  assert.doesNotThrow(() => clearTrash('doc1', boom));
+
+  const nonObject = {
+    getItem: () => JSON.stringify(null),
+    setItem() {},
+    removeItem() {},
+  };
+  assert.deepEqual(loadTrash('doc1', nonObject), {});
+
+  const original = globalThis.localStorage;
+  Object.defineProperty(globalThis, 'localStorage', {
+    configurable: true,
+    get() { throw new Error('blocked'); },
+  });
+  try {
+    assert.deepEqual(loadTrash('doc1'), {});
+  } finally {
+    if (original === undefined) delete globalThis.localStorage;
+    else Object.defineProperty(globalThis, 'localStorage', { configurable: true, value: original });
+  }
+});

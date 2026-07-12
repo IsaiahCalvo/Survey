@@ -230,3 +230,21 @@ test(
     strictEqual(JSON.stringify(candidateIds), candidateIdsBefore, 'candidateIds array not mutated');
   },
 );
+
+test(
+  "buildBulkDeletePlan #7: returns { mode: 'no-op' } when no eligible candidates remain",
+  { skip: !existsSync(TARGET) ? 'bulkDeletePlan module not yet present (Plan 35-04)' : false },
+  async () => {
+    const { buildBulkDeletePlan } = await import(TARGET_URL);
+    const result = buildBulkDeletePlan({
+      candidateIds: ['missing', 'also-missing'],
+      annotations: [makeAnno('a1', COLLAB_ID)],
+      viewerId: COLLAB_ID,
+      documentOwnerId: OWNER_ID,
+    });
+    strictEqual(result.mode, 'no-op');
+    strictEqual(result.count, 0);
+    deepStrictEqual(result.ownIds, []);
+    deepStrictEqual(result.foreignIds, []);
+  },
+);

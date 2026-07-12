@@ -159,3 +159,37 @@ test('bake honors KAL-8 contract: caller controls scope filtering', async () => 
   assert.equal(annots.length, 1);
   assert.equal(annots[0].subtype, 'Square');
 });
+
+test('bake validates inputs and records adapter throw + subtype lookup failure', async () => {
+  await assert.rejects(() => bakeAnnotationsIntoPdf(null, {}), /pdfBytes/);
+  const pdfBytes = await makeBlankPdfBytes();
+  await assert.rejects(() => bakeAnnotationsIntoPdf(pdfBytes, null), /annotationsByPage/);
+
+  const { registerAdapter } = await import('../src/utils/pdfNativeExport/index.js');
+  registerAdapter('fabric:boom', () => { throw new Error('adapter-boom'); });
+  registerAdapter('fabric:nullish', () => null);
+  registerAdapter('fabric:badref', (obj, { pdfDoc }) => {
+    // Return a ref whose lookup will throw when reading Subtype
+    const ref = pdfDoc.context.register(pdfDoc.context.obj({}));
+    const origLookup = pdfDoc.context.lookup.bind(pdfDoc.context);
+    pdfDoc.context.lookup = (r) => {
+      if (r === ref) throw new Error('subtype-boom');
+      return origLookup(r);
+    };
+    return ref;
+  });
+
+  const result = await bakeAnnotationsIntoPdf(pdfBytes, {
+    1: {
+      objects: [
+        { id: 'b1', type: 'boom' },
+        { id: 'n1', type: 'nullish' },
+        { id: 's1', type: 'badref' },
+      ],
+    },
+  }, { returnAudit: true });
+
+  assert.ok(result.audit.droppedByReason['adapter-threw:adapter-boom'] >= 1);
+  assert.ok(result.audit.droppedByReason['adapter-returned-null'] >= 1);
+  assert.equal(result.audit.written, 1);
+});

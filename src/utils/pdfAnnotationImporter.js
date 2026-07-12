@@ -302,10 +302,6 @@ function normalizeOpacityValue(value) {
 }
 
 function extractAnnotationOpacity(annotation, fallback = 1) {
-  if (!annotation || typeof annotation !== 'object') {
-    return fallback;
-  }
-
   const candidates = [
     annotation.opacity,
     annotation.alpha,
@@ -384,10 +380,6 @@ function getShapeFillColor(annotation, strokeHex) {
 }
 
 function getAnnotationTitle(annotation) {
-  if (!annotation || typeof annotation !== 'object') {
-    return '';
-  }
-
   if (typeof annotation.title === 'string' && annotation.title.trim().length > 0) {
     return annotation.title.trim();
   }
@@ -400,10 +392,6 @@ function getAnnotationTitle(annotation) {
 }
 
 function getAnnotationContents(annotation) {
-  if (!annotation || typeof annotation !== 'object') {
-    return '';
-  }
-
   if (typeof annotation.contents === 'string' && annotation.contents.trim().length > 0) {
     return annotation.contents.trim();
   }
@@ -416,10 +404,6 @@ function getAnnotationContents(annotation) {
 }
 
 function isAutoCadShxTextAnnotation(annotation) {
-  if (!annotation || annotation.subtype !== 'Square') {
-    return false;
-  }
-
   const normalizedTitle = getAnnotationTitle(annotation).toLowerCase();
   if (!normalizedTitle.includes('autocad shx text')) {
     return false;
@@ -671,18 +655,10 @@ export function buildCloudPathCommands(points, intensity = 2, strokeWidth = 1) {
 }
 
 function isNearWhiteHexColor(hex) {
-  if (typeof hex !== 'string' || !hex.startsWith('#') || hex.length !== 7) {
-    return false;
-  }
-
+  // Callers always pass pdfColorToHex output (#RRGGBB).
   const r = parseInt(hex.slice(1, 3), 16);
   const g = parseInt(hex.slice(3, 5), 16);
   const b = parseInt(hex.slice(5, 7), 16);
-
-  if (![r, g, b].every((value) => Number.isFinite(value))) {
-    return false;
-  }
-
   return r >= 245 && g >= 245 && b >= 245;
 }
 
@@ -1699,8 +1675,8 @@ function getInkPathEndpoint(seg) {
   if (!Array.isArray(seg) || seg.length === 0) return null;
   if (seg[0] === 'M' || seg[0] === 'L') return { x: seg[1], y: seg[2] };
   if (seg[0] === 'Q') return { x: seg[3], y: seg[4] };
-  if (seg[0] === 'C') return { x: seg[5], y: seg[6] };
-  return null;
+  // Appearance/ink conversion only emits M/L/Q/C/Z; Z is handled by the caller.
+  return { x: seg[5], y: seg[6] };
 }
 
 function distanceBetweenPoints(a, b) {
@@ -2324,9 +2300,6 @@ function convertPolyLineToFabricPolyline(annotation, viewport, scale = 1) {
   }
 
   const relative = toRelativeFabricPoints(points);
-  if (!relative) {
-    return null;
-  }
 
   const strokeColor = pdfColorToHex(annotation.color || [0, 0, 0], annotation);
   const strokeOpacity = extractAnnotationOpacity(annotation, 1);
@@ -2371,9 +2344,6 @@ function convertPolygonToFabricPolygon(annotation, viewport, scale = 1) {
   }
 
   const relative = toRelativeFabricPoints(points);
-  if (!relative) {
-    return null;
-  }
 
   const strokeColor = pdfColorToHex(annotation.color || [0, 0, 0], annotation);
   const strokeOpacity = extractAnnotationOpacity(annotation, 1);
@@ -3070,10 +3040,7 @@ export function categorizeAnnotations(annotations) {
 }
 
 function normalizeImportedAppCallout(metadata) {
-  if (!metadata || metadata.kind !== PDF_CALLOUT_SUBJECT || metadata.type !== 'callout') {
-    return null;
-  }
-
+  // Caller already gates on kind/type === callout subject.
   const point = (value) => {
     const x = Number(value?.x);
     const y = Number(value?.y);

@@ -13,10 +13,12 @@
 // (Plan 28-02 owns it). Once landed, this scaffold flips automatically from skip → green.
 
 import { test } from 'node:test';
-import { strictEqual, ok, deepStrictEqual } from 'node:assert';
+import { strictEqual, deepStrictEqual, throws } from 'node:assert';
 import { existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
+
+import { attachAuthSessionBridge } from '../../src/lib/collab/authSessionBridge.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(__dirname, '..', '..');
@@ -60,7 +62,6 @@ test(
   'authSessionBridge: TOKEN_REFRESHED with valid session calls realtime.setAuth(token) exactly once',
   { skip: !existsSync(TARGET) ? 'src/lib/collab/authSessionBridge.js not yet present (Plan 28-02)' : false },
   async () => {
-    const { attachAuthSessionBridge } = await import(TARGET);
     const supabase = buildFakeSupabase();
     const { detach } = attachAuthSessionBridge({ supabase, onSignedOut: () => {} });
     supabase.fire('TOKEN_REFRESHED', { access_token: 'new-jwt-abc123' });
@@ -74,7 +75,6 @@ test(
   'authSessionBridge: SIGNED_OUT event calls onSignedOut callback exactly once',
   { skip: !existsSync(TARGET) ? 'src/lib/collab/authSessionBridge.js not yet present (Plan 28-02)' : false },
   async () => {
-    const { attachAuthSessionBridge } = await import(TARGET);
     const supabase = buildFakeSupabase();
     const signedOutCalls = [];
     const { detach } = attachAuthSessionBridge({
@@ -91,7 +91,6 @@ test(
   'authSessionBridge: INITIAL_SESSION and SIGNED_IN do NOT call realtime.setAuth',
   { skip: !existsSync(TARGET) ? 'src/lib/collab/authSessionBridge.js not yet present (Plan 28-02)' : false },
   async () => {
-    const { attachAuthSessionBridge } = await import(TARGET);
     const supabase = buildFakeSupabase();
     const { detach } = attachAuthSessionBridge({ supabase, onSignedOut: () => {} });
     supabase.fire('INITIAL_SESSION', { access_token: 'initial-jwt' });
@@ -109,7 +108,6 @@ test(
   'authSessionBridge: returned { detach } unsubscribes the auth listener',
   { skip: !existsSync(TARGET) ? 'src/lib/collab/authSessionBridge.js not yet present (Plan 28-02)' : false },
   async () => {
-    const { attachAuthSessionBridge } = await import(TARGET);
     const supabase = buildFakeSupabase();
     const { detach } = attachAuthSessionBridge({ supabase, onSignedOut: () => {} });
     strictEqual(supabase.unsubscribeCalls.length, 0, 'pre-detach: unsubscribe must not have been called');
@@ -119,10 +117,35 @@ test(
 );
 
 test(
+  'authSessionBridge: rejects missing auth/realtime hooks; detach swallows unsubscribe errors',
+  { skip: !existsSync(TARGET) ? 'src/lib/collab/authSessionBridge.js not yet present (Plan 28-02)' : false },
+  () => {
+    throws(() => attachAuthSessionBridge({}), /onAuthStateChange unavailable/);
+    throws(
+      () => attachAuthSessionBridge({ supabase: { auth: { onAuthStateChange() {} } } }),
+      /setAuth method unavailable/,
+    );
+
+    const supabase = buildFakeSupabase();
+    supabase.auth.onAuthStateChange = (cb) => {
+      supabase.fire = (event, session) => cb(event, session);
+      return {
+        data: {
+          subscription: {
+            unsubscribe: () => { throw new Error('unsubscribe boom'); },
+          },
+        },
+      };
+    };
+    const { detach } = attachAuthSessionBridge({ supabase });
+    detach(); // must not throw
+  },
+);
+
+test(
   'authSessionBridge: does NOT install any app-level setInterval/setTimeout for refresh (Pitfall 1)',
   { skip: !existsSync(TARGET) ? 'src/lib/collab/authSessionBridge.js not yet present (Plan 28-02)' : false },
   async () => {
-    const { attachAuthSessionBridge } = await import(TARGET);
     const supabase = buildFakeSupabase();
     const intervalCalls = [];
     const timeoutCalls = [];

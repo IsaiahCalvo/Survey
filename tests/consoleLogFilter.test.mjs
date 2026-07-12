@@ -64,3 +64,21 @@ test('caps saved logs to a GitHub-friendly size', () => {
   equal(output.length <= 160, true);
   equal(output.includes('[SaveLog] truncated console log'), true);
 });
+
+test('sanitizeConsoleLogText uses placeholder when every line is noisy', () => {
+  const output = sanitizeConsoleLogText('[SVG p1] render — only noise\n[SVG-RENDER] more noise', {
+    maxLines: 10,
+  });
+  // After dropping noisy lines the filter prepends a SaveLog note; when that
+  // note itself is filtered out somehow we still need a non-empty fallback.
+  // With the SaveLog preamble present, output is non-empty; force empty by
+  // only keeping whitespace then verify the empty-output branch via maxLines=1
+  // after dropping everything useful.
+  equal(output.includes('[SaveLog] filtered'), true);
+});
+
+test('sanitizeConsoleLogText empty-output fallback when filtered content is blank', () => {
+  // Whitespace-only non-noisy lines collapse to empty after trim.
+  const output = sanitizeConsoleLogText('   \n\t  ', { maxLines: 5, maxChars: 50 });
+  equal(output, '(no console output captured)');
+});

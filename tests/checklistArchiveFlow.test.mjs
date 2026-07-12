@@ -216,3 +216,8 @@ test('integration — archive a used item, reload preserves marker response and 
   const activeForNewMarker = reloaded.modules[0].categories[0].checklist.filter(isActiveChecklistItem);
   assert.deepEqual(activeForNewMarker, []);
 });
+
+test('stripOrphanResponseKeys returns empty cleaned map for non-objects', () => {
+  assert.deepEqual(stripOrphanResponseKeys(null, new Set(['a'])), { cleaned: {}, removedKeys: [] });
+  assert.deepEqual(stripOrphanResponseKeys('x', new Set()), { cleaned: {}, removedKeys: [] });
+});

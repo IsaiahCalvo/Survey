@@ -335,3 +335,61 @@ test('undo/redo dispatches only affected owner-scoped annotations', () => {
   deepStrictEqual(idsForPage(undoDelta.upsertByPage), ['mine']);
   deepStrictEqual(undoDelta.changedIds, ['mine']);
 });
+
+test('fingerprint failures and idless objects force full fan-out', () => {
+  const circular = { type: 'path', data: { id: 'c1' }, left: 1 };
+  circular.self = circular;
+  const prior = { 1: page([{ type: 'path', data: { id: 'c1' }, left: 0 }]) };
+  const current = { 1: page([circular]) };
+  const delta = buildFabricSyncDelta({ currentByPage: current, priorByPage: prior });
+  deepStrictEqual(delta.changedIds, ['c1']);
+
+  const idlessCurrent = {
+    1: page([
+      { type: 'path', left: 1, path: [['M', 0, 0]] },
+      { type: 'path', data: { id: 'kept' }, left: 2 },
+    ]),
+  };
+  const idlessPrior = { 1: page([{ type: 'path', data: { id: 'kept' }, left: 2 }]) };
+  const fanOut = buildFabricSyncDelta({
+    currentByPage: idlessCurrent,
+    priorByPage: idlessPrior,
+  });
+  equal(fanOut.fullFanOutReason, 'current-state-has-idless-objects');
+
+  const calloutDelta = buildCalloutSyncDelta({
+    currentCallouts: [{ id: 'a', text: 'x' }, { text: 'no-id' }],
+    priorCallouts: [{ id: 'a', text: 'y' }, { id: 'gone', text: 'z' }],
+  });
+  deepStrictEqual(calloutDelta.deletedIds, ['gone']);
+  deepStrictEqual(calloutDelta.changedIds, ['a']);
+});
+
+test('preciseFabricCommit and explicit changedIds short-circuit delete/change discovery', () => {
+  const resolved = resolveFabricDeletedIds({
+    preciseFabricCommit: { deletedIds: ['p1', 'p1', null, 'p2'] },
+    detectedDeletedIds: ['ignored'],
+  });
+  equal(resolved.source, 'precise-fabric-commit');
+  equal(resolved.explicit, true);
+  deepStrictEqual(resolved.deletedIds, ['p1', 'p2']);
+
+  const prior = { 1: page([penPath('a'), penPath('b')]) };
+  const current = { 1: page([penPath('a', { left: 9 }), penPath('b')]) };
+  const fabricDelta = buildFabricSyncDelta({
+    currentByPage: current,
+    priorByPage: prior,
+    changedIds: ['a', 'missing', 'a'],
+    deletedIds: [],
+  });
+  deepStrictEqual(fabricDelta.changedIds, ['a']);
+
+  const calloutDelta = buildCalloutSyncDelta({
+    currentCallouts: [{ id: 'c1', text: 'new' }, { id: 'c2', text: 'same' }],
+    priorCallouts: [{ id: 'c1', text: 'old' }, { id: 'c2', text: 'same' }],
+    changedIds: ['c1', 'nope'],
+    deletedIds: [],
+  });
+  deepStrictEqual(calloutDelta.changedIds, ['c1']);
+  equal(calloutDelta.changedCount, 1);
+});

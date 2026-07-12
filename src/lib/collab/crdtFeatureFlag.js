@@ -33,14 +33,11 @@ export function isCRDTEnabled() {
   }
 
   // Tier 2: build-time env var. Vite injects import.meta.env at build time.
-  // Use a guarded read - import.meta.env may not exist in SSR or non-Vite contexts.
+  // Tests may inject via globalThis.__VITE_IMPORT_META_ENV__.
   // UX: ops can ship a "CRDT off" build for emergency rollback without a code change.
-  try {
-    if (typeof import.meta !== 'undefined' && import.meta?.env?.[ENV_VAR_NAME] === '1') {
-      return false;
-    }
-  } catch {
-    // ignore - import.meta may not exist in non-module/non-vite contexts
+  const viteEnv = globalThis.__VITE_IMPORT_META_ENV__ ?? import.meta?.env;
+  if (viteEnv?.[ENV_VAR_NAME] === '1') {
+    return false;
   }
 
   // Tier 3: default ON.

@@ -19,20 +19,17 @@ const __lineBboxDiagEnabled = () => Boolean(globalThis?.__LINE_BBOX_DIAG);
 function __lineBboxShouldLog(obj) {
   if (!__lineBboxDiagEnabled()) return false;
   const nowMs = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
-  const id = obj && obj.id;
+  const id = obj?.id;
   if (id != null) {
-    const last = __lineBboxLogState.idMap.get(id) || 0;
-    if (nowMs - last < 150) return false;
+    const last = __lineBboxLogState.idMap.get(id);
+    if (last != null && nowMs - last < 150) return false;
     __lineBboxLogState.idMap.set(id, nowMs);
     return true;
   }
-  if (obj) {
-    const last = __lineBboxLogState.refMap.get(obj) || 0;
-    if (nowMs - last < 150) return false;
-    __lineBboxLogState.refMap.set(obj, nowMs);
-    return true;
-  }
-  return false;
+  const last = __lineBboxLogState.refMap.get(obj);
+  if (last != null && nowMs - last < 150) return false;
+  __lineBboxLogState.refMap.set(obj, nowMs);
+  return true;
 }
 
 /**
@@ -560,7 +557,10 @@ function getLineBBox(obj) {
         tightBounds: { minX, maxX, minY, maxY },
         tightBBox: { left: tightLeft, top: tightTop, width: tightWidth, height: tightHeight },
         tightCenter: { x: tightLeft + tightWidth / 2, y: tightTop + tightHeight / 2 },
-        symmetricHalfExtents: { halfW, halfH },
+        symmetricHalfExtents: {
+          halfW: Math.max(midX - minX, maxX - midX),
+          halfH: Math.max(midY - minY, maxY - midY),
+        },
         symmetricHalfComponents: {
           leftSideHalfW: midX - minX,
           rightSideHalfW: maxX - midX,

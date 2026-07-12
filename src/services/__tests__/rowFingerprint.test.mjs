@@ -128,3 +128,11 @@ test('buildRowRecord serialization is stable across calls', () => {
   assert.equal(a.fullSerialized, b.fullSerialized);
   assert.equal(a.identitySerialized, b.identitySerialized);
 });
+
+test('canonicalize last-resort JSON and symbol fallback', () => {
+  assert.match(canonicalizeCellValue({ a: 1, b: 'x' }), /"a":1/);
+  const circular = {};
+  circular.self = circular;
+  assert.equal(canonicalizeCellValue(circular), __testing.SENTINEL_EMPTY);
+  assert.equal(canonicalizeCellValue(Symbol('x')), 'Symbol(x)');
+});

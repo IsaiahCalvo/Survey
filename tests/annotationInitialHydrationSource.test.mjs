@@ -45,18 +45,16 @@ test('same-document reload preserves cloud-owned layers instead of blanking them
 });
 
 test('annotation persistence is owned by the durable Yjs store, not the legacy hook', () => {
-  // Rebuild contract: the legacy cloud-sync hook's annotation hydrate + push are
-  // retired (called inert), and the durable Yjs store (useAnnotationDoc) owns
-  // annotation + callout persistence, gated on the document id + user being
-  // present (no live-subscription prerequisite).
+  // Rebuild contract: the legacy cloud-sync hook is no longer mounted, and the
+  // durable Yjs store owns persistence plus the user-facing sync status.
   assert.match(APP_SOURCE, /useAnnotationDoc\(\{/);
   assert.match(
     APP_SOURCE,
     /useAnnotationDoc\(\{[\s\S]*?enabled: isActive && cloudSyncEnabled && !!pdfFile\?\.id && !!user\?\.id/
   );
-  // The legacy hook is neutralized for persistence.
-  assert.match(APP_SOURCE, /enabled: false,\s*hydrateEnabled: false/);
-  // The legacy hook still has its hydrate guard (kept until full removal).
+  assert.doesNotMatch(APP_SOURCE, /useAnnotationCloudSync\(\{/);
+  assert.match(APP_SOURCE, /status: cloudSyncStatus,\s*queueSize: cloudSyncQueueSize/);
+  // The retired hook stays independently guarded until its module is deleted.
   assert.match(CLOUD_SYNC_SOURCE, /if \(!hydrateEnabled \|\| !documentId \|\| !userId \|\| !pdfId\)/);
 });
 

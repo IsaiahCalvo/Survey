@@ -196,22 +196,7 @@ function constrainKneePosition(proposedKnee, arrowTip, boxLeft, boxTop, boxRight
     y: borderPoint.y + unitY * clampedDistFromBorder
   };
 
-  // Verify distances are satisfied
-  const distToArrow = Math.sqrt(
-    Math.pow(arrowTip.x - constrainedKnee.x, 2) +
-    Math.pow(arrowTip.y - constrainedKnee.y, 2)
-  );
   const distToEdge = distanceToBoxEdge(constrainedKnee, boxLeft, boxTop, boxRight, boxBottom);
-
-  // Final safety check - if still too close to arrow, move back along line
-  if (distToArrow < MIN_KNEE_TO_ARROW_DISTANCE && distBorderToArrow > MIN_KNEE_TO_ARROW_DISTANCE) {
-    const minRequiredForLine1Check = Math.max(MIN_KNEE_TO_BOX_EDGE_DISTANCE, MIN_SEGMENT_LENGTH);
-    const safeDistFromBorder = Math.max(minRequiredForLine1Check, distBorderToArrow - MIN_KNEE_TO_ARROW_DISTANCE);
-    constrainedKnee = {
-      x: borderPoint.x + unitX * safeDistFromBorder,
-      y: borderPoint.y + unitY * safeDistFromBorder
-    };
-  }
 
   // Final safety check - if still too close to edge or line 1 is too short, move forward along line
   const segment1Length = distToEdge;

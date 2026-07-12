@@ -139,3 +139,8 @@ test('generation rejects bad inputs', async () => {
   await assert.rejects(() => generateRowIdToken({ ...base, markerId: '' }), /markerId/);
   await assert.rejects(() => generateRowIdToken({ ...base, documentId: undefined }), /documentId/);
 });
+
+test('verifyRowIdSignature returns false when hmac base32 decode throws', async () => {
+  const parsed = parseRowIdToken(await generateRowIdToken(base));
+  assert.equal(await verifyRowIdSignature({ ...parsed, hmac: '!!!' }, SECRET), false);
+});

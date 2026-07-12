@@ -296,3 +296,99 @@ test('filtered eraser undo restores only current user deleted annotations', () =
 
   deepStrictEqual(undone[1].objects.map((obj) => obj.data.id), ['mine', 'survivor']);
 });
+
+test('precise history covers create/update singles and batch mixed ops', () => {
+  const previousPage = {
+    objects: [
+      { type: 'rect', data: { id: 'keep', authorId: 'user-a' }, left: 1 },
+      { type: 'rect', data: { id: 'move', authorId: 'user-a' }, left: 2 },
+    ],
+  };
+  const nextCreate = {
+    objects: [
+      ...previousPage.objects,
+      { type: 'circle', data: { id: 'new', authorId: 'user-a' }, left: 3 },
+    ],
+  };
+  const createAction = buildPreciseAnnotationHistoryAction({
+    pageNumber: 1,
+    previousPage,
+    nextPage: nextCreate,
+    createdIds: ['new'],
+  });
+  equal(createAction.type, 'fabric:create');
+  equal(createAction.annotationId, 'new');
+
+  const nextUpdate = {
+    objects: [
+      previousPage.objects[0],
+      { type: 'rect', data: { id: 'move', authorId: 'user-a' }, left: 9 },
+    ],
+  };
+  const updateAction = buildPreciseAnnotationHistoryAction({
+    pageNumber: 1,
+    previousPage,
+    nextPage: nextUpdate,
+    changedIds: ['move'],
+  });
+  equal(updateAction.type, 'fabric:update');
+  const invertedUpdate = invertAnnotationHistoryAction(updateAction);
+  equal(invertedUpdate.before.left, 9);
+  equal(invertedUpdate.after.left, 2);
+  equal(filterAnnotationHistoryActionByOwner(updateAction, 'user-a')?.type, 'fabric:update');
+  equal(filterAnnotationHistoryActionByOwner(updateAction, 'user-b'), null);
+
+  const nextBatch = {
+    objects: [
+      { type: 'rect', data: { id: 'move', authorId: 'user-a' }, left: 9 },
+      { type: 'circle', data: { id: 'new', authorId: 'user-a' }, left: 3 },
+    ],
+  };
+  const batchAction = buildPreciseAnnotationHistoryAction({
+    pageNumber: 1,
+    previousPage,
+    nextPage: nextBatch,
+    deletedIds: ['keep'],
+    changedIds: ['move'],
+    createdIds: ['new'],
+  });
+  equal(batchAction.type, 'fabric:batch');
+  const invertedBatch = invertAnnotationHistoryAction(batchAction);
+  equal(invertedBatch.created.length, 1);
+  equal(invertedBatch.deleted.length, 1);
+  equal(invertedBatch.updated.length, 1);
+
+  const applied = applyAnnotationHistoryAction({ 1: previousPage }, updateAction);
+  equal(applied[1].objects.find((o) => o.data.id === 'move').left, 9);
+
+  equal(invertAnnotationHistoryAction(null), null);
+  equal(invertAnnotationHistoryAction({ type: 'unknown' }), null);
+  equal(filterAnnotationHistoryActionByOwner(null, 'user-a'), null);
+  equal(filterAnnotationHistoryActionByOwner({ type: 'fabric:noop', pageNumber: 1 }, 'user-a')?.type, 'fabric:noop');
+  equal(buildPreciseAnnotationHistoryAction({
+    pageNumber: 1,
+    previousPage,
+    nextPage: previousPage,
+    createdIds: ['missing'],
+  }), null);
+
+  // Batch create when the id already exists replaces in place (line 378).
+  const replaceBatch = applyAnnotationHistoryAction(
+    { 1: { objects: [{ type: 'rect', data: { id: 'keep' }, left: 0 }] } },
+    {
+      type: 'fabric:batch',
+      pageNumber: 1,
+      created: [{ id: 'keep', annotation: { type: 'rect', data: { id: 'keep' }, left: 99 }, index: 0 }],
+      deleted: [],
+      updated: [],
+    },
+  );
+  equal(replaceBatch[1].objects.find((o) => o.data.id === 'keep').left, 99);
+
+  // No-op build (identical pages) returns null.
+  equal(buildAnnotationHistoryAction({
+    pageNumber: 1,
+    previousPage,
+    nextPage: previousPage,
+  }), null);
+});

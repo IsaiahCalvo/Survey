@@ -540,3 +540,38 @@ test('region rotation survives cascade: restoreAction carries baked rotation thr
     'space assignedPages preserved in space row',
   );
 });
+
+test('buildAnnotationDeleteHistoryRow labels circle/line/polygon/polyline types', () => {
+  for (const [type, expected] of [
+    ['circle', 'circle'],
+    ['line', 'line'],
+    ['polygon', 'polygon'],
+    ['polyline', 'polyline'],
+  ]) {
+    const row = buildAnnotationDeleteHistoryRow({
+      deleteAction: {
+        type: 'fabric:delete',
+        pageNumber: 1,
+        annotationId: `id-${type}`,
+        annotation: { type, data: { id: `id-${type}` } },
+      },
+      documentId: 'doc-1',
+      deletedAt: '2026-07-12T00:00:00Z',
+    });
+    assert.match(row.summary, new RegExp(expected, 'i'));
+  }
+});
+
+test('buildAnnotationDeleteHistoryRow falls back to generic annotation label', () => {
+  const row = buildAnnotationDeleteHistoryRow({
+    deleteAction: {
+      type: 'fabric:delete',
+      pageNumber: 2,
+      annotationId: 'id-unknown',
+      annotation: { type: 'mystery-shape', data: { id: 'id-unknown' } },
+    },
+    documentId: 'doc-1',
+    deletedAt: '2026-07-12T00:00:00Z',
+  });
+  assert.match(row.summary, /annotation/);
+});

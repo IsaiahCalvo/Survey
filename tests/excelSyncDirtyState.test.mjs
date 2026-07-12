@@ -79,3 +79,13 @@ test('computeHasPendingExcelSyncChanges returns true when template identity chan
   assert.equal(pending, true);
 });
 
+test('computeExcelSyncFingerprint keeps non-object survey marker values', () => {
+  const { hash, serialized } = computeExcelSyncFingerprint(linkedTemplate, {
+    a: { name: 'A' },
+    b: null,
+    c: 'plain',
+  });
+  assert.ok(hash);
+  assert.match(serialized, /"b":null/);
+  assert.match(serialized, /"c":"plain"/);
+});

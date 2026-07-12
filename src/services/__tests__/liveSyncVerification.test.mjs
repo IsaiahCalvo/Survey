@@ -483,3 +483,18 @@ test('VERIFY_STEP_ORDER covers exactly the VERIFY_STEP values, in order', () => 
   ]);
   assert.equal(new Set(VERIFY_STEP_ORDER).size, Object.values(VERIFY_STEP).length);
 });
+
+test('verify: resolveEligibility throw → unconfirmed refuse', async () => {
+  const result = await runLiveSyncVerification({
+    template: oneDriveTemplate,
+    graphClient: {},
+    isMicrosoftConnected: true,
+    deps: {
+      resolveEligibility: async () => { throw new Error('eligibility-boom'); },
+    },
+  });
+  assert.equal(result.ready, false);
+  assert.equal(result.verdictCode, LIVE_SYNC_GATE_REASON.UNCONFIRMED);
+  assert.equal(result.retryable, true);
+  assert.equal(result.eligibility, null);
+});

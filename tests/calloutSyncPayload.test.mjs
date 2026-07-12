@@ -56,3 +56,19 @@ test('normalizeCalloutsForSync returns stable id ordering for equivalent payload
   );
   assert.equal(getCalloutSyncFingerprint([b, a]), getCalloutSyncFingerprint([a, b]));
 });
+
+test('normalizeCalloutsForSync preserves non-finite numbers and collapses -0', () => {
+  const withSpecials = normalizeCalloutsForSync([
+    {
+      ...baseCallout,
+      id: 'inf',
+      arrowTip: { x: Infinity, y: -0 },
+      nested: [NaN, { z: -0 }],
+    },
+  ]);
+  assert.equal(withSpecials[0].arrowTip.x, Infinity);
+  assert.equal(Object.is(withSpecials[0].arrowTip.y, -0), false);
+  assert.equal(withSpecials[0].arrowTip.y, 0);
+  assert.ok(Number.isNaN(withSpecials[0].nested[0]));
+  assert.equal(withSpecials[0].nested[1].z, 0);
+});

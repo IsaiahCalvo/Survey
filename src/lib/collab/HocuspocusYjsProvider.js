@@ -71,6 +71,7 @@ export async function createHocuspocusYjsProvider({
   awareness,
   onUpdateRejected,
   onTransportState,
+  importProvider = () => import('@hocuspocus/provider'),
 }) {
   if (!documentId) throw new Error('[HocuspocusYjsProvider] documentId required');
   if (!ydoc) throw new Error('[HocuspocusYjsProvider] ydoc required (borrow from ydocRegistry)');
@@ -80,9 +81,11 @@ export async function createHocuspocusYjsProvider({
   // runtime error rather than a build break. The default-path spike (Supabase)
   // never imports this file, so the package can stay uninstalled by default.
   // UX: operators reading this error get a single actionable instruction, not a stack trace.
+  // Tests inject `importProvider` to exercise the missing-package catch without
+  // uninstalling the coverage stub.
   let HocuspocusProvider;
   try {
-    const mod = await import('@hocuspocus/provider');
+    const mod = await importProvider();
     HocuspocusProvider = mod.HocuspocusProvider;
   } catch {
     throw new Error(

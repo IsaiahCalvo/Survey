@@ -180,3 +180,22 @@ test('does not mutate the input annotation', () => {
   assert.notEqual(shape, frozen); // new object
   assert.equal(shape.left, 1);
 });
+
+test('toFabricShape binds calcTransformMatrix and getBoundingRect when present', () => {
+  const matrix = [1, 0, 0, 1, 0, 0];
+  const rect = { left: 0, top: 0, width: 5, height: 5 };
+  const ann = {
+    type: 'rect',
+    left: 1,
+    top: 2,
+    width: 10,
+    height: 8,
+    calcTransformMatrix() { return matrix; },
+    getBoundingRect() { return rect; },
+  };
+  const shape = toFabricShape(ann);
+  assert.equal(typeof shape.calcTransformMatrix, 'function');
+  assert.equal(typeof shape.getBoundingRect, 'function');
+  assert.equal(shape.calcTransformMatrix(), matrix);
+  assert.equal(shape.getBoundingRect(), rect);
+});

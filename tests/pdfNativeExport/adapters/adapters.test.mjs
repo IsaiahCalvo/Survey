@@ -145,6 +145,29 @@ test('adaptInk writes Ink with nested InkList', async () => {
   assert.deepEqual(first, [10, PAGE_H - 10, 20, PAGE_H - 20]);
 });
 
+test('adaptInk samples quadratic and cubic endpoints', async () => {
+  const ctx = await setupContext();
+  const ref = adaptInk(
+    {
+      id: 'curves',
+      type: 'path',
+      path: [
+        ['M', 0, 0],
+        ['Q', 5, 10, 10, 0],
+        ['C', 15, -5, 20, -5, 25, 0],
+      ],
+      stroke: '#222222',
+    },
+    ctx,
+  );
+  assert.ok(ref);
+  const dict = readDict(ctx.pdfDoc, ref);
+  const inkList = dict.get(PDFName.of('InkList')).asArray();
+  assert.equal(inkList.length, 1);
+  const pts = inkList[0].asArray().map((n) => (typeof n.value === 'function' ? n.value() : Number(n)));
+  assert.ok(pts.length >= 6);
+});
+
 test('adaptHighlight writes Highlight with QuadPoints in Adobe order', async () => {
   const ctx = await setupContext();
   const ref = adaptHighlight(

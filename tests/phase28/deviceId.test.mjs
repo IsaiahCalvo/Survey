@@ -13,10 +13,12 @@
 // owns it). Once landed, this scaffold flips automatically from skip → green.
 
 import { test } from 'node:test';
-import { strictEqual, ok, notStrictEqual } from 'node:assert';
+import { strictEqual, ok } from 'node:assert';
 import { existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
+
+import { getDeviceId, _resetForTest } from '../../src/lib/collab/deviceId.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(__dirname, '..', '..');
@@ -63,7 +65,6 @@ test(
   'deviceId: Electron branch returns os.hostname() exactly',
   { skip: !existsSync(TARGET) ? 'src/lib/collab/deviceId.js not yet present (Plan 28-02)' : false },
   async () => {
-    const { getDeviceId } = await import(TARGET);
     const fakeHostname = 'Isaiahs-MacBook-Pro.local';
     const ls = buildLocalStorageMock();
     const fakeWindow = {
@@ -81,7 +82,6 @@ test(
   'deviceId: Web branch returns stored device_id from localStorage when present',
   { skip: !existsSync(TARGET) ? 'src/lib/collab/deviceId.js not yet present (Plan 28-02)' : false },
   async () => {
-    const { getDeviceId } = await import(TARGET);
     const ls = buildLocalStorageMock({ device_id: 'web-uuid-cached-12345' });
     const fakeWindow = { localStorage: ls };
     await withMockWindow(fakeWindow, async () => {
@@ -95,7 +95,6 @@ test(
   'deviceId: Web branch generates UUID when no localStorage entry, persists it',
   { skip: !existsSync(TARGET) ? 'src/lib/collab/deviceId.js not yet present (Plan 28-02)' : false },
   async () => {
-    const { getDeviceId } = await import(TARGET);
     const ls = buildLocalStorageMock();
     const fakeWindow = { localStorage: ls };
     await withMockWindow(fakeWindow, async () => {
@@ -112,10 +111,11 @@ test(
   'deviceId: SSR safety — when typeof window === undefined, returns "unknown-device" without throwing',
   { skip: !existsSync(TARGET) ? 'src/lib/collab/deviceId.js not yet present (Plan 28-02)' : false },
   async () => {
-    const { getDeviceId } = await import(TARGET);
     await withMockWindow(undefined, async () => {
+      _resetForTest();
       const result = await getDeviceId();
       strictEqual(result, 'unknown-device', 'SSR / non-browser context must return the literal string "unknown-device"');
+      strictEqual(getDeviceId(), 'unknown-device');
     });
   }
 );
@@ -124,7 +124,6 @@ test(
   'deviceId: stable across calls in the same session (no regenerate)',
   { skip: !existsSync(TARGET) ? 'src/lib/collab/deviceId.js not yet present (Plan 28-02)' : false },
   async () => {
-    const { getDeviceId } = await import(TARGET);
     const ls = buildLocalStorageMock();
     const fakeWindow = { localStorage: ls };
     await withMockWindow(fakeWindow, async () => {
@@ -132,5 +131,63 @@ test(
       const second = await getDeviceId();
       strictEqual(first, second, 'getDeviceId must be stable within a session — no regeneration');
     });
+  }
+);
+
+test(
+  'deviceId: setItem failure keeps ephemeral session id; localStorage throw → ephemeral',
+  { skip: !existsSync(TARGET) ? 'src/lib/collab/deviceId.js not yet present (Plan 28-02)' : false },
+  async () => {
+    _resetForTest();
+
+    const quotaLs = {
+      getItem: () => null,
+      setItem: () => { throw new Error('quota'); },
+    };
+    await withMockWindow({ localStorage: quotaLs }, async () => {
+      const id = getDeviceId();
+      ok(typeof id === 'string' && id.length > 0);
+      strictEqual(getDeviceId(), id);
+    });
+
+    await withMockWindow({
+      localStorage: {
+        getItem() { throw new Error('blocked'); },
+        setItem() {},
+      },
+    }, async () => {
+      const id = getDeviceId();
+      ok(id.startsWith('ephemeral-'));
+    });
+
+    await withMockWindow({}, async () => {
+      const id = getDeviceId();
+      ok(id.startsWith('ephemeral-'));
+    });
+  }
+);
+
+test(
+  'deviceId: UUID fallback when crypto.randomUUID missing',
+  { skip: !existsSync(TARGET) ? 'src/lib/collab/deviceId.js not yet present (Plan 28-02)' : false },
+  async () => {
+    const savedCrypto = globalThis.crypto;
+    Object.defineProperty(globalThis, 'crypto', {
+      configurable: true,
+      value: {},
+    });
+    try {
+      _resetForTest();
+      const ls = buildLocalStorageMock();
+      await withMockWindow({ localStorage: ls }, async () => {
+        const id = getDeviceId();
+        ok(/^[0-9a-f-]{36}$/i.test(id));
+      });
+    } finally {
+      Object.defineProperty(globalThis, 'crypto', {
+        configurable: true,
+        value: savedCrypto,
+      });
+    }
   }
 );

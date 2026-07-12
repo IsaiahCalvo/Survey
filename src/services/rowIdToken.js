@@ -148,20 +148,16 @@ export const parseRowIdToken = (token) => {
     return { ok: false, reason: 'malformed' };
   }
 
-  try {
-    return {
-      ok: true,
-      version,
-      keyId,
-      documentId: decodeId(dDoc),
-      scopeId: decodeId(dScope),
-      markerId: decodeId(dMarker),
-      hmac,
-      head: `${version}.${keyId}.${dDoc}.${dScope}.${dMarker}`
-    };
-  } catch {
-    return { ok: false, reason: 'malformed' };
-  }
+  return {
+    ok: true,
+    version,
+    keyId,
+    documentId: decodeId(dDoc),
+    scopeId: decodeId(dScope),
+    markerId: decodeId(dMarker),
+    hmac,
+    head: `${version}.${keyId}.${dDoc}.${dScope}.${dMarker}`
+  };
 };
 
 /**

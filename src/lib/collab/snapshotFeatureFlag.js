@@ -32,12 +32,10 @@ export function isSnapshotEnabled() {
   }
 
   // Tier 2: build-time env var (Vite injects import.meta.env at build time).
-  try {
-    if (typeof import.meta !== 'undefined' && import.meta?.env?.[ENV_VAR_NAME] === '1') {
-      return true;
-    }
-  } catch {
-    // ignore — import.meta may not exist in non-module/non-vite contexts
+  // Tests may inject via globalThis.__VITE_IMPORT_META_ENV__.
+  const viteEnv = globalThis.__VITE_IMPORT_META_ENV__ ?? import.meta?.env;
+  if (viteEnv?.[ENV_VAR_NAME] === '1') {
+    return true;
   }
 
   // Tier 3: default.

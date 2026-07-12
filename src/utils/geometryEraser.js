@@ -2,11 +2,9 @@
  * geometryEraser.js — boolean-subtracts an eraser stroke from a Fabric.js path's
  * geometry, producing new path commands ("cookie-cutter" erase).
  *
- * Exports booleanErasePath (flattens the path, converts the stroke to a constant-
- * width ribbon polygon via bisector miter offsets, unions swept eraser capsules, and
- * Martinez-diffs them; returns { pathData, isConvertedToOutline }) and
- * splitPathDataByEraser (a simpler segment-cutting fallback). Used by the eraser
- * tool to reshape ink strokes in local path space.
+ * Exports booleanErasePath (flattens the path, unions swept eraser capsules, and
+ * Martinez-diffs them; returns { pathData, isConvertedToOutline }). Used by the
+ * eraser tool to reshape ink strokes in local path space.
  */
 import { diff, union } from 'martinez-polygon-clipping';
 // Copied from geometryHitTest.js to avoid circular dependencies or just for self-containment
@@ -121,166 +119,6 @@ const flattenPathToPolylines = (pathData) => {
 };
 
 /**
- * Checks intersection between a line segment and a circle.
- * Returns intersection t values (0..1).
- */
-const intersectLineCircle = (p1, p2, circle) => {
-    const dx = p2.x - p1.x;
-    const dy = p2.y - p1.y;
-    const lx = p1.x - circle.x;
-    const ly = p1.y - circle.y;
-
-    const a = dx * dx + dy * dy;
-    const b = 2 * (lx * dx + ly * dy);
-    const c = lx * lx + ly * ly - circle.r * circle.r;
-
-    if (a < 1e-9) return []; // Points are too close
-
-    const discriminant = b * b - 4 * a * c;
-    if (discriminant < 0) return [];
-
-    const sqrtDisc = Math.sqrt(discriminant);
-    const t1 = (-b - sqrtDisc) / (2 * a);
-    const t2 = (-b + sqrtDisc) / (2 * a);
-
-    const intersections = [];
-    if (t1 >= 0 && t1 <= 1) intersections.push(t1);
-    if (t2 >= 0 && t2 <= 1) intersections.push(t2);
-
-    return intersections.sort((a, b) => a - b);
-};
-
-/**
- * Subtracts eraser circles from a single polyline.
- * Returns array of polylines.
- */
-const subtractEraserFromPolyline = (polyline, eraserCircles) => {
-    if (polyline.length < 2) return [polyline];
-
-    // We process the polyline segment by segment.
-    // This is a naive implementation: O(N_segments * M_circles). 
-    // For ink strokes, N is usually < 1000, M < 100.
-
-    let currentSegments = [polyline]; // Start with the whole polyline
-
-    for (const circle of eraserCircles) {
-        const nextSegments = [];
-
-        for (const segmentPoints of currentSegments) {
-            if (segmentPoints.length < 2) {
-                nextSegments.push(segmentPoints);
-                continue;
-            }
-
-            // Check if this polyline is completely outside the circle (bounding box check)
-            let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-            for (const p of segmentPoints) {
-                minX = Math.min(minX, p.x);
-                maxX = Math.max(maxX, p.x);
-                minY = Math.min(minY, p.y);
-                maxY = Math.max(maxY, p.y);
-            }
-
-            if (minX > circle.x + circle.r || maxX < circle.x - circle.r ||
-                minY > circle.y + circle.r || maxY < circle.y - circle.r) {
-                nextSegments.push(segmentPoints);
-                continue;
-            }
-
-            // If bounding box overlaps, perform detailed cutting
-            let currentPiece = [];
-
-            for (let i = 0; i < segmentPoints.length - 1; i++) {
-                const p1 = segmentPoints[i];
-                const p2 = segmentPoints[i + 1];
-
-                // Check if p1 is inside
-                const p1In = (p1.x - circle.x) ** 2 + (p1.y - circle.y) ** 2 <= circle.r ** 2;
-                // Check if p2 is inside
-                const p2In = (p2.x - circle.x) ** 2 + (p2.y - circle.y) ** 2 <= circle.r ** 2;
-
-                if (p1In && p2In) {
-                    // Both inside: discard segment
-                    if (currentPiece.length > 0) {
-                        nextSegments.push(currentPiece);
-                        currentPiece = [];
-                    }
-                } else if (!p1In && !p2In) {
-                    // Both endpoints outside. Check for intersection.
-                    const ts = intersectLineCircle(p1, p2, circle);
-                    if (ts.length === 2) {
-                        // Enters and exits
-                        const int1 = {
-                            x: p1.x + ts[0] * (p2.x - p1.x),
-                            y: p1.y + ts[0] * (p2.y - p1.y)
-                        };
-                        const int2 = {
-                            x: p1.x + ts[1] * (p2.x - p1.x),
-                            y: p1.y + ts[1] * (p2.y - p1.y)
-                        };
-
-                        if (currentPiece.length === 0) currentPiece.push(p1);
-                        currentPiece.push(int1);
-                        nextSegments.push(currentPiece);
-                        currentPiece = [int2]; // Start new piece from exit
-                    } else {
-                        // No intersection or touches: keep segment
-                        if (currentPiece.length === 0) currentPiece.push(p1);
-                        currentPiece.push(p2);
-                    }
-                } else if (p1In && !p2In) {
-                    // Starts inside, exits
-                    if (currentPiece.length > 0) {
-                        nextSegments.push(currentPiece);
-                        currentPiece = [];
-                    }
-                    const ts = intersectLineCircle(p1, p2, circle);
-                    if (ts.length > 0) {
-                        const intPt = {
-                            x: p1.x + ts[0] * (p2.x - p1.x),
-                            y: p1.y + ts[0] * (p2.y - p1.y)
-                        };
-                        currentPiece.push(intPt);
-                    }
-                    currentPiece.push(p2);
-                } else if (!p1In && p2In) {
-                    // Starts outside, enters
-                    if (currentPiece.length === 0) currentPiece.push(p1);
-
-                    const ts = intersectLineCircle(p1, p2, circle);
-                    if (ts.length > 0) {
-                        const intPt = {
-                            x: p1.x + ts[0] * (p2.x - p1.x),
-                            y: p1.y + ts[0] * (p2.y - p1.y)
-                        };
-                        currentPiece.push(intPt);
-                    }
-                    nextSegments.push(currentPiece);
-                    currentPiece = [];
-                }
-            }
-            if (currentPiece.length > 0) {
-                nextSegments.push(currentPiece);
-            }
-        }
-        currentSegments = nextSegments;
-    }
-
-    return currentSegments;
-};
-
-
-/**
- * Main function to split path data by eraser path.
- * Modifies the path data string/structure.
- * 
- * @param {Array} pathData - Fabric.js path commands usually found in pathObj.path
- * @param {Object} eraserPath - { points: [{x,y}, ...] }
- * @param {number} eraserRadius
- * @param {Object} pathObj - The fabric object (wrapper for transform info)
- */
-
-/**
  * Creates a circular polygon (approximate)
  */
 const createCirclePolygon = (cx, cy, r, segments = 36) => {
@@ -300,12 +138,10 @@ const createCirclePolygon = (cx, cy, r, segments = 36) => {
  * capsule and the capsules are unioned into one continuous swept disk.
  */
 const createCapsulePolygon = (start, end, radius, arcSegments = 18) => {
+    // Callers only pass compacted samples (≥0.1 apart), so a zero-length
+    // circle fallback is unreachable here.
     const dx = end.x - start.x;
     const dy = end.y - start.y;
-    if (Math.hypot(dx, dy) < 1e-6) {
-        return createCirclePolygon(start.x, start.y, radius, arcSegments * 2);
-    }
-
     const direction = Math.atan2(dy, dx);
     const startAngle = direction + Math.PI / 2;
     const ring = [];
@@ -349,105 +185,6 @@ const createSweptEraserPolygon = (samples) => {
         swept = swept ? union(swept, capsule) : capsule;
     }
     return swept || [];
-};
-
-/**
- * Converts a simple polyline stroke to a polygon outline (ribbon).
- *
- * Each interior vertex uses the BISECTOR of its two adjacent segments (with a
- * miter-length compensation), so the ribbon stays constant width perpendicular
- * to the centerline curve. The earlier naive version only used one segment's
- * perpendicular per vertex, which produced a visible "jog" at every bend —
- * that jog is what made newly-erased thin pen strokes look slightly fatter
- * than the original stroked rendering. With bisector offsets + a conservative
- * miter limit, the ribbon matches the visual thickness of the original stroke
- * (which the browser renders with round joins) closely enough that the first-
- * erase "thickening" is no longer perceptible.
- */
-const strokeToPolygon = (polyline, width) => {
-    if (polyline.length < 2) return null;
-
-    const halfWidth = width / 2;
-    const n = polyline.length;
-    const leftSide = new Array(n);
-    const rightSide = new Array(n);
-
-    // Precompute per-segment unit perpendiculars.
-    // perpSeg[i] = normalized perpendicular of segment polyline[i] -> polyline[i+1].
-    const perpSeg = new Array(n - 1);
-    for (let i = 0; i < n - 1; i++) {
-        const p1 = polyline[i];
-        const p2 = polyline[i + 1];
-        const dx = p2.x - p1.x;
-        const dy = p2.y - p1.y;
-        const len = Math.hypot(dx, dy);
-        if (len === 0) {
-            perpSeg[i] = null;
-        } else {
-            perpSeg[i] = { x: -dy / len, y: dx / len };
-        }
-    }
-
-    // Find first and last valid segment indices (non-degenerate).
-    let firstSeg = 0;
-    while (firstSeg < perpSeg.length && !perpSeg[firstSeg]) firstSeg++;
-    let lastSeg = perpSeg.length - 1;
-    while (lastSeg >= 0 && !perpSeg[lastSeg]) lastSeg--;
-    if (firstSeg > lastSeg) return null;
-
-    const MITER_LIMIT = 4;
-
-    for (let i = 0; i < n; i++) {
-        const p = polyline[i];
-        let offX, offY;
-
-        // Neighboring segment perpendiculars (may be null at degenerate spots).
-        const prev = i > 0 ? perpSeg[i - 1] : null;
-        const next = i < perpSeg.length ? perpSeg[i] : null;
-
-        if (prev && next) {
-            // Interior vertex — bisector direction with miter-length compensation.
-            let bx = prev.x + next.x;
-            let by = prev.y + next.y;
-            const blen = Math.hypot(bx, by);
-            if (blen < 1e-6) {
-                // Segments are anti-parallel; fall back to one perpendicular.
-                offX = prev.x * halfWidth;
-                offY = prev.y * halfWidth;
-            } else {
-                bx /= blen;
-                by /= blen;
-                // Miter compensation so the ribbon stays constant width:
-                // offset = halfWidth / cos(angle/2), where cos(angle/2) = bisector · segmentPerpendicular.
-                const dot = prev.x * bx + prev.y * by;
-                let miter = dot !== 0 ? 1 / dot : 1;
-                if (miter > MITER_LIMIT) miter = MITER_LIMIT;
-                if (miter < -MITER_LIMIT) miter = -MITER_LIMIT;
-                offX = bx * halfWidth * miter;
-                offY = by * halfWidth * miter;
-            }
-        } else if (next) {
-            offX = next.x * halfWidth;
-            offY = next.y * halfWidth;
-        } else if (prev) {
-            offX = prev.x * halfWidth;
-            offY = prev.y * halfWidth;
-        } else {
-            offX = 0;
-            offY = 0;
-        }
-
-        leftSide[i] = { x: p.x + offX, y: p.y + offY };
-        rightSide[i] = { x: p.x - offX, y: p.y - offY };
-    }
-
-    // Construct polygon ring (CCW: leftSide forward, then rightSide reversed).
-    const ring = [];
-    for (let i = 0; i < n; i++) ring.push([leftSide[i].x, leftSide[i].y]);
-    for (let i = n - 1; i >= 0; i--) ring.push([rightSide[i].x, rightSide[i].y]);
-    if (ring.length > 0) ring.push([ring[0][0], ring[0][1]]); // close
-
-    return [ring];
 };
 
 /**

@@ -9,6 +9,9 @@ import {
 import {
   eraserStrokeTouchesObject,
   getEraserDeleteDiagnostics,
+  getEraserStrokeBounds,
+  sampleEraserStroke,
+  getEraserCandidateId,
 } from '../src/utils/eraserHitTest.js';
 
 function rect(id, left, top, width = 20, height = 20) {
@@ -118,4 +121,38 @@ test('the delete set sent to sync matches the local eraser delete set', () => {
 
   assert.deepEqual(localDeleteSet, ['a', 'b']);
   assert.deepEqual(syncDeleteSet, localDeleteSet);
+});
+
+test('getEraserStrokeBounds expands finite points by radius', () => {
+  assert.equal(getEraserStrokeBounds([], 5), null);
+  assert.equal(getEraserStrokeBounds([{ x: Number.NaN, y: 1 }], 5), null);
+  const bounds = getEraserStrokeBounds([{ x: 0, y: 0 }, { x: 10, y: 4 }], 2);
+  assert.deepEqual(bounds, {
+    left: -2,
+    top: -2,
+    right: 12,
+    bottom: 6,
+    width: 14,
+    height: 8,
+  });
+});
+
+test('sampleEraserStroke densifies multi-point strokes', () => {
+  assert.deepEqual(sampleEraserStroke([{ x: 1, y: 1 }], 4), [{ x: 1, y: 1 }]);
+  const samples = sampleEraserStroke([{ x: 0, y: 0 }, { x: 20, y: 0 }], 4);
+  assert.ok(samples.length > 2);
+  assert.equal(samples[0].x, 0);
+  assert.equal(samples[samples.length - 1].x, 20);
+});
+
+test('eraserStrokeTouchesObject rejects empty inputs', () => {
+  assert.equal(eraserStrokeTouchesObject({ eraserPoints: [], eraserRadius: 2, object: rect('x', 0, 0) }), false);
+  assert.equal(eraserStrokeTouchesObject({ eraserPoints: [{ x: 1, y: 1 }], eraserRadius: 2, object: null }), false);
+});
+
+test('getEraserCandidateId prefers history id then callout fallbacks', () => {
+  assert.equal(getEraserCandidateId({ data: { id: 'hist-1' } }), 'hist-1');
+  assert.equal(getEraserCandidateId({ callout: { id: 'c1' } }), 'c1');
+  assert.equal(getEraserCandidateId({ type: 'callout', id: 'c2' }), 'c2');
+  assert.equal(getEraserCandidateId({}, 3), 'index:3');
 });

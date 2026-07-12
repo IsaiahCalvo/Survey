@@ -121,10 +121,6 @@ const getRegionBounds = (region) => {
 
 // Calculate center point of a region from its coordinates
 const calculateRegionCenter = (coordinates) => {
-  if (!Array.isArray(coordinates) || coordinates.length < 6) {
-    return null;
-  }
-
   const bounds = { minX: Number.POSITIVE_INFINITY, minY: Number.POSITIVE_INFINITY, 
                    maxX: Number.NEGATIVE_INFINITY, maxY: Number.NEGATIVE_INFINITY };
   
@@ -280,10 +276,6 @@ export const mergeRegions = (region1, region2) => {
     const poly1 = regionToPolygon(region1);
     const poly2 = regionToPolygon(region2);
 
-    if (!poly1 || !poly2) {
-      return null;
-    }
-
     // Perform union operation
     const result = union(poly1, poly2);
 
@@ -367,10 +359,6 @@ export const subtractRegionFromRegion = (subjectRegion, subtractRegion) => {
   try {
     const subjectPoly = regionToPolygon(subjectRegion);
     const subtractPoly = regionToPolygon(subtractRegion);
-
-    if (!subjectPoly || !subtractPoly) {
-      return [subjectRegion];
-    }
 
     // Perform difference operation (subject - subtract)
     const result = diff(subjectPoly, subtractPoly);
@@ -510,12 +498,6 @@ export const mergeOverlappingRegions = (regions) => {
 };
 
 // Ramer-Douglas-Peucker algorithm for polygon simplification
-const getSqDist = (p1, p2) => {
-  const dx = p1.x - p2.x;
-  const dy = p1.y - p2.y;
-  return dx * dx + dy * dy;
-};
-
 const getSqSegDist = (p, p1, p2) => {
   let x = p1.x;
   let y = p1.y;

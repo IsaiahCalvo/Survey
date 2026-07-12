@@ -164,3 +164,18 @@ test(
     );
   },
 );
+
+test(
+  'permissionScope #7: getAnnotationAuthorId falls back through meta/authorId/data.authorId/data.userId',
+  { skip: !existsSync(TARGET) ? 'permissionScope module not yet present (Plan 35-02)' : false },
+  async () => {
+    const { getAnnotationAuthorId } = await import(TARGET_URL);
+    strictEqual(getAnnotationAuthorId(null), null);
+    strictEqual(getAnnotationAuthorId({ meta: { authorId: 'meta-author' } }), 'meta-author');
+    strictEqual(getAnnotationAuthorId({ authorId: 'root-author' }), 'root-author');
+    strictEqual(getAnnotationAuthorId({ data: { authorId: 'data-author' } }), 'data-author');
+    strictEqual(getAnnotationAuthorId({ data: { userId: 'legacy-user' } }), 'legacy-user');
+    strictEqual(getAnnotationAuthorId({ data: {} }), null);
+    strictEqual(getAnnotationAuthorId({}), null);
+  },
+);

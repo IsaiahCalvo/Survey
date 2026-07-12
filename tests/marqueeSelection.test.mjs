@@ -11,6 +11,7 @@ import {
   isBBoxFullyContained,
   isBBoxOverlapping,
   resolveMarqueeHits,
+  filterMarqueeHits,
 } from '../src/utils/marqueeSelection.js';
 
 test('MIN_DRAG_PX is 5 (matches dormant reference)', () => {
@@ -400,4 +401,85 @@ test('resolveMarqueeHits: crossing mode fast-rejects non-overlapping annotations
     pageHeight: 800,
   });
   assert.deepEqual(annotationIndices, []);
+});
+
+test('filterMarqueeHits passthrough and collaborator ownership filter', () => {
+  const empty = [];
+  assert.equal(filterMarqueeHits(empty, { objects: [] }, 'v', 'o'), empty);
+
+  const hits = [0, 1];
+  assert.equal(filterMarqueeHits(hits, { objects: [{}, {}] }, null, 'owner'), hits);
+
+  const annotations = {
+    objects: [
+      { type: 'rect', data: { authorId: 'viewer-1' } },
+      { type: 'rect', data: { authorId: 'other' } },
+      null,
+    ],
+  };
+  const filtered = filterMarqueeHits([0, 1, 2], annotations, 'viewer-1', 'owner-doc');
+  assert.deepEqual(filtered, [0]);
+
+  const ownerHits = [0, 1];
+  const ownerFiltered = filterMarqueeHits(ownerHits, annotations, 'owner-doc', 'owner-doc');
+  assert.equal(ownerFiltered, ownerHits);
+});
+
+test('resolveMarqueeHits emits diagnostics and skips missing selectable indices', () => {
+  const diags = [];
+  const result = resolveMarqueeHits({
+    marqueeRect: { left: 0, top: 0, right: 400, bottom: 400 },
+    direction: 'window',
+    annotations: {
+      objects: [
+        null,
+        { type: 'rect', left: 10, top: 10, width: 20, height: 20 },
+        { type: 'rect', left: 10, top: 10, width: 20, height: 20 },
+      ],
+    },
+    callouts: [
+      {
+        id: 'c1',
+        pageNumber: 1,
+        arrowTip: { x: 0.02, y: 0.02 },
+        knee: { x: 0.04, y: 0.04 },
+        textBoxPosition: { x: 0.05, y: 0.05 },
+        textBoxWidth: 0.05,
+        textBoxHeight: 0.04,
+      },
+      { id: 'c2', pageNumber: 2 },
+    ],
+    pageWidth: 1000,
+    pageHeight: 800,
+    pageNumber: 1,
+    selectableAnnotationIndices: new Set([1]),
+    onCandidateDiagnostic: (entry) => diags.push(entry),
+  });
+  assert.ok(diags.some((d) => d.reason === 'missing-object-or-type'));
+  assert.ok(diags.some((d) => d.reason === 'not-rendered-or-not-interactive'));
+  assert.deepEqual(result.annotationIndices, [1]);
+  assert.deepEqual(result.calloutIds, ['c1']);
+});
+
+test('resolveMarqueeHits skips annotations whose bbox lookup throws', () => {
+  const diags = [];
+  const bad = {
+    type: 'rect',
+    get left() { throw new Error('bbox-boom'); },
+    top: 0,
+    width: 10,
+    height: 10,
+  };
+  const result = resolveMarqueeHits({
+    marqueeRect: { left: 0, top: 0, right: 100, bottom: 100 },
+    direction: 'window',
+    annotations: { objects: [bad, { type: 'rect', left: 10, top: 10, width: 20, height: 20 }] },
+    callouts: [],
+    pageWidth: 1000,
+    pageHeight: 800,
+    pageNumber: 1,
+    onCandidateDiagnostic: (entry) => diags.push(entry),
+  });
+  assert.ok(diags.some((d) => d.reason === 'missing-bbox'));
+  assert.deepEqual(result.annotationIndices, [1]);
 });

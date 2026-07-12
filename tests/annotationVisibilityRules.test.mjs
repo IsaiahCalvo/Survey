@@ -520,3 +520,121 @@ describe('shouldStampActiveRegionId', () => {
     );
   });
 });
+
+describe('visibility helpers remaining null / layer branches', () => {
+  it('getActivePageRegionId returns null for missing space/page inputs', () => {
+    assert.equal(getActivePageRegionId({}), null);
+    assert.equal(getActivePageRegionId({ activeSpaceId: 's', pageId: 1, spaces: null }), null);
+    assert.equal(getActivePageRegionId({
+      activeSpaceId: 'missing',
+      pageId: 1,
+      spaces: [{ id: 'other', assignedPages: [] }],
+    }), null);
+    assert.equal(getActivePageRegionId({
+      activeSpaceId: 's1',
+      pageId: 9,
+      spaces: [{ id: 's1', assignedPages: [{ pageId: 1, regions: [{ regionId: 'r' }] }] }],
+    }), null);
+  });
+
+  it('getSpaceIdForRegionFromSpaces returns null when region is absent', () => {
+    assert.equal(getSpaceIdForRegionFromSpaces(null, []), null);
+    assert.equal(getSpaceIdForRegionFromSpaces('r-x', [{ id: 's', assignedPages: [{ regions: [] }] }]), null);
+  });
+
+  it('isAnnotationVisibleInContext honors layerVisibility and scoped-region edges', () => {
+    const spaces = [{
+      id: 'space-1',
+      assignedPages: [{ pageId: 1, regions: [{ regionId: 'region-1' }] }],
+    }];
+
+    assert.equal(isAnnotationVisibleInContext({ annotation: null }), false);
+    assert.equal(
+      isAnnotationVisibleInContext({
+        annotation: { id: 'a', layer: 'pdf', moduleId: null, regionId: null },
+        pageNumber: 1,
+        layerVisibility: { pdf: false },
+      }),
+      false,
+    );
+
+    // Scoped region with activeRegions overlay on → visible when space matches
+    assert.equal(
+      isAnnotationVisibleInContext({
+        annotation: { id: 'r1', moduleId: null, regionId: 'region-1' },
+        pageNumber: 1,
+        selectedSpaceId: 'space-1',
+        activeSpaceId: 'space-1',
+        activeRegions: [{ regionId: 'region-1' }],
+        spaces,
+        isRegionOverlayEnabled: () => true,
+        showSurveyPanel: false,
+        selectedModuleId: null,
+      }),
+      true,
+    );
+
+    // Scoped region, activeSpaceId null → hidden
+    assert.equal(
+      isAnnotationVisibleInContext({
+        annotation: { id: 'r1', moduleId: null, regionId: 'region-1' },
+        pageNumber: 1,
+        selectedSpaceId: 'space-1',
+        activeSpaceId: null,
+        activeRegions: null,
+        activeRegionId: null,
+        spaces,
+        showSurveyPanel: false,
+        selectedModuleId: null,
+      }),
+      false,
+    );
+
+    // Canvas annotation while survey panel open with selected module → hidden
+    assert.equal(
+      isAnnotationVisibleInContext({
+        annotation: { id: 'c1', moduleId: null, regionId: null },
+        pageNumber: 1,
+        selectedSpaceId: null,
+        activeSpaceId: null,
+        showSurveyPanel: true,
+        selectedModuleId: 'module-1',
+        spaces: [],
+      }),
+      false,
+    );
+
+    // Non-scoped annotation with activeRegions overlay → matchesSpace=true branch
+    assert.equal(
+      isAnnotationVisibleInContext({
+        annotation: { id: 'c2', moduleId: null, regionId: null },
+        pageNumber: 1,
+        selectedSpaceId: 'space-1',
+        activeSpaceId: 'space-1',
+        activeRegions: [{ regionId: 'region-1' }],
+        spaces,
+        isRegionOverlayEnabled: () => true,
+        showSurveyPanel: false,
+        selectedModuleId: null,
+        getCanvasAnnotationVisibilityState: () => ({ canvasVisible: true, surveyVisible: true }),
+      }),
+      true,
+    );
+
+    // Scoped region, space active, no overlay regions, no activeRegionId → hidden
+    assert.equal(
+      isAnnotationVisibleInContext({
+        annotation: { id: 'r2', moduleId: null, regionId: 'region-1' },
+        pageNumber: 1,
+        selectedSpaceId: 'space-1',
+        activeSpaceId: 'space-1',
+        activeRegions: null,
+        activeRegionId: null,
+        spaces,
+        showSurveyPanel: false,
+        selectedModuleId: null,
+      }),
+      false,
+    );
+  });
+});

@@ -27,6 +27,17 @@ test('classifyCalloutShrink treats undo-backed removal as normal', () => {
   equal(result.level, 'normal');
 });
 
+test('classifyCalloutShrink returns none when count did not shrink', () => {
+  const result = classifyCalloutShrink({
+    priorCount: 2,
+    currentCount: 2,
+    deletedIds: [],
+    intent: null,
+  });
+  equal(result.level, 'none');
+  equal(result.expected, true);
+});
+
 test('classifyCalloutShrink warns when callouts disappear without intent', () => {
   const result = classifyCalloutShrink({
     priorCount: 1,

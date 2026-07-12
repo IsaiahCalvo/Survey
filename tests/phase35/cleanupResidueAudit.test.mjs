@@ -30,13 +30,14 @@
 import { test } from 'node:test';
 import { strictEqual, deepStrictEqual, ok } from 'node:assert/strict';
 import { existsSync } from 'node:fs';
-import { fileURLToPath, pathToFileURL } from 'node:url';
+import { fileURLToPath } from 'node:url';
 import path from 'node:path';
+
+import { auditResidue } from '../../src/lib/collab/cleanupResidueAudit.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const TARGET = path.resolve(__dirname, '../../src/lib/collab/cleanupResidueAudit.js');
-const TARGET_URL = pathToFileURL(TARGET).href;
 
 // --- Fixtures -----------------------------------------------------------
 
@@ -58,7 +59,6 @@ test(
   'cleanupResidueAudit #1: auditResidue({ cloudAnnotations, viewerId, isViewerOwner: true, dismissedDocIds: new Set() }) returns { residueIds: [...], count: N } when viewer is owner AND ownership criterion matches AND not dismissed',
   { skip: !existsSync(TARGET) ? 'cleanupResidueAudit module not yet present (Plan 35-05)' : false },
   async () => {
-    const { auditResidue } = await import(TARGET_URL);
     const cloudAnnotations = [
       // Owner authored these; lastEditedAt before the most-recent local
       // user-deleted entry (1000) → suspected residue.
@@ -90,7 +90,6 @@ test(
   'cleanupResidueAudit #2: returns { residueIds: [], count: 0 } when isViewerOwner is false (collaborators never see the banner)',
   { skip: !existsSync(TARGET) ? 'cleanupResidueAudit module not yet present (Plan 35-05)' : false },
   async () => {
-    const { auditResidue } = await import(TARGET_URL);
     const cloudAnnotations = [
       makeCloudAnno('a1', COLLAB_ID, 500),
       makeCloudAnno('a2', COLLAB_ID, 600),
@@ -115,7 +114,6 @@ test(
   'cleanupResidueAudit #3: returns { residueIds: [], count: 0 } when documentId is in dismissedDocIds (sticky-per-document dismissal)',
   { skip: !existsSync(TARGET) ? 'cleanupResidueAudit module not yet present (Plan 35-05)' : false },
   async () => {
-    const { auditResidue } = await import(TARGET_URL);
     const cloudAnnotations = [
       makeCloudAnno('a1', OWNER_ID, 500),
       makeCloudAnno('a2', OWNER_ID, 600),
@@ -140,7 +138,6 @@ test(
   'cleanupResidueAudit #4: residueIds are annotation IDs whose authorId === viewerId AND whose lastEditedAt is older than the most recent local user-deleted-set entry (indicating the brake suppressed the local delete in earlier sessions)',
   { skip: !existsSync(TARGET) ? 'cleanupResidueAudit module not yet present (Plan 35-05)' : false },
   async () => {
-    const { auditResidue } = await import(TARGET_URL);
     // Most recent local user-deleted entry timestamp = 5000.
     // Anything authored by viewer with lastEditedAt < 5000 is residue.
     // Anything authored by viewer with lastEditedAt >= 5000 is NOT residue
@@ -173,7 +170,6 @@ test(
   'cleanupResidueAudit #5: pure function — read-only against cloudAnnotations',
   { skip: !existsSync(TARGET) ? 'cleanupResidueAudit module not yet present (Plan 35-05)' : false },
   async () => {
-    const { auditResidue } = await import(TARGET_URL);
     const cloudAnnotations = [
       makeCloudAnno('a1', OWNER_ID, 500),
       makeCloudAnno('a2', OWNER_ID, 600),
@@ -198,5 +194,36 @@ test(
     strictEqual(JSON.stringify(localUserDeletedSet), localBefore, 'localUserDeletedSet not mutated');
     deepStrictEqual([...dismissed], dismissedBefore, 'dismissedDocIds not mutated');
     ok(true, 'pure function contract upheld');
+  },
+);
+
+test(
+  'cleanupResidueAudit #6: defensive guards return empty audit',
+  { skip: !existsSync(TARGET) ? 'cleanupResidueAudit module not yet present (Plan 35-05)' : false },
+  () => {
+    deepStrictEqual(auditResidue({ cloudAnnotations: null, viewerId: OWNER_ID, isViewerOwner: true }), {
+      residueIds: [],
+      count: 0,
+    });
+    deepStrictEqual(auditResidue({ cloudAnnotations: [], viewerId: '', isViewerOwner: true }), {
+      residueIds: [],
+      count: 0,
+    });
+    deepStrictEqual(auditResidue({
+      cloudAnnotations: [makeCloudAnno('a1', OWNER_ID, 1)],
+      viewerId: OWNER_ID,
+      isViewerOwner: true,
+      dismissedDocIds: new Set(),
+      documentId: 'doc-1',
+      localUserDeletedSet: null,
+    }), { residueIds: [], count: 0 });
+    deepStrictEqual(auditResidue({
+      cloudAnnotations: [makeCloudAnno('a1', OWNER_ID, 1)],
+      viewerId: OWNER_ID,
+      isViewerOwner: true,
+      dismissedDocIds: new Set(),
+      documentId: 'doc-1',
+      localUserDeletedSet: [{ id: 'x' }, null],
+    }), { residueIds: [], count: 0 });
   },
 );

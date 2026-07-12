@@ -18,6 +18,26 @@ test('sync status view model exposes pending debounce as visible saving state', 
     getSyncStatusViewModel({ stage: 'syncing' }, 0),
     { state: 'syncing', label: 'Syncing...' },
   );
+  assert.deepEqual(
+    getSyncStatusViewModel({ stage: 'hydrating' }, 0),
+    { state: 'syncing', label: 'Syncing...' },
+  );
+  assert.deepEqual(
+    getSyncStatusViewModel({ stage: 'migrating' }, 0),
+    { state: 'syncing', label: 'Syncing...' },
+  );
+  assert.deepEqual(
+    getSyncStatusViewModel({ stage: 'idle' }, 0),
+    { state: 'synced', label: 'Up to date' },
+  );
+  assert.deepEqual(
+    getSyncStatusViewModel(null, 0),
+    { state: 'synced', label: 'Up to date' },
+  );
+  assert.deepEqual(
+    getSyncStatusViewModel({ stage: 'idle' }, 0, true),
+    { state: 'syncing', label: 'Syncing now...' },
+  );
 });
 
 test('sync status view model keeps queued and error states visible', () => {

@@ -825,29 +825,6 @@ export const doesRectIntersectLineSegment = (selRect, lineStart, lineEnd, stroke
     }
   }
 
-  // Additional check: sample points along the line to catch cases where the line
-  // passes through the rect but doesn't intersect edges (e.g., line fully inside)
-  const lineLength = Math.sqrt(
-    Math.pow(lineEnd.x - lineStart.x, 2) + Math.pow(lineEnd.y - lineStart.y, 2)
-  );
-  if (lineLength > 0) {
-    // Increased sampling density: sample every ~5px instead of ~10px for better detection
-    const numSamples = Math.max(4, Math.ceil(lineLength / 5)); // Changed from /10 to /5, min from 3 to 4
-    for (let i = 0; i <= numSamples; i++) {
-      const t = i / numSamples;
-      const samplePoint = {
-        x: lineStart.x + t * (lineEnd.x - lineStart.x),
-        y: lineStart.y + t * (lineEnd.y - lineStart.y)
-      };
-
-      // Check if this point is inside the expanded rect
-      if (samplePoint.x >= rect.left && samplePoint.x <= rect.right &&
-        samplePoint.y >= rect.top && samplePoint.y <= rect.bottom) {
-        return true;
-      }
-    }
-  }
-
   return false;
 };
 
@@ -943,9 +920,8 @@ export const doesRectIntersectEllipse = (selRect, cx, cy, rx, ry, hasFill, strok
     return true;
   }
 
-  // Check if rect edges intersect ellipse
-  // Sample points along ellipse and check if any fall within rect
-  // Increased from 32 to 64 samples for better coverage (matches path segment density)
+  // Check if rect edges intersect ellipse by sampling points along the
+  // ellipse perimeter and testing containment in the selection rect.
   const samples = 64;
   for (let i = 0; i < samples; i++) {
     const angle = (2 * Math.PI * i) / samples;
@@ -955,48 +931,6 @@ export const doesRectIntersectEllipse = (selRect, cx, cy, rx, ry, hasFill, strok
     if (x >= selRect.left && x <= selRect.right &&
       y >= selRect.top && y <= selRect.bottom) {
       return true;
-    }
-  }
-
-  // Check if selection rect edges intersect ellipse boundary
-  // This catches cases where edges cross without corners/center being inside
-  const selRectEdges = [
-    [{ x: selRect.left, y: selRect.top }, { x: selRect.right, y: selRect.top }],
-    [{ x: selRect.right, y: selRect.top }, { x: selRect.right, y: selRect.bottom }],
-    [{ x: selRect.right, y: selRect.bottom }, { x: selRect.left, y: selRect.bottom }],
-    [{ x: selRect.left, y: selRect.bottom }, { x: selRect.left, y: selRect.top }]
-  ];
-
-  // For each edge, check if it intersects the ellipse
-  // Sample the edge and check distance to ellipse boundary
-  for (const [edgeStart, edgeEnd] of selRectEdges) {
-    const edgeLength = Math.sqrt(
-      Math.pow(edgeEnd.x - edgeStart.x, 2) + Math.pow(edgeEnd.y - edgeStart.y, 2)
-    );
-    const samplesPerEdge = Math.max(8, Math.ceil(edgeLength / 5)); // Sample every ~5px
-
-    for (let i = 0; i <= samplesPerEdge; i++) {
-      const t = i / samplesPerEdge;
-      const point = {
-        x: edgeStart.x + t * (edgeEnd.x - edgeStart.x),
-        y: edgeStart.y + t * (edgeEnd.y - edgeStart.y)
-      };
-
-      // Check if this point on the edge is on or inside the ellipse
-      if (hasFill) {
-        if (isPointInEllipse(point, cx, cy, outerRx, outerRy)) {
-          return true;
-        }
-      } else if (strokeWidth > 0) {
-        const innerRx = Math.max(0, rx - halfStroke);
-        const innerRy = Math.max(0, ry - halfStroke);
-        // For stroke-only, check if point is on the stroke (between inner and outer)
-        const distSq = Math.pow(point.x - cx, 2) / (outerRx * outerRx) +
-          Math.pow(point.y - cy, 2) / (outerRy * outerRy);
-        if (distSq >= Math.pow(innerRx / outerRx, 2) && distSq <= 1) {
-          return true;
-        }
-      }
     }
   }
 
@@ -1371,50 +1305,6 @@ export const doesRectIntersectRect = (selRect, rectObj) => {
         return true;
       }
     }
-
-    // Sample points along rectangle edges to catch partial overlaps
-    for (let i = 0; i < canvasVertices.length; i++) {
-      const next = (i + 1) % canvasVertices.length;
-      const edgeStart = canvasVertices[i];
-      const edgeEnd = canvasVertices[next];
-
-      const edgeLength = Math.sqrt(
-        Math.pow(edgeEnd.x - edgeStart.x, 2) + Math.pow(edgeEnd.y - edgeStart.y, 2)
-      );
-
-      // Sample every ~5px, minimum 4 samples per edge
-      const samplesPerEdge = Math.max(4, Math.ceil(edgeLength / 5));
-
-      for (let s = 0; s <= samplesPerEdge; s++) {
-        const t = s / samplesPerEdge;
-        const point = {
-          x: edgeStart.x + t * (edgeEnd.x - edgeStart.x),
-          y: edgeStart.y + t * (edgeEnd.y - edgeStart.y)
-        };
-
-        // Check if this point on the rectangle edge is inside the selection rect
-        if (point.x >= selRect.left && point.x <= selRect.right &&
-          point.y >= selRect.top && point.y <= selRect.bottom) {
-          return true;
-        }
-      }
-    }
-
-    // Check if selection rect edges intersect object edges (bidirectional)
-    const selRectEdges = [
-      [{ x: selRect.left, y: selRect.top }, { x: selRect.right, y: selRect.top }],
-      [{ x: selRect.right, y: selRect.top }, { x: selRect.right, y: selRect.bottom }],
-      [{ x: selRect.right, y: selRect.bottom }, { x: selRect.left, y: selRect.bottom }],
-      [{ x: selRect.left, y: selRect.bottom }, { x: selRect.left, y: selRect.top }]
-    ];
-    for (const [selStart, selEnd] of selRectEdges) {
-      for (let i = 0; i < canvasVertices.length; i++) {
-        const next = (i + 1) % canvasVertices.length;
-        if (doLineSegmentsIntersect(selStart, selEnd, canvasVertices[i], canvasVertices[next])) {
-          return true;
-        }
-      }
-    }
   }
 
   // Final fallback: check basic bounding box intersection if we reach here
@@ -1619,34 +1509,6 @@ export const doesRectIntersectTextbox = (selRect, textObj) => {
     const next = (i + 1) % canvasVertices.length;
     if (doesRectIntersectLineSegment(selRect, canvasVertices[i], canvasVertices[next], 0)) {
       return true;
-    }
-  }
-
-  // Sample points along textbox edges to catch partial overlaps
-  for (let i = 0; i < canvasVertices.length; i++) {
-    const next = (i + 1) % canvasVertices.length;
-    const edgeStart = canvasVertices[i];
-    const edgeEnd = canvasVertices[next];
-
-    const edgeLength = Math.sqrt(
-      Math.pow(edgeEnd.x - edgeStart.x, 2) + Math.pow(edgeEnd.y - edgeStart.y, 2)
-    );
-
-    // Sample every ~5px, minimum 4 samples per edge
-    const samplesPerEdge = Math.max(4, Math.ceil(edgeLength / 5));
-
-    for (let s = 0; s <= samplesPerEdge; s++) {
-      const t = s / samplesPerEdge;
-      const point = {
-        x: edgeStart.x + t * (edgeEnd.x - edgeStart.x),
-        y: edgeStart.y + t * (edgeEnd.y - edgeStart.y)
-      };
-
-      // Check if this point on the textbox edge is inside the selection rect
-      if (point.x >= selRect.left && point.x <= selRect.right &&
-        point.y >= selRect.top && point.y <= selRect.bottom) {
-        return true;
-      }
     }
   }
 
@@ -1953,10 +1815,6 @@ export const getObjectGeometryBounds = (obj) => {
 
   try {
     const matrix = getObjectTransformMatrix(obj);
-    if (!matrix || matrix.length < 6) {
-      return getFallbackBounds();
-    }
-
     const [a, b, c, d, e, f] = matrix;
 
     const transformPoint = (x, y) => ({

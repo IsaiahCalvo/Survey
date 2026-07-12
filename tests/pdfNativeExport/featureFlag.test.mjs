@@ -27,3 +27,15 @@ test('per-document override wins over env', () => {
   delete process.env.ENABLE_PDF_NATIVE_EXPORT;
   clearPdfNativeExportOverride('pdf-123');
 });
+
+test('window force-enable wins when env unset', () => {
+  delete process.env.ENABLE_PDF_NATIVE_EXPORT;
+  const original = globalThis.window;
+  globalThis.window = { __pdfNativeExportForceEnable: true };
+  try {
+    assert.equal(isPdfNativeExportEnabled(), true);
+  } finally {
+    if (original === undefined) delete globalThis.window;
+    else globalThis.window = original;
+  }
+});

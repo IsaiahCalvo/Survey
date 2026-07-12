@@ -41,3 +41,11 @@ test('nextAvailableName numbers like a desktop OS', () => {
   assert.equal(nextAvailableName('Report.pdf', ['Report.pdf', 'Report (1).pdf']), 'Report (2).pdf');
   assert.equal(nextAvailableName('NoExt', ['NoExt']), 'NoExt (1)');
 });
+
+test('nextAvailableName falls back to a timestamped name after exhausting numbered candidates', () => {
+  const taken = ['Report.pdf'];
+  for (let i = 1; i < 10000; i += 1) taken.push(`Report (${i}).pdf`);
+  const result = nextAvailableName('Report.pdf', taken);
+  assert.match(result, /^Report \(\d{10,}\)\.pdf$/);
+  assert.equal(taken.includes(result), false);
+});

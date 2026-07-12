@@ -51,13 +51,11 @@ export function isLegacyBulkUpsertEnabled() {
   }
 
   // Tier 2: build-time env var (Vite). Same shape as crdtFeatureFlag.js.
+  // Tests may inject via globalThis.__VITE_IMPORT_META_ENV__.
   // UX: ops can ship a "legacy on" build without a code change.
-  try {
-    if (typeof import.meta !== 'undefined' && import.meta?.env?.[ENV_VAR_NAME] === 'true') {
-      return true;
-    }
-  } catch {
-    // ignore - import.meta may not exist in non-module/non-Vite contexts
+  const viteEnv = globalThis.__VITE_IMPORT_META_ENV__ ?? import.meta?.env;
+  if (viteEnv?.[ENV_VAR_NAME] === 'true') {
+    return true;
   }
 
   // Tier 3: default OFF. Post-cutover, the CRDT path owns the cloud round-trip.

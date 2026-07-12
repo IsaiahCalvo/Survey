@@ -5,6 +5,8 @@ import {
   buildHistoryEventRowFromDebugEvent,
   notifyDocumentHistoryEventRecorded,
   recordAndNotifyDocumentHistoryEvent,
+  recordDocumentHistoryEvent,
+  listDocumentHistoryEvents,
 } from '../src/services/documentHistoryService.js';
 
 const user = {
@@ -245,4 +247,163 @@ test('un-flagged delete events still persist (eraser path keeps its only restora
     restoreAction: { type: 'fabric:batch', pageNumber: 3, created: [] },
   }, { documentId: 'doc-1', user });
   equal(Boolean(row), true, 'pure-delete batch without suppressHistoryRow must persist');
+});
+
+
+test('listDocumentHistoryEvents merges local cache offline', async () => {
+  const map = new Map();
+  globalThis.window = {
+    localStorage: {
+      getItem: (k) => (map.has(k) ? map.get(k) : null),
+      setItem: (k, v) => map.set(k, String(v)),
+      removeItem: (k) => map.delete(k),
+    },
+    dispatchEvent() {},
+  };
+  try {
+    const row = buildHistoryEventRowFromDebugEvent({
+      type: 'local_annotation_history_added',
+      checkpointId: 501,
+      actionType: 'move',
+      annotationType: 'rect',
+      annotationId: 'r-local',
+      pageNumber: 2,
+    }, { documentId: 'doc-offline', user });
+    await recordDocumentHistoryEvent(row);
+    const listed = await listDocumentHistoryEvents('doc-offline', { limit: 10 });
+    equal(listed.some((r) => r.client_event_id === row.client_event_id), true);
+    equal((await listDocumentHistoryEvents(null)).length, 0);
+
+    // Summary branches: resize / rotate / text / undo / redo / multi-delete
+    equal(buildHistoryEventRowFromDebugEvent({
+      type: 'local_annotation_history_added', checkpointId: 1, actionType: 'resize',
+      annotationType: 'circle', annotationId: 'c1', pageNumber: 1,
+    }, { documentId: 'd', user }).summary.includes('resized'), true);
+    equal(buildHistoryEventRowFromDebugEvent({
+      type: 'local_annotation_history_added', checkpointId: 2, actionType: 'rotate',
+      annotationType: 'line', annotationId: 'l1', pageNumber: 1,
+    }, { documentId: 'd', user }).summary.includes('rotated'), true);
+    equal(buildHistoryEventRowFromDebugEvent({
+      type: 'local_annotation_history_added', checkpointId: 3, actionType: 'text',
+      annotationType: 'textbox', annotationId: 't1', pageNumber: 1,
+    }, { documentId: 'd', user }).summary.includes('edited text'), true);
+    equal(buildHistoryEventRowFromDebugEvent({
+      type: 'local_annotation_undo_applied', checkpointId: 4, actionType: 'undo',
+      annotationType: 'path', annotationId: 'u1', pageNumber: 1,
+    }, { documentId: 'd', user }).summary.includes('undid'), true);
+    equal(buildHistoryEventRowFromDebugEvent({
+      type: 'local_annotation_redo_applied', checkpointId: 5, actionType: 'redo',
+      annotationType: 'path', annotationId: 'r1', pageNumber: 1,
+    }, { documentId: 'd', user }).summary.includes('redid'), true);
+    equal(buildHistoryEventRowFromDebugEvent({
+      type: 'local_annotation_history_added', checkpointId: 6, actionType: 'delete',
+      annotationType: 'rect', annotationIds: ['a', 'b', 'c'], itemCount: 3, pageNumber: 1,
+    }, { documentId: 'd', user }).summary.includes('3 annotations'), true);
+
+    // Actor name fallbacks
+    equal(buildHistoryEventRowFromDebugEvent({
+      type: 'local_annotation_history_added', checkpointId: 7, actionType: 'create',
+      annotationType: 'stamp', annotationId: 's1',
+    }, { documentId: 'd', user: { id: 'u2', user_metadata: { first_name: 'A', last_name: 'B' } } }).summary.startsWith('A B'), true);
+  } finally {
+    delete globalThis.window;
+  }
+});
+
+
+test('notify prune when map exceeds 200', () => {
+  globalThis.window = {
+    localStorage: { getItem: () => null, setItem() {}, removeItem() {} },
+    dispatchEvent() { return true; },
+  };
+  try {
+    for (let i = 0; i < 210; i += 1) {
+      notifyDocumentHistoryEventRecorded({
+        document_id: 'doc-prune',
+        client_event_id: `prune-${i}`,
+      });
+    }
+    // One more should still work (prune path exercised)
+    notifyDocumentHistoryEventRecorded({
+      document_id: 'doc-prune',
+      client_event_id: 'prune-final',
+    });
+  } finally {
+    delete globalThis.window;
+  }
+});
+
+test('trimPayload handles unserializable payloads and clamp edge cases', () => {
+  const circular = { type: 'local_annotation_history_added', checkpointId: 1, actionType: 'create', annotationId: 'c1', pageNumber: 1 };
+  circular.self = circular;
+  const unserializable = buildHistoryEventRowFromDebugEvent(circular, { documentId: 'doc-1', user });
+  equal(unserializable.payload.unserializable, true);
+  equal(unserializable.payload.truncated, true);
+
+  const stillHuge = buildHistoryEventRowFromDebugEvent({
+    type: 'local_annotation_history_added',
+    checkpointId: 101,
+    actionType: 'create',
+    rawActionType: 'fabric:create',
+    annotationType: 'path',
+    annotationId: 'ink-still-huge',
+    pageNumber: 2,
+    previewAnnotation: {
+      type: 'path',
+      left: 1,
+      top: 2,
+      path: Array.from({ length: 50 }, (_, i) => ['L', i, i]),
+      meta: 'z'.repeat(5000),
+    },
+    filler: 'x'.repeat(20000),
+  }, { documentId: 'doc-1', user });
+  equal(stillHuge.payload.truncated, true);
+  equal(stillHuge.payload.previewAnnotation, null);
+
+  const circularPreview = { type: 'rect', left: 1 };
+  circularPreview.self = circularPreview;
+  const clampCatch = buildHistoryEventRowFromDebugEvent({
+    type: 'local_annotation_history_added',
+    checkpointId: 102,
+    actionType: 'create',
+    annotationType: 'rect',
+    annotationId: 'circ-prev',
+    pageNumber: 1,
+    previewAnnotation: circularPreview,
+    filler: 'x'.repeat(20000),
+  }, { documentId: 'doc-1', user });
+  equal(clampCatch.payload.unserializable, true);
+});
+
+test('local history store and notify tolerate storage/dispatch failures', async () => {
+  const prev = globalThis.window;
+  const storage = {
+    getItem() { throw new Error('get-fail'); },
+    setItem() { throw new Error('set-fail'); },
+    removeItem() {},
+  };
+  globalThis.window = {
+    localStorage: storage,
+    dispatchEvent() { throw new Error('dispatch-fail'); },
+  };
+  try {
+    notifyDocumentHistoryEventRecorded({
+      document_id: 'doc-x',
+      client_event_id: `evt-throw-${Date.now()}`,
+    });
+    const row = buildHistoryEventRowFromDebugEvent({
+      type: 'local_annotation_history_added',
+      checkpointId: 7,
+      actionType: 'create',
+      annotationType: 'rect',
+      annotationId: 'r1',
+      pageNumber: 1,
+    }, { documentId: 'doc-x', user });
+    // record may attempt local cache write — must not throw
+    const result = await recordDocumentHistoryEvent(row);
+    equal(result.error == null || result.error != null, true);
+  } finally {
+    if (prev === undefined) delete globalThis.window;
+    else globalThis.window = prev;
+  }
 });

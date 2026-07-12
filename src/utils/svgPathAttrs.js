@@ -80,23 +80,6 @@ function distance(a, b) {
   return Math.sqrt(dx * dx + dy * dy);
 }
 
-function getPathBounds(path) {
-  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-  for (const seg of path || []) {
-    for (let j = 1; j + 1 < seg.length; j += 2) {
-      const x = seg[j];
-      const y = seg[j + 1];
-      if (typeof x !== 'number' || typeof y !== 'number') continue;
-      minX = Math.min(minX, x);
-      minY = Math.min(minY, y);
-      maxX = Math.max(maxX, x);
-      maxY = Math.max(maxY, y);
-    }
-  }
-  if (!Number.isFinite(minX) || !Number.isFinite(minY)) return null;
-  return { width: maxX - minX, height: maxY - minY };
-}
-
 function getPathBoundsWithOrigin(path) {
   let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
   for (const seg of path || []) {
@@ -112,50 +95,6 @@ function getPathBoundsWithOrigin(path) {
   }
   if (!Number.isFinite(minX) || !Number.isFinite(minY)) return null;
   return { minX, minY, maxX, maxY, width: maxX - minX, height: maxY - minY };
-}
-
-function allSubpathsAreClosed(path) {
-  if (!Array.isArray(path) || path.length === 0) return false;
-
-  const bounds = getPathBounds(path);
-  if (!bounds || bounds.width <= 0 || bounds.height <= 0) return false;
-  const closeThreshold = Math.max(0.75, Math.min(bounds.width, bounds.height) * 0.25);
-
-  let start = null;
-  let current = null;
-  let hasDrawableSubpath = false;
-  let currentClosed = false;
-  const closeCurrent = () => {
-    if (!start || !current || !hasDrawableSubpath) return true;
-    return currentClosed || distance(start, current) <= closeThreshold;
-  };
-
-  for (const seg of path) {
-    if (!Array.isArray(seg) || seg.length === 0) continue;
-
-    if (seg[0] === 'M') {
-      if (start && !closeCurrent()) return false;
-      start = getPathEndpoint(seg);
-      current = start;
-      hasDrawableSubpath = false;
-      currentClosed = false;
-      continue;
-    }
-
-    if (seg[0] === 'Z') {
-      currentClosed = true;
-      current = start;
-      continue;
-    }
-
-    const endpoint = getPathEndpoint(seg);
-    if (endpoint) {
-      current = endpoint;
-      hasDrawableSubpath = true;
-    }
-  }
-
-  return Boolean(start && hasDrawableSubpath && closeCurrent());
 }
 
 function shouldFillPdfInkOutline(obj) {
