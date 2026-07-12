@@ -28627,7 +28627,14 @@ ${pageBlocks}
                             // to drive state that still applies (like passing the edit
                             // annotation index to the selection overlay).
                             const isFabricEditMode = isEditMode && editingAnnotation?.editType !== 'bbox';
-                            const useCanvasPresentation = !svgInteractive && !isEditMode;
+                            // UX: the callout tool's creation surface IS the SVG layer —
+                            // useSVGInteraction's transient creation state machine starts the
+                            // click-drag on the mounted svg[data-svg-annotation-layer] (see
+                            // isCreationTool in SVGAnnotationLayer.jsx:~579 and
+                            // handleCreateCallout above). Canvas presentation unmounts that
+                            // surface, so the callout tool must keep the SVG presentation —
+                            // exactly the pre-canvas-presentation behavior for this tool.
+                            const useCanvasPresentation = !svgInteractive && !isEditMode && activeTool !== 'callout';
 
                             return (
                             <>
