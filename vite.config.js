@@ -181,6 +181,12 @@ export default defineConfig(({ mode }) => {
     ],
     server: {
       // Port is set via CLI flag from find-port.js
+      // Allow the phone (Expo shell / Capacitor) to load this dev server over
+      // Tailscale — the mobile-expo WebView hardcodes the machine's
+      // `*.ts.net:5177` address, and Vite otherwise 403s unknown Host headers
+      // (anti-DNS-rebinding). Leading-dot = suffix match on any tailnet host.
+      // Dev-server only; production ships static files, so this has no prod effect.
+      allowedHosts: ['.ts.net'],
       headers: {
         // Allow MSAL popup authentication to work properly
         // Using 'same-origin-allow-popups' allows the popup to communicate back to the parent
