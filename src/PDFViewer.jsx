@@ -4728,6 +4728,15 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   const [pendingLocationItem, setPendingLocationItem] = useState(null);
   const topToolbarRef = useRef(null);
   const bottomToolbarRef = useRef(null);
+  // Stable per-instance token stamped onto the published bottom-toolbar API. Lets
+  // this instance clear ONLY its own callbacks on unmount — so when this PDFViewer
+  // is unmounted and a fresh one remounts (a re-suspending <Suspense> above, or a
+  // tab close/reopen; PDFViewer is one-instance-per-tab and AppShell survives),
+  // AppShell can never keep holding the dead instance's category-dropdown handlers
+  // (Draw/Shapes/Text stop opening until reload otherwise). The token guard also
+  // makes the clear ordering-safe: if a fresh instance already republished, the
+  // dying instance's cleanup sees a different token and leaves the live API intact.
+  const bottomToolbarOwnerTokenRef = useRef({});
   const statusBarRef = useRef(null);
   const middleAreaRef = useRef(null);
   const handleCloseSurveyMode = useCallback(() => {
@@ -21721,6 +21730,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       ? selectionMappedTool
       : activeTool;
     onBottomToolbarApiChange({
+      // Identifies which PDFViewer instance owns the currently-published API, so
+      // an unmounting instance clears only its own (see the clear-on-unmount
+      // effect below). Non-enumerated field the toolbar never reads.
+      __ownerToken: bottomToolbarOwnerTokenRef.current,
       bottomToolbarRef,
       zoomInputRef,
       zoomMenuRef,
@@ -21895,6 +21908,26 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     handlePageInputBlur,
     handleExportAnnotatedPDF
   ]);
+
+  // UX 2026-07-12: clear this instance's published bottom-toolbar API on unmount.
+  // Intended UX: when this PDFViewer is torn down and a fresh one remounts (a
+  // re-suspending <Suspense> above, or a tab close/reopen), the category dropdowns
+  // (Draw / Shapes / Text) must keep working. Without this, AppShell's
+  // `bottomToolbarApi` kept the dead instance's handlers, so those dropdowns
+  // silently stopped opening until a full reload. The publish effect above stamps
+  // `__ownerToken` onto the object; here we clear it ONLY if the currently-held API
+  // is still ours — if a fresh instance already republished (its token differs) we
+  // leave the live API intact, which makes the teardown safe regardless of
+  // mount/unmount ordering. Empty deps ⇒ the cleanup runs exactly once, on unmount.
+  useEffect(() => {
+    const ownerToken = bottomToolbarOwnerTokenRef.current;
+    return () => {
+      if (typeof onBottomToolbarApiChange !== 'function') return;
+      onBottomToolbarApiChange((prev) => (
+        prev && prev.__ownerToken === ownerToken ? null : prev
+      ));
+    };
+  }, [onBottomToolbarApiChange]);
 
   // Keyboard shortcuts
   useEffect(() => {

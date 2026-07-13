@@ -10,24 +10,7 @@
 import React from 'react';
 import { COLORS, TYPOGRAPHY, BORDERS } from '../theme';
 import Icon from '../Icons';
-
-const serializeErrorForLog = (error) => {
-  if (!error || typeof error !== 'object') {
-    return { message: String(error) };
-  }
-  return {
-    name: error.name || null,
-    message: error.message || String(error),
-    stack: error.stack || null,
-    cause: error.cause
-      ? {
-          name: error.cause.name || null,
-          message: error.cause.message || String(error.cause),
-          stack: error.cause.stack || null,
-        }
-      : null,
-  };
-};
+import { serializeErrorForLog, formatErrorForDisplay } from './errorBoundarySerialize';
 
 /**
  * ErrorBoundary - Catches errors in child components and displays fallback UI
@@ -168,7 +151,7 @@ class ErrorBoundary extends React.Component {
                     wordWrap: 'break-word',
                   }}
                 >
-                  {this.state.error.toString()}
+                  {formatErrorForDisplay(this.state.error)}
                   {this.state.errorInfo && `\n\n${this.state.errorInfo.componentStack}`}
                 </pre>
               </details>

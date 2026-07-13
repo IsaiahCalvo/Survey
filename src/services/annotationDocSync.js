@@ -138,74 +138,94 @@ export async function openAnnotationDoc({
     pendingAppends: 0,
     lastSyncError: null,
     onPageHide: null,      // window listener that force-checkpoints on real tab close
+    onDocUpdate: null,     // the local-mutation observer, kept so teardown can detach it
     flushQueue: Promise.resolve(),
   };
 
-  // --- local instant durability (browser only) ---
-  if (enableLocal && typeof indexedDB !== 'undefined') {
-    try {
-      const { IndexeddbPersistence } = await import('y-indexeddb');
-      state.idbProvider = new IndexeddbPersistence(`anno-${documentId}`, activeDoc);
-      await whenSynced(state.idbProvider);
-    } catch (err) {
-      console.warn('[annotationDocSync] indexeddb unavailable', err?.message);
+  // Everything below can fail (network, storage). A partially-opened state must
+  // not outlive the failure: the update observer would keep appending ops from a
+  // handle the caller never received (double-appends + client_seq collisions
+  // against the retry's handle), and the registry refcount/IDB provider would
+  // leak on every failed open. Tear down whatever was attached, then rethrow so
+  // the caller still sees the failure.
+  try {
+    // --- local instant durability (browser only) ---
+    if (enableLocal && typeof indexedDB !== 'undefined') {
+      try {
+        const { IndexeddbPersistence } = await import('y-indexeddb');
+        state.idbProvider = new IndexeddbPersistence(`anno-${documentId}`, activeDoc);
+        await whenSynced(state.idbProvider);
+      } catch (err) {
+        console.warn('[annotationDocSync] indexeddb unavailable', err?.message);
+      }
     }
-  }
 
-  // --- seed the per-(doc,client) op counter so client_seq stays unique ---
-  if (supabase) {
-    const { data } = await supabase
-      .from('annotation_updates')
-      .select('client_seq')
-      .eq('document_id', documentId)
-      .eq('client_id', clientId)
-      .order('client_seq', { ascending: false })
-      .limit(1);
-    if (data && data[0]) state.clientSeq = Number(data[0].client_seq) || 0;
-  }
-
-  // --- load snapshot + tail from the cloud ---
-  if (supabase) await loadFromBackend(state);
-
-  // --- observe local mutations → append to the durable log ---
-  activeDoc.on('update', (update, origin) => {
-    if (state.destroyed) return;
-    // Ignore writes we didn't originate as user edits: remote ops, the initial
-    // hydrate, and the local IndexedDB replay (re-appending those would loop).
-    if (origin === REMOTE_ORIGIN || origin === HYDRATE_ORIGIN || origin === state.idbProvider) return;
+    // --- seed the per-(doc,client) op counter so client_seq stays unique ---
     if (supabase) {
-      state.editEpoch += 1;
-      enqueueAppend(state, update);
-      // The full-state checkpoint is the durability GUARANTEE: even if an
-      // individual op insert fails (network), the next checkpoint re-captures
-      // the whole doc from memory. Schedule it on every local edit.
-      scheduleSnapshot(state);
+      const { data } = await supabase
+        .from('annotation_updates')
+        .select('client_seq')
+        .eq('document_id', documentId)
+        .eq('client_id', clientId)
+        .order('client_seq', { ascending: false })
+        .limit(1);
+      if (data && data[0]) state.clientSeq = Number(data[0].client_seq) || 0;
     }
-    // No notifyChange here: the viewer already holds the state it just produced.
-    // Pushing it back would clobber per-page render metadata. Remote ops DO
-    // notify (see subscribeRealtime).
-  });
 
-  // --- live multi-device: apply remote ops as they land ---
-  if (enableRealtime && supabase && typeof supabase.channel === 'function') {
-    subscribeRealtime(state);
-  }
+    // --- load snapshot + tail from the cloud ---
+    if (supabase) await loadFromBackend(state);
 
-  // --- crash/tab-close durability: force a final checkpoint when the tab is
-  // actually being unloaded (navigation, close, bfcache). React's cleanup
-  // destroy() only fires on an orderly unmount; a tab-kill or navigation never
-  // runs it, leaving any op that failed to append (BL-24) unrecovered until the
-  // next open. We bind ONLY `pagehide` — NOT `visibilitychange` — so an ordinary
-  // alt-tab / tab-switch does not trigger a full snapshot upload, and only flush
-  // when there is uncaptured local work. Best-effort: the browser may not await
-  // an async write during unload, but the local IndexedDB copy already captured
-  // the mutation, so this is an extra guard, not the sole one.
-  if (supabase && typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
-    state.onPageHide = () => {
-      if (state.destroyed || state.editEpoch === state.snapshottedEpoch) return;
-      try { writeSnapshot(state); } catch { /* best-effort */ }
+    // --- observe local mutations → append to the durable log ---
+    state.onDocUpdate = (update, origin) => {
+      if (state.destroyed) return;
+      // Ignore writes we didn't originate as user edits: remote ops, the initial
+      // hydrate, and the local IndexedDB replay (re-appending those would loop).
+      if (origin === REMOTE_ORIGIN || origin === HYDRATE_ORIGIN || origin === state.idbProvider) return;
+      if (supabase) {
+        state.editEpoch += 1;
+        enqueueAppend(state, update);
+        // The full-state checkpoint is the durability GUARANTEE: even if an
+        // individual op insert fails (network), the next checkpoint re-captures
+        // the whole doc from memory. Schedule it on every local edit.
+        scheduleSnapshot(state);
+      }
+      // No notifyChange here: the viewer already holds the state it just produced.
+      // Pushing it back would clobber per-page render metadata. Remote ops DO
+      // notify (see subscribeRealtime).
     };
-    window.addEventListener('pagehide', state.onPageHide);
+    activeDoc.on('update', state.onDocUpdate);
+
+    // --- live multi-device: apply remote ops as they land ---
+    if (enableRealtime && supabase && typeof supabase.channel === 'function') {
+      subscribeRealtime(state);
+    }
+
+    // --- crash/tab-close durability: force a final checkpoint when the tab is
+    // actually being unloaded (navigation, close, bfcache). React's cleanup
+    // destroy() only fires on an orderly unmount; a tab-kill or navigation never
+    // runs it, leaving any op that failed to append (BL-24) unrecovered until the
+    // next open. We bind ONLY `pagehide` — NOT `visibilitychange` — so an ordinary
+    // alt-tab / tab-switch does not trigger a full snapshot upload, and only flush
+    // when there is uncaptured local work. Best-effort: the browser may not await
+    // an async write during unload, but the local IndexedDB copy already captured
+    // the mutation, so this is an extra guard, not the sole one.
+    if (supabase && typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
+      state.onPageHide = () => {
+        if (state.destroyed || state.editEpoch === state.snapshottedEpoch) return;
+        try { writeSnapshot(state); } catch { /* best-effort */ }
+      };
+      window.addEventListener('pagehide', state.onPageHide);
+    }
+  } catch (err) {
+    state.destroyed = true;
+    if (state.onDocUpdate) { try { activeDoc.off('update', state.onDocUpdate); } catch { /* */ } }
+    if (state.realtimeChannel) { try { state.supabase.removeChannel(state.realtimeChannel); } catch { /* */ } }
+    if (state.idbProvider) { try { state.idbProvider.destroy(); } catch { /* */ } }
+    if (state.onPageHide && typeof window !== 'undefined' && typeof window.removeEventListener === 'function') {
+      window.removeEventListener('pagehide', state.onPageHide);
+    }
+    if (ownsRegistryDoc) releaseYDoc(registryKey);
+    throw err;
   }
 
   return makeHandle(state);
@@ -472,8 +492,23 @@ async function writeSnapshotNow(state) {
 }
 
 function subscribeRealtime(state) {
-  const ch = state.supabase
-    .channel(`anno-${state.documentId}`)
+  // Realtime channel topics must be unique per OPEN, not per document. supabase-js
+  // caches channels by topic and `channel()` returns the cached instance, and
+  // adding `postgres_changes` callbacks to an already-subscribed channel throws.
+  // A bare `anno-<docId>` topic therefore raced the previous handle's destroy()
+  // (channel removal is the LAST teardown step, after a slow snapshot write) — and
+  // the whole open failed ("cannot add `postgres_changes` … after `subscribe()`").
+  // A RANDOM suffix (not a shared counter) keeps every open's topic distinct even
+  // across Vite HMR module reloads, multiple bundles, and reopens — none of which
+  // reset it, whereas a module-level counter resets on HMR and can collide with a
+  // channel the (non-replayed) supabase client still caches. postgres_changes
+  // delivery is filter-driven, not topic-driven, so the suffix is transparent
+  // server-side.
+  const ch = state.supabase.channel(`anno-${state.documentId}-${randomClientId()}`);
+  // Assign before wiring callbacks so a synchronous throw from .on()/.subscribe()
+  // during a failed open is still cleanable by the teardown catch (removeChannel).
+  state.realtimeChannel = ch;
+  ch
     .on('postgres_changes', {
       event: 'INSERT',
       schema: 'public',
@@ -495,7 +530,6 @@ function subscribeRealtime(state) {
       // sweep the log for ops that landed while we weren't listening.
       if (status === 'SUBSCRIBED') catchUpTail(state);
     });
-  state.realtimeChannel = ch;
 }
 
 function notifyChange(state) {
@@ -565,6 +599,10 @@ function makeHandle(state) {
       await state.catchupChain.catch(() => {}); // let an in-flight catch-up page finish cleanly
       if (state.supabase) { try { await writeSnapshot(state); } catch { /* */ } }
       state.destroyed = true;
+      // Detach the local-mutation observer: registry docs survive destroy by
+      // design (undo/state across reopen), so leaving the listener attached
+      // would accumulate one dead observer per open/close cycle.
+      if (state.onDocUpdate) { try { state.doc.off('update', state.onDocUpdate); } catch { /* */ } }
       if (state.realtimeChannel) { try { await state.supabase.removeChannel(state.realtimeChannel); } catch { /* */ } }
       if (state.idbProvider) { try { state.idbProvider.destroy(); } catch { /* */ } }
       // Release the registry doc (the registry never destroys — keeps undo/state
