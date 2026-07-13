@@ -22,6 +22,7 @@ import reviewWarningIcon from './assets/review-warning.svg';
 import { SYNC_TONE_COLORS, liveSyncGateStatus, liveSyncVerifyStatus, syncMessagePresentation } from './services/excelSyncStatus';
 import { compareSurveyMarkersForOrder } from './utils/surveyMarkerOrdering';
 import { showToast } from './utils/toast';
+import { useMobileSheetMotion } from './mobile/useMobileSheetMotion';
 
 const FONT_FAMILY = '-apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", "Segoe UI", Roboto, Ubuntu, "Noto Sans", Arial, sans-serif';
 
@@ -345,7 +346,6 @@ const SurveySpacesRail = ({
   const moduleSelectorRef = useRef(null);
   const templateSelectorRef = useRef(null);
   const mobileExportMenuRef = useRef(null);
-  const mobileSheetTouchStartYRef = useRef(null);
   const surveyMarkerDragRestoreRef = useRef(null);
   const availableSurveyTemplates = Array.isArray(surveyTemplates) ? surveyTemplates : [];
   const surveyModuleOptions = selectedTemplate ? ((selectedTemplate.modules || selectedTemplate.spaces) || []) : [];
@@ -383,18 +383,17 @@ const SurveySpacesRail = ({
       ? 392
       : 154 + Math.max(availableSurveyTemplates.length, 1) * 48;
 
-  const handleMobileSheetTouchStart = useCallback((event) => {
-    mobileSheetTouchStartYRef.current = event.touches?.[0]?.clientY ?? null;
-  }, []);
-
-  const handleMobileSheetTouchEnd = useCallback((event) => {
-    const startY = mobileSheetTouchStartYRef.current;
-    mobileSheetTouchStartYRef.current = null;
-    const endY = event.changedTouches?.[0]?.clientY;
-    if (startY == null || endY == null || endY - startY <= 48) return;
+  // Phase F (motion & feel): the survey sheet gets the same finger-follow drag +
+  // velocity dismiss (dy>82 or vy>0.65) + spring-back + slide-down exit as the
+  // hub/spaces sheets, replacing the old flat 48px touchend delta. Demo
+  // SurveySetupSheet.tsx:51-96 / inv-demo §17. The real collapse still re-runs
+  // the layout-driven zoom after the sheet finishes sliding down.
+  const collapseSurveySheet = useCallback(() => {
     setIsSurveyPanelCollapsed(true);
     requestAnimationFrame(() => { applyLayoutDrivenZoom(); });
   }, [applyLayoutDrivenZoom]);
+  const { motionStyle: surveySheetMotionStyle, dragHandlers: surveySheetDragHandlers, requestClose: requestSurveySheetClose } =
+    useMobileSheetMotion(collapseSurveySheet);
 
   const selectSurveyModule = (moduleId) => {
     if (!moduleId || moduleId === selectedModuleId) {
@@ -1095,7 +1094,11 @@ const SurveySpacesRail = ({
                 display: 'flex',
                 flexDirection: 'column',
 	                animation: 'slideInRight 0.3s ease-out',
-                transition: 'width 0.2s ease, right 0.2s ease, top 0.2s ease, height 0.2s ease'
+                transition: 'width 0.2s ease, right 0.2s ease, top 0.2s ease, height 0.2s ease',
+                // Phase F: finger-follow / spring-back / slide-down exit (mobile
+                // sheet only; the .mobile-pdf-sheet CSS !important keyframe still
+                // owns the slide-in, this only drives drag/close transforms).
+                ...(mobileMode ? surveySheetMotionStyle : null)
               }}
             >
               {/* Collapsed strip — Survey icon only, with a hover tooltip.
@@ -1195,8 +1198,9 @@ const SurveySpacesRail = ({
                   {/* Collapse row: mirrors the left rail's top strip. */}
                   <div
                     className={mobileMode ? 'mobile-pdf-sheet__handle mobile-pdf-sheet__handle--wide' : undefined}
-                    onTouchStart={mobileMode ? handleMobileSheetTouchStart : undefined}
-                    onTouchEnd={mobileMode ? handleMobileSheetTouchEnd : undefined}
+                    onTouchStart={mobileMode ? surveySheetDragHandlers.onTouchStart : undefined}
+                    onTouchMove={mobileMode ? surveySheetDragHandlers.onTouchMove : undefined}
+                    onTouchEnd={mobileMode ? surveySheetDragHandlers.onTouchEnd : undefined}
                     style={{
                       height: '35px',
                       padding: '0 8px',
@@ -1210,6 +1214,12 @@ const SurveySpacesRail = ({
                   >
                     <button
                       onClick={() => {
+                        // Phase F: mobile collapse slides the sheet down first;
+                        // desktop collapses immediately (no bottom-sheet motion).
+                        if (mobileMode) {
+                          requestSurveySheetClose();
+                          return;
+                        }
                         setIsSurveyPanelCollapsed(true);
                         requestAnimationFrame(() => {
                           applyLayoutDrivenZoom();

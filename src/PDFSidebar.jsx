@@ -18,6 +18,7 @@ import SpacesPanel from './sidebar/SpacesPanel';
 import SyncStatusChip from './components/SyncStatusChip';
 import PresenceAvatars from './components/PresenceAvatars';
 import RevisionsPanel from './components/revisions/RevisionsPanel';
+import { useMobileSheetMotion } from './mobile/useMobileSheetMotion';
 
 const FONT_FAMILY = '-apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", "Segoe UI", Roboto, Ubuntu, "Noto Sans", Arial, sans-serif';
 
@@ -235,16 +236,11 @@ const PDFSidebar = React.forwardRef(({
     setActiveTab('history');
   }, []);
 
-  const mobileSheetTouchStartYRef = React.useRef(null);
-  const handleMobileSheetTouchStart = useCallback((event) => {
-    mobileSheetTouchStartYRef.current = event.touches?.[0]?.clientY ?? null;
-  }, []);
-  const handleMobileSheetTouchEnd = useCallback((event) => {
-    const startY = mobileSheetTouchStartYRef.current;
-    mobileSheetTouchStartYRef.current = null;
-    const endY = event.changedTouches?.[0]?.clientY;
-    if (startY != null && endY != null && endY - startY > 48) closePanel();
-  }, [closePanel]);
+  // Phase F (motion & feel): finger-follow drag + velocity dismiss (dy>82 or
+  // vy>0.65) + spring-back + slide-down exit, replacing the old flat 48px
+  // touchend delta. Demo SurveySetupSheet.tsx:51-96 / inv-demo §17.
+  const { motionStyle: sheetMotionStyle, dragHandlers: sheetDragHandlers, requestClose: requestSheetClose } =
+    useMobileSheetMotion(closePanel);
 
   const mobileStandalonePanel = mobileMode && activeTab === 'spaces'
     ? { label: 'Spaces', icon: 'layers' }
@@ -289,7 +285,7 @@ const PDFSidebar = React.forwardRef(({
         type="button"
         className="mobile-pdf-sheet-backdrop"
         aria-label="Close document panel"
-        onClick={closePanel}
+        onClick={requestSheetClose}
       />
     )}
     <div className={`${mobileMode ? 'mobile-pdf-sheet ' : ''}${isCollapsed ? 'is-collapsed' : ''}`} style={{
@@ -303,13 +299,16 @@ const PDFSidebar = React.forwardRef(({
       display: 'flex',
       flexDirection: 'column',
       transition: 'width 0.2s ease',
-      flexShrink: 0
+      flexShrink: 0,
+      // Phase F: finger-follow / spring-back / slide-down exit (mobile only).
+      ...(mobileMode ? sheetMotionStyle : null)
     }}>
       {/* Collapse/Expand Button */}
       <div
         className={mobileMode ? 'mobile-pdf-sheet__handle' : undefined}
-        onTouchStart={mobileMode ? handleMobileSheetTouchStart : undefined}
-        onTouchEnd={mobileMode ? handleMobileSheetTouchEnd : undefined}
+        onTouchStart={mobileMode ? sheetDragHandlers.onTouchStart : undefined}
+        onTouchMove={mobileMode ? sheetDragHandlers.onTouchMove : undefined}
+        onTouchEnd={mobileMode ? sheetDragHandlers.onTouchEnd : undefined}
         style={{
         height: '35px',
         padding: '0 8px',
@@ -347,7 +346,7 @@ const PDFSidebar = React.forwardRef(({
               type="button"
               className="mobile-history-close"
               aria-label="Close version history"
-              onClick={closePanel}
+              onClick={requestSheetClose}
             >
               <Icon name="close" size={17} color="currentColor" />
             </button>
@@ -447,7 +446,7 @@ const PDFSidebar = React.forwardRef(({
                 type="button"
                 className="mobile-pdf-hub-close"
                 aria-label="Close document hub"
-                onClick={closePanel}
+                onClick={requestSheetClose}
               >
                 <Icon name="close" size={16} color="currentColor" />
               </button>

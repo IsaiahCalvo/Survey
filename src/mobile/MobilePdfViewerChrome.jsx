@@ -5,6 +5,7 @@ import CompactColorPicker from '../components/CompactColorPicker';
 import { ARROWHEAD_STYLE_LABELS } from '../components/Callout/types';
 import { ZOOM_MODE_OPTIONS } from '../viewerShared';
 import { getMobileSyncPresentation, normalizeMobilePresence } from './mobilePdfViewerModel.js';
+import { useMobileSheetMotion } from './useMobileSheetMotion';
 import './mobilePdfViewer.css';
 
 const TOOL_GROUPS = {
@@ -464,8 +465,18 @@ export function MobilePdfViewerHeader({ id, documentName, onBack, topToolbarApi,
           <Icon name="chevronRight" size={16} color="currentColor" />
         </button>
 
-        {zoomOpen && bottomToolbarApi && (
-          <div className="mobile-pdf-header__zoom-menu" role="listbox" aria-label="Zoom and fit mode">
+        {/* Phase F: the zoom/fit dropdown stays mounted so it can animate BOTH
+            in (~150ms) and out (~130ms) via CSS — opacity + translateY(-4->0) +
+            scale(.97->1), demo App.tsx:410-428. `is-open` drives the state;
+            visibility flips off only after the out-transition so it leaves the
+            tab order when closed. prefers-reduced-motion drops the easing. */}
+        {bottomToolbarApi && (
+          <div
+            className={`mobile-pdf-header__zoom-menu${zoomOpen ? ' is-open' : ''}`}
+            role="listbox"
+            aria-label="Zoom and fit mode"
+            aria-hidden={!zoomOpen}
+          >
             {ZOOM_FIT_OPTIONS.map((option) => (
               <button
                 type="button"
@@ -519,6 +530,15 @@ function MobileToolProperties({ api }) {
   // rule: color_picker_unified).
   const [colorPicker, setColorPicker] = useState(null);
   const [textDefaultsOpen, setTextDefaultsOpen] = useState(false);
+  // Phase F (motion & feel): the text-defaults sheet gets the shared bottom-sheet
+  // motion — finger-follow drag off the handle, dy>82/vy>0.65 dismiss, spring-
+  // back, and a 170ms slide-down exit before the portal unmounts (demo
+  // AnnotationEditPanel.tsx:141-199 / inv-demo §17).
+  const {
+    motionStyle: textSheetMotionStyle,
+    dragHandlers: textSheetDragHandlers,
+    requestClose: requestTextSheetClose,
+  } = useMobileSheetMotion(() => setTextDefaultsOpen(false));
   const [textDefaultsTab, setTextDefaultsTab] = useState('text');
   const [textShapeColorSection, setTextShapeColorSection] = useState('fill');
   const counterMenuRef = useRef(null);
@@ -914,19 +934,25 @@ function MobileToolProperties({ api }) {
           type="button"
           className="mobile-pdf-sheet-backdrop"
           aria-label="Close text formatting"
-          onClick={() => setTextDefaultsOpen(false)}
+          onClick={requestTextSheetClose}
         />
         <section
           className={`mobile-pdf-text-defaults is-${sheetTab}${tool === 'callout' ? ' is-callout' : ''}`}
           aria-label={`${sheetTitle} settings`}
+          style={textSheetMotionStyle}
         >
-          <div className="mobile-pdf-sheet__handle" aria-hidden="true" />
+          <div
+            className="mobile-pdf-sheet__handle"
+            onTouchStart={textSheetDragHandlers.onTouchStart}
+            onTouchMove={textSheetDragHandlers.onTouchMove}
+            onTouchEnd={textSheetDragHandlers.onTouchEnd}
+          />
           <header>
             <div>
               <strong>{sheetTitle} settings</strong>
               <span>Focused on {sheetTab === 'text' ? 'Text' : 'Shape'}</span>
             </div>
-            <button type="button" aria-label="Close annotation settings" onClick={() => setTextDefaultsOpen(false)}>
+            <button type="button" aria-label="Close annotation settings" onClick={requestTextSheetClose}>
               <Icon name="close" size={17} color="currentColor" />
             </button>
           </header>
@@ -1191,6 +1217,14 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, onOpenP
   const [openCategory, setOpenCategory] = useState(null);
   const [moreOpen, setMoreOpen] = useState(false);
   const [presenceOpen, setPresenceOpen] = useState(false);
+  // Phase F (motion & feel): the active-users sheet gets the shared bottom-sheet
+  // motion — finger-follow drag off the handle + dy>82/vy>0.65 dismiss + spring-
+  // back + 170ms slide-down exit before unmount (inv-demo §17).
+  const {
+    motionStyle: usersSheetMotionStyle,
+    dragHandlers: usersSheetDragHandlers,
+    requestClose: requestUsersSheetClose,
+  } = useMobileSheetMotion(() => setPresenceOpen(false));
   const popoverRef = useRef(null);
   const presenceUsers = useMemo(() => normalizeMobilePresence({
     presence: leftRailApi?.presence,
@@ -1455,16 +1489,21 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, onOpenP
             type="button"
             className="mobile-pdf-sheet-backdrop"
             aria-label="Close active users"
-            onClick={() => setPresenceOpen(false)}
+            onClick={requestUsersSheetClose}
           />
-          <section className="mobile-pdf-sheet mobile-pdf-users-sheet" aria-label="Active users">
-            <div className="mobile-pdf-sheet__handle" aria-hidden="true" />
+          <section className="mobile-pdf-sheet mobile-pdf-users-sheet" aria-label="Active users" style={usersSheetMotionStyle}>
+            <div
+              className="mobile-pdf-sheet__handle"
+              onTouchStart={usersSheetDragHandlers.onTouchStart}
+              onTouchMove={usersSheetDragHandlers.onTouchMove}
+              onTouchEnd={usersSheetDragHandlers.onTouchEnd}
+            />
             <header>
               <div>
                 <strong>Active users</strong>
                 <span>{presenceCount} viewing this document</span>
               </div>
-              <button type="button" aria-label="Close active users" onClick={() => setPresenceOpen(false)}>
+              <button type="button" aria-label="Close active users" onClick={requestUsersSheetClose}>
                 <Icon name="close" size={17} color="currentColor" />
               </button>
             </header>

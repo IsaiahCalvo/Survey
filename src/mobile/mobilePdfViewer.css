@@ -263,6 +263,30 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   border-radius: 8px;
   box-shadow: 0 12px 28px rgba(0, 0, 0, 0.42);
   z-index: 7200;
+  /* Phase F (demo App.tsx:410-428): closed state — the menu fades/scales/slides
+     UP-and-out over 130ms (in-cubic-out); visibility flips off only after that
+     so the hidden menu leaves the tab order. transform keeps the -50% centring. */
+  opacity: 0;
+  transform: translateX(-50%) translateY(-4px) scale(0.97);
+  transform-origin: top center;
+  visibility: hidden;
+  pointer-events: none;
+  transition:
+    opacity 130ms cubic-bezier(0.33, 0, 0.67, 1),
+    transform 130ms cubic-bezier(0.33, 0, 0.67, 1),
+    visibility 0s linear 130ms;
+}
+
+.mobile-pdf-header__zoom-menu.is-open {
+  /* open state — 150ms out-cubic settle in. */
+  opacity: 1;
+  transform: translateX(-50%) translateY(0) scale(1);
+  visibility: visible;
+  pointer-events: auto;
+  transition:
+    opacity 150ms cubic-bezier(0.33, 1, 0.68, 1),
+    transform 150ms cubic-bezier(0.33, 1, 0.68, 1),
+    visibility 0s;
 }
 
 .mobile-pdf-header__zoom-menu > button {
@@ -2720,9 +2744,31 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   border-radius: 6px;
 }
 
+/* Phase F: the sheet slide-in also serves as the lightweight panel-swap
+   crossfade — when one sheet replaces another (e.g. spaces -> survey), the
+   incoming sheet fades+slides in (opacity 0->1) over the outgoing one, reading
+   as a soft cross-dissolve rather than a hard cut. A true simultaneous
+   two-sheet dissolve is intentionally NOT wired: the outgoing sheet collapses
+   through AppShell's mutual-exclusivity state, and threading a deferred unmount
+   through that would risk the Phase B content-measured height logic. */
 @keyframes mobilePdfSheetIn {
   from { transform: translateY(24px); opacity: 0; }
   to { transform: translateY(0); opacity: 1; }
+}
+
+/* Phase F: honour prefers-reduced-motion — drop the sheet slide-in, the zoom
+   dropdown easing, and (with JS short-circuiting the drag/close transitions in
+   useMobileSheetMotion) every decorative bottom-sheet transition. Direct-
+   manipulation finger-follow drag stays; only the easings are removed. */
+@media (prefers-reduced-motion: reduce) {
+  .mobile-pdf-sheet,
+  .mobile-pdf-text-defaults {
+    animation: none !important;
+  }
+  .mobile-pdf-header__zoom-menu,
+  .mobile-pdf-header__zoom-menu.is-open {
+    transition: visibility 0s !important;
+  }
 }
 
 @media (max-width: 340px) {
