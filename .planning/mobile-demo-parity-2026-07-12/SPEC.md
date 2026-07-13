@@ -87,14 +87,19 @@ Root causes measured and named in `audit-layout.md` (defects #1–#12, systemics
       was copied from the demo, but the new sheet's real chrome is ~120px vs the 106px budgeted, and its
       rows are restyled desktop rows that don't measure 54/50px. Fix direction: measure content
       (scrollHeight) and clamp to the existing max, instead of predicting (S4).
-- [ ] Bookmarks sheet floor: 238px minimum makes a 1-bookmark sheet huge; demo formula gives 126px (defect #5).
-- [ ] Top inset consistency: viewer header uses raw `env()`; hub fixed header has no top-inset term (defect #7).
-- [ ] Home screens in tabs mode: list bottom padding doesn't account for the fixed tab bar —
-      last card hidden behind it (defect #9). Android: 4 raw `env()` spots in hub modals → 0 (defect #8).
-- [ ] Landscape/notch-side insets: nothing anywhere handles left/right; shell injects bottom only (S2, defect #10).
-      Decide scope: portrait-only for now is acceptable if documented.
-- [ ] Sheet grab handle: 42x4 on survey/format sheets per demo (new is 34x4 everywhere); demo's spaces
-      drawer has NO handle row — reclaiming those 18px also helps defect #4 (defect #12).
+- [x] Bookmarks sheet floor: 238px minimum makes a 1-bookmark sheet huge; demo formula gives 126px (defect #5).
+- [x] Top inset consistency: viewer header uses raw `env()`; hub fixed header has no top-inset term (defect #7).
+- [x] Home screens in tabs mode: list bottom padding doesn't account for the fixed tab bar (defect #9 —
+      turned out to be NOT-a-bug: `.survey-hub .main` already owns tab-bar clearance; builder's double-pad
+      was caught by review and reverted to the demo's 14px). Android: 4 raw `env()` spots fixed (defect #8).
+- [x] Landscape/notch-side insets: OWNER DECISION 5 = portrait-only, orientation LOCKED. S2 injects all four
+      insets for corner-curve awareness; landscape layout (defect #10) intentionally skipped.
+- [x] Sheet grab handle: 42x4 on survey/text-defaults sheets. Spaces sheet KEEPS its handle (deliberate
+      deviation — carries swipe-dismiss; content-measured height absorbs it) (defect #12).
+
+**Phase B DONE 2026-07-12, commit acfd143c.** Adversarial review found 1 defect (defect-#9 double-pad) →
+fixed inline. Build + 1955 tests green; browser-verified at 390x844 with simulated 34px inset.
+Real-device iPhone 17 Pro Max acceptance still pending (Expo feeds were down).
 
 Acceptance: on a real phone, no control sits under the home indicator or the rounded corners;
 spaces sheet hugs its content exactly; iOS and Android agree on spacing.
@@ -104,24 +109,25 @@ spaces sheet hugs its content exactly; iOS and Android agree on spacing.
 `audit-survey.md` + `matrix.md` §5. The demo's survey flow is sheet-native; the new app still
 routes key moments through DESKTOP modals. Two decisions here are owner-level (see NEEDS-OWNER).
 
-- [ ] **Marker detail sheet (the #1 gap)**: demo places a pin and immediately opens a 314px bottom
-      sheet (category dropdown, entity swatch, rename, sibling-marker nav, locate, notes, checklist).
-      New app instead pops desktop 500px centered blur-modals ("Categorize highlight", entity picker,
-      name prompt) and the survey sheet stays collapsed. Build the mobile marker-detail sheet; the
-      logic already exists scattered in the rail's expanded rows — re-house it, don't rebuild it.
-- [ ] Notes editor: demo is an in-sheet takeover with photo/video pickers; new is a 600px desktop modal.
-- [ ] Survey sheet internals to demo metrics: category cards back to radius 8 / 38px rows / big chevrons
-      (currently desktop 24px rows), template picker rows to 42px with pressed states (currently
-      hover-only — dead on touch), strip desktop admin chrome (drag handles, copy-mode toolbars,
-      archived-checklist admin) out of the 392px sheet.
-- [ ] Tap placed marker → its sheet must reliably open (today the expand effect only fires on a
-      state *transition* and the sheet can stay hidden — `matrix.md` §5 "broken-ish" row).
-- [ ] "Keep active" off → revert to pan after placement, like the demo (today the tool stays armed
-      and the next tap raises the modal again).
-- [ ] Full-page region confirm: inline toolbar confirm (demo) instead of `window.confirm()` browser dialog.
-- [ ] Vocabulary: "Categorize highlight" → Survey Marker wording (hard product rule).
-- [ ] Survey export (Export Excel / Sync M365): currently gated off mobile and its CSS is a dead stub —
-      finish the port (`matrix.md` §5).
+- [x] **Marker detail sheet (the #1 gap)**: built inside the mobile survey sheet, derived from
+      `expandedSurveyMarkers`; logic re-housed from the rail's expanded rows and the DESKTOP rows now
+      delegate to the same shared helpers (identical store writes). Desktop centered modals suppressed on mobile.
+- [x] Notes editor: in-sheet takeover on mobile with photo/video pickers; desktop 600px modal kept for desktop.
+- [x] Survey sheet internals to demo metrics: category cards radius 8 / 38px rows / 36x38 chevron;
+      template rows 42px + pressed state; desktop admin chrome (drag handles, copy toolbars,
+      archived-checklist) mobileMode-guarded off.
+- [x] Tap placed marker → detail reliably opens (fixed the transition-only expand bug).
+- [x] "Keep active" off → tool reverts to pan after placement (demo App.tsx:1156).
+- [x] Full-page region confirm: inline strip step on mobile; `window.confirm()` kept on desktop.
+- [x] Vocabulary: "Categorize highlight" → "Categorize Survey Marker" + mobile-path sweep.
+- [x] Survey export (Export Excel / Sync M365): un-gated on mobile, dead CSS stub finished, desktop handlers wired.
+- [~] DEFERRED (need a sanctioned "move marker" mutation): category re-assign dropdown + module-navigator
+      re-home. Both surfaced read-only; flagged in code. Not blocking.
+
+**Phase C DONE 2026-07-12, commit a3740f27.** Placement stays drag-rect (owner decision 1). Adversarial
+review PASS; 2 mobile-only defects it found (module-flip breaking rename's item link; locate opening the
+desktop entity modal) fixed inline. Build + 1955 tests green; survey sheet browser-verified at 390x844
+(gold chips, "Survey Marker" copy, entity swatches). Real-device acceptance pending.
 
 Acceptance: place-a-marker → detail-sheet → checklist → notes loop happens entirely in bottom
 sheets with demo geometry; no desktop modal ever appears inside mobile survey mode.
@@ -130,44 +136,83 @@ sheets with demo geometry; no desktop modal ever appears inside mobile survey mo
 
 `matrix.md` §3, §4, §8. Pattern: the sheet exists at the right height, but desktop markup renders raw inside.
 
-- [ ] Bookmarks: demo mobile rows (38px, indent, icon bubbles, move up/down, jump-to-marker) — new
-      passes no mobile props at all.
-- [ ] Spaces rows: verify/apply demo touch metrics (54px space rows, 50px region rows, 40x24 toggle,
-      28x16 mini-toggle, 38px region-row min-height); page-assign input is 28px — below touch minimum.
-- [ ] Spaces header: confirm + (create) and export controls surface on mobile (`matrix.md` §4 partial).
-- [ ] Version history: real data is there, but rows are desktop-styled; demo spec is 50px rows,
-      radius 8, green 9px dot.
-- [ ] Page thumbnail cards: confirm clipboard (copy/cut) badge surfaces on mobile cards.
-- [ ] Context menus: only the pages menu exists. Port the demo's mobile menu chrome (154/176/188px,
-      34px actions) and add the missing long-press menus — annotation (320ms), canvas paste (360ms),
-      region delete (420ms) (`matrix.md` §7).
+- [x] Bookmarks: demo mobile rows (38px, indent, icon bubbles, move up/down via existing handler).
+      Note: markerId→survey jump has no counterpart here (this tab is the PDF outline, page-anchored) — not wired.
+- [x] Spaces rows: demo touch metrics — space activate toggle 40x24 (gold), region rows 50px,
+      page-assign input 28→44px with red range-parse error. Header create/export already present, sized to demo.
+- [x] Spaces header: verified present + sized (32px buttons, 116w export menu).
+- [x] Version history: demo rows (50px, radius 8, 9px green dot); real revision data + Restore kept.
+- [x] Page thumbnail cards: copy/cut clipboard badge surfaced on mobile.
+- [x] Context menus: mobile chrome (188px page menu browser-verified: #181B20/r9/#3C424D + full action
+      set; 176px annotation / 154px paste via passive long-press reusing desktop handlers, works under Select).
+- [~] DEFERRED (documented, no broken code shipped): DOM-free annotation hit-test under the Pan tool
+      (a pre-existing canvas-presentation known bug, not introduced here) + region long-press delete menu —
+      both need model-geometry hit-testing verified on-device.
+
+**Phase D DONE 2026-07-12, commit 3054043e.** Adversarial review PASS (no desktop regression, no new
+store writes). Build + 1955 tests green; mobile page menu browser-verified at 390x844.
 
 ## Phase E — Formatting-bar gaps & smaller feature deltas
 
 `matrix.md` §6, §9.
 
-- [ ] **Edit panel for non-text tools**: demo opens the full edit sheet (color card, stroke split card,
-      arrowhead) for pen/shapes/counter/eraser; new has it only for text/callout.
-- [ ] **Color picker**: replace the native OS `<input type=color>` with the app picker
-      (one-shared-picker rule; also restores presets + hex + opacity). Demo reference: in-panel
-      gradient/HSV takeover with opacity slider.
-- [ ] **Opacity control**: CSS exists, no JSX renders it — finish the stub.
-- [ ] Preset color row (9 colors, 30px cells) for shapes/pen, not just text.
-- [ ] Fit Height zoom option (demo has Fit Page / Width / Height; new lacks Height).
-- [ ] Title marquee reveal for long titles (>18 chars) — today they just ellipsize; ALSO fix the
-      title-pill overlapping the page pill (seen live at 390px).
-- [ ] Styled dropdowns vs native `<select>` (module picker, eraser mode, line style, arrowhead):
-      demo used styled menus everywhere — recommend converging, but see NEEDS-OWNER #3.
+- [x] **Edit panel for non-text tools**: full edit sheet now opens for pen/highlighter/shapes/line/
+      arrow/counter with adaptive fill/stroke/width/arrowhead cards. Eraser stays strip-only (deliberate —
+      it has only mode+size, no color/fill).
+- [x] **Color picker**: all 6 native `<input type=color>` replaced with the shared CompactColorPicker
+      (one-picker rule) in a mobile takeover surface — presets + spectrum + opacity + hex. Verified 0
+      native color inputs remain. (Gradient-square DRAG is still mouse-only on touch — flagged to Phase F;
+      presets/opacity-slider/hex all work on touch.)
+- [x] **Opacity control**: provided by CompactColorPicker's own opacity slider; the dead CSS stub deleted.
+- [x] Preset color row (9 colors, 30px cells) now renders for every tool, not just text.
+- [x] Fit Height zoom option — added to the mobile zoom menu (handler already existed); browser-verified all three fit modes.
+- [x] Title marquee reveal for >18-char titles + overlap fix (title stops at 50%-68px; browser-verified
+      no collision with the centered page cluster at 390px).
+- [x] Styled dropdowns (owner decision 3): one reusable MobileStyledSelect replaces all native `<select>`
+      (module picker, eraser mode, line style, arrowhead). Verified 0 native selects remain.
+- [x] Split page pill (owner decision 2): fraction-tap → inline page input, chevron-tap → zoom menu.
+      Chevron/fraction tap zones widened (34px / 22px + divider) after review advisory; both browser-verified.
+
+**Phase E DONE 2026-07-12, commit 4cd79d37.** Adversarial review PASS; chevron tap-zone advisory
+addressed inline. Build + 1955 tests green; split pill, fit-height, styled dropdowns, 0-native-inputs
+all browser-verified at 390x844.
 
 ## Phase F — Motion & feel (single biggest cross-cutting "feel" delta)
 
 `matrix.md` §10, `inv-demo.md` §17.
 
-- [ ] Sheet exit animation: today sheets vanish (display:none) — demo slides out 170ms.
-- [ ] Drag-to-dismiss physics: finger-follow + velocity threshold (dy>82 or vy>0.65) + spring-back;
-      new is a flat 48px touchend delta.
-- [ ] Zoom dropdown open/close animation parity (150ms in / 130ms out, fade+translate+scale).
-- [ ] Panel-swap animation (demo LayoutAnimation 170ms) when switching between sheets.
+- [x] Sheet exit animation: sheets slide down ~170ms (was display:none). Driven by setTimeout, not
+      transitionend — cannot get stuck. Browser-verified: mid-close translate-down, clean collapse.
+- [x] Drag-to-dismiss physics: finger-follow + velocity (dy>82 / vy>0.65) + spring-back, via new
+      useMobileSheetMotion hook. Handle-only, downward-only — no scroll hijack. (Feel needs a real device.)
+- [x] Zoom dropdown animation: 150ms in / 130ms out (fade + translateY + scale), pure CSS.
+- [~] Panel-swap: lightweight opacity crossfade only (documented deviation — a true two-sheet dissolve
+      was not wired, to avoid disturbing Phase B's content-measured height).
+
+**Phase F DONE 2026-07-12, commit 642ebe73.** Adversarial review PASS (explicitly cleared stuck-sheet,
+scroll-hijack, spring residual, Phase-B non-regression). Build + 1955 tests green; sheet open/close
+browser-verified at 390x844.
+
+---
+
+## ✅ ALL PHASES COMPLETE — 2026-07-12
+
+A (gold re-skin) · B (safe areas/geometry) · C (survey mobile UX) · D (de-desktop panels + menus) ·
+E (formatting + shared picker + split pill) · F (motion) — all landed on local main, NOT pushed.
+Commits: 19b31a2d, acfd143c, a3740f27, 3054043e, 4cd79d37, 642ebe73 (on checkpoint 23d734db).
+Every phase gated on build + full suite (1955 pass / 0 fail) + adversarial review + browser check at 390x844.
+
+**Remaining for the owner:**
+- **Real-device acceptance on the iPhone 17 Pro Max** — the whole point of the phone-model rule. All
+  verification so far is desk-simulated (injected 34px inset); the Expo feeds were down. Restart
+  :8081/:8082 and check corner-clipping + motion feel on the actual phone.
+- **Deferred-with-reason items** (each needs a decision or a sanctioned mutation, none blocking):
+  survey category re-assign + module re-home (need a "move marker" store op); Pan-tool annotation
+  long-press hit-test + region long-press menu (need a DOM-free geometry hit-test, tied to a
+  pre-existing canvas-presentation known bug); gradient-square touch-drag in the shared color picker
+  (works via presets/opacity/hex; drag is mouse-only).
+- **Push** whenever ready — remember to merge origin/main first (it has the PR#775 dev-env merge local
+  main lacks) and run the post-push email sweep.
 
 ## Device-adaptive safe areas — OWNER RULE (added 2026-07-12)
 
