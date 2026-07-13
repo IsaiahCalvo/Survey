@@ -27913,6 +27913,9 @@ ${pageBlocks}
         setPendingSvgSelection,
         clipboardAnnotation,
         handleReorderAnnotation,
+        // UX: mobile parity (Phase D) — re-skins the menu to the demo's touch
+        // context-menu chrome on phones; desktop right-click menu unchanged.
+        mobileMode,
       })}
 
       {/* Annotation Properties Panel — live-edit controls for the
@@ -28258,6 +28261,12 @@ ${pageBlocks}
                     initialRenderPages={PDFJS_INITIAL_RENDER_PAGES}
                     scrollDelayMs={PDFJS_SCROLL_DELAY_MS}
                     interactionMode={activeTool === 'pan' ? 'Pan' : 'TextSelection'}
+                    /* UX: mobile parity (Phase D) — a still-finger long-press on
+                       the PDF surface opens the touch context menu, but ONLY
+                       under the pan or select tool (demo App.tsx:1555/1579 gate
+                       long-press to activeTool pan|select). Drawing tools keep
+                       the finger for their own strokes. */
+                    mobileLongPressContextMenu={mobileMode && (activeTool === 'pan' || activeTool === 'select')}
                     textHighlightModeActive={activeTool === 'text-highlight'}
                     textHighlightColor={strokeColor}
                     textHighlightOpacity={Math.max(0, Math.min(1, Number(strokeOpacity) / 100 || 0.5))}

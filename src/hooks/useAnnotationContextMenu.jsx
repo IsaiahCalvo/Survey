@@ -139,6 +139,12 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
     setPendingSvgSelection,
     clipboardAnnotation,
     handleReorderAnnotation,
+    // UX: mobile parity (Phase D) — when true, the menu is re-skinned to the
+    // demo's touch context-menu chrome (154/176px panel, radius 9, #181B20 /
+    // #3C424D, 34px action rows, near-invisible dismiss scrim). Desktop
+    // (mobileMode falsy) keeps its exact prior styling — demo ref
+    // mobile-expo-go/src/styles.ts:856-902.
+    mobileMode = false,
   } = actions;
 
   return createPortal((() => {
@@ -430,7 +436,17 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
       ];
     }
 
-    return (
+    // UX: mobile context-menu chrome (Phase D parity). Panel width tracks the
+    // demo per menu type: object menus (annotation / group / callout) = 176px,
+    // paste/counter/text-markup = 154px (demo App.tsx:866/897 + styles.ts:861).
+    const isMobileMenu = !!mobileMode;
+    const mobileWidth = (ctx.kind === 'annotation' || ctx.kind === 'group' || ctx.kind === 'callout') ? 176 : 154;
+    const mobileTitle = (ctx.kind === 'annotation' || ctx.kind === 'group') ? 'Annotation'
+      : ctx.kind === 'callout' ? 'Callout'
+      : ctx.kind === 'counter' ? 'Counter'
+      : 'Page';
+
+    const panel = (
       <div
         data-annotation-context-menu="true"
         ref={(el) => {
@@ -497,7 +513,24 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
           el.style.left = `${nextLeft}px`;
           el.style.top = `${nextTop}px`;
         }}
-        style={{
+        style={isMobileMenu ? {
+          // UX: demo touch context-menu chrome (mobile-expo-go/src/styles.ts:861-871).
+          // Fixed panel, per-type width, radius 9, #181B20 fill / #3C424D border,
+          // 6px padding, no shadow (demo uses borders + fills only).
+          position: 'fixed',
+          left: ctx.x,
+          top: ctx.y,
+          background: '#181B20',
+          border: '1px solid #3C424D',
+          borderRadius: 9,
+          zIndex: 10000,
+          width: mobileWidth,
+          padding: 6,
+          fontSize: 13,
+          color: '#f4f5f7',
+          letterSpacing: 0,
+          fontFamily: '"Helvetica Neue", Helvetica, Arial, sans-serif',
+        } : {
           // Design.md menu spec: dark card, ink border, small radius,
           // deep soft shadow — matches the home page's portalled menus.
           position: 'fixed',
@@ -516,9 +549,17 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
           fontFamily: '"Helvetica Neue", Helvetica, Arial, sans-serif',
         }}
       >
+        {/* UX: mobile menus lead with a muted title row + divider, matching the
+            demo FloatingContextMenu (styles.ts:872-889). Desktop stays title-less. */}
+        {isMobileMenu && (
+          <>
+            <div style={{ color: '#8d96a6', fontSize: 11, fontWeight: 800, padding: '4px 6px' }}>{mobileTitle}</div>
+            <div style={{ height: 1, background: '#343A45' }} />
+          </>
+        )}
         {items.map((it) => (
           it.separator
-            ? <div key={it.key} style={{ height: 1, background: '#2a3140', margin: '4px 0' }} />
+            ? <div key={it.key} style={{ height: 1, background: isMobileMenu ? '#343A45' : '#2a3140', margin: '4px 0' }} />
             : (
               <div
                 key={it.key}
@@ -528,15 +569,27 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
                 // hover surveyMarker — the user can see the option exists but
                 // that it's not currently actionable. Matches standard
                 // desktop-app menu behavior. Danger items (Delete) use the
-                // design.md danger color like the home page menus.
-                style={{
+                // demo destructive color #F08A8A on mobile, design.md danger on desktop.
+                style={isMobileMenu ? {
+                  height: 34,
+                  display: 'flex',
+                  alignItems: 'center',
+                  padding: '0 8px',
+                  borderRadius: 6,
+                  cursor: it.disabled ? 'default' : 'pointer',
+                  userSelect: 'none',
+                  fontSize: 13,
+                  fontWeight: 800,
+                  opacity: it.disabled ? 0.45 : 1,
+                  color: it.disabled ? '#5a6473' : (it.key === 'delete' ? '#F08A8A' : '#f4f5f7'),
+                } : {
                   padding: '7px 12px',
                   borderRadius: 5,
                   cursor: it.disabled ? 'default' : 'pointer',
                   userSelect: 'none',
                   color: it.disabled ? '#5a6473' : (it.key === 'delete' ? '#cf6f6f' : '#e8e2d4'),
                 }}
-                onMouseEnter={(e) => { if (!it.disabled) e.currentTarget.style.background = '#1f2430'; }}
+                onMouseEnter={(e) => { if (!it.disabled) e.currentTarget.style.background = isMobileMenu ? '#22262d' : '#1f2430'; }}
                 onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
               >
                 {it.label}
@@ -545,5 +598,22 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
         ))}
       </div>
     );
+
+    // UX: on mobile, back the menu with the demo's near-invisible dismiss
+    // layer (rgba(0,0,0,0.01) — NEVER dims the page; styles.ts:856-860). A tap
+    // anywhere off the menu closes it. Desktop keeps its window-level
+    // mousedown/Escape dismiss (no scrim) untouched.
+    if (isMobileMenu) {
+      return (
+        <>
+          <div
+            onPointerDown={closeAnnotationContextMenu}
+            style={{ position: 'fixed', inset: 0, zIndex: 9999, background: 'rgba(0,0,0,0.01)' }}
+          />
+          {panel}
+        </>
+      );
+    }
+    return panel;
   })(), document.body);
 }

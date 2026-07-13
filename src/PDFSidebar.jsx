@@ -528,6 +528,7 @@ const PDFSidebar = React.forwardRef(({
                 onNavigateToPage={onNavigateToPage}
                 pageNum={pageNum}
                 numPages={numPages}
+                mobileMode={mobileMode}
               />
             </div>
 
@@ -589,6 +590,7 @@ const PDFSidebar = React.forwardRef(({
                 documentId={documentId}
                 user={user}
                 embedded
+                mobileMode={mobileMode}
                 isActive={activeTab === 'history' && !isCollapsed}
                 onNavigateToPage={onNavigateToPage}
                 onRestoreHistoryActivity={onRestoreHistoryActivity}

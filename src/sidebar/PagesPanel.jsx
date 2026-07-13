@@ -881,6 +881,21 @@ const PagesPanel = ({
                 {pageNumber}
               </div>
 
+              {/* UX 2026-07-12 — Mobile clipboard indicator: when this page is the
+                  cut/copy source, surface a green-bordered badge at the top-left of
+                  the card so the user can see which page is on the clipboard before
+                  pasting. Demo parity: PageThumb clipboard badge (styles.ts:1174-1187).
+                  Desktop cards never show this (mobileMode-gated). */}
+              {mobileMode && clipboardPage === pageNumber && (
+                <div
+                  className="mobile-page-clipboard-badge"
+                  aria-label={clipboardType === 'cut' ? `Page ${pageNumber} cut to clipboard` : `Page ${pageNumber} copied to clipboard`}
+                  title={clipboardType === 'cut' ? 'Cut — ready to paste' : 'Copied — ready to paste'}
+                >
+                  <Icon name="copy" size={12} color="#58d976" />
+                </div>
+              )}
+
               {mobileMode && (
                 <button
                   type="button"
@@ -1004,9 +1019,35 @@ const PagesPanel = ({
 
       {/* Context Menu */}
       {contextMenu && (
+        <>
+          {/* UX: mobile parity (Phase D) — demo's near-invisible dismiss layer
+              (rgba(0,0,0,0.01); never dims the page — styles.ts:856-860). Tap
+              off the menu to close. Desktop uses the existing outside-click
+              dismiss (no scrim). */}
+          {mobileMode && (
+            <div
+              onPointerDown={() => setContextMenu(null)}
+              style={{ position: 'fixed', inset: 0, zIndex: 9999, background: 'rgba(0,0,0,0.01)' }}
+            />
+          )}
         <div
           ref={contextMenuRef}
-          style={{
+          style={mobileMode ? {
+            // UX: demo page context-menu chrome (188px, radius 9, #181B20 /
+            // #3C424D, 6px pad, no shadow) — styles.ts:861-871, App.tsx:817.
+            position: 'fixed',
+            left: contextMenu.x,
+            top: contextMenu.y,
+            background: '#181B20',
+            border: '1px solid #3C424D',
+            borderRadius: '9px',
+            padding: '6px',
+            zIndex: 10000,
+            width: '188px',
+            maxHeight: 'calc(100dvh - 16px)',
+            overflowY: 'auto',
+            fontFamily: FONT_FAMILY
+          } : {
             position: 'fixed',
             left: contextMenu.x,
             top: contextMenu.y,
@@ -1024,6 +1065,10 @@ const PagesPanel = ({
         >
           {mobileMode && (
             <>
+              {/* UX: demo menus lead with a muted title row + divider
+                  (FloatingContextMenu, styles.ts:872-889). */}
+              <div style={{ color: '#8d96a6', fontSize: 11, fontWeight: 800, padding: '4px 6px' }}>{`Page ${contextMenu.pageNumber}`}</div>
+              <div style={{ height: 1, margin: '3px 0', background: '#343A45' }} />
               <button
                 type="button"
                 disabled={allowedPages.indexOf(contextMenu.pageNumber) <= 0}
@@ -1250,18 +1295,19 @@ const PagesPanel = ({
               fontSize: '13px',
               textAlign: 'left',
               cursor: 'pointer',
-              color: '#cf6f6f',
+              color: mobileMode ? '#F08A8A' : '#cf6f6f',
               display: 'flex',
               alignItems: 'center',
               gap: '8px'
             }}
-            onMouseEnter={(e) => e.currentTarget.style.background = '#2a3140'}
+            onMouseEnter={(e) => e.currentTarget.style.background = mobileMode ? '#22262d' : '#2a3140'}
             onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
           >
-            <Icon name="trash" size={14} color="#cf6f6f" />
+            <Icon name="trash" size={14} color={mobileMode ? '#F08A8A' : '#cf6f6f'} />
             Delete
           </button>
         </div>
+        </>
       )}
     </div>
   );

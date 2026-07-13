@@ -422,7 +422,13 @@ const BookmarksPanel = ({
   numPages,
   initialEditMode = false,
   initialExpandedFolders = [],
-  rowDragFeel = false
+  rowDragFeel = false,
+  // UX 2026-07-12 — mobileMode swaps the desktop @dnd-kit bookmark tree for the
+  // demo's touch-sized bookmark rows (min-height 38, depth·14 indent, icon
+  // bubbles, up/down move buttons; BookmarkRow.tsx / styles.ts:1306-1391) inside
+  // the bottom sheet. Reuses the same navigate + onBookmarkUpdate(order) paths as
+  // desktop; no new store writes. Desktop rendering is untouched.
+  mobileMode = false
 }) => {
   const [expandedFolders, setExpandedFolders] = useState(() => new Set(initialExpandedFolders));
   const [selectedBookmarkId, setSelectedBookmarkId] = useState(null);
@@ -1053,6 +1059,28 @@ const BookmarksPanel = ({
     }
   }, [onBookmarkDelete]);
 
+  // UX 2026-07-12 — Mobile up/down reorder. The demo's BookmarkRow move buttons
+  // shift a bookmark one slot among its same-parent siblings (BookmarkRow.tsx:64-70).
+  // We reuse the same mutation path desktop drag uses (onBookmarkUpdate with a new
+  // `order`), so sync/CRDT sees an identical operation — no new store write is
+  // introduced. Only the two swapped siblings are rewritten.
+  const handleMobileMoveBookmark = useCallback((id, delta) => {
+    if (!onBookmarkUpdate) return;
+    const target = (bookmarks || []).find((b) => b.id === id);
+    if (!target) return;
+    const siblings = (bookmarks || [])
+      .filter((b) => (b.parentId ?? null) === (target.parentId ?? null))
+      .sort((a, b) => (a.order || 0) - (b.order || 0));
+    const currentIndex = siblings.findIndex((b) => b.id === id);
+    const swapIndex = currentIndex + delta;
+    if (currentIndex < 0 || swapIndex < 0 || swapIndex >= siblings.length) return;
+    const neighbor = siblings[swapIndex];
+    const targetOrder = target.order || 0;
+    const neighborOrder = neighbor.order || 0;
+    onBookmarkUpdate(id, { order: neighborOrder });
+    onBookmarkUpdate(neighbor.id, { order: targetOrder });
+  }, [bookmarks, onBookmarkUpdate]);
+
   // Existing create/modal handlers remain the same
   const handleCreateBookmark = useCallback(() => {
     const trimmedName = newBookmarkName.trim();
@@ -1353,6 +1381,90 @@ const BookmarksPanel = ({
       return () => document.removeEventListener('mousedown', handleClickOutside);
     }
   }, [showCreateMenu]);
+
+  if (mobileMode) {
+    // UX 2026-07-12 — Mobile bookmark list. Flat, touch-sized rows that mirror the
+    // demo (BookmarkRow.tsx / HubTray bookmarks branch). flattenedItems already
+    // honours folder collapse state and carries per-row depth. Tapping a folder
+    // toggles it; tapping a bookmark navigates via the same handleNavigate path as
+    // desktop. Up/down move among same-parent siblings via handleMobileMoveBookmark.
+    // Note: the demo's markerId→survey jump does not apply here — the new app's
+    // Bookmarks tab is the PDF outline (page-anchored), with no survey markerId and
+    // no survey-open handler threaded to this panel, so page navigation is the
+    // correct real behavior.
+    return (
+      <div className="mobile-bookmark-list">
+        {flattenedItems.length === 0 ? (
+          <div className="mobile-bookmark-empty">
+            <Icon name="bookmark" size={20} color="#8d96a6" />
+            <span>No bookmarks yet</span>
+          </div>
+        ) : (
+          flattenedItems.map((item) => {
+            const isFolder = item.type === 'folder';
+            const siblings = (bookmarks || [])
+              .filter((b) => (b.parentId ?? null) === (item.parentId ?? null))
+              .sort((a, b) => (a.order || 0) - (b.order || 0));
+            const posIndex = siblings.findIndex((b) => b.id === item.id);
+            const isFirst = posIndex <= 0;
+            const isLast = posIndex === siblings.length - 1;
+            const depth = item.depth || 0;
+            const pageLabel = isFolder
+              ? 'Folder'
+              : (item.pageIds?.[0] ? `Page ${item.pageIds[0]}` : 'Bookmark');
+            return (
+              <div
+                key={item.id}
+                className="mobile-bookmark-row"
+                style={{ marginLeft: depth * 14 }}
+              >
+                <button
+                  type="button"
+                  className="mobile-bookmark-open"
+                  aria-label={isFolder ? `Toggle ${item.name}` : `Open bookmark ${item.name}`}
+                  onClick={() => {
+                    if (isFolder) {
+                      toggleExpand(item.id);
+                      return;
+                    }
+                    handleNavigate(item);
+                  }}
+                >
+                  <span className="mobile-bookmark-bubble">
+                    <Icon name={isFolder ? 'layers' : 'bookmark'} size={13} color={isFolder ? '#8fb7ff' : '#a8b0bf'} />
+                  </span>
+                  <span className="mobile-bookmark-copy">
+                    <span className="mobile-bookmark-title">{item.name}</span>
+                    <span className="mobile-bookmark-meta">{pageLabel} · PDF outline</span>
+                  </span>
+                </button>
+                <div className="mobile-bookmark-moves">
+                  <button
+                    type="button"
+                    className="mobile-bookmark-move"
+                    aria-label="Move bookmark up"
+                    disabled={isFirst}
+                    onClick={() => handleMobileMoveBookmark(item.id, -1)}
+                  >
+                    <Icon name="chevronUp" size={13} color="currentColor" />
+                  </button>
+                  <button
+                    type="button"
+                    className="mobile-bookmark-move"
+                    aria-label="Move bookmark down"
+                    disabled={isLast}
+                    onClick={() => handleMobileMoveBookmark(item.id, 1)}
+                  >
+                    <Icon name="chevronDown" size={13} color="currentColor" />
+                  </button>
+                </div>
+              </div>
+            );
+          })
+        )}
+      </div>
+    );
+  }
 
   return (
     <div style={{

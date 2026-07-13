@@ -59,6 +59,11 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
   isRegionOverlayToggleEnabled = null,
   showSurveyPanel = false,
   selectedModuleId = null,
+  // UX 2026-07-12 — in the mobile Spaces sheet the space activate toggle grows to
+  // the demo's touch size (40x24 track, 18px knob; SpaceRow.tsx toggle / styles.ts
+  // 2104-2123). Desktop keeps the compact 28x16 toggle. Gold active track, never
+  // the demo's blue. Region mini-toggles stay 28x16 (already demo-correct).
+  mobileMode = false,
 }) {
   const [editingRegionId, setEditingRegionId] = useState(null);
   const [editingRegionValue, setEditingRegionValue] = useState('');
@@ -259,9 +264,9 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
               }}
               style={{
                 position: 'relative',
-                width: '28px',
-                height: '16px',
-                borderRadius: '8px',
+                width: mobileMode ? '40px' : '28px',
+                height: mobileMode ? '24px' : '16px',
+                borderRadius: mobileMode ? '12px' : '8px',
                 background: isActive ? '#d8a84e' : '#2a3140',
                 cursor: 'pointer',
                 transition: 'background 0.2s ease',
@@ -286,13 +291,15 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
               <div
                 style={{
                   position: 'absolute',
-                  width: '12px',
-                  height: '12px',
+                  width: mobileMode ? '18px' : '12px',
+                  height: mobileMode ? '18px' : '12px',
                   borderRadius: '50%',
                   background: '#ffffff',
                   boxShadow: '0 1px 3px rgba(0, 0, 0, 0.2)',
                   transition: 'transform 0.2s ease',
-                  transform: isActive ? 'translate(12px, -50%)' : 'translate(0px, -50%)',
+                  transform: isActive
+                    ? (mobileMode ? 'translate(18px, -50%)' : 'translate(12px, -50%)')
+                    : 'translate(0px, -50%)',
                   left: '2px',
                   top: '50%'
                 }}
@@ -336,7 +343,7 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
             color: '#8d96a6',
             position: 'relative'
           }}>
-            <div style={{ position: 'relative', height: '24px', flex: '0 0 24px' }}>
+            <div className="space-add-pages-row" style={{ position: 'relative', height: '24px', flex: '0 0 24px' }}>
               <div style={{
                 display: 'flex',
                 alignItems: 'center',
@@ -416,6 +423,7 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
                       return (
                         <li
                           key={page.pageId}
+                          className="space-region-row"
                           style={{
                             display: 'flex',
                             alignItems: 'center',
@@ -1285,7 +1293,7 @@ const SpacesPanel = ({
   const isSpacesExportActive = isSpacesExportHovered || isSpacesExportMenuOpen;
 
   return (
-    <div ref={mobilePanelRootRef} style={{
+    <div ref={mobilePanelRootRef} className={mobileMode ? 'mobile-spaces-panel' : undefined} style={{
       display: 'flex',
       flexDirection: 'column',
       height: mobileMode ? 'auto' : '100%',
@@ -1465,6 +1473,7 @@ const SpacesPanel = ({
                       isRegionOverlayToggleEnabled={isRegionOverlayToggleEnabled}
                       showSurveyPanel={showSurveyPanel}
                       selectedModuleId={selectedModuleId}
+                      mobileMode={mobileMode}
                     />
                   )}
                 </SortableRearrangeRow>

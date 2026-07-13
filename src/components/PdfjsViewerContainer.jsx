@@ -402,6 +402,11 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
   // interactionMode === 'Pan' drives the drag-to-pan handler below (Pdfjs
   // is implemented locally by the owned pdf.js engine.
   interactionMode = 'Pan',
+  // UX: mobile parity (Phase D) — when true, a still-finger long-press on the
+  // PDF surface synthesizes a contextmenu at the touch point, opening the
+  // annotation / paste / region touch menu (demo App.tsx long-press handlers).
+  // Gated upstream to the pan/select tools so drawing gestures are untouched.
+  mobileLongPressContextMenu = false,
   // eslint-disable-next-line no-unused-vars
   initialRenderPages = 6,
   // eslint-disable-next-line no-unused-vars
@@ -1291,6 +1296,84 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
       setPanInteraction(false);
     };
   }, [applyWheelZoom, commitGesture, flushPan, isMobileSurface, schedulePan, setPanInteraction, setZoomInteraction]);
+
+  // Mobile long-press → context menu (Phase D parity). Isolated, additive,
+  // and passive: this effect only OBSERVES touches (it never preventDefaults or
+  // stops propagation), so it cannot disturb the pan/pinch/tool contract above.
+  // A single finger held still for ~380ms synthesizes a `contextmenu` MouseEvent
+  // at the touch point; the app-wide right-click dispatcher
+  // (utils/contextMenuDiagnostics.js) then resolves the target and opens the
+  // annotation / paste / region menu — reusing the exact desktop handlers, so
+  // sync/CRDT sees identical operations. Movement beyond 10px, a second finger,
+  // or lift-off before the timer cancels the press.
+  //
+  // Demo reference: mobile-expo-go/App.tsx wires per-target long-press —
+  // annotation 320ms (866-895), canvas paste 360ms (897-915), region 420ms
+  // (679-699). We resolve the target AFTER the press (canvas-presentation gives
+  // no per-annotation DOM to pre-detect), so a single 380ms threshold covers
+  // all three rather than three separate delays.
+  useEffect(() => {
+    const el = scrollerRef.current;
+    if (!el || !isMobileSurface || !mobileLongPressContextMenu) return undefined;
+
+    const LONG_PRESS_MS = 380;
+    const MOVE_CANCEL_PX = 10;
+    let timer = null;
+    let startX = 0;
+    let startY = 0;
+
+    const clear = () => {
+      if (timer) { clearTimeout(timer); timer = null; }
+    };
+
+    const fire = () => {
+      timer = null;
+      // Synthesize a right-click at the held point on whatever element is
+      // topmost there. The dispatcher reads clientX/clientY + composedPath /
+      // elementsFromPoint, so a real MouseEvent on the hit element resolves
+      // the page + annotation/region exactly as a desktop right-click would.
+      const target = document.elementFromPoint(startX, startY) || el;
+      const ev = new MouseEvent('contextmenu', {
+        bubbles: true,
+        cancelable: true,
+        view: window,
+        clientX: startX,
+        clientY: startY,
+        button: 2,
+      });
+      target.dispatchEvent(ev);
+    };
+
+    const onStart = (event) => {
+      if (event.touches.length !== 1) { clear(); return; }
+      const t = event.touches[0];
+      startX = t.clientX;
+      startY = t.clientY;
+      clear();
+      timer = window.setTimeout(fire, LONG_PRESS_MS);
+    };
+    const onMove = (event) => {
+      if (!timer) return;
+      if (event.touches.length !== 1) { clear(); return; }
+      const t = event.touches[0];
+      if (Math.abs(t.clientX - startX) > MOVE_CANCEL_PX || Math.abs(t.clientY - startY) > MOVE_CANCEL_PX) {
+        clear();
+      }
+    };
+
+    // passive:true — guarantees we never interfere with the active touch contract.
+    el.addEventListener('touchstart', onStart, { capture: true, passive: true });
+    el.addEventListener('touchmove', onMove, { capture: true, passive: true });
+    el.addEventListener('touchend', clear, { capture: true, passive: true });
+    el.addEventListener('touchcancel', clear, { capture: true, passive: true });
+    return () => {
+      clear();
+      el.removeEventListener('touchstart', onStart, true);
+      el.removeEventListener('touchmove', onMove, true);
+      el.removeEventListener('touchend', clear, true);
+      el.removeEventListener('touchcancel', clear, true);
+    };
+  }, [isMobileSurface, mobileLongPressContextMenu]);
 
   // ---- imperative zoom / nav -----------------------------------------------
   const zoomToScale = useCallback((target) => {

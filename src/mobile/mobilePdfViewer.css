@@ -2628,3 +2628,250 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   .mobile-pdf-header__history { right: 4px; gap: 2px; }
   .mobile-pdf-dock { padding-inline: 14px; }
 }
+
+/* ============================================================================
+   Phase D stage 1 — de-desktop the sheet-embedded panels (2026-07-12)
+   Bookmarks / Version history / Spaces touch metrics / Pages clipboard badge.
+   All rules are mobile-scoped (mobileMode class hooks); desktop is untouched.
+   Layout reference = old demo (mobile-expo-go); color reference = app gold.
+   ============================================================================ */
+
+/* --- Pages: clipboard (cut/copy) badge (demo styles.ts:1174-1187) --- */
+.mobile-page-clipboard-badge {
+  position: absolute;
+  left: 8px;
+  top: 8px;
+  z-index: 2;
+  width: 22px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+  box-sizing: border-box;
+  background: #132a20;
+  border: 1px solid #2e8f5a;
+  border-radius: 50%;
+}
+
+/* --- Bookmarks: mobile rows (demo BookmarkRow.tsx / styles.ts:1306-1391) --- */
+.mobile-bookmark-list {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding: 10px 16px calc(var(--mobile-bottom-inset, 10px) + 8px);
+  overflow-y: auto;
+  background: #24272d;
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, sans-serif;
+}
+
+.mobile-bookmark-row {
+  min-height: 38px;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 7px 6px 5px;
+  box-sizing: border-box;
+  background: #1b1f25;
+  border: 1px solid #333944;
+  border-radius: 6px;
+}
+
+.mobile-bookmark-open {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  text-align: left;
+  cursor: pointer;
+}
+
+.mobile-bookmark-bubble {
+  flex: 0 0 22px;
+  width: 22px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+  background: #20242c;
+  border: 1px solid #343a45;
+  border-radius: 11px;
+}
+
+.mobile-bookmark-copy {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.mobile-bookmark-title {
+  color: #f2f2f2;
+  font-size: 13px;
+  font-weight: 800;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mobile-bookmark-meta {
+  color: #a8b0bf;
+  font-size: 11px;
+  font-weight: 700;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mobile-bookmark-moves {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.mobile-bookmark-move {
+  width: 22px;
+  height: 24px;
+  display: grid;
+  place-items: center;
+  color: #f2f2f2;
+  background: #242a33;
+  border: 0;
+  border-radius: 5px;
+  cursor: pointer;
+}
+
+.mobile-bookmark-move:disabled {
+  opacity: 0.36;
+  cursor: default;
+}
+
+.mobile-bookmark-empty {
+  min-height: 76px;
+  margin: 8px 16px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  background: #1b1f25;
+  border: 1px solid #333944;
+  border-radius: 7px;
+}
+
+.mobile-bookmark-empty span {
+  color: #a8b0bf;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+/* --- Version history: mobile rows (demo VersionHistoryDrawer / styles.ts:1994-2025).
+   Geometry-only restyle: keeps the real revision data + inline selected/restore
+   state (background/border stay inline so selection feedback survives), adds the
+   9px green dot and bolder title of the demo row. --- */
+.mobile-revisions-panel {
+  padding: 8px 16px calc(var(--mobile-bottom-inset, 10px) + 8px);
+  background: #24272d;
+}
+
+.mobile-revisions-panel > div[role="button"] {
+  position: relative;
+  min-height: 50px;
+  box-sizing: border-box;
+  padding: 10px 12px 10px 28px !important;
+  margin-bottom: 7px !important;
+  border-radius: 8px !important;
+}
+
+.mobile-revisions-panel > div[role="button"]::before {
+  content: "";
+  position: absolute;
+  left: 11px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 9px;
+  height: 9px;
+  border-radius: 5px;
+  background: #58d976;
+}
+
+.mobile-revisions-panel > div[role="button"] > div:first-child {
+  color: #f2f2f2 !important;
+  font-size: 13px !important;
+  font-weight: 900 !important;
+}
+
+/* --- Spaces: touch metrics (demo SpaceRow.tsx / SpacePageRegionRow.tsx /
+   styles.ts:2063-2513). Sizing only; gold actives are already applied inline. --- */
+
+/* Page-assign input to a 44px touch target (was 28px, below minimum). The
+   wrapper is a fixed 24px-tall box on desktop — let it grow on mobile. */
+.mobile-spaces-panel .space-add-pages-row {
+  height: auto !important;
+  flex: 0 0 auto !important;
+}
+
+.mobile-spaces-panel .space-add-pages-input {
+  min-height: 44px !important;
+  height: 44px !important;
+  padding: 0 12px !important;
+  font-size: 14px !important;
+}
+
+.mobile-spaces-panel .space-add-pages-icon-button {
+  width: 44px !important;
+  height: 44px !important;
+  flex: 0 0 44px !important;
+}
+
+/* Red range-parse error, shown in-flow beneath the input on mobile. */
+.mobile-spaces-panel .space-page-range-error {
+  position: static !important;
+  margin-top: 4px;
+  color: #f08a8a !important;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+/* Space card header controls to touch height (~space row 54px). */
+.mobile-spaces-panel .space-card-leading-controls,
+.mobile-spaces-panel .space-card-header-controls {
+  min-height: 44px;
+}
+
+.mobile-spaces-panel .space-card-expand-button,
+.mobile-spaces-panel .space-card-delete-button {
+  min-width: 32px;
+  min-height: 32px;
+}
+
+/* Region-assign row to demo touch height (was 34px). */
+.mobile-spaces-panel .space-region-row {
+  min-height: 50px !important;
+}
+
+.mobile-spaces-panel .region-page-pill {
+  min-width: 32px;
+  min-height: 30px;
+}
+
+/* Header create-space + export controls to 32px touch targets; export menu
+   to the demo's 116w rows h30 (SpacesDrawer.tsx / styles.ts:2187-2230). */
+.mobile-spaces-panel .survey-marker-category-create-button,
+.mobile-spaces-panel .spaces-header-export-button {
+  width: 32px !important;
+  height: 32px !important;
+}
+
+.mobile-spaces-panel .spaces-header-export-menu {
+  min-width: 116px;
+}
+
+.mobile-spaces-panel .spaces-header-export-menu-button {
+  min-height: 30px;
+}

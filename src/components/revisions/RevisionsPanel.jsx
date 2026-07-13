@@ -128,6 +128,11 @@ export default function RevisionsPanel({
   documentId,
   user,
   embedded = false,
+  // UX 2026-07-12 — mobileMode restyles the timeline rows to the demo's mobile
+  // version-history rows (min-height 50, radius 8, 9px green dot, bolder title;
+  // VersionHistoryDrawer / styles.ts:1994-2025) while keeping the full real
+  // revision data + restore controls (superset). Desktop rendering is untouched.
+  mobileMode = false,
   // History-audit P1: when embedded, the sidebar keeps this panel mounted
   // behind display:none. isActive=false means the History tab is deselected
   // or the rail is collapsed — preview/spotlight state must be torn down so
@@ -841,7 +846,7 @@ export default function RevisionsPanel({
         )}
       </div>
 
-      <div style={{ flex: 1, overflowY: 'auto', padding: 8 }}>
+      <div className={mobileMode ? 'mobile-revisions-panel' : undefined} style={{ flex: 1, overflowY: 'auto', padding: 8 }}>
         {loading && <div style={{ padding: 10, fontSize: 12, color: '#8d96a6' }}>Loading…</div>}
         {err && <div style={{ padding: 10, color: '#ff8a8a', fontSize: 12 }}>Error: {err}</div>}
         {!loading && !err && timelineItems.length === 0 && (
