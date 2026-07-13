@@ -150,7 +150,11 @@ test('mobile annotation settings retain the preserved app geometry and controls'
   assert.match(MOBILE_VIEWER_CHROME_SOURCE, /Shape settings/);
   assert.match(MOBILE_VIEWER_CHROME_SOURCE, /Text alignment/);
   assert.match(MOBILE_VIEWER_CHROME_SOURCE, /Vertical text alignment/);
-  assert.match(MOBILE_VIEWER_CHROME_SOURCE, /aria-label="Arrowhead"/);
+  // 2026-07-12 Phase E stage 2 (OWNER DECISION 3): the in-sheet arrowhead
+  // control is now the reusable app-styled MobileStyledSelect (native OS
+  // <select> retired); it emits the same runtime aria-label from its ariaLabel
+  // prop. Guard the control's presence via that prop.
+  assert.match(MOBILE_VIEWER_CHROME_SOURCE, /ariaLabel="Arrowhead"/);
   assert.match(MOBILE_VIEWER_CSS_SOURCE, /height: calc\(432px \+ var\(--mobile-bottom-inset\)\)/);
   assert.match(MOBILE_VIEWER_CSS_SOURCE, /is-shape:not\(\.is-callout\)[\s\S]{0,100}height: calc\(368px \+ var\(--mobile-bottom-inset\)\)/);
   assert.match(MOBILE_VIEWER_CSS_SOURCE, /is-shape\.is-callout[\s\S]{0,100}height: calc\(448px \+ var\(--mobile-bottom-inset\)\)/);

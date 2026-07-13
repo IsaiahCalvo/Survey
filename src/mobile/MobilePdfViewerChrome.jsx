@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import Icon from '../Icons';
+import CompactColorPicker from '../components/CompactColorPicker';
 import { ARROWHEAD_STYLE_LABELS } from '../components/Callout/types';
 import { ZOOM_MODE_OPTIONS } from '../viewerShared';
 import { getMobileSyncPresentation, normalizeMobilePresence } from './mobilePdfViewerModel.js';
@@ -70,6 +71,165 @@ const MOBILE_ANNOTATION_COLORS = [
   '#FF8A3D',
   '#000000',
 ];
+
+// Human labels for the edit-sheet header, per tool. (demo AnnotationEditPanel
+// titles the sheet with the annotation kind — App.tsx tool set.)
+const TOOL_LABELS = {
+  pen: 'Pen',
+  highlighter: 'Highlighter',
+  rect: 'Rectangle',
+  ellipse: 'Ellipse',
+  line: 'Line',
+  arrow: 'Arrow',
+  counter: 'Counter',
+  text: 'Text',
+  callout: 'Callout',
+};
+
+/**
+ * MobileColorPickerSurface — mobile takeover host for the app's ONE shared
+ * CompactColorPicker (project rule: every colour control reuses it, never the
+ * OS <input type=color>). Mirrors the demo's in-panel gradient/HSV picker
+ * (AnnotationEditPanel/styles.ts:1631-1783): SB square + hue + opacity + hex.
+ * Rendered as a near-invisible-backdrop popover above the edit sheet, matching
+ * the demo's never-dim overlay convention.
+ */
+function MobileColorPickerSurface({ color, opacity, showOpacity = true, firstPreset, minOpacity, onChange, onClose, title }) {
+  if (typeof document === 'undefined') return null;
+  return createPortal(
+    <>
+      <button
+        type="button"
+        className="mobile-pdf-colorpicker-backdrop"
+        aria-label={`Close ${title || 'color'} picker`}
+        onClick={onClose}
+      />
+      <div className="mobile-pdf-colorpicker-surface" role="dialog" aria-label={`${title || 'Color'} picker`}>
+        <CompactColorPicker
+          color={color}
+          opacity={opacity}
+          showOpacity={showOpacity}
+          firstPreset={firstPreset}
+          minOpacity={minOpacity}
+          onChange={onChange}
+          onClose={onClose}
+        />
+      </div>
+    </>,
+    document.body,
+  );
+}
+
+/**
+ * MobileStyledSelect — one reusable app-styled dropdown that replaces the OS
+ * native `<select>` rollers on mobile (OWNER DECISION 3, 2026-07-12; matrix §6
+ * dropdown rows). Trigger sits inline in the formatting strip like its sibling
+ * controls; the open menu is the demo's dark context-menu chrome (#181B20 /
+ * #3C424D / radius 8 / 34px rows / gold active — same chrome Phase D used).
+ * Portals to <body> as a fixed-position layer measured off the trigger rect so
+ * it works both in the top strip (opens down) and inside the bottom edit sheet
+ * (opens up). Keyboard: Enter/Space or ArrowDown opens; arrows move; Enter
+ * selects; Escape closes. Tap: outside pointerdown closes.
+ */
+function MobileStyledSelect({ value, options, onChange, ariaLabel, disabled = false, minWidth, placeholder }) {
+  const [open, setOpen] = useState(false);
+  const [pos, setPos] = useState(null);
+  const triggerRef = useRef(null);
+  const menuRef = useRef(null);
+  const selected = options.find((option) => option.value === value);
+
+  const measure = () => {
+    const rect = triggerRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    const openUp = rect.bottom > (window.innerHeight * 0.6);
+    setPos({
+      left: rect.left,
+      minWidth: rect.width,
+      openUp,
+      top: openUp ? undefined : rect.bottom + 4,
+      bottom: openUp ? (window.innerHeight - rect.top + 4) : undefined,
+    });
+  };
+
+  useEffect(() => {
+    if (!open) return undefined;
+    const close = (event) => {
+      if (menuRef.current?.contains(event.target) || triggerRef.current?.contains(event.target)) return;
+      setOpen(false);
+    };
+    const onKey = (event) => { if (event.key === 'Escape') setOpen(false); };
+    document.addEventListener('pointerdown', close, true);
+    document.addEventListener('keydown', onKey, true);
+    return () => {
+      document.removeEventListener('pointerdown', close, true);
+      document.removeEventListener('keydown', onKey, true);
+    };
+  }, [open]);
+
+  const toggle = () => {
+    if (disabled) return;
+    if (!open) measure();
+    setOpen((value) => !value);
+  };
+
+  return (
+    <div className="mobile-styled-select" ref={triggerRef}>
+      <button
+        type="button"
+        className={`mobile-styled-select__trigger${open ? ' is-open' : ''}`}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        aria-label={ariaLabel}
+        disabled={disabled}
+        style={minWidth ? { minWidth } : undefined}
+        onKeyDown={(event) => {
+          if (event.key === 'ArrowDown' || event.key === 'Enter' || event.key === ' ') {
+            event.preventDefault();
+            if (!open) measure();
+            setOpen(true);
+          }
+        }}
+        onClick={toggle}
+      >
+        <span>{selected?.label || placeholder || ''}</span>
+        <Icon name="chevronDown" size={11} color="currentColor" />
+      </button>
+      {open && typeof document !== 'undefined' && pos && createPortal(
+        <div
+          ref={menuRef}
+          className="mobile-styled-select__menu"
+          role="listbox"
+          aria-label={ariaLabel}
+          style={{
+            position: 'fixed',
+            left: pos.left,
+            top: pos.top,
+            bottom: pos.bottom,
+            minWidth: pos.minWidth,
+          }}
+        >
+          {options.map((option) => {
+            const active = option.value === value;
+            return (
+              <button
+                key={option.value}
+                type="button"
+                role="option"
+                aria-selected={active}
+                className={active ? 'is-active' : ''}
+                onClick={() => { onChange(option.value); setOpen(false); }}
+              >
+                <span>{option.label}</span>
+                {active && <Icon name="check" size={14} color="currentColor" />}
+              </button>
+            );
+          })}
+        </div>,
+        document.body,
+      )}
+    </div>
+  );
+}
 
 const categoryGlyph = (name) => {
   const parts = String(name || '').trim().split(/\s+/).filter(Boolean);
@@ -163,18 +323,55 @@ function MobileTextAlignmentGlyph({ axis, value, active }) {
   );
 }
 
+// Demo zoom-fit dropdown lists ONLY the fit modes (demo constants.tsx:92-96:
+// Fit Page / Fit Width / Fit Height). 'manual' is the pinch-zoom RESULT state,
+// never a menu choice, so it's filtered out here — keeps parity with the demo's
+// 3-item fit menu while surfacing Fit Height (now that it's wired end-to-end in
+// the pdf.js viewer: zoomController FIT_HEIGHT + PDFViewer handleZoomModeSelect).
+const ZOOM_FIT_OPTIONS = ZOOM_MODE_OPTIONS.filter((option) => option.id !== 'manual');
+
 export function MobilePdfViewerHeader({ id, documentName, onBack, topToolbarApi, bottomToolbarApi }) {
-  const [pageMenuOpen, setPageMenuOpen] = useState(false);
-  const menuRef = useRef(null);
+  // OWNER DECISION 2 (2026-07-12): the page pill has two tap zones — the
+  // fraction opens an inline page-jump input (type-to-jump), the chevron opens
+  // the zoom/fit dropdown ONLY. The old combined page+zoom single surface is
+  // gone. (demo App.tsx:462-475 inline input; :1215-1239 pill; :410-428 menu.)
+  const [pageEditing, setPageEditing] = useState(false);
+  const [zoomOpen, setZoomOpen] = useState(false);
+  // Marquee reveal for long titles (demo App.tsx:441-460, 1295-1319): tapping a
+  // title >18 chars slides the text left to reveal its tail, then springs back.
+  const [titleRevealing, setTitleRevealing] = useState(false);
+  const pagesRef = useRef(null);
+  const title = documentName || 'Document';
 
   useEffect(() => {
-    if (!pageMenuOpen) return undefined;
+    if (!pageEditing && !zoomOpen) return undefined;
     const close = (event) => {
-      if (!menuRef.current?.contains(event.target)) setPageMenuOpen(false);
+      if (!pagesRef.current?.contains(event.target)) {
+        setPageEditing(false);
+        setZoomOpen(false);
+      }
     };
     document.addEventListener('pointerdown', close, true);
     return () => document.removeEventListener('pointerdown', close, true);
-  }, [pageMenuOpen]);
+  }, [pageEditing, zoomOpen]);
+
+  const revealTitle = () => {
+    // Only long titles marquee (demo gates on length > 18). The is-revealing
+    // class runs the reveal keyframe; animationend clears it back to ellipsis.
+    if (title.length <= 18) return;
+    setTitleRevealing(false);
+    requestAnimationFrame(() => setTitleRevealing(true));
+  };
+
+  const openPageEdit = () => {
+    setZoomOpen(false);
+    setPageEditing(true);
+  };
+
+  const toggleZoom = () => {
+    setPageEditing(false);
+    setZoomOpen((open) => !open);
+  };
 
   return (
     <header id={id} className="mobile-pdf-header" data-mobile-pdf-header="true">
@@ -184,66 +381,101 @@ export function MobilePdfViewerHeader({ id, documentName, onBack, topToolbarApi,
         </button>
         <button
           type="button"
-          className="mobile-pdf-header__title"
-          title={documentName || 'Document'}
-          aria-label="Document page and zoom options"
-          aria-expanded={pageMenuOpen}
-          onClick={() => setPageMenuOpen((open) => !open)}
+          className={`mobile-pdf-header__title${titleRevealing ? ' is-revealing' : ''}`}
+          title={title}
+          aria-label="Document title"
+          onClick={revealTitle}
         >
-          {documentName || 'Document'}
+          <span
+            className="mobile-pdf-header__title-text"
+            onAnimationEnd={() => setTitleRevealing(false)}
+          >
+            {title}
+          </span>
         </button>
       </div>
 
-      <div className="mobile-pdf-header__pages" ref={menuRef}>
+      <div className="mobile-pdf-header__pages" ref={pagesRef}>
         <button
           type="button"
-          className={`mobile-pdf-header__page-pill${pageMenuOpen ? ' is-open' : ''}`}
-          aria-label="Page and zoom options"
-          aria-expanded={pageMenuOpen}
-          onClick={() => setPageMenuOpen((open) => !open)}
+          className="mobile-pdf-header__page-nav"
+          aria-label="Previous page"
+          disabled={(bottomToolbarApi?.pageNum || 1) <= 1}
+          onClick={bottomToolbarApi?.goToPreviousPage}
         >
-          <span>{bottomToolbarApi?.pageNum || 1}</span>
-          <span className="mobile-pdf-header__page-total">/ {bottomToolbarApi?.numPages || 1}</span>
-          <Icon name="chevronDown" size={11} color="currentColor" />
+          <Icon name="chevronLeft" size={16} color="currentColor" />
         </button>
 
-        {pageMenuOpen && bottomToolbarApi && (
-          <div className="mobile-pdf-header__page-menu">
-            <div className="mobile-pdf-header__page-jump">
-              <button
-                type="button"
-                aria-label="Previous page"
-                disabled={bottomToolbarApi.pageNum <= 1}
-                onClick={bottomToolbarApi.goToPreviousPage}
-              >
-                <Icon name="chevronLeft" size={16} color="currentColor" />
-              </button>
+        <div className={`mobile-pdf-header__page-pill${(pageEditing || zoomOpen) ? ' is-open' : ''}`}>
+          {pageEditing ? (
+            <span className="mobile-pdf-header__page-frac">
               <input
+                className="mobile-pdf-header__page-input"
                 aria-label="Page number"
                 inputMode="numeric"
-                value={bottomToolbarApi.pageInputValue}
-                onChange={bottomToolbarApi.handlePageInputChange}
-                onKeyDown={bottomToolbarApi.handlePageInputKeyDown}
-                onBlur={bottomToolbarApi.handlePageInputBlur}
+                maxLength={3}
+                autoFocus
+                value={bottomToolbarApi?.pageInputValue ?? ''}
+                onFocus={(event) => event.target.select()}
+                onChange={bottomToolbarApi?.handlePageInputChange}
+                onKeyDown={(event) => {
+                  bottomToolbarApi?.handlePageInputKeyDown?.(event);
+                  if (event.key === 'Enter') setPageEditing(false);
+                }}
+                onBlur={(event) => {
+                  bottomToolbarApi?.handlePageInputBlur?.(event);
+                  setPageEditing(false);
+                }}
               />
-              <span>of {bottomToolbarApi.numPages}</span>
-              <button
-                type="button"
-                aria-label="Next page"
-                disabled={bottomToolbarApi.pageNum >= bottomToolbarApi.numPages}
-                onClick={bottomToolbarApi.goToNextPage}
-              >
-                <Icon name="chevronRight" size={16} color="currentColor" />
-              </button>
-            </div>
-            {ZOOM_MODE_OPTIONS.map((option) => (
+              <span className="mobile-pdf-header__page-total">/ {bottomToolbarApi?.numPages || 1}</span>
+            </span>
+          ) : (
+            /* UX: the WHOLE "n / N" fraction is the page-jump tap zone (owner
+               decision 2) — flex-grows to fill the pill left of the chevron so
+               it's a comfortable target, not just the ordinal digit. */
+            <button
+              type="button"
+              className="mobile-pdf-header__page-frac"
+              aria-label="Jump to page"
+              onClick={openPageEdit}
+            >
+              {bottomToolbarApi?.pageNum || 1}
+              <span className="mobile-pdf-header__page-total">/ {bottomToolbarApi?.numPages || 1}</span>
+            </button>
+          )}
+          <button
+            type="button"
+            className="mobile-pdf-header__page-chevron"
+            aria-label="Zoom and fit options"
+            aria-expanded={zoomOpen}
+            onClick={toggleZoom}
+          >
+            <Icon name="chevronDown" size={11} color="currentColor" />
+          </button>
+        </div>
+
+        <button
+          type="button"
+          className="mobile-pdf-header__page-nav"
+          aria-label="Next page"
+          disabled={(bottomToolbarApi?.pageNum || 1) >= (bottomToolbarApi?.numPages || 1)}
+          onClick={bottomToolbarApi?.goToNextPage}
+        >
+          <Icon name="chevronRight" size={16} color="currentColor" />
+        </button>
+
+        {zoomOpen && bottomToolbarApi && (
+          <div className="mobile-pdf-header__zoom-menu" role="listbox" aria-label="Zoom and fit mode">
+            {ZOOM_FIT_OPTIONS.map((option) => (
               <button
                 type="button"
                 key={option.id}
+                role="option"
+                aria-selected={bottomToolbarApi.zoomMode === option.id}
                 className={bottomToolbarApi.zoomMode === option.id ? 'is-active' : ''}
                 onClick={() => {
                   bottomToolbarApi.handleZoomModeSelect(option.id);
-                  setPageMenuOpen(false);
+                  setZoomOpen(false);
                 }}
               >
                 <span>{option.label}</span>
@@ -280,29 +512,34 @@ export function MobilePdfViewerHeader({ id, documentName, onBack, topToolbarApi,
 
 function MobileToolProperties({ api }) {
   const [counterMenuOpen, setCounterMenuOpen] = useState(false);
-  const [colorMenuOpen, setColorMenuOpen] = useState(false);
+  // 2026-07-12 (Phase E, demo parity): which colour control has the shared
+  // CompactColorPicker takeover open. null | 'textColor' | 'fill' | 'stroke'
+  // | 'fontColorLive'. Replaces the old OS <input type=color> swatches so
+  // every mobile colour control reuses the app's one shared picker (project
+  // rule: color_picker_unified).
+  const [colorPicker, setColorPicker] = useState(null);
   const [textDefaultsOpen, setTextDefaultsOpen] = useState(false);
   const [textDefaultsTab, setTextDefaultsTab] = useState('text');
   const [textShapeColorSection, setTextShapeColorSection] = useState('fill');
   const counterMenuRef = useRef(null);
-  const colorMenuRef = useRef(null);
   const tool = api?.contextTool || api?.activeTool;
 
   useEffect(() => {
-    if (tool !== 'counter') setCounterMenuOpen(false);
-    setColorMenuOpen(false);
-    if (tool !== 'text' && tool !== 'callout') setTextDefaultsOpen(false);
+    // Close every tool-scoped popover/sheet when the active tool changes so a
+    // stale colour picker or edit sheet never bleeds across tools.
+    setCounterMenuOpen(false);
+    setColorPicker(null);
+    setTextDefaultsOpen(false);
   }, [tool]);
 
   useEffect(() => {
-    if (!counterMenuOpen && !colorMenuOpen) return undefined;
+    if (!counterMenuOpen) return undefined;
     const close = (event) => {
       if (!counterMenuRef.current?.contains(event.target)) setCounterMenuOpen(false);
-      if (!colorMenuRef.current?.contains(event.target)) setColorMenuOpen(false);
     };
     document.addEventListener('pointerdown', close, true);
     return () => document.removeEventListener('pointerdown', close, true);
-  }, [colorMenuOpen, counterMenuOpen]);
+  }, [counterMenuOpen]);
 
   if (!api) return null;
 
@@ -338,17 +575,16 @@ function MobileToolProperties({ api }) {
     const survey = api.surveyToolbar;
     return (
       <div className="mobile-pdf-properties mobile-pdf-properties--survey" data-mobile-tool-properties="true" role="toolbar" aria-label="Survey placement">
-        <select
-          aria-label="Survey module"
-          value={survey.selectedModuleId || ''}
+        {/* App-styled dropdown (OWNER DECISION 3) replaces the OS module roller. */}
+        <MobileStyledSelect
+          ariaLabel="Survey module"
+          minWidth={138}
           disabled={!survey.modules?.length}
-          onChange={(event) => survey.onSelectModule?.(event.target.value)}
-        >
-          {!survey.modules?.length && <option value="">No modules</option>}
-          {(survey.modules || []).map((module) => (
-            <option key={module.id} value={module.id}>{module.name || 'Untitled Module'}</option>
-          ))}
-        </select>
+          placeholder="No modules"
+          value={survey.selectedModuleId || ''}
+          options={(survey.modules || []).map((module) => ({ value: module.id, label: module.name || 'Untitled Module' }))}
+          onChange={(value) => survey.onSelectModule?.(value)}
+        />
         <button
           type="button"
           className={`mobile-pdf-properties__keep${survey.keepCategoryActive ? ' is-active' : ''}`}
@@ -369,11 +605,19 @@ function MobileToolProperties({ api }) {
     const editorApi = editor.api || {};
     const alignment = `${state.verticalAlign || 'top'}|${state.textAlign || 'left'}`;
     return (
+      <>
       <div className="mobile-pdf-properties mobile-pdf-properties--text" data-mobile-tool-properties="true" role="toolbar" aria-label="Text formatting">
-        <label className="mobile-pdf-properties__color" title="Font color">
+        {/* UX 2026-07-12 (Phase E, demo parity): font-colour swatch opens the
+            app's shared CompactColorPicker takeover, not an OS colour input. */}
+        <button
+          type="button"
+          className="mobile-pdf-properties__color"
+          aria-label="Font color"
+          title="Font color"
+          onClick={() => setColorPicker('fontColorLive')}
+        >
           <span style={{ background: toHexColor(state.fontColor, '#1e293b') }} />
-          <input type="color" aria-label="Font color" value={toHexColor(state.fontColor, '#1e293b')} onChange={(event) => editorApi.setFontColor?.(event.target.value)} />
-        </label>
+        </button>
         <select aria-label="Font" value={state.fontFamily || 'Arial'} onChange={(event) => editorApi.setFontFamily?.(event.target.value)}>
           {['Arial', 'Helvetica', 'Times New Roman', 'Courier New', 'Georgia', 'Verdana'].map((family) => <option key={family} value={family}>{family}</option>)}
         </select>
@@ -419,6 +663,16 @@ function MobileToolProperties({ api }) {
           )))}
         </select>
       </div>
+      {colorPicker === 'fontColorLive' && (
+        <MobileColorPickerSurface
+          title="Font color"
+          color={toHexColor(state.fontColor, '#1e293b')}
+          showOpacity={false}
+          onChange={(hex) => editorApi.setFontColor?.(hex)}
+          onClose={() => setColorPicker(null)}
+        />
+      )}
+      </>
     );
   }
 
@@ -445,76 +699,103 @@ function MobileToolProperties({ api }) {
     verticalAlign: 'top',
   };
   const updateTextDefaults = (patch) => api.onTextStyleDefaultsChange?.({ ...textDefaults, ...patch });
-  const textPanelTitle = tool === 'callout' ? 'Callout' : 'Text';
-  const shapeColor = textShapeColorSection === 'fill'
+  // 2026-07-12 (Phase E, demo parity — matrix §6): the full edit sheet now
+  // opens for EVERY annotation tool (demo AnnotationEditPanel), not just
+  // text/callout. Non-text tools show only the shape-side cards.
+  const isTextTool = tool === 'text' || tool === 'callout';
+  const sheetTitle = TOOL_LABELS[tool] || 'Annotation';
+  // Effective sheet tab: text/callout keep the Text/Shape segmented control;
+  // pen/shape/counter force the shape-side cards.
+  const sheetTab = isTextTool ? textDefaultsTab : 'shape';
+  // Tools without a fill (pen/highlighter/line/arrow) collapse the shape
+  // colour card to a single Stroke section (no Fill/Stroke sub-tabs).
+  const hasFillSheet = FILL_TOOLS.has(tool);
+  const shapeSection = hasFillSheet ? textShapeColorSection : 'stroke';
+  const showBorderStyleSheet = BORDER_STYLE_TOOLS.has(tool) && typeof api.setLineBorderStyle === 'function';
+  const showArrowheadSheet = (tool === 'arrow' || tool === 'callout') && typeof api.setArrowheadStyle === 'function';
+  const shapeColor = shapeSection === 'fill'
     ? toHexColor(api.fillColor, '#ffffff')
     : toHexColor(api.strokeColor, '#ff0000');
   const applyShapeColor = (color) => {
-    if (textShapeColorSection === 'fill') api.handleFillColorChange?.(color);
+    if (shapeSection === 'fill') api.handleFillColorChange?.(color);
     else api.handleStrokeColorChange?.(color);
   };
+  // Open the edit sheet from a strip swatch, focused on the tapped colour
+  // section (demo: swatch → AnnotationEditPanel focused on that colour).
+  const openSheet = (section) => {
+    if (section === 'fill' || section === 'stroke') setTextShapeColorSection(section);
+    setTextDefaultsTab('shape');
+    setTextDefaultsOpen(true);
+  };
+  // Config for the shared CompactColorPicker takeover, per open target.
+  const colorPickerConfig = colorPicker === 'textColor'
+    ? {
+      title: 'Text color',
+      color: toHexColor(textDefaults.fontColor, '#1e293b'),
+      showOpacity: false,
+      onChange: (hex) => updateTextDefaults({ fontColor: hex }),
+    }
+    : colorPicker === 'fill'
+      ? {
+        title: 'Fill color',
+        color: toHexColor(api.fillColor, '#ffffff'),
+        opacity: Math.max(0, Math.min(1, (api.fillOpacity ?? 100) / 100)),
+        showOpacity: typeof api.handleFillOpacityChange === 'function',
+        firstPreset: 'transparent',
+        onChange: (hex, alpha) => {
+          api.handleFillColorChange?.(hex);
+          api.handleFillOpacityChange?.(Math.round((alpha ?? 1) * 100));
+        },
+      }
+      : colorPicker === 'stroke'
+        ? {
+          title: 'Stroke color',
+          color: toHexColor(api.strokeColor, '#ff0000'),
+          opacity: Math.max(0, Math.min(1, (api.strokeOpacity ?? 100) / 100)),
+          showOpacity: typeof api.handleStrokeOpacityChange === 'function',
+          firstPreset: 'transparent',
+          onChange: (hex, alpha) => {
+            api.handleStrokeColorChange?.(hex);
+            api.handleStrokeOpacityChange?.(Math.round((alpha ?? 1) * 100));
+          },
+        }
+        : null;
 
   return (
     <>
     <div className="mobile-pdf-properties" data-mobile-tool-properties="true" role="toolbar" aria-label={`${tool || 'Annotation'} formatting`}>
       {isEraser && api.setEraserMode && (
-        <select
-          aria-label="Eraser mode"
+        <MobileStyledSelect
+          ariaLabel="Eraser mode"
+          minWidth={104}
           value={api.eraserMode || 'partial'}
-          onChange={(event) => api.setEraserMode(event.target.value)}
-        >
-          <option value="partial">Partial Erase</option>
-          <option value="entire">Full Stroke</option>
-        </select>
+          options={[
+            { value: 'partial', label: 'Partial Erase' },
+            { value: 'entire', label: 'Full Stroke' },
+          ]}
+          onChange={(value) => api.setEraserMode(value)}
+        />
       )}
       {!isEraser && showStroke && (
-        <div className="mobile-pdf-properties__color-anchor" ref={colorMenuRef}>
-          {showFill ? (
-            <button
-              type="button"
-              className={`mobile-pdf-properties__swatch${tool === 'counter' ? ' is-counter' : ''}`}
-              aria-label={tool === 'counter' ? 'Counter colors' : 'Fill and border colors'}
-              aria-expanded={colorMenuOpen}
-              style={{
-                '--mobile-swatch-fill': toHexColor(api.fillColor, '#ff0000'),
-                '--mobile-swatch-stroke': toHexColor(api.strokeColor, '#ff0000'),
-              }}
-              onClick={() => setColorMenuOpen((open) => !open)}
-            >
-              {tool === 'counter' ? '1' : null}
-            </button>
-          ) : (
-            <label className="mobile-pdf-properties__swatch" title="Color" style={{ '--mobile-swatch-fill': toHexColor(api.strokeColor, '#ff0000') }}>
-              <input
-                type="color"
-                aria-label="Color"
-                value={toHexColor(api.strokeColor, '#ff0000')}
-                onChange={(event) => api.handleStrokeColorChange?.(event.target.value)}
-              />
-            </label>
-          )}
-          {colorMenuOpen && showFill && (
-            <div className="mobile-pdf-properties__color-menu">
-              <label>
-                <span>{tool === 'counter' ? 'Pin fill' : 'Fill'}</span>
-                <input
-                  type="color"
-                  aria-label={tool === 'counter' ? 'Counter fill color' : 'Fill color'}
-                  value={toHexColor(api.fillColor, '#ff0000')}
-                  onChange={(event) => api.handleFillColorChange?.(event.target.value)}
-                />
-              </label>
-              <label>
-                <span>{tool === 'counter' ? 'Pin number' : 'Stroke'}</span>
-                <input
-                  type="color"
-                  aria-label={tool === 'counter' ? 'Counter number color' : 'Stroke color'}
-                  value={toHexColor(api.strokeColor, '#ff0000')}
-                  onChange={(event) => api.handleStrokeColorChange?.(event.target.value)}
-                />
-              </label>
-            </div>
-          )}
+        <div className="mobile-pdf-properties__color-anchor">
+          {/* UX 2026-07-12 (Phase E, demo parity — matrix §6 "Stroke color
+              swatch"/"Fill+border swatch"): the strip swatch opens the full
+              edit sheet focused on the tapped colour (demo AFB swatch →
+              AnnotationEditPanel), which hosts the shared CompactColorPicker.
+              Replaces the OS <input type=color> (project rule: one shared
+              colour picker, never the native OS picker). */}
+          <button
+            type="button"
+            className={`mobile-pdf-properties__swatch${tool === 'counter' ? ' is-counter' : ''}`}
+            aria-label={showFill ? (tool === 'counter' ? 'Counter colors' : 'Fill and border colors') : 'Stroke color'}
+            style={{
+              '--mobile-swatch-fill': showFill ? toHexColor(api.fillColor, '#ff0000') : toHexColor(api.strokeColor, '#ff0000'),
+              '--mobile-swatch-stroke': toHexColor(api.strokeColor, '#ff0000'),
+            }}
+            onClick={() => openSheet(showFill ? 'fill' : 'stroke')}
+          >
+            {tool === 'counter' ? '1' : null}
+          </button>
         </div>
       )}
       {showWidth && tool !== 'counter' && (
@@ -573,16 +854,18 @@ function MobileToolProperties({ api }) {
         </label>
       )}
       {showBorderStyle && (
-        <select
-          aria-label="Border style"
+        <MobileStyledSelect
+          ariaLabel="Border style"
+          minWidth={82}
           value={api.lineBorderStyle || 'solid'}
-          onChange={(event) => api.setLineBorderStyle(event.target.value)}
-        >
-          <option value="solid">Solid</option>
-          <option value="dashed">Dashed</option>
-          <option value="dotted">Dotted</option>
-          {tool === 'rect' && <option value="cloud">Cloud</option>}
-        </select>
+          options={[
+            { value: 'solid', label: 'Solid' },
+            { value: 'dashed', label: 'Dashed' },
+            { value: 'dotted', label: 'Dotted' },
+            ...(tool === 'rect' ? [{ value: 'cloud', label: 'Cloud' }] : []),
+          ]}
+          onChange={(value) => api.setLineBorderStyle(value)}
+        />
       )}
       {tool === 'rect' && api.lineBorderStyle === 'cloud' && api.setCloudIntensity && (
         <label className="mobile-pdf-properties__bump">
@@ -599,15 +882,13 @@ function MobileToolProperties({ api }) {
         </label>
       )}
       {showArrowhead && (
-        <select
-          aria-label="Arrowhead style"
+        <MobileStyledSelect
+          ariaLabel="Arrowhead style"
+          minWidth={124}
           value={api.arrowheadStyle || 'solidTriangle'}
-          onChange={(event) => api.setArrowheadStyle(event.target.value)}
-        >
-          {Object.entries(MOBILE_ARROWHEAD_STYLE_LABELS).map(([value, label]) => (
-            <option key={value} value={value}>{label}</option>
-          ))}
-        </select>
+          options={Object.entries(MOBILE_ARROWHEAD_STYLE_LABELS).map(([value, label]) => ({ value, label }))}
+          onChange={(value) => api.setArrowheadStyle(value)}
+        />
       )}
       {api.onEnterTextEdit && (tool === 'text' || tool === 'callout' || api.richTextEditor) && (
         <button
@@ -636,19 +917,23 @@ function MobileToolProperties({ api }) {
           onClick={() => setTextDefaultsOpen(false)}
         />
         <section
-          className={`mobile-pdf-text-defaults is-${textDefaultsTab}${tool === 'callout' ? ' is-callout' : ''}`}
-          aria-label={`${textPanelTitle} settings`}
+          className={`mobile-pdf-text-defaults is-${sheetTab}${tool === 'callout' ? ' is-callout' : ''}`}
+          aria-label={`${sheetTitle} settings`}
         >
           <div className="mobile-pdf-sheet__handle" aria-hidden="true" />
           <header>
             <div>
-              <strong>{textPanelTitle} settings</strong>
-              <span>Focused on {textDefaultsTab === 'text' ? 'Text' : 'Shape'}</span>
+              <strong>{sheetTitle} settings</strong>
+              <span>Focused on {sheetTab === 'text' ? 'Text' : 'Shape'}</span>
             </div>
             <button type="button" aria-label="Close annotation settings" onClick={() => setTextDefaultsOpen(false)}>
               <Icon name="close" size={17} color="currentColor" />
             </button>
           </header>
+          {/* Text/Shape segmented control only for text & callout — pen/shape/
+              counter show shape-side cards directly (demo AnnotationEditPanel
+              tabs appear only when both a text and a shape face exist). */}
+          {isTextTool && (
           <div className="mobile-pdf-text-defaults__tabs" role="tablist" aria-label="Annotation settings section">
             <button
               type="button"
@@ -672,8 +957,9 @@ function MobileToolProperties({ api }) {
               Text
             </button>
           </div>
+          )}
           <div className="mobile-pdf-text-defaults__scroll">
-            {textDefaultsTab === 'text' ? (
+            {sheetTab === 'text' ? (
               <>
                 <section className="mobile-pdf-text-card mobile-pdf-text-card--color mobile-pdf-text-card--text-color">
                   <div className="mobile-pdf-text-card__header">
@@ -681,14 +967,13 @@ function MobileToolProperties({ api }) {
                       <strong>Text color</strong>
                       <span>{toHexColor(textDefaults.fontColor, '#1e293b').toUpperCase()}</span>
                     </div>
-                    <label className="mobile-pdf-text-card__large-swatch" style={{ '--mobile-text-color': toHexColor(textDefaults.fontColor, '#1e293b') }}>
-                      <input
-                        type="color"
-                        aria-label="Open Text color picker"
-                        value={toHexColor(textDefaults.fontColor, '#1e293b')}
-                        onChange={(event) => updateTextDefaults({ fontColor: event.target.value })}
-                      />
-                    </label>
+                    <button
+                      type="button"
+                      className="mobile-pdf-text-card__large-swatch"
+                      aria-label="Open Text color picker"
+                      style={{ '--mobile-text-color': toHexColor(textDefaults.fontColor, '#1e293b') }}
+                      onClick={() => setColorPicker('textColor')}
+                    />
                   </div>
                   <div className="mobile-pdf-text-card__colors">
                     {MOBILE_ANNOTATION_COLORS.map((color) => (
@@ -778,38 +1063,51 @@ function MobileToolProperties({ api }) {
               </>
             ) : (
               <>
-                <section className="mobile-pdf-text-card mobile-pdf-text-card--color mobile-pdf-text-card--shape-color">
-                  <div className="mobile-pdf-text-card__color-tabs" role="tablist" aria-label="Shape color section">
-                    {['fill', 'stroke'].map((section) => (
-                      <button
-                        key={section}
-                        type="button"
-                        role="tab"
-                        aria-label={`${section === 'fill' ? 'Fill' : 'Stroke'} color`}
-                        aria-selected={textShapeColorSection === section}
-                        className={textShapeColorSection === section ? 'is-active' : ''}
-                        onClick={() => setTextShapeColorSection(section)}
-                      >
-                        <i style={{ backgroundColor: section === 'fill' ? toHexColor(api.fillColor, '#ffffff') : toHexColor(api.strokeColor, '#ff0000') }} />
-                        {section === 'fill' ? 'Fill' : 'Stroke'}
-                      </button>
-                    ))}
-                  </div>
+                <section className={`mobile-pdf-text-card mobile-pdf-text-card--color mobile-pdf-text-card--shape-color${hasFillSheet ? '' : ' mobile-pdf-text-card--stroke-only'}`}>
+                  {/* Fill/Stroke sub-tabs only for tools that HAVE a fill
+                      (rect/ellipse/counter). Pen/highlighter/line/arrow show a
+                      single stroke section — matches demo AnnotationEditPanel,
+                      which omits the fill face for strokes-only annotations. */}
+                  {hasFillSheet && (
+                    <div className="mobile-pdf-text-card__color-tabs" role="tablist" aria-label="Shape color section">
+                      {['fill', 'stroke'].map((section) => (
+                        <button
+                          key={section}
+                          type="button"
+                          role="tab"
+                          aria-label={`${section === 'fill' ? 'Fill' : 'Stroke'} color`}
+                          aria-selected={textShapeColorSection === section}
+                          className={textShapeColorSection === section ? 'is-active' : ''}
+                          onClick={() => setTextShapeColorSection(section)}
+                        >
+                          <i style={{ backgroundColor: section === 'fill' ? toHexColor(api.fillColor, '#ffffff') : toHexColor(api.strokeColor, '#ff0000') }} />
+                          {section === 'fill' ? 'Fill' : 'Stroke'}
+                        </button>
+                      ))}
+                    </div>
+                  )}
                   <div className="mobile-pdf-text-card__header">
                     <div>
-                      <strong>{textShapeColorSection === 'fill' ? 'Fill' : 'Stroke'} color</strong>
+                      <strong>{shapeSection === 'fill' ? 'Fill' : 'Stroke'} color</strong>
                       <span>{shapeColor.toUpperCase()}</span>
                     </div>
-                    <label className="mobile-pdf-text-card__large-swatch" style={{ '--mobile-text-color': shapeColor }}>
-                      <input type="color" aria-label={`Open ${textShapeColorSection} color picker`} value={shapeColor} onChange={(event) => applyShapeColor(event.target.value)} />
-                    </label>
+                    {/* Large swatch opens the shared CompactColorPicker takeover
+                        (demo AnnotationEditPanel large swatch → gradient/HSV +
+                        opacity picker). No OS <input type=color>. */}
+                    <button
+                      type="button"
+                      className="mobile-pdf-text-card__large-swatch"
+                      aria-label={`Open ${shapeSection} color picker`}
+                      style={{ '--mobile-text-color': shapeColor }}
+                      onClick={() => setColorPicker(shapeSection)}
+                    />
                   </div>
                   <div className="mobile-pdf-text-card__colors">
                     {MOBILE_ANNOTATION_COLORS.map((color) => (
                       <button
                         key={color}
                         type="button"
-                        aria-label={`Set ${textShapeColorSection === 'fill' ? 'Fill' : 'Stroke'} color ${color}`}
+                        aria-label={`Set ${shapeSection === 'fill' ? 'Fill' : 'Stroke'} color ${color}`}
                         aria-pressed={color.toLowerCase() === shapeColor.toLowerCase()}
                         className={color.toLowerCase() === shapeColor.toLowerCase() ? 'is-active' : ''}
                         onClick={() => applyShapeColor(color)}
@@ -820,16 +1118,28 @@ function MobileToolProperties({ api }) {
                   </div>
                 </section>
 
-                <section className="mobile-pdf-text-card mobile-pdf-text-card--split">
-                  <label className="mobile-pdf-text-card__pane">
-                    <strong>Stroke style</strong>
-                    <select aria-label="Stroke style" value={api.lineBorderStyle || 'solid'} onChange={(event) => api.setLineBorderStyle?.(event.target.value)}>
-                      <option value="solid">Solid</option>
-                      <option value="dashed">Dashed</option>
-                      <option value="dotted">Dotted</option>
-                    </select>
-                  </label>
-                  <span className="mobile-pdf-text-card__divider" aria-hidden="true" />
+                <section className={`mobile-pdf-text-card mobile-pdf-text-card--split${showBorderStyleSheet ? '' : ' mobile-pdf-text-card--width-only'}`}>
+                  {showBorderStyleSheet && (
+                    <>
+                      <div className="mobile-pdf-text-card__pane">
+                        <strong>Stroke style</strong>
+                        {/* App-styled dropdown (OWNER DECISION 3) — same reusable
+                            menu as the strip, so the sheet matches. */}
+                        <MobileStyledSelect
+                          ariaLabel="Stroke style"
+                          value={api.lineBorderStyle || 'solid'}
+                          options={[
+                            { value: 'solid', label: 'Solid' },
+                            { value: 'dashed', label: 'Dashed' },
+                            { value: 'dotted', label: 'Dotted' },
+                            ...(tool === 'rect' ? [{ value: 'cloud', label: 'Cloud' }] : []),
+                          ]}
+                          onChange={(value) => api.setLineBorderStyle?.(value)}
+                        />
+                      </div>
+                      <span className="mobile-pdf-text-card__divider" aria-hidden="true" />
+                    </>
+                  )}
                   <label className="mobile-pdf-text-card__pane mobile-pdf-text-card__size">
                     <strong>Stroke width</strong>
                     <input
@@ -843,12 +1153,16 @@ function MobileToolProperties({ api }) {
                   </label>
                 </section>
 
-                {tool === 'callout' && (
+                {showArrowheadSheet && (
                   <section className="mobile-pdf-text-card mobile-pdf-text-card--arrowhead">
                     <strong>Arrowhead</strong>
-                    <select aria-label="Arrowhead" value={api.arrowheadStyle || 'solidTriangle'} onChange={(event) => api.setArrowheadStyle?.(event.target.value)}>
-                      {Object.entries(MOBILE_ARROWHEAD_STYLE_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-                    </select>
+                    {/* App-styled dropdown (OWNER DECISION 3). */}
+                    <MobileStyledSelect
+                      ariaLabel="Arrowhead"
+                      value={api.arrowheadStyle || 'solidTriangle'}
+                      options={Object.entries(MOBILE_ARROWHEAD_STYLE_LABELS).map(([value, label]) => ({ value, label }))}
+                      onChange={(value) => api.setArrowheadStyle?.(value)}
+                    />
                   </section>
                 )}
               </>
@@ -857,6 +1171,17 @@ function MobileToolProperties({ api }) {
         </section>
       </>,
       document.body
+    )}
+    {colorPickerConfig && (
+      <MobileColorPickerSurface
+        title={colorPickerConfig.title}
+        color={colorPickerConfig.color}
+        opacity={colorPickerConfig.opacity}
+        showOpacity={colorPickerConfig.showOpacity}
+        firstPreset={colorPickerConfig.firstPreset}
+        onChange={colorPickerConfig.onChange}
+        onClose={() => setColorPicker(null)}
+      />
     )}
     </>
   );
