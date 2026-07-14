@@ -160,14 +160,14 @@ test('renderPathToSvgAttrs preserves stroke / fill / cap / join parity for impor
   }
 });
 
-test('renderPathToSvgAttrs promotes thin imported paths to visible width + non-scaling-stroke', () => {
-  // 2026-04-28 visibility fix: thin PDF strokes (typical /BS borderWidth
-  // 0.5-1.1pt) become sub-pixel under the SVG viewBox transform and
-  // can fade out at low zoom. Imported open paths get clamped to a
-  // visible user-unit floor AND vector-effect:
-  // non-scaling-stroke so they stay at-least-one-device-pixel at every
-  // zoom — matches Adobe / Drawboard behavior. Internal pen strokes are
-  // unaffected because the user picks their width directly.
+test('renderPathToSvgAttrs promotes thin imported paths to a page-unit floor that scales with zoom', () => {
+  // 2026-04-28 visibility fix, amended 2026-07-14 (zoom-scaling
+  // unification): thin PDF strokes (typical /BS borderWidth 0.5-1.1pt)
+  // still clamp up to a visible page-unit floor, but the old
+  // vector-effect:non-scaling-stroke pin is GONE — per user direction all
+  // annotation strokes (imported included) scale with zoom exactly like
+  // rect/ellipse strokes. Internal pen strokes are unaffected because the
+  // user picks their width directly.
   const thin = {
     type: 'path',
     path: [['M', 0, 0], ['L', 1, 1]],
@@ -181,13 +181,13 @@ test('renderPathToSvgAttrs promotes thin imported paths to visible width + non-s
   const importedAttrs = renderPathToSvgAttrs(importedThin);
   const internalAttrs = renderPathToSvgAttrs(internalThin);
 
-  // Imported: clamped + non-scaling. Floor lives in svgPathAttrs.js
+  // Imported: clamped, in page units. Floor lives in svgPathAttrs.js
   // (IMPORTED_PATH_MIN_STROKE_WIDTH); this test asserts the *behavior*
-  // (clamp activates, value is well above 0.9, vector-effect on) without
+  // (clamp activates, value is well above 0.9, NO zoom pin) without
   // hard-coding the floor number, so visual tuning doesn't break tests.
   assert.ok(importedAttrs.strokeWidth >= 1.5, `imported thin stroke clamps up (got ${importedAttrs.strokeWidth})`);
   assert.ok(importedAttrs.strokeWidth > 0.9, 'imported thin stroke is wider than its raw input');
-  assert.equal(importedAttrs.vectorEffect, 'non-scaling-stroke', 'imported gets non-scaling-stroke');
+  assert.equal(importedAttrs.vectorEffect, undefined, 'imported stroke scales with zoom (no non-scaling-stroke pin)');
 
   // Internal: passthrough.
   assert.equal(internalAttrs.strokeWidth, 0.9, 'internal stroke width passes through unchanged');
@@ -199,6 +199,11 @@ test('renderPathToSvgAttrs promotes thin imported paths to visible width + non-s
     strokeWidth: 4,
   });
   assert.equal(thickImported.strokeWidth, 4, 'thick imported stroke retains its width');
+
+  // Legacy strokeUniform opt-ins no longer pin either — one zoom convention
+  // for every stroke.
+  const legacyUniform = renderPathToSvgAttrs({ ...internalThin, strokeUniform: true });
+  assert.equal(legacyUniform.vectorEffect, undefined, 'legacy strokeUniform no longer pins stroke width');
 });
 
 test('renderPathToSvgAttrs keeps imported PDF Squiggly strokes lightweight', () => {
@@ -214,7 +219,9 @@ test('renderPathToSvgAttrs keeps imported PDF Squiggly strokes lightweight', () 
   });
 
   assert.ok(attrs.strokeWidth <= 1.1, `squiggle stroke is capped, got ${attrs.strokeWidth}`);
-  assert.equal(attrs.vectorEffect, 'non-scaling-stroke');
+  // 2026-07-14 zoom-scaling unification: the cap is a page-unit width that
+  // scales with zoom — no non-scaling-stroke pin.
+  assert.equal(attrs.vectorEffect, undefined);
 });
 
 test('closed zero-width PDF Ink imports as a filled outline, not a hollow stroke', () => {

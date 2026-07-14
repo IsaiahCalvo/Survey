@@ -1365,13 +1365,15 @@ export const renderCallout = (callout, index, pageSize, calculateConnection, hid
 
   const key = `callout-${callout.id || index}`;
 
-  // Shared stroke attributes for both connector line segments. vectorEffect
-  // non-scaling-stroke keeps the line visually consistent across zoom levels.
+  // Shared stroke attributes for both connector line segments.
+  // UX 2026-07-14 (zoom-scaling unification): page-unit stroke, no
+  // vector-effect pin — the leader lines now thicken/thin with zoom exactly
+  // like rect/ellipse strokes (and like this callout's own arrowhead and
+  // text, which always scaled — the mismatch was the reported bug).
   const lineStyle = {
     stroke: lineColor,
     strokeWidth: lineThickness,
     strokeLinecap: 'round',
-    vectorEffect: 'non-scaling-stroke',
   };
 
   // Reference the pure spec builder so any future inline-JSX drift against
@@ -1449,10 +1451,12 @@ export const renderCallout = (callout, index, pageSize, calculateConnection, hid
             fill={fillColor}
             fillOpacity={fillOpacity}
             stroke={lineColor}
+            // UX 2026-07-14 (zoom-scaling unification): page-unit border that
+            // scales with zoom (no vector-effect pin). The 0.7 ratio keeps the
+            // box border visually lighter than the leader lines at any zoom.
             strokeWidth={Math.max(1, lineThickness * 0.7)}
             rx={0}
             ry={0}
-            vectorEffect="non-scaling-stroke"
           />
           {!hideText && (
           <foreignObject

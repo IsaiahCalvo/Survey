@@ -170,10 +170,10 @@ const LightweightAnnotationOverlay = memo(({
       stroke: marker.needsEntity ? '#4A90E2' : 'transparent',
       strokeWidth: marker.needsEntity ? 2 : 0,
       strokeDashArray: marker.needsEntity ? [5, 5] : null,
-      // SVG draws the marker border with vectorEffect non-scaling-stroke —
-      // the painter divides by displayScale when this flag is set so the
-      // border thickness matches at every zoom.
-      nonScalingStroke: marker.needsEntity ? true : undefined,
+      // UX 2026-07-14 (zoom-scaling unification): the SVG marker border is a
+      // page-unit stroke now (no vector-effect pin), so the painter must NOT
+      // divide by displayScale either — flag dropped on both surfaces so the
+      // border scales with zoom like rect/ellipse strokes.
       globalCompositeOperation: 'multiply',
       opacity: 1,
       scaleX: 1,

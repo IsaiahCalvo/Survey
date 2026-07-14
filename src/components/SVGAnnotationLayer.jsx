@@ -2740,7 +2740,6 @@ const SVGAnnotationLayer = memo(({
           strokeDasharray={Array.isArray(bbox.strokeDashArray) ? bbox.strokeDashArray.join(',') : undefined}
           opacity={bbox.opacity}
           transform={rotationTransform}
-          vectorEffect="non-scaling-stroke"
           style={{
             pointerEvents: 'none',
             mixBlendMode: bbox.globalCompositeOperation === 'multiply' ? 'multiply' : undefined,
@@ -2755,9 +2754,11 @@ const SVGAnnotationLayer = memo(({
             fill="none"
             stroke="#4a90e2"
             strokeOpacity={0.4}
-            // Zoom-out balloon fix: clamp inverseScale used for this visible
-            // hover halo so it stops growing on extreme zoom-out. No-op at rest.
-            strokeWidth={2 * clampInverseScale(inverseScale)}
+            // UX 2026-07-14 (zoom-scaling unification): page-unit glow that
+            // scales with zoom — the same max(6, sw+4) contract as the gold
+            // rect/ellipse hover glow, replacing the screen-constant
+            // 2×inverseScale outline.
+            strokeWidth={6}
             transform={rotationTransform}
             style={{ pointerEvents: 'none' }}
           />
@@ -2991,7 +2992,6 @@ const SVGAnnotationLayer = memo(({
                   stroke="#4a90e2"
                   strokeOpacity={0.45}
                   strokeWidth={3}
-                  vectorEffect="non-scaling-stroke"
                   style={{ pointerEvents: 'none' }}
                 />
               );
@@ -3006,7 +3006,6 @@ const SVGAnnotationLayer = memo(({
                 strokeOpacity={0.45}
                 strokeWidth={5}
                 strokeLinecap="round"
-                vectorEffect="non-scaling-stroke"
                 style={{ pointerEvents: 'none' }}
               />
             )}
@@ -3019,7 +3018,6 @@ const SVGAnnotationLayer = memo(({
               strokeOpacity={0.45}
               strokeWidth={5}
               strokeLinecap="round"
-              vectorEffect="non-scaling-stroke"
               style={{ pointerEvents: 'none' }}
             />
             {/* UX: Phase 19 follow-up — arrow-shaped glow that follows
@@ -3051,7 +3049,6 @@ const SVGAnnotationLayer = memo(({
                       strokeOpacity={0.45}
                       strokeWidth={glowSw}
                       strokeLinejoin="round"
-                      vectorEffect="non-scaling-stroke"
                       style={{ pointerEvents: 'none' }}
                     />
                   );
@@ -3065,7 +3062,6 @@ const SVGAnnotationLayer = memo(({
                       stroke="#4a90e2"
                       strokeOpacity={0.45}
                       strokeWidth={glowSw}
-                      vectorEffect="non-scaling-stroke"
                       style={{ pointerEvents: 'none' }}
                     />
                   );
@@ -3079,7 +3075,6 @@ const SVGAnnotationLayer = memo(({
                       strokeWidth={glowSw}
                       strokeLinecap="round"
                       strokeLinejoin="round"
-                      vectorEffect="non-scaling-stroke"
                       style={{ pointerEvents: 'none' }}
                     />
                   );
@@ -3092,7 +3087,6 @@ const SVGAnnotationLayer = memo(({
                       strokeOpacity={0.45}
                       strokeWidth={glowSw}
                       strokeLinecap="round"
-                      vectorEffect="non-scaling-stroke"
                       style={{ pointerEvents: 'none' }}
                     />
                   );
@@ -3887,7 +3881,6 @@ const SVGAnnotationLayer = memo(({
                       strokeWidth={Math.max(6, (renderObj.strokeWidth || 2) + 4)}
                       strokeLinecap="round"
                       fill="none"
-                      vectorEffect="non-scaling-stroke"
                       style={{ pointerEvents: 'none' }}
                     />
                   ) : (
@@ -3897,7 +3890,6 @@ const SVGAnnotationLayer = memo(({
                       strokeOpacity={0.4}
                       strokeWidth={Math.max(6, (renderObj.strokeWidth || 2) + 4)}
                       strokeLinecap="round"
-                      vectorEffect="non-scaling-stroke"
                       style={{ pointerEvents: 'none' }}
                     />
                   )
@@ -3924,7 +3916,6 @@ const SVGAnnotationLayer = memo(({
                           strokeOpacity={0.45}
                           strokeWidth={glowSw}
                           strokeLinejoin="round"
-                          vectorEffect="non-scaling-stroke"
                           style={{ pointerEvents: 'none' }}
                         />
                       );
@@ -3934,7 +3925,6 @@ const SVGAnnotationLayer = memo(({
                           cx={spec.circle.cx} cy={spec.circle.cy} r={spec.circle.r}
                           fill="none" stroke="#4a90e2" strokeOpacity={0.45}
                           strokeWidth={glowSw}
-                          vectorEffect="non-scaling-stroke"
                           style={{ pointerEvents: 'none' }}
                         />
                       );
@@ -3945,7 +3935,6 @@ const SVGAnnotationLayer = memo(({
                           fill="none" stroke="#4a90e2" strokeOpacity={0.45}
                           strokeWidth={glowSw}
                           strokeLinecap="round" strokeLinejoin="round"
-                          vectorEffect="non-scaling-stroke"
                           style={{ pointerEvents: 'none' }}
                         />
                       );
@@ -3957,7 +3946,6 @@ const SVGAnnotationLayer = memo(({
                           stroke="#4a90e2" strokeOpacity={0.45}
                           strokeWidth={glowSw}
                           strokeLinecap="round"
-                          vectorEffect="non-scaling-stroke"
                           style={{ pointerEvents: 'none' }}
                         />
                       );
@@ -4045,13 +4033,10 @@ const SVGAnnotationLayer = memo(({
                     fill="none"
                     stroke="#4a90e2"
                     strokeOpacity={0.4}
-                    // UX: strokeWidth in viewBox units (no vectorEffect) so it
-                    // auto-scales via the SVG transform — matches generic rect
-                    // hover outline below (~line 997). Using non-scaling-stroke
-                    // + `2 * inverseScale` double-scaled the glow at low zoom.
-                    // Zoom-out balloon fix: clamp inverseScale so the visible
-                    // glow stops growing on extreme zoom-out. No-op at rest.
-                    strokeWidth={2 * clampInverseScale(inverseScale)}
+                    // UX 2026-07-14 (zoom-scaling unification): page-unit glow
+                    // that scales with zoom — same max(6, sw+4) contract as the
+                    // gold rect/ellipse hover glow (pin is filled, sw 0 → 6).
+                    strokeWidth={6}
                     style={{ pointerEvents: 'none' }}
                   />
                 )}
@@ -4104,7 +4089,6 @@ const SVGAnnotationLayer = memo(({
                         strokeOpacity={0.4}
                         strokeWidth={Math.max(6, (renderObj.strokeWidth || 2) + 4)}
                         strokeLinecap="round"
-                        vectorEffect="non-scaling-stroke"
                         style={{ pointerEvents: 'none' }}
                       />
                       {arrowHead && (
@@ -4115,7 +4099,6 @@ const SVGAnnotationLayer = memo(({
                           strokeOpacity={0.45}
                           strokeWidth={Math.max(3, (renderObj.strokeWidth || 2) + 2)}
                           strokeLinejoin="round"
-                          vectorEffect="non-scaling-stroke"
                           transform={`translate(${x2},${y2}) rotate(${angleDeg})`}
                           style={{ pointerEvents: 'none' }}
                         />
@@ -4223,7 +4206,6 @@ const SVGAnnotationLayer = memo(({
                       strokeWidth={Math.max(6, sw + 4)}
                       strokeLinecap="round"
                       strokeLinejoin="round"
-                      vectorEffect={renderObj.strokeUniform ? 'non-scaling-stroke' : undefined}
                       style={{ pointerEvents: 'none' }}
                     />
                   ) : (
@@ -4236,7 +4218,6 @@ const SVGAnnotationLayer = memo(({
                       strokeWidth={Math.max(6, sw + 4)}
                       strokeLinecap="round"
                       strokeLinejoin="round"
-                      vectorEffect={renderObj.strokeUniform ? 'non-scaling-stroke' : undefined}
                       style={{ pointerEvents: 'none' }}
                     />
                   )
@@ -4314,7 +4295,6 @@ const SVGAnnotationLayer = memo(({
                     strokeOpacity={0.4}
                     strokeWidth={Math.max(6, sw + 4)}
                     strokeLinejoin="round"
-                    vectorEffect={renderObj.strokeUniform ? 'non-scaling-stroke' : undefined}
                     style={{ pointerEvents: 'none' }}
                   />
                 )}
@@ -4376,7 +4356,6 @@ const SVGAnnotationLayer = memo(({
                     stroke="#4a90e2"
                     strokeOpacity={0.4}
                     strokeWidth={Math.max(6, sw + 4)}
-                    vectorEffect={renderObj.strokeUniform ? 'non-scaling-stroke' : undefined}
                     style={{ pointerEvents: 'none' }}
                   />
                 )}
@@ -4478,7 +4457,6 @@ const SVGAnnotationLayer = memo(({
                     fillOpacity={isFilledPdfInkOutline ? 0.12 : undefined}
                     strokeLinecap="round"
                     strokeLinejoin="round"
-                    vectorEffect={renderObj.strokeUniform ? 'non-scaling-stroke' : undefined}
                     style={{ pointerEvents: 'none' }}
                   />
                 )}
@@ -4519,10 +4497,11 @@ const SVGAnnotationLayer = memo(({
                   fill="none"
                   stroke="#4a90e2"
                   strokeOpacity={0.4}
-                  // Zoom-out balloon fix: clamp inverseScale used for this
-                  // visible hover outline so it stops growing on extreme
-                  // zoom-out. No-op at rest (inverseScale ≈ 1) / on zoom-in.
-                  strokeWidth={2 * clampInverseScale(inverseScale)}
+                  // UX 2026-07-14 (zoom-scaling unification): page-unit glow
+                  // that scales with zoom — same max(6, sw+4) contract as the
+                  // gold rect/ellipse hover glow (covers text boxes and every
+                  // other type that lands in this generic bbox fallback).
+                  strokeWidth={Math.max(6, (Number(renderObj.strokeWidth) || 1) + 4)}
                   style={{ pointerEvents: 'none' }}
                 />
               )}
@@ -4780,7 +4759,6 @@ const SVGAnnotationLayer = memo(({
                   strokeDasharray="5,5"
                   rx={0}
                   ry={0}
-                  vectorEffect="non-scaling-stroke"
                 />
                 {!conn.shouldHideLine1 && (
                   <line
@@ -4792,7 +4770,6 @@ const SVGAnnotationLayer = memo(({
                     strokeWidth={2}
                     strokeDasharray="5,5"
                     strokeLinecap="round"
-                    vectorEffect="non-scaling-stroke"
                   />
                 )}
                 <line
@@ -4804,7 +4781,6 @@ const SVGAnnotationLayer = memo(({
                   strokeWidth={2}
                   strokeDasharray="5,5"
                   strokeLinecap="round"
-                  vectorEffect="non-scaling-stroke"
                 />
                 {previewArrowheadSpec.kind === 'solidTriangle' && (
                   <polygon {...previewArrowheadSpec.polygon} />
