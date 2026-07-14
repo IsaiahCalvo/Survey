@@ -49,6 +49,22 @@ import { useSVGInteraction } from '../hooks/useSVGInteraction';
 // createCallout) — do NOT replace with the null stub.
 import { createCallout } from './Callout/types';
 import { screenToSVG, normalizeAngle, clampInverseScale } from '../utils/svgTransformMath';
+// Unified renderer phase 2 — SVG-native creation commit builders (byte-stable
+// twins of the retired FabricDrawingCanvas serialization) + gesture diag.
+import {
+  buildBoundaryShapeCommitJSON,
+  buildFreehandCommitJSON,
+  buildLineCommitJSON,
+  composeAnnotationColor,
+} from '../utils/annotationCreationCommit.js';
+import { computeDrawnBoundaryShapePreviewGeometry } from '../utils/shapeCommitGeometry.js';
+import {
+  beginAnnotationGesture,
+  markAnnotationPointerRelease,
+  markAnnotationPreviewFrame,
+  recordAnnotationCommit,
+  updateAnnotationGesture,
+} from '../utils/annotationPreviewDiag';
 import SVGSelectionOverlay from './SVGSelectionOverlay';
 import RotationInputField from './RotationInputField';
 import { getAnnotationBBox, getAnnotationWorldAABB, getGroupBBox, isImportedPath, isAbsoluteCoordPath, getLineEndpoints, computeLineBboxCenter } from '../utils/svgBoundingBox';
@@ -205,6 +221,12 @@ const normalizeSurveyMarkerBoundsValue = (bounds) => {
 // ---------------------------------------------------------------------------
 // Component
 // ---------------------------------------------------------------------------
+
+// Unified renderer phase 2 — the drawing tools whose creation gestures live
+// on this layer (previews render through the SAME committed renderers below,
+// so what you see while dragging IS what commits — no cross-renderer seam).
+const SHAPE_CREATION_TOOLS = ['rect', 'ellipse', 'line', 'arrow', 'survey-marker'];
+const FREEHAND_CREATION_TOOLS = ['pen', 'highlighter'];
 
 const SVGAnnotationLayer = memo(({
   pageNumber,
@@ -369,6 +391,28 @@ const SVGAnnotationLayer = memo(({
   // for any caller that doesn't yet pass this prop. UX: matches Drawboard /
   // Adobe behavior where off-screen pages hold data only.
   isPageInRenderWindow = true,
+  // ---------------------------------------------------------------------------
+  // Unified renderer phase 2 (2026-07-14): SVG-NATIVE CREATION. The layer now
+  // owns the live previews + commits for rect/ellipse/line/arrow/survey-marker
+  // drag-out and pen/highlighter freehand — the FabricDrawingCanvas overlay is
+  // gone, so the preview and the committed shape are the same renderer in the
+  // same coordinate space (screenToSVG page coords). These props carry the
+  // toolbar styling + scope the fabric canvas used to receive.
+  // ---------------------------------------------------------------------------
+  strokeColor = '#e11d48',
+  strokeOpacity = 100,
+  fillColor = 'transparent',
+  fillOpacity = 100,
+  highlightColor = 'rgba(255, 193, 7, 0.3)',
+  strokeWidth = 3,
+  arrowheadStyle = null,
+  lineBorderStyle = null,
+  cloudIntensity = 2,
+  // Zoom-start signal (CLAUDE.md invariant): commit in-flight freehand work
+  // before the zoom re-lays-out the page — mirror of the fabric canvas flush.
+  zoomGeneration = 0,
+  // Survey-marker drag-out routes through the marker store, not page objects.
+  onSurveyMarkerCreated,
 }) => {
 
   // ---------------------------------------------------------------------------
@@ -570,15 +614,27 @@ const SVGAnnotationLayer = memo(({
   const isSelectTool = (activeTool === 'select' || activeTool === 'text-select')
     && !isCalloutTextEditMode
     && (editingAnnotationIndex == null || isBboxEditMode);
-  // UX: line/arrow/callout tools also get pointerEvents=auto so the crosshair
-  // class shows through and callout creation drag can start on the SVG
-  // surface. Gated on editingAnnotationIndex == null so the creation surface
-  // disables during edit mode (mirrors isSelectTool's edit-mode guard). Bbox
-  // mode does NOT re-enable creation tools — the user's in "edit a shape"
-  // mode, not "draw a new shape" mode.
-  const isCreationTool = (activeTool === 'line' || activeTool === 'arrow' || activeTool === 'callout')
+  // UX: creation tools get pointerEvents=auto so the crosshair class shows
+  // through and creation drags can start on the SVG surface. Gated on
+  // editingAnnotationIndex == null so the creation surface disables during
+  // edit mode (mirrors isSelectTool's edit-mode guard). Bbox mode does NOT
+  // re-enable creation tools — the user's in "edit a shape" mode, not "draw
+  // a new shape" mode.
+  //
+  // Unified renderer phase 2: every drawing tool creates ON the SVG layer —
+  // drag-out shapes AND freehand ink — replacing the FabricDrawingCanvas
+  // overlay (the callout tool pioneered this pattern).
+  const isShapeCreationTool = SHAPE_CREATION_TOOLS.includes(activeTool)
     && editingAnnotationIndex == null
     && !isCalloutTextEditMode;
+  const isFreehandCreationTool = FREEHAND_CREATION_TOOLS.includes(activeTool)
+    && editingAnnotationIndex == null
+    && !isCalloutTextEditMode;
+  const isCreationTool = ((activeTool === 'callout')
+    && editingAnnotationIndex == null
+    && !isCalloutTextEditMode)
+    || isShapeCreationTool
+    || isFreehandCreationTool;
   const isInteractive = isSelectTool || isCreationTool;
 
   // ---------------------------------------------------------------------------
@@ -604,6 +660,34 @@ const SVGAnnotationLayer = memo(({
   const [calloutCreation, setCalloutCreation] = useState(null);
   const calloutCreationRef = useRef(null);
   useEffect(() => { calloutCreationRef.current = calloutCreation; }, [calloutCreation]);
+
+  // ---------------------------------------------------------------------------
+  // Unified renderer phase 2 — SVG-native shape/freehand creation state.
+  // null when idle, else (page coords):
+  //   drag-out: { tool, gestureId, start:{x,y}, current:{x,y} }
+  //   freehand: { tool, gestureId, pointerId, tick } — points live in a ref so
+  //             120Hz coalesced samples don't re-render per sample; `tick`
+  //             bumps once per pointermove batch to repaint the preview.
+  // ---------------------------------------------------------------------------
+  const [shapeCreation, setShapeCreation] = useState(null);
+  const shapeCreationRef = useRef(null);
+  useEffect(() => { shapeCreationRef.current = shapeCreation; }, [shapeCreation]);
+  const freehandPointsRef = useRef([]);
+
+  // Coalesced page-space sampling with the fabric canvas's exact 0.2-page-px
+  // dedupe (FabricDrawingCanvas.appendPointerSamples parity).
+  const appendCoalescedPagePoints = useCallback((nativeEvent) => {
+    if (!svgRef.current) return;
+    const coalesced = nativeEvent.getCoalescedEvents?.() || [];
+    const events = coalesced.length ? coalesced : [nativeEvent];
+    for (const sample of events) {
+      const point = screenToSVG(svgRef.current, sample.clientX, sample.clientY);
+      const previous = freehandPointsRef.current[freehandPointsRef.current.length - 1];
+      if (point && (!previous || Math.hypot(point.x - previous.x, point.y - previous.y) >= 0.2)) {
+        freehandPointsRef.current.push(point);
+      }
+    }
+  }, []);
 
   const [rotInputVisible, setRotInputVisible] = useState(false);
   const rotInputHoverTimerRef = useRef(null);
@@ -1022,7 +1106,213 @@ const SVGAnnotationLayer = memo(({
     if (activeTool !== 'callout') {
       setCalloutCreation(null);
     }
+    if (!SHAPE_CREATION_TOOLS.includes(activeTool) && !FREEHAND_CREATION_TOOLS.includes(activeTool)) {
+      freehandPointsRef.current = [];
+      setShapeCreation(null);
+    }
   }, [activeTool]);
+
+  // ---------------------------------------------------------------------------
+  // Unified renderer phase 2 — SVG-native creation commit + gesture effects.
+  // ---------------------------------------------------------------------------
+  // Commit the in-flight creation gesture. `finalClientPoint` (client coords)
+  // refines drag-out shapes with the release position; freehand reads its
+  // accumulated page-space samples from the ref. Emits JSON byte-identical to
+  // the retired FabricDrawingCanvas path via annotationCreationCommit.js and
+  // dispatches through the same onSaveAnnotations({source:'path:created'})
+  // pipeline, so sync/undo/export see no difference.
+  const commitShapeCreation = useCallback((finalClientPoint = null) => {
+    const state = shapeCreationRef.current;
+    if (!state) return;
+    const tool = state.tool;
+    const action = tool === 'pen' ? 'pen-stroke'
+      : tool === 'highlighter' ? 'highlight-stroke'
+        : `${tool}-draw`;
+    markAnnotationPointerRelease(state.gestureId, { action });
+    setShapeCreation(null);
+
+    const stampRegionId = shouldStampActiveRegionId({
+      regionId: activeRegionId,
+      spaceId: selectedSpaceId,
+      pageNumber,
+      spaces,
+      isRegionOverlayEnabled,
+    });
+    const id = (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function')
+      ? crypto.randomUUID()
+      : `anno-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+    const dispatchCommit = (json) => {
+      updateAnnotationGesture(state.gestureId, { annotationId: id });
+      const current = annotationsRef.current;
+      // setShapeCreation(null) above + this save land in ONE batched React
+      // render (React 18 batches native listeners too), so the preview frame
+      // is replaced by the committed frame with no blank gap — the seam the
+      // old preview-canvas handoff needed flushSync tricks to hide.
+      onSaveAnnotations(
+        { ...(current || {}), objects: [...(current?.objects || []), json] },
+        { source: 'path:created', tool },
+      );
+      recordAnnotationCommit({
+        surface: 'SVGAnnotationLayer',
+        source: 'path:created',
+        action,
+        pageNumber,
+      });
+    };
+
+    if (FREEHAND_CREATION_TOOLS.includes(tool)) {
+      const points = freehandPointsRef.current;
+      freehandPointsRef.current = [];
+      const json = buildFreehandCommitJSON({
+        tool,
+        id,
+        points,
+        strokeColor,
+        highlightColor,
+        strokeWidth: Number(strokeWidth) || 3,
+        selectedModuleId,
+        stampRegionId,
+        activeRegionId,
+      });
+      if (json) dispatchCommit(json);
+      return;
+    }
+
+    const end = (finalClientPoint && svgRef.current)
+      ? screenToSVG(svgRef.current, finalClientPoint.x, finalClientPoint.y)
+      : state.current;
+    if (!end) return;
+
+    if (tool === 'survey-marker') {
+      const left = Math.min(state.start.x, end.x);
+      const top = Math.min(state.start.y, end.y);
+      const markerWidth = Math.abs(end.x - state.start.x);
+      const markerHeight = Math.abs(end.y - state.start.y);
+      if (markerWidth > 2 && markerHeight > 2 && typeof onSurveyMarkerCreated === 'function') {
+        recordAnnotationCommit({
+          surface: 'SVGAnnotationLayer',
+          source: 'survey-marker:create',
+          action: 'survey-marker-draw',
+          pageNumber,
+        });
+        onSurveyMarkerCreated({ x: left, y: top, width: markerWidth, height: markerHeight });
+      }
+      return;
+    }
+
+    const shared = {
+      id,
+      start: state.start,
+      end,
+      strokeColor,
+      strokeOpacity,
+      strokeWidth: Number(strokeWidth) || 3,
+      lineBorderStyle,
+      cloudIntensity,
+      selectedModuleId,
+      stampRegionId,
+      activeRegionId,
+    };
+    const json = (tool === 'line' || tool === 'arrow')
+      ? buildLineCommitJSON({ ...shared, tool, arrowheadStyle })
+      : buildBoundaryShapeCommitJSON({ ...shared, tool, fillColor, fillOpacity });
+    if (json) dispatchCommit(json);
+  }, [
+    activeRegionId, arrowheadStyle, cloudIntensity, fillColor, fillOpacity,
+    isRegionOverlayEnabled, lineBorderStyle, onSaveAnnotations,
+    onSurveyMarkerCreated, pageNumber, selectedModuleId, selectedSpaceId,
+    spaces, strokeColor, strokeOpacity, strokeWidth,
+  ]);
+  const commitShapeCreationRef = useRef(commitShapeCreation);
+  useEffect(() => { commitShapeCreationRef.current = commitShapeCreation; }, [commitShapeCreation]);
+
+  // Window-level move/up/cancel while a creation gesture is in flight — the
+  // same listener pattern the callout creation uses, so drags survive leaving
+  // the page bounds without pointer capture.
+  useEffect(() => {
+    if (!shapeCreation) return undefined;
+    const isFreehand = FREEHAND_CREATION_TOOLS.includes(shapeCreation.tool);
+    const action = shapeCreation.tool === 'pen' ? 'pen-stroke'
+      : shapeCreation.tool === 'highlighter' ? 'highlight-stroke'
+        : `${shapeCreation.tool}-draw`;
+    const onMove = (e) => {
+      if (!svgRef.current) return;
+      if (e.buttons === 0) {
+        // Button released outside our listeners (e.g. over browser chrome) —
+        // treat as release so no zombie preview survives.
+        if (isFreehand) commitShapeCreationRef.current(null);
+        else commitShapeCreationRef.current({ x: e.clientX, y: e.clientY });
+        return;
+      }
+      markAnnotationPreviewFrame(shapeCreation.gestureId, { action });
+      if (isFreehand) {
+        if (e.pointerId !== shapeCreation.pointerId) return;
+        appendCoalescedPagePoints(e);
+        setShapeCreation((prev) => (prev ? { ...prev, tick: (prev.tick || 0) + 1 } : prev));
+      } else {
+        const point = screenToSVG(svgRef.current, e.clientX, e.clientY);
+        if (point) setShapeCreation((prev) => (prev ? { ...prev, current: point } : prev));
+      }
+    };
+    const onUp = (e) => {
+      if (isFreehand) {
+        appendCoalescedPagePoints(e);
+        commitShapeCreationRef.current(null);
+      } else {
+        commitShapeCreationRef.current({ x: e.clientX, y: e.clientY });
+      }
+    };
+    const onCancel = () => {
+      // OS-level cancel (second touch, palm rejection): never commit partial work.
+      freehandPointsRef.current = [];
+      markAnnotationPointerRelease(shapeCreation.gestureId, { action });
+      setShapeCreation(null);
+    };
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+    window.addEventListener('pointercancel', onCancel);
+    return () => {
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+      window.removeEventListener('pointercancel', onCancel);
+    };
+  }, [shapeCreation, appendCoalescedPagePoints]);
+
+  // zoomGeneration contract (CLAUDE.md invariant): a zoom gesture starting
+  // mid-stroke commits the in-flight freehand work before the page re-lays
+  // out — the exact behavior the fabric canvas flush provided. Drag-out
+  // shapes keep tracking (they re-derive from live pointer coords).
+  const initialZoomGenRef = useRef(zoomGeneration);
+  useEffect(() => {
+    if (zoomGeneration === initialZoomGenRef.current) return;
+    const state = shapeCreationRef.current;
+    if (state && FREEHAND_CREATION_TOOLS.includes(state.tool)) {
+      commitShapeCreationRef.current(null);
+    }
+  }, [zoomGeneration]);
+
+  // A second finger means the user is pinching the PDF, not finishing a mark —
+  // cancel (never commit) the first finger's partial gesture. Parity with the
+  // fabric canvas pinch handler.
+  useEffect(() => {
+    const cancelPinchGesture = () => {
+      if (!shapeCreationRef.current) return;
+      freehandPointsRef.current = [];
+      setShapeCreation(null);
+    };
+    window.addEventListener('survey-pdfjs-pinch-start', cancelPinchGesture);
+    return () => window.removeEventListener('survey-pdfjs-pinch-start', cancelPinchGesture);
+  }, []);
+
+  // Unmount guard (proxy-window unmounts, page virtualization): commit
+  // in-flight freehand work instead of dropping it — mirror of the fabric
+  // canvas onBeforeDispose flush.
+  useEffect(() => () => {
+    const state = shapeCreationRef.current;
+    if (state && FREEHAND_CREATION_TOOLS.includes(state.tool) && freehandPointsRef.current.length > 0) {
+      commitShapeCreationRef.current(null);
+    }
+  }, []);
 
   // ---------------------------------------------------------------------------
   // EDIT-13 (Phase 13 Plan 13-01): Delegated hover-intent listeners on svgRef
@@ -4263,6 +4553,9 @@ const SVGAnnotationLayer = memo(({
         left: 0,
         pointerEvents: isInteractive ? 'auto' : 'none',
         overflow: 'hidden',
+        // One-finger creation strokes must not scroll the page on touch
+        // devices — the fabric upper canvas used to set this implicitly.
+        touchAction: isCreationTool ? 'none' : undefined,
         cursor: interactionState === 'dragging' ? 'grabbing'
               : interactionState === 'rotating' ? 'crosshair'
               : undefined,
@@ -4287,6 +4580,37 @@ const SVGAnnotationLayer = memo(({
             const pt = screenToSVG(svgRef.current, e.clientX, e.clientY);
             setCalloutCreation({ arrowTip: pt, currentPointer: pt });
             e.preventDefault();
+            return;
+          }
+          // Unified renderer phase 2 — shape/freehand creation starts here,
+          // on the same surface that renders the committed result. The
+          // window-level effect above tracks the drag and commits.
+          if ((isShapeCreationTool || isFreehandCreationTool) && e.button === 0) {
+            const point = screenToSVG(svgRef.current, e.clientX, e.clientY);
+            if (point) {
+              const tool = activeTool;
+              const action = tool === 'pen' ? 'pen-stroke'
+                : tool === 'highlighter' ? 'highlight-stroke'
+                  : `${tool}-draw`;
+              const gestureId = beginAnnotationGesture({
+                surface: 'SVGAnnotationLayer',
+                tool,
+                type: tool === 'highlighter' ? 'highlighter'
+                  : tool === 'pen' ? 'path'
+                    : tool === 'survey-marker' ? 'survey-marker' : tool,
+                action,
+                pointerDown: true,
+                pageNumber,
+              });
+              if (isFreehandCreationTool) {
+                freehandPointsRef.current = [];
+                appendCoalescedPagePoints(e.nativeEvent);
+                setShapeCreation({ tool, gestureId, pointerId: e.pointerId, tick: 0 });
+              } else {
+                setShapeCreation({ tool, gestureId, start: point, current: point });
+              }
+              e.preventDefault();
+            }
             return;
           }
           const annotationWrapper = e.target?.closest?.('[data-annotation-index]');
@@ -4467,6 +4791,96 @@ const SVGAnnotationLayer = memo(({
             );
           })()}
         </g>
+      )}
+      {/* Unified renderer phase 2 — live creation previews. Drag-out shapes
+          render through the SAME committed renderers (renderRect/renderEllipse)
+          with the same drawn-centered-stroke geometry the commit will store, so
+          the preview frame and the committed frame are pixel-identical — the
+          "shape jumps on release" class of bugs cannot exist structurally.
+          Line/arrow and survey-marker keep the dashed translucent in-progress
+          styling the fabric preview had (commit restores solid, per CREATE-01);
+          freehand shows the stroked centerline (the swept paper-ink outline
+          appears at commit, same as the fabric brush behaved). */}
+      {shapeCreation && (shapeCreation.tool === 'rect' || shapeCreation.tool === 'ellipse') && (() => {
+        const geometry = computeDrawnBoundaryShapePreviewGeometry({
+          tool: shapeCreation.tool,
+          startX: shapeCreation.start.x,
+          startY: shapeCreation.start.y,
+          pointerX: shapeCreation.current.x,
+          pointerY: shapeCreation.current.y,
+          strokeWidth: Number(strokeWidth) || 3,
+        });
+        const previewObj = {
+          type: shapeCreation.tool === 'ellipse' ? 'ellipse' : 'rect',
+          ...geometry.fabricProps,
+          ...(shapeCreation.tool === 'ellipse'
+            ? { width: (geometry.fabricProps.rx || 0) * 2, height: (geometry.fabricProps.ry || 0) * 2 }
+            : {}),
+          scaleX: 1,
+          scaleY: 1,
+          angle: 0,
+          fill: composeAnnotationColor(fillColor, fillOpacity),
+          stroke: composeAnnotationColor(strokeColor, strokeOpacity),
+          strokeWidth: Number(strokeWidth) || 3,
+          strokeUniform: true,
+          opacity: 1,
+          data: { strokeRenderContract: 'drawn-centered-stroke' },
+        };
+        return (
+          <g className="shape-creation-preview" style={{ pointerEvents: 'none' }}>
+            {shapeCreation.tool === 'ellipse'
+              ? renderEllipse(previewObj, 'creation-preview')
+              : renderRect(previewObj, 'creation-preview')}
+          </g>
+        );
+      })()}
+      {shapeCreation && (shapeCreation.tool === 'line' || shapeCreation.tool === 'arrow') && (
+        <line
+          className="shape-creation-preview"
+          x1={shapeCreation.start.x}
+          y1={shapeCreation.start.y}
+          x2={shapeCreation.current.x}
+          y2={shapeCreation.current.y}
+          stroke={composeAnnotationColor(strokeColor, strokeOpacity)}
+          strokeWidth={Number(strokeWidth) || 3}
+          strokeLinecap="round"
+          strokeDasharray="5,5"
+          opacity={0.6}
+          style={{ pointerEvents: 'none' }}
+        />
+      )}
+      {shapeCreation && shapeCreation.tool === 'survey-marker' && (
+        <rect
+          className="shape-creation-preview"
+          x={Math.min(shapeCreation.start.x, shapeCreation.current.x)}
+          y={Math.min(shapeCreation.start.y, shapeCreation.current.y)}
+          width={Math.abs(shapeCreation.current.x - shapeCreation.start.x)}
+          height={Math.abs(shapeCreation.current.y - shapeCreation.start.y)}
+          fill="transparent"
+          stroke="#4A90E2"
+          strokeWidth={2}
+          strokeDasharray="5,5"
+          style={{ pointerEvents: 'none' }}
+        />
+      )}
+      {shapeCreation && FREEHAND_CREATION_TOOLS.includes(shapeCreation.tool)
+        && freehandPointsRef.current.length > 0 && (
+        <polyline
+          className="freehand-creation-preview"
+          data-preview-tick={shapeCreation.tick}
+          points={freehandPointsRef.current.map((point) => `${point.x},${point.y}`).join(' ')}
+          fill="none"
+          stroke={shapeCreation.tool === 'highlighter' ? highlightColor : strokeColor}
+          strokeWidth={shapeCreation.tool === 'highlighter'
+            ? Math.max(Number(strokeWidth) || 3, 8)
+            : (Number(strokeWidth) || 3)}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          style={{
+            pointerEvents: 'none',
+            ...(shapeCreation.tool === 'highlighter' ? { mixBlendMode: 'multiply' } : {}),
+          }}
+        />
       )}
       {/* UX: Phase 19 — AutoCAD marquee rectangle. Blue solid fill when
           dragging left-to-right (Window mode, selects only fully enclosed

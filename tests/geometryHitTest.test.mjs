@@ -120,3 +120,39 @@ test('group arrow hit testing follows children, not group bbox', () => {
   assert.equal(doesRectIntersectObject({ left: 108, top: 168, right: 118, bottom: 178 }, arrow), false);
   assert.equal(doesRectIntersectObject({ left: 155, top: 135, right: 165, bottom: 145 }, arrow), true);
 });
+
+test('fabric-7 capitalized serialized types hit-test identically to lowercase', () => {
+  // fabric 7 toObject() emits class names ('Textbox', 'Rect', 'IText', …);
+  // fabric 5 saves are lowercase. Both must hit. The capitalized forms were
+  // silently un-hittable (case-sensitive switch), which made the eraser
+  // unable to erase text boxes and newer shapes.
+  const textbox = {
+    type: 'Textbox',
+    left: 10,
+    top: 20,
+    width: 100,
+    height: 30,
+    fill: '#000',
+  };
+  assert.equal(isPointOnObject({ x: 50, y: 35 }, textbox, 2), true);
+  assert.equal(isPointOnObject({ x: 300, y: 300 }, textbox, 2), false);
+
+  const itext = { ...textbox, type: 'IText' };
+  assert.equal(isPointOnObject({ x: 50, y: 35 }, itext, 2), true);
+
+  const rect = {
+    type: 'Rect',
+    left: 10,
+    top: 20,
+    width: 100,
+    height: 60,
+    fill: '#ffee00',
+    stroke: '#111',
+    strokeWidth: 4,
+  };
+  assert.equal(isPointOnObject({ x: 60, y: 50 }, rect, 2), true);
+  assert.equal(
+    doesRectIntersectObject({ left: 0, top: 0, right: 15, bottom: 25 }, rect),
+    true,
+  );
+});

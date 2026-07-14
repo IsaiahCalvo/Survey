@@ -27,7 +27,6 @@ import CalloutOverlay from './components/Callout';
 // below — see `await import('exceljs')` — so it stays out of the main viewer chunk.
 import ExcelLockedModal from './components/ExcelLockedModal';
 import ExcelSyncConfirmModal from './components/ExcelSyncConfirmModal';
-import FabricDrawingCanvas from './components/FabricDrawingCanvas';
 import FabricEditCanvas from './components/FabricEditCanvas';
 import FabricEraserCanvas from './components/FabricEraserCanvas';
 import FormFieldPropertiesPanel from './components/FormFieldPropertiesPanel';
@@ -1888,8 +1887,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   // [Phase 11] Removed: old Canvas-mode confirm-pending helper functions (3 functions), inert in SVG mode.
 
   const beginPdfjsScaleConfirmPending = useCallback((source = 'unknown') => {
-    // Signal zoom-start to mounted Canvas components (FabricDrawingCanvas, FabricEraserCanvas, FabricEditCanvas).
-    // zoomGeneration change flushes any in-progress work before canvas resizes.
+    // Signal zoom-start to every mounted surface that holds in-progress work:
+    // SVGAnnotationLayer's SVG-native creation gestures (freehand flush),
+    // FabricEraserCanvas, and FabricEditCanvas. zoomGeneration change flushes
+    // any in-progress work before the page hosts re-layout.
     setZoomGeneration(prev => prev + 1);
 
     // SVG mode: viewBox auto-scales, no JavaScript coordination needed.
@@ -17777,8 +17778,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     if (rendererMode !== 'svg') return true;
 
     // survey markers now render via SVGAnnotationLayer (viewBox-scaled,
-    // no Fabric repaint, no flicker) and draw via FabricDrawingCanvas under
-    // the 'survey-marker' tool — same path used by rect/ellipse/line/arrow. PAL
+    // no Fabric repaint, no flicker) and draw via the SVG-native creation
+    // path under the 'survey-marker' tool — same path used by
+    // rect/ellipse/line/arrow (FabricDrawingCanvas retired 2026-07-14). PAL
     // is retired in SVG mode.
     return false;
   }, [rendererMode]);
@@ -28836,7 +28838,6 @@ ${pageBlocks}
                             // stay select/text-select-only.
                             const svgServesCalloutCreation = activeTool === 'callout';
                             const isTextTool = activeTool === 'text';
-                            const isDrawingTool = activeTool === 'pen' || activeTool === 'highlighter' || activeTool === 'rect' || activeTool === 'ellipse' || activeTool === 'line' || activeTool === 'arrow' || activeTool === 'survey-marker';
                             const isEraserTool = activeTool === 'eraser';
                             const isEditMode = editingAnnotation?.pageNumber === pageNumber;
                             const suspendFullSvgForProxy =
@@ -29186,18 +29187,12 @@ ${pageBlocks}
                                   // ConfirmDeleteModal/UndoToast layer can confirm and
                                   // restore.
                                   onRequestBulkDelete={handleRequestBulkDelete}
-                                />
-                              </div>
-                              )}
-
-                              {/* Drawing Canvas -- transparent overlay for pen + highlighter */}
-                              {isDrawingTool && (
-                                <FabricDrawingCanvas
-                                  key={`draw-${pageNumber}`}
-                                  pageNumber={pageNumber}
-                                  pageWidth={resolvedPageSize.width}
-                                  pageHeight={resolvedPageSize.height}
-                                  activeTool={activeTool}
+                                  // Unified renderer phase 2 (2026-07-14): the SVG layer
+                                  // owns creation previews + commits for every drawing
+                                  // tool (pen/highlighter/rect/ellipse/line/arrow/
+                                  // survey-marker) — FabricDrawingCanvas is retired, so
+                                  // the in-progress drawing and the committed shape are
+                                  // the same renderer in the same coordinate space.
                                   strokeColor={strokeColor}
                                   strokeOpacity={strokeOpacity}
                                   fillColor={fillColor}
@@ -29207,17 +29202,17 @@ ${pageBlocks}
                                   arrowheadStyle={arrowheadStyle}
                                   lineBorderStyle={lineBorderStyle}
                                   cloudIntensity={cloudIntensity}
-                                  annotations={pageAnnotations}
-                                  onStrokeCommit={(updatedJSON) => handleSaveAnnotations(pageNumber, updatedJSON, { source: 'path:created', tool: activeTool })}
-                                  onSurveyMarkerCreated={(bounds) => handleSurveyMarkerCreated(pageNumber, bounds)}
-                                  selectedModuleId={selectedModuleId}
-                                  selectedSpaceId={annotationSpaceId}
-                                  activeRegionId={activeRegionId}
-                                  spaces={spaces}
-                                  isRegionOverlayEnabled={isRegionOverlayEnabled}
                                   zoomGeneration={zoomGeneration}
+                                  onSurveyMarkerCreated={(bounds) => handleSurveyMarkerCreated(pageNumber, bounds)}
                                 />
+                              </div>
                               )}
+
+                              {/* Unified renderer phase 2 (2026-07-14): the FabricDrawingCanvas
+                                  overlay is retired. Creation previews + commits for
+                                  pen/highlighter/rect/ellipse/line/arrow/survey-marker live
+                                  inside SVGAnnotationLayer above, so drawing rides the same
+                                  renderer + coordinate space as the committed marks. */}
 
                               {/* Eraser Canvas -- loads all annotations, SVG hidden via wrapper visibility above */}
                               {isEraserTool && (

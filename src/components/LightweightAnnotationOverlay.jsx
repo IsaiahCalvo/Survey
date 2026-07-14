@@ -170,6 +170,10 @@ const LightweightAnnotationOverlay = memo(({
       stroke: marker.needsEntity ? '#4A90E2' : 'transparent',
       strokeWidth: marker.needsEntity ? 2 : 0,
       strokeDashArray: marker.needsEntity ? [5, 5] : null,
+      // SVG draws the marker border with vectorEffect non-scaling-stroke —
+      // the painter divides by displayScale when this flag is set so the
+      // border thickness matches at every zoom.
+      nonScalingStroke: marker.needsEntity ? true : undefined,
       globalCompositeOperation: 'multiply',
       opacity: 1,
       scaleX: 1,
@@ -525,7 +529,12 @@ const LightweightAnnotationOverlay = memo(({
         width: '100%',
         height: '100%',
         pointerEvents: 'none',
-        zIndex: 10,
+        // Same stacking as the SVG layer's wrapper (zIndex 100). At the old
+        // zIndex 10 the pdf.js form/link layers painted OVER canvas-rendered
+        // annotations, so marks overlapping a form field vanished whenever
+        // this surface served (eraser mode / proxy windows) — a z-order
+        // disagreement between the two presentations of the same truth.
+        zIndex: 100,
         overflow: 'hidden',
         visibility: visible ? 'visible' : 'hidden',
       }}

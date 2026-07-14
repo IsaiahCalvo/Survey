@@ -124,6 +124,10 @@ test('Canvas2D callouts paint their text inside the callout box', () => {
     beginPath: () => {},
     moveTo: () => {},
     lineTo: () => {},
+    closePath: () => {},
+    translate: () => {},
+    rotate: () => {},
+    setLineDash: () => {},
     stroke: () => {},
     arc: () => {},
     fill: () => {},
@@ -218,4 +222,87 @@ test('viewport detail painting offsets page geometry into its tile', () => {
   });
 
   assert.deepEqual(transforms[1], [10, 0, 0, 10, -1800, -700]);
+});
+
+test('canvas lines decode fabric center-relative endpoints like the SVG renderer', () => {
+  // fabric Line stores x1..y2 relative to the bbox CENTER. The old painter
+  // added them to left/top, shifting every line up-left by half its bbox.
+  const ops = [];
+  const context = {
+    save: () => {},
+    restore: () => {},
+    translate: () => {},
+    rotate: () => {},
+    setLineDash: () => {},
+    beginPath: () => {},
+    moveTo: (...a) => ops.push(['moveTo', ...a]),
+    lineTo: (...a) => ops.push(['lineTo', ...a]),
+    stroke: () => {},
+    fill: () => {},
+    closePath: () => {},
+  };
+  drawAnnotationObject(context, {
+    type: 'line',
+    left: 100,
+    top: 100,
+    width: 50,
+    height: 50,
+    x1: -25,
+    y1: -25,
+    x2: 25,
+    y2: 25,
+    stroke: '#000',
+    strokeWidth: 2,
+  });
+  assert.deepEqual(ops[0], ['moveTo', 100, 100]);
+  assert.deepEqual(ops[1], ['lineTo', 150, 150]);
+});
+
+test('canvas callout tip is a solid-triangle arrowhead, not a dot', () => {
+  // The old painter drew context.arc(tip, ~2px) — the "arrow looks like a
+  // circle" bug. Default style must rasterize the shared solidTriangle spec.
+  let arcCalls = 0;
+  let triangleFilled = false;
+  let sawClosePath = false;
+  const context = {
+    setTransform: () => {},
+    clearRect: () => {},
+    save: () => {},
+    restore: () => {},
+    beginPath: () => {},
+    moveTo: () => {},
+    lineTo: () => {},
+    closePath: () => { sawClosePath = true; },
+    translate: () => {},
+    rotate: () => {},
+    setLineDash: () => {},
+    stroke: () => {},
+    arc: () => { arcCalls += 1; },
+    fill: () => { if (sawClosePath) triangleFilled = true; },
+    fillRect: () => {},
+    strokeRect: () => {},
+    measureText: (text) => ({ width: String(text).length * 6 }),
+    fillText: () => {},
+  };
+  paintAnnotationCanvas(context, {
+    canvasWidth: 600,
+    canvasHeight: 800,
+    drawScale: 1,
+    displayScale: 1,
+    pageWidth: 600,
+    pageHeight: 800,
+    objects: [],
+    callouts: [{
+      pageNumber: 1,
+      text: 'tip check',
+      arrowTip: { x: 0.1, y: 0.1 },
+      knee: { x: 0.2, y: 0.2 },
+      textBoxPosition: { x: 0.3, y: 0.3 },
+      textBoxWidth: 0.25,
+      textBoxHeight: 0.1,
+      style: { fontSize: 12 },
+    }],
+  });
+  assert.equal(arcCalls, 0);
+  assert.equal(triangleFilled, true);
 });

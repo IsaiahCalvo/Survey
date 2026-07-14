@@ -1,11 +1,44 @@
+/**
+ * Canvas2D annotation painter.
+ *
+ * PIXEL-FIDELITY CONTRACT (2026-07-14, unified-renderer phase 2): this painter
+ * serves ONLY the transient windows where the SVG layer is not the visible
+ * truth — the eraser-mode raster base that FabricEraserCanvas snapshots and
+ * carves, and the zoom/scroll interaction proxy. Its output must be visually
+ * indistinguishable from the SVG renderers or the moment those windows
+ * open/close reads as a glitch. Every drawing routine here mirrors its
+ * svgAnnotationRenderers.jsx counterpart formula-for-formula and, wherever
+ * possible, calls the SAME pure spec builders the SVG side uses
+ * (buildLineRenderSpec / buildArrowheadRenderSpec / renderPathToSvgD /
+ * buildCloudPathCommands / calculateCalloutConnection). If you change a
+ * renderer in svgAnnotationRenderers.jsx, change the twin here.
+ *
+ * Known, accepted divergence: `mix-blend-mode: multiply` (highlighter) blends
+ * with the PDF page in SVG; a transparent canvas can only multiply against its
+ * own backdrop. Visible only inside the transient windows.
+ *
+ * Worker-safe: imported by annotationCanvasWorker.js — keep every import here
+ * free of React/fabric/DOM side effects.
+ */
 import { calculateCalloutConnection } from './calloutGeometry.js';
-import { renderPathToSvgAttrs } from './svgPathAttrs.js';
+import { renderPathToSvgAttrs, renderPathToSvgD } from './svgPathAttrs.js';
+import {
+  ARROWHEAD_STYLES,
+  buildArrowheadRenderSpec,
+  buildLineRenderSpec,
+} from './lineRenderHelpers.js';
+import { getLineEndpoints } from './svgBoundingBox.js';
+import { buildCloudPathCommands } from './pdfAnnotationImporter.js';
+import { DRAWN_CENTERED_STROKE_CONTRACT } from './shapeCommitGeometry.js';
 
 const MAX_RASTER_SCALE = 2.5;
 const MAX_BACKING_DIMENSION = 8192;
 const MAX_BACKING_PIXELS = 4 * 1024 * 1024;
-const DEFAULT_CALLOUT_COLOR = '#4A90E2';
-const DEFAULT_CALLOUT_FILL = 'rgba(255,255,255,0.22)';
+// Mirrors renderCallout defaults (svgAnnotationRenderers.jsx:1234-1236):
+// line '#1e293b' (matches defaultCalloutStyle), fill transparent.
+const DEFAULT_CALLOUT_COLOR = '#1e293b';
+// Mirrors renderText's TEXT_PADDING gutter.
+const TEXT_PADDING = 6;
 
 const toNumber = (value, fallback = 0) => {
   const numeric = Number(value);
@@ -59,6 +92,12 @@ export function calculateAnnotationCanvasBackingStore({
 
 export function traceFabricPath(context, commands) {
   context.beginPath();
+  traceCommandsInto(context, commands);
+}
+
+// Traces an array of absolute [op, ...coords] commands into an ALREADY-begun
+// path (callers own beginPath so multi-part geometry can share one path).
+function traceCommandsInto(context, commands) {
   let currentX = 0;
   let currentY = 0;
   let startX = 0;
@@ -76,8 +115,7 @@ export function traceFabricPath(context, commands) {
       currentX = toNumber(segment[1]);
       currentY = toNumber(segment[2]);
       context.lineTo(currentX, currentY);
-    }
-    else if (op === 'Q') {
+    } else if (op === 'Q') {
       context.quadraticCurveTo(
         toNumber(segment[1]),
         toNumber(segment[2]),
@@ -103,8 +141,7 @@ export function traceFabricPath(context, commands) {
     } else if (op === 'V') {
       currentY = toNumber(segment[1]);
       context.lineTo(currentX, currentY);
-    }
-    else if (op === 'A' && segment.length >= 3) {
+    } else if (op === 'A' && segment.length >= 3) {
       currentX = toNumber(segment[segment.length - 2]);
       currentY = toNumber(segment[segment.length - 1]);
       context.lineTo(currentX, currentY);
@@ -114,6 +151,37 @@ export function traceFabricPath(context, commands) {
       currentY = startY;
     }
   }
+}
+
+// Parse an SVG path d-string (as emitted by renderPathToSvgD /
+// buildCloudPathCommands joins: absolute M/L/Q/C/H/V/A/Z, space/comma
+// separated) into [op, ...number] command arrays for traceCommandsInto.
+// Keeping the parse here means the canvas paints the EXACT smoothed geometry
+// (Catmull-Rom ink outlines, ellipse marker blobs) the SVG shows, instead of
+// the raw un-smoothed fabric commands.
+const ARG_COUNT = { M: 2, L: 2, Q: 4, C: 6, H: 1, V: 1, A: 7, Z: 0 };
+export function parseSvgPathD(d) {
+  const out = [];
+  if (typeof d !== 'string' || !d) return out;
+  const tokens = d.match(/[MLQCHVAZmlqchvaz]|-?(?:\d+\.?\d*|\.\d+)(?:e[+-]?\d+)?/gi) || [];
+  let index = 0;
+  while (index < tokens.length) {
+    const opToken = tokens[index];
+    if (!/^[a-z]$/i.test(opToken)) { index += 1; continue; }
+    const op = opToken.toUpperCase();
+    index += 1;
+    const argCount = ARG_COUNT[op];
+    if (argCount == null) continue;
+    if (argCount === 0) { out.push([op]); continue; }
+    // repeat implicit commands (e.g. "L x y x y")
+    while (index + argCount <= tokens.length && !/^[a-z]$/i.test(tokens[index])) {
+      const args = tokens.slice(index, index + argCount).map(Number);
+      if (args.some((value) => !Number.isFinite(value))) break;
+      out.push([op, ...args]);
+      index += argCount;
+    }
+  }
+  return out;
 }
 
 function pathBounds(commands) {
@@ -162,6 +230,57 @@ function paintCurrentPath(context, { fill, stroke, strokeWidth, fillRule = 'nonz
   }
 }
 
+// Rasterize a buildArrowheadRenderSpec result — the shared spec is the
+// contract; this is the 1:1 canvas twin of renderArrowheadFromSpec (SVG).
+function paintArrowheadSpec(context, spec) {
+  if (!spec || spec.kind === 'none') return;
+  context.save();
+  if (typeof context.setLineDash === 'function') context.setLineDash([]);
+  if (spec.kind === 'solidTriangle' || spec.kind === 'openTriangle') {
+    const headSize = Math.max(8, (spec.sw || 0) * 3);
+    context.translate(spec.tipX, spec.tipY);
+    context.rotate(((spec.angleDeg || 0) * Math.PI) / 180);
+    context.beginPath();
+    context.moveTo(-headSize / 3, -headSize / 2);
+    context.lineTo((headSize * 2) / 3, 0);
+    context.lineTo(-headSize / 3, headSize / 2);
+    context.closePath();
+    if (spec.kind === 'solidTriangle') {
+      context.fillStyle = spec.polygon.fill;
+      context.fill();
+    } else {
+      context.strokeStyle = spec.polygon.stroke;
+      context.lineWidth = spec.polygon.strokeWidth;
+      context.lineJoin = 'round';
+      context.stroke();
+    }
+  } else if (spec.kind === 'openCircle') {
+    context.beginPath();
+    context.arc(spec.circle.cx, spec.circle.cy, spec.circle.r, 0, Math.PI * 2);
+    context.strokeStyle = spec.circle.stroke;
+    context.lineWidth = spec.circle.strokeWidth;
+    context.stroke();
+  } else if (spec.kind === 'vShape') {
+    const pts = String(spec.polyline.points).split(' ').map((pair) => pair.split(',').map(Number));
+    context.beginPath();
+    pts.forEach(([x, y], i) => (i === 0 ? context.moveTo(x, y) : context.lineTo(x, y)));
+    context.strokeStyle = spec.polyline.stroke;
+    context.lineWidth = spec.polyline.strokeWidth;
+    context.lineCap = 'round';
+    context.lineJoin = 'round';
+    context.stroke();
+  } else if (spec.kind === 'horizontalLine') {
+    context.beginPath();
+    context.moveTo(spec.line.x1, spec.line.y1);
+    context.lineTo(spec.line.x2, spec.line.y2);
+    context.strokeStyle = spec.line.stroke;
+    context.lineWidth = spec.line.strokeWidth;
+    context.lineCap = 'round';
+    context.stroke();
+  }
+  context.restore();
+}
+
 function drawPath(context, object, displayScale) {
   if (!Array.isArray(object?.path) || object.path.length === 0) return;
   const attrs = renderPathToSvgAttrs(object);
@@ -187,135 +306,319 @@ function drawPath(context, object, displayScale) {
   context.translate(-pathOffsetX, -pathOffsetY);
   context.lineCap = attrs.strokeLinecap || 'round';
   context.lineJoin = attrs.strokeLinejoin || 'round';
-  traceFabricPath(context, object.path);
+  // Same geometry the SVG paints: renderPathToSvgD applies the Catmull-Rom /
+  // ellipse-blob smoothing for imported ink; falls back to the raw commands.
+  context.beginPath();
+  traceCommandsInto(context, parseSvgPathD(renderPathToSvgD(object, attrs)));
 
   const objectScale = Math.max(0.001, Math.sqrt(Math.abs(scaleX * scaleY)));
   const strokeWidth = attrs.vectorEffect === 'non-scaling-stroke'
     ? toNumber(attrs.strokeWidth, 1) / Math.max(0.01, displayScale * objectScale)
     : toNumber(attrs.strokeWidth, 1);
+  // Erased-outline override (renderPath:233-236): strokeWidth 0 + visible fill
+  // means paper-eraser outline geometry — fill with evenodd so carved holes
+  // stay holes instead of filling back in under the nonzero rule.
+  const isErasedOutline = toNumber(object.strokeWidth, 0) === 0 && isVisiblePaint(object.fill);
   paintCurrentPath(context, {
     fill: attrs.fill,
-    stroke: attrs.stroke,
+    stroke: isErasedOutline ? null : attrs.stroke,
     strokeWidth,
-    fillRule: attrs.fillRule || 'nonzero',
+    fillRule: isErasedOutline ? 'evenodd' : (attrs.fillRule || 'nonzero'),
   });
   context.restore();
 }
 
-function beginObjectTransform(context, object) {
-  const width = Math.abs(toNumber(object?.width));
-  const height = Math.abs(toNumber(object?.height));
-  const scaleX = toNumber(object?.scaleX, 1) || 1;
-  const scaleY = toNumber(object?.scaleY, 1) || 1;
-  context.save();
-  applyBlendAndOpacity(context, object);
-  context.translate(toNumber(object?.left), toNumber(object?.top));
-  applyRotation(
-    context,
-    toNumber(object?.angle),
-    (width * scaleX) / 2,
-    (height * scaleY) / 2,
-  );
-  context.scale(scaleX, scaleY);
-  return { width, height };
-}
-
-function paintShapeStyle(context, object) {
-  if (typeof context.setLineDash === 'function') {
-    context.setLineDash(Array.isArray(object?.strokeDashArray) ? object.strokeDashArray : []);
-  }
-  paintCurrentPath(context, {
-    fill: object?.fill,
-    stroke: isVisiblePaint(object?.stroke) ? object.stroke : null,
-    strokeWidth: Math.max(0, toNumber(object?.strokeWidth, 1)),
-  });
-}
-
-function drawArrowHead(context, x1, y1, x2, y2, stroke, strokeWidth) {
-  const angle = Math.atan2(y2 - y1, x2 - x1);
-  const size = Math.max(6, strokeWidth * 3);
-  context.save();
-  context.translate(x2, y2);
-  context.rotate(angle);
-  context.beginPath();
-  context.moveTo(0, -size / 2);
-  context.lineTo(size, 0);
-  context.lineTo(0, size / 2);
-  context.closePath();
-  context.fillStyle = stroke;
-  context.fill();
-  context.restore();
-}
-
+// Twin of renderLine (svgAnnotationRenderers.jsx:471-608): shared
+// buildLineRenderSpec geometry (center-relative endpoints, curved branch,
+// triangle shaft shortening), dash on the shaft only, rotation about the
+// curve-inclusive bbox center.
 function drawLine(context, object) {
+  const spec = buildLineRenderSpec(object);
   context.save();
   applyBlendAndOpacity(context, object);
-  const left = toNumber(object?.left);
-  const top = toNumber(object?.top);
-  const x1 = left + toNumber(object?.x1);
-  const y1 = top + toNumber(object?.y1);
-  const x2 = left + toNumber(object?.x2);
-  const y2 = top + toNumber(object?.y2);
-  const stroke = isVisiblePaint(object?.stroke) ? object.stroke : '#111111';
-  const strokeWidth = Math.max(0.5, toNumber(object?.strokeWidth, 1));
-  context.beginPath();
-  context.moveTo(x1, y1);
-  context.lineTo(x2, y2);
-  context.strokeStyle = stroke;
-  context.lineWidth = strokeWidth;
-  context.lineCap = object?.strokeLineCap || 'round';
-  context.stroke();
-  if (String(object?.tool || '').toLowerCase() === 'arrow') {
-    drawArrowHead(context, x1, y1, x2, y2, stroke, strokeWidth);
+
+  const angle = toNumber(object?.angle, 0);
+  if (angle !== 0) {
+    const rawEp = getLineEndpoints(object);
+    const midPt = object?.data?.midpoint;
+    const bxs = [rawEp.x1, rawEp.x2];
+    const bys = [rawEp.y1, rawEp.y2];
+    if (midPt) {
+      const Cx = 2 * midPt.x - 0.5 * rawEp.x1 - 0.5 * rawEp.x2;
+      const Cy = 2 * midPt.y - 0.5 * rawEp.y1 - 0.5 * rawEp.y2;
+      const denomX = rawEp.x1 - 2 * Cx + rawEp.x2;
+      const denomY = rawEp.y1 - 2 * Cy + rawEp.y2;
+      if (Math.abs(denomX) > 1e-9) {
+        const tx = (rawEp.x1 - Cx) / denomX;
+        if (tx > 0 && tx < 1) {
+          const o = 1 - tx;
+          bxs.push(o * o * rawEp.x1 + 2 * o * tx * Cx + tx * tx * rawEp.x2);
+        }
+      }
+      if (Math.abs(denomY) > 1e-9) {
+        const ty = (rawEp.y1 - Cy) / denomY;
+        if (ty > 0 && ty < 1) {
+          const o = 1 - ty;
+          bys.push(o * o * rawEp.y1 + 2 * o * ty * Cy + ty * ty * rawEp.y2);
+        }
+      }
+    }
+    const cx = (Math.min(...bxs) + Math.max(...bxs)) / 2;
+    const cy = (Math.min(...bys) + Math.max(...bys)) / 2;
+    applyRotation(context, angle, cx, cy);
   }
+
+  const dash = Array.isArray(object?.strokeDashArray) && object.strokeDashArray.length > 0
+    ? object.strokeDashArray
+    : [];
+  if (typeof context.setLineDash === 'function') context.setLineDash(dash);
+
+  if (spec.kind === 'curved') {
+    context.beginPath();
+    traceCommandsInto(context, parseSvgPathD(spec.path.d));
+    context.strokeStyle = spec.path.stroke;
+    context.lineWidth = spec.path.strokeWidth;
+    context.lineCap = 'round';
+    context.stroke();
+  } else {
+    context.beginPath();
+    context.moveTo(spec.line.x1, spec.line.y1);
+    context.lineTo(spec.line.x2, spec.line.y2);
+    context.strokeStyle = spec.line.stroke;
+    context.lineWidth = spec.line.strokeWidth;
+    context.lineCap = 'round';
+    context.stroke();
+  }
+  paintArrowheadSpec(context, spec.arrowhead);
   context.restore();
 }
 
+// Twin of renderPolygon / renderPolyline: the exact SVG transform chain
+// (translate → rotate about the pathOffset-corrected center → scale →
+// translate(−pathOffset)) so points land where the SVG puts them.
 function drawPoints(context, object, close) {
-  if (!Array.isArray(object?.points) || object.points.length === 0) return;
-  beginObjectTransform(context, object);
-  context.beginPath();
-  object.points.forEach((point, index) => {
+  const points = Array.isArray(object?.points) ? object.points : [];
+  if (points.length === 0) return;
+  const scaleX = toNumber(object.scaleX, 1) || 1;
+  const scaleY = toNumber(object.scaleY, 1) || 1;
+  const pathOffsetX = toNumber(object.pathOffset?.x);
+  const pathOffsetY = toNumber(object.pathOffset?.y);
+  let minX = Infinity; let maxX = -Infinity; let minY = Infinity; let maxY = -Infinity;
+  for (const point of points) {
     const x = toNumber(point?.x);
     const y = toNumber(point?.y);
-    if (index === 0) context.moveTo(x, y);
-    else context.lineTo(x, y);
-  });
-  if (close) context.closePath();
-  paintCurrentPath(context, {
-    fill: close ? object.fill : null,
-    stroke: isVisiblePaint(object.stroke) ? object.stroke : '#111111',
-    strokeWidth: Math.max(0.5, toNumber(object.strokeWidth, 1)),
-  });
-  context.restore();
-}
-
-function drawText(context, object) {
-  const { width, height } = beginObjectTransform(context, object);
-  const text = String(object?.text || '');
-  const fontSize = Math.max(1, toNumber(object?.fontSize, 12));
-  const fontFamily = String(object?.fontFamily || 'Arial').split(',')[0].replace(/["']/g, '');
-  context.font = `${object?.fontStyle || 'normal'} ${object?.fontWeight || 'normal'} ${fontSize}px ${fontFamily}`;
-  context.textBaseline = 'top';
-  context.fillStyle = isVisiblePaint(object?.fill)
-    ? object.fill
-    : (isVisiblePaint(object?.stroke) ? object.stroke : '#111111');
-  const lineHeight = fontSize * Math.max(1, toNumber(object?.lineHeight, 1.16));
-  const lines = text.split(/\r?\n/);
-  for (let index = 0; index < lines.length; index += 1) {
-    const y = index * lineHeight;
-    if (height > 0 && y > height) break;
-    context.fillText(lines[index], 0, y, width || undefined);
+    minX = Math.min(minX, x); maxX = Math.max(maxX, x);
+    minY = Math.min(minY, y); maxY = Math.max(maxY, y);
   }
+
+  context.save();
+  applyBlendAndOpacity(context, object);
+  context.translate(toNumber(object.left), toNumber(object.top));
+  applyRotation(
+    context,
+    toNumber(object.angle),
+    scaleX * ((minX + maxX) / 2 - pathOffsetX),
+    scaleY * ((minY + maxY) / 2 - pathOffsetY),
+  );
+  context.scale(scaleX, scaleY);
+  context.translate(-pathOffsetX, -pathOffsetY);
+
+  const cloudIntensity = object?.data?.pdfCloudIntensity;
+  const strokeWidth = toNumber(object.strokeWidth, 1);
+  context.beginPath();
+  let traced = false;
+  if (close && Number.isFinite(cloudIntensity)) {
+    const cloud = buildCloudPathCommands(
+      points.map((point) => ({ x: toNumber(point?.x), y: toNumber(point?.y) })),
+      cloudIntensity,
+      strokeWidth,
+    );
+    if (Array.isArray(cloud) && cloud.length > 0) {
+      traceCommandsInto(context, cloud);
+      traced = true;
+    }
+  }
+  if (!traced) {
+    points.forEach((point, index) => {
+      const x = toNumber(point?.x);
+      const y = toNumber(point?.y);
+      if (index === 0) context.moveTo(x, y);
+      else context.lineTo(x, y);
+    });
+    if (close) context.closePath();
+  }
+
+  if (typeof context.setLineDash === 'function') {
+    context.setLineDash(Array.isArray(object.strokeDashArray) && object.strokeDashArray.length > 0
+      ? object.strokeDashArray
+      : []);
+  }
+  context.lineCap = 'round';
+  context.lineJoin = 'round';
+  paintCurrentPath(context, {
+    // Polygon: stroke defaults to invisible like SVG (renderPolygon:780);
+    // polyline defaults to '#000' (renderPolyline:858). Both honor fill.
+    fill: isVisiblePaint(object.fill) ? object.fill : null,
+    stroke: isVisiblePaint(object.stroke) ? object.stroke : (close ? null : '#000'),
+    strokeWidth,
+  });
   context.restore();
 }
 
-// Counter pins are stored as Fabric Circle JSON with `radius` (NOT width/height
-// — they are hand-built in the counter tool, so base-object width/height are
-// absent). Geometry and styling must mirror renderCounter in
-// svgAnnotationRenderers.jsx exactly (Shottr-style pin: one filled path that
-// merges the bubble with a triangular nubbin via tangent lines, plus a centered
-// number), or the pin visibly changes whenever this painter serves a frame.
+// Twin of renderText (svgAnnotationRenderers.jsx:964-1168): break-all wrap at
+// the padded inner width, Fabric's ×1.13 line step, half-leading vertical
+// centering per line box, decorations, alignment, background + border rects,
+// descender-buffered clip.
+function drawText(context, object) {
+  const scaleX = Math.abs(toNumber(object.scaleX, 1) || 1);
+  const scaleY = Math.abs(toNumber(object.scaleY, 1) || 1);
+  const fontSize = Math.max(1, toNumber(object.fontSize, 16));
+  const fontFamily = String(object.fontFamily || 'sans-serif').split(',')[0].replace(/["']/g, '');
+  const text = String(object.text || '');
+  const objType = String(object.type || '').toLowerCase();
+
+  // Sizing twin of renderText:980-991 — textboxes trust their stored dims;
+  // i-text / text without stored bounds get a measure pass. The shared
+  // measureTextBounds helper is DOM-bound (document.createElement), so this
+  // worker-safe painter measures with its own live context instead: same
+  // wrap-at-container-width walk, same +4px anti-clip padding, same 20px /
+  // one-line floors. Without this fallback, dimensionless text annotations
+  // silently vanished from eraser/proxy frames.
+  let effectiveWidth;
+  let effectiveHeight;
+  if (objType === 'textbox' && object.width && object.height) {
+    effectiveWidth = Math.abs(toNumber(object.width)) * scaleX;
+    effectiveHeight = Math.abs(toNumber(object.height)) * scaleY;
+  } else {
+    const lineHeightRaw = toNumber(object.lineHeight, 1.16) || 1.16;
+    const containerWidth = toNumber(object.width, 100) || 100;
+    const singleLineH = fontSize * lineHeightRaw;
+    if (!text.trim()) {
+      effectiveWidth = 20 * scaleX;
+      effectiveHeight = singleLineH * scaleY;
+    } else {
+      context.save();
+      context.font = `${object.fontStyle || 'normal'} ${object.fontWeight || 'normal'} ${fontSize}px ${fontFamily}`;
+      let maxLineWidth = 0;
+      let totalVisualLines = 0;
+      for (const line of text.split('\n')) {
+        if (line === '') {
+          totalVisualLines += 1;
+          continue;
+        }
+        const naturalWidth = context.measureText(line).width;
+        if (naturalWidth <= containerWidth) {
+          maxLineWidth = Math.max(maxLineWidth, naturalWidth);
+          totalVisualLines += 1;
+        } else {
+          maxLineWidth = containerWidth;
+          totalVisualLines += Math.max(1, Math.ceil(naturalWidth / containerWidth));
+        }
+      }
+      context.restore();
+      effectiveWidth = Math.max(maxLineWidth + 4, 20) * scaleX;
+      effectiveHeight = Math.max(totalVisualLines * singleLineH + 4, singleLineH) * scaleY;
+    }
+  }
+  if (effectiveWidth <= 0 || effectiveHeight <= 0) return;
+
+  context.save();
+  applyBlendAndOpacity(context, object);
+  context.translate(toNumber(object.left), toNumber(object.top));
+  applyRotation(context, toNumber(object.angle), effectiveWidth / 2, effectiveHeight / 2);
+
+  if (isVisiblePaint(object.backgroundColor)) {
+    context.fillStyle = object.backgroundColor;
+    context.fillRect(0, 0, effectiveWidth, effectiveHeight);
+  }
+  if (toNumber(object.strokeWidth) > 0 && isVisiblePaint(object.stroke)) {
+    context.strokeStyle = object.stroke;
+    context.lineWidth = toNumber(object.strokeWidth);
+    if (typeof context.setLineDash === 'function') context.setLineDash([]);
+    context.strokeRect(0, 0, effectiveWidth, effectiveHeight);
+  }
+
+  const pad = TEXT_PADDING;
+  const innerWidth = Math.max(0, effectiveWidth - 2 * pad);
+  const innerHeight = Math.max(0, effectiveHeight - 2 * pad);
+  const descenderBuffer = fontSize * 0.35;
+  const innerDisplayHeight = innerHeight + descenderBuffer;
+  context.font = `${object.fontStyle || 'normal'} ${object.fontWeight || 'normal'} ${fontSize}px ${fontFamily}`;
+
+  // break-all wrap — per-character breaks, mirroring the foreignObject CSS.
+  const lines = [];
+  text.split(/\r?\n/).forEach((paragraph) => {
+    if (!paragraph) { lines.push(''); return; }
+    let line = '';
+    for (const character of paragraph) {
+      const candidate = line + character;
+      if (line && context.measureText(candidate).width > innerWidth) {
+        lines.push(line);
+        line = character;
+      } else {
+        line = candidate;
+      }
+    }
+    lines.push(line);
+  });
+
+  const lineHeightPx = fontSize * (toNumber(object.lineHeight, 1.16) || 1.16) * 1.13;
+  const blockHeight = lines.length * lineHeightPx;
+  const verticalAlign = object.verticalAlign || 'top';
+  const freeSpace = Math.max(0, innerDisplayHeight - blockHeight);
+  const blockTop = pad + (verticalAlign === 'middle' ? freeSpace / 2 : verticalAlign === 'bottom' ? freeSpace : 0);
+
+  const textAlign = object.textAlign || 'left';
+  context.textAlign = textAlign === 'center' ? 'center' : textAlign === 'right' ? 'right' : 'left';
+  const anchorX = textAlign === 'center' ? pad + innerWidth / 2
+    : textAlign === 'right' ? pad + innerWidth
+      : pad;
+  context.textBaseline = 'middle';
+  context.fillStyle = isVisiblePaint(object.fill) ? object.fill : '#000';
+
+  // Clip like the foreignObject (overflow hidden at padded box + descender).
+  context.beginPath();
+  context.rect(pad, pad, innerWidth, innerDisplayHeight);
+  context.clip();
+
+  const decorationWidth = Math.max(1, fontSize / 14);
+  lines.forEach((line, index) => {
+    const centerY = blockTop + (index + 0.5) * lineHeightPx;
+    if (centerY - lineHeightPx / 2 > pad + innerDisplayHeight) return;
+    context.fillText(line, anchorX, centerY);
+    if ((object.underline || object.linethrough) && line) {
+      const lineWidthPx = context.measureText(line).width;
+      const startX = textAlign === 'center' ? anchorX - lineWidthPx / 2
+        : textAlign === 'right' ? anchorX - lineWidthPx
+          : anchorX;
+      context.save();
+      context.strokeStyle = context.fillStyle;
+      context.lineWidth = decorationWidth;
+      if (typeof context.setLineDash === 'function') context.setLineDash([]);
+      if (object.underline) {
+        const y = centerY + fontSize * 0.36;
+        context.beginPath();
+        context.moveTo(startX, y);
+        context.lineTo(startX + lineWidthPx, y);
+        context.stroke();
+      }
+      if (object.linethrough) {
+        const y = centerY - fontSize * 0.08;
+        context.beginPath();
+        context.moveTo(startX, y);
+        context.lineTo(startX + lineWidthPx, y);
+        context.stroke();
+      }
+      context.restore();
+    }
+  });
+  context.restore();
+}
+
+// Counter pins — already the exact twin of renderCounter
+// (svgAnnotationRenderers.jsx:1562-1627): Shottr-style single filled path
+// (bubble + tangent nubbin) with a centered number, built from `radius`
+// (hand-built counter JSON has NO width/height).
 function drawCounter(context, object) {
   const radius = Math.max(1, toNumber(object?.radius, 14) * Math.abs(toNumber(object?.scaleX, 1) || 1));
   const centerX = toNumber(object?.left) + radius;
@@ -358,30 +661,69 @@ function drawCounter(context, object) {
   context.restore();
 }
 
-function drawGroup(context, object, displayScale) {
+// Legacy arrow groups — twin of renderArrow (svgAnnotationRenderers.jsx:618-675).
+// SVG drops every other group kind from the unified loop, so the canvas must too.
+function drawGroup(context, object) {
   const children = Array.isArray(object?.objects) ? object.objects : [];
-  const line = children.find((child) => String(child?.type || '').toLowerCase() === 'line');
-  if (line) {
-    drawLine(context, {
-      ...line,
-      left: toNumber(object.left) + toNumber(line.left),
-      top: toNumber(object.top) + toNumber(line.top),
-      opacity: object.opacity ?? line.opacity,
-      stroke: line.stroke ?? object.stroke,
-      strokeWidth: line.strokeWidth ?? object.strokeWidth,
-      tool: object.tool || (children.some((child) => child?.name === 'arrowHead' || child?.type === 'triangle') ? 'arrow' : line.tool),
-    });
-    return;
-  }
+  const lineChild = children.find((child) => {
+    const type = String(child?.type || '').toLowerCase();
+    return type === 'line' || type === 'polyline' || type === 'path';
+  });
+  if (!lineChild) return;
+  const arrowHead = children.find(
+    (child) => child && (child.name === 'arrowHead' || String(child.type || '').toLowerCase() === 'triangle'),
+  );
+
+  const x1 = toNumber(object.left) + toNumber(lineChild.x1);
+  const y1 = toNumber(object.top) + toNumber(lineChild.y1);
+  const x2 = toNumber(object.left) + toNumber(lineChild.x2);
+  const y2 = toNumber(object.top) + toNumber(lineChild.y2);
+  const angleRad = Math.atan2(y2 - y1, x2 - x1);
+  const strokeWidth = toNumber(object.strokeWidth, 2) || 2;
+  const headSize = Math.max(6, strokeWidth * 3);
+  const lineEndX = arrowHead ? x2 - (headSize / 3) * Math.cos(angleRad) : x2;
+  const lineEndY = arrowHead ? y2 - (headSize / 3) * Math.sin(angleRad) : y2;
+  const stroke = isVisiblePaint(object.stroke) ? object.stroke : '#000';
+
   context.save();
-  context.translate(toNumber(object.left), toNumber(object.top));
-  context.scale(toNumber(object.scaleX, 1) || 1, toNumber(object.scaleY, 1) || 1);
-  children.forEach((child) => drawAnnotationObject(context, child, displayScale));
+  applyBlendAndOpacity(context, object);
+  if (typeof context.setLineDash === 'function') {
+    context.setLineDash(Array.isArray(object.strokeDashArray) && object.strokeDashArray.length > 0
+      ? object.strokeDashArray
+      : []);
+  }
+  context.beginPath();
+  context.moveTo(x1, y1);
+  context.lineTo(lineEndX, lineEndY);
+  context.strokeStyle = stroke;
+  context.lineWidth = strokeWidth;
+  context.lineCap = 'round';
+  context.stroke();
+  if (arrowHead) {
+    if (typeof context.setLineDash === 'function') context.setLineDash([]);
+    context.translate(x2, y2);
+    context.rotate(angleRad);
+    context.beginPath();
+    context.moveTo(-headSize / 3, -headSize / 2);
+    context.lineTo((headSize * 2) / 3, 0);
+    context.lineTo(-headSize / 3, headSize / 2);
+    context.closePath();
+    context.fillStyle = stroke;
+    context.fill();
+  }
   context.restore();
 }
 
 export function drawAnnotationObject(context, object, displayScale = 1) {
   if (!context || !object) return;
+  // Dual-rep callout projections live in the callouts[] pipeline — the SVG
+  // dispatch skips them (SVGAnnotationLayer.jsx:1791-1802) and so must we, or
+  // they double-paint over drawCallout.
+  if (object?.data?.type === 'callout') return;
+  if (object?.data?.type === 'counter') {
+    drawCounter(context, object);
+    return;
+  }
   const type = String(object.type || '').toLowerCase();
   if (type === 'path') {
     drawPath(context, object, displayScale);
@@ -400,94 +742,206 @@ export function drawAnnotationObject(context, object, displayScale = 1) {
     return;
   }
   if (type === 'group') {
-    drawGroup(context, object, displayScale);
+    drawGroup(context, object);
     return;
   }
-  if (object?.data?.type === 'counter') {
-    drawCounter(context, object);
-    return;
-  }
-  if (type === 'textbox' || type === 'i-text' || type === 'text') {
+  if (type === 'textbox' || type === 'i-text' || type === 'itext' || type === 'text') {
     drawText(context, object);
     return;
   }
 
-  const { width, height } = beginObjectTransform(context, object);
+  // Rect / ellipse / circle / triangle — twin of renderRect / renderEllipse:
+  // draw at EFFECTIVE (pre-scaled) dims with the RAW strokeWidth so strokes do
+  // not scale with the object (SVG never puts these under a scale transform),
+  // honor the inset-stroke contract, dash rects (never ellipses), and rebuild
+  // cloud rects from live geometry.
+  const scaleX = toNumber(object.scaleX, 1) || 1;
+  const scaleY = toNumber(object.scaleY, 1) || 1;
+  const effectiveWidth = Math.abs(toNumber(object.width)) * Math.abs(scaleX);
+  const effectiveHeight = Math.abs(toNumber(object.height)) * Math.abs(scaleY);
+  const isHighlight = object.globalCompositeOperation === 'multiply';
+  const strokeWidth = Math.max(0, toNumber(object.strokeWidth, 0));
+
+  context.save();
+  applyBlendAndOpacity(context, object);
+  context.translate(toNumber(object.left), toNumber(object.top));
+  applyRotation(context, toNumber(object.angle), effectiveWidth / 2, effectiveHeight / 2);
+
+  const isEllipse = type === 'circle' || type === 'ellipse';
+  const cloudIntensity = !isEllipse && type !== 'triangle' ? object?.data?.pdfCloudIntensity : null;
   context.beginPath();
-  if (type === 'circle' || type === 'ellipse') {
-    context.ellipse(width / 2, height / 2, Math.max(0.5, width / 2), Math.max(0.5, height / 2), 0, 0, Math.PI * 2);
+  if (Number.isFinite(cloudIntensity) && effectiveWidth > 0 && effectiveHeight > 0) {
+    const cloud = buildCloudPathCommands(
+      [
+        { x: 0, y: 0 },
+        { x: effectiveWidth, y: 0 },
+        { x: effectiveWidth, y: effectiveHeight },
+        { x: 0, y: effectiveHeight },
+      ],
+      cloudIntensity,
+      toNumber(object.strokeWidth, 1),
+    );
+    if (Array.isArray(cloud) && cloud.length > 0) traceCommandsInto(context, cloud);
+    context.lineJoin = 'round';
+    if (typeof context.setLineDash === 'function') context.setLineDash([]);
+    paintCurrentPath(context, {
+      fill: object.fill,
+      stroke: isVisiblePaint(object.stroke) ? object.stroke : null,
+      strokeWidth: toNumber(object.strokeWidth, 0),
+    });
+    context.restore();
+    return;
+  }
+
+  // Inset-stroke contract (renderRect:324-393 / renderEllipse:933-952): drawn
+  // shapes tagged drawn-centered-stroke keep a centered stroke; everything
+  // else shrinks by sw/2 so the stroke's OUTER edge lands on the stored box.
+  const inset = !isHighlight
+    && strokeWidth > 0
+    && object?.data?.strokeRenderContract !== DRAWN_CENTERED_STROKE_CONTRACT;
+  const half = inset ? strokeWidth / 2 : 0;
+  if (isEllipse) {
+    const rx = object.radius != null
+      ? Math.abs(toNumber(object.radius)) * Math.abs(scaleX)
+      : Math.abs(toNumber(object.rx)) * Math.abs(scaleX);
+    const ry = object.radius != null
+      ? Math.abs(toNumber(object.radius)) * Math.abs(scaleY)
+      : Math.abs(toNumber(object.ry)) * Math.abs(scaleY);
+    context.ellipse(
+      rx,
+      ry,
+      Math.max(0.5, rx - half),
+      Math.max(0.5, ry - half),
+      0,
+      0,
+      Math.PI * 2,
+    );
   } else if (type === 'triangle') {
-    context.moveTo(width / 2, 0);
-    context.lineTo(width, height);
-    context.lineTo(0, height);
+    context.moveTo(effectiveWidth / 2, 0);
+    context.lineTo(effectiveWidth, effectiveHeight);
+    context.lineTo(0, effectiveHeight);
     context.closePath();
   } else {
-    const radius = Math.max(0, Math.min(toNumber(object?.rx), width / 2, height / 2));
-    if (radius > 0 && typeof context.roundRect === 'function') context.roundRect(0, 0, width, height, radius);
-    else context.rect(0, 0, width, height);
+    context.rect(half, half, Math.max(0, effectiveWidth - 2 * half), Math.max(0, effectiveHeight - 2 * half));
   }
-  paintShapeStyle(context, object);
+  if (typeof context.setLineDash === 'function' && !isEllipse) {
+    // SVG never emits strokeDasharray on ellipses — rects/triangles only.
+    if (Array.isArray(object.strokeDashArray) && object.strokeDashArray.length > 0) {
+      context.setLineDash(object.strokeDashArray);
+    }
+  }
+  // Survey-marker pseudo-rects mimic SVG vectorEffect non-scaling-stroke.
+  const lineWidth = object?.nonScalingStroke
+    ? strokeWidth / Math.max(0.01, displayScale)
+    : strokeWidth;
+  paintCurrentPath(context, {
+    fill: object.fill,
+    stroke: isVisiblePaint(object.stroke) ? object.stroke : null,
+    strokeWidth: lineWidth,
+  });
   context.restore();
 }
 
-function drawCallout(context, callout, pageWidth, pageHeight) {
-  const style = callout?.style || {};
+// Twin of renderCallout (svgAnnotationRenderers.jsx:1197-1436).
+function drawCallout(context, callout, pageWidth, pageHeight, displayScale = 1) {
+  if (!callout || !callout.arrowTip || !callout.knee) return;
   const arrowTip = {
-    x: toNumber(callout?.arrowTip?.x) * pageWidth,
-    y: toNumber(callout?.arrowTip?.y) * pageHeight,
+    x: toNumber(callout.arrowTip.x) * pageWidth,
+    y: toNumber(callout.arrowTip.y) * pageHeight,
   };
   const knee = {
-    x: toNumber(callout?.knee?.x) * pageWidth,
-    y: toNumber(callout?.knee?.y) * pageHeight,
+    x: toNumber(callout.knee.x) * pageWidth,
+    y: toNumber(callout.knee.y) * pageHeight,
   };
   const textBox = {
-    x: toNumber(callout?.textBoxPosition?.x ?? callout?.textBox?.x) * pageWidth,
-    y: toNumber(callout?.textBoxPosition?.y ?? callout?.textBox?.y) * pageHeight,
-    width: Math.max(1, toNumber(callout?.textBoxWidth ?? callout?.textBox?.width) * pageWidth),
-    height: Math.max(1, toNumber(callout?.textBoxHeight ?? callout?.textBox?.height) * pageHeight),
+    x: toNumber(callout.textBoxPosition?.x ?? callout.textBox?.x) * pageWidth,
+    y: toNumber(callout.textBoxPosition?.y ?? callout.textBox?.y) * pageHeight,
+    width: Math.max(18, toNumber(callout.textBoxWidth ?? callout.textBox?.width, 0.1) * pageWidth),
+    height: Math.max(18, toNumber(callout.textBoxHeight ?? callout.textBox?.height, 0.05) * pageHeight),
   };
-  const lineThickness = Math.max(1, toNumber(style.lineThickness, 2));
-  const lineColor = isVisiblePaint(style.borderColor) ? style.borderColor : DEFAULT_CALLOUT_COLOR;
-  const fillColor = isVisiblePaint(style.fillColor) ? style.fillColor : DEFAULT_CALLOUT_FILL;
+  const lineColor = callout.style?.borderColor || callout.style?.lineColor || DEFAULT_CALLOUT_COLOR;
+  const lineThickness = Math.max(1, toNumber(callout.style?.lineThickness, 2));
+  const fillColor = callout.style?.fillColor || 'transparent';
+  const fillOpacity = Math.max(0.08, Math.min(1, toNumber(callout.style?.fillOpacity, 0.4)));
+  const borderOpacity = Math.max(0.2, Math.min(1, toNumber(callout.style?.borderOpacity, 1)));
+  const fontSize = Math.max(1, toNumber(callout.style?.fontSize, 12));
+  const descenderBuffer = fontSize * 0.35;
+  const boxHeightWithDescenders = textBox.height + descenderBuffer;
+
+  // borderWidth 0 — stored box dims ARE the outer border rect (renderCallout:1282).
   const connection = calculateCalloutConnection(
     textBox.x,
     textBox.y,
     textBox.width,
-    textBox.height,
+    boxHeightWithDescenders,
     knee,
     arrowTip,
-    lineThickness,
+    0,
   );
 
+  const arrowheadStyle = callout.style?.arrowheadStyle ?? ARROWHEAD_STYLES.SOLID_TRIANGLE;
+  const arrowAngleDeg = (
+    Math.atan2(arrowTip.y - connection.line2Start.y, arrowTip.x - connection.line2Start.x)
+    * 180) / Math.PI;
+  const arrowheadSpec = buildArrowheadRenderSpec(
+    arrowheadStyle, arrowTip.x, arrowTip.y, arrowAngleDeg, lineColor, lineThickness,
+  );
+  let line2EndX = arrowTip.x;
+  let line2EndY = arrowTip.y;
+  if (arrowheadStyle === ARROWHEAD_STYLES.SOLID_TRIANGLE
+    || arrowheadStyle === ARROWHEAD_STYLES.OPEN_TRIANGLE) {
+    const headSize = Math.max(8, lineThickness * 3);
+    const angleRad = (arrowAngleDeg * Math.PI) / 180;
+    line2EndX = arrowTip.x - (headSize / 3) * Math.cos(angleRad);
+    line2EndY = arrowTip.y - (headSize / 3) * Math.sin(angleRad);
+  }
+
+  // Connector lines + box border are vectorEffect non-scaling-stroke in SVG —
+  // divide widths by displayScale so on-screen thickness stays constant.
+  const nonScaling = (width) => width / Math.max(0.01, displayScale);
+
   context.save();
-  context.globalAlpha = clampOpacity(style.borderOpacity ?? 1);
+  // Group opacity (SVG <g opacity={borderOpacity}>) multiplies EVERYTHING.
+  context.globalAlpha = borderOpacity;
   context.strokeStyle = lineColor;
-  context.fillStyle = lineColor;
-  context.lineWidth = lineThickness;
+  context.lineWidth = nonScaling(lineThickness);
   context.lineCap = 'round';
   context.lineJoin = 'round';
+  if (typeof context.setLineDash === 'function') context.setLineDash([]);
   context.beginPath();
   if (!connection.shouldHideLine1) {
     context.moveTo(connection.line1Start.x, connection.line1Start.y);
     context.lineTo(connection.effectiveKnee.x, connection.effectiveKnee.y);
   }
   context.moveTo(connection.line2Start.x, connection.line2Start.y);
-  context.lineTo(arrowTip.x, arrowTip.y);
+  context.lineTo(line2EndX, line2EndY);
   context.stroke();
-  context.beginPath();
-  context.arc(arrowTip.x, arrowTip.y, Math.max(2, lineThickness + 0.4), 0, Math.PI * 2);
-  context.fill();
-  context.globalAlpha = clampOpacity(style.fillOpacity ?? 0.4);
-  context.fillStyle = fillColor;
-  context.fillRect(textBox.x, textBox.y, textBox.width, textBox.height);
-  context.globalAlpha = clampOpacity(style.borderOpacity ?? 1);
-  context.strokeRect(textBox.x, textBox.y, textBox.width, textBox.height);
+  // Real arrowhead via the shared spec (the old dot was the "arrow looks like
+  // a circle" bug). Arrowhead stroke widths ride the same non-scaling rule.
+  paintArrowheadSpec(context, {
+    ...arrowheadSpec,
+    ...(arrowheadSpec.polygon ? { polygon: { ...arrowheadSpec.polygon, strokeWidth: nonScaling(arrowheadSpec.polygon.strokeWidth || Math.max(2, lineThickness)) } } : {}),
+    ...(arrowheadSpec.circle ? { circle: { ...arrowheadSpec.circle, strokeWidth: nonScaling(arrowheadSpec.circle.strokeWidth) } } : {}),
+    ...(arrowheadSpec.polyline ? { polyline: { ...arrowheadSpec.polyline, strokeWidth: nonScaling(arrowheadSpec.polyline.strokeWidth) } } : {}),
+    ...(arrowheadSpec.line ? { line: { ...arrowheadSpec.line, strokeWidth: nonScaling(arrowheadSpec.line.strokeWidth) } } : {}),
+  });
 
-  const text = String(callout?.text || '');
+  if (isVisiblePaint(fillColor)) {
+    context.save();
+    context.globalAlpha = borderOpacity * fillOpacity;
+    context.fillStyle = fillColor;
+    context.fillRect(textBox.x, textBox.y, textBox.width, boxHeightWithDescenders);
+    context.restore();
+  }
+  context.strokeStyle = lineColor;
+  context.lineWidth = nonScaling(Math.max(1, lineThickness * 0.7));
+  context.strokeRect(textBox.x, textBox.y, textBox.width, boxHeightWithDescenders);
+
+  const text = String(callout.text || '');
   if (text) {
-    const fontSize = Math.max(1, toNumber(style.fontSize, 12));
-    const fontFamily = String(style.fontFamily || 'Arial').split(',')[0].replace(/["']/g, '');
-    const maxTextWidth = Math.max(1, textBox.width - 12);
+    const fontFamily = String(callout.style?.fontFamily || 'Arial').split(',')[0].replace(/["']/g, '');
+    context.font = `${fontSize}px ${fontFamily}`;
+    const maxTextWidth = Math.max(1, textBox.width - 2 * TEXT_PADDING);
     const lines = [];
     text.split(/\r?\n/).forEach((paragraph) => {
       if (!paragraph) {
@@ -506,18 +960,21 @@ function drawCallout(context, callout, pageWidth, pageHeight) {
       }
       lines.push(line);
     });
-    const lineHeight = fontSize * Math.max(1, toNumber(style.lineHeight, 1)) * 1.13;
-    const availableHeight = textBox.height + fontSize * 0.35;
-    const maxLines = Math.max(1, Math.floor(availableHeight / lineHeight));
+    const lineHeightPx = fontSize * (toNumber(callout.style?.lineHeight, 1) || 1) * 1.13;
+    const availableHeight = boxHeightWithDescenders;
+    const maxLines = Math.max(1, Math.floor(availableHeight / lineHeightPx));
     const paintedLines = lines.slice(0, maxLines);
-    const textHeight = paintedLines.length * lineHeight;
-    const startY = textBox.y + Math.max(0, (availableHeight - textHeight) / 2);
-    context.globalAlpha = 1;
-    context.font = `${fontSize}px ${fontFamily}`;
-    context.textBaseline = 'top';
-    context.fillStyle = style.fontColor || style.textColor || '#000000';
+    const blockHeight = paintedLines.length * lineHeightPx;
+    const startY = textBox.y + Math.max(0, (availableHeight - blockHeight) / 2);
+    const textAlign = callout.style?.textAlign || 'left';
+    context.textAlign = textAlign === 'center' ? 'center' : textAlign === 'right' ? 'right' : 'left';
+    const anchorX = textAlign === 'center' ? textBox.x + textBox.width / 2
+      : textAlign === 'right' ? textBox.x + textBox.width - TEXT_PADDING
+        : textBox.x + TEXT_PADDING;
+    context.textBaseline = 'middle';
+    context.fillStyle = callout.style?.fontColor || callout.style?.textColor || '#000000';
     paintedLines.forEach((line, index) => {
-      context.fillText(line, textBox.x + 6, startY + index * lineHeight, maxTextWidth);
+      context.fillText(line, anchorX, startY + (index + 0.5) * lineHeightPx);
     });
   }
   context.restore();
@@ -547,7 +1004,7 @@ export function paintAnnotationCanvas(context, {
     -toNumber(offsetY) * drawScale,
   );
   objects.forEach((object) => drawAnnotationObject(context, object, displayScale));
-  callouts.forEach((callout) => drawCallout(context, callout, pageWidth, pageHeight));
+  callouts.forEach((callout) => drawCallout(context, callout, pageWidth, pageHeight, displayScale));
   context.setTransform(1, 0, 0, 1, 0, 0);
   return { objectCount: objects.length, calloutCount: callouts.length };
 }
