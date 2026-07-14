@@ -77,10 +77,12 @@ const chromeMaskTiles = (clip) => page.evaluate(({ c, tile }) => {
   return { masked: new Set(masked), maskedArr: masked, cols, rows };
 }, { c: { x: clip.x, y: clip.y, width: clip.width, height: clip.height }, tile: TILE });
 
-const neutralize = async (clip) => {
+const neutralize = async (clip, allowClick = true) => {
   await page.keyboard.press('Escape');
   await page.waitForTimeout(150);
-  if (clip.x - clip.scrollBox.x > 16) {
+  // Margin click deselects in Select mode. Skip it when a drawing tool is
+  // armed (SVG_MODE=p) — a pen click would CREATE ink between the shots.
+  if (allowClick && clip.x - clip.scrollBox.x > 16) {
     await page.mouse.click(clip.scrollBox.x + 8, clip.y + 8);
     await page.waitForTimeout(200);
   }
@@ -88,6 +90,30 @@ const neutralize = async (clip) => {
   await page.mouse.move(2, 2);
   await page.waitForTimeout(600);
 };
+
+// TARGET_TEXT: center the annotation whose text contains the given string and
+// report its tiles' drift explicitly (user bug reports name an annotation,
+// not a tile index). Returns the match's viewport rect for the diff step.
+const TARGET_TEXT = process.env.TARGET_TEXT || null;
+const findTarget = () => page.evaluate((needle) => {
+  const layer = document.querySelector('[data-svg-annotation-layer="1"]');
+  if (!layer) return null;
+  const groups = [...layer.querySelectorAll('g[data-annotation-index], g[data-callout-id]')];
+  for (const g of groups) {
+    const div = g.querySelector('foreignObject div');
+    const textEl = g.querySelector('text');
+    const holder = div || textEl;
+    if (!holder) continue;
+    if (!(holder.textContent || '').includes(needle)) continue;
+    const r = holder.getBoundingClientRect();
+    return {
+      id: g.getAttribute('data-annotation-index') || g.getAttribute('data-callout-id'),
+      l: r.left, t: r.top, w: r.width, h: r.height,
+      text: (holder.textContent || '').slice(0, 24),
+    };
+  }
+  return null;
+}, TARGET_TEXT);
 
 try {
   step(`Navigating to ${BASE_URL} …`);
@@ -108,6 +134,15 @@ try {
   await page.waitForFunction(() => window.__crdtBackfillDone === true, undefined, { timeout: 20000 }).catch(() => {});
   await page.waitForTimeout(800);
 
+  // Self-documenting fix marker: confirm the SERVED painter carries the
+  // 2026-07-14 baseline-snap fix, so a probe log can never silently gate
+  // against a stale build (a fresh probe navigation always runs served code).
+  const hasSnapFix = await page.evaluate(() => fetch('/src/utils/annotationCanvasPainter.js')
+    .then((r) => r.text())
+    .then((t) => t.includes('paintBlockTop'))
+    .catch(() => null));
+  console.log(`   served painter has baseline-snap fix: ${hasSnapFix}`);
+
   const counts = await page.evaluate(() => ({
     ann: document.querySelectorAll('[data-svg-annotation-layer="1"] g[data-annotation-index]').length,
     callouts: new Set([...document.querySelectorAll('[data-svg-annotation-layer="1"] [data-callout-id]')]
@@ -122,20 +157,50 @@ try {
     const zoomIn = page.locator('#chrome-right-host button[aria-label="Zoom in"]').first();
     for (let i = 0; i < zoomClicks; i++) { await zoomIn.click(); await page.waitForTimeout(250); }
     await page.waitForTimeout(1200); // zoom settle + repaints
-    // Keep a content-dense region in view: scroll the first counter pin (or
-    // first annotation) to center so the clip isn't blank page.
-    await page.evaluate(() => {
-      const t = [...document.querySelectorAll('g[data-annotation-index] text')].find((n) => /^\d+$/.test(n.textContent.trim()))
-        || document.querySelector('g[data-annotation-index]');
-      t?.scrollIntoView({ block: 'center', inline: 'center' });
-    });
-    await page.waitForTimeout(600);
     console.log(`   zoomed in ${zoomClicks} steps`);
   }
+  if (zoomClicks > 0 || TARGET_TEXT) {
+    // Keep a content-dense region in view: center TARGET_TEXT's annotation
+    // when given, else the first counter pin / first annotation.
+    await page.evaluate((needle) => {
+      let t = null;
+      if (needle) {
+        t = [...document.querySelectorAll('[data-svg-annotation-layer="1"] foreignObject div, [data-svg-annotation-layer="1"] g text')]
+          .find((n) => (n.textContent || '').includes(needle)) || null;
+      }
+      t = t
+        || [...document.querySelectorAll('g[data-annotation-index] text')].find((n) => /^\d+$/.test(n.textContent.trim()))
+        || document.querySelector('g[data-annotation-index]');
+      t?.scrollIntoView({ block: 'center', inline: 'center' });
+    }, TARGET_TEXT);
+    await page.waitForTimeout(600);
+  }
+  const pageScale = await page.evaluate(() => {
+    const host = document.querySelector('[data-annotation-real-surface="1"]');
+    return host ? host.getBoundingClientRect().width : 0;
+  }).then((w) => w / 612);
+  console.log(`   pageScale ~${pageScale.toFixed(4)} (host width / 612)`);
 
-  step('Capturing SVG presentation (select mode)…');
+  // SVG_MODE=p captures the SVG presentation with the PEN armed instead of
+  // Select — the user's toggle recipe is E<->P, and a pen-mode-only overlay
+  // nudging the page would be invisible to the Select-mode capture.
+  const svgModeKey = (process.env.SVG_MODE || 'v').toLowerCase();
+  if (svgModeKey !== 'v') {
+    await page.keyboard.press(svgModeKey);
+    await page.waitForSelector('[data-svg-annotation-layer="1"]', { timeout: 10000 });
+    await page.waitForTimeout(400);
+    console.log(`   SVG capture mode: '${svgModeKey}'`);
+  }
+
+  step(`Capturing SVG presentation ('${svgModeKey}' mode)…`);
   const clip = await getClip();
-  await neutralize(clip);
+  await neutralize(clip, svgModeKey === 'v');
+  const targetRect = TARGET_TEXT ? await findTarget() : null;
+  if (TARGET_TEXT) {
+    console.log(targetRect
+      ? `   target "${TARGET_TEXT}" -> ${targetRect.id} "${targetRect.text}" @ viewport (${targetRect.l.toFixed(1)}, ${targetRect.t.toFixed(1)}, ${targetRect.w.toFixed(1)}x${targetRect.h.toFixed(1)})`
+      : `   target "${TARGET_TEXT}" NOT FOUND in SVG layer`);
+  }
   const mask1 = await chromeMaskTiles(clip);
   await page.screenshot({ path: SVG_PNG, clip: { x: clip.x, y: clip.y, width: clip.width, height: clip.height } });
 
@@ -245,7 +310,32 @@ try {
   }
 
   step('Switching to eraser (canvas presentation)…');
+  // TOGGLES=n replays the user's E<->P thrash before the capture — a repaint
+  // skipped on re-entry (stale payload / generation cache) only shows up
+  // after repeated presentation swaps.
+  const toggles = Number(process.env.TOGGLES || 0);
+  for (let i = 0; i < toggles; i++) {
+    await page.keyboard.press(i % 2 === 0 ? 'e' : 'p');
+    await page.waitForTimeout(350);
+  }
+  if (toggles > 0) console.log(`   toggled eraser<->pen ${toggles} times`);
   await page.keyboard.press('e');
+  // BURST=n: grab n raw frames immediately after the eraser keypress, BEFORE
+  // any settle waits — hunts transient wrong-position frames during the
+  // presentation swap that the settled capture can never show.
+  const burstN = Number(process.env.BURST || 0);
+  const burstTimes = [];
+  if (burstN > 0) {
+    const t0 = Date.now();
+    for (let i = 0; i < burstN; i++) {
+      await page.screenshot({
+        path: path.join(ART_DIR, `burst-${i}.png`),
+        clip: { x: clip.x, y: clip.y, width: clip.width, height: clip.height },
+      });
+      burstTimes.push(Date.now() - t0);
+    }
+    console.log(`   burst: ${burstN} frames at +${burstTimes.join('ms, +')}ms after 'e'`);
+  }
   await page.waitForFunction(([annExp, calExp]) => {
     const wrap = document.querySelector('[data-lightweight-annotation-overlay="1"]');
     const canvas = document.querySelector('[data-annotation-presentation-canvas="1"]');
@@ -365,7 +455,7 @@ try {
     const i = (y * W + x) * 4;
     return img.data[i] * 0.299 + img.data[i + 1] * 0.587 + img.data[i + 2] * 0.114;
   };
-  const measureShift = (t) => {
+  const measureShift = (t, img = imgB) => {
     const tx = (t % cols) * TILE * scale, ty = Math.floor(t / cols) * TILE * scale;
     const tw = Math.min(TILE * scale, W - tx), th = Math.min(TILE * scale, H - ty);
     let best = { dx: 0, dy: 0, sad: Infinity };
@@ -375,7 +465,7 @@ try {
         for (let y = 8; y < th - 8; y += 2) {
           for (let x = 8; x < tw - 8; x += 2) {
             const ax = tx + x, ay = ty + y;
-            sad += Math.abs(lum(imgA, ax, ay) - lum(imgB, ax + dx, ay + dy));
+            sad += Math.abs(lum(imgA, ax, ay) - lum(img, ax + dx, ay + dy));
           }
         }
         if (sad < best.sad) best = { dx, dy, sad };
@@ -392,6 +482,66 @@ try {
   const pct = totalPixels ? (diffPixels / totalPixels) * 100 : 0;
   console.log(`\n──────── probe results (${DOC_NAME}) ────────`);
   console.log(`global diff: ${pct.toFixed(4)}% (${diffPixels}/${totalPixels} px, channel delta ${CHANNEL_DELTA}, dpr-scale ${scale})`);
+
+  // Focused drift table for the TARGET_TEXT annotation: every tile its rect
+  // touches, whether or not it makes the global top-12.
+  if (targetRect) {
+    const pad = 4; // css px around the rect so edge AA lands in the window
+    const c0 = Math.max(0, Math.floor((targetRect.l - pad - clip.x) / TILE));
+    const c1 = Math.min(cols - 1, Math.floor((targetRect.l + targetRect.w + pad - clip.x) / TILE));
+    const r0 = Math.max(0, Math.floor((targetRect.t - pad - clip.y) / TILE));
+    const r1 = Math.min(rows - 1, Math.floor((targetRect.t + targetRect.h + pad - clip.y) / TILE));
+    console.log(`TARGET "${TARGET_TEXT}" tiles (cols ${c0}..${c1}, rows ${r0}..${r1}):`);
+    let worst = { pct: 0, dx: 0, dy: 0 };
+    for (let r = r0; r <= r1; r++) {
+      for (let cCol = c0; cCol <= c1; cCol++) {
+        const t = r * cols + cCol;
+        if (masked.has(t)) { console.log(`  TARGET tile (${cCol},${r}) masked`); continue; }
+        const n = tileDiff.get(t) || 0;
+        const tp = (n / (TILE * scale * TILE * scale)) * 100;
+        if (tp < 0.05) continue;
+        const s = measureShift(t);
+        if (tp > worst.pct) worst = { pct: tp, dx: s.dx, dy: s.dy };
+        console.log(`  TARGET tile (${cCol},${r}) ${tp.toFixed(1)}% diff — shift dx=${s.dx} dy=${s.dy} device px`);
+      }
+    }
+    console.log(`TARGET summary: worst ${worst.pct.toFixed(1)}% dx=${worst.dx} dy=${worst.dy} (zoomClicks=${process.env.ZOOM_CLICKS || 0}, toggles=${process.env.TOGGLES || 0}, svgMode=${svgModeKey}, pageScale=${pageScale.toFixed(4)})`);
+
+    // Burst frames: target drift per raw post-keypress frame vs the SVG shot.
+    for (let bi = 0; bi < burstTimes.length; bi++) {
+      const framePath = path.join(ART_DIR, `burst-${bi}.png`);
+      if (!fs.existsSync(framePath)) continue;
+      const imgF = PNG.sync.read(fs.readFileSync(framePath));
+      if (imgF.width !== W || imgF.height !== H) { console.log(`  BURST[${bi}] dims differ — skipped`); continue; }
+      let bWorst = { pct: 0, dx: 0, dy: 0, tile: null };
+      for (let r = r0; r <= r1; r++) {
+        for (let cCol = c0; cCol <= c1; cCol++) {
+          const t = r * cols + cCol;
+          if (masked.has(t)) continue;
+          let n = 0;
+          const tx0 = Math.round(cCol * TILE * scale), ty0 = Math.round(r * TILE * scale);
+          const tx1 = Math.min(Math.round((cCol + 1) * TILE * scale), W);
+          const ty1 = Math.min(Math.round((r + 1) * TILE * scale), H);
+          for (let y = ty0; y < ty1; y++) {
+            for (let x = tx0; x < tx1; x++) {
+              const i = (y * W + x) * 4;
+              const d = Math.max(
+                Math.abs(imgA.data[i] - imgF.data[i]),
+                Math.abs(imgA.data[i + 1] - imgF.data[i + 1]),
+                Math.abs(imgA.data[i + 2] - imgF.data[i + 2]));
+              if (d > CHANNEL_DELTA) n++;
+            }
+          }
+          const tp = (n / ((tx1 - tx0) * (ty1 - ty0))) * 100;
+          if (tp > bWorst.pct) {
+            const s = measureShift(t, imgF);
+            bWorst = { pct: tp, dx: s.dx, dy: s.dy, tile: `(${cCol},${r})` };
+          }
+        }
+      }
+      console.log(`  BURST[${bi}] +${burstTimes[bi]}ms: worst target tile ${bWorst.tile ?? '-'} ${bWorst.pct.toFixed(1)}% dx=${bWorst.dx} dy=${bWorst.dy}`);
+    }
+  }
   for (const { t, pct: tp } of hot) {
     const cx = (t % cols) * TILE, cy = Math.floor(t / cols) * TILE;
     const s = measureShift(t);
