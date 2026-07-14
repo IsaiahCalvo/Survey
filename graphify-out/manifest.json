@@ -1135,8 +1135,8 @@
     "semantic_hash": ""
   },
   "src/AppShell.jsx": {
-    "mtime": 1784047569.5877736,
-    "ast_hash": "9e2c9b3d86ceab32f6774858a51bf8bf",
+    "mtime": 1784056298.4143963,
+    "ast_hash": "999e724f0f697e6fe456de70e026d0ad",
     "semantic_hash": ""
   },
   "src/Dashboard.jsx": {
@@ -1160,8 +1160,8 @@
     "semantic_hash": ""
   },
   "src/PDFViewer.jsx": {
-    "mtime": 1784049762.975203,
-    "ast_hash": "0f0b6b66cefdd924b4db3ddd0396d850",
+    "mtime": 1784056368.8696346,
+    "ast_hash": "449e766397da9cd547e4342f802095b7",
     "semantic_hash": ""
   },
   "src/PageAnnotationLayer.jsx": {
@@ -1180,8 +1180,8 @@
     "semantic_hash": ""
   },
   "src/SurveySpacesRail.jsx": {
-    "mtime": 1784034992.3187637,
-    "ast_hash": "5cacb3a70c7d48693758584256d9b7a9",
+    "mtime": 1784056437.9391742,
+    "ast_hash": "0d8aebcd33729f68efd783c382d91bd9",
     "semantic_hash": ""
   },
   "src/TabBar.jsx": {
@@ -1265,8 +1265,8 @@
     "semantic_hash": ""
   },
   "src/components/FabricEraserCanvas.jsx": {
-    "mtime": 1784048282.3192782,
-    "ast_hash": "10ab8e04c99a3bda24d46891ffaa28f0",
+    "mtime": 1784055471.9922352,
+    "ast_hash": "f7f131a3797403b156177a5a3c841413",
     "semantic_hash": ""
   },
   "src/components/FormFieldPropertiesPanel.jsx": {
@@ -1280,8 +1280,8 @@
     "semantic_hash": ""
   },
   "src/components/LightweightAnnotationOverlay.jsx": {
-    "mtime": 1784043042.0703604,
-    "ast_hash": "574b9ee1963e495a91803227521bc621",
+    "mtime": 1784055425.245073,
+    "ast_hash": "a3443f491760b8a2d25acff5cbf7b0be",
     "semantic_hash": ""
   },
   "src/components/NewColumnsModal.jsx": {
@@ -1310,8 +1310,8 @@
     "semantic_hash": ""
   },
   "src/components/PdfjsFormLayer.jsx": {
-    "mtime": 1784034992.3323598,
-    "ast_hash": "e11dd6704f8a3eddfe73272344979ed3",
+    "mtime": 1784055397.5096114,
+    "ast_hash": "626f8b6eebddf1b69b6503736a03094b",
     "semantic_hash": ""
   },
   "src/components/PdfjsLinkLayer.jsx": {
@@ -1345,8 +1345,8 @@
     "semantic_hash": ""
   },
   "src/components/SVGAnnotationLayer.jsx": {
-    "mtime": 1784048725.7097356,
-    "ast_hash": "ca21be14347afffa2b1a61da2480675f",
+    "mtime": 1784055356.1376595,
+    "ast_hash": "4b3f659fafa5b851aa01784c5d84cb8c",
     "semantic_hash": ""
   },
   "src/components/SVGSelectionOverlay.jsx": {
@@ -2840,8 +2840,8 @@
     "semantic_hash": ""
   },
   "src/utils/svgAnnotationRenderers.jsx": {
-    "mtime": 1784047944.793918,
-    "ast_hash": "242e3aff422c334a6c4b0540b4d29fc6",
+    "mtime": 1784055201.892099,
+    "ast_hash": "7fa17e1f8f37d697a5fcba5da767cf48",
     "semantic_hash": ""
   },
   "src/utils/svgBoundingBox.js": {
@@ -2850,8 +2850,8 @@
     "semantic_hash": ""
   },
   "src/utils/svgPathAttrs.js": {
-    "mtime": 1784034992.426343,
-    "ast_hash": "78ec292053df472f9133c56672d00400",
+    "mtime": 1784055169.425668,
+    "ast_hash": "2d506cf97a6d563b33aed7ed506ed9c3",
     "semantic_hash": ""
   },
   "src/utils/svgToFabricShape.js": {
@@ -3645,8 +3645,8 @@
     "semantic_hash": ""
   },
   "tests/pdfAnnotationNormalization.test.mjs": {
-    "mtime": 1784034992.4720194,
-    "ast_hash": "c8844fce53f408ed0ef4c16e4a3e0092",
+    "mtime": 1784055502.5765202,
+    "ast_hash": "07ba9b8933bdaa07fd72d4a708676026",
     "semantic_hash": ""
   },
   "tests/pdfNativeExport.bake.test.mjs": {
@@ -7510,8 +7510,8 @@
     "semantic_hash": ""
   },
   "src/utils/annotationCanvasPainter.js": {
-    "mtime": 1784048271.4040194,
-    "ast_hash": "1f170146e02b1f4f6e825af80e74c696",
+    "mtime": 1784055734.1472092,
+    "ast_hash": "c18b9810366ba152b9e77255c2b45c5c",
     "semantic_hash": ""
   },
   "src/utils/annotationDetailTile.js": {
@@ -7660,8 +7660,8 @@
     "semantic_hash": ""
   },
   "tests/annotationCanvasPainter.test.mjs": {
-    "mtime": 1784048355.8502226,
-    "ast_hash": "41b626e9158ed7b8fe63101be1cae76d",
+    "mtime": 1784055788.2926958,
+    "ast_hash": "48995d7232b0d39cd727606645693a2b",
     "semantic_hash": ""
   },
   "tests/annotationDetailTile.test.mjs": {
@@ -8152,6 +8152,11 @@
   "tests/textEditCommit.test.mjs": {
     "mtime": 1784050151.658031,
     "ast_hash": "4ac102fb6f60440518ae885e67408bfd",
+    "semantic_hash": ""
+  },
+  "src/components/CreateCategoryModal.jsx": {
+    "mtime": 1784056176.6256278,
+    "ast_hash": "b0858d2638c1df583c8f3793f2ddf00c",
     "semantic_hash": ""
   }
 }

@@ -861,7 +861,8 @@ input[type="text"].space-name-inline:focus {
   align-items: center;
   gap: 8px;
   height: 24px;
-  overflow: hidden;
+  /* No overflow:hidden here — the compact EXPORT dropdown anchored in this
+     row must extend below it. The strip keeps its own overflow clipping. */
   flex-wrap: nowrap;
 }
 
@@ -916,6 +917,94 @@ input[type="text"].space-name-inline:focus {
 .survey-marker-category-create-button:hover {
   background: #b6904a;
   border-color: #b6904a;
+}
+
+/* Compact survey EXPORT control — lives at the right end of the Select row
+   (where the create-category plus button used to be; the plus moved down to
+   the "Categories" heading row). Height is locked to 24px so it matches
+   .survey-marker-category-create-button exactly. Replaces the old
+   bottom-pinned EXPORT bar: the panel bottom now belongs to the zoom cluster,
+   so the export dropdown opens DOWNWARD from this top-of-panel anchor
+   (same pattern as .spaces-header-export-menu in the left rail). */
+.survey-marker-export-compact-cluster {
+  position: relative;
+  flex: none;
+  display: inline-flex;
+  align-items: stretch;
+  height: 24px;
+}
+
+.survey-marker-export-compact-button {
+  height: 24px;
+  flex: none;
+  padding: 0 12px;
+  background: #d8a84e;
+  border: 1px solid #b6904a;
+  border-radius: 5px;
+  color: #15110a;
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  line-height: 1;
+  text-transform: uppercase;
+  cursor: pointer;
+  white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.survey-marker-export-compact-cluster .survey-marker-export-compact-button {
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+  border-right: none;
+}
+
+.survey-marker-export-compact-chevron {
+  width: 22px;
+  height: 24px;
+  flex: 0 0 22px;
+  padding: 0;
+  background: #d8a84e;
+  border: 1px solid #b6904a;
+  border-left: 1px solid rgba(0, 0, 0, 0.15);
+  border-radius: 0 5px 5px 0;
+  color: #15110a;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.survey-marker-export-compact-button:hover:not(:disabled),
+.survey-marker-export-compact-chevron:hover:not(:disabled) {
+  background: #b6904a;
+  border-color: #b6904a;
+}
+
+.survey-marker-export-compact-button:disabled,
+.survey-marker-export-compact-chevron:disabled {
+  background: #5a6473;
+  border-color: #5a6473;
+  color: #e8e2d4;
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+
+.survey-marker-export-compact-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 100;
+  width: 220px;
+  overflow: hidden;
+  background: #2a3140;
+  border: 1px solid #3a4252;
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
 }
 
 .spaces-header-actions {

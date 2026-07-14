@@ -2956,6 +2956,17 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     viewer.deleteFormField(selectedFormField.id);
     setSelectedFormField(null);
   }, [selectedFormField]);
+  // At most ONE forced-cursor restore may be pending at a time. Two tool
+  // switches with no mouse movement in between used to stack two {once:true}
+  // mousemove listeners; on the first real move they fired in insertion order
+  // and the SECOND one restored the first switch's forced cursor (e.g. 'none'
+  // from eraser) as if it were the element's own inline cursor — permanently
+  // baking cursor:none onto a persistent canvas-area element (cursor vanished
+  // over the PDF, reappeared over the side rails). Holding the single pending
+  // restore in this ref and running it BEFORE applying a new override means
+  // the captured prevCursor is always the element's genuine pre-override
+  // value, never a value this effect set itself.
+  const forcedCursorRestoreRef = useRef(null);
   useEffect(() => {
     // [InteractionDiag] tool-switch RESPONSE: the active tool actually changed.
     // Pairs with the tool-switch INTENT log inside the logged setActiveTool
@@ -2976,6 +2987,16 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     // Note: this works for tools whose cursor element is already in the DOM
     // (pan, select) but NOT for eraser where a new Canvas mounts — the browser
     // won't pick up the new element's cursor until mouse movement.
+    const runPendingCursorRestore = () => {
+      const pending = forcedCursorRestoreRef.current;
+      if (!pending) return;
+      forcedCursorRestoreRef.current = null;
+      window.removeEventListener('mousemove', pending.listener);
+      pending.el.style.cursor = pending.prevCursor;
+    };
+    // Settle any previous override FIRST so the prevCursor captured below is
+    // the element's real inline cursor, not a leftover forced value.
+    runPendingCursorRestore();
     const { x, y } = lastPointerPosRef.current;
     const el = document.elementFromPoint(x, y);
     if (el) {
@@ -2986,12 +3007,13 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       else if (activeTool === 'text' || NATIVE_TEXT_MARKUP_TOOLS.has(activeTool)) forcedCursor = 'text';
       const prevCursor = el.style.cursor;
       el.style.cursor = forcedCursor;
-      const clearOverride = () => {
-        el.style.cursor = prevCursor;
-        window.removeEventListener('mousemove', clearOverride);
-      };
+      const clearOverride = () => runPendingCursorRestore();
+      forcedCursorRestoreRef.current = { el, prevCursor, listener: clearOverride };
       window.addEventListener('mousemove', clearOverride, { once: true });
     }
+    // Effect cleanup (next tool switch or unmount) also settles the override,
+    // so an un-fired restore can never outlive the effect run that armed it.
+    return runPendingCursorRestore;
   }, [activeTool]);
 
   // Clear edit state when switching to drawing/eraser tools
@@ -15424,6 +15446,124 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     return updatedTemplate;
   }, [selectedTemplate, updateSupabaseTemplate, sanitizeTemplateConfig, handleTemplatesChange, appTemplates]);
 
+  // Survey-rail "Create category" plumbing (CreateCategoryModal, opened by the
+  // desktop plus button in the Categories heading row).
+  // (a) Append the category to the CURRENT template and persist — mirrors
+  //     handleModifyCurrentTemplate's persistence pattern exactly.
+  //     Category shape matches the canonical template config produced by the
+  //     templates editor / Excel import: { id, name, checklist: [] }.
+  const handleAddCategoryToCurrentTemplate = useCallback(async (moduleId, categoryName) => {
+    if (!selectedTemplate || !moduleId || !categoryName) return null;
+
+    const newCategory = {
+      id: `cat-${crypto.randomUUID()}`,
+      name: categoryName,
+      checklist: []
+    };
+
+    const updatedModules = deepClone(selectedTemplate.modules || selectedTemplate.spaces || []).map((mod) => (
+      mod.id === moduleId
+        ? { ...mod, categories: [...(mod.categories || []), newCategory] }
+        : mod
+    ));
+
+    const updatedTemplate = {
+      ...selectedTemplate,
+      modules: updatedModules,
+      spaces: updatedModules,
+      updatedAt: new Date().toISOString()
+    };
+
+    setSelectedTemplate(updatedTemplate);
+
+    // Persist to Supabase
+    const supabaseTemplateId = selectedTemplate?.supabaseId || selectedTemplate?.id;
+    if (updateSupabaseTemplate && supabaseTemplateId) {
+      try {
+        const configPayload = sanitizeTemplateConfig(updatedTemplate);
+        await updateSupabaseTemplate(supabaseTemplateId, {
+          config: configPayload,
+          updated_at: new Date().toISOString()
+        });
+      } catch (err) {
+        console.error('Failed to persist new category to Supabase:', err);
+        showToast('Warning: Category was added locally but failed to save to cloud. Your changes may not persist.', 'error');
+      }
+    }
+
+    // Update local templates array
+    if (handleTemplatesChange && appTemplates) {
+      handleTemplatesChange(appTemplates.map(t =>
+        (t.id === updatedTemplate.id || t.supabaseId === supabaseTemplateId)
+          ? updatedTemplate
+          : t
+      ));
+    }
+
+    return updatedTemplate;
+  }, [selectedTemplate, updateSupabaseTemplate, sanitizeTemplateConfig, handleTemplatesChange, appTemplates]);
+
+  // (b) Clone the current template with the category appended, persist it as a
+  //     NEW template, and switch this document to it — mirrors
+  //     handleCreateNewTemplateFromColumns's approach.
+  const handleAddCategoryAsNewTemplate = useCallback(async (moduleId, categoryName, newTemplateName) => {
+    if (!selectedTemplate || !moduleId || !categoryName) return null;
+
+    const timestamp = new Date().toISOString();
+    const newTemplateId = `tpl-${Date.now()}`;
+
+    const newCategory = {
+      id: `cat-${crypto.randomUUID()}`,
+      name: categoryName,
+      checklist: []
+    };
+
+    const clonedModules = deepClone(selectedTemplate.modules || selectedTemplate.spaces || []).map((mod) => (
+      mod.id === moduleId
+        ? { ...mod, categories: [...(mod.categories || []), newCategory] }
+        : mod
+    ));
+
+    const newName = newTemplateName || `${selectedTemplate.name} (Updated)`;
+
+    // Remove supabaseId from the spread to ensure this is treated as a new local template
+    const { supabaseId: _omitSupabaseId, ...templateWithoutSupabaseId } = selectedTemplate;
+    const newTemplate = {
+      ...templateWithoutSupabaseId,
+      id: newTemplateId,
+      name: newName,
+      modules: clonedModules,
+      spaces: clonedModules,
+      createdAt: timestamp,
+      updatedAt: timestamp
+    };
+
+    // 1. Update local state FIRST for instant UI
+    if (onTemplatesChange) {
+      onTemplatesChange([newTemplate, ...templates]);
+    }
+
+    // 2. Switch this document to the new template immediately
+    setSelectedTemplate(newTemplate);
+
+    // 3. Persist to Supabase and refetch to update Dashboard templates tab
+    try {
+      const configPayload = sanitizeTemplateConfig(newTemplate);
+      await createSupabaseTemplate({
+        name: newName,
+        config: configPayload
+      });
+      if (onRefetchTemplates) {
+        await onRefetchTemplates();
+      }
+    } catch (err) {
+      console.error('Error creating template:', err);
+      showToast('Warning: Template was created locally but failed to save to cloud. Your changes may not persist.', 'error');
+    }
+
+    return newTemplate;
+  }, [selectedTemplate, templates, onTemplatesChange, onRefetchTemplates, createSupabaseTemplate, sanitizeTemplateConfig]);
+
   // Handler for new columns modal decision
   const handleNewColumnsDecision = useCallback(async (decision, templateName) => {
     if (!pendingNewColumns) return;
@@ -27493,6 +27633,11 @@ ${pageBlocks}
     if (!isActive || typeof onRightRailApiChange !== 'function') return;
     const nextRightRailApi = {
       activeSpaceId,
+      // Create Category modal plumbing (survey rail plus button). The modal's
+      // other data needs (existingTemplateNames, templateId, document id)
+      // already ride the existing surveyTemplates/selectedTemplate/pdfFile keys.
+      addCategoryAsNewTemplate: handleAddCategoryAsNewTemplate,
+      addCategoryToCurrentTemplate: handleAddCategoryToCurrentTemplate,
       annotationsByPage,
       applyLayoutDrivenZoom,
       categorySelectModeActive,
@@ -27628,6 +27773,8 @@ ${pageBlocks}
     isActive,
     onRightRailApiChange,
     activeSpaceId,
+    handleAddCategoryAsNewTemplate,
+    handleAddCategoryToCurrentTemplate,
     annotationsByPage,
     applyLayoutDrivenZoom,
     categorySelectModeActive,

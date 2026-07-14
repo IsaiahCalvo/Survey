@@ -12,6 +12,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
 import Icon from './Icons';
+import CreateCategoryModal from './components/CreateCategoryModal';
 import EntityIndicator from './components/EntityIndicator';
 import Spinner from './components/Spinner';
 import DragRearrangeHandle from './reorder/DragRearrangeHandle';
@@ -216,6 +217,8 @@ const SurveyMarkerReviewIndicator = ({
 
 const SurveySpacesRail = ({
   activeSpaceId,
+  addCategoryAsNewTemplate,
+  addCategoryToCurrentTemplate,
   annotationsByPage,
   applyLayoutDrivenZoom,
   categorySelectModeActive,
@@ -342,6 +345,11 @@ const SurveySpacesRail = ({
   const [mobileDetailDropdown, setMobileDetailDropdown] = useState(null); // 'entity' | 'markerItem' | null
   const [mobileNotesEditorOpen, setMobileNotesEditorOpen] = useState(false);
   const [mobileNoteDraft, setMobileNoteDraft] = useState({ text: '', photos: [], videos: [] });
+  // Desktop-only Create Category flow: the plus button in the "Categories"
+  // heading row opens CreateCategoryModal (the old route opened a template
+  // editor that has since been removed, leaving the button dead). Persistence
+  // lives in PDFViewer via addCategoryToCurrentTemplate/addCategoryAsNewTemplate.
+  const [isCreateCategoryModalOpen, setIsCreateCategoryModalOpen] = useState(false);
   const [railIconHover, setRailIconHover] = useState(null);
   const moduleSelectorRef = useRef(null);
   const templateSelectorRef = useRef(null);
@@ -353,6 +361,32 @@ const SurveySpacesRail = ({
   const activeSurveyModule = selectedModuleIndex >= 0 ? surveyModuleOptions[selectedModuleIndex] : null;
   const canSelectPreviousModule = selectedModuleIndex > 0;
   const canSelectNextModule = selectedModuleIndex >= 0 && selectedModuleIndex < surveyModuleOptions.length - 1;
+
+  // Create Category (desktop): hoisted from the old action-row IIFE so the
+  // heading-row plus button and the modal share component scope.
+  const openCreateCategoryModal = () => {
+    if (!selectedTemplate?.id || !selectedModuleId) {
+      showToast('Please select a template and module before creating a category.', 'warn');
+      return;
+    }
+    setIsCreateCategoryModalOpen(true);
+  };
+
+  const handleCreateCategoryConfirm = async (option, { categoryName, newTemplateName }) => {
+    try {
+      if (option === 'modifyTemplate') {
+        await addCategoryToCurrentTemplate?.(selectedModuleId, categoryName);
+        showToast('Category added', 'success');
+      } else if (option === 'newTemplate') {
+        await addCategoryAsNewTemplate?.(selectedModuleId, categoryName, newTemplateName);
+        showToast(`New template '${newTemplateName}' created`, 'success');
+      }
+      setIsCreateCategoryModalOpen(false);
+    } catch (err) {
+      console.error('[SurveySpacesRail] Failed to create category:', err);
+      showToast('Failed to create category. Please try again.', 'error');
+    }
+  };
   // UX (mobile demo parity): when exactly one Survey Marker is flagged expanded
   // on mobile, the sheet swaps its category list for a marker DETAIL view
   // (demo SurveySheet.tsx). Selection rides the existing expandedSurveyMarkers
@@ -1944,7 +1978,9 @@ const SurveySpacesRail = ({
 
                       return (
                         <div>
-                          {/* Select toggle button + Create Category.
+                          {/* Select toggle button + compact Excel EXPORT (the
+                              create-category plus button lives in the Categories
+                              heading row below).
                               UX (mobile demo parity): the select/copy-mode admin
                               toolbars are desktop-only — the demo's survey sheet has
                               no category admin chrome, and these desktop-scaled
@@ -1955,19 +1991,6 @@ const SurveySpacesRail = ({
                             const categoriesForModule = module.categories || [];
                             const selectedCategoryCount = Object.keys(selectedCategories).filter(id => selectedCategories[id]).length;
                             const hasSelectedCategories = selectedCategoryCount > 0;
-
-                            const createCategory = () => {
-                              if (!selectedTemplate?.id || !selectedModuleId) {
-                                showToast('Please select a template and module before creating a category.', 'warn');
-                                return;
-                              }
-                              onRequestCreateTemplate?.({
-                                mode: 'edit',
-                                templateId: selectedTemplate.id,
-                                moduleId: selectedModuleId,
-                                startAddingCategory: true
-                              });
-                            };
 
                             const deleteSelectedCategories = () => {
                               const selectedCatIds = Object.keys(selectedCategories).filter(id => selectedCategories[id]);
@@ -2087,15 +2110,399 @@ const SurveySpacesRail = ({
                                     </button>
                                   )}
                                 </div>
-                                <button
-                                  type="button"
-                                  onClick={createCategory}
-                                  className="survey-marker-category-create-button"
-                                  title="Create category"
-                                  aria-label="Create category"
-                                >
-                                  <Icon name="plus" size={14} />
-                                </button>
+                                {/* Compact survey Excel EXPORT — moved up from the old
+                                    bottom-pinned bar (the panel bottom is being taken over
+                                    by the zoom cluster; long survey content scrolls beneath
+                                    it). Same handlers and menu items as before; the menu now
+                                    opens DOWNWARD because its anchor sits near the top of
+                                    the panel instead of at the bottom. Height is locked to
+                                    24px to match .survey-marker-category-create-button. */}
+                                {(!selectedTemplate.linkedExcelPath || linkedExcelExists !== true) ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleExportSurveyToExcel()}
+                                    disabled={isExporting}
+                                    className="survey-marker-export-compact-button"
+                                  >
+                                    {isExporting ? 'EXPORTING...' : 'EXPORT'}
+                                  </button>
+                                ) : (
+                                  <div ref={exportMenuRef} className="survey-marker-export-compact-cluster">
+                                    <button
+                                      type="button"
+                                      onClick={() => handleExportSurveyToExcel()} // Default action: Export new
+                                      disabled={isExporting}
+                                      className="survey-marker-export-compact-button"
+                                    >
+                                      {isExporting ? 'EXPORTING...' : 'EXPORT'}
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => !isExporting && setShowExportMenu(!showExportMenu)}
+                                      disabled={isExporting}
+                                      className="survey-marker-export-compact-chevron"
+                                      aria-label="Excel actions"
+                                      aria-haspopup="menu"
+                                      aria-expanded={showExportMenu}
+                                    >
+                                      {isExporting ? (
+                                        <Spinner size={12} color="#15110a" trackColor="rgba(0,0,0,0.25)" />
+                                      ) : (
+                                        <Icon name={showExportMenu ? "chevronUp" : "chevronDown"} size={14} />
+                                      )}
+                                    </button>
+
+                                    {showExportMenu && (
+                                      <div className="survey-marker-export-compact-menu">
+                          <div
+                            onClick={async () => {
+                              const excelPath = selectedTemplate.linkedExcelPath;
+                              const isOneDrive = selectedTemplate.isOneDrive;
+
+
+                              if (!excelPath) {
+                                showToast('No Excel file is linked to this survey.', 'error');
+                                setShowExportMenu(false);
+                                return;
+                              }
+
+                              // Check if the path is actually a local file path (even if isOneDrive flag is set)
+                              // Local paths start with / and contain /Users/ or /Library/ or drive letters on Windows
+                              const isLocalFilePath = excelPath.startsWith('/Users/') ||
+                                excelPath.startsWith('/Library/') ||
+                                excelPath.match(/^[A-Za-z]:[\\/]/) || // Windows drive letter
+                                excelPath.includes('/CloudStorage/'); // OneDrive sync folder
+
+                              // For OneDrive API paths (like /Documents/file.xlsx), try to construct local sync folder path
+                              if (isOneDrive && !isLocalFilePath && window.electronAPI) {
+                                try {
+                                  // Get home directory and find OneDrive folders
+                                  const homeDir = await window.electronAPI.getHomeDir();
+                                  const cloudStoragePath = `${homeDir}/Library/CloudStorage`;
+
+                                  console.log('Looking for OneDrive file. Excel path:', excelPath);
+                                  console.log('Home dir:', homeDir);
+                                  console.log('CloudStorage path:', cloudStoragePath);
+
+                                  // List CloudStorage directory to find OneDrive folders
+                                  const cloudStorageContents = await window.electronAPI.listDir(cloudStoragePath);
+                                  console.log('CloudStorage contents:', cloudStorageContents);
+
+                                  const oneDriveFolders = cloudStorageContents.filter(name =>
+                                    name.startsWith('OneDrive') || name.includes('OneDrive')
+                                  );
+                                  console.log('OneDrive folders found:', oneDriveFolders);
+
+                                  // Build list of possible paths
+                                  const possibleLocalPaths = [];
+
+                                  // Add CloudStorage OneDrive folders
+                                  for (const folder of oneDriveFolders) {
+                                    possibleLocalPaths.push(`${cloudStoragePath}/${folder}${excelPath}`);
+                                  }
+
+                                  // Also try legacy OneDrive locations in home directory
+                                  possibleLocalPaths.push(`${homeDir}/OneDrive${excelPath}`);
+                                  possibleLocalPaths.push(`${homeDir}/OneDrive - Personal${excelPath}`);
+
+                                  console.log('Trying these local paths:', possibleLocalPaths);
+
+                                  let localPathFound = null;
+                                  for (const localPath of possibleLocalPaths) {
+                                    try {
+                                      const exists = await window.electronAPI.fileExists(localPath);
+                                      console.log(`Checking ${localPath}: ${exists ? 'EXISTS' : 'not found'}`);
+                                      if (exists) {
+                                        localPathFound = localPath;
+                                        break;
+                                      }
+                                    } catch (e) {
+                                      console.log(`Error checking ${localPath}:`, e);
+                                      // Continue trying other paths
+                                    }
+                                  }
+
+                                  if (localPathFound) {
+                                    console.log('Found local file at:', localPathFound);
+                                    // Open the local file directly
+                                    const result = await window.electronAPI.openPath(localPathFound);
+                                    if (result) {
+                                      console.error('Failed to open local OneDrive file:', result);
+                                      showToast(`Failed to open Excel file:\n${result}`, 'error');
+                                    }
+                                    setShowExportMenu(false);
+                                    return;
+                                  }
+
+                                  // If local file not found, fall through to web approach
+                                  console.log('Local OneDrive file not found, trying web approach...');
+                                } catch (err) {
+                                  console.error('Error searching for local OneDrive file:', err);
+                                  // Fall through to web approach
+                                }
+                              }
+
+                              // Handle OneDrive API files - try desktop Excel first, fall back to web
+                              if (isOneDrive && !isLocalFilePath) {
+                                console.log('Trying web approach for OneDrive file...');
+                                console.log('graphClient available:', !!graphClient);
+                                try {
+                                  // Get the file's web URL from OneDrive
+                                  if (graphClient) {
+                                    console.log('Fetching file metadata from Graph API:', `/me/drive/root:${excelPath}`);
+                                    const driveItem = await graphClient.api(`/me/drive/root:${excelPath}`).get();
+                                    console.log('Drive item response:', driveItem);
+                                    console.log('webUrl:', driveItem?.webUrl);
+                                    console.log('downloadUrl:', driveItem?.['@microsoft.graph.downloadUrl']);
+
+                                    // Get webUrl, or construct one from the downloadUrl/id
+                                    let webUrl = driveItem?.webUrl;
+
+                                    // If no webUrl, try to open the file directly using downloadUrl
+                                    if (!webUrl && driveItem?.['@microsoft.graph.downloadUrl']) {
+                                      // For personal OneDrive, construct the web URL
+                                      // Format: https://onedrive.live.com/edit.aspx?cid=<driveId>&resid=<itemId>
+                                      const downloadUrl = driveItem['@microsoft.graph.downloadUrl'];
+                                      console.log('No webUrl, using downloadUrl to open file');
+
+                                      // Open the download URL which should trigger Excel to open
+                                      window.open(downloadUrl, '_blank');
+                                      setShowExportMenu(false);
+                                      return;
+                                    }
+
+                                    if (webUrl) {
+                                      console.log('Opening with webUrl:', webUrl);
+
+                                      // In Electron, use shell.openExternal to open the URL
+                                      // This will open in the default browser and Excel Online can handle it
+                                      if (window.electronAPI?.openExternal) {
+                                        try {
+                                          await window.electronAPI.openExternal(webUrl);
+                                          console.log('Opened webUrl with shell.openExternal');
+                                        } catch (e) {
+                                          console.error('Failed to open with openExternal:', e);
+                                          // Fallback to window.open
+                                          window.open(webUrl, '_blank');
+                                        }
+                                      } else {
+                                        // Not in Electron, just open in new tab
+                                        window.open(webUrl, '_blank');
+                                      }
+                                    } else {
+                                      showToast('Could not get the OneDrive file URL. Please open the file manually from OneDrive.', 'error');
+                                    }
+                                  } else {
+                                    showToast('Please sign in to Microsoft to open OneDrive files.', 'warn');
+                                  }
+                                } catch (err) {
+                                  console.error('Error opening OneDrive file:', err);
+                                  showToast(`Error opening OneDrive file:\n${err.message}`, 'error');
+                                }
+                                setShowExportMenu(false);
+                                return;
+                              }
+
+                              // Handle local files
+                              if (window.electronAPI) {
+                                try {
+                                  // Check if file exists first
+                                  const exists = await window.electronAPI.fileExists(excelPath);
+
+                                  if (!exists) {
+                                    showToast(`Excel file not found at:\n${excelPath}\n\nThe file may have been moved or deleted.`, 'error');
+                                    setShowExportMenu(false);
+                                    return;
+                                  }
+
+                                  const result = await window.electronAPI.openPath(excelPath);
+                                  if (result) {
+                                    // shell.openPath returns an error string if it fails, empty string on success
+                                    console.error('Failed to open Excel file:', result);
+                                    showToast(`Failed to open Excel file:\n${result}\n\nPath: ${excelPath}`, 'error');
+                                  }
+                                } catch (err) {
+                                  console.error('Error opening Excel file:', err);
+                                  showToast(`Error opening Excel file:\n${err.message}\n\nPath: ${excelPath}`, 'error');
+                                }
+                              } else {
+                                showToast('This feature is only available in the desktop app.', 'error');
+                              }
+                              setShowExportMenu(false);
+                            }}
+                            style={{
+                              padding: '12px 16px',
+                              color: '#f4f1ea',
+                              fontSize: '14px',
+                              cursor: 'pointer',
+                              borderBottom: '1px solid #3a4252',
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '8px'
+                            }}
+                            onMouseEnter={(e) => e.currentTarget.style.background = '#3a4252'}
+                            onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+                          >
+                            <Icon name="document" size={16} />
+                            Open Excel
+                          </div>
+                          <div
+                            onClick={() => {
+                              handleExportSurveyToExcel(selectedTemplate.linkedExcelPath);
+                              setShowExportMenu(false);
+                            }}
+                            style={{
+                              padding: '12px 16px',
+                              color: '#f4f1ea',
+                              fontSize: '14px',
+                              cursor: 'pointer',
+                              borderBottom: '1px solid #3a4252',
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '8px'
+                            }}
+                            onMouseEnter={(e) => e.currentTarget.style.background = '#3a4252'}
+                            onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+                          >
+                            <Icon name="upload" size={16} />
+                            Push to Excel
+                          </div>
+                          {/* "Pull from Excel" reads the last SAVED copy from disk, which on
+                              a local file open in Excel is stale and overlaps the automatic
+                              import-on-save — so it's only offered for OneDrive workbooks. */}
+                          {selectedTemplate?.isOneDrive && (
+                          <div
+                            onClick={() => {
+                              handleSyncFromExcel();
+                              setShowExportMenu(false);
+                            }}
+                            style={{
+                              padding: '12px 16px',
+                              color: '#f4f1ea',
+                              fontSize: '14px',
+                              cursor: 'pointer',
+                              borderBottom: '1px solid #3a4252',
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '8px'
+                            }}
+                            onMouseEnter={(e) => e.currentTarget.style.background = '#3a4252'}
+                            onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+                          >
+                            <Icon name="download" size={16} />
+                            Pull from Excel
+                          </div>
+                          )}
+                          {selectedTemplate?.isOneDrive && (() => {
+                            // Amendment (b) capability gate: a refused verdict keeps the
+                            // toggle visible but inert-with-reason. Clicking re-checks
+                            // (retry); the plain-English reason comes from the shared
+                            // excelSyncStatus vocabulary — never an inline literal here.
+                            const gateRefused = !liveSyncEnabled && liveSyncGate && !liveSyncGate.allowed
+                              && liveSyncGate.reasonCode !== 'checking';
+                            const gateChecking = !liveSyncEnabled && liveSyncGate?.reasonCode === 'checking';
+                            return (
+                            <div
+                              onClick={() => {
+                                if (liveSyncSupported === false) return;
+                                if (typeof onLiveSyncToggle === 'function') onLiveSyncToggle();
+                              }}
+                              style={{
+                                padding: '12px 16px',
+                                color: liveSyncEnabled && liveSyncStatus === 'connected'
+                                  ? '#3498db'
+                                  : liveSyncStatus === 'connecting' || gateChecking
+                                    ? '#f39c12'
+                                    : liveSyncStatus === 'error' || liveSyncSupported === false
+                                      ? '#cf6f6f'
+                                      : '#fff',
+                                fontSize: '14px',
+                                cursor: liveSyncSupported === false ? 'not-allowed' : 'pointer',
+                                opacity: liveSyncSupported === false ? 0.6 : gateRefused ? 0.75 : 1,
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '8px'
+                              }}
+                              onMouseEnter={(e) => {
+                                if (liveSyncSupported !== false) {
+                                  e.currentTarget.style.background = '#3a4252';
+                                }
+                              }}
+                              onMouseLeave={(e) => {
+                                e.currentTarget.style.background = 'transparent';
+                              }}
+                              title={
+                                liveSyncSupported === false
+                                  ? 'Live sync requires Microsoft 365 Business account'
+                                  : gateRefused || gateChecking
+                                    ? liveSyncGateStatus(liveSyncGate.reasonCode).label
+                                    : liveSyncEnabled && liveSyncStatus === 'connected'
+                                      ? 'Live sync is active - changes sync in real-time'
+                                      : liveSyncStatus === 'connecting'
+                                        ? 'Connecting to Excel...'
+                                        : liveSyncStatus === 'error'
+                                          ? 'Live sync error - click to retry'
+                                          : 'Enable live sync for real-time Excel updates'
+                              }
+                            >
+                              <span style={{ fontSize: '14px' }}>
+                                {liveSyncStatus === 'connecting' || gateChecking
+                                  ? '...'
+                                  : liveSyncEnabled && liveSyncStatus === 'connected'
+                                    ? '●'
+                                    : '○'}
+                              </span>
+                              Live Sync
+                            </div>
+                            );
+                          })()}
+                          {selectedTemplate?.isOneDrive && (() => {
+                            // Slice 4 — guided "Verify Live Sync": a READ-ONLY,
+                            // step-by-step check of the whole live-sync path. The
+                            // verdict (and the running state) comes from the shared
+                            // excelSyncStatus vocabulary — never an inline literal.
+                            const verifying = liveSyncVerify?.state === 'checking';
+                            const verdict = liveSyncVerify?.state === 'done'
+                              ? liveSyncVerifyStatus(liveSyncVerify.verdictCode)
+                              : null;
+                            const verdictColor = verdict ? SYNC_TONE_COLORS[verdict.tone]?.color : null;
+                            return (
+                            <div
+                              onClick={() => {
+                                if (verifying) return;
+                                if (typeof onVerifyLiveSync === 'function') onVerifyLiveSync();
+                              }}
+                              style={{
+                                padding: '12px 16px',
+                                color: verifying ? '#f39c12' : (verdictColor || '#fff'),
+                                fontSize: '14px',
+                                cursor: verifying ? 'wait' : 'pointer',
+                                borderTop: '1px solid #3a4252',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '8px'
+                              }}
+                              onMouseEnter={(e) => e.currentTarget.style.background = '#3a4252'}
+                              onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+                              title={
+                                verifying
+                                  ? liveSyncVerifyStatus('verifying').label
+                                  : verdict
+                                    ? verdict.label
+                                    : liveSyncVerifyStatus('idle').label
+                              }
+                            >
+                              <span style={{ fontSize: '14px' }}>
+                                {verifying ? '...' : verdict ? (liveSyncVerify.ready ? '✓' : '!') : '○'}
+                              </span>
+                              Verify Live Sync
+                            </div>
+                            );
+                          })()}
+                                      </div>
+                                    )}
+                                  </div>
+                                )}
                               </div>
                             );
                           })() : copyModeActive ? (
@@ -2427,12 +2834,34 @@ const SurveySpacesRail = ({
                               fontWeight: '600',
                               color: '#e8e2d4',
                               margin: '0 2px 8px',
-                              fontFamily: FONT_FAMILY
+                              fontFamily: FONT_FAMILY,
+                              // Desktop: the heading row hosts the create-category plus
+                              // button, right-aligned (moved down from the Select row).
+                              ...(mobileMode ? null : {
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'space-between'
+                              })
                             }}>
                               {/* Vocabulary rule: "Survey Marker" in full on mobile copy —
-                                  never bare "marker"/"highlight". Desktop copy unchanged. */}
-                              <span>{mobileMode ? 'Select category' : 'Select Category to Highlight'}</span>
+                                  never bare "marker"/"highlight". Mobile copy unchanged. */}
+                              <span>{mobileMode ? 'Select category' : 'Categories'}</span>
                               {mobileMode ? <small>Tap category to place a Survey Marker</small> : null}
+                              {/* Same button look/size as before (shared
+                                  .survey-marker-category-create-button class); it now opens
+                                  CreateCategoryModal instead of the removed template-editor
+                                  route that left it doing nothing. */}
+                              {!mobileMode && (
+                                <button
+                                  type="button"
+                                  onClick={openCreateCategoryModal}
+                                  className="survey-marker-category-create-button"
+                                  title="Create category"
+                                  aria-label="Create category"
+                                >
+                                  <Icon name="plus" size={14} />
+                                </button>
+                              )}
                             </h3>
 
                             {module.categories && module.categories.length > 0 ? (
@@ -3666,485 +4095,29 @@ const SurveySpacesRail = ({
                 </div>
               )}
 
-              {/* Export / Sync Button at Bottom */}
-              {!mobileMode && !isSurveyPanelCollapsed && selectedTemplate && (
-                <div style={{
-                  padding: '12px',
-                  borderTop: '1px solid #2a3140',
-                  background: '#12151c',
-                  position: 'relative' // For dropdown positioning
-                }}>
-                  {/* Only show dropdown when file exists (linkedExcelExists === true) */}
-                  {(!selectedTemplate.linkedExcelPath || linkedExcelExists !== true) ? (
-                    <button
-                      type="button"
-                      onClick={handleExportSurveyToExcel}
-                      disabled={isExporting}
-                      style={{
-                        width: '100%',
-                        background: isExporting ? '#5a6473' : '#d8a84e',
-                        border: isExporting ? '1px solid #5a6473' : '1px solid #b6904a',
-                        color: isExporting ? '#e8e2d4' : '#15110a',
-                        fontSize: '14px',
-                        fontWeight: 600,
-                        padding: '10px 16px',
-                        borderRadius: '6px',
-                        textTransform: 'uppercase',
-                        letterSpacing: 0,
-                        cursor: isExporting ? 'not-allowed' : 'pointer',
-                        transition: 'all 0.2s',
-                        opacity: isExporting ? 0.7 : 1
-                      }}
-                      onMouseEnter={(e) => {
-                        if (!isExporting) e.currentTarget.style.background = '#b6904a';
-                      }}
-                      onMouseLeave={(e) => {
-                        if (!isExporting) e.currentTarget.style.background = '#d8a84e';
-                      }}
-                    >
-                      {isExporting ? 'EXPORTING...' : 'EXPORT'}
-                    </button>
-                  ) : (
-                    <div ref={exportMenuRef} style={{ display: 'flex', width: '100%' }}>
-                      <button
-                        type="button"
-                        onClick={() => handleExportSurveyToExcel()} // Default action: Export new
-                        disabled={isExporting}
-                        style={{
-                          flex: 1,
-                          background: isExporting ? '#5a6473' : '#d8a84e',
-                          borderTop: isExporting ? '1px solid #5a6473' : '1px solid #b6904a',
-                          borderBottom: isExporting ? '1px solid #5a6473' : '1px solid #b6904a',
-                          borderLeft: isExporting ? '1px solid #5a6473' : '1px solid #b6904a',
-                          borderRight: 'none',
-                          borderTopLeftRadius: '6px',
-                          borderBottomLeftRadius: '6px',
-                          color: '#f4f1ea',
-                          fontSize: '14px',
-                          fontWeight: 600,
-                          padding: '10px 16px',
-                          textTransform: 'uppercase',
-                          letterSpacing: '0.08em',
-                          cursor: isExporting ? 'not-allowed' : 'pointer',
-                          transition: 'all 0.2s',
-                          opacity: isExporting ? 0.7 : 1
-                        }}
-                        onMouseEnter={(e) => {
-                          if (!isExporting) e.currentTarget.style.background = '#b6904a';
-                        }}
-                        onMouseLeave={(e) => {
-                          if (!isExporting) e.currentTarget.style.background = '#d8a84e';
-                        }}
-                      >
-                        {isExporting ? 'EXPORTING...' : 'EXPORT'}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => !isExporting && setShowExportMenu(!showExportMenu)}
-                        disabled={isExporting}
-                        style={{
-                          width: '40px',
-                          background: isExporting ? '#5a6473' : '#d8a84e',
-                          borderTop: isExporting ? '1px solid #5a6473' : '1px solid #b6904a',
-                          borderBottom: isExporting ? '1px solid #5a6473' : '1px solid #b6904a',
-                          borderRight: isExporting ? '1px solid #5a6473' : '1px solid #b6904a',
-                          borderLeft: '1px solid rgba(0,0,0,0.1)',
-                          borderTopRightRadius: '6px',
-                          borderBottomRightRadius: '6px',
-                          color: '#f4f1ea',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          cursor: isExporting ? 'not-allowed' : 'pointer',
-                          transition: 'all 0.2s',
-                          opacity: isExporting ? 0.7 : 1
-                        }}
-                        onMouseEnter={(e) => {
-                          if (!isExporting) e.currentTarget.style.background = '#b6904a';
-                        }}
-                        onMouseLeave={(e) => {
-                          if (!isExporting) e.currentTarget.style.background = '#d8a84e';
-                        }}
-                      >
-                        {isExporting ? (
-                          <Spinner size={14} color="#fff" trackColor="rgba(255,255,255,0.3)" />
-                        ) : (
-                          <Icon name={showExportMenu ? "chevronUp" : "chevronDown"} size={16} />
-                        )}
-                      </button>
-
-                      {showExportMenu && (
-                        <div style={{
-                          position: 'absolute',
-                          bottom: '100%',
-                          left: '12px',
-                          right: '12px',
-                          marginBottom: '8px',
-                          background: '#2a3140',
-                          border: '1px solid #3a4252',
-                          borderRadius: '6px',
-                          boxShadow: '0 -4px 12px rgba(0,0,0,0.3)',
-                          zIndex: 100,
-                          overflow: 'hidden'
-                        }}>
-                          <div
-                            onClick={async () => {
-                              const excelPath = selectedTemplate.linkedExcelPath;
-                              const isOneDrive = selectedTemplate.isOneDrive;
-
-
-                              if (!excelPath) {
-                                showToast('No Excel file is linked to this survey.', 'error');
-                                setShowExportMenu(false);
-                                return;
-                              }
-
-                              // Check if the path is actually a local file path (even if isOneDrive flag is set)
-                              // Local paths start with / and contain /Users/ or /Library/ or drive letters on Windows
-                              const isLocalFilePath = excelPath.startsWith('/Users/') ||
-                                excelPath.startsWith('/Library/') ||
-                                excelPath.match(/^[A-Za-z]:[\\/]/) || // Windows drive letter
-                                excelPath.includes('/CloudStorage/'); // OneDrive sync folder
-
-                              // For OneDrive API paths (like /Documents/file.xlsx), try to construct local sync folder path
-                              if (isOneDrive && !isLocalFilePath && window.electronAPI) {
-                                try {
-                                  // Get home directory and find OneDrive folders
-                                  const homeDir = await window.electronAPI.getHomeDir();
-                                  const cloudStoragePath = `${homeDir}/Library/CloudStorage`;
-
-                                  console.log('Looking for OneDrive file. Excel path:', excelPath);
-                                  console.log('Home dir:', homeDir);
-                                  console.log('CloudStorage path:', cloudStoragePath);
-
-                                  // List CloudStorage directory to find OneDrive folders
-                                  const cloudStorageContents = await window.electronAPI.listDir(cloudStoragePath);
-                                  console.log('CloudStorage contents:', cloudStorageContents);
-
-                                  const oneDriveFolders = cloudStorageContents.filter(name =>
-                                    name.startsWith('OneDrive') || name.includes('OneDrive')
-                                  );
-                                  console.log('OneDrive folders found:', oneDriveFolders);
-
-                                  // Build list of possible paths
-                                  const possibleLocalPaths = [];
-
-                                  // Add CloudStorage OneDrive folders
-                                  for (const folder of oneDriveFolders) {
-                                    possibleLocalPaths.push(`${cloudStoragePath}/${folder}${excelPath}`);
-                                  }
-
-                                  // Also try legacy OneDrive locations in home directory
-                                  possibleLocalPaths.push(`${homeDir}/OneDrive${excelPath}`);
-                                  possibleLocalPaths.push(`${homeDir}/OneDrive - Personal${excelPath}`);
-
-                                  console.log('Trying these local paths:', possibleLocalPaths);
-
-                                  let localPathFound = null;
-                                  for (const localPath of possibleLocalPaths) {
-                                    try {
-                                      const exists = await window.electronAPI.fileExists(localPath);
-                                      console.log(`Checking ${localPath}: ${exists ? 'EXISTS' : 'not found'}`);
-                                      if (exists) {
-                                        localPathFound = localPath;
-                                        break;
-                                      }
-                                    } catch (e) {
-                                      console.log(`Error checking ${localPath}:`, e);
-                                      // Continue trying other paths
-                                    }
-                                  }
-
-                                  if (localPathFound) {
-                                    console.log('Found local file at:', localPathFound);
-                                    // Open the local file directly
-                                    const result = await window.electronAPI.openPath(localPathFound);
-                                    if (result) {
-                                      console.error('Failed to open local OneDrive file:', result);
-                                      showToast(`Failed to open Excel file:\n${result}`, 'error');
-                                    }
-                                    setShowExportMenu(false);
-                                    return;
-                                  }
-
-                                  // If local file not found, fall through to web approach
-                                  console.log('Local OneDrive file not found, trying web approach...');
-                                } catch (err) {
-                                  console.error('Error searching for local OneDrive file:', err);
-                                  // Fall through to web approach
-                                }
-                              }
-
-                              // Handle OneDrive API files - try desktop Excel first, fall back to web
-                              if (isOneDrive && !isLocalFilePath) {
-                                console.log('Trying web approach for OneDrive file...');
-                                console.log('graphClient available:', !!graphClient);
-                                try {
-                                  // Get the file's web URL from OneDrive
-                                  if (graphClient) {
-                                    console.log('Fetching file metadata from Graph API:', `/me/drive/root:${excelPath}`);
-                                    const driveItem = await graphClient.api(`/me/drive/root:${excelPath}`).get();
-                                    console.log('Drive item response:', driveItem);
-                                    console.log('webUrl:', driveItem?.webUrl);
-                                    console.log('downloadUrl:', driveItem?.['@microsoft.graph.downloadUrl']);
-
-                                    // Get webUrl, or construct one from the downloadUrl/id
-                                    let webUrl = driveItem?.webUrl;
-
-                                    // If no webUrl, try to open the file directly using downloadUrl
-                                    if (!webUrl && driveItem?.['@microsoft.graph.downloadUrl']) {
-                                      // For personal OneDrive, construct the web URL
-                                      // Format: https://onedrive.live.com/edit.aspx?cid=<driveId>&resid=<itemId>
-                                      const downloadUrl = driveItem['@microsoft.graph.downloadUrl'];
-                                      console.log('No webUrl, using downloadUrl to open file');
-
-                                      // Open the download URL which should trigger Excel to open
-                                      window.open(downloadUrl, '_blank');
-                                      setShowExportMenu(false);
-                                      return;
-                                    }
-
-                                    if (webUrl) {
-                                      console.log('Opening with webUrl:', webUrl);
-
-                                      // In Electron, use shell.openExternal to open the URL
-                                      // This will open in the default browser and Excel Online can handle it
-                                      if (window.electronAPI?.openExternal) {
-                                        try {
-                                          await window.electronAPI.openExternal(webUrl);
-                                          console.log('Opened webUrl with shell.openExternal');
-                                        } catch (e) {
-                                          console.error('Failed to open with openExternal:', e);
-                                          // Fallback to window.open
-                                          window.open(webUrl, '_blank');
-                                        }
-                                      } else {
-                                        // Not in Electron, just open in new tab
-                                        window.open(webUrl, '_blank');
-                                      }
-                                    } else {
-                                      showToast('Could not get the OneDrive file URL. Please open the file manually from OneDrive.', 'error');
-                                    }
-                                  } else {
-                                    showToast('Please sign in to Microsoft to open OneDrive files.', 'warn');
-                                  }
-                                } catch (err) {
-                                  console.error('Error opening OneDrive file:', err);
-                                  showToast(`Error opening OneDrive file:\n${err.message}`, 'error');
-                                }
-                                setShowExportMenu(false);
-                                return;
-                              }
-
-                              // Handle local files
-                              if (window.electronAPI) {
-                                try {
-                                  // Check if file exists first
-                                  const exists = await window.electronAPI.fileExists(excelPath);
-
-                                  if (!exists) {
-                                    showToast(`Excel file not found at:\n${excelPath}\n\nThe file may have been moved or deleted.`, 'error');
-                                    setShowExportMenu(false);
-                                    return;
-                                  }
-
-                                  const result = await window.electronAPI.openPath(excelPath);
-                                  if (result) {
-                                    // shell.openPath returns an error string if it fails, empty string on success
-                                    console.error('Failed to open Excel file:', result);
-                                    showToast(`Failed to open Excel file:\n${result}\n\nPath: ${excelPath}`, 'error');
-                                  }
-                                } catch (err) {
-                                  console.error('Error opening Excel file:', err);
-                                  showToast(`Error opening Excel file:\n${err.message}\n\nPath: ${excelPath}`, 'error');
-                                }
-                              } else {
-                                showToast('This feature is only available in the desktop app.', 'error');
-                              }
-                              setShowExportMenu(false);
-                            }}
-                            style={{
-                              padding: '12px 16px',
-                              color: '#f4f1ea',
-                              fontSize: '14px',
-                              cursor: 'pointer',
-                              borderBottom: '1px solid #3a4252',
-                              display: 'flex',
-                              alignItems: 'center',
-                              gap: '8px'
-                            }}
-                            onMouseEnter={(e) => e.currentTarget.style.background = '#3a4252'}
-                            onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
-                          >
-                            <Icon name="document" size={16} />
-                            Open Excel
-                          </div>
-                          <div
-                            onClick={() => {
-                              handleExportSurveyToExcel(selectedTemplate.linkedExcelPath);
-                              setShowExportMenu(false);
-                            }}
-                            style={{
-                              padding: '12px 16px',
-                              color: '#f4f1ea',
-                              fontSize: '14px',
-                              cursor: 'pointer',
-                              borderBottom: '1px solid #3a4252',
-                              display: 'flex',
-                              alignItems: 'center',
-                              gap: '8px'
-                            }}
-                            onMouseEnter={(e) => e.currentTarget.style.background = '#3a4252'}
-                            onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
-                          >
-                            <Icon name="upload" size={16} />
-                            Push to Excel
-                          </div>
-                          {/* "Pull from Excel" reads the last SAVED copy from disk, which on
-                              a local file open in Excel is stale and overlaps the automatic
-                              import-on-save — so it's only offered for OneDrive workbooks. */}
-                          {selectedTemplate?.isOneDrive && (
-                          <div
-                            onClick={() => {
-                              handleSyncFromExcel();
-                              setShowExportMenu(false);
-                            }}
-                            style={{
-                              padding: '12px 16px',
-                              color: '#f4f1ea',
-                              fontSize: '14px',
-                              cursor: 'pointer',
-                              borderBottom: '1px solid #3a4252',
-                              display: 'flex',
-                              alignItems: 'center',
-                              gap: '8px'
-                            }}
-                            onMouseEnter={(e) => e.currentTarget.style.background = '#3a4252'}
-                            onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
-                          >
-                            <Icon name="download" size={16} />
-                            Pull from Excel
-                          </div>
-                          )}
-                          {selectedTemplate?.isOneDrive && (() => {
-                            // Amendment (b) capability gate: a refused verdict keeps the
-                            // toggle visible but inert-with-reason. Clicking re-checks
-                            // (retry); the plain-English reason comes from the shared
-                            // excelSyncStatus vocabulary — never an inline literal here.
-                            const gateRefused = !liveSyncEnabled && liveSyncGate && !liveSyncGate.allowed
-                              && liveSyncGate.reasonCode !== 'checking';
-                            const gateChecking = !liveSyncEnabled && liveSyncGate?.reasonCode === 'checking';
-                            return (
-                            <div
-                              onClick={() => {
-                                if (liveSyncSupported === false) return;
-                                if (typeof onLiveSyncToggle === 'function') onLiveSyncToggle();
-                              }}
-                              style={{
-                                padding: '12px 16px',
-                                color: liveSyncEnabled && liveSyncStatus === 'connected'
-                                  ? '#3498db'
-                                  : liveSyncStatus === 'connecting' || gateChecking
-                                    ? '#f39c12'
-                                    : liveSyncStatus === 'error' || liveSyncSupported === false
-                                      ? '#cf6f6f'
-                                      : '#fff',
-                                fontSize: '14px',
-                                cursor: liveSyncSupported === false ? 'not-allowed' : 'pointer',
-                                opacity: liveSyncSupported === false ? 0.6 : gateRefused ? 0.75 : 1,
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: '8px'
-                              }}
-                              onMouseEnter={(e) => {
-                                if (liveSyncSupported !== false) {
-                                  e.currentTarget.style.background = '#3a4252';
-                                }
-                              }}
-                              onMouseLeave={(e) => {
-                                e.currentTarget.style.background = 'transparent';
-                              }}
-                              title={
-                                liveSyncSupported === false
-                                  ? 'Live sync requires Microsoft 365 Business account'
-                                  : gateRefused || gateChecking
-                                    ? liveSyncGateStatus(liveSyncGate.reasonCode).label
-                                    : liveSyncEnabled && liveSyncStatus === 'connected'
-                                      ? 'Live sync is active - changes sync in real-time'
-                                      : liveSyncStatus === 'connecting'
-                                        ? 'Connecting to Excel...'
-                                        : liveSyncStatus === 'error'
-                                          ? 'Live sync error - click to retry'
-                                          : 'Enable live sync for real-time Excel updates'
-                              }
-                            >
-                              <span style={{ fontSize: '14px' }}>
-                                {liveSyncStatus === 'connecting' || gateChecking
-                                  ? '...'
-                                  : liveSyncEnabled && liveSyncStatus === 'connected'
-                                    ? '●'
-                                    : '○'}
-                              </span>
-                              Live Sync
-                            </div>
-                            );
-                          })()}
-                          {selectedTemplate?.isOneDrive && (() => {
-                            // Slice 4 — guided "Verify Live Sync": a READ-ONLY,
-                            // step-by-step check of the whole live-sync path. The
-                            // verdict (and the running state) comes from the shared
-                            // excelSyncStatus vocabulary — never an inline literal.
-                            const verifying = liveSyncVerify?.state === 'checking';
-                            const verdict = liveSyncVerify?.state === 'done'
-                              ? liveSyncVerifyStatus(liveSyncVerify.verdictCode)
-                              : null;
-                            const verdictColor = verdict ? SYNC_TONE_COLORS[verdict.tone]?.color : null;
-                            return (
-                            <div
-                              onClick={() => {
-                                if (verifying) return;
-                                if (typeof onVerifyLiveSync === 'function') onVerifyLiveSync();
-                              }}
-                              style={{
-                                padding: '12px 16px',
-                                color: verifying ? '#f39c12' : (verdictColor || '#fff'),
-                                fontSize: '14px',
-                                cursor: verifying ? 'wait' : 'pointer',
-                                borderTop: '1px solid #3a4252',
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: '8px'
-                              }}
-                              onMouseEnter={(e) => e.currentTarget.style.background = '#3a4252'}
-                              onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
-                              title={
-                                verifying
-                                  ? liveSyncVerifyStatus('verifying').label
-                                  : verdict
-                                    ? verdict.label
-                                    : liveSyncVerifyStatus('idle').label
-                              }
-                            >
-                              <span style={{ fontSize: '14px' }}>
-                                {verifying ? '...' : verdict ? (liveSyncVerify.ready ? '✓' : '!') : '○'}
-                              </span>
-                              Verify Live Sync
-                            </div>
-                            );
-                          })()}
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-              )}
-
               {mobileMode && !isSurveyPanelCollapsed && (
                 <div className="mobile-survey-exit-footer">
                   <button type="button" onClick={exitSurveyMode}>Exit Survey</button>
                 </div>
               )}
             </div>
+            {/* Desktop-only Create Category modal (opened by the heading-row
+                plus button). Duplicate-name data comes straight from props the
+                rail already receives: the selected module's categories and the
+                app template list. */}
+            {!mobileMode && (
+              <CreateCategoryModal
+                isOpen={isCreateCategoryModalOpen}
+                onClose={() => setIsCreateCategoryModalOpen(false)}
+                onConfirm={handleCreateCategoryConfirm}
+                moduleName={activeSurveyModule?.name || ''}
+                templateName={selectedTemplate?.name || ''}
+                existingCategoryNames={(activeSurveyModule?.categories || []).map((category) => category?.name).filter(Boolean)}
+                existingTemplateNames={availableSurveyTemplates.map((template) => template?.name).filter(Boolean)}
+                templateId={selectedTemplate?.supabaseId || selectedTemplate?.id || null}
+                currentSurveyId={pdfFile?.id || null}
+              />
+            )}
           </>
   );
 };

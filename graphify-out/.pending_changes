@@ -1,0 +1,6 @@
+src/components/LightweightAnnotationOverlay.jsx
+src/components/PdfjsFormLayer.jsx
+src/components/SVGAnnotationLayer.jsx
+src/utils/svgAnnotationRenderers.jsx
+src/utils/svgPathAttrs.js
+tests/pdfAnnotationNormalization.test.mjs
