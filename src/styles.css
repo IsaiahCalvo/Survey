@@ -92,6 +92,15 @@
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.15);
 }
 
+/* UX 2026-07-14: the category sub-row is a 34px strip whose ancestors clip
+   at its top edge (and the opaque top bar paints over anything escaping).
+   The generic 1px hover lift shoved the hovered button's rounded top —
+   the visible "glow" — past that clip line, so it looked sliced flat.
+   Inside the strip the lift is cancelled; the hover colors/ring stay. */
+#chrome-sub-toolbar-host .btn:not(:disabled):hover {
+  transform: none;
+}
+
 /* Button Sizes */
 .btn-sm {
   padding: 5px 10px;

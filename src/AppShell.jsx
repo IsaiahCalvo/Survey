@@ -371,11 +371,15 @@ export default function App({ devPreviewReturnTab = null }) {
       bottomToolbarApi?.setTooltip?.({
         visible: true,
         text,
-        // 'below' hangs under top-bar controls; 'above' floats over the
-        // right-rail bottom slot (page nav + zoom) where below would
-        // land off-screen.
-        x: rect.left + rect.width / 2,
-        y: placement === 'below' ? rect.bottom + 10 : rect.top - 10,
+        // 'below' hangs under top-bar controls; 'above' floats over
+        // controls with room overhead; 'left' flies out leftward over the
+        // PDF from the collapsed right rail (same look as the survey-icon
+        // flyout) — an above/below chip on a 48px rail would cross the
+        // viewport edge and clip.
+        x: placement === 'left' ? rect.left - 8 : rect.left + rect.width / 2,
+        y: placement === 'left'
+          ? rect.top + rect.height / 2
+          : placement === 'below' ? rect.bottom + 10 : rect.top - 10,
         placement
       });
     },
@@ -2868,7 +2872,7 @@ export default function App({ devPreviewReturnTab = null }) {
                   onClick={() => setIsEditingRailZoom(true)}
                   onDoubleClick={() => setIsEditingRailZoom(true)}
                   aria-label="Edit zoom percentage"
-                  {...chromeTip('Zoom level — click to type a percentage', 'above')}
+                  {...chromeTip('Zoom level — click to type a percentage', 'left')}
                   title="Click to type a zoom percentage"
                   style={{ background: 'transparent', border: 'none', color: '#8d96a6', fontSize: '10px', fontFamily: FONT_FAMILY, fontWeight: '500', fontVariantNumeric: 'tabular-nums', padding: '1px 4px', borderRadius: '3px', cursor: 'pointer', lineHeight: 1, textAlign: 'center' }}
                 >
@@ -2904,7 +2908,7 @@ export default function App({ devPreviewReturnTab = null }) {
                   onClick={() => setIsEditingRailPage(true)}
                   onDoubleClick={() => setIsEditingRailPage(true)}
                   aria-label="Edit page number"
-                  {...chromeTip('Page — click to jump', 'above')}
+                  {...chromeTip('Page — click to jump', 'left')}
                   title="Click to jump to a page"
                   style={{ background: 'transparent', border: 'none', color: '#d8a84e', fontSize: '11px', fontFamily: FONT_FAMILY, fontWeight: '600', fontVariantNumeric: 'tabular-nums', padding: '1px 4px', borderRadius: '3px', cursor: 'pointer', lineHeight: 1 }}
                 >
@@ -2945,7 +2949,7 @@ export default function App({ devPreviewReturnTab = null }) {
                   <div style={{ position: 'relative', zIndex: 2, width: '100%', borderTop: '1px solid #2a3140', padding: '8px 0', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px', background: 'transparent' }}>
                     <button
                       onClick={api.zoomOut}
-                      {...chromeTip('Zoom out', 'above')}
+                      {...chromeTip('Zoom out', 'left')}
                       title="Zoom out"
                       aria-label="Zoom out"
                       style={{ ...footerBtn(), width: '28px', height: '28px' }}
@@ -2955,7 +2959,7 @@ export default function App({ devPreviewReturnTab = null }) {
                     {zoomValue}
                     <button
                       onClick={api.zoomIn}
-                      {...chromeTip('Zoom in', 'above')}
+                      {...chromeTip('Zoom in', 'left')}
                       title="Zoom in"
                       aria-label="Zoom in"
                       style={{ ...footerBtn(), width: '28px', height: '28px' }}
@@ -2969,7 +2973,7 @@ export default function App({ devPreviewReturnTab = null }) {
                     <button
                       onClick={api.goToPreviousPage}
                       disabled={atFirstPage}
-                      {...chromeTip('Previous page', 'above')}
+                      {...chromeTip('Previous page', 'left')}
                       title="Previous page"
                       aria-label="Previous page"
                       style={{ ...footerBtn(atFirstPage), width: '24px', height: '24px' }}
@@ -2986,7 +2990,7 @@ export default function App({ devPreviewReturnTab = null }) {
                     <button
                       onClick={api.goToNextPage}
                       disabled={atLastPage}
-                      {...chromeTip('Next page', 'above')}
+                      {...chromeTip('Next page', 'left')}
                       title="Next page"
                       aria-label="Next page"
                       style={{ ...footerBtn(atLastPage), width: '24px', height: '24px' }}
@@ -3007,7 +3011,7 @@ export default function App({ devPreviewReturnTab = null }) {
                         aria-expanded={api.isZoomMenuOpen}
                         aria-label="Fit options"
                         data-active={fitMode !== ZOOM_MODES.MANUAL}
-                        {...chromeTip(`Page fit: ${api.zoomDropdownLabel}`, 'above')}
+                        {...chromeTip(`Page fit: ${api.zoomDropdownLabel}`, 'left')}
                         title={`Page fit: ${api.zoomDropdownLabel}`}
                         style={{ position: 'relative', width: '36px', height: '28px', padding: 0, background: 'transparent', border: 'none', borderRadius: '2px', color: fitMode !== ZOOM_MODES.MANUAL ? '#e8e2d4' : '#8d96a6', cursor: 'pointer' }}
                       >

@@ -28196,19 +28196,27 @@ ${pageBlocks}
             publishes its state through onTopToolbarApiChange in the useEffect
             above. Nothing renders here for the top bar. */}
 
-        {/* Floating Tooltip — supports two placements via tooltip.placement:
+        {/* Floating Tooltip — three placements via tooltip.placement:
             "above" anchors the tooltip's bottom-center at (x, y) (legacy
-            default, used by buttons that sit near the screen bottom);
-            "below" anchors the top-center at (x, y) so the tooltip falls
-            beneath the button (used by the top-bar tools after the
-            2026-05-14 consolidation). Both default safely when placement
-            is missing. */}
-        {tooltip.visible && (
+            default); "below" anchors the top-center at (x, y) so the
+            tooltip falls beneath the button (top-bar tools + category
+            sub-row); "left" anchors the right-middle at (x, y) so the
+            tooltip flies out leftward from the right-rail footer, matching
+            the survey-icon flyout. Portaled to document.body: the viewer
+            tab wrapper is a stacking context at z 5000, BELOW every chrome
+            host (5400-5600), so an in-tree fixed chip could never paint
+            over the toolbars regardless of its own z-index — same escape
+            the counter caret popup uses. */}
+        {tooltip.visible && typeof document !== 'undefined' && createPortal(
           <div style={{
             position: 'fixed',
             left: tooltip.x,
             top: tooltip.y,
-            transform: tooltip.placement === 'below' ? 'translate(-50%, 0)' : 'translate(-50%, -100%)',
+            transform: tooltip.placement === 'below'
+              ? 'translate(-50%, 0)'
+              : tooltip.placement === 'left'
+                ? 'translate(-100%, -50%)'
+                : 'translate(-50%, -100%)',
             background: '#181c24',
             color: '#e8e2d4',
             border: '1px solid #2a3140',
@@ -28223,7 +28231,8 @@ ${pageBlocks}
             boxShadow: '0 12px 30px rgba(0,0,0,0.5)'
           }}>
             {tooltip.text}
-          </div>
+          </div>,
+          document.body
         )}
 
         {/* Region Selection Tool */}
@@ -30024,7 +30033,7 @@ ${pageBlocks}
                       }}
                       onMouseEnter={(e) => {
                         const rect = e.currentTarget.getBoundingClientRect();
-                        setTooltip({ visible: true, text: t.label, x: rect.left + rect.width / 2, y: rect.top - 10 });
+                        setTooltip({ visible: true, text: t.label, x: rect.left + rect.width / 2, y: rect.bottom + 10, placement: 'below' });
                       }}
                       onMouseLeave={() => setTooltip({ visible: false, text: '', x: 0, y: 0 })}
                       className={`btn ${isActive ? 'btn-active' : 'btn-ghost'}`}
@@ -30033,7 +30042,7 @@ ${pageBlocks}
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'center',
-                        padding: '6px',
+                        padding: '5px',
                         gap: '4px',
                         minWidth: '40px',
                         width: '40px'
@@ -30272,7 +30281,7 @@ ${pageBlocks}
                       }}
                       onMouseEnter={(e) => {
                         const rect = e.currentTarget.getBoundingClientRect();
-                        setTooltip({ visible: true, text: t.label, x: rect.left + rect.width / 2, y: rect.top - 10 });
+                        setTooltip({ visible: true, text: t.label, x: rect.left + rect.width / 2, y: rect.bottom + 10, placement: 'below' });
                       }}
                       onMouseLeave={() => setTooltip({ visible: false, text: '', x: 0, y: 0 })}
                       className={`btn ${activeTool === t.id ? 'btn-active' : 'btn-ghost'}`}
@@ -30281,7 +30290,7 @@ ${pageBlocks}
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'center',
-                        padding: '6px',
+                        padding: '5px',
                         gap: '4px',
                         minWidth: '40px',
                         // UX: explicit width matches the eraser button in
@@ -30690,7 +30699,7 @@ ${pageBlocks}
                       onClick={onMainClick}
                       onMouseEnter={(e) => {
                         const rect = e.currentTarget.getBoundingClientRect();
-                        setTooltip({ visible: true, text: t.label, x: rect.left + rect.width / 2, y: rect.top - 10 });
+                        setTooltip({ visible: true, text: t.label, x: rect.left + rect.width / 2, y: rect.bottom + 10, placement: 'below' });
                       }}
                       onMouseLeave={() => setTooltip({ visible: false, text: '', x: 0, y: 0 })}
                       className={`btn ${isActive ? 'btn-active' : 'btn-ghost'}`}
@@ -30699,7 +30708,7 @@ ${pageBlocks}
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'center',
-                        padding: '6px',
+                        padding: '5px',
                         gap: '4px',
                         minWidth: '40px',
                         width: (isUnderlineMenu || isStrikeMenu) ? '40px' : undefined
@@ -30908,7 +30917,8 @@ ${pageBlocks}
 	                                visible: true,
 	                                text: category.name || 'Untitled category',
 	                                x: rect.left + rect.width / 2,
-	                                y: rect.top - 10
+	                                y: rect.bottom + 10,
+	                                placement: 'below'
 	                              });
 	                            }}
 	                            onMouseLeave={() => setTooltip({ visible: false, text: '', x: 0, y: 0 })}

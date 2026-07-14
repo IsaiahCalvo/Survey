@@ -1032,6 +1032,10 @@ function drawCallout(context, callout, pageWidth, pageHeight, displayScale = 1) 
   }
   context.strokeStyle = lineColor;
   context.lineWidth = Math.max(1, lineThickness * 0.7);
+  // The leader lines above set lineJoin 'round'; the SVG box rect is SQUARE
+  // (rx=0, default miter joins). Without this reset every corner of the box
+  // rounds off by lineWidth/2 the moment the eraser presentation opens.
+  context.lineJoin = 'miter';
   context.strokeRect(textBox.x, textBox.y, textBox.width, boxHeightWithDescenders);
 
   const text = String(callout.text || '');
@@ -1039,6 +1043,13 @@ function drawCallout(context, callout, pageWidth, pageHeight, displayScale = 1) 
     const fontFamily = String(callout.style?.fontFamily || 'Arial').split(',')[0].replace(/["']/g, '');
     const fontShorthand = `${fontSize}px ${fontFamily}`;
     context.font = fontShorthand;
+    // SVG callout text renders with text-rendering: geometricPrecision
+    // (buildCalloutTextContentStyle) — ~13% less ink than Chromium's default
+    // canvas rasterization, so without this the eraser view paints visibly
+    // BOLDER callout glyphs. Set before the measure loop so wrap points use
+    // the same metrics. Plain text boxes use the default on BOTH surfaces —
+    // drawText must NOT get this.
+    if ('textRendering' in context) context.textRendering = 'geometricPrecision';
     const maxTextWidth = Math.max(1, textBox.width - 2 * TEXT_PADDING);
     const lines = [];
     text.split(/\r?\n/).forEach((paragraph) => {

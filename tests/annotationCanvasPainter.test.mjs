@@ -421,6 +421,67 @@ test('every callout stroke paints raw page-unit widths (scales with zoom)', () =
   assert.equal(afterClose[0], 4);
 });
 
+test('callout box strokes with square corners and callout text uses geometricPrecision', () => {
+  // Two eraser-mode fidelity bugs this guards against returning:
+  // (1) the leader lines set lineJoin 'round' and the box strokeRect in the
+  //     same scope inherited it — every corner of the callout text box
+  //     rounded off by lineWidth/2 (SVG rect is rx=0, miter = square);
+  // (2) SVG callout text renders with text-rendering geometricPrecision
+  //     (~13% less ink than canvas default), so without matching it the
+  //     eraser view painted visibly BOLDER callout glyphs.
+  let lineJoinAtStrokeRect = null;
+  let currentLineJoin = 'miter';
+  let textRenderingAtFillText = null;
+  const context = {
+    setTransform: () => {},
+    clearRect: () => {},
+    save: () => {},
+    restore: () => {},
+    beginPath: () => {},
+    moveTo: () => {},
+    lineTo: () => {},
+    closePath: () => {},
+    translate: () => {},
+    rotate: () => {},
+    setLineDash: () => {},
+    stroke: () => {},
+    arc: () => {},
+    fill: () => {},
+    fillRect: () => {},
+    strokeRect: () => { lineJoinAtStrokeRect = currentLineJoin; },
+    measureText: (text) => ({ width: String(text).length * 6 }),
+    fillText: () => { textRenderingAtFillText = context.textRendering; },
+    textRendering: 'auto',
+    set lineJoin(value) { currentLineJoin = value; },
+    get lineJoin() { return currentLineJoin; },
+    set lineWidth(value) {},
+    get lineWidth() { return 0; },
+  };
+
+  paintAnnotationCanvas(context, {
+    canvasWidth: 600,
+    canvasHeight: 800,
+    drawScale: 1,
+    displayScale: 1,
+    pageWidth: 600,
+    pageHeight: 800,
+    objects: [],
+    callouts: [{
+      pageNumber: 1,
+      text: 'square corners please',
+      arrowTip: { x: 0.1, y: 0.1 },
+      knee: { x: 0.2, y: 0.2 },
+      textBoxPosition: { x: 0.3, y: 0.3 },
+      textBoxWidth: 0.25,
+      textBoxHeight: 0.1,
+      style: { fontSize: 12, lineThickness: 4 },
+    }],
+  });
+
+  assert.equal(lineJoinAtStrokeRect, 'miter', 'box border must not inherit the leader lines\' round joins');
+  assert.equal(textRenderingAtFillText, 'geometricPrecision', 'callout glyphs must match SVG\'s finer rasterization');
+});
+
 test('cssFirstBaseline worker fallback derives the CSS baseline from font metrics', () => {
   // No DOM in Node — the helper must fall back to measureText's
   // fontBoundingBox metrics: lineHeightPx/2 + (ascent − descent)/2, the SVG
