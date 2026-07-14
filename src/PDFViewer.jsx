@@ -24264,8 +24264,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     const drag = counterDragRef.current;
     if (!drag || !drag.active) return;
 
-    removeCounterDragPreview(drag);
     if (!drag.counter) {
+      removeCounterDragPreview(drag);
       counterDragRef.current = null;
       return;
     }
@@ -24274,10 +24274,18 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       ...currentPage,
       objects: [...(currentPage.objects || []), drag.counter],
     };
-    handleSaveAnnotations(drag.pageKey, updatedJSON, {
-      source: 'counter:create',
-      tool: 'counter',
+    // Commit BEFORE tearing down the drag preview, and force the React pass
+    // synchronously, so the committed pin is already painted by the (always
+    // mounted) SVG layer when the imperative preview disappears. The old
+    // remove-first order left a blank frame between preview teardown and the
+    // committed paint — the "pin vanishes on release" flicker.
+    flushSync(() => {
+      handleSaveAnnotations(drag.pageKey, updatedJSON, {
+        source: 'counter:create',
+        tool: 'counter',
+      });
     });
+    removeCounterDragPreview(drag);
 
     counterDragRef.current = null;
   }, [handleSaveAnnotations, removeCounterDragPreview]);
@@ -28845,7 +28853,22 @@ ${pageBlocks}
                             // to drive state that still applies (like passing the edit
                             // annotation index to the selection overlay).
                             const isFabricEditMode = isEditMode && editingAnnotation?.editType !== 'bbox';
-                            const useCanvasPresentation = !svgInteractive && !svgServesCalloutCreation && !isEditMode;
+                            // UNIFIED RENDERER (2026-07-14): SVGAnnotationLayer is THE
+                            // committed-annotation renderer in every tool mode (demo model:
+                            // one PDF renderer + one annotation renderer, no per-tool swap).
+                            // The old rule (`!svgInteractive && !svgServesCalloutCreation &&
+                            // !isEditMode`) swapped pan/pen/shape/text/counter modes onto the
+                            // canvas2d painter — a second, partially-faithful renderer — so
+                            // counters degenerated to dots, callout/text metrics jumped on
+                            // every tool switch, and commits flickered across the handoff.
+                            // The canvas2d presentation keeps exactly two jobs:
+                            //   1. eraser mode — it is the raster base FabricEraserCanvas
+                            //      snapshots and carves (preserved eraser pipeline), and
+                            //   2. the transient zoom/scroll interaction proxy window
+                            //      (suspendFullSvgForProxy) while the SVG layer is suspended.
+                            // It stays mounted-but-hidden otherwise so those two windows
+                            // always have fresh pixels to show.
+                            const useCanvasPresentation = isEraserTool;
 
                             return (
                             <>
@@ -28888,7 +28911,7 @@ ${pageBlocks}
                                   layerVisibility={annotationLayerVisibility}
                                   annotationRevision={annotationRevision}
                                   calloutRevision={calloutRevision}
-                                  visible={useCanvasPresentation}
+                                  visible={useCanvasPresentation || suspendFullSvgForProxy}
                                 />
                               )}
                               {pageRegions && pageRegions.length > 0 && !(showRegionSelection && regionSelectionPage === pageNumber) && (() => {
@@ -28963,13 +28986,16 @@ ${pageBlocks}
                                   />
                                 </div>
                               )}
-                              {/* SVG layer -- hidden only when a callout edit is mounted.
-                                  UX: in eraser mode the wrapper stays visible so SVGAnnotationLayer
-                                  can still render imported textboxes underneath the Fabric eraser
-                                  canvas (opacity-0 hit zones up there). Pointer-events remain
-                                  'none' for eraser because svgInteractive is false, so clicks still
-                                  reach the eraser canvas at zIndex 101. Ref CLAUDE.md 2026-04-10
-                                  rasterizer-mismatch gotcha + FabricEraserCanvas.jsx textbox override. */}
+                              {/* SVG layer — the single committed-annotation renderer, mounted in
+                                  EVERY tool mode (unified renderer, 2026-07-14). It unmounts only
+                                  (a) in eraser mode, where the canvas2d presentation is the raster
+                                  base FabricEraserCanvas snapshots and carves, and (b) during the
+                                  transient zoom/scroll proxy window (suspendFullSvgForProxy).
+                                  Input safety in non-interactive tools: the SVG root sets
+                                  pointerEvents 'none' unless select/text-select or a creation tool
+                                  is active, and per-shape hit rects are isSelectTool-gated, so a
+                                  mounted layer never steals clicks from pan/pen/shape/counter
+                                  tools. Ref CLAUDE.md 2026-04-10 rasterizer-mismatch gotcha. */}
                               {!useCanvasPresentation && !suspendFullSvgForProxy && (
                               <div
                                 data-diag-svg-wrapper={pageNumber}
@@ -29712,7 +29738,12 @@ ${pageBlocks}
                                   }}
                                   strokeColor={strokeColor}
                                   zoomGeneration={zoomGeneration}
-                                  viewerScale={scale}
+                                  // Same scale source as every other overlay (the measured
+                                  // per-page scale), not the logical React zoom state — the two
+                                  // can disagree during zoom settle, and a mixed-source edit
+                                  // canvas is exactly the renderer-disagreement class the
+                                  // unified-renderer migration removes.
+                                  viewerScale={layerScale}
                                   onGroupUpdate={handleCounterGroupUpdate}
                                   counterGroupSize={editingCounterGroupSize}
                                 />

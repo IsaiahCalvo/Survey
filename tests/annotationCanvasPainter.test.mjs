@@ -156,6 +156,47 @@ test('Canvas2D callouts paint their text inside the callout box', () => {
   assert.ok(paintedText.join(' ').includes('Hello'));
 });
 
+test('counter pins paint the full Shottr-style bubble from radius-only circle JSON', () => {
+  // Counters are hand-built Fabric Circle JSON carrying `radius` but NO
+  // width/height. The old painter read width/height, degenerated the pin to a
+  // ~1pt dot, and pins "disappeared" whenever the canvas presentation served a
+  // frame. The pin must mirror renderCounter (svgAnnotationRenderers.jsx):
+  // bubble+nubbin path at the stored radius, centered white number.
+  const arcs = [];
+  const texts = [];
+  let fillCount = 0;
+  const context = {
+    save: () => {},
+    restore: () => {},
+    beginPath: () => {},
+    moveTo: () => {},
+    lineTo: () => {},
+    closePath: () => {},
+    arc: (...args) => arcs.push(args),
+    fill: () => { fillCount += 1; },
+    fillText: (text, x, y) => texts.push([text, x, y]),
+  };
+
+  drawAnnotationObject(context, {
+    type: 'circle',
+    left: 100,
+    top: 200,
+    radius: 14,
+    fill: '#ef4444',
+    stroke: '#ffffff',
+    strokeWidth: 1.5,
+    data: { type: 'counter', displayNumber: 7, pointerAngle: 225 },
+  });
+
+  assert.equal(arcs.length, 1);
+  const [cx, cy, r] = arcs[0];
+  assert.equal(cx, 114); // left + radius
+  assert.equal(cy, 214); // top + radius
+  assert.equal(r, 14);   // stored radius, not width/2 (which is absent)
+  assert.ok(fillCount >= 1);
+  assert.deepEqual(texts[0], ['7', 114, 214]);
+});
+
 test('viewport detail painting offsets page geometry into its tile', () => {
   const transforms = [];
   const context = {

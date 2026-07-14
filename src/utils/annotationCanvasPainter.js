@@ -310,21 +310,50 @@ function drawText(context, object) {
   context.restore();
 }
 
+// Counter pins are stored as Fabric Circle JSON with `radius` (NOT width/height
+// — they are hand-built in the counter tool, so base-object width/height are
+// absent). Geometry and styling must mirror renderCounter in
+// svgAnnotationRenderers.jsx exactly (Shottr-style pin: one filled path that
+// merges the bubble with a triangular nubbin via tangent lines, plus a centered
+// number), or the pin visibly changes whenever this painter serves a frame.
 function drawCounter(context, object) {
-  const { width, height } = beginObjectTransform(context, object);
-  const radiusX = Math.max(1, width / 2);
-  const radiusY = Math.max(1, height / 2);
+  const radius = Math.max(1, toNumber(object?.radius, 14) * Math.abs(toNumber(object?.scaleX, 1) || 1));
+  const centerX = toNumber(object?.left) + radius;
+  const centerY = toNumber(object?.top) + radius;
+  const color = isVisiblePaint(object?.fill)
+    ? object.fill
+    : (isVisiblePaint(object?.data?.color) ? object.data.color : '#ef4444');
+  const pointerAngleDeg = object?.data?.pointerAngle != null ? toNumber(object.data.pointerAngle, 225) : 225;
+
+  const angleRad = (pointerAngleDeg * Math.PI) / 180;
+  const tipExtension = Math.max(5, radius * 0.5);
+  const tipDistance = radius + tipExtension;
+  const tipX = centerX + Math.cos(angleRad) * tipDistance;
+  const tipY = centerY + Math.sin(angleRad) * tipDistance;
+  const tangentHalfAngle = Math.acos(radius / tipDistance);
+  const t1Angle = angleRad + tangentHalfAngle;
+  const t2Angle = angleRad - tangentHalfAngle;
+
+  context.save();
+  applyBlendAndOpacity(context, object);
   context.beginPath();
-  context.ellipse(radiusX, radiusY, radiusX, radiusY, 0, 0, Math.PI * 2);
-  paintShapeStyle(context, object);
-  const label = String(object?.data?.displayNumber ?? object?.text ?? '');
+  context.moveTo(tipX, tipY);
+  context.lineTo(centerX + Math.cos(t1Angle) * radius, centerY + Math.sin(t1Angle) * radius);
+  // Sweep the bubble the long way around (away from the nubbin) — the canvas
+  // clockwise arc from t1 to t2 matches the SVG large-arc/sweep=1 path.
+  context.arc(centerX, centerY, radius, t1Angle, t2Angle, false);
+  context.closePath();
+  context.fillStyle = color;
+  context.fill();
+
+  const label = String(object?.data?.displayNumber ?? 1);
   if (label) {
-    const fontSize = Math.max(8, toNumber(object?.fontSize, Math.min(width, height) * 0.45));
-    context.font = `700 ${fontSize}px Arial`;
+    const fontSize = Math.max(11, radius * 1.05);
+    context.font = `700 ${fontSize}px -apple-system, system-ui, sans-serif`;
     context.textAlign = 'center';
     context.textBaseline = 'middle';
-    context.fillStyle = isVisiblePaint(object?.stroke) ? object.stroke : '#111111';
-    context.fillText(label, radiusX, radiusY, width || undefined);
+    context.fillStyle = isVisiblePaint(object?.data?.numberColor) ? object.data.numberColor : '#ffffff';
+    context.fillText(label, centerX, centerY);
   }
   context.restore();
 }

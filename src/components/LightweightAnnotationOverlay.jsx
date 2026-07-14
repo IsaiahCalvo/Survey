@@ -122,8 +122,6 @@ const LightweightAnnotationOverlay = memo(({
   const safeWidth = Math.max(1, Number(width) || 1);
   const safeHeight = Math.max(1, Number(height) || 1);
   const safeScale = Number.isFinite(Number(scale)) && Number(scale) > 0 ? Number(scale) : 1;
-  const overlayWidth = safeWidth * safeScale;
-  const overlayHeight = safeHeight * safeScale;
 
   const visibilityContext = useMemo(() => ({
     pageNumber,
@@ -516,11 +514,16 @@ const LightweightAnnotationOverlay = memo(({
       data-lightweight-callout-count={visibleCallouts.length}
       data-canvas-visible={visible ? 'true' : 'false'}
       style={{
+        // Fill the page host exactly (demo model: PdfjsArm's CanvasAnnotationLayer
+        // is inset:0 in the page wrapper). Sizing from `pageSize * scale` px is
+        // forbidden — a stale scale scalar makes the whole committed layer drift
+        // off the page box (CLAUDE.md container-aware sizing rule). The `scale`
+        // prop only chooses backing-store RESOLUTION, never geometry.
         position: 'absolute',
         top: 0,
         left: 0,
-        width: `${overlayWidth}px`,
-        height: `${overlayHeight}px`,
+        width: '100%',
+        height: '100%',
         pointerEvents: 'none',
         zIndex: 10,
         overflow: 'hidden',

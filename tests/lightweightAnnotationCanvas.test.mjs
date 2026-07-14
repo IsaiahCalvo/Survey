@@ -13,14 +13,24 @@ const WORKER_SOURCE = readFileSync(
   'utf8',
 );
 
-test('normal annotation presentation is one persistent Canvas2D surface', () => {
+test('SVG is the one committed renderer; Canvas2D serves only eraser + proxy windows', () => {
   assert.match(OVERLAY_SOURCE, /paintAnnotationCanvas/);
   assert.match(OVERLAY_SOURCE, /<canvas/);
   assert.doesNotMatch(OVERLAY_SOURCE, /<svg/);
   assert.doesNotMatch(OVERLAY_SOURCE, /objectPreviews\.map/);
-  assert.match(VIEWER_SOURCE, /const useCanvasPresentation =/);
+  // Unified renderer (2026-07-14): committed annotations are painted by
+  // SVGAnnotationLayer in EVERY tool mode. The canvas presentation is visible
+  // only (a) in eraser mode, where FabricEraserCanvas snapshots and carves it,
+  // and (b) during the transient zoom/scroll proxy window. Reintroducing a
+  // per-tool renderer swap regresses the counter-dot / tool-switch-flicker
+  // family of bugs.
+  assert.match(VIEWER_SOURCE, /const useCanvasPresentation = isEraserTool;/);
   assert.match(VIEWER_SOURCE, /data-annotation-presentation=\{useCanvasPresentation \? 'canvas2d' : 'svg-edit'\}/);
-  assert.match(VIEWER_SOURCE, /<LightweightAnnotationOverlay[\s\S]*?visible=\{useCanvasPresentation\}/);
+  assert.match(VIEWER_SOURCE, /<LightweightAnnotationOverlay[\s\S]*?visible=\{useCanvasPresentation \|\| suspendFullSvgForProxy\}/);
+  // The canvas overlay wrapper must fill the page host (inset/100%), never
+  // size itself from `pageSize * scale` px — a stale scale scalar would drift
+  // the whole committed layer off the page box.
+  assert.doesNotMatch(OVERLAY_SOURCE, /width: `\$\{overlayWidth\}px`/);
 });
 
 test('interaction snapshots do not truncate visible annotations or callouts', () => {
