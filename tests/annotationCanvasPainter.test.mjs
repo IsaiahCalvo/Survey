@@ -671,7 +671,10 @@ test('text glyphs move to the CSS baseline while decorations keep their line-box
 test('callout text glyphs anchor on the CSS baseline when font metrics resolve', () => {
   // Same correction as drawText: 12px Arial callout text sat ~0.9px above the
   // SVG when anchored 'middle'. First line must land at
-  // startY + cssFirstBaseline(font, lineHeightPx) with textBaseline='alphabetic'.
+  // round(startY) + cssFirstBaseline(font, lineHeightPx) with
+  // textBaseline='alphabetic' — the round() mirrors Blink's foreignObject
+  // paint-offset snap (2026-07-14, probe-verified: SVG paints the callout
+  // text block at round(textBox.y + flexTop), not the unrounded layout y).
   const fillTexts = [];
   const context = {
     setTransform: () => {},
@@ -728,5 +731,112 @@ test('callout text glyphs anchor on the CSS baseline when font metrics resolve',
   const [text, , y, textBaseline] = fillTexts[0];
   assert.equal(text, 'Hi');
   assert.equal(textBaseline, 'alphabetic');
-  assert.ok(Math.abs(y - (startY + baselineInLine)) < 1e-9);
+  // startY is fractional here (275.32) — the painted anchor must be the
+  // SNAPPED block top, proving the Blink parity round is applied.
+  assert.notEqual(Math.round(startY), startY);
+  assert.ok(Math.abs(y - (Math.round(startY) + baselineInLine)) < 1e-9);
+});
+
+test('text block paint offset snaps to integer page units like Blink foreignObject paint', () => {
+  // Root-caused 2026-07-14 (renderer-parity probe): Chromium PAINTS
+  // foreignObject text with the block's paint offset rounded to an integer in
+  // the fo's local px space — painted baseline_i = round(foY + blockTop)
+  // + i*lineHeightPx + baselineInLine — while DOM geometry APIs report the
+  // unrounded layout position. Anchoring unrounded left canvas glyphs up to
+  // 0.5 page units off the SVG (zoom-proportional: 1 css px at 233%), the
+  // "text jumps when switching to the eraser" bug. Lines advance UNROUNDED
+  // from the single snapped block top (verified: two-line foreignObject
+  // paints line1 at snap(line0) + lineHeight, not at its own round).
+  const fillTexts = [];
+  const context = {
+    save: () => {},
+    restore: () => {},
+    translate: () => {},
+    rotate: () => {},
+    beginPath: () => {},
+    rect: () => {},
+    clip: () => {},
+    setLineDash: () => {},
+    moveTo: () => {},
+    lineTo: () => {},
+    stroke: () => {},
+    fillRect: () => {},
+    strokeRect: () => {},
+    measureText: (text) => ({
+      width: String(text).length * 6,
+      fontBoundingBoxAscent: 15,
+      fontBoundingBoxDescent: 4,
+    }),
+    fillText: (text, x, y) => fillTexts.push([text, x, y, context.textBaseline]),
+  };
+
+  const fontSize = 16;
+  drawAnnotationObject(context, {
+    type: 'textbox',
+    left: 0,
+    top: 0,
+    width: 200,
+    height: 50,
+    text: 'Hi\nYo',
+    fontSize,
+    fontFamily: 'SnapProbeFont',
+    fill: '#000',
+    verticalAlign: 'middle',
+  });
+
+  const lineHeightPx = fontSize * 1.16 * 1.13; // 20.9728
+  const baselineInLine = lineHeightPx / 2 + (15 - 4) / 2;
+  // verticalAlign middle: blockTop = pad + freeSpace/2 = 6.8272 (fractional).
+  const innerDisplayHeight = (50 - 12) + fontSize * 0.35;
+  const blockTop = 6 + Math.max(0, innerDisplayHeight - 2 * lineHeightPx) / 2;
+  assert.notEqual(Math.round(blockTop), blockTop);
+  assert.equal(fillTexts.length, 2);
+  assert.ok(Math.abs(fillTexts[0][2] - (Math.round(blockTop) + baselineInLine)) < 1e-9);
+  // Second line: snapped block top + ONE unrounded line advance.
+  assert.ok(Math.abs(fillTexts[1][2] - (Math.round(blockTop) + lineHeightPx + baselineInLine)) < 1e-9);
+});
+
+test('legacy middle-anchor fallback keeps the unsnapped block top', () => {
+  // Without font metrics there is no baseline anchor to snap against — the
+  // approximate 'middle' path must not half-fix positions by rounding.
+  const fillTexts = [];
+  const context = {
+    save: () => {},
+    restore: () => {},
+    translate: () => {},
+    rotate: () => {},
+    beginPath: () => {},
+    rect: () => {},
+    clip: () => {},
+    setLineDash: () => {},
+    moveTo: () => {},
+    lineTo: () => {},
+    stroke: () => {},
+    fillRect: () => {},
+    strokeRect: () => {},
+    measureText: (text) => ({ width: String(text).length * 6 }),
+    fillText: (text, x, y) => fillTexts.push([text, x, y, context.textBaseline]),
+  };
+
+  const fontSize = 16;
+  drawAnnotationObject(context, {
+    type: 'textbox',
+    left: 0,
+    top: 0,
+    width: 200,
+    height: 50,
+    text: 'Hi',
+    fontSize,
+    fontFamily: 'NoMetricsProbeFont',
+    fill: '#000',
+    verticalAlign: 'middle',
+  });
+
+  const lineHeightPx = fontSize * 1.16 * 1.13;
+  const innerDisplayHeight = (50 - 12) + fontSize * 0.35;
+  const blockTop = 6 + Math.max(0, innerDisplayHeight - lineHeightPx) / 2;
+  assert.equal(fillTexts.length, 1);
+  const [, , glyphY, textBaseline] = fillTexts[0];
+  assert.equal(textBaseline, 'middle');
+  assert.ok(Math.abs(glyphY - (blockTop + lineHeightPx / 2)) < 1e-9);
 });

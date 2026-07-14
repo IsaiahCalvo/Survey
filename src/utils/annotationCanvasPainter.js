@@ -675,6 +675,19 @@ function drawText(context, object) {
   const anchorInLine = baselineInLine ?? lineHeightPx / 2;
   context.textBaseline = baselineInLine == null ? 'middle' : 'alphabetic';
   context.fillStyle = isVisiblePaint(object.fill) ? object.fill : '#000';
+  // Blink paint-offset snap parity (2026-07-14, probe-verified): Chromium
+  // PAINTS foreignObject text with the text block's paint offset snapped to
+  // an integer in the fo's LOCAL px space — painted baseline_i =
+  // round(foY + blockTop) + i*lineHeightPx + baselineInLine — while DOM
+  // geometry APIs report the unrounded layout position. Anchoring at the
+  // unrounded blockTop left canvas glyphs up to 0.5 page units off the SVG's
+  // painted glyphs, a zoom-PROPORTIONAL drift (0.5 css px at fit-page, 1 css
+  // px at 233%) on every eraser toggle. The SVG g translate(left, top) is a
+  // raster transform OUTSIDE the snap — mirrored here by context.translate —
+  // and painter blockTop = fo y (pad) + align offset, so rounding blockTop is
+  // exactly Blink's snap. Only valid with the real baseline anchor; the
+  // legacy 'middle' fallback keeps unsnapped placement.
+  const paintBlockTop = baselineInLine == null ? blockTop : Math.round(blockTop);
 
   // Clip like the foreignObject (overflow hidden at padded box + descender).
   context.beginPath();
@@ -689,7 +702,7 @@ function drawText(context, object) {
   const underlineOffset = (lineHeightPx / 2 - anchorInLine) + fontSize * 0.36;
   const linethroughOffset = (lineHeightPx / 2 - anchorInLine) - fontSize * 0.08;
   lines.forEach((line, index) => {
-    const lineTop = blockTop + index * lineHeightPx;
+    const lineTop = paintBlockTop + index * lineHeightPx;
     if (lineTop > pad + innerDisplayHeight) return;
     const glyphY = lineTop + anchorInLine;
     context.fillText(line, anchorX, glyphY);
@@ -1111,8 +1124,17 @@ function drawCallout(context, callout, pageWidth, pageHeight, displayScale = 1) 
     const anchorInLine = baselineInLine ?? lineHeightPx / 2;
     context.textBaseline = baselineInLine == null ? 'middle' : 'alphabetic';
     context.fillStyle = callout.style?.fontColor || callout.style?.textColor || '#000000';
+    // Blink paint-offset snap parity (2026-07-14, probe-verified — see the
+    // drawText twin comment): the SVG callout's foreignObject sits at
+    // textBox.y with a flex-centered text block, and Chromium paints its
+    // glyphs at round(textBox.y + flexTop) + i*lineHeightPx + baselineInLine,
+    // NOT at the unrounded layout position. startY = textBox.y + flexTop, so
+    // round(startY) is exactly Blink's snap (in-app: layout 263.328 →
+    // painted 263.000; unsnapped canvas text sat 1 css px low at 233% zoom —
+    // the "callout text jumps when I switch to the eraser" report).
+    const paintStartY = baselineInLine == null ? startY : Math.round(startY);
     paintedLines.forEach((line, index) => {
-      context.fillText(line, anchorX, startY + index * lineHeightPx + anchorInLine);
+      context.fillText(line, anchorX, paintStartY + index * lineHeightPx + anchorInLine);
     });
   }
   context.restore();
