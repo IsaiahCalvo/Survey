@@ -22,8 +22,54 @@ test('annotation canvas backing store is DPR-correct at normal zoom', () => {
     width: 1200,
     height: 1600,
     drawScale: 2,
+    drawScaleY: 2,
+    cssWidth: 600,
+    cssHeight: 800,
     clamped: false,
   });
+});
+
+test('backing store scales are re-derived per axis so the paint fills it exactly', () => {
+  // Renderer-parity harness bug (2026-07-14): pageSize 612x792 at the measured
+  // host scale 605.03125/612 floored the backing to 604x782 but kept the
+  // unfloored drawScale — the painted extent missed the backing by <1px and
+  // the CSS stretch drifted ALL canvas geometry ~1.0017x from the origin.
+  const pageWidth = 612;
+  const pageHeight = 792;
+  const result = calculateAnnotationCanvasBackingStore({
+    pageWidth,
+    pageHeight,
+    displayScale: 605.03125 / 612,
+    devicePixelRatio: 1,
+  });
+
+  // Painted extent (page dim x drawScale) must equal the integer backing dim.
+  assert.ok(Math.abs(pageWidth * result.drawScale - result.width) < 1e-9);
+  assert.ok(Math.abs(pageHeight * result.drawScaleY - result.height) < 1e-9);
+  // The fractional parts differ per axis — a single shared scale cannot be
+  // exact for both.
+  assert.notEqual(result.drawScale, result.drawScaleY);
+  // Unclamped CSS box = backing / dpr: an integer device extent so the
+  // compositor maps bitmap px 1:1 instead of snap-stretching a fractional box.
+  assert.equal(result.cssWidth, result.width);
+  assert.equal(result.cssHeight, result.height);
+  // And the transform actually painted with both axes.
+  const transforms = [];
+  paintAnnotationCanvas({
+    setTransform: (...args) => transforms.push(args),
+    clearRect: () => {},
+  }, {
+    canvasWidth: result.width,
+    canvasHeight: result.height,
+    drawScale: result.drawScale,
+    drawScaleY: result.drawScaleY,
+    displayScale: 1,
+    pageWidth,
+    pageHeight,
+    objects: [],
+    callouts: [],
+  });
+  assert.deepEqual(transforms[1], [result.drawScale, 0, 0, result.drawScaleY, -0, -0]);
 });
 
 test('annotation canvas backing store stays inside deep-zoom memory and dimension limits', () => {

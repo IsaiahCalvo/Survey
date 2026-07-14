@@ -88,3 +88,6 @@ public/debug-fixtures/
 # Main-process MSAL token cache (only ever in userData; ignore if a dev profile points into the repo)
 ms-auth-cache.bin
 ms-auth-cache.bin.tmp
+
+# Renderer-parity harness screenshots (regenerated each run)
+agent-cli/artifacts/

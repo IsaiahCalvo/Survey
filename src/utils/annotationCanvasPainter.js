@@ -80,12 +80,35 @@ export function calculateAnnotationCanvasBackingStore({
     Math.sqrt(MAX_BACKING_PIXELS / (requestedWidth * requestedHeight)),
   );
   const budgetFactor = Math.min(dimensionFactor, areaFactor);
-  const drawScale = requestedScale * budgetFactor;
+  const idealScale = requestedScale * budgetFactor;
+
+  // Canvas backing dims must be integers, so the returned scales are
+  // RE-DERIVED from the rounded dims (independently per axis — the fractional
+  // parts differ). Returning the unrounded scale painted a page extent that
+  // missed the backing size by <1px; the CSS stretch back to the host then
+  // scaled ALL geometry by extent/backing from the top-left origin — a
+  // 1-2px linear drift vs the SVG layer (renderer-parity harness, 2026-07-14).
+  const width = Math.max(1, Math.min(
+    Math.round(safeWidth * idealScale), MAX_BACKING_DIMENSION,
+  ));
+  const height = Math.max(1, Math.min(
+    Math.round(safeHeight * idealScale), MAX_BACKING_DIMENSION,
+  ));
 
   return {
-    width: Math.max(1, Math.floor(safeWidth * drawScale)),
-    height: Math.max(1, Math.floor(safeHeight * drawScale)),
-    drawScale,
+    width,
+    height,
+    drawScale: width / safeWidth,
+    drawScaleY: height / safeHeight,
+    // CSS box for an UNclamped presentation canvas. Stretching the bitmap to
+    // the host's fractional CSS box (width:100% of e.g. 605.03125px) makes the
+    // compositor's device-pixel snapping rescale the raster by ~1/width — a
+    // linear geometry drift vs SVG plus a full-canvas resample (soft text).
+    // An integer device extent (backing/dpr CSS px; both box edges share the
+    // host's fractional offset) snaps 1:1 — ≤0.5px uniform shift, no stretch.
+    // Meaningless when clamped: a clamped backing must stretch to fill 100%.
+    cssWidth: width / safeDpr,
+    cssHeight: height / safeDpr,
     clamped: safeDisplayScale > MAX_RASTER_SCALE || budgetFactor < 0.9999,
   };
 }
@@ -1099,6 +1122,9 @@ export function paintAnnotationCanvas(context, {
   canvasWidth,
   canvasHeight,
   drawScale,
+  // Y scale re-derived from the integer backing height — defaults to the X
+  // scale for callers without a rounded backing store (tests, ad-hoc paints).
+  drawScaleY = drawScale,
   displayScale,
   pageWidth,
   pageHeight,
@@ -1114,9 +1140,9 @@ export function paintAnnotationCanvas(context, {
     drawScale,
     0,
     0,
-    drawScale,
+    drawScaleY,
     -toNumber(offsetX) * drawScale,
-    -toNumber(offsetY) * drawScale,
+    -toNumber(offsetY) * drawScaleY,
   );
   objects.forEach((object) => drawAnnotationObject(context, object, displayScale));
   callouts.forEach((callout) => drawCallout(context, callout, pageWidth, pageHeight, displayScale));

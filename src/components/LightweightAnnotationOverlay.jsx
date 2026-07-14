@@ -32,6 +32,7 @@ const paintPayloadToCanvas = (canvas, payload, renderer = 'main') => {
     canvasWidth: payload.width,
     canvasHeight: payload.height,
     drawScale: payload.drawScale,
+    drawScaleY: payload.drawScaleY,
     displayScale: payload.displayScale,
     pageWidth: payload.pageWidth,
     pageHeight: payload.pageHeight,
@@ -47,6 +48,7 @@ const paintPayloadToCanvas = (canvas, payload, renderer = 'main') => {
   );
   canvas.dataset.canvasAnnotationRevision = String(payload.annotationRevision ?? '');
   canvas.dataset.canvasDrawScale = String(payload.drawScale);
+  canvas.dataset.canvasDrawScaleY = String(payload.drawScaleY ?? payload.drawScale);
   canvas.dataset.canvasPageOffsetX = String(payload.offsetX || 0);
   canvas.dataset.canvasPageOffsetY = String(payload.offsetY || 0);
   return true;
@@ -67,8 +69,10 @@ const presentPaintedCanvas = ({ baseCanvas, detailCanvas, canvas, payload }) => 
   } else {
     canvas.style.left = '0px';
     canvas.style.top = '0px';
-    canvas.style.width = '100%';
-    canvas.style.height = '100%';
+    // Device-exact box when the payload carries one (unclamped base paint);
+    // '100%' otherwise — see the cssWidth comment at the payload build site.
+    canvas.style.width = payload.cssWidth ? `${payload.cssWidth}px` : '100%';
+    canvas.style.height = payload.cssHeight ? `${payload.cssHeight}px` : '100%';
     canvas.style.display = 'block';
     detailCanvas.style.display = 'none';
     detailCanvas.dataset.annotationDetailActive = 'false';
@@ -314,6 +318,7 @@ const LightweightAnnotationOverlay = memo(({
       );
       canvas.dataset.canvasAnnotationRevision = String(payload.annotationRevision ?? '');
       canvas.dataset.canvasDrawScale = String(payload.drawScale);
+      canvas.dataset.canvasDrawScaleY = String(payload.drawScaleY ?? payload.drawScale);
       canvas.dataset.canvasPageOffsetX = String(payload.offsetX || 0);
       canvas.dataset.canvasPageOffsetY = String(payload.offsetY || 0);
       presentPaintedCanvas({
@@ -407,13 +412,25 @@ const LightweightAnnotationOverlay = memo(({
       }
       detailTileRef.current = tile;
 
+      // Device-exact CSS box for the UNCLAMPED base canvas: the page host box
+      // is fractional (e.g. 605.03125px), so `width:100%` makes Chrome's
+      // compositor stretch the integer-px bitmap by ~1/605 in x — a linear
+      // drift that put eraser-mode marks ~1px right of the SVG at the page's
+      // far edge (renderer-parity harness, 2026-07-14). Sizing the CSS box to
+      // backing/dpr maps bitmap px 1:1 onto device px (no resample); the
+      // ≤0.5px sliver left uncovered at the page edge is invisible. Clamped
+      // (deep-zoom) backings are SMALLER than the host by design and must
+      // keep stretching to fill it.
       requestPaint({
         requestId: 0,
         target: tile ? 'detail' : 'base',
         tile,
         width: tile?.backingWidth ?? backingStore.width,
         height: tile?.backingHeight ?? backingStore.height,
+        cssWidth: backingStore.clamped ? null : backingStore.cssWidth,
+        cssHeight: backingStore.clamped ? null : backingStore.cssHeight,
         drawScale: tile?.drawScale ?? backingStore.drawScale,
+        drawScaleY: tile?.drawScaleY ?? backingStore.drawScaleY,
         displayScale: safeScale,
         pageWidth: safeWidth,
         pageHeight: safeHeight,

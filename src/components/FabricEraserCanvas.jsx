@@ -324,13 +324,14 @@ const FabricEraserCanvas = memo(({
     };
     preview.dataset.canvasAnnotationRevision = source.dataset.canvasAnnotationRevision || '';
     preview.dataset.canvasDrawScale = source.dataset.canvasDrawScale || String(source.width / pageWidth);
+    preview.dataset.canvasDrawScaleY = source.dataset.canvasDrawScaleY || String(source.height / pageHeight);
     preview.dataset.canvasPageOffsetX = source.dataset.canvasPageOffsetX || '0';
     preview.dataset.canvasPageOffsetY = source.dataset.canvasPageOffsetY || '0';
     preview.dataset.canvasGeometryKey = sourceGeometryKey;
     preview.style.display = 'block';
     overlay.style.visibility = 'hidden';
     return true;
-  }, [cancelLivePreviewFinish, findPresentationSource, pageWidth]);
+  }, [cancelLivePreviewFinish, findPresentationSource, pageHeight, pageWidth]);
 
   const drawLiveErasePreviewSegment = useCallback((points) => {
     const preview = livePreviewCanvasRef.current;
@@ -339,6 +340,7 @@ const FabricEraserCanvas = memo(({
     if (!context) return;
     const radius = getPageRadius();
     const drawScale = Number(preview.dataset.canvasDrawScale) || (preview.width / pageWidth);
+    const drawScaleY = Number(preview.dataset.canvasDrawScaleY) || drawScale;
     const pageOffsetX = Number(preview.dataset.canvasPageOffsetX) || 0;
     const pageOffsetY = Number(preview.dataset.canvasPageOffsetY) || 0;
     context.save();
@@ -346,9 +348,9 @@ const FabricEraserCanvas = memo(({
       drawScale,
       0,
       0,
-      drawScale,
+      drawScaleY,
       -pageOffsetX * drawScale,
-      -pageOffsetY * drawScale,
+      -pageOffsetY * drawScaleY,
     );
     context.globalCompositeOperation = 'destination-out';
     context.fillStyle = '#000';
@@ -391,12 +393,14 @@ const FabricEraserCanvas = memo(({
     const previewContext = preview.getContext('2d');
     if (!maskContext || !previewContext) return;
     const drawScale = Number(preview.dataset.canvasDrawScale) || (preview.width / pageWidth);
+    const drawScaleY = Number(preview.dataset.canvasDrawScaleY) || drawScale;
     const pageOffsetX = Number(preview.dataset.canvasPageOffsetX) || 0;
     const pageOffsetY = Number(preview.dataset.canvasPageOffsetY) || 0;
     paintAnnotationCanvas(maskContext, {
       canvasWidth: mask.width,
       canvasHeight: mask.height,
       drawScale,
+      drawScaleY,
       displayScale: Math.max(0.01, Number(viewerScaleRef.current) || 1),
       pageWidth,
       pageHeight,
