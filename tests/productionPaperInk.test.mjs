@@ -58,14 +58,28 @@ test('a production highlighter uses the same geometry with multiply compositing'
 });
 
 test('the production drawing surface commits captured pointer points through paper geometry', () => {
-  const source = readFileSync(
-    new URL('../src/components/FabricDrawingCanvas.jsx', import.meta.url),
+  // Unified renderer (FabricDrawingCanvas retired): creation lives in
+  // SVGAnnotationLayer, which captures raw coalesced pointer samples and
+  // commits them through annotationCreationCommit.buildFreehandCommitJSON →
+  // createProductionPaperInk. This tripwire must fail if pen ink ever stops
+  // flowing through the paper-geometry pipeline on the LIVE path.
+  const commitSource = readFileSync(
+    new URL('../src/utils/annotationCreationCommit.js', import.meta.url),
+    'utf8',
+  );
+  const layerSource = readFileSync(
+    new URL('../src/components/SVGAnnotationLayer.jsx', import.meta.url),
     'utf8',
   );
 
-  assert.match(source, /createProductionPaperInk\s*\(/);
-  assert.match(source, /rawInkGestureRef\.current\.points/);
-  assert.doesNotMatch(source, /const pathJSON = e\.path\.toObject\(CUSTOM_PROPS\)/);
+  assert.match(commitSource, /createProductionPaperInk\s*\(/);
+  // The layer feeds the commit builder its captured raw points (coalesced,
+  // page-space) — the successor of rawInkGestureRef.current.points.
+  assert.match(layerSource, /getCoalescedEvents/);
+  assert.match(layerSource, /const points = freehandPointsRef\.current;/);
+  assert.match(layerSource, /buildFreehandCommitJSON\s*\(/);
+  // Never a return to raw fabric brush-path serialization on the live surface.
+  assert.doesNotMatch(layerSource, /\.path\.toObject\(/);
 });
 
 test('app PDF metadata round-trips editable paper geometry without flattening topology', () => {

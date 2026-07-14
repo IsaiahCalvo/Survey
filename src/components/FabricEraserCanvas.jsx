@@ -25,6 +25,7 @@ import { selectEraserPreviewBaseline } from '../utils/eraserPreviewHandoff.js';
 import { planPageEraserPreview } from '../utils/eraserPreviewPlan.js';
 import { getCoalescedOrCurrentEvents } from '../utils/eraserPointerSamples.js';
 import { paintAnnotationCanvas } from '../utils/annotationCanvasPainter.js';
+import { projectPaperInkForPresentation } from '../utils/paperInkPresentation.js';
 
 let presentationRevisionSequence = 0;
 
@@ -344,9 +345,14 @@ const FabricEraserCanvas = memo(({
     const preview = livePreviewCanvasRef.current;
     if (!preview || preview.style.display === 'none' || !ids?.length) return;
     const idSet = new Set(ids);
+    // The preview snapshot was painted from presentation-PROJECTED objects
+    // (LightweightAnnotationOverlay maps projectPaperInkForPresentation), so
+    // the ghost mask must carve the same projected geometry — masking the raw
+    // stroked centerline leaves outline slivers of wide ink until the commit
+    // repaint.
     const objects = (annotationsRef.current?.objects || []).filter((object, index) => (
       idSet.has(getEraserCandidateId(object, index))
-    ));
+    )).map(projectPaperInkForPresentation);
     if (!objects.length || typeof document === 'undefined') return;
     const mask = livePreviewMaskCanvasRef.current || document.createElement('canvas');
     livePreviewMaskCanvasRef.current = mask;

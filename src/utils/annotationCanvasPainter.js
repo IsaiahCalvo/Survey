@@ -27,7 +27,7 @@ import {
   buildArrowheadRenderSpec,
   buildLineRenderSpec,
 } from './lineRenderHelpers.js';
-import { getLineEndpoints } from './svgBoundingBox.js';
+import { countWrappedLines, getLineEndpoints } from './svgBoundingBox.js';
 import { buildCloudPathCommands } from './pdfAnnotationImporter.js';
 import { DRAWN_CENTERED_STROKE_CONTRACT } from './shapeCommitGeometry.js';
 
@@ -512,7 +512,9 @@ function drawText(context, object) {
           totalVisualLines += 1;
         } else {
           maxLineWidth = containerWidth;
-          totalVisualLines += Math.max(1, Math.ceil(naturalWidth / containerWidth));
+          // Same word-boundary walk as measureTextBounds — a ceil(width /
+          // container) approximation under-counts and the block jumps a line.
+          totalVisualLines += countWrappedLines(context, line, containerWidth);
         }
       }
       context.restore();
@@ -917,14 +919,10 @@ function drawCallout(context, callout, pageWidth, pageHeight, displayScale = 1) 
   context.lineTo(line2EndX, line2EndY);
   context.stroke();
   // Real arrowhead via the shared spec (the old dot was the "arrow looks like
-  // a circle" bug). Arrowhead stroke widths ride the same non-scaling rule.
-  paintArrowheadSpec(context, {
-    ...arrowheadSpec,
-    ...(arrowheadSpec.polygon ? { polygon: { ...arrowheadSpec.polygon, strokeWidth: nonScaling(arrowheadSpec.polygon.strokeWidth || Math.max(2, lineThickness)) } } : {}),
-    ...(arrowheadSpec.circle ? { circle: { ...arrowheadSpec.circle, strokeWidth: nonScaling(arrowheadSpec.circle.strokeWidth) } } : {}),
-    ...(arrowheadSpec.polyline ? { polyline: { ...arrowheadSpec.polyline, strokeWidth: nonScaling(arrowheadSpec.polyline.strokeWidth) } } : {}),
-    ...(arrowheadSpec.line ? { line: { ...arrowheadSpec.line, strokeWidth: nonScaling(arrowheadSpec.line.strokeWidth) } } : {}),
-  });
+  // a circle" bug). Painted RAW: renderCallout's renderArrowheadEl spreads the
+  // spec with NO vectorEffect, so in SVG only the connector lines and box
+  // border are non-scaling — arrowhead strokes scale with zoom.
+  paintArrowheadSpec(context, arrowheadSpec);
 
   if (isVisiblePaint(fillColor)) {
     context.save();

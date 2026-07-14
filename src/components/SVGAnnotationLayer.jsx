@@ -1124,6 +1124,12 @@ const SVGAnnotationLayer = memo(({
   const commitShapeCreation = useCallback((finalClientPoint = null) => {
     const state = shapeCreationRef.current;
     if (!state) return;
+    // Null the ref SYNCHRONOUSLY — the effect that mirrors state into this
+    // ref (and the one that detaches the window listeners) are passive
+    // effects, so a queued pointer event can dispatch before they flush and
+    // re-enter this commit past the guard above, double-committing the
+    // gesture with a drifted end point / duplicate survey marker.
+    shapeCreationRef.current = null;
     const tool = state.tool;
     const action = tool === 'pen' ? 'pen-stroke'
       : tool === 'highlighter' ? 'highlight-stroke'
@@ -1235,8 +1241,14 @@ const SVGAnnotationLayer = memo(({
     const action = shapeCreation.tool === 'pen' ? 'pen-stroke'
       : shapeCreation.tool === 'highlighter' ? 'highlight-stroke'
         : `${shapeCreation.tool}-draw`;
+    // Every handler filters on the gesture's own pointerId (parity with the
+    // retired FabricDrawingCanvas): on touch surfaces a second finger tapping
+    // the toolbar/page margin, or the physical mouse jiggling mid-touch-draw,
+    // dispatches window pointer events that must never splice into, commit,
+    // or cancel the in-flight gesture.
+    const isGesturePointer = (e) => e.pointerId === shapeCreation.pointerId;
     const onMove = (e) => {
-      if (!svgRef.current) return;
+      if (!svgRef.current || !isGesturePointer(e)) return;
       if (e.buttons === 0) {
         // Button released outside our listeners (e.g. over browser chrome) —
         // treat as release so no zombie preview survives.
@@ -1246,7 +1258,6 @@ const SVGAnnotationLayer = memo(({
       }
       markAnnotationPreviewFrame(shapeCreation.gestureId, { action });
       if (isFreehand) {
-        if (e.pointerId !== shapeCreation.pointerId) return;
         appendCoalescedPagePoints(e);
         setShapeCreation((prev) => (prev ? { ...prev, tick: (prev.tick || 0) + 1 } : prev));
       } else {
@@ -1255,6 +1266,7 @@ const SVGAnnotationLayer = memo(({
       }
     };
     const onUp = (e) => {
+      if (!isGesturePointer(e)) return;
       if (isFreehand) {
         appendCoalescedPagePoints(e);
         commitShapeCreationRef.current(null);
@@ -1262,8 +1274,12 @@ const SVGAnnotationLayer = memo(({
         commitShapeCreationRef.current({ x: e.clientX, y: e.clientY });
       }
     };
-    const onCancel = () => {
-      // OS-level cancel (second touch, palm rejection): never commit partial work.
+    const onCancel = (e) => {
+      // OS-level cancel (drawing touch converted to scroll/pinch, palm
+      // rejection): never commit partial work. Foreign pointers' cancels
+      // must not discard the gesture, hence the same pointerId filter.
+      if (!isGesturePointer(e)) return;
+      shapeCreationRef.current = null;
       freehandPointsRef.current = [];
       markAnnotationPointerRelease(shapeCreation.gestureId, { action });
       setShapeCreation(null);
@@ -1297,6 +1313,10 @@ const SVGAnnotationLayer = memo(({
   useEffect(() => {
     const cancelPinchGesture = () => {
       if (!shapeCreationRef.current) return;
+      // Sync ref clear: the window pointerup listener is still attached until
+      // the passive effect detaches it — without this a finger-lift racing
+      // that flush would commit the drag-out shape the pinch just discarded.
+      shapeCreationRef.current = null;
       freehandPointsRef.current = [];
       setShapeCreation(null);
     };
@@ -3228,14 +3248,12 @@ const SVGAnnotationLayer = memo(({
       // overlays the textbox child via the known-good text-edit path; the
       // static parts remain as visual anchors underneath. Replaces the prior
       // full-callout skip which left the edit canvas orphaned visually.
-      // UX 2026-04-20 (revised): SVG callout text stays visible during its
-      // own edit so it's the single source of truth in both view and edit
-      // states. Fabric's letters are transparent during callout edit
-      // (FabricEditCanvas loadCalloutAnnotation sets fill: rgba(0,0,0,0))
-      // so there's no double-ghost — only one rendering, matching view.
-      // The live bounds broadcast below keeps the SVG text width/height
-      // in lockstep with Fabric's wrap as the user types.
-      const hideText = false;
+      // UX 2026-07-14 (same-surface editor): while THIS callout's text is
+      // being edited, TextEditOverlay is the visible text surface (caret and
+      // glyphs share one CSS layout), so the SVG skips only the text
+      // foreignObject. Border rect + leader lines keep rendering here from
+      // the live bounds broadcast. Non-edited callouts always show text.
+      const hideText = !!(editingCalloutId && displayCallout.id === editingCalloutId);
       // UX: Phase 15 UAT-2 — pass live textbox bounds only to the currently-
       // editing callout so line1 retracts to the live edge as the textbox
       // auto-grows. Other callouts render from stored normalized dims.
@@ -3760,15 +3778,16 @@ const SVGAnnotationLayer = memo(({
     const isInPlaceEdit = isBeingEdited && EDIT_IN_PLACE_TYPES.has(objTypeForEdit);
     const hideForEdit = isBeingEdited && !isInPlaceEdit && !isBboxEdit;
 
-    // UX 2026-04-20 (revised): SVG paints the text during edit AND view so
-    // the user sees one consistent rendering across both states — no weight
-    // or spacing jump on edit entry/exit. Fabric's glyphs are transparent
-    // in edit mode (FabricEditCanvas existing-text path), so only the caret
-    // and selection surveyMarker come from Fabric. liveTextEditBounds feeds
-    // per-keystroke width/height/text so the SVG box grows with Fabric's
-    // wrap as the user types.
+    // UX 2026-07-14 (same-surface editor): during edit, TextEditOverlay is
+    // the visible glyph surface — caret and letters share ONE CSS layout, so
+    // they can never drift apart (the fabric-era caret bug). hideText=true
+    // makes the SVG skip only the glyph foreignObject; the border/background
+    // rects keep painting here from liveTextEditBounds, which still feeds
+    // per-keystroke width/height so the box grows with the overlay's wrap.
+    // Both surfaces consume buildPlainTextContentStyle, so the glyphs the
+    // overlay shows are pixel-identical to what the SVG paints post-commit.
     if (isBeingEdited && TEXT_EDIT_TYPES.has(objTypeForEdit)) {
-      renderElement = renderText(renderObj, i, liveTextEditBounds || null, false);
+      renderElement = renderText(renderObj, i, liveTextEditBounds || null, true);
     }
 
     return (
@@ -4607,7 +4626,7 @@ const SVGAnnotationLayer = memo(({
                 appendCoalescedPagePoints(e.nativeEvent);
                 setShapeCreation({ tool, gestureId, pointerId: e.pointerId, tick: 0 });
               } else {
-                setShapeCreation({ tool, gestureId, start: point, current: point });
+                setShapeCreation({ tool, gestureId, start: point, current: point, pointerId: e.pointerId });
               }
               e.preventDefault();
             }
@@ -4691,7 +4710,10 @@ const SVGAnnotationLayer = memo(({
             strokeWidth: liveTextEditBounds.strokeWidth ?? 1,
             text: liveTextEditBounds.text || '',
             opacity: 1,
-          }, 'text-creation-preview', liveTextEditBounds)}
+            // hideText=true (4th arg): TextEditOverlay shows the typed
+            // glyphs + caret during creation; this preview contributes only
+            // the box chrome (border/background) so text never double-paints.
+          }, 'text-creation-preview', liveTextEditBounds, true)}
         </g>
       )}
       {/* UX: Phase 14 CREATE-01 (callout half) — transient click-drag

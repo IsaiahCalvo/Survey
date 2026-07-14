@@ -7,6 +7,7 @@ import {
   paintAnnotationCanvas,
   traceFabricPath,
 } from '../src/utils/annotationCanvasPainter.js';
+import { countWrappedLines } from '../src/utils/svgBoundingBox.js';
 
 test('annotation canvas backing store is DPR-correct at normal zoom', () => {
   const result = calculateAnnotationCanvasBackingStore({
@@ -305,4 +306,114 @@ test('canvas callout tip is a solid-triangle arrowhead, not a dot', () => {
   });
   assert.equal(arcCalls, 0);
   assert.equal(triangleFilled, true);
+});
+
+test('dimensionless text counts wrapped lines exactly like the SVG measure pass', () => {
+  // Three ~60px words in a 100px container: word-boundary wrapping needs 3
+  // lines (one word per line), but the old ceil(naturalWidth/containerWidth)
+  // approximation said 2 — the block jumped a line height when the canvas
+  // presentation swapped in. The painter must share countWrappedLines.
+  const measureText = (text) => ({
+    width: String(text).split('').reduce((w, ch) => w + (ch === ' ' ? 6 : 20), 0),
+  });
+  const text = 'abc def ghi'; // 3 words x 60px, spaces 6px -> natural 192px
+  const containerWidth = 100;
+
+  const svgLines = countWrappedLines({ measureText }, text, containerWidth);
+  assert.equal(svgLines, 3);
+  // Guard that this case actually diverges from the old approximation.
+  assert.notEqual(svgLines, Math.ceil(measureText(text).width / containerWidth));
+
+  const fillRects = [];
+  const context = {
+    save: () => {},
+    restore: () => {},
+    translate: () => {},
+    rotate: () => {},
+    beginPath: () => {},
+    rect: () => {},
+    clip: () => {},
+    setLineDash: () => {},
+    moveTo: () => {},
+    lineTo: () => {},
+    stroke: () => {},
+    strokeRect: () => {},
+    fillText: () => {},
+    measureText,
+    fillRect: (...args) => fillRects.push(args),
+  };
+
+  drawAnnotationObject(context, {
+    type: 'i-text', // no stored height -> dimensionless measure fallback
+    left: 0,
+    top: 0,
+    width: containerWidth,
+    text,
+    fontSize: 16,
+    fill: '#000',
+    backgroundColor: '#ffff00', // background rect exposes effective dims
+  });
+
+  const singleLineH = 16 * 1.16;
+  const [, , effectiveWidth, effectiveHeight] = fillRects[0];
+  assert.equal(effectiveWidth, containerWidth + 4);
+  assert.equal(effectiveHeight, Math.max(svgLines * singleLineH + 4, singleLineH));
+});
+
+test('callout arrowhead strokes paint raw while connector lines stay non-scaling', () => {
+  // SVG's renderArrowheadEl spreads the spec with NO vectorEffect — arrowhead
+  // strokes scale with zoom. Only the connector lines and box border are
+  // non-scaling-stroke. The painter once descaled the arrowhead too, halving
+  // its thickness at 200% zoom when the canvas presentation opened.
+  let sawClosePath = false;
+  const beforeClose = [];
+  const afterClose = [];
+  const context = {
+    setTransform: () => {},
+    clearRect: () => {},
+    save: () => {},
+    restore: () => {},
+    beginPath: () => {},
+    moveTo: () => {},
+    lineTo: () => {},
+    closePath: () => { sawClosePath = true; },
+    translate: () => {},
+    rotate: () => {},
+    setLineDash: () => {},
+    stroke: () => {},
+    arc: () => {},
+    fill: () => {},
+    fillRect: () => {},
+    strokeRect: () => {},
+    measureText: (text) => ({ width: String(text).length * 6 }),
+    fillText: () => {},
+    set lineWidth(value) { (sawClosePath ? afterClose : beforeClose).push(value); },
+    get lineWidth() { return 0; },
+  };
+
+  paintAnnotationCanvas(context, {
+    canvasWidth: 600,
+    canvasHeight: 800,
+    drawScale: 1,
+    displayScale: 2,
+    pageWidth: 600,
+    pageHeight: 800,
+    objects: [],
+    callouts: [{
+      pageNumber: 1,
+      text: '',
+      arrowTip: { x: 0.1, y: 0.1 },
+      knee: { x: 0.2, y: 0.2 },
+      textBoxPosition: { x: 0.3, y: 0.3 },
+      textBoxWidth: 0.25,
+      textBoxHeight: 0.1,
+      style: { fontSize: 12, lineThickness: 4, arrowheadStyle: 'openTriangle' },
+    }],
+  });
+
+  // Connector line: 4 / displayScale(2) — vectorEffect twin.
+  assert.equal(beforeClose[0], 2);
+  // Arrowhead (only closePath in the paint is the open triangle): raw
+  // Math.max(2, lineThickness) from the shared spec, NOT descaled.
+  assert.equal(afterClose[0], 4);
 });
