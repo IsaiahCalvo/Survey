@@ -135,13 +135,13 @@
     "semantic_hash": ""
   },
   "agent-cli/callout-e2e.mjs": {
-    "mtime": 1784034991.793577,
-    "ast_hash": "f325dce4c7ac0198d33da7f94e5c5a60",
+    "mtime": 1784050113.4446878,
+    "ast_hash": "62b300706e6657cb2bc9a7d66e936abc",
     "semantic_hash": ""
   },
   "agent-cli/callout-interaction-e2e.mjs": {
-    "mtime": 1784034991.7948124,
-    "ast_hash": "f6fcd4e1e9934b4bfcc4028e9071574e",
+    "mtime": 1784050103.5681367,
+    "ast_hash": "b33383739d998e81527b090642c9ea62",
     "semantic_hash": ""
   },
   "agent-cli/diag-kal74-glow.mjs": {
@@ -220,8 +220,8 @@
     "semantic_hash": ""
   },
   "agent-cli/lock-document-e2e.mjs": {
-    "mtime": 1784034991.7987275,
-    "ast_hash": "e7d80e53832b7a662a49984540762dc8",
+    "mtime": 1784048384.5290816,
+    "ast_hash": "e53b4f537ebbafbc9df2faa5e0bcbd17",
     "semantic_hash": ""
   },
   "agent-cli/mobile-annotations-e2e.mjs": {
@@ -1135,8 +1135,8 @@
     "semantic_hash": ""
   },
   "src/AppShell.jsx": {
-    "mtime": 1784034992.3074136,
-    "ast_hash": "8c75af068fef26780aa29b7a2c1921b4",
+    "mtime": 1784047569.5877736,
+    "ast_hash": "9e2c9b3d86ceab32f6774858a51bf8bf",
     "semantic_hash": ""
   },
   "src/Dashboard.jsx": {
@@ -1160,8 +1160,8 @@
     "semantic_hash": ""
   },
   "src/PDFViewer.jsx": {
-    "mtime": 1784037826.4261196,
-    "ast_hash": "79dbeb21016433e4037c668c30b71391",
+    "mtime": 1784049762.975203,
+    "ast_hash": "0f0b6b66cefdd924b4db3ddd0396d850",
     "semantic_hash": ""
   },
   "src/PageAnnotationLayer.jsx": {
@@ -1265,8 +1265,8 @@
     "semantic_hash": ""
   },
   "src/components/FabricEraserCanvas.jsx": {
-    "mtime": 1784034992.329476,
-    "ast_hash": "890b1277b99310a3b14b6453600cb6f7",
+    "mtime": 1784048282.3192782,
+    "ast_hash": "10ab8e04c99a3bda24d46891ffaa28f0",
     "semantic_hash": ""
   },
   "src/components/FormFieldPropertiesPanel.jsx": {
@@ -1280,8 +1280,8 @@
     "semantic_hash": ""
   },
   "src/components/LightweightAnnotationOverlay.jsx": {
-    "mtime": 1784037727.3649535,
-    "ast_hash": "d49928c9e5bc09f2643ffd9c561d27d0",
+    "mtime": 1784043042.0703604,
+    "ast_hash": "574b9ee1963e495a91803227521bc621",
     "semantic_hash": ""
   },
   "src/components/NewColumnsModal.jsx": {
@@ -1345,8 +1345,8 @@
     "semantic_hash": ""
   },
   "src/components/SVGAnnotationLayer.jsx": {
-    "mtime": 1784034992.3352506,
-    "ast_hash": "c24f4122648feb7a9fd5df5724a43271",
+    "mtime": 1784048725.7097356,
+    "ast_hash": "ca21be14347afffa2b1a61da2480675f",
     "semantic_hash": ""
   },
   "src/components/SVGSelectionOverlay.jsx": {
@@ -2580,8 +2580,8 @@
     "semantic_hash": ""
   },
   "src/utils/geometryHitTest.js": {
-    "mtime": 1784034992.394997,
-    "ast_hash": "df15e434927b51dca05411de02e35635",
+    "mtime": 1784041275.0375967,
+    "ast_hash": "4768622f4617ebdbd804ebf77baadf69",
     "semantic_hash": ""
   },
   "src/utils/handleStyle.js": {
@@ -2840,13 +2840,13 @@
     "semantic_hash": ""
   },
   "src/utils/svgAnnotationRenderers.jsx": {
-    "mtime": 1784034992.4210865,
-    "ast_hash": "37a521c41c42b7dfe38642c8acbec2a4",
+    "mtime": 1784047944.793918,
+    "ast_hash": "242e3aff422c334a6c4b0540b4d29fc6",
     "semantic_hash": ""
   },
   "src/utils/svgBoundingBox.js": {
-    "mtime": 1784034992.4229393,
-    "ast_hash": "4dc3b4e298f0d4dedda94be0ddb1cbad",
+    "mtime": 1784048246.7338572,
+    "ast_hash": "f6c4286f08617a76e9264c0c7afc3e4a",
     "semantic_hash": ""
   },
   "src/utils/svgPathAttrs.js": {
@@ -3540,8 +3540,8 @@
     "semantic_hash": ""
   },
   "tests/geometryHitTest.test.mjs": {
-    "mtime": 1784034992.4657247,
-    "ast_hash": "b337273dfecead195ecc9a22f41ac733",
+    "mtime": 1784041326.0909579,
+    "ast_hash": "dca60c3a47124b971a05d59f09ea3383",
     "semantic_hash": ""
   },
   "tests/highlightSyncDeleteDiff.test.mjs": {
@@ -4375,8 +4375,8 @@
     "semantic_hash": ""
   },
   ".planning/callout-unification/KEYSTONE-WIRING.md": {
-    "mtime": 1784034991.494344,
-    "ast_hash": "c6095e2b81446e0c527b99603b4b9370",
+    "mtime": 1784048297.1674376,
+    "ast_hash": "cb000870c371349cd3d98da1b9b47b68",
     "semantic_hash": ""
   },
   ".planning/callout-unification/PLAN.md": {
@@ -7510,8 +7510,8 @@
     "semantic_hash": ""
   },
   "src/utils/annotationCanvasPainter.js": {
-    "mtime": 1784037693.9417856,
-    "ast_hash": "b2e1c4626fec3c2a84111067aacac902",
+    "mtime": 1784048271.4040194,
+    "ast_hash": "1f170146e02b1f4f6e825af80e74c696",
     "semantic_hash": ""
   },
   "src/utils/annotationDetailTile.js": {
@@ -7660,8 +7660,8 @@
     "semantic_hash": ""
   },
   "tests/annotationCanvasPainter.test.mjs": {
-    "mtime": 1784038040.2932863,
-    "ast_hash": "6d76243c734bbbd9a2f8637b332d1105",
+    "mtime": 1784048355.8502226,
+    "ast_hash": "41b626e9158ed7b8fe63101be1cae76d",
     "semantic_hash": ""
   },
   "tests/annotationDetailTile.test.mjs": {
@@ -7685,8 +7685,8 @@
     "semantic_hash": ""
   },
   "tests/calloutScopeStamping.test.mjs": {
-    "mtime": 1784034992.4601135,
-    "ast_hash": "6cce4b4ac6bb44898d339214b1d681f8",
+    "mtime": 1784048414.0580015,
+    "ast_hash": "01f30f52ff979279d3a0b5de14673eaa",
     "semantic_hash": ""
   },
   "tests/eraserPolicy.test.mjs": {
@@ -7740,8 +7740,8 @@
     "semantic_hash": ""
   },
   "tests/mobileRuntimeCompatibility.test.mjs": {
-    "mtime": 1784034992.4702842,
-    "ast_hash": "abb9b00eea151069599a72f43f2958a7",
+    "mtime": 1784048436.7250698,
+    "ast_hash": "31d96e7b1bcce6444e34e6f33ffb1aa2",
     "semantic_hash": ""
   },
   "tests/pageSpaceEraser.test.mjs": {
@@ -7770,8 +7770,8 @@
     "semantic_hash": ""
   },
   "tests/productionPaperInk.test.mjs": {
-    "mtime": 1784034992.498177,
-    "ast_hash": "fbd5141cdb1597af6e7299646257f249",
+    "mtime": 1784048397.7426627,
+    "ast_hash": "68bd2ea71a933b3f27080cac7fc52e31",
     "semantic_hash": ""
   },
   "tests/prototypeAnnotationGeometry.test.mjs": {
@@ -8132,6 +8132,26 @@
   "mobile-expo/assets/splash-icon.png": {
     "mtime": 1784034992.247961,
     "ast_hash": "97dae5a0e62ad8551d8a31897b425e63",
+    "semantic_hash": ""
+  },
+  "src/utils/annotationCreationCommit.js": {
+    "mtime": 1784041912.126207,
+    "ast_hash": "3196819385ba840e4ad2dd54a6bdd47d",
+    "semantic_hash": ""
+  },
+  "src/utils/textEditCommit.js": {
+    "mtime": 1784048422.7945457,
+    "ast_hash": "e4b9573573a95a9849139f3a585d63c6",
+    "semantic_hash": ""
+  },
+  "src/components/TextEditOverlay.jsx": {
+    "mtime": 1784049324.6406446,
+    "ast_hash": "a9d05604d19ac8bb643a5cab3494162b",
+    "semantic_hash": ""
+  },
+  "tests/textEditCommit.test.mjs": {
+    "mtime": 1784050151.658031,
+    "ast_hash": "4ac102fb6f60440518ae885e67408bfd",
     "semantic_hash": ""
   }
 }

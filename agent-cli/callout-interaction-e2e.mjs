@@ -79,7 +79,7 @@ try {
     if (!r) return null; const b = r.getBoundingClientRect();
     return { x: b.x + b.width / 2, y: b.y + b.height / 2, w: b.width, h: b.height };
   }, id);
-  const editActive = () => page.evaluate(() => !!document.querySelector('.upper-canvas, [class*="fabric"]'));
+  const editActive = () => page.evaluate(() => !!document.querySelector('[data-text-edit-overlay], .upper-canvas'));
   const cornerHandleCount = (id) => page.evaluate((cid) =>
     document.querySelectorAll(`[data-callout-id="${cid}"] [data-callout-part^="textBox-"]`).length, id);
 
@@ -120,7 +120,7 @@ try {
   for (const [fx, fy] of SPOTS) {
     if (!(await spotClear(fx, fy))) continue;
     await drawCallout(fx, fy);
-    editOnCreate = await page.evaluate(() => !!document.querySelector('.upper-canvas, [class*="fabric"]'));
+    editOnCreate = await page.evaluate(() => !!document.querySelector('[data-text-edit-overlay], .upper-canvas'));
     if (editOnCreate) break;
     await page.keyboard.press('Escape'); await page.waitForTimeout(200);
   }

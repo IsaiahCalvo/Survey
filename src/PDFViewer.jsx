@@ -28,6 +28,7 @@ import CalloutOverlay from './components/Callout';
 import ExcelLockedModal from './components/ExcelLockedModal';
 import ExcelSyncConfirmModal from './components/ExcelSyncConfirmModal';
 import FabricEditCanvas from './components/FabricEditCanvas';
+import TextEditOverlay from './components/TextEditOverlay';
 import FabricEraserCanvas from './components/FabricEraserCanvas';
 import FormFieldPropertiesPanel from './components/FormFieldPropertiesPanel';
 import Icon from './Icons';
@@ -4053,31 +4054,36 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       appDebug(`[Counter] TOOL ACTIVATED — activeTool=counter, lastShapeTool=${lastShapeTool}, ref will sync next render`);
     }
     if (['line', 'arrow', 'callout'].includes(activeTool)) {
-      const isDrawingTool = ['pen', 'highlighter', 'rect', 'ellipse', 'line', 'arrow'].includes(activeTool);
       appDebug(`[App] TOOL ACTIVATED: ${activeTool}`, {
-        isDrawingTool,
-        willMountDrawingCanvas: isDrawingTool,
-        willMountCalloutUI: activeTool === 'callout',
-        NOTE: activeTool === 'callout'
-          ? 'CALLOUT TOOL HAS NO CREATION UI — isDrawingTool=false, no canvas mounts, no click handler'
-          : activeTool === 'arrow'
-            ? 'Arrow tool creates plain fabric.Line — NO arrowhead added in FabricDrawingCanvas'
-            : 'Line tool creates fabric.Line — edit blocked by non-editable check in handleAnnotationEdit',
+        creationSurface: activeTool === 'callout'
+          ? 'SVGAnnotationLayer callout drag (svgServesCalloutCreation)'
+          : 'SVGAnnotationLayer shape creation (no drawing canvas mounts — FabricDrawingCanvas retired)',
       });
     }
 
+    // UX: the sub-toolbar must always show the ACTIVE tool's group. Keyboard
+    // shortcuts (P/H/E/Q/L/A/C/T…) only change activeTool, while the sub-row
+    // renders from activeCategoryDropdown (set by category-button clicks) —
+    // so pressing E highlighted the Draw group but left the previous group's
+    // sub-row on screen. Deriving the dropdown here makes shortcut switches
+    // indistinguishable from clicking the category button. The category
+    // buttons' toggle-to-close still works: closing doesn't change the tool,
+    // so this effect doesn't re-open.
     if (['pen', 'highlighter', 'text-highlight', 'eraser'].includes(activeTool)) {
       setLastDrawTool(activeTool);
+      setActiveCategoryDropdown((prev) => (prev === 'draw' ? prev : 'draw'));
       try {
         localStorage.setItem('lastDrawTool', activeTool);
       } catch (e) { }
     } else if (['rect', 'ellipse', 'line', 'arrow', 'counter'].includes(activeTool)) {
       setLastShapeTool(activeTool);
+      setActiveCategoryDropdown((prev) => (prev === 'shape' ? prev : 'shape'));
       try {
         localStorage.setItem('lastShapeTool', activeTool);
       } catch (e) { }
     } else if (REVIEW_TOOL_IDS.includes(activeTool)) {
       setLastReviewTool(activeTool);
+      setActiveCategoryDropdown((prev) => (prev === 'review' ? prev : 'review'));
       try {
         localStorage.setItem('lastReviewTool', activeTool);
       } catch (e) { }
@@ -29074,6 +29080,13 @@ ${pageBlocks}
                                       console.warn(`[App p${pageNumber}] edit BLOCKED — no annotation data at idx=${annotationIndex}`);
                                       return;
                                     }
+                                    // fabric 7 serializes capitalized class types ('Textbox',
+                                    // 'IText') while legacy saves store lowercase — every
+                                    // comparison below is against lowercase, so normalize or
+                                    // fabric-7-committed text silently loses double-click edit
+                                    // (the dispatch fell through to the unknown-type no-op).
+                                    annotationType = String(annotationType || '').toLowerCase();
+                                    if (annotationType === 'itext') annotationType = 'i-text';
                                     // UX 2026-04-19 — new double-click rule:
                                     //   - pen/highlighter (path) → no-op (handles are the
                                     //     single-click chrome; nothing else to edit).
@@ -29568,9 +29581,16 @@ ${pageBlocks}
                                 />
                               )}
 
-                              {/* Edit Canvas -- targeted overlay for text/shape/callout editing */}
-                              {isEditMode && editingAnnotation?.editType !== 'bbox' && (
-                                <FabricEditCanvas
+                              {/* Edit host -- targeted overlay for text/shape/callout editing.
+                                  editType 'text' (plain textboxes AND callout text via
+                                  reactCalloutId) mounts TextEditOverlay: same-surface HTML
+                                  editing where caret and glyphs share one CSS layout, fixing
+                                  the fabric-era caret drift. Shapes keep FabricEditCanvas.
+                                  Both consume the same prop contract; extras are ignored. */}
+                              {isEditMode && editingAnnotation?.editType !== 'bbox' && (() => {
+                                const EditHost = editingAnnotation?.editType === 'text' ? TextEditOverlay : FabricEditCanvas;
+                                return (
+                                <EditHost
                                   key={`edit-${pageNumber}-${editingAnnotation?.index ?? 'new'}-${editingAnnotation?.editType || ''}`}
                                   pageNumber={pageNumber}
                                   pageWidth={resolvedPageSize.width}
@@ -29742,7 +29762,8 @@ ${pageBlocks}
                                   onGroupUpdate={handleCounterGroupUpdate}
                                   counterGroupSize={editingCounterGroupSize}
                                 />
-                              )}
+                                );
+                              })()}
 
                               {/* Callout Overlay -- always rendered so callouts stay visible in all tool modes.
                                   CalloutCanvas handles its own pointer-events based on activeTool. */}
