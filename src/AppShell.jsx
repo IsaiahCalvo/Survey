@@ -351,6 +351,29 @@ export default function App({ devPreviewReturnTab = null }) {
   // wiring step.
   const [bottomToolbarApi, setBottomToolbarApi] = useState(null);
 
+  // UX 2026-07-14: every top-bar control gets the app's instant tooltip
+  // (the floating chip PDFViewer renders from setTooltip), not just the
+  // category buttons. Native title= tooltips take ~1.5s and look
+  // OS-styled, so users read the mixed behavior as "most tools have no
+  // tooltip". Spread chromeTip('Label') onto a control to opt it in;
+  // reference behavior matched: the Draw/Shapes/Text category buttons.
+  const chromeTip = (text, placement = 'below') => ({
+    onMouseEnter: (e) => {
+      const rect = e.currentTarget.getBoundingClientRect();
+      bottomToolbarApi?.setTooltip?.({
+        visible: true,
+        text,
+        // 'below' hangs under top-bar controls; 'above' floats over the
+        // right-rail bottom slot (page nav + zoom) where below would
+        // land off-screen.
+        x: rect.left + rect.width / 2,
+        y: placement === 'below' ? rect.bottom + 10 : rect.top - 10,
+        placement
+      });
+    },
+    onMouseLeave: () => bottomToolbarApi?.setTooltip?.({ visible: false, text: '', x: 0, y: 0 }),
+  });
+
   // 2026-05-25: Arrowhead picker — opens below the trigger and shows every
   // option at once (no native select scroll). Closed on outside click.
   const [showArrowheadMenu, setShowArrowheadMenu] = useState(false);
@@ -1115,6 +1138,7 @@ export default function App({ devPreviewReturnTab = null }) {
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '2px', height: '32px', padding: '0 4px' }}>
                 <button
                   onClick={bottomToolbarApi.zoomOut}
+                  {...chromeTip('Zoom out', 'below')}
                   title="Zoom out"
                   aria-label="Zoom out"
                   style={{ height: '28px', width: '28px', display: 'grid', placeItems: 'center', border: 'none', background: 'transparent', color: '#e8e2d4', borderRadius: '4px', fontSize: '14px', lineHeight: 1, cursor: 'pointer' }}
@@ -1145,6 +1169,7 @@ export default function App({ devPreviewReturnTab = null }) {
                     onClick={() => setIsEditingRailZoom(true)}
                     onDoubleClick={() => setIsEditingRailZoom(true)}
                     aria-label="Edit zoom percentage"
+                    {...chromeTip('Zoom level — click to type a percentage', 'below')}
                     title="Click to type a zoom percentage"
                     style={{ minWidth: '5ch', textAlign: 'center', background: 'transparent', border: 'none', color: '#e8e2d4', fontSize: '11px', fontFamily: FONT_FAMILY, fontVariantNumeric: 'tabular-nums', padding: '0 2px', cursor: 'pointer', lineHeight: 1 }}
                   >
@@ -1153,6 +1178,7 @@ export default function App({ devPreviewReturnTab = null }) {
                 )}
                 <button
                   onClick={bottomToolbarApi.zoomIn}
+                  {...chromeTip('Zoom in', 'below')}
                   title="Zoom in"
                   aria-label="Zoom in"
                   style={{ height: '28px', width: '28px', display: 'grid', placeItems: 'center', border: 'none', background: 'transparent', color: '#e8e2d4', borderRadius: '4px', fontSize: '14px', lineHeight: 1, cursor: 'pointer' }}
@@ -1166,6 +1192,7 @@ export default function App({ devPreviewReturnTab = null }) {
                 <button
                   onClick={bottomToolbarApi.goToPreviousPage}
                   disabled={bottomToolbarApi.pageNum <= 1}
+                  {...chromeTip('Previous page', 'below')}
                   title="Previous page"
                   aria-label="Previous page"
                   style={{ height: '24px', width: '24px', display: 'grid', placeItems: 'center', border: 'none', background: 'transparent', color: '#e8e2d4', borderRadius: '4px', cursor: bottomToolbarApi.pageNum <= 1 ? 'not-allowed' : 'pointer', opacity: bottomToolbarApi.pageNum <= 1 ? 0.35 : 1 }}
@@ -1200,6 +1227,7 @@ export default function App({ devPreviewReturnTab = null }) {
                       onClick={() => setIsEditingRailPage(true)}
                       onDoubleClick={() => setIsEditingRailPage(true)}
                       aria-label="Edit page number"
+                      {...chromeTip('Page — click to jump', 'below')}
                       title="Click to jump to a page"
                       style={{ background: 'transparent', border: 'none', color: '#d8a84e', fontSize: '11px', fontFamily: FONT_FAMILY, fontWeight: '600', fontVariantNumeric: 'tabular-nums', padding: '0 2px', cursor: 'pointer', lineHeight: 1 }}
                     >
@@ -1212,6 +1240,7 @@ export default function App({ devPreviewReturnTab = null }) {
                 <button
                   onClick={bottomToolbarApi.goToNextPage}
                   disabled={bottomToolbarApi.pageNum >= bottomToolbarApi.numPages}
+                  {...chromeTip('Next page', 'below')}
                   title="Next page"
                   aria-label="Next page"
                   style={{ height: '24px', width: '24px', display: 'grid', placeItems: 'center', border: 'none', background: 'transparent', color: '#e8e2d4', borderRadius: '4px', cursor: bottomToolbarApi.pageNum >= bottomToolbarApi.numPages ? 'not-allowed' : 'pointer', opacity: bottomToolbarApi.pageNum >= bottomToolbarApi.numPages ? 0.35 : 1 }}
@@ -1259,6 +1288,7 @@ export default function App({ devPreviewReturnTab = null }) {
                       aria-expanded={bottomToolbarApi.isZoomMenuOpen}
                       aria-label="Fit options"
                       data-active={mode !== ZOOM_MODES.MANUAL}
+                      {...chromeTip(`Page fit: ${bottomToolbarApi.zoomDropdownLabel}`, 'below')}
                       title={`Page fit: ${bottomToolbarApi.zoomDropdownLabel}`}
                       style={{ height: '30px', display: 'flex', alignItems: 'center', gap: '6px', padding: '0 10px', border: 'none', background: 'transparent', color: mode !== ZOOM_MODES.MANUAL ? '#e8e2d4' : '#e8e2d4', borderRadius: '4px', fontSize: '11px', fontFamily: FONT_FAMILY, cursor: 'pointer' }}
                     >
@@ -1301,6 +1331,7 @@ export default function App({ devPreviewReturnTab = null }) {
                   <div style={{ width: '1px', height: '24px', background: 'rgba(255,255,255,0.18)' }} />
                   <button
                     onClick={bottomToolbarApi.exportAnnotatedPdf}
+                    {...chromeTip('Export annotated PDF', 'below')}
                     title="Export annotated PDF"
                     aria-label="Export annotated PDF"
                     style={{ height: '30px', width: '30px', display: 'grid', placeItems: 'center', border: 'none', background: 'transparent', color: '#e8e2d4', borderRadius: '4px', cursor: 'pointer' }}
@@ -1337,6 +1368,7 @@ export default function App({ devPreviewReturnTab = null }) {
               onClick={topToolbarApi.onUndo || (() => {})}
               disabled={!topToolbarApi.canUndo}
               className="btn btn-default btn-sm"
+              {...chromeTip('Undo', 'below')}
               title="Undo"
               style={{
                 padding: '4px 8px',
@@ -1353,6 +1385,7 @@ export default function App({ devPreviewReturnTab = null }) {
               onClick={topToolbarApi.onRedo || (() => {})}
               disabled={!topToolbarApi.canRedo}
               className="btn btn-default btn-sm"
+              {...chromeTip('Redo', 'below')}
               title="Redo"
               style={{
                 padding: '4px 8px',
@@ -1626,6 +1659,7 @@ export default function App({ devPreviewReturnTab = null }) {
                           boxSizing: 'border-box',
                           cursor: 'pointer',
                         }}
+                        {...chromeTip('Font color', 'below')}
                         title="Font color"
                         aria-label="Font color"
                       >
@@ -1686,6 +1720,7 @@ export default function App({ devPreviewReturnTab = null }) {
                               justifyContent: 'space-between',
                               gap: '6px',
                             }}
+                            {...chromeTip('Font', 'below')}
                             title="Font"
                             aria-label="Font"
                           >
@@ -1772,6 +1807,7 @@ export default function App({ devPreviewReturnTab = null }) {
                               justifyContent: 'space-between',
                               gap: '6px',
                             }}
+                            {...chromeTip('Font size', 'below')}
                             title="Font size"
                             aria-label="Font size"
                           >
@@ -1862,6 +1898,7 @@ export default function App({ devPreviewReturnTab = null }) {
                             justifyContent: 'center',
                             ...fontStyleOverride,
                           }}
+                          {...chromeTip(label === 'B' ? 'Bold' : label === 'I' ? 'Italic' : label === 'U' ? 'Underline' : 'Strikethrough', 'below')}
                           title={label === 'B' ? 'Bold' : label === 'I' ? 'Italic' : label === 'U' ? 'Underline' : 'Strikethrough'}
                           aria-label={label === 'B' ? 'Bold' : label === 'I' ? 'Italic' : label === 'U' ? 'Underline' : 'Strikethrough'}
                           aria-pressed={isOn}
@@ -1902,6 +1939,7 @@ export default function App({ devPreviewReturnTab = null }) {
                               alignItems: 'center',
                               justifyContent: 'center',
                             }}
+                            {...chromeTip('Text alignment', 'below')}
                             title="Text alignment"
                             aria-label="Text alignment"
                           >
@@ -2020,6 +2058,7 @@ export default function App({ devPreviewReturnTab = null }) {
                       boxSizing: 'border-box',
                       cursor: 'pointer'
                     }}
+                    {...chromeTip('Color', 'below')}
                     title="Color"
                     aria-label="Color"
                   >
@@ -2056,6 +2095,7 @@ export default function App({ devPreviewReturnTab = null }) {
                       alignItems: 'center',
                       justifyContent: 'center'
                     }}
+                    {...chromeTip('Counter colors', 'below')}
                     title="Counter colors"
                     aria-label="Counter colors"
                   >
@@ -2096,6 +2136,7 @@ export default function App({ devPreviewReturnTab = null }) {
                       overflow: 'hidden',
                       cursor: 'pointer'
                     }}
+                    {...chromeTip('Color', 'below')}
                     title="Color"
                     aria-label="Color"
                   >
@@ -2141,6 +2182,7 @@ export default function App({ devPreviewReturnTab = null }) {
                             backgroundSize: '4px 4px, 4px 4px',
                             backgroundRepeat: 'no-repeat',
                           }}
+                          {...chromeTip('Counter series', 'below')}
                           title="Counter series"
                           aria-label="Counter series"
                           aria-expanded={showCounterSeriesMenu}
@@ -2391,6 +2433,7 @@ export default function App({ devPreviewReturnTab = null }) {
                         backgroundSize: '4px 4px, 4px 4px',
                         backgroundRepeat: 'no-repeat'
                       }}
+                      {...chromeTip('Eraser type', 'below')}
                       title="Eraser type"
                       aria-label="Eraser type"
                       aria-expanded={showEraserTypeMenu}
@@ -2484,6 +2527,7 @@ export default function App({ devPreviewReturnTab = null }) {
                     fontFamily: FONT_FAMILY,
                     textAlign: 'center'
                   }}
+                  {...chromeTip('Width', 'below')}
                   title="Width"
                 />
                 )}
@@ -2511,6 +2555,7 @@ export default function App({ devPreviewReturnTab = null }) {
                         backgroundSize: '4px 4px, 4px 4px',
                         backgroundRepeat: 'no-repeat'
                       }}
+                      {...chromeTip('Style', 'below')}
                       title="Style"
                       aria-label="Style"
                     >
@@ -2600,6 +2645,7 @@ export default function App({ devPreviewReturnTab = null }) {
                         fontFamily: FONT_FAMILY,
                         textAlign: 'center'
                       }}
+                      {...chromeTip('Cloud bump size', 'below')}
                       title="Cloud bump size"
                     />
                   </label>
@@ -2630,6 +2676,7 @@ export default function App({ devPreviewReturnTab = null }) {
                         backgroundSize: '4px 4px, 4px 4px',
                         backgroundRepeat: 'no-repeat'
                       }}
+                      {...chromeTip('Arrowhead', 'below')}
                       title="Arrowhead"
                       aria-label="Arrowhead"
                     >
@@ -2920,6 +2967,7 @@ export default function App({ devPreviewReturnTab = null }) {
                 <button
                   onClick={bottomToolbarApi.goToPreviousPage}
                   disabled={bottomToolbarApi.pageNum <= 1}
+                  {...chromeTip('Previous page', 'above')}
                   title="Previous page"
                   style={{
                     width: '24px',
@@ -2986,6 +3034,7 @@ export default function App({ devPreviewReturnTab = null }) {
                     onClick={() => setIsEditingRailPage(true)}
                     onDoubleClick={() => setIsEditingRailPage(true)}
                     aria-label="Edit page number"
+                    {...chromeTip('Page — click to jump', 'above')}
                     title="Click to jump to a page"
                     style={{
                       background: 'transparent',
@@ -3029,6 +3078,7 @@ export default function App({ devPreviewReturnTab = null }) {
                 <button
                   onClick={bottomToolbarApi.goToNextPage}
                   disabled={bottomToolbarApi.pageNum >= bottomToolbarApi.numPages}
+                  {...chromeTip('Next page', 'above')}
                   title="Next page"
                   style={{
                     width: '24px',
@@ -3057,6 +3107,7 @@ export default function App({ devPreviewReturnTab = null }) {
                     for character-based buttons. */}
                 <button
                   onClick={bottomToolbarApi.zoomIn}
+                  {...chromeTip('Zoom in', 'above')}
                   title="Zoom in"
                   style={{
                     width: '28px',
@@ -3124,6 +3175,7 @@ export default function App({ devPreviewReturnTab = null }) {
                     onClick={() => setIsEditingRailZoom(true)}
                     onDoubleClick={() => setIsEditingRailZoom(true)}
                     aria-label="Edit zoom percentage"
+                    {...chromeTip('Zoom level — click to type a percentage', 'above')}
                     title="Click to type a zoom percentage"
                     style={{
                       background: 'transparent',
@@ -3147,6 +3199,7 @@ export default function App({ devPreviewReturnTab = null }) {
                 {/* Zoom out (minus) */}
                 <button
                   onClick={bottomToolbarApi.zoomOut}
+                  {...chromeTip('Zoom out', 'above')}
                   title="Zoom out"
                   style={{
                     width: '28px',
@@ -3220,6 +3273,7 @@ export default function App({ devPreviewReturnTab = null }) {
                         aria-expanded={bottomToolbarApi.isZoomMenuOpen}
                         aria-label="Fit options"
                         data-active={mode !== ZOOM_MODES.MANUAL}
+                        {...chromeTip(`Page fit: ${bottomToolbarApi.zoomDropdownLabel}`, 'above')}
                         title={`Page fit: ${bottomToolbarApi.zoomDropdownLabel}`}
                         style={{
                           position: 'relative',

@@ -1289,7 +1289,12 @@ input[type="text"].space-add-pages-input:focus-visible {
 .btn-active:hover {
   background: transparent;
   color: #d8a84e;
-  border-color: transparent;
+  /* UX: active buttons must occupy EXACTLY the same box as .btn-default
+     (which carries border: 1px solid transparent). The toolbar's category
+     cluster is centered, so a 2px width change on the active button
+     re-centers and visibly jiggles every icon on each tool switch.
+     Keep the full 1px transparent border, not just border-color. */
+  border: 1px solid transparent;
 }
 
 /* Action Card Buttons */
