@@ -44,9 +44,26 @@
 // bold text, offset strokes) produces solid tile clusters that no channel
 // threshold should be tuned to hide.
 //
-// Artifacts: agent-cli/artifacts/renderer-parity/{svg,canvas,diff}.png
-// (untracked — same convention as the sibling harnesses' agent-cli/*.png).
-// Exit 0 = parity PASS + cleanup returned counts to baseline. Exit 1 = FAIL.
+// TWO passes share the same drawn fixtures:
+//   pass 1 "zoom-100"  — the document's opening zoom (~100%): unclamped base
+//     canvas with a device-exact CSS box.
+//   pass 2 "deep-zoom" — DEEP_ZOOM_PCT (default 400%), above the painter's
+//     2.5x raster cap (MAX_RASTER_SCALE in annotationCanvasPainter.js). There
+//     the canvas presentation switches to the CLAMPED path: the base canvas
+//     keeps a capped backing stretched to '100%' of the host, and once the
+//     viewport settles the detail tile (src/utils/annotationDetailTile.js)
+//     takes over the visible region at full resolution (base hidden). The
+//     settled state photographed here IS the detail tile, so this pass is the
+//     e2e gate for the clamped-path presentation switch and the tile's
+//     integer-CSS-px snapping (unit-tested + reasoned in 076e7d01, 2026-07-14
+//     — now pixel-gated). Before the deep shots the viewport is centered on
+//     the text+callout fixture cluster (the most drift-prone painters).
+//
+// Artifacts: agent-cli/artifacts/renderer-parity/{svg,canvas,diff}.png (pass 1)
+// and {svg,canvas,diff}-deepzoom.png (pass 2) — untracked, same convention as
+// the sibling harnesses' agent-cli/*.png.
+// Exit 0 = both passes within thresholds + cleanup returned counts to
+// baseline. Exit 1 = FAIL.
 
 import { chromium } from 'playwright';
 import fs from 'node:fs';
@@ -73,12 +90,12 @@ const CHANNEL_DELTA = Number(process.env.CHANNEL_DELTA || 32); // per-channel 0-
 const GLOBAL_BUDGET = 0.004;  // 0.4% of compared (unmasked) page pixels
 const TILE = 24;              // tile edge, px
 const TILE_BUDGET = 0.15;     // any tile >15% different fails
+// Deep-zoom target — must land the effective display scale above the 2.5x
+// raster cap or the clamped path never engages (the pass fails loudly if so).
+const DEEP_ZOOM_PCT = Number(process.env.DEEP_ZOOM_PCT || 400);
 
 const ART_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), 'artifacts', 'renderer-parity');
 fs.mkdirSync(ART_DIR, { recursive: true });
-const SVG_PNG = path.join(ART_DIR, 'svg.png');
-const CANVAS_PNG = path.join(ART_DIR, 'canvas.png');
-const DIFF_PNG = path.join(ART_DIR, 'diff.png');
 
 let stepIndex = 0;
 const step = (msg) => console.log(`[${++stepIndex}] ${msg}`);
@@ -235,12 +252,372 @@ const neutralize = async (clip) => {
   await page.waitForTimeout(600); // let overlay scrollbars fade + paints settle
 };
 
+// Wait until the page-1 host width satisfies `predicate` AND holds still
+// across two consecutive polls (zoom application re-lays-out asynchronously).
+const waitForZoomSettle = async (predicate, label, timeoutMs = 20000) => {
+  const deadline = Date.now() + timeoutMs;
+  let prev = -1;
+  let stable = 0;
+  while (Date.now() < deadline) {
+    const box = await page.locator('[data-annotation-real-surface="1"]')
+      .boundingBox({ timeout: 2000 }).catch(() => null);
+    const w = box?.width || 0;
+    if (predicate(w) && Math.abs(w - prev) < 0.5) {
+      stable += 1;
+      if (stable >= 2) return w;
+    } else {
+      stable = 0;
+    }
+    prev = w;
+    await page.waitForTimeout(300);
+  }
+  throw new Error(`${label}: page width never settled to the expected zoom (last ${prev.toFixed(1)}px)`);
+};
+
+// Zoom via REAL controls only, never a synthetic wheel (project memory:
+// synthetic wheels can't drive the real zoom path). Primary: the rail's
+// editable percent field (commitZoomInput → zoomController.setScale).
+// Verified by page width; falls back to stepping the +/- buttons (the
+// version-history-e2e idiom, 1.25x per click) if the typed commit doesn't
+// land. Returns the settled page-host width.
+const setZoomPercent = async (pct) => {
+  const readWidth = async () => (await page.locator('[data-annotation-real-surface="1"]')
+    .boundingBox({ timeout: 2000 }).catch(() => null))?.width || 0;
+  const btn = page.locator('button[aria-label="Edit zoom percentage"]').first();
+  const currentPct = parseInt(((await btn.textContent().catch(() => '')) || '').trim(), 10) || 100;
+  const before = await readWidth();
+  const expected = before * (pct / currentPct);
+  const nearExpected = (w) => Math.abs(w - expected) < Math.max(4, expected * 0.02);
+  if (nearExpected(before)) return before; // already there
+
+  await btn.click();
+  const input = page.locator('input[aria-label="Zoom percentage"]');
+  await input.waitFor({ state: 'visible', timeout: 5000 });
+  await input.fill(String(pct));
+  // The typed value reaches the commit handler via the app-shell api
+  // REPUBLISH, which is effect-timed (function-identity churn is suppressed;
+  // data changes republish on the next effect pass) — Enter immediately after
+  // fill can run a stale commit closure still holding the previous input
+  // value. A human can't type that fast; wait the republish out.
+  await page.waitForTimeout(400);
+  await page.keyboard.press('Enter');
+  try {
+    return await waitForZoomSettle(nearExpected, `type-to-${pct}%`, 8000);
+  } catch {
+    console.log(`   [warn] typed zoom commit didn't land — stepping the real +/- buttons instead`);
+  }
+
+  // Button steps are multiplicative and can't hit pct exactly; land within
+  // one step (±~13%) of the expected width — for the deep-zoom pass that
+  // still clears the 2.5x cap by a wide margin.
+  for (let i = 0; i < 12; i++) {
+    const w = await readWidth();
+    if (w >= expected / 1.13 && w <= expected * 1.13) break;
+    await page.locator(`button[title="${w < expected ? 'Zoom in' : 'Zoom out'}"]`).first().click();
+    await page.waitForTimeout(600);
+  }
+  return waitForZoomSettle((w) => w >= expected / 1.15 && w <= expected * 1.15, `step-to-~${pct}%`, 10000);
+};
+
+// Scroll so page fraction (fx, fy) sits at the viewport center. Same
+// proven-movement scroller walk as version-history-e2e: the first
+// overflowing candidate can clamp and silently no-op.
+const centerViewportOn = (fx, fy) => page.evaluate(([tx, ty]) => {
+  const host = document.querySelector('[data-annotation-real-surface="1"]');
+  if (!host) return { moved: false, reason: 'no page host' };
+  const cands = Array.from(document.querySelectorAll('*')).filter((e) =>
+    e.clientHeight > 300 && e.contains(host)
+    && (e.scrollWidth > e.clientWidth + 20 || e.scrollHeight > e.clientHeight + 50));
+  for (const el of cands) {
+    const hRect = host.getBoundingClientRect();
+    const eRect = el.getBoundingClientRect();
+    const before = { l: el.scrollLeft, t: el.scrollTop };
+    el.scrollLeft = Math.max(0, before.l + (hRect.left - eRect.left) + hRect.width * tx - el.clientWidth / 2);
+    el.scrollTop = Math.max(0, before.t + (hRect.top - eRect.top) + hRect.height * ty - el.clientHeight / 2);
+    if (el.scrollLeft !== before.l || el.scrollTop !== before.t) {
+      return { moved: true, tag: `${el.tagName}.${String(el.className).slice(0, 30)}`, left: Math.round(el.scrollLeft), top: Math.round(el.scrollTop) };
+    }
+  }
+  return { moved: false, candidates: cands.length };
+}, [fx, fy]);
+
+// Deep zoom re-rasterizes the pdf.js page bitmap (its own cap/tile pipeline)
+// — a crisp tile landing BETWEEN the two presentation shots would poison the
+// diff with background-only deltas. Probe the clip until two shots 500ms
+// apart match; on timeout, log and proceed (the diff itself will judge).
+const waitForRegionStable = async (clip, label) => {
+  const region = { x: clip.x, y: clip.y, width: clip.width, height: clip.height };
+  let prev = PNG.sync.read(await page.screenshot({ clip: region }));
+  for (let i = 0; i < 10; i++) {
+    await page.waitForTimeout(500);
+    const cur = PNG.sync.read(await page.screenshot({ clip: region }));
+    let d = 0;
+    for (let p = 0; p < cur.data.length; p += 4) {
+      if (Math.abs(cur.data[p] - prev.data[p]) > CHANNEL_DELTA
+        || Math.abs(cur.data[p + 1] - prev.data[p + 1]) > CHANNEL_DELTA
+        || Math.abs(cur.data[p + 2] - prev.data[p + 2]) > CHANNEL_DELTA) d += 1;
+    }
+    if (d / (cur.width * cur.height) < 0.0002) {
+      console.log(`   [${label}] page region stable after ${i + 1} probe(s)`);
+      return;
+    }
+    prev = cur;
+  }
+  console.log(`   [warn] [${label}] page region never fully settled across probes — proceeding; the diff will judge`);
+};
+
+// The pixel diff (in-process, pngjs) — per-channel threshold + tile budgets,
+// chrome tiles masked out. Writes the diff viz PNG; returns the metrics.
+const diffPair = ({ label, svgPath, canvasPath, diffPath, maskedSet }) => {
+  const imgA = PNG.sync.read(fs.readFileSync(svgPath));
+  const imgB = PNG.sync.read(fs.readFileSync(canvasPath));
+  if (imgA.width !== imgB.width || imgA.height !== imgB.height) {
+    throw new Error(`[${label}] screenshot dimensions differ: ${imgA.width}x${imgA.height} vs ${imgB.width}x${imgB.height}`);
+  }
+  const { width: W, height: H } = imgA;
+  const cols = Math.ceil(W / TILE);
+  const rows = Math.ceil(H / TILE);
+  if (maskedSet.size > cols * rows * 0.3) {
+    throw new Error(`[${label}] chrome mask covers ${maskedSet.size}/${cols * rows} tiles (>30%) — clip is mostly chrome, harness bug`);
+  }
+
+  const tileDiff = new Uint32Array(cols * rows);
+  const tilePx = new Uint32Array(cols * rows);
+  const out = new PNG({ width: W, height: H });
+  let diffCount = 0;
+  let compared = 0;
+  for (let y = 0; y < H; y++) {
+    for (let x = 0; x < W; x++) {
+      const i = (y * W + x) * 4;
+      const t = Math.floor(y / TILE) * cols + Math.floor(x / TILE);
+      // diff viz base: dimmed grayscale of the SVG shot
+      const lum = Math.round((imgA.data[i] + imgA.data[i + 1] + imgA.data[i + 2]) / 3 * 0.35);
+      out.data[i] = lum; out.data[i + 1] = lum; out.data[i + 2] = lum; out.data[i + 3] = 255;
+      if (maskedSet.has(t)) { out.data[i + 2] = Math.min(255, lum + 70); continue; } // blue tint = masked
+      compared++;
+      tilePx[t]++;
+      const d = Math.max(
+        Math.abs(imgA.data[i] - imgB.data[i]),
+        Math.abs(imgA.data[i + 1] - imgB.data[i + 1]),
+        Math.abs(imgA.data[i + 2] - imgB.data[i + 2]));
+      if (d > CHANNEL_DELTA) {
+        diffCount++;
+        tileDiff[t]++;
+        out.data[i] = 255; out.data[i + 1] = 40; out.data[i + 2] = 40;
+      }
+    }
+  }
+  fs.writeFileSync(diffPath, PNG.sync.write(out));
+
+  const globalFrac = compared > 0 ? diffCount / compared : 0;
+  const tileReport = [];
+  for (let t = 0; t < cols * rows; t++) {
+    if (!tilePx[t]) continue;
+    const frac = tileDiff[t] / tilePx[t];
+    if (frac > 0) tileReport.push({ t, frac, tx: t % cols, ty: Math.floor(t / cols) });
+  }
+  tileReport.sort((a, b) => b.frac - a.frac);
+  const worstTiles = tileReport.slice(0, 10).map((r) => ({
+    tile: `(${r.tx},${r.ty})`,
+    clipPx: `[${r.tx * TILE}..${Math.min(r.tx * TILE + TILE, W)}, ${r.ty * TILE}..${Math.min(r.ty * TILE + TILE, H)}]`,
+    pct: (r.frac * 100).toFixed(1),
+  }));
+  const failingTiles = tileReport.filter((r) => r.frac > TILE_BUDGET);
+  return { cols, rows, compared, diffCount, globalFrac, globalPct: (globalFrac * 100).toFixed(4), worstTiles, failingTiles };
+};
+
+// One SVG-vs-canvas capture+diff pass at the CURRENT zoom/scroll state.
+// suffix '' keeps the original svg/canvas/diff.png artifact names (pass 1);
+// '-deepzoom' is the clamped-path pass. deepZoom switches the eraser-side
+// waits to the detail-tile canvas and adds the clamped-path contract asserts.
+const runParityPass = async ({ label, suffix, expectAnn, expectCallouts, deepZoom = false }) => {
+  const svgPath = path.join(ART_DIR, `svg${suffix}.png`);
+  const canvasPath = path.join(ART_DIR, `canvas${suffix}.png`);
+  const diffPath = path.join(ART_DIR, `diff${suffix}.png`);
+
+  // SVG-presentation screenshot (select mode, deselected, no hover).
+  step(`[${label}] Capturing SVG presentation (select mode)…`);
+  await pressSelect();
+  const clip = await getClip();
+  if (clip.width < 300 || clip.height < 300) {
+    throw new Error(`[${label}] visible page region too small to compare: ${clip.width}x${clip.height}`);
+  }
+  console.log(`   page clip: ${clip.x},${clip.y} ${clip.width}x${clip.height}`);
+  await neutralize(clip);
+  if (deepZoom) await waitForRegionStable(clip, label);
+  // Guard: prove which surface we're photographing — the canvas overlay must
+  // be hidden in select mode, the SVG layer mounted.
+  const svgModeState = await page.evaluate(() => ({
+    canvasVisible: document.querySelector('[data-lightweight-annotation-overlay="1"]')?.dataset.canvasVisible,
+    svgMounted: !!document.querySelector('[data-svg-annotation-layer="1"]'),
+  }));
+  if (svgModeState.canvasVisible === 'true' || !svgModeState.svgMounted) {
+    throw new Error(`[${label}] surface mixup in select mode: canvasVisible=${svgModeState.canvasVisible} svgMounted=${svgModeState.svgMounted}`);
+  }
+  const clipCheck1 = await getClip();
+  const mask1 = await chromeMaskTiles(clip);
+  await page.screenshot({ path: svgPath, clip: { x: clip.x, y: clip.y, width: clip.width, height: clip.height } });
+  console.log(`   ${path.basename(svgPath)} saved (${clip.width}x${clip.height}), ${mask1.masked.length}/${mask1.cols * mask1.rows} tiles chrome-masked`);
+
+  // Canvas-presentation screenshot (eraser mode — do NOT click the canvas).
+  step(`[${label}] Switching to eraser (canvas presentation)…`);
+  await page.keyboard.press('e');
+  // Which canvas must have painted: the BASE canvas when unclamped; at deep
+  // zoom the DETAIL tile canvas — the base's paint generation is stale from
+  // pass 1, so only the detail canvas's own datasets prove a deep-zoom paint.
+  await page.waitForFunction(([annExp, calExp, deep]) => {
+    const wrap = document.querySelector('[data-lightweight-annotation-overlay="1"]');
+    if (!wrap || wrap.dataset.canvasVisible !== 'true') return false;
+    if (Number(wrap.dataset.lightweightObjectCount || 0) < annExp) return false;
+    if (Number(wrap.dataset.lightweightCalloutCount || 0) < calExp) return false;
+    // eraser mode unmounts the SVG layer — required so the shot is really canvas
+    if (document.querySelector('[data-svg-annotation-layer="1"]')) return false;
+    if (deep) {
+      const detail = document.querySelector('[data-annotation-detail-canvas="1"]');
+      return !!detail
+        && Number(detail.dataset.canvasPaintGeneration || 0) >= 1
+        && detail.dataset.annotationDetailActive === 'true'
+        && detail.dataset.canvasClamped === 'true';
+    }
+    const canvas = document.querySelector('[data-annotation-presentation-canvas="1"]');
+    return !!canvas && Number(canvas.dataset.canvasPaintGeneration || 0) >= 1;
+  }, [expectAnn, expectCallouts, deepZoom ? 1 : 0], { timeout: 15000 })
+    .catch(async (e) => {
+      const s = await page.evaluate(() => {
+        const wrap = document.querySelector('[data-lightweight-annotation-overlay="1"]');
+        const base = document.querySelector('[data-annotation-presentation-canvas="1"]');
+        const detail = document.querySelector('[data-annotation-detail-canvas="1"]');
+        return {
+          canvasVisible: wrap?.dataset.canvasVisible,
+          objects: wrap?.dataset.lightweightObjectCount,
+          callouts: wrap?.dataset.lightweightCalloutCount,
+          baseGen: base?.dataset.canvasPaintGeneration,
+          baseClamped: base?.dataset.canvasClamped,
+          detailGen: detail?.dataset.canvasPaintGeneration,
+          detailActive: detail?.dataset.annotationDetailActive,
+          detailClamped: detail?.dataset.canvasClamped,
+          svgMounted: !!document.querySelector('[data-svg-annotation-layer="1"]'),
+        };
+      }).catch(() => null);
+      await debugShot(`FAIL-eraser-ready-${label}`);
+      throw new Error(`[${label}] eraser presentation never ready: ${JSON.stringify(s)} (${e.message})`
+        + (deepZoom ? ' — if *Clamped stays "false", DEEP_ZOOM_PCT did not exceed the 2.5x raster cap; raise it' : ''));
+    });
+
+  // Let the painter settle: paint generation stable across 300ms + double rAF.
+  const activeCanvasSel = deepZoom ? '[data-annotation-detail-canvas="1"]' : '[data-annotation-presentation-canvas="1"]';
+  let genPrev = -1;
+  for (let i = 0; i < 10; i++) {
+    const gen = await page.evaluate((sel) =>
+      Number(document.querySelector(sel)?.dataset.canvasPaintGeneration || 0), activeCanvasSel);
+    if (gen === genPrev) break;
+    genPrev = gen;
+    await page.waitForTimeout(300);
+  }
+  await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
+
+  // Assert the canvas actually painted (a broken painter must not pass as
+  // "both empty"). Sample alpha on base + detail canvases.
+  const paintStats = await page.evaluate((sel) => {
+    const sample = (c) => {
+      if (!c || !c.width || !c.height) return 0;
+      try {
+        const data = c.getContext('2d').getImageData(0, 0, c.width, c.height).data;
+        let n = 0;
+        for (let i = 3; i < data.length; i += 16) if (data[i] > 8) n++; // every 4th px
+        return n;
+      } catch { return -1; }
+    };
+    const base = document.querySelector('[data-annotation-presentation-canvas="1"]');
+    const detail = document.querySelector('[data-annotation-detail-canvas="1"]');
+    const active = document.querySelector(sel);
+    return {
+      basePainted: sample(base),
+      detailPainted: sample(detail),
+      gen: active?.dataset.canvasPaintGeneration,
+      renderer: active?.dataset.canvasRenderer,
+      clamped: active?.dataset.canvasClamped,
+      drawScale: active?.dataset.canvasDrawScale,
+      objects: document.querySelector('[data-lightweight-annotation-overlay="1"]')?.dataset.lightweightObjectCount,
+      callouts: document.querySelector('[data-lightweight-annotation-overlay="1"]')?.dataset.lightweightCalloutCount,
+    };
+  }, activeCanvasSel);
+  console.log(`   painter: renderer=${paintStats.renderer} gen=${paintStats.gen} clamped=${paintStats.clamped} drawScale=${paintStats.drawScale} objects=${paintStats.objects} callouts=${paintStats.callouts} paintedSample base=${paintStats.basePainted} detail=${paintStats.detailPainted}`);
+  if (deepZoom && paintStats.detailPainted < 200) {
+    await debugShot(`FAIL-canvas-blank-${label}`);
+    throw new Error(`[${label}] detail tile looks BLANK (sampled painted px ${paintStats.detailPainted}) — tile painter broken, or no fixtures inside the deep-zoom viewport (recheck centerViewportOn target)`);
+  }
+  if (!deepZoom && Math.max(paintStats.basePainted, paintStats.detailPainted) < 200) {
+    await debugShot(`FAIL-canvas-blank-${label}`);
+    throw new Error(`[${label}] eraser presentation canvas looks BLANK (sampled painted px base=${paintStats.basePainted}, detail=${paintStats.detailPainted}) — painter broken`);
+  }
+
+  if (deepZoom) {
+    // Clamped-path presentation contract: the settled state must be the
+    // detail tile (base hidden), and the tile's CSS box must be INTEGER px —
+    // a fractional box re-triggers the compositor snap-stretch the tile
+    // exists to avoid (annotationDetailTile.js floor/ceil contract).
+    const tileState = await page.evaluate(() => {
+      const base = document.querySelector('[data-annotation-presentation-canvas="1"]');
+      const detail = document.querySelector('[data-annotation-detail-canvas="1"]');
+      return {
+        baseDisplay: base ? getComputedStyle(base).display : null,
+        detailDisplay: detail ? getComputedStyle(detail).display : null,
+        box: detail ? [detail.style.left, detail.style.top, detail.style.width, detail.style.height] : null,
+        backing: detail ? [detail.width, detail.height] : null,
+        dpr: window.devicePixelRatio || 1,
+      };
+    });
+    if (tileState.detailDisplay !== 'block' || tileState.baseDisplay !== 'none') {
+      throw new Error(`[${label}] presentation did not switch to the detail tile (detail display=${tileState.detailDisplay}, base display=${tileState.baseDisplay})`);
+    }
+    const nonInteger = (tileState.box || []).filter((v) => !/^-?\d+px$/.test(v || ''));
+    if (nonInteger.length) {
+      throw new Error(`[${label}] detail tile CSS box is not integer px: [${(tileState.box || []).join(', ')}] — snapping contract broken`);
+    }
+    console.log(`   detail tile: css box [${tileState.box.join(', ')}], backing ${tileState.backing[0]}x${tileState.backing[1]}, dpr=${tileState.dpr}`);
+  }
+
+  step(`[${label}] Capturing canvas presentation (eraser mode)…`);
+  await page.mouse.move(2, 2);
+  await page.waitForTimeout(400);
+  const clipCheck2 = await getClip();
+  const drift = Math.max(
+    Math.abs(clipCheck2.x - clipCheck1.x), Math.abs(clipCheck2.y - clipCheck1.y),
+    Math.abs(clipCheck2.width - clipCheck1.width), Math.abs(clipCheck2.height - clipCheck1.height));
+  if (drift > 1) throw new Error(`[${label}] page moved between screenshots (drift ${drift}px) — diff would be meaningless`);
+  const mask2 = await chromeMaskTiles(clip);
+  await page.screenshot({ path: canvasPath, clip: { x: clip.x, y: clip.y, width: clip.width, height: clip.height } });
+  console.log(`   ${path.basename(canvasPath)} saved, ${mask2.masked.length}/${mask2.cols * mask2.rows} tiles chrome-masked`);
+
+  step(`[${label}] Diffing ${path.basename(svgPath)} vs ${path.basename(canvasPath)}…`);
+  const maskedSet = new Set([...mask1.masked, ...mask2.masked]);
+  const d = diffPair({ label, svgPath, canvasPath, diffPath, maskedSet });
+  console.log(`   compared ${d.compared} px (${maskedSet.size} chrome-masked tiles excluded)`);
+  console.log(`   differing pixels: ${d.diffCount} (${d.globalPct}%) — budget ${(GLOBAL_BUDGET * 100).toFixed(1)}%`);
+  console.log(`   worst tiles (channel delta > ${CHANNEL_DELTA}):`);
+  for (const w of d.worstTiles) console.log(`     tile ${w.tile} clip px ${w.clipPx}: ${w.pct}% different`);
+  if (d.globalFrac > GLOBAL_BUDGET) {
+    fail(`[${label}] global diff ${d.globalPct}% exceeds ${(GLOBAL_BUDGET * 100).toFixed(1)}% budget`);
+  }
+  if (d.failingTiles.length > 0) {
+    fail(`[${label}] ${d.failingTiles.length} tile(s) exceed ${(TILE_BUDGET * 100).toFixed(0)}% tile budget — localized drift; see worst-tile list + ${diffPath}`);
+  }
+  measuredPasses.push({
+    label,
+    globalPct: d.globalPct,
+    maskedTiles: maskedSet.size,
+    totalTiles: d.cols * d.rows,
+    withinBudget: d.globalFrac <= GLOBAL_BUDGET && d.failingTiles.length === 0,
+    svgPath, canvasPath, diffPath,
+  });
+};
+
 // ─── main flow ───────────────────────────────────────────────────────────────
 
 let baseline = null;
 let cleanupOk = false;
-let parityPass = false;
-const measured = { globalPct: null, worstTiles: [], maskedTiles: 0, totalTiles: 0 };
+const measuredPasses = []; // one entry per capture+diff pass (see runParityPass)
 
 try {
   // 1. Open the app (dev auto-login) + the fixture document.
@@ -402,166 +779,48 @@ try {
   console.log(`   our callout id: ${ourCalloutId}`);
   await debugShot('1-fixtures-drawn');
 
-  // 4. SVG-presentation screenshot (select mode, deselected, no hover).
-  step('Capturing SVG presentation (select mode)…');
-  await pressSelect();
-  await neutralize(clip);
-  // Guard: prove which surface we're photographing — the canvas overlay must
-  // be hidden in select mode, the SVG layer mounted.
-  const svgModeState = await page.evaluate(() => ({
-    canvasVisible: document.querySelector('[data-lightweight-annotation-overlay="1"]')?.dataset.canvasVisible,
-    svgMounted: !!document.querySelector('[data-svg-annotation-layer="1"]'),
-  }));
-  if (svgModeState.canvasVisible === 'true' || !svgModeState.svgMounted) {
-    throw new Error(`surface mixup in select mode: canvasVisible=${svgModeState.canvasVisible} svgMounted=${svgModeState.svgMounted}`);
-  }
-  const clipCheck1 = await getClip();
-  const mask1 = await chromeMaskTiles(clip);
-  await page.screenshot({ path: SVG_PNG, clip: { x: clip.x, y: clip.y, width: clip.width, height: clip.height } });
-  console.log(`   svg.png saved (${clip.width}x${clip.height}), ${mask1.masked.length}/${mask1.cols * mask1.rows} tiles chrome-masked`);
+  // 4. Pass 1 — the opening (~100%) zoom: unclamped base-canvas presentation.
+  await runParityPass({ label: 'zoom-100', suffix: '', expectAnn, expectCallouts });
 
-  // 5. Canvas-presentation screenshot (eraser mode — do NOT click the canvas).
-  step('Switching to eraser (canvas presentation)…');
-  await page.keyboard.press('e');
-  await page.waitForFunction(([annExp, calExp]) => {
-    const wrap = document.querySelector('[data-lightweight-annotation-overlay="1"]');
-    const canvas = document.querySelector('[data-annotation-presentation-canvas="1"]');
-    if (!wrap || !canvas) return false;
-    if (wrap.dataset.canvasVisible !== 'true') return false;
-    if (Number(canvas.dataset.canvasPaintGeneration || 0) < 1) return false;
-    if (Number(wrap.dataset.lightweightObjectCount || 0) < annExp) return false;
-    if (Number(wrap.dataset.lightweightCalloutCount || 0) < calExp) return false;
-    // eraser mode unmounts the SVG layer — required so the shot is really canvas
-    if (document.querySelector('[data-svg-annotation-layer="1"]')) return false;
-    return true;
-  }, [expectAnn, expectCallouts], { timeout: 15000 });
-
-  // Let the painter settle: paint generation stable across 300ms + double rAF.
-  let genPrev = -1;
-  for (let i = 0; i < 10; i++) {
-    const gen = await page.evaluate(() =>
-      Number(document.querySelector('[data-annotation-presentation-canvas="1"]')?.dataset.canvasPaintGeneration || 0));
-    if (gen === genPrev) break;
-    genPrev = gen;
-    await page.waitForTimeout(300);
-  }
-  await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
-
-  // 6. Assert the canvas actually painted (a broken painter must not pass as
-  //    "both empty"). Sample alpha on base + detail canvases.
-  const paintStats = await page.evaluate(() => {
-    const sample = (c) => {
-      if (!c || !c.width || !c.height) return 0;
-      try {
-        const data = c.getContext('2d').getImageData(0, 0, c.width, c.height).data;
-        let n = 0;
-        for (let i = 3; i < data.length; i += 16) if (data[i] > 8) n++; // every 4th px
-        return n;
-      } catch { return -1; }
-    };
-    const base = document.querySelector('[data-annotation-presentation-canvas="1"]');
-    const detail = document.querySelector('[data-annotation-detail-canvas="1"]');
-    return {
-      basePainted: sample(base),
-      detailPainted: sample(detail),
-      gen: base?.dataset.canvasPaintGeneration,
-      renderer: base?.dataset.canvasRenderer,
-      objects: document.querySelector('[data-lightweight-annotation-overlay="1"]')?.dataset.lightweightObjectCount,
-      callouts: document.querySelector('[data-lightweight-annotation-overlay="1"]')?.dataset.lightweightCalloutCount,
-    };
-  });
-  console.log(`   painter: renderer=${paintStats.renderer} gen=${paintStats.gen} objects=${paintStats.objects} callouts=${paintStats.callouts} paintedSample base=${paintStats.basePainted} detail=${paintStats.detailPainted}`);
-  if (Math.max(paintStats.basePainted, paintStats.detailPainted) < 200) {
-    await debugShot('FAIL-canvas-blank');
-    throw new Error(`eraser presentation canvas looks BLANK (sampled painted px base=${paintStats.basePainted}, detail=${paintStats.detailPainted}) — painter broken`);
-  }
-
-  step('Capturing canvas presentation (eraser mode)…');
-  await page.mouse.move(2, 2);
-  await page.waitForTimeout(400);
-  const clipCheck2 = await getClip();
-  const drift = Math.max(
-    Math.abs(clipCheck2.x - clipCheck1.x), Math.abs(clipCheck2.y - clipCheck1.y),
-    Math.abs(clipCheck2.width - clipCheck1.width), Math.abs(clipCheck2.height - clipCheck1.height));
-  if (drift > 1) throw new Error(`page moved between screenshots (drift ${drift}px) — diff would be meaningless`);
-  const mask2 = await chromeMaskTiles(clip);
-  await page.screenshot({ path: CANVAS_PNG, clip: { x: clip.x, y: clip.y, width: clip.width, height: clip.height } });
-  console.log(`   canvas.png saved, ${mask2.masked.length}/${mask2.cols * mask2.rows} tiles chrome-masked`);
-
-  // 7. Pixel diff (in-process, pngjs).
-  step('Diffing svg.png vs canvas.png…');
-  const imgA = PNG.sync.read(fs.readFileSync(SVG_PNG));
-  const imgB = PNG.sync.read(fs.readFileSync(CANVAS_PNG));
-  if (imgA.width !== imgB.width || imgA.height !== imgB.height) {
-    throw new Error(`screenshot dimensions differ: ${imgA.width}x${imgA.height} vs ${imgB.width}x${imgB.height}`);
-  }
-  const { width: W, height: H } = imgA;
-  const cols = Math.ceil(W / TILE);
-  const rows = Math.ceil(H / TILE);
-  const maskedSet = new Set([...mask1.masked, ...mask2.masked]);
-  measured.maskedTiles = maskedSet.size;
-  measured.totalTiles = cols * rows;
-  if (maskedSet.size > cols * rows * 0.3) {
-    throw new Error(`chrome mask covers ${maskedSet.size}/${cols * rows} tiles (>30%) — clip is mostly chrome, harness bug`);
-  }
-
-  const tileDiff = new Uint32Array(cols * rows);
-  const tilePx = new Uint32Array(cols * rows);
-  const out = new PNG({ width: W, height: H });
-  let diffCount = 0;
-  let compared = 0;
-  for (let y = 0; y < H; y++) {
-    for (let x = 0; x < W; x++) {
-      const i = (y * W + x) * 4;
-      const t = Math.floor(y / TILE) * cols + Math.floor(x / TILE);
-      // diff viz base: dimmed grayscale of the SVG shot
-      const lum = Math.round((imgA.data[i] + imgA.data[i + 1] + imgA.data[i + 2]) / 3 * 0.35);
-      out.data[i] = lum; out.data[i + 1] = lum; out.data[i + 2] = lum; out.data[i + 3] = 255;
-      if (maskedSet.has(t)) { out.data[i + 2] = Math.min(255, lum + 70); continue; } // blue tint = masked
-      compared++;
-      tilePx[t]++;
-      const d = Math.max(
-        Math.abs(imgA.data[i] - imgB.data[i]),
-        Math.abs(imgA.data[i + 1] - imgB.data[i + 1]),
-        Math.abs(imgA.data[i + 2] - imgB.data[i + 2]));
-      if (d > CHANNEL_DELTA) {
-        diffCount++;
-        tileDiff[t]++;
-        out.data[i] = 255; out.data[i + 1] = 40; out.data[i + 2] = 40;
-      }
+  // 5. Pass 2 — deep zoom above the 2.5x raster cap: the clamped presentation
+  //    (stretched base backing superseded by the detail tile once settled).
+  //    Wrapped so a deep-zoom failure still reaches zoom-restore + cleanup —
+  //    fixtures must be undone no matter what.
+  const zoomBtn = page.locator('button[aria-label="Edit zoom percentage"]').first();
+  const origZoomPct = parseInt(((await zoomBtn.textContent().catch(() => '')) || '').trim(), 10) || 100;
+  const preDeepWidth = (await getClip()).pageBox.width;
+  try {
+    step(`Deep zoom: setting zoom to ${DEEP_ZOOM_PCT}% (raster cap is 2.5x)…`);
+    await pressSelect();
+    const deepWidth = await setZoomPercent(DEEP_ZOOM_PCT);
+    console.log(`   page width ${preDeepWidth.toFixed(0)}px → ${deepWidth.toFixed(0)}px (${(deepWidth / preDeepWidth).toFixed(2)}x)`);
+    if (deepWidth < preDeepWidth * 1.5) {
+      throw new Error(`deep zoom did not take (width ${preDeepWidth.toFixed(0)} → ${deepWidth.toFixed(0)})`);
     }
+    // Center the compared viewport on the text+callout fixture cluster — the
+    // most drift-prone painters (baselines, corner rounding, text weight).
+    const scrolled = await centerViewportOn(0.38, 0.52);
+    console.log(`   viewport centered on fixture cluster: ${JSON.stringify(scrolled)}`);
+    await page.waitForTimeout(500); // scroll-end retile + pdf re-raster kickoff
+    await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
+    await runParityPass({ label: 'deep-zoom', suffix: '-deepzoom', expectAnn, expectCallouts, deepZoom: true });
+  } catch (e) {
+    fail(`deep-zoom pass: ${e.message}`);
+    await debugShot('FAIL-deepzoom');
   }
-  fs.writeFileSync(DIFF_PNG, PNG.sync.write(out));
 
-  const globalFrac = compared > 0 ? diffCount / compared : 0;
-  measured.globalPct = (globalFrac * 100).toFixed(4);
-  const tileReport = [];
-  for (let t = 0; t < cols * rows; t++) {
-    if (!tilePx[t]) continue;
-    const frac = tileDiff[t] / tilePx[t];
-    if (frac > 0) tileReport.push({ t, frac, tx: t % cols, ty: Math.floor(t / cols) });
+  // 6. Restore the original zoom so cleanup interacts with the same layout
+  //    the fixtures were drawn at. A restore failure must not skip cleanup —
+  //    undo is keyboard-driven and works at any zoom.
+  try {
+    step(`Restoring zoom to ${origZoomPct}%…`);
+    const restoredWidth = await setZoomPercent(origZoomPct);
+    console.log(`   page width restored to ${restoredWidth.toFixed(0)}px (was ${preDeepWidth.toFixed(0)}px)`);
+  } catch (e) {
+    fail(`zoom restore: ${e.message} — attempting cleanup anyway`);
   }
-  tileReport.sort((a, b) => b.frac - a.frac);
-  measured.worstTiles = tileReport.slice(0, 10).map((r) => ({
-    tile: `(${r.tx},${r.ty})`,
-    clipPx: `[${r.tx * TILE}..${Math.min(r.tx * TILE + TILE, W)}, ${r.ty * TILE}..${Math.min(r.ty * TILE + TILE, H)}]`,
-    pct: (r.frac * 100).toFixed(1),
-  }));
-  const failingTiles = tileReport.filter((r) => r.frac > TILE_BUDGET);
 
-  console.log(`   compared ${compared} px (${maskedSet.size} chrome-masked tiles excluded)`);
-  console.log(`   differing pixels: ${diffCount} (${measured.globalPct}%) — budget ${(GLOBAL_BUDGET * 100).toFixed(1)}%`);
-  console.log(`   worst tiles (channel delta > ${CHANNEL_DELTA}):`);
-  for (const w of measured.worstTiles) console.log(`     tile ${w.tile} clip px ${w.clipPx}: ${w.pct}% different`);
-  if (globalFrac > GLOBAL_BUDGET) {
-    fail(`global diff ${measured.globalPct}% exceeds ${(GLOBAL_BUDGET * 100).toFixed(1)}% budget`);
-  }
-  if (failingTiles.length > 0) {
-    fail(`${failingTiles.length} tile(s) exceed ${(TILE_BUDGET * 100).toFixed(0)}% tile budget — localized drift; see worst-tile list + ${DIFF_PNG}`);
-  }
-  parityPass = globalFrac <= GLOBAL_BUDGET && failingTiles.length === 0;
-
-  // 8. Cleanup — leave repro-fixture.pdf as we found it. Undo the annotation
+  // 7. Cleanup — leave repro-fixture.pdf as we found it. Undo the annotation
   //    creations (Cmd+Z per creation); the callout may not share the same
   //    history stack, so fall back to select+Delete for it (callout-e2e idiom).
   step('Cleanup: undoing created annotations…');
@@ -581,6 +840,9 @@ try {
     const c = await page.evaluate((cid) => {
       const r = document.querySelector(`[data-callout-id="${cid}"] [data-callout-part="textBox"]`);
       if (!r) return null;
+      // The zoom round-trip may have left the callout off-screen — the click
+      // below needs on-viewport coordinates.
+      r.scrollIntoView({ block: 'center', inline: 'center' });
       const b = r.getBoundingClientRect();
       return { x: b.x + b.width / 2, y: b.y + b.height / 2 };
     }, ourCalloutId);
@@ -618,12 +880,17 @@ if (realConsoleErrors.length) {
   console.log(`\n[warn] ${realConsoleErrors.length} console error(s), first 3: ${realConsoleErrors.slice(0, 3).join(' | ')}`);
 }
 console.log('\n──────── renderer parity summary ────────');
-console.log(`thresholds: channelDelta=${CHANNEL_DELTA} globalBudget=${(GLOBAL_BUDGET * 100).toFixed(1)}% tile=${TILE}px tileBudget=${(TILE_BUDGET * 100).toFixed(0)}%`);
-console.log(`measured:   globalDiff=${measured.globalPct ?? 'n/a'}%  maskedTiles=${measured.maskedTiles}/${measured.totalTiles}`);
+console.log(`thresholds: channelDelta=${CHANNEL_DELTA} globalBudget=${(GLOBAL_BUDGET * 100).toFixed(1)}% tile=${TILE}px tileBudget=${(TILE_BUDGET * 100).toFixed(0)}% deepZoom=${DEEP_ZOOM_PCT}%`);
+for (const m of measuredPasses) {
+  console.log(`measured [${m.label}]: globalDiff=${m.globalPct}%  maskedTiles=${m.maskedTiles}/${m.totalTiles}  ${m.withinBudget ? 'within budget' : 'OVER BUDGET'}`);
+}
+if (measuredPasses.length < 2) {
+  console.log(`measured: ${2 - measuredPasses.length} of 2 passes produced no diff — see failures`);
+}
 console.log(`skipped types: counter, survey marker (survey mode required); imported-PDF types (not creatable at runtime)`);
-console.log(`artifacts:  ${SVG_PNG}\n            ${CANVAS_PNG}\n            ${DIFF_PNG}`);
+console.log(`artifacts:  ${ART_DIR}/{svg,canvas,diff}.png (zoom-100)\n            ${ART_DIR}/{svg,canvas,diff}-deepzoom.png (deep-zoom)`);
 if (failures.length === 0) {
-  console.log('\n✅ PASS: SVG and canvas2d presentations match within thresholds; fixtures undone.');
+  console.log('\n✅ PASS: SVG and canvas2d presentations match within thresholds at both zooms; fixtures undone.');
 } else {
   console.log(`\n❌ FAIL: ${failures.length} problem(s):`);
   for (const f of failures) console.log(`   - ${f}`);
