@@ -465,6 +465,73 @@ function drawPoints(context, object, close) {
   context.restore();
 }
 
+// --- CSS first-baseline resolution ------------------------------------------
+// The SVG/CSS renderers place each line's glyph baseline by half-leading from
+// the font's LAYOUT ascent/descent (CSS inline layout, and what SVG
+// dominant-baseline='central' derives from), while canvas textBaseline='middle'
+// anchors the em-square midpoint — Chromium lands 'middle'-anchored glyphs
+// ~0.5-0.9px HIGHER than the same text in the SVG layer, so entering/leaving
+// eraser mode visibly nudged text up/down. cssFirstBaseline resolves the CSS
+// distance from a line box's TOP to its glyph baseline so the painter can
+// anchor with textBaseline='alphabetic' at the exact SVG position.
+//
+// Worker-safety: this module must stay import-safe with no DOM (see header —
+// annotationCanvasWorker.js imports it). The probe div is created lazily, only
+// inside this call and only when `document` exists. Workers (OffscreenCanvas)
+// and DOM-less Node tests use the measureText fallback:
+// lineHeightPx/2 + (fontBoundingBoxAscent − fontBoundingBoxDescent)/2 — the
+// dominant-baseline='central' formula. That fallback is exact for the metrics
+// the canvas reports but APPROXIMATE for ascent-hacked fonts (e.g. macOS
+// Helvetica) whose CSS layout metrics differ from the canvas bounding box.
+// `context.font` must already be set to `cssFontShorthand` by the caller so
+// the fallback measures the right font. Returns null when no baseline can be
+// resolved — callers keep the legacy 'middle' anchoring in that case.
+const cssFirstBaselineCache = new Map();
+export function cssFirstBaseline(context, cssFontShorthand, lineHeightPx) {
+  const key = `${cssFontShorthand}|${lineHeightPx}`;
+  if (cssFirstBaselineCache.has(key)) return cssFirstBaselineCache.get(key);
+  let offset = null;
+  if (typeof document !== 'undefined' && document.body) {
+    try {
+      const probe = document.createElement('div');
+      probe.style.position = 'fixed';
+      probe.style.visibility = 'hidden';
+      probe.style.left = '-9999px';
+      // Order matters: the font shorthand RESETS line-height, so set it after.
+      probe.style.font = cssFontShorthand;
+      probe.style.lineHeight = `${lineHeightPx}px`;
+      probe.textContent = 'Hg';
+      // A zero-size inline-block sits ON the text baseline — its bottom edge
+      // relative to the div top IS the first-line baseline offset.
+      const marker = document.createElement('span');
+      marker.style.display = 'inline-block';
+      marker.style.width = '0';
+      marker.style.height = '0';
+      probe.appendChild(marker);
+      document.body.appendChild(probe);
+      const measured = marker.getBoundingClientRect().bottom
+        - probe.getBoundingClientRect().top;
+      probe.remove();
+      if (Number.isFinite(measured) && measured > 0) offset = measured;
+    } catch {
+      offset = null;
+    }
+  }
+  if (offset == null && context && typeof context.measureText === 'function') {
+    const metrics = context.measureText('Hg');
+    const ascent = metrics?.fontBoundingBoxAscent;
+    const descent = metrics?.fontBoundingBoxDescent;
+    if (Number.isFinite(ascent) && Number.isFinite(descent)) {
+      offset = lineHeightPx / 2 + (ascent - descent) / 2;
+    }
+  }
+  // Cache resolved offsets only — null (metrics unavailable) may be transient
+  // (document.body not attached yet, stub contexts without font metrics) and
+  // must not poison later lookups for the same font.
+  if (offset != null) cssFirstBaselineCache.set(key, offset);
+  return offset;
+}
+
 // Twin of renderText (svgAnnotationRenderers.jsx:964-1168): break-all wrap at
 // the padded inner width, Fabric's ×1.13 line step, half-leading vertical
 // centering per line box, decorations, alignment, background + border rects,
@@ -474,6 +541,7 @@ function drawText(context, object) {
   const scaleY = Math.abs(toNumber(object.scaleY, 1) || 1);
   const fontSize = Math.max(1, toNumber(object.fontSize, 16));
   const fontFamily = String(object.fontFamily || 'sans-serif').split(',')[0].replace(/["']/g, '');
+  const fontShorthand = `${object.fontStyle || 'normal'} ${object.fontWeight || 'normal'} ${fontSize}px ${fontFamily}`;
   const text = String(object.text || '');
   const objType = String(object.type || '').toLowerCase();
 
@@ -498,7 +566,7 @@ function drawText(context, object) {
       effectiveHeight = singleLineH * scaleY;
     } else {
       context.save();
-      context.font = `${object.fontStyle || 'normal'} ${object.fontWeight || 'normal'} ${fontSize}px ${fontFamily}`;
+      context.font = fontShorthand;
       let maxLineWidth = 0;
       let totalVisualLines = 0;
       for (const line of text.split('\n')) {
@@ -545,7 +613,7 @@ function drawText(context, object) {
   const innerHeight = Math.max(0, effectiveHeight - 2 * pad);
   const descenderBuffer = fontSize * 0.35;
   const innerDisplayHeight = innerHeight + descenderBuffer;
-  context.font = `${object.fontStyle || 'normal'} ${object.fontWeight || 'normal'} ${fontSize}px ${fontFamily}`;
+  context.font = fontShorthand;
 
   // break-all wrap — per-character breaks, mirroring the foreignObject CSS.
   const lines = [];
@@ -575,7 +643,14 @@ function drawText(context, object) {
   const anchorX = textAlign === 'center' ? pad + innerWidth / 2
     : textAlign === 'right' ? pad + innerWidth
       : pad;
-  context.textBaseline = 'middle';
+  // Glyph baseline correction (2026-07-14): anchoring 'middle' at the line-box
+  // center sat glyphs ~0.5px above the SVG foreignObject (16px Helvetica) —
+  // text nudged on every eraser-mode toggle. Anchor 'alphabetic' at the CSS
+  // first baseline instead; keep the legacy 'middle' anchor only when no
+  // baseline is resolvable (no DOM and no font metrics).
+  const baselineInLine = cssFirstBaseline(context, fontShorthand, lineHeightPx);
+  const anchorInLine = baselineInLine ?? lineHeightPx / 2;
+  context.textBaseline = baselineInLine == null ? 'middle' : 'alphabetic';
   context.fillStyle = isVisiblePaint(object.fill) ? object.fill : '#000';
 
   // Clip like the foreignObject (overflow hidden at padded box + descender).
@@ -584,10 +659,17 @@ function drawText(context, object) {
   context.clip();
 
   const decorationWidth = Math.max(1, fontSize / 14);
+  // Decorations keep the exact visual positions they were tuned to — offsets
+  // from the old line-box center (centerY = lineTop + lineHeightPx/2) —
+  // re-expressed relative to the baseline anchor. Only the glyphs move by the
+  // baseline correction; the decorations must not shift to new absolute spots.
+  const underlineOffset = (lineHeightPx / 2 - anchorInLine) + fontSize * 0.36;
+  const linethroughOffset = (lineHeightPx / 2 - anchorInLine) - fontSize * 0.08;
   lines.forEach((line, index) => {
-    const centerY = blockTop + (index + 0.5) * lineHeightPx;
-    if (centerY - lineHeightPx / 2 > pad + innerDisplayHeight) return;
-    context.fillText(line, anchorX, centerY);
+    const lineTop = blockTop + index * lineHeightPx;
+    if (lineTop > pad + innerDisplayHeight) return;
+    const glyphY = lineTop + anchorInLine;
+    context.fillText(line, anchorX, glyphY);
     if ((object.underline || object.linethrough) && line) {
       const lineWidthPx = context.measureText(line).width;
       const startX = textAlign === 'center' ? anchorX - lineWidthPx / 2
@@ -598,14 +680,14 @@ function drawText(context, object) {
       context.lineWidth = decorationWidth;
       if (typeof context.setLineDash === 'function') context.setLineDash([]);
       if (object.underline) {
-        const y = centerY + fontSize * 0.36;
+        const y = glyphY + underlineOffset;
         context.beginPath();
         context.moveTo(startX, y);
         context.lineTo(startX + lineWidthPx, y);
         context.stroke();
       }
       if (object.linethrough) {
-        const y = centerY - fontSize * 0.08;
+        const y = glyphY + linethroughOffset;
         context.beginPath();
         context.moveTo(startX, y);
         context.lineTo(startX + lineWidthPx, y);
@@ -656,9 +738,27 @@ function drawCounter(context, object) {
     const fontSize = Math.max(11, radius * 1.05);
     context.font = `700 ${fontSize}px -apple-system, system-ui, sans-serif`;
     context.textAlign = 'center';
-    context.textBaseline = 'middle';
     context.fillStyle = isVisiblePaint(object?.data?.numberColor) ? object.data.numberColor : '#ffffff';
-    context.fillText(label, centerX, centerY);
+    // SVG centers the number with dominant-baseline='central', which Blink
+    // resolves to the alphabetic baseline sitting (layoutAscent −
+    // layoutDescent)/2 below the anchor. Canvas textBaseline='middle' anchors
+    // the em-square midpoint instead — ~0.8px higher for this font stack — so
+    // the number nudged whenever eraser mode swapped presentations. Reproduce
+    // the SVG math from the measured font metrics (must measure AFTER
+    // context.font is set); old runtimes without fontBoundingBox metrics keep
+    // the legacy 'middle' anchor.
+    const metrics = typeof context.measureText === 'function'
+      ? context.measureText(label)
+      : null;
+    const ascent = metrics?.fontBoundingBoxAscent;
+    const descent = metrics?.fontBoundingBoxDescent;
+    if (Number.isFinite(ascent) && Number.isFinite(descent)) {
+      context.textBaseline = 'alphabetic';
+      context.fillText(label, centerX, centerY + (ascent - descent) / 2);
+    } else {
+      context.textBaseline = 'middle';
+      context.fillText(label, centerX, centerY);
+    }
   }
   context.restore();
 }
@@ -898,15 +998,15 @@ function drawCallout(context, callout, pageWidth, pageHeight, displayScale = 1) 
     line2EndY = arrowTip.y - (headSize / 3) * Math.sin(angleRad);
   }
 
-  // Connector lines + box border are vectorEffect non-scaling-stroke in SVG —
-  // divide widths by displayScale so on-screen thickness stays constant.
-  const nonScaling = (width) => width / Math.max(0.01, displayScale);
+  // UX 2026-07-14 (zoom-scaling unification): connector lines + box border
+  // are page-unit strokes in SVG now (no vector-effect pin), so the painter
+  // uses the raw widths too — thickness scales with zoom on both surfaces.
 
   context.save();
   // Group opacity (SVG <g opacity={borderOpacity}>) multiplies EVERYTHING.
   context.globalAlpha = borderOpacity;
   context.strokeStyle = lineColor;
-  context.lineWidth = nonScaling(lineThickness);
+  context.lineWidth = lineThickness;
   context.lineCap = 'round';
   context.lineJoin = 'round';
   if (typeof context.setLineDash === 'function') context.setLineDash([]);
@@ -919,9 +1019,8 @@ function drawCallout(context, callout, pageWidth, pageHeight, displayScale = 1) 
   context.lineTo(line2EndX, line2EndY);
   context.stroke();
   // Real arrowhead via the shared spec (the old dot was the "arrow looks like
-  // a circle" bug). Painted RAW: renderCallout's renderArrowheadEl spreads the
-  // spec with NO vectorEffect, so in SVG only the connector lines and box
-  // border are non-scaling — arrowhead strokes scale with zoom.
+  // a circle" bug). Painted RAW, same as the connector lines and box border —
+  // every callout stroke scales with zoom now.
   paintArrowheadSpec(context, arrowheadSpec);
 
   if (isVisiblePaint(fillColor)) {
@@ -932,13 +1031,14 @@ function drawCallout(context, callout, pageWidth, pageHeight, displayScale = 1) 
     context.restore();
   }
   context.strokeStyle = lineColor;
-  context.lineWidth = nonScaling(Math.max(1, lineThickness * 0.7));
+  context.lineWidth = Math.max(1, lineThickness * 0.7);
   context.strokeRect(textBox.x, textBox.y, textBox.width, boxHeightWithDescenders);
 
   const text = String(callout.text || '');
   if (text) {
     const fontFamily = String(callout.style?.fontFamily || 'Arial').split(',')[0].replace(/["']/g, '');
-    context.font = `${fontSize}px ${fontFamily}`;
+    const fontShorthand = `${fontSize}px ${fontFamily}`;
+    context.font = fontShorthand;
     const maxTextWidth = Math.max(1, textBox.width - 2 * TEXT_PADDING);
     const lines = [];
     text.split(/\r?\n/).forEach((paragraph) => {
@@ -969,10 +1069,16 @@ function drawCallout(context, callout, pageWidth, pageHeight, displayScale = 1) 
     const anchorX = textAlign === 'center' ? textBox.x + textBox.width / 2
       : textAlign === 'right' ? textBox.x + textBox.width - TEXT_PADDING
         : textBox.x + TEXT_PADDING;
-    context.textBaseline = 'middle';
+    // Same glyph-baseline correction as drawText: canvas 'middle' sits ~0.9px
+    // above the CSS first baseline for 12px Arial, so callout text nudged on
+    // every eraser-mode toggle. Anchor 'alphabetic' at the CSS baseline; keep
+    // the legacy 'middle' anchor when no baseline is resolvable.
+    const baselineInLine = cssFirstBaseline(context, fontShorthand, lineHeightPx);
+    const anchorInLine = baselineInLine ?? lineHeightPx / 2;
+    context.textBaseline = baselineInLine == null ? 'middle' : 'alphabetic';
     context.fillStyle = callout.style?.fontColor || callout.style?.textColor || '#000000';
     paintedLines.forEach((line, index) => {
-      context.fillText(line, anchorX, startY + (index + 0.5) * lineHeightPx);
+      context.fillText(line, anchorX, startY + index * lineHeightPx + anchorInLine);
     });
   }
   context.restore();

@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 
 import {
   calculateAnnotationCanvasBackingStore,
+  cssFirstBaseline,
   drawAnnotationObject,
   paintAnnotationCanvas,
   traceFabricPath,
@@ -360,11 +361,12 @@ test('dimensionless text counts wrapped lines exactly like the SVG measure pass'
   assert.equal(effectiveHeight, Math.max(svgLines * singleLineH + 4, singleLineH));
 });
 
-test('callout arrowhead strokes paint raw while connector lines stay non-scaling', () => {
-  // SVG's renderArrowheadEl spreads the spec with NO vectorEffect — arrowhead
-  // strokes scale with zoom. Only the connector lines and box border are
-  // non-scaling-stroke. The painter once descaled the arrowhead too, halving
-  // its thickness at 200% zoom when the canvas presentation opened.
+test('every callout stroke paints raw page-unit widths (scales with zoom)', () => {
+  // 2026-07-14 zoom-scaling unification: connector lines, box border, AND
+  // arrowhead are all page-unit strokes in SVG (no vector-effect pins), so
+  // the painter must not descale ANY of them by displayScale. Historical
+  // bugs both ways: the arrowhead was once wrongly descaled (halved at 200%),
+  // then the lines were wrongly pinned while the arrowhead scaled.
   let sawClosePath = false;
   const beforeClose = [];
   const afterClose = [];
@@ -411,9 +413,213 @@ test('callout arrowhead strokes paint raw while connector lines stay non-scaling
     }],
   });
 
-  // Connector line: 4 / displayScale(2) — vectorEffect twin.
-  assert.equal(beforeClose[0], 2);
+  // Connector line: raw lineThickness in page units — NOT divided by
+  // displayScale(2).
+  assert.equal(beforeClose[0], 4);
   // Arrowhead (only closePath in the paint is the open triangle): raw
   // Math.max(2, lineThickness) from the shared spec, NOT descaled.
   assert.equal(afterClose[0], 4);
+});
+
+test('cssFirstBaseline worker fallback derives the CSS baseline from font metrics', () => {
+  // No DOM in Node — the helper must fall back to measureText's
+  // fontBoundingBox metrics: lineHeightPx/2 + (ascent − descent)/2, the SVG
+  // dominant-baseline='central' formula the glyph correction is built on.
+  const context = {
+    measureText: () => ({ width: 10, fontBoundingBoxAscent: 15, fontBoundingBoxDescent: 4 }),
+  };
+  const lineHeightPx = 18.08;
+  const offset = cssFirstBaseline(context, 'normal normal 16px FallbackProbeFont', lineHeightPx);
+  assert.equal(offset, lineHeightPx / 2 + (15 - 4) / 2);
+
+  // Metrics unavailable (old runtimes / width-only stubs) -> null, so callers
+  // keep the legacy textBaseline='middle' behavior.
+  const bare = cssFirstBaseline(
+    { measureText: () => ({ width: 10 }) },
+    'normal normal 16px MetriclessProbeFont',
+    lineHeightPx,
+  );
+  assert.equal(bare, null);
+});
+
+test('cssFirstBaseline memoizes per font + line-height key', () => {
+  const font = 'normal normal 16px MemoProbeFont';
+  let calls = 0;
+  const contextA = {
+    measureText: () => {
+      calls += 1;
+      return { width: 10, fontBoundingBoxAscent: 12, fontBoundingBoxDescent: 3 };
+    },
+  };
+  const first = cssFirstBaseline(contextA, font, 20);
+  assert.equal(first, 20 / 2 + (12 - 3) / 2);
+  // Same key -> cached: the second context's (different) metrics never run.
+  const second = cssFirstBaseline(
+    { measureText: () => ({ width: 10, fontBoundingBoxAscent: 100, fontBoundingBoxDescent: 0 }) },
+    font,
+    20,
+  );
+  assert.equal(calls, 1);
+  assert.equal(second, first);
+  // Different line-height -> different cache entry.
+  const other = cssFirstBaseline(contextA, font, 40);
+  assert.equal(calls, 2);
+  assert.equal(other, 40 / 2 + (12 - 3) / 2);
+});
+
+test('counter numbers anchor on the alphabetic baseline at the SVG central-baseline offset', () => {
+  // Canvas textBaseline='middle' anchors the em-square midpoint, ~0.8px above
+  // where SVG dominant-baseline='central' puts the counter number — the number
+  // nudged whenever eraser mode swapped presentations. With font metrics
+  // available the painter must draw with textBaseline='alphabetic' at
+  // centerY + (fontBoundingBoxAscent − fontBoundingBoxDescent)/2.
+  const texts = [];
+  const context = {
+    save: () => {},
+    restore: () => {},
+    beginPath: () => {},
+    moveTo: () => {},
+    lineTo: () => {},
+    closePath: () => {},
+    arc: () => {},
+    fill: () => {},
+    measureText: () => ({ width: 8, fontBoundingBoxAscent: 14, fontBoundingBoxDescent: 4 }),
+    fillText: (text, x, y) => texts.push([text, x, y, context.textBaseline]),
+  };
+
+  drawAnnotationObject(context, {
+    type: 'circle',
+    left: 100,
+    top: 200,
+    radius: 14,
+    fill: '#ef4444',
+    data: { type: 'counter', displayNumber: 7, pointerAngle: 225 },
+  });
+
+  assert.equal(texts.length, 1);
+  const [label, x, y, baseline] = texts[0];
+  assert.equal(label, '7');
+  assert.equal(x, 114); // centerX = left + radius
+  assert.equal(baseline, 'alphabetic');
+  assert.equal(y, 214 + (14 - 4) / 2); // centerY + (ascent − descent)/2
+});
+
+test('text glyphs move to the CSS baseline while decorations keep their line-box positions', () => {
+  // drawText once anchored 'middle' at the line-box center — ~0.5px above the
+  // SVG foreignObject glyphs. With metrics available the glyph must anchor
+  // 'alphabetic' at blockTop + cssFirstBaseline(...), while the underline
+  // stays at its pre-correction position (old centerY + 0.36 * fontSize).
+  const fillTexts = [];
+  const moveTos = [];
+  const context = {
+    save: () => {},
+    restore: () => {},
+    translate: () => {},
+    rotate: () => {},
+    beginPath: () => {},
+    rect: () => {},
+    clip: () => {},
+    setLineDash: () => {},
+    moveTo: (...args) => moveTos.push(args),
+    lineTo: () => {},
+    stroke: () => {},
+    fillRect: () => {},
+    strokeRect: () => {},
+    measureText: (text) => ({
+      width: String(text).length * 6,
+      fontBoundingBoxAscent: 15,
+      fontBoundingBoxDescent: 4,
+    }),
+    fillText: (text, x, y) => fillTexts.push([text, x, y, context.textBaseline]),
+  };
+
+  const fontSize = 16;
+  drawAnnotationObject(context, {
+    type: 'textbox',
+    left: 0,
+    top: 0,
+    width: 200,
+    height: 50,
+    text: 'Hi',
+    fontSize,
+    fontFamily: 'TextProbeFont',
+    fill: '#000',
+    underline: true,
+  });
+
+  const lineHeightPx = fontSize * 1.16 * 1.13;
+  const baselineInLine = lineHeightPx / 2 + (15 - 4) / 2; // worker fallback formula
+  const blockTop = 6; // TEXT_PADDING, verticalAlign top
+  assert.equal(fillTexts.length, 1);
+  const [text, , glyphY, textBaseline] = fillTexts[0];
+  assert.equal(text, 'Hi');
+  assert.equal(textBaseline, 'alphabetic');
+  assert.ok(Math.abs(glyphY - (blockTop + baselineInLine)) < 1e-9);
+  // Underline did NOT move: still old centerY + 0.36 * fontSize.
+  assert.equal(moveTos.length, 1);
+  const underlineY = moveTos[0][1];
+  assert.ok(Math.abs(underlineY - (blockTop + lineHeightPx / 2 + fontSize * 0.36)) < 1e-9);
+});
+
+test('callout text glyphs anchor on the CSS baseline when font metrics resolve', () => {
+  // Same correction as drawText: 12px Arial callout text sat ~0.9px above the
+  // SVG when anchored 'middle'. First line must land at
+  // startY + cssFirstBaseline(font, lineHeightPx) with textBaseline='alphabetic'.
+  const fillTexts = [];
+  const context = {
+    setTransform: () => {},
+    clearRect: () => {},
+    save: () => {},
+    restore: () => {},
+    beginPath: () => {},
+    moveTo: () => {},
+    lineTo: () => {},
+    closePath: () => {},
+    translate: () => {},
+    rotate: () => {},
+    setLineDash: () => {},
+    stroke: () => {},
+    arc: () => {},
+    fill: () => {},
+    fillRect: () => {},
+    strokeRect: () => {},
+    measureText: (text) => ({
+      width: String(text).length * 6,
+      fontBoundingBoxAscent: 11,
+      fontBoundingBoxDescent: 3,
+    }),
+    fillText: (text, x, y) => fillTexts.push([text, x, y, context.textBaseline]),
+  };
+
+  paintAnnotationCanvas(context, {
+    canvasWidth: 600,
+    canvasHeight: 800,
+    drawScale: 1,
+    displayScale: 1,
+    pageWidth: 600,
+    pageHeight: 800,
+    objects: [],
+    callouts: [{
+      pageNumber: 1,
+      text: 'Hi',
+      arrowTip: { x: 0.1, y: 0.1 },
+      knee: { x: 0.2, y: 0.2 },
+      textBoxPosition: { x: 0.3, y: 0.3 },
+      textBoxWidth: 0.25,
+      textBoxHeight: 0.1,
+      style: { fontSize: 12, fontFamily: 'CalloutProbeFont' },
+    }],
+  });
+
+  const fontSize = 12;
+  const lineHeightPx = fontSize * 1 * 1.13;
+  const baselineInLine = lineHeightPx / 2 + (11 - 3) / 2; // worker fallback formula
+  const boxY = 0.3 * 800;
+  const boxHeightWithDescenders = 0.1 * 800 + fontSize * 0.35;
+  const startY = boxY + (boxHeightWithDescenders - lineHeightPx) / 2;
+  assert.equal(fillTexts.length, 1);
+  const [text, , y, textBaseline] = fillTexts[0];
+  assert.equal(text, 'Hi');
+  assert.equal(textBaseline, 'alphabetic');
+  assert.ok(Math.abs(y - (startY + baselineInLine)) < 1e-9);
 });

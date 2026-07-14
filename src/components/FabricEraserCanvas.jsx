@@ -143,6 +143,13 @@ const FabricEraserCanvas = memo(({
   const livePreviewObserverRef = useRef(null);
   const pointerRef = useRef(null);
   const spaceHeldRef = useRef(false);
+  // Last known pointer position in CLIENT coordinates (plus pointerType).
+  // The wrapper hardcodes cursor:'none', so any window where the custom
+  // circle is hidden while the pointer hovers the wrapper leaves the user
+  // with NO visible cursor until the next pointermove. This ref lets the
+  // hide paths that are not real pointer exits (zoom re-layout, pointer
+  // cancel, lost capture) put the circle back under a stationary pointer.
+  const lastClientPosRef = useRef(null);
   const eraserDiagGestureRef = useRef(null);
   const initialZoomGenerationRef = useRef(zoomGeneration);
 
@@ -203,6 +210,28 @@ const FabricEraserCanvas = memo(({
     cursor.style.height = `${diameter}px`;
     cursor.style.transform = `translate3d(${point.x * displayScale - diameter / 2}px, ${point.y * displayScale - diameter / 2}px, 0)`;
   }, []);
+
+  // Re-show the eraser circle at the last known pointer position, but only
+  // when that position is still inside the wrapper (mouse/pen only — touch
+  // has no hover cursor, so a re-shown circle would be a phantom). Used by
+  // hide paths that do not correspond to the pointer actually leaving:
+  // zoom-settle, pointercancel, and lostpointercapture.
+  const reshowCursorAtLastClientPos = useCallback(() => {
+    const last = lastClientPosRef.current;
+    if (!last || last.pointerType === 'touch') {
+      updateEraserCursor(null, false);
+      return;
+    }
+    const rect = containerRef.current?.getBoundingClientRect?.();
+    const inside = rect && rect.width > 0 && rect.height > 0
+      && last.x >= rect.left && last.x <= rect.right
+      && last.y >= rect.top && last.y <= rect.bottom;
+    if (!inside) {
+      updateEraserCursor(null, false);
+      return;
+    }
+    updateEraserCursor(pagePoint({ clientX: last.x, clientY: last.y }), true);
+  }, [pagePoint, updateEraserCursor]);
 
   const findPresentationSource = useCallback(() => {
     const surface = containerRef.current?.closest('[data-annotation-real-surface]');
@@ -669,6 +698,7 @@ const FabricEraserCanvas = memo(({
   }, [finishLiveErasePreview]);
 
   const handlePointerDown = useCallback((event) => {
+    lastClientPosRef.current = { x: event.clientX, y: event.clientY, pointerType: event.pointerType };
     if (event.button !== 0 || spaceHeldRef.current) return;
     if (pointerRef.current) cancelPointer();
     const point = pagePoint(event.nativeEvent);
@@ -705,6 +735,7 @@ const FabricEraserCanvas = memo(({
   ]);
 
   const handlePointerMove = useCallback((event) => {
+    lastClientPosRef.current = { x: event.clientX, y: event.clientY, pointerType: event.pointerType };
     const point = pagePoint(event.nativeEvent);
     updateEraserCursor(point, true);
     const pointer = pointerRef.current;
@@ -733,7 +764,10 @@ const FabricEraserCanvas = memo(({
     try { event.currentTarget.releasePointerCapture(event.pointerId); } catch { /* already released */ }
     if (cancelled) {
       finishLiveErasePreview();
-      updateEraserCursor(null, false);
+      // Not a real pointer exit: if the pointer still hovers the wrapper the
+      // native cursor is 'none', so hiding the circle here would leave no
+      // visible cursor until the next move. Re-show at the last known spot.
+      reshowCursorAtLastClientPos();
       return;
     }
     event.preventDefault();
@@ -758,6 +792,7 @@ const FabricEraserCanvas = memo(({
     finishLiveErasePreview,
     pagePoint,
     previewEraserGesture,
+    reshowCursorAtLastClientPos,
     scheduleLiveErasePreviewFinish,
     updateEraserCursor,
   ]);
@@ -766,8 +801,10 @@ const FabricEraserCanvas = memo(({
     const pointer = pointerRef.current;
     if (!pointer || pointer.pointerId !== event.pointerId) return;
     cancelPointer();
-    updateEraserCursor(null, false);
-  }, [cancelPointer, updateEraserCursor]);
+    // Same reasoning as the cancelled branch of finishPointer: losing capture
+    // does not mean the pointer left the wrapper — keep a visible cursor.
+    reshowCursorAtLastClientPos();
+  }, [cancelPointer, reshowCursorAtLastClientPos]);
 
   const commitPointerForZoom = useCallback(() => {
     const pointer = pointerRef.current;
@@ -806,7 +843,33 @@ const FabricEraserCanvas = memo(({
     // re-layouts; a cancel here silently threw away the user's erase.
     commitPointerForZoom();
     updateEraserCursor(null, false);
-  }, [commitPointerForZoom, updateEraserCursor, zoomGeneration]);
+    // Cursor-visibility fix: the hide above plus the wrapper's cursor:'none'
+    // means a stationary pointer has NO visible cursor from zoom-start until
+    // the next pointermove. Re-show the circle once the zoom re-layout lands:
+    // primary signal is the wrapper's actual resize (fresh rect at that
+    // moment, so placement is exact); the timeout is a fallback for clamped
+    // zooms where zoomGeneration bumped but the size never changes.
+    let observer = null;
+    if (typeof ResizeObserver !== 'undefined' && containerRef.current) {
+      let sawInitialObservation = false;
+      observer = new ResizeObserver(() => {
+        // observe() always delivers one immediate notification with the
+        // CURRENT size — the real zoom re-layout is the next one.
+        if (!sawInitialObservation) {
+          sawInitialObservation = true;
+          return;
+        }
+        observer.disconnect();
+        reshowCursorAtLastClientPos();
+      });
+      observer.observe(containerRef.current);
+    }
+    const reshowFallbackTimer = setTimeout(reshowCursorAtLastClientPos, 400);
+    return () => {
+      observer?.disconnect();
+      clearTimeout(reshowFallbackTimer);
+    };
+  }, [commitPointerForZoom, reshowCursorAtLastClientPos, updateEraserCursor, zoomGeneration]);
 
   useEffect(() => {
     const isSpaceKey = (event) => event.code === 'Space' || event.key === ' ';
@@ -820,13 +883,19 @@ const FabricEraserCanvas = memo(({
       if (event && !isSpaceKey(event)) return;
       spaceHeldRef.current = false;
     };
+    // Window blur must ALWAYS release the space-pan latch (the keyup is lost
+    // to the other window). Passing the FocusEvent into releaseSpacePan used
+    // to trip its isSpaceKey guard and leave spaceHeldRef stuck true — the
+    // circle could then never re-show (wrapper cursor is 'none' → no visible
+    // cursor at all) until space was pressed and released again.
+    const releaseSpacePanOnBlur = () => releaseSpacePan(null);
     window.addEventListener('keydown', activateSpacePan, true);
     window.addEventListener('keyup', releaseSpacePan, true);
-    window.addEventListener('blur', releaseSpacePan);
+    window.addEventListener('blur', releaseSpacePanOnBlur);
     return () => {
       window.removeEventListener('keydown', activateSpacePan, true);
       window.removeEventListener('keyup', releaseSpacePan, true);
-      window.removeEventListener('blur', releaseSpacePan);
+      window.removeEventListener('blur', releaseSpacePanOnBlur);
     };
   }, [cancelPointer, updateEraserCursor]);
 
@@ -845,8 +914,16 @@ const FabricEraserCanvas = memo(({
       onPointerUp={(event) => finishPointer(event, false)}
       onPointerCancel={(event) => finishPointer(event, true)}
       onLostPointerCapture={handleLostPointerCapture}
-      onPointerEnter={(event) => updateEraserCursor(pagePoint(event.nativeEvent), true)}
-      onPointerLeave={() => updateEraserCursor(null, false)}
+      onPointerEnter={(event) => {
+        lastClientPosRef.current = { x: event.clientX, y: event.clientY, pointerType: event.pointerType };
+        updateEraserCursor(pagePoint(event.nativeEvent), true);
+      }}
+      onPointerLeave={() => {
+        // A real exit: forget the position so no later re-show path (zoom
+        // settle, cancel, lost capture) resurrects a phantom circle.
+        lastClientPosRef.current = null;
+        updateEraserCursor(null, false);
+      }}
       style={{
         position: 'absolute',
         inset: 0,
