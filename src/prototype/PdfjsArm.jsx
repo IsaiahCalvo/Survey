@@ -288,6 +288,8 @@ export default function PdfjsArm({
   annotationTool = 'select',
   penColor = '#e11d48',
   penWidth = 10,
+  textColor = '#111827',
+  textFontSize = 16,
   eraserWidth = 24,
   eraseMode = 'partial',
   sloppiness = 0,
@@ -925,6 +927,8 @@ export default function PdfjsArm({
                         tool={annotationTool}
                         penColor={penColor}
                         penWidth={penWidth}
+                        textColor={textColor}
+                        textFontSize={textFontSize}
                         eraserWidth={eraserWidth}
                         eraseMode={eraseMode}
                         sloppiness={sloppiness}

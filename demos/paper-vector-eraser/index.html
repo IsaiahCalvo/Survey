@@ -1,0 +1,1372 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Paper.js Vector Eraser Demo</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --bg: #eef2ed;
+        --panel: #ffffff;
+        --ink: #151a18;
+        --muted: #66716b;
+        --line: #d9e0da;
+        --accent: #1868f2;
+        --accent-ink: #ffffff;
+        --danger: #ba2d20;
+        --shadow: 0 18px 50px rgba(29, 40, 35, 0.12);
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        width: 100%;
+        height: 100%;
+      }
+
+      body {
+        margin: 0;
+        overflow: hidden;
+        background: var(--bg);
+        color: var(--ink);
+        font-family:
+          Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
+          "Segoe UI", sans-serif;
+      }
+
+      button,
+      input,
+      select {
+        font: inherit;
+      }
+
+      .app {
+        position: fixed;
+        inset: 0;
+        display: grid;
+        grid-template-columns: minmax(248px, 292px) minmax(0, 1fr);
+      }
+
+      .panel {
+        z-index: 2;
+        display: flex;
+        flex-direction: column;
+        gap: 18px;
+        min-width: 0;
+        padding: 20px;
+        background: var(--panel);
+        border-right: 1px solid var(--line);
+        box-shadow: var(--shadow);
+      }
+
+      .title {
+        display: grid;
+        gap: 4px;
+      }
+
+      h1 {
+        margin: 0;
+        font-size: 20px;
+        line-height: 1.12;
+        letter-spacing: 0;
+      }
+
+      .source {
+        width: fit-content;
+        color: var(--muted);
+        font-size: 12px;
+        line-height: 1.4;
+        text-decoration: none;
+      }
+
+      .source:hover {
+        color: var(--accent);
+      }
+
+      .group {
+        display: grid;
+        gap: 10px;
+      }
+
+      .group label,
+      .metric-label {
+        color: var(--muted);
+        font-size: 12px;
+        font-weight: 700;
+        line-height: 1;
+        text-transform: uppercase;
+      }
+
+      .segmented {
+        display: grid;
+        grid-template-columns: 1fr 1fr 1fr;
+        gap: 6px;
+        padding: 4px;
+        background: #f3f6f2;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+      }
+
+      .tool-button,
+      .command-button {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        min-width: 0;
+        min-height: 38px;
+        padding: 9px 11px;
+        color: var(--ink);
+        background: transparent;
+        border: 0;
+        border-radius: 6px;
+        cursor: pointer;
+      }
+
+      .tool-button svg,
+      .command-button svg {
+        width: 17px;
+        height: 17px;
+        flex: 0 0 auto;
+      }
+
+      .tool-button {
+        font-size: 13px;
+        font-weight: 800;
+      }
+
+      .tool-button.is-active {
+        color: var(--accent-ink);
+        background: var(--accent);
+        box-shadow: 0 8px 18px rgba(24, 104, 242, 0.24);
+      }
+
+      .control-row {
+        display: grid;
+        grid-template-columns: 1fr auto;
+        gap: 10px;
+        align-items: center;
+      }
+
+      .value {
+        min-width: 44px;
+        color: var(--ink);
+        font-size: 13px;
+        font-weight: 800;
+        text-align: right;
+      }
+
+      input[type="range"] {
+        width: 100%;
+        accent-color: var(--accent);
+      }
+
+      select {
+        width: 100%;
+        min-height: 38px;
+        padding: 8px 10px;
+        color: var(--ink);
+        font-size: 13px;
+        font-weight: 800;
+        background: #f7f9f6;
+        border: 1px solid var(--line);
+        border-radius: 7px;
+      }
+
+      .swatches {
+        display: grid;
+        grid-template-columns: repeat(5, minmax(0, 1fr));
+        gap: 8px;
+      }
+
+      .swatch,
+      .color-input {
+        width: 100%;
+        aspect-ratio: 1;
+        min-height: 34px;
+        border: 1px solid rgba(21, 26, 24, 0.16);
+        border-radius: 7px;
+        cursor: pointer;
+      }
+
+      .swatch {
+        box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.5);
+      }
+
+      .swatch.is-active {
+        outline: 3px solid var(--accent);
+        outline-offset: 2px;
+      }
+
+      .color-input {
+        padding: 0;
+        overflow: hidden;
+        background: transparent;
+      }
+
+      .commands {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 8px;
+      }
+
+      .command-button {
+        min-height: 40px;
+        color: var(--ink);
+        font-size: 13px;
+        font-weight: 800;
+        background: #f7f9f6;
+        border: 1px solid var(--line);
+      }
+
+      .command-button:hover {
+        border-color: #b9c6bd;
+      }
+
+      .command-button[data-danger="true"] {
+        color: var(--danger);
+      }
+
+      .toggle {
+        display: flex;
+        align-items: center;
+        gap: 9px;
+        color: var(--ink);
+        font-size: 13px;
+        font-weight: 750;
+      }
+
+      .toggle input {
+        width: 17px;
+        height: 17px;
+        accent-color: var(--accent);
+      }
+
+      .metrics {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 8px;
+        margin-top: auto;
+      }
+
+      .metric {
+        display: grid;
+        gap: 6px;
+        min-width: 0;
+        padding: 11px;
+        background: #f7f9f6;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+      }
+
+      .metric-value {
+        min-width: 0;
+        overflow: hidden;
+        font-size: 15px;
+        font-weight: 850;
+        line-height: 1.1;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .status {
+        min-height: 18px;
+        color: var(--muted);
+        font-size: 12px;
+        line-height: 1.45;
+      }
+
+      .stage {
+        position: relative;
+        min-width: 0;
+        min-height: 0;
+        overflow: hidden;
+        background: #f7f9f6;
+      }
+
+      #paperCanvas {
+        width: 100%;
+        height: 100%;
+        display: block;
+        touch-action: none;
+        cursor: crosshair;
+      }
+
+      .stage[data-tool="erase"] #paperCanvas {
+        cursor: cell;
+      }
+
+      .stage[data-tool="select"] #paperCanvas {
+        cursor: default;
+      }
+
+      .stage[data-panning="true"] #paperCanvas {
+        cursor: grab;
+      }
+
+      .stage[data-panning="dragging"] #paperCanvas {
+        cursor: grabbing;
+      }
+
+      .eraser-cursor {
+        position: absolute;
+        top: 0;
+        left: 0;
+        z-index: 2;
+        width: 36px;
+        height: 36px;
+        pointer-events: none;
+        border: 2px solid rgba(21, 26, 24, 0.82);
+        border-radius: 50%;
+        box-shadow:
+          0 0 0 1px rgba(255, 255, 255, 0.92),
+          0 0 0 4px rgba(24, 104, 242, 0.12);
+        opacity: 0;
+        transform: translate(-50%, -50%);
+      }
+
+      .eraser-cursor.is-visible {
+        opacity: 1;
+      }
+
+      @media (max-width: 760px) {
+        .app {
+          grid-template-columns: 1fr;
+          grid-template-rows: auto minmax(0, 1fr);
+        }
+
+        .panel {
+          max-height: 48vh;
+          overflow: auto;
+          padding: 14px;
+          border-right: 0;
+          border-bottom: 1px solid var(--line);
+        }
+
+        .commands,
+        .metrics {
+          grid-template-columns: repeat(4, minmax(112px, 1fr));
+          overflow-x: auto;
+          padding-bottom: 2px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="app">
+      <aside class="panel" aria-label="Eraser demo controls">
+        <div class="title">
+          <h1>Vector eraser demo</h1>
+          <a
+            class="source"
+            href="https://gist.github.com/beardicus/8cbe9511d43e3fb58d76e336f76f4eb2"
+            rel="noreferrer"
+            target="_blank"
+            >Paper.js gist source</a
+          >
+        </div>
+
+        <div class="group">
+          <label>Tool</label>
+          <div class="segmented" role="toolbar" aria-label="Tools">
+            <button class="tool-button is-active" type="button" data-tool="draw" aria-pressed="true">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path
+                  d="M4 20c4.8-1.1 7.5-3.6 8.1-7.4.4-2.7 2-4.8 4.8-6.2l1.7-.9-1 1.6c-1.7 2.7-1.9 5-.6 6.9 1 1.5 2.2 2.2 3.6 2.2"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                />
+              </svg>
+              Pen
+            </button>
+            <button class="tool-button" type="button" data-tool="erase" aria-pressed="false">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path
+                  d="m4.5 14.5 8-8a3 3 0 0 1 4.2 0l1.8 1.8a3 3 0 0 1 0 4.2l-6.2 6.2H7.2l-2.7-2.7a1.1 1.1 0 0 1 0-1.5Z"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                />
+                <path
+                  d="M11 8 17 14M13 18.7h6.5"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-linecap="round"
+                  stroke-width="2"
+                />
+              </svg>
+              Erase
+            </button>
+            <button class="tool-button" type="button" data-tool="select" aria-pressed="false">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path
+                  d="M6 4 17 15l-5 1.1-2.1 4.6L6 4Z"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                />
+              </svg>
+              Select
+            </button>
+          </div>
+        </div>
+
+        <div class="group">
+          <label for="drawWidth">Draw width</label>
+          <div class="control-row">
+            <input id="drawWidth" type="range" min="4" max="140" value="72" />
+            <output class="value" id="drawWidthValue" for="drawWidth">72</output>
+          </div>
+        </div>
+
+        <div class="group">
+          <label for="eraseWidth">Erase width</label>
+          <div class="control-row">
+            <input id="eraseWidth" type="range" min="4" max="128" value="36" />
+            <output class="value" id="eraseWidthValue" for="eraseWidth">36</output>
+          </div>
+        </div>
+
+        <div class="group">
+          <label for="eraseMode">Erase mode</label>
+          <select id="eraseMode">
+            <option value="partial" selected>Partial erase</option>
+            <option value="full">Full erase</option>
+          </select>
+        </div>
+
+        <div class="group">
+          <label for="sloppiness">Sloppiness</label>
+          <div class="control-row">
+            <input id="sloppiness" type="range" min="0" max="100" value="0" />
+            <output class="value" id="sloppinessValue" for="sloppiness">0</output>
+          </div>
+        </div>
+
+        <div class="group">
+          <label>Color</label>
+          <div class="swatches" aria-label="Draw colors">
+            <button class="swatch is-active" type="button" data-color="#151a18" style="background: #151a18" aria-label="Black"></button>
+            <button class="swatch" type="button" data-color="#1868f2" style="background: #1868f2" aria-label="Blue"></button>
+            <button class="swatch" type="button" data-color="#f05a28" style="background: #f05a28" aria-label="Orange"></button>
+            <button class="swatch" type="button" data-color="#18a058" style="background: #18a058" aria-label="Green"></button>
+            <input class="color-input" id="drawColor" type="color" value="#151a18" aria-label="Custom draw color" />
+          </div>
+        </div>
+
+        <div class="commands">
+          <button class="command-button" type="button" id="sampleButton">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M4 17c4-8 8 8 16 0M5 7h14" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="2" />
+            </svg>
+            Sample
+          </button>
+          <button class="command-button" type="button" id="clearButton" data-danger="true">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M6 7h12M9 7V5h6v2M9 10v8M15 10v8M7 7l1 13h8l1-13" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" />
+            </svg>
+            Clear
+          </button>
+        </div>
+
+        <label class="toggle">
+          <input id="showVectors" type="checkbox" />
+          Show vector outlines
+        </label>
+
+        <div class="metrics" aria-live="polite">
+          <div class="metric">
+            <span class="metric-label">Items</span>
+            <span class="metric-value" id="itemCount">0</span>
+          </div>
+          <div class="metric">
+            <span class="metric-label">Last erase</span>
+            <span class="metric-value" id="eraseTime">-</span>
+          </div>
+        </div>
+
+        <div class="status" id="status">Loading Paper.js...</div>
+      </aside>
+
+      <section class="stage" data-tool="draw" aria-label="Drawing canvas">
+        <canvas id="paperCanvas" resize></canvas>
+        <div class="eraser-cursor" id="eraserCursor" aria-hidden="true"></div>
+      </section>
+    </main>
+
+    <script src="https://unpkg.com/paper@0.11.5/dist/paper-full.js"></script>
+    <script>
+      /*
+        Point eraser demo built around the missing Drawboard-style step:
+        pen strokes are converted into filled ink geometry before erasing,
+        so a smaller circular eraser can subtract a real rounded bite.
+      */
+      (function () {
+        const state = {
+          tool: "draw",
+          previousTool: "draw",
+          drawColor: "#151a18",
+          drawWidth: 72,
+          eraseWidth: 36,
+          eraseMode: "partial",
+          sloppiness: 0,
+          showVectors: false,
+          lastEraseMs: 0,
+          selectedItem: null,
+          spaceKeyDown: false,
+          spacePanning: false,
+        };
+
+        const els = {
+          stage: document.querySelector(".stage"),
+          status: document.getElementById("status"),
+          itemCount: document.getElementById("itemCount"),
+          eraseTime: document.getElementById("eraseTime"),
+          drawWidth: document.getElementById("drawWidth"),
+          drawWidthValue: document.getElementById("drawWidthValue"),
+          eraseWidth: document.getElementById("eraseWidth"),
+          eraseWidthValue: document.getElementById("eraseWidthValue"),
+          eraserCursor: document.getElementById("eraserCursor"),
+          eraseMode: document.getElementById("eraseMode"),
+          sloppiness: document.getElementById("sloppiness"),
+          sloppinessValue: document.getElementById("sloppinessValue"),
+          drawColor: document.getElementById("drawColor"),
+          showVectors: document.getElementById("showVectors"),
+          sampleButton: document.getElementById("sampleButton"),
+          clearButton: document.getElementById("clearButton"),
+          toolButtons: Array.from(document.querySelectorAll("[data-tool]")),
+          swatches: Array.from(document.querySelectorAll("[data-color]")),
+        };
+
+        let bottomLayer;
+        let topLayer;
+        let drawTool;
+        let eraseTool;
+        let selectMoveTool;
+        let panTool;
+        let drawPath;
+        let drawPoints;
+        let erasePath;
+        let erasePoints;
+        let tmpGroup;
+        let mask;
+        let movingItem;
+        let backgroundCoverageBounds = null;
+        let pendingPanDelta = null;
+        let panAnimationFrame = 0;
+        let panPreviousAutoUpdate = null;
+        let panLastClientPoint = null;
+
+        function setStatus(message) {
+          els.status.textContent = message;
+        }
+
+        function strokeScale() {
+          return 1;
+        }
+
+        function normalizedSloppiness(value = state.sloppiness) {
+          return Math.max(0, Math.min(100, Number(value))) / 100;
+        }
+
+        function drawSamplingDistance() {
+          return 1 + normalizedSloppiness() * 12;
+        }
+
+        function updateToolSampling() {
+          if (!drawTool) return;
+          drawTool.minDistance = drawSamplingDistance();
+        }
+
+        function syncMetrics() {
+          els.itemCount.textContent = String(topLayer ? topLayer.children.length : 0);
+          els.eraseTime.textContent = state.lastEraseMs ? `${Math.round(state.lastEraseMs)} ms` : "-";
+        }
+
+        function eraserDiameterPx() {
+          return Math.max(1, state.eraseWidth * paper.view.zoom);
+        }
+
+        function setEraserCursorVisible(visible) {
+          els.eraserCursor.classList.toggle("is-visible", visible);
+        }
+
+        function updateEraserCursor(clientX, clientY) {
+          const rect = document.getElementById("paperCanvas").getBoundingClientRect();
+          const x = clientX - rect.left;
+          const y = clientY - rect.top;
+          const inside = x >= 0 && y >= 0 && x <= rect.width && y <= rect.height;
+          const visible = inside && state.tool === "erase" && !state.spacePanning;
+          const diameter = eraserDiameterPx();
+
+          els.eraserCursor.style.width = `${diameter}px`;
+          els.eraserCursor.style.height = `${diameter}px`;
+          els.eraserCursor.style.transform = `translate(${x - diameter / 2}px, ${y - diameter / 2}px)`;
+          setEraserCursorVisible(visible);
+        }
+
+        function isEditableTarget(event) {
+          return (
+            event.target instanceof HTMLInputElement ||
+            event.target instanceof HTMLTextAreaElement ||
+            event.target instanceof HTMLSelectElement
+          );
+        }
+
+        function expandedViewBounds() {
+          const viewBounds = paper.view.bounds;
+          const padX = viewBounds.width;
+          const padY = viewBounds.height;
+          return new paper.Rectangle(
+            new paper.Point(viewBounds.left - padX, viewBounds.top - padY),
+            new paper.Size(viewBounds.width + padX * 2, viewBounds.height + padY * 2)
+          );
+        }
+
+        function containsRect(outer, inner) {
+          return (
+            outer.left <= inner.left &&
+            outer.right >= inner.right &&
+            outer.top <= inner.top &&
+            outer.bottom >= inner.bottom
+          );
+        }
+
+        function drawBackground() {
+          if (!bottomLayer) return;
+
+          bottomLayer.activate();
+          bottomLayer.removeChildren();
+
+          const bounds = expandedViewBounds();
+          backgroundCoverageBounds = bounds.clone();
+          new paper.Path.Rectangle({
+            rectangle: bounds,
+            fillColor: "#f7f9f6",
+          });
+
+          const stripeWidth = Math.max(44, paper.view.bounds.width / 18);
+          const stripeStart = Math.floor(bounds.left / (stripeWidth * 2)) * stripeWidth * 2;
+          for (let x = stripeStart; x < bounds.right + stripeWidth; x += stripeWidth * 2) {
+            new paper.Path.Rectangle({
+              point: [x, bounds.top],
+              size: [stripeWidth, bounds.height],
+              fillColor: "#edf1ec",
+            });
+          }
+
+          const gridStep = 40;
+          const gridXStart = Math.floor(bounds.left / gridStep) * gridStep;
+          const gridYStart = Math.floor(bounds.top / gridStep) * gridStep;
+          for (let x = gridXStart; x <= bounds.right; x += gridStep) {
+            new paper.Path.Line({
+              from: [x, bounds.top],
+              to: [x, bounds.bottom],
+              strokeColor: "#dfe6df",
+              strokeWidth: 1,
+            });
+          }
+          for (let y = gridYStart; y <= bounds.bottom; y += gridStep) {
+            new paper.Path.Line({
+              from: [bounds.left, y],
+              to: [bounds.right, y],
+              strokeColor: "#dfe6df",
+              strokeWidth: 1,
+            });
+          }
+
+          topLayer.activate();
+        }
+
+        function ensureBackgroundCoverage() {
+          if (!backgroundCoverageBounds || !containsRect(backgroundCoverageBounds, paper.view.bounds)) {
+            drawBackground();
+          }
+        }
+
+        function applyPendingPan() {
+          if (!pendingPanDelta) return;
+          const delta = pendingPanDelta;
+          pendingPanDelta = null;
+          paper.view.center = paper.view.center.subtract(delta);
+          ensureBackgroundCoverage();
+          paper.view.update();
+        }
+
+        function schedulePan(delta) {
+          pendingPanDelta = pendingPanDelta ? pendingPanDelta.add(delta) : delta.clone();
+          if (panAnimationFrame) return;
+
+          panAnimationFrame = requestAnimationFrame(() => {
+            panAnimationFrame = 0;
+            applyPendingPan();
+          });
+        }
+
+        function flushPendingPan() {
+          if (panAnimationFrame) {
+            cancelAnimationFrame(panAnimationFrame);
+            panAnimationFrame = 0;
+          }
+          applyPendingPan();
+        }
+
+        function clientPointFromToolEvent(event) {
+          const nativeEvent = event.event;
+          if (nativeEvent && Number.isFinite(nativeEvent.clientX) && Number.isFinite(nativeEvent.clientY)) {
+            return new paper.Point(nativeEvent.clientX, nativeEvent.clientY);
+          }
+          return null;
+        }
+
+        function lockPanRendering() {
+          if (!paper.view || panPreviousAutoUpdate !== null) return;
+          panPreviousAutoUpdate = paper.view.autoUpdate;
+          paper.view.autoUpdate = false;
+        }
+
+        function unlockPanRendering() {
+          if (!paper.view || panPreviousAutoUpdate === null) return;
+          paper.view.autoUpdate = panPreviousAutoUpdate;
+          panPreviousAutoUpdate = null;
+        }
+
+        function selectTool(toolName) {
+          state.tool = toolName;
+          if (toolName === "erase") {
+            eraseTool.activate();
+            const mode = state.eraseMode === "full" ? "full erase" : "partial erase";
+            setStatus(`${mode} active.`);
+          } else if (toolName === "select") {
+            selectMoveTool.activate();
+            setEraserCursorVisible(false);
+            setStatus("Select mode active; drag ink shapes to move them.");
+          } else {
+            drawTool.activate();
+            setEraserCursorVisible(false);
+            setStatus("Pen mode active; strokes are committed as filled ink shapes.");
+          }
+
+          els.stage.dataset.tool = toolName;
+          els.toolButtons.forEach((button) => {
+            const isActive = button.dataset.tool === toolName;
+            button.classList.toggle("is-active", isActive);
+            button.setAttribute("aria-pressed", String(isActive));
+          });
+        }
+
+        function clearSelection() {
+          state.selectedItem = null;
+          updateSelectionState();
+        }
+
+        function setSelectedItem(item) {
+          state.selectedItem = item || null;
+          updateSelectionState();
+        }
+
+        function updateSelectionState() {
+          if (!topLayer) return;
+          topLayer.getItems({}).forEach((item) => {
+            item.selected = state.showVectors || item === state.selectedItem;
+          });
+        }
+
+        function findInkItemAt(point) {
+          const hit = topLayer.hitTest(point, {
+            fill: true,
+            stroke: false,
+            segments: false,
+            tolerance: Math.max(4, 8 / paper.view.zoom),
+          });
+
+          if (!hit || !hit.item || hit.item.layer !== topLayer) return null;
+          let item = hit.item;
+          while (item.parent && item.parent !== topLayer) {
+            item = item.parent;
+          }
+          return item.data?.kind === "inkShape" || item.fillColor ? item : null;
+        }
+
+        function setDrawColor(color) {
+          state.drawColor = color;
+          els.drawColor.value = color;
+          els.swatches.forEach((button) => {
+            button.classList.toggle("is-active", button.dataset.color.toLowerCase() === color.toLowerCase());
+          });
+        }
+
+        function applyVectorSelection() {
+          updateSelectionState();
+        }
+
+        function styleInkShape(shape, color, sourceWidth) {
+          shape.fillColor = color;
+          shape.strokeColor = null;
+          shape.data = {
+            kind: "inkShape",
+            color,
+            sourceWidth,
+          };
+          shape.selected = state.showVectors || shape === state.selectedItem;
+          return shape;
+        }
+
+        function compactPoints(points, minDistance) {
+          const compacted = [];
+          points.forEach((point) => {
+            const paperPoint = Array.isArray(point) ? new paper.Point(point[0], point[1]) : point.clone();
+            const last = compacted[compacted.length - 1];
+            if (!last || last.getDistance(paperPoint) >= minDistance) {
+              compacted.push(paperPoint);
+            }
+          });
+          return compacted;
+        }
+
+        function makeCapsule(from, to, radius) {
+          const delta = to.subtract(from);
+          const length = delta.length;
+
+          if (length < 0.5) {
+            return new paper.Path.Circle({
+              center: from,
+              radius,
+              insert: false,
+            });
+          }
+
+          const direction = delta.normalize();
+          const normal = direction.rotate(90).multiply(radius);
+          const forward = direction.multiply(radius);
+          const path = new paper.Path({ closed: true, insert: false });
+
+          path.add(from.add(normal));
+          path.add(to.add(normal));
+          path.arcTo(to.add(forward), to.subtract(normal));
+          path.add(from.subtract(normal));
+          path.arcTo(from.subtract(forward), from.add(normal));
+
+          return path;
+        }
+
+        function unionShapes(shapes) {
+          if (!shapes.length) return null;
+
+          let result = shapes.shift();
+          shapes.forEach((shape) => {
+            const next = result.unite(shape, { insert: false });
+            result.remove();
+            shape.remove();
+            result = next;
+          });
+
+          return result;
+        }
+
+        function buildStrokeShape(points, color, width, options = {}) {
+          const sloppiness = normalizedSloppiness(options.sloppiness ?? state.sloppiness);
+          const radius = Math.max(1, width / 2);
+          const minDistance = Math.max(0.75, 0.9 + radius * 0.34 * sloppiness);
+          const compacted = compactPoints(points, minDistance);
+          const shapes = [];
+
+          if (compacted.length <= 1) {
+            shapes.push(
+              new paper.Path.Circle({
+                center: compacted[0] || paper.view.center,
+                radius,
+                insert: false,
+              })
+            );
+          } else {
+            for (let i = 1; i < compacted.length; i += 1) {
+              shapes.push(makeCapsule(compacted[i - 1], compacted[i], radius));
+            }
+          }
+
+          const shape = unionShapes(shapes);
+          if (!shape) return null;
+
+          const simplifyTolerance = options.simplify ?? radius * 0.045 * sloppiness;
+          if (simplifyTolerance > 0.001) {
+            shape.simplify(simplifyTolerance);
+          }
+          styleInkShape(shape, color, width);
+
+          if (options.insert !== false) {
+            topLayer.addChild(shape);
+          }
+
+          return shape;
+        }
+
+        function addDemoPath(points, color, width) {
+          return buildStrokeShape(points, color, width * strokeScale());
+        }
+
+        function addSampleArtwork() {
+          topLayer.activate();
+
+          const b = paper.view.bounds;
+          const w = b.width;
+          const h = b.height;
+
+          addDemoPath(
+            [
+              [w * 0.1, h * 0.23],
+              [w * 0.22, h * 0.13],
+              [w * 0.35, h * 0.28],
+              [w * 0.48, h * 0.17],
+              [w * 0.62, h * 0.31],
+            ],
+            "#151a18",
+            76
+          );
+
+          addDemoPath(
+            [
+              [w * 0.16, h * 0.62],
+              [w * 0.28, h * 0.42],
+              [w * 0.4, h * 0.69],
+              [w * 0.54, h * 0.45],
+              [w * 0.69, h * 0.66],
+              [w * 0.84, h * 0.5],
+            ],
+            "#1868f2",
+            92
+          );
+
+          const circle = new paper.Path.Circle({
+            center: [w * 0.77, h * 0.27],
+            radius: Math.max(44, Math.min(w, h) * 0.09),
+            fillColor: "#f05a28",
+          });
+          circle.selected = state.showVectors;
+
+          const block = new paper.Path.Rectangle({
+            point: [w * 0.68, h * 0.68],
+            size: [w * 0.16, h * 0.11],
+            radius: 18,
+            fillColor: "#18a058",
+          });
+          block.rotate(-9);
+          block.selected = state.showVectors;
+
+          syncMetrics();
+          setStatus("Sample artwork added.");
+          paper.view.update();
+        }
+
+        function buildDeleteShape(points) {
+          const eraseRadius = (state.eraseWidth * strokeScale()) / 2;
+          const deleteShape = buildStrokeShape(points, "white", eraseRadius * 2, {
+            insert: false,
+            simplify: 0,
+            sloppiness: 0,
+          });
+
+          if (deleteShape) {
+            deleteShape.fillColor = "white";
+            deleteShape.data = { kind: "eraserShape" };
+          }
+
+          return deleteShape;
+        }
+
+        function itemTouchesDeleteShape(item, deleteShape, points) {
+          if (!item.bounds.intersects(deleteShape.bounds)) return false;
+
+          if (typeof item.intersects === "function" && item.intersects(deleteShape)) {
+            return true;
+          }
+
+          if (item.getIntersections(deleteShape).length > 0) {
+            return true;
+          }
+
+          return points.some((point) => item.contains(point)) || deleteShape.contains(item.position);
+        }
+
+        function restoreFromMask() {
+          if (tmpGroup) {
+            topLayer.addChildren(tmpGroup.removeChildren());
+          }
+          if (mask) mask.remove();
+          if (erasePath) erasePath.remove();
+          tmpGroup = null;
+          mask = null;
+          erasePath = null;
+          erasePoints = null;
+        }
+
+        function commitErase() {
+          if (!erasePath || !tmpGroup || !mask) return;
+
+          const startedAt = performance.now();
+          let deleteShape;
+
+          try {
+            deleteShape = buildDeleteShape(erasePoints);
+            erasePath.remove();
+
+            const items = tmpGroup.children
+              .slice()
+              .filter((item) => itemTouchesDeleteShape(item, deleteShape, erasePoints));
+            items.forEach((item) => {
+              if (item === tmpGroup || item.className === "Group") return;
+              const wasSelected = item === state.selectedItem;
+
+              if (state.eraseMode === "full") {
+                if (wasSelected) state.selectedItem = null;
+                item.remove();
+                return;
+              }
+
+              const result = item.subtract(deleteShape, { insert: false });
+
+              if (!result) return;
+
+              if ((result.children && !result.children.length) || Math.abs(result.area || 0) < 0.5) {
+                if (wasSelected) state.selectedItem = null;
+                item.remove();
+                result.remove();
+              } else {
+                styleInkShape(result, item.data.color || item.fillColor || "#151a18", item.data.sourceWidth || 1);
+                item.parent.insertChild(item.index, result);
+                if (wasSelected) state.selectedItem = result;
+                item.remove();
+              }
+            });
+
+            topLayer.addChildren(tmpGroup.removeChildren());
+            mask.remove();
+            deleteShape.remove();
+            updateSelectionState();
+
+            state.lastEraseMs = performance.now() - startedAt;
+            const action = state.eraseMode === "full" ? "Full erase deleted" : "Partial erase changed";
+            setStatus(`${action} ${items.length} item${items.length === 1 ? "" : "s"}.`);
+          } catch (error) {
+            console.error(error);
+            restoreFromMask();
+            setStatus("Erase failed; artwork restored. Check console for details.");
+          } finally {
+            tmpGroup = null;
+            mask = null;
+            erasePath = null;
+            erasePoints = null;
+            syncMetrics();
+            paper.view.update();
+          }
+        }
+
+        function createTools() {
+          drawTool = new paper.Tool();
+          updateToolSampling();
+          drawTool.onMouseDown = function (event) {
+            topLayer.activate();
+            drawPoints = [event.point.clone()];
+            drawPath = new paper.Path({
+              strokeColor: state.drawColor,
+              strokeWidth: state.drawWidth * strokeScale(),
+              strokeCap: "round",
+              strokeJoin: "round",
+            });
+            drawPath.add(event.point);
+          };
+          drawTool.onMouseDrag = function (event) {
+            if (!drawPath) return;
+            drawPoints.push(event.point.clone());
+            drawPath.add(event.point);
+          };
+          drawTool.onMouseUp = function () {
+            if (!drawPath) return;
+            const preview = drawPath;
+            const points = preview.segments.map((segment) => segment.point.clone());
+            const shape = buildStrokeShape(points.length > 1 ? points : drawPoints, state.drawColor, state.drawWidth * strokeScale());
+            preview.remove();
+            if (shape) shape.selected = state.showVectors;
+            drawPath = null;
+            drawPoints = null;
+            syncMetrics();
+            setStatus(`Stroke committed with sloppiness ${state.sloppiness}.`);
+          };
+
+          eraseTool = new paper.Tool();
+          eraseTool.minDistance = 2;
+          eraseTool.onMouseDown = function (event) {
+            topLayer.activate();
+
+            if (!topLayer.children.length) {
+              setStatus("Nothing to erase.");
+              return;
+            }
+
+            erasePath = new paper.Path({
+              strokeWidth: state.eraseWidth * strokeScale(),
+              strokeCap: "round",
+              strokeJoin: "round",
+              strokeColor: "white",
+            });
+            erasePath.add(event.point);
+            erasePoints = [event.point.clone()];
+
+            tmpGroup = new paper.Group({
+              children: topLayer.removeChildren(),
+              blendMode: "source-out",
+              insert: false,
+            });
+
+            mask = new paper.Group({
+              children: [erasePath, tmpGroup],
+              blendMode: "source-over",
+            });
+          };
+          eraseTool.onMouseDrag = function (event) {
+            if (!erasePath) return;
+            erasePoints.push(event.point.clone());
+            erasePath.add(event.point);
+          };
+          eraseTool.onMouseUp = commitErase;
+
+          selectMoveTool = new paper.Tool();
+          selectMoveTool.onMouseDown = function (event) {
+            movingItem = findInkItemAt(event.point);
+            setSelectedItem(movingItem);
+            if (movingItem) {
+              setStatus("Moving selected shape.");
+            } else {
+              setStatus("No shape selected.");
+            }
+          };
+          selectMoveTool.onMouseDrag = function (event) {
+            if (!movingItem) return;
+            movingItem.position = movingItem.position.add(event.delta);
+            paper.view.update();
+          };
+          selectMoveTool.onMouseUp = function () {
+            if (movingItem) setStatus("Shape moved.");
+            movingItem = null;
+          };
+
+          panTool = new paper.Tool();
+          panTool.onMouseDown = function (event) {
+            panLastClientPoint = clientPointFromToolEvent(event);
+            els.stage.dataset.panning = "dragging";
+          };
+          panTool.onMouseDrag = function (event) {
+            const clientPoint = clientPointFromToolEvent(event);
+            if (!clientPoint || !panLastClientPoint) {
+              schedulePan(event.delta);
+              return;
+            }
+
+            const screenDelta = clientPoint.subtract(panLastClientPoint);
+            panLastClientPoint = clientPoint;
+            schedulePan(screenDelta.divide(paper.view.zoom));
+          };
+          panTool.onMouseUp = function () {
+            panLastClientPoint = null;
+            flushPendingPan();
+            els.stage.dataset.panning = state.spacePanning ? "true" : "false";
+          };
+        }
+
+        function activateSpacePan() {
+          state.spaceKeyDown = true;
+          lockPanRendering();
+          if (state.spacePanning) {
+            panTool.activate();
+            els.stage.dataset.panning = "true";
+            return;
+          }
+          state.previousTool = state.tool;
+          state.spacePanning = true;
+          els.stage.dataset.panning = "true";
+          setEraserCursorVisible(false);
+          panTool.activate();
+          setStatus("Pan active.");
+        }
+
+        function releaseSpacePan() {
+          state.spaceKeyDown = false;
+          if (!state.spacePanning) return;
+          panLastClientPoint = null;
+          flushPendingPan();
+          unlockPanRendering();
+          state.spacePanning = false;
+          els.stage.dataset.panning = "false";
+          selectTool(state.previousTool || "draw");
+        }
+
+        function isSpaceEvent(event) {
+          return event.code === "Space" || event.key === " " || event.key === "Spacebar";
+        }
+
+        function zoomAtClientPoint(clientX, clientY, deltaY) {
+          flushPendingPan();
+          const rect = document.getElementById("paperCanvas").getBoundingClientRect();
+          const viewPoint = new paper.Point(clientX - rect.left, clientY - rect.top);
+          const before = paper.view.viewToProject(viewPoint);
+          const factor = Math.exp(-deltaY * 0.002);
+          const nextZoom = Math.max(0.2, Math.min(8, paper.view.zoom * factor));
+
+          if (Math.abs(nextZoom - paper.view.zoom) < 0.0001) return;
+
+          paper.view.zoom = nextZoom;
+          const after = paper.view.viewToProject(viewPoint);
+          paper.view.center = paper.view.center.add(before.subtract(after));
+          drawBackground();
+          paper.view.update();
+          setStatus(`Zoom ${Math.round(paper.view.zoom * 100)}%.`);
+        }
+
+        function bindUi() {
+          els.toolButtons.forEach((button) => {
+            button.addEventListener("click", () => selectTool(button.dataset.tool));
+          });
+
+          els.drawWidth.addEventListener("input", () => {
+            state.drawWidth = Number(els.drawWidth.value);
+            els.drawWidthValue.value = state.drawWidth;
+          });
+
+          els.eraseWidth.addEventListener("input", () => {
+            state.eraseWidth = Number(els.eraseWidth.value);
+            els.eraseWidthValue.value = state.eraseWidth;
+            const diameter = eraserDiameterPx();
+            els.eraserCursor.style.width = `${diameter}px`;
+            els.eraserCursor.style.height = `${diameter}px`;
+          });
+
+          els.eraseMode.addEventListener("change", () => {
+            state.eraseMode = els.eraseMode.value;
+            if (state.tool === "erase") selectTool("erase");
+          });
+
+          els.sloppiness.addEventListener("input", () => {
+            state.sloppiness = Number(els.sloppiness.value);
+            els.sloppinessValue.value = state.sloppiness;
+            updateToolSampling();
+          });
+
+          els.swatches.forEach((button) => {
+            button.addEventListener("click", () => setDrawColor(button.dataset.color));
+          });
+
+          els.drawColor.addEventListener("input", () => setDrawColor(els.drawColor.value));
+
+          els.showVectors.addEventListener("change", () => {
+            state.showVectors = els.showVectors.checked;
+            applyVectorSelection();
+          });
+
+          els.sampleButton.addEventListener("click", addSampleArtwork);
+          els.clearButton.addEventListener("click", () => {
+            topLayer.removeChildren();
+            state.selectedItem = null;
+            state.lastEraseMs = 0;
+            syncMetrics();
+            setStatus("Canvas cleared.");
+          });
+
+          document.getElementById("paperCanvas").addEventListener(
+            "wheel",
+            (event) => {
+              event.preventDefault();
+              zoomAtClientPoint(event.clientX, event.clientY, event.deltaY);
+              updateEraserCursor(event.clientX, event.clientY);
+            },
+            { passive: false }
+          );
+
+          document.getElementById("paperCanvas").addEventListener("pointermove", (event) => {
+            updateEraserCursor(event.clientX, event.clientY);
+          });
+
+          document.getElementById("paperCanvas").addEventListener("pointerenter", (event) => {
+            updateEraserCursor(event.clientX, event.clientY);
+          });
+
+          document.getElementById("paperCanvas").addEventListener("pointerleave", () => {
+            setEraserCursorVisible(false);
+          });
+
+          window.addEventListener(
+            "keydown",
+            (event) => {
+              if (isSpaceEvent(event)) {
+                event.preventDefault();
+                event.stopPropagation();
+                activateSpacePan();
+                return;
+              }
+
+              if (isEditableTarget(event)) return;
+              const key = event.key.toLowerCase();
+
+              if (state.spacePanning) return;
+              if (key === "p") selectTool("draw");
+              if (key === "e") selectTool("erase");
+              if (key === "v") selectTool("select");
+            },
+            true
+          );
+
+          window.addEventListener(
+            "keyup",
+            (event) => {
+              if (!isSpaceEvent(event)) return;
+              event.preventDefault();
+              event.stopPropagation();
+              releaseSpacePan();
+            },
+            true
+          );
+
+          window.addEventListener("blur", releaseSpacePan);
+          window.addEventListener("pagehide", releaseSpacePan);
+          document.addEventListener("visibilitychange", () => {
+            if (document.hidden) releaseSpacePan();
+          });
+        }
+
+        function boot() {
+          if (!window.paper) {
+            setStatus("Required scripts failed to load.");
+            return;
+          }
+
+          paper.setup(document.getElementById("paperCanvas"));
+
+          bottomLayer = new paper.Layer();
+          bottomLayer.name = "background";
+          topLayer = new paper.Layer();
+          topLayer.name = "artwork";
+
+          createTools();
+          bindUi();
+          drawBackground();
+          addSampleArtwork();
+          selectTool("draw");
+          syncMetrics();
+
+          paper.view.onResize = drawBackground;
+        }
+
+        window.addEventListener("load", boot);
+      })();
+    </script>
+  </body>
+</html>

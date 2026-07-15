@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Survey Mobile UI Explorations</title>
+<style>
+  :root{
+    --bg:#0b1220; --phone:#0f172a; --panel:#101827; --panel2:#141f33; --line:#26344d;
+    --text:#e6edf7; --muted:#8ea0b8; --blue:#5aa7ff; --green:#34d399; --amber:#fbbf24; --red:#fb7185;
+    --purple:#a78bfa; --paper:#e7edf7; --paperline:#ccd5e6; --ink:#172033; --shadow:0 18px 60px rgba(0,0,0,.38);
+    font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  }
+  *{box-sizing:border-box} body{margin:0;background:linear-gradient(135deg,#08111f,#132039 55%,#0b1220);color:var(--text)}
+  .wrap{max-width:1440px;margin:0 auto;padding:28px 22px 46px}.hero{display:flex;justify-content:space-between;gap:24px;align-items:flex-end;margin-bottom:20px}
+  h1{margin:0;font-size:30px;letter-spacing:-.04em}.sub{margin:7px 0 0;color:var(--muted);font-size:14px;max-width:780px;line-height:1.5}.pill{border:1px solid var(--line);background:rgba(255,255,255,.04);border-radius:999px;padding:8px 12px;color:#bdd0ea;font-size:12px;white-space:nowrap}
+  .grid{display:grid;grid-template-columns:repeat(4,minmax(280px,1fr));gap:18px}@media(max-width:1250px){.grid{grid-template-columns:repeat(2,minmax(280px,1fr))}}@media(max-width:760px){.grid{grid-template-columns:1fr}.hero{display:block}.pill{display:inline-block;margin-top:12px}}
+  .card{border:1px solid var(--line);background:rgba(10,18,32,.72);border-radius:22px;padding:14px;box-shadow:var(--shadow)}.card h2{margin:0 0 6px;font-size:16px}.card p{margin:0 0 12px;color:var(--muted);font-size:12px;line-height:1.45;min-height:50px}
+  .phone{height:720px;border:10px solid #050914;border-radius:38px;position:relative;overflow:hidden;background:var(--phone);box-shadow:inset 0 0 0 1px rgba(255,255,255,.08)}
+  .status{position:absolute;top:0;left:0;right:0;height:32px;display:flex;justify-content:space-between;padding:8px 18px 0;font-size:11px;color:#d8e5f6;z-index:30;background:linear-gradient(#0c1424,rgba(12,20,36,.72),transparent)}
+  .topbar{position:absolute;top:32px;left:0;right:0;height:48px;display:flex;align-items:center;gap:8px;padding:0 12px;background:rgba(12,20,36,.9);border-bottom:1px solid rgba(255,255,255,.08);z-index:25;backdrop-filter:blur(14px)}
+  .btn,.chip{border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.07);color:var(--text);border-radius:12px;height:32px;padding:0 9px;font-size:12px;display:inline-flex;align-items:center;gap:5px}.btn.icon{width:32px;justify-content:center;padding:0}.grow{flex:1}.muted{color:var(--muted)}
+  .canvas{position:absolute;inset:80px 0 0;background:#273348;overflow:hidden}.page{position:absolute;left:28px;right:28px;top:34px;height:520px;background:var(--paper);border-radius:6px;box-shadow:0 10px 28px rgba(0,0,0,.34);color:var(--ink);overflow:hidden}.plan-grid{position:absolute;inset:0;background-image:linear-gradient(var(--paperline) 1px,transparent 1px),linear-gradient(90deg,var(--paperline) 1px,transparent 1px);background-size:32px 32px;opacity:.62}.room{position:absolute;border:2px solid #9aa9bd;background:rgba(255,255,255,.42);font-size:10px;color:#526071;display:flex;align-items:flex-start;padding:5px}.room.a{left:28px;top:36px;width:142px;height:110px}.room.b{left:178px;top:36px;width:132px;height:110px}.room.c{left:28px;top:154px;width:282px;height:130px}.room.d{left:28px;top:292px;width:132px;height:122px}.room.e{left:168px;top:292px;width:142px;height:122px}.region{position:absolute;border:2px dashed var(--green);background:rgba(52,211,153,.13);border-radius:8px}.region.r1{left:42px;top:174px;width:120px;height:74px}.region.r2{right:42px;top:306px;width:98px;height:90px;border-color:var(--purple);background:rgba(167,139,250,.14)}
+  .marker{position:absolute;width:22px;height:22px;border-radius:50%;background:var(--blue);color:white;display:grid;place-items:center;font-size:11px;font-weight:700;box-shadow:0 4px 10px rgba(38,118,255,.34);border:2px solid white}.m1{left:87px;top:193px}.m2{left:224px;top:76px;background:var(--amber);color:#2a1b00}.m3{left:233px;top:340px;background:var(--red)}.m4{left:64px;top:338px;background:var(--green)}
+  .tool-float{position:absolute;z-index:35;display:flex;gap:6px}.tool-float.vertical{flex-direction:column;right:10px;top:118px}.tool-float.bottom{left:50%;transform:translateX(-50%);bottom:86px;background:rgba(12,20,36,.72);border:1px solid rgba(255,255,255,.1);padding:6px;border-radius:18px;backdrop-filter:blur(16px)}.tool{width:34px;height:34px;border-radius:12px;border:1px solid rgba(255,255,255,.13);background:rgba(12,20,36,.88);display:grid;place-items:center;color:#dceaff;font-size:15px}.tool.active{background:var(--blue);border-color:#9bcaff;color:white}
+  .sheet{position:absolute;left:0;right:0;bottom:0;background:linear-gradient(180deg,#13203a,#0d1527);border-top:1px solid rgba(255,255,255,.13);border-radius:24px 24px 0 0;z-index:28;box-shadow:0 -20px 50px rgba(0,0,0,.36);overflow:hidden}.grab{width:44px;height:4px;background:#596981;border-radius:4px;margin:9px auto}.sheet-head{display:flex;align-items:center;gap:8px;padding:2px 14px 9px;border-bottom:1px solid rgba(255,255,255,.08)}.sheet-title{font-size:13px;font-weight:700}.sheet-body{padding:10px 12px;display:grid;gap:8px}.row{display:flex;align-items:center;gap:8px;background:rgba(255,255,255,.055);border:1px solid rgba(255,255,255,.075);border-radius:14px;padding:9px}.row .dot{width:9px;height:9px;border-radius:50%;background:var(--blue)}.row .main{font-size:12px;font-weight:650}.row .meta{font-size:10px;color:var(--muted);margin-top:2px}.mini{font-size:10px;border-radius:999px;padding:3px 7px;background:rgba(255,255,255,.08);color:#c9d8ea;margin-left:auto}.tabs{display:flex;gap:6px;padding:0 12px 9px}.tab{flex:1;text-align:center;border-radius:999px;padding:7px 6px;font-size:11px;background:rgba(255,255,255,.06);color:var(--muted)}.tab.on{background:rgba(90,167,255,.24);color:#dff0ff;border:1px solid rgba(90,167,255,.38)}
+  .bottom-nav{position:absolute;left:10px;right:10px;bottom:10px;height:58px;border-radius:22px;background:rgba(12,20,36,.86);border:1px solid rgba(255,255,255,.1);z-index:40;display:grid;grid-template-columns:repeat(4,1fr);padding:6px;backdrop-filter:blur(18px)}.navitem{display:grid;place-items:center;color:#9fb0c8;font-size:10px}.navitem b{display:block;font-size:16px;color:#dce9fb}.navitem.on{background:rgba(90,167,255,.18);border-radius:16px;color:#e6f3ff}
+  .split{position:absolute;left:10px;right:10px;bottom:76px;height:252px;border-radius:22px;overflow:hidden;z-index:29;display:grid;grid-template-rows:1fr 1fr;gap:1px;border:1px solid rgba(255,255,255,.1);box-shadow:0 -20px 40px rgba(0,0,0,.28)}.split-pane{background:rgba(15,25,43,.94);padding:10px}.pane-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;font-size:12px;font-weight:700;color:#e8f1ff}.compact-row{display:flex;gap:8px;align-items:center;border-radius:12px;padding:7px;background:rgba(255,255,255,.055);margin-bottom:6px;font-size:11px}.swatch{width:8px;height:8px;border-radius:50%;background:var(--green)}
+  .rail-left,.rail-right{position:absolute;top:86px;bottom:72px;width:44px;z-index:27;display:flex;flex-direction:column;gap:8px;padding:8px 5px;background:rgba(12,20,36,.78);border:1px solid rgba(255,255,255,.09);backdrop-filter:blur(16px)}.rail-left{left:0;border-radius:0 16px 16px 0}.rail-right{right:0;border-radius:16px 0 0 16px}.rail-btn{height:38px;border-radius:12px;display:grid;place-items:center;background:rgba(255,255,255,.055);font-size:16px}.rail-btn.on{background:rgba(90,167,255,.25);box-shadow:inset 0 0 0 1px rgba(90,167,255,.28)}.side-panel{position:absolute;top:86px;bottom:72px;width:156px;background:rgba(15,25,43,.96);z-index:26;border:1px solid rgba(255,255,255,.09);padding:10px;overflow:hidden}.side-panel.left{left:44px;border-radius:0 18px 18px 0}.side-panel.right{right:44px;border-radius:18px 0 0 18px}.side-panel h3{margin:0 0 8px;font-size:12px}.side-panel .row{padding:7px;border-radius:11px}.side-panel .row .main{font-size:10.5px}.side-panel .row .meta{font-size:9px}
+  .stack-chip{position:absolute;z-index:32;left:12px;bottom:296px;display:flex;gap:6px}.floating-card{background:rgba(12,20,36,.85);border:1px solid rgba(255,255,255,.1);border-radius:14px;padding:8px 10px;font-size:11px;backdrop-filter:blur(16px)}
+  .note{margin-top:12px;border-top:1px solid rgba(255,255,255,.08);padding-top:12px;color:#bdd0ea;font-size:12px;line-height:1.45}.verdict{color:#fff;font-weight:700}.kbd{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;color:#9dd2ff}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="hero">
+    <div>
+      <h1>Mobile Survey + Spaces/Regions UI Explorations</h1>
+      <p class="sub">Goal: survey, spaces/regions, and annotations can each work independently, but can also be opened together without turning the phone into a cockpit.</p>
+    </div>
+    <div class="pill">Best path: phone = sheets + chips, tablet = true docked panels</div>
+  </div>
+
+  <div class="grid">
+    <section class="card">
+      <h2>Option A — Twin Bottom Sheets</h2>
+      <p>Most phone-native. Survey + Spaces are sibling sheets. One can be half-open while the other is pinned as a chip.</p>
+      <div class="phone">
+        <div class="status"><span>9:41</span><span>SurveyCo LTE ▰</span></div>
+        <div class="topbar"><button class="btn icon">‹</button><button class="btn">Page 3 ▾</button><div class="grow"></div><button class="btn icon">⌕</button><button class="btn icon">⋯</button></div>
+        <div class="canvas"><div class="page"><div class="plan-grid"></div><div class="room a">Office</div><div class="room b">Elec</div><div class="room c">Lobby</div><div class="room d">Storage</div><div class="room e">Hall</div><div class="region r1"></div><div class="region r2"></div><div class="marker m1">1</div><div class="marker m2">2</div><div class="marker m3">3</div><div class="marker m4">4</div></div></div>
+        <div class="tool-float vertical"><div class="tool active">✎</div><div class="tool">□</div><div class="tool">⌖</div><div class="tool">↶</div></div>
+        <div class="stack-chip"><div class="floating-card">Spaces: Lobby · 2 regions</div></div>
+        <div class="sheet" style="height:275px"><div class="grab"></div><div class="sheet-head"><div class="sheet-title">Survey</div><span class="mini">Electrical</span><span class="mini">4 items</span></div><div class="tabs"><div class="tab on">Survey</div><div class="tab">Spaces</div><div class="tab">Layers</div></div><div class="sheet-body"><div class="row"><span class="dot"></span><div><div class="main">Exit Sign - Lobby</div><div class="meta">Page 3 · in Region A · N/A</div></div><span class="mini">Y</span></div><div class="row"><span class="dot" style="background:var(--amber)"></span><div><div class="main">Panel Schedule</div><div class="meta">Page 3 · unlinked region</div></div><span class="mini">N</span></div><div class="row"><span class="dot" style="background:var(--red)"></span><div><div class="main">Outlet GFCI</div><div class="meta">Page 3 · outside active region</div></div><span class="mini">Fix</span></div></div></div>
+        <div class="bottom-nav"><div class="navitem on"><b>☑</b>Survey</div><div class="navitem"><b>▧</b>Spaces</div><div class="navitem"><b>✎</b>Markup</div><div class="navitem"><b>◐</b>Layers</div></div>
+      </div>
+      <div class="note"><span class="verdict">Use for phone MVP.</span> Familiar, low clutter, easiest to ship. Downside: both panels aren't literally full-open; one is active, one pinned/peeked.</div>
+    </section>
+
+    <section class="card">
+      <h2>Option B — True Split Sheet</h2>
+      <p>Both Survey and Spaces visible at once in a stacked bottom work tray. Good when user explicitly enters combo mode.</p>
+      <div class="phone">
+        <div class="status"><span>9:41</span><span>SurveyCo LTE ▰</span></div>
+        <div class="topbar"><button class="btn icon">‹</button><button class="btn">Page 3</button><div class="grow"></div><span class="chip">Combo</span></div>
+        <div class="canvas"><div class="page" style="height:420px"><div class="plan-grid"></div><div class="room a">Office</div><div class="room b">Elec</div><div class="room c">Lobby</div><div class="room d">Storage</div><div class="room e">Hall</div><div class="region r1"></div><div class="marker m1">1</div><div class="marker m2">2</div><div class="marker m4">4</div></div></div>
+        <div class="tool-float bottom"><div class="tool active">✎</div><div class="tool">□</div><div class="tool">⌖</div><div class="tool">T</div><div class="tool">↶</div></div>
+        <div class="split"><div class="split-pane"><div class="pane-head"><span>Survey</span><span class="muted">Electrical</span></div><div class="compact-row"><span class="swatch" style="background:var(--blue)"></span>Exit Sign <span class="mini">Y</span></div><div class="compact-row"><span class="swatch" style="background:var(--amber)"></span>Panel Schedule <span class="mini">N</span></div></div><div class="split-pane"><div class="pane-head"><span>Spaces / Regions</span><span class="muted">independent</span></div><div class="compact-row"><span class="swatch"></span>Lobby · Pg 3 · 2 regions <span class="mini">on</span></div><div class="compact-row"><span class="swatch" style="background:var(--purple)"></span>Hall · Pg 3 <span class="mini">off</span></div></div></div>
+        <div class="bottom-nav"><div class="navitem on"><b>⇅</b>Combo</div><div class="navitem"><b>☑</b>Survey</div><div class="navitem"><b>▧</b>Spaces</div><div class="navitem"><b>✎</b>Markup</div></div>
+      </div>
+      <div class="note"><span class="verdict">Best for “both open at same time” on phones.</span> Add intentionally as Combo mode, not default. Downside: canvas gets small.</div>
+    </section>
+
+    <section class="card">
+      <h2>Option C — Opposing Edge Rails</h2>
+      <p>Left rail controls Spaces/Regions, right rail controls Survey. Tap rail icon to peek/open narrow panel.</p>
+      <div class="phone">
+        <div class="status"><span>9:41</span><span>SurveyCo LTE ▰</span></div>
+        <div class="topbar"><button class="btn icon">‹</button><button class="btn">Page 3</button><div class="grow"></div><button class="btn icon">⌕</button></div>
+        <div class="canvas"><div class="page"><div class="plan-grid"></div><div class="room a">Office</div><div class="room b">Elec</div><div class="room c">Lobby</div><div class="room d">Storage</div><div class="room e">Hall</div><div class="region r1"></div><div class="region r2"></div><div class="marker m1">1</div><div class="marker m2">2</div><div class="marker m3">3</div></div></div>
+        <div class="rail-left"><div class="rail-btn on">▧</div><div class="rail-btn">◫</div><div class="rail-btn">👁</div></div><div class="rail-right"><div class="rail-btn on">☑</div><div class="rail-btn">#</div><div class="rail-btn">⇪</div></div>
+        <div class="side-panel left"><h3>Spaces</h3><div class="row"><div><div class="main">Lobby</div><div class="meta">Pg 3 · 2 regions</div></div></div><div class="row"><div><div class="main">Elec Room</div><div class="meta">Pg 3 · overlay off</div></div></div></div>
+        <div class="side-panel right"><h3>Survey</h3><div class="row"><div><div class="main">Exit Sign</div><div class="meta">Region A</div></div></div><div class="row"><div><div class="main">GFCI</div><div class="meta">No region</div></div></div></div>
+        <div class="tool-float bottom"><div class="tool active">✎</div><div class="tool">□</div><div class="tool">⌖</div></div>
+      </div>
+      <div class="note"><span class="verdict">Best bridge to desktop.</span> Good on foldables/tablets. On normal phones, panels are too narrow unless used as quick peeks.</div>
+    </section>
+
+    <section class="card">
+      <h2>Option D — Command Dock + Detail Cards</h2>
+      <p>Minimal main UI. Bottom dock switches tools; selected survey/region appears as a floating detail card.</p>
+      <div class="phone">
+        <div class="status"><span>9:41</span><span>SurveyCo LTE ▰</span></div>
+        <div class="topbar"><button class="btn icon">‹</button><button class="btn">Plan A-101</button><div class="grow"></div><button class="btn icon">⌕</button><button class="btn icon">☰</button></div>
+        <div class="canvas"><div class="page"><div class="plan-grid"></div><div class="room a">Office</div><div class="room b">Elec</div><div class="room c">Lobby</div><div class="room d">Storage</div><div class="room e">Hall</div><div class="region r1"></div><div class="region r2"></div><div class="marker m1">1</div><div class="marker m2">2</div><div class="marker m3">3</div><div class="marker m4">4</div></div></div>
+        <div class="floating-card" style="position:absolute;left:12px;right:12px;bottom:82px;z-index:31"><b>Selected:</b> Lobby Region A <span class="muted">· 3 survey items · overlay on</span><div style="display:flex;gap:6px;margin-top:8px"><span class="chip">Edit region</span><span class="chip">Survey items</span><span class="chip">Hide</span></div></div>
+        <div class="bottom-nav"><div class="navitem"><b>☑</b>Survey</div><div class="navitem on"><b>▧</b>Spaces</div><div class="navitem"><b>✎</b>Markup</div><div class="navitem"><b>⌘</b>More</div></div>
+      </div>
+      <div class="note"><span class="verdict">Cleanest field-use mode.</span> Great for walking/quick edits. Weak for heavy list management unless paired with full sheets.</div>
+    </section>
+  </div>
+
+  <div class="card" style="margin-top:18px">
+    <h2>Recommendation</h2>
+    <p style="min-height:auto;margin-bottom:0">Ship a hybrid: <span class="kbd">Option A</span> as default phone UI, <span class="kbd">Option B</span> as explicit “Combo” mode, <span class="kbd">Option C</span> for tablet/landscape/foldables, and <span class="kbd">Option D</span> for selected-object interactions. Surveys and Spaces stay independent siblings; selection can cross-highlight/filter, but never require the other panel.</p>
+  </div>
+</div>
+</body>
+</html>
