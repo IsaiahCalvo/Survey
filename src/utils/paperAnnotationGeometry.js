@@ -335,7 +335,7 @@ function annotationFill(annotation) {
 
 function annotationPolygonSet(annotation) {
   if (annotation.polygons?.length) return normalizeMultiPolygon(annotation.polygons);
-  const fill = Boolean(annotationFill(annotation));
+  const fill = Boolean(annotationFill(annotation)) || annotation.eraseByBounds === true;
   const strokeWidth = annotation.strokeWidth || 0;
   return commandsToPolygonSet(annotation.cmds, { fill, strokeWidth });
 }
@@ -387,6 +387,7 @@ export function eraseAnnotations(annotations, eraserPoints, radius, mode = 'part
 
     const fillColor = annotationFill(annotation);
     const strokeWidth = annotation.strokeWidth || 0;
+    const annotationEraseMode = mode === 'partial' && annotation.atomicErase ? 'full' : mode;
     // Thin centerline marks stay centerlines. Exact capsule interval cutting is
     // dramatically faster than expanding every curve into a polygon, while the
     // filled/thick ink produced by the pen still uses true shape subtraction.
@@ -402,7 +403,7 @@ export function eraseAnnotations(annotations, eraserPoints, radius, mode = 'part
         continue;
       }
       changedIds.push(annotation.id);
-      if (mode === 'full' || !result.pathData.length) {
+      if (annotationEraseMode === 'full' || !result.pathData.length) {
         deletedIds.push(annotation.id);
         continue;
       }
@@ -426,7 +427,7 @@ export function eraseAnnotations(annotations, eraserPoints, radius, mode = 'part
     }
 
     changedIds.push(annotation.id);
-    if (mode === 'full') {
+    if (annotationEraseMode === 'full') {
       deletedIds.push(annotation.id);
       continue;
     }

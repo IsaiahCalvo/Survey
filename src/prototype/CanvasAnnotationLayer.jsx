@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useLayoutEffect, useRef } from 'react';
+import { memo, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import {
   boundsOfCommands,
   commandsToPolygonSet,
@@ -9,6 +9,12 @@ import {
   translateCommands,
   translatePolygonSet,
 } from './annotationGeometry';
+import {
+  createTextboxAnnotation,
+  drawTextboxAnnotation,
+  isTextboxAnnotation,
+  textboxBounds,
+} from './textAnnotation.js';
 
 const BASE_MAX_SCALE = 2.5;
 const DPR = Math.min(typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1, 2);
@@ -16,6 +22,7 @@ const PAN_START_EVENT = 'spike-pdf-pan-start';
 const pathCache = new WeakMap();
 const hitCache = new WeakMap();
 let inkSequence = 0;
+let textSequence = 0;
 
 function pathFor(annotation) {
   const cached = pathCache.get(annotation);
@@ -42,6 +49,10 @@ function paintFor(annotation) {
 }
 
 function drawAnnotation(ctx, annotation, dx = 0, dy = 0) {
+  if (isTextboxAnnotation(annotation)) {
+    drawTextboxAnnotation(ctx, annotation, dx, dy);
+    return;
+  }
   const path = pathFor(annotation);
   const { fill, stroke } = paintFor(annotation);
   ctx.save();
@@ -58,6 +69,10 @@ function drawAnnotation(ctx, annotation, dx = 0, dy = 0) {
     ctx.stroke(path);
   }
   ctx.restore();
+}
+
+function displayBounds(annotation) {
+  return isTextboxAnnotation(annotation) ? textboxBounds(annotation) : boundsOfCommands(annotation?.cmds);
 }
 
 function pointInRing(ring, point) {
@@ -113,6 +128,7 @@ function annotationContains(annotation, point, tolerance) {
     || point.y < data.bounds.y - pad || point.y > data.bounds.y + data.bounds.h + pad) {
     return false;
   }
+  if (isTextboxAnnotation(annotation)) return true;
   if (data.fill && data.polygons === null) {
     data.polygons = annotation.polygons || commandsToPolygonSet(annotation.cmds, { fill: true });
   }
@@ -165,6 +181,8 @@ function CanvasAnnotationLayer({
   tool = 'select',
   penColor = '#e11d48',
   penWidth = 10,
+  textColor = '#111827',
+  textFontSize = 16,
   eraserWidth = 24,
   eraseMode = 'partial',
   sloppiness = 0,
@@ -179,10 +197,12 @@ function CanvasAnnotationLayer({
   const previewCanvasRef = useRef(null);
   const moveBackdropRef = useRef(null);
   const cursorRef = useRef(null);
+  const textareaRef = useRef(null);
   const annotationsRef = useRef(annotations || []);
   const selectedRef = useRef(null);
   const pointerRef = useRef(null);
   const hiddenAnnotationRef = useRef(null);
+  const editingIdRef = useRef(null);
   const tileRef = useRef(null);
   const renderRafRef = useRef(0);
   const previewRafRef = useRef(0);
@@ -196,8 +216,13 @@ function CanvasAnnotationLayer({
   const renderStaticRef = useRef(null);
   const onChangeRef = useRef(onChange);
   const onRenderMetricsRef = useRef(onRenderMetrics);
+  const [editor, setEditor] = useState(null);
+  const editorRef = useRef(editor);
+  const previousToolRef = useRef(tool);
+  const [hostScale, setHostScale] = useState(renderScale || 1);
 
   annotationsRef.current = annotations || [];
+  editorRef.current = editor;
   onChangeRef.current = onChange;
   onRenderMetricsRef.current = onRenderMetrics;
 
@@ -210,17 +235,32 @@ function CanvasAnnotationLayer({
     };
   }, [pageWidth, pageHeight]);
 
+  useLayoutEffect(() => {
+    const host = hostRef.current;
+    if (!host || !pageWidth) return undefined;
+    const measure = () => {
+      const measured = host.offsetWidth / pageWidth;
+      if (Number.isFinite(measured) && measured > 0) {
+        setHostScale((previous) => (Math.abs(previous - measured) < 1e-4 ? previous : measured));
+      }
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(host);
+    return () => observer.disconnect();
+  }, [pageWidth, renderScale]);
+
   const updateEraserCursor = useCallback((point, visible = true) => {
     const cursor = cursorRef.current;
     if (!cursor) return;
     const shouldShow = visible && tool === 'erase' && interactive && !panActiveRef?.current && point;
     cursor.style.display = shouldShow ? 'block' : 'none';
     if (!shouldShow) return;
-    const diameter = eraserWidth * renderScale;
+    const diameter = eraserWidth * hostScale;
     cursor.style.width = `${diameter}px`;
     cursor.style.height = `${diameter}px`;
-    cursor.style.transform = `translate(${point.x * renderScale - diameter / 2}px, ${point.y * renderScale - diameter / 2}px)`;
-  }, [tool, interactive, panActiveRef, eraserWidth, renderScale]);
+    cursor.style.transform = `translate(${point.x * hostScale - diameter / 2}px, ${point.y * hostScale - diameter / 2}px)`;
+  }, [tool, interactive, panActiveRef, eraserWidth, hostScale]);
 
   const tileForViewport = useCallback((force) => {
     const host = hostRef.current;
@@ -322,7 +362,7 @@ function CanvasAnnotationLayer({
     const patchAnnotations = previous ? [annotation, previous] : [annotation];
 
     for (const patchAnnotation of patchAnnotations) {
-      const box = boundsOfCommands(patchAnnotation.cmds);
+      const box = displayBounds(patchAnnotation);
       const pad = Math.max((patchAnnotation.strokeWidth || 0) / 2 + 2, 6 / renderScale);
       const patch = {
         x: box.x - pad,
@@ -354,6 +394,29 @@ function CanvasAnnotationLayer({
     backdrop.getContext('2d').drawImage(preview, 0, 0);
     moveBackdropRef.current = backdrop;
     source.style.visibility = 'hidden';
+    return true;
+  }, [configurePreviewCanvas, renderScale]);
+
+  const renderEditorPreview = useCallback(() => {
+    const current = editorRef.current;
+    if (!current) return false;
+    const annotation = annotationsRef.current.find((item) => item.id === current.id);
+    if (!annotation || !isTextboxAnnotation(annotation)) return false;
+    const configured = configurePreviewCanvas(false);
+    if (!configured) return false;
+    const { context, pageTransform } = configured;
+    const backdrop = moveBackdropRef.current;
+    if (backdrop) {
+      context.setTransform(1, 0, 0, 1, 0, 0);
+      context.drawImage(backdrop, 0, 0);
+      context.setTransform(...pageTransform);
+    }
+    drawTextboxAnnotation(context, { ...annotation, text: current.draft }, 0, 0, {
+      selectionStart: current.selectionStart,
+      selectionEnd: current.selectionEnd,
+      displayScale: renderScale,
+      caretColor: annotation.textColor || '#111827',
+    });
     return true;
   }, [configurePreviewCanvas, renderScale]);
 
@@ -413,14 +476,14 @@ function CanvasAnnotationLayer({
       deep ? tileRef.current.h / renderScale : pageHeight,
     );
 
-    const hiddenId = hiddenAnnotationRef.current;
+    const hiddenId = hiddenAnnotationRef.current || editingIdRef.current;
     for (const annotation of annotationsRef.current) {
       if (annotation.id !== hiddenId) drawAnnotation(context, annotation);
     }
 
     const selected = annotationsRef.current.find((annotation) => annotation.id === selectedRef.current);
     if (selected && selected.id !== hiddenId) {
-      const box = boundsOfCommands(selected.cmds);
+      const box = displayBounds(selected);
       const inset = 3 / renderScale;
       context.save();
       context.strokeStyle = '#0a84ff';
@@ -430,7 +493,10 @@ function CanvasAnnotationLayer({
       context.restore();
     }
 
-    if (!pointerRef.current) resetPreview();
+    if (!pointerRef.current) {
+      resetPreview();
+      if (editorRef.current) renderEditorPreview();
+    }
 
     const now = performance.now();
     if (now - lastMetricRef.current > 180) {
@@ -442,7 +508,7 @@ function CanvasAnnotationLayer({
         backingPixels,
       });
     }
-  }, [pageWidth, pageHeight, renderScale, liveZoom, tileForViewport, resetPreview]);
+  }, [pageWidth, pageHeight, renderScale, liveZoom, tileForViewport, resetPreview, renderEditorPreview]);
 
   const applyWorkerMessage = useCallback((message) => {
     const meta = workerMetaRef.current;
@@ -482,7 +548,10 @@ function CanvasAnnotationLayer({
     const pointerMode = pointerRef.current?.mode;
     target.style.visibility = pointerMode === 'erase' || pointerMode === 'move' ? 'hidden' : 'visible';
     workerMetaRef.current = null;
-    if (!pointerRef.current) resetPreview();
+    if (!pointerRef.current) {
+      resetPreview();
+      if (editorRef.current) renderEditorPreview();
+    }
     onRenderMetricsRef.current?.({
       ms: Number(message.ms.toFixed(2)),
       count: meta.count,
@@ -490,7 +559,7 @@ function CanvasAnnotationLayer({
       backingPixels: meta.width * meta.height,
       worker: true,
     });
-  }, [renderNow, resetPreview]);
+  }, [renderNow, resetPreview, renderEditorPreview]);
   workerMessageRef.current = applyWorkerMessage;
 
   const requestWorkerRender = useCallback((forceTile = false) => {
@@ -504,12 +573,28 @@ function CanvasAnnotationLayer({
     const requestId = ++workerRequestRef.current;
     const renderAnnotations = annotationsRef.current.map((annotation) => ({
       id: annotation.id,
+      type: annotation.type,
       cmds: annotation.cmds,
+      bounds: annotation.bounds,
       fill: annotation.fill,
       filled: annotation.filled,
       paint: annotation.paint,
       stroke: annotation.stroke,
       strokeWidth: annotation.strokeWidth,
+      text: annotation.text,
+      textColor: annotation.textColor,
+      backgroundColor: annotation.backgroundColor,
+      borderColor: annotation.borderColor,
+      borderWidth: annotation.borderWidth,
+      fontSize: annotation.fontSize,
+      fontFamily: annotation.fontFamily,
+      fontStyle: annotation.fontStyle,
+      fontWeight: annotation.fontWeight,
+      lineHeight: annotation.lineHeight,
+      textAlign: annotation.textAlign,
+      padding: annotation.padding,
+      opacity: annotation.opacity,
+      angle: annotation.angle,
     }));
     workerMetaRef.current = {
       requestId,
@@ -537,7 +622,7 @@ function CanvasAnnotationLayer({
         ],
         annotations: renderAnnotations,
         selectedId: selectedRef.current,
-        hiddenId: hiddenAnnotationRef.current,
+        hiddenId: hiddenAnnotationRef.current || editingIdRef.current,
       });
       return true;
     } catch {
@@ -575,7 +660,7 @@ function CanvasAnnotationLayer({
       const dx = pointer.current.x - pointer.start.x;
       const dy = pointer.current.y - pointer.start.y;
       drawAnnotation(context, annotation, dx, dy);
-      const box = boundsOfCommands(annotation.cmds);
+      const box = displayBounds(annotation);
       const inset = 3 / renderScale;
       context.save();
       context.strokeStyle = '#0a84ff';
@@ -643,6 +728,79 @@ function CanvasAnnotationLayer({
     scheduleRender();
   }, [scheduleRender]);
 
+  const stopEditing = useCallback(() => {
+    const current = editorRef.current;
+    if (!editingIdRef.current && !current) return;
+    editingIdRef.current = null;
+    editorRef.current = null;
+    setEditor(null);
+    if (current) {
+      commit(annotationsRef.current.map((annotation) => (
+        annotation.id === current.id ? { ...annotation, text: current.draft } : annotation
+      )));
+    } else {
+      scheduleRender();
+    }
+  }, [commit, scheduleRender]);
+
+  const startEditing = useCallback((annotation, { created = false } = {}) => {
+    if (!isTextboxAnnotation(annotation)) return;
+    const previousSelectedId = selectedRef.current;
+    const draft = String(annotation.text ?? '');
+    editingIdRef.current = annotation.id;
+    selectedRef.current = annotation.id;
+    const nextEditor = {
+      id: annotation.id,
+      draft,
+      selectionStart: draft.length,
+      selectionEnd: draft.length,
+      original: created ? null : annotation,
+    };
+    editorRef.current = nextEditor;
+    setEditor(nextEditor);
+    prepareMovePreview(annotation, previousSelectedId);
+    renderEditorPreview();
+    scheduleRender();
+  }, [prepareMovePreview, renderEditorPreview, scheduleRender]);
+
+  const updateEditorText = useCallback((text, selectionStart, selectionEnd) => {
+    const current = editorRef.current;
+    if (!current) return;
+    const nextEditor = {
+      ...current,
+      draft: text,
+      selectionStart: Number.isFinite(selectionStart) ? selectionStart : text.length,
+      selectionEnd: Number.isFinite(selectionEnd) ? selectionEnd : text.length,
+    };
+    editorRef.current = nextEditor;
+    setEditor(nextEditor);
+    renderEditorPreview();
+  }, [renderEditorPreview]);
+
+  const updateEditorSelection = useCallback((selectionStart, selectionEnd) => {
+    const current = editorRef.current;
+    if (!current || !Number.isFinite(selectionStart) || !Number.isFinite(selectionEnd)) return;
+    if (current.selectionStart === selectionStart && current.selectionEnd === selectionEnd) return;
+    const nextEditor = { ...current, selectionStart, selectionEnd };
+    editorRef.current = nextEditor;
+    setEditor(nextEditor);
+    renderEditorPreview();
+  }, [renderEditorPreview]);
+
+  const cancelEditing = useCallback(() => {
+    const current = editorRef.current;
+    if (!current) return;
+    editingIdRef.current = null;
+    editorRef.current = null;
+    setEditor(null);
+    if (current.original) {
+      scheduleRender();
+    } else {
+      selectedRef.current = null;
+      commit(annotationsRef.current.filter((annotation) => annotation.id !== current.id));
+    }
+  }, [commit, scheduleRender]);
+
   const findAnnotation = useCallback((point) => {
     const tolerance = Math.max(2, 6 / renderScale);
     const list = annotationsRef.current;
@@ -657,9 +815,24 @@ function CanvasAnnotationLayer({
     const point = pagePoint(event.nativeEvent);
     if (!point) return;
     event.preventDefault();
-    event.currentTarget.setPointerCapture(event.pointerId);
     workerRequestRef.current += 1;
     workerMetaRef.current = null;
+    stopEditing();
+
+    if (tool === 'text') {
+      const annotation = createTextboxAnnotation(point, {
+        id: `text-${Date.now().toString(36)}-${textSequence += 1}`,
+        pageWidth,
+        pageHeight,
+        color: textColor,
+        fontSize: textFontSize,
+      });
+      commit([...annotationsRef.current, annotation]);
+      startEditing(annotation, { created: true });
+      return;
+    }
+
+    event.currentTarget.setPointerCapture(event.pointerId);
 
     if (tool === 'pen') {
       moveBackdropRef.current = null;
@@ -688,7 +861,25 @@ function CanvasAnnotationLayer({
         scheduleRender();
       }
     }
-  }, [interactive, panActiveRef, pagePoint, tool, findAnnotation, schedulePreview, drawErasePreviewSegment, prepareMovePreview, renderNow, scheduleRender]);
+  }, [
+    interactive,
+    panActiveRef,
+    pagePoint,
+    stopEditing,
+    tool,
+    pageWidth,
+    pageHeight,
+    textColor,
+    textFontSize,
+    commit,
+    startEditing,
+    findAnnotation,
+    schedulePreview,
+    drawErasePreviewSegment,
+    prepareMovePreview,
+    renderNow,
+    scheduleRender,
+  ]);
 
   const onPointerMove = useCallback((event) => {
     const point = pagePoint(event.nativeEvent);
@@ -775,6 +966,11 @@ function CanvasAnnotationLayer({
       const dx = pointer.current.x - pointer.start.x;
       const dy = pointer.current.y - pointer.start.y;
       if (Math.abs(dx) <= 1e-5 && Math.abs(dy) <= 1e-5) {
+        const annotation = annotationsRef.current.find((item) => item.id === pointer.id);
+        if (isTextboxAnnotation(annotation)) {
+          startEditing(annotation);
+          return;
+        }
         scheduleRender();
         return;
       }
@@ -802,6 +998,7 @@ function CanvasAnnotationLayer({
     commit,
     eraserWidth,
     eraseMode,
+    startEditing,
   ]);
 
   const onLostPointerCapture = useCallback((event) => {
@@ -818,8 +1015,36 @@ function CanvasAnnotationLayer({
     if (selectedRef.current && !annotationsRef.current.some((annotation) => annotation.id === selectedRef.current)) {
       selectedRef.current = null;
     }
+    if (editingIdRef.current && !annotationsRef.current.some((annotation) => annotation.id === editingIdRef.current)) {
+      editingIdRef.current = null;
+      editorRef.current = null;
+      setEditor(null);
+    }
     if (liveZoom === 1) renderStatic(true);
   }, [annotations, renderStatic, liveZoom]);
+
+  useLayoutEffect(() => {
+    if (!editor?.id) return undefined;
+    const frame = requestAnimationFrame(() => {
+      const textarea = textareaRef.current;
+      if (!textarea) return;
+      textarea.focus({ preventScroll: true });
+      const current = editorRef.current;
+      const start = current?.selectionStart ?? textarea.value.length;
+      const end = current?.selectionEnd ?? start;
+      textarea.setSelectionRange(start, end);
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [editor?.id]);
+
+  useEffect(() => {
+    if (!editor?.id) return undefined;
+    const closeOnOutsidePointer = (event) => {
+      if (!textareaRef.current?.contains(event.target)) stopEditing();
+    };
+    document.addEventListener('pointerdown', closeOnOutsidePointer, true);
+    return () => document.removeEventListener('pointerdown', closeOnOutsidePointer, true);
+  }, [editor?.id, stopEditing]);
 
   useEffect(() => {
     const scroller = scrollerRef?.current;
@@ -896,13 +1121,20 @@ function CanvasAnnotationLayer({
 
   useEffect(() => {
     if (tool !== 'erase') updateEraserCursor(null, false);
+    if (previousToolRef.current !== tool) stopEditing();
+    previousToolRef.current = tool;
     if (tool !== 'select' && selectedRef.current) {
       selectedRef.current = null;
       scheduleRender();
     }
-  }, [tool, updateEraserCursor, scheduleRender]);
+  }, [tool, updateEraserCursor, stopEditing, scheduleRender]);
 
-  const cursor = tool === 'pen' ? 'crosshair' : tool === 'erase' ? 'none' : 'default';
+  const cursor = tool === 'pen' ? 'crosshair' : tool === 'erase' ? 'none' : tool === 'text' ? 'text' : 'default';
+  const editingAnnotation = editor
+    ? annotationsRef.current.find((annotation) => annotation.id === editor.id)
+    : null;
+  const editingBounds = editingAnnotation ? textboxBounds(editingAnnotation) : null;
+  const editingPadding = Math.max(0, Number(editingAnnotation?.padding) || 0);
 
   return (
     <div
@@ -939,6 +1171,68 @@ function CanvasAnnotationLayer({
         ref={previewCanvasRef}
         style={{ position: 'absolute', display: 'none', pointerEvents: 'none' }}
       />
+      {editingAnnotation && editingBounds && (
+        <textarea
+          ref={textareaRef}
+          data-testid="annotation-text-editor"
+          aria-label="Edit annotation text"
+          value={editor.draft}
+          spellCheck={false}
+          onChange={(event) => updateEditorText(
+            event.target.value,
+            event.target.selectionStart,
+            event.target.selectionEnd,
+          )}
+          onSelect={(event) => updateEditorSelection(
+            event.currentTarget.selectionStart,
+            event.currentTarget.selectionEnd,
+          )}
+          onBlur={stopEditing}
+          onKeyDown={(event) => {
+            if (event.key === 'Escape') {
+              event.preventDefault();
+              event.stopPropagation();
+              cancelEditing();
+            } else if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
+              event.preventDefault();
+              event.currentTarget.blur();
+            }
+          }}
+          onPointerDown={(event) => event.stopPropagation()}
+          onPointerMove={(event) => event.stopPropagation()}
+          onPointerUp={(event) => event.stopPropagation()}
+          style={{
+            position: 'absolute',
+            left: editingBounds.x * hostScale,
+            top: editingBounds.y * hostScale,
+            width: editingBounds.w * hostScale,
+            height: editingBounds.h * hostScale,
+            boxSizing: 'border-box',
+            margin: 0,
+            padding: editingPadding * hostScale,
+            border: 0,
+            borderRadius: 0,
+            outline: 'none',
+            resize: 'none',
+            overflow: 'hidden',
+            background: 'transparent',
+            color: 'transparent',
+            caretColor: 'transparent',
+            WebkitTextFillColor: 'transparent',
+            opacity: 0,
+            fontFamily: String(editingAnnotation.fontFamily || 'Helvetica').split(',')[0],
+            fontSize: Math.max(4, Number(editingAnnotation.fontSize) || 16) * hostScale,
+            fontStyle: editingAnnotation.fontStyle || 'normal',
+            fontWeight: editingAnnotation.fontWeight || 'normal',
+            lineHeight: Math.max(1, Number(editingAnnotation.lineHeight) || 1.2),
+            textAlign: editingAnnotation.textAlign || 'left',
+            letterSpacing: 0,
+            transform: editingAnnotation.angle ? `rotate(${editingAnnotation.angle}deg)` : undefined,
+            transformOrigin: 'center',
+            zIndex: 4,
+          }}
+        />
+      )}
       <div
         ref={cursorRef}
         data-eraser-cursor

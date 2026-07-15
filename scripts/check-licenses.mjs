@@ -46,26 +46,7 @@ const ALLOWED_LICENSES = new Set([
   'Zlib',        // permissive — appears compound with MIT in `pako` (`(MIT AND Zlib)`)
 ]);
 
-// OFL-1.1 font package waiver.
-// @embedpdf/fonts-arabic, @embedpdf/fonts-hebrew, @embedpdf/fonts-jp,
-// @embedpdf/fonts-kr, @embedpdf/fonts-latin are all licensed under the
-// SIL Open Font License 1.1 (OFL-1.1). OFL-1.1 is a permissive font license
-// fully compatible with commercial distribution. Its two requirements are:
-//   1. Fonts must remain under OFL if redistributed — satisfied: they ship
-//      embedded as rendering assets inside the pdf engine bundle and are not
-//      extracted or resold separately.
-//   2. Fonts may not be sold standalone — satisfied: we ship them as part of
-//      the application, not as a standalone font product.
-// OFL-1.1 is not added to ALLOWED_LICENSES globally because it is a
-// font-specific license inapplicable to general npm packages; scoping the
-// waiver to the @embedpdf/fonts-* namespace keeps the AGPL-contagion defense
-// intact for all other packages.
-//
-// This waiver does NOT weaken the AGPL-contagion defense: AGPL/GPL/SSPL
-// licenses on any non-font package will still hard-block the gate.
-const PACKAGE_NAME_WAIVERS = [
-  /^@embedpdf\/fonts-/,  // OFL-1.1 — permissive font license, see waiver comment above
-];
+const PACKAGE_NAME_WAIVERS = [];
 
 // Per-package waivers — explicit `package@version` allowlist for transitive
 // deps whose license string is permissive but doesn't fit the SPDX-style

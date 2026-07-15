@@ -1,0 +1,1508 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no"
+    />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <title>Survey Mobile Field Prototype</title>
+    <link rel="icon" href="data:," />
+    <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #0c0d0f;
+        --bar: #161719;
+        --bar-2: #202126;
+        --tool: #24252a;
+        --line: rgba(255, 255, 255, 0.08);
+        --text: #f4f4f5;
+        --muted: #9fa3ad;
+        --paper: #f8f8f6;
+        --blue: #4d9fff;
+        --green: #52d982;
+        --gold: #f0d149;
+        --red: #ef4058;
+        --orange: #f49b35;
+      }
+
+      * {
+        box-sizing: border-box;
+        -webkit-tap-highlight-color: transparent;
+      }
+
+      html,
+      body {
+        width: 100%;
+        height: 100%;
+        margin: 0;
+        overscroll-behavior: none;
+        background: #07080a;
+        color: var(--text);
+        font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", Inter,
+          Segoe UI, sans-serif;
+        letter-spacing: 0;
+      }
+
+      body {
+        display: grid;
+        place-items: center;
+        overflow: hidden;
+      }
+
+      button,
+      input {
+        font: inherit;
+      }
+
+      button {
+        border: 0;
+        cursor: pointer;
+      }
+
+      .app {
+        position: relative;
+        width: min(100vw, 430px);
+        height: 100dvh;
+        min-height: 720px;
+        max-height: 932px;
+        overflow: hidden;
+        background: #111214;
+        touch-action: none;
+      }
+
+      @media (min-width: 700px) {
+        .app {
+          width: 390px;
+          height: 844px;
+          min-height: 844px;
+          border: 1px solid #2a2c31;
+          border-radius: 38px;
+          box-shadow: 0 28px 80px rgba(0, 0, 0, 0.66);
+        }
+      }
+
+      .status {
+        height: calc(46px + env(safe-area-inset-top));
+        padding: env(safe-area-inset-top) 24px 0;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        background: var(--bar);
+        font-size: 16px;
+        font-weight: 760;
+      }
+
+      .status-icons {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+      }
+
+      .bars {
+        width: 22px;
+        height: 13px;
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 2px;
+        align-items: end;
+      }
+
+      .bars span {
+        width: 3px;
+        border-radius: 2px;
+        background: #f7f7f8;
+      }
+
+      .bars span:nth-child(1) {
+        height: 4px;
+        opacity: 0.45;
+      }
+
+      .bars span:nth-child(2) {
+        height: 7px;
+        opacity: 0.65;
+      }
+
+      .bars span:nth-child(3) {
+        height: 10px;
+        opacity: 0.85;
+      }
+
+      .bars span:nth-child(4) {
+        height: 13px;
+      }
+
+      .battery {
+        height: 18px;
+        min-width: 31px;
+        padding: 0 5px;
+        display: grid;
+        place-items: center;
+        border-radius: 5px;
+        background: #f2f3f5;
+        color: #151619;
+        font-size: 12px;
+        line-height: 1;
+        font-weight: 850;
+      }
+
+      .topbar {
+        height: 68px;
+        padding: 0 18px;
+        display: grid;
+        grid-template-columns: 58px 1fr 58px;
+        align-items: center;
+        background: var(--bar);
+        border-bottom: 1px solid var(--line);
+      }
+
+      .circle,
+      .dock-button,
+      .rail-button {
+        display: grid;
+        place-items: center;
+        border-radius: 999px;
+        color: var(--text);
+        background: rgba(255, 255, 255, 0.025);
+        border: 1px solid rgba(255, 255, 255, 0.075);
+        box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.025);
+      }
+
+      .circle {
+        width: 43px;
+        height: 43px;
+      }
+
+      .mode-title {
+        justify-self: center;
+        height: 38px;
+        min-width: 150px;
+        padding: 0 14px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 7px;
+        border-radius: 9px;
+        background: #25262b;
+        color: #f2f2f3;
+        font-size: 15px;
+        font-weight: 720;
+      }
+
+      .tools {
+        height: 46px;
+        display: flex;
+        overflow-x: auto;
+        scrollbar-width: none;
+        background: var(--tool);
+        border-bottom: 1px solid rgba(0, 0, 0, 0.7);
+      }
+
+      .tools::-webkit-scrollbar {
+        display: none;
+      }
+
+      .tool {
+        position: relative;
+        flex: 0 0 39px;
+        height: 46px;
+        display: grid;
+        place-items: center;
+        color: #f3f3f4;
+        background: transparent;
+        border-right: 1px solid rgba(255, 255, 255, 0.025);
+      }
+
+      .tool.is-active::before {
+        content: "";
+        position: absolute;
+        inset: 5px 7px;
+        border-radius: 6px;
+        border: 1px solid rgba(77, 159, 255, 0.38);
+        background: rgba(77, 159, 255, 0.13);
+      }
+
+      .tool svg,
+      .circle svg,
+      .dock-button svg,
+      .rail-button svg {
+        position: relative;
+        width: 22px;
+        height: 22px;
+        stroke-width: 2.2;
+      }
+
+      .tool::after {
+        content: "";
+        position: absolute;
+        left: 12px;
+        right: 12px;
+        bottom: 6px;
+        height: 2px;
+        border-radius: 2px;
+        background: transparent;
+      }
+
+      .tool[data-color="gold"]::after {
+        background: var(--gold);
+      }
+
+      .tool[data-color="green"]::after {
+        background: var(--green);
+      }
+
+      .tool[data-color="red"]::after {
+        background: var(--red);
+      }
+
+      .workspace {
+        position: absolute;
+        top: calc(160px + env(safe-area-inset-top));
+        right: 0;
+        bottom: calc(96px + env(safe-area-inset-bottom));
+        left: 0;
+        overflow: hidden;
+        background: #111214;
+      }
+
+      .page-viewport {
+        position: absolute;
+        inset: 0;
+        overflow: hidden;
+      }
+
+      .page {
+        position: absolute;
+        top: 32px;
+        left: 0;
+        width: 100%;
+        height: 74%;
+        overflow: hidden;
+        background: var(--paper);
+        border-top: 1px solid #e1e1df;
+        border-bottom: 1px solid #e1e1df;
+        touch-action: none;
+      }
+
+      .page::before {
+        content: "";
+        position: absolute;
+        inset: 0;
+        opacity: 0.18;
+        background-image: linear-gradient(#cfd3db 1px, transparent 1px),
+          linear-gradient(90deg, #cfd3db 1px, transparent 1px);
+        background-size: 58px 58px, 58px 58px;
+      }
+
+      .drawing-lines {
+        position: absolute;
+        inset: 38px 24px 72px;
+        border: 1px solid rgba(20, 24, 30, 0.14);
+      }
+
+      .drawing-lines::before {
+        content: "";
+        position: absolute;
+        inset: 18% 8% 20%;
+        border: 2px solid rgba(20, 24, 30, 0.13);
+      }
+
+      .drawing-lines::after {
+        content: "";
+        position: absolute;
+        left: 12%;
+        right: 12%;
+        top: 44%;
+        height: 29%;
+        border-top: 2px solid rgba(20, 24, 30, 0.13);
+        border-bottom: 2px solid rgba(20, 24, 30, 0.13);
+      }
+
+      .next-page {
+        position: absolute;
+        top: calc(32px + 74% + 16px);
+        left: 0;
+        width: 100%;
+        height: 34%;
+        background: #ffffff;
+        border-top: 1px solid #e1e1df;
+      }
+
+      .page-gap {
+        position: absolute;
+        top: calc(32px + 74% + 8px);
+        left: 0;
+        width: 100%;
+        height: 8px;
+        background: #0d0e10;
+      }
+
+      .ink-layer,
+      .hit-layer {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        pointer-events: none;
+      }
+
+      .ink-layer path {
+        fill: none;
+        stroke: #20252e;
+        stroke-width: 0.55;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+      }
+
+      .region-dim {
+        position: absolute;
+        background: rgba(0, 0, 0, 0.18);
+        pointer-events: none;
+      }
+
+      .region-rect {
+        position: absolute;
+        border: 2px solid var(--green);
+        background: rgba(82, 217, 130, 0.045);
+        box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.35);
+        pointer-events: none;
+      }
+
+      .region-rect.temp {
+        border-style: dashed;
+        background: rgba(82, 217, 130, 0.08);
+      }
+
+      .marker-pin,
+      .counter-pin {
+        position: absolute;
+        z-index: 5;
+        transform: translate(-50%, -50%);
+        width: 28px;
+        height: 28px;
+        border-radius: 999px;
+        display: grid;
+        place-items: center;
+        border: 2px solid #ffffff;
+        color: #ffffff;
+        font-size: 10px;
+        font-weight: 850;
+        box-shadow: 0 6px 18px rgba(10, 16, 24, 0.24);
+        touch-action: none;
+      }
+
+      .marker-pin::after {
+        content: "";
+        width: 8px;
+        height: 8px;
+        border-radius: 999px;
+        background: #fff;
+      }
+
+      .marker-pin.is-selected,
+      .counter-pin.is-selected {
+        outline: 3px solid rgba(77, 159, 255, 0.34);
+      }
+
+      .counter-pin {
+        background: #202126;
+      }
+
+      .callout {
+        position: absolute;
+        z-index: 4;
+        min-width: 86px;
+        min-height: 30px;
+        padding: 6px 8px;
+        transform: translate(8px, -50%);
+        border-radius: 5px;
+        background: #fff7bf;
+        border: 1px solid #d5c56a;
+        color: #24200e;
+        font-size: 11px;
+        font-weight: 700;
+        pointer-events: none;
+      }
+
+      .rail {
+        position: absolute;
+        z-index: 20;
+        top: 12px;
+        display: grid;
+        gap: 7px;
+      }
+
+      .rail-right .rail {
+        right: 10px;
+      }
+
+      .rail-left .rail {
+        left: 10px;
+      }
+
+      .rail-button {
+        position: relative;
+        width: 38px;
+        height: 38px;
+        background: rgba(28, 30, 36, 0.9);
+        backdrop-filter: blur(14px);
+      }
+
+      .rail-button.is-on {
+        color: var(--blue);
+        border-color: rgba(77, 159, 255, 0.45);
+      }
+
+      .rail-button.is-region {
+        color: var(--green);
+        border-color: rgba(82, 217, 130, 0.43);
+      }
+
+      .rail-badge {
+        position: absolute;
+        right: -4px;
+        top: -4px;
+        min-width: 16px;
+        height: 16px;
+        display: grid;
+        place-items: center;
+        padding: 0 4px;
+        border-radius: 999px;
+        border: 1px solid #1c1d21;
+        background: var(--red);
+        color: white;
+        font-size: 10px;
+        font-weight: 850;
+      }
+
+      .intent {
+        position: absolute;
+        z-index: 22;
+        left: 12px;
+        right: 12px;
+        bottom: 11px;
+        min-height: 31px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+        padding: 0 10px;
+        border-radius: 17px;
+        background: rgba(27, 29, 34, 0.86);
+        border: 1px solid rgba(255, 255, 255, 0.07);
+        color: #d7dae0;
+        font-size: 11px;
+        font-weight: 700;
+        backdrop-filter: blur(16px);
+      }
+
+      .scope-chips {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        white-space: nowrap;
+      }
+
+      .chip {
+        height: 20px;
+        padding: 0 7px;
+        display: inline-flex;
+        align-items: center;
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.06);
+        color: #e4e6ea;
+        font-size: 10px;
+        font-weight: 800;
+      }
+
+      .chip.blue {
+        color: var(--blue);
+        background: rgba(77, 159, 255, 0.13);
+      }
+
+      .chip.green {
+        color: var(--green);
+        background: rgba(82, 217, 130, 0.13);
+      }
+
+      .panel-stack {
+        position: absolute;
+        z-index: 30;
+        right: 10px;
+        bottom: calc(104px + env(safe-area-inset-bottom));
+        left: 10px;
+        display: grid;
+        gap: 8px;
+        pointer-events: none;
+      }
+
+      .panel-card {
+        pointer-events: auto;
+        overflow: hidden;
+        border-radius: 14px;
+        background: rgba(28, 29, 34, 0.96);
+        border: 1px solid rgba(255, 255, 255, 0.09);
+        box-shadow: 0 16px 42px rgba(0, 0, 0, 0.36);
+        backdrop-filter: blur(20px);
+      }
+
+      .panel-head {
+        height: 38px;
+        padding: 0 10px 0 12px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.065);
+      }
+
+      .panel-title {
+        display: inline-flex;
+        align-items: center;
+        gap: 7px;
+        font-size: 13px;
+        font-weight: 820;
+      }
+
+      .panel-title small {
+        color: var(--muted);
+        font-size: 10px;
+        font-weight: 750;
+      }
+
+      .panel-close {
+        width: 30px;
+        height: 30px;
+        display: grid;
+        place-items: center;
+        border-radius: 999px;
+        color: #d6d8dd;
+        background: rgba(255, 255, 255, 0.045);
+      }
+
+      .panel-body {
+        padding: 10px 12px 12px;
+        display: grid;
+        gap: 9px;
+      }
+
+      .row {
+        display: flex;
+        align-items: center;
+        gap: 7px;
+        min-width: 0;
+      }
+
+      .segmented {
+        display: flex;
+        gap: 5px;
+        overflow-x: auto;
+        scrollbar-width: none;
+      }
+
+      .segmented::-webkit-scrollbar {
+        display: none;
+      }
+
+      .pill {
+        height: 28px;
+        padding: 0 10px;
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        border-radius: 999px;
+        white-space: nowrap;
+        color: #d9dce2;
+        background: rgba(255, 255, 255, 0.055);
+        border: 1px solid rgba(255, 255, 255, 0.055);
+        font-size: 11px;
+        font-weight: 790;
+      }
+
+      .pill.is-selected {
+        color: #07111d;
+        background: var(--blue);
+        border-color: transparent;
+      }
+
+      .dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 999px;
+        background: currentColor;
+      }
+
+      .list {
+        display: grid;
+        gap: 6px;
+      }
+
+      .list-row {
+        min-height: 34px;
+        padding: 6px 8px;
+        display: grid;
+        grid-template-columns: 22px 1fr auto;
+        gap: 8px;
+        align-items: center;
+        border-radius: 9px;
+        background: rgba(255, 255, 255, 0.045);
+        color: #e4e7ec;
+        font-size: 11px;
+        text-align: left;
+      }
+
+      .list-row.is-selected {
+        outline: 1px solid rgba(77, 159, 255, 0.45);
+        background: rgba(77, 159, 255, 0.11);
+      }
+
+      .mini-pin {
+        width: 22px;
+        height: 22px;
+        display: grid;
+        place-items: center;
+        border-radius: 999px;
+        border: 2px solid white;
+      }
+
+      .mini-pin::after {
+        content: "";
+        width: 6px;
+        height: 6px;
+        border-radius: 999px;
+        background: white;
+      }
+
+      .muted {
+        color: var(--muted);
+      }
+
+      .checklist {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 6px;
+      }
+
+      .check {
+        min-height: 28px;
+        padding: 0 8px;
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        border-radius: 8px;
+        background: rgba(255, 255, 255, 0.045);
+        color: #d7dae0;
+        font-size: 10px;
+        font-weight: 760;
+      }
+
+      .box {
+        width: 14px;
+        height: 14px;
+        display: grid;
+        place-items: center;
+        border-radius: 4px;
+        border: 1px solid rgba(255, 255, 255, 0.25);
+        color: white;
+      }
+
+      .check.is-done .box {
+        background: var(--green);
+        border-color: transparent;
+      }
+
+      .slider-row {
+        display: grid;
+        grid-template-columns: auto 1fr auto;
+        align-items: center;
+        gap: 8px;
+        color: #d7dae0;
+        font-size: 11px;
+        font-weight: 750;
+      }
+
+      input[type="range"] {
+        width: 100%;
+        accent-color: var(--green);
+      }
+
+      .bottom {
+        position: absolute;
+        right: 0;
+        bottom: 0;
+        left: 0;
+        height: calc(96px + env(safe-area-inset-bottom));
+        padding: 13px 22px calc(15px + env(safe-area-inset-bottom));
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        background: #1c1d21;
+        border-top: 1px solid rgba(255, 255, 255, 0.055);
+      }
+
+      .dock-button {
+        width: 46px;
+        height: 46px;
+        background: rgba(18, 19, 22, 0.68);
+      }
+
+      .dock-button.is-on {
+        color: var(--blue);
+        border-color: rgba(77, 159, 255, 0.4);
+      }
+
+      .dock-button.is-region {
+        color: var(--green);
+        border-color: rgba(82, 217, 130, 0.4);
+      }
+
+      .dock-label {
+        position: absolute;
+        opacity: 0;
+        pointer-events: none;
+      }
+
+      .home {
+        position: absolute;
+        left: 50%;
+        bottom: max(6px, env(safe-area-inset-bottom));
+        width: 118px;
+        height: 4px;
+        transform: translateX(-50%);
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.72);
+      }
+
+      .empty {
+        padding: 10px;
+        border-radius: 10px;
+        background: rgba(255, 255, 255, 0.045);
+        color: #c6cad2;
+        font-size: 11px;
+        line-height: 1.35;
+      }
+
+      .action-row {
+        display: grid;
+        grid-template-columns: 1fr 1fr 1fr;
+        gap: 6px;
+      }
+
+      .action {
+        height: 32px;
+        border-radius: 9px;
+        color: #e9ebef;
+        background: rgba(255, 255, 255, 0.065);
+        font-size: 11px;
+        font-weight: 790;
+      }
+
+      .action.primary {
+        color: #06111d;
+        background: var(--green);
+      }
+    </style>
+  </head>
+  <body>
+    <main id="app" class="app rail-right">
+      <section class="status">
+        <div>4:10 <span style="font-size: 12px">↗</span></div>
+        <div class="status-icons">
+          <span class="bars" aria-hidden="true"><span></span><span></span><span></span><span></span></span>
+          <i data-lucide="wifi" style="width:18px;height:18px"></i>
+          <span class="battery">28</span>
+        </div>
+      </section>
+
+      <header class="topbar">
+        <button class="circle" data-action="back" aria-label="Back">
+          <i data-lucide="chevron-left"></i>
+        </button>
+        <button class="mode-title" data-action="toggle-mode" aria-label="Toggle Base and Survey">
+          <span id="modeText">Survey + Region</span>
+          <i data-lucide="chevron-down" style="width:17px;height:17px"></i>
+        </button>
+        <button class="circle" data-action="more" aria-label="More">
+          <i data-lucide="ellipsis"></i>
+        </button>
+      </header>
+
+      <nav id="toolstrip" class="tools" aria-label="annotation tools"></nav>
+
+      <section class="workspace">
+        <div class="page-viewport">
+          <div class="page" id="page">
+            <div class="drawing-lines"></div>
+            <div id="regionDims"></div>
+            <svg id="inkLayer" class="ink-layer" viewBox="0 0 100 100" preserveAspectRatio="none"></svg>
+            <div id="markersLayer"></div>
+          </div>
+          <div class="page-gap"></div>
+          <div class="next-page"></div>
+        </div>
+
+        <aside id="rail" class="rail" aria-label="quick controls"></aside>
+
+        <div class="intent">
+          <span id="intentText">Tap plan to place Survey Marker</span>
+          <span id="scopeChips" class="scope-chips"></span>
+        </div>
+      </section>
+
+      <section id="panelStack" class="panel-stack" aria-label="open panels"></section>
+
+      <nav id="bottomDock" class="bottom" aria-label="document navigation"></nav>
+      <div class="home"></div>
+    </main>
+
+    <script>
+      const categories = [
+        {
+          id: "camera",
+          name: "Cameras",
+          short: "CAM",
+          color: "#2f7cff",
+          checks: ["Cable", "Mounted", "Aimed", "Tested"]
+        },
+        {
+          id: "door",
+          name: "Doors",
+          short: "DR",
+          color: "#ef4058",
+          checks: ["Frame", "Reader", "Lock", "Label"]
+        },
+        {
+          id: "headend",
+          name: "Headend",
+          short: "HE",
+          color: "#f49b35",
+          checks: ["Power", "Network", "Rack", "Label"]
+        }
+      ];
+
+      const entities = [
+        { id: "gc", name: "GC", color: "#2f7cff" },
+        { id: "sub", name: "Sub", color: "#ef4058" },
+        { id: "done", name: "100%", color: "#52d982" },
+        { id: "removed", name: "Removed", color: "#8d96a8" }
+      ];
+
+      const tools = [
+        { id: "select", icon: "mouse-pointer-2", label: "Select" },
+        { id: "pen", icon: "pen-line", label: "Pen", color: "green" },
+        { id: "highlight", icon: "highlighter", label: "Highlight", color: "gold" },
+        { id: "callout", icon: "message-square-text", label: "Callout" },
+        { id: "counter", icon: "hash", label: "Counter" },
+        { id: "marker", icon: "map-pin-plus", label: "Survey Marker", color: "red" },
+        { id: "region", icon: "scan-line", label: "Region", color: "green" },
+        { id: "text", icon: "text-cursor-input", label: "Text" },
+        { id: "undo", icon: "undo-2", label: "Undo" }
+      ];
+
+      const state = {
+        activeTool: "marker",
+        activeMode: "survey",
+        surveyOpen: true,
+        regionOpen: true,
+        regionOverlay: true,
+        railSide: "right",
+        selectedCategoryId: "camera",
+        selectedEntityId: "gc",
+        selectedMarkerId: "m1",
+        selectedCounterId: null,
+        regionOpacity: 18,
+        markers: [
+          {
+            id: "m1",
+            x: 62,
+            y: 36,
+            categoryId: "camera",
+            entityId: "gc",
+            checks: { Cable: true, Mounted: false, Aimed: false, Tested: false }
+          },
+          {
+            id: "m2",
+            x: 37,
+            y: 60,
+            categoryId: "door",
+            entityId: "sub",
+            checks: { Frame: true, Reader: true, Lock: false, Label: false }
+          }
+        ],
+        counters: [{ id: "c1", x: 23, y: 37, n: 1 }],
+        callouts: [{ id: "co1", x: 66, y: 58, text: "Verify FOV" }],
+        ink: [],
+        region: { x: 12, y: 22, w: 66, h: 58 },
+        tempRegion: null,
+        drag: null,
+        lastAction: "Tap plan to place Survey Marker"
+      };
+
+      const app = document.getElementById("app");
+      const toolstrip = document.getElementById("toolstrip");
+      const rail = document.getElementById("rail");
+      const page = document.getElementById("page");
+      const inkLayer = document.getElementById("inkLayer");
+      const markersLayer = document.getElementById("markersLayer");
+      const regionDims = document.getElementById("regionDims");
+      const panelStack = document.getElementById("panelStack");
+      const bottomDock = document.getElementById("bottomDock");
+      const modeText = document.getElementById("modeText");
+      const intentText = document.getElementById("intentText");
+      const scopeChips = document.getElementById("scopeChips");
+
+      const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
+      const byId = (items, id) => items.find((item) => item.id === id);
+      const activeCategory = () => byId(categories, state.selectedCategoryId) || categories[0];
+      const activeEntity = () => byId(entities, state.selectedEntityId) || entities[0];
+      const markerCategory = (marker) => byId(categories, marker.categoryId) || categories[0];
+      const markerEntity = (marker) => byId(entities, marker.entityId) || entities[0];
+      const capturePointer = (event) => {
+        try {
+          page.setPointerCapture(event.pointerId);
+        } catch {
+          // Automated pointer events do not always create an active pointer.
+        }
+      };
+
+      function pagePoint(event) {
+        const rect = page.getBoundingClientRect();
+        return {
+          x: clamp(((event.clientX - rect.left) / rect.width) * 100, 0, 100),
+          y: clamp(((event.clientY - rect.top) / rect.height) * 100, 0, 100)
+        };
+      }
+
+      function setTool(toolId) {
+        if (toolId === "undo") {
+          undoLast();
+          return;
+        }
+        state.activeTool = toolId;
+        if (toolId === "marker") {
+          state.activeMode = "survey";
+          state.surveyOpen = true;
+        }
+        if (toolId === "region") {
+          state.regionOpen = true;
+          state.regionOverlay = true;
+        }
+        state.lastAction = toolIntent();
+        render();
+      }
+
+      function toolIntent() {
+        const map = {
+          select: "Drag markers or tap records",
+          pen: "Draw freehand markup on current scope",
+          highlight: "Highlight on current scope",
+          callout: "Tap plan to add a callout",
+          counter: "Tap plan to drop next counter pin",
+          marker: "Tap plan to place Survey Marker",
+          region: "Drag to create/edit Region focus mask",
+          text: "Tap plan to add text"
+        };
+        return map[state.activeTool] || "Choose a tool";
+      }
+
+      function scopeLabel() {
+        if (state.activeMode === "survey" && state.regionOverlay) return "Survey + Region";
+        if (state.activeMode === "survey") return "Survey";
+        if (state.regionOverlay) return "Base + Region";
+        return "Base";
+      }
+
+      function render() {
+        app.classList.toggle("rail-left", state.railSide === "left");
+        app.classList.toggle("rail-right", state.railSide === "right");
+        modeText.textContent = scopeLabel();
+        intentText.textContent = state.lastAction;
+        renderTools();
+        renderRail();
+        renderPage();
+        renderPanels();
+        renderDock();
+        renderScopeChips();
+        if (window.lucide) window.lucide.createIcons();
+      }
+
+      function renderTools() {
+        toolstrip.innerHTML = tools
+          .map(
+            (tool) => `
+              <button
+                class="tool ${state.activeTool === tool.id ? "is-active" : ""}"
+                data-action="tool"
+                data-tool="${tool.id}"
+                data-color="${tool.color || ""}"
+                aria-label="${tool.label}"
+                title="${tool.label}"
+              >
+                <i data-lucide="${tool.icon}"></i>
+              </button>
+            `
+          )
+          .join("");
+      }
+
+      function renderRail() {
+        const sideIcon = state.railSide === "right" ? "panel-left-open" : "panel-right-open";
+        rail.innerHTML = `
+          <button class="rail-button ${state.surveyOpen ? "is-on" : ""}" data-action="toggle-survey-panel" aria-label="Survey panel">
+            <i data-lucide="clipboard-check"></i>
+            <span class="rail-badge">${state.markers.length}</span>
+          </button>
+          <button class="rail-button ${state.regionOpen ? "is-region" : ""}" data-action="toggle-region-panel" aria-label="Region panel">
+            <i data-lucide="scan-line"></i>
+          </button>
+          <button class="rail-button ${state.regionOverlay ? "is-region" : ""}" data-action="toggle-region-overlay" aria-label="Region overlay">
+            <i data-lucide="${state.regionOverlay ? "eye" : "eye-off"}"></i>
+          </button>
+          <button class="rail-button" data-action="flip-rail" aria-label="Flip rail side">
+            <i data-lucide="${sideIcon}"></i>
+          </button>
+        `;
+      }
+
+      function renderScopeChips() {
+        const chips = [];
+        chips.push(`<span class="chip ${state.activeMode === "survey" ? "blue" : ""}">${state.activeMode === "survey" ? "Survey" : "Base"}</span>`);
+        if (state.regionOverlay) chips.push(`<span class="chip green">Region</span>`);
+        if (state.activeMode === "survey") chips.push(`<span class="chip">Base hidden</span>`);
+        scopeChips.innerHTML = chips.join("");
+      }
+
+      function renderPage() {
+        renderRegion();
+        renderInk();
+        renderMarkers();
+      }
+
+      function renderRegion() {
+        const pieces = [];
+        const region = state.tempRegion || state.region;
+        if (state.regionOverlay && region) {
+          const opacity = state.regionOpacity / 100;
+          pieces.push(`<div class="region-dim" style="left:0;top:0;width:100%;height:${region.y}%;background:rgba(0,0,0,${opacity})"></div>`);
+          pieces.push(`<div class="region-dim" style="left:0;top:${region.y}%;width:${region.x}%;height:${region.h}%;background:rgba(0,0,0,${opacity})"></div>`);
+          pieces.push(`<div class="region-dim" style="left:${region.x + region.w}%;top:${region.y}%;width:${100 - region.x - region.w}%;height:${region.h}%;background:rgba(0,0,0,${opacity})"></div>`);
+          pieces.push(`<div class="region-dim" style="left:0;top:${region.y + region.h}%;width:100%;height:${100 - region.y - region.h}%;background:rgba(0,0,0,${opacity})"></div>`);
+          pieces.push(`<div class="region-rect ${state.tempRegion ? "temp" : ""}" style="left:${region.x}%;top:${region.y}%;width:${region.w}%;height:${region.h}%"></div>`);
+        }
+        regionDims.innerHTML = pieces.join("");
+      }
+
+      function renderInk() {
+        inkLayer.innerHTML = state.ink
+          .map((path) => `<path d="${path.d}" stroke="${path.color || "#20252e"}"></path>`)
+          .join("");
+      }
+
+      function renderMarkers() {
+        const markerHtml = state.markers
+          .map((marker, index) => {
+            const cat = markerCategory(marker);
+            const entity = markerEntity(marker);
+            const selected = state.selectedMarkerId === marker.id;
+            return `
+              <button
+                class="marker-pin ${selected ? "is-selected" : ""}"
+                data-marker-id="${marker.id}"
+                style="left:${marker.x}%;top:${marker.y}%;background:${entity.color}"
+                aria-label="${cat.name} marker ${index + 1}"
+                title="${cat.name} · ${entity.name}"
+              ></button>
+            `;
+          })
+          .join("");
+        const counterHtml = state.counters
+          .map(
+            (pin) => `
+              <button class="counter-pin ${state.selectedCounterId === pin.id ? "is-selected" : ""}" data-counter-id="${pin.id}" style="left:${pin.x}%;top:${pin.y}%">${pin.n}</button>
+            `
+          )
+          .join("");
+        const calloutHtml = state.callouts
+          .map((item) => `<div class="callout" style="left:${item.x}%;top:${item.y}%">${item.text}</div>`)
+          .join("");
+        markersLayer.innerHTML = markerHtml + counterHtml + calloutHtml;
+      }
+
+      function renderPanels() {
+        const cards = [];
+        if (state.surveyOpen) cards.push(renderSurveyPanel());
+        if (state.regionOpen) cards.push(renderRegionPanel());
+        panelStack.innerHTML = cards.join("");
+      }
+
+      function renderSurveyPanel() {
+        const selectedMarker = byId(state.markers, state.selectedMarkerId);
+        const selectedCat = selectedMarker ? markerCategory(selectedMarker) : activeCategory();
+        const categoryPills = categories
+          .map((cat) => `<button class="pill ${state.selectedCategoryId === cat.id ? "is-selected" : ""}" data-action="category" data-category="${cat.id}"><span class="dot" style="color:${cat.color}"></span>${cat.name}</button>`)
+          .join("");
+        const entityPills = entities
+          .map((entity) => `<button class="pill ${state.selectedEntityId === entity.id ? "is-selected" : ""}" data-action="entity" data-entity="${entity.id}"><span class="dot" style="color:${entity.color}"></span>${entity.name}</button>`)
+          .join("");
+        const markers = state.markers.length
+          ? state.markers
+              .map((marker, index) => {
+                const cat = markerCategory(marker);
+                const entity = markerEntity(marker);
+                return `
+                  <button class="list-row ${state.selectedMarkerId === marker.id ? "is-selected" : ""}" data-action="select-marker" data-marker="${marker.id}">
+                    <span class="mini-pin" style="background:${entity.color}"></span>
+                    <span><strong>${cat.short}-${index + 1}</strong> <span class="muted">${cat.name}</span></span>
+                    <span class="muted">${entity.name}</span>
+                  </button>
+                `;
+              })
+              .join("")
+          : `<div class="empty">No Survey Markers yet. Choose Survey Marker, then tap the PDF.</div>`;
+        const checklist = selectedMarker
+          ? selectedCat.checks
+              .map((check) => {
+                const done = selectedMarker.checks?.[check] === true;
+                return `<button class="check ${done ? "is-done" : ""}" data-action="toggle-check" data-check="${check}"><span class="box">${done ? "✓" : ""}</span>${check}</button>`;
+              })
+              .join("")
+          : `<div class="empty">Select a marker to answer checklist items.</div>`;
+
+        return `
+          <article class="panel-card">
+            <header class="panel-head">
+              <div class="panel-title">
+                <i data-lucide="clipboard-check" style="width:16px;height:16px;color:var(--blue)"></i>
+                Survey <small>Installation Phase</small>
+              </div>
+              <button class="panel-close" data-action="toggle-survey-panel" aria-label="Close survey panel"><i data-lucide="x" style="width:17px;height:17px"></i></button>
+            </header>
+            <div class="panel-body">
+              <div class="segmented">${categoryPills}</div>
+              <div class="segmented">${entityPills}</div>
+              <div class="list">${markers}</div>
+              <div class="checklist">${checklist}</div>
+            </div>
+          </article>
+        `;
+      }
+
+      function renderRegionPanel() {
+        return `
+          <article class="panel-card">
+            <header class="panel-head">
+              <div class="panel-title">
+                <i data-lucide="scan-line" style="width:16px;height:16px;color:var(--green)"></i>
+                Region <small>Space TCO1 · Page 1</small>
+              </div>
+              <button class="panel-close" data-action="toggle-region-panel" aria-label="Close region panel"><i data-lucide="x" style="width:17px;height:17px"></i></button>
+            </header>
+            <div class="panel-body">
+              <div class="slider-row">
+                <span>Mask</span>
+                <input data-action="region-opacity" type="range" min="6" max="40" value="${state.regionOpacity}" />
+                <span>${state.regionOpacity}%</span>
+              </div>
+              <div class="action-row">
+                <button class="action primary" data-action="tool" data-tool="region">Edit region</button>
+                <button class="action" data-action="toggle-region-overlay">${state.regionOverlay ? "Hide" : "Show"}</button>
+                <button class="action" data-action="clear-region">Clear</button>
+              </div>
+            </div>
+          </article>
+        `;
+      }
+
+      function renderDock() {
+        bottomDock.innerHTML = `
+          <button class="dock-button" data-action="pages" aria-label="Pages"><i data-lucide="grid-2x2"></i></button>
+          <button class="dock-button" data-action="spaces" aria-label="Spaces"><i data-lucide="book-open"></i></button>
+          <button class="dock-button" data-action="search" aria-label="Search"><i data-lucide="search"></i></button>
+          <button class="dock-button ${state.surveyOpen ? "is-on" : ""}" data-action="toggle-survey-panel" aria-label="Survey"><i data-lucide="clipboard-check"></i></button>
+          <button class="dock-button ${state.regionOpen ? "is-region" : ""}" data-action="toggle-region-panel" aria-label="Region"><i data-lucide="scan-line"></i></button>
+        `;
+      }
+
+      function addMarker(point) {
+        const cat = activeCategory();
+        const checks = Object.fromEntries(cat.checks.map((check) => [check, false]));
+        const marker = {
+          id: `m${Date.now()}`,
+          x: point.x,
+          y: point.y,
+          categoryId: state.selectedCategoryId,
+          entityId: state.selectedEntityId,
+          checks
+        };
+        state.markers.push(marker);
+        state.selectedMarkerId = marker.id;
+        state.selectedCounterId = null;
+        state.surveyOpen = true;
+        state.activeMode = "survey";
+        state.lastAction = `Placed ${cat.name} marker`;
+        render();
+      }
+
+      function addCounter(point) {
+        const next = state.counters.length + 1;
+        const pin = { id: `c${Date.now()}`, x: point.x, y: point.y, n: next };
+        state.counters.push(pin);
+        state.selectedCounterId = pin.id;
+        state.selectedMarkerId = null;
+        state.lastAction = `Dropped counter pin ${next}`;
+        render();
+      }
+
+      function addCallout(point) {
+        state.callouts.push({ id: `co${Date.now()}`, x: point.x, y: point.y, text: "Field note" });
+        state.lastAction = "Added callout";
+        render();
+      }
+
+      function addText(point) {
+        state.callouts.push({ id: `txt${Date.now()}`, x: point.x, y: point.y, text: "Text" });
+        state.lastAction = "Added text note";
+        render();
+      }
+
+      function undoLast() {
+        if (state.markers.length > 0 && state.selectedMarkerId === state.markers[state.markers.length - 1].id) {
+          state.markers.pop();
+          state.selectedMarkerId = state.markers.at(-1)?.id || null;
+          state.lastAction = "Undid last marker";
+        } else if (state.ink.length > 0) {
+          state.ink.pop();
+          state.lastAction = "Undid ink stroke";
+        } else if (state.counters.length > 0) {
+          state.counters.pop();
+          state.lastAction = "Undid counter pin";
+        } else {
+          state.lastAction = "Nothing to undo";
+        }
+        render();
+      }
+
+      function startRegion(point) {
+        state.tempRegion = { x: point.x, y: point.y, w: 0, h: 0 };
+        state.drag = { type: "region", start: point };
+        state.regionOpen = true;
+        state.regionOverlay = true;
+        renderRegion();
+      }
+
+      function updateRegion(point) {
+        const start = state.drag.start;
+        const x = Math.min(start.x, point.x);
+        const y = Math.min(start.y, point.y);
+        const w = Math.abs(point.x - start.x);
+        const h = Math.abs(point.y - start.y);
+        state.tempRegion = { x, y, w, h };
+        renderRegion();
+      }
+
+      function commitRegion() {
+        if (state.tempRegion && state.tempRegion.w > 4 && state.tempRegion.h > 4) {
+          state.region = state.tempRegion;
+          state.lastAction = "Updated Region mask";
+        } else {
+          state.lastAction = "Region drag too small";
+        }
+        state.tempRegion = null;
+        state.drag = null;
+        render();
+      }
+
+      function startPen(point) {
+        const path = { d: `M ${point.x.toFixed(2)} ${point.y.toFixed(2)}`, color: "#20252e" };
+        state.ink.push(path);
+        state.drag = { type: "pen", path };
+      }
+
+      function updatePen(point) {
+        state.drag.path.d += ` L ${point.x.toFixed(2)} ${point.y.toFixed(2)}`;
+        renderInk();
+      }
+
+      function commitPen() {
+        state.drag = null;
+        state.lastAction = "Added ink stroke";
+        render();
+      }
+
+      page.addEventListener("pointerdown", (event) => {
+        const markerEl = event.target.closest("[data-marker-id]");
+        const counterEl = event.target.closest("[data-counter-id]");
+        if (markerEl) {
+          state.selectedMarkerId = markerEl.dataset.markerId;
+          state.selectedCounterId = null;
+          state.drag = { type: "marker", id: markerEl.dataset.markerId };
+          state.surveyOpen = true;
+          state.lastAction = "Dragging Survey Marker";
+          capturePointer(event);
+          render();
+          return;
+        }
+        if (counterEl) {
+          state.selectedCounterId = counterEl.dataset.counterId;
+          state.selectedMarkerId = null;
+          state.drag = { type: "counter", id: counterEl.dataset.counterId };
+          state.lastAction = "Dragging counter pin";
+          capturePointer(event);
+          render();
+          return;
+        }
+
+        const point = pagePoint(event);
+        if (state.activeTool === "marker") addMarker(point);
+        else if (state.activeTool === "counter") addCounter(point);
+        else if (state.activeTool === "callout") addCallout(point);
+        else if (state.activeTool === "text") addText(point);
+        else if (state.activeTool === "region") {
+          startRegion(point);
+          capturePointer(event);
+        } else if (state.activeTool === "pen" || state.activeTool === "highlight") {
+          startPen(point);
+          capturePointer(event);
+        } else {
+          state.selectedMarkerId = null;
+          state.selectedCounterId = null;
+          state.lastAction = "Nothing selected";
+          render();
+        }
+      });
+
+      page.addEventListener("pointermove", (event) => {
+        if (!state.drag) return;
+        const point = pagePoint(event);
+        if (state.drag.type === "region") updateRegion(point);
+        if (state.drag.type === "pen") updatePen(point);
+        if (state.drag.type === "marker") {
+          const marker = byId(state.markers, state.drag.id);
+          if (marker) {
+            marker.x = point.x;
+            marker.y = point.y;
+            renderMarkers();
+          }
+        }
+        if (state.drag.type === "counter") {
+          const counter = byId(state.counters, state.drag.id);
+          if (counter) {
+            counter.x = point.x;
+            counter.y = point.y;
+            renderMarkers();
+          }
+        }
+      });
+
+      page.addEventListener("pointerup", () => {
+        if (!state.drag) return;
+        if (state.drag.type === "region") commitRegion();
+        else if (state.drag.type === "pen") commitPen();
+        else {
+          state.lastAction = state.drag.type === "marker" ? "Moved Survey Marker" : "Moved counter pin";
+          state.drag = null;
+          render();
+        }
+      });
+
+      document.body.addEventListener("click", (event) => {
+        const actionEl = event.target.closest("[data-action]");
+        if (!actionEl) return;
+        const action = actionEl.dataset.action;
+        if (action === "tool") setTool(actionEl.dataset.tool);
+        if (action === "toggle-mode") {
+          state.activeMode = state.activeMode === "survey" ? "base" : "survey";
+          if (state.activeMode === "survey") state.surveyOpen = true;
+          state.lastAction = state.activeMode === "survey" ? "Survey mode active, Base hidden" : "Base layer active";
+          render();
+        }
+        if (action === "toggle-survey-panel") {
+          state.surveyOpen = !state.surveyOpen;
+          if (state.surveyOpen) state.activeMode = "survey";
+          state.lastAction = state.surveyOpen ? "Survey panel open" : "Survey panel closed";
+          render();
+        }
+        if (action === "toggle-region-panel") {
+          state.regionOpen = !state.regionOpen;
+          if (state.regionOpen) state.regionOverlay = true;
+          state.lastAction = state.regionOpen ? "Region panel open" : "Region panel closed";
+          render();
+        }
+        if (action === "toggle-region-overlay") {
+          state.regionOverlay = !state.regionOverlay;
+          state.lastAction = state.regionOverlay ? "Region overlay visible" : "Region overlay hidden";
+          render();
+        }
+        if (action === "flip-rail") {
+          state.railSide = state.railSide === "right" ? "left" : "right";
+          state.lastAction = `Rail moved ${state.railSide}`;
+          render();
+        }
+        if (action === "category") {
+          state.selectedCategoryId = actionEl.dataset.category;
+          const marker = byId(state.markers, state.selectedMarkerId);
+          if (marker) {
+            marker.categoryId = state.selectedCategoryId;
+            marker.checks = Object.fromEntries(activeCategory().checks.map((check) => [check, false]));
+          }
+          state.lastAction = `Category set to ${activeCategory().name}`;
+          render();
+        }
+        if (action === "entity") {
+          state.selectedEntityId = actionEl.dataset.entity;
+          const marker = byId(state.markers, state.selectedMarkerId);
+          if (marker) marker.entityId = state.selectedEntityId;
+          state.lastAction = `Entity set to ${activeEntity().name}`;
+          render();
+        }
+        if (action === "select-marker") {
+          state.selectedMarkerId = actionEl.dataset.marker;
+          const marker = byId(state.markers, state.selectedMarkerId);
+          if (marker) {
+            state.selectedCategoryId = marker.categoryId;
+            state.selectedEntityId = marker.entityId;
+          }
+          state.lastAction = "Selected Survey Marker record";
+          render();
+        }
+        if (action === "toggle-check") {
+          const marker = byId(state.markers, state.selectedMarkerId);
+          if (marker) {
+            marker.checks[actionEl.dataset.check] = !marker.checks[actionEl.dataset.check];
+            state.lastAction = "Updated marker checklist";
+            render();
+          }
+        }
+        if (action === "clear-region") {
+          state.region = null;
+          state.regionOverlay = false;
+          state.lastAction = "Cleared Region mask";
+          render();
+        }
+        if (action === "pages") state.lastAction = "Pages would open thumbnails";
+        if (action === "spaces") {
+          state.regionOpen = true;
+          state.lastAction = "Spaces opens Space TCO1 and Region controls";
+          render();
+        }
+        if (action === "search") state.lastAction = "Search would open document search";
+        if (action === "more") state.lastAction = "More menu would hold sync/export/settings";
+        if (action === "back") state.lastAction = "Back would return to files/projects";
+      });
+
+      document.body.addEventListener("input", (event) => {
+        const actionEl = event.target.closest("[data-action='region-opacity']");
+        if (!actionEl) return;
+        state.regionOpacity = Number(actionEl.value);
+        state.lastAction = "Adjusted Region mask opacity";
+        render();
+      });
+
+      render();
+    </script>
+  </body>
+</html>

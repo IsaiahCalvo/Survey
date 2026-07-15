@@ -1,3 +1,5 @@
+import { drawTextboxAnnotation, isTextboxAnnotation, textboxBounds } from './textAnnotation.js';
+
 const pathCache = new Map();
 
 function pathFor(annotation) {
@@ -25,6 +27,10 @@ function paintFor(annotation) {
 }
 
 function drawAnnotation(context, annotation) {
+  if (isTextboxAnnotation(annotation)) {
+    drawTextboxAnnotation(context, annotation);
+    return;
+  }
   const path = pathFor(annotation);
   const { fill, stroke } = paintFor(annotation);
   if (fill) {
@@ -69,7 +75,7 @@ self.onmessage = (event) => {
     }
     const selected = request.annotations?.find((annotation) => annotation.id === request.selectedId);
     if (selected && selected.id !== request.hiddenId) {
-      const box = boundsOfCommands(selected.cmds);
+      const box = isTextboxAnnotation(selected) ? textboxBounds(selected) : boundsOfCommands(selected.cmds);
       const inset = 3 / request.renderScale;
       context.save();
       context.strokeStyle = '#0a84ff';

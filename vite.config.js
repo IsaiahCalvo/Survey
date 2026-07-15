@@ -20,8 +20,8 @@ const APP_VERSION = (() => {
 })();
 
 /**
- * Dev-only Vite plugin: writes a renderer-spike comparison log into the project's
- * Logs/ folder. The spike's "Save log" button (and Cmd+Shift+L) POST the log here
+ * Dev-only Vite plugin: writes the PDF.js feature performance log into the project's
+ * Logs/ folder. The demo's "Save log" button (and Cmd+Shift+L) POST the log here
  * because a browser download can only reach the OS Downloads folder, not a project
  * path. Filename is validated to the spike's own scheme — no path traversal.
  */
@@ -37,7 +37,7 @@ function spikeLogSavePlugin() {
           try {
             const { filename, text } = JSON.parse(body || '{}');
             const safe = String(filename || '').replace(/[/\\]/g, '');
-            if (!/^PDF render comparison .+\.log$/.test(safe)) {
+            if (!/^PDF\.js feature performance .+\.log$/.test(safe)) {
               res.statusCode = 400;
               res.setHeader('Content-Type', 'application/json');
               res.end(JSON.stringify({ error: 'bad filename' }));
