@@ -476,13 +476,24 @@ const FabricEraserCanvas = memo(({
     if (clone?.root) {
       // Mask-clone mode: whole-object ghosting = hide the cloned elements
       // outright (display:none) — exact by definition, no silhouette mask.
+      // Match by STABLE annotation id first: data-annotation-index is the
+      // render-position at clone time and goes stale the moment a commit or
+      // remote edit shifts the array (adversarial review finding,
+      // 2026-07-15); index is only the fallback for id-less legacy objects.
       const objects = annotationsRef.current?.objects || [];
       for (const id of ids) {
+        if (clone.indexHidden.has(id)) continue;
+        clone.indexHidden.add(id);
         const index = objects.findIndex((object, i) => getEraserCandidateId(object, i) === id);
-        if (index < 0 || clone.indexHidden.has(index)) continue;
-        clone.indexHidden.add(index);
-        clone.root.querySelectorAll(`[data-annotation-index="${index}"]`)
-          .forEach((el) => { el.style.display = 'none'; });
+        const stableId = index >= 0 ? String(objects[index]?.id || '') : '';
+        let targets = [];
+        if (stableId && typeof CSS !== 'undefined' && CSS.escape) {
+          targets = clone.root.querySelectorAll(`[data-annotation-id="${CSS.escape(stableId)}"]`);
+        }
+        if (!targets.length && index >= 0) {
+          targets = clone.root.querySelectorAll(`[data-annotation-index="${index}"]`);
+        }
+        targets.forEach((el) => { el.style.display = 'none'; });
       }
       return;
     }
@@ -566,7 +577,16 @@ const FabricEraserCanvas = memo(({
   // straight from the pointer (the mask lives in the clone's user space),
   // so there is no transform to disagree with anything.
   const beginMaskClonePreview = useCallback(() => {
-    if (maskCloneRef.current?.root?.isConnected) return true; // continuing session
+    if (maskCloneRef.current?.root?.isConnected) {
+      // Continuing session (back-to-back strokes inside the previous
+      // stroke's commit-wait window). CRITICAL: kill the previous stroke's
+      // pending finish observer + deferred teardown, or its belated
+      // callback rips this stroke's shared clone out mid-drag (adversarial
+      // review finding, 2026-07-15).
+      cancelLivePreviewFinish();
+      cancelScheduledPreviewHide();
+      return true;
+    }
     cancelLivePreviewFinish();
     cancelScheduledPreviewHide();
     const surface = containerRef.current?.closest('[data-annotation-real-surface]');
@@ -618,6 +638,15 @@ const FabricEraserCanvas = memo(({
       defs.appendChild(mask);
       maskEl = mask;
       group.setAttribute('mask', `url(#${maskId})`);
+      // Known bounded residual (measured 2026-07-15,
+      // agent-cli/diag-multiply-during-erase.mjs): the masked group is an
+      // isolated blend context, so mix-blend-mode:multiply content
+      // (highlighter, survey-marker highlight) tints against the clone's own
+      // backdrop instead of the PDF page WHILE a stroke is active (~2.8% of
+      // the highlight's pixels shift subtly, restored at release). Strictly
+      // smaller than the old bitmap path, which flattened multiply the whole
+      // time eraser mode was on. Do not "fix" by unwrapping multiply
+      // elements — that reorders paint and looks worse.
       cloneRoot.appendChild(defs);
       cloneRoot.appendChild(group);
       cloneRoot.style.position = 'absolute';
