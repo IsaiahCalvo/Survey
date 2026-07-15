@@ -2977,6 +2977,47 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       if (prevTool !== activeTool) {
         console.log(`[InteractionDiag] tool-changed @ ${Math.round(performance.now())}ms from=${prevTool} to=${activeTool}` + (activeTool === 'pan' ? ' (pan-active → Pdfjs interactionMode=Pan)' : '') + (activeTool === 'eraser' ? ' (eraser-active → FabricEraserCanvas mounts)' : ''));
         interactionDiagPrevToolRef.current = activeTool;
+        // [EraserParityDiag] one maximally-complete environment + geometry dump
+        // per eraser entry/exit, so a single pasted save-log answers every
+        // "which display / zoom / backing / box" question with zero follow-ups
+        // (eraser text-jump hunt, 2026-07-14). Deferred a frame so the
+        // presentation swap has committed before we read the DOM.
+        if (activeTool === 'eraser' || prevTool === 'eraser') {
+          const dir = activeTool === 'eraser' ? 'enter-eraser' : 'exit-eraser';
+          requestAnimationFrame(() => requestAnimationFrame(() => {
+            try {
+              const host = document.querySelector('[data-annotation-real-surface="1"]');
+              const hostRect = host?.getBoundingClientRect();
+              const canvas = document.querySelector('[data-annotation-presentation-canvas="1"]');
+              const canvasRect = canvas?.getBoundingClientRect();
+              const detail = document.querySelector('[data-annotation-detail-canvas="1"]');
+              const svg = document.querySelector('svg[data-svg-annotation-layer="1"]');
+              const svgRect = svg?.getBoundingClientRect();
+              const rect = (r) => r ? { x: +r.x.toFixed(3), y: +r.y.toFixed(3), w: +r.width.toFixed(3), h: +r.height.toFixed(3) } : null;
+              console.log(`[EraserParityDiag] ${dir} pdf=${pdfFile?.name || pdfFile?.file_name || '?'} ` + JSON.stringify({
+                dpr: window.devicePixelRatio,
+                visualViewportScale: window.visualViewport?.scale ?? null,
+                innerSize: { w: window.innerWidth, h: window.innerHeight },
+                screen: { w: window.screen?.width, h: window.screen?.height, availW: window.screen?.availWidth },
+                pageHost: rect(hostRect),
+                svg: rect(svgRect),
+                canvas: canvasRect ? {
+                  rect: rect(canvasRect),
+                  backing: canvas ? { w: canvas.width, h: canvas.height } : null,
+                  cssBox: canvas ? { w: canvas.style.width, h: canvas.style.height } : null,
+                  drawScale: canvas?.dataset.canvasDrawScale,
+                  drawScaleY: canvas?.dataset.canvasDrawScaleY,
+                  clamped: canvas?.dataset.canvasClamped,
+                  paintGen: canvas?.dataset.canvasPaintGeneration,
+                  renderer: canvas?.dataset.canvasRenderer,
+                } : null,
+                detailActive: detail?.dataset.annotationDetailActive === 'true'
+                  ? { rect: rect(detail.getBoundingClientRect()), backing: { w: detail.width, h: detail.height }, cssBox: { w: detail.style.width, h: detail.style.height } }
+                  : false,
+              }));
+            } catch (diagErr) { console.warn('[EraserParityDiag] dump failed', diagErr?.message); }
+          }));
+        }
       }
     } catch (_e) { /* swallow */ }
     activeToolRef.current = activeTool;
