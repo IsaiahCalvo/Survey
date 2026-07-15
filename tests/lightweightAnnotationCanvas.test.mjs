@@ -20,11 +20,13 @@ test('SVG is the one committed renderer; Canvas2D serves only eraser + proxy win
   assert.doesNotMatch(OVERLAY_SOURCE, /objectPreviews\.map/);
   // Unified renderer (2026-07-14): committed annotations are painted by
   // SVGAnnotationLayer in EVERY tool mode. The canvas presentation is visible
-  // only (a) in eraser mode, where FabricEraserCanvas snapshots and carves it,
-  // and (b) during the transient zoom/scroll proxy window. Reintroducing a
-  // per-tool renderer swap regresses the counter-dot / tool-switch-flicker
-  // family of bugs.
-  assert.match(VIEWER_SOURCE, /const useCanvasPresentation = isEraserTool;/);
+  // only (a) while an erase stroke's live preview is carving that page
+  // (erasePreviewPages — mere eraser mode must NOT swap: the two rasterizers
+  // disagree by ±1 device px at fractional zoom stops, so a settled-state
+  // swap visibly bobs text on E/P toggling), and (b) during the transient
+  // zoom/scroll proxy window. Reintroducing a per-tool renderer swap
+  // regresses the counter-dot / tool-switch-flicker / text-bob bug family.
+  assert.match(VIEWER_SOURCE, /const useCanvasPresentation = isEraserTool && erasePreviewPages\.has\(pageNumber\);/);
   assert.match(VIEWER_SOURCE, /data-annotation-presentation=\{useCanvasPresentation \? 'canvas2d' : 'svg-edit'\}/);
   assert.match(VIEWER_SOURCE, /<LightweightAnnotationOverlay[\s\S]*?visible=\{useCanvasPresentation \|\| suspendFullSvgForProxy\}/);
   // The canvas overlay wrapper must fill the page host (inset/100%), never

@@ -3985,6 +3985,30 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   const [eraserSize, setEraserSize] = useState(20); // Diameter in page pixels
   const [eraserCursorPos, setEraserCursorPos] = useState({ visible: false });
   const eraserCursorRef = useRef(null);
+  // UX (2026-07-14, E/P text-bob fix): pages whose live erase preview is on
+  // screen. The canvas2d presentation now takes over ONLY while a stroke's
+  // preview is active on that page — merely entering eraser mode keeps the
+  // SVG layer presenting, so tool toggling can't shift a single pixel. (The
+  // old rule swapped renderers on tool switch, exposing ±1 device px
+  // rasterizer edge-snap differences at fractional zoom stops — the
+  // user-visible "text bobs when toggling E/P" bug, reproduced at 447%.)
+  const [erasePreviewPages, setErasePreviewPages] = useState(() => new Set());
+  const handleErasePreviewPresentation = useCallback((previewPageNumber, active) => {
+    setErasePreviewPages((prev) => {
+      if (prev.has(previewPageNumber) === !!active) return prev;
+      const next = new Set(prev);
+      if (active) next.add(previewPageNumber);
+      else next.delete(previewPageNumber);
+      return next;
+    });
+  }, []);
+  useEffect(() => {
+    // Belt for the unmount path: leaving eraser mode always returns every
+    // page to the SVG presentation even if a finish callback got skipped.
+    if (activeTool !== 'eraser') {
+      setErasePreviewPages((prev) => (prev.size ? new Set() : prev));
+    }
+  }, [activeTool]);
 
   // Spacebar Pan state
   const previousToolRef = useRef(null);
@@ -29066,13 +29090,22 @@ ${pageBlocks}
                             // counters degenerated to dots, callout/text metrics jumped on
                             // every tool switch, and commits flickered across the handoff.
                             // The canvas2d presentation keeps exactly two jobs:
-                            //   1. eraser mode — it is the raster base FabricEraserCanvas
-                            //      snapshots and carves (preserved eraser pipeline), and
+                            //   1. an ACTIVE erase stroke — FabricEraserCanvas snapshots
+                            //      the warm painted canvas and carves it while the live
+                            //      preview is on screen (erasePreviewPages), and
                             //   2. the transient zoom/scroll interaction proxy window
                             //      (suspendFullSvgForProxy) while the SVG layer is suspended.
                             // It stays mounted-but-hidden otherwise so those two windows
                             // always have fresh pixels to show.
-                            const useCanvasPresentation = isEraserTool;
+                            // UX (2026-07-14, E/P text-bob fix): merely being in eraser
+                            // mode no longer swaps presentations — the SVG layer stays the
+                            // visible truth until a stroke actually carves. Canvas and SVG
+                            // rasterize identical geometry up to ±1 device px of edge
+                            // snap/AA at fractional zoom stops (CLAUDE.md 2026-04-10
+                            // gotcha, confirmed unfixable in JS), so any settled-state
+                            // presentation swap can visibly bob text; scoping the swap to
+                            // the gesture removes the bob by construction.
+                            const useCanvasPresentation = isEraserTool && erasePreviewPages.has(pageNumber);
 
                             return (
                             <>
@@ -29192,9 +29225,10 @@ ${pageBlocks}
                               )}
                               {/* SVG layer — the single committed-annotation renderer, mounted in
                                   EVERY tool mode (unified renderer, 2026-07-14). It unmounts only
-                                  (a) in eraser mode, where the canvas2d presentation is the raster
-                                  base FabricEraserCanvas snapshots and carves, and (b) during the
-                                  transient zoom/scroll proxy window (suspendFullSvgForProxy).
+                                  (a) while an erase stroke's live preview is carving this page
+                                  (erasePreviewPages — mere eraser mode no longer swaps, so tool
+                                  toggling can't bob text), and (b) during the transient
+                                  zoom/scroll proxy window (suspendFullSvgForProxy).
                                   Input safety in non-interactive tools: the SVG root sets
                                   pointerEvents 'none' unless select/text-select or a creation tool
                                   is active, and per-shape hit rects are isSelectTool-gated, so a
@@ -29424,7 +29458,9 @@ ${pageBlocks}
                                   inside SVGAnnotationLayer above, so drawing rides the same
                                   renderer + coordinate space as the committed marks. */}
 
-                              {/* Eraser Canvas -- loads all annotations, SVG hidden via wrapper visibility above */}
+                              {/* Eraser Canvas — pointer/hit surface for erasing. The SVG layer
+                                  stays visible beneath it until a stroke's live preview carves
+                                  (onErasePreviewPresentation drives the per-page swap). */}
                               {isEraserTool && (
                                 <FabricEraserCanvas
                                   key={`erase-${pageNumber}`}
@@ -29435,6 +29471,7 @@ ${pageBlocks}
                                   callouts={callouts}
                                   onEraseCommit={(updatedJSON, eraserDiagnostics = {}) => handleSaveAnnotations(pageNumber, updatedJSON, { source: 'eraser:commit', tool: 'eraser', ...eraserDiagnostics })}
                                   onEraseCallout={handleDeleteSelectedCallouts}
+                                  onErasePreviewPresentation={handleErasePreviewPresentation}
                                   eraserMode={eraserMode}
                                   eraserSize={eraserSize}
                                   viewerScale={layerScale}

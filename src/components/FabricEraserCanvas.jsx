@@ -125,6 +125,13 @@ const FabricEraserCanvas = memo(({
   onEraseCommit,
   onEraseCallout,
   onEraseTextMarkup,
+  // UX (2026-07-14, E/P text-bob fix): reports when this page's live erase
+  // preview is on screen (true at activation, false when the preview
+  // finishes/cancels). PDFViewer uses it to keep the SVG layer presenting in
+  // eraser mode until a stroke actually carves — swapping renderers on mere
+  // tool switch exposed ±1 device px rasterizer snap differences at
+  // fractional zoom stops (the user-visible text bob on E/P toggling).
+  onErasePreviewPresentation,
   eraserMode = 'partial',
   eraserSize = 20,
   viewerScale,
@@ -137,6 +144,8 @@ const FabricEraserCanvas = memo(({
 }) => {
   const containerRef = useRef(null);
   const cursorRef = useRef(null);
+  const onErasePreviewPresentationRef = useRef(onErasePreviewPresentation);
+  onErasePreviewPresentationRef.current = onErasePreviewPresentation;
   const livePreviewCanvasRef = useRef(null);
   const livePreviewMaskCanvasRef = useRef(null);
   const livePreviewSourceRef = useRef(null);
@@ -255,13 +264,20 @@ const FabricEraserCanvas = memo(({
     if (sourceState?.overlay?.isConnected) {
       sourceState.overlay.style.visibility = sourceState.previousVisibility;
     }
+    // Defensive twin of the activation-time hide: if React never re-mounted
+    // the SVG wrapper (prop unwired), don't leave it invisible forever.
+    const svgWrapper = containerRef.current
+      ?.closest('[data-annotation-real-surface]')
+      ?.querySelector('[data-diag-svg-wrapper]');
+    if (svgWrapper) svgWrapper.style.visibility = '';
     livePreviewSourceRef.current = null;
+    onErasePreviewPresentationRef.current?.(pageNumber, false);
     const preview = livePreviewCanvasRef.current;
     if (!preview) return;
     preview.getContext('2d')?.clearRect(0, 0, preview.width, preview.height);
     preview.dataset.canvasAnnotationRevision = '';
     preview.style.display = 'none';
-  }, [cancelLivePreviewFinish]);
+  }, [cancelLivePreviewFinish, pageNumber]);
 
   const beginLiveErasePreview = useCallback(() => {
     cancelLivePreviewFinish();
@@ -285,6 +301,15 @@ const FabricEraserCanvas = memo(({
       source.dataset.canvasPageOffsetX || '0',
       source.dataset.canvasPageOffsetY || '0',
     ].join(':');
+    // Hide the mounted SVG layer synchronously (same imperative pattern as
+    // the overlay hide below): the preview's destination-out holes are
+    // transparent, so an SVG copy underneath would show un-erased ink through
+    // them for the frame(s) until React processes the presentation state.
+    const hideSvgForPreview = () => {
+      const svgWrapper = surface?.querySelector?.('[data-diag-svg-wrapper]');
+      if (svgWrapper) svgWrapper.style.visibility = 'hidden';
+      onErasePreviewPresentationRef.current?.(pageNumber, true);
+    };
     if (
       baseline === 'preview'
       && livePreviewSourceRef.current
@@ -295,6 +320,7 @@ const FabricEraserCanvas = memo(({
       livePreviewSourceRef.current.overlay = overlay;
       preview.style.display = 'block';
       overlay.style.visibility = 'hidden';
+      hideSvgForPreview();
       return true;
     }
 
@@ -330,8 +356,9 @@ const FabricEraserCanvas = memo(({
     preview.dataset.canvasGeometryKey = sourceGeometryKey;
     preview.style.display = 'block';
     overlay.style.visibility = 'hidden';
+    hideSvgForPreview();
     return true;
-  }, [cancelLivePreviewFinish, findPresentationSource, pageHeight, pageWidth]);
+  }, [cancelLivePreviewFinish, findPresentationSource, pageHeight, pageNumber, pageWidth]);
 
   const drawLiveErasePreviewSegment = useCallback((points) => {
     const preview = livePreviewCanvasRef.current;

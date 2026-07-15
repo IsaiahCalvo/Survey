@@ -511,9 +511,25 @@ const LightweightAnnotationOverlay = memo(({
     };
     scroller.addEventListener('scroll', scheduleViewportRender, { passive: true });
     window.addEventListener('resize', scheduleViewportRender, { passive: true });
+    // Container-aware invalidation (CLAUDE.md canvas-sizing rule): the paint
+    // must follow the page host's REAL box, not the events that usually
+    // precede it changing. A typed/pinch zoom can commit its final page-host
+    // layout a frame after ZOOM_END's forced repaint ran, so the tile gets
+    // painted against a mid-resize rect (~0.3% off) and then nothing ever
+    // invalidates it — eraser entry re-presents the stale paint ~3 CSS px off
+    // the SVG (user-visible E/P text bob, reproduced at typed 447% zoom).
+    // The overlay is inset:0 in the page host, so observing it tracks the
+    // host box exactly; the tile's pageScale guard turns no-change fires into
+    // cheap no-ops for the detail path.
+    let resizeObserver = null;
+    if (typeof ResizeObserver === 'function' && overlayRef.current) {
+      resizeObserver = new ResizeObserver(scheduleViewportRender);
+      resizeObserver.observe(overlayRef.current);
+    }
     return () => {
       scroller.removeEventListener('scroll', scheduleViewportRender);
       window.removeEventListener('resize', scheduleViewportRender);
+      resizeObserver?.disconnect();
       if (scrollRafRef.current) cancelAnimationFrame(scrollRafRef.current);
       scrollRafRef.current = 0;
     };
