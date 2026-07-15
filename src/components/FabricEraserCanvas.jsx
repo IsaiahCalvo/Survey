@@ -557,6 +557,7 @@ const FabricEraserCanvas = memo(({
       pointer.previewHasPartial = true;
       pointer.pendingPartial = false;
       drawLiveErasePreviewSegment(pointer.points);
+      maskCarvedPathHits(pointer, pointer.points);
     }
   }, [drawLiveErasePreviewSegment, eraseAtomicObjectsFromPreview]);
 
@@ -607,8 +608,6 @@ const FabricEraserCanvas = memo(({
       cloneRoot.removeAttribute('data-svg-annotation-layer');
       cloneRoot.setAttribute('data-eraser-mask-clone', String(pageNumber));
       cloneRoot.setAttribute('aria-hidden', 'true');
-      const group = document.createElementNS(SVG_NS, 'g');
-      while (cloneRoot.firstChild) group.appendChild(cloneRoot.firstChild);
       const defs = document.createElementNS(SVG_NS, 'defs');
       const mask = document.createElementNS(SVG_NS, 'mask');
       const maskId = `eraser-carve-mask-${pageNumber}-${Date.now().toString(36)}`;
@@ -637,18 +636,19 @@ const FabricEraserCanvas = memo(({
       mask.appendChild(carve);
       defs.appendChild(mask);
       maskEl = mask;
-      group.setAttribute('mask', `url(#${maskId})`);
-      // Known bounded residual (measured 2026-07-15,
-      // agent-cli/diag-multiply-during-erase.mjs): the masked group is an
-      // isolated blend context, so mix-blend-mode:multiply content
-      // (highlighter, survey-marker highlight) tints against the clone's own
-      // backdrop instead of the PDF page WHILE a stroke is active (~2.8% of
-      // the highlight's pixels shift subtly, restored at release). Strictly
-      // smaller than the old bitmap path, which flattened multiply the whole
-      // time eraser mode was on. Do not "fix" by unwrapping multiply
-      // elements — that reorders paint and looks worse.
+      // PER-ELEMENT masking (2026-07-15, mouse-up-flicker fix): the mask is
+      // DEFINED here but applied lazily to individual annotation elements as
+      // the sweep actually touches them (maskCarvedPathHits). Masking forces
+      // an isolated raster/blend buffer whose output differs subtly from the
+      // unmasked layer — with a whole-group mask EVERY annotation softened a
+      // hair during the gesture and snapped sharp on release (the visible
+      // "flicker of annotations at mouse up"), and multiply-blend highlights
+      // lost their page backdrop. Untouched elements now carry no mask and
+      // render bit-identically; only actively-carved ink pays the residual,
+      // and its pixels are legitimately changing anyway. This also stops the
+      // punch from visually cutting content the commit will never erase
+      // (blocked/non-erasable objects reappearing at release).
       cloneRoot.appendChild(defs);
-      cloneRoot.appendChild(group);
       cloneRoot.style.position = 'absolute';
       cloneRoot.style.inset = '0';
       cloneRoot.style.width = '100%';
@@ -663,7 +663,15 @@ const FabricEraserCanvas = memo(({
     }
     wrapper.style.visibility = 'hidden';
     onErasePreviewPresentationRef.current?.(pageNumber, true);
-    maskCloneRef.current = { root: cloneRoot, carve, mask: maskEl, indexHidden: new Set() };
+    const liveMaskId = maskEl?.getAttribute('id') || '';
+    maskCloneRef.current = {
+      root: cloneRoot,
+      carve,
+      mask: maskEl,
+      maskId: liveMaskId,
+      maskedKeys: new Set(),
+      indexHidden: new Set(),
+    };
     // Non-null session state so the commit-repaint finish gate engages; the
     // warm painted canvas still carries the revision/paint-generation
     // handshake datasets even though it never becomes visible in this mode.
@@ -792,6 +800,38 @@ const FabricEraserCanvas = memo(({
     }
   }, [eraseAtomicObjectsFromPreview, getEraseBlockReason, getPageRadius]);
 
+  // Lazily attach the carve mask to path elements the sweep actually
+  // touches (partial-erasable only). Elements keep rendering unmasked —
+  // bit-identical to the live layer — until the eraser really crosses them.
+  const maskCarvedPathHits = useCallback((pointer, segmentPoints) => {
+    const clone = maskCloneRef.current;
+    if (!clone?.maskId || !segmentPoints?.length) return;
+    if (eraserModeRef.current !== 'partial') return; // entire-mode paths whole-delete via ghosts
+    const objects = annotationsRef.current?.objects || [];
+    const radius = getPageRadius();
+    objects.forEach((object, index) => {
+      if (String(object?.type || '').toLowerCase() !== 'path') return;
+      const id = getEraserCandidateId(object, index);
+      if (clone.maskedKeys.has(id)) return;
+      if (getEraseBlockReason(object)) return;
+      if (!eraserStrokeTouchesObject({
+        eraserPoints: segmentPoints,
+        eraserRadius: radius,
+        object,
+      })) return;
+      clone.maskedKeys.add(id);
+      const stableId = String(object?.id || '');
+      let targets = [];
+      if (stableId && typeof CSS !== 'undefined' && CSS.escape) {
+        targets = clone.root.querySelectorAll(`[data-annotation-id="${CSS.escape(stableId)}"]`);
+      }
+      if (!targets.length) {
+        targets = clone.root.querySelectorAll(`[data-annotation-index="${index}"]`);
+      }
+      targets.forEach((el) => el.setAttribute('mask', `url(#${clone.maskId})`));
+    });
+  }, [getEraseBlockReason, getPageRadius]);
+
   const previewEraserGesture = useCallback((pointer, segment) => {
     if (!pointer?.points?.length) return false;
     if (pointer.previewActive && pointer.previewHasPartial) {
@@ -799,6 +839,7 @@ const FabricEraserCanvas = memo(({
       // non-path ghost check so whole-delete objects crossed mid-carve still
       // vanish live instead of popping out only at release.
       drawLiveErasePreviewSegment(segment);
+      maskCarvedPathHits(pointer, segment);
       ghostAtomicNonPathHits(pointer, segment);
       return true;
     }
@@ -820,6 +861,7 @@ const FabricEraserCanvas = memo(({
       if (beginMaskClonePreview()) {
         console.log(`[EraserCarveDiag] page=${pageNumber} base=svg-mask-clone`);
         activatePointerPreview(pointer);
+        if (pointer.previewHasPartial) maskCarvedPathHits(pointer, pointer.points);
       } else if (beginLiveErasePreview()) {
         console.log(`[EraserCarveDiag] page=${pageNumber} base=painted-fallback`);
         activatePointerPreview(pointer);
@@ -845,6 +887,7 @@ const FabricEraserCanvas = memo(({
       pointer.previewHasPartial = true;
       pointer.pendingPartial = false;
       drawLiveErasePreviewSegment(pointer.points);
+      maskCarvedPathHits(pointer, pointer.points);
     }
     const newAtomicIds = plan.atomicIds.filter((id) => !pointer.previewAtomicIds.has(id));
     if (newAtomicIds.length) {
@@ -861,6 +904,7 @@ const FabricEraserCanvas = memo(({
     getEraseBlockReason,
     getPageRadius,
     ghostAtomicNonPathHits,
+    maskCarvedPathHits,
     pageNumber,
   ]);
 
