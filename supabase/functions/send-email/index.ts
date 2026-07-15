@@ -1,40 +1,9 @@
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.47.10';
+import { isServiceRoleCaller } from './auth.js';
 
 // Transactional email via Brevo. Consolidated 2026-07-05 so the whole app uses
 // ONE email service — Brevo also sends the Supabase Auth login/reset emails.
 const BREVO_API_KEY = Deno.env.get('BREVO_API_KEY');
 const EMAIL_SENDER = { name: 'Survey', email: 'no-reply@surveytool.app' };
-
-// Authorize the caller before sending anything. Two legitimate callers exist:
-//   1. The stripe-webhook function, which calls us with the service-role key.
-//   2. The app, which calls us with the signed-in user's JWT (via functions.invoke).
-// Anyone else (e.g. an anonymous request bearing only the public anon key) is
-// rejected, so this function can't be driven as an open phishing/spam relay.
-async function isAuthorizedCaller(req: Request): Promise<boolean> {
-    const authHeader = req.headers.get('Authorization');
-    if (!authHeader) return false;
-
-    const token = authHeader.replace(/^Bearer\s+/i, '').trim();
-    if (!token) return false;
-
-    // Trusted server-to-server caller (stripe-webhook).
-    const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
-    if (serviceKey && token === serviceKey) return true;
-
-    // Otherwise require a real, signed-in user (not the anonymous public key).
-    const supabaseUrl = Deno.env.get('SUPABASE_URL');
-    const anonKey = Deno.env.get('SUPABASE_ANON_KEY');
-    if (!supabaseUrl || !anonKey) return false;
-    if (token === anonKey) return false;
-
-    try {
-        const supabase = createClient(supabaseUrl, anonKey);
-        const { data: { user }, error } = await supabase.auth.getUser(token);
-        return !error && !!user;
-    } catch {
-        return false;
-    }
-}
 
 const corsHeaders = {
     // ⚠️ INTENTIONAL — do NOT tighten to an origin allowlist (false positive if an
@@ -54,7 +23,10 @@ Deno.serve(async (req) => {
     }
 
     // Reject unauthenticated callers before doing any work.
-    if (!(await isAuthorizedCaller(req))) {
+    if (!isServiceRoleCaller(
+        req.headers.get('Authorization'),
+        Deno.env.get('SUPABASE_SERVICE_ROLE_KEY'),
+    )) {
         return new Response(
             JSON.stringify({ error: 'Unauthorized' }),
             {
@@ -273,7 +245,7 @@ Deno.serve(async (req) => {
     } catch (error) {
         console.error('Error sending email:', error);
         return new Response(
-            JSON.stringify({ error: error.message }),
+            JSON.stringify({ error: error instanceof Error ? error.message : String(error) }),
             {
                 headers: { ...corsHeaders, 'Content-Type': 'application/json' },
                 status: 500,

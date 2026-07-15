@@ -1,33 +1,36 @@
-/* KAL-31 — Phase C share-email helper.
+/* KAL-31 sharing server-action helpers.
  *
- * Thin wrapper over the deployed `send-email` Supabase Edge Function. The
- * function already handles Resend authentication via the `RESEND_API_KEY`
- * function secret. Callers just provide template + data; failures are logged
- * but never throw because email delivery is best-effort and must not block
- * the underlying invite/role-change/remove action.
+ * Browser code never calls the generic `send-email` relay. Invite sends and
+ * collaborator access changes go through narrow endpoints that derive the
+ * recipient and message from trusted server-side records.
  */
 import { supabase } from '../supabaseClient';
 
-function appOrigin() {
-  if (typeof window !== 'undefined' && window.location && window.location.origin) {
-    return window.location.origin;
+export async function manageCollaboratorAccess({
+  kind,
+  resourceId,
+  targetUserId,
+  action,
+  newRole,
+}) {
+  if (!kind || !resourceId || !targetUserId || !action) {
+    return { success: false, error: 'missing access-change fields' };
   }
-  return 'https://survey.app';
-}
-
-async function invokeSendEmail({ to, subject, template, data }) {
-  if (!to || !template) return { success: false, error: 'missing to/template' };
+  const body = { kind, resourceId, targetUserId, action };
+  if (action === 'role') body.newRole = newRole;
   try {
-    const { data: res, error } = await supabase.functions.invoke('send-email', {
-      body: { to, subject, template, data: data || {} },
+    const { data, error } = await supabase.functions.invoke('manage-collaborator-access', {
+      body,
     });
     if (error) {
-      console.warn('[KAL-31] send-email invoke error:', error?.message || error);
+      console.warn('[KAL-31] access change invoke error:', error?.message || error);
       return { success: false, error: error.message || String(error) };
     }
-    return { success: true, response: res };
+    return data?.success
+      ? { success: true, emailSent: !!data.emailSent }
+      : { success: false, error: data?.error || 'Access change failed' };
   } catch (err) {
-    console.warn('[KAL-31] send-email threw:', err?.message || err);
+    console.warn('[KAL-31] access change threw:', err?.message || err);
     return { success: false, error: err?.message || String(err) };
   }
 }
@@ -73,49 +76,4 @@ export async function sendInviteEmailSmart({ token, kind, name, inviterName }) {
     console.warn('[GOAL-1] send-invite-email threw:', err?.message || err);
     return { success: false, error: err?.message || String(err) };
   }
-}
-
-/** Send the permission-changed email after a role update. */
-export async function sendPermissionChangedEmail({
-  email,
-  documentName,
-  changedByName,
-  newRole,
-  oldRole,
-  documentUrl,
-}) {
-  if (!email) return { success: false, error: 'no recipient' };
-  const subject = `Your access to ${documentName || 'a document'} changed`;
-  return invokeSendEmail({
-    to: email,
-    subject,
-    template: 'permission-changed',
-    data: {
-      documentName: documentName || 'a document',
-      changedByName: changedByName || 'An owner',
-      newRole: newRole || 'Viewer',
-      oldRole: oldRole || null,
-      documentUrl: documentUrl || appOrigin(),
-      appUrl: appOrigin(),
-    },
-  });
-}
-
-/** Send the access-removed email after a collaborator is removed. */
-export async function sendAccessRemovedEmail({
-  email,
-  documentName,
-  removedByName,
-}) {
-  if (!email) return { success: false, error: 'no recipient' };
-  const subject = `Your access to ${documentName || 'a document'} was removed`;
-  return invokeSendEmail({
-    to: email,
-    subject,
-    template: 'access-removed',
-    data: {
-      documentName: documentName || 'a document',
-      removedByName: removedByName || 'An owner',
-    },
-  });
 }

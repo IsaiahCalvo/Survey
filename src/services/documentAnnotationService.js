@@ -16,6 +16,7 @@ import {
   isSurveyMarkerType,
   SURVEY_MARKER_TYPE_VALUES,
 } from '../utils/surveyMarkerType.js';
+import { manageCollaboratorAccess } from './shareEmailService.js';
 
 const SUPABASE_PAGE_SIZE = 1000;
 
@@ -703,18 +704,12 @@ export async function getDocumentCollaborators(documentId) {
  * Remove a collaborator from a document
  */
 export async function removeDocumentCollaborator(documentId, userId) {
-  const { error } = await supabase
-    .from('document_collaborators')
-    .delete()
-    .eq('document_id', documentId)
-    .eq('user_id', userId);
-
-  if (error) {
-    console.error('[AnnotationSync] Error removing collaborator:', error);
-    return { success: false, error };
-  }
-
-  return { success: true };
+  return manageCollaboratorAccess({
+    kind: 'document',
+    resourceId: documentId,
+    targetUserId: userId,
+    action: 'remove',
+  });
 }
 
 /**
@@ -724,16 +719,11 @@ export async function removeDocumentCollaborator(documentId, userId) {
  * @param {string} newRole - Role: 'viewer' | 'editor' | 'owner' (KAL-31: `commenter` removed from the active role set).
  */
 export async function updateCollaboratorRole(documentId, userId, newRole) {
-  const { error } = await supabase
-    .from('document_collaborators')
-    .update({ role: newRole })
-    .eq('document_id', documentId)
-    .eq('user_id', userId);
-
-  if (error) {
-    console.error('[AnnotationSync] Error updating collaborator role:', error);
-    return { success: false, error };
-  }
-
-  return { success: true };
+  return manageCollaboratorAccess({
+    kind: 'document',
+    resourceId: documentId,
+    targetUserId: userId,
+    action: 'role',
+    newRole,
+  });
 }

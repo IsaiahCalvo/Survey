@@ -20,7 +20,7 @@ test('preload exposes the four narrow msauth APIs (and nothing token-shaped)', (
 });
 
 test('electron-main registers the msauth IPC surface with safeStorage custody', () => {
-  assert.match(electronMain, /registerMicrosoftAuthIpc\(\{ ipcMain, app, shell, safeStorage \}\)/);
+  assert.match(electronMain, /registerMicrosoftAuthIpc\(\{ ipcMain: trustedIpcMain, app, shell, safeStorage \}\)/);
 });
 
 test('sign-in opens the SYSTEM browser, never an embedded window', () => {
@@ -40,5 +40,5 @@ test('main-custody path stores a NO-TOKEN marker row, not tokens', () => {
 
 test('legacy embedded flow is retained as the fallback (web build + unmigrated rows)', () => {
   assert.match(context, /openOAuthWindow/);
-  assert.match(electronMain, /ipcMain\.handle\('oauth:openWindow'/);
+  assert.match(electronMain, /trustedIpcMain\.handle\('oauth:openWindow'/);
 });

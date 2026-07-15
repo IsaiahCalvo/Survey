@@ -31,10 +31,6 @@ import {
   removeProjectCollaborator,
   buildInviteUrl,
 } from '../services/projectInviteService';
-import {
-  sendPermissionChangedEmail,
-  sendAccessRemovedEmail,
-} from '../services/shareEmailService';
 
 /* Hub palette — literal hex, see header note. */
 const INK_800 = '#12151c';
@@ -493,15 +489,6 @@ export default function ManageTeamModal({ open, onClose, project, members }) {
     setBusy(false);
     if (!res?.success) { setError(res?.error?.message || res?.error || 'Could not update role.'); return; }
     setStatus(`Updated ${m.email || m.name} to ${role}.`);
-    if (m.email) {
-      sendPermissionChangedEmail({
-        email: m.email,
-        documentName: `the project "${projectName}"`,
-        changedByName: inviterName,
-        newRole: role,
-        oldRole: m.role,
-      }).catch(() => {});
-    }
     refresh();
   };
 
@@ -516,13 +503,6 @@ export default function ManageTeamModal({ open, onClose, project, members }) {
     setBusy(false);
     if (!res?.success) { setError(res?.error?.message || res?.error || 'Could not remove collaborator.'); return; }
     setStatus(`Removed ${m.email || m.name}.`);
-    if (m.email) {
-      sendAccessRemovedEmail({
-        email: m.email,
-        documentName: `the project "${projectName}"`,
-        removedByName: inviterName,
-      }).catch(() => {});
-    }
     setSelectedIds((prev) => { const n = new Set(prev); n.delete(id); return n; });
     refresh();
   };

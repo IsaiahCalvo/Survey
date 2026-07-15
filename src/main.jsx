@@ -22,8 +22,8 @@ if (typeof window !== 'undefined') {
   });
 }
 
-// Console log capture — stores all console output for "Save Log" button
-// Writes to /Users/isaiahcalvo/Desktop/Survey-BetaSafeS2/1.log
+// Console log capture — stores all console output for the Save Log action.
+// Electron persists it through the dedicated diagnostics IPC sink.
 (() => {
   const MAX_LINES = 1200;
   const MAX_LINE_CHARS = 4000;

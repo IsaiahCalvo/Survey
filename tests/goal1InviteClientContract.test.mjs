@@ -34,9 +34,10 @@ test('GOAL-1 client: legacy invite senders are deleted from shareEmailService', 
     doesNotMatch(text, new RegExp(name), `${name} must be gone`);
   }
   match(text, /export async function sendInviteEmailSmart/);
-  // Still-used senders survive.
-  match(text, /sendPermissionChangedEmail/);
-  match(text, /sendAccessRemovedEmail/);
+  // Access changes use their narrow server action; the generic browser email
+  // helpers were removed with the relay lockdown.
+  match(text, /manageCollaboratorAccess/);
+  doesNotMatch(text, /sendPermissionChangedEmail|sendAccessRemovedEmail/);
   // The smart sender never builds a URL — the server derives it.
   const smart = text.slice(text.indexOf('sendInviteEmailSmart'));
   doesNotMatch(smart.slice(0, smart.indexOf('export', 10)), /inviteUrl|buildInviteUrl|window\.location/);
@@ -53,7 +54,7 @@ test('GOAL-1 client: no legacy invite-sender reference anywhere in src/', () => 
 test('GOAL-1 client: create + resend in all three services call sendInviteEmailSmart with token from the row', () => {
   for (const file of SERVICES) {
     const text = read(file);
-    match(text, /import \{ sendInviteEmailSmart \} from '\.\/shareEmailService'/);
+    match(text, /import \{[^}]*sendInviteEmailSmart[^}]*\} from '\.\/shareEmailService'/);
     const calls = text.match(/sendInviteEmailSmart\(\{/g) || [];
     equal(calls.length, 2, `${file}: expected exactly 2 smart-send call sites (create + resend), got ${calls.length}`);
     match(text, /token: data\.token/);

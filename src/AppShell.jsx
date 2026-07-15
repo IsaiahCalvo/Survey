@@ -212,14 +212,11 @@ export default function App() {
 
       // Local save first so a failed GitHub push still leaves the user with a
       // copy on disk.
-      if (typeof api?.writeFile === 'function') {
+      if (typeof api?.writeDiagnosticFile === 'function') {
         try {
           const ts = new Date().toISOString();
           const header = `===== SaveLog (global) @ ${ts} =====\n`;
-          await api.writeFile(
-            '/Users/isaiahcalvo/Desktop/Survey-BetaSafeS2/1.log',
-            header + finalConsoleText + '\n'
-          );
+          await api.writeDiagnosticFile('1.log', header + finalConsoleText + '\n');
           console.log(`[SaveLog] wrote ${finalLineCount} lines locally (source: ${consoleSource})`);
         } catch (wErr) {
           console.warn('[SaveLog] local write failed:', wErr?.message || wErr);

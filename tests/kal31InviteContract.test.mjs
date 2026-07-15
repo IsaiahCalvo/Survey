@@ -128,19 +128,18 @@ test('KAL-31 Phase E: AccessManagementModal wires live backend behavior', () => 
   match(src, /listDocumentInvites/);
   match(src, /revokeDocumentInvite/);
   match(src, /resendDocumentInvite/);
-  match(src, /sendPermissionChangedEmail/);
-  match(src, /sendAccessRemovedEmail/);
+  ok(!/sendPermissionChangedEmail|sendAccessRemovedEmail/.test(src));
   match(src, /cannot demote the last owner/);
 });
 
-test('KAL-31 Phase C/E: shareEmailService exists and wraps send-email', () => {
+test('KAL-31 Phase C/E: shareEmailService uses narrow server actions', () => {
   const src = fs.readFileSync(
     path.join(repoRoot, 'src/services/shareEmailService.js'),
     'utf8',
   );
   // GOAL-1: invite emails now go through the send-invite-email edge fn.
   match(src, /sendInviteEmailSmart/);
-  match(src, /sendPermissionChangedEmail/);
-  match(src, /sendAccessRemovedEmail/);
-  match(src, /functions\.invoke\('send-email'/);
+  match(src, /manageCollaboratorAccess/);
+  match(src, /functions\.invoke\('manage-collaborator-access'/);
+  ok(!/functions\.invoke\('send-email'/.test(src));
 });
