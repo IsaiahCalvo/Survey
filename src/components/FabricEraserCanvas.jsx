@@ -150,6 +150,15 @@ const FabricEraserCanvas = memo(({
   const livePreviewMaskCanvasRef = useRef(null);
   const livePreviewSourceRef = useRef(null);
   const livePreviewObserverRef = useRef(null);
+  const livePreviewHideRafRef = useRef(0);
+  // Mask-clone carve preview (2026-07-14): {root, carve, indexHidden}. The
+  // live carve renders on a CLONE of the real SVG layer (same engine, same
+  // box, same viewBox → bit-identical raster) with a vector mask doing the
+  // destination-out. Any bitmap copy — hand-painted OR photographed — hits a
+  // rasterization floor (~1% of ink pixels of AA disagreement, measured via
+  // agent-cli/diag-photo-fidelity.mjs), so a bitmap handoff always shimmers
+  // at stroke start; the clone has no bitmap anywhere and therefore no floor.
+  const maskCloneRef = useRef(null);
   const pointerRef = useRef(null);
   const spaceHeldRef = useRef(false);
   // Last known pointer position in CLIENT coordinates (plus pointerType).
@@ -258,6 +267,26 @@ const FabricEraserCanvas = memo(({
     livePreviewObserverRef.current = null;
   }, []);
 
+  const cancelScheduledPreviewHide = useCallback(() => {
+    if (livePreviewHideRafRef.current) cancelAnimationFrame(livePreviewHideRafRef.current);
+    livePreviewHideRafRef.current = 0;
+  }, []);
+
+  const hidePreviewCanvasNow = useCallback(() => {
+    cancelScheduledPreviewHide();
+    const preview = livePreviewCanvasRef.current;
+    if (!preview) return;
+    preview.getContext('2d')?.clearRect(0, 0, preview.width, preview.height);
+    preview.dataset.canvasAnnotationRevision = '';
+    preview.style.display = 'none';
+  }, [cancelScheduledPreviewHide]);
+
+  const removeMaskCloneNow = useCallback(() => {
+    const clone = maskCloneRef.current;
+    maskCloneRef.current = null;
+    if (clone?.root?.isConnected) clone.root.remove();
+  }, []);
+
   const finishLiveErasePreview = useCallback(() => {
     cancelLivePreviewFinish();
     const sourceState = livePreviewSourceRef.current;
@@ -270,17 +299,35 @@ const FabricEraserCanvas = memo(({
       ?.closest('[data-annotation-real-surface]')
       ?.querySelector('[data-diag-svg-wrapper]');
     if (svgWrapper) svgWrapper.style.visibility = '';
+    const hadSession = Boolean(sourceState);
+    const closingClone = maskCloneRef.current;
+    maskCloneRef.current = null; // no further carve writes to this session
     livePreviewSourceRef.current = null;
     onErasePreviewPresentationRef.current?.(pageNumber, false);
-    const preview = livePreviewCanvasRef.current;
-    if (!preview) return;
-    preview.getContext('2d')?.clearRect(0, 0, preview.width, preview.height);
-    preview.dataset.canvasAnnotationRevision = '';
-    preview.style.display = 'none';
-  }, [cancelLivePreviewFinish, pageNumber]);
+    if (!hadSession) {
+      if (closingClone?.root?.isConnected) closingClone.root.remove();
+      hidePreviewCanvasNow();
+      return;
+    }
+    // Hold the carved preview (canvas or mask clone) on screen for two
+    // frames: the SVG layer only remounts on the React render that follows
+    // the presentation callback above, so tearing down in this same frame
+    // would blank every annotation for one frame — a visible blink at each
+    // commit.
+    cancelScheduledPreviewHide();
+    livePreviewHideRafRef.current = requestAnimationFrame(() => {
+      livePreviewHideRafRef.current = requestAnimationFrame(() => {
+        livePreviewHideRafRef.current = 0;
+        if (closingClone?.root?.isConnected) closingClone.root.remove();
+        if (livePreviewSourceRef.current) return; // a new gesture took over
+        hidePreviewCanvasNow();
+      });
+    });
+  }, [cancelLivePreviewFinish, cancelScheduledPreviewHide, hidePreviewCanvasNow, pageNumber]);
 
   const beginLiveErasePreview = useCallback(() => {
     cancelLivePreviewFinish();
+    cancelScheduledPreviewHide();
     const preview = livePreviewCanvasRef.current;
     const { surface, source } = findPresentationSource();
     const overlay = source?.closest?.('[data-lightweight-annotation-overlay]');
@@ -358,11 +405,35 @@ const FabricEraserCanvas = memo(({
     overlay.style.visibility = 'hidden';
     hideSvgForPreview();
     return true;
-  }, [cancelLivePreviewFinish, findPresentationSource, pageHeight, pageNumber, pageWidth]);
+  }, [cancelLivePreviewFinish, cancelScheduledPreviewHide, findPresentationSource, pageHeight, pageNumber, pageWidth]);
 
   const drawLiveErasePreviewSegment = useCallback((points) => {
+    if (!points?.length) return;
+    const clone = maskCloneRef.current;
+    if (clone?.carve) {
+      // Mask-clone mode: carve in PAGE UNITS directly (mask user space).
+      const radius = getPageRadius();
+      clone.carve.setAttribute('stroke-width', String(radius * 2));
+      if (points.length === 1) {
+        const SVG_NS = 'http://www.w3.org/2000/svg';
+        const dot = document.createElementNS(SVG_NS, 'circle');
+        dot.setAttribute('cx', String(points[0].x));
+        dot.setAttribute('cy', String(points[0].y));
+        dot.setAttribute('r', String(radius));
+        dot.setAttribute('fill', '#000');
+        clone.mask?.appendChild(dot);
+        return;
+      }
+      let d = clone.carve.getAttribute('d') || '';
+      d += ` M ${points[0].x} ${points[0].y}`;
+      for (let index = 1; index < points.length; index += 1) {
+        d += ` L ${points[index].x} ${points[index].y}`;
+      }
+      clone.carve.setAttribute('d', d.trim());
+      return;
+    }
     const preview = livePreviewCanvasRef.current;
-    if (!preview || preview.style.display === 'none' || !points?.length) return;
+    if (!preview || preview.style.display === 'none') return;
     const context = preview.getContext('2d');
     if (!context) return;
     const radius = getPageRadius();
@@ -400,8 +471,23 @@ const FabricEraserCanvas = memo(({
   }, [getPageRadius, pageWidth]);
 
   const eraseAtomicObjectsFromPreview = useCallback((ids) => {
+    if (!ids?.length) return;
+    const clone = maskCloneRef.current;
+    if (clone?.root) {
+      // Mask-clone mode: whole-object ghosting = hide the cloned elements
+      // outright (display:none) — exact by definition, no silhouette mask.
+      const objects = annotationsRef.current?.objects || [];
+      for (const id of ids) {
+        const index = objects.findIndex((object, i) => getEraserCandidateId(object, i) === id);
+        if (index < 0 || clone.indexHidden.has(index)) continue;
+        clone.indexHidden.add(index);
+        clone.root.querySelectorAll(`[data-annotation-index="${index}"]`)
+          .forEach((el) => { el.style.display = 'none'; });
+      }
+      return;
+    }
     const preview = livePreviewCanvasRef.current;
-    if (!preview || preview.style.display === 'none' || !ids?.length) return;
+    if (!preview || preview.style.display === 'none') return;
     const idSet = new Set(ids);
     // The preview snapshot was painted from presentation-PROJECTED objects
     // (LightweightAnnotationOverlay maps projectPaperInkForPresentation), so
@@ -441,6 +527,128 @@ const FabricEraserCanvas = memo(({
     previewContext.drawImage(mask, 0, 0);
     previewContext.restore();
   }, [pageHeight, pageWidth]);
+
+  // Flip a pointer's preview live and replay everything stashed while
+  // activation was pending (photo decode in flight, or the old
+  // presentation-not-painted failure window).
+  const activatePointerPreview = useCallback((pointer) => {
+    pointer.previewActive = true;
+    if (pointer.pendingAtomicIds.size) {
+      const stashed = [...pointer.pendingAtomicIds]
+        .filter((id) => !pointer.previewAtomicIds.has(id));
+      if (stashed.length) {
+        eraseAtomicObjectsFromPreview(stashed);
+        stashed.forEach((id) => pointer.previewAtomicIds.add(id));
+      }
+      pointer.pendingAtomicIds.clear();
+    }
+    if (pointer.pendingPartial && !pointer.previewHasPartial) {
+      pointer.previewHasPartial = true;
+      pointer.pendingPartial = false;
+      drawLiveErasePreviewSegment(pointer.points);
+    }
+  }, [drawLiveErasePreviewSegment, eraseAtomicObjectsFromPreview]);
+
+  // ROOT FIX for "annotations look different while erasing" (2026-07-14):
+  // the live carve renders on a CLONE of the real SVG layer — same engine,
+  // same box, same viewBox, so its raster is bit-identical to what was
+  // already on screen — with an SVG <mask> playing the destination-out role
+  // (white base rect = keep, black round-capped stroke path = carve) and
+  // whole-object ghosts hidden via display:none on the cloned elements.
+  // Every bitmap alternative was measured and rejected: the hand-painted
+  // twin diverges by engine rules at fractional zooms (border rows, glyph
+  // snap — the "annotations look different" class), and even a photograph
+  // of the SVG (blob-URL <img> drawImage) keeps a ~1%-of-ink-pixels AA
+  // disagreement because the isolated image rasterizer anti-aliases
+  // differently (measured in agent-cli/diag-photo-fidelity.mjs; phase
+  // baking/snapping did not move it). The clone is also synchronous — no
+  // decode wait, no canvas tainting. Carve coordinates are PAGE UNITS
+  // straight from the pointer (the mask lives in the clone's user space),
+  // so there is no transform to disagree with anything.
+  const beginMaskClonePreview = useCallback(() => {
+    if (maskCloneRef.current?.root?.isConnected) return true; // continuing session
+    cancelLivePreviewFinish();
+    cancelScheduledPreviewHide();
+    const surface = containerRef.current?.closest('[data-annotation-real-surface]');
+    const wrapper = surface?.querySelector('[data-diag-svg-wrapper]');
+    const svg = wrapper?.querySelector('svg[data-svg-annotation-layer]');
+    if (!surface || !wrapper || !svg) return false;
+    // Orphan sweep: a half-built clone from any earlier failure must never
+    // survive into a new session (it would double-render under the preview).
+    surface.querySelectorAll('[data-eraser-mask-clone]').forEach((el) => el.remove());
+    let cloneRoot = null;
+    let carve = null;
+    let maskEl = null;
+    try {
+      const SVG_NS = 'http://www.w3.org/2000/svg';
+      cloneRoot = svg.cloneNode(true);
+      // The clone must never masquerade as the real layer for selectors,
+      // diagnostics, or harnesses.
+      cloneRoot.removeAttribute('data-svg-annotation-layer');
+      cloneRoot.setAttribute('data-eraser-mask-clone', String(pageNumber));
+      cloneRoot.setAttribute('aria-hidden', 'true');
+      const group = document.createElementNS(SVG_NS, 'g');
+      while (cloneRoot.firstChild) group.appendChild(cloneRoot.firstChild);
+      const defs = document.createElementNS(SVG_NS, 'defs');
+      const mask = document.createElementNS(SVG_NS, 'mask');
+      const maskId = `eraser-carve-mask-${pageNumber}-${Date.now().toString(36)}`;
+      mask.setAttribute('id', maskId);
+      mask.setAttribute('maskUnits', 'userSpaceOnUse');
+      // Region padded well past the page: the mask CLIPS its own content, so
+      // a page-bounds region would truncate carve circles at the page edge
+      // (the canvas destination-out never clipped there).
+      mask.setAttribute('x', '-256');
+      mask.setAttribute('y', '-256');
+      mask.setAttribute('width', String(pageWidth + 512));
+      mask.setAttribute('height', String(pageHeight + 512));
+      const keep = document.createElementNS(SVG_NS, 'rect');
+      keep.setAttribute('x', '0');
+      keep.setAttribute('y', '0');
+      keep.setAttribute('width', String(pageWidth));
+      keep.setAttribute('height', String(pageHeight));
+      keep.setAttribute('fill', '#fff');
+      carve = document.createElementNS(SVG_NS, 'path');
+      carve.setAttribute('d', '');
+      carve.setAttribute('fill', 'none');
+      carve.setAttribute('stroke', '#000');
+      carve.setAttribute('stroke-linecap', 'round');
+      carve.setAttribute('stroke-linejoin', 'round');
+      mask.appendChild(keep);
+      mask.appendChild(carve);
+      defs.appendChild(mask);
+      maskEl = mask;
+      group.setAttribute('mask', `url(#${maskId})`);
+      cloneRoot.appendChild(defs);
+      cloneRoot.appendChild(group);
+      cloneRoot.style.position = 'absolute';
+      cloneRoot.style.inset = '0';
+      cloneRoot.style.width = '100%';
+      cloneRoot.style.height = '100%';
+      cloneRoot.style.zIndex = '100'; // same stacking as the SVG wrapper it replaces
+      cloneRoot.style.pointerEvents = 'none';
+      cloneRoot.style.visibility = 'visible';
+      surface.appendChild(cloneRoot);
+    } catch {
+      if (cloneRoot?.isConnected) cloneRoot.remove();
+      return false;
+    }
+    wrapper.style.visibility = 'hidden';
+    onErasePreviewPresentationRef.current?.(pageNumber, true);
+    maskCloneRef.current = { root: cloneRoot, carve, mask: maskEl, indexHidden: new Set() };
+    // Non-null session state so the commit-repaint finish gate engages; the
+    // warm painted canvas still carries the revision/paint-generation
+    // handshake datasets even though it never becomes visible in this mode.
+    const { source } = findPresentationSource();
+    livePreviewSourceRef.current = {
+      surface,
+      source: source || null,
+      overlay: null,
+      previousVisibility: '',
+      maskClone: true,
+      paintGeneration: source?.dataset?.canvasPaintGeneration || '',
+    };
+    return true;
+  }, [cancelLivePreviewFinish, cancelScheduledPreviewHide, findPresentationSource, pageNumber, pageHeight, pageWidth]);
 
   const scheduleLiveErasePreviewFinish = useCallback(({ expectedRevision, waitForNextPaint }) => {
     const sourceState = livePreviewSourceRef.current;
@@ -578,7 +786,15 @@ const FabricEraserCanvas = memo(({
     });
     if (!plan.shouldPreview) return false;
     if (!pointer.previewActive) {
-      if (!beginLiveErasePreview()) {
+      // Mask-clone first (bit-identical, synchronous); the painted-canvas
+      // copy only serves the exotic failure path (SVG missing mid-swap).
+      if (beginMaskClonePreview()) {
+        console.log(`[EraserCarveDiag] page=${pageNumber} base=svg-mask-clone`);
+        activatePointerPreview(pointer);
+      } else if (beginLiveErasePreview()) {
+        console.log(`[EraserCarveDiag] page=${pageNumber} base=painted-fallback`);
+        activatePointerPreview(pointer);
+      } else {
         // Activation can legitimately fail (presentation canvas not painted
         // yet, page mid-swap). Stash this segment's outcome so the first
         // successful activation replays it — otherwise a hit inside the
@@ -586,16 +802,6 @@ const FabricEraserCanvas = memo(({
         pointer.pendingPartial = pointer.pendingPartial || plan.partialIds.length > 0;
         plan.atomicIds.forEach((id) => pointer.pendingAtomicIds.add(id));
         return false;
-      }
-      pointer.previewActive = true;
-      if (pointer.pendingAtomicIds.size) {
-        const stashed = [...pointer.pendingAtomicIds]
-          .filter((id) => !pointer.previewAtomicIds.has(id));
-        if (stashed.length) {
-          eraseAtomicObjectsFromPreview(stashed);
-          stashed.forEach((id) => pointer.previewAtomicIds.add(id));
-        }
-        pointer.pendingAtomicIds.clear();
       }
     }
     if (!pointer.previewHasPartial && (plan.partialIds.length > 0 || pointer.pendingPartial)) {
@@ -618,12 +824,15 @@ const FabricEraserCanvas = memo(({
     }
     return true;
   }, [
+    activatePointerPreview,
     beginLiveErasePreview,
+    beginMaskClonePreview,
     drawLiveErasePreviewSegment,
     eraseAtomicObjectsFromPreview,
     getEraseBlockReason,
     getPageRadius,
     ghostAtomicNonPathHits,
+    pageNumber,
   ]);
 
   const applyEraserAndCommit = useCallback((eraserPoints) => {
@@ -932,9 +1141,14 @@ const FabricEraserCanvas = memo(({
 
   useEffect(() => () => {
     pointerRef.current = null;
+    // Unmounting — no SVG remount to wait for; tear down the mask clone and
+    // preview canvas now instead of leaving the deferred double-rAF cleanup
+    // to fire on detached nodes.
+    removeMaskCloneNow();
     finishLiveErasePreview();
+    hidePreviewCanvasNow();
     updateEraserCursor(null, false);
-  }, [finishLiveErasePreview, updateEraserCursor]);
+  }, [finishLiveErasePreview, hidePreviewCanvasNow, removeMaskCloneNow, updateEraserCursor]);
 
   return (
     <div

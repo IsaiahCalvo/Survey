@@ -29148,7 +29148,16 @@ ${pageBlocks}
                                   layerVisibility={annotationLayerVisibility}
                                   annotationRevision={annotationRevision}
                                   calloutRevision={calloutRevision}
-                                  visible={useCanvasPresentation || suspendFullSvgForProxy}
+                                  // Visible ONLY for the zoom/scroll proxy window. During an
+                                  // erase gesture the display surface is FabricEraserCanvas's
+                                  // own carved preview canvas — NOT this overlay. Tying this to
+                                  // the gesture state made React re-render the overlay with
+                                  // visibility:'visible' at stroke start, overriding the inline
+                                  // hide beginLiveErasePreview had just applied, so the
+                                  // un-carved warm copy sat beneath the preview and every carve
+                                  // hole showed intact ink through it ("partial erase does
+                                  // nothing" regression, 2026-07-14).
+                                  visible={suspendFullSvgForProxy}
                                 />
                               )}
                               {pageRegions && pageRegions.length > 0 && !(showRegionSelection && regionSelectionPage === pageNumber) && (() => {
