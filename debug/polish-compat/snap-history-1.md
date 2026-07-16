@@ -1,0 +1,349 @@
+- generic [ref=e246]:
+  - generic [ref=e248]:
+    - generic [ref=e249] [cursor=pointer]:
+      - img [ref=e250]
+      - generic "Home" [ref=e252]
+    - button "clickable-link-test.pdf" [ref=e254]:
+      - generic "clickable-link-test.pdf" [ref=e255]
+      - button [ref=e256] [cursor=pointer]:
+        - img [ref=e257]
+    - status [ref=e260]
+  - generic [ref=e261]:
+    - generic [ref=e262]:
+      - generic [ref=e263]:
+        - button "−" [ref=e264] [cursor=pointer]
+        - button "Edit zoom percentage" [ref=e265] [cursor=pointer]: 80%
+        - button "+" [ref=e266] [cursor=pointer]
+      - generic [ref=e268]:
+        - button "Previous page" [disabled] [ref=e269]:
+          - img [ref=e270]
+        - generic [ref=e272]:
+          - button "Edit page number" [ref=e273] [cursor=pointer]: "1"
+          - generic [ref=e274]: ·
+          - generic [ref=e275]: "1"
+        - button "Next page" [disabled] [ref=e276]:
+          - img [ref=e277]
+      - button "Fit options" [ref=e281] [cursor=pointer]:
+        - img [ref=e282]
+        - generic [ref=e285]: Fit Page
+        - img [ref=e286]
+    - generic [ref=e288]:
+      - button "Undo" [ref=e289] [cursor=pointer]:
+        - img [ref=e290]
+      - button "Redo" [disabled] [ref=e293]:
+        - img [ref=e294]
+    - generic [ref=e297]:
+      - generic [ref=e298]:
+        - button [ref=e299] [cursor=pointer]:
+          - img [ref=e300]
+        - button [ref=e304] [cursor=pointer]:
+          - img [ref=e305]
+      - button "Draw" [ref=e309] [cursor=pointer]:
+        - img [ref=e310]
+      - button "Shapes" [ref=e313] [cursor=pointer]:
+        - img [ref=e314]
+      - button "Text" [ref=e316] [cursor=pointer]:
+        - img [ref=e317]
+  - generic [ref=e321]:
+    - generic [ref=e323]:
+      - button [ref=e325] [cursor=pointer]:
+        - img [ref=e326]
+      - generic [ref=e610]:
+        - button "Pages" [ref=e611] [cursor=pointer]:
+          - img [ref=e612]
+          - generic [ref=e615]: Pages
+        - button "Search Text" [ref=e616] [cursor=pointer]:
+          - img [ref=e617]
+          - generic [ref=e620]: Search Text
+        - button "Bookmarks" [ref=e621] [cursor=pointer]:
+          - img [ref=e622]
+          - generic [ref=e624]: Bookmarks
+        - button "Spaces" [ref=e625] [cursor=pointer]:
+          - img [ref=e626]
+          - generic [ref=e628]: Spaces
+      - generic [ref=e726]:
+        - strong [ref=e728]: Version History
+        - generic [ref=e729]:
+          - button "Isaiah Calvo deleted space \"Space 2\" 2026-06-12 13:21 · undoable edit · deleted Restorable deleted item Restore" [ref=e730] [cursor=pointer]:
+            - generic [ref=e731]: Isaiah Calvo deleted space "Space 2"
+            - generic [ref=e732]: 2026-06-12 13:21 · undoable edit · deleted
+            - generic [ref=e733]:
+              - generic [ref=e734]: Restorable deleted item
+              - button "Restore" [ref=e735]
+          - button "Isaiah Calvo created a space 2026-06-12 13:19 · undoable edit" [ref=e736] [cursor=pointer]:
+            - generic [ref=e737]: Isaiah Calvo created a space
+            - generic [ref=e738]: 2026-06-12 13:19 · undoable edit
+          - button "Isaiah Calvo edited text on page 1 2026-06-12 00:29 · undoable edit · page 1" [ref=e739] [cursor=pointer]:
+            - generic [ref=e740]: Isaiah Calvo edited text on page 1
+            - generic [ref=e741]: 2026-06-12 00:29 · undoable edit · page 1
+          - button "Isaiah Calvo created a form-field on page 1 2026-06-12 00:29 · undoable edit · page 1" [ref=e742] [cursor=pointer]:
+            - generic [ref=e743]: Isaiah Calvo created a form-field on page 1
+            - generic [ref=e744]: 2026-06-12 00:29 · undoable edit · page 1
+          - button "Isaiah Calvo created a form-field on page 1 2026-06-12 00:29 · undoable edit · page 1" [ref=e745] [cursor=pointer]:
+            - generic [ref=e746]: Isaiah Calvo created a form-field on page 1
+            - generic [ref=e747]: 2026-06-12 00:29 · undoable edit · page 1
+          - button "Isaiah Calvo edited a space 2026-06-12 00:08 · undoable edit" [ref=e748] [cursor=pointer]:
+            - generic [ref=e749]: Isaiah Calvo edited a space
+            - generic [ref=e750]: 2026-06-12 00:08 · undoable edit
+          - button "Isaiah Calvo deleted a region on page 1 in \"TestSpace\" 2026-06-12 00:08 · undoable edit · page 1 · deleted Restorable deleted item Restore" [ref=e751] [cursor=pointer]:
+            - generic [ref=e752]: Isaiah Calvo deleted a region on page 1 in "TestSpace"
+            - generic [ref=e753]: 2026-06-12 00:08 · undoable edit · page 1 · deleted
+            - generic [ref=e754]:
+              - generic [ref=e755]: Restorable deleted item
+              - button "Restore" [ref=e756]
+          - button "Isaiah Calvo deleted a region on page 1 in \"TestSpace\" 2026-06-12 00:07 · undoable edit · page 1 · deleted Restorable deleted item Restore" [ref=e757] [cursor=pointer]:
+            - generic [ref=e758]: Isaiah Calvo deleted a region on page 1 in "TestSpace"
+            - generic [ref=e759]: 2026-06-12 00:07 · undoable edit · page 1 · deleted
+            - generic [ref=e760]:
+              - generic [ref=e761]: Restorable deleted item
+              - button "Restore" [ref=e762]
+          - button "Isaiah Calvo edited a space 2026-06-12 00:06 · undoable edit" [ref=e763] [cursor=pointer]:
+            - generic [ref=e764]: Isaiah Calvo edited a space
+            - generic [ref=e765]: 2026-06-12 00:06 · undoable edit
+          - button "Isaiah Calvo edited a space 2026-06-12 00:05 · undoable edit" [ref=e766] [cursor=pointer]:
+            - generic [ref=e767]: Isaiah Calvo edited a space
+            - generic [ref=e768]: 2026-06-12 00:05 · undoable edit
+          - button "Isaiah Calvo created a rectangle on page 1 2026-06-12 00:03 · undoable edit · page 1" [ref=e769] [cursor=pointer]:
+            - generic [ref=e770]: Isaiah Calvo created a rectangle on page 1
+            - generic [ref=e771]: 2026-06-12 00:03 · undoable edit · page 1
+          - button "Isaiah Calvo deleted a rectangle on page 1 2026-06-12 00:03 · undoable edit · page 1 · deleted Restorable deleted item Restore" [ref=e772] [cursor=pointer]:
+            - generic [ref=e773]: Isaiah Calvo deleted a rectangle on page 1
+            - generic [ref=e774]: 2026-06-12 00:03 · undoable edit · page 1 · deleted
+            - generic [ref=e775]:
+              - generic [ref=e776]: Restorable deleted item
+              - button "Restore" [ref=e777]
+          - button "Isaiah Calvo created a rectangle on page 1 2026-06-12 00:03 · undoable edit · page 1" [ref=e778] [cursor=pointer]:
+            - generic [ref=e779]: Isaiah Calvo created a rectangle on page 1
+            - generic [ref=e780]: 2026-06-12 00:03 · undoable edit · page 1
+          - button "Isaiah Calvo deleted a rectangle on page 1 2026-06-12 00:01 · undoable edit · page 1 · deleted Restorable deleted item Restore" [ref=e781] [cursor=pointer]:
+            - generic [ref=e782]: Isaiah Calvo deleted a rectangle on page 1
+            - generic [ref=e783]: 2026-06-12 00:01 · undoable edit · page 1 · deleted
+            - generic [ref=e784]:
+              - generic [ref=e785]: Restorable deleted item
+              - button "Restore" [ref=e786]
+          - button "Isaiah Calvo deleted a rectangle on page 1 2026-06-12 00:01 · undoable edit · page 1 · deleted Restorable deleted item Restore" [ref=e787] [cursor=pointer]:
+            - generic [ref=e788]: Isaiah Calvo deleted a rectangle on page 1
+            - generic [ref=e789]: 2026-06-12 00:01 · undoable edit · page 1 · deleted
+            - generic [ref=e790]:
+              - generic [ref=e791]: Restorable deleted item
+              - button "Restore" [ref=e792]
+          - button "Isaiah Calvo created a rectangle on page 1 2026-06-12 00:01 · undoable edit · page 1" [ref=e793] [cursor=pointer]:
+            - generic [ref=e794]: Isaiah Calvo created a rectangle on page 1
+            - generic [ref=e795]: 2026-06-12 00:01 · undoable edit · page 1
+          - button "v1 manual history-live-verify 2026-06-11 23:48 · restore point · 10 annotation(s) Open read-only Restore" [ref=e796] [cursor=pointer]:
+            - generic [ref=e823]:
+              - generic [ref=e797]: v1
+              - generic [ref=e798]: manual
+              - generic [ref=e799]: history-live-verify
+            - generic [ref=e800]: 2026-06-11 23:48 · restore point · 10 annotation(s)
+            - generic [ref=e801]:
+              - button "Open read-only" [ref=e802]
+              - button "Restore" [ref=e803]
+          - button "Isaiah Calvo deleted 1 annotation 2026-06-11 23:45 · undoable edit · deleted Restorable deleted item Restore" [ref=e804] [cursor=pointer]:
+            - generic [ref=e824]: Isaiah Calvo deleted 1 annotation
+            - generic [ref=e805]: 2026-06-11 23:45 · undoable edit · deleted
+            - generic [ref=e806]:
+              - generic [ref=e807]: Restorable deleted item
+              - button "Restore" [ref=e808]
+          - button "Isaiah Calvo deleted a rectangle on page 1 2026-06-11 23:45 · undoable edit · page 1 · deleted Restorable deleted item Restore" [ref=e809] [cursor=pointer]:
+            - generic [ref=e825]: Isaiah Calvo deleted a rectangle on page 1
+            - generic [ref=e810]: 2026-06-11 23:45 · undoable edit · page 1 · deleted
+            - generic [ref=e811]:
+              - generic [ref=e812]: Restorable deleted item
+              - button "Restore" [ref=e813]
+          - button "Isaiah Calvo deleted a rectangle on page 1 2026-06-11 23:45 · undoable edit · page 1 · deleted Restorable deleted item Restore" [ref=e814] [cursor=pointer]:
+            - generic [ref=e826]: Isaiah Calvo deleted a rectangle on page 1
+            - generic [ref=e815]: 2026-06-11 23:45 · undoable edit · page 1 · deleted
+            - generic [ref=e816]:
+              - generic [ref=e817]: Restorable deleted item
+              - button "Restore" [ref=e818]
+          - button "Isaiah Calvo edited a rectangle on page 1 2026-06-11 23:44 · undoable edit · page 1" [ref=e819] [cursor=pointer]:
+            - generic [ref=e827]: Isaiah Calvo edited a rectangle on page 1
+            - generic [ref=e820]: 2026-06-11 23:44 · undoable edit · page 1
+        - button "Save version" [ref=e822] [cursor=pointer]
+      - generic [ref=e347]:
+        - button "Up to date · Click to sync now" [ref=e670] [cursor=pointer]:
+          - generic [ref=e672]: Up to date · Click to sync now
+        - button "Version History" [active] [ref=e350] [cursor=pointer]:
+          - img [ref=e351]
+        - generic [ref=e353]:
+          - generic [ref=e356]: IS
+          - generic [ref=e673]: just you
+    - generic [ref=e358]:
+      - generic [ref=e360]:
+        - complementary [ref=e361]:
+          - generic [ref=e362]: Survey
+          - navigation [ref=e364]:
+            - button "Documents" [ref=e365] [cursor=pointer]:
+              - img [ref=e367]
+              - text: Documents
+            - button "Projects" [ref=e370] [cursor=pointer]:
+              - img [ref=e372]
+              - text: Projects
+            - button "Templates" [ref=e374] [cursor=pointer]:
+              - img [ref=e376]
+              - text: Templates
+          - button "IC Isaiah Calvo Synced · Developer" [ref=e380] [cursor=pointer]:
+            - generic [ref=e381]: IC
+            - generic [ref=e382]:
+              - generic [ref=e383]: Isaiah Calvo
+              - generic [ref=e384]: Synced · Developer
+        - main [ref=e385]:
+          - generic [ref=e386]:
+            - generic [ref=e387]:
+              - heading "Documents" [level=1] [ref=e388]
+              - generic [ref=e390]:
+                - generic [ref=e391]: 12 files
+                - button "Select" [ref=e392] [cursor=pointer]
+            - generic [ref=e393]:
+              - generic [ref=e394]:
+                - img [ref=e395]
+                - textbox "Search Documents..." [ref=e398]
+                - generic [ref=e399]: ⌘K
+              - button "Upload" [ref=e400] [cursor=pointer]:
+                - img [ref=e401]
+                - text: Upload
+          - generic [ref=e404]:
+            - generic [ref=e406]:
+              - generic [ref=e407]:
+                - generic [ref=e410] [cursor=pointer]: File
+                - generic [ref=e411] [cursor=pointer]: Project
+                - generic [ref=e412] [cursor=pointer]: Last edited ↓
+                - generic [ref=e413] [cursor=pointer]: Size
+              - generic [ref=e414] [cursor=pointer]:
+                - button "⋯" [ref=e416]
+                - generic [ref=e420]: sync-test.pdf
+                - generic [ref=e421]: N/A
+                - generic [ref=e422]:
+                  - generic [ref=e423]: 1:14 PM
+                  - generic [ref=e424]: Jun 12, 2026
+                - generic [ref=e425]: 2.5 KB
+              - generic [ref=e426] [cursor=pointer]:
+                - button "⋯" [ref=e428]
+                - generic [ref=e432]: clickable-link-test.pdf
+                - generic [ref=e433]: N/A
+                - generic [ref=e434]:
+                  - generic [ref=e435]: 12:01 AM
+                  - generic [ref=e436]: Jun 12, 2026
+                - generic [ref=e437]: 23.2 KB
+              - generic [ref=e438] [cursor=pointer]:
+                - button "⋯" [ref=e440]
+                - generic [ref=e444]: Darline McKnight - Floor Plans Only.pdf
+                - generic [ref=e445]: N/A
+                - generic [ref=e446]:
+                  - generic [ref=e447]: 11:50 AM
+                  - generic [ref=e448]: Jun 11, 2026
+                - generic [ref=e449]: 100.7 KB
+              - generic [ref=e450] [cursor=pointer]:
+                - button "⋯" [ref=e452]
+                - generic [ref=e456]: Package 2 - Rev 4 -- IC.pdf
+                - generic [ref=e457]: N/A
+                - generic [ref=e458]:
+                  - generic [ref=e459]: 1:23 PM
+                  - generic [ref=e460]: Jun 9, 2026
+                - generic [ref=e461]: 6.31 MB
+              - generic [ref=e462] [cursor=pointer]:
+                - button "⋯" [ref=e464]
+                - generic [ref=e468]: SE-011 Security Shop Drawing Rev2 - 05.06.25.pdf
+                - generic [ref=e469]: N/A
+                - generic [ref=e470]:
+                  - generic [ref=e471]: 1:22 PM
+                  - generic [ref=e472]: Jun 9, 2026
+                - generic [ref=e473]: 22.07 MB
+              - generic [ref=e474] [cursor=pointer]:
+                - button "⋯" [ref=e476]
+                - generic [ref=e480]: Benjamin Franklin Elementary.pdf
+                - generic [ref=e481]: Untitled Project 2
+                - generic [ref=e482]:
+                  - generic [ref=e483]: 1:28 PM
+                  - generic [ref=e484]: Jun 8, 2026
+                - generic [ref=e485]: 2.40 MB
+              - generic [ref=e486] [cursor=pointer]:
+                - button "⋯" [ref=e488]
+                - generic [ref=e492]: New document.pdf
+                - generic [ref=e493]: N/A
+                - generic [ref=e494]:
+                  - generic [ref=e495]: 11:52 PM
+                  - generic [ref=e496]: Jun 4, 2026
+                - generic [ref=e497]: 77.7 KB
+              - generic [ref=e498] [cursor=pointer]:
+                - button "⋯" [ref=e500]
+                - generic [ref=e504]: Isaiah Calvo Construction Project Manager.pdf
+                - generic [ref=e505]: Untitled Project
+                - generic [ref=e506]:
+                  - generic [ref=e507]: 11:11 PM
+                  - generic [ref=e508]: Jun 4, 2026
+                - generic [ref=e509]: 67.9 KB
+              - generic [ref=e510] [cursor=pointer]:
+                - button "⋯" [ref=e512]
+                - generic [ref=e516]: Isaiah Calvo Assistant Project Manager.pdf
+                - generic [ref=e517]: Untitled Project
+                - generic [ref=e518]:
+                  - generic [ref=e519]: 12:53 PM
+                  - generic [ref=e520]: Jun 3, 2026
+                - generic [ref=e521]: 67.8 KB
+              - generic [ref=e522] [cursor=pointer]:
+                - button "⋯" [ref=e524]
+                - generic [ref=e528]: test.pdf
+                - generic [ref=e529]: N/A
+                - generic [ref=e530]:
+                  - generic [ref=e531]: 12:53 PM
+                  - generic [ref=e532]: Jun 3, 2026
+                - generic [ref=e533]: 2.5 KB
+              - generic [ref=e534] [cursor=pointer]:
+                - button "⋯" [ref=e536]
+                - generic [ref=e540]: Isaiah Calvo Profile.pdf
+                - generic [ref=e541]: Untitled Project
+                - generic [ref=e542]:
+                  - generic [ref=e543]: 12:53 PM
+                  - generic [ref=e544]: Jun 3, 2026
+                - generic [ref=e545]: 548.1 KB
+              - generic [ref=e546] [cursor=pointer]:
+                - button "⋯" [ref=e548]
+                - generic [ref=e552]: Isaiah Calvo Profile.pdf
+                - generic [ref=e553]: Untitled Project
+                - generic [ref=e554]:
+                  - generic [ref=e555]: 12:53 PM
+                  - generic [ref=e556]: Jun 3, 2026
+                - generic [ref=e557]: 548.1 KB
+            - complementary [ref=e558]:
+              - generic [ref=e559]:
+                - generic [ref=e560]: Preview
+                - button "×" [ref=e561] [cursor=pointer]
+              - generic [ref=e562]: sync-test.pdf
+              - generic [ref=e563]: 2.5 KB · 3 pages
+              - generic [ref=e566]:
+                - generic [ref=e567]: Team
+                - generic [ref=e568]:
+                  - generic [ref=e569]: IC
+                  - generic [ref=e570]: Isaiah Calvo
+              - generic [ref=e571]:
+                - generic [ref=e572]:
+                  - generic [ref=e573]: Last edited
+                  - generic [ref=e574]: Jun 12, 2026
+                - generic [ref=e575]:
+                  - generic [ref=e576]: Uploaded
+                  - generic [ref=e577]: Jun 4, 2026
+              - generic [ref=e578]:
+                - button "Open file" [ref=e579] [cursor=pointer]
+                - button "Share" [ref=e580] [cursor=pointer]:
+                  - img [ref=e581]
+      - generic [ref=e591]:
+        - generic:
+          - generic:
+            - generic:
+              - generic:
+                - link "https://claude.com/" [ref=e594] [cursor=pointer]:
+                  - /url: https://claude.com/
+                - generic:
+                  - textbox [ref=e596]
+                  - checkbox [ref=e598]
+                - generic:
+                  - generic:
+                    - generic:
+                      - img
+    - generic [ref=e600]:
+      - button "Expand panel" [ref=e602] [cursor=pointer]:
+        - img [ref=e603]
+      - button "Survey" [ref=e607] [cursor=pointer]:
+        - img [ref=e608]

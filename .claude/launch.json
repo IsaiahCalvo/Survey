@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "worktree-preview",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["vite", "--port", "5299", "--strictPort"],
+      "port": 5299
+    }
+  ]
+}
