@@ -30,7 +30,8 @@ import { createProductionPaperInk } from '../src/utils/productionPaperInk.js';
 import { erasePageAnnotations } from '../src/utils/pageSpaceEraser.js';
 
 const APP_SOURCE = readFileSync(new URL('../src/viewerShared.js', import.meta.url), 'utf8')
-  + '\n' + readFileSync(new URL('../src/PDFViewer.jsx', import.meta.url), 'utf8');
+  + '\n' + readFileSync(new URL('../src/PDFViewer.jsx', import.meta.url), 'utf8')
+  + '\n' + readFileSync(new URL('../src/utils/spaceCSVExporter.js', import.meta.url), 'utf8');
 const ELECTRON_MAIN_SOURCE = readFileSync(new URL('../src/electron-main.js', import.meta.url), 'utf8');
 const SPACES_PANEL_SOURCE = readFileSync(new URL('../src/sidebar/SpacesPanel.jsx', import.meta.url), 'utf8');
 const PDF_LIB_SOURCE = readFileSync(new URL('../src/utils/pdfAnnotationsPdfLib.js', import.meta.url), 'utf8');

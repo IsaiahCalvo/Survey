@@ -15,6 +15,10 @@
 import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.mjs';
 import { loadPdfjs } from './utils/pdfWorkerConfig';
 import { deepClone } from './utils/deepClone.js';
+import { sanitizeTemplateConfig } from './utils/templateConfig.js';
+import { migrateSidebarData } from './utils/sidebarPersistence.js';
+import { resolveMarkerEntityFromName } from './utils/surveyMarkerEntityResolver.js';
+import { buildSpaceCSVContent } from './utils/spaceCSVExporter.js';
 import { eraserDiameterToScreenRadius } from './utils/eraserSizing.js';
 import {
   createProductionBenchmarkPage,
@@ -88,7 +92,7 @@ import { deleteAnnotations, removeDocumentPresence, subscribeToDocumentAnnotatio
 import { fromFabricGroup, toFabricGroup } from './utils/calloutEditAdapter';
 import { getActivePageRegionId, getPageAnnotationVisibilityState, normalizePageRegions, normalizeRegionVisibility } from './utils/annotationVisibilityRules';
 import { resolveHistoryEntryContext } from './utils/historyContextRestore';
-import { isUndoKeyEvent, isRedoKeyEvent } from './utils/undoRedoHotkeys';
+import { isUndoKeyEvent, isRedoKeyEvent, isUndoRedoBlocked } from './utils/undoRedoHotkeys';
 import { getCalloutSyncFingerprint } from './utils/calloutSyncPayload';
 import { isPlacedSurveyMarker } from './services/surveyMarkerSyncDiff';
 import { forceUnplacedImportedMarker, freezeGeometryFromOriginal } from './services/importFieldWhitelist';
@@ -153,7 +157,6 @@ import { perfLoad, perfZoom, setDebugEnabled as setPerfDebugEnabled } from './ut
 import { loadTrace } from './utils/loadTrace';
 import { preserveExistingCountersOnPage, shouldRenumberCountersForSave, summarizeCounterRenumberEffect } from './utils/counterRenumberSavePolicy';
 import { recordAnnotationCommit, recordAnnotationSyncPush, recordAnnotationUndoRedo } from './utils/annotationPreviewDiag';
-import { regionContainsPoint } from './utils/regionMath';
 import { resolveAnnotationAt } from './utils/annotationHitTest';
 import { resolveSafeSnapshot } from './utils/safeSnapshot';
 import { resolveSurveyMarkerPromptName } from './utils/surveyMarkerNamePrompt';
@@ -173,6 +176,8 @@ import { useYDoc } from './hooks/useYDoc.js';
 import { useZoomState } from './hooks/useZoomState';
 import { useAnnotationContextMenu, renderAnnotationContextMenu } from './hooks/useAnnotationContextMenu.jsx';
 import { usePageOperations } from './hooks/usePageOperations.js';
+import { usePdfjsFormFieldPersistence } from './hooks/usePdfjsFormFieldPersistence.js';
+import { useRegionOverlayVisibility } from './hooks/useRegionOverlayVisibility.js';
 import { userRedo, userUndo } from './lib/collab/crdtUndoManager.js';
 import { moveItemById } from './reorder/flatReorderUtils.js';
 
@@ -243,7 +248,6 @@ import {
   createAnnotation,
   createItem,
   dataURLToUint8Array,
-  escapeCSVValue,
   filterAnnotationsByModule,
   generateDefaultSurveyMarkerName,
   generateUUID,
@@ -338,25 +342,6 @@ function readWorkbookRegistration(workbook) {
   }
 }
 
-// KAL-309: a survey marker's entity is THREE coupled fields — entityId, entityName, and
-// entityColor (the colored dot the panel shows). An Excel row carries only the entity NAME,
-// so the materialize overlay sets entityName alone; without re-resolving id+color the marker
-// keeps the OLD entity's color (an entity changed GC->X in Excel still shows GC's purple).
-// This mirrors the legacy import resolution: find the name in the template's entity list and
-// stamp all three. Pure + idempotent, so it is safe to run on every materialize write.
-function resolveMarkerEntityFromName(marker, entities) {
-  if (!marker || typeof marker !== 'object' || !('entityName' in marker)) return marker;
-  const name = marker.entityName;
-  if (name == null || name === '') {
-    if (marker.entityId == null && marker.entityColor == null && marker.entityName == null) return marker;
-    return { ...marker, entityId: null, entityName: null, entityColor: null };
-  }
-  const entity = (entities || []).find((e) => e && e.name === name);
-  if (!entity) return marker; // unknown name (rare — the Excel entity column is a constrained dropdown)
-  if (marker.entityId === entity.id && marker.entityColor === entity.color) return marker;
-  return { ...marker, entityId: entity.id, entityName: entity.name, entityColor: entity.color };
-}
-
 export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, tabId, isActive, mobileMode = false, onTopToolbarApiChange, onBottomToolbarApiChange, onLeftRailApiChange, onRightRailApiChange, onPageDrop, onUpdatePDFFile, onRequestCreateTemplate, initialViewState, onViewStateChange, templates = [], onTemplatesChange, onRefetchTemplates, user, isMSAuthenticated, msLogin, graphClient, msAccount, msNeedsReconnect, ensureFreshToken, msGetAuthSignals, entities, setEntities, onUnsavedAnnotationsChange, onAnnotationsExistChange }) {
   // Phase 35 UAT diag — mirror current PDF filename to window so the dev-only
   // phase35Diag logger can prefix every gate decision with the file under test.
@@ -368,7 +353,6 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   const containerRef = useRef();
   const contentRef = useRef();
   const pageContainersRef = useRef({});
-  const canvasRef = useRef({});
   const pdfjsViewerRef = useRef(null);
   const pdfSidebarRef = useRef(null);
   const pdfjsWrapperRef = useRef(null);
@@ -865,7 +849,6 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   const renderTasksRef = useRef({});
   const isNavigatingRef = useRef(false);
   const isZoomingRef = useRef(false);
-  const observerRef = useRef(null);
   const targetPageRef = useRef(null);
   const [showLocateModal, setShowLocateModal] = useState(false);
   const [locateSearchQuery, setLocateSearchQuery] = useState('');
@@ -877,7 +860,6 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   const pageInputRef = useRef(null);
   const zoomInputRef = useRef(null);
   const pageRenderCacheRef = useRef(new PageRenderCache(100)); // Cache up to 100 pages
-  const preRenderQueueRef = useRef(new Set()); // Track pages being pre-rendered
   const lastScaleRef = useRef(1.0); // Track last scale for cache management
 
   const { uploadDataFile, downloadDocument: downloadFromStorage } = useStorage();
@@ -927,7 +909,6 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   const [scrollMode, setScrollMode] = useState('continuous');
   const usePdfjsRenderer = true;
   const [isPanning, setIsPanning] = useState(false);
-  const [panStart, setPanStart] = useState({ x: 0, y: 0 });
   const [renderedPages, setRenderedPages] = useState(new Set());
   const [debugLogging, setDebugLogging] = useState(false);
   // Latest-ref pattern (render-phase write is intentional): read by
@@ -2790,24 +2771,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       const isRedoCombo = isRedoKeyEvent(e);
       if (!isUndoCombo && !isRedoCombo) return;
 
-      // KAL-75 (G2): locked/read-only documents never execute undo/redo. This
-      // execution-site guard is registration-order-proof — the lock banner's
-      // capture blocker registers AFTER this handler (banner mounts on the
-      // lock-state fetch) and therefore cannot preempt it; the guard can.
-      if (document.body.getAttribute('data-readonly') === 'true') return;
-
-      // KAL-301 REDO: while the region-edit overlay is mounted,
-      // RegionSelectionTool owns Cmd+Z / Cmd+Shift+Z through its own
-      // window-capture listener. That listener registers when region edit
-      // activates (i.e. AFTER this one), so same-target capture ordering
-      // runs this handler first — bail here WITHOUT stopImmediatePropagation
-      // so the region handler can run. Swallowing the event here was why
-      // undo did nothing in region edit mode.
-      if (document.querySelector('[data-region-selection-ui="true"]')) return;
-
-      // Skip if user is typing in an input
-      const active = document.activeElement;
-      if (active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.isContentEditable)) return;
+      if (isUndoRedoBlocked(document)) return;
 
       e.preventDefault();
       if (typeof e.stopImmediatePropagation === 'function') {
@@ -4014,9 +3978,6 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   const previousToolRef = useRef(null);
   const regionEditReturnToolRef = useRef(null);
   const isPanningRef = useRef(false);
-  // Track canvas mouse down for pan tool empty space panning
-  const canvasMouseDownRef = useRef(null);
-
   const [tooltip, setTooltip] = useState({ visible: false, text: '', x: 0, y: 0 });
   const [showAnnotationColorPicker, setShowAnnotationColorPicker] = useState(false);
   const [annotationColorPickerTab, setAnnotationColorPickerTab] = useState('stroke'); // 'stroke' | 'fill'
@@ -4791,13 +4752,6 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     setActiveTool('survey-marker');
     setShowSurveyPanel(true);
   }, []);
-
-  // Helper to sanitize template config before saving to Supabase
-  const sanitizeTemplateConfig = (template) => {
-    if (!template || typeof template !== 'object') return template;
-    const { supabaseId, ...rest } = template;
-    return rest;
-  };
 
   // Restore scroll position when PDF loads or tab/document context changes.
   useEffect(() => {
@@ -5849,30 +5803,6 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     setAnchor,
     updatePdfjsZoomSnapshots
   ]);
-
-  useEffect(() => {
-    if (usePdfjsRenderer) return;
-    detachPdfjsInteractionListeners();
-    clearPdfjsWheelZoomRaf();
-    finishPdfjsInteractionWindow();
-    if (pdfjsNavigateResetTimerRef.current) {
-      clearTimeout(pdfjsNavigateResetTimerRef.current);
-      pdfjsNavigateResetTimerRef.current = null;
-    }
-    if (pdfjsRefreshFrameRef.current !== null) {
-      if (typeof window !== 'undefined' && typeof window.cancelAnimationFrame === 'function') {
-        window.cancelAnimationFrame(pdfjsRefreshFrameRef.current);
-      } else {
-        clearTimeout(pdfjsRefreshFrameRef.current);
-      }
-      pdfjsRefreshFrameRef.current = null;
-    }
-    pdfjsZoomSourceRef.current = null;
-    wrapperDragEventAtRef.current = 0;
-    setPdfjsPageContainers((prev) => (Object.keys(prev).length === 0 ? prev : {}));
-    setPdfjsOverlayWindowPages((prev) => (prev.size === 0 ? prev : new Set()));
-    setPdfjsCommittedPageScales((prev) => (Object.keys(prev).length === 0 ? prev : {}));
-  }, [clearPdfjsWheelZoomRaf, detachPdfjsInteractionListeners, finishPdfjsInteractionWindow, usePdfjsRenderer]);
 
   useEffect(() => {
     if (!usePdfjsRenderer || typeof document === 'undefined') return undefined;
@@ -7551,19 +7481,6 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   }, [applyLayoutDrivenZoom, pdfDoc, pageSizes]);
 
   useEffect(() => {
-    // In Pdfjs mode, the viewer owns zoom persistence across page navigation
-    // (fitToPage/fitToWidth maintain themselves as the user scrolls), and the
-    // zoomController's internal mode is never updated from handleZoomModeSelect's
-    // Pdfjs branches — so applyZoom() here would use a stale mode and re-zoom
-    // to the wrong value on every pageChange, disrupting scroll geometry and
-    // cascading into runaway pageChange events at low zoom levels. See bug #2.5.
-    if (usePdfjsRenderer) return;
-    if (zoomMode !== ZOOM_MODES.MANUAL) {
-      zoomControllerRef.current?.applyZoom({ persist: false, force: true });
-    }
-  }, [pageNum, zoomMode, usePdfjsRenderer]);
-
-  useEffect(() => {
     applyLayoutDrivenZoom();
   }, [applyLayoutDrivenZoom, tabId]);
 
@@ -7577,7 +7494,6 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   const [pdfBookmarks, setPdfBookmarks] = useState([]); // Bookmarks extracted from the PDF (Pdfjs primary, PDF.js fallback)
   const [pdfOutlinePageLookup, setPdfOutlinePageLookup] = useState(null);
   const [hasImportedPdfBookmarks, setHasImportedPdfBookmarks] = useState(false);
-  const pdfjsBookmarkAttemptRef = useRef(null);
   const [spaces, setSpaces] = useState([]); // Array of { id, name, assignedPages: [{ pageId, wholePageIncluded, regions: [] }] }
   const [activeSpaceId, setActiveSpaceId] = useState(null); // Currently active space for filtering
   useEffect(() => {
@@ -9229,11 +9145,6 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   }, [disconnectOverlayLagPerfObservers]);
 
   useEffect(() => {
-    if (!usePdfjsRenderer) {
-      setPdfjsCommittedPageScales((prev) => (Object.keys(prev).length === 0 ? prev : {}));
-      return;
-    }
-
     const pageNumbers = Object.keys(pdfjsPageContainers)
       .map((pageKey) => Number(pageKey))
       .filter((pageNumber) => Number.isFinite(pageNumber));
@@ -9322,52 +9233,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     }
   }, [showRegionSelection, activeTool]);
 
-  // Region overlay visibility state - persists across sessions
-  // Key format: `${spaceId}-${pageId}`, value: true = disabled, false/undefined/null = enabled (default)
-  const [regionOverlayDisabled, setRegionOverlayDisabled] = useState(() => {
-    if (!pdfId) return new Map();
-    try {
-      const stored = localStorage.getItem(`regionOverlayStates_${pdfId}`);
-      if (stored) {
-        const parsed = JSON.parse(stored);
-        return new Map(Object.entries(parsed).map(([k, v]) => [k, v === true]));
-      }
-    } catch (e) {
-      console.error('Error loading region overlay states:', e);
-    }
-    return new Map();
-  });
-
-  // Save to localStorage whenever it changes
-  useEffect(() => {
-    if (!pdfId) return;
-    try {
-      const serializable = Object.fromEntries(regionOverlayDisabled);
-      localStorage.setItem(`regionOverlayStates_${pdfId}`, JSON.stringify(serializable));
-    } catch (e) {
-      console.error('Error saving region overlay states:', e);
-    }
-  }, [regionOverlayDisabled, pdfId]);
-
-  // Reload overlay states when pdfId changes
-  useEffect(() => {
-    if (!pdfId) {
-      setRegionOverlayDisabled(new Map());
-      return;
-    }
-    try {
-      const stored = localStorage.getItem(`regionOverlayStates_${pdfId}`);
-      if (stored) {
-        const parsed = JSON.parse(stored);
-        setRegionOverlayDisabled(new Map(Object.entries(parsed).map(([k, v]) => [k, v === true])));
-      } else {
-        setRegionOverlayDisabled(new Map());
-      }
-    } catch (e) {
-      console.error('Error loading region overlay states:', e);
-      setRegionOverlayDisabled(new Map());
-    }
-  }, [pdfId]);
+  // Per-document region visibility, persisted in localStorage.
+  const [regionOverlayDisabled, setRegionOverlayDisabled] = useRegionOverlayVisibility(pdfId);
 
   // Clipboard state for cut/copy operations
   const [clipboardPage, setClipboardPage] = useState(null);
@@ -9397,52 +9264,14 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     if (!pdfId) return;
     try {
       const sidebarData = JSON.parse(localStorage.getItem(`pdfSidebar_${pdfId}`) || '{}');
-      setPageNames(sidebarData.pageNames || {});
-      const storedBookmarksRaw = Array.isArray(sidebarData.bookmarks) ? sidebarData.bookmarks : [];
-      const storedBookmarks = storedBookmarksRaw.map((bookmark) => {
-        const nextPageIds = normalizeBookmarkPageIds(bookmark, Number.POSITIVE_INFINITY);
-
-        if (bookmark?.source === 'pdf' || bookmark?.isFromPDF === true) {
-          return {
-            ...bookmark,
-            pageIds: nextPageIds,
-            source: 'user',
-            isFromPDF: false
-          };
-        }
-
-        return {
-          ...bookmark,
-          pageIds: nextPageIds
-        };
-      });
-      setBookmarks(storedBookmarks);
-      const hasStoredPdfBookmarks = storedBookmarksRaw.some((bookmark) => (
-        bookmark?.source === 'pdf' ||
-        bookmark?.isFromPDF === true ||
-        (typeof bookmark?.id === 'string' && bookmark.id.startsWith('pdf:')) ||
-        (typeof bookmark?.id === 'string' && bookmark.id.startsWith('pdf-outline-')) ||
-        (typeof bookmark?.sourceId === 'string' && bookmark.sourceId.startsWith('pdfjs:')) ||
-        Array.isArray(bookmark?.outlinePath) ||
-        bookmark?.dest
-      ));
-      setHasImportedPdfBookmarks(hasStoredPdfBookmarks);
-      // Migrate spaces: ensure page visibility state is explicit in the region data.
-      // Requirement: "A region can contain multiple areas (polygons) within it"
-      // Keep all regions as they represent multiple areas within the same logical region
-      const migratedSpaces = (sidebarData.spaces || []).map(space => ({
-        ...space,
-        assignedPages: (space.assignedPages || []).map(page => {
-          return {
-            ...page,
-            regions: normalizePageRegions(page.regions || [])
-          };
-        })
-      }));
-      setSpaces(migratedSpaces);
+      const loaded = migrateSidebarData(sidebarData);
+      setPageNames(loaded.pageNames);
+      setBookmarks(loaded.bookmarks);
+      setHasImportedPdfBookmarks(loaded.hasImportedPdfBookmarks);
+      setSpaces(loaded.spaces);
       // Always start in regular mode when opening a PDF; do not restore an active space
       setActiveSpaceId(null);
-      setPageTransformations(sidebarData.pageTransformations || {});
+      setPageTransformations(loaded.pageTransformations);
     } catch (e) {
       console.error('Error loading sidebar data:', e);
     }
@@ -17664,108 +17493,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       return;
     }
 
-    const headers = [
-      'Space Name',
-      'Page',
-      'Mode',
-      'Region Count',
-      'Annotation Type',
-      'Annotation ID',
-      'Left',
-      'Top',
-      'Width',
-      'Height',
-      'Stroke Color',
-      'Fill Color',
-      'Stroke Width',
-      'Notes',
-      'Checklist Items',
-      'Status',
-      'Attachments'
-    ];
-
-    const rows = [headers.map(escapeCSVValue).join(',')];
-
-    assignedPages.forEach(page => {
-      const pageNumber = page.pageId;
-      if (!pageNumber) {
-        return;
-      }
-
-      const mode = page.wholePageIncluded === false ? 'region' : 'full';
-      const regions = normalizePageRegions(page.regions || []);
-      const pageAnnotations = annotationsByPage[pageNumber]?.objects || [];
-
-      pageAnnotations.forEach(obj => {
-        if (!obj) return;
-        const objSpaceId = obj.spaceId || null;
-        if (space.id && objSpaceId && objSpaceId !== space.id) {
-          return;
-        }
-
-        const width = (obj.width || 0) * (obj.scaleX || 1);
-        const height = (obj.height || 0) * (obj.scaleY || 1);
-        const centerX = (obj.left || 0) + width / 2;
-        const centerY = (obj.top || 0) + height / 2;
-
-        if (mode === 'region' && regions.length > 0) {
-          const inRegion = regions.some(region => regionContainsPoint(centerX, centerY, region, 1));
-          if (!inRegion) {
-            return;
-          }
-        }
-
-        const attachmentsCount = Array.isArray(obj.attachments) ? obj.attachments.length : '';
-        const row = [
-          escapeCSVValue(space.name || ''),
-          escapeCSVValue(pageNumber),
-          escapeCSVValue(mode),
-          escapeCSVValue(regions.length),
-          escapeCSVValue(obj.type || ''),
-          escapeCSVValue(obj.id || ''),
-          escapeCSVValue(typeof obj.left === 'number' ? obj.left.toFixed(2) : obj.left || ''),
-          escapeCSVValue(typeof obj.top === 'number' ? obj.top.toFixed(2) : obj.top || ''),
-          escapeCSVValue(width ? width.toFixed(2) : ''),
-          escapeCSVValue(height ? height.toFixed(2) : ''),
-          escapeCSVValue(obj.stroke || ''),
-          escapeCSVValue(obj.fill || ''),
-          escapeCSVValue(obj.strokeWidth || ''),
-          escapeCSVValue(obj.note || ''),
-          escapeCSVValue((obj.checklistItems || []).join?.('; ') || ''),
-          escapeCSVValue(obj.status || ''),
-          escapeCSVValue(attachmentsCount)
-        ];
-        rows.push(row.join(','));
-      });
-    });
-
-    if (Array.isArray(space.categories)) {
-      space.categories.forEach(category => {
-        const checklistCount = category?.checklist?.length || 0;
-        const row = [
-          escapeCSVValue(space.name || ''),
-          '',
-          'category',
-          '',
-          '',
-          '',
-          '',
-          '',
-          '',
-          '',
-          '',
-          '',
-          '',
-          escapeCSVValue(category?.name || ''),
-          escapeCSVValue(checklistCount),
-          '',
-          ''
-        ];
-        rows.push(row.join(','));
-      });
-    }
-
-    const csvContent = rows.join('\n');
+    const csvContent = buildSpaceCSVContent(space, annotationsByPage);
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
@@ -18811,7 +18539,6 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     setBookmarks([]);
     setPdfBookmarks([]);
     setHasImportedPdfBookmarks(false);
-    pdfjsBookmarkAttemptRef.current = null;
     setSpaces(isSamePdfReload ? previousSpacesForSamePdf : []);
     setPageNames({});
     setPageTransformations({});
@@ -19646,46 +19373,6 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   }, [selectedTemplate, pdfId]); // Only run when template changes
 
   useEffect(() => {
-    if (!pdfDoc) return undefined;
-    // Under pdf.js the engine extracts the outline on document load and reports it via
-    // onPDFBookmarksAvailable, so this 3.2s fallback would redundantly re-extract.
-    if (true) return undefined;
-    if (Array.isArray(pdfBookmarks) && pdfBookmarks.length > 0) return undefined;
-
-    const attemptKey = pdfId || `${pdfFile?.name || 'document'}:${pdfDoc?.numPages || 0}`;
-    if (pdfjsBookmarkAttemptRef.current === attemptKey) {
-      return undefined;
-    }
-    pdfjsBookmarkAttemptRef.current = attemptKey;
-
-    let cancelled = false;
-    const fallbackTimer = setTimeout(async () => {
-      try {
-        const outlineBookmarks = await extractPdfOutlineBookmarks(pdfDoc);
-        if (cancelled || !Array.isArray(outlineBookmarks) || outlineBookmarks.length === 0) {
-          return;
-        }
-        setPdfBookmarks((prev) => {
-          if (Array.isArray(prev) && prev.length > 0) {
-            return prev;
-          }
-          return outlineBookmarks.map((bookmark, index) => ({
-            ...bookmark,
-            source: 'pdf',
-            sourceId: bookmark.sourceId || `pdfjs:${bookmark.id || index}`,
-            isFromPDF: true
-          }));
-        });
-      } catch { }
-    }, 3200);
-
-    return () => {
-      cancelled = true;
-      clearTimeout(fallbackTimer);
-    };
-  }, [extractPdfOutlineBookmarks, pdfBookmarks, pdfDoc, pdfFile?.name, pdfId]);
-
-  useEffect(() => {
     let cancelled = false;
     setPdfOutlinePageLookup(null);
 
@@ -20320,217 +20007,6 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   // watchdog above remains as a PURE safety net: it only ever acts while
   // isLoadingPDF is already true (a genuinely hung first-open after a dead
   // socket), so it can never re-download a doc that is already rendered.
-
-  // Memoized render page function with caching
-  // NOTE: Rendering is now handled by PDFPageCanvas. This function is kept for compatibility
-  // with preRenderNearbyPages and IntersectionObserver logic, but it no longer draws to canvas directly.
-  const renderPage = useCallback(async (pageNumber, priority = 'normal') => {
-    if (usePdfjsRenderer || !pdfDoc) return;
-
-    // We can use this to trigger pre-fetching or other logic if needed,
-    // but for now, PDFPageTiles handles the heavy lifting.
-    // We might want to ensure the page is loaded in pageObjects though.
-
-    // If we need to track "rendered" state for other logic:
-    // setRenderedPages(prev => new Set([...prev, pageNumber]));
-
-  }, [pdfDoc, scale, usePdfjsRenderer]);
-
-  // Pre-render nearby pages for instant display
-  const preRenderNearbyPages = useCallback((currentPage) => {
-    if (usePdfjsRenderer || !pdfDoc || scrollMode !== 'continuous') return;
-
-    const preRenderDistance = 2; // Pre-render 2 pages ahead and behind
-    const pagesToPreRender = [];
-
-    for (let i = Math.max(1, currentPage - preRenderDistance);
-      i <= Math.min(numPages, currentPage + preRenderDistance);
-      i++) {
-      // Use functional approach to avoid renderedPages dependency
-      if (i !== currentPage &&
-        !preRenderQueueRef.current.has(i) &&
-        !pageRenderCacheRef.current.has(i, scale)) {
-        pagesToPreRender.push(i);
-      }
-    }
-
-    // Pre-render pages in background (lower priority)
-    pagesToPreRender.forEach(pageNum => {
-      preRenderQueueRef.current.add(pageNum);
-      // Use requestIdleCallback if available, otherwise setTimeout
-      const scheduleRender = window.requestIdleCallback || ((fn) => setTimeout(fn, 0));
-      scheduleRender(() => {
-        renderPage(pageNum, 'low').finally(() => {
-          preRenderQueueRef.current.delete(pageNum);
-        });
-      });
-    });
-  }, [numPages, pdfDoc, renderPage, scale, scrollMode, usePdfjsRenderer]);
-
-  // Optimized IntersectionObserver with debouncing
-  useEffect(() => {
-    if (usePdfjsRenderer || scrollMode !== 'continuous' || !pdfDoc) return;
-
-    if (observerRef.current) {
-      observerRef.current.disconnect();
-    }
-
-    let visiblePages = new Map(); // Map of pageNumber -> intersectionRatio
-    let updateTimer = null;
-
-    const observer = new IntersectionObserver((entries) => {
-      // Always process entries to ensure pages are rendered even during navigation.
-      // We only gate the pageNum update below, not rendering.
-      const pagesToMount = new Set();
-
-      entries.forEach(entry => {
-        const pageNumber = parseInt(entry.target.dataset.pageNum);
-
-        if (entry.isIntersecting) {
-          // Store the intersection ratio for this page
-          visiblePages.set(pageNumber, entry.intersectionRatio);
-
-          // Mount this page and nearby pages
-          const mountDistance = 3; // Mount pages within 3 pages of visible
-          for (let i = Math.max(1, pageNumber - mountDistance);
-            i <= Math.min(numPages, pageNumber + mountDistance);
-            i++) {
-            pagesToMount.add(i);
-          }
-
-          setRenderedPages(prev => {
-            if (!prev.has(pageNumber)) {
-              // Check if canvas exists before trying to render
-              const canvas = canvasRef.current[pageNumber];
-              if (canvas) {
-                renderPage(pageNumber, 'high'); // High priority for visible pages
-              }
-            }
-            return prev;
-          });
-
-          // Pre-render nearby pages for instant scrolling
-          preRenderNearbyPages(pageNumber);
-        } else {
-          visiblePages.delete(pageNumber);
-        }
-      });
-
-      // Update visible pages state for render prioritization
-      setVisiblePagesSet(new Set(visiblePages.keys()));
-
-      // Update mounted pages if any changes
-      if (pagesToMount.size > 0) {
-        setMountedPages(prev => {
-          const newSet = new Set([...prev, ...pagesToMount]);
-          return newSet.size === prev.size ? prev : newSet;
-        });
-      }
-
-      // Debounce page number updates
-      clearTimeout(updateTimer);
-      updateTimer = setTimeout(() => {
-        // Only update pageNum if we're not navigating programmatically
-        // and if there are visible pages to check
-        if (visiblePages.size > 0 && !isNavigatingRef.current && targetPageRef.current === null && !isZoomingRef.current) {
-          // Find the page with the highest intersection ratio (most visible)
-          let maxRatio = 0;
-          let mostVisiblePage = 1;
-          visiblePages.forEach((ratio, pageNum) => {
-            if (ratio > maxRatio) {
-              maxRatio = ratio;
-              mostVisiblePage = pageNum;
-            }
-          });
-          // Only update if the detected page is different from current
-          // This prevents unnecessary updates that might interfere with navigation
-          setPageNum(prevPage => {
-            if (prevPage !== mostVisiblePage) {
-              return mostVisiblePage;
-            }
-            return prevPage;
-          });
-        }
-      }, 50);
-    }, {
-      root: containerRef.current,
-      rootMargin: '2000px', // Increased to pre-render pages earlier
-      threshold: [0, 0.1, 0.25, 0.5, 0.75, 1.0]
-    });
-
-    observerRef.current = observer;
-
-    // Use a small timeout to ensure DOM elements are mounted
-    const setupTimer = setTimeout(() => {
-      const containers = Object.values(pageContainersRef.current).filter(Boolean);
-      containers.forEach(container => {
-        if (container) {
-          observer.observe(container);
-        }
-      });
-    }, 100);
-
-    // Failsafe: Reset navigation guards if they're stuck for too long
-    // This ensures page number updates always resume after a reasonable timeout
-    const failsafeTimer = setInterval(() => {
-      if (isNavigatingRef.current || targetPageRef.current !== null || isZoomingRef.current) {
-        console.warn('Navigation guards have been active for >2s, resetting for safety');
-        isNavigatingRef.current = false;
-        targetPageRef.current = null;
-        isZoomingRef.current = false;
-      }
-    }, 2000);
-
-    return () => {
-      clearTimeout(setupTimer);
-      clearInterval(failsafeTimer);
-      if (observerRef.current) {
-        observerRef.current.disconnect();
-      }
-      clearTimeout(updateTimer);
-    };
-  }, [pdfDoc, preRenderNearbyPages, renderPage, scrollMode, usePdfjsRenderer]);
-
-  // Render single page mode with pre-rendering
-  useEffect(() => {
-    if (usePdfjsRenderer || scrollMode !== 'single' || !pdfDoc) return;
-    renderPage(pageNum);
-
-    // Pre-render adjacent pages for instant navigation
-    if (pageNum > 1) {
-      renderPage(pageNum - 1, 'low');
-    }
-    if (pageNum < numPages) {
-      renderPage(pageNum + 1, 'low');
-    }
-  }, [numPages, pageNum, pdfDoc, renderPage, scale, scrollMode, usePdfjsRenderer]);
-
-  // Render first page when PDF loads in continuous mode
-  // NOTE: PDFPageCanvas handles rendering automatically when mounted.
-  // We don't need to manually trigger renderPage(1) here anymore.
-  useEffect(() => {
-    // Legacy cleanup
-  }, []);
-
-  // Re-render all visible pages when scale changes
-  useEffect(() => {
-    if (usePdfjsRenderer || !pdfDoc) return;
-
-    // Clear cache for old scale (keep cache for other scales in case user zooms back)
-    // Only clear if scale changed significantly
-    const prevScale = lastScaleRef.current;
-    if (Math.abs(prevScale - scale) > 0.1) {
-      // Clear cache entries that are far from current scale
-      lastScaleRef.current = scale;
-    }
-
-    setRenderedPages(new Set());
-
-    if (scrollMode === 'single') {
-      renderPage(pageNum);
-    }
-    // IntersectionObserver will handle continuous mode
-  }, [pageNum, pdfDoc, renderPage, scale, scrollMode, usePdfjsRenderer]);
 
   // Re-render pages when transformations change (CSS transforms apply automatically, but this ensures consistency)
   useEffect(() => {
@@ -21251,173 +20727,6 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     controller.setScale(DEFAULT_ZOOM_PREFERENCES.manualScale);
   }, []);
 
-  // OPTIMIZED: Wheel handler with smooth cursor-centered zoom
-  // Using smaller increments and minimal throttle for fluid feel
-  const wheelTimerRef = useRef(null);
-  const handleWheel = useCallback((e) => {
-    if (usePdfjsRenderer) return;
-    if (e.ctrlKey || e.metaKey) {
-      e.preventDefault();
-
-      // Minimal throttle (16ms = 1 frame) for smooth but not overwhelming updates
-      if (wheelTimerRef.current) return;
-      wheelTimerRef.current = setTimeout(() => {
-        wheelTimerRef.current = null;
-      }, 16);
-
-      // Smaller zoom increments for smoother feel (5% instead of 10%)
-      const deltaFactor = e.deltaY > 0 ? 0.95 : 1.05;
-      const currentScale = scaleRef.current || manualZoomScaleRef.current || 1.0;
-      const nextScale = clampScale(currentScale * deltaFactor);
-
-      if (Math.abs(nextScale - currentScale) > 0.0001) {
-        // Get cursor position relative to the container for centered zoom
-        const container = containerRef.current;
-        if (container) {
-          const rect = container.getBoundingClientRect();
-          const cursorX = e.clientX - rect.left;
-          const cursorY = e.clientY - rect.top;
-          zoomControllerRef.current?.setScale(nextScale, { anchor: { x: cursorX, y: cursorY } });
-        } else {
-          zoomControllerRef.current?.setScale(nextScale);
-        }
-      }
-    } else {
-      // Regular scroll (no Ctrl/Cmd) - manually scroll the container
-      // This is needed because the overlay div blocks events from reaching the container
-      const container = containerRef.current;
-      if (container) {
-        // Prevent default to avoid double scrolling, then manually scroll
-        e.preventDefault();
-        container.scrollTop += e.deltaY;
-        container.scrollLeft += e.deltaX;
-      }
-    }
-  }, [usePdfjsRenderer]);
-
-  // Attach wheel event listener with passive: false to allow preventDefault
-  useEffect(() => {
-    if (usePdfjsRenderer) return undefined;
-    const wheelHandler = (e) => {
-      // Check if event target is within container OR if event coordinates are within container bounds
-      // This handles cases where overlay divs (like region selection tool) are positioned over the container
-      const container = containerRef.current;
-      if (!container) return;
-
-      // Fast path: when the wheel target is inside the PDF container (the common
-      // case during scroll/zoom, 60+ events/sec) we know it can't be inside an
-      // overlay modal, so skip the page-wide querySelector + getBoundingClientRect
-      // entirely. Those only run in the rare case the target is outside the container.
-      if (container.contains(e.target)) {
-        handleWheel(e);
-        return;
-      }
-
-      // Target is outside the container. Don't hijack wheel events that belong to
-      // an overlay modal (e.g. the keyboard shortcuts modal) sitting over the PDF.
-      const modalOverlay = document.querySelector('[data-keyboard-shortcuts-modal="true"]');
-      if (modalOverlay && modalOverlay.contains(e.target)) {
-        return;
-      }
-
-      // Otherwise, only handle it if the pointer coordinates fall within the
-      // container bounds (covers transparent overlays positioned over the PDF).
-      const rect = container.getBoundingClientRect();
-      const isCoordInContainer = (
-        e.clientX >= rect.left &&
-        e.clientX <= rect.right &&
-        e.clientY >= rect.top &&
-        e.clientY <= rect.bottom
-      );
-      if (isCoordInContainer) {
-        handleWheel(e);
-      }
-    };
-
-    // Listen on document with capture phase to catch events before they bubble
-    document.addEventListener('wheel', wheelHandler, { passive: false, capture: true });
-
-    return () => {
-      document.removeEventListener('wheel', wheelHandler, { capture: true });
-    };
-  }, [handleWheel, usePdfjsRenderer]);
-
-  // Optimized pan handling
-  const handleMouseDown = useCallback((e) => {
-    if (usePdfjsRenderer) return;
-    // Only allow pan when:
-    // 1. Pan tool is active (spacebar pan should work even when region selection is active)
-    // 2. Can pan (content exceeds viewport) OR showRegionSelection is true (allow panning in region selection mode)
-    // 3. Left mouse button
-    // Note: Allow pan even when showRegionSelection is true (spacebar pan override)
-    // Also allow panning in region selection mode even if canPan is false (content might not exceed viewport but user wants to pan)
-    if (activeTool === 'pan' && (canPan || showRegionSelection) && e.button === 0) {
-      // Check if click is on an annotation layer canvas
-      // Annotation layers use canvas elements for Fabric.js
-      const target = e.target;
-      const isOnAnnotationCanvas = target.tagName === 'CANVAS' &&
-        target.closest('.page-container') !== null;
-
-      if (isOnAnnotationCanvas) {
-        // Track canvas mouse down - we'll start panning in handleMouseMove if mouse moves
-        // (indicating empty space drag, not annotation interaction)
-        canvasMouseDownRef.current = {
-          x: e.clientX + containerRef.current.scrollLeft,
-          y: e.clientY + containerRef.current.scrollTop,
-          clientX: e.clientX,
-          clientY: e.clientY
-        };
-        // Don't prevent default - let annotation layer handle it
-        // If annotation layer prevents default (annotation interaction), it will handle it
-        // If annotation layer doesn't prevent default (empty space), we'll pan on mouse move
-        return;
-      }
-
-      // Click is on empty space or PDF background - allow container panning
-      setIsPanning(true);
-      setPanStart({
-        x: e.clientX + containerRef.current.scrollLeft,
-        y: e.clientY + containerRef.current.scrollTop
-      });
-      e.preventDefault();
-    }
-  }, [activeTool, showRegionSelection, canPan, usePdfjsRenderer]);
-
-  const handleMouseMove = useCallback((e) => {
-    if (usePdfjsRenderer) return;
-    if (isPanning) {
-      const container = containerRef.current;
-      if (container) {
-        container.scrollLeft = panStart.x - e.clientX;
-        container.scrollTop = panStart.y - e.clientY;
-      }
-    } else if (activeTool === 'pan' && (canPan || showRegionSelection) && canvasMouseDownRef.current) {
-      // Check if mouse has moved enough to start panning (empty space drag on canvas)
-      const start = canvasMouseDownRef.current;
-      const moveDistance = Math.sqrt(
-        Math.pow(e.clientX - start.clientX, 2) +
-        Math.pow(e.clientY - start.clientY, 2)
-      );
-
-
-      // Start panning if mouse moved more than 5px (same threshold as annotation selection)
-      if (moveDistance > 5) {
-        setIsPanning(true);
-        setPanStart({
-          x: start.x,
-          y: start.y
-        });
-        canvasMouseDownRef.current = null; // Clear after starting pan
-      }
-    }
-  }, [isPanning, panStart, activeTool, canPan, showRegionSelection, usePdfjsRenderer]);
-
-  const handleMouseUp = useCallback(() => {
-    if (usePdfjsRenderer) return;
-    setIsPanning(false);
-    canvasMouseDownRef.current = null; // Clear canvas mouse down tracking
-  }, [usePdfjsRenderer]);
-
   // Stop panning if tool changes away from pan
   // Note: Don't stop panning when region selection becomes active - spacebar pan should work
   useEffect(() => {
@@ -21425,46 +20734,6 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       setIsPanning(false);
     }
   }, [activeTool]);
-
-  // Add native event listener as backup for panning when overlay has pointerEvents: none
-  // This ensures events are caught even when they pass through the overlay
-  useEffect(() => {
-    if (usePdfjsRenderer) return undefined;
-    if (!showRegionSelection || activeTool !== 'pan') return;
-
-    const container = containerRef.current;
-    if (!container) return;
-
-    const nativeMouseDown = (e) => {
-      if (activeTool === 'pan' && (canPan || showRegionSelection) && e.button === 0) {
-        // Check if event is within container bounds
-        const rect = container.getBoundingClientRect();
-        const isWithinContainer = (
-          e.clientX >= rect.left &&
-          e.clientX <= rect.right &&
-          e.clientY >= rect.top &&
-          e.clientY <= rect.bottom
-        );
-
-        if (isWithinContainer) {
-          setIsPanning(true);
-          setPanStart({
-            x: e.clientX + container.scrollLeft,
-            y: e.clientY + container.scrollTop
-          });
-          e.preventDefault();
-          e.stopPropagation();
-        }
-      }
-    };
-
-    // Use capture phase to catch events before they reach other handlers
-    container.addEventListener('mousedown', nativeMouseDown, { capture: true, passive: false });
-
-    return () => {
-      container.removeEventListener('mousedown', nativeMouseDown, { capture: true });
-    };
-  }, [showRegionSelection, activeTool, canPan, usePdfjsRenderer]);
 
   // Track eraser cursor position when eraser tool is active
   useEffect(() => {
@@ -24124,99 +23393,11 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     });
   }, [handleSaveAnnotations]);
 
-  // ---------------------------------------------------------------------------
-  // pdf.js form-field value persistence (Stage 4.3). A filled form value is
-  // modeled as a NON-VISUAL 'form-field' annotation that rides the existing
-  // annotationsByPage → handleSaveAnnotations → Yjs/Supabase pipeline. The form
-  // WIDGET (rendered by PdfjsFormLayer) shows the value; this carrier only
-  // persists it. Keyed by page+fieldId so re-edits upsert the same row.
-  // SVGAnnotationLayer's type dispatch ignores 'form-field' (no branch → never
-  // drawn, no hit-area), so no SVG-layer change is needed.
-  // ---------------------------------------------------------------------------
-  const formFieldSaveTimersRef = useRef(new Map());
-
-  const commitPdfjsFormField = useCallback((pageNumber, payload) => {
-    const fieldId = payload?.fieldId;
-    if (pageNumber == null || fieldId == null) return;
-    const page = annotationsByPageRef.current?.[pageNumber];
-    const next = page ? deepClone(page) : { objects: [] };
-    if (!Array.isArray(next.objects)) next.objects = [];
-    const dataId = `form-field:${pageNumber}:${fieldId}`;
-    const rect = Array.isArray(payload.rect) ? payload.rect : null;
-    const left = rect ? Math.min(rect[0], rect[2]) : 0;
-    const top = rect ? Math.min(rect[1], rect[3]) : 0;
-    const width = rect ? Math.abs(rect[2] - rect[0]) : 0;
-    const height = rect ? Math.abs(rect[3] - rect[1]) : 0;
-    const idx = next.objects.findIndex((o) => o?.data?.id === dataId);
-    // Preserve the original author on re-edits (write-once-on-create, mirrors
-    // the serializer's author-attribution invariant).
-    const existingAuthorId = idx >= 0 ? next.objects[idx]?.meta?.authorId : null;
-    const formObj = {
-      type: 'form-field',
-      data: {
-        id: dataId,
-        type: 'form-field',
-        fieldId,
-        fieldName: payload.fieldName ?? null,
-        fieldType: payload.fieldType ?? null,
-        value: payload.value,
-        pageNumber,
-        rect,
-      },
-      pageNumber,
-      left,
-      top,
-      width,
-      height,
-      meta: { authorId: existingAuthorId || user?.id || null },
-    };
-    if (idx >= 0) next.objects[idx] = formObj;
-    else next.objects.push(formObj);
-    handleSaveAnnotations(pageNumber, next, {
-      source: 'form-field',
-      action: 'form-field:edit',
-      checkpointPolicy: 'normal',
-    });
-  }, [handleSaveAnnotations, user?.id]);
-
-  const handlePdfjsFormFieldChange = useCallback((pageNumber, payload) => {
-    const fieldId = payload?.fieldId;
-    if (pageNumber == null || fieldId == null) return;
-    const key = `${pageNumber}:${fieldId}`;
-    const timers = formFieldSaveTimersRef.current;
-    const existing = timers.get(key);
-    if (existing) clearTimeout(existing);
-    // Debounce typing so a name entered character-by-character lands as one save.
-    const timer = setTimeout(() => {
-      timers.delete(key);
-      commitPdfjsFormField(pageNumber, payload);
-    }, 400);
-    timers.set(key, timer);
-  }, [commitPdfjsFormField]);
-
-  const handlePdfjsFormFieldBlur = useCallback((pageNumber, payload) => {
-    const fieldId = payload?.fieldId;
-    if (pageNumber == null || fieldId == null) return;
-    const key = `${pageNumber}:${fieldId}`;
-    const timers = formFieldSaveTimersRef.current;
-    const existing = timers.get(key);
-    if (existing) { clearTimeout(existing); timers.delete(key); }
-    // Flush immediately when leaving the field so nothing is lost on a quick reload.
-    commitPdfjsFormField(pageNumber, payload);
-  }, [commitPdfjsFormField]);
-
-  // Cancel any pending form-field debounce timers when the viewer itself tears
-  // down (document close / unmount), so a late save never fires into a disposed
-  // component. NOTE: this runs only on full unmount — page navigation does NOT
-  // clear timers, because an out-of-view page's pending edit must still flush via
-  // its own timer (the field's blur may not fire when its DOM node is removed).
-  useEffect(() => {
-    const timers = formFieldSaveTimersRef.current;
-    return () => {
-      timers.forEach((timer) => clearTimeout(timer));
-      timers.clear();
-    };
-  }, []);
+  const { handlePdfjsFormFieldChange, handlePdfjsFormFieldBlur } = usePdfjsFormFieldPersistence({
+    handleSaveAnnotations,
+    userId: user?.id,
+    annotationsByPageRef,
+  });
 
   // UX: Shared annotation z-order reorder handler. Called by the right-click
   // menu's Bring to Front / Forward / Send Backward / to Back items and by
@@ -28415,10 +27596,6 @@ ${pageBlocks}
           {/* PDF Container - Optimized */}
           <div
             ref={pdfjsWrapperRef}
-            onMouseDown={usePdfjsRenderer ? undefined : handleMouseDown}
-            onMouseMove={usePdfjsRenderer ? undefined : handleMouseMove}
-            onMouseUp={usePdfjsRenderer ? undefined : handleMouseUp}
-            onMouseLeave={usePdfjsRenderer ? undefined : handleMouseUp}
             onWheelCapture={handlePdfjsWrapperWheel}
             onPointerDown={handlePdfjsWrapperPointerDown}
             onPointerMove={handlePdfjsWrapperPointerMove}

@@ -45,6 +45,9 @@ import { COLORS } from './theme';
 // Phase 21: cloud sync for all annotation types — see
 // .planning/phases/21-cloud-sync-all-annotations/CONTEXT.md
 import { normalizePageRegions } from './utils/annotationVisibilityRules';
+import { coercePageNumber } from './utils/bookmarkPageIds.js';
+export { coercePageNumber, normalizeBookmarkPageIds } from './utils/bookmarkPageIds.js';
+export { escapeCSVValue } from './utils/csvValue.js';
 
 export const NATIVE_TEXT_MARKUP_TOOLS = new Set(['text-highlight', 'underline', 'strikeout', 'squiggly']);
 const SELECT_DELETE_ONLY_IMPORTED_TEXT_MARKUP_TYPES = new Set(['underline', 'strikeout', 'squiggly']);
@@ -1213,70 +1216,7 @@ export const handleModalPrimaryButtonMouseLeave = (event) => {
   event.currentTarget.style.boxShadow = 'none';
 };
 
-export const coercePageNumber = (value, maxPages = Number.POSITIVE_INFINITY) => {
-  if (value === null || value === undefined || value === '') return null;
-  const numeric = typeof value === 'number' ? value : Number.parseInt(String(value), 10);
-  if (!Number.isFinite(numeric)) return null;
-  const page = Math.trunc(numeric);
-  if (page < 1) return null;
-  if (Number.isFinite(maxPages) && maxPages > 0 && page > maxPages) return null;
-  return page;
-};
-
 export const coerceScrollMode = (value) => (value === 'single' ? 'single' : 'continuous');
-
-export const normalizeBookmarkPageIds = (bookmark, maxPages = Number.POSITIVE_INFINITY) => {
-  if (!bookmark || typeof bookmark !== 'object') {
-    return [];
-  }
-
-  const uniquePages = new Set();
-  const addPage = (value) => {
-    const page = coercePageNumber(value, maxPages);
-    if (page) {
-      uniquePages.add(page);
-    }
-  };
-  const addPageFromIndex = (value) => {
-    const numeric = Number(value);
-    if (!Number.isFinite(numeric)) return;
-    const index = Math.trunc(numeric);
-    if (index < 0) return;
-    addPage(index + 1);
-  };
-
-  if (Array.isArray(bookmark.pageIds)) {
-    bookmark.pageIds.forEach(addPage);
-  }
-
-  [
-    bookmark.pageIndex,
-    bookmark.PageIndex,
-    bookmark.pageIdx,
-    bookmark.dest?.pageIndex,
-    bookmark.dest?.PageIndex,
-    bookmark.destination?.pageIndex,
-    bookmark.destination?.PageIndex
-  ].forEach(addPageFromIndex);
-
-  [
-    bookmark.pageId,
-    bookmark.page,
-    bookmark.pageNumber,
-    bookmark.PageNumber,
-    bookmark.targetPage,
-    bookmark.dest?.page,
-    bookmark.dest?.pageId,
-    bookmark.dest?.pageNumber,
-    bookmark.dest?.PageNumber,
-    bookmark.destination?.page,
-    bookmark.destination?.pageId,
-    bookmark.destination?.pageNumber,
-    bookmark.destination?.PageNumber
-  ].forEach(addPage);
-
-  return Array.from(uniquePages);
-};
 
 const normalizeOutlinePathSegments = (segments) => {
   if (!Array.isArray(segments)) return [];
@@ -1446,17 +1386,6 @@ export const resolveBookmarkPageFromOutlineLookup = (bookmark, lookup) => {
   }
 
   return null;
-};
-
-export const escapeCSVValue = (value) => {
-  if (value === null || value === undefined) return '';
-  const str = String(value);
-  if (str === '') return '';
-  const escaped = str.replace(/"/g, '""');
-  if (/[",\n]/.test(escaped)) {
-    return `"${escaped}"`;
-  }
-  return escaped;
 };
 
 export const sanitizeFilename = (value, fallback = 'export') => {

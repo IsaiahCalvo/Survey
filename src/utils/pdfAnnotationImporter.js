@@ -12,6 +12,16 @@
  */
 import { makeInternalPenPathSpec } from './nativeShapeFactory.js';
 import {
+  normalizePdfLineEndings,
+  normalizePdfNameToken,
+  readPdfLibDashArray,
+  readPdfLibNameArray,
+  readPdfLibNumber,
+  readPdfLibNumberArray,
+  readPdfLibText,
+  toUint8Array,
+} from './pdfLibValueReaders.js';
+import {
   PDF_COUNTER_METADATA_KEY,
   PDF_COUNTER_SUBJECT,
   parsePdfCounterMetadata,
@@ -465,123 +475,6 @@ function convertAutoCadShxTextToFabricProxy(annotation, viewport, scale = 1) {
     pdfAnnotationType: 'AutoCAD SHX Text',
     layer: 'pdf-annotations'
   };
-}
-
-function toUint8Array(bytesLike) {
-  if (!bytesLike) return null;
-
-  if (bytesLike instanceof Uint8Array) {
-    return bytesLike;
-  }
-
-  if (bytesLike instanceof ArrayBuffer) {
-    return new Uint8Array(bytesLike);
-  }
-
-  if (ArrayBuffer.isView(bytesLike)) {
-    return new Uint8Array(bytesLike.buffer, bytesLike.byteOffset, bytesLike.byteLength);
-  }
-
-  return null;
-}
-
-function readPdfLibNumber(value) {
-  if (!value) return null;
-
-  try {
-    if (typeof value.asNumber === 'function') {
-      const numeric = value.asNumber();
-      return Number.isFinite(numeric) ? numeric : null;
-    }
-  } catch {
-    // ignore and fall back
-  }
-
-  const parsed = Number(String(value));
-  return Number.isFinite(parsed) ? parsed : null;
-}
-
-function readPdfLibNumberArray(value) {
-  if (!value || typeof value.asArray !== 'function') return null;
-
-  const arr = value.asArray();
-  if (!Array.isArray(arr) || arr.length === 0) return null;
-
-  const numbers = arr
-    .map((item) => readPdfLibNumber(item))
-    .filter((item) => Number.isFinite(item));
-
-  return numbers.length === arr.length ? numbers : null;
-}
-
-function readPdfLibText(value) {
-  if (!value) return null;
-
-  try {
-    if (typeof value.decodeText === 'function') {
-      const decoded = value.decodeText();
-      return typeof decoded === 'string' && decoded.length > 0 ? decoded : null;
-    }
-  } catch {
-    // ignore and fall back
-  }
-
-  const str = String(value || '').trim();
-  return str.length > 0 ? str : null;
-}
-
-function normalizePdfNameToken(rawName) {
-  if (typeof rawName !== 'string') return null;
-  const trimmed = rawName.trim();
-  if (!trimmed) return null;
-  return trimmed.startsWith('/') ? trimmed.slice(1) : trimmed;
-}
-
-function readPdfLibNameArray(value) {
-  if (!value || typeof value.asArray !== 'function') return null;
-
-  const arr = value.asArray();
-  if (!Array.isArray(arr) || arr.length === 0) return null;
-
-  const names = arr
-    .map((item) => normalizePdfNameToken(readPdfLibText(item)))
-    .filter(Boolean);
-
-  return names.length === arr.length ? names : null;
-}
-
-function readPdfLibDashArray(value) {
-  if (!value || typeof value.asArray !== 'function') return null;
-
-  const arr = value.asArray();
-  if (!Array.isArray(arr) || arr.length === 0) return null;
-
-  const first = arr[0];
-  if (first && typeof first.asArray === 'function') {
-    return readPdfLibNumberArray(first);
-  }
-
-  const numbers = arr
-    .map((item) => readPdfLibNumber(item))
-    .filter((item) => Number.isFinite(item));
-
-  return numbers.length === arr.length ? numbers : null;
-}
-
-function normalizePdfLineEndings(lineEndings) {
-  if (!lineEndings) return null;
-
-  const raw = Array.isArray(lineEndings) ? lineEndings : [lineEndings];
-  const normalized = raw
-    .map((ending) => normalizePdfNameToken(typeof ending === 'string' ? ending : String(ending || '')))
-    .filter(Boolean);
-
-  if (normalized.length === 0) return null;
-  if (normalized.length === 1) {
-    return [normalized[0], 'None'];
-  }
-
-  return [normalized[0], normalized[1]];
 }
 
 // UX 2026-04-21: Cloud-edge path builder for revision-cloud shapes imported

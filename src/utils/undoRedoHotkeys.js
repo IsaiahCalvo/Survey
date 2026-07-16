@@ -42,3 +42,16 @@ export const isRedoKeyEvent = (event) => {
 export const isUndoRedoKeyEvent = (event) => (
   isUndoKeyEvent(event) || isRedoKeyEvent(event)
 );
+
+/** True when a matched undo/redo shortcut must not execute in PDFViewer. */
+export const isUndoRedoBlocked = (doc) => {
+  if (!doc) return false;
+  if (doc.body?.getAttribute('data-readonly') === 'true') return true;
+  if (typeof doc.querySelector === 'function' && doc.querySelector('[data-region-selection-ui="true"]')) return true;
+  const active = doc.activeElement;
+  return Boolean(active && (
+    active.tagName === 'INPUT'
+    || active.tagName === 'TEXTAREA'
+    || active.isContentEditable
+  ));
+};
