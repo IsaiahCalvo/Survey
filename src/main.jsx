@@ -385,8 +385,9 @@ if (import.meta.env.DEV) {
 
   const spike = params.get('spike');
 
-  // Canonical PDF.js reference demo. Performance mode lives inside this route so
-  // product parity and benchmark coverage cannot drift into separate viewers.
+  // TEMPORARY DEVELOPMENT REFERENCE (KAL-371). Keep this route inside the DEV
+  // guard so it never ships to customers. Remove it after Isaiah approves that
+  // production matches or beats the PDF.js demo.
   if (!devRouteActive && spike === 'features') {
     devRouteActive = true;
     import('./prototype/FeatureSpike').then(({ default: FeatureSpike }) => {

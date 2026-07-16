@@ -4,13 +4,22 @@ import { readFile } from 'node:fs/promises';
 import { createSpikeLog } from '../src/prototype/spikeLogger.js';
 
 test('the feature demo is the only PDF.js spike route and owns performance mode', async () => {
-  const [mainSource, featureSource] = await Promise.all([
+  const [mainSource, featureSource, notesSource] = await Promise.all([
     readFile(new URL('../src/main.jsx', import.meta.url), 'utf8'),
     readFile(new URL('../src/prototype/FeatureSpike.jsx', import.meta.url), 'utf8'),
+    readFile(new URL('../src/prototype/NOTES.md', import.meta.url), 'utf8'),
   ]);
 
   assert.match(mainSource, /spike === 'features'/);
   assert.doesNotMatch(mainSource, /spike === '(?:renderer|perfgate)'/);
+  const devGuardStart = mainSource.indexOf('if (import.meta.env.DEV) {');
+  const demoRoute = mainSource.indexOf("spike === 'features'");
+  const devGuardEnd = mainSource.indexOf('// Recovery/confirm links');
+  assert.ok(devGuardStart >= 0 && demoRoute > devGuardStart && demoRoute < devGuardEnd);
+  assert.match(mainSource, /TEMPORARY DEVELOPMENT REFERENCE \(KAL-371\)/);
+  assert.match(notesSource, /Temporary Development Reference/);
+  assert.match(notesSource, /Linear KAL-371/);
+  assert.doesNotMatch(notesSource, /Permanent Reference/);
   assert.match(featureSource, /data-testid="performance-mode-toggle"/);
   assert.match(featureSource, /data-testid="performance-gate"/);
   assert.match(featureSource, /mode', 'performance'/);

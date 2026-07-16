@@ -1,9 +1,12 @@
-# PDF.js Feature Demo - Permanent Reference
+# PDF.js Feature Demo - Temporary Development Reference
 
-Do not delete `src/prototype/` or the `?spike=features` route in `src/main.jsx`.
-This is the single gold-standard reference and regression surface for the app's
-owned PDF.js renderer and Canvas2D annotation layer. It runs without auth,
-Supabase, or the production viewer lifecycle.
+This demo is tracked by Linear KAL-371. It is a temporary comparison target,
+not customer-facing product UI. Keep it until Isaiah physically confirms that
+the production PDF experience matches or beats it, then remove it.
+
+The route must remain inside the `import.meta.env.DEV` guard in `src/main.jsx`.
+The production build runs `scripts/assert-no-pdfjs-demo-in-dist.mjs` and fails if
+demo code appears in the customer bundle.
 
 ## Run
 
