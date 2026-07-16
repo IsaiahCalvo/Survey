@@ -383,30 +383,11 @@ if (import.meta.env.DEV) {
     });
   }
 
-  // DEV-ONLY PROTOTYPE: `?spike=renderer` renders the throwaway PDF-renderer
-  // spike (pdf.js vs EmbedPDF) in isolation — no auth, no Supabase, no
-  // Pdfjs. See src/prototype/RendererSpike.jsx + src/prototype/NOTES.md.
   const spike = params.get('spike');
-  if (!devRouteActive && spike === 'renderer') {
-    devRouteActive = true;
-    import('./prototype/RendererSpike').then(({ default: RendererSpike }) => {
-      createRoot(document.getElementById('root')).render(<RendererSpike />);
-    });
-  }
 
-  // DEV-ONLY PROTOTYPE: `?spike=perfgate` renders the Renderer-Ownership Phase 1
-  // perf gate — the owned pdf.js renderer under a heavy synthetic annotation
-  // overlay, with a live fps / worst-frame meter. See src/prototype/PerfGateSpike.jsx.
-  if (!devRouteActive && spike === 'perfgate') {
-    devRouteActive = true;
-    import('./prototype/PerfGateSpike').then(({ default: PerfGateSpike }) => {
-      createRoot(document.getElementById('root')).render(<PerfGateSpike />);
-    });
-  }
-
-  // DEV-ONLY PROTOTYPE: `?spike=features` — troubleshoot the features Pdfjs
-  // still owns (bookmarks, text select/copy, find, links, markup) on the pdf.js
-  // renderer before the cutover. See src/prototype/FeatureSpike.jsx.
+  // TEMPORARY DEVELOPMENT REFERENCE (KAL-371). Keep this route inside the DEV
+  // guard so it never ships to customers. Remove it after Isaiah approves that
+  // production matches or beats the PDF.js demo.
   if (!devRouteActive && spike === 'features') {
     devRouteActive = true;
     import('./prototype/FeatureSpike').then(({ default: FeatureSpike }) => {

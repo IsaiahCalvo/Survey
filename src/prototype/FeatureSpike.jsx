@@ -13,17 +13,21 @@
 // ============================================================================
 import { useCallback, useEffect, useRef, useState } from 'react';
 import PdfjsArm from './PdfjsArm';
+import { useFrameMeter } from './spikeMetrics';
+import { createSpikeLog } from './spikeLogger';
 import { extractPdfOutlineBookmarks } from '../utils/bookmarkOutline';
 import { buildSortableBookmarkTree, BOOKMARK_INDENTATION_WIDTH } from '../sidebar/bookmarkReorderUtils';
 
 const FIXTURES = [
   { label: 'Real package (36pg)', url: '/debug-fixtures/Package%202%20-%20Rev%204%20--%20IC.pdf' },
   { label: 'Stress PDF (120pg)', url: '/debug-fixtures/spike-120-pages.pdf' },
+  { label: 'Large sheet', url: '/debug-fixtures/spike-large-sheet.pdf' },
   { label: 'Annotation test', url: '/debug-fixtures/clickable-link-test.pdf' },
   { label: 'SE-011 (markups)', url: '/debug-fixtures/se011.pdf' },
 ];
 
-const STRESS_DENSITIES = [0, 100, 500, 1000, 2000];
+const STRESS_DENSITIES = [0, 100, 300, 500, 600, 1000, 2000];
+const QUICK_ZOOMS = [['Fit', 'fit'], ['100%', 1], ['400%', 4], ['1600%', 16]];
 
 function editableTarget(target) {
   return target instanceof HTMLInputElement
@@ -76,13 +80,28 @@ export default function FeatureSpike() {
   const [tool, setTool] = useState('pen');
   const [penColor, setPenColor] = useState('#e11d48');
   const [penWidth, setPenWidth] = useState(10);
+  const [textFontSize, setTextFontSize] = useState(16);
   const [eraserWidth, setEraserWidth] = useState(24);
   const [eraseMode, setEraseMode] = useState('partial');
   const [sloppiness, setSloppiness] = useState(0);
   const [stressDensity, setStressDensity] = useState(0);
+  const [performanceMode, setPerformanceMode] = useState(() => (
+    new URLSearchParams(window.location.search).get('mode') === 'performance'
+  ));
   const [pageCount, setPageCount] = useState(0);
   const [viewerMetrics, setViewerMetrics] = useState({ zoomPct: 100, mounted: 0 });
   const [annotationMetrics, setAnnotationMetrics] = useState({ ms: 0, count: 0, tiled: false });
+  const { perf, bumpActivity } = useFrameMeter(performanceMode);
+  const logRef = useRef(null);
+  if (!logRef.current) logRef.current = createSpikeLog();
+  const performanceLog = logRef.current;
+  const [logCount, setLogCount] = useState(0);
+  const [savedLogMessage, setSavedLogMessage] = useState('');
+  const perfRef = useRef(perf);
+  const zoomRef = useRef(100);
+  const benchmarkMetricsRef = useRef(viewerMetrics);
+  const cursorRef = useRef({ x: 0, y: 0 });
+  const lastActivityRef = useRef(-1e9);
   const viewerMetricTimerRef = useRef(0);
   const viewerMetricPendingRef = useRef(null);
   const annotationMetricTimerRef = useRef(0);
@@ -99,6 +118,161 @@ export default function FeatureSpike() {
   const revokePrev = () => { if (objUrlRef.url) { URL.revokeObjectURL(objUrlRef.url); objUrlRef.url = null; } };
   useEffect(() => () => revokePrev(), []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  useEffect(() => { perfRef.current = perf; }, [perf]);
+
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    if (performanceMode) url.searchParams.set('mode', 'performance');
+    else url.searchParams.delete('mode');
+    window.history.replaceState(window.history.state, '', url);
+  }, [performanceMode]);
+
+  useEffect(() => {
+    if (!performanceMode) return;
+    const fileKind = file.src.startsWith('blob:') ? 'local desktop' : 'fixture';
+    performanceLog.setContext({ file: file.name, fileKind });
+    performanceLog.event('file', { file: file.name, fileKind });
+    setLogCount(performanceLog.count());
+  }, [file.key, performanceLog, performanceMode]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (!performanceMode) return;
+    performanceLog.event('config', {
+      stress: stressDensity > 0,
+      shapesPerPage: stressDensity,
+    });
+    setLogCount(performanceLog.count());
+  }, [performanceLog, performanceMode, stressDensity]);
+
+  useEffect(() => {
+    if (!performanceMode) return undefined;
+    let frame;
+    let previous = performance.now();
+    const tick = (now) => {
+      const gap = now - previous;
+      previous = now;
+      if (gap > 33 && now - lastActivityRef.current < 1200) {
+        performanceLog.event('long-frame', { ms: Math.round(gap), zoomPct: zoomRef.current });
+        setLogCount(performanceLog.count());
+      }
+      frame = requestAnimationFrame(tick);
+    };
+    frame = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(frame);
+  }, [performanceLog, performanceMode]);
+
+  useEffect(() => {
+    if (!performanceMode) return undefined;
+    const gesture = { current: null };
+    let flushTimer = null;
+    const flush = () => {
+      const current = gesture.current;
+      gesture.current = null;
+      if (!current?.ticks) return;
+      const durationSeconds = Math.max(0.001, (current.lastAt - current.startedAt) / 1000);
+      performanceLog.gesture({
+        cursorX: current.cursorX,
+        cursorY: current.cursorY,
+        ticks: current.ticks,
+        durationS: Number(durationSeconds.toFixed(2)),
+        ticksPerSec: Math.round(current.ticks / durationSeconds),
+        deltaPerSec: Math.round(current.totalDeltaY / durationSeconds),
+        startZoomPct: current.startZoom,
+        endZoomPct: zoomRef.current,
+        zoomPctPerSec: Math.round((zoomRef.current - current.startZoom) / durationSeconds),
+        worstFrameMs: Math.round(current.worst),
+        stress: stressDensity > 0,
+        shapesPerPage: stressDensity,
+      });
+      setLogCount(performanceLog.count());
+    };
+    const onMove = (event) => {
+      lastActivityRef.current = performance.now();
+      bumpActivity();
+      cursorRef.current = { x: Math.round(event.clientX), y: Math.round(event.clientY) };
+    };
+    const onWheel = (event) => {
+      lastActivityRef.current = performance.now();
+      bumpActivity();
+      if (!(event.ctrlKey || event.metaKey)) return;
+      const now = performance.now();
+      if (!gesture.current) {
+        gesture.current = {
+          ticks: 0,
+          totalDeltaY: 0,
+          startedAt: now,
+          lastAt: now,
+          startZoom: zoomRef.current,
+          cursorX: Math.round(event.clientX),
+          cursorY: Math.round(event.clientY),
+          worst: 0,
+        };
+      }
+      gesture.current.ticks += 1;
+      gesture.current.totalDeltaY += event.deltaY;
+      gesture.current.lastAt = now;
+      gesture.current.worst = Math.max(gesture.current.worst, perfRef.current.worstFrame || 0);
+      if (flushTimer) clearTimeout(flushTimer);
+      flushTimer = setTimeout(flush, 220);
+    };
+    window.addEventListener('pointermove', onMove, { passive: true });
+    window.addEventListener('wheel', onWheel, { passive: true });
+    return () => {
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('wheel', onWheel);
+      if (flushTimer) clearTimeout(flushTimer);
+    };
+  }, [bumpActivity, performanceLog, performanceMode, stressDensity]);
+
+  useEffect(() => {
+    if (!performanceMode) return undefined;
+    const interval = setInterval(() => {
+      if (performance.now() - lastActivityRef.current > 1200) return;
+      const metrics = benchmarkMetricsRef.current;
+      performanceLog.sample({
+        zoomPct: zoomRef.current,
+        cursorX: cursorRef.current.x,
+        cursorY: cursorRef.current.y,
+        fps: perfRef.current.fps,
+        worstFrameMs: perfRef.current.worstFrame,
+        mounted: metrics.mounted,
+        rasterMs: metrics.rasterMs,
+        clamped: metrics.clamped,
+      });
+      setLogCount(performanceLog.count());
+    }, 250);
+    return () => clearInterval(interval);
+  }, [performanceLog, performanceMode]);
+
+  const savePerformanceLog = useCallback(async () => {
+    try {
+      const savedPath = await performanceLog.saveToServer();
+      setSavedLogMessage(`saved to ${savedPath}`);
+    } catch {
+      const filename = performanceLog.save();
+      setSavedLogMessage(`downloaded ${filename}`);
+    }
+    setTimeout(() => setSavedLogMessage(''), 6000);
+  }, [performanceLog]);
+
+  useEffect(() => {
+    if (!performanceMode) return undefined;
+    const onKeyDown = (event) => {
+      if ((event.metaKey || event.ctrlKey) && event.shiftKey && event.key.toLowerCase() === 'l') {
+        event.preventDefault();
+        savePerformanceLog();
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [performanceMode, savePerformanceLog]);
+
+  const applyQuickZoom = useCallback((value) => {
+    window.__spikePdfjs?.zoomTo(value === 'fit' ? 'fitw' : value);
+    performanceLog.event('quickzoom', { label: String(value) });
+    setLogCount(performanceLog.count());
+  }, [performanceLog]);
+
   useEffect(() => {
     const onKeyDown = (event) => {
       if (editableTarget(event.target) || event.metaKey || event.ctrlKey || event.altKey) return;
@@ -106,6 +280,7 @@ export default function FeatureSpike() {
       if (key === 'p') setTool('pen');
       else if (key === 'e') setTool('erase');
       else if (key === 'v') setTool('select');
+      else if (key === 't') setTool('text');
       else return;
       event.preventDefault();
     };
@@ -119,6 +294,8 @@ export default function FeatureSpike() {
   }, []);
 
   const onViewerMetrics = useCallback((metrics) => {
+    benchmarkMetricsRef.current = { ...benchmarkMetricsRef.current, ...metrics };
+    zoomRef.current = metrics.zoomPct ?? zoomRef.current;
     viewerMetricPendingRef.current = metrics;
     if (viewerMetricTimerRef.current) return;
     viewerMetricTimerRef.current = setTimeout(() => {
@@ -146,6 +323,18 @@ export default function FeatureSpike() {
       setAnnotationMetrics({ count, ms, tiled });
     }, 180);
   }, []);
+
+  const onRasterEvent = useCallback((event) => {
+    if (!performanceMode) return;
+    performanceLog.event('raster', event);
+    setLogCount(performanceLog.count());
+  }, [performanceLog, performanceMode]);
+
+  const onZoomPhase = useCallback((phase, data) => {
+    if (!performanceMode) return;
+    performanceLog.event(`zoom-${phase}`, data || {});
+    setLogCount(performanceLog.count());
+  }, [performanceLog, performanceMode]);
 
   const loadFixture = (f) => { revokePrev(); annotationMetricsByPageRef.current.clear(); setTree(null); setBookmarkMsg(''); setPageCount(0); setAnnsByPage({}); setFile((p) => ({ src: f.url, key: p.key + 1, name: f.label })); };
   const loadLocal = (f) => {
@@ -213,7 +402,17 @@ export default function FeatureSpike() {
   }), []);
   const onJump = useCallback((page) => window.__spikePdfjs?.goToPage?.(page), []);
 
-  const C = { panel: '#1c1e21', text: '#9aa0a6', accent: '#3a7afe' };
+  const C = {
+    panel: '#1c1e21',
+    text: '#9aa0a6',
+    accent: '#3a7afe',
+    good: '#30d158',
+    warn: '#ffd60a',
+    bad: '#ff453a',
+    white: '#fff',
+  };
+  const fpsColor = perf.fps >= 55 ? C.good : perf.fps >= 30 ? C.warn : C.bad;
+  const worstColor = perf.worstFrame <= 18 ? C.good : perf.worstFrame <= 33 ? C.warn : C.bad;
 
   return (
     <div className="feature-spike-root" style={{ position: 'fixed', inset: 0, display: 'flex', flexDirection: 'column', background: '#2a2d31', color: '#e8e8e8', fontFamily: 'system-ui, sans-serif' }}>
@@ -228,7 +427,26 @@ export default function FeatureSpike() {
       `}</style>
       {/* top bar */}
       <div className="feature-spike-topbar" style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 14px', background: C.panel, borderBottom: '1px solid #000', flexWrap: 'wrap' }}>
-        <strong style={{ color: '#ffcf5c' }}>🧪 Feature Spike</strong>
+        <strong style={{ color: '#ffcf5c' }}>PDF.js Feature Demo</strong>
+        <button
+          type="button"
+          data-testid="performance-mode-toggle"
+          aria-pressed={performanceMode}
+          onClick={() => setPerformanceMode((enabled) => !enabled)}
+          style={{
+            height: 28,
+            padding: '0 10px',
+            borderRadius: 4,
+            cursor: 'pointer',
+            border: performanceMode ? '1px solid #30d158' : '1px solid #555',
+            background: performanceMode ? '#1f6f36' : '#333',
+            color: '#fff',
+            fontSize: 12,
+            fontWeight: performanceMode ? 650 : 450,
+          }}
+        >
+          Performance {performanceMode ? 'On' : 'Off'}
+        </button>
         <label style={{ cursor: 'pointer', background: C.accent, padding: '5px 10px', borderRadius: 5, fontSize: 13 }}>
           Load PDF…
           <input type="file" accept="application/pdf" style={{ display: 'none' }}
@@ -240,21 +458,23 @@ export default function FeatureSpike() {
             {f.label}
           </button>
         ))}
-        <span className="feature-spike-search" style={{ display: 'flex', alignItems: 'center', gap: 6, marginLeft: 'auto' }}>
-          <input
-            value={searchBox}
-            onChange={(e) => setSearchBox(e.target.value)}
-            onKeyDown={(e) => { if (e.key === 'Enter') runSearch(searchBox); }}
-            placeholder="Find in document…"
-            style={{ background: '#2a2d31', color: '#e8e8e8', border: '1px solid #555', borderRadius: 4, padding: '4px 8px', fontSize: 12, width: 180 }}
-          />
-          <button onClick={() => runSearch(searchBox)} style={{ background: '#333', color: '#ddd', border: '1px solid #555', borderRadius: 4, padding: '4px 9px', cursor: 'pointer', fontSize: 12 }}>Find</button>
-          {matchPages.length > 0 && (
-            <button onClick={nextMatch} style={{ background: '#333', color: '#ddd', border: '1px solid #555', borderRadius: 4, padding: '4px 9px', cursor: 'pointer', fontSize: 12 }}>Next ▾</button>
-          )}
-          <span style={{ fontSize: 11, color: '#9aa0a6', minWidth: 90 }}>{searchInfo}</span>
-        </span>
-        <span className="feature-spike-file-status" style={{ fontSize: 12, opacity: 0.8, maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+        {!performanceMode && (
+          <span className="feature-spike-search" style={{ display: 'flex', alignItems: 'center', gap: 6, marginLeft: 'auto' }}>
+            <input
+              value={searchBox}
+              onChange={(e) => setSearchBox(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') runSearch(searchBox); }}
+              placeholder="Find in document…"
+              style={{ background: '#2a2d31', color: '#e8e8e8', border: '1px solid #555', borderRadius: 4, padding: '4px 8px', fontSize: 12, width: 180 }}
+            />
+            <button onClick={() => runSearch(searchBox)} style={{ background: '#333', color: '#ddd', border: '1px solid #555', borderRadius: 4, padding: '4px 9px', cursor: 'pointer', fontSize: 12 }}>Find</button>
+            {matchPages.length > 0 && (
+              <button onClick={nextMatch} style={{ background: '#333', color: '#ddd', border: '1px solid #555', borderRadius: 4, padding: '4px 9px', cursor: 'pointer', fontSize: 12 }}>Next ▾</button>
+            )}
+            <span style={{ fontSize: 11, color: '#9aa0a6', minWidth: 90 }}>{searchInfo}</span>
+          </span>
+        )}
+        <span className="feature-spike-file-status" style={{ fontSize: 12, opacity: 0.8, marginLeft: performanceMode ? 'auto' : 0, maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
           {file.name} · {status}
         </span>
       </div>
@@ -272,6 +492,7 @@ export default function FeatureSpike() {
           ['pen', 'Pen', 'P'],
           ['erase', 'Erase', 'E'],
           ['select', 'Select', 'V'],
+          ['text', 'Text', 'T'],
         ].map(([value, label, key]) => (
           <button
             key={value}
@@ -306,12 +527,26 @@ export default function FeatureSpike() {
           <output style={{ minWidth: 28 }}>{penWidth}px</output>
         </label>
         <input
-          aria-label="Pen color"
+          aria-label="Pen and text color"
           type="color"
           value={penColor}
           onChange={(event) => setPenColor(event.target.value)}
           style={{ width: 28, height: 24, border: 0, padding: 0, background: 'transparent', cursor: 'pointer' }}
         />
+
+        <label style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          Text
+          <input
+            aria-label="Text size"
+            type="range"
+            min="8"
+            max="48"
+            value={textFontSize}
+            onChange={(event) => setTextFontSize(Number(event.target.value))}
+            style={{ width: 72 }}
+          />
+          <output style={{ minWidth: 28 }}>{textFontSize}px</output>
+        </label>
 
         <label style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
           Eraser
@@ -370,41 +605,46 @@ export default function FeatureSpike() {
           {viewerMetrics.zoomPct || 100}% · {viewerMetrics.mounted || 0} pages · {viewerMetrics.annotationCount || 0} visible · {annotationMetrics.ms || 0}ms
           {stressDensity && pageCount ? ` · ${(stressDensity * pageCount).toLocaleString()} virtual` : ''}
           {annotationMetrics.tiled ? ' · tiled' : ''}
+          {performanceMode ? ` · ${perf.fps} fps · ${perf.worstFrame}ms worst` : ''}
         </span>
       </div>
 
       {/* body: bookmark panel + viewer */}
       <div style={{ flex: 1, display: 'flex', minHeight: 0 }}>
-        <div className="feature-spike-bookmarks" style={{ width: 280, background: '#202327', borderRight: '1px solid #000', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
-          <div style={{ padding: '8px 12px', borderBottom: '1px solid #000', fontSize: 12, color: C.text, display: 'flex', alignItems: 'center', gap: 6 }}>
-            <strong style={{ color: '#dfe2e6' }}>Bookmarks</strong>
-            <span style={{ marginLeft: 'auto', fontSize: 11 }}>{bookmarkMsg}</span>
+        {!performanceMode && (
+          <div className="feature-spike-bookmarks" style={{ width: 280, background: '#202327', borderRight: '1px solid #000', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+            <div style={{ padding: '8px 12px', borderBottom: '1px solid #000', fontSize: 12, color: C.text, display: 'flex', alignItems: 'center', gap: 6 }}>
+              <strong style={{ color: '#dfe2e6' }}>Bookmarks</strong>
+              <span style={{ marginLeft: 'auto', fontSize: 11 }}>{bookmarkMsg}</span>
+            </div>
+            <div style={{ flex: 1, overflow: 'auto', padding: 4 }}>
+              {tree === null ? (
+                <div style={{ padding: 12, color: C.text, fontSize: 12 }}>Loading outline…</div>
+              ) : tree.length === 0 ? (
+                <div style={{ padding: 12, color: C.text, fontSize: 12 }}>No bookmarks found. Try a PDF with an outline.</div>
+              ) : (
+                tree.map((node) => (
+                  <BookmarkNode key={node.id} node={node} depth={0} collapsed={collapsed} onToggle={onToggle} onJump={onJump} />
+                ))
+              )}
+            </div>
           </div>
-          <div style={{ flex: 1, overflow: 'auto', padding: 4 }}>
-            {tree === null ? (
-              <div style={{ padding: 12, color: C.text, fontSize: 12 }}>Loading outline…</div>
-            ) : tree.length === 0 ? (
-              <div style={{ padding: 12, color: C.text, fontSize: 12 }}>No bookmarks found. Try a PDF with an outline.</div>
-            ) : (
-              tree.map((node) => (
-                <BookmarkNode key={node.id} node={node} depth={0} collapsed={collapsed} onToggle={onToggle} onJump={onJump} />
-              ))
-            )}
-          </div>
-        </div>
+        )}
 
         <div style={{ flex: 1, position: 'relative', minWidth: 0 }}>
           <PdfjsArm
             fileSrc={file.src}
             fileKey={file.key}
             editMode
-            textSelectable
-            showLinks
-            showForms
-            searchQuery={query}
+            textSelectable={!performanceMode}
+            showLinks={!performanceMode}
+            showForms={!performanceMode}
+            searchQuery={performanceMode ? '' : query}
             annotationTool={tool}
             penColor={penColor}
             penWidth={penWidth}
+            textColor={penColor}
+            textFontSize={textFontSize}
             eraserWidth={eraserWidth}
             eraseMode={eraseMode}
             sloppiness={sloppiness}
@@ -415,9 +655,63 @@ export default function FeatureSpike() {
             onAnnotationRender={onAnnotationMetrics}
             onStatus={setStatus}
             onDocument={onDocument}
+            onRasterEvent={onRasterEvent}
+            onZoomPhase={onZoomPhase}
           />
         </div>
       </div>
+
+      {performanceMode && (
+        <div
+          data-testid="performance-gate"
+          style={{
+            display: 'flex', alignItems: 'center', gap: 14, padding: '7px 14px',
+            minHeight: 44, height: 44, boxSizing: 'border-box', overflowX: 'auto',
+            overflowY: 'hidden', whiteSpace: 'nowrap', background: C.panel,
+            borderTop: '1px solid #000', fontSize: 12,
+          }}
+        >
+          <div style={{ display: 'flex', gap: 6 }}>
+            {QUICK_ZOOMS.map(([label, value]) => (
+              <button
+                key={label}
+                type="button"
+                onClick={() => applyQuickZoom(value)}
+                style={{ background: '#333', color: '#ddd', border: '1px solid #555', borderRadius: 4, padding: '4px 9px', cursor: 'pointer' }}
+              >
+                {label}
+              </button>
+            ))}
+            <button
+              type="button"
+              onClick={() => window.__spikePdfjs?.rotate?.()}
+              style={{ background: '#333', color: '#ddd', border: '1px solid #555', borderRadius: 4, padding: '4px 9px', cursor: 'pointer' }}
+            >
+              Rotate
+            </button>
+          </div>
+          <span style={{ color: C.text }}>zoom <strong style={{ color: C.white }}>{viewerMetrics.zoomPct ?? '—'}%</strong></span>
+          <span style={{ color: C.text }}>fps <strong style={{ color: fpsColor }}>{perf.fps}</strong></span>
+          <span style={{ color: C.text }}>worst <strong style={{ color: worstColor }}>{perf.worstFrame}ms</strong></span>
+          <span style={{ color: C.text }}>mounted <strong style={{ color: C.white }}>{viewerMetrics.mounted ?? '—'}</strong></span>
+          <span style={{ color: C.text }}>raster <strong style={{ color: C.white }}>{viewerMetrics.rasterMs ?? '—'}ms</strong></span>
+          {perf.heapMB ? <span style={{ color: C.text }}>heap <strong style={{ color: C.white }}>{perf.heapMB}MB</strong></span> : null}
+          <span style={{ color: C.text }}>
+            gate: fps <strong style={{ color: C.good }}>≥55</strong> · worst <strong style={{ color: C.good }}>≤18ms</strong>
+            {stressDensity ? ` · ${stressDensity.toLocaleString()}/page` : ''}
+          </span>
+          <span style={{ color: C.text }}>log <strong style={{ color: C.white }}>{logCount}</strong></span>
+          {savedLogMessage ? <span style={{ color: C.good }}>{savedLogMessage}</span> : null}
+          <button
+            type="button"
+            onClick={savePerformanceLog}
+            title="Save performance log (Cmd/Ctrl+Shift+L)"
+            style={{ marginLeft: 'auto', background: '#2e7d32', color: '#fff', border: 0, borderRadius: 4, padding: '5px 10px', cursor: 'pointer', fontWeight: 600 }}
+          >
+            Save log
+          </button>
+        </div>
+      )}
     </div>
   );
 }

@@ -21,6 +21,7 @@
 // ============================================================================
 import { useEffect, useRef, useState } from 'react';
 import { PDFName, PDFArray, PDFDict, decodePDFRawStream } from 'pdf-lib';
+import { extractFreeTextAnnotation } from './freeTextAnnotation.js';
 
 const asArr = (v) => (v instanceof PDFArray ? v : null);
 const asDict = (v) => (v instanceof PDFDict ? v : null);
@@ -127,6 +128,11 @@ export function extractInkAnnotations(pdfLibPage, viewport, ctx) {
     const a = asDict(annots.lookup(i));
     if (!a) continue;
     const sub = a.lookup(PDFName.of('Subtype'))?.toString?.();
+    if (sub === '/FreeText') {
+      const textbox = extractFreeTextAnnotation(a, viewport, ctx, i);
+      if (textbox) out.push(textbox);
+      continue;
+    }
     if (!MARKUP.has(sub)) continue;
 
     // Honor the annotation's OWN colors + opacities, like the app's importer:

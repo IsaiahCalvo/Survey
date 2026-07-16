@@ -1,19 +1,24 @@
 // ============================================================================
-// PROTOTYPE — THROWAWAY. Shared metrics for the renderer spike.
+// Performance metrics for the canonical PDF.js feature demo.
 // ============================================================================
-// A single global requestAnimationFrame loop that both arms share, so the
-// fps / worst-frame numbers are measured the SAME way for a fair head-to-head.
+// One requestAnimationFrame loop measures fps and worst-frame time consistently
+// across feature-demo benchmark runs.
 // ============================================================================
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 // Rolling frame-time meter. Returns { fps, worstFrame, heapMB } and a
 // `bumpActivity()` you can call on wheel/scroll to mark a "gesture is active"
 // window (so worst-frame reflects the gesture, not idle 60fps).
-export function useFrameMeter() {
+export function useFrameMeter(enabled = true) {
   const [perf, setPerf] = useState({ fps: 0, worstFrame: 0, heapMB: 0 });
   const activeUntilRef = useRef(0);
 
   useEffect(() => {
+    if (!enabled) {
+      activeUntilRef.current = 0;
+      setPerf({ fps: 0, worstFrame: 0, heapMB: 0 });
+      return undefined;
+    }
     let raf;
     let last = performance.now();
     let worst = 0;
@@ -47,7 +52,7 @@ export function useFrameMeter() {
     };
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
-  }, []);
+  }, [enabled]);
 
   const bumpActivity = useCallback((ms = 600) => {
     activeUntilRef.current = performance.now() + ms;
