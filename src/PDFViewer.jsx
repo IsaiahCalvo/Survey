@@ -26079,19 +26079,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     // 2026-04-29: silenced — repeated on every component mount (every render path with React StrictMode). Re-enable via window.__DIAG_PRINT_PANEL_MOUNT = true.
     if (typeof window !== 'undefined' && window.__DIAG_PRINT_PANEL_MOUNT) console.log('[PrintPanel] mount — binding Cmd/Ctrl+P listeners. electronAPI available:', !!window.electronAPI, 'onPrintPdf available:', !!window.electronAPI?.onPrintPdf);
 
-    // UX 2026-04-24: custom Print Panel temporarily disabled while we
-    // ship the rest of the app. Cmd/Ctrl+P and File → Print now go
-    // straight to the OS native print dialog via Pdfjs's built-in
-    // print module so users get a familiar, working print flow with
-    // their system's own copies / duplex / destination controls. The
-    // panel code is still wired up — flip PRINT_PANEL_ENABLED to true
-    // to bring it back.
-    //
-    // DEFERRED 2026-06-28 (owner): we are NOT revisiting the Print Panel soon.
-    // Both layout variants (J and K) remain in the tree behind the `variant`
-    // toggle. Before any cleanup, the owner must enable this, try J vs K, and
-    // pick a winner; only then remove the loser (removal map:
-    // debug/ponytail-audit/REMAINING-EXECUTION-PLAN.md §6). Tracked: Linear KAL-315.
+    // Native/system printing is the default. Product status and prototype
+    // history are tracked in Linear KAL-295 and KAL-315.
     const PRINT_PANEL_ENABLED = false;
     let printInFlight = false;
     const openPanel = (source, opts = {}) => {
@@ -26568,6 +26557,21 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
             `matchDims=${mW}x${mH}`,
             `orientation=${spec.orientation}`,
             `landscape=${landscape}`,
+            `→ sheet ${paperW}x${paperH}`);
+        } else if (spec.paperSize === 'custom' && spec.customDims
+          && Number.isFinite(spec.customDims.width) && spec.customDims.width > 0
+          && Number.isFinite(spec.customDims.height) && spec.customDims.height > 0) {
+          const cW = spec.customDims.width;
+          const cH = spec.customDims.height;
+          const long = Math.max(cW, cH);
+          const short = Math.min(cW, cH);
+          const landscape = spec.orientation === 'landscape'
+            || (spec.orientation !== 'portrait' && cW > cH);
+          paperW = landscape ? long : short;
+          paperH = landscape ? short : long;
+          console.log('[PrintPanel→App] custom paper:',
+            `customDims=${cW}x${cH}`,
+            `orientation=${spec.orientation}`,
             `→ sheet ${paperW}x${paperH}`);
         } else {
           const dim = PAPER_DIM_INCHES[spec.paperSize] || [8.5, 11];
@@ -27322,10 +27326,7 @@ ${pageBlocks}
           note before Submit. Lives here so it renders above every floating
           UI including the context menu below. */}
       <SaveLogBanner />
-      {/* UX 2026-04-23: custom Print Panel — replaces the OS print dialog and
-          Pdfjs's built-in print flow. Non-destructive: close/cancel
-          discards settings, Print fires to the selected printer. A temporary
-          J ↔ K variant toggle lives in its titlebar while we compare layouts. */}
+      {/* Hidden custom print panel implementation. */}
       <PrintPanel
         open={printPanelOpen}
         onClose={() => setPrintPanelOpen(false)}
