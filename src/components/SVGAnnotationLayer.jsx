@@ -510,7 +510,18 @@ const SVGAnnotationLayer = memo(({
     selectAnnotation(pendingSelection.annotationIndex, false);
   }, [pendingSelection, pageNumber, selectAnnotation, selectAnnotations, deselectAll]);
 
+  // UX: skip the initial-mount run of this clear-token effect. The token is a
+  // monotonic counter that is almost always already nonzero from an earlier
+  // context change, so a freshly-mounted layer would otherwise run deselectAll
+  // on mount. Post-a3380bbf the layer remounts on the pan → select tool switch
+  // (canvas presentation → svg-edit), and that mount happens in the SAME commit
+  // that applies the pan-quick-click pendingSelection — the mount-time clear ran
+  // AFTER the pendingSelection effect and swallowed the selection. Only react to
+  // real token INCREMENTS after mount (region open/close, context-key change,
+  // pdf change), never to the mount-time value.
+  const mountedSelectionClearTokenRef = useRef(selectionClearToken);
   useLayoutEffect(() => {
+    if (selectionClearToken === mountedSelectionClearTokenRef.current) return;
     if (!selectionClearToken) return;
     deselectAll();
     setSelectedSurveyMarkerId(null);

@@ -28739,6 +28739,12 @@ ${pageBlocks}
                                   annotationRevision={annotationRevision}
                                   calloutRevision={calloutRevision}
                                   visible={useCanvasPresentation}
+                                  // UX: pan-mode hover glow broadcast — under canvas
+                                  // presentation the overlay paints the blue hover echo
+                                  // the SVG layer would otherwise render.
+                                  hoverAnnotationIndex={pendingSvgHover?.pageNumber === pageNumber
+                                    ? pendingSvgHover.annotationIndex
+                                    : null}
                                 />
                               )}
                               {pageRegions && pageRegions.length > 0 && !(showRegionSelection && regionSelectionPage === pageNumber) && (() => {

@@ -12,6 +12,16 @@
  * annotation elements on the page by bounding rect.
  */
 
+import {
+  getAnnotationHitSource,
+  resolveGeometryHitAtPagePoint,
+} from './annotationGeometryHitSource.js';
+
+// Screen-pixel slop for the geometry fallback, converted to page units at the
+// current zoom. Mirrors the ~6px widened invisible hit targets the SVG layer
+// uses so pan/right-click hits feel the same as select-tool hits.
+const GEOMETRY_HIT_TOLERANCE_PX = 6;
+
 export function resolveAnnotationAt(e) {
   let pageNumber = null;
   let annotationIndex = null;
@@ -219,6 +229,47 @@ export function resolveAnnotationAt(e) {
         console.log(`[HitTest pan-svg-fallback] page=${pageNumber} wrappers=${wrappers.length} inspected=${inspected} result=${annotationIndex != null ? `annotation:${annotationIndex}` : calloutId ? `callout:${calloutId}` : isCounter ? 'counter' : 'none'} cursor=(${Math.round(e.clientX)},${Math.round(e.clientY)})`);
       } catch {
         /* ignore */
+      }
+    }
+  }
+
+  // Canvas-presentation fallback (post-a3380bbf): under pan / drawing /
+  // eraser / text tools the SVG layer — and every [data-diag-svg-wrapper]
+  // element the walks above rely on — is unmounted; annotations are pixels
+  // on the LightweightAnnotationOverlay canvas. Resolve hits by pure
+  // geometry against the annotation data the overlay registers per page.
+  // The surface-rect containment check doubles as the off-page guard: a
+  // sidebar thumbnail resolves a pageNumber, but the cursor is outside the
+  // main-viewer surface for that page, so no hit is produced.
+  if (pageNumber != null && annotationIndex == null && !calloutId && !isCounter) {
+    const source = getAnnotationHitSource(pageNumber);
+    let data = null;
+    try {
+      data = source ? source() : null;
+    } catch {
+      data = null;
+    }
+    const surfaceRect = data?.surfaceEl?.getBoundingClientRect?.();
+    if (data && surfaceRect && surfaceRect.width > 0 && surfaceRect.height > 0
+      && Number(data.pageWidth) > 0 && Number(data.pageHeight) > 0
+      && e.clientX >= surfaceRect.left && e.clientX <= surfaceRect.right
+      && e.clientY >= surfaceRect.top && e.clientY <= surfaceRect.bottom) {
+      const scaleToPageX = data.pageWidth / surfaceRect.width;
+      const pagePoint = {
+        x: (e.clientX - surfaceRect.left) * scaleToPageX,
+        y: (e.clientY - surfaceRect.top) * (data.pageHeight / surfaceRect.height),
+      };
+      const tolerance = GEOMETRY_HIT_TOLERANCE_PX * scaleToPageX;
+      const geometryHit = resolveGeometryHitAtPagePoint(pagePoint, data, tolerance);
+      if (geometryHit && geometryHit.calloutId != null) {
+        calloutId = geometryHit.calloutId;
+      } else if (geometryHit && geometryHit.annotationIndex != null) {
+        annotationIndex = geometryHit.annotationIndex;
+      }
+      if (typeof window !== 'undefined' && window.__DIAG_HIT_TEST) {
+        try {
+          console.log(`[HitTest geometry-fallback] page=${pageNumber} items=${data.items?.length ?? 0} callouts=${data.callouts?.length ?? 0} pagePoint=(${pagePoint.x.toFixed(1)},${pagePoint.y.toFixed(1)}) tol=${tolerance.toFixed(2)} result=${annotationIndex != null ? `annotation:${annotationIndex}` : calloutId ? `callout:${calloutId}` : 'none'}`);
+        } catch { /* ignore */ }
       }
     }
   }

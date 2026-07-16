@@ -10,8 +10,10 @@ import {
   paintAnnotationCanvas,
 } from '../utils/annotationCanvasPainter.js';
 import { calculateAnnotationDetailTile } from '../utils/annotationDetailTile.js';
+import { registerAnnotationHitSource } from '../utils/annotationGeometryHitSource.js';
 import { isAnnotationVisibleInContext } from '../utils/annotationVisibilityRules';
 import { projectPaperInkForPresentation } from '../utils/paperInkPresentation.js';
+import { getAnnotationBBox } from '../utils/svgBoundingBox.js';
 
 const EMPTY_ARR = [];
 const WORKER_OBJECT_THRESHOLD = 500;
@@ -21,6 +23,49 @@ const PAN_START_EVENT = 'survey-pdfjs-pan-start';
 const PAN_END_EVENT = 'survey-pdfjs-pan-end';
 const ZOOM_INTERACTION = 1;
 const PAN_INTERACTION = 2;
+
+// UX: pan-mode hover glow under canvas presentation. Matches the SVG layer's
+// hover affordance (#4a90e2 echo behind the shape) by repainting the hovered
+// object as a widened translucent blue clone through the same painter —
+// no SVG DOM, one object, repaints only when the hovered target changes.
+const HOVER_GLOW_COLOR = '#4a90e2';
+const HOVER_BBOX_ECHO_TYPES = new Set(['group', 'textbox', 'text', 'i-text']);
+
+const buildHoverEchoObject = (source) => {
+  if (!source) return null;
+  const type = String(source.type || '').toLowerCase();
+  // Text + group shapes: the painter would repaint their content (glyphs /
+  // children keep their own styles), which reads as a ghost duplicate, not a
+  // glow. Echo their bounding box instead — same affordance the SVG layer's
+  // text hover uses.
+  if (HOVER_BBOX_ECHO_TYPES.has(type)) {
+    const bbox = getAnnotationBBox(source);
+    if (!bbox || !(bbox.width > 0) || !(bbox.height > 0)) return null;
+    return {
+      type: 'rect',
+      left: bbox.left,
+      top: bbox.top,
+      width: bbox.width,
+      height: bbox.height,
+      fill: 'rgba(74, 144, 226, 0.12)',
+      stroke: HOVER_GLOW_COLOR,
+      strokeWidth: 2,
+      opacity: 0.9,
+      scaleX: 1,
+      scaleY: 1,
+      angle: 0,
+    };
+  }
+  return {
+    ...source,
+    stroke: HOVER_GLOW_COLOR,
+    fill: 'transparent',
+    opacity: 0.4,
+    strokeWidth: Math.max(6, (Number(source.strokeWidth) || 2) + 4),
+    strokeDashArray: null,
+    shadow: null,
+  };
+};
 
 const paintPayloadToCanvas = (canvas, payload, renderer = 'main') => {
   if (!canvas || !payload) return false;
@@ -101,9 +146,11 @@ const LightweightAnnotationOverlay = memo(({
   annotationRevision = null,
   calloutRevision = null,
   onRenderReady = null,
+  hoverAnnotationIndex = null,
 }) => {
   const overlayRef = useRef(null);
   const canvasRef = useRef(null);
+  const hoverCanvasRef = useRef(null);
   const detailCanvasRef = useRef(null);
   const detailTileRef = useRef(null);
   const renderViewportRef = useRef(null);
@@ -152,6 +199,52 @@ const LightweightAnnotationOverlay = memo(({
     showSurveyPanel,
     spaces,
   ]);
+
+  // Geometry hit source for resolveAnnotationAt (annotationHitTest.js).
+  // Under canvas presentation there is no per-annotation DOM, so pan-mode
+  // hover/quick-click and the right-click dispatcher resolve hits from this
+  // data instead. Items keep their ORIGINAL annotations.objects indices —
+  // the contract pendingSvgSelection / data-annotation-index consumers
+  // expect. Raw objects (not the paper-ink presentation projection) go to
+  // the hit test: geometryHitTest understands both stroked-spine and
+  // filled-outline path forms. Reads props through a ref so the source
+  // registers once per page and never adds per-render work.
+  const hitSourceStateRef = useRef(null);
+  hitSourceStateRef.current = {
+    annotations,
+    callouts,
+    visibilityContext,
+    pageWidth: safeWidth,
+    pageHeight: safeHeight,
+  };
+  useEffect(() => registerAnnotationHitSource(pageNumber, () => {
+    const state = hitSourceStateRef.current;
+    const surfaceEl = overlayRef.current;
+    if (!state || !surfaceEl) return null;
+    const objects = Array.isArray(state.annotations?.objects) ? state.annotations.objects : [];
+    const items = [];
+    for (let i = 0; i < objects.length; i++) {
+      const object = objects[i];
+      // Same exclusions the painter applies: legacy survey-marker rects
+      // (annotationId) render from surveyMarkers state, and hidden
+      // annotations are not hit targets.
+      if (!object || object.annotationId) continue;
+      if (!isAnnotationVisibleInContext({ annotation: object, ...state.visibilityContext })) continue;
+      items.push({ obj: object, index: i });
+    }
+    const pageCallouts = (Array.isArray(state.callouts) ? state.callouts : []).filter((callout) => (
+      callout
+      && Number(callout.pageNumber) === Number(pageNumber)
+      && isAnnotationVisibleInContext({ annotation: callout, ...state.visibilityContext })
+    ));
+    return {
+      surfaceEl,
+      pageWidth: state.pageWidth,
+      pageHeight: state.pageHeight,
+      items,
+      callouts: pageCallouts,
+    };
+  }), [pageNumber]);
 
   const surveyMarkerObjects = useMemo(() => surveyMarkers
     .filter((marker) => marker && isAnnotationVisibleInContext({
@@ -500,6 +593,57 @@ const LightweightAnnotationOverlay = memo(({
     };
   }, [hasRenderablePreview, safeScale]);
 
+  // Pan-mode hover glow: paint the hovered annotation's blue echo on the
+  // dedicated low-z canvas. Only meaningful while the canvas presentation is
+  // the visual truth — under SVG presentation the SVG layer draws its own
+  // hover chrome. Repaints only when the hovered target (or page geometry)
+  // changes; nothing runs per-frame.
+  const hoverObj = (visible && hoverAnnotationIndex != null)
+    ? (annotations?.objects?.[hoverAnnotationIndex] || null)
+    : null;
+  useLayoutEffect(() => {
+    const canvas = hoverCanvasRef.current;
+    if (!canvas) return;
+    const context = canvas.getContext('2d');
+    const hide = () => {
+      if (canvas.style.display !== 'none') {
+        context?.clearRect(0, 0, canvas.width, canvas.height);
+        canvas.style.display = 'none';
+      }
+    };
+    if (!context || !hoverObj) {
+      hide();
+      return;
+    }
+    const echo = buildHoverEchoObject(projectPaperInkForPresentation(hoverObj));
+    if (!echo) {
+      hide();
+      return;
+    }
+    const devicePixelRatio = typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1;
+    const backingStore = calculateAnnotationCanvasBackingStore({
+      pageWidth: safeWidth,
+      pageHeight: safeHeight,
+      displayScale: safeScale,
+      devicePixelRatio,
+    });
+    if (canvas.width !== backingStore.width) canvas.width = backingStore.width;
+    if (canvas.height !== backingStore.height) canvas.height = backingStore.height;
+    paintAnnotationCanvas(context, {
+      canvasWidth: backingStore.width,
+      canvasHeight: backingStore.height,
+      drawScale: backingStore.drawScale,
+      displayScale: safeScale,
+      pageWidth: safeWidth,
+      pageHeight: safeHeight,
+      offsetX: 0,
+      offsetY: 0,
+      objects: [echo],
+      callouts: [],
+    });
+    canvas.style.display = 'block';
+  }, [hoverObj, safeHeight, safeScale, safeWidth]);
+
   useLayoutEffect(() => () => {
     if (readyRafRef.current) cancelAnimationFrame(readyRafRef.current);
     if (scrollRafRef.current) cancelAnimationFrame(scrollRafRef.current);
@@ -527,6 +671,19 @@ const LightweightAnnotationOverlay = memo(({
         visibility: visible ? 'visible' : 'hidden',
       }}
     >
+      <canvas
+        ref={hoverCanvasRef}
+        data-annotation-hover-echo-canvas={pageNumber}
+        style={{
+          position: 'absolute',
+          left: 0,
+          top: 0,
+          display: 'none',
+          width: '100%',
+          height: '100%',
+          pointerEvents: 'none',
+        }}
+      />
       <canvas
         ref={canvasRef}
         data-annotation-presentation-canvas={pageNumber}
