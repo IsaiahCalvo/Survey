@@ -5,8 +5,27 @@ const path = require('path');
 const fs = require('fs');
 const { exec, spawn } = require('child_process');
 const os = require('os');
+const {
+  allowedExcelOwnerNamesForDirectory,
+  assertAtomicWriteTarget,
+  assertClearableDirectory,
+  createTrustedIpcMain,
+  isAllowedExcelOwnerPath,
+  isAllowedFilesystemPath,
+  isSameRedirectTarget,
+  isSafeDiagnosticFileName,
+  isTrustedAppUrl,
+  parseDialogGrantStore,
+  serializeDialogGrantStore,
+} = require('./electron/securityPolicy.cjs');
 
 const DEV_PORT = process.env.DEV_PORT || '5173';
+const getAppSecurityOptions = () => ({
+  isDevelopment: process.env.NODE_ENV === 'development',
+  devPort: DEV_PORT,
+  appPath: app.getAppPath(),
+});
+const trustedIpcMain = createTrustedIpcMain(ipcMain, getAppSecurityOptions);
 
 // 2026-06-04 — Continuous main-process renderer console capture.
 // The in-page console buffer (window.__consoleLogBuffer in src/main.jsx) lives in
@@ -202,7 +221,7 @@ function setupAutoUpdater(win) {
   });
 }
 
-ipcMain.handle('updater:check', async () => {
+trustedIpcMain.handle('updater:check', async () => {
   if (!autoUpdater) return { ok: false, error: 'updater-unavailable' };
   if (!app.isPackaged) return { ok: false, error: 'dev-mode' };
   try {
@@ -213,7 +232,7 @@ ipcMain.handle('updater:check', async () => {
   }
 });
 
-ipcMain.handle('updater:download', async () => {
+trustedIpcMain.handle('updater:download', async () => {
   if (!autoUpdater) return { ok: false, error: 'updater-unavailable' };
   try {
     await autoUpdater.downloadUpdate();
@@ -223,7 +242,7 @@ ipcMain.handle('updater:download', async () => {
   }
 });
 
-ipcMain.handle('updater:installNow', async () => {
+trustedIpcMain.handle('updater:installNow', async () => {
   if (!autoUpdater) return { ok: false, error: 'updater-unavailable' };
   try {
     autoUpdater.quitAndInstall(false, true);
@@ -238,7 +257,7 @@ ipcMain.handle('updater:installNow', async () => {
 // DevTools, and the keyboard shortcuts back; everyone else sees a clean
 // shipped-app menu. Local NODE_ENV=development always boots in developer
 // mode so day-to-day development stays unaffected.
-ipcMain.handle('developer-mode:set', async (_event, enabled) => {
+trustedIpcMain.handle('developer-mode:set', async (_event, enabled) => {
   const next = process.env.NODE_ENV === 'development' ? true : !!enabled;
   if (next === developerMode) return { ok: true, developerMode };
   developerMode = next;
@@ -343,8 +362,16 @@ function createWindow() {
     }
   });
 
-  // Handle OAuth redirects - Supabase redirects back to the app
-  win.webContents.on('will-navigate', (event, navigationUrl) => {
+  // Never let the privileged app renderer become an arbitrary web page. Every
+  // non-app top-level navigation is stopped before the new document can load;
+  // the IPC wrapper below also rejects messages from non-app URLs and subframes.
+  const handleAppNavigation = (event, navigationUrl) => {
+    const securityOptions = getAppSecurityOptions();
+    if (!isTrustedAppUrl(navigationUrl, securityOptions)) {
+      event.preventDefault();
+      return;
+    }
+
     try {
       const parsedUrl = new URL(navigationUrl);
       
@@ -373,10 +400,12 @@ function createWindow() {
         }
       }
     } catch (err) {
-      // If URL parsing fails, allow navigation (might be a relative path)
+      event.preventDefault();
       console.warn('Navigation URL parse error:', err);
     }
-  });
+  };
+  win.webContents.on('will-navigate', handleAppNavigation);
+  win.webContents.on('will-redirect', handleAppNavigation);
 
   // Handle navigation errors to prevent blank screens
   win.webContents.on('did-fail-load', (event, errorCode, errorDescription, validatedURL) => {
@@ -688,8 +717,8 @@ let chokidar = null;
 // OS dialog (user explicitly chose it).
 //
 // Design:
-//  - dialogAllowedPaths: Set of paths (and their parent dirs) the user has
-//    explicitly chosen via dialog:openFile / dialog:saveFile. Populated by
+//  - dialogAllowedFiles: exact files the user explicitly chose via
+//    dialog:openFile / dialog:saveFile. Populated by
 //    recordDialogPath() immediately after each dialog resolves.
 //  - buildAllowedRoots(): static trusted directories computed once per call
 //    (returns fresh strings; safe to call multiple times).
@@ -697,26 +726,25 @@ let chokidar = null;
 //    is not inside any allowed root / dialog path. Call this as the FIRST
 //    statement inside every handler that accepts a renderer-supplied path.
 //
-// Cross-restart trust: dialog-picked paths are persisted to userData and
+// Cross-restart trust: exact dialog-picked files are persisted to userData and
 // reloaded on startup (see loadPersistedDialogPaths below), so a locally-stored
 // Excel the user linked in a prior session — anywhere on disk, not just the
 // CloudStorage/OneDrive roots — stays trusted after an app restart without
 // forcing a fresh dialog pick. Only paths the user actually chose via a dialog
 // are persisted, so this never widens the allowlist to arbitrary renderer input.
 
-/** Paths (and their parent dirs) that the user explicitly picked via a dialog. */
-const dialogAllowedPaths = new Set();
+/** Exact files the user explicitly picked via a native dialog. */
+const dialogAllowedFiles = new Set();
 
 /**
  * Register a user-chosen path so subsequent reads/writes/watches succeed
- * without requiring another dialog. Adds both the resolved path and its
- * parent directory so sibling writes (e.g. .tmp / .bak) are also covered.
+ * without requiring another dialog. This intentionally does not trust the
+ * parent directory or sibling files.
  */
 function recordDialogPath(filePath) {
   if (!filePath || typeof filePath !== 'string') return;
   const resolved = path.resolve(filePath);
-  dialogAllowedPaths.add(resolved);
-  dialogAllowedPaths.add(path.dirname(resolved));
+  dialogAllowedFiles.add(resolved);
   persistDialogPaths();
 }
 
@@ -732,19 +760,17 @@ function dialogAllowStorePath() {
 function persistDialogPaths() {
   const store = dialogAllowStorePath();
   if (!store) return;
-  try { fs.writeFile(store, JSON.stringify([...dialogAllowedPaths]), () => {}); }
+  try {
+    fs.writeFile(store, serializeDialogGrantStore(dialogAllowedFiles), { mode: 0o600 }, () => {});
+  }
   catch (_) { /* best-effort; never crash on persistence */ }
 }
 function loadPersistedDialogPaths() {
   const store = dialogAllowStorePath();
   if (!store) return;
   try {
-    const arr = JSON.parse(fs.readFileSync(store, 'utf8'));
-    if (Array.isArray(arr)) {
-      for (const p of arr) {
-        if (typeof p === 'string') dialogAllowedPaths.add(p);
-      }
-    }
+    const files = parseDialogGrantStore(fs.readFileSync(store, 'utf8'));
+    for (const file of files) dialogAllowedFiles.add(file);
   } catch (_) { /* no store yet, or unreadable — fine */ }
 }
 loadPersistedDialogPaths();
@@ -765,13 +791,17 @@ function buildAllowedRoots() {
   ];
 }
 
+function getDiagnosticsDirectory() {
+  return path.join(app.getPath('userData'), 'Diagnostics', 'TestLogs');
+}
+
 /**
  * Assert that `p` is an allowed filesystem path.
  *
  * Permitted if the resolved path equals or is a child of (using strict
  * path.sep prefix, NOT substring) any of:
  *   1. A static trusted root from buildAllowedRoots()
- *   2. A path in dialogAllowedPaths (user explicitly chose it via a dialog)
+ *   2. An exact file in dialogAllowedFiles (user explicitly chose it via a dialog)
  *
  * Throws an Error with .code='EPERM' on rejection.
  *
@@ -784,22 +814,12 @@ function assertAllowedPath(p, { forWrite = false } = {}) {
     err.code = 'EPERM';
     throw err;
   }
+  if (isAllowedFilesystemPath(p, {
+    staticRoots: buildAllowedRoots(),
+    dialogFiles: dialogAllowedFiles,
+  })) return;
+
   const resolved = path.resolve(p);
-
-  // Check dialog-chosen paths (exact match or child).
-  for (const allowed of dialogAllowedPaths) {
-    if (resolved === allowed || resolved.startsWith(allowed + path.sep)) {
-      return; // permitted
-    }
-  }
-
-  // Check static trusted roots.
-  for (const root of buildAllowedRoots()) {
-    if (resolved === root || resolved.startsWith(root + path.sep)) {
-      return; // permitted
-    }
-  }
-
   const err = new Error(
     `fs allowlist: path not in allowed roots${forWrite ? ' (write)' : ''}: ${resolved}`
   );
@@ -808,7 +828,7 @@ function assertAllowedPath(p, { forWrite = false } = {}) {
 }
 // ────────────────────────────────────────────────────────────────────────────
 
-ipcMain.handle('dialog:openFile', async (event, options = {}) => {
+trustedIpcMain.handle('dialog:openFile', async (event, options = {}) => {
   const { canceled, filePaths } = await dialog.showOpenDialog({
     title: options.title || 'Open file',
     defaultPath: options.defaultPath,
@@ -847,7 +867,7 @@ ipcMain.handle('dialog:openFile', async (event, options = {}) => {
   }
 });
 
-ipcMain.handle('dialog:saveFile', async (event, { title, defaultPath, filters, data }) => {
+trustedIpcMain.handle('dialog:saveFile', async (event, { title, defaultPath, filters, data }) => {
   const { canceled, filePath } = await dialog.showSaveDialog({
     title,
     defaultPath,
@@ -872,7 +892,7 @@ ipcMain.handle('dialog:saveFile', async (event, { title, defaultPath, filters, d
   }
 });
 
-ipcMain.handle('shell:openPath', async (event, filePath) => {
+trustedIpcMain.handle('shell:openPath', async (event, filePath) => {
   if (typeof filePath !== 'string' || !filePath) {
     return 'Invalid file path';
   }
@@ -897,7 +917,7 @@ ipcMain.handle('shell:openPath', async (event, filePath) => {
   return await shell.openPath(filePath);
 });
 
-ipcMain.handle('shell:openExternal', async (event, url) => {
+trustedIpcMain.handle('shell:openExternal', async (event, url) => {
   // Only open web/mail links externally. All app callers pass http(s) URLs
   // (survey web links, Stripe checkout, the GitHub repo); reject anything else
   // (file:, javascript:, custom schemes) so a crafted URL can't launch them.
@@ -915,7 +935,7 @@ ipcMain.handle('shell:openExternal', async (event, url) => {
   return await shell.openExternal(url);
 });
 
-ipcMain.handle('fs:readFile', async (event, path) => {
+trustedIpcMain.handle('fs:readFile', async (event, path) => {
   assertAllowedPath(path);
   try {
     const data = await fs.promises.readFile(path);
@@ -926,7 +946,7 @@ ipcMain.handle('fs:readFile', async (event, path) => {
   }
 });
 
-ipcMain.handle('fs:writeFile', async (event, { path: filePath, data }) => {
+trustedIpcMain.handle('fs:writeFile', async (event, { path: filePath, data }) => {
   assertAllowedPath(filePath, { forWrite: true });
   try {
     const dir = path.dirname(filePath);
@@ -941,7 +961,7 @@ ipcMain.handle('fs:writeFile', async (event, { path: filePath, data }) => {
   }
 });
 
-ipcMain.handle('fs:appendFile', async (event, { path: filePath, data }) => {
+trustedIpcMain.handle('fs:appendFile', async (event, { path: filePath, data }) => {
   assertAllowedPath(filePath, { forWrite: true });
   try {
     const dir = path.dirname(filePath);
@@ -961,23 +981,37 @@ ipcMain.handle('fs:appendFile', async (event, { path: filePath, data }) => {
 // The old includes('TestLogs') substring check was bypassable (e.g. a path containing
 // "TestLogs" anywhere in it, even in unrelated segments); replaced with the strict
 // allowlist guard per KAL-259.
-ipcMain.handle('fs:clearDir', async (event, dirPath) => {
-  assertAllowedPath(dirPath, { forWrite: true });
+trustedIpcMain.handle('fs:clearDir', async () => {
+  const dirPath = getDiagnosticsDirectory();
+  assertClearableDirectory(dirPath, {
+    clearableDirectories: [getDiagnosticsDirectory()],
+  });
   try {
-    if (fs.existsSync(dirPath)) {
-      fs.rmSync(dirPath, { recursive: true, force: true });
-    }
-    fs.mkdirSync(dirPath, { recursive: true });
-    return { success: true };
+    await fs.promises.rm(dirPath, { recursive: true, force: true });
+    await fs.promises.mkdir(dirPath, { recursive: true });
+    return { success: true, dir: dirPath };
   } catch (error) {
     console.error('Failed to clear directory:', error);
     throw error;
   }
 });
 
+trustedIpcMain.handle('diagnostics:writeFile', async (_event, { name, data }) => {
+  if (!isSafeDiagnosticFileName(name)) {
+    const error = new Error('Invalid diagnostics filename');
+    error.code = 'EPERM';
+    throw error;
+  }
+  const dirPath = getDiagnosticsDirectory();
+  const filePath = path.join(dirPath, name);
+  await fs.promises.mkdir(dirPath, { recursive: true });
+  await fs.promises.writeFile(filePath, Buffer.from(data));
+  return { success: true, path: filePath };
+});
+
 // Diagnostics: full-window screenshot via Electron's native webContents.capturePage().
 // Returns a Node Buffer (PNG bytes) — IPC deserializes it as Uint8Array on the renderer side.
-ipcMain.handle('screenshot:capturePage', async (event) => {
+trustedIpcMain.handle('screenshot:capturePage', async (event) => {
   try {
     const image = await event.sender.capturePage();
     return image.toPNG();
@@ -987,12 +1021,16 @@ ipcMain.handle('screenshot:capturePage', async (event) => {
   }
 });
 
-ipcMain.handle('fs:fileExists', async (event, filePath) => {
+trustedIpcMain.handle('fs:fileExists', async (event, filePath) => {
   try {
     assertAllowedPath(filePath);
   } catch (err) {
-    if (err.code === 'EPERM') return false; // not in allowlist — treat as non-existent
-    throw err;
+    // Local Excel safety checks need only the derived `~$workbook.xlsx` owner
+    // marker. Permit that exact existence probe without granting sibling reads.
+    if (err.code === 'EPERM' && !isAllowedExcelOwnerPath(filePath, dialogAllowedFiles)) {
+      return false; // not in allowlist — treat as non-existent
+    }
+    if (err.code !== 'EPERM') throw err;
   }
   try {
     return fs.existsSync(filePath);
@@ -1001,7 +1039,7 @@ ipcMain.handle('fs:fileExists', async (event, filePath) => {
   }
 });
 
-ipcMain.handle('fs:getFileStats', async (event, filePath) => {
+trustedIpcMain.handle('fs:getFileStats', async (event, filePath) => {
   assertAllowedPath(filePath);
   try {
     const stats = fs.statSync(filePath);
@@ -1016,18 +1054,28 @@ ipcMain.handle('fs:getFileStats', async (event, filePath) => {
   }
 });
 
-ipcMain.handle('os:getHomeDir', async () => {
+trustedIpcMain.handle('os:getHomeDir', async () => {
   const os = require('os');
   return os.homedir();
 });
 
-ipcMain.handle('fs:listDir', async (event, dirPath) => {
-  assertAllowedPath(dirPath);
+trustedIpcMain.handle('fs:listDir', async (event, dirPath) => {
+  let excelOwnerNames = null;
+  try {
+    assertAllowedPath(dirPath);
+  } catch (err) {
+    if (err.code !== 'EPERM') throw err;
+    excelOwnerNames = allowedExcelOwnerNamesForDirectory(dirPath, dialogAllowedFiles);
+    if (excelOwnerNames.length === 0) throw err;
+  }
   try {
     if (!fs.existsSync(dirPath)) {
       return [];
     }
-    return fs.readdirSync(dirPath);
+    const entries = fs.readdirSync(dirPath);
+    if (!excelOwnerNames) return entries;
+    const allowed = new Set(excelOwnerNames.map((name) => name.toLowerCase()));
+    return entries.filter((name) => allowed.has(name.toLowerCase()));
   } catch (error) {
     console.error('Failed to list directory:', error);
     return [];
@@ -1035,9 +1083,10 @@ ipcMain.handle('fs:listDir', async (event, dirPath) => {
 });
 
 // Atomic file write - ensures crash-safe saves by writing to temp file first
-ipcMain.handle('fs:writeFileAtomic', async (event, { path: filePath, data }) => {
+trustedIpcMain.handle('fs:writeFileAtomic', async (event, { path: filePath, data }) => {
   // Guard before any sibling paths (.tmp / .bak) are derived from filePath.
   assertAllowedPath(filePath, { forWrite: true });
+  assertAtomicWriteTarget(filePath, fs);
   const tempPath = filePath + '.tmp';
   const backupPath = filePath + '.bak';
 
@@ -1089,7 +1138,7 @@ ipcMain.handle('fs:writeFileAtomic', async (event, { path: filePath, data }) => 
 });
 
 // File watcher handlers
-ipcMain.handle('fileWatcher:start', async (event, { filePath, watchId }) => {
+trustedIpcMain.handle('fileWatcher:start', async (event, { filePath, watchId }) => {
   assertAllowedPath(filePath);
   try {
     if (!chokidar) {
@@ -1147,7 +1196,7 @@ ipcMain.handle('fileWatcher:start', async (event, { filePath, watchId }) => {
   }
 });
 
-ipcMain.handle('fileWatcher:stop', async (event, watchId) => {
+trustedIpcMain.handle('fileWatcher:stop', async (event, watchId) => {
   try {
     if (fileWatchers.has(watchId)) {
       await fileWatchers.get(watchId).close();
@@ -1163,7 +1212,7 @@ ipcMain.handle('fileWatcher:stop', async (event, watchId) => {
 // UX 2026-04-23: Custom Print Panel — enumerate installed printers for the
 // panel's destination picker. Prefers the modern async API and falls back to
 // the deprecated sync one if the Electron version lacks it.
-ipcMain.handle('print:list-printers', async (event) => {
+trustedIpcMain.handle('print:list-printers', async (event) => {
   try {
     const webContents = event?.sender;
     if (!webContents) return [];
@@ -1184,7 +1233,7 @@ ipcMain.handle('print:list-printers', async (event) => {
 // UX 2026-04-23: Fire the real print job from the renderer's webContents with
 // the Print Panel's options. Runs non-silent by default so the OS print
 // confirmation shows (copies, duplex, pageSize, deviceName all flow through).
-ipcMain.handle('print:job', async (event, options = {}) => {
+trustedIpcMain.handle('print:job', async (event, options = {}) => {
   try {
     const webContents = event?.sender;
     if (!webContents) return { ok: false, error: 'no webContents' };
@@ -1218,7 +1267,7 @@ ipcMain.handle('print:job', async (event, options = {}) => {
 // webContents.print() with the chosen device + options, then closes the
 // hidden window. Skips the OS print dialog entirely so the custom Print
 // Panel acts as the single source of truth for every option.
-ipcMain.handle('print:html-silent', async (event, payload = {}) => {
+trustedIpcMain.handle('print:html-silent', async (event, payload = {}) => {
   const { html, options = {} } = payload || {};
   if (!html || typeof html !== 'string') return { ok: false, error: 'no html' };
   let hidden = null;
@@ -1271,7 +1320,7 @@ ipcMain.handle('print:html-silent', async (event, payload = {}) => {
 // PDF on disk via webContents.printToPDF and prompt the user for a
 // save location. Honors the same per-page @page CSS so mixed paper
 // sizes survive the round-trip.
-ipcMain.handle('print:html-to-pdf', async (event, payload = {}) => {
+trustedIpcMain.handle('print:html-to-pdf', async (event, payload = {}) => {
   const { html, suggestedName = 'Print.pdf', options = {} } = payload || {};
   if (!html || typeof html !== 'string') return { ok: false, error: 'no html' };
   let hidden = null;
@@ -1320,7 +1369,7 @@ ipcMain.handle('print:html-to-pdf', async (event, payload = {}) => {
 // save lands as its own timestamped file tagged with the device (platform +
 // hostname) so Mac / Windows / other-device logs never overwrite each other.
 // Returns { ok, url, error }. Never throws — worst case returns ok:false.
-ipcMain.handle('logs:pushToGithub', async (event, payload = {}) => {
+trustedIpcMain.handle('logs:pushToGithub', async (event, payload = {}) => {
   const { content, fallbackToken } = payload;
   try {
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
@@ -1472,7 +1521,7 @@ ipcMain.handle('logs:pushToGithub', async (event, payload = {}) => {
 // 2026-06-04 — Renderer pulls the continuous main-process console log at
 // Cmd+Shift+L time. This is the robust source of truth: it spans launch through
 // every reload/realm, unlike the in-page buffer which resets on navigation.
-ipcMain.handle('logs:readContinuous', async () => {
+trustedIpcMain.handle('logs:readContinuous', async () => {
   try {
     const txt = await fs.promises.readFile(CONTINUOUS_LOG_PATH, 'utf8');
     return { ok: true, text: txt };
@@ -1481,7 +1530,7 @@ ipcMain.handle('logs:readContinuous', async () => {
   }
 });
 
-ipcMain.handle('logs:saveSnapshot', async (event, payload = {}) => {
+trustedIpcMain.handle('logs:saveSnapshot', async (event, payload = {}) => {
   const MAX_SNAPSHOTS = 20;
   try {
     const startedAt = Date.now();
@@ -1558,11 +1607,11 @@ ipcMain.handle('logs:saveSnapshot', async (event, payload = {}) => {
 // status / signOut. The embedded oauth:openWindow flow below stays as the legacy
 // fallback while this rolls out.
 const { registerMicrosoftAuthIpc } = require('./electron/msalAuthMain.js');
-registerMicrosoftAuthIpc({ ipcMain, app, shell, safeStorage });
+registerMicrosoftAuthIpc({ ipcMain: trustedIpcMain, app, shell, safeStorage });
 
-// OAuth window handler for Microsoft authentication
+// Isolated OAuth window handler for Microsoft and Supabase authentication.
 // Opens a separate window for OAuth flow, captures the redirect, and returns the result
-ipcMain.handle('oauth:openWindow', async (event, { authUrl, redirectUri }) => {
+trustedIpcMain.handle('oauth:openWindow', async (event, { authUrl, redirectUri }) => {
   return new Promise((resolve, reject) => {
     // Validate the auth URL before it's loaded into a BrowserWindow. Only https
     // is allowed — a compromised renderer must not be able to point this window
@@ -1578,6 +1627,16 @@ ipcMain.handle('oauth:openWindow', async (event, { authUrl, redirectUri }) => {
       resolve({ success: false, error: 'invalid-auth-url-protocol' });
       return;
     }
+    try {
+      const parsedRedirect = new URL(redirectUri);
+      if (!['http:', 'https:', 'file:'].includes(parsedRedirect.protocol)) {
+        resolve({ success: false, error: 'invalid-redirect-url-protocol' });
+        return;
+      }
+    } catch (_e) {
+      resolve({ success: false, error: 'invalid-redirect-url' });
+      return;
+    }
     const authWindow = new BrowserWindow({
       width: 500,
       height: 700,
@@ -1590,7 +1649,7 @@ ipcMain.handle('oauth:openWindow', async (event, { authUrl, redirectUri }) => {
       // Make it a child of the main window
       parent: BrowserWindow.fromWebContents(event.sender),
       modal: false,
-      title: 'Sign in to Microsoft',
+      title: 'Sign in',
     });
 
     // Remove menu bar from auth window
@@ -1601,32 +1660,26 @@ ipcMain.handle('oauth:openWindow', async (event, { authUrl, redirectUri }) => {
 
     // Listen for navigation to the redirect URI
     const handleNavigation = (url) => {
-      if (resolved) return;
+      if (resolved) return false;
 
-      // Check if this is the redirect URL
-      if (url.startsWith(redirectUri)) {
+      // Query/hash carry the OAuth response, but the callback's scheme, host,
+      // port, and path must exactly match the renderer-supplied redirect URI.
+      if (isSameRedirectTarget(url, redirectUri)) {
         resolved = true;
-
-        // Extract the hash or query parameters
-        const urlObj = new URL(url);
-        const hash = urlObj.hash;
-        const search = urlObj.search;
-
-        // Close the auth window
         authWindow.close();
-
-        // Return the full redirect URL so MSAL can parse it
-        resolve({ success: true, url: url });
+        resolve({ success: true, url });
+        return true;
       }
+      return false;
     };
 
     // Listen for URL changes
     authWindow.webContents.on('will-navigate', (e, url) => {
-      handleNavigation(url);
+      if (handleNavigation(url)) e.preventDefault();
     });
 
     authWindow.webContents.on('will-redirect', (e, url) => {
-      handleNavigation(url);
+      if (handleNavigation(url)) e.preventDefault();
     });
 
     // Also check after page loads (for hash-based redirects)
@@ -1718,7 +1771,7 @@ app.on('before-quit', (event) => {
 });
 
 // Handle save completion from renderer
-ipcMain.on('app:saveComplete', () => {
+trustedIpcMain.on('app:saveComplete', () => {
   // This is just for logging, actual quit happens via timeout
 });
 

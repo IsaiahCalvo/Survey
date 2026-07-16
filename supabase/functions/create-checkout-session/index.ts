@@ -2,6 +2,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { Stripe } from "https://esm.sh/stripe@14.21.0?target=deno";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.0'
+import { CANONICAL_APP_ORIGIN } from '../_shared/stripeReliability.js';
 
 const corsHeaders = {
     // ⚠️ INTENTIONAL — do NOT tighten to an origin allowlist (false positive if an
@@ -106,9 +107,6 @@ serve(async (req) => {
                 .eq('user_id', user.id);
         }
 
-        // Get origin for redirect URLs
-        const origin = req.headers.get('origin') || 'http://localhost:5173';
-
         // Create checkout session
         const sessionParams: Stripe.Checkout.SessionCreateParams = {
             customer: customerId,
@@ -120,8 +118,8 @@ serve(async (req) => {
                 },
             ],
             mode: 'subscription',
-            success_url: `${origin}/success?session_id={CHECKOUT_SESSION_ID}`,
-            cancel_url: `${origin}/pricing`,
+            success_url: `${CANONICAL_APP_ORIGIN}/success?session_id={CHECKOUT_SESSION_ID}`,
+            cancel_url: `${CANONICAL_APP_ORIGIN}/pricing`,
             metadata: {
                 user_id: user.id,
                 tier: tier,
@@ -154,8 +152,9 @@ serve(async (req) => {
         )
     } catch (error) {
         console.error('Error creating checkout session:', error);
+        const message = error instanceof Error ? error.message : 'Unable to create checkout session';
         return new Response(
-            JSON.stringify({ error: error.message }),
+            JSON.stringify({ error: message }),
             {
                 headers: { ...corsHeaders, 'Content-Type': 'application/json' },
                 status: 200,

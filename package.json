@@ -90,6 +90,7 @@
     "files": [
       "dist/**/*",
       "src/electron-main.js",
+      "src/electron/securityPolicy.cjs",
       "src/preload.js",
       "package.json",
       "build/icon.icns",

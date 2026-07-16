@@ -4479,11 +4479,12 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         // the DOM element table is the fast scan, this is the proof.
         // ============================================================
         try {
-          if (window.electronAPI?.capturePage) {
+          if (window.electronAPI?.capturePage && window.electronAPI?.writeDiagnosticFile) {
             const pngBytes = await window.electronAPI.capturePage();
             if (pngBytes) {
-              const screenshotPath = `/Users/isaiahcalvo/Desktop/Survey-BetaSafeS2/TestLogs/testlog-screenshot-${slot}.png`;
-              await window.electronAPI.writeFile(screenshotPath, pngBytes);
+              const screenshotName = `testlog-screenshot-${slot}.png`;
+              const saved = await window.electronAPI.writeDiagnosticFile(screenshotName, pngBytes);
+              const screenshotPath = saved?.path || screenshotName;
               const sizeBytes = pngBytes.byteLength || pngBytes.length || 0;
               appDebug(`[Diag ${slot}] screenshot saved (${Math.round(sizeBytes / 1024)} KB) -> ${screenshotPath}`);
             }
@@ -8333,20 +8334,18 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   }, [getOverlayLagRecorderDump]);
 
   const handleSaveOverlayLagLog = useCallback(async () => {
-    // Diagnostics sink: writes FLAT files with the prefix "testlog-" directly
-    // into the Survey-BetaSafeS2 directory (no subfolder — sidesteps stale
-    // main.js that lacks auto-mkdir). Uses only the original fs:writeFile IPC
-    // so it works regardless of whether Electron main has been restarted.
-    const BASE = '/Users/isaiahcalvo/Desktop/Survey-BetaSafeS2/TestLogs/testlog';
-    const DIR = '/Users/isaiahcalvo/Desktop/Survey-BetaSafeS2/TestLogs';
+    // Diagnostics sink: main owns one stable userData/Diagnostics/TestLogs
+    // directory in both development and packaged builds. The renderer supplies
+    // only flat filenames, never host paths.
+    const PREFIX = 'testlog';
     const api = window.electronAPI;
     // UX 2026-04-19: loud status so the user knows the click registered
     // even when Electron's IPC path is missing. Previously a missing
     // electronAPI produced a silent console.warn — in a browser window
     // (not the packaged Electron shell) the button appeared dead.
     console.log('[SaveLog] click received — starting export');
-    if (!api?.writeFile) {
-      console.warn('[SaveLog] electronAPI.writeFile unavailable — falling back to browser download');
+    if (!api?.writeDiagnosticFile) {
+      console.warn('[SaveLog] electronAPI.writeDiagnosticFile unavailable — falling back to browser download');
       try {
         const buf = window.__consoleLogBuffer;
         const text = Array.isArray(buf) && buf.length > 0 ? buf.join('\n') : '(no console output captured)';
@@ -8369,20 +8368,20 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     // UX: 2026-04-19 — clear the TestLogs folder first so each click
     // gives a clean snapshot of the current investigation instead of
     // accreting stale files from prior test runs.
-    if (typeof api.clearDir === 'function') {
+    if (typeof api.clearDiagnostics === 'function') {
       try {
-        await api.clearDir(DIR);
+        await api.clearDiagnostics();
       } catch (clearErr) {
-        console.warn('[SaveLog] clearDir failed, continuing:', clearErr?.message || clearErr);
+        console.warn('[SaveLog] clearDiagnostics failed, continuing:', clearErr?.message || clearErr);
       }
     }
 
     const written = [];
     const writeSafe = async (suffix, data) => {
-      const fullPath = `${BASE}-${suffix}`;
+      const fileName = `${PREFIX}-${suffix}`;
       try {
-        await api.writeFile(fullPath, data);
-        written.push(fullPath);
+        const result = await api.writeDiagnosticFile(fileName, data);
+        written.push(result?.path || fileName);
       } catch (err) {
         console.error(`[SaveLog] write "${suffix}" failed:`, err?.message || err);
       }
@@ -8412,10 +8411,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     try {
       const ts = new Date().toISOString();
       const header = `===== SaveLog @ ${ts} =====\n`;
-      await api.writeFile(
-        '/Users/isaiahcalvo/Desktop/Survey-BetaSafeS2/1.log',
-        header + consoleText + '\n'
-      );
+      await api.writeDiagnosticFile('1.log', header + consoleText + '\n');
       const lines = Array.isArray(window.__consoleLogBuffer)
         ? window.__consoleLogBuffer.length : 0;
       console.log(`[SaveLog] wrote ${lines} lines to 1.log at ${ts}`);
@@ -8890,12 +8886,12 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 	      }
 
       // After-double-click screenshot — capture right now (Save Log time).
-      if (window.electronAPI?.capturePage && window.electronAPI?.writeFile) {
+      if (window.electronAPI?.capturePage && window.electronAPI?.writeDiagnosticFile) {
         const pngBytes = await window.electronAPI.capturePage();
         if (pngBytes) {
-          const shotPath = `${BASE}-screenshot-callout-after.png`;
-          await window.electronAPI.writeFile(shotPath, pngBytes);
-          written.push(shotPath);
+          const shotName = `${PREFIX}-screenshot-callout-after.png`;
+          const saved = await window.electronAPI.writeDiagnosticFile(shotName, pngBytes);
+          written.push(saved?.path || shotName);
           console.log(`[SaveLog] callout-after screenshot saved (${Math.round((pngBytes.byteLength || pngBytes.length || 0) / 1024)} KB)`);
         }
       }
@@ -8903,7 +8899,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       console.warn('[SaveLog] callout geometry dump failed:', geomErr?.message || geomErr);
     }
 
-    console.log(`[SaveLog] wrote ${written.length} files with prefix ${BASE}-: ${written.map((p) => p.split('/').pop()).join(', ')}`);
+    console.log(`[SaveLog] wrote ${written.length} diagnostics files: ${written.map((p) => p.split(/[\\/]/).pop()).join(', ')}`);
 
     // UX 2026-04-22: mirror every save to a GitHub branch so logs from any
     // device (Mac, Windows, sim) land in one place, tagged by platform +

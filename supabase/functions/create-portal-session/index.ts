@@ -1,5 +1,6 @@
 import Stripe from 'https://esm.sh/stripe@17.5.0?target=deno';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.47.10?target=deno';
+import { CANONICAL_APP_ORIGIN } from '../_shared/stripeReliability.js';
 
 const stripe = new Stripe(Deno.env.get('STRIPE_SECRET_KEY') as string, {
     apiVersion: '2025-12-15.clover',
@@ -79,10 +80,9 @@ Deno.serve(async (req) => {
         console.log('Customer ID:', subscription.stripe_customer_id);
 
         // Create portal session
-        const origin = req.headers.get('origin') || 'http://localhost:5173';
         const session = await stripe.billingPortal.sessions.create({
             customer: subscription.stripe_customer_id,
-            return_url: `${origin}`,
+            return_url: CANONICAL_APP_ORIGIN,
         });
 
         console.log('Portal session created:', session.id);
@@ -96,8 +96,9 @@ Deno.serve(async (req) => {
         );
     } catch (error) {
         console.error('Error creating portal session:', error);
+        const message = error instanceof Error ? error.message : 'Unable to create portal session';
         return new Response(
-            JSON.stringify({ error: error.message }),
+            JSON.stringify({ error: message }),
             {
                 headers: { ...corsHeaders, 'Content-Type': 'application/json' },
                 status: 500,

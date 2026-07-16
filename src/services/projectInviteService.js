@@ -16,7 +16,7 @@
  */
 import { supabase } from '../supabaseClient';
 import { buildInviteUrl } from './documentInviteService';
-import { sendInviteEmailSmart } from './shareEmailService';
+import { manageCollaboratorAccess, sendInviteEmailSmart } from './shareEmailService';
 
 // Re-export so UI layers can import one URL builder per service. Project and
 // template invites share the /invite/<token> URL space with documents — the
@@ -232,34 +232,23 @@ export async function listProjectCollaboratorsForProjects(projectIds) {
  * @param {string} newRole - 'viewer' | 'editor' | 'owner'
  */
 export async function updateProjectCollaboratorRole(projectId, userId, newRole) {
-  const { error } = await supabase
-    .from('project_collaborators')
-    .update({ role: normalizeRole(newRole) })
-    .eq('project_id', projectId)
-    .eq('user_id', userId);
-
-  if (error) {
-    console.error('[KAL-31] Error updating project collaborator role:', error);
-    return { success: false, error };
-  }
-
-  return { success: true };
+  return manageCollaboratorAccess({
+    kind: 'project',
+    resourceId: projectId,
+    targetUserId: userId,
+    action: 'role',
+    newRole: normalizeRole(newRole),
+  });
 }
 
 /**
  * Remove a collaborator from a project.
  */
 export async function removeProjectCollaborator(projectId, userId) {
-  const { error } = await supabase
-    .from('project_collaborators')
-    .delete()
-    .eq('project_id', projectId)
-    .eq('user_id', userId);
-
-  if (error) {
-    console.error('[KAL-31] Error removing project collaborator:', error);
-    return { success: false, error };
-  }
-
-  return { success: true };
+  return manageCollaboratorAccess({
+    kind: 'project',
+    resourceId: projectId,
+    targetUserId: userId,
+    action: 'remove',
+  });
 }

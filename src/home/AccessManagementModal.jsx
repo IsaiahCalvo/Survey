@@ -3,8 +3,7 @@
  * Loads real collaborators + pending invites for a document, lets the owner
  * change a role, remove a collaborator, revoke a pending invite, or resend a
  * pending invite. Persists via documentAnnotationService + documentInviteService
- * and best-effort fires permission-changed / access-removed emails through
- * the Resend-backed `send-email` function.
+ * through a server action that also sends trusted, best-effort notifications.
  *
  * Locked spec (Linear comment 2026-05-21 16:59):
  *   - Only owners see / use this UI; the underlying RLS also enforces it.
@@ -27,10 +26,6 @@ import {
   resendDocumentInvite,
   buildInviteUrl,
 } from '../services/documentInviteService';
-import {
-  sendPermissionChangedEmail,
-  sendAccessRemovedEmail,
-} from '../services/shareEmailService';
 import { closeButtonStyle } from './hubControls';
 
 const C = {
@@ -151,16 +146,6 @@ export default function AccessManagementModal({ open, onClose, kind = 'document'
     }
     setStatus(`Updated ${member.email || 'collaborator'} to ${roleLabel(next)}.`);
 
-    // Email best-effort.
-    if (member.email) {
-      sendPermissionChangedEmail({
-        email: member.email,
-        documentName,
-        changedByName: inviterName,
-        newRole: roleLabel(next),
-        oldRole: roleLabel(oldRole),
-      }).catch(() => {});
-    }
     refresh();
   };
 
@@ -178,13 +163,6 @@ export default function AccessManagementModal({ open, onClose, kind = 'document'
       return;
     }
     setStatus(`Removed ${member.email || 'collaborator'}.`);
-    if (member.email) {
-      sendAccessRemovedEmail({
-        email: member.email,
-        documentName,
-        removedByName: inviterName,
-      }).catch(() => {});
-    }
     refresh();
   };
 

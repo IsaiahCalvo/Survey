@@ -355,6 +355,13 @@ verify_jwt = false
 [functions.send-invite-email]
 verify_jwt = false
 
+# Browser-invoked. The function authenticates the bearer token itself, then
+# performs collaborator mutations with a caller-scoped client so RLS remains
+# authoritative. The service role is limited to recipient lookup and the
+# locked-down server-to-server email relay.
+[functions.manage-collaborator-access]
+verify_jwt = false
+
 [analytics]
 enabled = true
 port = 54327
