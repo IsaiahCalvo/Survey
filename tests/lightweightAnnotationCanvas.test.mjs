@@ -26,6 +26,9 @@ test('SVG is the one committed renderer; Canvas2D serves only eraser + proxy win
   // swap visibly bobs text on E/P toggling), and (b) during the transient
   // zoom/scroll proxy window. Reintroducing a per-tool renderer swap
   // regresses the counter-dot / tool-switch-flicker / text-bob bug family.
+  // Historical reference only: `codex/preserve-canvas-hit-testing-20260716`
+  // contains the superseded geometry-map workaround. Consult it for context
+  // if interaction regresses; do not roll back or cherry-pick it wholesale.
   assert.match(VIEWER_SOURCE, /const useCanvasPresentation = isEraserTool && erasePreviewPages\.has\(pageNumber\);/);
   assert.match(VIEWER_SOURCE, /data-annotation-presentation=\{useCanvasPresentation \? 'canvas2d' : 'svg-edit'\}/);
   // The overlay is VISIBLE only for the zoom/scroll proxy window. During an

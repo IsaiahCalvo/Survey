@@ -10,6 +10,12 @@
  * Pan-mode fallback: the SVG annotation layer is pointer-events:none in pan
  * mode so elementsFromPoint can't see it. We manually hit-test the SVG
  * annotation elements on the page by bounding rect.
+ *
+ * Historical context only: `codex/preserve-canvas-hit-testing-20260716`
+ * preserves the older, pre-unified-renderer geometry-map approach. If click,
+ * hover, or right-click behavior regresses, inspect it for ideas and prior
+ * reasoning—but do not treat it as a rollback target or cherry-pick it whole.
+ * The unified SVG renderer remains the intended architecture.
  */
 
 export function resolveAnnotationAt(e) {
