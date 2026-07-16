@@ -26,6 +26,7 @@ self.onmessage = (event) => {
       canvasWidth: request.width,
       canvasHeight: request.height,
       drawScale: request.drawScale,
+      drawScaleY: request.drawScaleY,
       displayScale: request.displayScale,
       pageWidth: request.pageWidth,
       pageHeight: request.pageHeight,

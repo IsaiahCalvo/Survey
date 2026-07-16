@@ -9,6 +9,23 @@
 // Default tolerance for hit testing (in pixels)
 const DEFAULT_TOLERANCE = 3;
 
+/**
+ * Normalize a Fabric object's type for hit-test dispatch.
+ *
+ * fabric 7's toObject() serializes CLASS names ('Rect', 'Textbox', 'IText',
+ * 'Path', …) while fabric 5 saves and live instances report lowercase
+ * ('rect', 'textbox', 'i-text'). Every guard in this module must compare the
+ * normalized form or all fabric-7-serialized objects silently become
+ * un-hittable — that was the "eraser can't erase text boxes" bug (and it
+ * equally broke marquee geometry for newer saves). Note 'IText' lowercases to
+ * 'itext', not 'i-text', so the alias is mapped explicitly (CLAUDE.md
+ * 2026-07-08 fabric-7 serialize gotcha #3).
+ */
+export const hitTestType = (obj) => {
+  const lower = String(obj?.type || '').toLowerCase();
+  return lower === 'itext' ? 'i-text' : lower;
+};
+
 const hasVisiblePaint = (value) => {
   if (value == null) return false;
   const normalized = String(value).trim().toLowerCase();
@@ -238,7 +255,7 @@ export const getObjectTransformMatrix = (obj) => {
  * @returns {boolean} True if point intersects path geometry
  */
 export const isPointOnPath = (point, pathObj, tolerance = DEFAULT_TOLERANCE) => {
-  if (!pathObj || pathObj.type !== 'path' || !pathObj.path) return false;
+  if (!pathObj || hitTestType(pathObj) !== 'path' || !pathObj.path) return false;
 
   const pathData = pathObj.path;
   if (!pathData || pathData.length === 0) return false;
@@ -398,7 +415,7 @@ export const isPointOnPath = (point, pathObj, tolerance = DEFAULT_TOLERANCE) => 
  * @returns {boolean} True if point intersects rect geometry
  */
 export const isPointOnRect = (point, rectObj, tolerance = DEFAULT_TOLERANCE) => {
-  if (!rectObj || rectObj.type !== 'rect') return false;
+  if (!rectObj || hitTestType(rectObj) !== 'rect') return false;
 
   const matrix = getObjectTransformMatrix(rectObj);
   const localPoint = transformPointInverse(point, matrix);
@@ -456,7 +473,7 @@ export const isPointOnRect = (point, rectObj, tolerance = DEFAULT_TOLERANCE) => 
  * @returns {boolean} True if point intersects circle geometry
  */
 export const isPointOnCircle = (point, circleObj, tolerance = DEFAULT_TOLERANCE) => {
-  if (!circleObj || (circleObj.type !== 'circle' && circleObj.type !== 'ellipse')) return false;
+  if (!circleObj || (hitTestType(circleObj) !== 'circle' && hitTestType(circleObj) !== 'ellipse')) return false;
 
   const matrix = getObjectTransformMatrix(circleObj);
   const localPoint = transformPointInverse(point, matrix);
@@ -464,7 +481,7 @@ export const isPointOnCircle = (point, circleObj, tolerance = DEFAULT_TOLERANCE)
   // For Circle, radius is the same in both directions
   // For Ellipse, use rx and ry
   let rx, ry;
-  if (circleObj.type === 'ellipse') {
+  if (hitTestType(circleObj) === 'ellipse') {
     rx = circleObj.rx || 0;
     ry = circleObj.ry || 0;
   } else {
@@ -510,7 +527,7 @@ export const isPointOnCircle = (point, circleObj, tolerance = DEFAULT_TOLERANCE)
  * @returns {boolean} True if point intersects line geometry
  */
 export const isPointOnLine = (point, lineObj, tolerance = DEFAULT_TOLERANCE) => {
-  if (!lineObj || lineObj.type !== 'line') return false;
+  if (!lineObj || hitTestType(lineObj) !== 'line') return false;
 
   const matrix = getObjectTransformMatrix(lineObj);
   const localPoint = transformPointInverse(point, matrix);
@@ -536,7 +553,7 @@ export const isPointOnLine = (point, lineObj, tolerance = DEFAULT_TOLERANCE) => 
  * @returns {boolean} True if point intersects triangle geometry
  */
 export const isPointOnTriangle = (point, triangleObj, tolerance = DEFAULT_TOLERANCE) => {
-  if (!triangleObj || triangleObj.type !== 'triangle') return false;
+  if (!triangleObj || hitTestType(triangleObj) !== 'triangle') return false;
 
   const matrix = getObjectTransformMatrix(triangleObj);
   const localPoint = transformPointInverse(point, matrix);
@@ -591,7 +608,7 @@ export const isPointOnTriangle = (point, triangleObj, tolerance = DEFAULT_TOLERA
  * @returns {boolean} True if point intersects text geometry
  */
 export const isPointOnTextbox = (point, textObj, tolerance = DEFAULT_TOLERANCE) => {
-  if (!textObj || (textObj.type !== 'textbox' && textObj.type !== 'text' && textObj.type !== 'i-text')) {
+  if (!textObj || (hitTestType(textObj) !== 'textbox' && hitTestType(textObj) !== 'text' && hitTestType(textObj) !== 'i-text')) {
     return false;
   }
 
@@ -621,7 +638,7 @@ export const isPointOnTextbox = (point, textObj, tolerance = DEFAULT_TOLERANCE) 
  * @returns {boolean} True if point intersects polyline geometry
  */
 export const isPointOnPolyline = (point, polylineObj, tolerance = DEFAULT_TOLERANCE) => {
-  if (!polylineObj || polylineObj.type !== 'polyline') return false;
+  if (!polylineObj || hitTestType(polylineObj) !== 'polyline') return false;
 
   const points = getTransformedPoints(polylineObj);
   if (points.length < 2) return false;
@@ -640,7 +657,7 @@ export const isPointOnPolyline = (point, polylineObj, tolerance = DEFAULT_TOLERA
 };
 
 export const isPointOnPolygon = (point, polygonObj, tolerance = DEFAULT_TOLERANCE) => {
-  if (!polygonObj || polygonObj.type !== 'polygon') return false;
+  if (!polygonObj || hitTestType(polygonObj) !== 'polygon') return false;
 
   const points = getTransformedPoints(polygonObj);
   if (points.length < 3) return false;
@@ -668,7 +685,7 @@ export const isPointOnPolygon = (point, polygonObj, tolerance = DEFAULT_TOLERANC
  * @returns {boolean} True if point intersects any child geometry
  */
 export const isPointOnGroup = (point, groupObj, tolerance = DEFAULT_TOLERANCE) => {
-  if (!groupObj || groupObj.type !== 'group') return false;
+  if (!groupObj || hitTestType(groupObj) !== 'group') return false;
 
   const objects = groupObj._objects || groupObj.objects || groupObj.getObjects?.() || [];
   if (objects.length === 0) return false;
@@ -712,7 +729,7 @@ export const isPointOnGroup = (point, groupObj, tolerance = DEFAULT_TOLERANCE) =
 export const isPointOnObject = (point, obj, tolerance = DEFAULT_TOLERANCE) => {
   if (!obj || !obj.type) return false;
 
-  switch (obj.type) {
+  switch (hitTestType(obj)) {
     case 'path':
       return isPointOnPath(point, obj, tolerance);
     case 'rect':
@@ -1010,7 +1027,7 @@ export const doesRectIntersectEllipse = (selRect, cx, cy, rx, ry, hasFill, strok
  * @returns {boolean} True if intersects
  */
 export const doesRectIntersectPath = (selRect, pathObj) => {
-  if (!pathObj || pathObj.type !== 'path' || !pathObj.path) return false;
+  if (!pathObj || hitTestType(pathObj) !== 'path' || !pathObj.path) return false;
 
   const pathData = pathObj.path;
   if (!pathData || pathData.length === 0) return false;
@@ -1140,7 +1157,7 @@ export const doesRectIntersectPath = (selRect, pathObj) => {
  * Check if a selection rectangle intersects a Rect object
  */
 export const doesRectIntersectRect = (selRect, rectObj) => {
-  if (!rectObj || rectObj.type !== 'rect') return false;
+  if (!rectObj || hitTestType(rectObj) !== 'rect') return false;
 
 
 
@@ -1437,12 +1454,12 @@ export const doesRectIntersectRect = (selRect, rectObj) => {
  * Check if a selection rectangle intersects a Circle object
  */
 export const doesRectIntersectCircle = (selRect, circleObj) => {
-  if (!circleObj || (circleObj.type !== 'circle' && circleObj.type !== 'ellipse')) return false;
+  if (!circleObj || (hitTestType(circleObj) !== 'circle' && hitTestType(circleObj) !== 'ellipse')) return false;
 
   const matrix = getObjectTransformMatrix(circleObj);
 
   let rx, ry;
-  if (circleObj.type === 'ellipse') {
+  if (hitTestType(circleObj) === 'ellipse') {
     rx = circleObj.rx || 0;
     ry = circleObj.ry || 0;
   } else {
@@ -1474,7 +1491,7 @@ export const doesRectIntersectCircle = (selRect, circleObj) => {
  * Check if a selection rectangle intersects a Line object
  */
 export const doesRectIntersectLine = (selRect, lineObj) => {
-  if (!lineObj || lineObj.type !== 'line') return false;
+  if (!lineObj || hitTestType(lineObj) !== 'line') return false;
 
   const matrix = getObjectTransformMatrix(lineObj);
   const strokeWidth = lineObj.strokeWidth || 1;
@@ -1573,7 +1590,7 @@ export const doesRectIntersectLine = (selRect, lineObj) => {
  * Check if a selection rectangle intersects a Textbox object
  */
 export const doesRectIntersectTextbox = (selRect, textObj) => {
-  if (!textObj || (textObj.type !== 'textbox' && textObj.type !== 'text' && textObj.type !== 'i-text')) {
+  if (!textObj || (hitTestType(textObj) !== 'textbox' && hitTestType(textObj) !== 'text' && hitTestType(textObj) !== 'i-text')) {
     return false;
   }
 
@@ -1654,7 +1671,7 @@ export const doesRectIntersectTextbox = (selRect, textObj) => {
 };
 
 export const doesRectIntersectPolygon = (selRect, polygonObj) => {
-  if (!polygonObj || polygonObj.type !== 'polygon') return false;
+  if (!polygonObj || hitTestType(polygonObj) !== 'polygon') return false;
   const points = getTransformedPoints(polygonObj);
   if (points.length < 3) return false;
 
@@ -1699,7 +1716,7 @@ export const doesRectIntersectPolygon = (selRect, polygonObj) => {
  * Check if a selection rectangle intersects a Group object
  */
 export const doesRectIntersectGroup = (selRect, groupObj) => {
-  if (!groupObj || groupObj.type !== 'group') return false;
+  if (!groupObj || hitTestType(groupObj) !== 'group') return false;
 
   const objects = groupObj._objects || groupObj.objects || groupObj.getObjects?.() || [];
   if (objects.length === 0) return false;
@@ -1773,7 +1790,7 @@ export const doesRectIntersectObject = (selRect, obj) => {
 
 
   let result;
-  switch (obj.type) {
+  switch (hitTestType(obj)) {
     case 'path':
       result = doesRectIntersectPath(selRect, obj);
       break;
@@ -1973,7 +1990,7 @@ export const getObjectGeometryBounds = (obj) => {
       maxY = Math.max(maxY, y);
     };
 
-    switch (obj.type) {
+    switch (hitTestType(obj)) {
       case 'path': {
         if (!obj.path) return null;
         const strokeWidth = (obj.strokeWidth || 1) / 2;
@@ -2051,7 +2068,7 @@ export const getObjectGeometryBounds = (obj) => {
       case 'circle':
       case 'ellipse': {
         let rx, ry;
-        if (obj.type === 'ellipse') {
+        if (hitTestType(obj) === 'ellipse') {
           rx = obj.rx || 0;
           ry = obj.ry || 0;
         } else {

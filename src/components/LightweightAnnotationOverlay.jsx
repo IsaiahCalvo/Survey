@@ -32,6 +32,7 @@ const paintPayloadToCanvas = (canvas, payload, renderer = 'main') => {
     canvasWidth: payload.width,
     canvasHeight: payload.height,
     drawScale: payload.drawScale,
+    drawScaleY: payload.drawScaleY,
     displayScale: payload.displayScale,
     pageWidth: payload.pageWidth,
     pageHeight: payload.pageHeight,
@@ -47,6 +48,7 @@ const paintPayloadToCanvas = (canvas, payload, renderer = 'main') => {
   );
   canvas.dataset.canvasAnnotationRevision = String(payload.annotationRevision ?? '');
   canvas.dataset.canvasDrawScale = String(payload.drawScale);
+  canvas.dataset.canvasDrawScaleY = String(payload.drawScaleY ?? payload.drawScale);
   canvas.dataset.canvasPageOffsetX = String(payload.offsetX || 0);
   canvas.dataset.canvasPageOffsetY = String(payload.offsetY || 0);
   return true;
@@ -67,8 +69,10 @@ const presentPaintedCanvas = ({ baseCanvas, detailCanvas, canvas, payload }) => 
   } else {
     canvas.style.left = '0px';
     canvas.style.top = '0px';
-    canvas.style.width = '100%';
-    canvas.style.height = '100%';
+    // Device-exact box when the payload carries one (unclamped base paint);
+    // '100%' otherwise — see the cssWidth comment at the payload build site.
+    canvas.style.width = payload.cssWidth ? `${payload.cssWidth}px` : '100%';
+    canvas.style.height = payload.cssHeight ? `${payload.cssHeight}px` : '100%';
     canvas.style.display = 'block';
     detailCanvas.style.display = 'none';
     detailCanvas.dataset.annotationDetailActive = 'false';
@@ -122,8 +126,6 @@ const LightweightAnnotationOverlay = memo(({
   const safeWidth = Math.max(1, Number(width) || 1);
   const safeHeight = Math.max(1, Number(height) || 1);
   const safeScale = Number.isFinite(Number(scale)) && Number(scale) > 0 ? Number(scale) : 1;
-  const overlayWidth = safeWidth * safeScale;
-  const overlayHeight = safeHeight * safeScale;
 
   const visibilityContext = useMemo(() => ({
     pageNumber,
@@ -172,6 +174,10 @@ const LightweightAnnotationOverlay = memo(({
       stroke: marker.needsEntity ? '#4A90E2' : 'transparent',
       strokeWidth: marker.needsEntity ? 2 : 0,
       strokeDashArray: marker.needsEntity ? [5, 5] : null,
+      // UX 2026-07-14 (zoom-scaling unification): the SVG marker border is a
+      // page-unit stroke now (no vector-effect pin), so the painter must NOT
+      // divide by displayScale either — flag dropped on both surfaces so the
+      // border scales with zoom like rect/ellipse strokes.
       globalCompositeOperation: 'multiply',
       opacity: 1,
       scaleX: 1,
@@ -312,6 +318,7 @@ const LightweightAnnotationOverlay = memo(({
       );
       canvas.dataset.canvasAnnotationRevision = String(payload.annotationRevision ?? '');
       canvas.dataset.canvasDrawScale = String(payload.drawScale);
+      canvas.dataset.canvasDrawScaleY = String(payload.drawScaleY ?? payload.drawScale);
       canvas.dataset.canvasPageOffsetX = String(payload.offsetX || 0);
       canvas.dataset.canvasPageOffsetY = String(payload.offsetY || 0);
       presentPaintedCanvas({
@@ -405,13 +412,25 @@ const LightweightAnnotationOverlay = memo(({
       }
       detailTileRef.current = tile;
 
+      // Device-exact CSS box for the UNCLAMPED base canvas: the page host box
+      // is fractional (e.g. 605.03125px), so `width:100%` makes Chrome's
+      // compositor stretch the integer-px bitmap by ~1/605 in x — a linear
+      // drift that put eraser-mode marks ~1px right of the SVG at the page's
+      // far edge (renderer-parity harness, 2026-07-14). Sizing the CSS box to
+      // backing/dpr maps bitmap px 1:1 onto device px (no resample); the
+      // ≤0.5px sliver left uncovered at the page edge is invisible. Clamped
+      // (deep-zoom) backings are SMALLER than the host by design and must
+      // keep stretching to fill it.
       requestPaint({
         requestId: 0,
         target: tile ? 'detail' : 'base',
         tile,
         width: tile?.backingWidth ?? backingStore.width,
         height: tile?.backingHeight ?? backingStore.height,
+        cssWidth: backingStore.clamped ? null : backingStore.cssWidth,
+        cssHeight: backingStore.clamped ? null : backingStore.cssHeight,
         drawScale: tile?.drawScale ?? backingStore.drawScale,
+        drawScaleY: tile?.drawScaleY ?? backingStore.drawScaleY,
         displayScale: safeScale,
         pageWidth: safeWidth,
         pageHeight: safeHeight,
@@ -492,9 +511,25 @@ const LightweightAnnotationOverlay = memo(({
     };
     scroller.addEventListener('scroll', scheduleViewportRender, { passive: true });
     window.addEventListener('resize', scheduleViewportRender, { passive: true });
+    // Container-aware invalidation (CLAUDE.md canvas-sizing rule): the paint
+    // must follow the page host's REAL box, not the events that usually
+    // precede it changing. A typed/pinch zoom can commit its final page-host
+    // layout a frame after ZOOM_END's forced repaint ran, so the tile gets
+    // painted against a mid-resize rect (~0.3% off) and then nothing ever
+    // invalidates it — eraser entry re-presents the stale paint ~3 CSS px off
+    // the SVG (user-visible E/P text bob, reproduced at typed 447% zoom).
+    // The overlay is inset:0 in the page host, so observing it tracks the
+    // host box exactly; the tile's pageScale guard turns no-change fires into
+    // cheap no-ops for the detail path.
+    let resizeObserver = null;
+    if (typeof ResizeObserver === 'function' && overlayRef.current) {
+      resizeObserver = new ResizeObserver(scheduleViewportRender);
+      resizeObserver.observe(overlayRef.current);
+    }
     return () => {
       scroller.removeEventListener('scroll', scheduleViewportRender);
       window.removeEventListener('resize', scheduleViewportRender);
+      resizeObserver?.disconnect();
       if (scrollRafRef.current) cancelAnimationFrame(scrollRafRef.current);
       scrollRafRef.current = 0;
     };
@@ -516,13 +551,23 @@ const LightweightAnnotationOverlay = memo(({
       data-lightweight-callout-count={visibleCallouts.length}
       data-canvas-visible={visible ? 'true' : 'false'}
       style={{
+        // Fill the page host exactly (demo model: PdfjsArm's CanvasAnnotationLayer
+        // is inset:0 in the page wrapper). Sizing from `pageSize * scale` px is
+        // forbidden — a stale scale scalar makes the whole committed layer drift
+        // off the page box (CLAUDE.md container-aware sizing rule). The `scale`
+        // prop only chooses backing-store RESOLUTION, never geometry.
         position: 'absolute',
         top: 0,
         left: 0,
-        width: `${overlayWidth}px`,
-        height: `${overlayHeight}px`,
+        width: '100%',
+        height: '100%',
         pointerEvents: 'none',
-        zIndex: 10,
+        // Same stacking as the SVG layer's wrapper (zIndex 100). At the old
+        // zIndex 10 the pdf.js form/link layers painted OVER canvas-rendered
+        // annotations, so marks overlapping a form field vanished whenever
+        // this surface served (eraser mode / proxy windows) — a z-order
+        // disagreement between the two presentations of the same truth.
+        zIndex: 100,
         overflow: 'hidden',
         visibility: visible ? 'visible' : 'hidden',
       }}

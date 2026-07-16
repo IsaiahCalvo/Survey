@@ -799,8 +799,11 @@ function getMeasureCtx() {
 /**
  * Count how many visual lines a single explicit line produces when word-wrapped
  * at a given max width. Uses word-boundary splitting for accuracy.
+ * Exported so annotationCanvasPainter's dimensionless-text fallback counts
+ * lines with the SAME walk (a ceil(width/container) approximation drifts by
+ * a line and the text block jumps when the canvas presentation swaps in).
  */
-function countWrappedLines(ctx, line, maxWidth) {
+export function countWrappedLines(ctx, line, maxWidth) {
   if (!line) return 1;
   const words = line.split(/\s+/);
   if (words.length === 0) return 1;

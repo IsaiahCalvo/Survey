@@ -38,22 +38,35 @@ describe('callout creation scope stamping (SVGAnnotationLayer)', () => {
   });
 });
 
-describe('pen-stroke scope stamping stays on the shared rule (FabricDrawingCanvas)', () => {
-  const src = read('src/components/FabricDrawingCanvas.jsx');
+// Unified renderer (FabricDrawingCanvas retired): pen/shape creation commits
+// through SVGAnnotationLayer.commitShapeCreation → annotationCreationCommit.js.
+// The stamps must survive on that LIVE path: the layer decides via the shared
+// shouldStampActiveRegionId rule, and every commit builder stamps the JSON via
+// the shared applyScope helper (the successor of the fabric-era
+// toObject(CUSTOM_PROPS) guarantee that id/moduleId/regionId reach the save).
+describe('pen-stroke scope stamping stays on the shared rule (SVG creation commit)', () => {
+  const layerSrc = read('src/components/SVGAnnotationLayer.jsx');
+  const commitSrc = read('src/utils/annotationCreationCommit.js');
 
-  it('delegates shouldAssignRegionId to shouldStampActiveRegionId', () => {
+  it('delegates the creation-commit region stamp to shouldStampActiveRegionId', () => {
     assert.match(
-      src,
-      /const shouldAssignRegionId = \(\) => shouldStampActiveRegionId\(\{/
+      layerSrc,
+      /const stampRegionId = shouldStampActiveRegionId\(\{/
     );
   });
 
-  it('serializes strokes/shapes with toObject(CUSTOM_PROPS), never toJSON(CUSTOM_PROPS)', () => {
-    // fabric 7's toJSON() takes no arguments and silently DROPS
-    // propertiesToInclude — using it loses id/moduleId/regionId on commit.
-    assert.doesNotMatch(src, /toJSON\(CUSTOM_PROPS\)/);
-    assert.match(src, /e\.path\.toObject\(CUSTOM_PROPS\)/);
-    assert.match(src, /shape\.toObject\(CUSTOM_PROPS\)/);
+  it('stamps moduleId/regionId onto every creation commit JSON via applyScope', () => {
+    assert.match(commitSrc, /if \(selectedModuleId\) json\.moduleId = selectedModuleId;/);
+    assert.match(commitSrc, /if \(stampRegionId\) json\.regionId = activeRegionId;/);
+    // All three builders (boundary shape, line/arrow, freehand) must route
+    // through the shared stamp — dropping one silently unscopes that tool.
+    const applyScopeCalls = commitSrc.match(
+      /applyScope\(json, \{ selectedModuleId, stampRegionId, activeRegionId \}\);/g
+    ) || [];
+    assert.ok(
+      applyScopeCalls.length >= 3,
+      `expected every commit builder to call applyScope (saw ${applyScopeCalls.length})`
+    );
   });
 });
 

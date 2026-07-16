@@ -13,9 +13,22 @@ test('deep zoom detail tile keeps two backing pixels per visible CSS pixel', () 
   });
 
   assert.ok(tile);
-  assert.equal(tile.drawScale, 10);
+  // drawScale is pageScale * dpr re-derived from the integer (ceil'd) backing
+  // dims, so it can exceed 10 by the ceil fraction — what must hold EXACTLY is
+  // that the painted page span fills the backing store (parity: any mismatch
+  // stretches all geometry when CSS maps the backing to the tile box).
+  assert.ok(Math.abs(tile.drawScale - 10) < 0.01);
+  assert.ok(Math.abs(tile.drawScaleY - 10) < 0.01);
+  assert.ok(Math.abs((tile.width / tile.pageScale) * tile.drawScale - tile.backingWidth) < 1e-9);
+  assert.ok(Math.abs((tile.height / tile.pageScaleY) * tile.drawScaleY - tile.backingHeight) < 1e-9);
   assert.equal(tile.backingWidth, Math.ceil(tile.width * 2));
   assert.equal(tile.backingHeight, Math.ceil(tile.height * 2));
+  // Integer CSS box — a fractional tile box would compositor-snap-stretch the
+  // bitmap exactly like the pre-fix base canvas.
+  assert.ok(Number.isInteger(tile.left));
+  assert.ok(Number.isInteger(tile.top));
+  assert.ok(Number.isInteger(tile.width));
+  assert.ok(Number.isInteger(tile.height));
   assert.equal(tile.pageOffsetX, tile.left / 5);
   assert.equal(tile.pageOffsetY, tile.top / 5);
   assert.ok(tile.width < 3060, 'deep zoom paints a bounded viewport tile, not the full page');

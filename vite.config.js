@@ -1,6 +1,7 @@
 import { defineConfig, loadEnv } from 'vite';
 import react from '@vitejs/plugin-react';
 import { randomBytes } from 'node:crypto';
+import { execSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -170,6 +171,20 @@ export default defineConfig(({ mode }) => {
   const devAuthBootstrapToken = mode === 'development'
     ? randomBytes(24).toString('hex')
     : '';
+  // UX: dev-only build stamp shown as a tiny corner chip (AppShell). One
+  // stale-tab hunt cost hours because a page loaded from a dead dev server
+  // silently kept running old code — the stamp makes "which build am I
+  // looking at" answerable at a glance. Git hash + server start time;
+  // re-evaluated whenever the dev server (re)starts.
+  let buildStamp = '';
+  if (mode === 'development') {
+    let gitHash = 'no-git';
+    try {
+      gitHash = execSync('git rev-parse --short HEAD', { cwd: __dirname }).toString().trim();
+    } catch { /* not a git checkout — keep placeholder */ }
+    const started = new Date().toTimeString().slice(0, 5);
+    buildStamp = `${gitHash} · ${started}`;
+  }
 
   return {
     base: './', // Use relative paths for Electron file:// protocol
@@ -227,6 +242,7 @@ export default defineConfig(({ mode }) => {
       global: 'globalThis',
       __APP_VERSION__: JSON.stringify(APP_VERSION),
       __DEV_AUTH_BOOTSTRAP_TOKEN__: JSON.stringify(devAuthBootstrapToken),
+      __BUILD_STAMP__: JSON.stringify(buildStamp),
     }
   };
 });

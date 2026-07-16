@@ -25,6 +25,7 @@ import { selectEraserPreviewBaseline } from '../utils/eraserPreviewHandoff.js';
 import { planPageEraserPreview } from '../utils/eraserPreviewPlan.js';
 import { getCoalescedOrCurrentEvents } from '../utils/eraserPointerSamples.js';
 import { paintAnnotationCanvas } from '../utils/annotationCanvasPainter.js';
+import { projectPaperInkForPresentation } from '../utils/paperInkPresentation.js';
 
 let presentationRevisionSequence = 0;
 
@@ -124,6 +125,13 @@ const FabricEraserCanvas = memo(({
   onEraseCommit,
   onEraseCallout,
   onEraseTextMarkup,
+  // UX (2026-07-14, E/P text-bob fix): reports when this page's live erase
+  // preview is on screen (true at activation, false when the preview
+  // finishes/cancels). PDFViewer uses it to keep the SVG layer presenting in
+  // eraser mode until a stroke actually carves — swapping renderers on mere
+  // tool switch exposed ±1 device px rasterizer snap differences at
+  // fractional zoom stops (the user-visible text bob on E/P toggling).
+  onErasePreviewPresentation,
   eraserMode = 'partial',
   eraserSize = 20,
   viewerScale,
@@ -136,12 +144,30 @@ const FabricEraserCanvas = memo(({
 }) => {
   const containerRef = useRef(null);
   const cursorRef = useRef(null);
+  const onErasePreviewPresentationRef = useRef(onErasePreviewPresentation);
+  onErasePreviewPresentationRef.current = onErasePreviewPresentation;
   const livePreviewCanvasRef = useRef(null);
   const livePreviewMaskCanvasRef = useRef(null);
   const livePreviewSourceRef = useRef(null);
   const livePreviewObserverRef = useRef(null);
+  const livePreviewHideRafRef = useRef(0);
+  // Mask-clone carve preview (2026-07-14): {root, carve, indexHidden}. The
+  // live carve renders on a CLONE of the real SVG layer (same engine, same
+  // box, same viewBox → bit-identical raster) with a vector mask doing the
+  // destination-out. Any bitmap copy — hand-painted OR photographed — hits a
+  // rasterization floor (~1% of ink pixels of AA disagreement, measured via
+  // agent-cli/diag-photo-fidelity.mjs), so a bitmap handoff always shimmers
+  // at stroke start; the clone has no bitmap anywhere and therefore no floor.
+  const maskCloneRef = useRef(null);
   const pointerRef = useRef(null);
   const spaceHeldRef = useRef(false);
+  // Last known pointer position in CLIENT coordinates (plus pointerType).
+  // The wrapper hardcodes cursor:'none', so any window where the custom
+  // circle is hidden while the pointer hovers the wrapper leaves the user
+  // with NO visible cursor until the next pointermove. This ref lets the
+  // hide paths that are not real pointer exits (zoom re-layout, pointer
+  // cancel, lost capture) put the circle back under a stationary pointer.
+  const lastClientPosRef = useRef(null);
   const eraserDiagGestureRef = useRef(null);
   const initialZoomGenerationRef = useRef(zoomGeneration);
 
@@ -203,6 +229,28 @@ const FabricEraserCanvas = memo(({
     cursor.style.transform = `translate3d(${point.x * displayScale - diameter / 2}px, ${point.y * displayScale - diameter / 2}px, 0)`;
   }, []);
 
+  // Re-show the eraser circle at the last known pointer position, but only
+  // when that position is still inside the wrapper (mouse/pen only — touch
+  // has no hover cursor, so a re-shown circle would be a phantom). Used by
+  // hide paths that do not correspond to the pointer actually leaving:
+  // zoom-settle, pointercancel, and lostpointercapture.
+  const reshowCursorAtLastClientPos = useCallback(() => {
+    const last = lastClientPosRef.current;
+    if (!last || last.pointerType === 'touch') {
+      updateEraserCursor(null, false);
+      return;
+    }
+    const rect = containerRef.current?.getBoundingClientRect?.();
+    const inside = rect && rect.width > 0 && rect.height > 0
+      && last.x >= rect.left && last.x <= rect.right
+      && last.y >= rect.top && last.y <= rect.bottom;
+    if (!inside) {
+      updateEraserCursor(null, false);
+      return;
+    }
+    updateEraserCursor(pagePoint({ clientX: last.x, clientY: last.y }), true);
+  }, [pagePoint, updateEraserCursor]);
+
   const findPresentationSource = useCallback(() => {
     const surface = containerRef.current?.closest('[data-annotation-real-surface]');
     const detailSource = surface?.querySelector?.(
@@ -219,22 +267,67 @@ const FabricEraserCanvas = memo(({
     livePreviewObserverRef.current = null;
   }, []);
 
+  const cancelScheduledPreviewHide = useCallback(() => {
+    if (livePreviewHideRafRef.current) cancelAnimationFrame(livePreviewHideRafRef.current);
+    livePreviewHideRafRef.current = 0;
+  }, []);
+
+  const hidePreviewCanvasNow = useCallback(() => {
+    cancelScheduledPreviewHide();
+    const preview = livePreviewCanvasRef.current;
+    if (!preview) return;
+    preview.getContext('2d')?.clearRect(0, 0, preview.width, preview.height);
+    preview.dataset.canvasAnnotationRevision = '';
+    preview.style.display = 'none';
+  }, [cancelScheduledPreviewHide]);
+
+  const removeMaskCloneNow = useCallback(() => {
+    const clone = maskCloneRef.current;
+    maskCloneRef.current = null;
+    if (clone?.root?.isConnected) clone.root.remove();
+  }, []);
+
   const finishLiveErasePreview = useCallback(() => {
     cancelLivePreviewFinish();
     const sourceState = livePreviewSourceRef.current;
     if (sourceState?.overlay?.isConnected) {
       sourceState.overlay.style.visibility = sourceState.previousVisibility;
     }
+    // Defensive twin of the activation-time hide: if React never re-mounted
+    // the SVG wrapper (prop unwired), don't leave it invisible forever.
+    const svgWrapper = containerRef.current
+      ?.closest('[data-annotation-real-surface]')
+      ?.querySelector('[data-diag-svg-wrapper]');
+    if (svgWrapper) svgWrapper.style.visibility = '';
+    const hadSession = Boolean(sourceState);
+    const closingClone = maskCloneRef.current;
+    maskCloneRef.current = null; // no further carve writes to this session
     livePreviewSourceRef.current = null;
-    const preview = livePreviewCanvasRef.current;
-    if (!preview) return;
-    preview.getContext('2d')?.clearRect(0, 0, preview.width, preview.height);
-    preview.dataset.canvasAnnotationRevision = '';
-    preview.style.display = 'none';
-  }, [cancelLivePreviewFinish]);
+    onErasePreviewPresentationRef.current?.(pageNumber, false);
+    if (!hadSession) {
+      if (closingClone?.root?.isConnected) closingClone.root.remove();
+      hidePreviewCanvasNow();
+      return;
+    }
+    // Hold the carved preview (canvas or mask clone) on screen for two
+    // frames: the SVG layer only remounts on the React render that follows
+    // the presentation callback above, so tearing down in this same frame
+    // would blank every annotation for one frame — a visible blink at each
+    // commit.
+    cancelScheduledPreviewHide();
+    livePreviewHideRafRef.current = requestAnimationFrame(() => {
+      livePreviewHideRafRef.current = requestAnimationFrame(() => {
+        livePreviewHideRafRef.current = 0;
+        if (closingClone?.root?.isConnected) closingClone.root.remove();
+        if (livePreviewSourceRef.current) return; // a new gesture took over
+        hidePreviewCanvasNow();
+      });
+    });
+  }, [cancelLivePreviewFinish, cancelScheduledPreviewHide, hidePreviewCanvasNow, pageNumber]);
 
   const beginLiveErasePreview = useCallback(() => {
     cancelLivePreviewFinish();
+    cancelScheduledPreviewHide();
     const preview = livePreviewCanvasRef.current;
     const { surface, source } = findPresentationSource();
     const overlay = source?.closest?.('[data-lightweight-annotation-overlay]');
@@ -255,6 +348,15 @@ const FabricEraserCanvas = memo(({
       source.dataset.canvasPageOffsetX || '0',
       source.dataset.canvasPageOffsetY || '0',
     ].join(':');
+    // Hide the mounted SVG layer synchronously (same imperative pattern as
+    // the overlay hide below): the preview's destination-out holes are
+    // transparent, so an SVG copy underneath would show un-erased ink through
+    // them for the frame(s) until React processes the presentation state.
+    const hideSvgForPreview = () => {
+      const svgWrapper = surface?.querySelector?.('[data-diag-svg-wrapper]');
+      if (svgWrapper) svgWrapper.style.visibility = 'hidden';
+      onErasePreviewPresentationRef.current?.(pageNumber, true);
+    };
     if (
       baseline === 'preview'
       && livePreviewSourceRef.current
@@ -265,6 +367,7 @@ const FabricEraserCanvas = memo(({
       livePreviewSourceRef.current.overlay = overlay;
       preview.style.display = 'block';
       overlay.style.visibility = 'hidden';
+      hideSvgForPreview();
       return true;
     }
 
@@ -294,21 +397,48 @@ const FabricEraserCanvas = memo(({
     };
     preview.dataset.canvasAnnotationRevision = source.dataset.canvasAnnotationRevision || '';
     preview.dataset.canvasDrawScale = source.dataset.canvasDrawScale || String(source.width / pageWidth);
+    preview.dataset.canvasDrawScaleY = source.dataset.canvasDrawScaleY || String(source.height / pageHeight);
     preview.dataset.canvasPageOffsetX = source.dataset.canvasPageOffsetX || '0';
     preview.dataset.canvasPageOffsetY = source.dataset.canvasPageOffsetY || '0';
     preview.dataset.canvasGeometryKey = sourceGeometryKey;
     preview.style.display = 'block';
     overlay.style.visibility = 'hidden';
+    hideSvgForPreview();
     return true;
-  }, [cancelLivePreviewFinish, findPresentationSource, pageWidth]);
+  }, [cancelLivePreviewFinish, cancelScheduledPreviewHide, findPresentationSource, pageHeight, pageNumber, pageWidth]);
 
   const drawLiveErasePreviewSegment = useCallback((points) => {
+    if (!points?.length) return;
+    const clone = maskCloneRef.current;
+    if (clone?.carve) {
+      // Mask-clone mode: carve in PAGE UNITS directly (mask user space).
+      const radius = getPageRadius();
+      clone.carve.setAttribute('stroke-width', String(radius * 2));
+      if (points.length === 1) {
+        const SVG_NS = 'http://www.w3.org/2000/svg';
+        const dot = document.createElementNS(SVG_NS, 'circle');
+        dot.setAttribute('cx', String(points[0].x));
+        dot.setAttribute('cy', String(points[0].y));
+        dot.setAttribute('r', String(radius));
+        dot.setAttribute('fill', '#000');
+        clone.mask?.appendChild(dot);
+        return;
+      }
+      let d = clone.carve.getAttribute('d') || '';
+      d += ` M ${points[0].x} ${points[0].y}`;
+      for (let index = 1; index < points.length; index += 1) {
+        d += ` L ${points[index].x} ${points[index].y}`;
+      }
+      clone.carve.setAttribute('d', d.trim());
+      return;
+    }
     const preview = livePreviewCanvasRef.current;
-    if (!preview || preview.style.display === 'none' || !points?.length) return;
+    if (!preview || preview.style.display === 'none') return;
     const context = preview.getContext('2d');
     if (!context) return;
     const radius = getPageRadius();
     const drawScale = Number(preview.dataset.canvasDrawScale) || (preview.width / pageWidth);
+    const drawScaleY = Number(preview.dataset.canvasDrawScaleY) || drawScale;
     const pageOffsetX = Number(preview.dataset.canvasPageOffsetX) || 0;
     const pageOffsetY = Number(preview.dataset.canvasPageOffsetY) || 0;
     context.save();
@@ -316,9 +446,9 @@ const FabricEraserCanvas = memo(({
       drawScale,
       0,
       0,
-      drawScale,
+      drawScaleY,
       -pageOffsetX * drawScale,
-      -pageOffsetY * drawScale,
+      -pageOffsetY * drawScaleY,
     );
     context.globalCompositeOperation = 'destination-out';
     context.fillStyle = '#000';
@@ -341,12 +471,43 @@ const FabricEraserCanvas = memo(({
   }, [getPageRadius, pageWidth]);
 
   const eraseAtomicObjectsFromPreview = useCallback((ids) => {
+    if (!ids?.length) return;
+    const clone = maskCloneRef.current;
+    if (clone?.root) {
+      // Mask-clone mode: whole-object ghosting = hide the cloned elements
+      // outright (display:none) — exact by definition, no silhouette mask.
+      // Match by STABLE annotation id first: data-annotation-index is the
+      // render-position at clone time and goes stale the moment a commit or
+      // remote edit shifts the array (adversarial review finding,
+      // 2026-07-15); index is only the fallback for id-less legacy objects.
+      const objects = annotationsRef.current?.objects || [];
+      for (const id of ids) {
+        if (clone.indexHidden.has(id)) continue;
+        clone.indexHidden.add(id);
+        const index = objects.findIndex((object, i) => getEraserCandidateId(object, i) === id);
+        const stableId = index >= 0 ? String(objects[index]?.id || '') : '';
+        let targets = [];
+        if (stableId && typeof CSS !== 'undefined' && CSS.escape) {
+          targets = clone.root.querySelectorAll(`[data-annotation-id="${CSS.escape(stableId)}"]`);
+        }
+        if (!targets.length && index >= 0) {
+          targets = clone.root.querySelectorAll(`[data-annotation-index="${index}"]`);
+        }
+        targets.forEach((el) => { el.style.display = 'none'; });
+      }
+      return;
+    }
     const preview = livePreviewCanvasRef.current;
-    if (!preview || preview.style.display === 'none' || !ids?.length) return;
+    if (!preview || preview.style.display === 'none') return;
     const idSet = new Set(ids);
+    // The preview snapshot was painted from presentation-PROJECTED objects
+    // (LightweightAnnotationOverlay maps projectPaperInkForPresentation), so
+    // the ghost mask must carve the same projected geometry — masking the raw
+    // stroked centerline leaves outline slivers of wide ink until the commit
+    // repaint.
     const objects = (annotationsRef.current?.objects || []).filter((object, index) => (
       idSet.has(getEraserCandidateId(object, index))
-    ));
+    )).map(projectPaperInkForPresentation);
     if (!objects.length || typeof document === 'undefined') return;
     const mask = livePreviewMaskCanvasRef.current || document.createElement('canvas');
     livePreviewMaskCanvasRef.current = mask;
@@ -356,12 +517,14 @@ const FabricEraserCanvas = memo(({
     const previewContext = preview.getContext('2d');
     if (!maskContext || !previewContext) return;
     const drawScale = Number(preview.dataset.canvasDrawScale) || (preview.width / pageWidth);
+    const drawScaleY = Number(preview.dataset.canvasDrawScaleY) || drawScale;
     const pageOffsetX = Number(preview.dataset.canvasPageOffsetX) || 0;
     const pageOffsetY = Number(preview.dataset.canvasPageOffsetY) || 0;
     paintAnnotationCanvas(maskContext, {
       canvasWidth: mask.width,
       canvasHeight: mask.height,
       drawScale,
+      drawScaleY,
       displayScale: Math.max(0.01, Number(viewerScaleRef.current) || 1),
       pageWidth,
       pageHeight,
@@ -375,6 +538,154 @@ const FabricEraserCanvas = memo(({
     previewContext.drawImage(mask, 0, 0);
     previewContext.restore();
   }, [pageHeight, pageWidth]);
+
+  // Flip a pointer's preview live and replay everything stashed while
+  // activation was pending (photo decode in flight, or the old
+  // presentation-not-painted failure window).
+  const activatePointerPreview = useCallback((pointer) => {
+    pointer.previewActive = true;
+    if (pointer.pendingAtomicIds.size) {
+      const stashed = [...pointer.pendingAtomicIds]
+        .filter((id) => !pointer.previewAtomicIds.has(id));
+      if (stashed.length) {
+        eraseAtomicObjectsFromPreview(stashed);
+        stashed.forEach((id) => pointer.previewAtomicIds.add(id));
+      }
+      pointer.pendingAtomicIds.clear();
+    }
+    if (pointer.pendingPartial && !pointer.previewHasPartial) {
+      pointer.previewHasPartial = true;
+      pointer.pendingPartial = false;
+      drawLiveErasePreviewSegment(pointer.points);
+      maskCarvedPathHits(pointer, pointer.points);
+    }
+  }, [drawLiveErasePreviewSegment, eraseAtomicObjectsFromPreview]);
+
+  // ROOT FIX for "annotations look different while erasing" (2026-07-14):
+  // the live carve renders on a CLONE of the real SVG layer — same engine,
+  // same box, same viewBox, so its raster is bit-identical to what was
+  // already on screen — with an SVG <mask> playing the destination-out role
+  // (white base rect = keep, black round-capped stroke path = carve) and
+  // whole-object ghosts hidden via display:none on the cloned elements.
+  // Every bitmap alternative was measured and rejected: the hand-painted
+  // twin diverges by engine rules at fractional zooms (border rows, glyph
+  // snap — the "annotations look different" class), and even a photograph
+  // of the SVG (blob-URL <img> drawImage) keeps a ~1%-of-ink-pixels AA
+  // disagreement because the isolated image rasterizer anti-aliases
+  // differently (measured in agent-cli/diag-photo-fidelity.mjs; phase
+  // baking/snapping did not move it). The clone is also synchronous — no
+  // decode wait, no canvas tainting. Carve coordinates are PAGE UNITS
+  // straight from the pointer (the mask lives in the clone's user space),
+  // so there is no transform to disagree with anything.
+  const beginMaskClonePreview = useCallback(() => {
+    if (maskCloneRef.current?.root?.isConnected) {
+      // Continuing session (back-to-back strokes inside the previous
+      // stroke's commit-wait window). CRITICAL: kill the previous stroke's
+      // pending finish observer + deferred teardown, or its belated
+      // callback rips this stroke's shared clone out mid-drag (adversarial
+      // review finding, 2026-07-15).
+      cancelLivePreviewFinish();
+      cancelScheduledPreviewHide();
+      return true;
+    }
+    cancelLivePreviewFinish();
+    cancelScheduledPreviewHide();
+    const surface = containerRef.current?.closest('[data-annotation-real-surface]');
+    const wrapper = surface?.querySelector('[data-diag-svg-wrapper]');
+    const svg = wrapper?.querySelector('svg[data-svg-annotation-layer]');
+    if (!surface || !wrapper || !svg) return false;
+    // Orphan sweep: a half-built clone from any earlier failure must never
+    // survive into a new session (it would double-render under the preview).
+    surface.querySelectorAll('[data-eraser-mask-clone]').forEach((el) => el.remove());
+    let cloneRoot = null;
+    let carve = null;
+    let maskEl = null;
+    try {
+      const SVG_NS = 'http://www.w3.org/2000/svg';
+      cloneRoot = svg.cloneNode(true);
+      // The clone must never masquerade as the real layer for selectors,
+      // diagnostics, or harnesses.
+      cloneRoot.removeAttribute('data-svg-annotation-layer');
+      cloneRoot.setAttribute('data-eraser-mask-clone', String(pageNumber));
+      cloneRoot.setAttribute('aria-hidden', 'true');
+      const defs = document.createElementNS(SVG_NS, 'defs');
+      const mask = document.createElementNS(SVG_NS, 'mask');
+      const maskId = `eraser-carve-mask-${pageNumber}-${Date.now().toString(36)}`;
+      mask.setAttribute('id', maskId);
+      mask.setAttribute('maskUnits', 'userSpaceOnUse');
+      // Region padded well past the page: the mask CLIPS its own content, so
+      // a page-bounds region would truncate carve circles at the page edge
+      // (the canvas destination-out never clipped there).
+      mask.setAttribute('x', '-256');
+      mask.setAttribute('y', '-256');
+      mask.setAttribute('width', String(pageWidth + 512));
+      mask.setAttribute('height', String(pageHeight + 512));
+      const keep = document.createElementNS(SVG_NS, 'rect');
+      keep.setAttribute('x', '0');
+      keep.setAttribute('y', '0');
+      keep.setAttribute('width', String(pageWidth));
+      keep.setAttribute('height', String(pageHeight));
+      keep.setAttribute('fill', '#fff');
+      carve = document.createElementNS(SVG_NS, 'path');
+      carve.setAttribute('d', '');
+      carve.setAttribute('fill', 'none');
+      carve.setAttribute('stroke', '#000');
+      carve.setAttribute('stroke-linecap', 'round');
+      carve.setAttribute('stroke-linejoin', 'round');
+      mask.appendChild(keep);
+      mask.appendChild(carve);
+      defs.appendChild(mask);
+      maskEl = mask;
+      // PER-ELEMENT masking (2026-07-15, mouse-up-flicker fix): the mask is
+      // DEFINED here but applied lazily to individual annotation elements as
+      // the sweep actually touches them (maskCarvedPathHits). Masking forces
+      // an isolated raster/blend buffer whose output differs subtly from the
+      // unmasked layer — with a whole-group mask EVERY annotation softened a
+      // hair during the gesture and snapped sharp on release (the visible
+      // "flicker of annotations at mouse up"), and multiply-blend highlights
+      // lost their page backdrop. Untouched elements now carry no mask and
+      // render bit-identically; only actively-carved ink pays the residual,
+      // and its pixels are legitimately changing anyway. This also stops the
+      // punch from visually cutting content the commit will never erase
+      // (blocked/non-erasable objects reappearing at release).
+      cloneRoot.appendChild(defs);
+      cloneRoot.style.position = 'absolute';
+      cloneRoot.style.inset = '0';
+      cloneRoot.style.width = '100%';
+      cloneRoot.style.height = '100%';
+      cloneRoot.style.zIndex = '100'; // same stacking as the SVG wrapper it replaces
+      cloneRoot.style.pointerEvents = 'none';
+      cloneRoot.style.visibility = 'visible';
+      surface.appendChild(cloneRoot);
+    } catch {
+      if (cloneRoot?.isConnected) cloneRoot.remove();
+      return false;
+    }
+    wrapper.style.visibility = 'hidden';
+    onErasePreviewPresentationRef.current?.(pageNumber, true);
+    const liveMaskId = maskEl?.getAttribute('id') || '';
+    maskCloneRef.current = {
+      root: cloneRoot,
+      carve,
+      mask: maskEl,
+      maskId: liveMaskId,
+      maskedKeys: new Set(),
+      indexHidden: new Set(),
+    };
+    // Non-null session state so the commit-repaint finish gate engages; the
+    // warm painted canvas still carries the revision/paint-generation
+    // handshake datasets even though it never becomes visible in this mode.
+    const { source } = findPresentationSource();
+    livePreviewSourceRef.current = {
+      surface,
+      source: source || null,
+      overlay: null,
+      previousVisibility: '',
+      maskClone: true,
+      paintGeneration: source?.dataset?.canvasPaintGeneration || '',
+    };
+    return true;
+  }, [cancelLivePreviewFinish, cancelScheduledPreviewHide, findPresentationSource, pageNumber, pageHeight, pageWidth]);
 
   const scheduleLiveErasePreviewFinish = useCallback(({ expectedRevision, waitForNextPaint }) => {
     const sourceState = livePreviewSourceRef.current;
@@ -489,6 +800,38 @@ const FabricEraserCanvas = memo(({
     }
   }, [eraseAtomicObjectsFromPreview, getEraseBlockReason, getPageRadius]);
 
+  // Lazily attach the carve mask to path elements the sweep actually
+  // touches (partial-erasable only). Elements keep rendering unmasked —
+  // bit-identical to the live layer — until the eraser really crosses them.
+  const maskCarvedPathHits = useCallback((pointer, segmentPoints) => {
+    const clone = maskCloneRef.current;
+    if (!clone?.maskId || !segmentPoints?.length) return;
+    if (eraserModeRef.current !== 'partial') return; // entire-mode paths whole-delete via ghosts
+    const objects = annotationsRef.current?.objects || [];
+    const radius = getPageRadius();
+    objects.forEach((object, index) => {
+      if (String(object?.type || '').toLowerCase() !== 'path') return;
+      const id = getEraserCandidateId(object, index);
+      if (clone.maskedKeys.has(id)) return;
+      if (getEraseBlockReason(object)) return;
+      if (!eraserStrokeTouchesObject({
+        eraserPoints: segmentPoints,
+        eraserRadius: radius,
+        object,
+      })) return;
+      clone.maskedKeys.add(id);
+      const stableId = String(object?.id || '');
+      let targets = [];
+      if (stableId && typeof CSS !== 'undefined' && CSS.escape) {
+        targets = clone.root.querySelectorAll(`[data-annotation-id="${CSS.escape(stableId)}"]`);
+      }
+      if (!targets.length) {
+        targets = clone.root.querySelectorAll(`[data-annotation-index="${index}"]`);
+      }
+      targets.forEach((el) => el.setAttribute('mask', `url(#${clone.maskId})`));
+    });
+  }, [getEraseBlockReason, getPageRadius]);
+
   const previewEraserGesture = useCallback((pointer, segment) => {
     if (!pointer?.points?.length) return false;
     if (pointer.previewActive && pointer.previewHasPartial) {
@@ -496,6 +839,7 @@ const FabricEraserCanvas = memo(({
       // non-path ghost check so whole-delete objects crossed mid-carve still
       // vanish live instead of popping out only at release.
       drawLiveErasePreviewSegment(segment);
+      maskCarvedPathHits(pointer, segment);
       ghostAtomicNonPathHits(pointer, segment);
       return true;
     }
@@ -512,7 +856,16 @@ const FabricEraserCanvas = memo(({
     });
     if (!plan.shouldPreview) return false;
     if (!pointer.previewActive) {
-      if (!beginLiveErasePreview()) {
+      // Mask-clone first (bit-identical, synchronous); the painted-canvas
+      // copy only serves the exotic failure path (SVG missing mid-swap).
+      if (beginMaskClonePreview()) {
+        console.log(`[EraserCarveDiag] page=${pageNumber} base=svg-mask-clone`);
+        activatePointerPreview(pointer);
+        if (pointer.previewHasPartial) maskCarvedPathHits(pointer, pointer.points);
+      } else if (beginLiveErasePreview()) {
+        console.log(`[EraserCarveDiag] page=${pageNumber} base=painted-fallback`);
+        activatePointerPreview(pointer);
+      } else {
         // Activation can legitimately fail (presentation canvas not painted
         // yet, page mid-swap). Stash this segment's outcome so the first
         // successful activation replays it — otherwise a hit inside the
@@ -520,16 +873,6 @@ const FabricEraserCanvas = memo(({
         pointer.pendingPartial = pointer.pendingPartial || plan.partialIds.length > 0;
         plan.atomicIds.forEach((id) => pointer.pendingAtomicIds.add(id));
         return false;
-      }
-      pointer.previewActive = true;
-      if (pointer.pendingAtomicIds.size) {
-        const stashed = [...pointer.pendingAtomicIds]
-          .filter((id) => !pointer.previewAtomicIds.has(id));
-        if (stashed.length) {
-          eraseAtomicObjectsFromPreview(stashed);
-          stashed.forEach((id) => pointer.previewAtomicIds.add(id));
-        }
-        pointer.pendingAtomicIds.clear();
       }
     }
     if (!pointer.previewHasPartial && (plan.partialIds.length > 0 || pointer.pendingPartial)) {
@@ -544,6 +887,7 @@ const FabricEraserCanvas = memo(({
       pointer.previewHasPartial = true;
       pointer.pendingPartial = false;
       drawLiveErasePreviewSegment(pointer.points);
+      maskCarvedPathHits(pointer, pointer.points);
     }
     const newAtomicIds = plan.atomicIds.filter((id) => !pointer.previewAtomicIds.has(id));
     if (newAtomicIds.length) {
@@ -552,12 +896,16 @@ const FabricEraserCanvas = memo(({
     }
     return true;
   }, [
+    activatePointerPreview,
     beginLiveErasePreview,
+    beginMaskClonePreview,
     drawLiveErasePreviewSegment,
     eraseAtomicObjectsFromPreview,
     getEraseBlockReason,
     getPageRadius,
     ghostAtomicNonPathHits,
+    maskCarvedPathHits,
+    pageNumber,
   ]);
 
   const applyEraserAndCommit = useCallback((eraserPoints) => {
@@ -663,6 +1011,7 @@ const FabricEraserCanvas = memo(({
   }, [finishLiveErasePreview]);
 
   const handlePointerDown = useCallback((event) => {
+    lastClientPosRef.current = { x: event.clientX, y: event.clientY, pointerType: event.pointerType };
     if (event.button !== 0 || spaceHeldRef.current) return;
     if (pointerRef.current) cancelPointer();
     const point = pagePoint(event.nativeEvent);
@@ -699,6 +1048,7 @@ const FabricEraserCanvas = memo(({
   ]);
 
   const handlePointerMove = useCallback((event) => {
+    lastClientPosRef.current = { x: event.clientX, y: event.clientY, pointerType: event.pointerType };
     const point = pagePoint(event.nativeEvent);
     updateEraserCursor(point, true);
     const pointer = pointerRef.current;
@@ -727,7 +1077,10 @@ const FabricEraserCanvas = memo(({
     try { event.currentTarget.releasePointerCapture(event.pointerId); } catch { /* already released */ }
     if (cancelled) {
       finishLiveErasePreview();
-      updateEraserCursor(null, false);
+      // Not a real pointer exit: if the pointer still hovers the wrapper the
+      // native cursor is 'none', so hiding the circle here would leave no
+      // visible cursor until the next move. Re-show at the last known spot.
+      reshowCursorAtLastClientPos();
       return;
     }
     event.preventDefault();
@@ -752,6 +1105,7 @@ const FabricEraserCanvas = memo(({
     finishLiveErasePreview,
     pagePoint,
     previewEraserGesture,
+    reshowCursorAtLastClientPos,
     scheduleLiveErasePreviewFinish,
     updateEraserCursor,
   ]);
@@ -760,8 +1114,10 @@ const FabricEraserCanvas = memo(({
     const pointer = pointerRef.current;
     if (!pointer || pointer.pointerId !== event.pointerId) return;
     cancelPointer();
-    updateEraserCursor(null, false);
-  }, [cancelPointer, updateEraserCursor]);
+    // Same reasoning as the cancelled branch of finishPointer: losing capture
+    // does not mean the pointer left the wrapper — keep a visible cursor.
+    reshowCursorAtLastClientPos();
+  }, [cancelPointer, reshowCursorAtLastClientPos]);
 
   const commitPointerForZoom = useCallback(() => {
     const pointer = pointerRef.current;
@@ -800,7 +1156,33 @@ const FabricEraserCanvas = memo(({
     // re-layouts; a cancel here silently threw away the user's erase.
     commitPointerForZoom();
     updateEraserCursor(null, false);
-  }, [commitPointerForZoom, updateEraserCursor, zoomGeneration]);
+    // Cursor-visibility fix: the hide above plus the wrapper's cursor:'none'
+    // means a stationary pointer has NO visible cursor from zoom-start until
+    // the next pointermove. Re-show the circle once the zoom re-layout lands:
+    // primary signal is the wrapper's actual resize (fresh rect at that
+    // moment, so placement is exact); the timeout is a fallback for clamped
+    // zooms where zoomGeneration bumped but the size never changes.
+    let observer = null;
+    if (typeof ResizeObserver !== 'undefined' && containerRef.current) {
+      let sawInitialObservation = false;
+      observer = new ResizeObserver(() => {
+        // observe() always delivers one immediate notification with the
+        // CURRENT size — the real zoom re-layout is the next one.
+        if (!sawInitialObservation) {
+          sawInitialObservation = true;
+          return;
+        }
+        observer.disconnect();
+        reshowCursorAtLastClientPos();
+      });
+      observer.observe(containerRef.current);
+    }
+    const reshowFallbackTimer = setTimeout(reshowCursorAtLastClientPos, 400);
+    return () => {
+      observer?.disconnect();
+      clearTimeout(reshowFallbackTimer);
+    };
+  }, [commitPointerForZoom, reshowCursorAtLastClientPos, updateEraserCursor, zoomGeneration]);
 
   useEffect(() => {
     const isSpaceKey = (event) => event.code === 'Space' || event.key === ' ';
@@ -814,21 +1196,32 @@ const FabricEraserCanvas = memo(({
       if (event && !isSpaceKey(event)) return;
       spaceHeldRef.current = false;
     };
+    // Window blur must ALWAYS release the space-pan latch (the keyup is lost
+    // to the other window). Passing the FocusEvent into releaseSpacePan used
+    // to trip its isSpaceKey guard and leave spaceHeldRef stuck true — the
+    // circle could then never re-show (wrapper cursor is 'none' → no visible
+    // cursor at all) until space was pressed and released again.
+    const releaseSpacePanOnBlur = () => releaseSpacePan(null);
     window.addEventListener('keydown', activateSpacePan, true);
     window.addEventListener('keyup', releaseSpacePan, true);
-    window.addEventListener('blur', releaseSpacePan);
+    window.addEventListener('blur', releaseSpacePanOnBlur);
     return () => {
       window.removeEventListener('keydown', activateSpacePan, true);
       window.removeEventListener('keyup', releaseSpacePan, true);
-      window.removeEventListener('blur', releaseSpacePan);
+      window.removeEventListener('blur', releaseSpacePanOnBlur);
     };
   }, [cancelPointer, updateEraserCursor]);
 
   useEffect(() => () => {
     pointerRef.current = null;
+    // Unmounting — no SVG remount to wait for; tear down the mask clone and
+    // preview canvas now instead of leaving the deferred double-rAF cleanup
+    // to fire on detached nodes.
+    removeMaskCloneNow();
     finishLiveErasePreview();
+    hidePreviewCanvasNow();
     updateEraserCursor(null, false);
-  }, [finishLiveErasePreview, updateEraserCursor]);
+  }, [finishLiveErasePreview, hidePreviewCanvasNow, removeMaskCloneNow, updateEraserCursor]);
 
   return (
     <div
@@ -839,8 +1232,16 @@ const FabricEraserCanvas = memo(({
       onPointerUp={(event) => finishPointer(event, false)}
       onPointerCancel={(event) => finishPointer(event, true)}
       onLostPointerCapture={handleLostPointerCapture}
-      onPointerEnter={(event) => updateEraserCursor(pagePoint(event.nativeEvent), true)}
-      onPointerLeave={() => updateEraserCursor(null, false)}
+      onPointerEnter={(event) => {
+        lastClientPosRef.current = { x: event.clientX, y: event.clientY, pointerType: event.pointerType };
+        updateEraserCursor(pagePoint(event.nativeEvent), true);
+      }}
+      onPointerLeave={() => {
+        // A real exit: forget the position so no later re-show path (zoom
+        // settle, cancel, lost capture) resurrects a phantom circle.
+        lastClientPosRef.current = null;
+        updateEraserCursor(null, false);
+      }}
       style={{
         position: 'absolute',
         inset: 0,

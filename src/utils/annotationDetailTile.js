@@ -78,12 +78,20 @@ export function calculateAnnotationDetailTile({
     normalizedViewportRect.height * Math.max(0, marginRatio),
     normalizedPageRect.height,
   );
-  const left = Math.max(0, visibleLeft - marginX);
-  const top = Math.max(0, visibleTop - marginY);
-  const right = Math.min(normalizedPageRect.width, visibleRight + marginX);
-  const bottom = Math.min(normalizedPageRect.height, visibleBottom + marginY);
+  // Integer CSS box (floor/ceil only ever widens coverage): a fractional tile
+  // box hits the same compositor snap-stretch as the base canvas — the bitmap
+  // rescales by ~1/width when the box maps to fractional device pixels. Page
+  // edges floor too so the box stays integer at the far edge; the <1px page
+  // sliver left uncovered there is below one device pixel of content.
+  const left = Math.floor(Math.max(0, visibleLeft - marginX));
+  const top = Math.floor(Math.max(0, visibleTop - marginY));
+  const right = Math.min(Math.floor(normalizedPageRect.width), Math.ceil(visibleRight + marginX));
+  const bottom = Math.min(Math.floor(normalizedPageRect.height), Math.ceil(visibleBottom + marginY));
   const width = right - left;
   const height = bottom - top;
+  if (width <= 0 || height <= 0) return null;
+  const backingWidth = Math.max(1, Math.ceil(width * dpr));
+  const backingHeight = Math.max(1, Math.ceil(height * dpr));
 
   return {
     left,
@@ -92,9 +100,15 @@ export function calculateAnnotationDetailTile({
     height,
     pageOffsetX: left / pageScale,
     pageOffsetY: top / pageScaleY,
-    backingWidth: Math.max(1, Math.ceil(width * dpr)),
-    backingHeight: Math.max(1, Math.ceil(height * dpr)),
-    drawScale: pageScale * dpr,
+    backingWidth,
+    backingHeight,
+    // Scales re-derived from the integer backing dims (per axis) so the
+    // painted extent fills the backing store EXACTLY — pageScale * dpr misses
+    // it by the ceil() fraction and the CSS stretch back to tile.width/height
+    // drifts all geometry linearly from the tile origin (same parity bug as
+    // calculateAnnotationCanvasBackingStore).
+    drawScale: (backingWidth * pageScale) / width,
+    drawScaleY: (backingHeight * pageScaleY) / height,
     pageScale,
     pageScaleY,
     dpr,

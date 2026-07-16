@@ -39,13 +39,28 @@ function ensureFormLayerCss() {
   const style = document.createElement('style');
   style.setAttribute('data-pdfjs-form-layer-css', '');
   style.textContent = `
-    .pdfjsFormLayer { pointer-events: none; }
+    .pdfjsFormLayer {
+      pointer-events: none;
+      /* UX 2026-07-14 (zoom-scaling unification): pdf.js sizes widget text as
+         calc(Xpx * var(--total-scale-factor)) but only consumes the variable —
+         its own stylesheet (which defines it) is never imported here. With it
+         undefined the calc() was invalid and every field fell back to the
+         fixed-px 'font: inherit' below, so boxes grew with zoom while the
+         text inside stayed frozen. Deriving it from the --scale-factor this
+         layer already maintains makes field text scale with the page. */
+      --total-scale-factor: var(--scale-factor, 1);
+    }
     .pdfjsFormLayer section { position: absolute; pointer-events: auto; box-sizing: border-box; }
     .pdfjsFormLayer[data-interactive="false"] section { pointer-events: none; }
     .pdfjsFormLayer .textWidgetAnnotation input, .pdfjsFormLayer .textWidgetAnnotation textarea,
     .pdfjsFormLayer .choiceWidgetAnnotation select, .pdfjsFormLayer .buttonWidgetAnnotation input {
-      width: 100%; height: 100%; box-sizing: border-box; margin: 0; font: inherit; padding: 0 2px;
-      background: rgba(60,130,255,0.06); border: 1px solid rgba(60,130,255,0.55); color: #111;
+      width: 100%; height: 100%; box-sizing: border-box; margin: 0; font: inherit;
+      /* Gutter + border ride the same scale as the page so the field chrome
+         thickens/thins with zoom like every other annotation stroke. */
+      padding: 0 calc(var(--scale-factor, 1) * 2px);
+      background: rgba(60,130,255,0.06);
+      border: calc(var(--scale-factor, 1) * 1px) solid rgba(60,130,255,0.55);
+      color: #111;
     }
     .pdfjsFormLayer .buttonWidgetAnnotation.checkBox input,
     .pdfjsFormLayer .buttonWidgetAnnotation.radioButton input { appearance: auto; -webkit-appearance: auto; background: #fff; }

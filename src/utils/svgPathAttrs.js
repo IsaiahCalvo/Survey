@@ -6,21 +6,22 @@
  *
  * UX 2026-04-28: PDF-imported Ink has two different real-world shapes:
  * normal open pen lines, and closed zero-width outlines emitted by Adobe /
- * Drawboard for filled marker dots and pressure ink. Open lines get
- * vector-effect:non-scaling-stroke plus a minimum visible width so they
- * do not disappear at low zoom. Closed thin outlines render as filled
- * shapes instead of stroked paths, otherwise they look like hollow rings.
+ * Drawboard for filled marker dots and pressure ink. Open lines get a
+ * minimum visible width so they do not disappear at 100% zoom. Closed thin
+ * outlines render as filled shapes instead of stroked paths, otherwise
+ * they look like hollow rings.
  *
- * Prior 2026-04-21 normalization removed strokeUniform from imports
- * for parity with internal pen strokes; that solved a 200% hairline
- * mismatch but introduced the sub-pixel invisibility regression.
- * Provenance-conditional rendering for IMPORTED paths only is the
- * surgical balance — see also tests/pdfAnnotationNormalization.test.mjs.
+ * UX 2026-07-14 (zoom-scaling unification): imported strokes previously
+ * carried vector-effect:non-scaling-stroke so the floor became a constant
+ * device-pixel width at every zoom. Per user direction every annotation now
+ * scales with zoom like rects/ellipses, so the floors below are plain
+ * page-unit minimums and the stroke grows/shrinks proportionally with the
+ * page — see also tests/pdfAnnotationNormalization.test.mjs.
  */
 
-// Minimum SVG user-unit stroke width for open PDF-imported paths. Combined
-// with vector-effect:non-scaling-stroke this becomes the device-pixel floor
-// regardless of zoom.
+// Minimum SVG user-unit stroke width for open PDF-imported paths — a
+// page-unit floor applied to the stored width; the rendered stroke scales
+// with zoom from there.
 const IMPORTED_PATH_MIN_STROKE_WIDTH = 2.5;
 const IMPORTED_SQUIGGLY_MIN_STROKE_WIDTH = 0.6;
 const IMPORTED_SQUIGGLY_MAX_STROKE_WIDTH = 1.1;
@@ -503,14 +504,15 @@ export function renderPathToSvgAttrs(obj) {
       ? Math.max(IMPORTED_PATH_MIN_STROKE_WIDTH, rawWidth)
     : rawWidth;
 
-  // vectorEffect:non-scaling-stroke means the stroke renders at a constant
-  // device-pixel width regardless of the viewBox transform / zoom. We turn
-  // it on for any imported path (so thin PDF strokes never go sub-pixel),
-  // and otherwise honor the legacy strokeUniform opt-in for internally
-  // drawn paths that explicitly want zoom-stable strokes.
-  const vectorEffect = (isImported || obj.strokeUniform)
-    ? 'non-scaling-stroke'
-    : undefined;
+  // UX 2026-07-14 (zoom-scaling unification): every annotation stroke lives
+  // in PAGE units and scales with zoom, exactly like user-drawn rects and
+  // ellipses — imported ink included, per explicit user direction ("even
+  // imported annotations have to follow that"). The old
+  // vector-effect:non-scaling-stroke pin (constant device-px width at every
+  // zoom) is gone; low-zoom visibility is preserved by the page-unit
+  // minimum widths above, which now scale proportionally instead of
+  // freezing. Legacy strokeUniform opt-ins are ignored for the same reason.
+  const vectorEffect = undefined;
 
   return {
     stroke: obj.stroke ?? '#000',

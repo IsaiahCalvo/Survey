@@ -614,14 +614,18 @@ const FabricDrawingCanvas = memo(({
       }
 
       sessionPathsRef.current.push(shape);
-      canvas.remove(shape);
 
       const currentAnnotations = annotationsRef.current;
       const updated = {
         ...currentAnnotations,
         objects: [...(currentAnnotations?.objects || []), shapeJSON],
       };
-      onStrokeCommitRef.current(updated);
+      // Commit React state BEFORE removing Fabric's live preview shape (same
+      // order as the pen path:created handler). Removing first leaves a blank
+      // frame between preview teardown and the committed renderer's paint —
+      // the "shape blinks on release" seam.
+      flushSync(() => onStrokeCommitRef.current(updated));
+      canvas.remove(shape);
       if (commitDiag && (tool === 'rect' || tool === 'ellipse')) {
         scheduleShapeCommitSvgProbe({
           ...commitDiag,

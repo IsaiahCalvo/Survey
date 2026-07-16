@@ -163,5 +163,12 @@ before the flag flips. Landed increments verified flag-OFF byte-identical (build
 - **MINOR:** `projectCalloutsIntoByPage` line ~105 should `return next` (not `byPage`) for unconditional
   ghost-cleanup; the `catch` stays `return byPage` (safety net). `id == null` callouts bypass dedup
   (upstream data issue, not introduced here).
+- **MINOR (eraser ghost mask, found 2026-07-14 unified-renderer parity review):** with the flag ON,
+  whole-erasing a callout won't ghost from the eraser live preview —
+  `eraseAtomicObjectsFromPreview` (`src/components/FabricEraserCanvas.jsx`) paints its destination-out
+  mask via `paintAnnotationCanvas`, whose `drawAnnotationObject` skips `data.type==='callout'`
+  projections (they live in the `callouts[]` pipeline). The deleted callout stays visible until the
+  commit repaint. Flag-OFF behavior unaffected. FIX before flip: route projected callouts through the
+  mask's `callouts` path (or stop skipping them for mask paints).
 
 After these fixes: re-run ≥2 adversarial passes + harness flag-ON before flipping.

@@ -171,9 +171,10 @@ try {
   step('Typing text in callout edit mode...');
   await page.waitForTimeout(400);
 
-  // Check if edit mode launched (FabricEditCanvas canvas appears)
+  // Check if edit mode launched (TextEditOverlay hosts callout text edit
+  // since the same-surface editor replaced FabricEditCanvas for text)
   const fabricCanvasExists = await page.evaluate(() =>
-    !!document.querySelector('.upper-canvas, [class*="fabric"]')
+    !!document.querySelector('[data-text-edit-overlay], .upper-canvas')
   );
   console.log(`   Fabric edit canvas present: ${fabricCanvasExists}`);
 

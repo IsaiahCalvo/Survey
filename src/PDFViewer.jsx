@@ -27,8 +27,8 @@ import CalloutOverlay from './components/Callout';
 // below — see `await import('exceljs')` — so it stays out of the main viewer chunk.
 import ExcelLockedModal from './components/ExcelLockedModal';
 import ExcelSyncConfirmModal from './components/ExcelSyncConfirmModal';
-import FabricDrawingCanvas from './components/FabricDrawingCanvas';
 import FabricEditCanvas from './components/FabricEditCanvas';
+import TextEditOverlay from './components/TextEditOverlay';
 import FabricEraserCanvas from './components/FabricEraserCanvas';
 import FormFieldPropertiesPanel from './components/FormFieldPropertiesPanel';
 import Icon from './Icons';
@@ -1888,8 +1888,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   // [Phase 11] Removed: old Canvas-mode confirm-pending helper functions (3 functions), inert in SVG mode.
 
   const beginPdfjsScaleConfirmPending = useCallback((source = 'unknown') => {
-    // Signal zoom-start to mounted Canvas components (FabricDrawingCanvas, FabricEraserCanvas, FabricEditCanvas).
-    // zoomGeneration change flushes any in-progress work before canvas resizes.
+    // Signal zoom-start to every mounted surface that holds in-progress work:
+    // SVGAnnotationLayer's SVG-native creation gestures (freehand flush),
+    // FabricEraserCanvas, and FabricEditCanvas. zoomGeneration change flushes
+    // any in-progress work before the page hosts re-layout.
     setZoomGeneration(prev => prev + 1);
 
     // SVG mode: viewBox auto-scales, no JavaScript coordination needed.
@@ -2954,6 +2956,17 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     viewer.deleteFormField(selectedFormField.id);
     setSelectedFormField(null);
   }, [selectedFormField]);
+  // At most ONE forced-cursor restore may be pending at a time. Two tool
+  // switches with no mouse movement in between used to stack two {once:true}
+  // mousemove listeners; on the first real move they fired in insertion order
+  // and the SECOND one restored the first switch's forced cursor (e.g. 'none'
+  // from eraser) as if it were the element's own inline cursor — permanently
+  // baking cursor:none onto a persistent canvas-area element (cursor vanished
+  // over the PDF, reappeared over the side rails). Holding the single pending
+  // restore in this ref and running it BEFORE applying a new override means
+  // the captured prevCursor is always the element's genuine pre-override
+  // value, never a value this effect set itself.
+  const forcedCursorRestoreRef = useRef(null);
   useEffect(() => {
     // [InteractionDiag] tool-switch RESPONSE: the active tool actually changed.
     // Pairs with the tool-switch INTENT log inside the logged setActiveTool
@@ -2964,6 +2977,47 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       if (prevTool !== activeTool) {
         console.log(`[InteractionDiag] tool-changed @ ${Math.round(performance.now())}ms from=${prevTool} to=${activeTool}` + (activeTool === 'pan' ? ' (pan-active → Pdfjs interactionMode=Pan)' : '') + (activeTool === 'eraser' ? ' (eraser-active → FabricEraserCanvas mounts)' : ''));
         interactionDiagPrevToolRef.current = activeTool;
+        // [EraserParityDiag] one maximally-complete environment + geometry dump
+        // per eraser entry/exit, so a single pasted save-log answers every
+        // "which display / zoom / backing / box" question with zero follow-ups
+        // (eraser text-jump hunt, 2026-07-14). Deferred a frame so the
+        // presentation swap has committed before we read the DOM.
+        if (activeTool === 'eraser' || prevTool === 'eraser') {
+          const dir = activeTool === 'eraser' ? 'enter-eraser' : 'exit-eraser';
+          requestAnimationFrame(() => requestAnimationFrame(() => {
+            try {
+              const host = document.querySelector('[data-annotation-real-surface="1"]');
+              const hostRect = host?.getBoundingClientRect();
+              const canvas = document.querySelector('[data-annotation-presentation-canvas="1"]');
+              const canvasRect = canvas?.getBoundingClientRect();
+              const detail = document.querySelector('[data-annotation-detail-canvas="1"]');
+              const svg = document.querySelector('svg[data-svg-annotation-layer="1"]');
+              const svgRect = svg?.getBoundingClientRect();
+              const rect = (r) => r ? { x: +r.x.toFixed(3), y: +r.y.toFixed(3), w: +r.width.toFixed(3), h: +r.height.toFixed(3) } : null;
+              console.log(`[EraserParityDiag] ${dir} pdf=${pdfFile?.name || pdfFile?.file_name || '?'} ` + JSON.stringify({
+                dpr: window.devicePixelRatio,
+                visualViewportScale: window.visualViewport?.scale ?? null,
+                innerSize: { w: window.innerWidth, h: window.innerHeight },
+                screen: { w: window.screen?.width, h: window.screen?.height, availW: window.screen?.availWidth },
+                pageHost: rect(hostRect),
+                svg: rect(svgRect),
+                canvas: canvasRect ? {
+                  rect: rect(canvasRect),
+                  backing: canvas ? { w: canvas.width, h: canvas.height } : null,
+                  cssBox: canvas ? { w: canvas.style.width, h: canvas.style.height } : null,
+                  drawScale: canvas?.dataset.canvasDrawScale,
+                  drawScaleY: canvas?.dataset.canvasDrawScaleY,
+                  clamped: canvas?.dataset.canvasClamped,
+                  paintGen: canvas?.dataset.canvasPaintGeneration,
+                  renderer: canvas?.dataset.canvasRenderer,
+                } : null,
+                detailActive: detail?.dataset.annotationDetailActive === 'true'
+                  ? { rect: rect(detail.getBoundingClientRect()), backing: { w: detail.width, h: detail.height }, cssBox: { w: detail.style.width, h: detail.style.height } }
+                  : false,
+              }));
+            } catch (diagErr) { console.warn('[EraserParityDiag] dump failed', diagErr?.message); }
+          }));
+        }
       }
     } catch (_e) { /* swallow */ }
     activeToolRef.current = activeTool;
@@ -2974,6 +3028,16 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     // Note: this works for tools whose cursor element is already in the DOM
     // (pan, select) but NOT for eraser where a new Canvas mounts — the browser
     // won't pick up the new element's cursor until mouse movement.
+    const runPendingCursorRestore = () => {
+      const pending = forcedCursorRestoreRef.current;
+      if (!pending) return;
+      forcedCursorRestoreRef.current = null;
+      window.removeEventListener('mousemove', pending.listener);
+      pending.el.style.cursor = pending.prevCursor;
+    };
+    // Settle any previous override FIRST so the prevCursor captured below is
+    // the element's real inline cursor, not a leftover forced value.
+    runPendingCursorRestore();
     const { x, y } = lastPointerPosRef.current;
     const el = document.elementFromPoint(x, y);
     if (el) {
@@ -2984,12 +3048,13 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       else if (activeTool === 'text' || NATIVE_TEXT_MARKUP_TOOLS.has(activeTool)) forcedCursor = 'text';
       const prevCursor = el.style.cursor;
       el.style.cursor = forcedCursor;
-      const clearOverride = () => {
-        el.style.cursor = prevCursor;
-        window.removeEventListener('mousemove', clearOverride);
-      };
+      const clearOverride = () => runPendingCursorRestore();
+      forcedCursorRestoreRef.current = { el, prevCursor, listener: clearOverride };
       window.addEventListener('mousemove', clearOverride, { once: true });
     }
+    // Effect cleanup (next tool switch or unmount) also settles the override,
+    // so an un-fired restore can never outlive the effect run that armed it.
+    return runPendingCursorRestore;
   }, [activeTool]);
 
   // Clear edit state when switching to drawing/eraser tools
@@ -3920,6 +3985,30 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   const [eraserSize, setEraserSize] = useState(20); // Diameter in page pixels
   const [eraserCursorPos, setEraserCursorPos] = useState({ visible: false });
   const eraserCursorRef = useRef(null);
+  // UX (2026-07-14, E/P text-bob fix): pages whose live erase preview is on
+  // screen. The canvas2d presentation now takes over ONLY while a stroke's
+  // preview is active on that page — merely entering eraser mode keeps the
+  // SVG layer presenting, so tool toggling can't shift a single pixel. (The
+  // old rule swapped renderers on tool switch, exposing ±1 device px
+  // rasterizer edge-snap differences at fractional zoom stops — the
+  // user-visible "text bobs when toggling E/P" bug, reproduced at 447%.)
+  const [erasePreviewPages, setErasePreviewPages] = useState(() => new Set());
+  const handleErasePreviewPresentation = useCallback((previewPageNumber, active) => {
+    setErasePreviewPages((prev) => {
+      if (prev.has(previewPageNumber) === !!active) return prev;
+      const next = new Set(prev);
+      if (active) next.add(previewPageNumber);
+      else next.delete(previewPageNumber);
+      return next;
+    });
+  }, []);
+  useEffect(() => {
+    // Belt for the unmount path: leaving eraser mode always returns every
+    // page to the SVG presentation even if a finish callback got skipped.
+    if (activeTool !== 'eraser') {
+      setErasePreviewPages((prev) => (prev.size ? new Set() : prev));
+    }
+  }, [activeTool]);
 
   // Spacebar Pan state
   const previousToolRef = useRef(null);
@@ -4052,31 +4141,36 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       appDebug(`[Counter] TOOL ACTIVATED — activeTool=counter, lastShapeTool=${lastShapeTool}, ref will sync next render`);
     }
     if (['line', 'arrow', 'callout'].includes(activeTool)) {
-      const isDrawingTool = ['pen', 'highlighter', 'rect', 'ellipse', 'line', 'arrow'].includes(activeTool);
       appDebug(`[App] TOOL ACTIVATED: ${activeTool}`, {
-        isDrawingTool,
-        willMountDrawingCanvas: isDrawingTool,
-        willMountCalloutUI: activeTool === 'callout',
-        NOTE: activeTool === 'callout'
-          ? 'CALLOUT TOOL HAS NO CREATION UI — isDrawingTool=false, no canvas mounts, no click handler'
-          : activeTool === 'arrow'
-            ? 'Arrow tool creates plain fabric.Line — NO arrowhead added in FabricDrawingCanvas'
-            : 'Line tool creates fabric.Line — edit blocked by non-editable check in handleAnnotationEdit',
+        creationSurface: activeTool === 'callout'
+          ? 'SVGAnnotationLayer callout drag (svgServesCalloutCreation)'
+          : 'SVGAnnotationLayer shape creation (no drawing canvas mounts — FabricDrawingCanvas retired)',
       });
     }
 
+    // UX: the sub-toolbar must always show the ACTIVE tool's group. Keyboard
+    // shortcuts (P/H/E/Q/L/A/C/T…) only change activeTool, while the sub-row
+    // renders from activeCategoryDropdown (set by category-button clicks) —
+    // so pressing E highlighted the Draw group but left the previous group's
+    // sub-row on screen. Deriving the dropdown here makes shortcut switches
+    // indistinguishable from clicking the category button. The category
+    // buttons' toggle-to-close still works: closing doesn't change the tool,
+    // so this effect doesn't re-open.
     if (['pen', 'highlighter', 'text-highlight', 'eraser'].includes(activeTool)) {
       setLastDrawTool(activeTool);
+      setActiveCategoryDropdown((prev) => (prev === 'draw' ? prev : 'draw'));
       try {
         localStorage.setItem('lastDrawTool', activeTool);
       } catch (e) { }
     } else if (['rect', 'ellipse', 'line', 'arrow', 'counter'].includes(activeTool)) {
       setLastShapeTool(activeTool);
+      setActiveCategoryDropdown((prev) => (prev === 'shape' ? prev : 'shape'));
       try {
         localStorage.setItem('lastShapeTool', activeTool);
       } catch (e) { }
     } else if (REVIEW_TOOL_IDS.includes(activeTool)) {
       setLastReviewTool(activeTool);
+      setActiveCategoryDropdown((prev) => (prev === 'review' ? prev : 'review'));
       try {
         localStorage.setItem('lastReviewTool', activeTool);
       } catch (e) { }
@@ -15417,6 +15511,124 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     return updatedTemplate;
   }, [selectedTemplate, updateSupabaseTemplate, sanitizeTemplateConfig, handleTemplatesChange, appTemplates]);
 
+  // Survey-rail "Create category" plumbing (CreateCategoryModal, opened by the
+  // desktop plus button in the Categories heading row).
+  // (a) Append the category to the CURRENT template and persist — mirrors
+  //     handleModifyCurrentTemplate's persistence pattern exactly.
+  //     Category shape matches the canonical template config produced by the
+  //     templates editor / Excel import: { id, name, checklist: [] }.
+  const handleAddCategoryToCurrentTemplate = useCallback(async (moduleId, categoryName) => {
+    if (!selectedTemplate || !moduleId || !categoryName) return null;
+
+    const newCategory = {
+      id: `cat-${crypto.randomUUID()}`,
+      name: categoryName,
+      checklist: []
+    };
+
+    const updatedModules = deepClone(selectedTemplate.modules || selectedTemplate.spaces || []).map((mod) => (
+      mod.id === moduleId
+        ? { ...mod, categories: [...(mod.categories || []), newCategory] }
+        : mod
+    ));
+
+    const updatedTemplate = {
+      ...selectedTemplate,
+      modules: updatedModules,
+      spaces: updatedModules,
+      updatedAt: new Date().toISOString()
+    };
+
+    setSelectedTemplate(updatedTemplate);
+
+    // Persist to Supabase
+    const supabaseTemplateId = selectedTemplate?.supabaseId || selectedTemplate?.id;
+    if (updateSupabaseTemplate && supabaseTemplateId) {
+      try {
+        const configPayload = sanitizeTemplateConfig(updatedTemplate);
+        await updateSupabaseTemplate(supabaseTemplateId, {
+          config: configPayload,
+          updated_at: new Date().toISOString()
+        });
+      } catch (err) {
+        console.error('Failed to persist new category to Supabase:', err);
+        showToast('Warning: Category was added locally but failed to save to cloud. Your changes may not persist.', 'error');
+      }
+    }
+
+    // Update local templates array
+    if (handleTemplatesChange && appTemplates) {
+      handleTemplatesChange(appTemplates.map(t =>
+        (t.id === updatedTemplate.id || t.supabaseId === supabaseTemplateId)
+          ? updatedTemplate
+          : t
+      ));
+    }
+
+    return updatedTemplate;
+  }, [selectedTemplate, updateSupabaseTemplate, sanitizeTemplateConfig, handleTemplatesChange, appTemplates]);
+
+  // (b) Clone the current template with the category appended, persist it as a
+  //     NEW template, and switch this document to it — mirrors
+  //     handleCreateNewTemplateFromColumns's approach.
+  const handleAddCategoryAsNewTemplate = useCallback(async (moduleId, categoryName, newTemplateName) => {
+    if (!selectedTemplate || !moduleId || !categoryName) return null;
+
+    const timestamp = new Date().toISOString();
+    const newTemplateId = `tpl-${Date.now()}`;
+
+    const newCategory = {
+      id: `cat-${crypto.randomUUID()}`,
+      name: categoryName,
+      checklist: []
+    };
+
+    const clonedModules = deepClone(selectedTemplate.modules || selectedTemplate.spaces || []).map((mod) => (
+      mod.id === moduleId
+        ? { ...mod, categories: [...(mod.categories || []), newCategory] }
+        : mod
+    ));
+
+    const newName = newTemplateName || `${selectedTemplate.name} (Updated)`;
+
+    // Remove supabaseId from the spread to ensure this is treated as a new local template
+    const { supabaseId: _omitSupabaseId, ...templateWithoutSupabaseId } = selectedTemplate;
+    const newTemplate = {
+      ...templateWithoutSupabaseId,
+      id: newTemplateId,
+      name: newName,
+      modules: clonedModules,
+      spaces: clonedModules,
+      createdAt: timestamp,
+      updatedAt: timestamp
+    };
+
+    // 1. Update local state FIRST for instant UI
+    if (onTemplatesChange) {
+      onTemplatesChange([newTemplate, ...templates]);
+    }
+
+    // 2. Switch this document to the new template immediately
+    setSelectedTemplate(newTemplate);
+
+    // 3. Persist to Supabase and refetch to update Dashboard templates tab
+    try {
+      const configPayload = sanitizeTemplateConfig(newTemplate);
+      await createSupabaseTemplate({
+        name: newName,
+        config: configPayload
+      });
+      if (onRefetchTemplates) {
+        await onRefetchTemplates();
+      }
+    } catch (err) {
+      console.error('Error creating template:', err);
+      showToast('Warning: Template was created locally but failed to save to cloud. Your changes may not persist.', 'error');
+    }
+
+    return newTemplate;
+  }, [selectedTemplate, templates, onTemplatesChange, onRefetchTemplates, createSupabaseTemplate, sanitizeTemplateConfig]);
+
   // Handler for new columns modal decision
   const handleNewColumnsDecision = useCallback(async (decision, templateName) => {
     if (!pendingNewColumns) return;
@@ -17777,8 +17989,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     if (rendererMode !== 'svg') return true;
 
     // survey markers now render via SVGAnnotationLayer (viewBox-scaled,
-    // no Fabric repaint, no flicker) and draw via FabricDrawingCanvas under
-    // the 'survey-marker' tool — same path used by rect/ellipse/line/arrow. PAL
+    // no Fabric repaint, no flicker) and draw via the SVG-native creation
+    // path under the 'survey-marker' tool — same path used by
+    // rect/ellipse/line/arrow (FabricDrawingCanvas retired 2026-07-14). PAL
     // is retired in SVG mode.
     return false;
   }, [rendererMode]);
@@ -24264,8 +24477,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     const drag = counterDragRef.current;
     if (!drag || !drag.active) return;
 
-    removeCounterDragPreview(drag);
     if (!drag.counter) {
+      removeCounterDragPreview(drag);
       counterDragRef.current = null;
       return;
     }
@@ -24274,10 +24487,18 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       ...currentPage,
       objects: [...(currentPage.objects || []), drag.counter],
     };
-    handleSaveAnnotations(drag.pageKey, updatedJSON, {
-      source: 'counter:create',
-      tool: 'counter',
+    // Commit BEFORE tearing down the drag preview, and force the React pass
+    // synchronously, so the committed pin is already painted by the (always
+    // mounted) SVG layer when the imperative preview disappears. The old
+    // remove-first order left a blank frame between preview teardown and the
+    // committed paint — the "pin vanishes on release" flicker.
+    flushSync(() => {
+      handleSaveAnnotations(drag.pageKey, updatedJSON, {
+        source: 'counter:create',
+        tool: 'counter',
+      });
     });
+    removeCounterDragPreview(drag);
 
     counterDragRef.current = null;
   }, [handleSaveAnnotations, removeCounterDragPreview]);
@@ -27477,6 +27698,11 @@ ${pageBlocks}
     if (!isActive || typeof onRightRailApiChange !== 'function') return;
     const nextRightRailApi = {
       activeSpaceId,
+      // Create Category modal plumbing (survey rail plus button). The modal's
+      // other data needs (existingTemplateNames, templateId, document id)
+      // already ride the existing surveyTemplates/selectedTemplate/pdfFile keys.
+      addCategoryAsNewTemplate: handleAddCategoryAsNewTemplate,
+      addCategoryToCurrentTemplate: handleAddCategoryToCurrentTemplate,
       annotationsByPage,
       applyLayoutDrivenZoom,
       categorySelectModeActive,
@@ -27612,6 +27838,8 @@ ${pageBlocks}
     isActive,
     onRightRailApiChange,
     activeSpaceId,
+    handleAddCategoryAsNewTemplate,
+    handleAddCategoryToCurrentTemplate,
     annotationsByPage,
     applyLayoutDrivenZoom,
     categorySelectModeActive,
@@ -28033,19 +28261,27 @@ ${pageBlocks}
             publishes its state through onTopToolbarApiChange in the useEffect
             above. Nothing renders here for the top bar. */}
 
-        {/* Floating Tooltip — supports two placements via tooltip.placement:
+        {/* Floating Tooltip — three placements via tooltip.placement:
             "above" anchors the tooltip's bottom-center at (x, y) (legacy
-            default, used by buttons that sit near the screen bottom);
-            "below" anchors the top-center at (x, y) so the tooltip falls
-            beneath the button (used by the top-bar tools after the
-            2026-05-14 consolidation). Both default safely when placement
-            is missing. */}
-        {tooltip.visible && (
+            default); "below" anchors the top-center at (x, y) so the
+            tooltip falls beneath the button (top-bar tools + category
+            sub-row); "left" anchors the right-middle at (x, y) so the
+            tooltip flies out leftward from the right-rail footer, matching
+            the survey-icon flyout. Portaled to document.body: the viewer
+            tab wrapper is a stacking context at z 5000, BELOW every chrome
+            host (5400-5600), so an in-tree fixed chip could never paint
+            over the toolbars regardless of its own z-index — same escape
+            the counter caret popup uses. */}
+        {tooltip.visible && typeof document !== 'undefined' && createPortal(
           <div style={{
             position: 'fixed',
             left: tooltip.x,
             top: tooltip.y,
-            transform: tooltip.placement === 'below' ? 'translate(-50%, 0)' : 'translate(-50%, -100%)',
+            transform: tooltip.placement === 'below'
+              ? 'translate(-50%, 0)'
+              : tooltip.placement === 'left'
+                ? 'translate(-100%, -50%)'
+                : 'translate(-50%, -100%)',
             background: '#181c24',
             color: '#e8e2d4',
             border: '1px solid #2a3140',
@@ -28060,7 +28296,8 @@ ${pageBlocks}
             boxShadow: '0 12px 30px rgba(0,0,0,0.5)'
           }}>
             {tooltip.text}
-          </div>
+          </div>,
+          document.body
         )}
 
         {/* Region Selection Tool */}
@@ -28828,7 +29065,6 @@ ${pageBlocks}
                             // stay select/text-select-only.
                             const svgServesCalloutCreation = activeTool === 'callout';
                             const isTextTool = activeTool === 'text';
-                            const isDrawingTool = activeTool === 'pen' || activeTool === 'highlighter' || activeTool === 'rect' || activeTool === 'ellipse' || activeTool === 'line' || activeTool === 'arrow' || activeTool === 'survey-marker';
                             const isEraserTool = activeTool === 'eraser';
                             const isEditMode = editingAnnotation?.pageNumber === pageNumber;
                             const suspendFullSvgForProxy =
@@ -28845,7 +29081,31 @@ ${pageBlocks}
                             // to drive state that still applies (like passing the edit
                             // annotation index to the selection overlay).
                             const isFabricEditMode = isEditMode && editingAnnotation?.editType !== 'bbox';
-                            const useCanvasPresentation = !svgInteractive && !svgServesCalloutCreation && !isEditMode;
+                            // UNIFIED RENDERER (2026-07-14): SVGAnnotationLayer is THE
+                            // committed-annotation renderer in every tool mode (demo model:
+                            // one PDF renderer + one annotation renderer, no per-tool swap).
+                            // The old rule (`!svgInteractive && !svgServesCalloutCreation &&
+                            // !isEditMode`) swapped pan/pen/shape/text/counter modes onto the
+                            // canvas2d painter — a second, partially-faithful renderer — so
+                            // counters degenerated to dots, callout/text metrics jumped on
+                            // every tool switch, and commits flickered across the handoff.
+                            // The canvas2d presentation keeps exactly two jobs:
+                            //   1. an ACTIVE erase stroke — FabricEraserCanvas snapshots
+                            //      the warm painted canvas and carves it while the live
+                            //      preview is on screen (erasePreviewPages), and
+                            //   2. the transient zoom/scroll interaction proxy window
+                            //      (suspendFullSvgForProxy) while the SVG layer is suspended.
+                            // It stays mounted-but-hidden otherwise so those two windows
+                            // always have fresh pixels to show.
+                            // UX (2026-07-14, E/P text-bob fix): merely being in eraser
+                            // mode no longer swaps presentations — the SVG layer stays the
+                            // visible truth until a stroke actually carves. Canvas and SVG
+                            // rasterize identical geometry up to ±1 device px of edge
+                            // snap/AA at fractional zoom stops (CLAUDE.md 2026-04-10
+                            // gotcha, confirmed unfixable in JS), so any settled-state
+                            // presentation swap can visibly bob text; scoping the swap to
+                            // the gesture removes the bob by construction.
+                            const useCanvasPresentation = isEraserTool && erasePreviewPages.has(pageNumber);
 
                             return (
                             <>
@@ -28888,7 +29148,16 @@ ${pageBlocks}
                                   layerVisibility={annotationLayerVisibility}
                                   annotationRevision={annotationRevision}
                                   calloutRevision={calloutRevision}
-                                  visible={useCanvasPresentation}
+                                  // Visible ONLY for the zoom/scroll proxy window. During an
+                                  // erase gesture the display surface is FabricEraserCanvas's
+                                  // own carved preview canvas — NOT this overlay. Tying this to
+                                  // the gesture state made React re-render the overlay with
+                                  // visibility:'visible' at stroke start, overriding the inline
+                                  // hide beginLiveErasePreview had just applied, so the
+                                  // un-carved warm copy sat beneath the preview and every carve
+                                  // hole showed intact ink through it ("partial erase does
+                                  // nothing" regression, 2026-07-14).
+                                  visible={suspendFullSvgForProxy}
                                 />
                               )}
                               {pageRegions && pageRegions.length > 0 && !(showRegionSelection && regionSelectionPage === pageNumber) && (() => {
@@ -28963,13 +29232,17 @@ ${pageBlocks}
                                   />
                                 </div>
                               )}
-                              {/* SVG layer -- hidden only when a callout edit is mounted.
-                                  UX: in eraser mode the wrapper stays visible so SVGAnnotationLayer
-                                  can still render imported textboxes underneath the Fabric eraser
-                                  canvas (opacity-0 hit zones up there). Pointer-events remain
-                                  'none' for eraser because svgInteractive is false, so clicks still
-                                  reach the eraser canvas at zIndex 101. Ref CLAUDE.md 2026-04-10
-                                  rasterizer-mismatch gotcha + FabricEraserCanvas.jsx textbox override. */}
+                              {/* SVG layer — the single committed-annotation renderer, mounted in
+                                  EVERY tool mode (unified renderer, 2026-07-14). It unmounts only
+                                  (a) while an erase stroke's live preview is carving this page
+                                  (erasePreviewPages — mere eraser mode no longer swaps, so tool
+                                  toggling can't bob text), and (b) during the transient
+                                  zoom/scroll proxy window (suspendFullSvgForProxy).
+                                  Input safety in non-interactive tools: the SVG root sets
+                                  pointerEvents 'none' unless select/text-select or a creation tool
+                                  is active, and per-shape hit rects are isSelectTool-gated, so a
+                                  mounted layer never steals clicks from pan/pen/shape/counter
+                                  tools. Ref CLAUDE.md 2026-04-10 rasterizer-mismatch gotcha. */}
                               {!useCanvasPresentation && !suspendFullSvgForProxy && (
                               <div
                                 data-diag-svg-wrapper={pageNumber}
@@ -29047,6 +29320,13 @@ ${pageBlocks}
                                       console.warn(`[App p${pageNumber}] edit BLOCKED — no annotation data at idx=${annotationIndex}`);
                                       return;
                                     }
+                                    // fabric 7 serializes capitalized class types ('Textbox',
+                                    // 'IText') while legacy saves store lowercase — every
+                                    // comparison below is against lowercase, so normalize or
+                                    // fabric-7-committed text silently loses double-click edit
+                                    // (the dispatch fell through to the unknown-type no-op).
+                                    annotationType = String(annotationType || '').toLowerCase();
+                                    if (annotationType === 'itext') annotationType = 'i-text';
                                     // UX 2026-04-19 — new double-click rule:
                                     //   - pen/highlighter (path) → no-op (handles are the
                                     //     single-click chrome; nothing else to edit).
@@ -29160,18 +29440,12 @@ ${pageBlocks}
                                   // ConfirmDeleteModal/UndoToast layer can confirm and
                                   // restore.
                                   onRequestBulkDelete={handleRequestBulkDelete}
-                                />
-                              </div>
-                              )}
-
-                              {/* Drawing Canvas -- transparent overlay for pen + highlighter */}
-                              {isDrawingTool && (
-                                <FabricDrawingCanvas
-                                  key={`draw-${pageNumber}`}
-                                  pageNumber={pageNumber}
-                                  pageWidth={resolvedPageSize.width}
-                                  pageHeight={resolvedPageSize.height}
-                                  activeTool={activeTool}
+                                  // Unified renderer phase 2 (2026-07-14): the SVG layer
+                                  // owns creation previews + commits for every drawing
+                                  // tool (pen/highlighter/rect/ellipse/line/arrow/
+                                  // survey-marker) — FabricDrawingCanvas is retired, so
+                                  // the in-progress drawing and the committed shape are
+                                  // the same renderer in the same coordinate space.
                                   strokeColor={strokeColor}
                                   strokeOpacity={strokeOpacity}
                                   fillColor={fillColor}
@@ -29181,19 +29455,21 @@ ${pageBlocks}
                                   arrowheadStyle={arrowheadStyle}
                                   lineBorderStyle={lineBorderStyle}
                                   cloudIntensity={cloudIntensity}
-                                  annotations={pageAnnotations}
-                                  onStrokeCommit={(updatedJSON) => handleSaveAnnotations(pageNumber, updatedJSON, { source: 'path:created', tool: activeTool })}
-                                  onSurveyMarkerCreated={(bounds) => handleSurveyMarkerCreated(pageNumber, bounds)}
-                                  selectedModuleId={selectedModuleId}
-                                  selectedSpaceId={annotationSpaceId}
-                                  activeRegionId={activeRegionId}
-                                  spaces={spaces}
-                                  isRegionOverlayEnabled={isRegionOverlayEnabled}
                                   zoomGeneration={zoomGeneration}
+                                  onSurveyMarkerCreated={(bounds) => handleSurveyMarkerCreated(pageNumber, bounds)}
                                 />
+                              </div>
                               )}
 
-                              {/* Eraser Canvas -- loads all annotations, SVG hidden via wrapper visibility above */}
+                              {/* Unified renderer phase 2 (2026-07-14): the FabricDrawingCanvas
+                                  overlay is retired. Creation previews + commits for
+                                  pen/highlighter/rect/ellipse/line/arrow/survey-marker live
+                                  inside SVGAnnotationLayer above, so drawing rides the same
+                                  renderer + coordinate space as the committed marks. */}
+
+                              {/* Eraser Canvas — pointer/hit surface for erasing. The SVG layer
+                                  stays visible beneath it until a stroke's live preview carves
+                                  (onErasePreviewPresentation drives the per-page swap). */}
                               {isEraserTool && (
                                 <FabricEraserCanvas
                                   key={`erase-${pageNumber}`}
@@ -29204,6 +29480,7 @@ ${pageBlocks}
                                   callouts={callouts}
                                   onEraseCommit={(updatedJSON, eraserDiagnostics = {}) => handleSaveAnnotations(pageNumber, updatedJSON, { source: 'eraser:commit', tool: 'eraser', ...eraserDiagnostics })}
                                   onEraseCallout={handleDeleteSelectedCallouts}
+                                  onErasePreviewPresentation={handleErasePreviewPresentation}
                                   eraserMode={eraserMode}
                                   eraserSize={eraserSize}
                                   viewerScale={layerScale}
@@ -29547,9 +29824,16 @@ ${pageBlocks}
                                 />
                               )}
 
-                              {/* Edit Canvas -- targeted overlay for text/shape/callout editing */}
-                              {isEditMode && editingAnnotation?.editType !== 'bbox' && (
-                                <FabricEditCanvas
+                              {/* Edit host -- targeted overlay for text/shape/callout editing.
+                                  editType 'text' (plain textboxes AND callout text via
+                                  reactCalloutId) mounts TextEditOverlay: same-surface HTML
+                                  editing where caret and glyphs share one CSS layout, fixing
+                                  the fabric-era caret drift. Shapes keep FabricEditCanvas.
+                                  Both consume the same prop contract; extras are ignored. */}
+                              {isEditMode && editingAnnotation?.editType !== 'bbox' && (() => {
+                                const EditHost = editingAnnotation?.editType === 'text' ? TextEditOverlay : FabricEditCanvas;
+                                return (
+                                <EditHost
                                   key={`edit-${pageNumber}-${editingAnnotation?.index ?? 'new'}-${editingAnnotation?.editType || ''}`}
                                   pageNumber={pageNumber}
                                   pageWidth={resolvedPageSize.width}
@@ -29712,11 +29996,17 @@ ${pageBlocks}
                                   }}
                                   strokeColor={strokeColor}
                                   zoomGeneration={zoomGeneration}
-                                  viewerScale={scale}
+                                  // Same scale source as every other overlay (the measured
+                                  // per-page scale), not the logical React zoom state — the two
+                                  // can disagree during zoom settle, and a mixed-source edit
+                                  // canvas is exactly the renderer-disagreement class the
+                                  // unified-renderer migration removes.
+                                  viewerScale={layerScale}
                                   onGroupUpdate={handleCounterGroupUpdate}
                                   counterGroupSize={editingCounterGroupSize}
                                 />
-                              )}
+                                );
+                              })()}
 
                               {/* Callout Overlay -- always rendered so callouts stay visible in all tool modes.
                                   CalloutCanvas handles its own pointer-events based on activeTool. */}
@@ -29830,7 +30120,7 @@ ${pageBlocks}
                       }}
                       onMouseEnter={(e) => {
                         const rect = e.currentTarget.getBoundingClientRect();
-                        setTooltip({ visible: true, text: t.label, x: rect.left + rect.width / 2, y: rect.top - 10 });
+                        setTooltip({ visible: true, text: t.label, x: rect.left + rect.width / 2, y: rect.bottom + 10, placement: 'below' });
                       }}
                       onMouseLeave={() => setTooltip({ visible: false, text: '', x: 0, y: 0 })}
                       className={`btn ${isActive ? 'btn-active' : 'btn-ghost'}`}
@@ -29839,7 +30129,7 @@ ${pageBlocks}
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'center',
-                        padding: '6px',
+                        padding: '5px',
                         gap: '4px',
                         minWidth: '40px',
                         width: '40px'
@@ -30078,7 +30368,7 @@ ${pageBlocks}
                       }}
                       onMouseEnter={(e) => {
                         const rect = e.currentTarget.getBoundingClientRect();
-                        setTooltip({ visible: true, text: t.label, x: rect.left + rect.width / 2, y: rect.top - 10 });
+                        setTooltip({ visible: true, text: t.label, x: rect.left + rect.width / 2, y: rect.bottom + 10, placement: 'below' });
                       }}
                       onMouseLeave={() => setTooltip({ visible: false, text: '', x: 0, y: 0 })}
                       className={`btn ${activeTool === t.id ? 'btn-active' : 'btn-ghost'}`}
@@ -30087,7 +30377,7 @@ ${pageBlocks}
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'center',
-                        padding: '6px',
+                        padding: '5px',
                         gap: '4px',
                         minWidth: '40px',
                         // UX: explicit width matches the eraser button in
@@ -30496,7 +30786,7 @@ ${pageBlocks}
                       onClick={onMainClick}
                       onMouseEnter={(e) => {
                         const rect = e.currentTarget.getBoundingClientRect();
-                        setTooltip({ visible: true, text: t.label, x: rect.left + rect.width / 2, y: rect.top - 10 });
+                        setTooltip({ visible: true, text: t.label, x: rect.left + rect.width / 2, y: rect.bottom + 10, placement: 'below' });
                       }}
                       onMouseLeave={() => setTooltip({ visible: false, text: '', x: 0, y: 0 })}
                       className={`btn ${isActive ? 'btn-active' : 'btn-ghost'}`}
@@ -30505,7 +30795,7 @@ ${pageBlocks}
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'center',
-                        padding: '6px',
+                        padding: '5px',
                         gap: '4px',
                         minWidth: '40px',
                         width: (isUnderlineMenu || isStrikeMenu) ? '40px' : undefined
@@ -30714,7 +31004,8 @@ ${pageBlocks}
 	                                visible: true,
 	                                text: category.name || 'Untitled category',
 	                                x: rect.left + rect.width / 2,
-	                                y: rect.top - 10
+	                                y: rect.bottom + 10,
+	                                placement: 'below'
 	                              });
 	                            }}
 	                            onMouseLeave={() => setTooltip({ visible: false, text: '', x: 0, y: 0 })}

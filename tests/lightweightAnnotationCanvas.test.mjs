@@ -13,14 +13,31 @@ const WORKER_SOURCE = readFileSync(
   'utf8',
 );
 
-test('normal annotation presentation is one persistent Canvas2D surface', () => {
+test('SVG is the one committed renderer; Canvas2D serves only eraser + proxy windows', () => {
   assert.match(OVERLAY_SOURCE, /paintAnnotationCanvas/);
   assert.match(OVERLAY_SOURCE, /<canvas/);
   assert.doesNotMatch(OVERLAY_SOURCE, /<svg/);
   assert.doesNotMatch(OVERLAY_SOURCE, /objectPreviews\.map/);
-  assert.match(VIEWER_SOURCE, /const useCanvasPresentation =/);
+  // Unified renderer (2026-07-14): committed annotations are painted by
+  // SVGAnnotationLayer in EVERY tool mode. The canvas presentation is visible
+  // only (a) while an erase stroke's live preview is carving that page
+  // (erasePreviewPages — mere eraser mode must NOT swap: the two rasterizers
+  // disagree by ±1 device px at fractional zoom stops, so a settled-state
+  // swap visibly bobs text on E/P toggling), and (b) during the transient
+  // zoom/scroll proxy window. Reintroducing a per-tool renderer swap
+  // regresses the counter-dot / tool-switch-flicker / text-bob bug family.
+  assert.match(VIEWER_SOURCE, /const useCanvasPresentation = isEraserTool && erasePreviewPages\.has\(pageNumber\);/);
   assert.match(VIEWER_SOURCE, /data-annotation-presentation=\{useCanvasPresentation \? 'canvas2d' : 'svg-edit'\}/);
-  assert.match(VIEWER_SOURCE, /<LightweightAnnotationOverlay[\s\S]*?visible=\{useCanvasPresentation\}/);
+  // The overlay is VISIBLE only for the zoom/scroll proxy window. During an
+  // erase gesture the display surface is the eraser's carved preview canvas;
+  // making the overlay visible then lets React's re-render override the
+  // inline hide and the un-carved copy shows through every carve hole
+  // ("partial erase does nothing", 2026-07-14).
+  assert.match(VIEWER_SOURCE, /<LightweightAnnotationOverlay[\s\S]*?visible=\{suspendFullSvgForProxy\}/);
+  // The canvas overlay wrapper must fill the page host (inset/100%), never
+  // size itself from `pageSize * scale` px — a stale scale scalar would drift
+  // the whole committed layer off the page box.
+  assert.doesNotMatch(OVERLAY_SOURCE, /width: `\$\{overlayWidth\}px`/);
 });
 
 test('interaction snapshots do not truncate visible annotations or callouts', () => {

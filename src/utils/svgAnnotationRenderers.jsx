@@ -618,11 +618,17 @@ export const renderLine = (obj, index) => {
 export const renderArrow = (obj, index) => {
   if (!Array.isArray(obj.objects) || obj.objects.length === 0) return null;
 
+  // Child types compare case-insensitively: fabric 7's toObject() emits
+  // capitalized class names ('Line', 'Triangle'), so a legacy arrow group
+  // that round-trips once through an edit/eraser canvas would otherwise
+  // stop matching here and vanish from the SVG while the canvas painter
+  // (which lowercases child types) still draws it.
+  const childType = (o) => String(o?.type || '').toLowerCase();
   const lineChild = obj.objects.find(
-    (o) => o && (o.type === 'line' || o.type === 'polyline' || o.type === 'path')
+    (o) => o && (childType(o) === 'line' || childType(o) === 'polyline' || childType(o) === 'path')
   );
   const arrowHead = obj.objects.find(
-    (o) => o && (o.name === 'arrowHead' || o.type === 'triangle')
+    (o) => o && (o.name === 'arrowHead' || childType(o) === 'triangle')
   );
 
   if (!lineChild) return null;
@@ -961,6 +967,85 @@ export const renderEllipse = (obj, index) => {
  * @param {number} index - Array index for key fallback
  * @returns {React.ReactElement}
  */
+/**
+ * THE text-content style contract — single source of truth for how annotation
+ * text lays out, shared by the SVG view renderers AND the same-surface text
+ * editor (TextEditOverlay). Caret/glyph alignment depends on the editor and
+ * the view feeding IDENTICAL style objects into the same CSS engine, so
+ * neither may fork these fields locally. Two variants exist because plain
+ * text and callout text historically diverge (kerning/rendering flags,
+ * decoration support); each mirrors its renderer exactly.
+ */
+export const buildPlainTextContentStyle = ({
+  innerWidth,
+  innerDisplayHeight,
+  fontSize,
+  fontFamily,
+  fontWeight,
+  fontStyle,
+  color,
+  textAlign,
+  verticalAlign,
+  underline,
+  linethrough,
+  lineHeight,
+}) => ({
+  width: innerWidth,
+  height: innerDisplayHeight,
+  fontSize: `${fontSize}px`,
+  fontFamily: fontFamily || 'sans-serif',
+  fontWeight: fontWeight || 'normal',
+  fontStyle: fontStyle || 'normal',
+  color: color || '#000',
+  textAlign: textAlign || 'left',
+  display: 'flex',
+  flexDirection: 'column',
+  justifyContent: (() => {
+    const v = verticalAlign || 'top';
+    return v === 'middle' ? 'center' : v === 'bottom' ? 'flex-end' : 'flex-start';
+  })(),
+  textDecoration: [
+    underline ? 'underline' : null,
+    linethrough ? 'line-through' : null,
+  ].filter(Boolean).join(' ') || 'none',
+  lineHeight: (lineHeight || 1.16) * 1.13,
+  overflow: 'hidden',
+  wordWrap: 'break-word',
+  wordBreak: 'break-all',
+  whiteSpace: 'pre-wrap',
+  padding: 0,
+});
+
+export const buildCalloutTextContentStyle = ({
+  innerWidth,
+  boxHeightWithDescenders,
+  textAlign,
+  fontSize,
+  fontFamily,
+  color,
+  lineHeight,
+}) => ({
+  width: Math.max(0, innerWidth),
+  height: Math.max(0, boxHeightWithDescenders),
+  display: 'flex',
+  flexDirection: 'column',
+  justifyContent: 'center',
+  textAlign: textAlign || 'left',
+  fontKerning: 'none',
+  textRendering: 'geometricPrecision',
+  fontVariantLigatures: 'none',
+  fontSize: `${fontSize || 12}px`,
+  fontFamily,
+  color: color || '#000',
+  overflow: 'hidden',
+  wordWrap: 'break-word',
+  wordBreak: 'break-all',
+  whiteSpace: 'pre-wrap',
+  boxSizing: 'border-box',
+  padding: 0,
+  lineHeight: (lineHeight || 1) * 1.13,
+});
+
 export const renderText = (obj, index, liveBounds = null, hideText = false) => {
   const scaleX = Math.abs(obj.scaleX ?? 1);
   const scaleY = Math.abs(obj.scaleY ?? 1);
@@ -1090,75 +1175,26 @@ export const renderText = (obj, index, liveBounds = null, hideText = false) => {
       >
         <div
           xmlns="http://www.w3.org/1999/xhtml"
-          style={{
-            // UX 2026-04-20: explicit px sizes instead of 100%. SVG
-            // foreignObject does not reliably establish a containing
-            // block for percentage heights across Chromium versions, so
-            // the inner div stayed pinned at its first-render size while
-            // the foreignObject attribute grew during typing. Pinning
-            // the div to innerWidth/innerDisplayHeight keeps CSS layout
-            // in lockstep with the live-broadcast text bounds so newly
-            // typed lines stop disappearing behind the border.
-            width: innerWidth,
-            height: innerDisplayHeight,
-            fontSize: `${fontSize}px`,
-            fontFamily: (liveBounds && liveBounds.fontFamily) || obj.fontFamily || 'sans-serif',
-            fontWeight: (liveBounds && liveBounds.fontWeight) || obj.fontWeight || 'normal',
-            fontStyle: (liveBounds && liveBounds.fontStyle) || obj.fontStyle || 'normal',
-            color: (liveBounds && liveBounds.fill) || obj.fill || '#000',
-            textAlign: (liveBounds && liveBounds.textAlign) || obj.textAlign || 'left',
-            display: 'flex',
-            flexDirection: 'column',
-            justifyContent: (() => {
-              const v = (liveBounds && liveBounds.verticalAlign) || obj.verticalAlign || 'top';
-              return v === 'middle' ? 'center' : v === 'bottom' ? 'flex-end' : 'flex-start';
-            })(),
-            // KAL-34: text decoration honors underline + linethrough flags set
-            // via AnnotationPropertiesPanel. Both can stack ("underline line-
-            // through") to match Fabric.js text-decoration semantics.
-            textDecoration: [
-              ((liveBounds && liveBounds.underline != null) ? liveBounds.underline : obj.underline) ? 'underline' : null,
-              ((liveBounds && liveBounds.linethrough != null) ? liveBounds.linethrough : obj.linethrough) ? 'line-through' : null,
-            ].filter(Boolean).join(' ') || 'none',
-            // UX: Fabric 5.x textbox per-line pixel step =
-            // `fontSize × lineHeight × _fontSizeMult` where `_fontSizeMult` is
-            // the hard-coded 1.13 on Fabric.Text.prototype. CSS unitless
-            // line-height on the SVG foreignObject skips that multiplier, so
-            // without compensation the SVG stepped shorter than Fabric and
-            // the caret drifted ~2.88 px further down per wrapped line during
-            // edit. Multiplying by 1.13 here aligns the two rulers so the
-            // caret stays glued to the rendered letters no matter how many
-            // lines wrap. (Plan 15-04 Issue 1, verified 2026-04-17.)
-            lineHeight: (obj.lineHeight || 1.16) * 1.13,
-            // UX 2026-04-19 — hidden on the inner div too so if the box is
-            // resized narrower than a single character can fit, nothing
-            // leaks out the side.
-            overflow: 'hidden',
-            wordWrap: 'break-word',
-            // UX: Fabric Textbox wraps with `splitByGrapheme: true` — break at
-            // any character regardless of word boundaries. CSS `word-wrap:
-            // break-word` alone prefers word boundaries and only breaks inside
-            // a word when the word itself overflows, so dense punctuation like
-            // `.` `;` `'` creates extra break opportunities the browser
-            // exploits and Fabric does not. The count diverges (23 Fabric
-            // lines ↔ 30 SVG lines in the worst case), visual lines spill past
-            // the foreignObject border, and Option+Arrow cursor jumps land on
-            // word boundaries Fabric sees but the user does not. `break-all`
-            // forces CSS to break per-character so wrap points line up 1:1.
-            // (Plan 15-04 Issue 1 follow-up, 2026-04-17.)
-            wordBreak: 'break-all',
-            whiteSpace: 'pre-wrap',
-            padding: 0,
-            // UX 2026-04-20 — no explicit font-smoothing. Canvas 2D (the Fabric
-            // edit layer) ignores CSS font-smoothing and always rasterizes with
-            // the platform default (macOS = subpixel-antialiased, heavier +
-            // slightly tighter). Setting `antialiased`/`grayscale` here made the
-            // SVG view render lighter + wider than Fabric edit, producing a
-            // visible "pop" in weight and spacing when the user double-clicked
-            // into edit mode. Letting the foreignObject use the browser default
-            // gives both layers the same rasterization path, so view and edit
-            // look identical.
-          }}
+          // Style contract lives in buildPlainTextContentStyle (top of file) —
+          // shared verbatim with the same-surface text editor so caret and
+          // glyphs can never disagree. Historical rationale for the individual
+          // fields (explicit px sizes for foreignObject, the ×1.13 Fabric line
+          // step, break-all wrap parity, no font-smoothing overrides) lives in
+          // git history at this site (Plan 15-04 / KAL-34 / 2026-04-19/20).
+          style={buildPlainTextContentStyle({
+            innerWidth,
+            innerDisplayHeight,
+            fontSize,
+            fontFamily: (liveBounds && liveBounds.fontFamily) || obj.fontFamily,
+            fontWeight: (liveBounds && liveBounds.fontWeight) || obj.fontWeight,
+            fontStyle: (liveBounds && liveBounds.fontStyle) || obj.fontStyle,
+            color: (liveBounds && liveBounds.fill) || obj.fill,
+            textAlign: (liveBounds && liveBounds.textAlign) || obj.textAlign,
+            verticalAlign: (liveBounds && liveBounds.verticalAlign) || obj.verticalAlign,
+            underline: ((liveBounds && liveBounds.underline != null) ? liveBounds.underline : obj.underline),
+            linethrough: ((liveBounds && liveBounds.linethrough != null) ? liveBounds.linethrough : obj.linethrough),
+            lineHeight: obj.lineHeight,
+          })}
         >
           {displayedText}
         </div>
@@ -1329,13 +1365,15 @@ export const renderCallout = (callout, index, pageSize, calculateConnection, hid
 
   const key = `callout-${callout.id || index}`;
 
-  // Shared stroke attributes for both connector line segments. vectorEffect
-  // non-scaling-stroke keeps the line visually consistent across zoom levels.
+  // Shared stroke attributes for both connector line segments.
+  // UX 2026-07-14 (zoom-scaling unification): page-unit stroke, no
+  // vector-effect pin — the leader lines now thicken/thin with zoom exactly
+  // like rect/ellipse strokes (and like this callout's own arrowhead and
+  // text, which always scaled — the mismatch was the reported bug).
   const lineStyle = {
     stroke: lineColor,
     strokeWidth: lineThickness,
     strokeLinecap: 'round',
-    vectorEffect: 'non-scaling-stroke',
   };
 
   // Reference the pure spec builder so any future inline-JSX drift against
@@ -1413,10 +1451,12 @@ export const renderCallout = (callout, index, pageSize, calculateConnection, hid
             fill={fillColor}
             fillOpacity={fillOpacity}
             stroke={lineColor}
+            // UX 2026-07-14 (zoom-scaling unification): page-unit border that
+            // scales with zoom (no vector-effect pin). The 0.7 ratio keeps the
+            // box border visually lighter than the leader lines at any zoom.
             strokeWidth={Math.max(1, lineThickness * 0.7)}
             rx={0}
             ry={0}
-            vectorEffect="non-scaling-stroke"
           />
           {!hideText && (
           <foreignObject
@@ -1474,60 +1514,21 @@ export const renderCallout = (callout, index, pageSize, calculateConnection, hid
               // text position matches the Fabric edit overlay's flush-left
               // default — prevents the "text jump" a user saw when entering
               // edit mode under the old +8/+4 offset model.
-              style={{
-                // UX 2026-04-20: explicit px sizes so the inner div
-                // tracks the live-growing foreignObject. SVG
-                // foreignObject doesn't reliably resolve percentage
-                // heights during auto-grow, which left new lines
-                // invisible past the imported height.
-                width: Math.max(0, textBox.width - 2 * TEXT_PADDING),
-                height: Math.max(0, boxHeightWithDescenders),
-                // UX: 2026-04-19 — vertically center the text inside the
-                // (descender-padded) box in every state. Fabric's edit-mode
-                // cursor is shifted down by the same center offset so the
-                // blinking caret lines up with the visible glyphs whether
-                // the user is typing or not. Multi-line content that
-                // overflows the box top-aligns naturally (`justify-content:
-                // center` only uses free space).
-                display: 'flex',
-                flexDirection: 'column',
-                justifyContent: 'center',
-                textAlign: callout.style?.textAlign || 'left',
-                fontKerning: 'none',
-                textRendering: 'geometricPrecision',
-                fontVariantLigatures: 'none',
-                fontSize: `${callout.style?.fontSize || 12}px`,
+              // Style contract lives in buildCalloutTextContentStyle (top of
+              // file) — shared verbatim with the same-surface text editor so
+              // caret and glyphs can never disagree. Field-level rationale
+              // (explicit px sizes, flex-centering with descender buffer,
+              // break-all wrap parity, ×1.13 line step) lives in git history
+              // at this site (CALL-10 / Plan 15-04 / 2026-04-19/20).
+              style={buildCalloutTextContentStyle({
+                innerWidth: textBox.width - 2 * TEXT_PADDING,
+                boxHeightWithDescenders,
+                textAlign: callout.style?.textAlign,
+                fontSize: callout.style?.fontSize,
                 fontFamily: safeFontFamily,
-                color: callout.style?.fontColor || callout.style?.textColor || '#000',
-                // UX 2026-04-19 — hidden on the inner div as well so tight
-                // boxes clip cleanly at the border.
-                overflow: 'hidden',
-                wordWrap: 'break-word',
-                // UX: match renderText — Fabric's `splitByGrapheme: true`
-                // breaks at any character, CSS default prefers word
-                // boundaries + only breaks inside a word on overflow.
-                // `break-all` keeps SVG wrap points aligned with Fabric's,
-                // preventing visual-line-count drift (and the resulting
-                // border overflow) during callout edit.
-                wordBreak: 'break-all',
-                whiteSpace: 'pre-wrap',
-                boxSizing: 'border-box',
-                padding: 0,
-                // UX: match renderText's line-height fix (Plan 15-04 Issue 1).
-                // Fabric textbox per-line step = fontSize * lineHeight *
-                // _fontSizeMult (1.13). The callout edit adapter now pins
-                // Fabric lineHeight = 1 so cursor and glyphs use the same
-                // per-line step (fixes 2026-04-20 drift report). Browser
-                // CSS line-height here mirrors that: lineHeight * 1.13 so
-                // view and edit show identical line spacing.
-                lineHeight: (callout.style?.lineHeight || 1) * 1.13,
-                // UX 2026-04-20 — no explicit font-smoothing. Canvas 2D (the
-                // Fabric edit layer) ignores CSS font-smoothing, so setting
-                // `antialiased`/`grayscale` here made the SVG callout view
-                // render lighter + wider than the Fabric edit overlay. Browser
-                // default keeps view and edit on the same rasterization path
-                // so the user sees no weight/spacing jump on edit entry/exit.
-              }}
+                color: callout.style?.fontColor || callout.style?.textColor,
+                lineHeight: callout.style?.lineHeight,
+              })}
             >
               {(liveBounds && typeof liveBounds.text === 'string')
                 ? liveBounds.text

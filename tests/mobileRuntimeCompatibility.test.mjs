@@ -9,7 +9,9 @@ import { getMobileSyncPresentation, normalizeMobilePresence } from '../src/mobil
 const EXPO_APP_SOURCE = readFileSync(new URL('../mobile-expo/App.tsx', import.meta.url), 'utf8');
 const HUB_CSS_SOURCE = readFileSync(new URL('../src/home/hub.css', import.meta.url), 'utf8');
 const PDFJS_VIEWER_SOURCE = readFileSync(new URL('../src/components/PdfjsViewerContainer.jsx', import.meta.url), 'utf8');
-const FABRIC_DRAWING_SOURCE = readFileSync(new URL('../src/components/FabricDrawingCanvas.jsx', import.meta.url), 'utf8');
+// Unified renderer (FabricDrawingCanvas retired): touch-compat behavior for
+// creation strokes now lives in SVGAnnotationLayer (the live creation surface).
+const SVG_ANNOTATION_LAYER_SOURCE = readFileSync(new URL('../src/components/SVGAnnotationLayer.jsx', import.meta.url), 'utf8');
 const PDF_VIEWER_SOURCE = readFileSync(new URL('../src/PDFViewer.jsx', import.meta.url), 'utf8');
 const MOBILE_VIEWER_CHROME_SOURCE = readFileSync(new URL('../src/mobile/MobilePdfViewerChrome.jsx', import.meta.url), 'utf8');
 const MOBILE_VIEWER_CSS_SOURCE = readFileSync(new URL('../src/mobile/mobilePdfViewer.css', import.meta.url), 'utf8');
@@ -123,11 +125,23 @@ test('mobile PDF rendering stays inside the WKWebView memory budget', () => {
   assert.match(PDFJS_VIEWER_SOURCE, /const externalPdf = isPdfDocumentProxy\(activeSource\) \? activeSource : null/);
 });
 
-test('starting a two-finger pinch cancels a partial Fabric stroke', () => {
+test('starting a two-finger pinch cancels a partial creation stroke', () => {
   assert.match(PDFJS_VIEWER_SOURCE, /window\.dispatchEvent\(new Event\(PINCH_START_EVENT\)\)/);
-  assert.match(FABRIC_DRAWING_SOURCE, /window\.addEventListener\('survey-pdfjs-pinch-start', cancelPinchStroke\)/);
-  assert.match(FABRIC_DRAWING_SOURCE, /canvas\._isCurrentlyDrawing = false/);
-  assert.match(FABRIC_DRAWING_SOURCE, /brush\._reset\(\)/);
+  // SVGAnnotationLayer's pinch listener must discard (never commit) the
+  // in-flight gesture: synchronous ref clear + captured-point flush.
+  assert.match(SVG_ANNOTATION_LAYER_SOURCE, /window\.addEventListener\('survey-pdfjs-pinch-start', cancelPinchGesture\)/);
+  assert.match(SVG_ANNOTATION_LAYER_SOURCE, /shapeCreationRef\.current = null;/);
+  assert.match(SVG_ANNOTATION_LAYER_SOURCE, /freehandPointsRef\.current = \[\];/);
+});
+
+test('one-finger creation strokes stay touch-compatible on the SVG surface', () => {
+  // The fabric upper canvas used to grant these implicitly; the SVG creation
+  // surface must keep them explicitly: one-finger strokes must not scroll the
+  // page (touchAction none while a creation tool is armed), and 120Hz styli
+  // must not lose samples (coalesced pointer capture into page space).
+  assert.match(SVG_ANNOTATION_LAYER_SOURCE, /touchAction: isCreationTool \? 'none' : undefined/);
+  assert.match(SVG_ANNOTATION_LAYER_SOURCE, /getCoalescedEvents/);
+  assert.match(SVG_ANNOTATION_LAYER_SOURCE, /appendCoalescedPagePoints\(e\.nativeEvent\)/);
 });
 
 test('mobile Fit Page settles through the native viewer in one pass', () => {

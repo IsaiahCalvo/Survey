@@ -137,7 +137,15 @@ async function main() {
         .map((g) => { const r = g.getBoundingClientRect(); return { x: r.x, y: r.y, w: r.width, h: r.height }; }));
     const bodyAttr = (name) => page.evaluate((n) => document.body.getAttribute(n), name);
     const bannerVisible = () => page.locator('[data-testid="kal49-lock-banner"]').isVisible().catch(() => false);
-    const drawingCanvasPresent = () => page.evaluate(() => !!document.querySelector('canvas.upper-canvas'));
+    // Unified renderer (2026-07-14): FabricDrawingCanvas is retired — no
+    // canvas.upper-canvas ever mounts. Creation happens ON the SVG layer,
+    // which stays mounted under every tool except eraser and sets the
+    // `tool-crosshair` class while a creation tool is armed
+    // (SVGAnnotationLayer.jsx className/isCreationTool). This probe detects
+    // the ARMED state; the behavioral truth is the draw-gesture + fabricCount
+    // probes that follow each use (committed strokes land as
+    // g[data-annotation-index] nodes).
+    const drawingSurfaceArmed = () => page.evaluate(() => !!document.querySelector('svg[data-svg-annotation-layer].tool-crosshair'));
 
     const pollFor = async (fn, want, ms, label) => {
       const deadline = Date.now() + ms;
@@ -166,10 +174,9 @@ async function main() {
       await page.waitForFunction(() => window.__crdtBackfillDone === true, undefined, { timeout: 20000 })
         .catch(() => log('  [warn] __crdtBackfillDone not seen within 20s (continuing)'));
       await page.waitForTimeout(1500);
-      // Canvas-presentation era (a3380bbf): with no tool active the page
-      // presents annotations via canvas2d and the SVG layer — where
-      // fabricCount's g[data-annotation-index] elements live — is NOT
-      // mounted. 'v' switches to Select, which mounts it.
+      // Unified renderer: the SVG layer (fabricCount's g[data-annotation-index]
+      // DOM) stays mounted under every tool except eraser. 'v' is kept as a
+      // stable Select-mode baseline for the selection/click probes below.
       await page.keyboard.press('v');
       await page.waitForTimeout(400);
     };
@@ -523,11 +530,14 @@ async function main() {
     gate(toolbarPe.tool === 'none' && toolbarPe.undo === 'none',
       `S4-HARD: toolbar clusters pointer-blocked (saw ${JSON.stringify(toolbarPe)})`);
 
-    // Gate: locked `p` + draw gesture.
+    // Gate: locked `p` + draw gesture. The keyboard tool gate (PDFViewer
+    // KAL-75 G1) must swallow `p` while body[data-readonly] is set, so the
+    // pen never arms (no tool-crosshair on the SVG creation surface) and the
+    // same gesture that draws a stroke in S5 must commit nothing here.
     pre = await snap();
     await page.keyboard.press('p');
     await page.waitForTimeout(800);
-    gate(!(await drawingCanvasPresent()), 'S4-HARD: locked `p` does not mount the drawing canvas');
+    gate(!(await drawingSurfaceArmed()), 'S4-HARD: locked `p` does not arm the SVG drawing surface');
     const drawFrom = { x: pre.rects[0].x + 320, y: pre.rects[0].y + 260 };
     await page.mouse.move(drawFrom.x, drawFrom.y);
     await page.mouse.down();
@@ -535,10 +545,8 @@ async function main() {
     await page.mouse.up();
     await page.keyboard.press('Escape');
     await page.waitForTimeout(800);
-    // Canvas-presentation era (a3380bbf): if the locked `p` press armed the
-    // pen tool anyway, the SVG layer (fabricCount's DOM) is unmounted and the
-    // count would read 0 regardless of the draw gate. Return to Select so the
-    // no-new-annotation assertion measures the real element count.
+    // Return to Select as the shared baseline before counting (the SVG layer
+    // stays mounted under pen too, but S4 and S5 must measure identically).
     await page.keyboard.press('v');
     await page.waitForTimeout(400);
     gate((await fabricCount()) === pre.count, 'S4-HARD: draw gesture produces no annotation (case 16 drawing blocked)');
@@ -820,16 +828,16 @@ async function main() {
     const preDraw = await fabricCount();
     await page.keyboard.press('p');
     await page.waitForTimeout(800);
-    expect(await drawingCanvasPresent(), 'S5-POSITIVE: `p` mounts the drawing canvas (proves S4 mount gate)');
+    expect(await drawingSurfaceArmed(), 'S5-POSITIVE: `p` arms the SVG drawing surface (proves S4 arm gate)');
     await page.mouse.move(drawFrom.x, drawFrom.y);
     await page.mouse.down();
     await page.mouse.move(drawFrom.x + 80, drawFrom.y + 50, { steps: 8 });
     await page.mouse.up();
     await page.waitForTimeout(500);
     await page.keyboard.press('Escape');
-    // Canvas-presentation era (a3380bbf): pen stays armed after Escape, which
-    // keeps the SVG layer (fabricCount's DOM) unmounted — switch back to
-    // Select BEFORE polling for the +1.
+    // Return to Select — same measurement baseline as the S4 locked probe
+    // (the committed stroke renders as a g[data-annotation-index] node either
+    // way; the SVG layer stays mounted under pen on the unified renderer).
     await page.keyboard.press('v');
     await page.waitForTimeout(400);
     expect(await pollFor(fabricCount, preDraw + 1, 10000, 'S5 draw'), 'S5-POSITIVE: draw gesture adds an annotation (proves S4 draw gate)');
