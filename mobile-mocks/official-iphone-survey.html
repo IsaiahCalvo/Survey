@@ -1,0 +1,745 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, viewport-fit=cover"
+    />
+    <title>Survey Mobile UI - Official Density Mock</title>
+    <link rel="icon" href="data:," />
+    <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+    <style>
+      :root {
+        color-scheme: dark;
+        --ink: #f4f4f5;
+        --muted: #9ca0aa;
+        --bar: #161719;
+        --bar-2: #1e1f23;
+        --tool: #242529;
+        --line: rgba(255, 255, 255, 0.075);
+        --paper: #ffffff;
+        --blue: #55a6ff;
+        --green: #52d982;
+        --gold: #f3d64d;
+        --red: #ff6a76;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        width: 100%;
+        height: 100%;
+        margin: 0;
+        background: #08090b;
+        font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", Inter,
+          Segoe UI, sans-serif;
+        letter-spacing: 0;
+      }
+
+      body {
+        display: grid;
+        place-items: center;
+        overflow: hidden;
+      }
+
+      .phone {
+        position: relative;
+        width: min(100vw, 430px);
+        height: 100dvh;
+        min-height: 720px;
+        max-height: 932px;
+        overflow: hidden;
+        background: #111214;
+        color: var(--ink);
+      }
+
+      @media (min-width: 700px) {
+        .phone {
+          width: 390px;
+          height: 844px;
+          min-height: 844px;
+          border: 1px solid #2b2d32;
+          border-radius: 38px;
+          box-shadow: 0 26px 80px rgba(0, 0, 0, 0.65);
+        }
+      }
+
+      .status {
+        height: calc(46px + env(safe-area-inset-top));
+        padding: env(safe-area-inset-top) 24px 0;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        background: var(--bar);
+        font-size: 16px;
+        font-weight: 700;
+      }
+
+      .status-left {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+      }
+
+      .status-right {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        color: #ffffff;
+      }
+
+      .signal {
+        width: 22px;
+        height: 13px;
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 2px;
+        align-items: end;
+      }
+
+      .signal span {
+        display: block;
+        width: 3px;
+        border-radius: 2px;
+        background: #f7f7f8;
+      }
+
+      .signal span:nth-child(1) {
+        height: 4px;
+        opacity: 0.45;
+      }
+
+      .signal span:nth-child(2) {
+        height: 7px;
+        opacity: 0.65;
+      }
+
+      .signal span:nth-child(3) {
+        height: 10px;
+        opacity: 0.85;
+      }
+
+      .signal span:nth-child(4) {
+        height: 13px;
+      }
+
+      .wifi {
+        width: 18px;
+        height: 13px;
+        position: relative;
+      }
+
+      .wifi::before,
+      .wifi::after {
+        content: "";
+        position: absolute;
+        left: 50%;
+        border: 2px solid #f7f7f8;
+        border-color: #f7f7f8 transparent transparent transparent;
+        border-radius: 50%;
+        transform: translateX(-50%);
+      }
+
+      .wifi::before {
+        width: 18px;
+        height: 18px;
+        top: 1px;
+      }
+
+      .wifi::after {
+        width: 10px;
+        height: 10px;
+        top: 6px;
+      }
+
+      .battery {
+        height: 18px;
+        min-width: 31px;
+        padding: 0 5px;
+        display: grid;
+        place-items: center;
+        border-radius: 5px;
+        background: #f2f3f5;
+        color: #151619;
+        font-size: 12px;
+        line-height: 1;
+        font-weight: 800;
+      }
+
+      .battery::after {
+        content: "";
+        position: absolute;
+      }
+
+      .topbar {
+        height: 68px;
+        display: grid;
+        grid-template-columns: 74px 1fr 74px;
+        align-items: center;
+        padding: 0 18px;
+        background: var(--bar);
+        border-bottom: 1px solid var(--line);
+      }
+
+      .round {
+        width: 43px;
+        height: 43px;
+        border-radius: 999px;
+        border: 1px solid rgba(255, 255, 255, 0.07);
+        background: rgba(255, 255, 255, 0.025);
+        color: var(--ink);
+        display: grid;
+        place-items: center;
+        box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.22);
+      }
+
+      .round svg,
+      .dock-button svg,
+      .tool svg {
+        stroke-width: 2.25;
+      }
+
+      .mode-title {
+        justify-self: center;
+        height: 38px;
+        min-width: 144px;
+        padding: 0 16px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 6px;
+        border-radius: 9px;
+        background: #25262b;
+        box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.055),
+          0 1px 0 rgba(0, 0, 0, 0.5);
+        color: #eeeeef;
+        font-size: 16px;
+        font-weight: 650;
+      }
+
+      .topbar .right {
+        justify-self: end;
+      }
+
+      .tools {
+        height: 46px;
+        display: flex;
+        align-items: stretch;
+        overflow-x: auto;
+        scrollbar-width: none;
+        background: var(--tool);
+        border-bottom: 1px solid rgba(0, 0, 0, 0.65);
+      }
+
+      .tools::-webkit-scrollbar {
+        display: none;
+      }
+
+      .tool {
+        position: relative;
+        flex: 0 0 39px;
+        height: 46px;
+        color: #f7f7f7;
+        display: grid;
+        place-items: center;
+        border-right: 1px solid rgba(255, 255, 255, 0.025);
+      }
+
+      .tool .icon {
+        width: 22px;
+        height: 22px;
+        position: relative;
+        display: grid;
+        place-items: center;
+        font-size: 22px;
+        font-weight: 600;
+        line-height: 1;
+      }
+
+      .tool.active::before {
+        content: "";
+        position: absolute;
+        inset: 5px 8px;
+        border-radius: 5px;
+        background: rgba(243, 214, 77, 0.18);
+        border: 1px solid rgba(243, 214, 77, 0.34);
+      }
+
+      .tool.disabled {
+        color: #60636b;
+        background: rgba(0, 0, 0, 0.14);
+      }
+
+      .a-mark {
+        font-size: 24px;
+        font-weight: 550;
+      }
+
+      .a-mark::after {
+        content: "";
+        position: absolute;
+        left: 0;
+        right: 0;
+        bottom: 1px;
+        height: 2px;
+        border-radius: 2px;
+        background: var(--red);
+      }
+
+      .a-mark.wavy::after {
+        height: 5px;
+        background: repeating-linear-gradient(
+          -45deg,
+          var(--red) 0 3px,
+          transparent 3px 6px
+        );
+      }
+
+      .a-mark.strike::after {
+        bottom: 11px;
+      }
+
+      .select-box {
+        width: 22px;
+        height: 22px;
+        border: 2px dashed #f5f5f6;
+        border-radius: 3px;
+      }
+
+      .text-box {
+        width: 27px;
+        height: 22px;
+        border: 2px dashed #f2f2f2;
+        border-radius: 4px;
+        color: #f7f7f7;
+        display: grid;
+        place-items: center;
+        font-size: 17px;
+        font-weight: 650;
+      }
+
+      .tool-color {
+        position: absolute;
+        left: 10px;
+        right: 10px;
+        bottom: 7px;
+        height: 2px;
+        border-radius: 2px;
+        background: var(--green);
+      }
+
+      .paper-stage {
+        position: absolute;
+        top: calc(160px + env(safe-area-inset-top));
+        right: 0;
+        bottom: calc(96px + env(safe-area-inset-bottom));
+        left: 0;
+        overflow: hidden;
+        background: #111214;
+      }
+
+      .paper-scroll {
+        position: absolute;
+        inset: 0;
+        overflow: hidden;
+      }
+
+      .page {
+        position: absolute;
+        top: 29px;
+        left: 0;
+        right: 0;
+        width: 100%;
+        height: 74%;
+        background: var(--paper);
+        border-top: 1px solid #e6e6e7;
+        border-bottom: 1px solid #e6e6e7;
+        color: #1c1d20;
+      }
+
+      .page::before {
+        content: "";
+        position: absolute;
+        inset: 0;
+        opacity: 0.16;
+        background-image: linear-gradient(#d9dce2 1px, transparent 1px),
+          linear-gradient(90deg, #d9dce2 1px, transparent 1px);
+        background-size: 64px 64px, 64px 64px;
+      }
+
+      .drawing {
+        position: absolute;
+        inset: 42px 28px 78px;
+        border: 1px solid rgba(20, 24, 30, 0.1);
+      }
+
+      .drawing::before {
+        content: "";
+        position: absolute;
+        inset: 19% 10% 18%;
+        border: 2px solid rgba(23, 28, 34, 0.13);
+      }
+
+      .drawing::after {
+        content: "";
+        position: absolute;
+        inset: 34% 28% 34% 28%;
+        border-top: 2px solid rgba(23, 28, 34, 0.13);
+        border-bottom: 2px solid rgba(23, 28, 34, 0.13);
+      }
+
+      .survey-pin {
+        position: absolute;
+        width: 24px;
+        height: 24px;
+        border-radius: 50%;
+        background: #2676ff;
+        border: 2px solid #ffffff;
+        box-shadow: 0 3px 12px rgba(16, 24, 40, 0.2);
+      }
+
+      .survey-pin::after {
+        content: "";
+        position: absolute;
+        inset: 6px;
+        border-radius: 50%;
+        background: #ffffff;
+      }
+
+      .pin-a {
+        left: 61%;
+        top: 32%;
+      }
+
+      .pin-b {
+        left: 35%;
+        top: 58%;
+        background: #e03e4f;
+      }
+
+      .region-mask {
+        position: absolute;
+        inset: 14% 10% 20%;
+        border: 2px solid rgba(82, 217, 130, 0.9);
+        background: rgba(82, 217, 130, 0.035);
+        box-shadow: 0 0 0 999px rgba(0, 0, 0, 0.04);
+      }
+
+      .page-break {
+        position: absolute;
+        left: 0;
+        right: 0;
+        top: calc(29px + 74% + 7px);
+        height: 8px;
+        background: #0d0e10;
+      }
+
+      .next-page {
+        position: absolute;
+        left: 0;
+        right: 0;
+        top: calc(29px + 74% + 15px);
+        height: 34%;
+        background: #ffffff;
+        border-top: 1px solid #e6e6e7;
+      }
+
+      .page-count {
+        position: absolute;
+        left: 50%;
+        bottom: 12px;
+        transform: translateX(-50%);
+        min-width: 86px;
+        height: 31px;
+        padding: 0 10px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        border-radius: 18px;
+        background: rgba(27, 29, 34, 0.86);
+        color: #d7d8dc;
+        font-size: 13px;
+        font-weight: 550;
+        backdrop-filter: blur(12px);
+      }
+
+      .mini-layers {
+        width: 16px;
+        height: 18px;
+        border: 2px solid var(--green);
+        border-radius: 3px;
+        box-shadow: -4px 4px 0 rgba(82, 217, 130, 0.45);
+      }
+
+      .context-tabs {
+        position: absolute;
+        right: 11px;
+        bottom: 105px;
+        display: grid;
+        gap: 7px;
+      }
+
+      .tab {
+        width: 35px;
+        height: 35px;
+        border-radius: 999px;
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        background: rgba(29, 31, 36, 0.86);
+        display: grid;
+        place-items: center;
+        color: #f7f7f8;
+        box-shadow: 0 8px 22px rgba(0, 0, 0, 0.22);
+        backdrop-filter: blur(16px);
+      }
+
+      .tab.active {
+        border-color: rgba(85, 166, 255, 0.48);
+        color: var(--blue);
+      }
+
+      .tab.region {
+        color: var(--green);
+        border-color: rgba(82, 217, 130, 0.42);
+      }
+
+      .bottom {
+        position: absolute;
+        right: 0;
+        bottom: 0;
+        left: 0;
+        height: calc(96px + env(safe-area-inset-bottom));
+        padding: 14px 26px calc(15px + env(safe-area-inset-bottom));
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        background: #1c1d21;
+        border-top: 1px solid rgba(255, 255, 255, 0.055);
+      }
+
+      .dock-button,
+      .survey-pill {
+        height: 46px;
+        border-radius: 999px;
+        border: 1px solid rgba(255, 255, 255, 0.075);
+        background: rgba(20, 21, 24, 0.62);
+        color: #f4f4f5;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        box-shadow: 0 9px 22px rgba(0, 0, 0, 0.21),
+          inset 0 1px 0 rgba(255, 255, 255, 0.035);
+      }
+
+      .dock-button {
+        width: 46px;
+      }
+
+      .dock-button.active {
+        color: var(--green);
+        border-color: rgba(82, 217, 130, 0.26);
+      }
+
+      .survey-pill {
+        width: 92px;
+        gap: 6px;
+        color: #f3f4f7;
+        font-size: 13px;
+        font-weight: 700;
+      }
+
+      .survey-pill .dot {
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+        background: var(--blue);
+        box-shadow: 0 0 0 4px rgba(85, 166, 255, 0.13);
+      }
+
+      .survey-pill span:last-child {
+        transform: translateY(0.5px);
+      }
+
+      .home-indicator {
+        position: absolute;
+        left: 50%;
+        bottom: max(6px, env(safe-area-inset-bottom));
+        transform: translateX(-50%);
+        width: 118px;
+        height: 4px;
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.72);
+      }
+
+      .tiny-badge {
+        position: absolute;
+        right: -4px;
+        top: -4px;
+        min-width: 16px;
+        height: 16px;
+        padding: 0 4px;
+        display: grid;
+        place-items: center;
+        border-radius: 999px;
+        background: var(--red);
+        color: #fff;
+        font-size: 10px;
+        font-weight: 800;
+        border: 1px solid #1c1d21;
+      }
+
+      .measure {
+        position: absolute;
+        left: 12px;
+        bottom: 107px;
+        height: 29px;
+        padding: 0 10px;
+        display: inline-flex;
+        align-items: center;
+        gap: 7px;
+        border-radius: 17px;
+        background: rgba(29, 31, 36, 0.84);
+        border: 1px solid rgba(255, 255, 255, 0.07);
+        color: #cfd2d8;
+        font-size: 11px;
+        font-weight: 650;
+        backdrop-filter: blur(16px);
+      }
+
+      .measure i {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: var(--blue);
+        box-shadow: 0 0 0 3px rgba(85, 166, 255, 0.12);
+      }
+    </style>
+  </head>
+  <body>
+    <main class="phone" aria-label="iPhone portrait survey annotation mock">
+      <section class="status" aria-label="status bar">
+        <div class="status-left">4:10<span style="font-size: 12px">↗</span></div>
+        <div class="status-right">
+          <div class="signal" aria-hidden="true">
+            <span></span><span></span><span></span><span></span>
+          </div>
+          <div class="wifi" aria-hidden="true"></div>
+          <div class="battery">28</div>
+        </div>
+      </section>
+
+      <section class="topbar" aria-label="document navigation">
+        <button class="round" aria-label="Back">
+          <i data-lucide="chevron-left" width="28" height="28"></i>
+        </button>
+        <div class="mode-title">
+          Annotate
+          <i data-lucide="chevron-down" width="17" height="17"></i>
+        </div>
+        <button class="round right" aria-label="More">
+          <i data-lucide="ellipsis" width="27" height="27"></i>
+        </button>
+      </section>
+
+      <section class="tools" aria-label="annotation toolbar">
+        <div class="tool" aria-label="Select">
+          <span class="icon select-box"></span>
+        </div>
+        <div class="tool active" aria-label="Highlight text">
+          <span class="icon a-mark">A</span>
+        </div>
+        <div class="tool" aria-label="Underline text">
+          <span class="icon a-mark wavy">A</span>
+        </div>
+        <div class="tool" aria-label="Strike text">
+          <span class="icon a-mark strike">A</span>
+        </div>
+        <div class="tool" aria-label="Draw">
+          <i data-lucide="pencil" width="22" height="22"></i>
+          <span class="tool-color" style="background: var(--gold)"></span>
+        </div>
+        <div class="tool" aria-label="Text box">
+          <span class="text-box">A</span>
+        </div>
+        <div class="tool" aria-label="Pen">
+          <i data-lucide="pen-line" width="22" height="22"></i>
+          <span class="tool-color"></span>
+        </div>
+        <div class="tool" aria-label="Freehand">
+          <i data-lucide="signature" width="25" height="25"></i>
+        </div>
+        <div class="tool" aria-label="Survey marker">
+          <i data-lucide="map-pin-plus" width="22" height="22"></i>
+          <span class="tiny-badge">S</span>
+        </div>
+        <div class="tool" aria-label="Region">
+          <i data-lucide="scan" width="22" height="22"></i>
+          <span class="tool-color" style="background: var(--green)"></span>
+        </div>
+        <div class="tool disabled" aria-label="Undo">
+          <i data-lucide="undo-2" width="22" height="22"></i>
+        </div>
+      </section>
+
+      <section class="paper-stage" aria-label="PDF page">
+        <div class="paper-scroll">
+          <div class="page">
+            <div class="drawing">
+              <div class="region-mask"></div>
+              <div class="survey-pin pin-a"></div>
+              <div class="survey-pin pin-b"></div>
+            </div>
+          </div>
+          <div class="page-break"></div>
+          <div class="next-page"></div>
+          <div class="page-count">
+            <span class="mini-layers"></span>
+            <span>1 / 2</span>
+          </div>
+        </div>
+      </section>
+
+      <div class="measure"><i></i><span>MEP Survey · Region TCO1</span></div>
+
+      <div class="context-tabs" aria-label="open panels">
+        <button class="tab active" aria-label="Survey panel">
+          <i data-lucide="clipboard-check" width="19" height="19"></i>
+        </button>
+        <button class="tab region" aria-label="Region panel">
+          <i data-lucide="scan-line" width="19" height="19"></i>
+        </button>
+      </div>
+
+      <nav class="bottom" aria-label="document tools">
+        <button class="dock-button" aria-label="Pages">
+          <i data-lucide="grid-2x2" width="24" height="24"></i>
+        </button>
+        <button class="dock-button" aria-label="Spaces">
+          <i data-lucide="book-open" width="25" height="25"></i>
+        </button>
+        <button class="dock-button" aria-label="Search">
+          <i data-lucide="search" width="25" height="25"></i>
+        </button>
+        <button class="survey-pill" aria-label="Survey mode active">
+          <span class="dot"></span>
+          <span>Survey</span>
+        </button>
+        <button class="dock-button active" aria-label="Region mode active">
+          <i data-lucide="settings" width="24" height="24"></i>
+        </button>
+      </nav>
+
+      <div class="home-indicator"></div>
+    </main>
+
+    <script>
+      if (window.lucide) {
+        window.lucide.createIcons();
+      }
+    </script>
+  </body>
+</html>
