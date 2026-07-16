@@ -1,0 +1,77 @@
+<h2>iPhone Portrait Layout Models</h2>
+<p class="subtitle">Passive mockups. Decisions stay in chat.</p>
+
+<style>
+  .phone-grid { display:grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap:18px; }
+  .phone-card { background:#181818; border:1px solid #303030; border-radius:8px; padding:14px; }
+  .phone { width:100%; max-width:240px; aspect-ratio:390/844; margin:0 auto 12px; background:#202020; border:1px solid #3a3a3a; border-radius:22px; overflow:hidden; position:relative; box-shadow:0 12px 30px rgba(0,0,0,.28); }
+  .top { position:absolute; left:0; right:0; top:0; height:56px; background:#2d2d2d; border-bottom:1px solid #3a3a3a; display:flex; align-items:end; justify-content:space-between; padding:0 12px 8px; box-sizing:border-box; color:#ddd; font-size:10px; }
+  .pdf { position:absolute; left:0; right:0; top:56px; bottom:86px; background:#0f0f0f; display:flex; align-items:center; justify-content:center; }
+  .page { width:72%; height:78%; background:#f3f0e8; border-radius:2px; box-shadow:0 0 0 1px rgba(0,0,0,.25); position:relative; }
+  .mark { position:absolute; background:rgba(74,144,226,.25); border:1px solid rgba(74,144,226,.75); border-radius:2px; }
+  .bottom { position:absolute; left:0; right:0; bottom:0; height:86px; background:#2b2b2b; border-top:1px solid #3a3a3a; padding:8px 12px 18px; box-sizing:border-box; }
+  .tools { display:flex; justify-content:space-between; gap:6px; }
+  .tool { width:30px; height:30px; border-radius:6px; background:#383838; display:grid; place-items:center; color:#ddd; font-size:10px; }
+  .primary { background:#4a90e2; color:white; }
+  .side-fab { position:absolute; right:10px; bottom:106px; display:flex; flex-direction:column; gap:8px; }
+  .fab { width:34px; height:34px; border-radius:17px; background:#2d2d2d; border:1px solid #555; display:grid; place-items:center; color:#ddd; font-size:10px; }
+  .sheet { position:absolute; left:0; right:0; bottom:0; height:44%; background:#252525; border-top:1px solid #444; border-radius:14px 14px 0 0; padding:12px; box-sizing:border-box; }
+  .row { height:20px; background:#3a3a3a; border-radius:4px; margin-bottom:8px; }
+  .rail { position:absolute; right:0; top:56px; bottom:86px; width:44px; background:#282828; border-left:1px solid #3a3a3a; display:flex; flex-direction:column; align-items:center; gap:8px; padding-top:10px; box-sizing:border-box; }
+  .rail .tool { width:28px; height:28px; }
+  @media (max-width:900px) { .phone-grid { grid-template-columns:1fr; } }
+</style>
+
+<div class="phone-grid">
+  <div class="phone-card">
+    <div class="phone">
+      <div class="top"><span>Survey.pdf</span><span>12 / 99 · 128%</span></div>
+      <div class="pdf">
+        <div class="page">
+          <div class="mark" style="left:18%;top:20%;width:48%;height:8%;"></div>
+          <div class="mark" style="left:25%;top:44%;width:34%;height:18%;"></div>
+        </div>
+      </div>
+      <div class="side-fab"><div class="fab">↶</div><div class="fab">↷</div></div>
+      <div class="bottom"><div class="tools"><div class="tool primary">Pan</div><div class="tool">Sel</div><div class="tool">Pen</div><div class="tool">Hi</div><div class="tool">More</div></div></div>
+    </div>
+    <h3>A. Canvas First Bottom Dock</h3>
+    <p>Recommended. Always show PDF, page/zoom, pan/select, and the current tool. Everything else opens as bottom sheets.</p>
+  </div>
+
+  <div class="phone-card">
+    <div class="phone">
+      <div class="top"><span>Survey.pdf</span><span>12 / 99</span></div>
+      <div class="pdf" style="bottom:0;">
+        <div class="page">
+          <div class="mark" style="left:16%;top:28%;width:52%;height:8%;"></div>
+          <div class="mark" style="left:30%;top:54%;width:30%;height:20%;"></div>
+        </div>
+      </div>
+      <div class="side-fab"><div class="fab primary">＋</div><div class="fab">⌕</div><div class="fab">☰</div></div>
+    </div>
+    <h3>B. Floating Tool Bubble</h3>
+    <p>Maximum canvas. A thumb bubble opens tools, search, pages, survey, and export. Cleaner, but less discoverable.</p>
+  </div>
+
+  <div class="phone-card">
+    <div class="phone">
+      <div class="top"><span>Survey.pdf</span><span>12 / 99 · 128%</span></div>
+      <div class="pdf" style="right:44px;">
+        <div class="page">
+          <div class="mark" style="left:20%;top:32%;width:50%;height:8%;"></div>
+          <div class="mark" style="left:34%;top:58%;width:28%;height:16%;"></div>
+        </div>
+      </div>
+      <div class="rail"><div class="tool primary">Pan</div><div class="tool">Pen</div><div class="tool">Pg</div><div class="tool">Sur</div><div class="tool">⋯</div></div>
+      <div class="bottom"><div class="row"></div><div class="row" style="width:65%;"></div></div>
+    </div>
+    <h3>C. Persistent Thumb Rail</h3>
+    <p>Most desktop-like. A right thumb rail keeps modes visible. Good for power use, but costs canvas width on iPhone.</p>
+  </div>
+</div>
+
+<div class="section">
+  <h3>My Recommendation</h3>
+  <p>Use A as the base. Borrow B’s floating “More” menu for secondary actions. Avoid C until iPad/landscape.</p>
+</div>

@@ -1,0 +1,35 @@
+<h2>Testing Workflow Locked</h2>
+<p class="subtitle">We will use this sequence for the phone app design/build loop.</p>
+
+<div class="section">
+  <h3>Today: Layout Decisions</h3>
+  <p>Use the browser preview on iPhone over Tailscale. This is fastest for safe areas, touch targets, toolbar density, and sheet/drawer behavior.</p>
+  <p><strong>iPhone URL:</strong> http://100.113.236.18:53499</p>
+</div>
+
+<div class="section">
+  <h3>Before Implementation QA</h3>
+  <p>Use the Capacitor iOS app shell pointed at the Vite dev server over Tailscale. This gives real native-webview behavior with live reload.</p>
+</div>
+
+<div class="section">
+  <h3>Small Helper</h3>
+  <p>Add a QR launcher for local dev URLs so the phone can open the current preview or dev app URL without typing.</p>
+</div>
+
+<div class="options">
+  <div class="option" data-choice="portrait" onclick="toggleSelect(this)">
+    <div class="letter">A</div>
+    <div class="content">
+      <h3>Portrait First</h3>
+      <p>Optimize the main field workflow for one-handed iPhone portrait. Landscape comes after core UX works.</p>
+    </div>
+  </div>
+  <div class="option" data-choice="both" onclick="toggleSelect(this)">
+    <div class="letter">B</div>
+    <div class="content">
+      <h3>Portrait + Landscape</h3>
+      <p>Design both from day one. More complete, but every toolbar/panel decision takes longer.</p>
+    </div>
+  </div>
+</div>

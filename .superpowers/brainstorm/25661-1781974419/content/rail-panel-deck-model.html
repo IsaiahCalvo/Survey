@@ -1,0 +1,65 @@
+<h2>Revised Phone Model: Rail + Panel Deck</h2>
+<p class="subtitle">Passive mockup. Based on the uploaded reference and mobile PDF app research.</p>
+
+<style>
+  .layout-wrap { display:grid; grid-template-columns: 280px 1fr; gap:22px; align-items:start; }
+  .phone { width:260px; aspect-ratio:390/844; background:#11161d; border:1px solid #303946; border-radius:24px; overflow:hidden; position:relative; box-shadow:0 14px 36px rgba(0,0,0,.34); }
+  .status { position:absolute; left:0; right:0; top:0; height:34px; background:#15191f; color:#eef2f6; font-size:11px; display:flex; align-items:center; justify-content:space-between; padding:0 18px; box-sizing:border-box; }
+  .topbar { position:absolute; left:0; right:0; top:34px; height:48px; background:#171c23; border-bottom:1px solid #303946; color:#d9e1ea; display:flex; align-items:center; justify-content:space-between; padding:0 10px; box-sizing:border-box; }
+  .rail { position:absolute; left:0; top:82px; bottom:68px; width:48px; background:#25303c; border-right:1px solid #354253; display:flex; flex-direction:column; align-items:center; gap:8px; padding:10px 0; box-sizing:border-box; }
+  .rail.right { left:auto; right:0; border-right:0; border-left:1px solid #354253; }
+  .tool { width:38px; height:38px; border-radius:9px; display:grid; place-items:center; color:#edf2f7; background:#17202a; font-size:10px; position:relative; }
+  .tool.active { outline:2px solid #4a90e2; }
+  .badge { position:absolute; right:-2px; top:-3px; width:14px; height:14px; border-radius:7px; background:#f1c40f; }
+  .canvas { position:absolute; left:48px; right:0; top:82px; bottom:68px; background:#05090d; display:flex; justify-content:center; overflow:hidden; }
+  .page { width:78%; height:72%; margin-top:10px; background:#f5f2ec; box-shadow:0 0 0 1px rgba(0,0,0,.25); }
+  .bottom { position:absolute; left:0; right:0; bottom:0; height:68px; background:#171c23; border-top:1px solid #303946; display:flex; align-items:center; justify-content:space-around; color:#d8e1ea; font-size:11px; }
+  .deck { position:absolute; left:48px; right:0; bottom:68px; height:238px; background:#202832; border-top:1px solid #3c4a5c; border-radius:14px 14px 0 0; padding:10px; box-sizing:border-box; }
+  .deck-header { display:flex; gap:8px; margin-bottom:10px; }
+  .chip { padding:6px 9px; background:#2f3b49; border-radius:14px; font-size:10px; color:#dbe6f2; }
+  .chip.on { background:#4a90e2; color:white; }
+  .panel-row { height:28px; background:#303b48; border-radius:6px; margin-bottom:8px; }
+  .notes h3 { margin-top:0; }
+  .notes p { line-height:1.45; }
+  @media (max-width:760px) { .layout-wrap { grid-template-columns:1fr; } .phone { margin:auto; } }
+</style>
+
+<div class="layout-wrap">
+  <div class="phone">
+    <div class="status"><span>1:10</span><span>38%</span></div>
+    <div class="topbar"><span>‹  ▣</span><span>Survey.pdf</span><span>☁  •••</span></div>
+    <div class="rail">
+      <div class="tool active">Pan</div>
+      <div class="tool">Sel</div>
+      <div class="tool">Pen<span class="badge"></span></div>
+      <div class="tool">Hi</div>
+      <div class="tool">Reg<span class="badge"></span></div>
+      <div class="tool">Sur<span class="badge"></span></div>
+      <div class="tool">Txt</div>
+      <div style="flex:1"></div>
+      <div class="tool">＋</div>
+    </div>
+    <div class="canvas"><div class="page"></div></div>
+    <div class="deck">
+      <div class="deck-header">
+        <div class="chip on">Survey</div>
+        <div class="chip on">Regions</div>
+        <div class="chip">Search</div>
+      </div>
+      <div class="panel-row"></div>
+      <div class="panel-row" style="width:82%"></div>
+      <div class="panel-row" style="width:66%"></div>
+      <div class="panel-row" style="margin-top:16px"></div>
+      <div class="panel-row" style="width:74%"></div>
+    </div>
+    <div class="bottom"><span>↶</span><span>1 / 2</span><span>128%</span><span>⌃</span></div>
+  </div>
+
+  <div class="notes">
+    <h3>Design Rule</h3>
+    <p><strong>Tool rail</strong> is persistent and can live left or right. User preference decides hand side.</p>
+    <p><strong>Panel deck</strong> is one shared drawer, not stacked sheets. Survey, Regions, Search, Pages, and Export can be open as modules inside it.</p>
+    <p><strong>When drawing or hit-testing</strong>, deck collapses to chips so the PDF gets maximum touch area.</p>
+    <p><strong>Survey + Regions together</strong> means both chips are active in the same deck, with one expanded and the other available above/below.</p>
+  </div>
+</div>

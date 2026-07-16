@@ -1,0 +1,34 @@
+<h2>Phone Testing Setup</h2>
+<p class="subtitle">Recommended path for designing and testing the iPhone app live.</p>
+
+<div class="options">
+  <div class="option" data-choice="a" onclick="toggleSelect(this)">
+    <div class="letter">A</div>
+    <div class="content">
+      <h3>Use Tailscale + Browser Preview First</h3>
+      <p>Fastest for UI layout. Open the dev/mock URL on the phone over Tailscale. Good for checking responsive layout, touch target size, safe areas, panels, and toolbar density.</p>
+      <p><strong>Phone URL:</strong> http://100.113.236.18:53499</p>
+    </div>
+  </div>
+
+  <div class="option" data-choice="b" onclick="toggleSelect(this)">
+    <div class="letter">B</div>
+    <div class="content">
+      <h3>Capacitor Dev App, Expo-Style</h3>
+      <p>Best for real app testing. Install the native iOS shell once, then point it at the Vite dev server over Tailscale or LAN. Feels closest to Expo Dev Client: native wrapper, live web reload.</p>
+    </div>
+  </div>
+
+  <div class="option" data-choice="c" onclick="toggleSelect(this)">
+    <div class="letter">C</div>
+    <div class="content">
+      <h3>QR Launcher Helper</h3>
+      <p>Add a local dev page that shows QR codes for browser preview and installed native app URLs. It will not install an iOS native app by itself, but it removes typing URLs.</p>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>My Recommendation</h3>
+  <p>Start with A for layout decisions today. Build B into the dev workflow before implementation QA. Add C as a small helper so you can scan instead of typing URLs.</p>
+</div>
