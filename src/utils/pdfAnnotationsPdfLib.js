@@ -1326,17 +1326,22 @@ const getObjNumber = (obj, key, fallback = 0) => {
 
 const getPdfY = (pageHeight, appY) => pageHeight - appY;
 
-const fabricPathToSvgPath = (pathData, pageHeight) => {
+// GOTCHA (drawSvgPath origin trap — see drawFlattenedArrowheadSpec): emits
+// RAW app-space (y-down) coordinates; the drawSvgPath call site MUST pass
+// origin {x: 0, y: pageHeight}. Pre-flipping with getPdfY here lands the
+// whole stroke at negative device y (off-page) because drawSvgPath negates
+// path y around its origin, which defaults to the page BOTTOM-left.
+const fabricPathToSvgPath = (pathData) => {
   if (!Array.isArray(pathData) || pathData.length === 0) return '';
   const parts = [];
   pathData.forEach((cmd) => {
     const command = cmd?.[0];
     if (command === 'M' || command === 'L') {
-      parts.push(`${command} ${Number(cmd[1]) || 0} ${getPdfY(pageHeight, Number(cmd[2]) || 0)}`);
+      parts.push(`${command} ${Number(cmd[1]) || 0} ${Number(cmd[2]) || 0}`);
     } else if (command === 'Q') {
-      parts.push(`Q ${Number(cmd[1]) || 0} ${getPdfY(pageHeight, Number(cmd[2]) || 0)} ${Number(cmd[3]) || 0} ${getPdfY(pageHeight, Number(cmd[4]) || 0)}`);
+      parts.push(`Q ${Number(cmd[1]) || 0} ${Number(cmd[2]) || 0} ${Number(cmd[3]) || 0} ${Number(cmd[4]) || 0}`);
     } else if (command === 'C') {
-      parts.push(`C ${Number(cmd[1]) || 0} ${getPdfY(pageHeight, Number(cmd[2]) || 0)} ${Number(cmd[3]) || 0} ${getPdfY(pageHeight, Number(cmd[4]) || 0)} ${Number(cmd[5]) || 0} ${getPdfY(pageHeight, Number(cmd[6]) || 0)}`);
+      parts.push(`C ${Number(cmd[1]) || 0} ${Number(cmd[2]) || 0} ${Number(cmd[3]) || 0} ${Number(cmd[4]) || 0} ${Number(cmd[5]) || 0} ${Number(cmd[6]) || 0}`);
     }
   });
   return parts.join(' ');
@@ -1558,14 +1563,21 @@ const drawFlattenedCounterPin = (page, obj, pageHeight, font) => {
   const t1y = centerY + Math.sin(t1Angle) * radius;
   const t2x = centerX + Math.cos(t2Angle) * radius;
   const t2y = centerY + Math.sin(t2Angle) * radius;
+  // GOTCHA (drawSvgPath origin trap — see drawFlattenedArrowheadSpec):
+  // origin {x: 0, y: pageHeight} + RAW app-space (y-down) coordinates; the
+  // default origin (page bottom-left) negates y and lands the pin off-page.
+  // In this y-down frame the arc sweep flag is 1, matching the on-screen pin
+  // path in counterGeometry.js (a pre-flipped y-up frame would need sweep 0).
   const d = [
-    `M ${tipX} ${getPdfY(pageHeight, tipY)}`,
-    `L ${t1x} ${getPdfY(pageHeight, t1y)}`,
-    `A ${radius} ${radius} 0 1 0 ${t2x} ${getPdfY(pageHeight, t2y)}`,
+    `M ${tipX} ${tipY}`,
+    `L ${t1x} ${t1y}`,
+    `A ${radius} ${radius} 0 1 1 ${t2x} ${t2y}`,
     'Z',
   ].join(' ');
 
   page.drawSvgPath(d, {
+    x: 0,
+    y: pageHeight,
     color: color.color,
     opacity: color.opacity ?? (Number.isFinite(Number(obj?.opacity)) ? Number(obj.opacity) : 1),
     borderWidth: 0,
@@ -1584,14 +1596,19 @@ const drawFlattenedPolygon = (page, obj, pageHeight, closePath = true) => {
   if (points.length < (closePath ? 3 : 2)) return false;
   const left = getObjNumber(obj, 'left');
   const top = getObjNumber(obj, 'top');
+  // GOTCHA (drawSvgPath origin trap — see drawFlattenedArrowheadSpec):
+  // origin {x: 0, y: pageHeight} + RAW app-space (y-down) coordinates; the
+  // default origin (page bottom-left) negates y and lands the shape off-page.
   const d = points.map((point, index) => {
     const x = left + (Number(point?.x) || 0);
-    const y = getPdfY(pageHeight, top + (Number(point?.y) || 0));
+    const y = top + (Number(point?.y) || 0);
     return `${index === 0 ? 'M' : 'L'} ${x} ${y}`;
   }).join(' ') + (closePath ? ' Z' : '');
   const stroke = parsePdfDrawColor(obj?.stroke || '#000000', '#000000') || parsePdfDrawColor('#000000');
   const fill = closePath ? parsePdfDrawColor(obj?.fill, '#ffffff') : null;
   page.drawSvgPath(d, {
+    x: 0,
+    y: pageHeight,
     borderColor: stroke.color,
     borderWidth: Math.max(0.5, Number(obj?.strokeWidth) || 1),
     color: fill?.color,
@@ -1634,9 +1651,14 @@ const drawFlattenedObject = (page, obj, pageHeight, fonts, offset = { x: 0, y: 0
   }
 
   if (type === 'path') {
-    const path = fabricPathToSvgPath(shifted.path, pageHeight);
+    const path = fabricPathToSvgPath(shifted.path);
     if (!path) return 0;
+    // GOTCHA (drawSvgPath origin trap — see drawFlattenedArrowheadSpec):
+    // origin {x: 0, y: pageHeight} + RAW app-space (y-down) path coordinates.
+    // The default origin (page bottom-left) negates y off-page.
     page.drawSvgPath(path, {
+      x: 0,
+      y: pageHeight,
       borderColor: stroke.color,
       borderWidth: strokeWidth,
       borderOpacity: stroke.opacity,

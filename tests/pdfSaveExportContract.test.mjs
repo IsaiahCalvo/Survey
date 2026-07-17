@@ -222,7 +222,12 @@ test('print PDF helper draws counters with the counter pin path before the gener
   assert.ok(counterBranchIndex > counterHelperIndex, 'expected counter branch to call the pin helper');
   assert.ok(ellipseBranchIndex > counterBranchIndex, 'expected generic circle/ellipse branch after counter branch');
   assert.match(PDF_LIB_SOURCE, /drawFlattenedCounterPin\(page, shifted, pageHeight, fonts\.bold\)/);
-  assert.match(PDF_LIB_SOURCE, /A \$\{radius\} \$\{radius\} 0 1 0/);
+  // Sweep flag is 1 since the 2026-07-17 drawSvgPath origin fix: the pin path
+  // now uses raw app-space (y-down) coordinates with origin {x:0, y:pageHeight},
+  // the same frame as the on-screen pin in counterGeometry.js (sweep 1). The
+  // old sweep 0 belonged to the pre-flipped getPdfY frame that drew off-page.
+  // On-page + orientation proof: tests/printFlattenOnPage.test.mjs.
+  assert.match(PDF_LIB_SOURCE, /A \$\{radius\} \$\{radius\} 0 1 1/);
   assert.match(PDF_LIB_SOURCE, /counter pin path flattened/);
 });
 
