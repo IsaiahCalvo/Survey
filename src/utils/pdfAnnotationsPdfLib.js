@@ -48,6 +48,12 @@ const EXPORTABLE_FABRIC_TYPES = new Set([
   'path',
   'rect',
   'circle',
+  // 'ellipse' is the imported rotated-ellipse form (Drawboard-style tilt
+  // recovered from the /AP matrix at import). Missing from this set until
+  // 2026-07-17, so an EDITED imported rotated ellipse was skipped
+  // 'unsupported-type' and the exported file silently kept the stale native
+  // shape (or lost it once the native dict was removed).
+  'ellipse',
   'polygon',
   'polyline',
   'line',
@@ -763,14 +769,98 @@ const createInkAnnotation = (pdfDoc, page, fabricObj, pageHeight, options = {}) 
       inkList.map(path => path.map(coord => PDFNumber.of(coord)))
     );
 
-    // Create annotation dictionary following PDF spec
+    // UX 2026-07-17 (item 3, thin-stroke ink /AP): bake a stroked appearance
+    // stream so thin pen strokes render identically in every viewer instead
+    // of leaving each reader to improvise from /InkList (which drops the
+    // bezier smoothing and cap/join style). Mirrors the filled-paper-ink
+    // writer's form construction, but strokes the real M/L/Q/C path.
+    //
+    // GOTCHA (form-space flip — same trap as createFilledPaperInkAnnotation,
+    // see also the drawSvgPath origin GOTCHAs below): the form's content is
+    // authored in y-up form space relative to the /BBox origin, so app-space
+    // (y-down) points map via (appMaxY - y) — do NOT pre-flip with getPdfY
+    // (that lands the stroke outside the BBox because it flips around the
+    // PAGE height, not the annotation's own bounds).
+    const strokeWidth = Number(fabricObj.strokeWidth) || 1;
+    const alpha = paintAlpha(fabricObj.stroke, fabricObj.opacity);
+    // Half-stroke pad so the stroke's own width never clips at the BBox/Rect
+    // edge in strict viewers.
+    const pad = strokeWidth / 2;
+    const appMinX = minX;
+    const appMaxY = pageHeight - minY; // largest app-space (y-down) y
+    const toFormX = (x) => (Number(x) || 0) - appMinX + pad;
+    const toFormY = (y) => (appMaxY - (Number(y) || 0)) + pad;
+    const n = pdfNumberText;
+    const apContent = ['q'];
+    if (alpha < 0.99999) apContent.push('/GS0 gs');
+    apContent.push(
+      `${n(color.red)} ${n(color.green)} ${n(color.blue)} RG`,
+      `${n(strokeWidth)} w`,
+      '1 J',
+      '1 j',
+    );
+    let formCursor = null;
+    pathData.forEach((cmd) => {
+      const command = cmd[0];
+      if (command === 'M') {
+        formCursor = [toFormX(cmd[1]), toFormY(cmd[2])];
+        apContent.push(`${n(formCursor[0])} ${n(formCursor[1])} m`);
+      } else if (command === 'L' && formCursor) {
+        formCursor = [toFormX(cmd[1]), toFormY(cmd[2])];
+        apContent.push(`${n(formCursor[0])} ${n(formCursor[1])} l`);
+      } else if (command === 'Q' && formCursor) {
+        // PDF has no quadratic operator — exact cubic elevation of the
+        // quadratic (affine-safe, so converting after the flip is fine).
+        const qx = toFormX(cmd[1]);
+        const qy = toFormY(cmd[2]);
+        const ex = toFormX(cmd[3]);
+        const ey = toFormY(cmd[4]);
+        const c1x = formCursor[0] + (2 / 3) * (qx - formCursor[0]);
+        const c1y = formCursor[1] + (2 / 3) * (qy - formCursor[1]);
+        const c2x = ex + (2 / 3) * (qx - ex);
+        const c2y = ey + (2 / 3) * (qy - ey);
+        apContent.push(`${n(c1x)} ${n(c1y)} ${n(c2x)} ${n(c2y)} ${n(ex)} ${n(ey)} c`);
+        formCursor = [ex, ey];
+      } else if (command === 'C' && formCursor) {
+        const ex = toFormX(cmd[5]);
+        const ey = toFormY(cmd[6]);
+        apContent.push(
+          `${n(toFormX(cmd[1]))} ${n(toFormY(cmd[2]))} ${n(toFormX(cmd[3]))} ${n(toFormY(cmd[4]))} ${n(ex)} ${n(ey)} c`,
+        );
+        formCursor = [ex, ey];
+      }
+    });
+    apContent.push('S', 'Q');
+
+    const apResources = {};
+    if (alpha < 0.99999) {
+      apResources.ExtGState = { GS0: { Type: 'ExtGState', ca: alpha, CA: alpha } };
+    }
+    const appearance = pdfDoc.context.flateStream(`${apContent.join('\n')}\n`, {
+      Type: 'XObject',
+      Subtype: 'Form',
+      FormType: 1,
+      BBox: [
+        0,
+        0,
+        Math.max(0.01, (maxX - minX) + strokeWidth),
+        Math.max(0.01, (maxY - minY) + strokeWidth),
+      ],
+      Resources: apResources,
+    });
+    const appearanceRef = pdfDoc.context.register(appearance);
+
+    // Create annotation dictionary following PDF spec. /Rect is inflated by
+    // the half-stroke pad to match the appearance BBox 1:1 (viewers map the
+    // transformed BBox onto /Rect — a mismatch would rescale the stroke).
     const annotationDict = {
       Type: 'Annot',
       Subtype: 'Ink',
-      Rect: [minX, minY, maxX, maxY],
+      Rect: [minX - pad, minY - pad, maxX + pad, maxY + pad],
       InkList: inkListArray,
       C: [color.red, color.green, color.blue],
       Border: [0, 0, fabricObj.strokeWidth || 1],
+      AP: pdfDoc.context.obj({ N: appearanceRef }),
       Contents: PDFString.of(''),
       P: page.ref, // Reference to page
     };
@@ -876,6 +966,228 @@ const createCircleAnnotation = (pdfDoc, page, fabricObj, pageHeight, options = {
     console.error('Error creating circle annotation:', e);
     return null;
   }
+};
+
+/**
+ * Create Circle annotation from a rotated ellipse ('ellipse' fabric type —
+ * produced by importing a tilted Circle annotation whose rotation lives in
+ * the /AP appearance matrix, see pdfAnnotationImporter's
+ * computeAppearanceRotationTransform). This writer is that importer's exact
+ * inverse: /Rect gets the axis-aligned bounds of the ROTATED ellipse, while
+ * the /AP /N form keeps the UN-rotated oblong dims in /BBox and the tilt in
+ * /Matrix — so Drawboard/Acrobat and our own re-import all reconstruct the
+ * same tilted shape.
+ *
+ * GOTCHA (rotation sign + origin): fabric's `angle` is screen-CLOCKWISE in a
+ * y-down frame; the /AP /Matrix rotation is CCW in PDF's y-up frame — the
+ * SAME visual tilt, so matrixTheta = -fabricAngle (the importer recovers
+ * fabricAngleDeg = -atan2(b, a)). The form's content stream draws in y-up
+ * form space inside /BBox, so there is NO getPdfY flip inside the stream;
+ * only /Rect is built in flipped page coordinates. Do not "fix" either sign.
+ */
+const createEllipseAnnotation = (pdfDoc, page, fabricObj, pageHeight, options = {}) => {
+  try {
+    const rx = Math.abs(Number(fabricObj.rx) || 0) * Math.abs(Number(fabricObj.scaleX) || 1);
+    const ry = Math.abs(Number(fabricObj.ry) || 0) * Math.abs(Number(fabricObj.scaleY) || 1);
+    if (rx <= 0 || ry <= 0) return null;
+
+    const left = Number(fabricObj.left) || 0;
+    const top = Number(fabricObj.top) || 0;
+    // Import set left = centerX - rx / top = centerY - ry, so the center is
+    // recovered the same way regardless of tilt.
+    const centerX = left + rx;
+    const centerY = top + ry;
+    const theta = (-(Number(fabricObj.angle) || 0) * Math.PI) / 180;
+    const cos = Math.cos(theta);
+    const sin = Math.sin(theta);
+    const halfW = Math.abs(rx * cos) + Math.abs(ry * sin);
+    const halfH = Math.abs(rx * sin) + Math.abs(ry * cos);
+    const pdfCenterY = pageHeight - centerY;
+
+    const strokePaint = fabricObj.stroke || '#000000';
+    const color = hexToRGB(strokePaint);
+    const hasFill = fabricObj.fill && fabricObj.fill !== 'transparent';
+    const fillColor = hasFill ? hexToRGB(fabricObj.fill) : null;
+    const strokeWidth = Number(fabricObj.strokeWidth) || 1;
+    const alpha = paintAlpha(strokePaint, fabricObj.opacity);
+
+    // Un-rotated ellipse (center rx,ry radii rx,ry) as four cubic arcs in
+    // form space; the /Matrix applies the tilt.
+    const k = 0.551784;
+    const kx = k * rx;
+    const ky = k * ry;
+    const n = pdfNumberText;
+    const content = ['q'];
+    if (alpha < 0.99999) content.push('/GS0 gs');
+    content.push(`${n(color.red)} ${n(color.green)} ${n(color.blue)} RG`);
+    if (fillColor) content.push(`${n(fillColor.red)} ${n(fillColor.green)} ${n(fillColor.blue)} rg`);
+    content.push(`${n(strokeWidth)} w`);
+    content.push(
+      `${n(2 * rx)} ${n(ry)} m`,
+      `${n(2 * rx)} ${n(ry + ky)} ${n(rx + kx)} ${n(2 * ry)} ${n(rx)} ${n(2 * ry)} c`,
+      `${n(rx - kx)} ${n(2 * ry)} 0 ${n(ry + ky)} 0 ${n(ry)} c`,
+      `0 ${n(ry - ky)} ${n(rx - kx)} 0 ${n(rx)} 0 c`,
+      `${n(rx + kx)} 0 ${n(2 * rx)} ${n(ry - ky)} ${n(2 * rx)} ${n(ry)} c`,
+      'h',
+      fillColor ? 'B' : 'S',
+      'Q',
+    );
+
+    const resources = {};
+    if (alpha < 0.99999) {
+      resources.ExtGState = { GS0: { Type: 'ExtGState', ca: alpha, CA: alpha } };
+    }
+    const appearance = pdfDoc.context.flateStream(`${content.join('\n')}\n`, {
+      Type: 'XObject',
+      Subtype: 'Form',
+      FormType: 1,
+      BBox: [0, 0, 2 * rx, 2 * ry],
+      Matrix: [cos, sin, -sin, cos, 0, 0],
+      Resources: resources,
+    });
+    const appearanceRef = pdfDoc.context.register(appearance);
+
+    const annotationDict = {
+      Type: 'Annot',
+      Subtype: 'Circle',
+      Rect: [
+        centerX - halfW,
+        pdfCenterY - halfH,
+        centerX + halfW,
+        pdfCenterY + halfH,
+      ],
+      C: [color.red, color.green, color.blue],
+      CA: alpha,
+      Border: [0, 0, strokeWidth],
+      AP: pdfDoc.context.obj({ N: appearanceRef }),
+      Contents: PDFString.of(''),
+      P: page.ref,
+    };
+    if (fillColor) {
+      annotationDict.IC = [fillColor.red, fillColor.green, fillColor.blue];
+    }
+    applyAppAnnotationMetadataToDict(annotationDict, options);
+
+    return pdfDoc.context.register(pdfDoc.context.obj(annotationDict));
+  } catch (e) {
+    console.error('Error creating ellipse annotation:', e);
+    return null;
+  }
+};
+
+// UX 2026-07-17 (subtype-preserving export for edited imports): an imported
+// Highlight / Text (sticky note) / Caret is proxied in-app as a plain rect or
+// polyline, so an EDITED copy used to collapse through the fabric-type switch
+// into /Square or /PolyLine — the re-exported file lost the annotation's real
+// identity (and the sticky note lost its /Contents text). These three writers
+// re-emit the original subtype; everything else keeps the fabric-switch
+// default. Geometry follows the shared page-space convention: /Rect is the
+// y-flipped app-space bounds (same flip as every other writer here).
+
+// Highlight → /Highlight with QuadPoints derived from the rect proxy, in the
+// same Adobe order (TL, TR, BL, BR) the survey-marker writer uses.
+const createImportedHighlightAnnotation = (pdfDoc, page, fabricObj, pageHeight, options = {}) => {
+  try {
+    const color = hexToRGB(fabricObj.fill || '#FFFF00');
+    const left = Number(fabricObj.left) || 0;
+    const top = Number(fabricObj.top) || 0;
+    const width = (Number(fabricObj.width) || 0) * Math.abs(Number(fabricObj.scaleX) || 1);
+    const height = (Number(fabricObj.height) || 0) * Math.abs(Number(fabricObj.scaleY) || 1);
+    const minX = left;
+    const minY = pageHeight - (top + height);
+    const maxX = left + width;
+    const maxY = pageHeight - top;
+
+    const annotationDict = {
+      Type: 'Annot',
+      Subtype: 'Highlight',
+      Rect: [minX, minY, maxX, maxY],
+      QuadPoints: [
+        minX, maxY,
+        maxX, maxY,
+        minX, minY,
+        maxX, minY,
+      ].map((value) => PDFNumber.of(value)),
+      C: [color.red, color.green, color.blue],
+      CA: paintAlpha(fabricObj.fill, fabricObj.opacity),
+      Contents: PDFString.of(''),
+      P: page.ref,
+    };
+    applyAppAnnotationMetadataToDict(annotationDict, options);
+    return pdfDoc.context.register(pdfDoc.context.obj(annotationDict));
+  } catch (e) {
+    console.error('Error creating imported highlight annotation:', e);
+    return null;
+  }
+};
+
+// Text (sticky note) → /Text preserving /Contents (the note body lives at
+// data.noteText on the rect proxy, see convertTextToFabricNote) and the /Name
+// note icon.
+const createImportedTextNoteAnnotation = (pdfDoc, page, fabricObj, pageHeight, options = {}) => {
+  try {
+    const color = hexToRGB(fabricObj.fill || '#FFEB3B');
+    const left = Number(fabricObj.left) || 0;
+    const top = Number(fabricObj.top) || 0;
+    const width = (Number(fabricObj.width) || 20) * Math.abs(Number(fabricObj.scaleX) || 1);
+    const height = (Number(fabricObj.height) || 20) * Math.abs(Number(fabricObj.scaleY) || 1);
+
+    const annotationDict = {
+      Type: 'Annot',
+      Subtype: 'Text',
+      Rect: [left, pageHeight - (top + height), left + width, pageHeight - top],
+      C: [color.red, color.green, color.blue],
+      CA: paintAlpha(fabricObj.fill, fabricObj.opacity),
+      Name: PDFName.of(String(fabricObj?.data?.pdfNoteIcon || 'Note')),
+      Contents: PDFString.of(String(fabricObj?.data?.noteText ?? '')),
+      P: page.ref,
+    };
+    applyAppAnnotationMetadataToDict(annotationDict, options);
+    return pdfDoc.context.register(pdfDoc.context.obj(annotationDict));
+  } catch (e) {
+    console.error('Error creating imported text note annotation:', e);
+    return null;
+  }
+};
+
+// Caret → /Caret. The polyline proxy's chevron points are display-only; the
+// caret's PDF identity is just its /Rect.
+const createImportedCaretAnnotation = (pdfDoc, page, fabricObj, pageHeight, options = {}) => {
+  try {
+    const color = hexToRGB(fabricObj.stroke || '#FF0000');
+    const left = Number(fabricObj.left) || 0;
+    const top = Number(fabricObj.top) || 0;
+    const points = Array.isArray(fabricObj.points) ? fabricObj.points : [];
+    const pointsWidth = points.length ? Math.max(...points.map((p) => Number(p?.x) || 0)) : 0;
+    const pointsHeight = points.length ? Math.max(...points.map((p) => Number(p?.y) || 0)) : 0;
+    const width = (Number(fabricObj.width) || pointsWidth) * Math.abs(Number(fabricObj.scaleX) || 1);
+    const height = (Number(fabricObj.height) || pointsHeight) * Math.abs(Number(fabricObj.scaleY) || 1);
+    if (width <= 0 || height <= 0) return null;
+
+    const annotationDict = {
+      Type: 'Annot',
+      Subtype: 'Caret',
+      Rect: [left, pageHeight - (top + height), left + width, pageHeight - top],
+      C: [color.red, color.green, color.blue],
+      CA: paintAlpha(fabricObj.stroke, fabricObj.opacity),
+      Contents: PDFString.of(''),
+      P: page.ref,
+    };
+    applyAppAnnotationMetadataToDict(annotationDict, options);
+    return pdfDoc.context.register(pdfDoc.context.obj(annotationDict));
+  } catch (e) {
+    console.error('Error creating imported caret annotation:', e);
+    return null;
+  }
+};
+
+// The subtypes that get identity-preserving re-export when an imported copy
+// was edited. Everything else (Square, Circle, Line, PolyLine, Polygon,
+// FreeText, Ink…) already re-exports as its own subtype via the fabric switch.
+const EDITED_IMPORT_SUBTYPE_WRITERS = {
+  Highlight: createImportedHighlightAnnotation,
+  Text: createImportedTextNoteAnnotation,
+  Caret: createImportedCaretAnnotation,
 };
 
 /**
@@ -1984,7 +2296,18 @@ export const savePDFWithAnnotationsPdfLib = async (pdfFile, annotationsByPage, p
           }
         : {};
 
-      switch (objType) {
+      // UX 2026-07-17 (subtype-preserving export for edited imports): when an
+      // EDITED imported copy carries a native subtype whose in-app proxy is a
+      // generic fabric shape (Highlight/Text/Caret), re-emit that subtype so
+      // the re-exported file keeps the annotation's real identity. All other
+      // objects fall through to the fabric-type switch below.
+      const editedImportSubtypeWriter = isEditedPdfImportedObject(obj)
+        ? EDITED_IMPORT_SUBTYPE_WRITERS[obj?.pdfAnnotationType || obj?.data?.pdfAnnotationType]
+        : null;
+
+      if (editedImportSubtypeWriter) {
+        annotRef = editedImportSubtypeWriter(pdfDoc, page, obj, pageHeight, appAnnotationOptions);
+      } else switch (objType) {
         case 'path':
           annotRef = createInkAnnotation(pdfDoc, page, obj, pageHeight, appAnnotationOptions);
           break;
@@ -2012,6 +2335,12 @@ export const savePDFWithAnnotationsPdfLib = async (pdfFile, annotationsByPage, p
           } else {
             annotRef = createCircleAnnotation(pdfDoc, page, obj, pageHeight, appAnnotationOptions);
           }
+          break;
+        case 'ellipse':
+          // Imported rotated ellipse — /Circle with the tilt baked into the
+          // /AP matrix (see createEllipseAnnotation). Was silently dropped
+          // ('unsupported-type') before 2026-07-17.
+          annotRef = createEllipseAnnotation(pdfDoc, page, obj, pageHeight, appAnnotationOptions);
           break;
         case 'polygon':
           annotRef = createPolygonAnnotation(pdfDoc, page, obj, pageHeight, appAnnotationOptions);

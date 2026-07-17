@@ -145,6 +145,60 @@ test('adaptInk writes Ink with nested InkList', async () => {
   assert.deepEqual(first, [10, PAGE_H - 10, 20, PAGE_H - 20]);
 });
 
+test('adaptInk is paper-ink aware: InkList carries the persisted centerline and Border the source width', async () => {
+  // Item 6 of INK-MODEL-AND-IMPORT-NORMALIZATION-2026-07-17: the adapter used
+  // to dump outline-ring endpoints into InkList with strokeWidth 0 for filled
+  // paper ink. Mirror the live exporter (pdfAnnotationsPdfLib
+  // createFilledPaperInkAnnotation centerline fallback): the editable InkList
+  // must be the true CENTERLINE and Border the original pen width.
+  const { createProductionPaperInk } = await import('../../../src/utils/productionPaperInk.js');
+  const paperInk = createProductionPaperInk({
+    id: 'paper-ink-adapter',
+    tool: 'pen',
+    points: [{ x: 20, y: 70 }, { x: 180, y: 70 }],
+    color: '#ff0000',
+    width: 20,
+  });
+  const ctx = await setupContext();
+  const ref = adaptInk(paperInk, ctx);
+  const dict = readDict(ctx.pdfDoc, ref);
+
+  assert.equal(dict.get(PDFName.of('Subtype')).decodeText(), 'Ink');
+  const inkList = dict.get(PDFName.of('InkList')).asArray();
+  assert.equal(inkList.length, 1, 'one centerline sub-path, not outline rings');
+  const flat = inkList[0].asArray().map((n) => (typeof n.value === 'function' ? n.value() : Number(n)));
+  const expected = paperInk.paperCenterline.flatMap((pt) => [pt.x, PAGE_H - pt.y]);
+  assert.deepEqual(flat, expected, 'InkList must be the persisted centerline, Y-flipped');
+  assert.deepEqual(readNumberArray(dict, 'Border'), [0, 0, 20], 'Border carries the source pen width, not 0');
+  assert.deepEqual(readNumberArray(dict, 'C'), [1, 0, 0], 'color comes from the paper-ink FILL, not the (absent) stroke');
+});
+
+test('adaptInk keeps the outline path for partially erased paper ink (no centerline reconstruction)', async () => {
+  const { createProductionPaperInk } = await import('../../../src/utils/productionPaperInk.js');
+  const { erasePageAnnotations } = await import('../../../src/utils/pageSpaceEraser.js');
+  const original = createProductionPaperInk({
+    id: 'paper-ink-erased-adapter',
+    tool: 'pen',
+    points: [{ x: 20, y: 70 }, { x: 180, y: 70 }],
+    color: '#ff0000',
+    width: 20,
+  });
+  const erased = erasePageAnnotations({
+    pageAnnotations: { objects: [original] },
+    eraserPoints: [{ x: 90, y: 58 }],
+    eraserRadius: 7,
+    mode: 'partial',
+  }).pageAnnotations.objects[0];
+
+  const ctx = await setupContext();
+  const ref = adaptInk(erased, ctx);
+  const dict = readDict(ctx.pdfDoc, ref);
+  // Erased ink's centerline no longer matches the visible shape — same rule
+  // as the live exporter: fall back to outline geometry with width 0.
+  assert.deepEqual(readNumberArray(dict, 'Border'), [0, 0, 0]);
+  assert.ok(dict.get(PDFName.of('InkList')).asArray().length >= 1);
+});
+
 test('adaptHighlight writes Highlight with QuadPoints in Adobe order', async () => {
   const ctx = await setupContext();
   const ref = adaptHighlight(
