@@ -10,6 +10,7 @@ const APP_SOURCE = readFileSync(new URL('../src/viewerShared.js', import.meta.ur
   // (2026-05-29); scan it too so the guard still finds the relocated markup.
   + '\n' + readFileSync(new URL('../src/components/annotationHydrationCover.jsx', import.meta.url), 'utf8');
 const CLOUD_SYNC_SOURCE = readFileSync(new URL('../src/hooks/useAnnotationCloudSync.js', import.meta.url), 'utf8');
+const ANNOTATION_DOC_HOOK_SOURCE = readFileSync(new URL('../src/hooks/useAnnotationDoc.js', import.meta.url), 'utf8');
 
 test('cloud-backed survey highlights hydrate from the durable Y.Doc, not the legacy table', () => {
   // Cloud docs start highlights empty (or the same-pdf-reload snapshot); the
@@ -56,6 +57,56 @@ test('annotation persistence is owned by the durable Yjs store, not the legacy h
   assert.match(APP_SOURCE, /status: cloudSyncStatus,\s*queueSize: cloudSyncQueueSize/);
   // The retired hook stays independently guarded until its module is deleted.
   assert.match(CLOUD_SYNC_SOURCE, /if \(!hydrateEnabled \|\| !documentId \|\| !userId \|\| !pdfId\)/);
+});
+
+test('cloud callouts hydrate from the annotations map inside byPage, never the calloutsList meta blob (Slice 6)', () => {
+  // useAnnotationDoc is STILL the one live cloud hydrate seam (pinned by the
+  // 'annotation persistence is owned by the durable Yjs store' test below), but
+  // as of Slice 6 (2026-07-17) callouts ride the flat `annotations` Y.Map
+  // per-id like every other type. The hook must never read or write the
+  // retired coarse meta blob again:
+  assert.doesNotMatch(ANNOTATION_DOC_HOOK_SOURCE, /setMeta\(\s*['"]calloutsList['"]/);
+  assert.doesNotMatch(ANNOTATION_DOC_HOOK_SOURCE, /getMeta\(\s*['"]calloutsList['"]/);
+  assert.doesNotMatch(ANNOTATION_DOC_HOOK_SOURCE, /CALLOUTS_KEY/);
+  // Legacy docs are converted exactly once per document (map write + meta
+  // tombstone in one atomic transaction) — the migration call is the only
+  // sanctioned touch of the old key, and it lives in calloutMetaMigration.js,
+  // not this hook.
+  assert.match(ANNOTATION_DOC_HOOK_SOURCE, /migrateCalloutsMetaToAnnotationsMap\(handle\.doc/);
+  // The hydrate read delivers callout groups INSIDE the byPage shape (with
+  // geometry normalization against the locally measured page dims).
+  assert.match(ANNOTATION_DOC_HOOK_SOURCE, /deriveCalloutsFromByPage\(storeByPage\)/);
+  // Viewer-safe migration (2026-07-17 hardening): the migration WRITES, and
+  // annotation_updates INSERT is RLS-gated to editors — so it must be gated on
+  // a confirmed-writable resolved role, both at open and when the role
+  // resolves late…
+  assert.match(ANNOTATION_DOC_HOOK_SOURCE, /isWritableDocRole\(docRoleRef\.current\)/);
+  assert.match(ANNOTATION_DOC_HOOK_SOURCE, /isWritableDocRole\(docRole\)/);
+  // …while viewer/unresolved roles take the ZERO-op read-only fallback (legacy
+  // meta callouts projected locally so they still render)…
+  assert.match(ANNOTATION_DOC_HOOK_SOURCE, /getUnmigratedMetaCallouts\(handle\.doc\)/);
+  // …and the capture path strips those local projections back out, so the
+  // fallback can never become the first diff a viewer-tier client pushes
+  // (there is NO role gate in the capture path — server RLS is the only
+  // write enforcement).
+  assert.match(ANNOTATION_DOC_HOOK_SOURCE, /applyByPage\(stripMetaFallbackCallouts\(annotationsByPage/);
+  // PDFViewer's seam no longer feeds the legacy callouts/setCallouts pair (or
+  // the retired BLOCKER-2 pageSizesReady signal) into the hook — callouts
+  // arrive via annotationsByPage alone.
+  const seamMatch = APP_SOURCE.match(/useAnnotationDoc\(\{[\s\S]*?\}\);/);
+  assert.ok(seamMatch, 'the useAnnotationDoc mount survives');
+  // Compare CODE lines only (the explanatory comments may name the retired
+  // props while describing why they are gone).
+  const seamCode = seamMatch[0]
+    .split('\n')
+    .filter((line) => !line.trim().startsWith('//'))
+    .join('\n');
+  assert.ok(seamCode.includes('annotationsByPage'), 'byPage is the annotation payload');
+  assert.ok(!seamCode.includes('setCallouts'), 'no separate callout channel into the hook');
+  assert.ok(!seamCode.includes('pageSizesReady'), 'BLOCKER-2 re-projection signal retired');
+  // The seam threads the resolved document role in so the hook can gate the
+  // migration writes (viewer opens must be zero-op).
+  assert.ok(seamCode.includes('docRole'), 'the resolved document role reaches the hook');
 });
 
 test('cutover-sealed documents mark the first-paint source as Y.Doc authoritative', () => {

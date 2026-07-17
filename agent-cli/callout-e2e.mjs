@@ -335,12 +335,14 @@ try {
       console.log(`   [keystone] PASS: ${afterReload.length} callout(s) persisted + re-rendered after reload`);
     }
 
-    // Confirm the write-path guards held: no data.type==='callout' leaked into the
-    // serialized annotation rows / Y.Doc annotations map. We assert via the DOM
+    // Slice 6 (2026-07-17): the old write-skip is RETIRED — projected callout
+    // groups (data.type==='callout') now persist per-id in the Y.Doc
+    // `annotations` map like every other object, and that per-id entry IS the
+    // durable record the reload above re-rendered from. We assert via the DOM
     // contract that callout chrome is present (shared dispatch) AND that callout
-    // hit-targets exist (interaction kept) — the storage-guard re-confirmation is
-    // done separately in the report via unit tests (serializeAnnotationsByPage /
-    // syncByPageToDoc skip data.type==='callout').
+    // hit-targets exist (interaction kept); the per-id persistence contract is
+    // pinned separately by unit tests (tests/annotationDocStore.test.mjs
+    // Slice 6 block).
   }
 
   // ── 12. Final screenshot ──────────────────────────────────────────────────

@@ -191,15 +191,14 @@ export function syncByPageToDoc(doc, byPage, { getId = extractAnnotationId, orig
     const objects = (bucket && Array.isArray(bucket.objects)) ? bucket.objects : [];
     const unchanged = prevByPage && prevByPage[pageKey] === bucket;
     for (const obj of objects) {
-      // Callout-unification keystone (Phase 5) — write-contamination guard.
-      // `data.type==='callout'` objects only ever appear in annotationsByPage as
-      // a RENDER-ONLY projection (flag-gated, default OFF). Callouts persist via
-      // their own `calloutsList` META + document_callouts rows; they must NEVER be
-      // written into the Y.Doc `annotations` flat map (that would duplicate the
-      // callout and corrupt its real row). Mirrors CRDT_FAN_OUT_EXCLUDED_TYPES
-      // ('callout') in ../utils/annotationSyncType.js. UNCONDITIONAL: when the flag
-      // is OFF there are no such objects here, so this is a no-op → byte-identical.
-      if (obj?.data?.type === 'callout') { skipped += 1; continue; }
+      // Callout-unification Slice 6 (2026-07-17): the historical write-
+      // contamination guard (`data.type==='callout'` skipped here) is GONE.
+      // annotationsByPage is the single in-memory truth post-flip (R2.2 Slice 2),
+      // and projected callout groups now persist per-id in this same `annotations`
+      // Y.Map like every other object — carrying their verbatim
+      // `data.legacyCallout` payload, so the byPage⇄doc round-trip is lossless.
+      // The coarse `calloutsList` META blob is retired (one-time migration +
+      // tombstone in calloutMetaMigration.js).
       const id = getId(obj);
       if (!id) { skipped += 1; continue; }
       if (unchanged) { keepIds.add(id); continue; }

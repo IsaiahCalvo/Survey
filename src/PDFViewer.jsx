@@ -9441,7 +9441,11 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   // (Pitfall 8 mitigation — undo of undo is redo, never a new undo entry).
   // Returns null shape (ydoc/undoManager/undoCtx all null) when CRDT is disabled
   // or before the provider's per-user UndoManager mount effect resolves.
-  const { ydoc: yjsDoc, undoManager: yjsUndoManager, undoCtx: yjsUndoCtx } = useYDoc();
+  // docRole ('owner'|'editor'|'viewer'|null) also rides this context — the
+  // durable-annotation seam (useAnnotationDoc) gates the one-time calloutsList
+  // meta migration on it (writes are RLS-gated to editors; viewers render
+  // legacy callouts via a zero-op read-only fallback instead).
+  const { ydoc: yjsDoc, undoManager: yjsUndoManager, undoCtx: yjsUndoCtx, docRole: yjsDocRole } = useYDoc();
 
   // Undo/Redo history state
   const [undoHistory, setUndoHistory] = useState([]); // Array of { annotationsByPage, surveyMarkers, spaces }
@@ -17590,25 +17594,30 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     documentId: pdfFile?.id || null,
     userId: user?.id || null,
     enabled: isActive && cloudSyncEnabled && !!pdfFile?.id && !!user?.id,
+    // Slice 6 (2026-07-17): annotationsByPage carries callouts as projected
+    // data.type==='callout' groups (R2.2 flip), and the hook persists them
+    // per-id in the same `annotations` Y.Map as every other object — so the
+    // old separate callout props and the coarse whole-list meta blob are
+    // retired (legacy docs migrate + tombstone on open inside the hook).
     annotationsByPage,
     setAnnotationsByPage,
-    callouts,
-    setCallouts,
     spaces,
     setSpaces,
     surveyMarkers,
     setSurveyMarkers,
-    // Callout-unification keystone (Phase 5): the unscaled per-page PDF pixel
-    // sizes the SVG layer inverts callouts with. Used (only when the shared-store
-    // flag is ON) to project cloud-hydrated callouts into annotationsByPage —
-    // same page-pixel source as PDFViewer's local point-A load projection.
+    // The unscaled per-page PDF pixel sizes the SVG layer inverts callouts
+    // with — used for hydrate-time callout geometry normalization and the
+    // one-time meta migration. (The old pageSizesReady BLOCKER-2 signal is
+    // retired: the [pageSizes]-keyed re-projection effect below owns the
+    // measured-late correction; pageSizes resets + re-measures every open.)
     pageSizesRef,
-    // Callout-unification keystone (Phase 5) — BLOCKER 2 fix: a reactive count of
-    // measured pages. When this flips from 0 to >0 (real page dims arrive after a
-    // cloud doc hydrated empty-sized), the hook re-projects callouts at the
-    // correct size. Reactive `pageSizes` state drives the re-run; pageSizesRef
-    // (above) still supplies the actual dims read inside the projection.
-    pageSizesReady: Object.keys(pageSizes).length,
+    // Resolved document role from YDocProvider (get_my_document_role). The
+    // hook only runs the calloutsList meta migration when this is a confirmed
+    // writable role ('owner'/'editor') — annotation_updates INSERT is
+    // RLS-gated to editors, so a viewer-tier migration write would wedge the
+    // sync status in a permanent error state. Viewers still see legacy
+    // callouts via the hook's zero-op read-only fallback.
+    docRole: yjsDocRole,
   });
   // KAL-309: publish the durable META accessors to the latest-refs the early
   // import-apply callbacks read through (avoids a forward TDZ reference).

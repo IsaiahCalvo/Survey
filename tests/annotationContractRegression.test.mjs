@@ -8,12 +8,22 @@ import {
   serializeFabricObjectToRow,
   deserializeRowsToAnnotationsByPage,
   normalizeFabricAnnotationRows,
-  serializeCalloutToRow,
 } from '../src/services/annotationTypeSerializers.js';
 import {
   buildFabricSyncDelta,
-  buildCalloutSyncDelta,
 } from '../src/utils/annotationSyncDelta.js';
+import {
+  syncByPageToDoc,
+  getAnnotationsMap,
+  docToByPage,
+  setMetaValue,
+  getMetaValue,
+} from '../src/services/annotationDocStore.js';
+import { migrateCalloutsMetaToAnnotationsMap } from '../src/services/calloutMetaMigration.js';
+import {
+  calloutToAnnotationObject,
+  deriveCalloutsFromByPage,
+} from '../src/utils/calloutAnnotationBridge.js';
 import {
   applyAnnotationHistoryAction,
   buildAnnotationHistoryAction,
@@ -212,7 +222,12 @@ test('contract: survey, regular, region, and survey-region visibility do not lea
   assert.equal(isAnnotationVisibleInContext({ ...base, annotation: { moduleId: 'module-1', regionId: 'region-1' }, showSurveyPanel: true, selectedModuleId: 'module-1' }), true);
 });
 
-test('contract: callouts keep their separate Supabase, sync delta, and Y.Doc callout path', () => {
+test('contract: callouts ride the flat annotations Y.Map per-id like every other type (Slice 6)', () => {
+  // The historical fork — a separate Supabase callout row + a separate Y.Doc
+  // 'callouts' map — is retired. A callout is a projected data.type==='callout'
+  // group whose stable id keys the SAME `annotations` map syncByPageToDoc
+  // maintains for every other annotation, and its verbatim normalized payload
+  // (data.legacyCallout) makes the byPage⇄doc round-trip lossless.
   const callout = {
     id: 'callout-contract-1',
     pageNumber: 1,
@@ -224,16 +239,47 @@ test('contract: callouts keep their separate Supabase, sync delta, and Y.Doc cal
     text: 'Callout',
   };
 
-  const row = serializeCalloutToRow(callout, { documentId: DOC_ID, userId: USER_ID });
-  const delta = buildCalloutSyncDelta({ currentCallouts: [callout], priorCallouts: [], actionType: 'callout:create' });
+  const group = calloutToAnnotationObject(callout, { width: 612, height: 792 });
+  group.pageNumber = 1;
+  const ydoc = new Y.Doc();
+  const res = syncByPageToDoc(ydoc, { 1: { objects: [group] } });
+  assert.equal(res.added, 1, 'the callout group is one per-id map entry');
+  assert.equal(res.skipped, 0, 'the old write-contamination skip is gone');
+  assert.equal(getAnnotationsMap(ydoc).has(callout.id), true, 'keyed by the callout id in the shared annotations map');
+  assert.equal(ydoc.getMap('callouts').size, 0, 'no separate Y.Doc callouts map is written');
+
+  const revived = docToByPage(ydoc)[1].objects.find((o) => o?.data?.type === 'callout');
+  assert.deepEqual(revived.data.legacyCallout, callout, 'the normalized payload round-trips verbatim');
+  assert.deepEqual(deriveCalloutsFromByPage(docToByPage(ydoc)), [callout], 'derive recovers the exact callout');
+
+  // Legacy docs migrate off the coarse calloutsList META blob exactly once.
+  const legacyDoc = new Y.Doc();
+  setMetaValue(legacyDoc, 'calloutsList', [callout]);
+  const migration = migrateCalloutsMetaToAnnotationsMap(legacyDoc, { pageSizes: {} });
+  assert.equal(migration.migrated, true);
+  assert.equal(getAnnotationsMap(legacyDoc).has(callout.id), true);
+  assert.equal(getMetaValue(legacyDoc, 'calloutsList'), null, 'meta blob tombstoned after migration');
+});
+
+test('contract: Lane B legacy-undo can still materialize a callout from its CRDT Y.Map', () => {
+  // materializeCalloutFromYMap stays live: PDFViewer's yjs-history pop path
+  // (refreshYjsHistoryTargetFromDoc, ~PDFViewer.jsx:10715) reads the legacy
+  // CRDT overlay's callout Y.Maps when replaying old history entries. This
+  // pins that read until Lane B itself is retired.
+  const callout = {
+    id: 'callout-laneb-1',
+    pageNumber: 1,
+    arrowTip: { x: 0.1, y: 0.2 },
+    knee: { x: 0.2, y: 0.2 },
+    textBoxPosition: { x: 0.3, y: 0.2 },
+    textBoxWidth: 0.2,
+    textBoxHeight: 0.1,
+    text: 'Callout',
+  };
   const ydoc = new Y.Doc();
   const yMapCallouts = ydoc.getMap('callouts');
   applyCalloutCommit(ydoc, yMapCallouts, callout, origin, ctx);
   const materialized = materializeCalloutFromYMap(yMapCallouts.get(callout.id), callout.id);
-
-  assert.equal(row.annotation_type, 'callout');
-  assert.equal(delta.changedCount, 1);
-  assert.deepEqual(delta.changedIds, [callout.id]);
   assert.equal(yMapCallouts.has(callout.id), true);
   assert.equal(materialized.text, 'Callout');
 });

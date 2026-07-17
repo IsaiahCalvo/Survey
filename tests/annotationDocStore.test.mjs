@@ -14,6 +14,15 @@ import {
   docToSurveyMarkers,
   syncSurveyMarkersToDoc,
 } from '../src/services/annotationDocStore.js';
+import {
+  migrateCalloutsMetaToAnnotationsMap,
+  getUnmigratedMetaCallouts,
+} from '../src/services/calloutMetaMigration.js';
+import {
+  calloutToAnnotationObject,
+  deriveCalloutsFromByPage,
+  projectCalloutsIntoByPage,
+} from '../src/utils/calloutAnnotationBridge.js';
 
 // Helper: a minimal annotation object shaped like a Fabric path with a stable id.
 function mark(id, page, extra = {}) {
@@ -171,11 +180,14 @@ test('a fresh pen stroke is durable as a single tail update and survives reopen'
     'the page-11 stroke is present after reload');
 });
 
-// --- Document-level meta (callouts, and the home for spaces + survey markers) ---
+// --- Document-level meta (spaces; historically also the callouts blob) ---
 //
-// Callouts already ride this path in the live app (setMeta('calloutsList', ...));
-// spaces and survey markers will move onto the SAME meta path. These tests pin
-// the contract: read-back, change-only writes, and survival through snapshot+tail.
+// These tests pin the GENERIC meta machinery: read-back, change-only writes,
+// and survival through snapshot+tail. They still use 'calloutsList' as a sample
+// key for historical continuity, but as of Slice 6 (2026-07-17) the LIVE app no
+// longer persists callouts there — callout groups ride the `annotations` map
+// per-id (see the Slice 6 section below), and legacy docs tombstone this key to
+// null via migrateCalloutsMetaToAnnotationsMap. Spaces still ride meta.
 
 function callout(id, page, label = 'note') {
   return { id, pageNumber: page, anchor: { x: 1, y: 2 }, knee: { x: 3, y: 4 }, label };
@@ -362,30 +374,322 @@ test('concurrent edits on two clients merge with no lost update (CRDT)', () => {
   assert.deepEqual(idsB, ['fromA', 'fromB', 'shared'], 'both devices converge, neither edit lost');
 });
 
-// Callout-unification keystone (Phase 5) — write-contamination guard.
-// A render-only projected `data.type==='callout'` object must NEVER be written
-// into the Y.Doc `annotations` flat map by syncByPageToDoc (callouts persist via
-// the separate calloutsList META + document_callouts rows). UNCONDITIONAL filter.
-test('syncByPageToDoc: excludes projected data.type===callout objects from the Y.Map', () => {
+// ---------------------------------------------------------------------------
+// Callout-unification Slice 6 (2026-07-17) — callouts ride the annotations map.
+//
+// The historical write-contamination guard (data.type==='callout' skipped in
+// syncByPageToDoc) is GONE: projected callout groups persist per-id in the SAME
+// `annotations` Y.Map as every other object, carrying the verbatim normalized
+// payload as data.legacyCallout (lossless). Legacy docs that persisted callouts
+// as the coarse `calloutsList` META blob are converted once on open by
+// migrateCalloutsMetaToAnnotationsMap, which then tombstones the meta to null.
+// ---------------------------------------------------------------------------
+
+function normalizedCallout(id, page, text = 'note') {
+  return {
+    id,
+    pageNumber: page,
+    arrowTip: { x: 0.1, y: 0.2 },
+    knee: { x: 0.25, y: 0.2 },
+    textBoxPosition: { x: 0.4, y: 0.15 },
+    textBoxWidth: 0.2,
+    textBoxHeight: 0.08,
+    text,
+    style: { fontSize: 14, bold: true, borderColor: '#123456', fontFamily: 'Arial' },
+    meta: { authorId: 'user-1' },
+  };
+}
+
+function calloutGroup(id, page, text = 'note') {
+  const obj = calloutToAnnotationObject(normalizedCallout(id, page, text), { width: 612, height: 792 });
+  obj.pageNumber = page;
+  return obj;
+}
+
+test('syncByPageToDoc: a projected callout group syncs per-id like every other object', () => {
   const doc = new Y.Doc();
   const byPage = {
-    1: {
-      objects: [
-        mark('pen-1', 1),
-        { type: 'group', data: { id: 'co-1', type: 'callout' }, pageNumber: 1 },
-      ],
-    },
+    1: { objects: [mark('pen-1', 1), calloutGroup('co-1', 1, 'hello')] },
   };
   const res = syncByPageToDoc(doc, byPage);
-  // The pen is added; the callout is skipped (counted in `skipped`).
-  assert.equal(res.added, 1);
-  assert.ok(res.skipped >= 1);
+  assert.equal(res.added, 2, 'pen AND callout group both added');
+  assert.equal(res.skipped, 0, 'nothing is skipped anymore');
   const map = getAnnotationsMap(doc);
   assert.equal(map.has('pen-1'), true);
-  assert.equal(map.has('co-1'), false);
-  // Materialized render shape contains the pen but no callout object.
+  assert.equal(map.has('co-1'), true, 'the callout group is keyed by its stable id');
   const out = docToByPage(doc);
-  const objs = out[1].objects;
-  assert.equal(objs.length, 1);
-  assert.ok(!objs.some((o) => o?.data?.type === 'callout'));
+  assert.equal(out[1].objects.length, 2);
+  assert.ok(out[1].objects.some((o) => o?.data?.type === 'callout'));
+});
+
+test('callout group round-trips losslessly through snapshot + reopen (incl. legacyCallout meta/style)', () => {
+  const author = new Y.Doc();
+  const source = normalizedCallout('co-rt', 3, 'round trip');
+  const group = calloutToAnnotationObject(source, { width: 612, height: 792 });
+  group.pageNumber = 3;
+  syncByPageToDoc(author, { 3: { objects: [group] } });
+
+  // Reopen from durable bytes only (the wire/snapshot encoding path).
+  const reopened = hydrateDoc(encodeSnapshot(author), [], new Y.Doc());
+  const out = docToByPage(reopened);
+  const revived = out[3].objects.find((o) => o?.data?.type === 'callout');
+  assert.ok(revived, 'callout group survived reopen');
+  assert.equal(revived.data.id, 'co-rt');
+  // The verbatim normalized payload — id, geometry fractions, text, style
+  // (bold/border/font), and the author chain — is byte-identical.
+  assert.deepEqual(revived.data.legacyCallout, source);
+  // The recoverable normalized fractions backup also survives.
+  assert.deepEqual(revived.data.legacyNormalizedCoords.arrowTip, { x: 0.1, y: 0.2 });
+  // Derive (the read half of the flip) recovers the exact source callout.
+  assert.deepEqual(deriveCalloutsFromByPage(out), [source]);
+});
+
+test('re-syncing an identical callout group produces ZERO updates', () => {
+  const doc = new Y.Doc();
+  syncByPageToDoc(doc, { 2: { objects: [calloutGroup('co-idem', 2)] } });
+  let updates = 0;
+  doc.on('update', () => { updates += 1; });
+  const res = syncByPageToDoc(doc, { 2: { objects: [calloutGroup('co-idem', 2)] } });
+  assert.equal(updates, 0, 'deterministic projection => steady-state reopen emits no ops');
+  assert.deepEqual(res, { added: 0, updated: 0, removed: 0, skipped: 0 });
+});
+
+test('deleting a callout removes its map entry (and edits update in place)', () => {
+  const doc = new Y.Doc();
+  syncByPageToDoc(doc, { 1: { objects: [calloutGroup('co-a', 1), calloutGroup('co-b', 1), mark('pen-1', 1)] } });
+  // Edit co-a's text, delete co-b, keep the pen.
+  const res = syncByPageToDoc(doc, { 1: { objects: [calloutGroup('co-a', 1, 'edited'), mark('pen-1', 1)] } });
+  assert.deepEqual(res, { added: 0, updated: 1, removed: 1, skipped: 0 });
+  const map = getAnnotationsMap(doc);
+  assert.equal(map.has('co-a'), true);
+  assert.equal(map.has('co-b'), false, 'deleted callout is gone from the map');
+  assert.equal(map.has('pen-1'), true);
+  const derived = deriveCalloutsFromByPage(docToByPage(doc));
+  assert.deepEqual(derived.map((c) => c.id), ['co-a']);
+  assert.equal(derived[0].text, 'edited');
+});
+
+// --- calloutsList META → annotations-map migration (calloutMetaMigration.js) ---
+
+test('migration: meta-only legacy doc → map populated, meta tombstoned to null', () => {
+  const doc = new Y.Doc();
+  const legacy = [normalizedCallout('m-1', 2, 'first'), normalizedCallout('m-2', 5, 'second')];
+  setMetaValue(doc, 'calloutsList', legacy);
+
+  const res = migrateCalloutsMetaToAnnotationsMap(doc, { pageSizes: { 2: { width: 612, height: 792 }, 5: { width: 612, height: 792 } } });
+  assert.equal(res.migrated, true);
+  assert.equal(res.tombstoned, true);
+  assert.equal(res.calloutCount, 2);
+  assert.equal(res.source, 'meta');
+
+  const map = getAnnotationsMap(doc);
+  assert.equal(map.has('m-1'), true);
+  assert.equal(map.has('m-2'), true);
+  assert.equal(getMetaValue(doc, 'calloutsList'), null, 'meta blob is tombstoned');
+  // Lossless: derive recovers the exact legacy entries.
+  assert.deepEqual(deriveCalloutsFromByPage(docToByPage(doc)), legacy);
+});
+
+test('migration: second run on a migrated doc is a true zero-op', () => {
+  const doc = new Y.Doc();
+  setMetaValue(doc, 'calloutsList', [normalizedCallout('m-1', 2)]);
+  migrateCalloutsMetaToAnnotationsMap(doc, { pageSizes: {} });
+
+  let updates = 0;
+  doc.on('update', () => { updates += 1; });
+  const res = migrateCalloutsMetaToAnnotationsMap(doc, { pageSizes: {} });
+  assert.equal(updates, 0, 'no Yjs update fires on the second open');
+  assert.equal(res.migrated, false);
+  assert.equal(res.tombstoned, false);
+  assert.equal(res.source, 'annotations-map');
+});
+
+test('migration: unmeasured pages fall back to US-Letter but legacyCallout stays exact (fallback read)', () => {
+  // A legacy doc opened before any page is measured: projection uses the
+  // US-Letter fallback for group pixel geometry, but the embedded verbatim
+  // payload keeps the exact fractions — nothing is lost, and the viewer's
+  // on-measure re-projection rebuilds the children at real dims later.
+  const doc = new Y.Doc();
+  const legacy = [normalizedCallout('m-frac', 7, 'fractions')];
+  setMetaValue(doc, 'calloutsList', legacy);
+  const res = migrateCalloutsMetaToAnnotationsMap(doc, { pageSizes: {} });
+  assert.equal(res.migrated, true);
+  const derived = deriveCalloutsFromByPage(docToByPage(doc));
+  assert.deepEqual(derived, legacy, 'derive recovers the exact normalized callout');
+});
+
+test('migration: map-authoritative doc with a stale meta list only tombstones (crash recovery)', () => {
+  // Simulates a migration that wrote the map but died before the tombstone:
+  // next open must not duplicate anything — one bounded op (the tombstone).
+  const doc = new Y.Doc();
+  syncByPageToDoc(doc, { 4: { objects: [calloutGroup('co-live', 4)] } });
+  setMetaValue(doc, 'calloutsList', [normalizedCallout('co-live', 4)]);
+
+  let updates = 0;
+  doc.on('update', () => { updates += 1; });
+  const res = migrateCalloutsMetaToAnnotationsMap(doc, { pageSizes: {} });
+  assert.equal(res.migrated, false);
+  assert.equal(res.tombstoned, true);
+  assert.equal(res.source, 'annotations-map');
+  assert.equal(updates, 1, 'exactly one op: the meta tombstone');
+  assert.equal(getMetaValue(doc, 'calloutsList'), null);
+  assert.equal(getAnnotationsMap(doc).has('co-live'), true, 'the group is untouched');
+});
+
+test('migration: fresh doc (no meta, no callouts) emits zero ops', () => {
+  const doc = new Y.Doc();
+  syncByPageToDoc(doc, byPageFrom(['pen-only', 1]));
+  let updates = 0;
+  doc.on('update', () => { updates += 1; });
+  const res = migrateCalloutsMetaToAnnotationsMap(doc, { pageSizes: {} });
+  assert.equal(updates, 0);
+  assert.deepEqual(res, {
+    migrated: false,
+    tombstoned: false,
+    calloutCount: 0,
+    migratedCount: 0,
+    droppedCount: 0,
+    source: 'none',
+  });
+  assert.equal(getMetaValue(doc, 'calloutsList'), undefined, 'a never-written meta stays unwritten');
+});
+
+// --- Slice 6 hardening (2026-07-17) — tombstone safety + viewer-safe opens ---
+
+test('migration: a string pageNumber meta entry is coerced and migrated, never dropped', () => {
+  // The live render path coerces (PDFViewer.jsx ~1953 Number(callout?.pageNumber));
+  // a string-page callout is renderable and must survive the migration.
+  const doc = new Y.Doc();
+  const entry = { ...normalizedCallout('m-str', 3, 'string page'), pageNumber: '3' };
+  setMetaValue(doc, 'calloutsList', [entry]);
+
+  const res = migrateCalloutsMetaToAnnotationsMap(doc, { pageSizes: { 3: { width: 612, height: 792 } } });
+  assert.equal(res.migrated, true);
+  assert.equal(res.migratedCount, 1);
+  assert.equal(res.droppedCount, 0);
+  assert.equal(res.tombstoned, true, 'verified-complete migration tombstones the meta');
+  assert.equal(getAnnotationsMap(doc).has('m-str'), true);
+  const derived = deriveCalloutsFromByPage(docToByPage(doc));
+  assert.equal(derived.length, 1);
+  assert.equal(derived[0].id, 'm-str');
+  assert.equal(derived[0].pageNumber, 3, 'pageNumber is normalized to the coerced number');
+  assert.equal(derived[0].text, 'string page');
+});
+
+test('migration: an id-less meta entry blocks the tombstone and leaves the meta intact', () => {
+  const doc = new Y.Doc();
+  const idLess = { ...normalizedCallout('temp', 1, 'no id') };
+  delete idLess.id;
+  const legacy = [normalizedCallout('m-ok', 1, 'has id'), idLess];
+  setMetaValue(doc, 'calloutsList', legacy);
+
+  const res = migrateCalloutsMetaToAnnotationsMap(doc, { pageSizes: {} });
+  // The verifiable entry still migrates…
+  assert.equal(res.migrated, true);
+  assert.equal(res.migratedCount, 1);
+  assert.equal(getAnnotationsMap(doc).has('m-ok'), true);
+  // …but the unverifiable one blocks the tombstone: the meta stays as the
+  // recovery copy.
+  assert.equal(res.tombstoned, false);
+  assert.equal(res.droppedCount, 1);
+  assert.deepEqual(getMetaValue(doc, 'calloutsList'), legacy, 'meta blob intact as the recovery copy');
+
+  // A repeat open converges to zero ops (already-migrated id skipped, id-less
+  // still blocks) — never a tombstone, never churn.
+  let updates = 0;
+  doc.on('update', () => { updates += 1; });
+  const again = migrateCalloutsMetaToAnnotationsMap(doc, { pageSizes: {} });
+  assert.equal(updates, 0, 'repeat run with the same unverifiable entry is a zero-op');
+  assert.equal(again.tombstoned, false);
+  assert.deepEqual(getMetaValue(doc, 'calloutsList'), legacy);
+});
+
+test('migration: crash-prefix partial map — absent meta entries migrate, present ids stay authoritative, then tombstone', () => {
+  // Simulates a migration that wrote page-1 entries and died before page 2 and
+  // the tombstone. Branch 1 must not just tombstone: the missing entries
+  // migrate first, and the map's (possibly newer) copy of co-1 is untouched.
+  const doc = new Y.Doc();
+  const newerCo1 = calloutGroup('co-1', 1, 'newer than the blob');
+  syncByPageToDoc(doc, { 1: { objects: [newerCo1] } });
+  const staleCo1 = normalizedCallout('co-1', 1, 'stale blob copy');
+  const missingCo2 = normalizedCallout('co-2', 2, 'never landed');
+  setMetaValue(doc, 'calloutsList', [staleCo1, missingCo2]);
+
+  let updates = 0;
+  doc.on('update', () => { updates += 1; });
+  const res = migrateCalloutsMetaToAnnotationsMap(doc, { pageSizes: { 1: { width: 612, height: 792 }, 2: { width: 612, height: 792 } } });
+  assert.equal(res.migrated, true);
+  assert.equal(res.migratedCount, 1, 'only the absent entry is written');
+  assert.equal(res.calloutCount, 2, 'both meta entries verified in the map');
+  assert.equal(res.tombstoned, true);
+  assert.equal(updates, 1, 'map write + tombstone are ONE atomic update');
+
+  const map = getAnnotationsMap(doc);
+  assert.equal(map.has('co-2'), true, 'the crash-lost entry landed');
+  assert.equal(
+    map.get('co-1').o.data.legacyCallout.text,
+    'newer than the blob',
+    'the map copy of co-1 is authoritative — never overwritten by the stale blob',
+  );
+  assert.equal(getMetaValue(doc, 'calloutsList'), null);
+});
+
+test('migration: an empty-list meta produces ZERO ops (stale [] is never tombstoned)', () => {
+  // Old builds wrote calloutsList=[] on virtually every doc. Tombstoning those
+  // would make every legacy open a WRITE — which viewer-tier RLS rejects.
+  const doc = new Y.Doc();
+  setMetaValue(doc, 'calloutsList', []);
+  let updates = 0;
+  doc.on('update', () => { updates += 1; });
+  const res = migrateCalloutsMetaToAnnotationsMap(doc, { pageSizes: {} });
+  assert.equal(updates, 0, 'no Y.Doc op for an empty meta list');
+  assert.equal(res.migrated, false);
+  assert.equal(res.tombstoned, false);
+  assert.deepEqual(getMetaValue(doc, 'calloutsList'), [], 'the stale [] stays put (harmless)');
+});
+
+test('migration: the whole meta→map migration is ONE atomic Yjs update', () => {
+  const doc = new Y.Doc();
+  setMetaValue(doc, 'calloutsList', [
+    normalizedCallout('a-1', 1),
+    normalizedCallout('a-2', 2),
+    normalizedCallout('a-3', 2),
+  ]);
+  let updates = 0;
+  doc.on('update', () => { updates += 1; });
+  const res = migrateCalloutsMetaToAnnotationsMap(doc, { pageSizes: {} });
+  assert.equal(res.migrated, true);
+  assert.equal(res.tombstoned, true);
+  assert.equal(updates, 1, 'three map writes + the tombstone commit as a single update');
+});
+
+test('read-only fallback: getUnmigratedMetaCallouts performs ZERO ops and the callouts still render', () => {
+  // Viewer-tier opens must not write, but legacy meta callouts must still
+  // render: the hook projects getUnmigratedMetaCallouts' entries into the
+  // LOCAL byPage only. This pins the module half of that contract.
+  const doc = new Y.Doc();
+  syncByPageToDoc(doc, { 1: { objects: [calloutGroup('already-migrated', 1)] } });
+  setMetaValue(doc, 'calloutsList', [
+    normalizedCallout('already-migrated', 1, 'in the map'),
+    { ...normalizedCallout('legacy-only', 2, 'meta only'), pageNumber: '2' },
+  ]);
+
+  let updates = 0;
+  doc.on('update', () => { updates += 1; });
+  const fallback = getUnmigratedMetaCallouts(doc);
+  assert.equal(updates, 0, 'the read-only companion never touches the doc');
+  assert.deepEqual(fallback.ids, ['legacy-only'], 'only entries absent from the map are returned');
+  assert.equal(fallback.callouts.length, 1);
+  assert.equal(fallback.callouts[0].pageNumber, 2, 'pageNumber normalized like the write path');
+
+  // The local projection renders BOTH the map-native and the fallback callout…
+  const byPage = docToByPage(doc);
+  const combined = [...deriveCalloutsFromByPage(byPage), ...fallback.callouts];
+  const projected = projectCalloutsIntoByPage(byPage, combined, { 1: { width: 612, height: 792 }, 2: { width: 612, height: 792 } });
+  const renderedIds = Object.values(projected)
+    .flatMap((p) => p.objects.filter((o) => o?.data?.type === 'callout').map((o) => o.data.id));
+  assert.deepEqual(renderedIds.sort(), ['already-migrated', 'legacy-only']);
+  assert.equal(updates, 0, '…still with zero doc ops');
+  // …and the meta stays untouched for the next writable open to migrate.
+  assert.equal(Array.isArray(getMetaValue(doc, 'calloutsList')), true);
 });

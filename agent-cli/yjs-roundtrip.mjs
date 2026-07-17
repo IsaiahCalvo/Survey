@@ -112,33 +112,36 @@ async function main() {
       `device A reopened and merged device B's mark (${a2.length} total)`,
       `device A did not see device B's mark — got: ${a2.join(', ')}`);
 
-    // SCENARIO 2b — callouts ride the document-level meta path (the SAME path
-    // spaces + survey markers will use). Prove a callouts list survives a true
-    // cold reopen from the cloud, exactly like annotations do.
-    console.log('\nSCENARIO 2b  callouts (meta path) → reopen sees them');
-    const calloutWriter = await freshHandle({
-      documentId, supabase, clientId: 'deviceA-callouts', enableLocal: false, enableRealtime: false,
+    // SCENARIO 2b — a document-level META value survives a cold reopen (the
+    // SAME path spaces ride). Uses a NEUTRAL probe key on purpose: this harness
+    // hits the REAL backend, and the historical sample key ('calloutsList') is
+    // now a retired legacy blob that the app migrates + tombstones on open —
+    // seeding it from here would fabricate a migration on a real document
+    // (Slice 6, 2026-07-17).
+    console.log('\nSCENARIO 2b  document-level meta value → reopen sees it');
+    const metaWriter = await freshHandle({
+      documentId, supabase, clientId: 'deviceA-meta-probe', enableLocal: false, enableRealtime: false,
     });
-    const calloutsList = [
-      { id: 'co1', pageNumber: 6, anchor: { x: 10, y: 20 }, knee: { x: 30, y: 40 }, label: 'first' },
-      { id: 'co2', pageNumber: 11, anchor: { x: 50, y: 60 }, knee: { x: 70, y: 80 }, label: 'second' },
+    const probeList = [
+      { id: 'probe1', pageNumber: 6, label: 'first' },
+      { id: 'probe2', pageNumber: 11, label: 'second' },
     ];
-    calloutWriter.setMeta('calloutsList', calloutsList);
-    await calloutWriter.drain();
-    await calloutWriter.flushSnapshot();
-    await calloutWriter.destroy();
+    metaWriter.setMeta('harnessRoundtripProbe', probeList);
+    await metaWriter.drain();
+    await metaWriter.flushSnapshot();
+    await metaWriter.destroy();
 
-    const calloutReader = await freshHandle({
-      documentId, supabase, clientId: 'deviceA-callouts-reopen', enableLocal: false, enableRealtime: false,
+    const metaReader = await freshHandle({
+      documentId, supabase, clientId: 'deviceA-meta-probe-reopen', enableLocal: false, enableRealtime: false,
     });
-    const gotCallouts = calloutReader.getMeta('calloutsList');
-    await calloutReader.destroy();
+    const gotProbe = metaReader.getMeta('harnessRoundtripProbe');
+    await metaReader.destroy();
     check(
-      Array.isArray(gotCallouts) && gotCallouts.length === 2 &&
-        gotCallouts.map((c) => c.id).sort().join(',') === 'co1,co2' &&
-        gotCallouts.find((c) => c.id === 'co2')?.label === 'second',
-      `both callouts survived cold reopen via the meta path: ${(gotCallouts || []).map((c) => c.id).join(', ')}`,
-      `callouts lost on reopen — got: ${JSON.stringify(gotCallouts)}`);
+      Array.isArray(gotProbe) && gotProbe.length === 2 &&
+        gotProbe.map((c) => c.id).sort().join(',') === 'probe1,probe2' &&
+        gotProbe.find((c) => c.id === 'probe2')?.label === 'second',
+      `meta value survived cold reopen: ${(gotProbe || []).map((c) => c.id).join(', ')}`,
+      `meta value lost on reopen — got: ${JSON.stringify(gotProbe)}`);
 
     // SCENARIO 2c — spaces (with nested region polygons) ride the SAME meta path.
     // Proves the spaces migration: a document-level spaces array survives a true

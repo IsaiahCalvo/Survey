@@ -2,10 +2,11 @@
 //
 // Connects the viewer's React annotation state to the durable Yjs store
 // (annotationDocSync). This is the rebuild's app-side seam: a thin capture +
-// hydrate layer that sits AROUND the existing `annotationsByPage` / `callouts`
-// state, so everything that already produces that state — draw, erase, edit,
-// undo/redo, embedded import — becomes durable automatically, with no changes to
-// any of that logic.
+// hydrate layer that sits AROUND the existing `annotationsByPage` state
+// (which, post-R2.2-flip, carries callouts as projected data.type==='callout'
+// groups), so everything that already produces that state — draw, erase, edit,
+// callout create/move/delete, undo/redo, embedded import — becomes durable
+// automatically, with no changes to any of that logic.
 //
 // How it stays loop-free without flags: pushing state into the store is a
 // minimal diff (syncByPageToDoc / setMeta produce ZERO ops when nothing
@@ -17,10 +18,16 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 import { supabase } from '../supabaseClient.js';
 import { openAnnotationDoc, getClientId } from '../services/annotationDocSync.js';
 import { setMetaValue as setMetaValueOnDoc } from '../services/annotationDocStore.js';
+import {
+  migrateCalloutsMetaToAnnotationsMap,
+  getUnmigratedMetaCallouts,
+} from '../services/calloutMetaMigration.js';
 import { calloutsInSharedStore } from '../lib/calloutSharedStoreFlag.js';
-import { projectCalloutsIntoByPage as projectCalloutsIntoByPageShared } from '../utils/calloutAnnotationBridge.js';
+import {
+  projectCalloutsIntoByPage as projectCalloutsIntoByPageShared,
+  deriveCalloutsFromByPage,
+} from '../utils/calloutAnnotationBridge.js';
 
-const CALLOUTS_KEY = 'calloutsList';
 const SPACES_KEY = 'spaces';
 
 function pageCount(byPage) {
@@ -30,44 +37,119 @@ function pageCount(byPage) {
 }
 
 // ---------------------------------------------------------------------------
-// Callout-unification keystone (Phase 5) — CLOUD hydrate → annotationsByPage
-// projection.
+// Callout-unification Slice 6 (2026-07-17) — callouts ride the annotations map.
 //
 // `useAnnotationDoc` is the LIVE cloud hydration seam (the legacy
 // `useAnnotationCloudSync` hydrate effect is dead — invoked with
-// hydrateEnabled=false). Cloud docs deliver callouts as a document-level META
-// list (`calloutsList`), entirely separate from the per-page `byPage` map; they
-// are applied to React state via `setCallouts(...)`. When the shared store is
-// ON, the SVG render path renders callouts ONLY from `annotationsByPage`
-// (SVGAnnotationLayer's `data.type==='callout'` branch) and SUPPRESSES the
-// legacy `filteredCallouts` loop (`if (calloutsShared) return []`). So without
-// this projection a cloud doc's callouts would VANISH under the flag.
+// hydrateEnabled=false). Callouts persist per-annotation in the flat Y.Doc
+// `annotations` map like every other type: the projected callout group
+// (data.type==='callout', with the verbatim normalized payload embedded as
+// data.legacyCallout) IS the durable record. The coarse `calloutsList` META
+// blob is retired — this hook no longer writes it, and legacy docs are
+// converted on open by migrateCalloutsMetaToAnnotationsMap (one-time, then the
+// meta is tombstoned to null).
 //
-// `projectCalloutsIntoByPage` rebuilds the callout layer of `byPage` FROM the
-// authoritative callout list on every hydrate:
-//   • strips any pre-existing `data.type==='callout'` objects (so a re-hydrate
-//     with a removed callout doesn't leave a ghost), then
-//   • re-projects each callout via the round-trip-verified bridge,
-//     de-duplicating by id within the projection.
-// This rebuild-from-source design is inherently IDEMPOTENT across the multiple
-// hydrate fires (initial durable-wins + every remote `onChange`): the output is
-// a pure function of (non-callout objects, callout list), so re-running never
-// doubles a callout. Non-callout objects are always preserved untouched.
+// Read path: handle.getByPage() already returns the callout groups inside the
+// normal byPage shape, so setAnnotationsByPage delivers them to the shared
+// dispatch (PDFViewer derives callouts[] from annotationsByPage — R2.2 flip).
 //
-// pageSize per page = the unscaled PDF page-pixel size (pageSizesRef.current),
-// which is exactly the {width,height} the SVG layer inverts with — so the bridge
-// forward/inverse round-trip is lossless (mirrors PDFViewer's local point-A
-// projection). Flag OFF → returns `byPage` unchanged (referentially identical
-// when no callouts), so behavior is byte-for-byte the same.
+// Geometry/device-independence: group children are stored in UNSCALED PDF
+// page-pixel units (intrinsic PDF dims — identical on every client), and the
+// exact normalized fractions travel inside data.legacyCallout. On hydrate,
+// when local page dims are already measured we normalize the callout layer
+// through the shared projector (lossless, idempotent — a steady-state re-open
+// re-produces byte-identical JSON, so the capture below emits ZERO ops). When
+// dims are NOT yet measured we paint the stored geometry verbatim; PDFViewer's
+// pageSizes-measure effect (the reactive re-projection keyed on [pageSizes])
+// rebuilds the callout children from legacyCallout the moment real dims land —
+// which is why the old BLOCKER-2 re-projection apparatus in this hook was
+// removed in Slice 6 (pageSizes always transitions on a fresh open: it is
+// reset + re-measured per document).
 //
-// The actual rebuild-from-source logic now lives in the canonical
-// `projectCalloutsIntoByPage` exported from calloutAnnotationBridge.js, shared
-// verbatim with PDFViewer's local reactive effect so the two never drift. This
-// thin wrapper just adds the flag gate (the bridge stays flag-agnostic so it is
-// importable in Node --test).
-function projectCalloutsIntoByPage(byPage, calloutsList, pageSizes) {
+// This thin wrapper just adds the flag gate (permanently ON — kept so the
+// call-site shape matches the rest of the keystone code; the bridge stays
+// flag-agnostic so it is importable in Node --test).
+function projectCalloutsIntoByPage(byPage, calloutsList, pageSizes, options) {
   if (!calloutsInSharedStore()) return byPage;
-  return projectCalloutsIntoByPageShared(byPage, calloutsList, pageSizes);
+  return projectCalloutsIntoByPageShared(byPage, calloutsList, pageSizes, options);
+}
+
+// ---------------------------------------------------------------------------
+// Slice 6 hardening (2026-07-17) — viewer-safe migration + read-only fallback.
+//
+// The meta→map migration WRITES (map entries + tombstone), and the durable log
+// (annotation_updates INSERT) is RLS-gated to editors. Running it on a
+// viewer-tier open put the sync layer into a permanent error state (every RLS
+// rejection → BL-24 eager snapshot → also rejected) on nearly every legacy doc.
+// So:
+//   * the migration only runs when the resolved document role is confirmed
+//     writable ('owner'/'editor' from get_my_document_role via YDocProvider);
+//   * viewer / not-yet-resolved roles get a READ-ONLY fallback instead: the
+//     unmigrated meta callouts are projected into the LOCAL byPage so they
+//     still render, with zero Y.Doc ops, and their ids are stripped back out
+//     of every capture (below) so the local projection can never become the
+//     first diff the capture pushes;
+//   * the next confirmed-writable open (or this session, the moment the role
+//     resolves writable) performs the real migration.
+// ---------------------------------------------------------------------------
+
+function isWritableDocRole(role) {
+  return role === 'owner' || role === 'editor';
+}
+
+// Remove the read-only-fallback callout projections (identified by id) from a
+// byPage before it is pushed into the doc. There is NO role gate anywhere in
+// the capture path — server-side RLS is the only write enforcement — so the
+// hook's own local projection must stay capture-invisible. Pages without a
+// fallback callout keep their bucket by reference (preserves the per-page
+// fast diff in applyByPage).
+function stripMetaFallbackCallouts(byPage, fallbackIds) {
+  if (!fallbackIds || fallbackIds.size === 0) return byPage;
+  const src = byPage || {};
+  const isFallbackCallout = (o) =>
+    o?.data?.type === 'callout' && o?.data?.id != null && fallbackIds.has(String(o.data.id));
+  let changed = false;
+  const out = {};
+  for (const key of Object.keys(src)) {
+    const page = src[key];
+    const objects = Array.isArray(page?.objects) ? page.objects : null;
+    if (objects && objects.some(isFallbackCallout)) {
+      changed = true;
+      out[key] = { ...page, objects: objects.filter((o) => !isFallbackCallout(o)) };
+    } else {
+      out[key] = page;
+    }
+  }
+  return changed ? out : byPage;
+}
+
+// Shared by the open path (role already resolved) and the late-resolution
+// effect (role resolves after hydrate). Returns true when the migration ran
+// (including a verified-nothing-to-do run); false only when it threw.
+function runDurableCalloutMigration(handle, pageSizes, documentId) {
+  try {
+    const migration = migrateCalloutsMetaToAnnotationsMap(handle.doc, {
+      pageSizes: pageSizes || {},
+    });
+    if (migration.migrated || migration.tombstoned || migration.droppedCount > 0) {
+      console.log('[useAnnotationDoc] calloutsList meta migration', {
+        documentId,
+        migrated: migration.migrated,
+        tombstoned: migration.tombstoned,
+        calloutCount: migration.calloutCount,
+        migratedCount: migration.migratedCount,
+        droppedCount: migration.droppedCount,
+        source: migration.source,
+      });
+    }
+    return true;
+  } catch (err) {
+    // Never let a migration failure block hydration — legacy meta callouts
+    // simply stay in the meta (and render via the fallback) until a later
+    // writable open retries.
+    console.error('[useAnnotationDoc] calloutsList meta migration failed', err?.message);
+    return false;
+  }
 }
 
 export function useAnnotationDoc({
@@ -76,46 +158,43 @@ export function useAnnotationDoc({
   enabled,
   annotationsByPage,
   setAnnotationsByPage,
-  callouts,
-  setCallouts,
   spaces,
   setSpaces,
   surveyMarkers,
   setSurveyMarkers,
-  // Callout-unification keystone (Phase 5): the unscaled per-page PDF pixel sizes
-  // ({ [page]: { width, height } }) the SVG layer inverts callouts with. Passed
-  // as a ref so the projection reads the latest measured sizes at hydrate time
-  // (sizes may arrive after the doc opens). Only consulted when the shared-store
-  // flag is ON; safe to omit when the flag is OFF.
+  // The unscaled per-page PDF pixel sizes ({ [page]: { width, height } }) the
+  // SVG layer inverts callouts with. Passed as a ref so the hydrate-time callout
+  // normalization and the meta migration read the latest measured sizes (sizes
+  // may arrive after the doc opens; unmeasured pages are handled — see the
+  // Slice 6 module comment above).
   pageSizesRef,
-  // Callout-unification keystone (Phase 5) — BLOCKER 2 fix. A reactive count of
-  // how many pages have been MEASURED (Object.keys(pageSizes).length). The
-  // initial cloud-hydration projection (durable-wins, below) can fire before any
-  // page is measured (pageSizesRef.current === {}), projecting callouts at the
-  // US-Letter fallback — wrong first-paint position on non-Letter pages. This
-  // signal lets a re-projection effect re-run once real dims arrive. Only used
-  // when the shared-store flag is ON; flag OFF → effect early-returns (no-op).
-  pageSizesReady = 0,
+  // The resolved document role ('owner'|'editor'|'viewer'|null) from
+  // YDocProvider's get_my_document_role fetch. Gates the meta→map migration:
+  // only a confirmed-writable role may run it (see the Slice 6 hardening
+  // comment above). Resolves async, so it is read through a ref at open time
+  // and a dedicated effect re-checks when it lands late.
+  docRole = null,
 }) {
   const handleRef = useRef(null);
   const readyRef = useRef(false);
   const byPageRef = useRef(annotationsByPage);
-  const calloutsRef = useRef(callouts);
   const spacesRef = useRef(spaces);
   const surveyMarkersRef = useRef(surveyMarkers);
-  // Callout-unification keystone (Phase 5) — BLOCKER 2 fix. Tracks whether the
-  // initial cloud-hydration projection ran while pageSizes was still empty, so
-  // the re-projection effect knows it has stale-pageSize work to redo. Reset on
-  // every doc open.
-  const calloutProjectedWithoutSizesRef = useRef(false);
+  const docRoleRef = useRef(docRole);
+  // Ids of legacy meta callouts projected LOCALLY by the read-only fallback —
+  // stripped out of every capture until the durable migration lands.
+  const metaFallbackIdsRef = useRef(new Set());
+  // documentId whose durable migration already ran this mount (idempotence is
+  // the module's job; this just avoids re-running on unrelated re-renders).
+  const migrationDoneRef = useRef(null);
   const [initialHydration, setInitialHydration] = useState({ ready: false, source: 'pending', count: 0, documentId: null });
   const [syncStatus, setSyncStatus] = useState({ stage: 'idle', healthy: true, error: null });
   const [syncQueueSize, setSyncQueueSize] = useState(0);
 
   byPageRef.current = annotationsByPage;
-  calloutsRef.current = callouts;
   spacesRef.current = spaces;
   surveyMarkersRef.current = surveyMarkers;
+  docRoleRef.current = docRole;
 
   // Open the durable doc on documentId; hydrate from it (authoritative) or seed
   // it with whatever the viewer already has (covers marks drawn/imported before
@@ -129,8 +208,8 @@ export function useAnnotationDoc({
     let cancelled = false;
     let unsubscribeSync = null;
     readyRef.current = false;
-    // BLOCKER 2: new doc — clear any "projected with stale pageSize" flag.
-    calloutProjectedWithoutSizesRef.current = false;
+    metaFallbackIdsRef.current = new Set();
+    migrationDoneRef.current = null;
     setInitialHydration({ ready: false, source: 'pending', count: 0, documentId });
     setSyncStatus({ stage: 'hydrating', healthy: true, error: null });
     setSyncQueueSize(0);
@@ -164,52 +243,97 @@ export function useAnnotationDoc({
       // Remote ops (other devices) → reflect into React state.
       handle.onChange((byPage) => {
         if (cancelled) return;
-        const c = handle.getMeta(CALLOUTS_KEY);
-        // Keystone (flag ON): also project the realtime callout list into the
-        // shared byPage so a collaborator's callouts render via the shared
-        // dispatch (the legacy filteredCallouts loop is suppressed under the
-        // flag). callouts[] stays populated below (dual-rep). Flag OFF → byPage
-        // unchanged. Idempotent: projectCalloutsIntoByPage rebuilds the callout
-        // layer from `c` each time, so repeated remote ops never double-render.
-        setAnnotationsByPage(projectCalloutsIntoByPage(byPage, c, pageSizesRef?.current));
-        if (Array.isArray(c)) setCallouts(c);
+        // Slice 6: callout groups ride INSIDE `byPage` (they live in the same
+        // `annotations` Y.Map as every other object), carrying their verbatim
+        // data.legacyCallout payloads. PDFViewer derives callouts[] from
+        // annotationsByPage (R2.2 flip), so this single set delivers them —
+        // no meta-list projection, no dual write.
+        //
+        // Read-only fallback upkeep: while unmigrated legacy meta callouts are
+        // being rendered from a LOCAL projection, re-merge them here so a
+        // remote op doesn't wipe them from view. When a remote editor's
+        // migration lands (map entries + tombstone arrive as remote ops), the
+        // recompute empties naturally and the fallback ends.
+        let nextByPage = byPage;
+        if (metaFallbackIdsRef.current.size > 0) {
+          const fallback = getUnmigratedMetaCallouts(handle.doc);
+          metaFallbackIdsRef.current = new Set(fallback.ids);
+          if (fallback.callouts.length > 0) {
+            nextByPage = projectCalloutsIntoByPage(
+              byPage,
+              [...deriveCalloutsFromByPage(byPage), ...fallback.callouts],
+              pageSizesRef?.current || {},
+              { preserveUnmeasured: true },
+            );
+          }
+        }
+        setAnnotationsByPage(nextByPage);
         const s = handle.getMeta(SPACES_KEY);
         if (Array.isArray(s)) setSpaces(s);
         const sm = handle.getSurveyMarkers();
         if (sm && typeof sm === 'object') setSurveyMarkers(sm);
       });
 
+      // Slice 6 — one-time migration for docs authored under the legacy
+      // contract (callouts as a coarse `calloutsList` META blob). Converts the
+      // meta list into per-id annotations-map groups, then tombstones the meta
+      // (null). Idempotent + atomic (map writes + verification + tombstone in
+      // one transaction; the tombstone only lands when every meta entry is
+      // verified in the map). Runs BEFORE the getByPage() read below so the
+      // migrated groups hydrate through the exact same path as natively-written
+      // ones. The transaction origin is 'local', so annotationDocSync persists
+      // the migration durably — which is exactly why it is WRITE-GATED: only a
+      // confirmed-writable role runs it (viewer-tier RLS would reject every op
+      // and wedge the sync status in error). Viewer / unresolved roles take the
+      // zero-op read-only fallback below; if the role resolves writable later
+      // this session, the late-resolution effect runs the migration then.
+      if (isWritableDocRole(docRoleRef.current)) {
+        if (runDurableCalloutMigration(handle, pageSizesRef?.current, documentId)) {
+          migrationDoneRef.current = documentId;
+        }
+      }
+
       const storeByPage = handle.getByPage();
-      const storeCallouts = handle.getMeta(CALLOUTS_KEY);
       const storeSpaces = handle.getMeta(SPACES_KEY);
       const storeSurvey = handle.getSurveyMarkers();
       const count = pageCount(storeByPage);
-      const hasCallouts = Array.isArray(storeCallouts) && storeCallouts.length > 0;
       const hasSpaces = Array.isArray(storeSpaces) && storeSpaces.length > 0;
       const hasSurvey = storeSurvey && Object.keys(storeSurvey).length > 0;
 
-      if (count > 0 || hasCallouts || hasSpaces || hasSurvey) {
-        // Durable store wins — paint from it.
-        // Keystone (flag ON): project the durable callout list into the store's
-        // byPage so callouts render via the shared dispatch. We may need to set
-        // byPage even when count === 0 (a callout-only cloud doc) so the
-        // projected callouts reach the layer. When the flag is OFF,
-        // projectCalloutsIntoByPage returns storeByPage unchanged, so the
-        // `count > 0` guard below is preserved byte-for-byte.
-        const projectedByPage = projectCalloutsIntoByPage(storeByPage, storeCallouts, pageSizesRef?.current);
-        const calloutsWereProjected = projectedByPage !== storeByPage;
-        // BLOCKER 2: if we projected callouts before any page was measured, the
-        // callouts landed at the US-Letter fallback. Remember so the re-projection
-        // effect can re-run once real dims arrive. (Idempotent + flag-gated; with
-        // the flag OFF calloutsWereProjected is false → never set.)
-        if (calloutsWereProjected && hasCallouts) {
+      // Read-only fallback (viewer role, or role not resolved yet): legacy meta
+      // callouts that are NOT in the annotations map still render — projected
+      // into the local byPage below — with ZERO Y.Doc ops. Their ids are
+      // remembered so the capture effect strips them back out before every
+      // applyByPage. After a writable-role migration above this is empty.
+      const metaFallback = getUnmigratedMetaCallouts(handle.doc);
+      metaFallbackIdsRef.current = new Set(metaFallback.ids);
+      const hasMetaCallouts = metaFallback.callouts.length > 0;
+
+      if (count > 0 || hasMetaCallouts || hasSpaces || hasSurvey) {
+        // Durable store wins — paint from it. Callout groups arrive inside
+        // storeByPage (and count toward `count`) like every other object.
+        if (count > 0 || hasMetaCallouts) {
+          // Slice 6 geometry normalization: rebuild the callout layer from each
+          // group's verbatim data.legacyCallout at the locally measured dims
+          // (lossless + idempotent — on a steady-state reopen this reproduces
+          // byte-identical JSON, so the capture effect below emits ZERO Yjs
+          // ops). preserveUnmeasured keeps STORED geometry verbatim on pages
+          // whose dims have not landed yet (no US-Letter displacement flicker);
+          // PDFViewer's [pageSizes]-keyed re-projection effect corrects those
+          // the moment measurement lands (pageSizes is reset + re-measured on
+          // every document open, so that effect always fires after this
+          // hydrate). Unmigrated meta callouts ride the same projection.
           const sizesNow = pageSizesRef?.current || {};
-          if (Object.keys(sizesNow).length === 0) {
-            calloutProjectedWithoutSizesRef.current = true;
-          }
+          const storeCalloutList = deriveCalloutsFromByPage(storeByPage);
+          const combinedCalloutList = hasMetaCallouts
+            ? [...storeCalloutList, ...metaFallback.callouts]
+            : storeCalloutList;
+          const projectedByPage =
+            combinedCalloutList.length > 0
+              ? projectCalloutsIntoByPage(storeByPage, combinedCalloutList, sizesNow, { preserveUnmeasured: true })
+              : storeByPage;
+          if (count > 0 || projectedByPage !== storeByPage) setAnnotationsByPage(projectedByPage);
         }
-        if (count > 0 || calloutsWereProjected) setAnnotationsByPage(projectedByPage);
-        if (hasCallouts) setCallouts(storeCallouts);
         if (hasSpaces) setSpaces(storeSpaces);
         if (hasSurvey) setSurveyMarkers(storeSurvey);
         // Document-level kinds: if the store has SOME state but not this kind yet
@@ -225,11 +349,11 @@ export function useAnnotationDoc({
         }
       } else {
         // Empty store: seed it with whatever the viewer already holds so a mark
-        // drawn (or imported) before this point is captured durably.
+        // drawn (or imported) before this point is captured durably. Callout
+        // groups already ride inside byPage (post-flip in-memory truth), so
+        // applyByPage seeds them per-id too — no separate callout seed.
         const curByPage = byPageRef.current;
         if (curByPage && pageCount(curByPage) > 0) handle.applyByPage(curByPage);
-        const curCallouts = calloutsRef.current;
-        if (Array.isArray(curCallouts) && curCallouts.length > 0) handle.setMeta(CALLOUTS_KEY, curCallouts);
         const curSpaces = spacesRef.current;
         if (Array.isArray(curSpaces) && curSpaces.length > 0) handle.setMeta(SPACES_KEY, curSpaces);
         const curSurvey = surveyMarkersRef.current;
@@ -251,44 +375,43 @@ export function useAnnotationDoc({
       unsubscribeSync?.();
       if (h) { h.destroy().catch(() => {}); }
     };
-  }, [enabled, documentId, userId, setAnnotationsByPage, setCallouts, setSpaces, setSurveyMarkers]);
-
-  // Callout-unification keystone (Phase 5) — BLOCKER 2 fix: re-project callouts
-  // once pageSizes first becomes available. The initial durable-wins hydration
-  // can project callouts before any page is measured (US-Letter fallback → wrong
-  // first-paint position on non-Letter pages). When real dims arrive we re-run
-  // the projection against the CURRENT annotationsByPage (which already holds any
-  // live non-callout work) using the CURRENT callout list and now-measured sizes.
-  // projectCalloutsIntoByPage strips existing callout objects and re-projects
-  // from the list, so this corrects positions while preserving everything else —
-  // it is idempotent and safe to run more than once. Flag OFF → early return
-  // (calloutsInSharedStore() false), so this is a no-op → byte-for-byte identical.
-  useEffect(() => {
-    if (!calloutsInSharedStore()) return;
-    if (!readyRef.current) return;
-    if (!calloutProjectedWithoutSizesRef.current) return;
-    const sizes = pageSizesRef?.current || {};
-    if (Object.keys(sizes).length === 0) return; // sizes still not measured
-    // One-shot: clear before re-projecting so we don't loop.
-    calloutProjectedWithoutSizesRef.current = false;
-    const curCallouts = calloutsRef.current;
-    if (!Array.isArray(curCallouts) || curCallouts.length === 0) return;
-    setAnnotationsByPage((prev) => projectCalloutsIntoByPage(prev, curCallouts, sizes));
-  }, [pageSizesReady, setAnnotationsByPage, pageSizesRef]);
+  }, [enabled, documentId, userId, setAnnotationsByPage, setSpaces, setSurveyMarkers]);
 
   // Capture annotation changes into the durable store (no-op when unchanged).
+  // Slice 6: this single capture now carries callouts too — projected callout
+  // groups sync per-id into the `annotations` Y.Map exactly like every other
+  // object (the syncByPageToDoc callout skip and the coarse whole-list meta
+  // capture are both retired). The read-only fallback's locally-projected
+  // legacy callouts are STRIPPED first: there is no role gate in this capture
+  // path (server RLS is the only write enforcement), so the local projection
+  // must never become the first diff a viewer-tier client pushes.
   useEffect(() => {
     const h = handleRef.current;
     if (!h || !readyRef.current) return;
-    h.applyByPage(annotationsByPage);
+    h.applyByPage(stripMetaFallbackCallouts(annotationsByPage, metaFallbackIdsRef.current));
   }, [annotationsByPage]);
 
-  // Capture callout changes (coarse whole-list; no-op when unchanged).
+  // Late role resolution: get_my_document_role is fetched async by YDocProvider
+  // and often resolves AFTER the doc opened (docRole starts null = not yet
+  // confirmed writable). The moment it resolves to a writable role, run the
+  // durable migration the open path skipped, then end the read-only fallback
+  // (the entries are now the doc's own, so the capture strip must stop hiding
+  // them — future edits to those callouts persist normally). A role that stays
+  // null (RPC failure — the documentRole fail-open contract covers UI only)
+  // never migrates this session; the next confirmed-writable open does.
   useEffect(() => {
+    if (!isWritableDocRole(docRole)) return;
+    if (!initialHydration.ready || initialHydration.documentId !== documentId) return;
     const h = handleRef.current;
     if (!h || !readyRef.current) return;
-    h.setMeta(CALLOUTS_KEY, callouts);
-  }, [callouts]);
+    if (migrationDoneRef.current === documentId) return;
+    if (runDurableCalloutMigration(h, pageSizesRef?.current, documentId)) {
+      migrationDoneRef.current = documentId;
+      metaFallbackIdsRef.current = new Set();
+    }
+    // pageSizesRef is a ref (stable identity) — intentionally not a dep.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [docRole, initialHydration, documentId]);
 
   // Capture space changes (document-level; coarse whole-array, no-op when
   // unchanged). Spaces + their region polygons now live durably in the Y.Doc

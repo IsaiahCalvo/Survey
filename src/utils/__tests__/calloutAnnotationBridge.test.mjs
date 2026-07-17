@@ -668,6 +668,60 @@ describe('projectCalloutsIntoByPage — shared projector', () => {
     assert.equal(onPage3[2].objects.filter((o) => o?.data?.type === 'callout').length, 0);
     assert.equal(onPage3[3].objects.filter((o) => o?.data?.type === 'callout').length, 1);
   });
+
+  // Tombstone-safety hardening (2026-07-17): the live render path coerces the
+  // page (PDFViewer.jsx ~1953 Number(callout?.pageNumber)), so the projector
+  // must too — a string pageNumber is renderable and must never be dropped
+  // (the migration relies on this projection path being lossless).
+  it('coerces a string pageNumber instead of dropping the callout', () => {
+    const stringPage = { ...baseCallout, id: 'c-str', pageNumber: '2' };
+    const next = projectCalloutsIntoByPage({}, [stringPage], SIZES);
+    const callouts = next[2].objects.filter((o) => o?.data?.type === 'callout');
+    assert.equal(callouts.length, 1, 'string-page callout is projected, not dropped');
+    assert.equal(callouts[0].data.id, 'c-str');
+  });
+
+  it('still drops a truly non-numeric pageNumber', () => {
+    const badPage = { ...baseCallout, id: 'c-bad', pageNumber: 'not-a-page' };
+    const next = projectCalloutsIntoByPage({ 2: { objects: [] } }, [badPage, baseCallout], SIZES);
+    const ids = next[2].objects.filter((o) => o?.data?.type === 'callout').map((o) => o.data.id);
+    assert.deepEqual(ids, ['c-001'], 'only the valid callout lands');
+  });
+
+  // Hydrate-flicker fix (2026-07-17): under preserveUnmeasured, stored callout
+  // objects on pages WITHOUT measured dims keep their geometry verbatim (by
+  // reference) instead of being displaced to the US-Letter fallback; measured
+  // pages are rebuilt as usual; callouts with no stored object still project.
+  describe('preserveUnmeasured option', () => {
+    it('keeps the stored callout object verbatim on an unmeasured page', () => {
+      const stored = calloutToAnnotationObject(baseCallout, PAGE); // authored at real dims
+      const byPage = { 2: { objects: [stored] } };
+      const next = projectCalloutsIntoByPage(byPage, [baseCallout], {}, { preserveUnmeasured: true });
+      const kept = next[2].objects.filter((o) => o?.data?.type === 'callout');
+      assert.equal(kept.length, 1, 'no duplicate projection alongside the kept object');
+      assert.equal(kept[0], stored, 'the stored object is kept BY REFERENCE (geometry verbatim)');
+    });
+
+    it('rebuilds callouts on measured pages and preserves only the unmeasured ones', () => {
+      const storedP2 = calloutToAnnotationObject(baseCallout, PAGE);
+      const p3Callout = { ...baseCallout, id: 'c-p3', pageNumber: 3 };
+      const storedP3 = calloutToAnnotationObject(p3Callout, PAGE);
+      const byPage = { 2: { objects: [storedP2] }, 3: { objects: [storedP3] } };
+      // Only page 3 is measured.
+      const next = projectCalloutsIntoByPage(byPage, [baseCallout, p3Callout], { 3: PAGE }, { preserveUnmeasured: true });
+      assert.equal(next[2].objects[0], storedP2, 'unmeasured page 2 keeps its stored object');
+      const rebuiltP3 = next[3].objects.filter((o) => o?.data?.type === 'callout');
+      assert.equal(rebuiltP3.length, 1);
+      assert.notEqual(rebuiltP3[0], storedP3, 'measured page 3 is rebuilt from source');
+      assert.equal(rebuiltP3[0].data.id, 'c-p3');
+    });
+
+    it('still projects a callout with NO stored object onto an unmeasured page (US-Letter fallback)', () => {
+      const next = projectCalloutsIntoByPage({}, [baseCallout], {}, { preserveUnmeasured: true });
+      const callouts = next[2].objects.filter((o) => o?.data?.type === 'callout');
+      assert.equal(callouts.length, 1, 'meta-fallback callouts still render before measurement');
+    });
+  });
 });
 
 // ---------------------------------------------------------------------------

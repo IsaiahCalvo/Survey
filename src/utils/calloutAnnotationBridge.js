@@ -365,22 +365,52 @@ export function calloutToAnnotationObject(callout, pageSize) {
  * @param {object} byPage — current annotationsByPage map ({ [page]: { objects } })
  * @param {Array<object>} calloutsList — authoritative normalized callouts[]
  * @param {object} pageSizes — { [page]: { width, height } } unscaled PDF px dims
+ * @param {object} [options]
+ * @param {boolean} [options.preserveUnmeasured=false] — hydrate-flicker fix
+ *   (2026-07-17): when true, pages WITHOUT measured dims keep their existing
+ *   callout objects VERBATIM (stored geometry, no strip + US-Letter re-project),
+ *   and only callouts with no stored object on such a page are projected at the
+ *   fallback dims. Used by useAnnotationDoc's hydrate/onChange paths so stored
+ *   geometry is never displaced to the US-Letter fallback while measurement is
+ *   still in flight (PDFViewer's [pageSizes] effect re-projects on measure).
+ *   Note: on preserved pages ghost-cleanup is deferred to the next measured
+ *   projection (callers there derive the list from the same byPage, so no ghost
+ *   can exist at those call sites).
  * @returns {object} a NEW byPage map with the callout layer rebuilt from source.
  *   When `calloutsList` is empty/non-array the input `byPage` is returned
  *   unchanged (referentially identical) so an empty doc stays a no-op.
  */
-export function projectCalloutsIntoByPage(byPage, calloutsList, pageSizes) {
+export function projectCalloutsIntoByPage(byPage, calloutsList, pageSizes, { preserveUnmeasured = false } = {}) {
   if (!Array.isArray(calloutsList) || calloutsList.length === 0) return byPage;
 
   try {
     const sizes = pageSizes || {};
+    const measuredSize = (page) => {
+      const s = sizes[page];
+      return s && Number.isFinite(s.width) && Number.isFinite(s.height) ? s : null;
+    };
     const src = byPage || {};
     const next = {};
+    // Ids of stored callout objects kept verbatim on unmeasured pages (only
+    // populated under preserveUnmeasured) — the add-loop below skips these.
+    const preservedIdsByPage = new Map();
     // Start from a callout-free copy of every existing page so a re-projection
     // can't leave behind a callout the new list no longer contains.
     for (const key of Object.keys(src)) {
       const page = src[key];
       const objects = Array.isArray(page?.objects) ? page.objects : [];
+      const pageNum = Number(key);
+      if (preserveUnmeasured && !measuredSize(pageNum)) {
+        // Unmeasured page: keep every object (incl. callouts) by reference —
+        // stored geometry is the best truth until real dims land.
+        const kept = new Set();
+        for (const o of objects) {
+          if (o?.data?.type === 'callout' && o?.data?.id != null) kept.add(String(o.data.id));
+        }
+        preservedIdsByPage.set(pageNum, kept);
+        next[key] = page;
+        continue;
+      }
       const nonCallout = objects.filter((o) => !(o?.data?.type === 'callout'));
       next[key] = { ...(page || {}), objects: nonCallout };
     }
@@ -388,7 +418,11 @@ export function projectCalloutsIntoByPage(byPage, calloutsList, pageSizes) {
     const seenIds = new Set();
     for (const callout of calloutsList) {
       if (!callout) continue;
-      const page = callout.pageNumber;
+      // Coerce before the finite check: the live render path coerces too
+      // (PDFViewer.jsx ~1953 `Number(callout?.pageNumber) === pageNumber`), so a
+      // string pageNumber is renderable and must NOT be dropped here (tombstone
+      // safety: dropping it in the migration path would lose the callout).
+      const page = Number(callout.pageNumber);
       if (!Number.isFinite(page)) continue;
       // De-dupe by id within the projection (defends against a duplicated row).
       const id = callout.id ?? null;
@@ -396,6 +430,9 @@ export function projectCalloutsIntoByPage(byPage, calloutsList, pageSizes) {
         if (seenIds.has(id)) continue;
         seenIds.add(id);
       }
+      // Stored object kept verbatim on an unmeasured page — do not re-project.
+      const preserved = preservedIdsByPage.get(page);
+      if (preserved && id != null && preserved.has(String(id))) continue;
       // Per-page unscaled PDF dims; fall back to US-Letter if not yet measured.
       const pageSize = sizes[page] || { width: 612, height: 792 };
       if (!Number.isFinite(pageSize.width) || !Number.isFinite(pageSize.height)) continue;
