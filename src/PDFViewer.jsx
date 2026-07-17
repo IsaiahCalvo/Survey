@@ -149,7 +149,7 @@ import { readPendingChangeset, writePendingChangeset, clearPendingChangeset } fr
 import { getCounterSeriesList, pickNextSeriesColor, renumberCounters } from './utils/counterNumbering';
 import { getHistoryDebugRows, getHistoryFingerprint, getYjsHistoryTarget, isLegacyAnnotationHistoryMeta, migrateHistorySpaces, normalizeCanvasJsonForHistory, normalizeHistoryReason, summarizeAnnotationPageTransitionForDebug, summarizeHistoryDelta, summarizeHistorySnapshot } from './utils/historyHelpers';
 import { getHistoryOrder, shouldRedoLocalBeforeLegacy, shouldUndoLocalBeforeLegacy } from './utils/historyStacks';
-import { importAnnotationsFromPdf } from './utils/pdfAnnotationImporter';
+import { countUnsupportedAnnotations, importAnnotationsFromPdf } from './utils/pdfAnnotationImporter';
 import { isBlankCalloutText, resolveCommittedCalloutText, shouldDeleteBlankCalloutOnCommit } from './utils/calloutBlankCommit';
 import { materializeCalloutFromYMap } from './lib/collab/crdtAnnotationBridge.js';
 import { perfLoad, perfZoom, setDebugEnabled as setPerfDebugEnabled } from './utils/performanceLogger';
@@ -4180,7 +4180,12 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     appDebug(`[CSeries switch] handleSwitchCounterSeries — id=${series.seriesId} color=${series.color} label="${series.label}" count=${series.count} -> setStrokeColor(${series.color})`);
   }, [counterSeriesList]);
 
-  const [unsupportedAnnotationTypes, setUnsupportedAnnotationTypes] = useState([]); // PDF annotation types we can't edit
+  // UX (owner-approved 2026-07-17): per-subtype counts of native PDF
+  // annotations the app genuinely does not display (e.g. { Stamp: 2 }).
+  // Feeds the once-per-document-open UnsupportedAnnotationsNotice toast.
+  // Types imported as visible proxies (sticky notes, underline/strikeout/
+  // squiggly) never land here and never trigger the notice.
+  const [unsupportedAnnotationCounts, setUnsupportedAnnotationCounts] = useState(null);
   const [showUnsupportedNotice, setShowUnsupportedNotice] = useState(false); // Show notification about unsupported annotations
   const [annotationLayerVisibility, setAnnotationLayerVisibility] = useState({
     'native': true,
@@ -19898,6 +19903,12 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
         setIsLoadingPDF(true);
 
+        // UX: the unsupported-annotations toast is once-per-document-open —
+        // clear both pieces on every load so a document without unsupported
+        // types never inherits the previous document's notice.
+        setUnsupportedAnnotationCounts(null);
+        setShowUnsupportedNotice(false);
+
         if (typeof pdfFile.arrayBuffer === 'function') {
           // Local file
           arrayBuffer = await pdfFile.arrayBuffer();
@@ -20077,6 +20088,22 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
           // and set the empty policy (already the catch-branch fallback below).
           if (true) {
             setPdfNativeAnnotationLayerPolicyByPage({});
+            // UX (owner-approved 2026-07-17): cloud-authoritative documents
+            // still get the once-per-open "not displayed" toast — a stamp in
+            // the underlying PDF is just as invisible here, and it still stays
+            // in the file and exports. Unlike the skipped diagnostics pass
+            // above, this is a cheap subtype-count scan (getAnnotations only —
+            // no pdf-lib raw-bytes parse, no conversion) and it is fire-and-
+            // forget so it never delays first paint.
+            countUnsupportedAnnotations(pdf).then((counts) => {
+              if (isCancelled) return;
+              if (counts && Object.keys(counts).length > 0) {
+                setUnsupportedAnnotationCounts(counts);
+                setShowUnsupportedNotice(true);
+              }
+            }).catch((countError) => {
+              console.warn('[PDFImport] unsupported-annotation count scan failed:', countError);
+            });
           } else {
           try {
             const { nativeLayerPolicyByPage } = await importAnnotationsFromPdf(pdf, {
@@ -20107,7 +20134,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
             annotationsByPage: importedAnnotations,
             calloutsByPage: importedAppCalloutsByPage,
             appLayerState,
-            unsupportedTypes,
+            unsupportedCounts,
             nativeLayerPolicyByPage
           } = await importAnnotationsFromPdf(pdf, {
             rawPdfBytes: arrayBuffer
@@ -20273,9 +20300,12 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
             return next;
           });
 
-          // Track unsupported annotation types for notification
-          if (unsupportedTypes.length > 0) {
-            setUnsupportedAnnotationTypes(unsupportedTypes);
+          // UX (owner-approved 2026-07-17): arm the friendly non-blocking
+          // toast listing annotations we can't display (e.g. stamps). Once
+          // per document open — this import runs once per load, and the load
+          // effect resets both pieces before every document.
+          if (unsupportedCounts && Object.keys(unsupportedCounts).length > 0) {
+            setUnsupportedAnnotationCounts(unsupportedCounts);
             setShowUnsupportedNotice(true);
           }
         } catch (importError) {
@@ -27961,10 +27991,12 @@ ${pageBlocks}
         );
       })()}
 
-      {/* Unsupported Annotations Notice */}
-      {showUnsupportedNotice && unsupportedAnnotationTypes.length > 0 && (
+      {/* Unsupported Annotations Notice — see UnsupportedAnnotationsNotice.jsx
+          for the owner-approved UX (friendly names, once per document open,
+          dismissible, non-blocking). */}
+      {showUnsupportedNotice && unsupportedAnnotationCounts && (
         <UnsupportedAnnotationsNotice
-          unsupportedTypes={unsupportedAnnotationTypes}
+          unsupportedCounts={unsupportedAnnotationCounts}
           onDismiss={() => setShowUnsupportedNotice(false)}
         />
       )}

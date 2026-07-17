@@ -3017,12 +3017,13 @@ function normalizeImportedAppCallout(metadata) {
 /**
  * Import all annotations from a PDF document
  * @param {PDFDocumentProxy} pdfDoc - PDF.js document
- * @returns {Promise<Object>} { annotationsByPage: {}, unsupportedTypes: Set }
+ * @returns {Promise<Object>} { annotationsByPage: {}, unsupportedTypes: [], unsupportedCounts: {} }
  */
 export async function importAnnotationsFromPdf(pdfDoc, options = {}) {
   const annotationsByPage = {};
   const calloutsByPage = {};
   const unsupportedTypes = new Set();
+  const unsupportedCounts = {};
   const numPages = pdfDoc.numPages;
   const [rawMetadataById, appLayerState] = await Promise.all([
     buildRawAnnotationMetadataById(options.rawPdfBytes),
@@ -3043,6 +3044,7 @@ export async function importAnnotationsFromPdf(pdfDoc, options = {}) {
   // order so the returned maps are identical to the old sequential loop.
   const processPage = async (pageNum) => {
     const localUnsupported = new Set();
+    const localUnsupportedCounts = new Map();
     const counts = {
       counterAnnotationsImported: 0,
       plainCirclesImported: 0,
@@ -3061,11 +3063,27 @@ export async function importAnnotationsFromPdf(pdfDoc, options = {}) {
         return summarizePdfAnnotationForDiag(annotation, rawMetadata);
       }).filter(Boolean);
 
-      // Track unsupported types
+      // Track unsupported types + per-subtype counts. The counts feed the
+      // user-facing "N stamps aren't displayed" notice, so dedupe by /NM id
+      // (same Mac Preview duplicate-copy defense as the supported path below)
+      // to count distinct annotations rather than Preview re-save copies.
+      // NOTE: only genuinely-invisible types land here — anything the app
+      // imports and renders (even as a locked proxy: sticky notes,
+      // underline/strikeout/squiggly) goes through `supported` instead, and
+      // Link/Popup/Widget companions are silently ignored upstream.
+      const seenUnsupportedIds = new Set();
       unsupported.forEach(ann => {
-        if (ann.subtype) {
-          localUnsupported.add(ann.subtype);
+        if (!ann.subtype) return;
+        localUnsupported.add(ann.subtype);
+        const idKey = ann?.id || ann?.name || null;
+        if (idKey) {
+          if (seenUnsupportedIds.has(idKey)) return;
+          seenUnsupportedIds.add(idKey);
         }
+        localUnsupportedCounts.set(
+          ann.subtype,
+          (localUnsupportedCounts.get(ann.subtype) || 0) + 1
+        );
       });
 
       // UX 2026-04-21: Cross-editor defense — Mac Preview (Quartz
@@ -3197,7 +3215,7 @@ export async function importAnnotationsFromPdf(pdfDoc, options = {}) {
         counts.appCalloutAnnotationsImported += calloutEntries.length;
       }
 
-      return { pageNum, annot, callouts, diag, policy, unsupported: localUnsupported, counts };
+      return { pageNum, annot, callouts, diag, policy, unsupported: localUnsupported, unsupportedCounts: localUnsupportedCounts, counts };
     } catch (error) {
       console.error(
         `Error importing annotations from page ${pageNum}:`,
@@ -3231,6 +3249,9 @@ export async function importAnnotationsFromPdf(pdfDoc, options = {}) {
     diagnosticsByPage[r.pageNum] = r.diag;
     nativeLayerPolicyByPage[r.pageNum] = r.policy;
     r.unsupported.forEach((t) => unsupportedTypes.add(t));
+    r.unsupportedCounts.forEach((n, t) => {
+      unsupportedCounts[t] = (unsupportedCounts[t] || 0) + n;
+    });
     counterAnnotationsImported += r.counts.counterAnnotationsImported;
     plainCirclesImported += r.counts.plainCirclesImported;
     counterMetadataParseFailures += r.counts.counterMetadataParseFailures;
@@ -3275,9 +3296,65 @@ export async function importAnnotationsFromPdf(pdfDoc, options = {}) {
     calloutsByPage,
     appLayerState,
     unsupportedTypes: Array.from(unsupportedTypes),
+    // Per-subtype counts of genuinely-invisible native annotations
+    // (e.g. { Stamp: 2, Sound: 1 }) — feeds the user-facing notice.
+    unsupportedCounts,
     diagnosticsByPage,
     nativeLayerPolicyByPage
   };
+}
+
+/**
+ * Cheap counts-only scan of annotation types the app cannot display.
+ * Used on cloud-authoritative documents, where the full import (and its
+ * pdf-lib raw-bytes parse) is skipped for perf but the user-facing
+ * "N stamps aren't displayed" notice still needs per-subtype counts.
+ * Only calls getAnnotations per page — no conversion, no raw-metadata parse.
+ * Same classification as importAnnotationsFromPdf: supported/displayed types
+ * and silently-ignored companions (Link/Popup/Widget) never count; duplicate
+ * /NM ids (Mac Preview re-save copies) count once.
+ * @param {PDFDocumentProxy} pdfDoc - PDF.js document
+ * @returns {Promise<Object>} { [subtype]: count } e.g. { Stamp: 2 }
+ */
+export async function countUnsupportedAnnotations(pdfDoc) {
+  const numPages = pdfDoc.numPages;
+  const counts = {};
+  const CONCURRENCY = 8;
+  const pageResults = new Array(numPages);
+  let cursor = 0;
+  await Promise.all(
+    Array.from({ length: Math.min(CONCURRENCY, numPages) }, async () => {
+      while (cursor < numPages) {
+        const idx = cursor++;
+        try {
+          const page = await pdfDoc.getPage(idx + 1);
+          const annotations = await extractAnnotationsFromPage(page);
+          const { unsupported } = categorizeAnnotations(annotations);
+          const localCounts = new Map();
+          const seenIds = new Set();
+          unsupported.forEach((ann) => {
+            if (!ann.subtype) return;
+            const idKey = ann?.id || ann?.name || null;
+            if (idKey) {
+              if (seenIds.has(idKey)) return;
+              seenIds.add(idKey);
+            }
+            localCounts.set(ann.subtype, (localCounts.get(ann.subtype) || 0) + 1);
+          });
+          pageResults[idx] = localCounts;
+        } catch {
+          pageResults[idx] = null;
+        }
+      }
+    })
+  );
+  for (const localCounts of pageResults) {
+    if (!localCounts) continue;
+    localCounts.forEach((n, t) => {
+      counts[t] = (counts[t] || 0) + n;
+    });
+  }
+  return counts;
 }
 
 /**

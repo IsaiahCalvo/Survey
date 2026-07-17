@@ -1,27 +1,33 @@
 /**
- * UnsupportedAnnotationsNotice.jsx — bottom-right toast warning that a PDF
- * contains annotation types the editor cannot modify.
+ * UnsupportedAnnotationsNotice.jsx — bottom-right toast telling the user that
+ * some annotations in the opened PDF aren't displayed (but stay in the file).
  *
- * Default export UnsupportedAnnotationsNotice lists up to 3 of the supplied
- * `unsupportedTypes` (plus "and N more"), auto-dismisses after 8s with a fade/
- * slide exit, and calls onDismiss after the exit animation or on click.
+ * UX (owner-approved 2026-07-17): non-blocking, dismissible, shown once per
+ * document open (PDFViewer resets + re-arms it on every document load). The
+ * message names what we can in plain English ("2 stamps and 1 sound clip …
+ * aren't displayed. They're not deleted — they stay in the file and will
+ * still be included when you export.") and buckets anything unnameable as
+ * "annotations of a type we don't recognize" — never raw PDF subtype jargon.
+ * Only genuinely-invisible types trigger it; annotations imported as visible
+ * (even locked) proxies — sticky notes, underline/strikeout/squiggly — never
+ * do. No action buttons; auto-dismisses after 12s or on the X.
+ *
+ * Default export UnsupportedAnnotationsNotice takes `unsupportedCounts`
+ * ({ Stamp: 2, ... } from the importer) and `onDismiss`.
  */
 import { useEffect, useState } from 'react';
+import { formatUnsupportedAnnotationNotice } from '../utils/unsupportedAnnotationNotice';
 
-/**
- * Non-blocking notification component that informs users about
- * unsupported PDF annotation types that cannot be edited.
- * Auto-dismisses after 8 seconds or on user click.
- */
-const UnsupportedAnnotationsNotice = ({ unsupportedTypes, onDismiss }) => {
+const UnsupportedAnnotationsNotice = ({ unsupportedCounts, onDismiss }) => {
   const [isVisible, setIsVisible] = useState(true);
   const [isExiting, setIsExiting] = useState(false);
 
   useEffect(() => {
-    // Auto-dismiss after 8 seconds
+    // Auto-dismiss after 12 seconds — the message is a full sentence with
+    // counts, so it gets a little longer on screen than a one-liner toast.
     const timer = setTimeout(() => {
       handleDismiss();
-    }, 8000);
+    }, 12000);
 
     return () => clearTimeout(timer);
   }, []);
@@ -36,12 +42,10 @@ const UnsupportedAnnotationsNotice = ({ unsupportedTypes, onDismiss }) => {
     }, 300); // Match animation duration
   };
 
-  if (!isVisible || !unsupportedTypes || unsupportedTypes.length === 0) {
+  const message = formatUnsupportedAnnotationNotice(unsupportedCounts);
+  if (!isVisible || !message) {
     return null;
   }
-
-  const typesList = unsupportedTypes.slice(0, 3).join(', ');
-  const moreCount = unsupportedTypes.length > 3 ? unsupportedTypes.length - 3 : 0;
 
   return (
     <div
@@ -103,7 +107,7 @@ const UnsupportedAnnotationsNotice = ({ unsupportedTypes, onDismiss }) => {
             marginBottom: 4,
           }}
         >
-          Some annotations cannot be edited
+          Some annotations aren’t displayed
         </div>
         <div
           style={{
@@ -112,9 +116,7 @@ const UnsupportedAnnotationsNotice = ({ unsupportedTypes, onDismiss }) => {
             lineHeight: 1.4,
           }}
         >
-          This PDF contains {unsupportedTypes.length} annotation type{unsupportedTypes.length > 1 ? 's' : ''} that cannot be edited: {typesList}
-          {moreCount > 0 && ` and ${moreCount} more`}.
-          {' '}They will be preserved when saving.
+          {message}
         </div>
       </div>
 
