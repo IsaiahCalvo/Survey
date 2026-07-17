@@ -47,6 +47,7 @@
  */
 
 import { sanitizeFontFamily } from './calloutEditAdapter.js';
+import { getCalloutSyncFingerprint } from './calloutSyncPayload.js';
 
 // ---------------------------------------------------------------------------
 // Helpers for reading legacy-tolerant callout fields
@@ -272,6 +273,15 @@ export function calloutToAnnotationObject(callout, pageSize) {
   // the source callouts[] entry.
   const legacyCallout = JSON.parse(JSON.stringify(callout));
   const authorId = callout.meta?.authorId ?? callout.authorId ?? null;
+  // Attribution-on-reload (R2.2 Slice 0): mirror the top-of-chain author into
+  // the deep-copied reload payload. deserializeRowToCallout recovers the callout
+  // from data.legacyCallout alone — if only a bare/top-level authorId existed,
+  // a reloaded callout would resolve an EMPTY author chain and the shared
+  // canModify delete gate would fall open (plus re-stamp risk on next push).
+  // Never overwrites an already-populated meta.authorId (never-flip guard).
+  if (authorId && !legacyCallout.meta?.authorId) {
+    legacyCallout.meta = { ...(legacyCallout.meta || {}), authorId };
+  }
 
   const annotationObject = {
     type: 'group',
@@ -516,4 +526,191 @@ export function annotationObjectToCallout(obj, pageSize) {
     text: textbox.text ?? '',
     style,
   };
+}
+
+// ---------------------------------------------------------------------------
+// R2.2 Slice 1 — derive-model pure helpers (UNWIRED until Slice 2's flip).
+// `callouts` becomes a derived view over annotationsByPage; these two functions
+// are the read (derive) and write (apply) halves of that pivot. Zero call sites
+// in this slice — PDFViewer still owns callouts[] as useState.
+// ---------------------------------------------------------------------------
+
+// US-Letter fallback dims — mirrors projectCalloutsIntoByPage's unmeasured-page
+// fallback so derive's pixel→fraction division has a denominator even when a
+// projected object predates page measurement. Only reached when BOTH
+// data.legacyCallout and data.legacyNormalizedCoords are absent (should not
+// happen for bridge-projected objects; defensive for foreign/corrupt rows).
+const FALLBACK_PAGE_SIZE = { width: 612, height: 792 };
+
+/**
+ * Recover one normalized callout from a projected annotation object.
+ *
+ * Priority: data.legacyCallout VERBATIM (the deep-copied original written by
+ * calloutToAnnotationObject — lossless incl meta/groupId/style/scope stamps),
+ * returned by reference when its id/pageNumber already agree so that
+ * derive(project(list)) round-trips referentially stable content. Fallback:
+ * annotationObjectToCallout on the group geometry, then overridden with the
+ * exact original fractions from data.legacyNormalizedCoords when present.
+ *
+ * @param {object} obj — annotation object with data.type === 'callout'
+ * @param {number} pageNumber — 1-indexed page (the byPage key — authoritative)
+ * @returns {object|null} normalized callout, or null when unrecoverable
+ */
+function deriveOneCalloutFromObject(obj, pageNumber) {
+  const data = obj?.data || {};
+  const lc = data.legacyCallout;
+  if (lc && typeof lc === 'object') {
+    const id = lc.id ?? data.id ?? null;
+    // Verbatim fast path: the embedded payload already carries the right
+    // identity — hand it back by reference (content identical to the source
+    // callouts[] entry it was deep-copied from).
+    if ((lc.id ?? null) === id && lc.pageNumber === pageNumber) return lc;
+    return { ...lc, id, pageNumber };
+  }
+  try {
+    const base = annotationObjectToCallout(obj, FALLBACK_PAGE_SIZE);
+    const lnc = data.legacyNormalizedCoords;
+    return {
+      ...base,
+      id: base.id ?? data.id ?? null,
+      pageNumber,
+      // Exact original fractions beat the pixel-division reconstruction.
+      ...(lnc
+        ? {
+            arrowTip: { x: Number(lnc.arrowTip?.x ?? 0), y: Number(lnc.arrowTip?.y ?? 0) },
+            knee: { x: Number(lnc.knee?.x ?? 0), y: Number(lnc.knee?.y ?? 0) },
+            textBoxPosition: {
+              x: Number(lnc.textBoxPosition?.x ?? 0),
+              y: Number(lnc.textBoxPosition?.y ?? 0),
+            },
+            textBoxWidth: Number(lnc.textBoxWidth ?? 0.1),
+            textBoxHeight: Number(lnc.textBoxHeight ?? 0.05),
+          }
+        : {}),
+    };
+  } catch {
+    // Unrecoverable object shape — skip rather than poison the derived list.
+    return null;
+  }
+}
+
+/**
+ * Derive the normalized `callouts[]` list FROM an annotationsByPage map — the
+ * read half of the R2.2 derive-model pivot (Slice 2 turns PDFViewer's callouts
+ * useState into a useMemo over this).
+ *
+ * Contract:
+ *   - reads every `data.type === 'callout'` object; recovers the normalized
+ *     shape via data.legacyCallout verbatim (fallback: annotationObjectToCallout
+ *     + data.legacyNormalizedCoords overrides — see deriveOneCalloutFromObject).
+ *   - pageNumber comes from the byPage KEY (authoritative), not the payload.
+ *   - stable ordering: ascending page, then id (localeCompare) within a page —
+ *     deterministic output for fingerprinting regardless of object order.
+ *   - de-dupes by id (first occurrence in that stable order wins), matching
+ *     projectCalloutsIntoByPage's seenIds guard.
+ *
+ * @param {object} byPage — annotationsByPage map ({ [page]: { objects } })
+ * @returns {Array<object>} normalized callout list (new array; entries may be
+ *   the verbatim embedded legacyCallout payloads by reference)
+ */
+export function deriveCalloutsFromByPage(byPage) {
+  const src = byPage || {};
+  const out = [];
+  const seenIds = new Set();
+  const pages = Object.keys(src)
+    .map(Number)
+    .filter((n) => Number.isFinite(n))
+    .sort((a, b) => a - b);
+  for (const page of pages) {
+    const objects = Array.isArray(src[page]?.objects) ? src[page].objects : [];
+    const pageCallouts = [];
+    for (const obj of objects) {
+      if (obj?.data?.type !== 'callout') continue;
+      const callout = deriveOneCalloutFromObject(obj, page);
+      if (!callout) continue;
+      pageCallouts.push(callout);
+    }
+    // Stable in-page ordering by id, THEN first-wins de-dupe so the survivor
+    // of a duplicated id is deterministic.
+    pageCallouts.sort((a, b) =>
+      String(a?.id ?? '').localeCompare(String(b?.id ?? ''))
+    );
+    for (const callout of pageCallouts) {
+      const id = callout.id ?? null;
+      if (id != null) {
+        if (seenIds.has(id)) continue;
+        seenIds.add(id);
+      }
+      out.push(callout);
+    }
+  }
+  return out;
+}
+
+/**
+ * Write a full callout list INTO an annotationsByPage map — the write half of
+ * the R2.2 derive-model pivot (Slice 2 turns setCallouts/
+ * setCalloutsIfPersistedChanged into adapters over this).
+ *
+ * Contract:
+ *   - REFERENTIAL BAIL: when getCalloutSyncFingerprint of the currently-derived
+ *     list equals the next list's fingerprint, the input byPage is returned
+ *     unchanged (referentially identical). This is what prevents spurious sync
+ *     pushes: transient-only churn (selection/hover) and no-op writes must not
+ *     produce a new byPage reference. Invariant:
+ *     applyCalloutListToByPage(byPage, deriveCalloutsFromByPage(byPage), sizes) === byPage.
+ *   - non-empty list: delegates to projectCalloutsIntoByPage (strip + re-project,
+ *     idempotent, ghost-free, non-callout objects preserved by reference).
+ *   - EMPTY list: the shared projector no-ops on an empty list, so this strips
+ *     any lingering ghost callout objects itself — replicating the inline
+ *     empty-branch semantics from PDFViewer's reactive projection effect: only
+ *     pages actually holding a callout object are touched (new page entry with
+ *     callouts filtered out); every other page keeps its reference; when no
+ *     page held a callout the input byPage is returned unchanged.
+ *
+ * @param {object} byPage — current annotationsByPage map
+ * @param {Array<object>} nextList — authoritative normalized callout list
+ * @param {object} pageSizes — { [page]: { width, height } } unscaled PDF px dims
+ * @returns {object} next byPage map (or the input, referentially, on no-op)
+ */
+export function applyCalloutListToByPage(byPage, nextList, pageSizes) {
+  const src = byPage || {};
+  const next = Array.isArray(nextList) ? nextList : [];
+
+  // Referential bail — identical persisted callout content is a no-op.
+  // getCalloutSyncFingerprint strips transient/__-prefixed fields and sorts by
+  // id, so ordering and selection-state differences do not defeat the bail
+  // (same change-detection semantics as setCalloutsIfPersistedChanged).
+  try {
+    const currentFingerprint = getCalloutSyncFingerprint(deriveCalloutsFromByPage(src));
+    if (currentFingerprint === getCalloutSyncFingerprint(next)) {
+      return byPage;
+    }
+  } catch {
+    // Fingerprinting failure must never block a write — fall through.
+  }
+
+  if (next.length > 0) {
+    return projectCalloutsIntoByPage(src, next, pageSizes || {});
+  }
+
+  // Empty list (e.g. the last callout was just deleted): strip ghosts, touching
+  // only pages that actually hold a callout object.
+  let changed = false;
+  const out = {};
+  for (const key of Object.keys(src)) {
+    const page = src[key];
+    const objects = Array.isArray(page?.objects) ? page.objects : [];
+    const hasCallout = objects.some((o) => o?.data?.type === 'callout');
+    if (hasCallout) {
+      changed = true;
+      out[key] = {
+        ...(page || {}),
+        objects: objects.filter((o) => !(o?.data?.type === 'callout')),
+      };
+    } else {
+      out[key] = page;
+    }
+  }
+  return changed ? out : byPage;
 }

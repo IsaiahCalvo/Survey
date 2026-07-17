@@ -3582,6 +3582,13 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         x: (cursorPosition?.x || clipboardCallout.textBoxPosition.x) + offsetX,
         y: (cursorPosition?.y || clipboardCallout.textBoxPosition.y) + offsetY,
       },
+      // Attribution-on-reload (R2.2 Slice 0): paste MINTS a new id, so this is
+      // a CREATE — stamp the author when the copied callout carried no chain.
+      // A copied callout that already has an author keeps it (never-overwrite),
+      // matching the serializer's guard for every other annotation type.
+      ...(user?.id && !getAnnotationAuthorId(clipboardCallout)
+        ? { meta: { ...(clipboardCallout.meta || {}), authorId: user.id } }
+        : {}),
     };
 
     setCallouts(prev => [...prev, newCallout]);
@@ -3591,7 +3598,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       setClipboardCallout(null);
       setClipboardCalloutType(null);
     }
-  }, [clipboardCallout, clipboardCalloutType]);
+  }, [clipboardCallout, clipboardCalloutType, user?.id]);
 
   // UX: pan-mode quick-click → select annotation + auto-switch to Select tool.
   // Records pointer position on mousedown; on mouseup, if the cursor moved
@@ -10173,6 +10180,15 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     if (!rawCallout || !rawCallout.id) return;
     const newCallout = {
       ...rawCallout,
+      // Attribution-on-reload (R2.2 Slice 0): stamp the canonical author field
+      // at creation so the projected .fabricObject row embeds the creator in
+      // data.legacyCallout.meta — without it, a reload resolves an empty
+      // author chain and the shared canModify delete gate falls open (plus
+      // re-stamp risk on the next push). Only when the chain is fully empty
+      // (true CREATE); never overwrites an existing author.
+      ...(user?.id && !getAnnotationAuthorId(rawCallout)
+        ? { meta: { ...(rawCallout.meta || {}), authorId: user.id } }
+        : {}),
       style: {
         ...rawCallout.style,
         borderColor: strokeColor,
@@ -10208,7 +10224,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     };
     newlyCreatedCalloutIdsRef.current.add(newCallout.id);
     setCallouts((prev) => [...prev, newCallout]);
-  }, [addHistoryCheckpoint, strokeColor, strokeOpacity, fillColor, fillOpacity, mobileMode, strokeWidth, textStyleDefaults]);
+  }, [addHistoryCheckpoint, strokeColor, strokeOpacity, fillColor, fillOpacity, mobileMode, strokeWidth, textStyleDefaults, user?.id]);
 
   // UX: Phase 14 CALL-10 (drag MVP) — commit checkpoint for a callout drag.
   // Called from useSVGInteraction's 'callout-part' drag mode on pointerup

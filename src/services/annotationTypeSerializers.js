@@ -249,6 +249,33 @@ export function serializeFabricObjectToRow(fabricObj, opts = {}) {
   // viewer. last_modified_by below carries the "edited by" signal instead.
   const rowUserId = getAnnotationAuthorId(fabricObj) || userId;
 
+  // Attribution-on-reload backstop (R2.2 Slice 0): a projected callout group
+  // carries the verbatim normalized callout at data.legacyCallout — the ONLY
+  // payload deserializeRowToCallout reloads. If that embedded chain is empty
+  // (rows minted before creation-time stamping), a reloaded callout loses its
+  // author even though the row's user_id is right: canModify falls open and
+  // the next push re-stamps the current viewer. Mirror the group's RESOLVED
+  // author into legacyCallout.meta.authorId, mutating IN PLACE (no clone —
+  // object identity feeds the callout sync fingerprints). Same never-overwrite
+  // guard as above: a populated embedded chain is never touched, so a
+  // collaborator's push can never flip the recorded creator.
+  if (fabricObj.data?.type === 'callout') {
+    const legacyCallout = fabricObj.data.legacyCallout;
+    if (
+      legacyCallout &&
+      typeof legacyCallout === 'object' &&
+      rowUserId &&
+      !getAnnotationAuthorId(legacyCallout)
+    ) {
+      if (!legacyCallout.meta || typeof legacyCallout.meta !== 'object') {
+        legacyCallout.meta = {};
+      }
+      if (!legacyCallout.meta.authorId) {
+        legacyCallout.meta.authorId = rowUserId;
+      }
+    }
+  }
+
   const bounds = computeBounds(fabricObj);
 
   // The full Fabric object goes into annotation_data so deserialization is

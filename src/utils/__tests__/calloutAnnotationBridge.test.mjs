@@ -18,6 +18,8 @@ import {
   calloutToAnnotationObject,
   annotationObjectToCallout,
   projectCalloutsIntoByPage,
+  deriveCalloutsFromByPage,
+  applyCalloutListToByPage,
 } from '../calloutAnnotationBridge.js';
 import { fabric } from '../fabricCompat.js';
 
@@ -136,6 +138,34 @@ describe('calloutToAnnotationObject — R2 reload payload', () => {
     // bare authorId field also honored
     const authored2 = { ...baseCallout, authorId: 'user-bare' };
     assert.equal(calloutToAnnotationObject(authored2, PAGE).data.authorId, 'user-bare');
+  });
+
+  // R2.2 Slice 0 — attribution-on-reload: the reload payload itself must carry
+  // the author, because deserializeRowToCallout recovers ONLY data.legacyCallout.
+  it('mirrors meta.authorId into the deep-copied data.legacyCallout.meta', () => {
+    const authored = { ...baseCallout, meta: { authorId: 'user-xyz' } };
+    const obj = calloutToAnnotationObject(authored, PAGE);
+    assert.equal(obj.data.legacyCallout.meta.authorId, 'user-xyz');
+  });
+
+  it('copies a bare top-level authorId into data.legacyCallout.meta.authorId', () => {
+    const authored = { ...baseCallout, authorId: 'user-bare' };
+    const obj = calloutToAnnotationObject(authored, PAGE);
+    assert.equal(obj.data.legacyCallout.meta.authorId, 'user-bare');
+    // input must not be mutated (legacyCallout is a deep copy)
+    assert.equal(authored.meta, undefined);
+  });
+
+  it('never overwrites an existing legacyCallout meta.authorId', () => {
+    const authored = { ...baseCallout, meta: { authorId: 'creator-A', keep: true } };
+    const obj = calloutToAnnotationObject(authored, PAGE);
+    assert.equal(obj.data.legacyCallout.meta.authorId, 'creator-A');
+    assert.equal(obj.data.legacyCallout.meta.keep, true);
+  });
+
+  it('leaves legacyCallout.meta absent when no author chain exists', () => {
+    const obj = calloutToAnnotationObject(baseCallout, PAGE);
+    assert.equal(obj.data.legacyCallout.meta, undefined);
   });
 
   it('omits data.authorId when no author chain present', () => {
@@ -625,5 +655,209 @@ describe('projectCalloutsIntoByPage — shared projector', () => {
   it('falls back to US-Letter dims when the page is unmeasured (no throw)', () => {
     const next = projectCalloutsIntoByPage({}, [baseCallout], {});
     assert.equal(next[2].objects.filter((o) => o?.data?.type === 'callout').length, 1);
+  });
+
+  // Ghost-cleanup verification (R2.2 Slice 1 item 3): when a callout MOVES to
+  // another page, the now-empty page must not keep a ghost projection.
+  it('ghost-cleanup: a callout that moved pages leaves no ghost on the old page', () => {
+    const sizes = { 2: PAGE, 3: PAGE };
+    const onPage2 = projectCalloutsIntoByPage({}, [baseCallout], sizes);
+    assert.equal(onPage2[2].objects.filter((o) => o?.data?.type === 'callout').length, 1);
+    const moved = { ...baseCallout, pageNumber: 3 };
+    const onPage3 = projectCalloutsIntoByPage(onPage2, [moved], sizes);
+    assert.equal(onPage3[2].objects.filter((o) => o?.data?.type === 'callout').length, 0);
+    assert.equal(onPage3[3].objects.filter((o) => o?.data?.type === 'callout').length, 1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// R2.2 Slice 1 — deriveCalloutsFromByPage / applyCalloutListToByPage.
+// These are the read/write halves of the derive-model pivot (Slice 2 flips
+// PDFViewer's callouts useState onto them). Load-bearing invariants:
+//   derive(project(list)) round-trips losslessly incl meta/groupId/style;
+//   apply(byPage, derive(byPage)) === byPage (referential bail).
+// ---------------------------------------------------------------------------
+
+describe('deriveCalloutsFromByPage', () => {
+  const SIZES = { 2: PAGE, 3: PAGE };
+
+  // Fully-decorated callout: meta + groupId + style + scope stamps must all
+  // survive the project→derive round-trip byte-for-byte.
+  const richCallout = {
+    ...baseCallout,
+    id: 'c-rich',
+    meta: { authorId: 'user-rich' },
+    groupId: 'grp-7',
+    moduleId: 'mod-1',
+    regionId: 'reg-9',
+  };
+
+  it('round-trips derive(project(list)) losslessly incl meta/groupId/style', () => {
+    const byPage = projectCalloutsIntoByPage({}, [richCallout], SIZES);
+    const derived = deriveCalloutsFromByPage(byPage);
+    assert.equal(derived.length, 1);
+    assert.deepEqual(derived[0], richCallout);
+  });
+
+  it('returns an empty list for an empty/undefined byPage', () => {
+    assert.deepEqual(deriveCalloutsFromByPage({}), []);
+    assert.deepEqual(deriveCalloutsFromByPage(undefined), []);
+  });
+
+  it('ignores non-callout objects', () => {
+    const byPage = {
+      2: { objects: [{ data: { type: 'pen' } }, { type: 'rect' }] },
+    };
+    assert.deepEqual(deriveCalloutsFromByPage(byPage), []);
+  });
+
+  it('takes pageNumber from the byPage KEY, overriding a stale payload value', () => {
+    const stale = { ...baseCallout, id: 'c-stale', pageNumber: 9 };
+    const obj = calloutToAnnotationObject(stale, PAGE);
+    const byPage = { 3: { objects: [obj] } };
+    const derived = deriveCalloutsFromByPage(byPage);
+    assert.equal(derived.length, 1);
+    assert.equal(derived[0].pageNumber, 3);
+  });
+
+  it('orders output by page then id regardless of object order', () => {
+    const cB2 = { ...baseCallout, id: 'b', pageNumber: 2 };
+    const cA2 = { ...baseCallout, id: 'a', pageNumber: 2 };
+    const cA3 = { ...baseCallout, id: 'a3', pageNumber: 3 };
+    const byPage = {
+      3: { objects: [calloutToAnnotationObject(cA3, PAGE)] },
+      2: {
+        objects: [
+          calloutToAnnotationObject(cB2, PAGE),
+          calloutToAnnotationObject(cA2, PAGE),
+        ],
+      },
+    };
+    const ids = deriveCalloutsFromByPage(byPage).map((c) => c.id);
+    assert.deepEqual(ids, ['a', 'b', 'a3']);
+  });
+
+  it('de-dupes by id across pages (first in stable order wins)', () => {
+    const c = { ...baseCallout, id: 'dup' };
+    const byPage = {
+      2: { objects: [calloutToAnnotationObject(c, PAGE)] },
+      3: { objects: [calloutToAnnotationObject({ ...c, pageNumber: 3 }, PAGE)] },
+    };
+    const derived = deriveCalloutsFromByPage(byPage);
+    assert.equal(derived.length, 1);
+    assert.equal(derived[0].pageNumber, 2);
+  });
+
+  it('falls back to legacyNormalizedCoords when legacyCallout is missing', () => {
+    const obj = calloutToAnnotationObject(baseCallout, PAGE);
+    delete obj.data.legacyCallout;
+    const byPage = { 2: { objects: [obj] } };
+    const derived = deriveCalloutsFromByPage(byPage);
+    assert.equal(derived.length, 1);
+    const c = derived[0];
+    assert.equal(c.id, 'c-001');
+    assert.equal(c.pageNumber, 2);
+    // Exact original fractions recovered from legacyNormalizedCoords, not the
+    // pixel division (which would be wrong at the US-Letter fallback size).
+    assertClose(c.arrowTip.x, 0.5, 1e-12, 'fallback arrowTip.x');
+    assertClose(c.arrowTip.y, 0.25, 1e-12, 'fallback arrowTip.y');
+    assertClose(c.knee.x, 0.3, 1e-12, 'fallback knee.x');
+    assertClose(c.textBoxPosition.x, 0.1, 1e-12, 'fallback tbPos.x');
+    assertClose(c.textBoxWidth, 0.2, 1e-12, 'fallback tbW');
+    assertClose(c.textBoxHeight, 0.1, 1e-12, 'fallback tbH');
+    assert.equal(c.text, 'Test callout');
+  });
+
+  it('page-size fallback: derives geometry via US-Letter division when neither legacyCallout nor legacyNormalizedCoords exist', () => {
+    const LETTER = { width: 612, height: 792 };
+    const obj = calloutToAnnotationObject(baseCallout, LETTER);
+    delete obj.data.legacyCallout;
+    delete obj.data.legacyNormalizedCoords;
+    const byPage = { 2: { objects: [obj] } };
+    const derived = deriveCalloutsFromByPage(byPage);
+    assert.equal(derived.length, 1);
+    // Object was projected at US-Letter, so the fallback division recovers the
+    // original fractions exactly.
+    assertClose(derived[0].arrowTip.x, 0.5, 1e-10, 'letter fallback arrowTip.x');
+    assertClose(derived[0].knee.y, 0.5, 1e-10, 'letter fallback knee.y');
+  });
+});
+
+describe('applyCalloutListToByPage', () => {
+  const SIZES = { 2: PAGE };
+
+  it('referential bail: apply(byPage, derive(byPage)) === byPage', () => {
+    const byPage = projectCalloutsIntoByPage(
+      { 2: { objects: [{ data: { type: 'pen' } }] } },
+      [baseCallout],
+      SIZES
+    );
+    const derived = deriveCalloutsFromByPage(byPage);
+    assert.equal(applyCalloutListToByPage(byPage, derived, SIZES), byPage);
+  });
+
+  it('referential bail survives transient-only differences (isSelected)', () => {
+    const byPage = projectCalloutsIntoByPage({}, [baseCallout], SIZES);
+    const selected = [{ ...baseCallout, isSelected: true }];
+    assert.equal(applyCalloutListToByPage(byPage, selected, SIZES), byPage);
+  });
+
+  it('referential bail on empty→empty (no callouts anywhere)', () => {
+    const byPage = { 2: { objects: [{ data: { type: 'pen' } }] } };
+    assert.equal(applyCalloutListToByPage(byPage, [], SIZES), byPage);
+    assert.equal(applyCalloutListToByPage(byPage, null, SIZES), byPage);
+  });
+
+  it('writes a changed callout through the shared projector', () => {
+    const byPage = projectCalloutsIntoByPage({}, [baseCallout], SIZES);
+    const moved = [{ ...baseCallout, knee: { x: 0.7, y: 0.7 } }];
+    const next = applyCalloutListToByPage(byPage, moved, SIZES);
+    assert.notEqual(next, byPage);
+    const derived = deriveCalloutsFromByPage(next);
+    assertClose(derived[0].knee.x, 0.7, 1e-12, 'moved knee.x');
+  });
+
+  it('adds a new callout while preserving non-callout objects by reference', () => {
+    const pen = { data: { type: 'pen' }, id: 'p1' };
+    const byPage = { 2: { objects: [pen] } };
+    const next = applyCalloutListToByPage(byPage, [baseCallout], SIZES);
+    assert.ok(next[2].objects.includes(pen), 'pen kept by reference');
+    assert.equal(next[2].objects.filter((o) => o?.data?.type === 'callout').length, 1);
+  });
+
+  it('empty-list strip: removes ghost callout objects, keeps everything else', () => {
+    const pen = { data: { type: 'pen' }, id: 'p1' };
+    const withCallout = applyCalloutListToByPage({ 2: { objects: [pen] } }, [baseCallout], SIZES);
+    const stripped = applyCalloutListToByPage(withCallout, [], SIZES);
+    assert.notEqual(stripped, withCallout);
+    assert.deepEqual(
+      stripped[2].objects.filter((o) => o?.data?.type === 'callout'),
+      []
+    );
+    assert.ok(stripped[2].objects.includes(pen), 'pen survives the strip');
+  });
+
+  it('empty-list strip only touches pages that hold a callout (others keep reference)', () => {
+    const cleanPage = { objects: [{ data: { type: 'pen' } }] };
+    const withCallout = {
+      1: cleanPage,
+      2: { objects: [calloutToAnnotationObject(baseCallout, PAGE)] },
+    };
+    const stripped = applyCalloutListToByPage(withCallout, [], SIZES);
+    assert.notEqual(stripped, withCallout);
+    assert.equal(stripped[1], cleanPage, 'callout-free page keeps its reference');
+    assert.deepEqual(stripped[2].objects, []);
+  });
+
+  it('dedupe: a duplicated id in nextList projects a single object', () => {
+    const next = applyCalloutListToByPage({}, [baseCallout, { ...baseCallout }], SIZES);
+    assert.equal(next[2].objects.filter((o) => o?.data?.type === 'callout').length, 1);
+  });
+
+  it('page-size fallback: unmeasured page projects at US-Letter without throwing', () => {
+    const next = applyCalloutListToByPage({}, [baseCallout], {});
+    assert.equal(next[2].objects.filter((o) => o?.data?.type === 'callout').length, 1);
+    // and the round-trip still recovers the exact fractions via legacyCallout
+    assert.deepEqual(deriveCalloutsFromByPage(next), [baseCallout]);
   });
 });
