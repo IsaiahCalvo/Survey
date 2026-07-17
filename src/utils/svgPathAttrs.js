@@ -476,6 +476,11 @@ export function renderPathToSvgAttrs(obj) {
       strokeWidth: 0,
       fill: isVisiblePaint(obj.fill) ? obj.fill : (obj.stroke ?? '#000'),
       fillRule: 'evenodd',
+      // Native paper ink (and eraser-carved ink) is a FILLED outline polygon:
+      // the visible stroke body IS the fill region. This flag lets hit-testing
+      // treat the interior as the stroke (interior hover/click), exactly like
+      // the imported-PDF smoothClosedOutline branch below.
+      filledOutline: true,
       strokeLinecap: obj.strokeLineCap ?? 'round',
       strokeLinejoin: obj.strokeLineJoin ?? 'round',
       vectorEffect: undefined,
@@ -489,6 +494,7 @@ export function renderPathToSvgAttrs(obj) {
       strokeWidth: 0,
       fill,
       fillRule: 'nonzero',
+      filledOutline: true,
       smoothClosedOutline: true,
       smoothClosedOutlineAsEllipse: shouldRenderClosedInkAsEllipse(obj),
       strokeLinecap: obj.strokeLineCap ?? 'round',
@@ -524,5 +530,54 @@ export function renderPathToSvgAttrs(obj) {
     strokeLinejoin: obj.strokeLineJoin ?? 'round',
     vectorEffect,
     opacity: obj.opacity ?? 1,
+  };
+}
+
+/**
+ * True when the rendered path is a FILLED stroke-outline (no painted stroke,
+ * visible fill IS the stroke body). Covers both the imported-PDF ink branch
+ * (`smoothClosedOutline`) and native paper ink / eraser-carved ink
+ * (`filledOutline` via fillRule evenodd or paperEraserGeometry v1).
+ * Hit-testing for these paths must treat the interior as the stroke.
+ *
+ * @param {object|null|undefined} attrs Result of renderPathToSvgAttrs.
+ * @returns {boolean}
+ */
+export function isFilledInkOutlineAttrs(attrs) {
+  if (!attrs) return false;
+  if (attrs.filledOutline !== true && attrs.smoothClosedOutline !== true) return false;
+  return attrs.stroke === 'none' && !!attrs.fill && attrs.fill !== 'none';
+}
+
+/**
+ * Invisible hit-target paint props for a filled ink outline path.
+ * Returns null when the attrs are not a filled ink outline (caller keeps the
+ * plain stroke-band hit target).
+ *
+ * UX contract:
+ * - fill 'rgba(0,0,0,0.001)' + pointerEvents 'all' → the whole visible stroke
+ *   body hovers/clicks (mid-stroke, not edge-only). fillRule is forwarded so
+ *   eraser-carved holes (evenodd) stay non-interactive in their interiors.
+ * - Native outlines KEEP a transparent boundary stroke band (same
+ *   max(12, sw, 3*inverseScale) contract as plain pen paths, screen-constant
+ *   via the inverseScale floor) so hairline strokes stay grabbable.
+ * - Imported-PDF ink keeps its existing hairline band (stroke 'none',
+ *   sub-pixel strokeWidth) — behavior unchanged.
+ *
+ * @param {object} attrs Result of renderPathToSvgAttrs.
+ * @param {{ strokeWidth?: number, inverseScale?: number }} [opts]
+ * @returns {{ fill: string, fillRule: string|undefined, stroke: string, strokeWidth: number, pointerEvents: 'all' } | null}
+ */
+export function getFilledInkHitTargetProps(attrs, { strokeWidth = 1, inverseScale = 1 } = {}) {
+  if (!isFilledInkOutlineAttrs(attrs)) return null;
+  const isNativeOutline = attrs.smoothClosedOutline !== true;
+  return {
+    fill: 'rgba(0,0,0,0.001)',
+    fillRule: attrs.fillRule,
+    stroke: isNativeOutline ? 'rgba(0,0,0,0.001)' : 'none',
+    strokeWidth: isNativeOutline
+      ? Math.max(12, strokeWidth || 1, 3 * inverseScale)
+      : Math.max(0.75 * inverseScale, 0.75),
+    pointerEvents: 'all',
   };
 }

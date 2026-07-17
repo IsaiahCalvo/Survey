@@ -3603,17 +3603,26 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       latestEvent = null;
       if (!e) return;
       const hit = resolveAnnotationAt(e);
-      // Only treat plain annotations as hover targets. Callouts + counters
-      // flow through their own hover paths (or none) and the parallel
-      // callout session owns their interaction.
+      // UX 2026-07-17 — pan-mode hover parity: annotations AND callouts both
+      // glow under the pan tool (same affordance the Select tool shows).
+      // Counters flow through their own hover path (or none).
       const isAnnotation = hit && hit.kind === 'annotation'
         && typeof hit.annotationIndex === 'number'
         && hit.pageNumber != null;
-      const nextKey = isAnnotation ? `${hit.pageNumber}:${hit.annotationIndex}` : '';
+      const isCallout = hit && hit.kind === 'callout'
+        && hit.calloutId != null
+        && hit.pageNumber != null;
+      const nextKey = isAnnotation
+        ? `${hit.pageNumber}:${hit.annotationIndex}`
+        : isCallout
+          ? `${hit.pageNumber}:callout:${hit.calloutId}`
+          : '';
       if (nextKey === lastKey) return;
       lastKey = nextKey;
-      if (isAnnotation) {
-        setPendingSvgHover({ pageNumber: hit.pageNumber, annotationIndex: hit.annotationIndex });
+      if (isAnnotation || isCallout) {
+        setPendingSvgHover(isAnnotation
+          ? { pageNumber: hit.pageNumber, annotationIndex: hit.annotationIndex }
+          : { pageNumber: hit.pageNumber, calloutId: hit.calloutId });
         // UX: pointer cursor over annotations in pan mode. document.body is
         // the lowest-priority target so Pdfjs-level pan cursor wins
         // everywhere else. Cleared on no-hit and on tool-change cleanup.

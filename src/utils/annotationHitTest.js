@@ -179,7 +179,14 @@ export function resolveAnnotationAt(e) {
       pt.y = e.clientY;
       const local = pt.matrixTransform(ctm.inverse());
       if (typeof el.isPointInStroke === 'function' && el.isPointInStroke(local)) return true;
-      if (typeof el.isPointInFill === 'function' && el.isPointInFill(local)) return true;
+      // Fill counts ONLY when the hit element declares a fill (hit targets
+      // signal fill-interactivity via fill="rgba(0,0,0,0.001)" vs "none").
+      // Without this gate, isPointInFill would hit the implicit closed
+      // interior of unfilled shapes/paths — exactly the bbox-ish behavior
+      // the uniform Bluebeam-style model forbids (hollow interiors inert).
+      const fillAttr = typeof el.getAttribute === 'function' ? el.getAttribute('fill') : null;
+      const fillActive = fillAttr != null && fillAttr !== 'none' && fillAttr !== 'transparent';
+      if (fillActive && typeof el.isPointInFill === 'function' && el.isPointInFill(local)) return true;
     } catch {
       return false;
     }
@@ -201,21 +208,35 @@ export function resolveAnnotationAt(e) {
       .filter(isVisibleElement);
     let inspected = 0;
     for (const wrapper of wrappers) {
-      const pathTargets = wrapper.querySelectorAll('[data-path-hit-target="true"], [data-path-bbox-hit-target="true"]');
-      for (const el of pathTargets) {
+      // Pass 1 — REAL geometry. Every element that traces actual annotation
+      // geometry (pen/ink paths + rect/ellipse/polygon/polyline/line/arrow/
+      // counter shape targets) is tested with isPointInStroke/isPointInFill
+      // only. Deliberately NO bbox fallback: a point inside the bounding box
+      // but off the geometry is NOT a hit — hollow shape interiors stay
+      // inert in pan/right-click exactly as they are under the Select tool
+      // (uniform Bluebeam-style model: edge-only unless filled/text-bearing).
+      const geometryTargets = wrapper.querySelectorAll('[data-path-hit-target="true"], [data-shape-hit-target]');
+      for (const el of geometryTargets) {
         inspected += 1;
-        const hit = svgGeometryContainsPoint(el) || rectContainsPoint(el);
-        if (!hit) continue;
+        if (!svgGeometryContainsPoint(el)) continue;
         readHitCarrier(el);
         if (annotationIndex != null || calloutId || isCounter) break;
       }
       if (annotationIndex != null || calloutId || isCounter) break;
 
-      const candidates = wrapper.querySelectorAll('[data-annotation-index], [data-callout-id], [data-counter-overlay]');
+      // Pass 2 — intentionally-bbox types only: freetext/textbox fallback
+      // rects, survey markers, callout hit zones, counter HTML overlays.
+      // Carriers that contain real geometry targets were already decided by
+      // pass 1 — skip them so hollow interiors can't resurrect via bbox.
+      const candidates = wrapper.querySelectorAll('[data-annotation-index], [data-callout-id], [data-counter-overlay], [data-path-bbox-hit-target="true"]');
       for (const el of candidates) {
         inspected += 1;
+        if (typeof el.querySelector === 'function'
+          && el.querySelector('[data-path-hit-target="true"], [data-shape-hit-target]')) {
+          continue;
+        }
         if (!rectContainsPoint(el)) continue;
-        readFrom(el);
+        readHitCarrier(el);
         if (annotationIndex != null || calloutId || isCounter) break;
       }
       if (annotationIndex != null || calloutId || isCounter) break;

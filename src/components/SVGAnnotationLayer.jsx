@@ -72,7 +72,7 @@ import { resolveMidpointHandlePosition } from '../utils/lineDragMath.js';
 import { buildArrowheadRenderSpec } from '../utils/lineRenderHelpers.js';
 import { getCurvedPath, distanceToLineSegment, getCurveEndAngle } from '../utils/lineGeometry.js';
 import { ARROWHEAD_STYLES } from './Callout/types';
-import { renderPathToSvgAttrs, renderPathToSvgD } from '../utils/svgPathAttrs.js';
+import { renderPathToSvgAttrs, renderPathToSvgD, isFilledInkOutlineAttrs, getFilledInkHitTargetProps } from '../utils/svgPathAttrs.js';
 import {
   ANNOTATION_VISIBILITY_SCOPE,
   getAnnotationVisibilityScope,
@@ -122,21 +122,20 @@ const hasVisiblePaint = (value) => {
 };
 
 const getShapeHitTargetProps = ({ fill, stroke, strokeWidth, minStrokeWidth = 12, isInteractive }) => {
-  if (!isInteractive) {
-    return {
-      fill: 'none',
-      stroke: 'none',
-      strokeWidth: 0,
-      pointerEvents: 'none',
-    };
-  }
   const hasFill = hasVisiblePaint(fill);
   const hasStroke = hasVisiblePaint(stroke) && Number(strokeWidth || 0) > 0;
+  // UX 2026-07-17 — the geometry paints (invisible fill / stroke band) are
+  // emitted even when the layer is NOT interactive (pan mode, creation
+  // tools); only pointerEvents is gated. Pan-mode hover/right-click resolve
+  // through resolveAnnotationAt's isPointInStroke/isPointInFill pass, which
+  // needs the real stroke band width + fill flag on the DOM element to test
+  // the SAME geometry the Select tool uses. pointerEvents 'none' keeps these
+  // elements inert for direct pointer input outside Select mode.
   return {
     fill: hasFill ? 'rgba(0,0,0,0.001)' : 'none',
     stroke: hasStroke ? 'rgba(0,0,0,0.001)' : 'none',
     strokeWidth: hasStroke ? Math.max(minStrokeWidth, Number(strokeWidth || 1) + 10) : 0,
-    pointerEvents: hasFill ? 'all' : (hasStroke ? 'stroke' : 'none'),
+    pointerEvents: !isInteractive ? 'none' : hasFill ? 'all' : (hasStroke ? 'stroke' : 'none'),
   };
 };
 
@@ -574,17 +573,36 @@ const SVGAnnotationLayer = memo(({
   // Otherwise paint the glow by setting hoveredId to the matching index.
   // This deliberately mirrors the Select-mode onPointerEnter/Leave path so
   // one glow implementation serves both modes.
+  // UX 2026-07-17 — pan-mode hover parity for callouts: pendingHover may
+  // carry a calloutId instead of an annotationIndex. Route it through the
+  // SAME enter/leave handlers the Select-mode pointer events use so the
+  // callout hover glow is one implementation across both modes. The ref
+  // remembers which callout THIS effect hovered so it only clears its own
+  // pan-driven hover, never a Select-mode pointerenter hover.
+  const panHoverCalloutIdRef = useRef(null);
   useEffect(() => {
-    if (!pendingHover || pendingHover.pageNumber !== pageNumber) {
+    const onThisPage = !!pendingHover && pendingHover.pageNumber === pageNumber;
+    const nextAnnotationIndex = onThisPage && typeof pendingHover.annotationIndex === 'number'
+      ? pendingHover.annotationIndex
+      : null;
+    const nextCalloutId = onThisPage && pendingHover.calloutId != null
+      ? pendingHover.calloutId
+      : null;
+    if (nextAnnotationIndex == null) {
       setHoveredId((prev) => (prev == null ? prev : null));
-      return;
+    } else {
+      setHoveredId(nextAnnotationIndex);
     }
-    if (typeof pendingHover.annotationIndex !== 'number') {
-      setHoveredId((prev) => (prev == null ? prev : null));
-      return;
+    if (panHoverCalloutIdRef.current !== nextCalloutId) {
+      if (panHoverCalloutIdRef.current != null) {
+        handleCalloutPointerLeave(panHoverCalloutIdRef.current);
+      }
+      if (nextCalloutId != null) {
+        handleCalloutPointerEnter(nextCalloutId);
+      }
+      panHoverCalloutIdRef.current = nextCalloutId;
     }
-    setHoveredId(pendingHover.annotationIndex);
-  }, [pendingHover, pageNumber, setHoveredId]);
+  }, [pendingHover, pageNumber, setHoveredId, handleCalloutPointerEnter, handleCalloutPointerLeave]);
 
   // Determine pointer events mode: interactive when select tool active AND not in edit mode
   // When editingAnnotationIndex is set, FabricEditCanvas + MiniToolbar need to receive clicks
@@ -3407,8 +3425,13 @@ const SVGAnnotationLayer = memo(({
     // size themselves from it (HANDLE_RADIUS * sqrt(inverseScale)); without it
     // here this memo holds a stale value and the handles swell on zoom while
     // every other shape's handles (which re-read it fresh) stay constant.
+    // UX 2026-07-17 — hoveredCalloutId + selectedIds MUST be dependencies.
+    // showGlow/isMultiSelect read both; without them the memo held a stale
+    // snapshot and the callout hover glow NEVER painted (and the
+    // "1 callout + 1 annotation selected" multi-select glow never updated).
+    // Per-hover recompute of this loop is cheap (callouts are few per page).
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [callouts, pageNumber, selectedModuleId, showSurveyPanel, selectedSpaceId, activeSpaceId, activeRegions, activeRegionId, spaces, getCanvasAnnotationVisibilityState, getSurveyAnnotationVisibilityState, isRegionOverlayEnabled, layerVisibility, width, height, editingCalloutId, liveCalloutEditBounds, effectiveSelectedCalloutIds, activeCalloutDrag, visualTransform, inverseScale, isPageInRenderWindow]);
+  }, [callouts, pageNumber, selectedModuleId, showSurveyPanel, selectedSpaceId, activeSpaceId, activeRegions, activeRegionId, spaces, getCanvasAnnotationVisibilityState, getSurveyAnnotationVisibilityState, isRegionOverlayEnabled, layerVisibility, width, height, editingCalloutId, liveCalloutEditBounds, effectiveSelectedCalloutIds, activeCalloutDrag, visualTransform, inverseScale, isPageInRenderWindow, hoveredCalloutId, selectedIds]);
 
   // Diagnostic: after the SVG callouts are laid out, walk the DOM and record
   // the source data + every rendered element's screen rect per callout id.
@@ -3990,6 +4013,7 @@ const SVGAnnotationLayer = memo(({
                     strokeLinecap="round"
                     vectorEffect="non-scaling-stroke"
                     pointerEvents={isSelectTool && isObjectInteractive ? 'stroke' : 'none'}
+                    data-shape-hit-target="line"
                     onPointerDown={(e) => handleAnnotationPointerDown(e, i)}
                     onPointerEnter={(e) => handleAnnotationPointerEnter(e, i)}
                     onPointerLeave={(e) => handleAnnotationPointerLeave(e, i)}
@@ -4009,6 +4033,7 @@ const SVGAnnotationLayer = memo(({
                     // on the SVG root instead of re-selecting this existing
                     // annotation mid-drag.
                     pointerEvents={isSelectTool && isObjectInteractive ? 'stroke' : 'none'}
+                    data-shape-hit-target="line"
                     onPointerDown={(e) => handleAnnotationPointerDown(e, i)}
                     onPointerEnter={(e) => handleAnnotationPointerEnter(e, i)}
                     onPointerLeave={(e) => handleAnnotationPointerLeave(e, i)}
@@ -4072,6 +4097,7 @@ const SVGAnnotationLayer = memo(({
                   stroke={counterHitProps.stroke}
                   strokeWidth={counterHitProps.strokeWidth}
                   pointerEvents={counterHitProps.pointerEvents}
+                  data-shape-hit-target="counter"
                   onPointerDown={(e) => handleAnnotationPointerDown(e, i)}
                   onPointerEnter={(e) => handleAnnotationPointerEnter(e, i)}
                   onPointerLeave={(e) => handleAnnotationPointerLeave(e, i)}
@@ -4411,11 +4437,12 @@ const SVGAnnotationLayer = memo(({
             // "i" dot and its stem must remain independently selectable.
             const pathAttrs = renderPathToSvgAttrs(renderObj);
             const pathD = renderPathToSvgD(renderObj, pathAttrs);
-            const isFilledPdfInkOutline =
-              pathAttrs.smoothClosedOutline === true &&
-              pathAttrs.stroke === 'none' &&
-              pathAttrs.fill &&
-              pathAttrs.fill !== 'none';
+            // Filled stroke-outline ink: imported-PDF ink (smoothClosedOutline)
+            // AND native pen/eraser-carved ink (filledOutline via evenodd /
+            // paperEraserGeometry). Both store the visible stroke as a filled
+            // outline polygon, so the whole stroke body must hover/click —
+            // not just its edges. Predicate lives in svgPathAttrs.js.
+            const isFilledPdfInkOutline = isFilledInkOutlineAttrs(pathAttrs);
             const pathLeft = renderObj.left ?? 0;
             const pathTop = renderObj.top ?? 0;
             const pathAngle = renderObj.angle ?? 0;
@@ -4462,8 +4489,12 @@ const SVGAnnotationLayer = memo(({
             const hoverStrokeWidth = isFilledPdfInkOutline
               ? Math.max(1.25 * hoverInv, Math.min(2 * hoverInv, sw + 0.5))
               : Math.max(6, sw + 4);
-            const hitStrokeWidth = isFilledPdfInkOutline
-              ? Math.max(0.75 * inverseScale, 0.75)
+            // Filled-outline ink hit props (fill = interior hit, plus a
+            // transparent boundary band for native ink so hairline strokes
+            // stay grabbable). Null for plain stroked paths.
+            const inkHitProps = getFilledInkHitTargetProps(pathAttrs, { strokeWidth: sw, inverseScale });
+            const hitStrokeWidth = inkHitProps
+              ? inkHitProps.strokeWidth
               : isSelectDeleteOnlyPdfTextMarkupHitTarget
                 ? Math.max(4, pathAttrs.strokeWidth || sw || 1)
               : Math.max(12, pathAttrs.strokeWidth || sw || 1, 3 * inverseScale);
@@ -4481,6 +4512,9 @@ const SVGAnnotationLayer = memo(({
                     strokeWidth={hoverStrokeWidth}
                     fill={isFilledPdfInkOutline ? '#4a90e2' : 'none'}
                     fillOpacity={isFilledPdfInkOutline ? 0.12 : undefined}
+                    // Eraser-carved ink is evenodd — forward the rule so
+                    // carved holes don't glow filled.
+                    fillRule={isFilledPdfInkOutline ? pathAttrs.fillRule : undefined}
                     strokeLinecap="round"
                     strokeLinejoin="round"
                     style={{ pointerEvents: 'none' }}
@@ -4489,8 +4523,9 @@ const SVGAnnotationLayer = memo(({
                 <path
                   d={pathD}
                   transform={pathTransform}
-                  fill={isFilledPdfInkOutline ? 'rgba(0,0,0,0.001)' : 'none'}
-                  stroke={isFilledPdfInkOutline ? 'none' : 'rgba(0,0,0,0.001)'}
+                  fill={inkHitProps ? inkHitProps.fill : 'none'}
+                  fillRule={inkHitProps ? inkHitProps.fillRule : undefined}
+                  stroke={inkHitProps ? inkHitProps.stroke : 'rgba(0,0,0,0.001)'}
                   strokeWidth={hitStrokeWidth}
                   strokeLinecap="round"
                   strokeLinejoin="round"
