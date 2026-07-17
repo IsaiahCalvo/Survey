@@ -1022,6 +1022,10 @@ export const buildCalloutTextContentStyle = ({
   textAlign,
   fontSize,
   fontFamily,
+  fontWeight,
+  fontStyle,
+  underline,
+  linethrough,
   color,
   lineHeight,
 }) => ({
@@ -1036,6 +1040,16 @@ export const buildCalloutTextContentStyle = ({
   fontVariantLigatures: 'none',
   fontSize: `${fontSize || 12}px`,
   fontFamily,
+  // UX (2026-07-17): bold/italic/underline/strikethrough now RENDER on the
+  // committed callout, matching buildPlainTextContentStyle. The toolbar
+  // toggles stored these flags all along but the view dropped them, so text
+  // visibly lost its styling the moment the user left edit mode.
+  fontWeight: fontWeight || 'normal',
+  fontStyle: fontStyle || 'normal',
+  textDecoration: [
+    underline ? 'underline' : null,
+    linethrough ? 'line-through' : null,
+  ].filter(Boolean).join(' ') || 'none',
   color: color || '#000',
   overflow: 'hidden',
   wordWrap: 'break-word',
@@ -1526,6 +1540,16 @@ export const renderCallout = (callout, index, pageSize, calculateConnection, hid
                 textAlign: callout.style?.textAlign,
                 fontSize: callout.style?.fontSize,
                 fontFamily: safeFontFamily,
+                // UX (2026-07-17): style flags now render on the committed
+                // callout to match the edit overlay — bold/italic/underline/
+                // strikethrough were stored + round-tripped but never drawn,
+                // so text silently "unstyled" itself on leaving edit mode.
+                // Callout storage uses boolean flags (types.js
+                // defaultCalloutStyle); map to CSS the same way freetext does.
+                fontWeight: callout.style?.bold ? 'bold' : 'normal',
+                fontStyle: callout.style?.italic ? 'italic' : 'normal',
+                underline: !!callout.style?.underline,
+                linethrough: !!callout.style?.strikethrough,
                 color: callout.style?.fontColor || callout.style?.textColor,
                 lineHeight: callout.style?.lineHeight,
               })}

@@ -1077,7 +1077,13 @@ function drawCallout(context, callout, pageWidth, pageHeight, displayScale = 1) 
   const text = String(callout.text || '');
   if (text) {
     const fontFamily = String(callout.style?.fontFamily || 'Arial').split(',')[0].replace(/["']/g, '');
-    const fontShorthand = `${fontSize}px ${fontFamily}`;
+    // UX (2026-07-17): honor the callout's stored bold/italic flags so the
+    // eraser presentation matches the SVG view, which now renders them
+    // (buildCalloutTextContentStyle parity fix). Same shorthand order as
+    // drawText: style weight size family.
+    const calloutFontStyle = callout.style?.italic ? 'italic' : 'normal';
+    const calloutFontWeight = callout.style?.bold ? 'bold' : 'normal';
+    const fontShorthand = `${calloutFontStyle} ${calloutFontWeight} ${fontSize}px ${fontFamily}`;
     context.font = fontShorthand;
     // SVG callout text renders with text-rendering: geometricPrecision
     // (buildCalloutTextContentStyle) — ~13% less ink than Chromium's default
@@ -1133,8 +1139,43 @@ function drawCallout(context, callout, pageWidth, pageHeight, displayScale = 1) 
     // painted 263.000; unsnapped canvas text sat 1 css px low at 233% zoom —
     // the "callout text jumps when I switch to the eraser" report).
     const paintStartY = baselineInLine == null ? startY : Math.round(startY);
+    // UX (2026-07-17): underline/strikethrough decorations — same offsets as
+    // drawText (tuned from the old line-box center, re-expressed against the
+    // baseline anchor) so the eraser view matches the SVG's text-decoration
+    // rendering, which now draws these stored callout flags.
+    const calloutUnderline = !!callout.style?.underline;
+    const calloutLinethrough = !!callout.style?.strikethrough;
+    const decorationWidth = Math.max(1, fontSize / 14);
+    const underlineOffset = (lineHeightPx / 2 - anchorInLine) + fontSize * 0.36;
+    const linethroughOffset = (lineHeightPx / 2 - anchorInLine) - fontSize * 0.08;
     paintedLines.forEach((line, index) => {
-      context.fillText(line, anchorX, paintStartY + index * lineHeightPx + anchorInLine);
+      const glyphY = paintStartY + index * lineHeightPx + anchorInLine;
+      context.fillText(line, anchorX, glyphY);
+      if ((calloutUnderline || calloutLinethrough) && line) {
+        const lineWidthPx = context.measureText(line).width;
+        const startX = context.textAlign === 'center' ? anchorX - lineWidthPx / 2
+          : context.textAlign === 'right' ? anchorX - lineWidthPx
+            : anchorX;
+        context.save();
+        context.strokeStyle = context.fillStyle;
+        context.lineWidth = decorationWidth;
+        if (typeof context.setLineDash === 'function') context.setLineDash([]);
+        if (calloutUnderline) {
+          const y = glyphY + underlineOffset;
+          context.beginPath();
+          context.moveTo(startX, y);
+          context.lineTo(startX + lineWidthPx, y);
+          context.stroke();
+        }
+        if (calloutLinethrough) {
+          const y = glyphY + linethroughOffset;
+          context.beginPath();
+          context.moveTo(startX, y);
+          context.lineTo(startX + lineWidthPx, y);
+          context.stroke();
+        }
+        context.restore();
+      }
     });
   }
   context.restore();

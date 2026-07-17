@@ -167,6 +167,14 @@ export function toFabricGroup(reactCallout, pageSize) {
     // Respect author-specified alignment from imported PDFs.
     textAlign: style.textAlign || 'left',
     fontWeight: style.bold ? 'bold' : 'normal',
+    // UX (2026-07-17): carry the remaining stored style flags into the edit
+    // textbox. This child seeds TextEditOverlay's styleRef at edit entry, so
+    // without these the editor (and its formatting toolbar state) silently
+    // dropped italic/underline/strikethrough that the committed SVG render
+    // now draws (buildCalloutTextContentStyle parity fix).
+    fontStyle: style.italic ? 'italic' : 'normal',
+    underline: !!style.underline,
+    linethrough: !!style.strikethrough,
     fill: style.fontColor || '#1e293b',
     text: reactCallout.text || '',
     // UX: splitByGrapheme matches regular text annotation behavior
@@ -541,6 +549,16 @@ export function buildCalloutRenderSpec(callout, index, pageSize, calculateConnec
           height: '100%',
           fontSize: `${callout.style?.fontSize || 12}px`,
           fontFamily: safeFontFamily,
+          // UX (2026-07-17): spec twin of the renderCallout fix — the stored
+          // bold/italic/underline/strikethrough flags render on the committed
+          // callout (they previously saved but never drew). Keeps this
+          // Node-testable spec aligned with the JSX inner-div style.
+          fontWeight: callout.style?.bold ? 'bold' : 'normal',
+          fontStyle: callout.style?.italic ? 'italic' : 'normal',
+          textDecoration: [
+            callout.style?.underline ? 'underline' : null,
+            callout.style?.strikethrough ? 'line-through' : null,
+          ].filter(Boolean).join(' ') || 'none',
           color: callout.style?.fontColor || callout.style?.textColor || '#000',
           overflow: 'visible',
           wordWrap: 'break-word',

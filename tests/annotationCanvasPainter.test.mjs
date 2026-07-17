@@ -208,6 +208,71 @@ test('Canvas2D callouts paint their text inside the callout box', () => {
   assert.ok(paintedText.join(' ').includes('Hello'));
 });
 
+test('Canvas2D callouts honor stored bold/italic/underline/strikethrough flags', () => {
+  // 2026-07-17 parity fix twin: the SVG view now renders the stored style
+  // flags, so the eraser-presentation painter must too or callout text would
+  // visibly un-style on every eraser toggle.
+  const makeContext = (log) => ({
+    setTransform: () => {},
+    clearRect: () => {},
+    save: () => {},
+    restore: () => {},
+    beginPath: () => {},
+    moveTo: () => {},
+    lineTo: () => {},
+    closePath: () => {},
+    translate: () => {},
+    rotate: () => {},
+    setLineDash: () => {},
+    stroke: () => { log.strokes += 1; },
+    arc: () => {},
+    fill: () => {},
+    fillRect: () => {},
+    strokeRect: () => {},
+    measureText: (text) => ({ width: String(text).length * 6 }),
+    fillText: (text) => log.texts.push(text),
+    set font(value) { log.fonts.push(value); },
+    get font() { return log.fonts[log.fonts.length - 1] || ''; },
+  });
+  const paintWithStyle = (style) => {
+    const log = { fonts: [], texts: [], strokes: 0 };
+    paintAnnotationCanvas(makeContext(log), {
+      canvasWidth: 600,
+      canvasHeight: 800,
+      drawScale: 1,
+      displayScale: 1,
+      pageWidth: 600,
+      pageHeight: 800,
+      objects: [],
+      callouts: [{
+        pageNumber: 1,
+        text: 'Styled',
+        arrowTip: { x: 0.1, y: 0.1 },
+        knee: { x: 0.2, y: 0.2 },
+        textBoxPosition: { x: 0.3, y: 0.3 },
+        textBoxWidth: 0.25,
+        textBoxHeight: 0.1,
+        style: { fontSize: 12, ...style },
+      }],
+    });
+    return log;
+  };
+
+  const plain = paintWithStyle({});
+  assert.ok(plain.fonts.some((f) => f.includes('normal normal 12px')),
+    `expected a normal-weight callout font, got: ${plain.fonts.join(' | ')}`);
+
+  const boldItalic = paintWithStyle({ bold: true, italic: true });
+  assert.ok(boldItalic.fonts.some((f) => f.includes('italic bold 12px')),
+    `expected 'italic bold' in callout font shorthand, got: ${boldItalic.fonts.join(' | ')}`);
+  assert.ok(boldItalic.texts.includes('Styled'));
+
+  // One painted line + underline + strikethrough = exactly 2 extra strokes.
+  const decorated = paintWithStyle({ underline: true, strikethrough: true });
+  assert.equal(decorated.strokes - plain.strokes, 2,
+    'underline + strikethrough should each stroke one decoration line');
+});
+
 test('counter pins paint the full Shottr-style bubble from radius-only circle JSON', () => {
   // Counters are hand-built Fabric Circle JSON carrying `radius` but NO
   // width/height. The old painter read width/height, degenerated the pin to a

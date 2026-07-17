@@ -441,6 +441,14 @@ export default function TextEditOverlay({
       textAlign: s.textAlign,
       fontSize: s.fontSize,
       fontFamily: s.fontFamily,
+      // UX (2026-07-17): pass the style flags through so the editor shows
+      // bold/italic/underline/strikethrough live — the committed SVG render
+      // now draws them too (buildCalloutTextContentStyle), so edit and view
+      // stay visually identical (no style pop when leaving edit mode).
+      fontWeight: s.fontWeight,
+      fontStyle: s.fontStyle,
+      underline: s.underline,
+      linethrough: s.linethrough,
       color: s.fill,
       lineHeight: s.lineHeight,
     })

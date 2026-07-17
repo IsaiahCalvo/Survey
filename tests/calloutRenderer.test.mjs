@@ -106,6 +106,56 @@ test('buildCalloutRenderSpec sanitizes fontFamily fallback stack to first token'
   assert.equal(innerDiv.style.fontFamily, 'Inter');
 });
 
+// 2026-07-17 — stored text-style flags must RENDER on the committed callout
+// (bug: bold/italic/underline/strikethrough were saved + round-tripped but the
+// view dropped them, so text visibly un-styled itself on leaving edit mode).
+// The spec's inner div mirrors renderCallout's buildCalloutTextContentStyle
+// output 1:1, so these assertions cover the real JSX contract.
+const innerDivOf = (spec) => {
+  const textNode = findAll(spec, (n) => n.attrs && n.attrs['data-callout-part'] === 'text')[0];
+  return textNode && textNode.children && textNode.children[0];
+};
+
+test('callout spec inner div renders bold-only as font-weight bold', () => {
+  const withBold = { ...baseCallout, style: { ...baseCallout.style, bold: true } };
+  const innerDiv = innerDivOf(buildCalloutRenderSpec(withBold, 0, { width: 1000, height: 800 }, stubConnection));
+  assert.ok(innerDiv, 'expected an inner div child');
+  assert.equal(innerDiv.style.fontWeight, 'bold');
+  assert.equal(innerDiv.style.fontStyle, 'normal');
+  assert.equal(innerDiv.style.textDecoration, 'none');
+});
+
+test('callout spec inner div renders italic + underline together', () => {
+  const styled = { ...baseCallout, style: { ...baseCallout.style, italic: true, underline: true } };
+  const innerDiv = innerDivOf(buildCalloutRenderSpec(styled, 0, { width: 1000, height: 800 }, stubConnection));
+  assert.ok(innerDiv, 'expected an inner div child');
+  assert.equal(innerDiv.style.fontStyle, 'italic');
+  assert.equal(innerDiv.style.fontWeight, 'normal');
+  assert.equal(innerDiv.style.textDecoration, 'underline');
+});
+
+test('callout spec inner div renders strikethrough as line-through', () => {
+  const styled = { ...baseCallout, style: { ...baseCallout.style, strikethrough: true } };
+  const innerDiv = innerDivOf(buildCalloutRenderSpec(styled, 0, { width: 1000, height: 800 }, stubConnection));
+  assert.ok(innerDiv, 'expected an inner div child');
+  assert.equal(innerDiv.style.textDecoration, 'line-through');
+});
+
+test('callout spec inner div combines underline + strikethrough decorations', () => {
+  const styled = { ...baseCallout, style: { ...baseCallout.style, underline: true, strikethrough: true } };
+  const innerDiv = innerDivOf(buildCalloutRenderSpec(styled, 0, { width: 1000, height: 800 }, stubConnection));
+  assert.ok(innerDiv, 'expected an inner div child');
+  assert.equal(innerDiv.style.textDecoration, 'underline line-through');
+});
+
+test('callout spec inner div defaults to unstyled text when flags are absent', () => {
+  const innerDiv = innerDivOf(buildCalloutRenderSpec(baseCallout, 0, { width: 1000, height: 800 }, stubConnection));
+  assert.ok(innerDiv, 'expected an inner div child');
+  assert.equal(innerDiv.style.fontWeight, 'normal');
+  assert.equal(innerDiv.style.fontStyle, 'normal');
+  assert.equal(innerDiv.style.textDecoration, 'none');
+});
+
 test('buildCalloutRenderSpec returns null for null input', () => {
   assert.equal(buildCalloutRenderSpec(null, 0, { width: 1000, height: 800 }, stubConnection), null);
 });
