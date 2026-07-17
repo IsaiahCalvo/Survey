@@ -478,6 +478,21 @@ export default function TextEditOverlay({
         overflow: 'visible',
         pointerEvents: 'none',
         zIndex: 101,
+        // UX (2026-07-17): the editor overlay must never act as the viewer's
+        // scroll anchor. Callout text is vertically centered (justifyContent
+        // 'center' in buildCalloutTextContentStyle), so each wrap transiently
+        // shifts the text block up half a line during the forced layout in
+        // broadcastLiveBounds (scrollHeight read runs before React commits the
+        // grown container height); Chrome's scroll anchoring compensated by
+        // scrolling the WHOLE PAGE up ~8px per wrap while typing in a callout.
+        // Plain text is top-aligned so its text block never moves — that's why
+        // textboxes never scrolled. Opting the overlay subtree out of anchor
+        // candidacy makes callout typing behave exactly like textbox typing:
+        // page stays still while the box is visible, and native caret-follow
+        // (untouched by overflow-anchor) still reveals the caret when it truly
+        // crosses the viewport edge — same as the textbox path. Verified with
+        // scrollTop instrumentation both ways; do NOT re-add anchoring here.
+        overflowAnchor: 'none',
       }}
     >
       <div
