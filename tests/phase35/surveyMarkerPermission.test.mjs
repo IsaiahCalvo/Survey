@@ -150,3 +150,63 @@ test('missing viewerId denies for non-owners (fail closed, matches canModify)', 
     false,
   );
 });
+
+// --- Edit (move/resize/rotate) gate — handleSurveyMarkerBoundsChange -------
+//
+// PDFViewer's handleSurveyMarkerBoundsChange routes edit authority through the
+// same canModifySurveyMarker adapter as the delete gate (geometry mutations
+// previously had NO authority check at all). These tests pin the edit-gate
+// contract explicitly with drag-shaped marker fixtures.
+
+function makeMoveMarker(extra = {}) {
+  return {
+    annotationId: 'marker-move-1',
+    pageNumber: 3,
+    bounds: { x: 10, y: 20, width: 40, height: 30, angle: 0 },
+    ...extra,
+  };
+}
+
+test('edit gate: author can move/resize their own marker', () => {
+  strictEqual(
+    canModifySurveyMarker({
+      surveyMarker: makeMoveMarker({ userId: COLLAB_ID }),
+      viewerId: COLLAB_ID,
+      documentOwnerId: OWNER_ID,
+    }),
+    true,
+  );
+});
+
+test('edit gate: non-owner CANNOT move another user\'s marker', () => {
+  strictEqual(
+    canModifySurveyMarker({
+      surveyMarker: makeMoveMarker({ userId: OTHER_ID }),
+      viewerId: COLLAB_ID,
+      documentOwnerId: OWNER_ID,
+    }),
+    false,
+  );
+});
+
+test('edit gate: document owner CAN move anyone\'s marker (owner override)', () => {
+  strictEqual(
+    canModifySurveyMarker({
+      surveyMarker: makeMoveMarker({ userId: COLLAB_ID }),
+      viewerId: OWNER_ID,
+      documentOwnerId: OWNER_ID,
+    }),
+    true,
+  );
+});
+
+test('edit gate: unresolvable author denies move for non-owners (fail closed)', () => {
+  strictEqual(
+    canModifySurveyMarker({
+      surveyMarker: makeMoveMarker(),
+      viewerId: COLLAB_ID,
+      documentOwnerId: OWNER_ID,
+    }),
+    false,
+  );
+});

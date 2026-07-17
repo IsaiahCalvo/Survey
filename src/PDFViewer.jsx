@@ -24053,6 +24053,37 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
   const handleSurveyMarkerBoundsChange = useCallback((pageNumber, annotationId, bounds, meta = {}) => {
     if (!annotationId || !bounds) return;
+
+    // Edit (move/resize/rotate) authority routes through the same canonical
+    // permissionScope adapter as the delete gate below (canModifySurveyMarker):
+    // document owner may move anyone's marker, non-owners only their own, and
+    // an unresolvable author DENIES for non-owners (fail closed) — matching
+    // how fabric annotations gate edits through canModify in useSVGInteraction.
+    // Boot guard mirrors the delete gate / KAL-125 callout gate: pre-auth
+    // (no viewerId/documentOwnerId) falls through permissively. Markers not
+    // yet in surveyMarkers are session-local pending previews created by this
+    // user, so they pass. UX: denial is a silent no-op (no toast plumbing
+    // here) + console.warn, same feedback as the delete gate; the gate runs
+    // BEFORE addHistoryCheckpoint so denied attempts don't pollute undo
+    // history. surveyMarkersRef (not the surveyMarkers state) keeps this
+    // callback's identity stable across marker updates.
+    const existingSurveyMarker = surveyMarkersRef.current?.[annotationId];
+    if (existingSurveyMarker) {
+      const viewerId = user?.id ?? null;
+      if (
+        viewerId &&
+        documentOwnerId &&
+        !canModifySurveyMarker({ surveyMarker: existingSurveyMarker, viewerId, documentOwnerId })
+      ) {
+        console.warn('[App] handleSurveyMarkerBoundsChange blocked by ownership gate', {
+          pageNumber,
+          annotationId,
+          viewerId
+        });
+        return;
+      }
+    }
+
     const rawAngle = Number(bounds.angle);
     const hasExplicitAngle = Number.isFinite(rawAngle);
     const normalizedAngle = hasExplicitAngle
@@ -24115,7 +24146,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         )),
       };
     });
-  }, [addHistoryCheckpoint]);
+  }, [addHistoryCheckpoint, user?.id, documentOwnerId]);
 
   // Set true by handleSurveyMarkerDeleted once a delete commits; the effect
   // below watches surveyMarkers and re-exports the linked Excel so the
