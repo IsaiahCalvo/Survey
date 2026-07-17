@@ -126,3 +126,12 @@ The two agents **disagreed on callout erasing**: one found the bespoke `getCallo
 4. **Legacy group-arrow export drop** (§5.5) — real data at risk.
 5. **KAL-81 keystone remainder (R2.2 derive-model)** — retire `callouts[]` as the source; make `annotationsByPage` primary. This single change collapses create, undo, sync, render, context menu, and export forks at once. Per `.planning/callout-unification/PLAN.md` and the contract doc: **do NOT chip at this piecemeal** — the dependent forks are load-bearing until it lands. Then R2.3 (realtime/CRDT) and Phase 8 (dead-code).
 6. **Dead-file confirmation pass** (§6) before any deletion; update CLAUDE.md's high-risk list if confirmed.
+
+---
+
+## Addendum (2026-07-17): dead-file claims adversarially verified
+
+- **FabricEditCanvas.jsx — DEAD as a render path, NOT inert as a module.** Exhaustive setter audit: all 5 `setEditingAnnotation` object literals carry `editType: 'text' | 'bbox'`; the EditHost ternary can never select it. BUT lines 70-97 globally patch `fabric.IText.prototype.renderCursor` at import time — the ONLY such patch in src/, and the legacy PAL arm (reachable via ?renderer=canvas / Ctrl+Shift+V) uses fabric IText/Textbox. Deletion requires relocating that patch first, updating two source-text tests (calloutScopeStamping.test.mjs:84, productionPaperInk.test.mjs:114), simplifying the EditHost ternary, and optionally retiring useFabricCanvas.js (would be orphaned).
+- **FabricDrawingCanvas.jsx — DEAD, zero importers, no module side effects.** Deletable as a pair with its source-text test (FabricDrawingCanvas.toolSwitch.test.mjs).
+- **zoomGeneration signal stays load-bearing** post-deletion (3 live consumers: SVGAnnotationLayer, FabricEraserCanvas, PdfjsViewerContainer); only CLAUDE.md's wording listing the dead files becomes stale.
+- Deletion remains Phase 8 (post-migration) work.
