@@ -1155,13 +1155,13 @@
     "semantic_hash": ""
   },
   "src/PDFViewer.jsx": {
-    "mtime": 1784280742.8949473,
-    "ast_hash": "6cbcb92c51a36c98a2d15fc5ccc2b2cd",
+    "mtime": 1784309098.5996993,
+    "ast_hash": "72018e157cf65047d0805d08eb86df14",
     "semantic_hash": ""
   },
   "src/PageAnnotationLayer.jsx": {
-    "mtime": 1784248069.4023352,
-    "ast_hash": "62781127587e936589f24fcd9f83f799",
+    "mtime": 1784309010.8999076,
+    "ast_hash": "84c2b2efa99217c4e5af81550aaaf5a4",
     "semantic_hash": ""
   },
   "src/RegionSelectionTool.jsx": {
@@ -1209,14 +1209,9 @@
     "ast_hash": "63354f4f62267017cf8792ab3da13f54",
     "semantic_hash": ""
   },
-  "src/components/Callout/index.jsx": {
-    "mtime": 1784248069.4081342,
-    "ast_hash": "31e21888c7e69de8cb99ca510aaea48a",
-    "semantic_hash": ""
-  },
   "src/components/Callout/types.js": {
-    "mtime": 1784248069.408363,
-    "ast_hash": "2346764deff1bbe0856fb2c4093150b1",
+    "mtime": 1784299062.5725987,
+    "ast_hash": "27231ce4bbdf90e6e46b17ead535fc32",
     "semantic_hash": ""
   },
   "src/components/CompactColorPicker.jsx": {
@@ -1247,16 +1242,6 @@
   "src/components/ExcelSyncConfirmModal.jsx": {
     "mtime": 1784248069.4109182,
     "ast_hash": "f648729f95e955012d597361ff0a0dfc",
-    "semantic_hash": ""
-  },
-  "src/components/FabricDrawingCanvas.jsx": {
-    "mtime": 1784248069.4113903,
-    "ast_hash": "b2b4da31fb34e880c864fe4647f59306",
-    "semantic_hash": ""
-  },
-  "src/components/FabricEditCanvas.jsx": {
-    "mtime": 1784248069.4126344,
-    "ast_hash": "14e40e5106ee1f9b13ba2a8fe99f524a",
     "semantic_hash": ""
   },
   "src/components/FabricEraserCanvas.jsx": {
@@ -1340,8 +1325,8 @@
     "semantic_hash": ""
   },
   "src/components/SVGAnnotationLayer.jsx": {
-    "mtime": 1784265481.577969,
-    "ast_hash": "d8fddb97a545655e9cce3507eb331871",
+    "mtime": 1784295514.9514046,
+    "ast_hash": "561f5c64d7b7da998df2d9deb5339b09",
     "semantic_hash": ""
   },
   "src/components/SVGSelectionOverlay.jsx": {
@@ -1380,18 +1365,13 @@
     "semantic_hash": ""
   },
   "src/components/UnsupportedAnnotationsNotice.jsx": {
-    "mtime": 1784248069.4267406,
-    "ast_hash": "276c5336418aef93eaaae8d1482dfab2",
+    "mtime": 1784308086.0720499,
+    "ast_hash": "c85052f6459327013da9e9ed517d63ac",
     "semantic_hash": ""
   },
   "src/components/UsageIndicator.jsx": {
     "mtime": 1784248069.427013,
     "ast_hash": "7d77249f44e3596809acb555f45c38de",
-    "semantic_hash": ""
-  },
-  "src/components/__tests__/FabricDrawingCanvas.toolSwitch.test.mjs": {
-    "mtime": 1784248069.4273741,
-    "ast_hash": "c18f2551289d15e7990fd54d54565855",
     "semantic_hash": ""
   },
   "src/components/annotationHydrationCover.jsx": {
@@ -1445,8 +1425,8 @@
     "semantic_hash": ""
   },
   "src/components/collab/YDocProvider.jsx": {
-    "mtime": 1784248069.4315345,
-    "ast_hash": "9b38bb78e576fadce6f7a639203b23c9",
+    "mtime": 1784309435.5883117,
+    "ast_hash": "7677d781516fe90e0779de1a4d261865",
     "semantic_hash": ""
   },
   "src/components/collab/__tests__/StorageFailureBanner.syncQueueStuck.test.mjs": {
@@ -1569,16 +1549,6 @@
     "ast_hash": "040c70397adf74810424b61cb4f228c9",
     "semantic_hash": ""
   },
-  "src/hooks/__tests__/useAnnotationCloudSync.dedupeResync.test.mjs": {
-    "mtime": 1784248069.443209,
-    "ast_hash": "07f7da76565edb91c0a2664f297ad0f5",
-    "semantic_hash": ""
-  },
-  "src/hooks/__tests__/useAnnotationCloudSync.dualWrite.test.mjs": {
-    "mtime": 1784248069.4433024,
-    "ast_hash": "b523d1657a55a5a92da585db07ae8dbd",
-    "semantic_hash": ""
-  },
   "src/hooks/__tests__/useDualWriteQueue.test.mjs": {
     "mtime": 1784248069.443534,
     "ast_hash": "47820d8db949116e53fad0e701fa22ec",
@@ -1599,14 +1569,9 @@
     "ast_hash": "9f29b3fb09ddf451ad90f69b9d3e85ac",
     "semantic_hash": ""
   },
-  "src/hooks/useAnnotationCloudSync.js": {
-    "mtime": 1784273844.446867,
-    "ast_hash": "b7b8615ec126e1549fd6699842c2ef23",
-    "semantic_hash": ""
-  },
   "src/hooks/useAnnotationContextMenu.jsx": {
-    "mtime": 1784265463.5261579,
-    "ast_hash": "b4122ee8868801fd7d6162a816099ebb",
+    "mtime": 1784301130.2521698,
+    "ast_hash": "8237488673167dbc654d9ff8ca0a13df",
     "semantic_hash": ""
   },
   "src/hooks/useAnnotationDoc.js": {
@@ -1627,11 +1592,6 @@
   "src/hooks/useDualWriteQueue.js": {
     "mtime": 1784248069.446388,
     "ast_hash": "ae4907198ed5e3823d0478de93c98b30",
-    "semantic_hash": ""
-  },
-  "src/hooks/useFabricCanvas.js": {
-    "mtime": 1784248069.4464598,
-    "ast_hash": "c68b1e7e03b4d65f62bfa5415ea6a301",
     "semantic_hash": ""
   },
   "src/hooks/usePageOperations.js": {
@@ -1772,11 +1732,6 @@
   "src/lib/collab/deviceId.js": {
     "mtime": 1784248069.4567273,
     "ast_hash": "8b590aaeb3ca249806c06bdca8734e66",
-    "semantic_hash": ""
-  },
-  "src/lib/collab/featureFlags.js": {
-    "mtime": 1784248069.457302,
-    "ast_hash": "220236e9130b97258dde940ed1b5611c",
     "semantic_hash": ""
   },
   "src/lib/collab/originBuilder.js": {
@@ -2055,8 +2010,8 @@
     "semantic_hash": ""
   },
   "src/services/annotationCloudSync.js": {
-    "mtime": 1784248069.4710035,
-    "ast_hash": "e359ce2e8dde9438cd5c8d29ecd3e310",
+    "mtime": 1784309178.0196228,
+    "ast_hash": "49b5a4934f3f78388c50d42156f49311",
     "semantic_hash": ""
   },
   "src/services/annotationDocStore.js": {
@@ -2080,8 +2035,8 @@
     "semantic_hash": ""
   },
   "src/services/annotationTypeSerializers.js": {
-    "mtime": 1784266534.1848493,
-    "ast_hash": "b3850290a4a9f838d9bc73722e09d7ce",
+    "mtime": 1784309348.7033918,
+    "ast_hash": "32d149d04f2d78fece85e98807648478",
     "semantic_hash": ""
   },
   "src/services/buildScopeImportPlans.js": {
@@ -2092,11 +2047,6 @@
   "src/services/checklistOrphanCleanup.js": {
     "mtime": 1784248069.472669,
     "ast_hash": "418cff669c1c1d637a3bb6bac455162c",
-    "semantic_hash": ""
-  },
-  "src/services/cloudSyncMigration.js": {
-    "mtime": 1784248069.4727693,
-    "ast_hash": "5c744e47f816973aa8d8e43cd9cbd07f",
     "semantic_hash": ""
   },
   "src/services/cloudSyncQueue.js": {
@@ -2355,8 +2305,8 @@
     "semantic_hash": ""
   },
   "src/utils/__tests__/calloutAnnotationBridge.test.mjs": {
-    "mtime": 1784280000.6252043,
-    "ast_hash": "7cdbb3f5931ab4f6477fa9945348c423",
+    "mtime": 1784293904.235028,
+    "ast_hash": "6cd98034f84235f7197f2acd88defb03",
     "semantic_hash": ""
   },
   "src/utils/__tests__/pageAnnotationReindex.test.mjs": {
@@ -2390,8 +2340,8 @@
     "semantic_hash": ""
   },
   "src/utils/annotationHitTest.js": {
-    "mtime": 1784248069.488372,
-    "ast_hash": "fb95dc03c78ef85ee57a5de750535433",
+    "mtime": 1784295514.9525733,
+    "ast_hash": "0c2f23191fb87faeafbefb70a1fa00e8",
     "semantic_hash": ""
   },
   "src/utils/annotationHydrationGate.js": {
@@ -2419,11 +2369,6 @@
     "ast_hash": "16f0465bec20c154adfd515c79a5878b",
     "semantic_hash": ""
   },
-  "src/utils/annotationSyncType.js": {
-    "mtime": 1784248069.4894717,
-    "ast_hash": "5244579742f18dba246bf0d07d931ed4",
-    "semantic_hash": ""
-  },
   "src/utils/annotationVisibilityRules.js": {
     "mtime": 1784248069.4896045,
     "ast_hash": "833cbb414fea9f5b14a69791e4b35177",
@@ -2435,8 +2380,8 @@
     "semantic_hash": ""
   },
   "src/utils/calloutAnnotationBridge.js": {
-    "mtime": 1784280719.919177,
-    "ast_hash": "19c3d3032a5aa6c6421cc6cb1449cb7c",
+    "mtime": 1784299062.578845,
+    "ast_hash": "44806a1dd799568cb2e8b5471a2c2c74",
     "semantic_hash": ""
   },
   "src/utils/calloutBlankCommit.js": {
@@ -2445,8 +2390,8 @@
     "semantic_hash": ""
   },
   "src/utils/calloutEditAdapter.js": {
-    "mtime": 1784265501.5637388,
-    "ast_hash": "deba73d72fafd9682beaea3e0c711f13",
+    "mtime": 1784299062.579168,
+    "ast_hash": "5fb1a8e1b27398f442355f36aad4d642",
     "semantic_hash": ""
   },
   "src/utils/calloutGeometry.js": {
@@ -2467,11 +2412,6 @@
   "src/utils/calloutImportAdapter.js": {
     "mtime": 1784248069.4927754,
     "ast_hash": "7f61d55d4feccf2219fc6675039451c6",
-    "semantic_hash": ""
-  },
-  "src/utils/calloutRemovalIntent.js": {
-    "mtime": 1784248069.4928877,
-    "ast_hash": "332ec2ad74732b3798773466c6c24c53",
     "semantic_hash": ""
   },
   "src/utils/calloutSyncPayload.js": {
@@ -2517,11 +2457,6 @@
   "src/utils/debugBridge.js": {
     "mtime": 1784248069.4949157,
     "ast_hash": "6bef00f143913bc819726f7ba72e949b",
-    "semantic_hash": ""
-  },
-  "src/utils/dedupeResyncSafety.js": {
-    "mtime": 1784248069.4951217,
-    "ast_hash": "cd09911edb1bb36b8a5aba236272e923",
     "semantic_hash": ""
   },
   "src/utils/documentProvenance.js": {
@@ -2600,8 +2535,8 @@
     "semantic_hash": ""
   },
   "src/utils/lineRenderHelpers.js": {
-    "mtime": 1784248069.504865,
-    "ast_hash": "20f7dcb6615728ffd099726ad3bf24db",
+    "mtime": 1784299062.5795069,
+    "ast_hash": "403d3fcd527a7f67d61269edf80b92fa",
     "semantic_hash": ""
   },
   "src/utils/loadTrace.js": {
@@ -2650,13 +2585,13 @@
     "semantic_hash": ""
   },
   "src/utils/pdfAnnotationImporter.js": {
-    "mtime": 1784248069.5084646,
-    "ast_hash": "7ae7b1d3977bdf199e77902fdec13eae",
+    "mtime": 1784310563.2080996,
+    "ast_hash": "fc85a50edbe186b91817f7ac94bdf543",
     "semantic_hash": ""
   },
   "src/utils/pdfAnnotationsPdfLib.js": {
-    "mtime": 1784265839.0570445,
-    "ast_hash": "1527561d474cccca754491d205b04673",
+    "mtime": 1784302001.5407462,
+    "ast_hash": "1efc29ef5301e15e8ddbbb3abca192a2",
     "semantic_hash": ""
   },
   "src/utils/pdfAppAnnotationMetadata.js": {
@@ -2700,8 +2635,8 @@
     "semantic_hash": ""
   },
   "src/utils/pdfNativeExport/adapters/ink.js": {
-    "mtime": 1784248069.5107658,
-    "ast_hash": "7154e44969443df9ea0c3c16d73b8f85",
+    "mtime": 1784302045.0467737,
+    "ast_hash": "6fee2cdc6aa37f05fd359b7740c47c27",
     "semantic_hash": ""
   },
   "src/utils/pdfNativeExport/adapters/line.js": {
@@ -2820,8 +2755,8 @@
     "semantic_hash": ""
   },
   "src/utils/svgAnnotationRenderers.jsx": {
-    "mtime": 1784265470.7506137,
-    "ast_hash": "e31cb4756bd99905dfae2d43399b5f1a",
+    "mtime": 1784299062.580744,
+    "ast_hash": "008939079e3d99e3998c3c9e2a2b6a8c",
     "semantic_hash": ""
   },
   "src/utils/svgBoundingBox.js": {
@@ -2830,8 +2765,8 @@
     "semantic_hash": ""
   },
   "src/utils/svgPathAttrs.js": {
-    "mtime": 1784248069.5157664,
-    "ast_hash": "2d506cf97a6d563b33aed7ed506ed9c3",
+    "mtime": 1784310563.2088017,
+    "ast_hash": "9fe2ae62adb1da0e68300702c0913c73",
     "semantic_hash": ""
   },
   "src/utils/svgToFabricShape.js": {
@@ -3295,8 +3230,8 @@
     "semantic_hash": ""
   },
   "tests/annotationHitTest.test.mjs": {
-    "mtime": 1784248069.5333488,
-    "ast_hash": "5874e80162b86e2a5a02f1ce80c88482",
+    "mtime": 1784295514.9533682,
+    "ast_hash": "9512b01c6b2e2bb7821471899dc0aed3",
     "semantic_hash": ""
   },
   "tests/annotationHydrationGate.test.mjs": {
@@ -3305,13 +3240,13 @@
     "semantic_hash": ""
   },
   "tests/annotationIdleRecoveryContracts.test.mjs": {
-    "mtime": 1784273844.4470413,
-    "ast_hash": "2abdc10f15f5110e97b7b2c5fa8daffe",
+    "mtime": 1784308331.452955,
+    "ast_hash": "389dea2893d3ad334e37c724676a76a3",
     "semantic_hash": ""
   },
   "tests/annotationInitialHydrationSource.test.mjs": {
-    "mtime": 1784280000.627792,
-    "ast_hash": "e5efb9e43e74c2f7457fee8904cbe625",
+    "mtime": 1784308319.9253385,
+    "ast_hash": "2139a8a49f4c21e0877cebd851aebfc5",
     "semantic_hash": ""
   },
   "tests/annotationLocalHistory.test.mjs": {
@@ -3327,11 +3262,6 @@
   "tests/annotationSyncDelta.test.mjs": {
     "mtime": 1784248069.5341573,
     "ast_hash": "a47ec2d9fe279d0cce5bc85dd6b225ec",
-    "semantic_hash": ""
-  },
-  "tests/annotationSyncType.test.mjs": {
-    "mtime": 1784248069.5342243,
-    "ast_hash": "fc775429177661dc569dbead17b08af4",
     "semantic_hash": ""
   },
   "tests/annotationTrashHistory.test.mjs": {
@@ -3374,14 +3304,9 @@
     "ast_hash": "47264c0af1a379fa6e6718aa5f69c083",
     "semantic_hash": ""
   },
-  "tests/calloutRemovalIntent.test.mjs": {
-    "mtime": 1784248069.5351868,
-    "ast_hash": "1252e607263bafe5df6144f4d71ab461",
-    "semantic_hash": ""
-  },
   "tests/calloutRenderer.test.mjs": {
-    "mtime": 1784265570.017831,
-    "ast_hash": "1f194ce10bc7e3e816f30d60ce88f2dc",
+    "mtime": 1784299062.5810938,
+    "ast_hash": "d3c5f1d314514e107aa2ea6b674caaab",
     "semantic_hash": ""
   },
   "tests/calloutSyncPayload.test.mjs": {
@@ -3395,8 +3320,8 @@
     "semantic_hash": ""
   },
   "tests/cloudSyncAllTypes/authorshipPreservation.test.mjs": {
-    "mtime": 1784248069.535852,
-    "ast_hash": "ed9c6f842b0cc36db384d61109436606",
+    "mtime": 1784309338.362643,
+    "ast_hash": "cd588443c2cd35a14e8268297249d6a1",
     "semantic_hash": ""
   },
   "tests/cloudSyncAllTypes/conflictResolution.test.mjs": {
@@ -3404,14 +3329,9 @@
     "ast_hash": "b5f7538775fca3b6ab087f2c80cc0af3",
     "semantic_hash": ""
   },
-  "tests/cloudSyncAllTypes/migration.test.mjs": {
-    "mtime": 1784248069.5359998,
-    "ast_hash": "0de5b7e91710433c5257fa712a07dae3",
-    "semantic_hash": ""
-  },
   "tests/cloudSyncAllTypes/serializers.test.mjs": {
-    "mtime": 1784248069.5360904,
-    "ast_hash": "5532900b2eb9cc3afdf6a9df3bf89a38",
+    "mtime": 1784309317.9150813,
+    "ast_hash": "e74bb151058b0138bf5da39f7b1c7fe7",
     "semantic_hash": ""
   },
   "tests/cloudSyncAllTypes/serviceContract.test.mjs": {
@@ -3432,11 +3352,6 @@
   "tests/crdtCalloutBridge.test.mjs": {
     "mtime": 1784248069.5367684,
     "ast_hash": "276e283b6f06def4e7a4ddbec49e9b2c",
-    "semantic_hash": ""
-  },
-  "tests/dedupeResyncSafetyBranches.test.mjs": {
-    "mtime": 1784248069.5368574,
-    "ast_hash": "d637e48c49921a78036c61296480a0e9",
     "semantic_hash": ""
   },
   "tests/documentAnnotationService.test.mjs": {
@@ -3465,8 +3380,8 @@
     "semantic_hash": ""
   },
   "tests/eraserSaveHistorySyncContracts.test.mjs": {
-    "mtime": 1784248069.5381348,
-    "ast_hash": "3445079bdd589819920804061da2c927",
+    "mtime": 1784309066.1434133,
+    "ast_hash": "61ce17740ed62deb70d6dc2079d6bdcd",
     "semantic_hash": ""
   },
   "tests/excelExportAck.test.mjs": {
@@ -3620,13 +3535,13 @@
     "semantic_hash": ""
   },
   "tests/pdfAnnotationImporter.test.mjs": {
-    "mtime": 1784248069.5456138,
-    "ast_hash": "c2888b235913bbd9a75090a148cc07dc",
+    "mtime": 1784310563.2182426,
+    "ast_hash": "9e9ac65b747f9cc17b0233bbe40a334e",
     "semantic_hash": ""
   },
   "tests/pdfAnnotationNormalization.test.mjs": {
-    "mtime": 1784248069.5469646,
-    "ast_hash": "07ba9b8933bdaa07fd72d4a708676026",
+    "mtime": 1784310563.219199,
+    "ast_hash": "89d0901d79fa29223e89dd50cdcc0eb7",
     "semantic_hash": ""
   },
   "tests/pdfNativeExport.bake.test.mjs": {
@@ -3645,8 +3560,8 @@
     "semantic_hash": ""
   },
   "tests/pdfNativeExport/adapters/adapters.test.mjs": {
-    "mtime": 1784248069.5474122,
-    "ast_hash": "f2d02dbd080710f8742f737751118aa3",
+    "mtime": 1784302021.951792,
+    "ast_hash": "b4e08a67fa420a08931559c3a8a6cc83",
     "semantic_hash": ""
   },
   "tests/pdfNativeExport/coordinateSpace.test.mjs": {
@@ -3665,8 +3580,8 @@
     "semantic_hash": ""
   },
   "tests/pdfSaveExportContract.test.mjs": {
-    "mtime": 1784248069.548467,
-    "ast_hash": "e053dd625bbf4dd21b65a1779d2b72ab",
+    "mtime": 1784294987.8351777,
+    "ast_hash": "5872aab0ed4f73167d44c2d679f3a712",
     "semantic_hash": ""
   },
   "tests/pdfSurveyMarkerCompat.test.mjs": {
@@ -3965,8 +3880,8 @@
     "semantic_hash": ""
   },
   "tests/phase30/phase30-unit-suite.test.mjs": {
-    "mtime": 1784248069.555274,
-    "ast_hash": "8e68013413d13a4d7aeeca21093b5290",
+    "mtime": 1784308292.048829,
+    "ast_hash": "4958e36892d90a813dd92cd5b8ef2f26",
     "semantic_hash": ""
   },
   "tests/phase31/cutoverBackfill.test.mjs": {
@@ -3974,19 +3889,9 @@
     "ast_hash": "c12878510b4741d43914e67beed88039",
     "semantic_hash": ""
   },
-  "tests/phase31/cutoverHydrate.test.mjs": {
-    "mtime": 1784248069.5554645,
-    "ast_hash": "9b26a26509fe0c0b3575a8562aa887ff",
-    "semantic_hash": ""
-  },
   "tests/phase31/idAtCreationStamping.test.mjs": {
     "mtime": 1784248069.5555425,
     "ast_hash": "6d67e0aa1449ef65d4cc877281b04908",
-    "semantic_hash": ""
-  },
-  "tests/phase31/legacyBulkUpsertGate.test.mjs": {
-    "mtime": 1784273844.4472177,
-    "ast_hash": "b857b2b2ee65c09dfea31366c7cd4b5f",
     "semantic_hash": ""
   },
   "tests/phase35-e2e/cleanup-banner-one-shot.spec.mjs": {
@@ -4165,8 +4070,8 @@
     "semantic_hash": ""
   },
   "tests/syncStatusUi.test.mjs": {
-    "mtime": 1784273844.4473722,
-    "ast_hash": "e00ab2afd3697e311f6bda74941408ec",
+    "mtime": 1784308353.9252777,
+    "ast_hash": "4042b035f17f23d523489327333830ab",
     "semantic_hash": ""
   },
   "tests/templatesEditorReloadGuard.test.mjs": {
@@ -5925,8 +5830,8 @@
     "semantic_hash": ""
   },
   "CLAUDE.md": {
-    "mtime": 1784248068.5572176,
-    "ast_hash": "e76b03f83e8129d0de4961252c8b353d",
+    "mtime": 1784309485.8799603,
+    "ast_hash": "eff5ee7ae607b6576ca5c5ec2787f8ba",
     "semantic_hash": ""
   },
   "CONTEXT.md": {
@@ -7495,8 +7400,8 @@
     "semantic_hash": ""
   },
   "src/utils/annotationCanvasPainter.js": {
-    "mtime": 1784265524.9640956,
-    "ast_hash": "4d8cf77bbb7e7898e27be2984bf57c0a",
+    "mtime": 1784299062.5759268,
+    "ast_hash": "08ba8e2ee1d4adeef8550b5b4ddd94ae",
     "semantic_hash": ""
   },
   "src/utils/annotationDetailTile.js": {
@@ -7540,8 +7445,8 @@
     "semantic_hash": ""
   },
   "src/utils/fabricCompat.js": {
-    "mtime": 1784248069.4974852,
-    "ast_hash": "0350a04b79fc698208faa81440ea1357",
+    "mtime": 1784307998.3192744,
+    "ast_hash": "7bef52897d1c5ef3b1bc64f86c5d92ef",
     "semantic_hash": ""
   },
   "src/utils/historyContextRestore.js": {
@@ -7550,13 +7455,13 @@
     "semantic_hash": ""
   },
   "src/utils/pageSpaceEraser.js": {
-    "mtime": 1784248069.5062308,
-    "ast_hash": "36326b056c9a3eb47f8765fd45a6fcf1",
+    "mtime": 1784310563.2042296,
+    "ast_hash": "de01a75e771a81eeab2ded7be474b6e2",
     "semantic_hash": ""
   },
   "src/utils/paperAnnotationGeometry.js": {
-    "mtime": 1784248069.5067005,
-    "ast_hash": "ce2eb27dcf4c977d691e61e405a6753b",
+    "mtime": 1784310563.2051167,
+    "ast_hash": "98bdd012cecf5044838089dc4134a520",
     "semantic_hash": ""
   },
   "src/utils/paperInkEraser.js": {
@@ -7565,8 +7470,8 @@
     "semantic_hash": ""
   },
   "src/utils/paperInkPresentation.js": {
-    "mtime": 1784248069.5076509,
-    "ast_hash": "d63c7578496d7a436a2ee83c79e25178",
+    "mtime": 1784310563.2058613,
+    "ast_hash": "1b9c35b348a2e9aa038554b03c768be8",
     "semantic_hash": ""
   },
   "src/utils/productionAnnotationBenchmark.js": {
@@ -7670,8 +7575,8 @@
     "semantic_hash": ""
   },
   "tests/calloutScopeStamping.test.mjs": {
-    "mtime": 1784248069.5355337,
-    "ast_hash": "01f30f52ff979279d3a0b5de14673eaa",
+    "mtime": 1784308942.1092257,
+    "ast_hash": "5d563a151597db0964e910abcdb69d45",
     "semantic_hash": ""
   },
   "tests/eraserPolicy.test.mjs": {
@@ -7730,13 +7635,13 @@
     "semantic_hash": ""
   },
   "tests/pageSpaceEraser.test.mjs": {
-    "mtime": 1784248069.5440443,
-    "ast_hash": "96231be634161233b2318d24de9ed0de",
+    "mtime": 1784310563.210871,
+    "ast_hash": "8f5994249d4fcde1dd514cec82cb61f8",
     "semantic_hash": ""
   },
   "tests/paperInkPresentation.test.mjs": {
-    "mtime": 1784248069.5454912,
-    "ast_hash": "121a9b30a79aeb624c2a0dfb8f760c91",
+    "mtime": 1784310563.2168455,
+    "ast_hash": "2f7003cafea2af3d350a49319629a554",
     "semantic_hash": ""
   },
   "tests/pdfjsPresentationEngine.test.mjs": {
@@ -7755,8 +7660,8 @@
     "semantic_hash": ""
   },
   "tests/productionPaperInk.test.mjs": {
-    "mtime": 1784248069.558105,
-    "ast_hash": "68bd2ea71a933b3f27080cac7fc52e31",
+    "mtime": 1784308947.3124466,
+    "ast_hash": "6ec8101a83e3678096c5650c07aa4545",
     "semantic_hash": ""
   },
   "tests/prototypeAnnotationGeometry.test.mjs": {
@@ -8185,8 +8090,8 @@
     "semantic_hash": ""
   },
   ".claude/launch.json": {
-    "mtime": 1784248068.5563788,
-    "ast_hash": "28a5ea09a0b96516ebeaf57f8f00223d",
+    "mtime": 1784311251.0526962,
+    "ast_hash": "5bd60cb1b52e9a542d63b12ba5c1a0dc",
     "semantic_hash": ""
   },
   ".claude/settings.local.json": {
@@ -8335,8 +8240,8 @@
     "semantic_hash": ""
   },
   "src/components/TextEditOverlay.jsx": {
-    "mtime": 1784265480.6391652,
-    "ast_hash": "416435be66eac1c21d9b901c62c9a53f",
+    "mtime": 1784294001.6867173,
+    "ast_hash": "72b7a6683d1b028aae5fa70331a6338b",
     "semantic_hash": ""
   },
   "src/components/errorBoundarySerialize.js": {
@@ -8395,8 +8300,8 @@
     "semantic_hash": ""
   },
   "src/utils/annotationCreationCommit.js": {
-    "mtime": 1784248069.4868886,
-    "ast_hash": "3196819385ba840e4ad2dd54a6bdd47d",
+    "mtime": 1784299062.5776236,
+    "ast_hash": "2eca13aab69c2248c5e6577fe2376be1",
     "semantic_hash": ""
   },
   "src/utils/bookmarkPageIds.js": {
@@ -8620,13 +8525,83 @@
     "semantic_hash": ""
   },
   "tests/calloutRealtimeEchoSuppression.test.mjs": {
-    "mtime": 1784273939.4073317,
-    "ast_hash": "02ddfafb57c27230e0c86cca42d2a109",
+    "mtime": 1784308380.2299938,
+    "ast_hash": "695e78ce2a60331ccce31eb86184e9d7",
     "semantic_hash": ""
   },
   "src/services/calloutMetaMigration.js": {
     "mtime": 1784280000.6423197,
     "ast_hash": "e7710c3d912b3ca69ff875677d6f65d5",
+    "semantic_hash": ""
+  },
+  "tests/calloutArrowheadExport.test.mjs": {
+    "mtime": 1784293615.6782312,
+    "ast_hash": "e8a47d22dacee9bff8640ad4257db738",
+    "semantic_hash": ""
+  },
+  "tests/printFlattenOnPage.test.mjs": {
+    "mtime": 1784294905.3964038,
+    "ast_hash": "3c6e4c5bb25840ffc6f8978d5bff4bee",
+    "semantic_hash": ""
+  },
+  "tests/filledInkHitTarget.test.mjs": {
+    "mtime": 1784310563.209833,
+    "ast_hash": "921188846afa90214c83abd6c5f32b5a",
+    "semantic_hash": ""
+  },
+  "tests/svgCalloutHoverGlow.test.mjs": {
+    "mtime": 1784295302.4234676,
+    "ast_hash": "e3feb83f4bd8e980bbbcda504ad598a8",
+    "semantic_hash": ""
+  },
+  "docs/research/INK-MODEL-AND-IMPORT-NORMALIZATION-2026-07-17.md": {
+    "mtime": 1784298738.4552808,
+    "ast_hash": "554d6b840eec49b89a0c386fd30a30e4",
+    "semantic_hash": ""
+  },
+  "tests/calloutLineStyleExport.test.mjs": {
+    "mtime": 1784299062.6185918,
+    "ast_hash": "df7053e48d959d64cb601330f1d0d151",
+    "semantic_hash": ""
+  },
+  "tests/lineToolCreationDefaults.test.mjs": {
+    "mtime": 1784299062.6188364,
+    "ast_hash": "630c72be033670a9b9726a027a1629a4",
+    "semantic_hash": ""
+  },
+  "src/utils/pasteCloneIdentity.js": {
+    "mtime": 1784302057.169954,
+    "ast_hash": "9926ec83f18038f9b7017c36eb20e229",
+    "semantic_hash": ""
+  },
+  "tests/pdfImportedEditExportFidelity.test.mjs": {
+    "mtime": 1784301877.7958102,
+    "ast_hash": "2ab145aa827b4a61026ba55ea947e35e",
+    "semantic_hash": ""
+  },
+  "tests/pasteCloneIdentity.test.mjs": {
+    "mtime": 1784302130.5221272,
+    "ast_hash": "5b7b6e00db03dab11f94e1bb5eab7b1c",
+    "semantic_hash": ""
+  },
+  "tests/pdfChangeEffectKeying.test.mjs": {
+    "mtime": 1784302107.2667997,
+    "ast_hash": "adfbf690ac2cf2b660a5185254e10095",
+    "semantic_hash": ""
+  },
+  "src/utils/unsupportedAnnotationNotice.js": {
+    "mtime": 1784308065.1672108,
+    "ast_hash": "d026eafc002aa456368873d1af0e94e4",
+    "semantic_hash": ""
+  },
+  "tests/unsupportedAnnotationNotice.test.mjs": {
+    "mtime": 1784308653.1393707,
+    "ast_hash": "f34fee6788f4429cd2bd9c26eb80bc6c",
+    "semantic_hash": ""
+  },
+  "tests/annotationHydrateEmptyWipeGuard.test.mjs": {
+    "mtime": 1784309201.0797915,
+    "ast_hash": "919e4c6c6fa6c7e605b3cb8d9f08d5ab",
     "semantic_hash": ""
   }
 }
