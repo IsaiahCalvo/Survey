@@ -91,20 +91,27 @@ export function buildBulkDeletePlan({
   const safeCandidates = Array.isArray(candidateIds) ? candidateIds : [];
   const safeAnnotations = Array.isArray(annotations) ? annotations : [];
 
-  // Step 1: index for O(1) lookup.
+  // Step 1: index for O(1) lookup. Fabric rows carry a top-level `id` once
+  // synced; projected callout groups (R2.2 — calloutToAnnotationObject) carry
+  // their id ONLY at `data.id`, so fall back to it. Top-level id wins when both
+  // exist (they are the same row id for synced shapes).
   const byId = new Map();
   for (const a of safeAnnotations) {
-    if (a && a.id != null) byId.set(a.id, a);
+    if (!a) continue;
+    if (a.id != null) byId.set(a.id, a);
+    else if (a.data?.id != null) byId.set(a.data.id, a);
   }
 
   // Step 2: defensive filter — anything that slipped past selection scope is
-  // dropped here. Unknown ids (not in byId) are silently skipped.
+  // dropped here. Unknown ids (not in byId) are silently skipped. Track the
+  // CANDIDATE id alongside the annotation: projected callout groups have no
+  // top-level `a.id`, so partitioning below must not read `a.id` directly.
   const eligible = [];
   for (const id of safeCandidates) {
     const a = byId.get(id);
     if (!a) continue;
     if (canModify({ annotation: a, viewerId, documentOwnerId })) {
-      eligible.push(a);
+      eligible.push({ id, annotation: a });
     }
   }
 
@@ -125,12 +132,12 @@ export function buildBulkDeletePlan({
   const viewerIsOwner = isOwner(viewerId, documentOwnerId);
   const ownIds = [];
   const foreignIds = [];
-  for (const a of eligible) {
+  for (const { id, annotation: a } of eligible) {
     const authorId = getAnnotationAuthorId(a);
     if (authorId === viewerId || (viewerIsOwner && authorId == null)) {
-      ownIds.push(a.id);
+      ownIds.push(id);
     } else {
-      foreignIds.push(a.id);
+      foreignIds.push(id);
     }
   }
 
@@ -163,7 +170,7 @@ export function buildBulkDeletePlan({
   // yours, 35 from 3 other people").
   /** @type {Record<string, ByAuthorEntry>} */
   const byAuthor = {};
-  for (const a of eligible) {
+  for (const { annotation: a } of eligible) {
     const authorId = getAnnotationAuthorId(a);
     if (authorId === viewerId) continue; // owner's own marks excluded
     if (authorId == null) continue; // defensive: unattributed marks not grouped

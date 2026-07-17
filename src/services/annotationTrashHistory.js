@@ -33,6 +33,10 @@ function labelFabricType(fabricType) {
 }
 
 function labelFromAnnotation(annotation) {
+  // R2.2 Slice 4: callout deletes journal fabric-shaped rows (the projected
+  // group object, type 'group' + data.type 'callout') through the shared bulk
+  // path — keep the human summary saying "callout", not "annotation".
+  if (annotation?.data?.type === 'callout') return 'callout';
   const fabricType = annotation?.type || annotation?.data?.type || '';
   return labelFabricType(fabricType);
 }

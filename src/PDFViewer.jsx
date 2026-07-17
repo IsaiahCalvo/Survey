@@ -117,7 +117,6 @@ import { buildSurveyMarkerDeleteHistoryRow, applySurveyMarkerRestore } from './s
 import {
   buildAnnotationDeleteHistoryRow,
   isAnnotationRestoreAction,
-  buildCalloutDeleteHistoryRow,
   isCalloutRestoreAction,
   applyCalloutRestore,
   buildRegionDeleteHistoryRow,
@@ -3812,12 +3811,21 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         calloutIds: [calloutId],
         count: 1,
       }, window);
-      setCalloutsIfPersistedChanged(prev => prev.filter(c => c.id !== calloutId));
+      // R2.2 Slice 4: cut removes through the shared save pipeline — the
+      // removal becomes a per-object fabric:delete undo entry (Cmd+Z restores
+      // the cut callout in place), matching the shape cut contract.
+      const pageNumber = Number(callout.pageNumber ?? resolveCalloutPageNumber(calloutId));
+      if (Number.isFinite(pageNumber)) {
+        commitCalloutMutation(pageNumber, (prev) => prev.filter(c => c.id !== calloutId), {
+          source: 'callout:cut',
+          action: 'cut',
+        });
+      }
       if (selectedCalloutId === calloutId) {
         setSelectedCalloutId(null);
       }
     }
-  }, [callouts, selectedCalloutId, setCalloutsIfPersistedChanged]);
+  }, [callouts, selectedCalloutId, commitCalloutMutation, resolveCalloutPageNumber]);
 
   const handleCopyCallout = useCallback((calloutId) => {
     const callout = callouts.find(c => c.id === calloutId);
@@ -3854,14 +3862,20 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         : {}),
     };
 
-    setCallouts(prev => [...prev, newCallout]);
+    // R2.2 Slice 4: paste commits through the shared save pipeline (paste does
+    // NOT route through handleCreateCallout — confirmed in Slice 3), gaining a
+    // per-object fabric:create undo entry like every other create.
+    commitCalloutMutation(pageNumber, (prev) => [...prev, newCallout], {
+      source: 'callout:paste',
+      action: 'paste',
+    });
 
     // Clear clipboard if it was a cut operation
     if (clipboardCalloutType === 'cut') {
       setClipboardCallout(null);
       setClipboardCalloutType(null);
     }
-  }, [clipboardCallout, clipboardCalloutType, user?.id]);
+  }, [clipboardCallout, clipboardCalloutType, user?.id, commitCalloutMutation]);
 
   const [pdfNativeAnnotationLayerPolicyByPage, setPdfNativeAnnotationLayerPolicyByPage] = useState({});
 
@@ -9447,6 +9461,23 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   // caller takes a single pre-mutation checkpoint, sets this to the number of
   // downstream checkpoints to ignore, then runs the individual mutations.
   const suppressBatchCheckpointsRef = useRef(0);
+  // R2.2 Slice 4 — callout DELETE rides the shared bulk-delete plan.
+  // handleRequestBulkDelete is declared ~7k lines below (Phase 35 block);
+  // handleDeleteSelectedCallouts must call it without a TDZ crash, so it reads
+  // this ref at call time (same pattern as handleSaveAnnotationsRef).
+  const requestBulkDeleteRef = useRef(null);
+  // R2.2 Slice 4 — mixed shape+callout marquee delete coalescing.
+  // mixedDeleteBatchRef: armed by handleBeginBatchDelete with the canModify-
+  // permitted callout ids of the marquee selection; claimed inside
+  // handleRequestBulkDelete (which folds those callouts into the SHAPE half's
+  // plan/modal/runner); consumed by handleDeleteSelectedCallouts so the
+  // dispatcher's follow-up callout call skips the claimed ids.
+  const mixedDeleteBatchRef = useRef(null);
+  // calloutCoDeleteRef: armed by the combined mixed-batch runner around the
+  // shape half's runDelete() so handleSaveAnnotations strips the claimed
+  // callout groups from the SAME incoming page JSON — shapes + callouts land
+  // in ONE save (one fabric:batch undo step; a single Cmd+Z restores both).
+  const calloutCoDeleteRef = useRef(null);
   // Self-heal guard: tracks which cloud document we've already run the
   // empty-cloud embedded-annotation import fallback for, so it fires at most once
   // per document open (see the fallback effect near the fix19 import harness).
@@ -10221,9 +10252,18 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
   // UX: Phase 14 KBD-01 — handler for Delete/Backspace on selected callouts.
   // Called by SVGAnnotationLayer's extended keydown effect via
-  // onDeleteSelectedCallouts prop. Uses per-action undo via
-  // addHistoryCheckpoint (Phase 9 pattern). Declared AFTER
-  // addHistoryCheckpoint to avoid a TDZ ReferenceError on the dep array.
+  // onDeleteSelectedCallouts prop (and the window.__onDeleteSelectedCallouts
+  // context-menu bridge, and the eraser's onEraseCallout).
+  //
+  // R2.2 Slice 4 — callout delete rides the SHARED bulk-delete plan: permitted
+  // ids are grouped per page and routed through handleRequestBulkDelete, so
+  // callouts get the identical cross-author gate shapes have (owner-cross-
+  // author / collaborator-own confirm modal, solo silent direct-fire), the
+  // same bulk trash journaling (emitBulkTrashRows — fabric-shaped rows whose
+  // Restore re-adds the projected group; the derive memo revives the callout),
+  // and the same undo toast. The legacy callouts:delete checkpoint and the
+  // bespoke buildCalloutDeleteHistoryRow loop are gone — the shared save
+  // pipeline journals one fabric delta per page (single Cmd+Z per delete).
   const handleDeleteSelectedCallouts = useCallback((calloutIdsToDelete) => {
     if (!Array.isArray(calloutIdsToDelete) || calloutIdsToDelete.length === 0) return;
     // KAL-125: ownership gate — mirror the standard annotation delete path
@@ -10240,57 +10280,93 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       return canModify({ annotation: callout, viewerId, documentOwnerId });
     });
     if (permittedIds.length === 0) return;
-    const idsSet = new Set(permittedIds);
 
-    // KAL-313: capture the full callout objects BEFORE the mutation so the
-    // trash history rows carry the complete restore payload.
-    const deletedCallouts = callouts.filter((c) => idsSet.has(c.id));
+    // R2.2 Slice 4 — mixed marquee coalescing: ids already claimed by an armed
+    // mixed shape+callout batch were folded into the SHAPE half's bulk-delete
+    // request (one combined plan/modal/save) — skip them here. The dispatcher
+    // calls this handler synchronously after deleteSelected(), so the armed
+    // batch is consumed exactly once per keypress.
+    const mixedBatch = mixedDeleteBatchRef.current;
+    mixedDeleteBatchRef.current = null;
+    const activeMixedClaims = mixedBatch
+      && (Date.now() - mixedBatch.armedAt) < 2000
+      ? mixedBatch.claimed
+      : null;
+    const remainingIds = activeMixedClaims
+      ? permittedIds.filter((id) => !activeMixedClaims.has(id))
+      : permittedIds;
+    if (remainingIds.length === 0) return;
 
-    // UX: undo checkpoint BEFORE the mutation, same pattern as
-    // annotations:save (App.jsx:23752) — so Cmd+Z restores the deleted callouts.
-    addHistoryCheckpoint('callouts:delete', {
-      calloutIds: permittedIds,
-      count: permittedIds.length,
-    });
-    markCalloutRemovalIntent({
-      source: 'delete',
-      reason: 'callouts:delete',
-      calloutIds: permittedIds,
-      count: permittedIds.length,
-    }, window);
-    setCalloutsIfPersistedChanged((prev) => prev.filter((c) => !idsSet.has(c.id)));
-    setSelectedCalloutIds(new Set());
+    // Group permitted ids by page — handleRequestBulkDelete's plan, snapshot
+    // and runDelete contracts are all single-page (mirrors the shape path).
+    const idsByPage = new Map();
+    for (const id of remainingIds) {
+      const callout = callouts.find((c) => c.id === id);
+      const page = Number(callout?.pageNumber ?? resolveCalloutPageNumber(id));
+      if (!Number.isFinite(page)) continue;
+      if (!idsByPage.has(page)) idsByPage.set(page, []);
+      idsByPage.get(page).push(id);
+    }
 
-    // KAL-313: emit a durable trash event for each deleted callout so the
-    // History panel can offer Restore for 30 days (multi-device, cross-user).
-    const documentId = pdfFile?.id || null;
-    if (documentId && deletedCallouts.length > 0) {
-      const deletedAt = new Date().toISOString();
-      const actorName = user?.user_metadata?.full_name
-        || user?.user_metadata?.name
-        || [user?.user_metadata?.first_name, user?.user_metadata?.last_name].filter(Boolean).join(' ')
-        || user?.email
-        || 'Someone';
-      for (const callout of deletedCallouts) {
-        const trashRow = buildCalloutDeleteHistoryRow({
-          callout,
-          documentId,
-          userId: user?.id || null,
-          actorName,
-          deletedAt,
+    const requestBulkDelete = requestBulkDeleteRef.current;
+    const byPage = annotationsByPageRef.current || {};
+    for (const [pageNumber, ids] of idsByPage.entries()) {
+      const idsSet = new Set(ids);
+      // Cross-author modal snapshots come from byPage — the projected callout
+      // group objects (they carry data.legacyCallout, so the undo-toast's
+      // snapshot re-add revives the callout through the derive memo).
+      // JSON deep-clone also drops the non-enumerable getObjects accessor.
+      const pageObjects = (byPage[pageNumber] || byPage[String(pageNumber)])?.objects || [];
+      const snapshotObjects = pageObjects
+        .filter((obj) => obj?.data?.type === 'callout' && idsSet.has(obj.data.id))
+        .map((obj) => JSON.parse(JSON.stringify(obj)));
+      const runDelete = () => {
+        // Removal-intent stamp stays until Slice 5 (sync state-obs classifier).
+        markCalloutRemovalIntent({
+          source: 'delete',
+          reason: 'callouts:delete',
+          calloutIds: ids,
+          count: ids.length,
+        }, window);
+        commitCalloutMutation(pageNumber, (prev) => prev.filter((c) => !idsSet.has(c.id)), {
+          source: 'callout:delete',
+          action: 'delete',
+          deletedCount: ids.length,
         });
-        if (trashRow) void recordAndNotifyDocumentHistoryEvent(trashRow);
+        // Clear selection on actual delete (post-confirm), mirroring the shape
+        // path's deselectAll-inside-runDelete — a cancelled modal keeps the
+        // selection alive.
+        setSelectedCalloutIds((prev) => {
+          if (!(prev instanceof Set) || prev.size === 0) return prev;
+          const next = new Set(prev);
+          ids.forEach((id) => next.delete(id));
+          return next.size === prev.size ? prev : next;
+        });
+      };
+      if (typeof requestBulkDelete === 'function' && snapshotObjects.length > 0) {
+        requestBulkDelete({ candidateIds: ids, snapshotObjects, pageNumber, runDelete });
+      } else {
+        // Defensive fallback (boot window / snapshot resolution failure):
+        // fire the delete directly — same permissive posture as the shape
+        // path's onRequestBulkDelete-absent branch.
+        runDelete();
       }
     }
-  }, [addHistoryCheckpoint, callouts, documentOwnerId, setCalloutsIfPersistedChanged, user, pdfFile?.id]);
+  }, [callouts, documentOwnerId, user, commitCalloutMutation, resolveCalloutPageNumber]);
 
-  // UX 2026-04-21: single-checkpoint opener for marquee delete of a mixed
-  // shape+callout selection. The SVGAnnotationLayer delete handler calls
-  // this FIRST when both selections are populated so one pre-mutation
-  // snapshot captures both halves. It then suppresses the next two
-  // downstream checkpoints (annotations:save from deleteSelected + the
-  // callouts:delete from handleDeleteSelectedCallouts), so the user
-  // experiences a single undo that brings back everything deleted.
+  // UX 2026-04-21 / R2.2 Slice 4: opener for marquee delete of a mixed
+  // shape+callout selection. The SVGAnnotationLayer delete handler calls this
+  // FIRST when both selections are populated. It used to take a whole-document
+  // 'delete:batch' checkpoint and suppress the two downstream checkpoints
+  // (annotations:save + the retired callouts:delete). Now that callout deletes
+  // ride the shared save pipeline, it instead ARMS mixedDeleteBatchRef with
+  // the canModify-permitted callout ids: handleRequestBulkDelete claims them
+  // and folds the callout groups into the SHAPE half's bulk-delete request, so
+  // a mixed delete is ONE plan, ONE modal, and ONE combined per-page save —
+  // one fabric:batch undo entry whose single Cmd+Z restores both halves.
+  // suppressBatchCheckpointsRef is intentionally no longer touched (it stays
+  // 0, so no later unrelated checkpoint can be swallowed); the suppressCount
+  // param is kept for the SVGAnnotationLayer call-signature but unused.
   const handleBeginBatchDelete = useCallback((suppressCount = 2, calloutIds = []) => {
     const selectedCalloutIds = calloutIds instanceof Set
       ? Array.from(calloutIds).filter(Boolean)
@@ -10298,15 +10374,20 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         ? calloutIds.filter(Boolean)
         : [];
     const scopedCalloutIds = [...new Set(selectedCalloutIds)];
-    addHistoryCheckpoint('delete:batch', {
-      suppressCount,
-      ...(scopedCalloutIds.length > 0 ? {
-        calloutIds: scopedCalloutIds,
-        count: scopedCalloutIds.length,
-      } : {}),
+    // Same ownership gate as handleDeleteSelectedCallouts (incl. the
+    // boot-permissive fallthrough) — only permitted callouts may be folded
+    // into the combined shape-half delete.
+    const viewerId = user?.id ?? null;
+    const permittedIds = scopedCalloutIds.filter((id) => {
+      if (!viewerId || !documentOwnerId) return true;
+      const callout = callouts.find((c) => c.id === id);
+      if (!callout) return false;
+      return canModify({ annotation: callout, viewerId, documentOwnerId });
     });
-    suppressBatchCheckpointsRef.current = suppressCount;
-  }, [addHistoryCheckpoint]);
+    mixedDeleteBatchRef.current = permittedIds.length > 0
+      ? { calloutIds: permittedIds, claimed: new Set(), armedAt: Date.now() }
+      : null;
+  }, [callouts, documentOwnerId, user?.id]);
 
   // UX: when a freshly-created callout lands in state, auto-open its text
   // in edit mode so the user can start typing immediately (matches
@@ -17330,7 +17411,67 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   }, [pdfFile?.id]);
 
   const handleRequestBulkDelete = useCallback(
-    ({ candidateIds, snapshotObjects, pageNumber, runDelete }) => {
+    ({ candidateIds: requestedCandidateIds, snapshotObjects: requestedSnapshotObjects, pageNumber, runDelete: requestedRunDelete }) => {
+      // R2.2 Slice 4 — mixed shape+callout marquee delete: when
+      // handleBeginBatchDelete armed mixedDeleteBatchRef (both selections
+      // populated), fold this page's permitted callout groups into the SHAPE
+      // half's request. One buildBulkDeletePlan over both halves, one
+      // confirm modal, and one COMBINED save: the wrapped runner arms
+      // calloutCoDeleteRef so handleSaveAnnotations strips the claimed
+      // callout groups from the same page JSON the shape runDelete saves —
+      // a single fabric:batch undo entry restores shapes AND callouts.
+      const mixedBatch = mixedDeleteBatchRef.current;
+      const mixedBatchActive = mixedBatch && (Date.now() - mixedBatch.armedAt) < 2000;
+      const pageObjectsForClaim = mixedBatchActive
+        ? (annotationsByPage?.[pageNumber]?.objects || [])
+        : [];
+      const claimedCalloutGroups = mixedBatchActive
+        ? pageObjectsForClaim.filter((obj) => obj?.data?.type === 'callout'
+            && mixedBatch.calloutIds.includes(obj.data.id)
+            && !mixedBatch.claimed.has(obj.data.id))
+        : [];
+      const claimedCalloutIds = claimedCalloutGroups.map((obj) => obj.data.id);
+      claimedCalloutIds.forEach((id) => mixedBatch.claimed.add(id));
+      const hasClaim = claimedCalloutIds.length > 0;
+      const candidateIds = hasClaim
+        ? [...(requestedCandidateIds || []), ...claimedCalloutIds]
+        : requestedCandidateIds;
+      const snapshotObjects = hasClaim
+        ? [
+          ...(requestedSnapshotObjects || []),
+          // Deep JSON clone: detach from live byPage state and drop the
+          // non-enumerable getObjects accessor before the snapshot is stashed
+          // in the undo-toast closure / trash rows.
+          ...claimedCalloutGroups.map((obj) => JSON.parse(JSON.stringify(obj))),
+        ]
+        : requestedSnapshotObjects;
+      const runDelete = hasClaim
+        ? () => {
+          // Removal-intent stamp stays until Slice 5 (sync state-obs classifier).
+          markCalloutRemovalIntent({
+            source: 'delete',
+            reason: 'callouts:delete',
+            calloutIds: claimedCalloutIds,
+            count: claimedCalloutIds.length,
+          }, window);
+          calloutCoDeleteRef.current = {
+            pageNumber: Number(pageNumber),
+            ids: new Set(claimedCalloutIds),
+          };
+          try {
+            requestedRunDelete();
+          } finally {
+            calloutCoDeleteRef.current = null;
+          }
+          setSelectedCalloutIds((prev) => {
+            if (!(prev instanceof Set) || prev.size === 0) return prev;
+            const next = new Set(prev);
+            claimedCalloutIds.forEach((id) => next.delete(id));
+            return next.size === prev.size ? prev : next;
+          });
+        }
+        : requestedRunDelete;
+
       // Flatten the current page's annotations so the planner can resolve
       // per-author breakdown across what the user actually sees.
       const pageAnnotations = annotationsByPage?.[pageNumber]?.objects || [];
@@ -17479,6 +17620,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     },
     [annotationsByPage, user, documentOwnerId, enqueueUndoToast, pdfFile?.id, registerBulkJournaledAnnotationIds],
   );
+  // R2.2 Slice 4: keep the TDZ ref bridge current so handleDeleteSelectedCallouts
+  // (declared ~7k lines above) always routes through this render's bulk-delete
+  // planner. Same render-time-assignment pattern as handleSaveAnnotationsRef.
+  requestBulkDeleteRef.current = handleRequestBulkDelete;
 
   // The rebuild: Yjs Y.Doc + append-only op-log is the single source of truth
   // for annotations (and callouts). Captures every change durably the instant it
@@ -21774,6 +21919,22 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   }, [pushHistoryDebugEvent, user, pdfFile?.id, yjsUndoCtx?.userId, isBulkJournaledAnnotationId]);
 
   const handleSaveAnnotations = useCallback((pageNumber, json, saveContext = null) => {
+    // R2.2 Slice 4 — mixed marquee co-delete: the combined bulk-delete runner
+    // arms calloutCoDeleteRef around the shape half's runDelete(); strip the
+    // claimed callout groups from the incoming JSON here so shapes + callouts
+    // land in ONE save (one fabric:batch undo entry — a single Cmd+Z restores
+    // both halves). Single-shot: consumed on first matching save.
+    const calloutCoDelete = calloutCoDeleteRef.current;
+    if (calloutCoDelete
+      && Number(calloutCoDelete.pageNumber) === Number(pageNumber)
+      && Array.isArray(json?.objects)) {
+      calloutCoDeleteRef.current = null;
+      json = {
+        ...json,
+        objects: json.objects.filter((obj) => !(obj?.data?.type === 'callout'
+          && calloutCoDelete.ids.has(obj.data.id))),
+      };
+    }
     const source_ = saveContext?.source || 'unknown';
     const prevCount_ = annotationsByPageRef.current?.[pageNumber]?.objects?.length ?? 0;
     const nextCount_ = json?.objects?.length ?? 0;
