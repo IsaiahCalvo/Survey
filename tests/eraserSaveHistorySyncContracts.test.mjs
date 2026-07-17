@@ -27,23 +27,9 @@ test('eraser save path publishes precise ids for cloud sync fan-out', () => {
   assert.ok(app.includes('changedIds: eraserChangedIds'), 'expected changed id payload');
 });
 
-test('cloud sync consumes eraser precise ids instead of whole-page changed diff', () => {
-  const hook = readFileSync(resolve(ROOT, 'src/hooks/useAnnotationCloudSync.js'), 'utf8');
-
-  assert.ok(hook.includes("window.addEventListener('annotations:precise-fabric-commit'"), 'expected precise event listener');
-  assert.ok(hook.includes('? preciseFabricCommit.changedIds'), 'expected changed fan-out limited to precise ids');
-  assert.ok(hook.includes('resolveFabricDeletedIds({'), 'expected delete ids to resolve through explicit intent helper');
-  assert.ok(hook.includes('preciseFabricCommit,'), 'expected eraser precise delete ids to remain first priority');
-});
-
-test('fabric sync flush rechecks pointer state and defers while pointer is down', () => {
-  const hook = readFileSync(resolve(ROOT, 'src/hooks/useAnnotationCloudSync.js'), 'utf8');
-  const runIndex = hook.indexOf('const runFabricPush = async () => {');
-  const pointerIndex = hook.indexOf('if (pointerDownRef.current) {', runIndex);
-  const pushIndex = hook.indexOf('[CloudSync][hook] fabric push debounce elapsed', runIndex);
-
-  assert.ok(runIndex > 0, 'expected fabric push runner');
-  assert.ok(pointerIndex > runIndex, 'expected pointer check inside fabric push runner');
-  assert.ok(pointerIndex < pushIndex, 'expected pointer deferral before pushing');
-  assert.ok(hook.includes('fabric push deferred at flush'), 'expected flush-time pointer deferral log');
-});
+// 2026-07-17: two tests pinning the retired useAnnotationCloudSync hook's
+// consumption of the precise-commit event (and its pointer-deferral flush)
+// were deleted with the hook module — the hook was unmounted, so nothing
+// consumed the event through it. The PDFViewer dispatch pinned above is kept:
+// whether the event dispatch itself should be retired is a pass-2 decision
+// (it requires a PDFViewer.jsx edit).

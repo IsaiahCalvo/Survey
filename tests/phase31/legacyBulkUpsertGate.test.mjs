@@ -30,22 +30,13 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const FEATURE_FLAGS_PATH = path.resolve(__dirname, '../../src/lib/collab/featureFlags.js');
-const HOOK_PATH = path.resolve(__dirname, '../../src/hooks/useAnnotationCloudSync.js');
 const SERVICE_PATH = path.resolve(__dirname, '../../src/services/annotationCloudSync.js');
 
 // FLAG_SKIP: gates the dynamic-import tests (the flag module itself).
-// HOOK_SKIP: gates the grep tests on the hook. The hook FILE exists today, but
-//   the gate it asserts (isLegacyBulkUpsertEnabled wrapping the call) cannot
-//   be added until featureFlags.js ships (Plan 31-02). So we skip the grep
-//   tests on the flag's presence — they auto-flip skip→run when Plan 31-02
-//   lands, and Plan 31-03 must then satisfy the gate-grep contract.
 // SERVICE_SKIP: same logic — gate on the flag's presence so the service-side
 //   log-line invariant test only runs once Plan 31-02 has shipped.
 const FLAG_SKIP = !existsSync(FEATURE_FLAGS_PATH)
   ? 'src/lib/collab/featureFlags.js not yet present (Plan 31-02)'
-  : false;
-const HOOK_SKIP = !existsSync(FEATURE_FLAGS_PATH) || !existsSync(HOOK_PATH)
-  ? 'gate cannot land until Plan 31-02 ships featureFlags.js (then Plan 31-03 gates the hook)'
   : false;
 const SERVICE_SKIP = !existsSync(FEATURE_FLAGS_PATH) || !existsSync(SERVICE_PATH)
   ? 'gate cannot land until Plan 31-02 ships featureFlags.js (Plan 31-03 preserves the service)'
@@ -112,64 +103,14 @@ describe('LEGACY_BULK_UPSERT_ENABLED feature flag (Plan 31-02)', () => {
   });
 });
 
-describe('useAnnotationCloudSync legacy bypass (Plan 31-03)', () => {
-  it('hook source keeps Supabase durable writes outside the legacy flag gate', { skip: HOOK_SKIP }, () => {
-    const source = readFileSync(HOOK_PATH, 'utf8');
-    const callCount = (source.match(/upsertAnnotationsByPage\(/g) || []).length;
-    assert.ok(
-      callCount > 0,
-      'Supabase durable path must still call upsertAnnotationsByPage',
-    );
-    assert.match(source, /route: 'supabase-durable-then-crdt'/);
-    assert.match(source, /Supabase is the durable\s+source/s);
-  });
-
-  it('cutover hydrate explicitly selects Supabase durable snapshot before marking ready', { skip: HOOK_SKIP }, () => {
-    const source = readFileSync(HOOK_PATH, 'utf8');
-    assert.match(source, /contextLabel: 'cutover-source-of-truth'/);
-    assert.match(source, /source: 'supabase-durable-snapshot'/);
-    assert.match(source, /Y\.Doc is reshaped for live collaboration/);
-  });
-
-  it('callout save path persists Supabase before Y.Doc fan-out (R2 keystone: via shared fabric push)', { skip: HOOK_SKIP }, () => {
-    // 2026-06-30 (R2 keystone): the legacy standalone callout push useEffect was
-    // deleted because calloutsInSharedStore() is unconditionally true. Callouts
-    // now persist via the SHARED fabric push (upsertAnnotationsByPage) which
-    // serializes callout objects as 'callout'-type annotation rows. The
-    // Supabase-before-CRDT ordering invariant is preserved — it just lives in the
-    // shared fabric push path, not a separate callout-specific effect.
-    //
-    // This test now verifies:
-    // 1. The shared fabric push (above this test's old subject) still calls
-    //    upsertAnnotationsByPage before fanOutCrdtForAnnotationsByPage.
-    // 2. The offline drain (callout-bulk branches) and forceFlush direct callout
-    //    path still exist to handle stuck queue entries.
-    const source = readFileSync(HOOK_PATH, 'utf8');
-
-    // The shared fabric push ordering (callouts now flow through this path)
-    const fabricUpsertStart = source.indexOf('[CloudSync][hook] fabric Supabase upsert start');
-    const fabricUpsert = source.indexOf('result = await upsertAnnotationsByPage(', fabricUpsertStart > 0 ? fabricUpsertStart : 0);
-    assert.ok(fabricUpsert > 0, 'shared fabric push (now carrying callouts) must call upsertAnnotationsByPage');
-
-    // The offline drain callout-bulk branches must still exist (for stuck-queue recovery)
-    assert.match(source, /kind === 'callout-bulk'/, 'callout-bulk drain branch must still exist for queue recovery');
-
-    // R2.3a Slice 5: the forceFlush direct callout path is retired — callouts
-    // ride annotationsByPage, so the direct FABRIC upsert (lastByPageRef.current,
-    // which now contains the projected callout groups) carries them. Assert the
-    // fabric direct path survives and the retired callout plumbing stays gone.
-    assert.match(
-      source,
-      /if \(!noPendingDurableWork && !consumedPendingFabric && lastByPageRef\.current\)/,
-      'forceFlush direct fabric upsert path (now carrying callouts) must exist',
-    );
-    assert.doesNotMatch(
-      source,
-      /consumedPendingCallout/,
-      'retired forceFlush pending-callout tracking must not return',
-    );
-  });
-});
+// 2026-07-17: the "useAnnotationCloudSync legacy bypass (Plan 31-03)"
+// describe block was deleted together with the retired hook module (the hook
+// was unmounted — pinned by tests/annotationInitialHydrationSource.test.mjs —
+// so its gate never executed). The feature-flag reader above and the service
+// log-line invariant below remain: featureFlags.js and
+// services/annotationCloudSync.js are still live modules. Note the flag's
+// original rollback purpose died with the hook; whether the service-side bulk
+// upsert path itself is retired is a pass-2 decision.
 
 describe('annotationCloudSync.js log-line invariant (Plan 31-03)', () => {
   it('legacy log line "[CloudSync][push] upsertAnnotationsByPage start" still exists in service (legacy code preserved for rollback)', { skip: SERVICE_SKIP }, () => {

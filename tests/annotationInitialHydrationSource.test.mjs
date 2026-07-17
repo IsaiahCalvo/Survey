@@ -9,7 +9,6 @@ const APP_SOURCE = readFileSync(new URL('../src/viewerShared.js', import.meta.ur
   // the hydration page-cover render helper was lifted into its own module
   // (2026-05-29); scan it too so the guard still finds the relocated markup.
   + '\n' + readFileSync(new URL('../src/components/annotationHydrationCover.jsx', import.meta.url), 'utf8');
-const CLOUD_SYNC_SOURCE = readFileSync(new URL('../src/hooks/useAnnotationCloudSync.js', import.meta.url), 'utf8');
 const ANNOTATION_DOC_HOOK_SOURCE = readFileSync(new URL('../src/hooks/useAnnotationDoc.js', import.meta.url), 'utf8');
 
 test('cloud-backed survey highlights hydrate from the durable Y.Doc, not the legacy table', () => {
@@ -53,10 +52,11 @@ test('annotation persistence is owned by the durable Yjs store, not the legacy h
     APP_SOURCE,
     /useAnnotationDoc\(\{[\s\S]*?enabled: isActive && cloudSyncEnabled && !!pdfFile\?\.id && !!user\?\.id/
   );
+  // The retired legacy hook module (src/hooks/useAnnotationCloudSync.js) was
+  // DELETED 2026-07-17. This guard is now the tombstone: the hook must never
+  // be re-mounted (and any resurrected call would fail this pin immediately).
   assert.doesNotMatch(APP_SOURCE, /useAnnotationCloudSync\(\{/);
   assert.match(APP_SOURCE, /status: cloudSyncStatus,\s*queueSize: cloudSyncQueueSize/);
-  // The retired hook stays independently guarded until its module is deleted.
-  assert.match(CLOUD_SYNC_SOURCE, /if \(!hydrateEnabled \|\| !documentId \|\| !userId \|\| !pdfId\)/);
 });
 
 test('cloud callouts hydrate from the annotations map inside byPage, never the calloutsList meta blob (Slice 6)', () => {
@@ -109,28 +109,19 @@ test('cloud callouts hydrate from the annotations map inside byPage, never the c
   assert.ok(seamCode.includes('docRole'), 'the resolved document role reaches the hook');
 });
 
-test('cutover-sealed documents mark the first-paint source as Y.Doc authoritative', () => {
-  assert.match(CLOUD_SYNC_SOURCE, /source: 'ydoc-snapshot'/);
-  assert.match(CLOUD_SYNC_SOURCE, /markInitialHydration\(\{\s*ready: true,\s*source: 'ydoc-snapshot'/s);
-});
-
-test('cutover reconnect/focus cannot leave a blank local view when Supabase still has annotations', () => {
-  assert.match(CLOUD_SYNC_SOURCE, /const restoreCutoverSnapshotIfLocalEmpty = async/);
-  assert.match(CLOUD_SYNC_SOURCE, /local cutover view is empty — probing Supabase durable snapshot/);
-  assert.match(CLOUD_SYNC_SOURCE, /source: 'cutover-durable-snapshot-recovery'/);
-  assert.match(CLOUD_SYNC_SOURCE, /restoreCutoverSnapshotIfLocalEmpty\('cutover-post-subscribe-empty-view-recovery'\)/);
-  assert.match(CLOUD_SYNC_SOURCE, /restoreCutoverSnapshotIfLocalEmpty\('cutover-focus-empty-view-recovery'\)/);
-});
+// The 'cutover-sealed first-paint' and 'cutover reconnect/focus recovery'
+// tests were deleted 2026-07-17: they pinned internals of the retired
+// useAnnotationCloudSync hook, which was unmounted (see the tombstone guard
+// above) and whose module is now deleted. The live first-paint contract
+// (source: 'annotation-doc') is pinned in the first test of this file.
 
 test('cloud snapshots use the shared safe-snapshot rule before replacing visible state', () => {
   // Highlights no longer use resolveSafeSnapshot on hydrate — the durable Y.Doc
-  // is their source of truth now. The fabric guards (and the local-only spaces/
-  // survey-marker sidecar guards) remain.
+  // is their source of truth now. The local-only spaces sidecar guard remains.
+  // (The retired hook's fabric-context wraps were deleted with its module
+  // 2026-07-17; the survey-marker sidecar wrap is pinned by
+  // tests/annotationIdleRecoveryContracts.test.mjs.)
   assert.match(APP_SOURCE, /context: 'supabase-storage-spaces'/);
-  assert.match(CLOUD_SYNC_SOURCE, /context: 'initial-hydrate-fabric'/);
-  assert.match(CLOUD_SYNC_SOURCE, /context: 'post-subscribe-fabric'/);
-  assert.match(CLOUD_SYNC_SOURCE, /context: 'focus-rehydrate-fabric'/);
-  assert.match(CLOUD_SYNC_SOURCE, /preserved visible state instead of applying empty Y\.Doc snapshot/);
 });
 
 test('first visible annotation wrappers expose and honor the hydration gate', () => {

@@ -5,7 +5,6 @@ import { resolve } from 'node:path';
 import { getSyncStatusViewModel } from '../src/utils/syncStatusViewModel.js';
 import { getSyncedDelayMs, MIN_SYNC_ACTIVITY_VISIBLE_MS } from '../src/utils/syncStatusTiming.js';
 
-const hookSource = () => readFileSync(resolve('src/hooks/useAnnotationCloudSync.js'), 'utf8');
 const appSource = () => readFileSync(resolve('src/viewerShared.js'), 'utf8')
   + '\n' + readFileSync(resolve('src/PDFViewer.jsx'), 'utf8');
 
@@ -42,90 +41,13 @@ test('fast successful sync stays visible for the minimum activity duration', () 
   assert.equal(getSyncedDelayMs(null, 1000), 0);
 });
 
-test('callout debounce scheduling marks sync pending before the timer fires (R2: via shared fabric push)', () => {
-  // 2026-06-30 (R2 keystone): the standalone callout push useEffect was deleted —
-  // calloutsInSharedStore() is unconditionally true, so it was permanently dead.
-  // Callouts now flow through the shared fabric push (upsertAnnotationsByPage).
-  // The pending/syncing/synced/queued status transitions for annotations still
-  // exist in the fabric push path; kind:'callout' status markers from the old
-  // dedicated effect are gone. Verify the shared fabric push carries status markers.
-  const src = hookSource();
-  assert.match(
-    src,
-    /pendingFabricFlushRef\.current = runFabricPush;[\s\S]{0,200}setSyncStatus\(\{ stage: 'pending', kind: 'fabric' \}\);[\s\S]{0,200}debounceTimerRef\.current = setTimeout/,
-    'shared fabric push (now the sole callout writer) must mark pending before setTimeout',
-  );
-});
-
-test('callout push success and failure drive synced or queued status (R2: via shared fabric push)', () => {
-  // 2026-06-30 (R2 keystone): standalone callout push removed; callouts flow through
-  // the shared fabric push. Status markers kind:'callout' are gone; kind:'fabric'
-  // remains. Verify the fabric push path still has success/failure status transitions.
-  const src = hookSource();
-  assert.match(src, /setSyncStatus\(\{ stage: 'syncing', kind: 'fabric' \}\);/,
-    'fabric push must set syncing status');
-  assert.match(src, /setSyncStatus\(\{ stage: 'queued', error: result\.error, kind: 'fabric' \}\);/,
-    'fabric push must set queued status on failure');
-  assert.match(src, /setSyncStatus\(\{ stage: 'synced', count: result\.data\?\.length \|\| 0, kind: 'fabric' \}\);/,
-    'fabric push must set synced status on success');
-});
-
-test('manual forceFlush consumes the pending fabric runner before direct durable flush (R2.3a: callouts ride the fabric path)', () => {
-  // R2.3a Slice 5: the separate pending-callout runner and the direct
-  // upsertCallouts branch are retired — callouts live inside
-  // annotationsByPage, so the pending FABRIC flush and the direct fabric
-  // upsert (lastByPageRef.current) already carry them. Only the callout-bulk
-  // queue DRAIN branch survives, for stuck pre-flip localStorage entries.
-  const src = hookSource();
-  const forceFlushIndex = src.indexOf('const forceFlush = async () => {');
-  const pendingFabricIndex = src.indexOf('const pendingFabric = pendingFabricFlushRef.current;', forceFlushIndex);
-  const consumeFabricIndex = src.indexOf('await pendingFabric();', forceFlushIndex);
-  const noPendingSyncedIndex = src.indexOf('const noPendingDurableWork = !consumedPendingFabric', forceFlushIndex);
-  const directFabricIndex = src.indexOf('if (!noPendingDurableWork && !consumedPendingFabric && lastByPageRef.current)', forceFlushIndex);
-
-  assert.ok(forceFlushIndex > 0, 'expected forceFlush implementation');
-  assert.ok(pendingFabricIndex > forceFlushIndex, 'expected pending fabric runner lookup');
-  assert.ok(consumeFabricIndex > pendingFabricIndex, 'expected pending fabric runner to be consumed');
-  assert.ok(noPendingSyncedIndex > consumeFabricIndex, 'expected no-pending synced manual save fast path');
-  assert.ok(directFabricIndex > consumeFabricIndex, 'expected direct fabric flush to be gated after pending runner');
-  // Retired plumbing must NOT come back inside forceFlush.
-  assert.equal(src.indexOf('await pendingCallout();', forceFlushIndex), -1,
-    'pending callout runner is retired — the fabric flush carries callouts');
-  assert.equal(src.indexOf('consumedPendingCallout', forceFlushIndex), -1,
-    'direct callout flush tracking is retired');
-  // The callout-bulk drain branch must survive for stuck-queue recovery.
-  assert.match(src, /kind === 'callout-bulk'/);
-});
-
-test('manual forceFlush does not re-upsert all annotations when already synced and no work is pending', () => {
-  const src = hookSource();
-  const forceFlushIndex = src.indexOf('const forceFlush = async () => {');
-  const noPendingSyncedIndex = src.indexOf('const noPendingDurableWork = !consumedPendingFabric', forceFlushIndex);
-  const noPendingLogIndex = src.indexOf("[CloudSync][forceFlush] no pending work; preserving synced state", forceFlushIndex);
-  const directFabricIndex = src.indexOf('if (!noPendingDurableWork && !consumedPendingFabric && lastByPageRef.current)', forceFlushIndex);
-  const syncedStatusIndex = src.indexOf("setSyncStatus({ stage: 'synced', kind: 'manual-save'", forceFlushIndex);
-  const staleSyncedOnlyGuardIndex = src.indexOf("&& statusAfterPending === 'synced'", noPendingSyncedIndex);
-
-  assert.ok(noPendingSyncedIndex > forceFlushIndex, 'expected already-synced no-work guard');
-  assert.ok(noPendingLogIndex > noPendingSyncedIndex, 'expected diagnostic for no-op manual save');
-  assert.ok(directFabricIndex > noPendingSyncedIndex, 'expected fabric direct flush to skip no-work saves');
-  assert.ok(syncedStatusIndex > directFabricIndex, 'expected manual save to still end with synced status');
-  assert.equal(staleSyncedOnlyGuardIndex, -1, 'no-op manual save must also skip full upsert from idle hydrated state');
-});
-
-test('manual forceFlush logs and settles status to synced only after successful flush', () => {
-  const src = hookSource();
-  const forceFlushIndex = src.indexOf('const forceFlush = async () => {');
-  const startLogIndex = src.indexOf("[CloudSync][forceFlush] start", forceFlushIndex);
-  const failureStatusIndex = src.indexOf("setSyncStatus({ stage: 'queued', error: err, kind: 'manual-save'", forceFlushIndex);
-  const syncedLogIndex = src.indexOf("[CloudSync][forceFlush] synced", forceFlushIndex);
-  const syncedStatusIndex = src.indexOf("setSyncStatus({ stage: 'synced', kind: 'manual-save'", forceFlushIndex);
-
-  assert.ok(startLogIndex > forceFlushIndex, 'expected forceFlush start diagnostic');
-  assert.ok(failureStatusIndex > forceFlushIndex, 'expected failures to leave queued status');
-  assert.ok(syncedLogIndex > failureStatusIndex, 'expected synced diagnostic after failure guards');
-  assert.ok(syncedStatusIndex > syncedLogIndex, 'expected synced status after successful flush log');
-});
+// 2026-07-17: five tests pinning the retired useAnnotationCloudSync hook's
+// internal status transitions and forceFlush ordering were deleted with the
+// hook module (it was unmounted — pinned by
+// tests/annotationInitialHydrationSource.test.mjs — so none of those
+// transitions ever ran). The live status producer is useAnnotationDoc
+// (stage: idle/hydrating/syncing/error + forceFlush), consumed through the
+// view-model contract tested above and the Save wiring tested below.
 
 test('normal app-state Save invokes cloudSyncForceFlush', () => {
   const src = appSource();

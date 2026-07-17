@@ -1,10 +1,8 @@
 // tests/dedupeResyncSafetyBranches.test.mjs — KAL-92 regression coverage.
-// COMPLEMENTS src/hooks/__tests__/useAnnotationCloudSync.dedupeResync.test.mjs
-// (which pins the combined startup-shrink incident case + the decision-before-
-// setter source order). This file covers every OTHER branch of
-// shouldApplyDedupeResync, the crdt:dedupe-resync producer contract in
-// YDocProvider, and a scoped-slice contract over the hook's handler body so
-// the five guard inputs and both Save Log signatures cannot silently un-wire.
+// Covers every branch of shouldApplyDedupeResync (including the startup-shrink
+// incident case, moved here 2026-07-17 from the deleted
+// useAnnotationCloudSync.dedupeResync.test.mjs) and the crdt:dedupe-resync
+// producer contract in YDocProvider.
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -15,7 +13,6 @@ import { shouldApplyDedupeResync } from '../src/utils/dedupeResyncSafety.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(__dirname, '..');
-const HOOK_PATH = resolve(REPO_ROOT, 'src/hooks/useAnnotationCloudSync.js');
 const PROVIDER_PATH = resolve(REPO_ROOT, 'src/components/collab/YDocProvider.jsx');
 
 // --- branch coverage for shouldApplyDedupeResync --------------------------------
@@ -104,33 +101,26 @@ test('YDocProvider dispatches crdt:dedupe-resync with documentId + removed, gate
   );
 });
 
-// --- scoped consumer contract: the hook handler wires all five guard inputs -----
+// --- KAL-92 incident case (moved here 2026-07-17 when the retired
+// useAnnotationCloudSync hook and its co-located dedupeResync test were
+// deleted; this was the one PURE test in that file worth preserving) --------
 
-test('hook dedupe-resync handler wires all five guard inputs and both Save Log signatures, in order', () => {
-  const hookSource = readFileSync(HOOK_PATH, 'utf8');
+test('dedupe resync refuses stale Y.Doc snapshots that shrink more than the dedupe removed (KAL-92 incident case)', () => {
+  const decision = shouldApplyDedupeResync({
+    currentCount: 529,
+    resyncCount: 429,
+    removedCount: 1,
+    startupSyncInFlight: true,
+    hydrated: false,
+  });
 
-  const anchor = 'const onDedupeResync = (e) => {';
-  const firstAnchor = hookSource.indexOf(anchor);
-  assert.notEqual(firstAnchor, -1, 'handler anchor must exist');
-  assert.equal(hookSource.indexOf(anchor, firstAnchor + 1), -1, 'handler anchor must be unique');
-
-  const cleanup = "removeEventListener('crdt:dedupe-resync', onDedupeResync)";
-  const cleanupIndex = hookSource.indexOf(cleanup, firstAnchor);
-  assert.notEqual(cleanupIndex, -1, 'listener cleanup must exist after the handler');
-
-  const slice = hookSource.slice(firstAnchor, cleanupIndex);
-
-  // All five guard inputs wired from live state, inside the handler.
-  assert.match(slice, /shouldApplyDedupeResync\(\{\s*currentCount:\s*__currentCount,\s*resyncCount:\s*__resyncCount,\s*removedCount:\s*__removedCount,\s*startupSyncInFlight:\s*startupSyncInFlightRef\.current,\s*hydrated:\s*hydratedRef\.current,?\s*\}\)/);
-
-  // The decision gates the state update, and both diagnostics fire in order:
-  // skip-log before restore-log before the setter.
-  const gateIndex = slice.indexOf('if (!decision.apply)');
-  const skipLogIndex = slice.indexOf('dedupe-resync skipped unsafe shrink');
-  const restoreLogIndex = slice.indexOf('dedupe-resync — restoring state');
-  const setterIndex = slice.indexOf('setAnnotationsByPage(');
-  assert.ok(gateIndex !== -1, 'decision.apply gate must exist in the handler');
-  assert.ok(skipLogIndex > gateIndex, 'unsafe-shrink Save Log signature must live inside the gate');
-  assert.ok(restoreLogIndex > skipLogIndex, 'restore signature must follow the gate');
-  assert.ok(setterIndex > restoreLogIndex, 'state replacement must come after the safety decision and logs');
+  assert.equal(decision.apply, false);
+  assert.equal(decision.reason, 'startup-shrink');
 });
+
+// NOTE (2026-07-17): the scoped consumer-contract test over the retired
+// useAnnotationCloudSync hook's onDedupeResync handler was deleted with the
+// hook module — the hook was unmounted (pinned by
+// tests/annotationInitialHydrationSource.test.mjs) and its handler never ran.
+// The YDocProvider producer contract above still holds; the event currently
+// has no consumer (dispatch retained pending the pass-2 sweep).

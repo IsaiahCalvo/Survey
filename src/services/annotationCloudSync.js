@@ -20,7 +20,6 @@ import {
   deserializeRowToFabricObject,
   serializeAnnotationsByPage,
   deserializeRowsToAnnotationsByPage,
-  serializeCalloutToRow,
   deserializeRowToCallout,
   deserializeRowsToCallouts
 } from './annotationTypeSerializers.js';
@@ -338,50 +337,11 @@ export async function upsertAnnotationsByPage(annotationsByPage, opts = {}) {
   return { data: data || [], error: null };
 }
 
-/**
- * Push every callout up to the cloud.
- */
-export async function upsertCallouts(callouts, opts = {}) {
-  if (!supabase) return { data: [], error: new Error('Supabase unavailable') };
-  if (!Array.isArray(callouts) || callouts.length === 0) {
-    cloudSyncDebug('[CloudSync][push] upsertCallouts: nothing to push (empty list)');
-    return { data: [], error: null };
-  }
-  const rows = callouts.map((c) => serializeCalloutToRow(c, opts));
-  const t0 = Date.now();
-  cloudSyncDebug('[CloudSync][push] upsertCallouts start ' + JSON.stringify({
-    documentId: opts.documentId,
-    userId: opts.userId,
-    actionType: opts.actionType || null,
-    changedIds: Array.isArray(opts.changedIds) ? opts.changedIds : null,
-    changedCount: Number.isFinite(opts.changedCount) ? opts.changedCount : rows.length,
-    dispatchedCount: Number.isFinite(opts.dispatchedCount) ? opts.dispatchedCount : rows.length,
-    supabaseUpsertCount: rows.length,
-    debounceMs: Number.isFinite(opts.debounceMs) ? opts.debounceMs : null,
-    debounceElapsedMs: Number.isFinite(opts.debounceElapsedMs) ? opts.debounceElapsedMs : null,
-    fullFanOutReason: opts.fullFanOutReason || null,
-    count: rows.length
-  }));
-  const { data, error } = await supabase
-    .from('document_annotations')
-    .upsert(rows, { onConflict: 'document_id,annotation_id', ignoreDuplicates: false })
-    .select('annotation_id, updated_at');
-  const elapsedMs = Date.now() - t0;
-  if (error) {
-    console.error('[CloudSync][push] upsertCallouts failed ' + JSON.stringify({
-      elapsedMs,
-      error: error?.message || String(error)
-    }));
-    return { data: [], error };
-  }
-  cloudSyncDebug('[CloudSync][push] upsertCallouts ok ' + JSON.stringify({
-    elapsedMs,
-    actionType: opts.actionType || null,
-    supabaseUpsertCount: rows.length,
-    rowsReturned: data?.length || 0
-  }));
-  return { data: data || [], error: null };
-}
+// upsertCallouts was DELETED 2026-07-17: its only callers were the retired
+// (unmounted) useAnnotationCloudSync hook and cloudSyncMigration.js, both
+// deleted the same day. Callouts persist as shared `.fabricObject` rows via
+// the fabric push; the READ half (deserializeRowToCallout, used by
+// loadAllNonSurveyMarkerAnnotations for legacy-doc hydrate) stays LIVE.
 
 /**
  * Delete a single annotation row by client-side annotation_id.

@@ -64,39 +64,13 @@ import { isCRDTEnabled as readCRDTEnabledFlag } from '../lib/collab/crdtFeatureF
 import { useYDoc } from '../hooks/useYDoc.js';
 import CompactColorPicker from './CompactColorPicker';
 
-// Fix Fabric.js 5.x cursor overlap bug: cursor was centered on character boundary
-// with `- cursorWidth / 2`, causing leftward drift at fractional zoom.
-// Patch: place cursor at the right edge of the boundary instead of centering.
-// Ref: fabric.js GitHub issues #5008, #6168, #4479
-const _origRenderCursor = fabric.IText.prototype.renderCursor;
-// fabric 7 SWAPPED the parameter order to renderCursor(ctx, boundaries)
-// (fabric 5 was (boundaries, ctx)). Keeping the old order made `ctx` receive
-// the boundaries object and threw "ctx.fillRect is not a function" on every
-// caret paint after the 7.4.0 upgrade.
-fabric.IText.prototype.renderCursor = function(ctx, boundaries) {
-  const cursorLocation = this.get2DCursorLocation();
-  const lineIndex = cursorLocation.lineIndex;
-  const charIndex = cursorLocation.charIndex > 0 ? cursorLocation.charIndex - 1 : 0;
-  const charHeight = this.getValueOfPropertyAt(lineIndex, charIndex, 'fontSize');
-  const multiplier = this.scaleX * this.canvas.getZoom();
-  const cursorWidth = this.cursorWidth / multiplier;
-  let topOffset = boundaries.topOffset;
-  const dy = this.getValueOfPropertyAt(lineIndex, charIndex, 'deltaY');
-  topOffset += (1 - this._fontSizeFraction) * this.getHeightOfLine(lineIndex) / this.lineHeight
-    - charHeight * (1 - this._fontSizeFraction);
-  if (this.inCompositionMode) { this.renderSelection(ctx, boundaries); } // fabric 7 order
-  ctx.fillStyle = this.cursorColor || this.getValueOfPropertyAt(lineIndex, charIndex, 'fill');
-  ctx.globalAlpha = this.__isMousedown ? 1 : this._currentCursorOpacity;
-  // FIX: place cursor at right edge of boundary (removed `- cursorWidth / 2`)
-  ctx.fillRect(
-    boundaries.left + boundaries.leftOffset,
-    topOffset + boundaries.top + dy,
-    cursorWidth,
-    charHeight
-  );
-};
+// NOTE (2026-07-17): the fabric.IText.prototype.renderCursor cursor-drift patch
+// that lived here since Phase 11 was RELOCATED to src/utils/fabricCompat.js —
+// this file is an unreachable render path (editType is only ever 'text'|'bbox')
+// and is scheduled for deletion, but the patch is load-bearing for the legacy
+// PageAnnotationLayer arm's fabric text editing.
 
-// Custom properties to include in object serialization (matches FabricDrawingCanvas/FabricEraserCanvas)
+// Custom properties to include in object serialization (matches FabricEraserCanvas)
 const CUSTOM_PROPS = [
   'id', 'tool', 'strokeUniform', 'spaceId', 'moduleId', 'regionId',
   'data', 'name', 'annotationId', 'needsEntity',

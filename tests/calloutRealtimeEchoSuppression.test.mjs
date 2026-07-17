@@ -7,77 +7,28 @@
 // as already-synced and NEVER re-pushes it to the cloud (the remote-echo
 // re-push / ping-pong bug).
 //
-// Two layers, mirroring how the fabric echo-suppression contract is pinned:
-//   1. Source assertions on useAnnotationCloudSync.js — the realtime
-//      onCallout* handlers must route through applyRemoteCalloutToByPage,
-//      and that helper must assign lastByPageRef.current synchronously
-//      INSIDE the setAnnotationsByPage updater (exactly like the
-//      onFabricInsert/Update/Delete callbacks).
-//   2. Functional simulation using the REAL bridge helpers
+// Functional simulation using the REAL bridge helpers
 //      (deriveCalloutsFromByPage / applyCalloutListToByPage) composed the
 //      exact way the hook composes them, with a React-setState-like state
 //      cell + a ref object: after every remote apply the ref and the state
 //      must be the SAME reference, and re-applying the same remote payload
 //      must referential-bail (no new reference → no push scheduled).
 
-import { describe, it, test } from 'node:test';
+import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
-import { dirname, resolve } from 'node:path';
 import {
   deriveCalloutsFromByPage,
   applyCalloutListToByPage,
 } from '../src/utils/calloutAnnotationBridge.js';
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const HOOK_SOURCE = readFileSync(
-  resolve(__dirname, '../src/hooks/useAnnotationCloudSync.js'),
-  'utf8'
-);
-
 // ---------------------------------------------------------------------------
-// 1. Source contract — wiring inside the hook
+// (Layer 1 — source assertions on useAnnotationCloudSync.js — was deleted
+// 2026-07-17 together with the retired, unmounted hook module. The functional
+// contract below survives it: it exercises the REAL bridge helpers
+// (deriveCalloutsFromByPage / applyCalloutListToByPage), which remain live in
+// useAnnotationDoc, and pins the referential-bail + non-callout-preservation
+// guarantees any realtime apply composition depends on.)
 // ---------------------------------------------------------------------------
-
-test('realtime onCallout* handlers route through applyRemoteCalloutToByPage', () => {
-  assert.match(
-    HOOK_SOURCE,
-    /onCalloutInsert:\s*\(callout\)\s*=>\s*\{\s*applyRemoteCalloutToByPage\(/,
-    'insert must merge into annotationsByPage via the remote-apply helper'
-  );
-  assert.match(
-    HOOK_SOURCE,
-    /onCalloutUpdate:\s*\(callout\)\s*=>\s*\{\s*applyRemoteCalloutToByPage\(/,
-    'update must merge into annotationsByPage via the remote-apply helper'
-  );
-  assert.match(
-    HOOK_SOURCE,
-    /onCalloutDelete:\s*\(annotationId\)\s*=>\s*\{\s*applyRemoteCalloutToByPage\(/,
-    'delete must remove-by-id via the remote-apply helper'
-  );
-  // The retired separate-slice appliers must not come back.
-  assert.doesNotMatch(HOOK_SOURCE, /onCalloutInsert:\s*\(callout\)\s*=>\s*\{\s*setCallouts\(/);
-});
-
-test('applyRemoteCalloutToByPage updates lastByPageRef synchronously inside the setter (fabric-parity echo suppression)', () => {
-  const helperIndex = HOOK_SOURCE.indexOf('const applyRemoteCalloutToByPage = (mutator) => {');
-  assert.ok(helperIndex > 0, 'expected the applyRemoteCalloutToByPage helper');
-  const helperBody = HOOK_SOURCE.slice(helperIndex, helperIndex + 900);
-  // Same shape as onFabricInsert: setAnnotationsByPage((prev) => { ...
-  // lastByPageRef.current = merged; return merged; })
-  assert.match(helperBody, /setAnnotationsByPage\(\(prev\)\s*=>\s*\{/,
-    'remote apply must go through the functional setter');
-  assert.match(helperBody, /deriveCalloutsFromByPage\(src\)/,
-    'mutation must run on the list derived from the CURRENT byPage snapshot');
-  assert.match(helperBody, /applyCalloutListToByPage\(src,\s*nextList,\s*readPageSizes\(\)\)/,
-    'merge must re-project with locally measured page sizes');
-  const assignIndex = helperBody.indexOf('lastByPageRef.current = merged;');
-  const returnIndex = helperBody.indexOf('return merged;');
-  assert.ok(assignIndex > 0, 'expected synchronous lastByPageRef assignment');
-  assert.ok(returnIndex > assignIndex,
-    'lastByPageRef must be assigned BEFORE the setter returns (synchronous lockstep)');
-});
 
 // ---------------------------------------------------------------------------
 // 2. Functional contract — the composition itself, with the real helpers

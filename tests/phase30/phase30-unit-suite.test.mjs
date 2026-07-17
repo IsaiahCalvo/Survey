@@ -17,5 +17,6 @@ import '../../src/lib/collab/__tests__/crdtDualWriteQueue.test.mjs';
 import '../../src/services/__tests__/annotationCloudSync.dualWrite.test.mjs';
 import '../../src/components/collab/__tests__/StorageFailureBanner.syncQueueStuck.test.mjs';
 import '../../src/hooks/__tests__/useDualWriteQueue.test.mjs';
-import '../../src/hooks/__tests__/useAnnotationCloudSync.dualWrite.test.mjs';
+// useAnnotationCloudSync.dualWrite.test.mjs was deleted 2026-07-17 with the
+// retired (unmounted) useAnnotationCloudSync hook module.
 import '../../src/hooks/__tests__/useTabPendingDualWrite.test.mjs';
