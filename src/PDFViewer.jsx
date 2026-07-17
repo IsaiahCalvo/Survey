@@ -150,7 +150,6 @@ import { getHistoryDebugRows, getHistoryFingerprint, getYjsHistoryTarget, isLega
 import { getHistoryOrder, shouldRedoLocalBeforeLegacy, shouldUndoLocalBeforeLegacy } from './utils/historyStacks';
 import { importAnnotationsFromPdf } from './utils/pdfAnnotationImporter';
 import { isBlankCalloutText, resolveCommittedCalloutText, shouldDeleteBlankCalloutOnCommit } from './utils/calloutBlankCommit';
-import { markCalloutRemovalIntent } from './utils/calloutRemovalIntent';
 import { materializeCalloutFromYMap } from './lib/collab/crdtAnnotationBridge.js';
 import { perfLoad, perfZoom, setDebugEnabled as setPerfDebugEnabled } from './utils/performanceLogger';
 import { loadTrace } from './utils/loadTrace';
@@ -3805,12 +3804,6 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     if (callout) {
       setClipboardCallout(callout);
       setClipboardCalloutType('cut');
-      markCalloutRemovalIntent({
-        source: 'delete',
-        reason: 'callouts:cut',
-        calloutIds: [calloutId],
-        count: 1,
-      }, window);
       // R2.2 Slice 4: cut removes through the shared save pipeline — the
       // removal becomes a per-object fabric:delete undo entry (Cmd+Z restores
       // the cut callout in place), matching the shape cut contract.
@@ -10321,13 +10314,6 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         .filter((obj) => obj?.data?.type === 'callout' && idsSet.has(obj.data.id))
         .map((obj) => JSON.parse(JSON.stringify(obj)));
       const runDelete = () => {
-        // Removal-intent stamp stays until Slice 5 (sync state-obs classifier).
-        markCalloutRemovalIntent({
-          source: 'delete',
-          reason: 'callouts:delete',
-          calloutIds: ids,
-          count: ids.length,
-        }, window);
         commitCalloutMutation(pageNumber, (prev) => prev.filter((c) => !idsSet.has(c.id)), {
           source: 'callout:delete',
           action: 'delete',
@@ -10730,14 +10716,6 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
           : legacyIsCallout
             ? materializeCalloutFromYMap(legacyAnnotationYMap, annotationId)
             : null;
-        if (!materializedCallout) {
-          markCalloutRemovalIntent({
-            source: reason,
-            reason: 'yjs-history-pop',
-            calloutIds: [annotationId],
-            count: 1,
-          }, window);
-        }
         setCalloutsIfPersistedChanged((prev) => {
           const list = Array.isArray(prev) ? prev : [];
           if (!materializedCallout) return list.filter((callout) => callout?.id !== annotationId && callout?.annotationId !== annotationId);
@@ -10939,17 +10917,6 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
           : stateToRestore;
         isUndoingRef.current = true;
         try {
-          if (shouldScopeCallouts) {
-            markCalloutRemovalIntent({
-              source: 'undo',
-              reason: legacyUndoMeta.reason,
-              calloutIds: [
-                legacyUndoMeta.context?.calloutId,
-                ...(Array.isArray(legacyUndoMeta.context?.calloutIds) ? legacyUndoMeta.context.calloutIds : []),
-              ].filter(Boolean),
-              count: legacyUndoMeta.context?.count ?? null,
-            }, window);
-          }
           restoreHistoryState(scopedStateToRestore);
           undoHistoryRef.current = undoHistoryRef.current.slice(0, -1);
           undoHistoryMetaRef.current = undoHistoryMetaRef.current.slice(0, -1);
@@ -11129,17 +11096,6 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         : legacyRedoState;
       isUndoingRef.current = true;
       try {
-        if (shouldScopeCallouts) {
-          markCalloutRemovalIntent({
-            source: 'redo',
-            reason: legacyRedoMeta.reason,
-            calloutIds: [
-              legacyRedoMeta.context?.calloutId,
-              ...(Array.isArray(legacyRedoMeta.context?.calloutIds) ? legacyRedoMeta.context.calloutIds : []),
-            ].filter(Boolean),
-            count: legacyRedoMeta.context?.count ?? null,
-          }, window);
-        }
         restoreHistoryState(scopedRedoState);
         redoHistoryRef.current = redoHistoryRef.current.slice(1);
         redoHistoryMetaRef.current = redoHistoryMetaRef.current.slice(1);
@@ -17447,13 +17403,6 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         : requestedSnapshotObjects;
       const runDelete = hasClaim
         ? () => {
-          // Removal-intent stamp stays until Slice 5 (sync state-obs classifier).
-          markCalloutRemovalIntent({
-            source: 'delete',
-            reason: 'callouts:delete',
-            calloutIds: claimedCalloutIds,
-            count: claimedCalloutIds.length,
-          }, window);
           calloutCoDeleteRef.current = {
             pageNumber: Number(pageNumber),
             ids: new Set(claimedCalloutIds),
@@ -29508,13 +29457,7 @@ ${pageBlocks}
                                       })) {
                                         // R2.2 Slice 3: blank-callout removal commits through the
                                         // shared pipeline as a fabric:delete delta (undoable per
-                                        // object). markCalloutRemovalIntent stays until Slice 5.
-                                        markCalloutRemovalIntent({
-                                          source: 'delete-blank',
-                                          reason: 'callouts:delete-blank',
-                                          calloutIds: [editingAnnotation.reactCalloutId],
-                                          count: 1,
-                                        }, window);
+                                        // object).
                                         commitCalloutMutation(pageNumber, (prev) => prev.filter((c) =>
                                           c.id !== editingAnnotation.reactCalloutId
                                         ), {
@@ -29560,13 +29503,6 @@ ${pageBlocks}
                                         // R2.2 Slice 3: Esc-on-new removal commits through the
                                         // shared pipeline (fabric delta collapses the just-created
                                         // callout's create+remove pair naturally).
-                                        // markCalloutRemovalIntent stays until Slice 5.
-                                        markCalloutRemovalIntent({
-                                          source: 'cancel-new',
-                                          reason: 'callouts:cancel-new',
-                                          calloutIds: [editingAnnotation.reactCalloutId],
-                                          count: 1,
-                                        }, window);
                                         commitCalloutMutation(pageNumber, (prev) => prev.filter((c) =>
                                           c.id !== editingAnnotation.reactCalloutId
                                         ), {

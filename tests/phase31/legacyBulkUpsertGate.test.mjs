@@ -154,12 +154,19 @@ describe('useAnnotationCloudSync legacy bypass (Plan 31-03)', () => {
     // The offline drain callout-bulk branches must still exist (for stuck-queue recovery)
     assert.match(source, /kind === 'callout-bulk'/, 'callout-bulk drain branch must still exist for queue recovery');
 
-    // forceFlush must still handle the direct callout path
-    assert.match(source, /consumedPendingCallout/, 'forceFlush must still track pending callout flush');
+    // R2.3a Slice 5: the forceFlush direct callout path is retired — callouts
+    // ride annotationsByPage, so the direct FABRIC upsert (lastByPageRef.current,
+    // which now contains the projected callout groups) carries them. Assert the
+    // fabric direct path survives and the retired callout plumbing stays gone.
     assert.match(
       source,
-      /if \(!noPendingDurableWork && !consumedPendingCallout && lastCalloutsRef\.current\)/,
-      'forceFlush direct callout upsert path must still exist',
+      /if \(!noPendingDurableWork && !consumedPendingFabric && lastByPageRef\.current\)/,
+      'forceFlush direct fabric upsert path (now carrying callouts) must exist',
+    );
+    assert.doesNotMatch(
+      source,
+      /consumedPendingCallout/,
+      'retired forceFlush pending-callout tracking must not return',
     );
   });
 });

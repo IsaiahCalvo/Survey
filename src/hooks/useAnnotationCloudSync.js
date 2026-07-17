@@ -67,14 +67,16 @@ import { useYDoc } from './useYDoc.js';
 import { resolveCrdtFanOutAnnotationType } from '../utils/annotationSyncType.js';
 import { isSurveyMarkerType } from '../utils/surveyMarkerType.js';
 import {
-  getCalloutSyncFingerprint,
   normalizeCalloutsForSync,
 } from '../utils/calloutSyncPayload.js';
+// R2.3a Slice 5 — callouts live inside annotationsByPage (data.legacyCallout on
+// the projected group objects). Realtime + hydrate merge callout lists straight
+// into the byPage snapshot through these bridge helpers instead of a separate
+// callouts state slice.
 import {
-  classifyCalloutShrink,
-  diffCalloutIds,
-  getRecentCalloutRemovalIntent,
-} from '../utils/calloutRemovalIntent.js';
+  deriveCalloutsFromByPage,
+  applyCalloutListToByPage,
+} from '../utils/calloutAnnotationBridge.js';
 import {
   recordAnnotationSyncAttempt,
   recordAnnotationSyncPush,
@@ -380,9 +382,11 @@ function summarizeTypeBreakdownValue(breakdown, key) {
  * @param {string|null} args.userId            - Supabase user ID (UUID)
  * @param {string|null} args.pdfId             - Local localStorage key suffix
  * @param {object} args.annotationsByPage      - { [pageNum]: { objects: [...] } }
- * @param {Array}  args.callouts               - [{ id, pageNumber, anchor, knee, label, ... }]
- * @param {Function} args.setAnnotationsByPage - React setter
- * @param {Function} args.setCallouts          - React setter
+ * @param {Function} args.setAnnotationsByPage - React setter (callouts live
+ *   INSIDE annotationsByPage as projected group objects — R2.3a Slice 5
+ *   retired the separate callouts/setCallouts state slice)
+ * @param {Function} [args.getPageSizes]       - () => ({ [page]: { width, height } })
+ *   unscaled PDF page-pixel dims for callout re-projection
  * @param {boolean} [args.enabled=true]        - Master switch (e.g. user toggled cloud sync off)
  * @param {number}  [args.debounceMs=800]      - Push debounce window
  *
@@ -393,9 +397,13 @@ export function useAnnotationCloudSync({
   userId,
   pdfId,
   annotationsByPage,
-  callouts,
   setAnnotationsByPage,
-  setCallouts,
+  // R2.3a Slice 5 — () => pageSizesRef.current from the mounting viewer: the
+  // unscaled per-page PDF pixel dims ({ [page]: { width, height } }) that
+  // callout re-projection measures against. Read lazily through a ref so the
+  // freshest local measurement is used at merge time (never the sender's
+  // nominal dims — receiver-side re-projection is the contract).
+  getPageSizes,
   enabled = true,
   hydrateEnabled = enabled,
   debounceMs = DEFAULT_DEBOUNCE_MS
@@ -488,15 +496,26 @@ export function useAnnotationCloudSync({
   } = useYDoc();
 
   const lastByPageRef = useRef(null);
-  const lastCalloutsRef = useRef(null);
-  const lastCalloutSyncFingerprintRef = useRef(null);
-  const pendingCalloutSyncFingerprintRef = useRef(null);
-  const inFlightCalloutSyncFingerprintRef = useRef(null);
+  // R2.3a Slice 5 — lazy page-size reader for callout merge/projection. Kept in
+  // a ref (updated every render) so long-lived closures (realtime callbacks,
+  // async hydrate continuations) always measure with the current function.
+  const getPageSizesRef = useRef(getPageSizes);
+  getPageSizesRef.current = getPageSizes;
+  const readPageSizes = () => {
+    try {
+      const fn = getPageSizesRef.current;
+      return (typeof fn === 'function' ? fn() : null) || {};
+    } catch (_e) {
+      return {};
+    }
+  };
+  // (Removed R2.3a Slice 5 — lastCalloutsRef + the callout sync-fingerprint
+  // refs. Callouts live inside annotationsByPage/lastByPageRef; fingerprint
+  // change-detection moved into applyCalloutListToByPage's referential bail.)
   const debounceTimerRef = useRef(null);
   const pointerDownRef = useRef(false);
   const [deferredPushTick, setDeferredPushTick] = useState(0);
   const deferredFabricPushRef = useRef(null);
-  const deferredCalloutPushRef = useRef(null);
   const pendingPreciseFabricCommitRef = useRef(null);
   const pendingFabricActionRef = useRef(null);
   // 2026-04-30 — Audit hardening (finding #10): annotations drawn in the
@@ -508,7 +527,6 @@ export function useAnnotationCloudSync({
   // timer fires normally OR after the flush runs. Calling a null ref is a
   // no-op (idempotent).
   const pendingFabricFlushRef = useRef(null);
-  const pendingCalloutFlushRef = useRef(null);
   const hydratedRef = useRef(false);
   const startupSyncInFlightRef = useRef(false);
   const lastCloudRefreshAtRef = useRef(0);
@@ -539,7 +557,6 @@ export function useAnnotationCloudSync({
   // shrinks the state without the cloud-sync hook knowing, the next push
   // would interpret the shrink as a delete and cascade it to the cloud.
   const prevAnnotationsByPageObsRef = useRef(undefined);
-  const prevCalloutsObsRef = useRef(undefined);
   const latestAnnotationsByPageRef = useRef(annotationsByPage);
 
   useEffect(() => {
@@ -587,7 +604,7 @@ export function useAnnotationCloudSync({
     const markPointerReleased = () => {
       if (!pointerDownRef.current) return;
       pointerDownRef.current = false;
-      if (deferredFabricPushRef.current || deferredCalloutPushRef.current) {
+      if (deferredFabricPushRef.current) {
         setDeferredPushTick((tick) => tick + 1);
       }
     };
@@ -942,52 +959,11 @@ export function useAnnotationCloudSync({
     }
   }, [annotationsByPage]);
 
-  useEffect(() => {
-    const prev = prevCalloutsObsRef.current;
-    prevCalloutsObsRef.current = callouts;
-    const prevCount = calloutCountSafe(prev);
-    const currentCount = calloutCountSafe(callouts);
-    if (prev === undefined) {
-      cloudSyncHookDebug('[CloudSync][hook][state-obs] callouts initial ' + JSON.stringify({
-        currentCount, hydrated: hydratedRef.current
-      }));
-      return;
-    }
-    if (prev === callouts) return;
-    const sameRefAsLastCallouts = callouts === lastCalloutsRef.current;
-    const baseRecord = {
-      prevCount,
-      currentCount,
-      delta: currentCount - prevCount,
-      hydrated: hydratedRef.current,
-      sameRefAsLastCallouts
-    };
-    if (currentCount < prevCount) {
-      const stack = (new Error()).stack?.split('\n').slice(2, 8).join(' | ') || 'no-stack';
-      const deletedCalloutIds = diffCalloutIds(prev, callouts);
-      const intent = getRecentCalloutRemovalIntent(typeof window !== 'undefined' ? window : null);
-      const classification = classifyCalloutShrink({
-        priorCount: prevCount,
-        currentCount,
-        deletedIds: deletedCalloutIds,
-        intent,
-      });
-      const record = {
-        ...baseRecord,
-        deletedCalloutIds,
-        intent,
-        classification,
-        stack,
-      };
-      if (classification.expected) {
-        cloudSyncHookDebug('[CloudSync][hook][state-obs] callout shrink explained ' + JSON.stringify(record));
-      } else {
-        console.warn('[CloudSync][hook][state-obs] callout SHRINK suspicious ' + JSON.stringify(record));
-      }
-    } else if (typeof window !== 'undefined' && window.__CLOUD_SYNC_STATE_OBS_DIAG === true) {
-      cloudSyncHookDebug('[CloudSync][hook][state-obs] callout change ' + JSON.stringify(baseRecord));
-    }
-  }, [callouts]);
+  // (Removed R2.3a Slice 5 — the callouts state-observation effect and its
+  // calloutRemovalIntent shrink classifier. Callouts live inside
+  // annotationsByPage now, so the byPage observer above already sees every
+  // callout change; a separate list-shrink classifier had nothing left to
+  // observe. PDFViewer's markCalloutRemovalIntent stamps were deleted with it.)
 
   // ---- Hydrate + migrate on document open --------------------------------
 
@@ -1297,7 +1273,7 @@ export function useAnnotationCloudSync({
             context: 'cutover-durable-fabric',
           });
           const safeDurableCallouts = resolveSafeSnapshot({
-            current: lastCalloutsRef.current || [],
+            current: deriveCalloutsFromByPage(lastByPageRef.current || {}),
             incoming: durableCallouts,
             cloudBacked: true,
             kind: 'array',
@@ -1349,15 +1325,13 @@ export function useAnnotationCloudSync({
             }
             // [OpenTiming] BUG#2 — durable CRDT hydrate applied to UI state.
             try { console.log('[OpenTiming] crdt-hydrate-done @ ' + Math.round(performance.now()) + 'ms', 'pages=' + Object.keys(safeDurableByPage.value || {}).length); } catch (_e) { /* swallow */ }
+            // R2.3a Slice 5 — one setter: fabric merge + safety-resolved
+            // callout list projected into byPage, lastByPageRef in lockstep.
             setAnnotationsByPage((prev) => {
-              const nextMerged = mergePreservingImportedMarks(prev, safeDurableByPage.value);
+              const mergedFabric = mergePreservingImportedMarks(prev, safeDurableByPage.value);
+              const nextMerged = applyCalloutListToByPage(mergedFabric, safeDurableCallouts.value, readPageSizes());
               lastByPageRef.current = nextMerged;
               return nextMerged;
-            });
-            setCallouts(() => {
-              lastCalloutsRef.current = safeDurableCallouts.value;
-              lastCalloutSyncFingerprintRef.current = getCalloutSyncFingerprint(safeDurableCallouts.value);
-              return safeDurableCallouts.value;
             });
             hydratedRef.current = true;
             ydocAuthoritativeRef.current = true;
@@ -1428,14 +1402,13 @@ export function useAnnotationCloudSync({
               const nextCallouts = Array.isArray(fallbackCloud.callouts) ? fallbackCloud.callouts : [];
               console.warn('[CloudSync][hook] cutover empty-Y.Doc fallback restored legacy cloud rows ' +
                 JSON.stringify({ documentId, fallbackCount, callouts: nextCallouts.length }));
+              // R2.3a Slice 5 — merge the cloud callout list into the same
+              // byPage set with lastByPageRef in lockstep (no separate slice).
               setAnnotationsByPage((prev) => {
-                const nextMerged = mergePreservingImportedMarks(prev, nextByPage);
+                const mergedFabric = mergePreservingImportedMarks(prev, nextByPage);
+                const nextMerged = applyCalloutListToByPage(mergedFabric, nextCallouts, readPageSizes());
                 lastByPageRef.current = nextMerged;
                 return nextMerged;
-              });
-              setCallouts(() => {
-                lastCalloutsRef.current = nextCallouts;
-                return nextCallouts;
               });
               hydratedRef.current = true;
               ydocAuthoritativeRef.current = false;
@@ -1468,7 +1441,7 @@ export function useAnnotationCloudSync({
             context: 'ydoc-snapshot',
           });
           const safeYDocCallouts = resolveSafeSnapshot({
-            current: lastCalloutsRef.current || [],
+            current: deriveCalloutsFromByPage(lastByPageRef.current || {}),
             incoming: calloutsFromYDoc,
             cloudBacked: true,
             kind: 'array',
@@ -1491,15 +1464,12 @@ export function useAnnotationCloudSync({
             // the push useEffect's identity check (state === lastRef) returns
             // true and we don't echo the Y.Doc snapshot right back out as if
             // it were a local change. Preserve file-derived imported marks so a
-            // partial/empty Y.Doc snapshot can't wipe them.
-            const nextMerged = mergePreservingImportedMarks(prev, safeYDocByPage.value);
+            // partial/empty Y.Doc snapshot can't wipe them. R2.3a Slice 5 —
+            // the safety-resolved callout list merges into this same set.
+            const mergedFabric = mergePreservingImportedMarks(prev, safeYDocByPage.value);
+            const nextMerged = applyCalloutListToByPage(mergedFabric, safeYDocCallouts.value, readPageSizes());
             lastByPageRef.current = nextMerged;
             return nextMerged;
-          });
-          setCallouts(() => {
-            lastCalloutsRef.current = safeYDocCallouts.value;
-            lastCalloutSyncFingerprintRef.current = getCalloutSyncFingerprint(safeYDocCallouts.value);
-            return safeYDocCallouts.value;
           });
           hydratedRef.current = true;
           ydocAuthoritativeRef.current = true;
@@ -1528,7 +1498,7 @@ export function useAnnotationCloudSync({
             JSON.stringify({ documentId, pdfId, cutoverTs }));
           const fallbackCloud = await loadCloudWithEmptyVerify(documentId, {
             localFabricCount: countFabricObjects(annotationsByPage),
-            localCalloutCount: calloutCountSafe(callouts),
+            localCalloutCount: deriveCalloutsFromByPage(annotationsByPage || {}).length,
             contextLabel: 'cutover-awaiting-ydoc-provisional'
           });
           lastCloudRefreshAtRef.current = Date.now();
@@ -1542,14 +1512,13 @@ export function useAnnotationCloudSync({
             const nextCallouts = Array.isArray(fallbackCloud.callouts) ? fallbackCloud.callouts : [];
             console.warn('[CloudSync][hook] awaiting-Y.Doc fallback painted cloud rows immediately ' +
               JSON.stringify({ documentId, fallbackCount, callouts: nextCallouts.length, cutoverTs }));
+            // R2.3a Slice 5 — provisional paint carries the callout list into
+            // the same byPage set, lastByPageRef in lockstep.
             setAnnotationsByPage((prev) => {
-              const nextMerged = mergePreservingImportedMarks(prev, nextByPage);
+              const mergedFabric = mergePreservingImportedMarks(prev, nextByPage);
+              const nextMerged = applyCalloutListToByPage(mergedFabric, nextCallouts, readPageSizes());
               lastByPageRef.current = nextMerged;
               return nextMerged;
-            });
-            setCallouts(() => {
-              lastCalloutsRef.current = nextCallouts;
-              return nextCallouts;
             });
             ydocAuthoritativeRef.current = false;
             hydratedRef.current = true;
@@ -1597,10 +1566,10 @@ export function useAnnotationCloudSync({
 
         // 2026-04-26 — capture local counts at fire time so the verify helper
         // can decide whether an empty cloud read should be trusted on its own
-        // or re-asked once. annotationsByPage / callouts here are the closure
-        // values React handed us when the effect committed.
+        // or re-asked once. annotationsByPage here is the closure value React
+        // handed us when the effect committed (callouts are derived from it).
         const localFabricAtHydrate = countFabricObjects(annotationsByPage);
-        const localCalloutAtHydrate = calloutCountSafe(callouts);
+        const localCalloutAtHydrate = deriveCalloutsFromByPage(annotationsByPage || {}).length;
         // DB-sync audit #1 — same fast-open skip on the legacy/cold path.
         const coldQueuedWrites = hasQueuedLocalAnnotationWrites(documentId, userId);
         cloud = await tryWatermarkSkipDurableRead(
@@ -1624,7 +1593,7 @@ export function useAnnotationCloudSync({
             ready: true,
             source: 'hydrate-error',
             count: countFabricObjects(annotationsByPage),
-            calloutCount: calloutCountSafe(callouts),
+            calloutCount: deriveCalloutsFromByPage(annotationsByPage || {}).length,
           });
           setStatus({ stage: 'error', error: cloud.error, phase: 'hydrate' });
         } else {
@@ -1673,61 +1642,66 @@ export function useAnnotationCloudSync({
           }
           const replaceFabric = migrationDone || cloudFabricPages > 0;
           const replaceCallouts = migrationDone || cloudCalloutCount > 0;
-          if (replaceFabric) {
-            cloudSyncHookDebug('[CloudSync][hook] replacing local fabric state with cloud (cloud is authoritative) ' + JSON.stringify({
-              pages: cloudFabricPages, migrationDone
+          if (replaceFabric || replaceCallouts) {
+            cloudSyncHookDebug('[CloudSync][hook] replacing local state with cloud (cloud is authoritative) ' + JSON.stringify({
+              pages: cloudFabricPages, calloutCount: cloudCalloutCount, replaceFabric, replaceCallouts, migrationDone
             }));
-            setAnnotationsByPage(() => {
-              // Update lastByPageRef.current synchronously inside the setter
-              // so the push useEffect's identity check (state === lastRef)
-              // returns true and we don't echo the cloud snapshot right back
-              // up as if it were a local change.
-              const safeNext = resolveSafeSnapshot({
-                current: lastByPageRef.current || {},
-                incoming: cloud.annotationsByPage || {},
-                cloudBacked: true,
-                kind: 'annotation-pages',
-                confirmedEmpty: false,
-                context: 'initial-hydrate-fabric',
-              });
-              if (safeNext.preserved) {
-                console.warn('[SafeSnapshot] preserved fabric annotations instead of applying empty initial hydrate ' + JSON.stringify({
-                  documentId,
-                  pdfId,
-                  currentCount: safeNext.currentCount,
-                  incomingCount: safeNext.incomingCount,
-                  migrationDone,
-                }));
+            // R2.3a Slice 5 — fabric replace + callout merge happen in ONE
+            // setter so lastByPageRef stays in lockstep with the applied state
+            // (push effect's identity check sees the hydrate as already-synced
+            // and never echoes the cloud snapshot back up as a local change).
+            setAnnotationsByPage((prev) => {
+              const src = prev || {};
+              let nextFabric = src;
+              if (replaceFabric) {
+                const safeNext = resolveSafeSnapshot({
+                  current: lastByPageRef.current || {},
+                  incoming: cloud.annotationsByPage || {},
+                  cloudBacked: true,
+                  kind: 'annotation-pages',
+                  confirmedEmpty: false,
+                  context: 'initial-hydrate-fabric',
+                });
+                if (safeNext.preserved) {
+                  console.warn('[SafeSnapshot] preserved fabric annotations instead of applying empty initial hydrate ' + JSON.stringify({
+                    documentId,
+                    pdfId,
+                    currentCount: safeNext.currentCount,
+                    incomingCount: safeNext.incomingCount,
+                    migrationDone,
+                  }));
+                }
+                nextFabric = safeNext.value;
               }
-              const next = safeNext.value;
+              // Empty-wipe protection still runs on the callout LIST first
+              // (current = what the on-screen byPage derives to); only the
+              // safety-resolved list is merged into the byPage snapshot. When
+              // the cloud brings no callout replacement, the currently-derived
+              // list is carried over so a fabric-only replace cannot silently
+              // drop projected callout objects.
+              let calloutList = deriveCalloutsFromByPage(src);
+              if (replaceCallouts) {
+                const safeCallouts = resolveSafeSnapshot({
+                  current: calloutList,
+                  incoming: Array.isArray(cloud.callouts) ? cloud.callouts : [],
+                  cloudBacked: true,
+                  kind: 'array',
+                  confirmedEmpty: false,
+                  context: 'initial-hydrate-callouts',
+                });
+                if (safeCallouts.preserved) {
+                  console.warn('[SafeSnapshot] preserved callouts instead of applying empty initial hydrate ' + JSON.stringify({
+                    documentId,
+                    pdfId,
+                    currentCount: safeCallouts.currentCount,
+                    incomingCount: safeCallouts.incomingCount,
+                    migrationDone,
+                  }));
+                }
+                calloutList = safeCallouts.value;
+              }
+              const next = applyCalloutListToByPage(nextFabric, calloutList, readPageSizes());
               lastByPageRef.current = next;
-              return next;
-            });
-          }
-          if (replaceCallouts) {
-            cloudSyncHookDebug('[CloudSync][hook] replacing local callouts with cloud (cloud is authoritative) ' + JSON.stringify({
-              count: cloudCalloutCount, migrationDone
-            }));
-            setCallouts(() => {
-              const safeNext = resolveSafeSnapshot({
-                current: lastCalloutsRef.current || [],
-                incoming: Array.isArray(cloud.callouts) ? cloud.callouts : [],
-                cloudBacked: true,
-                kind: 'array',
-                confirmedEmpty: false,
-                context: 'initial-hydrate-callouts',
-              });
-              if (safeNext.preserved) {
-                console.warn('[SafeSnapshot] preserved callouts instead of applying empty initial hydrate ' + JSON.stringify({
-                  documentId,
-                  pdfId,
-                  currentCount: safeNext.currentCount,
-                  incomingCount: safeNext.incomingCount,
-                  migrationDone,
-                }));
-              }
-              const next = safeNext.value;
-              lastCalloutsRef.current = next;
               return next;
             });
           }
@@ -1754,7 +1728,9 @@ export function useAnnotationCloudSync({
             ready: true,
             source: 'migration-error',
             count: countFabricObjects(cloud?.annotationsByPage || annotationsByPage),
-            calloutCount: calloutCountSafe(cloud?.callouts || callouts),
+            calloutCount: Array.isArray(cloud?.callouts)
+              ? cloud.callouts.length
+              : deriveCalloutsFromByPage(annotationsByPage || {}).length,
           });
           setStatus({ stage: 'error', error: migration.error, phase: 'migrate' });
         } else {
@@ -1773,7 +1749,9 @@ export function useAnnotationCloudSync({
             ready: true,
             source: 'legacy-cloud-hydrate',
             count: countFabricObjects(cloud?.annotationsByPage || annotationsByPage),
-            calloutCount: calloutCountSafe(cloud?.callouts || callouts),
+            calloutCount: Array.isArray(cloud?.callouts)
+              ? cloud.callouts.length
+              : deriveCalloutsFromByPage(annotationsByPage || {}).length,
           });
           setStatus({ stage: 'idle', migrationPushed: migration.pushed });
         }
@@ -1788,7 +1766,7 @@ export function useAnnotationCloudSync({
       cancelled = true;
       startupSyncInFlightRef.current = false;
     };
-  }, [hydrateEnabled, documentId, userId, pdfId, phase30Ydoc, setAnnotationsByPage, setCallouts]);
+  }, [hydrateEnabled, documentId, userId, pdfId, phase30Ydoc, setAnnotationsByPage]);
 
   // ---- Debounced push on state change ------------------------------------
 
@@ -2323,15 +2301,9 @@ export function useAnnotationCloudSync({
     return () => {
       clearSyncedStatusTimer();
       const pendingFabric = pendingFabricFlushRef.current;
-      const pendingCallout = pendingCalloutFlushRef.current;
       if (pendingFabric) {
         try {
           Promise.resolve(pendingFabric()).catch(() => { /* swallow — unmount path */ });
-        } catch (_e) { /* defensive — never throw from cleanup */ }
-      }
-      if (pendingCallout) {
-        try {
-          Promise.resolve(pendingCallout()).catch(() => { /* swallow — unmount path */ });
         } catch (_e) { /* defensive — never throw from cleanup */ }
       }
     };
@@ -2419,22 +2391,13 @@ export function useAnnotationCloudSync({
     if (typeof window === 'undefined' || !window.addEventListener) return;
     const onBeforeUnload = () => {
       const pendingFabric = pendingFabricFlushRef.current;
-      const pendingCallout = pendingCalloutFlushRef.current;
-      if (!pendingFabric && !pendingCallout) return;
+      if (!pendingFabric) return;
       cloudSyncHookDebug('[CloudSync][hook] beforeunload — flushing pending pushes ' + JSON.stringify({
-        hasFabric: !!pendingFabric,
-        hasCallout: !!pendingCallout
+        hasFabric: !!pendingFabric
       }));
-      if (pendingFabric) {
-        try {
-          Promise.resolve(pendingFabric()).catch(() => { /* swallow */ });
-        } catch (_e) { /* defensive */ }
-      }
-      if (pendingCallout) {
-        try {
-          Promise.resolve(pendingCallout()).catch(() => { /* swallow */ });
-        } catch (_e) { /* defensive */ }
-      }
+      try {
+        Promise.resolve(pendingFabric()).catch(() => { /* swallow */ });
+      } catch (_e) { /* defensive */ }
     };
     window.addEventListener('beforeunload', onBeforeUnload);
     return () => {
@@ -2444,6 +2407,24 @@ export function useAnnotationCloudSync({
 
   // ---- Realtime subscription ---------------------------------------------
 
+  // R2.3a Slice 5 — remote callout apply, consolidated onto annotationsByPage.
+  // Derives the current callout list from the byPage snapshot, lets the caller
+  // mutate it (upsert-by-id / remove-by-id), re-projects the result into byPage
+  // with LOCALLY measured page sizes (never the sender's nominal dims), and
+  // updates lastByPageRef SYNCHRONOUSLY inside the setter — the exact echo
+  // suppression contract the fabric callbacks (onFabricInsert/Update/Delete)
+  // use, so the push effect's identity check (state === lastByPageRef) sees the
+  // remote apply as already-synced and never re-pushes it to the cloud.
+  const applyRemoteCalloutToByPage = (mutator) => {
+    setAnnotationsByPage((prev) => {
+      const src = prev || {};
+      const nextList = mutator(deriveCalloutsFromByPage(src));
+      const merged = applyCalloutListToByPage(src, nextList, readPageSizes());
+      lastByPageRef.current = merged; // suppress local push echo
+      return merged;
+    });
+  };
+
   useEffect(() => {
     if (!enabled || !documentId) return;
 
@@ -2451,7 +2432,7 @@ export function useAnnotationCloudSync({
       if (!documentId || !(ydocAuthoritativeRef.current || cutoverTsRef.current)) return false;
 
       const localFabricCount = countFabricObjects(lastByPageRef.current);
-      const localCalloutCount = calloutCountSafe(lastCalloutsRef.current);
+      const localCalloutCount = deriveCalloutsFromByPage(lastByPageRef.current || {}).length;
       if (localFabricCount > 0 || localCalloutCount > 0) {
         cloudSyncHookDebug('[CloudSync][cutover-recovery] skipped — local view is not empty ' + JSON.stringify({
           contextLabel,
@@ -2525,14 +2506,14 @@ export function useAnnotationCloudSync({
           cloudFabricCount,
           cloudCalloutCount,
         }));
+        // R2.3a Slice 5 — one full-replace setter: the cloud callout list is
+        // projected into the restored byPage, lastByPageRef in lockstep. (This
+        // path only runs when the local view is empty, so no wipe-guard here —
+        // same as before the consolidation.)
         setAnnotationsByPage(() => {
-          lastByPageRef.current = nextByPage;
-          return nextByPage;
-        });
-        setCallouts(() => {
-          lastCalloutsRef.current = nextCallouts;
-          lastCalloutSyncFingerprintRef.current = getCalloutSyncFingerprint(nextCallouts);
-          return nextCallouts;
+          const nextMerged = applyCalloutListToByPage(nextByPage, nextCallouts, readPageSizes());
+          lastByPageRef.current = nextMerged;
+          return nextMerged;
         });
         hydratedRef.current = true;
         ydocAuthoritativeRef.current = true;
@@ -2569,7 +2550,7 @@ export function useAnnotationCloudSync({
     // drops echoes that came from THIS session. Trust it.
     // 2026-04-25 — Suppress remote-echo push loop:
     // When a realtime event applies a remote change locally, we must update
-    // lastByPageRef/lastCalloutsRef SYNCHRONOUSLY inside the setter so the
+    // lastByPageRef SYNCHRONOUSLY inside the setter so the
     // push useEffect's identity check (`state === lastRef`) returns true
     // and the change is NOT re-pushed back to cloud. Without this, every
     // remote update triggered a full-state re-push, both devices ping-ponged
@@ -2601,26 +2582,21 @@ export function useAnnotationCloudSync({
             return next;
           });
         },
+        // R2.3a Slice 5 — remote callout events merge into annotationsByPage
+        // (upsert-by-id / remove-by-id on the derived list) with lastByPageRef
+        // updated in lockstep inside the setter (echo suppression, same as the
+        // fabric callbacks above). The routeRow callout branch stays: the
+        // receiver re-projects from the normalized callout payload with its own
+        // measured page sizes instead of trusting the sender's fabric children.
         onCalloutInsert: (callout) => {
-          setCallouts((prev) => {
-            const next = upsertCalloutInList(prev, callout);
-            lastCalloutsRef.current = next; // suppress local push echo
-            return next;
-          });
+          applyRemoteCalloutToByPage((list) => upsertCalloutInList(list, callout));
         },
         onCalloutUpdate: (callout) => {
-          setCallouts((prev) => {
-            const next = upsertCalloutInList(prev, callout);
-            lastCalloutsRef.current = next; // suppress local push echo
-            return next;
-          });
+          applyRemoteCalloutToByPage((list) => upsertCalloutInList(list, callout));
         },
         onCalloutDelete: (annotationId) => {
-          setCallouts((prev) => {
-            const next = (prev || []).filter((c) => (c.id ?? c.annotationId) !== annotationId);
-            lastCalloutsRef.current = next; // suppress local push echo
-            return next;
-          });
+          applyRemoteCalloutToByPage((list) =>
+            (list || []).filter((c) => (c.id ?? c.annotationId) !== annotationId));
         },
         // 2026-04-26 — Fallback when a realtime DELETE arrives with an
         // empty old payload (Supabase realtime sometimes serves empty
@@ -2648,7 +2624,11 @@ export function useAnnotationCloudSync({
                 pages: Object.keys(nextByPage).length,
                 callouts: nextCallouts.length
               }));
-              setAnnotationsByPage(() => {
+              // R2.3a Slice 5 — one setter: safety-resolve fabric and the
+              // callout LIST separately (both guards keep their contexts),
+              // then merge the safe list into the safe byPage, lastByPageRef
+              // in lockstep so the reconcile never schedules a push.
+              setAnnotationsByPage((prev) => {
                 const safeNext = resolveSafeSnapshot({
                   current: lastByPageRef.current || {},
                   incoming: nextByPage,
@@ -2664,27 +2644,24 @@ export function useAnnotationCloudSync({
                     incomingCount: safeNext.incomingCount,
                   }));
                 }
-                lastByPageRef.current = safeNext.value;
-                return safeNext.value;
-              });
-              setCallouts(() => {
-                const safeNext = resolveSafeSnapshot({
-                  current: lastCalloutsRef.current || [],
+                const safeCallouts = resolveSafeSnapshot({
+                  current: deriveCalloutsFromByPage(prev || {}),
                   incoming: nextCallouts,
                   cloudBacked: true,
                   kind: 'array',
                   context: 'delete-fallback-callouts',
                 });
-                if (safeNext.preserved) {
+                if (safeCallouts.preserved) {
                   console.warn('[SafeSnapshot] preserved callouts instead of applying empty delete-fallback refetch ' + JSON.stringify({
                     documentId,
                     pdfId,
-                    currentCount: safeNext.currentCount,
-                    incomingCount: safeNext.incomingCount,
+                    currentCount: safeCallouts.currentCount,
+                    incomingCount: safeCallouts.incomingCount,
                   }));
                 }
-                lastCalloutsRef.current = safeNext.value;
-                return safeNext.value;
+                const next = applyCalloutListToByPage(safeNext.value, safeCallouts.value, readPageSizes());
+                lastByPageRef.current = next;
+                return next;
               });
             } catch (err) {
               console.warn('[CloudSync][hook] delete-fallback threw: ' + (err?.message || err));
@@ -2744,7 +2721,7 @@ export function useAnnotationCloudSync({
               // not wipe what the user is looking at.
               const fresh = await loadCloudWithEmptyVerify(documentId, {
                 localFabricCount: countFabricObjects(lastByPageRef.current),
-                localCalloutCount: calloutCountSafe(lastCalloutsRef.current),
+                localCalloutCount: deriveCalloutsFromByPage(lastByPageRef.current || {}).length,
                 contextLabel: 'post-subscribe-catchup'
               });
               lastCloudRefreshAtRef.current = Date.now();
@@ -2762,48 +2739,56 @@ export function useAnnotationCloudSync({
               const subMigrationDone = hasMigrationRun(userId, documentId);
               const subFresh = fresh.annotationsByPage || {};
               const subFreshCallouts = Array.isArray(fresh.callouts) ? fresh.callouts : [];
-              if (subMigrationDone || Object.keys(subFresh).length > 0) {
-                setAnnotationsByPage(() => {
-                  const safeNext = resolveSafeSnapshot({
-                    current: lastByPageRef.current || {},
-                    incoming: subFresh,
-                    cloudBacked: true,
-                    kind: 'annotation-pages',
-                    context: 'post-subscribe-fabric',
-                  });
-                  if (safeNext.preserved) {
-                    console.warn('[SafeSnapshot] preserved fabric annotations instead of applying empty post-subscribe snapshot ' + JSON.stringify({
-                      documentId,
-                      pdfId,
-                      currentCount: safeNext.currentCount,
-                      incomingCount: safeNext.incomingCount,
-                      subMigrationDone,
-                    }));
+              const subReplaceFabric = subMigrationDone || Object.keys(subFresh).length > 0;
+              const subReplaceCallouts = subMigrationDone || subFreshCallouts.length > 0;
+              if (subReplaceFabric || subReplaceCallouts) {
+                // R2.3a Slice 5 — one setter: fabric replace + safety-resolved
+                // callout list merged into byPage, lastByPageRef in lockstep.
+                setAnnotationsByPage((prev) => {
+                  const src = prev || {};
+                  let nextFabric = src;
+                  if (subReplaceFabric) {
+                    const safeNext = resolveSafeSnapshot({
+                      current: lastByPageRef.current || {},
+                      incoming: subFresh,
+                      cloudBacked: true,
+                      kind: 'annotation-pages',
+                      context: 'post-subscribe-fabric',
+                    });
+                    if (safeNext.preserved) {
+                      console.warn('[SafeSnapshot] preserved fabric annotations instead of applying empty post-subscribe snapshot ' + JSON.stringify({
+                        documentId,
+                        pdfId,
+                        currentCount: safeNext.currentCount,
+                        incomingCount: safeNext.incomingCount,
+                        subMigrationDone,
+                      }));
+                    }
+                    nextFabric = safeNext.value;
                   }
-                  lastByPageRef.current = safeNext.value;
-                  return safeNext.value;
-                });
-              }
-              if (subMigrationDone || subFreshCallouts.length > 0) {
-                setCallouts(() => {
-                  const safeNext = resolveSafeSnapshot({
-                    current: lastCalloutsRef.current || [],
-                    incoming: subFreshCallouts,
-                    cloudBacked: true,
-                    kind: 'array',
-                    context: 'post-subscribe-callouts',
-                  });
-                  if (safeNext.preserved) {
-                    console.warn('[SafeSnapshot] preserved callouts instead of applying empty post-subscribe snapshot ' + JSON.stringify({
-                      documentId,
-                      pdfId,
-                      currentCount: safeNext.currentCount,
-                      incomingCount: safeNext.incomingCount,
-                      subMigrationDone,
-                    }));
+                  let calloutList = deriveCalloutsFromByPage(src);
+                  if (subReplaceCallouts) {
+                    const safeCallouts = resolveSafeSnapshot({
+                      current: calloutList,
+                      incoming: subFreshCallouts,
+                      cloudBacked: true,
+                      kind: 'array',
+                      context: 'post-subscribe-callouts',
+                    });
+                    if (safeCallouts.preserved) {
+                      console.warn('[SafeSnapshot] preserved callouts instead of applying empty post-subscribe snapshot ' + JSON.stringify({
+                        documentId,
+                        pdfId,
+                        currentCount: safeCallouts.currentCount,
+                        incomingCount: safeCallouts.incomingCount,
+                        subMigrationDone,
+                      }));
+                    }
+                    calloutList = safeCallouts.value;
                   }
-                  lastCalloutsRef.current = safeNext.value;
-                  return safeNext.value;
+                  const next = applyCalloutListToByPage(nextFabric, calloutList, readPageSizes());
+                  lastByPageRef.current = next;
+                  return next;
                 });
               }
               cloudSyncHookDebug('[CloudSync][hook] post-subscribe catch-up rehydrate complete ' + JSON.stringify({
@@ -2867,7 +2852,7 @@ export function useAnnotationCloudSync({
           // wiping. Cheap insurance against a transient read race.
           const fresh = await loadCloudWithEmptyVerify(documentId, {
             localFabricCount: countFabricObjects(lastByPageRef.current),
-            localCalloutCount: calloutCountSafe(lastCalloutsRef.current),
+            localCalloutCount: deriveCalloutsFromByPage(lastByPageRef.current || {}).length,
             contextLabel: 'focus-rehydrate'
           });
           lastCloudRefreshAtRef.current = Date.now();
@@ -2915,7 +2900,7 @@ export function useAnnotationCloudSync({
               hasUnpushedLegacyQueue, hasUnpushedDualWriteQueue,
               localAhead
             }));
-          } else if (focusMigrationDone || Object.keys(focusFresh).length > 0) {
+          } else {
             // 2026-04-30 (Phase 35 Plan 05) — RETIRED: per-session
             // user-deleted-id filter that stripped freshly-cloud-fetched
             // annotations against a local "deleted this session" set. With
@@ -2923,50 +2908,58 @@ export function useAnnotationCloudSync({
             // unconditionally on the original gesture, so the cloud snapshot
             // already reflects the user's local deletes — there's nothing to
             // strip. Apply the cloud snapshot directly.
-            setAnnotationsByPage(() => {
-              const safeNext = resolveSafeSnapshot({
-                current: lastByPageRef.current || {},
-                incoming: focusFresh,
-                cloudBacked: true,
-                kind: 'annotation-pages',
-                context: 'focus-rehydrate-fabric',
+            const focusReplaceFabric = focusMigrationDone || Object.keys(focusFresh).length > 0;
+            const focusReplaceCallouts = focusMigrationDone || focusFreshCallouts.length > 0;
+            if (focusReplaceFabric || focusReplaceCallouts) {
+              // R2.3a Slice 5 — one setter: fabric replace + safety-resolved
+              // callout list merged into byPage, lastByPageRef in lockstep.
+              setAnnotationsByPage((prev) => {
+                const src = prev || {};
+                let nextFabric = src;
+                if (focusReplaceFabric) {
+                  const safeNext = resolveSafeSnapshot({
+                    current: lastByPageRef.current || {},
+                    incoming: focusFresh,
+                    cloudBacked: true,
+                    kind: 'annotation-pages',
+                    context: 'focus-rehydrate-fabric',
+                  });
+                  if (safeNext.preserved) {
+                    console.warn('[SafeSnapshot] preserved fabric annotations instead of applying empty focus snapshot ' + JSON.stringify({
+                      documentId,
+                      pdfId,
+                      currentCount: safeNext.currentCount,
+                      incomingCount: safeNext.incomingCount,
+                      focusMigrationDone,
+                    }));
+                  }
+                  nextFabric = safeNext.value;
+                }
+                let calloutList = deriveCalloutsFromByPage(src);
+                if (focusReplaceCallouts) {
+                  const safeCallouts = resolveSafeSnapshot({
+                    current: calloutList,
+                    incoming: focusFreshCallouts,
+                    cloudBacked: true,
+                    kind: 'array',
+                    context: 'focus-rehydrate-callouts',
+                  });
+                  if (safeCallouts.preserved) {
+                    console.warn('[SafeSnapshot] preserved callouts instead of applying empty focus snapshot ' + JSON.stringify({
+                      documentId,
+                      pdfId,
+                      currentCount: safeCallouts.currentCount,
+                      incomingCount: safeCallouts.incomingCount,
+                      focusMigrationDone,
+                    }));
+                  }
+                  calloutList = safeCallouts.value;
+                }
+                const next = applyCalloutListToByPage(nextFabric, calloutList, readPageSizes());
+                lastByPageRef.current = next;
+                return next;
               });
-              if (safeNext.preserved) {
-                console.warn('[SafeSnapshot] preserved fabric annotations instead of applying empty focus snapshot ' + JSON.stringify({
-                  documentId,
-                  pdfId,
-                  currentCount: safeNext.currentCount,
-                  incomingCount: safeNext.incomingCount,
-                  focusMigrationDone,
-                }));
-              }
-              lastByPageRef.current = safeNext.value;
-              return safeNext.value;
-            });
-          }
-          if (!skipReplace && (focusMigrationDone || focusFreshCallouts.length > 0)) {
-            // 2026-04-30 (Phase 35 Plan 05) — same retirement as the fabric
-            // branch directly above. Apply cloud callout snapshot directly.
-            setCallouts(() => {
-              const safeNext = resolveSafeSnapshot({
-                current: lastCalloutsRef.current || [],
-                incoming: focusFreshCallouts,
-                cloudBacked: true,
-                kind: 'array',
-                context: 'focus-rehydrate-callouts',
-              });
-              if (safeNext.preserved) {
-                console.warn('[SafeSnapshot] preserved callouts instead of applying empty focus snapshot ' + JSON.stringify({
-                  documentId,
-                  pdfId,
-                  currentCount: safeNext.currentCount,
-                  incomingCount: safeNext.incomingCount,
-                  focusMigrationDone,
-                }));
-              }
-              lastCalloutsRef.current = safeNext.value;
-              return safeNext.value;
-            });
+            }
           }
           // Focus catch-up done — back to a calm "synced" state.
           setStatus({ stage: 'synced' });
@@ -2986,7 +2979,7 @@ export function useAnnotationCloudSync({
         window.removeEventListener('focus', onFocus);
       }
     };
-  }, [enabled, documentId, userId, pdfId, clientSessionId, phase30Ydoc, setAnnotationsByPage, setCallouts]);
+  }, [enabled, documentId, userId, pdfId, clientSessionId, phase30Ydoc, setAnnotationsByPage]);
 
   // ---- Drain offline queue on reconnect ----------------------------------
 
@@ -3063,16 +3056,18 @@ export function useAnnotationCloudSync({
   // current local state had already been overwritten to match the failed push.
   const forceFlush = async () => {
     const pendingFabric = pendingFabricFlushRef.current;
-    const pendingCallout = pendingCalloutFlushRef.current;
     const queueBefore = documentId ? getQueueSize(documentId) : 0;
     const fabricObjectCount = countFabricObjects(lastByPageRef.current);
-    const calloutObjectCount = calloutCountSafe(lastCalloutsRef.current);
+    // R2.3a Slice 5 — callouts ride annotationsByPage; the pending FABRIC
+    // flush (shared push) is the sole live writer, so there is no separate
+    // pending-callout runner or direct callout upsert anymore. The callout
+    // count survives as a diagnostic, derived from the byPage snapshot.
+    const calloutObjectCount = deriveCalloutsFromByPage(lastByPageRef.current || {}).length;
     cloudSyncHookDebug('[CloudSync][forceFlush] start ' + JSON.stringify({
       documentId,
       pdfId,
       hasUserId: Boolean(userId),
       hasPendingFabric: Boolean(pendingFabric),
-      hasPendingCallout: Boolean(pendingCallout),
       fabricObjectCount,
       calloutObjectCount,
       queueBefore,
@@ -3125,9 +3120,7 @@ export function useAnnotationCloudSync({
     };
 
     let consumedPendingFabric = false;
-    let consumedPendingCallout = false;
     let directFabricRows = 0;
-    let directCalloutRows = 0;
     try {
       if (pendingFabric) {
         consumedPendingFabric = true;
@@ -3137,16 +3130,9 @@ export function useAnnotationCloudSync({
         clearTimeout(debounceTimerRef.current);
         debounceTimerRef.current = null;
       }
-
-      if (pendingCallout) {
-        consumedPendingCallout = true;
-        cloudSyncHookDebug('[CloudSync][forceFlush] consuming pending callout flush');
-        await pendingCallout();
-      }
     } catch (err) {
       console.warn('[CloudSync][forceFlush] pending flush failed ' + JSON.stringify({
         consumedPendingFabric,
-        consumedPendingCallout,
         error: err?.message || String(err),
       }));
       setSyncStatus({ stage: 'error', error: err, kind: 'manual-save', phase: 'pending-flush' });
@@ -3180,7 +3166,6 @@ export function useAnnotationCloudSync({
     }
 
     const noPendingDurableWork = !consumedPendingFabric
-      && !consumedPendingCallout
       && queueBefore === 0
       && remainingAfterDrain === 0;
 
@@ -3206,24 +3191,12 @@ export function useAnnotationCloudSync({
       await fanOutCrdtForAnnotationsByPage(lastByPageRef.current, { documentId, userId });
       directFabricRows = upRes.data?.length || 0;
     }
-    if (!noPendingDurableWork && !consumedPendingCallout && lastCalloutsRef.current) {
-      const calloutRes = await upsertCallouts(
-        normalizeCalloutsForSync(lastCalloutsRef.current),
-        { documentId, userId, clientSessionId }
-      );
-      if (calloutRes?.error) {
-        const msg = calloutRes.error?.message || String(calloutRes.error);
-        const err = new Error(`forceFlush: durable upsertCallouts failed — ${msg}`);
-        console.warn('[CloudSync][forceFlush] failed ' + JSON.stringify({
-          phase: 'callout-durable-upsert',
-          error: err.message,
-        }));
-        setSyncStatus({ stage: 'queued', error: err, kind: 'manual-save', phase: 'callout-durable-upsert' });
-        throw err;
-      }
-      await fanOutCrdtForCallouts(normalizeCalloutsForSync(lastCalloutsRef.current), [], { documentId, userId });
-      directCalloutRows = calloutRes.data?.length || 0;
-    }
+    // (Removed R2.3a Slice 5 — the direct upsertCallouts + fanOutCrdtForCallouts
+    // branch. Callouts live inside lastByPageRef.current as projected group
+    // objects, so the direct fabric upsert above already carries them; the
+    // shared push is the sole live callout writer. The callout-bulk queue
+    // DRAIN branches are intentionally untouched — they recover entries stuck
+    // in localStorage from before the flip.)
 
     const queueRemaining = getQueueSize(documentId);
     if (queueRemaining > 0) {
@@ -3237,12 +3210,10 @@ export function useAnnotationCloudSync({
       throw err;
     }
 
-    const flushedCount = directFabricRows + directCalloutRows;
+    const flushedCount = directFabricRows;
     cloudSyncHookDebug('[CloudSync][forceFlush] synced ' + JSON.stringify({
       consumedPendingFabric,
-      consumedPendingCallout,
       directFabricRows,
-      directCalloutRows,
       fabricObjectCount,
       calloutObjectCount,
       queueBefore,
@@ -3382,16 +3353,9 @@ function mergeAnnotationsByPage(local, remote) {
   return out;
 }
 
-function mergeCallouts(local, remote) {
-  if (!remote) return local;
-  const out = [...(local || [])];
-  const localIds = new Set(out.map((c) => c.id || c.annotationId).filter(Boolean));
-  for (const c of remote) {
-    const id = c.id || c.annotationId;
-    if (!id || !localIds.has(id)) out.push(c);
-  }
-  return out;
-}
+// (Removed R2.3a Slice 5 — mergeCallouts. The separate callouts state slice is
+// retired; hydrate/realtime callout lists merge into annotationsByPage via
+// applyCalloutListToByPage from calloutAnnotationBridge.js.)
 
 function insertOrUpdateOnPage(prev, pageNumber, fabricObject, annotationId) {
   const pageKey = String(pageNumber);
@@ -3420,6 +3384,8 @@ function removeFromAllPages(prev, annotationId) {
   return out;
 }
 
+// Upsert-by-id on the DERIVED callout list — kept post-Slice-5 as the mutator
+// the realtime onCalloutInsert/Update handlers hand to applyRemoteCalloutToByPage.
 function upsertCalloutInList(prev, callout) {
   const list = Array.isArray(prev) ? prev : [];
   const id = callout.id || callout.annotationId;

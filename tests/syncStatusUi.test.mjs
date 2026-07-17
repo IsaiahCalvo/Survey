@@ -70,23 +70,31 @@ test('callout push success and failure drive synced or queued status (R2: via sh
     'fabric push must set synced status on success');
 });
 
-test('manual forceFlush consumes pending fabric and callout runners before direct durable flush', () => {
+test('manual forceFlush consumes the pending fabric runner before direct durable flush (R2.3a: callouts ride the fabric path)', () => {
+  // R2.3a Slice 5: the separate pending-callout runner and the direct
+  // upsertCallouts branch are retired — callouts live inside
+  // annotationsByPage, so the pending FABRIC flush and the direct fabric
+  // upsert (lastByPageRef.current) already carry them. Only the callout-bulk
+  // queue DRAIN branch survives, for stuck pre-flip localStorage entries.
   const src = hookSource();
   const forceFlushIndex = src.indexOf('const forceFlush = async () => {');
   const pendingFabricIndex = src.indexOf('const pendingFabric = pendingFabricFlushRef.current;', forceFlushIndex);
   const consumeFabricIndex = src.indexOf('await pendingFabric();', forceFlushIndex);
   const noPendingSyncedIndex = src.indexOf('const noPendingDurableWork = !consumedPendingFabric', forceFlushIndex);
   const directFabricIndex = src.indexOf('if (!noPendingDurableWork && !consumedPendingFabric && lastByPageRef.current)', forceFlushIndex);
-  const consumeCalloutIndex = src.indexOf('await pendingCallout();', forceFlushIndex);
-  const directCalloutIndex = src.indexOf('if (!noPendingDurableWork && !consumedPendingCallout && lastCalloutsRef.current)', forceFlushIndex);
 
   assert.ok(forceFlushIndex > 0, 'expected forceFlush implementation');
   assert.ok(pendingFabricIndex > forceFlushIndex, 'expected pending fabric runner lookup');
   assert.ok(consumeFabricIndex > pendingFabricIndex, 'expected pending fabric runner to be consumed');
   assert.ok(noPendingSyncedIndex > consumeFabricIndex, 'expected no-pending synced manual save fast path');
   assert.ok(directFabricIndex > consumeFabricIndex, 'expected direct fabric flush to be gated after pending runner');
-  assert.ok(consumeCalloutIndex > pendingFabricIndex, 'expected pending callout runner to be consumed');
-  assert.ok(directCalloutIndex > consumeCalloutIndex, 'expected direct callout flush to be gated after pending runner');
+  // Retired plumbing must NOT come back inside forceFlush.
+  assert.equal(src.indexOf('await pendingCallout();', forceFlushIndex), -1,
+    'pending callout runner is retired — the fabric flush carries callouts');
+  assert.equal(src.indexOf('consumedPendingCallout', forceFlushIndex), -1,
+    'direct callout flush tracking is retired');
+  // The callout-bulk drain branch must survive for stuck-queue recovery.
+  assert.match(src, /kind === 'callout-bulk'/);
 });
 
 test('manual forceFlush does not re-upsert all annotations when already synced and no work is pending', () => {
@@ -95,15 +103,13 @@ test('manual forceFlush does not re-upsert all annotations when already synced a
   const noPendingSyncedIndex = src.indexOf('const noPendingDurableWork = !consumedPendingFabric', forceFlushIndex);
   const noPendingLogIndex = src.indexOf("[CloudSync][forceFlush] no pending work; preserving synced state", forceFlushIndex);
   const directFabricIndex = src.indexOf('if (!noPendingDurableWork && !consumedPendingFabric && lastByPageRef.current)', forceFlushIndex);
-  const directCalloutIndex = src.indexOf('if (!noPendingDurableWork && !consumedPendingCallout && lastCalloutsRef.current)', forceFlushIndex);
   const syncedStatusIndex = src.indexOf("setSyncStatus({ stage: 'synced', kind: 'manual-save'", forceFlushIndex);
   const staleSyncedOnlyGuardIndex = src.indexOf("&& statusAfterPending === 'synced'", noPendingSyncedIndex);
 
   assert.ok(noPendingSyncedIndex > forceFlushIndex, 'expected already-synced no-work guard');
   assert.ok(noPendingLogIndex > noPendingSyncedIndex, 'expected diagnostic for no-op manual save');
   assert.ok(directFabricIndex > noPendingSyncedIndex, 'expected fabric direct flush to skip no-work saves');
-  assert.ok(directCalloutIndex > noPendingSyncedIndex, 'expected callout direct flush to skip no-work saves');
-  assert.ok(syncedStatusIndex > directCalloutIndex, 'expected manual save to still end with synced status');
+  assert.ok(syncedStatusIndex > directFabricIndex, 'expected manual save to still end with synced status');
   assert.equal(staleSyncedOnlyGuardIndex, -1, 'no-op manual save must also skip full upsert from idle hydrated state');
 });
 
