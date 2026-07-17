@@ -64,7 +64,7 @@ export function ConfirmDeleteModal({ plan, onConfirm, onCancel }) {
   if (!plan) return null;
   if (plan.mode === 'no-op' || plan.mode === 'owner-own-only') return null;
 
-  const isCollaborator = plan.mode === 'collaborator-all-mine';
+  const isCollaboratorOwnOnly = plan.mode === 'collaborator-all-mine';
 
   // ---------------------------------------------------------------------
   // Locked copy — collaborator variant
@@ -96,15 +96,15 @@ export function ConfirmDeleteModal({ plan, onConfirm, onCancel }) {
   // (NOT a stacked unordered list). Per checker W6 — comma-joined inline
   // string, single inline paragraph.
   const byAuthorInline =
-    !isCollaborator && plan.byAuthor && Object.keys(plan.byAuthor).length > 0
+    !isCollaboratorOwnOnly && plan.byAuthor && Object.keys(plan.byAuthor).length > 0
       ? Object.entries(plan.byAuthor)
           .map(([, info]) => `${info?.name ?? 'Unknown'} — ${info?.count ?? 0}`)
           .join(', ')
       : null;
 
-  const heading = isCollaborator ? collaboratorHeading : ownerHeading;
-  const body = isCollaborator ? collaboratorBody : ownerSummary;
-  const primaryLabel = isCollaborator ? collaboratorPrimaryLabel : ownerPrimaryLabel;
+  const heading = isCollaboratorOwnOnly ? collaboratorHeading : ownerHeading;
+  const body = isCollaboratorOwnOnly ? collaboratorBody : ownerSummary;
+  const primaryLabel = isCollaboratorOwnOnly ? collaboratorPrimaryLabel : ownerPrimaryLabel;
 
   // UX: stop background pointer events from bleeding through the backdrop —
   // clicking the backdrop (outside the card) cancels the modal as a

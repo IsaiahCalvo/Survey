@@ -439,6 +439,14 @@ test('PDF export embeds explicit counter metadata on app-created counter pins', 
     assert.equal(metadata.pageNumber, 1);
     assert.equal(metadata.position.left, 24);
     assert.equal(metadata.position.top, 36);
+
+    const appearance = doc.context.lookup(annotDict.get(PDFName.of('AP')));
+    const normal = appearance && doc.context.lookup(appearance.get(PDFName.of('N')));
+    assert.ok(normal, 'counter export must carry a visible appearance stream');
+    const appearanceText = new TextDecoder().decode(decodePDFRawStream(normal).decode());
+    assert.match(appearanceText, /\(7\)\s+Tj/, 'appearance must paint the counter number');
+    const rect = annotDict.get(PDFName.of('Rect')).asArray().map((n) => n.asNumber());
+    assert.ok(rect[0] < 24 || rect[1] < 140, 'counter /Rect must include the pin nub outside the circle body');
   } finally {
     globalThis.window = originalWindow;
   }

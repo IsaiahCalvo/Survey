@@ -111,18 +111,17 @@ describe('buildBulkDeletePlan over projected callout groups (Slice 4 parity)', (
     assert.equal(plan.byAuthor[COLLABORATOR].count, 1);
   });
 
-  it('collaborator deleting their own callouts → collaborator-all-mine (modal)', () => {
+  it('collaborator deleting a mixed-author callout selection → collaborator-cross-author (modal)', () => {
     const plan = buildBulkDeletePlan({
       candidateIds: ['c-owner', 'c-collab'],
       annotations: pageObjects,
       viewerId: COLLABORATOR,
       documentOwnerId: OWNER,
     });
-    // canModify drops the owner's callout for a collaborator viewer.
-    assert.equal(plan.mode, 'collaborator-all-mine');
-    assert.equal(plan.count, 1);
+    assert.equal(plan.mode, 'collaborator-cross-author');
+    assert.equal(plan.count, 2);
     assert.deepEqual(plan.ownIds, ['c-collab']);
-    assert.deepEqual(plan.foreignIds, []);
+    assert.deepEqual(plan.foreignIds, ['c-owner']);
   });
 
   it('owner deleting only their own callouts → owner-own-only (silent direct-fire)', () => {

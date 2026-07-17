@@ -70,7 +70,10 @@ export default function SurveyHub({
       kind: 'document',
       name: single ? single.name : `${docs.length} documents`,
       item: single,
-      manage: !!single?.shared,
+      // The documents table has no persisted `shared` flag. Owners always
+      // enter Manage Access, which also contains the invite-new-person flow.
+      // Non-owners keep the ordinary Share dialog and remain RLS-gated.
+      manage: !!single && !!user?.id && single.user_id === user.id,
     });
   };
   const shareProject = (project) => {

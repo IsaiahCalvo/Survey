@@ -128,6 +128,20 @@ test(
 );
 
 test(
+  'permissionScope #5b: canDelete allows an authenticated editor path to request confirmation for a foreign annotation',
+  { skip: !existsSync(TARGET) ? 'permissionScope module not yet present (Plan 35-02)' : false },
+  async () => {
+    const { canDelete } = await import(TARGET_URL);
+    const foreign = makeAnno(OTHER_ID);
+    strictEqual(
+      canDelete({ viewerId: COLLAB_ID, documentOwnerId: OWNER_ID, annotation: foreign }),
+      true,
+      'foreign deletion reaches the confirmation planner; read-only viewers are gated above this layer',
+    );
+  },
+);
+
+test(
   "permissionScope #6: filterByAuthor returns only annotations the viewer can modify (drops other authors' marks for collaborator role; returns input array unchanged for owner role)",
   { skip: !existsSync(TARGET) ? 'permissionScope module not yet present (Plan 35-02)' : false },
   async () => {

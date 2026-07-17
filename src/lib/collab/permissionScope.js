@@ -88,6 +88,25 @@ export function canModify({ annotation, viewerId, documentOwnerId }) {
 }
 
 /**
+ * Whether an authenticated write-capable session may request deletion.
+ * Read-only viewers are stopped by ReadOnlyGate before delete handlers run.
+ * Foreign-author deletes are allowed through here so the shared bulk-delete
+ * planner can require an explicit cross-author confirmation.
+ *
+ * @param {{ annotation: object, viewerId: string|null|undefined, documentOwnerId: string|null|undefined }} args
+ * @returns {boolean}
+ */
+export function canDelete({ annotation, viewerId, documentOwnerId }) {
+  if (annotation == null) return false;
+  return (
+    typeof viewerId === 'string' &&
+    viewerId.length > 0 &&
+    typeof documentOwnerId === 'string' &&
+    documentOwnerId.length > 0
+  );
+}
+
+/**
  * Resolve a Survey Marker's authorId. Survey Markers are the historical fork of
  * the annotation shape and stamp their author in different fields than fabric
  * annotations (they never carry meta.authorId / data.authorId), so this maps

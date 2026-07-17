@@ -76,6 +76,24 @@ test('KAL-31: ShareModal defaults to Viewer and exposes only viewer/editor/owner
   match(src, /createDocumentInvite/);
 });
 
+test('KAL-31: email invites grant existing accounts access immediately', () => {
+  const src = fs.readFileSync(
+    path.join(repoRoot, 'src/services/documentInviteService.js'),
+    'utf8',
+  );
+  match(src, /check_collaborator_by_email/);
+  match(src, /from\('document_collaborators'\)/);
+  match(src, /upsert\(/);
+});
+
+test('KAL-31: document owners always reach Manage Access from Share', () => {
+  const src = fs.readFileSync(
+    path.join(repoRoot, 'src/home/SurveyHub.jsx'),
+    'utf8',
+  );
+  match(src, /manage:\s*!!single\s*&&\s*!!user\?\.id\s*&&\s*single\.user_id\s*===\s*user\.id/);
+});
+
 test('KAL-31: AccessManagementModal exposes only viewer/editor/owner', () => {
   const src = fs.readFileSync(
     path.join(repoRoot, 'src/home/AccessManagementModal.jsx'),
@@ -131,6 +149,18 @@ test('KAL-31 Phase E: AccessManagementModal wires live backend behavior', () => 
   match(src, /sendPermissionChangedEmail/);
   match(src, /sendAccessRemovedEmail/);
   match(src, /cannot demote the last owner/);
+});
+
+test('KAL-31: collaborator list uses public row fields instead of an unavailable auth.users join', () => {
+  const src = fs.readFileSync(
+    path.join(repoRoot, 'src/services/documentAnnotationService.js'),
+    'utf8',
+  );
+  const start = src.indexOf('export async function getDocumentCollaborators');
+  const end = src.indexOf('export async function removeDocumentCollaborator', start);
+  const fn = src.slice(start, end);
+  ok(!/\.select\([^)]*auth\.users/.test(fn), 'client PostgREST cannot join private auth.users');
+  match(fn, /\.select\('\*'\)/);
 });
 
 test('KAL-31 Phase C/E: shareEmailService exists and wraps send-email', () => {

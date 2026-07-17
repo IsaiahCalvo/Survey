@@ -937,12 +937,90 @@ const createCircleAnnotation = (pdfDoc, page, fabricObj, pageHeight, options = {
     const maxX = left + radius * 2;
     const maxY = pageHeight - top;
 
+    let counterAppearance = null;
+    let counterRect = null;
+    if (counterMetadataJson) {
+      // Native /Circle viewers only paint the round body. Counters need an
+      // explicit /AP stream so Preview/Acrobat also show the pin nub and the
+      // centered number instead of a plain, unlabeled dot.
+      const pointerAngle = Number(fabricObj?.data?.pointerAngle ?? 225);
+      const angle = (pointerAngle * Math.PI) / 180;
+      const tipDistance = radius + Math.max(5, radius * 0.5);
+      const centerX = left + radius;
+      const centerY = top + radius;
+      const tipX = centerX + Math.cos(angle) * tipDistance;
+      const tipY = centerY + Math.sin(angle) * tipDistance;
+      const tangentHalfAngle = Math.acos(radius / tipDistance);
+      const t1x = centerX + Math.cos(angle + tangentHalfAngle) * radius;
+      const t1y = centerY + Math.sin(angle + tangentHalfAngle) * radius;
+      const t2x = centerX + Math.cos(angle - tangentHalfAngle) * radius;
+      const t2y = centerY + Math.sin(angle - tangentHalfAngle) * radius;
+      const pad = 1;
+      const appMinX = Math.min(left, tipX) - pad;
+      const appMaxX = Math.max(left + radius * 2, tipX) + pad;
+      const appMinY = Math.min(top, tipY) - pad;
+      const appMaxY = Math.max(top + radius * 2, tipY) + pad;
+      const formWidth = appMaxX - appMinX;
+      const formHeight = appMaxY - appMinY;
+      const toX = (x) => x - appMinX;
+      const toY = (y) => appMaxY - y;
+      const cx = toX(centerX);
+      const cy = toY(centerY);
+      const k = 0.551784;
+      const kr = k * radius;
+      const n = pdfNumberText;
+      const bodyColor = fillColor || color;
+      const numberColor = hexToRGB(fabricObj?.data?.numberColor || '#ffffff');
+      const label = String(counterMetadata?.displayNumber ?? counterMetadata?.number ?? '');
+      const escapedLabel = label.replace(/([\\()])/g, '\\$1');
+      const fontSize = Math.max(6, radius * 0.95);
+      const approximateTextWidth = label.length * fontSize * 0.56;
+      const textX = cx - approximateTextWidth / 2;
+      const textY = cy - fontSize * 0.34;
+      const content = [
+        'q',
+        `${n(bodyColor.red)} ${n(bodyColor.green)} ${n(bodyColor.blue)} rg`,
+        `${n(toX(tipX))} ${n(toY(tipY))} m`,
+        `${n(toX(t1x))} ${n(toY(t1y))} l`,
+        `${n(toX(t2x))} ${n(toY(t2y))} l h f`,
+        `${n(cx + radius)} ${n(cy)} m`,
+        `${n(cx + radius)} ${n(cy + kr)} ${n(cx + kr)} ${n(cy + radius)} ${n(cx)} ${n(cy + radius)} c`,
+        `${n(cx - kr)} ${n(cy + radius)} ${n(cx - radius)} ${n(cy + kr)} ${n(cx - radius)} ${n(cy)} c`,
+        `${n(cx - radius)} ${n(cy - kr)} ${n(cx - kr)} ${n(cy - radius)} ${n(cx)} ${n(cy - radius)} c`,
+        `${n(cx + kr)} ${n(cy - radius)} ${n(cx + radius)} ${n(cy - kr)} ${n(cx + radius)} ${n(cy)} c h f`,
+        'BT',
+        `/F1 ${n(fontSize)} Tf`,
+        `${n(numberColor.red)} ${n(numberColor.green)} ${n(numberColor.blue)} rg`,
+        `1 0 0 1 ${n(textX)} ${n(textY)} Tm`,
+        `(${escapedLabel}) Tj`,
+        'ET',
+        'Q',
+      ];
+      const fontRef = pdfDoc.context.register(pdfDoc.context.obj({
+        Type: 'Font',
+        Subtype: 'Type1',
+        BaseFont: 'Helvetica-Bold',
+        Encoding: 'WinAnsiEncoding',
+      }));
+      const appearance = pdfDoc.context.flateStream(`${content.join('\n')}\n`, {
+        Type: 'XObject',
+        Subtype: 'Form',
+        FormType: 1,
+        BBox: [0, 0, formWidth, formHeight],
+        Resources: { Font: { F1: fontRef } },
+      });
+      const appearanceRef = pdfDoc.context.register(appearance);
+      counterAppearance = pdfDoc.context.obj({ N: appearanceRef });
+      counterRect = [appMinX, pageHeight - appMaxY, appMaxX, pageHeight - appMinY];
+    }
+
     const annotationDict = {
       Type: 'Annot',
       Subtype: 'Circle',
-      Rect: [minX, minY, maxX, maxY],
+      Rect: counterRect || [minX, minY, maxX, maxY],
       C: [color.red, color.green, color.blue],
-      Border: [0, 0, fabricObj.strokeWidth || 1],
+      Border: [0, 0, counterAppearance ? 0 : (fabricObj.strokeWidth || 1)],
+      ...(counterAppearance ? { AP: counterAppearance } : {}),
       Contents: PDFString.of(''),
       P: page.ref,
     };

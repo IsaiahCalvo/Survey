@@ -61,8 +61,9 @@ body[data-readonly="true"] .readonly-allowed {
   cursor: pointer;
 }
 
-/* UX note (by omission): SVG annotations stay at full opacity — no rule
- * here targets .svg-annotation, .annotation-overlay, .pdf-page, or any
- * scroll/zoom/page-nav surface. The absence of those selectors IS the
- * contract: read this file as the full list of what dims under read-only,
- * and trust by omission that all other surfaces are untouched. */
+/* Keep annotations fully visible but stop select/move/edit/context-menu
+ * gestures at their interactive SVG root. PDF links, scroll, zoom, page
+ * navigation, search, and export live outside this SVG and remain available. */
+body[data-readonly="true"] .survey-pdfjs-page-div svg[style*="pointer-events: auto"] {
+  pointer-events: none !important;
+}

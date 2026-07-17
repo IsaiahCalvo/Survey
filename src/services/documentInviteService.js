@@ -10,6 +10,7 @@
  *   - Roles are exactly viewer | editor | owner.
  *   - Only owners can invite, revoke, resend, or remove.
  *   - Free users cannot create invites.
+ *   - Email invites grant existing accounts access immediately.
  *   - Free invitees accepted as viewer; intended_role preserved for upgrade.
  *   - Invites expire after 7 days; resend refreshes the window.
  */
@@ -74,6 +75,53 @@ export async function createDocumentInvite({ documentId, role, email = null, cur
     return { success: false, error: error.message };
   }
 
+  // An email invite to an existing account is both a courtesy notification and
+  // an immediate access grant. New addresses keep the pending-invite flow.
+  //
+  // Port note (2026-07-17): the acceptance marker is DEFERRED until after the
+  // email send below — the send-invite-email edge function refuses invites
+  // whose accepted_at is already set (handler.js 409 "Invite already
+  // accepted"), so marking first would silently drop the notification email
+  // for exactly the existing-account branch this grant serves.
+  let pendingAcceptanceMarker = null;
+  if (row.target_email) {
+    const { data: matches, error: lookupError } = await supabase.rpc(
+      'check_collaborator_by_email',
+      { email_address: row.target_email },
+    );
+
+    if (!lookupError) {
+      const existingUser = Array.isArray(matches) ? matches[0] : matches;
+      if (existingUser?.user_id) {
+        const effectiveRole = normRole === 'viewer' || existingUser.can_collaborate
+          ? normRole
+          : 'viewer';
+        const { error: grantError } = await supabase
+          .from('document_collaborators')
+          .upsert({
+            document_id: documentId,
+            user_id: existingUser.user_id,
+            email: existingUser.email || row.target_email,
+            role: effectiveRole,
+            status: 'active',
+            invited_by: currentUser.id,
+          }, { onConflict: 'document_id,user_id' });
+
+        if (grantError) {
+          console.error('[KAL-31] immediate collaborator grant failed:', grantError);
+          return { success: false, error: grantError.message };
+        }
+
+        pendingAcceptanceMarker = {
+          accepted_by: existingUser.user_id,
+          accepted_role: effectiveRole,
+        };
+      }
+    } else {
+      console.warn('[KAL-31] existing-account lookup failed; leaving invite pending:', lookupError.message);
+    }
+  }
+
   // Phase C: fire invite email (best-effort) for email-bound invites.
   // GOAL-1: one server-side call — recipient/role/URL derived from the row.
   if (email) {
@@ -86,6 +134,23 @@ export async function createDocumentInvite({ documentId, role, email = null, cur
       });
     } catch (mailErr) {
       console.warn('[KAL-31] invite email send failed (best-effort):', mailErr?.message || mailErr);
+    }
+  }
+
+  // Existing-account branch: access was already granted above — now that the
+  // notification email has fired, record the invite as accepted so it never
+  // lingers as "pending" in Manage Access. Best-effort: a failed marker only
+  // leaves a cosmetic pending row; the grant itself already succeeded.
+  if (pendingAcceptanceMarker) {
+    const { error: acceptError } = await supabase
+      .from('document_invites')
+      .update({
+        accepted_at: new Date().toISOString(),
+        ...pendingAcceptanceMarker,
+      })
+      .eq('id', data.id);
+    if (acceptError) {
+      console.warn('[KAL-31] invite granted but acceptance marker failed:', acceptError.message);
     }
   }
 

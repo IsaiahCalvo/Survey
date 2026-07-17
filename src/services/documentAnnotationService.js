@@ -684,10 +684,10 @@ export async function getDocumentCollaborators(documentId) {
 
   const { data, error } = await supabase
     .from('document_collaborators')
-    .select(`
-      *,
-      user:auth.users(id, email, raw_user_meta_data)
-    `)
+    // `email` is stored on the public collaborator row. Client PostgREST
+    // cannot join the private auth.users schema, and that invalid join made
+    // Manage Access silently render zero active members.
+    .select('*')
     .eq('document_id', documentId)
     .eq('status', 'active');
 

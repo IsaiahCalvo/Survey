@@ -36,6 +36,7 @@ import {
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const READONLY_GATE = resolve(__dirname, '../../src/components/collab/ReadOnlyGate.jsx');
+const READONLY_CSS = resolve(__dirname, '../../src/components/collab/ReadOnlyGate.css');
 const YDOC_PROVIDER = resolve(__dirname, '../../src/components/collab/YDocProvider.jsx');
 const BANNER = resolve(__dirname, '../../src/components/collab/StorageFailureBanner.jsx');
 
@@ -138,6 +139,15 @@ test(
     assert.ok(src.includes('docRole'), 'ReadOnlyGate must read docRole from useYDoc()');
     assert.ok(src.includes('accessRevoked'), 'ReadOnlyGate must still honor the Phase 28 accessRevoked trigger');
   }
+);
+
+test(
+  'wiring #1b: view-only mode blocks pointer interaction with the annotation SVG',
+  { skip: !existsSync(READONLY_CSS) ? 'ReadOnlyGate.css missing' : false },
+  () => {
+    const src = readFileSync(READONLY_CSS, 'utf8');
+    assert.match(src, /body\[data-readonly="true"\][\s\S]*\.survey-pdfjs-page-div[\s\S]*svg\[style\*="pointer-events: auto"\][\s\S]*pointer-events:\s*none/);
+  },
 );
 
 test(

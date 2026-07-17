@@ -75,7 +75,7 @@ import { calloutToAnnotationObject, projectCalloutsIntoByPage, deriveCalloutsFro
 import { buildHistoryEventRowFromDebugEvent, recordDocumentHistoryEvent, recordAndNotifyDocumentHistoryEvent } from './services/documentHistoryService.js';
 import { buildPrintableRegularAnnotationPayload, savePDFWithAnnotationsPdfLib, savePDFWithFlattenedRegularAnnotationsForPrint } from './utils/pdfAnnotationsPdfLib';
 import { buildTextSearchDiagLogSection, emitTextSearchDiag } from './utils/textSearchDiag';
-import { canModify, canModifySurveyMarker, getAnnotationAuthorId } from './lib/collab/permissionScope.js';
+import { canDelete, canModify, canModifySurveyMarker, getAnnotationAuthorId } from './lib/collab/permissionScope.js';
 import { checkFileExists, checkFileExistsInDrive, downloadExcelFile, downloadExcelFileByPath, getFileById, getFileETag, getFileMetadata, getTemplateIdFromExcel, uploadExcelFile, uploadFileContentById, uploadFileToDrive } from './services/excelGraphService';
 import { checkSessionSupport, closeWorkbookSession, createWorkbookSession, getFileIdFromPath, getUsedRange, getWorksheets, refreshWorkbookSession, updateCellRange } from './services/excelSessionService';
 import { LIVE_SYNC_GATE_REASON, resolveLiveSyncEligibility } from './services/liveSyncEligibility';
@@ -10395,7 +10395,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       // Resolve the callout object so canModify can read its authorId chain.
       const callout = callouts.find((c) => c.id === id);
       if (!callout) return false;
-      return canModify({ annotation: callout, viewerId, documentOwnerId });
+      return canDelete({ annotation: callout, viewerId, documentOwnerId });
     });
     if (permittedIds.length === 0) return;
 
@@ -10493,7 +10493,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       if (!viewerId || !documentOwnerId) return true;
       const callout = callouts.find((c) => c.id === id);
       if (!callout) return false;
-      return canModify({ annotation: callout, viewerId, documentOwnerId });
+      return canDelete({ annotation: callout, viewerId, documentOwnerId });
     });
     mixedDeleteBatchRef.current = permittedIds.length > 0
       ? { calloutIds: permittedIds, claimed: new Set(), armedAt: Date.now() }

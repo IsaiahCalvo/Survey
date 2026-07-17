@@ -2616,6 +2616,13 @@ function convertCircleToFabricCircle(annotation, viewport, scale = 1) {
 
     const displayNumber = counterMetadata.displayNumber ?? counterMetadata.number ?? null;
     const color = counterMetadata.color || getShapeFillColor(annotation, pdfColorToHex(annotation.color || [0, 0, 0], annotation));
+    // The PDF /Rect includes the counter pin nub so native viewers do not clip
+    // its appearance. Restore the editable circle body from app metadata rather
+    // than treating that larger appearance rectangle as the Fabric position.
+    const metadataLeft = Number(counterMetadata.position?.left ?? counterMetadata.left);
+    const metadataTop = Number(counterMetadata.position?.top ?? counterMetadata.top);
+    const left = Number.isFinite(metadataLeft) ? metadataLeft * scale : viewportRect.left;
+    const top = Number.isFinite(metadataTop) ? metadataTop * scale : viewportRect.top;
     const data = {
       type: 'counter',
       id: counterMetadata.id || annotation.id || undefined,
@@ -2634,8 +2641,8 @@ function convertCircleToFabricCircle(annotation, viewport, scale = 1) {
     return {
       type: 'circle',
       id: counterMetadata.id || annotation.id,
-      left: viewportRect.left,
-      top: viewportRect.top,
+      left,
+      top,
       radius,
       fill: color,
       stroke: '#ffffff',

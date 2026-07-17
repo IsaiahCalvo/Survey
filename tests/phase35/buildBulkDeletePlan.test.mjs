@@ -144,6 +144,24 @@ test(
 );
 
 test(
+  "buildBulkDeletePlan #3b: collaborator deleting another author's selected callout gets a cross-author confirmation plan",
+  { skip: !existsSync(TARGET) ? 'bulkDeletePlan module not yet present (Plan 35-04)' : false },
+  async () => {
+    const { buildBulkDeletePlan } = await import(TARGET_URL);
+    const foreign = makeAnno('foreign-callout', OWNER_ID, 'OwnerName');
+    const result = buildBulkDeletePlan({
+      candidateIds: ['foreign-callout'],
+      annotations: [foreign],
+      viewerId: COLLAB_ID,
+      documentOwnerId: OWNER_ID,
+    });
+    strictEqual(result.mode, 'collaborator-cross-author');
+    deepStrictEqual(result.ownIds, []);
+    deepStrictEqual(result.foreignIds, ['foreign-callout']);
+  },
+);
+
+test(
   "buildBulkDeletePlan #4: returns { mode: 'owner-own-only' } when owner's selection contains only owner's own marks (NO modal — fall through to single-delete path)",
   { skip: !existsSync(TARGET) ? 'bulkDeletePlan module not yet present (Plan 35-04)' : false },
   async () => {

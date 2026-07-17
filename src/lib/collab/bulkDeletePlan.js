@@ -18,7 +18,7 @@
 
 // @ts-check
 
-import { isOwner, getAnnotationAuthorId, canModify } from './permissionScope.js';
+import { isOwner, getAnnotationAuthorId, canDelete } from './permissionScope.js';
 
 /**
  * @typedef {object} ByAuthorEntry
@@ -26,7 +26,7 @@ import { isOwner, getAnnotationAuthorId, canModify } from './permissionScope.js'
  * @property {number} count
  *
  * @typedef {object} BulkDeletePlan
- * @property {'collaborator-all-mine'|'owner-cross-author'|'owner-own-only'|'no-op'} mode
+ * @property {'collaborator-all-mine'|'collaborator-cross-author'|'owner-cross-author'|'owner-own-only'|'no-op'} mode
  * @property {number} count
  * @property {string[]} ownIds
  * @property {string[]} foreignIds
@@ -110,7 +110,7 @@ export function buildBulkDeletePlan({
   for (const id of safeCandidates) {
     const a = byId.get(id);
     if (!a) continue;
-    if (canModify({ annotation: a, viewerId, documentOwnerId })) {
+    if (canDelete({ annotation: a, viewerId, documentOwnerId })) {
       eligible.push({ id, annotation: a });
     }
   }
@@ -143,8 +143,27 @@ export function buildBulkDeletePlan({
 
   const count = ownIds.length + foreignIds.length;
 
-  // Step 5: collaborator role — canModify already guaranteed foreignIds is empty.
+  // Step 5: collaborators can delete foreign marks only through the explicit
+  // cross-author confirmation mode. Read-only viewers never reach this layer.
   if (!isOwner(viewerId, documentOwnerId)) {
+    if (foreignIds.length > 0) {
+      const byAuthor = {};
+      for (const { annotation: a } of eligible) {
+        const authorId = getAnnotationAuthorId(a);
+        if (authorId == null || authorId === viewerId) continue;
+        if (!byAuthor[authorId]) {
+          byAuthor[authorId] = { name: nameFromAnnotation(a), count: 0 };
+        }
+        byAuthor[authorId].count += 1;
+      }
+      return {
+        mode: 'collaborator-cross-author',
+        count,
+        ownIds,
+        foreignIds,
+        byAuthor,
+      };
+    }
     return {
       mode: 'collaborator-all-mine',
       count,
