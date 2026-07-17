@@ -1226,8 +1226,20 @@ async function buildRawAnnotationMetadataById(rawPdfBytes) {
 
   try {
     const pdfLib = await loadPdfLibCore();
-    const { PDFDocument, PDFName } = pdfLib;
-    const rawPdfDoc = await PDFDocument.load(bytes, { updateMetadata: false });
+    const { PDFDocument, PDFName, ParseSpeeds } = pdfLib;
+    // PERF/HANG (2026-07-17): pdf-lib's default parseSpeed (ParseSpeeds.Slow)
+    // yields to the macrotask queue via nested setTimeout(0) every 100 parsed
+    // objects. Browsers clamp/throttle nested timers (4ms foreground, up to
+    // 1000ms+ for hidden/occluded tabs), so a many-object PDF (this 36-page
+    // Drawboard package has ~3.4k top-level objects + 196 object streams)
+    // turns into hundreds of throttled ticks and the load PROMISE NEVER
+    // FINISHES in practice — the 20s load watchdog then kills the open.
+    // ParseSpeeds.Fastest parses synchronously (no timer ticks): same file
+    // parses in well under a second, and this runs behind the loading curtain.
+    const rawPdfDoc = await PDFDocument.load(bytes, {
+      updateMetadata: false,
+      parseSpeed: ParseSpeeds.Fastest,
+    });
     const metadataById = new Map();
 
     rawPdfDoc.getPages().forEach((page) => {
@@ -1394,10 +1406,15 @@ async function readAppLayerStateFromPdf(rawPdfBytes) {
   if (!rawPdfBytes) return null;
   try {
     const pdfLib = await import('pdf-lib');
-    const { PDFDocument, PDFName } = pdfLib;
+    const { PDFDocument, PDFName, ParseSpeeds } = pdfLib;
+    // PERF/HANG (2026-07-17): ParseSpeeds.Fastest — see the twin comment in
+    // buildRawAnnotationMetadataById. Default (Slow) tick-yields via nested
+    // setTimeout(0), which browser timer throttling can stretch into a
+    // never-resolving load on many-object PDFs.
     const rawPdfDoc = await PDFDocument.load(rawPdfBytes, {
       updateMetadata: false,
       ignoreEncryption: true,
+      parseSpeed: ParseSpeeds.Fastest,
     });
     const raw = rawPdfDoc.catalog.get(PDFName.of(PDF_APP_LAYER_STATE_KEY));
     const text = readPdfLibText(raw);

@@ -34,17 +34,33 @@ import { isOwner, getAnnotationAuthorId, canDelete } from './permissionScope.js'
  */
 
 /**
- * Resolve a display name for an annotation's author. UX comment: name resolution
- * chain prefers `data.authorName` (the field the annotation was tagged with at
- * create time), then falls back to `data.lastEditorName` (in case a downstream
- * edit re-stamped the editor identity), then to `meta.authorName` /
+ * Resolve a display name for an annotation's author. UX comment: name
+ * resolution is ROSTER-FIRST — the caller-supplied `resolveAuthorName`
+ * (authorId → live display name, e.g. the document presence roster PDFViewer
+ * threads in) wins because ids are stable while display names change, and
+ * because callouts (and in practice most shapes) never persist a name field
+ * at all — only the stable authorId. The annotation-carried fields are the
+ * legacy fallback chain: `data.authorName` (stamped at create time by old
+ * paths), then `data.lastEditorName`, then `meta.authorName` /
  * `meta.lastEditorName` for the Phase 29 CRDT-side fields. 'Unknown' is the
- * last-resort label so the modal layer never has to render `undefined`.
+ * last-resort label so the modal layer never has to render `undefined` —
+ * unattributed marks keep that label regardless of type.
  *
  * @param {object} annotation
+ * @param {string|null} [authorId]
+ * @param {((authorId: string) => string|null|undefined)|null} [resolveAuthorName]
  * @returns {string}
  */
-function nameFromAnnotation(annotation) {
+function nameFromAnnotation(annotation, authorId = null, resolveAuthorName = null) {
+  if (authorId != null && typeof resolveAuthorName === 'function') {
+    let rosterName = null;
+    try {
+      rosterName = resolveAuthorName(authorId);
+    } catch {
+      rosterName = null; // resolver failures never break plan building
+    }
+    if (typeof rosterName === 'string' && rosterName.length > 0) return rosterName;
+  }
   if (annotation == null) return 'Unknown';
   return (
     annotation?.data?.authorName ??
@@ -80,6 +96,10 @@ function nameFromAnnotation(annotation) {
  * @param {object[]} args.annotations
  * @param {string} args.viewerId
  * @param {string} args.documentOwnerId
+ * @param {((authorId: string) => string|null|undefined)|null} [args.resolveAuthorName]
+ *   Optional authorId → display-name lookup (roster layer). See
+ *   nameFromAnnotation for the precedence contract. Omitting it preserves the
+ *   legacy annotation-field-only resolution exactly.
  * @returns {BulkDeletePlan}
  */
 export function buildBulkDeletePlan({
@@ -87,6 +107,7 @@ export function buildBulkDeletePlan({
   annotations,
   viewerId,
   documentOwnerId,
+  resolveAuthorName = null,
 }) {
   const safeCandidates = Array.isArray(candidateIds) ? candidateIds : [];
   const safeAnnotations = Array.isArray(annotations) ? annotations : [];
@@ -152,7 +173,7 @@ export function buildBulkDeletePlan({
         const authorId = getAnnotationAuthorId(a);
         if (authorId == null || authorId === viewerId) continue;
         if (!byAuthor[authorId]) {
-          byAuthor[authorId] = { name: nameFromAnnotation(a), count: 0 };
+          byAuthor[authorId] = { name: nameFromAnnotation(a, authorId, resolveAuthorName), count: 0 };
         }
         byAuthor[authorId].count += 1;
       }
@@ -194,7 +215,7 @@ export function buildBulkDeletePlan({
     if (authorId === viewerId) continue; // owner's own marks excluded
     if (authorId == null) continue; // defensive: unattributed marks not grouped
     if (!byAuthor[authorId]) {
-      byAuthor[authorId] = { name: nameFromAnnotation(a), count: 0 };
+      byAuthor[authorId] = { name: nameFromAnnotation(a, authorId, resolveAuthorName), count: 0 };
     }
     byAuthor[authorId].count += 1;
   }

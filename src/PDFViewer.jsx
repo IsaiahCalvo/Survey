@@ -17465,6 +17465,18 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   const [pendingDeletePlan, setPendingDeletePlan] = useState(null);
   const pendingDeleteRunnerRef = useRef(null);
 
+  // Cross-author delete modal name resolution (2026-07-17): the byAuthor
+  // breakdown resolves display names by authorId through the live document
+  // presence roster (the same user_id → display_name source the toolbar's
+  // active-users row renders), NOT by stamping names into annotation/callout
+  // data — names change, ids are stable. Callouts never persist a name field
+  // at all, so without this lookup every callout author rendered as
+  // "Unknown". Ref bridge because useDocumentPresenceList is declared ~300
+  // lines below handleRequestBulkDelete (TDZ — same pattern as
+  // requestBulkDeleteRef); the render-time assignment next to the hook call
+  // keeps it current.
+  const documentPresenceListRef = useRef([]);
+
   // KAL-313 / history F2 (2026-06-11): one restorable History row per delete.
   // The bulk-delete path journals its own trash rows (emitBulkTrashRows), but
   // the deletion ALSO flows through handleSaveAnnotations →
@@ -17559,11 +17571,27 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       // per-author breakdown across what the user actually sees.
       const pageAnnotations = annotationsByPage?.[pageNumber]?.objects || [];
 
+      // Roster lookup for the modal's byAuthor names: user_id → display_name
+      // from the presence roster, read through the ref at request time (fresh
+      // at the moment the modal opens). Falls back inside the planner to the
+      // legacy annotation-carried name fields, then 'Unknown'.
+      const presenceRows = Array.isArray(documentPresenceListRef.current)
+        ? documentPresenceListRef.current
+        : [];
+      const rosterNameByUserId = new Map();
+      for (const row of presenceRows) {
+        if (row?.user_id && row?.display_name) {
+          rosterNameByUserId.set(row.user_id, row.display_name);
+        }
+      }
+      const resolveAuthorName = (authorId) => rosterNameByUserId.get(authorId) ?? null;
+
       const plan = buildBulkDeletePlan({
         candidateIds,
         annotations: pageAnnotations,
         viewerId: user?.id ?? null,
         documentOwnerId,
+        resolveAuthorName,
       });
 
       if (plan.mode === 'no-op') return;
@@ -17825,6 +17853,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     documentId: pdfFile?.id || null,
     enabled: cloudSyncActive
   });
+  // Keep the TDZ ref bridge current so handleRequestBulkDelete (declared
+  // above) resolves modal author names from this render's roster. Same
+  // render-time-assignment pattern as requestBulkDeleteRef.
+  documentPresenceListRef.current = documentPresenceList;
 
   // Update presence when page changes
   useEffect(() => {
@@ -19976,9 +20008,15 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
             try {
               console.warn('Recovery mode failed, rewriting PDF via pdf-lib and retrying:', recoveryError?.message);
               const pdfLib = await import('pdf-lib');
+              // PERF/HANG (2026-07-17): ParseSpeeds.Fastest — pdf-lib's default
+              // parse yields via nested setTimeout(0) ticks, which browser timer
+              // throttling can stretch into a never-resolving load on many-object
+              // PDFs (see the twin comment in pdfAnnotationImporter.js). This is
+              // the load path: it must never depend on throttleable timers.
               const rewriteDoc = await pdfLib.PDFDocument.load(arrayBuffer.slice(0), {
                 updateMetadata: false,
                 ignoreEncryption: true,
+                parseSpeed: pdfLib.ParseSpeeds.Fastest,
               });
               const rewritten = await rewriteDoc.save({ useObjectStreams: false });
               const rewriteTask = pdfjsLib.getDocument({ isEvalSupported: false,
@@ -20363,9 +20401,12 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
               || (await (pdfFile.arrayBuffer
                 ? pdfFile.arrayBuffer()
                 : downloadFromStorage(pdfFile.filePath).then((b) => b.arrayBuffer())));
+            // PERF/HANG (2026-07-17): ParseSpeeds.Fastest — no throttleable
+            // setTimeout ticks on the load path (see pdfAnnotationImporter.js).
             const rewriteDoc = await pdfLib.PDFDocument.load(srcBytes, {
               updateMetadata: false,
               ignoreEncryption: true,
+              parseSpeed: pdfLib.ParseSpeeds.Fastest,
             });
             const rewritten = await rewriteDoc.save({ useObjectStreams: false });
             const rewrittenBlob = new Blob([rewritten], { type: 'application/pdf' });

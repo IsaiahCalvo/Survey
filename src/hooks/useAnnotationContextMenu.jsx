@@ -248,8 +248,53 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
       // from the right-click menu. The feature is hidden app-wide until
       // the matrix-per-shape rewrite ships. Handlers above
       // (handleGroupSelected / handleUngroupSelected) stay intact.
+      //
+      // UX: 2026-07-17 — callout menu parity with the shape menu, audited
+      // item by item. Cut / Copy / Paste / Delete are 1:1 with the shape
+      // menu (same clipboard rules, same paste-at-point rule, same gated
+      // delete). The four z-order items (Bring to front / Bring forward /
+      // Send backward / Send to back) are DELIBERATELY EXCLUDED, not
+      // missing:
+      //   - Cross-type z-order is meaningless by design: callouts render in
+      //     their own SVG loop ABOVE all shapes (SVGAnnotationLayer's
+      //     dedicated filteredCallouts renderer — a deliberate, tested
+      //     layering), so no reorder could ever move a callout below a shape.
+      //   - Callout-vs-callout order is fixed too: deriveCalloutsFromByPage
+      //     sorts each page's callouts by id (localeCompare) for
+      //     deterministic derive/fingerprint round-trips, so the shapes'
+      //     handleReorderAnnotation machinery (which permutes
+      //     page.objects indices) has zero rendered effect on callouts —
+      //     any reorder would be visually dead AND silently reverted by the
+      //     next derive. Making it real requires a persisted z-field or the
+      //     callout render-loop unification (the dedicated callout-migration
+      //     project), not a menu item.
+      // Rendering dead/no-op items is worse than omitting them — the menu
+      // shows only what actually works on a callout.
+      //
+      // Resolve the right-clicked callout's projected group object
+      // (data.type === 'callout', id at data.id) so the Cut item can run the
+      // SAME own-marks-only gate as the shape menu's Cut (locked model
+      // 2026-07-17: Cut = Copy + immediate delete with no confirmation
+      // surface, so it must never touch a foreign-author mark; to remove
+      // another user's callout: Copy + Delete — Delete confirms via the
+      // cross-author modal).
+      const findCalloutObj = () => {
+        const page = annotationsByPageRef.current?.[ctx.pageNumber];
+        if (!page?.objects || !ctx.calloutId) return null;
+        return page.objects.find(
+          (o) => o?.data?.type === 'callout' && o?.data?.id === ctx.calloutId
+        ) || null;
+      };
       items = [
-        item('Cut', 'cut', () => ctx.calloutId && handleCutCallout(ctx.calloutId)),
+        item('Cut', 'cut', () => {
+          if (!ctx.calloutId) return;
+          const obj = findCalloutObj();
+          // Own-mark gate (boot window permissive inside canModifyObj —
+          // matches the shape Cut item). A callout that can't be resolved
+          // from the page projection is a no-op rather than an ungated cut.
+          if (!obj || !canModifyObj(obj)) return;
+          handleCutCallout(ctx.calloutId);
+        }),
         item('Copy', 'copy', () => ctx.calloutId && handleCopyCallout(ctx.calloutId)),
         // UX: paste lands at the right-click point (same cursor-anchored rule
         // as Cmd+V and the shape menu's doPasteAnnotation). ctx.x/y are the
