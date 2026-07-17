@@ -3453,6 +3453,25 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   // 'cut' differs from 'copy' only in that the original is removed at Copy time,
   // matching the callout clipboard contract at ~line 11085.
   const [clipboardAnnotation, setClipboardAnnotation] = useState(null);
+  // UX: shared paste-anchor memory for the "repeat paste at the same spot"
+  // rule (Bluebeam/tldraw convention): the FIRST paste lands exactly at the
+  // cursor / right-click point; pasting again WITHOUT moving the cursor
+  // offsets each successive clone by a fixed step so copies never stack
+  // invisibly on top of each other. Moving the cursor (or switching
+  // clipboard content) resets the run. Shared by annotation AND callout
+  // paste so both follow one rule.
+  const lastPasteAnchorRef = useRef({ x: null, y: null, count: 0 });
+  const resolvePasteRepeatCount = useCallback((clientX, clientY) => {
+    const last = lastPasteAnchorRef.current;
+    const samePlace = last.x != null
+      && Math.abs(clientX - last.x) <= 2
+      && Math.abs(clientY - last.y) <= 2;
+    const count = samePlace ? last.count + 1 : 0;
+    lastPasteAnchorRef.current = { x: clientX, y: clientY, count };
+    return count;
+  }, []);
+  // Page-unit offset applied per repeat paste at the same anchor point.
+  const PASTE_REPEAT_OFFSET_PAGE_UNITS = 16;
   // UX: annotation right-click menu. State + lifecycle (the always-on global
   // contextmenu dispatcher registration and the outside-click/Escape dismiss)
   // live in useAnnotationContextMenu. The menu's render builder is
@@ -3516,11 +3535,24 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   }, []);
 
   // UX: pan-mode quick-click → select annotation + auto-switch to Select tool.
-  // Records pointer position on mousedown; on mouseup, if the cursor moved
-  // less than QUICK_CLICK_PX and we're in pan mode and a non-callout
-  // annotation sits under the cursor, auto-switch to the Select tool and
-  // broadcast a selection command to the matching SVGAnnotationLayer.
-  // Callouts are intentionally skipped — they're wired in a parallel session.
+  // Records pointer position on pointerdown; on pointerup, if the cursor moved
+  // less than QUICK_CLICK_PX and we're in pan mode and an annotation (any
+  // type, callouts included) sits under the cursor, auto-switch to the Select
+  // tool and broadcast a selection command to the matching SVGAnnotationLayer.
+  // Reference behavior (Drawboard): click on an annotation in pan mode
+  // selects it; a drag pans.
+  //
+  // 2026-07-17 — MUST use POINTER events, not mouse events. The pdf.js pan
+  // implementation (PdfjsViewerContainer's scroller onPointerDown) calls
+  // preventDefault() on pointerdown while the Pan tool is armed, and per the
+  // Pointer Events spec canceling pointerdown SUPPRESSES the compatibility
+  // mouse events (mousedown/mouseup never fire for that gesture). The old
+  // mousedown/mouseup listeners here therefore never ran in pan mode —
+  // pan-click select was dead for every annotation type since the custom pan
+  // handler landed (a3380bbf). Window-CAPTURE pointer listeners run before
+  // the scroller's own capture handler (window is an ancestor), so the pan
+  // handler's stopPropagation cannot starve this path either. Pan-drag is
+  // unaffected: moves > QUICK_CLICK_PX bail out here and pan normally.
   useEffect(() => {
     // 4px tolerance matches trackpad + mouse in local testing. Tune here if
     // users report accidental drags. Too low → hair-trigger drags fire as
@@ -3559,11 +3591,11 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         tick: Date.now(),
       });
     };
-    window.addEventListener('mousedown', onDown, true);
-    window.addEventListener('mouseup', onUp, true);
+    window.addEventListener('pointerdown', onDown, true);
+    window.addEventListener('pointerup', onUp, true);
     return () => {
-      window.removeEventListener('mousedown', onDown, true);
-      window.removeEventListener('mouseup', onUp, true);
+      window.removeEventListener('pointerdown', onDown, true);
+      window.removeEventListener('pointerup', onUp, true);
     };
   }, [activeTool]);
 
@@ -3805,6 +3837,13 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     if (style.arrowheadStyle) {
       setArrowheadStyle(style.arrowheadStyle);
     }
+    // UX (2026-07-17, callout line style): reflect the selected callout's
+    // leader style in the Style picker (absent field = legacy solid callout).
+    setLineBorderStyle(
+      style.lineStyle === 'dashed' || style.lineStyle === 'dotted'
+        ? style.lineStyle
+        : 'solid',
+    );
   }, [selectedToolbarCallout]);
 
   // Clipboard handlers for callouts
@@ -3813,6 +3852,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     if (callout) {
       setClipboardCallout(callout);
       setClipboardCalloutType('cut');
+      // UX: one logical clipboard — most recent Copy/Cut wins (see
+      // handleCopyCallout).
+      setClipboardAnnotation(null);
       // R2.2 Slice 4: cut removes through the shared save pipeline — the
       // removal becomes a per-object fabric:delete undo entry (Cmd+Z restores
       // the cut callout in place), matching the shape cut contract.
@@ -3834,27 +3876,83 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     if (callout) {
       setClipboardCallout(callout);
       setClipboardCalloutType('copy');
+      // UX: one logical clipboard — the most recent Copy/Cut wins. Clear the
+      // shape clipboard so Cmd+V pastes THIS callout, not a stale shape.
+      setClipboardAnnotation(null);
     }
   }, [callouts]);
 
+  // UX: paste a copied callout. Two placement modes:
+  //   1. cursorPosition = { clientX, clientY } (Cmd+V at the pointer, or the
+  //      right-click menu passing the click point) → the whole callout
+  //      (text box + knee + arrow tip, relative layout preserved) is
+  //      translated so the TEXT BOX CENTER lands at that screen point,
+  //      matching pasteAnnotationAt's cursor-centered rule for shapes.
+  //      Repeat pastes at the same point step down-right via the shared
+  //      lastPasteAnchorRef rule.
+  //   2. no cursorPosition (legacy PageAnnotationLayer menu path) → the
+  //      whole callout is offset +5% of the page from the source, keeping
+  //      the old fallback behavior but now translating knee + arrow tip too
+  //      so the leader geometry is never distorted by a paste.
   const handlePasteCallout = useCallback((pageNumber, cursorPosition) => {
     if (!clipboardCallout) return;
 
     // Generate new ID
     const newId = `callout-${crypto.randomUUID()}`;
 
-    // Create new callout with offset position
-    const offsetX = 0.05; // 5% offset
-    const offsetY = 0.05;
+    const srcTextBox = clipboardCallout.textBoxPosition || { x: 0.1, y: 0.1 };
+    const srcKnee = clipboardCallout.knee || null;
+    const tbWidth = Number(clipboardCallout.textBoxWidth ?? clipboardCallout.textBox?.width ?? 0.1) || 0.1;
+    const tbHeight = Number(clipboardCallout.textBoxHeight ?? clipboardCallout.textBox?.height ?? 0.05) || 0.05;
+
+    // Resolve the translation delta (in 0-1 page fractions) for every part.
+    let deltaX = 0.05; // legacy fallback: 5% page offset
+    let deltaY = 0.05;
+    if (cursorPosition && Number.isFinite(cursorPosition.clientX) && Number.isFinite(cursorPosition.clientY)) {
+      try {
+        const svgWrap = document.querySelector(`[data-diag-svg-wrapper="${pageNumber}"]`);
+        const palRoot = document.querySelector(`[data-pal-root="${pageNumber}"]`);
+        const pageDiv = (svgWrap || palRoot)?.closest?.('.survey-pdfjs-page-div') || null;
+        const pageRect = pageDiv?.getBoundingClientRect?.() || null;
+        if (pageRect && pageRect.width > 0 && pageRect.height > 0) {
+          const cursorFracX = (cursorPosition.clientX - pageRect.left) / pageRect.width;
+          const cursorFracY = (cursorPosition.clientY - pageRect.top) / pageRect.height;
+          // Anchor the text box CENTER at the cursor.
+          deltaX = cursorFracX - (Number(srcTextBox.x) || 0) - tbWidth / 2;
+          deltaY = cursorFracY - (Number(srcTextBox.y) || 0) - tbHeight / 2;
+          // Repeat-paste offset (page units → fractions via the page rect's
+          // stored-unit density; the SVG viewBox spans the page's PDF units,
+          // so approximate with the same 16-unit step normalized by a
+          // nominal 612x792 page — visually consistent across zooms).
+          const repeat = resolvePasteRepeatCount(cursorPosition.clientX, cursorPosition.clientY);
+          if (repeat > 0) {
+            deltaX += (repeat * PASTE_REPEAT_OFFSET_PAGE_UNITS) / 612;
+            deltaY += (repeat * PASTE_REPEAT_OFFSET_PAGE_UNITS) / 792;
+          }
+        }
+      } catch (_) { /* keep 5% fallback */ }
+    }
+
+    const translatePoint = (pt) => (pt && Number.isFinite(Number(pt.x)) && Number.isFinite(Number(pt.y))
+      ? { ...pt, x: Number(pt.x) + deltaX, y: Number(pt.y) + deltaY }
+      : pt);
 
     const newCallout = {
       ...clipboardCallout,
       id: newId,
       pageNumber: pageNumber,
       textBoxPosition: {
-        x: (cursorPosition?.x || clipboardCallout.textBoxPosition.x) + offsetX,
-        y: (cursorPosition?.y || clipboardCallout.textBoxPosition.y) + offsetY,
+        x: (Number(srcTextBox.x) || 0) + deltaX,
+        y: (Number(srcTextBox.y) || 0) + deltaY,
       },
+      // Keep the leader geometry rigid: knee and arrow tip translate by the
+      // same delta as the text box (relative layout preserved, matching the
+      // multi-object shape paste rule).
+      ...(srcKnee ? { knee: translatePoint(srcKnee) } : {}),
+      ...(clipboardCallout.arrowTip ? { arrowTip: translatePoint(clipboardCallout.arrowTip) } : {}),
+      ...(!clipboardCallout.arrowTip && clipboardCallout.anchor
+        ? { anchor: translatePoint(clipboardCallout.anchor) }
+        : {}),
       // Attribution-on-reload (R2.2 Slice 0): paste MINTS a new id, so this is
       // a CREATE — stamp the author when the copied callout carried no chain.
       // A copied callout that already has an author keeps it (never-overwrite),
@@ -3877,7 +3975,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       setClipboardCallout(null);
       setClipboardCalloutType(null);
     }
-  }, [clipboardCallout, clipboardCalloutType, user?.id, commitCalloutMutation]);
+  }, [clipboardCallout, clipboardCalloutType, user?.id, commitCalloutMutation, resolvePasteRepeatCount]);
 
   const [pdfNativeAnnotationLayerPolicyByPage, setPdfNativeAnnotationLayerPolicyByPage] = useState({});
 
@@ -7190,6 +7288,16 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
   const handleLineBorderStyleChange = useCallback((next) => {
     setLineBorderStyle(next);
+    // UX (2026-07-17, callout line style): a selected callout takes the Style
+    // picker too — patch style.lineStyle through the undoable callout patch
+    // path (same route as the arrowhead picker). 'cloud' is never offered for
+    // the callout context (rect-only option), but guard anyway.
+    if (isCalloutSelected()) {
+      if (next === 'solid' || next === 'dashed' || next === 'dotted') {
+        handlePatchSelectedCallout({ lineStyle: next });
+      }
+      return;
+    }
     if (!isEditableShapeSelected()) return;
     if (next === 'cloud') {
       handlePatchSelectedAnnotation({
@@ -7203,7 +7311,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     } else {
       handlePatchSelectedAnnotation({ strokeDashArray: null, data: { pdfCloudIntensity: null } });
     }
-  }, [cloudIntensity, handlePatchSelectedAnnotation]);
+  }, [cloudIntensity, handlePatchSelectedAnnotation, handlePatchSelectedCallout]);
 
   const handleCloudIntensityChange = useCallback((next) => {
     setCloudIntensity(next);
@@ -10421,6 +10529,12 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         fillColor,
         fillOpacity: (fillOpacity ?? 100) / 100,
         lineThickness: Math.max(1, Number(strokeWidth) || 2),
+        // UX (2026-07-17, callout line style): new callouts honor the Style
+        // picker's current choice, exactly like new shapes do (applyBorderStyle
+        // at shape creation). 'cloud' is rect-only — treat as solid here.
+        lineStyle: (lineBorderStyle === 'dashed' || lineBorderStyle === 'dotted')
+          ? lineBorderStyle
+          : 'solid',
         ...(mobileMode ? {
           fontColor: textStyleDefaults.fontColor,
           fontFamily: textStyleDefaults.fontFamily,
@@ -10454,7 +10568,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       source: 'callout:create',
       action: 'callout-create',
     });
-  }, [commitCalloutMutation, strokeColor, strokeOpacity, fillColor, fillOpacity, mobileMode, strokeWidth, textStyleDefaults, user?.id]);
+  }, [commitCalloutMutation, strokeColor, strokeOpacity, fillColor, fillOpacity, mobileMode, strokeWidth, lineBorderStyle, textStyleDefaults, user?.id]);
 
   // UX: Phase 14 CALL-10 (drag MVP) — pointerup commit for a callout drag.
   // Called from useSVGInteraction's 'callout-part' drag mode on pointerup
@@ -18805,15 +18919,27 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     const previousUndoDepth = undoHistoryRef.current.length;
     const previousRedoDepth = redoHistoryRef.current.length;
 
-    setUndoHistory([]);
-    setRedoHistory([]);
-    undoHistoryRef.current = [];
-    redoHistoryRef.current = [];
-    undoHistoryMetaRef.current = [];
-    redoHistoryMetaRef.current = [];
-    lastCheckpointHashRef.current = null;
-    objectModifiedInteractionCheckpointRef.current.clear();
-    isUndoingRef.current = false;
+    // UX 2026-07-17 — wipe undo/redo history ONLY when the document actually
+    // changed. This effect's deps include callback identities
+    // (finishPdfjsInteractionWindow → finalizePdfjsInteractionIdle →
+    // zoom/scroll-state callbacks), so it RE-RUNS repeatedly for the SAME
+    // open document whenever the user zooms/pans/scrolls. Unconditionally
+    // clearing the legacy undo/redo stacks here silently killed Cmd+Z /
+    // redo for every legacy-lane action (callout create/edit/delete rides
+    // that lane) as soon as the user interacted with the viewer — "hotkeys
+    // do nothing". Same-pdf re-runs must preserve history, exactly as they
+    // already preserve spaces and survey markers via isSamePdfReload.
+    if (!isSamePdfReload) {
+      setUndoHistory([]);
+      setRedoHistory([]);
+      undoHistoryRef.current = [];
+      redoHistoryRef.current = [];
+      undoHistoryMetaRef.current = [];
+      redoHistoryMetaRef.current = [];
+      lastCheckpointHashRef.current = null;
+      objectModifiedInteractionCheckpointRef.current.clear();
+      isUndoingRef.current = false;
+    }
     annotationsByPageRef.current = {};
     surveyMarkersRef.current = {};
     spacesRef.current = isSamePdfReload ? previousSpacesForSamePdf : [];
@@ -18857,16 +18983,28 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     setSurveyResponses({});
     setNoteDialogOpen(null);
     setNoteDialogContent({ text: '', photos: [], videos: [] });
-    setActiveTool('pan');
+    // UX 2026-07-17 — snap the tool back to Pan ONLY on a real document
+    // change. This effect re-runs for the same open document on
+    // zoom/scroll-driven callback identity churn (see the history-wipe gate
+    // above); unconditionally forcing 'pan' here made the active tool
+    // randomly jump back to Pan mid-session (and made toolbar tool clicks
+    // appear to "not take").
+    if (!isSamePdfReload) {
+      setActiveTool('pan');
+    }
 
-    pushHistoryDebugEvent('history_reset_for_pdf_change', {
-      reason: 'pdf:change',
-      previousUndoDepth,
-      previousRedoDepth,
-      undoDepth: 0,
-      redoDepth: 0,
-      nextPdfName: pdfFile?.name || null
-    });
+    pushHistoryDebugEvent(
+      isSamePdfReload ? 'same_pdf_reload_history_preserved' : 'history_reset_for_pdf_change',
+      {
+        reason: 'pdf:change',
+        isSamePdfReload,
+        previousUndoDepth,
+        previousRedoDepth,
+        undoDepth: isSamePdfReload ? previousUndoDepth : 0,
+        redoDepth: isSamePdfReload ? previousRedoDepth : 0,
+        nextPdfName: pdfFile?.name || null
+      }
+    );
 
 
     if (!pdfFile) {
@@ -21671,7 +21809,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
           // (form fields, system paste, etc). Resolves the target page from
           // the cursor via elementFromPoint → closest('.survey-pdfjs-page-div') →
           // data attribute lookup, matching the resolveAnnotationAt pattern.
-          if (key === 'v' && !e.shiftKey && clipboardAnnotation) {
+          if (key === 'v' && !e.shiftKey && (clipboardAnnotation || clipboardCallout)) {
             // KAL-75 (G1): paste is a mutation — inert on locked/read-only docs.
             if (document.body.getAttribute('data-readonly') === 'true') return;
             const { x, y } = lastPointerPosRef.current;
@@ -21695,10 +21833,23 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
                 || palWrap?.getAttribute?.('data-pal-root');
             }
             const pageNumber = pageNumAttr ? parseInt(pageNumAttr, 10) : null;
-            if (pageNumber != null && pasteAnnotationAtRef.current) {
-              e.preventDefault();
-              pasteAnnotationAtRef.current(pageNumber, x, y);
-              return;
+            if (pageNumber != null) {
+              // UX: one shared cursor-anchored paste rule. Shapes go through
+              // pasteAnnotationAt (cursor-centered); a copied CALLOUT goes
+              // through handlePasteCallout with the same cursor point, so
+              // Cmd+V and right-click Paste place callouts identically.
+              // Only one clipboard is populated at a time (Copy/Cut clears
+              // the other — see handleCopyAnnotation / handleCopyCallout).
+              if (clipboardAnnotation && pasteAnnotationAtRef.current) {
+                e.preventDefault();
+                pasteAnnotationAtRef.current(pageNumber, x, y);
+                return;
+              }
+              if (clipboardCallout) {
+                e.preventDefault();
+                handlePasteCallout(pageNumber, { clientX: x, clientY: y });
+                return;
+              }
             }
           }
         }
@@ -21715,7 +21866,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [goToNextPage, goToPreviousPage, scrollMode, zoomIn, zoomOut, handleSaveDocument, activeTool, setEraserMode, eraserMode, clipboardAnnotation]);
+  }, [goToNextPage, goToPreviousPage, scrollMode, zoomIn, zoomOut, handleSaveDocument, activeTool, setEraserMode, eraserMode, clipboardAnnotation, clipboardCallout, handlePasteCallout]);
 
   // Electron: listen for pdf-zoom custom events forwarded from main process
   // (Ctrl/Cmd+Plus/Minus are intercepted by electron-main.js to prevent UI zoom)
@@ -23500,6 +23651,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     const page = annotationsByPageRef.current?.[pageNumber] || { objects: [] };
     const next = deepClone(page);
     if (!Array.isArray(next.objects)) next.objects = [];
+    // UX: repeat-paste offset — see lastPasteAnchorRef. First paste at a
+    // given cursor point is cursor-exact; repeats without moving the cursor
+    // step down-right so clones stay visible.
+    const repeatOffset = resolvePasteRepeatCount(clientX, clientY) * PASTE_REPEAT_OFFSET_PAGE_UNITS;
     // UX: Phase 19 follow-up — multi-object paste. When clipboard holds
     // an array of objects (from group copy/cut), translate every item
     // by the same delta so their relative layout is preserved, then
@@ -23541,6 +23696,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
           dy = cursorY - srcBBox.top;
         }
       } catch (_) { /* fallthrough to +20 offset */ }
+      dx += repeatOffset;
+      dy += repeatOffset;
 
       for (const c of clones) {
         c.pdfAnnotationId = `paste-${crypto.randomUUID()}`;
@@ -23604,8 +23761,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       console.warn('[Paste] coord transform failed, using original+20', err?.message || err);
     }
 
-    pasted.left = pastedLeft;
-    pasted.top = pastedTop;
+    pasted.left = pastedLeft + repeatOffset;
+    pasted.top = pastedTop + repeatOffset;
     next.objects.push(pasted);
 
     console.log(`[PasteDiag] resolvedVia=${resolvedVia} click=(${clientX},${clientY}) pasted=(${pastedLeft.toFixed(2)},${pastedTop.toFixed(2)}) original=(${originalLeft},${originalTop}) type=${pasted.type} page=${pageNumber}`);
@@ -23619,7 +23776,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       setClipboardAnnotation(null);
     }
     return true;
-  }, [clipboardAnnotation, handleSaveAnnotations]);
+  }, [clipboardAnnotation, handleSaveAnnotations, resolvePasteRepeatCount]);
   // Keep the ref in sync so the keydown useEffect (declared above
   // pasteAnnotationAt) can call it without TDZ'ing on the dep array.
   pasteAnnotationAtRef.current = pasteAnnotationAt;
@@ -23641,6 +23798,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       sourcePageNumber: pageNumber,
       mode: 'copy',
     });
+    // UX: one logical clipboard — most recent Copy/Cut wins. Clear the
+    // callout clipboard so Cmd+V pastes THIS shape, not a stale callout.
+    setClipboardCallout(null);
+    setClipboardCalloutType(null);
   }, []);
 
   // UX: Shared annotation Cut handler — called by the Cmd+X hotkey. Same
@@ -23663,6 +23824,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       sourcePageNumber: pageNumber,
       mode: 'cut',
     });
+    // UX: one logical clipboard — most recent Copy/Cut wins (see
+    // handleCopyAnnotation).
+    setClipboardCallout(null);
+    setClipboardCalloutType(null);
     const next = deepClone(page);
     next.objects.splice(annotationIndex, 1);
     handleSaveAnnotations(pageNumber, next, {
@@ -27692,6 +27857,15 @@ ${pageBlocks}
         setPendingSvgSelection,
         clipboardAnnotation,
         handleReorderAnnotation,
+        // UX: one logical clipboard — shape Cut/Copy clears the callout
+        // clipboard so the most recent Copy/Cut wins at paste time.
+        clearCalloutClipboard: () => {
+          setClipboardCallout(null);
+          setClipboardCalloutType(null);
+        },
+        // UX: lets every menu's Paste item paste a copied CALLOUT at the
+        // right-click point too (doPasteAny in the menu builder).
+        clipboardCallout,
         // UX: mobile parity (Phase D) — re-skins the menu to the demo's touch
         // context-menu chrome on phones; desktop right-click menu unchanged.
         mobileMode,

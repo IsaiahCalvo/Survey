@@ -261,3 +261,49 @@ test('callout triangle heads shorten line2 into the back of the head; open style
     assert.equal(line2.attrs.y2, 400, `${style} line2 must end on the tip (y)`);
   }
 });
+
+// ---------------------------------------------------------------------------
+// Callout leader line style (solid / dashed / dotted) — the toolbar Style
+// picker now applies to callouts. Spec-level contract:
+//   1. style.lineStyle 'dashed' → strokeDasharray '6 4' on line1 + line2 +
+//      the textBox border (shapes' precedent: the picker dashes a rect's
+//      outline); 'dotted' → '2 4'. The arrowhead node stays solid.
+//   2. solid / absent lineStyle → NO strokeDasharray key anywhere (legacy
+//      callouts byte-identical).
+// ---------------------------------------------------------------------------
+
+const specWithLineStyle = (lineStyle) => buildCalloutRenderSpec(
+  lineStyle === undefined
+    ? baseCallout
+    : { ...baseCallout, style: { ...baseCallout.style, lineStyle } },
+  0, PAGE_SIZE, stubConnection,
+);
+
+const partOf = (spec, part) => findAll(
+  spec, (n) => n.attrs && n.attrs['data-callout-part'] === part,
+)[0];
+
+test('renderCallout spec emits the shared dash pattern for each line style', () => {
+  const expectations = { dashed: '6 4', dotted: '2 4' };
+  for (const [lineStyle, dash] of Object.entries(expectations)) {
+    const spec = specWithLineStyle(lineStyle);
+    for (const part of ['line1', 'line2', 'textBox']) {
+      assert.equal(partOf(spec, part).attrs.strokeDasharray, dash,
+        `${lineStyle} must dash ${part} with '${dash}'`);
+    }
+    const head = arrowheadNodeOf(spec);
+    assert.ok(head, `${lineStyle} callout still renders its arrowhead`);
+    assert.equal(head.attrs.strokeDasharray, undefined,
+      'arrowhead stays solid regardless of leader line style');
+  }
+});
+
+test('renderCallout spec omits strokeDasharray for solid and legacy (absent) styles', () => {
+  for (const lineStyle of ['solid', undefined]) {
+    const spec = specWithLineStyle(lineStyle);
+    for (const part of ['line1', 'line2', 'textBox']) {
+      assert.ok(!('strokeDasharray' in partOf(spec, part).attrs),
+        `${String(lineStyle)} must not emit strokeDasharray on ${part}`);
+    }
+  }
+});

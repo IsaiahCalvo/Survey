@@ -37,7 +37,7 @@ import {
 // Callout leader arrowheads export via the SAME shared spec the arrow tool,
 // SVG renderer, and canvas painter consume — one home for the head math
 // (buildArrowheadRenderSpec in lineRenderHelpers.js). Pure JS, Node-safe.
-import { ARROWHEAD_STYLES, buildArrowheadRenderSpec } from './lineRenderHelpers.js';
+import { ARROWHEAD_STYLES, buildArrowheadRenderSpec, calloutLineDashArray } from './lineRenderHelpers.js';
 
 const pdfExportDebug = (...args) => {
   if (typeof window === 'undefined' || window.__PDF_EXPORT_DEBUG !== true) return;
@@ -1077,6 +1077,22 @@ const createLineAnnotation = (pdfDoc, page, fabricObj, pageHeight, options = {})
       annotationDict.LE = [PDFName.of(le1), PDFName.of(le2)];
     }
 
+    // UX (2026-07-17, callout line style): dashed/dotted strokes export as a
+    // /BS border-style dict (/S /D + /D dash array) so external viewers draw
+    // the same dash pattern the app renders. Solid lines omit /BS entirely —
+    // byte-identical to the pre-fix export.
+    const dash = Array.isArray(fabricObj.strokeDashArray) && fabricObj.strokeDashArray.length > 0
+      ? fabricObj.strokeDashArray.map((v) => Number(v) || 0)
+      : null;
+    if (dash) {
+      annotationDict.BS = {
+        Type: 'Border',
+        W: fabricObj.strokeWidth || 1,
+        S: PDFName.of('D'),
+        D: dash,
+      };
+    }
+
     return pdfDoc.context.register(pdfDoc.context.obj(annotationDict));
   } catch (e) {
     console.error('Error creating line annotation:', e);
@@ -1209,6 +1225,15 @@ const createCalloutAnnotations = (pdfDoc, page, calloutObj, pageHeight) => {
     };
   };
 
+  // UX (2026-07-17, callout line style): style.lineStyle maps to the shared
+  // dash arrays (dashed [6,4] / dotted [2,4]) and rides to the exported Line
+  // pieces as /BS dash dicts (createLineAnnotation). Solid/absent → null →
+  // no /BS, byte-identical to the legacy export. The app's own re-import
+  // never reads /BS for callouts — style rides verbatim in the metadata blob
+  // — so /BS is purely for third-party viewer fidelity (same contract as the
+  // arrowhead /LE mapping above).
+  const leaderDash = calloutLineDashArray(style.lineStyle);
+
   const line1 = createLineAnnotation(pdfDoc, page, {
     type: 'line',
     x1: textBox.left,
@@ -1217,6 +1242,7 @@ const createCalloutAnnotations = (pdfDoc, page, calloutObj, pageHeight) => {
     y2: knee.y,
     stroke,
     strokeWidth,
+    ...(leaderDash ? { strokeDashArray: leaderDash } : {}),
   }, pageHeight, buildCalloutOptions('line1'));
   if (line1) refs.push(line1);
 
@@ -1228,6 +1254,7 @@ const createCalloutAnnotations = (pdfDoc, page, calloutObj, pageHeight) => {
     y2: arrowTip.y,
     stroke,
     strokeWidth,
+    ...(leaderDash ? { strokeDashArray: leaderDash } : {}),
     // UX: honor the callout's picked arrowhead style in external viewers via
     // the closest /LE name (see ARROWHEAD_STYLE_TO_PDF_LINE_ENDING above).
     lineEnding2: ARROWHEAD_STYLE_TO_PDF_LINE_ENDING[resolveCalloutArrowheadStyle(style)]
@@ -1447,12 +1474,19 @@ const drawFlattenedLine = (page, obj, pageHeight) => {
   const y1 = getObjNumber(obj, 'y1');
   const x2 = getObjNumber(obj, 'x2');
   const y2 = getObjNumber(obj, 'y2');
+  // UX (2026-07-17, line style): honor a stored strokeDashArray so dashed /
+  // dotted lines (and callout leader pieces, which pass the shared callout
+  // dash) print with their on-screen pattern instead of flattening solid.
+  const dash = Array.isArray(obj?.strokeDashArray) && obj.strokeDashArray.length > 0
+    ? obj.strokeDashArray.map((v) => Number(v) || 0)
+    : null;
   page.drawLine({
     start: { x: x1, y: getPdfY(pageHeight, y1) },
     end: { x: x2, y: getPdfY(pageHeight, y2) },
     color: stroke.color,
     thickness: width,
     opacity: stroke.opacity,
+    ...(dash ? { dashArray: dash, dashPhase: 0 } : {}),
   });
   const ending2 = String(obj?.lineEnding2 || obj?.data?.lineEnding2 || '').toLowerCase();
   const isArrow = ending2.includes('arrow') || obj?.data?.annotationType === 'arrow' || obj?.tool === 'arrow';
@@ -1666,6 +1700,12 @@ const drawFlattenedObject = (page, obj, pageHeight, fonts, offset = { x: 0, y: 0
     return 1;
   }
   if (type === 'rect') {
+    // UX (2026-07-17, line style): dashed/dotted rect borders (incl. the
+    // callout text box, which flattens through this branch) print with their
+    // on-screen dash pattern instead of flattening solid.
+    const rectDash = Array.isArray(shifted?.strokeDashArray) && shifted.strokeDashArray.length > 0
+      ? shifted.strokeDashArray.map((v) => Number(v) || 0)
+      : null;
     page.drawRectangle({
       x: left,
       y: getPdfY(pageHeight, top + height),
@@ -1676,6 +1716,7 @@ const drawFlattenedObject = (page, obj, pageHeight, fonts, offset = { x: 0, y: 0
       color: fill?.color,
       opacity: fill?.opacity ?? (Number.isFinite(Number(shifted?.opacity)) ? Number(shifted.opacity) : undefined),
       borderOpacity: stroke.opacity,
+      ...(rectDash ? { borderDashArray: rectDash, borderDashPhase: 0 } : {}),
     });
     return 1;
   }
@@ -1720,7 +1761,12 @@ const drawFlattenedCallout = (page, calloutObj, pageHeight, fonts) => {
   const knee = calloutObj.knee;
   const textBox = calloutObj.textBox;
   if (!arrowTip || !knee || !textBox) return 0;
-  drawFlattenedLine(page, { type: 'line', x1: textBox.left, y1: textBox.top + textBox.height / 2, x2: knee.x, y2: knee.y, stroke, strokeWidth }, pageHeight);
+  // UX (2026-07-17, callout line style): style.lineStyle dashes line1/line2
+  // AND the box border in print, mirroring the SVG renderer / canvas painter;
+  // the arrowhead stays solid (same as the arrow tool). Absent → solid.
+  const leaderDash = calloutLineDashArray(style.lineStyle);
+  const leaderDashProps = leaderDash ? { strokeDashArray: leaderDash } : {};
+  drawFlattenedLine(page, { type: 'line', x1: textBox.left, y1: textBox.top + textBox.height / 2, x2: knee.x, y2: knee.y, stroke, strokeWidth, ...leaderDashProps }, pageHeight);
   // UX (print flatten callout arrowhead): honor style.arrowheadStyle via the
   // shared arrow-tool spec — same default (solid triangle) and same line2
   // shortening the SVG renderer / canvas painter use, so print matches the
@@ -1743,7 +1789,7 @@ const drawFlattenedCallout = (page, calloutObj, pageHeight, fonts) => {
     line2EndX = arrowTip.x - (headSize / 3) * Math.cos(angleRad);
     line2EndY = arrowTip.y - (headSize / 3) * Math.sin(angleRad);
   }
-  drawFlattenedLine(page, { type: 'line', x1: knee.x, y1: knee.y, x2: line2EndX, y2: line2EndY, stroke, strokeWidth }, pageHeight);
+  drawFlattenedLine(page, { type: 'line', x1: knee.x, y1: knee.y, x2: line2EndX, y2: line2EndY, stroke, strokeWidth, ...leaderDashProps }, pageHeight);
   drawFlattenedArrowheadSpec(page, arrowheadSpec, pageHeight);
   drawFlattenedObject(page, {
     type: 'rect',
@@ -1753,6 +1799,7 @@ const drawFlattenedCallout = (page, calloutObj, pageHeight, fonts) => {
     height: textBox.height,
     stroke,
     strokeWidth,
+    ...leaderDashProps,
     fill: style.backgroundColor || '#ffffff',
   }, pageHeight, fonts);
   drawFlattenedText(page, {

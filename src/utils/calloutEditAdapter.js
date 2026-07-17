@@ -51,7 +51,11 @@ import { deepClone } from './deepClone.js';
 // Shared arrowhead spec — ONE home for the head math (lineRenderHelpers.js),
 // consumed identically by the arrow tool, the live JSX renderCallout, the
 // canvas painter, the PDF export, and this testable spec builder. Pure JS.
-import { ARROWHEAD_STYLES, buildArrowheadRenderSpec } from './lineRenderHelpers.js';
+import {
+  ARROWHEAD_STYLES,
+  buildArrowheadRenderSpec,
+  calloutLineDashArray,
+} from './lineRenderHelpers.js';
 
 export function sanitizeFontFamily(raw) {
   if (raw == null) return 'Arial';
@@ -102,6 +106,11 @@ export function toFabricGroup(reactCallout, pageSize) {
   // fallback.
   const stroke = style.borderColor || style.lineColor || '#1e293b';
   const strokeWidth = style.lineThickness || 2;
+  // UX (2026-07-17): carry style.lineStyle into the edit-overlay children so
+  // a dashed/dotted callout keeps its dash while being edited (Fabric lines
+  // honor strokeDashArray). Absent lineStyle → no key, legacy shape intact.
+  const editLeaderDash = calloutLineDashArray(style.lineStyle);
+  const editDashProps = editLeaderDash ? { strokeDashArray: editLeaderDash } : {};
 
   // Plain JSON Fabric object shapes. `fabric.util.enlivenObjects` in
   // loadCalloutAnnotation will materialize these into live instances with
@@ -116,6 +125,7 @@ export function toFabricGroup(reactCallout, pageSize) {
     stroke,
     strokeWidth,
     strokeUniform: true,
+    ...editDashProps,
     data: { calloutPart: 'line1' },
   };
   const line2 = {
@@ -127,6 +137,7 @@ export function toFabricGroup(reactCallout, pageSize) {
     stroke,
     strokeWidth,
     strokeUniform: true,
+    ...editDashProps,
     data: { calloutPart: 'line2' },
   };
   const tipDot = {
@@ -191,6 +202,9 @@ export function toFabricGroup(reactCallout, pageSize) {
     stroke,
     strokeWidth: Math.max(1, strokeWidth * 0.7),
     strokeUniform: true,
+    // UX (2026-07-17): box border shares the leader's line style in edit
+    // mode too (shapes' Style-picker precedent).
+    ...editDashProps,
     rx: 0,
     ry: 0,
     // UX: transparent selection chrome — same pattern as regular text
@@ -436,11 +450,18 @@ export function buildCalloutRenderSpec(callout, index, pageSize, calculateConnec
 
   // Shared line style — non-scaling stroke + round line caps for feel parity
   // with the rest of the annotation renderers.
+  // UX (2026-07-17): style.lineStyle ('solid'|'dashed'|'dotted') emits the
+  // shared dash pattern on both leader segments — mirrors the live JSX
+  // renderCallout exactly (shapes' Style-picker semantics; arrowhead stays
+  // solid). Absent lineStyle → no strokeDasharray key (legacy spec shape
+  // byte-identical).
+  const specLeaderDash = calloutLineDashArray(callout.style?.lineStyle);
   const lineStrokeAttrs = {
     stroke: lineColor,
     strokeWidth: lineThickness,
     strokeLinecap: 'round',
     vectorEffect: 'non-scaling-stroke',
+    ...(specLeaderDash ? { strokeDasharray: specLeaderDash.join(' ') } : {}),
   };
 
   const children = [];
@@ -542,6 +563,9 @@ export function buildCalloutRenderSpec(callout, index, pageSize, calculateConnec
       fillOpacity: fillOpacity,
       stroke: lineColor,
       strokeWidth: Math.max(1, lineThickness * 0.7),
+      // UX (2026-07-17): box border shares the leader's line style —
+      // shapes' precedent (the Style picker dashes a rect's outline).
+      ...(specLeaderDash ? { strokeDasharray: specLeaderDash.join(' ') } : {}),
       rx: 0,
       ry: 0,
       vectorEffect: 'non-scaling-stroke',

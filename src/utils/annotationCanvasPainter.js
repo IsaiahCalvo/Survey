@@ -26,6 +26,7 @@ import {
   ARROWHEAD_STYLES,
   buildArrowheadRenderSpec,
   buildLineRenderSpec,
+  calloutLineDashArray,
 } from './lineRenderHelpers.js';
 import { countWrappedLines, getLineEndpoints } from './svgBoundingBox.js';
 import { buildCloudPathCommands } from './pdfAnnotationImporter.js';
@@ -1038,6 +1039,11 @@ function drawCallout(context, callout, pageWidth, pageHeight, displayScale = 1) 
   // are page-unit strokes in SVG now (no vector-effect pin), so the painter
   // uses the raw widths too — thickness scales with zoom on both surfaces.
 
+  // UX (2026-07-17): leader line style twin of renderCallout — style.lineStyle
+  // dashes line1/line2 AND the box border; the arrowhead stays solid
+  // (paintArrowheadSpec resets the dash itself). Absent lineStyle → solid.
+  const leaderDash = calloutLineDashArray(callout.style?.lineStyle) || [];
+
   context.save();
   // Group opacity (SVG <g opacity={borderOpacity}>) multiplies EVERYTHING.
   context.globalAlpha = borderOpacity;
@@ -1045,7 +1051,7 @@ function drawCallout(context, callout, pageWidth, pageHeight, displayScale = 1) 
   context.lineWidth = lineThickness;
   context.lineCap = 'round';
   context.lineJoin = 'round';
-  if (typeof context.setLineDash === 'function') context.setLineDash([]);
+  if (typeof context.setLineDash === 'function') context.setLineDash(leaderDash);
   context.beginPath();
   if (!connection.shouldHideLine1) {
     context.moveTo(connection.line1Start.x, connection.line1Start.y);
@@ -1072,7 +1078,11 @@ function drawCallout(context, callout, pageWidth, pageHeight, displayScale = 1) 
   // (rx=0, default miter joins). Without this reset every corner of the box
   // rounds off by lineWidth/2 the moment the eraser presentation opens.
   context.lineJoin = 'miter';
+  // Box border shares the leader's line style (paintArrowheadSpec restored
+  // its own dash state, so re-assert before the rect stroke).
+  if (typeof context.setLineDash === 'function') context.setLineDash(leaderDash);
   context.strokeRect(textBox.x, textBox.y, textBox.width, boxHeightWithDescenders);
+  if (typeof context.setLineDash === 'function') context.setLineDash([]);
 
   const text = String(callout.text || '');
   if (text) {

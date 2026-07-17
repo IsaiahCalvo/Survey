@@ -48,6 +48,7 @@
 
 import { sanitizeFontFamily } from './calloutEditAdapter.js';
 import { getCalloutSyncFingerprint } from './calloutSyncPayload.js';
+import { calloutLineDashArray, calloutLineStyleFromDash } from './lineRenderHelpers.js';
 
 // ---------------------------------------------------------------------------
 // Helpers for reading legacy-tolerant callout fields
@@ -171,6 +172,13 @@ export function calloutToAnnotationObject(callout, pageSize) {
   const style = callout.style || {};
   const stroke = style.borderColor || style.lineColor || '#1e293b';
   const strokeWidth = style.lineThickness || 2;
+  // UX (2026-07-17): project style.lineStyle onto the fabric children as the
+  // shared dash arrays so the dual-rep projection renders/paints dashed too,
+  // and so the fallback reader (annotationObjectToCallout) can recover the
+  // style losslessly when data.legacyCallout is absent. Absent/solid → no
+  // strokeDashArray key (legacy projections byte-identical).
+  const projectedDash = calloutLineDashArray(style.lineStyle);
+  const projectedDashProps = projectedDash ? { strokeDashArray: projectedDash } : {};
 
   // Child objects — mirror calloutEditAdapter.toFabricGroup exactly so that
   // calloutEditAdapter.fromFabricGroup can read this output unchanged.
@@ -186,6 +194,7 @@ export function calloutToAnnotationObject(callout, pageSize) {
     stroke,
     strokeWidth,
     strokeUniform: true,
+    ...projectedDashProps,
     data: { calloutPart: 'line1' },
   };
 
@@ -200,6 +209,7 @@ export function calloutToAnnotationObject(callout, pageSize) {
     stroke,
     strokeWidth,
     strokeUniform: true,
+    ...projectedDashProps,
     data: { calloutPart: 'line2' },
   };
 
@@ -543,6 +553,10 @@ export function annotationObjectToCallout(obj, pageSize) {
     fontColor: textbox.fill || '#1e293b',
     borderColor: textbox.stroke || '#1e293b',
     lineThickness: line1.strokeWidth ?? 2,
+    // UX (2026-07-17): recover the leader line style from the projected dash
+    // (inverse of the calloutLineDashArray projection above) so a
+    // group→callout round trip keeps dashed/dotted callouts dashed.
+    lineStyle: calloutLineStyleFromDash(line1.strokeDashArray || line2.strokeDashArray),
   };
 
   return {

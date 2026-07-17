@@ -25,6 +25,49 @@ export const ARROWHEAD_STYLE_LABELS = {
 };
 
 /**
+ * Leader line-style options (the toolbar's Style picker for callouts).
+ * Values match the shared lineBorderStyle vocabulary the shape tools use
+ * ('solid' | 'dashed' | 'dotted') so one picker drives both families.
+ */
+export const CALLOUT_LINE_STYLES = {
+  SOLID: 'solid',
+  DASHED: 'dashed',
+  DOTTED: 'dotted',
+};
+
+/**
+ * Map a callout style.lineStyle onto the app's canonical dash arrays —
+ * the EXACT patterns the shape tools persist in Fabric strokeDashArray
+ * (annotationCreationCommit applyBorderStyle: dashed [6,4], dotted [2,4]).
+ * Page-unit values: dashes scale with zoom via the SVG viewBox, same as
+ * shape dashes (locked zoom convention 2026-07-14 — no non-scaling-stroke).
+ *
+ * @param {string|null|undefined} lineStyle
+ * @returns {number[]|null} dash array, or null for solid/absent (legacy
+ *   callouts have no lineStyle field — they stay solid, byte-identical).
+ */
+export const calloutLineDashArray = (lineStyle) => {
+  if (lineStyle === CALLOUT_LINE_STYLES.DASHED) return [6, 4];
+  if (lineStyle === CALLOUT_LINE_STYLES.DOTTED) return [2, 4];
+  return null;
+};
+
+/**
+ * Inverse of calloutLineDashArray — recover a lineStyle name from a stored
+ * Fabric strokeDashArray (used by the bridge's group→callout fallback reader
+ * so a projected dashed callout round-trips its style losslessly).
+ *
+ * @param {number[]|null|undefined} dash
+ * @returns {string} one of CALLOUT_LINE_STYLES values
+ */
+export const calloutLineStyleFromDash = (dash) => {
+  if (!Array.isArray(dash) || dash.length < 2) return CALLOUT_LINE_STYLES.SOLID;
+  if (dash[0] === 6) return CALLOUT_LINE_STYLES.DASHED;
+  if (dash[0] === 2) return CALLOUT_LINE_STYLES.DOTTED;
+  return CALLOUT_LINE_STYLES.SOLID;
+};
+
+/**
  * @typedef {Object} Point
  * @property {number} x
  * @property {number} y
@@ -117,6 +160,10 @@ export const defaultCalloutStyle = {
   borderOpacity: 1,
   lineThickness: 2,
   arrowheadStyle: ARROWHEAD_STYLES.SOLID_TRIANGLE,
+  // UX: leader + box border line style — 'solid' | 'dashed' | 'dotted',
+  // driven by the same toolbar Style picker the shape tools use. Absent on
+  // legacy callouts (all render paths treat missing as solid).
+  lineStyle: CALLOUT_LINE_STYLES.SOLID,
   // UX: transparent by default so view mode matches Fabric edit overlay
   // (backgroundColor: '' → transparent on the textbox in calloutEditAdapter
   // toFabricGroup :171). User rule 2026-04-17: "There visually needs to be

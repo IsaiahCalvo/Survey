@@ -23,6 +23,7 @@ import {
   buildLineRenderSpec,
   buildArrowheadRenderSpec,
   ARROWHEAD_STYLES,
+  calloutLineDashArray,
 } from './lineRenderHelpers.js';
 // UX 2026-04-21: Imported revision-clouds rebuild their scalloped geometry
 // from the live effective box/points on every render so the number of humps
@@ -1389,6 +1390,18 @@ export const renderCallout = (callout, index, pageSize, calculateConnection, hid
     strokeWidth: lineThickness,
     strokeLinecap: 'round',
   };
+  // UX (2026-07-17): leader line style — the toolbar's Style picker
+  // (solid/dashed/dotted) now applies to callouts. Semantics follow the
+  // shapes' precedent: on a rect the picker dashes the shape's outline, on a
+  // line/arrow it dashes the shaft while the head stays solid. The callout is
+  // both at once, so the dash applies to line1 + line2 AND the text-box
+  // border, while the arrowhead stays solid (exactly like the arrow tool's
+  // filled/open heads). Absent style.lineStyle renders solid — legacy
+  // callouts unchanged. Page-unit dashes: they scale with zoom via the SVG
+  // viewBox (locked zoom convention 2026-07-14; no non-scaling-stroke).
+  const leaderDash = calloutLineDashArray(callout.style?.lineStyle);
+  const leaderDashAttr = leaderDash ? leaderDash.join(' ') : undefined;
+  if (leaderDashAttr) lineStyle.strokeDasharray = leaderDashAttr;
 
   // Reference the pure spec builder so any future inline-JSX drift against
   // the testable contract is detectable. (The unit tests target the spec
@@ -1469,6 +1482,9 @@ export const renderCallout = (callout, index, pageSize, calculateConnection, hid
             // scales with zoom (no vector-effect pin). The 0.7 ratio keeps the
             // box border visually lighter than the leader lines at any zoom.
             strokeWidth={Math.max(1, lineThickness * 0.7)}
+            // UX (2026-07-17): box border shares the leader's line style —
+            // shapes' precedent (the Style picker dashes a rect's outline).
+            strokeDasharray={leaderDashAttr}
             rx={0}
             ry={0}
           />

@@ -22,9 +22,22 @@ import {
   getCurveEndAngle,
   distanceToLineSegment,
 } from './lineGeometry.js';
-import { ARROWHEAD_STYLES } from '../components/Callout/types.js';
+import {
+  ARROWHEAD_STYLES,
+  CALLOUT_LINE_STYLES,
+  calloutLineDashArray,
+  calloutLineStyleFromDash,
+} from '../components/Callout/types.js';
 
-export { ARROWHEAD_STYLES };
+// Re-exported (same pattern as ARROWHEAD_STYLES) so every render surface —
+// SVG renderer, canvas painter, pdf-lib export/flatten, edit adapter — pulls
+// the callout leader line-style vocabulary from one import site.
+export {
+  ARROWHEAD_STYLES,
+  CALLOUT_LINE_STYLES,
+  calloutLineDashArray,
+  calloutLineStyleFromDash,
+};
 
 /**
  * Resolve absolute endpoint coords from a Fabric.Line toJSON shape.

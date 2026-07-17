@@ -234,7 +234,15 @@ export function buildLineCommitJSON({
     y2: end.y - centerY,
     id,
     tool,
-    data: arrowheadStyle ? { id, arrowheadStyle } : { id },
+    // UX (Bug fix 2026-07-17): only the ARROW tool stamps the toolbar's
+    // arrowheadStyle at creation. The renderer's fallback is tool-based
+    // (buildLineRenderSpec: 'arrow' → SOLID_TRIANGLE, 'line' → NONE), so a
+    // plain line must NOT inherit the shared toolbar default (SOLID_TRIANGLE)
+    // or every new line draws an arrowhead. Bluebeam model (owner-endorsed):
+    // Line and Arrow are separate tools — line starts with plain ends, arrow
+    // starts with the picked head; both stay editable via the ending picker,
+    // which writes data.arrowheadStyle explicitly on the committed object.
+    data: (tool === 'arrow' && arrowheadStyle) ? { id, arrowheadStyle } : { id },
   };
   applyScope(json, { selectedModuleId, stampRegionId, activeRegionId });
   applyBorderStyle(json, { tool, lineBorderStyle, cloudIntensity });

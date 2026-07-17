@@ -139,6 +139,14 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
     setPendingSvgSelection,
     clipboardAnnotation,
     handleReorderAnnotation,
+    // UX: one logical clipboard — the shape Cut/Copy items call this to clear
+    // the callout clipboard so the most recent Copy/Cut always wins at paste
+    // time (mirrors handleCopyCallout clearing the shape clipboard).
+    clearCalloutClipboard = () => {},
+    // UX: the callout clipboard value, so every menu's Paste item can paste
+    // whichever clipboard is populated (shape OR callout) at the right-click
+    // point — one paste rule everywhere.
+    clipboardCallout = null,
     // UX: mobile parity (Phase D) — when true, the menu is re-skinned to the
     // demo's touch context-menu chrome (154/176px panel, radius 9, #181B20 /
     // #3C424D, 34px action rows, near-invisible dismiss scrim). Desktop
@@ -176,6 +184,19 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
     // at top-level alongside handlePasteCallout so Cmd+V can share it).
     // Keeps this render closure small.
     const doPasteAnnotation = () => pasteAnnotationAt(ctx.pageNumber, ctx.x, ctx.y);
+    // UX: one paste rule for every menu — paste whichever clipboard is
+    // populated (only one ever is; Copy/Cut clears the other) at the
+    // right-click point. Shapes center at the point via pasteAnnotationAt;
+    // callouts center their text box there via handlePasteCallout's
+    // cursor-anchored mode.
+    const doPasteAny = () => {
+      if (clipboardAnnotation) {
+        doPasteAnnotation();
+      } else if (clipboardCallout) {
+        handlePasteCallout(ctx.pageNumber, { clientX: ctx.x, clientY: ctx.y });
+      }
+    };
+    const hasAnyClipboard = Boolean(clipboardAnnotation || clipboardCallout);
 
     let items;
     if (ctx.kind === 'textMarkup') {
@@ -198,7 +219,10 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
       items = [
         item('Cut', 'cut', () => ctx.calloutId && handleCutCallout(ctx.calloutId)),
         item('Copy', 'copy', () => ctx.calloutId && handleCopyCallout(ctx.calloutId)),
-        item('Paste', 'paste', () => handlePasteCallout(ctx.pageNumber)),
+        // UX: paste lands at the right-click point (same cursor-anchored rule
+        // as Cmd+V and the shape menu's doPasteAnnotation). ctx.x/y are the
+        // right-click's client coords. doPasteAny covers both clipboards.
+        item('Paste', 'paste', doPasteAny, hasAnyClipboard),
         // UX: right-click Delete = the SAME gated delete as pressing Delete/
         // Backspace with the callout selected — PDFViewer's
         // handleDeleteSelectedCallouts (canModify ownership check, undo
@@ -237,6 +261,7 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
             sourcePageNumber: ctx.pageNumber,
             mode: 'cut',
           });
+          clearCalloutClipboard();
           const next = deepClone(page);
           next.objects.splice(ctx.annotationIndex, 1);
           handleSaveAnnotations(ctx.pageNumber, next, {
@@ -263,12 +288,13 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
             sourcePageNumber: ctx.pageNumber,
             mode: 'copy',
           });
+          clearCalloutClipboard();
         }),
         // UX: Paste drops a clone of the clipboardAnnotation onto the
         // right-clicked page. See doPasteAnnotation() above for the full
         // behavior + live diagnostic dump. Grayed out when the clipboard
         // is empty — matches Acrobat, Drawboard PDF, Bluebeam, Figma.
-        item('Paste', 'paste', doPasteAnnotation, Boolean(clipboardAnnotation)),
+        item('Paste', 'paste', doPasteAny, hasAnyClipboard),
         // UX: right-click Delete mirrors the keyboard Delete/Backspace path —
         // splice the targeted shape out of that page's objects and commit
         // via handleSaveAnnotations. Same save path as useSVGInteraction's
@@ -367,6 +393,7 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
           const copy = copyAll();
           if (!copy) return;
           setClipboardAnnotation({ ...copy, mode: 'cut' });
+          clearCalloutClipboard();
           const page = annotationsByPageRef.current?.[ctx.pageNumber];
           if (!page?.objects) return;
           const next = deepClone(page);
@@ -388,8 +415,9 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
           const copy = copyAll();
           if (!copy) return;
           setClipboardAnnotation({ ...copy, mode: 'copy' });
+          clearCalloutClipboard();
         }),
-        item('Paste', 'paste', doPasteAnnotation, Boolean(clipboardAnnotation)),
+        item('Paste', 'paste', doPasteAny, hasAnyClipboard),
         item('Delete', 'delete', () => {
           const page = annotationsByPageRef.current?.[ctx.pageNumber];
           if (!page?.objects) return;
@@ -443,7 +471,7 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
       // thumbnail for page ops; right-click the page body for annotation
       // ops. Shares doPasteAnnotation with the annotation menu above.
       items = [
-        item('Paste', 'paste', doPasteAnnotation, Boolean(clipboardAnnotation)),
+        item('Paste', 'paste', doPasteAny, hasAnyClipboard),
       ];
     }
 
