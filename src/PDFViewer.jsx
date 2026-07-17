@@ -3351,13 +3351,94 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   const setCalloutsIfPersistedChanged = useCallback((updater) => {
     setCallouts(updater);
   }, [setCallouts]);
+
+  // R2.2 Slice 3: TDZ ref bridge to handleSaveAnnotations (declared ~18k lines
+  // below). commitCalloutMutation must be callable from the callout handlers
+  // that are declared long before handleSaveAnnotations; reading it through a
+  // ref at call time avoids the dep-array TDZ crash (same pattern as
+  // pasteAnnotationAtRef). Assigned right after handleSaveAnnotations' own
+  // declaration so it is always the current render's callback.
+  const handleSaveAnnotationsRef = useRef(null);
+
+  // R2.2 Slice 3 — the single commit gate for callout CREATE/EDIT/STYLE
+  // mutations. Derives the target page's current callout list from
+  // annotationsByPage (the single in-memory source of truth), applies
+  // `mutateList`, re-projects the result into that page's JSON via
+  // applyCalloutListToByPage on a SINGLE-page map (non-callout objects are
+  // preserved by reference; untouched callouts re-project deterministically to
+  // identical JSON), and commits through handleSaveAnnotations. That routes
+  // callout mutations onto the SHARED save pipeline: per-object fabric deltas
+  // in the local undo lane (fabric:create/update/delete — one Cmd+Z per
+  // gesture), the same checkpointPolicy 'skip' drag-preview contract shapes
+  // use, cloud sync, and history debug events — instead of the legacy
+  // whole-document callouts:* checkpoints.
+  //
+  // Deps are deliberately []: everything is read through refs at call time
+  // (annotationsByPageRef / pageSizesRef / handleSaveAnnotationsRef), several
+  // of which are declared later in this function body (TDZ — see setCallouts).
+  const commitCalloutMutation = useCallback((pageNumber, mutateList, saveContext = null) => {
+    const page = Number(pageNumber);
+    if (!Number.isFinite(page)) return;
+    const saveAnnotations = handleSaveAnnotationsRef.current;
+    if (typeof saveAnnotations !== 'function') return;
+    const byPage = annotationsByPageRef.current || {};
+    const currentPage = byPage[page] || byPage[String(page)] || { objects: [] };
+    const singlePageMap = { [page]: currentPage };
+    const currentList = deriveCalloutsFromByPage(singlePageMap);
+    const rawNextList = typeof mutateList === 'function' ? mutateList(currentList) : mutateList;
+    if (!Array.isArray(rawNextList)) return;
+    // Page-scope guard: this helper commits exactly ONE page. An entry without
+    // a usable pageNumber (e.g. a freshly built replacement) is stamped with
+    // the target page; an entry claiming a DIFFERENT page would silently
+    // vanish from the single-page projection, so it is dropped defensively
+    // (cross-page callout moves are not a supported mutation here).
+    const nextList = rawNextList
+      .filter((c) => c && (!Number.isFinite(Number(c.pageNumber)) || Number(c.pageNumber) === page))
+      .map((c) => (Number(c.pageNumber) === page ? c : { ...c, pageNumber: page }));
+    const nextByPage = applyCalloutListToByPage(singlePageMap, nextList, pageSizesRef.current || {});
+    const nextPageJson = nextByPage[page] ?? nextByPage[String(page)];
+    if (!nextPageJson) return;
+    // Always forward to handleSaveAnnotations — even a referentially-bailed
+    // no-op frame — so a checkpointPolicy 'skip' first frame still captures
+    // the pre-gesture preview baseline; the pipeline's own fingerprint no-op
+    // guard handles genuine no-changes.
+    saveAnnotations(page, nextPageJson, saveContext || { source: 'callout:commit' });
+  }, []);
+
+  // R2.2 Slice 3 helper — resolve which page a callout lives on. Prefers the
+  // derived-list mirror ref (cheap), falls back to scanning annotationsByPage
+  // directly (covers the created-then-immediately-mutated window where
+  // calloutsRef's post-render sync effect has not run yet).
+  const resolveCalloutPageNumber = useCallback((calloutId) => {
+    if (!calloutId) return null;
+    const fromRef = (calloutsRef.current || []).find((c) => c && c.id === calloutId);
+    if (fromRef && Number.isFinite(Number(fromRef.pageNumber))) return Number(fromRef.pageNumber);
+    const byPage = annotationsByPageRef.current || {};
+    for (const key of Object.keys(byPage)) {
+      const objects = Array.isArray(byPage[key]?.objects) ? byPage[key].objects : [];
+      const hit = objects.some((o) => o?.data?.type === 'callout'
+        && (o.data.id === calloutId || o.data.legacyCallout?.id === calloutId));
+      if (hit && Number.isFinite(Number(key))) return Number(key);
+    }
+    return null;
+  }, []);
+
   const handleCalloutTextStyleChange = useCallback((calloutId, stylePatch) => {
     if (!calloutId || !stylePatch) return;
-    setCalloutsIfPersistedChanged((prev) => prev.map((c) => {
+    const pageNumber = resolveCalloutPageNumber(calloutId);
+    if (!Number.isFinite(pageNumber)) return;
+    // R2.2 Slice 3: text-style writes commit through the shared save pipeline —
+    // they GAIN a per-object undo entry (previously style changes carried NO
+    // history checkpoint at all, so Cmd+Z skipped straight past them).
+    // SEAM: the patch merges into callout.style exactly as before, so the
+    // normalized style object inside legacyCallout stays byte-identical in
+    // shape — bold/italic/underline/strikethrough are read exactly as stored
+    // by the text-style rendering fix (bc28e2a0).
+    commitCalloutMutation(pageNumber, (prev) => prev.map((c) => {
       if (!c || c.id !== calloutId) return c;
       return { ...c, style: { ...(c.style || {}), ...stylePatch } };
-    }));
-  }, [setCalloutsIfPersistedChanged]);
+    }), { source: 'callout:style', action: 'callout-text-style' });
+  }, [commitCalloutMutation, resolveCalloutPageNumber]);
   const [selectedCalloutId, setSelectedCalloutId] = useState(null);
   // UX: Phase 14 CALL-10 — selectedCalloutIds is a Set<string> parallel to
   // selectedIds Set<number> for annotations. Clicking a callout sets this Set
@@ -3619,11 +3700,21 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   const handlePatchSelectedCallout = useCallback((stylePatch) => {
     const sel = selectedToolbarCalloutRef.current;
     if (!sel || !sel.id) return;
-    setCalloutsIfPersistedChanged((prev) => prev.map((c) => {
+    const pageNumber = Number.isFinite(Number(sel.pageNumber))
+      ? Number(sel.pageNumber)
+      : resolveCalloutPageNumber(sel.id);
+    if (!Number.isFinite(pageNumber)) return;
+    // R2.2 Slice 3: toolbar style patches (border/fill color+opacity, line
+    // thickness, arrowhead) commit through the shared save pipeline — each
+    // patch GAINS a per-object undo entry (previously style changes carried
+    // NO history checkpoint at all). SEAM: patch merges into callout.style
+    // exactly as before (legacyCallout style object stays byte-identical in
+    // shape for the bc28e2a0 text-style rendering contract).
+    commitCalloutMutation(pageNumber, (prev) => prev.map((c) => {
       if (!c || c.id !== sel.id) return c;
       return { ...c, style: { ...(c.style || {}), ...stylePatch } };
-    }));
-  }, [setCalloutsIfPersistedChanged]);
+    }), { source: 'callout:style', action: 'callout-style-patch' });
+  }, [commitCalloutMutation, resolveCalloutPageNumber]);
 
   useEffect(() => {
     const sel = selectedToolbarAnnotation;
@@ -9376,7 +9467,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   const lastCheckpointHashRef = useRef(null);
   const objectModifiedInteractionCheckpointRef = useRef(new Map());
   const previewBaselineByPageRef = useRef(new Map());
-  const calloutLiveHistoryBaselineRef = useRef(new Map());
+  // R2.2 Slice 3: calloutLiveHistoryBaselineRef (per-callout whole-document
+  // drag baselines) was retired — callout drags now use the shared
+  // previewBaselineByPageRef contract via checkpointPolicy 'skip'.
 
   useEffect(() => {
     annotationsByPageRef.current = annotationsByPage;
@@ -10260,41 +10353,50 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         } : {}),
       },
     };
-    addHistoryCheckpoint('callouts:create', {
-      calloutId: newCallout.id,
-      pageNumber: newCallout.pageNumber,
-    });
-    // UX: flag this callout for auto-edit-mode entry once setCallouts has
-    // committed — the useEffect below detects the new id in the callouts
-    // array and fires handleRequestCalloutEditMode (same path as
-    // double-click-to-edit). Using a ref instead of inline setEditingAnnotation
-    // keeps the fresh-callout lookup (toFabricGroup etc.) consistent with
-    // the double-click edit path.
+    // UX: flag this callout for auto-edit-mode entry once the commit lands —
+    // the useEffect below detects the new id in the derived callouts array and
+    // fires handleRequestCalloutEditMode (same path as double-click-to-edit).
+    // Using a ref instead of inline setEditingAnnotation keeps the
+    // fresh-callout lookup (toFabricGroup etc.) consistent with the
+    // double-click edit path.
     pendingAutoEditCalloutRef.current = {
       calloutId: newCallout.id,
       pageNumber: newCallout.pageNumber,
     };
     newlyCreatedCalloutIdsRef.current.add(newCallout.id);
-    setCallouts((prev) => [...prev, newCallout]);
-  }, [addHistoryCheckpoint, strokeColor, strokeOpacity, fillColor, fillOpacity, mobileMode, strokeWidth, textStyleDefaults, user?.id]);
+    // R2.2 Slice 3: commit through the shared save pipeline instead of the
+    // legacy whole-document callouts:create checkpoint — the create lands as
+    // ONE per-object fabric:create delta in the local undo lane, exactly like
+    // drawing a shape (Cmd+Z removes just this callout). Pre-existing
+    // callouts:* checkpoints still restore via the untouched legacy replay
+    // lane in handleUndo/handleRedo.
+    commitCalloutMutation(newCallout.pageNumber, (list) => [...list, newCallout], {
+      source: 'callout:create',
+      action: 'callout-create',
+    });
+  }, [commitCalloutMutation, strokeColor, strokeOpacity, fillColor, fillOpacity, mobileMode, strokeWidth, textStyleDefaults, user?.id]);
 
-  // UX: Phase 14 CALL-10 (drag MVP) — commit checkpoint for a callout drag.
+  // UX: Phase 14 CALL-10 (drag MVP) — pointerup commit for a callout drag.
   // Called from useSVGInteraction's 'callout-part' drag mode on pointerup
-  // AFTER the live-paint has already updated the store via
-  // handleUpdateCalloutLive. Calls addHistoryCheckpoint without mutating
-  // state — one undo entry per drag, matching the Phase 9 commit pattern.
-  // Accepts an optional updatedFields patch for compatibility but ignores it
-  // because live-paint already applied the changes. Empty-patch == commit-
-  // only signal from the hook.
+  // AFTER the live-paint frames already updated the store via
+  // handleUpdateCalloutLive. R2.2 Slice 3: routes through the shared save
+  // pipeline with checkpointPolicy 'normal' — handleSaveAnnotations diffs the
+  // final page against the drag-start preview baseline (captured by the first
+  // 'skip' live frame, exactly how shape drags work) and pushes ONE
+  // fabric:update per gesture into the local undo lane. Accepts an optional
+  // updatedFields patch for compatibility; empty patch == commit-only signal
+  // from the hook (the live frames already applied the geometry).
   const handleUpdateCallout = useCallback((calloutId, updatedFields = null) => {
+    if (!calloutId) return;
     const hasPatch = updatedFields
       && typeof updatedFields === 'object'
       && Object.keys(updatedFields).length > 0;
-    const baselineSnapshot = calloutLiveHistoryBaselineRef.current.get(calloutId) || null;
-    calloutLiveHistoryBaselineRef.current.delete(calloutId);
-    if (!hasPatch && !baselineSnapshot) {
-      return;
-    }
+    const pageNumber = resolveCalloutPageNumber(calloutId);
+    if (!Number.isFinite(pageNumber)) return;
+    // Commit-only signal with no preceding live frame on this page → nothing
+    // to diff, nothing to record (mirrors the old empty-patch early return).
+    const hadLiveFrames = previewBaselineByPageRef.current.has(String(pageNumber));
+    if (!hasPatch && !hadLiveFrames) return;
     recordAnnotationCommit({
       surface: 'App.handleUpdateCallout',
       source: 'callout:update',
@@ -10302,34 +10404,40 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       calloutId,
       fieldNames: hasPatch ? Object.keys(updatedFields) : [],
     });
-    addHistoryCheckpoint('callouts:update', {
-      calloutId,
-      fieldNames: hasPatch ? Object.keys(updatedFields) : [],
-      usedLiveBaseline: Boolean(baselineSnapshot),
-    }, baselineSnapshot);
-    if (hasPatch) {
-      setCalloutsIfPersistedChanged((prev) => prev.map((c) =>
-        c.id === calloutId ? { ...c, ...updatedFields } : c
-      ));
-    }
-  }, [addHistoryCheckpoint, setCalloutsIfPersistedChanged]);
+    commitCalloutMutation(pageNumber, (list) => (hasPatch
+      ? list.map((c) => (c.id === calloutId ? { ...c, ...updatedFields } : c))
+      : list), {
+      source: 'callout:update',
+      action: 'callout-commit',
+      checkpointPolicy: 'normal',
+    });
+  }, [commitCalloutMutation, resolveCalloutPageNumber]);
 
   // UX: Phase 14 CALL-10 — live paint during callout drag. No undo
-  // checkpoint; the checkpoint is saved once at pointerup via
+  // checkpoint; the single undo entry lands at pointerup via
   // handleUpdateCallout. Mirrors the Phase 12 optimistic rotation paint
   // pattern (STATE.md decision: "Plan 12-03 optimistic rotation paint
   // pattern — canonical fix for commit-path latency in SVG annotation
   // layer"). `updatedFields` is a partial callout patch keyed by field
   // name (e.g. { arrowTip, knee, textBoxPosition }).
+  // R2.2 Slice 3: frames flow through the shared pipeline with
+  // checkpointPolicy 'skip' — the first frame captures the pre-drag page as
+  // the preview baseline (previewBaselineByPageRef), later frames skip
+  // checkpointing entirely; identical to FabricEditCanvas's 'edit:live'
+  // shape-preview contract. The old whole-document getHistorySnapshot
+  // baseline (calloutLiveHistoryBaselineRef) is retired.
   const handleUpdateCalloutLive = useCallback((calloutId, updatedFields) => {
     if (!calloutId || !updatedFields) return;
-    if (!calloutLiveHistoryBaselineRef.current.has(calloutId)) {
-      calloutLiveHistoryBaselineRef.current.set(calloutId, getHistorySnapshot());
-    }
-    setCalloutsIfPersistedChanged((prev) => prev.map((c) =>
+    const pageNumber = resolveCalloutPageNumber(calloutId);
+    if (!Number.isFinite(pageNumber)) return;
+    commitCalloutMutation(pageNumber, (list) => list.map((c) =>
       c.id === calloutId ? { ...c, ...updatedFields } : c
-    ));
-  }, [getHistorySnapshot, setCalloutsIfPersistedChanged]);
+    ), {
+      source: 'callout:update',
+      action: 'callout-drag-preview',
+      checkpointPolicy: 'skip',
+    });
+  }, [commitCalloutMutation, resolveCalloutPageNumber]);
 
   // UX: Phase 14 CALL-10 — edit-mode entry for a React callout. Called
   // from SVGAnnotationLayer's double-click dispatch (useSVGInteraction
@@ -22123,6 +22231,11 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     yjsDoc,
     yjsUndoManager
   ]);
+  // R2.2 Slice 3: keep the TDZ ref bridge current so commitCalloutMutation
+  // (declared next to the setCallouts adapter, far above) always calls this
+  // render's handleSaveAnnotations. Same render-time-assignment pattern as
+  // pasteAnnotationAtRef.
+  handleSaveAnnotationsRef.current = handleSaveAnnotations;
 
   // KAL-313: Space restore — re-inserts a deleted space into live spaces state
   // exactly as captured at delete time (full object incl. assignedPages).
@@ -23551,16 +23664,24 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       });
     }
 
-    // Callout side: top-level groupId field, mutate via setCallouts.
+    // Callout side: top-level groupId field. R2.2 Slice 3: commits through the
+    // shared save pipeline (per-object fabric deltas). A mixed shape+callout
+    // group therefore produces TWO undo entries — one per half (accepted in
+    // the R2.2/R2.3 execution plan; Slice 4's combined-save work covers the
+    // delete path, not group/ungroup).
     if (calIds.length > 0) {
       const calIdSet = new Set(calIds);
-      setCalloutsIfPersistedChanged((prev) => prev.map((c) => (
+      commitCalloutMutation(pageNumber, (prev) => prev.map((c) => (
         c && calIdSet.has(c.id) && c.pageNumber === pageNumber
           ? { ...c, groupId: newId }
           : c
-      )));
+      )), {
+        source: 'callout:group',
+        action: 'group',
+        checkpointPolicy: 'normal',
+      });
     }
-  }, [handleSaveAnnotations, setCalloutsIfPersistedChanged]);
+  }, [handleSaveAnnotations, commitCalloutMutation]);
 
   const handleUngroupSelected = useCallback((pageNumber, annotationIndices, calloutIds) => {
     if (pageNumber == null) return;
@@ -23604,14 +23725,19 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       });
     }
 
-    // Step 4: clear groupId on callouts.
+    // Step 4: clear groupId on callouts. R2.2 Slice 3: shared-pipeline commit —
+    // second undo entry for mixed shape+callout ungroups (see handleGroupSelected).
     if (members.calloutIds.length > 0) {
       const calIdSet = new Set(members.calloutIds);
-      setCalloutsIfPersistedChanged((prev) => prev.map((c) => {
+      commitCalloutMutation(pageNumber, (prev) => prev.map((c) => {
         if (!c || !calIdSet.has(c.id) || c.pageNumber !== pageNumber) return c;
         const { groupId: _drop, ...rest } = c;
         return rest;
-      }));
+      }), {
+        source: 'callout:ungroup',
+        action: 'ungroup',
+        checkpointPolicy: 'normal',
+      });
     }
 
     // UX: 2026-04-20 — Ungroup clears selection entirely so the user can SEE
@@ -23626,7 +23752,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       tick: Date.now(),
     });
     setSelectedCalloutIds(new Set());
-  }, [handleSaveAnnotations, callouts, setCalloutsIfPersistedChanged]);
+  }, [handleSaveAnnotations, callouts, commitCalloutMutation]);
 
   // [COUNTER WIP — DO NOT TOUCH] Counter drag-to-place helpers.
   // Shared by the inline pointer handlers in the counter overlays and by the
@@ -29219,29 +29345,37 @@ ${pageBlocks}
                                         isNewCallout,
                                         committedText: resolvedText,
                                       })) {
-                                        addHistoryCheckpoint('callouts:delete-blank', {
-                                          calloutId: editingAnnotation.reactCalloutId,
-                                        });
+                                        // R2.2 Slice 3: blank-callout removal commits through the
+                                        // shared pipeline as a fabric:delete delta (undoable per
+                                        // object). markCalloutRemovalIntent stays until Slice 5.
                                         markCalloutRemovalIntent({
                                           source: 'delete-blank',
                                           reason: 'callouts:delete-blank',
                                           calloutIds: [editingAnnotation.reactCalloutId],
                                           count: 1,
                                         }, window);
-                                        setCalloutsIfPersistedChanged((prev) => prev.filter((c) =>
+                                        commitCalloutMutation(pageNumber, (prev) => prev.filter((c) =>
                                           c.id !== editingAnnotation.reactCalloutId
-                                        ));
+                                        ), {
+                                          source: 'callout:delete-blank',
+                                          action: 'callout-delete-blank',
+                                          checkpointPolicy: 'normal',
+                                        });
                                         editModeCooldownRef.current = Date.now();
                                         newlyCreatedCalloutIdsRef.current.delete(editingAnnotation.reactCalloutId);
                                         setEditingAnnotation(null);
                                         return;
                                       }
-                                      addHistoryCheckpoint('callouts:edit-commit', {
-                                        calloutId: editingAnnotation.reactCalloutId,
-                                      });
-                                      setCalloutsIfPersistedChanged((prev) => prev.map((c) =>
+                                      // R2.2 Slice 3: text-edit commit lands as ONE fabric:update
+                                      // delta via the shared pipeline (Cmd+Z reverts just this
+                                      // callout's edit instead of a whole-document snapshot).
+                                      commitCalloutMutation(pageNumber, (prev) => prev.map((c) =>
                                         c.id === editingAnnotation.reactCalloutId ? updatedReactCallout : c
-                                      ));
+                                      ), {
+                                        source: 'callout:edit-commit',
+                                        action: 'callout-edit-commit',
+                                        checkpointPolicy: 'normal',
+                                      });
                                       editModeCooldownRef.current = Date.now();
                                       newlyCreatedCalloutIdsRef.current.delete(editingAnnotation.reactCalloutId);
                                       setEditingAnnotation(null);
@@ -29262,18 +29396,23 @@ ${pageBlocks}
                                     // keeps the callout with its prior text.
                                     if (editingAnnotation?.reactCalloutId) {
                                       if (editingAnnotation.isNewCallout === true) {
-                                        addHistoryCheckpoint('callouts:cancel-new', {
-                                          calloutId: editingAnnotation.reactCalloutId,
-                                        });
+                                        // R2.2 Slice 3: Esc-on-new removal commits through the
+                                        // shared pipeline (fabric delta collapses the just-created
+                                        // callout's create+remove pair naturally).
+                                        // markCalloutRemovalIntent stays until Slice 5.
                                         markCalloutRemovalIntent({
                                           source: 'cancel-new',
                                           reason: 'callouts:cancel-new',
                                           calloutIds: [editingAnnotation.reactCalloutId],
                                           count: 1,
                                         }, window);
-                                        setCalloutsIfPersistedChanged((prev) => prev.filter((c) =>
+                                        commitCalloutMutation(pageNumber, (prev) => prev.filter((c) =>
                                           c.id !== editingAnnotation.reactCalloutId
-                                        ));
+                                        ), {
+                                          source: 'callout:cancel-new',
+                                          action: 'callout-cancel-new',
+                                          checkpointPolicy: 'normal',
+                                        });
                                         newlyCreatedCalloutIdsRef.current.delete(editingAnnotation.reactCalloutId);
                                       }
                                     }
