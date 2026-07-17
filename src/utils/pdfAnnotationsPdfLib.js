@@ -119,6 +119,20 @@ const getPrintableRegularScope = (obj) => {
 
 const clonePlain = (value) => deepClone(value);
 
+// UX 2026-07-17 (print contract, investigated for the survey-marker print
+// question): this builder feeds the "Print PDF with annotations…" path and is
+// deliberately scoped to REGULAR (canvas-scope) viewer annotations only —
+// what the user sees with no survey/space/region context active. Survey
+// Markers are survey content, so they are excluded here BY DESIGN, together
+// with all survey/space/region-scoped shapes and callouts (see the
+// 'printable regular annotation filter excludes survey highlights' regression
+// test). The surveyMarkers argument exists so diagnostics can report how many
+// markers were excluded; the returned payload always carries an empty map.
+// If survey printing is ever added, include ALL survey-scoped content
+// (markers + shapes + callouts) in one coherent change, not markers alone.
+// Note: callers (PDFViewer print path, tests) also pass `spaces`; it is
+// intentionally not destructured — region scope is derived from each object's
+// own regionId, so no region→space mapping is needed for this filter.
 export function buildPrintableRegularAnnotationPayload({
   annotationsByPage = {},
   callouts = [],
@@ -316,6 +330,49 @@ const calloutToExportObject = (callout, pageSize) => {
   };
 };
 
+// UX 2026-07-17 (legacy arrow export): old saved documents store arrows as
+// fabric GROUPS (a line child + optional triangle 'arrowHead' child — the
+// exact shape renderArrow in svgAnnotationRenderers.jsx draws on screen and
+// drawFlattenedObject already recurses for print). 'group' is not in
+// EXPORTABLE_FABRIC_TYPES, so these arrows rendered on screen and printed but
+// were silently DROPPED from PDF export as 'unsupported-type'. Map that one
+// legacy shape onto the modern arrow form (type 'line' + ClosedArrow ending)
+// so it rides the existing Line writer. Deliberately narrow: requires a line
+// child with finite endpoints, so arbitrary groups (and callout/counter
+// composites, which never reach here as bare groups) stay unexported.
+const legacyArrowGroupToLine = (obj) => {
+  if (String(obj?.type || '').toLowerCase() !== 'group') return null;
+  if (obj?.data?.type === 'counter') return null;
+  const children = Array.isArray(obj.objects) ? obj.objects : [];
+  // fabric 7 toObject() capitalizes child types ('Line', 'Triangle') while
+  // legacy fabric-5 saves store lowercase — compare lowercased (CLAUDE.md
+  // 2026-07-08 gotcha), mirroring renderArrow's childType helper.
+  const childType = (child) => String(child?.type || '').toLowerCase();
+  const lineChild = children.find((child) => (
+    child
+    && childType(child) === 'line'
+    && [child.x1, child.y1, child.x2, child.y2].every((value) => Number.isFinite(Number(value)))
+  ));
+  if (!lineChild) return null;
+  const hasArrowHead = children.some((child) => (
+    child && (child.name === 'arrowHead' || childType(child) === 'triangle')
+  ));
+  const left = Number(obj.left) || 0;
+  const top = Number(obj.top) || 0;
+  const { objects: _children, ...rest } = obj;
+  return {
+    ...rest,
+    type: 'line',
+    x1: left + Number(lineChild.x1),
+    y1: top + Number(lineChild.y1),
+    x2: left + Number(lineChild.x2),
+    y2: top + Number(lineChild.y2),
+    stroke: obj.stroke || lineChild.stroke || '#000000',
+    strokeWidth: obj.strokeWidth || lineChild.strokeWidth || 2,
+    ...(hasArrowHead ? { lineEnding2: 'ClosedArrow' } : {}),
+  };
+};
+
 export function buildPdfExportAnnotationPlan({
   annotationsByPage = {},
   callouts = [],
@@ -371,7 +428,10 @@ export function buildPdfExportAnnotationPlan({
   Object.entries(annotationsByPage || {}).forEach(([pageKey, pageData]) => {
     const pageNumber = Number.parseInt(pageKey, 10);
     const objects = Array.isArray(pageData?.objects) ? pageData.objects : [];
-    objects.forEach((obj, index) => {
+    objects.forEach((rawObj, index) => {
+      // UX 2026-07-17: legacy arrow groups export as their modern line form;
+      // every other object passes through untouched (see legacyArrowGroupToLine).
+      const obj = legacyArrowGroupToLine(rawObj) || rawObj;
       const scope = getObjectScope(obj);
       const regionId = obj?.regionId ?? null;
       const derivedSpaceId = regionId ? getSpaceIdForRegionFromSpaces(regionId, spaces) : null;
@@ -1040,8 +1100,33 @@ const createFreeTextAnnotation = (pdfDoc, page, fabricObj, pageHeight, options =
     const maxX = left + width;
     const maxY = pageHeight - top;
 
-    // Default appearance string (simplified - using Helvetica)
-    const da = `0 0 0 rg /Helv ${fontSize} Tf`;
+    // UX 2026-07-17 (text style export): the /DA string carries the GLYPH
+    // color + font, so exported text keeps the color/bold/italic the user
+    // picked on screen (previously hard-coded to black regular Helvetica).
+    // Callers map callout {bold, italic} → fabric-native fontWeight/fontStyle
+    // before reaching here. Underline/strikethrough CANNOT be expressed in a
+    // /DA string (no PDF text-decoration operator) — they survive via the app
+    // metadata round-trip and are drawn as real lines in the print-flatten
+    // path (drawFlattenedText); Acrobat renders this annotation without them.
+    const isBold = fabricObj.fontWeight === 'bold' || Number(fabricObj.fontWeight) >= 600;
+    const isItalic = fabricObj.fontStyle === 'italic' || fabricObj.fontStyle === 'oblique';
+    const daFont = isBold && isItalic
+      ? 'Helvetica-BoldOblique'
+      : isBold
+        ? 'Helvetica-Bold'
+        : isItalic
+          ? 'Helvetica-Oblique'
+          : 'Helv';
+    const da = `${pdfNumberText(color.red)} ${pdfNumberText(color.green)} ${pdfNumberText(color.blue)} rg /${daFont} ${fontSize} Tf`;
+
+    // UX 2026-07-17: /C on a FreeText annotation is the BACKGROUND/border
+    // color per the PDF spec — NOT the glyph color (that lives in /DA above).
+    // Only write it when the annotation really has a background (callout text
+    // boxes pass style.backgroundColor); plain text annotations omit it so
+    // the exported box stays transparent, matching the screen.
+    const background = fabricObj.backgroundColor && fabricObj.backgroundColor !== 'transparent'
+      ? hexToRGB(fabricObj.backgroundColor)
+      : null;
 
     const annotationDict = {
       Type: 'Annot',
@@ -1049,7 +1134,7 @@ const createFreeTextAnnotation = (pdfDoc, page, fabricObj, pageHeight, options =
       Rect: [minX, minY, maxX, maxY],
       Contents: PDFString.of(text),
       DA: PDFString.of(da),
-      C: [color.red, color.green, color.blue],
+      ...(background ? { C: [background.red, background.green, background.blue] } : {}),
       Border: [0, 0, 0], // No border for text boxes
       P: page.ref,
     };
@@ -1125,6 +1210,13 @@ const createCalloutAnnotations = (pdfDoc, page, calloutObj, pageHeight) => {
     text: calloutObj.text || '',
     fill: style.fontColor || '#1e293b',
     fontSize: style.fontSize || 14,
+    // UX 2026-07-17: map callout {bold, italic} → fabric-native
+    // fontWeight/fontStyle (ANNOTATION-CONTRACT.md addendum mapping) so the
+    // exported FreeText /DA picks the matching Helvetica variant. Underline/
+    // strikethrough have no /DA representation — see createFreeTextAnnotation.
+    fontWeight: style.bold ? 'bold' : 'normal',
+    fontStyle: style.italic ? 'italic' : 'normal',
+    backgroundColor: style.backgroundColor || null,
   }, pageHeight, buildCalloutOptions('text'));
   if (textRef) refs.push(textRef);
 
@@ -1248,21 +1340,67 @@ const drawFlattenedLine = (page, obj, pageHeight) => {
   if (isArrow) drawArrowHead(page, { x1, y1, x2, y2, pageHeight, color: stroke.color, width });
 };
 
-const drawFlattenedText = (page, obj, pageHeight, font) => {
+// UX 2026-07-17 (print text style): pick the embedded Helvetica variant that
+// matches what the user sees on screen. Understands both fabric-native fields
+// (fontWeight/fontStyle on freetext objects) and the callout booleans
+// (bold/italic) so both shapes print with their chosen weight/slant.
+const pickFlattenedTextFont = (obj, fonts) => {
+  if (!fonts || typeof fonts !== 'object' || !fonts.regular) return fonts;
+  const isBold = obj?.fontWeight === 'bold' || Number(obj?.fontWeight) >= 600 || obj?.bold === true;
+  const isItalic = obj?.fontStyle === 'italic' || obj?.fontStyle === 'oblique' || obj?.italic === true;
+  if (isBold && isItalic) return fonts.boldOblique || fonts.bold || fonts.regular;
+  if (isBold) return fonts.bold || fonts.regular;
+  if (isItalic) return fonts.oblique || fonts.regular;
+  return fonts.regular;
+};
+
+const drawFlattenedText = (page, obj, pageHeight, fonts) => {
   const fill = parsePdfDrawColor(obj?.fill || obj?.stroke || '#000000', '#000000') || parsePdfDrawColor('#000000');
   const left = getObjNumber(obj, 'left');
   const top = getObjNumber(obj, 'top');
   const height = Math.max(1, getObjNumber(obj, 'height', Number(obj?.fontSize) || 14));
   const fontSize = Math.max(4, Number(obj?.fontSize) || 12);
+  const font = pickFlattenedTextFont(obj, fonts);
+  const maxWidth = Math.max(1, getObjNumber(obj, 'width', 200));
+  const baselineY = getPdfY(pageHeight, top + Math.min(height, fontSize + 2));
   page.drawText(String(obj?.text || ''), {
     x: left,
-    y: getPdfY(pageHeight, top + Math.min(height, fontSize + 2)),
+    y: baselineY,
     size: fontSize,
     font,
     color: fill.color,
     opacity: fill.opacity,
-    maxWidth: Math.max(1, getObjNumber(obj, 'width', 200)),
+    maxWidth,
   });
+  // UX 2026-07-17 (print text style): PDF has no text-decoration operator, so
+  // underline/strikethrough are drawn as explicit lines in the text color,
+  // matching the on-screen SVG textDecoration. Understands fabric-native
+  // underline/linethrough and the callout strikethrough boolean. Known
+  // limitation: the decoration covers the FIRST rendered line only — wrapped
+  // or multi-line text keeps styled glyphs but only line one is decorated.
+  const wantsUnderline = obj?.underline === true;
+  const wantsLinethrough = obj?.linethrough === true || obj?.strikethrough === true;
+  if (wantsUnderline || wantsLinethrough) {
+    const firstLine = String(obj?.text || '').split('\n')[0] || '';
+    let lineWidth = maxWidth;
+    try {
+      lineWidth = Math.min(maxWidth, font.widthOfTextAtSize(firstLine, fontSize));
+    } catch {
+      /* unencodable glyphs — fall back to the box width */
+    }
+    if (lineWidth > 0) {
+      const thickness = Math.max(0.5, fontSize / 14);
+      const drawDecorationLine = (y) => page.drawLine({
+        start: { x: left, y },
+        end: { x: left + lineWidth, y },
+        color: fill.color,
+        thickness,
+        opacity: fill.opacity,
+      });
+      if (wantsUnderline) drawDecorationLine(baselineY - fontSize * 0.12);
+      if (wantsLinethrough) drawDecorationLine(baselineY + fontSize * 0.28);
+    }
+  }
 };
 
 const drawFlattenedCounterLabel = (page, obj, pageHeight, font) => {
@@ -1429,7 +1567,9 @@ const drawFlattenedObject = (page, obj, pageHeight, fonts, offset = { x: 0, y: 0
   if (type === 'polygon') return drawFlattenedPolygon(page, shifted, pageHeight, true) ? 1 : 0;
   if (type === 'polyline') return drawFlattenedPolygon(page, shifted, pageHeight, false) ? 1 : 0;
   if (type === 'textbox' || type === 'text' || type === 'i-text') {
-    drawFlattenedText(page, shifted, pageHeight, fonts.regular);
+    // UX 2026-07-17: pass the whole fonts map so bold/italic text prints in
+    // the matching Helvetica variant instead of always regular.
+    drawFlattenedText(page, shifted, pageHeight, fonts);
     return 1;
   }
   return 0;
@@ -1465,7 +1605,14 @@ const drawFlattenedCallout = (page, calloutObj, pageHeight, fonts) => {
     text: calloutObj.text || '',
     fill: style.fontColor || '#1e293b',
     fontSize: style.fontSize || 14,
-  }, pageHeight, fonts.regular);
+    // UX 2026-07-17: thread the callout text-style booleans through so the
+    // printed callout text matches the on-screen bold/italic/underline/
+    // strikethrough styling (mapped inside drawFlattenedText).
+    bold: style.bold === true,
+    italic: style.italic === true,
+    underline: style.underline === true,
+    strikethrough: style.strikethrough === true,
+  }, pageHeight, fonts);
   return 1;
 };
 
@@ -1482,7 +1629,19 @@ export const savePDFWithFlattenedRegularAnnotationsForPrint = async (
   const fonts = {
     regular: await pdfDoc.embedFont(StandardFonts.Helvetica),
     bold: await pdfDoc.embedFont(StandardFonts.HelveticaBold),
+    // UX 2026-07-17: oblique variants embedded so italic / bold-italic text
+    // annotations print with their on-screen slant (Bug: flatten always used
+    // regular Helvetica for text, dropping weight and style).
+    oblique: await pdfDoc.embedFont(StandardFonts.HelveticaOblique),
+    boldOblique: await pdfDoc.embedFont(StandardFonts.HelveticaBoldOblique),
   };
+  // UX 2026-07-17: surveyMarkers stays an empty map here ON PURPOSE — Survey
+  // Markers are excluded from this "regular annotations only" print flatten by
+  // design (see the contract comment on buildPrintableRegularAnnotationPayload).
+  // The caller already ran the payload builder once with the REAL markers map
+  // so the exclusion counts land in options.printableDiagnostics; this inner
+  // rebuild only re-filters the pre-filtered pages, and passing the real map
+  // again would double-count exclusions without printing anything more.
   const printablePayload = buildPrintableRegularAnnotationPayload({
     annotationsByPage,
     callouts: options?.callouts || [],
