@@ -23,6 +23,11 @@ import { useState, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { appDebug } from '../viewerShared.js';
 import { deepClone } from '../utils/deepClone.js';
+// Locked permissions model 2026-07-17 — the shape Delete items route through
+// PDFViewer's bulk-delete planner (confirm modal for cross-author deletes)
+// and the Cut items are restricted to marks the viewer authored (or owner
+// mode). Same single source of truth as click hit-test / marquee / planner.
+import { canDelete, canModify } from '../lib/collab/permissionScope.js';
 
 export function useAnnotationContextMenu() {
   // UX: annotation right-click menu — anchored to the pointer.
@@ -153,7 +158,34 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
     // (mobileMode falsy) keeps its exact prior styling — demo ref
     // mobile-expo-go/src/styles.ts:856-902.
     mobileMode = false,
+    // Locked permissions model 2026-07-17 — bulk-delete planner bridge
+    // (PDFViewer's requestBulkDeleteRef). When provided, the shape Delete
+    // items route through it so cross-author deletes ALWAYS get the
+    // collaborator-cross-author confirm modal (parity with keyboard Delete /
+    // useSVGInteraction.deleteSelected). Optional: legacy mounts without it
+    // fall back to the direct splice for the viewer's OWN marks only.
+    requestBulkDelete = null,
+    // Ownership inputs for the delete/cut partition below. Optional — when
+    // either is missing (boot window) the legacy permissive behavior applies.
+    viewerId = null,
+    documentOwnerId = null,
   } = actions;
+
+  // Own-mark check (author or document owner; boot window is permissive to
+  // match canSelectAnnotationByIndex / deleteSelected in useSVGInteraction).
+  const canModifyObj = (obj) => {
+    if (!obj) return false;
+    if (!viewerId || !documentOwnerId) return true;
+    return canModify({ annotation: obj, viewerId, documentOwnerId });
+  };
+  // Foreign-mark deletability: only through the planner's confirm modal, and
+  // only when the object carries the stable id the planner is keyed by.
+  const canPlanForeignDelete = (obj) => {
+    if (!obj || typeof requestBulkDelete !== 'function') return false;
+    if (!viewerId || !documentOwnerId) return false;
+    if (obj.id == null) return false;
+    return canDelete({ annotation: obj, viewerId, documentOwnerId });
+  };
 
   return createPortal((() => {
     const ctx = annotationContextMenu;
@@ -256,6 +288,11 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
           if (ctx.annotationIndex < 0 || ctx.annotationIndex >= page.objects.length) return;
           const obj = page.objects[ctx.annotationIndex];
           if (!obj) return;
+          // Locked model 2026-07-17: Cut = Copy + immediate delete with no
+          // confirmation surface, so it stays OWN-marks-only (cross-author
+          // deletes must always confirm via the modal). To remove another
+          // user's shape: Copy + Delete (Delete routes through the modal).
+          if (!canModifyObj(obj)) return;
           setClipboardAnnotation({
             object: deepClone(obj),
             sourcePageNumber: ctx.pageNumber,
@@ -295,11 +332,15 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
         // behavior + live diagnostic dump. Grayed out when the clipboard
         // is empty — matches Acrobat, Drawboard PDF, Bluebeam, Figma.
         item('Paste', 'paste', doPasteAny, hasAnyClipboard),
-        // UX: right-click Delete mirrors the keyboard Delete/Backspace path —
-        // splice the targeted shape out of that page's objects and commit
-        // via handleSaveAnnotations. Same save path as useSVGInteraction's
-        // deleteSelected, so undo + cloud sync behave identically to pressing
-        // Delete with a selection. No-op if the page/index isn't resolvable.
+        // UX: right-click Delete mirrors the keyboard Delete/Backspace path.
+        // Locked model 2026-07-17: when PDFViewer provides the bulk-delete
+        // planner bridge, the delete routes through it — cross-author deletes
+        // ALWAYS confirm via the collaborator-cross-author modal, own deletes
+        // follow the planner's existing modes (owner-own-only direct-fires) —
+        // exactly like pressing Delete with the shape selected. The splice
+        // itself is unchanged and runs as the planner's runDelete. Legacy
+        // fallback (no planner, or id-less object): direct splice for OWN
+        // marks only; foreign marks are never direct-fired.
         // After the save, broadcast a "clear selection on this page" command
         // via pendingSvgSelection (annotationIndex: null) so the selection
         // doesn't stick to the shape that slides into the deleted index
@@ -308,18 +349,36 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
           const page = annotationsByPageRef.current?.[ctx.pageNumber];
           if (!page?.objects || ctx.annotationIndex == null) return;
           if (ctx.annotationIndex < 0 || ctx.annotationIndex >= page.objects.length) return;
-          const next = deepClone(page);
-          next.objects.splice(ctx.annotationIndex, 1);
-          handleSaveAnnotations(ctx.pageNumber, next, {
-            source: 'object:modified',
-            action: 'delete',
-            checkpointPolicy: 'normal',
-          });
-          setPendingSvgSelection({
-            pageNumber: ctx.pageNumber,
-            annotationIndex: null,
-            tick: Date.now(),
-          });
+          const obj = page.objects[ctx.annotationIndex];
+          if (!obj) return;
+          const own = canModifyObj(obj);
+          if (!own && !canPlanForeignDelete(obj)) return;
+          const runDelete = () => {
+            const next = deepClone(page);
+            next.objects.splice(ctx.annotationIndex, 1);
+            handleSaveAnnotations(ctx.pageNumber, next, {
+              source: 'object:modified',
+              action: 'delete',
+              checkpointPolicy: 'normal',
+            });
+            setPendingSvgSelection({
+              pageNumber: ctx.pageNumber,
+              annotationIndex: null,
+              tick: Date.now(),
+            });
+          };
+          if (typeof requestBulkDelete === 'function' && obj.id != null) {
+            requestBulkDelete({
+              candidateIds: [obj.id],
+              snapshotObjects: [deepClone(obj)],
+              pageNumber: ctx.pageNumber,
+              runDelete,
+            });
+            return;
+          }
+          // Own-only fallback (planner absent or id-less own mark) — the
+          // guard above already rejected foreign marks on this path.
+          runDelete();
         }),
         sep(),
         // UX: z-order — mirrors Illustrator/Figma/Photoshop placement
@@ -363,12 +422,14 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
       const sortedDesc = [...ctx.groupIndices].sort((a, b) => b - a);
       const sortedAsc = [...ctx.groupIndices].sort((a, b) => a - b);
 
-      const copyAll = () => {
+      // indicesAsc parameter (default: the whole selection) lets Cut collect
+      // only the viewer's own members — see the Cut item below.
+      const copyAll = (indicesAsc = sortedAsc) => {
         const page = annotationsByPageRef.current?.[ctx.pageNumber];
         if (!page?.objects) return null;
         const collected = [];
         let minLeft = Infinity, minTop = Infinity;
-        for (const idx of sortedAsc) {
+        for (const idx of indicesAsc) {
           const obj = page.objects[idx];
           if (!obj) continue;
           collected.push(deepClone(obj));
@@ -390,14 +451,22 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
 
       items = [
         item('Cut', 'cut', () => {
-          const copy = copyAll();
+          const page = annotationsByPageRef.current?.[ctx.pageNumber];
+          if (!page?.objects) return;
+          // Locked model 2026-07-17: Cut deletes with no confirmation
+          // surface, so it operates on the viewer's OWN members only —
+          // foreign-author members stay on the page untouched (cross-author
+          // deletes must always confirm via the Delete item's modal path).
+          // Clipboard matches the splice exactly (own members only) so
+          // Paste never duplicates a shape that was left on the page.
+          const ownAsc = sortedAsc.filter((idx) => canModifyObj(page.objects[idx]));
+          if (ownAsc.length === 0) return;
+          const copy = copyAll(ownAsc);
           if (!copy) return;
           setClipboardAnnotation({ ...copy, mode: 'cut' });
           clearCalloutClipboard();
-          const page = annotationsByPageRef.current?.[ctx.pageNumber];
-          if (!page?.objects) return;
           const next = deepClone(page);
-          for (const idx of sortedDesc) {
+          for (const idx of [...ownAsc].reverse()) {
             if (idx >= 0 && idx < next.objects.length) next.objects.splice(idx, 1);
           }
           handleSaveAnnotations(ctx.pageNumber, next, {
@@ -418,23 +487,50 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
           clearCalloutClipboard();
         }),
         item('Paste', 'paste', doPasteAny, hasAnyClipboard),
+        // Locked model 2026-07-17: multi-select Delete routes through the
+        // bulk-delete planner (parity with keyboard Delete on the same
+        // selection) — cross-author members ALWAYS confirm via the modal.
+        // Deletable set = own members + foreign members that can be planned
+        // (planner present + stable id); anything else stays on the page.
         item('Delete', 'delete', () => {
           const page = annotationsByPageRef.current?.[ctx.pageNumber];
           if (!page?.objects) return;
-          const next = deepClone(page);
-          for (const idx of sortedDesc) {
-            if (idx >= 0 && idx < next.objects.length) next.objects.splice(idx, 1);
+          const deletable = sortedDesc
+            .map((idx) => ({ idx, obj: page.objects[idx] }))
+            .filter(({ obj }) => canModifyObj(obj) || canPlanForeignDelete(obj));
+          if (deletable.length === 0) return;
+          const runDelete = () => {
+            const next = deepClone(page);
+            for (const { idx } of deletable) {
+              if (idx >= 0 && idx < next.objects.length) next.objects.splice(idx, 1);
+            }
+            handleSaveAnnotations(ctx.pageNumber, next, {
+              source: 'object:modified',
+              action: 'delete',
+              checkpointPolicy: 'normal',
+            });
+            setPendingSvgSelection({
+              pageNumber: ctx.pageNumber,
+              annotationIndex: null,
+              tick: Date.now(),
+            });
+          };
+          const candidateIds = deletable
+            .map(({ obj }) => obj?.id)
+            .filter((id) => id != null);
+          if (typeof requestBulkDelete === 'function' && candidateIds.length > 0) {
+            requestBulkDelete({
+              candidateIds,
+              snapshotObjects: deletable.map(({ obj }) => deepClone(obj)),
+              pageNumber: ctx.pageNumber,
+              runDelete,
+            });
+            return;
           }
-          handleSaveAnnotations(ctx.pageNumber, next, {
-            source: 'object:modified',
-            action: 'delete',
-            checkpointPolicy: 'normal',
-          });
-          setPendingSvgSelection({
-            pageNumber: ctx.pageNumber,
-            annotationIndex: null,
-            tick: Date.now(),
-          });
+          // Own-only fallback: with no planner (or an all-id-less set) the
+          // deletable filter above admitted own/boot marks only, so a direct
+          // fire can never touch a foreign-author mark.
+          runDelete();
         }),
         sep(),
         item('Bring to front', 'bringToFront', () => {

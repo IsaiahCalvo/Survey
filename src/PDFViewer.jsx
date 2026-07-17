@@ -27927,6 +27927,14 @@ ${pageBlocks}
         // UX: mobile parity (Phase D) — re-skins the menu to the demo's touch
         // context-menu chrome on phones; desktop right-click menu unchanged.
         mobileMode,
+        // Locked permissions model 2026-07-17 — the shape Delete items route
+        // through handleRequestBulkDelete (via the TDZ ref bridge) so
+        // cross-author right-click deletes get the SAME confirm modal as
+        // keyboard Delete; ownership inputs drive the menu's own/foreign
+        // partition (Cut stays own-only, foreign Delete requires the modal).
+        requestBulkDelete: (args) => requestBulkDeleteRef.current?.(args),
+        viewerId: user?.id ?? null,
+        documentOwnerId,
       })}
 
       {/* Annotation Properties Panel — live-edit controls for the

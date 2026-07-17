@@ -741,6 +741,17 @@ const FabricEraserCanvas = memo(({
   }, []);
 
   const getEraseBlockReason = useCallback((object) => {
+    // Locked permissions model, decision 2026-07-17: the eraser DELIBERATELY
+    // stays on canModify (author-or-owner) while selection/delete moved to
+    // canDelete. Rationale: erase commits destructively MID-GESTURE (whole-
+    // delete ghosting + partial path carving) with no confirmation surface,
+    // and the product rule is that cross-author deletes ALWAYS go through the
+    // confirm modal — the eraser cannot show one per sweep. A contributor who
+    // wants another user's stroke gone selects it and presses Delete, which
+    // routes through the bulk-delete planner's cross-author modal. Foreign
+    // strokes therefore stay visibly untouched under a contributor's eraser
+    // (skip, not silent data loss). Owner behavior unchanged (canModify
+    // short-circuits true).
     const currentViewerId = viewerIdRef.current;
     const currentOwnerId = documentOwnerIdRef.current;
     if (currentViewerId && currentOwnerId && !canModify({

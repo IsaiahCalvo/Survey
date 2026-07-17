@@ -30,11 +30,12 @@
 import { getAnnotationBBox } from './svgBoundingBox.js';
 import { doesRectIntersectObject, isObjectFullyInRect } from './geometryHitTest.js';
 import { toFabricShape } from './svgToFabricShape.js';
-// Phase 35 Plan 03 — owner-aware post-filter on marquee hit-test results.
-// Pulled from the single permission-scope source of truth so the marquee
-// uses the same canModify chain as click hit-test, eraser hit-test, and
-// the bulk-delete planner. No per-call-site fallback drift.
-import { canModify, getAnnotationAuthorId, isOwner } from '../lib/collab/permissionScope.js';
+// Phase 35 Plan 03 — post-filter on marquee hit-test results. Pulled from
+// the single permission-scope source of truth so the marquee uses the same
+// canDelete chain as the click hit-test gate and the bulk-delete planner
+// (locked model 2026-07-17: contributors select everyone's marks; the
+// eraser deliberately stays on canModify — see FabricEraserCanvas).
+import { canDelete, getAnnotationAuthorId, isOwner } from '../lib/collab/permissionScope.js';
 // Phase 35 — UAT diagnostic logger. Dev-only, production-stripped.
 import { phase35Diag } from '../lib/collab/phase35Diag.js';
 
@@ -262,20 +263,23 @@ export function resolveMarqueeHits({
 }
 
 /**
- * Phase 35 Plan 03 — owner-aware post-filter wrapping resolveMarqueeHits.
+ * Phase 35 Plan 03 — post-filter wrapping resolveMarqueeHits, updated
+ * 2026-07-17 for the LOCKED permissions model (contributors and owners have
+ * full add/edit/delete on everything; viewers look-only). The filter now runs
+ * canDelete — any authenticated write-capable session keeps ALL hits,
+ * including foreign-author marks, so a contributor's marquee selects other
+ * users' shapes exactly like the owner's does. Cross-author DELETES of that
+ * selection still always confirm: useSVGInteraction.deleteSelected routes
+ * foreign ids through the bulk-delete planner's collaborator-cross-author
+ * modal and never direct-fires them. Viewers never marquee at all
+ * (ReadOnlyGate blocks pointer events at the SVG root).
  *
- * Drops foreign-author hits from the marquee result when the viewer is a
- * collaborator. Owner-mode is a same-reference passthrough: when every hit
- * passes canModify (which is unconditionally true for the document owner),
- * the input array reference is returned unchanged. UX-comment-grade decision —
- * this preserves React reference-equality memoization downstream so the
- * SVG-layer hot path doesn't re-render every annotation on every pointermove
- * while a marquee is tracking. Boot-guard (missing viewerId / documentOwnerId)
- * also returns the input reference unchanged so legacy mount sites that
- * haven't yet threaded the new props behave identically to today.
- *
- * AC mapping (CONTEXT.md): Acceptance Criterion #1 — "non-owner marquee
- * across mixed-author content only catches own annotations".
+ * All-pass results return the input array reference unchanged (owner AND
+ * contributor hot paths) to preserve React reference-equality memoization
+ * downstream. Boot-guard (missing viewerId / documentOwnerId) also returns
+ * the input reference unchanged so legacy mount sites that haven't yet
+ * threaded the new props behave identically to today. Missing objects
+ * (stale indices) still drop.
  *
  * @param {Array<number>} hitIndices  result of resolveMarqueeHits
  * @param {{ objects: Array<object> } | undefined} annotations  Fabric JSON
@@ -320,7 +324,9 @@ export function filterMarqueeHits(hitIndices, annotations, viewerId, documentOwn
       allOwn = false;
       return false;
     }
-    const ok = canModify({ annotation: a, viewerId, documentOwnerId });
+    // Locked model 2026-07-17: canDelete (authenticated pair ⇒ allow, any
+    // author) replaces canModify so contributors marquee foreign shapes too.
+    const ok = canDelete({ annotation: a, viewerId, documentOwnerId });
     if (!ok) allOwn = false;
     perAnnotation.push({
       index: i,
@@ -346,9 +352,8 @@ export function filterMarqueeHits(hitIndices, annotations, viewerId, documentOwn
     perAnnotation,
     sameRefReturned: allOwn && filtered.length === hitIndices.length,
   });
-  // Owner-mode (or all-own collab session): everything passed → return same
-  // reference for React memoization. canModify short-circuits to true for the
-  // owner regardless of authorId, so this branch is the owner hot path.
+  // Everything passed → return same reference for React memoization. With
+  // canDelete this is the hot path for owners AND contributors alike.
   if (allOwn && filtered.length === hitIndices.length) return hitIndices;
   return filtered;
 }

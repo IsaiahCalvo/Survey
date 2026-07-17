@@ -31,7 +31,14 @@ test.afterEach(async ({ page }) => {
 });
 
 test.describe('Phase 35 — collaborator marquee scope', () => {
-  test('marquee across mixed-author content selects only own annotations', async ({ page }) => {
+  // SUPERSEDED 2026-07-17 (locked permissions model): contributors now
+  // marquee-select foreign-author shapes too (filterMarqueeHits runs
+  // canDelete); cross-author DELETES confirm via the bulk-delete modal
+  // instead of being filtered at selection time. The own-only assertion
+  // below pins the retired Phase 35 AC, so it is fixme'd rather than left
+  // to fail if the seed seam ever appears. New semantics are pinned by
+  // tests/phase35/contributorCrossAuthorShapes.test.mjs.
+  test.fixme('marquee across mixed-author content selects only own annotations', async ({ page }) => {
     // Open the test document on page 6.
     await page.goto('http://localhost:5173/');
     await page.locator('text=Package 2 - Rev 4 -- IC.pdf').first().click({ timeout: 20000 });

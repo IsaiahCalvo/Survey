@@ -33,11 +33,18 @@ import {
   resolveMarqueeHits,
   filterMarqueeHits,
 } from '../utils/marqueeSelection.js';
-// Phase 35 Plan 03 — owner-aware click hit-test gate. Selection chrome must
-// not appear when a collaborator clicks a foreign-author annotation, per
-// CONTEXT.md AC #3. canModify is the single source of truth for ownership
-// and is shared with the marquee post-filter and the eraser hit-test gate.
-import { canModify } from '../lib/collab/permissionScope.js';
+// Phase 35 Plan 03 — click hit-test gate, updated 2026-07-17 for the LOCKED
+// permissions model (contributors AND owners have full add/edit/delete on
+// everything; viewers look-only). Selection now gates on canDelete (any
+// authenticated write-capable session may select ANY annotation — the viewer
+// role wall is ReadOnlyGate: body[data-readonly] CSS kills pointer events on
+// this layer's SVG root and a capture-phase keydown listener swallows
+// Delete/Backspace, so viewers never reach these handlers). canModify is
+// retained for the DELETE-time partition: own deletes may direct-fire, but
+// cross-author deletes must ALWAYS route through the bulk-delete planner so
+// the collaborator-cross-author confirm modal fires (matches the callout
+// precedent landed in 9d8df592).
+import { canDelete, canModify } from '../lib/collab/permissionScope.js';
 // Phase 15 UAT-3 Issue 3 (2026-04-17) — distance rules for callout-part drag.
 // Values match combined-tools FabricPDFCanvas collision logic (reference at
 // ~/Desktop/combined-tools/src/lib/calloutGeometry.ts). See isCalloutDragSafe
@@ -409,27 +416,31 @@ export function useSVGInteraction({
     return selectedIds.has(index);
   }, [selectedIds]);
 
-  // Phase 35 Plan 03 — per-user delete authority click hit-test gate.
-  //
-  // Returns true when a click on `annotations.objects[index]` should produce
-  // selection chrome (owner role, OR collaborator clicking their own mark);
-  // returns false when the click should be a silent no-op (collaborator
-  // clicking a foreign-author mark) per CONTEXT.md AC #3 — no selection
-  // chrome, no hover halo, no context menu; the active-tool cursor stays in
-  // its original mode.
+  // Per-user delete authority click hit-test gate — LOCKED permissions model
+  // (2026-07-17): contributors and owners can select/move/edit/delete ANY
+  // annotation, so this gate now runs canDelete (authenticated write-capable
+  // pair passes for every annotation) instead of canModify (author-or-owner
+  // only). Cross-author capability is safe to open at selection time because:
+  //   - viewers never reach this handler (ReadOnlyGate CSS blocks pointer
+  //     events on the SVG root + capture-phase keydown swallows Delete), and
+  //   - cross-author DELETES are re-partitioned in deleteSelected below and
+  //     always routed through the parent's bulk-delete planner, which shows
+  //     the collaborator-cross-author confirm modal (never direct-fires).
+  // Cross-author MOVES/EDITS commit through the normal save paths with no
+  // modal — matches the callout precedent (9d8df592) and the modal's
+  // delete-only copy. Original authorship survives foreign edits: the
+  // serializer treats meta.authorId as write-once-on-create
+  // (annotationTypeSerializers.js).
   //
   // Boot guard: when either viewerId or documentOwnerId is missing (App.jsx
   // not yet threaded the new props, or the user signed out mid-session) the
   // gate returns true so legacy behavior is byte-identical. The gate engages
   // once both props resolve.
-  //
-  // canModify short-circuits to true for the document owner regardless of
-  // authorId, so the owner hot path stays branch-free past the helper call.
   const canSelectAnnotationByIndex = useCallback((index) => {
     const a = annotations?.objects?.[index];
     if (!a) return false;
     if (!viewerId || !documentOwnerId) return true;
-    return canModify({ annotation: a, viewerId, documentOwnerId });
+    return canDelete({ annotation: a, viewerId, documentOwnerId });
   }, [annotations, viewerId, documentOwnerId]);
 
   // ---------------------------------------------------------------------------
@@ -456,13 +467,12 @@ export function useSVGInteraction({
       }));
     } catch (err) { /* swallow log errors */ }
 
-    // Phase 35 Plan 03 — per-user delete authority click hit-test gate.
-    // CONTEXT.md AC #3: non-owner click on a foreign-author annotation is a
-    // silent no-op — no selection chrome, no hover halo, no context menu, no
-    // counter-orbit dragstate, no group expansion, no plain-select. Cursor
-    // stays in the active-tool mode (early-return preserves all other
-    // handlers downstream). Owner-mode short-circuits inside canModify so
-    // this is branch-free for the document owner.
+    // Per-user delete authority click hit-test gate (2026-07-17 locked
+    // model): any authenticated contributor/owner may select any annotation
+    // (see canSelectAnnotationByIndex). The early-return now only fires for
+    // missing objects — kept as the single entry gate so any future
+    // tightening happens in ONE place. Viewers never reach this handler
+    // (ReadOnlyGate blocks pointer events at the SVG root).
     if (!canSelectAnnotationByIndex(index)) {
       return;
     }
@@ -556,15 +566,11 @@ export function useSVGInteraction({
       const pageCallouts = (callouts || []); // already page-scoped per layer mount
       const members = findGroupMembers(annotations, pageCallouts, [_clickedGid]);
       if (members.annotationIndices.length > 0 || members.calloutIds.length > 0) {
-        // Phase 35 Plan 03 — per-user delete authority filter on group expand.
-        // When a non-owner clicks an own annotation that shares a groupId with
-        // foreign-author members, only the viewer's own members enter the
-        // selection. The hit-test gate short-circuits to true for the owner
-        // role (canModify owner short-circuit), so owner-side group expand is
-        // byte-identical to today. Same gate is applied to the parallel
-        // callout-side group-expand path below (annotation-side filter only —
-        // callouts have their own ownership semantics owned by the callout
-        // pipeline).
+        // Per-user delete authority filter on group expand (2026-07-17
+        // locked model): the gate now admits foreign-author members too —
+        // contributors select and operate on everyone's marks. The filter is
+        // kept (rather than deleted) so missing/stale indices still drop and
+        // so any future re-tightening lives at the shared gate.
         const ownAnnotationIndices = members.annotationIndices.filter((mi) =>
           canSelectAnnotationByIndex(mi),
         );
@@ -4217,25 +4223,34 @@ export function useSVGInteraction({
   const deleteSelected = useCallback(() => {
     if (selectedIds.size === 0) return;
 
-    // Phase 35 hardening 2026-05-01 — defense-in-depth ownership gate.
-    // The click-time gate (canSelectAnnotationByIndex) and the marquee
-    // filter both run canModify at SELECTION time. We re-run it HERE at
-    // DELETE time as a single-source-of-truth check that no upstream
-    // codepath can sneak past. If the upstream gate ever leaks (boot
-    // window when viewerId is null, future bug, etc.), this is the wall
-    // that catches it before runDelete fires. Forbidden indices drop
-    // out of indicesToDelete entirely so they can't be deleted by either
-    // the planner path or the direct fallback.
+    // Phase 35 hardening 2026-05-01, re-partitioned 2026-07-17 for the LOCKED
+    // permissions model — defense-in-depth delete-time gate. Selection now
+    // admits foreign-author shapes (canSelectAnnotationByIndex runs canDelete),
+    // so this filter is the wall that decides HOW each id may be deleted:
+    //   - own marks (canModify: author or document owner) — eligible on every
+    //     path, including the legacy direct-fire fallbacks below.
+    //   - foreign marks (canDelete but not canModify) — eligible ONLY when
+    //     they can route through the parent's bulk-delete planner
+    //     (onRequestBulkDelete present AND the object carries a stable id the
+    //     planner is keyed by). The planner's collaborator-cross-author mode
+    //     then ALWAYS shows the confirm modal — a foreign mark must never be
+    //     deleted by a direct-fire fallback, so id-less foreign marks and the
+    //     planner-absent mount (boot / test harness) drop foreign ids here.
+    const plannerAvailable = typeof onRequestBulkDelete === 'function';
     const indicesToDelete = Array.from(selectedIds)
       .filter((idx) => {
         const obj = annotations?.objects?.[idx];
         if (!obj) return false;
         // Boot guard: mirror canSelectAnnotationByIndex's permissive
         // behavior during the brief window where viewerId / documentOwnerId
-        // aren't resolved yet. Once both populate, the strict canModify
-        // check engages and is the single source of truth.
+        // aren't resolved yet. Once both populate, the strict partition
+        // below engages and is the single source of truth.
         if (!viewerId || !documentOwnerId) return true;
-        return canModify({ annotation: obj, viewerId, documentOwnerId });
+        if (canModify({ annotation: obj, viewerId, documentOwnerId })) return true;
+        // Foreign-author: only deletable behind the planner's confirm modal.
+        return plannerAvailable
+          && obj.id != null
+          && canDelete({ annotation: obj, viewerId, documentOwnerId });
       })
       .sort((a, b) => b - a);
 
@@ -4294,8 +4309,10 @@ export function useSVGInteraction({
     // annotations have no id locally (data.id is stamped only on the first
     // cloud upload via serializeFabricObjectToRow). When EVERY snapshot
     // lacks an id the planner returns mode='no-op' and Delete becomes a
-    // silent dead key. Safe to fall through here because the canModify
-    // re-check above already enforced ownership.
+    // silent dead key. Safe to fall through here because the delete-time
+    // partition above only admits id-less objects when they pass canModify
+    // (own/boot) — a foreign-author mark requires obj.id, so an all-id-less
+    // set is structurally own-only and may direct-fire without the modal.
     if (candidateIds.length === 0) {
       runDelete();
       return;
