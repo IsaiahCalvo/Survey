@@ -539,6 +539,110 @@ const FabricEraserCanvas = memo(({
     previewContext.restore();
   }, [pageHeight, pageWidth]);
 
+  // Callout pending-erase preview (2026-07-17, callout-unification seam fix).
+  // WHY CALLOUTS WERE EXCLUDED HISTORICALLY: the whole-delete ghost machinery
+  // above keys off annotations.objects + data-annotation-id/index DOM
+  // selectors, but callouts are the historical fork — they live in the
+  // separate callouts[] pipeline, render with data-callout-id (never
+  // data-annotation-id), and drawAnnotationObject deliberately skips their
+  // dual-rep projections (data.type === 'callout') to avoid double-painting.
+  // So even when the erase engine flagged a projected callout group, neither
+  // ghost path could reach its pixels, and the bespoke getCalloutHitIds test
+  // (the actual callout-erase mechanism — see applyEraserAndCommit) only ran
+  // at pointer-up. Net effect: a sweep whole-deleted the callout at release
+  // with zero pending-erase warning. These helpers close that gap using the
+  // SAME hit test the commit uses, so preview and commit cannot disagree.
+  const collectPageCallouts = useCallback(() => {
+    const legacyCallouts = (annotationsRef.current?.objects || [])
+      .map((object) => getLegacyCalloutPayload(object, pageNumber))
+      .filter(Boolean);
+    return [
+      ...(Array.isArray(calloutsRef.current) ? calloutsRef.current : []),
+      ...legacyCallouts,
+    ];
+  }, [pageNumber]);
+
+  // Which callouts under these eraser points should show the pending-erase
+  // treatment. Ownership parity with getEraseBlockReason: another user's
+  // callout gets NO pending-erase preview for a non-owner viewer — the eraser
+  // never silently whole-deletes cross-author marks on release (any such
+  // delete routes through the confirm modal), so ghosting it live would warn
+  // about an erase that is not going to happen.
+  const getPermittedCalloutHitIds = useCallback((eraserPoints, excludeIds) => {
+    const allCallouts = collectPageCallouts();
+    if (!allCallouts.length) return [];
+    const hitIds = getCalloutHitIds({
+      callouts: allCallouts,
+      pageNumber,
+      pageWidth,
+      pageHeight,
+      eraserPoints,
+      eraserRadius: getPageRadius(),
+    });
+    if (!hitIds.length) return hitIds;
+    const viewerId = viewerIdRef.current;
+    const ownerId = documentOwnerIdRef.current;
+    return hitIds.filter((id) => {
+      if (excludeIds?.has(id)) return false;
+      if (!viewerId || !ownerId) return true; // boot window: same permissive posture as commit
+      const callout = allCallouts.find((c) => c.id === id);
+      return canModify({ annotation: callout, viewerId, documentOwnerId: ownerId });
+    });
+  }, [collectPageCallouts, getPageRadius, pageHeight, pageNumber, pageWidth]);
+
+  // Whole-delete pending-erase visual for callouts — the exact treatment
+  // non-path shapes get in eraseAtomicObjectsFromPreview, ported to the
+  // callout render pipeline. Mask-clone mode hides the cloned callout DOM
+  // (display:none — exact by definition); painted-canvas fallback
+  // destination-outs the callout's own silhouette via the painter's callouts
+  // lane (drawCallout — same page-unit geometry, so it scales with zoom like
+  // everything else).
+  const ghostCalloutsFromPreview = useCallback((ids) => {
+    if (!ids?.length) return;
+    const clone = maskCloneRef.current;
+    if (clone?.root) {
+      for (const id of ids) {
+        if (typeof CSS === 'undefined' || !CSS.escape) break;
+        clone.root
+          .querySelectorAll(`[data-callout-id="${CSS.escape(String(id))}"]`)
+          .forEach((el) => { el.style.display = 'none'; });
+      }
+      return;
+    }
+    const preview = livePreviewCanvasRef.current;
+    if (!preview || preview.style.display === 'none') return;
+    const idSet = new Set(ids.map(String));
+    const targets = collectPageCallouts().filter((c) => idSet.has(String(c.id)));
+    if (!targets.length || typeof document === 'undefined') return;
+    const mask = livePreviewMaskCanvasRef.current || document.createElement('canvas');
+    livePreviewMaskCanvasRef.current = mask;
+    mask.width = preview.width;
+    mask.height = preview.height;
+    const maskContext = mask.getContext('2d');
+    const previewContext = preview.getContext('2d');
+    if (!maskContext || !previewContext) return;
+    const drawScale = Number(preview.dataset.canvasDrawScale) || (preview.width / pageWidth);
+    const drawScaleY = Number(preview.dataset.canvasDrawScaleY) || drawScale;
+    paintAnnotationCanvas(maskContext, {
+      canvasWidth: mask.width,
+      canvasHeight: mask.height,
+      drawScale,
+      drawScaleY,
+      displayScale: Math.max(0.01, Number(viewerScaleRef.current) || 1),
+      pageWidth,
+      pageHeight,
+      offsetX: Number(preview.dataset.canvasPageOffsetX) || 0,
+      offsetY: Number(preview.dataset.canvasPageOffsetY) || 0,
+      objects: [],
+      callouts: targets,
+    });
+    previewContext.save();
+    previewContext.setTransform(1, 0, 0, 1, 0, 0);
+    previewContext.globalCompositeOperation = 'destination-out';
+    previewContext.drawImage(mask, 0, 0);
+    previewContext.restore();
+  }, [collectPageCallouts, pageHeight, pageWidth]);
+
   // Flip a pointer's preview live and replay everything stashed while
   // activation was pending (photo decode in flight, or the old
   // presentation-not-painted failure window).
@@ -553,13 +657,22 @@ const FabricEraserCanvas = memo(({
       }
       pointer.pendingAtomicIds.clear();
     }
+    if (pointer.pendingCalloutIds.size) {
+      const stashedCallouts = [...pointer.pendingCalloutIds]
+        .filter((id) => !pointer.previewCalloutIds.has(id));
+      if (stashedCallouts.length) {
+        ghostCalloutsFromPreview(stashedCallouts);
+        stashedCallouts.forEach((id) => pointer.previewCalloutIds.add(id));
+      }
+      pointer.pendingCalloutIds.clear();
+    }
     if (pointer.pendingPartial && !pointer.previewHasPartial) {
       pointer.previewHasPartial = true;
       pointer.pendingPartial = false;
       drawLiveErasePreviewSegment(pointer.points);
       maskCarvedPathHits(pointer, pointer.points);
     }
-  }, [drawLiveErasePreviewSegment, eraseAtomicObjectsFromPreview]);
+  }, [drawLiveErasePreviewSegment, eraseAtomicObjectsFromPreview, ghostCalloutsFromPreview]);
 
   // ROOT FIX for "annotations look different while erasing" (2026-07-14):
   // the live carve renders on a CLONE of the real SVG layer — same engine,
@@ -848,10 +961,17 @@ const FabricEraserCanvas = memo(({
     if (pointer.previewActive && pointer.previewHasPartial) {
       // Carving is live: O(1) punch of the new segment, plus the cheap
       // non-path ghost check so whole-delete objects crossed mid-carve still
-      // vanish live instead of popping out only at release.
+      // vanish live instead of popping out only at release. Callouts ride the
+      // same per-segment check (commit-identical hit test) so they ghost the
+      // moment the sweep crosses them, exactly like other whole-delete marks.
       drawLiveErasePreviewSegment(segment);
       maskCarvedPathHits(pointer, segment);
       ghostAtomicNonPathHits(pointer, segment);
+      const liveCalloutHits = getPermittedCalloutHitIds(segment, pointer.previewCalloutIds);
+      if (liveCalloutHits.length) {
+        ghostCalloutsFromPreview(liveCalloutHits);
+        liveCalloutHits.forEach((id) => pointer.previewCalloutIds.add(id));
+      }
       return true;
     }
     // Pre-carve phase plans only the NEW segment: earlier segments were
@@ -865,7 +985,15 @@ const FabricEraserCanvas = memo(({
       mode: eraserModeRef.current,
       canErase: (object) => !getEraseBlockReason(object),
     });
-    if (!plan.shouldPreview) return false;
+    // Callout hits must also ACTIVATE the preview: a sweep that only crosses
+    // a callout has no shared-store plan hits (callouts are the historical
+    // fork), yet it whole-deletes the callout at release — so it needs the
+    // same pending-erase presentation a shape-only sweep gets.
+    const calloutHitIds = getPermittedCalloutHitIds(
+      segment?.length ? segment : pointer.points,
+      pointer.previewCalloutIds,
+    );
+    if (!plan.shouldPreview && !calloutHitIds.length) return false;
     if (!pointer.previewActive) {
       // Mask-clone first (bit-identical, synchronous); the painted-canvas
       // copy only serves the exotic failure path (SVG missing mid-swap).
@@ -883,6 +1011,7 @@ const FabricEraserCanvas = memo(({
         // failure window would never carve/ghost for the rest of the gesture.
         pointer.pendingPartial = pointer.pendingPartial || plan.partialIds.length > 0;
         plan.atomicIds.forEach((id) => pointer.pendingAtomicIds.add(id));
+        calloutHitIds.forEach((id) => pointer.pendingCalloutIds.add(id));
         return false;
       }
     }
@@ -905,6 +1034,11 @@ const FabricEraserCanvas = memo(({
       eraseAtomicObjectsFromPreview(newAtomicIds);
       newAtomicIds.forEach((id) => pointer.previewAtomicIds.add(id));
     }
+    const newCalloutIds = calloutHitIds.filter((id) => !pointer.previewCalloutIds.has(id));
+    if (newCalloutIds.length) {
+      ghostCalloutsFromPreview(newCalloutIds);
+      newCalloutIds.forEach((id) => pointer.previewCalloutIds.add(id));
+    }
     return true;
   }, [
     activatePointerPreview,
@@ -914,7 +1048,9 @@ const FabricEraserCanvas = memo(({
     eraseAtomicObjectsFromPreview,
     getEraseBlockReason,
     getPageRadius,
+    getPermittedCalloutHitIds,
     ghostAtomicNonPathHits,
+    ghostCalloutsFromPreview,
     maskCarvedPathHits,
     pageNumber,
   ]);
@@ -1038,8 +1174,10 @@ const FabricEraserCanvas = memo(({
       previewActive: false,
       previewHasPartial: false,
       previewAtomicIds: new Set(),
+      previewCalloutIds: new Set(),
       pendingPartial: false,
       pendingAtomicIds: new Set(),
+      pendingCalloutIds: new Set(),
     };
     eraserDiagGestureRef.current = beginAnnotationGesture({
       surface: 'FabricEraserCanvas',
