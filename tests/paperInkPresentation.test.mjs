@@ -50,6 +50,49 @@ test('thin imported PDF Ink stays a compact centerline presentation', () => {
   assert.equal(projectPaperInkForPresentation(imported), imported);
 });
 
+test('wide imported PDF Ink projects like native ink (item 5c gate retired)', () => {
+  // UX 2026-07-17: since item 5a the stored imported width IS the rendered
+  // width, so the old imported-ink skip is gone — a wide imported open
+  // stroke presents as the same paper outline partial erase will commit,
+  // exactly like a native pen stroke of the same width.
+  const imported = nativeStroke({
+    tool: undefined,
+    isPdfImported: true,
+    pdfAnnotationType: 'Ink',
+    pdfAnnotationId: 'pdf-1',
+    strokeWidth: 8,
+  });
+
+  const projected = projectPaperInkForPresentation(imported);
+  assert.notEqual(projected, imported);
+  assert.equal(projected.fill, imported.stroke);
+  assert.equal(projected.stroke, 'transparent');
+  assert.equal(projected.strokeWidth, 0);
+  assert.equal(projected.fillRule, 'evenodd');
+  assert.equal(projected.paperPresentationGeometry, 'v1');
+  // Provenance survives the projection untouched.
+  assert.equal(projected.pdfAnnotationId, 'pdf-1');
+});
+
+test('converged imported filled ink (item 4) is never re-projected', () => {
+  // Fresh imports of pressure ink carry a visible fill + evenodd polygons —
+  // the fill guard returns them unchanged; no provenance check needed.
+  const converged = nativeStroke({
+    tool: undefined,
+    path: [['M', 0, 0], ['L', 20, 0], ['L', 20, 10], ['Z']],
+    stroke: 'transparent',
+    strokeWidth: 0,
+    fill: 'rgba(255, 0, 0, 1)',
+    fillRule: 'evenodd',
+    paperInkGeometry: 'v1',
+    isPdfImported: true,
+    pdfAnnotationType: 'Ink',
+    pdfInkRenderMode: 'filled-outline',
+  });
+
+  assert.equal(projectPaperInkForPresentation(converged), converged);
+});
+
 test('thin native ink stays a compact centerline presentation', () => {
   const thin = nativeStroke({ strokeWidth: 2.5 });
 

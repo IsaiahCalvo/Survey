@@ -4,12 +4,14 @@
  * node-test (.mjs) suites can import it without pulling JSX through the
  * Node loader. Same pattern as src/components/propertiesPanelShape.js.
  *
- * UX 2026-04-28: PDF-imported Ink has two different real-world shapes:
- * normal open pen lines, and closed zero-width outlines emitted by Adobe /
- * Drawboard for filled marker dots and pressure ink. Open lines get a
- * minimum visible width so they do not disappear at 100% zoom. Closed thin
- * outlines render as filled shapes instead of stroked paths, otherwise
- * they look like hollow rings.
+ * UX 2026-04-28 (amended 2026-07-17): PDF-imported Ink has two different
+ * real-world shapes: normal open pen lines, and closed zero-width outlines
+ * emitted by Adobe / Drawboard for filled marker dots and pressure ink.
+ * Open lines get a minimum visible width AT IMPORT TIME (stored value —
+ * see pdfAnnotationImporter item 5a) so they do not disappear at 100% zoom.
+ * Closed thin outlines converge to the native paper-ink polygons at import
+ * (item 4); the smoothClosedOutline branch below survives only for legacy
+ * pre-convergence rows, which otherwise look like hollow rings.
  *
  * UX 2026-07-14 (zoom-scaling unification): imported strokes previously
  * carried vector-effect:non-scaling-stroke so the floor became a constant
@@ -19,12 +21,15 @@
  * page — see also tests/pdfAnnotationNormalization.test.mjs.
  */
 
-// Minimum SVG user-unit stroke width for open PDF-imported paths — a
-// page-unit floor applied to the stored width; the rendered stroke scales
-// with zoom from there.
-const IMPORTED_PATH_MIN_STROKE_WIDTH = 2.5;
-const IMPORTED_SQUIGGLY_MIN_STROKE_WIDTH = 0.6;
-const IMPORTED_SQUIGGLY_MAX_STROKE_WIDTH = 1.1;
+// UX 2026-07-17 (import-normalization item 5a): the imported min/max stroke
+// width clamps that used to live here (IMPORTED_PATH_MIN_STROKE_WIDTH 2.5,
+// squiggly 0.6–1.1) moved to IMPORT TIME — pdfAnnotationImporter normalizes
+// the STORED width (Ink open strokes floor to 2.5 page units in
+// convertInkToFabricPath; Squiggly caps its synthesized width in
+// convertSquigglyToFabricPath). The renderer now passes the stored width
+// through for every path, native or imported — no provenance width branch.
+// Pre-normalization legacy cloud rows render at their stored (thin) width;
+// per owner direction pre-launch annotation rows are disposable.
 const FILLED_PDF_INK_MODE = 'filled-outline';
 
 /**
@@ -39,10 +44,6 @@ function isPdfImportedPath(obj) {
   if (obj?.isPdfImported === true) return true;
   if (typeof obj?.pdfAnnotationType === 'string' && obj.pdfAnnotationType.length > 0) return true;
   return false;
-}
-
-function isImportedSquigglyPath(obj) {
-  return isPdfImportedPath(obj) && String(obj?.pdfAnnotationType || '').toLowerCase() === 'squiggly';
 }
 
 function isVisiblePaint(value) {
@@ -281,7 +282,12 @@ function isClosedSubpath(points) {
   return distance(points[0], points[points.length - 1]) <= closeThreshold;
 }
 
-function hasSubstantiveClosedSubpath(path) {
+// Exported for pdfAnnotationImporter (item 4/5a convergence): import-time
+// classification must reuse the EXACT geometry predicate the render-time
+// filled-outline fallback uses, or thin-stroked pressure ink (Drawboard
+// closed outlines saved with /BS width 1 instead of 0) would classify
+// differently at import than it used to render.
+export function hasSubstantiveClosedSubpath(path) {
   return collectSubpaths(path).some((subpath) => {
     if (!subpath.points || subpath.points.length < 3) return false;
     const bounds = getPointBounds(subpath.points);
@@ -304,11 +310,15 @@ function dedupeAdjacentPoints(points) {
   return deduped;
 }
 
-function closedCatmullRomToCubicPath(points) {
+// Array-command twin of the string builder below — the import-time
+// convergence path (getImportedInkSmoothedOutlineCommands) needs Fabric
+// command arrays it can flatten into polygons, while the legacy render
+// branch still wants a d string. One geometry, two encodings.
+function closedCatmullRomToCubicCommands(points) {
   const pts = dedupeAdjacentPoints(points);
   if (pts.length < 3) return null;
 
-  const commands = [`M ${pts[0].x} ${pts[0].y}`];
+  const commands = [['M', pts[0].x, pts[0].y]];
   for (let i = 0; i < pts.length; i += 1) {
     const p0 = pts[(i - 1 + pts.length) % pts.length];
     const p1 = pts[i];
@@ -322,10 +332,15 @@ function closedCatmullRomToCubicPath(points) {
       x: p2.x - (p3.x - p1.x) / 6,
       y: p2.y - (p3.y - p1.y) / 6,
     };
-    commands.push(`C ${c1.x} ${c1.y} ${c2.x} ${c2.y} ${p2.x} ${p2.y}`);
+    commands.push(['C', c1.x, c1.y, c2.x, c2.y, p2.x, p2.y]);
   }
-  commands.push('Z');
-  return commands.join(' ');
+  commands.push(['Z']);
+  return commands;
+}
+
+function closedCatmullRomToCubicPath(points) {
+  const commands = closedCatmullRomToCubicCommands(points);
+  return commands ? commands.map(formatPathCommand).join(' ') : null;
 }
 
 function openCatmullRomToCubicPath(points) {
@@ -351,7 +366,7 @@ function openCatmullRomToCubicPath(points) {
   return commands.join(' ');
 }
 
-function ellipsePathDFromBounds(bounds) {
+function ellipseCommandsFromBounds(bounds) {
   if (!bounds || bounds.width <= 0 || bounds.height <= 0) return null;
   const cx = bounds.minX + bounds.width / 2;
   const cy = bounds.minY + bounds.height / 2;
@@ -362,13 +377,18 @@ function ellipsePathDFromBounds(bounds) {
   // render them as soft round blobs, not as the raw polygon vertices.
   const k = 0.5522847498307936;
   return [
-    `M ${cx + rx} ${cy}`,
-    `C ${cx + rx} ${cy + ry * k} ${cx + rx * k} ${cy + ry} ${cx} ${cy + ry}`,
-    `C ${cx - rx * k} ${cy + ry} ${cx - rx} ${cy + ry * k} ${cx - rx} ${cy}`,
-    `C ${cx - rx} ${cy - ry * k} ${cx - rx * k} ${cy - ry} ${cx} ${cy - ry}`,
-    `C ${cx + rx * k} ${cy - ry} ${cx + rx} ${cy - ry * k} ${cx + rx} ${cy}`,
-    'Z',
-  ].join(' ');
+    ['M', cx + rx, cy],
+    ['C', cx + rx, cy + ry * k, cx + rx * k, cy + ry, cx, cy + ry],
+    ['C', cx - rx * k, cy + ry, cx - rx, cy + ry * k, cx - rx, cy],
+    ['C', cx - rx, cy - ry * k, cx - rx * k, cy - ry, cx, cy - ry],
+    ['C', cx + rx * k, cy - ry, cx + rx, cy - ry * k, cx + rx, cy],
+    ['Z'],
+  ];
+}
+
+function ellipsePathDFromBounds(bounds) {
+  const commands = ellipseCommandsFromBounds(bounds);
+  return commands ? commands.map(formatPathCommand).join(' ') : null;
 }
 
 function shouldRenderClosedInkAsEllipse(obj) {
@@ -389,7 +409,7 @@ function shouldRenderClosedInkAsEllipse(obj) {
   return true;
 }
 
-function smoothClosedOutlinePathD(path) {
+function smoothClosedOutlineCommands(path) {
   // Drawboard/Adobe ink frequently arrives as a filled outline path with a
   // mixed command stream: some cubic curves plus some straight L segments.
   // Low-point polygon outlines need rebuilding, but Drawboard pressure ink
@@ -408,17 +428,47 @@ function smoothClosedOutlinePathD(path) {
     const isCubicDominant = cubicCount >= 3 && cubicCount >= lineCount * 2;
 
     if (isCubicDominant && hasExplicitClose) {
-      smoothed.push(subpath.commands.map(formatPathCommand).join(' '));
+      smoothed.push(subpath.commands);
       continue;
     }
 
-    const d = subpath.points.length >= 3
-      ? closedCatmullRomToCubicPath(subpath.points)
+    const commands = subpath.points.length >= 3
+      ? closedCatmullRomToCubicCommands(subpath.points)
       : null;
-    smoothed.push(d || subpath.commands.map(formatPathCommand).join(' '));
+    smoothed.push(commands || subpath.commands);
   }
 
-  return smoothed.join(' ');
+  return smoothed.flat();
+}
+
+function smoothClosedOutlinePathD(path) {
+  const commands = smoothClosedOutlineCommands(path);
+  return commands ? commands.map(formatPathCommand).join(' ') : null;
+}
+
+/**
+ * Import-time convergence helper (import-normalization item 4, 2026-07-17).
+ *
+ * Returns the SAME smoothed closed-outline geometry the legacy render branch
+ * (`smoothClosedOutline` / `smoothClosedOutlineAsEllipse` in renderPathToSvgD)
+ * would draw for a filled imported-PDF ink outline, as Fabric command arrays.
+ * pdfAnnotationImporter flattens this into the native paper-ink `polygons`
+ * representation at import time, so imported pressure ink and marker dots ride
+ * the exact same evenodd filledOutline render/hit/erase branch as native pen
+ * ink — with the Drawboard smoothing baked into the stored geometry instead of
+ * re-applied on every render. Returns null when the path has no usable
+ * subpaths (caller keeps the legacy representation).
+ *
+ * @param {object} obj Fabric path JSON as assembled at import time (needs
+ *   `path`, plus `fill`/`stroke`/`opacity` for the marker-dot ellipse check).
+ */
+export function getImportedInkSmoothedOutlineCommands(obj) {
+  if (!Array.isArray(obj?.path) || obj.path.length === 0) return null;
+  if (shouldRenderClosedInkAsEllipse(obj)) {
+    const ellipse = ellipseCommandsFromBounds(getPathBoundsWithOrigin(obj.path));
+    if (ellipse) return ellipse;
+  }
+  return smoothClosedOutlineCommands(obj.path);
 }
 
 function smoothOpenStrokePathD(path) {
@@ -504,11 +554,9 @@ export function renderPathToSvgAttrs(obj) {
     };
   }
 
-  const strokeWidth = isImportedSquigglyPath(obj)
-    ? Math.min(IMPORTED_SQUIGGLY_MAX_STROKE_WIDTH, Math.max(IMPORTED_SQUIGGLY_MIN_STROKE_WIDTH, rawWidth))
-    : isImported
-      ? Math.max(IMPORTED_PATH_MIN_STROKE_WIDTH, rawWidth)
-    : rawWidth;
+  // Item 5a (2026-07-17): stored width passes through unmodified — imported
+  // widths are normalized once at import (see module comment above).
+  const strokeWidth = rawWidth;
 
   // UX 2026-07-14 (zoom-scaling unification): every annotation stroke lives
   // in PAGE units and scales with zoom, exactly like user-drawn rects and

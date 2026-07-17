@@ -2,7 +2,12 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { convertInkToFabricPath, convertPdfAnnotationToFabric } from '../src/utils/pdfAnnotationImporter.js';
 import { makeInternalPenPathSpec } from '../src/utils/nativeShapeFactory.js';
-import { renderPathToSvgAttrs, renderPathToSvgD } from '../src/utils/svgPathAttrs.js';
+import {
+  renderPathToSvgAttrs,
+  renderPathToSvgD,
+  isFilledInkOutlineAttrs,
+  getFilledInkHitTargetProps,
+} from '../src/utils/svgPathAttrs.js';
 
 // UX 2026-04-21 (import-normalization Chunk 2): the imported Ink Fabric
 // spec must be field-for-field identical to an internally-drawn pen
@@ -160,45 +165,49 @@ test('renderPathToSvgAttrs preserves stroke / fill / cap / join parity for impor
   }
 });
 
-test('renderPathToSvgAttrs promotes thin imported paths to a page-unit floor that scales with zoom', () => {
-  // 2026-04-28 visibility fix, amended 2026-07-14 (zoom-scaling
-  // unification): thin PDF strokes (typical /BS borderWidth 0.5-1.1pt)
-  // still clamp up to a visible page-unit floor, but the old
-  // vector-effect:non-scaling-stroke pin is GONE — per user direction all
-  // annotation strokes (imported included) scale with zoom exactly like
-  // rect/ellipse strokes. Internal pen strokes are unaffected because the
-  // user picks their width directly.
-  const thin = {
+test('thin imported Ink is promoted to the page-unit visibility floor AT IMPORT TIME', () => {
+  // 2026-04-28 visibility fix, moved to import time 2026-07-17 (item 5a):
+  // thin PDF strokes (typical /BS borderWidth 0.5-1.1pt) clamp up to a
+  // visible page-unit floor in the STORED value, so the renderer, eraser
+  // and hit-testing all share one width with no provenance branch. The
+  // floor is a page-unit width that scales with zoom (no
+  // vector-effect:non-scaling-stroke pin — 2026-07-14 unification).
+  const thinInk = {
+    id: 'ink-thin-import-1',
+    subtype: 'Ink',
+    inkLists: [[10, 10, 30, 30]],
+    color: [0, 0, 0],
+    borderWidth: 0.6, // stored would be 0.6*0.82 ≈ 0.75 without the floor
+    rect: [0, 0, 100, 100],
+  };
+  const imported = convertInkToFabricPath(thinInk, viewport, 1);
+  assert.ok(imported.strokeWidth >= 1.5, `stored width clamps up at import (got ${imported.strokeWidth})`);
+
+  // Renderer: pure passthrough of the stored width for BOTH provenances —
+  // the render-time imported clamp is retired.
+  const attrs = renderPathToSvgAttrs(imported);
+  assert.equal(attrs.strokeWidth, imported.strokeWidth, 'render passes the stored width through');
+  assert.equal(attrs.vectorEffect, undefined, 'imported stroke scales with zoom (no non-scaling-stroke pin)');
+
+  const internalThin = {
     type: 'path',
     path: [['M', 0, 0], ['L', 1, 1]],
     stroke: '#000',
     strokeWidth: 0.9,
     fill: null,
   };
-  const importedThin = { ...thin, isPdfImported: true, pdfAnnotationType: 'Ink', pdfAnnotationId: 'p1' };
-  const internalThin = { ...thin };
-
-  const importedAttrs = renderPathToSvgAttrs(importedThin);
   const internalAttrs = renderPathToSvgAttrs(internalThin);
-
-  // Imported: clamped, in page units. Floor lives in svgPathAttrs.js
-  // (IMPORTED_PATH_MIN_STROKE_WIDTH); this test asserts the *behavior*
-  // (clamp activates, value is well above 0.9, NO zoom pin) without
-  // hard-coding the floor number, so visual tuning doesn't break tests.
-  assert.ok(importedAttrs.strokeWidth >= 1.5, `imported thin stroke clamps up (got ${importedAttrs.strokeWidth})`);
-  assert.ok(importedAttrs.strokeWidth > 0.9, 'imported thin stroke is wider than its raw input');
-  assert.equal(importedAttrs.vectorEffect, undefined, 'imported stroke scales with zoom (no non-scaling-stroke pin)');
-
-  // Internal: passthrough.
   assert.equal(internalAttrs.strokeWidth, 0.9, 'internal stroke width passes through unchanged');
   assert.equal(internalAttrs.vectorEffect, undefined, 'internal stroke has no vector-effect by default');
 
-  // Already-thick imported strokes are NOT shrunk.
-  const thickImported = renderPathToSvgAttrs({
-    ...importedThin,
-    strokeWidth: 4,
-  });
-  assert.equal(thickImported.strokeWidth, 4, 'thick imported stroke retains its width');
+  // A provenance-flagged path with a thin STORED width now renders at that
+  // stored width — no imported-vs-internal width divergence at render time.
+  const legacyThinImported = renderPathToSvgAttrs({ ...internalThin, isPdfImported: true, pdfAnnotationType: 'Ink' });
+  assert.equal(legacyThinImported.strokeWidth, 0.9, 'no render-time width branch on provenance');
+
+  // Already-thick imported widths are NOT shrunk at import.
+  const thickInk = convertInkToFabricPath({ ...thinInk, id: 'ink-thick-1', borderWidth: 6 }, viewport, 1);
+  assert.ok(thickInk.strokeWidth > 2.5, 'thick imported stroke keeps its width');
 
   // Legacy strokeUniform opt-ins no longer pin either — one zoom convention
   // for every stroke.
@@ -206,21 +215,23 @@ test('renderPathToSvgAttrs promotes thin imported paths to a page-unit floor tha
   assert.equal(legacyUniform.vectorEffect, undefined, 'legacy strokeUniform no longer pins stroke width');
 });
 
-test('renderPathToSvgAttrs keeps imported PDF Squiggly strokes lightweight', () => {
-  const attrs = renderPathToSvgAttrs({
-    type: 'path',
-    path: [['M', 0, 0], ['L', 30, 0]],
-    stroke: '#ff0000',
-    strokeWidth: 2,
-    fill: null,
-    isPdfImported: true,
-    pdfAnnotationType: 'Squiggly',
-    pdfAnnotationId: 'squiggly-1',
-  });
+test('imported PDF Squiggly stores a lightweight width at import; render passes it through', () => {
+  // Item 5a: the squiggly 0.6–1.1 cap lives in convertSquigglyToFabricPath
+  // (stored value), not in the renderer.
+  const imported = convertPdfAnnotationToFabric({
+    id: 'squiggly-width-1',
+    subtype: 'Squiggly',
+    rect: [10, 20, 70, 34],
+    color: [1, 0, 0],
+    borderStyle: { width: 4 },
+  }, viewport, 1);
+  assert.ok(imported.strokeWidth <= 1.1, `stored squiggle width is capped, got ${imported.strokeWidth}`);
+  assert.ok(imported.strokeWidth >= 0.6, `stored squiggle width has a floor, got ${imported.strokeWidth}`);
 
-  assert.ok(attrs.strokeWidth <= 1.1, `squiggle stroke is capped, got ${attrs.strokeWidth}`);
-  // 2026-07-14 zoom-scaling unification: the cap is a page-unit width that
-  // scales with zoom — no non-scaling-stroke pin.
+  const attrs = renderPathToSvgAttrs(imported);
+  assert.equal(attrs.strokeWidth, imported.strokeWidth, 'render passes the stored width through');
+  // 2026-07-14 zoom-scaling unification: page-unit width that scales with
+  // zoom — no non-scaling-stroke pin.
   assert.equal(attrs.vectorEffect, undefined);
 });
 
@@ -236,14 +247,73 @@ test('closed zero-width PDF Ink imports as a filled outline, not a hollow stroke
 
   const imported = convertInkToFabricPath(closedInk, viewport, 1);
   assert.ok(imported);
+  // pdfInkRenderMode survives as EXPORT PROVENANCE only.
   assert.equal(imported.pdfInkRenderMode, 'filled-outline');
   assert.ok(imported.fill?.startsWith('rgba(164, 103, 243'), `fill should use ink color, got ${imported.fill}`);
+
+  // UX 2026-07-17 (import-normalization item 4): freshly imported filled ink
+  // converges onto the NATIVE paper-ink representation — evenodd polygons +
+  // flattened ring path with the Drawboard smoothing baked in — so it rides
+  // the exact same render/hit/erase branch as native pen ink.
+  assert.equal(imported.stroke, 'transparent');
+  assert.equal(imported.strokeWidth, 0);
+  assert.equal(imported.fillRule, 'evenodd');
+  assert.equal(imported.paperInkGeometry, 'v1');
+  assert.ok(Array.isArray(imported.polygons) && imported.polygons.length > 0, 'polygons derived at import');
+  assert.ok(imported.path.every((seg) => ['M', 'L', 'Z'].includes(seg[0])), 'path is flattened polygon rings');
 
   const attrs = renderPathToSvgAttrs(imported);
   assert.equal(attrs.stroke, 'none');
   assert.equal(attrs.strokeWidth, 0);
   assert.equal(attrs.fill, imported.fill);
-  assert.equal(attrs.fillRule, 'nonzero');
+  // Native evenodd filledOutline branch — NOT the legacy smoothClosedOutline
+  // mode (which is retained only for pre-convergence cloud rows).
+  assert.equal(attrs.fillRule, 'evenodd');
+  assert.equal(attrs.filledOutline, true);
+  assert.notEqual(attrs.smoothClosedOutline, true);
+});
+
+test('converged imported filled ink gets the NATIVE filled-ink hit contract', () => {
+  const closedInk = {
+    id: 'ink-filled-outline-native-hit',
+    subtype: 'Ink',
+    inkLists: [[10, 10, 20, 10, 20, 20, 10, 20, 10.1, 10.1]],
+    color: [164, 103, 243],
+    borderWidth: 0,
+    rect: [0, 0, 100, 100],
+  };
+  const imported = convertInkToFabricPath(closedInk, viewport, 1);
+  const attrs = renderPathToSvgAttrs(imported);
+  // Same interior-hit + boundary-band contract as native paper ink
+  // (getFilledInkHitTargetProps native arm) — imported pressure ink is no
+  // longer special-cased to the hairline-only imported contract.
+  assert.equal(isFilledInkOutlineAttrs(attrs), true);
+  const props = getFilledInkHitTargetProps(attrs, { strokeWidth: 1, inverseScale: 1 });
+  assert.ok(props);
+  assert.equal(props.pointerEvents, 'all');
+  assert.equal(props.fillRule, 'evenodd');
+  assert.equal(props.stroke, 'rgba(0,0,0,0.001)');
+  assert.ok(props.strokeWidth >= 12);
+});
+
+test('converged imported marker dots bake the smooth ellipse into the stored polygons', () => {
+  // Low-point semi-transparent closed outline — the Drawboard marker-dot
+  // signature. Legacy render synthesized an ellipse per draw; convergence bakes
+  // that ellipse into the polygon geometry once at import.
+  const dotInk = {
+    id: 'ink-marker-dot-1',
+    subtype: 'Ink',
+    inkLists: [[10, 20, 16, 19, 20, 13, 18, 6, 12, 1, 4, 2, 0, 9, 2, 16, 10.2, 19.9]],
+    color: [164, 103, 243],
+    borderWidth: 0,
+    rect: [0, 0, 100, 100],
+  };
+  const imported = convertInkToFabricPath(dotInk, viewport, 1);
+  assert.equal(imported.fillRule, 'evenodd');
+  assert.ok(Array.isArray(imported.polygons) && imported.polygons.length === 1, 'one dot polygon');
+  const ring = imported.polygons[0][0];
+  // Densely sampled ellipse — far more vertices than the 9 input points.
+  assert.ok(ring.length > 20, `ellipse should be densely sampled, got ${ring.length} points`);
 });
 
 test('legacy closed thin imported Ink rows render filled even without new import marker', () => {

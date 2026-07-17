@@ -302,3 +302,50 @@ test('rotation and non-uniform scale are baked before erasing in page space', ()
   assert.ok(points.every((point) => point.y >= -5 && point.y <= 205));
   assert.ok(points.every((point) => point.x >= 297 && point.x <= 303));
 });
+
+test('converged imported filled ink (item-4 native representation) takes a clean partial carve', () => {
+  // Shape emitted by convertInkToFabricPath for filled pressure ink since the
+  // 2026-07-17 item-4 convergence: evenodd polygons + ring path, left/top
+  // world placement, no centerline. Must ride the SAME polygon-subtraction
+  // branch as native paper ink.
+  const ink = createInkAnnotation([{ x: 0, y: 10 }, { x: 100, y: 10 }], {
+    id: 'imported-converged',
+    color: 'rgba(255, 0, 0, 1)',
+    width: 8,
+  });
+  const imported = {
+    type: 'path',
+    id: 'imported-converged',
+    path: ink.cmds,
+    polygons: ink.polygons,
+    left: 200,
+    top: 90,
+    width: 100,
+    height: 20,
+    fill: 'rgba(255, 0, 0, 1)',
+    stroke: 'transparent',
+    strokeWidth: 0,
+    fillRule: 'evenodd',
+    paperInkGeometry: 'v1',
+    isPdfImported: true,
+    pdfAnnotationId: 'pdf-src-9',
+    pdfAnnotationType: 'Ink',
+    pdfInkRenderMode: 'filled-outline',
+    layer: 'pdf-annotations',
+  };
+
+  const result = erase({ objects: [imported] }, [{ x: 250, y: 100 }], { eraserRadius: 5 });
+  assert.equal(result.didChange, true);
+  const survivor = result.pageAnnotations.objects[0];
+  assert.equal(survivor.pdfAnnotationId, 'pdf-src-9');
+  assert.equal(survivor.fillRule, 'evenodd');
+  assert.equal(survivor.paperEraserGeometry, 'v1');
+  assert.equal(survivor.fill, imported.fill);
+  assert.equal(survivor.strokeWidth, 0);
+  const points = pathEndpoints(survivor.path);
+  // The stroke spans world x 200→300 at y≈100; the bite at x=250 must leave
+  // geometry on BOTH sides — a partial carve, not a whole-stroke delete.
+  assert.ok(points.some((point) => point.x < 245), 'geometry survives left of the bite');
+  assert.ok(points.some((point) => point.x > 255), 'geometry survives right of the bite');
+  assert.equal(result.deletedIds.length, 0);
+});

@@ -277,6 +277,43 @@ export function commandsToPolygonSet(commands, {
   return normalizeMultiPolygon(geometry);
 }
 
+/**
+ * Convert an already-closed FILLED outline path (imported-PDF pressure ink /
+ * marker dots) into the native paper-ink polygon representation.
+ *
+ * Unlike the plain `fill: true` mode of commandsToPolygonSet (which only
+ * groups rings by containment for evenodd nesting), this also UNIONS separate
+ * top-level polygons. Imported outlines are authored for the NONZERO fill
+ * rule, where two partially-overlapping subpaths with the same winding stay
+ * solid; under the evenodd rule native paper ink renders with, that overlap
+ * would become a hole. The union removes overlaps so the evenodd result is
+ * identical to the nonzero source. Nested rings (letter counters like "o")
+ * survive as genuine holes either way.
+ *
+ * curveTolerance defaults tighter than the eraser's 0.75 because this bakes
+ * the PERMANENT visual geometry at import time — one sample per 0.25 page
+ * units keeps flattened cubics visually identical to the source curves even
+ * at deep zoom.
+ *
+ * @returns {Array} multipolygon (possibly empty when the path is degenerate).
+ */
+export function filledOutlineCommandsToPolygonSet(commands, { curveTolerance = 0.25 } = {}) {
+  const grouped = commandsToPolygonSet(commands, { fill: true, curveTolerance });
+  if (grouped.length <= 1) return grouped;
+  try {
+    let geometry = null;
+    for (const polygon of grouped) {
+      geometry = geometry ? union(geometry, [polygon]) : [polygon];
+    }
+    const unioned = normalizeMultiPolygon(geometry);
+    return unioned.length ? unioned : grouped;
+  } catch {
+    // martinez can reject degenerate self-touching rings; the grouped set is
+    // still a faithful evenodd rendering for non-overlapping subpaths.
+    return grouped;
+  }
+}
+
 export function polygonSetToCommands(value) {
   const commands = [];
   for (const polygon of normalizeMultiPolygon(value)) {

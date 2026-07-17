@@ -12,6 +12,15 @@
  */
 import { makeInternalPenPathSpec } from './nativeShapeFactory.js';
 import {
+  getImportedInkSmoothedOutlineCommands,
+  hasSubstantiveClosedSubpath,
+} from './svgPathAttrs.js';
+import {
+  filledOutlineCommandsToPolygonSet,
+  polygonSetToCommands,
+  translatePolygonSet,
+} from './paperAnnotationGeometry.js';
+import {
   normalizePdfLineEndings,
   normalizePdfNameToken,
   readPdfLibDashArray,
@@ -1588,6 +1597,15 @@ function convertPdfRectToViewportRect(rect, viewport, scale = 1) {
 
 const FILLED_PDF_INK_MODE = 'filled-outline';
 
+// UX 2026-07-17 (import-normalization item 5a): minimum page-unit stroke
+// width for imported OPEN ink, applied to the STORED value at import time.
+// Source PDFs ship hairline /BS widths (0.5–1.1pt) that are invisible at
+// 100% zoom; the floor used to live in the renderer (svgPathAttrs) as a
+// provenance-gated clamp — moving it here makes the stored value the truth
+// the renderer, eraser, and hit-testing all share, with no imported-ink
+// branch at render/erase time. Same 2.5 value the renderer used.
+const IMPORTED_INK_MIN_STROKE_WIDTH = 2.5;
+
 function getInkPathEndpoint(seg) {
   if (!Array.isArray(seg) || seg.length === 0) return null;
   if (seg[0] === 'M' || seg[0] === 'L') return { x: seg[1], y: seg[2] };
@@ -1780,10 +1798,83 @@ export function convertInkToFabricPath(annotation, viewport, scale = 1) {
     // Zero-width strokes with no fill fallback need a visible width for editability.
     strokeWidth = 0.9 * scale;
   }
+  // Filled-outline classification. Two real-world encodings land here:
+  // 1. Zero-width /BS + closed outlines (Drawboard pressure ink, marker
+  //    dots) — the strict pre-2026-07-17 check.
+  // 2. THIN-stroked closed outlines (/BS width ~1 on pressure-ink outline
+  //    geometry — same Drawboard export, different width convention). The
+  //    renderer has always caught these via the shouldFillPdfInkOutline
+  //    geometry fallback (rawWidth <= 1.1 + closed subpath); since item 5a
+  //    normalizes the stored width at import (which would defeat that
+  //    render fallback), the SAME geometry predicate now runs here so the
+  //    classification is made once, before any width normalization.
   const fillsClosedOutline =
-    (useFilledAppearancePath || borderWidth <= 0) &&
-    pathSubpathsAreClosed(pathData, importedWidth, importedHeight);
+    ((useFilledAppearancePath || borderWidth <= 0) &&
+      pathSubpathsAreClosed(pathData, importedWidth, importedHeight)) ||
+    (strokeWidth <= 1.1 * scale && hasSubstantiveClosedSubpath(pathData));
+  if (!fillsClosedOutline) {
+    // Item 5a: normalize the stored width up to the visibility floor here,
+    // once, instead of re-clamping in the renderer on every draw.
+    strokeWidth = Math.max(IMPORTED_INK_MIN_STROKE_WIDTH * scale, strokeWidth);
+  }
   const inkPaint = hexToRgba(strokeColorHex, strokeOpacity);
+
+  // UX 2026-07-17 (import-normalization item 4): imported FILLED ink (Drawboard
+  // pressure strokes, marker dots) converges onto the NATIVE paper-ink
+  // representation at import time — evenodd `polygons` + flattened ring path,
+  // exactly like createProductionPaperInk / eraser-carved ink — instead of the
+  // legacy `smoothClosedOutline` render mode. The Drawboard smoothing (marker
+  // dots as true ellipses, Catmull-Rom rebuild of polygonal outlines,
+  // preserved authored cubics) is baked INTO the stored geometry via
+  // getImportedInkSmoothedOutlineCommands, so before/after visuals are
+  // identical while render/hover/hit/erase all ride the single native branch.
+  // No centerline exists for these outlines, so paperCenterline is absent and
+  // the export fallback stays outline-based (createFilledPaperInkAnnotation
+  // already handles that: /AP filled polygons + polygon-ring /InkList).
+  // The legacy smoothClosedOutline render branch is intentionally KEPT in
+  // svgPathAttrs.js for pre-existing cloud rows and metadata-stripped sync
+  // round-trips that still store the raw outline path.
+  let nativeFilledOutline = null;
+  if (fillsClosedOutline) {
+    try {
+      const smoothingProbe = { path: pathData, fill: inkPaint, stroke: null, strokeWidth: 0 };
+      const smoothedCommands = getImportedInkSmoothedOutlineCommands(smoothingProbe) || pathData;
+      const polygons = filledOutlineCommandsToPolygonSet(smoothedCommands);
+      if (polygons.length > 0) {
+        // Re-normalize to local coords: smoothing (ellipse synthesis /
+        // Catmull-Rom overshoot) can shift the geometry off the raw path
+        // bounds, and the native contract is "path bounds == object bounds"
+        // with left/top carrying the world placement (same convention as the
+        // bbox-drift fix above).
+        let pMinX = Infinity, pMinY = Infinity, pMaxX = -Infinity, pMaxY = -Infinity;
+        for (const polygon of polygons) {
+          for (const ring of polygon) {
+            for (const [px, py] of ring) {
+              if (px < pMinX) pMinX = px;
+              if (px > pMaxX) pMaxX = px;
+              if (py < pMinY) pMinY = py;
+              if (py > pMaxY) pMaxY = py;
+            }
+          }
+        }
+        if (Number.isFinite(pMinX) && Number.isFinite(pMinY)) {
+          const localPolygons = translatePolygonSet(polygons, -pMinX, -pMinY);
+          nativeFilledOutline = {
+            polygons: localPolygons,
+            path: polygonSetToCommands(localPolygons),
+            left: importedLeft + pMinX,
+            top: importedTop + pMinY,
+            width: pMaxX - pMinX,
+            height: pMaxY - pMinY,
+          };
+        }
+      }
+    } catch (err) {
+      // Import must never fail on geometry conversion — fall back to the
+      // legacy filled-outline representation, which still renders correctly.
+      console.warn('[PDFImport] filled-ink native convergence failed; keeping legacy outline:', err?.message || err);
+    }
+  }
 
   // UX 2026-04-21: Ink is by PDF spec a stroked freeform scribble — never
   // filled. Drawboard (and other editors) sometimes emit an /AP appearance
@@ -1841,8 +1932,26 @@ export function convertInkToFabricPath(annotation, viewport, scale = 1) {
     pdfAnnotationId: annotation.id,
     pdfAnnotationType: 'Ink',
     ...(fillsClosedOutline ? {
+      // Provenance only ("this arrived as a filled-outline pressure stroke")
+      // — export/debug tooling reads it; renderers must not branch on it for
+      // converged objects (they ride the evenodd/polygons native branch).
       pdfInkRenderMode: FILLED_PDF_INK_MODE,
       data: { pdfInkRenderMode: FILLED_PDF_INK_MODE },
+    } : {}),
+    // Item-4 convergence: replace the legacy filled-outline fields with the
+    // native paper-ink representation (see block above). Keeps provenance.
+    ...(nativeFilledOutline ? {
+      path: nativeFilledOutline.path,
+      polygons: nativeFilledOutline.polygons,
+      left: nativeFilledOutline.left,
+      top: nativeFilledOutline.top,
+      width: nativeFilledOutline.width,
+      height: nativeFilledOutline.height,
+      fill: inkPaint,
+      stroke: 'transparent',
+      strokeWidth: 0,
+      fillRule: 'evenodd',
+      paperInkGeometry: 'v1',
     } : {}),
     layer: 'pdf-annotations'
   };

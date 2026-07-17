@@ -12,7 +12,6 @@ import {
 import { getEraserOperation } from './eraserPolicy.js';
 
 const EPSILON = 1e-7;
-const IMPORTED_INK_MIN_WIDTH = 2.5;
 
 const numberOr = (value, fallback = 0) => {
   const numeric = Number(value);
@@ -201,12 +200,14 @@ function pathToPageAnnotation(object, internalId, { forcePolygon = false } = {})
     };
   }
 
-  const importedInk = object?.isPdfImported
-    || String(object?.pdfAnnotationType ?? object?.data?.pdfAnnotationType ?? '')
-      .trim().toLowerCase().replace(/^\//, '') === 'ink';
-  const geometryStrokeWidth = importedInk && visibleStroke
-    ? Math.max(IMPORTED_INK_MIN_WIDTH, worldStrokeWidth)
-    : worldStrokeWidth;
+  // UX 2026-07-17 (import-normalization item 5b): the imported-ink minimum
+  // width derivation that used to live here (IMPORTED_INK_MIN_WIDTH 2.5 on
+  // both polygon paths below) is retired. It existed to keep erase geometry
+  // in sync with the RENDER-time imported width clamp; item 5a moved that
+  // clamp into the STORED value at import, so the stored width the eraser
+  // reads here already IS the rendered width — for native and imported ink
+  // alike, with no provenance branch.
+  const geometryStrokeWidth = worldStrokeWidth;
   const persistedPolygons = normalizeMultiPolygon(object?.polygons);
   if (persistedPolygons.length) {
     const polygons = transformPolygons(persistedPolygons, transform);
@@ -227,9 +228,7 @@ function pathToPageAnnotation(object, internalId, { forcePolygon = false } = {})
   if (forcePolygon && visibleStroke && geometryStrokeWidth > 0) {
     const localPolygons = commandsToPolygonSet(localCommands, {
       fill: false,
-      strokeWidth: importedInk
-        ? Math.max(IMPORTED_INK_MIN_WIDTH / Math.max(scaleMagnitude, EPSILON), rawStrokeWidth)
-        : rawStrokeWidth,
+      strokeWidth: rawStrokeWidth,
       simplifyTolerance: Math.max(0.1, rawStrokeWidth * 0.25),
     });
     const polygons = transformPolygons(localPolygons, transform);

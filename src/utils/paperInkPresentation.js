@@ -16,24 +16,30 @@ const visiblePaint = (value) => {
     && paint !== 'rgba(0, 0, 0, 0)';
 };
 
-const isImportedInk = (object) => Boolean(
-  object?.isPdfImported
-  || object?.pdfAnnotationId
-  || object?.pdfAnnotationType
-  || object?.data?.pdfAnnotationType,
-);
-
 /**
- * Paint native freehand ink as its paper outline before the first erase.
+ * Paint freehand ink as its paper outline before the first erase.
  * Persisted centerlines stay compact; the visual model matches the geometry
  * that partial erase will commit, so pointer-up cannot reshape untouched ink.
+ *
+ * UX 2026-07-17 (import-normalization item 5c): the imported-ink skip that
+ * used to live here is retired.
+ * - Imported FILLED/pressure ink converges to the native polygon
+ *   representation at import (item 4) and carries a visible fill, so the
+ *   `visiblePaint(object.fill)` guard below already returns it unchanged —
+ *   the provenance check was redundant for it.
+ * - Imported OPEN ink was skipped because its STORED width (often 0.82pt)
+ *   differed from its RENDERED width (renderer clamped to 2.5): projecting
+ *   from the stored width would have visibly thinned the stroke when the
+ *   eraser armed. Item 5a moved that clamp into the stored value, so stored
+ *   == rendered and wide imported strokes now project exactly like native
+ *   ink — the eraser-mode presentation matches the geometry partial erase
+ *   (pageSpaceEraser forcePolygon) will actually commit.
  */
 export function projectPaperInkForPresentation(object) {
   if (
     !object
     || object.paperEraserGeometry
     || object.paperPresentationGeometry
-    || isImportedInk(object)
     || visiblePaint(object.fill)
     || !visiblePaint(object.stroke)
   ) return object;

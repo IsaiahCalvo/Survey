@@ -553,7 +553,10 @@ test('convertPdfAnnotationToFabric smooths Ink paths and normalizes stroke width
 
   assert.equal(obj.type, 'path');
   assert.equal(obj.stroke, 'rgba(0, 0, 255, 0.5)');
-  assert.ok(Math.abs(obj.strokeWidth - 2.46) < 1e-6);
+  // /BS width 3 → 3 * 0.82 = 2.46, then floored to the 2.5 page-unit
+  // visibility minimum applied at import (item 5a, 2026-07-17 — the floor
+  // moved out of the renderer into the stored value).
+  assert.ok(Math.abs(obj.strokeWidth - 2.5) < 1e-6);
   assert.ok(obj.path.some((segment) => segment[0] === 'Q'));
 });
 
@@ -654,7 +657,15 @@ test('convertPdfAnnotationToFabric prefers appearance-stream geometry for filled
 
   assert.equal(obj.type, 'path');
   assert.equal(obj.fill, 'rgba(255, 0, 0, 0.3)');
-  assert.equal(obj.stroke, null);
+  // UX 2026-07-17 (import-normalization item 4): filled appearance-stream ink
+  // converges onto the NATIVE paper-ink representation at import — evenodd
+  // polygons, transparent stroke — the same shape createProductionPaperInk
+  // emits, so it rides the native render/hit/erase branch.
+  assert.equal(obj.stroke, 'transparent');
+  assert.equal(obj.strokeWidth, 0);
+  assert.equal(obj.fillRule, 'evenodd');
+  assert.equal(obj.paperInkGeometry, 'v1');
+  assert.ok(Array.isArray(obj.polygons) && obj.polygons.length > 0, 'native polygons derived at import');
   assert.equal(obj.strokeLineCap, 'butt');
   assert.equal(obj.strokeLineJoin, 'miter');
   assert.ok(obj.path.some((segment) => segment[0] === 'Z'));
