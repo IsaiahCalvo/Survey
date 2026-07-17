@@ -65,6 +65,7 @@ import { PageRenderCache } from './utils/pdfCache';
 import { UndoToast } from './components/collab/UndoToast.jsx';
 import { applyAnnotationGroupId, findGroupMembers, generateGroupId, getAnnotationGroupId, getCalloutGroupId } from './utils/annotationGroups';
 import { applyAnnotationHistoryAction, buildAnnotationHistoryAction, buildPreciseAnnotationHistoryAction, filterAnnotationHistoryActionByOwner, invertAnnotationHistoryAction } from './utils/annotationLocalHistory';
+import { mintPastedCloneIdentity } from './utils/pasteCloneIdentity';
 import { areViewStatesEqual, normalizeViewState } from './utils/viewState';
 import { arrayMove } from '@dnd-kit/sortable';
 import { buildAnnotationSelectionContextKey, didAnnotationSelectionContextChange } from './utils/annotationSelectionContext';
@@ -18906,7 +18907,23 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   // Templates are loaded from Supabase via Dashboard component
   // No need to load from localStorage here
 
-  // Set PDF ID and load items/annotations when PDF changes
+  // Set PDF ID and load items/annotations when PDF changes.
+  // KAL-81 root fix (2026-07-17): this reset/reload effect used to depend on
+  // callback identities (finishPdfjsInteractionWindow → finalize-idle →
+  // zoom/scroll state callbacks), so zoom/scroll bursts re-ran the WHOLE
+  // effect (~24x/session observed) for the SAME open document — re-reading
+  // localStorage, resetting hydration to pending, clearing the Excel sync
+  // checkpoint, closing panels, and wiping render bookkeeping. It is now
+  // keyed on the same document identity isSamePdfReload compares
+  // (pdfFile.id for cloud docs, name+size via getPDFId otherwise), so it
+  // runs once per actual document change. Same-doc interaction cleanup is
+  // owned by the interaction machinery itself (markPdfjsInteraction /
+  // finalize-idle call finishPdfjsInteractionWindow directly), and the
+  // per-state setters below all have their real owners for mid-session
+  // updates. The isSamePdfReload branches inside stay: they still guard
+  // remounts and dev StrictMode double-fires, where the effect re-runs
+  // without an identity change.
+  const activePdfChangeIdentity = pdfFile ? (pdfFile.id || getPDFId(pdfFile)) : null;
   useEffect(() => {
     // Reset to regular mode whenever the active PDF changes
     // Clear all PDF-specific state first to ensure clean transition
@@ -18939,6 +18956,14 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       lastCheckpointHashRef.current = null;
       objectModifiedInteractionCheckpointRef.current.clear();
       isUndoingRef.current = false;
+      // KAL-81 (2026-07-17): the LOCAL delta undo lane must reset with the
+      // legacy stacks. These refs were never cleared on document switch, so
+      // undo entries recorded in document A survived into document B and a
+      // Cmd+Z there could apply A's page deltas to B's pages (cross-doc
+      // undo leak). Version bump keeps canUndo/canRedo honest immediately.
+      localAnnotationUndoRef.current = [];
+      localAnnotationRedoRef.current = [];
+      setLocalAnnotationHistoryVersion((prev) => prev + 1);
     }
     annotationsByPageRef.current = {};
     surveyMarkersRef.current = {};
@@ -19193,7 +19218,14 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     savedAnnotationsByPageRef.current = initialAnnotationsByPage; // Track as saved
     setCallouts(loadedCallouts);
     setHasUnsavedAnnotations(false); // Reset unsaved flag
-  }, [clearExcelSyncCheckpoint, finishPdfjsInteractionWindow, pdfFile, pushHistoryDebugEvent]);
+    // Keyed on document identity ONLY (see comment above the effect).
+    // pdfFile and the callbacks are read from the identity-change render's
+    // closure, which is fresh at the only moment this effect runs. Do NOT
+    // re-add callback identities here — that reintroduces the ~24x/session
+    // same-document re-run storm (history wipe, hydration reset, Excel
+    // checkpoint clear on every zoom/scroll burst).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activePdfChangeIdentity]);
 
   // R2.2 Slice 2 (THE FLIP) — the Phase-5 reactive callouts[]→byPage projection
   // effect is GONE: annotationsByPage is the single in-memory source of truth
@@ -23700,10 +23732,12 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       dy += repeatOffset;
 
       for (const c of clones) {
-        c.pdfAnnotationId = `paste-${crypto.randomUUID()}`;
-        if (c.id && typeof c.id === 'string') {
-          c.id = `${c.id}-paste-${Date.now().toString(36)}`;
-        }
+        // UX: every clone is a brand-new NATIVE object — fresh data.id (same
+        // uuid contract as creation), no import provenance — so the save diff
+        // records a CREATE of the clone (undo deletes the clone, original
+        // untouched) and export/dedupe never see two objects claiming one
+        // native PDF annotation id. See utils/pasteCloneIdentity.js.
+        mintPastedCloneIdentity(c);
         if (typeof c.left === 'number') c.left += dx;
         if (typeof c.top === 'number') c.top += dy;
         next.objects.push(c);
@@ -23720,13 +23754,16 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     }
 
     const pasted = deepClone(clipboardAnnotation.object);
-    // UX: clone needs a fresh id so the SVG renderer and selection path
-    // don't treat it as the same shape as the source. Keep `isPdfImported`
-    // so imported shapes paste back through the same visual path.
-    pasted.pdfAnnotationId = `paste-${crypto.randomUUID()}`;
-    if (pasted.id && typeof pasted.id === 'string') {
-      pasted.id = `${pasted.id}-paste-${Date.now().toString(36)}`;
-    }
+    // UX: the clone gets a brand-new NATIVE identity (fresh data.id via
+    // crypto.randomUUID, matching creation) and loses ALL import provenance
+    // BEFORE the save diff runs. A clone that kept the source's data.id
+    // history-diffed as a MOVE of the source annotation — undo then snapped
+    // the clone onto the original instead of deleting it — and a clone
+    // carrying any pdfAnnotationId confuses export preserve/remove and
+    // re-import dedupe. Imported shapes still paste through the same visual
+    // path: rendering detects imported-path geometry structurally, not via
+    // the provenance flags. See utils/pasteCloneIdentity.js.
+    mintPastedCloneIdentity(pasted);
     const originalLeft = typeof pasted.left === 'number' ? pasted.left : 0;
     const originalTop = typeof pasted.top === 'number' ? pasted.top : 0;
 
