@@ -4,8 +4,8 @@
     {
       "name": "worktree-dev",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "dev:ui", "--", "--port", "5173", "--strictPort"],
-      "port": 5173
+      "runtimeArgs": ["run", "dev:ui", "--", "--port", "5230", "--strictPort"],
+      "port": 5230
     }
   ]
 }
