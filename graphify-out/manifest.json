@@ -1155,8 +1155,8 @@
     "semantic_hash": ""
   },
   "src/PDFViewer.jsx": {
-    "mtime": 1784319488.869899,
-    "ast_hash": "306076b085199ae20f8ad6b64f968850",
+    "mtime": 1784322583.3148572,
+    "ast_hash": "5f89aa39083ce2d534d20de750957ef9",
     "semantic_hash": ""
   },
   "src/PageAnnotationLayer.jsx": {
@@ -1245,8 +1245,8 @@
     "semantic_hash": ""
   },
   "src/components/FabricEraserCanvas.jsx": {
-    "mtime": 1784319401.3825636,
-    "ast_hash": "17b111ddc777b403b7a63e50b8c7db35",
+    "mtime": 1784322302.433419,
+    "ast_hash": "2ddbcd9c2cb92bf4a2c44e85382679db",
     "semantic_hash": ""
   },
   "src/components/FormFieldPropertiesPanel.jsx": {
@@ -1310,8 +1310,8 @@
     "semantic_hash": ""
   },
   "src/components/PresenceAvatars.jsx": {
-    "mtime": 1784248069.4166324,
-    "ast_hash": "fdadddabff07bc56d6c56dea12bbdec4",
+    "mtime": 1784322480.7555401,
+    "ast_hash": "69ad0a795b0de2911d926646786bd470",
     "semantic_hash": ""
   },
   "src/components/PrintPanel.jsx": {
@@ -1570,8 +1570,8 @@
     "semantic_hash": ""
   },
   "src/hooks/useAnnotationContextMenu.jsx": {
-    "mtime": 1784319476.4448223,
-    "ast_hash": "64d2b69262338407f584e9b9d487f24f",
+    "mtime": 1784322352.4961298,
+    "ast_hash": "89caca8a5b31ba5d38a6c9b36338093f",
     "semantic_hash": ""
   },
   "src/hooks/useAnnotationDoc.js": {
@@ -1690,8 +1690,8 @@
     "semantic_hash": ""
   },
   "src/lib/collab/bulkDeletePlan.js": {
-    "mtime": 1784318399.9427977,
-    "ast_hash": "0e7b4ebb941c08edfea176dc575f6da8",
+    "mtime": 1784322309.513069,
+    "ast_hash": "f6e2222e787795250335484880497668",
     "semantic_hash": ""
   },
   "src/lib/collab/cleanupResidueAudit.js": {
@@ -2585,8 +2585,8 @@
     "semantic_hash": ""
   },
   "src/utils/pdfAnnotationImporter.js": {
-    "mtime": 1784318399.9432847,
-    "ast_hash": "007cda622383a9f616553017b8278976",
+    "mtime": 1784322558.9249816,
+    "ast_hash": "d5f776b7e93d334d655b982749287992",
     "semantic_hash": ""
   },
   "src/utils/pdfAnnotationsPdfLib.js": {
@@ -8090,7 +8090,7 @@
     "semantic_hash": ""
   },
   ".claude/launch.json": {
-    "mtime": 1784311251.0526962,
+    "mtime": 1784322619.5276978,
     "ast_hash": "5bd60cb1b52e9a542d63b12ba5c1a0dc",
     "semantic_hash": ""
   },
@@ -8609,9 +8609,19 @@
     "ast_hash": "796c5a85b1193f0923cb803220f92eeb",
     "semantic_hash": ""
   },
+  "tests/annotationContextMenuCalloutParity.test.mjs": {
+    "mtime": 1784322386.75211,
+    "ast_hash": "3c9541ae88a56683ecfadc4416b4433b",
+    "semantic_hash": ""
+  },
+  "tests/bulkDeletePlanNameResolution.test.mjs": {
+    "mtime": 1784322420.911218,
+    "ast_hash": "29f40a69f1f52c7878ff50227bcb6258",
+    "semantic_hash": ""
+  },
   "agent-cli/callout-interaction-e2e-result.png": {
-    "mtime": 1784319652.1853113,
-    "ast_hash": "306e0b230a19313de31a3a15d663ad72",
+    "mtime": 1784322495.0226471,
+    "ast_hash": "21edb09eebb8fcf236471d824620e218",
     "semantic_hash": ""
   }
 }
