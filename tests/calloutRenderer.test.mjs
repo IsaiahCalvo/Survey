@@ -169,3 +169,95 @@ test('buildCalloutRenderSpec returns null for callout missing knee', () => {
   const incomplete = { ...baseCallout, knee: null };
   assert.equal(buildCalloutRenderSpec(incomplete, 0, { width: 1000, height: 800 }, stubConnection), null);
 });
+
+// ---------------------------------------------------------------------------
+// Callout leader arrowhead — shared arrow-tool spec adoption (KAL-81 parity).
+// The callout's head renders via the SAME buildArrowheadRenderSpec home the
+// line/arrow tool uses; these tests lock the spec-level contract:
+//   1. default (no style.arrowheadStyle) === explicit SOLID_TRIANGLE
+//      structurally — visual no-op for every pre-existing callout.
+//   2. each of the 6 styles emits its distinct primitive node.
+//   3. triangle styles shorten line2 into the back of the head; the other
+//      styles leave line2 ending exactly on the arrow tip.
+// ---------------------------------------------------------------------------
+
+const PAGE_SIZE = { width: 1000, height: 800 };
+
+const specWithArrowhead = (arrowheadStyle) => buildCalloutRenderSpec(
+  arrowheadStyle === undefined
+    ? baseCallout
+    : { ...baseCallout, style: { ...baseCallout.style, arrowheadStyle } },
+  0, PAGE_SIZE, stubConnection,
+);
+
+const arrowheadNodeOf = (spec) => findAll(spec, (n) => n.key === 'arrowhead')[0] || null;
+const line2Of = (spec) => findAll(spec, (n) => n.attrs && n.attrs['data-callout-part'] === 'line2')[0];
+
+test('callout default arrowhead is structurally identical to explicit solidTriangle', () => {
+  const defaultSpec = specWithArrowhead(undefined);
+  const explicitSpec = specWithArrowhead('solidTriangle');
+  const defaultHead = arrowheadNodeOf(defaultSpec);
+  const explicitHead = arrowheadNodeOf(explicitSpec);
+  assert.ok(defaultHead, 'default callout must render an arrowhead node');
+  assert.deepEqual(defaultHead, explicitHead,
+    'legacy callouts (no arrowheadStyle) must keep the exact solid-triangle look');
+  // and line2 geometry must match too (same shortening)
+  assert.deepEqual(line2Of(defaultSpec).attrs, line2Of(explicitSpec).attrs);
+});
+
+test('callout solid triangle head is a filled polygon in the leader color', () => {
+  const head = arrowheadNodeOf(specWithArrowhead('solidTriangle'));
+  assert.equal(head.type, 'polygon');
+  assert.equal(head.attrs.fill, '#1e293b');
+  assert.ok(head.attrs.points, 'polygon must carry points');
+});
+
+test('callout open triangle head is an unfilled stroked polygon', () => {
+  const head = arrowheadNodeOf(specWithArrowhead('openTriangle'));
+  assert.equal(head.type, 'polygon');
+  assert.equal(head.attrs.fill, 'none');
+  assert.equal(head.attrs.stroke, '#1e293b');
+});
+
+test('callout open circle head is an unfilled circle centered on the arrow tip', () => {
+  const spec = specWithArrowhead('openCircle');
+  const head = arrowheadNodeOf(spec);
+  assert.equal(head.type, 'circle');
+  assert.equal(head.attrs.fill, 'none');
+  // tip in page coords: arrowTip {0.5, 0.5} on 1000x800
+  assert.equal(head.attrs.cx, 500);
+  assert.equal(head.attrs.cy, 400);
+});
+
+test('callout v-shape head is a polyline through the arrow tip', () => {
+  const head = arrowheadNodeOf(specWithArrowhead('vShape'));
+  assert.equal(head.type, 'polyline');
+  assert.ok(String(head.attrs.points).includes('500,400'), 'polyline must pass through the tip');
+});
+
+test('callout horizontal-line head is a perpendicular tick line', () => {
+  const head = arrowheadNodeOf(specWithArrowhead('horizontalLine'));
+  assert.equal(head.type, 'line');
+  assert.equal(head.attrs.stroke, '#1e293b');
+});
+
+test('callout arrowhead style none emits no head node and line2 reaches the tip', () => {
+  const spec = specWithArrowhead('none');
+  assert.equal(arrowheadNodeOf(spec), null, 'none must not render any arrowhead');
+  const line2 = line2Of(spec);
+  assert.equal(line2.attrs.x2, 500);
+  assert.equal(line2.attrs.y2, 400);
+});
+
+test('callout triangle heads shorten line2 into the back of the head; open styles do not', () => {
+  for (const style of ['solidTriangle', 'openTriangle']) {
+    const line2 = line2Of(specWithArrowhead(style));
+    assert.ok(line2.attrs.x2 !== 500 || line2.attrs.y2 !== 400,
+      `${style} must pull line2 short of the tip`);
+  }
+  for (const style of ['openCircle', 'vShape', 'horizontalLine']) {
+    const line2 = line2Of(specWithArrowhead(style));
+    assert.equal(line2.attrs.x2, 500, `${style} line2 must end on the tip (x)`);
+    assert.equal(line2.attrs.y2, 400, `${style} line2 must end on the tip (y)`);
+  }
+});

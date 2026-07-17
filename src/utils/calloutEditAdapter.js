@@ -48,6 +48,10 @@
  * @returns {string}
  */
 import { deepClone } from './deepClone.js';
+// Shared arrowhead spec — ONE home for the head math (lineRenderHelpers.js),
+// consumed identically by the arrow tool, the live JSX renderCallout, the
+// canvas painter, the PDF export, and this testable spec builder. Pure JS.
+import { ARROWHEAD_STYLES, buildArrowheadRenderSpec } from './lineRenderHelpers.js';
 
 export function sanitizeFontFamily(raw) {
   if (raw == null) return 'Arial';
@@ -460,6 +464,31 @@ export function buildCalloutRenderSpec(callout, index, pageSize, calculateConnec
     });
   }
 
+  // UX: arrowhead — same resolution + shared spec the live JSX renderCallout
+  // uses (svgAnnotationRenderers.jsx): explicit style.arrowheadStyle wins,
+  // else default to solid triangle so callouts share the arrow tool's default
+  // look. Angle is the tangent of line2 (effective knee → arrowTip).
+  const arrowheadStyle = callout.style?.arrowheadStyle ?? ARROWHEAD_STYLES.SOLID_TRIANGLE;
+  const arrowAngleDeg = (
+    Math.atan2(arrowTip.y - connection.line2Start.y, arrowTip.x - connection.line2Start.x)
+    * 180
+  ) / Math.PI;
+  const arrowheadSpec = buildArrowheadRenderSpec(
+    arrowheadStyle, arrowTip.x, arrowTip.y, arrowAngleDeg, lineColor, lineThickness
+  );
+  // UX: shorten line2 into the back of the head for the triangle styles so
+  // the line tail doesn't poke through the point — same formula the live
+  // renderer and the arrow tool use (offset by headSize/3 along the tangent).
+  let line2EndX = arrowTip.x;
+  let line2EndY = arrowTip.y;
+  if (arrowheadStyle === ARROWHEAD_STYLES.SOLID_TRIANGLE
+      || arrowheadStyle === ARROWHEAD_STYLES.OPEN_TRIANGLE) {
+    const headSize = Math.max(8, lineThickness * 3);
+    const angleRad = (arrowAngleDeg * Math.PI) / 180;
+    line2EndX = arrowTip.x - (headSize / 3) * Math.cos(angleRad);
+    line2EndY = arrowTip.y - (headSize / 3) * Math.sin(angleRad);
+  }
+
   // Line 2 — knee → arrowTip. Always rendered (the arrow direction line).
   children.push({
     type: 'line',
@@ -470,27 +499,32 @@ export function buildCalloutRenderSpec(callout, index, pageSize, calculateConnec
       'data-callout-part': 'line2',
       x1: connection.line2Start.x,
       y1: connection.line2Start.y,
-      x2: arrowTip.x,
-      y2: arrowTip.y,
+      x2: line2EndX,
+      y2: line2EndY,
       ...lineStrokeAttrs,
     },
   });
 
-  // ArrowTip indicator — small filled circle at the arrow endpoint. Phase 15
-  // ARROW-04 will replace this with the 6-style arrowhead picker output.
-  children.push({
-    type: 'circle',
-    key: 'arrowTip',
-    // UX: data-callout-part='arrowTip' — Phase 17 CALL-01 30px collision clamp
-    // hit-test surface. (CALL-10)
-    attrs: {
-      'data-callout-part': 'arrowTip',
-      cx: arrowTip.x,
-      cy: arrowTip.y,
-      r: Math.max(2, lineThickness + 0.4),
-      fill: lineColor,
-    },
-  });
+  // Arrowhead — one of the 6 shared styles (or nothing for NONE). Mirrors the
+  // live JSX renderArrowheadEl mapping 1:1: spec.kind → element tag + attrs.
+  // Replaced the old placeholder filled-circle 'arrowTip' node when callouts
+  // adopted the arrow tool's shared arrowhead machinery.
+  const arrowheadNode = (() => {
+    switch (arrowheadSpec.kind) {
+      case 'solidTriangle':
+      case 'openTriangle':
+        return { type: 'polygon', key: 'arrowhead', attrs: { ...arrowheadSpec.polygon } };
+      case 'openCircle':
+        return { type: 'circle', key: 'arrowhead', attrs: { ...arrowheadSpec.circle } };
+      case 'vShape':
+        return { type: 'polyline', key: 'arrowhead', attrs: { ...arrowheadSpec.polyline } };
+      case 'horizontalLine':
+        return { type: 'line', key: 'arrowhead', attrs: { ...arrowheadSpec.line } };
+      default:
+        return null;
+    }
+  })();
+  if (arrowheadNode) children.push(arrowheadNode);
 
   // Text box — rounded rectangle with fill + border, hit-testable for drag.
   children.push({

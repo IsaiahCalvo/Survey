@@ -915,3 +915,44 @@ describe('applyCalloutListToByPage', () => {
     assert.deepEqual(deriveCalloutsFromByPage(next), [baseCallout]);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Arrowhead style persistence (KAL-81 callout/arrow parity): the new
+// style.arrowheadStyle field must ride the callout style object verbatim
+// through data.legacyCallout, so it survives save → reload → sync without
+// any dedicated plumbing.
+// ---------------------------------------------------------------------------
+describe('style.arrowheadStyle round-trip', () => {
+  it('rides data.legacyCallout verbatim through project → derive (the live path)', () => {
+    const withHead = {
+      ...baseCallout,
+      style: { ...baseCallout.style, arrowheadStyle: 'openCircle' },
+    };
+    const obj = calloutToAnnotationObject(withHead, PAGE);
+    assert.equal(obj.data.legacyCallout.style.arrowheadStyle, 'openCircle');
+    // NOTE: the geometry fallback annotationObjectToCallout deliberately does
+    // NOT recover arrowheadStyle (no group child carries it) — the live
+    // derive path reads data.legacyCallout verbatim instead, which is what
+    // this suite locks.
+    const derived = deriveCalloutsFromByPage({ 2: { objects: [obj] } });
+    assert.equal(derived[0].style.arrowheadStyle, 'openCircle');
+  });
+
+  it('absent arrowheadStyle stays absent (legacy callouts keep default-look resolution)', () => {
+    const obj = calloutToAnnotationObject(baseCallout, PAGE);
+    const derived = deriveCalloutsFromByPage({ 2: { objects: [obj] } });
+    assert.ok(!('arrowheadStyle' in (derived[0].style || {})),
+      'bridge must not invent an explicit arrowheadStyle for legacy callouts');
+  });
+
+  it('survives the full byPage apply/derive cycle', () => {
+    const withHead = {
+      ...baseCallout,
+      style: { ...baseCallout.style, arrowheadStyle: 'vShape' },
+    };
+    const byPage = applyCalloutListToByPage({}, [withHead], { 2: PAGE });
+    const derived = deriveCalloutsFromByPage(byPage);
+    assert.equal(derived.length, 1);
+    assert.equal(derived[0].style.arrowheadStyle, 'vShape');
+  });
+});

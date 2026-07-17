@@ -34,6 +34,10 @@ import {
   commandsToPolygonSet,
   normalizeMultiPolygon,
 } from './paperAnnotationGeometry.js';
+// Callout leader arrowheads export via the SAME shared spec the arrow tool,
+// SVG renderer, and canvas painter consume — one home for the head math
+// (buildArrowheadRenderSpec in lineRenderHelpers.js). Pure JS, Node-safe.
+import { ARROWHEAD_STYLES, buildArrowheadRenderSpec } from './lineRenderHelpers.js';
 
 const pdfExportDebug = (...args) => {
   if (typeof window === 'undefined' || window.__PDF_EXPORT_DEBUG !== true) return;
@@ -1154,6 +1158,33 @@ const createFreeTextAnnotation = (pdfDoc, page, fabricObj, pageHeight, options =
   }
 };
 
+// UX (callout arrowhead export): map the app's 6 arrowhead styles onto the
+// closest PDF /LE line-ending names so external viewers (Acrobat, Preview)
+// draw a matching head on the exported callout leader line. This is the exact
+// inverse of PageAnnotationLayer's PDF_LINE_ENDING_TO_ARROW_STYLE import map,
+// keeping export→re-import stable. Documented degradations (PDF /LE has no
+// richer vocabulary): OPEN_TRIANGLE → OpenArrow (PDF has no unfilled *closed*
+// triangle ending; OpenArrow is what the importer maps back to OPEN_TRIANGLE)
+// and V_SHAPE → Slash (OpenArrow already belongs to OPEN_TRIANGLE in the
+// import map; Slash keeps the mapping bijective). The app's own re-import
+// never reads /LE for callouts — style rides verbatim inside the callout
+// metadata blob — so /LE is purely for third-party viewer fidelity.
+const ARROWHEAD_STYLE_TO_PDF_LINE_ENDING = {
+  [ARROWHEAD_STYLES.NONE]: 'None',
+  [ARROWHEAD_STYLES.SOLID_TRIANGLE]: 'ClosedArrow',
+  [ARROWHEAD_STYLES.OPEN_TRIANGLE]: 'OpenArrow',
+  [ARROWHEAD_STYLES.OPEN_CIRCLE]: 'Circle',
+  [ARROWHEAD_STYLES.V_SHAPE]: 'Slash',
+  [ARROWHEAD_STYLES.HORIZONTAL_LINE]: 'Butt',
+};
+
+// Default matches defaultCalloutStyle (Callout/types.js) and the SVG/canvas
+// renderers: absent style → solid triangle, so legacy callouts keep their
+// historical ClosedArrow export byte-for-byte.
+const resolveCalloutArrowheadStyle = (style) => (
+  style?.arrowheadStyle ?? ARROWHEAD_STYLES.SOLID_TRIANGLE
+);
+
 const createCalloutAnnotations = (pdfDoc, page, calloutObj, pageHeight) => {
   const refs = [];
   const style = calloutObj?.style || {};
@@ -1197,7 +1228,10 @@ const createCalloutAnnotations = (pdfDoc, page, calloutObj, pageHeight) => {
     y2: arrowTip.y,
     stroke,
     strokeWidth,
-    lineEnding2: 'ClosedArrow',
+    // UX: honor the callout's picked arrowhead style in external viewers via
+    // the closest /LE name (see ARROWHEAD_STYLE_TO_PDF_LINE_ENDING above).
+    lineEnding2: ARROWHEAD_STYLE_TO_PDF_LINE_ENDING[resolveCalloutArrowheadStyle(style)]
+      || 'ClosedArrow',
   }, pageHeight, buildCalloutOptions('line2'));
   if (line2) refs.push(line2);
 
@@ -1320,6 +1354,86 @@ const drawArrowHead = (page, { x1, y1, x2, y2, pageHeight, color, width }) => {
   page.drawLine({ start: { x: tipX, y: tipY }, end: { x: leftX, y: leftY }, color, thickness: width });
   page.drawLine({ start: { x: tipX, y: tipY }, end: { x: rightX, y: rightY }, color, thickness: width });
 };
+
+// UX (print flatten callout arrowhead): pdf-lib twin of paintArrowheadSpec
+// (annotationCanvasPainter, canvas) and renderArrowheadFromSpec
+// (svgAnnotationRenderers, SVG) — consumes the SAME buildArrowheadRenderSpec
+// output, so the printed head is geometrically identical to the on-screen one
+// for all 6 styles. Head size + coordinates are in page units, so the head
+// scales with the page exactly like the rest of the annotation (locked zoom
+// convention 2026-07-14).
+// GOTCHA (verified by rasterizing a probe PDF, 2026-07-17): page.drawSvgPath
+// negates path y (scale(1,-1)) relative to its origin, and the origin
+// defaults to (0,0) at the page's BOTTOM-left — so passing pre-flipped
+// getPdfY coordinates lands the path off-page. Filled/stroked triangle paths
+// therefore draw with origin {x:0, y:pageHeight} and RAW app-space (y-down)
+// coordinates; line/circle primitives use the normal getPdfY flip.
+function drawFlattenedArrowheadSpec(page, spec, pageHeight) {
+  if (!spec || spec.kind === 'none') return;
+  const stroke = parsePdfDrawColor(spec.color || '#000000', '#000000');
+  if (spec.kind === 'solidTriangle' || spec.kind === 'openTriangle') {
+    // Same local triangle + rotation the shared spec's SVG transform encodes.
+    const headSize = Math.max(8, (spec.sw || 0) * 3);
+    const angleRad = ((spec.angleDeg || 0) * Math.PI) / 180;
+    const cos = Math.cos(angleRad);
+    const sin = Math.sin(angleRad);
+    const local = [
+      [-headSize / 3, -headSize / 2],
+      [(headSize * 2) / 3, 0],
+      [-headSize / 3, headSize / 2],
+    ];
+    const pts = local.map(([lx, ly]) => [
+      spec.tipX + (lx * cos) - (ly * sin),
+      spec.tipY + (lx * sin) + (ly * cos),
+    ]);
+    const d = `M ${pts[0][0]} ${pts[0][1]} L ${pts[1][0]} ${pts[1][1]} L ${pts[2][0]} ${pts[2][1]} Z`;
+    if (spec.kind === 'solidTriangle') {
+      page.drawSvgPath(d, {
+        x: 0,
+        y: pageHeight,
+        color: stroke.color,
+        opacity: stroke.opacity,
+        borderWidth: 0,
+      });
+    } else {
+      page.drawSvgPath(d, {
+        x: 0,
+        y: pageHeight,
+        borderColor: stroke.color,
+        borderOpacity: stroke.opacity,
+        borderWidth: spec.polygon.strokeWidth,
+      });
+    }
+  } else if (spec.kind === 'openCircle') {
+    page.drawCircle({
+      x: spec.circle.cx,
+      y: getPdfY(pageHeight, spec.circle.cy),
+      size: spec.circle.r,
+      borderColor: stroke.color,
+      borderOpacity: stroke.opacity,
+      borderWidth: spec.circle.strokeWidth,
+    });
+  } else if (spec.kind === 'vShape') {
+    const pts = String(spec.polyline.points).split(' ').map((pair) => pair.split(',').map(Number));
+    for (let i = 1; i < pts.length; i += 1) {
+      page.drawLine({
+        start: { x: pts[i - 1][0], y: getPdfY(pageHeight, pts[i - 1][1]) },
+        end: { x: pts[i][0], y: getPdfY(pageHeight, pts[i][1]) },
+        color: stroke.color,
+        opacity: stroke.opacity,
+        thickness: spec.polyline.strokeWidth,
+      });
+    }
+  } else if (spec.kind === 'horizontalLine') {
+    page.drawLine({
+      start: { x: spec.line.x1, y: getPdfY(pageHeight, spec.line.y1) },
+      end: { x: spec.line.x2, y: getPdfY(pageHeight, spec.line.y2) },
+      color: stroke.color,
+      opacity: stroke.opacity,
+      thickness: spec.line.strokeWidth,
+    });
+  }
+}
 
 const drawFlattenedLine = (page, obj, pageHeight) => {
   const stroke = parsePdfDrawColor(obj?.stroke || '#000000', '#000000') || parsePdfDrawColor('#000000');
@@ -1585,7 +1699,30 @@ const drawFlattenedCallout = (page, calloutObj, pageHeight, fonts) => {
   const textBox = calloutObj.textBox;
   if (!arrowTip || !knee || !textBox) return 0;
   drawFlattenedLine(page, { type: 'line', x1: textBox.left, y1: textBox.top + textBox.height / 2, x2: knee.x, y2: knee.y, stroke, strokeWidth }, pageHeight);
-  drawFlattenedLine(page, { type: 'line', x1: knee.x, y1: knee.y, x2: arrowTip.x, y2: arrowTip.y, stroke, strokeWidth, lineEnding2: 'ClosedArrow' }, pageHeight);
+  // UX (print flatten callout arrowhead): honor style.arrowheadStyle via the
+  // shared arrow-tool spec — same default (solid triangle) and same line2
+  // shortening the SVG renderer / canvas painter use, so print matches the
+  // screen for every head style. Replaces the old hard-coded ClosedArrow.
+  const arrowheadStyle = resolveCalloutArrowheadStyle(style);
+  const arrowAngleDeg = (
+    Math.atan2(arrowTip.y - knee.y, arrowTip.x - knee.x) * 180
+  ) / Math.PI;
+  const arrowheadSpec = buildArrowheadRenderSpec(
+    arrowheadStyle, arrowTip.x, arrowTip.y, arrowAngleDeg, stroke, strokeWidth,
+  );
+  let line2EndX = arrowTip.x;
+  let line2EndY = arrowTip.y;
+  if (arrowheadStyle === ARROWHEAD_STYLES.SOLID_TRIANGLE
+    || arrowheadStyle === ARROWHEAD_STYLES.OPEN_TRIANGLE) {
+    // Shorten line2 into the back of the head so the tail doesn't poke
+    // through the point — same formula as the SVG/canvas surfaces.
+    const headSize = Math.max(8, strokeWidth * 3);
+    const angleRad = (arrowAngleDeg * Math.PI) / 180;
+    line2EndX = arrowTip.x - (headSize / 3) * Math.cos(angleRad);
+    line2EndY = arrowTip.y - (headSize / 3) * Math.sin(angleRad);
+  }
+  drawFlattenedLine(page, { type: 'line', x1: knee.x, y1: knee.y, x2: line2EndX, y2: line2EndY, stroke, strokeWidth }, pageHeight);
+  drawFlattenedArrowheadSpec(page, arrowheadSpec, pageHeight);
   drawFlattenedObject(page, {
     type: 'rect',
     left: textBox.left,
