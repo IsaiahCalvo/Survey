@@ -72,7 +72,7 @@ import { buildBulkDeletePlan } from './lib/collab/bulkDeletePlan.js';
 // Callout-unification keystone (Phase 5, point A) — flag-gated load projection
 // of saved callouts[] into the shared annotationsByPage store. DEFAULT OFF.
 import { calloutsInSharedStore } from './lib/calloutSharedStoreFlag';
-import { calloutToAnnotationObject, projectCalloutsIntoByPage } from './utils/calloutAnnotationBridge';
+import { calloutToAnnotationObject, projectCalloutsIntoByPage, deriveCalloutsFromByPage, applyCalloutListToByPage } from './utils/calloutAnnotationBridge';
 import { buildHistoryEventRowFromDebugEvent, recordDocumentHistoryEvent, recordAndNotifyDocumentHistoryEvent } from './services/documentHistoryService.js';
 import { buildPrintableRegularAnnotationPayload, savePDFWithAnnotationsPdfLib, savePDFWithFlattenedRegularAnnotationsForPrint } from './utils/pdfAnnotationsPdfLib';
 import { buildTextSearchDiagLogSection, emitTextSearchDiag } from './utils/textSearchDiag';
@@ -3318,19 +3318,39 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   const [arrowheadStyle, setArrowheadStyle] = useState(ARROWHEAD_STYLES.SOLID_TRIANGLE);
   const [lineBorderStyle, setLineBorderStyle] = useState('solid');
 
-  // Callout overlay state
-  const [callouts, setCallouts] = useState([]);
+  // Callout overlay state — R2.2 Slice 2 (THE FLIP): `callouts` is no longer an
+  // independent useState. It is DERIVED from annotationsByPage (the single
+  // in-memory source of truth) via deriveCalloutsFromByPage — see the useMemo
+  // declared next to the annotationsByPage useState below (a useMemo is not
+  // hoisted, so it cannot live here). setCallouts / setCalloutsIfPersistedChanged
+  // keep their exact names and call signatures as stable adapters that write
+  // THROUGH annotationsByPage, so every legacy write site compiles untouched.
   const [annotationOverlayRecoveryTick, setAnnotationOverlayRecoveryTick] = useState(0);
   const lastSavedCalloutsFingerprintRef = useRef(null);
-  const setCalloutsIfPersistedChanged = useCallback((updater) => {
-    setCallouts((prev) => {
-      const next = typeof updater === 'function' ? updater(prev) : updater;
-      if (getCalloutSyncFingerprint(prev) === getCalloutSyncFingerprint(next)) {
-        return prev;
-      }
-      return next;
+  const setCallouts = useCallback((updater) => {
+    // Mirrors React setState semantics: a function updater receives the current
+    // derived callout list; the value form replaces it wholesale. The write is
+    // applied via applyCalloutListToByPage (strip + re-project, non-callout
+    // objects preserved by reference), whose internal fingerprint bail returns
+    // `prev` referentially when the persisted callout content is unchanged —
+    // so no-op writes do not churn annotationsByPage or trigger sync pushes.
+    // Deps are deliberately []: setAnnotationsByPage (stable useState setter)
+    // and pageSizesRef (stable ref) are declared later in this function body,
+    // so listing them in the dep array would read them at render time (TDZ).
+    setAnnotationsByPage((prev) => {
+      const prevCallouts = deriveCalloutsFromByPage(prev);
+      const nextCallouts = typeof updater === 'function' ? updater(prevCallouts) : updater;
+      return applyCalloutListToByPage(prev, nextCallouts, pageSizesRef.current || {});
     });
   }, []);
+  // Fingerprint-bail wrapper kept for call-site compatibility. Its historical
+  // bail (getCalloutSyncFingerprint(prev) === getCalloutSyncFingerprint(next)
+  // → keep prev) is now provided by applyCalloutListToByPage's internal
+  // referential bail — identical change-detection semantics (same fingerprint
+  // helper) — so this simply delegates to the setCallouts adapter above.
+  const setCalloutsIfPersistedChanged = useCallback((updater) => {
+    setCallouts(updater);
+  }, [setCallouts]);
   const handleCalloutTextStyleChange = useCallback((calloutId, stylePatch) => {
     if (!calloutId || !stylePatch) return;
     setCalloutsIfPersistedChanged((prev) => prev.map((c) => {
@@ -3416,6 +3436,158 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     }
   }, []);
 
+  // UX: pan-mode quick-click → select annotation + auto-switch to Select tool.
+  // Records pointer position on mousedown; on mouseup, if the cursor moved
+  // less than QUICK_CLICK_PX and we're in pan mode and a non-callout
+  // annotation sits under the cursor, auto-switch to the Select tool and
+  // broadcast a selection command to the matching SVGAnnotationLayer.
+  // Callouts are intentionally skipped — they're wired in a parallel session.
+  useEffect(() => {
+    // 4px tolerance matches trackpad + mouse in local testing. Tune here if
+    // users report accidental drags. Too low → hair-trigger drags fire as
+    // clicks; too high → actual pan gestures get treated as selection taps.
+    const QUICK_CLICK_PX = 4;
+    let downAt = null;
+    const onDown = (e) => {
+      if (e.button !== 0) return; // left button only
+      downAt = { x: e.clientX, y: e.clientY, t: Date.now() };
+    };
+    const onUp = (e) => {
+      const start = downAt;
+      downAt = null;
+      if (!start) return;
+      if (activeTool !== 'pan') return;
+      const dx = e.clientX - start.x;
+      const dy = e.clientY - start.y;
+      if (Math.hypot(dx, dy) > QUICK_CLICK_PX) return; // real pan, not a tap
+      const hit = resolveAnnotationAt(e);
+      if (!hit) return;
+      // UX: Phase 15 UAT-3 — pan-mode quick-click also picks up callouts,
+      // matching how every other annotation type behaves in pan mode. Same
+      // tool-switch to Select as the plain-annotation branch so followup
+      // drags / edits work naturally.
+      if (hit.kind === 'callout' && hit.calloutId) {
+        setActiveTool('select');
+        setSelectedCalloutIds(new Set([hit.calloutId]));
+        return;
+      }
+      if (hit.kind !== 'annotation') return;
+      if (typeof hit.annotationIndex !== 'number' || hit.pageNumber == null) return;
+      setActiveTool('select');
+      setPendingSvgSelection({
+        pageNumber: hit.pageNumber,
+        annotationIndex: hit.annotationIndex,
+        tick: Date.now(),
+      });
+    };
+    window.addEventListener('mousedown', onDown, true);
+    window.addEventListener('mouseup', onUp, true);
+    return () => {
+      window.removeEventListener('mousedown', onDown, true);
+      window.removeEventListener('mouseup', onUp, true);
+    };
+  }, [activeTool]);
+
+  // UX: pan-mode hover — when the cursor is over an annotation in pan mode,
+  // show the same blue hover glow the Select tool shows AND switch the
+  // cursor to `pointer` so the user can tell "click here to pick this up."
+  // Over empty page space, leave the cursor alone (Pdfjs owns pan /
+  // grab styling). Uses the same resolveAnnotationAt hit-test as the
+  // pan-mode click listener, so behavior is consistent between "what will
+  // a click pick?" and "what does the glow preview?".
+  //
+  // Rationale for document-level mousemove (vs flipping SVG pointer-events):
+  // the SVG layer is `pointer-events: none` in pan mode so empty-space
+  // clicks pass through to Pdfjs for panning. Re-enabling pointer
+  // events on hit-zones would require guarding their onPointerDown to
+  // avoid fighting pan gestures — more changes + more risk than a single
+  // mousemove listener that reuses the hit-test already in production.
+  //
+  // Throttled via requestAnimationFrame so resolveAnnotationAt (composedPath
+  // + elementsFromPoint + querySelectorAll fallback) runs at most once per
+  // frame, not per mousemove event.
+  useEffect(() => {
+    if (activeTool !== 'pan') {
+      // Tool changed away from pan — clear any lingering hover state + cursor.
+      setPendingSvgHover((prev) => (prev == null ? prev : null));
+      if (document.body.style.cursor === 'pointer') {
+        document.body.style.cursor = '';
+      }
+      return undefined;
+    }
+    let rafId = 0;
+    let latestEvent = null;
+    let lastKey = '';
+    const applyHover = () => {
+      rafId = 0;
+      const e = latestEvent;
+      latestEvent = null;
+      if (!e) return;
+      const hit = resolveAnnotationAt(e);
+      // Only treat plain annotations as hover targets. Callouts + counters
+      // flow through their own hover paths (or none) and the parallel
+      // callout session owns their interaction.
+      const isAnnotation = hit && hit.kind === 'annotation'
+        && typeof hit.annotationIndex === 'number'
+        && hit.pageNumber != null;
+      const nextKey = isAnnotation ? `${hit.pageNumber}:${hit.annotationIndex}` : '';
+      if (nextKey === lastKey) return;
+      lastKey = nextKey;
+      if (isAnnotation) {
+        setPendingSvgHover({ pageNumber: hit.pageNumber, annotationIndex: hit.annotationIndex });
+        // UX: pointer cursor over annotations in pan mode. document.body is
+        // the lowest-priority target so Pdfjs-level pan cursor wins
+        // everywhere else. Cleared on no-hit and on tool-change cleanup.
+        if (document.body.style.cursor !== 'pointer') {
+          document.body.style.cursor = 'pointer';
+        }
+      } else {
+        setPendingSvgHover((prev) => (prev == null ? prev : null));
+        if (document.body.style.cursor === 'pointer') {
+          document.body.style.cursor = '';
+        }
+      }
+    };
+    const onMove = (e) => {
+      latestEvent = e;
+      if (!rafId) rafId = requestAnimationFrame(applyHover);
+    };
+    window.addEventListener('mousemove', onMove, true);
+    return () => {
+      window.removeEventListener('mousemove', onMove, true);
+      if (rafId) cancelAnimationFrame(rafId);
+      setPendingSvgHover((prev) => (prev == null ? prev : null));
+      if (document.body.style.cursor === 'pointer') {
+        document.body.style.cursor = '';
+      }
+    };
+  }, [activeTool]);
+
+  // NOTE: Phase 14 callout handlers (handleDeleteSelectedCallouts,
+  // handleCreateCallout, handleUpdateCallout, handleUpdateCalloutLive,
+  // handleRequestCalloutEditMode) are declared AFTER addHistoryCheckpoint
+  // below — three of them list addHistoryCheckpoint in their useCallback
+  // dep arrays, which triggers a TDZ ReferenceError if declared here
+  // (addHistoryCheckpoint is a const useCallback declared ~4600 lines
+  // later in the same function body). Moved as a block; do NOT move them
+  // back without also moving addHistoryCheckpoint.
+
+  const [annotationsByPage, setAnnotationsByPage] = useState({}); // Fabric.js canvas annotations
+
+  // R2.2 Slice 2 (THE FLIP): the callout list is a pure DERIVED projection of
+  // annotationsByPage -- every data.type==='callout' object's embedded
+  // legacyCallout payload, in stable (page, id) order. All legacy read sites
+  // keep consuming `callouts` unchanged; every write goes through the
+  // setCallouts / setCalloutsIfPersistedChanged adapters declared with the
+  // other callout state above. Declared HERE (not next to those adapters)
+  // because a useMemo is not hoisted and annotationsByPage must already be
+  // initialized when the memo body's dependency array is evaluated.
+  const callouts = useMemo(() => deriveCalloutsFromByPage(annotationsByPage), [annotationsByPage]);
+
+  // R2.2 Slice 2: the following callout-derived memos/effects/handlers moved
+  // here (verbatim) from the callout-state cluster above -- they read
+  // `callouts`, or a memo derived from it, at render time (dependency arrays),
+  // so they must sit after the derive memo. Bodies are UNCHANGED.
   const lightweightCalloutCountByPage = useMemo(() => {
     const counts = {};
     callouts.forEach((callout) => {
@@ -3600,143 +3772,6 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     }
   }, [clipboardCallout, clipboardCalloutType, user?.id]);
 
-  // UX: pan-mode quick-click → select annotation + auto-switch to Select tool.
-  // Records pointer position on mousedown; on mouseup, if the cursor moved
-  // less than QUICK_CLICK_PX and we're in pan mode and a non-callout
-  // annotation sits under the cursor, auto-switch to the Select tool and
-  // broadcast a selection command to the matching SVGAnnotationLayer.
-  // Callouts are intentionally skipped — they're wired in a parallel session.
-  useEffect(() => {
-    // 4px tolerance matches trackpad + mouse in local testing. Tune here if
-    // users report accidental drags. Too low → hair-trigger drags fire as
-    // clicks; too high → actual pan gestures get treated as selection taps.
-    const QUICK_CLICK_PX = 4;
-    let downAt = null;
-    const onDown = (e) => {
-      if (e.button !== 0) return; // left button only
-      downAt = { x: e.clientX, y: e.clientY, t: Date.now() };
-    };
-    const onUp = (e) => {
-      const start = downAt;
-      downAt = null;
-      if (!start) return;
-      if (activeTool !== 'pan') return;
-      const dx = e.clientX - start.x;
-      const dy = e.clientY - start.y;
-      if (Math.hypot(dx, dy) > QUICK_CLICK_PX) return; // real pan, not a tap
-      const hit = resolveAnnotationAt(e);
-      if (!hit) return;
-      // UX: Phase 15 UAT-3 — pan-mode quick-click also picks up callouts,
-      // matching how every other annotation type behaves in pan mode. Same
-      // tool-switch to Select as the plain-annotation branch so followup
-      // drags / edits work naturally.
-      if (hit.kind === 'callout' && hit.calloutId) {
-        setActiveTool('select');
-        setSelectedCalloutIds(new Set([hit.calloutId]));
-        return;
-      }
-      if (hit.kind !== 'annotation') return;
-      if (typeof hit.annotationIndex !== 'number' || hit.pageNumber == null) return;
-      setActiveTool('select');
-      setPendingSvgSelection({
-        pageNumber: hit.pageNumber,
-        annotationIndex: hit.annotationIndex,
-        tick: Date.now(),
-      });
-    };
-    window.addEventListener('mousedown', onDown, true);
-    window.addEventListener('mouseup', onUp, true);
-    return () => {
-      window.removeEventListener('mousedown', onDown, true);
-      window.removeEventListener('mouseup', onUp, true);
-    };
-  }, [activeTool]);
-
-  // UX: pan-mode hover — when the cursor is over an annotation in pan mode,
-  // show the same blue hover glow the Select tool shows AND switch the
-  // cursor to `pointer` so the user can tell "click here to pick this up."
-  // Over empty page space, leave the cursor alone (Pdfjs owns pan /
-  // grab styling). Uses the same resolveAnnotationAt hit-test as the
-  // pan-mode click listener, so behavior is consistent between "what will
-  // a click pick?" and "what does the glow preview?".
-  //
-  // Rationale for document-level mousemove (vs flipping SVG pointer-events):
-  // the SVG layer is `pointer-events: none` in pan mode so empty-space
-  // clicks pass through to Pdfjs for panning. Re-enabling pointer
-  // events on hit-zones would require guarding their onPointerDown to
-  // avoid fighting pan gestures — more changes + more risk than a single
-  // mousemove listener that reuses the hit-test already in production.
-  //
-  // Throttled via requestAnimationFrame so resolveAnnotationAt (composedPath
-  // + elementsFromPoint + querySelectorAll fallback) runs at most once per
-  // frame, not per mousemove event.
-  useEffect(() => {
-    if (activeTool !== 'pan') {
-      // Tool changed away from pan — clear any lingering hover state + cursor.
-      setPendingSvgHover((prev) => (prev == null ? prev : null));
-      if (document.body.style.cursor === 'pointer') {
-        document.body.style.cursor = '';
-      }
-      return undefined;
-    }
-    let rafId = 0;
-    let latestEvent = null;
-    let lastKey = '';
-    const applyHover = () => {
-      rafId = 0;
-      const e = latestEvent;
-      latestEvent = null;
-      if (!e) return;
-      const hit = resolveAnnotationAt(e);
-      // Only treat plain annotations as hover targets. Callouts + counters
-      // flow through their own hover paths (or none) and the parallel
-      // callout session owns their interaction.
-      const isAnnotation = hit && hit.kind === 'annotation'
-        && typeof hit.annotationIndex === 'number'
-        && hit.pageNumber != null;
-      const nextKey = isAnnotation ? `${hit.pageNumber}:${hit.annotationIndex}` : '';
-      if (nextKey === lastKey) return;
-      lastKey = nextKey;
-      if (isAnnotation) {
-        setPendingSvgHover({ pageNumber: hit.pageNumber, annotationIndex: hit.annotationIndex });
-        // UX: pointer cursor over annotations in pan mode. document.body is
-        // the lowest-priority target so Pdfjs-level pan cursor wins
-        // everywhere else. Cleared on no-hit and on tool-change cleanup.
-        if (document.body.style.cursor !== 'pointer') {
-          document.body.style.cursor = 'pointer';
-        }
-      } else {
-        setPendingSvgHover((prev) => (prev == null ? prev : null));
-        if (document.body.style.cursor === 'pointer') {
-          document.body.style.cursor = '';
-        }
-      }
-    };
-    const onMove = (e) => {
-      latestEvent = e;
-      if (!rafId) rafId = requestAnimationFrame(applyHover);
-    };
-    window.addEventListener('mousemove', onMove, true);
-    return () => {
-      window.removeEventListener('mousemove', onMove, true);
-      if (rafId) cancelAnimationFrame(rafId);
-      setPendingSvgHover((prev) => (prev == null ? prev : null));
-      if (document.body.style.cursor === 'pointer') {
-        document.body.style.cursor = '';
-      }
-    };
-  }, [activeTool]);
-
-  // NOTE: Phase 14 callout handlers (handleDeleteSelectedCallouts,
-  // handleCreateCallout, handleUpdateCallout, handleUpdateCalloutLive,
-  // handleRequestCalloutEditMode) are declared AFTER addHistoryCheckpoint
-  // below — three of them list addHistoryCheckpoint in their useCallback
-  // dep arrays, which triggers a TDZ ReferenceError if declared here
-  // (addHistoryCheckpoint is a const useCallback declared ~4600 lines
-  // later in the same function body). Moved as a block; do NOT move them
-  // back without also moving addHistoryCheckpoint.
-
-  const [annotationsByPage, setAnnotationsByPage] = useState({}); // Fabric.js canvas annotations
   const [pdfNativeAnnotationLayerPolicyByPage, setPdfNativeAnnotationLayerPolicyByPage] = useState({});
 
   useEffect(() => {
@@ -9765,7 +9800,11 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     // slice and Cmd+Z brought back shapes but not the callout. Include the
     // full callout list in every checkpoint + restore so marquee
     // delete → undo resurrects both halves of the selection.
-    callouts: deepClone(calloutsRef.current || [])
+    // R2.2 Slice 2: callouts are DERIVED state now — snapshot the projection of
+    // the same annotationsByPageRef source captured above, so the two slices
+    // inside one checkpoint can never disagree (calloutsRef only syncs in a
+    // post-render effect and could lag a synchronous restore).
+    callouts: deepClone(deriveCalloutsFromByPage(annotationsByPageRef.current || {}))
   }), []);
 
   const getAnnotationPageHistorySnapshot = useCallback((pageNumber) => {
@@ -9780,28 +9819,41 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       },
       surveyMarkers: surveyMarkersRef.current || {},
       spaces: spacesRef.current || [],
-      callouts: calloutsRef.current || []
+      // R2.2 Slice 2: derived from the same annotationsState read above (see
+      // getHistorySnapshot for why this no longer reads calloutsRef).
+      callouts: deriveCalloutsFromByPage(annotationsState)
     };
   }, []);
 
   const restoreHistoryState = useCallback((stateToRestore) => {
-    const restoredAnnotationsByPage = stateToRestore.annotationsByPage || {};
     const restoredSurveyMarkers = stateToRestore.surveyMarkers || {};
     const restoredSpaces = migrateHistorySpaces(stateToRestore.spaces || []);
     const restoredCallouts = Array.isArray(stateToRestore.callouts)
       ? stateToRestore.callouts
       : [];
+    // R2.2 Slice 2: callouts are a derived projection of annotationsByPage, so
+    // the snapshot's callout slice is merged into the restored byPage BEFORE
+    // the single setAnnotationsByPage call (no separate callout state to set).
+    // For post-flip snapshots the byPage already embeds the same callouts, so
+    // applyCalloutListToByPage's fingerprint bail makes this a referential
+    // no-op; it only rewrites when the two slices genuinely disagree. The old
+    // `calloutsRef.current = restoredCallouts` write is gone — calloutsRef now
+    // follows the derive memo via its sync effect (callouts are not an
+    // independent slice anymore).
+    const restoredAnnotationsByPage = applyCalloutListToByPage(
+      stateToRestore.annotationsByPage || {},
+      restoredCallouts,
+      pageSizesRef.current || {}
+    );
 
     annotationsByPageRef.current = restoredAnnotationsByPage;
     surveyMarkersRef.current = restoredSurveyMarkers;
     spacesRef.current = restoredSpaces;
-    calloutsRef.current = restoredCallouts;
 
     const applyRestoredState = () => {
       setAnnotationsByPage(restoredAnnotationsByPage);
       setSurveyMarkers(restoredSurveyMarkers);
       setSpaces(restoredSpaces);
-      setCalloutsIfPersistedChanged(restoredCallouts);
     };
 
     try {
@@ -9809,7 +9861,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     } catch (_err) {
       applyRestoredState();
     }
-  }, [migrateHistorySpaces, setCalloutsIfPersistedChanged]);
+  }, [migrateHistorySpaces]);
 
   const createHistoryMeta = useCallback((snapshot, reason, context = null, previousSnapshot = null) => {
     const snapshotFingerprint = getHistoryFingerprint(snapshot);
@@ -18785,59 +18837,34 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     setHasUnsavedAnnotations(false); // Reset unsaved flag
   }, [clearExcelSyncCheckpoint, finishPdfjsInteractionWindow, pdfFile, pushHistoryDebugEvent]);
 
-  // Callout-unification keystone (Phase 5, point C — local reactive projection).
-  // The LOAD projection above runs once per doc-open. But callouts created,
-  // edited, or deleted AFTER load only mutate `callouts[]` (the legacy create /
-  // edit / delete paths all funnel through setCallouts/setCalloutsIfPersistedChanged).
-  // With the flag ON the legacy `filteredCallouts` visible-render loop is
-  // suppressed and the shared SVG dispatch renders callouts from
-  // `annotationsByPage` — so without re-projecting, a newly-drawn callout would
-  // never appear and a deleted one would linger. This effect mirrors `callouts[]`
-  // into `annotationsByPage` whenever the list changes (or page dims first
-  // measure), rebuilding the callout layer FROM SOURCE via the canonical
-  // idempotent projector: it strips every existing `data.type==='callout'` object
-  // per page and re-projects, preserving all non-callout objects untouched. Storage
-  // routing (post R2.1): annotationDocStore.syncByPageToDoc STILL unconditionally
-  // skips `data.type==='callout'` (Y.Doc / CRDT path — callouts are Supabase-only
-  // for now; CRDT unification is R2.3), but serializeAnnotationsByPage now skips
-  // callouts ONLY flag-OFF — flag-ON it SERIALIZES them into `.fabricObject` rows
-  // (the R2.1 Supabase-sole-writer flip; the legacy callout push is disabled
-  // flag-ON to avoid a dual-write). `callouts[]` is still the in-memory source
-  // (dual-rep; derive-model retirement is post-flip R2.2). Flag OFF → early return, byte-for-byte
-  // unchanged. pageSizes (reactive state) is a dep so the projection re-runs once
-  // real page dims arrive (BLOCKER 2: first paint may project at the US-Letter
-  // fallback before measurement); pageSizesRef.current supplies the freshest dims.
+  // R2.2 Slice 2 (THE FLIP) — the Phase-5 reactive callouts[]→byPage projection
+  // effect is GONE: annotationsByPage is the single in-memory source of truth
+  // and every callout create/edit/delete already lands there synchronously
+  // through the setCallouts/setCalloutsIfPersistedChanged adapters. What
+  // remains is re-projection-on-measure (BLOCKER 2 / non-Letter first paint):
+  // the load-path projection above may have run before any page was measured
+  // and projected at the US-Letter fallback (612x792), so when real page dims
+  // arrive we rebuild the projected callout children at the fresh sizes.
+  // NOTE (deliberate deviation from the R22-R23 plan text): this calls
+  // projectCalloutsIntoByPage directly instead of applyCalloutListToByPage —
+  // apply's fingerprint bail compares NORMALIZED callout content, which is
+  // projection-invariant (derive(prev) always fingerprints equal to itself),
+  // so routing this re-projection through apply would ALWAYS bail and the
+  // US-Letter-fallback children would never be corrected. The direct projector
+  // mirrors the old effect's pageSizes arm exactly: strip + re-project,
+  // non-callout objects preserved by reference, no-op on callout-free docs.
+  // Runs only when pageSizes (reactive state) changes — rare (page
+  // measurement), same trigger cadence as the old effect's pageSizes dep.
   useEffect(() => {
-    if (!calloutsInSharedStore()) return;
     setAnnotationsByPage((prev) => {
-      if (Array.isArray(callouts) && callouts.length > 0) {
-        // Rebuild-from-source: strip + re-project. Referentially new when the
-        // callout layer changed; cheap no-op (React bails) when nothing did.
-        return projectCalloutsIntoByPage(prev, callouts, pageSizesRef.current || {});
-      }
-      // Empty list (e.g. the last callout was just deleted): the shared projector
-      // returns `prev` unchanged on an empty list, so strip any lingering ghost
-      // callout objects here. Only touch a page that actually holds a callout
-      // object so the returned map stays referentially identical otherwise.
-      const src = prev || {};
-      let changed = false;
-      const next = {};
-      for (const key of Object.keys(src)) {
-        const page = src[key];
-        const objects = Array.isArray(page?.objects) ? page.objects : [];
-        const hasCallout = objects.some((o) => o?.data?.type === 'callout');
-        if (hasCallout) {
-          changed = true;
-          next[key] = { ...(page || {}), objects: objects.filter((o) => !(o?.data?.type === 'callout')) };
-        } else {
-          next[key] = page;
-        }
-      }
-      return changed ? next : prev;
+      const derived = deriveCalloutsFromByPage(prev);
+      if (derived.length === 0) return prev;
+      return projectCalloutsIntoByPage(prev, derived, pageSizesRef.current || {});
     });
-    // pageSizes intentionally in deps so a late measurement re-projects (BLOCKER 2).
+    // pageSizes intentionally the sole dep so a late measurement re-projects
+    // (BLOCKER 2); pageSizesRef.current supplies the freshest dims.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [callouts, pageSizes]);
+  }, [pageSizes]);
 
   // Save items and annotations to localStorage when they change
   useEffect(() => {
