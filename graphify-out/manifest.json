@@ -1155,8 +1155,8 @@
     "semantic_hash": ""
   },
   "src/PDFViewer.jsx": {
-    "mtime": 1784309098.5996993,
-    "ast_hash": "72018e157cf65047d0805d08eb86df14",
+    "mtime": 1784319488.869899,
+    "ast_hash": "306076b085199ae20f8ad6b64f968850",
     "semantic_hash": ""
   },
   "src/PageAnnotationLayer.jsx": {
@@ -1245,8 +1245,8 @@
     "semantic_hash": ""
   },
   "src/components/FabricEraserCanvas.jsx": {
-    "mtime": 1784248069.413132,
-    "ast_hash": "b999e7b7f66576909f47527a2a6c348d",
+    "mtime": 1784319401.3825636,
+    "ast_hash": "17b111ddc777b403b7a63e50b8c7db35",
     "semantic_hash": ""
   },
   "src/components/FormFieldPropertiesPanel.jsx": {
@@ -1390,8 +1390,8 @@
     "semantic_hash": ""
   },
   "src/components/collab/ConfirmDeleteModal.jsx": {
-    "mtime": 1784248069.4293547,
-    "ast_hash": "93069764e86a2292ca8322366e9cb076",
+    "mtime": 1784318399.9423604,
+    "ast_hash": "559c6986a1134ac8d3032420fba116e9",
     "semantic_hash": ""
   },
   "src/components/collab/QuarantineMarkerOverlay.jsx": {
@@ -1530,8 +1530,8 @@
     "semantic_hash": ""
   },
   "src/home/SurveyHub.jsx": {
-    "mtime": 1784248069.439944,
-    "ast_hash": "89ba80a1a6fd6f9416e1f73695089db4",
+    "mtime": 1784318399.942699,
+    "ast_hash": "c503c46f455c73db86104890103cb1e1",
     "semantic_hash": ""
   },
   "src/home/TemplatesEditor.jsx": {
@@ -1570,8 +1570,8 @@
     "semantic_hash": ""
   },
   "src/hooks/useAnnotationContextMenu.jsx": {
-    "mtime": 1784301130.2521698,
-    "ast_hash": "8237488673167dbc654d9ff8ca0a13df",
+    "mtime": 1784319476.4448223,
+    "ast_hash": "64d2b69262338407f584e9b9d487f24f",
     "semantic_hash": ""
   },
   "src/hooks/useAnnotationDoc.js": {
@@ -1605,8 +1605,8 @@
     "semantic_hash": ""
   },
   "src/hooks/useSVGInteraction.js": {
-    "mtime": 1784248069.447737,
-    "ast_hash": "58f7e174ec09864f561415d9b6b03328",
+    "mtime": 1784319348.2247486,
+    "ast_hash": "5058da3f61b62f32f9b8bf2089f80752",
     "semantic_hash": ""
   },
   "src/hooks/useSubscriptionLimits.js": {
@@ -1690,8 +1690,8 @@
     "semantic_hash": ""
   },
   "src/lib/collab/bulkDeletePlan.js": {
-    "mtime": 1784271050.1091368,
-    "ast_hash": "d5b69d264cbd6f6c3fad4a91a53a1a7d",
+    "mtime": 1784318399.9427977,
+    "ast_hash": "0e7b4ebb941c08edfea176dc575f6da8",
     "semantic_hash": ""
   },
   "src/lib/collab/cleanupResidueAudit.js": {
@@ -1740,8 +1740,8 @@
     "semantic_hash": ""
   },
   "src/lib/collab/permissionScope.js": {
-    "mtime": 1784265397.224332,
-    "ast_hash": "837815dfd45d7afa026a41cd2de50b8f",
+    "mtime": 1784318399.9428914,
+    "ast_hash": "85ffd898a8f9a8a40f28794d7e578484",
     "semantic_hash": ""
   },
   "src/lib/collab/phase35Diag.js": {
@@ -2060,8 +2060,8 @@
     "semantic_hash": ""
   },
   "src/services/documentAnnotationService.js": {
-    "mtime": 1784248069.4730213,
-    "ast_hash": "c3257c29eb90079b5850c76ae6ddde16",
+    "mtime": 1784318399.9430234,
+    "ast_hash": "961a033ee9827aa5b6432d6deb1fb781",
     "semantic_hash": ""
   },
   "src/services/documentHistoryService.js": {
@@ -2070,8 +2070,8 @@
     "semantic_hash": ""
   },
   "src/services/documentInviteService.js": {
-    "mtime": 1784248069.473575,
-    "ast_hash": "2082642e2763fb0751a6f079a08907b6",
+    "mtime": 1784318620.78527,
+    "ast_hash": "d1a5e1aaf42abaf5a676f016b3856594",
     "semantic_hash": ""
   },
   "src/services/documentLockService.js": {
@@ -2550,8 +2550,8 @@
     "semantic_hash": ""
   },
   "src/utils/marqueeSelection.js": {
-    "mtime": 1784248069.5052664,
-    "ast_hash": "3ed924d35b1527f88ef75c4dfa6e5e6a",
+    "mtime": 1784319392.029567,
+    "ast_hash": "5df98ed19389fbd3a800965cf78e2b5a",
     "semantic_hash": ""
   },
   "src/utils/menuPositioning.js": {
@@ -2585,13 +2585,13 @@
     "semantic_hash": ""
   },
   "src/utils/pdfAnnotationImporter.js": {
-    "mtime": 1784310563.2080996,
-    "ast_hash": "fc85a50edbe186b91817f7ac94bdf543",
+    "mtime": 1784318399.9432847,
+    "ast_hash": "007cda622383a9f616553017b8278976",
     "semantic_hash": ""
   },
   "src/utils/pdfAnnotationsPdfLib.js": {
-    "mtime": 1784302001.5407462,
-    "ast_hash": "1efc29ef5301e15e8ddbbb3abca192a2",
+    "mtime": 1784318399.945482,
+    "ast_hash": "7e47b52b62e1bc053ba7d5d981f0e0de",
     "semantic_hash": ""
   },
   "src/utils/pdfAppAnnotationMetadata.js": {
@@ -3495,8 +3495,8 @@
     "semantic_hash": ""
   },
   "tests/kal31InviteContract.test.mjs": {
-    "mtime": 1784248069.5422878,
-    "ast_hash": "944eaf54b16f379d0fc63b3efc333a7c",
+    "mtime": 1784318399.9458823,
+    "ast_hash": "86db56c01a37347b98b7e7aee243702c",
     "semantic_hash": ""
   },
   "tests/lineArrowPersistence.test.mjs": {
@@ -3580,8 +3580,8 @@
     "semantic_hash": ""
   },
   "tests/pdfSaveExportContract.test.mjs": {
-    "mtime": 1784294987.8351777,
-    "ast_hash": "5872aab0ed4f73167d44c2d679f3a712",
+    "mtime": 1784318399.9459817,
+    "ast_hash": "8767b5e3e0defab3f701a734ab73d61c",
     "semantic_hash": ""
   },
   "tests/pdfSurveyMarkerCompat.test.mjs": {
@@ -3910,8 +3910,8 @@
     "semantic_hash": ""
   },
   "tests/phase35-e2e/collaborator-marquee-scope.spec.mjs": {
-    "mtime": 1784248069.5560362,
-    "ast_hash": "b3c617ad40ebdd819daebacbe57c0add",
+    "mtime": 1784319517.0595706,
+    "ast_hash": "78c4d6ffce0710b4d4b4c3c84c869825",
     "semantic_hash": ""
   },
   "tests/phase35-e2e/owner-cross-author-confirm.spec.mjs": {
@@ -3930,8 +3930,8 @@
     "semantic_hash": ""
   },
   "tests/phase35/buildBulkDeletePlan.test.mjs": {
-    "mtime": 1784248069.556464,
-    "ast_hash": "bdfdebed0076cf4d54cbf85e3b14d50f",
+    "mtime": 1784318399.9461658,
+    "ast_hash": "0e88470a221204905681dbc49c4f8355",
     "semantic_hash": ""
   },
   "tests/phase35/cleanupResidueAudit.test.mjs": {
@@ -3940,8 +3940,8 @@
     "semantic_hash": ""
   },
   "tests/phase35/permissionScope.test.mjs": {
-    "mtime": 1784248069.557057,
-    "ast_hash": "779e8e95cef085267f0684c42b8bb54e",
+    "mtime": 1784318399.9463806,
+    "ast_hash": "12988cf1eb4913e4c2d374f6731865d3",
     "semantic_hash": ""
   },
   "tests/phase35/undoToastQueue.test.mjs": {
@@ -7650,8 +7650,8 @@
     "semantic_hash": ""
   },
   "tests/phase35/documentRoleGate.test.mjs": {
-    "mtime": 1784248069.556943,
-    "ast_hash": "f2d12475929868bae16d96c7d2359751",
+    "mtime": 1784318399.9462867,
+    "ast_hash": "48b54399229bf2715898b7b0f59e0f96",
     "semantic_hash": ""
   },
   "tests/productionAnnotationBenchmark.test.mjs": {
@@ -8520,8 +8520,8 @@
     "semantic_hash": ""
   },
   "tests/calloutBulkDeletePlan.test.mjs": {
-    "mtime": 1784271395.42143,
-    "ast_hash": "b802c3a2abeb3a5fdfcdec4f4ffbaf70",
+    "mtime": 1784318399.9457824,
+    "ast_hash": "a0386270cc3ca20eec48155d49d1a548",
     "semantic_hash": ""
   },
   "tests/calloutRealtimeEchoSuppression.test.mjs": {
@@ -8602,6 +8602,16 @@
   "tests/annotationHydrateEmptyWipeGuard.test.mjs": {
     "mtime": 1784309201.0797915,
     "ast_hash": "919e4c6c6fa6c7e605b3cb8d9f08d5ab",
+    "semantic_hash": ""
+  },
+  "tests/phase35/contributorCrossAuthorShapes.test.mjs": {
+    "mtime": 1784319585.804369,
+    "ast_hash": "796c5a85b1193f0923cb803220f92eeb",
+    "semantic_hash": ""
+  },
+  "agent-cli/callout-interaction-e2e-result.png": {
+    "mtime": 1784319652.1853113,
+    "ast_hash": "306e0b230a19313de31a3a15d663ad72",
     "semantic_hash": ""
   }
 }
