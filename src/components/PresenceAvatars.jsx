@@ -231,10 +231,74 @@ export default function PresenceAvatars({
           </div>
         )}
       </div>
-      {/* Caption hidden in compact mode — the rail is too narrow for it. */}
+      {/* Caption — active-users count.
+          UX (2026-07-17, E2E finding): with the rail collapsed the full
+          "N viewing" text doesn't fit the 48px rail ("12 viewing" ≈ 48px at
+          10px type), but hiding it entirely left collapsed users with no
+          at-a-glance signal that other people are viewing the document.
+          Intended behavior: expanded rail keeps the full "just you" /
+          "N viewing" caption (unchanged); the collapsed rail shows a compact
+          count — just the number, same 10px muted caption style — under the
+          dot pile whenever someone else is present, with a right-slide hover
+          tooltip reading "N viewing" that matches the collapsed rail's
+          existing tab / sync-status tooltips (reference behavior). When the
+          user is alone, compact mode stays caption-less so the collapsed
+          rail keeps its minimal look. */}
       {!compact && (
         <div style={{ fontSize: '10px', color: '#9aa0a8', lineHeight: 1 }}>
           {total === 1 ? 'just you' : `${total} viewing`}
+        </div>
+      )}
+      {compact && total > 1 && <CompactViewerCount total={total} />}
+    </div>
+  );
+}
+
+// Compact active-users count for the collapsed sidebar rail: the bare
+// number in the same muted caption style, with a right-slide hover tooltip
+// spelling out "N viewing" — identical tooltip style/geometry to the rail's
+// tab tooltips and the compact sync status indicator. The tooltip lives on
+// the count (not the dot pile) so it never fights the per-user email
+// tooltips on the dots or the "+N" viewer-list popover.
+function CompactViewerCount({ total }) {
+  const [hover, setHover] = useState(false);
+  return (
+    <div
+      role="status"
+      aria-label={`${total} viewing`}
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+      style={{
+        position: 'relative',
+        fontSize: '10px',
+        color: '#9aa0a8',
+        lineHeight: 1,
+        // Widen the hover target a touch — a bare 10px digit is a tiny mark.
+        padding: '2px 6px',
+        cursor: 'default'
+      }}
+    >
+      {total}
+      {hover && (
+        <div
+          style={{
+            position: 'absolute',
+            left: 'calc(100% + 8px)',
+            top: '50%',
+            transform: 'translateY(-50%)',
+            background: '#1a1a1a',
+            color: '#e8e2d4',
+            border: '1px solid #2a3140',
+            padding: '6px 10px',
+            borderRadius: '4px',
+            fontSize: '12px',
+            whiteSpace: 'nowrap',
+            zIndex: 1000,
+            boxShadow: '0 2px 8px rgba(0,0,0,0.3)',
+            pointerEvents: 'none'
+          }}
+        >
+          {total} viewing
         </div>
       )}
     </div>
