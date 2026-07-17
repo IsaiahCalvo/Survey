@@ -76,7 +76,7 @@ import { calloutToAnnotationObject, projectCalloutsIntoByPage } from './utils/ca
 import { buildHistoryEventRowFromDebugEvent, recordDocumentHistoryEvent, recordAndNotifyDocumentHistoryEvent } from './services/documentHistoryService.js';
 import { buildPrintableRegularAnnotationPayload, savePDFWithAnnotationsPdfLib, savePDFWithFlattenedRegularAnnotationsForPrint } from './utils/pdfAnnotationsPdfLib';
 import { buildTextSearchDiagLogSection, emitTextSearchDiag } from './utils/textSearchDiag';
-import { canModify, getAnnotationAuthorId } from './lib/collab/permissionScope.js';
+import { canModify, canModifySurveyMarker, getAnnotationAuthorId } from './lib/collab/permissionScope.js';
 import { checkFileExists, checkFileExistsInDrive, downloadExcelFile, downloadExcelFileByPath, getFileById, getFileETag, getFileMetadata, getTemplateIdFromExcel, uploadExcelFile, uploadFileContentById, uploadFileToDrive } from './services/excelGraphService';
 import { checkSessionSupport, closeWorkbookSession, createWorkbookSession, getFileIdFromPath, getUsedRange, getWorksheets, refreshWorkbookSession, updateCellRange } from './services/excelSessionService';
 import { LIVE_SYNC_GATE_REASON, resolveLiveSyncEligibility } from './services/liveSyncEligibility';
@@ -24170,9 +24170,17 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         .map(id => ({ id, surveyMarker: surveyMarkers[id] }))
         .filter(({ surveyMarker }) => surveyMarker != null)
         .filter(({ surveyMarker }) => {
-          const authorId = surveyMarker.userId || surveyMarker.annotationData?.userId || surveyMarker.lastModifiedBy || null;
-          if (!authorId || !user?.id) return true;
-          return authorId === user.id;
+          // Delete authority routes through the canonical permissionScope
+          // adapter (canModifySurveyMarker): document owner may delete anyone's
+          // marker, non-owners only their own, and an unresolvable author
+          // DENIES for non-owners (fail closed). The old inline chain here
+          // failed OPEN on a missing author and lacked the owner override.
+          // Boot guard mirrors the KAL-125 callout delete gate above: before
+          // viewerId/documentOwnerId resolve (local-only file, pre-auth),
+          // fall through permissively to legacy behavior.
+          const viewerId = user?.id ?? null;
+          if (!viewerId || !documentOwnerId) return true;
+          return canModifySurveyMarker({ surveyMarker, viewerId, documentOwnerId });
         });
 
       if (surveyMarkersToDelete.length === 0) {
@@ -24374,7 +24382,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         });
       }, 100);
     }
-  }, [addHistoryCheckpoint, selectedModuleId, selectedTemplate, surveyMarkers, items, boundsMatch, getCategoryName, getModuleName, getModuleDataKey, pdfFile?.id, user?.id, documentSyncEnabled]);
+  }, [addHistoryCheckpoint, selectedModuleId, selectedTemplate, surveyMarkers, items, boundsMatch, getCategoryName, getModuleName, getModuleDataKey, pdfFile?.id, user?.id, documentOwnerId, documentSyncEnabled]);
 
   // After a Survey Marker delete commits to surveyMarkers, re-export the
   // linked Excel so the deleted marker's row is removed there too. The

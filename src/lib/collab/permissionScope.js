@@ -88,6 +88,52 @@ export function canModify({ annotation, viewerId, documentOwnerId }) {
 }
 
 /**
+ * Resolve a Survey Marker's authorId. Survey Markers are the historical fork of
+ * the annotation shape and stamp their author in different fields than fabric
+ * annotations (they never carry meta.authorId / data.authorId), so this maps
+ * the marker fields into the same single-source-of-truth resolution the
+ * canonical getAnnotationAuthorId chain provides:
+ *
+ *   surveyMarker.userId                  // primary author stamp on create
+ *     ?? surveyMarker.annotationData.userId // Supabase row projection
+ *     ?? surveyMarker.lastModifiedBy        // legacy/edited markers
+ *     ?? null
+ *
+ * @param {object|null|undefined} surveyMarker
+ * @returns {string|null}
+ */
+export function getSurveyMarkerAuthorId(surveyMarker) {
+  if (surveyMarker == null) return null;
+  return (
+    surveyMarker?.userId ??
+    surveyMarker?.annotationData?.userId ??
+    surveyMarker?.lastModifiedBy ??
+    null
+  );
+}
+
+/**
+ * Whether the viewer is allowed to modify (delete / edit) the given Survey
+ * Marker. Thin adapter over the canModify semantics with the marker-specific
+ * author resolution above — identical owner override and identical FAIL-CLOSED
+ * treatment of unresolvable authors: a non-owner may never touch a marker whose
+ * author cannot be resolved. (The old inline PDFViewer chain failed OPEN on a
+ * missing author and had no document-owner override.)
+ *
+ * @param {{ surveyMarker: object, viewerId: string|null|undefined, documentOwnerId: string|null|undefined }} args
+ * @returns {boolean}
+ */
+export function canModifySurveyMarker({ surveyMarker, viewerId, documentOwnerId }) {
+  // Owner can modify anything — same short-circuit as canModify.
+  if (isOwner(viewerId, documentOwnerId)) return true;
+  // Non-owner: must be the author of this specific marker; unresolvable
+  // author denies (fail closed), matching canModify's string checks.
+  const authorId = getSurveyMarkerAuthorId(surveyMarker);
+  if (typeof authorId !== 'string' || typeof viewerId !== 'string') return false;
+  return authorId === viewerId;
+}
+
+/**
  * Filter an annotations array down to the marks the viewer is permitted to interact with.
  *
  * UX comment: owner-mode returns the input array reference UNCHANGED. filterByAuthor
