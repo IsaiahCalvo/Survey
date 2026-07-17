@@ -13,7 +13,6 @@ import {
   computeBounds,
   serializeAnnotationsByPage,
   deserializeRowsToAnnotationsByPage,
-  serializeCalloutToRow,
   deserializeRowToCallout,
   deserializeRowsToCallouts,
   normalizeFabricAnnotationRows
@@ -463,23 +462,46 @@ test('normalizeFabricAnnotationRows: dedupes repeated PDF imports and prefers co
 });
 
 // ----------------------------------------------------------------------------
-// Callout serialization (separate state slice)
+// Callout serialization — LIVE path (2026-07-17 rewrite, dead-code pass 2).
+// serializeCalloutToRow was deleted (test-only after the legacy callout push
+// retired); callouts now persist exclusively as projected fabric groups:
+// calloutToAnnotationObject → serializeFabricObjectToRow → 'callout' row
+// carrying annotation_data.fabricObject.data.legacyCallout, reloaded via
+// deserializeRowToCallout. These tests exercise that real writer so the
+// reader keeps end-to-end round-trip coverage.
 // ----------------------------------------------------------------------------
 
-test('round-trip: callout preserves anchor and knee', () => {
+const PAGE_SIZE = { width: 800, height: 1000 };
+
+test('round-trip: projected callout row preserves the callout via legacyCallout', async () => {
+  const { calloutToAnnotationObject } = await import('../../src/utils/calloutAnnotationBridge.js');
   const callout = {
     id: 'co-1',
     pageNumber: 4,
-    anchor: { x: 100, y: 200 },
-    knee: { x: 150, y: 200 },
-    label: { left: 200, top: 180, width: 80, height: 40, text: 'See note' },
-    color: '#FF0000'
+    arrowTip: { x: 0.2, y: 0.3 },
+    knee: { x: 0.25, y: 0.35 },
+    textBoxPosition: { x: 0.3, y: 0.3 },
+    textBoxWidth: 0.1,
+    textBoxHeight: 0.05,
+    text: 'See note',
+    style: { borderColor: '#FF0000', lineThickness: 3 }
   };
-  const row = serializeCalloutToRow(callout, { documentId: DOC_ID, userId: USER_ID });
+  const projected = calloutToAnnotationObject(callout, PAGE_SIZE);
+  const row = serializeFabricObjectToRow(projected, {
+    documentId: DOC_ID, userId: USER_ID, pageNumber: 4
+  });
   assert.equal(row.annotation_type, 'callout');
   assert.equal(row.page_number, 4);
+  assert.equal(row.annotation_id, 'co-1');
+  // Live bounds path: computeBounds over the projected group's bbox
+  // (calloutToAnnotationObject computes left/top/width/height over
+  // textbox + knee + arrowTip in page pixels).
+  assert.equal(row.bounds.x, 0.2 * PAGE_SIZE.width);
+  assert.equal(row.bounds.y, 0.3 * PAGE_SIZE.height);
   const back = deserializeRowToCallout(row);
-  assert.deepEqual(back, callout);
+  // The serializer's attribution backstop stamps meta.authorId onto the
+  // reload payload; everything else round-trips verbatim.
+  assert.deepEqual(back, { ...callout, meta: { authorId: USER_ID } });
 });
 
 test('backward-read: migrated .fabricObject callout row recovers via legacyCallout', () => {
@@ -519,38 +541,10 @@ test('backward-read: legacy .callout row still wins over any fabricObject', () =
   assert.equal(deserializeRowToCallout(row).id, 'co-legacy');
 });
 
-test('callout bounds enclose anchor, knee, and label', () => {
-  const callout = {
-    id: 'co-2',
-    pageNumber: 1,
-    anchor: { x: 10, y: 10 },
-    knee: { x: 50, y: 10 },
-    label: { left: 60, top: 0, width: 100, height: 20 }
-  };
-  const row = serializeCalloutToRow(callout, { documentId: DOC_ID, userId: USER_ID });
-  assert.equal(row.bounds.x, 10);
-  assert.equal(row.bounds.y, 0);
-  assert.equal(row.bounds.width, 150); // 60+100=160 - 10 = 150
-});
-
-test('callout bounds enclose current SVG callout schema', () => {
-  const callout = {
-    id: 'co-svg-1',
-    pageNumber: 1,
-    arrowTip: { x: 0.2, y: 0.3 },
-    knee: { x: 0.25, y: 0.35 },
-    textBoxPosition: { x: 0.3, y: 0.3 },
-    textBoxWidth: 0.1,
-    textBoxHeight: 0.05,
-    text: 'See note'
-  };
-  const row = serializeCalloutToRow(callout, { documentId: DOC_ID, userId: USER_ID });
-
-  assert.equal(row.bounds.x, 0.2);
-  assert.equal(row.bounds.y, 0.3);
-  assert.equal(row.bounds.width, 0.2);
-  assert.ok(Math.abs(row.bounds.height - 0.05) < 1e-12);
-});
+// The two 'callout bounds' tests that exercised the deleted
+// serializeCalloutToRow's private computeCalloutBounds were removed with it
+// (2026-07-17). The live bounds column comes from computeBounds over the
+// projected group's bbox — asserted in the round-trip test above.
 
 test('deserializeRowsToCallouts: pulls only callout rows', () => {
   const rows = [

@@ -368,59 +368,14 @@ export function deserializeRowToFabricObject(row) {
   };
 }
 
-/**
- * Serialize a callout (the in-app callout state lives separately from
- * annotationsByPage in its own `callouts` array).
- *
- * Callout shape (from saveCallouts in App.jsx):
- *   { id, pageNumber, anchor: {x,y}, knee: {x,y}, label: {...}, ... }
- */
-export function serializeCalloutToRow(callout, opts = {}) {
-  if (!callout || typeof callout !== 'object') {
-    throw new Error('serializeCalloutToRow: callout is required');
-  }
-  const { documentId, userId, clientSessionId } = opts;
-  if (!documentId) throw new Error('documentId required');
-  if (!userId) throw new Error('userId required');
-  const pageNumber = callout.pageNumber ?? callout.page_number ?? 1;
-
-  const id = callout.id || callout.annotationId || generateClientId('callout');
-
-  // Author-attribution guard (2026-04-30 hardening) — same invariant as
-  // serializeFabricObjectToRow. Callouts live on a separate state slice from
-  // annotationsByPage but share the same author chain. If meta.authorId (or
-  // any chain field) is already set, preserve it. Only stamp on true CREATE.
-  const existingAuthorId = getAnnotationAuthorId(callout);
-  if (!existingAuthorId) {
-    if (!callout.meta || typeof callout.meta !== 'object') {
-      callout.meta = {};
-    }
-    if (!callout.meta.authorId) {
-      callout.meta.authorId = userId;
-    }
-  }
-  const rowUserId = getAnnotationAuthorId(callout) || userId;
-
-  // Bounds: smallest rect enclosing anchor + knee + label rect.
-  const bounds = computeCalloutBounds(callout);
-
-  return {
-    document_id: documentId,
-    user_id: rowUserId,
-    annotation_id: id,
-    annotation_type: 'callout',
-    page_number: pageNumber,
-    bounds,
-    annotation_data: {
-      callout,
-      pageNumber,
-      schemaVersion: 1,
-      // See serializeFabricObjectToRow header — per-session id, not user id.
-      clientSessionId: clientSessionId || null
-    },
-    last_modified_by: userId
-  };
-}
+// serializeCalloutToRow was DELETED 2026-07-17 (dead-code pass 2): the legacy
+// per-callout push it served was retired, leaving it test-only. Callouts now
+// persist exclusively through the shared writer — calloutToAnnotationObject
+// (src/utils/calloutAnnotationBridge.js) projects the callout to a fabric
+// group and serializeFabricObjectToRow above emits the 'callout' row carrying
+// annotation_data.fabricObject.data.legacyCallout, which
+// deserializeRowToCallout below reads back. Its private computeCalloutBounds
+// helper was deleted with it (live bounds come from computeBounds).
 
 export function deserializeRowToCallout(row) {
   if (!row) throw new Error('row required');
@@ -460,52 +415,6 @@ function pickOpacity(fabricObj) {
   return null;
 }
 
-function computeCalloutBounds(callout) {
-  const xs = [];
-  const ys = [];
-  const push = (pt) => {
-    if (pt && Number.isFinite(pt.x) && Number.isFinite(pt.y)) {
-      xs.push(pt.x);
-      ys.push(pt.y);
-    }
-  };
-  push(callout.anchor || callout.arrowTip);
-  push(callout.knee);
-  if (callout.label) {
-    push({ x: callout.label.left, y: callout.label.top });
-    if (Number.isFinite(callout.label.left) && Number.isFinite(callout.label.width)) {
-      push({ x: callout.label.left + callout.label.width, y: callout.label.top });
-    }
-    if (Number.isFinite(callout.label.top) && Number.isFinite(callout.label.height)) {
-      push({ x: callout.label.left, y: callout.label.top + callout.label.height });
-    }
-  }
-  const textBoxX = callout.textBoxPosition?.x ?? callout.textBox?.x;
-  const textBoxY = callout.textBoxPosition?.y ?? callout.textBox?.y;
-  const textBoxWidth = callout.textBoxWidth ?? callout.textBox?.width;
-  const textBoxHeight = callout.textBoxHeight ?? callout.textBox?.height;
-  if (Number.isFinite(textBoxX) && Number.isFinite(textBoxY)) {
-    push({ x: textBoxX, y: textBoxY });
-    if (Number.isFinite(textBoxWidth)) {
-      push({ x: textBoxX + textBoxWidth, y: textBoxY });
-    }
-    if (Number.isFinite(textBoxHeight)) {
-      push({ x: textBoxX, y: textBoxY + textBoxHeight });
-    }
-    if (Number.isFinite(textBoxWidth) && Number.isFinite(textBoxHeight)) {
-      push({ x: textBoxX + textBoxWidth, y: textBoxY + textBoxHeight });
-    }
-  }
-  if (xs.length === 0) {
-    return { x: 0, y: 0, width: 0, height: 0 };
-  }
-  const minX = Math.min(...xs);
-  const minY = Math.min(...ys);
-  const maxX = Math.max(...xs);
-  const maxY = Math.max(...ys);
-  return { x: minX, y: minY, width: maxX - minX, height: maxY - minY };
-}
-
 // ----------------------------------------------------------------------------
 // Convenience: serialize an entire annotationsByPage object into rows.
 // ----------------------------------------------------------------------------
@@ -526,8 +435,8 @@ export function serializeAnnotationsByPage(annotationsByPage, opts = {}) {
     for (const obj of page.objects) {
       // Callout-unification keystone (Phase 5) — write-contamination guard.
       // FLAG-OFF: `data.type==='callout'` objects in annotationsByPage are a
-      // RENDER-ONLY projection; callouts persist via their own callout rows
-      // (serializeCalloutToRow + the legacy callout push). The bulk push must NOT
+      // RENDER-ONLY projection; callouts persisted via their own callout rows
+      // (the since-deleted serializeCalloutToRow + legacy callout push). The bulk push must NOT
       // re-serialize them onto the same annotation_id (→ dual-write-queue-jam).
       // FLAG-ON (R2 keystone): annotationsByPage IS the persisted source and the
       // legacy callout push is disabled, so the shared push is the SOLE writer —

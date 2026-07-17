@@ -895,16 +895,12 @@ function YDocProviderInner({ docId, children, closeDocument }) {
         // duplicates from a recovery loop also get trimmed.
         if (!cancelled) {
           try {
-            const dedupeResult = dedupePdfImports(ydoc);
-            // 2026-05-04 — Notify the cloud-sync hook to re-hydrate state
-            // when dedupe actually removed entries. Without this, the user
-            // sees the pre-dedupe duplicate-laden state on screen even
-            // though the Y.Map (source of truth) has been trimmed.
-            if (dedupeResult && dedupeResult.removed > 0 && typeof window !== 'undefined') {
-              window.dispatchEvent(new CustomEvent('crdt:dedupe-resync', {
-                detail: { documentId: docId, removed: dedupeResult.removed },
-              }));
-            }
+            dedupePdfImports(ydoc);
+            // 2026-07-17 (dead-code pass 2): the 'crdt:dedupe-resync' window
+            // event dispatch that used to fire here was removed — its only
+            // listener lived in the retired useAnnotationCloudSync hook
+            // (deleted pass 1; zero listeners remain, agent-cli included).
+            // Y.Doc observers now propagate the trimmed state directly.
           } catch (dedupeErr) {
             // eslint-disable-next-line no-console
             console.warn('[YDocProvider] dedupe pass failed', dedupeErr?.message);
@@ -1005,27 +1001,13 @@ function YDocProviderInner({ docId, children, closeDocument }) {
     return () => window.removeEventListener('crdt:manual-retry-failed', handler);
   }, []);
 
-  // 2026-04-30 — listen for deletion-failure events from useAnnotationCloudSync
-  // (fires whenever a cloud delete fails or the wipe-style safety brake
-  // suppresses one). Boolean stays true until the user dismisses the banner OR
-  // the dual-write queue reports fully clean — that's the "all caught up" signal.
-  useEffect(() => {
-    if (typeof window === 'undefined') return undefined;
-    const handler = () => setDeletionsPending(true);
-    window.addEventListener('crdt:deletions-pending', handler);
-    return () => window.removeEventListener('crdt:deletions-pending', handler);
-  }, []);
-
-  // 2026-04-30 — auto-clear deletion-warning the moment a subsequent delete
-  // actually lands in the cloud. The cloud-sync hook fires this on every
-  // successful deleteAnnotations call, so a flaky-network delete that later
-  // succeeds clears the banner naturally without needing user dismiss.
-  useEffect(() => {
-    if (typeof window === 'undefined') return undefined;
-    const handler = () => setDeletionsPending(false);
-    window.addEventListener('crdt:deletions-resolved', handler);
-    return () => window.removeEventListener('crdt:deletions-resolved', handler);
-  }, []);
+  // 2026-07-17 (dead-code pass 2): the 'crdt:deletions-pending' /
+  // 'crdt:deletions-resolved' listener effects were removed — their only
+  // producer was the retired useAnnotationCloudSync hook (deleted pass 1;
+  // zero dispatchers remain anywhere, agent-cli included). deletionsPending
+  // stays as state: it still gates the sync_deletions_pending banner branch
+  // and is reset by the dismiss handler; with no producer it simply never
+  // turns true until a future deletion-failure signal is reintroduced.
 
   // Phase 35 Plan 05 — cleanup-banner audit effect. Runs once per document
   // open. Flow:

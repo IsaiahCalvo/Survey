@@ -13,7 +13,6 @@ import { useEffect, useLayoutEffect, useRef, memo, useState, useCallback } from 
 import { debugMark } from './utils/debugBridge';
 import * as contextMenuBridge from './utils/contextMenuBridge';
 import { createPortal } from 'react-dom';
-import CalloutOverlay from './components/Callout';
 import CompactColorPicker from './components/CompactColorPicker';
 
 // Patch getContext BEFORE importing Fabric.js so only Fabric canvases opt into willReadFrequently.
@@ -8773,33 +8772,8 @@ const PageAnnotationLayer = memo(({
         }}
       />
 
-      {/* Callout Overlay - rendered on top of Fabric canvas */}
-      <CalloutOverlay
-        callouts={callouts}
-        setCallouts={setCallouts}
-        selectedCalloutId={selectedCalloutId}
-        setSelectedCalloutId={setSelectedCalloutId}
-        isCalloutToolActive={tool === 'callout'}
-        activeTool={tool}
-        pageNumber={pageNumber}
-        pageWidth={width}
-        pageHeight={height}
-        defaultStyle={{
-          borderColor: strokeColor,
-          lineThickness: strokeWidth,
-        }}
-        selectionRect={calloutSelectionRect}
-        selectedSpaceId={selectedSpaceId}
-        selectedModuleId={selectedModuleId}
-        showSurveyPanel={showSurveyPanel}
-        clipboardCallout={clipboardCallout}
-        clipboardCalloutType={clipboardCalloutType}
-        onCutCallout={onCutCallout}
-        onCopyCallout={onCopyCallout}
-        onPasteCallout={onPasteCallout}
-        middleAreaBounds={middleAreaBounds}
-        surveyPanelWidth={surveyPanelWidth}
-      />
+      {/* Callout rendering lives in SVGAnnotationLayer (Phase 14).
+          The legacy CalloutOverlay null-render stub was deleted 2026-07-17. */}
 
       {/* Context Menu */}
       {contextMenu && contextMenu.visible && typeof document !== 'undefined' && createPortal(

@@ -109,11 +109,7 @@ test('app PDF metadata round-trips editable paper geometry without flattening to
   assert.equal(restored.sourceWidth, 14);
 });
 
-test('Fabric edit and collaboration serialization include paper geometry fields', () => {
-  const editSource = readFileSync(
-    new URL('../src/components/FabricEditCanvas.jsx', import.meta.url),
-    'utf8',
-  );
+test('collaboration serialization includes paper geometry fields', () => {
   const collabSource = readFileSync(
     new URL('../src/lib/collab/crdtAnnotationBridge.js', import.meta.url),
     'utf8',
@@ -127,7 +123,6 @@ test('Fabric edit and collaboration serialization include paper geometry fields'
     'sourceWidth',
     'fillRule',
   ]) {
-    assert.match(editSource, new RegExp(`['\"]${property}['\"]`));
     assert.match(collabSource, new RegExp(`['\"]${property}['\"]`));
   }
 });

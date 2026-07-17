@@ -18,18 +18,16 @@ test('eraser save path short-circuits precise no-op before history and state sav
   assert.ok(stateIndex > noopIndex, 'expected state save after no-op branch');
 });
 
-test('eraser save path publishes precise ids for cloud sync fan-out', () => {
+test('eraser save path carries precise ids through the history/save contract', () => {
   const app = readFileSync(resolve(ROOT, 'src/viewerShared.js'), 'utf8')
     + '\n' + readFileSync(resolve(ROOT, 'src/PDFViewer.jsx'), 'utf8');
 
-  assert.ok(app.includes("new CustomEvent('annotations:precise-fabric-commit'"), 'expected precise commit event');
   assert.ok(app.includes('deletedIds: eraserDeletedIds'), 'expected deleted id payload');
   assert.ok(app.includes('changedIds: eraserChangedIds'), 'expected changed id payload');
 });
 
-// 2026-07-17: two tests pinning the retired useAnnotationCloudSync hook's
-// consumption of the precise-commit event (and its pointer-deferral flush)
-// were deleted with the hook module — the hook was unmounted, so nothing
-// consumed the event through it. The PDFViewer dispatch pinned above is kept:
-// whether the event dispatch itself should be retired is a pass-2 decision
-// (it requires a PDFViewer.jsx edit).
+// 2026-07-17 (pass 2): the 'annotations:precise-fabric-commit' window event
+// dispatch was removed from PDFViewer — its only consumer, the retired
+// useAnnotationCloudSync hook, was deleted in pass 1 and a fresh grep found
+// zero remaining listeners (src, agent-cli, electron, scripts). The precise
+// eraser ids remain pinned above via the local history/save contract.

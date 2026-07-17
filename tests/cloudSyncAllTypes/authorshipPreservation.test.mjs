@@ -23,9 +23,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
-  serializeFabricObjectToRow,
-  serializeCalloutToRow
+  serializeFabricObjectToRow
 } from '../../src/services/annotationTypeSerializers.js';
+import { calloutToAnnotationObject } from '../../src/utils/calloutAnnotationBridge.js';
 
 const DOC_ID = '11111111-1111-1111-1111-111111111111';
 const ALICE = 'alice-uuid-aaaaaaaaaaaaaaaaaaaaaaaa';
@@ -179,41 +179,62 @@ test('authorship: existing data.authorId is preserved on collaborator edit', () 
 });
 
 // ----------------------------------------------------------------------------
-// Callouts share the same invariant — they live in their own state slice but
-// flow through serializeCalloutToRow which must honor the same chain.
+// Callouts share the same invariant — they persist through the LIVE writer
+// (calloutToAnnotationObject → serializeFabricObjectToRow on the projected
+// group), which must honor the same chain AND mirror the resolved author into
+// the data.legacyCallout reload payload (R2.2 Slice 0 attribution backstop).
+// Rewritten 2026-07-17 when the dead serializeCalloutToRow was deleted.
 // ----------------------------------------------------------------------------
 
-test('authorship: callout serializer stamps meta.authorId on CREATE', () => {
+const CALLOUT_PAGE_SIZE = { width: 800, height: 1000 };
+
+test('authorship: projected callout CREATE stamps the author into the row and reload payload', () => {
   const callout = {
     id: 'co-new-1',
     pageNumber: 2,
-    anchor: { x: 10, y: 20 },
-    knee: { x: 50, y: 20 },
-    label: { left: 60, top: 10, width: 80, height: 20, text: 'note' }
+    arrowTip: { x: 0.1, y: 0.2 },
+    knee: { x: 0.3, y: 0.2 },
+    textBoxPosition: { x: 0.4, y: 0.1 },
+    textBoxWidth: 0.2,
+    textBoxHeight: 0.05,
+    text: 'note'
   };
-  const row = serializeCalloutToRow(callout, {
+  const projected = calloutToAnnotationObject(callout, CALLOUT_PAGE_SIZE);
+  const row = serializeFabricObjectToRow(projected, {
     documentId: DOC_ID,
-    userId: ALICE
+    userId: ALICE,
+    pageNumber: 2
   });
-  assert.equal(callout.meta?.authorId, ALICE);
   assert.equal(row.user_id, ALICE);
   assert.equal(row.last_modified_by, ALICE);
+  // Reload payload (the only thing deserializeRowToCallout reads) carries the author.
+  assert.equal(row.annotation_data.fabricObject.data.legacyCallout.meta?.authorId, ALICE);
 });
 
-test('authorship: callout serializer preserves meta.authorId on collaborator edit', () => {
+test('authorship: projected callout edit preserves meta.authorId on collaborator edit', () => {
   const callout = {
     id: 'co-alice-1',
     pageNumber: 2,
-    anchor: { x: 12, y: 22 }, // Bob nudged the anchor
-    knee: { x: 50, y: 20 },
-    label: { left: 60, top: 10, width: 80, height: 20, text: 'note' },
+    arrowTip: { x: 0.12, y: 0.22 }, // Bob nudged the arrow tip
+    knee: { x: 0.3, y: 0.2 },
+    textBoxPosition: { x: 0.4, y: 0.1 },
+    textBoxWidth: 0.2,
+    textBoxHeight: 0.05,
+    text: 'note',
     meta: { authorId: ALICE, deviceId: 'device-alice', createdAt: 1714400000000 }
   };
-  const row = serializeCalloutToRow(callout, {
+  const projected = calloutToAnnotationObject(callout, CALLOUT_PAGE_SIZE);
+  const row = serializeFabricObjectToRow(projected, {
     documentId: DOC_ID,
-    userId: BOB
+    userId: BOB,
+    pageNumber: 2
   });
-  assert.equal(callout.meta.authorId, ALICE, 'callout meta.authorId stays Alice');
+  assert.equal(callout.meta.authorId, ALICE, 'source callout meta.authorId stays Alice');
+  assert.equal(
+    row.annotation_data.fabricObject.data.legacyCallout.meta.authorId,
+    ALICE,
+    'reload payload meta.authorId stays Alice'
+  );
   assert.equal(row.user_id, ALICE, 'row.user_id stays Alice');
   assert.equal(row.last_modified_by, BOB, 'last_modified_by is Bob');
 });

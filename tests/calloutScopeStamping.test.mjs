@@ -70,7 +70,7 @@ describe('pen-stroke scope stamping stays on the shared rule (SVG creation commi
   });
 });
 
-describe('annotation metadata preservation guards (eraser + edit canvases)', () => {
+describe('annotation metadata preservation guards (eraser canvas)', () => {
   it('FabricEraserCanvas edits the latest page JSON without Fabric serialization', () => {
     const src = read('src/components/FabricEraserCanvas.jsx');
     assert.doesNotMatch(src, /toJSON\(CUSTOM_PROPS\)/);
@@ -78,18 +78,6 @@ describe('annotation metadata preservation guards (eraser + edit canvases)', () 
     assert.doesNotMatch(src, /canvas\.getObjects\(\)/);
     assert.match(src, /erasePageAnnotations/);
     assert.match(src, /annotationsRef\.current/);
-  });
-
-  it('FabricEditCanvas serializes with toObject(CUSTOM_PROPS) and never passes `type` into a Textbox constructor', () => {
-    const src = read('src/components/FabricEditCanvas.jsx');
-    assert.doesNotMatch(src, /toJSON\(CUSTOM_PROPS\)/);
-    // fabric 7: `type` is a getter-only accessor; passing it in constructor
-    // options throws and crashed callout auto-edit (blank-commit rollback ate
-    // the brand-new callout).
-    assert.doesNotMatch(
-      src,
-      /new fabric\.Textbox\([^)]*\{[^}]*\btype:\s*'textbox'/s
-    );
   });
 });
 

@@ -26,12 +26,10 @@ import {
 } from './utils/productionAnnotationBenchmark.js';
 import { showToast } from './utils/toast';
 import AnnotationPropertiesPanel from './components/AnnotationPropertiesPanel';
-import CalloutOverlay from './components/Callout';
 // ExcelJS (~1MB) is loaded on demand inside the three async export/sync handlers
 // below — see `await import('exceljs')` — so it stays out of the main viewer chunk.
 import ExcelLockedModal from './components/ExcelLockedModal';
 import ExcelSyncConfirmModal from './components/ExcelSyncConfirmModal';
-import FabricEditCanvas from './components/FabricEditCanvas';
 import TextEditOverlay from './components/TextEditOverlay';
 import FabricEraserCanvas from './components/FabricEraserCanvas';
 import FormFieldPropertiesPanel from './components/FormFieldPropertiesPanel';
@@ -16767,7 +16765,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   const lastSyncedAnnotationsRef = useRef({});
   const syncErrorCountRef = useRef(0); // Track consecutive sync errors
   // 2026-04-30 — Audit hardening (finding #10): same flush-on-unload pattern
-  // as src/hooks/useAnnotationCloudSync.js. SurveyMarkers ride the legacy 2000ms
+  // as the annotation cloud-sync seam (now src/hooks/useAnnotationDoc.js; the
+  // old useAnnotationCloudSync hook was deleted). SurveyMarkers ride the legacy 2000ms
   // debounced sync path below; without a flush mechanism, edits made in the
   // last 2 seconds before tab close were silently lost. This ref stashes the
   // pending runSync so a beforeunload listener (and the effect cleanup) can
@@ -17318,7 +17317,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         syncTimeout = null;
       }
       if (cancelled || syncStructuralAutoDisabledRef.current) return;
-      // Fire-and-forget — see comment in useAnnotationCloudSync.js cleanup.
+      // Fire-and-forget — same unload-flush rationale as the annotation doc
+      // sync seam (useAnnotationDoc; the old useAnnotationCloudSync hook was deleted).
       try {
         Promise.resolve(runSync()).catch(() => { /* swallow on unload path */ });
       } catch (_e) { /* defensive */ }
@@ -17387,7 +17387,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   }, [documentSyncEnabled, getInteractionPerfResumeDelay, surveyMarkers, surveyAnnotationHydration, isInteractionPerfWindowActive, pdfFile?.id, user?.id]);
 
   // 2026-04-30 — Audit hardening (finding #10): mirror the beforeunload flush
-  // we added in src/hooks/useAnnotationCloudSync.js for the legacy surveyMarker
+  // from the annotation cloud-sync seam (now src/hooks/useAnnotationDoc.js;
+  // the old useAnnotationCloudSync hook was deleted) for the legacy surveyMarker
   // sync path. Without this, edits made in the last 2000ms before the user
   // closes the tab were silently dropped. We fire-and-forget; the browser may
   // still complete the in-flight Supabase fetch during page close. Idempotent
@@ -22460,20 +22461,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       });
     }
 
-    if (isEraserCommit && typeof window !== 'undefined') {
-      const detail = {
-        source: 'eraser:commit',
-        pageNumber,
-        deletedIds: eraserDeletedIds,
-        changedIds: eraserChangedIds,
-        nextObjectCount,
-        previousObjectCount,
-      };
-      try {
-        window.dispatchEvent(new CustomEvent('annotations:precise-fabric-commit', { detail }));
-        appDebug('[EraserSaveContract] precise commit ' + JSON.stringify(detail));
-      } catch (_) {}
-    }
+    // 2026-07-17: the 'annotations:precise-fabric-commit' window event dispatch
+    // was removed here — its only consumer (useAnnotationCloudSync) was retired
+    // and zero listeners remain. Precise eraser ids still flow through
+    // finalLocalHistoryAction / saveContext below.
 
     if (typeof window !== 'undefined') {
       try {
@@ -29614,14 +29605,15 @@ ${pageBlocks}
                                 />
                               )}
 
-                              {/* Edit host -- targeted overlay for text/shape/callout editing.
+                              {/* Edit host -- targeted overlay for text/callout editing.
                                   editType 'text' (plain textboxes AND callout text via
                                   reactCalloutId) mounts TextEditOverlay: same-surface HTML
                                   editing where caret and glyphs share one CSS layout, fixing
-                                  the fabric-era caret drift. Shapes keep FabricEditCanvas.
-                                  Both consume the same prop contract; extras are ignored. */}
+                                  the fabric-era caret drift. 'text' is the only non-bbox
+                                  editType (FabricEditCanvas retired 2026-07-17; bbox edits
+                                  are handled by SVGAnnotationLayer, not this host). */}
                               {isEditMode && editingAnnotation?.editType !== 'bbox' && (() => {
-                                const EditHost = editingAnnotation?.editType === 'text' ? TextEditOverlay : FabricEditCanvas;
+                                const EditHost = TextEditOverlay;
                                 return (
                                 <EditHost
                                   key={`edit-${pageNumber}-${editingAnnotation?.index ?? 'new'}-${editingAnnotation?.editType || ''}`}
@@ -29798,36 +29790,8 @@ ${pageBlocks}
                                 );
                               })()}
 
-                              {/* Callout Overlay -- always rendered so callouts stay visible in all tool modes.
-                                  CalloutCanvas handles its own pointer-events based on activeTool. */}
-                              {pageNumber === (pageNumRef.current || 1) && (
-                                <CalloutOverlay
-                                  callouts={callouts}
-                                  setCallouts={setCallouts}
-                                  selectedCalloutId={selectedCalloutId}
-                                  setSelectedCalloutId={setSelectedCalloutId}
-                                  isCalloutToolActive={activeTool === 'callout'}
-                                  activeTool={activeTool}
-                                  pageNumber={pageNumber}
-                                  pageWidth={resolvedPageSize.width}
-                                  pageHeight={resolvedPageSize.height}
-                                  defaultStyle={{
-                                    borderColor: strokeColor,
-                                    lineThickness: Number(strokeWidth) || 3,
-                                  }}
-                                  selectionRect={null}
-                                  selectedSpaceId={annotationSpaceId}
-                                  selectedModuleId={selectedModuleId}
-                                  showSurveyPanel={showSurveyPanel}
-                                  clipboardCallout={clipboardCallout}
-                                  clipboardCalloutType={clipboardCalloutType}
-                                  onCutCallout={handleCutCallout}
-                                  onCopyCallout={handleCopyCallout}
-                                  onPasteCallout={handlePasteCallout}
-                                  middleAreaBounds={middleAreaBounds}
-                                  surveyPanelWidth={surveyPanelWidth}
-                                />
-                              )}
+                              {/* Callout rendering lives in SVGAnnotationLayer (Phase 14).
+                                  The legacy CalloutOverlay null-render stub was deleted 2026-07-17. */}
                               </div>
                             </>
                             );

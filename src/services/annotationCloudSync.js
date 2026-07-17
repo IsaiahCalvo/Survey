@@ -18,7 +18,6 @@ import { resolveDocumentMetadata } from './documentMetadataResolver.js';
 import {
   serializeFabricObjectToRow,
   deserializeRowToFabricObject,
-  serializeAnnotationsByPage,
   deserializeRowsToAnnotationsByPage,
   deserializeRowToCallout,
   deserializeRowsToCallouts
@@ -54,7 +53,6 @@ export const NON_HIGHLIGHT_TYPES = [
 ];
 
 const SUPABASE_PAGE_SIZE = 1000;
-const UPSERT_BATCH_SIZE = 250;
 
 // Hydrate read projection (KAL-241). The durable read only needs the columns the
 // deserializers + raw-row consumers actually touch:
@@ -229,113 +227,13 @@ export async function upsertFabricAnnotation(fabricObj, opts = {}) {
   return { data, error: null };
 }
 
-/**
- * Push every Fabric object across every page up to the cloud in one batch.
- * Used by the one-time local-to-cloud migration and by debounced bulk save.
- */
-export async function upsertAnnotationsByPage(annotationsByPage, opts = {}) {
-  if (!supabase) return { data: [], error: new Error('Supabase unavailable') };
-
-  // Serialize FIRST — the serializer mints + stamps a stable id onto every
-  // fabric object that didn't have one (data.id <-> annotation_id). Without
-  // running this step the caller's annotationsByPage holds id-less strokes
-  // and any downstream queue-on-failure logic sees no id and silently drops
-  // the entry. UAT 2026-04-29 surfaced this exact mode: stroke drawn,
-  // delta-enqueue logged enqueuedCount: 0 / skippedNoId: 1.
-  const rows = serializeAnnotationsByPage(annotationsByPage, opts);
-
-  // Live-path test seam (Plan 30-07 fix 2026-04-29). Lets a tester inject a
-  // legacy bulk-upload failure without touching production code paths so the
-  // sync_queue_stuck banner UAT can actually run on a clean PDF. Placed
-  // AFTER serialization so id-assignment side effects have already landed.
-  if (typeof window !== 'undefined' && window.__crdtForceLegacyFail) {
-    const err = new Error('test-seam: __crdtForceLegacyFail (live upsertAnnotationsByPage)');
-    console.warn('[CloudSync][push] upsertAnnotationsByPage SHORT-CIRCUITED by __crdtForceLegacyFail test seam (post-serialize)');
-    return { data: [], error: err };
-  }
-
-  if (rows.length === 0) {
-    cloudSyncDebug('[CloudSync][push] upsertAnnotationsByPage: nothing to push (0 rows) ' + JSON.stringify({
-      documentId: opts.documentId, pdfId: opts.pdfId
-    }));
-    return { data: [], error: null };
-  }
-  const byType = rows.reduce((acc, r) => {
-    acc[r.annotation_type] = (acc[r.annotation_type] || 0) + 1;
-    return acc;
-  }, {});
-
-  // Split rows into user-drawn vs PDF-imported so noisy bulk pushes don't
-  // confuse the user when reading logs. An imported path has no Fabric
-  // positioning props (left == null) and a path array — same heuristic
-  // SVGAnnotationLayer uses to decide rendering behavior.
-  let importedCount = 0;
-  let userDrawnCount = 0;
-  for (const page of Object.values(annotationsByPage || {})) {
-    if (!page || !Array.isArray(page.objects)) continue;
-    for (const obj of page.objects) {
-      const isImported = obj?.type === 'path' && obj.left == null && Array.isArray(obj.path);
-      if (isImported) importedCount++; else userDrawnCount++;
-    }
-  }
-
-  const t0 = Date.now();
-  // JSON.stringify so values survive Windows DevTools "Save as..." export,
-  // which collapses live object refs to the literal string "Object".
-  cloudSyncDebug('[CloudSync][push] upsertAnnotationsByPage start ' + JSON.stringify({
-    documentId: opts.documentId,
-    pdfId: opts.pdfId,
-    userId: opts.userId,
-    actionType: opts.actionType || null,
-    changedIds: Array.isArray(opts.changedIds) ? opts.changedIds : null,
-    changedCount: Number.isFinite(opts.changedCount) ? opts.changedCount : rows.length,
-    dispatchedCount: Number.isFinite(opts.dispatchedCount) ? opts.dispatchedCount : rows.length,
-    supabaseUpsertCount: rows.length,
-    debounceMs: Number.isFinite(opts.debounceMs) ? opts.debounceMs : null,
-    debounceElapsedMs: Number.isFinite(opts.debounceElapsedMs) ? opts.debounceElapsedMs : null,
-    fullFanOutReason: opts.fullFanOutReason || null,
-    totalRows: rows.length,
-    userDrawnObjects: userDrawnCount,
-    importedObjects: importedCount,
-    rowsByType: byType,
-    pages: Object.keys(annotationsByPage || {}).length
-  }));
-  const data = [];
-  let error = null;
-  for (let i = 0; i < rows.length; i += UPSERT_BATCH_SIZE) {
-    const batch = rows.slice(i, i + UPSERT_BATCH_SIZE);
-    const result = await supabase
-      .from('document_annotations')
-      .upsert(batch, { onConflict: 'document_id,annotation_id', ignoreDuplicates: false })
-      .select('annotation_id, updated_at');
-    if (result.error) {
-      error = result.error;
-      break;
-    }
-    data.push(...(result.data || []));
-  }
-  const elapsedMs = Date.now() - t0;
-  if (error) {
-    console.error('[CloudSync][push] upsertAnnotationsByPage failed ' + JSON.stringify({
-      elapsedMs,
-      pdfId: opts.pdfId,
-      documentId: opts.documentId,
-      totalRows: rows.length,
-      userDrawnObjects: userDrawnCount,
-      importedObjects: importedCount,
-      error: error?.message || String(error)
-    }));
-    return { data: [], error };
-  }
-  cloudSyncDebug('[CloudSync][push] upsertAnnotationsByPage ok ' + JSON.stringify({
-    elapsedMs,
-    pdfId: opts.pdfId,
-    actionType: opts.actionType || null,
-    supabaseUpsertCount: rows.length,
-    rowsReturned: data?.length || 0
-  }));
-  return { data: data || [], error: null };
-}
+// upsertAnnotationsByPage was DELETED 2026-07-17 (dead-code pass 2): the
+// legacy bulk-upsert path lost its last live caller when the retired
+// useAnnotationCloudSync hook was deleted in pass 1; only the phase31
+// kill-switch test still referenced it. The LEGACY_BULK_UPSERT_ENABLED
+// feature flag (src/lib/collab/featureFlags.js) died with it. Precise
+// per-annotation writes flow through upsertFabricAnnotation /
+// dualWriteFabricCommit below.
 
 // upsertCallouts was DELETED 2026-07-17: its only callers were the retired
 // (unmounted) useAnnotationCloudSync hook and cloudSyncMigration.js, both
