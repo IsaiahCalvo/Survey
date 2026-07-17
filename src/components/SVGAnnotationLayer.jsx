@@ -96,6 +96,12 @@ const svgAnnotationDebug = (...args) => {
 
 const SELECT_DELETE_ONLY_PDF_TEXT_MARKUP_TYPES = new Set(['Underline', 'StrikeOut', 'Squiggly']);
 
+// Refcount for the window.__onDeleteSelectedCallouts bridge (see the
+// registration effect near the Delete-key handler). One SVGAnnotationLayer
+// mounts per visible page and virtualized scrolling unmounts pages
+// independently, so the bridge is only torn down when the LAST layer unmounts.
+let calloutDeleteBridgeCount = 0;
+
 // Module-scope Sets so the per-annotation render loop does O(1) membership
 // checks with zero per-object allocation (was re-creating two arrays per object
 // per render — the hottest loop in the app during zoom/scroll).
@@ -752,6 +758,26 @@ const SVGAnnotationLayer = memo(({
       : Array.isArray(effectiveSelectedCalloutIds)
         ? effectiveSelectedCalloutIds.length
         : 0;
+
+  // UX: right-click Delete parity — publish the gated callout delete callback
+  // (PDFViewer's handleDeleteSelectedCallouts: canModify ownership check, undo
+  // checkpoint, trash history) on a window bridge so the annotation context
+  // menu's callout Delete item routes through the SAME path as the
+  // Delete/Backspace handler below. Mirrors the window.__onAnnotationContextMenu
+  // global-registration pattern in useAnnotationContextMenu.jsx; refcounted at
+  // module scope (see calloutDeleteBridgeCount) because virtualized scrolling
+  // unmounts page layers independently.
+  useEffect(() => {
+    if (typeof window === 'undefined' || typeof onDeleteSelectedCallouts !== 'function') return undefined;
+    calloutDeleteBridgeCount += 1;
+    window.__onDeleteSelectedCallouts = onDeleteSelectedCallouts;
+    return () => {
+      calloutDeleteBridgeCount -= 1;
+      if (calloutDeleteBridgeCount <= 0 && window.__onDeleteSelectedCallouts === onDeleteSelectedCallouts) {
+        delete window.__onDeleteSelectedCallouts;
+      }
+    };
+  }, [onDeleteSelectedCallouts]);
 
   useEffect(() => {
     // UX: KBD-01 — Delete/Backspace removes selected annotation OR callout.

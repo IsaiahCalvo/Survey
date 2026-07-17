@@ -199,7 +199,18 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
         item('Cut', 'cut', () => ctx.calloutId && handleCutCallout(ctx.calloutId)),
         item('Copy', 'copy', () => ctx.calloutId && handleCopyCallout(ctx.calloutId)),
         item('Paste', 'paste', () => handlePasteCallout(ctx.pageNumber)),
-        item('Delete', 'delete'),
+        // UX: right-click Delete = the SAME gated delete as pressing Delete/
+        // Backspace with the callout selected — PDFViewer's
+        // handleDeleteSelectedCallouts (canModify ownership check, undo
+        // checkpoint, trash history). SVGAnnotationLayer publishes that
+        // callback on window.__onDeleteSelectedCallouts (same global-
+        // registration pattern as window.__onAnnotationContextMenu above),
+        // so the menu never bypasses the ownership gate.
+        item('Delete', 'delete', () => {
+          if (ctx.calloutId && typeof window.__onDeleteSelectedCallouts === 'function') {
+            window.__onDeleteSelectedCallouts([ctx.calloutId]);
+          }
+        }),
       ];
     } else if (ctx.kind === 'counter') {
       items = [
