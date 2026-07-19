@@ -20,6 +20,14 @@ import {
   sampleEraserStroke,
 } from '../utils/eraserHitTest.js';
 import { erasePageAnnotations } from '../utils/pageSpaceEraser.js';
+import {
+  BOUNDS_PAD,
+  CALLOUT_BOUNDS_PAD,
+  boundsIntersect,
+  inflateBounds,
+  objectStrokeInflation,
+  segmentQueryBounds,
+} from '../utils/eraserBoundsPrefilter.js';
 import { getEraserOperation } from '../utils/eraserPolicy.js';
 import { eraserDiameterToPageRadius } from '../utils/eraserSizing.js';
 import { selectEraserPreviewBaseline } from '../utils/eraserPreviewHandoff.js';
@@ -62,30 +70,13 @@ const pointInRect = (point, rect, radius) => (
 // filter can only ever FAST-REJECT objects nowhere near the cursor; anything
 // that might touch still runs the identical hit-test, so preview and commit
 // cannot disagree. No cached bounds for an object => never reject (conservative).
-const BOUNDS_PAD = 4; // px slop for stroke antialias / round caps
-
-const segmentQueryBounds = (points, radius) => {
-  let minX = Infinity;
-  let minY = Infinity;
-  let maxX = -Infinity;
-  let maxY = -Infinity;
-  for (const point of points || []) {
-    if (!point || !Number.isFinite(point.x) || !Number.isFinite(point.y)) continue;
-    if (point.x < minX) minX = point.x;
-    if (point.y < minY) minY = point.y;
-    if (point.x > maxX) maxX = point.x;
-    if (point.y > maxY) maxY = point.y;
-  }
-  if (!Number.isFinite(minX)) return null;
-  const pad = (Number(radius) || 0) + BOUNDS_PAD;
-  return { minX: minX - pad, minY: minY - pad, maxX: maxX + pad, maxY: maxY + pad };
-};
-
-const boundsIntersect = (a, b) => (
-  !!a && !!b
-  && a.minX <= b.maxX && a.maxX >= b.minX
-  && a.minY <= b.maxY && a.maxY >= b.minY
-);
+//
+// CONSISTENCY FIX (2026-07-19): getBBox excludes stroke, so cached bounds must
+// be inflated by each object's stroke half-width to stay a true superset of the
+// hit test's `strokeWidth/2 + radius` reach — otherwise a swipe near the edge of
+// a wide imported-ink stroke was fast-rejected and never carved live (the
+// intermittent "doesn't take" the speedup introduced). The prefilter geometry
+// now lives in eraserBoundsPrefilter.js so the superset invariant is unit-tested.
 
 const getLegacyCalloutPayload = (object, fallbackPageNumber) => {
   const callout = object?.callout || (object?.type === 'callout' ? object : null);
@@ -288,6 +279,18 @@ const FabricEraserCanvas = memo(({
     svg.querySelectorAll('[data-callout-id]').forEach((element) => {
       union(byCallout, String(element.getAttribute('data-callout-id')))(element);
     });
+    // Inflate each geometry box by its own stroke half-width (getBBox excludes
+    // stroke) so the fast-reject stays a true superset of the hit test's reach.
+    // Without this, near-edge swipes over wide imported ink were dropped live.
+    const objects = annotationsRef.current?.objects || [];
+    for (const [key, box] of byIndex) {
+      const inflated = inflateBounds(box, objectStrokeInflation(objects[key]));
+      if (inflated) byIndex.set(key, inflated);
+    }
+    for (const [key, box] of byCallout) {
+      const inflated = inflateBounds(box, CALLOUT_BOUNDS_PAD);
+      if (inflated) byCallout.set(key, inflated);
+    }
   }, []);
 
   // Fast-reject: true when this object MIGHT touch the segment (or has no cached
