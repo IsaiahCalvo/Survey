@@ -1557,6 +1557,36 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
 
   const loading = pageSizes.length === 0;
 
+  // ── Live-zoom transform origin: lock-to-centre on any axis that already fits ──
+  // UX intent (matches HANDOFF-zoom-pagegap-centering "lock-to-center"): cursor-
+  // anchored zoom is the feel WHILE a page overflows the viewport, but the instant an
+  // axis fits, that axis must scale about the VIEWPORT CENTRE so the page stays locked
+  // centred — zero left/right play, zero drift during the gesture, and (because the
+  // committed layout already clamps a fitting axis to centred) zero snap-back on
+  // settle. This beats the pdf.js reference demo, which cursor-anchors both axes and
+  // snaps back after every zoom. Applies equally to single-page docs.
+  //   fitsX: all pages fit the viewport width (contentW ≤ viewport) → not horizontally
+  //          scrollable → lock horizontal to centre.
+  //   fitsY: whole doc is shorter than the viewport (padTop > 0, i.e. it's already
+  //          centred via marginTop) → lock vertical to centre.
+  // The predicates read the COMMITTED scale/layout, so the origin mode is stable for
+  // the whole gesture (no mid-pinch jump); it re-evaluates on the next gesture after
+  // commit. On an overflowing axis the origin stays cursor-anchored (demo-parity feel).
+  // Regression note: commit a3380bbf ("demo-parity zoom") removed the earlier drift-
+  // clamp + settle-glide that used to prevent this drift/snap; this centre-lock is the
+  // lighter-weight replacement that keeps the single-transform preview.
+  let liveTransformOrigin = '0 0';
+  const zoomGesture = gestureRef.current;
+  if (zoomGesture) {
+    const scrollLeftAtStart = zoomGesture.originContentX - zoomGesture.originCursorX;
+    const scrollTopAtStart = zoomGesture.originContentY - zoomGesture.originCursorY;
+    const fitsX = layout.contentW <= containerW + 0.5;
+    const fitsY = layout.padTop > 0;
+    const originX = fitsX ? scrollLeftAtStart + containerW / 2 : zoomGesture.originContentX;
+    const originY = (fitsY ? scrollTopAtStart + containerH / 2 : zoomGesture.originContentY) - layout.padTop;
+    liveTransformOrigin = `${originX}px ${originY}px`;
+  }
+
   return (
     <div
       ref={scrollerRef}
@@ -1616,13 +1646,12 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
             // margin (not scroll → scrollTop stays >= 0). Overflow docs get padTop=0.
             marginTop: layout.padTop,
             transform: liveZoom !== 1 ? `scale(${liveZoom})` : 'none',
-            // transformOrigin is in the content node's OWN box space. originContentX/Y
-            // were captured in scroll space; marginTop (padTop) offsets the box top
-            // from the scroll origin, so the Y must subtract padTop to keep the
-            // cursor-anchored origin exact when a short/centered doc is padded.
-            // (padTop is 0 for any doc taller than the viewport, so this is a no-op
-            // in the common multi-page case.)
-            transformOrigin: gestureRef.current ? `${gestureRef.current.originContentX}px ${gestureRef.current.originContentY - layout.padTop}px` : '0 0',
+            // transformOrigin is in the content node's OWN box space. On an overflowing
+            // axis it is cursor-anchored (originContentX/Y captured in scroll space, Y
+            // shifted by marginTop=padTop); on a fitting axis it is pinned to the
+            // viewport centre so the page stays locked centred with no drift/snap. See
+            // the liveTransformOrigin computation above for the full UX rationale.
+            transformOrigin: liveTransformOrigin,
             willChange: liveZoom !== 1 ? 'transform' : 'auto',
           }}
         >
