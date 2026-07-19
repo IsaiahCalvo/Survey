@@ -298,7 +298,7 @@ export const isPointOnPath = (point, pathObj, tolerance = DEFAULT_TOLERANCE) => 
       const endX = command === 'L' ? cmd[1] : currentX + cmd[1];
       const endY = command === 'L' ? cmd[2] : currentY + cmd[2];
 
-      if (hasStroke || !hasFill) {
+      {
         const dist = distanceToLineSegment(pathLocalPoint,
           { x: currentX, y: currentY },
           { x: endX, y: endY }
@@ -332,7 +332,7 @@ export const isPointOnPath = (point, pathObj, tolerance = DEFAULT_TOLERANCE) => 
         const x = mt3 * currentX + 3 * mt2 * tt * cp1x + 3 * mt * tt2 * cp2x + tt3 * endX;
         const y = mt3 * currentY + 3 * mt2 * tt * cp1y + 3 * mt * tt2 * cp2y + tt3 * endY;
 
-        if (hasStroke || !hasFill) {
+        {
           const dist = distanceToLineSegment(pathLocalPoint, { x: prevX, y: prevY }, { x, y });
           minDistance = Math.min(minDistance, dist);
         }
@@ -361,7 +361,7 @@ export const isPointOnPath = (point, pathObj, tolerance = DEFAULT_TOLERANCE) => 
         const x = mt * mt * currentX + 2 * mt * tt * cpx + tt * tt * endX;
         const y = mt * mt * currentY + 2 * mt * tt * cpy + tt * tt * endY;
 
-        if (hasStroke || !hasFill) {
+        {
           const dist = distanceToLineSegment(pathLocalPoint, { x: prevX, y: prevY }, { x, y });
           minDistance = Math.min(minDistance, dist);
         }
@@ -375,7 +375,7 @@ export const isPointOnPath = (point, pathObj, tolerance = DEFAULT_TOLERANCE) => 
       currentY = endY;
     } else if (command === 'Z' || command === 'z') {
       // Close path - add line back to start for stroke distance calculation
-      if ((hasStroke || !hasFill) && (currentX !== startX || currentY !== startY)) {
+      if (currentX !== startX || currentY !== startY) {
         const dist = distanceToLineSegment(pathLocalPoint,
           { x: currentX, y: currentY },
           { x: startX, y: startY }
@@ -397,6 +397,16 @@ export const isPointOnPath = (point, pathObj, tolerance = DEFAULT_TOLERANCE) => 
     if (isPointInPolygon(pathLocalPoint, vertices)) {
       return true;
     }
+  }
+
+  // Filled paths must also count EDGE contact within tolerance. Production
+  // pen/highlighter ink is stored as a filled outline (fill set, strokeWidth 0),
+  // and the eraser passes its radius as `tolerance` — without this, only the
+  // eraser's CENTER entering the fill registered, so rim grazes never showed
+  // live while the commit engine still subtracted the full disk (the live/commit
+  // disagreement the 2026-07-19 eraser audit confirmed).
+  if (hasFill && minDistance <= effectiveDistance) {
+    return true;
   }
 
   // For paths with only stroke (no fill), check stroke distance with default tolerance

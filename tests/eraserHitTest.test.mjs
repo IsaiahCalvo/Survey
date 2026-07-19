@@ -119,3 +119,57 @@ test('the delete set sent to sync matches the local eraser delete set', () => {
   assert.deepEqual(localDeleteSet, ['a', 'b']);
   assert.deepEqual(syncDeleteSet, localDeleteSet);
 });
+
+// --- 2026-07-19 eraser-audit regression: filled-outline ink edge grazes -----
+// Production pen/highlighter ink is stored as a FILLED outline path (fill set,
+// strokeWidth 0). The live touch test must register the eraser circle's rim
+// contacting the outline's edge — not only the center entering the fill —
+// or live preview and commit disagree (nothing shows while dragging, ink
+// changes at release).
+
+function filledOutlineInk(id) {
+  return {
+    type: 'path',
+    tool: 'pen',
+    path: [['M', 0, 0], ['L', 100, 0], ['L', 100, 10], ['L', 0, 10], ['Z']],
+    fill: '#111111',
+    stroke: 'transparent',
+    strokeWidth: 0,
+    left: 0,
+    top: 0,
+    scaleX: 1,
+    scaleY: 1,
+    angle: 0,
+    pathOffset: { x: 0, y: 0 },
+    width: 100,
+    height: 10,
+    id,
+  };
+}
+
+test('filled ink: rim graze with center OUTSIDE the fill still counts as touching', () => {
+  const touched = eraserStrokeTouchesObject({
+    eraserPoints: [{ x: 50, y: 15 }], // 5 units below the band's bottom edge
+    eraserRadius: 10,
+    object: filledOutlineInk('ink-rim'),
+  });
+  assert.equal(touched, true);
+});
+
+test('filled ink: center inside the fill counts as touching', () => {
+  const touched = eraserStrokeTouchesObject({
+    eraserPoints: [{ x: 50, y: 5 }],
+    eraserRadius: 2,
+    object: filledOutlineInk('ink-inside'),
+  });
+  assert.equal(touched, true);
+});
+
+test('filled ink: circle fully clear of the outline does not touch', () => {
+  const touched = eraserStrokeTouchesObject({
+    eraserPoints: [{ x: 50, y: 40 }], // 30 units away, radius 10
+    eraserRadius: 10,
+    object: filledOutlineInk('ink-clear'),
+  });
+  assert.equal(touched, false);
+});

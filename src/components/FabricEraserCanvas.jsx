@@ -1043,6 +1043,12 @@ const FabricEraserCanvas = memo(({
     const queryBounds = segmentQueryBounds(segmentPoints, radius);
     objects.forEach((object, index) => {
       if (String(object?.type || '').toLowerCase() !== 'path') return;
+      // Locked eraser policy: only pen/highlighter/imported-Ink strokes are
+      // partial-erasable — every other object whole-deletes even in partial
+      // mode. Atomic path-typed objects must therefore NEVER get the partial
+      // carve mask (they'd look part-carved mid-drag, then vanish whole at
+      // release); they ghost whole via the classify → atomic lane instead.
+      if (getEraserOperation(object, 'partial') !== 'partial') return;
       const id = getEraserCandidateId(object, index);
       if (clone.maskedKeys.has(id)) return;
       if (!indexBoundsAllow(index, queryBounds)) return; // fast reject: nowhere near cursor

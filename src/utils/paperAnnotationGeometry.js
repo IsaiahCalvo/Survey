@@ -398,7 +398,16 @@ export function createInkAnnotation(points, { id, color = '#151a18', width = 12,
 }
 
 export function eraseAnnotations(annotations, eraserPoints, radius, mode = 'partial') {
-  const eraser = sweptDiskPolygon(eraserPoints, radius, { minDistance: 0.1 });
+  // Same safety net as the per-annotation ops below: a union throw while
+  // building the swept eraser disk must degrade to "nothing erased", not an
+  // exception escaping into the pointer-up handler.
+  let eraser;
+  try {
+    eraser = sweptDiskPolygon(eraserPoints, radius, { minDistance: 0.1 });
+  } catch (error) {
+    console.warn('Eraser disk construction failed; gesture erased nothing:', error);
+    return { annotations, changedIds: [], deletedIds: [] };
+  }
   if (!eraser.length) return { annotations, changedIds: [], deletedIds: [] };
   const eraserBounds = boundsOfCommands(polygonSetToCommands(eraser));
   const centerlinePoints = compactPoints(eraserPoints, 0.1);
@@ -457,19 +466,39 @@ export function eraseAnnotations(annotations, eraserPoints, radius, mode = 'part
       next.push(annotation);
       continue;
     }
-    const overlap = normalizeMultiPolygon(intersection(subject, eraser));
+    // Boolean-op safety net (2026-07-19 eraser audit): martinez can throw on
+    // degenerate self-touching input (e.g. "Cannot read properties of
+    // undefined (reading 'holeOf')") — previously that escaped and failed the
+    // whole erase. On any throw, keep this annotation unchanged (skip, never
+    // delete-on-error) and let the rest of the gesture proceed.
+    let overlap;
+    try {
+      overlap = normalizeMultiPolygon(intersection(subject, eraser));
+    } catch (error) {
+      console.warn('Eraser polygon intersection failed; annotation left unchanged:', annotation.id, error);
+      next.push(annotation);
+      continue;
+    }
     if (!overlap.length) {
       next.push(annotation);
       continue;
     }
 
-    changedIds.push(annotation.id);
     if (annotationEraseMode === 'full') {
+      changedIds.push(annotation.id);
       deletedIds.push(annotation.id);
       continue;
     }
 
-    const result = normalizeMultiPolygon(diff(subject, eraser));
+    let result;
+    try {
+      result = normalizeMultiPolygon(diff(subject, eraser));
+    } catch (error) {
+      console.warn('Eraser polygon subtraction failed; annotation left unchanged:', annotation.id, error);
+      next.push(annotation);
+      continue;
+    }
+    changedIds.push(annotation.id);
     if (!result.length) {
       deletedIds.push(annotation.id);
       continue;
