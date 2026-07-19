@@ -29,9 +29,10 @@ container-aware canvas sizing, single-name fontFamily, `zoomGeneration` signal
 contract, no JavaScript zoom coordination in `SVGAnnotationLayer.jsx`. Those are
 not protection-list items — they are correctness invariants.
 
-- `src/PDFViewer.jsx` — ~1.5MB / ~34k-line document viewer: the Syncfusion
-  zoom/scale lifecycle, the per-page overlay portal render loop, save/sync, and
-  the history engine. The single highest-risk file; minimum viable diff only.
+- `src/PDFViewer.jsx` — ~1.5MB / ~34k-line document viewer: the pdf.js
+  zoom/scale lifecycle (`beginPdfjsScaleConfirmPending` / `PdfjsViewerContainer`),
+  the per-page overlay portal render loop, save/sync, and the history engine.
+  The single highest-risk file; minimum viable diff only.
 - `src/viewerShared.js` — shared constants + helper functions imported by
   PDFViewer and AppShell. Renamed from the misleading `App.jsx` on 2026-05-29
   (it is NOT the app root and is not the 1.3MB monolith — that history belonged
@@ -60,17 +61,17 @@ and is auto-created at session start.
 
 - **Canvas sizing MUST use container-aware measurement, not pageSize * scale.** The Electron/browser zoom factor creates a mismatch. Always measure `containerEl.offsetWidth / pageSize.width` to get `effectiveScale`. This applies to FabricEraserCanvas and any future Canvas component. See Gotchas section for details.
 
-- **SVG viewBox handles all zoom scaling.** The old 5-timer zoom system (beginSyncfusionScaleConfirmPending, onScaleApplied, 300ms settle, freeze/snapshot/confirm-pending) was removed in Phase 11 of the v2.0 SVG Migration. SVG annotations scale via `viewBox="0 0 pageWidth pageHeight"` with zero JavaScript coordination. Canvas/overlay consumers use the `zoomGeneration` signal for auto-commit during zoom.
+- **SVG viewBox handles all zoom scaling.** The old 5-timer Syncfusion zoom system (beginSyncfusionScaleConfirmPending, onScaleApplied, 300ms settle, freeze/snapshot/confirm-pending) was removed in Phase 11 of the v2.0 SVG Migration; Syncfusion itself is gone from `package.json`. SVG annotations scale via `viewBox="0 0 pageWidth pageHeight"` with zero JavaScript coordination. Canvas/overlay consumers use the `zoomGeneration` signal for auto-commit during zoom.
 
-- **NEVER remove the zoomGeneration signal.** `setZoomGeneration(prev => prev + 1)` fires at zoom-start inside `beginSyncfusionScaleConfirmPending`. The LIVE consumers are SVGAnnotationLayer, FabricEraserCanvas, and PdfjsViewerContainer — they watch this signal to auto-commit in-progress work before the container resizes. (The former FabricDrawingCanvas/FabricEditCanvas consumers were deleted in the 2026-07 dead-code passes; the signal contract itself is unchanged.)
+- **NEVER remove the zoomGeneration signal.** `setZoomGeneration(prev => prev + 1)` fires at zoom-start inside `beginPdfjsScaleConfirmPending` (and on pdf.js `gesture-start` via `onZoomPhase`). The LIVE consumers are SVGAnnotationLayer, FabricEraserCanvas, and PdfjsViewerContainer — they watch this signal to auto-commit in-progress work before the container resizes. (The former FabricDrawingCanvas/FabricEditCanvas consumers were deleted in the 2026-07 dead-code passes; the signal contract itself is unchanged.)
 
 - **Edge-function CORS `Access-Control-Allow-Origin: '*'` is INTENTIONAL — never "tighten" it to an origin allowlist.** If a security scan/audit flags the wildcard on `create-checkout-session`, `create-portal-session`, `send-email`, `send-profile-change-notification`, or `excel-apply-changeset`, **it's a false positive — leave it.** The one `dist` bundle ships to four runtimes with four different origins: web (`https://surveytool.app`), web/Electron **dev** (`http://localhost:5173`), **Electron production** (`loadFile` → `file://` → `Origin: null`), and **Capacitor iOS/Android** (`capacitor://localhost` / `https://localhost`; there's no `@capacitor/http`, so the webview enforces CORS). An origin allowlist would CORS-**block** email, Excel sync, and payments on the desktop app and BOTH mobile apps — and keeping Electron working would require allowlisting `Origin: null`, which is the exact hole tightening is supposed to close. These functions auth via `Authorization: Bearer <jwt>` (not cookies) and each calls `auth.getUser()`, so wildcard CORS is **non-exploitable** (a cross-origin page has no ambient credential to abuse). For a Bearer-token API consumed by web + Electron(`file://`) + Capacitor, `*` is the correct design, not a flaw. Investigated + closed 2026-07-05; full write-up in `HANDOFF-post-launch-hardening.md`.
 
 ## Codebase Hygiene — Fallow Audit (standing practice)
 
 Run the fallow audit periodically on your own judgment (after landing a sizeable
-chunk of code, around big refactors, when starting the Syncfusion removal, or as
-a session winds down) — `npm run audit:code | audit:dead | audit:dupes | audit:health`.
+chunk of code, around big refactors, or as a session winds down) —
+`npm run audit:code | audit:dead | audit:dupes | audit:health`.
 A committed `.fallowrc.jsonc` declares the real entry points; keep it current.
 
 Fallow's raw findings are mostly false positives here — it's blind to
@@ -81,9 +82,9 @@ investigate + adversarial-verify agent pass. Gate every deletion behind
 `npx vite build` + `node scripts/run-node-tests.mjs` and commit in small batches.
 Intentional keeps fallow will keep flagging: the parked Microsoft/MSAL sign-in
 config (Microsoft auth is staying), the Phase-28 collab fallback provider, two
-kept stylesheets, and WIP pdf.js cutover files. Leave the unused `@syncfusion/ej2-*`
-sub-packages for the deliberate Syncfusion-removal migration. Full record:
-`debug/fallow-audit/REPORT.md`.
+kept stylesheets, and residual pdf.js cutover helpers. Syncfusion packages and
+`public/ej2-pdfviewer-lib` are already gone from the tree — do not reintroduce
+them. Full record: `debug/fallow-audit/REPORT.md`.
 
 ## Gotchas & Lessons Learned
 
@@ -95,7 +96,7 @@ sub-packages for the deliberate Syncfusion-removal migration. Full record:
 
 - **2026-04-08 — Fabric.js Textbox fontFamily MUST be a single font name, never a CSS fallback stack:** Multi-font fallback stacks like `-apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif` cause progressive cursor drift in Fabric.js Textbox/IText. Root cause: Fabric.js measures character widths at `CACHE_FONT_SIZE=400px` and scales down — the browser may resolve different fonts in the fallback chain at 400px vs the actual size, producing wrong measurements. Fix: use single-name fonts only (e.g. `"Helvetica"`, `"Arial"`, `"Times New Roman"`). This applies to any Fabric text default (originally DEFAULT_FONT_FAMILY in the since-deleted FabricEditCanvas.jsx) and any future font picker — only offer single-name standard PDF fonts.
 
-- **2026-03-22 — Canvas sizing must use container-aware measurement, not pageSize * scale:** The Electron/browser zoom factor creates a mismatch between the computed canvas size (`pageSize.width * syncfusionViewerScale`) and the actual Syncfusion page div size. At 50% PDF zoom with a 4/3 Electron zoom factor, the Syncfusion page div was 816x528 but the Fabric.js canvas was only 612x396, causing annotations to appear smaller and offset up-left. Fix: measure `containerEl.offsetWidth / pageSize.width` to get `effectiveScale` instead of trusting the Syncfusion-reported zoom percentage. Applied in PAL's canvas init (`PageAnnotationLayer.jsx:~5192`), direct resize path, and settle callback in the scale useEffect.
+- **2026-03-22 — Canvas sizing must use container-aware measurement, not pageSize * scale:** The Electron/browser zoom factor creates a mismatch between a computed canvas size (`pageSize.width * reportedScale`) and the actual page container size. (Originally observed against Syncfusion page divs; the same rule applies to pdf.js page containers today.) At 50% PDF zoom with a 4/3 Electron zoom factor, the page div was 816x528 but the Fabric.js canvas was only 612x396, causing annotations to appear smaller and offset up-left. Fix: measure `containerEl.offsetWidth / pageSize.width` to get `effectiveScale` instead of trusting the viewer-reported zoom percentage. Applied in PAL's canvas init (`PageAnnotationLayer.jsx:~5192`), direct resize path, and settle callback in the scale useEffect.
 
 ## graphify
 

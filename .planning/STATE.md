@@ -12,9 +12,17 @@ progress:
   total_plans: 44
   completed_plans: 43
   percent: 96
+doc_status: historical-snapshot
 ---
 
 # Project State
+
+> **Historical GSD snapshot (frozen ~2026-05-14).** This file records mid-v2.3/v2.4 phase
+> status and must **not** be treated as current product architecture. Since this snapshot:
+> Syncfusion was removed; the live viewer is pdf.js (`PdfjsViewerContainer`); Fabric Drawing/Edit
+> canvases were deleted; text edit is `TextEditOverlay`; living orientation is `README.md`,
+> `docs/ARCHITECTURE.md`, `CLAUDE.md` / `AGENTS.md`. For current phase work prefer
+> `.planning/ROADMAP.md` and recent `HANDOFF-*.md` / `docs/handoffs/`.
 
 ## Project Reference
 

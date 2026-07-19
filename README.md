@@ -1,86 +1,91 @@
 # Survey — PDF Annotation App
 
-An Electron + React desktop app for marking up engineering and construction PDFs. Survey adds the high-fidelity annotation tools (highlight, pen, callouts, counter chains, shapes, text, sticky notes) on top of a Syncfusion PDF viewer, with a Supabase cloud database as the live source of truth so annotations sync across devices.
+An Electron + React desktop app for marking up engineering and construction PDFs. Survey provides high-fidelity annotation tools (highlight, pen, callouts, counter chains, shapes, text, sticky notes) on an owned **pdf.js** viewer, with a Supabase cloud database as the live source of truth so annotations sync across devices.
 
 ## Quick Start
 
 ```bash
 npm install
 npm run dev          # Vite dev server + Electron (port 5173)
-npm test             # Node test runner — recursive over tests/
+npm run dev:ui       # Vite only (no Electron) — use for headless / browser
+npm test             # Node test runner — tests/** + src/**/__tests__/**
 npm run build        # Production web build → dist/
 npm run dist         # Web build + electron-builder installers
 ```
 
-A `.env` file in the project root supplies Supabase credentials and the Syncfusion license key:
+`npm install` runs `scripts/bootstrap-dev-env.mjs` (via `postinstall`), which creates a gitignored `.env` with the public Supabase URL + anon key when missing. Optional keys (Stripe, Microsoft Graph, etc.) are documented in `.env.example`.
 
-```env
-VITE_SUPABASE_URL=...
-VITE_SUPABASE_ANON_KEY=...
-VITE_SYNCFUSION_LICENSE_KEY=...
-```
-
-In development, `.env.development.local` can also auto-sign-in a test user — see `feedback_dev_auto_login.md` in the auto-memory folder for details.
+For signed-in local flows, put auto-login secrets in `.env.local` (see `AGENTS.md`).
 
 ## Architecture (high level)
 
-- **Display layer (SVG).** Every annotation type renders as SVG with a `viewBox` that auto-scales on zoom — no JavaScript zoom timers, no Canvas mounted unless the user is actively editing. Lives in `src/components/SVGAnnotationLayer.jsx`.
-- **Edit layer (Fabric.js).** When the user picks a tool (pen, eraser, text, shape edit), a small per-page Fabric.js Canvas mounts on top of the SVG layer and unmounts when the tool exits. Lives in `src/components/FabricDrawingCanvas.jsx`, `FabricEraserCanvas.jsx`, `FabricEditCanvas.jsx`.
-- **Cloud sync.** All annotation writes go to Supabase. The annotation database is canonical for every device, and multi-device sync propagates within ~1 second. The PDF file itself is never the source of truth — it's only an output projection at print/export/download time.
-- **Print, export, download (in flight).** A new "bake on demand" pipeline (under `src/utils/pdfNativeExport/`) is being built behind a feature flag — at output time, app annotations are converted into native PDF annotation dictionaries so Adobe Acrobat treats them as editable annotations rather than flat pixels. See the v3.0 plan in `docs/superpowers/plans/2026-04-25-pdf-native-annotations.md`.
+- **PDF engine (pdf.js).** `src/components/PdfjsViewerContainer.jsx` owns page rendering, viewport, and zoom. Syncfusion has been removed from the dependency tree.
+- **Display layer (SVG).** Annotations render as SVG with a `viewBox` that auto-scales on zoom — no JavaScript zoom timers. Lives in `src/components/SVGAnnotationLayer.jsx`.
+- **Text edit (HTML overlay).** Content edits for textboxes/callouts use `src/components/TextEditOverlay.jsx` (same-surface `contentEditable`), not a Fabric edit canvas.
+- **Eraser (Fabric.js).** The eraser tool mounts `src/components/FabricEraserCanvas.jsx` only. Drawing/edit Fabric canvases were deleted in the 2026-07 dead-code passes — do not recreate them.
+- **App shell.** `src/main.jsx` → `src/AppShell.jsx` (tabs, auth, chrome hosts) → `Dashboard.jsx` (home) or `PDFViewer.jsx` (open document). Shared helpers live in `src/viewerShared.js` (not an app root).
+- **Cloud sync.** Annotation writes go to Supabase (plus Yjs dual-write for sealed docs). The PDF file is an output projection at print/export/download time, not the source of truth.
+- **Print / export.** Bake-on-demand helpers under `src/utils/pdfNativeExport/` convert app annotations toward native PDF dictionaries behind feature flags.
 
 ## Tech Stack
 
-- React 18 + Vite + Electron 38
-- Syncfusion ej2-react-pdfviewer 32.1.19 (read-only viewer; the app's annotation toolbar is custom)
-- Fabric.js 5.5.2 (edit-time Canvas only)
-- pdf-lib 1.17 (low-level PDF manipulation) and annotpdf 1.0 (high-level PDF annotation creation, used by the bake pipeline)
-- Supabase (auth + database)
-- Node built-in test runner + Playwright for e2e
-- electron-builder + electron-updater for desktop installers and auto-update
-- Capacitor for the iOS / Android shells (under `ios/` and `android/`)
+- React 18 + Vite 8 + Electron 43
+- pdf.js (`pdfjs-dist` ^6) — owned viewer engine
+- Fabric.js 7.4.0 — eraser canvas only (live path)
+- pdf-lib 1.17 — low-level PDF manipulation / export
+- Supabase (auth + database) + Yjs (CRDT dual-write)
+- ExcelJS + Microsoft Graph (Excel / OneDrive sync)
+- Capacitor (`ios/` / `android/`) for mobile shells
+- Node built-in test runner + Playwright (`debug/`) for e2e
+- electron-builder + electron-updater for desktop installers
 
 ## Project Layout
 
 ```
 src/
-  App.jsx                 # main app (~1.3MB; render loop, zoom logic, portal hosts)
-  electron-main.js        # Electron main process
-  preload.js              # IPC bridge (window.electronAPI)
-  components/             # SyncfusionPDFContainer, SVG/Fabric layers, panels
-  utils/                  # pdf helpers, geometry, pdfNativeExport bake pipeline
-  workers/                # PDF.js render worker + paint worker
-public/                   # static assets copied into dist/ at build
-tests/                    # node --test unit tests (recursive)
-debug/                    # Playwright scenarios + analyzer scripts
-docs/                     # docs, handoffs, superpowers plans, security audits
-.planning/                # GSD workflow: roadmap, phases, milestones, requirements
-scripts/                  # bootstrap, backup, dev-env helpers
-ios/ android/             # Capacitor mobile shells
-landing/                  # marketing landing page
-supabase/                 # Supabase migrations
+  main.jsx                  # React entry + DEV-only routes (?testPdf, ?hubPreview, ?spike=features)
+  AppShell.jsx              # App root (tabs, auth, chrome hosts)
+  PDFViewer.jsx             # Document viewer (~34k lines; HIGH-RISK)
+  Dashboard.jsx             # Home / projects / templates
+  viewerShared.js           # Shared helpers/constants (leaf module)
+  PageAnnotationLayer.jsx   # Legacy Fabric PAL (~10k lines; ?renderer=canvas path)
+  electron-main.js          # Electron main process
+  preload.js                # IPC bridge (window.electronAPI)
+  components/               # PdfjsViewerContainer, SVG/Fabric eraser, panels, modals
+  utils/                    # geometry, sync, export, pdfNativeExport, …
+  workers/                  # PDF.js / paint workers
+public/                     # static assets copied into dist/ at build
+tests/                      # node --test unit tests
+debug/                      # Playwright scenarios + fixtures
+docs/                       # living architecture + handoffs + audits
+.planning/                  # GSD workflow: roadmap, phases, milestones
+scripts/                    # bootstrap, backup, test runners
+ios/ android/               # Capacitor mobile shells
+landing/                    # marketing landing page
+supabase/                   # migrations + edge functions
 ```
 
 ## Where to Find Things
 
-- **Roadmap and progress:** `.planning/ROADMAP.md`. Per-phase work lives under `.planning/phases/<N>-<slug>/`. Each phase carries a CONTEXT, plans, summaries, and a RECONCILIATION.md.
-- **Active milestone plans:** `docs/superpowers/plans/`. Latest is the v3.0 PDF-native annotations plan (started 2026-04-25).
-- **Session handoffs:** `docs/handoffs/` (date-prefixed).
-- **Project memory and gotchas:** `CLAUDE.md` (project-level rules, hard invariants, gotchas).
-- **Security review notes:** `docs/SECURITY_AUDIT_REPORT.md`.
-- **Stripe / webhook setup:** `docs/STRIPE_SETUP.md`, `docs/WEBHOOK_DEBUGGING.md`.
+- **Living architecture:** `docs/ARCHITECTURE.md`, `CLAUDE.md` / `AGENTS.md` (invariants)
+- **Annotation lifecycle:** `docs/ANNOTATION-CONTRACT.md` (banner for SVG-era CREATE/EDIT) and `docs/ANNOTATION-PARITY-MAP-2026-07-16.md` (callout forks)
+- **Roadmap / phases:** `.planning/ROADMAP.md`, `.planning/phases/`
+- **Session handoffs:** `docs/handoffs/` and root `HANDOFF-*.md` (historical snapshots)
+- **Stripe / webhooks:** `docs/STRIPE_SETUP.md`, `docs/WEBHOOK_DEBUGGING.md`
+- **Security notes:** `docs/SECURITY_AUDIT_REPORT.md`, `SECURITY-AUDIT-REPORT.md`
 
 ## Critical Project Invariants (do not break)
 
-These are enforced both by `CLAUDE.md` and by the GSD discipline hook. Touching code in any of the following without explicit scope is a boundary violation:
+Enforced by `CLAUDE.md` / `AGENTS.md`. Touching these without explicit scope is a boundary violation:
 
-- `src/App.jsx` — load-bearing main file, do not refactor without explicit approval
-- `src/components/PageAnnotationLayer.jsx` — per-page Fabric overlay, ~9.8k lines
+- `src/PDFViewer.jsx` — load-bearing viewer; minimum viable diff only
+- `src/PageAnnotationLayer.jsx` — per-page Fabric overlay (legacy/canvas path)
 - `src/components/SVGAnnotationLayer.jsx` — owns all SVG zoom scaling via `viewBox`
-- The Fabric Canvas trio (`FabricDrawingCanvas`, `FabricEditCanvas`, `FabricEraserCanvas`) — all rely on the `zoomGeneration` signal contract
-- `package.json` and `vite.config.js` — infra; touching requires explicit approval
+- `src/components/FabricEraserCanvas.jsx` — relies on the `zoomGeneration` signal
+- `src/components/PdfjsViewerContainer.jsx` — owned pdf.js engine + scale lifecycle
+- `package.json` / `vite.config.js` — infra; document the why
 
-Specific gotchas (canvas sizing must use container-aware measurement, single-name fonts only, etc.) are documented in `CLAUDE.md`.
+Canvas sizing must use container-aware measurement (`containerEl.offsetWidth / pageSize.width`), never `pageSize * scale`. Fabric text `fontFamily` must be a single font name. Edge-function CORS `Access-Control-Allow-Origin: '*'` is intentional (web + Electron `file://` + Capacitor). Details in `CLAUDE.md`.
 
 ## Contributing
 
@@ -91,7 +96,7 @@ This codebase uses a phased planning workflow (GSD) under `.planning/`. New work
 3. **Execute** — atomic commits per task, with verification runs.
 4. **Reconcile** — close the phase with a `RECONCILIATION.md` (plan vs actual, criteria results, lessons).
 
-Follow the existing code style. Run `npm test` before committing. Manual smoke testing in the dev app is required for any UI change.
+Follow the existing code style. Run `npm test` before committing. Manual smoke testing in the running app is required for any UI change.
 
 ## License
 
