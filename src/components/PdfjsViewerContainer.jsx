@@ -657,12 +657,20 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     const metrics = layoutMetrics;
     const rot90 = rotation === 90 || rotation === 270;
     const dims = pageSizes.map((s) => (rot90 ? { w: s.h, h: s.w } : { w: s.w, h: s.h }));
+    // UX intent: the white space between pages must stay PROPORTIONAL to page
+    // size at every zoom — the same visual breathing room the pdf.js reference
+    // viewer shows. A fixed screen-space gap looks oversized between shrunken
+    // pages when zoomed out and cramped between enlarged pages when zoomed in.
+    // Page heights already scale (dims[i].h * scale), so the gap scales the same
+    // way: metrics.gap is the base at 100% (scale = 1), so 100% is unchanged and
+    // the gap-to-page ratio is held constant across all zoom levels.
+    const gapPx = metrics.gap * scale;
     let y = metrics.padTop;
     const tops = [];
     let maxW = 0;
     for (let i = 0; i < dims.length; i += 1) {
       tops.push(y);
-      y += dims[i].h * scale + metrics.gap;
+      y += dims[i].h * scale + gapPx;
       maxW = Math.max(maxW, dims[i].w * scale);
     }
     const contentW = Math.max(containerW, maxW + 2 * metrics.padX);
@@ -672,7 +680,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     // content node — NOT via scroll, so scroll stays in [0, scrollHeight-clientHeight]
     // and never goes negative. Content taller than the viewport (overflow case)
     // yields padTop=0 and the layout is unchanged.
-    const rawTotalH = y - metrics.gap + metrics.padBottom;
+    const rawTotalH = y - gapPx + metrics.padBottom;
     const padTop = Math.max(0, (containerH - rawTotalH) / 2);
     return { tops, dims, totalH: rawTotalH, rawTotalH, padTop, contentW };
   }, [pageSizes, scale, rotation, containerW, containerH, layoutMetrics]);
@@ -695,8 +703,10 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     const mid = el.scrollTop + el.clientHeight / 2 - padTop;
     let page = 1;
     const metrics = layoutMetricsRef.current;
+    // Gap is zoom-proportional (see layout memo), so page-band detection uses the
+    // scaled gap too — keeps the current-page boundary aligned with the real layout.
     for (let i = 0; i < tops.length; i += 1) {
-      if (mid >= tops[i] && mid < tops[i] + dims[i].h * scaleRef.current + metrics.gap) { page = i + 1; break; }
+      if (mid >= tops[i] && mid < tops[i] + dims[i].h * scaleRef.current + metrics.gap * scaleRef.current) { page = i + 1; break; }
       if (mid >= tops[i]) page = i + 1;
     }
     clampHorizontalScrollForPage(page - 1);
@@ -813,9 +823,12 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
   const padTopFor = (sc) => {
     const metrics = layoutMetricsRef.current;
     const dims = dimsPtRef.current;
+    // Mirror the layout memo: gap is zoom-proportional, so anchor math at an
+    // arbitrary scale sc uses metrics.gap * sc to match the layout it commits to.
+    const gapPx = metrics.gap * sc;
     let y = metrics.padTop;
-    for (let k = 0; k < dims.length; k += 1) y += dims[k].h * sc + metrics.gap;
-    const rawTotalH = y - metrics.gap + metrics.padBottom;
+    for (let k = 0; k < dims.length; k += 1) y += dims[k].h * sc + gapPx;
+    const rawTotalH = y - gapPx + metrics.padBottom;
     return Math.max(0, (containerHRef.current - rawTotalH) / 2);
   };
   // topAt returns the page's top in SCROLL space (padTop-inclusive) so cursor
@@ -823,19 +836,22 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
   const topAt = (i, sc) => {
     const metrics = layoutMetricsRef.current;
     const dims = dimsPtRef.current;
+    // Zoom-proportional gap (see layout memo): stack with metrics.gap * sc.
     let y = metrics.padTop + padTopFor(sc);
-    for (let k = 0; k < i; k += 1) y += dims[k].h * sc + metrics.gap;
+    for (let k = 0; k < i; k += 1) y += dims[k].h * sc + metrics.gap * sc;
     return y;
   };
   const leftAt = (i, sc) => getPageLeftAtScale(i, sc);
   const pageUnderContentY = (cY, sc) => {
     const metrics = layoutMetricsRef.current;
     const dims = dimsPtRef.current;
+    // Zoom-proportional gap (see layout memo): the hit band grows/shrinks with sc.
+    const gapPx = metrics.gap * sc;
     let y = metrics.padTop + padTopFor(sc);
     for (let i = 0; i < dims.length; i += 1) {
       const h = dims[i].h * sc;
-      if (cY < y + h + metrics.gap) return i;
-      y += h + metrics.gap;
+      if (cY < y + h + gapPx) return i;
+      y += h + gapPx;
     }
     return Math.max(0, dims.length - 1);
   };
