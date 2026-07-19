@@ -65,6 +65,12 @@ const CONTEXT_MENU_Z_INDEX = 120000;
 const EDIT_MODAL_Z_INDEX = CONTEXT_MENU_Z_INDEX + 1;
 const OVERLAY_OPEN_EVENT = 'survey:page-annotation-overlay-open';
 const OVERLAY_DISMISS_ANIMATION_MS = 100;
+// UX / INTENTIONAL BEHAVIOR (KAL-91): imported Underline / StrikeOut / Squiggly
+// are select+delete only — never move/scale/rotate. This is the SECOND
+// enforcement of the deliberate text-markup lock (re-applied on selection so it
+// survives re-hydration); the reasoning lives at the import-time source of truth,
+// SELECT_DELETE_ONLY_TEXT_MARKUP_TYPES in src/utils/pdfAnnotationImporter.js.
+// Do NOT unlock without a real word-geometry anchoring engine.
 const SELECT_DELETE_ONLY_PDF_MARKUP_TYPES = new Set(['Underline', 'StrikeOut', 'Squiggly']);
 
 const palDebug = (...args) => {

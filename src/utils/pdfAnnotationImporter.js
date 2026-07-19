@@ -89,6 +89,20 @@ const SUPPORTED_SUBTYPES = [
   'Caret'
 ];
 
+// UX / INTENTIONAL BEHAVIOR (verified 2026-07-19, KAL-91): imported Underline /
+// StrikeOut / Squiggly are the one deliberate exception to "every imported PDF
+// annotation becomes a fully-native, freely-editable annotation." They render
+// natively (visible, correct color/position) and can be selected + deleted, but
+// they are LOCKED against move / scale / rotate (no handles). Why: text markup
+// anchors to the WORDS it covers via /QuadPoints. The app has no text-run /
+// word-geometry anchoring engine (pdf.js `getTextContent` is used for search and
+// the text layer, but nothing binds an annotation to a word run), so a movable
+// underline would silently detach from its text and become meaningless. Matches
+// Acrobat / Bluebeam, which also make text-markup delete-and-redraw, not drag.
+// The lock is enforced twice: here (import-time lock flags) AND at selection time
+// in PageAnnotationLayer (lockSelectDeleteOnlyPdfMarkupObject), so it survives
+// re-hydration. Do NOT unlock without first building a real word-geometry engine
+// (a multi-session feature) — otherwise the markup drifts off its text.
 const SELECT_DELETE_ONLY_TEXT_MARKUP_TYPES = new Set(['Underline', 'StrikeOut', 'Squiggly']);
 
 const LINE_CAP_MAP = ['butt', 'round', 'square'];
@@ -102,12 +116,6 @@ async function loadPdfLibCore() {
   }
   return pdfLibPromise;
 }
-
-// Annotation subtypes that are unsupported but should be preserved
-const UNSUPPORTED_SUBTYPES = [
-  'Stamp', 'Link', 'Widget', 'Popup', 'FileAttachment', 'Sound', 'Movie',
-  'Screen', 'PrinterMark', 'TrapNet', 'Watermark', '3D', 'Redact', 'RichMedia'
-];
 
 function summarizePdfAnnotationForDiag(annotation, rawMetadata = null) {
   if (!annotation || typeof annotation !== 'object') return null;
@@ -3071,7 +3079,23 @@ export function convertPdfAnnotationToFabric(annotation, viewport, scale = 1, ra
   }
 }
 
-// Annotation types that should be silently ignored (common companion annotations)
+// Annotation types the markup importer deliberately drops here because another
+// subsystem owns them (so they are neither converted to a native shape nor
+// counted by the unsupported-annotation notice):
+//   - Link  → handled by PdfjsLinkLayer (clickable link overlay).
+//   - Popup → the companion note bubble of a Text/markup annotation; never a
+//             standalone visual.
+//   - Widget → INTERACTIVE FORM FIELDS, owned end-to-end by the form-field
+//             subsystem: PdfjsFormLayer renders each Widget via pdf.js's own
+//             AnnotationLayer (renderForms:true) as a real HTML input (text /
+//             checkbox / radio / choice); /ReadOnly widgets render disabled
+//             automatically. Edits are captured (onFieldChange/Blur) and
+//             persisted as `form-field` objects by usePdfjsFormFieldPersistence,
+//             then seeded back into annotationStorage on reload. VERIFIED
+//             2026-07-19 (KAL-91): a pdf-lib form PDF opened in the app rendered
+//             all fields, accepted input, kept /ReadOnly disabled, and the typed
+//             text + checkbox + radio selection SURVIVED a full save → reload →
+//             reopen round-trip. So dropping Widget here is correct, not a gap.
 const SILENT_IGNORE_SUBTYPES = ['Link', 'Popup', 'Widget'];
 
 /**
