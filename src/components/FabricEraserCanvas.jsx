@@ -20,9 +20,9 @@ import {
   sampleEraserStroke,
 } from '../utils/eraserHitTest.js';
 import { erasePageAnnotations } from '../utils/pageSpaceEraser.js';
+import { getEraserOperation } from '../utils/eraserPolicy.js';
 import { eraserDiameterToPageRadius } from '../utils/eraserSizing.js';
 import { selectEraserPreviewBaseline } from '../utils/eraserPreviewHandoff.js';
-import { planPageEraserPreview } from '../utils/eraserPreviewPlan.js';
 import { getCoalescedOrCurrentEvents } from '../utils/eraserPointerSamples.js';
 import { paintAnnotationCanvas } from '../utils/annotationCanvasPainter.js';
 import { projectPaperInkForPresentation } from '../utils/paperInkPresentation.js';
@@ -48,6 +48,43 @@ const pointInRect = (point, rect, radius) => (
   && point.x <= rect.x + rect.width + radius
   && point.y >= rect.y - radius
   && point.y <= rect.y + rect.height + radius
+);
+
+// --- Eraser hot-path AABB prefilter (2026-07-19, KAL-366 smoothness) -------
+// A single pointer-move segment overlaps only a handful of a busy page's
+// annotations, yet the old per-move preview ran the full boolean-carve engine
+// (planPageEraserPreview) AND a per-object stroke hit-test over EVERY object on
+// EVERY move — measured ~12ms/move (~24ms/frame with coalesced input) on a
+// heavy page of dense/imported ink, which drops frames and is the drag lag. We
+// snapshot each annotation's exact page-unit bounds once at pointer-down
+// (browser getBBox on the live SVG layer, which is already in page units) and
+// gate the expensive identification behind a cheap AABB overlap test. The
+// filter can only ever FAST-REJECT objects nowhere near the cursor; anything
+// that might touch still runs the identical hit-test, so preview and commit
+// cannot disagree. No cached bounds for an object => never reject (conservative).
+const BOUNDS_PAD = 4; // px slop for stroke antialias / round caps
+
+const segmentQueryBounds = (points, radius) => {
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  for (const point of points || []) {
+    if (!point || !Number.isFinite(point.x) || !Number.isFinite(point.y)) continue;
+    if (point.x < minX) minX = point.x;
+    if (point.y < minY) minY = point.y;
+    if (point.x > maxX) maxX = point.x;
+    if (point.y > maxY) maxY = point.y;
+  }
+  if (!Number.isFinite(minX)) return null;
+  const pad = (Number(radius) || 0) + BOUNDS_PAD;
+  return { minX: minX - pad, minY: minY - pad, maxX: maxX + pad, maxY: maxY + pad };
+};
+
+const boundsIntersect = (a, b) => (
+  !!a && !!b
+  && a.minX <= b.maxX && a.maxX >= b.minX
+  && a.minY <= b.maxY && a.maxY >= b.minY
 );
 
 const getLegacyCalloutPayload = (object, fallbackPageNumber) => {
@@ -170,6 +207,10 @@ const FabricEraserCanvas = memo(({
   const lastClientPosRef = useRef(null);
   const eraserDiagGestureRef = useRef(null);
   const initialZoomGenerationRef = useRef(zoomGeneration);
+  // Per-gesture AABB cache: { byIndex: Map<number,bounds>, byCallout: Map }.
+  // Built once at pointer-down from the live SVG layer's getBBox (see
+  // buildGestureBounds); powers the per-move fast-reject prefilter.
+  const gestureBoundsRef = useRef(null);
 
   const annotationsRef = useRef(annotations);
   const calloutsRef = useRef(callouts);
@@ -212,6 +253,59 @@ const FabricEraserCanvas = memo(({
       y: ((nativeEvent.clientY - rect.top) / rect.height) * pageHeight,
     };
   }, [pageHeight, pageWidth]);
+
+  // Snapshot every annotation's exact page-unit bounds once per gesture. getBBox
+  // on the live SVG layer is browser-exact and already in the layer's page-unit
+  // user space (same space as pointer page-points), so no transform math and no
+  // risk of a hand-rolled bounds formula false-rejecting a real hit. Keyed by
+  // data-annotation-index (the same key the ghost/mask DOM lookups already use)
+  // and data-callout-id; multi-element annotations union their child boxes.
+  const buildGestureBounds = useCallback(() => {
+    const byIndex = new Map();
+    const byCallout = new Map();
+    gestureBoundsRef.current = { byIndex, byCallout };
+    if (typeof document === 'undefined') return;
+    const surface = containerRef.current?.closest('[data-annotation-real-surface]');
+    const svg = surface?.querySelector?.('svg[data-svg-annotation-layer]');
+    if (!svg) return; // painted-canvas fallback / SVG mid-swap: prefilter stays a no-op
+    const union = (map, key) => (element) => {
+      let box;
+      try { box = element.getBBox(); } catch { return; }
+      if (!box || (!box.width && !box.height)) return;
+      const next = { minX: box.x, minY: box.y, maxX: box.x + box.width, maxY: box.y + box.height };
+      const prev = map.get(key);
+      map.set(key, prev ? {
+        minX: Math.min(prev.minX, next.minX),
+        minY: Math.min(prev.minY, next.minY),
+        maxX: Math.max(prev.maxX, next.maxX),
+        maxY: Math.max(prev.maxY, next.maxY),
+      } : next);
+    };
+    svg.querySelectorAll('[data-annotation-index]').forEach((element) => {
+      const key = Number(element.getAttribute('data-annotation-index'));
+      if (Number.isFinite(key)) union(byIndex, key)(element);
+    });
+    svg.querySelectorAll('[data-callout-id]').forEach((element) => {
+      union(byCallout, String(element.getAttribute('data-callout-id')))(element);
+    });
+  }, []);
+
+  // Fast-reject: true when this object MIGHT touch the segment (or has no cached
+  // bounds, in which case we never reject). A `false` means the object is
+  // provably nowhere near the cursor this move — skip its expensive hit-test.
+  const indexBoundsAllow = useCallback((index, queryBounds) => {
+    if (!queryBounds) return true;
+    const bounds = gestureBoundsRef.current?.byIndex?.get(index);
+    if (!bounds) return true;
+    return boundsIntersect(bounds, queryBounds);
+  }, []);
+
+  const calloutBoundsAllow = useCallback((calloutId, queryBounds) => {
+    if (!queryBounds) return true;
+    const bounds = gestureBoundsRef.current?.byCallout?.get(String(calloutId));
+    if (!bounds) return true;
+    return boundsIntersect(bounds, queryBounds);
+  }, []);
 
   const updateEraserCursor = useCallback((point, visible = true) => {
     const cursor = cursorRef.current;
@@ -571,13 +665,21 @@ const FabricEraserCanvas = memo(({
   const getPermittedCalloutHitIds = useCallback((eraserPoints, excludeIds) => {
     const allCallouts = collectPageCallouts();
     if (!allCallouts.length) return [];
+    const radius = getPageRadius();
+    // Fast-reject callouts nowhere near the segment before the per-callout
+    // geometry test (same AABB prefilter as the object hot path).
+    const queryBounds = segmentQueryBounds(eraserPoints, radius);
+    const nearCallouts = queryBounds
+      ? allCallouts.filter((callout) => calloutBoundsAllow(callout.id, queryBounds))
+      : allCallouts;
+    if (!nearCallouts.length) return [];
     const hitIds = getCalloutHitIds({
-      callouts: allCallouts,
+      callouts: nearCallouts,
       pageNumber,
       pageWidth,
       pageHeight,
       eraserPoints,
-      eraserRadius: getPageRadius(),
+      eraserRadius: radius,
     });
     if (!hitIds.length) return hitIds;
     const viewerId = viewerIdRef.current;
@@ -588,7 +690,7 @@ const FabricEraserCanvas = memo(({
       const callout = allCallouts.find((c) => c.id === id);
       return canModify({ annotation: callout, viewerId, documentOwnerId: ownerId });
     });
-  }, [collectPageCallouts, getPageRadius, pageHeight, pageNumber, pageWidth]);
+  }, [calloutBoundsAllow, collectPageCallouts, getPageRadius, pageHeight, pageNumber, pageWidth]);
 
   // Whole-delete pending-erase visual for callouts — the exact treatment
   // non-path shapes get in eraseAtomicObjectsFromPreview, ported to the
@@ -905,11 +1007,13 @@ const FabricEraserCanvas = memo(({
     if (!segmentPoints?.length) return;
     const objects = annotationsRef.current?.objects || [];
     const radius = getPageRadius();
+    const queryBounds = segmentQueryBounds(segmentPoints, radius);
     const hitIds = [];
     objects.forEach((object, index) => {
       if (String(object?.type || '').toLowerCase() === 'path') return;
       const id = getEraserCandidateId(object, index);
       if (pointer.previewAtomicIds.has(id)) return;
+      if (!indexBoundsAllow(index, queryBounds)) return; // fast reject: nowhere near cursor
       if (getEraseBlockReason(object)) return;
       if (!eraserStrokeTouchesObject({
         eraserPoints: segmentPoints,
@@ -922,7 +1026,7 @@ const FabricEraserCanvas = memo(({
       eraseAtomicObjectsFromPreview(hitIds);
       hitIds.forEach((id) => pointer.previewAtomicIds.add(id));
     }
-  }, [eraseAtomicObjectsFromPreview, getEraseBlockReason, getPageRadius]);
+  }, [eraseAtomicObjectsFromPreview, getEraseBlockReason, getPageRadius, indexBoundsAllow]);
 
   // Lazily attach the carve mask to path elements the sweep actually
   // touches (partial-erasable only). Elements keep rendering unmasked —
@@ -933,10 +1037,12 @@ const FabricEraserCanvas = memo(({
     if (eraserModeRef.current !== 'partial') return; // entire-mode paths whole-delete via ghosts
     const objects = annotationsRef.current?.objects || [];
     const radius = getPageRadius();
+    const queryBounds = segmentQueryBounds(segmentPoints, radius);
     objects.forEach((object, index) => {
       if (String(object?.type || '').toLowerCase() !== 'path') return;
       const id = getEraserCandidateId(object, index);
       if (clone.maskedKeys.has(id)) return;
+      if (!indexBoundsAllow(index, queryBounds)) return; // fast reject: nowhere near cursor
       if (getEraseBlockReason(object)) return;
       if (!eraserStrokeTouchesObject({
         eraserPoints: segmentPoints,
@@ -954,7 +1060,36 @@ const FabricEraserCanvas = memo(({
       }
       targets.forEach((el) => el.setAttribute('mask', `url(#${clone.maskId})`));
     });
-  }, [getEraseBlockReason, getPageRadius]);
+  }, [getEraseBlockReason, getPageRadius, indexBoundsAllow]);
+
+  // Cheap replacement for the per-move planPageEraserPreview (full boolean-carve
+  // engine). Classifies which objects the NEW segment touches — partial-erasable
+  // ink (start/continue the live carve) vs whole-delete atomics (ghost) — using
+  // the same eraserStrokeTouchesObject the commit path uses, gated by the AABB
+  // fast-reject. The real carve geometry is still computed once at pointer-up by
+  // erasePageAnnotations (the shared, pixel-identical engine — unchanged), so
+  // deferring the boolean work off the hot path costs zero fidelity.
+  const classifyEraserSegment = useCallback((segment) => {
+    const objects = annotationsRef.current?.objects || [];
+    const radius = getPageRadius();
+    const queryBounds = segmentQueryBounds(segment, radius);
+    const mode = eraserModeRef.current;
+    const partialIds = [];
+    const atomicIds = [];
+    objects.forEach((object, index) => {
+      if (getEraseBlockReason(object)) return;
+      if (!indexBoundsAllow(index, queryBounds)) return; // fast reject: nowhere near cursor
+      if (!eraserStrokeTouchesObject({ eraserPoints: segment, eraserRadius: radius, object })) return;
+      const id = getEraserCandidateId(object, index);
+      if (getEraserOperation(object, mode) === 'partial') partialIds.push(id);
+      else atomicIds.push(id);
+    });
+    return {
+      shouldPreview: partialIds.length > 0 || atomicIds.length > 0,
+      partialIds,
+      atomicIds,
+    };
+  }, [getEraseBlockReason, getPageRadius, indexBoundsAllow]);
 
   const previewEraserGesture = useCallback((pointer, segment) => {
     if (!pointer?.points?.length) return false;
@@ -974,17 +1109,13 @@ const FabricEraserCanvas = memo(({
       }
       return true;
     }
-    // Pre-carve phase plans only the NEW segment: earlier segments were
-    // already planned by earlier calls (their atomic hits accumulate in
-    // previewAtomicIds), so per-sample cost stays flat instead of re-running
-    // the boolean erase engine over the whole gesture path every pointermove.
-    const plan = planPageEraserPreview({
-      pageAnnotations: annotationsRef.current || { objects: [] },
-      eraserPoints: segment?.length ? segment : pointer.points,
-      eraserRadius: getPageRadius(),
-      mode: eraserModeRef.current,
-      canErase: (object) => !getEraseBlockReason(object),
-    });
+    // Pre-carve phase classifies only the NEW segment (earlier segments were
+    // already classified by earlier calls; their atomic hits accumulate in
+    // previewAtomicIds). classifyEraserSegment replaced the per-move boolean
+    // erase engine with the cheap commit-identical touch test + AABB fast-reject
+    // (KAL-366): the heavy carve geometry now runs ONCE at pointer-up, not on
+    // every pointermove, which is the whole drag-smoothness win.
+    const plan = classifyEraserSegment(segment?.length ? segment : pointer.points);
     // Callout hits must also ACTIVATE the preview: a sweep that only crosses
     // a callout has no shared-store plan hits (callouts are the historical
     // fork), yet it whole-deletes the callout at release — so it needs the
@@ -1044,10 +1175,9 @@ const FabricEraserCanvas = memo(({
     activatePointerPreview,
     beginLiveErasePreview,
     beginMaskClonePreview,
+    classifyEraserSegment,
     drawLiveErasePreviewSegment,
     eraseAtomicObjectsFromPreview,
-    getEraseBlockReason,
-    getPageRadius,
     getPermittedCalloutHitIds,
     ghostAtomicNonPathHits,
     ghostCalloutsFromPreview,
@@ -1187,8 +1317,12 @@ const FabricEraserCanvas = memo(({
       pointerDown: true,
       pageNumber,
     });
+    // Snapshot page-unit bounds ONCE up front so every pointer-move can
+    // fast-reject far-away annotations (the drag-smoothness prefilter).
+    buildGestureBounds();
     previewEraserGesture(pointerRef.current, [point]);
   }, [
+    buildGestureBounds,
     cancelPointer,
     pageNumber,
     pagePoint,
@@ -1363,6 +1497,7 @@ const FabricEraserCanvas = memo(({
 
   useEffect(() => () => {
     pointerRef.current = null;
+    gestureBoundsRef.current = null;
     // Unmounting — no SVG remount to wait for; tear down the mask clone and
     // preview canvas now instead of leaving the deferred double-rAF cleanup
     // to fire on detached nodes.
