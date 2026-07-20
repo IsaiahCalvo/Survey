@@ -83,6 +83,7 @@ const GEOMETRY_KEYS = [
   'path',
   'polygons',
   'paperCenterline',
+  'paperCenterlineRuns',
   'sourceWidth',
   'paperInkGeometry',
   'paperEraserGeometry',

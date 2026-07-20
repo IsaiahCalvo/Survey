@@ -978,6 +978,13 @@ const FabricEraserCanvas = memo(({
       documentOwnerId: currentOwnerId,
     })) return 'permission';
 
+    // Locked annotations: the commit engine's path lane already skips
+    // locked ink, but the non-path whole-delete lane and the LIVE preview did
+    // not — the preview visibly carved/ghosted a locked mark, then the commit
+    // resurrected it (2026-07-19 audit). One shared rule here covers live AND
+    // commit (canErase is built from this function).
+    if (object?.locked === true) return 'locked';
+
     const objectSpaceId = object?.spaceId ?? null;
     const objectRegionId = object?.regionId ?? null;
     if (activeSpaceIdRef.current !== null && activeSpaceIdRef.current !== undefined) {
@@ -987,6 +994,13 @@ const FabricEraserCanvas = memo(({
       } else if (objectSpaceId !== null) {
         if (objectSpaceId !== activeSpaceIdRef.current) return 'space-scope';
       } else {
+        // Unscoped (background) annotations under an ACTIVE space are
+        // deliberately protected: SVGAnnotationLayer's interaction rules make
+        // background content visible-but-not-editable inside a space, and the
+        // eraser follows the same contract (skip, never silent cross-scope
+        // data loss). Confirmed 2026-07-20 against the rig's K8 case; if the
+        // product rule ever flips to "background erases too", this single
+        // return is the switch.
         return 'space-scope';
       }
     } else if (
@@ -1000,20 +1014,23 @@ const FabricEraserCanvas = memo(({
     return null;
   }, [getSpaceIdForRegion]);
 
-  // Cheap per-segment ghost check for whole-delete NON-PATH objects (stamps,
-  // rects, text). Uses the exact bounds test the commit engine uses for these
-  // objects, so preview ghosting can never disagree with the commit — and no
-  // polygon expansion runs. Full-policy PATH objects are deliberately not
-  // checked here (a bounds test would false-positive and ghost objects the
-  // commit keeps); they still ghost via the plan path before carving starts.
-  const ghostAtomicNonPathHits = useCallback((pointer, segmentPoints) => {
+  // Cheap per-segment ghost check for EVERY whole-delete object crossed by the
+  // segment — shapes, text, stamps, AND atomic path-typed objects (clouds,
+  // imported non-ink paths). The filter is the POLICY predicate
+  // (getEraserOperation !== 'partial'), not a type heuristic: the old
+  // type!=='path' skip left atomic paths with zero live feedback once carving
+  // started (classify stops running after previewHasPartial — 2026-07-19
+  // audit), which read as "shapes need multiple hits". Uses the exact touch
+  // test the commit engine uses, so ghosting can never disagree with commit.
+  const ghostAtomicHits = useCallback((pointer, segmentPoints) => {
     if (!segmentPoints?.length) return;
     const objects = annotationsRef.current?.objects || [];
     const radius = getPageRadius();
+    const mode = eraserModeRef.current;
     const queryBounds = segmentQueryBounds(segmentPoints, radius);
     const hitIds = [];
     objects.forEach((object, index) => {
-      if (String(object?.type || '').toLowerCase() === 'path') return;
+      if (getEraserOperation(object, mode) === 'partial') return; // ink carves, never ghosts
       const id = getEraserCandidateId(object, index);
       if (pointer.previewAtomicIds.has(id)) return;
       if (!indexBoundsAllow(index, queryBounds)) return; // fast reject: nowhere near cursor
@@ -1110,7 +1127,7 @@ const FabricEraserCanvas = memo(({
       // moment the sweep crosses them, exactly like other whole-delete marks.
       drawLiveErasePreviewSegment(segment);
       maskCarvedPathHits(pointer, segment);
-      ghostAtomicNonPathHits(pointer, segment);
+      ghostAtomicHits(pointer, segment);
       const liveCalloutHits = getPermittedCalloutHitIds(segment, pointer.previewCalloutIds);
       if (liveCalloutHits.length) {
         ghostCalloutsFromPreview(liveCalloutHits);
@@ -1188,7 +1205,7 @@ const FabricEraserCanvas = memo(({
     drawLiveErasePreviewSegment,
     eraseAtomicObjectsFromPreview,
     getPermittedCalloutHitIds,
-    ghostAtomicNonPathHits,
+    ghostAtomicHits,
     ghostCalloutsFromPreview,
     maskCarvedPathHits,
     pageNumber,
@@ -1296,6 +1313,37 @@ const FabricEraserCanvas = memo(({
     finishLiveErasePreview();
   }, [finishLiveErasePreview]);
 
+  // Interrupted gestures COMMIT what was already erased instead of discarding
+  // it: by the time a pointercancel / lostpointercapture / buttons-released-
+  // elsewhere arrives, the user has already watched ink carve and shapes
+  // ghost — silently un-erasing that work reads as "the eraser randomly
+  // doesn't take" (2026-07-19 audit). Same contract as the zoom auto-commit.
+  const commitInterruptedPointer = useCallback((pointer) => {
+    if (!pointer?.points?.length) {
+      finishLiveErasePreview();
+      return;
+    }
+    try {
+      markAnnotationPointerRelease(eraserDiagGestureRef.current, { action: 'eraser-stroke' });
+      const outcome = applyEraserAndCommit(pointer.points);
+      scheduleLiveErasePreviewFinish({
+        expectedRevision: outcome.expectedRevision,
+        waitForNextPaint: outcome.didPaint,
+      });
+    } catch (error) {
+      console.error('Interrupted eraser commit failed:', error);
+      finishLiveErasePreview();
+    }
+  }, [applyEraserAndCommit, finishLiveErasePreview, scheduleLiveErasePreviewFinish]);
+
+  const commitPointerNow = useCallback(() => {
+    const pointer = pointerRef.current;
+    if (!pointer) return;
+    pointerRef.current = null;
+    try { pointer.captureTarget?.releasePointerCapture(pointer.pointerId); } catch { /* already released */ }
+    commitInterruptedPointer(pointer);
+  }, [commitInterruptedPointer]);
+
   const handlePointerDown = useCallback((event) => {
     lastClientPosRef.current = { x: event.clientX, y: event.clientY, pointerType: event.pointerType };
     if (event.button !== 0 || spaceHeldRef.current) return;
@@ -1346,7 +1394,9 @@ const FabricEraserCanvas = memo(({
     const pointer = pointerRef.current;
     if (!pointer || pointer.pointerId !== event.pointerId) return;
     if (event.buttons === 0) {
-      cancelPointer();
+      // Button released outside our capture (missed pointerup): keep the
+      // erase already performed rather than silently discarding it.
+      commitPointerNow();
       return;
     }
     event.preventDefault();
@@ -1360,7 +1410,7 @@ const FabricEraserCanvas = memo(({
         previewEraserGesture(pointer, last ? [last, point] : [point]);
       }
     }
-  }, [cancelPointer, pagePoint, previewEraserGesture, updateEraserCursor]);
+  }, [commitPointerNow, pagePoint, previewEraserGesture, updateEraserCursor]);
 
   const finishPointer = useCallback((event, cancelled) => {
     const pointer = pointerRef.current;
@@ -1368,7 +1418,9 @@ const FabricEraserCanvas = memo(({
     pointerRef.current = null;
     try { event.currentTarget.releasePointerCapture(event.pointerId); } catch { /* already released */ }
     if (cancelled) {
-      finishLiveErasePreview();
+      // pointercancel (OS gesture takeover etc.): commit the erase performed
+      // so far — the user already saw it happen live.
+      commitInterruptedPointer(pointer);
       // Not a real pointer exit: if the pointer still hovers the wrapper the
       // native cursor is 'none', so hiding the circle here would leave no
       // visible cursor until the next move. Re-show at the last known spot.
@@ -1394,7 +1446,7 @@ const FabricEraserCanvas = memo(({
     });
   }, [
     applyEraserAndCommit,
-    finishLiveErasePreview,
+    commitInterruptedPointer,
     pagePoint,
     previewEraserGesture,
     reshowCursorAtLastClientPos,
@@ -1405,11 +1457,12 @@ const FabricEraserCanvas = memo(({
   const handleLostPointerCapture = useCallback((event) => {
     const pointer = pointerRef.current;
     if (!pointer || pointer.pointerId !== event.pointerId) return;
-    cancelPointer();
+    // Losing capture mid-gesture: keep the erase performed so far.
+    commitPointerNow();
     // Same reasoning as the cancelled branch of finishPointer: losing capture
     // does not mean the pointer left the wrapper — keep a visible cursor.
     reshowCursorAtLastClientPos();
-  }, [cancelPointer, reshowCursorAtLastClientPos]);
+  }, [commitPointerNow, reshowCursorAtLastClientPos]);
 
   const commitPointerForZoom = useCallback(() => {
     const pointer = pointerRef.current;
@@ -1481,7 +1534,9 @@ const FabricEraserCanvas = memo(({
     const activateSpacePan = (event) => {
       if (!isSpaceKey(event)) return;
       spaceHeldRef.current = true;
-      cancelPointer();
+      // Switching to space-pan mid-gesture keeps the erase already shown
+      // (commit, don't discard) — same contract as the zoom auto-commit.
+      commitPointerNow();
       updateEraserCursor(null, false);
     };
     const releaseSpacePan = (event) => {
@@ -1502,7 +1557,7 @@ const FabricEraserCanvas = memo(({
       window.removeEventListener('keyup', releaseSpacePan, true);
       window.removeEventListener('blur', releaseSpacePanOnBlur);
     };
-  }, [cancelPointer, updateEraserCursor]);
+  }, [commitPointerNow, updateEraserCursor]);
 
   useEffect(() => () => {
     pointerRef.current = null;

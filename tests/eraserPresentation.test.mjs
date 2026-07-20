@@ -148,11 +148,19 @@ test('pointer-up samples and previews its endpoint before committing geometry', 
   assert.match(finishPointerSource, /applyEraserAndCommit\(pointer\.points\)/);
 });
 
-test('lost pointer capture cancels the stale erase session and permits the next down', () => {
+test('interrupted gestures COMMIT the erase performed so far and permit the next down', () => {
+  // Contract change (2026-07-19 eraser audit): pointercancel / lost capture /
+  // buttons-released-elsewhere used to DISCARD the whole gesture after the
+  // user already watched ink carve and shapes ghost — silent un-erase. All
+  // interrupt paths now commit the accumulated points (same contract as the
+  // zoom auto-commit). Only a restart-at-pointer-down cancels a stale session
+  // without committing (it has no release semantics of its own).
   assert.match(ERASER_SOURCE, /const handleLostPointerCapture = useCallback/);
   assert.match(ERASER_SOURCE, /onLostPointerCapture=\{handleLostPointerCapture\}/);
+  assert.match(ERASER_SOURCE, /const handleLostPointerCapture[\s\S]*?commitPointerNow\(\)/);
   assert.match(ERASER_SOURCE, /const handlePointerDown[\s\S]*?if \(pointerRef\.current\) cancelPointer\(\)/);
-  assert.match(ERASER_SOURCE, /const handlePointerMove[\s\S]*?event\.buttons === 0[\s\S]*?cancelPointer\(\)/);
+  assert.match(ERASER_SOURCE, /const handlePointerMove[\s\S]*?event\.buttons === 0[\s\S]*?commitPointerNow\(\)/);
+  assert.match(ERASER_SOURCE, /if \(cancelled\) \{[\s\S]*?commitInterruptedPointer\(pointer\)/);
 });
 
 test('preview handoff never reveals a known-stale presentation on a timer', () => {

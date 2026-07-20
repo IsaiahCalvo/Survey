@@ -1,0 +1,1472 @@
+{
+  "rig": "eraser-torture-rig",
+  "savedAt": "2026-07-20T03:39:54.450Z",
+  "howToReplay": "SEED=debug/eraser-rig/2026-07-20T03-39-24/cases/FZ04-seed1234.replay.json MODE=partial RADIUS=20 PAGE_URL=http://localhost:5230 node agent-cli/eraser-torture-rig.mjs",
+  "case": {
+    "id": "FZ04-seed1234",
+    "bug": null,
+    "note": "fuzz case (rng 1234)",
+    "objects": [
+      {
+        "version": "7.4.0",
+        "originX": "left",
+        "originY": "top",
+        "strokeDashOffset": 0,
+        "strokeMiterLimit": 4,
+        "scaleX": 1,
+        "scaleY": 1,
+        "angle": 0,
+        "flipX": false,
+        "flipY": false,
+        "opacity": 1,
+        "shadow": null,
+        "visible": true,
+        "backgroundColor": "",
+        "fillRule": "nonzero",
+        "paintFirst": "fill",
+        "globalCompositeOperation": "source-over",
+        "skewX": 0,
+        "skewY": 0,
+        "strokeLineCap": "butt",
+        "strokeLineJoin": "miter",
+        "type": "Rect",
+        "left": 42,
+        "top": 42,
+        "width": 66,
+        "height": 41,
+        "rx": 0,
+        "ry": 0,
+        "fill": "transparent",
+        "stroke": "rgba(209, 27, 45, 1)",
+        "strokeWidth": 4,
+        "strokeUniform": true,
+        "id": "rig-control",
+        "data": {
+          "id": "rig-control",
+          "strokeRenderContract": "drawn-centered-stroke"
+        },
+        "strokeDashArray": null
+      },
+      {
+        "version": "7.4.0",
+        "originX": "left",
+        "originY": "top",
+        "strokeDashArray": null,
+        "strokeLineCap": "butt",
+        "strokeDashOffset": 0,
+        "strokeLineJoin": "miter",
+        "strokeMiterLimit": 4,
+        "strokeUniform": true,
+        "scaleX": 1,
+        "scaleY": 1,
+        "angle": 30,
+        "flipX": false,
+        "flipY": false,
+        "opacity": 1,
+        "shadow": null,
+        "visible": true,
+        "backgroundColor": "",
+        "fillRule": "nonzero",
+        "paintFirst": "fill",
+        "globalCompositeOperation": "source-over",
+        "skewX": 0,
+        "skewY": 0,
+        "lineHeight": 1.16,
+        "charSpacing": 0,
+        "styles": [],
+        "pathStartOffset": 0,
+        "pathSide": "left",
+        "pathAlign": "baseline",
+        "overline": false,
+        "textBackgroundColor": "",
+        "direction": "ltr",
+        "textDecorationThickness": 66.667,
+        "minWidth": 20,
+        "splitByGrapheme": true,
+        "type": "Textbox",
+        "left": 332.6723503298126,
+        "top": 357.9404094768688,
+        "width": 92,
+        "height": 32,
+        "fill": "#0f172a",
+        "stroke": "transparent",
+        "strokeWidth": 0,
+        "fontSize": 16,
+        "fontWeight": "normal",
+        "fontFamily": "Helvetica",
+        "fontStyle": "normal",
+        "text": "RIG TEXT",
+        "textAlign": "left",
+        "underline": false,
+        "linethrough": false,
+        "data": {
+          "id": "rig-fz-text-8"
+        },
+        "id": "rig-fz-text-8"
+      },
+      {
+        "version": "7.4.0",
+        "originX": "left",
+        "originY": "top",
+        "strokeDashOffset": 0,
+        "strokeMiterLimit": 4,
+        "scaleX": 1,
+        "scaleY": 1,
+        "angle": 0,
+        "flipX": false,
+        "flipY": false,
+        "opacity": 1,
+        "shadow": null,
+        "visible": true,
+        "backgroundColor": "",
+        "fillRule": "nonzero",
+        "paintFirst": "fill",
+        "globalCompositeOperation": "source-over",
+        "skewX": 0,
+        "skewY": 0,
+        "strokeLineCap": "butt",
+        "strokeLineJoin": "miter",
+        "type": "Line",
+        "left": 234.16,
+        "top": 210,
+        "width": 144.75,
+        "height": 69.71,
+        "fill": "rgb(0,0,0)",
+        "stroke": "rgba(27, 45, 209, 1)",
+        "strokeWidth": 4,
+        "strokeUniform": true,
+        "x1": 72.37364289467223,
+        "y1": 34.8532442538999,
+        "x2": -72.37364289467223,
+        "y2": -34.8532442538999,
+        "id": "rig-fz-arrow-9",
+        "tool": "arrow",
+        "data": {
+          "id": "rig-fz-arrow-9",
+          "arrowheadStyle": "solid-triangle"
+        },
+        "strokeDashArray": null
+      },
+      {
+        "version": "7.4.0",
+        "originX": "left",
+        "originY": "top",
+        "strokeDashOffset": 0,
+        "strokeMiterLimit": 4,
+        "scaleX": 1,
+        "scaleY": 1,
+        "angle": 0,
+        "flipX": false,
+        "flipY": false,
+        "opacity": 1,
+        "shadow": null,
+        "visible": true,
+        "backgroundColor": "",
+        "fillRule": "nonzero",
+        "paintFirst": "fill",
+        "globalCompositeOperation": "source-over",
+        "skewX": 0,
+        "skewY": 0,
+        "strokeLineCap": "butt",
+        "strokeLineJoin": "miter",
+        "type": "Line",
+        "left": 147.3,
+        "top": 347.19,
+        "width": 85.3,
+        "height": 73.63,
+        "fill": "rgb(0,0,0)",
+        "stroke": "rgba(27, 45, 209, 1)",
+        "strokeWidth": 4,
+        "strokeUniform": true,
+        "x1": -42.649867319269106,
+        "y1": 36.815500137163326,
+        "x2": 42.649867319269106,
+        "y2": -36.815500137163326,
+        "id": "rig-fz-arrow-10",
+        "tool": "arrow",
+        "data": {
+          "id": "rig-fz-arrow-10",
+          "arrowheadStyle": "solid-triangle"
+        },
+        "strokeDashArray": null
+      },
+      {
+        "type": "path",
+        "path": [
+          [
+            "M",
+            234.9428262677975,
+            483.8555170102045
+          ],
+          [
+            "L",
+            242.38243903518773,
+            501.7424912325583
+          ],
+          [
+            "L",
+            261.6929292028531,
+            503.29060442104344
+          ],
+          [
+            "L",
+            246.98037258857255,
+            515.8934756348365
+          ],
+          [
+            "L",
+            251.4752990842202,
+            534.737236426106
+          ],
+          [
+            "L",
+            234.9428262677975,
+            524.639264969714
+          ],
+          [
+            "L",
+            218.4103534513748,
+            534.737236426106
+          ],
+          [
+            "L",
+            222.90527994702245,
+            515.8934756348365
+          ],
+          [
+            "L",
+            208.19272333274185,
+            503.29060442104344
+          ],
+          [
+            "L",
+            227.50321350040727,
+            501.7424912325583
+          ],
+          [
+            "Z"
+          ]
+        ],
+        "left": 0,
+        "top": 0,
+        "scaleX": 1,
+        "scaleY": 1,
+        "angle": 0,
+        "fill": "rgba(51, 85, 255, 0.55)",
+        "stroke": "#3355ff",
+        "strokeWidth": 2,
+        "strokeLineCap": "butt",
+        "strokeLineJoin": "miter",
+        "id": "rig-fz-star-11",
+        "data": {
+          "id": "rig-fz-star-11"
+        }
+      }
+    ],
+    "swipes": [
+      [
+        {
+          "x": 350.36849852796854,
+          "y": 210.0000112248563
+        },
+        {
+          "x": 345.7544354630443,
+          "y": 216.97579640355602
+        },
+        {
+          "x": 341.14037239811995,
+          "y": 223.9516124506106
+        },
+        {
+          "x": 336.52630933319557,
+          "y": 230.92742849766523
+        },
+        {
+          "x": 331.9123080064304,
+          "y": 237.90324454471983
+        },
+        {
+          "x": 327.29824494150614,
+          "y": 244.87906059177445
+        },
+        {
+          "x": 322.68418187658176,
+          "y": 251.854876638829
+        },
+        {
+          "x": 318.07011881165744,
+          "y": 258.8306618175287
+        },
+        {
+          "x": 313.4560557467331,
+          "y": 265.8064778645833
+        },
+        {
+          "x": 308.842054419968,
+          "y": 272.7822939116379
+        },
+        {
+          "x": 304.2279913550436,
+          "y": 279.75810995869256
+        },
+        {
+          "x": 299.6139282901193,
+          "y": 286.73392600574715
+        },
+        {
+          "x": 294.999865225195,
+          "y": 293.70974205280174
+        },
+        {
+          "x": 290.38580216027066,
+          "y": 300.68552723150145
+        },
+        {
+          "x": 285.7718008335055,
+          "y": 307.66134327855605
+        },
+        {
+          "x": 281.15773776858117,
+          "y": 314.63715932561064
+        },
+        {
+          "x": 276.54367470365685,
+          "y": 321.61297537266523
+        },
+        {
+          "x": 271.92961163873247,
+          "y": 328.5887914197198
+        },
+        {
+          "x": 267.31554857380814,
+          "y": 335.5646074667744
+        },
+        {
+          "x": 262.70154724704304,
+          "y": 342.5403926454741
+        }
+      ],
+      [
+        {
+          "x": 370.6423221941015,
+          "y": 210.0000112248563
+        },
+        {
+          "x": 362.09467405480086,
+          "y": 217.03957042474855
+        },
+        {
+          "x": 353.5470259155002,
+          "y": 224.07912962464079
+        },
+        {
+          "x": 344.99943951435876,
+          "y": 231.11868882453305
+        },
+        {
+          "x": 336.45179137505806,
+          "y": 238.15827889278017
+        },
+        {
+          "x": 327.90414323575743,
+          "y": 245.19783809267244
+        },
+        {
+          "x": 319.35649509645674,
+          "y": 252.23739729256468
+        },
+        {
+          "x": 310.80884695715616,
+          "y": 259.27695649245686
+        },
+        {
+          "x": 302.2611988178555,
+          "y": 266.3165156923491
+        },
+        {
+          "x": 293.71355067855484,
+          "y": 273.3561057605963
+        },
+        {
+          "x": 285.16590253925415,
+          "y": 280.3956649604885
+        },
+        {
+          "x": 276.6182543999535,
+          "y": 287.43522416038076
+        },
+        {
+          "x": 268.0706062606529,
+          "y": 294.474783360273
+        },
+        {
+          "x": 259.5229581213522,
+          "y": 301.51434256016523
+        },
+        {
+          "x": 250.97530998205156,
+          "y": 308.5539326284123
+        },
+        {
+          "x": 242.4276618427509,
+          "y": 315.5934918283046
+        }
+      ]
+    ],
+    "midAt": [
+      0.6
+    ],
+    "pixelSkipIds": [],
+    "cancelAtFraction": null
+  },
+  "preState": {
+    "objects": [
+      {
+        "version": "7.4.0",
+        "originX": "left",
+        "originY": "top",
+        "strokeDashOffset": 0,
+        "strokeMiterLimit": 4,
+        "scaleX": 1,
+        "scaleY": 1,
+        "angle": 0,
+        "flipX": false,
+        "flipY": false,
+        "opacity": 1,
+        "shadow": null,
+        "visible": true,
+        "backgroundColor": "",
+        "fillRule": "nonzero",
+        "paintFirst": "fill",
+        "globalCompositeOperation": "source-over",
+        "skewX": 0,
+        "skewY": 0,
+        "strokeLineCap": "butt",
+        "strokeLineJoin": "miter",
+        "type": "Rect",
+        "left": 42,
+        "top": 42,
+        "width": 66,
+        "height": 41,
+        "rx": 0,
+        "ry": 0,
+        "fill": "transparent",
+        "stroke": "rgba(209, 27, 45, 1)",
+        "strokeWidth": 4,
+        "strokeUniform": true,
+        "id": "rig-control",
+        "data": {
+          "id": "rig-control",
+          "strokeRenderContract": "drawn-centered-stroke"
+        },
+        "strokeDashArray": null
+      },
+      {
+        "version": "7.4.0",
+        "originX": "left",
+        "originY": "top",
+        "strokeDashArray": null,
+        "strokeLineCap": "butt",
+        "strokeDashOffset": 0,
+        "strokeLineJoin": "miter",
+        "strokeMiterLimit": 4,
+        "strokeUniform": true,
+        "scaleX": 1,
+        "scaleY": 1,
+        "angle": 30,
+        "flipX": false,
+        "flipY": false,
+        "opacity": 1,
+        "shadow": null,
+        "visible": true,
+        "backgroundColor": "",
+        "fillRule": "nonzero",
+        "paintFirst": "fill",
+        "globalCompositeOperation": "source-over",
+        "skewX": 0,
+        "skewY": 0,
+        "lineHeight": 1.16,
+        "charSpacing": 0,
+        "styles": [],
+        "pathStartOffset": 0,
+        "pathSide": "left",
+        "pathAlign": "baseline",
+        "overline": false,
+        "textBackgroundColor": "",
+        "direction": "ltr",
+        "textDecorationThickness": 66.667,
+        "minWidth": 20,
+        "splitByGrapheme": true,
+        "type": "Textbox",
+        "left": 332.6723503298126,
+        "top": 357.9404094768688,
+        "width": 92,
+        "height": 32,
+        "fill": "#0f172a",
+        "stroke": "transparent",
+        "strokeWidth": 0,
+        "fontSize": 16,
+        "fontWeight": "normal",
+        "fontFamily": "Helvetica",
+        "fontStyle": "normal",
+        "text": "RIG TEXT",
+        "textAlign": "left",
+        "underline": false,
+        "linethrough": false,
+        "data": {
+          "id": "rig-fz-text-8"
+        },
+        "id": "rig-fz-text-8"
+      },
+      {
+        "version": "7.4.0",
+        "originX": "left",
+        "originY": "top",
+        "strokeDashOffset": 0,
+        "strokeMiterLimit": 4,
+        "scaleX": 1,
+        "scaleY": 1,
+        "angle": 0,
+        "flipX": false,
+        "flipY": false,
+        "opacity": 1,
+        "shadow": null,
+        "visible": true,
+        "backgroundColor": "",
+        "fillRule": "nonzero",
+        "paintFirst": "fill",
+        "globalCompositeOperation": "source-over",
+        "skewX": 0,
+        "skewY": 0,
+        "strokeLineCap": "butt",
+        "strokeLineJoin": "miter",
+        "type": "Line",
+        "left": 234.16,
+        "top": 210,
+        "width": 144.75,
+        "height": 69.71,
+        "fill": "rgb(0,0,0)",
+        "stroke": "rgba(27, 45, 209, 1)",
+        "strokeWidth": 4,
+        "strokeUniform": true,
+        "x1": 72.37364289467223,
+        "y1": 34.8532442538999,
+        "x2": -72.37364289467223,
+        "y2": -34.8532442538999,
+        "id": "rig-fz-arrow-9",
+        "tool": "arrow",
+        "data": {
+          "id": "rig-fz-arrow-9",
+          "arrowheadStyle": "solid-triangle"
+        },
+        "strokeDashArray": null
+      },
+      {
+        "version": "7.4.0",
+        "originX": "left",
+        "originY": "top",
+        "strokeDashOffset": 0,
+        "strokeMiterLimit": 4,
+        "scaleX": 1,
+        "scaleY": 1,
+        "angle": 0,
+        "flipX": false,
+        "flipY": false,
+        "opacity": 1,
+        "shadow": null,
+        "visible": true,
+        "backgroundColor": "",
+        "fillRule": "nonzero",
+        "paintFirst": "fill",
+        "globalCompositeOperation": "source-over",
+        "skewX": 0,
+        "skewY": 0,
+        "strokeLineCap": "butt",
+        "strokeLineJoin": "miter",
+        "type": "Line",
+        "left": 147.3,
+        "top": 347.19,
+        "width": 85.3,
+        "height": 73.63,
+        "fill": "rgb(0,0,0)",
+        "stroke": "rgba(27, 45, 209, 1)",
+        "strokeWidth": 4,
+        "strokeUniform": true,
+        "x1": -42.649867319269106,
+        "y1": 36.815500137163326,
+        "x2": 42.649867319269106,
+        "y2": -36.815500137163326,
+        "id": "rig-fz-arrow-10",
+        "tool": "arrow",
+        "data": {
+          "id": "rig-fz-arrow-10",
+          "arrowheadStyle": "solid-triangle"
+        },
+        "strokeDashArray": null
+      },
+      {
+        "type": "path",
+        "path": [
+          [
+            "M",
+            234.9428262677975,
+            483.8555170102045
+          ],
+          [
+            "L",
+            242.38243903518773,
+            501.7424912325583
+          ],
+          [
+            "L",
+            261.6929292028531,
+            503.29060442104344
+          ],
+          [
+            "L",
+            246.98037258857255,
+            515.8934756348365
+          ],
+          [
+            "L",
+            251.4752990842202,
+            534.737236426106
+          ],
+          [
+            "L",
+            234.9428262677975,
+            524.639264969714
+          ],
+          [
+            "L",
+            218.4103534513748,
+            534.737236426106
+          ],
+          [
+            "L",
+            222.90527994702245,
+            515.8934756348365
+          ],
+          [
+            "L",
+            208.19272333274185,
+            503.29060442104344
+          ],
+          [
+            "L",
+            227.50321350040727,
+            501.7424912325583
+          ],
+          [
+            "Z"
+          ]
+        ],
+        "left": 0,
+        "top": 0,
+        "scaleX": 1,
+        "scaleY": 1,
+        "angle": 0,
+        "fill": "rgba(51, 85, 255, 0.55)",
+        "stroke": "#3355ff",
+        "strokeWidth": 2,
+        "strokeLineCap": "butt",
+        "strokeLineJoin": "miter",
+        "id": "rig-fz-star-11",
+        "data": {
+          "id": "rig-fz-star-11"
+        }
+      }
+    ]
+  },
+  "postState": {
+    "objects": [
+      {
+        "version": "7.4.0",
+        "originX": "left",
+        "originY": "top",
+        "strokeDashOffset": 0,
+        "strokeMiterLimit": 4,
+        "scaleX": 1,
+        "scaleY": 1,
+        "angle": 0,
+        "flipX": false,
+        "flipY": false,
+        "opacity": 1,
+        "shadow": null,
+        "visible": true,
+        "backgroundColor": "",
+        "fillRule": "nonzero",
+        "paintFirst": "fill",
+        "globalCompositeOperation": "source-over",
+        "skewX": 0,
+        "skewY": 0,
+        "strokeLineCap": "butt",
+        "strokeLineJoin": "miter",
+        "type": "Rect",
+        "left": 42,
+        "top": 42,
+        "width": 66,
+        "height": 41,
+        "rx": 0,
+        "ry": 0,
+        "fill": "transparent",
+        "stroke": "rgba(209, 27, 45, 1)",
+        "strokeWidth": 4,
+        "strokeUniform": true,
+        "id": "rig-control",
+        "data": {
+          "id": "rig-control",
+          "strokeRenderContract": "drawn-centered-stroke"
+        },
+        "strokeDashArray": null
+      },
+      {
+        "version": "7.4.0",
+        "originX": "left",
+        "originY": "top",
+        "strokeDashArray": null,
+        "strokeLineCap": "butt",
+        "strokeDashOffset": 0,
+        "strokeLineJoin": "miter",
+        "strokeMiterLimit": 4,
+        "strokeUniform": true,
+        "scaleX": 1,
+        "scaleY": 1,
+        "angle": 30,
+        "flipX": false,
+        "flipY": false,
+        "opacity": 1,
+        "shadow": null,
+        "visible": true,
+        "backgroundColor": "",
+        "fillRule": "nonzero",
+        "paintFirst": "fill",
+        "globalCompositeOperation": "source-over",
+        "skewX": 0,
+        "skewY": 0,
+        "lineHeight": 1.16,
+        "charSpacing": 0,
+        "styles": [],
+        "pathStartOffset": 0,
+        "pathSide": "left",
+        "pathAlign": "baseline",
+        "overline": false,
+        "textBackgroundColor": "",
+        "direction": "ltr",
+        "textDecorationThickness": 66.667,
+        "minWidth": 20,
+        "splitByGrapheme": true,
+        "type": "Textbox",
+        "left": 332.6723503298126,
+        "top": 357.9404094768688,
+        "width": 92,
+        "height": 32,
+        "fill": "#0f172a",
+        "stroke": "transparent",
+        "strokeWidth": 0,
+        "fontSize": 16,
+        "fontWeight": "normal",
+        "fontFamily": "Helvetica",
+        "fontStyle": "normal",
+        "text": "RIG TEXT",
+        "textAlign": "left",
+        "underline": false,
+        "linethrough": false,
+        "data": {
+          "id": "rig-fz-text-8"
+        },
+        "id": "rig-fz-text-8"
+      },
+      {
+        "version": "7.4.0",
+        "originX": "left",
+        "originY": "top",
+        "strokeDashOffset": 0,
+        "strokeMiterLimit": 4,
+        "scaleX": 1,
+        "scaleY": 1,
+        "angle": 0,
+        "flipX": false,
+        "flipY": false,
+        "opacity": 1,
+        "shadow": null,
+        "visible": true,
+        "backgroundColor": "",
+        "fillRule": "nonzero",
+        "paintFirst": "fill",
+        "globalCompositeOperation": "source-over",
+        "skewX": 0,
+        "skewY": 0,
+        "strokeLineCap": "butt",
+        "strokeLineJoin": "miter",
+        "type": "Line",
+        "left": 234.16,
+        "top": 210,
+        "width": 144.75,
+        "height": 69.71,
+        "fill": "rgb(0,0,0)",
+        "stroke": "rgba(27, 45, 209, 1)",
+        "strokeWidth": 4,
+        "strokeUniform": true,
+        "x1": 72.37364289467223,
+        "y1": 34.8532442538999,
+        "x2": -72.37364289467223,
+        "y2": -34.8532442538999,
+        "id": "rig-fz-arrow-9",
+        "tool": "arrow",
+        "data": {
+          "id": "rig-fz-arrow-9",
+          "arrowheadStyle": "solid-triangle"
+        },
+        "strokeDashArray": null
+      },
+      {
+        "version": "7.4.0",
+        "originX": "left",
+        "originY": "top",
+        "strokeDashOffset": 0,
+        "strokeMiterLimit": 4,
+        "scaleX": 1,
+        "scaleY": 1,
+        "angle": 0,
+        "flipX": false,
+        "flipY": false,
+        "opacity": 1,
+        "shadow": null,
+        "visible": true,
+        "backgroundColor": "",
+        "fillRule": "nonzero",
+        "paintFirst": "fill",
+        "globalCompositeOperation": "source-over",
+        "skewX": 0,
+        "skewY": 0,
+        "strokeLineCap": "butt",
+        "strokeLineJoin": "miter",
+        "type": "Line",
+        "left": 147.3,
+        "top": 347.19,
+        "width": 85.3,
+        "height": 73.63,
+        "fill": "rgb(0,0,0)",
+        "stroke": "rgba(27, 45, 209, 1)",
+        "strokeWidth": 4,
+        "strokeUniform": true,
+        "x1": -42.649867319269106,
+        "y1": 36.815500137163326,
+        "x2": 42.649867319269106,
+        "y2": -36.815500137163326,
+        "id": "rig-fz-arrow-10",
+        "tool": "arrow",
+        "data": {
+          "id": "rig-fz-arrow-10",
+          "arrowheadStyle": "solid-triangle"
+        },
+        "strokeDashArray": null
+      },
+      {
+        "type": "path",
+        "path": [
+          [
+            "M",
+            234.9428262677975,
+            483.8555170102045
+          ],
+          [
+            "L",
+            242.38243903518773,
+            501.7424912325583
+          ],
+          [
+            "L",
+            261.6929292028531,
+            503.29060442104344
+          ],
+          [
+            "L",
+            246.98037258857255,
+            515.8934756348365
+          ],
+          [
+            "L",
+            251.4752990842202,
+            534.737236426106
+          ],
+          [
+            "L",
+            234.9428262677975,
+            524.639264969714
+          ],
+          [
+            "L",
+            218.4103534513748,
+            534.737236426106
+          ],
+          [
+            "L",
+            222.90527994702245,
+            515.8934756348365
+          ],
+          [
+            "L",
+            208.19272333274185,
+            503.29060442104344
+          ],
+          [
+            "L",
+            227.50321350040727,
+            501.7424912325583
+          ],
+          [
+            "Z"
+          ]
+        ],
+        "left": 0,
+        "top": 0,
+        "scaleX": 1,
+        "scaleY": 1,
+        "angle": 0,
+        "fill": "rgba(51, 85, 255, 0.55)",
+        "stroke": "#3355ff",
+        "strokeWidth": 2,
+        "strokeLineCap": "butt",
+        "strokeLineJoin": "miter",
+        "id": "rig-fz-star-11",
+        "data": {
+          "id": "rig-fz-star-11"
+        }
+      }
+    ]
+  },
+  "coldPostState": [
+    {
+      "version": "7.4.0",
+      "originX": "left",
+      "originY": "top",
+      "strokeDashArray": null,
+      "strokeLineCap": "butt",
+      "strokeDashOffset": 0,
+      "strokeLineJoin": "miter",
+      "strokeMiterLimit": 4,
+      "strokeUniform": true,
+      "scaleX": 1,
+      "scaleY": 1,
+      "angle": 30,
+      "flipX": false,
+      "flipY": false,
+      "opacity": 1,
+      "shadow": null,
+      "visible": true,
+      "backgroundColor": "",
+      "fillRule": "nonzero",
+      "paintFirst": "fill",
+      "globalCompositeOperation": "source-over",
+      "skewX": 0,
+      "skewY": 0,
+      "lineHeight": 1.16,
+      "charSpacing": 0,
+      "styles": [],
+      "pathStartOffset": 0,
+      "pathSide": "left",
+      "pathAlign": "baseline",
+      "overline": false,
+      "textBackgroundColor": "",
+      "direction": "ltr",
+      "textDecorationThickness": 66.667,
+      "minWidth": 20,
+      "splitByGrapheme": true,
+      "type": "Textbox",
+      "left": 332.6723503298126,
+      "top": 357.9404094768688,
+      "width": 92,
+      "height": 32,
+      "fill": "#0f172a",
+      "stroke": "transparent",
+      "strokeWidth": 0,
+      "fontSize": 16,
+      "fontWeight": "normal",
+      "fontFamily": "Helvetica",
+      "fontStyle": "normal",
+      "text": "RIG TEXT",
+      "textAlign": "left",
+      "underline": false,
+      "linethrough": false,
+      "data": {
+        "id": "rig-fz-text-8"
+      },
+      "id": "rig-fz-text-8"
+    },
+    {
+      "version": "7.4.0",
+      "originX": "left",
+      "originY": "top",
+      "strokeDashOffset": 0,
+      "strokeMiterLimit": 4,
+      "scaleX": 1,
+      "scaleY": 1,
+      "angle": 0,
+      "flipX": false,
+      "flipY": false,
+      "opacity": 1,
+      "shadow": null,
+      "visible": true,
+      "backgroundColor": "",
+      "fillRule": "nonzero",
+      "paintFirst": "fill",
+      "globalCompositeOperation": "source-over",
+      "skewX": 0,
+      "skewY": 0,
+      "strokeLineCap": "butt",
+      "strokeLineJoin": "miter",
+      "type": "Line",
+      "left": 234.16,
+      "top": 210,
+      "width": 144.75,
+      "height": 69.71,
+      "fill": "rgb(0,0,0)",
+      "stroke": "rgba(27, 45, 209, 1)",
+      "strokeWidth": 4,
+      "strokeUniform": true,
+      "x1": 72.37364289467223,
+      "y1": 34.8532442538999,
+      "x2": -72.37364289467223,
+      "y2": -34.8532442538999,
+      "id": "rig-fz-arrow-9",
+      "tool": "arrow",
+      "data": {
+        "id": "rig-fz-arrow-9",
+        "arrowheadStyle": "solid-triangle"
+      },
+      "strokeDashArray": null
+    },
+    {
+      "version": "7.4.0",
+      "originX": "left",
+      "originY": "top",
+      "strokeDashOffset": 0,
+      "strokeMiterLimit": 4,
+      "scaleX": 1,
+      "scaleY": 1,
+      "angle": 0,
+      "flipX": false,
+      "flipY": false,
+      "opacity": 1,
+      "shadow": null,
+      "visible": true,
+      "backgroundColor": "",
+      "fillRule": "nonzero",
+      "paintFirst": "fill",
+      "globalCompositeOperation": "source-over",
+      "skewX": 0,
+      "skewY": 0,
+      "strokeLineCap": "butt",
+      "strokeLineJoin": "miter",
+      "type": "Line",
+      "left": 147.3,
+      "top": 347.19,
+      "width": 85.3,
+      "height": 73.63,
+      "fill": "rgb(0,0,0)",
+      "stroke": "rgba(27, 45, 209, 1)",
+      "strokeWidth": 4,
+      "strokeUniform": true,
+      "x1": -42.649867319269106,
+      "y1": 36.815500137163326,
+      "x2": 42.649867319269106,
+      "y2": -36.815500137163326,
+      "id": "rig-fz-arrow-10",
+      "tool": "arrow",
+      "data": {
+        "id": "rig-fz-arrow-10",
+        "arrowheadStyle": "solid-triangle"
+      },
+      "strokeDashArray": null
+    },
+    {
+      "type": "path",
+      "path": [
+        [
+          "M",
+          234.9428262677975,
+          483.8555170102045
+        ],
+        [
+          "L",
+          242.38243903518773,
+          501.7424912325583
+        ],
+        [
+          "L",
+          261.6929292028531,
+          503.29060442104344
+        ],
+        [
+          "L",
+          246.98037258857255,
+          515.8934756348365
+        ],
+        [
+          "L",
+          251.4752990842202,
+          534.737236426106
+        ],
+        [
+          "L",
+          234.9428262677975,
+          524.639264969714
+        ],
+        [
+          "L",
+          218.4103534513748,
+          534.737236426106
+        ],
+        [
+          "L",
+          222.90527994702245,
+          515.8934756348365
+        ],
+        [
+          "L",
+          208.19272333274185,
+          503.29060442104344
+        ],
+        [
+          "L",
+          227.50321350040727,
+          501.7424912325583
+        ],
+        [
+          "Z"
+        ]
+      ],
+      "left": 0,
+      "top": 0,
+      "scaleX": 1,
+      "scaleY": 1,
+      "angle": 0,
+      "fill": "rgba(51, 85, 255, 0.55)",
+      "stroke": "#3355ff",
+      "strokeWidth": 2,
+      "strokeLineCap": "butt",
+      "strokeLineJoin": "miter",
+      "id": "rig-fz-star-11",
+      "data": {
+        "id": "rig-fz-star-11"
+      }
+    },
+    {
+      "version": "7.4.0",
+      "originX": "left",
+      "originY": "top",
+      "strokeDashOffset": 0,
+      "strokeMiterLimit": 4,
+      "scaleX": 1,
+      "scaleY": 1,
+      "angle": 0,
+      "flipX": false,
+      "flipY": false,
+      "opacity": 1,
+      "shadow": null,
+      "visible": true,
+      "backgroundColor": "",
+      "fillRule": "nonzero",
+      "paintFirst": "fill",
+      "globalCompositeOperation": "source-over",
+      "skewX": 0,
+      "skewY": 0,
+      "strokeLineCap": "butt",
+      "strokeLineJoin": "miter",
+      "type": "Rect",
+      "left": 42,
+      "top": 42,
+      "width": 66,
+      "height": 41,
+      "rx": 0,
+      "ry": 0,
+      "fill": "transparent",
+      "stroke": "rgba(209, 27, 45, 1)",
+      "strokeWidth": 4,
+      "strokeUniform": true,
+      "id": "rig-control",
+      "data": {
+        "id": "rig-control",
+        "strokeRenderContract": "drawn-centered-stroke"
+      },
+      "strokeDashArray": null
+    }
+  ],
+  "oraclePrediction": {
+    "objects": [
+      {
+        "version": "7.4.0",
+        "originX": "left",
+        "originY": "top",
+        "strokeDashOffset": 0,
+        "strokeMiterLimit": 4,
+        "scaleX": 1,
+        "scaleY": 1,
+        "angle": 0,
+        "flipX": false,
+        "flipY": false,
+        "opacity": 1,
+        "shadow": null,
+        "visible": true,
+        "backgroundColor": "",
+        "fillRule": "nonzero",
+        "paintFirst": "fill",
+        "globalCompositeOperation": "source-over",
+        "skewX": 0,
+        "skewY": 0,
+        "strokeLineCap": "butt",
+        "strokeLineJoin": "miter",
+        "type": "Rect",
+        "left": 42,
+        "top": 42,
+        "width": 66,
+        "height": 41,
+        "rx": 0,
+        "ry": 0,
+        "fill": "transparent",
+        "stroke": "rgba(209, 27, 45, 1)",
+        "strokeWidth": 4,
+        "strokeUniform": true,
+        "id": "rig-control",
+        "data": {
+          "id": "rig-control",
+          "strokeRenderContract": "drawn-centered-stroke"
+        },
+        "strokeDashArray": null
+      },
+      {
+        "version": "7.4.0",
+        "originX": "left",
+        "originY": "top",
+        "strokeDashArray": null,
+        "strokeLineCap": "butt",
+        "strokeDashOffset": 0,
+        "strokeLineJoin": "miter",
+        "strokeMiterLimit": 4,
+        "strokeUniform": true,
+        "scaleX": 1,
+        "scaleY": 1,
+        "angle": 30,
+        "flipX": false,
+        "flipY": false,
+        "opacity": 1,
+        "shadow": null,
+        "visible": true,
+        "backgroundColor": "",
+        "fillRule": "nonzero",
+        "paintFirst": "fill",
+        "globalCompositeOperation": "source-over",
+        "skewX": 0,
+        "skewY": 0,
+        "lineHeight": 1.16,
+        "charSpacing": 0,
+        "styles": [],
+        "pathStartOffset": 0,
+        "pathSide": "left",
+        "pathAlign": "baseline",
+        "overline": false,
+        "textBackgroundColor": "",
+        "direction": "ltr",
+        "textDecorationThickness": 66.667,
+        "minWidth": 20,
+        "splitByGrapheme": true,
+        "type": "Textbox",
+        "left": 332.6723503298126,
+        "top": 357.9404094768688,
+        "width": 92,
+        "height": 32,
+        "fill": "#0f172a",
+        "stroke": "transparent",
+        "strokeWidth": 0,
+        "fontSize": 16,
+        "fontWeight": "normal",
+        "fontFamily": "Helvetica",
+        "fontStyle": "normal",
+        "text": "RIG TEXT",
+        "textAlign": "left",
+        "underline": false,
+        "linethrough": false,
+        "data": {
+          "id": "rig-fz-text-8"
+        },
+        "id": "rig-fz-text-8"
+      },
+      {
+        "version": "7.4.0",
+        "originX": "left",
+        "originY": "top",
+        "strokeDashOffset": 0,
+        "strokeMiterLimit": 4,
+        "scaleX": 1,
+        "scaleY": 1,
+        "angle": 0,
+        "flipX": false,
+        "flipY": false,
+        "opacity": 1,
+        "shadow": null,
+        "visible": true,
+        "backgroundColor": "",
+        "fillRule": "nonzero",
+        "paintFirst": "fill",
+        "globalCompositeOperation": "source-over",
+        "skewX": 0,
+        "skewY": 0,
+        "strokeLineCap": "butt",
+        "strokeLineJoin": "miter",
+        "type": "Line",
+        "left": 234.16,
+        "top": 210,
+        "width": 144.75,
+        "height": 69.71,
+        "fill": "rgb(0,0,0)",
+        "stroke": "rgba(27, 45, 209, 1)",
+        "strokeWidth": 4,
+        "strokeUniform": true,
+        "x1": 72.37364289467223,
+        "y1": 34.8532442538999,
+        "x2": -72.37364289467223,
+        "y2": -34.8532442538999,
+        "id": "rig-fz-arrow-9",
+        "tool": "arrow",
+        "data": {
+          "id": "rig-fz-arrow-9",
+          "arrowheadStyle": "solid-triangle"
+        },
+        "strokeDashArray": null
+      },
+      {
+        "version": "7.4.0",
+        "originX": "left",
+        "originY": "top",
+        "strokeDashOffset": 0,
+        "strokeMiterLimit": 4,
+        "scaleX": 1,
+        "scaleY": 1,
+        "angle": 0,
+        "flipX": false,
+        "flipY": false,
+        "opacity": 1,
+        "shadow": null,
+        "visible": true,
+        "backgroundColor": "",
+        "fillRule": "nonzero",
+        "paintFirst": "fill",
+        "globalCompositeOperation": "source-over",
+        "skewX": 0,
+        "skewY": 0,
+        "strokeLineCap": "butt",
+        "strokeLineJoin": "miter",
+        "type": "Line",
+        "left": 147.3,
+        "top": 347.19,
+        "width": 85.3,
+        "height": 73.63,
+        "fill": "rgb(0,0,0)",
+        "stroke": "rgba(27, 45, 209, 1)",
+        "strokeWidth": 4,
+        "strokeUniform": true,
+        "x1": -42.649867319269106,
+        "y1": 36.815500137163326,
+        "x2": 42.649867319269106,
+        "y2": -36.815500137163326,
+        "id": "rig-fz-arrow-10",
+        "tool": "arrow",
+        "data": {
+          "id": "rig-fz-arrow-10",
+          "arrowheadStyle": "solid-triangle"
+        },
+        "strokeDashArray": null
+      },
+      {
+        "type": "path",
+        "path": [
+          [
+            "M",
+            234.9428262677975,
+            483.8555170102045
+          ],
+          [
+            "L",
+            242.38243903518773,
+            501.7424912325583
+          ],
+          [
+            "L",
+            261.6929292028531,
+            503.29060442104344
+          ],
+          [
+            "L",
+            246.98037258857255,
+            515.8934756348365
+          ],
+          [
+            "L",
+            251.4752990842202,
+            534.737236426106
+          ],
+          [
+            "L",
+            234.9428262677975,
+            524.639264969714
+          ],
+          [
+            "L",
+            218.4103534513748,
+            534.737236426106
+          ],
+          [
+            "L",
+            222.90527994702245,
+            515.8934756348365
+          ],
+          [
+            "L",
+            208.19272333274185,
+            503.29060442104344
+          ],
+          [
+            "L",
+            227.50321350040727,
+            501.7424912325583
+          ],
+          [
+            "Z"
+          ]
+        ],
+        "left": 0,
+        "top": 0,
+        "scaleX": 1,
+        "scaleY": 1,
+        "angle": 0,
+        "fill": "rgba(51, 85, 255, 0.55)",
+        "stroke": "#3355ff",
+        "strokeWidth": 2,
+        "strokeLineCap": "butt",
+        "strokeLineJoin": "miter",
+        "id": "rig-fz-star-11",
+        "data": {
+          "id": "rig-fz-star-11"
+        }
+      }
+    ]
+  },
+  "verdicts": {
+    "rig-control": "must-not-touch",
+    "rig-fz-text-8": "must-not-touch",
+    "rig-fz-arrow-9": "must-touch",
+    "rig-fz-arrow-10": "must-not-touch",
+    "rig-fz-star-11": "must-not-touch"
+  },
+  "failures": [
+    {
+      "truth": "data",
+      "check": "D2-semantic",
+      "id": "rig-fz-arrow-9",
+      "message": "sweep clearly crossed \"rig-fz-arrow-9\" (correct geometry) but it survived byte-identical"
+    }
+  ],
+  "consoleTail": []
+}

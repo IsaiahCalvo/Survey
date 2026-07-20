@@ -115,7 +115,7 @@ const FABRIC_CUSTOM_PROPS = [
   'globalCompositeOperation', 'layer',
   'isPdfImported', 'pdfAnnotationId', 'pdfAnnotationType', 'pdfInkRenderMode',
   'paperInkGeometry', 'paperEraserGeometry',
-  'polygons', 'paperCenterline', 'sourceWidth', 'fillRule',
+  'polygons', 'paperCenterline', 'paperCenterlineRuns', 'sourceWidth', 'fillRule',
 ];
 
 /**

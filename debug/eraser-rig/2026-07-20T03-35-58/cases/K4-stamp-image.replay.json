@@ -1,0 +1,385 @@
+{
+  "rig": "eraser-torture-rig",
+  "savedAt": "2026-07-20T03:36:32.551Z",
+  "howToReplay": "SEED=debug/eraser-rig/2026-07-20T03-35-58/cases/K4-stamp-image.replay.json MODE=partial RADIUS=20 PAGE_URL=http://localhost:5230 node agent-cli/eraser-torture-rig.mjs",
+  "case": {
+    "id": "K4-stamp-image",
+    "bug": 3,
+    "note": "Stamp (type 'image'): sweep straight across its center — hit test falls to a dead default.",
+    "objects": [
+      {
+        "version": "7.4.0",
+        "originX": "left",
+        "originY": "top",
+        "strokeDashOffset": 0,
+        "strokeMiterLimit": 4,
+        "scaleX": 1,
+        "scaleY": 1,
+        "angle": 0,
+        "flipX": false,
+        "flipY": false,
+        "opacity": 1,
+        "shadow": null,
+        "visible": true,
+        "backgroundColor": "",
+        "fillRule": "nonzero",
+        "paintFirst": "fill",
+        "globalCompositeOperation": "source-over",
+        "skewX": 0,
+        "skewY": 0,
+        "strokeLineCap": "butt",
+        "strokeLineJoin": "miter",
+        "type": "Rect",
+        "left": 42,
+        "top": 42,
+        "width": 66,
+        "height": 41,
+        "rx": 0,
+        "ry": 0,
+        "fill": "transparent",
+        "stroke": "rgba(209, 27, 45, 1)",
+        "strokeWidth": 4,
+        "strokeUniform": true,
+        "id": "rig-control",
+        "data": {
+          "id": "rig-control",
+          "strokeRenderContract": "drawn-centered-stroke"
+        },
+        "strokeDashArray": null
+      },
+      {
+        "type": "image",
+        "left": 240,
+        "top": 300,
+        "width": 120,
+        "height": 90,
+        "scaleX": 1,
+        "scaleY": 1,
+        "angle": 0,
+        "src": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAKklEQVR4nGNgYGD4Twzu6en5TwxmYqAyGDVw1MBRA0cNHDVw1MCRYyAAG4NB98RRl2sAAAAASUVORK5CYII=",
+        "id": "rig-k4-stamp",
+        "data": {
+          "id": "rig-k4-stamp"
+        }
+      }
+    ],
+    "swipes": [
+      [
+        {
+          "x": 219.99997901709622,
+          "y": 345.0000140310704
+        },
+        {
+          "x": 231.42857661665204,
+          "y": 345.0000140310704
+        },
+        {
+          "x": 242.85711247804866,
+          "y": 345.0000140310704
+        },
+        {
+          "x": 254.28571007760448,
+          "y": 345.0000140310704
+        },
+        {
+          "x": 265.71430767716026,
+          "y": 345.0000140310704
+        },
+        {
+          "x": 277.1428435385569,
+          "y": 345.0000140310704
+        },
+        {
+          "x": 288.5714411381127,
+          "y": 345.0000140310704
+        },
+        {
+          "x": 299.99997699950933,
+          "y": 345.0000140310704
+        },
+        {
+          "x": 311.42857459906514,
+          "y": 345.0000140310704
+        },
+        {
+          "x": 322.85717219862096,
+          "y": 345.0000140310704
+        },
+        {
+          "x": 334.28570806001755,
+          "y": 345.0000140310704
+        },
+        {
+          "x": 345.71430565957337,
+          "y": 345.0000140310704
+        },
+        {
+          "x": 357.14284152096997,
+          "y": 345.0000140310704
+        },
+        {
+          "x": 368.5714391205258,
+          "y": 345.0000140310704
+        },
+        {
+          "x": 379.9999749819224,
+          "y": 345.0000140310704
+        }
+      ]
+    ],
+    "midAt": [
+      0.6
+    ],
+    "pixelSkipIds": [
+      "rig-k4-stamp"
+    ],
+    "cancelAtFraction": null
+  },
+  "preState": {
+    "objects": [
+      {
+        "version": "7.4.0",
+        "originX": "left",
+        "originY": "top",
+        "strokeDashOffset": 0,
+        "strokeMiterLimit": 4,
+        "scaleX": 1,
+        "scaleY": 1,
+        "angle": 0,
+        "flipX": false,
+        "flipY": false,
+        "opacity": 1,
+        "shadow": null,
+        "visible": true,
+        "backgroundColor": "",
+        "fillRule": "nonzero",
+        "paintFirst": "fill",
+        "globalCompositeOperation": "source-over",
+        "skewX": 0,
+        "skewY": 0,
+        "strokeLineCap": "butt",
+        "strokeLineJoin": "miter",
+        "type": "Rect",
+        "left": 42,
+        "top": 42,
+        "width": 66,
+        "height": 41,
+        "rx": 0,
+        "ry": 0,
+        "fill": "transparent",
+        "stroke": "rgba(209, 27, 45, 1)",
+        "strokeWidth": 4,
+        "strokeUniform": true,
+        "id": "rig-control",
+        "data": {
+          "id": "rig-control",
+          "strokeRenderContract": "drawn-centered-stroke"
+        },
+        "strokeDashArray": null
+      },
+      {
+        "type": "image",
+        "left": 240,
+        "top": 300,
+        "width": 120,
+        "height": 90,
+        "scaleX": 1,
+        "scaleY": 1,
+        "angle": 0,
+        "src": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAKklEQVR4nGNgYGD4Twzu6en5TwxmYqAyGDVw1MBRA0cNHDVw1MCRYyAAG4NB98RRl2sAAAAASUVORK5CYII=",
+        "id": "rig-k4-stamp",
+        "data": {
+          "id": "rig-k4-stamp"
+        }
+      }
+    ]
+  },
+  "postState": {
+    "objects": [
+      {
+        "version": "7.4.0",
+        "originX": "left",
+        "originY": "top",
+        "strokeDashOffset": 0,
+        "strokeMiterLimit": 4,
+        "scaleX": 1,
+        "scaleY": 1,
+        "angle": 0,
+        "flipX": false,
+        "flipY": false,
+        "opacity": 1,
+        "shadow": null,
+        "visible": true,
+        "backgroundColor": "",
+        "fillRule": "nonzero",
+        "paintFirst": "fill",
+        "globalCompositeOperation": "source-over",
+        "skewX": 0,
+        "skewY": 0,
+        "strokeLineCap": "butt",
+        "strokeLineJoin": "miter",
+        "type": "Rect",
+        "left": 42,
+        "top": 42,
+        "width": 66,
+        "height": 41,
+        "rx": 0,
+        "ry": 0,
+        "fill": "transparent",
+        "stroke": "rgba(209, 27, 45, 1)",
+        "strokeWidth": 4,
+        "strokeUniform": true,
+        "id": "rig-control",
+        "data": {
+          "id": "rig-control",
+          "strokeRenderContract": "drawn-centered-stroke"
+        },
+        "strokeDashArray": null
+      },
+      {
+        "type": "image",
+        "left": 240,
+        "top": 300,
+        "width": 120,
+        "height": 90,
+        "scaleX": 1,
+        "scaleY": 1,
+        "angle": 0,
+        "src": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAKklEQVR4nGNgYGD4Twzu6en5TwxmYqAyGDVw1MBRA0cNHDVw1MCRYyAAG4NB98RRl2sAAAAASUVORK5CYII=",
+        "id": "rig-k4-stamp",
+        "data": {
+          "id": "rig-k4-stamp"
+        }
+      }
+    ]
+  },
+  "coldPostState": [
+    {
+      "type": "image",
+      "left": 240,
+      "top": 300,
+      "width": 120,
+      "height": 90,
+      "scaleX": 1,
+      "scaleY": 1,
+      "angle": 0,
+      "src": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAKklEQVR4nGNgYGD4Twzu6en5TwxmYqAyGDVw1MBRA0cNHDVw1MCRYyAAG4NB98RRl2sAAAAASUVORK5CYII=",
+      "id": "rig-k4-stamp",
+      "data": {
+        "id": "rig-k4-stamp"
+      }
+    },
+    {
+      "version": "7.4.0",
+      "originX": "left",
+      "originY": "top",
+      "strokeDashOffset": 0,
+      "strokeMiterLimit": 4,
+      "scaleX": 1,
+      "scaleY": 1,
+      "angle": 0,
+      "flipX": false,
+      "flipY": false,
+      "opacity": 1,
+      "shadow": null,
+      "visible": true,
+      "backgroundColor": "",
+      "fillRule": "nonzero",
+      "paintFirst": "fill",
+      "globalCompositeOperation": "source-over",
+      "skewX": 0,
+      "skewY": 0,
+      "strokeLineCap": "butt",
+      "strokeLineJoin": "miter",
+      "type": "Rect",
+      "left": 42,
+      "top": 42,
+      "width": 66,
+      "height": 41,
+      "rx": 0,
+      "ry": 0,
+      "fill": "transparent",
+      "stroke": "rgba(209, 27, 45, 1)",
+      "strokeWidth": 4,
+      "strokeUniform": true,
+      "id": "rig-control",
+      "data": {
+        "id": "rig-control",
+        "strokeRenderContract": "drawn-centered-stroke"
+      },
+      "strokeDashArray": null
+    }
+  ],
+  "oraclePrediction": {
+    "objects": [
+      {
+        "version": "7.4.0",
+        "originX": "left",
+        "originY": "top",
+        "strokeDashOffset": 0,
+        "strokeMiterLimit": 4,
+        "scaleX": 1,
+        "scaleY": 1,
+        "angle": 0,
+        "flipX": false,
+        "flipY": false,
+        "opacity": 1,
+        "shadow": null,
+        "visible": true,
+        "backgroundColor": "",
+        "fillRule": "nonzero",
+        "paintFirst": "fill",
+        "globalCompositeOperation": "source-over",
+        "skewX": 0,
+        "skewY": 0,
+        "strokeLineCap": "butt",
+        "strokeLineJoin": "miter",
+        "type": "Rect",
+        "left": 42,
+        "top": 42,
+        "width": 66,
+        "height": 41,
+        "rx": 0,
+        "ry": 0,
+        "fill": "transparent",
+        "stroke": "rgba(209, 27, 45, 1)",
+        "strokeWidth": 4,
+        "strokeUniform": true,
+        "id": "rig-control",
+        "data": {
+          "id": "rig-control",
+          "strokeRenderContract": "drawn-centered-stroke"
+        },
+        "strokeDashArray": null
+      },
+      {
+        "type": "image",
+        "left": 240,
+        "top": 300,
+        "width": 120,
+        "height": 90,
+        "scaleX": 1,
+        "scaleY": 1,
+        "angle": 0,
+        "src": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAKklEQVR4nGNgYGD4Twzu6en5TwxmYqAyGDVw1MBRA0cNHDVw1MCRYyAAG4NB98RRl2sAAAAASUVORK5CYII=",
+        "id": "rig-k4-stamp",
+        "data": {
+          "id": "rig-k4-stamp"
+        }
+      }
+    ]
+  },
+  "verdicts": {
+    "rig-control": "must-not-touch",
+    "rig-k4-stamp": "must-touch"
+  },
+  "failures": [
+    {
+      "truth": "data",
+      "check": "D2-semantic",
+      "id": "rig-k4-stamp",
+      "message": "sweep clearly crossed \"rig-k4-stamp\" (correct geometry) but it survived byte-identical"
+    }
+  ],
+  "consoleTail": []
+}
