@@ -1,0 +1,264 @@
+{
+  "startedAt": "2026-07-20T04:04:04.649Z",
+  "pageUrl": "http://localhost:5230",
+  "mode": "partial",
+  "eraserSize": 20,
+  "pageRadius": 10,
+  "seedSpec": "fuzz 10 1234",
+  "rngSeed": 1234,
+  "cases": [
+    {
+      "id": "FZ01-seed1234",
+      "bug": null,
+      "note": "fuzz case (rng 1234)",
+      "pass": true,
+      "expectedToFail": false,
+      "failures": [],
+      "durationMs": 7839,
+      "details": {
+        "verdicts": {
+          "rig-control": "must-not-touch",
+          "rig-fz-text-1": "must-touch",
+          "rig-fz-ink-2": "must-touch"
+        },
+        "checks": {
+          "engineConsistency": true,
+          "slivers": {},
+          "durability": true,
+          "coldOrderMatchesInApp": true,
+          "postReleaseStability": 0
+        }
+      },
+      "cancelled": false
+    },
+    {
+      "id": "FZ02-seed1234",
+      "bug": null,
+      "note": "fuzz case (rng 1234)",
+      "pass": true,
+      "expectedToFail": false,
+      "failures": [],
+      "durationMs": 5481,
+      "details": {
+        "verdicts": {
+          "rig-control": "must-not-touch",
+          "rig-fz-star-3": "must-not-touch",
+          "rig-fz-rect-4": "must-touch",
+          "rig-fz-arrow-5": "must-touch"
+        },
+        "checks": {
+          "engineConsistency": true,
+          "slivers": {},
+          "durability": true,
+          "coldOrderMatchesInApp": true,
+          "postReleaseStability": 0
+        }
+      },
+      "cancelled": false
+    },
+    {
+      "id": "FZ03-seed1234",
+      "bug": null,
+      "note": "fuzz case (rng 1234)",
+      "pass": true,
+      "expectedToFail": false,
+      "failures": [],
+      "durationMs": 5407,
+      "details": {
+        "verdicts": {
+          "rig-control": "must-not-touch",
+          "rig-fz-ell-6": "must-touch",
+          "rig-fz-arrow-7": "must-touch"
+        },
+        "checks": {
+          "engineConsistency": true,
+          "slivers": {},
+          "durability": true,
+          "coldOrderMatchesInApp": true,
+          "postReleaseStability": 0
+        }
+      },
+      "cancelled": false
+    },
+    {
+      "id": "FZ04-seed1234",
+      "bug": null,
+      "note": "fuzz case (rng 1234)",
+      "pass": true,
+      "expectedToFail": false,
+      "failures": [],
+      "durationMs": 6855,
+      "details": {
+        "verdicts": {
+          "rig-control": "must-not-touch",
+          "rig-fz-text-8": "must-not-touch",
+          "rig-fz-arrow-9": "must-touch",
+          "rig-fz-arrow-10": "must-not-touch",
+          "rig-fz-star-11": "must-not-touch"
+        },
+        "checks": {
+          "engineConsistency": true,
+          "slivers": {},
+          "durability": true,
+          "coldOrderMatchesInApp": false,
+          "postReleaseStability": 0
+        }
+      },
+      "cancelled": false
+    },
+    {
+      "id": "FZ05-seed1234",
+      "bug": null,
+      "note": "fuzz case (rng 1234)",
+      "pass": true,
+      "expectedToFail": false,
+      "failures": [],
+      "durationMs": 5554,
+      "details": {
+        "verdicts": {
+          "rig-control": "must-not-touch",
+          "rig-fz-line-12": "must-not-touch",
+          "rig-fz-star-13": "must-not-touch",
+          "rig-fz-ink-14": "must-not-touch",
+          "rig-fz-img-15": "must-touch"
+        },
+        "checks": {
+          "engineConsistency": true,
+          "slivers": {},
+          "durability": true,
+          "coldOrderMatchesInApp": false,
+          "postReleaseStability": 0
+        }
+      },
+      "cancelled": false
+    },
+    {
+      "id": "FZ06-seed1234",
+      "bug": null,
+      "note": "fuzz case (rng 1234)",
+      "pass": true,
+      "expectedToFail": false,
+      "failures": [],
+      "durationMs": 5352,
+      "details": {
+        "verdicts": {
+          "rig-control": "must-not-touch",
+          "rig-fz-arrow-16": "must-not-touch",
+          "rig-fz-ell-17": "must-not-touch",
+          "rig-fz-ink-18": "must-touch"
+        },
+        "checks": {
+          "engineConsistency": true,
+          "slivers": {},
+          "durability": true,
+          "coldOrderMatchesInApp": false,
+          "postReleaseStability": 0
+        }
+      },
+      "cancelled": false
+    },
+    {
+      "id": "FZ07-seed1234",
+      "bug": null,
+      "note": "fuzz case (rng 1234)",
+      "pass": true,
+      "expectedToFail": false,
+      "failures": [],
+      "durationMs": 5357,
+      "details": {
+        "verdicts": {
+          "rig-control": "must-not-touch",
+          "rig-fz-line-19": "must-not-touch",
+          "rig-fz-arrow-20": "must-not-touch",
+          "rig-fz-ink-21": "must-not-touch",
+          "rig-fz-arrow-22": "must-touch"
+        },
+        "checks": {
+          "engineConsistency": true,
+          "slivers": {},
+          "durability": true,
+          "coldOrderMatchesInApp": true,
+          "postReleaseStability": 0
+        }
+      },
+      "cancelled": false
+    },
+    {
+      "id": "FZ08-seed1234",
+      "bug": null,
+      "note": "fuzz case (rng 1234)",
+      "pass": true,
+      "expectedToFail": false,
+      "failures": [],
+      "durationMs": 5440,
+      "details": {
+        "verdicts": {
+          "rig-control": "must-not-touch",
+          "rig-fz-rect-23": "must-not-touch",
+          "rig-fz-star-24": "must-touch"
+        },
+        "checks": {
+          "engineConsistency": true,
+          "slivers": {},
+          "durability": true,
+          "coldOrderMatchesInApp": false,
+          "postReleaseStability": 0
+        }
+      },
+      "cancelled": false
+    },
+    {
+      "id": "FZ09-seed1234",
+      "bug": null,
+      "note": "fuzz case (rng 1234)",
+      "pass": true,
+      "expectedToFail": false,
+      "failures": [],
+      "durationMs": 5390,
+      "details": {
+        "verdicts": {
+          "rig-control": "must-not-touch",
+          "rig-fz-text-25": "must-not-touch",
+          "rig-fz-text-26": "must-touch"
+        },
+        "checks": {
+          "engineConsistency": true,
+          "slivers": {},
+          "durability": true,
+          "coldOrderMatchesInApp": true,
+          "postReleaseStability": 0
+        }
+      },
+      "cancelled": false
+    },
+    {
+      "id": "FZ10-seed1234",
+      "bug": null,
+      "note": "fuzz case (rng 1234)",
+      "pass": true,
+      "expectedToFail": false,
+      "failures": [],
+      "durationMs": 5610,
+      "details": {
+        "verdicts": {
+          "rig-control": "must-not-touch",
+          "rig-fz-img-27": "must-not-touch",
+          "rig-fz-ell-28": "must-touch"
+        },
+        "checks": {
+          "engineConsistency": true,
+          "slivers": {},
+          "durability": true,
+          "coldOrderMatchesInApp": false,
+          "postReleaseStability": 0
+        }
+      },
+      "cancelled": false
+    }
+  ],
+  "documentId": "101d75b1-af18-4172-887d-eec799d5a5cd",
+  "docName": "_rig-eraser-mrspa20t-7a14b8.pdf",
+  "finishedAt": "2026-07-20T04:05:08.278Z",
+  "knownBugsReproduced": [],
+  "knownBugsMissed": []
+}

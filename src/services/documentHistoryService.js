@@ -109,7 +109,12 @@ function clampPreviewAnnotation(previewAnnotation) {
     // Too big: outline ink (capsule eraser) carries polygons + paperCenterline
     // copies of its path — drop the duplicates first so the spotlight keeps a
     // path-shaped glow whenever the path itself fits.
-    const { polygons: _polygons, paperCenterline: _paperCenterline, ...withPath } = previewAnnotation;
+    const {
+      polygons: _polygons,
+      paperCenterline: _paperCenterline,
+      paperCenterlineRuns: _paperCenterlineRuns,
+      ...withPath
+    } = previewAnnotation;
     if (JSON.stringify(withPath).length <= MAX_PREVIEW_ANNOTATION_CHARS) return withPath;
     // Still too big (path-heavy ink): keep the geometry envelope, drop the path —
     // the spotlight falls back to a bounding rect instead of vanishing.

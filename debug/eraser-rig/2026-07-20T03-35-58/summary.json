@@ -1,0 +1,358 @@
+{
+  "startedAt": "2026-07-20T03:35:58.526Z",
+  "pageUrl": "http://localhost:5230",
+  "mode": "partial",
+  "eraserSize": 20,
+  "pageRadius": 10,
+  "seedSpec": "known",
+  "rngSeed": null,
+  "cases": [
+    {
+      "id": "K0-baseline",
+      "bug": null,
+      "note": "Sanity: partial-erase pen ink; untouched rect + text stay identical. Must PASS.",
+      "pass": true,
+      "expectedToFail": false,
+      "failures": [],
+      "durationMs": 5570,
+      "details": {
+        "verdicts": {
+          "rig-control": "must-not-touch",
+          "rig-k0-ink": "must-touch",
+          "rig-k0-rect": "must-not-touch",
+          "rig-k0-text": "must-not-touch"
+        },
+        "checks": {
+          "engineConsistency": true,
+          "slivers": {},
+          "durability": true,
+          "coldOrderMatchesInApp": true,
+          "postReleaseStability": 0
+        }
+      },
+      "cancelled": false
+    },
+    {
+      "id": "K1-line-slash",
+      "bug": 1,
+      "note": "Slash (\"/\") line + arrow: sweep crosses both centers — correct geometry says hit, engine misses.",
+      "pass": false,
+      "expectedToFail": true,
+      "failures": [
+        {
+          "truth": "data",
+          "check": "D2-semantic",
+          "id": "rig-k1-line",
+          "message": "sweep clearly crossed \"rig-k1-line\" (correct geometry) but it survived byte-identical"
+        }
+      ],
+      "durationMs": 5908,
+      "details": {
+        "verdicts": {
+          "rig-control": "must-not-touch",
+          "rig-k1-line": "must-touch",
+          "rig-k1-arrow": "must-touch"
+        },
+        "checks": {
+          "engineConsistency": true,
+          "slivers": {},
+          "durability": true,
+          "coldOrderMatchesInApp": false,
+          "postReleaseStability": 0
+        }
+      },
+      "cancelled": false,
+      "replayFile": "debug/eraser-rig/2026-07-20T03-35-58/cases/K1-line-slash.replay.json"
+    },
+    {
+      "id": "K2-line-backslash-far-half",
+      "bug": 1,
+      "note": "Backslash (\"\\\") line: sweep crosses only the bottom-right half — immune (hit test reads center-relative endpoints as corner-relative).",
+      "pass": false,
+      "expectedToFail": true,
+      "failures": [
+        {
+          "truth": "data",
+          "check": "D2-semantic",
+          "id": "rig-k2-line",
+          "message": "sweep clearly crossed \"rig-k2-line\" (correct geometry) but it survived byte-identical"
+        }
+      ],
+      "durationMs": 5734,
+      "details": {
+        "verdicts": {
+          "rig-control": "must-not-touch",
+          "rig-k2-line": "must-touch"
+        },
+        "checks": {
+          "engineConsistency": true,
+          "slivers": {},
+          "durability": true,
+          "coldOrderMatchesInApp": false,
+          "postReleaseStability": 0
+        }
+      },
+      "cancelled": false,
+      "replayFile": "debug/eraser-rig/2026-07-20T03-35-58/cases/K2-line-backslash-far-half.replay.json"
+    },
+    {
+      "id": "K3-rotated-rect-text",
+      "bug": 2,
+      "note": "45°-rotated filled rect + 30°-rotated text: sweep crosses the RENDERED (center-pivot) footprint, outside the corner-pivot footprint the hit test uses.",
+      "pass": false,
+      "expectedToFail": true,
+      "failures": [
+        {
+          "truth": "data",
+          "check": "D2-semantic",
+          "id": "rig-k3-rect",
+          "message": "sweep clearly crossed \"rig-k3-rect\" (correct geometry) but it survived byte-identical"
+        },
+        {
+          "truth": "data",
+          "check": "D2-semantic",
+          "id": "rig-k3-text",
+          "message": "sweep clearly crossed \"rig-k3-text\" (correct geometry) but it survived byte-identical"
+        }
+      ],
+      "durationMs": 6133,
+      "details": {
+        "verdicts": {
+          "rig-control": "must-not-touch",
+          "rig-k3-rect": "must-touch",
+          "rig-k3-text": "must-touch"
+        },
+        "checks": {
+          "engineConsistency": true,
+          "slivers": {},
+          "durability": true,
+          "coldOrderMatchesInApp": false,
+          "postReleaseStability": 0
+        }
+      },
+      "cancelled": false,
+      "replayFile": "debug/eraser-rig/2026-07-20T03-35-58/cases/K3-rotated-rect-text.replay.json"
+    },
+    {
+      "id": "K4-stamp-image",
+      "bug": 3,
+      "note": "Stamp (type 'image'): sweep straight across its center — hit test falls to a dead default.",
+      "pass": false,
+      "expectedToFail": true,
+      "failures": [
+        {
+          "truth": "data",
+          "check": "D2-semantic",
+          "id": "rig-k4-stamp",
+          "message": "sweep clearly crossed \"rig-k4-stamp\" (correct geometry) but it survived byte-identical"
+        }
+      ],
+      "durationMs": 5265,
+      "details": {
+        "verdicts": {
+          "rig-control": "must-not-touch",
+          "rig-k4-stamp": "must-touch"
+        },
+        "checks": {
+          "engineConsistency": true,
+          "slivers": {},
+          "durability": true,
+          "coldOrderMatchesInApp": false,
+          "postReleaseStability": 0
+        }
+      },
+      "cancelled": false,
+      "replayFile": "debug/eraser-rig/2026-07-20T03-35-58/cases/K4-stamp-image.replay.json"
+    },
+    {
+      "id": "K5-ink-slivers",
+      "bug": 4,
+      "note": "Edge graze (hairline ribbon) + graze-then-shallow-cross (crescent fragment) — scan survivors for sliver geometry.",
+      "pass": false,
+      "expectedToFail": true,
+      "failures": [
+        {
+          "truth": "data",
+          "check": "D1-engine-consistency",
+          "message": "persisted page JSON != engine prediction (persisted ids: [rig-control, rig-k5-inkA, rig-k5-inkB] vs predicted: [rig-control, rig-k5-inkA, rig-k5-inkB])"
+        },
+        {
+          "truth": "data",
+          "check": "D3-slivers",
+          "id": "rig-k5-inkA",
+          "message": "1 sliver fragment(s) persisted in \"rig-k5-inkA\": [{\"kind\":\"polygon-ring\",\"polygon\":0,\"ring\":0,\"area\":90.904,\"featureWidth\":0.299,\"points\":84,\"sourceWidth\":9}]"
+        },
+        {
+          "truth": "data",
+          "check": "D3-slivers",
+          "id": "rig-k5-inkB",
+          "message": "1 sliver fragment(s) persisted in \"rig-k5-inkB\": [{\"kind\":\"polygon-ring\",\"polygon\":0,\"ring\":0,\"area\":3.878,\"featureWidth\":0.68,\"points\":13,\"sourceWidth\":9}]"
+        }
+      ],
+      "durationMs": 9047,
+      "details": {
+        "verdicts": {
+          "rig-control": "must-not-touch",
+          "rig-k5-inkA": "must-touch",
+          "rig-k5-inkB": "must-touch"
+        },
+        "checks": {
+          "engineConsistency": false,
+          "slivers": {
+            "rig-k5-inkA": [
+              {
+                "kind": "polygon-ring",
+                "polygon": 0,
+                "ring": 0,
+                "area": 90.904,
+                "featureWidth": 0.299,
+                "points": 84,
+                "sourceWidth": 9
+              }
+            ],
+            "rig-k5-inkB": [
+              {
+                "kind": "polygon-ring",
+                "polygon": 0,
+                "ring": 0,
+                "area": 3.878,
+                "featureWidth": 0.68,
+                "points": 13,
+                "sourceWidth": 9
+              }
+            ]
+          },
+          "durability": true,
+          "coldOrderMatchesInApp": false,
+          "postReleaseStability": 0
+        }
+      },
+      "cancelled": false,
+      "replayFile": "debug/eraser-rig/2026-07-20T03-35-58/cases/K5-ink-slivers.replay.json"
+    },
+    {
+      "id": "K6-late-path-ghost",
+      "bug": 6,
+      "note": "Sweep carves pen ink first, then crosses a filled star path (whole-delete). Star must ghost live — bug: nothing until release.",
+      "pass": false,
+      "expectedToFail": true,
+      "failures": [
+        {
+          "truth": "pixel",
+          "check": "P1-live-feedback",
+          "id": "rig-k6-star",
+          "message": "\"rig-k6-star\" was hit but showed ZERO live change mid-drag (best mid diff 0.00%)"
+        }
+      ],
+      "durationMs": 5624,
+      "details": {
+        "verdicts": {
+          "rig-control": "must-not-touch",
+          "rig-k6-ink": "must-touch",
+          "rig-k6-star": "must-touch"
+        },
+        "checks": {
+          "engineConsistency": true,
+          "slivers": {},
+          "durability": true,
+          "coldOrderMatchesInApp": true,
+          "postReleaseStability": 0
+        }
+      },
+      "cancelled": false,
+      "replayFile": "debug/eraser-rig/2026-07-20T03-35-58/cases/K6-late-path-ghost.replay.json"
+    },
+    {
+      "id": "K7-cancel-discards",
+      "bug": 7,
+      "note": "pointercancel mid-swipe after crossing ink: erase-so-far must COMMIT (product intent) — bug: everything is thrown away.",
+      "pass": false,
+      "expectedToFail": true,
+      "failures": [
+        {
+          "truth": "data",
+          "check": "D1-engine-consistency",
+          "message": "persisted page JSON != engine prediction (persisted ids: [rig-control, rig-k7-ink] vs predicted: [rig-control, rig-k7-ink])"
+        },
+        {
+          "truth": "data",
+          "check": "D2-semantic",
+          "id": "rig-k7-ink",
+          "message": "sweep clearly crossed \"rig-k7-ink\" (correct geometry) but it survived byte-identical"
+        }
+      ],
+      "durationMs": 5295,
+      "details": {
+        "verdicts": {
+          "rig-control": "must-not-touch",
+          "rig-k7-ink": "must-touch"
+        },
+        "checks": {
+          "engineConsistency": false,
+          "slivers": {},
+          "durability": true,
+          "coldOrderMatchesInApp": true,
+          "postReleaseStability": 0
+        }
+      },
+      "cancelled": true,
+      "replayFile": "debug/eraser-rig/2026-07-20T03-35-58/cases/K7-cancel-discards.replay.json"
+    },
+    {
+      "id": "K8-space-unassigned-immune",
+      "bug": 5,
+      "note": "Space active: sweep crosses a space-assigned rect AND an unassigned rect. Product intent: both erase. Bug: the unassigned one is immune.",
+      "pass": false,
+      "expectedToFail": true,
+      "failures": [
+        {
+          "truth": "data",
+          "check": "D1-engine-consistency",
+          "message": "persisted page JSON != engine prediction (persisted ids: [rig-control, rig-k8-nospace] vs predicted: [rig-control])"
+        },
+        {
+          "truth": "data",
+          "check": "D2-semantic",
+          "id": "rig-k8-nospace",
+          "message": "sweep clearly crossed \"rig-k8-nospace\" (correct geometry) but it survived byte-identical"
+        },
+        {
+          "truth": "pixel",
+          "check": "P1-live-feedback",
+          "id": "rig-k8-nospace",
+          "message": "\"rig-k8-nospace\" was hit but showed ZERO live change mid-drag (best mid diff 0.00%)"
+        }
+      ],
+      "durationMs": 8290,
+      "details": {
+        "verdicts": {
+          "rig-control": "must-not-touch",
+          "rig-k8-inspace": "must-touch",
+          "rig-k8-nospace": "must-touch"
+        },
+        "checks": {
+          "engineConsistency": false,
+          "slivers": {},
+          "durability": true,
+          "coldOrderMatchesInApp": true,
+          "postReleaseStability": 0
+        }
+      },
+      "cancelled": false,
+      "replayFile": "debug/eraser-rig/2026-07-20T03-35-58/cases/K8-space-unassigned-immune.replay.json"
+    }
+  ],
+  "documentId": "e31c4d4d-0fd7-49ee-8c10-168912a33d1e",
+  "docName": "_rig-eraser-mrso9x2e-6da2a3.pdf",
+  "finishedAt": "2026-07-20T03:37:01.580Z",
+  "knownBugsReproduced": [
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7
+  ],
+  "knownBugsMissed": []
+}

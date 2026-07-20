@@ -397,6 +397,55 @@ export function createInkAnnotation(points, { id, color = '#151a18', width = 12,
   };
 }
 
+const ringSignedArea = (ring) => {
+  let area = 0;
+  for (let index = 0, previous = ring.length - 1; index < ring.length; previous = index, index += 1) {
+    area += ring[previous][0] * ring[index][1] - ring[index][0] * ring[previous][1];
+  }
+  return area / 2;
+};
+
+const ringPerimeter = (ring) => {
+  let length = 0;
+  for (let index = 0, previous = ring.length - 1; index < ring.length; previous = index, index += 1) {
+    length += Math.hypot(
+      ring[index][0] - ring[previous][0],
+      ring[index][1] - ring[previous][1],
+    );
+  }
+  return length;
+};
+
+/**
+ * Sliver cull for polygon-subtraction survivors (2026-07-19 eraser audit).
+ * martinez diff legitimately emits arbitrarily thin crescents/ribbons (and,
+ * under near-tangent input, zero-area degenerate rings) — real persisted
+ * geometry that renders as hairline streaks of ink color where the user just
+ * erased. The capsule lane has minPieceLen; this is its polygon counterpart:
+ * drop surviving outer rings whose area OR mean thickness (2·area/perimeter)
+ * is far below what a piece of ink drawn at `width` could visibly be. A full
+ * pen DOT (area ≈ 0.785·width²) always survives both floors.
+ */
+export function cullInkSliverPolygons(polygons, width) {
+  const safeWidth = Number.isFinite(width) && width > 0 ? width : 1;
+  const minArea = Math.max(0.05, Math.min(0.4 * safeWidth, 0.35 * safeWidth * safeWidth));
+  const minMeanWidth = Math.max(0.08, 0.15 * safeWidth);
+  const kept = [];
+  for (const polygon of normalizeMultiPolygon(polygons)) {
+    const [outer, ...holes] = polygon;
+    if (!Array.isArray(outer) || outer.length < 4) continue;
+    const area = Math.abs(ringSignedArea(outer));
+    const perimeter = ringPerimeter(outer);
+    if (area < minArea || perimeter <= 1e-9) continue;
+    if ((2 * area) / perimeter < minMeanWidth) continue;
+    const keptHoles = holes.filter((hole) => (
+      Array.isArray(hole) && hole.length >= 4 && Math.abs(ringSignedArea(hole)) > 1e-9
+    ));
+    kept.push([outer, ...keptHoles]);
+  }
+  return kept;
+}
+
 export function eraseAnnotations(annotations, eraserPoints, radius, mode = 'partial') {
   // Same safety net as the per-annotation ops below: a union throw while
   // building the swept eraser disk must degrade to "nothing erased", not an
@@ -503,6 +552,12 @@ export function eraseAnnotations(annotations, eraserPoints, radius, mode = 'part
       next.push(annotation);
       continue;
     }
+    result = cullInkSliverPolygons(
+      result,
+      (Number(annotation.sourceWidth) > 0 && Number(annotation.sourceWidth))
+        || (Number(annotation.strokeWidth) > 0 && Number(annotation.strokeWidth))
+        || 1,
+    );
     changedIds.push(annotation.id);
     if (!result.length) {
       deletedIds.push(annotation.id);

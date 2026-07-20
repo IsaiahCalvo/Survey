@@ -1,0 +1,604 @@
+{
+  "rig": "eraser-torture-rig",
+  "savedAt": "2026-07-20T03:36:59.627Z",
+  "howToReplay": "SEED=debug/eraser-rig/2026-07-20T03-35-58/cases/K8-space-unassigned-immune.replay.json MODE=partial RADIUS=20 PAGE_URL=http://localhost:5230 node agent-cli/eraser-torture-rig.mjs",
+  "case": {
+    "id": "K8-space-unassigned-immune",
+    "bug": 5,
+    "note": "Space active: sweep crosses a space-assigned rect AND an unassigned rect. Product intent: both erase. Bug: the unassigned one is immune.",
+    "objects": [
+      {
+        "version": "7.4.0",
+        "originX": "left",
+        "originY": "top",
+        "strokeDashOffset": 0,
+        "strokeMiterLimit": 4,
+        "scaleX": 1,
+        "scaleY": 1,
+        "angle": 0,
+        "flipX": false,
+        "flipY": false,
+        "opacity": 1,
+        "shadow": null,
+        "visible": true,
+        "backgroundColor": "",
+        "fillRule": "nonzero",
+        "paintFirst": "fill",
+        "globalCompositeOperation": "source-over",
+        "skewX": 0,
+        "skewY": 0,
+        "strokeLineCap": "butt",
+        "strokeLineJoin": "miter",
+        "type": "Rect",
+        "left": 42,
+        "top": 42,
+        "width": 66,
+        "height": 41,
+        "rx": 0,
+        "ry": 0,
+        "fill": "transparent",
+        "stroke": "rgba(209, 27, 45, 1)",
+        "strokeWidth": 4,
+        "strokeUniform": true,
+        "id": "rig-control",
+        "data": {
+          "id": "rig-control",
+          "strokeRenderContract": "drawn-centered-stroke"
+        },
+        "strokeDashArray": null
+      },
+      {
+        "version": "7.4.0",
+        "originX": "left",
+        "originY": "top",
+        "strokeDashOffset": 0,
+        "strokeMiterLimit": 4,
+        "scaleX": 1,
+        "scaleY": 1,
+        "angle": 0,
+        "flipX": false,
+        "flipY": false,
+        "opacity": 1,
+        "shadow": null,
+        "visible": true,
+        "backgroundColor": "",
+        "fillRule": "nonzero",
+        "paintFirst": "fill",
+        "globalCompositeOperation": "source-over",
+        "skewX": 0,
+        "skewY": 0,
+        "strokeLineCap": "butt",
+        "strokeLineJoin": "miter",
+        "type": "Rect",
+        "left": 152,
+        "top": 282,
+        "width": 106,
+        "height": 66,
+        "rx": 0,
+        "ry": 0,
+        "fill": "transparent",
+        "stroke": "rgba(209, 27, 45, 1)",
+        "strokeWidth": 4,
+        "strokeUniform": true,
+        "id": "rig-k8-inspace",
+        "data": {
+          "id": "rig-k8-inspace",
+          "strokeRenderContract": "drawn-centered-stroke"
+        },
+        "strokeDashArray": null,
+        "spaceId": "sp-rig"
+      },
+      {
+        "version": "7.4.0",
+        "originX": "left",
+        "originY": "top",
+        "strokeDashOffset": 0,
+        "strokeMiterLimit": 4,
+        "scaleX": 1,
+        "scaleY": 1,
+        "angle": 0,
+        "flipX": false,
+        "flipY": false,
+        "opacity": 1,
+        "shadow": null,
+        "visible": true,
+        "backgroundColor": "",
+        "fillRule": "nonzero",
+        "paintFirst": "fill",
+        "globalCompositeOperation": "source-over",
+        "skewX": 0,
+        "skewY": 0,
+        "strokeLineCap": "butt",
+        "strokeLineJoin": "miter",
+        "type": "Rect",
+        "left": 342,
+        "top": 282,
+        "width": 106,
+        "height": 66,
+        "rx": 0,
+        "ry": 0,
+        "fill": "transparent",
+        "stroke": "rgba(209, 27, 45, 1)",
+        "strokeWidth": 4,
+        "strokeUniform": true,
+        "id": "rig-k8-nospace",
+        "data": {
+          "id": "rig-k8-nospace",
+          "strokeRenderContract": "drawn-centered-stroke"
+        },
+        "strokeDashArray": null
+      }
+    ],
+    "swipes": [
+      [
+        {
+          "x": 159.9999959648262,
+          "y": 314.9999859689296
+        },
+        {
+          "x": 173.33333925158826,
+          "y": 314.9999859689296
+        },
+        {
+          "x": 186.66668253835027,
+          "y": 314.9999859689296
+        },
+        {
+          "x": 200.00002582511232,
+          "y": 314.9999859689296
+        },
+        {
+          "x": 213.3333073737152,
+          "y": 314.9999859689296
+        },
+        {
+          "x": 226.66665066047725,
+          "y": 314.9999859689296
+        },
+        {
+          "x": 239.9999939472393,
+          "y": 314.9999859689296
+        },
+        {
+          "x": 253.33333723400133,
+          "y": 314.9999859689296
+        },
+        {
+          "x": 266.6666805207634,
+          "y": 314.9999859689296
+        },
+        {
+          "x": 280.00002380752545,
+          "y": 314.9999859689296
+        },
+        {
+          "x": 293.3333053561283,
+          "y": 314.9999859689296
+        },
+        {
+          "x": 306.6666486428904,
+          "y": 314.9999859689296
+        },
+        {
+          "x": 319.9999919296524,
+          "y": 314.9999859689296
+        },
+        {
+          "x": 333.33333521641447,
+          "y": 314.9999859689296
+        },
+        {
+          "x": 346.6666785031765,
+          "y": 314.9999859689296
+        },
+        {
+          "x": 360.00002178993856,
+          "y": 314.9999859689296
+        },
+        {
+          "x": 373.3333033385414,
+          "y": 314.9999859689296
+        },
+        {
+          "x": 386.66664662530343,
+          "y": 314.9999859689296
+        },
+        {
+          "x": 399.99998991206553,
+          "y": 314.9999859689296
+        },
+        {
+          "x": 413.3333331988276,
+          "y": 314.9999859689296
+        },
+        {
+          "x": 426.6666764855896,
+          "y": 314.9999859689296
+        },
+        {
+          "x": 440.00001977235166,
+          "y": 314.9999859689296
+        },
+        {
+          "x": 453.3333630591137,
+          "y": 314.9999859689296
+        },
+        {
+          "x": 466.66664460771653,
+          "y": 314.9999859689296
+        },
+        {
+          "x": 479.9999878944786,
+          "y": 314.9999859689296
+        }
+      ]
+    ],
+    "midAt": [
+      0.5
+    ],
+    "activateSpace": "sp-rig",
+    "cancelAtFraction": null
+  },
+  "preState": {
+    "objects": [
+      {
+        "version": "7.4.0",
+        "originX": "left",
+        "originY": "top",
+        "strokeDashOffset": 0,
+        "strokeMiterLimit": 4,
+        "scaleX": 1,
+        "scaleY": 1,
+        "angle": 0,
+        "flipX": false,
+        "flipY": false,
+        "opacity": 1,
+        "shadow": null,
+        "visible": true,
+        "backgroundColor": "",
+        "fillRule": "nonzero",
+        "paintFirst": "fill",
+        "globalCompositeOperation": "source-over",
+        "skewX": 0,
+        "skewY": 0,
+        "strokeLineCap": "butt",
+        "strokeLineJoin": "miter",
+        "type": "Rect",
+        "left": 42,
+        "top": 42,
+        "width": 66,
+        "height": 41,
+        "rx": 0,
+        "ry": 0,
+        "fill": "transparent",
+        "stroke": "rgba(209, 27, 45, 1)",
+        "strokeWidth": 4,
+        "strokeUniform": true,
+        "id": "rig-control",
+        "data": {
+          "id": "rig-control",
+          "strokeRenderContract": "drawn-centered-stroke"
+        },
+        "strokeDashArray": null
+      },
+      {
+        "version": "7.4.0",
+        "originX": "left",
+        "originY": "top",
+        "strokeDashOffset": 0,
+        "strokeMiterLimit": 4,
+        "scaleX": 1,
+        "scaleY": 1,
+        "angle": 0,
+        "flipX": false,
+        "flipY": false,
+        "opacity": 1,
+        "shadow": null,
+        "visible": true,
+        "backgroundColor": "",
+        "fillRule": "nonzero",
+        "paintFirst": "fill",
+        "globalCompositeOperation": "source-over",
+        "skewX": 0,
+        "skewY": 0,
+        "strokeLineCap": "butt",
+        "strokeLineJoin": "miter",
+        "type": "Rect",
+        "left": 152,
+        "top": 282,
+        "width": 106,
+        "height": 66,
+        "rx": 0,
+        "ry": 0,
+        "fill": "transparent",
+        "stroke": "rgba(209, 27, 45, 1)",
+        "strokeWidth": 4,
+        "strokeUniform": true,
+        "id": "rig-k8-inspace",
+        "data": {
+          "id": "rig-k8-inspace",
+          "strokeRenderContract": "drawn-centered-stroke"
+        },
+        "strokeDashArray": null,
+        "spaceId": "sp-rig"
+      },
+      {
+        "version": "7.4.0",
+        "originX": "left",
+        "originY": "top",
+        "strokeDashOffset": 0,
+        "strokeMiterLimit": 4,
+        "scaleX": 1,
+        "scaleY": 1,
+        "angle": 0,
+        "flipX": false,
+        "flipY": false,
+        "opacity": 1,
+        "shadow": null,
+        "visible": true,
+        "backgroundColor": "",
+        "fillRule": "nonzero",
+        "paintFirst": "fill",
+        "globalCompositeOperation": "source-over",
+        "skewX": 0,
+        "skewY": 0,
+        "strokeLineCap": "butt",
+        "strokeLineJoin": "miter",
+        "type": "Rect",
+        "left": 342,
+        "top": 282,
+        "width": 106,
+        "height": 66,
+        "rx": 0,
+        "ry": 0,
+        "fill": "transparent",
+        "stroke": "rgba(209, 27, 45, 1)",
+        "strokeWidth": 4,
+        "strokeUniform": true,
+        "id": "rig-k8-nospace",
+        "data": {
+          "id": "rig-k8-nospace",
+          "strokeRenderContract": "drawn-centered-stroke"
+        },
+        "strokeDashArray": null
+      }
+    ]
+  },
+  "postState": {
+    "objects": [
+      {
+        "version": "7.4.0",
+        "originX": "left",
+        "originY": "top",
+        "strokeDashOffset": 0,
+        "strokeMiterLimit": 4,
+        "scaleX": 1,
+        "scaleY": 1,
+        "angle": 0,
+        "flipX": false,
+        "flipY": false,
+        "opacity": 1,
+        "shadow": null,
+        "visible": true,
+        "backgroundColor": "",
+        "fillRule": "nonzero",
+        "paintFirst": "fill",
+        "globalCompositeOperation": "source-over",
+        "skewX": 0,
+        "skewY": 0,
+        "strokeLineCap": "butt",
+        "strokeLineJoin": "miter",
+        "type": "Rect",
+        "left": 42,
+        "top": 42,
+        "width": 66,
+        "height": 41,
+        "rx": 0,
+        "ry": 0,
+        "fill": "transparent",
+        "stroke": "rgba(209, 27, 45, 1)",
+        "strokeWidth": 4,
+        "strokeUniform": true,
+        "id": "rig-control",
+        "data": {
+          "id": "rig-control",
+          "strokeRenderContract": "drawn-centered-stroke"
+        },
+        "strokeDashArray": null
+      },
+      {
+        "version": "7.4.0",
+        "originX": "left",
+        "originY": "top",
+        "strokeDashOffset": 0,
+        "strokeMiterLimit": 4,
+        "scaleX": 1,
+        "scaleY": 1,
+        "angle": 0,
+        "flipX": false,
+        "flipY": false,
+        "opacity": 1,
+        "shadow": null,
+        "visible": true,
+        "backgroundColor": "",
+        "fillRule": "nonzero",
+        "paintFirst": "fill",
+        "globalCompositeOperation": "source-over",
+        "skewX": 0,
+        "skewY": 0,
+        "strokeLineCap": "butt",
+        "strokeLineJoin": "miter",
+        "type": "Rect",
+        "left": 342,
+        "top": 282,
+        "width": 106,
+        "height": 66,
+        "rx": 0,
+        "ry": 0,
+        "fill": "transparent",
+        "stroke": "rgba(209, 27, 45, 1)",
+        "strokeWidth": 4,
+        "strokeUniform": true,
+        "id": "rig-k8-nospace",
+        "data": {
+          "id": "rig-k8-nospace",
+          "strokeRenderContract": "drawn-centered-stroke"
+        },
+        "strokeDashArray": null
+      }
+    ]
+  },
+  "coldPostState": [
+    {
+      "version": "7.4.0",
+      "originX": "left",
+      "originY": "top",
+      "strokeDashOffset": 0,
+      "strokeMiterLimit": 4,
+      "scaleX": 1,
+      "scaleY": 1,
+      "angle": 0,
+      "flipX": false,
+      "flipY": false,
+      "opacity": 1,
+      "shadow": null,
+      "visible": true,
+      "backgroundColor": "",
+      "fillRule": "nonzero",
+      "paintFirst": "fill",
+      "globalCompositeOperation": "source-over",
+      "skewX": 0,
+      "skewY": 0,
+      "strokeLineCap": "butt",
+      "strokeLineJoin": "miter",
+      "type": "Rect",
+      "left": 42,
+      "top": 42,
+      "width": 66,
+      "height": 41,
+      "rx": 0,
+      "ry": 0,
+      "fill": "transparent",
+      "stroke": "rgba(209, 27, 45, 1)",
+      "strokeWidth": 4,
+      "strokeUniform": true,
+      "id": "rig-control",
+      "data": {
+        "id": "rig-control",
+        "strokeRenderContract": "drawn-centered-stroke"
+      },
+      "strokeDashArray": null
+    },
+    {
+      "version": "7.4.0",
+      "originX": "left",
+      "originY": "top",
+      "strokeDashOffset": 0,
+      "strokeMiterLimit": 4,
+      "scaleX": 1,
+      "scaleY": 1,
+      "angle": 0,
+      "flipX": false,
+      "flipY": false,
+      "opacity": 1,
+      "shadow": null,
+      "visible": true,
+      "backgroundColor": "",
+      "fillRule": "nonzero",
+      "paintFirst": "fill",
+      "globalCompositeOperation": "source-over",
+      "skewX": 0,
+      "skewY": 0,
+      "strokeLineCap": "butt",
+      "strokeLineJoin": "miter",
+      "type": "Rect",
+      "left": 342,
+      "top": 282,
+      "width": 106,
+      "height": 66,
+      "rx": 0,
+      "ry": 0,
+      "fill": "transparent",
+      "stroke": "rgba(209, 27, 45, 1)",
+      "strokeWidth": 4,
+      "strokeUniform": true,
+      "id": "rig-k8-nospace",
+      "data": {
+        "id": "rig-k8-nospace",
+        "strokeRenderContract": "drawn-centered-stroke"
+      },
+      "strokeDashArray": null
+    }
+  ],
+  "oraclePrediction": {
+    "objects": [
+      {
+        "version": "7.4.0",
+        "originX": "left",
+        "originY": "top",
+        "strokeDashOffset": 0,
+        "strokeMiterLimit": 4,
+        "scaleX": 1,
+        "scaleY": 1,
+        "angle": 0,
+        "flipX": false,
+        "flipY": false,
+        "opacity": 1,
+        "shadow": null,
+        "visible": true,
+        "backgroundColor": "",
+        "fillRule": "nonzero",
+        "paintFirst": "fill",
+        "globalCompositeOperation": "source-over",
+        "skewX": 0,
+        "skewY": 0,
+        "strokeLineCap": "butt",
+        "strokeLineJoin": "miter",
+        "type": "Rect",
+        "left": 42,
+        "top": 42,
+        "width": 66,
+        "height": 41,
+        "rx": 0,
+        "ry": 0,
+        "fill": "transparent",
+        "stroke": "rgba(209, 27, 45, 1)",
+        "strokeWidth": 4,
+        "strokeUniform": true,
+        "id": "rig-control",
+        "data": {
+          "id": "rig-control",
+          "strokeRenderContract": "drawn-centered-stroke"
+        },
+        "strokeDashArray": null
+      }
+    ]
+  },
+  "verdicts": {
+    "rig-control": "must-not-touch",
+    "rig-k8-inspace": "must-touch",
+    "rig-k8-nospace": "must-touch"
+  },
+  "failures": [
+    {
+      "truth": "data",
+      "check": "D1-engine-consistency",
+      "message": "persisted page JSON != engine prediction (persisted ids: [rig-control, rig-k8-nospace] vs predicted: [rig-control])"
+    },
+    {
+      "truth": "data",
+      "check": "D2-semantic",
+      "id": "rig-k8-nospace",
+      "message": "sweep clearly crossed \"rig-k8-nospace\" (correct geometry) but it survived byte-identical"
+    },
+    {
+      "truth": "pixel",
+      "check": "P1-live-feedback",
+      "id": "rig-k8-nospace",
+      "message": "\"rig-k8-nospace\" was hit but showed ZERO live change mid-drag (best mid diff 0.00%)"
+    }
+  ],
+  "consoleTail": [
+    "[EraserCarveDiag] page=1 base=svg-mask-clone"
+  ]
+}

@@ -29,7 +29,8 @@ export function createProductionPaperInk({
   const normalizedTool = tool === 'highlighter' ? 'highlighter' : 'pen';
   const persistentMetadata = { ...metadata };
   for (const key of [
-    'type', 'path', 'polygons', 'paperCenterline', 'paperInkGeometry',
+    'type', 'path', 'polygons', 'paperCenterline', 'paperCenterlineRuns',
+    'paperInkGeometry',
     'paperEraserGeometry', 'pathOffset', 'left', 'top', 'width', 'height',
     'scaleX', 'scaleY', 'angle', 'fill', 'fillRule', 'stroke', 'strokeWidth',
     'sourceWidth', 'globalCompositeOperation',

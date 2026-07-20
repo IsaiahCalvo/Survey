@@ -1,0 +1,331 @@
+{
+  "startedAt": "2026-07-20T03:39:25.101Z",
+  "pageUrl": "http://localhost:5230",
+  "mode": "partial",
+  "eraserSize": 20,
+  "pageRadius": 10,
+  "seedSpec": "fuzz 8 1234",
+  "rngSeed": 1234,
+  "cases": [
+    {
+      "id": "FZ01-seed1234",
+      "bug": null,
+      "note": "fuzz case (rng 1234)",
+      "pass": true,
+      "expectedToFail": false,
+      "failures": [],
+      "durationMs": 7048,
+      "details": {
+        "verdicts": {
+          "rig-control": "must-not-touch",
+          "rig-fz-text-1": "must-touch",
+          "rig-fz-ink-2": "must-touch"
+        },
+        "checks": {
+          "engineConsistency": true,
+          "slivers": {},
+          "durability": true,
+          "coldOrderMatchesInApp": true,
+          "postReleaseStability": 0
+        }
+      },
+      "cancelled": false
+    },
+    {
+      "id": "FZ02-seed1234",
+      "bug": null,
+      "note": "fuzz case (rng 1234)",
+      "pass": true,
+      "expectedToFail": false,
+      "failures": [],
+      "durationMs": 5578,
+      "details": {
+        "verdicts": {
+          "rig-control": "must-not-touch",
+          "rig-fz-star-3": "must-not-touch",
+          "rig-fz-rect-4": "must-touch",
+          "rig-fz-arrow-5": "must-touch"
+        },
+        "checks": {
+          "engineConsistency": true,
+          "slivers": {},
+          "durability": true,
+          "coldOrderMatchesInApp": false,
+          "postReleaseStability": 0
+        }
+      },
+      "cancelled": false
+    },
+    {
+      "id": "FZ03-seed1234",
+      "bug": null,
+      "note": "fuzz case (rng 1234)",
+      "pass": false,
+      "expectedToFail": false,
+      "failures": [
+        {
+          "truth": "data",
+          "check": "D2-semantic",
+          "id": "rig-fz-arrow-7",
+          "message": "sweep clearly crossed \"rig-fz-arrow-7\" (correct geometry) but it survived byte-identical"
+        }
+      ],
+      "durationMs": 5578,
+      "details": {
+        "verdicts": {
+          "rig-control": "must-not-touch",
+          "rig-fz-ell-6": "must-touch",
+          "rig-fz-arrow-7": "must-touch"
+        },
+        "checks": {
+          "engineConsistency": true,
+          "slivers": {},
+          "durability": true,
+          "coldOrderMatchesInApp": false,
+          "postReleaseStability": 0
+        }
+      },
+      "cancelled": false,
+      "replayFile": "debug/eraser-rig/2026-07-20T03-39-24/cases/FZ03-seed1234.replay.json"
+    },
+    {
+      "id": "FZ04-seed1234",
+      "bug": null,
+      "note": "fuzz case (rng 1234)",
+      "pass": false,
+      "expectedToFail": false,
+      "failures": [
+        {
+          "truth": "data",
+          "check": "D2-semantic",
+          "id": "rig-fz-arrow-9",
+          "message": "sweep clearly crossed \"rig-fz-arrow-9\" (correct geometry) but it survived byte-identical"
+        }
+      ],
+      "durationMs": 6497,
+      "details": {
+        "verdicts": {
+          "rig-control": "must-not-touch",
+          "rig-fz-text-8": "must-not-touch",
+          "rig-fz-arrow-9": "must-touch",
+          "rig-fz-arrow-10": "must-not-touch",
+          "rig-fz-star-11": "must-not-touch"
+        },
+        "checks": {
+          "engineConsistency": true,
+          "slivers": {},
+          "durability": true,
+          "coldOrderMatchesInApp": false,
+          "postReleaseStability": 0
+        }
+      },
+      "cancelled": false,
+      "replayFile": "debug/eraser-rig/2026-07-20T03-39-24/cases/FZ04-seed1234.replay.json"
+    },
+    {
+      "id": "FZ05-seed1234",
+      "bug": null,
+      "note": "fuzz case (rng 1234)",
+      "pass": false,
+      "expectedToFail": false,
+      "failures": [
+        {
+          "truth": "data",
+          "check": "D2-semantic",
+          "id": "rig-fz-img-15",
+          "message": "sweep clearly crossed \"rig-fz-img-15\" (correct geometry) but it survived byte-identical"
+        }
+      ],
+      "durationMs": 5964,
+      "details": {
+        "verdicts": {
+          "rig-control": "must-not-touch",
+          "rig-fz-line-12": "must-not-touch",
+          "rig-fz-star-13": "must-not-touch",
+          "rig-fz-ink-14": "must-not-touch",
+          "rig-fz-img-15": "must-touch"
+        },
+        "checks": {
+          "engineConsistency": true,
+          "slivers": {},
+          "durability": true,
+          "coldOrderMatchesInApp": true,
+          "postReleaseStability": 0
+        }
+      },
+      "cancelled": false,
+      "replayFile": "debug/eraser-rig/2026-07-20T03-39-24/cases/FZ05-seed1234.replay.json"
+    },
+    {
+      "id": "FZ06-seed1234",
+      "bug": null,
+      "note": "fuzz case (rng 1234)",
+      "pass": false,
+      "expectedToFail": false,
+      "failures": [
+        {
+          "truth": "data",
+          "check": "D3-slivers",
+          "id": "rig-fz-ink-18",
+          "message": "8 sliver fragment(s) persisted in \"rig-fz-ink-18\": [{\"kind\":\"polygon-ring\",\"polygon\":1,\"ring\":0,\"area\":0,\"featureWidth\":0,\"points\":3,\"sourceWidth\":9},{\"kind\":\"polygon-ring\",\"polygon\":2,\"ring\":0,\"area\":0,\"featureWidth\":0,\"points\":3,\"sourceWidth\":9},{\"kind\":\"polygon-ring\",\"polygon\":3,\"ring\":0,\"area\":0,\"featureWidth\":0,\"points\":3,\"sourceWidth\":9}]"
+        }
+      ],
+      "durationMs": 5463,
+      "details": {
+        "verdicts": {
+          "rig-control": "must-not-touch",
+          "rig-fz-arrow-16": "must-not-touch",
+          "rig-fz-ell-17": "must-not-touch",
+          "rig-fz-ink-18": "must-touch"
+        },
+        "checks": {
+          "engineConsistency": true,
+          "slivers": {
+            "rig-fz-ink-18": [
+              {
+                "kind": "polygon-ring",
+                "polygon": 1,
+                "ring": 0,
+                "area": 0,
+                "featureWidth": 0,
+                "points": 3,
+                "sourceWidth": 9
+              },
+              {
+                "kind": "polygon-ring",
+                "polygon": 2,
+                "ring": 0,
+                "area": 0,
+                "featureWidth": 0,
+                "points": 3,
+                "sourceWidth": 9
+              },
+              {
+                "kind": "polygon-ring",
+                "polygon": 3,
+                "ring": 0,
+                "area": 0,
+                "featureWidth": 0,
+                "points": 3,
+                "sourceWidth": 9
+              },
+              {
+                "kind": "polygon-ring",
+                "polygon": 4,
+                "ring": 0,
+                "area": 0,
+                "featureWidth": 0,
+                "points": 3,
+                "sourceWidth": 9
+              },
+              {
+                "kind": "polygon-ring",
+                "polygon": 6,
+                "ring": 0,
+                "area": 0,
+                "featureWidth": 0,
+                "points": 3,
+                "sourceWidth": 9
+              },
+              {
+                "kind": "polygon-ring",
+                "polygon": 7,
+                "ring": 0,
+                "area": 0,
+                "featureWidth": 0,
+                "points": 3,
+                "sourceWidth": 9
+              },
+              {
+                "kind": "polygon-ring",
+                "polygon": 8,
+                "ring": 0,
+                "area": 0,
+                "featureWidth": 0,
+                "points": 3,
+                "sourceWidth": 9
+              },
+              {
+                "kind": "polygon-ring",
+                "polygon": 9,
+                "ring": 0,
+                "area": 0,
+                "featureWidth": 0,
+                "points": 3,
+                "sourceWidth": 9
+              }
+            ]
+          },
+          "durability": true,
+          "coldOrderMatchesInApp": true,
+          "postReleaseStability": 0
+        }
+      },
+      "cancelled": false,
+      "replayFile": "debug/eraser-rig/2026-07-20T03-39-24/cases/FZ06-seed1234.replay.json"
+    },
+    {
+      "id": "FZ07-seed1234",
+      "bug": null,
+      "note": "fuzz case (rng 1234)",
+      "pass": false,
+      "expectedToFail": false,
+      "failures": [
+        {
+          "truth": "data",
+          "check": "D2-semantic",
+          "id": "rig-fz-arrow-22",
+          "message": "sweep clearly crossed \"rig-fz-arrow-22\" (correct geometry) but it survived byte-identical"
+        }
+      ],
+      "durationMs": 5738,
+      "details": {
+        "verdicts": {
+          "rig-control": "must-not-touch",
+          "rig-fz-line-19": "must-not-touch",
+          "rig-fz-arrow-20": "must-not-touch",
+          "rig-fz-ink-21": "must-not-touch",
+          "rig-fz-arrow-22": "must-touch"
+        },
+        "checks": {
+          "engineConsistency": true,
+          "slivers": {},
+          "durability": true,
+          "coldOrderMatchesInApp": true,
+          "postReleaseStability": 0
+        }
+      },
+      "cancelled": false,
+      "replayFile": "debug/eraser-rig/2026-07-20T03-39-24/cases/FZ07-seed1234.replay.json"
+    },
+    {
+      "id": "FZ08-seed1234",
+      "bug": null,
+      "note": "fuzz case (rng 1234)",
+      "pass": true,
+      "expectedToFail": false,
+      "failures": [],
+      "durationMs": 6016,
+      "details": {
+        "verdicts": {
+          "rig-control": "must-not-touch",
+          "rig-fz-rect-23": "must-not-touch",
+          "rig-fz-star-24": "must-touch"
+        },
+        "checks": {
+          "engineConsistency": true,
+          "slivers": {},
+          "durability": true,
+          "coldOrderMatchesInApp": false,
+          "postReleaseStability": 0
+        }
+      },
+      "cancelled": false
+    }
+  ],
+  "documentId": "c5c8b3be-5be7-484d-8f3d-3ebd668f0f5a",
+  "docName": "_rig-eraser-mrsoecex-ba8ff0.pdf",
+  "finishedAt": "2026-07-20T03:40:18.608Z",
+  "knownBugsReproduced": [],
+  "knownBugsMissed": []
+}

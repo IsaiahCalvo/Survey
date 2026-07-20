@@ -59,6 +59,32 @@ const getTransformedPoints = (obj) => {
   }));
 };
 
+// Live fabric instances carry calcTransformMatrix (center-based transform) and
+// their raw geometry is center-relative; plain page-JSON objects have neither.
+// The two storage conventions are NOT interchangeable — the 2026-07-19 eraser
+// audit traced every "shape immune to the eraser" bug to plain-JSON objects
+// being run through matrix math that only fits live instances. Plain-JSON arms
+// below therefore mirror the SVG renderers' world geometry (the visual truth)
+// exactly: getLineEndpoints center-based endpoints, rotation about the shape's
+// visual center, and scaleX/scaleY folded into effective dimensions.
+const isLiveFabricObject = (obj) => typeof obj?.calcTransformMatrix === 'function';
+
+// Map a world-space probe point into a shape's unrotated frame by rotating it
+// -angle about the SAME pivot the renderer rotates the shape around. Testing
+// the unrotated probe against unrotated geometry is exactly equivalent to
+// testing the raw probe against the rotated shape.
+const unrotatePointAbout = (point, angleDeg, pivotX, pivotY) => {
+  const rad = (-angleDeg * Math.PI) / 180;
+  const cos = Math.cos(rad);
+  const sin = Math.sin(rad);
+  const dx = point.x - pivotX;
+  const dy = point.y - pivotY;
+  return {
+    x: pivotX + dx * cos - dy * sin,
+    y: pivotY + dx * sin + dy * cos,
+  };
+};
+
 /**
  * Calculate the distance from a point to a line segment
  * @param {Object} point - {x, y} point to test
@@ -427,6 +453,45 @@ export const isPointOnPath = (point, pathObj, tolerance = DEFAULT_TOLERANCE) => 
 export const isPointOnRect = (point, rectObj, tolerance = DEFAULT_TOLERANCE) => {
   if (!rectObj || hitTestType(rectObj) !== 'rect') return false;
 
+  if (!isLiveFabricObject(rectObj)) {
+    // Plain page-JSON: renderRect draws at translate(left, top) with effective
+    // (scale-folded) dimensions and rotates about the LOCAL CENTER
+    // (effW/2, effH/2) — the old fallback matrix rotated about (left, top),
+    // displacing every rotated rect's hit region off the visible shape.
+    const effW = Math.abs((rectObj.width || 0) * (rectObj.scaleX || 1));
+    const effH = Math.abs((rectObj.height || 0) * (rectObj.scaleY || 1));
+    const left = rectObj.left ?? 0;
+    const top = rectObj.top ?? 0;
+    const probe = rectObj.angle
+      ? unrotatePointAbout(point, rectObj.angle, left + effW / 2, top + effH / 2)
+      : point;
+    const localPoint = { x: probe.x - left, y: probe.y - top };
+    const strokeWidth = rectObj.strokeWidth || 0;
+    const hasFill = hasVisiblePaint(rectObj.fill);
+    const hasStroke = hasVisiblePaint(rectObj.stroke);
+    if (hasFill
+      && localPoint.x >= 0 && localPoint.x <= effW
+      && localPoint.y >= 0 && localPoint.y <= effH) {
+      return true;
+    }
+    if (hasStroke) {
+      const vertices = [
+        { x: 0, y: 0 },
+        { x: effW, y: 0 },
+        { x: effW, y: effH },
+        { x: 0, y: effH },
+      ];
+      if (isPointNearPolygonStroke(localPoint, vertices, strokeWidth, tolerance)) {
+        return true;
+      }
+    }
+    if (!hasFill && !hasStroke) {
+      return localPoint.x >= -tolerance && localPoint.x <= effW + tolerance
+        && localPoint.y >= -tolerance && localPoint.y <= effH + tolerance;
+    }
+    return false;
+  }
+
   const matrix = getObjectTransformMatrix(rectObj);
   const localPoint = transformPointInverse(point, matrix);
 
@@ -485,6 +550,36 @@ export const isPointOnRect = (point, rectObj, tolerance = DEFAULT_TOLERANCE) => 
 export const isPointOnCircle = (point, circleObj, tolerance = DEFAULT_TOLERANCE) => {
   if (!circleObj || (hitTestType(circleObj) !== 'circle' && hitTestType(circleObj) !== 'ellipse')) return false;
 
+  if (!isLiveFabricObject(circleObj)) {
+    // Plain page-JSON: renderEllipse draws at center (left + rx, top + ry)
+    // with scale-folded radii and rotates about that center.
+    let rx;
+    let ry;
+    if (hitTestType(circleObj) === 'ellipse') {
+      rx = (circleObj.rx || 0) * Math.abs(circleObj.scaleX || 1);
+      ry = (circleObj.ry || 0) * Math.abs(circleObj.scaleY || 1);
+    } else {
+      rx = (circleObj.radius || 0) * Math.abs(circleObj.scaleX || 1);
+      ry = (circleObj.radius || 0) * Math.abs(circleObj.scaleY || 1);
+    }
+    const cx = (circleObj.left || 0) + rx;
+    const cy = (circleObj.top || 0) + ry;
+    const probe = circleObj.angle
+      ? unrotatePointAbout(point, circleObj.angle, cx, cy)
+      : point;
+    const strokeWidth = circleObj.strokeWidth || 0;
+    const hasFill = hasVisiblePaint(circleObj.fill);
+    const hasStroke = hasVisiblePaint(circleObj.stroke);
+    if (hasFill && isPointInEllipse(probe, cx, cy, rx, ry)) return true;
+    if (hasStroke && isPointNearEllipseStroke(probe, cx, cy, rx, ry, strokeWidth, tolerance)) {
+      return true;
+    }
+    if (!hasFill && !hasStroke) {
+      return isPointInEllipse(probe, cx, cy, rx + tolerance, ry + tolerance);
+    }
+    return false;
+  }
+
   const matrix = getObjectTransformMatrix(circleObj);
   const localPoint = transformPointInverse(point, matrix);
 
@@ -539,20 +634,96 @@ export const isPointOnCircle = (point, circleObj, tolerance = DEFAULT_TOLERANCE)
 export const isPointOnLine = (point, lineObj, tolerance = DEFAULT_TOLERANCE) => {
   if (!lineObj || hitTestType(lineObj) !== 'line') return false;
 
-  const matrix = getObjectTransformMatrix(lineObj);
-  const localPoint = transformPointInverse(point, matrix);
-
-  // Line coordinates are relative to object origin
-  const x1 = lineObj.x1 || 0;
-  const y1 = lineObj.y1 || 0;
-  const x2 = lineObj.x2 || 0;
-  const y2 = lineObj.y2 || 0;
-
   const strokeWidth = lineObj.strokeWidth || 1;
   const effectiveDistance = strokeWidth / 2 + tolerance;
 
-  const dist = distanceToLineSegment(localPoint, { x: x1, y: y1 }, { x: x2, y: y2 });
-  return dist <= effectiveDistance;
+  if (isLiveFabricObject(lineObj)) {
+    // Live fabric Line: x1..y2 are center-relative and calcTransformMatrix is
+    // center-based, so inverse-transform + raw compare is self-consistent.
+    const matrix = getObjectTransformMatrix(lineObj);
+    const localPoint = transformPointInverse(point, matrix);
+    const dist = distanceToLineSegment(
+      localPoint,
+      { x: lineObj.x1 || 0, y: lineObj.y1 || 0 },
+      { x: lineObj.x2 || 0, y: lineObj.y2 || 0 },
+    );
+    return dist <= effectiveDistance;
+  }
+
+  // Plain page-JSON: x1..y2 are offsets from the BBOX CENTER (left + width/2,
+  // top + height/2) — the same convention getLineEndpoints/renderLine use. The
+  // old code inverse-transformed by a (left, top) matrix and compared raw
+  // endpoints, displacing the hit segment by (-width/2, -height/2): "/" lines
+  // were fully eraser-immune, "\" lines only responded on half their length
+  // (2026-07-19 eraser audit, critical finding). Arrows are lines with
+  // tool 'arrow' and shared the bug.
+  const centerX = (lineObj.left ?? 0) + (lineObj.width ?? 0) / 2;
+  const centerY = (lineObj.top ?? 0) + (lineObj.height ?? 0) / 2;
+  const x1 = centerX + (lineObj.x1 ?? 0);
+  const y1 = centerY + (lineObj.y1 ?? 0);
+  const x2 = centerX + (lineObj.x2 ?? 0);
+  const y2 = centerY + (lineObj.y2 ?? 0);
+  const midPt = lineObj.data?.midpoint || null;
+  const quadControl = midPt
+    ? {
+      x: 2 * midPt.x - 0.5 * x1 - 0.5 * x2,
+      y: 2 * midPt.y - 0.5 * y1 - 0.5 * y2,
+    }
+    : null;
+
+  let probe = point;
+  const angle = lineObj.angle || 0;
+  if (angle) {
+    // renderLine rotates about the CURVE-INCLUSIVE bbox center: endpoints
+    // plus any in-range quadratic extremum per axis. Mirror it exactly.
+    const xs = [x1, x2];
+    const ys = [y1, y2];
+    if (quadControl) {
+      const denomX = x1 - 2 * quadControl.x + x2;
+      const denomY = y1 - 2 * quadControl.y + y2;
+      if (Math.abs(denomX) > 1e-9) {
+        const tx = (x1 - quadControl.x) / denomX;
+        if (tx > 0 && tx < 1) {
+          const o = 1 - tx;
+          xs.push(o * o * x1 + 2 * o * tx * quadControl.x + tx * tx * x2);
+        }
+      }
+      if (Math.abs(denomY) > 1e-9) {
+        const ty = (y1 - quadControl.y) / denomY;
+        if (ty > 0 && ty < 1) {
+          const o = 1 - ty;
+          ys.push(o * o * y1 + 2 * o * ty * quadControl.y + ty * ty * y2);
+        }
+      }
+    }
+    probe = unrotatePointAbout(
+      point,
+      angle,
+      (Math.min(...xs) + Math.max(...xs)) / 2,
+      (Math.min(...ys) + Math.max(...ys)) / 2,
+    );
+  }
+
+  if (quadControl) {
+    // Curved line: sample the same quadratic the renderer draws.
+    const SAMPLES = 24;
+    let prevX = x1;
+    let prevY = y1;
+    for (let i = 1; i <= SAMPLES; i += 1) {
+      const t = i / SAMPLES;
+      const mt = 1 - t;
+      const qx = mt * mt * x1 + 2 * mt * t * quadControl.x + t * t * x2;
+      const qy = mt * mt * y1 + 2 * mt * t * quadControl.y + t * t * y2;
+      if (distanceToLineSegment(probe, { x: prevX, y: prevY }, { x: qx, y: qy }) <= effectiveDistance) {
+        return true;
+      }
+      prevX = qx;
+      prevY = qy;
+    }
+    return false;
+  }
+
+  return distanceToLineSegment(probe, { x: x1, y: y1 }, { x: x2, y: y2 }) <= effectiveDistance;
 };
 
 /**
@@ -620,6 +791,20 @@ export const isPointOnTriangle = (point, triangleObj, tolerance = DEFAULT_TOLERA
 export const isPointOnTextbox = (point, textObj, tolerance = DEFAULT_TOLERANCE) => {
   if (!textObj || (hitTestType(textObj) !== 'textbox' && hitTestType(textObj) !== 'text' && hitTestType(textObj) !== 'i-text')) {
     return false;
+  }
+
+  if (!isLiveFabricObject(textObj)) {
+    // Plain page-JSON: renderText positions via translate(left, top) with
+    // scale-folded dimensions and rotates about the local logical center.
+    const effW = Math.abs((textObj.width || 0) * (textObj.scaleX || 1));
+    const effH = Math.abs((textObj.height || 0) * (textObj.scaleY || 1));
+    const left = textObj.left ?? 0;
+    const top = textObj.top ?? 0;
+    const probe = textObj.angle
+      ? unrotatePointAbout(point, textObj.angle, left + effW / 2, top + effH / 2)
+      : point;
+    return probe.x >= left - tolerance && probe.x <= left + effW + tolerance
+      && probe.y >= top - tolerance && probe.y <= top + effH + tolerance;
   }
 
   const matrix = getObjectTransformMatrix(textObj);
@@ -736,6 +921,27 @@ export const isPointOnGroup = (point, groupObj, tolerance = DEFAULT_TOLERANCE) =
  * @param {number} tolerance - Hit tolerance in pixels
  * @returns {boolean} True if point intersects object geometry
  */
+/**
+ * Check if a point intersects an Image (stamp) annotation. Stamps are stored
+ * as plain boxes (left/top + width/height with scale); before this arm existed
+ * they fell to the default branch, where plain page-JSON has neither
+ * containsPoint nor getBoundingRect — the hit test unconditionally returned
+ * false and stamps were 100% eraser-immune (2026-07-19 eraser audit).
+ */
+export const isPointOnImage = (point, imageObj, tolerance = DEFAULT_TOLERANCE) => {
+  if (!imageObj || hitTestType(imageObj) !== 'image') return false;
+  const effW = Math.abs((imageObj.width || 0) * (imageObj.scaleX || 1));
+  const effH = Math.abs((imageObj.height || 0) * (imageObj.scaleY || 1));
+  if (effW <= 0 || effH <= 0) return false;
+  const left = imageObj.left ?? 0;
+  const top = imageObj.top ?? 0;
+  const probe = imageObj.angle
+    ? unrotatePointAbout(point, imageObj.angle, left + effW / 2, top + effH / 2)
+    : point;
+  return probe.x >= left - tolerance && probe.x <= left + effW + tolerance
+    && probe.y >= top - tolerance && probe.y <= top + effH + tolerance;
+};
+
 export const isPointOnObject = (point, obj, tolerance = DEFAULT_TOLERANCE) => {
   if (!obj || !obj.type) return false;
 
@@ -749,6 +955,8 @@ export const isPointOnObject = (point, obj, tolerance = DEFAULT_TOLERANCE) => {
       return isPointOnCircle(point, obj, tolerance);
     case 'line':
       return isPointOnLine(point, obj, tolerance);
+    case 'image':
+      return isPointOnImage(point, obj, tolerance);
     case 'triangle':
       return isPointOnTriangle(point, obj, tolerance);
     case 'textbox':
