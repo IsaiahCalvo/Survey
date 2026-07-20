@@ -434,10 +434,15 @@ export function eraseAnnotations(annotations, eraserPoints, radius, mode = 'part
     const fillColor = annotationFill(annotation);
     const strokeWidth = annotation.strokeWidth || 0;
     const annotationEraseMode = mode === 'partial' && annotation.atomicErase ? 'full' : mode;
-    // Thin centerline marks stay centerlines. Exact capsule interval cutting is
-    // dramatically faster than expanding every curve into a polygon, while the
-    // filled/thick ink produced by the pen still uses true shape subtraction.
-    if (!annotation.forcePolygon && !fillColor && strokeWidth > 0 && strokeWidth <= 4) {
+    // Centerline marks stay centerlines — at EVERY width (2026-07-19 root
+    // fix, Drawboard/Microsoft/PDF-InkList model). Exact capsule interval
+    // cutting splits the stroke where the eraser's swept circle reaches the
+    // visible ink body (rEff = radius + strokeWidth/2); survivors remain
+    // ordinary stroked subpaths of the SAME annotation, so stroked ink never
+    // converts to filled-outline form and never touches boolean polygon ops.
+    // Polygon subtraction remains ONLY for geometry that is already a filled
+    // shape (imported outline ink, baked non-uniform transforms).
+    if (!annotation.forcePolygon && !fillColor && strokeWidth > 0) {
       const result = erasePathWithCapsules(
         annotation.cmds,
         capsules,

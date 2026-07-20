@@ -6,6 +6,12 @@
       "runtimeExecutable": "npm",
       "runtimeArgs": ["run", "dev:ui", "--", "--port", "5230", "--strictPort"],
       "port": 5230
+    },
+    {
+      "name": "main-dev",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["--prefix", "/Users/isaiahcalvo/Documents/Projects/Active/Survey-BetaSafeS2", "run", "dev:ui", "--", "--port", "5173", "--strictPort"],
+      "port": 5173
     }
   ]
 }
