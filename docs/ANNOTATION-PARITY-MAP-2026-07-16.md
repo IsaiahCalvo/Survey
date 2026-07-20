@@ -86,15 +86,12 @@ Fan-in sites: `pdfAnnotationsPdfLib.js:319-324`, `:1488`, `:1556`, `:1566`; `vie
 
 ## 6. Dead code (validated, not auto-trusted)
 
-- **`FabricEditCanvas.jsx` (~3,300 lines) appears completely dead.** `editType` is only ever `'text'` (`PDFViewer.jsx:10323`, `:10395`, `:28568`, `:28782`, `:28792`) or `'bbox'` (`:28570`); mount is gated `editType !== 'bbox'` (`:29044`) and picks `TextEditOverlay` when `'text'` (`:29045`) → the `FabricEditCanvas` branch is unreachable. This would invalidate old-doc #6 and #14, and means the `[COUNTER WIP — DO NOT TOUCH]` blocks (`:2427`, `:3204`) guard nothing live. **CLAUDE.md still lists this file as load-bearing high-risk.**
-- **`FabricDrawingCanvas.jsx` — zero importers** (retired 2026-07-14 per `PDFViewer.jsx:17731`). File remains; CLAUDE.md still lists it as high-risk with the `zoomGeneration` contract.
-- `Callout/index.jsx` null-render stub still mounted (`PDFViewer.jsx:29225`, `PageAnnotationLayer.jsx:8777`).
+- **`FabricEditCanvas.jsx` / `FabricDrawingCanvas.jsx` — DELETED (2026-07).** See addendum 2026-07-19 below. Edit host is `TextEditOverlay`; freehand create is SVG-native; only `FabricEraserCanvas` remains.
+- `Callout/index.jsx` null-render stub still mounted (verify line numbers before editing — they drift).
 - `sticky_note` wiring, `image:'stamp'` mapping — vestigial.
-- `callout-bulk` retry-queue branches (`useAnnotationCloudSync.js:3006`, `:3101`) — no producer.
-- Two legacy PAL Delete listeners (`PageAnnotationLayer.jsx:4994`, `:8699`) — parked; PAL only mounts under `?renderer=canvas`/Ctrl+Shift+V.
-- **Fixed since old doc** ✅: `DB_TYPE_TO_FABRIC_DEFAULT`, `AnnotationContext`/`OptimizedPDFPage`, `saveAnnotatedPDFFile.js`, the three-way `onRequestEditMode` fork (now one handler, `PDFViewer.jsx:28513`, explicit no-op at `:28570-28576`).
-
-> ⚠️ Both dead-file claims are **strong leads, not settled**. A dead-code claim on 3,300-line protected files deserves its own adversarial verification pass before anyone deletes. Stale comments (`PDFViewer.jsx:10269-10275`, `viewerShared.js:40`, `calloutEditAdapter.js:6-7`) still describe deleted code as live.
+- `callout-bulk` retry-queue branches (`useAnnotationCloudSync.js`) — no producer (re-grep before deleting).
+- Two legacy PAL Delete listeners — parked; PAL only mounts under `?renderer=canvas`/Ctrl+Shift+V.
+- **Fixed since old doc** ✅: `DB_TYPE_TO_FABRIC_DEFAULT`, `AnnotationContext`/`OptimizedPDFPage`, `saveAnnotatedPDFFile.js`, the three-way `onRequestEditMode` fork (now one handler + `TextEditOverlay`), Fabric Drawing/Edit file deletion.
 
 ---
 
@@ -124,14 +121,20 @@ The two agents **disagreed on callout erasing**: one found the bespoke `getCallo
 2. **Survey-marker ownership gate** (§4) — small, self-contained, closes a fail-open security hole + an owner lockout. Independent of any migration.
 3. **Text styling on export/print** (§5.4) — affects freetext today, not just callout.
 4. **Legacy group-arrow export drop** (§5.5) — real data at risk.
-5. **KAL-81 keystone remainder (R2.2 derive-model)** — retire `callouts[]` as the source; make `annotationsByPage` primary. This single change collapses create, undo, sync, render, context menu, and export forks at once. Per `.planning/callout-unification/PLAN.md` and the contract doc: **do NOT chip at this piecemeal** — the dependent forks are load-bearing until it lands. Then R2.3 (realtime/CRDT) and Phase 8 (dead-code).
-6. **Dead-file confirmation pass** (§6) before any deletion; update CLAUDE.md's high-risk list if confirmed.
+5. **KAL-81 keystone remainder (R2.2 derive-model)** — retire `callouts[]` as the source; make `annotationsByPage` primary. This single change collapses create, undo, sync, render, context menu, and export forks at once. Per `.planning/callout-unification/PLAN.md` and the contract doc: **do NOT chip at this piecemeal** — the dependent forks are load-bearing until it lands. Then R2.3 (realtime/CRDT).
+6. ~~Dead-file confirmation / Phase 8 deletion~~ — **done** for Fabric Drawing/Edit (see addenda).
 
 ---
 
 ## Addendum (2026-07-17): dead-file claims adversarially verified
 
-- **FabricEditCanvas.jsx — DEAD as a render path, NOT inert as a module.** Exhaustive setter audit: all 5 `setEditingAnnotation` object literals carry `editType: 'text' | 'bbox'`; the EditHost ternary can never select it. BUT lines 70-97 globally patch `fabric.IText.prototype.renderCursor` at import time — the ONLY such patch in src/, and the legacy PAL arm (reachable via ?renderer=canvas / Ctrl+Shift+V) uses fabric IText/Textbox. Deletion requires relocating that patch first, updating two source-text tests (calloutScopeStamping.test.mjs:84, productionPaperInk.test.mjs:114), simplifying the EditHost ternary, and optionally retiring useFabricCanvas.js (would be orphaned).
-- **FabricDrawingCanvas.jsx — DEAD, zero importers, no module side effects.** Deletable as a pair with its source-text test (FabricDrawingCanvas.toolSwitch.test.mjs).
-- **zoomGeneration signal stays load-bearing** post-deletion (3 live consumers: SVGAnnotationLayer, FabricEraserCanvas, PdfjsViewerContainer); only CLAUDE.md's wording listing the dead files becomes stale.
-- Deletion remains Phase 8 (post-migration) work.
+- **FabricEditCanvas.jsx — DEAD as a render path, NOT inert as a module (at audit time).** Exhaustive setter audit: all `setEditingAnnotation` object literals carried `editType: 'text' | 'bbox'`; the EditHost ternary could never select FabricEdit. Deletion required relocating the `fabric.IText.prototype.renderCursor` import-time patch (legacy PAL still uses IText/Textbox) and updating source-text tests.
+- **FabricDrawingCanvas.jsx — DEAD, zero importers, no module side effects (at audit time).**
+- **zoomGeneration signal stays load-bearing** (3 live consumers: SVGAnnotationLayer, FabricEraserCanvas, PdfjsViewerContainer).
+
+## Addendum (2026-07-19): deletion landed
+
+- `src/components/FabricDrawingCanvas.jsx` and `src/components/FabricEditCanvas.jsx` are **gone from the tree**. Do not recreate them.
+- Live edit host remains `TextEditOverlay.jsx`. Live Fabric overlay remains `FabricEraserCanvas.jsx` only.
+- `CLAUDE.md` / `AGENTS.md` / `README.md` / `docs/ARCHITECTURE.md` high-risk lists updated to match (Drawing/Edit removed; pdf.js symbols named).
+- Line numbers cited earlier in this map may have shifted after viewer churn — re-grep before using them as fix scope.

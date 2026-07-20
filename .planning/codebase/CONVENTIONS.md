@@ -1,6 +1,6 @@
 # Coding Conventions
 
-**Analysis Date:** 2026-03-17
+**Analysis Date:** 2026-07-19 (light refresh; naming/style patterns still hold)
 
 ## Naming Patterns
 
@@ -8,7 +8,7 @@
 - React components: PascalCase with `.jsx` extension (e.g., `ErrorBoundary.jsx`, `PageAnnotationLayer.jsx`)
 - Utilities and services: camelCase with `.js` extension (e.g., `excelSyncDirtyState.js`, `pdfAnnotationImporter.js`)
 - Hooks: camelCase starting with `use` (e.g., `useDatabase.js`, `useAuth.jsx`)
-- Contexts: PascalCase ending with `Context.jsx` (e.g., `AuthContext.jsx`, `AnnotationContext.jsx`)
+- Contexts: PascalCase ending with `Context.jsx` (live: `AuthContext.jsx`, `MSGraphContext.jsx` — do not recreate `AnnotationContext.jsx`)
 - Test files: `.test.mjs` or `.spec.mjs` suffix (e.g., `excelSyncDirtyState.test.mjs`)
 
 **Functions:**
@@ -20,7 +20,7 @@
 **Variables:**
 - Component state and props: camelCase (e.g., `isLoading`, `hasError`, `setUser`)
 - Constants in module scope: camelCase or UPPER_SNAKE_CASE for actual constants (e.g., `CONTEXT_MENU_Z_INDEX`, `sessionDir`, `linkedTemplate`)
-- Refs and internal state: camelCase with descriptive suffix (e.g., `syncfusionLastNonEmptyOverlayPagesRef`, `baselineHash`)
+- Refs and internal state: camelCase with descriptive suffix (e.g., `baselineHash`, `zoomGeneration`)
 - Event parameters: descriptive names (e.g., `annotation`, `session`, `error`)
 
 **Types:**
@@ -46,30 +46,27 @@
 
 **Order:**
 1. React imports (React, hooks, createContext, etc.)
-2. External libraries (pdf-lib, Syncfusion, fabric.js, etc.)
+2. External libraries (pdfjs-dist, pdf-lib, fabric, exceljs, etc.)
 3. Context and hook imports from project
 4. Component imports from project
 5. Utility imports (services, helpers, state management)
 6. Theme/configuration imports
 7. Type imports
 
-**Example from `App.jsx`:**
+**Example shape (from viewer / shell modules):**
 ```javascript
-import React, { useRef, useState, useEffect, useCallback, useMemo, forwardRef, useImperativeHandle } from 'react';
+import React, { useRef, useState, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
-import * as pdfjsLib from 'pdfjs-dist';
-import { PDFDocument, degrees } from 'pdf-lib';
-import * as XLSX from 'xlsx-js-style';
+import { PDFDocument } from 'pdf-lib';
 import { useMSGraph } from './contexts/MSGraphContext';
-import { uploadExcelFile, getFileMetadata } from './services/excelGraphService';
-import PageAnnotationLayer, { ARROWHEAD_STYLES } from './PageAnnotationLayer';
+import PdfjsViewerContainer from './components/PdfjsViewerContainer';
 import { savePDFWithAnnotationsPdfLib } from './utils/pdfAnnotationsPdfLib';
-import { COLORS, BORDERS, SHADOWS, TYPOGRAPHY } from './theme';
+import { COLORS, TYPOGRAPHY } from './theme';
 ```
 
 **Path Aliases:**
-- No path aliases detected (direct relative imports used)
-- All imports use relative paths (e.g., `./utils/excelSyncDirtyState.js`, `../supabaseClient`)
+- Prefer relative imports as used elsewhere in `src/`
+- Do not reintroduce Syncfusion path aliases / shims
 
 ## Error Handling
 
@@ -201,10 +198,11 @@ export const computeHasPendingExcelSyncChanges = ({
 
 **Props and State:**
 - State managed via `useState` hook
-- Context used for global state (Auth, Annotations, MSGraph, SurveySession)
+- Context used for global state (`AuthContext`, `MSGraphContext`); annotation state lives in `PDFViewer.jsx`
 - Props passed explicitly, no prop spreading except for HTML attributes
 - Inline styles use theme constants imported from `./theme.js`
+- App root components (`AppShell`, many panels) use default exports; utility modules prefer named exports
 
 ---
 
-*Convention analysis: 2026-03-17*
+*Convention analysis: 2026-07-19*

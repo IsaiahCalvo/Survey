@@ -1,5 +1,11 @@
 # Subscription System - Testing Guide
 
+> **Scope:** Manual QA checklist for Stripe subscription / Account Settings flows.
+> This is **not** the unit/e2e testing guide — see `.planning/codebase/TESTING.md`,
+> `AGENTS.md` (`npm test`), and `debug/` Playwright scenarios for automated tests.
+> Pricing copy and UI labels below may drift; verify against the running
+> `AccountSettings` / checkout UI before treating numbers as authoritative.
+
 ## ✅ What's Complete
 
 ### Backend:
