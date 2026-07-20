@@ -1,21 +1,22 @@
 # The Shared Annotation Contract
 
-> Source of truth: synthesized from 9 lifecycle-dimension audits and verified against `src/` on 2026-05-29.
+> Source of truth: synthesized from 9 lifecycle-dimension audits (verified 2026-05-29).
+> **Status (2026-07-19):** CREATE / EDIT / dead-code claims below are partially superseded by the SVG-era stack. Prefer `docs/ANNOTATION-PARITY-MAP-2026-07-16.md` for callout fork status and live edit hosts. Syncfusion is gone; `AnnotationContext.jsx` / `OptimizedPDFPage.jsx` / `FabricDrawingCanvas.jsx` / `FabricEditCanvas.jsx` are deleted.
 > Scope: the 13 DB annotation types — `ink`, `square`, `circle`, `line`, `arrow`, `polyline`, `polygon`, `freetext`, `stamp`, `counter`, `eraser`, `callout`, `survey_marker` — plus the reserved-but-unbuilt `sticky_note`.
 
 ## Purpose
 
 This document defines the *one way* annotations are supposed to flow through the app, from creation to export. Most types already follow it. Two types — **callout** and **survey_marker** — diverge, some of it necessary, much of it historical. This contract is the yardstick: any handling that isn't on this contract must justify itself as *necessary* (the type's nature requires it) rather than *accidental* (it just grew that way).
 
-There is exactly ONE live annotation state engine: the `useState` hooks inside `src/PDFViewer.jsx`. The `AnnotationStore` class in `src/contexts/AnnotationContext.jsx` is orphaned dead code (no `<AnnotationProvider>` is rendered; its only consumer `OptimizedPDFPage.jsx` is itself never rendered — verified: no external importers).
+There is exactly ONE live annotation state engine: the `useState` hooks inside `src/PDFViewer.jsx`. The old `AnnotationContext` / `OptimizedPDFPage` pub-sub path has been deleted — do not recreate it.
 
 ---
 
 ## The Lifecycle Stages
 
 ### 1. CREATE
-**Contract:** A new annotation is created as a Fabric.js object on the per-page PAL canvas, id-stamped (`obj.id` / `obj.data.id`, usually `crypto.randomUUID()`), tagged by `obj.data.annotationType || obj.type`, and committed up via `onSaveAnnotations(pageNumber, json, saveContext)` → `handleSaveAnnotations` (`PDFViewer.jsx:21152`).
-**Composite types** (multi-part shapes) are allowed and ride this same path by stamping `data.type` on a Fabric `group`/`circle` — **counter is the proof** (`PageAnnotationLayer.jsx:6666`, `data.type:'counter'`).
+**Contract (current):** Freehand/shapes/text create on the SVG interaction path (`SVGAnnotationLayer` + interaction hooks), id-stamped (`obj.id` / `obj.data.id`, usually `crypto.randomUUID()`), tagged by `obj.data.annotationType || obj.type`, and committed via `onSaveAnnotations(pageNumber, json, saveContext)` → `handleSaveAnnotations` in `PDFViewer.jsx`. The per-page Fabric PAL path remains only for the legacy `?renderer=canvas` / Ctrl+Shift+V arm — not the default create path.
+**Composite types** (multi-part shapes) ride the same commit by stamping `data.type` on a Fabric-shaped object / group — **counter is the proof** (`data.type:'counter'`).
 
 ### 2. STATE
 **Contract:** Live geometry lives in ONE container: `annotationsByPage` — `useState({})`, shape `{ [pageNumber]: { objects: [...fabricJSON] } }` (`PDFViewer.jsx:3723`). Selection is index-based via `selectedIds`. No per-type top-level array; no type-specific parallel slice.
@@ -33,7 +34,7 @@ There is exactly ONE live annotation state engine: the `useState` hooks inside `
 **Contract:** All Fabric shapes ride the LOCAL ANNOTATION lane — per-page, per-object `fabric:create|delete|update|batch` deltas (`annotationLocalHistory.js`). The delta shape gives "only-touch-what-changed" and owner-scoping (`filterAnnotationHistoryActionByOwner`) *structurally*, with no per-type scoping pass. Eraser uses the precise id-list builder; counter re-diffs after renumber; both emit the identical action shape. A reason pushed to the legacy snapshot lane MUST be listed in `isLegacyAnnotationHistoryMeta` (`PDFViewer.jsx:10243-10249`) or its snapshot is unreachable on undo.
 
 ### 7. EDIT
-**Contract (target, per the v2.0 north-star):** edit chrome lives in SVG. `editType='bbox'` (line/arrow/polyline/polygon/counter) mounts NO Fabric canvas — the SVG layer serves resize/rotate and commits via `onSaveAnnotations`. Content edits that still need Fabric (`text`, `shape`) mount `FabricEditCanvas`, hide the Fabric raster (opacity:0 / transparent glyphs) so SVG stays the visible truth, and commit via `toJSON` → `onEditCommit` → `handleSaveAnnotations`. The `type → editType` mapping MUST be exhaustive and explicit (no `else → 'callout'` fallthrough). There is ONE shared `onRequestEditMode` handler.
+**Contract (current):** edit chrome lives in SVG. `editType='bbox'` (line/arrow/polyline/polygon/counter) mounts NO Fabric canvas — the SVG layer serves resize/rotate and commits via `onSaveAnnotations`. Content edits (`editType='text'`) mount `TextEditOverlay` (same-surface HTML `contentEditable`) so SVG stays the visual frame while the overlay owns the caret; commit via `textEditCommit` helpers → `handleSaveAnnotations`. `FabricEditCanvas` was deleted (2026-07). The `type → editType` mapping MUST be exhaustive and explicit (no `else → 'callout'` fallthrough). There is ONE shared `onRequestEditMode` handler.
 
 ### 8. DELETE
 **Contract:** Selection is `selectedIds`; Delete/Backspace fires `deleteSelected()` (`useSVGInteraction.js:4207`), which re-runs the `canModify` per-user authority gate at delete time (`:4219-4232`) and routes through `buildBulkDeletePlan` for the cross-author confirmation flow (`PDFViewer.jsx:16435-16503`). Author identity resolves via `permissionScope.getAnnotationAuthorId` (canonical chain `meta.authorId ?? authorId ?? data.authorId ?? data.userId`). Eraser hit-tests with generic `isPointOnObject`. There is ONE window-level Delete keydown dispatcher.

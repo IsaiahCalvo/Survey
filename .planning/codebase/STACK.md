@@ -1,136 +1,93 @@
 # Technology Stack
 
-**Analysis Date:** 2026-03-17
+**Analysis Date:** 2026-07-19 (rewritten from `package.json`; prior 2026-03-17 sheet was Syncfusion-era and is obsolete)
 
 ## Languages
 
 **Primary:**
-- JavaScript (ES6+) - React components, frontend logic, and utilities
-- JSX - React component templates
-- Node.js - Electron main process, build tools, CLI utilities
+- JavaScript (ES6+) — React components, Electron main, utilities
+- JSX — React component templates
+- Node.js — Electron main process, build tools, CLI utilities, test runner
 
 **Secondary:**
-- CSS - Styling via Syncfusion and custom stylesheets
+- CSS — custom stylesheets (no Syncfusion CSS)
+- SQL — Supabase migrations under `supabase/migrations/`
 
 ## Runtime
 
 **Environment:**
-- Node.js (no specific version constraint in project, typically 16+)
-- Electron 25.2.1 - Desktop application runtime
+- Node.js (project does not pin an engines field; use a current LTS)
+- Electron **43.0.0** — desktop application runtime
 
 **Package Manager:**
-- npm (implicit from package.json)
-- Lockfile: `package-lock.json` (expected, not verified)
+- npm with `package-lock.json`
 
 ## Frameworks
 
 **Core UI:**
-- React 18.2.0 - Frontend framework for UI components
-- Syncfusion EJ2 32.1.19 - PDF Viewer and UI components
-  - @syncfusion/ej2-react-pdfviewer - PDF rendering and annotation
-  - 30+ Syncfusion packages for base, buttons, inputs, popups, etc.
-  - Local file references: `/Syncfusion/32.1.19/PDF Viewer SDK/JavaScript/Packages/`
+- React **18.2.0** + react-dom
+- Owned PDF viewer via **pdfjs-dist ^6.1.200** (`PdfjsViewerContainer.jsx`)
+- Fabric.js **7.4.0** — eraser canvas only on the live path
+- Capacitor (`@capacitor/core`, `ios`, `android`) for mobile shells
 
 **Build/Dev:**
-- Vite 5.2.0 - Frontend build tool and dev server (port 5173)
-- @vitejs/plugin-react 4.2.1 - React support for Vite
-- vite-plugin-node-polyfills 0.24.0 - Node polyfills for browser
-
-**Desktop/Electron:**
-- electron 25.2.1 - Desktop application framework
-- electron-builder 24.8.0 - Packaging and distribution
+- Vite **8.1.3** + `@vitejs/plugin-react`
+- electron-builder **26.15.3**
+- wait-on (Electron waits for Vite in `dev:electron`)
 
 **Testing:**
-- Playwright 1.58.2 - End-to-end testing
-  - Config: `debug/playwright.config.mjs`
-  - Headless Chromium testing with 1400x900 viewport
-  - 2-minute timeout per test (due to Syncfusion cold start overhead)
+- Node built-in test runner (`npm test` → `scripts/run-node-tests.mjs`)
+- Playwright **^1.58.2** — `debug/playwright.config.mjs` (scenario e2e)
 
 ## Key Dependencies
 
 **PDF & Document Processing:**
-- pdfjs-dist 3.11.174 - PDF.js for text extraction and rendering
-- pdf-lib 1.17.1 - PDF manipulation library
-- annotpdf 1.0.15 - PDF annotation support
-- exceljs 4.4.0 - Excel file reading/writing
-- xlsx 0.18.5 - Excel spreadsheet library
-- xlsx-js-style 1.2.0 - Excel styling
+- `pdfjs-dist` — page render + text/link layers
+- `pdf-lib` — PDF manipulation / export
+- `exceljs` — Excel read/write (Excel sync)
 
 **Canvas & Graphics:**
-- fabric 5.5.2 - Fabric.js for canvas annotation rendering
-- martinez-polygon-clipping 0.7.4 - Polygon clipping for geometry
-- polygon-clipping 0.15.7 - Polygon manipulation library
+- `fabric` 7.4.0 — `FabricEraserCanvas` (+ legacy PAL path)
+- `martinez-polygon-clipping` — geometry
 
-**State & Drag-and-Drop:**
-- react-window 2.2.1 - Windowed list rendering for performance
-- @dnd-kit/core 6.3.1 - Drag-and-drop functionality
-- @dnd-kit/sortable 10.0.0 - Sortable drag-and-drop
+**CRDT / sync:**
+- `yjs`, `y-protocols`, `y-indexeddb` — annotation CRDT dual-write
 
-**Authentication & External Services:**
-- @azure/msal-browser 4.26.2 - Azure AD authentication for browser
-- @azure/msal-node 3.8.3 - Azure AD authentication for Node (Electron main)
-- @microsoft/microsoft-graph-client 3.0.7 - Microsoft Graph API client
-- @supabase/supabase-js 2.81.1 - Supabase client for auth and database
-- @stripe/stripe-js 8.5.3 - Stripe payment library (client-side)
+**Auth & External Services:**
+- `@supabase/supabase-js` — auth + database
+- `@azure/msal-browser`, `@azure/msal-node`, `@microsoft/microsoft-graph-client` — Microsoft / OneDrive
+- Stripe via Supabase edge functions (`create-checkout-session`, `create-portal-session`, `stripe-webhook`) — **no** `@stripe/stripe-js` client dependency
 
-**Development & Build:**
-- concurrently 8.2.0 - Run dev:ui and dev:electron in parallel
-- wait-on 7.0.1 - Wait for server startup during build
-- chokidar 5.0.0 - File system watching
-- cross-env 7.0.3 - Cross-platform environment variables
-- sharp 0.34.5 - Image processing
-- to-ico 1.1.5 - Icon conversion
-- buffer 6.0.3 - Node buffer polyfill for browser
-- stream-browserify 3.0.0 - Node stream polyfill
-- events 3.3.0 - Node events polyfill
-- util 0.12.5 - Node util polyfill
-- ws 8.18.3 - WebSocket library
-- isomorphic-fetch 3.0.0 - Cross-platform fetch
+**UI utilities:**
+- `@dnd-kit/core`, `@dnd-kit/sortable`, `@dnd-kit/utilities`
+
+**Removed (do not reintroduce):**
+- All `@syncfusion/ej2-*` packages and `public/ej2-pdfviewer-lib`
+- `annotpdf`, `FabricDrawingCanvas`, `FabricEditCanvas`, `AnnotationContext`
 
 ## Configuration
 
 **Environment:**
-- Uses Vite environment variables with `VITE_` prefix
-- `.env` file present (not committed) - contains `VITE_SUPABASE_*` and `VITE_STRIPE_*` keys
-- `.env.example` provides template for Supabase and Stripe configuration
+- Vite `VITE_*` vars from `.env` / `.env.local`
+- `npm install` / `postinstall` runs `scripts/bootstrap-dev-env.mjs` to seed public Supabase keys into `.env`
+- `.env.example` documents Supabase + Stripe server keys
+- Dev auto-login needs `.env.local`: `VITE_DEV_AUTO_LOGIN_EMAIL`, `VITE_DEV_AUTO_LOGIN_PASSWORD`, `SUPABASE_SERVICE_ROLE_KEY` (see `AGENTS.md`)
 
 **Build Configuration:**
-- Vite: `vite.config.js`
-  - Base: relative paths for Electron file:// protocol
-  - Custom debug fixtures plugin serves PDFs from `debug/fixtures/`
-  - Node polyfills enabled for `node:` protocol imports
-  - CORS headers configured for MSAL popup authentication
-  - Path aliases for Syncfusion shims
-
-**Electron Configuration:**
-- Main entry: `src/electron-main.js`
-- Preload script: `src/preload.js`
-- Build config in `package.json` build section
-  - Platform targets: macOS (dmg), Windows (NSIS), Linux (.png)
-  - ASAR packaging enabled
-  - Icon: `build/icon.icns` (macOS), `build/icon.png` (Windows/Linux)
+- `vite.config.js` — relative base for Electron `file://`, debug-fixtures middleware, MSAL CORS headers
+- Electron main: `src/electron-main.js`, preload: `src/preload.js`
 
 ## Platform Requirements
 
 **Development:**
-- Vite dev server runs on port 5173
-- Node.js (version not strictly specified)
-- Platform-specific icons in `build/` directory
+- Vite on port 5173 (`npm run dev:ui` or `npm run dev` with Electron)
+- No Syncfusion license key required
 
 **Production:**
-- Electron desktop application
-- Distributed as platform-specific installers (dmg, NSIS, or Linux package)
-- Built output: `dist/` directory
-- Requires Syncfusion license key (via `VITE_SYNCFUSION_LICENSE_KEY`)
-
-## Dependency Notes
-
-**Syncfusion packages:** Installed as local file references from `../Syncfusion/32.1.19/` directory, not from npm registry. This is a local SDK installation with version 32.1.19.
-
-**License Key:** Syncfusion PDF Viewer requires a valid license key registered in `src/main.jsx` via `registerLicense()`. Falls back to embedded key if `VITE_SYNCFUSION_LICENSE_KEY` not provided.
-
-**Electron Security:** Context isolation enabled, node integration disabled. Preload script used for IPC communication.
+- Electron installers via `npm run dist`
+- Web `dist/` also feeds Capacitor (`npm run mobile:sync`)
+- One bundle serves web, Electron (`file://`), and Capacitor origins — edge CORS `*` is intentional
 
 ---
 
-*Stack analysis: 2026-03-17*
+*Stack analysis: 2026-07-19*

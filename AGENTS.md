@@ -7,8 +7,8 @@ assume `~/.claude` loads for you). Full history and gotchas live in CLAUDE.md if
 
 - **Canvas sizing uses container-aware measurement, never `pageSize * scale`.** Measure
   `containerEl.offsetWidth / pageSize.width` for `effectiveScale` (Electron/browser zoom factor
-  mismatch). Applies to FabricDrawingCanvas, FabricEraserCanvas, FabricEditCanvas, and any
-  future canvas component.
+  mismatch). Applies to FabricEraserCanvas and any future canvas component.
+  (FabricDrawingCanvas / FabricEditCanvas were deleted in 2026-07 — do not recreate them.)
 - **SVG viewBox owns all zoom scaling.** Never reintroduce JavaScript zoom coordination in
   `src/components/SVGAnnotationLayer.jsx`.
 - **Never remove or rename the `zoomGeneration` signal** — all mounted canvas components watch
@@ -22,9 +22,9 @@ assume `~/.claude` loads for you). Full history and gotchas live in CLAUDE.md if
 ## High-risk files (minimum viable diff; never refactor in passing)
 
 - `src/PDFViewer.jsx` (~34k lines — viewer lifecycle, save/sync, history engine; highest risk)
-- `src/PageAnnotationLayer.jsx` (~10k lines — per-page Fabric.js overlay)
-- `src/components/FabricDrawingCanvas.jsx` / `FabricEraserCanvas.jsx` / `FabricEditCanvas.jsx`
-  (all use `zoomGeneration`)
+- `src/PageAnnotationLayer.jsx` (~10k lines — per-page Fabric.js overlay; legacy/`?renderer=canvas` path)
+- `src/components/FabricEraserCanvas.jsx` (uses `zoomGeneration`; Drawing/Edit canvases deleted)
+- `src/components/SVGAnnotationLayer.jsx` / `PdfjsViewerContainer.jsx` (view truth + pdf.js engine)
 - `src/viewerShared.js` (imported by both big files — run build + tests after any change)
 - `package.json` / `vite.config.js` (infra — document the why)
 
@@ -76,8 +76,8 @@ runs `scripts/bootstrap-dev-env.mjs` (via `postinstall`), which auto-creates a g
   It loads a fixture from `debug/fixtures/` straight into the full editor with mock auth
   (`tier: 'developer'`, all annotation tools unlocked) and no Supabase. Fixtures are served
   by a dev Vite middleware at `/debug-fixtures/`. Other dev routes: `?hubPreview=1` (home
-  redesign with mock data) and `?spike=renderer|perfgate|features` (throwaway PDF-render
-  prototypes). These routes only exist when running the Vite dev server (`import.meta.env.DEV`).
+  redesign with mock data) and `?spike=features` (throwaway FeatureSpike prototype).
+  These routes only exist when running the Vite dev server (`import.meta.env.DEV`).
 - To drive the REAL auth-gated flows in dev, use the dev auto-login in
   `src/contexts/AuthContext.jsx`. It needs `VITE_DEV_AUTO_LOGIN_EMAIL` (an existing user),
   `VITE_DEV_AUTO_LOGIN_PASSWORD`, and (for the captcha fallback) `SUPABASE_SERVICE_ROLE_KEY`.

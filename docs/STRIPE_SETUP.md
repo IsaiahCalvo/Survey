@@ -2,6 +2,11 @@
 
 This guide will walk you through setting up Stripe payments for your tiered pricing system.
 
+> **Note (2026-07-19):** Checkout/portal are invoked via Supabase edge functions
+> (`create-checkout-session`, `create-portal-session`, `stripe-webhook`). There is
+> no `@stripe/stripe-js` client dependency — client code uses
+> `supabase.functions.invoke(...)`.
+
 ## Table of Contents
 1. [Stripe Account Setup](#stripe-account-setup)
 2. [Create Stripe Products](#create-stripe-products)
