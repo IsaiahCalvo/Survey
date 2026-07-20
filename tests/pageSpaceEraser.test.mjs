@@ -49,28 +49,34 @@ function ringArea(ring) {
   return Math.abs(area / 2);
 }
 
-test('partial erase replaces only the touched stroke and preserves all metadata', () => {
+test('partial erase splits the touched stroke, keeps it stroked ink, and preserves all metadata', () => {
   const touched = nativeInk('ink-a');
   const untouched = nativeInk('ink-b', 100);
   const page = { version: '5.3.0', objects: [touched, untouched] };
 
   const result = erase(page, [{ x: 50, y: 38 }]);
+  const survivor = result.pageAnnotations.objects[0];
 
   assert.equal(result.didChange, true);
   assert.deepEqual(result.changedIds, ['ink-a']);
   assert.deepEqual(result.deletedIds, []);
   assert.equal(result.pageAnnotations.objects.length, 2);
-  assert.notEqual(result.pageAnnotations.objects[0], touched);
+  assert.notEqual(survivor, touched);
   assert.equal(result.pageAnnotations.objects[1], untouched);
   assert.equal(result.pageAnnotations.version, page.version);
-  assert.equal(result.pageAnnotations.objects[0].id, touched.id);
-  assert.equal(result.pageAnnotations.objects[0].annotationId, touched.annotationId);
-  assert.deepEqual(result.pageAnnotations.objects[0].data, touched.data);
-  assert.equal(result.pageAnnotations.objects[0].authorId, touched.authorId);
-  assert.deepEqual(result.pageAnnotations.objects[0].meta, touched.meta);
-  assert.equal(result.pageAnnotations.objects[0].fill, touched.stroke);
-  assert.equal(result.pageAnnotations.objects[0].strokeWidth, 0);
-  assert.equal(result.pageAnnotations.objects[0].fillRule, 'evenodd');
+  assert.equal(survivor.id, touched.id);
+  assert.equal(survivor.annotationId, touched.annotationId);
+  assert.deepEqual(survivor.data, touched.data);
+  assert.equal(survivor.authorId, touched.authorId);
+  assert.deepEqual(survivor.meta, touched.meta);
+  // Root-fix contract (2026-07-19): a partially erased pen stroke STAYS a
+  // stroked centerline — same stroke color and width, no filled-outline
+  // conversion — split into multiple subpaths of the one annotation.
+  assert.equal(survivor.stroke, touched.stroke);
+  assert.equal(survivor.strokeWidth, touched.strokeWidth);
+  assert.equal(survivor.fill, null);
+  assert.equal(survivor.fillRule, undefined);
+  assert.equal(survivor.path.filter((command) => command[0] === 'M').length, 2);
 });
 
 test('each gesture rebases on the latest page state instead of a mounted canvas snapshot', () => {
@@ -90,7 +96,7 @@ test('each gesture rebases on the latest page state instead of a mounted canvas 
   assert.deepEqual(second.pageAnnotations.objects.map((object) => object.id), ['a', 'b', 'c']);
 });
 
-test('thin imported Ink gets a true outline bite at its visible page position', () => {
+test('thin stroked imported Ink splits at its visible page position and stays stroked', () => {
   const imported = nativeInk('pdf-ink', 0, {
     path: [['M', 0, 0], ['L', 100, 0]],
     left: 200,
@@ -114,27 +120,35 @@ test('thin imported Ink gets a true outline bite at its visible page position', 
   assert.equal(survivor.pdfAnnotationId, imported.pdfAnnotationId);
   assert.equal(survivor.left, 0);
   assert.equal(survivor.top, 0);
-  assert.equal(survivor.fill, imported.stroke);
-  assert.equal(survivor.strokeWidth, 0);
-  assert.equal(survivor.fillRule, 'evenodd');
-  assert.equal(survivor.paperEraserGeometry, 'v1');
+  // Stroked /InkList-style imports ride the exact capsule splitter too —
+  // survivors keep the stroke paint at world position, split around the bite.
+  assert.equal(survivor.stroke, imported.stroke);
+  assert.equal(survivor.strokeWidth, imported.strokeWidth);
+  assert.equal(survivor.fill, null);
+  assert.equal(survivor.path.filter((command) => command[0] === 'M').length, 2);
   assert.ok(points.some((point) => point.x < 245));
   assert.ok(points.some((point) => point.x > 255));
-  assert.ok(points.some((point) => point.y < 100));
-  assert.ok(points.some((point) => point.y > 100));
+  assert.ok(points.every((point) => Math.abs(point.y - 100) < 0.001));
 });
 
-test('a previously converted thick stroke accepts another clean side bite', () => {
+test('a thick stroke splits cleanly across repeated erase passes and never converts form', () => {
   const original = nativeInk('repeat');
   const first = erase({ objects: [original] }, [{ x: 35, y: 38 }]);
   const firstStroke = first.pageAnnotations.objects[0];
   const second = erase(first.pageAnnotations, [{ x: 70, y: 62 }]);
+  const secondStroke = second.pageAnnotations.objects[0];
 
   assert.equal(first.didChange, true);
   assert.equal(second.didChange, true);
   assert.deepEqual(second.changedIds, ['repeat']);
-  assert.notDeepEqual(second.pageAnnotations.objects[0].path, firstStroke.path);
-  assert.equal(second.pageAnnotations.objects[0].fillRule, 'evenodd');
+  assert.notDeepEqual(secondStroke.path, firstStroke.path);
+  // Idempotent model: every pass cuts intervals out of the same centerline;
+  // the annotation stays stroked ink forever (no polygon conversion, ever).
+  assert.equal(firstStroke.strokeWidth, original.strokeWidth);
+  assert.equal(secondStroke.strokeWidth, original.strokeWidth);
+  assert.equal(secondStroke.fill, null);
+  assert.equal(secondStroke.fillRule, undefined);
+  assert.equal(secondStroke.path.filter((command) => command[0] === 'M').length, 3);
 });
 
 test('a native filled stroke preserves its polygon topology after every bite', () => {
@@ -165,7 +179,7 @@ test('a native filled stroke preserves its polygon topology after every bite', (
   assert.notDeepEqual(secondStroke.polygons, firstStroke.polygons);
 });
 
-test('a thin Fabric curve becomes one clean outline before its first partial erase', () => {
+test('a thin Fabric curve splits exactly and its survivors stay true curves', () => {
   const path = [['M', 0, 50]];
   for (let index = 1; index <= 24; index += 1) {
     const previousX = (index - 1) * 5;
@@ -179,14 +193,16 @@ test('a thin Fabric curve becomes one clean outline before its first partial era
 
   const result = erase({ objects: [legacy] }, [{ x: 60, y: 46 }], { eraserRadius: 4 });
   const survivor = result.pageAnnotations.objects[0];
-  const polygons = normalizeMultiPolygon(survivor.polygons);
-  const rings = polygons.flat();
 
   assert.equal(result.didChange, true);
-  assert.equal(polygons.length, 1);
-  assert.equal(rings.length, 1);
-  assert.ok(survivor.path.length < 200, `expected compact geometry, got ${survivor.path.length} commands`);
-  assert.ok(rings.every((ring) => ringArea(ring) > 0.01));
+  // De Casteljau splitting keeps survivors as genuine quadratic curves inside
+  // one stroked annotation — no polygon expansion, no filled conversion.
+  assert.equal(survivor.polygons, undefined);
+  assert.equal(survivor.stroke, legacy.stroke);
+  assert.equal(survivor.strokeWidth, legacy.strokeWidth);
+  assert.equal(survivor.path.filter((command) => command[0] === 'M').length, 2);
+  assert.ok(survivor.path.some((command) => command[0] === 'Q'));
+  assert.ok(survivor.path.length < 60, `expected compact geometry, got ${survivor.path.length} commands`);
 });
 
 test('a geometric miss is a byte-stable identity no-op', () => {
@@ -239,7 +255,7 @@ test('full mode removes a touched pen stroke without rewriting its neighbors', (
   assert.equal(result.pageAnnotations.objects[0], neighbor);
 });
 
-test('thin imported curves use filled outline subtraction after a partial cut', () => {
+test('thin stroked imported curves split exactly and keep their curve form', () => {
   const curve = nativeInk('curve', 0, {
     path: [['M', 0, 0], ['Q', 50, 50, 100, 0]],
     strokeWidth: 2,
@@ -248,25 +264,29 @@ test('thin imported curves use filled outline subtraction after a partial cut', 
     pdfAnnotationType: 'Ink',
   });
   const result = erase({ objects: [curve] }, [{ x: 50, y: 25 }], { eraserRadius: 4 });
+  const survivor = result.pageAnnotations.objects[0];
 
   assert.equal(result.didChange, true);
-  assert.ok(result.pageAnnotations.objects[0].path.some((command) => command[0] === 'Z'));
-  assert.equal(result.pageAnnotations.objects[0].fill, curve.stroke);
-  assert.equal(result.pageAnnotations.objects[0].strokeWidth, 0);
-  assert.equal(result.pageAnnotations.objects[0].fillRule, 'evenodd');
+  assert.equal(survivor.stroke, curve.stroke);
+  assert.equal(survivor.strokeWidth, curve.strokeWidth);
+  assert.equal(survivor.fill, null);
+  assert.ok(survivor.path.every((command) => command[0] !== 'Z'));
+  assert.equal(survivor.path.filter((command) => command[0] === 'M').length, 2);
+  assert.ok(survivor.path.some((command) => command[0] === 'Q'));
 });
 
-test('thin native ink gets the same rounded outline bite as the demo', () => {
+test('thin native ink splits into stroked segments (Drawboard/InkList model)', () => {
   const thin = nativeInk('thin-native', 50, { strokeWidth: 2.5 });
   const result = erase({ objects: [thin] }, [{ x: 50, y: 46 }], { eraserRadius: 4 });
   const survivor = result.pageAnnotations.objects[0];
 
   assert.equal(result.didChange, true);
-  assert.equal(survivor.fill, thin.stroke);
-  assert.equal(survivor.strokeWidth, 0);
-  assert.equal(survivor.fillRule, 'evenodd');
-  assert.equal(survivor.paperEraserGeometry, 'v1');
-  assert.ok(survivor.path.some((command) => command[0] === 'Z'));
+  assert.equal(survivor.stroke, thin.stroke);
+  assert.equal(survivor.strokeWidth, thin.strokeWidth);
+  assert.equal(survivor.fill, null);
+  assert.equal(survivor.fillRule, undefined);
+  assert.ok(survivor.path.every((command) => command[0] !== 'Z'));
+  assert.equal(survivor.path.filter((command) => command[0] === 'M').length, 2);
 });
 
 test('rotation and non-uniform scale are baked before erasing in page space', () => {

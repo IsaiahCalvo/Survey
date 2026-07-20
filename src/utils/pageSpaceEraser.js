@@ -347,12 +347,17 @@ export function erasePageAnnotations({
     const operation = requestedMode === 'full'
       ? 'full'
       : (getEraserOperation(object, 'partial') === 'partial' ? 'partial' : 'full');
-    const annotation = pathToPageAnnotation(object, internalId, {
-      // Demo-drawn ink is a filled swept outline at every width. Expanding every
-      // partial-eligible production Ink path before subtraction gives imported,
-      // legacy, and native thin strokes the same rounded side-bite contract.
-      forcePolygon: operation === 'partial',
-    });
+    // 2026-07-19 root fix: native stroked ink is NO LONGER expanded into a
+    // filled outline before partial erase. It flows to eraseAnnotations as a
+    // plain centerline + strokeWidth, where the exact capsule engine splits it
+    // and the survivors stay stroked ink (same annotation, multiple subpaths —
+    // the PDF /InkList shape). That conversion (stroke → filled polygon) was
+    // the root of the live/commit hit-test divergence AND the martinez
+    // boolean-op fragility for pen/highlighter strokes. Already-filled
+    // geometry (imported outline ink, persisted polygons, baked non-uniform
+    // transforms) still routes to polygon subtraction inside eraseAnnotations
+    // via its fill — the correct tool for genuinely filled shapes.
+    const annotation = pathToPageAnnotation(object, internalId);
     if (!annotation) return;
     pathGroups[operation].push(annotation);
     pathRecords.set(internalId, { object, index });
