@@ -8,6 +8,21 @@
 
 Isaiah wants the partial eraser to be **100% reliable, accurate, and consistent — zero flicker, zero hiccups, demo-grade feel** — fixed at the ROOT (no patches, no safety nets as load-bearing parts), with an automated torture rig proving it so no failure mode is ever again discovered by the user instead of the tests. He explicitly authorized as many sub-agents/workflows as needed (ultracode posture).
 
+## MEASURABLY BETTER — the bar for presenting ANYTHING to Isaiah (his explicit standing order, 2026-07-20)
+
+**Never hand Isaiah a build that is not provably, numerically better.** "Feels better to me" does not count. Every slice you want him to test ships with a before/after scorecard, and a slice that regresses ANY metric is not presented — full stop.
+
+**The scorecard (build this as a rig lane FIRST — it's the yardstick everything else is judged by):**
+The rig drives the PRODUCTION eraser and the LOCAL GOLD STANDARD — the PDF.js demo eraser on the `?spike=features` page (`src/prototype/CanvasAnnotationLayer.jsx`, no auth needed) — with IDENTICAL recorded gesture traces on equivalent content, capturing every frame, and reports per run:
+1. **Time-to-first-visible-erase** (pointer-down → first frame where target pixels change), median + p95.
+2. **Anomalous-frame count**: frames during/after a gesture that match NEITHER the before state NOR the final state (this is "flicker", made a number; the perfection target is 0 beyond a small AA tolerance).
+3. **Release freeze**: pointer-up → first frame of the final settled state, and the longest gap between visually-updated frames during the gesture (dropped-frame proxy).
+4. **Live/commit agreement**: pixel diff between the last mid-drag frame and the settled post-release frame, erased-region only (preview honesty, as a percentage).
+5. **Correctness set**: the existing data-truth checks (oracle match, sliver scan, durability) — always all-green, they gate before feel is even discussed.
+Production must meet or beat the demo on 1–4 while keeping 5 perfect; that plus no metric regressing vs the previous build IS the definition of "measurably better". Store every scorecard in `debug/eraser-rig/<ts>/scorecard.json` so the trend line is auditable.
+
+**Professional-tool benchmark (do the research — Isaiah explicitly wants it):** Drawboard is closed source, so measure its BEHAVIOR, not its code: capture 60/120fps screen recordings of Drawboard PDF (and, if reachable, Apple PencilKit / Microsoft Ink apps) performing the same scripted erase scenarios, then run the recordings through the same frame-analysis (metrics 1–4) to produce a numeric "pro envelope" our scorecard must live inside. If Isaiah can capture recordings on his devices, give him a one-step script of exactly what to record; the analysis side is fully automatable. Additionally, mine the OPEN-SOURCE pros for technique with real research (web + code reading): Xournal++, Excalidraw, tldraw, and Krita all ship battle-tested stroke erasers, and Microsoft's `GetEraseResult` + Apple's `PKEraserTool` docs define the industry semantics — steal proven architecture, not guesses. Research is encouraged and expected; never protect a weak approach from a better-documented one out of inertia.
+
 ## THE #1 PRIORITY — new user-reported failure (unreproduced, must be reproduced in the rig FIRST)
 
 Isaiah's exact symptom (2026-07-20, on local main with all fixes below): *"click and drag with partial eraser through a pen stroke → it partially erases. Continue without lifting through a shape → it sometimes deletes the shape, but once I try and continue AFTER that, there's a failure. Sometimes a flicker and it **stops erasing entirely**. Other times it erases a little bit, but it's just weird."*
@@ -33,6 +48,7 @@ Rig gap that let this escape: every existing case ends its swipe shortly after c
 
 ## Not Yet Done (the actual work of the next session)
 
+- [ ] Build the scorecard/benchmark lane FIRST (see "Measurably Better" above): identical-trace head-to-head vs the `?spike=features` demo, per-frame capture, `scorecard.json` per run, plus the pro-envelope recording analysis pipeline. Baseline the CURRENT build before any fix so every later slice has a before/after.
 - [ ] Reproduce Isaiah's chained-swipe failure as a failing rig case (see #1 priority above) and fix its root.
 - [ ] **Group D — single-surface presentation (the flicker family), all confirmed findings:**
   - [ ] Keep the SVG layer MOUNTED through an erase gesture. Today `PDFViewer.jsx` (~line 28938) computes `useCanvasPresentation = isEraserTool && erasePreviewPages.has(pageNumber)` and (~29076) unmounts the whole SVG wrapper subtree on it. Every commit therefore remounts `SVGAnnotationLayer` from scratch, resetting its 300-per-frame progressive reveal (pop-in on pages with >~600 annotations) and paying a heavy React mount on the main thread. Root fix: `erasePreviewPages` must drive VISIBILITY only, never mount. PDFViewer is the 34k-line high-risk file — minimum viable diff, no refactors.
