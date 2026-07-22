@@ -92,6 +92,35 @@ test('live preview is gated by the same geometry and permission transaction as c
   assert.doesNotMatch(pointerDownSource, /beginLiveErasePreview\(\)\) drawLiveErasePreviewSegment/);
 });
 
+test('pdf.js survey markers use one visible, permitted whole-delete lane in both eraser modes', () => {
+  assert.match(VIEWER_SOURCE, /surveyMarkers=\{newSurveyMarkersByPage\[pageNumber\]\}/);
+  assert.match(VIEWER_SOURCE, /onEraseSurveyMarker=\{handleDeleteSurveyMarker\}/);
+  assert.match(VIEWER_SOURCE, /canEraseSurveyMarker=\{canEraseSurveyMarker\}/);
+  assert.match(ERASER_SOURCE, /const getPermittedSurveyMarkerHitIds = useCallback/);
+  assert.match(ERASER_SOURCE, /data-survey-marker-id/);
+  assert.match(ERASER_SOURCE, /previewSurveyMarkerIds: new Set\(\)/);
+  assert.match(ERASER_SOURCE, /pendingSurveyMarkerIds: new Set\(\)/);
+  // Legacy page-JSON proxy rects are hidden by SVGAnnotationLayer and must not
+  // bypass the dedicated source-owned permission/visibility lane.
+  assert.match(ERASER_SOURCE, /if \(object\?\.annotationId\) return 'survey-marker-source'/);
+
+  const commitStart = ERASER_SOURCE.indexOf('const applyEraserAndCommit = useCallback');
+  const commitEnd = ERASER_SOURCE.indexOf('\n  const cancelPointer = useCallback', commitStart);
+  const commitSource = ERASER_SOURCE.slice(commitStart, commitEnd);
+  assert.match(commitSource, /getPermittedSurveyMarkerHitIds\(eraserPoints\)/);
+  assert.match(commitSource, /onEraseSurveyMarkerRef\.current\?\.\(annotationId\)/);
+  assert.match(commitSource, /surveyMarkerHitIds\.length > 0/);
+});
+
+test('callout preview and commit share the same permitted hit list', () => {
+  const commitStart = ERASER_SOURCE.indexOf('const applyEraserAndCommit = useCallback');
+  const commitEnd = ERASER_SOURCE.indexOf('\n  const cancelPointer = useCallback', commitStart);
+  const commitSource = ERASER_SOURCE.slice(commitStart, commitEnd);
+
+  assert.match(commitSource, /getPermittedCalloutHitIds\(eraserPoints\)/);
+  assert.doesNotMatch(commitSource, /getCalloutHitIds\(\{/);
+});
+
 test('production eraser commits the latest page model and waits for its exact repaint', () => {
   assert.match(ERASER_SOURCE, /annotationsRef\.current/);
   assert.match(ERASER_SOURCE, /spaceHeldRef\.current/);

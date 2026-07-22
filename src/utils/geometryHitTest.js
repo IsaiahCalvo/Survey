@@ -138,6 +138,132 @@ export const isPointInEllipse = (point, cx, cy, rx, ry) => {
   return (dx * dx) / (rx * rx) + (dy * dy) / (ry * ry) <= 1;
 };
 
+// Exact Euclidean distance to an axis-aligned ellipse boundary. The previous
+// average-radius normalization was only accurate for circles and could miss a
+// disk touching the thin side of a highly eccentric ellipse by many pixels.
+const distanceToEllipseBoundary = (point, cx, cy, rx, ry) => {
+  const a = Math.abs(Number(rx) || 0);
+  const b = Math.abs(Number(ry) || 0);
+  const px = Math.abs(Number(point?.x) - cx);
+  const py = Math.abs(Number(point?.y) - cy);
+
+  if (![a, b, px, py].every(Number.isFinite)) return Infinity;
+
+  // Degenerate ellipses render as a point or a line segment.
+  if (a === 0 && b === 0) return Math.hypot(px, py);
+  if (a === 0) return Math.hypot(px, Math.max(0, py - b));
+  if (b === 0) return Math.hypot(Math.max(0, px - a), py);
+
+  if (Math.abs(a - b) <= Number.EPSILON * Math.max(a, b) * 8) {
+    return Math.abs(Math.hypot(px, py) - a);
+  }
+
+  const a2 = a * a;
+  const b2 = b * b;
+  const normalized = (px * px) / a2 + (py * py) / b2;
+  if (Math.abs(normalized - 1) <= Number.EPSILON * 16) return 0;
+
+  // On an axis and inside the ellipse, the closest boundary point can leave
+  // that axis. Evaluate the two vertices plus that possible stationary point.
+  const axisEpsilon = Number.EPSILON * Math.max(a, b, 1) * 16;
+  if (normalized < 1 && (px <= axisEpsilon || py <= axisEpsilon)) {
+    const candidates = [
+      Math.hypot(a - px, py),
+      Math.hypot(px, b - py),
+    ];
+
+    if (py <= axisEpsilon && a2 > b2) {
+      const cosTheta = (a * px) / (a2 - b2);
+      if (cosTheta >= 0 && cosTheta <= 1) {
+        candidates.push(Math.hypot(
+          a * cosTheta - px,
+          b * Math.sqrt(Math.max(0, 1 - cosTheta * cosTheta)) - py,
+        ));
+      }
+    }
+    if (px <= axisEpsilon && b2 > a2) {
+      const sinTheta = (b * py) / (b2 - a2);
+      if (sinTheta >= 0 && sinTheta <= 1) {
+        candidates.push(Math.hypot(
+          a * Math.sqrt(Math.max(0, 1 - sinTheta * sinTheta)) - px,
+          b * sinTheta - py,
+        ));
+      }
+    }
+    return Math.min(...candidates);
+  }
+
+  // Lagrange multiplier for the closest point. The constraint function is
+  // monotone on the applicable interval, so bisection is deterministic even
+  // for extreme aspect ratios where Newton iteration is fragile.
+  const constraint = (lambda) => {
+    const xTerm = (a * px) / (a2 + lambda);
+    const yTerm = (b * py) / (b2 + lambda);
+    return xTerm * xTerm + yTerm * yTerm - 1;
+  };
+
+  let low;
+  let high;
+  if (normalized > 1) {
+    low = 0;
+    high = Math.max(a * px, b * py, a2, b2, 1);
+    while (constraint(high) > 0) high *= 2;
+  } else {
+    const minRadiusSquared = Math.min(a2, b2);
+    low = -minRadiusSquared + Math.max(minRadiusSquared * Number.EPSILON * 8, Number.MIN_VALUE);
+    high = 0;
+  }
+
+  for (let iteration = 0; iteration < 80; iteration += 1) {
+    const midpoint = (low + high) / 2;
+    if (constraint(midpoint) > 0) low = midpoint;
+    else high = midpoint;
+  }
+
+  const lambda = (low + high) / 2;
+  const closestX = (a2 * px) / (a2 + lambda);
+  const closestY = (b2 * py) / (b2 + lambda);
+  return Math.hypot(px - closestX, py - closestY);
+};
+
+// A live Fabric object's affine transform can turn a circle into a rotated,
+// non-uniformly scaled ellipse. Reduce that transformed ellipse to its
+// principal axes (the singular values/vectors of its two radius vectors), then
+// use the same exact distance calculation in world-space pixels.
+const distanceToTransformedEllipseBoundary = (point, matrix, cx, cy, rx, ry) => {
+  const center = transformPointWithMatrix(matrix, { x: cx, y: cy });
+  const ux = matrix[0] * rx;
+  const uy = matrix[1] * rx;
+  const vx = matrix[2] * ry;
+  const vy = matrix[3] * ry;
+  const xx = ux * ux + vx * vx;
+  const xy = ux * uy + vx * vy;
+  const yy = uy * uy + vy * vy;
+  const discriminant = Math.hypot(xx - yy, 2 * xy);
+  const majorRadiusSquared = Math.max(0, (xx + yy + discriminant) / 2);
+  const determinant = ux * vy - uy * vx;
+  // Deriving the small eigenvalue as determinant / large eigenvalue avoids
+  // catastrophic cancellation for very thin transformed ellipses.
+  const minorRadiusSquared = majorRadiusSquared > 0
+    ? (determinant * determinant) / majorRadiusSquared
+    : 0;
+  const majorRadius = Math.sqrt(majorRadiusSquared);
+  const minorRadius = Math.sqrt(minorRadiusSquared);
+  const angle = Math.atan2(2 * xy, xx - yy) / 2;
+  const cos = Math.cos(angle);
+  const sin = Math.sin(angle);
+  const dx = point.x - center.x;
+  const dy = point.y - center.y;
+
+  return distanceToEllipseBoundary(
+    { x: dx * cos + dy * sin, y: -dx * sin + dy * cos },
+    0,
+    0,
+    majorRadius,
+    minorRadius,
+  );
+};
+
 /**
  * Check if a point is near the ellipse stroke (outline only)
  * @param {Object} point - {x, y} point to test
@@ -150,21 +276,9 @@ export const isPointInEllipse = (point, cx, cy, rx, ry) => {
  * @returns {boolean} True if point is near ellipse stroke
  */
 export const isPointNearEllipseStroke = (point, cx, cy, rx, ry, strokeWidth, tolerance = DEFAULT_TOLERANCE) => {
-  const dx = point.x - cx;
-  const dy = point.y - cy;
-  const normalizedDist = (dx * dx) / (rx * rx) + (dy * dy) / (ry * ry);
-
-  // Calculate how far the point is from being on the ellipse (1.0 = exactly on edge)
   const effectiveStroke = strokeWidth / 2 + tolerance;
-
-  // For an ellipse, we need to estimate tolerance in normalized space
-  // Use average radius for approximation
-  const avgRadius = (rx + ry) / 2;
-  const normalizedTolerance = effectiveStroke / avgRadius;
-
-  // Point is near stroke if normalized distance is close to 1
-  return normalizedDist >= Math.pow(1 - normalizedTolerance, 2) &&
-    normalizedDist <= Math.pow(1 + normalizedTolerance, 2);
+  return effectiveStroke >= 0
+    && distanceToEllipseBoundary(point, cx, cy, rx, ry) <= effectiveStroke;
 };
 
 /**
@@ -469,10 +583,10 @@ export const isPointOnRect = (point, rectObj, tolerance = DEFAULT_TOLERANCE) => 
     const strokeWidth = rectObj.strokeWidth || 0;
     const hasFill = hasVisiblePaint(rectObj.fill);
     const hasStroke = hasVisiblePaint(rectObj.stroke);
-    if (hasFill
-      && localPoint.x >= 0 && localPoint.x <= effW
-      && localPoint.y >= 0 && localPoint.y <= effH) {
-      return true;
+    if (hasFill) {
+      const dx = Math.max(0, -localPoint.x, localPoint.x - effW);
+      const dy = Math.max(0, -localPoint.y, localPoint.y - effH);
+      if (Math.hypot(dx, dy) <= tolerance) return true;
     }
     if (hasStroke) {
       const vertices = [
@@ -507,10 +621,9 @@ export const isPointOnRect = (point, rectObj, tolerance = DEFAULT_TOLERANCE) => 
 
   // Check if point is inside the filled area
   if (hasFill) {
-    if (localPoint.x >= originX && localPoint.x <= originX + width &&
-      localPoint.y >= originY && localPoint.y <= originY + height) {
-      return true;
-    }
+    const dx = Math.max(0, originX - localPoint.x, localPoint.x - (originX + width));
+    const dy = Math.max(0, originY - localPoint.y, localPoint.y - (originY + height));
+    if (Math.hypot(dx, dy) <= tolerance) return true;
   }
 
   // Check if point is near the stroke
@@ -570,7 +683,10 @@ export const isPointOnCircle = (point, circleObj, tolerance = DEFAULT_TOLERANCE)
     const strokeWidth = circleObj.strokeWidth || 0;
     const hasFill = hasVisiblePaint(circleObj.fill);
     const hasStroke = hasVisiblePaint(circleObj.stroke);
-    if (hasFill && isPointInEllipse(probe, cx, cy, rx, ry)) return true;
+    if (hasFill && (
+      isPointInEllipse(probe, cx, cy, rx, ry)
+      || isPointNearEllipseStroke(probe, cx, cy, rx, ry, 0, tolerance)
+    )) return true;
     if (hasStroke && isPointNearEllipseStroke(probe, cx, cy, rx, ry, strokeWidth, tolerance)) {
       return true;
     }
@@ -599,12 +715,21 @@ export const isPointOnCircle = (point, circleObj, tolerance = DEFAULT_TOLERANCE)
 
   const cx = circleObj.originX === 'center' ? 0 : rx;
   const cy = circleObj.originY === 'center' ? 0 : ry;
+  const worldBoundaryDistance = distanceToTransformedEllipseBoundary(
+    point,
+    matrix,
+    cx,
+    cy,
+    rx,
+    ry,
+  );
 
   // Check if point is inside the filled area
   if (hasFill) {
-    if (isPointInEllipse(localPoint, cx, cy, rx, ry)) {
-      return true;
-    }
+    if (
+      isPointInEllipse(localPoint, cx, cy, rx, ry)
+      || worldBoundaryDistance <= tolerance
+    ) return true;
   }
 
   // Check if point is near the stroke
@@ -754,9 +879,10 @@ export const isPointOnTriangle = (point, triangleObj, tolerance = DEFAULT_TOLERA
 
   // Check if point is inside the filled area
   if (hasFill) {
-    if (isPointInPolygon(localPoint, vertices)) {
-      return true;
-    }
+    if (
+      isPointInPolygon(localPoint, vertices)
+      || isPointNearPolygonStroke(localPoint, vertices, 0, tolerance)
+    ) return true;
   }
 
   // Check if point is near the stroke
@@ -861,9 +987,10 @@ export const isPointOnPolygon = (point, polygonObj, tolerance = DEFAULT_TOLERANC
   const hasFill = hasVisiblePaint(polygonObj.fill);
   const hasStroke = hasVisiblePaint(polygonObj.stroke) && strokeWidth > 0;
 
-  if (hasFill && isPointInPolygon(point, points)) {
-    return true;
-  }
+  if (hasFill && (
+    isPointInPolygon(point, points)
+    || isPointNearPolygonStroke(point, points, 0, tolerance)
+  )) return true;
 
   if (hasStroke && isPointNearPolygonStroke(point, points, strokeWidth, tolerance)) {
     return true;

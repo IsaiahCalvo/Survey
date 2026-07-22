@@ -276,6 +276,8 @@ function bakePagePathResult(object, result) {
     flipY: _flipY,
     path: _path,
     polygons: _polygons,
+    paperCenterline: _paperCenterline,
+    paperCenterlineRuns: _paperCenterlineRuns,
     ...metadata
   } = object;
   const bounds = boundsOfCommands(result.cmds);
@@ -306,133 +308,6 @@ function bakePagePathResult(object, result) {
 }
 
 const unique = (values) => values.filter((value, index) => value && values.indexOf(value) === index);
-
-// --- Native paper-ink centerline lane (2026-07-19 root fix) ----------------
-// Every user-drawn pen/highlighter stroke persists its true centerline
-// (paperCenterline at creation; paperCenterlineRuns after an erase) alongside
-// the filled outline it renders as. Erasing through the CENTERLINE with the
-// exact capsule engine — instead of boolean-subtracting the outline — is what
-// removes martinez (sliver crescents, degenerate rings, ulp-sensitive tangent
-// output, 'holeOf' throws) from the primary drawing tool entirely. Survivors
-// re-outline through the SAME sweep used at draw time, so a partially erased
-// stroke is built exactly like a freshly drawn one.
-
-const getPaperCenterlineRuns = (object) => {
-  const rawRuns = Array.isArray(object?.paperCenterlineRuns) && object.paperCenterlineRuns.length
-    ? object.paperCenterlineRuns
-    : (Array.isArray(object?.paperCenterline) && object.paperCenterline.length
-      ? [object.paperCenterline]
-      : null);
-  if (!rawRuns) return null;
-  const runs = rawRuns
-    .map((run) => (Array.isArray(run)
-      ? run
-        .map((point) => ({ x: Number(point?.x), y: Number(point?.y) }))
-        .filter((point) => Number.isFinite(point.x) && Number.isFinite(point.y))
-      : []))
-    .filter((run) => run.length >= 2);
-  return runs.length ? runs : null;
-};
-
-// The centerline is stored in bake space (left/top 0, scale 1, angle 0 — how
-// creation and every eraser bake write it). A plain user MOVE only changes
-// left/top, which maps 1:1 onto translating the centerline; any residual
-// scale/rotation means the centerline no longer matches the visuals, so the
-// lane refuses and the polygon lane (with its sliver cull) handles it.
-const centerlineLaneEligible = (object) => (
-  Boolean(object?.paperInkGeometry)
-  && numberOr(object?.sourceWidth) > 0
-  && Math.abs(numberOr(object?.scaleX, 1) - 1) < 1e-6
-  && Math.abs(numberOr(object?.scaleY, 1) - 1) < 1e-6
-  && Math.abs(numberOr(object?.angle, 0)) < 1e-6
-);
-
-const runsToCommands = (runs, offsetX, offsetY) => {
-  const cmds = [];
-  for (const run of runs) {
-    run.forEach((point, index) => {
-      cmds.push([index === 0 ? 'M' : 'L', point.x + offsetX, point.y + offsetY]);
-    });
-  }
-  return cmds;
-};
-
-const commandsToRuns = (cmds) => {
-  const runs = [];
-  let run = null;
-  for (const command of cmds || []) {
-    if (command[0] === 'M') {
-      run = [{ x: numberOr(command[1]), y: numberOr(command[2]) }];
-      runs.push(run);
-    } else if (run && command.length >= 3) {
-      run.push({
-        x: numberOr(command[command.length - 2]),
-        y: numberOr(command[command.length - 1]),
-      });
-    }
-  }
-  return runs.filter((r) => r.length >= 2);
-};
-
-function bakeCenterlineSurvivor(object, survivor) {
-  const width = numberOr(object?.sourceWidth) || numberOr(survivor?.strokeWidth) || 1;
-  let polygons;
-  try {
-    polygons = normalizeMultiPolygon(commandsToPolygonSet(survivor.cmds, {
-      fill: false,
-      strokeWidth: width,
-      simplifyTolerance: Math.max(0.05, width * 0.1),
-    }));
-  } catch (error) {
-    console.warn('Centerline survivor re-outline failed; annotation left unchanged:', object?.id, error);
-    return null;
-  }
-  if (!polygons.length) return null;
-  const cmds = polygonSetToCommands(polygons);
-  const bounds = boundsOfCommands(cmds);
-  const {
-    left: _left,
-    top: _top,
-    width: _width,
-    height: _height,
-    pathOffset: _pathOffset,
-    scaleX: _scaleX,
-    scaleY: _scaleY,
-    angle: _angle,
-    skewX: _skewX,
-    skewY: _skewY,
-    flipX: _flipX,
-    flipY: _flipY,
-    path: _path,
-    polygons: _polygons,
-    paperCenterline: _paperCenterline,
-    paperCenterlineRuns: _paperCenterlineRuns,
-    ...metadata
-  } = object;
-  return {
-    ...metadata,
-    type: 'path',
-    path: cmds,
-    polygons,
-    // Survivor centerline pieces, in bake space — the next erase re-enters
-    // this exact lane, so repeated passes never regress to polygon math.
-    paperCenterlineRuns: commandsToRuns(survivor.cmds),
-    paperInkGeometry: metadata.paperInkGeometry || 'v1',
-    paperEraserGeometry: 'v1',
-    fillRule: 'evenodd',
-    fill: object.fill,
-    stroke: 'transparent',
-    strokeWidth: 0,
-    sourceWidth: width,
-    left: 0,
-    top: 0,
-    width: bounds.w,
-    height: bounds.h,
-    scaleX: 1,
-    scaleY: 1,
-    angle: 0,
-  };
-}
 
 /**
  * Applies one eraser gesture directly to the latest persisted page model.
@@ -474,44 +349,12 @@ export function erasePageAnnotations({
     const operation = requestedMode === 'full'
       ? 'full'
       : (getEraserOperation(object, 'partial') === 'partial' ? 'partial' : 'full');
-    // 2026-07-19 root fix, part 2: native paper ink (filled swept outline +
-    // persisted true centerline) partial-erases through the EXACT capsule
-    // engine on its centerline — never through martinez on its outline. The
-    // eraser reach (radius + sourceWidth/2 against the centerline) equals rim
-    // contact with the visible body, and survivors re-outline through the
-    // same sweep used at draw time, so preview, commit, and re-draw share one
-    // geometry model.
-    if (operation === 'partial' && centerlineLaneEligible(object)) {
-      const runs = getPaperCenterlineRuns(object);
-      if (runs) {
-        const cmds = runsToCommands(runs, numberOr(object.left), numberOr(object.top));
-        const width = numberOr(object.sourceWidth);
-        pathGroups.partial.push({
-          id: internalId,
-          type: 'ink',
-          cmds,
-          fill: null,
-          stroke: object.fill || object.stroke || '#151a18',
-          strokeWidth: width,
-          sourceWidth: width,
-          bounds: boundsOfCommands(cmds),
-          locked: object?.locked === true,
-        });
-        pathRecords.set(internalId, { object, index, centerline: true });
-        return;
-      }
-    }
-    // 2026-07-19 root fix, part 1: stroked ink is NO LONGER expanded into a
-    // filled outline before partial erase. It flows to eraseAnnotations as a
-    // plain centerline + strokeWidth, where the exact capsule engine splits it
-    // and the survivors stay stroked ink (same annotation, multiple subpaths —
-    // the PDF /InkList shape). That conversion (stroke → filled polygon) was
-    // the root of the live/commit hit-test divergence AND the martinez
-    // boolean-op fragility for pen/highlighter strokes. Already-filled
-    // geometry WITHOUT a usable centerline (imported outline ink, baked
-    // non-uniform transforms, moved+scaled ink) still routes to polygon
-    // subtraction inside eraseAnnotations — now behind a sliver cull.
-    const annotation = pathToPageAnnotation(object, internalId);
+    const annotation = pathToPageAnnotation(object, internalId, {
+      // The feature-spike contract: partial ink erase subtracts the round
+      // eraser shape from the stroke's actual filled outline. This preserves
+      // the center when the eraser only bites an edge.
+      forcePolygon: operation === 'partial',
+    });
     if (!annotation) return;
     pathGroups[operation].push(annotation);
     pathRecords.set(internalId, { object, index });
@@ -538,10 +381,7 @@ export function erasePageAnnotations({
       const survivor = survivorById.get(internalId);
       const originalGeometry = annotations.find((annotation) => annotation.id === internalId);
       if (!survivor || JSON.stringify(survivor.cmds) === JSON.stringify(originalGeometry?.cmds)) continue;
-      const replacement = record.centerline
-        ? bakeCenterlineSurvivor(record.object, survivor)
-        : bakePagePathResult(record.object, survivor);
-      if (!replacement) continue; // re-outline failed: keep the object unchanged
+      const replacement = bakePagePathResult(record.object, survivor);
       replacementByIndex.set(record.index, replacement);
       changedIds.push(objectId);
     }

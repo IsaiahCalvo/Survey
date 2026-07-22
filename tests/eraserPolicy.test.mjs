@@ -36,40 +36,104 @@ test('partially erased pen outlines remain partial-erase eligible', () => {
   })), true);
 });
 
-test('generic paths and every non-path annotation require full erase', () => {
-  assert.equal(isPartialEraseEligible(path()), false);
-  assert.equal(isPartialEraseEligible(path({ tool: 'arrow' })), false);
-  assert.equal(isPartialEraseEligible({ type: 'line', tool: 'pen' }), false);
-  assert.equal(isPartialEraseEligible({ type: 'rect', tool: 'highlighter' }), false);
-  assert.equal(isPartialEraseEligible({ type: 'textbox', text: 'Note' }), false);
-  assert.equal(isPartialEraseEligible({ type: 'callout' }), false);
+test('every shape, text, and other atomic annotation requires full erase', () => {
+  const atomicAnnotations = [
+    path(),
+    path({ tool: 'line' }),
+    path({ tool: 'arrow' }),
+    path({ tool: 'rect' }),
+    path({ tool: 'ellipse' }),
+    path({ tool: 'polygon' }),
+    path({ tool: 'cloud' }),
+    path({ tool: 'text' }),
+    path({ tool: 'callout' }),
+    path({ tool: 'stamp' }),
+    path({ tool: 'survey-marker' }),
+    path({ data: { type: 'counter' } }),
+    path({ pdfAnnotationType: 'Line' }),
+    path({ pdfAnnotationType: 'Square' }),
+    path({ pdfAnnotationType: 'Circle' }),
+    path({ pdfAnnotationType: 'Polygon' }),
+    path({ pdfAnnotationType: 'FreeText' }),
+    path({ pdfAnnotationType: 'Highlight', tool: 'highlighter' }),
+    { type: 'line', tool: 'pen' },
+    { type: 'rect', tool: 'highlighter' },
+    { type: 'ellipse' },
+    { type: 'polygon' },
+    { type: 'textbox', text: 'Note' },
+    { type: 'callout' },
+    { type: 'image' },
+  ];
+
+  for (const annotation of atomicAnnotations) {
+    assert.equal(isPartialEraseEligible(annotation), false, JSON.stringify(annotation));
+    assert.equal(getEraserOperation(annotation, 'partial'), 'entire', JSON.stringify(annotation));
+  }
 });
 
-test('legacy open freehand paths are inferred conservatively', () => {
-  const legacyInk = {
+test('unlabeled rounded paths without the historical PencilBrush fingerprint are atomic', () => {
+  const legacyLookingPath = path({
     tool: undefined,
+    fill: null,
     strokeLineCap: 'round',
     strokeLineJoin: 'round',
     path: [['M', 0, 0], ['Q', 5, 8, 10, 10], ['L', 20, 20]],
-  };
-  assert.equal(isPartialEraseEligible(path({ ...legacyInk, fill: null })), true);
-  assert.equal(isPartialEraseEligible(path({ ...legacyInk, fill: 'transparent' })), true);
-  assert.equal(isPartialEraseEligible(path({ ...legacyInk, fill: '#111' })), false);
-  assert.equal(isPartialEraseEligible(path({
-    ...legacyInk,
-    fill: null,
-    tool: undefined,
-    path: [['M', 0, 0], ['L', 20, 20], ['Z']],
-  })), false);
+  });
+
+  assert.equal(isPartialEraseEligible(legacyLookingPath), false);
+  assert.equal(getEraserOperation(legacyLookingPath, 'partial'), 'entire');
 });
 
-test('legacy short round freehand strokes remain partially erasable', () => {
-  assert.equal(isPartialEraseEligible(path({
+test('historical Fabric PencilBrush pen/highlighter saves remain partial-erase eligible', () => {
+  const legacyInk = path({
     tool: undefined,
     fill: null,
+    stroke: '#e11d48',
+    strokeWidth: 7,
+    strokeUniform: true,
     strokeLineCap: 'round',
     strokeLineJoin: 'round',
-    path: [['M', 4, 8], ['L', 24, 8]],
+    strokeMiterLimit: 10,
+    strokeDashArray: null,
+    path: [['M', 0, 0], ['Q', 5, 8, 10, 10], ['Q', 15, 12, 20, 20], ['L', 22, 22]],
+  });
+
+  assert.equal(isPartialEraseEligible(legacyInk), true);
+  assert.equal(isPartialEraseEligible({
+    ...legacyInk,
+    globalCompositeOperation: 'multiply',
+  }), true, 'old highlighter saves share the PencilBrush fingerprint');
+});
+
+test('legacy fingerprint refuses curved shapes, imported marks, and closed paths', () => {
+  const legacyInk = path({
+    tool: undefined,
+    fill: null,
+    stroke: '#111111',
+    strokeWidth: 5,
+    strokeUniform: true,
+    strokeLineCap: 'round',
+    strokeLineJoin: 'round',
+    strokeMiterLimit: 10,
+    strokeDashArray: null,
+    path: [['M', 0, 0], ['Q', 5, 8, 10, 10], ['L', 20, 20]],
+  });
+
+  assert.equal(isPartialEraseEligible({ ...legacyInk, data: { isCurved: true } }), false);
+  assert.equal(isPartialEraseEligible({ ...legacyInk, data: { type: 'callout' } }), false);
+  assert.equal(isPartialEraseEligible({ ...legacyInk, annotationId: 'survey-marker' }), false);
+  assert.equal(isPartialEraseEligible({ ...legacyInk, isPdfImported: true }), false);
+  assert.equal(isPartialEraseEligible({
+    ...legacyInk,
+    path: [['M', 0, 0], ['Q', 5, 8, 10, 10], ['L', 20, 20], ['Z']],
+  }), false);
+});
+
+test('known filled-outline ink stays partial-eligible without a tool tag', () => {
+  assert.equal(isPartialEraseEligible(path({
+    tool: undefined,
+    paperInkGeometry: 'v1',
+    polygons: [[[[0, 0], [20, 0], [20, 10], [0, 10], [0, 0]]]],
   })), true);
 });
 

@@ -9,17 +9,26 @@ const hasVisiblePaint = (value) => {
     && paint !== 'rgba(0, 0, 0, 0)';
 };
 
-const isLegacyFreehandPath = (annotation) => {
-  if (hasVisiblePaint(annotation.fill)) return false;
+// Pen/highlighter saves created before tool provenance was persisted used the
+// Fabric PencilBrush serialization fingerprint below. Keep this deliberately
+// narrower than a generic "open rounded path" guess: curves, imported marks,
+// callout projections, and shape paths must remain atomic.
+const isLegacyPencilBrushInk = (annotation) => {
+  if (annotation.fill !== null) return false;
   if (!hasVisiblePaint(annotation.stroke) || Number(annotation.strokeWidth) <= 0) return false;
+  if (annotation.strokeUniform !== true) return false;
   if (normalize(annotation.strokeLineCap) !== 'round') return false;
   if (normalize(annotation.strokeLineJoin) !== 'round') return false;
-  if (annotation.path.some((command) => normalize(command?.[0]) === 'z')) return false;
-  const drawableCommands = annotation.path.filter((command) => (
-    ['l', 'q', 'c'].includes(normalize(command?.[0]))
-  ));
-  return drawableCommands.length >= 1
-    || drawableCommands.some((command) => ['q', 'c'].includes(normalize(command?.[0])));
+  if (Number(annotation.strokeMiterLimit) !== 10) return false;
+  if (annotation.strokeDashArray != null) return false;
+  if (annotation.data?.isCurved || annotation.data?.type) return false;
+  if (annotation.annotationId || annotation.calloutId || annotation.isPdfImported) return false;
+
+  const commands = annotation.path.map((command) => normalize(command?.[0]));
+  return commands.length >= 3
+    && commands[0] === 'm'
+    && commands[commands.length - 1] === 'l'
+    && commands.slice(1, -1).every((command) => command === 'q');
 };
 
 /**
@@ -37,7 +46,16 @@ export function isPartialEraseEligible(annotation) {
 
   const tool = normalize(annotation.tool ?? annotation.data?.tool);
   if (tool) return tool === 'pen' || tool === 'highlighter';
-  return isLegacyFreehandPath(annotation);
+
+  // Known filled-outline ink survives repeated bites even if an old save lost
+  // its tool field. The producer-owned geometry tag is unambiguous.
+  if (
+    normalize(annotation.paperInkGeometry) === 'v1'
+    && Array.isArray(annotation.polygons)
+    && annotation.polygons.length > 0
+  ) return true;
+
+  return isLegacyPencilBrushInk(annotation);
 }
 
 export function getEraserOperation(annotation, requestedMode) {

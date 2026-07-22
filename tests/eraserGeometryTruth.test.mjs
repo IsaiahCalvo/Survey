@@ -129,7 +129,7 @@ test('curved line (midpoint) is hittable along the drawn curve', () => {
   assert.equal(touch(line, 50, 0, 3), false, 'chord midpoint is off the drawn curve');
 });
 
-// --- Native paper ink: exact centerline lane -------------------------------
+// --- Native paper ink: true visible-shape subtraction ----------------------
 
 const drawInk = (id, points, width = 12) => createProductionPaperInk({
   id,
@@ -139,49 +139,89 @@ const drawInk = (id, points, width = 12) => createProductionPaperInk({
   width,
 });
 
-test('fresh pen ink partial-erases via the centerline lane: split survivors, runs persisted, no polygon-lane artifacts', () => {
-  const ink = drawInk('fresh-ink', [{ x: 0, y: 50 }, { x: 200, y: 50 }]);
-  const result = erasePageAnnotations({
-    pageAnnotations: { objects: [ink] },
-    eraserPoints: [{ x: 100, y: 50 }],
-    eraserRadius: 10,
-    mode: 'partial',
-  });
-  const survivor = result.pageAnnotations.objects[0];
+function pointInRing({ x, y }, ring) {
+  let inside = false;
+  for (let index = 0, previous = ring.length - 1; index < ring.length; previous = index, index += 1) {
+    const [xi, yi] = ring[index];
+    const [xj, yj] = ring[previous];
+    if (((yi > y) !== (yj > y)) && (x < ((xj - xi) * (y - yi)) / (yj - yi) + xi)) {
+      inside = !inside;
+    }
+  }
+  return inside;
+}
 
-  assert.equal(result.didChange, true);
-  assert.deepEqual(result.changedIds, ['fresh-ink']);
-  // Still the filled-outline visual model, rebuilt from surviving centerline.
-  assert.equal(survivor.fillRule, 'evenodd');
-  assert.equal(survivor.strokeWidth, 0);
-  assert.equal(survivor.sourceWidth, ink.sourceWidth);
-  // The surviving centerline pieces are persisted for the NEXT erase.
-  assert.equal(Array.isArray(survivor.paperCenterlineRuns), true);
-  assert.equal(survivor.paperCenterlineRuns.length, 2);
-  // The cut interval matches the exact reach r + w/2 around x=100.
-  const allXs = survivor.paperCenterlineRuns.flat().map((p) => p.x);
-  assert.ok(Math.max(...allXs.filter((x) => x < 100)) < 100 - 8, 'left piece ends before the cut');
-  assert.ok(Math.min(...allXs.filter((x) => x > 100)) > 100 + 8, 'right piece starts after the cut');
+function pointInPolygonSet(point, polygons) {
+  return (polygons || []).some((polygon) => (
+    polygon.reduce((inside, ring) => (pointInRing(point, ring) ? !inside : inside), false)
+  ));
+}
+
+test('thick native pen and highlighter strokes take a shallow rounded edge bite while their center survives', async (t) => {
+  for (const tool of ['pen', 'highlighter']) {
+    await t.test(tool, () => {
+      const ink = createProductionPaperInk({
+        id: `${tool}-edge-bite`,
+        tool,
+        points: [{ x: 0, y: 50 }, { x: 200, y: 50 }],
+        color: '#d11b2d',
+        width: 20,
+      });
+      const result = erasePageAnnotations({
+        pageAnnotations: { objects: [ink] },
+        eraserPoints: [{ x: 100, y: 38 }],
+        eraserRadius: 7,
+        mode: 'partial',
+      });
+      const survivor = result.pageAnnotations.objects[0];
+
+      assert.equal(result.didChange, true);
+      assert.deepEqual(result.changedIds, [`${tool}-edge-bite`]);
+      assert.deepEqual(result.deletedIds, []);
+      assert.equal(survivor.fillRule, 'evenodd');
+      assert.equal(survivor.strokeWidth, 0);
+      assert.ok(Array.isArray(survivor.polygons) && survivor.polygons.length > 0);
+      assert.equal(
+        pointInPolygonSet({ x: 100, y: 41 }, survivor.polygons),
+        false,
+        'eraser removes the touched upper edge',
+      );
+      assert.equal(
+        pointInPolygonSet({ x: 100, y: 50 }, survivor.polygons),
+        true,
+        'shallow edge contact must not cut through the center',
+      );
+      assert.equal(
+        pointInPolygonSet({ x: 70, y: 41 }, survivor.polygons),
+        true,
+        'nearby untouched edge remains intact',
+      );
+    });
+  }
 });
 
-test('second erase pass re-enters the centerline lane (runs -> runs)', () => {
-  const ink = drawInk('twice', [{ x: 0, y: 50 }, { x: 300, y: 50 }]);
+test('repeated partial erases rebase on the already carved polygon instead of an original centerline', () => {
+  const ink = drawInk('twice', [{ x: 0, y: 50 }, { x: 300, y: 50 }], 20);
   const first = erasePageAnnotations({
     pageAnnotations: { objects: [ink] },
-    eraserPoints: [{ x: 80, y: 50 }],
-    eraserRadius: 10,
+    eraserPoints: [{ x: 80, y: 38 }],
+    eraserRadius: 7,
     mode: 'partial',
   });
   const second = erasePageAnnotations({
     pageAnnotations: first.pageAnnotations,
-    eraserPoints: [{ x: 200, y: 50 }],
-    eraserRadius: 10,
+    eraserPoints: [{ x: 200, y: 38 }],
+    eraserRadius: 7,
     mode: 'partial',
   });
   const survivor = second.pageAnnotations.objects[0];
+
   assert.equal(second.didChange, true);
-  assert.equal(survivor.paperCenterlineRuns.length, 3);
   assert.equal(survivor.fillRule, 'evenodd');
+  assert.equal(pointInPolygonSet({ x: 80, y: 41 }, survivor.polygons), false, 'first bite persists');
+  assert.equal(pointInPolygonSet({ x: 200, y: 41 }, survivor.polygons), false, 'second bite persists');
+  assert.equal(pointInPolygonSet({ x: 80, y: 50 }, survivor.polygons), true, 'first center survives');
+  assert.equal(pointInPolygonSet({ x: 200, y: 50 }, survivor.polygons), true, 'second center survives');
 });
 
 // --- Polygon-lane sliver cull ----------------------------------------------

@@ -34,6 +34,10 @@ import { selectEraserPreviewBaseline } from '../utils/eraserPreviewHandoff.js';
 import { getCoalescedOrCurrentEvents } from '../utils/eraserPointerSamples.js';
 import { paintAnnotationCanvas } from '../utils/annotationCanvasPainter.js';
 import { projectPaperInkForPresentation } from '../utils/paperInkPresentation.js';
+import {
+  getSurveyMarkerEraserHitIds,
+  surveyMarkerToEraserObject,
+} from '../utils/surveyMarkerEraser.js';
 
 let presentationRevisionSequence = 0;
 
@@ -150,8 +154,11 @@ const FabricEraserCanvas = memo(({
   pageHeight,
   annotations,
   callouts = [],
+  surveyMarkers = [],
   onEraseCommit,
   onEraseCallout,
+  onEraseSurveyMarker,
+  canEraseSurveyMarker,
   onEraseTextMarkup,
   // UX (2026-07-14, E/P text-bob fix): reports when this page's live erase
   // preview is on screen (true at activation, false when the preview
@@ -198,15 +205,18 @@ const FabricEraserCanvas = memo(({
   const lastClientPosRef = useRef(null);
   const eraserDiagGestureRef = useRef(null);
   const initialZoomGenerationRef = useRef(zoomGeneration);
-  // Per-gesture AABB cache: { byIndex: Map<number,bounds>, byCallout: Map }.
+  // Per-gesture AABB cache: { byIndex, byCallout, bySurveyMarker }.
   // Built once at pointer-down from the live SVG layer's getBBox (see
   // buildGestureBounds); powers the per-move fast-reject prefilter.
   const gestureBoundsRef = useRef(null);
 
   const annotationsRef = useRef(annotations);
   const calloutsRef = useRef(callouts);
+  const surveyMarkersRef = useRef(surveyMarkers);
   const onEraseCommitRef = useRef(onEraseCommit);
   const onEraseCalloutRef = useRef(onEraseCallout);
+  const onEraseSurveyMarkerRef = useRef(onEraseSurveyMarker);
+  const canEraseSurveyMarkerRef = useRef(canEraseSurveyMarker);
   const onEraseTextMarkupRef = useRef(onEraseTextMarkup);
   const eraserModeRef = useRef(eraserMode);
   const eraserSizeRef = useRef(eraserSize);
@@ -219,8 +229,11 @@ const FabricEraserCanvas = memo(({
 
   annotationsRef.current = annotations;
   calloutsRef.current = callouts;
+  surveyMarkersRef.current = surveyMarkers;
   onEraseCommitRef.current = onEraseCommit;
   onEraseCalloutRef.current = onEraseCallout;
+  onEraseSurveyMarkerRef.current = onEraseSurveyMarker;
+  canEraseSurveyMarkerRef.current = canEraseSurveyMarker;
   onEraseTextMarkupRef.current = onEraseTextMarkup;
   eraserModeRef.current = eraserMode;
   eraserSizeRef.current = eraserSize;
@@ -254,7 +267,8 @@ const FabricEraserCanvas = memo(({
   const buildGestureBounds = useCallback(() => {
     const byIndex = new Map();
     const byCallout = new Map();
-    gestureBoundsRef.current = { byIndex, byCallout };
+    const bySurveyMarker = new Map();
+    gestureBoundsRef.current = { byIndex, byCallout, bySurveyMarker };
     if (typeof document === 'undefined') return;
     const surface = containerRef.current?.closest('[data-annotation-real-surface]');
     const svg = surface?.querySelector?.('svg[data-svg-annotation-layer]');
@@ -278,6 +292,9 @@ const FabricEraserCanvas = memo(({
     });
     svg.querySelectorAll('[data-callout-id]').forEach((element) => {
       union(byCallout, String(element.getAttribute('data-callout-id')))(element);
+    });
+    svg.querySelectorAll('[data-survey-marker-id]').forEach((element) => {
+      union(bySurveyMarker, String(element.getAttribute('data-survey-marker-id')))(element);
     });
     // Inflate each geometry box by its own stroke half-width (getBBox excludes
     // stroke) so the fast-reject stays a true superset of the hit test's reach.
@@ -307,6 +324,13 @@ const FabricEraserCanvas = memo(({
     if (!queryBounds) return true;
     const bounds = gestureBoundsRef.current?.byCallout?.get(String(calloutId));
     if (!bounds) return true;
+    return boundsIntersect(bounds, queryBounds);
+  }, []);
+
+  const surveyMarkerBoundsAllow = useCallback((annotationId, queryBounds) => {
+    if (!queryBounds) return true;
+    const bounds = gestureBoundsRef.current?.bySurveyMarker?.get(String(annotationId));
+    if (!bounds) return false;
     return boundsIntersect(bounds, queryBounds);
   }, []);
 
@@ -695,6 +719,35 @@ const FabricEraserCanvas = memo(({
     });
   }, [calloutBoundsAllow, collectPageCallouts, getPageRadius, pageHeight, pageNumber, pageWidth]);
 
+  // Survey markers live outside annotations.objects. Their live SVG DOM IDs are
+  // the visibility authority for the gesture, while PDFViewer owns the source
+  // permission predicate. Both preview and commit call this exact helper.
+  const getPermittedSurveyMarkerHitIds = useCallback((eraserPoints, excludeIds) => {
+    if (typeof onEraseSurveyMarkerRef.current !== 'function') return [];
+    const visibleBounds = gestureBoundsRef.current?.bySurveyMarker;
+    if (!(visibleBounds instanceof Map) || visibleBounds.size === 0) return [];
+    const radius = getPageRadius();
+    const queryBounds = segmentQueryBounds(eraserPoints, radius);
+    const visibleIds = new Set(visibleBounds.keys());
+    return getSurveyMarkerEraserHitIds({
+      surveyMarkers: Array.isArray(surveyMarkersRef.current) ? surveyMarkersRef.current : [],
+      visibleIds,
+      excludeIds,
+      eraserPoints,
+      eraserRadius: radius,
+      canErase: (annotationId) => {
+        try {
+          return typeof canEraseSurveyMarkerRef.current === 'function'
+            ? canEraseSurveyMarkerRef.current(annotationId) === true
+            : true;
+        } catch {
+          return false;
+        }
+      },
+      boundsAllow: (annotationId) => surveyMarkerBoundsAllow(annotationId, queryBounds),
+    });
+  }, [getPageRadius, surveyMarkerBoundsAllow]);
+
   // Whole-delete pending-erase visual for callouts — the exact treatment
   // non-path shapes get in eraseAtomicObjectsFromPreview, ported to the
   // callout render pipeline. Mask-clone mode hides the cloned callout DOM
@@ -748,6 +801,55 @@ const FabricEraserCanvas = memo(({
     previewContext.restore();
   }, [collectPageCallouts, pageHeight, pageWidth]);
 
+  // Whole-delete preview for survey markers. The normal path hides the entire
+  // cloned SVG group (fill, border, hover/selection chrome together). The rare
+  // painted fallback uses the same rect projection as the presentation canvas.
+  const ghostSurveyMarkersFromPreview = useCallback((ids) => {
+    if (!ids?.length) return;
+    const idSet = new Set(ids.map(String));
+    const clone = maskCloneRef.current;
+    if (clone?.root) {
+      clone.root.querySelectorAll('[data-survey-marker-id]').forEach((element) => {
+        if (idSet.has(String(element.getAttribute('data-survey-marker-id')))) {
+          element.style.display = 'none';
+        }
+      });
+      return;
+    }
+    const preview = livePreviewCanvasRef.current;
+    if (!preview || preview.style.display === 'none') return;
+    const objects = (Array.isArray(surveyMarkersRef.current) ? surveyMarkersRef.current : [])
+      .filter((marker) => idSet.has(String(marker?.annotationId)))
+      .map(surveyMarkerToEraserObject)
+      .filter(Boolean);
+    if (!objects.length || typeof document === 'undefined') return;
+    const mask = livePreviewMaskCanvasRef.current || document.createElement('canvas');
+    livePreviewMaskCanvasRef.current = mask;
+    mask.width = preview.width;
+    mask.height = preview.height;
+    const maskContext = mask.getContext('2d');
+    const previewContext = preview.getContext('2d');
+    if (!maskContext || !previewContext) return;
+    const drawScale = Number(preview.dataset.canvasDrawScale) || (preview.width / pageWidth);
+    paintAnnotationCanvas(maskContext, {
+      canvasWidth: mask.width,
+      canvasHeight: mask.height,
+      drawScale,
+      drawScaleY: Number(preview.dataset.canvasDrawScaleY) || drawScale,
+      displayScale: Math.max(0.01, Number(viewerScaleRef.current) || 1),
+      pageWidth,
+      pageHeight,
+      offsetX: Number(preview.dataset.canvasPageOffsetX) || 0,
+      offsetY: Number(preview.dataset.canvasPageOffsetY) || 0,
+      objects,
+    });
+    previewContext.save();
+    previewContext.setTransform(1, 0, 0, 1, 0, 0);
+    previewContext.globalCompositeOperation = 'destination-out';
+    previewContext.drawImage(mask, 0, 0);
+    previewContext.restore();
+  }, [pageHeight, pageWidth]);
+
   // Flip a pointer's preview live and replay everything stashed while
   // activation was pending (photo decode in flight, or the old
   // presentation-not-painted failure window).
@@ -771,13 +873,27 @@ const FabricEraserCanvas = memo(({
       }
       pointer.pendingCalloutIds.clear();
     }
+    if (pointer.pendingSurveyMarkerIds.size) {
+      const stashedSurveyMarkers = [...pointer.pendingSurveyMarkerIds]
+        .filter((id) => !pointer.previewSurveyMarkerIds.has(id));
+      if (stashedSurveyMarkers.length) {
+        ghostSurveyMarkersFromPreview(stashedSurveyMarkers);
+        stashedSurveyMarkers.forEach((id) => pointer.previewSurveyMarkerIds.add(id));
+      }
+      pointer.pendingSurveyMarkerIds.clear();
+    }
     if (pointer.pendingPartial && !pointer.previewHasPartial) {
       pointer.previewHasPartial = true;
       pointer.pendingPartial = false;
       drawLiveErasePreviewSegment(pointer.points);
       maskCarvedPathHits(pointer, pointer.points);
     }
-  }, [drawLiveErasePreviewSegment, eraseAtomicObjectsFromPreview, ghostCalloutsFromPreview]);
+  }, [
+    drawLiveErasePreviewSegment,
+    eraseAtomicObjectsFromPreview,
+    ghostCalloutsFromPreview,
+    ghostSurveyMarkersFromPreview,
+  ]);
 
   // ROOT FIX for "annotations look different while erasing" (2026-07-14):
   // the live carve renders on a CLONE of the real SVG layer — same engine,
@@ -959,6 +1075,12 @@ const FabricEraserCanvas = memo(({
   }, []);
 
   const getEraseBlockReason = useCallback((object) => {
+    // SVGAnnotationLayer deliberately hides legacy survey-marker proxy rects
+    // (identified by top-level annotationId). The marker source has its own
+    // visibility and permission model, so the generic annotations.objects lane
+    // must never mutate that proxy behind the dedicated marker transaction.
+    if (object?.annotationId) return 'survey-marker-source';
+
     // Locked permissions model, decision 2026-07-17: the eraser DELIBERATELY
     // stays on canModify (author-or-owner) while selection/delete moved to
     // canDelete. Rationale: erase commits destructively MID-GESTURE (whole-
@@ -1133,6 +1255,14 @@ const FabricEraserCanvas = memo(({
         ghostCalloutsFromPreview(liveCalloutHits);
         liveCalloutHits.forEach((id) => pointer.previewCalloutIds.add(id));
       }
+      const liveSurveyMarkerHits = getPermittedSurveyMarkerHitIds(
+        segment,
+        pointer.previewSurveyMarkerIds,
+      );
+      if (liveSurveyMarkerHits.length) {
+        ghostSurveyMarkersFromPreview(liveSurveyMarkerHits);
+        liveSurveyMarkerHits.forEach((id) => pointer.previewSurveyMarkerIds.add(id));
+      }
       return true;
     }
     // Pre-carve phase classifies only the NEW segment (earlier segments were
@@ -1150,7 +1280,11 @@ const FabricEraserCanvas = memo(({
       segment?.length ? segment : pointer.points,
       pointer.previewCalloutIds,
     );
-    if (!plan.shouldPreview && !calloutHitIds.length) return false;
+    const surveyMarkerHitIds = getPermittedSurveyMarkerHitIds(
+      segment?.length ? segment : pointer.points,
+      pointer.previewSurveyMarkerIds,
+    );
+    if (!plan.shouldPreview && !calloutHitIds.length && !surveyMarkerHitIds.length) return false;
     if (!pointer.previewActive) {
       // Mask-clone first (bit-identical, synchronous); the painted-canvas
       // copy only serves the exotic failure path (SVG missing mid-swap).
@@ -1169,6 +1303,7 @@ const FabricEraserCanvas = memo(({
         pointer.pendingPartial = pointer.pendingPartial || plan.partialIds.length > 0;
         plan.atomicIds.forEach((id) => pointer.pendingAtomicIds.add(id));
         calloutHitIds.forEach((id) => pointer.pendingCalloutIds.add(id));
+        surveyMarkerHitIds.forEach((id) => pointer.pendingSurveyMarkerIds.add(id));
         return false;
       }
     }
@@ -1196,6 +1331,12 @@ const FabricEraserCanvas = memo(({
       ghostCalloutsFromPreview(newCalloutIds);
       newCalloutIds.forEach((id) => pointer.previewCalloutIds.add(id));
     }
+    const newSurveyMarkerIds = surveyMarkerHitIds
+      .filter((id) => !pointer.previewSurveyMarkerIds.has(id));
+    if (newSurveyMarkerIds.length) {
+      ghostSurveyMarkersFromPreview(newSurveyMarkerIds);
+      newSurveyMarkerIds.forEach((id) => pointer.previewSurveyMarkerIds.add(id));
+    }
     return true;
   }, [
     activatePointerPreview,
@@ -1205,8 +1346,10 @@ const FabricEraserCanvas = memo(({
     drawLiveErasePreviewSegment,
     eraseAtomicObjectsFromPreview,
     getPermittedCalloutHitIds,
+    getPermittedSurveyMarkerHitIds,
     ghostAtomicHits,
     ghostCalloutsFromPreview,
+    ghostSurveyMarkersFromPreview,
     maskCarvedPathHits,
     pageNumber,
   ]);
@@ -1232,17 +1375,11 @@ const FabricEraserCanvas = memo(({
       canErase,
     });
 
-    const legacyCallouts = (latestPage.objects || [])
-      .map((object) => getLegacyCalloutPayload(object, pageNumber))
-      .filter(Boolean);
-    const calloutHitIds = getCalloutHitIds({
-      callouts: [...(Array.isArray(calloutsRef.current) ? calloutsRef.current : []), ...legacyCallouts],
-      pageNumber,
-      pageWidth,
-      pageHeight,
-      eraserPoints,
-      eraserRadius: radius,
-    });
+    // Commit recomputes the same permitted hit lists used by the live preview.
+    // Raw geometry-only hits here previously let callout commit bypass preview's
+    // ownership gate; survey markers likewise stay source/visibility-gated.
+    const calloutHitIds = getPermittedCalloutHitIds(eraserPoints);
+    const surveyMarkerHitIds = getPermittedSurveyMarkerHitIds(eraserPoints);
 
     let expectedRevision = null;
     if (result.didChange) {
@@ -1294,6 +1431,15 @@ const FabricEraserCanvas = memo(({
         console.error('Callout erase failed:', error);
       }
     }
+    if (surveyMarkerHitIds.length) {
+      for (const annotationId of surveyMarkerHitIds) {
+        try {
+          onEraseSurveyMarkerRef.current?.(annotationId);
+        } catch (error) {
+          console.error('Survey marker erase failed:', error);
+        }
+      }
+    }
     try {
       onEraseTextMarkupRef.current?.(pageNumber, eraserPoints, radius);
     } catch (error) {
@@ -1301,10 +1447,16 @@ const FabricEraserCanvas = memo(({
     }
 
     return {
-      didPaint: result.didChange || calloutHitIds.length > 0,
+      didPaint: result.didChange || calloutHitIds.length > 0 || surveyMarkerHitIds.length > 0,
       expectedRevision,
     };
-  }, [getEraseBlockReason, getPageRadius, pageHeight, pageNumber, pageWidth]);
+  }, [
+    getEraseBlockReason,
+    getPageRadius,
+    getPermittedCalloutHitIds,
+    getPermittedSurveyMarkerHitIds,
+    pageNumber,
+  ]);
 
   const cancelPointer = useCallback(() => {
     const pointer = pointerRef.current;
@@ -1362,9 +1514,11 @@ const FabricEraserCanvas = memo(({
       previewHasPartial: false,
       previewAtomicIds: new Set(),
       previewCalloutIds: new Set(),
+      previewSurveyMarkerIds: new Set(),
       pendingPartial: false,
       pendingAtomicIds: new Set(),
       pendingCalloutIds: new Set(),
+      pendingSurveyMarkerIds: new Set(),
     };
     eraserDiagGestureRef.current = beginAnnotationGesture({
       surface: 'FabricEraserCanvas',

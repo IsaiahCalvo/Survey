@@ -25095,6 +25095,22 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     }
   }, [selectedTemplate, handleTemplatesChange, appTemplates, updateSupabaseTemplate, sanitizeTemplateConfig, showToast]);
 
+  // The eraser previews only markers this viewer can actually delete. Saved
+  // markers use the canonical source-owned permission adapter; a marker absent
+  // from surveyMarkers is a pending marker created in this local session.
+  const canEraseSurveyMarker = useCallback((annotationId) => {
+    if (!annotationId) return false;
+    const savedSurveyMarker = surveyMarkersRef.current?.[annotationId];
+    if (!savedSurveyMarker) return true;
+    const viewerId = user?.id ?? null;
+    if (!viewerId || !documentOwnerId) return true;
+    return canModifySurveyMarker({
+      surveyMarker: savedSurveyMarker,
+      viewerId,
+      documentOwnerId,
+    });
+  }, [documentOwnerId, user?.id]);
+
   const handleDeleteSurveyMarker = useCallback((annotationId) => {
     if (!annotationId) return;
 
@@ -29308,8 +29324,11 @@ ${pageBlocks}
                                   pageHeight={resolvedPageSize.height}
                                   annotations={pageAnnotations}
                                   callouts={callouts}
+                                  surveyMarkers={newSurveyMarkersByPage[pageNumber]}
                                   onEraseCommit={(updatedJSON, eraserDiagnostics = {}) => handleSaveAnnotations(pageNumber, updatedJSON, { source: 'eraser:commit', tool: 'eraser', ...eraserDiagnostics })}
                                   onEraseCallout={handleDeleteSelectedCallouts}
+                                  onEraseSurveyMarker={handleDeleteSurveyMarker}
+                                  canEraseSurveyMarker={canEraseSurveyMarker}
                                   onErasePreviewPresentation={handleErasePreviewPresentation}
                                   eraserMode={eraserMode}
                                   eraserSize={eraserSize}
