@@ -142,6 +142,53 @@ test(
 );
 
 test(
+  'permissionScope #5c: annotationId does not bypass ownership unless the object is a canonical Survey Marker',
+  { skip: !existsSync(TARGET) ? 'permissionScope module not yet present (Plan 35-02)' : false },
+  async () => {
+    const { canEraseCanvasAnnotation } = await import(TARGET_URL);
+    const foreignOrdinaryAnnotation = {
+      type: 'path',
+      annotationId: 'ambiguous-id',
+      data: { authorId: OTHER_ID },
+    };
+    const callbackCalls = [];
+    const canEraseSurveyMarker = (annotationId) => {
+      callbackCalls.push(annotationId);
+      return true;
+    };
+
+    for (const eraserMode of ['partial', 'entire']) {
+      strictEqual(
+        canEraseCanvasAnnotation({
+          annotation: foreignOrdinaryAnnotation,
+          knownSurveyMarkerIds: new Set(),
+          canEraseSurveyMarker,
+          viewerId: COLLAB_ID,
+          documentOwnerId: OWNER_ID,
+          eraserMode,
+        }),
+        false,
+        `${eraserMode} erase must keep the foreign ordinary annotation locked`,
+      );
+    }
+    deepStrictEqual(callbackCalls, [], 'ordinary annotation never enters Survey Marker permission');
+
+    strictEqual(
+      canEraseCanvasAnnotation({
+        annotation: foreignOrdinaryAnnotation,
+        knownSurveyMarkerIds: new Set(['ambiguous-id']),
+        canEraseSurveyMarker,
+        viewerId: COLLAB_ID,
+        documentOwnerId: OWNER_ID,
+      }),
+      true,
+      'the same ID uses the marker callback only when the canonical marker source contains it',
+    );
+    deepStrictEqual(callbackCalls, ['ambiguous-id']);
+  },
+);
+
+test(
   "permissionScope #6: filterByAuthor returns only annotations the viewer can modify (drops other authors' marks for collaborator role; returns input array unchanged for owner role)",
   { skip: !existsSync(TARGET) ? 'permissionScope module not yet present (Plan 35-02)' : false },
   async () => {

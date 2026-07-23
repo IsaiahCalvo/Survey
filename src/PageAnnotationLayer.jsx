@@ -52,6 +52,7 @@ import {
 import { isPointOnObject, doesRectIntersectObject } from './utils/geometryHitTest';
 import { booleanErasePath } from './utils/geometryEraser';
 import { getEraserOperation } from './utils/eraserPolicy.js';
+import { canEraseCanvasAnnotation, canModify } from './lib/collab/permissionScope.js';
 import { configureFabricOverrides } from './utils/fabricCustomization';
 import { calculateViewportSafePosition } from './utils/menuPositioning';
 import { getMidpoint, shouldSnapToLinear, getCurvedPath, getCurveEndAngle } from './utils/lineGeometry';
@@ -2779,6 +2780,9 @@ const PageAnnotationLayer = memo(({
   onCopyCallout = () => { }, // Copy callout handler
   onPasteCallout = () => { }, // Paste callout handler
   onDeleteSelectedCallouts = () => { }, // Ownership-gated callout delete (routes through PDFViewer KAL-125 handler)
+  canEraseSurveyMarker = null,
+  viewerId = null,
+  documentOwnerId = null,
   // Properties panel positioning props
   middleAreaBounds = { top: 0, height: 500 }, // Bounds of the middle area ({top, height})
   surveyPanelWidth = 0, // Width of survey panel (0 when closed, 320 when open, 48 when collapsed)
@@ -2851,6 +2855,20 @@ const PageAnnotationLayer = memo(({
   const justCreatedCalloutRef = useRef(false);
   const onSurveyMarkerCreatedRef = useRef(onSurveyMarkerCreated);
   const onSurveyMarkerDeletedRef = useRef(onSurveyMarkerDeleted);
+  const onDeleteSelectedCalloutsRef = useRef(onDeleteSelectedCallouts);
+  const canEraseSurveyMarkerRef = useRef(canEraseSurveyMarker);
+  const knownSurveyMarkerIdsRef = useRef(new Set());
+  const viewerIdRef = useRef(viewerId);
+  const documentOwnerIdRef = useRef(documentOwnerId);
+  onDeleteSelectedCalloutsRef.current = onDeleteSelectedCallouts;
+  canEraseSurveyMarkerRef.current = canEraseSurveyMarker;
+  knownSurveyMarkerIdsRef.current = new Set(
+    (Array.isArray(newSurveyMarkers) ? newSurveyMarkers : [])
+      .map((surveyMarker) => surveyMarker?.annotationId)
+      .filter((annotationId) => typeof annotationId === 'string' && annotationId.length > 0),
+  );
+  viewerIdRef.current = viewerId;
+  documentOwnerIdRef.current = documentOwnerId;
 
   const cancelPendingPaintCommit = useCallback(() => {
     paintCommitTokenRef.current += 1;
@@ -6104,7 +6122,7 @@ const PageAnnotationLayer = memo(({
 
         canvas.add(eraserStroke);
         // Bring eraser stroke to front so it's visible above other objects
-        canvas.bringToFront(eraserStroke);
+        canvas.bringObjectToFront(eraserStroke);
         eraserStrokeVisualRef.current = eraserStroke;
         canvas.requestRenderAll();
         return;
@@ -6384,7 +6402,7 @@ const PageAnnotationLayer = memo(({
           points.push([pointer.x, pointer.y]);
           eraserStrokeVisualRef.current.set({ points });
           // Ensure eraser stroke stays on top
-          canvas.bringToFront(eraserStrokeVisualRef.current);
+          canvas.bringObjectToFront(eraserStrokeVisualRef.current);
           eraserStrokeVisualRef.current.setCoords();
         }
 
@@ -6472,6 +6490,33 @@ const PageAnnotationLayer = memo(({
             // Skip eraser stroke itself
             if (obj === eraserStrokeVisualRef.current) continue;
 
+            // Shared-store callout groups are page-model projections. Their
+            // absolute children plus group offset produce ghost geometry here;
+            // the source callouts[] lane below owns hit testing and deletion.
+            if (obj.data?.type === 'callout') continue;
+
+            // Legacy `?renderer=canvas` must enforce the same non-confirming
+            // eraser contract as FabricEraserCanvas: locked marks never mutate,
+            // owners may erase any mark, contributors may erase only their own.
+            if (obj.locked === true) continue;
+            const currentViewerId = viewerIdRef.current;
+            const currentOwnerId = documentOwnerIdRef.current;
+            const hasResolvedPermissionContext = Boolean(currentViewerId && currentOwnerId);
+            const isKnownSurveyMarker = (
+              typeof obj.annotationId === 'string'
+              && knownSurveyMarkerIdsRef.current.has(obj.annotationId)
+            );
+            const canEraseObject = (
+              !hasResolvedPermissionContext && !isKnownSurveyMarker
+            ) || canEraseCanvasAnnotation({
+              annotation: obj,
+              knownSurveyMarkerIds: knownSurveyMarkerIdsRef.current,
+              canEraseSurveyMarker: canEraseSurveyMarkerRef.current,
+              viewerId: currentViewerId,
+              documentOwnerId: currentOwnerId,
+            });
+            if (!canEraseObject) continue;
+
             // Skip if not from current space
             // Requirement: When a space is active, background annotations cannot be erased
             // Check both old spaceId (backward compatibility) and new regionId-based space relationship
@@ -6543,6 +6588,10 @@ const PageAnnotationLayer = memo(({
             // For now, let's process them.
 
             const hasHighlightId = obj.annotationId != null;
+            const hasKnownSurveyMarkerId = (
+              typeof obj.annotationId === 'string'
+              && knownSurveyMarkerIdsRef.current.has(obj.annotationId)
+            );
             const hasNeedsEntityFlag = obj.needsEntity === true;
             const isColoredSurveyMarker = obj.type === 'rect' && (
               (obj.fill && typeof obj.fill === 'string' && obj.fill.includes('rgba')) ||
@@ -6552,7 +6601,10 @@ const PageAnnotationLayer = memo(({
               (typeof obj.fill === 'string' && obj.fill === 'transparent');
             const hasStroke = obj.stroke && typeof obj.stroke === 'string' && obj.stroke !== 'transparent';
             const isNeedsEntitySurveyMarker = obj.type === 'rect' && fillIsTransparent && hasStroke;
-            const isSurveyMarker = hasHighlightId || hasNeedsEntityFlag || isColoredSurveyMarker || isNeedsEntitySurveyMarker;
+            const isSurveyMarker = hasKnownSurveyMarkerId || (
+              !hasHighlightId
+              && (hasNeedsEntityFlag || isColoredSurveyMarker || isNeedsEntitySurveyMarker)
+            );
 
             // SurveyMarkers are special: they are always fully deleted if touched
             if (isSurveyMarker) {
@@ -6608,13 +6660,26 @@ const PageAnnotationLayer = memo(({
 
           // Handle React callouts (not Fabric objects)
           // Check if eraser path intersects with any callout on this page
-          if (calloutsRef.current && calloutsRef.current.length > 0 && setCalloutsRef.current) {
+          if (calloutsRef.current && calloutsRef.current.length > 0) {
             // Get canvas zoom/scale - eraser points are in canvas coordinates which may include zoom
             const canvasZoom = canvas.getZoom ? canvas.getZoom() : 1;
             const pageCallouts = calloutsRef.current.filter(c => c.pageNumber === pageNumber);
             const calloutsToDelete = [];
 
             for (const callout of pageCallouts) {
+              if (callout?.locked === true) continue;
+              const currentViewerId = viewerIdRef.current;
+              const currentOwnerId = documentOwnerIdRef.current;
+              if (
+                currentViewerId
+                && currentOwnerId
+                && !canModify({
+                  annotation: callout,
+                  viewerId: currentViewerId,
+                  documentOwnerId: currentOwnerId,
+                })
+              ) continue;
+
               // Convert callout positions from percentages to canvas pixels
               // Note: width/height are the page dimensions at current scale, so this should match canvas coordinates
               const arrowTipPx = {
@@ -6681,11 +6746,7 @@ const PageAnnotationLayer = memo(({
 
             // Delete touched callouts
             if (calloutsToDelete.length > 0) {
-              setCalloutsRef.current(prev => {
-                const filtered = prev.filter(c => !calloutsToDelete.includes(c.id));
-                return filtered;
-              });
-              needsRenderAndSave = true;
+              onDeleteSelectedCalloutsRef.current?.(calloutsToDelete);
             }
           }
 

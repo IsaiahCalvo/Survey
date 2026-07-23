@@ -25252,6 +25252,13 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   const canEraseSurveyMarker = useCallback((annotationId) => {
     if (!annotationId) return false;
     const savedSurveyMarker = surveyMarkersRef.current?.[annotationId];
+    const pendingSurveyMarker = Object.values(newSurveyMarkersByPage || {})
+      .flatMap((pageSurveyMarkers) => (
+        Array.isArray(pageSurveyMarkers) ? pageSurveyMarkers : []
+      ))
+      .find((surveyMarker) => surveyMarker?.annotationId === annotationId);
+    if (!savedSurveyMarker && !pendingSurveyMarker) return false;
+    if ((savedSurveyMarker || pendingSurveyMarker)?.locked === true) return false;
     if (!savedSurveyMarker) return true;
     const viewerId = user?.id ?? null;
     if (!viewerId || !documentOwnerId) return true;
@@ -25260,7 +25267,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       viewerId,
       documentOwnerId,
     });
-  }, [documentOwnerId, user?.id]);
+  }, [documentOwnerId, newSurveyMarkersByPage, user?.id]);
 
   const handleDeleteSurveyMarker = useCallback((annotationId) => {
     if (!annotationId) return;
@@ -28943,6 +28950,9 @@ ${pageBlocks}
                                 selectedCalloutId={selectedCalloutId}
                                 setSelectedCalloutId={setSelectedCalloutId}
                                 onDeleteSelectedCallouts={handleDeleteSelectedCallouts}
+                                canEraseSurveyMarker={canEraseSurveyMarker}
+                                viewerId={user?.id ?? null}
+                                documentOwnerId={documentOwnerId}
                                 clipboardCallout={clipboardCallout}
                                 clipboardCalloutType={clipboardCalloutType}
                                 onCutCallout={handleCutCallout}

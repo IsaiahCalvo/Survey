@@ -163,6 +163,7 @@ test('pdf.js survey markers use one visible, permitted whole-delete lane in both
   assert.match(VIEWER_SOURCE, /surveyMarkers=\{newSurveyMarkersByPage\[pageNumber\]\}/);
   assert.match(VIEWER_SOURCE, /onEraseSurveyMarker=\{handleDeleteSurveyMarker\}/);
   assert.match(VIEWER_SOURCE, /canEraseSurveyMarker=\{canEraseSurveyMarker\}/);
+  assert.match(VIEWER_SOURCE, /if \(\(savedSurveyMarker \|\| pendingSurveyMarker\)\?\.locked === true\) return false;/);
   assert.match(ERASER_SOURCE, /const getPermittedSurveyMarkerHitIds = useCallback/);
   assert.match(ERASER_SOURCE, /data-survey-marker-id/);
   assert.match(ERASER_SOURCE, /previewSurveyMarkerIds: new Set\(\)/);
@@ -192,6 +193,50 @@ test('callout preview and commit share the same permitted hit list', () => {
     /getPermittedCalloutHitIds\(eraserPoints, undefined, radius\)/,
   );
   assert.doesNotMatch(commitSource, /getCalloutHitIds\(\{/);
+});
+
+test('projected callouts cannot enter the generic object eraser through their double-offset ghost bounds', () => {
+  const blockStart = ERASER_SOURCE.indexOf('const getEraseBlockReason');
+  const blockEnd = ERASER_SOURCE.indexOf('\n  const ghostAtomicHits', blockStart);
+  const blockSource = ERASER_SOURCE.slice(blockStart, blockEnd);
+
+  assert.match(blockSource, /object\?\.data\?\.type === 'callout'/);
+  assert.match(blockSource, /return 'callout-source'/);
+});
+
+test('legacy canvas eraser enforces locked and ownership gates before any mutation', () => {
+  assert.match(LEGACY_LAYER_SOURCE, /canEraseCanvasAnnotation/);
+  assert.match(LEGACY_LAYER_SOURCE, /viewerId = null/);
+  assert.match(LEGACY_LAYER_SOURCE, /documentOwnerId = null/);
+
+  const eraseStart = LEGACY_LAYER_SOURCE.indexOf('// Handle erasing end');
+  const eraseEnd = LEGACY_LAYER_SOURCE.indexOf('// Remove visual eraser stroke overlay', eraseStart);
+  const eraseSource = LEGACY_LAYER_SOURCE.slice(eraseStart, eraseEnd);
+  const gateIndex = eraseSource.indexOf('canEraseCanvasAnnotation({');
+  const lockedIndex = eraseSource.indexOf('obj.locked === true');
+  const mutationIndex = eraseSource.indexOf('erasePathSegment(');
+
+  assert.ok(gateIndex > -1, 'legacy eraser must check annotation ownership');
+  assert.ok(lockedIndex > -1, 'legacy eraser must skip locked annotations');
+  assert.ok(mutationIndex > gateIndex, 'ownership gate must run before path carving');
+  assert.ok(mutationIndex > lockedIndex, 'locked gate must run before path carving');
+  assert.match(eraseSource, /if \(obj\.data\?\.type === 'callout'\) continue;/);
+  assert.match(eraseSource, /onDeleteSelectedCalloutsRef\.current\?\.\(calloutsToDelete\)/);
+  assert.doesNotMatch(eraseSource, /setCalloutsRef\.current\(prev =>/);
+});
+
+test('legacy canvas does not classify an ordinary annotationId object as a survey marker', () => {
+  const eraseStart = LEGACY_LAYER_SOURCE.indexOf('// Handle erasing end');
+  const eraseEnd = LEGACY_LAYER_SOURCE.indexOf('// Remove visual eraser stroke overlay', eraseStart);
+  const eraseSource = LEGACY_LAYER_SOURCE.slice(eraseStart, eraseEnd);
+
+  assert.match(eraseSource, /knownSurveyMarkerIdsRef\.current/);
+  assert.match(eraseSource, /canEraseCanvasAnnotation\(\{/);
+  assert.doesNotMatch(
+    eraseSource,
+    /if \(obj\.annotationId\) \{[\s\S]{0,500}canEraseSurveyMarkerRef\.current/,
+  );
+  assert.match(VIEWER_SOURCE, /if \(!savedSurveyMarker && !pendingSurveyMarker\) return false;/);
 });
 
 test('production eraser commits the latest page model and waits for its exact repaint', () => {
@@ -227,6 +272,11 @@ test('legacy fallback treats the configured eraser size as a diameter too', () =
     LEGACY_LAYER_SOURCE.match(/\(eraserSizeRef\.current \|\| 20\) \/ 2/g)?.length,
     2,
   );
+  assert.equal(
+    LEGACY_LAYER_SOURCE.match(/canvas\.bringObjectToFront\(eraserStroke/g)?.length,
+    2,
+  );
+  assert.doesNotMatch(LEGACY_LAYER_SOURCE, /canvas\.bringToFront\(/);
 });
 
 test('rapid erase reuses the latest preview while the worker canvas is stale', () => {

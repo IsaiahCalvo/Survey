@@ -88,6 +88,47 @@ export function canModify({ annotation, viewerId, documentOwnerId }) {
 }
 
 /**
+ * Legacy Fabric canvases can carry `annotationId` on both Survey Marker
+ * projections and ordinary annotations. Only IDs present in the canonical
+ * Survey Marker source may use the marker permission callback; every other
+ * object stays in the normal annotation ownership lane.
+ *
+ * @param {{
+ *   annotation: object,
+ *   knownSurveyMarkerIds: Set<string>,
+ *   canEraseSurveyMarker: ((annotationId: string) => boolean)|null|undefined,
+ *   viewerId: string|null|undefined,
+ *   documentOwnerId: string|null|undefined
+ * }} args
+ * @returns {boolean}
+ */
+export function canEraseCanvasAnnotation({
+  annotation,
+  knownSurveyMarkerIds,
+  canEraseSurveyMarker,
+  viewerId,
+  documentOwnerId,
+}) {
+  if (annotation == null || annotation.locked === true) return false;
+  const annotationId = annotation.annotationId;
+  const isKnownSurveyMarker = (
+    typeof annotationId === 'string'
+    && annotationId.length > 0
+    && knownSurveyMarkerIds instanceof Set
+    && knownSurveyMarkerIds.has(annotationId)
+  );
+  if (isKnownSurveyMarker) {
+    try {
+      return typeof canEraseSurveyMarker === 'function'
+        && canEraseSurveyMarker(annotationId) === true;
+    } catch {
+      return false;
+    }
+  }
+  return canModify({ annotation, viewerId, documentOwnerId });
+}
+
+/**
  * Whether an authenticated write-capable session may request deletion.
  * Read-only viewers are stopped by ReadOnlyGate before delete handlers run.
  * Foreign-author deletes are allowed through here so the shared bulk-delete

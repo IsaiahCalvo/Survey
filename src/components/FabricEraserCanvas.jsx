@@ -848,8 +848,9 @@ const FabricEraserCanvas = memo(({
     const ownerId = documentOwnerIdRef.current;
     return hitIds.filter((id) => {
       if (excludeIds?.has(id)) return false;
-      if (!viewerId || !ownerId) return true; // boot window: same permissive posture as commit
       const callout = allCallouts.find((c) => c.id === id);
+      if (callout?.locked === true) return false;
+      if (!viewerId || !ownerId) return true; // boot window: same permissive posture as commit
       return canModify({ annotation: callout, viewerId, documentOwnerId: ownerId });
     });
   }, [calloutBoundsAllow, collectPageCallouts, getPageRadius, pageHeight, pageNumber, pageWidth]);
@@ -1341,6 +1342,11 @@ const FabricEraserCanvas = memo(({
       viewerId: currentViewerId,
       documentOwnerId: currentOwnerId,
     })) return 'permission';
+
+    // Projected callout groups are storage proxies, not eraser geometry. Their
+    // absolute child coordinates plus group left/top create a double-offset
+    // ghost hitbox; the dedicated callouts[] lane is authoritative.
+    if (object?.data?.type === 'callout') return 'callout-source';
 
     // Locked annotations: the commit engine's path lane already skips
     // locked ink, but the non-path whole-delete lane and the LIVE preview did
