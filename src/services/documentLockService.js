@@ -12,7 +12,7 @@
 // return a 42501 error and the annotation RLS would still keep the document
 // frozen. Never trust the client.
 
-import { supabase } from '../supabaseClient';
+import { supabase } from '../supabaseClient.js';
 
 export function createDocumentLockStateSequence(onChange) {
   let realtimeGeneration = 0;
