@@ -6501,14 +6501,7 @@ const PageAnnotationLayer = memo(({
             if (obj.locked === true) continue;
             const currentViewerId = viewerIdRef.current;
             const currentOwnerId = documentOwnerIdRef.current;
-            const hasResolvedPermissionContext = Boolean(currentViewerId && currentOwnerId);
-            const isKnownSurveyMarker = (
-              typeof obj.annotationId === 'string'
-              && knownSurveyMarkerIdsRef.current.has(obj.annotationId)
-            );
-            const canEraseObject = (
-              !hasResolvedPermissionContext && !isKnownSurveyMarker
-            ) || canEraseCanvasAnnotation({
+            const canEraseObject = canEraseCanvasAnnotation({
               annotation: obj,
               knownSurveyMarkerIds: knownSurveyMarkerIdsRef.current,
               canEraseSurveyMarker: canEraseSurveyMarkerRef.current,
@@ -6670,15 +6663,11 @@ const PageAnnotationLayer = memo(({
               if (callout?.locked === true) continue;
               const currentViewerId = viewerIdRef.current;
               const currentOwnerId = documentOwnerIdRef.current;
-              if (
-                currentViewerId
-                && currentOwnerId
-                && !canModify({
-                  annotation: callout,
-                  viewerId: currentViewerId,
-                  documentOwnerId: currentOwnerId,
-                })
-              ) continue;
+              if (!canModify({
+                annotation: callout,
+                viewerId: currentViewerId,
+                documentOwnerId: currentOwnerId,
+              })) continue;
 
               // Convert callout positions from percentages to canvas pixels
               // Note: width/height are the page dimensions at current scale, so this should match canvas coordinates

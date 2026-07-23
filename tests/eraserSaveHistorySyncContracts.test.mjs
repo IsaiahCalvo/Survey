@@ -26,6 +26,15 @@ test('eraser save path carries precise ids through the history/save contract', (
   assert.ok(app.includes('changedIds: eraserChangedIds'), 'expected changed id payload');
 });
 
+test('eraser save path prefers durable storage-key selectors from object mutations', () => {
+  const app = readFileSync(resolve(ROOT, 'src/PDFViewer.jsx'), 'utf8');
+
+  assert.match(app, /normalizedSaveContext\?\.objectMutations/);
+  assert.match(app, /deletedStorageKeys:\s*eraserDeletedStorageKeys/);
+  assert.match(app, /changedStorageKeys:\s*eraserChangedStorageKeys/);
+  assert.match(app, /createdStorageKeys:\s*eraserCreatedStorageKeys/);
+});
+
 // 2026-07-17 (pass 2): the 'annotations:precise-fabric-commit' window event
 // dispatch was removed from PDFViewer — its only consumer, the retired
 // useAnnotationCloudSync hook, was deleted in pass 1 and a fresh grep found

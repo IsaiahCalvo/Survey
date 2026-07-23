@@ -75,7 +75,15 @@ import { calloutToAnnotationObject, projectCalloutsIntoByPage, deriveCalloutsFro
 import { buildHistoryEventRowFromDebugEvent, recordDocumentHistoryEvent, recordAndNotifyDocumentHistoryEvent } from './services/documentHistoryService.js';
 import { buildPrintableRegularAnnotationPayload, savePDFWithAnnotationsPdfLib, savePDFWithFlattenedRegularAnnotationsForPrint } from './utils/pdfAnnotationsPdfLib';
 import { buildTextSearchDiagLogSection, emitTextSearchDiag } from './utils/textSearchDiag';
-import { canDelete, canModify, canModifySurveyMarker, getAnnotationAuthorId } from './lib/collab/permissionScope.js';
+import {
+  canDelete,
+  canCommitSurveyMarkerErase,
+  canModify,
+  canModifySurveyMarker,
+  filterEraserCommitIds,
+  getAnnotationAuthorId,
+  resolveDocumentOwnerId,
+} from './lib/collab/permissionScope.js';
 import { resolveEraserInterruptionPolicy } from './utils/eraserInterruptionPolicy.js';
 import { checkFileExists, checkFileExistsInDrive, downloadExcelFile, downloadExcelFileByPath, getFileById, getFileETag, getFileMetadata, getTemplateIdFromExcel, uploadExcelFile, uploadFileContentById, uploadFileToDrive } from './services/excelGraphService';
 import { checkSessionSupport, closeWorkbookSession, createWorkbookSession, getFileIdFromPath, getUsedRange, getWorksheets, refreshWorkbookSession, updateCellRange } from './services/excelSessionService';
@@ -10381,10 +10389,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   // the documents-table user_id attached to pdfFile at Dashboard load time
   // (see handleDocumentClick / file.user_id sites). pdfFile is a File-like
   // blob and doesn't carry user_id natively — Dashboard threads it on the
-  // file object alongside id and projectId. When user_id is missing (e.g.
-  // local-only File picked from disk before sharing lands), the gate falls
-  // through to legacy behavior because canModify's boot guard requires both
-  // viewerId AND documentOwnerId.
+  // file object alongside id and projectId. A File with no document id is
+  // explicitly local-only and belongs to its opener. A cloud document with an
+  // id but missing user_id stays unresolved so destructive paths fail closed.
   //
   // HOISTED here from the Phase 35 block (~line 16450) by KAL-125 2026-06-10:
   // handleDeleteSelectedCallouts' dep array below reads documentOwnerId during
@@ -10408,18 +10415,12 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         return user?.id || null;
       }
     }
-    // Bug fix (2026-04-30): when pdfFile.user_id is missing (some load paths
-    // never resolve it — e.g. opening a PDF outside the Dashboard fetch flow),
-    // FALL BACK to the current user's id rather than null. Returning null
-    // makes canModify reject every delete because isOwner needs both args to
-    // be strings, and old annotations lack authorId, so the bulk-delete planner
-    // returns 'no-op' and the user gets a silent broken delete. Treating the
-    // viewer as the owner when ownership is unknown matches pre-Phase-35
-    // behavior (where every user could delete everything in their own session)
-    // and preserves the safety model: the only viewer who could be wrong about
-    // ownership is the doc opener, who already has full local access anyway.
-    return pdfFile?.user_id || user?.id || null;
-  }, [pdfFile?.user_id, user?.id]);
+    return resolveDocumentOwnerId({
+      documentId: pdfFile?.id,
+      documentOwnerId: pdfFile?.user_id,
+      viewerId: user?.id,
+    });
+  }, [pdfFile?.id, pdfFile?.user_id, user?.id]);
 
   // UX: Phase 14 KBD-01 — handler for Delete/Backspace on selected callouts.
   // Called by SVGAnnotationLayer's extended keydown effect via
@@ -10449,16 +10450,21 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     // KAL-125: ownership gate — mirror the standard annotation delete path
     // (useSVGInteraction.js:4207-4224). Run canModify against each callout at
     // delete time; silently drop any callout the viewer is not allowed to modify.
-    // Boot guard: when viewerId or documentOwnerId is not yet resolved, fall
-    // through permissively (same pattern as useSVGInteraction.js:4218-4222).
+    // Eraser commits are non-confirming and therefore require resolved identity
+    // plus canModify; keyboard delete keeps the confirmed canDelete route.
     const viewerId = user?.id ?? null;
-    const permittedIds = calloutIdsToDelete.filter((id) => {
-      if (!viewerId || !documentOwnerId) return true;
-      // Resolve the callout object so canModify can read its authorId chain.
-      const callout = callouts.find((c) => c.id === id);
-      if (!callout) return false;
-      return canDelete({ annotation: callout, viewerId, documentOwnerId });
-    });
+    const permittedIds = eraseRequest
+      ? filterEraserCommitIds({
+        annotationIds: calloutIdsToDelete,
+        annotations: callouts,
+        viewerId,
+        documentOwnerId,
+      })
+      : calloutIdsToDelete.filter((id) => {
+        const callout = callouts.find((c) => c.id === id);
+        if (!callout) return false;
+        return canDelete({ annotation: callout, viewerId, documentOwnerId });
+      });
     if (permittedIds.length === 0) {
       settleEraseRequest(false);
       return;
@@ -10564,12 +10570,11 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         ? calloutIds.filter(Boolean)
         : [];
     const scopedCalloutIds = [...new Set(selectedCalloutIds)];
-    // Same ownership gate as handleDeleteSelectedCallouts (incl. the
-    // boot-permissive fallthrough) — only permitted callouts may be folded
+    // Same ownership gate as keyboard handleDeleteSelectedCallouts — only
+    // permitted callouts may be folded
     // into the combined shape-half delete.
     const viewerId = user?.id ?? null;
     const permittedIds = scopedCalloutIds.filter((id) => {
-      if (!viewerId || !documentOwnerId) return true;
       const callout = callouts.find((c) => c.id === id);
       if (!callout) return false;
       return canDelete({ annotation: callout, viewerId, documentOwnerId });
@@ -22293,10 +22298,13 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       ? normalizedSaveContext.objectMutations
       : [];
     const eraserDeletedStorageKeys = eraserObjectMutations
-      .filter((mutation) => mutation?.deleted === true && mutation.storageKey != null)
+      .filter((mutation) => mutation?.deleted === true && mutation?.storageKey != null)
       .map((mutation) => String(mutation.storageKey));
     const eraserChangedStorageKeys = eraserObjectMutations
-      .filter((mutation) => mutation?.deleted !== true && mutation.storageKey != null)
+      .filter((mutation) => mutation?.deleted !== true && mutation?.storageKey != null)
+      .map((mutation) => String(mutation.storageKey));
+    const eraserCreatedStorageKeys = eraserObjectMutations
+      .filter((mutation) => mutation?.created === true && mutation?.storageKey != null)
       .map((mutation) => String(mutation.storageKey));
     const interactionId = typeof normalizedSaveContext?.interactionId === 'string' && normalizedSaveContext.interactionId.trim()
       ? normalizedSaveContext.interactionId.trim()
@@ -22412,6 +22420,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         changedIds: eraserChangedIds,
         deletedStorageKeys: eraserDeletedStorageKeys,
         changedStorageKeys: eraserChangedStorageKeys,
+        createdStorageKeys: eraserCreatedStorageKeys,
       })
       : buildAnnotationHistoryAction({
         pageNumber,
@@ -22445,6 +22454,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
           changedIds: eraserChangedIds,
           deletedStorageKeys: eraserDeletedStorageKeys,
           changedStorageKeys: eraserChangedStorageKeys,
+          createdStorageKeys: eraserCreatedStorageKeys,
         })
         : buildAnnotationHistoryAction({
           pageNumber,
@@ -24918,12 +24928,13 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
           // marker, non-owners only their own, and an unresolvable author
           // DENIES for non-owners (fail closed). The old inline chain here
           // failed OPEN on a missing author and lacked the owner override.
-          // Boot guard mirrors the KAL-125 callout delete gate above: before
-          // viewerId/documentOwnerId resolve (local-only file, pre-auth),
-          // fall through permissively to legacy behavior.
+          // Saved-marker deletes require resolved viewer and owner identity.
           const viewerId = user?.id ?? null;
-          if (!viewerId || !documentOwnerId) return true;
-          return canModifySurveyMarker({ surveyMarker, viewerId, documentOwnerId });
+          return canCommitSurveyMarkerErase({
+            surveyMarker,
+            viewerId,
+            documentOwnerId,
+          });
         });
 
       if (surveyMarkersToDelete.length === 0) {
@@ -25261,8 +25272,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     if ((savedSurveyMarker || pendingSurveyMarker)?.locked === true) return false;
     if (!savedSurveyMarker) return true;
     const viewerId = user?.id ?? null;
-    if (!viewerId || !documentOwnerId) return true;
-    return canModifySurveyMarker({
+    return canCommitSurveyMarkerErase({
       surveyMarker: savedSurveyMarker,
       viewerId,
       documentOwnerId,

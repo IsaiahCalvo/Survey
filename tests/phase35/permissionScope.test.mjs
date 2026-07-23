@@ -189,6 +189,107 @@ test(
 );
 
 test(
+  'permissionScope #5d: unresolved viewer, owner, or author context fails closed without blocking proven self/owner cases',
+  { skip: !existsSync(TARGET) ? 'permissionScope module not yet present (Plan 35-02)' : false },
+  async () => {
+    const { canEraseCanvasAnnotation } = await import(TARGET_URL);
+    const knownIds = new Set();
+    const foreign = {
+      type: 'path',
+      annotationId: 'ordinary-foreign-proxy-looking-id',
+      data: { id: 'foreign', authorId: OTHER_ID },
+    };
+    const own = {
+      type: 'path',
+      data: { id: 'own', authorId: COLLAB_ID },
+    };
+    const unknownAuthor = {
+      type: 'path',
+      annotationId: 'ordinary-unknown-proxy-looking-id',
+      data: { id: 'unknown-author' },
+    };
+    const canErase = (annotation, viewerId, documentOwnerId) => (
+      canEraseCanvasAnnotation({
+        annotation,
+        knownSurveyMarkerIds: knownIds,
+        canEraseSurveyMarker: null,
+        viewerId,
+        documentOwnerId,
+      })
+    );
+
+    strictEqual(canErase(foreign, null, OWNER_ID), false, 'missing viewer denies');
+    strictEqual(canErase(foreign, COLLAB_ID, null), false, 'missing owner denies foreign mark');
+    strictEqual(canErase(unknownAuthor, COLLAB_ID, OWNER_ID), false, 'missing author denies');
+    strictEqual(canErase(own, COLLAB_ID, null), true, 'known self-authorship survives missing owner');
+    strictEqual(canErase(foreign, OWNER_ID, OWNER_ID), true, 'known document owner still overrides');
+  },
+);
+
+test(
+  'permissionScope #5e: cloud owner metadata never falls back to the viewer while local-only files keep opener ownership',
+  { skip: !existsSync(TARGET) ? 'permissionScope module not yet present (Plan 35-02)' : false },
+  async () => {
+    const { resolveDocumentOwnerId } = await import(TARGET_URL);
+
+    strictEqual(resolveDocumentOwnerId({
+      documentId: 'cloud-document-id',
+      documentOwnerId: null,
+      viewerId: COLLAB_ID,
+    }), null, 'registered cloud document stays unresolved');
+    strictEqual(resolveDocumentOwnerId({
+      documentId: null,
+      documentOwnerId: null,
+      viewerId: COLLAB_ID,
+    }), COLLAB_ID, 'explicit local-only file belongs to its opener');
+    strictEqual(resolveDocumentOwnerId({
+      documentId: 'cloud-document-id',
+      documentOwnerId: OWNER_ID,
+      viewerId: COLLAB_ID,
+    }), OWNER_ID, 'loaded cloud owner metadata wins');
+  },
+);
+
+test(
+  'permissionScope #5f: destructive eraser commit gates reject forged/stale ids and unresolved marker identity',
+  { skip: !existsSync(TARGET) ? 'permissionScope module not yet present (Plan 35-02)' : false },
+  async () => {
+    const {
+      canCommitSurveyMarkerErase,
+      filterEraserCommitIds,
+    } = await import(TARGET_URL);
+    const own = { id: 'own', data: { authorId: COLLAB_ID } };
+    const foreign = { id: 'foreign', data: { authorId: OTHER_ID } };
+    const locked = { id: 'locked', locked: true, data: { authorId: COLLAB_ID } };
+
+    deepStrictEqual(filterEraserCommitIds({
+      annotationIds: ['foreign', 'missing', 'locked', 'own'],
+      annotations: [own, foreign, locked],
+      viewerId: COLLAB_ID,
+      documentOwnerId: OWNER_ID,
+    }), ['own'], 'commit rechecks a forged/stale preview hit list');
+    deepStrictEqual(filterEraserCommitIds({
+      annotationIds: ['own'],
+      annotations: [own],
+      viewerId: COLLAB_ID,
+      documentOwnerId: null,
+    }), [], 'missing owner denies callout commit');
+
+    const marker = { userId: COLLAB_ID };
+    strictEqual(canCommitSurveyMarkerErase({
+      surveyMarker: marker,
+      viewerId: COLLAB_ID,
+      documentOwnerId: null,
+    }), false, 'missing marker owner denies commit');
+    strictEqual(canCommitSurveyMarkerErase({
+      surveyMarker: marker,
+      viewerId: COLLAB_ID,
+      documentOwnerId: OWNER_ID,
+    }), true, 'resolved self-owned marker remains erasable');
+  },
+);
+
+test(
   "permissionScope #6: filterByAuthor returns only annotations the viewer can modify (drops other authors' marks for collaborator role; returns input array unchanged for owner role)",
   { skip: !existsSync(TARGET) ? 'permissionScope module not yet present (Plan 35-02)' : false },
   async () => {

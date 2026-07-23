@@ -850,7 +850,6 @@ const FabricEraserCanvas = memo(({
       if (excludeIds?.has(id)) return false;
       const callout = allCallouts.find((c) => c.id === id);
       if (callout?.locked === true) return false;
-      if (!viewerId || !ownerId) return true; // boot window: same permissive posture as commit
       return canModify({ annotation: callout, viewerId, documentOwnerId: ownerId });
     });
   }, [calloutBoundsAllow, collectPageCallouts, getPageRadius, pageHeight, pageNumber, pageWidth]);
@@ -1337,7 +1336,7 @@ const FabricEraserCanvas = memo(({
     // short-circuits true).
     const currentViewerId = viewerIdRef.current;
     const currentOwnerId = documentOwnerIdRef.current;
-    if (currentViewerId && currentOwnerId && !canModify({
+    if (!canModify({
       annotation: object,
       viewerId: currentViewerId,
       documentOwnerId: currentOwnerId,

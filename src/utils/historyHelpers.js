@@ -8,10 +8,9 @@
 
 import { HISTORY_OBJECT_CHANGE_PREVIEW_LIMIT, HISTORY_PAGE_PREVIEW_LIMIT, getHistoryObjectDiffType, getHistoryObjectSignature, hashHistoryString, toHistoryObjectDebug } from '../viewerShared.js';
 import { normalizePageRegions } from './annotationVisibilityRules.js';
-import {
-  getAnnotationStorageKey,
-  setAnnotationStorageKey,
-} from './annotationStorageIdentity.js';
+import { normalizeCanvasJsonForHistory } from './historyNormalization.js';
+
+export { normalizeCanvasJsonForHistory };
 
 export function normalizeHistoryReason(reason) {
   if (typeof reason !== 'string') return 'unspecified';
@@ -149,58 +148,6 @@ export function getYjsHistoryTarget(stackItem) {
     };
   }
   return null;
-}
-
-export function normalizeCanvasJsonForHistory(value) {
-  const transientKeys = new Set([
-    '_originalHasControls',
-    '_originalHasBorders',
-    '_lastLeft',
-    '_lastTop',
-    '_dragSessionId',
-    'hasBorders',
-    'hasControls',
-    'lockMovementX',
-    'lockMovementY',
-    'lockScalingFlip',
-    'perPixelTargetFind',
-    'targetFindTolerance',
-    'hoverCursor',
-    'moveCursor',
-    'selectable',
-    'evented',
-    'dirty',
-    'cacheKey',
-    'isMoving'
-  ]);
-
-  const walk = (node) => {
-    if (Array.isArray(node)) {
-      return node.map(walk);
-    }
-    if (!node || typeof node !== 'object') {
-      return node;
-    }
-
-    const normalized = {};
-    Object.entries(node).forEach(([key, child]) => {
-      if (transientKeys.has(key)) {
-        return;
-      }
-      normalized[key] = walk(child);
-    });
-
-    // Callout control handles are shown/hidden during selection only.
-    if (normalized.partType === 'knee' || normalized.partType === 'arrowTip') {
-      normalized.opacity = 0;
-    }
-
-    const storageKey = getAnnotationStorageKey(node);
-    if (storageKey != null) setAnnotationStorageKey(normalized, storageKey);
-    return normalized;
-  };
-
-  return walk(value);
 }
 
 export function summarizeHistorySnapshot(snapshot) {

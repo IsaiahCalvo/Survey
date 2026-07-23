@@ -239,6 +239,58 @@ test('legacy canvas does not classify an ordinary annotationId object as a surve
   assert.match(VIEWER_SOURCE, /if \(!savedSurveyMarker && !pendingSurveyMarker\) return false;/);
 });
 
+test('legacy and default erasers never bypass ownership when permission context is incomplete', () => {
+  const legacyStart = LEGACY_LAYER_SOURCE.indexOf('// Handle erasing end');
+  const legacyEnd = LEGACY_LAYER_SOURCE.indexOf('// Remove visual eraser stroke overlay', legacyStart);
+  const legacySource = LEGACY_LAYER_SOURCE.slice(legacyStart, legacyEnd);
+  assert.doesNotMatch(legacySource, /!hasResolvedPermissionContext && !isKnownSurveyMarker/);
+  assert.match(legacySource, /const canEraseObject = canEraseCanvasAnnotation\(\{/);
+
+  const blockStart = ERASER_SOURCE.indexOf('const getEraseBlockReason');
+  const blockEnd = ERASER_SOURCE.indexOf('\n  const ghostAtomicHits', blockStart);
+  const blockSource = ERASER_SOURCE.slice(blockStart, blockEnd);
+  assert.doesNotMatch(
+    blockSource,
+    /currentViewerId\s*&&\s*currentOwnerId\s*&&\s*!canModify/,
+  );
+  assert.match(blockSource, /if \(!canModify\(\{/);
+
+  const calloutStart = ERASER_SOURCE.indexOf('const getPermittedCalloutHitIds');
+  const calloutEnd = ERASER_SOURCE.indexOf('\n  // Survey markers live outside', calloutStart);
+  const calloutSource = ERASER_SOURCE.slice(calloutStart, calloutEnd);
+  assert.doesNotMatch(calloutSource, /if \(!viewerId \|\| !ownerId\) return true/);
+  assert.match(calloutSource, /return canModify\(\{ annotation: callout/);
+});
+
+test('document load and commit callbacks fail closed when cloud ownership is unresolved', () => {
+  assert.match(
+    VIEWER_SOURCE,
+    /resolveDocumentOwnerId\(\{\s*documentId:\s*pdfFile\?\.id,\s*documentOwnerId:\s*pdfFile\?\.user_id,\s*viewerId:\s*user\?\.id,/,
+  );
+  assert.doesNotMatch(VIEWER_SOURCE, /return pdfFile\?\.user_id \|\| user\?\.id \|\| null/);
+
+  const calloutStart = VIEWER_SOURCE.indexOf('const handleDeleteSelectedCallouts');
+  const calloutEnd = VIEWER_SOURCE.indexOf('\n  const handleBeginBatchDelete', calloutStart);
+  const calloutCommitSource = VIEWER_SOURCE.slice(calloutStart, calloutEnd);
+  assert.match(
+    calloutCommitSource,
+    /eraseRequest\s*\?\s*filterEraserCommitIds\(\{/,
+  );
+  assert.doesNotMatch(calloutCommitSource, /if \(!viewerId \|\| !documentOwnerId\) return true/);
+
+  const markerCommitStart = VIEWER_SOURCE.indexOf('const handleSurveyMarkerDeleted');
+  const markerCommitEnd = VIEWER_SOURCE.indexOf('\n  // After a Survey Marker delete', markerCommitStart);
+  const markerCommitSource = VIEWER_SOURCE.slice(markerCommitStart, markerCommitEnd);
+  assert.match(markerCommitSource, /canCommitSurveyMarkerErase\(\{/);
+  assert.doesNotMatch(markerCommitSource, /if \(!viewerId \|\| !documentOwnerId\) return true/);
+
+  const markerPreviewStart = VIEWER_SOURCE.indexOf('const canEraseSurveyMarker');
+  const markerPreviewEnd = VIEWER_SOURCE.indexOf('\n  const handleDeleteSurveyMarker', markerPreviewStart);
+  const markerPreviewSource = VIEWER_SOURCE.slice(markerPreviewStart, markerPreviewEnd);
+  assert.match(markerPreviewSource, /canCommitSurveyMarkerErase\(\{/);
+  assert.doesNotMatch(markerPreviewSource, /if \(!viewerId \|\| !documentOwnerId\) return true/);
+});
+
 test('production eraser commits the latest page model and waits for its exact repaint', () => {
   assert.match(ERASER_SOURCE, /annotationsRef\.current/);
   assert.match(ERASER_SOURCE, /spaceHeldRef\.current/);

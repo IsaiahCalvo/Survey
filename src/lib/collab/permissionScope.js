@@ -43,6 +43,26 @@ export function isOwner(userId, documentOwnerId) {
 }
 
 /**
+ * Resolve cloud ownership without manufacturing authority from the viewer.
+ * Only an explicit local-only file (no document id) may treat its opener as
+ * owner; a registered cloud document with missing owner metadata stays
+ * unresolved so destructive paths fail closed.
+ */
+export function resolveDocumentOwnerId({
+  documentId,
+  documentOwnerId,
+  viewerId,
+}) {
+  if (typeof documentOwnerId === 'string' && documentOwnerId.length > 0) {
+    return documentOwnerId;
+  }
+  const isLocalOnly = documentId == null || String(documentId).trim().length === 0;
+  return isLocalOnly && typeof viewerId === 'string' && viewerId.length > 0
+    ? viewerId
+    : null;
+}
+
+/**
  * Resolve annotation authorId via the canonical Phase 29 chain.
  * meta.authorId (CRDT-side, preferred)
  *   > top-level authorId (test fixtures + legacy)
@@ -129,6 +149,42 @@ export function canEraseCanvasAnnotation({
 }
 
 /**
+ * Revalidate a callout eraser commit against the live model. Preview hit lists
+ * are advisory: stale/forged ids, locked callouts, and unresolved identity are
+ * dropped here before the destructive callback runs.
+ */
+export function filterEraserCommitIds({
+  annotationIds,
+  annotations,
+  viewerId,
+  documentOwnerId,
+}) {
+  if (
+    !Array.isArray(annotationIds)
+    || !Array.isArray(annotations)
+    || typeof viewerId !== 'string'
+    || viewerId.length === 0
+    || typeof documentOwnerId !== 'string'
+    || documentOwnerId.length === 0
+  ) {
+    return [];
+  }
+  const byId = new Map(
+    annotations
+      .filter((annotation) => annotation?.id != null)
+      .map((annotation) => [String(annotation.id), annotation]),
+  );
+  return annotationIds.filter((annotationId) => {
+    const annotation = byId.get(String(annotationId));
+    return annotation?.locked !== true && canModify({
+      annotation,
+      viewerId,
+      documentOwnerId,
+    });
+  });
+}
+
+/**
  * Whether an authenticated write-capable session may request deletion.
  * Read-only viewers are stopped by ReadOnlyGate before delete handlers run.
  * Foreign-author deletes are allowed through here so the shared bulk-delete
@@ -191,6 +247,22 @@ export function canModifySurveyMarker({ surveyMarker, viewerId, documentOwnerId 
   const authorId = getSurveyMarkerAuthorId(surveyMarker);
   if (typeof authorId !== 'string' || typeof viewerId !== 'string') return false;
   return authorId === viewerId;
+}
+
+export function canCommitSurveyMarkerErase({
+  surveyMarker,
+  viewerId,
+  documentOwnerId,
+}) {
+  if (
+    typeof viewerId !== 'string'
+    || viewerId.length === 0
+    || typeof documentOwnerId !== 'string'
+    || documentOwnerId.length === 0
+  ) {
+    return false;
+  }
+  return canModifySurveyMarker({ surveyMarker, viewerId, documentOwnerId });
 }
 
 /**
