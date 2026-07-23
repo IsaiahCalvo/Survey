@@ -13,7 +13,24 @@
 // frozen. Never trust the client.
 
 import { supabase } from '../supabaseClient';
-import { resolveDocumentMetadata } from './documentMetadataResolver.js';
+
+export function createDocumentLockStateSequence(onChange) {
+  let realtimeGeneration = 0;
+  return {
+    snapshot() {
+      return realtimeGeneration;
+    },
+    applyInitial(generation, state) {
+      if (generation !== realtimeGeneration) return false;
+      onChange(state);
+      return true;
+    },
+    applyRealtime(state) {
+      realtimeGeneration += 1;
+      onChange(state);
+    },
+  };
+}
 
 /**
  * Read the lock columns off a document by id. Returns nulls when the document
@@ -23,15 +40,62 @@ import { resolveDocumentMetadata } from './documentMetadataResolver.js';
  * @param {string|null|undefined} documentId
  * @returns {Promise<{ lockedAt: string|null, lockedBy: string|null, lockedLabel: string|null }>}
  */
-export async function fetchDocumentLockState(documentId) {
-  if (!documentId) {
+export async function fetchDocumentLockState(documentId, client = supabase) {
+  if (!documentId || !client) {
     return { lockedAt: null, lockedBy: null, lockedLabel: null };
   }
-  const meta = await resolveDocumentMetadata(documentId);
+  // Deliberately bypass documentMetadataResolver's 5s open-time cache. A
+  // remote lock may have landed before this banner subscribed; an explicitly
+  // fresh row read closes that missed-event window.
+  const { data, error } = await client
+    .from('documents')
+    .select('locked_at, locked_by, locked_label')
+    .eq('id', documentId)
+    .maybeSingle();
+  if (error || !data) {
+    return { lockedAt: null, lockedBy: null, lockedLabel: null };
+  }
   return {
-    lockedAt: meta.lockedAt,
-    lockedBy: meta.lockedBy,
-    lockedLabel: meta.lockedLabel,
+    lockedAt: data.locked_at ?? null,
+    lockedBy: data.locked_by ?? null,
+    lockedLabel: data.locked_label ?? null,
+  };
+}
+
+/**
+ * Subscribe to lock-column updates for one open document. The database/RLS
+ * remains authoritative; this only closes the local UI window between a
+ * remote owner locking the document and the next reload.
+ *
+ * @param {string|null|undefined} documentId
+ * @param {(state: { lockedAt: string|null, lockedBy: string|null, lockedLabel: string|null }) => void} onChange
+ * @param {object} [client]
+ * @returns {() => void}
+ */
+export function subscribeDocumentLockState(documentId, onChange, client = supabase) {
+  if (!documentId || typeof onChange !== 'function' || typeof client?.channel !== 'function') {
+    return () => {};
+  }
+  const channel = client
+    .channel(`document-lock:${documentId}:${Math.random().toString(36).slice(2)}`)
+    .on('postgres_changes', {
+      event: 'UPDATE',
+      schema: 'public',
+      table: 'documents',
+      filter: `id=eq.${documentId}`,
+    }, (payload) => {
+      const row = payload?.new;
+      if (!row || row.id !== documentId) return;
+      onChange({
+        lockedAt: row.locked_at ?? null,
+        lockedBy: row.locked_by ?? null,
+        lockedLabel: row.locked_label ?? null,
+      });
+    })
+    .subscribe();
+
+  return () => {
+    try { client.removeChannel?.(channel); } catch { /* best-effort teardown */ }
   };
 }
 

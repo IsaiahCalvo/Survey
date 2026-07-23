@@ -581,6 +581,7 @@ export default function App({ devPreviewReturnTab = null }) {
   const HOME_TAB_ID = 'home-tab';
   const [tabs, setTabs] = useState([{ id: HOME_TAB_ID, name: 'Home', file: null, isHome: true }]); // Array of { id, name, file, isHome? }
   const [activeTabId, setActiveTabId] = useState(HOME_TAB_ID);
+  const [documentLockedByTab, setDocumentLockedByTab] = useState({});
   // Track PDFs that are currently being opened to prevent duplicate opens
   const openingPdfsRef = useRef(new Set());
 
@@ -2741,7 +2742,7 @@ export default function App({ devPreviewReturnTab = null }) {
                     display: isVisible ? 'block' : 'none'
                   }}
                 >
-                  <YDocProvider docId={tab.file?.id}>
+                  <YDocProvider docId={tab.file?.id} isActive={isVisible}>
                     {/* KAL-49 — document lock banner. Mounted as a sibling
                         inside YDocProvider so it sees the same per-tab Y.Doc
                         scope (the lock state is a document-level concept and
@@ -2749,6 +2750,14 @@ export default function App({ devPreviewReturnTab = null }) {
                     <DocumentLockBanner
                       documentId={tab.file?.id || null}
                       viewerUserId={user?.id || null}
+                      isActive={isVisible}
+                      onLockStateChange={(isLocked) => {
+                        setDocumentLockedByTab((current) => (
+                          current[tab.id] === isLocked
+                            ? current
+                            : { ...current, [tab.id]: isLocked }
+                        ));
+                      }}
                     />
                     <Suspense fallback={null}>
                     <PDFViewer
@@ -2757,6 +2766,7 @@ export default function App({ devPreviewReturnTab = null }) {
                       onBack={handleBack}
                       tabId={tab.id}
                       isActive={isVisible}
+                      documentLocked={documentLockedByTab[tab.id] === true}
                       mobileMode={isNarrowShell}
                       onTopToolbarApiChange={setTopToolbarApi}
                       onBottomToolbarApiChange={setBottomToolbarApi}

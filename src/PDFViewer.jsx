@@ -76,6 +76,7 @@ import { buildHistoryEventRowFromDebugEvent, recordDocumentHistoryEvent, recordA
 import { buildPrintableRegularAnnotationPayload, savePDFWithAnnotationsPdfLib, savePDFWithFlattenedRegularAnnotationsForPrint } from './utils/pdfAnnotationsPdfLib';
 import { buildTextSearchDiagLogSection, emitTextSearchDiag } from './utils/textSearchDiag';
 import { canDelete, canModify, canModifySurveyMarker, getAnnotationAuthorId } from './lib/collab/permissionScope.js';
+import { resolveEraserInterruptionPolicy } from './utils/eraserInterruptionPolicy.js';
 import { checkFileExists, checkFileExistsInDrive, downloadExcelFile, downloadExcelFileByPath, getFileById, getFileETag, getFileMetadata, getTemplateIdFromExcel, uploadExcelFile, uploadFileContentById, uploadFileToDrive } from './services/excelGraphService';
 import { checkSessionSupport, closeWorkbookSession, createWorkbookSession, getFileIdFromPath, getUsedRange, getWorksheets, refreshWorkbookSession, updateCellRange } from './services/excelSessionService';
 import { LIVE_SYNC_GATE_REASON, resolveLiveSyncEligibility } from './services/liveSyncEligibility';
@@ -339,7 +340,7 @@ function readWorkbookRegistration(workbook) {
   }
 }
 
-export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, tabId, isActive, mobileMode = false, onTopToolbarApiChange, onBottomToolbarApiChange, onLeftRailApiChange, onRightRailApiChange, onPageDrop, onUpdatePDFFile, onRequestCreateTemplate, initialViewState, onViewStateChange, templates = [], onTemplatesChange, onRefetchTemplates, user, isMSAuthenticated, msLogin, graphClient, msAccount, msNeedsReconnect, ensureFreshToken, msGetAuthSignals, entities, setEntities, onUnsavedAnnotationsChange, onAnnotationsExistChange }) {
+export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, tabId, isActive, documentLocked = false, mobileMode = false, onTopToolbarApiChange, onBottomToolbarApiChange, onLeftRailApiChange, onRightRailApiChange, onPageDrop, onUpdatePDFFile, onRequestCreateTemplate, initialViewState, onViewStateChange, templates = [], onTemplatesChange, onRefetchTemplates, user, isMSAuthenticated, msLogin, graphClient, msAccount, msNeedsReconnect, ensureFreshToken, msGetAuthSignals, entities, setEntities, onUnsavedAnnotationsChange, onAnnotationsExistChange }) {
   // Phase 35 UAT diag — mirror current PDF filename to window so the dev-only
   // phase35Diag logger can prefix every gate decision with the file under test.
   // Production-stripped via import.meta.env.MODE check; tree-shakes from prod.
@@ -9566,7 +9567,39 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   // durable-annotation seam (useAnnotationDoc) gates the one-time calloutsList
   // meta migration on it (writes are RLS-gated to editors; viewers render
   // legacy callouts via a zero-op read-only fallback instead).
-  const { ydoc: yjsDoc, undoManager: yjsUndoManager, undoCtx: yjsUndoCtx, docRole: yjsDocRole } = useYDoc();
+  const {
+    ydoc: yjsDoc,
+    undoManager: yjsUndoManager,
+    undoCtx: yjsUndoCtx,
+    docRole: yjsDocRole,
+    accessRevoked: yjsAccessRevoked,
+  } = useYDoc();
+  const [devAccessRevoked, setDevAccessRevoked] = useState(false);
+  useEffect(() => {
+    if (
+      !import.meta.env.DEV
+      || typeof window === 'undefined'
+      || new URLSearchParams(window.location.search).get('eraserLifecycleE2E') !== '1'
+    ) return undefined;
+    const setAccessRevokedForLifecycleTest = (revoked) => {
+      setDevAccessRevoked(revoked === true);
+    };
+    window.__eraserLifecycleSetAccessRevoked = setAccessRevokedForLifecycleTest;
+    return () => {
+      if (window.__eraserLifecycleSetAccessRevoked === setAccessRevokedForLifecycleTest) {
+        delete window.__eraserLifecycleSetAccessRevoked;
+      }
+    };
+  }, []);
+  const eraserInterruptionPolicy = resolveEraserInterruptionPolicy({
+    accessRevoked: yjsAccessRevoked || devAccessRevoked,
+    docRole: yjsDocRole,
+    documentLocked,
+  });
+  // Updated during render so an eraser child removed in this same commit can
+  // still read the new authorization truth from its unmount cleanup.
+  const eraserInterruptionPolicyRef = useRef(eraserInterruptionPolicy);
+  eraserInterruptionPolicyRef.current = eraserInterruptionPolicy;
 
   // Undo/Redo history state
   const [undoHistory, setUndoHistory] = useState([]); // Array of { annotationsByPage, surveyMarkers, spaces }
@@ -29426,6 +29459,8 @@ ${pageBlocks}
                                   activeSpaceId={activeSpaceId}
                                   spaces={spaces}
                                   zoomGeneration={zoomGeneration}
+                                  interruptionPolicy={eraserInterruptionPolicy}
+                                  interruptionPolicyRef={eraserInterruptionPolicyRef}
                                   // Phase 35 Plan 03 — per-user delete authority gate.
                                   viewerId={user?.id ?? null}
                                   documentOwnerId={documentOwnerId}

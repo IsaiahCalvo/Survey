@@ -33,6 +33,7 @@ import {
 } from '../../services/documentRevisionService';
 import { listDocumentHistoryEvents } from '../../services/documentHistoryService';
 import { resolveRegionRestoreCascade, describeHistoryEventSubject } from '../../services/annotationTrashHistory';
+import { claimBodyReadOnly } from '../../utils/readOnlyBodyReasons.js';
 
 const DRAWER_WIDTH = 360;
 const HISTORY_SPOTLIGHT_STYLE_ID = 'document-history-spotlight-style';
@@ -258,10 +259,8 @@ export default function RevisionsPanel({
   useEffect(() => {
     if (typeof document === 'undefined') return undefined;
     if (viewingRevision) {
-      const alreadySet = document.body?.getAttribute('data-readonly') === 'true';
-      if (alreadySet) return undefined; // ReadOnlyGate owns it — leave untouched
-      document.body?.setAttribute('data-readonly', 'true');
-      return () => document.body?.removeAttribute('data-readonly');
+      const token = Symbol('revision-readonly');
+      return claimBodyReadOnly(token, document);
     }
     return undefined;
   }, [viewingRevision]);

@@ -9,6 +9,7 @@ npm install
 npm run dev          # Vite dev server + Electron (port 5173)
 npm run dev:ui       # Vite only (no Electron) — use for headless / browser
 npm test             # Node test runner — tests/** + src/**/__tests__/**
+npm run test:eraser-lifecycle # 14 mounted-app eraser lifecycle/gesture scenarios
 npm run build        # Production web build → dist/
 npm run dist         # Web build + electron-builder installers
 ```

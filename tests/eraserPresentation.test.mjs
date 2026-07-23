@@ -169,7 +169,10 @@ test('pdf.js survey markers use one visible, permitted whole-delete lane in both
   const commitStart = ERASER_SOURCE.indexOf('const applyEraserAndCommit = useCallback');
   const commitEnd = ERASER_SOURCE.indexOf('\n  const cancelPointer = useCallback', commitStart);
   const commitSource = ERASER_SOURCE.slice(commitStart, commitEnd);
-  assert.match(commitSource, /getPermittedSurveyMarkerHitIds\(eraserPoints\)/);
+  assert.match(
+    commitSource,
+    /getPermittedSurveyMarkerHitIds\(eraserPoints, undefined, radius\)/,
+  );
   assert.match(commitSource, /onEraseSurveyMarkerRef\.current\?\.\(annotationId\)/);
   assert.match(commitSource, /surveyMarkerHitIds\.length > 0/);
 });
@@ -179,7 +182,10 @@ test('callout preview and commit share the same permitted hit list', () => {
   const commitEnd = ERASER_SOURCE.indexOf('\n  const cancelPointer = useCallback', commitStart);
   const commitSource = ERASER_SOURCE.slice(commitStart, commitEnd);
 
-  assert.match(commitSource, /getPermittedCalloutHitIds\(eraserPoints\)/);
+  assert.match(
+    commitSource,
+    /getPermittedCalloutHitIds\(eraserPoints, undefined, radius\)/,
+  );
   assert.doesNotMatch(commitSource, /getCalloutHitIds\(\{/);
 });
 
@@ -349,17 +355,21 @@ test('pointer-up samples and previews its endpoint before committing geometry', 
   );
 });
 
-test('interrupted gestures COMMIT the erase performed so far and permit the next down', () => {
+test('interrupted gestures commit once while secondary pointers are ignored', () => {
   // Contract change (2026-07-19 eraser audit): pointercancel / lost capture /
   // buttons-released-elsewhere used to DISCARD the whole gesture after the
   // user already watched ink carve and shapes ghost — silent un-erase. All
   // interrupt paths now commit the accumulated points (same contract as the
-  // zoom auto-commit). Only a restart-at-pointer-down cancels a stale session
-  // without committing (it has no release semantics of its own).
+  // zoom auto-commit). A second/non-primary pointer is input noise and cannot
+  // cancel or replace the active gesture.
   assert.match(ERASER_SOURCE, /const handleLostPointerCapture = useCallback/);
   assert.match(ERASER_SOURCE, /onLostPointerCapture=\{handleLostPointerCapture\}/);
   assert.match(ERASER_SOURCE, /const handleLostPointerCapture[\s\S]*?commitPointerNow\(\)/);
-  assert.match(ERASER_SOURCE, /const handlePointerDown[\s\S]*?if \(pointerRef\.current\) cancelPointer\(\)/);
+  assert.match(
+    ERASER_SOURCE,
+    /const handlePointerDown[\s\S]*?if \(event\.isPrimary === false \|\| pointerRef\.current\) return;/,
+  );
+  assert.doesNotMatch(ERASER_SOURCE, /if \(pointerRef\.current\) cancelPointer\(\)/);
   assert.match(ERASER_SOURCE, /const handlePointerMove[\s\S]*?event\.buttons === 0[\s\S]*?commitPointerNow\(\)/);
   assert.match(ERASER_SOURCE, /if \(cancelled\) \{[\s\S]*?commitInterruptedPointer\(pointer\)/);
 });

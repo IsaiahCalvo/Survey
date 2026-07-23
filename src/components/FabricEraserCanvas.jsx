@@ -5,7 +5,7 @@
  * surface captures a gesture, previews it in pixels, then applies the same
  * immutable geometry engine used by the PDF.js feature demo to the latest JSON.
  */
-import { memo, useCallback, useEffect, useRef } from 'react';
+import { memo, useCallback, useEffect, useLayoutEffect, useRef } from 'react';
 import { calculateCalloutConnection } from '../utils/calloutGeometry';
 import { canModify } from '../lib/collab/permissionScope.js';
 import {
@@ -176,6 +176,10 @@ const FabricEraserCanvas = memo(({
   activeSpaceId,
   spaces,
   zoomGeneration,
+  // Parent-owned lifecycle reason. `cancel` is reserved for authorization
+  // loss/read-only transitions; ordinary tool/page unmounts keep `commit`.
+  interruptionPolicy = 'commit',
+  interruptionPolicyRef: parentInterruptionPolicyRef,
   viewerId,
   documentOwnerId,
 }) => {
@@ -197,6 +201,8 @@ const FabricEraserCanvas = memo(({
   // at stroke start; the clone has no bitmap anywhere and therefore no floor.
   const maskCloneRef = useRef(null);
   const pointerRef = useRef(null);
+  const unmountCleanupRef = useRef(null);
+  const interruptionPolicyRef = useRef(interruptionPolicy);
   const spaceHeldRef = useRef(false);
   // Last known pointer position in CLIENT coordinates (plus pointerType).
   // The wrapper hardcodes cursor:'none', so any window where the custom
@@ -239,6 +245,7 @@ const FabricEraserCanvas = memo(({
   onEraseTextMarkupRef.current = onEraseTextMarkup;
   eraserModeRef.current = eraserMode;
   eraserSizeRef.current = eraserSize;
+  interruptionPolicyRef.current = interruptionPolicy;
   viewerScaleRef.current = viewerScale;
   selectedSpaceIdRef.current = selectedSpaceId;
   activeSpaceIdRef.current = activeSpaceId;
@@ -250,6 +257,12 @@ const FabricEraserCanvas = memo(({
     () => eraserDiameterToPageRadius(eraserSizeRef.current),
     [],
   );
+  const getInterruptionPolicy = useCallback(() => (
+    parentInterruptionPolicyRef?.current === 'cancel'
+    || interruptionPolicyRef.current === 'cancel'
+      ? 'cancel'
+      : 'commit'
+  ), [parentInterruptionPolicyRef]);
 
   const pagePoint = useCallback((nativeEvent) => {
     const rect = containerRef.current?.getBoundingClientRect?.();
@@ -449,6 +462,33 @@ const FabricEraserCanvas = memo(({
     livePreviewHideRafRef.current = requestAnimationFrame(completeHandoff);
   }, [cancelLivePreviewFinish, cancelScheduledPreviewHide, hidePreviewCanvasNow, pageNumber]);
 
+  const restoreLiveErasePreviewImmediately = useCallback(() => {
+    cancelLivePreviewFinish();
+    cancelScheduledPreviewHide();
+    const sourceState = livePreviewSourceRef.current;
+    if (sourceState?.overlay?.isConnected) {
+      sourceState.overlay.style.visibility = sourceState.previousVisibility;
+    }
+    const svgWrapper = sourceState?.surface
+      ?.querySelector?.('[data-diag-svg-wrapper]')
+      || containerRef.current
+        ?.closest('[data-annotation-real-surface]')
+        ?.querySelector('[data-diag-svg-wrapper]');
+    if (svgWrapper) {
+      svgWrapper.style.visibility = sourceState?.previousSvgVisibility ?? '';
+    }
+    livePreviewSourceRef.current = null;
+    removeMaskCloneNow();
+    hidePreviewCanvasNow();
+    onErasePreviewPresentationRef.current?.(pageNumber, false);
+  }, [
+    cancelLivePreviewFinish,
+    cancelScheduledPreviewHide,
+    hidePreviewCanvasNow,
+    pageNumber,
+    removeMaskCloneNow,
+  ]);
+
   const beginLiveErasePreview = useCallback(() => {
     cancelLivePreviewFinish();
     cancelScheduledPreviewHide();
@@ -532,12 +572,12 @@ const FabricEraserCanvas = memo(({
     return true;
   }, [cancelLivePreviewFinish, cancelScheduledPreviewHide, findPresentationSource, pageHeight, pageNumber, pageWidth]);
 
-  const drawLiveErasePreviewSegment = useCallback((points) => {
+  const drawLiveErasePreviewSegment = useCallback((points, gestureRadius = getPageRadius()) => {
     if (!points?.length) return;
     const clone = maskCloneRef.current;
     if (clone?.carve) {
       // Mask-clone mode: carve in PAGE UNITS directly (mask user space).
-      const radius = getPageRadius();
+      const radius = gestureRadius;
       clone.carve.setAttribute('stroke-width', String(radius * 2));
       if (points.length === 1) {
         const SVG_NS = 'http://www.w3.org/2000/svg';
@@ -561,7 +601,7 @@ const FabricEraserCanvas = memo(({
     if (!preview || preview.style.display === 'none') return;
     const context = preview.getContext('2d');
     if (!context) return;
-    const radius = getPageRadius();
+    const radius = gestureRadius;
     const drawScale = Number(preview.dataset.canvasDrawScale) || (preview.width / pageWidth);
     const drawScaleY = Number(preview.dataset.canvasDrawScaleY) || drawScale;
     const pageOffsetX = Number(preview.dataset.canvasPageOffsetX) || 0;
@@ -693,10 +733,14 @@ const FabricEraserCanvas = memo(({
   // never silently whole-deletes cross-author marks on release (any such
   // delete routes through the confirm modal), so ghosting it live would warn
   // about an erase that is not going to happen.
-  const getPermittedCalloutHitIds = useCallback((eraserPoints, excludeIds) => {
+  const getPermittedCalloutHitIds = useCallback((
+    eraserPoints,
+    excludeIds,
+    gestureRadius = getPageRadius(),
+  ) => {
     const allCallouts = collectPageCallouts();
     if (!allCallouts.length) return [];
-    const radius = getPageRadius();
+    const radius = gestureRadius;
     // Fast-reject callouts nowhere near the segment before the per-callout
     // geometry test (same AABB prefilter as the object hot path).
     const queryBounds = segmentQueryBounds(eraserPoints, radius);
@@ -726,11 +770,15 @@ const FabricEraserCanvas = memo(({
   // Survey markers live outside annotations.objects. Their live SVG DOM IDs are
   // the visibility authority for the gesture, while PDFViewer owns the source
   // permission predicate. Both preview and commit call this exact helper.
-  const getPermittedSurveyMarkerHitIds = useCallback((eraserPoints, excludeIds) => {
+  const getPermittedSurveyMarkerHitIds = useCallback((
+    eraserPoints,
+    excludeIds,
+    gestureRadius = getPageRadius(),
+  ) => {
     if (typeof onEraseSurveyMarkerRef.current !== 'function') return [];
     const visibleBounds = gestureBoundsRef.current?.bySurveyMarker;
     if (!(visibleBounds instanceof Map) || visibleBounds.size === 0) return [];
-    const radius = getPageRadius();
+    const radius = gestureRadius;
     const queryBounds = segmentQueryBounds(eraserPoints, radius);
     const visibleIds = new Set(visibleBounds.keys());
     return getSurveyMarkerEraserHitIds({
@@ -889,7 +937,7 @@ const FabricEraserCanvas = memo(({
     if (pointer.pendingPartial && !pointer.previewHasPartial) {
       pointer.previewHasPartial = true;
       pointer.pendingPartial = false;
-      drawLiveErasePreviewSegment(pointer.points);
+      drawLiveErasePreviewSegment(pointer.points, pointer.gestureConfig.radius);
       maskCarvedPathHits(pointer, pointer.points);
     }
   }, [
@@ -1172,8 +1220,8 @@ const FabricEraserCanvas = memo(({
   const ghostAtomicHits = useCallback((pointer, segmentPoints) => {
     if (!segmentPoints?.length) return;
     const objects = annotationsRef.current?.objects || [];
-    const radius = getPageRadius();
-    const mode = eraserModeRef.current;
+    const radius = pointer.gestureConfig.radius;
+    const mode = pointer.gestureConfig.mode;
     const queryBounds = segmentQueryBounds(segmentPoints, radius);
     const hitIds = [];
     objects.forEach((object, index) => {
@@ -1193,7 +1241,7 @@ const FabricEraserCanvas = memo(({
       eraseAtomicObjectsFromPreview(hitIds);
       hitIds.forEach((id) => pointer.previewAtomicIds.add(id));
     }
-  }, [eraseAtomicObjectsFromPreview, getEraseBlockReason, getPageRadius, indexBoundsAllow]);
+  }, [eraseAtomicObjectsFromPreview, getEraseBlockReason, indexBoundsAllow]);
 
   // Lazily attach the carve mask to path elements the sweep actually
   // touches (partial-erasable only). Elements keep rendering unmasked —
@@ -1201,9 +1249,9 @@ const FabricEraserCanvas = memo(({
   const maskCarvedPathHits = useCallback((pointer, segmentPoints) => {
     const clone = maskCloneRef.current;
     if (!clone?.maskId || !segmentPoints?.length) return;
-    if (eraserModeRef.current !== 'partial') return; // entire-mode paths whole-delete via ghosts
+    if (pointer.gestureConfig.mode !== 'partial') return; // entire-mode paths whole-delete via ghosts
     const objects = annotationsRef.current?.objects || [];
-    const radius = getPageRadius();
+    const radius = pointer.gestureConfig.radius;
     const queryBounds = segmentQueryBounds(segmentPoints, radius);
     objects.forEach((object, index) => {
       if (String(object?.type || '').toLowerCase() !== 'path') return;
@@ -1233,7 +1281,7 @@ const FabricEraserCanvas = memo(({
       }
       targets.forEach((el) => el.setAttribute('mask', `url(#${clone.maskId})`));
     });
-  }, [getEraseBlockReason, getPageRadius, indexBoundsAllow]);
+  }, [getEraseBlockReason, indexBoundsAllow]);
 
   // Cheap replacement for the per-move planPageEraserPreview (full boolean-carve
   // engine). Classifies which objects the NEW segment touches — partial-erasable
@@ -1242,11 +1290,11 @@ const FabricEraserCanvas = memo(({
   // fast-reject. The real carve geometry is still computed once at pointer-up by
   // erasePageAnnotations (the shared, pixel-identical engine — unchanged), so
   // deferring the boolean work off the hot path costs zero fidelity.
-  const classifyEraserSegment = useCallback((segment) => {
+  const classifyEraserSegment = useCallback((pointer, segment) => {
     const objects = annotationsRef.current?.objects || [];
-    const radius = getPageRadius();
+    const radius = pointer.gestureConfig.radius;
     const queryBounds = segmentQueryBounds(segment, radius);
-    const mode = eraserModeRef.current;
+    const mode = pointer.gestureConfig.mode;
     const partialIds = [];
     const atomicIds = [];
     objects.forEach((object, index) => {
@@ -1262,7 +1310,7 @@ const FabricEraserCanvas = memo(({
       partialIds,
       atomicIds,
     };
-  }, [getEraseBlockReason, getPageRadius, indexBoundsAllow]);
+  }, [getEraseBlockReason, indexBoundsAllow]);
 
   const previewEraserGesture = useCallback((pointer, segment) => {
     if (!pointer?.points?.length) return false;
@@ -1272,10 +1320,14 @@ const FabricEraserCanvas = memo(({
       // vanish live instead of popping out only at release. Callouts ride the
       // same per-segment check (commit-identical hit test) so they ghost the
       // moment the sweep crosses them, exactly like other whole-delete marks.
-      drawLiveErasePreviewSegment(segment);
+      drawLiveErasePreviewSegment(segment, pointer.gestureConfig.radius);
       maskCarvedPathHits(pointer, segment);
       ghostAtomicHits(pointer, segment);
-      const liveCalloutHits = getPermittedCalloutHitIds(segment, pointer.previewCalloutIds);
+      const liveCalloutHits = getPermittedCalloutHitIds(
+        segment,
+        pointer.previewCalloutIds,
+        pointer.gestureConfig.radius,
+      );
       if (liveCalloutHits.length) {
         ghostCalloutsFromPreview(liveCalloutHits);
         liveCalloutHits.forEach((id) => pointer.previewCalloutIds.add(id));
@@ -1283,6 +1335,7 @@ const FabricEraserCanvas = memo(({
       const liveSurveyMarkerHits = getPermittedSurveyMarkerHitIds(
         segment,
         pointer.previewSurveyMarkerIds,
+        pointer.gestureConfig.radius,
       );
       if (liveSurveyMarkerHits.length) {
         ghostSurveyMarkersFromPreview(liveSurveyMarkerHits);
@@ -1296,7 +1349,7 @@ const FabricEraserCanvas = memo(({
     // erase engine with the cheap commit-identical touch test + AABB fast-reject
     // (KAL-366): the heavy carve geometry now runs ONCE at pointer-up, not on
     // every pointermove, which is the whole drag-smoothness win.
-    const plan = classifyEraserSegment(segment?.length ? segment : pointer.points);
+    const plan = classifyEraserSegment(pointer, segment?.length ? segment : pointer.points);
     // Callout hits must also ACTIVATE the preview: a sweep that only crosses
     // a callout has no shared-store plan hits (callouts are the historical
     // fork), yet it whole-deletes the callout at release — so it needs the
@@ -1304,10 +1357,12 @@ const FabricEraserCanvas = memo(({
     const calloutHitIds = getPermittedCalloutHitIds(
       segment?.length ? segment : pointer.points,
       pointer.previewCalloutIds,
+      pointer.gestureConfig.radius,
     );
     const surveyMarkerHitIds = getPermittedSurveyMarkerHitIds(
       segment?.length ? segment : pointer.points,
       pointer.previewSurveyMarkerIds,
+      pointer.gestureConfig.radius,
     );
     if (!plan.shouldPreview && !calloutHitIds.length && !surveyMarkerHitIds.length) return false;
     if (!pointer.previewActive) {
@@ -1343,7 +1398,7 @@ const FabricEraserCanvas = memo(({
       // blocked/whole-delete content carve visually until the commit repaint.
       pointer.previewHasPartial = true;
       pointer.pendingPartial = false;
-      drawLiveErasePreviewSegment(pointer.points);
+      drawLiveErasePreviewSegment(pointer.points, pointer.gestureConfig.radius);
       maskCarvedPathHits(pointer, pointer.points);
     }
     const newAtomicIds = plan.atomicIds.filter((id) => !pointer.previewAtomicIds.has(id));
@@ -1406,8 +1461,8 @@ const FabricEraserCanvas = memo(({
     // Commit recomputes the same permitted hit lists used by the live preview.
     // Raw geometry-only hits here previously let callout commit bypass preview's
     // ownership gate; survey markers likewise stay source/visibility-gated.
-    const calloutHitIds = getPermittedCalloutHitIds(eraserPoints);
-    const surveyMarkerHitIds = getPermittedSurveyMarkerHitIds(eraserPoints);
+    const calloutHitIds = getPermittedCalloutHitIds(eraserPoints, undefined, radius);
+    const surveyMarkerHitIds = getPermittedSurveyMarkerHitIds(eraserPoints, undefined, radius);
 
     let expectedRevision = null;
     if (result.didChange) {
@@ -1436,7 +1491,10 @@ const FabricEraserCanvas = memo(({
         changedObjectsCount: result.deletedIds.length + result.changedIds.length,
       };
       annotationsRef.current = updatedJSON;
-      if (livePreviewCanvasRef.current?.style.display !== 'none') {
+      if (
+        livePreviewCanvasRef.current
+        && livePreviewCanvasRef.current.style.display !== 'none'
+      ) {
         livePreviewCanvasRef.current.dataset.canvasAnnotationRevision = expectedRevision;
       }
       const commitStartedAt = typeof performance !== 'undefined' ? performance.now() : Date.now();
@@ -1510,13 +1568,6 @@ const FabricEraserCanvas = memo(({
     pageNumber,
   ]);
 
-  const cancelPointer = useCallback(() => {
-    const pointer = pointerRef.current;
-    pointerRef.current = null;
-    try { pointer?.captureTarget?.releasePointerCapture(pointer.pointerId); } catch { /* already released */ }
-    finishLiveErasePreview();
-  }, [finishLiveErasePreview]);
-
   // Interrupted gestures COMMIT what was already erased instead of discarding
   // it: by the time a pointercancel / lostpointercapture / buttons-released-
   // elsewhere arrives, the user has already watched ink carve and shapes
@@ -1548,10 +1599,30 @@ const FabricEraserCanvas = memo(({
     commitInterruptedPointer(pointer);
   }, [commitInterruptedPointer]);
 
+  const cancelPointerNow = useCallback(() => {
+    const pointer = pointerRef.current;
+    pointerRef.current = null;
+    try { pointer?.captureTarget?.releasePointerCapture(pointer.pointerId); } catch { /* already released */ }
+    gestureBoundsRef.current = null;
+    // Revocation means the preview must be restored, never handed off to a
+    // commit repaint that is no longer authorized.
+    restoreLiveErasePreviewImmediately();
+    updateEraserCursor(null, false);
+  }, [restoreLiveErasePreviewImmediately, updateEraserCursor]);
+
+  useLayoutEffect(() => {
+    if (getInterruptionPolicy() === 'cancel') cancelPointerNow();
+  }, [cancelPointerNow, getInterruptionPolicy, interruptionPolicy]);
+
   const handlePointerDown = useCallback((event) => {
-    lastClientPosRef.current = { x: event.clientX, y: event.clientY, pointerType: event.pointerType };
     if (event.button !== 0 || spaceHeldRef.current) return;
-    if (pointerRef.current) cancelPointer();
+    // Read-only/locked state is also checked at gesture start. Cancelling the
+    // active pointer is insufficient if the surface remains mounted.
+    if (getInterruptionPolicy() === 'cancel') return;
+    // One pointer owns a gesture. A palm/second pointer is input noise and
+    // must not release capture, clear preview, or replace the active pen.
+    if (event.isPrimary === false || pointerRef.current) return;
+    lastClientPosRef.current = { x: event.clientX, y: event.clientY, pointerType: event.pointerType };
     const point = pagePoint(event.nativeEvent);
     if (!point) return;
     updateEraserCursor(point, true);
@@ -1562,6 +1633,8 @@ const FabricEraserCanvas = memo(({
       pointerId: event.pointerId,
       points: [point],
       captureTarget: event.currentTarget,
+      // Gesture behavior is immutable after pointer-down. Toolbar updates
+      // affect the next gesture only, so preview and commit cannot disagree.
       gestureConfig: {
         mode: eraserModeRef.current,
         radius: getPageRadius(),
@@ -1590,8 +1663,8 @@ const FabricEraserCanvas = memo(({
     previewEraserGesture(pointerRef.current, [point]);
   }, [
     buildGestureBounds,
-    cancelPointer,
     getPageRadius,
+    getInterruptionPolicy,
     pageNumber,
     pagePoint,
     previewEraserGesture,
@@ -1770,15 +1843,35 @@ const FabricEraserCanvas = memo(({
     };
   }, [commitPointerNow, updateEraserCursor]);
 
-  useEffect(() => () => {
+  // Keep unmount cleanup isolated from callback identity changes. The old
+  // dependency-bound effect also ran its cleanup during ordinary rerenders,
+  // which could discard an active gesture when mode/size props changed.
+  unmountCleanupRef.current = () => {
+    const pointer = pointerRef.current;
     pointerRef.current = null;
+    try { pointer?.captureTarget?.releasePointerCapture(pointer.pointerId); } catch { /* already released */ }
+    if (
+      pointer?.points?.length
+      && getInterruptionPolicy() !== 'cancel'
+    ) {
+      try {
+        markAnnotationPointerRelease(eraserDiagGestureRef.current, { action: 'eraser-stroke' });
+        applyEraserAndCommit(pointer.points, pointer.gestureConfig);
+      } catch (error) {
+        console.error('Unmount-triggered eraser commit failed:', error);
+      }
+    }
     gestureBoundsRef.current = null;
     // Unmounting has no future paint to coordinate; clean up immediately.
     finishLiveErasePreview({ immediate: true });
     removeMaskCloneNow();
     hidePreviewCanvasNow();
     updateEraserCursor(null, false);
-  }, [finishLiveErasePreview, hidePreviewCanvasNow, removeMaskCloneNow, updateEraserCursor]);
+  };
+
+  useLayoutEffect(() => () => {
+    unmountCleanupRef.current?.();
+  }, []);
 
   return (
     <div

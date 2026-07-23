@@ -37,9 +37,10 @@
 // arg to addEventListener = true) ensures we run before bubble-phase handlers
 // regardless of where they're attached.
 
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { useYDoc } from '../../hooks/useYDoc.js';
 import { resolveReadOnlyReason } from '../../lib/collab/documentRole.js';
+import { claimBodyReadOnly } from '../../utils/readOnlyBodyReasons.js';
 import './ReadOnlyGate.css';
 
 /**
@@ -58,29 +59,21 @@ import './ReadOnlyGate.css';
  *
  * @returns {null}
  */
-export function ReadOnlyGate() {
+export function ReadOnlyGate({ isActive = true }) {
   const { accessRevoked, docRole } = useYDoc();
   const readOnlyReason = resolveReadOnlyReason({ accessRevoked, docRole });
+  const bodyClaimTokenRef = useRef(Symbol('permission-readonly'));
 
   useEffect(() => {
-    if (!readOnlyReason) {
-      // UX: defensive cleanup. If a previous mount left body[data-readonly]
-      // set (e.g. the read-only reason flipped truthy → null within the same
-      // session), remove it now. Otherwise the toolbar would stay dimmed even
-      // though the user is back to read-write.
-      if (typeof document !== 'undefined') {
-        document.body?.removeAttribute('data-readonly');
-      }
-      return undefined;
-    }
+    if (!readOnlyReason || !isActive) return undefined;
 
     // 1. UX: set body[data-readonly] so the existing toolbar dims via the
     //    CSS rule shipped in ReadOnlyGate.css. Body-attribute approach reaches
     //    the toolbar from above without React state plumbing — App.jsx's
     //    render tree is unchanged.
-    if (typeof document !== 'undefined') {
-      document.body?.setAttribute('data-readonly', 'true');
-    }
+    const releaseBodyClaim = typeof document !== 'undefined'
+      ? claimBodyReadOnly(bodyClaimTokenRef.current, document)
+      : () => {};
 
     // 2. UX: window-capture-phase keydown listener — suppresses mutation
     //    keystrokes while keeping read affordances (Cmd+S, page-nav, scroll,
@@ -148,11 +141,9 @@ export function ReadOnlyGate() {
 
     return () => {
       window.removeEventListener('keydown', onKeyDown, true);
-      if (typeof document !== 'undefined') {
-        document.body?.removeAttribute('data-readonly');
-      }
+      releaseBodyClaim();
     };
-  }, [readOnlyReason]);
+  }, [isActive, readOnlyReason]);
 
   return null;
 }

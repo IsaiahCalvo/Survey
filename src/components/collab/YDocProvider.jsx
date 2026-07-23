@@ -176,7 +176,7 @@ const NULL_CTX_DISABLED = Object.freeze({
   undoCtx: null,
 });
 
-export function YDocProvider({ docId, children, closeDocument }) {
+export function YDocProvider({ docId, children, closeDocument, isActive = true }) {
   const enabled = isCRDTEnabled();
 
   // Null/empty docId or kill-switch active → provide a null context.
@@ -194,13 +194,13 @@ export function YDocProvider({ docId, children, closeDocument }) {
   // Keying on docId guarantees that switching PDFs gives us a fresh hooks tree
   // (state resets cleanly — no stale isHydrating / storageState bleeding across docs).
   return (
-    <YDocProviderInner key={docId} docId={docId} closeDocument={closeDocument}>
+    <YDocProviderInner key={docId} docId={docId} closeDocument={closeDocument} isActive={isActive}>
       {children}
     </YDocProviderInner>
   );
 }
 
-function YDocProviderInner({ docId, children, closeDocument }) {
+function YDocProviderInner({ docId, children, closeDocument, isActive }) {
   // Borrow the Y.Doc from the module-scoped registry. Stable across re-renders for
   // a given docId; HMR-safe because the registry survives module reloads.
   const ydoc = useMemo(() => getOrCreateYDoc(docId), [docId]);
@@ -1638,7 +1638,7 @@ function YDocProviderInner({ docId, children, closeDocument }) {
           but sets body[data-readonly] + a window-capture-phase keydown listener
           when accessRevoked is true. Mounted as a sibling here so App.jsx
           stays untouched (Plan 28-06 Blocker 1 fix). */}
-      <ReadOnlyGate />
+      <ReadOnlyGate isActive={isActive} />
       {children}
     </YDocContext.Provider>
   );

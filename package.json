@@ -22,6 +22,7 @@
     "audit:dupes": "npx fallow dupes",
     "audit:health": "npx fallow health",
     "test:debug": "npx playwright test --config debug/playwright.config.mjs",
+    "test:eraser-lifecycle": "npx playwright test --config debug/playwright.config.mjs debug/scenarios/eraser-lifecycle-gestures.spec.mjs",
     "debug:scenario": "npx playwright test --config debug/playwright.config.mjs --grep",
     "debug:process": "node debug/lib/post-process.mjs",
     "mobile:sync": "vite build && npx cap sync",

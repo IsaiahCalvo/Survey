@@ -16,14 +16,17 @@
 //   ReadOnlyGate dim; an owner on a locked doc sees the lock banner. Keeping
 //   them as siblings means each owns its own truth-source.
 //
-// Realtime: the component re-fetches lock state when the user explicitly
-// toggles, and reads the latest state on mount. For KAL-49 v1 we deliberately
-// do NOT subscribe to realtime updates of documents.locked_at — a future
-// patch can add a Supabase Realtime channel to make the second-browser
-// experience update without reload. v1 verification reloads after a lock.
+// Realtime: the component reads the latest state on mount and subscribes to
+// documents-row UPDATE events, so a lock/unlock from another session changes
+// local writeability without a reload.
 
-import { useEffect, useState } from 'react';
-import { fetchDocumentLockState } from '../services/documentLockService.js';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import {
+  createDocumentLockStateSequence,
+  fetchDocumentLockState,
+  subscribeDocumentLockState,
+} from '../services/documentLockService.js';
+import { claimBodyReadOnly } from '../utils/readOnlyBodyReasons.js';
 
 function formatLockedAt(iso) {
   if (!iso) return '';
@@ -40,34 +43,80 @@ function formatLockedAt(iso) {
  *   documentId: string|null|undefined,
  *   documentOwnerId: string|null|undefined,
  *   viewerUserId: string|null|undefined,
+ *   onLockStateChange?: (isLocked: boolean) => void,
  * }} props
  */
 export default function DocumentLockBanner({
   documentId,
   viewerUserId,
+  onLockStateChange,
+  isActive = true,
 }) {
   const [lockedAt, setLockedAt] = useState(null);
   const [lockedBy, setLockedBy] = useState(null);
   const [lockedLabel, setLockedLabel] = useState(null);
   const isLocked = lockedAt != null;
+  const onLockStateChangeRef = useRef(onLockStateChange);
+  const bodyClaimTokenRef = useRef(Symbol('document-lock-readonly'));
+  onLockStateChangeRef.current = onLockStateChange;
 
-  // Initial fetch + refetch whenever the documentId changes.
+  // Publish the render-time lock truth before passive effects toggle the body
+  // attributes. The sibling PDFViewer uses this to cancel any visible erase
+  // before a now-forbidden gesture can be committed.
+  useLayoutEffect(() => {
+    onLockStateChangeRef.current?.(isLocked);
+  }, [isLocked]);
+
+  const applyLockState = (state) => {
+    setLockedAt(state?.lockedAt ?? null);
+    setLockedBy(state?.lockedBy ?? null);
+    setLockedLabel(state?.lockedLabel ?? null);
+  };
+
+  // Explicit E2E-only seam. It drives the same state/callback path as a
+  // Realtime payload, but is absent from ordinary dev pages and production.
+  useEffect(() => {
+    if (
+      !import.meta.env.DEV
+      || typeof window === 'undefined'
+      || new URLSearchParams(window.location.search).get('eraserLifecycleE2E') !== '1'
+    ) return undefined;
+    const setLockedForLifecycleTest = (locked) => {
+      applyLockState({
+        lockedAt: locked ? new Date().toISOString() : null,
+        lockedBy: null,
+        lockedLabel: null,
+      });
+    };
+    window.__eraserLifecycleSetDocumentLocked = setLockedForLifecycleTest;
+    return () => {
+      if (window.__eraserLifecycleSetDocumentLocked === setLockedForLifecycleTest) {
+        delete window.__eraserLifecycleSetDocumentLocked;
+      }
+    };
+  }, []);
+
+  // Initial fetch plus Realtime updates from remote lock/unlock RPCs.
   useEffect(() => {
     if (!documentId) {
-      setLockedAt(null);
-      setLockedBy(null);
-      setLockedLabel(null);
+      applyLockState(null);
       return;
     }
     let cancelled = false;
+    const sequence = createDocumentLockStateSequence(applyLockState);
+    const initialGeneration = sequence.snapshot();
+    // Subscribe first, then issue an explicitly uncached read. The generation
+    // guard prevents a slower read from overwriting any newer Realtime event.
+    const unsubscribe = subscribeDocumentLockState(documentId, (state) => {
+      if (!cancelled) sequence.applyRealtime(state);
+    });
     fetchDocumentLockState(documentId).then((state) => {
       if (cancelled) return;
-      setLockedAt(state.lockedAt);
-      setLockedBy(state.lockedBy);
-      setLockedLabel(state.lockedLabel);
+      sequence.applyInitial(initialGeneration, state);
     });
     return () => {
       cancelled = true;
+      unsubscribe();
     };
   }, [documentId]);
 
@@ -77,10 +126,9 @@ export default function DocumentLockBanner({
   // ReadOnlyGate may also be setting it for an independent reason).
   useEffect(() => {
     if (typeof document === 'undefined') return undefined;
-    if (!isLocked) return undefined;
+    if (!isLocked || !isActive) return undefined;
 
-    const prior = document.body?.getAttribute('data-readonly');
-    document.body?.setAttribute('data-readonly', 'true');
+    const releaseBodyClaim = claimBodyReadOnly(bodyClaimTokenRef.current, document);
     document.body?.setAttribute('data-kal49-locked', 'true');
 
     const onKeyDown = (e) => {
@@ -108,18 +156,13 @@ export default function DocumentLockBanner({
 
     return () => {
       window.removeEventListener('keydown', onKeyDown, true);
-      // Only clear data-readonly if we set it AND no other gate has claimed it
-      // (signal via the kal49-locked attribute we added). ReadOnlyGate's own
-      // effect manages its claim independently.
       document.body?.removeAttribute('data-kal49-locked');
-      if (prior == null) {
-        document.body?.removeAttribute('data-readonly');
-      }
+      releaseBodyClaim();
     };
-  }, [isLocked]);
+  }, [isActive, isLocked]);
 
   // Don't render anything when there's no document.
-  if (!documentId) return null;
+  if (!documentId || !isActive) return null;
 
   if (!isLocked) return null;
 
