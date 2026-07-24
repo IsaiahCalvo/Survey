@@ -109,6 +109,10 @@ async function annotationSignature(page, selector) {
   }, id);
 }
 
+async function annotationMarkup(page, selector) {
+  return page.locator(selector).evaluate((group) => group.outerHTML);
+}
+
 async function annotationBox(page, selector) {
   const box = await page.locator(selector).boundingBox();
   expect(box, `Annotation ${selector} must be rendered`).toBeTruthy();
@@ -207,16 +211,24 @@ async function eraseAcross(page, box) {
 async function expectExactUndoRedo(page, selector, before, after, {
   clip = null,
   beforePixels = null,
+  beforeMarkup = null,
 } = {}) {
-  const afterPixels = clip ? await page.screenshot({ clip }) : null;
+  const capturePixels = clip ? () => page.screenshot({ clip }) : null;
+  const afterPixels = capturePixels ? await capturePixels() : null;
+  const afterMarkup = beforeMarkup === null ? null : await annotationMarkup(page, selector);
   const undo = page.getByRole('button', { name: 'Undo', exact: true });
   await expect(undo).toBeEnabled();
   await undo.click();
   await expect.poll(() => annotationSignature(page, selector), {
     message: 'One Undo must restore the exact pre-gesture SVG',
   }).toBe(before);
-  if (clip && beforePixels) {
-    const undoPixels = await page.screenshot({ clip });
+  if (beforeMarkup !== null) {
+    await expect.poll(() => annotationMarkup(page, selector), {
+      message: 'One Undo must restore the exact rendered SVG markup',
+    }).toBe(beforeMarkup);
+  }
+  if (capturePixels && beforePixels) {
+    const undoPixels = await capturePixels();
     expect(pngDistance(beforePixels, undoPixels),
       'Undo may differ only at a narrow antialiasing fringe').toBeLessThan(0.01);
   }
@@ -227,8 +239,13 @@ async function expectExactUndoRedo(page, selector, before, after, {
   await expect.poll(() => annotationSignature(page, selector), {
     message: 'One Redo must restore the exact post-gesture SVG',
   }).toBe(after);
-  if (clip && afterPixels) {
-    const redoPixels = await page.screenshot({ clip });
+  if (afterMarkup !== null) {
+    await expect.poll(() => annotationMarkup(page, selector), {
+      message: 'One Redo must restore the exact rendered SVG markup',
+    }).toBe(afterMarkup);
+  }
+  if (capturePixels && afterPixels) {
+    const redoPixels = await capturePixels();
     expect(pngDistance(afterPixels, redoPixels),
       'Redo may differ only at a narrow antialiasing fringe').toBeLessThan(0.01);
   }
@@ -609,11 +626,8 @@ test.describe('mounted eraser lifecycle and gestures', () => {
 
     const selector = await createFreehandStroke(page, { tool: 'Pen', width: 10 });
     const before = await annotationSignature(page, selector);
+    const beforeMarkup = await annotationMarkup(page, selector);
     const box = await annotationBox(page, selector);
-    const viewport = page.viewportSize();
-    expect(viewport).toBeTruthy();
-    const clip = paddedClip(box, viewport);
-    const beforePixels = await page.screenshot({ clip });
     await activateEraser(page, { size: 24 });
 
     const points = crossingPoints(box);
@@ -635,7 +649,9 @@ test.describe('mounted eraser lifecycle and gestures', () => {
     }).not.toBe(before);
     await expect(page.locator('[data-eraser-live-preview="1"]')).toHaveCSS('display', 'none');
 
-    await expectExactUndoRedo(page, selector, before, after, { clip, beforePixels });
+    await expectExactUndoRedo(page, selector, before, after, {
+      beforeMarkup,
+    });
     await expectNoErrors(errors);
   });
 
