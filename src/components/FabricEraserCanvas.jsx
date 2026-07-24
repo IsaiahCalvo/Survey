@@ -32,7 +32,9 @@ import { getEraserOperation } from '../utils/eraserPolicy.js';
 import { eraserDiameterToPageRadius } from '../utils/eraserSizing.js';
 import { nextEraserMutationId } from '../utils/eraserMutationId.js';
 import {
+  ERASER_PREVIEW_HANDOFF_BOUND_MS,
   isEraserPreviewFinishReady,
+  nextEraserPreviewHandoffState,
   selectEraserPreviewBaseline,
 } from '../utils/eraserPreviewHandoff.js';
 import { getCoalescedOrCurrentEvents } from '../utils/eraserPointerSamples.js';
@@ -42,6 +44,14 @@ import {
   getSurveyMarkerEraserHitIds,
   surveyMarkerToEraserObject,
 } from '../utils/surveyMarkerEraser.js';
+
+const getEraserHandoffTestFlags = () => (
+  import.meta.env.DEV
+  && typeof window !== 'undefined'
+  && window.__eraserHandoffTest
+    ? window.__eraserHandoffTest
+    : null
+);
 
 const distanceToSegment = (point, start, end) => {
   const dx = end.x - start.x;
@@ -191,6 +201,8 @@ const FabricEraserCanvas = memo(({
   const livePreviewMaskCanvasRef = useRef(null);
   const livePreviewSourceRef = useRef(null);
   const livePreviewObserverRef = useRef(null);
+  const livePreviewGuardObserverRef = useRef(null);
+  const livePreviewWatchdogRef = useRef(0);
   const livePreviewHideRafRef = useRef(0);
   // Mask-clone carve preview (2026-07-14): {root, carve, indexHidden}. The
   // live carve renders on a CLONE of the real SVG layer (same engine, same
@@ -401,6 +413,13 @@ const FabricEraserCanvas = memo(({
   const cancelLivePreviewFinish = useCallback(() => {
     livePreviewObserverRef.current?.disconnect?.();
     livePreviewObserverRef.current = null;
+    if (livePreviewWatchdogRef.current) clearTimeout(livePreviewWatchdogRef.current);
+    livePreviewWatchdogRef.current = 0;
+  }, []);
+
+  const cancelMaskCloneGuard = useCallback(() => {
+    livePreviewGuardObserverRef.current?.disconnect?.();
+    livePreviewGuardObserverRef.current = null;
   }, []);
 
   const cancelScheduledPreviewHide = useCallback(() => {
@@ -423,8 +442,54 @@ const FabricEraserCanvas = memo(({
     if (clone?.root?.isConnected) clone.root.remove();
   }, []);
 
+  const ensureMaskCloneConnected = useCallback(() => {
+    const clone = maskCloneRef.current;
+    const sourceState = livePreviewSourceRef.current;
+    const surface = containerRef.current?.closest('[data-annotation-real-surface]');
+    if (!clone?.root || !surface?.isConnected) return false;
+    if (clone.root.parentNode !== surface) surface.appendChild(clone.root);
+    clone.surface = surface;
+    if (sourceState) {
+      sourceState.surface = surface;
+      const wrapper = surface.querySelector?.('[data-diag-svg-wrapper]');
+      if (wrapper) {
+        if (!(sourceState.hiddenSvgWrappers instanceof Map)) {
+          sourceState.hiddenSvgWrappers = new Map();
+        }
+        if (!sourceState.hiddenSvgWrappers.has(wrapper)) {
+          sourceState.hiddenSvgWrappers.set(wrapper, wrapper.style.visibility);
+        }
+        wrapper.style.visibility = 'hidden';
+      }
+    }
+    return clone.root.isConnected;
+  }, []);
+
+  const startMaskCloneGuard = useCallback((surface) => {
+    cancelMaskCloneGuard();
+    if (!surface || typeof MutationObserver === 'undefined') return;
+    const observer = new MutationObserver(() => {
+      if (maskCloneRef.current?.root) ensureMaskCloneConnected();
+      const sourceState = livePreviewSourceRef.current;
+      if (
+        sourceState?.handoffState === 'waiting'
+        || sourceState?.handoffState === 'safe-hold'
+      ) {
+        sourceState.checkReady?.();
+      }
+    });
+    livePreviewGuardObserverRef.current = observer;
+    observer.observe(surface, {
+      attributes: true,
+      attributeFilter: ['data-svg-annotation-revision'],
+      childList: true,
+      subtree: true,
+    });
+  }, [cancelMaskCloneGuard, ensureMaskCloneConnected]);
+
   const finishLiveErasePreview = useCallback(({ immediate = false } = {}) => {
     cancelLivePreviewFinish();
+    cancelMaskCloneGuard();
     const sourceState = livePreviewSourceRef.current;
     const closingClone = maskCloneRef.current;
     const completeHandoff = () => {
@@ -448,7 +513,11 @@ const FabricEraserCanvas = memo(({
       // SVG mounted during the gesture makes a two-frame overlap unnecessary.
       if (closingClone?.root?.isConnected) closingClone.root.remove();
       hidePreviewCanvasNow();
-      if (svgWrapper) {
+      if (sourceState?.hiddenSvgWrappers instanceof Map) {
+        sourceState.hiddenSvgWrappers.forEach((visibility, wrapper) => {
+          if (wrapper?.isConnected) wrapper.style.visibility = visibility;
+        });
+      } else if (svgWrapper) {
         svgWrapper.style.visibility = sourceState?.previousSvgVisibility ?? '';
       }
       onErasePreviewPresentationRef.current?.(pageNumber, false);
@@ -460,10 +529,17 @@ const FabricEraserCanvas = memo(({
       return;
     }
     livePreviewHideRafRef.current = requestAnimationFrame(completeHandoff);
-  }, [cancelLivePreviewFinish, cancelScheduledPreviewHide, hidePreviewCanvasNow, pageNumber]);
+  }, [
+    cancelLivePreviewFinish,
+    cancelMaskCloneGuard,
+    cancelScheduledPreviewHide,
+    hidePreviewCanvasNow,
+    pageNumber,
+  ]);
 
   const restoreLiveErasePreviewImmediately = useCallback(() => {
     cancelLivePreviewFinish();
+    cancelMaskCloneGuard();
     cancelScheduledPreviewHide();
     const sourceState = livePreviewSourceRef.current;
     if (sourceState?.overlay?.isConnected) {
@@ -474,7 +550,11 @@ const FabricEraserCanvas = memo(({
       || containerRef.current
         ?.closest('[data-annotation-real-surface]')
         ?.querySelector('[data-diag-svg-wrapper]');
-    if (svgWrapper) {
+    if (sourceState?.hiddenSvgWrappers instanceof Map) {
+      sourceState.hiddenSvgWrappers.forEach((visibility, wrapper) => {
+        if (wrapper?.isConnected) wrapper.style.visibility = visibility;
+      });
+    } else if (svgWrapper) {
       svgWrapper.style.visibility = sourceState?.previousSvgVisibility ?? '';
     }
     livePreviewSourceRef.current = null;
@@ -483,6 +563,7 @@ const FabricEraserCanvas = memo(({
     onErasePreviewPresentationRef.current?.(pageNumber, false);
   }, [
     cancelLivePreviewFinish,
+    cancelMaskCloneGuard,
     cancelScheduledPreviewHide,
     hidePreviewCanvasNow,
     pageNumber,
@@ -964,7 +1045,8 @@ const FabricEraserCanvas = memo(({
   // straight from the pointer (the mask lives in the clone's user space),
   // so there is no transform to disagree with anything.
   const beginMaskClonePreview = useCallback(() => {
-    if (maskCloneRef.current?.root?.isConnected) {
+    if (getEraserHandoffTestFlags()?.forceMaskCloneUnavailable === true) return false;
+    if (maskCloneRef.current?.root) {
       // Continuing session (back-to-back strokes inside the previous
       // stroke's commit-wait window). CRITICAL: kill the previous stroke's
       // pending finish observer + deferred teardown, or its belated
@@ -972,7 +1054,17 @@ const FabricEraserCanvas = memo(({
       // review finding, 2026-07-15).
       cancelLivePreviewFinish();
       cancelScheduledPreviewHide();
-      return true;
+      if (ensureMaskCloneConnected()) {
+        const state = livePreviewSourceRef.current;
+        if (state) {
+          state.handoffState = 'active';
+          state.checkReady = null;
+        }
+        maskCloneRef.current.root.dataset.eraserHandoffState = 'active';
+        startMaskCloneGuard(state?.surface);
+        return true;
+      }
+      removeMaskCloneNow();
     }
     cancelLivePreviewFinish();
     cancelScheduledPreviewHide();
@@ -1069,17 +1161,38 @@ const FabricEraserCanvas = memo(({
       overlay: null,
       previousVisibility: '',
       previousSvgVisibility,
+      hiddenSvgWrappers: new Map([[wrapper, previousSvgVisibility]]),
       maskClone: true,
+      handoffState: 'active',
       paintGeneration: source?.dataset?.canvasPaintGeneration || '',
     };
+    cloneRoot.dataset.eraserHandoffState = 'active';
+    startMaskCloneGuard(surface);
     return true;
-  }, [cancelLivePreviewFinish, cancelScheduledPreviewHide, findPresentationSource, pageNumber, pageHeight, pageWidth]);
+  }, [
+    cancelLivePreviewFinish,
+    cancelScheduledPreviewHide,
+    ensureMaskCloneConnected,
+    findPresentationSource,
+    pageNumber,
+    pageHeight,
+    pageWidth,
+    removeMaskCloneNow,
+    startMaskCloneGuard,
+  ]);
 
   const scheduleLiveErasePreviewFinish = useCallback(({ expectedRevision, waitForNextPaint }) => {
     const sourceState = livePreviewSourceRef.current;
     if (!sourceState || (!expectedRevision && !waitForNextPaint)) {
       finishLiveErasePreview();
       return;
+    }
+    sourceState.handoffState = nextEraserPreviewHandoffState(
+      sourceState.handoffState || 'active',
+      'commit',
+    );
+    if (maskCloneRef.current?.root) {
+      maskCloneRef.current.root.dataset.eraserHandoffState = sourceState.handoffState;
     }
     // Rebase the fallback-painter gate at pointer-up, after the gesture but
     // before React can commit the delete. Using the generation captured at
@@ -1096,8 +1209,12 @@ const FabricEraserCanvas = memo(({
       if (!state) return true;
       const finalSvgWrapper = state.surface
         ?.querySelector?.('[data-diag-svg-wrapper]');
-      const svgAnnotationRevision = finalSvgWrapper
-        ?.dataset?.svgAnnotationRevision || '';
+      const suppressExactRepaint = (
+        getEraserHandoffTestFlags()?.suppressExactRepaint === true
+      );
+      const svgAnnotationRevision = suppressExactRepaint
+        ? '__eraser-test-suppressed__'
+        : finalSvgWrapper?.dataset?.svgAnnotationRevision || '';
       const currentSource = findPresentationSource().source;
       if (currentSource) state.source = currentSource;
       const canvasAnnotationRevision = currentSource?.dataset?.canvasAnnotationRevision || '';
@@ -1113,6 +1230,10 @@ const FabricEraserCanvas = memo(({
         baselinePaintGeneration: state.paintGeneration,
         currentPaintGeneration: paintGeneration,
       })) {
+        state.handoffState = nextEraserPreviewHandoffState(
+          state.handoffState,
+          'exact-paint',
+        );
         finishLiveErasePreview();
         return true;
       }
@@ -1132,8 +1253,40 @@ const FabricEraserCanvas = memo(({
         'data-svg-annotation-revision',
       ],
     });
+    sourceState.checkReady = check;
+    livePreviewWatchdogRef.current = setTimeout(() => {
+      const state = livePreviewSourceRef.current;
+      if (!state || state !== sourceState || state.handoffState !== 'waiting') return;
+      state.handoffState = nextEraserPreviewHandoffState(state.handoffState, 'bound');
+      livePreviewObserverRef.current?.disconnect?.();
+      livePreviewObserverRef.current = null;
+      livePreviewWatchdogRef.current = 0;
+      if (maskCloneRef.current?.root) {
+        maskCloneRef.current.root.dataset.eraserHandoffState = state.handoffState;
+        ensureMaskCloneConnected();
+      }
+    }, ERASER_PREVIEW_HANDOFF_BOUND_MS);
     check();
-  }, [cancelLivePreviewFinish, findPresentationSource, finishLiveErasePreview]);
+  }, [
+    cancelLivePreviewFinish,
+    ensureMaskCloneConnected,
+    findPresentationSource,
+    finishLiveErasePreview,
+  ]);
+
+  // The watchdog deliberately disconnects its MutationObserver at the bound.
+  // A later React paint still gets one deterministic readiness check from the
+  // component's layout phase, so safe-hold cannot require a pointer or zoom to
+  // release and no unbounded repaint observer remains attached.
+  useLayoutEffect(() => {
+    const state = livePreviewSourceRef.current;
+    if (
+      state?.handoffState !== 'waiting'
+      && state?.handoffState !== 'safe-hold'
+    ) return;
+    ensureMaskCloneConnected();
+    state.checkReady?.();
+  });
 
   const getSpaceIdForRegion = useCallback((regionId) => {
     if (!regionId) return null;
@@ -1314,6 +1467,17 @@ const FabricEraserCanvas = memo(({
 
   const previewEraserGesture = useCallback((pointer, segment) => {
     if (!pointer?.points?.length) return false;
+    if (pointer.previewActive && maskCloneRef.current?.root) {
+      const testFlags = getEraserHandoffTestFlags();
+      if (testFlags?.forceCloneDisconnectOnce === true) {
+        testFlags.forceCloneDisconnectOnce = false;
+        maskCloneRef.current.root.remove();
+      }
+      // The real SVG may be removed or replaced during a React/pdf.js swap.
+      // Re-parent the exact carved clone before the next paint rather than
+      // dropping to flattened pixels or exposing the hidden stale layer.
+      ensureMaskCloneConnected();
+    }
     if (pointer.previewActive && pointer.previewHasPartial) {
       // Carving is live: O(1) punch of the new segment, plus the cheap
       // non-path ghost check so whole-delete objects crossed mid-carve still
@@ -1366,20 +1530,17 @@ const FabricEraserCanvas = memo(({
     );
     if (!plan.shouldPreview && !calloutHitIds.length && !surveyMarkerHitIds.length) return false;
     if (!pointer.previewActive) {
-      // Mask-clone first (bit-identical, synchronous); the painted-canvas
-      // copy only serves the exotic failure path (SVG missing mid-swap).
+      // The exact SVG clone is the only safe live presentation. A flattened
+      // canvas cannot distinguish permitted ink from foreign, locked, or
+      // atomic content occupying the same pixels.
       if (beginMaskClonePreview()) {
         console.log(`[EraserCarveDiag] page=${pageNumber} base=svg-mask-clone`);
         activatePointerPreview(pointer);
         if (pointer.previewHasPartial) maskCarvedPathHits(pointer, pointer.points);
-      } else if (beginLiveErasePreview()) {
-        console.log(`[EraserCarveDiag] page=${pageNumber} base=painted-fallback`);
-        activatePointerPreview(pointer);
       } else {
-        // Activation can legitimately fail (presentation canvas not painted
-        // yet, page mid-swap). Stash this segment's outcome so the first
-        // successful activation replays it — otherwise a hit inside the
-        // failure window would never carve/ghost for the rest of the gesture.
+        // SVG can be transiently absent during a page swap. Keep the real
+        // presentation visible and retry the exact clone on a later sample;
+        // commit still uses the accumulated page-space gesture.
         pointer.pendingPartial = pointer.pendingPartial || plan.partialIds.length > 0;
         plan.atomicIds.forEach((id) => pointer.pendingAtomicIds.add(id));
         calloutHitIds.forEach((id) => pointer.pendingCalloutIds.add(id));
@@ -1420,11 +1581,11 @@ const FabricEraserCanvas = memo(({
     return true;
   }, [
     activatePointerPreview,
-    beginLiveErasePreview,
     beginMaskClonePreview,
     classifyEraserSegment,
     drawLiveErasePreviewSegment,
     eraseAtomicObjectsFromPreview,
+    ensureMaskCloneConnected,
     getPermittedCalloutHitIds,
     getPermittedSurveyMarkerHitIds,
     ghostAtomicHits,
@@ -1751,10 +1912,17 @@ const FabricEraserCanvas = memo(({
   const commitPointerForZoom = useCallback(() => {
     const pointer = pointerRef.current;
     if (!pointer) {
-      // Pointer-less bumps (zoom while idle, settle, watchdog): tear down any
-      // preview handoff still waiting on its commit repaint, exactly like the
-      // old cancel path did — otherwise a frozen old-scale snapshot rides the
-      // zoom re-layout until the observer fires.
+      const sourceState = livePreviewSourceRef.current;
+      if (
+        sourceState?.handoffState === 'waiting'
+        || sourceState?.handoffState === 'safe-hold'
+      ) {
+        // SVG viewBox remains the sole zoom owner. Retain and re-parent the
+        // exact clone; only an exact committed revision may end this handoff.
+        ensureMaskCloneConnected();
+        sourceState.checkReady?.();
+        return;
+      }
       finishLiveErasePreview();
       return;
     }
@@ -1774,7 +1942,12 @@ const FabricEraserCanvas = memo(({
       console.error('Zoom-triggered eraser commit failed:', error);
       finishLiveErasePreview();
     }
-  }, [applyEraserAndCommit, finishLiveErasePreview, scheduleLiveErasePreviewFinish]);
+  }, [
+    applyEraserAndCommit,
+    ensureMaskCloneConnected,
+    finishLiveErasePreview,
+    scheduleLiveErasePreviewFinish,
+  ]);
 
   useEffect(() => {
     if (zoomGeneration === initialZoomGenerationRef.current) return;

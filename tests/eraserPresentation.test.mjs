@@ -2,7 +2,9 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  ERASER_PREVIEW_HANDOFF_BOUND_MS,
   isEraserPreviewFinishReady,
+  nextEraserPreviewHandoffState,
   selectEraserPreviewBaseline,
 } from '../src/utils/eraserPreviewHandoff.js';
 import { getCoalescedOrCurrentEvents } from '../src/utils/eraserPointerSamples.js';
@@ -67,11 +69,14 @@ test('production exposes the full and partial eraser menu from the eraser caret'
   assert.match(VIEWER_SOURCE, />\s*Full stroke erase\s*</);
 });
 
-test('production eraser previews the cut live on one canvas while dragging', () => {
+test('production eraser uses only the exact SVG clone for live carving', () => {
   assert.match(ERASER_SOURCE, /data-eraser-live-preview/);
-  assert.match(ERASER_SOURCE, /globalCompositeOperation = 'destination-out'/);
   assert.match(ERASER_SOURCE, /getCoalescedOrCurrentEvents/);
-  assert.match(ERASER_SOURCE, /beginLiveErasePreview/);
+  const previewStart = ERASER_SOURCE.indexOf('const previewEraserGesture = useCallback');
+  const previewEnd = ERASER_SOURCE.indexOf('\n  const applyEraserAndCommit', previewStart);
+  const previewSource = ERASER_SOURCE.slice(previewStart, previewEnd);
+  assert.match(previewSource, /beginMaskClonePreview/);
+  assert.doesNotMatch(previewSource, /beginLiveErasePreview/);
   assert.match(ERASER_SOURCE, /finishLiveErasePreview/);
 });
 
@@ -242,18 +247,18 @@ test('a settled worker canvas becomes the next gesture baseline', () => {
   }), 'source');
 });
 
-test('last-item erase treats removal of the release-time source as the final empty paint', () => {
+test('last-item erase does not treat worker-source removal as an exact empty SVG paint', () => {
   assert.equal(isEraserPreviewFinishReady({
-    expectedRevision: null,
+    expectedRevision: 'eraser:empty',
     waitForNextPaint: true,
-    finalSvgRevision: '',
+    finalSvgRevision: 'baseline',
     maskClone: true,
     hadSourceAtRelease: true,
     hasCurrentSource: false,
     canvasRevision: '',
     baselinePaintGeneration: '7',
     currentPaintGeneration: '',
-  }), true);
+  }), false);
 });
 
 test('SVG-clone handoff releases on the exact hidden SVG without waiting for a stale worker', () => {
@@ -382,6 +387,17 @@ test('preview handoff never reveals a known-stale presentation on a timer', () =
   assert.doesNotMatch(handoffSource, /ERASER_PREVIEW_HANDOFF_TIMEOUT_MS/);
   assert.doesNotMatch(handoffSource, /now - startedAt/);
   assert.match(handoffSource, /canvasRevision:\s*canvasAnnotationRevision/);
+  assert.match(handoffSource, /ERASER_PREVIEW_HANDOFF_BOUND_MS/);
+  assert.match(handoffSource, /eraserHandoffState = state\.handoffState/);
+});
+
+test('preview handoff state machine reaches a bounded safe terminal presentation', () => {
+  assert.ok(ERASER_PREVIEW_HANDOFF_BOUND_MS > 0);
+  assert.equal(nextEraserPreviewHandoffState('active', 'commit'), 'waiting');
+  assert.equal(nextEraserPreviewHandoffState('waiting', 'bound'), 'safe-hold');
+  assert.equal(nextEraserPreviewHandoffState('safe-hold', 'zoom'), 'safe-hold');
+  assert.equal(nextEraserPreviewHandoffState('safe-hold', 'exact-paint'), 'ready');
+  assert.equal(nextEraserPreviewHandoffState('safe-hold', 'unmount'), 'idle');
 });
 
 test('benchmark rendering and eraser interaction never use different page models', () => {
