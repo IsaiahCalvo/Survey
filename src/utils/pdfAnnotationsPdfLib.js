@@ -2687,50 +2687,25 @@ export const savePDFWithAnnotationsPdfLib = async (pdfFile, annotationsByPage, p
           ]),
       ).values(),
     ];
-    // Resolve every native deletion/replacement against the ORIGINAL /Annots
-    // arrays, then remove in descending source-index order. Mutating while
-    // resolving would shift later direct-dictionary indices and could delete
-    // the wrong annotation when one export removes more than one native item.
-    const nativeRemovalRequests = [
-      ...deletedPdfAnnotations.map((entry) => ({
-        kind: 'deleted',
-        pageNumber: Number(entry.pageNumber),
-        pdfAnnotationId: entry.pdfAnnotationId,
-        pdfAnnotationType: entry.pdfAnnotationType,
-        pdfNativeAnnotationIdentity:
-          entry.pdfNativeAnnotationIdentity
-          || entry.data?.pdfNativeAnnotationIdentity
-          || null,
-      })),
-      ...exportPlan.items
-        .filter((item) => {
-          if (!isEditedPdfImportedObject(item.object)) return false;
-          const pageNumber = Number(item.pageNumber);
-          const pageNumStr = String(item.pageNumber);
-          const hasPageSize = Boolean(pageSizes[pageNumStr] || pageSizes[pageNumber]);
-          return (
-            hasPageSize
-            && Number.isInteger(pageNumber)
-            && pageNumber > 0
-            && pageNumber <= pdfDoc.getPageCount()
-          );
-        })
-        .map((item) => ({
-          kind: 'edited',
-          pageNumber: Number(item.pageNumber),
-          pdfAnnotationId: item.object?.pdfAnnotationId,
-          pdfAnnotationType: item.object?.pdfAnnotationType,
-          pdfNativeAnnotationIdentity:
-            item.object?.data?.pdfNativeAnnotationIdentity
-            || item.object?.pdfNativeAnnotationIdentity
-            || null,
-        })),
-    ];
-    applyNativePdfAnnotationRemovalPlan({
-      pdfDoc,
-      requests: nativeRemovalRequests,
-      exportDiagnostics,
-    });
+    // Native replacements are committed in three phases below:
+    //   1. create every replacement ref without attaching it,
+    //   2. remove tombstoned originals plus originals whose replacement
+    //      creation succeeded, resolving against the ORIGINAL /Annots arrays,
+    //   3. attach the successfully-created replacement refs.
+    // This preserves a native original when its writer returns null/throws,
+    // while still avoiding source-index drift and duplicate-/NM ambiguity.
+    const nativeDeletionRemovalRequests = deletedPdfAnnotations.map((entry) => ({
+      kind: 'deleted',
+      pageNumber: Number(entry.pageNumber),
+      pdfAnnotationId: entry.pdfAnnotationId,
+      pdfAnnotationType: entry.pdfAnnotationType,
+      pdfNativeAnnotationIdentity:
+        entry.pdfNativeAnnotationIdentity
+        || entry.data?.pdfNativeAnnotationIdentity
+        || null,
+    }));
+    const successfulEditedNativeRemovalRequests = [];
+    const pendingAnnotationRefs = [];
 
     exportPlan.items.forEach((item) => {
       const pageNumStr = String(item.pageNumber);
@@ -2842,12 +2817,36 @@ export const savePDFWithAnnotationsPdfLib = async (pdfFile, annotationsByPage, p
 
       const refsToPush = Array.isArray(annotRefs) ? annotRefs : (annotRef ? [annotRef] : []);
       if (refsToPush.length > 0) {
-        refsToPush.forEach((ref) => annots.push(ref));
+        pendingAnnotationRefs.push({ annots, refs: refsToPush });
+        if (isEditedPdfImportedObject(obj)) {
+          successfulEditedNativeRemovalRequests.push({
+            kind: 'edited',
+            pageNumber: Number(item.pageNumber),
+            pdfAnnotationId: obj?.pdfAnnotationId,
+            pdfAnnotationType: obj?.pdfAnnotationType,
+            pdfNativeAnnotationIdentity:
+              obj?.data?.pdfNativeAnnotationIdentity
+              || obj?.pdfNativeAnnotationIdentity
+              || null,
+          });
+        }
         totalAnnotations += refsToPush.length;
         exportDiagnostics.pdfAnnotationsAdded += refsToPush.length;
       } else {
         recordSkip(exportDiagnostics, item, 'pdf-annotation-create-failed');
       }
+    });
+
+    applyNativePdfAnnotationRemovalPlan({
+      pdfDoc,
+      requests: [
+        ...nativeDeletionRemovalRequests,
+        ...successfulEditedNativeRemovalRequests,
+      ],
+      exportDiagnostics,
+    });
+    pendingAnnotationRefs.forEach(({ annots, refs }) => {
+      refs.forEach((ref) => annots.push(ref));
     });
 
     // Save the PDF
