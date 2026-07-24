@@ -156,7 +156,9 @@ test('eraser: getEraseBlockReason deliberately stays on canModify (no unconfirme
   const eraser = readFileSync(SRC('components/FabricEraserCanvas.jsx'), 'utf8');
   const start = eraser.indexOf('const getEraseBlockReason');
   ok(start > -1);
-  const body = eraser.slice(start, start + 1600);
+  const end = eraser.indexOf('\n  const ghostAtomicHits', start);
+  ok(end > start);
+  const body = eraser.slice(start, end);
   match(body, /!canModify\(\{/);
   doesNotMatch(body, /canDelete\(/);
 });
