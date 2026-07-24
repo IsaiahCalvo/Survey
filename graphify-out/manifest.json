@@ -900,8 +900,8 @@
     "semantic_hash": ""
   },
   "package.json": {
-    "mtime": 1784866214.5944734,
-    "ast_hash": "f832947f5d043bf4f96b8f785559f29e",
+    "mtime": 1784877750.546534,
+    "ast_hash": "0cde1a67878426e0f0939c77bcaca943",
     "semantic_hash": ""
   },
   "packages/shared/package.json": {
@@ -1155,8 +1155,8 @@
     "semantic_hash": ""
   },
   "src/PDFViewer.jsx": {
-    "mtime": 1784869650.4439445,
-    "ast_hash": "c1a7a439b81ba3b2ce4a739299a7dc98",
+    "mtime": 1784881230.6330876,
+    "ast_hash": "26ca460200a5049082862ca11a586071",
     "semantic_hash": ""
   },
   "src/PageAnnotationLayer.jsx": {
@@ -1245,8 +1245,8 @@
     "semantic_hash": ""
   },
   "src/components/FabricEraserCanvas.jsx": {
-    "mtime": 1784869031.3079796,
-    "ast_hash": "fd204c2b8d641edb37bc206eef4923ab",
+    "mtime": 1784878769.899765,
+    "ast_hash": "c11361cdc684150378aa2e17c77657fe",
     "semantic_hash": ""
   },
   "src/components/FormFieldPropertiesPanel.jsx": {
@@ -1575,8 +1575,8 @@
     "semantic_hash": ""
   },
   "src/hooks/useAnnotationDoc.js": {
-    "mtime": 1784868829.6423697,
-    "ast_hash": "c445fc128594ddf5f0ad9f1293070e52",
+    "mtime": 1784877750.5539145,
+    "ast_hash": "fe41e69b3f3867ed81d23971547194a9",
     "semantic_hash": ""
   },
   "src/hooks/useDatabase.js": {
@@ -1770,8 +1770,8 @@
     "semantic_hash": ""
   },
   "src/main.jsx": {
-    "mtime": 1784868829.6435015,
-    "ast_hash": "ebacd33cb6d71af2168f700e9ccedd12",
+    "mtime": 1784878058.9215574,
+    "ast_hash": "559558a859a677fad4eae5c2b4adde72",
     "semantic_hash": ""
   },
   "src/pdf.worker.js.js": {
@@ -2010,13 +2010,13 @@
     "semantic_hash": ""
   },
   "src/services/annotationDocStore.js": {
-    "mtime": 1784868829.6441112,
-    "ast_hash": "4cb24d055f6bdd09d1817100c5b72619",
+    "mtime": 1784878533.904212,
+    "ast_hash": "d79ce58044eb0641434ac6f9b6ee9a5d",
     "semantic_hash": ""
   },
   "src/services/annotationDocSync.js": {
-    "mtime": 1784868829.6454494,
-    "ast_hash": "e21f85b4a5fbfefc3ebfeea2cb6fc879",
+    "mtime": 1784877750.5555928,
+    "ast_hash": "c7c079152508ff81eacfd9c8ec938938",
     "semantic_hash": ""
   },
   "src/services/annotationReadPagination.js": {
@@ -2025,8 +2025,8 @@
     "semantic_hash": ""
   },
   "src/services/annotationTrashHistory.js": {
-    "mtime": 1784861674.8513405,
-    "ast_hash": "6b19917993cc4cfb5753938c2aee62ab",
+    "mtime": 1784877750.5562022,
+    "ast_hash": "417c341f6125848193790d454dfef65d",
     "semantic_hash": ""
   },
   "src/services/annotationTypeSerializers.js": {
@@ -2430,8 +2430,8 @@
     "semantic_hash": ""
   },
   "src/utils/counterGeometry.js": {
-    "mtime": 1784861674.8625367,
-    "ast_hash": "7b9b12a490a1d90ab1fabfb06cf0c2ed",
+    "mtime": 1784877750.5573833,
+    "ast_hash": "8243d4290e50c281afd89d40ae5ad602",
     "semantic_hash": ""
   },
   "src/utils/counterNumbering.js": {
@@ -2490,8 +2490,8 @@
     "semantic_hash": ""
   },
   "src/utils/geometryHitTest.js": {
-    "mtime": 1784861674.8655183,
-    "ast_hash": "af530e7790496649f23c49dde34ff4d7",
+    "mtime": 1784877750.5589786,
+    "ast_hash": "5ffdd5321ab75f35bd271f24916e09d4",
     "semantic_hash": ""
   },
   "src/utils/handleStyle.js": {
@@ -2500,8 +2500,8 @@
     "semantic_hash": ""
   },
   "src/utils/historyHelpers.js": {
-    "mtime": 1784869031.3102314,
-    "ast_hash": "a5857c9b1220ac08187e0e4ca6bb4e01",
+    "mtime": 1784877750.5592766,
+    "ast_hash": "0f460047e511089e880112854950267d",
     "semantic_hash": ""
   },
   "src/utils/historyStacks.js": {
@@ -2580,13 +2580,13 @@
     "semantic_hash": ""
   },
   "src/utils/pdfAnnotationImporter.js": {
-    "mtime": 1784861674.868972,
-    "ast_hash": "823d0b3a3960fdff3765822eb67271b5",
+    "mtime": 1784877750.5602596,
+    "ast_hash": "3e00abfcfaa5dbc980fe3f7132f091dd",
     "semantic_hash": ""
   },
   "src/utils/pdfAnnotationsPdfLib.js": {
-    "mtime": 1784861674.869235,
-    "ast_hash": "7e47b52b62e1bc053ba7d5d981f0e0de",
+    "mtime": 1784878641.345522,
+    "ast_hash": "e8043f6f9b565dfdf92ba1acba8f08c4",
     "semantic_hash": ""
   },
   "src/utils/pdfAppAnnotationMetadata.js": {
@@ -3355,8 +3355,8 @@
     "semantic_hash": ""
   },
   "tests/documentHistoryService.test.mjs": {
-    "mtime": 1784861674.89979,
-    "ast_hash": "19f7e4642c038a8fb9ea6f026437ff1f",
+    "mtime": 1784877750.5622625,
+    "ast_hash": "ea1ed630600dd0dea0becebc9ad3a719",
     "semantic_hash": ""
   },
   "tests/documentSurveyMarkerMapper.test.mjs": {
@@ -3430,8 +3430,8 @@
     "semantic_hash": ""
   },
   "tests/geometryHitTest.test.mjs": {
-    "mtime": 1784861674.9021685,
-    "ast_hash": "dca60c3a47124b971a05d59f09ea3383",
+    "mtime": 1784878069.1970813,
+    "ast_hash": "a18037d279a2963bee772ec4be99de12",
     "semantic_hash": ""
   },
   "tests/highlightSyncDeleteDiff.test.mjs": {
@@ -3440,8 +3440,8 @@
     "semantic_hash": ""
   },
   "tests/historyStacks.test.mjs": {
-    "mtime": 1784861674.9027917,
-    "ast_hash": "b8e33e6d68e0b88248a83217c8aafccb",
+    "mtime": 1784877750.5642076,
+    "ast_hash": "9619b2780ea3068b56bcb5c158be7c08",
     "semantic_hash": ""
   },
   "tests/importFieldWhitelist.test.mjs": {
@@ -4025,8 +4025,8 @@
     "semantic_hash": ""
   },
   "tests/surveyMarkerNamePromptContract.test.mjs": {
-    "mtime": 1784861674.9203072,
-    "ast_hash": "95edc38630077c18b7e82051124ff672",
+    "mtime": 1784877750.5655134,
+    "ast_hash": "4214ecc7bea48d4a51d840237bb62bb0",
     "semantic_hash": ""
   },
   "tests/surveyMarkerSyncSafetyBranches.test.mjs": {
@@ -7420,8 +7420,8 @@
     "semantic_hash": ""
   },
   "src/utils/eraserPolicy.js": {
-    "mtime": 1784861674.864208,
-    "ast_hash": "f56fd8e590d9a680c1e59799c8dd6ec4",
+    "mtime": 1784877750.5583074,
+    "ast_hash": "4333ad0ee032ce3257c90d591248cb4c",
     "semantic_hash": ""
   },
   "src/utils/eraserPreviewHandoff.js": {
@@ -7450,8 +7450,8 @@
     "semantic_hash": ""
   },
   "src/utils/pageSpaceEraser.js": {
-    "mtime": 1784868829.6464498,
-    "ast_hash": "013c9e21343b8512e0574a9169b09ab2",
+    "mtime": 1784877974.2412643,
+    "ast_hash": "c5fd2710e88a658db8905a884f3b18d4",
     "semantic_hash": ""
   },
   "src/utils/paperAnnotationGeometry.js": {
@@ -7575,13 +7575,13 @@
     "semantic_hash": ""
   },
   "tests/eraserPolicy.test.mjs": {
-    "mtime": 1784861674.9005013,
-    "ast_hash": "2840634f6a7aa529a2ccf7bfe75d3e21",
+    "mtime": 1784877750.5629554,
+    "ast_hash": "3f6bfaeee9beb12a0f99de98bb30e5c7",
     "semantic_hash": ""
   },
   "tests/eraserPresentation.test.mjs": {
-    "mtime": 1784869650.4625728,
-    "ast_hash": "5e1d5b5f727a4715a5bd3ddab8440bcb",
+    "mtime": 1784878769.9000084,
+    "ast_hash": "932782eae7cff860a925003b385f698c",
     "semantic_hash": ""
   },
   "tests/eraserPreviewPlan.test.mjs": {
@@ -8560,18 +8560,18 @@
     "semantic_hash": ""
   },
   "src/utils/pasteCloneIdentity.js": {
-    "mtime": 1784861674.8683314,
-    "ast_hash": "9926ec83f18038f9b7017c36eb20e229",
+    "mtime": 1784877750.5598314,
+    "ast_hash": "747015c52df667cea30abb5a9bf996ef",
     "semantic_hash": ""
   },
   "tests/pdfImportedEditExportFidelity.test.mjs": {
-    "mtime": 1784869650.4644237,
-    "ast_hash": "230a2fa56f421866b8a6d448f01f6f9b",
+    "mtime": 1784877974.2419493,
+    "ast_hash": "f2b9489c9f909ad068d73a90175de433",
     "semantic_hash": ""
   },
   "tests/pasteCloneIdentity.test.mjs": {
-    "mtime": 1784869650.4637184,
-    "ast_hash": "eea96089c9e7f4dc0777e82cc7e41bed",
+    "mtime": 1784877750.5646386,
+    "ast_hash": "6695c7d432f139092f09dd6590408cc5",
     "semantic_hash": ""
   },
   "tests/pdfChangeEffectKeying.test.mjs": {
@@ -8595,8 +8595,8 @@
     "semantic_hash": ""
   },
   "tests/phase35/contributorCrossAuthorShapes.test.mjs": {
-    "mtime": 1784861674.9174042,
-    "ast_hash": "796c5a85b1193f0923cb803220f92eeb",
+    "mtime": 1784878900.040009,
+    "ast_hash": "249761c3ac009349d4a8a940e961818e",
     "semantic_hash": ""
   },
   "tests/annotationContextMenuCalloutParity.test.mjs": {
@@ -10200,13 +10200,13 @@
     "semantic_hash": ""
   },
   "debug/scenarios/eraser-lifecycle-gestures.spec.mjs": {
-    "mtime": 1784863600.4635236,
-    "ast_hash": "0f868b9079a27112f2fbd850b1e80791",
+    "mtime": 1784881230.6336272,
+    "ast_hash": "4f6cd0b3aca361ef9b3091199e04da13",
     "semantic_hash": ""
   },
   "debug/scenarios/eraser-preview-handoff-safety.spec.mjs": {
-    "mtime": 1784864623.4339871,
-    "ast_hash": "fbf23857295854150acd4b3769a85ffe",
+    "mtime": 1784879950.3947227,
+    "ast_hash": "5d2544684881b4d35417eded449a0d0b",
     "semantic_hash": ""
   },
   "debug/scenarios/eraserPixelOracle.mjs": {
@@ -10235,8 +10235,8 @@
     "semantic_hash": ""
   },
   "src/dev/EraserTwoClientRaceHarness.jsx": {
-    "mtime": 1784870366.8973644,
-    "ast_hash": "85d963c28a9d3af067cc0188ee1dbb16",
+    "mtime": 1784879516.9666648,
+    "ast_hash": "3ecec1d5c381b27caee732af6c14cf02",
     "semantic_hash": ""
   },
   "src/services/annotationDocOutbox.js": {
@@ -10280,8 +10280,8 @@
     "semantic_hash": ""
   },
   "tests/annotationDocConcurrency.test.mjs": {
-    "mtime": 1784869650.4555862,
-    "ast_hash": "acebe1cf596f10cf458d8934e290866c",
+    "mtime": 1784877750.5613372,
+    "ast_hash": "a60068756dc5a00da71808c42fb4d40a",
     "semantic_hash": ""
   },
   "tests/annotationDocOutbox.test.mjs": {
@@ -10315,8 +10315,8 @@
     "semantic_hash": ""
   },
   "tests/eraserMountedRaceHarness.test.mjs": {
-    "mtime": 1784868829.6467156,
-    "ast_hash": "8915197cf862e2051a2cc268061ab81d",
+    "mtime": 1784879510.452319,
+    "ast_hash": "b2dd3631a74b9ad3c40a93808be1588d",
     "semantic_hash": ""
   },
   "tests/eraserPixelOracle.test.mjs": {
@@ -10382,6 +10382,91 @@
   "docs/handoffs/ERASER-TWO-CLIENT-RACE-INTEGRATION.md": {
     "mtime": 1784868829.6163437,
     "ast_hash": "5b5629e3c3b924a2e130f69554df45e5",
+    "semantic_hash": ""
+  },
+  "debug/scenarios/eraser-counter-commit.spec.mjs": {
+    "mtime": 1784878190.763592,
+    "ast_hash": "9371701245e6116cd9e5b402d27c0f0b",
+    "semantic_hash": ""
+  },
+  "debug/scenarios/eraser-local-fallback.spec.mjs": {
+    "mtime": 1784877750.544021,
+    "ast_hash": "4df3531c8efff23516bf44893f7d40d9",
+    "semantic_hash": ""
+  },
+  "debug/scenarios/eraser-rapid-commit.spec.mjs": {
+    "mtime": 1784879434.0627394,
+    "ast_hash": "3a0dd459d3cab673265de8b42dd5d52a",
+    "semantic_hash": ""
+  },
+  "src/prototype/AtomicEraseHarness.jsx": {
+    "mtime": 1784877750.5545938,
+    "ast_hash": "22eff069ab5c6c44f551e1bc2ea8ca06",
+    "semantic_hash": ""
+  },
+  "src/utils/annotationEraseCommitPlan.js": {
+    "mtime": 1784877750.556361,
+    "ast_hash": "3f1a5f6ace79171afbf67e712d7dd3b1",
+    "semantic_hash": ""
+  },
+  "src/utils/annotationEraseLimits.js": {
+    "mtime": 1784877750.556484,
+    "ast_hash": "9708754ffb064c70401c7b4ef9af974a",
+    "semantic_hash": ""
+  },
+  "src/utils/annotationEraseTransaction.js": {
+    "mtime": 1784877750.5567644,
+    "ast_hash": "e27dce55ac78f2509d50b939087a093b",
+    "semantic_hash": ""
+  },
+  "src/utils/counterSeriesMembership.js": {
+    "mtime": 1784877750.5575266,
+    "ast_hash": "4e25ca937cd7f404aeb2ba56961f30b4",
+    "semantic_hash": ""
+  },
+  "src/utils/eraseExcelProjection.js": {
+    "mtime": 1784877750.557693,
+    "ast_hash": "a4216e50e4b202213037d764a1ac40d8",
+    "semantic_hash": ""
+  },
+  "src/utils/eraseHistoryScope.js": {
+    "mtime": 1784877750.557838,
+    "ast_hash": "9b970b6019f4576621140c6c9b347242",
+    "semantic_hash": ""
+  },
+  "src/utils/eraseTransitionHistory.js": {
+    "mtime": 1784877750.5579755,
+    "ast_hash": "aac5c8ced489dd595299eed2313df5b4",
+    "semantic_hash": ""
+  },
+  "src/utils/pendingSurveyMarkerHistory.js": {
+    "mtime": 1784877750.5608068,
+    "ast_hash": "ec46dc4ed9abe6aad5ec324719538bc5",
+    "semantic_hash": ""
+  },
+  "tests/annotationEraseTransaction.test.mjs": {
+    "mtime": 1784877750.5617552,
+    "ast_hash": "23ddf47eb3e4dc0ecfb9a20b7c53175f",
+    "semantic_hash": ""
+  },
+  "tests/eraseHistoryScope.test.mjs": {
+    "mtime": 1784877750.5624084,
+    "ast_hash": "b3f7ad2e97635cd560077a7a14208d1c",
+    "semantic_hash": ""
+  },
+  "tests/eraseTransitionHistory.test.mjs": {
+    "mtime": 1784877750.562551,
+    "ast_hash": "4741918612b64e85928dea1833a8adbd",
+    "semantic_hash": ""
+  },
+  "tests/pdfNativeReplacementAtomicity.test.mjs": {
+    "mtime": 1784878583.1722336,
+    "ast_hash": "4b7bc8dc33979dc79b877da1a45209b1",
+    "semantic_hash": ""
+  },
+  "tests/toolbarWidthDraft.test.mjs": {
+    "mtime": 1784880994.9988892,
+    "ast_hash": "475b3f858537cacc1d863ed73b4b3ba0",
     "semantic_hash": ""
   }
 }
