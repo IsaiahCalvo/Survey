@@ -178,6 +178,18 @@ async function main() {
         window.dispatchEvent(new CustomEvent('crdt:dedupe-resync', { detail: { documentId: docId, removed: rm } }));
       }, [documentId, removed]);
 
+    const isWalWrite = (m) =>
+      m.table === 'annotation_updates'
+      || m.table === 'rpc/append_annotation_update';
+    const isSnapshotWrite = (m) =>
+      m.table === 'annotation_snapshots'
+      || m.table === 'rpc/store_annotation_snapshot';
+    const isAnnotationContentWrite = (m) =>
+      isWalWrite(m)
+      || isSnapshotWrite(m)
+      || m.table === 'doc_yjs_state'
+      || m.table === 'document_annotations';
+
     const destructiveIn = (windowName) => mock.mutationsIn(windowName).filter((m) => {
       const t = m.table;
       // Read-only RPCs served by the mock's default handlers (viewer-role
@@ -231,7 +243,7 @@ async function main() {
         return false;
       }
       if (t === 'doc_yjs_state' || t === 'doc_yjs_updates') return true; // disallowed everywhere (Codex r3)
-      if (t === 'annotation_updates' || t === 'annotation_snapshots') return windowName !== 'S3';
+      if (isWalWrite(m) || isSnapshotWrite(m)) return windowName !== 'S3';
       if (String(t).startsWith('storage:')) return true;
       return true; // unknown mutating table = destructive until proven otherwise
     });
@@ -287,7 +299,7 @@ async function main() {
     await closeSurveyPanel();
     expect(countLogs('survey-marker sync skipped unsafe hydrate-empty delete') === 0, 'S2: no hydrate-empty-delete warning ever');
     expect(countLogs('dedupe-resync skipped unsafe shrink') === s2SkipsBefore, 'S2: no NEW unsafe-shrink event during idle/wake (Codex result r2)');
-    const s2Writes = mock.mutationsIn('S2').filter((m) => ['annotation_updates', 'annotation_snapshots', 'doc_yjs_state', 'document_annotations'].includes(m.table));
+    const s2Writes = mock.mutationsIn('S2').filter(isAnnotationContentWrite);
     expect(s2Writes.length === 0, `S2: ZERO annotation-content writes during idle (saw ${s2Writes.length})`);
     expect(destructiveIn('S2').length === 0, 'S2: no destructive mutations');
 
@@ -322,17 +334,25 @@ async function main() {
       for (let i = 0; i < out.length; i += 1) out[i] = parseInt(hex.substr(i * 2, 2), 16);
       return out;
     };
-    const s3Wal = mock.mutationsIn('S3').filter((m) => m.table === 'annotation_updates');
+    const s3Wal = mock.mutationsIn('S3').filter(isWalWrite);
     const replay = new Y.Doc();
     Y.applyUpdate(replay, pgHexToBytes(fixtures.docsById[DOC_B_ID].walRows[0].data));
-    for (const m of s3Wal) Y.applyUpdate(replay, pgHexToBytes((m.body || {}).data));
+    for (const m of s3Wal) {
+      Y.applyUpdate(replay, pgHexToBytes(
+        m.table === 'rpc/append_annotation_update'
+          ? m.body?.p_data
+          : m.body?.data,
+      ));
+    }
     expect(replay.getMap('annotations').size === 12, `S3 decode: fixture WAL + recorded inserts replay to 12 entries (got ${replay.getMap('annotations').size})`);
-    const s3Snaps = mock.mutationsIn('S3').filter((m) => m.table === 'annotation_snapshots');
+    const s3Snaps = mock.mutationsIn('S3').filter(isSnapshotWrite);
     if (s3Snaps.length) {
       const last = s3Snaps[s3Snaps.length - 1].body || {};
       const snapDoc = new Y.Doc();
-      const raw = pgHexToBytes(last.snapshot);
-      Y.applyUpdate(snapDoc, last.encoding_version === 2 ? new Uint8Array(gunzipSync(raw)) : raw);
+      const snapshot = last.p_snapshot ?? last.snapshot;
+      const encodingVersion = last.p_encoding_version ?? last.encoding_version;
+      const raw = pgHexToBytes(snapshot);
+      Y.applyUpdate(snapDoc, encodingVersion === 2 ? new Uint8Array(gunzipSync(raw)) : raw);
       expect(snapDoc.getMap('annotations').size === 12, `S3 decode: final snapshot holds 12 entries (got ${snapDoc.getMap('annotations').size})`);
     } else {
       log('  [note] no snapshot write recorded in S3 window (debounce did not fire before window close)');

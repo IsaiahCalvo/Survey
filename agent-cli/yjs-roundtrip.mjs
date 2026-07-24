@@ -18,8 +18,8 @@ import { openAnnotationDoc } from '../src/services/annotationDocSync.js';
 // Each simulated device gets its OWN Y.Doc so reopen is a true cold load from
 // the cloud (not a shared in-memory doc). In the app, the registry supplies one
 // doc per document; here we deliberately isolate per "device".
-function freshHandle(opts) {
-  return openAnnotationDoc({ ...opts, doc: new Y.Doc() });
+function freshHandle(opts, actorUserId) {
+  return openAnnotationDoc({ ...opts, actorUserId, doc: new Y.Doc() });
 }
 
 let failures = 0;
@@ -71,7 +71,7 @@ async function main() {
     console.log('SCENARIO 1  draw on pages 6-11 + fresh stroke on page 11 → reopen');
     const writer = await freshHandle({
       documentId, supabase, clientId: 'deviceA', enableLocal: false, enableRealtime: false,
-    });
+    }, userId);
     writer.applyByPage(byPageFrom({ 6: ['p6'], 7: ['p7'], 8: ['p8'], 9: ['p9'], 10: ['p10'], 11: ['p11'] }));
     await writer.drain();
     // a separate, later stroke on page 11 (the user's exact test)
@@ -83,7 +83,7 @@ async function main() {
     // Reopen from a clean handle — loads snapshot + tail from the cloud only.
     const reader = await freshHandle({
       documentId, supabase, clientId: 'deviceA-reopen', enableLocal: false, enableRealtime: false,
-    });
+    }, userId);
     const got = idsOf(reader.getByPage());
     await reader.destroy();
     check(JSON.stringify(got) === JSON.stringify(['fresh-stroke', 'p10', 'p11', 'p6', 'p7', 'p8', 'p9']),
@@ -94,7 +94,7 @@ async function main() {
     console.log('\nSCENARIO 2  second device opens the same doc → sees everything');
     const deviceB = await freshHandle({
       documentId, supabase, clientId: 'deviceB', enableLocal: false, enableRealtime: false,
-    });
+    }, userId);
     const bGot = idsOf(deviceB.getByPage());
     check(bGot.length === 7, `device B loaded all ${bGot.length} marks`, `device B saw ${bGot.length}/7`);
 
@@ -105,7 +105,7 @@ async function main() {
 
     const deviceA2 = await freshHandle({
       documentId, supabase, clientId: 'deviceA-again', enableLocal: false, enableRealtime: false,
-    });
+    }, userId);
     const a2 = idsOf(deviceA2.getByPage());
     await deviceA2.destroy();
     check(a2.includes('fromB') && a2.length === 8,
@@ -121,7 +121,7 @@ async function main() {
     console.log('\nSCENARIO 2b  document-level meta value → reopen sees it');
     const metaWriter = await freshHandle({
       documentId, supabase, clientId: 'deviceA-meta-probe', enableLocal: false, enableRealtime: false,
-    });
+    }, userId);
     const probeList = [
       { id: 'probe1', pageNumber: 6, label: 'first' },
       { id: 'probe2', pageNumber: 11, label: 'second' },
@@ -133,7 +133,7 @@ async function main() {
 
     const metaReader = await freshHandle({
       documentId, supabase, clientId: 'deviceA-meta-probe-reopen', enableLocal: false, enableRealtime: false,
-    });
+    }, userId);
     const gotProbe = metaReader.getMeta('harnessRoundtripProbe');
     await metaReader.destroy();
     check(
@@ -149,7 +149,7 @@ async function main() {
     console.log('\nSCENARIO 2c  spaces + region polygons (meta path) → reopen sees them');
     const spaceWriter = await freshHandle({
       documentId, supabase, clientId: 'deviceA-spaces', enableLocal: false, enableRealtime: false,
-    });
+    }, userId);
     const spacesArray = [
       {
         id: 'sp1', name: 'Floor 1',
@@ -172,7 +172,7 @@ async function main() {
 
     const spaceReader = await freshHandle({
       documentId, supabase, clientId: 'deviceA-spaces-reopen', enableLocal: false, enableRealtime: false,
-    });
+    }, userId);
     const gotSpaces = spaceReader.getMeta('spaces');
     await spaceReader.destroy();
     const region = gotSpaces?.[0]?.assignedPages?.[0]?.regions?.[0];
@@ -190,7 +190,7 @@ async function main() {
     console.log('\nSCENARIO 2d  survey markers (keyed map) → reopen + edit + delete');
     const smWriter = await freshHandle({
       documentId, supabase, clientId: 'deviceA-survey', enableLocal: false, enableRealtime: false,
-    });
+    }, userId);
     const smMark = (id, page, extra = {}) => ({
       annotationId: id, pageNumber: page,
       bounds: { x: 1, y: 2, width: 10, height: 10 },
@@ -207,7 +207,7 @@ async function main() {
 
     const smReader = await freshHandle({
       documentId, supabase, clientId: 'deviceA-survey-reopen', enableLocal: false, enableRealtime: false,
-    });
+    }, userId);
     const gotMarkers = smReader.getSurveyMarkers();
     const sm1ok = gotMarkers?.sm1?.checklistResponses?.q1?.selection === 'yes';
     const sm2ok = gotMarkers?.sm2?.entityId === 'ent-9' && gotMarkers?.sm2?.entityColor === '#00aa00';
@@ -226,7 +226,7 @@ async function main() {
 
     const smReader2 = await freshHandle({
       documentId, supabase, clientId: 'deviceA-survey-reopen2', enableLocal: false, enableRealtime: false,
-    });
+    }, userId);
     const after = smReader2.getSurveyMarkers();
     await smReader2.destroy();
     check(

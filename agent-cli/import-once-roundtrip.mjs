@@ -25,8 +25,8 @@ import { randomUUID } from 'node:crypto';
 import * as Y from 'yjs';
 import { openAnnotationDoc } from '../src/services/annotationDocSync.js';
 
-function freshHandle(opts) {
-  return openAnnotationDoc({ ...opts, doc: new Y.Doc() });
+function freshHandle(opts, actorUserId) {
+  return openAnnotationDoc({ ...opts, actorUserId, doc: new Y.Doc() });
 }
 
 let failures = 0;
@@ -107,7 +107,7 @@ async function main() {
 
     // STEP 1 — user draws a pen stroke (the "earlier version" mark) BEFORE import.
     console.log('\nSTEP 1  user draws one pen stroke, before embedded import runs');
-    const session1 = await freshHandle({ documentId, supabase, clientId: 'deviceA', enableLocal: false, enableRealtime: false });
+    const session1 = await freshHandle({ documentId, supabase, clientId: 'deviceA', enableLocal: false, enableRealtime: false }, userId);
     session1.applyByPage({ 1: { objects: [mark('user-pen-stroke', 1)] } });
     await session1.drain();
     check(idsOf(session1.getByPage()).length === 1, 'store has exactly the 1 user stroke', 'unexpected store contents after draw');
@@ -121,7 +121,7 @@ async function main() {
 
     // STEP 3 — cold reopen: BOTH the pen stroke and pages 6-11 must be present.
     console.log('\nSTEP 3  cold reopen → pen stroke AND pages 6-11 both survive');
-    const reopen = await freshHandle({ documentId, supabase, clientId: 'deviceA-reopen', enableLocal: false, enableRealtime: false });
+    const reopen = await freshHandle({ documentId, supabase, clientId: 'deviceA-reopen', enableLocal: false, enableRealtime: false }, userId);
     const got = idsOf(reopen.getByPage());
     await reopen.destroy();
     const expected = ['embed-p10', 'embed-p11', 'embed-p6', 'embed-p7', 'embed-p8', 'embed-p9', 'user-pen-stroke'];
@@ -131,7 +131,7 @@ async function main() {
 
     // STEP 4 — second open re-runs the gate: marker is set → import skipped, no dupes.
     console.log('\nSTEP 4  second open → durable marker skips re-import (no duplication)');
-    const session2 = await freshHandle({ documentId, supabase, clientId: 'deviceA-third', enableLocal: false, enableRealtime: false });
+    const session2 = await freshHandle({ documentId, supabase, clientId: 'deviceA-third', enableLocal: false, enableRealtime: false }, userId);
     const r2 = await runEmbeddedImportOnce(supabase, documentId, session2, embeddedByPage);
     const after = idsOf(session2.getByPage());
     await session2.destroy();

@@ -119,7 +119,9 @@ async function main() {
       const afterDelayed = await fabricCount();
       log(`delayed paste retry: count ${afterDelayed} (4 ⇒ RACE was the cause; 3 ⇒ paste path broken)`);
     }
-    const muts = mock.mutations.filter((m) => m.table === 'annotation_updates');
+    const muts = mock.mutations.filter((m) =>
+      m.table === 'annotation_updates'
+      || m.table === 'rpc/append_annotation_update');
     log(`annotation_updates writes recorded: ${muts.length}`);
   } finally {
     await browser.close().catch(() => {});

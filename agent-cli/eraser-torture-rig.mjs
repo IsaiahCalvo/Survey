@@ -709,9 +709,9 @@ async function createThrowawayDoc(supabase, userId) {
   return { documentId: data.id, docName, filePath };
 }
 // Fresh cold handle per operation → always reconciled with the app's edits.
-async function withColdHandle(supabase, documentId, fn) {
+async function withColdHandle(supabase, documentId, actorUserId, fn) {
   const handle = await openAnnotationDoc({
-    documentId, supabase, clientId: `rig-${randomUUID().slice(0, 8)}`, enableLocal: false, enableRealtime: false, doc: new Y.Doc(),
+    documentId, supabase, clientId: `rig-${randomUUID().slice(0, 8)}`, actorUserId, enableLocal: false, enableRealtime: false, doc: new Y.Doc(),
   });
   try {
     return await fn(handle);
@@ -720,14 +720,14 @@ async function withColdHandle(supabase, documentId, fn) {
     await handle.destroy().catch(() => {});
   }
 }
-const seedPage = (supabase, documentId, objects) => withColdHandle(supabase, documentId, async (h) => {
+const seedPage = (supabase, documentId, actorUserId, objects) => withColdHandle(supabase, documentId, actorUserId, async (h) => {
   // syncByPageToDoc deletes every map key not in byPage → this fully replaces
   // the previous case's objects (cold handle = reconciled with app edits).
   h.applyByPage({ 1: { objects } });
   await h.drain();
 });
-const coldReadPage = (supabase, documentId) => withColdHandle(supabase, documentId, async (h) => (h.getByPage()?.[1]?.objects) || []);
-const seedSpacesMeta = (supabase, documentId, spaces) => withColdHandle(supabase, documentId, async (h) => {
+const coldReadPage = (supabase, documentId, actorUserId) => withColdHandle(supabase, documentId, actorUserId, async (h) => (h.getByPage()?.[1]?.objects) || []);
+const seedSpacesMeta = (supabase, documentId, actorUserId, spaces) => withColdHandle(supabase, documentId, actorUserId, async (h) => {
   h.setMeta('spaces', spaces);
   await h.drain();
 });
@@ -1125,7 +1125,7 @@ async function main() {
     log(`[setup] document ${doc.docName} (${documentId})`);
 
     if (needsSpace) {
-      await seedSpacesMeta(supabase, documentId, [{
+      await seedSpacesMeta(supabase, documentId, userId, [{
         id: RIG_SPACE_ID,
         name: 'Rig Space',
         assignedPages: [{
@@ -1155,7 +1155,7 @@ async function main() {
       log(`── ${testCase.id}${testCase.bug ? ` (known bug #${testCase.bug})` : ''}`);
       try {
         // 1. reseed page 1 and wait for the app to reflect it
-        await seedPage(supabase, documentId, testCase.objects);
+        await seedPage(supabase, documentId, userId, testCase.objects);
         const wantIds = testCase.objects.map((o, i) => objId(o, i));
         const synced = await waitForAppIds(page, wantIds, 15000);
         if (!synced) {
@@ -1243,7 +1243,7 @@ async function main() {
         const t0 = Date.now();
         const byIdCanon = (objs) => canon(Object.fromEntries(stripTransient(objs).map((o, i) => [objId(o, i), sortKeys(o)])));
         while (Date.now() - t0 < 12000) {
-          coldPost = await coldReadPage(supabase, documentId);
+          coldPost = await coldReadPage(supabase, documentId, userId);
           if (byIdCanon(coldPost) === byIdCanon(post.objects || [])) break;
           await new Promise((r) => setTimeout(r, 900));
         }

@@ -64,7 +64,7 @@ async function main() {
     return data.id;
   }
   function handle(documentId, clientId) {
-    return openAnnotationDoc({ documentId, supabase, clientId, enableLocal: false, enableRealtime: false, doc: new Y.Doc() });
+    return openAnnotationDoc({ documentId, supabase, clientId, actorUserId: userId, enableLocal: false, enableRealtime: false, doc: new Y.Doc() });
   }
   // Seed two app-placed markers and persist them durably (write + snapshot + close).
   async function seedTwo(documentId) {

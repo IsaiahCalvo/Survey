@@ -14,8 +14,9 @@
 //     1 row → 200 object; 0 or >1 → 406 {code:'PGRST116'} (supabase-js turns the
 //     0-row case into data:null for .maybeSingle(), surfaces it for .single()).
 //   * count=exact (head or not) → Content-Range header carries the total.
-//   * INSERT ... select('seq').single() on annotation_updates → returns a real
-//     monotonically assigned {seq} (the CRDT cursor is load-bearing).
+//   * append_annotation_update/store_annotation_snapshot implement the current
+//     RPC contracts and mutate state read back by later cold opens.
+//   * Legacy direct INSERT/UPSERT compatibility remains stateful too.
 //   * CORS: routed responses still face the browser's CORS checks, so every
 //     response carries permissive ACAO headers and OPTIONS preflights get 204.
 
@@ -102,12 +103,13 @@ const TABLE_COLUMNS = {
   document_collaborators: ['id', 'document_id', 'user_id', 'status', 'role', 'created_at'],
   connected_services: ['id', 'user_id', 'service_name', 'created_at', 'updated_at'],
   document_presence: ['id', 'document_id', 'user_id', 'client_type', 'last_seen', 'page_number', 'updated_at'],
+  document_invites: ['id', 'document_id', 'token', 'role', 'target_email', 'intended_role', 'created_by', 'created_at', 'expires_at', 'revoked_at', 'accepted_at', 'accepted_by', 'accepted_role'],
   // Full migration column list (20260524090000_document_history_events.sql) —
   // the KAL-74 harness reads/filters every column the app's GET selects.
   document_history_events: ['id', 'document_id', 'user_id', 'client_event_id', 'event_type', 'source', 'page_number', 'annotation_id', 'summary', 'payload', 'is_undoable', 'is_checkpoint', 'occurred_at', 'created_at'],
   user_subscriptions: ['user_id', 'tier', 'status', 'storage_used_bytes'],
-  annotation_snapshots: ['document_id', 'at_seq', 'snapshot', 'encoding_version', 'updated_at'],
-  annotation_updates: ['id', 'document_id', 'client_id', 'client_seq', 'seq', 'data', 'created_at'],
+  annotation_snapshots: ['document_id', 'at_seq', 'snapshot', 'encoding_version', 'writer_id', 'writer_epoch', 'base_at_seq', 'base_writer_id', 'base_writer_epoch', 'updated_at'],
+  annotation_updates: ['document_id', 'client_id', 'client_seq', 'actor_user_id', 'seq', 'data', 'created_at'],
   doc_yjs_state: ['document_id', 'state', 'state_vector', 'through_seq', 'encoding_version', 'updated_at'],
   doc_yjs_updates: ['document_id', 'client_id', 'seq', 'update', 'server_ts', 'origin', 'client_ts'],
   activity_log: ['id', 'document_id', 'user_id', 'action', 'created_at'],
@@ -155,29 +157,32 @@ function wantsCount(headers) {
 // onMutation (KAL-74): callback invoked after every ledger record with the
 // recorded entry ({ window, method, table, filters, body }) — default no-op.
 export function createSupabaseMock({ fixtures, pdfPath, log = () => {}, rpcHandlers = {}, readHandlerOverrides = {}, onMutation = () => {} }) {
-  // Defaults for app-wide RPCs that post-date the per-harness handler maps —
-  // merged UNDER the provided rpcHandlers so any harness can override:
-  // - get_my_document_role (2026-07-01 viewer-role gate, resolved once per
-  //   document open): 'owner' reproduces the pre-RPC fail-open read-write
-  //   presentation every harness was built against; lock/read-only gates are
-  //   fixture-driven, not role-driven.
-  // - kal309_fetch_since (Excel keystone delta poll): empty array = no
-  //   pending committed ops.
-  rpcHandlers = {
-    get_my_document_role: () => ({ status: 200, json: 'owner' }),
-    kal309_fetch_since: () => ({ status: 200, json: [] }),
-    ...rpcHandlers,
-  };
+  const customRpcHandlers = rpcHandlers;
   const pdfBytes = readFileSync(pdfPath);
 
   const state = {
     window: 'boot',          // current scenario window for ledger stamping
     userId: null,            // captured from the dashboard's own user_id=eq. filter
-    seqCounter: 1000,        // assigned seqs for annotation_updates INSERTs
+    rowCounter: 1000,        // synthetic ids for generic POST representations
+    snapshotRows: new Map(), // current annotation_snapshots row per document
     mutations: [],           // { window, method, table, filters, body }
     unmatched: [],           // { window, method, url, note }
     reads: [],               // light read trace for diagnosis { window, method, table, qs }
   };
+
+  for (const [documentId, doc] of Object.entries(fixtures.docsById ?? {})) {
+    const seeded = doc.snapshotRow ?? doc.snapshotRows?.[0] ?? null;
+    if (seeded) state.snapshotRows.set(documentId, { ...seeded });
+  }
+  const initialWalRows = new Map(
+    Object.entries(fixtures.docsById ?? {}).map(([documentId, doc]) => [
+      documentId,
+      (doc.walRows ?? []).map((row) => ({ ...row })),
+    ]),
+  );
+  const initialSnapshotRows = new Map(
+    [...state.snapshotRows].map(([documentId, row]) => [documentId, { ...row }]),
+  );
 
   const setWindow = (name) => { state.window = name; log(`[mock] window → ${name}`); };
 
@@ -216,6 +221,149 @@ export function createSupabaseMock({ fixtures, pdfPath, log = () => {}, rpcHandl
     }
   };
 
+  const exactRpcKeys = (name, body, expected) => {
+    const got = Object.keys(body || {}).sort();
+    const want = [...expected].sort();
+    if (JSON.stringify(got) !== JSON.stringify(want)) {
+      throw new Error(`${name} body keys drifted: got [${got}] want [${want}]`);
+    }
+  };
+  const walRowsFor = (documentId) => {
+    const doc = fixtures.docsById?.[documentId];
+    if (!doc) return null;
+    if (!Array.isArray(doc.walRows)) doc.walRows = [];
+    return doc.walRows;
+  };
+  const sameSnapshotVersion = (row, body) => Boolean(
+    row
+    && Number(row.at_seq) === Number(body.p_at_seq)
+    && row.snapshot === body.p_snapshot
+    && Number(row.encoding_version) === Number(body.p_encoding_version)
+    && (row.writer_id ?? null) === (body.p_writer_id ?? null)
+    && Number(row.writer_epoch || 0) === Number(body.p_writer_epoch || 0)
+  );
+
+  // Defaults for app-wide RPCs that post-date the per-harness handler maps.
+  // The WAL/snapshot handlers mirror the current migration closely enough to
+  // make cold reads meaningful: writes mutate the same state served below,
+  // append retries are idempotent, and snapshot replacement honors its loaded
+  // base token plus the document-local WAL frontier.
+  rpcHandlers = {
+    get_my_document_role: () => ({ status: 200, json: 'owner' }),
+    kal309_fetch_since: () => ({ status: 200, json: [] }),
+    append_annotation_update: (body, ctx) => {
+      exactRpcKeys('append_annotation_update', body, [
+        'p_document_id', 'p_client_id', 'p_client_seq', 'p_data',
+      ]);
+      const rows = walRowsFor(body.p_document_id);
+      if (!rows) {
+        return {
+          status: 404,
+          json: { code: 'PGRST116', message: 'document not found', details: null, hint: null },
+        };
+      }
+      const existing = rows.find((row) =>
+        row.client_id === body.p_client_id
+        && Number(row.client_seq) === Number(body.p_client_seq));
+      const actorUserId = ctx.sniffedUserId ?? null;
+      if (existing) {
+        if (
+          existing.data !== body.p_data
+          || (
+            existing.actor_user_id != null
+            && actorUserId != null
+            && existing.actor_user_id !== actorUserId
+          )
+        ) {
+          return {
+            status: 409,
+            json: {
+              code: '23505',
+              message: 'client sequence collision with different annotation payload',
+              details: null,
+              hint: null,
+            },
+          };
+        }
+        return { status: 200, json: [{ seq: existing.seq }] };
+      }
+      const seq = rows.reduce((max, row) => Math.max(max, Number(row.seq) || 0), 0) + 1;
+      rows.push({
+        document_id: body.p_document_id,
+        client_id: body.p_client_id,
+        client_seq: Number(body.p_client_seq),
+        actor_user_id: actorUserId,
+        seq,
+        data: body.p_data,
+        created_at: new Date().toISOString(),
+      });
+      return { status: 200, json: [{ seq }] };
+    },
+    store_annotation_snapshot: (body) => {
+      exactRpcKeys('store_annotation_snapshot', body, [
+        'p_document_id',
+        'p_at_seq',
+        'p_snapshot',
+        'p_encoding_version',
+        'p_writer_id',
+        'p_writer_epoch',
+        'p_expected_at_seq',
+        'p_expected_writer_id',
+        'p_expected_writer_epoch',
+      ]);
+      const rows = walRowsFor(body.p_document_id);
+      if (!rows) {
+        return {
+          status: 404,
+          json: { code: 'PGRST116', message: 'document not found', details: null, hint: null },
+        };
+      }
+      const current = state.snapshotRows.get(body.p_document_id) ?? null;
+      if (sameSnapshotVersion(current, body)) return { status: 200, json: true };
+
+      const walHead = rows.reduce((max, row) => Math.max(max, Number(row.seq) || 0), 0);
+      if (walHead !== Number(body.p_at_seq)) return { status: 200, json: false };
+
+      const expectedAtSeq = body.p_expected_at_seq == null ? null : Number(body.p_expected_at_seq);
+      const expectedWriterId = body.p_expected_writer_id ?? null;
+      const expectedWriterEpoch = Number(body.p_expected_writer_epoch) || 0;
+      const writerEpoch = Number(body.p_writer_epoch) || 0;
+      if (current) {
+        if (
+          Number(current.at_seq) !== expectedAtSeq
+          || (current.writer_id ?? null) !== expectedWriterId
+          || Number(current.writer_epoch || 0) !== expectedWriterEpoch
+          || Number(current.at_seq) > Number(body.p_at_seq)
+          || Number(current.writer_epoch || 0) >= writerEpoch
+        ) {
+          return { status: 200, json: false };
+        }
+      } else if (
+        expectedAtSeq !== null
+        || expectedWriterId !== null
+        || expectedWriterEpoch !== 0
+        || writerEpoch <= 0
+      ) {
+        return { status: 200, json: false };
+      }
+
+      state.snapshotRows.set(body.p_document_id, {
+        document_id: body.p_document_id,
+        at_seq: Number(body.p_at_seq),
+        snapshot: body.p_snapshot,
+        encoding_version: Number(body.p_encoding_version),
+        writer_id: body.p_writer_id ?? null,
+        writer_epoch: writerEpoch,
+        base_at_seq: expectedAtSeq,
+        base_writer_id: expectedWriterId,
+        base_writer_epoch: expectedWriterEpoch,
+        updated_at: new Date().toISOString(),
+      });
+      return { status: 200, json: true };
+    },
+    ...customRpcHandlers,
+  };
+
   // --- per-table read handlers ------------------------------------------------
   const readHandlers = {
     documents: (q) => applyFilters(fixtures.documents, q),
@@ -224,15 +372,15 @@ export function createSupabaseMock({ fixtures, pdfPath, log = () => {}, rpcHandl
     document_collaborators: (q) => applyFilters(fixtures.documentCollaborators ?? [], q),
     connected_services: () => [],
     document_presence: () => [],
+    document_invites: () => [],
     document_history_events: () => [],
     user_subscriptions: (q) => applyFilters([subscription], q),
-    annotation_snapshots: () => [],          // no snapshot → app replays the WAL tail
+    annotation_snapshots: (q) => applyFilters([...state.snapshotRows.values()], q),
     annotation_updates: (q) => {
       const docF = q.filters.find((f) => f.column === 'document_id' && f.op === 'eq');
-      const doc = docF ? fixtures.docsById[docF.value] : null;
-      if ((q.select || '').includes('client_seq')) return [];   // per-client seed query
-      if (!doc) return [];
-      return applyFilters(doc.walRows, q);                       // tail read (seq, data)
+      const rows = docF ? walRowsFor(docF.value) : null;
+      if (!rows) return [];
+      return applyFilters(rows, q);
     },
     doc_yjs_state: () => [],
     doc_yjs_updates: () => [],
@@ -384,6 +532,20 @@ export function createSupabaseMock({ fixtures, pdfPath, log = () => {}, rpcHandl
             if (q.filters.every((f) => rowMatches(arr[i], f))) arr.splice(i, 1);
           }
         }
+        if (table === 'documents') {
+          const documentFilters = q.filters.filter((f) => f.column === 'id');
+          for (const documentId of Object.keys(fixtures.docsById ?? {})) {
+            const row = fixtures.docsById[documentId]?.row ?? { id: documentId };
+            if (
+              documentFilters.length
+              && q.filters.every((f) => rowMatches(row, f))
+            ) {
+              const doc = fixtures.docsById[documentId];
+              if (doc) doc.walRows = [];
+              state.snapshotRows.delete(documentId);
+            }
+          }
+        }
       }
       return route.fulfill({ status: 204, headers: jsonHeaders(), body: '' });
     }
@@ -392,12 +554,38 @@ export function createSupabaseMock({ fixtures, pdfPath, log = () => {}, rpcHandl
       // projected through the request's select (Codex result r5) — a drifted
       // app projection (e.g. WAL insert no longer selecting seq) breaks loudly.
       const rows = Array.isArray(body) ? body : [body || {}];
-      let enriched = rows.map((r) => ({
-        id: r?.id || `mock-${state.seqCounter + 1}`,
-        ...r,
-        ...(table === 'annotation_updates' ? { seq: (state.seqCounter += 1) } : {}),
-        updated_at: r?.updated_at || new Date().toISOString(),
-      }));
+      let enriched = rows.map((r) => {
+        state.rowCounter += 1;
+        const hasDocumentKeyIdentity =
+          table === 'annotation_updates'
+          || table === 'annotation_snapshots';
+        const row = {
+          ...(hasDocumentKeyIdentity ? {} : { id: r?.id || `mock-${state.rowCounter}` }),
+          ...r,
+          ...(table === 'annotation_updates'
+            ? {}
+            : { updated_at: r?.updated_at || new Date().toISOString() }),
+        };
+        if (table === 'annotation_updates') {
+          const walRows = walRowsFor(row.document_id);
+          const seq = (walRows || []).reduce(
+            (max, existing) => Math.max(max, Number(existing.seq) || 0),
+            0,
+          ) + 1;
+          const walRow = {
+            ...row,
+            seq,
+            actor_user_id: row.actor_user_id ?? state.userId ?? null,
+            created_at: row.created_at || new Date().toISOString(),
+          };
+          if (walRows) walRows.push(walRow);
+          return walRow;
+        }
+        if (table === 'annotation_snapshots' && row.document_id) {
+          state.snapshotRows.set(row.document_id, { ...row });
+        }
+        return row;
+      });
       if (q.select && q.select !== '*' && !q.select.includes('(')) {
         const cols = q.select.split(',').map((s) => s.trim()).filter(Boolean);
         enriched = enriched.map((r) => Object.fromEntries(cols.filter((c) => c in r).map((c) => [c, r[c]])));
@@ -449,6 +637,19 @@ export function createSupabaseMock({ fixtures, pdfPath, log = () => {}, rpcHandl
   return {
     register,
     setWindow,
+    // A few long-running browser rigs intentionally need each positive-control
+    // probe to start from the immutable fixture baseline. Reset is explicit so
+    // ordinary opens still observe every prior RPC/direct write statefully.
+    resetAnnotationState(documentId) {
+      const doc = fixtures.docsById?.[documentId];
+      if (doc) {
+        doc.walRows = (initialWalRows.get(documentId) ?? [])
+          .map((row) => ({ ...row }));
+      }
+      const snapshot = initialSnapshotRows.get(documentId);
+      if (snapshot) state.snapshotRows.set(documentId, { ...snapshot });
+      else state.snapshotRows.delete(documentId);
+    },
     get mutations() { return state.mutations; },
     get unmatched() { return state.unmatched; },
     get reads() { return state.reads; },

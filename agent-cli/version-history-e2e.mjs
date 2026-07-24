@@ -451,20 +451,32 @@ async function main() {
     // count inside the pinned range, and (c) pass its body-schema validator.
     // Anything else fails the run — a corrupt upsert to an annotation/Yjs
     // table can no longer hide behind a doc-scoped blanket allowance.
-    // The action-coupled writes (history events, WAL inserts) are pinned to
+    // The action-coupled writes (history events, WAL RPCs) are pinned to
     // EXACT counts; only the 1200ms-debounced snapshot gets a 0-min range in
     // its own + following window (observed drift: S4's snapshot lands in S5).
     const isHexBytes = (s) => typeof s === 'string' && s.startsWith('\\x');
     const asRows = (b) => (Array.isArray(b) ? b : [b]);
     const BODY_VALIDATORS = {
-      // WAL append (annotationDocSync.js:238-243): exact insert shape.
-      'POST annotation_updates': (m) => asRows(m.body).every((r) => r
-        && r.document_id === DOC_ID && typeof r.client_id === 'string'
-        && Number.isFinite(Number(r.client_seq)) && isHexBytes(r.data)),
-      // Snapshot upsert (annotationDocSync.js:290-295).
-      'POST annotation_snapshots': (m) => asRows(m.body).every((r) => r
-        && r.document_id === DOC_ID && isHexBytes(r.snapshot)
-        && Number.isFinite(Number(r.at_seq)) && Number.isFinite(Number(r.encoding_version))),
+      // Current WAL RPC contract (append_annotation_update).
+      'RPC rpc/append_annotation_update': (m) => {
+        const r = m.body;
+        return r
+          && r.p_document_id === DOC_ID
+          && typeof r.p_client_id === 'string'
+          && Number.isFinite(Number(r.p_client_seq))
+          && isHexBytes(r.p_data);
+      },
+      // Current snapshot CAS RPC contract (store_annotation_snapshot).
+      'RPC rpc/store_annotation_snapshot': (m) => {
+        const r = m.body;
+        return r
+          && r.p_document_id === DOC_ID
+          && isHexBytes(r.p_snapshot)
+          && Number.isFinite(Number(r.p_at_seq))
+          && Number.isFinite(Number(r.p_encoding_version))
+          && Number.isFinite(Number(r.p_writer_epoch))
+          && Number.isFinite(Number(r.p_expected_writer_epoch));
+      },
       // History upsert (documentHistoryService.js:250-253): id stripped (DB-gen).
       'POST document_history_events': (m) => asRows(m.body).every((r) => r
         && r.document_id === DOC_ID && typeof r.client_event_id === 'string'
@@ -488,17 +500,20 @@ async function main() {
     const WRITE_EXPECTATIONS = {
       boot: { ...PRESENCE_RANGES },
       S1: { ...PRESENCE_RANGES, 'PATCH documents': [1, 2] },
-      S2: { ...PRESENCE_RANGES, 'POST document_history_events': [1, 1], 'POST annotation_updates': [1, 1], 'POST annotation_snapshots': [0, 1] },
-      S3: { ...PRESENCE_RANGES, 'POST annotation_snapshots': [0, 1] }, // S2's debounced snapshot may drift in
+      S2: { ...PRESENCE_RANGES, 'POST document_history_events': [1, 1], 'RPC rpc/append_annotation_update': [1, 1], 'RPC rpc/store_annotation_snapshot': [0, 1] },
+      S3: { ...PRESENCE_RANGES, 'RPC rpc/store_annotation_snapshot': [0, 1] }, // S2's debounced snapshot may drift in
       S3b: { ...PRESENCE_RANGES }, // seeded row is store-side — zero new POSTs
-      S4: { ...PRESENCE_RANGES, 'POST document_history_events': [2, 2], 'POST annotation_updates': [2, 2], 'POST annotation_snapshots': [0, 2] },
-      S5: { ...PRESENCE_RANGES, 'POST annotation_snapshots': [0, 2] }, // S4's debounced snapshot drifts here
-      S6: { ...PRESENCE_RANGES, 'POST document_history_events': [1, 1], 'POST annotation_updates': [1, 1], 'POST annotation_snapshots': [0, 2] },
+      S4: { ...PRESENCE_RANGES, 'POST document_history_events': [2, 2], 'RPC rpc/append_annotation_update': [2, 2], 'RPC rpc/store_annotation_snapshot': [0, 2] },
+      S5: { ...PRESENCE_RANGES, 'RPC rpc/store_annotation_snapshot': [0, 2] }, // S4's debounced snapshot drifts here
+      S6: { ...PRESENCE_RANGES, 'POST document_history_events': [1, 1], 'RPC rpc/append_annotation_update': [1, 1], 'RPC rpc/store_annotation_snapshot': [0, 2] },
     };
     const writeViolations = () => {
       const out = [];
       for (const [w, exp] of Object.entries(WRITE_EXPECTATIONS)) {
-        const ms = mock.mutationsIn(w).filter((m) => m.method !== 'RPC'); // RPCs covered by the exact RPC gate
+        const ms = mock.mutationsIn(w).filter((m) =>
+          m.method !== 'RPC'
+          || m.table === 'rpc/append_annotation_update'
+          || m.table === 'rpc/store_annotation_snapshot');
         const counts = {};
         for (const m of ms) {
           const key = `${m.method} ${m.table}`;
@@ -931,7 +946,8 @@ async function main() {
     gate(drewWrites === 3 && deletedWrites === 1,
       `history ledger: summary multiset 3× drew (S2, S4 re-add, S6) + 1× deleted (saw drew=${drewWrites} deleted=${deletedWrites}; all=${JSON.stringify(histPosts.map((r) => (r?.summary || '').replace(/^.*?(drew|deleted)/, '$1').slice(0, 40)))})`);
 
-    // RPC gate (Codex r3 #6): ONLY kal48_* with exact counts + exact p_* bodies.
+    // RPC gate: revision, read-only, and current annotation durability RPCs
+    // only, with exact request bodies.
     const allRpcs = mock.mutations.filter((m) => m.method === 'RPC');
     const rpcNames = [...new Set(allRpcs.map((m) => m.table.replace('rpc/', '')))];
     // get_my_document_role: viewer-role gate RPC (2026-07-01), resolved once
@@ -939,8 +955,17 @@ async function main() {
     // delta poll (fires only for Excel-linked templates; none in these
     // fixtures, allowed defensively). Both read-only, served by the mock's
     // default handlers.
-    const allowedRpc = new Set(['kal48_create_revision', 'kal48_list_revisions', 'kal48_get_revision', 'kal48_restore_revision', 'get_my_document_role', 'kal309_fetch_since']);
-    gate(rpcNames.every((n) => allowedRpc.has(n)), `RPC gate: only kal48_* RPCs fired (saw ${JSON.stringify(rpcNames)})`);
+    const allowedRpc = new Set([
+      'kal48_create_revision',
+      'kal48_list_revisions',
+      'kal48_get_revision',
+      'kal48_restore_revision',
+      'get_my_document_role',
+      'kal309_fetch_since',
+      'append_annotation_update',
+      'store_annotation_snapshot',
+    ]);
+    gate(rpcNames.every((n) => allowedRpc.has(n)), `RPC gate: only expected RPCs fired (saw ${JSON.stringify(rpcNames)})`);
     // FULL body values for every kal48 call (Codex result-review r1 #2) — not
     // just the labels: both creates pin p_document_id + p_label + p_origin,
     // get/restore pin p_revision_id, every list pins p_document_id.
@@ -974,6 +999,18 @@ async function main() {
         get_my_document_role: ['doc_id'],
         // Excel keystone delta poll (excelSyncClient.js fetchSince).
         kal309_fetch_since: ['p_document_id', 'p_template_id', 'p_since_revision'],
+        append_annotation_update: ['p_document_id', 'p_client_id', 'p_client_seq', 'p_data'],
+        store_annotation_snapshot: [
+          'p_document_id',
+          'p_at_seq',
+          'p_snapshot',
+          'p_encoding_version',
+          'p_writer_id',
+          'p_writer_epoch',
+          'p_expected_at_seq',
+          'p_expected_writer_id',
+          'p_expected_writer_epoch',
+        ],
       }[fn];
       if (!want) return true;
       return JSON.stringify(Object.keys(m.body || {}).sort()) !== JSON.stringify([...want].sort());

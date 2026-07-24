@@ -243,7 +243,15 @@ async function main() {
       return false;
     };
     const annotationWrite = (m) =>
-      ['annotation_updates', 'annotation_snapshots', 'document_annotations', 'doc_yjs_state', 'doc_yjs_updates'].includes(m.table);
+      [
+        'annotation_updates',
+        'annotation_snapshots',
+        'rpc/append_annotation_update',
+        'rpc/store_annotation_snapshot',
+        'document_annotations',
+        'doc_yjs_state',
+        'doc_yjs_updates',
+      ].includes(m.table);
     const offenders = (windowName, extraAllow = () => false) =>
       mock.mutationsIn(windowName).filter((m) => !isBenign(m) && !extraAllow(m));
     const annotationWritesIn = (windowName) => mock.mutationsIn(windowName).filter(annotationWrite);
@@ -698,6 +706,12 @@ async function main() {
     // reset the document. (Supabase auth lives in localStorage — untouched.)
     const reopenOwned = async () => {
       await backToHub();
+      // RPC-backed WAL/snapshot reads are now stateful in the shared mock.
+      // These independent positive controls deliberately need the pristine
+      // three-annotation fixture, so reset the mock backend explicitly after
+      // the previous viewer has completed its teardown flush.
+      await page.waitForTimeout(1500);
+      mock.resetAnnotationState(DOC_OWNED_ID);
       await page.evaluate(async () => {
         const dbs = (indexedDB.databases ? await indexedDB.databases() : []) || [];
         await Promise.all(dbs.map((d) => new Promise((res) => {
