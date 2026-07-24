@@ -24,6 +24,12 @@ function pointInPolygonSet(point, polygons) {
   ));
 }
 
+function withoutDerivedBaseTransform(object) {
+  const clone = structuredClone(object);
+  delete clone.paperEraserBaseTransform;
+  return clone;
+}
+
 async function harnessObject(page, id = PEN_ID) {
   return page.evaluate(
     (annotationId) => window.__atomicEraseHarness.getAnnotationById(annotationId),
@@ -98,7 +104,24 @@ test('real atomic path serializes rapid partial erases and lane Undo/Redo is exa
   const secondTarget = rawIntents[1].targets.find((target) => target.storageKey === PEN_ID);
   expect(firstTarget.operation).toBe('replace');
   expect(secondTarget.operation).toBe('replace');
-  expect(secondTarget.before).toEqual(firstTarget.after);
+  // Materializing the first durable lane adds its canonical base-transform
+  // snapshot. It is bookkeeping for later collaborator affine rebases, not a
+  // geometry/style difference between the queued gestures.
+  expect(withoutDerivedBaseTransform(secondTarget.before)).toEqual(
+    withoutDerivedBaseTransform(firstTarget.after),
+  );
+  expect(secondTarget.before.paperEraserBaseTransform).toEqual({
+    left: 0,
+    top: 0,
+    scaleX: 1,
+    scaleY: 1,
+    angle: 0,
+    pathOffset: null,
+    skewX: 0,
+    skewY: 0,
+    flipX: false,
+    flipY: false,
+  });
 
   await page.evaluate(() => window.__releaseNextEraserCommit());
   await expect.poll(

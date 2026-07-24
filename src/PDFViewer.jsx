@@ -3818,8 +3818,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     }
     const sizeValue = isCounter ? Number(annot.radius) : Number(annot.strokeWidth);
     if (Number.isFinite(sizeValue) && sizeValue > 0) {
+      const nextWidthInputValue = String(Math.round(sizeValue));
       setStrokeWidth(sizeValue);
-      setStrokeWidthInputValue(String(Math.round(sizeValue)));
+      strokeWidthInputValueRef.current = nextWidthInputValue;
+      setStrokeWidthInputValue(nextWidthInputValue);
     }
     const dash = Array.isArray(annot.strokeDashArray) ? annot.strokeDashArray : null;
     if ((type === 'rect' || type === 'polygon') && annot.data?.pdfCloudIntensity != null) {
@@ -3862,8 +3864,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     }
     const thickness = Number(style.lineThickness);
     if (Number.isFinite(thickness) && thickness > 0) {
+      const nextWidthInputValue = String(Math.round(thickness));
       setStrokeWidth(thickness);
-      setStrokeWidthInputValue(String(Math.round(thickness)));
+      strokeWidthInputValueRef.current = nextWidthInputValue;
+      setStrokeWidthInputValue(nextWidthInputValue);
     }
     if (style.arrowheadStyle) {
       setArrowheadStyle(style.arrowheadStyle);
@@ -7183,11 +7187,25 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   // Input field state for stroke width (fixes "Sticky 1" bug)
   // Separate state allows input to be empty while typing
   const [strokeWidthInputValue, setStrokeWidthInputValue] = useState(String(strokeWidth));
+  const strokeWidthInputValueRef = useRef(String(strokeWidth));
   const [isStrokeWidthFocused, setIsStrokeWidthFocused] = useState(false);
+  const isStrokeWidthFocusedRef = useRef(false);
 
   // Input field state for eraser size (similar to stroke width)
   const [eraserSizeInputValue, setEraserSizeInputValue] = useState(String(eraserSize));
+  const eraserSizeInputValueRef = useRef(String(eraserSize));
   const [isEraserSizeFocused, setIsEraserSizeFocused] = useState(false);
+  const isEraserSizeFocusedRef = useRef(false);
+  const handleStrokeWidthFocusChange = useCallback((focused) => {
+    const nextFocused = Boolean(focused);
+    isStrokeWidthFocusedRef.current = nextFocused;
+    setIsStrokeWidthFocused(nextFocused);
+  }, []);
+  const handleEraserSizeFocusChange = useCallback((focused) => {
+    const nextFocused = Boolean(focused);
+    isEraserSizeFocusedRef.current = nextFocused;
+    setIsEraserSizeFocused(nextFocused);
+  }, []);
   const publishToolbarDraft = useCallback((field, value) => {
     if (typeof onBottomToolbarApiChange !== 'function') return;
     const ownerToken = bottomToolbarOwnerTokenRef.current;
@@ -7209,23 +7227,29 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     if (toolPrefs.fillOpacity !== undefined) setFillOpacity(toolPrefs.fillOpacity);
     if (toolPrefs.strokeWidth !== undefined) {
       setStrokeWidth(toolPrefs.strokeWidth);
-      if (!isStrokeWidthFocused) {
-        setStrokeWidthInputValue(String(toolPrefs.strokeWidth));
+      if (!isStrokeWidthFocusedRef.current) {
+        const nextValue = String(toolPrefs.strokeWidth);
+        strokeWidthInputValueRef.current = nextValue;
+        setStrokeWidthInputValue(nextValue);
       }
     }
   }, [activeTool, pdfId, toolPreferences]);
 
   // Sync strokeWidthInputValue when strokeWidth changes (but not while focused)
   useEffect(() => {
-    if (!isStrokeWidthFocused) {
-      setStrokeWidthInputValue(String(strokeWidth));
+    if (!isStrokeWidthFocusedRef.current) {
+      const nextValue = String(strokeWidth);
+      strokeWidthInputValueRef.current = nextValue;
+      setStrokeWidthInputValue(nextValue);
     }
   }, [strokeWidth, isStrokeWidthFocused]);
 
   // Sync eraserSizeInputValue when eraserSize changes (but not while focused)
   useEffect(() => {
-    if (!isEraserSizeFocused) {
-      setEraserSizeInputValue(String(eraserSize));
+    if (!isEraserSizeFocusedRef.current) {
+      const nextValue = String(eraserSize);
+      eraserSizeInputValueRef.current = nextValue;
+      setEraserSizeInputValue(nextValue);
     }
   }, [eraserSize, isEraserSizeFocused]);
 
@@ -7396,59 +7420,81 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     const value = e.target.value;
     // Allow empty string or valid numbers
     if (value === '' || /^\d+$/.test(value)) {
+      isStrokeWidthFocusedRef.current = true;
+      strokeWidthInputValueRef.current = value;
       setStrokeWidthInputValue(value);
+      if (value !== '') {
+        // Drawing starts on pointer-down, before clicking the page has finished
+        // blurring this field. Keep the live tool width current while typing;
+        // persistence and selected-annotation edits remain blur-only.
+        setStrokeWidth(Math.min(Math.max(parseInt(value, 10), 1), 50));
+      }
       publishToolbarDraft('strokeWidthInputValue', value);
     }
   }, [publishToolbarDraft]);
 
   // Commit width value on blur (clamp to valid range)
   const handleStrokeWidthInputBlur = useCallback((event) => {
-    setIsStrokeWidthFocused(false);
+    handleStrokeWidthFocusChange(false);
     // AppShell receives this handler through an effect-published API. Read the
     // blur-time DOM value so a fast edit cannot recommit a stale closure value.
-    const parsed = parseInt(event?.currentTarget?.value ?? strokeWidthInputValue, 10);
+    const parsed = parseInt(event?.currentTarget?.value ?? strokeWidthInputValueRef.current, 10);
     if (isNaN(parsed) || parsed < 1) {
       // Reset to minimum if empty or invalid
+      strokeWidthInputValueRef.current = '1';
       setStrokeWidthInputValue('1');
       publishToolbarDraft('strokeWidthInputValue', '1');
       handleStrokeWidthChange(1);
     } else {
       const clamped = Math.min(Math.max(parsed, 1), 50);
-      setStrokeWidthInputValue(String(clamped));
+      const nextValue = String(clamped);
+      strokeWidthInputValueRef.current = nextValue;
+      setStrokeWidthInputValue(nextValue);
       publishToolbarDraft('strokeWidthInputValue', clamped);
       handleStrokeWidthChange(clamped);
     }
-  }, [strokeWidthInputValue, handleStrokeWidthChange, publishToolbarDraft]);
+  }, [handleStrokeWidthChange, handleStrokeWidthFocusChange, publishToolbarDraft]);
 
   // Handle eraser size input changes (allows empty string while typing)
   const handleEraserSizeInputChange = useCallback((e) => {
     const value = e.target.value;
     // Allow empty string or valid numbers
     if (value === '' || /^\d+$/.test(value)) {
+      isEraserSizeFocusedRef.current = true;
+      eraserSizeInputValueRef.current = value;
       setEraserSizeInputValue(value);
+      if (value !== '') {
+        // FabricEraserCanvas intentionally snapshots radius at pointer-down.
+        // Update the live diameter now so a direct drag after typing cannot
+        // capture the previous value while the input's blur is still pending.
+        setEraserSize(Math.min(Math.max(parseInt(value, 10), 1), 100));
+      }
       publishToolbarDraft('eraserSizeInputValue', value);
     }
   }, [publishToolbarDraft]);
 
   // Commit eraser size value on blur (clamp to valid range)
   const handleEraserSizeInputBlur = useCallback((event) => {
-    setIsEraserSizeFocused(false);
+    handleEraserSizeFocusChange(false);
     // This handler is published through AppShell's bottom-toolbar API. A fast
     // edit can blur before the effect republishes the callback that captured
     // the latest state, so the DOM value is the authoritative blur-time input.
-    const parsed = parseInt(event?.currentTarget?.value ?? eraserSizeInputValue, 10);
+    const parsed = parseInt(event?.currentTarget?.value ?? eraserSizeInputValueRef.current, 10);
     if (isNaN(parsed) || parsed < 1) {
       // Reset to minimum if empty or invalid
+      eraserSizeInputValueRef.current = '1';
       setEraserSizeInputValue('1');
       publishToolbarDraft('eraserSizeInputValue', '1');
       setEraserSize(1);
     } else {
       const clamped = Math.min(Math.max(parsed, 1), 100);
-      setEraserSizeInputValue(String(clamped));
+      const nextValue = String(clamped);
+      eraserSizeInputValueRef.current = nextValue;
+      setEraserSizeInputValue(nextValue);
       publishToolbarDraft('eraserSizeInputValue', clamped);
       setEraserSize(clamped);
     }
-  }, [eraserSizeInputValue, publishToolbarDraft]);
+  }, [handleEraserSizeFocusChange, publishToolbarDraft]);
 
   // Item copy state (was transfer)
   const [transferState, setTransferState] = useState(null); // { mode: 'select'|'prompt'|'checklist', sourceSpaceId, items, destSpaceId }
@@ -22225,6 +22271,32 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     }
   }, [mobileSurveyEntities, mobileSurveyEntityId]);
 
+  // AppShell owns the visible Width input while PDFViewer owns the active tool.
+  // Mirror only the tool discriminator before paint so an immediate edit cannot
+  // be routed to the width state of the tool that was active one frame ago.
+  // The identity guard is required: publishing the complete toolbar API from a
+  // layout effect creates a parent/child update loop because that API contains
+  // callbacks whose identities legitimately change.
+  useLayoutEffect(() => {
+    if (!isActive || typeof onBottomToolbarApiChange !== 'function') return;
+    const ownerToken = bottomToolbarOwnerTokenRef.current;
+    onBottomToolbarApiChange((current) => {
+      if (
+        !current
+        || current.__ownerToken !== ownerToken
+        || current.activeTool === activeTool
+      ) {
+        return current;
+      }
+      return {
+        ...current,
+        activeTool,
+        strokeWidthInputValue: strokeWidthInputValueRef.current,
+        eraserSizeInputValue: eraserSizeInputValueRef.current,
+      };
+    });
+  }, [activeTool, isActive, onBottomToolbarApiChange]);
+
   // UX 2026-05-13: Publish bottom toolbar state to the App shell when this tab
   // is active. Keep this effect below every value in the API object to avoid
   // temporal-dead-zone crashes during PDFViewer's first render.
@@ -22286,8 +22358,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       showAnnotationColorPicker,
       strokeColor,
       strokeOpacity,
-      strokeWidthInputValue,
-      eraserSizeInputValue,
+      strokeWidthInputValue: strokeWidthInputValueRef.current,
+      eraserSizeInputValue: eraserSizeInputValueRef.current,
       eraserMode,
       setEraserMode,
       arrowheadStyle,
@@ -22329,10 +22401,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       handleStrokeOpacityChange,
       handleStrokeWidthInputChange,
       handleStrokeWidthInputBlur,
-      setIsStrokeWidthFocused,
+      setIsStrokeWidthFocused: handleStrokeWidthFocusChange,
       handleEraserSizeInputChange,
       handleEraserSizeInputBlur,
-      setIsEraserSizeFocused,
+      setIsEraserSizeFocused: handleEraserSizeFocusChange,
       zoomOut,
       zoomIn,
       resetZoom,
@@ -22412,8 +22484,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     setTooltip,
     handleStrokeColorChange,
     handleStrokeOpacityChange,
+    handleStrokeWidthFocusChange,
     handleStrokeWidthInputChange,
     handleStrokeWidthInputBlur,
+    handleEraserSizeFocusChange,
     handleEraserSizeInputChange,
     handleEraserSizeInputBlur,
     zoomOut,
@@ -23318,6 +23392,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
             changedCount: finalPageTransition.changedObjectsCount,
             changedIds: [...new Set(changedIds)],
             deletedIds: [...new Set(deletedIds)],
+            eraserRadius: isEraserCommit ? normalizedSaveContext?.eraserRadius : undefined,
+            eraserMode: isEraserCommit ? normalizedSaveContext?.eraserMode : undefined,
+            eraserPoints: isEraserCommit ? normalizedSaveContext?.eraserPoints : undefined,
           }
         }));
       } catch (_) {}

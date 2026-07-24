@@ -28,6 +28,9 @@ async function openEditor(page, fixture = ANNOTATED_FIXTURE) {
     timeout: 30_000,
   });
   await expect(page.locator('.survey-pdfjs-page-div[data-page-number="1"]')).toBeVisible();
+  await expect.poll(() => page.evaluate(
+    () => typeof window.__phase35GetAnnotationById,
+  )).toBe('function');
 }
 
 async function openDrawTools(page) {
@@ -149,6 +152,7 @@ async function createFreehandStroke(page, {
   tool = 'Pen',
   width = 6,
   yFraction = 0.82,
+  blurWidth = true,
 } = {}) {
   const beforeIds = new Set(await appAnnotationIds(page));
   await activateDrawTool(page, tool);
@@ -156,9 +160,11 @@ async function createFreehandStroke(page, {
   const widthInput = page.getByRole('textbox', { name: 'Width', exact: true });
   await expect(widthInput).toHaveCount(1);
   await widthInput.fill(String(width));
-  await page.waitForTimeout(75);
-  await widthInput.press('Tab');
-  await widthInput.evaluate((input) => input.blur());
+  if (blurWidth) {
+    await page.waitForTimeout(75);
+    await widthInput.press('Tab');
+    await widthInput.evaluate((input) => input.blur());
+  }
   await expect(widthInput).toHaveValue(String(width));
 
   const box = await pageBox(page);
@@ -179,13 +185,33 @@ async function createFreehandStroke(page, {
   }
   await page.mouse.up();
 
+  const findCreatedId = () => page.evaluate(({ existingIds, expectedTool }) => {
+    const knownIds = new Set(existingIds);
+    const renderedIds = [
+      ...document.querySelectorAll('[data-svg-annotation-layer="1"] > g[data-anno-id]'),
+    ]
+      .map((group) => group.getAttribute('data-anno-id'))
+      .filter(Boolean);
+    return renderedIds.find((id) => {
+      if (knownIds.has(id)) return false;
+      const object = window.__phase35GetAnnotationById?.(id) || null;
+      return (
+        String(object?.type || '').toLowerCase() === 'path'
+        && String(object?.data?.tool || object?.tool || '').toLowerCase() === expectedTool
+        && object?.isPdfImported !== true
+      );
+    }) || null;
+  }, {
+    existingIds: [...beforeIds],
+    expectedTool: tool.toLowerCase(),
+  });
+
   let createdId = null;
   await expect.poll(async () => {
-    const ids = await appAnnotationIds(page);
-    createdId = ids.find((id) => !beforeIds.has(id)) || null;
+    createdId = await findCreatedId();
     return createdId;
   }, {
-    message: `${tool} gesture must create a mounted SVG annotation`,
+    message: `${tool} gesture must create a mounted local path annotation`,
   }).not.toBeNull();
 
   return `[data-svg-annotation-layer="1"] > g[data-anno-id="${createdId}"]`;
@@ -477,6 +503,86 @@ test.describe('mounted eraser lifecycle and gestures', () => {
     await width.fill('37');
     await width.press('Tab');
     await expect(width).toHaveValue('37');
+    await expectNoErrors(errors);
+  });
+
+  test('pen width typed without blur applies to the next stroke', async ({ page }) => {
+    const errors = captureErrors(page);
+    await openEditor(page);
+
+    const selector = await createFreehandStroke(page, {
+      tool: 'Pen',
+      width: 17,
+      blurWidth: false,
+    });
+    const object = await annotationObject(page, selector);
+    expect(object.sourceWidth).toBe(17);
+    await expectNoErrors(errors);
+  });
+
+  test('eraser diameter typed without blur applies at pointer-down', async ({ page }) => {
+    const errors = captureErrors(page);
+    await openEditor(page);
+
+    const selector = await createFreehandStroke(page, { tool: 'Pen', width: 14 });
+    const before = await annotationSignature(page, selector);
+    const beforeObject = await annotationObject(page, selector);
+    const box = await annotationBox(page, selector);
+    await activateEraser(page, { size: 8 });
+
+    const width = page.getByRole('textbox', { name: 'Width', exact: true });
+    await width.fill('64');
+    await expect(width).toHaveValue('64');
+    await page.evaluate(() => {
+      window.__noBlurEraserSaveAction = null;
+      window.addEventListener('annotations:fabric-save-action', (event) => {
+        if (event.detail?.source === 'eraser:commit') {
+          window.__noBlurEraserSaveAction = event.detail;
+        }
+      }, { once: true });
+    });
+
+    await eraseAcross(page, box);
+    let after = before;
+    await expect.poll(async () => {
+      after = await annotationSignature(page, selector);
+      return after;
+    }).not.toBe(before);
+    const saveAction = await page.evaluate(() => window.__noBlurEraserSaveAction);
+    expect(saveAction?.eraserRadius).toBe(32);
+    expect(saveAction?.eraserMode).toBe('partial');
+    expect(saveAction?.eraserPoints?.length).toBeGreaterThan(1);
+    const expectedObjects = await page.evaluate(async ({ object, save }) => {
+      const { erasePageAnnotations } = await import('/src/utils/pageSpaceEraser.js');
+      const eraseAtRadius = (eraserRadius) => erasePageAnnotations({
+        pageAnnotations: { objects: [object] },
+        eraserPoints: save.eraserPoints,
+        eraserRadius,
+        mode: save.eraserMode,
+        canErase: () => true,
+      }).pageAnnotations.objects[0];
+      return {
+        requested: eraseAtRadius(save.eraserRadius),
+        previous: eraseAtRadius(4),
+      };
+    }, { object: beforeObject, save: saveAction });
+    const actualObject = await annotationObject(page, selector);
+    const committedComparison = compareGeometry(
+      actualObject,
+      expectedObjects.requested,
+    );
+    const previousComparison = compareGeometry(
+      actualObject,
+      expectedObjects.previous,
+    );
+    expect(
+      committedComparison.matches,
+      `Pointer-down must capture the unblurred 64px diameter; requested mismatch=${committedComparison.path}, previous-size match=${previousComparison.matches}`,
+    ).toBe(true);
+    expect(previousComparison.matches, 'The previous 8px diameter must not be used').toBe(false);
+    expect(committedComparison.maxDelta).toBeLessThanOrEqual(1e-4);
+
+    await expectExactUndoRedo(page, selector, before, after);
     await expectNoErrors(errors);
   });
 
@@ -1013,10 +1119,10 @@ test.describe('mounted eraser lifecycle and gestures', () => {
     const errors = captureErrors(page);
     await openEditor(page);
 
-    await createFreehandStroke(page, { tool: 'Highlighter', width: 28 });
+    const selector = await createFreehandStroke(page, { tool: 'Highlighter', width: 28 });
+    const createdId = await page.locator(selector).getAttribute('data-anno-id');
     const baseline = await appAnnotationSnapshot(page);
-    expect(baseline).toHaveLength(1);
-    const selector = `[data-anno-id="${baseline[0].id}"]`;
+    expect(baseline.some((entry) => entry.id === createdId)).toBe(true);
     const box = await annotationBox(page, selector);
     await activateEraser(page, { size: 12 });
 

@@ -382,6 +382,7 @@ export default function EraserTwoClientRaceHarness() {
             eraserSize={28}
             viewerScale={2}
             zoomGeneration={0}
+            isLocalOnlyDocument={true}
           />
         )}
         {role === 'a' && eraseCommitted && (

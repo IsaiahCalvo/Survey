@@ -26,6 +26,12 @@ test('race route is dev-only and mounts the real production eraser', () => {
   assert.match(harness, /onPointerDownCapture=\{requestScheduledAction\}/);
 });
 
+test('synthetic race document explicitly uses the local-only eraser permission lane', () => {
+  assert.match(harness, /isLocalOnlyDocument=\{true\}/);
+  assert.doesNotMatch(harness, /viewerId=/);
+  assert.doesNotMatch(harness, /documentOwnerId=/);
+});
+
 test('mounted clients exchange real Y.Doc updates and persist cold-reload truth', () => {
   assert.match(harness, /new BroadcastChannel\(`survey-eraser-race-\$\{session\}`\)/);
   assert.match(harness, /Y\.applyUpdate\(harness\.doc, base64ToBytes\(message\.update\), 'mounted-broadcast'\)/);

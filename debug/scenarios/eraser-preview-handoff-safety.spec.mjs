@@ -12,6 +12,9 @@ async function openEditor(page) {
   await expect(page.locator('[data-svg-annotation-layer="1"]')).toBeVisible({
     timeout: 30_000,
   });
+  await expect.poll(() => page.evaluate(
+    () => typeof window.__phase35GetAnnotationById,
+  )).toBe('function');
 }
 
 async function openDrawTools(page) {
@@ -24,6 +27,7 @@ async function setWidth(page, width) {
   const input = page.getByRole('textbox', { name: 'Width', exact: true });
   await input.fill(String(width));
   await input.press('Tab');
+  await input.evaluate((element) => element.blur());
   await expect(input).toHaveValue(String(width));
 }
 
@@ -47,22 +51,30 @@ async function createStroke(page) {
   await page.mouse.down();
   await page.mouse.move(box.x + box.width * 0.78, y, { steps: 12 });
   await page.mouse.up();
-  await expect
-    .poll(async () => {
-      const ids = await annotationGroups.evaluateAll((groups) =>
-        groups.map((group) => group.getAttribute('data-anno-id')).filter(Boolean),
+  const findCreatedId = () => page.evaluate((existingIds) => {
+    const knownIds = new Set(existingIds);
+    const renderedIds = [
+      ...document.querySelectorAll('[data-svg-annotation-layer="1"] > g[data-anno-id]'),
+    ]
+      .map((group) => group.getAttribute('data-anno-id'))
+      .filter(Boolean);
+    return renderedIds.find((id) => {
+      if (knownIds.has(id)) return false;
+      const object = window.__phase35GetAnnotationById?.(id) || null;
+      return (
+        String(object?.type || '').toLowerCase() === 'path'
+        && String(object?.data?.tool || object?.tool || '').toLowerCase() === 'pen'
+        && object?.isPdfImported !== true
       );
-      return ids.find((id) => !beforeIds.has(id)) ?? null;
-    })
-    .not.toBeNull();
-  const createdId = await annotationGroups.evaluateAll(
-    (groups, existingIds) =>
-      groups
-        .map((group) => group.getAttribute('data-anno-id'))
-        .filter(Boolean)
-        .find((id) => !existingIds.includes(id)),
-    [...beforeIds],
-  );
+    }) || null;
+  }, [...beforeIds]);
+  let createdId = null;
+  await expect.poll(async () => {
+    createdId = await findCreatedId();
+    return createdId;
+  }, {
+    message: 'Pen gesture must create a mounted local path annotation',
+  }).not.toBeNull();
   return page.locator(
     `[data-svg-annotation-layer="1"] > g[data-anno-id="${createdId}"]`,
   );
@@ -70,7 +82,9 @@ async function createStroke(page) {
 
 async function activatePartialEraser(page) {
   await openDrawTools(page);
-  await page.getByRole('button', { name: 'Partial erase', exact: true }).click();
+  const partialEraser = page.getByRole('button', { name: 'Partial erase', exact: true });
+  await partialEraser.click();
+  await expect(partialEraser).toHaveClass(/btn-active/);
   await expect(page.locator('[data-diag-eraser-wrapper="1"]')).toBeVisible();
   await setWidth(page, 24);
 }
