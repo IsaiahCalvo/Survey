@@ -1,8 +1,3 @@
-import {
-  getAnnotationStorageKey,
-  setAnnotationStorageKey,
-} from './annotationStorageIdentity.js';
-
 const TRANSIENT_HISTORY_KEYS = new Set([
   '_originalHasControls',
   '_originalHasBorders',
@@ -27,12 +22,7 @@ const TRANSIENT_HISTORY_KEYS = new Set([
 
 export function normalizeCanvasJsonForHistory(value) {
   const walk = (node) => {
-    if (Array.isArray(node)) {
-      return setAnnotationStorageKey(
-        node.map(walk),
-        getAnnotationStorageKey(node),
-      );
-    }
+    if (Array.isArray(node)) return node.map(walk);
     if (!node || typeof node !== 'object') return node;
 
     const normalized = {};
@@ -44,7 +34,7 @@ export function normalizeCanvasJsonForHistory(value) {
       normalized.opacity = 0;
     }
 
-    return setAnnotationStorageKey(normalized, getAnnotationStorageKey(node));
+    return normalized;
   };
 
   return walk(value);

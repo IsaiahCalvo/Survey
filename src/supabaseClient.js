@@ -58,8 +58,17 @@ export const supabase = supabaseUrl && supabaseAnonKey
     })
   : null;
 
+// The dev-only fixture route intentionally exercises the full local editor
+// without a cloud session. Keep its mock viewer identity out of Supabase
+// consumers even when this checkout has valid public Supabase credentials.
+const isDevTestPdfRoute = () => (
+  import.meta.env.DEV
+  && typeof window !== 'undefined'
+  && new URLSearchParams(window.location.search).has('testPdf')
+);
+
 // Helper to check if Supabase is available
-export const isSupabaseAvailable = () => supabase !== null;
+export const isSupabaseAvailable = () => supabase !== null && !isDevTestPdfRoute();
 
 export const isAuthRefreshTokenError = (error) => {
   const message = String(error?.message || error || '').toLowerCase();

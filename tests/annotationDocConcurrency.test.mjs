@@ -2267,7 +2267,7 @@ test('id-less occurrence one edit, Undo, Redo, and cold reload preserve both occ
   await handle.destroy();
 });
 
-test('history normalization preserves duplicate occurrence identity through reorder', () => {
+test('history normalization preserves serialized duplicate identity through reorder', () => {
   const doc = new Y.Doc();
   syncByPageToDoc(doc, {
     1: { objects: [shortInk('dup', 0, 10), shortInk('dup', 20, 30)] },
@@ -2282,7 +2282,7 @@ test('history normalization preserves duplicate occurrence identity through reor
   };
   const normalized = normalizeCanvasJsonForHistory(reordered);
   assert.deepEqual(
-    normalized[1].objects.map(getAnnotationStorageKey),
+    normalized[1].objects.map((object) => object.data.id),
     [durableKeys[1], durableKeys[0]],
   );
   syncByPageToDoc(doc, normalized);
@@ -2291,6 +2291,89 @@ test('history normalization preserves duplicate occurrence identity through reor
     docToByPage(cloneDoc(doc))[1].objects.map((object) => object.path),
     [[['M', 0, 50], ['L', 10, 50]], [['M', 20, 50], ['L', 30, 50]]],
   );
+});
+
+test('partial erase keeps canonical id through JSON clone, reorder, Undo, Redo, and cold reload', () => {
+  const doc = new Y.Doc();
+  syncByPageToDoc(doc, {
+    1: {
+      objects: [
+        shortInk('unused-a', 0, 10, { idless: true }),
+        shortInk('unused-b', 20, 50, { idless: true }),
+      ],
+    },
+  });
+  const before = docToByPage(doc);
+  const beforeObjects = before[1].objects;
+  const canonicalIds = beforeObjects.map((object) => object.data.id);
+  assert.equal(new Set(canonicalIds).size, 2);
+  assert.equal(canonicalIds.every(Boolean), true);
+
+  const eraseResult = erasePageAnnotations({
+    pageAnnotations: before[1],
+    eraserPoints: [{ x: 25, y: 50 }],
+    eraserRadius: 2,
+    mode: 'partial',
+  });
+  const targetStorageKey = canonicalIds[1];
+  assert.equal(eraseResult.didChange, true);
+  assert.deepEqual(
+    eraseResult.objectMutations.map((mutation) => mutation.storageKey),
+    [targetStorageKey],
+  );
+
+  const action = buildPreciseAnnotationHistoryAction({
+    pageNumber: 1,
+    previousPage: before[1],
+    nextPage: eraseResult.pageAnnotations,
+    changedIds: eraseResult.changedIds,
+    deletedIds: eraseResult.deletedIds,
+    changedStorageKeys: eraseResult.objectMutations
+      .filter((mutation) => !mutation.deleted)
+      .map((mutation) => mutation.storageKey),
+    deletedStorageKeys: eraseResult.objectMutations
+      .filter((mutation) => mutation.deleted)
+      .map((mutation) => mutation.storageKey),
+  });
+  assert.equal(action?.storageKey, targetStorageKey);
+
+  const reorderedAfter = JSON.parse(JSON.stringify({
+    1: {
+      ...eraseResult.pageAnnotations,
+      objects: [...eraseResult.pageAnnotations.objects].reverse(),
+    },
+  }));
+  const expectedAfter = JSON.parse(JSON.stringify(reorderedAfter));
+  const undone = applyAnnotationHistoryAction(
+    reorderedAfter,
+    invertAnnotationHistoryAction(action),
+  );
+  assert.deepEqual(
+    undone[1].objects.map((object) => object.data.id),
+    [canonicalIds[1], canonicalIds[0]],
+  );
+  assert.deepEqual(undone[1].objects[0], beforeObjects[1]);
+  assert.deepEqual(undone[1].objects[1], beforeObjects[0]);
+
+  const redone = applyAnnotationHistoryAction(
+    JSON.parse(JSON.stringify(undone)),
+    action,
+  );
+  assert.deepEqual(redone, expectedAfter);
+
+  syncByPageToDoc(doc, redone);
+  const reloaded = docToByPage(cloneDoc(doc));
+  assert.equal(reloaded[1].objects.length, 2);
+  assert.deepEqual(
+    new Set(reloaded[1].objects.map((object) => object.data.id)),
+    new Set(canonicalIds),
+  );
+  for (const expectedObject of expectedAfter[1].objects) {
+    const reloadedObject = reloaded[1].objects.find(
+      (object) => object.data.id === expectedObject.data.id,
+    );
+    assert.deepEqual(JSON.parse(JSON.stringify(reloadedObject)), expectedObject);
+  }
 });
 
 async function assertOccurrenceOneConcurrentHistory({ idless }) {

@@ -208,6 +208,10 @@ test(
       annotationId: 'ordinary-unknown-proxy-looking-id',
       data: { id: 'unknown-author' },
     };
+    const missingIdentity = {
+      type: 'path',
+      data: { authorId: OWNER_ID },
+    };
     const canErase = (annotation, viewerId, documentOwnerId) => (
       canEraseCanvasAnnotation({
         annotation,
@@ -221,6 +225,11 @@ test(
     strictEqual(canErase(foreign, null, OWNER_ID), false, 'missing viewer denies');
     strictEqual(canErase(foreign, COLLAB_ID, null), false, 'missing owner denies foreign mark');
     strictEqual(canErase(unknownAuthor, COLLAB_ID, OWNER_ID), false, 'missing author denies');
+    strictEqual(
+      canErase(missingIdentity, OWNER_ID, OWNER_ID),
+      false,
+      'missing canonical identity denies even an owner until materialization',
+    );
     strictEqual(canErase(own, COLLAB_ID, null), true, 'known self-authorship survives missing owner');
     strictEqual(canErase(foreign, OWNER_ID, OWNER_ID), true, 'known document owner still overrides');
   },

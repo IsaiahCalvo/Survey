@@ -52,6 +52,7 @@ import {
 import { isPointOnObject, doesRectIntersectObject } from './utils/geometryHitTest';
 import { booleanErasePath } from './utils/geometryEraser';
 import { getEraserOperation } from './utils/eraserPolicy.js';
+import { materializeCanvasObjectIdentities } from './utils/annotationStorageIdentity.js';
 import { canEraseCanvasAnnotation, canModify } from './lib/collab/permissionScope.js';
 import { configureFabricOverrides } from './utils/fabricCustomization';
 import { calculateViewportSafePosition } from './utils/menuPositioning';
@@ -3293,6 +3294,7 @@ const PageAnnotationLayer = memo(({
   const triggerSave = useCallback((source = 'trigger-save', context = null) => {
     const canvas = fabricRef.current;
     if (!canvas) return;
+    materializeCanvasObjectIdentities(canvas);
     sanitizeTextStyles(canvas);
     const canvasJSON = canvas.toObject(['strokeUniform', 'spaceId', 'moduleId', 'regionId', 'data', 'name', 'annotationId', 'needsEntity', 'globalCompositeOperation', 'layer', 'isPdfImported', 'pdfAnnotationId', 'pdfAnnotationType', 'pdfInkRenderMode', 'tool']);
     onSaveAnnotations(pageNumber, canvasJSON, buildHistorySaveContext(source, context));
@@ -5039,6 +5041,7 @@ const PageAnnotationLayer = memo(({
     const saveCanvas = (source = 'canvas:save', context = null) => {
       if (!fabricRef.current) return;
       try {
+        materializeCanvasObjectIdentities(fabricRef.current);
         // Sanitize text objects to prevent Fabric.js stylesToArray errors
         sanitizeTextStyles(fabricRef.current);
 
@@ -6483,8 +6486,33 @@ const PageAnnotationLayer = memo(({
         // Apply deletion on mouse up
         if (eraserPath && eraserPath.points.length > 0) {
           const eraserRadius = (eraserSizeRef.current || 20) / 2;
+          materializeCanvasObjectIdentities(canvas);
           const objects = [...canvas.getObjects()];
           let needsRenderAndSave = false;
+          const deletedAnnotationIds = new Set();
+          const changedAnnotationIds = new Set();
+          const objectMutationById = new Map();
+          const recordObjectMutation = (object, deleted) => {
+            const canonicalId = object?.data?.id
+              || (
+                typeof object?.annotationId === 'string'
+                && knownSurveyMarkerIdsRef.current.has(object.annotationId)
+                  ? object.annotationId
+                  : null
+              );
+            if (canonicalId == null || String(canonicalId).length === 0) return;
+            const id = String(canonicalId);
+            if (deleted) {
+              changedAnnotationIds.delete(id);
+              deletedAnnotationIds.add(id);
+            } else if (!deletedAnnotationIds.has(id)) {
+              changedAnnotationIds.add(id);
+            }
+            objectMutationById.set(id, {
+              storageKey: id,
+              deleted: deleted === true,
+            });
+          };
 
           for (const obj of objects) {
             // Skip eraser stroke itself
@@ -6624,6 +6652,7 @@ const PageAnnotationLayer = memo(({
                   const surveyMarkerKey = annotationId || `${bounds.x}-${bounds.y}-${bounds.width}-${bounds.height}`;
                   processedSurveyMarkersRef.current.delete(surveyMarkerKey);
 
+                  recordObjectMutation(obj, true);
                   canvas.remove(obj);
                   needsRenderAndSave = true;
 
@@ -6639,12 +6668,16 @@ const PageAnnotationLayer = memo(({
             if (getEraserOperation(obj, currentEraserMode) === 'partial') {
               if (obj.type === 'path') {
                 const wasErased = erasePathSegment(obj, eraserPath, eraserRadius, canvas);
-                if (wasErased) needsRenderAndSave = true;
+                if (wasErased) {
+                  recordObjectMutation(obj, false);
+                  needsRenderAndSave = true;
+                }
               }
             } else {
               // Full mode, plus every annotation that is not free-hand ink.
               const isTouching = eraserPath.points.some(point => isPointOnObject(point, obj, eraserRadius));
               if (isTouching) {
+                recordObjectMutation(obj, true);
                 canvas.remove(obj);
                 needsRenderAndSave = true;
               }
@@ -6740,7 +6773,15 @@ const PageAnnotationLayer = memo(({
           }
 
           if (needsRenderAndSave) {
-            saveCanvas('eraser:apply', { mode: currentEraserMode });
+            saveCanvas('eraser:commit', {
+              tool: 'eraser',
+              action: 'eraser:apply',
+              mode: currentEraserMode,
+              eraserMode: currentEraserMode,
+              finalDeletedAnnotationIds: [...deletedAnnotationIds],
+              finalChangedAnnotationIds: [...changedAnnotationIds],
+              objectMutations: [...objectMutationById.values()],
+            });
           }
         }
 
@@ -8346,6 +8387,7 @@ const PageAnnotationLayer = memo(({
 
       // Save annotations
       try {
+        materializeCanvasObjectIdentities(canvas);
         sanitizeTextStyles(canvas);
         const canvasJSON = canvas.toObject(['strokeUniform', 'spaceId', 'moduleId', 'regionId', 'data', 'name', 'annotationId', 'needsEntity', 'layer', 'isPdfImported', 'pdfAnnotationId', 'pdfAnnotationType', 'pdfInkRenderMode', 'tool']);
         onSaveAnnotations(pageNumber, canvasJSON, buildHistorySaveContext('surveyMarker:apply', {
@@ -8427,6 +8469,7 @@ const PageAnnotationLayer = memo(({
 
       // Save annotations
       try {
+        materializeCanvasObjectIdentities(canvas);
         sanitizeTextStyles(canvas);
         const canvasJSON = canvas.toObject(['strokeUniform', 'spaceId', 'moduleId', 'regionId', 'data', 'name', 'layer', 'isPdfImported', 'pdfAnnotationId', 'pdfAnnotationType', 'pdfInkRenderMode', 'tool']);
         onSaveAnnotations(pageNumber, canvasJSON, buildHistorySaveContext('surveyMarker:remove', {
@@ -8740,6 +8783,7 @@ const PageAnnotationLayer = memo(({
 
       // Save the canvas state
       try {
+        materializeCanvasObjectIdentities(canvas);
         sanitizeTextStyles(canvas);
         const canvasJSON = canvas.toObject(['strokeUniform', 'spaceId', 'moduleId', 'regionId', 'data', 'name', 'annotationId', 'needsEntity', 'globalCompositeOperation', 'layer', 'isPdfImported', 'pdfAnnotationId', 'pdfAnnotationType', 'pdfInkRenderMode', 'tool']);
         onSaveAnnotations(pageNumber, canvasJSON, buildHistorySaveContext('keyboard:delete', {

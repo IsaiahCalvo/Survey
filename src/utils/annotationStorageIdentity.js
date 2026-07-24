@@ -32,6 +32,7 @@ export function normalizeAnnotationIdentity(
     ?? data.annoId
     ?? object.id
     ?? object.annotationId
+    ?? object.pdfAnnotationId
     ?? null;
   const candidateId = candidate != null && String(candidate) ? String(candidate) : null;
   const cachedKey = getAnnotationStorageKey(object);
@@ -96,6 +97,24 @@ export function normalizeByPageAnnotationIdentities(byPage, options = {}) {
     byPage: changed ? normalizedByPage : byPage,
     changed,
   };
+}
+
+export function materializeCanvasObjectIdentities(canvas, options = {}) {
+  const claimedIds = new Set();
+  canvas?.getObjects?.().forEach((object) => {
+    if (!object || object.excludeFromExport === true) return;
+    const normalized = normalizeAnnotationIdentity(object, {
+      ...options,
+      claimedIds,
+    });
+    if (!normalized.changed || !normalized.object?.data) return;
+    if (typeof object.set === 'function') {
+      object.set({ data: normalized.object.data });
+    } else {
+      object.data = normalized.object.data;
+    }
+  });
+  return canvas;
 }
 
 export function setAnnotationStorageKey(object, key) {

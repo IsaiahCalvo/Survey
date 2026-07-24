@@ -11,6 +11,11 @@ import { getCoalescedOrCurrentEvents } from '../src/utils/eraserPointerSamples.j
 import { preserveTransientPagePresentationState } from '../src/services/annotationDocStore.js';
 
 const VIEWER_SOURCE = readFileSync(new URL('../src/PDFViewer.jsx', import.meta.url), 'utf8');
+const DEV_TEST_ROUTE_SOURCE = readFileSync(new URL('../src/DevTestRoute.jsx', import.meta.url), 'utf8');
+const SUPABASE_CLIENT_SOURCE = readFileSync(
+  new URL('../src/supabaseClient.js', import.meta.url),
+  'utf8',
+);
 const ERASER_SOURCE = readFileSync(
   new URL('../src/components/FabricEraserCanvas.jsx', import.meta.url),
   'utf8',
@@ -225,6 +230,31 @@ test('legacy canvas eraser enforces locked and ownership gates before any mutati
   assert.doesNotMatch(eraseSource, /setCalloutsRef\.current\(prev =>/);
 });
 
+test('legacy canvas eraser materializes canonical ids and commits one precise history action', () => {
+  assert.match(
+    LEGACY_LAYER_SOURCE,
+    /import \{ materializeCanvasObjectIdentities \} from '\.\/utils\/annotationStorageIdentity\.js';/,
+  );
+  assert.match(
+    LEGACY_LAYER_SOURCE,
+    /materializeCanvasObjectIdentities\(fabricRef\.current\);[\s\S]{0,300}fabricRef\.current\.toObject/,
+  );
+
+  const eraseStart = LEGACY_LAYER_SOURCE.indexOf('// Handle erasing end');
+  const eraseEnd = LEGACY_LAYER_SOURCE.indexOf('// Remove visual eraser stroke overlay', eraseStart);
+  const eraseSource = LEGACY_LAYER_SOURCE.slice(eraseStart, eraseEnd);
+  assert.ok(
+    eraseSource.indexOf('materializeCanvasObjectIdentities(canvas);')
+      < eraseSource.indexOf('const objects = [...canvas.getObjects()]'),
+    'loaded id-less objects must be materialized before permission checks',
+  );
+  assert.match(eraseSource, /saveCanvas\('eraser:commit',\s*\{/);
+  assert.match(eraseSource, /tool:\s*'eraser'/);
+  assert.match(eraseSource, /finalDeletedAnnotationIds:\s*\[\.\.\.deletedAnnotationIds\]/);
+  assert.match(eraseSource, /finalChangedAnnotationIds:\s*\[\.\.\.changedAnnotationIds\]/);
+  assert.match(eraseSource, /objectMutations:\s*\[\.\.\.objectMutationById\.values\(\)\]/);
+});
+
 test('legacy canvas does not classify an ordinary annotationId object as a survey marker', () => {
   const eraseStart = LEGACY_LAYER_SOURCE.indexOf('// Handle erasing end');
   const eraseEnd = LEGACY_LAYER_SOURCE.indexOf('// Remove visual eraser stroke overlay', eraseStart);
@@ -289,6 +319,20 @@ test('document load and commit callbacks fail closed when cloud ownership is unr
   const markerPreviewSource = VIEWER_SOURCE.slice(markerPreviewStart, markerPreviewEnd);
   assert.match(markerPreviewSource, /canCommitSurveyMarkerErase\(\{/);
   assert.doesNotMatch(markerPreviewSource, /if \(!viewerId \|\| !documentOwnerId\) return true/);
+});
+
+test('dev test route supplies a stable mock user while cloud consumers stay offline', () => {
+  assert.match(DEV_TEST_ROUTE_SOURCE, /const mockUser = \{\s*id:\s*['"]dev-test-user['"]/);
+  assert.match(DEV_TEST_ROUTE_SOURCE, /user:\s*mockUser/);
+  assert.match(DEV_TEST_ROUTE_SOURCE, /isAuthenticated:\s*false/);
+  assert.match(
+    SUPABASE_CLIENT_SOURCE,
+    /import\.meta\.env\.DEV[\s\S]*?new URLSearchParams\(window\.location\.search\)\.has\('testPdf'\)/,
+  );
+  assert.match(
+    SUPABASE_CLIENT_SOURCE,
+    /isSupabaseAvailable = \(\) => supabase !== null && !isDevTestPdfRoute\(\)/,
+  );
 });
 
 test('production eraser commits the latest page model and waits for its exact repaint', () => {

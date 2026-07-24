@@ -105,9 +105,10 @@ test('history records the paste as a CREATE of the clone id — not a move of th
   assert.notEqual(action.annotationId, getAnnotationHistoryId(source));
 });
 
-test('a legacy clone that keeps the source data.id remains a distinct occurrence', () => {
-  // Durable occurrence identity prevents a malformed legacy clone from
-  // overwriting the source merely because both objects expose the same id.
+test('a legacy clone that keeps the source data.id fails safe until canonical promotion', () => {
+  // History never invents a positional/NUL occurrence identity for a
+  // malformed duplicate. The materialization boundary must promote it to a
+  // unique serialized data.id before any save diff can target it.
   const source = importedEditedSource();
   const badClone = structuredClone(source);
   badClone.left += 25;
@@ -116,7 +117,5 @@ test('a legacy clone that keeps the source data.id remains a distinct occurrence
     previousPage: { objects: [source] },
     nextPage: { objects: [source, badClone] },
   });
-  assert.equal(action.type, 'fabric:create');
-  assert.equal(action.annotationId, source.data.id);
-  assert.equal(action.storageKey, `\u0000duplicate:${source.data.id}:3:1`);
+  assert.equal(action, null);
 });

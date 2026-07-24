@@ -14,6 +14,10 @@ import {
   buildPdfExportAnnotationPlan,
   savePDFWithAnnotationsPdfLib,
 } from '../src/utils/pdfAnnotationsPdfLib.js';
+import { erasePageAnnotations } from '../src/utils/pageSpaceEraser.js';
+import { createProductionPaperInk } from '../src/utils/productionPaperInk.js';
+import { normalizeByPageAnnotationIdentities } from '../src/utils/annotationStorageIdentity.js';
+import { markEditedImportedPdfAnnotationsOnPage } from '../src/viewerShared.js';
 
 const PAGE_W = 200;
 const PAGE_H = 200;
@@ -92,6 +96,83 @@ function approxEqual(actual, expected, eps = 1e-4) {
     `expected ${actual} ≈ ${expected} (±${eps})`,
   );
 }
+
+function freezeRecursively(value) {
+  if (!value || typeof value !== 'object' || Object.isFrozen(value)) return value;
+  Object.values(value).forEach(freezeRecursively);
+  return Object.freeze(value);
+}
+
+test('async-imported native ink partial erase is stamped, exported, and replaces the native original', async () => {
+  const { pdfFile, nativeObjectNumber } = await makePdfFileWithNativeAnnot('Ink');
+  const pdfAnnotationId = `${nativeObjectNumber}R`;
+  const seededInk = createProductionPaperInk({
+    id: 'transient-import-id',
+    tool: 'pen',
+    points: [{ x: 20, y: 70 }, { x: 180, y: 70 }],
+    color: '#ff0000',
+    width: 20,
+  });
+  const { id: _transientId, ...withoutTopLevelId } = seededInk;
+  const rawAsyncImport = {
+    ...withoutTopLevelId,
+    data: { tool: 'pen', authorId: 'user-a' },
+    isPdfImported: true,
+    pdfAnnotationId,
+    pdfAnnotationType: 'Ink',
+  };
+  const materializedImport = normalizeByPageAnnotationIdentities({
+    1: { objects: [rawAsyncImport] },
+  }).byPage[1].objects[0];
+  const carvedImport = erasePageAnnotations({
+    pageAnnotations: { objects: [materializedImport] },
+    eraserPoints: [{ x: 90, y: 58 }],
+    eraserRadius: 7,
+    mode: 'partial',
+  }).pageAnnotations.objects[0];
+
+  assert.notDeepEqual(carvedImport.polygons, materializedImport.polygons);
+  assert.equal(carvedImport.data.id, pdfAnnotationId);
+  const frozenPrevious = freezeRecursively({ objects: [rawAsyncImport] });
+  const frozenIncoming = freezeRecursively({ objects: [carvedImport] });
+  const normalizedPrevious = normalizeByPageAnnotationIdentities({
+    1: frozenPrevious,
+  }).byPage[1];
+  const normalizedIncoming = normalizeByPageAnnotationIdentities({
+    1: frozenIncoming,
+  }).byPage[1];
+  const markedIncoming = markEditedImportedPdfAnnotationsOnPage(
+    normalizedIncoming,
+    normalizedPrevious,
+    {
+      source: 'eraser:commit',
+      userId: 'user-a',
+      pageNumber: 1,
+    },
+  );
+  const markedInk = markedIncoming.objects[0];
+
+  assert.equal(rawAsyncImport.data.id, undefined, 'frozen async-import snapshot stays untouched');
+  assert.equal(markedInk.data.id, pdfAnnotationId);
+  assert.equal(markedInk.pdfImportedEditState, 'edited');
+  assert.equal(markedInk.data.pdfImportedEditState, 'edited');
+
+  const plan = buildPdfExportAnnotationPlan({
+    pageSizes: { 1: { width: PAGE_W, height: PAGE_H } },
+    annotationsByPage: { 1: markedIncoming },
+  });
+  assert.equal(plan.diagnostics.objectsExported, 1);
+  assert.equal(plan.diagnostics.editedImportedCopiesExported, 1);
+  assert.equal(plan.diagnostics.importedNativeCopiesSkipped, 0);
+  assert.equal(plan.diagnostics.skippedByReason['imported-pdf-native-preserved'], undefined);
+  assert.equal(plan.items[0].object.pdfAnnotationId, pdfAnnotationId);
+
+  const bytes = await exportBytes(pdfFile, [markedInk]);
+  const { dicts } = await getAnnotationDicts(bytes);
+  assert.equal(dicts.length, 1, 'old native Ink is removed and carved app Ink is written once');
+  assert.equal(dicts[0].get(PDFName.of('Subtype')).decodeText(), 'Ink');
+  assert.notEqual(dicts[0].get(PDFName.of('Contents'))?.decodeText?.(), 'stale native shape');
+});
 
 // ---------------------------------------------------------------------------
 // Item 1 — edited imported rotated ellipse

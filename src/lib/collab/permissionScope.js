@@ -145,6 +145,13 @@ export function canEraseCanvasAnnotation({
       return false;
     }
   }
+  const canonicalId = annotation?.data?.id;
+  if (
+    canonicalId == null
+    || String(canonicalId).length === 0
+  ) {
+    return false;
+  }
   return canModify({ annotation, viewerId, documentOwnerId });
 }
 

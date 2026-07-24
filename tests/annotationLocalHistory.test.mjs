@@ -8,11 +8,6 @@ import {
   filterAnnotationHistoryActionByOwner,
   invertAnnotationHistoryAction,
 } from '../src/utils/annotationLocalHistory.js';
-import {
-  getAnnotationStorageKey,
-  setAnnotationStorageKey,
-} from '../src/utils/annotationStorageIdentity.js';
-import { normalizeCanvasJsonForHistory } from '../src/utils/historyNormalization.js';
 
 test('buildAnnotationHistoryAction records one created annotation by id', () => {
   const previousPage = { version: '5.2.4', objects: [{ type: 'rect', data: { id: 'a1' }, left: 1 }] };
@@ -233,140 +228,74 @@ test('precise eraser multi-delete history records exactly deleted ids', () => {
   deepStrictEqual(undone[2].objects.map((obj) => obj.data.id), ['a', 'b', 'c', 'd']);
 });
 
-test('precise eraser gives an id-less legacy deletion one deterministic undo/redo identity', () => {
-  const legacy = {
+test('precise canonical-id selectors win over stale annotation-id lists for mixed delete and update', () => {
+  const firstBefore = {
     type: 'rect',
-    left: 12,
-    top: 34,
-    width: 40,
-    height: 20,
-    fill: '#2563eb',
-  };
-  const previousPage = { objects: [legacy] };
-  const nextPage = { objects: [] };
-
-  const action = buildPreciseAnnotationHistoryAction({
-    pageNumber: 1,
-    previousPage,
-    nextPage,
-    deletedIds: ['index:0'],
-    changedIds: [],
-  });
-  const undone = applyAnnotationHistoryAction(
-    { 1: nextPage },
-    invertAnnotationHistoryAction(action),
-  );
-  const redone = applyAnnotationHistoryAction(undone, action);
-
-  equal(action?.type, 'fabric:delete');
-  equal(action?.annotationId, 'index:0');
-  deepStrictEqual(undone[1].objects, [legacy]);
-  deepStrictEqual(redone[1].objects, []);
-});
-
-test('precise eraser keeps an id-less mutation when an earlier id-less deletion shifts its index', () => {
-  const deleted = {
-    type: 'rect',
+    data: { id: 'dup-a', legacyDuplicateId: 'dup' },
     left: 10,
-    top: 10,
-    width: 20,
-    height: 20,
   };
-  const inkBefore = {
-    type: 'path',
-    path: [['M', 0, 0], ['L', 40, 0]],
-    stroke: '#dc3545',
-  };
-  const inkAfter = {
-    ...inkBefore,
-    path: [['M', 20, 0], ['L', 40, 0]],
-  };
-  const stableAnchor = {
-    type: 'textbox',
-    data: { id: 'stable-anchor' },
-    text: 'unchanged',
-  };
-  const previousPage = { objects: [deleted, inkBefore, stableAnchor] };
-  const nextPage = { objects: [inkAfter, stableAnchor] };
-
-  const action = buildPreciseAnnotationHistoryAction({
-    pageNumber: 1,
-    previousPage,
-    nextPage,
-    deletedIds: ['index:0'],
-    changedIds: ['index:1'],
-  });
-  const applied = applyAnnotationHistoryAction({ 1: previousPage }, action);
-  const undone = applyAnnotationHistoryAction(
-    { 1: nextPage },
-    invertAnnotationHistoryAction(action),
-  );
-  const redone = applyAnnotationHistoryAction(undone, action);
-
-  equal(action?.type, 'fabric:batch');
-  equal(action?.deleted?.length, 1);
-  equal(action?.updated?.length, 1);
-  deepStrictEqual(applied[1].objects, nextPage.objects);
-  deepStrictEqual(undone[1].objects, previousPage.objects);
-  deepStrictEqual(redone[1].objects, nextPage.objects);
-});
-
-test('precise eraser preserves two byte-identical id-less occurrences across mixed delete and update', () => {
-  const makeInk = () => ({
-    type: 'path',
-    path: [['M', 0, 0], ['L', 40, 0]],
-    stroke: '#dc3545',
-  });
-  const first = makeInk();
-  const second = makeInk();
-  const carved = {
-    ...makeInk(),
-    path: [['M', 20, 0], ['L', 40, 0]],
-  };
-  const previousPage = { objects: [first, second] };
-  const nextPage = { objects: [carved] };
-
-  const action = buildPreciseAnnotationHistoryAction({
-    pageNumber: 1,
-    previousPage,
-    nextPage,
-    deletedIds: ['index:0'],
-    changedIds: ['index:1'],
-  });
-  const applied = applyAnnotationHistoryAction({ 1: previousPage }, action);
-  const undone = applyAnnotationHistoryAction(
-    { 1: nextPage },
-    invertAnnotationHistoryAction(action),
-  );
-  const redone = applyAnnotationHistoryAction(undone, action);
-
-  equal(action?.type, 'fabric:batch');
-  equal(action?.deleted?.length, 1);
-  equal(action?.updated?.length, 1);
-  deepStrictEqual(applied[1].objects, nextPage.objects);
-  deepStrictEqual(undone[1].objects, previousPage.objects);
-  deepStrictEqual(redone[1].objects, nextPage.objects);
-});
-
-test('precise eraser restores every byte-identical id-less full-delete occurrence', () => {
-  const makeRect = () => ({
+  const secondBefore = {
     type: 'rect',
-    left: 10,
-    top: 10,
-    width: 20,
-    height: 20,
-    fill: '#2563eb',
+    data: { id: 'dup-b', legacyDuplicateId: 'dup' },
+    left: 30,
+  };
+  const firstAfter = { ...firstBefore, left: 11 };
+
+  const action = buildPreciseAnnotationHistoryAction({
+    pageNumber: 1,
+    previousPage: { objects: [firstBefore, secondBefore] },
+    nextPage: { objects: [firstAfter] },
+    deletedIds: ['dup-a'],
+    changedIds: ['dup-b'],
+    deletedStorageKeys: ['dup-b'],
+    changedStorageKeys: ['dup-a'],
   });
-  const first = makeRect();
-  const second = makeRect();
-  const previousPage = { objects: [first, second] };
-  const nextPage = { objects: [] };
+
+  equal(action.type, 'fabric:batch');
+  deepStrictEqual(action.deleted.map((entry) => entry.storageKey), ['dup-b']);
+  deepStrictEqual(action.updated.map((entry) => entry.storageKey), ['dup-a']);
+
+  const undone = applyAnnotationHistoryAction(
+    { 1: { objects: [firstAfter] } },
+    invertAnnotationHistoryAction(action),
+  );
+  deepStrictEqual(undone[1].objects.map((object) => object.left), [10, 30]);
+  deepStrictEqual(undone[1].objects.map((object) => object.data.id), ['dup-a', 'dup-b']);
+
+  const redone = applyAnnotationHistoryAction(undone, action);
+  deepStrictEqual(redone[1].objects.map((object) => object.left), [11]);
+  deepStrictEqual(redone[1].objects.map((object) => object.data.id), ['dup-a']);
+});
+
+test('precise history merges keyed and id-only selectors in one exact batch', () => {
+  const untouched = { type: 'rect', data: { id: 'untouched' }, left: 0 };
+  const deleteKeyed = { type: 'rect', data: { id: 'delete-keyed' }, left: 10 };
+  const deleteIdOnly = { type: 'rect', data: { id: 'delete-id-only' }, left: 20 };
+  const updateKeyedBefore = { type: 'path', data: { id: 'update-keyed' }, value: 1 };
+  const updateIdOnlyBefore = { type: 'path', data: { id: 'update-id-only' }, value: 2 };
+  const updateKeyedAfter = { ...updateKeyedBefore, value: 11 };
+  const updateIdOnlyAfter = { ...updateIdOnlyBefore, value: 12 };
+  const previousPage = {
+    objects: [
+      untouched,
+      deleteKeyed,
+      deleteIdOnly,
+      updateKeyedBefore,
+      updateIdOnlyBefore,
+    ],
+  };
+  const nextPage = {
+    objects: [untouched, updateKeyedAfter, updateIdOnlyAfter],
+  };
 
   const action = buildPreciseAnnotationHistoryAction({
     pageNumber: 1,
     previousPage,
     nextPage,
-    deletedIds: ['index:0', 'index:1'],
+    deletedIds: ['delete-keyed', 'delete-id-only'],
+    deletedStorageKeys: ['delete-keyed'],
+    changedIds: ['update-keyed', 'update-id-only'],
+    changedStorageKeys: ['update-keyed'],
   });
   const undone = applyAnnotationHistoryAction(
     { 1: nextPage },
@@ -375,450 +304,240 @@ test('precise eraser restores every byte-identical id-less full-delete occurrenc
   const redone = applyAnnotationHistoryAction(undone, action);
 
   equal(action?.type, 'fabric:batch');
-  equal(action?.deleted?.length, 2);
+  deepStrictEqual(
+    action.deleted.map((entry) => entry.storageKey),
+    ['delete-keyed', 'delete-id-only'],
+  );
+  deepStrictEqual(
+    action.updated.map((entry) => entry.storageKey),
+    ['update-keyed', 'update-id-only'],
+  );
   deepStrictEqual(undone[1].objects, previousPage.objects);
   deepStrictEqual(redone[1].objects, nextPage.objects);
 });
 
-test('precise eraser records mixed delete and update for duplicate stable IDs', () => {
-  const first = {
-    type: 'rect',
-    data: { id: 'dup', authorId: 'user-a' },
-    left: 10,
-    top: 10,
+test('mixed selector inverse restores exact z-order when the id-only deletion precedes the keyed deletion', () => {
+  const idOnlyA = { type: 'path', data: { id: 'A' }, value: 'id-only selector' };
+  const keyedB = { type: 'path', data: { id: 'B' }, value: 'keyed selector' };
+  const untouchedC = { type: 'rect', data: { id: 'C' } };
+  const untouchedD = { type: 'rect', data: { id: 'D' } };
+  const previousPage = {
+    objects: [idOnlyA, keyedB, untouchedC, untouchedD],
   };
-  const second = {
-    type: 'rect',
-    data: { id: 'dup', authorId: 'user-a' },
-    left: 80,
-    top: 10,
+  const nextPage = {
+    objects: [untouchedC, untouchedD],
   };
-  const mutatedSurvivor = {
-    ...first,
-    left: 25,
-  };
-  const previousPage = { objects: [first, second] };
-  const nextPage = { objects: [mutatedSurvivor] };
 
   const action = buildPreciseAnnotationHistoryAction({
     pageNumber: 1,
     previousPage,
     nextPage,
-    deletedIds: ['dup'],
-    changedIds: ['dup'],
+    deletedIds: ['A', 'B'],
+    deletedStorageKeys: ['B'],
   });
-  const applied = applyAnnotationHistoryAction({ 1: previousPage }, action);
   const undone = applyAnnotationHistoryAction(
     { 1: nextPage },
     invertAnnotationHistoryAction(action),
   );
   const redone = applyAnnotationHistoryAction(undone, action);
 
-  equal(action?.type, 'fabric:batch');
-  equal(action?.deleted?.length, 1);
-  equal(action?.updated?.length, 1);
-  deepStrictEqual(applied[1].objects, nextPage.objects);
+  equal(action.type, 'fabric:batch');
+  deepStrictEqual(action.deleted.map((entry) => entry.storageKey), ['A', 'B']);
   deepStrictEqual(undone[1].objects, previousPage.objects);
   deepStrictEqual(redone[1].objects, nextPage.objects);
 });
 
-test('precise eraser updates the correct byte-identical stable-id occurrence', () => {
-  const makeDuplicate = (value = 0) => ({
-    type: 'rect',
-    data: { id: 'dup', authorId: 'user-a' },
-    value,
+test('uniquely promoted duplicate reorder/delete [0,1,0] to [1,0] replays exactly', () => {
+  const previous = [0, 1, 0].map((left, occurrence) => {
+    const id = `dup-${occurrence}`;
+    const object = {
+      type: 'rect',
+      data: { id, legacyDuplicateId: 'dup' },
+      left,
+    };
+    return object;
   });
-  const previousPage = { objects: [makeDuplicate(), makeDuplicate()] };
-  const nextPage = { objects: [makeDuplicate(100), makeDuplicate()] };
-
+  const next = [previous[1], previous[2]];
   const action = buildPreciseAnnotationHistoryAction({
     pageNumber: 1,
-    previousPage,
-    nextPage,
-    changedIds: ['dup'],
+    previousPage: { objects: previous },
+    nextPage: { objects: next },
+    deletedIds: ['dup-0'],
+    deletedStorageKeys: ['dup-0'],
   });
-  const applied = applyAnnotationHistoryAction({ 1: previousPage }, action);
+
+  equal(action.type, 'fabric:delete');
+  equal(action.storageKey, 'dup-0');
   const undone = applyAnnotationHistoryAction(
-    { 1: nextPage },
+    { 1: { objects: next } },
     invertAnnotationHistoryAction(action),
   );
+  deepStrictEqual(undone[1].objects.map((object) => object.left), [0, 1, 0]);
   const redone = applyAnnotationHistoryAction(undone, action);
-
-  equal(action?.type, 'fabric:update');
-  deepStrictEqual(applied[1].objects, nextPage.objects);
-  deepStrictEqual(undone[1].objects, previousPage.objects);
-  deepStrictEqual(redone[1].objects, nextPage.objects);
+  deepStrictEqual(redone[1].objects.map((object) => object.left), [1, 0]);
+  deepStrictEqual(redone[1].objects.map((object) => object.data.id), ['dup-1', 'dup-2']);
 });
 
-test('precise eraser preserves order for three identical id-less occurrences with delete plus update', () => {
-  const makeInk = (value = 0) => ({
-    type: 'path',
-    path: [['M', 0, 0], ['L', 40, 0]],
-    stroke: '#dc3545',
-    value,
-  });
-  const previousPage = { objects: [makeInk(), makeInk(), makeInk()] };
-  const nextPage = { objects: [makeInk(100), makeInk()] };
-
-  const action = buildPreciseAnnotationHistoryAction({
-    pageNumber: 1,
-    previousPage,
-    nextPage,
-    deletedIds: ['index:0'],
-    changedIds: ['index:1'],
-  });
-  const applied = applyAnnotationHistoryAction({ 1: previousPage }, action);
-  const undone = applyAnnotationHistoryAction(
-    { 1: nextPage },
-    invertAnnotationHistoryAction(action),
-  );
-  const redone = applyAnnotationHistoryAction(undone, action);
-
-  deepStrictEqual(applied[1].objects, nextPage.objects);
-  deepStrictEqual(undone[1].objects, previousPage.objects);
-  deepStrictEqual(redone[1].objects, nextPage.objects);
-});
-
-test('precise eraser exact-replay property holds for every id-less delete/update pattern through five duplicates', () => {
-  const makeInk = (value = 0) => ({
-    type: 'path',
-    path: [['M', 0, 0], ['L', 40, 0]],
-    stroke: '#dc3545',
-    value,
-  });
-  let checked = 0;
-
-  for (let count = 1; count <= 5; count += 1) {
-    const patternCount = 3 ** count;
-    for (let encoded = 1; encoded < patternCount; encoded += 1) {
-      let pattern = encoded;
-      const deletedIds = [];
-      const changedIds = [];
-      const previousObjects = Array.from({ length: count }, () => makeInk());
-      const nextObjects = [];
-
-      for (let index = 0; index < count; index += 1) {
-        const operation = pattern % 3;
-        pattern = Math.floor(pattern / 3);
-        if (operation === 1) {
-          deletedIds.push(`index:${index}`);
-          continue;
-        }
-        if (operation === 2) {
-          changedIds.push(`index:${index}`);
-          nextObjects.push(makeInk(100 + index));
-          continue;
-        }
-        nextObjects.push(makeInk());
-      }
-
-      const previousPage = { objects: previousObjects };
-      const nextPage = { objects: nextObjects };
-      const action = buildPreciseAnnotationHistoryAction({
-        pageNumber: 1,
-        previousPage,
-        nextPage,
-        deletedIds,
-        changedIds,
-      });
-      const applied = applyAnnotationHistoryAction({ 1: previousPage }, action);
-      const undone = applyAnnotationHistoryAction(
-        { 1: nextPage },
-        invertAnnotationHistoryAction(action),
-      );
-      const redone = applyAnnotationHistoryAction(undone, action);
-      const context = `count=${count} encoded=${encoded}`;
-
-      deepStrictEqual(applied[1].objects, nextPage.objects, `apply ${context}`);
-      deepStrictEqual(undone[1].objects, previousPage.objects, `undo ${context}`);
-      deepStrictEqual(redone[1].objects, nextPage.objects, `redo ${context}`);
-      checked += 1;
-    }
-  }
-
-  equal(checked, 358);
-});
-
-test('keyed precise history exact-replay property covers 2,904 duplicate/id-less cases', () => {
+test('canonical promoted-id history is exact across 2,904 bounded mutation cases', () => {
   const valuePatterns = [
+    (index) => index,
     () => 0,
     (index) => index % 2,
     (index) => [0, 1, 0, 2, 0][index],
-    (index) => index,
   ];
-  let checked = 0;
+  const snapshot = (objects) => objects.map((object) => JSON.stringify(object));
+  let cases = 0;
 
   for (const idless of [false, true]) {
-    for (const valueAt of valuePatterns) {
-      for (let count = 1; count <= 5; count += 1) {
-        const patternCount = 3 ** count;
-        for (let encoded = 0; encoded < patternCount; encoded += 1) {
-          let pattern = encoded;
-          const deletedIds = [];
-          const changedIds = [];
+    for (let size = 1; size <= 5; size += 1) {
+      for (const valueAt of valuePatterns) {
+        const previous = Array.from({ length: size }, (_unused, occurrence) => {
+          const storageKey = `${idless ? 'promoted-idless' : 'promoted-duplicate'}-${occurrence}`;
+          const object = {
+            type: 'rect',
+            data: {
+              id: storageKey,
+              ...(idless ? {} : { legacyDuplicateId: 'dup' }),
+            },
+            left: valueAt(occurrence),
+          };
+          return object;
+        });
+
+        for (let assignment = 0; assignment < 3 ** size; assignment += 1) {
+          let digits = assignment;
           const deletedStorageKeys = [];
           const changedStorageKeys = [];
-          const previousObjects = [];
-          const nextObjects = [];
-
-          for (let index = 0; index < count; index += 1) {
-            const storageKey = idless
-              ? `\u0000idless:1:${index}`
-              : (index === 0 ? 'dup' : `\u0000duplicate:dup:1:${index}`);
-            const makeObject = (value) => setAnnotationStorageKey({
-              type: 'path',
-              ...(idless ? {} : { data: { id: 'dup' } }),
-              value,
-            }, storageKey);
-            const before = makeObject(valueAt(index));
-            previousObjects.push(before);
-
-            const operation = pattern % 3;
-            pattern = Math.floor(pattern / 3);
+          const next = [];
+          for (let index = 0; index < size; index += 1) {
+            const operation = digits % 3;
+            digits = Math.floor(digits / 3);
+            const storageKey = previous[index].data.id;
             if (operation === 1) {
-              deletedIds.push(idless ? `index:${index}` : 'dup');
               deletedStorageKeys.push(storageKey);
               continue;
             }
             if (operation === 2) {
-              changedIds.push(idless ? `index:${index}` : 'dup');
+              const modified = { ...previous[index], left: previous[index].left + 1000 };
               changedStorageKeys.push(storageKey);
-              nextObjects.push(makeObject(100 + index));
+              next.push(modified);
               continue;
             }
-            nextObjects.push(makeObject(valueAt(index)));
+            next.push(previous[index]);
           }
 
-          const previousPage = { objects: previousObjects };
-          const nextPage = { objects: nextObjects };
           const action = buildPreciseAnnotationHistoryAction({
             pageNumber: 1,
-            previousPage,
-            nextPage,
-            deletedIds,
-            changedIds,
+            previousPage: { objects: previous },
+            nextPage: { objects: next },
+            deletedIds: deletedStorageKeys,
+            changedIds: changedStorageKeys,
             deletedStorageKeys,
             changedStorageKeys,
           });
-          const applied = applyAnnotationHistoryAction({ 1: previousPage }, action);
-          const undone = applyAnnotationHistoryAction(
-            { 1: nextPage },
-            invertAnnotationHistoryAction(action),
-          );
-          const redone = applyAnnotationHistoryAction(undone, action);
-          const context = `idless=${idless} count=${count} encoded=${encoded}`;
-          const expectedPreviousKeys = previousObjects.map(getAnnotationStorageKey);
-          const expectedNextKeys = nextObjects.map(getAnnotationStorageKey);
+          const forward = action
+            ? applyAnnotationHistoryAction({ 1: { objects: previous } }, action)
+            : { 1: { objects: previous } };
+          deepStrictEqual(snapshot(forward[1].objects), snapshot(next));
 
-          deepStrictEqual(applied[1].objects, nextObjects, `apply JSON ${context}`);
-          deepStrictEqual(applied[1].objects.map(getAnnotationStorageKey), expectedNextKeys, `apply keys ${context}`);
-          deepStrictEqual(undone[1].objects, previousObjects, `undo JSON ${context}`);
-          deepStrictEqual(undone[1].objects.map(getAnnotationStorageKey), expectedPreviousKeys, `undo keys ${context}`);
-          deepStrictEqual(redone[1].objects, nextObjects, `redo JSON ${context}`);
-          deepStrictEqual(redone[1].objects.map(getAnnotationStorageKey), expectedNextKeys, `redo keys ${context}`);
-          checked += 1;
+          const undone = action
+            ? applyAnnotationHistoryAction(forward, invertAnnotationHistoryAction(action))
+            : forward;
+          deepStrictEqual(snapshot(undone[1].objects), snapshot(previous));
+
+          const redone = action
+            ? applyAnnotationHistoryAction(undone, action)
+            : undone;
+          deepStrictEqual(snapshot(redone[1].objects), snapshot(next));
+          cases += 1;
         }
       }
     }
   }
 
-  equal(checked, 2904);
+  equal(cases, 2904);
 });
 
-for (const idless of [false, true]) {
-  test(`${idless ? 'id-less' : 'duplicate-id'} occurrence one uses durable storage identity through concurrent drift and cold reload`, () => {
-    const makeObject = (value) => ({
-      type: 'path',
-      ...(idless ? {} : { data: { id: 'dup', authorId: 'user-a' } }),
-      value,
-    });
-    const firstKey = idless ? '\u0000idless:1:0' : 'dup';
-    const secondKey = idless ? '\u0000idless:1:1' : '\u0000duplicate:dup:1:1';
-    const beforeFirst = setAnnotationStorageKey(makeObject(0), firstKey);
-    const beforeSecond = setAnnotationStorageKey(makeObject(0), secondKey);
-    const afterFirst = setAnnotationStorageKey(makeObject(0), firstKey);
-    const afterSecond = setAnnotationStorageKey(makeObject(100), secondKey);
-    const action = buildPreciseAnnotationHistoryAction({
-      pageNumber: 1,
-      previousPage: { objects: [beforeFirst, beforeSecond] },
-      nextPage: { objects: [afterFirst, afterSecond] },
-      changedIds: [idless ? 'index:1' : 'dup'],
-      changedStorageKeys: [secondKey],
-    });
-
-    equal(action?.storageKey, secondKey);
-
-    const concurrentTarget = setAnnotationStorageKey(makeObject(200), secondKey);
-    const concurrentSibling = setAnnotationStorageKey(makeObject(0), firstKey);
-    const reorderedConcurrent = { 1: { objects: [concurrentTarget, concurrentSibling] } };
-    const undone = applyAnnotationHistoryAction(
-      reorderedConcurrent,
-      invertAnnotationHistoryAction(JSON.parse(JSON.stringify(action))),
-    );
-    equal(undone[1].objects[0].value, 0, 'Undo targets occurrence one despite reorder/drift');
-    equal(undone[1].objects[1].value, 0, 'sibling occurrence stays untouched');
-    equal(getAnnotationStorageKey(undone[1].objects[0]), secondKey);
-
-    const redone = applyAnnotationHistoryAction(
-      undone,
-      JSON.parse(JSON.stringify(action)),
-    );
-    equal(redone[1].objects[0].value, 100, 'Redo targets the same durable occurrence');
-    equal(redone[1].objects[1].value, 0);
-    equal(getAnnotationStorageKey(redone[1].objects[0]), secondKey);
-
-    const missingTarget = {
-      1: { objects: [setAnnotationStorageKey(makeObject(0), firstKey)] },
-    };
-    const safeNoop = applyAnnotationHistoryAction(missingTarget, action);
-    deepStrictEqual(safeNoop[1].objects, missingTarget[1].objects);
+test('history diff reads frozen canonical snapshots without mutating inputs', () => {
+  const deepFreeze = (value) => {
+    if (!value || typeof value !== 'object' || Object.isFrozen(value)) return value;
+    Object.freeze(value);
+    Object.values(value).forEach(deepFreeze);
+    return value;
+  };
+  const previousPage = deepFreeze({
+    objects: [
+      { type: 'path', data: { id: 'frozen-ink' }, path: [['M', 0, 0], ['L', 20, 0]] },
+      { type: 'rect', data: { id: 'frozen-shape' }, left: 30 },
+    ],
   });
-}
-
-test('storage-key selectors win over ambiguous duplicate IDs for mixed delete and update', () => {
-  const firstKey = 'dup';
-  const secondKey = '\u0000duplicate:dup:1:1';
-  const first = setAnnotationStorageKey(
-    { type: 'rect', data: { id: 'dup' }, value: 0 },
-    firstKey,
-  );
-  const second = setAnnotationStorageKey(
-    { type: 'rect', data: { id: 'dup' }, value: 1 },
-    secondKey,
-  );
-  const mutatedSecond = setAnnotationStorageKey(
-    { type: 'rect', data: { id: 'dup' }, value: 100 },
-    secondKey,
-  );
-  const previousPage = { objects: [first, second] };
-  const nextPage = { objects: [mutatedSecond] };
+  const nextPage = deepFreeze({
+    objects: [
+      {
+        type: 'path',
+        data: { id: 'frozen-ink' },
+        path: [['M', 0, 0], ['L', 10, 0]],
+        paperEraserGeometry: 'v1',
+      },
+    ],
+  });
+  const previousJson = JSON.stringify(previousPage);
+  const nextJson = JSON.stringify(nextPage);
 
   const action = buildPreciseAnnotationHistoryAction({
     pageNumber: 1,
     previousPage,
     nextPage,
-    deletedIds: ['dup'],
+    deletedStorageKeys: ['frozen-shape'],
+    changedStorageKeys: ['frozen-ink'],
+  });
+
+  equal(action?.type, 'fabric:batch');
+  equal(JSON.stringify(previousPage), previousJson);
+  equal(JSON.stringify(nextPage), nextJson);
+});
+
+test('deep-cloned canonical ids target the same object after z-order reorder', () => {
+  const untouched = { type: 'path', data: { id: 'ink-a' }, path: [['M', 0, 0]] };
+  const beforeTarget = { type: 'path', data: { id: 'ink-b' }, path: [['M', 1, 1]] };
+  const afterTarget = { ...beforeTarget, path: [['M', 2, 2]] };
+  const action = buildPreciseAnnotationHistoryAction({
+    pageNumber: 1,
+    previousPage: { objects: [untouched, beforeTarget] },
+    nextPage: { objects: [untouched, afterTarget] },
+    changedIds: ['ink-b'],
+    changedStorageKeys: ['ink-b'],
+  });
+  const reorderedAfter = JSON.parse(JSON.stringify({
+    1: { objects: [afterTarget, untouched] },
+  }));
+  const undone = applyAnnotationHistoryAction(
+    reorderedAfter,
+    invertAnnotationHistoryAction(action),
+  );
+  const redone = applyAnnotationHistoryAction(
+    JSON.parse(JSON.stringify(undone)),
+    action,
+  );
+
+  deepStrictEqual(undone[1].objects, [beforeTarget, untouched]);
+  deepStrictEqual(redone[1].objects, [afterTarget, untouched]);
+});
+
+test('malformed duplicate canonical ids fail safe instead of choosing an occurrence', () => {
+  const first = { type: 'rect', data: { id: 'dup' }, left: 10 };
+  const second = { type: 'rect', data: { id: 'dup' }, left: 30 };
+  const action = buildPreciseAnnotationHistoryAction({
+    pageNumber: 1,
+    previousPage: { objects: [first, second] },
+    nextPage: { objects: [{ ...first, left: 11 }, second] },
     changedIds: ['dup'],
-    deletedStorageKeys: [firstKey],
-    changedStorageKeys: [secondKey],
-  });
-  const applied = applyAnnotationHistoryAction({ 1: previousPage }, action);
-  const undone = applyAnnotationHistoryAction(
-    { 1: nextPage },
-    invertAnnotationHistoryAction(action),
-  );
-  const redone = applyAnnotationHistoryAction(undone, action);
-
-  equal(action?.type, 'fabric:batch');
-  equal(action.deleted[0].storageKey, firstKey);
-  equal(action.updated[0].storageKey, secondKey);
-  deepStrictEqual(applied[1].objects, nextPage.objects);
-  deepStrictEqual(undone[1].objects, previousPage.objects);
-  deepStrictEqual(redone[1].objects, nextPage.objects);
-});
-
-test('duplicate-id deletion preserves order for 0,1,0 → 1,0 with keyed and legacy selectors', () => {
-  const makeObject = (value, storageKey = null) => setAnnotationStorageKey({
-    type: 'rect',
-    data: { id: 'dup' },
-    value,
-  }, storageKey);
-
-  for (const keyed of [false, true]) {
-    const firstKey = '\u0000duplicate:dup:1:0';
-    const previousPage = {
-      objects: [
-        makeObject(0, keyed ? firstKey : null),
-        makeObject(1, keyed ? '\u0000duplicate:dup:1:1' : null),
-        makeObject(0, keyed ? '\u0000duplicate:dup:1:2' : null),
-      ],
-    };
-    const nextPage = {
-      objects: [
-        makeObject(1, keyed ? '\u0000duplicate:dup:1:1' : null),
-        makeObject(0, keyed ? '\u0000duplicate:dup:1:2' : null),
-      ],
-    };
-    const action = buildPreciseAnnotationHistoryAction({
-      pageNumber: 1,
-      previousPage,
-      nextPage,
-      deletedIds: ['dup'],
-      ...(keyed ? { deletedStorageKeys: [firstKey] } : {}),
-    });
-    const applied = applyAnnotationHistoryAction({ 1: previousPage }, action);
-    const undone = applyAnnotationHistoryAction(
-      { 1: nextPage },
-      invertAnnotationHistoryAction(action),
-    );
-    const redone = applyAnnotationHistoryAction(undone, action);
-
-    deepStrictEqual(applied[1].objects, nextPage.objects, `apply keyed=${keyed}`);
-    deepStrictEqual(undone[1].objects, previousPage.objects, `undo keyed=${keyed}`);
-    deepStrictEqual(redone[1].objects, nextPage.objects, `redo keyed=${keyed}`);
-  }
-});
-
-test('history normalization preserves storage identity through duplicate reorder', () => {
-  const first = setAnnotationStorageKey(
-    { type: 'path', data: { id: 'dup' }, value: 0, dirty: true },
-    'dup',
-  );
-  const second = setAnnotationStorageKey(
-    { type: 'path', data: { id: 'dup' }, value: 1, dirty: true },
-    '\u0000duplicate:dup:1:1',
-  );
-  const normalized = normalizeCanvasJsonForHistory({
-    1: { objects: [second, first] },
   });
 
-  deepStrictEqual(
-    normalized[1].objects.map(getAnnotationStorageKey),
-    ['\u0000duplicate:dup:1:1', 'dup'],
-  );
-  deepStrictEqual(
-    normalized[1].objects.map((object) => object.value),
-    [1, 0],
-  );
-  equal(normalized[1].objects[0].dirty, undefined);
+  equal(action, null);
 });
 
-test('precise eraser preserves every duplicate stable-id occurrence through one undo/redo action', () => {
-  const first = {
-    type: 'rect',
-    data: { id: 'duplicate-id', authorId: 'user-a' },
-    left: 10,
-    top: 10,
-  };
-  const second = {
-    type: 'circle',
-    data: { id: 'duplicate-id', authorId: 'user-a' },
-    left: 80,
-    top: 80,
-  };
-  const previousPage = { objects: [first, second] };
-  const nextPage = { objects: [] };
-
-  const action = buildPreciseAnnotationHistoryAction({
-    pageNumber: 1,
-    previousPage,
-    nextPage,
-    deletedIds: ['duplicate-id'],
-    changedIds: [],
-  });
-  const undone = applyAnnotationHistoryAction(
-    { 1: nextPage },
-    invertAnnotationHistoryAction(action),
-  );
-  const redone = applyAnnotationHistoryAction(undone, action);
-
-  equal(action?.type, 'fabric:batch');
-  equal(action?.deleted?.length, 2);
-  deepStrictEqual(undone[1].objects, [first, second]);
-  deepStrictEqual(redone[1].objects, []);
-});
-
-test('mixed carve plus atomic callout and marker deletes stay one undo/redo action', () => {
+test('mixed pen/highlighter carve plus atomic annotations stay one exact Undo/Redo action', () => {
   const penBefore = {
     type: 'path',
     tool: 'pen',
@@ -841,29 +560,21 @@ test('mixed carve plus atomic callout and marker deletes stay one undo/redo acti
     paperEraserGeometry: 'v1',
     polygons: [[[[25, 18], [40, 18], [40, 22], [25, 22], [25, 18]]]],
   };
-  const shape = {
-    type: 'rect',
-    data: { id: 'shape-1', authorId: 'user-a' },
-    left: 50,
-    top: 50,
-  };
-  const text = {
-    type: 'textbox',
-    data: { id: 'text-1', authorId: 'user-a' },
-    text: 'Delete atomically',
-  };
-  const callout = {
-    type: 'group',
-    data: { id: 'callout-1', type: 'callout', authorId: 'user-a' },
-    objects: [],
-  };
-  const marker = {
-    type: 'rect',
-    annotationId: 'marker-1',
-    data: { authorId: 'user-a' },
-  };
+  const atomics = [
+    { type: 'rect', data: { id: 'shape-1', authorId: 'user-a' }, left: 50, top: 50 },
+    { type: 'textbox', data: { id: 'text-1', authorId: 'user-a' }, text: 'Delete atomically' },
+    { type: 'group', data: { id: 'callout-1', type: 'callout', authorId: 'user-a' }, objects: [] },
+    { type: 'rect', annotationId: 'marker-1', data: { id: 'marker-1', authorId: 'user-a' } },
+    {
+      type: 'path',
+      isPdfImported: true,
+      pdfAnnotationType: 'Underline',
+      data: { id: 'markup-1', authorId: 'user-a' },
+      path: [['M', 0, 30], ['L', 40, 30]],
+    },
+  ];
   const previousPage = {
-    objects: [penBefore, highlighterBefore, shape, text, callout, marker],
+    objects: [penBefore, highlighterBefore, ...atomics],
   };
   const nextPage = { objects: [penAfter, highlighterAfter] };
 
@@ -871,7 +582,7 @@ test('mixed carve plus atomic callout and marker deletes stay one undo/redo acti
     pageNumber: 1,
     previousPage,
     nextPage,
-    deletedIds: ['shape-1', 'text-1', 'callout-1', 'marker-1'],
+    deletedIds: atomics.map((object) => object.data.id),
     changedIds: ['pen-1', 'highlight-1'],
   });
   const undone = applyAnnotationHistoryAction(
@@ -881,7 +592,7 @@ test('mixed carve plus atomic callout and marker deletes stay one undo/redo acti
   const redone = applyAnnotationHistoryAction(undone, action);
 
   equal(action?.type, 'fabric:batch');
-  equal(action?.deleted?.length, 4);
+  equal(action?.deleted?.length, atomics.length);
   equal(action?.updated?.length, 2);
   deepStrictEqual(undone[1].objects, previousPage.objects);
   deepStrictEqual(redone[1].objects, nextPage.objects);
@@ -930,6 +641,157 @@ test('owner filter drops foreign single-annotation undo actions', () => {
   };
 
   equal(filterAnnotationHistoryActionByOwner(action, 'user-a'), null);
+});
+
+test('history replay fails closed while viewer identity is unresolved', () => {
+  const action = {
+    type: 'fabric:delete',
+    pageNumber: 1,
+    annotationId: 'boot-window-mark',
+    storageKey: 'boot-window-mark',
+    annotation: {
+      type: 'path',
+      data: { id: 'boot-window-mark', authorId: 'eventual-user' },
+    },
+  };
+
+  equal(filterAnnotationHistoryActionByOwner(action, null, 'document-owner'), null);
+  equal(filterAnnotationHistoryActionByOwner(action, '', 'document-owner'), null);
+  equal(
+    filterAnnotationHistoryActionByOwner(
+      invertAnnotationHistoryAction(action),
+      undefined,
+      'document-owner',
+    ),
+    null,
+  );
+});
+
+test('contributor history rejects missing-author single actions for both Undo and Redo', () => {
+  const legacyAnnotation = {
+    type: 'path',
+    data: { id: 'legacy-missing-author' },
+    path: [['M', 0, 0], ['L', 10, 0]],
+  };
+  const redoDelete = {
+    type: 'fabric:delete',
+    pageNumber: 1,
+    annotationId: 'legacy-missing-author',
+    storageKey: 'legacy-missing-author',
+    annotation: legacyAnnotation,
+    index: 0,
+  };
+  const undoCreate = invertAnnotationHistoryAction(redoDelete);
+
+  equal(
+    filterAnnotationHistoryActionByOwner(
+      redoDelete,
+      'cloud-contributor',
+      'document-owner',
+    ),
+    null,
+  );
+  equal(
+    filterAnnotationHistoryActionByOwner(
+      undoCreate,
+      'cloud-contributor',
+      'document-owner',
+    ),
+    null,
+  );
+});
+
+test('contributor batch Undo/Redo keeps exact self-authored entries and drops missing-author entries', () => {
+  const own = {
+    type: 'path',
+    data: { id: 'own-ink', authorId: 'cloud-contributor' },
+    path: [['M', 0, 0], ['L', 10, 0]],
+  };
+  const legacy = {
+    type: 'path',
+    data: { id: 'legacy-ink' },
+    path: [['M', 0, 5], ['L', 10, 5]],
+  };
+  const redoDelete = {
+    type: 'fabric:batch',
+    pageNumber: 1,
+    created: [],
+    deleted: [
+      {
+        id: 'own-ink',
+        annotationId: 'own-ink',
+        storageKey: 'own-ink',
+        annotation: own,
+        index: 0,
+      },
+      {
+        id: 'legacy-ink',
+        annotationId: 'legacy-ink',
+        storageKey: 'legacy-ink',
+        annotation: legacy,
+        index: 1,
+      },
+    ],
+    updated: [],
+  };
+  const undoCreate = invertAnnotationHistoryAction(redoDelete);
+  const scopedRedo = filterAnnotationHistoryActionByOwner(
+    redoDelete,
+    'cloud-contributor',
+    'document-owner',
+  );
+  const scopedUndo = filterAnnotationHistoryActionByOwner(
+    undoCreate,
+    'cloud-contributor',
+    'document-owner',
+  );
+
+  deepStrictEqual(scopedRedo.deleted.map((entry) => entry.id), ['own-ink']);
+  deepStrictEqual(scopedUndo.created.map((entry) => entry.id), ['own-ink']);
+  const afterRedo = applyAnnotationHistoryAction(
+    { 1: { objects: [own, legacy] } },
+    scopedRedo,
+  );
+  const afterUndo = applyAnnotationHistoryAction(afterRedo, scopedUndo);
+  deepStrictEqual(afterRedo[1].objects.map((object) => object.data.id), ['legacy-ink']);
+  deepStrictEqual(
+    afterUndo[1].objects.map((object) => object.data.id),
+    ['own-ink', 'legacy-ink'],
+  );
+});
+
+test('document owner keeps one exact cross-author erase action for Undo and Redo', () => {
+  const previousPage = {
+    objects: [
+      { type: 'path', data: { id: 'foreign-ink', authorId: 'user-b' }, value: 1 },
+      { type: 'rect', data: { id: 'foreign-shape', authorId: 'user-c' }, value: 2 },
+    ],
+  };
+  const nextPage = { objects: [] };
+  const action = buildPreciseAnnotationHistoryAction({
+    pageNumber: 1,
+    previousPage,
+    nextPage,
+    deletedIds: ['foreign-ink', 'foreign-shape'],
+  });
+  const inverse = invertAnnotationHistoryAction(action);
+  const ownerScopedInverse = filterAnnotationHistoryActionByOwner(
+    inverse,
+    'document-owner',
+    'document-owner',
+  );
+  const undone = applyAnnotationHistoryAction({ 1: nextPage }, ownerScopedInverse);
+  const ownerScopedRedo = filterAnnotationHistoryActionByOwner(
+    action,
+    'document-owner',
+    'document-owner',
+  );
+  const redone = applyAnnotationHistoryAction(undone, ownerScopedRedo);
+
+  deepStrictEqual(ownerScopedInverse, inverse);
+  deepStrictEqual(ownerScopedRedo, action);
+  deepStrictEqual(undone[1].objects, previousPage.objects);
+  deepStrictEqual(redone[1].objects, nextPage.objects);
 });
 
 test('filtered eraser undo restores only current user deleted annotations', () => {

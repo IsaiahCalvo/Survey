@@ -10,9 +10,18 @@ import App from './AppShell';
 
 const noop = () => {};
 const asyncNoop = async () => {};
+const mockUser = {
+  id: 'dev-test-user',
+  email: 'dev-test-user@example.invalid',
+  user_metadata: {
+    first_name: 'Dev',
+    last_name: 'Test User',
+    full_name: 'Dev Test User',
+  },
+};
 
 const mockAuthValue = {
-  user: null,
+  user: mockUser,
   session: null,
   loading: false,
   signUp: asyncNoop,
@@ -24,6 +33,8 @@ const mockAuthValue = {
   updatePassword: asyncNoop,
   updateProfile: asyncNoop,
   refreshSubscriptionTier: asyncNoop,
+  // The route supplies local document identity without impersonating a real
+  // Supabase session; cloud-aware consumers must remain offline.
   isAuthenticated: false,
   isSupabaseAvailable: false,
   plan: 'developer',

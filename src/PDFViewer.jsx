@@ -63,6 +63,7 @@ import { PageRenderCache } from './utils/pdfCache';
 import { UndoToast } from './components/collab/UndoToast.jsx';
 import { applyAnnotationGroupId, findGroupMembers, generateGroupId, getAnnotationGroupId, getCalloutGroupId } from './utils/annotationGroups';
 import { applyAnnotationHistoryAction, buildAnnotationHistoryAction, buildPreciseAnnotationHistoryAction, filterAnnotationHistoryActionByOwner, invertAnnotationHistoryAction } from './utils/annotationLocalHistory';
+import { normalizeByPageAnnotationIdentities } from './utils/annotationStorageIdentity.js';
 import { mintPastedCloneIdentity } from './utils/pasteCloneIdentity';
 import { areViewStatesEqual, normalizeViewState } from './utils/viewState';
 import { arrayMove } from '@dnd-kit/sortable';
@@ -10502,6 +10503,11 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
     const requestBulkDelete = requestBulkDeleteRef.current;
     const byPage = annotationsByPageRef.current || {};
+    if (typeof requestBulkDelete !== 'function') {
+      settleEraseRequest(false);
+      return;
+    }
+    const deleteRequests = [];
     let requestedDelete = false;
     for (const [pageNumber, ids] of idsByPage.entries()) {
       const idsSet = new Set(ids);
@@ -10529,23 +10535,23 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
           return next.size === prev.size ? prev : next;
         });
       };
-      if (typeof requestBulkDelete === 'function' && snapshotObjects.length > 0) {
-        requestedDelete = true;
-        requestBulkDelete({
-          candidateIds: ids,
-          snapshotObjects,
-          pageNumber,
-          runDelete,
-          onSettled: ({ committed } = {}) => settleEraseRequest(committed === true),
-        });
-      } else {
-        // Defensive fallback (boot window / snapshot resolution failure):
-        // fire the delete directly — same permissive posture as the shape
-        // path's onRequestBulkDelete-absent branch.
-        requestedDelete = true;
-        runDelete();
-        settleEraseRequest(true);
+      if (snapshotObjects.length === 0) {
+        settleEraseRequest(false);
+        return;
       }
+      deleteRequests.push({
+        candidateIds: ids,
+        snapshotObjects,
+        pageNumber,
+        runDelete,
+      });
+    }
+    for (const deleteRequest of deleteRequests) {
+      requestedDelete = true;
+      requestBulkDelete({
+        ...deleteRequest,
+        onSettled: ({ committed } = {}) => settleEraseRequest(committed === true),
+      });
     }
     if (!requestedDelete) settleEraseRequest(false);
   }, [callouts, documentOwnerId, user, commitCalloutMutation, resolveCalloutPageNumber]);
@@ -10858,7 +10864,11 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   const applyLocalAnnotationHistoryAction = useCallback((action) => {
     if (!action) return false;
     const viewerId = yjsUndoCtx?.userId || user?.id || null;
-    const scopedAction = filterAnnotationHistoryActionByOwner(action, viewerId);
+    const scopedAction = filterAnnotationHistoryActionByOwner(
+      action,
+      viewerId,
+      documentOwnerId,
+    );
     if (!scopedAction) {
       pushHistoryDebugEvent('local_annotation_history_owner_scope_noop', {
         requestedAction: summarizeHistoryActionForLog(action),
@@ -10913,7 +10923,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         viewerId,
 	    });
     return true;
-  }, [pushHistoryDebugEvent, user?.id, yjsUndoCtx?.userId]);
+  }, [documentOwnerId, pushHistoryDebugEvent, user?.id, yjsUndoCtx?.userId]);
 
   const refreshYjsHistoryTargetFromDoc = useCallback((target, reason = 'yjs-history-pop') => {
     if (!yjsDoc || !target?.id) return false;
@@ -19360,6 +19370,16 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       }
     }
 
+    const identityNormalization = normalizeByPageAnnotationIdentities(initialAnnotationsByPage);
+    if (identityNormalization.changed) {
+      initialAnnotationsByPage = identityNormalization.byPage;
+      try {
+        saveAnnotationsByPage(id, initialAnnotationsByPage);
+      } catch (error) {
+        console.error('[Annotation identity] failed to persist canonical ids', error);
+      }
+    }
+
     setAnnotationsByPage(initialAnnotationsByPage);
     savedAnnotationsByPageRef.current = initialAnnotationsByPage; // Track as saved
     setCallouts(loadedCallouts);
@@ -22157,7 +22177,11 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   const pushLocalAnnotationHistoryAction = useCallback((action) => {
     if (!action || isUndoingRef.current) return;
     const viewerId = yjsUndoCtx?.userId || user?.id || null;
-    const scopedAction = filterAnnotationHistoryActionByOwner(action, viewerId);
+    const scopedAction = filterAnnotationHistoryActionByOwner(
+      action,
+      viewerId,
+      documentOwnerId,
+    );
     if (!scopedAction) {
       pushHistoryDebugEvent('local_annotation_history_skipped_owner_scope', {
         requestedAction: summarizeHistoryActionForLog(action),
@@ -22246,7 +22270,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         }
       }
     }
-  }, [pushHistoryDebugEvent, user, pdfFile?.id, yjsUndoCtx?.userId, isBulkJournaledAnnotationId]);
+  }, [documentOwnerId, pushHistoryDebugEvent, user, pdfFile?.id, yjsUndoCtx?.userId, isBulkJournaledAnnotationId]);
 
   const handleSaveAnnotations = useCallback((pageNumber, json, saveContext = null) => {
     // R2.2 Slice 4 — mixed marquee co-delete: the combined bulk-delete runner
@@ -22276,17 +22300,31 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       appDebug(`[Counter p${pageNumber}] handleSaveAnnotations ENTRY — source=${source_}, prevObjects=${prevCount_}, nextObjects=${nextCount_}, delta=${nextCount_ - prevCount_}, counterObjsInJson=${counterObjs.length}, firstCounter=${JSON.stringify(counterObjs[0]?.data || null)}`);
     }
     const currentPageAnnotations = annotationsByPageRef.current?.[pageNumber];
-    const normalizedCurrentAnnotations = normalizeCanvasJsonForHistory(currentPageAnnotations);
+    const identityNormalizedCurrentAnnotations = normalizeByPageAnnotationIdentities({
+      [pageNumber]: currentPageAnnotations || { objects: [] },
+    }).byPage?.[pageNumber] || currentPageAnnotations;
+    const normalizedCurrentAnnotations = normalizeCanvasJsonForHistory(
+      identityNormalizedCurrentAnnotations,
+    );
     const normalizedSaveContext = saveContext && typeof saveContext === 'object'
       ? saveContext
       : null;
     const source = normalizeHistoryReason(normalizedSaveContext?.source || 'annotations:save');
-    const markedIncomingJson = markEditedImportedPdfAnnotationsOnPage(json, currentPageAnnotations, {
-      source,
-      userId: user?.id || null,
-      pageNumber,
-    });
-    const normalizedIncomingAnnotations = normalizeCanvasJsonForHistory(markedIncomingJson);
+    const identityNormalizedIncomingAnnotations = normalizeByPageAnnotationIdentities({
+      [pageNumber]: json || { objects: [] },
+    }).byPage?.[pageNumber] || json;
+    const markedIncomingJson = markEditedImportedPdfAnnotationsOnPage(
+      identityNormalizedIncomingAnnotations,
+      identityNormalizedCurrentAnnotations,
+      {
+        source,
+        userId: user?.id || null,
+        pageNumber,
+      },
+    );
+    const normalizedIncomingAnnotations = normalizeCanvasJsonForHistory(
+      markedIncomingJson,
+    );
     const isEraserCommit = source === 'eraser:commit' || normalizedSaveContext?.tool === 'eraser';
     const eraserDeletedIds = Array.isArray(normalizedSaveContext?.finalDeletedAnnotationIds)
       ? normalizedSaveContext.finalDeletedAnnotationIds.filter(Boolean)
