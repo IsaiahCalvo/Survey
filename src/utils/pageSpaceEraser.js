@@ -122,6 +122,8 @@ function createPathTransform(object, commands) {
   const centerY = bounds
     ? scaleY * ((bounds.minY + bounds.maxY) / 2 - pathOffsetY)
     : 0;
+  const localCenterX = bounds ? (bounds.minX + bounds.maxX) / 2 : pathOffsetX;
+  const localCenterY = bounds ? (bounds.minY + bounds.maxY) / 2 : pathOffsetY;
   const cos = Math.cos(angle);
   const sin = Math.sin(angle);
 
@@ -136,6 +138,16 @@ function createPathTransform(object, commands) {
       return {
         x: left + centerX + dx * cos - dy * sin,
         y: top + centerY + dx * sin + dy * cos,
+      };
+    },
+    inverse(point) {
+      const pageX = numberOr(point?.x) - (left + centerX);
+      const pageY = numberOr(point?.y) - (top + centerY);
+      const unrotatedX = pageX * cos + pageY * sin;
+      const unrotatedY = -pageX * sin + pageY * cos;
+      return {
+        x: localCenterX + unrotatedX / scaleX,
+        y: localCenterY + unrotatedY / scaleY,
       };
     },
   };
@@ -346,6 +358,106 @@ export function intersectErasedPathSurvivors(survivors) {
   });
 }
 
+const eraserBaseGeometrySignature = (object) => JSON.stringify({
+  type: String(object?.type || '').toLowerCase(),
+  path: object?.path || null,
+  polygons: normalizeMultiPolygon(object?.polygons),
+  paperCenterline: object?.paperCenterline || null,
+  paperCenterlineRuns: object?.paperCenterlineRuns || null,
+  paperInkGeometry: object?.paperInkGeometry || null,
+  paperEraserGeometry: object?.paperEraserGeometry || null,
+  sourceWidth: numberOr(object?.sourceWidth),
+  strokeWidth: numberOr(object?.strokeWidth),
+});
+
+const eraserBaseTransformSnapshot = (object) => ({
+  left: numberOr(object?.left),
+  top: numberOr(object?.top),
+  scaleX: numberOr(object?.scaleX, 1) || 1,
+  scaleY: numberOr(object?.scaleY, 1) || 1,
+  angle: numberOr(object?.angle),
+  pathOffset: object?.pathOffset
+    ? {
+        x: numberOr(object.pathOffset.x),
+        y: numberOr(object.pathOffset.y),
+      }
+    : null,
+});
+
+function rebasePolygonSet(polygons, capturedObject, currentObject, commands) {
+  const capturedTransform = createPathTransform(capturedObject, commands);
+  const currentTransform = createPathTransform(currentObject, commands);
+  return normalizeMultiPolygon(polygons).map((polygon) => polygon.map((ring) => (
+    ring.map(([x, y]) => {
+      const local = capturedTransform.inverse({ x, y });
+      const page = currentTransform.point(local);
+      return [page.x, page.y];
+    })
+  )));
+}
+
+/**
+ * Rebase one bounded partial-erase survivor onto the current durable base.
+ *
+ * The survivor polygon is already accumulated, so this stays O(1) in gesture
+ * count. Compatible move/scale/rotation edits apply the base's relative affine
+ * transform to the accumulated cut. An incompatible path/polygon edit makes
+ * this lane a no-op so the remote base—and any newer compatible writer
+ * lanes—win instead of reviving old geometry.
+ * Re-baking from currentBase preserves collaborator style/metadata.
+ */
+export function rebaseErasedPathSurvivor(
+  currentBase,
+  capturedBase,
+  survivor,
+  { geometryBase = capturedBase } = {},
+) {
+  if (!currentBase || !survivor) return null;
+  const survivorPolygons = normalizeMultiPolygon(survivor.polygons);
+  if (!survivorPolygons.length) return null;
+  if (
+    geometryBase
+    && eraserBaseGeometrySignature(currentBase) !== eraserBaseGeometrySignature(geometryBase)
+  ) {
+    return null;
+  }
+
+  const currentCommands = normalizeFabricPath(currentBase.path);
+  if (!currentCommands.length) return null;
+  const capturedSnapshot = capturedBase?.paperEraserBaseTransform;
+  const capturedTransformObject = capturedSnapshot
+    ? { ...currentBase, ...capturedSnapshot }
+    : capturedBase;
+  const canTransform = capturedTransformObject && (
+    capturedSnapshot
+    || eraserBaseGeometrySignature(currentBase) === eraserBaseGeometrySignature(capturedBase)
+  );
+  const polygons = canTransform
+    ? rebasePolygonSet(
+        survivorPolygons,
+        capturedTransformObject,
+        currentBase,
+        currentCommands,
+      )
+    : survivorPolygons;
+  const currentGeometry = pathToPageAnnotation(currentBase, 'eraser-rebase', {
+    forcePolygon: true,
+  });
+  if (!currentGeometry) return null;
+
+  return {
+    ...bakePagePathResult(currentBase, {
+      cmds: polygonSetToCommands(polygons),
+      polygons,
+      fill: currentGeometry.fill,
+      stroke: null,
+      strokeWidth: 0,
+      sourceWidth: currentGeometry.sourceWidth,
+    }),
+    paperEraserBaseTransform: eraserBaseTransformSnapshot(currentBase),
+  };
+}
+
 const unique = (values) => values.filter((value, index) => value && values.indexOf(value) === index);
 
 /**
@@ -464,6 +576,8 @@ export function erasePageAnnotations({
       .map((index) => ({
         index,
         storageKey: getAnnotationStorageKey(objects[index]),
+        annotationId: getEraserCandidateId(objects[index], index),
+        base: objects[index],
         deleted: deletedIndexes.has(index),
         survivor: deletedIndexes.has(index) ? null : replacementByIndex.get(index),
       })),

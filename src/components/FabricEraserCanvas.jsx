@@ -342,6 +342,12 @@ const FabricEraserCanvas = memo(({
   // provably nowhere near the cursor this move — skip its expensive hit-test.
   const indexBoundsAllow = useCallback((index, queryBounds) => {
     if (!queryBounds) return true;
+    const pointer = pointerRef.current;
+    if (pointer && annotationsRef.current?.objects !== pointer.sourceObjects) {
+      // A collaborator replaced/reordered the page during this gesture.
+      // Pointer-down bounds are stale; defer to the exact current hit test.
+      return true;
+    }
     const bounds = gestureBoundsRef.current?.byIndex?.get(index);
     if (!bounds) return true;
     return boundsIntersect(bounds, queryBounds);
@@ -1181,7 +1187,11 @@ const FabricEraserCanvas = memo(({
     startMaskCloneGuard,
   ]);
 
-  const scheduleLiveErasePreviewFinish = useCallback(({ expectedRevision, waitForNextPaint }) => {
+  const scheduleLiveErasePreviewFinish = useCallback(({
+    expectedRevision,
+    waitForNextPaint,
+    requireMutationAck = false,
+  }) => {
     const sourceState = livePreviewSourceRef.current;
     if (!sourceState || (!expectedRevision && !waitForNextPaint)) {
       finishLiveErasePreview();
@@ -1215,6 +1225,9 @@ const FabricEraserCanvas = memo(({
       const svgAnnotationRevision = suppressExactRepaint
         ? '__eraser-test-suppressed__'
         : finalSvgWrapper?.dataset?.svgAnnotationRevision || '';
+      const materializedMutationIds = (
+        finalSvgWrapper?.dataset?.eraserMaterializedMutationIds || ''
+      ).split(' ').filter(Boolean);
       const currentSource = findPresentationSource().source;
       if (currentSource) state.source = currentSource;
       const canvasAnnotationRevision = currentSource?.dataset?.canvasAnnotationRevision || '';
@@ -1229,6 +1242,8 @@ const FabricEraserCanvas = memo(({
         canvasRevision: canvasAnnotationRevision,
         baselinePaintGeneration: state.paintGeneration,
         currentPaintGeneration: paintGeneration,
+        materializedMutationIds,
+        requireMutationAck,
       })) {
         state.handoffState = nextEraserPreviewHandoffState(
           state.handoffState,
@@ -1251,6 +1266,7 @@ const FabricEraserCanvas = memo(({
         'data-canvas-paint-generation',
         'data-annotation-detail-active',
         'data-svg-annotation-revision',
+        'data-eraser-materialized-mutation-ids',
       ],
     });
     sourceState.checkReady = check;
@@ -1626,6 +1642,7 @@ const FabricEraserCanvas = memo(({
     const surveyMarkerHitIds = getPermittedSurveyMarkerHitIds(eraserPoints, undefined, radius);
 
     let expectedRevision = null;
+    let requireMutationAck = false;
     if (result.didChange) {
       expectedRevision = nextEraserMutationId();
       const updatedJSON = {
@@ -1660,7 +1677,8 @@ const FabricEraserCanvas = memo(({
       }
       const commitStartedAt = typeof performance !== 'undefined' ? performance.now() : Date.now();
       try {
-        onEraseCommitRef.current?.(updatedJSON, diagnostics);
+        const commitResult = onEraseCommitRef.current?.(updatedJSON, diagnostics);
+        requireMutationAck = commitResult?.requireMutationAck === true;
       } catch (error) {
         annotationsRef.current = latestPage;
         console.error('Eraser commit failed:', error);
@@ -1719,6 +1737,7 @@ const FabricEraserCanvas = memo(({
       // was deliberately cleared in the catch path above.
       didPaint: Boolean(expectedRevision) || calloutHitIds.length > 0 || surveyMarkerHitIds.length > 0,
       expectedRevision,
+      requireMutationAck,
     };
   }, [
     getEraseBlockReason,
@@ -1745,6 +1764,7 @@ const FabricEraserCanvas = memo(({
       scheduleLiveErasePreviewFinish({
         expectedRevision: outcome.expectedRevision,
         waitForNextPaint: outcome.didPaint,
+        requireMutationAck: outcome.requireMutationAck,
       });
     } catch (error) {
       console.error('Interrupted eraser commit failed:', error);
@@ -1800,6 +1820,7 @@ const FabricEraserCanvas = memo(({
         mode: eraserModeRef.current,
         radius: getPageRadius(),
       },
+      sourceObjects: annotationsRef.current?.objects,
       previewActive: false,
       previewHasPartial: false,
       previewAtomicIds: new Set(),
@@ -1888,6 +1909,7 @@ const FabricEraserCanvas = memo(({
     scheduleLiveErasePreviewFinish({
       expectedRevision: outcome.expectedRevision,
       waitForNextPaint: outcome.didPaint,
+      requireMutationAck: outcome.requireMutationAck,
     });
   }, [
     applyEraserAndCommit,
@@ -1937,6 +1959,7 @@ const FabricEraserCanvas = memo(({
       scheduleLiveErasePreviewFinish({
         expectedRevision: outcome.expectedRevision,
         waitForNextPaint: outcome.didPaint,
+        requireMutationAck: outcome.requireMutationAck,
       });
     } catch (error) {
       console.error('Zoom-triggered eraser commit failed:', error);

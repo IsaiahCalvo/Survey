@@ -359,8 +359,16 @@ console.warn = (...args) => {
 let devRouteActive = false;
 if (import.meta.env.DEV) {
   const params = new URLSearchParams(window.location.search);
+  const eraserRace = params.get('eraserRace');
+  if (eraserRace === '1') {
+    devRouteActive = true;
+    import('./dev/EraserTwoClientRaceHarness').then(({ default: EraserTwoClientRaceHarness }) => {
+      createRoot(document.getElementById('root')).render(<EraserTwoClientRaceHarness />);
+    });
+  }
+
   const testPdf = params.get('testPdf');
-  if (testPdf) {
+  if (!devRouteActive && testPdf) {
     devRouteActive = true;
     import('./DevTestRoute').then(({ DevTestRoute }) => {
       createRoot(document.getElementById('root')).render(

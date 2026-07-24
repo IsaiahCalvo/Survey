@@ -537,6 +537,25 @@ export function useAnnotationDoc({
     setSyncQueueSize(Math.max(0, Number(next.queueSize) || 0));
   }, []);
 
+  const commitEraserMutation = useCallback(({
+    pageNumber,
+    pageAnnotations,
+    eraserMutation,
+  } = {}) => {
+    const h = handleRef.current;
+    if (!h || !readyRef.current || !eraserMutation?.id) return null;
+    const materializedPage = h.applyEraserMutation(
+      pageNumber,
+      pageAnnotations,
+      eraserMutation,
+    );
+    if (!materializedPage) return null;
+    return {
+      ...materializedPage,
+      eraserPresentationRevision: eraserMutation.id,
+    };
+  }, []);
+
   // KAL-309: expose the durable Y.Doc META map to the Excel-sync cutover so the
   // single `excelSyncFrontier:${templateId}` cursor + the durable review set live
   // in the same source-of-truth doc as the markers. `metaSet` takes an explicit
@@ -555,6 +574,7 @@ export function useAnnotationDoc({
   return {
     initialHydration,
     forceFlush,
+    commitEraserMutation,
     metaGet,
     metaSet,
     status: syncStatus,

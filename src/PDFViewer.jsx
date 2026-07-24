@@ -17845,6 +17845,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   const {
     initialHydration: normalAnnotationHydration,
     forceFlush: cloudSyncForceFlush,
+    commitEraserMutation: commitEraserMutationToDoc,
     status: cloudSyncStatus,
     queueSize: cloudSyncQueueSize,
     // KAL-309: durable Y.Doc META accessors for the excelSyncFrontier cursor + review set.
@@ -22653,28 +22654,38 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       } catch (_) {}
     }
 
-    // Carry the immutable eraser gesture one render-hop to useAnnotationDoc.
-    // The durable store records this add-only operation instead of racing two
-    // replacement geometries in one LWW map slot. History continues to use the
-    // plain page JSON above; this transport field is not annotation content.
-    const committedIncomingAnnotations = (
+    const eraserMutation = (
       isEraserCommit
       && normalizedSaveContext?.eraserMutationId
       && Array.isArray(normalizedSaveContext?.eraserPoints)
     ) ? {
-      ...finalIncomingAnnotations,
-      eraserMutation: {
-        id: normalizedSaveContext.eraserMutationId,
+      id: normalizedSaveContext.eraserMutationId,
+      pageNumber,
+      points: normalizedSaveContext.eraserPoints,
+      radius: normalizedSaveContext.eraserRadius,
+      mode: normalizedSaveContext.eraserMode,
+      touchedIds: normalizedSaveContext.touchedAnnotationIds,
+      changedIds: eraserChangedIds,
+      deletedIds: eraserDeletedIds,
+      objectMutations: eraserObjectMutations,
+    } : null;
+    // Capture the writer-scoped intent synchronously, before a remote Y.Doc
+    // notification can replace this page between React commit and its effect.
+    const materializedEraserPage = eraserMutation
+      ? commitEraserMutationToDoc({
         pageNumber,
-        points: normalizedSaveContext.eraserPoints,
-        radius: normalizedSaveContext.eraserRadius,
-        mode: normalizedSaveContext.eraserMode,
-        touchedIds: normalizedSaveContext.touchedAnnotationIds,
-        changedIds: eraserChangedIds,
-        deletedIds: eraserDeletedIds,
-        objectMutations: normalizedSaveContext.objectMutations,
-      },
-    } : finalIncomingAnnotations;
+        pageAnnotations: finalIncomingAnnotations,
+        eraserMutation,
+      })
+      : null;
+    // During pre-hydration/offline fallback, retain the existing one-render
+    // transport envelope so useAnnotationDoc can capture it when ready.
+    const committedIncomingAnnotations = materializedEraserPage || (
+      eraserMutation
+        ? { ...finalIncomingAnnotations, eraserMutation }
+        : finalIncomingAnnotations
+    );
+    const requireMutationAck = Boolean(materializedEraserPage);
 
     // Only update if changes actually occurred
     setAnnotationsByPage(prev => {
@@ -22729,6 +22740,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     if (saveContext?.action === 'delete' && saveContext?.deletedCount === 1) {
       // intentionally no toast
     }
+    return { requireMutationAck };
   }, [
     addHistoryCheckpoint,
     getHistoryFingerprint,
@@ -22740,7 +22752,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     enqueueUndoToast,
     user?.id,
     yjsDoc,
-    yjsUndoManager
+    yjsUndoManager,
+    commitEraserMutationToDoc,
   ]);
   // R2.2 Slice 3: keep the TDZ ref bridge current so commitCalloutMutation
   // (declared next to the setCallouts adapter, far above) always calls this
@@ -29232,6 +29245,7 @@ ${pageBlocks}
                               <div
                                 data-diag-svg-wrapper={pageNumber}
                                 data-svg-annotation-revision={pageAnnotations?.eraserPresentationRevision || ''}
+                                data-eraser-materialized-mutation-ids={(pageAnnotations?.eraserMaterializedMutationIds || []).join(' ')}
                                 data-annotation-hydration-gated={annotationHydrationGated ? 'true' : 'false'}
                                 data-annotation-overlay-recovery-tick={annotationOverlayRecoveryTick}
                                 style={{

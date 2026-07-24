@@ -18,7 +18,10 @@
 // The render shape is `annotationsByPage` = { [pageNumber]: { objects: [...] } }.
 
 import * as Y from 'yjs';
-import { intersectErasedPathSurvivors } from '../utils/pageSpaceEraser.js';
+import {
+  intersectErasedPathSurvivors,
+  rebaseErasedPathSurvivor,
+} from '../utils/pageSpaceEraser.js';
 import {
   createAnnotationStorageKeyResolver,
   getAnnotationStorageKey,
@@ -195,6 +198,14 @@ export function docToByPage(doc, { replayStats = null } = {}) {
     const storageKey = String(lane.storageKey);
     if (!lanesByAnnotation.has(storageKey)) lanesByAnnotation.set(storageKey, []);
     lanesByAnnotation.get(storageKey).push([String(laneKey), lane]);
+    const pageNumber = Number(lane.pageNumber);
+    if (!Number.isFinite(pageNumber)) return;
+    if (!byPage[pageNumber]) byPage[pageNumber] = { objects: [] };
+    const materializedIds = new Set(
+      byPage[pageNumber].eraserMaterializedMutationIds || [],
+    );
+    if (lane.operationId) materializedIds.add(String(lane.operationId));
+    byPage[pageNumber].eraserMaterializedMutationIds = [...materializedIds].sort();
   });
   let annotationsWithLanes = 0;
   let polygonIntersections = 0;
@@ -216,7 +227,10 @@ export function docToByPage(doc, { replayStats = null } = {}) {
       };
       continue;
     }
-    const survivors = lanes.map(([, lane]) => lane.survivor).filter(Boolean);
+    const baseObject = pageAnnotations.objects[objectIndex];
+    const survivors = lanes.map(([, lane]) => (
+      rebaseErasedPathSurvivor(baseObject, lane.base, lane.survivor)
+    )).filter(Boolean);
     if (!survivors.length) continue;
     polygonIntersections += Math.max(0, survivors.length - 1);
     const survivor = intersectErasedPathSurvivors(survivors);
@@ -247,6 +261,7 @@ function collectEraserMutations(byPage, writerId) {
       .map((entry) => ({
         storageKey: String(entry.storageKey),
         annotationId: entry.annotationId == null ? null : String(entry.annotationId),
+        base: entry.base || null,
         deleted: entry.deleted === true,
         survivor: entry.deleted === true ? null : entry.survivor,
       }));
@@ -451,16 +466,23 @@ export function syncByPageToDoc(doc, byPage, {
           for (const item of mutation.objectMutations) {
             const laneKey = `${mutation.writerId}\u0000${item.storageKey}`;
             const baseEntry = map.get(item.storageKey);
+            const previous = eraserOpsMap.get(laneKey);
+            const base = baseEntry?.o || item.base || previous?.base || null;
+            const survivor = item.deleted
+              ? null
+              : rebaseErasedPathSurvivor(base, item.base, item.survivor, {
+                  geometryBase: previous?.base || item.base,
+                });
             const lane = {
               writerId: mutation.writerId,
               storageKey: item.storageKey,
               annotationId: item.annotationId ?? extractAnnotationId(baseEntry?.o),
               pageNumber: mutation.pageNumber,
               operationId: mutation.id,
-              deleted: item.deleted,
-              survivor: item.survivor,
+              base,
+              deleted: previous?.deleted === true || item.deleted,
+              survivor,
             };
-            const previous = eraserOpsMap.get(laneKey);
             if (stableStringify(previous) !== stableStringify(lane)) {
               eraserOpsMap.set(laneKey, lane);
             }

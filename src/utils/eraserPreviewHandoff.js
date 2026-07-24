@@ -54,10 +54,17 @@ export function isEraserPreviewFinishReady({
   canvasRevision,
   baselinePaintGeneration,
   currentPaintGeneration,
+  materializedMutationIds,
+  requireMutationAck = false,
 } = {}) {
   if (!waitForNextPaint) return true;
-
   const expected = revision(expectedRevision);
+  const mutationReady = !requireMutationAck || (
+    expected
+    && (materializedMutationIds || []).some((id) => revision(id) === expected)
+  );
+  if (!mutationReady) return false;
+  if (hadSourceAtRelease && !hasCurrentSource) return true;
   const finalSvgReady = !expected || revision(finalSvgRevision) === expected;
   if (maskClone && expected && finalSvgReady) return true;
 

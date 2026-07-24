@@ -2785,6 +2785,32 @@ function makeHandle(state) {
       };
     },
 
+    /**
+     * Capture an immutable eraser intent before returning control to React.
+     * This closes the render/effect window where a remote notification could
+     * replace the local page before its writer-scoped survivor lane existed.
+     */
+    applyEraserMutation(pageNumber, pageAnnotations, eraserMutation) {
+      assertStateWritable(state);
+      if (!eraserMutation?.id) return null;
+      const current = state.lastByPage || docToByPage(state.doc);
+      const prepared = {
+        ...current,
+        [pageNumber]: {
+          ...(pageAnnotations || { objects: [] }),
+          eraserMutation,
+        },
+      };
+      syncByPageToDoc(state.doc, prepared, {
+        origin: 'local',
+        prevByPage: current,
+        eraserWriterId: state.writerId,
+      });
+      const materialized = docToByPage(state.doc);
+      state.lastByPage = materialized;
+      return materialized[pageNumber] || { objects: [] };
+    },
+
     /** Read a document-level meta value (e.g. the callouts list). */
     getMeta(key) { return getMetaValue(state.doc, key); },
 
