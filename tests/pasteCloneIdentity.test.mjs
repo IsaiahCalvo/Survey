@@ -105,10 +105,9 @@ test('history records the paste as a CREATE of the clone id — not a move of th
   assert.notEqual(action.annotationId, getAnnotationHistoryId(source));
 });
 
-test('REGRESSION SHAPE: a clone that keeps the source data.id diffs as an update of the source', () => {
-  // Documents the bug mechanism this module exists to prevent: same data.id on
-  // source + clone dedupes in the differ's id map and the paste degrades to a
-  // fabric:update ("move") of the SOURCE annotation.
+test('a legacy clone that keeps the source data.id remains a distinct occurrence', () => {
+  // Durable occurrence identity prevents a malformed legacy clone from
+  // overwriting the source merely because both objects expose the same id.
   const source = importedEditedSource();
   const badClone = structuredClone(source);
   badClone.left += 25;
@@ -117,6 +116,7 @@ test('REGRESSION SHAPE: a clone that keeps the source data.id diffs as an update
     previousPage: { objects: [source] },
     nextPage: { objects: [source, badClone] },
   });
-  assert.equal(action.type, 'fabric:update');
+  assert.equal(action.type, 'fabric:create');
   assert.equal(action.annotationId, source.data.id);
+  assert.equal(action.storageKey, `\u0000duplicate:${source.data.id}:3:1`);
 });

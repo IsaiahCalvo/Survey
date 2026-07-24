@@ -17,7 +17,10 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { supabase } from '../supabaseClient.js';
 import { openAnnotationDoc, getClientId } from '../services/annotationDocSync.js';
-import { setMetaValue as setMetaValueOnDoc } from '../services/annotationDocStore.js';
+import {
+  preserveTransientPagePresentationState,
+  setMetaValue as setMetaValueOnDoc,
+} from '../services/annotationDocStore.js';
 import {
   migrateCalloutsMetaToAnnotationsMap,
   getUnmigratedMetaCallouts,
@@ -152,6 +155,26 @@ function runDurableCalloutMigration(handle, pageSizes, documentId) {
   }
 }
 
+function runDurableStackedInkRepair(handle, documentId, opts = {}) {
+  try {
+    const result = handle.repairStackedInkDuplicates?.(opts);
+    if (result?.removed > 0) {
+      console.warn('[useAnnotationDoc] removed stacked duplicate ink', {
+        documentId,
+        scanned: result.scanned,
+        duplicateGroups: result.duplicateGroups,
+        removed: result.removed,
+      });
+    }
+    return result || {};
+  } catch (err) {
+    // Never block hydration. An exact repair can safely retry on the next
+    // confirmed-writable open if local storage or persistence is unavailable.
+    console.error('[useAnnotationDoc] stacked ink repair failed', err?.message);
+    return null;
+  }
+}
+
 export function useAnnotationDoc({
   documentId,
   userId,
@@ -187,6 +210,7 @@ export function useAnnotationDoc({
   // documentId whose durable migration already ran this mount (idempotence is
   // the module's job; this just avoids re-running on unrelated re-renders).
   const migrationDoneRef = useRef(null);
+  const inkRepairDoneRef = useRef(null);
   const [initialHydration, setInitialHydration] = useState({ ready: false, source: 'pending', count: 0, documentId: null });
   const [syncStatus, setSyncStatus] = useState({ stage: 'idle', healthy: true, error: null });
   const [syncQueueSize, setSyncQueueSize] = useState(0);
@@ -210,6 +234,7 @@ export function useAnnotationDoc({
     readyRef.current = false;
     metaFallbackIdsRef.current = new Set();
     migrationDoneRef.current = null;
+    inkRepairDoneRef.current = null;
     setInitialHydration({ ready: false, source: 'pending', count: 0, documentId });
     setSyncStatus({ stage: 'hydrating', healthy: true, error: null });
     setSyncQueueSize(0);
@@ -217,7 +242,12 @@ export function useAnnotationDoc({
     (async () => {
       let handle;
       try {
-        handle = await openAnnotationDoc({ documentId, supabase, clientId: getClientId() });
+        handle = await openAnnotationDoc({
+          documentId,
+          supabase,
+          clientId: getClientId(),
+          actorUserId: userId,
+        });
       } catch (err) {
         console.error('[useAnnotationDoc] open failed', err?.message);
         if (!cancelled) {
@@ -255,24 +285,50 @@ export function useAnnotationDoc({
         // migration lands (map entries + tombstone arrive as remote ops), the
         // recompute empties naturally and the fallback ends.
         let nextByPage = byPage;
+        // A duplicate can land in the hydrate→realtime subscribe gap, after
+        // the one-time first-paint repair. Re-run the exact-only repair on
+        // every remote materialization while writable. Suppress its nested
+        // notification and publish the cleaned materialization in this pass.
+        if (isWritableDocRole(docRoleRef.current)) {
+          const repair = runDurableStackedInkRepair(
+            handle,
+            documentId,
+            { notify: false },
+          );
+          if (repair?.removed > 0) nextByPage = handle.getByPage();
+        }
         if (metaFallbackIdsRef.current.size > 0) {
           const fallback = getUnmigratedMetaCallouts(handle.doc);
           metaFallbackIdsRef.current = new Set(fallback.ids);
           if (fallback.callouts.length > 0) {
             nextByPage = projectCalloutsIntoByPage(
-              byPage,
-              [...deriveCalloutsFromByPage(byPage), ...fallback.callouts],
+              nextByPage,
+              [...deriveCalloutsFromByPage(nextByPage), ...fallback.callouts],
               pageSizesRef?.current || {},
               { preserveUnmeasured: true },
             );
           }
         }
-        setAnnotationsByPage(nextByPage);
+        setAnnotationsByPage((previousByPage) => (
+          preserveTransientPagePresentationState(previousByPage, nextByPage)
+        ));
         const s = handle.getMeta(SPACES_KEY);
         if (Array.isArray(s)) setSpaces(s);
         const sm = handle.getSurveyMarkers();
         if (sm && typeof sm === 'object') setSurveyMarkers(sm);
       });
+
+      // Old import/sync races could save one path repeatedly under fresh ids.
+      // After partial erase those copies become identical hairline fragments:
+      // erasing one reveals the next and looks like regeneration. Repair the
+      // authoritative flat Y.Doc after hydrate + listener wiring, but before
+      // the first read/paint. It is a durable write, so viewers and unresolved
+      // roles must stay read-only.
+      if (isWritableDocRole(docRoleRef.current)) {
+        if (runDurableStackedInkRepair(handle, documentId)) {
+          inkRepairDoneRef.current = documentId;
+        }
+      }
 
       // Slice 6 — one-time migration for docs authored under the legacy
       // contract (callouts as a coarse `calloutsList` META blob). Converts the
@@ -332,7 +388,11 @@ export function useAnnotationDoc({
             combinedCalloutList.length > 0
               ? projectCalloutsIntoByPage(storeByPage, combinedCalloutList, sizesNow, { preserveUnmeasured: true })
               : storeByPage;
-          if (count > 0 || projectedByPage !== storeByPage) setAnnotationsByPage(projectedByPage);
+          if (count > 0 || projectedByPage !== storeByPage) {
+            setAnnotationsByPage((previousByPage) => (
+              preserveTransientPagePresentationState(previousByPage, projectedByPage)
+            ));
+          }
         }
         if (hasSpaces) setSpaces(storeSpaces);
         if (hasSurvey) setSurveyMarkers(storeSurvey);
@@ -353,7 +413,12 @@ export function useAnnotationDoc({
         // groups already ride inside byPage (post-flip in-memory truth), so
         // applyByPage seeds them per-id too — no separate callout seed.
         const curByPage = byPageRef.current;
-        if (curByPage && pageCount(curByPage) > 0) handle.applyByPage(curByPage);
+        if (curByPage && pageCount(curByPage) > 0) {
+          const result = handle.applyByPage(curByPage);
+          if (result?.identityChanged && result.normalizedByPage) {
+            setAnnotationsByPage(result.normalizedByPage);
+          }
+        }
         const curSpaces = spacesRef.current;
         if (Array.isArray(curSpaces) && curSpaces.length > 0) handle.setMeta(SPACES_KEY, curSpaces);
         const curSurvey = surveyMarkersRef.current;
@@ -388,7 +453,27 @@ export function useAnnotationDoc({
   useEffect(() => {
     const h = handleRef.current;
     if (!h || !readyRef.current) return;
-    h.applyByPage(stripMetaFallbackCallouts(annotationsByPage, metaFallbackIdsRef.current));
+    const capturedByPage = stripMetaFallbackCallouts(
+      annotationsByPage,
+      metaFallbackIdsRef.current,
+    );
+    const hasEraserMutation = Object.values(capturedByPage || {}).some(
+      (page) => page?.eraserMutation?.id,
+    );
+    const result = h.applyByPage(capturedByPage);
+    if (hasEraserMutation) {
+      // eraserMutation is a one-render transport envelope, not page content.
+      // Replace it immediately with the operation-materialized Y.Doc view so
+      // localStorage/export never retain the raw gesture payload.
+      const materialized = h.getByPage();
+      setAnnotationsByPage((previousByPage) => (
+        preserveTransientPagePresentationState(previousByPage, materialized)
+      ));
+    } else if (result?.identityChanged && result.normalizedByPage) {
+      setAnnotationsByPage((previousByPage) => (
+        preserveTransientPagePresentationState(previousByPage, result.normalizedByPage)
+      ));
+    }
   }, [annotationsByPage]);
 
   // Late role resolution: get_my_document_role is fetched async by YDocProvider
@@ -404,6 +489,11 @@ export function useAnnotationDoc({
     if (!initialHydration.ready || initialHydration.documentId !== documentId) return;
     const h = handleRef.current;
     if (!h || !readyRef.current) return;
+    if (inkRepairDoneRef.current !== documentId) {
+      if (runDurableStackedInkRepair(h, documentId)) {
+        inkRepairDoneRef.current = documentId;
+      }
+    }
     if (migrationDoneRef.current === documentId) return;
     if (runDurableCalloutMigration(h, pageSizesRef?.current, documentId)) {
       migrationDoneRef.current = documentId;

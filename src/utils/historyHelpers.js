@@ -6,8 +6,12 @@
 // reference), so they move to plain module functions with no behavior change:
 // callers and effect dependency arrays still see stable references.
 
-import { HISTORY_OBJECT_CHANGE_PREVIEW_LIMIT, HISTORY_PAGE_PREVIEW_LIMIT, getHistoryObjectDiffType, getHistoryObjectSignature, hashHistoryString, toHistoryObjectDebug } from '../viewerShared';
-import { normalizePageRegions } from './annotationVisibilityRules';
+import { HISTORY_OBJECT_CHANGE_PREVIEW_LIMIT, HISTORY_PAGE_PREVIEW_LIMIT, getHistoryObjectDiffType, getHistoryObjectSignature, hashHistoryString, toHistoryObjectDebug } from '../viewerShared.js';
+import { normalizePageRegions } from './annotationVisibilityRules.js';
+import {
+  getAnnotationStorageKey,
+  setAnnotationStorageKey,
+} from './annotationStorageIdentity.js';
 
 export function normalizeHistoryReason(reason) {
   if (typeof reason !== 'string') return 'unspecified';
@@ -191,6 +195,8 @@ export function normalizeCanvasJsonForHistory(value) {
       normalized.opacity = 0;
     }
 
+    const storageKey = getAnnotationStorageKey(node);
+    if (storageKey != null) setAnnotationStorageKey(normalized, storageKey);
     return normalized;
   };
 

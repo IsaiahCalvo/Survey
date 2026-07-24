@@ -89,7 +89,11 @@ test('cloud callouts hydrate from the annotations map inside byPage, never the c
   // fallback can never become the first diff a viewer-tier client pushes
   // (there is NO role gate in the capture path — server RLS is the only
   // write enforcement).
-  assert.match(ANNOTATION_DOC_HOOK_SOURCE, /applyByPage\(stripMetaFallbackCallouts\(annotationsByPage/);
+  assert.match(
+    ANNOTATION_DOC_HOOK_SOURCE,
+    /capturedByPage\s*=\s*stripMetaFallbackCallouts\(\s*annotationsByPage/,
+  );
+  assert.match(ANNOTATION_DOC_HOOK_SOURCE, /applyByPage\(capturedByPage\)/);
   // PDFViewer's seam no longer feeds the legacy callouts/setCallouts pair (or
   // the retired BLOCKER-2 pageSizesReady signal) into the hook — callouts
   // arrive via annotationsByPage alone.
@@ -107,6 +111,33 @@ test('cloud callouts hydrate from the annotations map inside byPage, never the c
   // The seam threads the resolved document role in so the hook can gate the
   // migration writes (viewer opens must be zero-op).
   assert.ok(seamCode.includes('docRole'), 'the resolved document role reaches the hook');
+});
+
+test('stacked ink repair runs after hydration/listener wiring, before first paint, and only for writers', () => {
+  const listenerIndex = ANNOTATION_DOC_HOOK_SOURCE.indexOf('handle.onChange((byPage) =>');
+  const firstRepairIndex = ANNOTATION_DOC_HOOK_SOURCE.indexOf(
+    'runDurableStackedInkRepair(handle, documentId)',
+    listenerIndex,
+  );
+  const firstReadIndex = ANNOTATION_DOC_HOOK_SOURCE.indexOf('const storeByPage = handle.getByPage()');
+
+  assert.ok(listenerIndex >= 0, 'React change listener is registered');
+  assert.ok(firstRepairIndex > listenerIndex, 'repair publishes through an already-wired listener');
+  assert.ok(firstReadIndex > firstRepairIndex, 'initial paint reads the repaired document');
+  assert.match(
+    ANNOTATION_DOC_HOOK_SOURCE,
+    /if \(isWritableDocRole\(docRoleRef\.current\)\) \{[\s\S]*?runDurableStackedInkRepair\(handle, documentId\)/,
+  );
+  assert.match(
+    ANNOTATION_DOC_HOOK_SOURCE,
+    /if \(!isWritableDocRole\(docRole\)\) return;[\s\S]*?runDurableStackedInkRepair\(h, documentId\)/,
+    'late owner/editor role resolution retries the repair; viewers stay zero-write',
+  );
+  assert.match(
+    ANNOTATION_DOC_HOOK_SOURCE,
+    /if \(isWritableDocRole\(docRoleRef\.current\)\) \{[\s\S]*?runDurableStackedInkRepair\([\s\S]*?\{ notify: false \}/,
+    'duplicates arriving in the hydrate-to-realtime gap are repaired on remote materialization',
+  );
 });
 
 // The 'cutover-sealed first-paint' and 'cutover reconnect/focus recovery'
@@ -127,7 +158,10 @@ test('cloud snapshots use the shared safe-snapshot rule before replacing visible
 test('first visible annotation wrappers expose and honor the hydration gate', () => {
   assert.match(APP_SOURCE, /const firstVisibleAnnotationPage = useMemo/);
   assert.match(APP_SOURCE, /data-annotation-hydration-gated=\{annotationHydrationGated \? 'true' : 'false'\}/);
-  assert.match(APP_SOURCE, /visibility: annotationHydrationGated \? 'hidden' : undefined/);
+  assert.match(
+    APP_SOURCE,
+    /visibility:\s*\(annotationHydrationGated \|\| useCanvasPresentation\)\s*\?\s*'hidden'\s*:\s*undefined/,
+  );
 });
 
 test('first visible page is visually covered while annotation hydration is gated', () => {

@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import * as Y from 'yjs';
 
 import { openAnnotationDoc } from '../src/services/annotationDocSync.js';
+import { createMemoryAnnotationOutbox } from '../src/services/annotationDocOutbox.js';
 
 // A minimal Supabase test double for the annotation op-log / snapshot path.
 // `insertBehavior` decides what annotation_updates.insert resolves to, so a test
@@ -55,7 +56,7 @@ test('BL-24: a failed op append forces an eager snapshot so the mark is still du
   });
   const doc = new Y.Doc();
   const statuses = [];
-  const handle = await openAnnotationDoc({
+  const handle = await openAnnotationDoc({ actorUserId: 'test-actor',
     documentId: 'doc-bl24', supabase, clientId: 'clientA',
     enableLocal: false, enableRealtime: false, doc,
   });
@@ -97,7 +98,7 @@ test('BL-24: sync-health flips to failing only when BOTH the op AND the eager sn
   };
   const doc = new Y.Doc();
   const statuses = [];
-  const handle = await openAnnotationDoc({
+  const handle = await openAnnotationDoc({ actorUserId: 'test-actor',
     documentId: 'doc-bl24b', supabase, clientId: 'clientB',
     enableLocal: false, enableRealtime: false, doc,
   });
@@ -146,7 +147,7 @@ test('BL-24 fix: concurrent snapshot writes are serialized — never two in flig
     },
   };
   const doc = new Y.Doc();
-  const handle = await openAnnotationDoc({
+  const handle = await openAnnotationDoc({ actorUserId: 'test-actor',
     documentId: 'doc-serial', supabase, clientId: 'clientS',
     enableLocal: false, enableRealtime: false, doc,
   });
@@ -212,7 +213,7 @@ test('BL-24 fix: a stale snapshot completing after a newer edit still leaves a t
   };
   let snapUpserts = 0;
   const doc = new Y.Doc();
-  const handle = await openAnnotationDoc({
+  const handle = await openAnnotationDoc({ actorUserId: 'test-actor',
     documentId: 'doc-stale', supabase, clientId: 'clientG',
     enableLocal: false, enableRealtime: false, doc,
   });
@@ -248,7 +249,7 @@ test('BL-24 fix: a stale snapshot completing after a newer edit still leaves a t
   }
 });
 
-test('BL-24: recovery — a later successful append flips health back to healthy', async () => {
+test('BL-24: a later append cannot hide an unreconstructible predecessor gap', async () => {
   let failFirst = true;
   const supabase = makeSupabase({
     insertBehavior: () => {
@@ -268,7 +269,7 @@ test('BL-24: recovery — a later successful append flips health back to healthy
     return origFrom(table);
   };
   const doc = new Y.Doc();
-  const handle = await openAnnotationDoc({
+  const handle = await openAnnotationDoc({ actorUserId: 'test-actor',
     documentId: 'doc-bl24c', supabase, clientId: 'clientC',
     enableLocal: false, enableRealtime: false, doc,
   });
@@ -284,7 +285,109 @@ test('BL-24: recovery — a later successful append flips health back to healthy
   ] } });
   await handle.drain();
   await new Promise((r) => setTimeout(r, 10));
-  assert.equal(handle.isSyncHealthy(), true, 'a later successful append recovers health');
+  assert.equal(
+    handle.isSyncHealthy(),
+    false,
+    'a later append does not repair the earlier update missing from WAL and snapshots',
+  );
 
   await handle.destroy();
+});
+
+test('BL-24: fresh clients recover missing predecessors only after a full repair snapshot', async () => {
+  const rows = [];
+  let failFirstAppend = true;
+  let snapshotsWritable = false;
+  let snapshot = null;
+  const emptyThen = (result) => {
+    const builder = {};
+    for (const method of ['select', 'eq', 'gt', 'order', 'limit']) {
+      builder[method] = () => builder;
+    }
+    builder.maybeSingle = async () => result;
+    builder.then = (resolve) => resolve(result);
+    return builder;
+  };
+  const supabase = {
+    from(table) {
+      if (table === 'annotation_updates') {
+        return {
+          select: () => emptyThen({ data: rows, error: null }),
+          insert: (row) => ({
+            select: () => ({
+              single: async () => {
+                if (failFirstAppend) {
+                  failFirstAppend = false;
+                  return { data: null, error: { code: 'XX000', message: 'first WAL write lost' } };
+                }
+                const committed = { ...row, seq: rows.length + 1 };
+                rows.push(committed);
+                return { data: { seq: committed.seq }, error: null };
+              },
+            }),
+          }),
+        };
+      }
+      if (table === 'annotation_snapshots') {
+        return {
+          select: () => emptyThen({ data: snapshot, error: null }),
+          upsert: async (row) => {
+            if (!snapshotsWritable) return { error: { code: 'XX000', message: 'snapshot unavailable' } };
+            snapshot = row;
+            return { error: null };
+          },
+        };
+      }
+      throw new Error(`unexpected table ${table}`);
+    },
+  };
+  const ids = (handle) => Object.values(handle.getByPage())
+    .flatMap((page) => page?.objects || [])
+    .map((object) => object?.data?.id)
+    .sort();
+
+  const writer = await openAnnotationDoc({ actorUserId: 'test-actor',
+    documentId: 'doc-gap-repair',
+    supabase,
+    clientId: 'gap-writer',
+    enableLocal: false,
+    enableRealtime: false,
+    doc: new Y.Doc(),
+  });
+  writer.applyByPage({ 1: { objects: [{ type: 'path', data: { id: 'A' } }] } });
+  await writer.drain();
+  writer.applyByPage({ 1: { objects: [
+    { type: 'path', data: { id: 'A' } },
+    { type: 'path', data: { id: 'B' } },
+  ] } });
+  await writer.drain();
+
+  assert.equal(writer.isSyncHealthy(), false);
+  const beforeRepair = await openAnnotationDoc({ actorUserId: 'test-actor',
+    documentId: 'doc-gap-repair',
+    supabase,
+    clientId: 'fresh-before',
+    enableLocal: false,
+    enableRealtime: false,
+    outboxStore: createMemoryAnnotationOutbox(),
+    doc: new Y.Doc(),
+  });
+  assert.notDeepEqual(ids(beforeRepair), ['A', 'B'], 'WAL row B alone cannot reconstruct missing predecessor A');
+
+  snapshotsWritable = true;
+  assert.equal(await writer.flushSnapshot(), true);
+  assert.equal(writer.isSyncHealthy(), true);
+
+  const afterRepair = await openAnnotationDoc({ actorUserId: 'test-actor',
+    documentId: 'doc-gap-repair',
+    supabase,
+    clientId: 'fresh-after',
+    enableLocal: false,
+    enableRealtime: false,
+    outboxStore: createMemoryAnnotationOutbox(),
+    doc: new Y.Doc(),
+  });
+  assert.deepEqual(ids(afterRepair), ['A', 'B'], 'accepted full snapshot repairs fresh-client replay');
+
+  await Promise.all([beforeRepair.destroy(), afterRepair.destroy(), writer.destroy()]);
 });

@@ -13,6 +13,7 @@ import {
   setMetaValue,
   docToSurveyMarkers,
   syncSurveyMarkersToDoc,
+  repairStackedInkDuplicates,
 } from '../src/services/annotationDocStore.js';
 import {
   migrateCalloutsMetaToAnnotationsMap,
@@ -44,12 +45,135 @@ function countObjects(byPage) {
   return Object.values(byPage).reduce((n, p) => n + (p.objects?.length || 0), 0);
 }
 
+function filledInk(id, {
+  path = [['M', 221, 295], ['L', 222, 263], ['L', 224, 263], ['L', 223, 295], ['Z']],
+  page = 1,
+  fill = '#ff0000',
+  tool = 'pen',
+  extra = {},
+} = {}) {
+  return {
+    page,
+    object: {
+      type: 'path',
+      left: 0,
+      top: 0,
+      width: 14,
+      height: 121,
+      path,
+      fill,
+      stroke: 'transparent',
+      strokeWidth: 0,
+      sourceWidth: 3,
+      paperInkGeometry: 'v1',
+      paperEraserGeometry: 'v1',
+      data: { id, tool },
+      ...extra,
+    },
+  };
+}
+
 test('extractAnnotationId reads data.id, then id, then annotationId', () => {
   assert.equal(extractAnnotationId({ data: { id: 'a' }, id: 'b' }), 'a');
   assert.equal(extractAnnotationId({ id: 'b' }), 'b');
   assert.equal(extractAnnotationId({ annotationId: 'c' }), 'c');
   assert.equal(extractAnnotationId({ id: 7 }), '7');
   assert.equal(extractAnnotationId({}), null);
+});
+
+test('repairStackedInkDuplicates collapses eight regenerated-looking copies to one durable record', () => {
+  const doc = new Y.Doc();
+  const map = getAnnotationsMap(doc);
+  for (let index = 0; index < 8; index += 1) {
+    const id = `streak-${index}`;
+    const { page, object } = filledInk(id);
+    map.set(id, { p: page, o: object });
+  }
+
+  const result = repairStackedInkDuplicates(doc);
+  const objects = docToByPage(doc)[1].objects;
+
+  assert.equal(result.scanned, 8);
+  assert.equal(result.duplicateGroups, 1);
+  assert.equal(result.removed, 7);
+  assert.equal(objects.length, 1, 'one canonical fragment remains instead of eight stacked copies');
+  assert.equal(objects[0].data.id, 'streak-0', 'earliest stored copy survives');
+  assert.deepEqual(result.removedIds, [
+    'streak-1',
+    'streak-2',
+    'streak-3',
+    'streak-4',
+    'streak-5',
+    'streak-6',
+    'streak-7',
+  ]);
+
+  let secondPassUpdates = 0;
+  doc.on('update', () => { secondPassUpdates += 1; });
+  const secondPass = repairStackedInkDuplicates(doc);
+  assert.equal(secondPass.removed, 0);
+  assert.equal(secondPassUpdates, 0, 'an already-clean document emits no Yjs update');
+});
+
+test('repairStackedInkDuplicates keeps a canonically keyed copy', () => {
+  const doc = new Y.Doc();
+  const map = getAnnotationsMap(doc);
+  const mismatched = filledInk('canonical-id');
+  const canonical = filledInk('canonical-id');
+  map.set('wrong-map-key', { p: mismatched.page, o: mismatched.object });
+  map.set('canonical-id', { p: canonical.page, o: canonical.object });
+
+  const result = repairStackedInkDuplicates(doc);
+
+  assert.deepEqual(result.removedIds, ['wrong-map-key']);
+  assert.equal(map.has('canonical-id'), true);
+  assert.equal(map.has('wrong-map-key'), false);
+});
+
+test('repairStackedInkDuplicates is exact and ink-only', () => {
+  const doc = new Y.Doc();
+  const map = getAnnotationsMap(doc);
+  const base = filledInk('base');
+  map.set('base', { p: base.page, o: base.object });
+
+  const changedPath = filledInk('changed-path', {
+    path: [['M', 221, 295], ['L', 223, 263], ['L', 225, 263], ['L', 223, 295], ['Z']],
+  });
+  map.set('changed-path', { p: changedPath.page, o: changedPath.object });
+
+  const changedStyle = filledInk('changed-style', { fill: '#00ff00' });
+  map.set('changed-style', { p: changedStyle.page, o: changedStyle.object });
+
+  const otherPage = filledInk('other-page', { page: 2 });
+  map.set('other-page', { p: otherPage.page, o: otherPage.object });
+
+  const shapeA = {
+    type: 'rect',
+    left: 10,
+    top: 10,
+    width: 20,
+    height: 20,
+    data: { id: 'shape-a' },
+  };
+  const shapeB = { ...shapeA, data: { id: 'shape-b' } };
+  map.set('shape-a', { p: 1, o: shapeA });
+  map.set('shape-b', { p: 1, o: shapeB });
+
+  const pristineA = filledInk('pristine-a');
+  delete pristineA.object.paperEraserGeometry;
+  const pristineB = filledInk('pristine-b');
+  delete pristineB.object.paperEraserGeometry;
+  map.set('pristine-a', { p: pristineA.page, o: pristineA.object });
+  map.set('pristine-b', { p: pristineB.page, o: pristineB.object });
+
+  const result = repairStackedInkDuplicates(doc);
+
+  assert.equal(result.removed, 0);
+  assert.equal(
+    map.size,
+    8,
+    'different geometry/style/page, non-ink objects, and pristine stacked ink are preserved',
+  );
 });
 
 test('byPage round-trips through the Y.Doc grouped by page', () => {
@@ -94,12 +218,18 @@ test('sync applies adds, edits, and deletes minimally', () => {
   assert.equal(out[7].objects.length, 1);
 });
 
-test('objects without a stable id are skipped, not dropped silently into bad keys', () => {
+test('objects without a stable id are copy-on-write promoted to durable data.id values', () => {
   const doc = new Y.Doc();
-  const res = syncByPageToDoc(doc, { 1: { objects: [{ type: 'path' }, mark('a', 1)] } });
-  assert.equal(res.skipped, 1);
-  assert.equal(res.added, 1);
-  assert.equal(countObjects(docToByPage(doc)), 1);
+  const legacy = { type: 'path' };
+  const res = syncByPageToDoc(doc, { 1: { objects: [legacy, mark('a', 1)] } });
+  assert.equal(res.skipped, 0);
+  assert.equal(res.added, 2);
+  assert.equal(countObjects(docToByPage(doc)), 2);
+  assert.deepEqual(legacy, { type: 'path' }, 'source payload is not mutated');
+  const promoted = docToByPage(doc)[1].objects[0];
+  assert.match(promoted.data.id, /^path-/);
+  assert.equal(getAnnotationsMap(doc).has(promoted.data.id), true);
+  assert.equal([...getAnnotationsMap(doc).keys()].some((key) => key.startsWith('\u0000')), false);
 });
 
 test('prevByPage fast-path skips unchanged pages but still applies deletes', () => {

@@ -89,7 +89,7 @@ test('reopening a document while the previous handle is still tearing down must 
   // final checkpoint BEFORE it removes the realtime channel.
   const supabase = makeRealtimeSupabase({ snapshotUpsertDelayMs: 80 });
   const docA = new Y.Doc();
-  const handleA = await openAnnotationDoc({
+  const handleA = await openAnnotationDoc({ actorUserId: 'test-actor',
     documentId: 'doc-reopen-race', supabase, clientId: 'clientA',
     enableLocal: false, enableRealtime: true, doc: docA,
   });
@@ -97,7 +97,7 @@ test('reopening a document while the previous handle is still tearing down must 
 
   const destroyA = handleA.destroy(); // NOT awaited — the reopen races it
   const docB = new Y.Doc();
-  const handleB = await openAnnotationDoc({
+  const handleB = await openAnnotationDoc({ actorUserId: 'test-actor',
     documentId: 'doc-reopen-race', supabase, clientId: 'clientA',
     enableLocal: false, enableRealtime: true, doc: docB,
   });
@@ -111,12 +111,12 @@ test('two live handles on the same document coexist (two viewer tabs of one doc)
   const supabase = makeRealtimeSupabase();
   const docA = new Y.Doc();
   const docB = new Y.Doc();
-  const handleA = await openAnnotationDoc({
+  const handleA = await openAnnotationDoc({ actorUserId: 'test-actor',
     documentId: 'doc-two-tabs', supabase, clientId: 'clientA',
     enableLocal: false, enableRealtime: true, doc: docA,
   });
   await new Promise((r) => setTimeout(r, 0));
-  const handleB = await openAnnotationDoc({
+  const handleB = await openAnnotationDoc({ actorUserId: 'test-actor',
     documentId: 'doc-two-tabs', supabase, clientId: 'clientA',
     enableLocal: false, enableRealtime: true, doc: docB,
   });
@@ -153,12 +153,11 @@ test('a failed open detaches its doc observer so it cannot double-append ops for
   };
 
   await assert.rejects(
-    openAnnotationDoc({
+    openAnnotationDoc({ actorUserId: 'test-actor',
       documentId: 'doc-open-fail', supabase: failingSupabase, clientId: 'clientA',
       enableLocal: false, enableRealtime: true, doc,
     }),
-    /tail read/,
-    'the open surfaces the backend failure',
+    'the open fails closed on any required backend read',
   );
 
   // This failure happens in loadFromBackend (BEFORE the observer is attached), so
@@ -176,7 +175,7 @@ test('an open that fails AFTER the observer is attached still detaches it (catch
   const doc = new Y.Doc();
 
   await assert.rejects(
-    openAnnotationDoc({
+    openAnnotationDoc({ actorUserId: 'test-actor',
       documentId: 'doc-subscribe-fail', supabase, clientId: 'clientA',
       enableLocal: false, enableRealtime: true, doc,
     }),

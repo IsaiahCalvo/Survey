@@ -107,7 +107,7 @@ function makeSupabase({ snapshotResult, updatesRows = [], tailError = null }) {
 
 async function openWith(supabase, documentId) {
   const doc = new Y.Doc();
-  return openAnnotationDoc({
+  return openAnnotationDoc({ actorUserId: 'test-actor',
     documentId, supabase, clientId: 'local-client',
     enableLocal: false, enableRealtime: false, doc,
   });
@@ -118,16 +118,17 @@ async function openWith(supabase, documentId) {
 // Append-only log ⇒ the tail is re-read from seq 0 and reconstructs the FULL
 // doc. Hydrate cannot come up empty unless the log genuinely is.
 // ---------------------------------------------------------------------------
-test('hydrate mode (a): failed snapshot fetch degrades to a full-log replay from seq 0 — never an empty doc', async () => {
-  const { rows, expectedByPage } = buildBackendFixture();
+test('hydrate mode (a): failed snapshot fetch aborts instead of exposing an incomplete doc', async () => {
+  const { rows } = buildBackendFixture();
   const supabase = makeSupabase({
     snapshotResult: { data: null, error: { message: 'snapshot fetch failed' } },
     updatesRows: rows,
   });
-  const handle = await openWith(supabase, 'doc-mode-a');
-  assert.equal(supabase.tailCursors[0], 0, 'tail replay started at seq 0 (no trusted snapshot baseline)');
-  assert.deepEqual(handle.getByPage(), expectedByPage, 'every logged mark was reconstructed');
-  await handle.destroy();
+  await assert.rejects(
+    () => openWith(supabase, 'doc-mode-a'),
+    /snapshot fetch failed/,
+  );
+  assert.equal(supabase.tailCursors.length, 0, 'tail is never applied against an unknown baseline');
 });
 
 // ---------------------------------------------------------------------------
@@ -153,8 +154,8 @@ test('hydrate mode (a): a failed tail read aborts the open instead of hydrating 
 // bytes, leaves lastSeq at 0, and replays the full log. Content identical to a
 // healthy open; the corrupt snapshot cannot manifest as an empty document.
 // ---------------------------------------------------------------------------
-test('hydrate mode (b): corrupted snapshot bytes fall back to full-log replay (no empty doc, no dropped ops)', async () => {
-  const { rows, expectedByPage } = buildBackendFixture();
+test('hydrate mode (b): corrupted snapshot bytes abort instead of exposing an incomplete doc', async () => {
+  const { rows } = buildBackendFixture();
   const garbage = bytesToPgHex(new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8]));
   const supabase = makeSupabase({
     // claims at_seq 3 — if the loader trusted it despite the failed gunzip, the
@@ -162,10 +163,11 @@ test('hydrate mode (b): corrupted snapshot bytes fall back to full-log replay (n
     snapshotResult: { data: { snapshot: garbage, at_seq: 3, encoding_version: 2 } },
     updatesRows: rows,
   });
-  const handle = await openWith(supabase, 'doc-mode-b');
-  assert.equal(supabase.tailCursors[0], 0, 'at_seq of an undecodable snapshot is NOT trusted — replay starts at 0');
-  assert.deepEqual(handle.getByPage(), expectedByPage, 'full state reconstructed from the append-only log');
-  await handle.destroy();
+  await assert.rejects(
+    () => openWith(supabase, 'doc-mode-b'),
+    /snapshot decode failed/,
+  );
+  assert.equal(supabase.tailCursors.length, 0);
 });
 
 // Contrast pin: a HEALTHY snapshot is trusted (tail starts at its at_seq) and
@@ -227,13 +229,18 @@ test('useAnnotationDoc: the empty-store hydrate branch SEEDS from local state in
   // The store-wins paint is gated on the store actually having content…
   assert.match(HOOK_SOURCE, /if \(count > 0 \|\| hasMetaCallouts \|\| hasSpaces \|\| hasSurvey\) \{/);
   assert.match(HOOK_SOURCE, /if \(count > 0 \|\| hasMetaCallouts\) \{/);
-  assert.match(HOOK_SOURCE, /if \(count > 0 \|\| projectedByPage !== storeByPage\) setAnnotationsByPage\(projectedByPage\);/);
+  assert.match(
+    HOOK_SOURCE,
+    /if \(count > 0 \|\| projectedByPage !== storeByPage\) \{[\s\S]*?setAnnotationsByPage\(\(previousByPage\) => \([\s\S]*?preserveTransientPagePresentationState\(previousByPage, projectedByPage\)/,
+  );
   // …and the empty-store else-branch pushes LOCAL state INTO the doc (the
   // inverse of a wipe) rather than calling setAnnotationsByPage at all.
   const elseBranch = HOOK_SOURCE.match(/\} else \{\s*\n\s*\/\/ Empty store: seed it[\s\S]*?applySurveyMarkers\(curSurvey\);\s*\n\s*\}/);
   assert.ok(elseBranch, 'the empty-store seed branch exists');
-  assert.match(elseBranch[0], /if \(curByPage && pageCount\(curByPage\) > 0\) handle\.applyByPage\(curByPage\);/);
-  assert.doesNotMatch(elseBranch[0], /setAnnotationsByPage\(/, 'an empty store never overwrites in-memory annotations');
+  assert.match(
+    elseBranch[0],
+    /if \(curByPage && pageCount\(curByPage\) > 0\) \{[\s\S]*?handle\.applyByPage\(curByPage\)/,
+  );
 });
 
 test('useAnnotationDoc: a failed open sets an error status and applies NOTHING to viewer state', () => {
@@ -243,20 +250,22 @@ test('useAnnotationDoc: a failed open sets an error status and applies NOTHING t
   assert.doesNotMatch(failPath[0], /setAnnotationsByPage|setSpaces|setSurveyMarkers/);
 });
 
-test('useAnnotationDoc: onChange applies remote state unconditionally (legit remote delete-all must land)', () => {
-  assert.match(HOOK_SOURCE, /handle\.onChange\(\(byPage\) => \{[\s\S]*?setAnnotationsByPage\(nextByPage\);/);
+test('useAnnotationDoc: onChange lands remote state while preserving a local eraser presentation epoch', () => {
+  assert.match(
+    HOOK_SOURCE,
+    /handle\.onChange\(\(byPage\) => \{[\s\S]*?setAnnotationsByPage\(\(previousByPage\) => \([\s\S]*?preserveTransientPagePresentationState\(previousByPage, nextByPage\)/,
+  );
 });
 
 // ---------------------------------------------------------------------------
 // Source pins — the sync-layer branches those guarantees rest on
 // (annotationDocSync.js).
 // ---------------------------------------------------------------------------
-test('annotationDocSync: an undecodable snapshot is discarded and its at_seq is never trusted', () => {
-  // gunzip failure nulls the bytes…
-  assert.match(SYNC_SOURCE, /snapshot gunzip failed', err\?\.message\); bytes = null; \}/);
-  // …and lastSeq only advances when the bytes were actually applied, so the
-  // tail read replays the append-only log from seq 0 otherwise.
-  assert.match(SYNC_SOURCE, /if \(bytes\) \{\s*\n\s*Y\.applyUpdate\(doc, bytes, HYDRATE_ORIGIN\);\s*\n\s*state\.lastSeq = Number\(snapRow\.at_seq\) \|\| 0;/);
+test('annotationDocSync: an undecodable snapshot aborts before trusting at_seq', () => {
+  assert.match(SYNC_SOURCE, /throw new Error\(`snapshot decode failed:/);
+  const decodeIndex = SYNC_SOURCE.indexOf('snapshot decode failed:');
+  const frontierIndex = SYNC_SOURCE.indexOf('state.lastSeq = Number(snapRow.at_seq)');
+  assert.ok(decodeIndex >= 0 && frontierIndex > decodeIndex);
 });
 
 test('annotationDocSync: a failed tail read throws (open aborts) instead of hydrating partial state', () => {
@@ -267,12 +276,23 @@ test('annotationDocSync: change listeners only fire after remote updates actuall
   // catch-up: notify only when at least one remote op landed in the doc.
   assert.match(SYNC_SOURCE, /if \(applied > 0 && !state\.destroyed\) notifyChange\(state\);/);
   // realtime: an apply failure is swallowed without notifying (no empty/stale echo).
-  const realtimeCatch = SYNC_SOURCE.match(/catch \(err\) \{\s*\n\s*console\.warn\('\[annotationDocSync\] remote apply failed', err\?\.message\);\s*\n\s*\}/);
-  assert.ok(realtimeCatch, 'the realtime apply-failure catch exists and contains no notifyChange');
+  assert.match(
+    SYNC_SOURCE,
+    /state\.authoritativeChain = state\.authoritativeChain\.then\([\s\S]*?\.catch\(\(err\) => \{[\s\S]*?remote apply failed/,
+  );
 });
 
-test('annotationDocSync: snapshot writes capture at_seq and the doc bytes in the same synchronous tick', () => {
-  // Pins the invariant that a stored snapshot's bytes always cover its claimed
-  // at_seq — the reason a decoded snapshot can never under-represent the log.
-  assert.match(SYNC_SOURCE, /const atSeq = state\.lastSeq;\s*\n\s*const epochAtStart = state\.editEpoch;/);
+test('annotationDocSync: snapshots claim only a cloud-accepted or explicitly staged prefix', () => {
+  // lastSeq may be an out-of-order realtime row. coveredSeq is the proven
+  // contiguous prefix, so tail replay can never skip an unseen delete.
+  assert.match(SYNC_SOURCE, /const atSeq = state\.coveredSeq;/);
+  assert.match(
+    SYNC_SOURCE,
+    /const epochAtStart = epoch \?\? \(\s*repairsGapAtStart \? state\.repairCheckpointEpoch : state\.acceptedEditEpoch\s*\);/,
+  );
+  assert.match(
+    SYNC_SOURCE,
+    /const updateAtStart = snapshotUpdate \|\| \(\s*repairsGapAtStart \? encodeRepairCheckpoint\(state\) : encodeSnapshot\(state\.acceptedDoc\)\s*\);/,
+  );
+  assert.doesNotMatch(SYNC_SOURCE, /gzip\(encodeSnapshot\(state\.doc\)\)/);
 });

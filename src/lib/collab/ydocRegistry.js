@@ -11,6 +11,15 @@ import * as Y from 'yjs';
 const REGISTRY = (globalThis.__ydocRegistry__ ??= new Map());
 
 /**
+ * Create a short-lived, caller-owned Y.Doc for isolated computation such as an
+ * accepted-state shadow. It is deliberately not registered and must be
+ * destroyed by the caller.
+ */
+export function createDetachedYDoc(guid) {
+  return new Y.Doc({ guid, autoLoad: false });
+}
+
+/**
  * Get or create the Y.Doc for a given documentId.
  * Returns the SAME instance on subsequent calls — Y.Doc is long-lived, never destroyed on PDF switch.
  * @param {string} documentId
@@ -46,6 +55,49 @@ export function releaseYDoc(documentId) {
   if (!entry) return;
   entry.refCount = Math.max(0, entry.refCount - 1);
   // Deliberately do NOT call entry.doc.destroy(). Destroy is permanent and only happens on app close.
+}
+
+/**
+ * Hard-delete every registry entry whose key starts with `prefix`.
+ * This is intentionally destructive and is only used after the backing
+ * document has been deleted.
+ */
+export function purgeYDocsByPrefix(prefix) {
+  if (!prefix || typeof prefix !== 'string') return 0;
+  let removed = 0;
+  for (const [key, entry] of REGISTRY) {
+    if (!key.startsWith(prefix)) continue;
+    clearRegisteredDoc(entry.doc);
+    try { entry.doc.destroy(); } catch { /* already destroyed */ }
+    REGISTRY.delete(key);
+    removed += 1;
+  }
+  return removed;
+}
+
+function clearRegisteredDoc(doc) {
+  try {
+    doc.transact(() => {
+      for (const type of doc.share.values()) {
+        if (type instanceof Y.Map) {
+          for (const key of [...type.keys()]) type.delete(key);
+        } else if (type instanceof Y.Array || type instanceof Y.Text) {
+          if (type.length > 0) type.delete(0, type.length);
+        }
+      }
+    }, 'hard-delete');
+  } catch { /* best effort before permanent invalidation */ }
+}
+
+/** Hard-delete one exact registry key without matching prefix siblings. */
+export function purgeYDoc(key) {
+  if (!key || typeof key !== 'string') return false;
+  const entry = REGISTRY.get(key);
+  if (!entry) return false;
+  clearRegisteredDoc(entry.doc);
+  try { entry.doc.destroy(); } catch { /* already destroyed */ }
+  REGISTRY.delete(key);
+  return true;
 }
 
 /**

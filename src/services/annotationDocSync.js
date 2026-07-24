@@ -17,16 +17,39 @@
 // durable path is proved before the viewer is wired to it.
 
 import * as Y from 'yjs';
-import { getOrCreateYDoc, releaseYDoc } from '../lib/collab/ydocRegistry.js';
 import {
+  createDetachedYDoc,
+  getOrCreateYDoc,
+  purgeYDoc,
+  purgeYDocsByPrefix,
+  releaseYDoc,
+} from '../lib/collab/ydocRegistry.js';
+import {
+  createAnnotationOutbox,
+} from './annotationDocOutbox.js';
+import { getAnnotationAuthorId } from '../lib/collab/permissionScope.js';
+import {
+  createAnnotationStorageKeyResolver,
+  normalizeByPageAnnotationIdentities,
+} from '../utils/annotationStorageIdentity.js';
+import {
+  ANNOTATIONS_MAP,
+  ERASER_OPS_MAP,
+  META_MAP,
+  SURVEY_MARKERS_MAP,
   getAnnotationsMap,
+  getEraserOpsMap,
+  getSurveyMarkersMap,
+  extractAnnotationId,
   docToByPage,
   syncByPageToDoc,
+  clearEraserOpsForAnnotationIds,
   encodeSnapshot,
   getMetaValue,
   setMetaValue,
   docToSurveyMarkers,
   syncSurveyMarkersToDoc,
+  repairStackedInkDuplicates,
 } from './annotationDocStore.js';
 
 // The flat annotation store gets its OWN registry-managed Y.Doc, keyed apart
@@ -38,8 +61,75 @@ const SNAPSHOT_AFTER_OPS = 40;      // compact to a fresh snapshot every N ops
 const SNAPSHOT_DEBOUNCE_MS = 1200;  // after edits settle, write a full-state checkpoint
 const SNAPSHOT_RETRIES = 4;         // the checkpoint is the durability guarantee — retry hard
 const SNAPSHOT_ENC_GZIP = 2;        // encoding_version 2 = gzipped Y.encodeStateAsUpdate
+const CLOUD_REQUEST_TIMEOUT_MS = 15_000;
+const GAP_REPAIR_RETRY_MS = 1_000;
+const GAP_REPAIR_RETRY_MAX_MS = 30_000;
 const REMOTE_ORIGIN = 'remote';
 const HYDRATE_ORIGIN = 'hydrate';
+const PERMISSION_ROLLBACK_ORIGIN = 'permission-rollback';
+const DURABLE_MAP_NAMES = [
+  ANNOTATIONS_MAP,
+  ERASER_OPS_MAP,
+  META_MAP,
+  SURVEY_MARKERS_MAP,
+];
+const ACTIVE_STATES = (globalThis.__annotationDocSyncActiveStates__ ??= new Map());
+
+function deletedDocumentError(documentId) {
+  const error = new Error(`annotation document ${documentId} was deleted`);
+  error.code = 'ANNOTATION_DOCUMENT_DELETED';
+  return error;
+}
+
+function assertStateWritable(state) {
+  if (state.deleted) throw deletedDocumentError(state.documentId);
+}
+
+function registerActiveState(state) {
+  let states = ACTIVE_STATES.get(state.documentId);
+  if (!states) {
+    states = new Set();
+    ACTIVE_STATES.set(state.documentId, states);
+  }
+  states.add(state);
+}
+
+function unregisterActiveState(state) {
+  const states = ACTIVE_STATES.get(state.documentId);
+  if (!states) return;
+  states.delete(state);
+  if (states.size === 0) ACTIVE_STATES.delete(state.documentId);
+}
+
+function invalidateDeletedState(state, error = deletedDocumentError(state.documentId)) {
+  if (state.deleted) return;
+  state.deleted = true;
+  state.destroyed = true;
+  unregisterActiveState(state);
+  if (state.snapshotTimer) {
+    clearTimeout(state.snapshotTimer);
+    state.snapshotTimer = null;
+  }
+  if (state.outboxReplayTimer) {
+    clearTimeout(state.outboxReplayTimer);
+    state.outboxReplayTimer = null;
+  }
+  clearGapRepairTimer(state);
+  if (state.onDocUpdate) {
+    try { state.doc.off('update', state.onDocUpdate); } catch { /* already detached */ }
+    state.onDocUpdate = null;
+  }
+  state.doc.transact(() => {
+    for (const mapName of DURABLE_MAP_NAMES) {
+      const map = state.doc.getMap(mapName);
+      for (const key of [...map.keys()]) map.delete(key);
+    }
+  }, PERMISSION_ROLLBACK_ORIGIN);
+  state.lastByPage = null;
+  markSyncHealth(state, false, error);
+  notifyChange(state);
+  destroyLocalPersistence(state);
+}
 
 // Gzip the checkpoint so heavy documents stay well under request-size limits
 // (a many-thousand-mark Y.Doc compresses several-fold). Available in browsers
@@ -71,6 +161,51 @@ function randomClientId() {
   return crypto.randomUUID();
 }
 
+function persistenceActorScope(actorUserId) {
+  return encodeURIComponent(String(actorUserId));
+}
+
+function persistenceGenerationKey(documentId, actorUserId) {
+  return `annotationPersistenceGeneration:${documentId}:${persistenceActorScope(actorUserId)}`;
+}
+
+function persistenceActorsKey(documentId) {
+  return `annotationPersistenceActors:${documentId}`;
+}
+
+function registerPersistenceActor(documentId, actorUserId) {
+  try {
+    const key = persistenceActorsKey(documentId);
+    const actors = new Set(JSON.parse(localStorage.getItem(key) || '[]'));
+    actors.add(persistenceActorScope(actorUserId));
+    localStorage.setItem(key, JSON.stringify([...actors]));
+  } catch { /* local persistence unavailable */ }
+}
+
+function persistenceDatabaseName(documentId, actorUserId, generation) {
+  return `anno-${documentId}-actor-${persistenceActorScope(actorUserId)}-g${generation}`;
+}
+
+function readPersistenceGeneration(documentId, actorUserId) {
+  try {
+    return Math.max(
+      0,
+      Number(localStorage.getItem(persistenceGenerationKey(documentId, actorUserId))) || 0,
+    );
+  } catch {
+    return 0;
+  }
+}
+
+function writePersistenceGeneration(documentId, actorUserId, generation) {
+  try {
+    localStorage.setItem(
+      persistenceGenerationKey(documentId, actorUserId),
+      String(generation),
+    );
+  } catch { /* local persistence unavailable */ }
+}
+
 /** A per-install stable client id (browser). Node callers pass one in. */
 export function getClientId() {
   try {
@@ -92,16 +227,30 @@ export async function openAnnotationDoc({
   documentId,
   supabase,
   clientId = getClientId(),
+  writerId = null,
   enableLocal = true,
   enableRealtime = true,
   doc = null,
+  localPersistenceFactory = null,
+  legacyPersistenceFactory = null,
+  localSyncTimeoutMs = 3000,
+  requestTimeoutMs = CLOUD_REQUEST_TIMEOUT_MS,
+  snapshotRetryDelayMs = 400,
+  repairRetryDelayMs = GAP_REPAIR_RETRY_MS,
+  outboxStore = null,
+  actorUserId,
 }) {
   if (!documentId) throw new Error('openAnnotationDoc: documentId required');
+  if (!actorUserId) throw new Error('openAnnotationDoc: actorUserId required');
 
   // Default: a dedicated registry-managed Y.Doc for this document's flat store.
-  const registryKey = `${REGISTRY_PREFIX}${documentId}`;
+  const registryKey = `${REGISTRY_PREFIX}${documentId}:${actorUserId}`;
   const ownsRegistryDoc = !doc;
   const activeDoc = doc || getOrCreateYDoc(registryKey);
+  const activeWriterId = writerId || `${clientId}:${randomClientId()}`;
+  const useRealtime = Boolean(
+    enableRealtime && supabase && typeof supabase.channel === 'function',
+  );
 
   const state = {
     documentId,
@@ -109,18 +258,41 @@ export async function openAnnotationDoc({
     ownsRegistryDoc,
     supabase,
     clientId,
+    // clientId identifies an installation. WAL idempotency needs a writer
+    // identity per OPEN: two tabs otherwise both seed client_seq=N and race
+    // different payloads into the same unique key.
+    writerId: activeWriterId,
     doc: activeDoc,
+    acceptedDoc: createDetachedYDoc(`accepted:${documentId}:${activeWriterId}`),
+    stagedDoc: createDetachedYDoc(`staged:${documentId}:${activeWriterId}`),
+    persistedDoc: createDetachedYDoc(`persisted:${documentId}:${activeWriterId}`),
+    localPersistenceDoc: null,
+    onLocalPersistenceUpdate: null,
     map: getAnnotationsMap(activeDoc),
     lastSeq: 0,            // highest annotation_updates.seq we've applied
-    coveredSeq: 0,         // highest seq covered by a CONTIGUOUS read (hydrate or
-                           // catch-up). Realtime events never advance this: a
-                           // delivered seq N doesn't prove N-1 arrived, so the
-                           // post-subscribe catch-up always re-reads from here.
+    coveredSeq: 0,         // highest seq included by an ordered hydrate/catch-up
+                           // read. Realtime alone never advances this because a
+                           // delivered seq N does not prove a lower transaction
+                           // has committed yet.
+    replayFromSeq: 0,      // snapshot baseline. Catch-up always replays from
+                           // here so a transaction that commits late with a
+                           // lower identity seq cannot be skipped.
+    snapshotBaseAtSeq: null,
+    snapshotBaseWriterId: null,
+    snapshotBaseWriterEpoch: 0,
+    snapshotGeneration: 0,
     catchupChain: Promise.resolve(), // serializes catch-up reads across reconnects
-    clientSeq: 0,          // our monotonic per-(doc,client) op counter
+    authoritativeChain: Promise.resolve(),
+    outboxReplayChain: Promise.resolve(),
+    outboxReplayScheduled: false,
+    outboxReplayTimer: null,
+    outboxReplayRetryAttempt: 0,
+    clientSeq: 0,          // monotonic per-(doc,writer-open) op counter
     opsSinceSnapshot: 0,
     lastByPage: null,      // last byPage applied — enables the per-page-ref fast diff
     snapshotTimer: null,   // debounced full-state checkpoint
+    repairTimer: null,
+    repairRetryAttempt: 0,
     snapshotChain: Promise.resolve(false), // serializes ALL snapshot writes so two
                            // never overlap and clobber each other (debounce vs eager vs destroy)
     editEpoch: 0,          // bumped on every local edit
@@ -130,16 +302,44 @@ export async function openAnnotationDoc({
                            // snapshot that completes after a newer edit can't wrongly
                            // mark that newer edit as saved.
     destroyed: false,
+    deleted: false,
     idbProvider: null,
     realtimeChannel: null,
     changeListeners: new Set(),
     syncListeners: new Set(),
     syncHealthy: true,     // false once an op append fails until it recovers (BL-24)
+    durabilityGap: false,  // a locally-applied update is absent from both WAL and snapshot
+    durabilityGapGeneration: 0,
+    repairCheckpointUpdate: null, // immutable staged prefix through the last append result
+    repairCheckpointEpoch: 0,
+    repairCheckpointGeneration: 0,
     pendingAppends: 0,
+    localMutationOrdinal: 0,
+    permissionRejectedCutoff: 0,
+    outbox: outboxStore,
+    actorUserId,
+    documentIncarnation: 0,
+    appendRecords: new Map(),
+    acceptedReceiptKeys: new Set(),
+    acceptedEditEpoch: 0,
+    persistedReconciliationDone: false,
+    rebaseLocalMutations: false,
+    quarantinedLocalHistory: false,
     lastSyncError: null,
     onPageHide: null,      // window listener that force-checkpoints on real tab close
     onDocUpdate: null,     // the local-mutation observer, kept so teardown can detach it
     flushQueue: Promise.resolve(),
+    requestTimeoutMs,
+    snapshotRetryDelayMs,
+    repairRetryDelayMs,
+    localPersistenceFactory,
+    legacyPersistenceFactory,
+    localSyncTimeoutMs,
+    persistenceGeneration: readPersistenceGeneration(documentId, actorUserId),
+    legacyPersistenceDoc: null,
+    legacyClearDocument: null,
+    legacyRecoveryPending: false,
+    legacyUnresolvedEntries: 0,
   };
 
   // Everything below can fail (network, storage). A partially-opened state must
@@ -149,41 +349,147 @@ export async function openAnnotationDoc({
   // leak on every failed open. Tear down whatever was attached, then rethrow so
   // the caller still sees the failure.
   try {
+    if (supabase && !state.outbox) {
+      state.outbox = await createAnnotationOutbox();
+    }
+    if (state.outbox) {
+      state.documentIncarnation = Number(
+        await state.outbox.getDocumentIncarnation?.(documentId),
+      ) || 0;
+      await hydrateCleanAcceptedState(state);
+      await loadPendingOutboxRecords(state);
+      const quarantined = await state.outbox.listQuarantined?.(
+        state.documentId,
+        state.actorUserId,
+      );
+      state.quarantinedLocalHistory = (
+        state.quarantinedLocalHistory
+        || (quarantined?.length || 0) > 0
+      );
+    }
     // --- local instant durability (browser only) ---
     if (enableLocal && typeof indexedDB !== 'undefined') {
       try {
-        const { IndexeddbPersistence } = await import('y-indexeddb');
-        state.idbProvider = new IndexeddbPersistence(`anno-${documentId}`, activeDoc);
-        await whenSynced(state.idbProvider);
+        registerPersistenceActor(documentId, actorUserId);
+        const persistenceDoc = createDetachedYDoc(
+          `persistence:${documentId}:${activeWriterId}`,
+        );
+        state.localPersistenceDoc = persistenceDoc;
+        if (localPersistenceFactory) {
+          state.idbProvider = await localPersistenceFactory(
+            persistenceDatabaseName(documentId, actorUserId, state.persistenceGeneration),
+            persistenceDoc,
+          );
+        } else {
+          const { IndexeddbPersistence } = await import('y-indexeddb');
+          state.idbProvider = new IndexeddbPersistence(
+            persistenceDatabaseName(documentId, actorUserId, state.persistenceGeneration),
+            persistenceDoc,
+          );
+        }
+        const localReady = await whenSynced(state.idbProvider, localSyncTimeoutMs);
+        if (!localReady) {
+          // A provider that misses the load bound must never remain attached to
+          // the exposed live document. Its eventual replay is untrusted until a
+          // future open can load and authorize it from the detached store.
+          try { state.idbProvider.destroy(); } catch { /* */ }
+          state.idbProvider = null;
+          try { persistenceDoc.destroy(); } catch { /* */ }
+          state.localPersistenceDoc = null;
+          console.warn('[annotationDocSync] indexeddb initial load timed out');
+        }
       } catch (err) {
+        destroyLocalPersistence(state);
         console.warn('[annotationDocSync] indexeddb unavailable', err?.message);
       }
+    }
+    // Freeze the detached local cache before backend hydration or new user
+    // edits. It is only an authorization candidate; it never seeds acceptedDoc.
+    if (!state.quarantinedLocalHistory) {
+      const persistedCandidate = state.localPersistenceDoc || activeDoc;
+      Y.applyUpdate(
+        state.persistedDoc,
+        encodeSnapshot(persistedCandidate),
+        HYDRATE_ORIGIN,
+      );
     }
 
     // --- seed the per-(doc,client) op counter so client_seq stays unique ---
     if (supabase) {
-      const { data } = await supabase
-        .from('annotation_updates')
-        .select('client_seq')
-        .eq('document_id', documentId)
-        .eq('client_id', clientId)
-        .order('client_seq', { ascending: false })
-        .limit(1);
+      const { data, error } = await withCloudRequest(
+        state,
+        supabase
+          .from('annotation_updates')
+          .select('client_seq')
+          .eq('document_id', documentId)
+          .eq('client_id', state.writerId)
+          .order('client_seq', { ascending: false })
+          .limit(1),
+        'writer sequence read',
+      );
+      if (error) throw toSyncError(error, 'writer sequence read failed');
       if (data && data[0]) state.clientSeq = Number(data[0].client_seq) || 0;
     }
 
     // --- load snapshot + tail from the cloud ---
     if (supabase) await loadFromBackend(state);
+    // The accepted shadow is populated only by backend snapshot/WAL bytes.
+    // Never seed it from activeDoc: activeDoc may already contain optimistic
+    // IndexedDB state that the backend has never authorized.
+    Y.applyUpdate(state.stagedDoc, encodeSnapshot(state.acceptedDoc), HYDRATE_ORIGIN);
+    if (supabase) {
+      await loadLegacyPersistenceCandidate(state);
+      // Reconcile the frozen pre-open local delta before exposing the handle.
+      // New edits can therefore enqueue their exact observer bytes immediately
+      // and can never overtake an older persisted predecessor while Realtime is
+      // still joining (or never joins).
+      await replayOutbox(state);
+      if (state.quarantinedLocalHistory) {
+        publishAcceptedState(state);
+        state.rebaseLocalMutations = true;
+        try { state.persistedDoc?.destroy(); } catch { /* */ }
+        state.persistedDoc = null;
+      } else {
+        await reconcilePersistedLocalState(state);
+      }
+      await reconcileLegacyLocalState(state);
+    }
+    // The provider is attached to a detached Y.Doc so pre-open bytes can be
+    // authorized safely. Once reconciliation is complete, mirror subsequent
+    // live updates into that detached actor-scoped persistence document.
+    attachLocalPersistenceMirror(state);
 
     // --- observe local mutations → append to the durable log ---
-    state.onDocUpdate = (update, origin) => {
-      if (state.destroyed) return;
+    state.onDocUpdate = (update, origin, _doc, transaction) => {
+      if (state.destroyed || state.deleted) return;
       // Ignore writes we didn't originate as user edits: remote ops, the initial
       // hydrate, and the local IndexedDB replay (re-appending those would loop).
-      if (origin === REMOTE_ORIGIN || origin === HYDRATE_ORIGIN || origin === state.idbProvider) return;
+      if (origin === REMOTE_ORIGIN) {
+        // Never mirror the live doc's derived conflict-resolution update into
+        // clean shadows. It can contain a tombstone for the authoritative row
+        // when an optimistic same-key item wins by client-id ordering. Only
+        // applyAuthoritativeCloudRow's original server bytes are acceptance.
+        return;
+      }
+      if (origin === HYDRATE_ORIGIN) {
+        Y.applyUpdate(state.acceptedDoc, update, HYDRATE_ORIGIN);
+        Y.applyUpdate(state.stagedDoc, update, HYDRATE_ORIGIN);
+        if (state.persistedDoc) Y.applyUpdate(state.persistedDoc, update, HYDRATE_ORIGIN);
+        return;
+      }
+      if (origin === PERMISSION_ROLLBACK_ORIGIN || origin === state.idbProvider) return;
       if (supabase) {
         state.editEpoch += 1;
-        enqueueAppend(state, update);
+        const staged = state.rebaseLocalMutations
+          ? stageRebasedLocalMutation(state, transaction)
+          : stageExactLocalUpdate(state, update);
+        if (!staged) {
+          const error = new Error('local mutation could not be staged safely');
+          restoreAcceptedState(state);
+          markSyncHealth(state, false, error);
+          return;
+        }
+        enqueueAppend(state, staged.update, staged.snapshot, state.editEpoch);
         // The full-state checkpoint is the durability GUARANTEE: even if an
         // individual op insert fails (network), the next checkpoint re-captures
         // the whole doc from memory. Schedule it on every local edit.
@@ -196,7 +502,7 @@ export async function openAnnotationDoc({
     activeDoc.on('update', state.onDocUpdate);
 
     // --- live multi-device: apply remote ops as they land ---
-    if (enableRealtime && supabase && typeof supabase.channel === 'function') {
+    if (useRealtime) {
       subscribeRealtime(state);
     }
 
@@ -211,19 +517,43 @@ export async function openAnnotationDoc({
     // the mutation, so this is an extra guard, not the sole one.
     if (supabase && typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
       state.onPageHide = () => {
-        if (state.destroyed || state.editEpoch === state.snapshottedEpoch) return;
-        try { writeSnapshot(state); } catch { /* best-effort */ }
+        if (
+          state.destroyed
+          || state.editEpoch === state.snapshottedEpoch
+          || state.pendingAppends > 0
+        ) return;
+        try {
+          writeSnapshot(state, captureSnapshotOptions(state))
+            .then((result) => handleSnapshotResult(state, result));
+        } catch { /* best-effort */ }
       };
       window.addEventListener('pagehide', state.onPageHide);
     }
+    if (state.outbox?.getDocumentIncarnation) {
+      const currentIncarnation = Number(
+        await state.outbox.getDocumentIncarnation(documentId),
+      ) || 0;
+      if (currentIncarnation !== state.documentIncarnation) {
+        throw deletedDocumentError(documentId);
+      }
+    }
+    // No await between the final incarnation check and registration: purge
+    // either sees this opening state or its bumped incarnation rejects open.
+    registerActiveState(state);
   } catch (err) {
     state.destroyed = true;
+    clearGapRepairTimer(state);
     if (state.onDocUpdate) { try { activeDoc.off('update', state.onDocUpdate); } catch { /* */ } }
     if (state.realtimeChannel) { try { state.supabase.removeChannel(state.realtimeChannel); } catch { /* */ } }
-    if (state.idbProvider) { try { state.idbProvider.destroy(); } catch { /* */ } }
+    destroyLocalPersistence(state);
     if (state.onPageHide && typeof window !== 'undefined' && typeof window.removeEventListener === 'function') {
       window.removeEventListener('pagehide', state.onPageHide);
     }
+    try { await state.outbox?.close?.(); } catch { /* */ }
+    try { state.acceptedDoc.destroy(); } catch { /* */ }
+    try { state.stagedDoc.destroy(); } catch { /* */ }
+    try { state.persistedDoc?.destroy(); } catch { /* */ }
+    try { state.legacyPersistenceDoc?.destroy(); } catch { /* */ }
     if (ownsRegistryDoc) releaseYDoc(registryKey);
     throw err;
   }
@@ -231,98 +561,821 @@ export async function openAnnotationDoc({
   return makeHandle(state);
 }
 
-function whenSynced(provider) {
+function destroyLocalPersistence(state) {
+  if (state.onLocalPersistenceUpdate) {
+    try { state.doc.off('update', state.onLocalPersistenceUpdate); } catch { /* */ }
+    state.onLocalPersistenceUpdate = null;
+  }
+  if (state.idbProvider) {
+    try { state.idbProvider.destroy(); } catch { /* */ }
+    state.idbProvider = null;
+  }
+  if (state.localPersistenceDoc) {
+    try { state.localPersistenceDoc.destroy(); } catch { /* */ }
+    state.localPersistenceDoc = null;
+  }
+}
+
+function attachLocalPersistenceMirror(state) {
+  if (
+    state.onLocalPersistenceUpdate
+    || !state.localPersistenceDoc
+    || state.destroyed
+    || state.deleted
+  ) return;
+  const target = state.localPersistenceDoc;
+  state.onLocalPersistenceUpdate = (update, origin) => {
+    if (
+      state.destroyed
+      || state.deleted
+      || state.localPersistenceDoc !== target
+      // Applying an authoritative row to a live doc with an optimistic
+      // same-key winner can re-emit derived conflict DeleteSets. Persist only
+      // the original server bytes applied explicitly by
+      // applyAuthoritativeCloudUpdate, never that derived live update.
+      || origin === REMOTE_ORIGIN
+    ) return;
+    // This is one-way only: the provider observes `target`; no listener ever
+    // applies target updates back to the live doc, so there is no update loop.
+    Y.applyUpdate(target, update, HYDRATE_ORIGIN);
+  };
+  state.doc.on('update', state.onLocalPersistenceUpdate);
+}
+
+async function rotateCleanPersistence(state) {
+  if (!state.localPersistenceDoc && !state.idbProvider) return;
+  destroyLocalPersistence(state);
+  state.persistenceGeneration += 1;
+  writePersistenceGeneration(
+    state.documentId,
+    state.actorUserId,
+    state.persistenceGeneration,
+  );
+  const persistenceDoc = createDetachedYDoc(
+    `persistence:${state.documentId}:${state.writerId}:g${state.persistenceGeneration}`,
+  );
+  Y.applyUpdate(persistenceDoc, encodeSnapshot(state.acceptedDoc), HYDRATE_ORIGIN);
+  state.localPersistenceDoc = persistenceDoc;
+  try {
+    const name = persistenceDatabaseName(
+      state.documentId,
+      state.actorUserId,
+      state.persistenceGeneration,
+    );
+    if (state.localPersistenceFactory) {
+      state.idbProvider = await state.localPersistenceFactory(name, persistenceDoc);
+    } else if (typeof indexedDB !== 'undefined') {
+      const { IndexeddbPersistence } = await import('y-indexeddb');
+      state.idbProvider = new IndexeddbPersistence(name, persistenceDoc);
+    }
+    if (state.idbProvider) {
+      const ready = await whenSynced(state.idbProvider, state.localSyncTimeoutMs);
+      if (!ready) throw new Error('clean persistence reseed timed out');
+    }
+    attachLocalPersistenceMirror(state);
+  } catch (error) {
+    destroyLocalPersistence(state);
+    console.warn('[annotationDocSync] clean persistence rotation failed', error?.message);
+  }
+}
+
+function whenSynced(provider, timeoutMs = 3000) {
   return new Promise((resolve) => {
-    if (provider.synced) return resolve();
-    provider.once('synced', () => resolve());
-    // safety: don't hang forever if the event is missed
-    setTimeout(resolve, 3000);
+    if (provider.synced) return resolve(true);
+    let settled = false;
+    let timer = null;
+    const finish = (synced) => {
+      if (settled) return;
+      settled = true;
+      if (timer) clearTimeout(timer);
+      resolve(synced);
+    };
+    provider.once('synced', () => finish(true));
+    timer = setTimeout(() => finish(false), timeoutMs);
   });
+}
+
+function legacyEntryAuthorId(mapName, value) {
+  if (mapName === ANNOTATIONS_MAP) return getAnnotationAuthorId(value?.o);
+  if (mapName === SURVEY_MARKERS_MAP) return getAnnotationAuthorId(value);
+  return null;
+}
+
+async function loadLegacyPersistenceCandidate(state) {
+  if (
+    !state.supabase
+    || (
+      typeof indexedDB === 'undefined'
+      && !state.legacyPersistenceFactory
+    )
+  ) return;
+  const name = `anno-${state.documentId}`;
+  const legacyDoc = createDetachedYDoc(
+    `legacy-persistence:${state.documentId}:${state.writerId}`,
+  );
+  let provider = null;
+  try {
+    if (state.legacyPersistenceFactory) {
+      const created = await state.legacyPersistenceFactory(name, legacyDoc);
+      provider = created?.provider ?? created;
+      state.legacyClearDocument = created?.clearDocument ?? null;
+    } else {
+      const { IndexeddbPersistence, clearDocument } = await import('y-indexeddb');
+      provider = new IndexeddbPersistence(name, legacyDoc);
+      state.legacyClearDocument = () => clearDocument(name);
+    }
+    const ready = provider
+      ? await whenSynced(provider, state.localSyncTimeoutMs)
+      : false;
+    try { await provider?.destroy?.(); } catch { /* detached load only */ }
+    provider = null;
+    if (!ready) {
+      state.legacyRecoveryPending = true;
+      state.legacyUnresolvedEntries = 1;
+      try { legacyDoc.destroy(); } catch { /* */ }
+      console.warn('[annotationDocSync] legacy IndexedDB recovery load timed out');
+      return;
+    }
+    state.legacyPersistenceDoc = legacyDoc;
+  } catch (error) {
+    try { await provider?.destroy?.(); } catch { /* */ }
+    try { legacyDoc.destroy(); } catch { /* */ }
+    state.legacyRecoveryPending = true;
+    state.legacyUnresolvedEntries = 1;
+    console.warn('[annotationDocSync] legacy IndexedDB recovery unavailable', error?.message);
+  }
+}
+
+async function reconcileLegacyLocalState(state) {
+  const legacyDoc = state.legacyPersistenceDoc;
+  if (!legacyDoc) return;
+  if (state.appendRecords.size > 0) {
+    // Actorless legacy bytes have no exact ordering relationship to the
+    // actor-bound outbox. Even a net-zero pending update can carry a touched
+    // key only in Yjs history, so visible staged-key comparison is insufficient.
+    // Defer all legacy import until every exact outbox record is settled.
+    const legacyUpdate = encodeSnapshot(legacyDoc);
+    const decoded = Y.decodeUpdate(legacyUpdate);
+    if (decoded.structs.length > 0 || decoded.ds.clients.size > 0) {
+      state.legacyRecoveryPending = true;
+      state.legacyUnresolvedEntries = Math.max(1, state.legacyUnresolvedEntries);
+      console.warn('[annotationDocSync] legacy annotations wait for exact pending writes');
+    }
+    return;
+  }
+  if (state.quarantinedLocalHistory) {
+    const legacyUpdate = encodeSnapshot(legacyDoc);
+    const decoded = Y.decodeUpdate(legacyUpdate);
+    if (decoded.structs.length > 0 || decoded.ds.clients.size > 0) {
+      state.legacyRecoveryPending = true;
+      state.legacyUnresolvedEntries = Math.max(1, state.legacyUnresolvedEntries);
+      console.warn('[annotationDocSync] legacy annotations remain quarantined after a rejected local write');
+    }
+    return;
+  }
+  const mergedDoc = createDetachedYDoc(
+    `legacy-merge:${state.documentId}:${state.writerId}`,
+  );
+  const recoverable = [];
+  const ownedSemanticChanges = [];
+  const unresolvedConflicts = new Set();
+  try {
+    // Merge the complete legacy Yjs history over current cloud truth. Unlike
+    // iterating visible map entries, this preserves deletion tombstones and
+    // lets authoritative cloud tombstones suppress stale legacy additions.
+    Y.applyUpdate(mergedDoc, encodeSnapshot(state.acceptedDoc), HYDRATE_ORIGIN);
+    Y.applyUpdate(mergedDoc, encodeSnapshot(legacyDoc), HYDRATE_ORIGIN);
+
+    for (const mapName of DURABLE_MAP_NAMES) {
+      const accepted = state.acceptedDoc.getMap(mapName);
+      const legacy = legacyDoc.getMap(mapName);
+      const merged = mergedDoc.getMap(mapName);
+      const staged = state.stagedDoc.getMap(mapName);
+      const stagedConflicts = new Set();
+      for (const [key, value] of legacy.entries()) {
+        if (accepted.has(key) && !mapValueEqual(accepted.get(key), value)) {
+          // Preserve a visible legacy/cloud value disagreement even when Yjs
+          // conflict resolution currently picks the cloud value. Clearing the
+          // database would otherwise discard the only copy of that user data.
+          unresolvedConflicts.add(`${mapName}\u0000${key}`);
+        }
+        if (staged.has(key) && !mapValueEqual(staged.get(key), value)) {
+          // Ordinary actor-bound outbox rows are newer, exact local evidence.
+          // Actorless legacy storage cannot override or re-author a stale
+          // same-key value while that exact pending row is unresolved.
+          stagedConflicts.add(key);
+          unresolvedConflicts.add(`${mapName}\u0000${key}`);
+        }
+      }
+      const keys = new Set([...accepted.keys(), ...merged.keys()]);
+      for (const key of keys) {
+        if (stagedConflicts.has(key)) continue;
+        const acceptedHas = accepted.has(key);
+        const mergedHas = merged.has(key);
+        const acceptedValue = acceptedHas ? accepted.get(key) : undefined;
+        const mergedValue = mergedHas ? merged.get(key) : undefined;
+        if (
+          acceptedHas === mergedHas
+          && (!acceptedHas || mapValueEqual(acceptedValue, mergedValue))
+        ) continue;
+
+        const isAddition = !acceptedHas && mergedHas;
+        const isDeletion = acceptedHas && !mergedHas;
+        if (
+          (!isAddition && !isDeletion)
+          || (mapName !== ANNOTATIONS_MAP && mapName !== SURVEY_MARKERS_MAP)
+        ) {
+          unresolvedConflicts.add(`${mapName}\u0000${key}`);
+          continue;
+        }
+
+        if (isDeletion) {
+          // A shipped actorless Yjs tombstone contains a client/clock DeleteSet,
+          // not the account that performed the delete. The deleted object's
+          // author is not proof of the deleting actor, so never re-author a
+          // legacy deletion automatically under whichever account opens next.
+          unresolvedConflicts.add(`${mapName}\u0000${key}`);
+          continue;
+        }
+
+        const authorId = legacyEntryAuthorId(mapName, mergedValue);
+        if (String(authorId || '') !== String(state.actorUserId)) {
+          unresolvedConflicts.add(`${mapName}\u0000${key}`);
+          continue;
+        }
+
+        const change = {
+          mapName,
+          key,
+          deleted: isDeletion,
+          value: mergedValue,
+        };
+        ownedSemanticChanges.push(change);
+        const stagedAlreadyCovers = isDeletion
+          ? !staged.has(key)
+          : staged.has(key) && mapValueEqual(staged.get(key), mergedValue);
+        if (!stagedAlreadyCovers) recoverable.push(change);
+      }
+    }
+
+    if (recoverable.length > 0) {
+      const before = Y.encodeStateVector(state.stagedDoc);
+      state.stagedDoc.transact(() => {
+        for (const entry of recoverable) {
+          const map = state.stagedDoc.getMap(entry.mapName);
+          if (entry.deleted) map.delete(entry.key);
+          else map.set(entry.key, entry.value);
+        }
+      }, HYDRATE_ORIGIN);
+      const update = Y.encodeStateAsUpdate(state.stagedDoc, before);
+      const decoded = Y.decodeUpdate(update);
+      if (decoded.structs.length > 0 || decoded.ds.clients.size > 0) {
+        state.editEpoch += 1;
+        await enqueueAppend(
+          state,
+          update,
+          encodeSnapshot(state.stagedDoc),
+          state.editEpoch,
+          { publishAfterAcceptance: true },
+        );
+        scheduleSnapshot(state);
+      }
+    }
+
+    let pendingOwnedChanges = 0;
+    for (const change of ownedSemanticChanges) {
+      const accepted = state.acceptedDoc.getMap(change.mapName);
+      const acceptedCovers = change.deleted
+        ? !accepted.has(change.key)
+        : (
+          accepted.has(change.key)
+          && mapValueEqual(accepted.get(change.key), change.value)
+        );
+      if (!acceptedCovers) pendingOwnedChanges += 1;
+    }
+    state.legacyUnresolvedEntries = unresolvedConflicts.size + pendingOwnedChanges;
+    state.legacyRecoveryPending = state.legacyUnresolvedEntries > 0;
+
+    if (state.legacyRecoveryPending) {
+      console.warn('[annotationDocSync] legacy annotations quarantined for explicit recovery');
+      return;
+    }
+    publishAcceptedAndVisiblePendingState(state);
+    try {
+      await state.legacyClearDocument?.();
+      try { legacyDoc.destroy(); } catch { /* */ }
+      state.legacyPersistenceDoc = null;
+    } catch (error) {
+      state.legacyRecoveryPending = true;
+      state.legacyUnresolvedEntries = Math.max(1, ownedSemanticChanges.length);
+      console.warn('[annotationDocSync] legacy IndexedDB retirement deferred', error?.message);
+    }
+  } finally {
+    try { mergedDoc.destroy(); } catch { /* */ }
+  }
+}
+
+function withCloudRequest(state, request, label) {
+  const timeoutMs = Math.max(1, Number(state.requestTimeoutMs) || CLOUD_REQUEST_TIMEOUT_MS);
+  let timer = null;
+  return Promise.race([
+    Promise.resolve(request),
+    new Promise((_resolve, reject) => {
+      timer = setTimeout(() => {
+        const error = new Error(`${label} timed out after ${timeoutMs}ms`);
+        error.code = 'ETIMEDOUT';
+        reject(error);
+      }, timeoutMs);
+    }),
+  ]).finally(() => {
+    if (timer) clearTimeout(timer);
+  });
+}
+
+function applyAuthoritativeCloudUpdate(state, update) {
+  // A committed row can be an idempotent self-echo in the optimistic live doc,
+  // so its live update event may not fire. Cloud acceptance must still advance
+  // every clean shadow explicitly.
+  Y.applyUpdate(state.doc, update, REMOTE_ORIGIN);
+  Y.applyUpdate(state.acceptedDoc, update, HYDRATE_ORIGIN);
+  if (state.localPersistenceDoc) {
+    Y.applyUpdate(state.localPersistenceDoc, update, HYDRATE_ORIGIN);
+  }
+  Y.applyUpdate(state.stagedDoc, update, HYDRATE_ORIGIN);
+}
+
+function bytesEqual(left, right) {
+  if (!(left instanceof Uint8Array) || !(right instanceof Uint8Array)) return false;
+  if (left.length !== right.length) return false;
+  for (let index = 0; index < left.length; index += 1) {
+    if (left[index] !== right[index]) return false;
+  }
+  return true;
+}
+
+function updateClockRanges(update) {
+  const ranges = new Map();
+  for (const struct of Y.decodeUpdate(update).structs) {
+    const client = Number(struct.id?.client);
+    const start = Number(struct.id?.clock);
+    const end = start + Number(struct.length || 0);
+    if (!Number.isFinite(client) || !Number.isFinite(start) || !Number.isFinite(end)) continue;
+    const existing = ranges.get(client);
+    ranges.set(client, existing
+      ? { start: Math.min(existing.start, start), end: Math.max(existing.end, end) }
+      : { start, end });
+  }
+  return ranges;
+}
+
+function recordCoveringClock(records, client, clock, excludeKey) {
+  for (const candidate of records) {
+    if (candidate.key === excludeKey) continue;
+    const range = updateClockRanges(candidate.update).get(client);
+    if (range && range.start <= clock && clock < range.end) return candidate.key;
+  }
+  return null;
+}
+
+function causalDependenciesForUpdate(state, update, excludeKey = null) {
+  const dependencies = new Set();
+  const acceptedVector = Y.decodeStateVector(Y.encodeStateVector(state.acceptedDoc));
+  const records = [...state.appendRecords.values()];
+  const decoded = Y.decodeUpdate(update);
+  for (const [client, range] of updateClockRanges(update)) {
+    const acceptedClock = Number(acceptedVector.get(client)) || 0;
+    if (range.start > acceptedClock) {
+      const dependency = recordCoveringClock(
+        records,
+        client,
+        range.start - 1,
+        excludeKey,
+      );
+      if (dependency) dependencies.add(dependency);
+    }
+  }
+  for (const struct of decoded.structs) {
+    for (const reference of [struct.origin, struct.rightOrigin, struct.parent]) {
+      const client = Number(reference?.client);
+      const clock = Number(reference?.clock);
+      if (!Number.isFinite(client) || !Number.isFinite(clock)) continue;
+      const acceptedClock = Number(acceptedVector.get(client)) || 0;
+      if (clock < acceptedClock) continue;
+      const dependency = recordCoveringClock(records, client, clock, excludeKey);
+      if (dependency) dependencies.add(dependency);
+    }
+  }
+  return [...dependencies].sort();
+}
+
+function rejectedRecordClosure(state, rejectedKeys) {
+  const rejected = new Set(rejectedKeys);
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const record of state.appendRecords.values()) {
+      if (rejected.has(record.key)) continue;
+      if ((record.dependsOn || []).some((key) => rejected.has(key))) {
+        rejected.add(record.key);
+        changed = true;
+      }
+    }
+  }
+  return rejected;
+}
+
+function unresolvedDependencyForRecord(state, record) {
+  for (const key of record.dependsOn || []) {
+    const dependency = state.appendRecords.get(key);
+    if (dependency) return dependency;
+    if (!state.acceptedReceiptKeys.has(key)) {
+      return { key, status: 'missing' };
+    }
+  }
+  return null;
+}
+
+async function quarantineRejectedRecords(state, rejectedKeys, error) {
+  // This can run during replay, after the open-time quarantine sample. Flip the
+  // live state immediately so actorless legacy storage cannot be re-enqueued
+  // again later in the same open under a fresh writer id.
+  state.quarantinedLocalHistory = true;
+  const closure = rejectedRecordClosure(state, rejectedKeys);
+  // Visible rollback must not depend on IndexedDB cleanup succeeding.
+  restoreAcceptedState(state);
+  const keys = [...closure];
+  for (const key of keys) {
+    const record = state.appendRecords.get(key);
+    if (record) record.status = 'rejected';
+  }
+  let cleanupFailed = false;
+  try {
+    await state.outbox?.markRejected?.(keys, state.documentIncarnation);
+  } catch (cleanupError) {
+    cleanupFailed = true;
+    console.warn('[annotationDocSync] rejected outbox quarantine failed', cleanupError?.message);
+  }
+  let deleted = false;
+  try {
+    if (typeof state.outbox?.deleteMany === 'function') {
+      await state.outbox.deleteMany(keys, state.documentIncarnation);
+    } else {
+      await Promise.all(keys.map(
+        (key) => state.outbox?.delete(key, state.documentIncarnation),
+      ));
+    }
+    deleted = true;
+  } catch (cleanupError) {
+    cleanupFailed = true;
+    console.warn('[annotationDocSync] denied outbox deletion failed', cleanupError?.message);
+  }
+  if (deleted) {
+    for (const key of keys) state.appendRecords.delete(key);
+  }
+  try {
+    await rotateCleanPersistence(state);
+  } catch (cleanupError) {
+    cleanupFailed = true;
+    console.warn('[annotationDocSync] denied outbox cleanup failed', cleanupError?.message);
+  }
+  if (cleanupFailed) {
+    // Keep the handle visibly unhealthy. If both quarantine and deletion failed,
+    // the residual row cannot be proven safe across a process restart.
+    state.lastSyncError = error;
+  }
+  markSyncHealth(state, false, error);
+}
+
+function appendRecordForCloudRow(state, row, update) {
+  const actorUserId = row?.actor_user_id == null ? null : String(row.actor_user_id);
+  const writerId = row?.client_id == null ? null : String(row.client_id);
+  const clientSeq = Number(row?.client_seq);
+  if (
+    actorUserId !== String(state.actorUserId)
+    || !writerId
+    || !Number.isFinite(clientSeq)
+  ) return null;
+  const record = [...state.appendRecords.values()].find((candidate) => (
+    candidate.documentId === state.documentId
+    && String(candidate.actorUserId) === actorUserId
+    && candidate.writerId === writerId
+    && Number(candidate.clientSeq) === clientSeq
+  ));
+  if (!record) return null;
+  if (!bytesEqual(record.update, update)) {
+    const error = new Error('authoritative WAL receipt reused an idempotency key with different bytes');
+    error.code = '23505';
+    markSyncHealth(state, false, error);
+    return null;
+  }
+  return record;
+}
+
+async function settleAcceptedRecord(
+  state,
+  record,
+  update = record.update,
+  { alreadyApplied = false } = {},
+) {
+  if (!record || record.status === 'accepted') return;
+  if (!alreadyApplied) applyAuthoritativeCloudUpdate(state, update);
+  const previousStatus = record.status;
+  if (typeof state.outbox?.settleAccepted === 'function') {
+    try {
+      await state.outbox.settleAccepted({ ...record, status: 'accepted' });
+    } catch (error) {
+      record.status = previousStatus;
+      throw error;
+    }
+  } else {
+    await state.outbox?.delete(record.key, state.documentIncarnation);
+  }
+  record.status = 'accepted';
+  state.acceptedReceiptKeys.add(record.key);
+  state.appendRecords.delete(record.key);
+  state.acceptedEditEpoch = Math.max(
+    state.acceptedEditEpoch,
+    Number(record.editEpoch) || 0,
+  );
+  try {
+    await state.outbox?.compactAccepted(
+      state.documentId,
+      state.actorUserId,
+      encodeSnapshot(state.acceptedDoc),
+      false,
+      state.documentIncarnation,
+    );
+  } catch (error) {
+    // The exact accepted delta is already durable in the clean journal. A
+    // failed compaction is non-destructive and will be retried later.
+    console.warn('[annotationDocSync] accepted cache compaction failed', error?.message);
+  }
+  if (state.appendRecords.size === 0 && state.durabilityGap) {
+    state.durabilityGap = false;
+    clearGapRepairTimer(state);
+    clearRepairCheckpoint(state);
+  }
+  if (!state.durabilityGap && state.appendRecords.size === 0) {
+    if (state.outboxReplayTimer) {
+      clearTimeout(state.outboxReplayTimer);
+      state.outboxReplayTimer = null;
+    }
+    state.outboxReplayRetryAttempt = 0;
+    markSyncHealth(state, true);
+  }
+  if (state.appendRecords.size > 0) scheduleOutboxReplay(state);
+}
+
+function snapshotSemanticallyCoversUpdate(snapshotUpdate, update) {
+  const before = createDetachedYDoc(`coverage-before:${randomClientId()}`);
+  const after = createDetachedYDoc(`coverage-after:${randomClientId()}`);
+  try {
+    Y.applyUpdate(before, snapshotUpdate, HYDRATE_ORIGIN);
+    Y.applyUpdate(after, snapshotUpdate, HYDRATE_ORIGIN);
+    Y.applyUpdate(after, update, HYDRATE_ORIGIN);
+    return durableDocsEqual(before, after);
+  } finally {
+    try { before.destroy(); } catch { /* */ }
+    try { after.destroy(); } catch { /* */ }
+  }
+}
+
+async function settleSnapshotCoveredRecords(state, snapshotUpdate, epochAtStart) {
+  if (!snapshotUpdate || state.appendRecords.size === 0) return;
+  const snapshotVector = Y.encodeStateVectorFromUpdate(snapshotUpdate);
+  const records = [...state.appendRecords.values()]
+    .filter((record) => (
+      (Number(record.editEpoch) || 0) <= (Number(epochAtStart) || 0)
+    ))
+    .sort((left, right) => (
+      (left.ordinal || 0) - (right.ordinal || 0)
+      || String(left.key).localeCompare(String(right.key))
+    ));
+  for (const record of records) {
+    const missing = Y.diffUpdate(record.update, snapshotVector);
+    if (Y.decodeUpdate(missing).structs.length > 0) continue;
+    if (!snapshotSemanticallyCoversUpdate(snapshotUpdate, record.update)) continue;
+    await settleAcceptedRecord(state, record, record.update, { alreadyApplied: true });
+  }
+}
+
+async function applyAuthoritativeCloudRow(state, row) {
+  const update = pgHexToBytes(row.data);
+  applyAuthoritativeCloudUpdate(state, update);
+  const record = appendRecordForCloudRow(state, row, update);
+  if (record) {
+    await settleAcceptedRecord(state, record, update, { alreadyApplied: true });
+  }
+  return update;
+}
+
+async function hydrateCleanAcceptedState(state) {
+  const clean = await state.outbox?.loadCleanState?.(
+    state.documentId,
+    state.actorUserId,
+  );
+  const updates = [
+    clean?.checkpointUpdate,
+    ...(clean?.records || []).map((record) => record.update),
+  ].filter(Boolean).map((update) => new Uint8Array(update));
+  for (const key of clean?.acceptedKeys || []) state.acceptedReceiptKeys.add(key);
+  for (const record of clean?.records || []) {
+    state.acceptedReceiptKeys.add(record.key);
+  }
+  for (const update of updates) {
+    Y.applyUpdate(state.doc, update, HYDRATE_ORIGIN);
+    Y.applyUpdate(state.acceptedDoc, update, HYDRATE_ORIGIN);
+    Y.applyUpdate(state.stagedDoc, update, HYDRATE_ORIGIN);
+  }
+}
+
+async function loadPendingOutboxRecords(state) {
+  const records = await (
+    state.outbox?.list(state.documentId, state.actorUserId) ?? []
+  );
+  for (const rawRecord of records) {
+    const record = {
+      ...rawRecord,
+      update: new Uint8Array(rawRecord.update),
+      checkpointUpdate: rawRecord.checkpointUpdate
+        ? new Uint8Array(rawRecord.checkpointUpdate)
+        : null,
+    };
+    if (
+      record.status === 'rejected'
+      || record.status === 'integrity-error'
+      || record.status === 'dependency-error'
+    ) {
+      // Terminal pending evidence is itself a quarantine boundary. It can
+      // survive a crash before a rejected record is copied to the dedicated
+      // quarantine store, and integrity/dependency failures never enter that
+      // store at all. A cold open must not re-author detached local bytes while
+      // any of those unresolved records remain.
+      state.quarantinedLocalHistory = true;
+      state.appendRecords.set(record.key, record);
+      markSyncHealth(
+        state,
+        false,
+        new Error(record.status === 'rejected'
+          ? 'a rejected local annotation update is quarantined'
+          : 'an annotation idempotency collision requires repair'),
+      );
+      continue;
+    }
+    state.appendRecords.set(record.key, record);
+    state.localMutationOrdinal = Math.max(
+      state.localMutationOrdinal,
+      Number(record.ordinal) || 0,
+    );
+    if (record.writerId === state.writerId) {
+      state.clientSeq = Math.max(state.clientSeq, Number(record.clientSeq) || 0);
+    }
+  }
+  for (const record of state.appendRecords.values()) {
+    if (!Array.isArray(record.dependsOn)) {
+      record.dependsOn = causalDependenciesForUpdate(state, record.update, record.key);
+    }
+  }
 }
 
 async function loadFromBackend(state) {
   const { supabase, documentId, doc } = state;
   // 1. snapshot baseline
-  const { data: snapRow } = await supabase
-    .from('annotation_snapshots')
-    .select('snapshot, at_seq, encoding_version')
-    .eq('document_id', documentId)
-    .maybeSingle();
+  const { data: snapRow, error: snapshotError } = await withCloudRequest(
+    state,
+    supabase
+      .from('annotation_snapshots')
+      .select('snapshot, at_seq, encoding_version, writer_id, writer_epoch')
+      .eq('document_id', documentId)
+      .maybeSingle(),
+    'snapshot read',
+  );
+  if (snapshotError) throw toSyncError(snapshotError, 'snapshot read failed');
   if (snapRow && snapRow.snapshot) {
     let bytes = pgHexToBytes(snapRow.snapshot);
     if (snapRow.encoding_version === SNAPSHOT_ENC_GZIP) {
-      try { bytes = await gunzip(bytes); } catch (err) { console.warn('[annotationDocSync] snapshot gunzip failed', err?.message); bytes = null; }
+      try {
+        bytes = await gunzip(bytes);
+      } catch (err) {
+        throw new Error(`snapshot decode failed: ${err?.message || 'invalid gzip'}`, { cause: err });
+      }
     }
     if (bytes) {
-      Y.applyUpdate(doc, bytes, HYDRATE_ORIGIN);
+      try {
+        Y.applyUpdate(doc, bytes, HYDRATE_ORIGIN);
+        Y.applyUpdate(state.acceptedDoc, bytes, HYDRATE_ORIGIN);
+        if (state.localPersistenceDoc) {
+          Y.applyUpdate(state.localPersistenceDoc, bytes, HYDRATE_ORIGIN);
+        }
+      } catch (err) {
+        throw new Error(`snapshot decode failed: ${err?.message || 'invalid Yjs update'}`, { cause: err });
+      }
       state.lastSeq = Number(snapRow.at_seq) || 0;
+      state.replayFromSeq = state.lastSeq;
+      state.snapshotBaseAtSeq = state.lastSeq;
+      state.snapshotBaseWriterId = snapRow.writer_id ?? null;
+      state.snapshotBaseWriterEpoch = Number(snapRow.writer_epoch) || 0;
+      state.snapshotGeneration = Math.max(
+        state.snapshotGeneration,
+        state.snapshotBaseWriterEpoch,
+      );
     }
   }
   // 2. tail ops after the snapshot, in order
   let cursor = state.lastSeq;
   for (;;) {
-    const { data: rows, error } = await supabase
-      .from('annotation_updates')
-      .select('seq, data')
-      .eq('document_id', documentId)
-      .gt('seq', cursor)
-      .order('seq', { ascending: true })
-      .limit(1000);
+    const { data: rows, error } = await withCloudRequest(
+      state,
+      supabase
+        .from('annotation_updates')
+        .select('seq, data, client_id, client_seq, actor_user_id')
+        .eq('document_id', documentId)
+        .gt('seq', cursor)
+        .order('seq', { ascending: true })
+        .limit(1000),
+      'annotation tail read',
+    );
     if (error) throw new Error(`tail read: ${error.message}`);
     const batch = rows || [];
     for (const row of batch) {
-      Y.applyUpdate(doc, pgHexToBytes(row.data), HYDRATE_ORIGIN);
+      await applyAuthoritativeCloudRow(state, row);
       cursor = Number(row.seq);
     }
     state.lastSeq = cursor;
     if (batch.length < 1000) break;
   }
   state.coveredSeq = cursor;
+  // One acknowledged custom IndexedDB transaction is the clean-cache receipt.
+  // y-indexeddb's update observer is fire-and-forget and cannot authorize
+  // deleting an outbox record or claiming crash durability by call order.
+  await state.outbox?.compactAccepted?.(
+    state.documentId,
+    state.actorUserId,
+    encodeSnapshot(state.acceptedDoc),
+    true,
+    state.documentIncarnation,
+  );
 }
 
 // Close the hydrate-vs-subscribe gap: Postgres realtime only forwards rows
 // inserted AFTER the channel is live, so an op another device commits between
 // our tail read and the SUBSCRIBED confirmation would otherwise stay invisible
 // until the next full reopen. Whenever the channel (re)confirms SUBSCRIBED we
-// re-read the log from coveredSeq. Y.applyUpdate is idempotent, so overlap with
-// concurrently-delivered realtime events is harmless; reading from coveredSeq
-// (never advanced by realtime) means an out-of-order realtime delivery can't
-// make us skip an earlier missed op.
+// re-read the log from the accepted snapshot baseline. Y.applyUpdate is
+// idempotent, so the intentional overlap with prior catch-up/realtime delivery
+// is harmless and a late lower sequence remains discoverable.
 function catchUpTail(state) {
   state.catchupChain = state.catchupChain.then(async () => {
-    if (state.destroyed || !state.supabase) return;
-    let cursor = state.coveredSeq;
+    if (state.destroyed || !state.supabase) return false;
+    // PostgreSQL identity values are allocated before commit. A transaction
+    // with seq=N can legally become visible after seq=N+1. Replaying from the
+    // last accepted snapshot (rather than the last observed row) makes the
+    // lower late commit visible on the next sweep; Yjs makes overlap free.
+    let cursor = state.replayFromSeq;
     let applied = 0;
     for (;;) {
-      const { data: rows, error } = await state.supabase
-        .from('annotation_updates')
-        .select('seq, data, client_id')
-        .eq('document_id', state.documentId)
-        .gt('seq', cursor)
-        .order('seq', { ascending: true })
-        .limit(1000);
+      let response;
+      try {
+        response = await withCloudRequest(
+          state,
+          state.supabase
+            .from('annotation_updates')
+            .select('seq, data, client_id, client_seq, actor_user_id')
+            .eq('document_id', state.documentId)
+            .gt('seq', cursor)
+            .order('seq', { ascending: true })
+            .limit(1000),
+          'realtime catch-up read',
+        );
+      } catch (error) {
+        console.warn('[annotationDocSync] post-subscribe catch-up read failed', error.message);
+        return false;
+      }
+      const { data: rows, error } = response;
       if (error) {
         console.warn('[annotationDocSync] post-subscribe catch-up read failed', error.message);
-        return; // coveredSeq untouched — the next SUBSCRIBED retries from here
+        return false; // coveredSeq untouched — the next SUBSCRIBED retries from here
       }
       const batch = rows || [];
       for (const row of batch) {
-        if (state.destroyed) return; // handle torn down mid-sweep — stop touching the doc
-        if (row.client_id !== state.clientId) { // our own ops are already in the doc
-          try {
-            Y.applyUpdate(state.doc, pgHexToBytes(row.data), REMOTE_ORIGIN);
-            applied += 1;
-          } catch (err) {
-            // Do NOT advance past bytes that never made it into the doc: cursor
-            // stays on the last good row, so this seq is retried on the next
-            // SUBSCRIBED instead of being permanently marked covered (and a
-            // snapshot's at_seq can never over-claim it).
-            console.warn('[annotationDocSync] catch-up apply failed — will retry from seq', cursor, err?.message);
-            if (cursor > state.lastSeq) state.lastSeq = cursor;
-            state.coveredSeq = cursor;
-            if (applied > 0) notifyChange(state);
-            return;
-          }
+        if (state.destroyed) return false; // handle torn down mid-sweep — stop touching the doc
+        try {
+          // clientId is stable per install, not per open handle. Another tab or
+          // a handle still tearing down can therefore author a row with OUR
+          // clientId that this doc has never seen. Always apply; Yjs makes an
+          // actual self-echo idempotent.
+          await applyAuthoritativeCloudRow(state, row);
+          applied += 1;
+        } catch (err) {
+          // Do NOT advance past bytes that never made it into the doc: cursor
+          // stays on the last good row, so this seq is retried on the next
+          // SUBSCRIBED instead of being permanently marked covered (and a
+          // snapshot's at_seq can never over-claim it).
+          console.warn('[annotationDocSync] catch-up apply failed — will retry from seq', cursor, err?.message);
+          if (cursor > state.lastSeq) state.lastSeq = cursor;
+          state.coveredSeq = cursor;
+          if (applied > 0) notifyChange(state);
+          return false;
         }
         cursor = Number(row.seq);
       }
@@ -331,14 +1384,20 @@ function catchUpTail(state) {
       if (batch.length < 1000) break;
     }
     if (applied > 0 && !state.destroyed) notifyChange(state);
+    return true;
   }).catch((err) => {
     console.warn('[annotationDocSync] catch-up failed', err?.message);
+    return false;
   });
   return state.catchupChain;
 }
 
 function currentSyncStatus(state) {
-  const queueSize = Math.max(0, Number(state.pendingAppends) || 0);
+  const queueSize = Math.max(
+    0,
+    Number(state.pendingAppends) || 0,
+    state.appendRecords?.size || 0,
+  );
   return {
     healthy: state.syncHealthy,
     error: state.syncHealthy ? null : state.lastSyncError,
@@ -357,20 +1416,599 @@ function notifySyncStatus(state) {
 // Notify sync-health listeners when the durable-append path flips between
 // healthy and failing, deduped so we only emit on an actual transition (BL-24).
 function markSyncHealth(state, healthy, error) {
+  if (healthy && state.appendRecords?.size > 0) healthy = false;
   const changed = state.syncHealthy !== healthy;
   state.syncHealthy = healthy;
   state.lastSyncError = healthy ? null : (error?.message || String(error || 'sync failed'));
   if (changed) notifySyncStatus(state);
 }
 
+function isPermissionDenied(error) {
+  return String(error?.code || '') === '42501'
+    || /row.level security|permission denied|permission revoked/i.test(error?.message || '');
+}
+
+function toSyncError(error, fallback = 'sync failed') {
+  if (error instanceof Error) return error;
+  const normalized = new Error(error?.message || String(error || fallback));
+  if (error?.code != null) normalized.code = error.code;
+  return normalized;
+}
+
+function mapValueEqual(left, right) {
+  if (left === right) return true;
+  try { return JSON.stringify(left) === JSON.stringify(right); } catch { return false; }
+}
+
+function durableDocsEqual(leftDoc, rightDoc) {
+  for (const mapName of DURABLE_MAP_NAMES) {
+    const left = leftDoc.getMap(mapName);
+    const right = rightDoc.getMap(mapName);
+    if (left.size !== right.size) return false;
+    for (const [key, value] of left.entries()) {
+      if (!right.has(key) || !mapValueEqual(value, right.get(key))) return false;
+    }
+  }
+  return true;
+}
+
+function resetStagedToAccepted(state) {
+  try { state.stagedDoc.destroy(); } catch { /* */ }
+  state.stagedDoc = createDetachedYDoc(
+    `staged:${state.documentId}:${state.writerId}:${state.localMutationOrdinal}`,
+  );
+  Y.applyUpdate(state.stagedDoc, encodeSnapshot(state.acceptedDoc), HYDRATE_ORIGIN);
+}
+
+function setRepairCheckpoint(state, checkpointUpdate, editEpoch) {
+  state.repairCheckpointUpdate = new Uint8Array(checkpointUpdate);
+  state.repairCheckpointEpoch = editEpoch || 0;
+  state.repairCheckpointGeneration = state.durabilityGapGeneration;
+}
+
+function clearRepairCheckpoint(state) {
+  state.repairCheckpointUpdate = null;
+  state.repairCheckpointEpoch = 0;
+  state.repairCheckpointGeneration = 0;
+}
+
+function clearGapRepairTimer(state) {
+  if (state.repairTimer) clearTimeout(state.repairTimer);
+  state.repairTimer = null;
+  state.repairRetryAttempt = 0;
+}
+
+function scheduleGapRepair(state) {
+  if (
+    state.destroyed
+    || !state.durabilityGap
+    || !state.repairCheckpointUpdate
+    || state.repairTimer
+  ) return;
+  const baseDelay = Math.max(1, Number(state.repairRetryDelayMs) || GAP_REPAIR_RETRY_MS);
+  const delayMs = Math.min(
+    GAP_REPAIR_RETRY_MAX_MS,
+    baseDelay * (2 ** Math.min(state.repairRetryAttempt, 5)),
+  );
+  state.repairRetryAttempt += 1;
+  state.repairTimer = setTimeout(async () => {
+    state.repairTimer = null;
+    if (state.destroyed || !state.durabilityGap) return;
+    if (state.pendingAppends > 0) {
+      scheduleGapRepair(state);
+      return;
+    }
+    const result = await writeSnapshot(state, captureSnapshotOptions(state)).catch((error) => ({
+      ok: false,
+      permissionDenied: isPermissionDenied(error),
+      containsUnacceptedPrefix: true,
+      error: toSyncError(error),
+    }));
+    if (
+      result?.permissionDenied
+      && result.containsUnacceptedPrefix
+      && !(await resolveAmbiguousAppends(state))
+    ) {
+      markSyncHealth(state, false, result.error);
+      return;
+    }
+    handleSnapshotResult(state, result);
+    if (state.durabilityGap && !result?.permissionDenied) scheduleGapRepair(state);
+  }, delayMs);
+}
+
+function encodeRepairCheckpoint(state) {
+  if (
+    !state.repairCheckpointUpdate
+    || state.repairCheckpointGeneration !== state.durabilityGapGeneration
+  ) return null;
+  // The saved local prefix is immutable, while acceptedDoc may have gained
+  // cloud rows during a reconnect catch-up. Merge only those two acknowledged
+  // sources; stagedDoc can already contain later appends whose authorization is
+  // still pending.
+  const repairDoc = createDetachedYDoc(
+    `repair:${state.documentId}:${state.writerId}:${state.durabilityGapGeneration}`,
+  );
+  try {
+    Y.applyUpdate(repairDoc, encodeSnapshot(state.acceptedDoc), HYDRATE_ORIGIN);
+    Y.applyUpdate(repairDoc, state.repairCheckpointUpdate, HYDRATE_ORIGIN);
+    return encodeSnapshot(repairDoc);
+  } finally {
+    try { repairDoc.destroy(); } catch { /* */ }
+  }
+}
+
+function captureSnapshotOptions(state) {
+  if (state.durabilityGap) {
+    return {
+      snapshotUpdate: encodeRepairCheckpoint(state),
+      epoch: state.repairCheckpointEpoch,
+      repairsGap: true,
+      gapGeneration: state.repairCheckpointGeneration,
+    };
+  }
+  return {
+    snapshotUpdate: encodeSnapshot(state.acceptedDoc),
+    epoch: state.acceptedEditEpoch,
+    repairsGap: false,
+  };
+}
+
+// IndexedDB replay completes before the live observer is attached. Reconcile
+// that persisted local state explicitly through the same staged WAL path: an
+// authorized backend accepts it; 42501 rolls it back to cloud truth.
+function stagePersistedLocalDifferences(state) {
+  if (!state.persistedDoc) return null;
+  const localOnly = Y.encodeStateAsUpdate(
+    state.persistedDoc,
+    Y.encodeStateVector(state.stagedDoc),
+  );
+  const decodedLocalOnly = Y.decodeUpdate(localOnly);
+  if (
+    decodedLocalOnly.structs.length === 0
+    && decodedLocalOnly.ds.clients.size === 0
+  ) return null;
+  const probe = createDetachedYDoc(
+    `persisted-probe:${state.documentId}:${state.writerId}:${randomClientId()}`,
+  );
+  Y.applyUpdate(probe, encodeSnapshot(state.stagedDoc), HYDRATE_ORIGIN);
+  Y.applyUpdate(probe, localOnly, HYDRATE_ORIGIN);
+  let hasRecoverableChange = false;
+  for (const mapName of DURABLE_MAP_NAMES) {
+    const staged = state.stagedDoc.getMap(mapName);
+    const projected = probe.getMap(mapName);
+    const keys = new Set([...staged.keys(), ...projected.keys()]);
+    for (const key of keys) {
+      const stagedHas = staged.has(key);
+      const projectedHas = projected.has(key);
+      if (
+        stagedHas === projectedHas
+        && (!stagedHas || mapValueEqual(staged.get(key), projected.get(key)))
+      ) continue;
+      hasRecoverableChange = true;
+    }
+  }
+  if (!hasRecoverableChange) {
+    try { probe.destroy(); } catch { /* */ }
+    return null;
+  }
+  // The database name is actor-scoped, so additions, updates, and DeleteSet-
+  // only deletions are trusted local intent. Preserve their exact Yjs lineage
+  // and let the backend authorize or reject the mutation.
+  Y.applyUpdate(state.stagedDoc, localOnly, HYDRATE_ORIGIN);
+  try { probe.destroy(); } catch { /* */ }
+  return {
+    update: new Uint8Array(localOnly),
+    snapshot: encodeSnapshot(state.stagedDoc),
+  };
+}
+
+function stageExactLocalUpdate(state, update) {
+  Y.applyUpdate(state.stagedDoc, update, HYDRATE_ORIGIN);
+  const stagedUpdate = new Uint8Array(update);
+  const decoded = Y.decodeUpdate(stagedUpdate);
+  if (decoded.structs.length === 0 && decoded.ds.clients.size === 0) return null;
+  return {
+    update: stagedUpdate,
+    snapshot: encodeSnapshot(state.stagedDoc),
+  };
+}
+
+// A 42501 leaves rejected structs in the live Y.Doc history even after their
+// visible values are compensated. Later exact updates to the same Y.Map key can
+// point at that quarantined item and be unusable without it. For the remainder
+// of that handle, rebase only the transaction's changed durable keys onto the
+// clean staged cloud prefix. The persisted semantic probe prevents the rejected
+// live lineage from being reuploaded on reopen.
+function stageRebasedLocalMutation(state, transaction) {
+  if (!transaction?.changed) return null;
+  const before = Y.encodeStateVector(state.stagedDoc);
+  state.stagedDoc.transact(() => {
+    for (const mapName of DURABLE_MAP_NAMES) {
+      const live = state.doc.getMap(mapName);
+      const staged = state.stagedDoc.getMap(mapName);
+      const changedKeys = transaction.changed.get(live);
+      if (!changedKeys) continue;
+      const keys = changedKeys.has(null)
+        ? new Set([...live.keys(), ...staged.keys()])
+        : changedKeys;
+      for (const key of keys) {
+        if (!live.has(key)) {
+          if (staged.has(key)) staged.delete(key);
+        } else if (!mapValueEqual(staged.get(key), live.get(key))) {
+          staged.set(key, live.get(key));
+        }
+      }
+    }
+  }, HYDRATE_ORIGIN);
+  const update = Y.encodeStateAsUpdate(state.stagedDoc, before);
+  const decoded = Y.decodeUpdate(update);
+  if (decoded.structs.length === 0 && decoded.ds.clients.size === 0) return null;
+  return { update, snapshot: encodeSnapshot(state.stagedDoc) };
+}
+
+function reconcilePersistedLocalState(state) {
+  if (state.destroyed || state.persistedReconciliationDone) return Promise.resolve();
+  state.persistedReconciliationDone = true;
+  if (state.quarantinedLocalHistory) {
+    try { state.persistedDoc?.destroy(); } catch { /* */ }
+    state.persistedDoc = null;
+    publishAcceptedState(state);
+    return Promise.resolve();
+  }
+  const persisted = stagePersistedLocalDifferences(state);
+  try { state.persistedDoc?.destroy(); } catch { /* */ }
+  state.persistedDoc = null;
+  if (!persisted) {
+    publishAcceptedAndVisiblePendingState(state);
+    return Promise.resolve();
+  }
+  state.editEpoch += 1;
+  const queued = enqueueAppend(state, persisted.update, persisted.snapshot, state.editEpoch);
+  scheduleSnapshot(state);
+  return queued.then(() => {
+    if (state.appendRecords.size === 0 && !state.durabilityGap) {
+      publishAcceptedState(state);
+    }
+  });
+}
+
+async function replayOutbox(state) {
+  const records = await (
+    state.outbox?.list(state.documentId, state.actorUserId) ?? []
+  );
+  if (!records.length) return;
+  for (const rawRecord of records) {
+    const existingRecord = state.appendRecords.get(rawRecord.key);
+    const record = {
+      ...existingRecord,
+      ...rawRecord,
+      update: new Uint8Array(rawRecord.update),
+      checkpointUpdate: existingRecord?.checkpointUpdate
+        ? new Uint8Array(existingRecord.checkpointUpdate)
+        : (rawRecord.checkpointUpdate
+          ? new Uint8Array(rawRecord.checkpointUpdate)
+          : null),
+    };
+    state.localMutationOrdinal = Math.max(state.localMutationOrdinal, record.ordinal || 0);
+    if (record.writerId === state.writerId) {
+      state.clientSeq = Math.max(state.clientSeq, record.clientSeq || 0);
+    }
+    state.appendRecords.set(record.key, record);
+    if (
+      record.status === 'rejected'
+      || record.status === 'integrity-error'
+      || record.status === 'dependency-error'
+    ) {
+      markSyncHealth(
+        state,
+        false,
+        new Error(record.status === 'rejected'
+          ? 'a rejected local annotation update is quarantined'
+          : 'an annotation idempotency collision requires repair'),
+      );
+      continue;
+    }
+    const dependency = unresolvedDependencyForRecord(state, record);
+    if (dependency) {
+      const terminal = (
+        dependency.status === 'integrity-error'
+        || dependency.status === 'dependency-error'
+        || dependency.status === 'rejected'
+        || dependency.status === 'missing'
+      );
+      record.status = terminal ? 'dependency-error' : 'pending';
+      await persistOutboxRecord(state, record).catch(() => {});
+      markSyncHealth(
+        state,
+        false,
+        new Error(`annotation update waits for unresolved record ${dependency.key}`),
+      );
+      continue;
+    }
+    if (!record.publishAfterAcceptance) {
+      Y.applyUpdate(state.doc, record.update, HYDRATE_ORIGIN);
+    }
+    Y.applyUpdate(state.stagedDoc, record.update, HYDRATE_ORIGIN);
+    if (!record.checkpointUpdate) record.checkpointUpdate = encodeSnapshot(state.stagedDoc);
+    try {
+      await appendOp(state, record);
+    } catch (error) {
+      if (String(error?.code || '') === '23505') {
+        record.status = 'integrity-error';
+        await persistOutboxRecord(state, record).catch(() => {});
+        markSyncHealth(state, false, error);
+        return;
+      }
+      if (isPermissionDenied(error)) {
+        await quarantineRejectedRecords(state, [record.key], error);
+        return;
+      }
+      record.status = String(error?.code || '') === 'ETIMEDOUT' ? 'ambiguous' : 'pending';
+      state.durabilityGap = true;
+      state.durabilityGapGeneration += 1;
+      setRepairCheckpoint(state, record.checkpointUpdate, record.editEpoch);
+      markSyncHealth(state, false, error);
+      await persistOutboxRecord(state, record).catch((persistError) => {
+        console.warn('[annotationDocSync] replay status persistence failed', persistError?.message);
+      });
+      // Later records are causal dependents. Keep and render them, but do not
+      // overtake the unresolved exact idempotency key.
+      for (const laterRaw of records) {
+        if ((laterRaw.ordinal || 0) <= (record.ordinal || 0)) continue;
+        if (!laterRaw.publishAfterAcceptance) {
+          Y.applyUpdate(state.doc, new Uint8Array(laterRaw.update), HYDRATE_ORIGIN);
+        }
+        Y.applyUpdate(state.stagedDoc, new Uint8Array(laterRaw.update), HYDRATE_ORIGIN);
+      }
+      scheduleGapRepair(state);
+      scheduleOutboxReplay(state, { delayed: true });
+      return;
+    }
+  }
+}
+
+function scheduleOutboxReplay(state, { delayed = false } = {}) {
+  if (state.destroyed || state.deleted) return;
+  if (delayed) {
+    if (state.outboxReplayTimer) return;
+    const baseDelay = Math.max(1, Number(state.repairRetryDelayMs) || GAP_REPAIR_RETRY_MS);
+    const delayMs = Math.min(
+      GAP_REPAIR_RETRY_MAX_MS,
+      baseDelay * (2 ** Math.min(state.outboxReplayRetryAttempt, 5)),
+    );
+    state.outboxReplayRetryAttempt += 1;
+    state.outboxReplayTimer = setTimeout(() => {
+      state.outboxReplayTimer = null;
+      scheduleOutboxReplay(state);
+    }, delayMs);
+    return;
+  }
+  if (state.outboxReplayScheduled) return;
+  state.outboxReplayScheduled = true;
+  queueMicrotask(() => {
+    state.outboxReplayScheduled = false;
+    state.outboxReplayChain = state.outboxReplayChain.then(async () => {
+      await state.flushQueue.catch(() => {});
+      if (state.destroyed || state.deleted) return;
+      await replayOutbox(state);
+    }).catch((error) => {
+      markSyncHealth(state, false, error);
+    });
+  });
+}
+
+function publishProjectedState(state, projectedDoc) {
+  state.doc.transact(() => {
+    for (const mapName of DURABLE_MAP_NAMES) {
+      const live = state.doc.getMap(mapName);
+      const projected = projectedDoc.getMap(mapName);
+      const projectedKeys = new Set();
+      projected.forEach((_value, key) => projectedKeys.add(key));
+      const toDelete = [];
+      live.forEach((_value, key) => {
+        if (!projectedKeys.has(key)) toDelete.push(key);
+      });
+      for (const key of toDelete) live.delete(key);
+      projected.forEach((value, key) => {
+        if (!mapValueEqual(live.get(key), value)) live.set(key, value);
+      });
+    }
+  }, PERMISSION_ROLLBACK_ORIGIN);
+  state.lastByPage = null;
+  notifyChange(state);
+}
+
+// Restore only the durable root maps. The rollback itself remains in IndexedDB,
+// but is never appended to the cloud WAL. This makes a rejected optimistic edit
+// disappear immediately and prevents the registry-backed Y.Doc from reviving it
+// on reopen.
+function publishAcceptedState(state) {
+  publishProjectedState(state, state.acceptedDoc);
+}
+
+function publishAcceptedAndVisiblePendingState(state) {
+  const projection = createDetachedYDoc(
+    `pending-projection:${state.documentId}:${state.writerId}:${randomClientId()}`,
+  );
+  try {
+    Y.applyUpdate(projection, encodeSnapshot(state.acceptedDoc), HYDRATE_ORIGIN);
+    const records = [...state.appendRecords.values()].sort((left, right) => (
+      (left.ordinal || 0) - (right.ordinal || 0)
+      || String(left.key).localeCompare(String(right.key))
+    ));
+    for (const record of records) {
+      if (
+        record.publishAfterAcceptance
+        || record.status === 'rejected'
+        || record.status === 'integrity-error'
+        || record.status === 'dependency-error'
+      ) continue;
+      Y.applyUpdate(projection, record.update, HYDRATE_ORIGIN);
+    }
+    publishProjectedState(state, projection);
+  } finally {
+    try { projection.destroy(); } catch { /* */ }
+  }
+}
+
+function restoreAcceptedState(state) {
+  publishAcceptedState(state);
+  state.durabilityGap = false;
+  clearGapRepairTimer(state);
+  clearRepairCheckpoint(state);
+  state.snapshottedEpoch = state.editEpoch;
+  resetStagedToAccepted(state);
+  // Rejected and compensating structs remain in this live Y.Doc's history.
+  // Start later authorized edits on a fresh Yjs client clock so their exact
+  // updates never depend on the quarantined clock range.
+  const freshClock = createDetachedYDoc(
+    `post-denial-clock:${state.documentId}:${state.writerId}:${randomClientId()}`,
+  );
+  state.doc.clientID = freshClock.clientID;
+  try { freshClock.destroy(); } catch { /* */ }
+  state.rebaseLocalMutations = true;
+}
+
+async function resolveAmbiguousAppends(state) {
+  const ambiguous = [...state.appendRecords.values()]
+    .filter((record) => record.status === 'ambiguous')
+    .sort((left, right) => (
+      (left.ordinal || 0) - (right.ordinal || 0)
+      || String(left.key).localeCompare(String(right.key))
+    ));
+  for (const record of ambiguous) {
+    try {
+      // Only the actor-bound exact idempotency replay can disambiguate a
+      // timed-out append. An empty tail read is not proof: the original request
+      // may still commit after that read.
+      await appendOp(state, record);
+    } catch (error) {
+      if (isPermissionDenied(error)) {
+        record.status = 'rejected';
+        continue;
+      }
+      return false;
+    }
+  }
+  return true;
+}
+
+function handleSnapshotResult(state, result) {
+  if (result?.ok) {
+    if (
+      state.appendRecords.size === 0
+      && (result.repairedGap || !state.durabilityGap)
+    ) markSyncHealth(state, true);
+    return result;
+  }
+  if (result?.permissionDenied) {
+    if (result.containsUnacceptedPrefix) {
+      state.permissionRejectedCutoff = state.localMutationOrdinal;
+      if (state.snapshotTimer) { clearTimeout(state.snapshotTimer); state.snapshotTimer = null; }
+      restoreAcceptedState(state);
+    }
+    markSyncHealth(state, false, result.error);
+  }
+  return result;
+}
+
 // Serialize appends so client_seq increments cleanly and ordering is stable.
-function enqueueAppend(state, update) {
+function enqueueAppend(
+  state,
+  update,
+  checkpointUpdate,
+  editEpoch,
+  { publishAfterAcceptance = false } = {},
+) {
+  const ordinal = ++state.localMutationOrdinal;
+  const clientSeq = ++state.clientSeq;
+  const record = {
+    key: [
+      state.documentId,
+      state.actorUserId,
+      state.writerId,
+      clientSeq,
+    ].join('\u0000'),
+    documentId: state.documentId,
+    actorUserId: state.actorUserId,
+    incarnation: state.documentIncarnation,
+    ordinal,
+    writerId: state.writerId,
+    clientSeq,
+    update: new Uint8Array(update),
+    checkpointUpdate: new Uint8Array(checkpointUpdate),
+    editEpoch,
+    publishAfterAcceptance,
+    status: 'pending',
+  };
+  record.dependsOn = causalDependenciesForUpdate(state, record.update, record.key);
+  state.appendRecords.set(record.key, record);
+  const persisted = persistOutboxRecord(state, record);
   state.pendingAppends += 1;
   notifySyncStatus(state);
   state.flushQueue = state.flushQueue.then(async () => {
     try {
-      await appendOp(state, update);
+      await persisted;
+      if (ordinal <= state.permissionRejectedCutoff) {
+        await state.outbox?.delete(record.key, state.documentIncarnation);
+        state.appendRecords.delete(record.key);
+        return;
+      }
+      const dependency = unresolvedDependencyForRecord(state, record);
+      if (dependency) {
+        const terminal = (
+          dependency.status === 'integrity-error'
+          || dependency.status === 'dependency-error'
+          || dependency.status === 'rejected'
+          || dependency.status === 'missing'
+        );
+        record.status = terminal ? 'dependency-error' : 'pending';
+        await persistOutboxRecord(state, record).catch(() => {});
+        markSyncHealth(
+          state,
+          false,
+          new Error(`annotation update waits for unresolved record ${dependency.key}`),
+        );
+        return;
+      }
+      await appendOp(state, record);
     } catch (err) {
+      if (state.deleted || String(err?.code || '') === 'ANNOTATION_DOCUMENT_DELETED') {
+        invalidateDeletedState(state, err);
+        state.appendRecords.delete(record.key);
+        await state.outbox?.delete?.(
+          record.key,
+          state.documentIncarnation,
+        ).catch(() => {});
+        return;
+      }
+      if (String(err?.code || '') === '23505') {
+        record.status = 'integrity-error';
+        await persistOutboxRecord(state, record).catch(() => {});
+        markSyncHealth(state, false, err);
+        return;
+      }
+      if (isPermissionDenied(err)) {
+        // Everything already queued was authored before this definitive access
+        // denial became visible. Quarantine those updates together, restore the
+        // last cloud-accepted state, and never run the snapshot fallback with
+        // forbidden bytes.
+        state.permissionRejectedCutoff = state.localMutationOrdinal;
+        if (state.snapshotTimer) { clearTimeout(state.snapshotTimer); state.snapshotTimer = null; }
+        if (!(await resolveAmbiguousAppends(state))) {
+          markSyncHealth(state, false, err);
+          return;
+        }
+        const rejectedKeys = [
+          record.key,
+          ...[...state.appendRecords.values()]
+            .filter((pending) => pending.status === 'rejected')
+            .map((pending) => pending.key),
+        ];
+        await quarantineRejectedRecords(state, rejectedKeys, err);
+        return;
+      }
       // The individual op insert failed (usually network). The mutation is already
       // applied to the in-memory doc, so an eager full-state checkpoint captures it
       // durably NOW instead of waiting up to SNAPSHOT_DEBOUNCE_MS and hoping the tab
@@ -378,10 +2016,52 @@ function enqueueAppend(state, update) {
       // + a clean unmount. Also surface the failure so the UI can stop claiming
       // "saved" while writes are failing.
       console.warn('[annotationDocSync] append failed — forcing checkpoint', err?.message);
+      if (String(err?.code || '') === 'ETIMEDOUT') {
+        record.status = 'ambiguous';
+      }
+      state.durabilityGap = true;
+      state.durabilityGapGeneration += 1;
+      setRepairCheckpoint(state, checkpointUpdate, editEpoch);
       markSyncHealth(state, false, err);
+      if (record.status === 'ambiguous') {
+        await persistOutboxRecord(state, record).catch((persistError) => {
+          console.warn('[annotationDocSync] ambiguous outbox status persistence failed', persistError?.message);
+        });
+      }
       if (state.snapshotTimer) { clearTimeout(state.snapshotTimer); state.snapshotTimer = null; }
-      const ok = await writeSnapshot(state).catch(() => false);
-      if (ok) markSyncHealth(state, true);
+      const snapshotResult = await writeSnapshot(state, {
+        snapshotUpdate: checkpointUpdate,
+        epoch: editEpoch,
+        repairsGap: true,
+        gapGeneration: state.repairCheckpointGeneration,
+      }).catch(() => false);
+      if (
+        snapshotResult?.permissionDenied
+        && snapshotResult.containsUnacceptedPrefix
+        && !(await resolveAmbiguousAppends(state))
+      ) {
+        markSyncHealth(state, false, snapshotResult.error);
+        return;
+      }
+      if (snapshotResult?.permissionDenied && snapshotResult.containsUnacceptedPrefix) {
+        const rejectedKeys = [
+          record.key,
+          ...[...state.appendRecords.values()]
+            .filter((pending) => pending.status === 'rejected')
+            .map((pending) => pending.key),
+        ];
+        await quarantineRejectedRecords(
+          state,
+          rejectedKeys,
+          snapshotResult.error,
+        );
+        return;
+      }
+      handleSnapshotResult(state, snapshotResult);
+      if (state.durabilityGap && !snapshotResult?.permissionDenied) {
+        scheduleGapRepair(state);
+        scheduleOutboxReplay(state, { delayed: true });
+      }
     } finally {
       state.pendingAppends = Math.max(0, state.pendingAppends - 1);
       notifySyncStatus(state);
@@ -390,36 +2070,98 @@ function enqueueAppend(state, update) {
   return state.flushQueue;
 }
 
-async function appendOp(state, update) {
-  if (state.destroyed) return;
-  state.clientSeq += 1;
+function persistOutboxRecord(state, record) {
+  if (!state.outbox) return Promise.resolve();
+  const {
+    checkpointUpdate: _checkpointUpdate,
+    ...durableRecord
+  } = record;
+  return state.outbox.put(durableRecord);
+}
+
+async function appendOp(state, record) {
+  if (state.destroyed || state.deleted) throw deletedDocumentError(state.documentId);
+  const {
+    update,
+    checkpointUpdate,
+    editEpoch,
+  } = record;
   const row = {
     document_id: state.documentId,
-    client_id: state.clientId,
-    client_seq: state.clientSeq,
+    client_id: record.writerId,
+    client_seq: record.clientSeq,
     data: bytesToPgHex(update),
   };
-  const { data, error } = await state.supabase
-    .from('annotation_updates')
-    .insert(row)
-    .select('seq')
-    .single();
-  if (error) {
-    // 23505 = unique violation: this op already committed (reconnect re-send) → no-op.
-    if (error.code === '23505') { markSyncHealth(state, true); return; }
-    throw new Error(error.message);
+  let data;
+  let error;
+  if (typeof state.supabase.rpc === 'function') {
+    ({ data, error } = await withCloudRequest(
+      state,
+      state.supabase.rpc('append_annotation_update', {
+        p_document_id: row.document_id,
+        p_client_id: row.client_id,
+        p_client_seq: row.client_seq,
+        p_data: row.data,
+      }),
+      'annotation WAL append',
+    ));
+  } else {
+    ({ data, error } = await withCloudRequest(
+      state,
+      state.supabase
+        .from('annotation_updates')
+        .insert(row)
+        .select('seq')
+        .single(),
+      'annotation WAL append',
+    ));
   }
-  // A successful append means the durable path is healthy again after any prior
-  // failure (BL-24 recovery signal).
-  markSyncHealth(state, true);
+  if (error) {
+    // The RPC returns the existing seq for an exact replay. A 23505 now means
+    // the same idempotency key was reused for DIFFERENT bytes; treating that as
+    // success would silently discard one tab's mutation.
+    if (error.code === '23505') {
+      const collision = new Error(`WAL writer sequence collision: ${error.message}`);
+      collision.code = '23505';
+      throw collision;
+    }
+    const writeError = new Error(error.message);
+    writeError.code = error.code;
+    throw writeError;
+  }
+  assertStateWritable(state);
+  await settleAcceptedRecord(state, record, update);
+  if (state.durabilityGap) {
+    // This immutable transaction-time checkpoint ends at this exact successful
+    // append. Later queued edits have already entered stagedDoc, so stagedDoc is
+    // never a safe repair source here.
+    setRepairCheckpoint(state, checkpointUpdate, editEpoch);
+  }
+  // A later append cannot repair an earlier missing Yjs predecessor. Health
+  // stays red until a full accepted snapshot proves the complete in-memory
+  // state is reconstructible by a fresh client.
+  if (!state.durabilityGap) markSyncHealth(state, true);
   // Advance our log position so snapshots record the correct at_seq and a reopen
   // doesn't needlessly replay ops already folded into the snapshot.
-  const assignedSeq = Number(data?.seq);
-  if (Number.isFinite(assignedSeq) && assignedSeq > state.lastSeq) state.lastSeq = assignedSeq;
+  const rpcRow = Array.isArray(data) ? data[0] : data;
+  const assignedSeq = Number(rpcRow?.seq ?? rpcRow);
+  if (Number.isFinite(assignedSeq)) {
+    if (assignedSeq > state.lastSeq) state.lastSeq = assignedSeq;
+    // The server-assigned immediate successor proves there is no unseen row
+    // between the last contiguous baseline and this already-applied local op.
+    if (assignedSeq === state.coveredSeq + 1) state.coveredSeq = assignedSeq;
+  }
   state.opsSinceSnapshot += 1;
   if (state.opsSinceSnapshot >= SNAPSHOT_AFTER_OPS) {
     state.opsSinceSnapshot = 0;
-    await writeSnapshot(state);
+    const repairsGap = state.durabilityGap;
+    const result = await writeSnapshot(state, {
+      snapshotUpdate: repairsGap ? encodeRepairCheckpoint(state) : encodeSnapshot(state.acceptedDoc),
+      epoch: repairsGap ? state.repairCheckpointEpoch : state.acceptedEditEpoch,
+      repairsGap,
+      ...(repairsGap ? { gapGeneration: state.repairCheckpointGeneration } : {}),
+    });
+    handleSnapshotResult(state, result);
   }
 }
 
@@ -429,7 +2171,14 @@ function scheduleSnapshot(state) {
   if (state.snapshotTimer) clearTimeout(state.snapshotTimer);
   state.snapshotTimer = setTimeout(() => {
     state.snapshotTimer = null;
-    writeSnapshot(state);
+    // Never checkpoint optimistic bytes before their WAL authorization result.
+    // A pending 42501 must roll them back instead of racing a snapshot upload.
+    if (state.pendingAppends > 0) {
+      scheduleSnapshot(state);
+      return;
+    }
+    writeSnapshot(state, captureSnapshotOptions(state))
+      .then((result) => handleSnapshotResult(state, result));
   }, SNAPSHOT_DEBOUNCE_MS);
 }
 
@@ -441,54 +2190,396 @@ function scheduleSnapshot(state) {
 // overwrite it — rolling at_seq forward past ops the stale bytes don't contain,
 // which drops those ops on the next reopen (they're skipped by the seq>at_seq
 // tail read). The chain guarantees the last write to land is always the freshest.
-function writeSnapshot(state) {
-  state.snapshotChain = state.snapshotChain.then(() => writeSnapshotNow(state));
+function writeSnapshot(state, options = {}) {
+  state.snapshotChain = state.snapshotChain.then(() => writeSnapshotNow(state, options));
   return state.snapshotChain;
+}
+
+function isSnapshotConflict(error) {
+  return String(error?.code || '') === '40001'
+    || /stale annotation snapshot/i.test(error?.message || '');
+}
+
+async function loadLatestCloudCheckpoint(state) {
+  const cloudDoc = createDetachedYDoc(
+    `snapshot-refresh:${state.documentId}:${state.writerId}:${randomClientId()}`,
+  );
+  try {
+    const { data: snapRow, error: snapshotError } = await withCloudRequest(
+      state,
+      state.supabase
+        .from('annotation_snapshots')
+        .select('snapshot, at_seq, encoding_version, writer_id, writer_epoch')
+        .eq('document_id', state.documentId)
+        .maybeSingle(),
+      'snapshot refresh read',
+    );
+    if (snapshotError) throw toSyncError(snapshotError, 'snapshot refresh read failed');
+
+    let cursor = 0;
+    let baseAtSeq = null;
+    let baseWriterId = null;
+    let baseWriterEpoch = 0;
+    if (snapRow?.snapshot) {
+      let bytes = pgHexToBytes(snapRow.snapshot);
+      if (snapRow.encoding_version === SNAPSHOT_ENC_GZIP) bytes = await gunzip(bytes);
+      Y.applyUpdate(cloudDoc, bytes, HYDRATE_ORIGIN);
+      cursor = Number(snapRow.at_seq) || 0;
+      baseAtSeq = cursor;
+      baseWriterId = snapRow.writer_id ?? null;
+      baseWriterEpoch = Number(snapRow.writer_epoch) || 0;
+    }
+
+    for (;;) {
+      const { data: rows, error } = await withCloudRequest(
+        state,
+        state.supabase
+          .from('annotation_updates')
+          .select('seq, data, client_id, client_seq, actor_user_id')
+          .eq('document_id', state.documentId)
+          .gt('seq', cursor)
+          .order('seq', { ascending: true })
+          .limit(1000),
+        'snapshot refresh tail read',
+      );
+      if (error) throw toSyncError(error, 'snapshot refresh tail read failed');
+      const batch = rows || [];
+      for (const row of batch) {
+        const update = pgHexToBytes(row.data);
+        Y.applyUpdate(cloudDoc, update, HYDRATE_ORIGIN);
+        await applyAuthoritativeCloudRow(state, row);
+        cursor = Number(row.seq);
+      }
+      if (batch.length < 1000) break;
+    }
+
+    return {
+      update: encodeSnapshot(cloudDoc),
+      coveredSeq: cursor,
+      baseAtSeq,
+      baseWriterId,
+      baseWriterEpoch,
+    };
+  } finally {
+    try { cloudDoc.destroy(); } catch { /* */ }
+  }
+}
+
+async function refreshAfterSnapshotConflict(state, localSnapshotUpdate) {
+  const latest = await loadLatestCloudCheckpoint(state);
+  const candidate = createDetachedYDoc(
+    `snapshot-candidate:${state.documentId}:${state.writerId}:${randomClientId()}`,
+  );
+  try {
+    Y.applyUpdate(candidate, latest.update, HYDRATE_ORIGIN);
+    Y.applyUpdate(candidate, localSnapshotUpdate, HYDRATE_ORIGIN);
+
+    // Publish only cloud-acknowledged bytes before the retry. The local
+    // candidate remains staged until the snapshot CAS accepts it.
+    Y.applyUpdate(state.acceptedDoc, latest.update, HYDRATE_ORIGIN);
+    Y.applyUpdate(state.stagedDoc, latest.update, HYDRATE_ORIGIN);
+    Y.applyUpdate(state.doc, latest.update, REMOTE_ORIGIN);
+    state.snapshotBaseAtSeq = latest.baseAtSeq;
+    state.snapshotBaseWriterId = latest.baseWriterId;
+    state.snapshotBaseWriterEpoch = latest.baseWriterEpoch;
+    state.snapshotGeneration = Math.max(
+      state.snapshotGeneration,
+      latest.baseWriterEpoch,
+    );
+    state.lastSeq = latest.coveredSeq;
+    state.coveredSeq = latest.coveredSeq;
+    state.replayFromSeq = latest.baseAtSeq ?? 0;
+    notifyChange(state);
+
+    return encodeSnapshot(candidate);
+  } finally {
+    try { candidate.destroy(); } catch { /* */ }
+  }
 }
 
 // Write the full Y.Doc as one idempotent checkpoint. Retries hard — this is the
 // durability guarantee that makes dropped op inserts self-heal on next open.
-async function writeSnapshotNow(state) {
-  if (!state.supabase) return false;
+async function writeSnapshotNow(state, {
+  snapshotUpdate = null,
+  epoch = null,
+  conflictAttempt = 0,
+  repairsGap = null,
+  gapGeneration = null,
+} = {}) {
+  const repairsGapAtStart = repairsGap ?? state.durabilityGap;
+  const gapGenerationAtStart = gapGeneration ?? state.durabilityGapGeneration;
+  if (!state.supabase) {
+    return {
+      ok: false,
+      permissionDenied: false,
+      containsUnacceptedPrefix: repairsGapAtStart,
+      error: null,
+    };
+  }
   // Capture at_seq AND the edit generation BEFORE encoding (same synchronous
   // tick as encodeSnapshot, no await between). at_seq can then never claim an op
   // not in these bytes; and epochAtStart records exactly which edits these bytes
   // cover, so a stale in-flight snapshot that finishes AFTER a newer edit only
   // advances snapshottedEpoch to what it actually captured — it can't mark the
   // newer edit as saved and suppress the tab-close flush for it.
-  const atSeq = state.lastSeq;
-  const epochAtStart = state.editEpoch;
+  // A realtime row can arrive out of order. `lastSeq` is merely the highest
+  // observed row, while `coveredSeq` is the highest ordered-read frontier
+  // actually folded into this doc. Claiming lastSeq here could make a snapshot
+  // skip an unseen delete forever on reopen.
+  const atSeq = state.coveredSeq;
+  const epochAtStart = epoch ?? (
+    repairsGapAtStart ? state.repairCheckpointEpoch : state.acceptedEditEpoch
+  );
+  // `epochAtStart` tracks which local edits the bytes cover. Snapshot CAS needs
+  // a separate document-wide generation: local edit epochs can repeat across
+  // writers (A1 → B1 → A1), which would make a stale base token valid again.
+  // Every non-idempotent attempt therefore consumes a value above the latest
+  // snapshot generation observed from the backend.
+  const snapshotGenerationAtStart = Math.max(
+    state.snapshotGeneration,
+    state.snapshotBaseWriterEpoch,
+  ) + 1;
+  const updateAtStart = snapshotUpdate || (
+    repairsGapAtStart ? encodeRepairCheckpoint(state) : encodeSnapshot(state.acceptedDoc)
+  );
+  if (!updateAtStart) {
+    return {
+      ok: false,
+      permissionDenied: false,
+      containsUnacceptedPrefix: repairsGapAtStart,
+      error: new Error('no immutable repair checkpoint is available'),
+    };
+  }
   let hex;
   try {
-    hex = bytesToPgHex(await gzip(encodeSnapshot(state.doc)));
+    hex = bytesToPgHex(await gzip(updateAtStart));
   } catch (err) {
     console.warn('[annotationDocSync] snapshot gzip failed, storing raw', err?.message);
-    return false;
+    return {
+      ok: false,
+      permissionDenied: false,
+      containsUnacceptedPrefix: repairsGapAtStart,
+      error: toSyncError(err),
+    };
   }
   for (let attempt = 1; attempt <= SNAPSHOT_RETRIES; attempt += 1) {
     try {
-      const { error } = await state.supabase
-        .from('annotation_snapshots')
-        .upsert({
-          document_id: state.documentId,
-          at_seq: atSeq,
-          snapshot: hex,
-          encoding_version: SNAPSHOT_ENC_GZIP,
-          updated_at: new Date().toISOString(),
-        }, { onConflict: 'document_id' });
-      if (!error) {
+      let error;
+      let accepted = true;
+      if (typeof state.supabase.rpc === 'function') {
+        let data;
+        ({ data, error } = await withCloudRequest(
+          state,
+          state.supabase.rpc('store_annotation_snapshot', {
+            p_document_id: state.documentId,
+            p_at_seq: atSeq,
+            p_snapshot: hex,
+            p_encoding_version: SNAPSHOT_ENC_GZIP,
+            p_writer_id: state.writerId,
+            p_writer_epoch: snapshotGenerationAtStart,
+            p_expected_at_seq: state.snapshotBaseAtSeq,
+            p_expected_writer_id: state.snapshotBaseWriterId,
+            p_expected_writer_epoch: state.snapshotBaseWriterEpoch,
+          }),
+          'annotation snapshot write',
+        ));
+        const rpcResult = Array.isArray(data) ? data[0] : data;
+        accepted = rpcResult?.accepted ?? rpcResult ?? false;
+      } else {
+        // Compatibility path for older test doubles/dev backends. The
+        // production RPC below performs this check atomically under a
+        // per-document advisory lock.
+        const { data: current } = await withCloudRequest(
+          state,
+          state.supabase
+            .from('annotation_snapshots')
+            .select('at_seq, writer_id, writer_epoch')
+            .eq('document_id', state.documentId)
+            .maybeSingle(),
+          'annotation snapshot CAS read',
+        );
+        const currentSeq = Number(current?.at_seq);
+        const currentEpoch = Number(current?.writer_epoch) || 0;
+        const matchesLoadedBase = (
+          (Number.isFinite(currentSeq) ? currentSeq : null) === state.snapshotBaseAtSeq
+          &&
+          (current?.writer_id ?? null) === state.snapshotBaseWriterId
+          && currentEpoch === state.snapshotBaseWriterEpoch
+        );
+        if (
+          Number.isFinite(currentSeq)
+          && (
+            currentSeq !== atSeq
+            || !matchesLoadedBase
+          )
+        ) {
+          accepted = false;
+        }
+        if (accepted) {
+          ({ error } = await withCloudRequest(
+            state,
+            state.supabase
+              .from('annotation_snapshots')
+              .upsert({
+                document_id: state.documentId,
+                at_seq: atSeq,
+                snapshot: hex,
+                encoding_version: SNAPSHOT_ENC_GZIP,
+                writer_id: state.writerId,
+                writer_epoch: snapshotGenerationAtStart,
+                base_at_seq: state.snapshotBaseAtSeq,
+                base_writer_id: state.snapshotBaseWriterId,
+                base_writer_epoch: state.snapshotBaseWriterEpoch,
+                updated_at: new Date().toISOString(),
+              }, { onConflict: 'document_id' }),
+            'annotation snapshot write',
+          ));
+        }
+      }
+      if (!error && accepted) {
         // Only advance the captured generation — never regress it — so a stale
         // snapshot completing late can't clear a newer edit's dirty state.
         if (epochAtStart > state.snapshottedEpoch) state.snapshottedEpoch = epochAtStart;
-        return true;
+        if (atSeq > state.replayFromSeq) state.replayFromSeq = atSeq;
+        state.snapshotBaseAtSeq = atSeq;
+        state.snapshotBaseWriterId = state.writerId;
+        state.snapshotBaseWriterEpoch = snapshotGenerationAtStart;
+        state.snapshotGeneration = Math.max(
+          state.snapshotGeneration,
+          snapshotGenerationAtStart,
+        );
+        const repairedGap = (
+          repairsGapAtStart
+          && state.durabilityGap
+          && state.durabilityGapGeneration === gapGenerationAtStart
+        );
+        if (repairedGap) {
+          state.durabilityGap = false;
+          clearGapRepairTimer(state);
+          clearRepairCheckpoint(state);
+        }
+        Y.applyUpdate(state.acceptedDoc, updateAtStart, HYDRATE_ORIGIN);
+        state.acceptedEditEpoch = Math.max(state.acceptedEditEpoch, epochAtStart || 0);
+        await settleSnapshotCoveredRecords(state, updateAtStart, epochAtStart);
+        if (repairedGap && state.pendingAppends === 0 && state.appendRecords.size > 0) {
+          scheduleOutboxReplay(state);
+        }
+        return {
+          ok: true,
+          permissionDenied: false,
+          repairedGap,
+          containsUnacceptedPrefix: repairsGapAtStart,
+          error: null,
+        };
+      }
+      if (!error && !accepted) {
+        if (conflictAttempt >= SNAPSHOT_RETRIES - 1) {
+          return {
+            ok: false,
+            permissionDenied: false,
+            stale: true,
+            containsUnacceptedPrefix: repairsGapAtStart,
+            error: null,
+          };
+        }
+        try {
+          const rebasedUpdate = await refreshAfterSnapshotConflict(state, updateAtStart);
+          return writeSnapshotNow(state, {
+            snapshotUpdate: rebasedUpdate,
+            epoch: epochAtStart,
+            conflictAttempt: conflictAttempt + 1,
+            repairsGap: repairsGapAtStart,
+            gapGeneration: gapGenerationAtStart,
+          });
+        } catch (refreshError) {
+          return {
+            ok: false,
+            permissionDenied: false,
+            stale: true,
+            containsUnacceptedPrefix: repairsGapAtStart,
+            error: toSyncError(refreshError, 'snapshot conflict refresh failed'),
+          };
+        }
+      }
+      if (isPermissionDenied(error)) {
+        return {
+          ok: false,
+          permissionDenied: true,
+          containsUnacceptedPrefix: repairsGapAtStart,
+          error: toSyncError(error, 'snapshot permission denied'),
+        };
+      }
+      if (isSnapshotConflict(error)) {
+        if (conflictAttempt >= SNAPSHOT_RETRIES - 1) {
+          return {
+            ok: false,
+            permissionDenied: false,
+            stale: true,
+            containsUnacceptedPrefix: repairsGapAtStart,
+            error: toSyncError(error, 'snapshot conflict'),
+          };
+        }
+        const rebasedUpdate = await refreshAfterSnapshotConflict(state, updateAtStart);
+        return writeSnapshotNow(state, {
+          snapshotUpdate: rebasedUpdate,
+          epoch: epochAtStart,
+          conflictAttempt: conflictAttempt + 1,
+          repairsGap: repairsGapAtStart,
+          gapGeneration: gapGenerationAtStart,
+        });
       }
       console.warn(`[annotationDocSync] snapshot write failed (attempt ${attempt})`, error.message);
     } catch (err) {
+      if (isPermissionDenied(err)) {
+        return {
+          ok: false,
+          permissionDenied: true,
+          containsUnacceptedPrefix: repairsGapAtStart,
+          error: toSyncError(err, 'snapshot permission denied'),
+        };
+      }
+      if (isSnapshotConflict(err)) {
+        if (conflictAttempt >= SNAPSHOT_RETRIES - 1) {
+          return {
+            ok: false,
+            permissionDenied: false,
+            stale: true,
+            containsUnacceptedPrefix: repairsGapAtStart,
+            error: toSyncError(err, 'snapshot conflict'),
+          };
+        }
+        try {
+          const rebasedUpdate = await refreshAfterSnapshotConflict(state, updateAtStart);
+          return writeSnapshotNow(state, {
+            snapshotUpdate: rebasedUpdate,
+            epoch: epochAtStart,
+            conflictAttempt: conflictAttempt + 1,
+            repairsGap: repairsGapAtStart,
+            gapGeneration: gapGenerationAtStart,
+          });
+        } catch (refreshError) {
+          return {
+            ok: false,
+            permissionDenied: false,
+            stale: true,
+            containsUnacceptedPrefix: repairsGapAtStart,
+            error: toSyncError(refreshError, 'snapshot conflict refresh failed'),
+          };
+        }
+      }
       console.warn(`[annotationDocSync] snapshot threw (attempt ${attempt})`, err?.message);
     }
-    if (attempt < SNAPSHOT_RETRIES) await new Promise((r) => setTimeout(r, 400 * attempt));
+    if (attempt < SNAPSHOT_RETRIES) {
+      const delayMs = Math.max(0, Number(state.snapshotRetryDelayMs) || 0) * attempt;
+      if (delayMs > 0) await new Promise((resolve) => setTimeout(resolve, delayMs));
+    }
   }
-  return false;
+  return {
+    ok: false,
+    permissionDenied: false,
+    containsUnacceptedPrefix: repairsGapAtStart,
+    error: null,
+  };
 }
 
 function subscribeRealtime(state) {
@@ -516,26 +2607,85 @@ function subscribeRealtime(state) {
       filter: `document_id=eq.${state.documentId}`,
     }, (payload) => {
       const row = payload.new;
-      if (!row || row.client_id === state.clientId) return; // skip our own echoes
-      try {
-        Y.applyUpdate(state.doc, pgHexToBytes(row.data), REMOTE_ORIGIN);
+      if (!row) return;
+      state.authoritativeChain = state.authoritativeChain.then(async () => {
+        if (state.destroyed) return;
+        // Same-install handles share clientId. Apply matching rows too so one
+        // handle cannot miss another handle's delete and later checkpoint stale
+        // geometry at that delete's seq. True self-echoes are Yjs no-ops.
+        await applyAuthoritativeCloudRow(state, row);
         if (Number(row.seq) > state.lastSeq) state.lastSeq = Number(row.seq);
         notifyChange(state);
-      } catch (err) {
+      }).catch((err) => {
         console.warn('[annotationDocSync] remote apply failed', err?.message);
-      }
+      });
     })
     .subscribe((status) => {
       // Fires on the initial join AND after every reconnect re-join. Each time,
       // sweep the log for ops that landed while we weren't listening.
-      if (status === 'SUBSCRIBED') catchUpTail(state);
+      if (status === 'SUBSCRIBED') {
+        catchUpTail(state).then((caughtUp) => {
+          if (caughtUp && state.durabilityGap) {
+            writeSnapshot(state, captureSnapshotOptions(state))
+              .then((result) => handleSnapshotResult(state, result));
+          }
+        });
+      }
     });
 }
 
 function notifyChange(state) {
   const byPage = docToByPage(state.doc);
+  state.lastByPage = byPage;
   for (const cb of state.changeListeners) {
     try { cb(byPage); } catch (err) { console.warn('[annotationDocSync] listener threw', err?.message); }
+  }
+}
+
+function annotationsByStorageKey(byPage) {
+  const values = new Map();
+  const resolveStorageKey = createAnnotationStorageKeyResolver();
+  for (const [pageKey, page] of Object.entries(byPage || {})) {
+    for (const object of page?.objects || []) {
+        const embeddedId = extractAnnotationId(object);
+        const storageKey = resolveStorageKey(object, Number(pageKey), embeddedId);
+        values.set(String(storageKey), {
+          pageNumber: Number(pageKey),
+          object,
+          serialized: JSON.stringify(object),
+        });
+    }
+  }
+  return values;
+}
+
+function changedAnnotationIds(previousByPage, nextByPage) {
+  const previous = annotationsByStorageKey(previousByPage);
+  const next = annotationsByStorageKey(nextByPage);
+  const ids = new Set([...previous.keys(), ...next.keys()]);
+  return [...ids].filter(
+    (id) => previous.get(id)?.serialized !== next.get(id)?.serialized,
+  );
+}
+
+async function drainStateQueues(state) {
+  for (;;) {
+    await Promise.resolve();
+    const flushQueue = state.flushQueue;
+    const replayQueue = state.outboxReplayChain;
+    const authoritativeQueue = state.authoritativeChain;
+    await Promise.all([
+      flushQueue.catch(() => {}),
+      replayQueue.catch(() => {}),
+      authoritativeQueue.catch(() => {}),
+    ]);
+    await Promise.resolve();
+    if (
+      flushQueue === state.flushQueue
+      && replayQueue === state.outboxReplayChain
+      && authoritativeQueue === state.authoritativeChain
+      && !state.outboxReplayScheduled
+    ) return;
   }
 }
 
@@ -543,29 +2693,131 @@ function makeHandle(state) {
   return {
     documentId: state.documentId,
     clientId: state.clientId,
+    writerId: state.writerId,
     doc: state.doc,
 
     /** Current annotations in render shape. */
-    getByPage() { return docToByPage(state.doc); },
+    getByPage() {
+      const byPage = docToByPage(state.doc);
+      state.lastByPage = byPage;
+      return byPage;
+    },
 
     /** Push the viewer's render-shape state into the doc (minimal diff → ops). */
     applyByPage(byPage, opts = {}) {
-      const res = syncByPageToDoc(state.doc, byPage, { origin: 'local', prevByPage: state.lastByPage, ...opts });
+      assertStateWritable(state);
+      const identityNormalization = normalizeByPageAnnotationIdentities(byPage);
+      byPage = identityNormalization.byPage;
+      const hasEraserMutation = Object.values(byPage || {}).some((page) => page?.eraserMutation?.id);
+      let preparedByPage = byPage;
+      if (!hasEraserMutation && state.lastByPage) {
+        // A normal edit/Undo/Redo against materialized erased geometry rebases
+        // that annotation and retires its old immutable eraser operations.
+        // Remote feedback is byte-identical to lastByPage, so it clears none.
+        const rebasedIds = changedAnnotationIds(state.lastByPage, byPage);
+        if (rebasedIds.length > 0) {
+          clearEraserOpsForAnnotationIds(state.doc, rebasedIds, {
+            origin: opts.origin || 'local',
+            writerId: state.writerId,
+          });
+
+          // If other writers still own lanes, Undo may now equal their
+          // materialization (no inverse lane needed), while Redo may differ.
+          // Represent only that difference as this writer's replacement lane;
+          // never bake it into the stable base or clear the other writers.
+          const remainingLaneKeys = new Set();
+          getEraserOpsMap(state.doc).forEach((lane) => {
+            if (lane?.storageKey != null) remainingLaneKeys.add(String(lane.storageKey));
+          });
+          if (remainingLaneKeys.size > 0) {
+            const desired = annotationsByStorageKey(byPage);
+            const withoutOwnLanes = annotationsByStorageKey(docToByPage(state.doc));
+            const mutationsByPage = new Map();
+            for (const storageKey of rebasedIds) {
+              if (!remainingLaneKeys.has(storageKey)) continue;
+              const next = desired.get(storageKey);
+              const current = withoutOwnLanes.get(storageKey);
+              if (next?.serialized === current?.serialized) continue;
+              const pageNumber = next?.pageNumber ?? current?.pageNumber;
+              if (pageNumber == null) continue;
+              if (!mutationsByPage.has(pageNumber)) mutationsByPage.set(pageNumber, []);
+              mutationsByPage.get(pageNumber).push({
+                storageKey,
+                annotationId: extractAnnotationId(next?.object ?? current?.object),
+                deleted: !next,
+                survivor: next?.object ?? null,
+              });
+            }
+            if (mutationsByPage.size > 0) {
+              preparedByPage = { ...(byPage || {}) };
+              for (const [pageNumber, objectMutations] of mutationsByPage) {
+                const page = preparedByPage[pageNumber] || { objects: [] };
+                preparedByPage[pageNumber] = {
+                  ...page,
+                  eraserMutation: {
+                    id: `history:${state.writerId}:${state.editEpoch + 1}:${pageNumber}`,
+                    pageNumber,
+                    objectMutations,
+                    touchedIds: objectMutations.map(
+                      (item) => item.annotationId ?? item.storageKey,
+                    ),
+                    deletedIds: objectMutations
+                      .filter((item) => item.deleted)
+                      .map((item) => item.annotationId ?? item.storageKey),
+                  },
+                };
+              }
+            }
+          }
+        }
+      }
+      const res = syncByPageToDoc(state.doc, preparedByPage, {
+        origin: 'local',
+        prevByPage: state.lastByPage,
+        eraserWriterId: state.writerId,
+        ...opts,
+      });
       state.lastByPage = byPage;
-      return res;
+      return {
+        ...res,
+        normalizedByPage: byPage,
+        identityChanged: identityNormalization.changed || res.identityChanged,
+      };
     },
 
     /** Read a document-level meta value (e.g. the callouts list). */
     getMeta(key) { return getMetaValue(state.doc, key); },
 
     /** Write a document-level meta value (idempotent; coarse whole-value). */
-    setMeta(key, value) { return setMetaValue(state.doc, key, value, 'local'); },
+    setMeta(key, value) {
+      assertStateWritable(state);
+      return setMetaValue(state.doc, key, value, 'local');
+    },
 
     /** Current survey markers as { [annotationId]: marker }. */
     getSurveyMarkers() { return docToSurveyMarkers(state.doc); },
 
     /** Push the survey-marker dict into the doc (minimal per-marker diff → ops). */
-    applySurveyMarkers(markers, opts = {}) { return syncSurveyMarkersToDoc(state.doc, markers, { origin: 'local', ...opts }); },
+    applySurveyMarkers(markers, opts = {}) {
+      assertStateWritable(state);
+      return syncSurveyMarkersToDoc(state.doc, markers, { origin: 'local', ...opts });
+    },
+
+    /**
+     * Remove exact stacked ink copies left by old import/sync races. The
+     * transaction is observed by the WAL listener above, but local mutations
+     * intentionally do not echo to React, so explicitly publish the clean
+     * materialization when anything was removed.
+     */
+    repairStackedInkDuplicates({ notify = true, ...opts } = {}) {
+      assertStateWritable(state);
+      const result = repairStackedInkDuplicates(state.doc, opts);
+      if (result.removed > 0) {
+        state.lastByPage = null;
+        if (notify) notifyChange(state);
+      }
+      return result;
+    },
 
     /** Subscribe to changes (local or remote). Returns an unsubscribe fn. */
     onChange(cb) { state.changeListeners.add(cb); return () => state.changeListeners.delete(cb); },
@@ -577,34 +2829,82 @@ function makeHandle(state) {
     /** Current durable-write state for user-facing status. */
     getSyncStatus() { return currentSyncStatus(state); },
 
+    /** Actor-safe status for the shipped actorless IndexedDB recovery store. */
+    getLegacyRecoveryStatus() {
+      return {
+        pending: state.legacyRecoveryPending,
+        unresolvedEntries: state.legacyUnresolvedEntries,
+      };
+    },
+
     /** Subscribe to sync-health transitions ({ healthy, error }). Returns an
      *  unsubscribe fn. Fires only on an actual healthy⇄failing transition. */
     onSyncStatus(cb) { state.syncListeners.add(cb); return () => state.syncListeners.delete(cb); },
 
     /** Force a compacted snapshot now (e.g. on explicit save). */
-    flushSnapshot() { return writeSnapshot(state); },
+    async flushSnapshot() {
+      assertStateWritable(state);
+      await catchUpTail(state);
+      await drainStateQueues(state);
+      const result = await writeSnapshot(state, captureSnapshotOptions(state));
+      handleSnapshotResult(state, result);
+      await drainStateQueues(state);
+      return result?.ok === true;
+    },
 
     /** Wait until all queued appends have hit the backend. */
-    async drain() { await state.flushQueue; },
+    async drain() {
+      assertStateWritable(state);
+      await drainStateQueues(state);
+      assertStateWritable(state);
+    },
 
     async destroy() {
+      unregisterActiveState(state);
+      if (state.deleted) {
+        state.destroyed = true;
+      }
       if (state.snapshotTimer) { clearTimeout(state.snapshotTimer); state.snapshotTimer = null; }
+      if (state.outboxReplayTimer) {
+        clearTimeout(state.outboxReplayTimer);
+        state.outboxReplayTimer = null;
+      }
+      clearGapRepairTimer(state);
       if (state.onPageHide && typeof window !== 'undefined' && typeof window.removeEventListener === 'function') {
         window.removeEventListener('pagehide', state.onPageHide);
         state.onPageHide = null;
       }
       // Final checkpoint before teardown so the latest state is durable even if a
       // debounce was still pending. (Mark destroyed AFTER, so the write proceeds.)
-      await state.flushQueue.catch(() => {});
+      await drainStateQueues(state);
       await state.catchupChain.catch(() => {}); // let an in-flight catch-up page finish cleanly
-      if (state.supabase) { try { await writeSnapshot(state); } catch { /* */ } }
+      await state.authoritativeChain.catch(() => {});
+      if (state.supabase) {
+        try {
+          const result = await writeSnapshot(state, captureSnapshotOptions(state));
+          handleSnapshotResult(state, result);
+        } catch { /* */ }
+      }
       state.destroyed = true;
       // Detach the local-mutation observer: registry docs survive destroy by
       // design (undo/state across reopen), so leaving the listener attached
       // would accumulate one dead observer per open/close cycle.
       if (state.onDocUpdate) { try { state.doc.off('update', state.onDocUpdate); } catch { /* */ } }
-      if (state.realtimeChannel) { try { await state.supabase.removeChannel(state.realtimeChannel); } catch { /* */ } }
-      if (state.idbProvider) { try { state.idbProvider.destroy(); } catch { /* */ } }
+      if (state.realtimeChannel) {
+        try {
+          await withCloudRequest(
+            state,
+            state.supabase.removeChannel(state.realtimeChannel),
+            'realtime channel removal',
+          );
+        } catch { /* */ }
+      }
+      destroyLocalPersistence(state);
+      try { await state.outbox?.close?.(); } catch { /* */ }
+      try { state.acceptedDoc.destroy(); } catch { /* */ }
+      try { state.stagedDoc.destroy(); } catch { /* */ }
+      try { state.persistedDoc?.destroy(); } catch { /* */ }
+      try { state.legacyPersistenceDoc?.destroy(); } catch { /* */ }
       // Release the registry doc (the registry never destroys — keeps undo/state
       // across reopen). Only destroy a doc we were explicitly handed (tests).
       if (state.ownsRegistryDoc) releaseYDoc(state.registryKey);
@@ -622,32 +2922,136 @@ function makeHandle(state) {
  */
 export async function purgeAnnotationDoc(documentId) {
   if (!documentId) return;
-  const registryKey = `${REGISTRY_PREFIX}${documentId}`;
+  const purgeError = deletedDocumentError(documentId);
+  const activeStates = [...(ACTIVE_STATES.get(documentId) || [])];
+  for (const state of activeStates) {
+    state.deleted = true;
+    state.destroyed = true;
+    unregisterActiveState(state);
+    if (state.snapshotTimer) {
+      clearTimeout(state.snapshotTimer);
+      state.snapshotTimer = null;
+    }
+    if (state.outboxReplayTimer) {
+      clearTimeout(state.outboxReplayTimer);
+      state.outboxReplayTimer = null;
+    }
+    clearGapRepairTimer(state);
+    if (state.onDocUpdate) {
+      try { state.doc.off('update', state.onDocUpdate); } catch { /* already detached */ }
+      state.onDocUpdate = null;
+    }
+    if (
+      state.onPageHide
+      && typeof window !== 'undefined'
+      && typeof window.removeEventListener === 'function'
+    ) {
+      window.removeEventListener('pagehide', state.onPageHide);
+      state.onPageHide = null;
+    }
+    state.doc.transact(() => {
+      for (const mapName of DURABLE_MAP_NAMES) {
+        const map = state.doc.getMap(mapName);
+        for (const key of [...map.keys()]) map.delete(key);
+      }
+    }, PERMISSION_ROLLBACK_ORIGIN);
+    state.lastByPage = null;
+    markSyncHealth(state, false, purgeError);
+    notifyChange(state);
+    destroyLocalPersistence(state);
+    if (state.realtimeChannel) {
+      try { state.supabase?.removeChannel?.(state.realtimeChannel); } catch { /* best effort */ }
+      state.realtimeChannel = null;
+    }
+  }
+
+  // Exact legacy keys plus a delimiter-scoped actor prefix. `doc1` must never
+  // purge `doc10`, and the old Phase-27 raw registry key must not survive.
+  purgeYDoc(documentId);
+  purgeYDoc(`${REGISTRY_PREFIX}${documentId}`);
+  purgeYDocsByPrefix(`${REGISTRY_PREFIX}${documentId}:`);
+
+  const generationPrefix = `annotationPersistenceGeneration:${documentId}:`;
+  const actorsKey = persistenceActorsKey(documentId);
+  const databaseNames = new Set([
+    `anno-${documentId}`,
+    documentId,
+  ]);
+  const generationKeys = [];
+  const purgeErrors = [];
   try {
-    const doc = getOrCreateYDoc(registryKey);
-    doc.transact(() => {
-      getAnnotationsMap(doc).clear();
-      doc.getMap('annoMeta').clear();
-    }, HYDRATE_ORIGIN);
-    releaseYDoc(registryKey);
-  } catch { /* */ }
+    if (typeof localStorage !== 'undefined') {
+      const knownActors = JSON.parse(localStorage.getItem(actorsKey) || '[]');
+      for (const actorScope of knownActors) {
+        databaseNames.add(`anno-${documentId}-actor-${actorScope}-g0`);
+      }
+      for (let index = 0; index < localStorage.length; index += 1) {
+        const key = localStorage.key(index);
+        if (!key?.startsWith(generationPrefix)) continue;
+        generationKeys.push(key);
+        const actorScope = key.slice(generationPrefix.length);
+        const generation = Math.max(0, Number(localStorage.getItem(key)) || 0);
+        for (let value = 0; value <= generation; value += 1) {
+          databaseNames.add(`anno-${documentId}-actor-${actorScope}-g${value}`);
+        }
+      }
+    }
+  } catch (error) {
+    purgeErrors.push(error);
+  }
+
   try {
     if (typeof indexedDB !== 'undefined') {
-      // The flat-annotation y-indexeddb store...
-      indexedDB.deleteDatabase(`anno-${documentId}`);
-      // ...and the legacy Phase-27 CRDT collab store (ydocLifecycle keys its
-      // IndexedDB by the raw document UUID). Both must go or a same-content
-      // re-upload (which dedups to the same id) could resurrect old marks.
-      indexedDB.deleteDatabase(documentId);
+      if (typeof indexedDB.databases === 'function') {
+        const databases = await indexedDB.databases();
+        for (const entry of databases || []) {
+          if (
+            entry?.name === documentId
+            || entry?.name === `anno-${documentId}`
+            || entry?.name?.startsWith(`anno-${documentId}-actor-`)
+          ) databaseNames.add(entry.name);
+        }
+      }
+      const { clearDocument } = await import('y-indexeddb');
+      const results = await Promise.allSettled(
+        [...databaseNames].map((name) => clearDocument(name)),
+      );
+      for (const result of results) {
+        if (result.status === 'rejected') purgeErrors.push(result.reason);
+      }
     }
-  } catch { /* */ }
+  } catch (error) {
+    purgeErrors.push(error);
+  }
+
+  let outbox = null;
   try {
-    // Drop any pending offline sync ops for this doc so a deleted document's
-    // retries can never re-fire (the row is gone; they'd 404 forever otherwise).
-    if (typeof localStorage !== 'undefined') {
-      localStorage.removeItem(`cloudSyncQueue_${documentId}`);
+    outbox = await createAnnotationOutbox();
+    await outbox.deleteDocument(documentId);
+  } catch (error) {
+    purgeErrors.push(error);
+  } finally {
+    try { await outbox?.close?.(); } catch (error) { purgeErrors.push(error); }
+  }
+
+  if (purgeErrors.length === 0) {
+    try {
+      if (typeof localStorage !== 'undefined') {
+        for (const key of generationKeys) localStorage.removeItem(key);
+        localStorage.removeItem(actorsKey);
+        localStorage.removeItem(`cloudSyncQueue_${documentId}`);
+      }
+    } catch (error) {
+      purgeErrors.push(error);
     }
-  } catch { /* */ }
+  }
+
+  if (purgeErrors.length > 0) {
+    throw new AggregateError(
+      purgeErrors,
+      `annotation document ${documentId} local purge incomplete`,
+    );
+  }
 }
 
 export const __test = { bytesToPgHex, pgHexToBytes };

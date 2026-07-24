@@ -8,6 +8,11 @@
  * (explicit changed/created/deleted ids) and full-diff builders.
  */
 import { deepClone } from './deepClone.js';
+import {
+  createAnnotationStorageKeyResolver,
+  getAnnotationStorageKey,
+  setAnnotationStorageKey,
+} from './annotationStorageIdentity.js';
 
 export function getAnnotationHistoryId(annotation) {
   return annotation?.data?.id
@@ -34,21 +39,42 @@ function isOwnAnnotation(annotation, userId) {
 }
 
 function cloneJson(value) {
-  return deepClone(value);
+  const clone = deepClone(value);
+  const storageKey = getAnnotationStorageKey(value);
+  if (storageKey != null) setAnnotationStorageKey(clone, storageKey);
+  return clone;
+}
+
+function cloneWithStorageKey(value, storageKey) {
+  const clone = cloneJson(value);
+  if (storageKey != null) setAnnotationStorageKey(clone, storageKey);
+  return clone;
 }
 
 function getObjects(page) {
   return Array.isArray(page?.objects) ? page.objects : [];
 }
 
-function buildIdMap(objects) {
+function buildIdMap(objects, pageNumber) {
   const map = new Map();
+  const resolveStorageKey = createAnnotationStorageKeyResolver();
   objects.forEach((obj, index) => {
-    const id = getAnnotationHistoryId(obj);
-    if (!id) return;
-    map.set(id, { obj, index });
+    const annotationId = getAnnotationHistoryId(obj);
+    const storageKey = resolveStorageKey(obj, pageNumber, annotationId);
+    setAnnotationStorageKey(obj, storageKey);
+    map.set(storageKey, { obj, index, storageKey, annotationId });
   });
   return map;
+}
+
+function requestedStorageKeys(map, storageKeys, annotationIds) {
+  if (Array.isArray(storageKeys) && storageKeys.length > 0) {
+    return normalizeIdList(storageKeys).filter((key) => map.has(key));
+  }
+  const requestedIds = new Set(normalizeIdList(annotationIds));
+  return [...map.values()]
+    .filter((entry) => requestedIds.has(entry.annotationId))
+    .map((entry) => entry.storageKey);
 }
 
 function sameJson(left, right) {
@@ -78,26 +104,31 @@ export function buildPreciseAnnotationHistoryAction({
   deletedIds = [],
   changedIds = [],
   createdIds = [],
+  deletedStorageKeys = [],
+  changedStorageKeys = [],
+  createdStorageKeys = [],
 }) {
   const previousObjects = getObjects(previousPage);
   const nextObjects = getObjects(nextPage);
-  const previousById = buildIdMap(previousObjects);
-  const nextById = buildIdMap(nextObjects);
-  const deleteSet = normalizeIdList(deletedIds);
+  const previousById = buildIdMap(previousObjects, pageNumber);
+  const nextById = buildIdMap(nextObjects, pageNumber);
+  const deleteSet = requestedStorageKeys(previousById, deletedStorageKeys, deletedIds);
   const deleteSetLookup = new Set(deleteSet);
-  const changeSet = normalizeIdList(changedIds).filter((id) => !deleteSetLookup.has(id));
-  const createSet = normalizeIdList(createdIds).filter((id) => !deleteSetLookup.has(id));
+  const changeSet = requestedStorageKeys(nextById, changedStorageKeys, changedIds)
+    .filter((id) => !deleteSetLookup.has(id));
+  const createSet = requestedStorageKeys(nextById, createdStorageKeys, createdIds)
+    .filter((id) => !deleteSetLookup.has(id));
 
   const created = createSet
     .map((id) => {
       const entry = nextById.get(id);
-      return entry ? { id, after: entry.obj } : null;
+      return entry ? { id, annotationId: entry.annotationId, after: entry.obj } : null;
     })
     .filter(Boolean);
   const deleted = deleteSet
     .map((id) => {
       const entry = previousById.get(id);
-      return entry ? { id, before: entry.obj } : null;
+      return entry ? { id, annotationId: entry.annotationId, before: entry.obj } : null;
     })
     .filter(Boolean);
   const updated = changeSet
@@ -105,7 +136,7 @@ export function buildPreciseAnnotationHistoryAction({
       const before = previousById.get(id);
       const after = nextById.get(id);
       if (!before || !after || sameJson(before.obj, after.obj)) return null;
-      return { id, before: before.obj, after: after.obj };
+      return { id, annotationId: after.annotationId, before: before.obj, after: after.obj };
     })
     .filter(Boolean);
 
@@ -117,7 +148,8 @@ export function buildPreciseAnnotationHistoryAction({
     return {
       type: 'fabric:create',
       pageNumber,
-      annotationId: created[0].id,
+      annotationId: created[0].annotationId || created[0].id,
+      storageKey: created[0].id,
       annotation: cloneJson(created[0].after),
       index: nextById.get(created[0].id)?.index ?? null,
     };
@@ -127,7 +159,8 @@ export function buildPreciseAnnotationHistoryAction({
     return {
       type: 'fabric:delete',
       pageNumber,
-      annotationId: deleted[0].id,
+      annotationId: deleted[0].annotationId || deleted[0].id,
+      storageKey: deleted[0].id,
       annotation: cloneJson(deleted[0].before),
       index: previousById.get(deleted[0].id)?.index ?? null,
     };
@@ -137,9 +170,11 @@ export function buildPreciseAnnotationHistoryAction({
     return {
       type: 'fabric:update',
       pageNumber,
-      annotationId: updated[0].id,
+      annotationId: updated[0].annotationId || updated[0].id,
+      storageKey: updated[0].id,
       before: cloneJson(updated[0].before),
       after: cloneJson(updated[0].after),
+      index: nextById.get(updated[0].id)?.index ?? null,
     };
   }
 
@@ -148,18 +183,25 @@ export function buildPreciseAnnotationHistoryAction({
     pageNumber,
     created: created.map((entry) => ({
       id: entry.id,
+      annotationId: entry.annotationId,
+      storageKey: entry.id,
       annotation: cloneJson(entry.after),
       index: nextById.get(entry.id)?.index ?? null,
     })),
     deleted: deleted.map((entry) => ({
       id: entry.id,
+      annotationId: entry.annotationId,
+      storageKey: entry.id,
       annotation: cloneJson(entry.before),
       index: previousById.get(entry.id)?.index ?? null,
     })),
     updated: updated.map((entry) => ({
       id: entry.id,
+      annotationId: entry.annotationId,
+      storageKey: entry.id,
       before: cloneJson(entry.before),
       after: cloneJson(entry.after),
+      index: nextById.get(entry.id)?.index ?? null,
     })),
   };
 }
@@ -167,8 +209,8 @@ export function buildPreciseAnnotationHistoryAction({
 export function buildAnnotationHistoryAction({ pageNumber, previousPage, nextPage }) {
   const previousObjects = getObjects(previousPage);
   const nextObjects = getObjects(nextPage);
-  const previousById = buildIdMap(previousObjects);
-  const nextById = buildIdMap(nextObjects);
+  const previousById = buildIdMap(previousObjects, pageNumber);
+  const nextById = buildIdMap(nextObjects, pageNumber);
 
   const created = [];
   const deleted = [];
@@ -177,15 +219,15 @@ export function buildAnnotationHistoryAction({ pageNumber, previousPage, nextPag
   for (const [id, entry] of nextById.entries()) {
     const before = previousById.get(id);
     if (!before) {
-      created.push({ id, after: entry.obj });
+      created.push({ id, annotationId: entry.annotationId, after: entry.obj });
     } else if (!sameJson(before.obj, entry.obj)) {
-      updated.push({ id, before: before.obj, after: entry.obj });
+      updated.push({ id, annotationId: entry.annotationId, before: before.obj, after: entry.obj });
     }
   }
 
   for (const [id, entry] of previousById.entries()) {
     if (!nextById.has(id)) {
-      deleted.push({ id, before: entry.obj });
+      deleted.push({ id, annotationId: entry.annotationId, before: entry.obj });
     }
   }
 
@@ -193,7 +235,8 @@ export function buildAnnotationHistoryAction({ pageNumber, previousPage, nextPag
     return {
       type: 'fabric:create',
       pageNumber,
-      annotationId: created[0].id,
+      annotationId: created[0].annotationId || created[0].id,
+      storageKey: created[0].id,
       annotation: cloneJson(created[0].after),
       index: nextById.get(created[0].id)?.index ?? null,
     };
@@ -203,7 +246,8 @@ export function buildAnnotationHistoryAction({ pageNumber, previousPage, nextPag
     return {
       type: 'fabric:delete',
       pageNumber,
-      annotationId: deleted[0].id,
+      annotationId: deleted[0].annotationId || deleted[0].id,
+      storageKey: deleted[0].id,
       annotation: cloneJson(deleted[0].before),
       index: previousById.get(deleted[0].id)?.index ?? null,
     };
@@ -213,9 +257,11 @@ export function buildAnnotationHistoryAction({ pageNumber, previousPage, nextPag
     return {
       type: 'fabric:update',
       pageNumber,
-      annotationId: updated[0].id,
+      annotationId: updated[0].annotationId || updated[0].id,
+      storageKey: updated[0].id,
       before: cloneJson(updated[0].before),
       after: cloneJson(updated[0].after),
+      index: nextById.get(updated[0].id)?.index ?? null,
     };
   }
 
@@ -226,18 +272,25 @@ export function buildAnnotationHistoryAction({ pageNumber, previousPage, nextPag
       pageNumber,
       created: created.map((entry) => ({
         id: entry.id,
+        annotationId: entry.annotationId,
+        storageKey: entry.id,
         annotation: cloneJson(entry.after),
         index: nextById.get(entry.id)?.index ?? null,
       })),
       deleted: deleted.map((entry) => ({
         id: entry.id,
+        annotationId: entry.annotationId,
+        storageKey: entry.id,
         annotation: cloneJson(entry.before),
         index: previousById.get(entry.id)?.index ?? null,
       })),
       updated: updated.map((entry) => ({
         id: entry.id,
+        annotationId: entry.annotationId,
+        storageKey: entry.id,
         before: cloneJson(entry.before),
         after: cloneJson(entry.after),
+        index: nextById.get(entry.id)?.index ?? null,
       })),
     };
   }
@@ -252,6 +305,7 @@ export function invertAnnotationHistoryAction(action) {
       type: 'fabric:delete',
       pageNumber: action.pageNumber,
       annotationId: action.annotationId,
+      storageKey: action.storageKey,
       annotation: cloneJson(action.annotation),
       index: action.index ?? null,
     };
@@ -261,6 +315,7 @@ export function invertAnnotationHistoryAction(action) {
       type: 'fabric:create',
       pageNumber: action.pageNumber,
       annotationId: action.annotationId,
+      storageKey: action.storageKey,
       annotation: cloneJson(action.annotation),
       index: action.index ?? null,
     };
@@ -270,8 +325,10 @@ export function invertAnnotationHistoryAction(action) {
       type: 'fabric:update',
       pageNumber: action.pageNumber,
       annotationId: action.annotationId,
+      storageKey: action.storageKey,
       before: cloneJson(action.after),
       after: cloneJson(action.before),
+      index: action.index ?? null,
     };
   }
   if (action.type === 'fabric:batch') {
@@ -280,18 +337,25 @@ export function invertAnnotationHistoryAction(action) {
       pageNumber: action.pageNumber,
       created: cloneEntries(action.deleted || []).map((entry) => ({
         id: entry.id,
+        annotationId: entry.annotationId,
+        storageKey: entry.storageKey,
         annotation: entry.annotation,
         index: entry.index ?? null,
       })),
       deleted: cloneEntries(action.created || []).map((entry) => ({
         id: entry.id,
+        annotationId: entry.annotationId,
+        storageKey: entry.storageKey,
         annotation: entry.annotation,
         index: entry.index ?? null,
       })),
       updated: cloneEntries(action.updated || []).map((entry) => ({
         id: entry.id,
+        annotationId: entry.annotationId,
+        storageKey: entry.storageKey,
         before: entry.after,
         after: entry.before,
+        index: entry.index ?? null,
       })),
     };
   }
@@ -331,59 +395,110 @@ export function filterAnnotationHistoryActionByOwner(action, userId) {
   return action;
 }
 
+function findEntryObjectIndex(objects, entry, snapshot = null) {
+  if (entry?.storageKey != null) {
+    return objects.findIndex(
+      (object) => getAnnotationStorageKey(object) === String(entry.storageKey),
+    );
+  }
+
+  const targetId = entry?.annotationId
+    || entry?.id
+    || getAnnotationHistoryId(snapshot);
+  if (Number.isInteger(entry?.index)) {
+    const candidate = objects[entry.index];
+    if (
+      candidate
+      && (!targetId || getAnnotationHistoryId(candidate) === targetId)
+    ) return entry.index;
+  }
+
+  if (!targetId) return -1;
+  const candidates = objects
+    .map((object, index) => (getAnnotationHistoryId(object) === targetId ? index : -1))
+    .filter((index) => index >= 0);
+  return candidates.length === 1 ? candidates[0] : -1;
+}
+
+function replaceAtStorageIndex(objects, index, value, storageKey) {
+  if (index < 0) return objects;
+  return objects.map((object, objectIndex) => (
+    objectIndex === index ? cloneWithStorageKey(value, storageKey) : object
+  ));
+}
+
 export function applyAnnotationHistoryAction(annotationsByPage, action) {
   if (!action || typeof action !== 'object') return annotationsByPage || {};
   const pageKey = String(action.pageNumber);
   const current = annotationsByPage || {};
   const page = current[pageKey] || current[action.pageNumber] || { objects: [] };
   const objects = getObjects(page);
-  const targetId = action.annotationId || getAnnotationHistoryId(action.annotation) || getAnnotationHistoryId(action.after);
-
-  if (action.type !== 'fabric:batch' && !targetId) return current;
 
   let nextObjects = objects;
   if (action.type === 'fabric:create') {
-    const exists = objects.some((obj) => getAnnotationHistoryId(obj) === targetId);
-    if (exists) {
-      nextObjects = objects.map((obj) => (getAnnotationHistoryId(obj) === targetId ? cloneJson(action.annotation) : obj));
+    const existingIndex = findEntryObjectIndex(objects, action, action.annotation);
+    if (existingIndex >= 0) {
+      nextObjects = replaceAtStorageIndex(
+        objects,
+        existingIndex,
+        action.annotation,
+        action.storageKey,
+      );
     } else {
       nextObjects = [...objects];
       const index = Number.isInteger(action.index)
         ? Math.max(0, Math.min(action.index, nextObjects.length))
         : nextObjects.length;
-      nextObjects.splice(index, 0, cloneJson(action.annotation));
+      nextObjects.splice(index, 0, cloneWithStorageKey(action.annotation, action.storageKey));
     }
   } else if (action.type === 'fabric:delete') {
-    nextObjects = objects.filter((obj) => getAnnotationHistoryId(obj) !== targetId);
+    const targetIndex = findEntryObjectIndex(objects, action, action.annotation);
+    if (targetIndex >= 0) {
+      nextObjects = objects.filter((_object, index) => index !== targetIndex);
+    }
   } else if (action.type === 'fabric:update') {
-    nextObjects = objects.map((obj) => (getAnnotationHistoryId(obj) === targetId ? cloneJson(action.after) : obj));
+    const targetIndex = findEntryObjectIndex(objects, action, action.before);
+    nextObjects = replaceAtStorageIndex(
+      objects,
+      targetIndex,
+      action.after,
+      action.storageKey,
+    );
   } else if (action.type === 'fabric:batch') {
-    const deletedIds = new Set((action.deleted || []).map((entry) => entry.id).filter(Boolean));
-    const updatedById = new Map((action.updated || []).map((entry) => [entry.id, entry.after]));
-    const createdById = new Map((action.created || []).map((entry) => [entry.id, entry.annotation]));
-
-    nextObjects = objects
-      .filter((obj) => !deletedIds.has(getAnnotationHistoryId(obj)))
-      .map((obj) => {
-        const id = getAnnotationHistoryId(obj);
-        return updatedById.has(id) ? cloneJson(updatedById.get(id)) : obj;
-      });
-
-    const existingIds = new Set(nextObjects.map(getAnnotationHistoryId).filter(Boolean));
-    for (const [id, annotation] of createdById.entries()) {
-      if (!id) continue;
-      const entry = (action.created || []).find((candidate) => candidate.id === id) || {};
-      if (existingIds.has(id)) {
-        nextObjects = nextObjects.map((obj) => (
-          getAnnotationHistoryId(obj) === id ? cloneJson(annotation) : obj
-        ));
+    for (const entry of action.deleted || []) {
+      const targetIndex = findEntryObjectIndex(nextObjects, entry, entry.annotation);
+      if (targetIndex >= 0) {
+        nextObjects = nextObjects.filter((_object, index) => index !== targetIndex);
+      }
+    }
+    for (const entry of action.updated || []) {
+      const targetIndex = findEntryObjectIndex(nextObjects, entry, entry.before);
+      nextObjects = replaceAtStorageIndex(
+        nextObjects,
+        targetIndex,
+        entry.after,
+        entry.storageKey,
+      );
+    }
+    for (const entry of action.created || []) {
+      const existingIndex = findEntryObjectIndex(nextObjects, entry, entry.annotation);
+      if (existingIndex >= 0) {
+        nextObjects = replaceAtStorageIndex(
+          nextObjects,
+          existingIndex,
+          entry.annotation,
+          entry.storageKey,
+        );
       } else {
         const index = Number.isInteger(entry.index)
           ? Math.max(0, Math.min(entry.index, nextObjects.length))
           : nextObjects.length;
         nextObjects = [...nextObjects];
-        nextObjects.splice(index, 0, cloneJson(annotation));
-        existingIds.add(id);
+        nextObjects.splice(
+          index,
+          0,
+          cloneWithStorageKey(entry.annotation, entry.storageKey),
+        );
       }
     }
   }

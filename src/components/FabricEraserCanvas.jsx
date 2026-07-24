@@ -30,7 +30,11 @@ import {
 } from '../utils/eraserBoundsPrefilter.js';
 import { getEraserOperation } from '../utils/eraserPolicy.js';
 import { eraserDiameterToPageRadius } from '../utils/eraserSizing.js';
-import { selectEraserPreviewBaseline } from '../utils/eraserPreviewHandoff.js';
+import { nextEraserMutationId } from '../utils/eraserMutationId.js';
+import {
+  isEraserPreviewFinishReady,
+  selectEraserPreviewBaseline,
+} from '../utils/eraserPreviewHandoff.js';
 import { getCoalescedOrCurrentEvents } from '../utils/eraserPointerSamples.js';
 import { paintAnnotationCanvas } from '../utils/annotationCanvasPainter.js';
 import { projectPaperInkForPresentation } from '../utils/paperInkPresentation.js';
@@ -38,8 +42,6 @@ import {
   getSurveyMarkerEraserHitIds,
   surveyMarkerToEraserObject,
 } from '../utils/surveyMarkerEraser.js';
-
-let presentationRevisionSequence = 0;
 
 const distanceToSegment = (point, start, end) => {
   const dx = end.x - start.x;
@@ -408,42 +410,43 @@ const FabricEraserCanvas = memo(({
     if (clone?.root?.isConnected) clone.root.remove();
   }, []);
 
-  const finishLiveErasePreview = useCallback(() => {
+  const finishLiveErasePreview = useCallback(({ immediate = false } = {}) => {
     cancelLivePreviewFinish();
     const sourceState = livePreviewSourceRef.current;
-    if (sourceState?.overlay?.isConnected) {
-      sourceState.overlay.style.visibility = sourceState.previousVisibility;
-    }
-    // Defensive twin of the activation-time hide: if React never re-mounted
-    // the SVG wrapper (prop unwired), don't leave it invisible forever.
-    const svgWrapper = containerRef.current
-      ?.closest('[data-annotation-real-surface]')
-      ?.querySelector('[data-diag-svg-wrapper]');
-    if (svgWrapper) svgWrapper.style.visibility = '';
-    const hadSession = Boolean(sourceState);
     const closingClone = maskCloneRef.current;
-    maskCloneRef.current = null; // no further carve writes to this session
-    livePreviewSourceRef.current = null;
-    onErasePreviewPresentationRef.current?.(pageNumber, false);
-    if (!hadSession) {
+    const completeHandoff = () => {
+      livePreviewHideRafRef.current = 0;
+      // A pointer-down can reuse the still-visible clone before this frame.
+      // Its activation cancels this callback; the identity check is the final
+      // guard against an obsolete release tearing down the new gesture.
+      if (sourceState && livePreviewSourceRef.current !== sourceState) return;
+      if (sourceState?.overlay?.isConnected) {
+        sourceState.overlay.style.visibility = sourceState.previousVisibility;
+      }
+      const svgWrapper = sourceState?.surface
+        ?.querySelector?.('[data-diag-svg-wrapper]')
+        || containerRef.current
+          ?.closest('[data-annotation-real-surface]')
+          ?.querySelector('[data-diag-svg-wrapper]');
+      if (maskCloneRef.current === closingClone) maskCloneRef.current = null;
+      livePreviewSourceRef.current = null;
+      // One before-paint swap: remove the old carved presentation and reveal
+      // the already-updated committed SVG in this same callback. Keeping the
+      // SVG mounted during the gesture makes a two-frame overlap unnecessary.
       if (closingClone?.root?.isConnected) closingClone.root.remove();
       hidePreviewCanvasNow();
+      if (svgWrapper) {
+        svgWrapper.style.visibility = sourceState?.previousSvgVisibility ?? '';
+      }
+      onErasePreviewPresentationRef.current?.(pageNumber, false);
+    };
+
+    cancelScheduledPreviewHide();
+    if (immediate || !sourceState || typeof requestAnimationFrame !== 'function') {
+      completeHandoff();
       return;
     }
-    // Hold the carved preview (canvas or mask clone) on screen for two
-    // frames: the SVG layer only remounts on the React render that follows
-    // the presentation callback above, so tearing down in this same frame
-    // would blank every annotation for one frame — a visible blink at each
-    // commit.
-    cancelScheduledPreviewHide();
-    livePreviewHideRafRef.current = requestAnimationFrame(() => {
-      livePreviewHideRafRef.current = requestAnimationFrame(() => {
-        livePreviewHideRafRef.current = 0;
-        if (closingClone?.root?.isConnected) closingClone.root.remove();
-        if (livePreviewSourceRef.current) return; // a new gesture took over
-        hidePreviewCanvasNow();
-      });
-    });
+    livePreviewHideRafRef.current = requestAnimationFrame(completeHandoff);
   }, [cancelLivePreviewFinish, cancelScheduledPreviewHide, hidePreviewCanvasNow, pageNumber]);
 
   const beginLiveErasePreview = useCallback(() => {
@@ -473,8 +476,8 @@ const FabricEraserCanvas = memo(({
     // the overlay hide below): the preview's destination-out holes are
     // transparent, so an SVG copy underneath would show un-erased ink through
     // them for the frame(s) until React processes the presentation state.
+    const svgWrapper = surface?.querySelector?.('[data-diag-svg-wrapper]');
     const hideSvgForPreview = () => {
-      const svgWrapper = surface?.querySelector?.('[data-diag-svg-wrapper]');
       if (svgWrapper) svgWrapper.style.visibility = 'hidden';
       onErasePreviewPresentationRef.current?.(pageNumber, true);
     };
@@ -514,6 +517,7 @@ const FabricEraserCanvas = memo(({
       source,
       overlay,
       previousVisibility: overlay.style.visibility,
+      previousSvgVisibility: svgWrapper?.style?.visibility || '',
       paintGeneration: source.dataset.canvasPaintGeneration || '',
     };
     preview.dataset.canvasAnnotationRevision = source.dataset.canvasAnnotationRevision || '';
@@ -928,6 +932,7 @@ const FabricEraserCanvas = memo(({
     const wrapper = surface?.querySelector('[data-diag-svg-wrapper]');
     const svg = wrapper?.querySelector('svg[data-svg-annotation-layer]');
     if (!surface || !wrapper || !svg) return false;
+    const previousSvgVisibility = wrapper.style.visibility;
     // Orphan sweep: a half-built clone from any earlier failure must never
     // survive into a new session (it would double-render under the preview).
     surface.querySelectorAll('[data-eraser-mask-clone]').forEach((el) => el.remove());
@@ -1015,6 +1020,7 @@ const FabricEraserCanvas = memo(({
       source: source || null,
       overlay: null,
       previousVisibility: '',
+      previousSvgVisibility,
       maskClone: true,
       paintGeneration: source?.dataset?.canvasPaintGeneration || '',
     };
@@ -1027,21 +1033,38 @@ const FabricEraserCanvas = memo(({
       finishLiveErasePreview();
       return;
     }
+    // Rebase the fallback-painter gate at pointer-up, after the gesture but
+    // before React can commit the delete. Using the generation captured at
+    // pointer-down lets an unrelated in-flight paint from during the drag
+    // masquerade as the delete repaint and reveal stale callout/survey DOM.
+    const sourceAtRelease = findPresentationSource().source;
+    sourceState.hadSourceAtRelease = Boolean(sourceAtRelease || sourceState.source);
+    if (sourceAtRelease) {
+      sourceState.source = sourceAtRelease;
+      sourceState.paintGeneration = sourceAtRelease.dataset.canvasPaintGeneration || '';
+    }
     const check = () => {
       const state = livePreviewSourceRef.current;
       if (!state) return true;
+      const finalSvgWrapper = state.surface
+        ?.querySelector?.('[data-diag-svg-wrapper]');
+      const svgAnnotationRevision = finalSvgWrapper
+        ?.dataset?.svgAnnotationRevision || '';
       const currentSource = findPresentationSource().source;
-      if (!currentSource) {
-        finishLiveErasePreview();
-        return true;
-      }
-      state.source = currentSource;
-      const canvasAnnotationRevision = currentSource.dataset.canvasAnnotationRevision || '';
-      const paintGeneration = currentSource.dataset.canvasPaintGeneration || '';
-      if (
-        (expectedRevision && canvasAnnotationRevision === expectedRevision)
-        || (!expectedRevision && waitForNextPaint && paintGeneration !== state.paintGeneration)
-      ) {
+      if (currentSource) state.source = currentSource;
+      const canvasAnnotationRevision = currentSource?.dataset?.canvasAnnotationRevision || '';
+      const paintGeneration = currentSource?.dataset?.canvasPaintGeneration || '';
+      if (isEraserPreviewFinishReady({
+        expectedRevision,
+        waitForNextPaint,
+        finalSvgRevision: svgAnnotationRevision,
+        maskClone: state.maskClone === true,
+        hadSourceAtRelease: state.hadSourceAtRelease === true,
+        hasCurrentSource: Boolean(currentSource),
+        canvasRevision: canvasAnnotationRevision,
+        baselinePaintGeneration: state.paintGeneration,
+        currentPaintGeneration: paintGeneration,
+      })) {
         finishLiveErasePreview();
         return true;
       }
@@ -1052,11 +1075,13 @@ const FabricEraserCanvas = memo(({
     livePreviewObserverRef.current = observer;
     observer.observe(sourceState.surface, {
       attributes: true,
+      childList: true,
       subtree: true,
       attributeFilter: [
         'data-canvas-annotation-revision',
         'data-canvas-paint-generation',
         'data-annotation-detail-active',
+        'data-svg-annotation-revision',
       ],
     });
     check();
@@ -1354,10 +1379,13 @@ const FabricEraserCanvas = memo(({
     pageNumber,
   ]);
 
-  const applyEraserAndCommit = useCallback((eraserPoints) => {
+  const applyEraserAndCommit = useCallback((eraserPoints, gestureConfig = null) => {
     if (!eraserPoints?.length) return { didPaint: false, expectedRevision: null };
     const latestPage = annotationsRef.current || { objects: [] };
-    const radius = getPageRadius();
+    const radius = Number(gestureConfig?.radius) || getPageRadius();
+    const mode = gestureConfig?.mode === 'entire' || gestureConfig?.mode === 'full'
+      ? gestureConfig.mode
+      : (gestureConfig?.mode === 'partial' ? 'partial' : eraserModeRef.current);
     const rejectedById = new Map();
     const canErase = (object, index) => {
       const reason = getEraseBlockReason(object);
@@ -1371,7 +1399,7 @@ const FabricEraserCanvas = memo(({
       pageAnnotations: latestPage,
       eraserPoints,
       eraserRadius: radius,
-      mode: eraserModeRef.current,
+      mode,
       canErase,
     });
 
@@ -1383,8 +1411,7 @@ const FabricEraserCanvas = memo(({
 
     let expectedRevision = null;
     if (result.didChange) {
-      presentationRevisionSequence += 1;
-      expectedRevision = `eraser:${Date.now().toString(36)}:${presentationRevisionSequence}`;
+      expectedRevision = nextEraserMutationId();
       const updatedJSON = {
         ...result.pageAnnotations,
         eraserPresentationRevision: expectedRevision,
@@ -1393,6 +1420,10 @@ const FabricEraserCanvas = memo(({
         source: 'eraser:commit',
         tool: 'eraser',
         action: 'eraser:apply',
+        eraserMutationId: expectedRevision,
+        eraserPoints: eraserPoints.map((point) => ({ x: point.x, y: point.y })),
+        eraserRadius: radius,
+        eraserMode: mode,
         eraserGestureId: eraserDiagGestureRef.current || null,
         eraserPointerBounds: getEraserStrokeBounds(eraserPoints, radius),
         candidateAnnotationIds: result.touchedIds,
@@ -1400,6 +1431,7 @@ const FabricEraserCanvas = memo(({
         touchedAnnotationIds: result.touchedIds,
         finalDeletedAnnotationIds: result.deletedIds,
         finalChangedAnnotationIds: result.changedIds,
+        objectMutations: result.objectMutations,
         objectDelta: updatedJSON.objects.length - (latestPage.objects?.length || 0),
         changedObjectsCount: result.deletedIds.length + result.changedIds.length,
       };
@@ -1425,10 +1457,26 @@ const FabricEraserCanvas = memo(({
     }
 
     if (calloutHitIds.length) {
+      const previewSession = livePreviewSourceRef.current;
       try {
-        onEraseCalloutRef.current?.(calloutHitIds);
+        onEraseCalloutRef.current?.(calloutHitIds, {
+          onSettled: ({ committed } = {}) => {
+            // Confirmation can resolve long after pointer-up. Restore only the
+            // preview session that opened that modal; a stale Cancel must never
+            // tear down a newer erase gesture.
+            if (
+              committed === false
+              && livePreviewSourceRef.current === previewSession
+            ) {
+              finishLiveErasePreview();
+            }
+          },
+        });
       } catch (error) {
         console.error('Callout erase failed:', error);
+        if (livePreviewSourceRef.current === previewSession && !result.didChange) {
+          finishLiveErasePreview();
+        }
       }
     }
     if (surveyMarkerHitIds.length) {
@@ -1447,7 +1495,10 @@ const FabricEraserCanvas = memo(({
     }
 
     return {
-      didPaint: result.didChange || calloutHitIds.length > 0 || surveyMarkerHitIds.length > 0,
+      // A geometry result is not a paint until its host commit succeeds.
+      // Otherwise the release handoff would wait forever for a revision that
+      // was deliberately cleared in the catch path above.
+      didPaint: Boolean(expectedRevision) || calloutHitIds.length > 0 || surveyMarkerHitIds.length > 0,
       expectedRevision,
     };
   }, [
@@ -1455,6 +1506,7 @@ const FabricEraserCanvas = memo(({
     getPageRadius,
     getPermittedCalloutHitIds,
     getPermittedSurveyMarkerHitIds,
+    finishLiveErasePreview,
     pageNumber,
   ]);
 
@@ -1477,7 +1529,7 @@ const FabricEraserCanvas = memo(({
     }
     try {
       markAnnotationPointerRelease(eraserDiagGestureRef.current, { action: 'eraser-stroke' });
-      const outcome = applyEraserAndCommit(pointer.points);
+      const outcome = applyEraserAndCommit(pointer.points, pointer.gestureConfig);
       scheduleLiveErasePreviewFinish({
         expectedRevision: outcome.expectedRevision,
         waitForNextPaint: outcome.didPaint,
@@ -1510,6 +1562,10 @@ const FabricEraserCanvas = memo(({
       pointerId: event.pointerId,
       points: [point],
       captureTarget: event.currentTarget,
+      gestureConfig: {
+        mode: eraserModeRef.current,
+        radius: getPageRadius(),
+      },
       previewActive: false,
       previewHasPartial: false,
       previewAtomicIds: new Set(),
@@ -1535,6 +1591,7 @@ const FabricEraserCanvas = memo(({
   }, [
     buildGestureBounds,
     cancelPointer,
+    getPageRadius,
     pageNumber,
     pagePoint,
     previewEraserGesture,
@@ -1593,7 +1650,7 @@ const FabricEraserCanvas = memo(({
     }
     updateEraserCursor(releasePoint, true);
     markAnnotationPointerRelease(eraserDiagGestureRef.current, { action: 'eraser-stroke' });
-    const outcome = applyEraserAndCommit(pointer.points);
+    const outcome = applyEraserAndCommit(pointer.points, pointer.gestureConfig);
     scheduleLiveErasePreviewFinish({
       expectedRevision: outcome.expectedRevision,
       waitForNextPaint: outcome.didPaint,
@@ -1635,7 +1692,7 @@ const FabricEraserCanvas = memo(({
     // viewer mid-zoom. Degrade to the old cancel behavior instead.
     try {
       markAnnotationPointerRelease(eraserDiagGestureRef.current, { action: 'eraser-stroke' });
-      const outcome = applyEraserAndCommit(pointer.points);
+      const outcome = applyEraserAndCommit(pointer.points, pointer.gestureConfig);
       scheduleLiveErasePreviewFinish({
         expectedRevision: outcome.expectedRevision,
         waitForNextPaint: outcome.didPaint,
@@ -1716,11 +1773,9 @@ const FabricEraserCanvas = memo(({
   useEffect(() => () => {
     pointerRef.current = null;
     gestureBoundsRef.current = null;
-    // Unmounting — no SVG remount to wait for; tear down the mask clone and
-    // preview canvas now instead of leaving the deferred double-rAF cleanup
-    // to fire on detached nodes.
+    // Unmounting has no future paint to coordinate; clean up immediately.
+    finishLiveErasePreview({ immediate: true });
     removeMaskCloneNow();
-    finishLiveErasePreview();
     hidePreviewCanvasNow();
     updateEraserCursor(null, false);
   }, [finishLiveErasePreview, hidePreviewCanvasNow, removeMaskCloneNow, updateEraserCursor]);

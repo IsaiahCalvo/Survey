@@ -1,8 +1,12 @@
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { selectEraserPreviewBaseline } from '../src/utils/eraserPreviewHandoff.js';
+import {
+  isEraserPreviewFinishReady,
+  selectEraserPreviewBaseline,
+} from '../src/utils/eraserPreviewHandoff.js';
 import { getCoalescedOrCurrentEvents } from '../src/utils/eraserPointerSamples.js';
+import { preserveTransientPagePresentationState } from '../src/services/annotationDocStore.js';
 
 const VIEWER_SOURCE = readFileSync(new URL('../src/PDFViewer.jsx', import.meta.url), 'utf8');
 const ERASER_SOURCE = readFileSync(
@@ -71,6 +75,64 @@ test('production eraser previews the cut live on one canvas while dragging', () 
   assert.match(ERASER_SOURCE, /finishLiveErasePreview/);
 });
 
+test('release handoff keeps the final SVG mounted and swaps presentations in one frame', () => {
+  // The committed SVG must keep receiving React updates behind the live
+  // preview. Unmounting it makes release depend on a later remount and forces
+  // either a blank frame or an old-preview/new-final overlap frame.
+  assert.doesNotMatch(
+    VIEWER_SOURCE,
+    /\{!useCanvasPresentation && !suspendFullSvgForProxy && \(/,
+  );
+  assert.match(
+    VIEWER_SOURCE,
+    /\{!suspendFullSvgForProxy && \([\s\S]*?data-diag-svg-wrapper/,
+  );
+  assert.match(
+    VIEWER_SOURCE,
+    /visibility:\s*\(annotationHydrationGated \|\| useCanvasPresentation\)\s*\?\s*'hidden'\s*:\s*undefined/,
+  );
+  assert.match(
+    VIEWER_SOURCE,
+    /data-svg-annotation-revision=\{pageAnnotations\?\.eraserPresentationRevision \|\| ''\}/,
+  );
+
+  const finishStart = ERASER_SOURCE.indexOf('const finishLiveErasePreview = useCallback');
+  const finishEnd = ERASER_SOURCE.indexOf('\n  const beginLiveErasePreview', finishStart);
+  const finishSource = ERASER_SOURCE.slice(finishStart, finishEnd);
+
+  // One requestAnimationFrame is the before-paint boundary. Both sides of the
+  // swap happen inside it; a nested/two-frame hold visibly double-paints
+  // translucent annotations and briefly resurrects the old erased stroke.
+  assert.equal(
+    finishSource.match(/requestAnimationFrame\(/g)?.length,
+    1,
+  );
+  assert.match(finishSource, /requestAnimationFrame\(completeHandoff\)/);
+  const handoffStart = finishSource.indexOf('const completeHandoff = () =>');
+  const handoffEnd = finishSource.indexOf('\n    };', handoffStart);
+  const isInsideHandoff = (needle) => {
+    const index = finishSource.indexOf(needle, handoffStart);
+    return index > handoffStart && index < handoffEnd;
+  };
+  assert.ok(isInsideHandoff(
+    "svgWrapper.style.visibility = sourceState?.previousSvgVisibility ?? ''",
+  ));
+  assert.ok(isInsideHandoff('closingClone.root.remove()'));
+  assert.ok(isInsideHandoff(
+    'onErasePreviewPresentationRef.current?.(pageNumber, false)',
+  ));
+
+  const scheduleStart = ERASER_SOURCE.indexOf('const scheduleLiveErasePreviewFinish = useCallback');
+  const scheduleEnd = ERASER_SOURCE.indexOf('\n  const getSpaceIdForRegion', scheduleStart);
+  const scheduleSource = ERASER_SOURCE.slice(scheduleStart, scheduleEnd);
+  assert.match(scheduleSource, /isEraserPreviewFinishReady/);
+  assert.match(scheduleSource, /hadSourceAtRelease/);
+  assert.match(
+    scheduleSource,
+    /sourceState\.paintGeneration = sourceAtRelease\.dataset\.canvasPaintGeneration/,
+  );
+});
+
 test('production uses the demo Canvas2D compositing contract during zoom and erase', () => {
   assert.doesNotMatch(LIGHTWEIGHT_SOURCE, /desynchronized/);
   assert.doesNotMatch(ANNOTATION_WORKER_SOURCE, /desynchronized/);
@@ -135,6 +197,19 @@ test('production eraser commits the latest page model and waits for its exact re
   assert.doesNotMatch(ERASER_SOURCE, /flushSync/);
 });
 
+test('a failed page-model commit restores the preview instead of waiting for an impossible paint', () => {
+  const commitStart = ERASER_SOURCE.indexOf('const applyEraserAndCommit = useCallback');
+  const commitEnd = ERASER_SOURCE.indexOf('\n  const cancelPointer = useCallback', commitStart);
+  const commitSource = ERASER_SOURCE.slice(commitStart, commitEnd);
+
+  assert.match(commitSource, /catch \(error\) \{[\s\S]*?expectedRevision = null;/);
+  assert.match(
+    commitSource,
+    /didPaint:\s*Boolean\(expectedRevision\) \|\| calloutHitIds\.length > 0 \|\| surveyMarkerHitIds\.length > 0/,
+  );
+  assert.doesNotMatch(commitSource, /didPaint:\s*result\.didChange/);
+});
+
 test('legacy fallback treats the configured eraser size as a diameter too', () => {
   assert.match(LEGACY_LAYER_SOURCE, /Eraser diameter in page pixels/);
   assert.equal(
@@ -161,6 +236,100 @@ test('a settled worker canvas becomes the next gesture baseline', () => {
   }), 'source');
 });
 
+test('last-item erase treats removal of the release-time source as the final empty paint', () => {
+  assert.equal(isEraserPreviewFinishReady({
+    expectedRevision: null,
+    waitForNextPaint: true,
+    finalSvgRevision: '',
+    maskClone: true,
+    hadSourceAtRelease: true,
+    hasCurrentSource: false,
+    canvasRevision: '',
+    baselinePaintGeneration: '7',
+    currentPaintGeneration: '',
+  }), true);
+});
+
+test('SVG-clone handoff releases on the exact hidden SVG without waiting for a stale worker', () => {
+  assert.equal(isEraserPreviewFinishReady({
+    expectedRevision: 'eraser:2',
+    waitForNextPaint: true,
+    finalSvgRevision: 'eraser:2',
+    maskClone: true,
+    hadSourceAtRelease: true,
+    hasCurrentSource: true,
+    canvasRevision: 'eraser:1',
+    baselinePaintGeneration: '7',
+    currentPaintGeneration: '7',
+  }), true);
+  assert.equal(isEraserPreviewFinishReady({
+    expectedRevision: 'eraser:2',
+    waitForNextPaint: true,
+    finalSvgRevision: 'eraser:1',
+    maskClone: true,
+    hadSourceAtRelease: true,
+    hasCurrentSource: true,
+    canvasRevision: 'eraser:1',
+    baselinePaintGeneration: '7',
+    currentPaintGeneration: '7',
+  }), false);
+});
+
+test('remote materialization preserves the local eraser presentation epoch', () => {
+  const previous = {
+    1: {
+      objects: [{ id: 'locally-erased' }],
+      eraserPresentationRevision: 'eraser:local',
+    },
+  };
+  const remote = {
+    1: {
+      objects: [{ id: 'locally-erased' }, { id: 'remote-addition' }],
+    },
+  };
+  const merged = preserveTransientPagePresentationState(previous, remote);
+
+  assert.deepEqual(merged[1].objects, remote[1].objects);
+  assert.equal(merged[1].eraserPresentationRevision, 'eraser:local');
+  assert.equal(remote[1].eraserPresentationRevision, undefined, 'remote input stays immutable');
+});
+
+test('remote materialization preserves an emptied page until its eraser handoff can finish', () => {
+  const previous = {
+    1: {
+      objects: [],
+      eraserPresentationRevision: 'eraser:empty-page',
+    },
+  };
+  const remote = {
+    2: {
+      objects: [{ id: 'remote-other-page' }],
+    },
+  };
+
+  const merged = preserveTransientPagePresentationState(previous, remote);
+
+  assert.deepEqual(merged[1], {
+    objects: [],
+    eraserPresentationRevision: 'eraser:empty-page',
+  });
+  assert.equal(merged[2], remote[2]);
+  assert.equal(remote[1], undefined, 'incoming Y.Doc materialization stays immutable');
+});
+
+test('canceling a confirmed callout erase explicitly restores its correlated preview', () => {
+  assert.match(ERASER_SOURCE, /onSettled:\s*\(\{ committed \} = \{\}\) =>/);
+  assert.match(
+    ERASER_SOURCE,
+    /committed === false[\s\S]*?livePreviewSourceRef\.current === previewSession[\s\S]*?finishLiveErasePreview\(\)/,
+  );
+  assert.match(VIEWER_SOURCE, /pendingDeleteSettlementRef\.current/);
+  assert.match(
+    VIEWER_SOURCE,
+    /onCancel=\{\(\) => \{[\s\S]*?settle\?\.\(\{ committed: false \}\)/,
+  );
+});
+
 test('an empty coalesced-event list falls back to the current pointer event', () => {
   const nativeEvent = { getCoalescedEvents: () => [] };
   assert.deepEqual(getCoalescedOrCurrentEvents(nativeEvent), [nativeEvent]);
@@ -174,7 +343,10 @@ test('pointer-up samples and previews its endpoint before committing geometry', 
   assert.match(finishPointerSource, /const releasePoint = pagePoint\(event\.nativeEvent\)/);
   assert.match(finishPointerSource, /pointer\.points\.push\(releasePoint\)/);
   assert.match(finishPointerSource, /previewEraserGesture/);
-  assert.match(finishPointerSource, /applyEraserAndCommit\(pointer\.points\)/);
+  assert.match(
+    finishPointerSource,
+    /applyEraserAndCommit\(pointer\.points, pointer\.gestureConfig\)/,
+  );
 });
 
 test('interrupted gestures COMMIT the erase performed so far and permit the next down', () => {
@@ -199,7 +371,7 @@ test('preview handoff never reveals a known-stale presentation on a timer', () =
 
   assert.doesNotMatch(handoffSource, /ERASER_PREVIEW_HANDOFF_TIMEOUT_MS/);
   assert.doesNotMatch(handoffSource, /now - startedAt/);
-  assert.match(handoffSource, /canvasAnnotationRevision === expectedRevision/);
+  assert.match(handoffSource, /canvasRevision:\s*canvasAnnotationRevision/);
 });
 
 test('benchmark rendering and eraser interaction never use different page models', () => {

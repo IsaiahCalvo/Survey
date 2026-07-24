@@ -2,6 +2,7 @@ import {
   boundsOfCommands,
   commandsToPolygonSet,
   eraseAnnotations,
+  intersectPolygonSets,
   normalizeMultiPolygon,
   polygonSetToCommands,
 } from './paperAnnotationGeometry.js';
@@ -10,6 +11,10 @@ import {
   getEraserCandidateId,
 } from './eraserHitTest.js';
 import { getEraserOperation } from './eraserPolicy.js';
+import {
+  getAnnotationStorageKey,
+  setAnnotationStorageKey,
+} from './annotationStorageIdentity.js';
 
 const EPSILON = 1e-7;
 
@@ -283,7 +288,7 @@ function bakePagePathResult(object, result) {
   const bounds = boundsOfCommands(result.cmds);
   const filled = hasVisiblePaint(result.fill) && numberOr(result.strokeWidth) === 0;
 
-  return {
+  const baked = {
     ...metadata,
     type: 'path',
     path: result.cmds,
@@ -305,6 +310,40 @@ function bakePagePathResult(object, result) {
       sourceWidth: result.sourceWidth,
     } : {}),
   };
+  const storageKey = getAnnotationStorageKey(object);
+  if (storageKey != null) setAnnotationStorageKey(baked, storageKey);
+  return baked;
+}
+
+/**
+ * Compose independently-authored partial-erase survivors. Every survivor is a
+ * subset of the same stable base object, so their intersection is exactly
+ * "apply every bite". One survivor is returned byte-for-byte; only concurrent
+ * writer lanes require a polygon boolean operation.
+ */
+export function intersectErasedPathSurvivors(survivors) {
+  const values = (survivors || []).filter((object) => (
+    object
+    && String(object.type || '').toLowerCase() === 'path'
+    && normalizeMultiPolygon(object.polygons).length > 0
+  ));
+  if (!values.length) return null;
+  if (values.length === 1) return values[0];
+
+  let polygons = normalizeMultiPolygon(values[0].polygons);
+  for (let index = 1; index < values.length; index += 1) {
+    polygons = intersectPolygonSets(polygons, values[index].polygons);
+    if (!polygons.length) return null;
+  }
+  const cmds = polygonSetToCommands(polygons);
+  return bakePagePathResult(values[0], {
+    cmds,
+    polygons,
+    fill: values[0].fill,
+    stroke: null,
+    strokeWidth: 0,
+    sourceWidth: values[0].sourceWidth,
+  });
 }
 
 const unique = (values) => values.filter((value, index) => value && values.indexOf(value) === index);
@@ -330,6 +369,7 @@ export function erasePageAnnotations({
       changedIds: [],
       deletedIds: [],
       touchedIds: [],
+      objectMutations: [],
     };
   }
 
@@ -403,6 +443,7 @@ export function erasePageAnnotations({
       changedIds: [],
       deletedIds: [],
       touchedIds: unique(touchedIds),
+      objectMutations: [],
     };
   }
 
@@ -418,5 +459,13 @@ export function erasePageAnnotations({
     changedIds: unique(changedIds),
     deletedIds: unique(deletedIds),
     touchedIds: unique(touchedIds),
+    objectMutations: [...new Set([...replacementByIndex.keys(), ...deletedIndexes])]
+      .sort((a, b) => a - b)
+      .map((index) => ({
+        index,
+        storageKey: getAnnotationStorageKey(objects[index]),
+        deleted: deletedIndexes.has(index),
+        survivor: deletedIndexes.has(index) ? null : replacementByIndex.get(index),
+      })),
   };
 }

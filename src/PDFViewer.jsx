@@ -10382,8 +10382,17 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   // and the same undo toast. The legacy callouts:delete checkpoint and the
   // bespoke buildCalloutDeleteHistoryRow loop are gone — the shared save
   // pipeline journals one fabric delta per page (single Cmd+Z per delete).
-  const handleDeleteSelectedCallouts = useCallback((calloutIdsToDelete) => {
-    if (!Array.isArray(calloutIdsToDelete) || calloutIdsToDelete.length === 0) return;
+  const handleDeleteSelectedCallouts = useCallback((calloutIdsToDelete, eraseRequest = null) => {
+    let settled = false;
+    const settleEraseRequest = (committed) => {
+      if (settled) return;
+      settled = true;
+      eraseRequest?.onSettled?.({ committed: committed === true });
+    };
+    if (!Array.isArray(calloutIdsToDelete) || calloutIdsToDelete.length === 0) {
+      settleEraseRequest(false);
+      return;
+    }
     // KAL-125: ownership gate — mirror the standard annotation delete path
     // (useSVGInteraction.js:4207-4224). Run canModify against each callout at
     // delete time; silently drop any callout the viewer is not allowed to modify.
@@ -10397,7 +10406,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       if (!callout) return false;
       return canDelete({ annotation: callout, viewerId, documentOwnerId });
     });
-    if (permittedIds.length === 0) return;
+    if (permittedIds.length === 0) {
+      settleEraseRequest(false);
+      return;
+    }
 
     // R2.2 Slice 4 — mixed marquee coalescing: ids already claimed by an armed
     // mixed shape+callout batch were folded into the SHAPE half's bulk-delete
@@ -10413,7 +10425,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     const remainingIds = activeMixedClaims
       ? permittedIds.filter((id) => !activeMixedClaims.has(id))
       : permittedIds;
-    if (remainingIds.length === 0) return;
+    if (remainingIds.length === 0) {
+      settleEraseRequest(false);
+      return;
+    }
 
     // Group permitted ids by page — handleRequestBulkDelete's plan, snapshot
     // and runDelete contracts are all single-page (mirrors the shape path).
@@ -10428,6 +10443,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
     const requestBulkDelete = requestBulkDeleteRef.current;
     const byPage = annotationsByPageRef.current || {};
+    let requestedDelete = false;
     for (const [pageNumber, ids] of idsByPage.entries()) {
       const idsSet = new Set(ids);
       // Cross-author modal snapshots come from byPage — the projected callout
@@ -10455,14 +10471,24 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         });
       };
       if (typeof requestBulkDelete === 'function' && snapshotObjects.length > 0) {
-        requestBulkDelete({ candidateIds: ids, snapshotObjects, pageNumber, runDelete });
+        requestedDelete = true;
+        requestBulkDelete({
+          candidateIds: ids,
+          snapshotObjects,
+          pageNumber,
+          runDelete,
+          onSettled: ({ committed } = {}) => settleEraseRequest(committed === true),
+        });
       } else {
         // Defensive fallback (boot window / snapshot resolution failure):
         // fire the delete directly — same permissive posture as the shape
         // path's onRequestBulkDelete-absent branch.
+        requestedDelete = true;
         runDelete();
+        settleEraseRequest(true);
       }
     }
+    if (!requestedDelete) settleEraseRequest(false);
   }, [callouts, documentOwnerId, user, commitCalloutMutation, resolveCalloutPageNumber]);
 
   // UX 2026-04-21 / R2.2 Slice 4: opener for marquee delete of a mixed
@@ -17464,6 +17490,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   } = useUndoToast();
   const [pendingDeletePlan, setPendingDeletePlan] = useState(null);
   const pendingDeleteRunnerRef = useRef(null);
+  const pendingDeleteSettlementRef = useRef(null);
 
   // Cross-author delete modal name resolution (2026-07-17): the byAuthor
   // breakdown resolves display names by authorId through the live document
@@ -17510,10 +17537,21 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   useEffect(() => {
     setPendingDeletePlan(null);
     pendingDeleteRunnerRef.current = null;
+    pendingDeleteSettlementRef.current?.({ committed: false });
+    pendingDeleteSettlementRef.current = null;
   }, [pdfFile?.id]);
 
   const handleRequestBulkDelete = useCallback(
-    ({ candidateIds: requestedCandidateIds, snapshotObjects: requestedSnapshotObjects, pageNumber, runDelete: requestedRunDelete }) => {
+    ({
+      candidateIds: requestedCandidateIds,
+      snapshotObjects: requestedSnapshotObjects,
+      pageNumber,
+      runDelete: requestedRunDelete,
+      onSettled: requestedOnSettled,
+    }) => {
+      const settleRequestedDelete = (committed) => {
+        requestedOnSettled?.({ committed: committed === true });
+      };
       // R2.2 Slice 4 — mixed shape+callout marquee delete: when
       // handleBeginBatchDelete armed mixedDeleteBatchRef (both selections
       // populated), fold this page's permitted callout groups into the SHAPE
@@ -17594,7 +17632,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         resolveAuthorName,
       });
 
-      if (plan.mode === 'no-op') return;
+      if (plan.mode === 'no-op') {
+        settleRequestedDelete(false);
+        return;
+      }
 
       // KAL-313: build bulk trash rows from the snapshot objects that will be
       // deleted. snapshotObjects already contains the pre-delete Fabric objects.
@@ -17716,9 +17757,15 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         // KAL-313 / history F2: this direct-fire branch bypasses
         // wrappedRunDelete, so register the ids here too — otherwise the
         // single-annotation emitter journals the same delete a second time.
-        registerBulkJournaledAnnotationIds(candidateIds);
-        runDelete();
-        emitBulkTrashRows();
+        let committed = false;
+        try {
+          registerBulkJournaledAnnotationIds(candidateIds);
+          runDelete();
+          emitBulkTrashRows();
+          committed = true;
+        } finally {
+          settleRequestedDelete(committed);
+        }
         return;
       }
 
@@ -17726,7 +17773,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       // Stash the runner in a ref so the modal's onConfirm can fire it
       // without rebuilding the closure (and without holding state that
       // captures snapshotObjects in a way that survives plan reset).
+      pendingDeleteSettlementRef.current?.({ committed: false });
       pendingDeleteRunnerRef.current = wrappedRunDelete;
+      pendingDeleteSettlementRef.current = requestedOnSettled || null;
       setPendingDeletePlan(plan);
     },
     [annotationsByPage, user, documentOwnerId, enqueueUndoToast, pdfFile?.id, registerBulkJournaledAnnotationIds],
@@ -22186,6 +22235,15 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     const eraserChangedIds = Array.isArray(normalizedSaveContext?.finalChangedAnnotationIds)
       ? normalizedSaveContext.finalChangedAnnotationIds.filter(Boolean)
       : [];
+    const eraserObjectMutations = Array.isArray(normalizedSaveContext?.objectMutations)
+      ? normalizedSaveContext.objectMutations
+      : [];
+    const eraserDeletedStorageKeys = eraserObjectMutations
+      .filter((mutation) => mutation?.deleted === true && mutation.storageKey != null)
+      .map((mutation) => String(mutation.storageKey));
+    const eraserChangedStorageKeys = eraserObjectMutations
+      .filter((mutation) => mutation?.deleted !== true && mutation.storageKey != null)
+      .map((mutation) => String(mutation.storageKey));
     const interactionId = typeof normalizedSaveContext?.interactionId === 'string' && normalizedSaveContext.interactionId.trim()
       ? normalizedSaveContext.interactionId.trim()
       : null;
@@ -22298,6 +22356,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         nextPage: normalizedIncomingAnnotations,
         deletedIds: eraserDeletedIds,
         changedIds: eraserChangedIds,
+        deletedStorageKeys: eraserDeletedStorageKeys,
+        changedStorageKeys: eraserChangedStorageKeys,
       })
       : buildAnnotationHistoryAction({
         pageNumber,
@@ -22329,6 +22389,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
           nextPage: finalIncomingAnnotations,
           deletedIds: eraserDeletedIds,
           changedIds: eraserChangedIds,
+          deletedStorageKeys: eraserDeletedStorageKeys,
+          changedStorageKeys: eraserChangedStorageKeys,
         })
         : buildAnnotationHistoryAction({
           pageNumber,
@@ -22538,9 +22600,32 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       } catch (_) {}
     }
 
+    // Carry the immutable eraser gesture one render-hop to useAnnotationDoc.
+    // The durable store records this add-only operation instead of racing two
+    // replacement geometries in one LWW map slot. History continues to use the
+    // plain page JSON above; this transport field is not annotation content.
+    const committedIncomingAnnotations = (
+      isEraserCommit
+      && normalizedSaveContext?.eraserMutationId
+      && Array.isArray(normalizedSaveContext?.eraserPoints)
+    ) ? {
+      ...finalIncomingAnnotations,
+      eraserMutation: {
+        id: normalizedSaveContext.eraserMutationId,
+        pageNumber,
+        points: normalizedSaveContext.eraserPoints,
+        radius: normalizedSaveContext.eraserRadius,
+        mode: normalizedSaveContext.eraserMode,
+        touchedIds: normalizedSaveContext.touchedAnnotationIds,
+        changedIds: eraserChangedIds,
+        deletedIds: eraserDeletedIds,
+        objectMutations: normalizedSaveContext.objectMutations,
+      },
+    } : finalIncomingAnnotations;
+
     // Only update if changes actually occurred
     setAnnotationsByPage(prev => {
-      if (prev[pageNumber] === finalIncomingAnnotations) {
+      if (prev[pageNumber] === committedIncomingAnnotations) {
         if (source_.includes('text')) {
           appDebug(`[App p${pageNumber}] setAnnotationsByPage TEXT — NOOP (no change detected)`);
         }
@@ -22554,7 +22639,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       }
       const next = {
         ...prev,
-        [pageNumber]: finalIncomingAnnotations
+        [pageNumber]: committedIncomingAnnotations
       };
       // Re-derive counter display numbers across the whole document so
       // delete-renumber works automatically (Shottr+ behavior).
@@ -22576,7 +22661,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     });
     const nextAnnotationsByPageRef = {
       ...(annotationsByPageRef.current || {}),
-      [pageNumber]: finalIncomingAnnotations
+      [pageNumber]: committedIncomingAnnotations
     };
     annotationsByPageRef.current = shouldRenumberCounters
       ? renumberCountersWithLog(nextAnnotationsByPageRef, 'ref')
@@ -28936,9 +29021,10 @@ ${pageBlocks}
                             // counters degenerated to dots, callout/text metrics jumped on
                             // every tool switch, and commits flickered across the handoff.
                             // The canvas2d presentation keeps exactly two jobs:
-                            //   1. an ACTIVE erase stroke — FabricEraserCanvas snapshots
-                            //      the warm painted canvas and carves it while the live
-                            //      preview is on screen (erasePreviewPages), and
+                            //   1. a warm fallback source for an ACTIVE erase stroke —
+                            //      FabricEraserCanvas normally clones the real SVG and
+                            //      carves that clone while the committed SVG stays mounted
+                            //      and updates invisibly behind it (erasePreviewPages), and
                             //   2. the transient zoom/scroll interaction proxy window
                             //      (suspendFullSvgForProxy) while the SVG layer is suspended.
                             // It stays mounted-but-hidden otherwise so those two windows
@@ -29079,19 +29165,20 @@ ${pageBlocks}
                                 </div>
                               )}
                               {/* SVG layer — the single committed-annotation renderer, mounted in
-                                  EVERY tool mode (unified renderer, 2026-07-14). It unmounts only
-                                  (a) while an erase stroke's live preview is carving this page
-                                  (erasePreviewPages — mere eraser mode no longer swaps, so tool
-                                  toggling can't bob text), and (b) during the transient
+                                  EVERY tool mode (unified renderer, 2026-07-14). During an erase
+                                  stroke it remains mounted but hidden, so the committed geometry
+                                  can repaint behind the carved preview and release can swap both
+                                  presentations in one frame. It unmounts only during the transient
                                   zoom/scroll proxy window (suspendFullSvgForProxy).
                                   Input safety in non-interactive tools: the SVG root sets
                                   pointerEvents 'none' unless select/text-select or a creation tool
                                   is active, and per-shape hit rects are isSelectTool-gated, so a
                                   mounted layer never steals clicks from pan/pen/shape/counter
                                   tools. Ref CLAUDE.md 2026-04-10 rasterizer-mismatch gotcha. */}
-                              {!useCanvasPresentation && !suspendFullSvgForProxy && (
+                              {!suspendFullSvgForProxy && (
                               <div
                                 data-diag-svg-wrapper={pageNumber}
+                                data-svg-annotation-revision={pageAnnotations?.eraserPresentationRevision || ''}
                                 data-annotation-hydration-gated={annotationHydrationGated ? 'true' : 'false'}
                                 data-annotation-overlay-recovery-tick={annotationOverlayRecoveryTick}
                                 style={{
@@ -29102,7 +29189,9 @@ ${pageBlocks}
                                   height: '100%',
                                   pointerEvents: 'none',
                                   zIndex: 100,
-                                  visibility: annotationHydrationGated ? 'hidden' : undefined,
+                                  visibility: (annotationHydrationGated || useCanvasPresentation)
+                                    ? 'hidden'
+                                    : undefined,
                                   // UX: Fix 3 (2026-04-16) — SVG layer stays visible during
                                   // callout edit. Previously `visibility: hidden` blanked the
                                   // ENTIRE layer to avoid double-rendering the edited callout
@@ -34298,14 +34387,27 @@ ${pageBlocks}
       <ConfirmDeleteModal
         plan={pendingDeletePlan}
         onCancel={() => {
+          const settle = pendingDeleteSettlementRef.current;
           setPendingDeletePlan(null);
           pendingDeleteRunnerRef.current = null;
+          pendingDeleteSettlementRef.current = null;
+          settle?.({ committed: false });
         }}
         onConfirm={() => {
           const runner = pendingDeleteRunnerRef.current;
+          const settle = pendingDeleteSettlementRef.current;
           setPendingDeletePlan(null);
           pendingDeleteRunnerRef.current = null;
-          if (runner) runner();
+          pendingDeleteSettlementRef.current = null;
+          let committed = false;
+          try {
+            if (runner) {
+              runner();
+              committed = true;
+            }
+          } finally {
+            settle?.({ committed });
+          }
         }}
       />
       <UndoToast toast={undoToast} onDismiss={dismissUndoToast} />

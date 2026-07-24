@@ -1,11 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 
 import { erasePageAnnotations } from '../src/utils/pageSpaceEraser.js';
 import {
   createInkAnnotation,
   normalizeMultiPolygon,
   polygonSetToCommands,
+  subtractionStayedInsideSubject,
 } from '../src/utils/paperAnnotationGeometry.js';
 
 const nativeInk = (id, y = 50, overrides = {}) => ({
@@ -34,6 +36,11 @@ const erase = (pageAnnotations, points, overrides = {}) => erasePageAnnotations(
   mode: 'partial',
   ...overrides,
 });
+
+const REAL_REGENERATION_FIXTURE = JSON.parse(readFileSync(
+  new URL('./fixtures/real-partial-erase-regeneration.json', import.meta.url),
+  'utf8',
+));
 
 function pathEndpoints(path) {
   return path
@@ -194,6 +201,166 @@ test('a native filled stroke preserves its polygon topology after every bite', (
   assert.deepEqual(polygonSetToCommands(firstStroke.polygons), firstStroke.path);
   assert.deepEqual(polygonSetToCommands(secondStroke.polygons), secondStroke.path);
   assert.notDeepEqual(secondStroke.polygons, firstStroke.polygons);
+});
+
+test('partial erase cannot grow a weakly-simple legacy fragment along the eraser path', () => {
+  // Live regression from clickable-link-test.pdf. An old boolean result stored
+  // two lobes in one ring by repeating their shared vertex. Martinez accepts
+  // that weakly-simple input, but a later erase of the separate lower triangle
+  // used to attach the eraser boundary to the untouched upper ring — creating
+  // a brand-new long vertical red streak outside the source geometry.
+  const polygons = [
+    [[
+      [221.02774416243977, 294.9223308598285],
+      [222.01967712962696, 263.04185579356033],
+      [222.42567547764935, 263.04185579356033],
+      [222.82961864371475, 263.04185579356033],
+      [222.22938687150094, 236.73093856925385],
+      [221.62163332824278, 236.73026923842522],
+      [222.42567547764935, 263.04185579356033],
+      [223.3847157561007, 294.4256225711569],
+      [224.85535389127085, 314.5549895006301],
+    ]],
+    [[
+      [232.12187964936396, 338.3440293703809],
+      [234.34271647484937, 337.9306805677544],
+      [235.0702305468301, 357.6979892994418],
+      [232.12187964936396, 338.3440293703809],
+    ]],
+  ];
+  const originalMaxY = Math.max(...polygons.flat(3).filter((_, index) => index % 2 === 1));
+  const fragment = nativeInk('legacy-fragment', 0, {
+    path: polygonSetToCommands(polygons),
+    polygons,
+    left: 0,
+    top: 0,
+    width: 14.042486384390315,
+    height: 120.96772006101659,
+    fill: '#ff0000',
+    stroke: 'transparent',
+    strokeWidth: 0,
+    sourceWidth: 3,
+    paperInkGeometry: 'v1',
+    paperEraserGeometry: 'v1',
+  });
+
+  const result = erasePageAnnotations({
+    pageAnnotations: { objects: [fragment] },
+    eraserPoints: [{ x: 227.2, y: 330 }, { x: 227.2, y: 366.5 }],
+    eraserRadius: 10,
+    mode: 'partial',
+  });
+  const survivor = result.pageAnnotations.objects[0];
+  const resultCoordinates = survivor.polygons
+    .flat(3)
+    .filter(Number.isFinite);
+  const resultYs = resultCoordinates.filter((_, index) => index % 2 === 1);
+
+  assert.equal(result.didChange, true);
+  assert.ok(
+    Math.max(...resultYs) <= originalMaxY + 1e-7,
+    'subtraction must never manufacture ink below the original polygon',
+  );
+});
+
+test('partial erase preserves a boundary-touching evenodd hole instead of filling it', () => {
+  const outer = [[0, 0], [10, 0], [10, 10], [0, 10], [0, 0]];
+  const touchingHole = [[10, 5], [6, 3], [6, 7], [10, 5]];
+  const polygons = [[outer, touchingHole]];
+  const fragment = nativeInk('touching-hole', 0, {
+    path: polygonSetToCommands(polygons),
+    polygons,
+    left: 0,
+    top: 0,
+    width: 10,
+    height: 10,
+    fill: '#ff0000',
+    stroke: 'transparent',
+    strokeWidth: 0,
+    sourceWidth: 1,
+    paperInkGeometry: 'v1',
+    paperEraserGeometry: 'v1',
+  });
+
+  assert.equal(pointInPolygonSet({ x: 8, y: 5 }, polygons), false, 'fixture starts empty inside the notch');
+  const result = erasePageAnnotations({
+    pageAnnotations: { objects: [fragment] },
+    eraserPoints: [{ x: 1, y: 1 }],
+    eraserRadius: 0.5,
+    mode: 'partial',
+  });
+  const survivor = result.pageAnnotations.objects[0];
+
+  assert.equal(
+    result.didChange,
+    false,
+    'pathological boundary-touching legacy topology fails closed instead of painting new ink',
+  );
+  assert.equal(
+    pointInPolygonSet({ x: 8, y: 5 }, survivor.polygons),
+    false,
+    'erasing elsewhere cannot repaint the existing empty notch',
+  );
+});
+
+test('subtraction containment proof detects added ink even inside the old overall bounds', () => {
+  const concaveSubject = [[[
+    [0, 0], [10, 0], [10, 2], [2, 2], [2, 10], [0, 10], [0, 0],
+  ]]];
+  const inBoundsSpill = [
+    ...concaveSubject,
+    [[[4, 4], [6, 4], [6, 6], [4, 6], [4, 4]]],
+  ];
+
+  assert.equal(subtractionStayedInsideSubject(concaveSubject, concaveSubject, 2), true);
+  assert.equal(
+    subtractionStayedInsideSubject(inBoundsSpill, concaveSubject, 2),
+    false,
+    'bounds-only validation would miss the square painted inside the concave gap',
+  );
+});
+
+test('real regenerated-streak geometry can never be produced by the same two-point erase again', () => {
+  const {
+    beforePolygons,
+    historicalBadAfterPolygons,
+    gesture,
+    sourceWidth,
+  } = REAL_REGENERATION_FIXTURE;
+  assert.equal(
+    subtractionStayedInsideSubject(historicalBadAfterPolygons, beforePolygons, sourceWidth),
+    false,
+    'the independent postcondition detects the exact historical regeneration',
+  );
+
+  const fragment = nativeInk('real-regeneration', 0, {
+    path: polygonSetToCommands(beforePolygons),
+    polygons: beforePolygons,
+    left: 0,
+    top: 0,
+    width: 4,
+    height: 167,
+    fill: '#ff0000',
+    stroke: 'transparent',
+    strokeWidth: 0,
+    sourceWidth,
+    paperInkGeometry: 'v1',
+    paperEraserGeometry: 'v1',
+  });
+  const result = erasePageAnnotations({
+    pageAnnotations: { objects: [fragment] },
+    eraserPoints: gesture.points,
+    eraserRadius: gesture.radius,
+    mode: 'partial',
+  });
+  const survivor = result.pageAnnotations.objects[0];
+
+  assert.equal(result.didChange, true);
+  assert.equal(
+    subtractionStayedInsideSubject(survivor.polygons, beforePolygons, sourceWidth),
+    true,
+    'the current engine only removes pixels from the real corrupt legacy subject',
+  );
 });
 
 test('a native Fabric pen curve is promoted to filled geometry before partial erase', () => {
