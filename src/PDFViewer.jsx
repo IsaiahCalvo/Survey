@@ -7145,6 +7145,15 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   // Input field state for eraser size (similar to stroke width)
   const [eraserSizeInputValue, setEraserSizeInputValue] = useState(String(eraserSize));
   const [isEraserSizeFocused, setIsEraserSizeFocused] = useState(false);
+  const publishToolbarDraft = useCallback((field, value) => {
+    if (typeof onBottomToolbarApiChange !== 'function') return;
+    const ownerToken = bottomToolbarOwnerTokenRef.current;
+    onBottomToolbarApiChange((current) => (
+      current?.__ownerToken === ownerToken
+        ? { ...current, [field]: String(value) }
+        : current
+    ));
+  }, [onBottomToolbarApiChange]);
 
   // Sync tool properties when activeTool or pdfId changes (load per-tool preferences)
   useEffect(() => {
@@ -7345,23 +7354,28 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     // Allow empty string or valid numbers
     if (value === '' || /^\d+$/.test(value)) {
       setStrokeWidthInputValue(value);
+      publishToolbarDraft('strokeWidthInputValue', value);
     }
-  }, []);
+  }, [publishToolbarDraft]);
 
   // Commit width value on blur (clamp to valid range)
-  const handleStrokeWidthInputBlur = useCallback(() => {
+  const handleStrokeWidthInputBlur = useCallback((event) => {
     setIsStrokeWidthFocused(false);
-    const parsed = parseInt(strokeWidthInputValue, 10);
+    // AppShell receives this handler through an effect-published API. Read the
+    // blur-time DOM value so a fast edit cannot recommit a stale closure value.
+    const parsed = parseInt(event?.currentTarget?.value ?? strokeWidthInputValue, 10);
     if (isNaN(parsed) || parsed < 1) {
       // Reset to minimum if empty or invalid
       setStrokeWidthInputValue('1');
+      publishToolbarDraft('strokeWidthInputValue', '1');
       handleStrokeWidthChange(1);
     } else {
       const clamped = Math.min(Math.max(parsed, 1), 50);
       setStrokeWidthInputValue(String(clamped));
+      publishToolbarDraft('strokeWidthInputValue', clamped);
       handleStrokeWidthChange(clamped);
     }
-  }, [strokeWidthInputValue, handleStrokeWidthChange]);
+  }, [strokeWidthInputValue, handleStrokeWidthChange, publishToolbarDraft]);
 
   // Handle eraser size input changes (allows empty string while typing)
   const handleEraserSizeInputChange = useCallback((e) => {
@@ -7369,23 +7383,29 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     // Allow empty string or valid numbers
     if (value === '' || /^\d+$/.test(value)) {
       setEraserSizeInputValue(value);
+      publishToolbarDraft('eraserSizeInputValue', value);
     }
-  }, []);
+  }, [publishToolbarDraft]);
 
   // Commit eraser size value on blur (clamp to valid range)
-  const handleEraserSizeInputBlur = useCallback(() => {
+  const handleEraserSizeInputBlur = useCallback((event) => {
     setIsEraserSizeFocused(false);
-    const parsed = parseInt(eraserSizeInputValue, 10);
+    // This handler is published through AppShell's bottom-toolbar API. A fast
+    // edit can blur before the effect republishes the callback that captured
+    // the latest state, so the DOM value is the authoritative blur-time input.
+    const parsed = parseInt(event?.currentTarget?.value ?? eraserSizeInputValue, 10);
     if (isNaN(parsed) || parsed < 1) {
       // Reset to minimum if empty or invalid
       setEraserSizeInputValue('1');
+      publishToolbarDraft('eraserSizeInputValue', '1');
       setEraserSize(1);
     } else {
       const clamped = Math.min(Math.max(parsed, 1), 100);
       setEraserSizeInputValue(String(clamped));
+      publishToolbarDraft('eraserSizeInputValue', clamped);
       setEraserSize(clamped);
     }
-  }, [eraserSizeInputValue]);
+  }, [eraserSizeInputValue, publishToolbarDraft]);
 
   // Item copy state (was transfer)
   const [transferState, setTransferState] = useState(null); // { mode: 'select'|'prompt'|'checklist', sourceSpaceId, items, destSpaceId }

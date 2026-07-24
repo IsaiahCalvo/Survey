@@ -1877,6 +1877,9 @@ const FabricEraserCanvas = memo(({
     <div
       ref={containerRef}
       data-diag-eraser-wrapper={pageNumber}
+      data-diag-eraser-interruption-policy={
+        import.meta.env.DEV ? getInterruptionPolicy() : undefined
+      }
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
       onPointerUp={(event) => finishPointer(event, false)}

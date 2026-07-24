@@ -62,14 +62,15 @@ async function activateEraser(page, { mode = 'partial', size = 20 } = {}) {
   await expect(currentMode).toHaveCount(1);
   await currentMode.click();
 
+  // The toolbar reuses one Width input for drawing and erasing. Wait for the
+  // eraser surface to mount so this immediate fill reaches the eraser handler,
+  // not the previously-active drawing tool's handler.
+  await expect(page.locator('[data-diag-eraser-wrapper="1"]')).toHaveCount(1);
   const width = page.getByRole('textbox', { name: 'Width', exact: true });
   await expect(width).toHaveCount(1);
   await width.fill(String(size));
-  await page.waitForTimeout(75);
   await width.press('Tab');
-  await width.evaluate((input) => input.blur());
   await expect(width).toHaveValue(String(size));
-  await expect(page.locator('[data-diag-eraser-wrapper="1"]')).toHaveCount(1);
 }
 
 async function pageBox(page, pageNumber = 1) {
@@ -375,6 +376,9 @@ async function exerciseWriteBlockTransition(page, setterName, label) {
   const before = await annotationSignature(page, selector);
   const box = await annotationBox(page, selector);
   await activateEraser(page, { size: 24 });
+  const eraserWrapper = page.locator('[data-diag-eraser-wrapper="1"]');
+  const originalEraserWrapper = await eraserWrapper.elementHandle();
+  expect(originalEraserWrapper, `${label} needs a mounted eraser surface`).toBeTruthy();
 
   await expect.poll(() => page.evaluate((name) => typeof window[name], setterName), {
     message: `${label} E2E seam must exist only on the flagged route`,
@@ -388,6 +392,10 @@ async function exerciseWriteBlockTransition(page, setterName, label) {
   expect(preview.active, `${label} must interrupt a visible erase`).toBe(true);
 
   await page.evaluate((name) => window[name](true), setterName);
+  await expect(eraserWrapper).toHaveAttribute(
+    'data-diag-eraser-interruption-policy',
+    'cancel',
+  );
   await expect(page.locator('[data-eraser-mask-clone="1"]')).toHaveCount(0);
   await expect.poll(() => annotationSignature(page, selector), {
     message: `${label} must restore preview without committing`,
@@ -404,6 +412,14 @@ async function exerciseWriteBlockTransition(page, setterName, label) {
   }).toBe(before);
 
   await page.evaluate((name) => window[name](false), setterName);
+  await expect(eraserWrapper).toHaveAttribute(
+    'data-diag-eraser-interruption-policy',
+    'commit',
+  );
+  expect(await eraserWrapper.evaluate(
+    (current, original) => current === original,
+    originalEraserWrapper,
+  ), `${label} must recover on the same eraser surface`).toBe(true);
   let after = before;
   await eraseAcross(page, box);
   await expect.poll(async () => {
@@ -433,6 +449,34 @@ test.describe('mounted eraser lifecycle and gestures', () => {
     await expect(page.getByRole('button', { name: 'Partial erase', exact: true }))
       .toHaveClass(/btn-active/);
     await expect(page.locator('[data-diag-eraser-wrapper="1"]')).toBeVisible();
+    await expectNoErrors(errors);
+  });
+
+  test('fast pen width blur commits the live input value', async ({ page }) => {
+    const errors = captureErrors(page);
+    await openEditor(page);
+    await activateDrawTool(page, 'Pen');
+
+    const width = page.getByRole('textbox', { name: 'Width', exact: true });
+    await expect(width).toHaveCount(1);
+    await width.fill('17');
+    await width.press('Tab');
+    await expect(width).toHaveValue('17');
+    await expectNoErrors(errors);
+  });
+
+  test('fast eraser width blur commits the live input value', async ({ page }) => {
+    const errors = captureErrors(page);
+    await openEditor(page);
+    await activateDrawTool(page, 'Highlighter');
+    await page.getByRole('button', { name: 'Partial erase', exact: true }).click();
+    await expect(page.locator('[data-diag-eraser-wrapper="1"]')).toHaveCount(1);
+
+    const width = page.getByRole('textbox', { name: 'Width', exact: true });
+    await expect(width).toHaveCount(1);
+    await width.fill('37');
+    await width.press('Tab');
+    await expect(width).toHaveValue('37');
     await expectNoErrors(errors);
   });
 
@@ -585,9 +629,7 @@ test.describe('mounted eraser lifecycle and gestures', () => {
 
     const width = page.getByRole('textbox', { name: 'Width', exact: true });
     await width.fill('60');
-    await page.waitForTimeout(75);
     await width.press('Tab');
-    await width.evaluate((input) => input.blur());
     await expect(width).toHaveValue('60');
 
     await page.mouse.move(points.end.x, points.end.y, { steps: 4 });
