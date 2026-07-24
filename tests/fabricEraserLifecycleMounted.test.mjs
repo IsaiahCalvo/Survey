@@ -138,6 +138,8 @@ async function mountEraser(overrides = {}, { withPreviewSurface = false } = {}) 
     eraserSize: 8,
     viewerScale: 1,
     zoomGeneration: 0,
+    viewerId: 'owner',
+    documentOwnerId: 'owner',
     ...overrides,
   };
   await act(async () => root.render(React.createElement(FabricEraserCanvas, baseProps)));
