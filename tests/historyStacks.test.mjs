@@ -6,6 +6,7 @@ import {
   shouldRedoLocalBeforeLegacy,
   shouldUndoLocalBeforeLegacy,
 } from '../src/utils/historyStacks.js';
+import { isLegacyAnnotationHistoryMeta } from '../src/utils/historyHelpers.js';
 
 test('undo chooses the newest action across local and legacy history', () => {
   const local = { __historyMeta: { checkpointId: 4 } };
@@ -30,4 +31,8 @@ test('redo chooses the oldest undone action across local and legacy history', ()
 
 test('history order falls back to timestamps when checkpoint id is missing', () => {
   equal(getHistoryOrder({ createdAt: '2026-05-08T22:00:00.000Z' }), 1778277600000);
+});
+
+test('atomic eraser checkpoints stay eligible for the legacy undo/redo lane', () => {
+  equal(isLegacyAnnotationHistoryMeta({ reason: 'eraser:gesture' }), true);
 });

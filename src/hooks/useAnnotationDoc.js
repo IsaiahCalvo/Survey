@@ -197,8 +197,24 @@ export function useAnnotationDoc({
   // comment above). Resolves async, so it is read through a ref at open time
   // and a dedicated effect re-checks when it lands late.
   docRole = null,
+  eraseEffectConsumer = null,
+  onHistoryQuarantine = null,
 }) {
   const handleRef = useRef(null);
+  const eraseEffectConsumerRef = useRef(eraseEffectConsumer);
+  const eraseEffectConsumerProxyRef = useRef(null);
+  const onHistoryQuarantineRef = useRef(onHistoryQuarantine);
+  eraseEffectConsumerRef.current = eraseEffectConsumer;
+  onHistoryQuarantineRef.current = onHistoryQuarantine;
+  if (!eraseEffectConsumerProxyRef.current) {
+    eraseEffectConsumerProxyRef.current = (...args) => {
+      const consumer = eraseEffectConsumerRef.current;
+      if (typeof consumer !== 'function') {
+        throw new Error('erase effect consumer is not ready');
+      }
+      return consumer(...args);
+    };
+  }
   const readyRef = useRef(false);
   const byPageRef = useRef(annotationsByPage);
   const spacesRef = useRef(spaces);
@@ -212,6 +228,7 @@ export function useAnnotationDoc({
   const migrationDoneRef = useRef(null);
   const inkRepairDoneRef = useRef(null);
   const [initialHydration, setInitialHydration] = useState({ ready: false, source: 'pending', count: 0, documentId: null });
+  const [deletedPdfAnnotations, setDeletedPdfAnnotations] = useState([]);
   const [syncStatus, setSyncStatus] = useState({ stage: 'idle', healthy: true, error: null });
   const [syncQueueSize, setSyncQueueSize] = useState(0);
 
@@ -227,15 +244,18 @@ export function useAnnotationDoc({
     if (!enabled || !documentId || !userId) {
       setSyncStatus({ stage: 'idle', healthy: true, error: null });
       setSyncQueueSize(0);
+      setDeletedPdfAnnotations([]);
       return undefined;
     }
     let cancelled = false;
     let unsubscribeSync = null;
+    let unsubscribeHistoryQuarantine = null;
     readyRef.current = false;
     metaFallbackIdsRef.current = new Set();
     migrationDoneRef.current = null;
     inkRepairDoneRef.current = null;
     setInitialHydration({ ready: false, source: 'pending', count: 0, documentId });
+    setDeletedPdfAnnotations([]);
     setSyncStatus({ stage: 'hydrating', healthy: true, error: null });
     setSyncQueueSize(0);
 
@@ -247,6 +267,9 @@ export function useAnnotationDoc({
           supabase,
           clientId: getClientId(),
           actorUserId: userId,
+          eraseEffectConsumer: typeof eraseEffectConsumerRef.current === 'function'
+            ? eraseEffectConsumerProxyRef.current
+            : null,
         });
       } catch (err) {
         console.error('[useAnnotationDoc] open failed', err?.message);
@@ -269,6 +292,10 @@ export function useAnnotationDoc({
       };
       updateSyncStatus(handle.getSyncStatus?.());
       unsubscribeSync = handle.onSyncStatus?.(updateSyncStatus) || null;
+      unsubscribeHistoryQuarantine = handle.onHistoryQuarantine?.((event) => {
+        if (cancelled) return;
+        onHistoryQuarantineRef.current?.(event);
+      }) || null;
 
       // Remote ops (other devices) → reflect into React state.
       handle.onChange((byPage) => {
@@ -316,6 +343,7 @@ export function useAnnotationDoc({
         if (Array.isArray(s)) setSpaces(s);
         const sm = handle.getSurveyMarkers();
         if (sm && typeof sm === 'object') setSurveyMarkers(sm);
+        setDeletedPdfAnnotations(handle.getDeletedPdfAnnotations?.() || []);
       });
 
       // Old import/sync races could save one path repeatedly under fresh ids.
@@ -350,6 +378,7 @@ export function useAnnotationDoc({
       }
 
       const storeByPage = handle.getByPage();
+      setDeletedPdfAnnotations(handle.getDeletedPdfAnnotations?.() || []);
       const storeSpaces = handle.getMeta(SPACES_KEY);
       const storeSurvey = handle.getSurveyMarkers();
       const count = pageCount(storeByPage);
@@ -438,9 +467,23 @@ export function useAnnotationDoc({
       handleRef.current = null;
       readyRef.current = false;
       unsubscribeSync?.();
+      unsubscribeHistoryQuarantine?.();
       if (h) { h.destroy().catch(() => {}); }
     };
   }, [enabled, documentId, userId, setAnnotationsByPage, setSpaces, setSurveyMarkers]);
+
+  // The executor closes over document/template/user state and can legitimately
+  // change after the durable handle opened. Reinstalling it also triggers an
+  // immediate recovery attempt for work that was waiting on that context.
+  useEffect(() => {
+    const consumer = typeof eraseEffectConsumer === 'function'
+      ? eraseEffectConsumerProxyRef.current
+      : null;
+    const cloudHandle = handleRef.current;
+    if (cloudHandle?.setEraseEffectConsumer) {
+      void cloudHandle.setEraseEffectConsumer(consumer);
+    }
+  }, [eraseEffectConsumer, initialHydration.ready]);
 
   // Capture annotation changes into the durable store (no-op when unchanged).
   // Slice 6: this single capture now carries callouts too — projected callout
@@ -461,6 +504,7 @@ export function useAnnotationDoc({
       (page) => page?.eraserMutation?.id,
     );
     const result = h.applyByPage(capturedByPage);
+    setDeletedPdfAnnotations(h.getDeletedPdfAnnotations?.() || []);
     if (hasEraserMutation) {
       // eraserMutation is a one-render transport envelope, not page content.
       // Replace it immediately with the operation-materialized Y.Doc view so
@@ -571,8 +615,128 @@ export function useAnnotationDoc({
     return setMetaValueOnDoc(h.doc, key, value, origin);
   }, []);
 
+  const commitEraseIntent = useCallback(async (intent, options = {}) => {
+    const cloudHandle = handleRef.current;
+    if (!cloudHandle || !readyRef.current) {
+      return {
+        status: 'cancelled',
+        reason: 'sync-not-ready',
+        mutationId: intent?.mutationId || null,
+      };
+    }
+
+    const ownerHandle = cloudHandle;
+
+    const result = await ownerHandle.commitEraseIntent(intent, options);
+    if (handleRef.current !== ownerHandle || !readyRef.current) {
+      return {
+        status: 'cancelled',
+        reason: 'stale-handle',
+        mutationId: intent?.mutationId || null,
+      };
+    }
+    if (
+      ['committed', 'noop'].includes(result.status)
+      && result.historyQuarantineGeneration !== ownerHandle.getHistoryQuarantineGeneration?.()
+    ) {
+      return {
+        status: 'cancelled',
+        reason: 'authoritative-rollback',
+        mutationId: intent?.mutationId || null,
+        historyQuarantineGeneration: ownerHandle.getHistoryQuarantineGeneration?.() ?? null,
+        byPage: ownerHandle.getByPage(),
+        surveyMarkers: ownerHandle.getSurveyMarkers(),
+      };
+    }
+    if (result.status !== 'committed' && result.status !== 'noop') {
+      return {
+        ...result,
+        byPage: ownerHandle.getByPage(),
+        surveyMarkers: ownerHandle.getSurveyMarkers(),
+      };
+    }
+
+    let nextByPage = result.byPage || ownerHandle.getByPage();
+    if (intent?.presentationRevision && intent?.pageNumber) {
+      const pageKey = String(intent.pageNumber);
+      nextByPage = {
+        ...nextByPage,
+        [pageKey]: {
+          ...(nextByPage[pageKey] || { objects: [] }),
+          eraserPresentationRevision: intent.presentationRevision,
+        },
+      };
+    }
+    nextByPage = preserveTransientPagePresentationState(byPageRef.current, nextByPage);
+    const nextSurveyMarkers = result.surveyMarkers || ownerHandle.getSurveyMarkers();
+    setDeletedPdfAnnotations(ownerHandle.getDeletedPdfAnnotations?.() || []);
+    byPageRef.current = nextByPage;
+    surveyMarkersRef.current = nextSurveyMarkers;
+    setAnnotationsByPage(nextByPage);
+    setSurveyMarkers(nextSurveyMarkers);
+    return {
+      ...result,
+      byPage: nextByPage,
+      surveyMarkers: nextSurveyMarkers,
+    };
+  }, [
+    setAnnotationsByPage,
+    setSurveyMarkers,
+  ]);
+
+  const applyEraseHistoryTransition = useCallback((transition, direction) => {
+    const ownerHandle = handleRef.current;
+    if (!ownerHandle || !readyRef.current) {
+      return { status: 'conflict', reason: 'sync-not-ready' };
+    }
+    const result = ownerHandle.applyEraseHistoryTransition(transition, direction);
+    if (result.status !== 'applied' && result.status !== 'noop') return result;
+    const nextByPage = preserveTransientPagePresentationState(
+      byPageRef.current,
+      result.byPage || ownerHandle.getByPage(),
+    );
+    byPageRef.current = nextByPage;
+    setDeletedPdfAnnotations(
+      result.deletedPdfAnnotations
+        || ownerHandle.getDeletedPdfAnnotations?.()
+        || [],
+    );
+    setAnnotationsByPage(nextByPage);
+    return { ...result, byPage: nextByPage };
+  }, [setAnnotationsByPage]);
+
+  const restoreEraseDeletion = useCallback((restoreActions, options = {}) => {
+    const ownerHandle = handleRef.current;
+    if (!ownerHandle || !readyRef.current) {
+      return { status: 'conflict', reason: 'sync-not-ready' };
+    }
+    const result = ownerHandle.restoreEraseDeletion(restoreActions, options);
+    if (result.status !== 'applied' && result.status !== 'noop') return result;
+    const nextByPage = preserveTransientPagePresentationState(
+      byPageRef.current,
+      result.byPage || ownerHandle.getByPage(),
+    );
+    byPageRef.current = nextByPage;
+    setDeletedPdfAnnotations(
+      result.deletedPdfAnnotations
+        || ownerHandle.getDeletedPdfAnnotations?.()
+        || [],
+    );
+    setAnnotationsByPage(nextByPage);
+    return { ...result, byPage: nextByPage };
+  }, [setAnnotationsByPage]);
+
+  const getHistoryQuarantineGeneration = useCallback(() => (
+    handleRef.current?.getHistoryQuarantineGeneration?.() ?? null
+  ), []);
+
   return {
     initialHydration,
+    deletedPdfAnnotations,
+    commitEraseIntent,
+    applyEraseHistoryTransition,
+    restoreEraseDeletion,
+    getHistoryQuarantineGeneration,
     forceFlush,
     commitEraserMutation,
     metaGet,

@@ -17,6 +17,10 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
 import { resolveSurveyMarkerPromptName } from '../src/utils/surveyMarkerNamePrompt.js';
+import {
+  capturePendingSurveyMarkerUi,
+  deletePendingSurveyMarkerUi,
+} from '../src/utils/pendingSurveyMarkerHistory.js';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const src = readFileSync(join(root, 'src', 'PDFViewer.jsx'), 'utf8');
@@ -83,7 +87,75 @@ test('untouched default is selected on focus so typing replaces it in one stroke
 });
 
 test('deleting a pending-name marker clears the stale input (guard + clear pair)', () => {
-  assert.match(src,
-    /if \(pendingSurveyMarkerName\?\.surveyMarker\?\.id === annotationId\) \{\s*setSurveyMarkerNameInput\(null\);/,
+  assert.match(
+    src,
+    /deletePendingSurveyMarkerUi\([\s\S]*?annotationId,[\s\S]*?setSurveyMarkerNameInput\(nextPendingUi\.surveyMarkerNameInput\)/,
     'the deletion path no longer clears surveyMarkerNameInput — stale text would resurface on the next modal open');
+});
+
+test('pending marker delete Undo/Redo snapshots and restores its complete transient UI slice', () => {
+  assert.match(
+    src,
+    /pendingSurveyMarkerUiRef\.current = capturePendingSurveyMarkerUi\(\{\s*newSurveyMarkersByPage,\s*pendingSurveyMarker,\s*pendingSurveyMarkerSelection,\s*pendingEntitySelection,\s*pendingSurveyMarkerName,\s*surveyMarkerNameInput,\s*\}\)/,
+  );
+  assert.match(
+    src,
+    /pendingSurveyMarkerUi: capturePendingSurveyMarkerUi\(pendingSurveyMarkerUiRef\.current\)/,
+  );
+  for (const setter of [
+    'setNewSurveyMarkersByPage',
+    'setPendingSurveyMarker',
+    'setPendingSurveyMarkerSelection',
+    'setPendingEntitySelection',
+    'setPendingSurveyMarkerName',
+    'setSurveyMarkerNameInput',
+  ]) {
+    assert.match(
+      src,
+      new RegExp(`${setter}\\([\\s\\S]{0,100}?restoredPendingSurveyMarkerUi\\.`),
+      `${setter} must restore the pending-marker snapshot`,
+    );
+  }
+});
+
+test('pending marker delete, Undo, and Redo round-trip all transient marker UI exactly', () => {
+  const target = { id: 'pending-1', annotationId: 'pending-1', pageNumber: 1 };
+  const other = { id: 'pending-2', annotationId: 'pending-2', pageNumber: 2 };
+  const initial = {
+    newSurveyMarkersByPage: {
+      1: [target],
+      2: [other],
+    },
+    pendingSurveyMarker: target,
+    pendingSurveyMarkerSelection: {
+      pageNumber: 1,
+      annotationId: 'pending-1',
+      tick: 123,
+    },
+    pendingEntitySelection: {
+      surveyMarker: target,
+      categoryId: 'category-1',
+    },
+    pendingSurveyMarkerName: {
+      surveyMarker: target,
+      categoryId: 'category-1',
+    },
+    surveyMarkerNameInput: 'Camera A',
+  };
+  const undoSnapshot = capturePendingSurveyMarkerUi(initial);
+  const deleted = deletePendingSurveyMarkerUi(initial, 'pending-1');
+  assert.deepEqual(deleted, {
+    newSurveyMarkersByPage: { 2: [other] },
+    pendingSurveyMarker: null,
+    pendingSurveyMarkerSelection: null,
+    pendingEntitySelection: null,
+    pendingSurveyMarkerName: null,
+    surveyMarkerNameInput: null,
+  });
+  const undone = capturePendingSurveyMarkerUi(undoSnapshot);
+  assert.deepEqual(undone, initial);
+  assert.notEqual(undone, initial, 'Undo snapshot is detached from live state');
+  const redone = deletePendingSurveyMarkerUi(undone, 'pending-1');
+  assert.deepEqual(redone, deleted);
+  assert.deepEqual(initial.newSurveyMarkersByPage, { 1: [target], 2: [other] });
 });

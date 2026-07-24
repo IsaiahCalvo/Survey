@@ -18,8 +18,28 @@ import { deepClone } from './utils/deepClone.js';
 import { sanitizeTemplateConfig } from './utils/templateConfig.js';
 import { migrateSidebarData } from './utils/sidebarPersistence.js';
 import { resolveMarkerEntityFromName } from './utils/surveyMarkerEntityResolver.js';
+import {
+  capturePendingSurveyMarkerUi,
+  deletePendingSurveyMarkerUi,
+} from './utils/pendingSurveyMarkerHistory.js';
 import { buildSpaceCSVContent } from './utils/spaceCSVExporter.js';
 import { eraserDiameterToScreenRadius } from './utils/eraserSizing.js';
+import { requireEraseExcelProjectionReady } from './utils/eraseExcelProjection.js';
+import { buildEraseHistoryBeforeSnapshot } from './utils/annotationEraseTransaction.js';
+import {
+  buildAnnotationEraseDeleteHistoryRestoreActions,
+  prepareEraseIntentForCommit,
+} from './utils/annotationEraseCommitPlan.js';
+import { scopeEraseHistorySnapshot } from './utils/eraseHistoryScope.js';
+import {
+  appendLegacyHistoryCheckpoint,
+  claimHistoryQuarantineEvent,
+  createEraseTransitionHistoryMeta,
+  createEraseTransitionHistorySentinel,
+  isEraseTransitionHistorySentinel,
+  moveEraseTransitionHistoryCheckpointByMutationId,
+  removeEraseTransitionHistoryCheckpoints,
+} from './utils/eraseTransitionHistory.js';
 import {
   createProductionBenchmarkPage,
   parseProductionBenchmarkConfig,
@@ -126,11 +146,13 @@ import { buildSurveyMarkerDeleteHistoryRow, applySurveyMarkerRestore } from './s
 import {
   buildAnnotationDeleteHistoryRow,
   isAnnotationRestoreAction,
+  isFabricAnnotationHistoryAction,
   isCalloutRestoreAction,
   applyCalloutRestore,
   buildRegionDeleteHistoryRow,
   isRegionRestoreAction,
   buildBulkAnnotationDeleteHistoryRows,
+  buildAnnotationEraseDeleteHistoryRow,
   isBulkAnnotationDeleteEvent,
   buildAnnotationRestoreAction,
   buildSpaceDeleteHistoryRow,
@@ -7113,6 +7135,18 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   const [surveyMarkerNameInput, setSurveyMarkerNameInput] = useState(null); // Name prompt input; null = untouched (show category-derived default), any string ('' included) = user's text
   const [pendingEntitySelection, setPendingEntitySelection] = useState(null); // { surveyMarker, categoryId } when prompting for Entity
   const [mobileSurveyEntityId, setMobileSurveyEntityId] = useState(null);
+  // Pending Survey Marker deletion participates in legacy Undo/Redo. Keep the
+  // entire transient prompt/preview slice together so restoring the marker
+  // cannot leave its modal, name input, or selection in the post-delete state.
+  const pendingSurveyMarkerUiRef = useRef(null);
+  pendingSurveyMarkerUiRef.current = capturePendingSurveyMarkerUi({
+    newSurveyMarkersByPage,
+    pendingSurveyMarker,
+    pendingSurveyMarkerSelection,
+    pendingEntitySelection,
+    pendingSurveyMarkerName,
+    surveyMarkerNameInput,
+  });
 
   // NEW: Item and Annotation system state
   const [pdfId, setPdfId] = useState(null);
@@ -9646,6 +9680,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   // handleDeleteSelectedCallouts must call it without a TDZ crash, so it reads
   // this ref at call time (same pattern as handleSaveAnnotationsRef).
   const requestBulkDeleteRef = useRef(null);
+  const applyDurableEraseHistoryTransitionRef = useRef(() => ({
+    status: 'conflict',
+    reason: 'sync-not-ready',
+  }));
   // R2.2 Slice 4 — mixed shape+callout marquee delete coalescing.
   // mixedDeleteBatchRef: armed by handleBeginBatchDelete with the canModify-
   // permitted callout ids of the marquee selection; claimed inside
@@ -10108,7 +10146,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     // the same annotationsByPageRef source captured above, so the two slices
     // inside one checkpoint can never disagree (calloutsRef only syncs in a
     // post-render effect and could lag a synchronous restore).
-    callouts: deepClone(deriveCalloutsFromByPage(annotationsByPageRef.current || {}))
+    callouts: deepClone(deriveCalloutsFromByPage(annotationsByPageRef.current || {})),
+    pendingSurveyMarkerUi: capturePendingSurveyMarkerUi(pendingSurveyMarkerUiRef.current),
   }), []);
 
   const getAnnotationPageHistorySnapshot = useCallback((pageNumber) => {
@@ -10132,6 +10171,12 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   const restoreHistoryState = useCallback((stateToRestore) => {
     const restoredSurveyMarkers = stateToRestore.surveyMarkers || {};
     const restoredSpaces = migrateHistorySpaces(stateToRestore.spaces || []);
+    const restoredPendingSurveyMarkerUi = Object.prototype.hasOwnProperty.call(
+      stateToRestore || {},
+      'pendingSurveyMarkerUi',
+    )
+      ? capturePendingSurveyMarkerUi(stateToRestore.pendingSurveyMarkerUi)
+      : null;
     const restoredCallouts = Array.isArray(stateToRestore.callouts)
       ? stateToRestore.callouts
       : [];
@@ -10153,11 +10198,24 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     annotationsByPageRef.current = restoredAnnotationsByPage;
     surveyMarkersRef.current = restoredSurveyMarkers;
     spacesRef.current = restoredSpaces;
+    if (restoredPendingSurveyMarkerUi) {
+      pendingSurveyMarkerUiRef.current = restoredPendingSurveyMarkerUi;
+    }
 
     const applyRestoredState = () => {
       setAnnotationsByPage(restoredAnnotationsByPage);
       setSurveyMarkers(restoredSurveyMarkers);
       setSpaces(restoredSpaces);
+      if (restoredPendingSurveyMarkerUi) {
+        setNewSurveyMarkersByPage(restoredPendingSurveyMarkerUi.newSurveyMarkersByPage || {});
+        setPendingSurveyMarker(restoredPendingSurveyMarkerUi.pendingSurveyMarker ?? null);
+        setPendingSurveyMarkerSelection(
+          restoredPendingSurveyMarkerUi.pendingSurveyMarkerSelection ?? null,
+        );
+        setPendingEntitySelection(restoredPendingSurveyMarkerUi.pendingEntitySelection ?? null);
+        setPendingSurveyMarkerName(restoredPendingSurveyMarkerUi.pendingSurveyMarkerName ?? null);
+        setSurveyMarkerNameInput(restoredPendingSurveyMarkerUi.surveyMarkerNameInput ?? null);
+      }
     };
 
     try {
@@ -10206,6 +10264,70 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         undoDepth: undoHistoryRef.current.length,
         redoDepth: redoHistoryRef.current.length
       });
+      return;
+    }
+
+    const eraseHistoryTransition = context?.eraseHistoryTransition;
+    if (eraseHistoryTransition?.mutationId) {
+      const checkpointId = historyCheckpointSeqRef.current + 1;
+      const sentinel = createEraseTransitionHistorySentinel(
+        eraseHistoryTransition.mutationId,
+      );
+      const checkpointMeta = createEraseTransitionHistoryMeta({
+        checkpointId,
+        reason: normalizedReason,
+        context,
+      });
+      const previousUndoDepth = undoHistoryRef.current.length;
+      const previousRedoDepth = redoHistoryRef.current.length;
+      const didTrimOldest = previousUndoDepth >= 50;
+      const nextHistory = appendLegacyHistoryCheckpoint({
+        undoHistory: undoHistoryRef.current,
+        undoMeta: undoHistoryMetaRef.current,
+        entry: sentinel,
+        meta: checkpointMeta,
+      });
+
+      historyCheckpointSeqRef.current = checkpointId;
+      undoHistoryRef.current = nextHistory.undoHistory;
+      undoHistoryMetaRef.current = nextHistory.undoMeta;
+      redoHistoryRef.current = nextHistory.redoHistory;
+      redoHistoryMetaRef.current = nextHistory.redoMeta;
+      setUndoHistory(nextHistory.undoHistory);
+      setRedoHistory(nextHistory.redoHistory);
+      // Transition checkpoints are mutation-addressed rather than snapshots.
+      // A later ordinary checkpoint must fingerprint its actual current state.
+      lastCheckpointHashRef.current = null;
+
+      pushHistoryDebugEvent('checkpoint_added_erase_transition', {
+        suppressHistoryRow: context?.suppressHistoryRow === true,
+        checkpointId,
+        order: checkpointId,
+        timestamp: checkpointMeta.createdAt,
+        historySource: 'legacy history',
+        receivedStack: 'legacyUndoHistory',
+        clearedRedoStack: previousRedoDepth > 0 ? 'legacyRedoHistory' : null,
+        clearedRedoEntries: previousRedoDepth,
+        ...summarizeHistoryMetaForLog(checkpointMeta),
+        reason: checkpointMeta.reason,
+        context: checkpointMeta.context,
+        undoDepth: nextHistory.undoHistory.length,
+        redoDepth: 0,
+        didTrimOldest,
+        summary: checkpointMeta.summary,
+        delta: checkpointMeta.delta,
+        snapshotHash: checkpointMeta.snapshotHash,
+        snapshotBytes: checkpointMeta.snapshotBytes,
+      });
+      if (previousRedoDepth > 0) {
+        pushHistoryDebugEvent('redo_cleared_on_new_checkpoint', {
+          reason: checkpointMeta.reason,
+          undoDepth: nextHistory.undoHistory.length,
+          redoDepth: 0,
+          clearedRedoEntries: previousRedoDepth,
+          snapshotHash: checkpointMeta.snapshotHash,
+        });
+      }
       return;
     }
 
@@ -10269,6 +10391,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       lastCheckpointHashRef.current = null;
 
       pushHistoryDebugEvent('checkpoint_added_annotation_fast', {
+        suppressHistoryRow: context?.suppressHistoryRow === true,
         checkpointId: checkpointMeta.checkpointId,
         order: checkpointMeta.checkpointId,
         timestamp: checkpointMeta.createdAt,
@@ -10356,6 +10479,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     lastCheckpointHashRef.current = currentFingerprint.hash;
 
     pushHistoryDebugEvent('checkpoint_added', {
+      suppressHistoryRow: context?.suppressHistoryRow === true,
       checkpointId: checkpointMeta.checkpointId,
       order: checkpointMeta.checkpointId,
       timestamp: checkpointMeta.createdAt,
@@ -10422,6 +10546,16 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       viewerId: user?.id,
     });
   }, [pdfFile?.id, pdfFile?.user_id, user?.id]);
+
+  // Registered documents must never manufacture delete authority from the
+  // current viewer. Local-only files use their own explicit fallback lane.
+  const eraseDocumentOwnerId = useMemo(() => {
+    if (!pdfFile?.id) return null;
+    if (import.meta.env.MODE !== 'production' && typeof window !== 'undefined') {
+      if (window.__phase35TestRoleOverride) return documentOwnerId;
+    }
+    return documentOwnerId;
+  }, [documentOwnerId, pdfFile?.id, pdfFile?.user_id]);
 
   // UX: Phase 14 KBD-01 — handler for Delete/Backspace on selected callouts.
   // Called by SVGAnnotationLayer's extended keydown effect via
@@ -11130,9 +11264,90 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     if (isLegacyAnnotationHistoryMeta(legacyUndoMeta)) {
       const stateToRestore = undoHistoryRef.current[undoHistoryRef.current.length - 1] || null;
       if (stateToRestore) {
+        const eraseHistoryTransition = legacyUndoMeta?.context?.eraseHistoryTransition;
+        if (eraseHistoryTransition) {
+          isUndoingRef.current = true;
+          try {
+            const sentinelMatches = (
+              isEraseTransitionHistorySentinel(stateToRestore)
+              && stateToRestore.mutationId === eraseHistoryTransition.mutationId
+            );
+            const transitionResult = sentinelMatches
+              ? applyDurableEraseHistoryTransitionRef.current(
+                eraseHistoryTransition,
+                'undo',
+              )
+              : { status: 'conflict', reason: 'history-sentinel-mismatch' };
+            if (!['applied', 'noop'].includes(transitionResult?.status)) {
+              const quarantined = removeEraseTransitionHistoryCheckpoints({
+                mutationIds: [eraseHistoryTransition.mutationId],
+                undoHistory: undoHistoryRef.current,
+                undoMeta: undoHistoryMetaRef.current,
+                redoHistory: redoHistoryRef.current,
+                redoMeta: redoHistoryMetaRef.current,
+              });
+              undoHistoryRef.current = quarantined.undoHistory;
+              undoHistoryMetaRef.current = quarantined.undoMeta;
+              redoHistoryRef.current = quarantined.redoHistory;
+              redoHistoryMetaRef.current = quarantined.redoMeta;
+              setUndoHistory(quarantined.undoHistory);
+              setRedoHistory(quarantined.redoHistory);
+              lastCheckpointHashRef.current = null;
+              pushHistoryDebugEvent('erase_history_transition_conflict', {
+                direction: 'undo',
+                reason: transitionResult?.reason || 'unknown',
+                mutationId: eraseHistoryTransition.mutationId || null,
+                quarantined: true,
+                undoDepth: quarantined.undoHistory.length,
+                redoDepth: quarantined.redoHistory.length,
+              });
+              return;
+            }
+            const moved = moveEraseTransitionHistoryCheckpointByMutationId({
+              mutationId: eraseHistoryTransition.mutationId,
+              direction: 'undo',
+              undoHistory: undoHistoryRef.current,
+              undoMeta: undoHistoryMetaRef.current,
+              redoHistory: redoHistoryRef.current,
+              redoMeta: redoHistoryMetaRef.current,
+            });
+            if (!moved) return;
+            undoHistoryRef.current = moved.undoHistory;
+            undoHistoryMetaRef.current = moved.undoMeta;
+            redoHistoryRef.current = moved.redoHistory;
+            redoHistoryMetaRef.current = moved.redoMeta;
+            setUndoHistory(moved.undoHistory);
+            setRedoHistory(moved.redoHistory);
+            lastCheckpointHashRef.current = null;
+            pushHistoryDebugEvent('legacy_annotation_undo_applied', {
+              historySource: 'legacy history',
+              chosenStack: 'legacyUndoHistory',
+              receivedStack: 'legacyRedoHistory',
+              ...summarizeHistoryMetaForLog(legacyUndoMeta),
+              reason: legacyUndoMeta.reason,
+              context: legacyUndoMeta.context || null,
+              ownerScopedCallouts: false,
+              mutationScopedErase: true,
+              undoDepth: moved.undoHistory.length,
+              redoDepth: moved.redoHistory.length,
+            });
+            return;
+          } finally {
+            isUndoingRef.current = false;
+          }
+        }
+
         const currentState = getHistorySnapshot();
+        const eraseTargets = legacyUndoMeta?.context?.eraseTargets;
+        const shouldScopeErase = Array.isArray(eraseTargets) && eraseTargets.length > 0;
         const shouldScopeCallouts = shouldScopeCalloutHistoryRestore(legacyUndoMeta);
-        const scopedStateToRestore = shouldScopeCallouts
+        const scopedStateToRestore = shouldScopeErase
+          ? scopeEraseHistorySnapshot({
+            currentSnapshot: currentState,
+            targetSnapshot: stateToRestore,
+            targets: eraseTargets,
+          })
+          : shouldScopeCallouts
           ? scopeHistoryStateForCalloutRestore({
             currentState,
             targetState: stateToRestore,
@@ -11157,6 +11372,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
             reason: legacyUndoMeta.reason,
             context: legacyUndoMeta.context || null,
             ownerScopedCallouts: scopedStateToRestore !== stateToRestore,
+            mutationScopedErase: shouldScopeErase,
             undoDepth: undoHistoryRef.current.length,
             redoDepth: redoHistoryRef.current.length
           });
@@ -11309,9 +11525,90 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     }
 
     if (legacyRedoState && isLegacyAnnotationHistoryMeta(legacyRedoMeta)) {
+      const eraseHistoryTransition = legacyRedoMeta?.context?.eraseHistoryTransition;
+      if (eraseHistoryTransition) {
+        isUndoingRef.current = true;
+        try {
+          const sentinelMatches = (
+            isEraseTransitionHistorySentinel(legacyRedoState)
+            && legacyRedoState.mutationId === eraseHistoryTransition.mutationId
+          );
+          const transitionResult = sentinelMatches
+            ? applyDurableEraseHistoryTransitionRef.current(
+              eraseHistoryTransition,
+              'redo',
+            )
+            : { status: 'conflict', reason: 'history-sentinel-mismatch' };
+          if (!['applied', 'noop'].includes(transitionResult?.status)) {
+            const quarantined = removeEraseTransitionHistoryCheckpoints({
+              mutationIds: [eraseHistoryTransition.mutationId],
+              undoHistory: undoHistoryRef.current,
+              undoMeta: undoHistoryMetaRef.current,
+              redoHistory: redoHistoryRef.current,
+              redoMeta: redoHistoryMetaRef.current,
+            });
+            undoHistoryRef.current = quarantined.undoHistory;
+            undoHistoryMetaRef.current = quarantined.undoMeta;
+            redoHistoryRef.current = quarantined.redoHistory;
+            redoHistoryMetaRef.current = quarantined.redoMeta;
+            setUndoHistory(quarantined.undoHistory);
+            setRedoHistory(quarantined.redoHistory);
+            lastCheckpointHashRef.current = null;
+            pushHistoryDebugEvent('erase_history_transition_conflict', {
+              direction: 'redo',
+              reason: transitionResult?.reason || 'unknown',
+              mutationId: eraseHistoryTransition.mutationId || null,
+              quarantined: true,
+              undoDepth: quarantined.undoHistory.length,
+              redoDepth: quarantined.redoHistory.length,
+            });
+            return;
+          }
+          const moved = moveEraseTransitionHistoryCheckpointByMutationId({
+            mutationId: eraseHistoryTransition.mutationId,
+            direction: 'redo',
+            undoHistory: undoHistoryRef.current,
+            undoMeta: undoHistoryMetaRef.current,
+            redoHistory: redoHistoryRef.current,
+            redoMeta: redoHistoryMetaRef.current,
+          });
+          if (!moved) return;
+          undoHistoryRef.current = moved.undoHistory;
+          undoHistoryMetaRef.current = moved.undoMeta;
+          redoHistoryRef.current = moved.redoHistory;
+          redoHistoryMetaRef.current = moved.redoMeta;
+          setUndoHistory(moved.undoHistory);
+          setRedoHistory(moved.redoHistory);
+          lastCheckpointHashRef.current = null;
+          pushHistoryDebugEvent('legacy_annotation_redo_applied', {
+            historySource: 'legacy history',
+            chosenStack: 'legacyRedoHistory',
+            receivedStack: 'legacyUndoHistory',
+            ...summarizeHistoryMetaForLog(legacyRedoMeta),
+            reason: legacyRedoMeta.reason,
+            context: legacyRedoMeta.context || null,
+            ownerScopedCallouts: false,
+            mutationScopedErase: true,
+            undoDepth: moved.undoHistory.length,
+            redoDepth: moved.redoHistory.length,
+          });
+          return;
+        } finally {
+          isUndoingRef.current = false;
+        }
+      }
+
       const currentState = getHistorySnapshot();
+      const eraseTargets = legacyRedoMeta?.context?.eraseTargets;
+      const shouldScopeErase = Array.isArray(eraseTargets) && eraseTargets.length > 0;
       const shouldScopeCallouts = shouldScopeCalloutHistoryRestore(legacyRedoMeta);
-      const scopedRedoState = shouldScopeCallouts
+      const scopedRedoState = shouldScopeErase
+        ? scopeEraseHistorySnapshot({
+          currentSnapshot: currentState,
+          targetSnapshot: legacyRedoState,
+          targets: eraseTargets,
+        })
+        : shouldScopeCallouts
         ? scopeHistoryStateForCalloutRestore({
           currentState,
           targetState: legacyRedoState,
@@ -11336,6 +11633,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
           reason: legacyRedoMeta.reason,
           context: legacyRedoMeta.context || null,
           ownerScopedCallouts: scopedRedoState !== legacyRedoState,
+          mutationScopedErase: shouldScopeErase,
           undoDepth: undoHistoryRef.current.length,
           redoDepth: redoHistoryRef.current.length
         });
@@ -13617,7 +13915,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   // Helper to get user-friendly error messages
   // Check if error is a file locked error (423)
   // Push survey data to linked Excel with retry logic for locked files
-  const pushToExcelWithRetry = useCallback(async (isRetry = false) => {
+  const pushToExcelWithRetry = useCallback(async (
+    isRetry = false,
+    { throwOnFailure = false } = {},
+  ) => {
     if (!selectedTemplate?.linkedExcelPath) return;
 
     try {
@@ -13639,8 +13940,11 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         // For other errors, just log - don't interrupt the save flow
         console.error('Excel sync error (non-locked):', error.message);
       }
+      if (throwOnFailure) throw error;
     }
   }, [selectedTemplate, handleExportSurveyToExcel]);
+  const pushToExcelWithRetryRef = useRef(pushToExcelWithRetry);
+  pushToExcelWithRetryRef.current = pushToExcelWithRetry;
 
   // Handle user's choice from Excel sync confirmation modal
   const handleExcelSyncConfirmChoice = useCallback(async (choice) => {
@@ -17558,7 +17862,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   } = useUndoToast();
   const [pendingDeletePlan, setPendingDeletePlan] = useState(null);
   const pendingDeleteRunnerRef = useRef(null);
-  const pendingDeleteSettlementRef = useRef(null);
+  const pendingDeleteCancelRef = useRef(null);
 
   // Cross-author delete modal name resolution (2026-07-17): the byAuthor
   // breakdown resolves display names by authorId through the live document
@@ -17603,10 +17907,15 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   // PDFViewer is re-keyed onto a different doc. Tab close itself unmounts
   // PDFViewer entirely, so no extra wire-up is needed there.
   useEffect(() => {
+    pendingDeleteCancelRef.current?.();
     setPendingDeletePlan(null);
     pendingDeleteRunnerRef.current = null;
-    pendingDeleteSettlementRef.current?.({ committed: false });
-    pendingDeleteSettlementRef.current = null;
+    pendingDeleteCancelRef.current = null;
+    return () => {
+      pendingDeleteCancelRef.current?.();
+      pendingDeleteRunnerRef.current = null;
+      pendingDeleteCancelRef.current = null;
+    };
   }, [pdfFile?.id]);
 
   const handleRequestBulkDelete = useCallback(
@@ -17615,11 +17924,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       snapshotObjects: requestedSnapshotObjects,
       pageNumber,
       runDelete: requestedRunDelete,
-      onSettled: requestedOnSettled,
     }) => {
-      const settleRequestedDelete = (committed) => {
-        requestedOnSettled?.({ committed: committed === true });
-      };
       // R2.2 Slice 4 — mixed shape+callout marquee delete: when
       // handleBeginBatchDelete armed mixedDeleteBatchRef (both selections
       // populated), fold this page's permitted callout groups into the SHAPE
@@ -17700,10 +18005,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         resolveAuthorName,
       });
 
-      if (plan.mode === 'no-op') {
-        settleRequestedDelete(false);
-        return;
-      }
+      if (plan.mode === 'no-op') return;
 
       // KAL-313: build bulk trash rows from the snapshot objects that will be
       // deleted. snapshotObjects already contains the pre-delete Fabric objects.
@@ -17825,15 +18127,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         // KAL-313 / history F2: this direct-fire branch bypasses
         // wrappedRunDelete, so register the ids here too — otherwise the
         // single-annotation emitter journals the same delete a second time.
-        let committed = false;
-        try {
-          registerBulkJournaledAnnotationIds(candidateIds);
-          runDelete();
-          emitBulkTrashRows();
-          committed = true;
-        } finally {
-          settleRequestedDelete(committed);
-        }
+        registerBulkJournaledAnnotationIds(candidateIds);
+        runDelete();
+        emitBulkTrashRows();
         return;
       }
 
@@ -17841,9 +18137,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       // Stash the runner in a ref so the modal's onConfirm can fire it
       // without rebuilding the closure (and without holding state that
       // captures snapshotObjects in a way that survives plan reset).
-      pendingDeleteSettlementRef.current?.({ committed: false });
+      pendingDeleteCancelRef.current?.();
+      pendingDeleteCancelRef.current = null;
       pendingDeleteRunnerRef.current = wrappedRunDelete;
-      pendingDeleteSettlementRef.current = requestedOnSettled || null;
       setPendingDeletePlan(plan);
     },
     [annotationsByPage, user, documentOwnerId, enqueueUndoToast, pdfFile?.id, registerBulkJournaledAnnotationIds],
@@ -17853,12 +18149,256 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   // planner. Same render-time-assignment pattern as handleSaveAnnotationsRef.
   requestBulkDeleteRef.current = handleRequestBulkDelete;
 
+  const requestAtomicEraseApproval = useCallback((intent) => {
+    const calloutTargets = (intent?.targets || []).filter(
+      (target) => target.domain === 'callout' && target.operation === 'delete',
+    );
+    if (!pdfFile?.id || calloutTargets.length === 0) {
+      return Promise.resolve({ approved: true, plan: null });
+    }
+
+    const pageNumber = Number(intent.pageNumber);
+    const pageAnnotations = (
+      annotationsByPageRef.current?.[pageNumber]?.objects
+      || annotationsByPageRef.current?.[String(pageNumber)]?.objects
+      || []
+    );
+    const candidateIds = calloutTargets
+      .map((target) => (
+        target.before?.data?.id
+        ?? target.before?.id
+        ?? target.before?.annotationId
+        ?? null
+      ))
+      .filter(Boolean);
+    const presenceRows = Array.isArray(documentPresenceListRef.current)
+      ? documentPresenceListRef.current
+      : [];
+    const rosterNameByUserId = new Map(
+      presenceRows
+        .filter((row) => row?.user_id && row?.display_name)
+        .map((row) => [row.user_id, row.display_name]),
+    );
+    const plan = buildBulkDeletePlan({
+      candidateIds,
+      annotations: pageAnnotations,
+      viewerId: user?.id ?? null,
+      documentOwnerId: eraseDocumentOwnerId,
+      resolveAuthorName: (authorId) => rosterNameByUserId.get(authorId) ?? null,
+    });
+    if (plan.mode === 'no-op') {
+      return Promise.resolve({ approved: false, plan, reason: 'permission' });
+    }
+    if (plan.mode === 'owner-own-only') {
+      return Promise.resolve({ approved: true, plan });
+    }
+
+    pendingDeleteCancelRef.current?.();
+    return new Promise((resolve) => {
+      let settled = false;
+      const settle = (approved) => {
+        if (settled) return;
+        settled = true;
+        resolve({
+          approved,
+          plan,
+          ...(approved ? {} : { reason: 'user-cancelled' }),
+        });
+      };
+      pendingDeleteRunnerRef.current = () => settle(true);
+      pendingDeleteCancelRef.current = () => settle(false);
+      setPendingDeletePlan(plan);
+    });
+  }, [eraseDocumentOwnerId, pdfFile?.id, user?.id]);
+
+  // Core geometry and recoverable external side effects have separate failure
+  // boundaries. The Y.Doc transaction commits first; this durable outbox
+  // consumer retries stable idempotency keys after failure or reopen.
+  const consumeEraseOutboxEffect = useCallback(async (effect, context = {}) => {
+    const targetId = String(effect?.targetKey || '');
+    const targetBefore = effect?.payload?.before || null;
+    const committedAt = context.committedAt || new Date().toISOString();
+    const mutationId = context.mutationId || effect?.idempotencyKey || 'eraser';
+    const effectActorUserId = context.actorUserId || null;
+
+    if (!targetId) throw new Error('erase outbox effect is missing targetKey');
+    if (pdfFile?.id && user?.id && effectActorUserId && effectActorUserId !== user.id) {
+      throw new Error('erase outbox actor does not match the active user');
+    }
+
+    if (effect.type === 'annotation-delete-history') {
+      if (!pdfFile?.id) return;
+      const objectRestoreActions = buildAnnotationEraseDeleteHistoryRestoreActions(effect);
+      if (objectRestoreActions.length === 0) {
+        throw new Error('atomic erase history payload is empty');
+      }
+      const actorName = user?.user_metadata?.full_name
+        || user?.user_metadata?.name
+        || [user?.user_metadata?.first_name, user?.user_metadata?.last_name].filter(Boolean).join(' ')
+        || user?.email
+        || 'Someone';
+      const row = buildAnnotationEraseDeleteHistoryRow({
+        objectRestoreActions,
+        totalCount: objectRestoreActions.length,
+        mutationId,
+        documentId: pdfFile.id,
+        userId: effectActorUserId,
+        actorName,
+        deletedAt: committedAt,
+        batchIndex: effect?.payload?.batchIndex ?? 0,
+        batchTotal: effect?.payload?.batchTotal ?? 1,
+        gestureTotalCount: effect?.payload?.gestureTotalCount
+          ?? objectRestoreActions.length,
+      });
+      if (!row) throw new Error('atomic erase history row could not be built');
+      const { error } = await recordAndNotifyDocumentHistoryEvent(row);
+      if (error) throw error;
+      return;
+    }
+
+    const markerId = targetId;
+    const marker = targetBefore;
+    if (effect.type === 'trash') {
+      if (!pdfId) throw new Error('erase trash destination is not ready');
+      if (!marker) throw new Error(`erase trash payload missing for ${markerId}`);
+      let trash = loadTrash(pdfId);
+      trash = addTombstone(
+        trash,
+        markerId,
+        makeTombstone(marker, {
+          deletedAt: committedAt,
+          deletedBy: effectActorUserId,
+          origin: mutationId,
+        }),
+      );
+      saveTrash(pdfId, trash);
+      return;
+    }
+
+    if (effect.type === 'history') {
+      if (!pdfFile?.id) return;
+      if (!marker) throw new Error(`erase history payload missing for ${markerId}`);
+      const actorName = user?.email || user?.user_metadata?.full_name || 'Someone';
+      const row = buildSurveyMarkerDeleteHistoryRow({
+        markerId,
+        marker,
+        documentId: pdfFile.id,
+        userId: effectActorUserId,
+        actorName,
+        origin: mutationId,
+        deletedAt: committedAt,
+      });
+      const { error } = await recordAndNotifyDocumentHistoryEvent(row);
+      if (error) throw error;
+      return;
+    }
+
+    if (effect.type === 'excel-delete') {
+      if (!requireEraseExcelProjectionReady(
+        effect?.payload?.excelProjection,
+        selectedTemplateRef.current,
+      )) return;
+      // Wait for the committed Y.Doc projection to reach React before
+      // exporting the workbook without the deleted row.
+      const markerIds = Array.isArray(effect?.payload?.markerIds)
+        ? effect.payload.markerIds.map(String)
+        : [markerId];
+      for (let attempt = 0; attempt < 50; attempt += 1) {
+        if (markerIds.every((id) => !surveyMarkersRef.current?.[id])) break;
+        await new Promise((resolve) => setTimeout(resolve, 20));
+      }
+      const stillPresent = markerIds.find((id) => surveyMarkersRef.current?.[id]);
+      if (stillPresent) {
+        throw new Error(`erase Excel projection is not ready for ${stillPresent}`);
+      }
+      if (typeof pushToExcelWithRetryRef.current !== 'function') {
+        throw new Error('erase Excel destination is not ready');
+      }
+      await pushToExcelWithRetryRef.current(false, { throwOnFailure: true });
+      return;
+    }
+
+    if (effect.type === 'legacy-marker-delete') {
+      if (!pdfFile?.id || !user?.id || !documentSyncEnabled) return;
+      const markerIds = Array.isArray(effect?.payload?.markerIds)
+        ? effect.payload.markerIds.map(String)
+        : [markerId];
+      const result = await deleteAnnotations(pdfFile.id, markerIds);
+      if (result?.success === false) {
+        throw result.error || new Error(`legacy marker delete failed for ${markerIds.join(',')}`);
+      }
+      return;
+    }
+
+    throw new Error(`unsupported erase outbox effect: ${effect.type}`);
+  }, [documentSyncEnabled, pdfFile?.id, pdfId, user]);
+
+  const handledAnnotationHistoryQuarantineKeysRef = useRef(new Set());
+  const handleAnnotationHistoryQuarantine = useCallback((event) => {
+    if (!event || String(event.documentId) !== String(pdfFile?.id || '')) return;
+    if (!claimHistoryQuarantineEvent(
+      handledAnnotationHistoryQuarantineKeysRef.current,
+      event,
+    )) return;
+    dismissUndoToast();
+    const requiresFullHistoryReset = (
+      event.requiresFullHistoryReset !== false
+      || !Array.isArray(event.mutationIds)
+      || event.mutationIds.length === 0
+    );
+    if (requiresFullHistoryReset) {
+      undoHistoryRef.current = [];
+      undoHistoryMetaRef.current = [];
+      redoHistoryRef.current = [];
+      redoHistoryMetaRef.current = [];
+      localAnnotationUndoRef.current = [];
+      localAnnotationRedoRef.current = [];
+      suppressBatchCheckpointsRef.current = 0;
+      objectModifiedInteractionCheckpointRef.current.clear();
+      previewBaselineByPageRef.current.clear();
+      setErasePreviewPages(new Set());
+      setUndoHistory([]);
+      setRedoHistory([]);
+      setLocalAnnotationHistoryVersion((version) => version + 1);
+      yjsUndoManager?.clear?.();
+    } else {
+      const cleaned = removeEraseTransitionHistoryCheckpoints({
+        mutationIds: event.mutationIds,
+        undoHistory: undoHistoryRef.current,
+        undoMeta: undoHistoryMetaRef.current,
+        redoHistory: redoHistoryRef.current,
+        redoMeta: redoHistoryMetaRef.current,
+      });
+      undoHistoryRef.current = cleaned.undoHistory;
+      undoHistoryMetaRef.current = cleaned.undoMeta;
+      redoHistoryRef.current = cleaned.redoHistory;
+      redoHistoryMetaRef.current = cleaned.redoMeta;
+      setUndoHistory(cleaned.undoHistory);
+      setRedoHistory(cleaned.redoHistory);
+    }
+    lastCheckpointHashRef.current = null;
+    pushHistoryDebugEvent('annotation_history_quarantined', {
+      reason: event.reason || 'authoritative-rollback',
+      code: event.code || null,
+      mutationIds: event.mutationIds || [],
+      requiresFullHistoryReset,
+      generation: event.generation ?? null,
+      undoDepth: undoHistoryRef.current.length,
+      redoDepth: redoHistoryRef.current.length,
+    });
+  }, [dismissUndoToast, pdfFile?.id, pushHistoryDebugEvent, yjsUndoManager]);
+
   // The rebuild: Yjs Y.Doc + append-only op-log is the single source of truth
   // for annotations (and callouts). Captures every change durably the instant it
   // happens and hydrates from the durable store on open — no clear-and-refan, no
   // empty/partial overwrite, no documentId-timing gate.
   const {
     initialHydration: normalAnnotationHydration,
+    deletedPdfAnnotations,
+    commitEraseIntent: commitDurableEraseIntent,
+    applyEraseHistoryTransition: applyDurableEraseHistoryTransition,
+    restoreEraseDeletion: restoreDurableEraseDeletion,
+    getHistoryQuarantineGeneration,
     forceFlush: cloudSyncForceFlush,
     commitEraserMutation: commitEraserMutationToDoc,
     status: cloudSyncStatus,
@@ -17881,6 +18421,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     setSpaces,
     surveyMarkers,
     setSurveyMarkers,
+    eraseEffectConsumer: consumeEraseOutboxEffect,
+    onHistoryQuarantine: handleAnnotationHistoryQuarantine,
     // The unscaled per-page PDF pixel sizes the SVG layer inverts callouts
     // with — used for hydrate-time callout geometry normalization and the
     // one-time meta migration. (The old pageSizesReady BLOCKER-2 signal is
@@ -17895,6 +18437,76 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     // callouts via the hook's zero-op read-only fallback.
     docRole: yjsDocRole,
   });
+  applyDurableEraseHistoryTransitionRef.current = applyDurableEraseHistoryTransition;
+  const applyEraseHistoryTransitionFromToast = useCallback((transition) => {
+    const mutationId = transition?.mutationId || null;
+    const existingCheckpoint = moveEraseTransitionHistoryCheckpointByMutationId({
+      mutationId,
+      undoHistory: undoHistoryRef.current,
+      undoMeta: undoHistoryMetaRef.current,
+      redoHistory: redoHistoryRef.current,
+      redoMeta: redoHistoryMetaRef.current,
+    });
+    if (!existingCheckpoint) {
+      return { status: 'conflict', reason: 'history-checkpoint-missing' };
+    }
+    const result = applyDurableEraseHistoryTransition(transition, 'undo');
+    if (!['applied', 'noop'].includes(result?.status)) {
+      const cleaned = removeEraseTransitionHistoryCheckpoints({
+        mutationIds: [mutationId],
+        undoHistory: undoHistoryRef.current,
+        undoMeta: undoHistoryMetaRef.current,
+        redoHistory: redoHistoryRef.current,
+        redoMeta: redoHistoryMetaRef.current,
+      });
+      undoHistoryRef.current = cleaned.undoHistory;
+      undoHistoryMetaRef.current = cleaned.undoMeta;
+      redoHistoryRef.current = cleaned.redoHistory;
+      redoHistoryMetaRef.current = cleaned.redoMeta;
+      setUndoHistory(cleaned.undoHistory);
+      setRedoHistory(cleaned.redoHistory);
+      lastCheckpointHashRef.current = null;
+      pushHistoryDebugEvent('erase_history_transition_conflict', {
+        direction: 'undo-toast',
+        reason: result?.reason || 'unknown',
+        mutationId,
+        quarantined: true,
+        undoDepth: cleaned.undoHistory.length,
+        redoDepth: cleaned.redoHistory.length,
+      });
+      return result;
+    }
+    const moved = moveEraseTransitionHistoryCheckpointByMutationId({
+      mutationId,
+      direction: 'undo',
+      undoHistory: undoHistoryRef.current,
+      undoMeta: undoHistoryMetaRef.current,
+      redoHistory: redoHistoryRef.current,
+      redoMeta: redoHistoryMetaRef.current,
+    });
+    // A synchronous authoritative rollback can remove this exact checkpoint
+    // inside apply(). Never reinstall the pre-rollback arrays.
+    if (!moved) return result;
+    undoHistoryRef.current = moved.undoHistory;
+    undoHistoryMetaRef.current = moved.undoMeta;
+    redoHistoryRef.current = moved.redoHistory;
+    redoHistoryMetaRef.current = moved.redoMeta;
+    setUndoHistory(moved.undoHistory);
+    setRedoHistory(moved.redoHistory);
+    lastCheckpointHashRef.current = null;
+    pushHistoryDebugEvent('legacy_annotation_undo_applied', {
+      historySource: 'legacy history',
+      chosenStack: 'eraseUndoToast',
+      receivedStack: 'legacyRedoHistory',
+      ...summarizeHistoryMetaForLog(moved.meta),
+      reason: moved.meta?.reason || 'eraser:gesture',
+      context: moved.meta?.context || null,
+      mutationScopedErase: true,
+      undoDepth: moved.undoHistory.length,
+      redoDepth: moved.redoHistory.length,
+    });
+    return result;
+  }, [applyDurableEraseHistoryTransition, pushHistoryDebugEvent]);
   // KAL-309: publish the durable META accessors to the latest-refs the early
   // import-apply callbacks read through (avoids a forward TDZ reference).
   excelSyncMetaGetRef.current = excelSyncMetaGet;
@@ -19703,7 +20315,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
           documentId: pdfFile?.id || null,
           callouts,
           surveyMarkers,
-          spaces
+          spaces,
+          deletedPdfAnnotations,
         }
       );
       if (!buffer) {
@@ -19766,7 +20379,15 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       console.error('[ExportAnnotatedPDF] failed:', err);
       showToast(`Export failed: ${err?.message || err}`, 'error');
     }
-  }, [pdfFile, annotationsByPage, pageSizes, callouts, surveyMarkers, spaces]);
+  }, [
+    annotationsByPage,
+    callouts,
+    deletedPdfAnnotations,
+    pageSizes,
+    pdfFile,
+    spaces,
+    surveyMarkers,
+  ]);
 
   // Subscribe to the File menu item.
   useEffect(() => {
@@ -22943,11 +23564,38 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       const objects = Array.isArray(event?.payload?.objects) ? event.payload.objects : [];
       if (objects.length === 0) return { ok: false, reason: 'restore-unavailable' };
       let restoredCount = 0;
-      // Group fabric:create restoreActions by page for efficient batch save.
+      const eraseLaneRestoreActions = objects
+        .map((object) => object?.restoreAction)
+        .filter((action) => action?.eraseDeleteLane);
+      if (eraseLaneRestoreActions.length > 0) {
+        const result = restoreDurableEraseDeletion(eraseLaneRestoreActions, {
+          validateTarget: ({ annotation }) => Boolean(
+            user?.id
+            && eraseDocumentOwnerId
+            && canModify({
+              annotation,
+              viewerId: user.id,
+              documentOwnerId: eraseDocumentOwnerId,
+            }),
+          ),
+        });
+        if (result.status !== 'applied' && result.status !== 'noop') {
+          return {
+            ok: false,
+            reason: result.reason === 'permission'
+              ? 'permission'
+              : 'restore-conflict',
+          };
+        }
+        restoredCount += Number(result.restored) || 0;
+      }
+      // Group Fabric create/update/batch restoreActions by page for one save
+      // per page. Atomic eraser rows mix full deletion and partial replacement.
       const byPage = new Map();
       for (const obj of objects) {
         const ra = obj?.restoreAction;
         if (!ra) continue;
+        if (ra.eraseDeleteLane) continue;
         if (isCalloutRestoreAction(ra)) {
           const calloutResult = applyCalloutRestore(calloutsRef.current || [], ra, { restoredAt: new Date().toISOString() });
           if (calloutResult) {
@@ -22958,7 +23606,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
           // Delegate to the same region restore logic above.
           const regionResult = handleRestoreHistoryActivity({ payload: { restoreAction: ra } });
           if (regionResult?.ok) restoredCount++;
-        } else if (isAnnotationRestoreAction(ra)) {
+        } else if (isFabricAnnotationHistoryAction(ra)) {
           const pg = String(ra.pageNumber);
           if (!byPage.has(pg)) byPage.set(pg, []);
           byPage.get(pg).push(ra);
@@ -22990,6 +23638,28 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     if (restoreAction.pageNumber == null) {
       return { ok: false, reason: 'restore-unavailable' };
     }
+    if (restoreAction.eraseDeleteLane) {
+      const result = restoreDurableEraseDeletion([restoreAction], {
+        validateTarget: ({ annotation }) => Boolean(
+          user?.id
+          && eraseDocumentOwnerId
+          && canModify({
+            annotation,
+            viewerId: user.id,
+            documentOwnerId: eraseDocumentOwnerId,
+          }),
+        ),
+      });
+      if (result.status !== 'applied' && result.status !== 'noop') {
+        return {
+          ok: false,
+          reason: result.reason === 'permission' ? 'permission' : 'restore-conflict',
+        };
+      }
+      return Number(result.restored) > 0
+        ? { ok: true, pageNumber: Number(restoreAction.pageNumber) }
+        : { ok: false, reason: 'restore-noop' };
+    }
     const current = annotationsByPageRef.current || {};
     const nextByPage = applyAnnotationHistoryAction(current, restoreAction);
     if (nextByPage === current) {
@@ -23007,7 +23677,15 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       restoredFromHistoryEventId: event?.client_event_id || event?.id || null,
     });
     return { ok: true, pageNumber };
-  }, [handleSaveAnnotations, handleSpaceUpdate, handleRestoreSpace, pdfId]);
+  }, [
+    eraseDocumentOwnerId,
+    handleSaveAnnotations,
+    handleSpaceUpdate,
+    handleRestoreSpace,
+    pdfId,
+    restoreDurableEraseDeletion,
+    user?.id,
+  ]);
 
   // KAL-313: Cascade restore — space first, then the orphaned region.
   // Called by RevisionsPanel when the user confirms "Restore both?" after
@@ -25313,9 +25991,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     return canCommitSurveyMarkerErase({
       surveyMarker: savedSurveyMarker,
       viewerId,
-      documentOwnerId,
+      documentOwnerId: eraseDocumentOwnerId,
     });
-  }, [documentOwnerId, newSurveyMarkersByPage, user?.id]);
+  }, [eraseDocumentOwnerId, newSurveyMarkersByPage, user?.id]);
 
   const handleDeleteSurveyMarker = useCallback((annotationId) => {
     if (!annotationId) return;
@@ -25330,32 +26008,211 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       annotationId
     });
 
-    setNewSurveyMarkersByPage(prev => {
-      let changed = false;
-      const next = {};
-      Object.entries(prev || {}).forEach(([pageNumberKey, pageSurveyMarkers]) => {
-        const filtered = (pageSurveyMarkers || []).filter((surveyMarker) => surveyMarker?.annotationId !== annotationId);
-        if (filtered.length !== (pageSurveyMarkers || []).length) {
-          changed = true;
-        }
-        if (filtered.length > 0) {
-          next[pageNumberKey] = filtered;
-        }
+    const nextPendingUi = deletePendingSurveyMarkerUi(
+      pendingSurveyMarkerUiRef.current,
+      annotationId,
+    );
+    pendingSurveyMarkerUiRef.current = nextPendingUi;
+    setNewSurveyMarkersByPage(nextPendingUi.newSurveyMarkersByPage);
+    setPendingSurveyMarker(nextPendingUi.pendingSurveyMarker);
+    setPendingSurveyMarkerSelection(nextPendingUi.pendingSurveyMarkerSelection);
+    setPendingEntitySelection(nextPendingUi.pendingEntitySelection);
+    setPendingSurveyMarkerName(nextPendingUi.pendingSurveyMarkerName);
+    setSurveyMarkerNameInput(nextPendingUi.surveyMarkerNameInput);
+  }, [addHistoryCheckpoint, handleSurveyMarkerDeleted, surveyMarkers]);
+
+  const handleEraseIntent = useCallback(async (intent) => {
+    if (!pdfFile?.id) {
+      return {
+        status: 'cancelled',
+        reason: 'local-only-uses-save-pipeline',
+        mutationId: intent?.mutationId || null,
+      };
+    }
+    // Saved and prompt-only Survey Markers stay on handleDeleteSurveyMarker's
+    // established deletion pipeline. Their checklist/item/Excel dependencies
+    // do not share this Y.Doc, so accepting them here would falsely claim an
+    // atomic commit that a crash could split.
+    if ((intent?.targets || []).some((target) => target?.domain === 'survey-marker')) {
+      return {
+        status: 'cancelled',
+        reason: 'unsupported-domain',
+        mutationId: intent?.mutationId || null,
+      };
+    }
+    const preparedIntent = prepareEraseIntentForCommit({
+      intent,
+      annotationsByPage: buildEraseHistoryBeforeSnapshot({
+        annotationsByPage: annotationsByPageRef.current || {},
+      }, intent).annotationsByPage,
+      userId: user?.id || null,
+      includeDeleteHistory: Boolean(pdfFile?.id),
+    });
+    const durableIntent = preparedIntent;
+    const getDocumentLocked = () => (
+      typeof document !== 'undefined'
+      && document.body?.getAttribute('data-kal49-locked') === 'true'
+    );
+    const permissionContext = {
+      mode: 'registered',
+      viewerId: user?.id ?? null,
+      documentOwnerId: eraseDocumentOwnerId,
+    };
+    const validateTarget = ({ target, current }) => {
+      if (
+        typeof document !== 'undefined'
+        && document.body?.getAttribute('data-readonly') === 'true'
+      ) return false;
+      // Number changes are a deterministic consequence of deleting a
+      // permitted counter. The intent builder proves that no other field can
+      // change; collaborators may therefore renumber later foreign counters
+      // exactly as the prior save pipeline did.
+      if (target.cause === 'counter-renumber') return true;
+      return canModify({
+        annotation: current,
+        viewerId: permissionContext.viewerId,
+        documentOwnerId: permissionContext.documentOwnerId,
       });
-      return changed ? next : prev;
+    };
+    const approval = await requestAtomicEraseApproval(durableIntent);
+    if (!approval.approved) {
+      return {
+        status: 'cancelled',
+        reason: approval.reason || 'permission',
+        mutationId: durableIntent.mutationId,
+      };
+    }
+    const injectedStage = import.meta.env.DEV && typeof window !== 'undefined'
+      ? (
+        window.__eraseTransactionFailureStage
+        || new URLSearchParams(window.location.search).get('eraseFailureStage')
+      )
+      : null;
+    const result = await commitDurableEraseIntent(durableIntent, {
+      permissionContext,
+      getDocumentLocked,
+      validateTarget,
+      injectFailure: injectedStage
+        ? (stage) => {
+          if (stage === injectedStage) throw new Error(`injected ${stage}`);
+        }
+        : undefined,
+    });
+    if (
+      result.status === 'committed'
+      && result.historyQuarantineGeneration !== getHistoryQuarantineGeneration()
+    ) {
+      return {
+        ...result,
+        status: 'cancelled',
+        reason: 'authoritative-rollback',
+      };
+    }
+    if (typeof window !== 'undefined' && import.meta.env.DEV) {
+      window.__lastEraseTransaction = {
+        mutationId: durableIntent?.mutationId || null,
+        status: result.status,
+        reason: result.reason || null,
+        targetCount: durableIntent?.targets?.length || 0,
+      };
+    }
+    if (result.status !== 'committed') return result;
+
+    addHistoryCheckpoint('eraser:gesture', {
+      pageNumber: durableIntent.pageNumber,
+      mutationId: durableIntent.mutationId,
+      targetCount: durableIntent.targets.length,
+      eraseHistoryTransition: result.historyTransition,
+      suppressHistoryRow: Boolean(
+        pdfFile?.id
+        && durableIntent.targets.length > 0
+      ),
     });
 
-    setPendingSurveyMarker(prev => (prev?.id === annotationId ? null : prev));
-    setPendingEntitySelection(prev => (
-      prev?.surveyMarker?.id === annotationId ? null : prev
-    ));
-    if (pendingSurveyMarkerName?.surveyMarker?.id === annotationId) {
-      setSurveyMarkerNameInput(null);
+    const pageTargets = durableIntent.targets;
+    const deletedIds = pageTargets
+      .filter((target) => target.operation === 'delete')
+      .map((target) => (
+        target.before?.data?.id
+        ?? target.before?.id
+        ?? target.before?.annotationId
+        ?? target.storageKey
+      ))
+      .filter(Boolean);
+    const changedIds = pageTargets
+      .filter((target) => target.operation === 'replace')
+      .map((target) => (
+        target.after?.data?.id
+        ?? target.after?.id
+        ?? target.after?.annotationId
+        ?? target.storageKey
+      ))
+      .filter(Boolean);
+    recordAnnotationCommit({
+      surface: 'App.handleEraseIntent',
+      source: 'eraser:commit',
+      action: 'eraser:apply',
+      pageNumber: durableIntent.pageNumber,
+      objectDelta: -deletedIds.length,
+      changedObjectsCount: pageTargets.length,
+      checkpointPolicy: 'atomic',
+    });
+    if (typeof window !== 'undefined') {
+      try {
+        window.dispatchEvent(new CustomEvent('annotations:fabric-save-action', {
+          detail: {
+            source: 'eraser:commit',
+            action: 'eraser:apply',
+            pageNumber: durableIntent.pageNumber,
+            objectDelta: -deletedIds.length,
+            changedCount: pageTargets.length,
+            changedIds: [...new Set(changedIds)],
+            deletedIds: [...new Set(deletedIds)],
+          },
+        }));
+      } catch (_) {}
     }
-    setPendingSurveyMarkerName(prev => (
-      prev?.surveyMarker?.id === annotationId ? null : prev
-    ));
-  }, [addHistoryCheckpoint, handleSurveyMarkerDeleted, surveyMarkers, pendingSurveyMarkerName]);
+
+    const deletedCalloutIds = durableIntent.targets
+      .filter((target) => target.domain === 'callout' && target.operation === 'delete')
+      .map((target) => target.before?.data?.id ?? target.before?.id ?? null)
+      .filter(Boolean);
+    if (deletedCalloutIds.length > 0) {
+      setSelectedCalloutIds((previous) => {
+        if (!(previous instanceof Set) || previous.size === 0) return previous;
+        const next = new Set(previous);
+        deletedCalloutIds.forEach((id) => next.delete(id));
+        return next.size === previous.size ? previous : next;
+      });
+    }
+    if (approval.plan && approval.plan.mode !== 'owner-own-only') {
+      const peopleCount = Object.keys(approval.plan.byAuthor || {}).length;
+      const message = approval.plan.mode.includes('cross-author')
+        ? `Deleted ${approval.plan.count} annotations from ${peopleCount} people`
+        : `${approval.plan.count} annotations deleted`;
+      enqueueUndoToast({
+        kind: 'bulk',
+        message,
+        count: approval.plan.count,
+        onUndo: () => {
+          applyEraseHistoryTransitionFromToast(result.historyTransition);
+        },
+      });
+    }
+
+    return result;
+  }, [
+    addHistoryCheckpoint,
+    applyEraseHistoryTransitionFromToast,
+    commitDurableEraseIntent,
+    enqueueUndoToast,
+    eraseDocumentOwnerId,
+    getHistoryQuarantineGeneration,
+    pdfFile?.id,
+    requestAtomicEraseApproval,
+    restoreHistoryState,
+    user?.id,
+  ]);
 
   const getPageSurveyRegionId = useCallback((pageId) => {
     return getActivePageRegionId({
@@ -28958,14 +29815,14 @@ ${pageBlocks}
                               }}
                             >
                             {requiresLegacyAnnotationLayer && (
-                            <div style={(shouldHideFullLayer || annotationHydrationGated) ? { visibility: 'hidden' } : undefined}>
+                            <div style={(shouldHideFullLayer || annotationHydrationGated || erasePreviewPages.has(pageNumber)) ? { visibility: 'hidden' } : undefined}>
                               <PageAnnotationLayer
                                 pageNumber={pageNumber}
                                 width={resolvedPageSize.width}
                                 height={resolvedPageSize.height}
                                 scale={layerScale}
                                 canvasTopPadding={0}
-                                tool={activeTool}
+                                tool={activeTool === 'eraser' ? 'pan' : activeTool}
                                 strokeColor={strokeColor}
                                 strokeWidth={Number(strokeWidth) || 3}
                                 arrowheadStyle={arrowheadStyle}
@@ -29020,6 +29877,43 @@ ${pageBlocks}
                                 preferImmediateVisibleZoomRender={true}
                               />
                             </div>
+                            )}
+                            {requiresLegacyAnnotationLayer && activeTool === 'eraser' && (
+                              <FabricEraserCanvas
+                                key={`erase-legacy-${pageNumber}`}
+                                pageNumber={pageNumber}
+                                pageWidth={resolvedPageSize.width}
+                                pageHeight={resolvedPageSize.height}
+                                annotations={pageAnnotations}
+                                callouts={callouts}
+                                surveyMarkers={newSurveyMarkersByPage[pageNumber]}
+                                onEraseIntent={pdfFile?.id ? handleEraseIntent : undefined}
+                                onEraseCommit={!pdfFile?.id
+                                  ? (updatedJSON, eraserDiagnostics = {}) => handleSaveAnnotations(
+                                    pageNumber,
+                                    updatedJSON,
+                                    {
+                                      source: 'eraser:commit',
+                                      tool: 'eraser',
+                                      ...eraserDiagnostics,
+                                    },
+                                  )
+                                  : undefined}
+                                onEraseSurveyMarker={handleDeleteSurveyMarker}
+                                renderer={rendererMode}
+                                canEraseSurveyMarker={canEraseSurveyMarker}
+                                onErasePreviewPresentation={handleErasePreviewPresentation}
+                                eraserMode={eraserMode}
+                                eraserSize={eraserSize}
+                                viewerScale={layerScale}
+                                selectedSpaceId={annotationSpaceId}
+                                activeSpaceId={activeSpaceId}
+                                spaces={spaces}
+                                zoomGeneration={zoomGeneration}
+                                viewerId={user?.id ?? null}
+                                documentOwnerId={eraseDocumentOwnerId}
+                                isLocalOnlyDocument={!pdfFile?.id}
+                              />
                             )}
                             {/* SVGAnnotationLayer moved outside this div — see sibling below */}
                             {requiresLegacyAnnotationLayer && pageRegions && pageRegions.length > 0 && !(showRegionSelection && regionSelectionPage === pageNumber) && (() => {
@@ -29539,9 +30433,20 @@ ${pageBlocks}
                                   annotations={pageAnnotations}
                                   callouts={callouts}
                                   surveyMarkers={newSurveyMarkersByPage[pageNumber]}
-                                  onEraseCommit={(updatedJSON, eraserDiagnostics = {}) => handleSaveAnnotations(pageNumber, updatedJSON, { source: 'eraser:commit', tool: 'eraser', ...eraserDiagnostics })}
-                                  onEraseCallout={handleDeleteSelectedCallouts}
+                                  onEraseIntent={pdfFile?.id ? handleEraseIntent : undefined}
+                                  onEraseCommit={!pdfFile?.id
+                                    ? (updatedJSON, eraserDiagnostics = {}) => handleSaveAnnotations(
+                                      pageNumber,
+                                      updatedJSON,
+                                      {
+                                        source: 'eraser:commit',
+                                        tool: 'eraser',
+                                        ...eraserDiagnostics,
+                                      },
+                                    )
+                                    : undefined}
                                   onEraseSurveyMarker={handleDeleteSurveyMarker}
+                                  renderer={rendererMode}
                                   canEraseSurveyMarker={canEraseSurveyMarker}
                                   onErasePreviewPresentation={handleErasePreviewPresentation}
                                   eraserMode={eraserMode}
@@ -29555,7 +30460,8 @@ ${pageBlocks}
                                   interruptionPolicyRef={eraserInterruptionPolicyRef}
                                   // Phase 35 Plan 03 — per-user delete authority gate.
                                   viewerId={user?.id ?? null}
-                                  documentOwnerId={documentOwnerId}
+                                  documentOwnerId={eraseDocumentOwnerId}
+                                  isLocalOnlyDocument={!pdfFile?.id}
                                 />
                               )}
 
@@ -34514,27 +35420,18 @@ ${pageBlocks}
       <ConfirmDeleteModal
         plan={pendingDeletePlan}
         onCancel={() => {
-          const settle = pendingDeleteSettlementRef.current;
+          const cancel = pendingDeleteCancelRef.current;
           setPendingDeletePlan(null);
           pendingDeleteRunnerRef.current = null;
-          pendingDeleteSettlementRef.current = null;
-          settle?.({ committed: false });
+          pendingDeleteCancelRef.current = null;
+          cancel?.();
         }}
         onConfirm={() => {
           const runner = pendingDeleteRunnerRef.current;
-          const settle = pendingDeleteSettlementRef.current;
           setPendingDeletePlan(null);
           pendingDeleteRunnerRef.current = null;
-          pendingDeleteSettlementRef.current = null;
-          let committed = false;
-          try {
-            if (runner) {
-              runner();
-              committed = true;
-            }
-          } finally {
-            settle?.({ committed });
-          }
+          pendingDeleteCancelRef.current = null;
+          if (runner) runner();
         }}
       />
       <UndoToast toast={undoToast} onDismiss={dismissUndoToast} />

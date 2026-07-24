@@ -26,6 +26,12 @@ import {
   releaseYDoc,
 } from '../src/lib/collab/ydocRegistry.js';
 import { erasePageAnnotations } from '../src/utils/pageSpaceEraser.js';
+import {
+  buildEraseIntent,
+  buildPageEraseTargets,
+  commitEraseIntent,
+} from '../src/utils/annotationEraseTransaction.js';
+import { prepareEraseIntentForCommit } from '../src/utils/annotationEraseCommitPlan.js';
 import { formatEraserMutationId } from '../src/utils/eraserMutationId.js';
 import { getAnnotationStorageKey } from '../src/utils/annotationStorageIdentity.js';
 import {
@@ -35,7 +41,12 @@ import {
 } from '../src/utils/annotationLocalHistory.js';
 import { normalizeCanvasJsonForHistory } from '../src/utils/historyHelpers.js';
 
-const { bytesToPgHex, pgHexToBytes } = __test;
+const {
+  bytesToPgHex,
+  emitHistoryQuarantine,
+  pgHexToBytes,
+  subscribeHistoryQuarantine,
+} = __test;
 const WAL_CONCURRENCY_SQL = readFileSync(
   new URL('../supabase/migrations/20260723120000_annotation_wal_concurrency.sql', import.meta.url),
   'utf8',
@@ -44,6 +55,50 @@ const FABRIC_ERASER_SOURCE = readFileSync(
   new URL('../src/components/FabricEraserCanvas.jsx', import.meta.url),
   'utf8',
 );
+
+test('history quarantine replay keeps one stable per-open key and generation', () => {
+  const makeState = (writerId) => ({
+    documentId: 'dedupe-doc',
+    actorUserId: 'dedupe-actor',
+    documentIncarnation: 0,
+    writerId,
+    historyQuarantineGeneration: 0,
+    historyQuarantineListeners: new Set(),
+    lastHistoryQuarantineEvent: null,
+  });
+  const state = makeState('writer-open-a');
+  const firstDeliveries = [];
+  const unsubscribe = subscribeHistoryQuarantine(
+    state,
+    (event) => firstDeliveries.push(event),
+  );
+  emitHistoryQuarantine(state, {
+    reason: 'staging-failure',
+    code: 'STAGING_FAILED',
+    requiresFullHistoryReset: true,
+  });
+  unsubscribe();
+
+  const replayDeliveries = [];
+  subscribeHistoryQuarantine(
+    state,
+    (event) => replayDeliveries.push(event),
+  )();
+  assert.equal(firstDeliveries.length, 1);
+  assert.equal(replayDeliveries.length, 1);
+  assert.equal(replayDeliveries[0], firstDeliveries[0]);
+  assert.equal(replayDeliveries[0].generation, 1);
+  assert.equal(replayDeliveries[0].dedupeKey, firstDeliveries[0].dedupeKey);
+  assert.match(replayDeliveries[0].dedupeKey, /writer-open-a/);
+
+  const secondOpen = makeState('writer-open-b');
+  const secondEvent = emitHistoryQuarantine(secondOpen, {
+    reason: 'staging-failure',
+    code: 'STAGING_FAILED',
+    requiresFullHistoryReset: true,
+  });
+  assert.notEqual(secondEvent.dedupeKey, firstDeliveries[0].dedupeKey);
+});
 
 const nativeInk = (id = 'ink', y = 50) => ({
   type: 'path',
@@ -170,6 +225,84 @@ function commitErase(doc, {
   syncByPageToDoc(doc, { 1: page }, { eraserWriterId: writerId });
 }
 
+function prepareAtomicErase(byPage, {
+  mutationId,
+  points,
+  radius = 7,
+  mode = 'partial',
+  userId = 'test-actor',
+  includeDeleteHistory = false,
+}) {
+  const page = byPage[1] || { objects: [] };
+  const erased = erasePageAnnotations({
+    pageAnnotations: page,
+    eraserPoints: points,
+    eraserRadius: radius,
+    mode,
+  });
+  return prepareEraseIntentForCommit({
+    intent: buildEraseIntent({
+      mutationId,
+      pageNumber: 1,
+      renderer: 'svg',
+      gesture: { points, radius, mode },
+      targets: buildPageEraseTargets({
+        pageNumber: 1,
+        originalObjects: page.objects,
+        objectMutations: erased.objectMutations,
+      }),
+    }),
+    annotationsByPage: byPage,
+    userId,
+    includeDeleteHistory,
+  });
+}
+
+async function commitAtomicEraseOnDoc(doc, {
+  id,
+  points,
+  radius = 7,
+  mode = 'partial',
+  writerId = 'local',
+}) {
+  const intent = prepareAtomicErase(docToByPage(doc), {
+    mutationId: id,
+    points,
+    radius,
+    mode,
+  });
+  return commitEraseIntent({
+    doc,
+    intent,
+    actorUserId: writerId,
+    eraserWriterId: writerId,
+    permissionContext: { mode: 'local-only' },
+    validateTarget: () => true,
+    materializePageTarget: (target) => (
+      Object.values(docToByPage(doc))
+        .flatMap((page) => page?.objects || [])
+        .find((object) => (
+          String(getAnnotationStorageKey(object)) === String(target.storageKey)
+        ))
+    ),
+  });
+}
+
+function polygonBounds(polygons) {
+  const points = (polygons || []).flat(2);
+  return points.reduce((bounds, [x, y]) => ({
+    minX: Math.min(bounds.minX, x),
+    minY: Math.min(bounds.minY, y),
+    maxX: Math.max(bounds.maxX, x),
+    maxY: Math.max(bounds.maxY, y),
+  }), {
+    minX: Infinity,
+    minY: Infinity,
+    maxX: -Infinity,
+    maxY: -Infinity,
+  });
+}
+
 function exchangeUpdates(a, b, updateA, updateB) {
   Y.applyUpdate(a, updateB);
   Y.applyUpdate(b, updateA);
@@ -227,6 +360,504 @@ test('writer-scoped eraser ids cannot collide for first same-millisecond gesture
   assert.match(tabB, /^eraser:writer-b:/);
 });
 
+test('two production handles preserve an eraser lane while collaborator move/restyle updates the stable base', async () => {
+  const seed = new Y.Doc();
+  syncByPageToDoc(seed, { 1: { objects: [nativeInk('collab-base-edit')] } });
+  const docA = cloneDoc(seed);
+  const docB = cloneDoc(seed);
+  const handleA = await openAnnotationDoc({
+    actorUserId: 'owner',
+    documentId: 'collab-base-edit-a',
+    supabase: null,
+    clientId: 'client-a',
+    writerId: 'writer-a',
+    enableLocal: false,
+    enableRealtime: false,
+    doc: docA,
+  });
+  const handleB = await openAnnotationDoc({
+    actorUserId: 'collaborator',
+    documentId: 'collab-base-edit-b',
+    supabase: null,
+    clientId: 'client-b',
+    writerId: 'writer-b',
+    enableLocal: false,
+    enableRealtime: false,
+    doc: docB,
+  });
+  try {
+    const before = handleA.getByPage();
+    const intent = prepareAtomicErase(before, {
+      mutationId: 'collab-base-edit-erase',
+      points: [{ x: 50, y: 50 }],
+    });
+    const erased = await handleA.commitEraseIntent(intent, {
+      permissionContext: { mode: 'local-only' },
+      validateTarget: () => true,
+    });
+    assert.equal(erased.status, 'committed');
+    Y.applyUpdate(docB, Y.encodeStateAsUpdate(docA), 'receive-a-erase');
+
+    const beforeBEdit = handleB.getByPage();
+    const erasedObject = beforeBEdit[1].objects[0];
+    const desired = {
+      ...erasedObject,
+      left: 200,
+      top: 100,
+      scaleX: 1.25,
+      scaleY: 0.8,
+      angle: 30,
+      fill: '#2563eb',
+      opacity: 0.35,
+      data: {
+        ...erasedObject.data,
+        collaboratorRevision: 'moved-and-restyled',
+      },
+    };
+    handleB.applyByPage({ 1: { ...beforeBEdit[1], objects: [desired] } });
+    assert.equal(getEraserOpsMap(docB).size, 1, 'ordinary edit never creates or retires a lane');
+    assert.equal(
+      [...getEraserOpsMap(docB).keys()].some((key) => key.startsWith('writer-b\u0000')),
+      false,
+    );
+    const stableBase = getAnnotationsMap(docB).get('collab-base-edit').o;
+    assert.equal(stableBase.left, 200);
+    assert.equal(stableBase.top, 100);
+    assert.equal(stableBase.angle, 30);
+    assert.equal(stableBase.stroke, '#2563eb');
+    assert.equal(stableBase.opacity, 0.35);
+
+    Y.applyUpdate(docA, Y.encodeStateAsUpdate(docB), 'receive-b-base-edit');
+    const visibleA = handleA.getByPage()[1].objects[0];
+    const visibleB = handleB.getByPage()[1].objects[0];
+    assert.deepEqual(visibleA, visibleB);
+    assert.equal(visibleA.fill, '#2563eb');
+    assert.equal(visibleA.opacity, 0.35);
+    assert.equal(visibleA.data.collaboratorRevision, 'moved-and-restyled');
+    const movedBounds = polygonBounds(visibleA.polygons);
+    assert.ok(movedBounds.minX > 100, `expected moved x geometry, got ${movedBounds.minX}`);
+    assert.ok(movedBounds.minY > 50, `expected moved y geometry, got ${movedBounds.minY}`);
+
+    handleB.applyByPage(beforeBEdit);
+    assert.equal(getEraserOpsMap(docB).size, 1);
+    assert.equal(
+      getAnnotationsMap(docB).get('collab-base-edit').o.paperEraserGeometry,
+      undefined,
+      'collaborator edit Undo must not bake the erased survivor into the stable base',
+    );
+    Y.applyUpdate(docA, Y.encodeStateAsUpdate(docB), 'receive-b-edit-undo');
+    const afterEditUndo = handleA.getByPage()[1].objects[0];
+    assert.equal(afterEditUndo.fill, '#d11b2d');
+    assert.equal(afterEditUndo.data.collaboratorRevision, undefined);
+    assert.equal(
+      pointInPolygonSet({ x: 50, y: 50 }, afterEditUndo.polygons),
+      false,
+    );
+
+    assert.equal(
+      handleA.applyEraseHistoryTransition(erased.historyTransition, 'undo').status,
+      'applied',
+    );
+    const restored = handleA.getByPage()[1].objects[0];
+    assert.equal(restored.paperEraserGeometry, undefined);
+    assert.deepEqual(restored.path, before[1].objects[0].path);
+    assert.equal(
+      handleA.applyEraseHistoryTransition(erased.historyTransition, 'redo').status,
+      'applied',
+    );
+    assert.equal(
+      pointInPolygonSet(
+        { x: 50, y: 50 },
+        handleA.getByPage()[1].objects[0].polygons,
+      ),
+      false,
+    );
+  } finally {
+    await handleA.destroy();
+    await handleB.destroy();
+  }
+});
+
+test('same-writer erase then edit Undo leaves the older erase Undo/Redo exact', async () => {
+  const doc = new Y.Doc();
+  syncByPageToDoc(doc, { 1: { objects: [nativeInk('same-writer-edit')] } });
+  const handle = await openAnnotationDoc({
+    actorUserId: 'owner',
+    documentId: 'same-writer-edit-history',
+    supabase: null,
+    clientId: 'client-a',
+    writerId: 'writer-a',
+    enableLocal: false,
+    enableRealtime: false,
+    doc,
+  });
+  try {
+    const original = handle.getByPage();
+    const intent = prepareAtomicErase(original, {
+      mutationId: 'same-writer-edit-erase',
+      points: [{ x: 50, y: 50 }],
+    });
+    const result = await handle.commitEraseIntent(intent, {
+      permissionContext: { mode: 'local-only' },
+      validateTarget: () => true,
+    });
+    const erased = handle.getByPage();
+    const editedObject = {
+      ...erased[1].objects[0],
+      left: 80,
+      top: 35,
+      fill: '#16a34a',
+      data: { ...erased[1].objects[0].data, editRevision: 'later-edit' },
+    };
+    handle.applyByPage({ 1: { ...erased[1], objects: [editedObject] } });
+    assert.equal(getEraserOpsMap(doc).size, 1);
+    assert.equal(handle.getByPage()[1].objects[0].fill, '#16a34a');
+
+    handle.applyByPage(erased);
+    assert.equal(getEraserOpsMap(doc).size, 1, 'edit Undo preserves older erase lane');
+    assert.equal(
+      getAnnotationsMap(doc).get('same-writer-edit').o.paperEraserGeometry,
+      undefined,
+      'edit Undo must keep the original stable centerline base',
+    );
+    assert.equal(handle.getByPage()[1].objects[0].fill, '#d11b2d');
+    assert.equal(
+      handle.applyEraseHistoryTransition(result.historyTransition, 'undo').status,
+      'applied',
+    );
+    assert.deepEqual(handle.getByPage()[1].objects[0].path, original[1].objects[0].path);
+    assert.equal(
+      handle.applyEraseHistoryTransition(result.historyTransition, 'redo').status,
+      'applied',
+    );
+    assert.equal(
+      pointInPolygonSet(
+        { x: 50, y: 50 },
+        handle.getByPage()[1].objects[0].polygons,
+      ),
+      false,
+    );
+  } finally {
+    await handle.destroy();
+  }
+});
+
+test('accepted ordinary WAL does not close later erase effects and core acceptance precedes execution', async () => {
+  const documentId = 'erase-effects-after-ordinary-wal';
+  const rows = [];
+  let sequence = 0;
+  const effects = [];
+  const supabase = {
+    async rpc(name, args) {
+      if (name === 'append_annotation_update') {
+        sequence += 1;
+        rows.push({
+          document_id: documentId,
+          client_id: args.p_client_id,
+          client_seq: args.p_client_seq,
+          actor_user_id: 'owner',
+          data: args.p_data,
+          seq: sequence,
+        });
+        return { data: { seq: sequence }, error: null };
+      }
+      if (name === 'store_annotation_snapshot') return { data: true, error: null };
+      throw new Error(`unexpected RPC ${name}`);
+    },
+    from(table) {
+      if (table === 'annotation_updates') return makeWalReadBuilder(rows);
+      if (table === 'annotation_snapshots') {
+        return { select: () => makeEmptyBuilder({ data: null, error: null }) };
+      }
+      throw new Error(`unexpected table ${table}`);
+    },
+  };
+  const doc = new Y.Doc();
+  const handle = await openAnnotationDoc({
+    actorUserId: 'owner',
+    documentId,
+    supabase,
+    clientId: 'client-a',
+    writerId: 'writer-a',
+    enableLocal: false,
+    enableRealtime: false,
+    doc,
+    eraseEffectConsumer: async (effect, context) => {
+      effects.push({ effect, context });
+    },
+  });
+  try {
+    const shape = {
+      type: 'rect',
+      id: 'effect-shape',
+      left: 10,
+      top: 10,
+      width: 40,
+      height: 40,
+      fill: '#dc2626',
+      data: { id: 'effect-shape', tool: 'rectangle', authorId: 'owner' },
+    };
+    handle.applyByPage({ 1: { objects: [shape] } });
+    await handle.drain();
+    assert.ok(rows.length >= 1, 'ordinary annotation WAL accepted first');
+
+    const before = handle.getByPage();
+    const intent = prepareAtomicErase(before, {
+      mutationId: 'effect-after-ordinary',
+      points: [{ x: 30, y: 30 }],
+      radius: 12,
+      includeDeleteHistory: true,
+      userId: 'owner',
+    });
+    const result = await handle.commitEraseIntent(intent, {
+      permissionContext: {
+        mode: 'registered',
+        viewerId: 'owner',
+        documentOwnerId: 'owner',
+      },
+      validateTarget: () => true,
+    });
+    assert.equal(result.status, 'committed');
+    await handle.drain();
+    await handle.drainEraseOutbox();
+
+    assert.equal(effects.length, 1);
+    assert.equal(effects[0].effect.type, 'annotation-delete-history');
+    assert.equal(effects[0].context.mutationId, 'effect-after-ordinary');
+    assert.equal(doc.getMap('eraseOutbox').get('effect-after-ordinary').status, 'acknowledged');
+  } finally {
+    await handle.destroy();
+  }
+});
+
+test('delayed 42501 rolls back erase core and never executes its unaccepted effect', async () => {
+  const documentId = 'erase-effect-denied-before-acceptance';
+  const rows = [];
+  let sequence = 0;
+  let appendAttempt = 0;
+  let rejectEraseAppend;
+  const effects = [];
+  const supabase = {
+    async rpc(name, args) {
+      if (name === 'append_annotation_update') {
+        appendAttempt += 1;
+        if (appendAttempt === 1) {
+          sequence += 1;
+          rows.push({
+            document_id: documentId,
+            client_id: args.p_client_id,
+            client_seq: args.p_client_seq,
+            actor_user_id: 'owner',
+            data: args.p_data,
+            seq: sequence,
+          });
+          return { data: { seq: sequence }, error: null };
+        }
+        return new Promise((resolve) => {
+          rejectEraseAppend = () => resolve({
+            data: null,
+            error: { code: '42501', message: 'permission revoked' },
+          });
+        });
+      }
+      if (name === 'store_annotation_snapshot') {
+        return { data: null, error: { code: '42501', message: 'permission revoked' } };
+      }
+      throw new Error(`unexpected RPC ${name}`);
+    },
+    from(table) {
+      if (table === 'annotation_updates') return makeWalReadBuilder(rows);
+      if (table === 'annotation_snapshots') {
+        return { select: () => makeEmptyBuilder({ data: null, error: null }) };
+      }
+      throw new Error(`unexpected table ${table}`);
+    },
+  };
+  const doc = new Y.Doc();
+  const handle = await openAnnotationDoc({
+    actorUserId: 'owner',
+    documentId,
+    supabase,
+    clientId: 'client-a',
+    writerId: 'writer-a',
+    enableLocal: false,
+    enableRealtime: false,
+    doc,
+    eraseEffectConsumer: async (effect) => effects.push(effect),
+  });
+  const historyQuarantineEvents = [];
+  const unsubscribeHistoryQuarantine = handle.onHistoryQuarantine(
+    (event) => historyQuarantineEvents.push(event),
+  );
+  try {
+    const shape = {
+      type: 'rect',
+      id: 'denied-effect-shape',
+      left: 10,
+      top: 10,
+      width: 40,
+      height: 40,
+      fill: '#dc2626',
+      data: { id: 'denied-effect-shape', tool: 'rectangle', authorId: 'owner' },
+    };
+    handle.applyByPage({ 1: { objects: [shape] } });
+    await handle.drain();
+
+    const intent = prepareAtomicErase(handle.getByPage(), {
+      mutationId: 'denied-effect-erase',
+      points: [{ x: 30, y: 30 }],
+      radius: 12,
+      includeDeleteHistory: true,
+      userId: 'owner',
+    });
+    const result = await handle.commitEraseIntent(intent, {
+      permissionContext: {
+        mode: 'registered',
+        viewerId: 'owner',
+        documentOwnerId: 'owner',
+      },
+      validateTarget: () => true,
+    });
+    assert.equal(result.status, 'committed');
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    assert.equal(effects.length, 0, 'optimistic outbox entry cannot execute');
+    await handle.drainEraseOutbox({ validateEntry: () => true });
+    assert.equal(
+      effects.length,
+      0,
+      'manual drain options cannot override acceptedDoc authorization',
+    );
+    assert.equal(typeof rejectEraseAppend, 'function');
+
+    rejectEraseAppend();
+    await handle.drain();
+    assert.equal(effects.length, 0);
+    assert.equal(handle.getByPage()[1].objects[0].data.id, 'denied-effect-shape');
+    assert.equal(doc.getMap('eraseOutbox').has('denied-effect-erase'), false);
+    assert.equal(historyQuarantineEvents.length, 1);
+    assert.equal(historyQuarantineEvents[0].reason, 'permission-denied');
+    assert.equal(historyQuarantineEvents[0].code, '42501');
+    assert.deepEqual(
+      historyQuarantineEvents[0].mutationIds,
+      ['denied-effect-erase'],
+    );
+    assert.equal(historyQuarantineEvents[0].requiresFullHistoryReset, false);
+  } finally {
+    unsubscribeHistoryQuarantine();
+    await handle.destroy().catch(() => {});
+  }
+});
+
+test('snapshot-covered erase acceptance wakes effects without an unrelated trigger', async () => {
+  const documentId = 'erase-effect-snapshot-acceptance';
+  const rows = [];
+  let appendAttempt = 0;
+  let snapshotAttempts = 0;
+  const effects = [];
+  const supabase = {
+    async rpc(name, args) {
+      if (name === 'append_annotation_update') {
+        appendAttempt += 1;
+        if (appendAttempt === 1) {
+          rows.push({
+            document_id: documentId,
+            client_id: args.p_client_id,
+            client_seq: args.p_client_seq,
+            actor_user_id: 'owner',
+            data: args.p_data,
+            seq: 1,
+          });
+          return { data: { seq: 1 }, error: null };
+        }
+        if (appendAttempt === 2) {
+          return { data: null, error: { code: 'XX000', message: 'temporary WAL outage' } };
+        }
+        const seq = rows.length + 1;
+        rows.push({
+          document_id: documentId,
+          client_id: args.p_client_id,
+          client_seq: args.p_client_seq,
+          actor_user_id: 'owner',
+          data: args.p_data,
+          seq,
+        });
+        return { data: { seq }, error: null };
+      }
+      if (name === 'store_annotation_snapshot') {
+        snapshotAttempts += 1;
+        return { data: { accepted: true }, error: null };
+      }
+      throw new Error(`unexpected RPC ${name}`);
+    },
+    from(table) {
+      if (table === 'annotation_updates') return makeWalReadBuilder(rows);
+      if (table === 'annotation_snapshots') {
+        return { select: () => makeEmptyBuilder({ data: null, error: null }) };
+      }
+      throw new Error(`unexpected table ${table}`);
+    },
+  };
+  const doc = new Y.Doc();
+  const handle = await openAnnotationDoc({
+    actorUserId: 'owner',
+    documentId,
+    supabase,
+    clientId: 'writer',
+    writerId: 'writer',
+    enableLocal: false,
+    enableRealtime: false,
+    doc,
+    eraseOutboxRetryBaseMs: 10_000,
+    eraseOutboxRetryMaxMs: 10_000,
+    eraseEffectConsumer: async (effect) => effects.push(effect),
+  });
+  try {
+    const shape = {
+      type: 'rect',
+      id: 'snapshot-effect-shape',
+      left: 10,
+      top: 10,
+      width: 40,
+      height: 40,
+      fill: '#dc2626',
+      data: { id: 'snapshot-effect-shape', tool: 'rectangle', authorId: 'owner' },
+    };
+    handle.applyByPage({ 1: { objects: [shape] } });
+    await handle.drain();
+
+    const intent = prepareAtomicErase(handle.getByPage(), {
+      mutationId: 'snapshot-effect-erase',
+      points: [{ x: 30, y: 30 }],
+      radius: 12,
+      includeDeleteHistory: true,
+      userId: 'owner',
+    });
+    const result = await handle.commitEraseIntent(intent, {
+      permissionContext: {
+        mode: 'registered',
+        viewerId: 'owner',
+        documentOwnerId: 'owner',
+      },
+      validateTarget: () => true,
+    });
+    assert.equal(result.status, 'committed');
+    await handle.drain();
+    for (let attempt = 0; attempt < 30 && effects.length === 0; attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 2));
+    }
+
+    assert.equal(snapshotAttempts, 1);
+    assert.equal(effects.length, 1, 'accepted snapshot wakes the effect worker immediately');
+    assert.equal(effects[0].type, 'annotation-delete-history');
+    assert.equal(
+      doc.getMap('eraseOutbox').get('snapshot-effect-erase').status,
+      'acknowledged',
+    );
+  } finally {
+    await handle.destroy().catch(() => {});
+  }
+});
+
 test('sequential erases keep one bounded writer lane and constant replay work', () => {
   const doc = new Y.Doc();
   syncByPageToDoc(doc, { 1: { objects: [nativeInk('bounded')] } });
@@ -259,24 +890,20 @@ test('undo retires only its own eraser lane and preserves the concurrent writer 
   const updatesB = [];
   clientA.on('update', (update) => updatesA.push(update));
   clientB.on('update', (update) => updatesB.push(update));
-  commitErase(clientA, {
+  const erasedA = await commitAtomicEraseOnDoc(clientA, {
     id: 'bite-a',
     points: [{ x: 35, y: 38 }],
     writerId: 'writer-a',
   });
-  commitErase(clientB, {
+  const erasedB = await commitAtomicEraseOnDoc(clientB, {
     id: 'bite-b',
     points: [{ x: 70, y: 62 }],
     writerId: 'writer-b',
   });
+  assert.equal(erasedA.status, 'committed');
+  assert.equal(erasedB.status, 'committed');
   exchangeUpdates(clientA, clientB, Y.mergeUpdates(updatesA), Y.mergeUpdates(updatesB));
 
-  const bOnly = cloneDoc(seed);
-  commitErase(bOnly, {
-    id: 'bite-b',
-    points: [{ x: 70, y: 62 }],
-    writerId: 'writer-b',
-  });
   const handleA = await openAnnotationDoc({ actorUserId: 'test-actor',
     documentId: 'doc-writer-owned-undo',
     supabase: null,
@@ -287,7 +914,10 @@ test('undo retires only its own eraser lane and preserves the concurrent writer 
     doc: clientA,
   });
   handleA.getByPage();
-  handleA.applyByPage(docToByPage(bOnly));
+  assert.equal(
+    handleA.applyEraseHistoryTransition(erasedA.historyTransition, 'undo').status,
+    'applied',
+  );
 
   const survivor = handleA.getByPage()[1].objects[0];
   assert.equal(pointInPolygonSet({ x: 35, y: 41 }, survivor.polygons), true, 'A bite is undone');
@@ -301,6 +931,51 @@ test('undo retires only its own eraser lane and preserves the concurrent writer 
     false,
     'B survives cold reload after A undo',
   );
+  await handleA.destroy();
+});
+
+test('sequential cross-writer Undo restores A while preserving B after cold reload', async () => {
+  const seed = new Y.Doc();
+  syncByPageToDoc(seed, { 1: { objects: [nativeInk('sequential-shared')] } });
+  const doc = cloneDoc(seed);
+  const erasedA = await commitAtomicEraseOnDoc(doc, {
+    id: 'sequential-bite-a',
+    points: [{ x: 35, y: 38 }],
+    writerId: 'writer-a',
+  });
+  const erasedB = await commitAtomicEraseOnDoc(doc, {
+    id: 'sequential-bite-b',
+    points: [{ x: 70, y: 62 }],
+    writerId: 'writer-b',
+  });
+  assert.equal(erasedA.status, 'committed');
+  assert.equal(erasedB.status, 'committed');
+  const handleA = await openAnnotationDoc({
+    actorUserId: 'test-actor',
+    documentId: 'doc-sequential-writer-undo',
+    supabase: null,
+    clientId: 'client-a',
+    writerId: 'writer-a',
+    enableLocal: false,
+    enableRealtime: false,
+    doc,
+  });
+  handleA.getByPage();
+  assert.equal(
+    handleA.applyEraseHistoryTransition(erasedA.historyTransition, 'undo').status,
+    'applied',
+  );
+
+  let survivor = handleA.getByPage()[1].objects[0];
+  assert.equal(pointInPolygonSet({ x: 35, y: 41 }, survivor.polygons), true, 'A bite is undone');
+  assert.equal(pointInPolygonSet({ x: 70, y: 59 }, survivor.polygons), false, 'B bite remains');
+  assert.deepEqual(
+    [...getEraserOpsMap(doc).values()].map((lane) => lane.writerId),
+    ['writer-b'],
+  );
+  survivor = docToByPage(cloneDoc(doc))[1].objects[0];
+  assert.equal(pointInPolygonSet({ x: 35, y: 41 }, survivor.polygons), true);
+  assert.equal(pointInPolygonSet({ x: 70, y: 59 }, survivor.polygons), false);
   await handleA.destroy();
 });
 
@@ -1119,6 +1794,10 @@ test('cold reopen terminal outbox records quarantine persisted and legacy local 
           };
         },
       });
+      const historyQuarantineEvents = [];
+      const unsubscribeHistoryQuarantine = handle.onHistoryQuarantine(
+        (event) => historyQuarantineEvents.push(event),
+      );
       try {
         await handle.drain();
         assert.equal(
@@ -1147,7 +1826,16 @@ test('cold reopen terminal outbox records quarantine persisted and legacy local 
           [status],
           'the original terminal evidence remains durable',
         );
+        assert.equal(historyQuarantineEvents.length, 1);
+        assert.equal(
+          historyQuarantineEvents[0].code,
+          status === 'rejected' ? '42501' : '23505',
+        );
+        assert.equal(historyQuarantineEvents[0].requiresFullHistoryReset, true);
+        assert.deepEqual(historyQuarantineEvents[0].mutationIds, []);
+        assert.ok(historyQuarantineEvents[0].dedupeKey);
       } finally {
+        unsubscribeHistoryQuarantine();
         await handle.destroy().catch(() => {});
         terminalDoc.destroy();
         persisted.destroy();
@@ -2098,27 +2786,22 @@ test('id-less Undo and Redo use the durable occurrence key and preserve the othe
   const updatesB = [];
   clientA.on('update', (update) => updatesA.push(update));
   clientB.on('update', (update) => updatesB.push(update));
-  commitErase(clientA, {
+  const erasedA = await commitAtomicEraseOnDoc(clientA, {
     id: 'history-idless-left',
     points: [{ x: 0, y: 50 }],
     radius: 3,
     writerId: 'writer-a',
   });
-  commitErase(clientB, {
+  const erasedB = await commitAtomicEraseOnDoc(clientB, {
     id: 'history-idless-right',
     points: [{ x: 30, y: 50 }],
     radius: 3,
     writerId: 'writer-b',
   });
+  assert.equal(erasedA.status, 'committed');
+  assert.equal(erasedB.status, 'committed');
   exchangeUpdates(clientA, clientB, Y.mergeUpdates(updatesA), Y.mergeUpdates(updatesB));
 
-  const bOnly = cloneDoc(seed);
-  commitErase(bOnly, {
-    id: 'history-idless-right',
-    points: [{ x: 30, y: 50 }],
-    radius: 3,
-    writerId: 'writer-b',
-  });
   const handle = await openAnnotationDoc({ actorUserId: 'test-actor',
     documentId: 'doc-idless-history',
     supabase: null,
@@ -2128,10 +2811,10 @@ test('id-less Undo and Redo use the durable occurrence key and preserve the othe
     enableRealtime: false,
     doc: clientA,
   });
-  const redoState = JSON.parse(JSON.stringify(handle.getByPage()));
-  const undoState = JSON.parse(JSON.stringify(docToByPage(bOnly)));
-
-  handle.applyByPage(undoState);
+  assert.equal(
+    handle.applyEraseHistoryTransition(erasedA.historyTransition, 'undo').status,
+    'applied',
+  );
   let survivor = handle.getByPage()[1].objects[0];
   assert.equal(pointInPolygonSet({ x: 0, y: 50 }, survivor.polygons), true, 'own bite is undone');
   assert.equal(pointInPolygonSet({ x: 30, y: 50 }, survivor.polygons), false, 'other writer remains');
@@ -2139,7 +2822,10 @@ test('id-less Undo and Redo use the durable occurrence key and preserve the othe
   assert.equal(pointInPolygonSet({ x: 0, y: 50 }, survivor.polygons), true, 'undo survives cold materialization');
   assert.equal(pointInPolygonSet({ x: 30, y: 50 }, survivor.polygons), false);
 
-  handle.applyByPage(redoState);
+  assert.equal(
+    handle.applyEraseHistoryTransition(erasedA.historyTransition, 'redo').status,
+    'applied',
+  );
   survivor = handle.getByPage()[1].objects[0];
   assert.equal(pointInPolygonSet({ x: 0, y: 50 }, survivor.polygons), false, 'redo restores own bite');
   assert.equal(pointInPolygonSet({ x: 30, y: 50 }, survivor.polygons), false, 'redo keeps other bite');
@@ -2156,12 +2842,13 @@ test('duplicate occurrence zero Undo and Redo never collapse into the unchanged 
     1: { objects: [shortInk('dup', 0, 10), shortInk('dup', 20, 30)] },
   });
   const doc = cloneDoc(seed);
-  commitErase(doc, {
+  const erased = await commitAtomicEraseOnDoc(doc, {
     id: 'duplicate-history',
     points: [{ x: 0, y: 50 }],
     radius: 3,
     writerId: 'writer-a',
   });
+  assert.equal(erased.status, 'committed');
   const handle = await openAnnotationDoc({ actorUserId: 'test-actor',
     documentId: 'doc-duplicate-history',
     supabase: null,
@@ -2171,16 +2858,19 @@ test('duplicate occurrence zero Undo and Redo never collapse into the unchanged 
     enableRealtime: false,
     doc,
   });
-  const redoState = JSON.parse(JSON.stringify(handle.getByPage()));
-  const undoState = JSON.parse(JSON.stringify(docToByPage(seed)));
-
-  handle.applyByPage(undoState);
+  assert.equal(
+    handle.applyEraseHistoryTransition(erased.historyTransition, 'undo').status,
+    'applied',
+  );
   let objects = handle.getByPage()[1].objects;
   assert.equal(objects[0].paperEraserGeometry, undefined);
   assert.deepEqual(objects[0].path, [['M', 0, 50], ['L', 10, 50]]);
   assert.deepEqual(objects[1].path, [['M', 20, 50], ['L', 30, 50]]);
 
-  handle.applyByPage(redoState);
+  assert.equal(
+    handle.applyEraseHistoryTransition(erased.historyTransition, 'redo').status,
+    'applied',
+  );
   objects = docToByPage(cloneDoc(doc))[1].objects;
   assert.equal(objects[0].paperEraserGeometry, 'v1', 'occurrence zero redo survives reload');
   assert.equal(objects[1].paperEraserGeometry, undefined, 'unchanged duplicate remains untouched');
@@ -2393,28 +3083,25 @@ async function assertOccurrenceOneConcurrentHistory({ idless }) {
   assert.ok(storageKey);
   assert.equal(storageKey.startsWith('\u0000'), false);
 
-  commitErase(clientA, {
+  const erasedA = await commitAtomicEraseOnDoc(clientA, {
     id: `occurrence-one-${idless ? 'idless' : 'duplicate'}-a`,
     points: [{ x: 20, y: 50 }],
     radius: 3,
     writerId: 'writer-a',
   });
-  const afterA = docToByPage(clientA);
-  const historyAction = buildPreciseAnnotationHistoryAction({
-    pageNumber: 1,
-    previousPage: beforeA[1],
-    nextPage: afterA[1],
-    changedIds: idless ? ['index:1'] : ['dup'],
-    changedStorageKeys: [storageKey],
-  });
-  assert.equal(historyAction?.storageKey, storageKey);
+  assert.equal(erasedA.status, 'committed');
+  assert.equal(
+    erasedA.historyTransition.lanes[0]?.nextLane?.storageKey,
+    storageKey,
+  );
 
-  commitErase(clientB, {
+  const erasedB = await commitAtomicEraseOnDoc(clientB, {
     id: `occurrence-one-${idless ? 'idless' : 'duplicate'}-b`,
     points: [{ x: 50, y: 50 }],
     radius: 3,
     writerId: 'writer-b',
   });
+  assert.equal(erasedB.status, 'committed');
   Y.applyUpdate(clientA, Y.encodeStateAsUpdate(clientB));
   const handle = await openAnnotationDoc({ actorUserId: 'test-actor',
     documentId: `doc-occurrence-one-${idless ? 'idless' : 'duplicate'}-composed-history`,
@@ -2430,17 +3117,18 @@ async function assertOccurrenceOneConcurrentHistory({ idless }) {
   assert.equal(pointInPolygonSet({ x: 20, y: 50 }, occurrence.polygons), false);
   assert.equal(pointInPolygonSet({ x: 50, y: 50 }, occurrence.polygons), false);
 
-  const undoState = applyAnnotationHistoryAction(
-    handle.getByPage(),
-    invertAnnotationHistoryAction(historyAction),
+  assert.equal(
+    handle.applyEraseHistoryTransition(erasedA.historyTransition, 'undo').status,
+    'applied',
   );
-  handle.applyByPage(undoState);
   occurrence = docToByPage(cloneDoc(clientA))[1].objects[1];
   assert.equal(pointInPolygonSet({ x: 20, y: 50 }, occurrence.polygons), true, 'Undo A restores only A bite');
   assert.equal(pointInPolygonSet({ x: 50, y: 50 }, occurrence.polygons), false, 'Undo A preserves B bite');
 
-  const redoState = applyAnnotationHistoryAction(handle.getByPage(), historyAction);
-  handle.applyByPage(redoState);
+  assert.equal(
+    handle.applyEraseHistoryTransition(erasedA.historyTransition, 'redo').status,
+    'applied',
+  );
   occurrence = docToByPage(cloneDoc(clientA))[1].objects[1];
   assert.equal(pointInPolygonSet({ x: 20, y: 50 }, occurrence.polygons), false, 'Redo A restores A bite');
   assert.equal(pointInPolygonSet({ x: 50, y: 50 }, occurrence.polygons), false, 'Redo A preserves B bite');
@@ -2463,26 +3151,32 @@ test('durable eraser metadata uses the pointer-down mode and radius', () => {
   );
   assert.match(
     FABRIC_ERASER_SOURCE,
-    /applyEraserAndCommit\(pointer\.points, pointer\.gestureConfig\)/,
+    /applyEraserAndCommit\(pointer\?\.points, pointer\?\.gestureConfig\)/,
   );
   assert.match(FABRIC_ERASER_SOURCE, /eraserRadius: radius,\s*eraserMode: mode,/);
 });
 
-test('mixed erase callbacks can partially commit when a later domain fails (release blocker)', () => {
-  const pageCommit = FABRIC_ERASER_SOURCE.indexOf('onEraseCommitRef.current?.');
+test('mixed erase pointer-up has one atomic coordinator plus explicitly scoped legacy fallbacks', () => {
   const calloutCommit = FABRIC_ERASER_SOURCE.indexOf('onEraseCalloutRef.current?.');
   const markerCommit = FABRIC_ERASER_SOURCE.indexOf('onEraseSurveyMarkerRef.current?.');
   const markupCommit = FABRIC_ERASER_SOURCE.indexOf('onEraseTextMarkupRef.current?.');
-  assert.ok(pageCommit < calloutCommit && calloutCommit < markerCommit && markerCommit < markupCommit);
-
-  const committed = [];
-  try { committed.push('page'); } catch {}
-  try { throw new Error('callout rejected'); } catch {}
-  try { committed.push('survey-marker'); } catch {}
-  assert.deepEqual(
-    committed,
-    ['page', 'survey-marker'],
-    'separate callback try/catches permit a partially committed mixed gesture',
+  assert.equal(calloutCommit, -1);
+  assert.equal(markupCommit, -1);
+  assert.notEqual(markerCommit, -1, 'survey markers deliberately retain their existing delete path');
+  assert.match(
+    FABRIC_ERASER_SOURCE,
+    /if \(typeof onEraseIntentRef\.current !== 'function'\) \{[\s\S]*?await onEraseCommitRef\.current\?\.\(updatedJSON, diagnostics\)/,
+    'local-only documents deliberately retain their existing page save path',
+  );
+  assert.match(
+    FABRIC_ERASER_SOURCE,
+    /const commitResult = await onEraseIntentRef\.current\?\.\(intent\)/,
+    'registered documents route page/callout/text-markup/counter mutations through one coordinator',
+  );
+  assert.doesNotMatch(
+    FABRIC_ERASER_SOURCE,
+    /targets\.push\(\{\s*domain: 'survey-marker'/,
+    'survey markers are not advertised as part of the atomic coordinator',
   );
 });
 
@@ -2720,31 +3414,28 @@ test('sequential erase, Undo, Redo, reload, and empty-page cycles remain stable'
   handle.applyByPage(original);
   const baseline = handle.getByPage();
 
-  const first = erasePageAnnotations({
-    pageAnnotations: baseline[1],
-    eraserPoints: [{ x: 35, y: 38 }],
-    eraserRadius: 7,
+  const result = await handle.commitEraseIntent(prepareAtomicErase(baseline, {
+    mutationId: 'history-bite',
+    points: [{ x: 35, y: 38 }],
+    radius: 7,
     mode: 'partial',
+  }), {
+    permissionContext: { mode: 'local-only' },
+    validateTarget: () => true,
   });
-  handle.applyByPage({
-    1: {
-      ...first.pageAnnotations,
-      eraserMutation: {
-        id: 'history-bite',
-        pageNumber: 1,
-        points: [{ x: 35, y: 38 }],
-        radius: 7,
-        mode: 'partial',
-        touchedIds: first.touchedIds,
-      },
-    },
-  });
+  assert.equal(result.status, 'committed');
   const erased = handle.getByPage();
   assert.equal(pointInPolygonSet({ x: 35, y: 41 }, erased[1].objects[0].polygons), false);
 
-  handle.applyByPage(baseline); // Undo
+  assert.equal(
+    handle.applyEraseHistoryTransition(result.historyTransition, 'undo').status,
+    'applied',
+  );
   assert.equal(handle.getByPage()[1].objects[0].strokeWidth, 20);
-  handle.applyByPage(erased); // Redo
+  assert.equal(
+    handle.applyEraseHistoryTransition(result.historyTransition, 'redo').status,
+    'applied',
+  );
   assert.equal(pointInPolygonSet({ x: 35, y: 41 }, handle.getByPage()[1].objects[0].polygons), false);
   assert.equal(
     pointInPolygonSet({ x: 35, y: 41 }, docToByPage(cloneDoc(doc))[1].objects[0].polygons),
@@ -5147,6 +5838,8 @@ test('an ambiguous timed-out append is reconciled before snapshot denial rollbac
   };
   const doc = new Y.Doc();
   let handle = null;
+  let unsubscribeHistoryQuarantine = null;
+  const historyQuarantineEvents = [];
   try {
     handle = await openAnnotationDoc({ actorUserId: 'test-actor',
       documentId,
@@ -5158,10 +5851,20 @@ test('an ambiguous timed-out append is reconciled before snapshot denial rollbac
       requestTimeoutMs: 10,
       snapshotRetryDelayMs: 0,
     });
+    const generationBefore = handle.getHistoryQuarantineGeneration();
+    unsubscribeHistoryQuarantine = handle.onHistoryQuarantine(
+      (event) => historyQuarantineEvents.push(event),
+    );
 
     handle.setMeta('K', 'must-remain');
     await handle.drain();
     assert.equal(getMetaValue(doc, 'K'), 'must-remain');
+    assert.equal(handle.getHistoryQuarantineGeneration(), generationBefore);
+    assert.equal(
+      historyQuarantineEvents.length,
+      0,
+      'an exact accepted replay must not invalidate accepted history',
+    );
 
     handle.setMeta('denied', 'must-not-survive');
     await handle.drain();
@@ -5174,7 +5877,444 @@ test('an ambiguous timed-out append is reconciled before snapshot denial rollbac
     assert.equal(getMetaValue(cold, 'denied'), undefined);
     assert.equal(handle.isSyncHealthy(), false);
   } finally {
+    unsubscribeHistoryQuarantine?.();
     await handle?.destroy().catch(() => {});
+  }
+});
+
+test('ambiguous replay collision restores accepted truth and emits exact integrity quarantine', async () => {
+  const documentId = 'doc-ambiguous-append-collision';
+  const outbox = createMemoryAnnotationOutbox();
+  let appendAttempt = 0;
+  const neverRespond = new Promise(() => {});
+  const supabase = {
+    async rpc(name) {
+      if (name === 'append_annotation_update') {
+        appendAttempt += 1;
+        if (appendAttempt === 1) return neverRespond;
+        return {
+          data: null,
+          error: { code: '23505', message: 'idempotency key reused with different bytes' },
+        };
+      }
+      if (name === 'store_annotation_snapshot') {
+        return { data: null, error: { code: '42501', message: 'permission revoked' } };
+      }
+      throw new Error(`unexpected RPC ${name}`);
+    },
+    from(table) {
+      if (table === 'annotation_updates') return makeWalReadBuilder([]);
+      if (table === 'annotation_snapshots') {
+        return { select: () => makeEmptyBuilder({ data: null, error: null }) };
+      }
+      throw new Error(`unexpected table ${table}`);
+    },
+  };
+  const doc = new Y.Doc();
+  const handle = await openAnnotationDoc({
+    actorUserId: 'test-actor',
+    documentId,
+    supabase,
+    clientId: 'writer',
+    writerId: 'writer',
+    enableLocal: false,
+    enableRealtime: false,
+    outboxStore: outbox,
+    doc,
+    requestTimeoutMs: 10,
+    snapshotRetryDelayMs: 0,
+    repairRetryDelayMs: 1,
+  });
+  const events = [];
+  const unsubscribe = handle.onHistoryQuarantine((event) => events.push(event));
+  try {
+    setMetaValue(doc, 'denied', 'must-not-survive', {
+      source: 'erase-local',
+      historyTag: {
+        historyKind: 'erase-commit',
+        mutationId: 'ambiguous-collision-erase',
+      },
+    });
+    await handle.drain();
+
+    assert.equal(getMetaValue(doc, 'denied'), undefined);
+    assert.equal(handle.getSyncStatus().queueSize, 1);
+    assert.match(handle.getSyncStatus().error, /collision/i);
+    assert.equal(events.length, 1);
+    assert.equal(events[0].reason, 'wal-integrity-collision');
+    assert.equal(events[0].code, '23505');
+    assert.deepEqual(events[0].mutationIds, ['ambiguous-collision-erase']);
+    assert.equal(events[0].requiresFullHistoryReset, false);
+    assert.deepEqual(
+      (await outbox.list(documentId, 'test-actor')).map((record) => record.status),
+      ['integrity-error'],
+    );
+  } finally {
+    unsubscribe();
+    await handle.destroy().catch(() => {});
+  }
+});
+
+test('ambiguous replay transient failure schedules bounded exact reconciliation', async () => {
+  const documentId = 'doc-ambiguous-replay-transient';
+  const rows = [];
+  let appendAttempt = 0;
+  const neverRespond = new Promise(() => {});
+  const supabase = {
+    async rpc(name, args) {
+      if (name === 'append_annotation_update') {
+        appendAttempt += 1;
+        if (appendAttempt === 1) return neverRespond;
+        if (appendAttempt === 2) {
+          return { data: null, error: { code: 'XX000', message: 'temporary replay outage' } };
+        }
+        rows.push({
+          document_id: documentId,
+          client_id: args.p_client_id,
+          client_seq: args.p_client_seq,
+          actor_user_id: 'test-actor',
+          data: args.p_data,
+          seq: 1,
+        });
+        return { data: { seq: 1 }, error: null };
+      }
+      if (name === 'store_annotation_snapshot') {
+        return { data: null, error: { code: '42501', message: 'snapshot permission revoked' } };
+      }
+      throw new Error(`unexpected RPC ${name}`);
+    },
+    from(table) {
+      if (table === 'annotation_updates') return makeWalReadBuilder(rows);
+      if (table === 'annotation_snapshots') {
+        return { select: () => makeEmptyBuilder({ data: null, error: null }) };
+      }
+      throw new Error(`unexpected table ${table}`);
+    },
+  };
+  const doc = new Y.Doc();
+  const handle = await openAnnotationDoc({
+    actorUserId: 'test-actor',
+    documentId,
+    supabase,
+    clientId: 'writer',
+    writerId: 'writer',
+    enableLocal: false,
+    enableRealtime: false,
+    doc,
+    requestTimeoutMs: 10,
+    snapshotRetryDelayMs: 0,
+    repairRetryDelayMs: 1,
+  });
+  const events = [];
+  const unsubscribe = handle.onHistoryQuarantine((event) => events.push(event));
+  try {
+    setMetaValue(doc, 'pending', 'eventually-accepted', {
+      source: 'erase-local',
+      historyTag: {
+        historyKind: 'erase-commit',
+        mutationId: 'ambiguous-transient-erase',
+      },
+    });
+    await handle.drain();
+
+    for (let attempt = 0; attempt < 30 && handle.getSyncStatus().queueSize > 0; attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      await handle.drain();
+    }
+
+    assert.ok(appendAttempt >= 3, 'a bounded retry replays the exact idempotency key');
+    assert.equal(handle.getSyncStatus().queueSize, 0);
+    assert.equal(getMetaValue(doc, 'pending'), 'eventually-accepted');
+    assert.equal(events.length, 0, 'an accepted exact replay does not invalidate history');
+    assert.equal(rows.length, 1);
+  } finally {
+    unsubscribe();
+    await handle.destroy().catch(() => {});
+  }
+});
+
+test('unresolved ambiguity retains every queued dependent until bounded recovery', async () => {
+  const documentId = 'doc-ambiguous-prefix-retains-dependents';
+  const outbox = createMemoryAnnotationOutbox();
+  const rows = [];
+  let appendAttempt = 0;
+  let sequence = 0;
+  let allowRecovery = false;
+  const neverRespond = new Promise(() => {});
+  const appendAcceptedRow = (args) => {
+    const existing = rows.find((row) => (
+      row.client_id === args.p_client_id
+      && row.client_seq === args.p_client_seq
+    ));
+    if (existing) return existing;
+    const row = {
+      document_id: documentId,
+      client_id: args.p_client_id,
+      client_seq: args.p_client_seq,
+      actor_user_id: 'test-actor',
+      data: args.p_data,
+      seq: ++sequence,
+    };
+    rows.push(row);
+    return row;
+  };
+  const supabase = {
+    async rpc(name, args) {
+      if (name === 'append_annotation_update') {
+        appendAttempt += 1;
+        if (appendAttempt === 1) return neverRespond;
+        if (appendAttempt === 2) {
+          return { data: null, error: { code: 'XX000', message: 'temporary replay outage' } };
+        }
+        if (!allowRecovery) {
+          return { data: null, error: { code: 'XX000', message: 'recovery not enabled' } };
+        }
+        const row = appendAcceptedRow(args);
+        return { data: { seq: row.seq }, error: null };
+      }
+      if (name === 'store_annotation_snapshot') {
+        return allowRecovery
+          ? ({ data: { accepted: true }, error: null })
+          : ({ data: null, error: { code: '42501', message: 'snapshot permission revoked' } });
+      }
+      throw new Error(`unexpected RPC ${name}`);
+    },
+    from(table) {
+      if (table === 'annotation_updates') return makeWalReadBuilder(rows);
+      if (table === 'annotation_snapshots') {
+        return { select: () => makeEmptyBuilder({ data: null, error: null }) };
+      }
+      throw new Error(`unexpected table ${table}`);
+    },
+  };
+  const doc = new Y.Doc();
+  const handle = await openAnnotationDoc({
+    actorUserId: 'test-actor',
+    documentId,
+    supabase,
+    clientId: 'writer',
+    writerId: 'writer',
+    enableLocal: false,
+    enableRealtime: false,
+    outboxStore: outbox,
+    doc,
+    requestTimeoutMs: 50,
+    snapshotRetryDelayMs: 0,
+    repairRetryDelayMs: 100,
+  });
+  try {
+    setMetaValue(doc, 'A', 'a', {
+      source: 'erase-local',
+      historyTag: { historyKind: 'erase-commit', mutationId: 'erase-A' },
+    });
+    setMetaValue(doc, 'B', 'b', {
+      source: 'erase-local',
+      historyTag: { historyKind: 'erase-commit', mutationId: 'erase-B' },
+    });
+
+    for (let attempt = 0; attempt < 100 && appendAttempt < 2; attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 1));
+    }
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    assert.equal(appendAttempt, 2, 'dependent B cannot overtake unresolved A');
+    assert.equal(getMetaValue(doc, 'A'), 'a');
+    assert.equal(getMetaValue(doc, 'B'), 'b');
+    assert.equal(handle.getSyncStatus().queueSize, 2);
+    const pendingRecords = await outbox.list(documentId, 'test-actor');
+    assert.deepEqual(pendingRecords.map((record) => record.clientSeq), [1, 2]);
+    assert.deepEqual(
+      pendingRecords.map((record) => record.status),
+      ['ambiguous', 'pending'],
+      'the unresolved prefix retains both exact durable records',
+    );
+
+    allowRecovery = true;
+    for (let attempt = 0; attempt < 60 && handle.getSyncStatus().queueSize > 0; attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      await handle.drain();
+    }
+    assert.equal(handle.getSyncStatus().queueSize, 0);
+    const cold = new Y.Doc();
+    for (const row of [...rows].sort((left, right) => left.seq - right.seq)) {
+      Y.applyUpdate(cold, pgHexToBytes(row.data));
+    }
+    assert.equal(getMetaValue(cold, 'A'), 'a');
+    assert.equal(getMetaValue(cold, 'B'), 'b');
+    cold.destroy();
+  } finally {
+    await handle.destroy().catch(() => {});
+  }
+});
+
+test('accepted ambiguous A preserves its history while pending B is exactly quarantined', async () => {
+  const documentId = 'doc-ambiguous-accepted-a-denied-b';
+  const outbox = createMemoryAnnotationOutbox();
+  const rows = [];
+  let appendAttempt = 0;
+  const neverRespond = new Promise(() => {});
+  const supabase = {
+    async rpc(name, args) {
+      if (name === 'append_annotation_update') {
+        appendAttempt += 1;
+        if (appendAttempt === 1) return neverRespond;
+        if (appendAttempt === 2) {
+          rows.push({
+            document_id: documentId,
+            client_id: args.p_client_id,
+            client_seq: args.p_client_seq,
+            actor_user_id: 'test-actor',
+            data: args.p_data,
+            seq: 1,
+          });
+          return { data: { seq: 1 }, error: null };
+        }
+        throw new Error('pending B must be closed before WAL submission');
+      }
+      if (name === 'store_annotation_snapshot') {
+        return { data: null, error: { code: '42501', message: 'snapshot permission revoked' } };
+      }
+      throw new Error(`unexpected RPC ${name}`);
+    },
+    from(table) {
+      if (table === 'annotation_updates') return makeWalReadBuilder(rows);
+      if (table === 'annotation_snapshots') {
+        return { select: () => makeEmptyBuilder({ data: null, error: null }) };
+      }
+      throw new Error(`unexpected table ${table}`);
+    },
+  };
+  const doc = new Y.Doc();
+  const handle = await openAnnotationDoc({
+    actorUserId: 'test-actor',
+    documentId,
+    supabase,
+    clientId: 'writer',
+    writerId: 'writer',
+    enableLocal: false,
+    enableRealtime: false,
+    outboxStore: outbox,
+    doc,
+    requestTimeoutMs: 10,
+    snapshotRetryDelayMs: 0,
+  });
+  const events = [];
+  const unsubscribe = handle.onHistoryQuarantine((event) => events.push(event));
+  try {
+    setMetaValue(doc, 'A', 'accepted', {
+      source: 'erase-local',
+      historyTag: { historyKind: 'erase-commit', mutationId: 'erase-A' },
+    });
+    setMetaValue(doc, 'B', 'denied', {
+      source: 'erase-local',
+      historyTag: { historyKind: 'erase-commit', mutationId: 'erase-B' },
+    });
+    await handle.drain();
+
+    assert.equal(appendAttempt, 2);
+    assert.equal(getMetaValue(doc, 'A'), 'accepted');
+    assert.equal(getMetaValue(doc, 'B'), undefined);
+    assert.equal(events.length, 1);
+    assert.deepEqual(events[0].mutationIds, ['erase-B']);
+    assert.equal(events[0].requiresFullHistoryReset, false);
+    assert.equal(handle.getHistoryQuarantineGeneration(), 1);
+    const cold = new Y.Doc();
+    Y.applyUpdate(cold, pgHexToBytes(rows[0].data));
+    assert.equal(getMetaValue(cold, 'A'), 'accepted');
+    assert.equal(getMetaValue(cold, 'B'), undefined);
+    cold.destroy();
+  } finally {
+    unsubscribe();
+    await handle.destroy().catch(() => {});
+  }
+});
+
+test('a non-durable rebase no-op never hides an earlier pending WAL mutation', async () => {
+  const documentId = 'doc-rebase-noop-preserves-pending';
+  const rows = [];
+  let appendAttempt = 0;
+  let releasePendingAppend;
+  const supabase = {
+    async rpc(name, args) {
+      if (name === 'append_annotation_update') {
+        appendAttempt += 1;
+        if (appendAttempt === 1) {
+          return { data: null, error: { code: '42501', message: 'permission revoked' } };
+        }
+        if (appendAttempt === 2) {
+          return new Promise((resolve) => {
+            releasePendingAppend = () => {
+              rows.push({
+                document_id: documentId,
+                client_id: args.p_client_id,
+                client_seq: args.p_client_seq,
+                actor_user_id: 'test-actor',
+                data: args.p_data,
+                seq: 1,
+              });
+              resolve({ data: { seq: 1 }, error: null });
+            };
+          });
+        }
+        return { data: { seq: rows.length || 1 }, error: null };
+      }
+      if (name === 'store_annotation_snapshot') {
+        return { data: { accepted: true }, error: null };
+      }
+      throw new Error(`unexpected RPC ${name}`);
+    },
+    from(table) {
+      if (table === 'annotation_updates') return makeWalReadBuilder(rows);
+      if (table === 'annotation_snapshots') {
+        return { select: () => makeEmptyBuilder({ data: null, error: null }) };
+      }
+      throw new Error(`unexpected table ${table}`);
+    },
+  };
+  const doc = new Y.Doc();
+  const handle = await openAnnotationDoc({
+    actorUserId: 'test-actor',
+    documentId,
+    supabase,
+    clientId: 'writer',
+    writerId: 'writer',
+    enableLocal: false,
+    enableRealtime: false,
+    doc,
+  });
+  const events = [];
+  const unsubscribe = handle.onHistoryQuarantine((event) => events.push(event));
+  try {
+    handle.setMeta('denied-seed', 'x');
+    await handle.drain();
+    assert.equal(events.length, 1, 'first denial establishes rebased staging');
+
+    handle.setMeta('pending', 'value');
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    assert.equal(typeof releasePendingAppend, 'function');
+    assert.equal(handle.getMeta('pending'), 'value');
+    assert.equal(handle.getSyncStatus().queueSize, 1);
+
+    doc.transact(() => {
+      doc.getMap('nondurable').set('x', 1);
+    }, {
+      source: 'audit',
+      historyTag: {
+        historyKind: 'erase-commit',
+        mutationId: 'tagged-stage-noop',
+      },
+    });
+
+    assert.equal(handle.getMeta('pending'), 'value');
+    assert.equal(handle.getSyncStatus().queueSize, 1);
+    assert.equal(events.length, 1, 'non-durable no-op emits no rollback event');
+
+    releasePendingAppend();
+    await handle.drain();
+    assert.equal(handle.getMeta('pending'), 'value');
+    assert.equal(handle.getSyncStatus().queueSize, 0);
+  } finally {
+    unsubscribe();
+    await handle.destroy().catch(() => {});
   }
 });
 

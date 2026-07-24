@@ -17,6 +17,7 @@
 
 import { invertAnnotationHistoryAction } from '../utils/annotationLocalHistory.js';
 import { projectAnnotationForHistoryPreview } from '../utils/historyPreviewAnnotation.js';
+import { MAX_ERASE_DELETE_HISTORY_OBJECTS } from '../utils/annotationEraseLimits.js';
 
 // ─── Annotation type labels ────────────────────────────────────────────────
 
@@ -125,6 +126,15 @@ export function isAnnotationRestoreAction(restoreAction) {
     restoreAction.type === 'fabric:create' &&
     restoreAction.annotationId &&
     restoreAction.pageNumber != null,
+  );
+}
+
+/** True when a restore row carries any supported Fabric history action. */
+export function isFabricAnnotationHistoryAction(restoreAction) {
+  return Boolean(
+    restoreAction
+    && ['fabric:create', 'fabric:update', 'fabric:batch'].includes(restoreAction.type)
+    && restoreAction.pageNumber != null,
   );
 }
 
@@ -370,7 +380,7 @@ export function applyRegionRestoreToSpaces(spaces, restoreAction) {
 
 // ─── Slice 5: Bulk delete ──────────────────────────────────────────────────
 
-const BULK_BATCH_SIZE = 50; // OQ-3: 50-object soft cap per row
+export const BULK_BATCH_SIZE = MAX_ERASE_DELETE_HISTORY_OBJECTS;
 
 /**
  * Build per-object restoreAction entries for a bulk delete operation.
@@ -451,6 +461,59 @@ export function buildBulkAnnotationDeleteHistoryRows({
       created_at: deletedAt,
     };
   });
+}
+
+/** Build one delete-only Revisions row for the objects an eraser removed. */
+export function buildAnnotationEraseDeleteHistoryRow({
+  objectRestoreActions,
+  totalCount,
+  mutationId,
+  documentId,
+  userId = null,
+  actorName = 'Someone',
+  deletedAt,
+  batchIndex = 0,
+  batchTotal = 1,
+  gestureTotalCount = totalCount,
+}) {
+  if (!Array.isArray(objectRestoreActions) || objectRestoreActions.length === 0) return null;
+  if (!documentId || !mutationId) return null;
+  const normalizedBatchIndex = Math.max(0, Number(batchIndex) || 0);
+  const normalizedBatchTotal = Math.max(1, Number(batchTotal) || 1);
+  const clientEventId = normalizedBatchTotal > 1
+    ? `annotations-erase-delete:${mutationId}:${normalizedBatchIndex + 1}-of-${normalizedBatchTotal}`
+    : `annotations-erase-delete:${mutationId}`;
+  const batchSuffix = normalizedBatchTotal > 1
+    ? ` (batch ${normalizedBatchIndex + 1}/${normalizedBatchTotal})`
+    : '';
+  return {
+    id: clientEventId,
+    document_id: documentId,
+    user_id: userId,
+    client_event_id: clientEventId,
+    event_type: 'annotations_bulk_deleted',
+    source: 'annotation-eraser',
+    page_number: null,
+    annotation_id: null,
+    summary: `${actorName} deleted ${gestureTotalCount} annotation${gestureTotalCount !== 1 ? 's' : ''} with the eraser${batchSuffix}`,
+    payload: {
+      // Keep "delete" in the presentation fields so the existing Revisions
+      // panel offers Restore for this compatible bulk event shape.
+      actionType: 'bulk-delete',
+      rawActionType: 'annotations_erase_deleted',
+      count: totalCount,
+      gestureTotalCount,
+      mutationId,
+      batchIndex: normalizedBatchIndex,
+      batchTotal: normalizedBatchTotal,
+      deletedBy: userId,
+      objects: objectRestoreActions,
+    },
+    is_undoable: true,
+    is_checkpoint: false,
+    occurred_at: deletedAt,
+    created_at: deletedAt,
+  };
 }
 
 /** True when a history event is a bulk-delete row. */

@@ -233,6 +233,17 @@ test('non-delete checkpoints still persist (create/edit activity unaffected)', (
   }
 });
 
+test('atomic eraser checkpoint can stay in Cmd+Z history without duplicating durable effect rows', () => {
+  const row = buildHistoryEventRowFromDebugEvent({
+    type: 'checkpoint_added',
+    checkpointId: 9,
+    reason: 'eraser:gesture',
+    pageNumber: 1,
+    suppressHistoryRow: true,
+  }, { documentId: 'doc-1', user });
+  equal(row, null);
+});
+
 test('un-flagged delete events still persist (eraser path keeps its only restorable row)', () => {
   const row = buildHistoryEventRowFromDebugEvent({
     type: 'local_annotation_history_added',

@@ -5,6 +5,7 @@
  * rather than bounding boxes. It handles all annotation types and accounts
  * for transformations (rotation, scaling, translation).
  */
+import { getCounterRenderGeometry } from './counterGeometry.js';
 
 // Default tolerance for hit testing (in pixels)
 const DEFAULT_TOLERANCE = 3;
@@ -301,6 +302,45 @@ export const isPointInPolygon = (point, vertices) => {
     }
   }
   return inside;
+};
+
+export const getCounterHitGeometry = (counterObj) => {
+  const radius = (Number(counterObj?.radius) || 14)
+    * Math.abs(Number(counterObj?.scaleX) || 1);
+  const centerX = (Number(counterObj?.left) || 0) + radius;
+  const centerY = (Number(counterObj?.top) || 0) + radius;
+  const pointerAngle = counterObj?.data?.pointerAngle != null
+    ? Number(counterObj.data.pointerAngle)
+    : 225;
+  return getCounterRenderGeometry(
+    centerX,
+    centerY,
+    radius,
+    Number.isFinite(pointerAngle) ? pointerAngle : 225,
+  );
+};
+
+export const isPointOnCounter = (
+  point,
+  counterObj,
+  tolerance = DEFAULT_TOLERANCE,
+) => {
+  if (counterObj?.data?.type !== 'counter') return false;
+  const geometry = getCounterHitGeometry(counterObj);
+  const effectiveTolerance = Math.max(0, Number(tolerance) || 0);
+  if (
+    Math.hypot(
+      Number(point?.x) - geometry.center.x,
+      Number(point?.y) - geometry.center.y,
+    ) <= geometry.radius + effectiveTolerance
+  ) return true;
+
+  const nub = [geometry.tip, geometry.tangent1, geometry.tangent2];
+  return isPointInPolygon(point, nub)
+    || nub.some((vertex, index) => (
+      distanceToLineSegment(point, vertex, nub[(index + 1) % nub.length])
+      <= effectiveTolerance
+    ));
 };
 
 /**
@@ -1010,7 +1050,15 @@ export const isPointOnGroup = (point, groupObj, tolerance = DEFAULT_TOLERANCE) =
   if (!groupObj || hitTestType(groupObj) !== 'group') return false;
 
   const objects = groupObj._objects || groupObj.objects || groupObj.getObjects?.() || [];
-  if (objects.length === 0) return false;
+  if (objects.length === 0) {
+    // Old counter fixtures/saves used an empty Fabric Group carrier while the
+    // SVG layer rendered the counter directly from data.type. Match that
+    // visible circle so legacy counters are not eraser-immune.
+    if (groupObj?.data?.type === 'counter') {
+      return isPointOnCounter(point, groupObj, tolerance);
+    }
+    return false;
+  }
 
   // Get group's transform matrix
   const groupMatrix = getObjectTransformMatrix(groupObj);
@@ -1071,6 +1119,9 @@ export const isPointOnImage = (point, imageObj, tolerance = DEFAULT_TOLERANCE) =
 
 export const isPointOnObject = (point, obj, tolerance = DEFAULT_TOLERANCE) => {
   if (!obj || !obj.type) return false;
+  if (obj?.data?.type === 'counter') {
+    return isPointOnCounter(point, obj, tolerance);
+  }
 
   switch (hitTestType(obj)) {
     case 'path':
@@ -1832,6 +1883,40 @@ export const doesRectIntersectCircle = (selRect, circleObj) => {
   return doesRectIntersectEllipse(selRect, cx, cy, scaledRx, scaledRy, hasFill, strokeWidth);
 };
 
+export const doesRectIntersectCounter = (selRect, counterObj) => {
+  if (counterObj?.data?.type !== 'counter') return false;
+  const geometry = getCounterHitGeometry(counterObj);
+  const closestX = Math.max(selRect.left, Math.min(geometry.center.x, selRect.right));
+  const closestY = Math.max(selRect.top, Math.min(geometry.center.y, selRect.bottom));
+  if (
+    Math.hypot(closestX - geometry.center.x, closestY - geometry.center.y)
+    <= geometry.radius
+  ) return true;
+
+  const nub = [geometry.tip, geometry.tangent1, geometry.tangent2];
+  if (nub.some((point) => (
+    point.x >= selRect.left
+    && point.x <= selRect.right
+    && point.y >= selRect.top
+    && point.y <= selRect.bottom
+  ))) return true;
+  const corners = [
+    { x: selRect.left, y: selRect.top },
+    { x: selRect.right, y: selRect.top },
+    { x: selRect.right, y: selRect.bottom },
+    { x: selRect.left, y: selRect.bottom },
+  ];
+  if (corners.some((point) => isPointInPolygon(point, nub))) return true;
+  return nub.some((point, index) => (
+    doesRectIntersectLineSegment(
+      selRect,
+      point,
+      nub[(index + 1) % nub.length],
+      0,
+    )
+  ));
+};
+
 /**
  * Check if a selection rectangle intersects a Line object
  */
@@ -2064,7 +2149,12 @@ export const doesRectIntersectGroup = (selRect, groupObj) => {
   if (!groupObj || hitTestType(groupObj) !== 'group') return false;
 
   const objects = groupObj._objects || groupObj.objects || groupObj.getObjects?.() || [];
-  if (objects.length === 0) return false;
+  if (objects.length === 0) {
+    if (groupObj?.data?.type === 'counter') {
+      return doesRectIntersectCounter(selRect, groupObj);
+    }
+    return false;
+  }
 
   // Get group's transform matrix
   const groupMatrix = getObjectTransformMatrix(groupObj);
@@ -2131,6 +2221,9 @@ const multiplyMatrices = (m1, m2) => {
  */
 export const doesRectIntersectObject = (selRect, obj) => {
   if (!obj || !obj.type) return false;
+  if (obj?.data?.type === 'counter') {
+    return doesRectIntersectCounter(selRect, obj);
+  }
 
 
 

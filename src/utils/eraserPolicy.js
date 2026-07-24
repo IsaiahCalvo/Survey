@@ -37,7 +37,10 @@ const isLegacyPencilBrushInk = (annotation) => {
  */
 export function isPartialEraseEligible(annotation) {
   if (!annotation || normalize(annotation.type) !== 'path') return false;
-  if (!Array.isArray(annotation.path) || annotation.path.length === 0) return false;
+  const hasPath = Array.isArray(annotation.path) && annotation.path.length > 0;
+  const hasCommands = Array.isArray(annotation.cmds) && annotation.cmds.length > 0;
+  const hasPolygons = Array.isArray(annotation.polygons) && annotation.polygons.length > 0;
+  if (!hasPath && !hasCommands && !hasPolygons) return false;
 
   const pdfAnnotationType = normalize(
     annotation.pdfAnnotationType ?? annotation.data?.pdfAnnotationType,
@@ -55,7 +58,7 @@ export function isPartialEraseEligible(annotation) {
     && annotation.polygons.length > 0
   ) return true;
 
-  return isLegacyPencilBrushInk(annotation);
+  return hasPath && isLegacyPencilBrushInk(annotation);
 }
 
 export function getEraserOperation(annotation, requestedMode) {

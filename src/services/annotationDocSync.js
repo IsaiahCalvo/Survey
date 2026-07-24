@@ -27,6 +27,14 @@ import {
 import {
   createAnnotationOutbox,
 } from './annotationDocOutbox.js';
+import { erasedPathSurvivorsShareGeometry } from '../utils/pageSpaceEraser.js';
+import {
+  ERASE_OUTBOX_MAP,
+  applyEraseHistoryTransitionOnDoc,
+  commitEraseIntent as commitEraseIntentOnDoc,
+  drainEraseOutbox as drainEraseOutboxOnDoc,
+  restoreEraseDeletionOnDoc,
+} from '../utils/annotationEraseTransaction.js';
 import { getAnnotationAuthorId } from '../lib/collab/permissionScope.js';
 import {
   createAnnotationStorageKeyResolver,
@@ -34,16 +42,19 @@ import {
 } from '../utils/annotationStorageIdentity.js';
 import {
   ANNOTATIONS_MAP,
+  DELETED_PDF_ANNOTATIONS_MAP,
   ERASER_OPS_MAP,
   META_MAP,
   SURVEY_MARKERS_MAP,
+  deletedPdfAnnotationStorageKey,
   getAnnotationsMap,
+  getDeletedPdfAnnotationsMap,
   getEraserOpsMap,
   getSurveyMarkersMap,
   extractAnnotationId,
   docToByPage,
+  docToDeletedPdfAnnotations,
   syncByPageToDoc,
-  clearEraserOpsForAnnotationIds,
   encodeSnapshot,
   getMetaValue,
   setMetaValue,
@@ -69,11 +80,26 @@ const HYDRATE_ORIGIN = 'hydrate';
 const PERMISSION_ROLLBACK_ORIGIN = 'permission-rollback';
 const DURABLE_MAP_NAMES = [
   ANNOTATIONS_MAP,
+  DELETED_PDF_ANNOTATIONS_MAP,
   ERASER_OPS_MAP,
   META_MAP,
   SURVEY_MARKERS_MAP,
+  ERASE_OUTBOX_MAP,
 ];
 const ACTIVE_STATES = (globalThis.__annotationDocSyncActiveStates__ ??= new Map());
+
+function historyQuarantineDedupeKey(state, evidenceKeys = []) {
+  const normalizedKeys = [...new Set(
+    (evidenceKeys || []).map((key) => String(key || '').trim()).filter(Boolean),
+  )].sort();
+  if (normalizedKeys.length === 0) return null;
+  return [
+    state.documentId,
+    state.actorUserId,
+    state.documentIncarnation,
+    ...normalizedKeys,
+  ].join('\u0001');
+}
 
 function deletedDocumentError(documentId) {
   const error = new Error(`annotation document ${documentId} was deleted`);
@@ -114,6 +140,8 @@ function invalidateDeletedState(state, error = deletedDocumentError(state.docume
     clearTimeout(state.outboxReplayTimer);
     state.outboxReplayTimer = null;
   }
+  state.eraseOutboxClosing = true;
+  clearEraseOutboxRetry(state);
   clearGapRepairTimer(state);
   if (state.onDocUpdate) {
     try { state.doc.off('update', state.onDocUpdate); } catch { /* already detached */ }
@@ -239,6 +267,9 @@ export async function openAnnotationDoc({
   repairRetryDelayMs = GAP_REPAIR_RETRY_MS,
   outboxStore = null,
   actorUserId,
+  eraseEffectConsumer = null,
+  eraseOutboxRetryBaseMs = 250,
+  eraseOutboxRetryMaxMs = 30_000,
 }) {
   if (!documentId) throw new Error('openAnnotationDoc: documentId required');
   if (!actorUserId) throw new Error('openAnnotationDoc: actorUserId required');
@@ -307,6 +338,10 @@ export async function openAnnotationDoc({
     realtimeChannel: null,
     changeListeners: new Set(),
     syncListeners: new Set(),
+    historyQuarantineListeners: new Set(),
+    historyQuarantineGeneration: 0,
+    lastHistoryQuarantineEvent: null,
+    openHistoryQuarantineEvidenceKeys: new Set(),
     syncHealthy: true,     // false once an op append fails until it recovers (BL-24)
     durabilityGap: false,  // a locally-applied update is absent from both WAL and snapshot
     durabilityGapGeneration: 0,
@@ -335,6 +370,22 @@ export async function openAnnotationDoc({
     localPersistenceFactory,
     legacyPersistenceFactory,
     localSyncTimeoutMs,
+    eraseEffectConsumer: typeof eraseEffectConsumer === 'function'
+      ? eraseEffectConsumer
+      : null,
+    eraseOutboxDrain: Promise.resolve({
+      status: 'idle',
+      acknowledged: 0,
+      pending: 0,
+    }),
+    eraseOutboxRetryTimer: null,
+    eraseOutboxRetryAttempt: 0,
+    eraseOutboxRetryBaseMs: Math.max(1, Number(eraseOutboxRetryBaseMs) || 250),
+    eraseOutboxRetryMaxMs: Math.max(
+      Math.max(1, Number(eraseOutboxRetryBaseMs) || 250),
+      Number(eraseOutboxRetryMaxMs) || 30_000,
+    ),
+    eraseOutboxClosing: false,
     persistenceGeneration: readPersistenceGeneration(documentId, actorUserId),
     legacyPersistenceDoc: null,
     legacyClearDocument: null,
@@ -362,6 +413,9 @@ export async function openAnnotationDoc({
         state.documentId,
         state.actorUserId,
       );
+      for (const record of quarantined || []) {
+        if (record?.key) state.openHistoryQuarantineEvidenceKeys.add(record.key);
+      }
       state.quarantinedLocalHistory = (
         state.quarantinedLocalHistory
         || (quarantined?.length || 0) > 0
@@ -412,6 +466,16 @@ export async function openAnnotationDoc({
         encodeSnapshot(persistedCandidate),
         HYDRATE_ORIGIN,
       );
+      // Local-only documents have no backend accepted-state reconciliation.
+      // Their actor-scoped IndexedDB snapshot is authoritative on a fresh
+      // process, so hydrate it into the exposed doc before any new mutation.
+      if (!supabase && state.localPersistenceDoc) {
+        Y.applyUpdate(
+          activeDoc,
+          encodeSnapshot(state.localPersistenceDoc),
+          HYDRATE_ORIGIN,
+        );
+      }
     }
 
     // --- seed the per-(doc,client) op counter so client_seq stays unique ---
@@ -446,6 +510,29 @@ export async function openAnnotationDoc({
       await replayOutbox(state);
       if (state.quarantinedLocalHistory) {
         publishAcceptedState(state);
+        const terminalRecords = [...state.appendRecords.values()].filter((record) => (
+          record.status === 'rejected'
+          || record.status === 'integrity-error'
+          || record.status === 'dependency-error'
+        ));
+        for (const record of terminalRecords) {
+          if (record?.key) state.openHistoryQuarantineEvidenceKeys.add(record.key);
+        }
+        if (!state.lastHistoryQuarantineEvent) {
+          const hasIntegrityFailure = terminalRecords.some((record) => (
+            record.status === 'integrity-error'
+            || record.status === 'dependency-error'
+          ));
+          emitHistoryQuarantine(state, {
+            reason: hasIntegrityFailure
+              ? 'wal-integrity-collision'
+              : 'permission-denied',
+            code: hasIntegrityFailure ? '23505' : '42501',
+            mutationIds: [],
+            requiresFullHistoryReset: true,
+            evidenceKeys: [...state.openHistoryQuarantineEvidenceKeys],
+          });
+        }
         state.rebaseLocalMutations = true;
         try { state.persistedDoc?.destroy(); } catch { /* */ }
         state.persistedDoc = null;
@@ -484,12 +571,17 @@ export async function openAnnotationDoc({
           ? stageRebasedLocalMutation(state, transaction)
           : stageExactLocalUpdate(state, update);
         if (!staged) {
-          const error = new Error('local mutation could not be staged safely');
-          restoreAcceptedState(state);
-          markSyncHealth(state, false, error);
+          // Rebased staging returns null only when this transaction changed no
+          // durable map (or its durable projection is already identical).
+          // There is nothing to append or roll back. Restoring acceptedDoc here
+          // used to hide unrelated, valid pending WAL records until reopen.
           return;
         }
-        enqueueAppend(state, staged.update, staged.snapshot, state.editEpoch);
+        enqueueAppend(state, staged.update, staged.snapshot, state.editEpoch, {
+          historyTag: origin?.historyTag?.mutationId
+            ? { ...origin.historyTag }
+            : null,
+        });
         // The full-state checkpoint is the durability GUARANTEE: even if an
         // individual op insert fails (network), the next checkpoint re-captures
         // the whole doc from memory. Schedule it on every local edit.
@@ -500,6 +592,13 @@ export async function openAnnotationDoc({
       // notify (see subscribeRealtime).
     };
     activeDoc.on('update', state.onDocUpdate);
+
+    // Recover side effects from a core erase that survived a prior crash.
+    // The consumer runs only after local/cloud hydration and observer wiring,
+    // so its acknowledgements are themselves persisted like any other edit.
+    if (state.eraseEffectConsumer) {
+      void queueEraseOutboxDrain(state);
+    }
 
     // --- live multi-device: apply remote ops as they land ---
     if (useRealtime) {
@@ -524,7 +623,7 @@ export async function openAnnotationDoc({
         ) return;
         try {
           writeSnapshot(state, captureSnapshotOptions(state))
-            .then((result) => handleSnapshotResult(state, result));
+            .then((result) => finalizeSnapshotResult(state, result));
         } catch { /* best-effort */ }
       };
       window.addEventListener('pagehide', state.onPageHide);
@@ -541,6 +640,7 @@ export async function openAnnotationDoc({
     // either sees this opening state or its bumped incarnation rejects open.
     registerActiveState(state);
   } catch (err) {
+    clearEraseOutboxRetry(state);
     state.destroyed = true;
     clearGapRepairTimer(state);
     if (state.onDocUpdate) { try { activeDoc.off('update', state.onDocUpdate); } catch { /* */ } }
@@ -995,18 +1095,68 @@ function unresolvedDependencyForRecord(state, record) {
   return null;
 }
 
-async function quarantineRejectedRecords(state, rejectedKeys, error) {
+async function quarantineRejectedRecords(
+  state,
+  rejectedKeys,
+  error,
+  { terminalStatus = 'rejected' } = {},
+) {
   // This can run during replay, after the open-time quarantine sample. Flip the
   // live state immediately so actorless legacy storage cannot be re-enqueued
   // again later in the same open under a fresh writer id.
   state.quarantinedLocalHistory = true;
-  const closure = rejectedRecordClosure(state, rejectedKeys);
-  // Visible rollback must not depend on IndexedDB cleanup succeeding.
-  restoreAcceptedState(state);
+  const cutoffKeys = state.permissionRejectedCutoff > 0
+    ? [...state.appendRecords.values()]
+      .filter((record) => (Number(record.ordinal) || 0) <= state.permissionRejectedCutoff)
+      .map((record) => record.key)
+    : [];
+  const closure = rejectedRecordClosure(
+    state,
+    [...new Set([...rejectedKeys, ...cutoffKeys])],
+  );
   const keys = [...closure];
+  const records = keys
+    .map((key) => state.appendRecords.get(key))
+    .filter(Boolean);
+  const historyTags = records
+    .map((record) => record.historyTag)
+    .filter((tag) => tag?.mutationId);
+  const mutationIds = historyTags.map((tag) => tag.mutationId);
+  const requiresFullHistoryReset = (
+    records.length !== keys.length
+    || records.some((record) => !record.historyTag?.mutationId)
+  );
+  // Visible rollback must not depend on IndexedDB cleanup succeeding.
+  restoreAcceptedState(state, {
+    reason: terminalStatus === 'integrity-error'
+      ? 'wal-integrity-collision'
+      : 'permission-denied',
+    code: error?.code || (terminalStatus === 'integrity-error' ? '23505' : '42501'),
+    mutationIds,
+    requiresFullHistoryReset,
+    evidenceKeys: keys,
+  });
+  if (terminalStatus === 'integrity-error') {
+    const rootKeys = new Set(rejectedKeys);
+    for (const key of keys) {
+      const record = state.appendRecords.get(key);
+      if (!record) continue;
+      record.status = rootKeys.has(key) ? 'integrity-error' : 'dependency-error';
+      await persistOutboxRecord(state, record).catch((cleanupError) => {
+        console.warn('[annotationDocSync] integrity quarantine persistence failed', cleanupError?.message);
+      });
+    }
+    try {
+      await rotateCleanPersistence(state);
+    } catch (cleanupError) {
+      console.warn('[annotationDocSync] integrity persistence rotation failed', cleanupError?.message);
+    }
+    markSyncHealth(state, false, error);
+    return;
+  }
   for (const key of keys) {
     const record = state.appendRecords.get(key);
-    if (record) record.status = 'rejected';
+    if (record) record.status = terminalStatus;
   }
   let cleanupFailed = false;
   try {
@@ -1054,21 +1204,20 @@ function appendRecordForCloudRow(state, row, update) {
     actorUserId !== String(state.actorUserId)
     || !writerId
     || !Number.isFinite(clientSeq)
-  ) return null;
+  ) return { record: null, collision: null };
   const record = [...state.appendRecords.values()].find((candidate) => (
     candidate.documentId === state.documentId
     && String(candidate.actorUserId) === actorUserId
     && candidate.writerId === writerId
     && Number(candidate.clientSeq) === clientSeq
   ));
-  if (!record) return null;
+  if (!record) return { record: null, collision: null };
   if (!bytesEqual(record.update, update)) {
     const error = new Error('authoritative WAL receipt reused an idempotency key with different bytes');
     error.code = '23505';
-    markSyncHealth(state, false, error);
-    return null;
+    return { record, collision: error };
   }
-  return record;
+  return { record, collision: null };
 }
 
 async function settleAcceptedRecord(
@@ -1120,9 +1269,14 @@ async function settleAcceptedRecord(
       clearTimeout(state.outboxReplayTimer);
       state.outboxReplayTimer = null;
     }
+    clearEraseOutboxRetry(state);
     state.outboxReplayRetryAttempt = 0;
     markSyncHealth(state, true);
   }
+  // Core acceptance is the authorization boundary for irreversible erase
+  // effects. Wake the worker from every receipt path, including snapshot
+  // coverage and Realtime—not only the direct append caller.
+  void queueEraseOutboxDrain(state);
   if (state.appendRecords.size > 0) scheduleOutboxReplay(state);
 }
 
@@ -1162,7 +1316,17 @@ async function settleSnapshotCoveredRecords(state, snapshotUpdate, epochAtStart)
 async function applyAuthoritativeCloudRow(state, row) {
   const update = pgHexToBytes(row.data);
   applyAuthoritativeCloudUpdate(state, update);
-  const record = appendRecordForCloudRow(state, row, update);
+  const { record, collision } = appendRecordForCloudRow(state, row, update);
+  if (collision && record) {
+    state.permissionRejectedCutoff = state.localMutationOrdinal;
+    await quarantineRejectedRecords(
+      state,
+      [record.key],
+      collision,
+      { terminalStatus: 'integrity-error' },
+    );
+    return update;
+  }
   if (record) {
     await settleAcceptedRecord(state, record, update, { alreadyApplied: true });
   }
@@ -1212,6 +1376,7 @@ async function loadPendingOutboxRecords(state) {
       // store at all. A cold open must not re-author detached local bytes while
       // any of those unresolved records remain.
       state.quarantinedLocalHistory = true;
+      state.openHistoryQuarantineEvidenceKeys.add(record.key);
       state.appendRecords.set(record.key, record);
       markSyncHealth(
         state,
@@ -1384,6 +1549,7 @@ function catchUpTail(state) {
       if (batch.length < 1000) break;
     }
     if (applied > 0 && !state.destroyed) notifyChange(state);
+    if (applied > 0 && !state.destroyed) void queueEraseOutboxDrain(state);
     return true;
   }).catch((err) => {
     console.warn('[annotationDocSync] catch-up failed', err?.message);
@@ -1411,6 +1577,55 @@ function notifySyncStatus(state) {
   for (const cb of state.syncListeners) {
     try { cb(status); } catch (err) { console.warn('[annotationDocSync] sync listener threw', err?.message); }
   }
+}
+
+function emitHistoryQuarantine(state, details = {}) {
+  state.historyQuarantineGeneration += 1;
+  const dedupeKey = historyQuarantineDedupeKey(state, details.evidenceKeys)
+    || [
+      state.documentId,
+      state.actorUserId,
+      state.documentIncarnation,
+      state.writerId,
+      `generation:${state.historyQuarantineGeneration}`,
+    ].join('\u0001');
+  const event = Object.freeze({
+    documentId: state.documentId,
+    documentIncarnation: state.documentIncarnation,
+    generation: state.historyQuarantineGeneration,
+    reason: details.reason || 'authoritative-rollback',
+    code: details.code == null ? null : String(details.code),
+    mutationIds: Object.freeze(
+      [...new Set((details.mutationIds || []).map(String).filter(Boolean))],
+    ),
+    requiresFullHistoryReset: details.requiresFullHistoryReset !== false,
+    dedupeKey,
+  });
+  state.lastHistoryQuarantineEvent = event;
+  for (const cb of state.historyQuarantineListeners) {
+    try {
+      cb(event);
+    } catch (error) {
+      console.warn('[annotationDocSync] history quarantine listener threw', error?.message);
+    }
+  }
+  return event;
+}
+
+function subscribeHistoryQuarantine(state, cb) {
+  state.historyQuarantineListeners.add(cb);
+  const event = state.lastHistoryQuarantineEvent;
+  if (event) {
+    try {
+      cb(event);
+    } catch (error) {
+      console.warn(
+        '[annotationDocSync] history quarantine listener threw',
+        error?.message,
+      );
+    }
+  }
+  return () => state.historyQuarantineListeners.delete(cb);
 }
 
 // Notify sync-health listeners when the durable-append path flips between
@@ -1504,15 +1719,7 @@ function scheduleGapRepair(state) {
       containsUnacceptedPrefix: true,
       error: toSyncError(error),
     }));
-    if (
-      result?.permissionDenied
-      && result.containsUnacceptedPrefix
-      && !(await resolveAmbiguousAppends(state))
-    ) {
-      markSyncHealth(state, false, result.error);
-      return;
-    }
-    handleSnapshotResult(state, result);
+    await finalizeSnapshotResult(state, result);
     if (state.durabilityGap && !result?.permissionDenied) scheduleGapRepair(state);
   }, delayMs);
 }
@@ -1735,12 +1942,17 @@ async function replayOutbox(state) {
       await appendOp(state, record);
     } catch (error) {
       if (String(error?.code || '') === '23505') {
-        record.status = 'integrity-error';
-        await persistOutboxRecord(state, record).catch(() => {});
-        markSyncHealth(state, false, error);
+        state.permissionRejectedCutoff = state.localMutationOrdinal;
+        await quarantineRejectedRecords(
+          state,
+          [record.key],
+          error,
+          { terminalStatus: 'integrity-error' },
+        );
         return;
       }
       if (isPermissionDenied(error)) {
+        state.permissionRejectedCutoff = state.localMutationOrdinal;
         await quarantineRejectedRecords(state, [record.key], error);
         return;
       }
@@ -1852,7 +2064,7 @@ function publishAcceptedAndVisiblePendingState(state) {
   }
 }
 
-function restoreAcceptedState(state) {
+function restoreAcceptedState(state, quarantineDetails = {}) {
   publishAcceptedState(state);
   state.durabilityGap = false;
   clearGapRepairTimer(state);
@@ -1868,6 +2080,7 @@ function restoreAcceptedState(state) {
   state.doc.clientID = freshClock.clientID;
   try { freshClock.destroy(); } catch { /* */ }
   state.rebaseLocalMutations = true;
+  emitHistoryQuarantine(state, quarantineDetails);
 }
 
 async function resolveAmbiguousAppends(state) {
@@ -1884,14 +2097,88 @@ async function resolveAmbiguousAppends(state) {
       // may still commit after that read.
       await appendOp(state, record);
     } catch (error) {
+      if (String(error?.code || '') === '23505') {
+        state.permissionRejectedCutoff = state.localMutationOrdinal;
+        await quarantineRejectedRecords(
+          state,
+          [record.key],
+          error,
+          { terminalStatus: 'integrity-error' },
+        );
+        return { status: 'terminal' };
+      }
       if (isPermissionDenied(error)) {
         record.status = 'rejected';
         continue;
       }
-      return false;
+      return { status: 'unresolved' };
     }
   }
-  return true;
+  return { status: 'resolved' };
+}
+
+async function quarantineDefinitivePermissionDenial(
+  state,
+  error,
+  {
+    additionalKeys = [],
+    reason = 'permission-denied',
+  } = {},
+) {
+  if (state.snapshotTimer) {
+    clearTimeout(state.snapshotTimer);
+    state.snapshotTimer = null;
+  }
+  const resolution = await resolveAmbiguousAppends(state);
+  if (resolution.status !== 'resolved') {
+    if (resolution.status === 'unresolved') {
+      markSyncHealth(state, false, error);
+      scheduleGapRepair(state);
+      scheduleOutboxReplay(state, { delayed: true });
+    }
+    return resolution;
+  }
+  // Only a definitive resolution may close the optimistic prefix. A transient
+  // exact-replay failure must retain every queued dependent in the durable
+  // outbox; advancing the cutoff early made later records self-delete.
+  state.permissionRejectedCutoff = state.localMutationOrdinal;
+  const unresolvedPrefixKeys = [...state.appendRecords.values()]
+    .filter((record) => (
+      (Number(record.ordinal) || 0) <= state.permissionRejectedCutoff
+      && record.status !== 'accepted'
+      && record.status !== 'integrity-error'
+      && record.status !== 'dependency-error'
+    ))
+    .map((record) => record.key);
+  const rejectedKeys = [...new Set([
+    ...additionalKeys.filter((key) => state.appendRecords.has(key)),
+    ...unresolvedPrefixKeys,
+    ...[...state.appendRecords.values()]
+      .filter((record) => record.status === 'rejected')
+      .map((record) => record.key),
+  ])];
+  if (
+    rejectedKeys.length === 0
+    && state.appendRecords.size === 0
+    && !state.durabilityGap
+  ) {
+    // Exact WAL replay proved every formerly ambiguous byte was accepted.
+    // The snapshot endpoint can still deny independently; keep sync red, but
+    // do not invalidate history for mutations already present in acceptedDoc.
+    markSyncHealth(state, false, error);
+    return { status: 'accepted-before-snapshot-denial' };
+  }
+  if (rejectedKeys.length > 0) {
+    await quarantineRejectedRecords(state, rejectedKeys, error);
+  } else {
+    restoreAcceptedState(state, {
+      reason,
+      code: error?.code || '42501',
+      requiresFullHistoryReset: true,
+    });
+  }
+  markSyncHealth(state, false, error);
+  return { status: 'quarantined' };
 }
 
 function handleSnapshotResult(state, result) {
@@ -1906,7 +2193,11 @@ function handleSnapshotResult(state, result) {
     if (result.containsUnacceptedPrefix) {
       state.permissionRejectedCutoff = state.localMutationOrdinal;
       if (state.snapshotTimer) { clearTimeout(state.snapshotTimer); state.snapshotTimer = null; }
-      restoreAcceptedState(state);
+      restoreAcceptedState(state, {
+        reason: 'permission-denied-snapshot',
+        code: result?.error?.code || '42501',
+        requiresFullHistoryReset: true,
+      });
     }
     markSyncHealth(state, false, result.error);
   }
@@ -1919,7 +2210,7 @@ function enqueueAppend(
   update,
   checkpointUpdate,
   editEpoch,
-  { publishAfterAcceptance = false } = {},
+  { publishAfterAcceptance = false, historyTag = null } = {},
 ) {
   const ordinal = ++state.localMutationOrdinal;
   const clientSeq = ++state.clientSeq;
@@ -1940,6 +2231,12 @@ function enqueueAppend(
     checkpointUpdate: new Uint8Array(checkpointUpdate),
     editEpoch,
     publishAfterAcceptance,
+    historyTag: historyTag?.mutationId
+      ? {
+        historyKind: String(historyTag.historyKind || 'erase'),
+        mutationId: String(historyTag.mutationId),
+      }
+      : null,
     status: 'pending',
   };
   record.dependsOn = causalDependenciesForUpdate(state, record.update, record.key);
@@ -1951,6 +2248,12 @@ function enqueueAppend(
     try {
       await persisted;
       if (ordinal <= state.permissionRejectedCutoff) {
+        if (
+          record.status === 'integrity-error'
+          || record.status === 'dependency-error'
+        ) {
+          return;
+        }
         await state.outbox?.delete(record.key, state.documentIncarnation);
         state.appendRecords.delete(record.key);
         return;
@@ -1984,9 +2287,13 @@ function enqueueAppend(
         return;
       }
       if (String(err?.code || '') === '23505') {
-        record.status = 'integrity-error';
-        await persistOutboxRecord(state, record).catch(() => {});
-        markSyncHealth(state, false, err);
+        state.permissionRejectedCutoff = state.localMutationOrdinal;
+        await quarantineRejectedRecords(
+          state,
+          [record.key],
+          err,
+          { terminalStatus: 'integrity-error' },
+        );
         return;
       }
       if (isPermissionDenied(err)) {
@@ -1994,19 +2301,9 @@ function enqueueAppend(
         // denial became visible. Quarantine those updates together, restore the
         // last cloud-accepted state, and never run the snapshot fallback with
         // forbidden bytes.
-        state.permissionRejectedCutoff = state.localMutationOrdinal;
-        if (state.snapshotTimer) { clearTimeout(state.snapshotTimer); state.snapshotTimer = null; }
-        if (!(await resolveAmbiguousAppends(state))) {
-          markSyncHealth(state, false, err);
-          return;
-        }
-        const rejectedKeys = [
-          record.key,
-          ...[...state.appendRecords.values()]
-            .filter((pending) => pending.status === 'rejected')
-            .map((pending) => pending.key),
-        ];
-        await quarantineRejectedRecords(state, rejectedKeys, err);
+        await quarantineDefinitivePermissionDenial(state, err, {
+          additionalKeys: [record.key],
+        });
         return;
       }
       // The individual op insert failed (usually network). The mutation is already
@@ -2035,29 +2332,14 @@ function enqueueAppend(
         repairsGap: true,
         gapGeneration: state.repairCheckpointGeneration,
       }).catch(() => false);
-      if (
-        snapshotResult?.permissionDenied
-        && snapshotResult.containsUnacceptedPrefix
-        && !(await resolveAmbiguousAppends(state))
-      ) {
-        markSyncHealth(state, false, snapshotResult.error);
-        return;
-      }
       if (snapshotResult?.permissionDenied && snapshotResult.containsUnacceptedPrefix) {
-        const rejectedKeys = [
-          record.key,
-          ...[...state.appendRecords.values()]
-            .filter((pending) => pending.status === 'rejected')
-            .map((pending) => pending.key),
-        ];
-        await quarantineRejectedRecords(
-          state,
-          rejectedKeys,
-          snapshotResult.error,
-        );
+        await quarantineDefinitivePermissionDenial(state, snapshotResult.error, {
+          additionalKeys: [record.key],
+          reason: 'permission-denied-snapshot',
+        });
         return;
       }
-      handleSnapshotResult(state, snapshotResult);
+      await finalizeSnapshotResult(state, snapshotResult);
       if (state.durabilityGap && !snapshotResult?.permissionDenied) {
         scheduleGapRepair(state);
         scheduleOutboxReplay(state, { delayed: true });
@@ -2074,6 +2356,7 @@ function persistOutboxRecord(state, record) {
   if (!state.outbox) return Promise.resolve();
   const {
     checkpointUpdate: _checkpointUpdate,
+    historyTag: _historyTag,
     ...durableRecord
   } = record;
   return state.outbox.put(durableRecord);
@@ -2131,6 +2414,9 @@ async function appendOp(state, record) {
   }
   assertStateWritable(state);
   await settleAcceptedRecord(state, record, update);
+  // Irreversible History/trash/Excel effects may run only after this exact
+  // core mutation has entered acceptedDoc.
+  void queueEraseOutboxDrain(state);
   if (state.durabilityGap) {
     // This immutable transaction-time checkpoint ends at this exact successful
     // append. Later queued edits have already entered stagedDoc, so stagedDoc is
@@ -2161,8 +2447,21 @@ async function appendOp(state, record) {
       repairsGap,
       ...(repairsGap ? { gapGeneration: state.repairCheckpointGeneration } : {}),
     });
-    handleSnapshotResult(state, result);
+    await finalizeSnapshotResult(state, result);
   }
+}
+
+async function finalizeSnapshotResult(state, result) {
+  if (result?.permissionDenied && result.containsUnacceptedPrefix) {
+    await quarantineDefinitivePermissionDenial(
+      state,
+      result.error,
+      { reason: 'permission-denied-snapshot' },
+    );
+    return result;
+  }
+  handleSnapshotResult(state, result);
+  return result;
 }
 
 // Debounce a full-state checkpoint after edits settle. Cheap to call on every op.
@@ -2178,7 +2477,7 @@ function scheduleSnapshot(state) {
       return;
     }
     writeSnapshot(state, captureSnapshotOptions(state))
-      .then((result) => handleSnapshotResult(state, result));
+      .then((result) => finalizeSnapshotResult(state, result));
   }, SNAPSHOT_DEBOUNCE_MS);
 }
 
@@ -2461,6 +2760,7 @@ async function writeSnapshotNow(state, {
         Y.applyUpdate(state.acceptedDoc, updateAtStart, HYDRATE_ORIGIN);
         state.acceptedEditEpoch = Math.max(state.acceptedEditEpoch, epochAtStart || 0);
         await settleSnapshotCoveredRecords(state, updateAtStart, epochAtStart);
+        void queueEraseOutboxDrain(state);
         if (repairedGap && state.pendingAppends === 0 && state.appendRecords.size > 0) {
           scheduleOutboxReplay(state);
         }
@@ -2616,6 +2916,7 @@ function subscribeRealtime(state) {
         await applyAuthoritativeCloudRow(state, row);
         if (Number(row.seq) > state.lastSeq) state.lastSeq = Number(row.seq);
         notifyChange(state);
+        void queueEraseOutboxDrain(state);
       }).catch((err) => {
         console.warn('[annotationDocSync] remote apply failed', err?.message);
       });
@@ -2627,7 +2928,7 @@ function subscribeRealtime(state) {
         catchUpTail(state).then((caughtUp) => {
           if (caughtUp && state.durabilityGap) {
             writeSnapshot(state, captureSnapshotOptions(state))
-              .then((result) => handleSnapshotResult(state, result));
+              .then((result) => finalizeSnapshotResult(state, result));
           }
         });
       }
@@ -2640,6 +2941,94 @@ function notifyChange(state) {
   for (const cb of state.changeListeners) {
     try { cb(byPage); } catch (err) { console.warn('[annotationDocSync] listener threw', err?.message); }
   }
+}
+
+function pendingEraseOutboxCount(doc, actorUserId) {
+  let pending = 0;
+  doc.getMap(ERASE_OUTBOX_MAP).forEach((entry) => {
+    if (
+      entry?.status !== 'acknowledged'
+      && entry?.actorUserId === actorUserId
+    ) pending += 1;
+  });
+  return pending;
+}
+
+function clearEraseOutboxRetry(state) {
+  if (state.eraseOutboxRetryTimer) {
+    clearTimeout(state.eraseOutboxRetryTimer);
+    state.eraseOutboxRetryTimer = null;
+  }
+}
+
+function scheduleEraseOutboxRetry(state) {
+  if (
+    state.destroyed
+    || state.eraseOutboxClosing
+    || !state.eraseEffectConsumer
+    || state.eraseOutboxRetryTimer
+    || pendingEraseOutboxCount(state.doc, state.actorUserId) === 0
+  ) return;
+
+  const attempt = Math.min(state.eraseOutboxRetryAttempt, 16);
+  const delay = Math.min(
+    state.eraseOutboxRetryMaxMs,
+    state.eraseOutboxRetryBaseMs * (2 ** attempt),
+  );
+  state.eraseOutboxRetryAttempt += 1;
+  state.eraseOutboxRetryTimer = setTimeout(() => {
+    state.eraseOutboxRetryTimer = null;
+    void queueEraseOutboxDrain(state);
+  }, delay);
+  state.eraseOutboxRetryTimer.unref?.();
+}
+
+function queueEraseOutboxDrain(state, options = {}) {
+  if (!state.eraseEffectConsumer || state.destroyed || state.eraseOutboxClosing) {
+    return Promise.resolve({
+      status: 'unavailable',
+      acknowledged: 0,
+      pending: pendingEraseOutboxCount(state.doc, state.actorUserId),
+    });
+  }
+  state.eraseOutboxDrain = state.eraseOutboxDrain
+    .catch(() => ({ status: 'failed', acknowledged: 0, pending: 0 }))
+    .then(() => drainEraseOutboxOnDoc({
+      ...options,
+      doc: state.doc,
+      executeEffect: state.eraseEffectConsumer,
+      validateEntry: ({ mutationId, entry }) => {
+        // No cloud means this actor-scoped document is itself authoritative.
+        if (!state.supabase) return true;
+        const acceptedEntry = state.acceptedDoc
+          .getMap(ERASE_OUTBOX_MAP)
+          .get(mutationId);
+        return acceptedEntry !== undefined && mapValueEqual(acceptedEntry, entry);
+      },
+      actorUserId: state.actorUserId,
+      origin: 'erase-outbox',
+    }))
+    .then((result) => {
+      if (result.pending === 0) {
+        state.eraseOutboxRetryAttempt = 0;
+        clearEraseOutboxRetry(state);
+      } else {
+        scheduleEraseOutboxRetry(state);
+      }
+      return result;
+    })
+    .catch((error) => {
+      console.warn('[annotationDocSync] erase outbox drain failed; pending effects will retry', error?.message);
+      const failure = {
+        status: 'failed',
+        acknowledged: 0,
+        pending: pendingEraseOutboxCount(state.doc, state.actorUserId),
+        error,
+      };
+      scheduleEraseOutboxRetry(state);
+      return failure;
+    });
+  return state.eraseOutboxDrain;
 }
 
 function annotationsByStorageKey(byPage) {
@@ -2666,6 +3055,103 @@ function changedAnnotationIds(previousByPage, nextByPage) {
   return [...ids].filter(
     (id) => previous.get(id)?.serialized !== next.get(id)?.serialized,
   );
+}
+
+const LANE_BASE_GEOMETRY_KEYS = new Set([
+  'type',
+  'path',
+  'polygons',
+  'cmds',
+  'width',
+  'height',
+  'pathOffset',
+  'paperCenterline',
+  'paperCenterlineRuns',
+  'paperInkGeometry',
+  'paperEraserGeometry',
+  'sourceWidth',
+  'strokeWidth',
+]);
+const LANE_BASE_IDENTITY_KEYS = new Set(['id', 'annotationId', 'pdfAnnotationId']);
+
+function hasVisiblePaint(value) {
+  const paint = String(value ?? '').trim().toLowerCase();
+  return paint !== ''
+    && paint !== 'none'
+    && paint !== 'transparent'
+    && paint !== 'rgba(0,0,0,0)'
+    && paint !== 'rgba(0, 0, 0, 0)';
+}
+
+function laneVisibleGeometryMatches(previous, next, stableBase) {
+  const geometry = (object) => Object.fromEntries(
+    [...LANE_BASE_GEOMETRY_KEYS].map((key) => [key, object?.[key] ?? null]),
+  );
+  return mapValueEqual(geometry(previous), geometry(next))
+    || (
+      previous?.paperEraserGeometry === 'v1'
+      && next?.paperEraserGeometry === 'v1'
+    )
+    || erasedPathSurvivorsShareGeometry(previous, next, stableBase);
+}
+
+/**
+ * Apply an ordinary edit made against a materialized erased survivor to its
+ * stable base. Unchanged baked erase geometry is never copied into the base;
+ * lane survivors remain independently Undoable and affine-rebase on the new
+ * base transform. A real geometry edit replaces the base and makes older
+ * incompatible lanes dormant until that edit is undone.
+ */
+function mergeLaneOwnedNormalEdit(stableBase, previousVisible, desiredVisible) {
+  if (!stableBase || !previousVisible || !desiredVisible) {
+    return structuredClone(desiredVisible ?? stableBase);
+  }
+  if (!laneVisibleGeometryMatches(previousVisible, desiredVisible, stableBase)) {
+    return structuredClone(desiredVisible);
+  }
+
+  const nextBase = structuredClone(stableBase);
+  const keys = new Set([
+    ...Object.keys(previousVisible),
+    ...Object.keys(desiredVisible),
+  ]);
+  const previousBaseTransform = previousVisible.paperEraserBaseTransform;
+  const desiredBaseTransform = desiredVisible.paperEraserBaseTransform;
+  if (
+    previousBaseTransform
+    && desiredBaseTransform
+    && !mapValueEqual(previousBaseTransform, desiredBaseTransform)
+  ) {
+    for (const key of ['left', 'top', 'scaleX', 'scaleY', 'angle', 'pathOffset']) {
+      if (Object.prototype.hasOwnProperty.call(desiredBaseTransform, key)) {
+        nextBase[key] = structuredClone(desiredBaseTransform[key]);
+      } else {
+        delete nextBase[key];
+      }
+    }
+  }
+  for (const key of keys) {
+    if (key === 'paperEraserBaseTransform') continue;
+    if (LANE_BASE_GEOMETRY_KEYS.has(key) || LANE_BASE_IDENTITY_KEYS.has(key)) continue;
+    const previousHas = Object.prototype.hasOwnProperty.call(previousVisible, key);
+    const desiredHas = Object.prototype.hasOwnProperty.call(desiredVisible, key);
+    const previousValue = previousHas ? previousVisible[key] : undefined;
+    const desiredValue = desiredHas ? desiredVisible[key] : undefined;
+    if (mapValueEqual(previousValue, desiredValue)) continue;
+
+    // Filled eraser survivors paint with `fill`, even when their stable
+    // centerline base paints with `stroke`. Route a color edit back to the
+    // base's active paint channel so Undoing the erase still renders correctly.
+    if (key === 'fill' && previousVisible.paperEraserGeometry === 'v1') {
+      const paintKey = hasVisiblePaint(stableBase.fill) ? 'fill' : 'stroke';
+      if (desiredHas) nextBase[paintKey] = structuredClone(desiredValue);
+      else delete nextBase[paintKey];
+      continue;
+    }
+    if (desiredHas) nextBase[key] = structuredClone(desiredValue);
+    else delete nextBase[key];
+  }
+  return nextBase;
 }
 
 async function drainStateQueues(state) {
@@ -2703,72 +3189,94 @@ function makeHandle(state) {
       return byPage;
     },
 
+    /** Imported PDF-native annotations intentionally removed in app state. */
+    getDeletedPdfAnnotations() {
+      return docToDeletedPdfAnnotations(state.doc);
+    },
+
     /** Push the viewer's render-shape state into the doc (minimal diff → ops). */
     applyByPage(byPage, opts = {}) {
       assertStateWritable(state);
+      const currentMaterialized = docToByPage(state.doc);
       const identityNormalization = normalizeByPageAnnotationIdentities(byPage);
       byPage = identityNormalization.byPage;
       const hasEraserMutation = Object.values(byPage || {}).some((page) => page?.eraserMutation?.id);
-      let preparedByPage = byPage;
+      const preparedByPage = byPage;
+      let laneBaseChanges = { added: 0, updated: 0, removed: 0 };
       if (!hasEraserMutation && state.lastByPage) {
-        // A normal edit/Undo/Redo against materialized erased geometry rebases
-        // that annotation and retires its old immutable eraser operations.
-        // Remote feedback is byte-identical to lastByPage, so it clears none.
-        const rebasedIds = changedAnnotationIds(state.lastByPage, byPage);
-        if (rebasedIds.length > 0) {
-          clearEraserOpsForAnnotationIds(state.doc, rebasedIds, {
-            origin: opts.origin || 'local',
-            writerId: state.writerId,
-          });
+        const changedIds = changedAnnotationIds(currentMaterialized, byPage);
+        const lanesByStorageKey = new Map();
+        getEraserOpsMap(state.doc).forEach((lane) => {
+          if (lane?.storageKey == null) return;
+          const key = String(lane.storageKey);
+          if (!lanesByStorageKey.has(key)) lanesByStorageKey.set(key, []);
+          lanesByStorageKey.get(key).push(lane);
+        });
+        const laneOwnedIds = changedIds.filter((id) => lanesByStorageKey.has(String(id)));
+        if (laneOwnedIds.length > 0) {
+          const previous = annotationsByStorageKey(currentMaterialized);
+          const desired = annotationsByStorageKey(byPage);
+          const annotations = getAnnotationsMap(state.doc);
+          const deletedPdfAnnotations = getDeletedPdfAnnotationsMap(state.doc);
+          state.doc.transact(() => {
+            for (const storageKey of laneOwnedIds) {
+              const previousRecord = previous.get(storageKey);
+              const desiredRecord = desired.get(storageKey);
+              const stored = annotations.get(storageKey);
+              const lanes = lanesByStorageKey.get(storageKey) || [];
 
-          // If other writers still own lanes, Undo may now equal their
-          // materialization (no inverse lane needed), while Redo may differ.
-          // Represent only that difference as this writer's replacement lane;
-          // never bake it into the stable base or clear the other writers.
-          const remainingLaneKeys = new Set();
-          getEraserOpsMap(state.doc).forEach((lane) => {
-            if (lane?.storageKey != null) remainingLaneKeys.add(String(lane.storageKey));
-          });
-          if (remainingLaneKeys.size > 0) {
-            const desired = annotationsByStorageKey(byPage);
-            const withoutOwnLanes = annotationsByStorageKey(docToByPage(state.doc));
-            const mutationsByPage = new Map();
-            for (const storageKey of rebasedIds) {
-              if (!remainingLaneKeys.has(storageKey)) continue;
-              const next = desired.get(storageKey);
-              const current = withoutOwnLanes.get(storageKey);
-              if (next?.serialized === current?.serialized) continue;
-              const pageNumber = next?.pageNumber ?? current?.pageNumber;
-              if (pageNumber == null) continue;
-              if (!mutationsByPage.has(pageNumber)) mutationsByPage.set(pageNumber, []);
-              mutationsByPage.get(pageNumber).push({
-                storageKey,
-                annotationId: extractAnnotationId(next?.object ?? current?.object),
-                deleted: !next,
-                survivor: next?.object ?? null,
-              });
-            }
-            if (mutationsByPage.size > 0) {
-              preparedByPage = { ...(byPage || {}) };
-              for (const [pageNumber, objectMutations] of mutationsByPage) {
-                const page = preparedByPage[pageNumber] || { objects: [] };
-                preparedByPage[pageNumber] = {
-                  ...page,
-                  eraserMutation: {
-                    id: `history:${state.writerId}:${state.editEpoch + 1}:${pageNumber}`,
-                    pageNumber,
-                    objectMutations,
-                    touchedIds: objectMutations.map(
-                      (item) => item.annotationId ?? item.storageKey,
-                    ),
-                    deletedIds: objectMutations
-                      .filter((item) => item.deleted)
-                      .map((item) => item.annotationId ?? item.storageKey),
-                  },
-                };
+              // Selection delete removes only the stable base. Lanes remain so
+              // restoring that base naturally reveals the prior erased state.
+              if (!desiredRecord) {
+                if (!stored) continue;
+                const nativeId = stored.o?.pdfAnnotationId;
+                if (nativeId) {
+                  const pdfNativeAnnotationIdentity = stored.o?.data?.pdfNativeAnnotationIdentity;
+                  deletedPdfAnnotations.set(
+                    deletedPdfAnnotationStorageKey(stored.p, nativeId),
+                    {
+                      pdfAnnotationId: String(nativeId),
+                      pageNumber: Number(stored.p || 1),
+                      pdfAnnotationType: stored.o?.pdfAnnotationType || null,
+                      ...(pdfNativeAnnotationIdentity
+                        ? {
+                          pdfNativeAnnotationIdentity: structuredClone(
+                            pdfNativeAnnotationIdentity,
+                          ),
+                        }
+                        : {}),
+                    },
+                  );
+                }
+                annotations.delete(storageKey);
+                laneBaseChanges.removed += 1;
+                continue;
               }
+
+              const fallbackBase = lanes.find((lane) => lane?.base)?.base || null;
+              const stableBase = stored?.o || fallbackBase || desiredRecord.object;
+              const nextBase = previousRecord
+                ? mergeLaneOwnedNormalEdit(
+                  stableBase,
+                  previousRecord.object,
+                  desiredRecord.object,
+                )
+                : structuredClone(stableBase);
+              annotations.set(storageKey, {
+                ...(stored && typeof stored === 'object' ? stored : {}),
+                p: desiredRecord.pageNumber,
+                o: nextBase,
+              });
+              const nativeId = nextBase?.pdfAnnotationId;
+              if (nativeId) {
+                deletedPdfAnnotations.delete(
+                  deletedPdfAnnotationStorageKey(desiredRecord.pageNumber, nativeId),
+                );
+              }
+              if (stored) laneBaseChanges.updated += 1;
+              else laneBaseChanges.added += 1;
             }
-          }
+          }, opts.origin || 'local');
         }
       }
       const res = syncByPageToDoc(state.doc, preparedByPage, {
@@ -2780,6 +3288,9 @@ function makeHandle(state) {
       state.lastByPage = byPage;
       return {
         ...res,
+        added: (Number(res.added) || 0) + laneBaseChanges.added,
+        updated: (Number(res.updated) || 0) + laneBaseChanges.updated,
+        removed: (Number(res.removed) || 0) + laneBaseChanges.removed,
         normalizedByPage: byPage,
         identityChanged: identityNormalization.changed || res.identityChanged,
       };
@@ -2830,6 +3341,124 @@ function makeHandle(state) {
     },
 
     /**
+     * Commit every domain touched by one eraser gesture in one Y.Doc
+     * transaction, then recover non-core effects from the durable outbox.
+     */
+    async commitEraseIntent(intent, opts = {}) {
+      assertStateWritable(state);
+      const quarantineGeneration = state.historyQuarantineGeneration;
+      const materializedByStorageKey = annotationsByStorageKey(docToByPage(state.doc));
+      const result = await commitEraseIntentOnDoc({
+        doc: state.doc,
+        intent,
+        ...opts,
+        origin: {
+          source: 'erase-local',
+          historyTag: {
+            historyKind: 'erase-commit',
+            mutationId: String(intent.mutationId),
+          },
+        },
+        actorUserId: state.actorUserId,
+        eraserWriterId: state.writerId,
+        materializePageTarget: (target) => (
+          materializedByStorageKey.get(String(target.storageKey))?.object
+        ),
+      });
+      if (state.historyQuarantineGeneration !== quarantineGeneration) {
+        return {
+          status: 'cancelled',
+          reason: 'authoritative-rollback',
+          mutationId: intent.mutationId,
+          historyQuarantineGeneration: state.historyQuarantineGeneration,
+          byPage: docToByPage(state.doc),
+          surveyMarkers: docToSurveyMarkers(state.doc),
+        };
+      }
+      if (result.status !== 'committed' && result.status !== 'noop') return result;
+      void queueEraseOutboxDrain(state);
+      const byPage = docToByPage(state.doc);
+      state.lastByPage = byPage;
+      return {
+        ...result,
+        outbox: {
+          status: state.eraseEffectConsumer ? 'scheduled' : 'unavailable',
+          acknowledged: 0,
+          pending: pendingEraseOutboxCount(state.doc, state.actorUserId),
+        },
+        historyQuarantineGeneration: quarantineGeneration,
+        byPage,
+        surveyMarkers: docToSurveyMarkers(state.doc),
+      };
+    },
+
+    /** Undo/Redo only one eraser gesture's writer lanes/counter fields. */
+    applyEraseHistoryTransition(transition, direction) {
+      assertStateWritable(state);
+      const quarantineGeneration = state.historyQuarantineGeneration;
+      const result = applyEraseHistoryTransitionOnDoc({
+        doc: state.doc,
+        transition,
+        direction,
+        origin: {
+          source: 'erase-history-local',
+          historyTag: {
+            historyKind: direction === 'undo'
+              ? 'erase-history-undo'
+              : 'erase-history-redo',
+            mutationId: String(transition?.mutationId || ''),
+          },
+        },
+      });
+      if (state.historyQuarantineGeneration !== quarantineGeneration) {
+        return { status: 'conflict', reason: 'authoritative-rollback' };
+      }
+      if (result.status !== 'applied' && result.status !== 'noop') return result;
+      const byPage = docToByPage(state.doc);
+      state.lastByPage = byPage;
+      return {
+        ...result,
+        historyQuarantineGeneration: quarantineGeneration,
+        byPage,
+        deletedPdfAnnotations: docToDeletedPdfAnnotations(state.doc),
+      };
+    },
+
+    /** Restore only the exact full-delete eraser lanes captured by Revisions. */
+    restoreEraseDeletion(restoreActions, options = {}) {
+      assertStateWritable(state);
+      const result = restoreEraseDeletionOnDoc({
+        doc: state.doc,
+        restoreActions,
+        origin: 'erase-history-restore',
+        ...options,
+      });
+      if (result.status !== 'applied' && result.status !== 'noop') return result;
+      const byPage = docToByPage(state.doc);
+      state.lastByPage = byPage;
+      return {
+        ...result,
+        byPage,
+        deletedPdfAnnotations: docToDeletedPdfAnnotations(state.doc),
+      };
+    },
+
+    /** Replace the app-owned effect executor and recover pending work now. */
+    setEraseEffectConsumer(consumer) {
+      state.eraseEffectConsumer = typeof consumer === 'function' ? consumer : null;
+      if (!state.eraseEffectConsumer) {
+        state.eraseOutboxRetryAttempt = 0;
+        clearEraseOutboxRetry(state);
+      }
+      return queueEraseOutboxDrain(state);
+    },
+
+    /** Explicit diagnostic/manual retry seam. Normal failures retry themselves. */
+    drainEraseOutbox(options = {}) {
+      return queueEraseOutboxDrain(state, options);
+    },
+
+    /**
      * Remove exact stacked ink copies left by old import/sync races. The
      * transaction is observed by the WAL listener above, but local mutations
      * intentionally do not echo to React, so explicitly publish the clean
@@ -2867,13 +3496,23 @@ function makeHandle(state) {
      *  unsubscribe fn. Fires only on an actual healthy⇄failing transition. */
     onSyncStatus(cb) { state.syncListeners.add(cb); return () => state.syncListeners.delete(cb); },
 
+    /** Definitive accepted-state rollback events. Unlike sync health, this
+     *  fires for every rollback even when the handle was already unhealthy. */
+    onHistoryQuarantine(cb) {
+      return subscribeHistoryQuarantine(state, cb);
+    },
+
+    getHistoryQuarantineGeneration() {
+      return state.historyQuarantineGeneration;
+    },
+
     /** Force a compacted snapshot now (e.g. on explicit save). */
     async flushSnapshot() {
       assertStateWritable(state);
       await catchUpTail(state);
       await drainStateQueues(state);
       const result = await writeSnapshot(state, captureSnapshotOptions(state));
-      handleSnapshotResult(state, result);
+      await finalizeSnapshotResult(state, result);
       await drainStateQueues(state);
       return result?.ok === true;
     },
@@ -2887,6 +3526,8 @@ function makeHandle(state) {
 
     async destroy() {
       unregisterActiveState(state);
+      state.eraseOutboxClosing = true;
+      clearEraseOutboxRetry(state);
       if (state.deleted) {
         state.destroyed = true;
       }
@@ -2905,10 +3546,11 @@ function makeHandle(state) {
       await drainStateQueues(state);
       await state.catchupChain.catch(() => {}); // let an in-flight catch-up page finish cleanly
       await state.authoritativeChain.catch(() => {});
+      await state.eraseOutboxDrain.catch(() => {});
       if (state.supabase) {
         try {
           const result = await writeSnapshot(state, captureSnapshotOptions(state));
-          handleSnapshotResult(state, result);
+          await finalizeSnapshotResult(state, result);
         } catch { /* */ }
       }
       state.destroyed = true;
@@ -3080,4 +3722,9 @@ export async function purgeAnnotationDoc(documentId) {
   }
 }
 
-export const __test = { bytesToPgHex, pgHexToBytes };
+export const __test = {
+  bytesToPgHex,
+  pgHexToBytes,
+  emitHistoryQuarantine,
+  subscribeHistoryQuarantine,
+};

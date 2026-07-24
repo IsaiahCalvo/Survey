@@ -367,6 +367,13 @@ if (import.meta.env.DEV) {
     });
   }
 
+  const atomicEraseHarness = params.get('atomicEraseHarness');
+  if (!devRouteActive && atomicEraseHarness) {
+    devRouteActive = true;
+    import('./prototype/AtomicEraseHarness.jsx').then(({ default: AtomicEraseHarness }) => {
+      createRoot(document.getElementById('root')).render(<AtomicEraseHarness />);
+    });
+  }
   const testPdf = params.get('testPdf');
   if (!devRouteActive && testPdf) {
     devRouteActive = true;

@@ -119,6 +119,7 @@ export function isLegacyAnnotationHistoryMeta(meta) {
   return reason.startsWith('callouts:')
     || reason.startsWith('highlight:')
     || reason === 'delete:batch'
+    || reason === 'eraser:gesture'
     || reason === 'annotations:save';
 }
 

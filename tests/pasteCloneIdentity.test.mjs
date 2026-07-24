@@ -25,8 +25,14 @@ const importedEditedSource = () => ({
   pdfImportedEditedAt: '2026-07-01T00:00:00.000Z',
   pdfImportedEditedBy: 'user-1',
   pdfImportedEditSource: 'object:modified',
+  pdfNativeAnnotationIdentity: { v: 1, pageNumber: 1, annotsIndex: 0 },
   layer: 'pdf-annotations',
-  data: { id: 'source-uuid-1', annotationType: 'square', pdfImportedEditState: 'edited' },
+  data: {
+    id: 'source-uuid-1',
+    annotationType: 'square',
+    pdfImportedEditState: 'edited',
+    pdfNativeAnnotationIdentity: { v: 1, pageNumber: 1, annotsIndex: 0 },
+  },
 });
 
 const nativeSource = () => ({
@@ -59,6 +65,7 @@ test('pasted clone of an imported shape gets a fresh id and NO import provenance
     'pdfImportedEditedAt',
     'pdfImportedEditedBy',
     'pdfImportedEditSource',
+    'pdfNativeAnnotationIdentity',
   ]) {
     assert.equal(key in clone, false, `clone must not carry ${key}`);
     assert.equal(key in clone.data, false, `clone.data must not carry ${key}`);

@@ -137,6 +137,21 @@ test('known filled-outline ink stays partial-eligible without a tool tag', () =>
   })), true);
 });
 
+test('known pen outline geometry remains partial-eligible without Fabric path commands', () => {
+  const polygonOutline = {
+    type: 'path',
+    tool: 'pen',
+    polygons: [[[[0, 0], [20, 0], [20, 10], [0, 10], [0, 0]]]],
+  };
+  const commandOutline = {
+    type: 'path',
+    tool: 'highlighter',
+    cmds: [['M', 0, 0], ['L', 20, 0], ['L', 20, 10], ['Z']],
+  };
+  assert.equal(isPartialEraseEligible(polygonOutline), true);
+  assert.equal(isPartialEraseEligible(commandOutline), true);
+});
+
 test('malformed or provenance-conflicting paths require full erase', () => {
   assert.equal(isPartialEraseEligible({ type: 'path', tool: 'pen', path: [] }), false);
   assert.equal(isPartialEraseEligible(path({ tool: 'pen', pdfAnnotationType: 'Line' })), false);

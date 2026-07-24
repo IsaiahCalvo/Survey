@@ -107,6 +107,8 @@ const SELECT_DELETE_ONLY_TEXT_MARKUP_TYPES = new Set(['Underline', 'StrikeOut', 
 
 const LINE_CAP_MAP = ['butt', 'round', 'square'];
 const LINE_JOIN_MAP = ['miter', 'round', 'bevel'];
+const PDF_NATIVE_ANNOTATION_IDENTITY_VERSION = 1;
+const PDF_NATIVE_RECT_ROUNDING_FACTOR = 10_000;
 
 let pdfLibPromise = null;
 
@@ -116,6 +118,283 @@ async function loadPdfLibCore() {
   }
   return pdfLibPromise;
 }
+
+const normalizePdfNativeAnnotationSubtype = (value) => (
+  String(value || '').trim().replace(/^\//, '').toLowerCase()
+);
+
+const normalizePdfNativeAnnotationText = (value) => (
+  String(value || '')
+    .normalize('NFC')
+    .replace(/\r\n?/g, '\n')
+    .trim()
+);
+
+const roundPdfNativeCoordinate = (value) => {
+  const rounded = Math.round(Number(value) * PDF_NATIVE_RECT_ROUNDING_FACTOR)
+    / PDF_NATIVE_RECT_ROUNDING_FACTOR;
+  return Object.is(rounded, -0) ? 0 : rounded;
+};
+
+const normalizePdfNativeAnnotationRect = (rect) => {
+  const values = Array.from(rect || []).slice(0, 4).map(Number);
+  if (values.length !== 4 || values.some((value) => !Number.isFinite(value))) {
+    return null;
+  }
+  return [
+    roundPdfNativeCoordinate(Math.min(values[0], values[2])),
+    roundPdfNativeCoordinate(Math.min(values[1], values[3])),
+    roundPdfNativeCoordinate(Math.max(values[0], values[2])),
+    roundPdfNativeCoordinate(Math.max(values[1], values[3])),
+  ];
+};
+
+const normalizePdfNativeNumberArray = (values) => {
+  if (values === null || values === undefined) return null;
+  const normalized = Array.from(values).map((value) => roundPdfNativeCoordinate(value));
+  return normalized.every(Number.isFinite) ? normalized : null;
+};
+
+const normalizePdfNativeNestedNumberArrays = (values) => {
+  if (values === null || values === undefined) return null;
+  const normalized = Array.from(values).map(normalizePdfNativeNumberArray);
+  return normalized.every(Array.isArray) ? normalized : null;
+};
+
+const normalizePdfNativeAnnotationFlags = (value, fallback = 0) => {
+  const numeric = value === null || value === undefined ? fallback : Number(value);
+  return Number.isInteger(numeric) && numeric >= 0 ? numeric : null;
+};
+
+const pdfNativeArraysEqual = (left, right) => (
+  Array.isArray(left)
+  && Array.isArray(right)
+  && left.length === right.length
+  && left.every((value, index) => (
+    Array.isArray(value)
+      ? pdfNativeArraysEqual(value, right[index])
+      : value === right[index]
+  ))
+);
+
+const normalizeRawQuadPointsForPdfJs = (quadPoints) => {
+  if (
+    !Array.isArray(quadPoints)
+    || quadPoints.length === 0
+    || quadPoints.length % 8 !== 0
+  ) {
+    return null;
+  }
+  const normalized = [];
+  for (let index = 0; index < quadPoints.length; index += 8) {
+    const quad = quadPoints.slice(index, index + 8);
+    const xs = [quad[0], quad[2], quad[4], quad[6]];
+    const ys = [quad[1], quad[3], quad[5], quad[7]];
+    const minX = Math.min(...xs);
+    const maxX = Math.max(...xs);
+    const minY = Math.min(...ys);
+    const maxY = Math.max(...ys);
+    normalized.push(minX, maxY, maxX, maxY, minX, minY, maxX, minY);
+  }
+  return normalizePdfNativeNumberArray(normalized);
+};
+
+const resolvePdfLibValue = (context, value) => {
+  try {
+    return context.lookup(value) || value;
+  } catch {
+    return value;
+  }
+};
+
+const readResolvedPdfLibNumberArray = (context, value) => {
+  const resolved = resolvePdfLibValue(context, value);
+  if (!resolved || typeof resolved.asArray !== 'function') return null;
+  const numbers = resolved.asArray().map((entry) => (
+    readPdfLibNumber(resolvePdfLibValue(context, entry))
+  ));
+  return numbers.every(Number.isFinite) ? normalizePdfNativeNumberArray(numbers) : null;
+};
+
+const readResolvedPdfLibNestedNumberArrays = (context, value) => {
+  const resolved = resolvePdfLibValue(context, value);
+  if (!resolved || typeof resolved.asArray !== 'function') return null;
+  const arrays = resolved.asArray().map((entry) => (
+    readResolvedPdfLibNumberArray(context, entry)
+  ));
+  return arrays.every(Array.isArray) ? arrays : null;
+};
+
+const buildRawPdfNativeAnnotationFingerprint = ({
+  context,
+  dict,
+  PDFName,
+}) => {
+  const subtype = normalizePdfNativeAnnotationSubtype(
+    readPdfLibText(resolvePdfLibValue(context, dict.get(PDFName.of('Subtype')))),
+  );
+  const rect = normalizePdfNativeAnnotationRect(
+    readResolvedPdfLibNumberArray(context, dict.get(PDFName.of('Rect'))),
+  );
+  if (!subtype || !rect) return null;
+
+  const rawFlags = dict.get(PDFName.of('F'));
+  const flags = normalizePdfNativeAnnotationFlags(
+    rawFlags === undefined
+      ? 0
+      : readPdfLibNumber(resolvePdfLibValue(context, rawFlags)),
+  );
+  if (flags === null) return null;
+
+  const text = (key) => normalizePdfNativeAnnotationText(
+    readPdfLibText(resolvePdfLibValue(context, dict.get(PDFName.of(key)))) || '',
+  );
+  return {
+    subtype,
+    rect,
+    flags,
+    nm: text('NM'),
+    contents: text('Contents'),
+    title: text('T'),
+    subject: text('Subj'),
+    quadPoints:
+      readResolvedPdfLibNumberArray(context, dict.get(PDFName.of('QuadPoints'))) || [],
+    inkList:
+      readResolvedPdfLibNestedNumberArrays(context, dict.get(PDFName.of('InkList'))) || [],
+    line: readResolvedPdfLibNumberArray(context, dict.get(PDFName.of('L'))) || [],
+    vertices:
+      readResolvedPdfLibNumberArray(context, dict.get(PDFName.of('Vertices'))) || [],
+    calloutLine:
+      readResolvedPdfLibNumberArray(context, dict.get(PDFName.of('CL'))) || [],
+  };
+};
+
+const optionalPdfJsText = (annotation, key, objectKey = null) => {
+  if (typeof annotation?.[key] === 'string') {
+    return normalizePdfNativeAnnotationText(annotation[key]);
+  }
+  if (objectKey && typeof annotation?.[objectKey]?.str === 'string') {
+    return normalizePdfNativeAnnotationText(annotation[objectKey].str);
+  }
+  return null;
+};
+
+const buildPdfJsNativeAnnotationFingerprint = (annotation) => {
+  const subtype = normalizePdfNativeAnnotationSubtype(annotation?.subtype);
+  const rect = normalizePdfNativeAnnotationRect(annotation?.rect);
+  const flags = normalizePdfNativeAnnotationFlags(annotation?.annotationFlags, 0);
+  if (!subtype || !rect || flags === null) return null;
+  return {
+    subtype,
+    rect,
+    flags,
+    // Current pdf.js exposes /Contents and /T through *Obj.str, but not /NM
+    // or /Subj. Null means "not observable" during raw-candidate pairing.
+    nm: optionalPdfJsText(annotation, 'nm'),
+    contents: normalizePdfNativeAnnotationText(getAnnotationContents(annotation)),
+    title: normalizePdfNativeAnnotationText(getAnnotationTitle(annotation)),
+    subject: optionalPdfJsText(annotation, 'subject', 'subjectObj'),
+    quadPoints: normalizePdfNativeNumberArray(annotation?.quadPoints),
+    inkList: normalizePdfNativeNestedNumberArrays(annotation?.inkLists),
+    line: normalizePdfNativeNumberArray(annotation?.lineCoordinates),
+    vertices: normalizePdfNativeNumberArray(annotation?.vertices),
+    calloutLine: normalizePdfNativeNumberArray(annotation?.calloutLine),
+  };
+};
+
+const rawFingerprintMatchesPdfJsAnnotation = (raw, observed) => {
+  if (!raw || !observed) return false;
+  if (
+    raw.subtype !== observed.subtype
+    || raw.flags !== observed.flags
+    || raw.contents !== observed.contents
+    || raw.title !== observed.title
+  ) {
+    return false;
+  }
+  if (observed.nm !== null && raw.nm !== observed.nm) return false;
+  if (observed.subject !== null && raw.subject !== observed.subject) return false;
+
+  // pdf.js expands a Line /Rect by its border width; /L is the authoritative
+  // geometry there. Other supported types retain the native /Rect.
+  if (
+    !(observed.subtype === 'line' && Array.isArray(observed.line))
+    && !pdfNativeArraysEqual(raw.rect, observed.rect)
+  ) {
+    return false;
+  }
+  for (const key of ['quadPoints', 'inkList', 'line', 'vertices', 'calloutLine']) {
+    if (observed[key] === null) continue;
+    let comparableRaw = raw[key];
+    if (key === 'quadPoints') {
+      // pdf.js canonicalizes each valid quad to TL,TR,BL,BR and rejects
+      // malformed lengths before exposing it.
+      comparableRaw = normalizeRawQuadPointsForPdfJs(raw[key]);
+    } else if (key === 'line') {
+      // pdf.js exposes /L through Util.normalizeRect, losing endpoint order.
+      comparableRaw = normalizePdfNativeAnnotationRect(raw[key]);
+    }
+    if (!pdfNativeArraysEqual(comparableRaw, observed[key])) {
+      return false;
+    }
+  }
+  return true;
+};
+
+const buildDirectPdfNativeAnnotationIdentities = (
+  annotations,
+  pageNumber,
+  rawCandidates,
+) => {
+  const identities = new WeakMap();
+  const expectedPageIndex = Number(pageNumber) - 1;
+  const proposals = [];
+
+  for (const annotation of annotations || []) {
+    if (!annotation || typeof annotation !== 'object') continue;
+    const syntheticId = String(annotation.id || '').trim()
+      .match(/^annot_p(\d+)_(\d+)$/i);
+    if (!syntheticId || Number(syntheticId[1]) !== expectedPageIndex) continue;
+    const observed = buildPdfJsNativeAnnotationFingerprint(annotation);
+    if (!observed) continue;
+    const matches = (rawCandidates || []).filter((candidate) => (
+      candidate?.pageNumber === Number(pageNumber)
+      && rawFingerprintMatchesPdfJsAnnotation(candidate.fingerprint, observed)
+    ));
+    if (matches.length === 1) {
+      proposals.push({ annotation, candidate: matches[0] });
+    }
+  }
+
+  const claimsByIndex = new Map();
+  for (const { candidate } of proposals) {
+    claimsByIndex.set(
+      candidate.annotsIndex,
+      (claimsByIndex.get(candidate.annotsIndex) || 0) + 1,
+    );
+  }
+  for (const { annotation, candidate } of proposals) {
+    if (claimsByIndex.get(candidate.annotsIndex) !== 1) continue;
+    identities.set(annotation, {
+      v: PDF_NATIVE_ANNOTATION_IDENTITY_VERSION,
+      pageNumber: Number(pageNumber),
+      annotsIndex: candidate.annotsIndex,
+      fingerprint: structuredClone(candidate.fingerprint),
+    });
+  }
+  return identities;
+};
+
+const attachPdfNativeAnnotationIdentity = (fabricObj, identity) => {
+  if (!fabricObj || !identity) return fabricObj;
+  return {
+    ...fabricObj,
+    data: {
+      ...(fabricObj.data || {}),
+      pdfNativeAnnotationIdentity: identity,
+    },
+  };
+};
 
 function summarizePdfAnnotationForDiag(annotation, rawMetadata = null) {
   if (!annotation || typeof annotation !== 'object') return null;
@@ -1249,21 +1528,42 @@ async function buildRawAnnotationMetadataById(rawPdfBytes) {
       parseSpeed: ParseSpeeds.Fastest,
     });
     const metadataById = new Map();
+    const directCandidatesByPage = new Map();
 
-    rawPdfDoc.getPages().forEach((page) => {
+    rawPdfDoc.getPages().forEach((page, pageIndex) => {
       const annots = page.node.lookup(PDFName.of('Annots'));
       if (!annots || typeof annots.asArray !== 'function') return;
+      const pageNumber = pageIndex + 1;
+      const directCandidates = [];
 
-      annots.asArray().forEach((annotRef) => {
+      annots.asArray().forEach((annotRef, annotsIndex) => {
         const dict = rawPdfDoc.context.lookup(annotRef);
         if (!dict || typeof dict.get !== 'function') return;
 
         const subtype = readPdfLibText(dict.get(PDFName.of('Subtype')));
         if (!subtype) return;
+        if (typeof annotRef?.objectNumber !== 'number') {
+          const fingerprint = buildRawPdfNativeAnnotationFingerprint({
+            context: rawPdfDoc.context,
+            dict,
+            PDFName,
+          });
+          if (fingerprint) {
+            directCandidates.push({
+              pageNumber,
+              annotsIndex,
+              fingerprint,
+            });
+          }
+        }
 
         const referenceId = (
           typeof annotRef?.objectNumber === 'number'
-            ? `${annotRef.objectNumber}R`
+            ? (
+                Number(annotRef.generationNumber) > 0
+                  ? `${annotRef.objectNumber}R${annotRef.generationNumber}`
+                  : `${annotRef.objectNumber}R`
+              )
             : null
         );
         const nameId = readPdfLibText(dict.get(PDFName.of('NM')));
@@ -1401,9 +1701,10 @@ async function buildRawAnnotationMetadataById(rawPdfBytes) {
           metadataById.set(candidate, metadata);
         });
       });
+      directCandidatesByPage.set(pageNumber, directCandidates);
     });
 
-    return metadataById;
+    return { metadataById, directCandidatesByPage };
   } catch (error) {
     console.warn('Failed to parse raw PDF annotation metadata:', error);
     return null;
@@ -3182,10 +3483,13 @@ export async function importAnnotationsFromPdf(pdfDoc, options = {}) {
   const unsupportedTypes = new Set();
   const unsupportedCounts = {};
   const numPages = pdfDoc.numPages;
-  const [rawMetadataById, appLayerState] = await Promise.all([
+  const [rawAnnotationIndex, appLayerState] = await Promise.all([
     buildRawAnnotationMetadataById(options.rawPdfBytes),
     readAppLayerStateFromPdf(options.rawPdfBytes),
   ]);
+  const rawMetadataById = rawAnnotationIndex?.metadataById || null;
+  const rawDirectCandidatesByPage =
+    rawAnnotationIndex?.directCandidatesByPage || new Map();
   const diagnosticsByPage = {};
   const nativeLayerPolicyByPage = {};
   let counterAnnotationsImported = 0;
@@ -3214,6 +3518,11 @@ export async function importAnnotationsFromPdf(pdfDoc, options = {}) {
       const viewport = page.getViewport({ scale: 1 });
 
       const annotations = await extractAnnotationsFromPage(page);
+      const directNativeIdentities = buildDirectPdfNativeAnnotationIdentities(
+        annotations,
+        pageNum,
+        rawDirectCandidatesByPage.get(pageNum) || [],
+      );
       const { supported: supportedRaw, unsupported } = categorizeAnnotations(annotations);
       const rawDiag = annotations.map((annotation) => {
         const rawMetadata = getRawAnnotationMetadataForAnnotation(annotation, rawMetadataById);
@@ -3305,7 +3614,10 @@ export async function importAnnotationsFromPdf(pdfDoc, options = {}) {
           });
         }
 
-        const fabricObj = convertPdfAnnotationToFabric(annotation, viewport, 1, rawMetadata);
+        const fabricObj = attachPdfNativeAnnotationIdentity(
+          convertPdfAnnotationToFabric(annotation, viewport, 1, rawMetadata),
+          directNativeIdentities.get(annotation),
+        );
         if (fabricObj) {
           if (!options.diagnosticsOnly) {
             fabricObjects.push(fabricObj);

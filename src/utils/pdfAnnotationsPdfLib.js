@@ -4,7 +4,16 @@
  * Compatible with Adobe Acrobat and all PDF readers
  */
 
-import { PDFDocument, PDFName, PDFNumber, PDFString, StandardFonts, rgb } from 'pdf-lib';
+import {
+  PDFDict,
+  PDFDocument,
+  PDFName,
+  PDFNumber,
+  PDFRef,
+  PDFString,
+  StandardFonts,
+  rgb,
+} from 'pdf-lib';
 import { deepClone } from './deepClone.js';
 import {
   PDF_COUNTER_METADATA_KEY,
@@ -71,6 +80,8 @@ const emptyExportCounts = () => ({
   editedImportedCopiesExported: 0,
   editedImportedNativeCopiesRemoved: 0,
   editedImportedNativeCopiesRemoveMisses: 0,
+  deletedImportedNativeCopiesRemoved: 0,
+  deletedImportedNativeCopiesRemoveMisses: 0,
   byScope: {},
   byType: {},
   bySource: {},
@@ -1674,46 +1685,386 @@ const createCalloutAnnotations = (pdfDoc, page, calloutObj, pageHeight) => {
   return refs;
 };
 
-const parsePdfAnnotationObjectNumber = (pdfAnnotationId) => {
-  const match = String(pdfAnnotationId || '').trim().match(/^(\d+)R$/i);
+const parsePdfAnnotationReference = (pdfAnnotationId) => {
+  const match = String(pdfAnnotationId || '').trim().match(/^(\d+)R(\d*)$/i);
   if (!match) return null;
   const objectNumber = Number(match[1]);
-  return Number.isInteger(objectNumber) && objectNumber > 0 ? objectNumber : null;
+  const generationNumber = match[2] ? Number(match[2]) : 0;
+  if (
+    !Number.isInteger(objectNumber)
+    || objectNumber <= 0
+    || !Number.isInteger(generationNumber)
+    || generationNumber < 0
+  ) {
+    return null;
+  }
+  return { objectNumber, generationNumber };
 };
 
-const decodePdfDictText = (dict, key) => {
+const parsePdfJsSyntheticAnnotationId = (pdfAnnotationId) => {
+  const match = String(pdfAnnotationId || '').trim().match(/^annot_p(\d+)_(\d+)$/i);
+  if (!match) return null;
+  const pageIndex = Number(match[1]);
+  const directOccurrence = Number(match[2]);
+  if (
+    !Number.isInteger(pageIndex)
+    || pageIndex < 0
+    || !Number.isInteger(directOccurrence)
+    || directOccurrence <= 0
+  ) {
+    return null;
+  }
+  return { pageIndex };
+};
+
+const PDF_NATIVE_ANNOTATION_IDENTITY_VERSION = 1;
+const PDF_NATIVE_RECT_ROUNDING_FACTOR = 10_000;
+
+const lookupPdfValue = (pdfDoc, value) => {
   try {
-    return dict?.get?.(PDFName.of(key))?.decodeText?.() || null;
+    return pdfDoc.context.lookup(value) || value;
+  } catch {
+    return value;
+  }
+};
+
+const normalizePdfAnnotationSubtype = (value) => (
+  String(value || '').trim().replace(/^\//, '').toLowerCase()
+);
+
+const normalizePdfNativeAnnotationText = (value) => (
+  String(value || '')
+    .normalize('NFC')
+    .replace(/\r\n?/g, '\n')
+    .trim()
+);
+
+const roundPdfNativeCoordinate = (value) => {
+  const rounded = Math.round(Number(value) * PDF_NATIVE_RECT_ROUNDING_FACTOR)
+    / PDF_NATIVE_RECT_ROUNDING_FACTOR;
+  return Object.is(rounded, -0) ? 0 : rounded;
+};
+
+const normalizePdfNativeAnnotationRect = (rect) => {
+  const values = Array.from(rect || []).slice(0, 4).map(Number);
+  if (values.length !== 4 || values.some((value) => !Number.isFinite(value))) {
+    return null;
+  }
+  return [
+    roundPdfNativeCoordinate(Math.min(values[0], values[2])),
+    roundPdfNativeCoordinate(Math.min(values[1], values[3])),
+    roundPdfNativeCoordinate(Math.max(values[0], values[2])),
+    roundPdfNativeCoordinate(Math.max(values[1], values[3])),
+  ];
+};
+
+const normalizePdfNativeNumberArray = (values) => {
+  if (values === null || values === undefined) return null;
+  const normalized = Array.from(values).map((value) => roundPdfNativeCoordinate(value));
+  return normalized.every(Number.isFinite) ? normalized : null;
+};
+
+const normalizePdfNativeNestedNumberArrays = (values) => {
+  if (values === null || values === undefined) return null;
+  const normalized = Array.from(values).map(normalizePdfNativeNumberArray);
+  return normalized.every(Array.isArray) ? normalized : null;
+};
+
+const normalizePdfNativeAnnotationFlags = (value, fallback = 0) => {
+  const numeric = value === null || value === undefined ? fallback : Number(value);
+  return Number.isInteger(numeric) && numeric >= 0 ? numeric : null;
+};
+
+const readPdfNativeNumber = (pdfDoc, value) => {
+  const resolved = lookupPdfValue(pdfDoc, value);
+  try {
+    if (typeof resolved?.asNumber === 'function') return resolved.asNumber();
+    if (typeof resolved?.value === 'function') return resolved.value();
   } catch {
     return null;
   }
+  const numeric = Number(resolved);
+  return Number.isFinite(numeric) ? numeric : null;
 };
 
-const removeMatchingNativePdfAnnotation = (pdfDoc, annots, pdfAnnotationId) => {
+const readPdfNativeNumberArray = (pdfDoc, value) => {
+  const resolved = lookupPdfValue(pdfDoc, value);
+  if (!resolved || typeof resolved.asArray !== 'function') return null;
+  const numbers = resolved.asArray().map((entry) => readPdfNativeNumber(pdfDoc, entry));
+  return numbers.every(Number.isFinite) ? normalizePdfNativeNumberArray(numbers) : null;
+};
+
+const readPdfNativeNestedNumberArrays = (pdfDoc, value) => {
+  const resolved = lookupPdfValue(pdfDoc, value);
+  if (!resolved || typeof resolved.asArray !== 'function') return null;
+  const arrays = resolved.asArray().map((entry) => readPdfNativeNumberArray(pdfDoc, entry));
+  return arrays.every(Array.isArray) ? arrays : null;
+};
+
+const decodePdfDictText = (pdfDoc, dict, key) => {
+  try {
+    return normalizePdfNativeAnnotationText(
+      lookupPdfValue(pdfDoc, dict?.get?.(PDFName.of(key)))?.decodeText?.() || '',
+    );
+  } catch {
+    return '';
+  }
+};
+
+const buildPdfNativeAnnotationFingerprint = (pdfDoc, dict) => {
+  if (!(dict instanceof PDFDict)) return null;
+  const subtype = normalizePdfAnnotationSubtype(decodePdfDictText(pdfDoc, dict, 'Subtype'));
+  const rect = normalizePdfNativeAnnotationRect(
+    readPdfNativeNumberArray(pdfDoc, dict.get(PDFName.of('Rect'))),
+  );
+  if (!subtype || !rect) return null;
+  const rawFlags = dict.get(PDFName.of('F'));
+  const flags = normalizePdfNativeAnnotationFlags(
+    rawFlags === undefined ? 0 : readPdfNativeNumber(pdfDoc, rawFlags),
+  );
+  if (flags === null) return null;
+  return {
+    subtype,
+    rect,
+    flags,
+    nm: decodePdfDictText(pdfDoc, dict, 'NM'),
+    contents: decodePdfDictText(pdfDoc, dict, 'Contents'),
+    title: decodePdfDictText(pdfDoc, dict, 'T'),
+    subject: decodePdfDictText(pdfDoc, dict, 'Subj'),
+    quadPoints:
+      readPdfNativeNumberArray(pdfDoc, dict.get(PDFName.of('QuadPoints'))) || [],
+    inkList:
+      readPdfNativeNestedNumberArrays(pdfDoc, dict.get(PDFName.of('InkList'))) || [],
+    line: readPdfNativeNumberArray(pdfDoc, dict.get(PDFName.of('L'))) || [],
+    vertices:
+      readPdfNativeNumberArray(pdfDoc, dict.get(PDFName.of('Vertices'))) || [],
+    calloutLine:
+      readPdfNativeNumberArray(pdfDoc, dict.get(PDFName.of('CL'))) || [],
+  };
+};
+
+const normalizePdfNativeAnnotationFingerprint = (fingerprint) => {
+  if (!fingerprint || typeof fingerprint !== 'object') return null;
+  const requiredKeys = [
+    'subtype',
+    'rect',
+    'flags',
+    'nm',
+    'contents',
+    'title',
+    'subject',
+    'quadPoints',
+    'inkList',
+    'line',
+    'vertices',
+    'calloutLine',
+  ];
+  if (requiredKeys.some((key) => !Object.prototype.hasOwnProperty.call(fingerprint, key))) {
+    return null;
+  }
+  const subtype = normalizePdfAnnotationSubtype(fingerprint.subtype);
+  const rect = normalizePdfNativeAnnotationRect(fingerprint.rect);
+  const flags = normalizePdfNativeAnnotationFlags(fingerprint.flags);
+  const quadPoints = normalizePdfNativeNumberArray(fingerprint.quadPoints);
+  const inkList = normalizePdfNativeNestedNumberArrays(fingerprint.inkList);
+  const line = normalizePdfNativeNumberArray(fingerprint.line);
+  const vertices = normalizePdfNativeNumberArray(fingerprint.vertices);
+  const calloutLine = normalizePdfNativeNumberArray(fingerprint.calloutLine);
+  if (
+    !subtype
+    || !rect
+    || flags === null
+    || !quadPoints
+    || !inkList
+    || !line
+    || !vertices
+    || !calloutLine
+  ) {
+    return null;
+  }
+  return {
+    subtype,
+    rect,
+    flags,
+    nm: normalizePdfNativeAnnotationText(fingerprint.nm),
+    contents: normalizePdfNativeAnnotationText(fingerprint.contents),
+    title: normalizePdfNativeAnnotationText(fingerprint.title),
+    subject: normalizePdfNativeAnnotationText(fingerprint.subject),
+    quadPoints,
+    inkList,
+    line,
+    vertices,
+    calloutLine,
+  };
+};
+
+const normalizePdfNativeAnnotationIdentity = (identity) => {
+  if (!identity || Number(identity.v) !== PDF_NATIVE_ANNOTATION_IDENTITY_VERSION) {
+    return null;
+  }
+  const pageNumber = Number(identity.pageNumber);
+  const annotsIndex = Number(identity.annotsIndex);
+  const fingerprint = normalizePdfNativeAnnotationFingerprint(identity.fingerprint);
+  if (
+    !Number.isInteger(pageNumber)
+    || pageNumber <= 0
+    || !Number.isInteger(annotsIndex)
+    || annotsIndex < 0
+    || !fingerprint
+  ) {
+    return null;
+  }
+  return {
+    v: PDF_NATIVE_ANNOTATION_IDENTITY_VERSION,
+    pageNumber,
+    annotsIndex,
+    fingerprint,
+  };
+};
+
+const samePdfNativeAnnotationFingerprint = (left, right) => (
+  JSON.stringify(left) === JSON.stringify(right)
+);
+
+const findMatchingNativePdfAnnotationIndices = (
+  pdfDoc,
+  annots,
+  pdfAnnotationId,
+  {
+    pageIndex = null,
+    pdfAnnotationType = null,
+    pdfNativeAnnotationIdentity = null,
+  } = {},
+) => {
   if (!pdfDoc || !annots || !pdfAnnotationId || typeof annots.asArray !== 'function') {
-    return 0;
+    return [];
   }
 
-  const objectNumber = parsePdfAnnotationObjectNumber(pdfAnnotationId);
+  const annotationId = String(pdfAnnotationId).trim();
+  const reference = parsePdfAnnotationReference(annotationId);
+  const synthetic = parsePdfJsSyntheticAnnotationId(annotationId);
   const refs = annots.asArray();
-  let removed = 0;
+
+  // pdf.js gives a direct dictionary (no indirect PDFRef and no /NM) a
+  // runtime id such as `annot_p0_7`. Its suffix comes from a page-local
+  // counter shared with images, masks, and patterns, so it is NOT a durable
+  // annotation occurrence. Only an import-time native identity may remove a
+  // direct dictionary; legacy synthetic ids fail closed.
+  if (synthetic) {
+    const identity = normalizePdfNativeAnnotationIdentity(pdfNativeAnnotationIdentity);
+    if (
+      !identity
+      || Number(pageIndex) !== synthetic.pageIndex
+      || identity.pageNumber !== Number(pageIndex) + 1
+      || (
+        pdfAnnotationType
+        && normalizePdfAnnotationSubtype(pdfAnnotationType) !== identity.fingerprint.subtype
+      )
+    ) {
+      return [];
+    }
+    const candidate = refs[identity.annotsIndex];
+    if (!candidate || candidate instanceof PDFRef) return [];
+    const dict = lookupPdfValue(pdfDoc, candidate);
+    const fingerprint = buildPdfNativeAnnotationFingerprint(pdfDoc, dict);
+    return samePdfNativeAnnotationFingerprint(fingerprint, identity.fingerprint)
+      ? [identity.annotsIndex]
+      : [];
+  }
+
+  const matches = [];
   for (let index = refs.length - 1; index >= 0; index -= 1) {
     const ref = refs[index];
     let dict = null;
     try {
-      dict = pdfDoc.context.lookup(ref);
+      dict = lookupPdfValue(pdfDoc, ref);
     } catch {
       dict = null;
     }
-    const name = decodePdfDictText(dict, 'NM');
-    const matchesObjectNumber = objectNumber !== null && Number(ref?.objectNumber) === objectNumber;
-    const matchesName = name && name === pdfAnnotationId;
-    if (matchesObjectNumber || matchesName) {
-      annots.remove(index);
-      removed += 1;
+    const name = decodePdfDictText(pdfDoc, dict, 'NM');
+    const matchesReference = (
+      reference !== null
+      && ref instanceof PDFRef
+      && ref.objectNumber === reference.objectNumber
+      && ref.generationNumber === reference.generationNumber
+    );
+    // A syntactically valid pdf.js Ref id is an exact reference identity;
+    // never let a coincidental /NM string broaden it to another dictionary.
+    const matchesName = reference === null && name && name === annotationId;
+    if (matchesReference || matchesName) {
+      matches.push(index);
     }
   }
-  return removed;
+  // /NM is required to be page-unique by the PDF spec, but malformed files
+  // exist. A legacy name-only tombstone cannot safely choose among duplicates.
+  return reference === null && matches.length !== 1 ? [] : matches;
+};
+
+const applyNativePdfAnnotationRemovalPlan = ({
+  pdfDoc,
+  requests,
+  exportDiagnostics,
+}) => {
+  const removalsByPage = new Map();
+  const fieldsForKind = (kind) => (
+    kind === 'deleted'
+      ? {
+          removed: 'deletedImportedNativeCopiesRemoved',
+          misses: 'deletedImportedNativeCopiesRemoveMisses',
+        }
+      : {
+          removed: 'editedImportedNativeCopiesRemoved',
+          misses: 'editedImportedNativeCopiesRemoveMisses',
+        }
+  );
+
+  for (const request of requests || []) {
+    const fields = fieldsForKind(request.kind);
+    const pageIndex = Number(request.pageNumber) - 1;
+    if (
+      !Number.isInteger(pageIndex)
+      || pageIndex < 0
+      || pageIndex >= pdfDoc.getPageCount()
+    ) {
+      exportDiagnostics[fields.misses] += 1;
+      continue;
+    }
+    const page = pdfDoc.getPage(pageIndex);
+    const annots = page.node.lookup(PDFName.of('Annots'));
+    const indices = findMatchingNativePdfAnnotationIndices(
+      pdfDoc,
+      annots,
+      request.pdfAnnotationId,
+      {
+        pageIndex,
+        pdfAnnotationType: request.pdfAnnotationType,
+        pdfNativeAnnotationIdentity: request.pdfNativeAnnotationIdentity,
+      },
+    );
+    if (indices.length === 0) {
+      exportDiagnostics[fields.misses] += 1;
+      continue;
+    }
+    let pagePlan = removalsByPage.get(pageIndex);
+    if (!pagePlan) {
+      pagePlan = { annots, indices: new Map() };
+      removalsByPage.set(pageIndex, pagePlan);
+    }
+    let newlyScheduled = 0;
+    for (const index of indices) {
+      if (!pagePlan.indices.has(index)) {
+        pagePlan.indices.set(index, request.kind);
+        newlyScheduled += 1;
+      }
+    }
+    exportDiagnostics[fields.removed] += newlyScheduled;
+  }
+
+  for (const { annots, indices } of removalsByPage.values()) {
+    [...indices.keys()]
+      .sort((left, right) => right - left)
+      .forEach((index) => annots.remove(index));
+  }
 };
 
 const parsePdfDrawColor = (value, fallback = '#000000') => {
@@ -2324,6 +2675,63 @@ export const savePDFWithAnnotationsPdfLib = async (pdfFile, annotationsByPage, p
     });
     const appLayerStateEmbedded = applyAppLayerStateMetadataToPdf(pdfDoc, appLayerState);
 
+    const deletedPdfAnnotations = [
+      ...new Map(
+        (Array.isArray(options?.deletedPdfAnnotations)
+          ? options.deletedPdfAnnotations
+          : [])
+          .filter((entry) => entry?.pdfAnnotationId)
+          .map((entry) => [
+            `${Number(entry.pageNumber)}:${String(entry.pdfAnnotationId)}`,
+            entry,
+          ]),
+      ).values(),
+    ];
+    // Resolve every native deletion/replacement against the ORIGINAL /Annots
+    // arrays, then remove in descending source-index order. Mutating while
+    // resolving would shift later direct-dictionary indices and could delete
+    // the wrong annotation when one export removes more than one native item.
+    const nativeRemovalRequests = [
+      ...deletedPdfAnnotations.map((entry) => ({
+        kind: 'deleted',
+        pageNumber: Number(entry.pageNumber),
+        pdfAnnotationId: entry.pdfAnnotationId,
+        pdfAnnotationType: entry.pdfAnnotationType,
+        pdfNativeAnnotationIdentity:
+          entry.pdfNativeAnnotationIdentity
+          || entry.data?.pdfNativeAnnotationIdentity
+          || null,
+      })),
+      ...exportPlan.items
+        .filter((item) => {
+          if (!isEditedPdfImportedObject(item.object)) return false;
+          const pageNumber = Number(item.pageNumber);
+          const pageNumStr = String(item.pageNumber);
+          const hasPageSize = Boolean(pageSizes[pageNumStr] || pageSizes[pageNumber]);
+          return (
+            hasPageSize
+            && Number.isInteger(pageNumber)
+            && pageNumber > 0
+            && pageNumber <= pdfDoc.getPageCount()
+          );
+        })
+        .map((item) => ({
+          kind: 'edited',
+          pageNumber: Number(item.pageNumber),
+          pdfAnnotationId: item.object?.pdfAnnotationId,
+          pdfAnnotationType: item.object?.pdfAnnotationType,
+          pdfNativeAnnotationIdentity:
+            item.object?.data?.pdfNativeAnnotationIdentity
+            || item.object?.pdfNativeAnnotationIdentity
+            || null,
+        })),
+    ];
+    applyNativePdfAnnotationRemovalPlan({
+      pdfDoc,
+      requests: nativeRemovalRequests,
+      exportDiagnostics,
+    });
+
     exportPlan.items.forEach((item) => {
       const pageNumStr = String(item.pageNumber);
       const pageNumber = Number.parseInt(pageNumStr, 10) - 1; // Convert to 0-indexed
@@ -2348,15 +2756,6 @@ export const savePDFWithAnnotationsPdfLib = async (pdfFile, annotationsByPage, p
       if (!annots) {
         annots = pdfDoc.context.obj([]);
         page.node.set(PDFName.of('Annots'), annots);
-      }
-
-      if (isEditedPdfImportedObject(obj)) {
-        const removed = removeMatchingNativePdfAnnotation(pdfDoc, annots, obj?.pdfAnnotationId);
-        if (removed > 0) {
-          exportDiagnostics.editedImportedNativeCopiesRemoved += removed;
-        } else {
-          exportDiagnostics.editedImportedNativeCopiesRemoveMisses += 1;
-        }
       }
 
       let annotRef = null;
@@ -2460,7 +2859,9 @@ export const savePDFWithAnnotationsPdfLib = async (pdfFile, annotationsByPage, p
       editedImportedCopiesExported: exportDiagnostics.editedImportedCopiesExported,
       editedImportedNativeCopiesRemoved: exportDiagnostics.editedImportedNativeCopiesRemoved,
       editedImportedNativeCopiesRemoveMisses: exportDiagnostics.editedImportedNativeCopiesRemoveMisses,
-      reason: 'unedited imported PDF-native app copies are skipped because the source PDF already contains the native annotation; edited imported copies are exported from app state and matching native annotations are removed when identifiable.'
+      deletedImportedNativeCopiesRemoved: exportDiagnostics.deletedImportedNativeCopiesRemoved,
+      deletedImportedNativeCopiesRemoveMisses: exportDiagnostics.deletedImportedNativeCopiesRemoveMisses,
+      reason: 'Unedited native copies remain unless their durable deletion tombstone removes them; edited copies replace their matching native annotation.'
     }));
     console.log('[PDFSaveExport] pdf bytes generated ' + JSON.stringify({
       actionType,
@@ -2492,6 +2893,8 @@ export const savePDFWithAnnotationsPdfLib = async (pdfFile, annotationsByPage, p
       editedImportedAppAnnotationsExported: exportDiagnostics.editedImportedCopiesExported,
       editedImportedNativeAnnotationsRemoved: exportDiagnostics.editedImportedNativeCopiesRemoved,
       editedImportedNativeAnnotationRemoveMisses: exportDiagnostics.editedImportedNativeCopiesRemoveMisses,
+      deletedImportedNativeAnnotationsRemoved: exportDiagnostics.deletedImportedNativeCopiesRemoved,
+      deletedImportedNativeAnnotationRemoveMisses: exportDiagnostics.deletedImportedNativeCopiesRemoveMisses,
       countersExported,
       counterMetadataMarker: PDF_COUNTER_SUBJECT,
       counterMetadataKeys: [PDF_COUNTER_METADATA_KEY, 'Subj', 'NM', 'Contents'],

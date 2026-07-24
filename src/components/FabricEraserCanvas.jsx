@@ -32,6 +32,13 @@ import { getEraserOperation } from '../utils/eraserPolicy.js';
 import { eraserDiameterToPageRadius } from '../utils/eraserSizing.js';
 import { nextEraserMutationId } from '../utils/eraserMutationId.js';
 import {
+  buildEraseIntent,
+  buildPageEraseTargets,
+  classifyEraseObjectKind,
+  createEraseStorageKeyResolver,
+  getEraseObjectId,
+} from '../utils/annotationEraseTransaction.js';
+import {
   ERASER_PREVIEW_HANDOFF_BOUND_MS,
   isEraserPreviewFinishReady,
   nextEraserPreviewHandoffState,
@@ -167,9 +174,10 @@ const FabricEraserCanvas = memo(({
   annotations,
   callouts = [],
   surveyMarkers = [],
+  onEraseIntent,
   onEraseCommit,
-  onEraseCallout,
   onEraseSurveyMarker,
+  renderer = 'svg',
   canEraseSurveyMarker,
   onEraseTextMarkup,
   // UX (2026-07-14, E/P text-bob fix): reports when this page's live erase
@@ -192,6 +200,7 @@ const FabricEraserCanvas = memo(({
   interruptionPolicyRef: parentInterruptionPolicyRef,
   viewerId,
   documentOwnerId,
+  isLocalOnlyDocument = false,
 }) => {
   const containerRef = useRef(null);
   const cursorRef = useRef(null);
@@ -215,6 +224,13 @@ const FabricEraserCanvas = memo(({
   const pointerRef = useRef(null);
   const unmountCleanupRef = useRef(null);
   const interruptionPolicyRef = useRef(interruptionPolicy);
+  // Pointer release may need to open IndexedDB before the atomic commit can
+  // settle. Keep accepting/previewing later gestures, but serialize their
+  // geometry plans so each one rebases on the previous committed survivor.
+  const eraseCommitTailRef = useRef(Promise.resolve());
+  const eraseGestureSequenceRef = useRef(0);
+  const latestEraseGestureRef = useRef(0);
+  const mountedRef = useRef(true);
   const spaceHeldRef = useRef(false);
   // Last known pointer position in CLIENT coordinates (plus pointerType).
   // The wrapper hardcodes cursor:'none', so any window where the custom
@@ -233,8 +249,8 @@ const FabricEraserCanvas = memo(({
   const annotationsRef = useRef(annotations);
   const calloutsRef = useRef(callouts);
   const surveyMarkersRef = useRef(surveyMarkers);
+  const onEraseIntentRef = useRef(onEraseIntent);
   const onEraseCommitRef = useRef(onEraseCommit);
-  const onEraseCalloutRef = useRef(onEraseCallout);
   const onEraseSurveyMarkerRef = useRef(onEraseSurveyMarker);
   const canEraseSurveyMarkerRef = useRef(canEraseSurveyMarker);
   const onEraseTextMarkupRef = useRef(onEraseTextMarkup);
@@ -246,12 +262,23 @@ const FabricEraserCanvas = memo(({
   const spacesRef = useRef(spaces);
   const viewerIdRef = useRef(viewerId);
   const documentOwnerIdRef = useRef(documentOwnerId);
+  const isLocalOnlyDocumentRef = useRef(isLocalOnlyDocument);
+
+  // This flag belongs to the component lifetime, not to the teardown
+  // callbacks' identities. A dependency-driven cleanup must never make an
+  // otherwise mounted canvas reject the result of an in-flight erase.
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
 
   annotationsRef.current = annotations;
   calloutsRef.current = callouts;
   surveyMarkersRef.current = surveyMarkers;
+  onEraseIntentRef.current = onEraseIntent;
   onEraseCommitRef.current = onEraseCommit;
-  onEraseCalloutRef.current = onEraseCallout;
   onEraseSurveyMarkerRef.current = onEraseSurveyMarker;
   canEraseSurveyMarkerRef.current = canEraseSurveyMarker;
   onEraseTextMarkupRef.current = onEraseTextMarkup;
@@ -264,6 +291,7 @@ const FabricEraserCanvas = memo(({
   spacesRef.current = spaces;
   viewerIdRef.current = viewerId;
   documentOwnerIdRef.current = documentOwnerId;
+  isLocalOnlyDocumentRef.current = isLocalOnlyDocument;
 
   const getPageRadius = useCallback(
     () => eraserDiameterToPageRadius(eraserSizeRef.current),
@@ -848,6 +876,7 @@ const FabricEraserCanvas = memo(({
     const ownerId = documentOwnerIdRef.current;
     return hitIds.filter((id) => {
       if (excludeIds?.has(id)) return false;
+      if (!viewerId || !ownerId) return isLocalOnlyDocumentRef.current;
       const callout = allCallouts.find((c) => c.id === id);
       if (callout?.locked === true) return false;
       return canModify({ annotation: callout, viewerId, documentOwnerId: ownerId });
@@ -1336,11 +1365,16 @@ const FabricEraserCanvas = memo(({
     // short-circuits true).
     const currentViewerId = viewerIdRef.current;
     const currentOwnerId = documentOwnerIdRef.current;
-    if (!canModify({
-      annotation: object,
-      viewerId: currentViewerId,
-      documentOwnerId: currentOwnerId,
-    })) return 'permission';
+    if (!isLocalOnlyDocumentRef.current) {
+      // Registered documents fail closed through canModify itself when either
+      // identity is unresolved. Local-only documents have no durable owner
+      // metadata and intentionally stay on their explicit opener-owned lane.
+      if (!canModify({
+        annotation: object,
+        viewerId: currentViewerId,
+        documentOwnerId: currentOwnerId,
+      })) return 'permission';
+    }
 
     // Projected callout groups are storage proxies, not eraser geometry. Their
     // absolute child coordinates plus group left/top create a double-offset
@@ -1616,8 +1650,12 @@ const FabricEraserCanvas = memo(({
     pageNumber,
   ]);
 
-  const applyEraserAndCommit = useCallback((eraserPoints, gestureConfig = null) => {
+  const applyEraserAndCommit = useCallback(async (eraserPoints, gestureConfig = null) => {
     if (!eraserPoints?.length) return { didPaint: false, expectedRevision: null };
+    if (containerRef.current) {
+      containerRef.current.dataset.eraserPlanStatus = 'planning';
+      containerRef.current.dataset.eraserPlanTargetCount = '0';
+    }
     const latestPage = annotationsRef.current || { objects: [] };
     const radius = Number(gestureConfig?.radius) || getPageRadius();
     const mode = gestureConfig?.mode === 'entire' || gestureConfig?.mode === 'full'
@@ -1645,83 +1683,58 @@ const FabricEraserCanvas = memo(({
     // ownership gate; survey markers likewise stay source/visibility-gated.
     const calloutHitIds = getPermittedCalloutHitIds(eraserPoints, undefined, radius);
     const surveyMarkerHitIds = getPermittedSurveyMarkerHitIds(eraserPoints, undefined, radius);
-
-    let expectedRevision = null;
-    let requireMutationAck = false;
-    if (result.didChange) {
-      expectedRevision = nextEraserMutationId();
-      const updatedJSON = {
-        ...result.pageAnnotations,
-        eraserPresentationRevision: expectedRevision,
-      };
-      const diagnostics = {
-        source: 'eraser:commit',
-        tool: 'eraser',
-        action: 'eraser:apply',
-        eraserMutationId: expectedRevision,
-        eraserPoints: eraserPoints.map((point) => ({ x: point.x, y: point.y })),
-        eraserRadius: radius,
-        eraserMode: mode,
-        eraserGestureId: eraserDiagGestureRef.current || null,
-        eraserPointerBounds: getEraserStrokeBounds(eraserPoints, radius),
-        candidateAnnotationIds: result.touchedIds,
-        rejectedAnnotations: [...rejectedById.values()],
-        touchedAnnotationIds: result.touchedIds,
-        finalDeletedAnnotationIds: result.deletedIds,
-        finalChangedAnnotationIds: result.changedIds,
-        objectMutations: result.objectMutations,
-        objectDelta: updatedJSON.objects.length - (latestPage.objects?.length || 0),
-        changedObjectsCount: result.deletedIds.length + result.changedIds.length,
-      };
-      annotationsRef.current = updatedJSON;
+    const commitLocalTextMarkupErase = () => {
       if (
-        livePreviewCanvasRef.current
-        && livePreviewCanvasRef.current.style.display !== 'none'
-      ) {
-        livePreviewCanvasRef.current.dataset.canvasAnnotationRevision = expectedRevision;
-      }
-      const commitStartedAt = typeof performance !== 'undefined' ? performance.now() : Date.now();
+        typeof onEraseIntentRef.current === 'function'
+        || typeof onEraseTextMarkupRef.current !== 'function'
+      ) return false;
       try {
-        const commitResult = onEraseCommitRef.current?.(updatedJSON, diagnostics);
-        requireMutationAck = commitResult?.requireMutationAck === true;
+        onEraseTextMarkupRef.current(pageNumber, eraserPoints, radius);
+        return true;
       } catch (error) {
-        annotationsRef.current = latestPage;
-        console.error('Eraser commit failed:', error);
-        expectedRevision = null;
-      } finally {
-        const commitEndedAt = typeof performance !== 'undefined' ? performance.now() : Date.now();
-        if (containerRef.current) {
-          containerRef.current.dataset.eraserCommitMs = String(
-            Math.round((commitEndedAt - commitStartedAt) * 10) / 10,
-          );
-        }
+        console.error('Text markup erase failed:', error);
+        return false;
       }
+    };
+
+    const originalObjects = Array.isArray(latestPage.objects) ? latestPage.objects : [];
+    const targets = buildPageEraseTargets({
+      pageNumber,
+      originalObjects,
+      objectMutations: result.objectMutations,
+    });
+    const resolveStorageKey = createEraseStorageKeyResolver(pageNumber);
+    const originalRecords = originalObjects.map((object, index) => ({
+      object,
+      index,
+      storageKey: resolveStorageKey(object),
+    }));
+    const targetKeys = new Set(targets.map((target) => target.storageKey));
+
+    for (const calloutId of calloutHitIds) {
+      const record = originalRecords.find(({ object }) => (
+        classifyEraseObjectKind(object) === 'callout'
+        && String(getEraseObjectId(object)) === String(calloutId)
+      ));
+      if (!record || targetKeys.has(record.storageKey)) continue;
+      targets.push({
+        domain: 'callout',
+        storageKey: record.storageKey,
+        kind: 'callout',
+        operation: 'delete',
+        before: record.object,
+        index: record.index,
+      });
+      targetKeys.add(record.storageKey);
     }
 
-    if (calloutHitIds.length) {
-      const previewSession = livePreviewSourceRef.current;
-      try {
-        onEraseCalloutRef.current?.(calloutHitIds, {
-          onSettled: ({ committed } = {}) => {
-            // Confirmation can resolve long after pointer-up. Restore only the
-            // preview session that opened that modal; a stale Cancel must never
-            // tear down a newer erase gesture.
-            if (
-              committed === false
-              && livePreviewSourceRef.current === previewSession
-            ) {
-              finishLiveErasePreview();
-            }
-          },
-        });
-      } catch (error) {
-        console.error('Callout erase failed:', error);
-        if (livePreviewSourceRef.current === previewSession && !result.didChange) {
-          finishLiveErasePreview();
-        }
-      }
+    if (containerRef.current) {
+      containerRef.current.dataset.eraserPlanStatus = targets.length > 0 ? 'planned' : 'empty';
+      containerRef.current.dataset.eraserPlanTargetCount = String(targets.length);
+      containerRef.current.dataset.eraserPlanKinds = targets.map((target) => target.kind).join(',');
     }
-    if (surveyMarkerHitIds.length) {
+    if (targets.length === 0) {
+      const didEraseTextMarkup = commitLocalTextMarkupErase();
       for (const annotationId of surveyMarkerHitIds) {
         try {
           onEraseSurveyMarkerRef.current?.(annotationId);
@@ -1729,60 +1742,191 @@ const FabricEraserCanvas = memo(({
           console.error('Survey marker erase failed:', error);
         }
       }
-    }
-    try {
-      onEraseTextMarkupRef.current?.(pageNumber, eraserPoints, radius);
-    } catch (error) {
-      console.error('Text markup erase failed:', error);
+      return {
+        didPaint: didEraseTextMarkup || surveyMarkerHitIds.length > 0,
+        expectedRevision: null,
+      };
     }
 
-    return {
-      // A geometry result is not a paint until its host commit succeeds.
-      // Otherwise the release handoff would wait forever for a revision that
-      // was deliberately cleared in the catch path above.
-      didPaint: Boolean(expectedRevision) || calloutHitIds.length > 0 || surveyMarkerHitIds.length > 0,
-      expectedRevision,
-      requireMutationAck,
+    const mutationId = nextEraserMutationId();
+    const expectedRevision = mutationId;
+    const diagnostics = {
+      source: 'eraser:commit',
+      tool: 'eraser',
+      action: 'eraser:apply',
+      eraserMutationId: mutationId,
+      eraserPoints: eraserPoints.map((point) => ({ x: point.x, y: point.y })),
+      eraserRadius: radius,
+      eraserMode: mode,
+      eraserGestureId: eraserDiagGestureRef.current || null,
+      eraserPointerBounds: getEraserStrokeBounds(eraserPoints, radius),
+      candidateAnnotationIds: result.touchedIds,
+      rejectedAnnotations: [...rejectedById.values()],
+      touchedAnnotationIds: result.touchedIds,
+      finalDeletedAnnotationIds: result.deletedIds,
+      finalChangedAnnotationIds: result.changedIds,
+      objectMutations: result.objectMutations,
+      changedObjectsCount: targets.length,
     };
+    if (typeof onEraseIntentRef.current !== 'function') {
+      const updatedJSON = {
+        ...result.pageAnnotations,
+        eraserPresentationRevision: expectedRevision,
+      };
+      try {
+        const commitResult = await onEraseCommitRef.current?.(updatedJSON, diagnostics);
+        annotationsRef.current = updatedJSON;
+        if (
+          livePreviewCanvasRef.current
+          && livePreviewCanvasRef.current.style.display !== 'none'
+        ) {
+          livePreviewCanvasRef.current.dataset.canvasAnnotationRevision = expectedRevision;
+        }
+        commitLocalTextMarkupErase();
+        for (const annotationId of surveyMarkerHitIds) {
+          onEraseSurveyMarkerRef.current?.(annotationId);
+        }
+        return {
+          didPaint: true,
+          expectedRevision,
+          requireMutationAck: commitResult?.requireMutationAck === true,
+        };
+      } catch (error) {
+        console.error('Local eraser commit failed:', error);
+        return { didPaint: false, expectedRevision: null };
+      }
+    }
+    const intent = buildEraseIntent({
+      mutationId,
+      pageNumber,
+      renderer,
+      gesture: {
+        points: eraserPoints,
+        radius,
+        mode,
+      },
+      targets,
+      diagnostics,
+      presentationRevision: expectedRevision,
+    });
+    const commitStartedAt = typeof performance !== 'undefined' ? performance.now() : Date.now();
+    try {
+      if (
+        import.meta.env.DEV
+        && typeof window !== 'undefined'
+        && typeof window.__eraserCommitTestGate === 'function'
+      ) {
+        await window.__eraserCommitTestGate(intent);
+      }
+      const commitResult = await onEraseIntentRef.current?.(intent);
+      if (commitResult?.status !== 'committed' && commitResult?.status !== 'noop') {
+        const authoritativePage = commitResult?.byPage?.[String(pageNumber)]
+          || commitResult?.byPage?.[pageNumber];
+        if (authoritativePage) annotationsRef.current = authoritativePage;
+        return { didPaint: false, expectedRevision: null };
+      }
+      const committedPage = commitResult?.byPage?.[String(pageNumber)]
+        || commitResult?.byPage?.[pageNumber]
+        || result.pageAnnotations;
+      annotationsRef.current = {
+        ...committedPage,
+        eraserPresentationRevision: expectedRevision,
+      };
+      if (
+        livePreviewCanvasRef.current
+        && livePreviewCanvasRef.current.style.display !== 'none'
+      ) {
+        livePreviewCanvasRef.current.dataset.canvasAnnotationRevision = expectedRevision;
+      }
+      for (const annotationId of surveyMarkerHitIds) {
+        try {
+          onEraseSurveyMarkerRef.current?.(annotationId);
+        } catch (error) {
+          console.error('Survey marker erase failed:', error);
+        }
+      }
+      return {
+        didPaint: true,
+        expectedRevision,
+      };
+    } catch (error) {
+      console.error('Atomic eraser commit failed:', error);
+      return { didPaint: false, expectedRevision: null };
+    } finally {
+      const commitEndedAt = typeof performance !== 'undefined' ? performance.now() : Date.now();
+      if (containerRef.current) {
+        containerRef.current.dataset.eraserCommitMs = String(
+          Math.round((commitEndedAt - commitStartedAt) * 10) / 10,
+        );
+      }
+    }
   }, [
     getEraseBlockReason,
     getPageRadius,
     getPermittedCalloutHitIds,
     getPermittedSurveyMarkerHitIds,
-    finishLiveErasePreview,
     pageNumber,
+    renderer,
   ]);
 
+  const queueEraserCommit = useCallback((pointer) => {
+    const sessionId = pointer?.sessionId;
+    const run = () => applyEraserAndCommit(pointer?.points, pointer?.gestureConfig);
+    const queued = eraseCommitTailRef.current.then(run, run);
+    // A failed task must not poison later gestures. `applyEraserAndCommit`
+    // normally resolves fail-closed, but keep the queue live even if an
+    // unexpected exception escapes it.
+    eraseCommitTailRef.current = queued.catch(() => undefined);
+    return queued.then((outcome) => {
+      if (!mountedRef.current || latestEraseGestureRef.current !== sessionId) {
+        return outcome;
+      }
+      scheduleLiveErasePreviewFinish({
+        expectedRevision: outcome.expectedRevision,
+        waitForNextPaint: outcome.didPaint,
+        requireMutationAck: outcome.requireMutationAck,
+      });
+      return outcome;
+    }).catch((error) => {
+      console.error('Eraser commit failed:', error);
+      if (mountedRef.current && latestEraseGestureRef.current === sessionId) {
+        finishLiveErasePreview();
+      }
+      return { didPaint: false, expectedRevision: null };
+    });
+  }, [applyEraserAndCommit, finishLiveErasePreview, scheduleLiveErasePreviewFinish]);
+
+  const cancelPointer = useCallback(() => {
+    const pointer = pointerRef.current;
+    pointerRef.current = null;
+    try { pointer?.captureTarget?.releasePointerCapture(pointer.pointerId); } catch { /* already released */ }
+    finishLiveErasePreview();
+  }, [finishLiveErasePreview]);
   // Interrupted gestures COMMIT what was already erased instead of discarding
   // it: by the time a pointercancel / lostpointercapture / buttons-released-
   // elsewhere arrives, the user has already watched ink carve and shapes
   // ghost — silently un-erasing that work reads as "the eraser randomly
   // doesn't take" (2026-07-19 audit). Same contract as the zoom auto-commit.
-  const commitInterruptedPointer = useCallback((pointer) => {
+  const commitInterruptedPointer = useCallback(async (pointer) => {
     if (!pointer?.points?.length) {
       finishLiveErasePreview();
       return;
     }
     try {
       markAnnotationPointerRelease(eraserDiagGestureRef.current, { action: 'eraser-stroke' });
-      const outcome = applyEraserAndCommit(pointer.points, pointer.gestureConfig);
-      scheduleLiveErasePreviewFinish({
-        expectedRevision: outcome.expectedRevision,
-        waitForNextPaint: outcome.didPaint,
-        requireMutationAck: outcome.requireMutationAck,
-      });
+      await queueEraserCommit(pointer);
     } catch (error) {
       console.error('Interrupted eraser commit failed:', error);
-      finishLiveErasePreview();
+      if (latestEraseGestureRef.current === pointer.sessionId) finishLiveErasePreview();
     }
-  }, [applyEraserAndCommit, finishLiveErasePreview, scheduleLiveErasePreviewFinish]);
+  }, [finishLiveErasePreview, queueEraserCommit]);
 
   const commitPointerNow = useCallback(() => {
     const pointer = pointerRef.current;
     if (!pointer) return;
     pointerRef.current = null;
     try { pointer.captureTarget?.releasePointerCapture(pointer.pointerId); } catch { /* already released */ }
-    commitInterruptedPointer(pointer);
+    void commitInterruptedPointer(pointer);
   }, [commitInterruptedPointer]);
 
   const cancelPointerNow = useCallback(() => {
@@ -1815,7 +1959,11 @@ const FabricEraserCanvas = memo(({
     event.preventDefault();
     event.stopPropagation();
     event.currentTarget.setPointerCapture(event.pointerId);
+    const sessionId = eraseGestureSequenceRef.current + 1;
+    eraseGestureSequenceRef.current = sessionId;
+    latestEraseGestureRef.current = sessionId;
     pointerRef.current = {
+      sessionId,
       pointerId: event.pointerId,
       points: [point],
       captureTarget: event.currentTarget,
@@ -1891,7 +2039,7 @@ const FabricEraserCanvas = memo(({
     if (cancelled) {
       // pointercancel (OS gesture takeover etc.): commit the erase performed
       // so far — the user already saw it happen live.
-      commitInterruptedPointer(pointer);
+      void commitInterruptedPointer(pointer);
       // Not a real pointer exit: if the pointer still hovers the wrapper the
       // native cursor is 'none', so hiding the circle here would leave no
       // visible cursor until the next move. Re-show at the last known spot.
@@ -1910,19 +2058,13 @@ const FabricEraserCanvas = memo(({
     }
     updateEraserCursor(releasePoint, true);
     markAnnotationPointerRelease(eraserDiagGestureRef.current, { action: 'eraser-stroke' });
-    const outcome = applyEraserAndCommit(pointer.points, pointer.gestureConfig);
-    scheduleLiveErasePreviewFinish({
-      expectedRevision: outcome.expectedRevision,
-      waitForNextPaint: outcome.didPaint,
-      requireMutationAck: outcome.requireMutationAck,
-    });
+    void queueEraserCommit(pointer);
   }, [
-    applyEraserAndCommit,
     commitInterruptedPointer,
     pagePoint,
     previewEraserGesture,
+    queueEraserCommit,
     reshowCursorAtLastClientPos,
-    scheduleLiveErasePreviewFinish,
     updateEraserCursor,
   ]);
 
@@ -1936,7 +2078,7 @@ const FabricEraserCanvas = memo(({
     reshowCursorAtLastClientPos();
   }, [commitPointerNow, reshowCursorAtLastClientPos]);
 
-  const commitPointerForZoom = useCallback(() => {
+  const commitPointerForZoom = useCallback(async () => {
     const pointer = pointerRef.current;
     if (!pointer) {
       const sourceState = livePreviewSourceRef.current;
@@ -1960,21 +2102,15 @@ const FabricEraserCanvas = memo(({
     // viewer mid-zoom. Degrade to the old cancel behavior instead.
     try {
       markAnnotationPointerRelease(eraserDiagGestureRef.current, { action: 'eraser-stroke' });
-      const outcome = applyEraserAndCommit(pointer.points, pointer.gestureConfig);
-      scheduleLiveErasePreviewFinish({
-        expectedRevision: outcome.expectedRevision,
-        waitForNextPaint: outcome.didPaint,
-        requireMutationAck: outcome.requireMutationAck,
-      });
+      await queueEraserCommit(pointer);
     } catch (error) {
       console.error('Zoom-triggered eraser commit failed:', error);
-      finishLiveErasePreview();
+      if (latestEraseGestureRef.current === pointer.sessionId) finishLiveErasePreview();
     }
   }, [
-    applyEraserAndCommit,
     ensureMaskCloneConnected,
     finishLiveErasePreview,
-    scheduleLiveErasePreviewFinish,
+    queueEraserCommit,
   ]);
 
   useEffect(() => {
@@ -1984,7 +2120,7 @@ const FabricEraserCanvas = memo(({
     // discarding it — the zoomGeneration contract's intent (and
     // FabricDrawingCanvas's behavior) is auto-commit before the host
     // re-layouts; a cancel here silently threw away the user's erase.
-    commitPointerForZoom();
+    void commitPointerForZoom();
     updateEraserCursor(null, false);
     // Cursor-visibility fix: the hide above plus the wrapper's cursor:'none'
     // means a stationary pointer has NO visible cursor from zoom-start until
@@ -2057,7 +2193,7 @@ const FabricEraserCanvas = memo(({
     ) {
       try {
         markAnnotationPointerRelease(eraserDiagGestureRef.current, { action: 'eraser-stroke' });
-        applyEraserAndCommit(pointer.points, pointer.gestureConfig);
+        void queueEraserCommit(pointer);
       } catch (error) {
         console.error('Unmount-triggered eraser commit failed:', error);
       }
@@ -2081,6 +2217,8 @@ const FabricEraserCanvas = memo(({
       data-diag-eraser-interruption-policy={
         import.meta.env.DEV ? getInterruptionPolicy() : undefined
       }
+      data-eraser-renderer={renderer}
+      data-eraser-object-count={Array.isArray(annotations?.objects) ? annotations.objects.length : 0}
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
       onPointerUp={(event) => finishPointer(event, false)}

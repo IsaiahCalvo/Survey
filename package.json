@@ -61,6 +61,7 @@
     "@vitejs/plugin-react": "6.0.3",
     "electron": "43.0.0",
     "electron-builder": "26.15.3",
+    "fake-indexeddb": "^6.2.5",
     "license-checker": "^25.0.1",
     "pixelmatch": "7.2.0",
     "pngjs": "7.0.0",

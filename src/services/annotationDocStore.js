@@ -19,6 +19,7 @@
 
 import * as Y from 'yjs';
 import {
+  erasePageAnnotations,
   intersectErasedPathSurvivors,
   rebaseErasedPathSurvivor,
 } from '../utils/pageSpaceEraser.js';
@@ -34,11 +35,13 @@ export const ANNOTATIONS_MAP = 'annotations';
 export const ERASER_OPS_MAP = 'annotationEraserOps';
 export const META_MAP = 'annoMeta';
 export const SNAPSHOT_ENCODING_VERSION = 1;
+export const DELETED_PDF_ANNOTATIONS_MAP = 'deletedPdfAnnotations';
 
 /**
  * Stable id for an annotation object. Annotations carry their durable id at
  * `data.id` (the same key the SVG layer + DB conflict key use); fall back to
- * top-level id / annotationId for older shapes. Returns null when there is no
+ * top-level id / annotationId / native pdfAnnotationId for older shapes.
+ * Returns null when there is no
  * usable id (caller skips such objects rather than inventing an unstable key).
  */
 export function extractAnnotationId(obj) {
@@ -46,7 +49,8 @@ export function extractAnnotationId(obj) {
   const id =
     (obj.data && typeof obj.data === 'object' ? obj.data.id : undefined) ??
     obj.id ??
-    obj.annotationId;
+    obj.annotationId ??
+    obj.pdfAnnotationId;
   return (typeof id === 'string' && id) || (typeof id === 'number' ? String(id) : null);
 }
 
@@ -56,6 +60,297 @@ export function getAnnotationsMap(doc) {
 
 export function getEraserOpsMap(doc) {
   return doc.getMap(ERASER_OPS_MAP);
+}
+
+export function getDeletedPdfAnnotationsMap(doc) {
+  return doc.getMap(DELETED_PDF_ANNOTATIONS_MAP);
+}
+
+export function deletedPdfAnnotationStorageKey(pageNumber, pdfAnnotationId) {
+  return `${Number(pageNumber || 1)}\u0000${String(pdfAnnotationId)}`;
+}
+
+export function docToDeletedPdfAnnotations(doc) {
+  const active = new Map();
+  getDeletedPdfAnnotationsMap(doc).forEach((entry) => {
+    if (!entry?.pdfAnnotationId) return;
+    active.set(
+      deletedPdfAnnotationStorageKey(entry.pageNumber, entry.pdfAnnotationId),
+      structuredClone(entry),
+    );
+  });
+  getEraserOpsMap(doc).forEach((lane) => {
+    const entry = lane?.deleted === true ? lane.deletedPdfAnnotation : null;
+    if (!entry?.pdfAnnotationId) return;
+    active.set(
+      deletedPdfAnnotationStorageKey(entry.pageNumber, entry.pdfAnnotationId),
+      structuredClone(entry),
+    );
+  });
+  return [...active.values()]
+    .sort((left, right) => (
+      Number(left.pageNumber || 0) - Number(right.pageNumber || 0)
+      || String(left.pdfAnnotationId).localeCompare(String(right.pdfAnnotationId))
+    ));
+}
+
+function deletedPdfAnnotationEntry(object, pageNumber) {
+  if (!object?.pdfAnnotationId) return null;
+  const pdfNativeAnnotationIdentity = object?.data?.pdfNativeAnnotationIdentity;
+  return {
+    pdfAnnotationId: String(object.pdfAnnotationId),
+    pageNumber: Number(pageNumber || object.pageNumber || 1),
+    pdfAnnotationType: object.pdfAnnotationType || null,
+    ...(pdfNativeAnnotationIdentity
+      ? { pdfNativeAnnotationIdentity: structuredClone(pdfNativeAnnotationIdentity) }
+      : {}),
+  };
+}
+
+function eraserTransformSignature(object) {
+  const finite = (value, fallback = 0) => {
+    const numeric = Number(value);
+    return Number.isFinite(numeric) ? numeric : fallback;
+  };
+  return JSON.stringify({
+    left: finite(object?.left),
+    top: finite(object?.top),
+    scaleX: finite(object?.scaleX, 1),
+    scaleY: finite(object?.scaleY, 1),
+    angle: finite(object?.angle),
+    pathOffset: object?.pathOffset
+      ? {
+          x: finite(object.pathOffset.x),
+          y: finite(object.pathOffset.y),
+        }
+      : null,
+    skewX: finite(object?.skewX),
+    skewY: finite(object?.skewY),
+    flipX: object?.flipX === true,
+    flipY: object?.flipY === true,
+  });
+}
+
+/**
+ * Build one writer's lane from that writer's own survivor (or the immutable
+ * base), never from the all-writer materialized intersection. This matters
+ * when B erases after seeing A: B's lane must encode only B's bite so Undoing
+ * A can restore A's pixels while preserving B.
+ */
+export function deriveWriterEraserLane({
+  writerId,
+  storageKey,
+  annotationId = null,
+  pageNumber,
+  operationId,
+  baseObject,
+  capturedBase = null,
+  previousLane = null,
+  deleted = false,
+  survivor = null,
+  gesture = null,
+} = {}) {
+  let laneDeleted = previousLane?.deleted === true || deleted === true;
+  let laneSurvivor = laneDeleted ? null : survivor;
+  const requestedMode = gesture?.mode === 'entire' || gesture?.mode === 'full'
+    ? 'full'
+    : 'partial';
+  const points = Array.isArray(gesture?.points) ? gesture.points : [];
+  const radius = Number(gesture?.radius);
+  const previousSurvivor = previousLane?.deleted === true
+    ? null
+    : rebaseErasedPathSurvivor(
+      baseObject,
+      previousLane?.base,
+      previousLane?.survivor,
+      { geometryBase: previousLane?.base },
+    );
+  const writerSource = previousLane?.deleted === true
+    ? null
+    : (previousSurvivor || baseObject || null);
+  const capturedSurvivor = capturedBase && survivor
+    ? rebaseErasedPathSurvivor(
+      baseObject,
+      capturedBase,
+      survivor,
+      { geometryBase: previousLane?.base || capturedBase },
+    )
+    : null;
+  const capturedWasMaterialized = capturedBase?.paperEraserGeometry === 'v1';
+  const capturedTransform = capturedBase?.paperEraserBaseTransform || capturedBase;
+  const useCapturedSurvivor = Boolean(capturedBase) && (
+    !capturedWasMaterialized
+    || (
+      previousLane
+      && (
+        !previousSurvivor
+        || eraserTransformSignature(capturedTransform)
+          !== eraserTransformSignature(baseObject)
+      )
+    )
+  );
+
+  if (
+    !laneDeleted
+    && requestedMode === 'partial'
+    && useCapturedSurvivor
+  ) {
+    laneSurvivor = capturedSurvivor;
+  } else if (
+    !laneDeleted
+    && requestedMode === 'partial'
+    && writerSource
+    && String(writerSource.type || '').toLowerCase() === 'path'
+    && points.length > 0
+    && Number.isFinite(radius)
+    && radius > 0
+  ) {
+    const rebased = erasePageAnnotations({
+      pageAnnotations: { objects: [writerSource] },
+      eraserPoints: points,
+      eraserRadius: radius,
+      mode: 'partial',
+    });
+    const mutation = rebased.objectMutations?.find((item) => item?.index === 0);
+    if (!mutation) {
+      throw new Error(`partial eraser lane could not be replayed for ${String(storageKey)}`);
+    }
+    laneDeleted = mutation.deleted === true;
+    laneSurvivor = laneDeleted ? null : mutation.survivor;
+  }
+
+  return {
+    writerId: String(writerId),
+    storageKey: String(storageKey),
+    annotationId: annotationId == null ? null : String(annotationId),
+    pageNumber: Number(pageNumber),
+    operationId: String(operationId),
+    base: baseObject || previousLane?.base || null,
+    deleted: laneDeleted,
+    survivor: laneDeleted ? null : laneSurvivor,
+  };
+}
+
+const ERASER_GEOMETRY_KEYS = [
+  'type',
+  'path',
+  'polygons',
+  'cmds',
+  'left',
+  'top',
+  'width',
+  'height',
+  'scaleX',
+  'scaleY',
+  'angle',
+  'skewX',
+  'skewY',
+  'flipX',
+  'flipY',
+  'pathOffset',
+  'fillRule',
+  'paperInkGeometry',
+  'paperEraserGeometry',
+  'paperEraserBaseTransform',
+  'sourceWidth',
+];
+const ERASER_STALE_GEOMETRY_KEYS = [
+  'paperCenterline',
+  'paperCenterlineRuns',
+];
+const IMPORTED_EDIT_KEYS = [
+  'pdfImportedEditState',
+  'pdfImportedEditedAt',
+  'pdfImportedEditedBy',
+  'pdfImportedEditSource',
+];
+
+function projectEraserGeometryOntoCurrentBase(baseObject, survivor) {
+  if (!baseObject || !survivor) return survivor;
+  const next = { ...baseObject };
+  for (const key of [...ERASER_GEOMETRY_KEYS, ...ERASER_STALE_GEOMETRY_KEYS]) {
+    delete next[key];
+  }
+  for (const key of ERASER_GEOMETRY_KEYS) {
+    if (Object.prototype.hasOwnProperty.call(survivor, key)) {
+      next[key] = structuredClone(survivor[key]);
+    }
+  }
+  for (const key of IMPORTED_EDIT_KEYS) {
+    if (Object.prototype.hasOwnProperty.call(survivor, key)) {
+      next[key] = survivor[key];
+    }
+  }
+  next.data = {
+    ...(survivor.data || {}),
+    ...(baseObject.data || {}),
+    ...(survivor.data?.pdfImportedEditState
+      ? { pdfImportedEditState: survivor.data.pdfImportedEditState }
+      : {}),
+  };
+  if (survivor.paperEraserGeometry === 'v1') {
+    const baseFill = String(baseObject.fill || '').toLowerCase();
+    const paint = baseFill && baseFill !== 'none' && baseFill !== 'transparent'
+      ? baseObject.fill
+      : baseObject.stroke;
+    if (paint) next.fill = paint;
+    next.stroke = 'transparent';
+    next.strokeWidth = 0;
+  }
+  return next;
+}
+
+function deriveCounterPresentationNumbers(byPage) {
+  const groups = new Map();
+  for (const [pageKey, page] of Object.entries(byPage || {})) {
+    (page?.objects || []).forEach((object, index) => {
+      if (object?.data?.type !== 'counter') return;
+      const seriesKey = String(object.data.seriesId || '__legacy__');
+      if (!groups.has(seriesKey)) groups.set(seriesKey, []);
+      groups.get(seriesKey).push({
+        pageKey,
+        index,
+        object,
+        createdAt: Number(object.data.createdAt) || 0,
+      });
+    });
+  }
+  const copiedPages = new Set();
+  for (const records of groups.values()) {
+    records.sort((left, right) => (
+      left.createdAt - right.createdAt
+      || String(extractAnnotationId(left.object)).localeCompare(
+        String(extractAnnotationId(right.object)),
+      )
+    ));
+    const seriesStart = Number(records[0]?.object?.data?.seriesStart) || 1;
+    records.forEach((record, index) => {
+      const displayNumber = seriesStart + index;
+      if (
+        record.object.data.displayNumber === displayNumber
+        && record.object.data.seriesStart === seriesStart
+      ) return;
+      if (!copiedPages.has(record.pageKey)) {
+        byPage[record.pageKey] = {
+          ...byPage[record.pageKey],
+          objects: [...byPage[record.pageKey].objects],
+        };
+        copiedPages.add(record.pageKey);
+      }
+      const next = {
+        ...record.object,
+        data: {
+          ...record.object.data,
+          displayNumber,
+          seriesStart,
+        },
+      };
+      const storageKey = getAnnotationStorageKey(record.object);
+      if (storageKey != null) setAnnotationStorageKey(next, storageKey);
+      byPage[record.pageKey].objects[record.index] = next;
+    });
+  }
+  return byPage;
 }
 
 /** Read a document-level meta value (e.g. the callouts list). */
@@ -198,9 +493,9 @@ export function docToByPage(doc, { replayStats = null } = {}) {
     const storageKey = String(lane.storageKey);
     if (!lanesByAnnotation.has(storageKey)) lanesByAnnotation.set(storageKey, []);
     lanesByAnnotation.get(storageKey).push([String(laneKey), lane]);
-    const pageNumber = Number(lane.pageNumber);
-    if (!Number.isFinite(pageNumber)) return;
-    if (!byPage[pageNumber]) byPage[pageNumber] = { objects: [] };
+    const location = baseLocations.get(storageKey);
+    const pageNumber = location?.page ?? Number(lane.pageNumber);
+    if (!Number.isFinite(pageNumber) || !byPage[pageNumber]) return;
     const materializedIds = new Set(
       byPage[pageNumber].eraserMaterializedMutationIds || [],
     );
@@ -233,7 +528,13 @@ export function docToByPage(doc, { replayStats = null } = {}) {
     )).filter(Boolean);
     if (!survivors.length) continue;
     polygonIntersections += Math.max(0, survivors.length - 1);
-    const survivor = intersectErasedPathSurvivors(survivors);
+    const intersected = intersectErasedPathSurvivors(survivors);
+    const survivor = intersected
+      ? projectEraserGeometryOntoCurrentBase(
+        pageAnnotations.objects[objectIndex],
+        intersected,
+      )
+      : null;
     if (survivor) setAnnotationStorageKey(survivor, storageKey);
     byPage[page] = {
       ...pageAnnotations,
@@ -247,7 +548,7 @@ export function docToByPage(doc, { replayStats = null } = {}) {
     replayStats.annotationsWithLanes = annotationsWithLanes;
     replayStats.polygonIntersections = polygonIntersections;
   }
-  return byPage;
+  return deriveCounterPresentationNumbers(byPage);
 }
 
 function collectEraserMutations(byPage, writerId) {
@@ -280,6 +581,11 @@ function collectEraserMutations(byPage, writerId) {
       deletedIds,
       objectsById,
       objectMutations,
+      gesture: {
+        points: Array.isArray(mutation.points) ? mutation.points : [],
+        radius: mutation.radius,
+        mode: mutation.mode,
+      },
     });
   }
   return mutations;
@@ -455,58 +761,56 @@ export function syncByPageToDoc(doc, byPage, {
   byPage = identityNormalization.byPage;
   const map = getAnnotationsMap(doc);
   const eraserOpsMap = getEraserOpsMap(doc);
+  const deletedPdfAnnotations = getDeletedPdfAnnotationsMap(doc);
   const eraserMutations = collectEraserMutations(byPage, eraserWriterId);
   const eraserProtectedIds = new Set();
   const eraserProtectedStorageKeys = new Set();
 
   if (eraserMutations.length > 0) {
+    // Yjs transactions group updates but do not roll back writes when their
+    // callback throws. Derive every lane first so one invalid late target
+    // cannot leave earlier lanes partially committed.
+    const pendingLaneWrites = [];
+    const pendingLanesByKey = new Map();
+    for (const mutation of eraserMutations) {
+      const items = mutation.objectMutations.length > 0
+        ? mutation.objectMutations
+        : mutation.annotationIds.map((annotationId) => ({
+          storageKey: annotationId,
+          annotationId,
+          deleted: mutation.deletedIds.has(annotationId),
+          survivor: mutation.deletedIds.has(annotationId)
+            ? null
+            : mutation.objectsById.get(annotationId) || null,
+        }));
+      for (const item of items) {
+        const laneKey = `${mutation.writerId}\u0000${item.storageKey}`;
+        const baseEntry = map.get(item.storageKey);
+        const previous = pendingLanesByKey.has(laneKey)
+          ? pendingLanesByKey.get(laneKey)
+          : eraserOpsMap.get(laneKey);
+        const lane = deriveWriterEraserLane({
+          writerId: mutation.writerId,
+          storageKey: item.storageKey,
+          annotationId: item.annotationId ?? extractAnnotationId(baseEntry?.o),
+          pageNumber: mutation.pageNumber,
+          operationId: mutation.id,
+          deleted: item.deleted,
+          survivor: item.survivor,
+          baseObject: baseEntry?.o || item.base || previous?.base || null,
+          capturedBase: item.base,
+          previousLane: previous,
+          gesture: mutation.gesture,
+        });
+        pendingLanesByKey.set(laneKey, lane);
+        if (stableStringify(previous) !== stableStringify(lane)) {
+          pendingLaneWrites.push([laneKey, lane]);
+        }
+      }
+    }
     doc.transact(() => {
-      for (const mutation of eraserMutations) {
-        if (mutation.objectMutations.length > 0) {
-          for (const item of mutation.objectMutations) {
-            const laneKey = `${mutation.writerId}\u0000${item.storageKey}`;
-            const baseEntry = map.get(item.storageKey);
-            const previous = eraserOpsMap.get(laneKey);
-            const base = baseEntry?.o || item.base || previous?.base || null;
-            const survivor = item.deleted
-              ? null
-              : rebaseErasedPathSurvivor(base, item.base, item.survivor, {
-                  geometryBase: previous?.base || item.base,
-                });
-            const lane = {
-              writerId: mutation.writerId,
-              storageKey: item.storageKey,
-              annotationId: item.annotationId ?? extractAnnotationId(baseEntry?.o),
-              pageNumber: mutation.pageNumber,
-              operationId: mutation.id,
-              base,
-              deleted: previous?.deleted === true || item.deleted,
-              survivor,
-            };
-            if (stableStringify(previous) !== stableStringify(lane)) {
-              eraserOpsMap.set(laneKey, lane);
-            }
-          }
-          continue;
-        }
-        for (const annotationId of mutation.annotationIds) {
-          const laneKey = `${mutation.writerId}\u0000${annotationId}`;
-          const lane = {
-            writerId: mutation.writerId,
-            storageKey: annotationId,
-            annotationId,
-            pageNumber: mutation.pageNumber,
-            operationId: mutation.id,
-            deleted: mutation.deletedIds.has(annotationId),
-            survivor: mutation.deletedIds.has(annotationId)
-              ? null
-              : mutation.objectsById.get(annotationId) || null,
-          };
-          const previous = eraserOpsMap.get(laneKey);
-          if (stableStringify(previous) !== stableStringify(lane)) {
-            eraserOpsMap.set(laneKey, lane);
-          }
-        }
+      for (const [laneKey, lane] of pendingLaneWrites) {
+        eraserOpsMap.set(laneKey, lane);
       }
     }, origin);
   }
@@ -571,7 +875,23 @@ export function syncByPageToDoc(doc, byPage, {
     }
   });
   if (toDelete.length) {
-    doc.transact(() => { for (const key of toDelete) { map.delete(key); removed += 1; } }, origin);
+    doc.transact(() => {
+      for (const key of toDelete) {
+        const previous = map.get(key);
+        const tombstone = deletedPdfAnnotationEntry(previous?.o, previous?.p);
+        if (tombstone) {
+          deletedPdfAnnotations.set(
+            deletedPdfAnnotationStorageKey(
+              tombstone.pageNumber,
+              tombstone.pdfAnnotationId,
+            ),
+            tombstone,
+          );
+        }
+        map.delete(key);
+        removed += 1;
+      }
+    }, origin);
   }
 
   // Adds/updates ONE PAGE PER TRANSACTION → one bounded op per page, so a 3000-
@@ -581,6 +901,30 @@ export function syncByPageToDoc(doc, byPage, {
     doc.transact(() => {
       for (const [id, next] of entries) {
         const prev = map.get(id);
+        const previousTombstone = deletedPdfAnnotationEntry(prev?.o, prev?.p);
+        const nextPdfAnnotationId = next?.o?.pdfAnnotationId
+          ? String(next.o.pdfAnnotationId)
+          : null;
+        if (
+          previousTombstone
+          && (
+            previousTombstone.pdfAnnotationId !== nextPdfAnnotationId
+            || Number(previousTombstone.pageNumber) !== Number(next.p)
+          )
+        ) {
+          deletedPdfAnnotations.set(
+            deletedPdfAnnotationStorageKey(
+              previousTombstone.pageNumber,
+              previousTombstone.pdfAnnotationId,
+            ),
+            previousTombstone,
+          );
+        }
+        if (nextPdfAnnotationId) {
+          deletedPdfAnnotations.delete(
+            deletedPdfAnnotationStorageKey(next.p, nextPdfAnnotationId),
+          );
+        }
         if (prev === undefined) { map.set(id, next); added += 1; }
         else if (!shallowEntryEqual(prev, next)) { map.set(id, next); updated += 1; }
       }

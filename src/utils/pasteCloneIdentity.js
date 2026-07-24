@@ -36,6 +36,7 @@ const PASTE_STRIPPED_PROVENANCE_KEYS = [
   'pdfImportedEditedAt',
   'pdfImportedEditedBy',
   'pdfImportedEditSource',
+  'pdfNativeAnnotationIdentity',
 ];
 
 function freshUuid() {

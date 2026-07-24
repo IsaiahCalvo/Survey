@@ -166,6 +166,10 @@ test('live preview is gated by the same geometry and permission transaction as c
 
 test('pdf.js survey markers use one visible, permitted whole-delete lane in both eraser modes', () => {
   assert.match(VIEWER_SOURCE, /surveyMarkers=\{newSurveyMarkersByPage\[pageNumber\]\}/);
+  assert.match(
+    VIEWER_SOURCE,
+    /onEraseIntent=\{pdfFile\?\.id \? handleEraseIntent : undefined\}/,
+  );
   assert.match(VIEWER_SOURCE, /onEraseSurveyMarker=\{handleDeleteSurveyMarker\}/);
   assert.match(VIEWER_SOURCE, /canEraseSurveyMarker=\{canEraseSurveyMarker\}/);
   assert.match(VIEWER_SOURCE, /if \(\(savedSurveyMarker \|\| pendingSurveyMarker\)\?\.locked === true\) return false;/);
@@ -184,8 +188,9 @@ test('pdf.js survey markers use one visible, permitted whole-delete lane in both
     commitSource,
     /getPermittedSurveyMarkerHitIds\(eraserPoints, undefined, radius\)/,
   );
+  assert.match(commitSource, /await onEraseIntentRef\.current\?\.\(intent\)/);
   assert.match(commitSource, /onEraseSurveyMarkerRef\.current\?\.\(annotationId\)/);
-  assert.match(commitSource, /surveyMarkerHitIds\.length > 0/);
+  assert.doesNotMatch(commitSource, /domain: 'survey-marker'/);
 });
 
 test('callout preview and commit share the same permitted hit list', () => {
@@ -349,17 +354,31 @@ test('production eraser commits the latest page model and waits for its exact re
   assert.doesNotMatch(ERASER_SOURCE, /flushSync/);
 });
 
-test('a failed page-model commit restores the preview instead of waiting for an impossible paint', () => {
+test('a failed page-model commit reports no paint so the queue restores the preview immediately', () => {
   const commitStart = ERASER_SOURCE.indexOf('const applyEraserAndCommit = useCallback');
   const commitEnd = ERASER_SOURCE.indexOf('\n  const cancelPointer = useCallback', commitStart);
   const commitSource = ERASER_SOURCE.slice(commitStart, commitEnd);
 
-  assert.match(commitSource, /catch \(error\) \{[\s\S]*?expectedRevision = null;/);
   assert.match(
     commitSource,
-    /didPaint:\s*Boolean\(expectedRevision\) \|\| calloutHitIds\.length > 0 \|\| surveyMarkerHitIds\.length > 0/,
+    /commitResult\?\.status !== 'committed'[\s\S]*?return \{ didPaint: false, expectedRevision: null \}/,
   );
-  assert.doesNotMatch(commitSource, /didPaint:\s*result\.didChange/);
+  assert.match(
+    commitSource,
+    /catch \(error\) \{[\s\S]*?return \{ didPaint: false, expectedRevision: null \}/,
+  );
+  assert.match(
+    commitSource,
+    /return \{\s*didPaint: true,\s*expectedRevision,\s*\}/,
+  );
+  assert.match(
+    commitSource,
+    /scheduleLiveErasePreviewFinish\(\{\s*expectedRevision: outcome\.expectedRevision,\s*waitForNextPaint: outcome\.didPaint,\s*requireMutationAck: outcome\.requireMutationAck,\s*\}\)/,
+  );
+  assert.match(
+    commitSource,
+    /\.catch\(\(error\) => \{[\s\S]*?finishLiveErasePreview\(\);[\s\S]*?return \{ didPaint: false, expectedRevision: null \}/,
+  );
 });
 
 test('legacy fallback treats the configured eraser size as a diameter too', () => {
@@ -474,17 +493,21 @@ test('remote materialization preserves an emptied page until its eraser handoff 
   assert.equal(remote[1], undefined, 'incoming Y.Doc materialization stays immutable');
 });
 
-test('canceling a confirmed callout erase explicitly restores its correlated preview', () => {
-  assert.match(ERASER_SOURCE, /onSettled:\s*\(\{ committed \} = \{\}\) =>/);
+test('callout erase is part of the same atomic intent and failure restores its preview', () => {
+  const commitStart = ERASER_SOURCE.indexOf('const applyEraserAndCommit = useCallback');
+  const commitEnd = ERASER_SOURCE.indexOf('\n  const cancelPointer = useCallback', commitStart);
+  const commitSource = ERASER_SOURCE.slice(commitStart, commitEnd);
+
   assert.match(
-    ERASER_SOURCE,
-    /committed === false[\s\S]*?livePreviewSourceRef\.current === previewSession[\s\S]*?finishLiveErasePreview\(\)/,
+    commitSource,
+    /for \(const calloutId of calloutHitIds\)[\s\S]*?domain: 'callout'[\s\S]*?operation: 'delete'/,
   );
-  assert.match(VIEWER_SOURCE, /pendingDeleteSettlementRef\.current/);
   assert.match(
-    VIEWER_SOURCE,
-    /onCancel=\{\(\) => \{[\s\S]*?settle\?\.\(\{ committed: false \}\)/,
+    commitSource,
+    /await onEraseIntentRef\.current\?\.\(intent\)[\s\S]*?finishLiveErasePreview\(\)/,
   );
+  assert.doesNotMatch(ERASER_SOURCE, /onSettled:/);
+  assert.doesNotMatch(VIEWER_SOURCE, /pendingDeleteSettlementRef/);
 });
 
 test('an empty coalesced-event list falls back to the current pointer event', () => {
@@ -502,7 +525,23 @@ test('pointer-up samples and previews its endpoint before committing geometry', 
   assert.match(finishPointerSource, /previewEraserGesture/);
   assert.match(
     finishPointerSource,
-    /applyEraserAndCommit\(pointer\.points, pointer\.gestureConfig\)/,
+    /queueEraserCommit\(pointer\)/,
+  );
+});
+
+test('rapid gestures serialize commits and only the newest session may close the shared preview', () => {
+  assert.match(ERASER_SOURCE, /const eraseCommitTailRef = useRef\(Promise\.resolve\(\)\)/);
+  assert.match(
+    ERASER_SOURCE,
+    /const queued = eraseCommitTailRef\.current\.then\(run, run\)/,
+  );
+  assert.match(
+    ERASER_SOURCE,
+    /latestEraseGestureRef\.current !== sessionId[\s\S]*?scheduleLiveErasePreviewFinish/,
+  );
+  assert.match(
+    ERASER_SOURCE,
+    /latestEraseGestureRef\.current = sessionId[\s\S]*?pointerRef\.current = \{\s*sessionId/,
   );
 });
 
@@ -563,4 +602,117 @@ test('eraser undo uses its precise local action instead of cloning the full docu
   assert.ok(preciseSkip >= 0, 'expected a precise eraser-history branch');
   assert.ok(legacyCheckpoint > preciseSkip, 'eraser branch must precede full-document checkpointing');
   assert.match(saveSource, /pushLocalAnnotationHistoryAction\(finalLocalHistoryAction\)/);
+});
+
+test('atomic erase restores only captured mutation lane transitions for Cmd+Z, Redo, and toast', () => {
+  const undoStart = VIEWER_SOURCE.indexOf('const handleUndo = useCallback');
+  const undoEnd = VIEWER_SOURCE.indexOf('const handleRedo = useCallback', undoStart);
+  const undoSource = VIEWER_SOURCE.slice(undoStart, undoEnd);
+  assert.match(undoSource, /legacyUndoMeta\?\.context\?\.eraseHistoryTransition/);
+  assert.match(
+    undoSource,
+    /applyDurableEraseHistoryTransitionRef\.current\([\s\S]*?eraseHistoryTransition,[\s\S]*?'undo'/,
+  );
+
+  const redoStart = VIEWER_SOURCE.indexOf('const handleRedo = useCallback');
+  const redoEnd = VIEWER_SOURCE.indexOf('// Mechanism: Y.UndoManager', redoStart);
+  const redoSource = VIEWER_SOURCE.slice(redoStart, redoEnd);
+  assert.match(redoSource, /legacyRedoMeta\?\.context\?\.eraseHistoryTransition/);
+  assert.match(
+    redoSource,
+    /applyDurableEraseHistoryTransitionRef\.current\([\s\S]*?eraseHistoryTransition,[\s\S]*?'redo'/,
+  );
+
+  const commitStart = VIEWER_SOURCE.indexOf('const handleEraseIntent = useCallback');
+  const commitEnd = VIEWER_SOURCE.indexOf('\n  const getPageSurveyRegionId', commitStart);
+  const commitSource = VIEWER_SOURCE.slice(commitStart, commitEnd);
+  assert.match(commitSource, /eraseHistoryTransition:\s*result\.historyTransition/);
+  assert.match(
+    commitSource,
+    /onUndo:\s*\(\) => \{[\s\S]*?applyEraseHistoryTransitionFromToast\(result\.historyTransition\)/,
+  );
+  const toastStart = VIEWER_SOURCE.indexOf(
+    'const applyEraseHistoryTransitionFromToast = useCallback',
+  );
+  const toastEnd = VIEWER_SOURCE.indexOf('\n  const handleEraseIntent', toastStart);
+  const toastSource = VIEWER_SOURCE.slice(toastStart, toastEnd);
+  const toastApply = toastSource.indexOf(
+    "applyDurableEraseHistoryTransition(transition, 'undo')",
+  );
+  const toastMove = toastSource.indexOf(
+    'const moved = moveEraseTransitionHistoryCheckpointByMutationId',
+    toastApply,
+  );
+  assert.ok(toastApply >= 0, 'toast must apply the exact durable transition');
+  assert.ok(
+    toastMove > toastApply,
+    'toast must recompute its exact history move after the transition returns',
+  );
+  assert.match(toastSource, /if \(!moved\) return result/);
+  assert.doesNotMatch(commitSource, /onUndo:\s*handleUndo/);
+});
+
+test('atomic erase preserves old save-pipeline side effects without re-entering that pipeline', () => {
+  const commitStart = VIEWER_SOURCE.indexOf('const handleEraseIntent = useCallback');
+  const commitEnd = VIEWER_SOURCE.indexOf('\n  const getPageSurveyRegionId', commitStart);
+  const commitSource = VIEWER_SOURCE.slice(commitStart, commitEnd);
+  assert.match(commitSource, /prepareEraseIntentForCommit/);
+  assert.match(commitSource, /requestAtomicEraseApproval/);
+  assert.match(commitSource, /annotations:fabric-save-action/);
+  assert.match(commitSource, /suppressHistoryRow/);
+  assert.match(VIEWER_SOURCE, /annotation-delete-history/);
+  assert.match(
+    VIEWER_SOURCE,
+    /if \(pdfFile\?\.id && user\?\.id && effectActorUserId && effectActorUserId !== user\.id\)/,
+  );
+  assert.match(
+    VIEWER_SOURCE,
+    /const eraseDocumentOwnerId = useMemo\(\(\) => \{[\s\S]*?return documentOwnerId;/,
+  );
+  assert.doesNotMatch(
+    VIEWER_SOURCE,
+    /return pdfFile\?\.user_id \|\| documentOwnerId \|\| null/,
+  );
+});
+
+test('saved and pending survey markers stay on the established whole-delete path', () => {
+  const canEraseStart = VIEWER_SOURCE.indexOf('const canEraseSurveyMarker = useCallback');
+  const canEraseEnd = VIEWER_SOURCE.indexOf('const handleDeleteSurveyMarker', canEraseStart);
+  const canEraseSource = VIEWER_SOURCE.slice(canEraseStart, canEraseEnd);
+  assert.match(canEraseSource, /if \(!savedSurveyMarker\) return true/);
+
+  const commitStart = ERASER_SOURCE.indexOf('const applyEraserAndCommit = useCallback');
+  const commitEnd = ERASER_SOURCE.indexOf('\n  const queueEraserCommit', commitStart);
+  const commitSource = ERASER_SOURCE.slice(commitStart, commitEnd);
+  assert.match(
+    commitSource,
+    /if \(targets\.length === 0\)[\s\S]*?onEraseSurveyMarkerRef\.current\?\.\(annotationId\)/,
+  );
+  assert.doesNotMatch(commitSource, /durableMarkerIds/);
+  assert.doesNotMatch(commitSource, /transientSurveyMarkerIds/);
+
+  const viewerCommitStart = VIEWER_SOURCE.indexOf('const handleEraseIntent = useCallback');
+  const viewerCommitEnd = VIEWER_SOURCE.indexOf('\n  const getPageSurveyRegionId', viewerCommitStart);
+  const viewerCommitSource = VIEWER_SOURCE.slice(viewerCommitStart, viewerCommitEnd);
+  assert.match(
+    viewerCommitSource,
+    /some\(\(target\) => target\?\.domain === 'survey-marker'\)[\s\S]*?reason: 'unsupported-domain'/,
+  );
+});
+
+test('rapid follow-up gestures rebase on the durable derived commit result', () => {
+  const commitStart = ERASER_SOURCE.indexOf('const applyEraserAndCommit = useCallback');
+  const commitEnd = ERASER_SOURCE.indexOf('\n  const queueEraserCommit', commitStart);
+  const commitSource = ERASER_SOURCE.slice(commitStart, commitEnd);
+  assert.match(commitSource, /const committedPage = commitResult\?\.byPage/);
+  assert.match(commitSource, /annotationsRef\.current = \{\s*\.\.\.committedPage/);
+
+  const hookSource = readFileSync(
+    new URL('../src/hooks/useAnnotationDoc.js', import.meta.url),
+    'utf8',
+  );
+  assert.match(
+    hookSource,
+    /return \{\s*\.\.\.result,\s*byPage: nextByPage,\s*surveyMarkers: nextSurveyMarkers/,
+  );
 });

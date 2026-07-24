@@ -175,7 +175,12 @@ function transformPolygons(polygons, transform) {
 }
 
 function pathToPageAnnotation(object, internalId, { forcePolygon = false } = {}) {
-  const localCommands = normalizeFabricPath(object?.path);
+  const persistedPolygons = normalizeMultiPolygon(object?.polygons);
+  let localCommands = normalizeFabricPath(object?.path);
+  if (!localCommands.length) localCommands = normalizeFabricPath(object?.cmds);
+  if (!localCommands.length && persistedPolygons.length) {
+    localCommands = polygonSetToCommands(persistedPolygons);
+  }
   if (!localCommands.length) return null;
   const transform = createPathTransform(object, localCommands);
   const commands = transformCommands(localCommands, transform);
@@ -225,7 +230,6 @@ function pathToPageAnnotation(object, internalId, { forcePolygon = false } = {})
   // reads here already IS the rendered width — for native and imported ink
   // alike, with no provenance branch.
   const geometryStrokeWidth = worldStrokeWidth;
-  const persistedPolygons = normalizeMultiPolygon(object?.polygons);
   if (persistedPolygons.length) {
     const polygons = transformPolygons(persistedPolygons, transform);
     const polygonCommands = polygonSetToCommands(polygons);
@@ -361,6 +365,7 @@ export function intersectErasedPathSurvivors(survivors) {
 const eraserBaseGeometrySignature = (object) => JSON.stringify({
   type: String(object?.type || '').toLowerCase(),
   path: object?.path || null,
+  cmds: object?.cmds || null,
   polygons: normalizeMultiPolygon(object?.polygons),
   paperCenterline: object?.paperCenterline || null,
   paperCenterlineRuns: object?.paperCenterlineRuns || null,
@@ -382,6 +387,17 @@ const eraserBaseTransformSnapshot = (object) => ({
         y: numberOr(object.pathOffset.y),
       }
     : null,
+  skewX: numberOr(object?.skewX),
+  skewY: numberOr(object?.skewY),
+  flipX: object?.flipX === true,
+  flipY: object?.flipY === true,
+});
+
+const unsupportedTransformSignature = (object) => JSON.stringify({
+  skewX: numberOr(object?.skewX),
+  skewY: numberOr(object?.skewY),
+  flipX: object?.flipX === true,
+  flipY: object?.flipY === true,
 });
 
 function rebasePolygonSet(polygons, capturedObject, currentObject, commands) {
@@ -396,14 +412,45 @@ function rebasePolygonSet(polygons, capturedObject, currentObject, commands) {
   )));
 }
 
+function canonicalSurvivorPolygons(object, geometryBase) {
+  const polygons = normalizeMultiPolygon(object?.polygons);
+  const snapshot = object?.paperEraserBaseTransform;
+  if (!polygons.length || !snapshot || !geometryBase) return null;
+  let commands = normalizeFabricPath(geometryBase.path);
+  if (!commands.length) commands = normalizeFabricPath(geometryBase.cmds);
+  if (!commands.length && normalizeMultiPolygon(geometryBase.polygons).length) {
+    commands = polygonSetToCommands(geometryBase.polygons);
+  }
+  if (!commands.length) return null;
+  const transform = createPathTransform({ ...geometryBase, ...snapshot }, commands);
+  return polygons.map((polygon) => polygon.map((ring) => ring.map(([x, y]) => {
+    const local = transform.inverse({ x, y });
+    return [
+      Math.round(local.x * 1e7) / 1e7,
+      Math.round(local.y * 1e7) / 1e7,
+    ];
+  })));
+}
+
+export function erasedPathSurvivorsShareGeometry(left, right, geometryBase) {
+  if (
+    left?.paperEraserGeometry !== 'v1'
+    || right?.paperEraserGeometry !== 'v1'
+  ) return false;
+  const leftCanonical = canonicalSurvivorPolygons(left, geometryBase);
+  const rightCanonical = canonicalSurvivorPolygons(right, geometryBase);
+  return Boolean(
+    leftCanonical
+    && rightCanonical
+    && JSON.stringify(leftCanonical) === JSON.stringify(rightCanonical),
+  );
+}
+
 /**
  * Rebase one bounded partial-erase survivor onto the current durable base.
- *
- * The survivor polygon is already accumulated, so this stays O(1) in gesture
- * count. Compatible move/scale/rotation edits apply the base's relative affine
- * transform to the accumulated cut. An incompatible path/polygon edit makes
- * this lane a no-op so the remote base—and any newer compatible writer
- * lanes—win instead of reviving old geometry.
+ * Compatible move/scale/rotation edits transform the accumulated cut.
+ * Incompatible geometry (or unsupported skew/flip changes) makes this lane a
+ * no-op, so the collaborator's current base wins instead of stale geometry.
  * Re-baking from currentBase preserves collaborator style/metadata.
  */
 export function rebaseErasedPathSurvivor(
@@ -422,12 +469,23 @@ export function rebaseErasedPathSurvivor(
     return null;
   }
 
-  const currentCommands = normalizeFabricPath(currentBase.path);
+  let currentCommands = normalizeFabricPath(currentBase.path);
+  if (!currentCommands.length) currentCommands = normalizeFabricPath(currentBase.cmds);
+  if (!currentCommands.length && normalizeMultiPolygon(currentBase.polygons).length) {
+    currentCommands = polygonSetToCommands(currentBase.polygons);
+  }
   if (!currentCommands.length) return null;
   const capturedSnapshot = capturedBase?.paperEraserBaseTransform;
   const capturedTransformObject = capturedSnapshot
     ? { ...currentBase, ...capturedSnapshot }
     : capturedBase;
+  if (
+    capturedTransformObject
+    && unsupportedTransformSignature(capturedTransformObject)
+      !== unsupportedTransformSignature(currentBase)
+  ) {
+    return null;
+  }
   const canTransform = capturedTransformObject && (
     capturedSnapshot
     || eraserBaseGeometrySignature(currentBase) === eraserBaseGeometrySignature(capturedBase)
@@ -445,7 +503,7 @@ export function rebaseErasedPathSurvivor(
   });
   if (!currentGeometry) return null;
 
-  return {
+  const rebased = {
     ...bakePagePathResult(currentBase, {
       cmds: polygonSetToCommands(polygons),
       polygons,
@@ -456,6 +514,23 @@ export function rebaseErasedPathSurvivor(
     }),
     paperEraserBaseTransform: eraserBaseTransformSnapshot(currentBase),
   };
+  for (const key of [
+    'pdfImportedEditState',
+    'pdfImportedEditedAt',
+    'pdfImportedEditedBy',
+    'pdfImportedEditSource',
+  ]) {
+    if (Object.prototype.hasOwnProperty.call(survivor, key)) {
+      rebased[key] = survivor[key];
+    }
+  }
+  if (survivor.data?.pdfImportedEditState) {
+    rebased.data = {
+      ...(rebased.data || {}),
+      pdfImportedEditState: survivor.data.pdfImportedEditState,
+    };
+  }
+  return rebased;
 }
 
 const unique = (values) => values.filter((value, index) => value && values.indexOf(value) === index);
@@ -496,7 +571,7 @@ export function erasePageAnnotations({
 
   objects.forEach((object, index) => {
     if (!canErase(object, index)) return;
-    if (String(object?.type || '').toLowerCase() !== 'path' || !Array.isArray(object?.path)) return;
+    if (String(object?.type || '').toLowerCase() !== 'path') return;
     const internalId = `page-object:${index}`;
     const operation = requestedMode === 'full'
       ? 'full'

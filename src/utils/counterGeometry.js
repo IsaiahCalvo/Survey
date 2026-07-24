@@ -16,6 +16,11 @@ export function getCounterRenderGeometry(bodyX, bodyY, radius, pointerAngleDeg) 
     return {
       pathD: `M ${tipX},${tipY} L ${t1x},${t1y} A ${radius},${radius} 0 1 1 ${t2x},${t2y} Z`,
       fontSize: Math.max(11, radius * 1.05),
+      center: { x: bodyX, y: bodyY },
+      radius,
+      tip: { x: tipX, y: tipY },
+      tangent1: { x: t1x, y: t1y },
+      tangent2: { x: t2x, y: t2y },
     };
   }
 
