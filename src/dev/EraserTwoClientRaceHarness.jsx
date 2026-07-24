@@ -6,6 +6,7 @@ import {
   docToByPage,
   syncByPageToDoc,
 } from '../services/annotationDocStore';
+import { createDetachedYDoc } from '../lib/collab/ydocRegistry';
 import {
   renderPathToSvgAttrs,
   renderPathToSvgD,
@@ -51,8 +52,8 @@ const materializePage = (doc) => withPaintRevision(
   docToByPage(doc)[PAGE_NUMBER] || { objects: [] },
 );
 
-const makeHarnessState = (session) => {
-  const doc = new Y.Doc();
+const makeHarnessState = (session, role) => {
+  const doc = createDetachedYDoc(`eraser-two-client-race:${session}:${role}`);
   const storageKey = `survey:eraser-race:${session}`;
   const stored = localStorage.getItem(storageKey);
   if (stored) Y.applyUpdate(doc, base64ToBytes(stored), 'cold-reload');
@@ -88,7 +89,7 @@ export default function EraserTwoClientRaceHarness() {
   const role = params.get('raceRole') === 'b' ? 'b' : 'a';
   const session = params.get('raceSession') || 'default';
   const writerId = `mounted-${session}-${role}`;
-  const harness = useMemo(() => makeHarnessState(session), [session]);
+  const harness = useMemo(() => makeHarnessState(session, role), [role, session]);
   const channelRef = useRef(null);
   const outboundActionRef = useRef(null);
   const [page, setPage] = useState(() => materializePage(harness.doc));
@@ -209,6 +210,7 @@ export default function EraserTwoClientRaceHarness() {
       channel.removeEventListener('message', onMessage);
       channel.close();
       channelRef.current = null;
+      harness.doc.destroy();
     };
   }, [
     applyRemoteAction,
