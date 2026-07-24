@@ -64,7 +64,6 @@ export function isEraserPreviewFinishReady({
     && (materializedMutationIds || []).some((id) => revision(id) === expected)
   );
   if (!mutationReady) return false;
-  if (hadSourceAtRelease && !hasCurrentSource) return true;
   const finalSvgReady = !expected || revision(finalSvgRevision) === expected;
   if (maskClone && expected && finalSvgReady) return true;
 
