@@ -14,6 +14,7 @@
     "dist": "npm run build && electron-builder",
     "test": "node scripts/run-node-tests.mjs",
     "test:integration": "SUPABASE_INTEGRATION=1 node --env-file-if-exists=.env.test --test tests/phase27/byteaRoundTrip.test.mjs tests/phase27/schemaPresence.test.mjs tests/phase27/cryptYjsUpdatesSchema.test.mjs tests/storagePrivacyTripwire.test.mjs",
+    "test:e2e:eraser-permissions": "playwright test --config playwright.eraser-permissions.config.mjs",
     "test:privacy": "SUPABASE_INTEGRATION=1 node --env-file-if-exists=.env.test --test tests/storagePrivacyTripwire.test.mjs",
     "test:mobile-annotations": "node agent-cli/mobile-annotations-e2e.mjs",
     "benchmark:pdf-annotations": "node debug/benchmarks/run-production-240k.mjs",

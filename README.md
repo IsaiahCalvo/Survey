@@ -99,6 +99,18 @@ This codebase uses a phased planning workflow (GSD) under `.planning/`. New work
 
 Follow the existing code style. Run `npm test` before committing. Manual smoke testing in the running app is required for any UI change.
 
+### Backend eraser-permission E2E
+
+Run `npm run test:e2e:eraser-permissions`. It loads the three
+`SUPABASE_TEST_*` credentials from the main repository's gitignored
+`.env.test`, starts an isolated Vite server, and runs exactly nine serial
+scenarios against fresh disposable documents. Missing credentials, an unknown
+backend host, a missing seam, or cleanup failure is fatal; the suite never
+skips.
+
+Set `ERASER_PERMISSION_E2E_ENV_ROOT=/absolute/repo/path` only when Git cannot
+discover the main repository.
+
 ## License
 
 Proprietary — all rights reserved.

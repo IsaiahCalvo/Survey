@@ -1,10 +1,11 @@
-import { defineConfig, loadEnv } from 'vite';
+import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { randomBytes } from 'node:crypto';
 import { execSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { resolveViteConfigEnv } from './viteEnvConfig.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -167,7 +168,7 @@ function devAuthBootstrapPlugin(env, bootstrapToken) {
 }
 
 export default defineConfig(({ mode }) => {
-  const env = loadEnv(mode, __dirname, '');
+  const env = resolveViteConfigEnv(mode, __dirname);
   const devAuthBootstrapToken = mode === 'development'
     ? randomBytes(24).toString('hex')
     : '';
