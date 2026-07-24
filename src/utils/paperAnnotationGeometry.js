@@ -375,6 +375,62 @@ export function normalizeWeaklySimplePolygonSet(value) {
   return normalized;
 }
 
+function compactCollinearRing(rawRing) {
+  let points = (rawRing || []).map((point) => [...point]);
+  const first = points[0];
+  const last = points[points.length - 1];
+  if (
+    points.length > 1
+    && first[0] === last[0]
+    && first[1] === last[1]
+  ) {
+    points.pop();
+  }
+  if (points.length < 4) {
+    return points.length ? [...points, [...points[0]]] : [];
+  }
+
+  let changed = true;
+  while (changed && points.length >= 4) {
+    changed = false;
+    const next = [];
+    for (let index = 0; index < points.length; index += 1) {
+      const previous = points[(index - 1 + points.length) % points.length];
+      const current = points[index];
+      const following = points[(index + 1) % points.length];
+      const abX = current[0] - previous[0];
+      const abY = current[1] - previous[1];
+      const bcX = following[0] - current[0];
+      const bcY = following[1] - current[1];
+      const exactlyCollinear = abX * bcY - abY * bcX === 0;
+      const liesBetween = (
+        (current[0] - previous[0]) * (current[0] - following[0])
+        + (current[1] - previous[1]) * (current[1] - following[1])
+      ) <= 0;
+      if (exactlyCollinear && liesBetween) {
+        changed = true;
+        continue;
+      }
+      next.push(current);
+    }
+    points = next;
+  }
+  return points.length ? [...points, [...points[0]]] : [];
+}
+
+/**
+ * Remove only exactly redundant vertices from straight polygon edges.
+ * No tolerance is used: curved bite coverage and near-collinear authored
+ * geometry remain represented at tiny and huge coordinate scales.
+ */
+export function compactCollinearPolygonSet(value) {
+  return normalizeMultiPolygon(value)
+    .map((polygon) => polygon
+      .map(compactCollinearRing)
+      .filter((ring) => ring.length >= 4))
+    .filter((polygon) => polygon.length > 0);
+}
+
 export function commandsToPolygonSet(commands, {
   fill = false,
   strokeWidth = 0,
@@ -499,12 +555,16 @@ function annotationFill(annotation) {
 
 function annotationPolygonSet(annotation) {
   if (annotation.polygons?.length) {
-    return normalizeWeaklySimplePolygonSet(annotation.polygons);
+    return compactCollinearPolygonSet(
+      normalizeWeaklySimplePolygonSet(annotation.polygons),
+    );
   }
   const fill = Boolean(annotationFill(annotation)) || annotation.eraseByBounds === true;
   const strokeWidth = annotation.strokeWidth || 0;
-  return normalizeWeaklySimplePolygonSet(
-    commandsToPolygonSet(annotation.cmds, { fill, strokeWidth }),
+  return compactCollinearPolygonSet(
+    normalizeWeaklySimplePolygonSet(
+      commandsToPolygonSet(annotation.cmds, { fill, strokeWidth }),
+    ),
   );
 }
 
@@ -605,12 +665,45 @@ export function subtractionStayedInsideSubject(result, subject, sourceWidth) {
 
   const sourcePolygons = normalizeMultiPolygon(subject);
   const resultPolygons = normalizeMultiPolygon(result);
+  const validationVertexCount = [...sourcePolygons, ...resultPolygons].reduce(
+    (total, polygon) => total + polygon.reduce(
+      (sum, ring) => sum + Math.max(0, ring.length - 1),
+      0,
+    ),
+    0,
+  );
+  if (validationVertexCount >= 512) {
+    try {
+      // The exact set proof scales substantially better than the edge-by-edge
+      // audit below once repeated bites create hundreds of vertices. Inputs
+      // are already split into ordinary simple rings, so Martinez no longer
+      // receives the weakly-simple legacy topology that caused the historical
+      // outside-subject streak. Any engine failure still fails closed.
+      return normalizeMultiPolygon(diff(resultPolygons, sourcePolygons)).length === 0;
+    } catch {
+      return false;
+    }
+  }
   const sourceEdges = [];
+  const coordinateKey = (value) => String(Object.is(value, -0) ? 0 : value);
+  const pointKey = (point) => `${coordinateKey(point[0])},${coordinateKey(point[1])}`;
+  const edgeKey = (a, b) => {
+    const firstKey = pointKey(a);
+    const secondKey = pointKey(b);
+    return firstKey < secondKey
+      ? `${firstKey}|${secondKey}`
+      : `${secondKey}|${firstKey}`;
+  };
+  const sourceVertexKeys = new Set();
+  const sourceEdgeKeys = new Set();
   for (const polygon of sourcePolygons) {
     for (const ring of polygon) {
       for (let index = 0, previous = ring.length - 1; index < ring.length; previous = index, index += 1) {
         const a = ring[previous];
         const b = ring[index];
+        sourceVertexKeys.add(pointKey(a));
+        sourceVertexKeys.add(pointKey(b));
+        sourceEdgeKeys.add(edgeKey(a, b));
         sourceEdges.push({
           a,
           b,
@@ -624,7 +717,8 @@ export function subtractionStayedInsideSubject(result, subject, sourceWidth) {
   }
 
   const pointIsInsideOrOnSource = (point) => (
-    sourceEdges.some((edge) => (
+    sourceVertexKeys.has(pointKey(point))
+    || sourceEdges.some((edge) => (
       point[0] >= edge.minX - tolerance
       && point[0] <= edge.maxX + tolerance
       && point[1] >= edge.minY - tolerance
@@ -666,6 +760,10 @@ export function subtractionStayedInsideSubject(result, subject, sourceWidth) {
       for (let index = 0, previous = ring.length - 1; index < ring.length; previous = index, index += 1) {
         const a = ring[previous];
         const b = ring[index];
+        // Repeated subtraction preserves nearly every prior boundary edge
+        // byte-for-byte. An identical source edge is already a complete
+        // containment proof; avoid quadratic point/edge rescans for it.
+        if (sourceEdgeKeys.has(edgeKey(a, b))) continue;
         if (!pointIsInsideOrOnSource(a) || !pointIsInsideOrOnSource(b)) return false;
         const parameters = [0, 1];
         const minX = Math.min(a[0], b[0]) - tolerance;
@@ -1185,7 +1283,9 @@ export function eraseAnnotations(annotations, eraserPoints, radius, mode = 'part
         eraser,
         sourceWidth,
       });
-      result = normalizeWeaklySimplePolygonSet(result);
+      result = compactCollinearPolygonSet(
+        normalizeWeaklySimplePolygonSet(result),
+      );
     } catch (error) {
       // Cleanup is a quality refinement. Boolean/pathological input must not
       // turn a successful ordinary subtraction into a failed erase.
