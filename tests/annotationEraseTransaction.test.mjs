@@ -5,6 +5,7 @@ import * as Y from 'yjs';
 import {
   ERASE_OUTBOX_MAP,
   MAX_ACKNOWLEDGED_ERASE_TOMBSTONES,
+  applyLocalCalloutEraseTargets,
   applyEraseHistoryTransitionOnDoc,
   buildEraseIntent,
   buildEraseHistoryBeforeSnapshot,
@@ -219,6 +220,26 @@ function mixedTargets() {
     }),
   ];
 }
+
+test('local eraser applies atomic callout deletion to page JSON', () => {
+  const shape = pageObject('shape-local', 'rect');
+  const callout = pageObject('callout-local', 'callout', {
+    type: 'group',
+    data: { id: 'callout-local', type: 'callout', authorId: 'owner' },
+  });
+  const page = { objects: [shape, callout] };
+
+  const result = applyLocalCalloutEraseTargets(page, [{
+    domain: 'callout',
+    storageKey: 'callout-local',
+    kind: 'callout',
+    operation: 'delete',
+    before: callout,
+  }]);
+
+  assert.deepEqual(result.objects, [shape]);
+  assert.deepEqual(page.objects, [shape, callout], 'source page remains immutable');
+});
 
 function buildIntent({
   mutationId = `erase:${crypto.randomUUID()}`,

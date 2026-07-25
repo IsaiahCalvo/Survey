@@ -255,6 +255,33 @@ export function buildPageEraseTargets({
   });
 }
 
+/**
+ * The local/no-cloud commit path receives pageSpaceEraser's output directly.
+ * Callouts are deliberately skipped by that geometry engine and travel as
+ * atomic intent targets, so apply their deletions before saving local JSON.
+ */
+export function applyLocalCalloutEraseTargets(pageAnnotations, targets = []) {
+  const deletedIds = new Set(
+    targets
+      .filter((target) => (
+        target?.domain === 'callout'
+        && target?.operation === 'delete'
+      ))
+      .map((target) => getEraseObjectId(target.before))
+      .filter((id) => id != null)
+      .map(String),
+  );
+  if (deletedIds.size === 0) return pageAnnotations;
+  const objects = Array.isArray(pageAnnotations?.objects) ? pageAnnotations.objects : [];
+  return {
+    ...(pageAnnotations || {}),
+    objects: objects.filter((object) => !(
+      classifyEraseObjectKind(object) === 'callout'
+      && deletedIds.has(String(getEraseObjectId(object)))
+    )),
+  };
+}
+
 export function buildEraseIntent({
   mutationId,
   pageNumber,

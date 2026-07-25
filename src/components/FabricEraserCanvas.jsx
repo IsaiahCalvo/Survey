@@ -32,6 +32,7 @@ import { getEraserOperation } from '../utils/eraserPolicy.js';
 import { eraserDiameterToPageRadius } from '../utils/eraserSizing.js';
 import { nextEraserMutationId } from '../utils/eraserMutationId.js';
 import {
+  applyLocalCalloutEraseTargets,
   buildEraseIntent,
   buildPageEraseTargets,
   classifyEraseObjectKind,
@@ -1810,7 +1811,7 @@ const FabricEraserCanvas = memo(({
     };
     if (typeof onEraseIntentRef.current !== 'function') {
       const updatedJSON = {
-        ...result.pageAnnotations,
+        ...applyLocalCalloutEraseTargets(result.pageAnnotations, targets),
         eraserPresentationRevision: expectedRevision,
       };
       try {

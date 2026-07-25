@@ -33,6 +33,7 @@ export function createProductionPaperInk({
     'paperInkGeometry',
     'paperEraserGeometry', 'paperSourceStroke', 'paperEraserCuts',
     'pathOffset', 'left', 'top', 'width', 'height',
+    'originX', 'originY',
     'scaleX', 'scaleY', 'angle', 'fill', 'fillRule', 'stroke', 'strokeWidth',
     'sourceWidth', 'globalCompositeOperation',
   ]) {

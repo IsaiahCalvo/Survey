@@ -45,7 +45,10 @@ export const FABRIC_BASE_ENVELOPE = Object.freeze({
 });
 
 // Residue the old pen path carried through `e.path.toObject(CUSTOM_PROPS)` —
-// inert to every renderer, kept so pen-commit JSON stays diff-stable.
+// mostly inert residue kept so pen-commit JSON stays diff-stable. The
+// production paper-ink builder strips originX/originY because its commands
+// already live in page space; retaining those fields makes SVG apply Fabric's
+// center-offset transform a second time.
 // (PencilBrush paths serialize strokeMiterLimit 10; createProductionPaperInk
 // overrides cap/join to round and owns all geometry/paint fields.)
 export const PEN_FABRIC_RESIDUE = Object.freeze({

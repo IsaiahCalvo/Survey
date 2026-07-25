@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
 import { createProductionPaperInk } from '../src/utils/productionPaperInk.js';
+import { createInkPathAffine } from '../src/utils/inkGeometryTransform.js';
 import { polygonSetToCommands } from '../src/utils/paperAnnotationGeometry.js';
 import {
   applyPdfAppAnnotationMetadata,
@@ -39,6 +40,28 @@ test('a production pen stroke is persisted as the demo native filled geometry', 
   assert.deepEqual(object.path, polygonSetToCommands(object.polygons));
   assert.equal(object.polygons.length, 1);
   assert.equal(object.polygons[0].length, 1);
+});
+
+test('fresh page-space ink is not repositioned by stale Fabric origin residue', () => {
+  const object = createProductionPaperInk({
+    id: 'page-space-pen',
+    tool: 'pen',
+    points: [{ x: 110, y: 620 }, { x: 210, y: 640 }],
+    color: '#d11b2d',
+    width: 8,
+    originX: 'left',
+    originY: 'top',
+  });
+
+  assert.equal(object.originX, undefined);
+  assert.equal(object.originY, undefined);
+  assert.deepEqual(
+    createInkPathAffine(object, object.path, {
+      polygons: object.polygons,
+      centerline: object.paperCenterline,
+    }).matrix,
+    [1, 0, 0, 1, 0, 0],
+  );
 });
 
 test('a production highlighter uses the same geometry with multiply compositing', () => {
