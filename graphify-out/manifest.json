@@ -1245,8 +1245,8 @@
     "semantic_hash": ""
   },
   "src/components/FabricEraserCanvas.jsx": {
-    "mtime": 1784954623.4254434,
-    "ast_hash": "60b77086cfb2e2aa5814fe9300091d56",
+    "mtime": 1785009525.8461726,
+    "ast_hash": "be8e8140f5a2d3a2616ab1488ac2cf44",
     "semantic_hash": ""
   },
   "src/components/FormFieldPropertiesPanel.jsx": {
@@ -2750,8 +2750,8 @@
     "semantic_hash": ""
   },
   "src/utils/svgAnnotationRenderers.jsx": {
-    "mtime": 1784956989.0892084,
-    "ast_hash": "fd78a14c739896a69940d2777c15d64c",
+    "mtime": 1784966494.9221373,
+    "ast_hash": "f386ba13b608fd453a808ae3625b9359",
     "semantic_hash": ""
   },
   "src/utils/svgBoundingBox.js": {
@@ -7455,8 +7455,8 @@
     "semantic_hash": ""
   },
   "src/utils/paperAnnotationGeometry.js": {
-    "mtime": 1784955582.985776,
-    "ast_hash": "573f214e370fd373695d44f1426a387d",
+    "mtime": 1785009526.1453018,
+    "ast_hash": "5dbaf9f93fc28be2835d6033b0a01473",
     "semantic_hash": ""
   },
   "src/utils/paperInkEraser.js": {
@@ -7475,8 +7475,8 @@
     "semantic_hash": ""
   },
   "src/utils/productionPaperInk.js": {
-    "mtime": 1784954928.0489042,
-    "ast_hash": "9ec95133fd37c8afaa3cfec60f483be1",
+    "mtime": 1784994539.690614,
+    "ast_hash": "7c44b9ff53211fcbbae0fc8b95a28068",
     "semantic_hash": ""
   },
   "src/utils/randomUUIDPolyfill.js": {
@@ -7655,8 +7655,8 @@
     "semantic_hash": ""
   },
   "tests/productionPaperInk.test.mjs": {
-    "mtime": 1784903815.9282537,
-    "ast_hash": "6ec8101a83e3678096c5650c07aa4545",
+    "mtime": 1784994529.5247412,
+    "ast_hash": "fd0ec88b151da9faaeb5d983d87d9571",
     "semantic_hash": ""
   },
   "tests/prototypeAnnotationGeometry.test.mjs": {
@@ -8290,8 +8290,8 @@
     "semantic_hash": ""
   },
   "src/utils/annotationCreationCommit.js": {
-    "mtime": 1784903815.8546553,
-    "ast_hash": "2eca13aab69c2248c5e6577fe2376be1",
+    "mtime": 1784995139.4088898,
+    "ast_hash": "cc6c44b859312d883d29db910edf49f9",
     "semantic_hash": ""
   },
   "src/utils/bookmarkPageIds.js": {
@@ -10335,8 +10335,8 @@
     "semantic_hash": ""
   },
   "tests/fabricEraserPreviewHandoffMounted.test.mjs": {
-    "mtime": 1784903815.9066973,
-    "ast_hash": "49eed1889f0b73774ecf491c81bdb046",
+    "mtime": 1785009525.8468325,
+    "ast_hash": "e6d3de0486797850b84def345bbd1732",
     "semantic_hash": ""
   },
   "tests/fixtures/real-partial-erase-regeneration.json": {
@@ -10350,8 +10350,8 @@
     "semantic_hash": ""
   },
   "tests/partialEraserComplexity.test.mjs": {
-    "mtime": 1784903815.9146907,
-    "ast_hash": "c306dfc777fa6909170164e713935ded",
+    "mtime": 1785009526.1489017,
+    "ast_hash": "ac75b93ca162f062259750c92235f6a9",
     "semantic_hash": ""
   },
   "tests/phase35-e2e/eraser-permission-harness.mjs": {
@@ -10415,8 +10415,8 @@
     "semantic_hash": ""
   },
   "src/utils/annotationEraseTransaction.js": {
-    "mtime": 1784903815.85568,
-    "ast_hash": "e27dce55ac78f2509d50b939087a093b",
+    "mtime": 1784995612.6955187,
+    "ast_hash": "7cc5435adaddda09baa336695a5c804c",
     "semantic_hash": ""
   },
   "src/utils/counterSeriesMembership.js": {
@@ -10445,8 +10445,8 @@
     "semantic_hash": ""
   },
   "tests/annotationEraseTransaction.test.mjs": {
-    "mtime": 1784903815.8959243,
-    "ast_hash": "23ddf47eb3e4dc0ecfb9a20b7c53175f",
+    "mtime": 1784995612.6977992,
+    "ast_hash": "8eb4c5ed085531e88e375e0b4e314612",
     "semantic_hash": ""
   },
   "tests/eraseHistoryScope.test.mjs": {
@@ -10572,6 +10572,11 @@
   "tests/extremeInkNumericFidelity.test.mjs": {
     "mtime": 1784954258.4255562,
     "ast_hash": "7f0113ca15625875fe20a480d1f3aef7",
+    "semantic_hash": ""
+  },
+  "tests/importedInkSvgClipFidelity.test.mjs": {
+    "mtime": 1784966800.3636518,
+    "ast_hash": "39e61a9fa6843d5d7e9304a61c0c02a3",
     "semantic_hash": ""
   }
 }

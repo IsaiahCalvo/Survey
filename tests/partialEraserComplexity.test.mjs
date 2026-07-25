@@ -6,6 +6,8 @@ import {
   compactCollinearPolygonSet,
   subtractionStayedInsideSubject,
 } from '../src/utils/paperAnnotationGeometry.js';
+import { erasePageAnnotations } from '../src/utils/pageSpaceEraser.js';
+import { createProductionPaperInk } from '../src/utils/productionPaperInk.js';
 import {
   runComplexityScenario,
 } from '../debug/benchmarks/partial-eraser-complexity-child.mjs';
@@ -206,13 +208,14 @@ test('page-space erase matrix stays valid across tools, widths, eraser diameters
           assert.equal(result.identity.collaborator.meta.concurrentRevision, 31);
           assert.equal(result.coverage.startEndpointPreserved, true);
           assert.equal(result.coverage.endEndpointPreserved, true);
-          if (family === 'backtracking' && result.changedCommits === 0) {
-            // The known swept-gesture failure must stay a byte-stable safe
-            // no-op until a separately-proven replacement builder exists.
-            assert.equal(result.vertices, result.checkpoints[1].vertices);
-          } else {
-            assert.equal(result.coverage.lastBiteRemoved, true);
+          if (family === 'backtracking') {
+            assert.equal(
+              result.changedCommits,
+              1,
+              'one backtracking pointer gesture must commit every crossed pass',
+            );
           }
+          assert.equal(result.coverage.lastBiteRemoved, true);
         }
       }
     }
@@ -245,6 +248,100 @@ test('page geometry is independent of presentation zoom', () => {
     assert.equal(normalized.serializedBytes, base.serializedBytes);
     assert.equal(normalized.area, base.area);
   }
+});
+
+test('one backtracking pointer gesture keeps every pass across multiple strokes', () => {
+  const strokeYs = [80, 100, 120];
+  const originals = strokeYs.map((y, index) => createProductionPaperInk({
+    id: `multi-stroke-${index}`,
+    tool: index === 1 ? 'highlighter' : 'pen',
+    points: [{ x: 0, y }, { x: 200, y }],
+    color: '#d11b2d',
+    width: 12,
+    authorId: 'author-1',
+    meta: { permission: 'write', concurrentRevision: index + 1 },
+  }));
+  const controls = [
+    { x: 40, y: 60 },
+    { x: 40, y: 140 },
+    { x: 100, y: 60 },
+    { x: 160, y: 140 },
+  ];
+  const eraserPoints = controls.slice(1).flatMap((end, segment) => {
+    const start = controls[segment];
+    return Array.from({ length: 65 }, (_, index) => {
+      if (segment > 0 && index === 0) return null;
+      const t = index / 64;
+      return {
+        x: start.x + (end.x - start.x) * t,
+        y: start.y + (end.y - start.y) * t,
+      };
+    }).filter(Boolean);
+  });
+  const result = erasePageAnnotations({
+    pageAnnotations: { version: '5.3.0', objects: originals },
+    eraserPoints,
+    eraserRadius: 4,
+    mode: 'partial',
+    canErase: () => true,
+  });
+
+  assert.equal(result.didChange, true);
+  assert.deepEqual(new Set(result.changedIds), new Set(originals.map(({ id }) => id)));
+  assert.deepEqual(result.deletedIds, []);
+  for (let index = 0; index < strokeYs.length; index += 1) {
+    const y = strokeYs[index];
+    const survivor = result.pageAnnotations.objects.find(
+      ({ id }) => id === originals[index].id,
+    );
+    const crossings = [
+      40,
+      40 + ((140 - y) / 80) * 60,
+      100 + ((y - 60) / 80) * 60,
+    ];
+    assert.ok(survivor, `stroke ${index} survives as split geometry`);
+    assert.equal(
+      subtractionStayedInsideSubject(
+        survivor.polygons,
+        originals[index].polygons,
+        originals[index].sourceWidth,
+      ),
+      true,
+      `stroke ${index} creates no geometry outside its source`,
+    );
+    assert.equal(survivor.polygons.length, 4, `stroke ${index} keeps every survivor`);
+    for (const x of crossings) {
+      assert.equal(
+        pointInPolygonSet([x, y], survivor.polygons),
+        false,
+        `stroke ${index} keeps the erased pass at x=${x}`,
+      );
+    }
+    assert.equal(pointInPolygonSet([1, y], survivor.polygons), true);
+    assert.equal(pointInPolygonSet([199, y], survivor.polygons), true);
+  }
+});
+
+test('512-sample backtracking commit stays inside the release budget', () => {
+  const result = runComplexityScenario({
+    family: 'backtracking',
+    count: 1,
+    tool: 'highlighter',
+    width: 20,
+    radius: 10,
+    samples: 512,
+  });
+  assert.equal(result.changedCommits, 1);
+  assert.equal(result.coverage.lastBiteRemoved, true);
+  assert.equal(result.history.undoRestoresOriginal, true);
+  assert.equal(result.history.redoRestoresFinal, true);
+  assert.equal(result.history.redoSurvivesReload, true);
+  assert.equal(result.history.reloadUndoRestoresOriginal, true);
+  assert.equal(result.history.reloadRedoRestoresFinal, true);
+  assert.ok(result.maxCommitMs <= INTERACTIVE_BUDGET.maxCommitMs);
+  assert.ok(result.maxCommitCpuMs <= INTERACTIVE_BUDGET.maxCommitCpuMs);
+  assert.ok(result.vertices <= 1_000);
+  assert.ok(result.serializedBytes <= 100_000);
 });
 
 test('exact collinear compaction preserves holes, even-odd fill, components, and input', () => {

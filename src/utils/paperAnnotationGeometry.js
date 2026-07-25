@@ -470,39 +470,45 @@ const directSweptDiskRing = (points, radius, semicircleSteps) => {
   return ringHasSelfIntersection(ring) ? null : ring;
 };
 
-export function sweptDiskPolygon(points, radius, options = {}) {
-  if (!Number.isFinite(radius) || radius <= 0) return [];
+const sweptDiskSemicircleSteps = (radius, options) => {
+  const requestedArcSteps = Number(options.arcSteps);
+  const curveTolerance = Number(options.curveTolerance);
+  if (Number.isFinite(requestedArcSteps) && requestedArcSteps > 0) {
+    return Math.max(1, Math.ceil(requestedArcSteps));
+  }
+  if (Number.isFinite(curveTolerance) && curveTolerance > 0) {
+    if (curveTolerance >= radius) return DEFAULT_ARC_STEPS;
+    const maximumAngle = 2 * Math.acos(
+      Math.max(-1, Math.min(1, 1 - curveTolerance / radius)),
+    );
+    if (Number.isFinite(maximumAngle) && maximumAngle > 0) {
+      // Retain the historical 18-facet semicircle as the minimum visual
+      // quality, then add facets only when the requested tolerance needs
+      // them (for example a very large imported stroke).
+      return Math.max(DEFAULT_ARC_STEPS, Math.ceil(Math.PI / maximumAngle));
+    }
+  }
+  return DEFAULT_ARC_STEPS;
+};
+
+const compactSweptDiskPoints = (points, radius, options) => {
   // Sampling thresholds are geometry-relative. In particular, do not restore
   // an absolute epsilon here: imported PDF ink can legitimately be many
   // orders of magnitude smaller than one page unit.
   const minDistance = options.minDistance
     ?? Math.max(Number.MIN_VALUE, Math.min(0.35, radius * 0.1));
-  const compacted = compactPoints(points, minDistance).filter((point, index, values) => (
+  return compactPoints(points, minDistance).filter((point, index, values) => (
     index === 0
     || point.x !== values[index - 1].x
     || point.y !== values[index - 1].y
   ));
+};
+
+export function sweptDiskPolygon(points, radius, options = {}) {
+  if (!Number.isFinite(radius) || radius <= 0) return [];
+  const compacted = compactSweptDiskPoints(points, radius, options);
   if (!compacted.length) return [];
-  const requestedArcSteps = Number(options.arcSteps);
-  const curveTolerance = Number(options.curveTolerance);
-  const semicircleSteps = (() => {
-    if (Number.isFinite(requestedArcSteps) && requestedArcSteps > 0) {
-      return Math.max(1, Math.ceil(requestedArcSteps));
-    }
-    if (Number.isFinite(curveTolerance) && curveTolerance > 0) {
-      if (curveTolerance >= radius) return DEFAULT_ARC_STEPS;
-      const maximumAngle = 2 * Math.acos(
-        Math.max(-1, Math.min(1, 1 - curveTolerance / radius)),
-      );
-      if (Number.isFinite(maximumAngle) && maximumAngle > 0) {
-        // Retain the historical 18-facet semicircle as the minimum visual
-        // quality, then add facets only when the requested tolerance needs
-        // them (for example a very large imported stroke).
-        return Math.max(DEFAULT_ARC_STEPS, Math.ceil(Math.PI / maximumAngle));
-      }
-    }
-    return DEFAULT_ARC_STEPS;
-  })();
+  const semicircleSteps = sweptDiskSemicircleSteps(radius, options);
   if (compacted.length === 1) {
     const ring = circlePolygon(compacted[0], radius, semicircleSteps * 2)[0];
     if (
@@ -517,6 +523,65 @@ export function sweptDiskPolygon(points, radius, options = {}) {
   const directRing = directSweptDiskRing(compacted, radius, semicircleSteps);
   if (directRing) return [[directRing]];
   return sweptDiskPolygonByCapsules(compacted, radius, semicircleSteps);
+}
+
+/**
+ * A safe eraser commit representation.
+ *
+ * A simple swept path stays one direct offset polygon. A folded, closed, or
+ * self-overlapping path starts as constant-complexity capsules, then uses a
+ * balanced union tree for the ordinary fast path. Sequential fallback is
+ * set-equivalent:
+ * S \ (C1 ∪ ... ∪ Cn) = (...((S \ C1) \ C2) ... \ Cn).
+ * The balanced union tree retains its children. If construction throws, that
+ * branch stays split; if later subtraction rejects a merged branch, the same
+ * branch is retried through its smaller children. Leaf capsules have a fixed
+ * vertex bound, so one pathological merge cannot invalidate the gesture.
+ */
+function sweptDiskPolygonRecords(points, radius, options = {}) {
+  if (!Number.isFinite(radius) || radius <= 0) return [];
+  const compacted = compactSweptDiskPoints(points, radius, options);
+  if (!compacted.length) return [];
+  const semicircleSteps = sweptDiskSemicircleSteps(radius, options);
+  if (compacted.length === 1) {
+    return [{
+      geometry: normalizeMultiPolygon(
+        circlePolygon(compacted[0], radius, semicircleSteps * 2),
+      ),
+      children: null,
+    }];
+  }
+  const directRing = directSweptDiskRing(compacted, radius, semicircleSteps);
+  if (directRing) return [{ geometry: [[directRing]], children: null }];
+
+  const leaves = compacted.slice(1).map((point, index) => ({
+    geometry: normalizeMultiPolygon(capsulePolygon(
+      compacted[index],
+      point,
+      radius,
+      semicircleSteps,
+    )),
+    children: null,
+  }));
+  const mergeRange = (start, end) => {
+    if (end - start === 1) return [leaves[start]];
+    const middle = start + Math.floor((end - start) / 2);
+    const left = mergeRange(start, middle);
+    const right = mergeRange(middle, end);
+    if (left.length !== 1 || right.length !== 1) return [...left, ...right];
+    try {
+      return [{
+        geometry: normalizeMultiPolygon(union(
+          left[0].geometry,
+          right[0].geometry,
+        )),
+        children: [left[0], right[0]],
+      }];
+    } catch {
+      return [...left, ...right];
+    }
+  };
+  return mergeRange(0, leaves.length);
 }
 
 const midpointCoordinate = (a, b) => {
@@ -2178,28 +2243,149 @@ function removeAttachedBridge({
   return cleaned;
 }
 
-export function eraseAnnotations(annotations, eraserPoints, radius, mode = 'partial') {
-  // Same safety net as the per-annotation ops below: a union throw while
-  // building the swept eraser disk must degrade to "nothing erased", not an
-  // exception escaping into the pointer-up handler.
-  let eraser;
+function subtractPolygonPart(subject, eraser, sourceWidth) {
+  let overlap;
   try {
-    const eraserSampleDistance = Math.max(
-      Number.MIN_VALUE,
-      Math.min(0.1, radius * 0.1),
-    );
-    eraser = sweptDiskPolygon(eraserPoints, radius, { minDistance: eraserSampleDistance });
+    overlap = normalizeMultiPolygon(intersection(subject, eraser));
   } catch (error) {
-    console.warn('Eraser disk construction failed; gesture erased nothing:', error);
-    return { annotations, changedIds: [], deletedIds: [] };
+    return { status: 'failed', stage: 'intersection', error };
   }
-  if (!eraser.length) return { annotations, changedIds: [], deletedIds: [] };
-  const eraserBounds = boundsOfCommands(polygonSetToCommands(eraser));
-  const centerlineSampleDistance = Math.max(
+  if (!overlap.length) return { status: 'unchanged', result: subject };
+
+  let rawResult;
+  try {
+    rawResult = normalizeWeaklySimplePolygonSet(diff(subject, eraser));
+  } catch (error) {
+    return { status: 'failed', stage: 'subtraction', error };
+  }
+
+  const finish = (value) => {
+    let finished = compactCollinearPolygonSet(
+      normalizeWeaklySimplePolygonSet(value),
+    );
+    if (sourceWidth != null) {
+      finished = cullInkSliverPolygons(finished, sourceWidth);
+    }
+    return finished;
+  };
+
+  // Bridge cleanup is optional quality work. On a self-overlapping global
+  // eraser it can attach a patch to the wrong lobe. Validate the refinement
+  // independently and validate the base subtraction only when cleanup throws
+  // or leaves the source. The ordinary path therefore pays for one containment
+  // proof, not two.
+  if (sourceWidth != null) {
+    try {
+      const cleaned = finish(removeAttachedBridge({
+        result: rawResult,
+        eraser,
+        sourceWidth,
+      }));
+      if (subtractionStayedInsideSubject(cleaned, subject, sourceWidth)) {
+        return { status: 'changed', result: cleaned };
+      }
+    } catch {
+      // Fall through to the unrefined subtraction.
+    }
+  }
+
+  try {
+    const baseResult = finish(rawResult);
+    if (!subtractionStayedInsideSubject(baseResult, subject, sourceWidth)) {
+      return { status: 'failed', stage: 'containment' };
+    }
+    return { status: 'changed', result: baseResult };
+  } catch (error) {
+    return { status: 'failed', stage: 'containment', error };
+  }
+}
+
+function subtractPolygonRecord(subject, record, sourceWidth) {
+  const subtraction = subtractPolygonPart(
+    subject,
+    record.geometry,
+    sourceWidth,
+  );
+  if (subtraction.status !== 'failed') {
+    return { ...subtraction, failedLeaves: 0, failedStages: {} };
+  }
+  if (!record.children?.length) {
+    return {
+      status: 'unchanged',
+      result: subject,
+      failedLeaves: 1,
+      failedStages: { [subtraction.stage || 'unknown']: 1 },
+    };
+  }
+
+  let result = subject;
+  let changed = false;
+  let failedLeaves = 0;
+  const failedStages = {};
+  for (const child of record.children) {
+    const childResult = subtractPolygonRecord(result, child, sourceWidth);
+    result = childResult.result;
+    failedLeaves += childResult.failedLeaves;
+    for (const [stage, count] of Object.entries(childResult.failedStages)) {
+      failedStages[stage] = (failedStages[stage] || 0) + count;
+    }
+    changed ||= childResult.status === 'changed';
+    if (!result.length) break;
+  }
+  return {
+    status: changed ? 'changed' : 'unchanged',
+    result,
+    failedLeaves,
+    failedStages,
+  };
+}
+
+function polygonRecordTouches(subject, record) {
+  try {
+    return {
+      touched: normalizeMultiPolygon(
+        intersection(subject, record.geometry),
+      ).length > 0,
+      failedLeaves: 0,
+    };
+  } catch {
+    if (!record.children?.length) {
+      return { touched: false, failedLeaves: 1 };
+    }
+    let failedLeaves = 0;
+    for (const child of record.children) {
+      const result = polygonRecordTouches(subject, child);
+      failedLeaves += result.failedLeaves;
+      if (result.touched) return { touched: true, failedLeaves };
+    }
+    return { touched: false, failedLeaves };
+  }
+}
+
+const mapEraserRecordCoordinates = (record, mapper) => ({
+  geometry: mapPolygonSetCoordinates(record.geometry, mapper),
+  children: record.children?.map((child) => (
+    mapEraserRecordCoordinates(child, mapper)
+  )) || null,
+});
+
+export function eraseAnnotations(annotations, eraserPoints, radius, mode = 'partial') {
+  const eraserSampleDistance = Math.max(
     Number.MIN_VALUE,
     Math.min(0.1, radius * 0.1),
   );
-  const centerlinePoints = compactPoints(eraserPoints, centerlineSampleDistance);
+  const eraserRecords = sweptDiskPolygonRecords(
+    eraserPoints,
+    radius,
+    { minDistance: eraserSampleDistance },
+  );
+  if (!eraserRecords.length) {
+    return { annotations, changedIds: [], deletedIds: [] };
+  }
+  const eraserBounds = boundsOfCommands(polygonSetToCommands(
+    eraserRecords.flatMap((record) => record.geometry),
+  ));
+  const centerlinePoints = compactPoints(eraserPoints, eraserSampleDistance);
   const capsules = centerlinePoints.length <= 1
     ? [{ a: centerlinePoints[0], b: centerlinePoints[0] }]
     : centerlinePoints.slice(1).map((point, index) => ({ a: centerlinePoints[index], b: point }));
@@ -2299,93 +2485,69 @@ export function eraseAnnotations(annotations, eraserPoints, radius, mode = 'part
     const workingSubject = useWorkingFrame
       ? mapPolygonSetCoordinates(subject, toWorking)
       : subject;
-    const workingEraser = useWorkingFrame
-      ? mapPolygonSetCoordinates(eraser, toWorking)
-      : eraser;
+    const workingEraserRecords = useWorkingFrame
+      ? eraserRecords.map((record) => (
+        mapEraserRecordCoordinates(record, toWorking)
+      ))
+      : eraserRecords;
     const workingSourceWidth = sourceWidth == null
       ? null
       : (useWorkingFrame ? sourceWidth / workingScale : sourceWidth);
-    // Boolean-op safety net (2026-07-19 eraser audit): martinez can throw on
-    // degenerate self-touching input (e.g. "Cannot read properties of
-    // undefined (reading 'holeOf')") — previously that escaped and failed the
-    // whole erase. On any throw, keep this annotation unchanged (skip, never
-    // delete-on-error) and let the rest of the gesture proceed.
-    let overlap;
-    try {
-      overlap = normalizeMultiPolygon(intersection(workingSubject, workingEraser));
-    } catch (error) {
-      console.warn('Eraser polygon intersection failed; annotation left unchanged:', annotation.id, error);
-      next.push(annotation);
-      continue;
-    }
-    if (!overlap.length) {
-      next.push(annotation);
-      continue;
-    }
 
     if (annotationEraseMode === 'full') {
-      changedIds.push(annotation.id);
-      deletedIds.push(annotation.id);
+      let touched = false;
+      let failedParts = 0;
+      for (const record of workingEraserRecords) {
+        const hit = polygonRecordTouches(workingSubject, record);
+        failedParts += hit.failedLeaves;
+        if (hit.touched) {
+          touched = true;
+          break;
+        }
+      }
+      if (failedParts) {
+        console.warn(
+          `Eraser polygon hit-test skipped ${failedParts} invalid bounded part(s):`,
+          annotation.id,
+        );
+      }
+      if (touched) {
+        changedIds.push(annotation.id);
+        deletedIds.push(annotation.id);
+      } else {
+        next.push(annotation);
+      }
       continue;
     }
 
-    let result;
-    try {
-      result = normalizeWeaklySimplePolygonSet(diff(workingSubject, workingEraser));
-    } catch (error) {
-      console.warn('Eraser polygon subtraction failed; annotation left unchanged:', annotation.id, error);
-      next.push(annotation);
-      continue;
-    }
-    try {
-      // A filled imported appearance can have no trustworthy centerline width.
-      // Guessing "1 page unit" used to delete legitimate thin pressure-ink
-      // components. Width-relative bridge/sliver cleanup is safe only when the
-      // source explicitly supplies geometry truth; containment validation still
-      // protects unknown-width paths from newly-created outside streaks.
-      if (workingSourceWidth != null) {
-        result = removeAttachedBridge({
-          result,
-          eraser: workingEraser,
-          sourceWidth: workingSourceWidth,
-        });
-      }
-      result = compactCollinearPolygonSet(
-        normalizeWeaklySimplePolygonSet(result),
-      );
-    } catch (error) {
-      // Cleanup is a quality refinement. Boolean/pathological input must not
-      // turn a successful ordinary subtraction into a failed erase.
-      console.warn('Attached ink bridge cleanup failed; base subtraction kept:', annotation.id, error);
-    }
-    if (workingSourceWidth != null) {
-      result = cullInkSliverPolygons(
+    let result = workingSubject;
+    let changed = false;
+    let failedParts = 0;
+    const failedStages = {};
+    for (const record of workingEraserRecords) {
+      const subtraction = subtractPolygonRecord(
         result,
+        record,
         workingSourceWidth,
       );
-    }
-    try {
-      if (!subtractionStayedInsideSubject(
-        result,
-        workingSubject,
-        workingSourceWidth,
-      )) {
-        console.warn(
-          'Eraser polygon subtraction tried to create ink outside its source; annotation left unchanged:',
-          annotation.id,
-        );
-        next.push(annotation);
-        continue;
+      failedParts += subtraction.failedLeaves;
+      for (const [stage, count] of Object.entries(subtraction.failedStages)) {
+        failedStages[stage] = (failedStages[stage] || 0) + count;
       }
-    } catch (error) {
-      // Validation uses the same polygon engine. If malformed geometry makes
-      // the proof unavailable, fail closed: preserve the old mark instead of
-      // ever persisting newly-created streak geometry.
+      if (subtraction.status === 'changed') {
+        result = subtraction.result;
+        changed = true;
+        if (!result.length) break;
+      }
+    }
+    if (failedParts) {
       console.warn(
-        'Eraser polygon subtraction could not prove its result is contained; annotation left unchanged:',
+        `Eraser polygon subtraction skipped ${failedParts} invalid bounded part(s):`,
         annotation.id,
-        error,
+        failedStages,
       );
+    }
+    if (!changed) {
       next.push(annotation);
       continue;
     }
