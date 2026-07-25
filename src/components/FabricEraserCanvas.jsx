@@ -34,6 +34,7 @@ import { nextEraserMutationId } from '../utils/eraserMutationId.js';
 import {
   applyLocalCalloutEraseTargets,
   buildEraseIntent,
+  buildLocalCalloutEraseMutations,
   buildPageEraseTargets,
   classifyEraseObjectKind,
   createEraseStorageKeyResolver,
@@ -1791,6 +1792,14 @@ const FabricEraserCanvas = memo(({
 
     const mutationId = nextEraserMutationId();
     const expectedRevision = mutationId;
+    const calloutObjectMutations = buildLocalCalloutEraseMutations(targets);
+    const committedObjectMutations = [
+      ...result.objectMutations,
+      ...calloutObjectMutations,
+    ];
+    const committedCalloutIds = calloutObjectMutations
+      .map((mutation) => mutation.annotationId)
+      .filter((id) => id != null);
     const diagnostics = {
       source: 'eraser:commit',
       tool: 'eraser',
@@ -1803,10 +1812,10 @@ const FabricEraserCanvas = memo(({
       eraserPointerBounds: getEraserStrokeBounds(eraserPoints, radius),
       candidateAnnotationIds: result.touchedIds,
       rejectedAnnotations: [...rejectedById.values()],
-      touchedAnnotationIds: result.touchedIds,
-      finalDeletedAnnotationIds: result.deletedIds,
+      touchedAnnotationIds: [...new Set([...result.touchedIds, ...committedCalloutIds])],
+      finalDeletedAnnotationIds: [...new Set([...result.deletedIds, ...committedCalloutIds])],
       finalChangedAnnotationIds: result.changedIds,
-      objectMutations: result.objectMutations,
+      objectMutations: committedObjectMutations,
       changedObjectsCount: targets.length,
     };
     if (typeof onEraseIntentRef.current !== 'function') {

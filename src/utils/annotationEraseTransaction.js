@@ -282,6 +282,24 @@ export function applyLocalCalloutEraseTargets(pageAnnotations, targets = []) {
   };
 }
 
+export function buildLocalCalloutEraseMutations(targets = []) {
+  return targets
+    .filter((target) => (
+      target?.domain === 'callout'
+      && target?.operation === 'delete'
+      && Number.isInteger(target.index)
+      && target.index >= 0
+    ))
+    .map((target) => ({
+      index: target.index,
+      storageKey: target.storageKey,
+      annotationId: getEraseObjectId(target.before),
+      base: target.before,
+      deleted: true,
+      survivor: null,
+    }));
+}
+
 export function buildEraseIntent({
   mutationId,
   pageNumber,

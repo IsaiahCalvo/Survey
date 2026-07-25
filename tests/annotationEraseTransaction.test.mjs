@@ -9,6 +9,7 @@ import {
   applyEraseHistoryTransitionOnDoc,
   buildEraseIntent,
   buildEraseHistoryBeforeSnapshot,
+  buildLocalCalloutEraseMutations,
   buildPageEraseTargets,
   commitEraseIntent,
   drainEraseOutbox,
@@ -239,6 +240,21 @@ test('local eraser applies atomic callout deletion to page JSON', () => {
 
   assert.deepEqual(result.objects, [shape]);
   assert.deepEqual(page.objects, [shape, callout], 'source page remains immutable');
+  assert.deepEqual(buildLocalCalloutEraseMutations([{
+    domain: 'callout',
+    storageKey: 'callout-local',
+    kind: 'callout',
+    operation: 'delete',
+    before: callout,
+    index: 1,
+  }]), [{
+    index: 1,
+    storageKey: 'callout-local',
+    annotationId: 'callout-local',
+    base: callout,
+    deleted: true,
+    survivor: null,
+  }]);
 });
 
 function buildIntent({
