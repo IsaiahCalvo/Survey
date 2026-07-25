@@ -10,7 +10,16 @@
  */
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { screenToSVG, normalizeAngle, getInverseScale, constrainToPage, snapAngleToNearest45, clampInverseScale } from '../utils/svgTransformMath';
-import { getAnnotationBBox, getGroupBBox, getLineEndpoints, computeLineBboxCenter, isImportedPath, isAbsoluteCoordPath, translatePathData, scalePathData } from '../utils/svgBoundingBox';
+import { getAnnotationBBox, getGroupBBox, getLineEndpoints, computeLineBboxCenter, isImportedPath, isAbsoluteCoordPath } from '../utils/svgBoundingBox';
+import {
+  applyPageAffineToInkObject,
+  commitInkObjectMove,
+  commitInkObjectResize,
+  getExactInkResizeDimension,
+  isAbsoluteInkGeometry,
+  isCenterOriginInkGeometry,
+  scaleInRotatedFrameAroundMatrix,
+} from '../utils/inkGeometryTransform.js';
 import { deepClone } from '../utils/deepClone.js';
 // Phase 15 LINE-01/02/03 + ARROW-01/02/03 — midpoint drag mode + endpoint
 // auto-revert on collinear geometry. Pure-math from lineGeometry, drag
@@ -1571,14 +1580,25 @@ export function useSVGInteraction({
       // to uniform scale by averaging |sx| and |sy|.
       let sx = affectsX ? (origDx === 0 ? 1 : liveDx / origDx) : 1;
       let sy = affectsY ? (origDy === 0 ? 1 : liveDy / origDy) : 1;
-      // Clamp away from zero so a flip doesn't collapse shapes.
-      if (Math.abs(sx) < 0.05) sx = (sx < 0 ? -0.05 : 0.05);
-      if (Math.abs(sy) < 0.05) sy = (sy < 0 ? -0.05 : 0.05);
+      const groupContainsPath = Object.values(ds.groupMemberOriginals).some(
+        (member) => member?.objType === 'path',
+      );
+      // Imported/legacy paths preserve the exact requested page affine,
+      // including signed sub-0.05 scales. A group containing one must use
+      // that same affine for every member or the group tears apart.
+      if (!groupContainsPath) {
+        if (Math.abs(sx) < 0.05) sx = (sx < 0 ? -0.05 : 0.05);
+        if (Math.abs(sy) < 0.05) sy = (sy < 0 ? -0.05 : 0.05);
+      }
       // Shift = uniform scale on corner handles.
       if (e.shiftKey && affectsX && affectsY) {
         const avg = (Math.abs(sx) + Math.abs(sy)) / 2;
         sx = avg * (sx < 0 ? -1 : 1);
         sy = avg * (sy < 0 ? -1 : 1);
+      }
+      if (groupContainsPath) {
+        if (sx === 0) sx = Number.MIN_VALUE;
+        if (sy === 0) sy = Number.MIN_VALUE;
       }
 
       // Helper: take a WORLD point (wx, wy), rotate into local frame, scale
@@ -1590,6 +1610,17 @@ export function useSVGInteraction({
         const scaledY = anchorLocal.y + (loc.y - anchorLocal.y) * sy;
         return toWorld(scaledX, scaledY);
       };
+      const transformedOrigin = scalePoint(0, 0);
+      const transformedUnitX = scalePoint(1, 0);
+      const transformedUnitY = scalePoint(0, 1);
+      const groupPageMatrix = [
+        transformedUnitX.x - transformedOrigin.x,
+        transformedUnitX.y - transformedOrigin.y,
+        transformedUnitY.x - transformedOrigin.x,
+        transformedUnitY.y - transformedOrigin.y,
+        transformedOrigin.x,
+        transformedOrigin.y,
+      ];
 
       const updatedAnnotations = cloneAnnotations(annotations);
       for (const idxStr of Object.keys(ds.groupMemberOriginals)) {
@@ -1599,7 +1630,15 @@ export function useSVGInteraction({
         if (!target || !orig) continue;
         const objType = orig.objType;
 
-        if (objType === 'line') {
+        if (objType === 'path' && Array.isArray(target.path)) {
+          Object.assign(
+            target,
+            applyPageAffineToInkObject(
+              annotations?.objects?.[idx] || target,
+              groupPageMatrix,
+            ),
+          );
+        } else if (objType === 'line') {
           // UX: 2026-04-21 — Same world-vs-local-endpoint fix as group-
           // rotate. Lines render at (x1 + left, y1 + top); rescaling the
           // raw values around the anchor breaks if obj.left/top is non-
@@ -2144,15 +2183,29 @@ export function useSVGInteraction({
         newScaleY = safeUniformScale;
       }
 
-      // Flip support is scoped to symmetric shapes (rect/circle/ellipse)
-      // where a mirror is visually identical to a non-flipped shape at a
-      // different position. For line/arrow (endpoint-driven), path (pen
-      // strokes), and text (orientation matters), we clamp to positive to
-      // preserve prior behavior until those shape types need real flip
-      // semantics. See FEATURE-BACKLOG.md if the user ever asks for it.
+      // Paths use a page-affine resize and therefore preserve signed scale
+      // exactly, including flips. The authored commands remain byte-stable;
+      // only the object's transform changes. Other orientation-sensitive
+      // types retain the historical positive-scale behavior.
       const typeForFlip = String(objForFlip?.type || '').toLowerCase();
-      const supportsFlip = !isCounterResize && (typeForFlip === 'rect' || typeForFlip === 'circle' || typeForFlip === 'ellipse');
-      if (!supportsFlip) {
+      const isExactPathResize = typeForFlip === 'path';
+      const supportsFlip = !isCounterResize && (
+        typeForFlip === 'rect'
+        || typeForFlip === 'circle'
+        || typeForFlip === 'ellipse'
+        || isExactPathResize
+      );
+      if (isExactPathResize) {
+        // Zero is the only singular affine. Do not impose a visible-size
+        // floor: imported microscopic geometry and legitimate 0.001-scale
+        // resizes must not snap to 10% of their previous size.
+        if (newScaleX === 0) {
+          newScaleX = ds.originalProps.scaleX < 0 ? -Number.MIN_VALUE : Number.MIN_VALUE;
+        }
+        if (newScaleY === 0) {
+          newScaleY = ds.originalProps.scaleY < 0 ? -Number.MIN_VALUE : Number.MIN_VALUE;
+        }
+      } else if (!supportsFlip) {
         newScaleX = Math.max(0.1, newScaleX);
         newScaleY = Math.max(0.1, newScaleY);
       } else {
@@ -2199,6 +2252,15 @@ export function useSVGInteraction({
       const newCenterY = worldAnchorY + worldOffsetY;
       const newLeft = newCenterX - newWidth / 2;
       const newTop = newCenterY - newHeight / 2;
+      const pathResizePageMatrix = typeForFlip === 'path'
+        ? scaleInRotatedFrameAroundMatrix(
+            newScaleX,
+            newScaleY,
+            origAngleDeg,
+            worldAnchorX,
+            worldAnchorY,
+          )
+        : null;
 
       let resizeCommitLeft = newLeft;
       let resizeCommitTop = newTop;
@@ -2217,6 +2279,7 @@ export function useSVGInteraction({
         newLeft: resizeCommitLeft,
         newTop: resizeCommitTop,
         counterNewRadius,
+        pathResizePageMatrix,
       };
       setInteractionState('resizing');
 
@@ -2274,7 +2337,15 @@ export function useSVGInteraction({
       setVisualTransform({
         id: ds.annotationIndex,
         dx: 0, dy: 0,
-        resize: { scaleX: newScaleX, scaleY: newScaleY, left: visualLeft, top: visualTop, anchorX: ds.anchorX, anchorY: ds.anchorY },
+        resize: {
+          scaleX: newScaleX,
+          scaleY: newScaleY,
+          left: visualLeft,
+          top: visualTop,
+          anchorX: ds.anchorX,
+          anchorY: ds.anchorY,
+          pageMatrix: pathResizePageMatrix,
+        },
       });
     } else if (ds.mode === 'rotate') {
       // Compute angle from center of annotation to current pointer position
@@ -2808,17 +2879,17 @@ export function useSVGInteraction({
           // resize/rotate. Requiring left/top to be null-or-zero keeps the
           // old behavior for internal live-drawn strokes while letting
           // normalized imports take the standard translate branch.
-          const isAbsolutePath = isAbsoluteCoordPath(obj);
+          const isAbsolutePath = isAbsoluteInkGeometry(obj);
 
           if (isAbsolutePath) {
-            targetObj.path = translatePathData(targetObj.path, actualDx, actualDy);
-            // For user-drawn paths reset left/top to zero so path data alone
-            // carries position. For imported paths left/top are already null
-            // (the isImportedPath convention) — don't stomp those.
-            if (!isImportedPath(obj)) {
-              targetObj.left = 0;
-              targetObj.top = 0;
-            }
+            Object.assign(
+              targetObj,
+              commitInkObjectMove(
+                targetObj,
+                actualDx,
+                actualDy,
+              ),
+            );
           } else {
             // Standard types (rect/circle/ellipse/line/text): accumulate delta
             // onto originalProps.left/top. Equivalent to the previous
@@ -3042,14 +3113,17 @@ export function useSVGInteraction({
           // require left/top be null-or-zero so normalized imported paths
           // (world-positioned, local path data) take the standard
           // translate-by-delta branch instead of being rebaked.
-          const isAbsolutePath = isAbsoluteCoordPath(obj);
+          const isAbsolutePath = isAbsoluteInkGeometry(obj);
 
           if (isAbsolutePath) {
-            obj.path = translatePathData(obj.path, actualDx, actualDy);
-            if (!isImportedPath(obj)) {
-              obj.left = 0;
-              obj.top = 0;
-            }
+            Object.assign(
+              obj,
+              commitInkObjectMove(
+                obj,
+                actualDx,
+                actualDy,
+              ),
+            );
           } else {
             obj.left = orig.left + actualDx;
             obj.top = orig.top + actualDy;
@@ -3121,20 +3195,40 @@ export function useSVGInteraction({
         }
       }
     } else if (ds.mode === 'resize' && ds.currentResize) {
-      const { newScaleX, newScaleY, newLeft, newTop, counterNewRadius } = ds.currentResize;
+      const {
+        newScaleX,
+        newScaleY,
+        newLeft,
+        newTop,
+        counterNewRadius,
+        pathResizePageMatrix,
+      } = ds.currentResize;
 
       const updatedAnnotations = deepClone(annotations);
       const obj = updatedAnnotations.objects[ds.annotationIndex];
 
-      if (isImportedPath(obj) || isAbsoluteCoordPath(obj)) {
-        // Absolute-coordinate paths scale by rewriting path data around the
-        // anchor. User-drawn pen/highlighter strokes keep left/top at zero so
-        // the path data remains their single source of position.
-        obj.path = scalePathData(obj.path, newScaleX, newScaleY, ds.anchorX, ds.anchorY);
-        if (isAbsoluteCoordPath(obj)) {
-          obj.left = 0;
-          obj.top = 0;
-        }
+      if (
+        String(obj?.type || '').toLowerCase() === 'path'
+        && Array.isArray(pathResizePageMatrix)
+      ) {
+        Object.assign(obj, applyPageAffineToInkObject(obj, pathResizePageMatrix));
+      } else if (isAbsoluteInkGeometry(obj) || isCenterOriginInkGeometry(obj)) {
+        // Page-space ink is first represented through object transform fields
+        // (center origin + scale) so Q/C curves and parallel eraser/export
+        // carriers remain byte-stable. This also scales open-stroke width with
+        // the object, including non-uniform resize.
+        Object.assign(
+          obj,
+          commitInkObjectResize(
+            obj,
+            {
+              scaleX: newScaleX,
+              scaleY: newScaleY,
+              visibleLeft: newLeft,
+              visibleTop: newTop,
+            },
+          ),
+        );
       } else {
         const objType = String(obj.type || '').toLowerCase();
         if (objType === 'line') {
@@ -4051,6 +4145,7 @@ export function useSVGInteraction({
     // capture (a) the unscaled bbox size and (b) the local-space min corner
     // + pathOffset so the commit branch can translate back to object-space.
     const objType = String(obj.type || '').toLowerCase();
+    const isInkPath = objType === 'path' && Array.isArray(obj.path) && obj.path.length > 0;
     const isPointsShape = (objType === 'polygon' || objType === 'polyline')
       && Array.isArray(obj.points) && obj.points.length > 0;
     let pointsLocalMinX = 0, pointsLocalMinY = 0;
@@ -4088,6 +4183,12 @@ export function useSVGInteraction({
     if (objTypeForRaw === 'line') {
       rawWidth = Math.max(1, bbox.width || 0);
       rawHeight = Math.max(1, bbox.height || 0);
+    } else if (isInkPath) {
+      // The path bbox already includes its existing scale/flip/skew in the
+      // pre-rotation frame. Resize handles apply a new page affine to that
+      // visible hull, then QR-decompose it back into object fields.
+      rawWidth = getExactInkResizeDimension(bbox.width);
+      rawHeight = getExactInkResizeDimension(bbox.height);
     } else if (imported || absolutePath) {
       rawWidth = bbox.width;
       rawHeight = bbox.height;
@@ -4127,10 +4228,10 @@ export function useSVGInteraction({
         // has a matching reference point. Commit branch translates back to
         // object-space for polygon/polyline. For line, commit rewrites
         // endpoints directly, so visible-bbox left/top is what we want.
-        left: (imported || absolutePath || isPointsShape || objTypeForRaw === 'line') ? bbox.left : (obj.left ?? 0),
-        top: (imported || absolutePath || isPointsShape || objTypeForRaw === 'line') ? bbox.top : (obj.top ?? 0),
-        scaleX: (imported || absolutePath) ? 1 : (obj.scaleX ?? 1),
-        scaleY: (imported || absolutePath) ? 1 : (obj.scaleY ?? 1),
+        left: (imported || absolutePath || isInkPath || isPointsShape || objTypeForRaw === 'line') ? bbox.left : (obj.left ?? 0),
+        top: (imported || absolutePath || isInkPath || isPointsShape || objTypeForRaw === 'line') ? bbox.top : (obj.top ?? 0),
+        scaleX: (imported || absolutePath || isInkPath) ? 1 : (obj.scaleX ?? 1),
+        scaleY: (imported || absolutePath || isInkPath) ? 1 : (obj.scaleY ?? 1),
         angle: isCounterPin ? (bbox.angle ?? 0) : (obj.angle ?? 0),
         width: rawWidth,
         height: rawHeight,
@@ -4140,6 +4241,7 @@ export function useSVGInteraction({
         // Points-based shapes need these at commit time to convert the
         // visible-space newLeft/newTop back to object-space obj.left/top.
         isPointsShape,
+        isInkPath,
         pointsLocalMinX,
         pointsLocalMinY,
         pointsPathOffsetX,

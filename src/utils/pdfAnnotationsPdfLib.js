@@ -43,6 +43,8 @@ import {
   commandsToPolygonSet,
   normalizeMultiPolygon,
 } from './paperAnnotationGeometry.js';
+import { normalizeOperationalInkPath } from './inkPathNormalization.js';
+import { createInkPathAffine } from './inkGeometryTransform.js';
 // Callout leader arrowheads export via the SAME shared spec the arrow tool,
 // SVG renderer, and canvas painter consume — one home for the head math
 // (buildArrowheadRenderSpec in lineRenderHelpers.js). Pure JS, Node-safe.
@@ -124,6 +126,12 @@ const isEditedPdfImportedObject = (obj) => (
     obj?.pdfImportedEditState === 'edited'
     || obj?.data?.pdfImportedEditState === 'edited'
   )
+);
+
+const getPdfAppearanceCompositeId = (obj) => (
+  obj?.data?.pdfAppearanceCompositeId
+  || obj?.pdfAppearanceCompositeId
+  || null
 );
 
 const getPrintableRegularScope = (obj) => {
@@ -403,9 +411,27 @@ export function buildPdfExportAnnotationPlan({
 } = {}) {
   const diagnostics = emptyExportCounts();
   const items = [];
+  const editedAppearanceCompositeIds = new Set();
+  Object.values(annotationsByPage || {}).forEach((pageData) => {
+    (Array.isArray(pageData?.objects) ? pageData.objects : []).forEach((obj) => {
+      const compositeId = getPdfAppearanceCompositeId(obj);
+      if (compositeId && isEditedPdfImportedObject(obj)) {
+        editedAppearanceCompositeIds.add(compositeId);
+      }
+    });
+  });
 
   const consider = (item, obj) => {
     recordConsidered(diagnostics, item);
+    const appearanceCompositeId = getPdfAppearanceCompositeId(obj);
+    const editedImportedReplacement = (
+      isEditedPdfImportedObject(obj)
+      || (
+        isPdfImportedObject(obj)
+        && appearanceCompositeId
+        && editedAppearanceCompositeIds.has(appearanceCompositeId)
+      )
+    );
 
     if (!pageSizes[String(item.pageNumber)] && !pageSizes[item.pageNumber]) {
       recordSkip(diagnostics, item, 'missing-page-size');
@@ -422,13 +448,13 @@ export function buildPdfExportAnnotationPlan({
       return;
     }
 
-    if (isPdfImportedObject(obj) && !isEditedPdfImportedObject(obj)) {
+    if (isPdfImportedObject(obj) && !editedImportedReplacement) {
       diagnostics.importedNativeCopiesSkipped += 1;
       recordSkip(diagnostics, item, 'imported-pdf-native-preserved');
       return;
     }
 
-    if (isEditedPdfImportedObject(obj)) {
+    if (editedImportedReplacement) {
       diagnostics.editedImportedCopiesExported += 1;
     }
 
@@ -443,7 +469,12 @@ export function buildPdfExportAnnotationPlan({
     }
 
     diagnostics.objectsExported += 1;
-    items.push({ ...item, object: obj });
+    items.push({
+      ...item,
+      object: obj,
+      editedImportedReplacement,
+      appearanceCompositeId,
+    });
   };
 
   Object.entries(annotationsByPage || {}).forEach(([pageKey, pageData]) => {
@@ -568,8 +599,29 @@ const hexToRGB = (hex) => {
 const pdfNumberText = (value) => {
   const numeric = Number(value);
   if (!Number.isFinite(numeric)) return '0';
-  const rounded = Math.abs(numeric) < 1e-8 ? 0 : Number(numeric.toFixed(5));
-  return String(rounded);
+  if (numeric === 0) return '0';
+  const shortest = String(numeric);
+  if (!/[eE]/.test(shortest)) return shortest;
+
+  // PDF content streams do not formally accept exponent notation. Expand
+  // JavaScript's shortest round-trippable representation into plain decimal
+  // instead of rounding tiny/huge authored coordinates to fixed places.
+  const [coefficient, exponentText] = shortest.toLowerCase().split('e');
+  const exponent = Number(exponentText);
+  const negative = coefficient.startsWith('-');
+  const unsigned = negative ? coefficient.slice(1) : coefficient;
+  const dot = unsigned.indexOf('.');
+  const digits = unsigned.replace('.', '');
+  const decimalIndex = (dot >= 0 ? dot : unsigned.length) + exponent;
+  let expanded;
+  if (decimalIndex <= 0) {
+    expanded = `0.${'0'.repeat(-decimalIndex)}${digits}`;
+  } else if (decimalIndex >= digits.length) {
+    expanded = `${digits}${'0'.repeat(decimalIndex - digits.length)}`;
+  } else {
+    expanded = `${digits.slice(0, decimalIndex)}.${digits.slice(decimalIndex)}`;
+  }
+  return negative ? `-${expanded}` : expanded;
 };
 
 const paintAlpha = (paint, opacity = 1) => {
@@ -597,7 +649,448 @@ const isFilledPaperInk = (fabricObj) => Boolean(
 const paperInkPolygons = (fabricObj) => {
   const persisted = normalizeMultiPolygon(fabricObj?.polygons);
   if (persisted.length) return persisted;
-  return commandsToPolygonSet(fabricObj?.path, { fill: true });
+  return commandsToPolygonSet(normalizeOperationalInkPath(fabricObj?.path), { fill: true });
+};
+
+const finiteNumber = (value, fallback = 0) => {
+  const number = Number(value);
+  return Number.isFinite(number) ? number : fallback;
+};
+
+const pathCoordinateBounds = (path, polygons = [], centerline = []) => {
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  const include = (x, y) => {
+    const numericX = Number(x);
+    const numericY = Number(y);
+    if (!Number.isFinite(numericX) || !Number.isFinite(numericY)) return;
+    minX = Math.min(minX, numericX);
+    minY = Math.min(minY, numericY);
+    maxX = Math.max(maxX, numericX);
+    maxY = Math.max(maxY, numericY);
+  };
+  for (const command of normalizeOperationalInkPath(path)) {
+    for (let index = 1; index + 1 < command.length; index += 2) {
+      include(command[index], command[index + 1]);
+    }
+  }
+  if (!Number.isFinite(minX)) {
+    for (const polygon of normalizeMultiPolygon(polygons)) {
+      for (const ring of polygon) {
+        for (const point of ring) include(point?.[0], point?.[1]);
+      }
+    }
+  }
+  if (!Number.isFinite(minX)) {
+    for (const point of centerline || []) include(point?.x, point?.y);
+  }
+  return Number.isFinite(minX) ? { minX, minY, maxX, maxY } : null;
+};
+
+// Match SVGAnnotationLayer's path transform exactly:
+// translate(left/top) → rotate around the scaled path-bounds center →
+// scale → translate(-pathOffset). PDF writers bake this transform once into
+// page-space coordinates because /InkList has no equivalent Fabric transform.
+export const createInkPageTransform = (fabricObj, path, polygons = [], centerline = []) => {
+  const affine = createInkPathAffine(fabricObj, path, { polygons, centerline });
+  const point = (x, y) => {
+    const transformed = affine.point(finiteNumber(x), finiteNumber(y));
+    return [transformed.x, transformed.y];
+  };
+  return {
+    ...affine,
+    point,
+  };
+};
+
+export const transformInkPath = (path, transform) => (
+  normalizeOperationalInkPath(path).map((command) => {
+  if (!Array.isArray(command) || command.length === 0) return command;
+  const transformed = [command[0]];
+  for (let index = 1; index + 1 < command.length; index += 2) {
+    transformed.push(...transform.point(command[index], command[index + 1]));
+  }
+  return transformed;
+  })
+);
+
+const transformInkPolygons = (polygons, transform) => (
+  normalizeMultiPolygon(polygons).map((polygon) => polygon.map((ring) => (
+    ring.map(([x, y]) => transform.point(x, y))
+  )))
+);
+
+const multiplyInkMatrices = (left, right) => {
+  const [a1, b1, c1, d1, e1, f1] = left;
+  const [a2, b2, c2, d2, e2, f2] = right;
+  return [
+    a1 * a2 + c1 * b2,
+    b1 * a2 + d1 * b2,
+    a1 * c2 + c1 * d2,
+    b1 * c2 + d1 * d2,
+    a1 * e2 + c1 * f2 + e1,
+    b1 * e2 + d1 * f2 + f1,
+  ];
+};
+
+const unionInkBounds = (left, right) => {
+  if (!left) return right;
+  if (!right) return left;
+  return {
+    minX: Math.min(left.minX, right.minX),
+    minY: Math.min(left.minY, right.minY),
+    maxX: Math.max(left.maxX, right.maxX),
+    maxY: Math.max(left.maxY, right.maxY),
+  };
+};
+
+const operationalCurveMetrics = (path) => {
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  let current = null;
+  let subpathStart = null;
+  let subpathFirstTangent = null;
+  let previousEndTangent = null;
+  let subpathSegments = 0;
+  const joins = [];
+  const endpoints = [];
+
+  const include = (point) => {
+    if (!point || !Number.isFinite(point[0]) || !Number.isFinite(point[1])) return;
+    minX = Math.min(minX, point[0]);
+    minY = Math.min(minY, point[1]);
+    maxX = Math.max(maxX, point[0]);
+    maxY = Math.max(maxY, point[1]);
+  };
+  const hasCorner = (incoming, outgoing) => {
+    if (!incoming || !outgoing) return false;
+    const normalized = (vector) => {
+      const scale = Math.max(Math.abs(vector[0]), Math.abs(vector[1]));
+      if (scale === 0) return null;
+      const x = vector[0] / scale;
+      const y = vector[1] / scale;
+      const length = Math.hypot(x, y);
+      return length > 0 && Number.isFinite(length)
+        ? [x / length, y / length]
+        : null;
+    };
+    const incomingUnit = normalized(incoming);
+    const outgoingUnit = normalized(outgoing);
+    if (!incomingUnit || !outgoingUnit) return true;
+    const cross = incomingUnit[0] * outgoingUnit[1]
+      - incomingUnit[1] * outgoingUnit[0];
+    const dot = incomingUnit[0] * outgoingUnit[0]
+      + incomingUnit[1] * outgoingUnit[1];
+    return (
+      Math.abs(cross) > Number.EPSILON * 128
+      || dot <= 0
+    );
+  };
+  const finishOpenSubpath = () => {
+    if (subpathSegments > 0 && subpathStart && current) {
+      endpoints.push(subpathStart, current);
+    }
+  };
+  const beginSegment = (startTangent) => {
+    if (subpathSegments > 0 && hasCorner(previousEndTangent, startTangent)) {
+      joins.push(current);
+    }
+    if (subpathSegments === 0) subpathFirstTangent = startTangent;
+    subpathSegments += 1;
+  };
+  const nonzeroTangent = (...candidates) => (
+    candidates.find((candidate) => (
+      Array.isArray(candidate)
+      && Math.hypot(candidate[0], candidate[1]) > 0
+    )) || [0, 0]
+  );
+  const directionBetween = (from, to) => {
+    const direct = [to[0] - from[0], to[1] - from[1]];
+    if (direct.every(Number.isFinite)) return direct;
+    const scale = Math.max(
+      Math.abs(from[0]),
+      Math.abs(from[1]),
+      Math.abs(to[0]),
+      Math.abs(to[1]),
+      Number.MIN_VALUE,
+    );
+    return [
+      to[0] / scale - from[0] / scale,
+      to[1] / scale - from[1] / scale,
+    ];
+  };
+  const lerpNumber = (from, to, t) => {
+    const direct = (1 - t) * from + t * to;
+    if (Number.isFinite(direct)) return direct;
+    const scale = Math.max(Math.abs(from), Math.abs(to), Number.MIN_VALUE);
+    return ((1 - t) * (from / scale) + t * (to / scale)) * scale;
+  };
+  const lerpPoint = (from, to, t) => [
+    lerpNumber(from[0], to[0], t),
+    lerpNumber(from[1], to[1], t),
+  ];
+  const quadraticPoint = (p0, p1, p2, t) => (
+    lerpPoint(lerpPoint(p0, p1, t), lerpPoint(p1, p2, t), t)
+  );
+  const cubicPoint = (p0, p1, p2, p3, t) => {
+    const p01 = lerpPoint(p0, p1, t);
+    const p12 = lerpPoint(p1, p2, t);
+    const p23 = lerpPoint(p2, p3, t);
+    return lerpPoint(lerpPoint(p01, p12, t), lerpPoint(p12, p23, t), t);
+  };
+  const includeQuadraticAxis = (p0, p1, p2, axis) => {
+    const scale = Math.max(
+      Math.abs(p0[axis]),
+      Math.abs(p1[axis]),
+      Math.abs(p2[axis]),
+      Number.MIN_VALUE,
+    );
+    const v0 = p0[axis] / scale;
+    const v1 = p1[axis] / scale;
+    const v2 = p2[axis] / scale;
+    const d0 = v1 - v0;
+    const d1 = v2 - v1;
+    const denominator = d1 - d0;
+    if (denominator === 0) return;
+    const t = -d0 / denominator;
+    if (t <= 0 || t >= 1) return;
+    include(quadraticPoint(p0, p1, p2, t));
+  };
+  const derivativeRoots = (a, b, c) => {
+    const scale = Math.max(Math.abs(a), Math.abs(b), Math.abs(c), Number.MIN_VALUE);
+    const aa = a / scale;
+    const bb = b / scale;
+    const cc = c / scale;
+    if (Math.abs(aa) <= Number.EPSILON * 64) {
+      return Math.abs(bb) <= Number.EPSILON * 64 ? [] : [-cc / bb];
+    }
+    const discriminant = bb * bb - 4 * aa * cc;
+    if (discriminant < 0) return [];
+    const root = Math.sqrt(Math.max(0, discriminant));
+    return [(-bb + root) / (2 * aa), (-bb - root) / (2 * aa)];
+  };
+  const includeCubicAxis = (p0, p1, p2, p3, axis) => {
+    const scale = Math.max(
+      Math.abs(p0[axis]),
+      Math.abs(p1[axis]),
+      Math.abs(p2[axis]),
+      Math.abs(p3[axis]),
+      Number.MIN_VALUE,
+    );
+    const v0 = p0[axis] / scale;
+    const v1 = p1[axis] / scale;
+    const v2 = p2[axis] / scale;
+    const v3 = p3[axis] / scale;
+    const d0 = v1 - v0;
+    const d1 = v2 - v1;
+    const d2 = v3 - v2;
+    for (const t of derivativeRoots(
+      d0 - 2 * d1 + d2,
+      2 * (d1 - d0),
+      d0,
+    )) {
+      if (t <= 0 || t >= 1 || !Number.isFinite(t)) continue;
+      include(cubicPoint(p0, p1, p2, p3, t));
+    }
+  };
+
+  for (const command of path || []) {
+    const op = String(command?.[0] || '').toUpperCase();
+    if (op === 'M') {
+      finishOpenSubpath();
+      current = [finiteNumber(command[1]), finiteNumber(command[2])];
+      subpathStart = current;
+      subpathFirstTangent = null;
+      previousEndTangent = null;
+      subpathSegments = 0;
+      include(current);
+    } else if (op === 'L' && current) {
+      const end = [finiteNumber(command[1]), finiteNumber(command[2])];
+      const tangent = directionBetween(current, end);
+      beginSegment(tangent);
+      include(end);
+      previousEndTangent = tangent;
+      current = end;
+    } else if (op === 'Q' && current) {
+      const control = [finiteNumber(command[1]), finiteNumber(command[2])];
+      const end = [finiteNumber(command[3]), finiteNumber(command[4])];
+      const chord = directionBetween(current, end);
+      const startTangent = nonzeroTangent(
+        directionBetween(current, control),
+        chord,
+      );
+      const endTangent = nonzeroTangent(
+        directionBetween(control, end),
+        chord,
+      );
+      beginSegment(startTangent);
+      includeQuadraticAxis(current, control, end, 0);
+      includeQuadraticAxis(current, control, end, 1);
+      include(end);
+      previousEndTangent = endTangent;
+      current = end;
+    } else if (op === 'C' && current) {
+      const control1 = [finiteNumber(command[1]), finiteNumber(command[2])];
+      const control2 = [finiteNumber(command[3]), finiteNumber(command[4])];
+      const end = [finiteNumber(command[5]), finiteNumber(command[6])];
+      const chord = directionBetween(current, end);
+      const startTangent = nonzeroTangent(
+        directionBetween(current, control1),
+        directionBetween(current, control2),
+        chord,
+      );
+      const endTangent = nonzeroTangent(
+        directionBetween(control2, end),
+        directionBetween(control1, end),
+        chord,
+      );
+      beginSegment(startTangent);
+      includeCubicAxis(current, control1, control2, end, 0);
+      includeCubicAxis(current, control1, control2, end, 1);
+      include(end);
+      previousEndTangent = endTangent;
+      current = end;
+    } else if (op === 'Z' && current && subpathStart) {
+      const tangent = directionBetween(current, subpathStart);
+      if (Math.hypot(tangent[0], tangent[1]) > 0) {
+        beginSegment(tangent);
+        previousEndTangent = tangent;
+        current = subpathStart;
+      }
+      if (hasCorner(previousEndTangent, subpathFirstTangent)) joins.push(subpathStart);
+      subpathSegments = 0;
+      previousEndTangent = null;
+      subpathFirstTangent = null;
+    }
+  }
+  finishOpenSubpath();
+  return Number.isFinite(minX)
+    ? {
+        bounds: { minX, minY, maxX, maxY },
+        joins,
+        endpoints,
+      }
+    : null;
+};
+
+const transformedPaperSourceBounds = (source, matrix) => {
+  if (
+    !source
+    || !Array.isArray(matrix)
+    || matrix.length !== 6
+    || !matrix.every(Number.isFinite)
+  ) return null;
+  const operationalPath = (
+    Array.isArray(source.operationalPath) && source.operationalPath.length > 0
+      ? source.operationalPath
+      : normalizeOperationalInkPath(source.path)
+  );
+  if (!operationalPath.length) return null;
+  const [a, b, c, d, e, f] = matrix;
+  const pagePath = operationalPath.map((command) => {
+    if (!Array.isArray(command) || command.length < 2) return command;
+    const next = [command[0]];
+    for (let index = 1; index + 1 < command.length; index += 2) {
+      const x = finiteNumber(command[index]);
+      const y = finiteNumber(command[index + 1]);
+      next.push(
+        a * x + c * y + e,
+        b * x + d * y + f,
+      );
+    }
+    return next;
+  });
+  const metrics = operationalCurveMetrics(pagePath);
+  if (!metrics) return null;
+  const controlBounds = pathCoordinateBounds(pagePath);
+  const roundOutward = (value, { padX = 0, padY = 0 } = {}) => {
+    let { minX, minY, maxX, maxY } = value;
+    const xScale = Math.max(
+      Math.abs(minX),
+      Math.abs(maxX),
+      Number.MIN_VALUE,
+    );
+    const yScale = Math.max(
+      Math.abs(minY),
+      Math.abs(maxY),
+      Number.MIN_VALUE,
+    );
+    const minNormal = 2 ** -1022;
+    if (controlBounds && xScale < minNormal) {
+      minX = Math.min(minX, controlBounds.minX - padX);
+      maxX = Math.max(maxX, controlBounds.maxX + padX);
+    }
+    if (controlBounds && yScale < minNormal) {
+      minY = Math.min(minY, controlBounds.minY - padY);
+      maxY = Math.max(maxY, controlBounds.maxY + padY);
+    }
+    const guardedXScale = Math.max(Math.abs(minX), Math.abs(maxX), Number.MIN_VALUE);
+    const guardedYScale = Math.max(Math.abs(minY), Math.abs(maxY), Number.MIN_VALUE);
+    const guardX = Math.max(
+      Number.MIN_VALUE,
+      guardedXScale * Number.EPSILON * 16,
+    );
+    const guardY = Math.max(
+      Number.MIN_VALUE,
+      guardedYScale * Number.EPSILON * 16,
+    );
+    return {
+      minX: minX - guardX,
+      minY: minY - guardY,
+      maxX: maxX + guardX,
+      maxY: maxY + guardY,
+    };
+  };
+  if (source.paintMode === 'fill') return roundOutward(metrics.bounds);
+  let bounds = metrics.bounds;
+
+  const halfWidth = Math.max(0, Number(source.strokeWidth) || 0) / 2;
+  const cap = String(source.strokeLineCap || 'round').toLowerCase();
+  const join = String(source.strokeLineJoin || 'round').toLowerCase();
+  const rowScaleX = Math.hypot(a, c);
+  const rowScaleY = Math.hypot(b, d);
+  const basePadX = halfWidth * rowScaleX;
+  const basePadY = halfWidth * rowScaleY;
+  bounds = {
+    minX: bounds.minX - basePadX,
+    minY: bounds.minY - basePadY,
+    maxX: bounds.maxX + basePadX,
+    maxY: bounds.maxY + basePadY,
+  };
+  const includePointPad = (point, factor) => {
+    if (!point) return;
+    bounds = unionInkBounds(bounds, {
+      minX: point[0] - basePadX * factor,
+      minY: point[1] - basePadY * factor,
+      maxX: point[0] + basePadX * factor,
+      maxY: point[1] + basePadY * factor,
+    });
+  };
+  if (cap === 'square') {
+    if (
+      Array.isArray(source.strokeDashArray)
+      && source.strokeDashArray.length > 0
+    ) {
+      const extraFactor = Math.SQRT2 - 1;
+      bounds = {
+        minX: bounds.minX - basePadX * extraFactor,
+        minY: bounds.minY - basePadY * extraFactor,
+        maxX: bounds.maxX + basePadX * extraFactor,
+        maxY: bounds.maxY + basePadY * extraFactor,
+      };
+    } else {
+      for (const endpoint of metrics.endpoints) includePointPad(endpoint, Math.SQRT2);
+    }
+  }
+  if (join === 'miter') {
+    const miterLimit = Math.max(1, Number(source.strokeMiterLimit) || 10);
+    for (const point of metrics.joins) includePointPad(point, miterLimit);
+  }
+  return roundOutward(bounds, { padX: basePadX, padY: basePadY });
 };
 
 const polygonBounds = (polygons) => {
@@ -619,37 +1112,225 @@ const polygonBounds = (polygons) => {
 };
 
 const createFilledPaperInkAnnotation = (pdfDoc, page, fabricObj, pageHeight, options = {}) => {
-  const polygons = paperInkPolygons(fabricObj);
-  const bounds = polygonBounds(polygons);
+  const localPolygons = paperInkPolygons(fabricObj);
+  const transform = createInkPageTransform(
+    fabricObj,
+    fabricObj?.path,
+    localPolygons,
+    fabricObj?.paperCenterline,
+  );
+  const polygons = transformInkPolygons(localPolygons, transform);
+  const appearancePath = transformInkPath(fabricObj?.path, transform);
+  const polygonGeometryBounds = polygonBounds(polygons);
+  const appearancePathBounds = pathCoordinateBounds(appearancePath);
+  const paperSource = fabricObj?.paperSourceStroke;
+  const hasAnalyticPaperSource = Boolean(
+    Array.isArray(paperSource?.path)
+    && paperSource.path.length > 0
+    && Array.isArray(paperSource?.matrix)
+    && paperSource.matrix.length === 6
+    && Array.isArray(fabricObj?.paperEraserCuts)
+    && fabricObj.paperEraserCuts.length > 0
+  );
+  const sourcePageMatrix = hasAnalyticPaperSource
+    ? multiplyInkMatrices(transform.matrix, paperSource.matrix)
+    : null;
+  const sourceBounds = hasAnalyticPaperSource
+    ? transformedPaperSourceBounds(paperSource, sourcePageMatrix)
+    : null;
+  const bounds = unionInkBounds(
+    unionInkBounds(polygonGeometryBounds, appearancePathBounds),
+    sourceBounds,
+  );
   if (!bounds) return null;
 
-  const width = Math.max(0.01, bounds.maxX - bounds.minX);
-  const height = Math.max(0.01, bounds.maxY - bounds.minY);
-  const color = hexToRGB(fabricObj.fill || fabricObj.stroke || '#000000');
-  const alpha = paintAlpha(fabricObj.fill, fabricObj.opacity);
+  const width = Math.max(0, bounds.maxX - bounds.minX);
+  const height = Math.max(0, bounds.maxY - bounds.minY);
+  const sourceIsFill = hasAnalyticPaperSource && paperSource.paintMode === 'fill';
+  const sourcePath = hasAnalyticPaperSource
+    ? (
+        Array.isArray(paperSource.operationalPath)
+        && paperSource.operationalPath.length > 0
+          ? paperSource.operationalPath
+          : normalizeOperationalInkPath(paperSource.path)
+      )
+    : [];
+  const sourcePaint = hasAnalyticPaperSource
+    ? (
+        fabricObj.fill
+        || (sourceIsFill ? paperSource.fill : paperSource.stroke)
+      )
+    : (fabricObj.fill || fabricObj.stroke || '#000000');
+  const color = hexToRGB(sourcePaint || '#000000');
+  const alpha = paintAlpha(sourcePaint, fabricObj.opacity);
   const useMultiply = fabricObj.globalCompositeOperation === 'multiply'
     || fabricObj.tool === 'highlighter';
   const needsGraphicsState = alpha < 0.99999 || useMultiply;
   const content = ['q'];
   if (needsGraphicsState) content.push('/GS0 gs');
-  content.push(`${pdfNumberText(color.red)} ${pdfNumberText(color.green)} ${pdfNumberText(color.blue)} rg`);
+  content.push(
+    `${pdfNumberText(color.red)} ${pdfNumberText(color.green)} ${pdfNumberText(color.blue)} ${
+      hasAnalyticPaperSource && !sourceIsFill ? 'RG' : 'rg'
+    }`,
+  );
 
-  for (const polygon of polygons) {
-    for (const ring of polygon) {
-      if (!Array.isArray(ring) || ring.length < 3) continue;
-      content.push(`${pdfNumberText(ring[0][0] - bounds.minX)} ${pdfNumberText(bounds.maxY - ring[0][1])} m`);
-      const end = ring.length > 1
-        && ring[0][0] === ring[ring.length - 1][0]
-        && ring[0][1] === ring[ring.length - 1][1]
-        ? ring.length - 1
-        : ring.length;
-      for (let index = 1; index < end; index += 1) {
-        content.push(`${pdfNumberText(ring[index][0] - bounds.minX)} ${pdfNumberText(bounds.maxY - ring[index][1])} l`);
+  if (hasAnalyticPaperSource) {
+    const pageCuts = transformInkPolygons(fabricObj.paperEraserCuts, transform);
+    content.push(`0 0 ${pdfNumberText(width)} ${pdfNumberText(height)} re`);
+    for (const polygon of pageCuts) {
+      for (const ring of polygon) {
+        if (!Array.isArray(ring) || ring.length < 3) continue;
+        const end = (
+          ring.length > 1
+          && ring[0][0] === ring.at(-1)[0]
+          && ring[0][1] === ring.at(-1)[1]
+        ) ? ring.length - 1 : ring.length;
+        content.push(
+          `${pdfNumberText(ring[0][0] - bounds.minX)} `
+          + `${pdfNumberText(bounds.maxY - ring[0][1])} m`,
+        );
+        for (let index = 1; index < end; index += 1) {
+          content.push(
+            `${pdfNumberText(ring[index][0] - bounds.minX)} `
+            + `${pdfNumberText(bounds.maxY - ring[index][1])} l`,
+          );
+        }
+        content.push('h');
       }
-      content.push('h');
+    }
+    content.push('W*', 'n');
+
+    const [a, b, c, d, e, f] = sourcePageMatrix;
+    content.push(
+      `${pdfNumberText(a)} ${pdfNumberText(-b)} `
+      + `${pdfNumberText(c)} ${pdfNumberText(-d)} `
+      + `${pdfNumberText(e - bounds.minX)} ${pdfNumberText(bounds.maxY - f)} cm`,
+    );
+    if (!sourceIsFill) {
+      content.push(`${pdfNumberText(Math.max(0, Number(paperSource.strokeWidth) || 0))} w`);
+      const cap = String(paperSource.strokeLineCap || 'round').toLowerCase();
+      const join = String(paperSource.strokeLineJoin || 'round').toLowerCase();
+      content.push(`${cap === 'round' ? 1 : cap === 'square' ? 2 : 0} J`);
+      content.push(`${join === 'round' ? 1 : join === 'bevel' ? 2 : 0} j`);
+      content.push(`${pdfNumberText(Math.max(1, Number(paperSource.strokeMiterLimit) || 10))} M`);
+      const dash = Array.isArray(paperSource.strokeDashArray)
+        ? paperSource.strokeDashArray.map((value) => Math.max(0, Number(value) || 0))
+        : [];
+      content.push(
+        `[${dash.map(pdfNumberText).join(' ')}] `
+        + `${pdfNumberText(Number(paperSource.strokeDashOffset) || 0)} d`,
+      );
+    }
+
+    let cursor = null;
+    let subpathStart = null;
+    for (const command of sourcePath) {
+      if (command[0] === 'M') {
+        cursor = [finiteNumber(command[1]), finiteNumber(command[2])];
+        subpathStart = cursor;
+        content.push(`${pdfNumberText(cursor[0])} ${pdfNumberText(cursor[1])} m`);
+      } else if (command[0] === 'L' && cursor) {
+        cursor = [finiteNumber(command[1]), finiteNumber(command[2])];
+        content.push(`${pdfNumberText(cursor[0])} ${pdfNumberText(cursor[1])} l`);
+      } else if (command[0] === 'Q' && cursor) {
+        const control = [finiteNumber(command[1]), finiteNumber(command[2])];
+        const end = [finiteNumber(command[3]), finiteNumber(command[4])];
+        const control1 = [
+          cursor[0] + (2 / 3) * (control[0] - cursor[0]),
+          cursor[1] + (2 / 3) * (control[1] - cursor[1]),
+        ];
+        const control2 = [
+          end[0] + (2 / 3) * (control[0] - end[0]),
+          end[1] + (2 / 3) * (control[1] - end[1]),
+        ];
+        content.push(
+          `${pdfNumberText(control1[0])} ${pdfNumberText(control1[1])} `
+          + `${pdfNumberText(control2[0])} ${pdfNumberText(control2[1])} `
+          + `${pdfNumberText(end[0])} ${pdfNumberText(end[1])} c`,
+        );
+        cursor = end;
+      } else if (command[0] === 'C' && cursor) {
+        const end = [finiteNumber(command[5]), finiteNumber(command[6])];
+        content.push(
+          `${pdfNumberText(command[1])} ${pdfNumberText(command[2])} `
+          + `${pdfNumberText(command[3])} ${pdfNumberText(command[4])} `
+          + `${pdfNumberText(end[0])} ${pdfNumberText(end[1])} c`,
+        );
+        cursor = end;
+      } else if (command[0] === 'Z') {
+        content.push('h');
+        cursor = subpathStart;
+      }
+    }
+    content.push(
+      sourceIsFill
+        ? (paperSource.fillRule === 'evenodd' ? 'f*' : 'f')
+        : 'S',
+    );
+  } else if (appearancePath.length > 0) {
+    const toFormX = (x) => finiteNumber(x) - bounds.minX;
+    const toFormY = (y) => bounds.maxY - finiteNumber(y);
+    let cursor = null;
+    let subpathStart = null;
+    for (const command of appearancePath) {
+      if (command[0] === 'M') {
+        cursor = [toFormX(command[1]), toFormY(command[2])];
+        subpathStart = cursor;
+        content.push(`${pdfNumberText(cursor[0])} ${pdfNumberText(cursor[1])} m`);
+      } else if (command[0] === 'L' && cursor) {
+        cursor = [toFormX(command[1]), toFormY(command[2])];
+        content.push(`${pdfNumberText(cursor[0])} ${pdfNumberText(cursor[1])} l`);
+      } else if (command[0] === 'Q' && cursor) {
+        const control = [toFormX(command[1]), toFormY(command[2])];
+        const end = [toFormX(command[3]), toFormY(command[4])];
+        const control1 = [
+          cursor[0] + (2 / 3) * (control[0] - cursor[0]),
+          cursor[1] + (2 / 3) * (control[1] - cursor[1]),
+        ];
+        const control2 = [
+          end[0] + (2 / 3) * (control[0] - end[0]),
+          end[1] + (2 / 3) * (control[1] - end[1]),
+        ];
+        content.push(
+          `${pdfNumberText(control1[0])} ${pdfNumberText(control1[1])} `
+          + `${pdfNumberText(control2[0])} ${pdfNumberText(control2[1])} `
+          + `${pdfNumberText(end[0])} ${pdfNumberText(end[1])} c`,
+        );
+        cursor = end;
+      } else if (command[0] === 'C' && cursor) {
+        const end = [toFormX(command[5]), toFormY(command[6])];
+        content.push(
+          `${pdfNumberText(toFormX(command[1]))} ${pdfNumberText(toFormY(command[2]))} `
+          + `${pdfNumberText(toFormX(command[3]))} ${pdfNumberText(toFormY(command[4]))} `
+          + `${pdfNumberText(end[0])} ${pdfNumberText(end[1])} c`,
+        );
+        cursor = end;
+      } else if (command[0] === 'Z') {
+        content.push('h');
+        cursor = subpathStart;
+      }
+    }
+  } else {
+    for (const polygon of polygons) {
+      for (const ring of polygon) {
+        if (!Array.isArray(ring) || ring.length < 3) continue;
+        content.push(`${pdfNumberText(ring[0][0] - bounds.minX)} ${pdfNumberText(bounds.maxY - ring[0][1])} m`);
+        const end = ring.length > 1
+          && ring[0][0] === ring[ring.length - 1][0]
+          && ring[0][1] === ring[ring.length - 1][1]
+          ? ring.length - 1
+          : ring.length;
+        for (let index = 1; index < end; index += 1) {
+          content.push(`${pdfNumberText(ring[index][0] - bounds.minX)} ${pdfNumberText(bounds.maxY - ring[index][1])} l`);
+        }
+        content.push('h');
+      }
     }
   }
-  content.push('f*', 'Q');
+  if (!hasAnalyticPaperSource) {
+    content.push(fabricObj?.fillRule === 'nonzero' ? 'f' : 'f*');
+  }
+  content.push('Q');
 
   const resources = {};
   if (needsGraphicsState) {
@@ -675,12 +1356,14 @@ const createFilledPaperInkAnnotation = (pdfDoc, page, fabricObj, pageHeight, opt
     && Array.isArray(fabricObj.paperCenterline)
     && fabricObj.paperCenterline.length > 0;
   const fallbackPaths = useCenterlineFallback
-    ? [fabricObj.paperCenterline.map((point) => [point.x, point.y])]
+    ? [fabricObj.paperCenterline.map((point) => transform.point(point.x, point.y))]
     : polygons.flatMap((polygon) => polygon);
   const inkListArray = pdfDoc.context.obj(fallbackPaths.map((path) => (
     path.flatMap(([x, y]) => [PDFNumber.of(x), PDFNumber.of(pageHeight - y)])
   )));
-  const fallbackWidth = useCenterlineFallback ? Number(fabricObj.sourceWidth || 1) : 0;
+  const fallbackWidth = useCenterlineFallback
+    ? Number(fabricObj.sourceWidth || 1) * transform.strokeScale
+    : 0;
   const annotationDict = {
     Type: 'Annot',
     Subtype: 'Ink',
@@ -698,6 +1381,7 @@ const createFilledPaperInkAnnotation = (pdfDoc, page, fabricObj, pageHeight, opt
     Contents: PDFString.of(''),
     P: page.ref,
   };
+  if (options.name) annotationDict.NM = PDFString.of(String(options.name));
   applyAppAnnotationMetadataToDict(annotationDict, options);
   return pdfDoc.context.register(pdfDoc.context.obj(annotationDict));
 };
@@ -705,19 +1389,22 @@ const createFilledPaperInkAnnotation = (pdfDoc, page, fabricObj, pageHeight, opt
 /**
  * Convert Fabric.js path to PDF Ink annotation
  */
-const createInkAnnotation = (pdfDoc, page, fabricObj, pageHeight, options = {}) => {
+export const createInkAnnotation = (pdfDoc, page, fabricObj, pageHeight, options = {}) => {
   try {
     if (isFilledPaperInk(fabricObj)) {
       return createFilledPaperInkAnnotation(pdfDoc, page, fabricObj, pageHeight, options);
     }
-    const pathData = fabricObj.path;
-    if (!pathData || pathData.length === 0) {
+    const localPathData = normalizeOperationalInkPath(fabricObj.path);
+    if (!localPathData || localPathData.length === 0) {
       return null;
     }
+    const transform = createInkPageTransform(fabricObj, localPathData);
+    const pathData = transformInkPath(localPathData, transform);
 
     // Build InkList - array of arrays of coordinates
     const inkList = [];
     let currentPath = [];
+    let currentPathStart = null;
 
     pathData.forEach(cmd => {
       const command = cmd[0];
@@ -729,6 +1416,7 @@ const createInkAnnotation = (pdfDoc, page, fabricObj, pageHeight, options = {}) 
         }
         // Add point (flip Y coordinate for PDF)
         currentPath.push(cmd[1], pageHeight - cmd[2]);
+        currentPathStart = [cmd[1], pageHeight - cmd[2]];
       } else if (command === 'L') {
         // Line - add point
         currentPath.push(cmd[1], pageHeight - cmd[2]);
@@ -738,6 +1426,12 @@ const createInkAnnotation = (pdfDoc, page, fabricObj, pageHeight, options = {}) 
       } else if (command === 'C') {
         // Cubic bezier - use end point
         currentPath.push(cmd[5], pageHeight - cmd[6]);
+      } else if (command === 'Z' && currentPathStart) {
+        const lastX = currentPath[currentPath.length - 2];
+        const lastY = currentPath[currentPath.length - 1];
+        if (lastX !== currentPathStart[0] || lastY !== currentPathStart[1]) {
+          currentPath.push(...currentPathStart);
+        }
       }
     });
 
@@ -792,40 +1486,76 @@ const createInkAnnotation = (pdfDoc, page, fabricObj, pageHeight, options = {}) 
     // (y-down) points map via (appMaxY - y) — do NOT pre-flip with getPdfY
     // (that lands the stroke outside the BBox because it flips around the
     // PAGE height, not the annotation's own bounds).
-    const strokeWidth = Number(fabricObj.strokeWidth) || 1;
+    const isPdfStrokeHairline = (
+      fabricObj?.pdfStrokeHairline === true
+      || fabricObj?.data?.pdfStrokeHairline === true
+    );
+    const localStrokeWidth = isPdfStrokeHairline
+      ? 0
+      : (Number(fabricObj.strokeWidth) || 1);
+    const strokeWidth = isPdfStrokeHairline
+      ? 0
+      : localStrokeWidth * transform.strokeScale;
     const alpha = paintAlpha(fabricObj.stroke, fabricObj.opacity);
-    // Half-stroke pad so the stroke's own width never clips at the BBox/Rect
-    // edge in strict viewers.
-    const pad = strokeWidth / 2;
+    // Keep the complete affine matrix in the appearance stream. Baking only
+    // the centerline plus one scalar width loses nonuniform resize geometry.
+    // The conservative max-axis pad prevents that transformed stroke from
+    // clipping while leaving /BBox and /Rect at a 1:1 mapping.
+    const pad = isPdfStrokeHairline
+      ? 0.5
+      : localStrokeWidth * transform.maxScale / 2;
     const appMinX = minX;
     const appMaxY = pageHeight - minY; // largest app-space (y-down) y
-    const toFormX = (x) => (Number(x) || 0) - appMinX + pad;
-    const toFormY = (y) => (appMaxY - (Number(y) || 0)) + pad;
+    const [a, b, c, d, e, f] = transform.matrix;
+    const formMatrix = [
+      a,
+      -b,
+      c,
+      -d,
+      e - appMinX + pad,
+      appMaxY - f + pad,
+    ];
     const n = pdfNumberText;
     const apContent = ['q'];
     if (alpha < 0.99999) apContent.push('/GS0 gs');
+    const cap = String(fabricObj.strokeLineCap || 'round').toLowerCase();
+    const join = String(fabricObj.strokeLineJoin || 'round').toLowerCase();
+    const capCode = cap === 'butt' ? 0 : (cap === 'square' ? 2 : 1);
+    const joinCode = join === 'miter' ? 0 : (join === 'bevel' ? 2 : 1);
+    const dash = Array.isArray(fabricObj.strokeDashArray)
+      ? fabricObj.strokeDashArray.map((value) => Math.max(0, finiteNumber(value)))
+      : [];
     apContent.push(
       `${n(color.red)} ${n(color.green)} ${n(color.blue)} RG`,
-      `${n(strokeWidth)} w`,
-      '1 J',
-      '1 j',
+      `${n(localStrokeWidth)} w`,
+      `${capCode} J`,
+      `${joinCode} j`,
+      ...(joinCode === 0
+        ? [`${n(Math.max(1, finiteNumber(fabricObj.strokeMiterLimit, 10)))} M`]
+        : []),
+      ...(dash.length
+        ? [`[${dash.map(n).join(' ')}] ${n(finiteNumber(fabricObj.strokeDashOffset))} d`]
+        : []),
+      `${formMatrix.map(n).join(' ')} cm`,
     );
     let formCursor = null;
-    pathData.forEach((cmd) => {
+    let formSubpathStart = null;
+    localPathData.forEach((cmd) => {
       const command = cmd[0];
       if (command === 'M') {
-        formCursor = [toFormX(cmd[1]), toFormY(cmd[2])];
+        formCursor = [finiteNumber(cmd[1]), finiteNumber(cmd[2])];
+        formSubpathStart = formCursor;
         apContent.push(`${n(formCursor[0])} ${n(formCursor[1])} m`);
       } else if (command === 'L' && formCursor) {
-        formCursor = [toFormX(cmd[1]), toFormY(cmd[2])];
+        formCursor = [finiteNumber(cmd[1]), finiteNumber(cmd[2])];
         apContent.push(`${n(formCursor[0])} ${n(formCursor[1])} l`);
       } else if (command === 'Q' && formCursor) {
         // PDF has no quadratic operator — exact cubic elevation of the
-        // quadratic (affine-safe, so converting after the flip is fine).
-        const qx = toFormX(cmd[1]);
-        const qy = toFormY(cmd[2]);
-        const ex = toFormX(cmd[3]);
-        const ey = toFormY(cmd[4]);
+        // quadratic. The appearance matrix transforms the resulting cubic.
+        const qx = finiteNumber(cmd[1]);
+        const qy = finiteNumber(cmd[2]);
+        const ex = finiteNumber(cmd[3]);
+        const ey = finiteNumber(cmd[4]);
         const c1x = formCursor[0] + (2 / 3) * (qx - formCursor[0]);
         const c1y = formCursor[1] + (2 / 3) * (qy - formCursor[1]);
         const c2x = ex + (2 / 3) * (qx - ex);
@@ -833,12 +1563,15 @@ const createInkAnnotation = (pdfDoc, page, fabricObj, pageHeight, options = {}) 
         apContent.push(`${n(c1x)} ${n(c1y)} ${n(c2x)} ${n(c2y)} ${n(ex)} ${n(ey)} c`);
         formCursor = [ex, ey];
       } else if (command === 'C' && formCursor) {
-        const ex = toFormX(cmd[5]);
-        const ey = toFormY(cmd[6]);
+        const ex = finiteNumber(cmd[5]);
+        const ey = finiteNumber(cmd[6]);
         apContent.push(
-          `${n(toFormX(cmd[1]))} ${n(toFormY(cmd[2]))} ${n(toFormX(cmd[3]))} ${n(toFormY(cmd[4]))} ${n(ex)} ${n(ey)} c`,
+          `${n(cmd[1])} ${n(cmd[2])} ${n(cmd[3])} ${n(cmd[4])} ${n(ex)} ${n(ey)} c`,
         );
         formCursor = [ex, ey];
+      } else if (command === 'Z' && formCursor) {
+        apContent.push('h');
+        formCursor = formSubpathStart;
       }
     });
     apContent.push('S', 'Q');
@@ -854,8 +1587,8 @@ const createInkAnnotation = (pdfDoc, page, fabricObj, pageHeight, options = {}) 
       BBox: [
         0,
         0,
-        Math.max(0.01, (maxX - minX) + strokeWidth),
-        Math.max(0.01, (maxY - minY) + strokeWidth),
+        Math.max(0, (maxX - minX) + 2 * pad),
+        Math.max(0, (maxY - minY) + 2 * pad),
       ],
       Resources: apResources,
     });
@@ -870,12 +1603,13 @@ const createInkAnnotation = (pdfDoc, page, fabricObj, pageHeight, options = {}) 
       Rect: [minX - pad, minY - pad, maxX + pad, maxY + pad],
       InkList: inkListArray,
       C: [color.red, color.green, color.blue],
-      Border: [0, 0, fabricObj.strokeWidth || 1],
+      Border: [0, 0, strokeWidth],
       AP: pdfDoc.context.obj({ N: appearanceRef }),
       Contents: PDFString.of(''),
       P: page.ref, // Reference to page
     };
 
+    if (options.name) annotationDict.NM = PDFString.of(String(options.name));
     applyAppAnnotationMetadataToDict(annotationDict, options);
 
     return pdfDoc.context.register(pdfDoc.context.obj(annotationDict));
@@ -2706,6 +3440,22 @@ export const savePDFWithAnnotationsPdfLib = async (pdfFile, annotationsByPage, p
     }));
     const successfulEditedNativeRemovalRequests = [];
     const pendingAnnotationRefs = [];
+    const editedCompositeExpectedItemCounts = new Map();
+    const successfulEditedCompositeItemCounts = new Map();
+    const editedCompositeRemovalRequests = new Map();
+    const compositeExportKeyForItem = (item) => (
+      item?.editedImportedReplacement && item?.appearanceCompositeId
+        ? `${Number(item.pageNumber)}:${String(item.appearanceCompositeId)}`
+        : null
+    );
+    exportPlan.items.forEach((item) => {
+      const compositeExportKey = compositeExportKeyForItem(item);
+      if (!compositeExportKey) return;
+      editedCompositeExpectedItemCounts.set(
+        compositeExportKey,
+        (editedCompositeExpectedItemCounts.get(compositeExportKey) || 0) + 1,
+      );
+    });
 
     exportPlan.items.forEach((item) => {
       const pageNumStr = String(item.pageNumber);
@@ -2753,7 +3503,7 @@ export const savePDFWithAnnotationsPdfLib = async (pdfFile, annotationsByPage, p
       // generic fabric shape (Highlight/Text/Caret), re-emit that subtype so
       // the re-exported file keeps the annotation's real identity. All other
       // objects fall through to the fabric-type switch below.
-      const editedImportSubtypeWriter = isEditedPdfImportedObject(obj)
+      const editedImportSubtypeWriter = item.editedImportedReplacement
         ? EDITED_IMPORT_SUBTYPE_WRITERS[obj?.pdfAnnotationType || obj?.data?.pdfAnnotationType]
         : null;
 
@@ -2817,9 +3567,15 @@ export const savePDFWithAnnotationsPdfLib = async (pdfFile, annotationsByPage, p
 
       const refsToPush = Array.isArray(annotRefs) ? annotRefs : (annotRef ? [annotRef] : []);
       if (refsToPush.length > 0) {
-        pendingAnnotationRefs.push({ annots, refs: refsToPush });
-        if (isEditedPdfImportedObject(obj)) {
-          successfulEditedNativeRemovalRequests.push({
+        const compositeExportKey = compositeExportKeyForItem(item);
+        pendingAnnotationRefs.push({
+          annots,
+          refs: refsToPush,
+          item,
+          compositeExportKey,
+        });
+        if (item.editedImportedReplacement) {
+          const removalRequest = {
             kind: 'edited',
             pageNumber: Number(item.pageNumber),
             pdfAnnotationId: obj?.pdfAnnotationId,
@@ -2828,13 +3584,32 @@ export const savePDFWithAnnotationsPdfLib = async (pdfFile, annotationsByPage, p
               obj?.data?.pdfNativeAnnotationIdentity
               || obj?.pdfNativeAnnotationIdentity
               || null,
-          });
+          };
+          if (compositeExportKey) {
+            successfulEditedCompositeItemCounts.set(
+              compositeExportKey,
+              (successfulEditedCompositeItemCounts.get(compositeExportKey) || 0) + 1,
+            );
+            if (!editedCompositeRemovalRequests.has(compositeExportKey)) {
+              editedCompositeRemovalRequests.set(compositeExportKey, removalRequest);
+            }
+          } else {
+            successfulEditedNativeRemovalRequests.push(removalRequest);
+          }
         }
         totalAnnotations += refsToPush.length;
         exportDiagnostics.pdfAnnotationsAdded += refsToPush.length;
       } else {
         recordSkip(exportDiagnostics, item, 'pdf-annotation-create-failed');
       }
+    });
+
+    const completeEditedCompositeKeys = new Set();
+    editedCompositeExpectedItemCounts.forEach((expectedCount, compositeExportKey) => {
+      if (successfulEditedCompositeItemCounts.get(compositeExportKey) !== expectedCount) return;
+      completeEditedCompositeKeys.add(compositeExportKey);
+      const removalRequest = editedCompositeRemovalRequests.get(compositeExportKey);
+      if (removalRequest) successfulEditedNativeRemovalRequests.push(removalRequest);
     });
 
     applyNativePdfAnnotationRemovalPlan({
@@ -2845,7 +3620,21 @@ export const savePDFWithAnnotationsPdfLib = async (pdfFile, annotationsByPage, p
       ],
       exportDiagnostics,
     });
-    pendingAnnotationRefs.forEach(({ annots, refs }) => {
+    pendingAnnotationRefs.forEach(({
+      annots,
+      refs,
+      item,
+      compositeExportKey,
+    }) => {
+      if (
+        compositeExportKey
+        && !completeEditedCompositeKeys.has(compositeExportKey)
+      ) {
+        totalAnnotations -= refs.length;
+        exportDiagnostics.pdfAnnotationsAdded -= refs.length;
+        recordSkip(exportDiagnostics, item, 'pdf-appearance-composite-incomplete');
+        return;
+      }
       refs.forEach((ref) => annots.push(ref));
     });
 

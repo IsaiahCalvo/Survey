@@ -3065,10 +3065,14 @@ const LANE_BASE_GEOMETRY_KEYS = new Set([
   'width',
   'height',
   'pathOffset',
+  'inkGeometrySpace',
+  'inkGeometryOrigin',
   'paperCenterline',
   'paperCenterlineRuns',
   'paperInkGeometry',
   'paperEraserGeometry',
+  'paperSourceStroke',
+  'paperEraserCuts',
   'sourceWidth',
   'strokeWidth',
 ]);
@@ -3122,7 +3126,20 @@ function mergeLaneOwnedNormalEdit(stableBase, previousVisible, desiredVisible) {
     && desiredBaseTransform
     && !mapValueEqual(previousBaseTransform, desiredBaseTransform)
   ) {
-    for (const key of ['left', 'top', 'scaleX', 'scaleY', 'angle', 'pathOffset']) {
+    for (const key of [
+      'left',
+      'top',
+      'scaleX',
+      'scaleY',
+      'angle',
+      'skewX',
+      'skewY',
+      'flipX',
+      'flipY',
+      'originX',
+      'originY',
+      'pathOffset',
+    ]) {
       if (Object.prototype.hasOwnProperty.call(desiredBaseTransform, key)) {
         nextBase[key] = structuredClone(desiredBaseTransform[key]);
       } else {

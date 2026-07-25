@@ -16,7 +16,9 @@ export const PDF_APP_ANNOTATION_METADATA_VERSION = 1;
 export const PDF_APP_LAYER_STATE_KEY = 'SurveyAppLayerState';
 export const PDF_APP_LAYER_STATE_VERSION = 1;
 const DEFAULT_METADATA_ARRAY_LIMIT = 500;
-const GEOMETRY_METADATA_ARRAY_LIMIT = 50000;
+// Exact annotation geometry is source data, not a preview. Truncating a long
+// path silently changes its final endpoint after PDF export/reimport.
+const GEOMETRY_METADATA_ARRAY_LIMIT = Number.POSITIVE_INFINITY;
 
 const DATA_ALLOWLIST = [
   'id',
@@ -29,6 +31,17 @@ const DATA_ALLOWLIST = [
   'isSurveyHighlight',
   'isSurveyMarker',
   'pdfInkRenderMode',
+  'pdfStrokeHairline',
+  'pdfInkSourceGeometry',
+  'pdfInkPresentationGeometry',
+  'groupId',
+  'pdfAppearanceCompositeId',
+  'pdfAppearanceSourceAnnotationId',
+  'pdfAppearanceLayerIndex',
+  'pdfAppearancePaintOperationIndex',
+  'pdfAppearanceLayerKind',
+  'inkGeometrySpace',
+  'inkGeometryOrigin',
   'pdfLineEndings',
   'pdfIntent',
   'pdfCalloutPoints',
@@ -75,18 +88,31 @@ const GEOMETRY_KEYS = [
   'scaleX',
   'scaleY',
   'angle',
+  'flipX',
+  'flipY',
+  'skewX',
+  'skewY',
+  'originX',
+  'originY',
+  'pathOffset',
   'x1',
   'y1',
   'x2',
   'y2',
   'points',
   'path',
+  'cmds',
   'polygons',
   'paperCenterline',
   'paperCenterlineRuns',
   'sourceWidth',
   'paperInkGeometry',
   'paperEraserGeometry',
+  'paperSourceStroke',
+  'paperEraserCuts',
+  'paperEraserBaseTransform',
+  'inkGeometrySpace',
+  'inkGeometryOrigin',
   'text',
   'lineEnding1',
   'lineEnding2',
@@ -140,7 +166,17 @@ function pickData(data) {
   if (!data || typeof data !== 'object') return {};
   const out = {};
   DATA_ALLOWLIST.forEach((key) => {
-    if (data[key] !== undefined) out[key] = jsonSafe(data[key]);
+    if (data[key] !== undefined) {
+      const isGeometryCarrier = (
+        key === 'pdfInkSourceGeometry'
+        || key === 'pdfInkPresentationGeometry'
+      );
+      out[key] = jsonSafe(
+        data[key],
+        0,
+        isGeometryCarrier ? GEOMETRY_METADATA_ARRAY_LIMIT : DEFAULT_METADATA_ARRAY_LIMIT,
+      );
+    }
   });
   return out;
 }

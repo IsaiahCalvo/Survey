@@ -1,11 +1,15 @@
 import {
   boundsOfCommands,
+  commandsToPolylines,
   commandsToPolygonSet,
   eraseAnnotations,
+  filledOutlineCommandsToPolygonSet,
   intersectPolygonSets,
   normalizeMultiPolygon,
   polygonSetToCommands,
+  roundCircleStepCount,
 } from './paperAnnotationGeometry.js';
+import { diff as polygonDifference, union } from 'martinez-polygon-clipping';
 import {
   eraserStrokeTouchesObject,
   getEraserCandidateId,
@@ -15,8 +19,9 @@ import {
   getAnnotationStorageKey,
   setAnnotationStorageKey,
 } from './annotationStorageIdentity.js';
-
-const EPSILON = 1e-7;
+import { normalizeOperationalInkPath } from './inkPathNormalization.js';
+import { createInkPathAffine } from './inkGeometryTransform.js';
+import { materializeDashedInkPath } from './paperInkEraser.js';
 
 const numberOr = (value, fallback = 0) => {
   const numeric = Number(value);
@@ -33,125 +38,14 @@ const hasVisiblePaint = (value) => {
     && normalized !== 'rgba(0, 0, 0, 0)';
 };
 
-const commandEndpoint = (command) => {
-  if (!Array.isArray(command) || command.length < 3) return null;
-  return {
-    x: numberOr(command[command.length - 2]),
-    y: numberOr(command[command.length - 1]),
-  };
-};
+export const normalizeFabricPath = normalizeOperationalInkPath;
 
-function normalizeFabricPath(path) {
-  const normalized = [];
-  let current = { x: 0, y: 0 };
-  let start = { x: 0, y: 0 };
-
-  for (const raw of path || []) {
-    if (!Array.isArray(raw) || raw.length === 0) continue;
-    const sourceOp = String(raw[0]);
-    const op = sourceOp.toUpperCase();
-    const relative = sourceOp !== op;
-    const x = (index) => numberOr(raw[index]) + (relative ? current.x : 0);
-    const y = (index) => numberOr(raw[index]) + (relative ? current.y : 0);
-
-    if (op === 'M' || op === 'L') {
-      current = { x: x(1), y: y(2) };
-      if (op === 'M') start = current;
-      normalized.push([op, current.x, current.y]);
-    } else if (op === 'H') {
-      current = { x: x(1), y: current.y };
-      normalized.push(['L', current.x, current.y]);
-    } else if (op === 'V') {
-      current = { x: current.x, y: y(1) };
-      normalized.push(['L', current.x, current.y]);
-    } else if (op === 'Q') {
-      const control = { x: x(1), y: y(2) };
-      current = { x: x(3), y: y(4) };
-      normalized.push(['Q', control.x, control.y, current.x, current.y]);
-    } else if (op === 'C') {
-      const c1 = { x: x(1), y: y(2) };
-      const c2 = { x: x(3), y: y(4) };
-      current = { x: x(5), y: y(6) };
-      normalized.push(['C', c1.x, c1.y, c2.x, c2.y, current.x, current.y]);
-    } else if (op === 'Z') {
-      current = start;
-      normalized.push(['Z']);
-    } else {
-      const endpoint = commandEndpoint(raw);
-      if (!endpoint) continue;
-      current = relative
-        ? { x: current.x + endpoint.x, y: current.y + endpoint.y }
-        : endpoint;
-      normalized.push(['L', current.x, current.y]);
-    }
-  }
-  return normalized;
-}
-
-function commandCoordinateBounds(commands) {
-  let minX = Infinity;
-  let minY = Infinity;
-  let maxX = -Infinity;
-  let maxY = -Infinity;
-  for (const command of commands || []) {
-    for (let index = 1; index + 1 < command.length; index += 2) {
-      const x = Number(command[index]);
-      const y = Number(command[index + 1]);
-      if (!Number.isFinite(x) || !Number.isFinite(y)) continue;
-      minX = Math.min(minX, x);
-      minY = Math.min(minY, y);
-      maxX = Math.max(maxX, x);
-      maxY = Math.max(maxY, y);
-    }
-  }
-  return Number.isFinite(minX) ? { minX, minY, maxX, maxY } : null;
-}
-
-function createPathTransform(object, commands) {
-  const left = numberOr(object?.left);
-  const top = numberOr(object?.top);
-  const scaleX = numberOr(object?.scaleX, 1) || 1;
-  const scaleY = numberOr(object?.scaleY, 1) || 1;
-  const pathOffsetX = numberOr(object?.pathOffset?.x);
-  const pathOffsetY = numberOr(object?.pathOffset?.y);
-  const angle = numberOr(object?.angle) * Math.PI / 180;
-  const bounds = commandCoordinateBounds(commands);
-  const centerX = bounds
-    ? scaleX * ((bounds.minX + bounds.maxX) / 2 - pathOffsetX)
-    : 0;
-  const centerY = bounds
-    ? scaleY * ((bounds.minY + bounds.maxY) / 2 - pathOffsetY)
-    : 0;
-  const localCenterX = bounds ? (bounds.minX + bounds.maxX) / 2 : pathOffsetX;
-  const localCenterY = bounds ? (bounds.minY + bounds.maxY) / 2 : pathOffsetY;
-  const cos = Math.cos(angle);
-  const sin = Math.sin(angle);
-
-  return {
-    scaleX,
-    scaleY,
-    point(point) {
-      const scaledX = scaleX * (point.x - pathOffsetX);
-      const scaledY = scaleY * (point.y - pathOffsetY);
-      const dx = scaledX - centerX;
-      const dy = scaledY - centerY;
-      return {
-        x: left + centerX + dx * cos - dy * sin,
-        y: top + centerY + dx * sin + dy * cos,
-      };
-    },
-    inverse(point) {
-      const pageX = numberOr(point?.x) - (left + centerX);
-      const pageY = numberOr(point?.y) - (top + centerY);
-      const unrotatedX = pageX * cos + pageY * sin;
-      const unrotatedY = -pageX * sin + pageY * cos;
-      return {
-        x: localCenterX + unrotatedX / scaleX,
-        y: localCenterY + unrotatedY / scaleY,
-      };
-    },
-  };
-}
+const createPathTransform = (object, commands) => (
+  createInkPathAffine(object, commands, {
+    polygons: object?.polygons,
+    centerline: object?.paperCenterline,
+  })
+);
 
 function transformCommands(commands, transform) {
   return commands.map((command) => {
@@ -174,38 +68,583 @@ function transformPolygons(polygons, transform) {
   )));
 }
 
-function pathToPageAnnotation(object, internalId, { forcePolygon = false } = {}) {
+const multiplyAffineMatrices = (left, right) => {
+  const [a1, b1, c1, d1, e1, f1] = left;
+  const [a2, b2, c2, d2, e2, f2] = right;
+  return [
+    a1 * a2 + c1 * b2,
+    b1 * a2 + d1 * b2,
+    a1 * c2 + c1 * d2,
+    b1 * c2 + d1 * d2,
+    a1 * e2 + c1 * f2 + e1,
+    b1 * e2 + d1 * f2 + f1,
+  ];
+};
+
+const transformPaperSourceStroke = (source, outerMatrix) => {
+  if (
+    !source
+    || !Array.isArray(source.path)
+    || source.path.length === 0
+    || !Array.isArray(source.matrix)
+    || source.matrix.length !== 6
+    || !Array.isArray(outerMatrix)
+    || outerMatrix.length !== 6
+  ) return null;
+  return {
+    ...source,
+    matrix: multiplyAffineMatrices(outerMatrix, source.matrix),
+  };
+};
+
+const closedRing = (points) => {
+  if (!points.length) return [];
+  const first = points[0];
+  const last = points[points.length - 1];
+  return first[0] === last[0] && first[1] === last[1]
+    ? points
+    : [...points, [...first]];
+};
+
+const ringGeometry = (points) => (
+  points.length >= 3 ? [[closedRing(points)]] : []
+);
+
+const circleGeometry = (point, radius, tolerance) => {
+  if (radius <= 0) return [];
+  const steps = roundCircleStepCount(radius, tolerance);
+  return ringGeometry(Array.from({ length: steps }, (_unused, index) => {
+    const angle = index / steps * 2 * Math.PI;
+    return [
+      point.x + Math.cos(angle) * radius,
+      point.y + Math.sin(angle) * radius,
+    ];
+  }));
+};
+
+const mergePolygonGeometries = (values) => {
+  let geometries = values.map(normalizeMultiPolygon).filter((value) => value.length);
+  while (geometries.length > 1) {
+    const next = [];
+    for (let index = 0; index < geometries.length; index += 2) {
+      next.push(
+        index + 1 < geometries.length
+          ? normalizeMultiPolygon(union(geometries[index], geometries[index + 1]))
+          : geometries[index],
+      );
+    }
+    geometries = next;
+  }
+  return geometries[0] || [];
+};
+
+const splitPolylineByDash = (points, dashArray, dashOffset = 0) => {
+  let pattern = (dashArray || [])
+    .map((value) => Math.max(0, Number(value) || 0));
+  if (!pattern.length || pattern.every((value) => value === 0)) return [points];
+  if (pattern.length % 2 === 1) pattern = [...pattern, ...pattern];
+  const total = pattern.reduce((sum, value) => sum + value, 0);
+  let phase = ((Number(dashOffset) || 0) % total + total) % total;
+  let patternIndex = 0;
+  let remaining = pattern[patternIndex];
+  let phaseGuard = 0;
+  while (phase > 0 && phaseGuard < pattern.length * 2) {
+    const entryLength = pattern[patternIndex];
+    if (entryLength > 0 && phase < entryLength) {
+      remaining = entryLength - phase;
+      phase = 0;
+      break;
+    }
+    if (entryLength > 0) phase -= entryLength;
+    patternIndex = (patternIndex + 1) % pattern.length;
+    remaining = pattern[patternIndex];
+    phaseGuard += 1;
+  }
+  let currentRun = patternIndex % 2 === 0 && remaining > 0 ? [points[0]] : null;
+  const runs = [];
+  const advanceCompletedEntries = (point, tangent = null) => {
+    let guard = 0;
+    while (remaining === 0 && guard < pattern.length) {
+      if (patternIndex % 2 === 0) {
+        if (currentRun?.length > 1) {
+          runs.push(currentRun);
+        } else if (pattern[patternIndex] === 0) {
+          const zeroRun = [{ ...point }, { ...point }];
+          zeroRun.zeroDashTangent = tangent;
+          runs.push(zeroRun);
+        }
+      }
+      currentRun = null;
+      patternIndex = (patternIndex + 1) % pattern.length;
+      remaining = pattern[patternIndex];
+      if (patternIndex % 2 === 0 && remaining > 0) currentRun = [{ ...point }];
+      guard += 1;
+    }
+  };
+
+  for (let segmentIndex = 1; segmentIndex < points.length; segmentIndex += 1) {
+    const a = points[segmentIndex - 1];
+    const b = points[segmentIndex];
+    const dx = b.x - a.x;
+    const dy = b.y - a.y;
+    const length = Math.hypot(dx, dy);
+    if (length === 0) continue;
+    const tangent = { ux: dx / length, uy: dy / length };
+    let consumed = 0;
+    advanceCompletedEntries(a, tangent);
+    while (consumed < length) {
+      const step = Math.min(remaining, length - consumed);
+      const endDistance = consumed + step;
+      if (endDistance === consumed) break;
+      const end = {
+        x: a.x + dx * endDistance / length,
+        y: a.y + dy * endDistance / length,
+      };
+      if (patternIndex % 2 === 0) {
+        if (!currentRun) {
+          currentRun = [{
+            x: a.x + dx * consumed / length,
+            y: a.y + dy * consumed / length,
+          }];
+        }
+        currentRun.push(end);
+      }
+      consumed = endDistance;
+      remaining = step === remaining ? 0 : remaining - step;
+      advanceCompletedEntries(end, tangent);
+    }
+  }
+  if (currentRun?.length > 1) runs.push(currentRun);
+  return runs;
+};
+
+const styledStrokeRunPolygon = (
+  points,
+  {
+    radius,
+    lineCap,
+    lineJoin,
+    miterLimit,
+    curveTolerance,
+    closed,
+  },
+) => {
+  if (!Array.isArray(points) || points.length < 2 || radius <= 0) return [];
+  const segmentData = [];
+  for (let index = 1; index < points.length; index += 1) {
+    const a = points[index - 1];
+    const b = points[index];
+    const dx = b.x - a.x;
+    const dy = b.y - a.y;
+    const length = Math.hypot(dx, dy);
+    if (length === 0) continue;
+    segmentData.push({
+      a,
+      b,
+      ux: dx / length,
+      uy: dy / length,
+      nx: -dy / length,
+      ny: dx / length,
+    });
+  }
+  if (!segmentData.length) {
+    if (lineCap === 'round') return circleGeometry(points[0], radius, curveTolerance);
+    if (lineCap === 'square') {
+      const { x, y } = points[0];
+      const ux = Number.isFinite(points.zeroDashTangent?.ux)
+        ? points.zeroDashTangent.ux
+        : 1;
+      const uy = Number.isFinite(points.zeroDashTangent?.uy)
+        ? points.zeroDashTangent.uy
+        : 0;
+      const nx = -uy;
+      const ny = ux;
+      return ringGeometry([
+        [x + ux * radius + nx * radius, y + uy * radius + ny * radius],
+        [x + ux * radius - nx * radius, y + uy * radius - ny * radius],
+        [x - ux * radius - nx * radius, y - uy * radius - ny * radius],
+        [x - ux * radius + nx * radius, y - uy * radius + ny * radius],
+      ]);
+    }
+    return [];
+  }
+
+  const shapes = segmentData.map((segment, index) => {
+    const startExtension = !closed && lineCap === 'square' && index === 0 ? radius : 0;
+    const endExtension = !closed && lineCap === 'square' && index === segmentData.length - 1
+      ? radius
+      : 0;
+    const ax = segment.a.x - segment.ux * startExtension;
+    const ay = segment.a.y - segment.uy * startExtension;
+    const bx = segment.b.x + segment.ux * endExtension;
+    const by = segment.b.y + segment.uy * endExtension;
+    return ringGeometry([
+      [ax + segment.nx * radius, ay + segment.ny * radius],
+      [bx + segment.nx * radius, by + segment.ny * radius],
+      [bx - segment.nx * radius, by - segment.ny * radius],
+      [ax - segment.nx * radius, ay - segment.ny * radius],
+    ]);
+  });
+
+  const joinCount = closed ? segmentData.length : segmentData.length - 1;
+  for (let index = 0; index < joinCount; index += 1) {
+    const previous = segmentData[index];
+    const next = segmentData[(index + 1) % segmentData.length];
+    const vertex = previous.b;
+    if (lineJoin === 'round') {
+      shapes.push(circleGeometry(vertex, radius, curveTolerance));
+      continue;
+    }
+    const cross = previous.ux * next.uy - previous.uy * next.ux;
+    if (Math.abs(cross) <= Number.EPSILON * 64) continue;
+    const side = cross > 0 ? -1 : 1;
+    const outer1 = [
+      vertex.x + previous.nx * radius * side,
+      vertex.y + previous.ny * radius * side,
+    ];
+    const outer2 = [
+      vertex.x + next.nx * radius * side,
+      vertex.y + next.ny * radius * side,
+    ];
+    if (lineJoin === 'miter') {
+      const mx = (previous.nx + next.nx) * side;
+      const my = (previous.ny + next.ny) * side;
+      const magnitude = Math.hypot(mx, my);
+      const unitX = magnitude > Number.EPSILON * 64 ? mx / magnitude : 0;
+      const unitY = magnitude > Number.EPSILON * 64 ? my / magnitude : 0;
+      const denominator = unitX * next.nx * side + unitY * next.ny * side;
+      const miterLength = Math.abs(denominator) > Number.EPSILON * 64
+        ? radius / denominator
+        : Infinity;
+      if (Number.isFinite(miterLength) && miterLength <= miterLimit * radius) {
+        shapes.push(ringGeometry([
+          outer1,
+          [vertex.x + unitX * miterLength, vertex.y + unitY * miterLength],
+          outer2,
+        ]));
+        continue;
+      }
+    }
+    shapes.push(ringGeometry([outer1, [vertex.x, vertex.y], outer2]));
+  }
+
+  if (!closed && lineCap === 'round') {
+    shapes.push(circleGeometry(segmentData[0].a, radius, curveTolerance));
+    shapes.push(circleGeometry(segmentData.at(-1).b, radius, curveTolerance));
+  }
+  return mergePolygonGeometries(shapes);
+};
+
+const styledStrokeCommandsToPolygonSet = (commands, {
+  strokeWidth,
+  curveTolerance,
+  lineCap = 'round',
+  lineJoin = 'round',
+  miterLimit = 10,
+  dashArray = null,
+  dashOffset = 0,
+} = {}) => {
+  const radius = strokeWidth / 2;
+  const shapes = [];
+  for (const polyline of commandsToPolylines(commands, curveTolerance)) {
+    let points = polyline.points;
+    if (
+      polyline.closed
+      && points.length > 1
+      && points[0].x === points.at(-1).x
+      && points[0].y === points.at(-1).y
+    ) {
+      points = points.slice(0, -1);
+    }
+    const dashed = Array.isArray(dashArray) && dashArray.length > 0;
+    if (!dashed) {
+      const solidPoints = polyline.closed ? [...points, points[0]] : points;
+      shapes.push(styledStrokeRunPolygon(solidPoints, {
+        radius,
+        lineCap,
+        lineJoin,
+        miterLimit,
+        curveTolerance,
+        closed: polyline.closed,
+      }));
+      continue;
+    }
+    const dashPoints = polyline.closed ? [...points, points[0]] : points;
+    for (const run of splitPolylineByDash(dashPoints, dashArray, dashOffset)) {
+      shapes.push(styledStrokeRunPolygon(run, {
+        radius,
+        lineCap,
+        lineJoin,
+        miterLimit,
+        curveTolerance,
+        closed: false,
+      }));
+    }
+  }
+  return mergePolygonGeometries(shapes);
+};
+
+const paperSourceStrokeOutlinePolygons = (source) => {
+  if (
+    !source
+    || !Array.isArray(source.path)
+    || source.path.length === 0
+    || !Array.isArray(source.matrix)
+    || source.matrix.length !== 6
+    || !source.matrix.every(Number.isFinite)
+  ) return [];
+  const operationalPath = Array.isArray(source.operationalPath)
+    && source.operationalPath.length > 0
+    ? source.operationalPath
+    : normalizeFabricPath(source.path);
+  if (!operationalPath.length) return [];
+  const paintMode = source.paintMode === 'fill' ? 'fill' : 'stroke';
+  const lineCap = String(source.strokeLineCap || 'round').toLowerCase();
+  const lineJoin = String(source.strokeLineJoin || 'round').toLowerCase();
+  const dashArray = Array.isArray(source.strokeDashArray)
+    ? source.strokeDashArray
+    : null;
+  const curveTolerance = (
+    Number(source.curveTolerance) > 0
+      ? Number(source.curveTolerance)
+      : 0.05
+  );
+  const localPolygons = paintMode === 'fill'
+    ? filledOutlineCommandsToPolygonSet(operationalPath, {
+        curveTolerance,
+        fillRule: source.fillRule === 'evenodd' ? 'evenodd' : 'nonzero',
+      })
+    : (
+      Number(source.strokeWidth) > 0
+      && (lineCap !== 'round' || lineJoin !== 'round' || dashArray?.length)
+      ? styledStrokeCommandsToPolygonSet(operationalPath, {
+          strokeWidth: Number(source.strokeWidth),
+          curveTolerance,
+          lineCap,
+          lineJoin,
+          miterLimit: Math.max(1, numberOr(source.strokeMiterLimit, 10)),
+          dashArray,
+          dashOffset: numberOr(source.strokeDashOffset),
+        })
+      : Number(source.strokeWidth) > 0
+        ? commandsToPolygonSet(operationalPath, {
+            fill: false,
+            strokeWidth: Number(source.strokeWidth),
+            curveTolerance,
+            simplifyTolerance: 0,
+          })
+        : []
+    );
+  const [a, b, c, d, e, f] = source.matrix;
+  return transformPolygons(localPolygons, {
+    point: ({ x, y }) => ({
+      x: a * x + c * y + e,
+      y: b * x + d * y + f,
+    }),
+  });
+};
+
+const subtractPolygonGeometries = (subjectValue, clipValue) => {
+  const subject = normalizeMultiPolygon(subjectValue);
+  const clip = normalizeMultiPolygon(clipValue);
+  if (!subject.length) return [];
+  if (!clip.length) return subject;
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  for (const polygon of subject) {
+    for (const ring of polygon) {
+      for (const [x, y] of ring) {
+        minX = Math.min(minX, x);
+        minY = Math.min(minY, y);
+        maxX = Math.max(maxX, x);
+        maxY = Math.max(maxY, y);
+      }
+    }
+  }
+  if (!Number.isFinite(minX) || !Number.isFinite(minY)) return [];
+  const scale = Math.max(
+    Number.MIN_VALUE,
+    maxX - minX,
+    maxY - minY,
+  );
+  if (!Number.isFinite(scale)) return [];
+  const originX = minX / 2 + maxX / 2;
+  const originY = minY / 2 + maxY / 2;
+  const toWorking = (polygons) => polygons.map((polygon) => polygon.map((ring) => (
+    ring.map(([x, y]) => [
+      (x - originX) / scale,
+      (y - originY) / scale,
+    ])
+  )));
+  const fromWorking = (polygons) => normalizeMultiPolygon(polygons).map((polygon) => (
+    polygon.map((ring) => ring.map(([x, y]) => [
+      x * scale + originX,
+      y * scale + originY,
+    ]))
+  ));
+  try {
+    return fromWorking(polygonDifference(
+      toWorking(subject),
+      toWorking(clip),
+    ));
+  } catch (error) {
+    console.warn('Paper eraser cut-mask construction failed; polygon rendering retained:', error);
+    return [];
+  }
+};
+
+function pathToPageAnnotation(
+  object,
+  internalId,
+  { forcePolygon = false, eraserRadius = null } = {},
+) {
   const persistedPolygons = normalizeMultiPolygon(object?.polygons);
-  let localCommands = normalizeFabricPath(object?.path);
-  if (!localCommands.length) localCommands = normalizeFabricPath(object?.cmds);
+  let exactAuthoredPath = null;
+  let localCommands = [];
+  for (const candidate of [object?.path, object?.cmds]) {
+    if (!Array.isArray(candidate) || candidate.length === 0) continue;
+    const normalized = normalizeFabricPath(candidate);
+    if (!normalized.length) continue;
+    exactAuthoredPath = candidate.map((command) => (
+      Array.isArray(command) ? [...command] : command
+    ));
+    localCommands = normalized;
+    break;
+  }
   if (!localCommands.length && persistedPolygons.length) {
     localCommands = polygonSetToCommands(persistedPolygons);
   }
   if (!localCommands.length) return null;
-  const transform = createPathTransform(object, localCommands);
-  const commands = transformCommands(localCommands, transform);
+  const transformBasisCommands = localCommands;
   const rawStrokeWidth = Math.max(0, numberOr(object?.strokeWidth));
-  const scaleMagnitude = Math.sqrt(Math.abs(transform.scaleX * transform.scaleY));
-  const worldStrokeWidth = rawStrokeWidth * scaleMagnitude;
-  const sourceWidth = Math.max(
-    worldStrokeWidth,
-    numberOr(object?.sourceWidth) * scaleMagnitude,
-  );
   const visibleFill = hasVisiblePaint(object?.fill) ? object.fill : null;
   const visibleStroke = hasVisiblePaint(object?.stroke) ? object.stroke : null;
-  const nonUniformTransform = Math.abs(Math.abs(transform.scaleX) - Math.abs(transform.scaleY)) > EPSILON;
+  const isPdfHairline = object?.pdfStrokeHairline === true
+    || object?.data?.pdfStrokeHairline === true;
+  const lineCap = String(object?.strokeLineCap || 'round').toLowerCase();
+  const lineJoin = String(object?.strokeLineJoin || 'round').toLowerCase();
+  const dashArray = Array.isArray(object?.strokeDashArray)
+    ? object.strokeDashArray
+    : null;
+  let dashMaterialized = false;
+  if (
+    isPdfHairline
+    && visibleStroke
+    && dashArray?.length
+  ) {
+    const materialized = materializeDashedInkPath(localCommands, {
+      dashArray,
+      dashOffset: numberOr(object?.strokeDashOffset),
+      lineCap,
+    });
+    if (materialized.materialized) {
+      localCommands = materialized.pathData;
+      dashMaterialized = true;
+    }
+    // An all-gap dash pattern paints no hairline and therefore cannot be
+    // touched by either eraser mode.
+    if (!localCommands.length) return null;
+  }
+  const transform = createPathTransform(object, transformBasisCommands);
+  const commands = transformCommands(localCommands, transform);
+  const cleanupScale = transform.minScale;
+  const worldStrokeWidth = rawStrokeWidth * transform.strokeScale;
+  const sourceWidth = Math.max(
+    rawStrokeWidth * cleanupScale,
+    numberOr(object?.sourceWidth) * cleanupScale,
+  );
   const mustBakeStrokeOutline = Boolean(
     visibleStroke
     && rawStrokeWidth > 0
-    && nonUniformTransform,
+    && !transform.conformal,
+  );
+  const worldCurveTolerance = Math.max(
+    Number.MIN_VALUE,
+    Math.min(
+      0.05,
+      Number.isFinite(Number(eraserRadius)) && Number(eraserRadius) > 0
+        ? Number(eraserRadius) * 0.05
+        : 0.05,
+      sourceWidth > 0 ? sourceWidth * 0.05 : 0.05,
+    ),
+  );
+  const localCurveTolerance = worldCurveTolerance / (
+    Number.isFinite(transform.maxScale) && transform.maxScale > 0
+      ? transform.maxScale
+      : 1
+  );
+  const customStrokeOutline = lineCap !== 'round'
+    || lineJoin !== 'round'
+    || (dashArray && dashArray.length > 0);
+  const createLocalStrokeOutline = () => (
+    customStrokeOutline
+      ? styledStrokeCommandsToPolygonSet(localCommands, {
+          strokeWidth: rawStrokeWidth,
+          curveTolerance: localCurveTolerance,
+          lineCap,
+          lineJoin,
+          miterLimit: Math.max(1, numberOr(object?.strokeMiterLimit, 10)),
+          dashArray,
+          dashOffset: numberOr(object?.strokeDashOffset),
+        })
+      : commandsToPolygonSet(localCommands, {
+          fill: false,
+          strokeWidth: rawStrokeWidth,
+          curveTolerance: localCurveTolerance,
+          simplifyTolerance: 0,
+      })
+  );
+  const operationalPathDiffers = Boolean(
+    exactAuthoredPath
+    && (
+      exactAuthoredPath.length !== localCommands.length
+      || exactAuthoredPath.some((command, commandIndex) => (
+        !Array.isArray(command)
+        || command.length !== localCommands[commandIndex]?.length
+        || command.some((value, valueIndex) => (
+          value !== localCommands[commandIndex]?.[valueIndex]
+        ))
+      ))
+    )
+  );
+  const createPaperSourceStroke = () => (
+    visibleStroke && rawStrokeWidth > 0
+      ? {
+          path: exactAuthoredPath || localCommands,
+          ...(operationalPathDiffers ? { operationalPath: localCommands } : {}),
+          matrix: Array.from(transform.matrix),
+          paintMode: 'stroke',
+          stroke: visibleStroke,
+          strokeWidth: rawStrokeWidth,
+          strokeLineCap: lineCap,
+          strokeLineJoin: lineJoin,
+          strokeMiterLimit: Math.max(1, numberOr(object?.strokeMiterLimit, 10)),
+          strokeDashArray: dashArray ? Array.from(dashArray, Number) : null,
+          strokeDashOffset: numberOr(object?.strokeDashOffset),
+          curveTolerance: localCurveTolerance,
+        }
+      : null
+  );
+  const createPaperSourceFill = () => (
+    visibleFill
+      ? {
+          path: exactAuthoredPath || localCommands,
+          ...(operationalPathDiffers ? { operationalPath: localCommands } : {}),
+          matrix: Array.from(transform.matrix),
+          paintMode: 'fill',
+          fill: visibleFill,
+          fillRule: object?.fillRule === 'evenodd' ? 'evenodd' : 'nonzero',
+          curveTolerance: localCurveTolerance,
+        }
+      : null
   );
 
   if (mustBakeStrokeOutline) {
-    const localPolygons = commandsToPolygonSet(localCommands, {
-      fill: false,
-      strokeWidth: rawStrokeWidth,
-      simplifyTolerance: Math.max(0.1, rawStrokeWidth * 0.25),
-    });
+    // This outline becomes permanent after the first bite. Keep it below the
+    // visual-fidelity threshold and retain the authored cap/join/dash style.
+    const localPolygons = createLocalStrokeOutline();
     const polygons = transformPolygons(localPolygons, transform);
     const polygonCommands = polygonSetToCommands(polygons);
     return {
@@ -217,22 +656,60 @@ function pathToPageAnnotation(object, internalId, { forcePolygon = false } = {})
       stroke: null,
       strokeWidth: 0,
       sourceWidth,
+      paperSourceStroke: createPaperSourceStroke(),
       bounds: boundsOfCommands(polygonCommands),
       locked: object?.locked === true,
     };
   }
 
-  // UX 2026-07-17 (import-normalization item 5b): the imported-ink minimum
-  // width derivation that used to live here (IMPORTED_INK_MIN_WIDTH 2.5 on
-  // both polygon paths below) is retired. It existed to keep erase geometry
-  // in sync with the RENDER-time imported width clamp; item 5a moved that
-  // clamp into the STORED value at import, so the stored width the eraser
-  // reads here already IS the rendered width — for native and imported ink
-  // alike, with no provenance branch.
-  const geometryStrokeWidth = worldStrokeWidth;
+  // The stored width is geometry truth for native and imported ink alike.
+  // Interaction affordances may be wider, but partial erase must outline the
+  // exact rendered width with no provenance-specific floor.
+  // PDF `0 w` is a visible device hairline, not an empty path. Give the
+  // operational centerline the smallest positive width so eraser geometry
+  // can intersect it while persisted/exported width remains exactly zero.
+  const geometryStrokeWidth = isPdfHairline && visibleStroke
+    ? Number.MIN_VALUE
+    : worldStrokeWidth;
+  const pristineFilledPath = Boolean(
+    visibleFill
+    && rawStrokeWidth === 0
+    && object?.paperEraserGeometry !== 'v1'
+    && localCommands.length,
+  );
+  if (pristineFilledPath) {
+    const hasAnalyticFillBoundary = localCommands.some((command) => (
+      command?.[0] === 'Q' || command?.[0] === 'C'
+    ));
+    const localPolygons = filledOutlineCommandsToPolygonSet(localCommands, {
+      curveTolerance: localCurveTolerance,
+      fillRule: object?.fillRule === 'evenodd' ? 'evenodd' : 'nonzero',
+    });
+    const polygons = transformPolygons(localPolygons, transform);
+    const polygonCommands = polygonSetToCommands(polygons);
+    return {
+      id: internalId,
+      type: 'ink',
+      cmds: polygonCommands,
+      polygons,
+      fill: visibleFill,
+      stroke: null,
+      strokeWidth: 0,
+      sourceWidth,
+      ...(hasAnalyticFillBoundary ? {
+        paperSourceStroke: createPaperSourceFill(),
+      } : {}),
+      bounds: boundsOfCommands(polygonCommands),
+      locked: object?.locked === true,
+    };
+  }
   if (persistedPolygons.length) {
     const polygons = transformPolygons(persistedPolygons, transform);
     const polygonCommands = polygonSetToCommands(polygons);
+    const paperSourceStroke = transformPaperSourceStroke(
+      object?.paperSourceStroke,
+      transform.matrix,
+    );
     return {
       id: internalId,
       type: 'ink',
@@ -242,16 +719,16 @@ function pathToPageAnnotation(object, internalId, { forcePolygon = false } = {})
       stroke: null,
       strokeWidth: 0,
       sourceWidth,
+      ...(paperSourceStroke ? { paperSourceStroke } : {}),
       bounds: boundsOfCommands(polygonCommands),
       locked: object?.locked === true,
     };
   }
-  if (forcePolygon && visibleStroke && geometryStrokeWidth > 0) {
-    const localPolygons = commandsToPolygonSet(localCommands, {
-      fill: false,
-      strokeWidth: rawStrokeWidth,
-      simplifyTolerance: Math.max(0.1, rawStrokeWidth * 0.25),
-    });
+  if (forcePolygon && !isPdfHairline && visibleStroke && geometryStrokeWidth > 0) {
+    // Partial erase must not globally reshape the untouched curve. Legacy
+    // butt/square caps, bevel/miter joins, and dash gaps are promoted from
+    // their exact visible stroke style instead of silently becoming round.
+    const localPolygons = createLocalStrokeOutline();
     const polygons = transformPolygons(localPolygons, transform);
     const polygonCommands = polygonSetToCommands(polygons);
     return {
@@ -263,6 +740,7 @@ function pathToPageAnnotation(object, internalId, { forcePolygon = false } = {})
       stroke: null,
       strokeWidth: 0,
       sourceWidth: sourceWidth || geometryStrokeWidth,
+      paperSourceStroke: createPaperSourceStroke(),
       bounds: boundsOfCommands(polygonCommands),
       locked: object?.locked === true,
     };
@@ -275,7 +753,8 @@ function pathToPageAnnotation(object, internalId, { forcePolygon = false } = {})
     stroke: visibleStroke,
     strokeWidth: geometryStrokeWidth,
     sourceWidth,
-    forcePolygon,
+    forcePolygon: isPdfHairline ? false : forcePolygon,
+    dashMaterialized,
     bounds: boundsOfCommands(commands),
     locked: object?.locked === true,
   };
@@ -295,14 +774,25 @@ function bakePagePathResult(object, result) {
     skewY: _skewY,
     flipX: _flipX,
     flipY: _flipY,
+    inkGeometryOrigin: _inkGeometryOrigin,
     path: _path,
+    cmds: _cmds,
     polygons: _polygons,
     paperCenterline: _paperCenterline,
     paperCenterlineRuns: _paperCenterlineRuns,
+    paperSourceStroke: _paperSourceStroke,
+    paperEraserCuts: _paperEraserCuts,
     ...metadata
   } = object;
   const bounds = boundsOfCommands(result.cmds);
   const filled = hasVisiblePaint(result.fill) && numberOr(result.strokeWidth) === 0;
+  const paperSourceStroke = result.paperSourceStroke || object?.paperSourceStroke || null;
+  const paperEraserCuts = paperSourceStroke
+    ? subtractPolygonGeometries(
+        paperSourceStrokeOutlinePolygons(paperSourceStroke),
+        result.polygons,
+      )
+    : [];
 
   const baked = {
     ...metadata,
@@ -315,6 +805,7 @@ function bakePagePathResult(object, result) {
     scaleX: 1,
     scaleY: 1,
     angle: 0,
+    inkGeometrySpace: 'page',
     stroke: filled ? 'transparent' : result.stroke,
     strokeWidth: filled ? 0 : result.sourceWidth ?? result.strokeWidth,
     fill: filled ? result.fill : null,
@@ -324,8 +815,32 @@ function bakePagePathResult(object, result) {
       paperEraserGeometry: 'v1',
       polygons: normalizeMultiPolygon(result.polygons),
       sourceWidth: result.sourceWidth,
+      ...(paperEraserCuts.length > 0 ? {
+        paperSourceStroke,
+        paperEraserCuts,
+      } : {}),
     } : {}),
   };
+  // Preserve ordinary annotation metadata byte-for-byte. Imported/local ink
+  // already carries the duplicate data marker, so only replace it when it
+  // exists; the canonical top-level marker above covers native ink.
+  if (metadata.data && (
+    Object.prototype.hasOwnProperty.call(metadata.data, 'inkGeometrySpace')
+    || Object.prototype.hasOwnProperty.call(metadata.data, 'inkGeometryOrigin')
+  )) {
+    const {
+      inkGeometryOrigin: _dataInkGeometryOrigin,
+      ...data
+    } = metadata.data;
+    baked.data = { ...data, inkGeometrySpace: 'page' };
+  }
+  if (result.dashMaterialized === true) {
+    // The survivor already contains only the painted dash runs. Retaining the
+    // source pattern would restart its phase at every new M and visibly
+    // redraw erased gaps/dashes after pointer-up.
+    delete baked.strokeDashArray;
+    delete baked.strokeDashOffset;
+  }
   const storageKey = getAnnotationStorageKey(object);
   if (storageKey != null) setAnnotationStorageKey(baked, storageKey);
   return baked;
@@ -371,8 +886,15 @@ const eraserBaseGeometrySignature = (object) => JSON.stringify({
   paperCenterlineRuns: object?.paperCenterlineRuns || null,
   paperInkGeometry: object?.paperInkGeometry || null,
   paperEraserGeometry: object?.paperEraserGeometry || null,
+  paperSourceStroke: object?.paperSourceStroke || null,
   sourceWidth: numberOr(object?.sourceWidth),
   strokeWidth: numberOr(object?.strokeWidth),
+  strokeLineCap: object?.strokeLineCap || null,
+  strokeLineJoin: object?.strokeLineJoin || null,
+  strokeMiterLimit: numberOr(object?.strokeMiterLimit, 10),
+  strokeDashArray: object?.strokeDashArray || null,
+  strokeDashOffset: numberOr(object?.strokeDashOffset),
+  fillRule: object?.fillRule || null,
 });
 
 const eraserBaseTransformSnapshot = (object) => ({
@@ -391,13 +913,8 @@ const eraserBaseTransformSnapshot = (object) => ({
   skewY: numberOr(object?.skewY),
   flipX: object?.flipX === true,
   flipY: object?.flipY === true,
-});
-
-const unsupportedTransformSignature = (object) => JSON.stringify({
-  skewX: numberOr(object?.skewX),
-  skewY: numberOr(object?.skewY),
-  flipX: object?.flipX === true,
-  flipY: object?.flipY === true,
+  originX: object?.originX ?? null,
+  originY: object?.originY ?? null,
 });
 
 function rebasePolygonSet(polygons, capturedObject, currentObject, commands) {
@@ -448,9 +965,9 @@ export function erasedPathSurvivorsShareGeometry(left, right, geometryBase) {
 
 /**
  * Rebase one bounded partial-erase survivor onto the current durable base.
- * Compatible move/scale/rotation edits transform the accumulated cut.
- * Incompatible geometry (or unsupported skew/flip changes) makes this lane a
- * no-op, so the collaborator's current base wins instead of stale geometry.
+ * Compatible affine edits transform the accumulated cut. Incompatible path or
+ * stroke geometry makes this lane a no-op, so the collaborator's current base
+ * wins instead of stale geometry.
  * Re-baking from currentBase preserves collaborator style/metadata.
  */
 export function rebaseErasedPathSurvivor(
@@ -479,13 +996,6 @@ export function rebaseErasedPathSurvivor(
   const capturedTransformObject = capturedSnapshot
     ? { ...currentBase, ...capturedSnapshot }
     : capturedBase;
-  if (
-    capturedTransformObject
-    && unsupportedTransformSignature(capturedTransformObject)
-      !== unsupportedTransformSignature(currentBase)
-  ) {
-    return null;
-  }
   const canTransform = capturedTransformObject && (
     capturedSnapshot
     || eraserBaseGeometrySignature(currentBase) === eraserBaseGeometrySignature(capturedBase)
@@ -511,6 +1021,7 @@ export function rebaseErasedPathSurvivor(
       stroke: null,
       strokeWidth: 0,
       sourceWidth: currentGeometry.sourceWidth,
+      paperSourceStroke: currentGeometry.paperSourceStroke,
     }),
     paperEraserBaseTransform: eraserBaseTransformSnapshot(currentBase),
   };
@@ -534,6 +1045,10 @@ export function rebaseErasedPathSurvivor(
 }
 
 const unique = (values) => values.filter((value, index) => value && values.indexOf(value) === index);
+
+const getPdfAppearanceCompositeId = (object) => (
+  object?.data?.pdfAppearanceCompositeId || null
+);
 
 /**
  * Applies one eraser gesture directly to the latest persisted page model.
@@ -565,6 +1080,7 @@ export function erasePageAnnotations({
   const pathRecords = new Map();
   const replacementByIndex = new Map();
   const deletedIndexes = new Set();
+  const fullyDeletedAppearanceGroups = new Set();
   const changedIds = [];
   const deletedIds = [];
   const touchedIds = [];
@@ -577,10 +1093,12 @@ export function erasePageAnnotations({
       ? 'full'
       : (getEraserOperation(object, 'partial') === 'partial' ? 'partial' : 'full');
     const annotation = pathToPageAnnotation(object, internalId, {
-      // The feature-spike contract: partial ink erase subtracts the round
-      // eraser shape from the stroke's actual filled outline. This preserves
-      // the center when the eraser only bites an edge.
-      forcePolygon: operation === 'partial',
+      // Both modes hit-test the stroke's actual painted outline. Solid round
+      // strokes remain their authored centerlines because a radius-expanded
+      // capsule is their exact outline; styled strokes promote to polygons so
+      // dash gaps and butt/square/bevel/miter geometry remain exact.
+      forcePolygon: true,
+      eraserRadius: radius,
     });
     if (!annotation) return;
     pathGroups[operation].push(annotation);
@@ -603,6 +1121,10 @@ export function erasePageAnnotations({
       if (deletedInternalIds.has(internalId)) {
         deletedIndexes.add(record.index);
         deletedIds.push(objectId);
+        if (operation === 'full') {
+          const compositeId = getPdfAppearanceCompositeId(record.object);
+          if (compositeId) fullyDeletedAppearanceGroups.add(compositeId);
+        }
         continue;
       }
       const survivor = survivorById.get(internalId);
@@ -622,6 +1144,27 @@ export function erasePageAnnotations({
     deletedIds.push(objectId);
     deletedIndexes.add(index);
   });
+
+  // One PDF annotation can paint several disjoint companion layers from its
+  // appearance stream. Full erase is annotation-atomic: touching any layer
+  // removes every authorized companion. Partial erase remains geometric and
+  // only clips companions actually crossed by the eraser disk.
+  if (fullyDeletedAppearanceGroups.size > 0) {
+    objects.forEach((object, index) => {
+      const compositeId = getPdfAppearanceCompositeId(object);
+      if (
+        !compositeId
+        || !fullyDeletedAppearanceGroups.has(compositeId)
+        || deletedIndexes.has(index)
+        || !canErase(object, index)
+      ) return;
+      const objectId = getEraserCandidateId(object, index);
+      replacementByIndex.delete(index);
+      deletedIndexes.add(index);
+      touchedIds.push(objectId);
+      deletedIds.push(objectId);
+    });
+  }
 
   if (!replacementByIndex.size && !deletedIndexes.size) {
     return {

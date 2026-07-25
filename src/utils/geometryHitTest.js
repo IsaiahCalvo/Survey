@@ -6,6 +6,15 @@
  * for transformations (rotation, scaling, translation).
  */
 import { getCounterRenderGeometry } from './counterGeometry.js';
+import { createInkPathAffine } from './inkGeometryTransform.js';
+import { normalizeOperationalInkPath } from './inkPathNormalization.js';
+import {
+  commandsToPolylines,
+  filledOutlineCommandsToPolygonSet,
+  normalizeMultiPolygon,
+  styledStrokeCommandsToPolygonSet,
+} from './paperAnnotationGeometry.js';
+import { union } from 'martinez-polygon-clipping';
 
 // Default tolerance for hit testing (in pixels)
 const DEFAULT_TOLERANCE = 3;
@@ -69,6 +78,24 @@ const getTransformedPoints = (obj) => {
 // exactly: getLineEndpoints center-based endpoints, rotation about the shape's
 // visual center, and scaleX/scaleY folded into effective dimensions.
 const isLiveFabricObject = (obj) => typeof obj?.calcTransformMatrix === 'function';
+
+// Plain persisted paths must use the same affine truth as SVG rendering,
+// page-space erasing, and PDF export. Live Fabric instances already expose
+// their exact center-based matrix and still need pathOffset added after the
+// inverse transform; createInkPathAffine maps raw path coordinates directly,
+// so persisted JSON must not apply pathOffset a second time.
+const getPathTransform = (pathObj) => {
+  if (isLiveFabricObject(pathObj)) {
+    return {
+      matrix: getObjectTransformMatrix(pathObj),
+      pathOffset: pathObj.pathOffset || { x: 0, y: 0 },
+    };
+  }
+  return {
+    matrix: createInkPathAffine(pathObj, pathObj?.path).matrix,
+    pathOffset: { x: 0, y: 0 },
+  };
+};
 
 // Map a world-space probe point into a shape's unrotated frame by rotating it
 // -angle about the SAME pivot the renderer rotates the shape around. Testing
@@ -304,6 +331,217 @@ export const isPointInPolygon = (point, vertices) => {
   return inside;
 };
 
+const plainPathPolygonCache = new WeakMap();
+
+const transformPolygonSet = (polygons, affine) => (
+  normalizeMultiPolygon(polygons).map((polygon) => polygon.map((ring) => (
+    ring.map(([x, y]) => {
+      const point = affine.point(x, y);
+      return [point.x, point.y];
+    })
+  )))
+);
+
+/**
+ * Fast, exact hit test for the overwhelmingly common imported-ink case:
+ * one unfilled, solid, round-capped/round-joined centerline.
+ *
+ * A local round stroke is the union of a parallelogram and two circles for
+ * every flattened segment. An arbitrary affine maps those pieces to a
+ * parallelogram and two ellipses. Testing those pieces directly is O(n) and
+ * avoids Martinez-unioning thousands of capsules on the first pointer move.
+ */
+const pointTouchesPlainRoundStroke = (
+  point,
+  commands,
+  affine,
+  strokeWidth,
+  tolerance,
+  localCurveTolerance,
+) => {
+  const radius = strokeWidth / 2;
+  const pageTolerance = Math.max(0, Number(tolerance) || 0);
+  const localPoint = affine.inverse(point);
+
+  for (const polyline of commandsToPolylines(commands, localCurveTolerance)) {
+    const points = polyline.points || [];
+    for (const vertex of points) {
+      if (Math.hypot(localPoint.x - vertex.x, localPoint.y - vertex.y) <= radius) {
+        return true;
+      }
+      if (
+        pageTolerance > 0
+        && distanceToTransformedEllipseBoundary(
+          point,
+          affine.matrix,
+          vertex.x,
+          vertex.y,
+          radius,
+          radius,
+        ) <= pageTolerance
+      ) {
+        return true;
+      }
+    }
+
+    for (let index = 1; index < points.length; index += 1) {
+      const start = points[index - 1];
+      const end = points[index];
+      const dx = end.x - start.x;
+      const dy = end.y - start.y;
+      const length = Math.hypot(dx, dy);
+      if (length <= Number.EPSILON) continue;
+      const nx = -dy / length;
+      const ny = dx / length;
+      const localQuad = [
+        { x: start.x + nx * radius, y: start.y + ny * radius },
+        { x: end.x + nx * radius, y: end.y + ny * radius },
+        { x: end.x - nx * radius, y: end.y - ny * radius },
+        { x: start.x - nx * radius, y: start.y - ny * radius },
+      ];
+      if (isPointInPolygon(localPoint, localQuad)) return true;
+      if (pageTolerance > 0) {
+        const pageQuad = localQuad.map((vertex) => affine.point(vertex.x, vertex.y));
+        if (
+          pageQuad.some((vertex, vertexIndex) => (
+            distanceToLineSegment(
+              point,
+              vertex,
+              pageQuad[(vertexIndex + 1) % pageQuad.length],
+            ) <= pageTolerance
+          ))
+        ) {
+          return true;
+        }
+      }
+    }
+  }
+  return false;
+};
+
+const getPlainPathPagePolygons = (pathObj, interactionRadius = 0) => {
+  if (!pathObj || typeof pathObj !== 'object') return [];
+  const radius = Math.max(0, Number(interactionRadius) || 0);
+  const cacheKey = radius.toExponential(6);
+  let objectCache = plainPathPolygonCache.get(pathObj);
+  if (objectCache?.has(cacheKey)) return objectCache.get(cacheKey);
+
+  const commands = normalizeOperationalInkPath(pathObj.path);
+  if (!commands.length) return [];
+  const affine = createInkPathAffine(pathObj, commands, {
+    polygons: pathObj.polygons,
+    centerline: pathObj.paperCenterline,
+  });
+  const rawStrokeWidth = Math.max(0, Number(pathObj.strokeWidth) || 0);
+  const localSourceWidth = Math.max(
+    rawStrokeWidth,
+    Math.max(0, Number(pathObj.sourceWidth) || 0),
+  );
+  const worldSourceWidth = localSourceWidth * affine.minScale;
+  const worldCurveTolerance = Math.max(
+    Number.MIN_VALUE,
+    Math.min(
+      0.05,
+      radius > 0 ? radius * 0.05 : 0.05,
+      worldSourceWidth > 0 ? worldSourceWidth * 0.05 : 0.05,
+    ),
+  );
+  const localCurveTolerance = worldCurveTolerance / (
+    affine.maxScale > 0 ? affine.maxScale : 1
+  );
+  const persisted = normalizeMultiPolygon(pathObj.polygons);
+  const hasFill = hasVisiblePaint(pathObj.fill);
+  const hasStroke = rawStrokeWidth > 0 && hasVisiblePaint(pathObj.stroke);
+  let fillPolygons = persisted;
+  let strokePolygons = [];
+  if (!fillPolygons.length && hasFill) {
+    fillPolygons = filledOutlineCommandsToPolygonSet(commands, {
+      curveTolerance: localCurveTolerance,
+      fillRule: pathObj.fillRule === 'evenodd' ? 'evenodd' : 'nonzero',
+    });
+  }
+  // `polygons` is a fill carrier, not proof that the same path has no visible
+  // stroke. Mixed PDF appearance streams need their stroke fringe too.
+  if (hasStroke) {
+    strokePolygons = styledStrokeCommandsToPolygonSet(commands, {
+      strokeWidth: rawStrokeWidth,
+      curveTolerance: localCurveTolerance,
+      lineCap: String(pathObj.strokeLineCap || 'round').toLowerCase(),
+      lineJoin: String(pathObj.strokeLineJoin || 'round').toLowerCase(),
+      miterLimit: Math.max(1, Number(pathObj.strokeMiterLimit) || 10),
+      dashArray: Array.isArray(pathObj.strokeDashArray) ? pathObj.strokeDashArray : null,
+      dashOffset: Number(pathObj.strokeDashOffset) || 0,
+    });
+  }
+  let localPolygons;
+  if (fillPolygons.length && strokePolygons.length) {
+    localPolygons = normalizeMultiPolygon(union(fillPolygons, strokePolygons));
+  } else {
+    localPolygons = fillPolygons.length ? fillPolygons : strokePolygons;
+  }
+
+  const result = transformPolygonSet(localPolygons, affine);
+  if (!objectCache) {
+    objectCache = new Map();
+    plainPathPolygonCache.set(pathObj, objectCache);
+  }
+  objectCache.set(cacheKey, result);
+  return result;
+};
+
+const pointTouchesPolygonSet = (point, polygons, tolerance = 0) => {
+  const radius = Math.max(0, Number(tolerance) || 0);
+  for (const polygon of normalizeMultiPolygon(polygons)) {
+    const rings = polygon.map((ring) => ring.map(([x, y]) => ({ x, y })));
+    if (rings.length > 0) {
+      const inOuter = isPointInPolygon(point, rings[0]);
+      const inHole = rings.slice(1).some((ring) => isPointInPolygon(point, ring));
+      if (inOuter && !inHole) return true;
+    }
+    for (const ring of rings) {
+      for (let index = 1; index < ring.length; index += 1) {
+        if (distanceToLineSegment(point, ring[index - 1], ring[index]) <= radius) {
+          return true;
+        }
+      }
+    }
+  }
+  return false;
+};
+
+const rectIntersectsPolygonSet = (rect, polygons) => {
+  const corners = [
+    { x: rect.left, y: rect.top },
+    { x: rect.right, y: rect.top },
+    { x: rect.right, y: rect.bottom },
+    { x: rect.left, y: rect.bottom },
+  ];
+  for (const corner of corners) {
+    if (pointTouchesPolygonSet(corner, polygons, 0)) return true;
+  }
+  for (const polygon of normalizeMultiPolygon(polygons)) {
+    for (const ring of polygon) {
+      for (const point of ring) {
+        if (
+          point[0] >= rect.left
+          && point[0] <= rect.right
+          && point[1] >= rect.top
+          && point[1] <= rect.bottom
+        ) return true;
+      }
+      for (let index = 1; index < ring.length; index += 1) {
+        if (doesRectIntersectLineSegment(
+          rect,
+          { x: ring[index - 1][0], y: ring[index - 1][1] },
+          { x: ring[index][0], y: ring[index][1] },
+          0,
+        )) return true;
+      }
+    }
+  }
+  return false;
+};
+
 export const getCounterHitGeometry = (counterObj) => {
   const radius = (Number(counterObj?.radius) || 14)
     * Math.abs(Number(counterObj?.scaleX) || 1);
@@ -378,7 +616,7 @@ export const transformPointInverse = (point, matrix) => {
   const [a, b, c, d, e, f] = matrix;
   const det = a * d - b * c;
 
-  if (Math.abs(det) < 1e-10) return point;
+  if (!Number.isFinite(det) || det === 0) return { x: NaN, y: NaN };
 
   const invDet = 1 / det;
   const px = point.x - e;
@@ -437,7 +675,49 @@ export const getObjectTransformMatrix = (obj) => {
 export const isPointOnPath = (point, pathObj, tolerance = DEFAULT_TOLERANCE) => {
   if (!pathObj || hitTestType(pathObj) !== 'path' || !pathObj.path) return false;
 
-  const pathData = pathObj.path;
+  if (!isLiveFabricObject(pathObj)) {
+    const commands = normalizeOperationalInkPath(pathObj.path);
+    const rawStrokeWidth = Math.max(0, Number(pathObj.strokeWidth) || 0);
+    const dashArray = Array.isArray(pathObj.strokeDashArray)
+      ? pathObj.strokeDashArray.filter((value) => Number(value) > 0)
+      : [];
+    const isPlainRoundStroke = (
+      normalizeMultiPolygon(pathObj.polygons).length === 0
+      && !hasVisiblePaint(pathObj.fill)
+      && rawStrokeWidth > 0
+      && hasVisiblePaint(pathObj.stroke)
+      && String(pathObj.strokeLineCap || 'round').toLowerCase() === 'round'
+      && String(pathObj.strokeLineJoin || 'round').toLowerCase() === 'round'
+      && dashArray.length === 0
+    );
+    if (isPlainRoundStroke && commands.length > 0) {
+      const affine = createInkPathAffine(pathObj, commands);
+      const worldSourceWidth = rawStrokeWidth * affine.minScale;
+      const pageTolerance = Math.max(0, Number(tolerance) || 0);
+      const worldCurveTolerance = Math.max(
+        Number.MIN_VALUE,
+        Math.min(
+          0.05,
+          pageTolerance > 0 ? pageTolerance * 0.05 : 0.05,
+          worldSourceWidth > 0 ? worldSourceWidth * 0.05 : 0.05,
+        ),
+      );
+      return pointTouchesPlainRoundStroke(
+        point,
+        commands,
+        affine,
+        rawStrokeWidth,
+        pageTolerance,
+        worldCurveTolerance / (affine.maxScale > 0 ? affine.maxScale : 1),
+      );
+    }
+    const pagePolygons = getPlainPathPagePolygons(pathObj, tolerance);
+    if (pagePolygons.length > 0) {
+      return pointTouchesPolygonSet(point, pagePolygons, tolerance);
+    }
+  }
+
+  const pathData = normalizeOperationalInkPath(pathObj.path);
   if (!pathData || pathData.length === 0) return false;
 
   const strokeWidth = pathObj.strokeWidth || 0;
@@ -446,11 +726,10 @@ export const isPointOnPath = (point, pathObj, tolerance = DEFAULT_TOLERANCE) => 
   const effectiveDistance = (strokeWidth / 2) + tolerance;
 
   // Get object's transform matrix and calculate inverse to transform point to local space
-  const matrix = getObjectTransformMatrix(pathObj);
+  const { matrix, pathOffset } = getPathTransform(pathObj);
   const localPoint = transformPointInverse(point, matrix);
 
   // Fabric.js paths have a pathOffset - add it back to get path data coordinates
-  const pathOffset = pathObj.pathOffset || { x: 0, y: 0 };
   const pathLocalPoint = {
     x: localPoint.x + pathOffset.x,
     y: localPoint.y + pathOffset.y
@@ -846,14 +1125,14 @@ export const isPointOnLine = (point, lineObj, tolerance = DEFAULT_TOLERANCE) => 
     if (quadControl) {
       const denomX = x1 - 2 * quadControl.x + x2;
       const denomY = y1 - 2 * quadControl.y + y2;
-      if (Math.abs(denomX) > 1e-9) {
+      if (Number.isFinite(denomX) && denomX !== 0) {
         const tx = (x1 - quadControl.x) / denomX;
         if (tx > 0 && tx < 1) {
           const o = 1 - tx;
           xs.push(o * o * x1 + 2 * o * tx * quadControl.x + tx * tx * x2);
         }
       }
-      if (Math.abs(denomY) > 1e-9) {
+      if (Number.isFinite(denomY) && denomY !== 0) {
         const ty = (y1 - quadControl.y) / denomY;
         if (ty > 0 && ty < 1) {
           const o = 1 - ty;
@@ -1425,17 +1704,21 @@ export const doesRectIntersectEllipse = (selRect, cx, cy, rx, ry, hasFill, strok
 export const doesRectIntersectPath = (selRect, pathObj) => {
   if (!pathObj || hitTestType(pathObj) !== 'path' || !pathObj.path) return false;
 
-  const pathData = pathObj.path;
+  if (!isLiveFabricObject(pathObj)) {
+    const pagePolygons = getPlainPathPagePolygons(pathObj, 0.25);
+    if (pagePolygons.length > 0) {
+      return rectIntersectsPolygonSet(selRect, pagePolygons);
+    }
+  }
+
+  const pathData = normalizeOperationalInkPath(pathObj.path);
   if (!pathData || pathData.length === 0) return false;
 
   const strokeWidth = pathObj.strokeWidth || 1;
-  const matrix = getObjectTransformMatrix(pathObj);
+  const { matrix, pathOffset } = getPathTransform(pathObj);
 
   // Fabric.js paths have a pathOffset that centers the path data
   // We need to subtract this offset from path coordinates before transforming
-  const pathOffset = pathObj.pathOffset || { x: 0, y: 0 };
-
-
   // Transform points to canvas space using the matrix
   // Path coordinates need to be adjusted by pathOffset first
   const transformPoint = (x, y) => {

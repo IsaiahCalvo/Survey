@@ -20,7 +20,7 @@
  * Phase 9 Plan 02: Drag-to-move, resize-by-handle, rotation visual + pointer wiring
  * Phase 9 Plan 03: Multi-select group ops (group-move visual, group bbox, delete)
  */
-import { memo, useMemo, useEffect, useLayoutEffect, useRef, useState, useCallback } from 'react';
+import { cloneElement, memo, useMemo, useEffect, useLayoutEffect, useRef, useState, useCallback } from 'react';
 import { deepClone } from '../utils/deepClone.js';
 import {
   renderPath,
@@ -74,6 +74,10 @@ import { getCurvedPath, distanceToLineSegment, getCurveEndAngle } from '../utils
 import { ARROWHEAD_STYLES } from './Callout/types';
 import { renderPathToSvgAttrs, renderPathToSvgD, isFilledInkOutlineAttrs, getFilledInkHitTargetProps } from '../utils/svgPathAttrs.js';
 import {
+  applyPageAffineToInkObject,
+  createInkPathAffine,
+} from '../utils/inkGeometryTransform.js';
+import {
   ANNOTATION_VISIBILITY_SCOPE,
   getAnnotationVisibilityScope,
   getSpaceIdForRegionFromSpaces,
@@ -107,6 +111,25 @@ let calloutDeleteBridgeCount = 0;
 // per render — the hottest loop in the app during zoom/scroll).
 const EDIT_IN_PLACE_TYPES = new Set(['rect', 'circle', 'ellipse', 'triangle', 'textbox', 'i-text', 'text']);
 const TEXT_EDIT_TYPES = new Set(['textbox', 'i-text', 'text']);
+
+/* test-export:start buildFabricPathSvgTransform */
+/**
+ * Build the complete object-to-page matrix for a Fabric path.
+ *
+ * createInkPathAffine is the one transform truth shared by SVG rendering,
+ * erasing, hit testing, and PDF export. This wrapper only serializes its
+ * Fabric-format matrix for SVG; viewBox remains the sole zoom transform.
+ */
+export function buildFabricPathSvgTransform(obj) {
+  const { matrix } = createInkPathAffine(obj, obj?.path);
+
+  // Let JavaScript emit its shortest round-trippable number. Absolute
+  // zeroing/rounding changes valid microscopic transforms and can make a
+  // visible huge-coordinate path singular.
+  const clean = (value) => (Object.is(value, -0) ? 0 : value);
+  return `matrix(${matrix.map(clean).join(' ')})`;
+}
+/* test-export:end buildFabricPathSvgTransform */
 
 const hasVisiblePaint = (value) => {
   if (value == null) return false;
@@ -195,7 +218,7 @@ const shouldPrioritizeLiveReveal = (obj) => {
     const attrs = renderPathToSvgAttrs(obj);
     const fill = String(attrs?.fill || '').trim().toLowerCase();
     const stroke = String(attrs?.stroke || '').trim().toLowerCase();
-    return attrs?.smoothClosedOutline === true && !!fill && fill !== 'none' && stroke === 'none';
+    return isFilledInkOutlineAttrs(attrs) && !!fill && fill !== 'none' && stroke === 'none';
   } catch {
     return false;
   }
@@ -1858,7 +1881,7 @@ const SVGAnnotationLayer = memo(({
     if (objects.length === 0) return [];
 
     // Diagnostic summary for user-shared logs. This answers: did this page
-    // render smooth filled Drawboard/Adobe outlines, open stroked ink, or
+    // render authored curved/line-only filled outlines, open stroked ink, or
     // duplicate path geometry? Keep it aggregate-only so dense pages do not
     // spam thousands of per-path records.
     if (typeof window !== 'undefined' && window.__SVG_PATH_RENDER_DIAG === true) {
@@ -1867,8 +1890,8 @@ const SVGAnnotationLayer = memo(({
           pageNumber,
           inputObjects: objects.length,
           pathCount: 0,
-          filledSmooth: 0,
-          filledNotSmooth: 0,
+          filledCurved: 0,
+          filledLineOnly: 0,
           openStrokedCurved: 0,
           openStrokedLineOnly: 0,
           exactDuplicateGroups: 0,
@@ -1887,13 +1910,13 @@ const SVGAnnotationLayer = memo(({
           const hasL = /\bL\b/.test(d);
           const isFilled = attrs.stroke === 'none' && attrs.fill && attrs.fill !== 'none';
           const isStroked = attrs.stroke && attrs.stroke !== 'none';
-          if (isFilled && attrs.smoothClosedOutline === true && hasC) pathStats.filledSmooth += 1;
+          if (isFilled && (hasC || hasQ)) pathStats.filledCurved += 1;
           else if (isFilled) {
-            pathStats.filledNotSmooth += 1;
+            pathStats.filledLineOnly += 1;
             if (pathStats.sampleProblemPaths.length < 8) {
               pathStats.sampleProblemPaths.push({
                 idx,
-                kind: 'filled-not-smooth',
+                kind: 'filled-line-only',
                 id: candidate?.id || candidate?.data?.id || candidate?.pdfAnnotationId || null,
                 fill: attrs.fill,
                 stroke: attrs.stroke,
@@ -3635,7 +3658,15 @@ const SVGAnnotationLayer = memo(({
       renderElement = renderLine(renderObj, i);
     }
     const absoluteCoordPath = isAbsoluteCoordPath(obj);
-    if (visualTransform?.resize && visualTransform.id === i && !isImportedPath(obj) && !absoluteCoordPath) {
+    const usesPathPageResize = String(obj?.type || '').toLowerCase() === 'path'
+      && Array.isArray(visualTransform?.resize?.pageMatrix);
+    if (
+      visualTransform?.resize
+      && visualTransform.id === i
+      && !usesPathPageResize
+      && !isImportedPath(obj)
+      && !absoluteCoordPath
+    ) {
       renderObj = {
         ...obj,
         scaleX: visualTransform.resize.scaleX,
@@ -3752,6 +3783,18 @@ const SVGAnnotationLayer = memo(({
       }
     }
 
+    // renderPath's historical transform predates persisted flip/skew. Override
+    // only its transform prop here so visible ink, hover, and hit testing all
+    // use the same Fabric 7.4 matrix without changing paint or path bytes.
+    if (
+      String(renderObj?.type || '').toLowerCase() === 'path'
+      && renderElement
+    ) {
+      renderElement = cloneElement(renderElement, {
+        transform: buildFabricPathSvgTransform(renderObj),
+      });
+    }
+
     const bbox = getAnnotationBBox(renderObj);
     const annotationIsSelected = selectedIds.has(i);
     // UX: Phase 19 follow-up — members of a multi-selection share the
@@ -3776,6 +3819,9 @@ const SVGAnnotationLayer = memo(({
       // Single annotation visual transform (from Plan 02)
       if (typeof visualTransform.id === 'number' && visualTransform.id === i) {
         if (visualTransform.resize) {
+          if (Array.isArray(visualTransform.resize.pageMatrix)) {
+            return `matrix(${visualTransform.resize.pageMatrix.join(' ')})`;
+          }
           // Imported paths: use SVG transform to scale around anchor point
           if (isImportedPath(obj) || absoluteCoordPath) {
             const { scaleX, scaleY, anchorX, anchorY } = visualTransform.resize;
@@ -4437,50 +4483,13 @@ const SVGAnnotationLayer = memo(({
             // "i" dot and its stem must remain independently selectable.
             const pathAttrs = renderPathToSvgAttrs(renderObj);
             const pathD = renderPathToSvgD(renderObj, pathAttrs);
-            // Filled stroke-outline ink: imported-PDF ink (smoothClosedOutline)
-            // AND native pen/eraser-carved ink (filledOutline via evenodd /
+            // Filled stroke-outline ink: imported authored outlines AND
+            // native pen/eraser-carved ink (filledOutline via evenodd /
             // paperEraserGeometry). Both store the visible stroke as a filled
             // outline polygon, so the whole stroke body must hover/click —
             // not just its edges. Predicate lives in svgPathAttrs.js.
             const isFilledPdfInkOutline = isFilledInkOutlineAttrs(pathAttrs);
-            const pathLeft = renderObj.left ?? 0;
-            const pathTop = renderObj.top ?? 0;
-            const pathAngle = renderObj.angle ?? 0;
-            const pathScaleX = renderObj.scaleX ?? 1;
-            const pathScaleY = renderObj.scaleY ?? 1;
-            const pathOffsetX = renderObj.pathOffset?.x || 0;
-            const pathOffsetY = renderObj.pathOffset?.y || 0;
-            // UX 2026-04-21: match renderPath exactly — rotate around the
-            // path's OWN bbox center (not the local origin), or the hover
-            // halo lands off the visible stroke once a rotation is applied.
-            // Without this pivot, the halo rotates around the translate
-            // anchor while the real stroke rotates around its bbox center,
-            // producing the "blue glow detached from the stroke" symptom.
-            let pathRawMinX = Infinity, pathRawMinY = Infinity;
-            let pathRawMaxX = -Infinity, pathRawMaxY = -Infinity;
-            for (const seg of renderObj.path) {
-              for (let j = 1; j + 1 < seg.length; j += 2) {
-                const x = seg[j];
-                const y = seg[j + 1];
-                if (typeof x === 'number' && typeof y === 'number') {
-                  if (x < pathRawMinX) pathRawMinX = x;
-                  if (x > pathRawMaxX) pathRawMaxX = x;
-                  if (y < pathRawMinY) pathRawMinY = y;
-                  if (y > pathRawMaxY) pathRawMaxY = y;
-                }
-              }
-            }
-            const pathHasBounds = Number.isFinite(pathRawMinX) && Number.isFinite(pathRawMinY);
-            const pathRotCenterX = pathHasBounds
-              ? pathScaleX * ((pathRawMinX + pathRawMaxX) / 2 - pathOffsetX)
-              : 0;
-            const pathRotCenterY = pathHasBounds
-              ? pathScaleY * ((pathRawMinY + pathRawMaxY) / 2 - pathOffsetY)
-              : 0;
-            let pathTransform = `translate(${pathLeft}, ${pathTop})`;
-            if (pathAngle !== 0) pathTransform += ` rotate(${pathAngle}, ${pathRotCenterX}, ${pathRotCenterY})`;
-            if (pathScaleX !== 1 || pathScaleY !== 1) pathTransform += ` scale(${pathScaleX}, ${pathScaleY})`;
-            pathTransform += ` translate(${-pathOffsetX}, ${-pathOffsetY})`;
+            const pathTransform = buildFabricPathSvgTransform(renderObj);
             const sw = renderObj.strokeWidth || 1;
             // Zoom-out balloon fix: clamp inverseScale for the VISIBLE filled-ink
             // hover stroke so it stops growing on extreme zoom-out. The hit
@@ -4527,8 +4536,11 @@ const SVGAnnotationLayer = memo(({
                   fillRule={inkHitProps ? inkHitProps.fillRule : undefined}
                   stroke={inkHitProps ? inkHitProps.stroke : 'rgba(0,0,0,0.001)'}
                   strokeWidth={hitStrokeWidth}
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
+                  strokeLinecap={pathAttrs.strokeLinecap}
+                  strokeLinejoin={pathAttrs.strokeLinejoin}
+                  strokeMiterlimit={pathAttrs.strokeMiterlimit}
+                  strokeDasharray={pathAttrs.strokeDasharray?.join(' ')}
+                  strokeDashoffset={pathAttrs.strokeDashoffset}
                   vectorEffect={pathAttrs.vectorEffect}
                   pointerEvents={pathPointerEvents}
                   data-path-hit-target="true"
@@ -5132,7 +5144,17 @@ const SVGAnnotationLayer = memo(({
             // type-specific bbox math (e.g. textbox descender buffer) is applied fresh
             // instead of being scaled along with the stored bbox height.
             const resizeObjType = String(obj.type || '').toLowerCase();
-            if (resizeObjType === 'line') {
+            if (
+              resizeObjType === 'path'
+              && Array.isArray(visualTransform.resize.pageMatrix)
+            ) {
+              bbox = getAnnotationBBox(
+                applyPageAffineToInkObject(
+                  obj,
+                  visualTransform.resize.pageMatrix,
+                ),
+              );
+            } else if (resizeObjType === 'line') {
               // UX 2026-04-19 / 20: live-resize bbox for lines.
               // Mirrors the shifted-final-points math used by the
               // visible shape render above so the dashed frame

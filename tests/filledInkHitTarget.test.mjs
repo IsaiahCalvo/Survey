@@ -65,31 +65,20 @@ test('eraser-carved ink (paperEraserGeometry v1) gets the same interior-hit prop
   assert.equal(props.fillRule, 'evenodd');
 });
 
-test('LEGACY imported-PDF ink rows keep the hairline hit contract (smoothClosedOutline branch)', () => {
-  // UX 2026-07-17 (import-normalization item 4): freshly IMPORTED filled ink
-  // now converges onto the native paper-ink representation at import time
-  // (evenodd polygons) and legitimately rides the native branch above — see
-  // 'converged imported filled ink gets the NATIVE filled-ink hit contract'
-  // in tests/pdfAnnotationNormalization.test.mjs. The smoothClosedOutline
-  // attrs shape below is still produced for PRE-CONVERGENCE cloud rows and
-  // metadata-stripped sync round-trips that store the raw outline path; those
-  // legacy rows keep their pre-existing hairline hit contract.
+test('legacy imported-PDF filled ink uses the same stable boundary hit contract', () => {
   const attrs = {
     stroke: 'none',
     strokeWidth: 0,
     fill: '#00ff00',
     fillRule: 'nonzero',
     filledOutline: true,
-    smoothClosedOutline: true,
   };
   assert.equal(isFilledInkOutlineAttrs(attrs), true);
   const props = getFilledInkHitTargetProps(attrs, { strokeWidth: 1, inverseScale: 1 });
   assert.equal(props.pointerEvents, 'all');
   assert.equal(props.fill, 'rgba(0,0,0,0.001)');
-  // Imported ink keeps its pre-existing hairline hit contract: no boundary
-  // band, sub-pixel stroke width floor.
-  assert.equal(props.stroke, 'none');
-  assert.equal(props.strokeWidth, 0.75);
+  assert.equal(props.stroke, 'rgba(0,0,0,0.001)');
+  assert.ok(props.strokeWidth >= 12);
 });
 
 test('plain unfilled stroked path stays stroke-only (no interior hit props)', () => {

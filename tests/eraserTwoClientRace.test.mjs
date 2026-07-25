@@ -98,12 +98,48 @@ function replaceDurableBase(doc, storageKey, object, origin = 'remote-base-edit'
   }, origin);
 }
 
-function roundedPolygons(polygons, precision = 8) {
-  const factor = 10 ** precision;
-  return (polygons || []).map((polygon) => polygon.map((ring) => ring.map(([x, y]) => [
-    Math.round(x * factor) / factor,
-    Math.round(y * factor) / factor,
-  ])));
+const FLOAT_SIGN_BIT = 1n << 63n;
+const FLOAT_MASK = (1n << 64n) - 1n;
+const floatBitsBuffer = new ArrayBuffer(8);
+const floatBitsView = new DataView(floatBitsBuffer);
+
+function orderedFloatBits(value) {
+  floatBitsView.setFloat64(0, value, false);
+  const bits = floatBitsView.getBigUint64(0, false);
+  return (bits & FLOAT_SIGN_BIT) !== 0n
+    ? (~bits) & FLOAT_MASK
+    : bits | FLOAT_SIGN_BIT;
+}
+
+function floatUlpDistance(left, right) {
+  if (left === right) return 0n;
+  if (!Number.isFinite(left) || !Number.isFinite(right)) return FLOAT_MASK;
+  const leftBits = orderedFloatBits(left);
+  const rightBits = orderedFloatBits(right);
+  return leftBits >= rightBits ? leftBits - rightBits : rightBits - leftBits;
+}
+
+function assertPolygonsWithinUlps(actual, expected, maxUlps = 1n) {
+  assert.equal(actual.length, expected.length);
+  for (let polygonIndex = 0; polygonIndex < actual.length; polygonIndex += 1) {
+    assert.equal(actual[polygonIndex].length, expected[polygonIndex].length);
+    for (let ringIndex = 0; ringIndex < actual[polygonIndex].length; ringIndex += 1) {
+      assert.equal(
+        actual[polygonIndex][ringIndex].length,
+        expected[polygonIndex][ringIndex].length,
+      );
+      for (let pointIndex = 0; pointIndex < actual[polygonIndex][ringIndex].length; pointIndex += 1) {
+        for (let axis = 0; axis < 2; axis += 1) {
+          const left = actual[polygonIndex][ringIndex][pointIndex][axis];
+          const right = expected[polygonIndex][ringIndex][pointIndex][axis];
+          assert.ok(
+            floatUlpDistance(left, right) <= maxUlps,
+            `polygon ${polygonIndex}/${ringIndex}/${pointIndex}/${axis}: ${left} vs ${right}`,
+          );
+        }
+      }
+    }
+  }
 }
 
 test('preview handoff requires the exact durable mutation acknowledgment', () => {
@@ -196,7 +232,10 @@ test('held-pointer stale erase rebases onto a remote move/style edit and survive
   const actualA = docToByPage(clientA);
   const actualB = docToByPage(clientB);
   assert.deepEqual(actualA, actualB);
-  assert.deepEqual(actualA[1].objects[0].polygons, expected.polygons);
+  // The held-gesture rebase and direct latest-state erase use a different
+  // floating operation order. Permit exactly one representable double step;
+  // A/B convergence and cold reload remain byte-exact assertions.
+  assertPolygonsWithinUlps(actualA[1].objects[0].polygons, expected.polygons);
   assert.equal(actualA[1].objects[0].fill, '#0055ff');
   assert.equal(actualA[1].objects[0].data.remoteEdit, true);
   assert.deepEqual(actualA[1].eraserMaterializedMutationIds, ['eraser:writer-a:held']);
@@ -246,7 +285,7 @@ test('a second held erase on baked geometry follows a remote base move exactly',
 
   const actual = docToByPage(clientA);
   assert.deepEqual(actual, docToByPage(clientB));
-  assert.deepEqual(roundedPolygons(actual[1].objects[0].polygons), roundedPolygons(expected.polygons));
+  assertPolygonsWithinUlps(actual[1].objects[0].polygons, expected.polygons);
   assert.equal(actual[1].objects[0].fill, '#0055ff');
   assert.equal(actual[1].objects[0].data.remoteEdit, true);
   assert.deepEqual(
@@ -295,7 +334,11 @@ test('compatible scale and rotation apply a full affine rebase to the stale surv
     })),
   );
   const actual = docToByPage(clientA)[1].objects[0];
-  assert.deepEqual(roundedPolygons(actual.polygons), roundedPolygons(expectedPolygons));
+  // The independent expectation multiplies the affine in a different
+  // arithmetic order than the production inverse→forward rebase. IEEE-754
+  // permits a handful of ULPs of association drift; keep this microscopic
+  // and explicit instead of the former 8-decimal rounding (~350k ULPs).
+  assertPolygonsWithinUlps(actual.polygons, expectedPolygons, 16n);
   assert.equal(actual.fill, '#0055ff');
   assert.deepEqual(docToByPage(cloneDoc(clientA))[1].objects[0].polygons, actual.polygons);
 });
@@ -323,7 +366,7 @@ test('an incompatible remote geometry edit wins instead of reviving the stale pa
   commitPreparedErase(clientA, staleBefore, stale, 'writer-a');
 
   const actual = docToByPage(clientA)[1];
-  assert.deepEqual(roundedPolygons(actual.objects[0].polygons), roundedPolygons(remoteGeometry.polygons));
+  assert.deepEqual(actual.objects[0].polygons, remoteGeometry.polygons);
   assert.equal(actual.objects[0].fill, '#008844');
   assert.equal(actual.objects[0].data.remoteGeometryEdit, true);
   assert.deepEqual(
@@ -423,10 +466,7 @@ test('a stale lane is ignored while a newer writer erases the replacement geomet
   const actual = docToByPage(staleClient);
   const expected = replacementErase.result.pageAnnotations.objects[0];
   assert.deepEqual(actual, docToByPage(newWriter));
-  assert.deepEqual(
-    roundedPolygons(actual[1].objects[0].polygons),
-    roundedPolygons(expected.polygons),
-  );
+  assert.deepEqual(actual[1].objects[0].polygons, expected.polygons);
   assert.equal(actual[1].objects[0].fill, '#008844');
   assert.deepEqual(
     actual[1].eraserMaterializedMutationIds,

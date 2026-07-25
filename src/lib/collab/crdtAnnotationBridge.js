@@ -73,14 +73,15 @@ export const isApplyingRemote = () => applyingRemote;
 // --- Internals ---------------------------------------------------------------
 
 /**
- * Shallow-equality check for primitive values + flat objects + arrays.
+ * Structural equality for Fabric's JSON-serializable values.
  *
  * UX comment: bridge skips fabricYMap.set() when the new value matches the
  * stored Y.Map value to avoid generating no-op Yjs updates that consume
- * bandwidth and force unnecessary observer fires. Important under pen-stroke
- * load where object:modified can fire at 60 Hz with most properties unchanged.
+ * bandwidth and force unnecessary observer fires. Fabric returns fresh nested
+ * path/polygon arrays from toObject(), so reference or shallow equality would
+ * falsely attribute unchanged geometry to a collaborator.
  */
-function shallowEqual(a, b) {
+function serializedValueEqual(a, b) {
   if (a === b) return true;
   if (a == null || b == null) return false;
   if (typeof a !== typeof b) return false;
@@ -88,14 +89,19 @@ function shallowEqual(a, b) {
   if (Array.isArray(a)) {
     if (!Array.isArray(b)) return false;
     if (a.length !== b.length) return false;
-    for (let i = 0; i < a.length; i += 1) if (a[i] !== b[i]) return false;
+    for (let i = 0; i < a.length; i += 1) {
+      if (!serializedValueEqual(a[i], b[i])) return false;
+    }
     return true;
   }
   if (Array.isArray(b)) return false;
   const ak = Object.keys(a);
   const bk = Object.keys(b);
   if (ak.length !== bk.length) return false;
-  for (const k of ak) if (a[k] !== b[k]) return false;
+  for (const k of ak) {
+    if (!Object.prototype.hasOwnProperty.call(b, k)) return false;
+    if (!serializedValueEqual(a[k], b[k])) return false;
+  }
   return true;
 }
 
@@ -114,8 +120,46 @@ const FABRIC_CUSTOM_PROPS = [
   'data', 'name', 'annotationId', 'needsEntity',
   'globalCompositeOperation', 'layer',
   'isPdfImported', 'pdfAnnotationId', 'pdfAnnotationType', 'pdfInkRenderMode',
-  'paperInkGeometry', 'paperEraserGeometry',
-  'polygons', 'paperCenterline', 'paperCenterlineRuns', 'sourceWidth', 'fillRule',
+  'paperInkGeometry', 'paperEraserGeometry', 'paperEraserBaseTransform',
+  'paperSourceStroke', 'paperEraserCuts',
+  'cmds', 'polygons', 'paperCenterline', 'paperCenterlineRuns', 'sourceWidth',
+  'inkGeometrySpace', 'inkGeometryOrigin', 'fillRule',
+  'flipX', 'flipY', 'skewX', 'skewY',
+  'originX', 'originY',
+];
+
+// These geometry fields are intentionally optional. Partial erase bakes a
+// center-local stroke into page-space geometry and removes the obsolete
+// carriers/origin markers. Treating a Fabric snapshot as set-only leaves those
+// old keys in the Y.Map, so a remote reader can apply `center-v1` to the new
+// page-space path and visibly shift it.
+//
+// Keep this list geometry-only. Fabric commits remain per-field CRDT updates:
+// an omitted unrelated field is not deleted, so concurrent style/position
+// edits continue to merge independently.
+const FABRIC_GEOMETRY_KEYS_WITH_ABSENCE_SEMANTICS = [
+  'pathOffset',
+  'originX',
+  'originY',
+  'flipX',
+  'flipY',
+  'skewX',
+  'skewY',
+  'cmds',
+  'polygons',
+  'paperCenterline',
+  'paperCenterlineRuns',
+  'sourceWidth',
+  'paperInkGeometry',
+  'paperEraserGeometry',
+  'paperEraserBaseTransform',
+  'paperSourceStroke',
+  'paperEraserCuts',
+  'inkGeometrySpace',
+  'inkGeometryOrigin',
+  'fillRule',
+  'strokeDashArray',
+  'strokeDashOffset',
 ];
 
 /**
@@ -159,13 +203,40 @@ function snapshotYMapLike(yMapLike) {
   return null;
 }
 
-function writePlainObjectToYMap(target, values) {
-  if (!target || !values) return;
-  for (const key of Object.keys(values)) {
-    const prev = typeof target.get === 'function' ? target.get(key) : undefined;
-    if (shallowEqual(prev, values[key])) continue;
-    target.set(key, values[key]);
+function writePlainObjectToYMap(target, values, deleteWhenAbsent = []) {
+  const changedKeys = [];
+  if (!target || !values) return changedKeys;
+
+  // `undefined` is the field-level tombstone. Yjs preserves it through sync and
+  // Undo/Redo as a normal per-key value change; consumers already interpret it
+  // as absence. A raw Y.Map.delete is unsuitable here because this project's
+  // ownership-aware UndoManager can intentionally protect nested deletes while
+  // reconciling a creator Undo, which would let the old geometry return on
+  // Redo. Do not clear/rebuild the whole map: that would destroy independent
+  // concurrent edits on other keys.
+  for (const key of deleteWhenAbsent) {
+    const hasValue = Object.prototype.hasOwnProperty.call(values, key)
+      && values[key] !== undefined;
+    if (hasValue) continue;
+    const previous = typeof target.get === 'function' ? target.get(key) : undefined;
+    if (previous === undefined || typeof target.set !== 'function') continue;
+    target.set(key, undefined);
+    changedKeys.push(key);
   }
+
+  for (const key of Object.keys(values)) {
+    if (
+      values[key] === undefined
+      && deleteWhenAbsent.includes(key)
+    ) {
+      continue;
+    }
+    const prev = typeof target.get === 'function' ? target.get(key) : undefined;
+    if (serializedValueEqual(prev, values[key])) continue;
+    target.set(key, values[key]);
+    changedKeys.push(key);
+  }
+  return changedKeys;
 }
 
 function getCalloutAuthorId(callout) {
@@ -233,6 +304,13 @@ export function applyFabricCommit(ydoc, yMapAnnotations, fabricObject, originPay
   const pageNumber = fabricObject?.pageNumber;
 
   ydoc.transact(() => {
+    // Any successful create/edit makes this annotation live. Clear an explicit
+    // delete tombstone. The undo-create lineage marker intentionally remains:
+    // another collaborator may still hold an unseen concurrent edit.
+    if (typeof ydoc.getMap === 'function') {
+      ydoc.getMap('__annotationDeletionTombstones').delete(annoId);
+    }
+
     if (fabricJson && typeof ydoc.getMap === 'function') {
       const latestFabricById = ydoc.getMap('__annotationLatestFabric');
       latestFabricById.set(annoId, fabricJson);
@@ -291,7 +369,42 @@ export function applyFabricCommit(ydoc, yMapAnnotations, fabricObject, originPay
     // Per-property writes — DO NOT clear-and-set. Each set() is one mergeable
     // op for COLLAB-03 LWW. If A changes fill and B changes left in the same
     // window, both survive sync because Y.Map merges per-key, not per-Map.
-    writePlainObjectToYMap(fabricYMap, fabricJson);
+    const changedFabricKeys = writePlainObjectToYMap(
+      fabricYMap,
+      fabricJson,
+      FABRIC_GEOMETRY_KEYS_WITH_ABSENCE_SEMANTICS,
+    );
+
+    // Keep field-level editor ownership in a parallel CRDT map. It is tracked
+    // by each user's UndoManager so undoing B's edit also returns ownership to
+    // the prior writer. A top-level annotation Y.Map is inserted by its
+    // creator, so a plain undo of that CREATE would otherwise hide later
+    // nested edits made by B.
+    if (typeof ydoc.getMap === 'function') {
+      const fabricOwnersById = ydoc.getMap('__annotationFabricFieldOwners');
+      const latestFabricFieldsById = ydoc.getMap('__annotationLatestFabricFields');
+      let fabricOwners = fabricOwnersById.get(annoId);
+      if (!fabricOwners) {
+        fabricOwners = new Y.Map();
+        fabricOwnersById.set(annoId, fabricOwners);
+      }
+      let latestFabricFields = latestFabricFieldsById.get(annoId);
+      if (!latestFabricFields) {
+        latestFabricFields = new Y.Map();
+        latestFabricFieldsById.set(annoId, latestFabricFields);
+      }
+      for (const key of changedFabricKeys) {
+        fabricOwners.set(key, ctx?.userId);
+        if (
+          Object.prototype.hasOwnProperty.call(fabricJson, key)
+          && fabricJson[key] !== undefined
+        ) {
+          latestFabricFields.set(key, fabricJson[key]);
+        } else {
+          latestFabricFields.set(key, undefined);
+        }
+      }
+    }
 
     // EDIT-path meta — overwritten on every commit. meta.updatedAt is for
     // human display only (e.g. "edited 2 min ago" tooltips); Yjs internal
@@ -300,6 +413,15 @@ export function applyFabricCommit(ydoc, yMapAnnotations, fabricObject, originPay
     // across devices. AUTH-03 server_ts (Postgres NOW()) is the audit clock.
     metaYMap.set('updatedAt', Date.now());
     metaYMap.set('lastEditorId', ctx?.userId);
+
+    // Full coherent fallback used only if an undo-create must preserve later
+    // collaborator work. This map is intentionally outside UndoManager scope.
+    if (
+      typeof ydoc.getMap === 'function'
+      && typeof annoYMap.toJSON === 'function'
+    ) {
+      ydoc.getMap('__annotationLatestSnapshot').set(annoId, annoYMap.toJSON());
+    }
   }, originPayload);
 }
 
@@ -333,6 +455,13 @@ export function applyFabricDelete(ydoc, yMapAnnotations, annoId, originPayload) 
   }
   stopUndoCaptureForDoc(ydoc);
   ydoc.transact(() => {
+    if (typeof ydoc.getMap === 'function') {
+      ydoc.getMap('__annotationDeletionTombstones').set(annoId, {
+        userId: originPayload?.userId ?? null,
+        deviceId: originPayload?.deviceId ?? null,
+        deletedAt: Date.now(),
+      });
+    }
     yMapAnnotations.delete(annoId);
   }, originPayload);
 }
@@ -472,13 +601,31 @@ export function applyYUpdateToFabric(yMapAnnotations, annoId, registry) {
   if (!fabricYMap) return;
   const fabricSnapshot = snapshotYMapLike(fabricYMap);
   if (!fabricSnapshot) return;
+  const fabricPatch = { ...fabricSnapshot };
+  for (const key of FABRIC_GEOMETRY_KEYS_WITH_ABSENCE_SEMANTICS) {
+    if (
+      (
+        !Object.prototype.hasOwnProperty.call(fabricSnapshot, key)
+        || fabricSnapshot[key] === undefined
+      )
+      && (
+        Object.prototype.hasOwnProperty.call(obj, key)
+        || obj[key] !== undefined
+      )
+    ) {
+      // Fabric's object-form set() leaves omitted properties untouched. Send
+      // an explicit undefined only to the mounted object. The durable Y.Map
+      // uses that same value as a CRDT tombstone.
+      fabricPatch[key] = undefined;
+    }
+  }
 
   // CRITICAL: raise the belt BEFORE calling .set so any synchronous
   // object:modified fired during the apply reads true and short-circuits.
   applyingRemote = true;
   try {
     if (typeof obj.set === 'function') {
-      obj.set(fabricSnapshot);
+      obj.set(fabricPatch);
     }
     if (typeof obj.setCoords === 'function') {
       obj.setCoords();

@@ -1,4 +1,4 @@
-import { diff, intersection, union } from 'martinez-polygon-clipping';
+import { diff, intersection, union, xor } from 'martinez-polygon-clipping';
 import { erasePathWithCapsules } from './paperInkEraser.js';
 
 const EPS = 1e-7;
@@ -18,7 +18,7 @@ const isPoint = (value) => (
 );
 
 const samePoint = (a, b) => (
-  Math.abs(a[0] - b[0]) <= EPS && Math.abs(a[1] - b[1]) <= EPS
+  a[0] === b[0] && a[1] === b[1]
 );
 
 export function normalizeMultiPolygon(value) {
@@ -58,7 +58,7 @@ function capsulePolygon(a, b, radius, arcSteps = DEFAULT_ARC_STEPS) {
   const dx = b.x - a.x;
   const dy = b.y - a.y;
   const length = Math.hypot(dx, dy);
-  if (length <= EPS) return circlePolygon(a, radius, arcSteps * 2);
+  if (length === 0) return circlePolygon(a, radius, arcSteps * 2);
 
   const directionAngle = Math.atan2(dy, dx);
   const ring = [];
@@ -85,9 +85,15 @@ export function compactPoints(points, minDistance = 0.35) {
       compacted.push({ x: point.x, y: point.y });
     }
   }
-  if (compacted.length === 1 && points?.length > 1) {
+  if (compacted.length && points?.length > 1) {
     const last = points[points.length - 1];
-    if (last && Math.hypot(last.x - compacted[0].x, last.y - compacted[0].y) > EPS) {
+    const keptLast = compacted[compacted.length - 1];
+    if (
+      last
+      && Number.isFinite(last.x)
+      && Number.isFinite(last.y)
+      && (last.x !== keptLast.x || last.y !== keptLast.y)
+    ) {
       compacted.push({ x: last.x, y: last.y });
     }
   }
@@ -97,10 +103,22 @@ export function compactPoints(points, minDistance = 0.35) {
 function perpendicularDistance(point, a, b) {
   const dx = b.x - a.x;
   const dy = b.y - a.y;
-  const lengthSq = dx * dx + dy * dy;
-  if (lengthSq <= EPS) return Math.hypot(point.x - a.x, point.y - a.y);
-  const t = Math.max(0, Math.min(1, ((point.x - a.x) * dx + (point.y - a.y) * dy) / lengthSq));
-  return Math.hypot(point.x - (a.x + t * dx), point.y - (a.y + t * dy));
+  const length = Math.hypot(dx, dy);
+  // The old code compared squared chord length with a linear, absolute EPS.
+  // Tight flattening of a tiny imported curve then treated ordinary chords as
+  // collapsed and recursed hundreds of thousands of times. Normalize by
+  // `hypot` instead; this also avoids squared-distance underflow/overflow.
+  if (length === 0) return Math.hypot(point.x - a.x, point.y - a.y);
+  const ux = dx / length;
+  const uy = dy / length;
+  const projection = Math.max(0, Math.min(
+    length,
+    (point.x - a.x) * ux + (point.y - a.y) * uy,
+  ));
+  return Math.hypot(
+    point.x - (a.x + ux * projection),
+    point.y - (a.y + uy * projection),
+  );
 }
 
 function simplifyPoints(points, tolerance) {
@@ -120,26 +138,433 @@ function simplifyPoints(points, tolerance) {
   return left.slice(0, -1).concat(right);
 }
 
-export function sweptDiskPolygon(points, radius, options = {}) {
-  if (!Number.isFinite(radius) || radius <= 0) return [];
-  const compacted = compactPoints(points, options.minDistance ?? 0.35);
-  if (!compacted.length) return [];
-  if (compacted.length === 1) return normalizeMultiPolygon(circlePolygon(compacted[0], radius));
-
-  let geometry = null;
-  for (let i = 1; i < compacted.length; i += 1) {
-    const capsule = capsulePolygon(compacted[i - 1], compacted[i], radius, options.arcSteps);
-    geometry = geometry ? union(geometry, capsule) : capsule;
+function sweptDiskPolygonByCapsules(points, radius, arcSteps) {
+  let geometries = [];
+  for (let i = 1; i < points.length; i += 1) {
+    geometries.push(capsulePolygon(points[i - 1], points[i], radius, arcSteps));
   }
-  return normalizeMultiPolygon(geometry);
+  // A left-to-right union repeatedly clips a growing outline against one tiny
+  // capsule, making curved legacy ink take seconds to erase. A balanced merge
+  // keeps both operands similarly sized and produces the identical union with
+  // logarithmic growth depth.
+  while (geometries.length > 1) {
+    const merged = [];
+    for (let index = 0; index < geometries.length; index += 2) {
+      merged.push(
+        index + 1 < geometries.length
+          ? union(geometries[index], geometries[index + 1])
+          : geometries[index],
+      );
+    }
+    geometries = merged;
+  }
+  return normalizeMultiPolygon(geometries[0]);
 }
 
-function sampleCount(points, tolerance, minimum) {
-  let length = 0;
-  for (let i = 1; i < points.length; i += 1) {
-    length += Math.hypot(points[i].x - points[i - 1].x, points[i].y - points[i - 1].y);
+const appendDistinctPoint = (output, point) => {
+  const last = output[output.length - 1];
+  if (!last || last[0] !== point[0] || last[1] !== point[1]) output.push(point);
+};
+
+const appendRoundArc = (
+  output,
+  center,
+  radius,
+  startAngle,
+  endAngle,
+  direction,
+  semicircleSteps,
+) => {
+  let delta = endAngle - startAngle;
+  if (direction > 0) {
+    while (delta < 0) delta += Math.PI * 2;
+  } else {
+    while (delta > 0) delta -= Math.PI * 2;
   }
-  return Math.max(minimum, Math.min(96, Math.ceil(length / Math.max(0.5, tolerance))));
+  const steps = Math.max(
+    1,
+    Math.ceil(Math.abs(delta) / Math.PI * semicircleSteps),
+  );
+  for (let index = 1; index <= steps; index += 1) {
+    const angle = startAngle + delta * index / steps;
+    appendDistinctPoint(output, [
+      center.x + Math.cos(angle) * radius,
+      center.y + Math.sin(angle) * radius,
+    ]);
+  }
+};
+
+const segmentIntersection = (
+  first,
+  second,
+  coordinateTolerance,
+  crossTolerance,
+) => {
+  const orientation = (a, b, c) => (
+    (b[0] - a[0]) * (c[1] - a[1])
+    - (b[1] - a[1]) * (c[0] - a[0])
+  );
+  const onSegment = (a, b, point) => (
+    point[0] >= Math.min(a[0], b[0]) - coordinateTolerance
+    && point[0] <= Math.max(a[0], b[0]) + coordinateTolerance
+    && point[1] >= Math.min(a[1], b[1]) - coordinateTolerance
+    && point[1] <= Math.max(a[1], b[1]) + coordinateTolerance
+  );
+  const o1 = orientation(first.a, first.b, second.a);
+  const o2 = orientation(first.a, first.b, second.b);
+  const o3 = orientation(second.a, second.b, first.a);
+  const o4 = orientation(second.a, second.b, first.b);
+  if (
+    ((o1 > crossTolerance && o2 < -crossTolerance)
+      || (o1 < -crossTolerance && o2 > crossTolerance))
+    && ((o3 > crossTolerance && o4 < -crossTolerance)
+      || (o3 < -crossTolerance && o4 > crossTolerance))
+  ) {
+    return true;
+  }
+  return (
+    (Math.abs(o1) <= crossTolerance && onSegment(first.a, first.b, second.a))
+    || (Math.abs(o2) <= crossTolerance && onSegment(first.a, first.b, second.b))
+    || (Math.abs(o3) <= crossTolerance && onSegment(second.a, second.b, first.a))
+    || (Math.abs(o4) <= crossTolerance && onSegment(second.a, second.b, first.b))
+  );
+};
+
+/**
+ * Fast safety check for the direct offset ring. Most authored curves have
+ * only a few neighboring edges in the active sweep set, so this is O(n log n)
+ * in the ordinary case. A self-crossing or tightly folded tube is rejected
+ * and handled by the capsule-union fallback below.
+ */
+const ringHasSelfIntersection = (ring) => {
+  const edgeCount = ring.length - 1;
+  if (edgeCount < 3) return true;
+  let xSpan = 0;
+  let ySpan = 0;
+  for (const point of ring) {
+    xSpan = Math.max(xSpan, Math.abs(point[0] - ring[0][0]));
+    ySpan = Math.max(ySpan, Math.abs(point[1] - ring[0][1]));
+  }
+  const primary = xSpan >= ySpan ? 0 : 1;
+  const secondary = primary === 0 ? 1 : 0;
+  let maximumDelta = 0;
+  const edges = [];
+  for (let index = 0; index < edgeCount; index += 1) {
+    const a = ring[index];
+    const b = ring[index + 1];
+    maximumDelta = Math.max(
+      maximumDelta,
+      Math.abs(b[0] - a[0]),
+      Math.abs(b[1] - a[1]),
+    );
+    edges.push({
+      index,
+      a,
+      b,
+      minPrimary: Math.min(a[primary], b[primary]),
+      maxPrimary: Math.max(a[primary], b[primary]),
+      minSecondary: Math.min(a[secondary], b[secondary]),
+      maxSecondary: Math.max(a[secondary], b[secondary]),
+    });
+  }
+  const coordinateTolerance = Math.max(
+    Number.MIN_VALUE,
+    maximumDelta * Number.EPSILON * 64,
+  );
+  const crossTolerance = Math.max(
+    Number.MIN_VALUE,
+    maximumDelta * maximumDelta * Number.EPSILON * 64,
+  );
+  edges.sort((left, right) => (
+    left.minPrimary - right.minPrimary || left.index - right.index
+  ));
+  let active = [];
+  for (const edge of edges) {
+    active = active.filter((candidate) => (
+      candidate.maxPrimary >= edge.minPrimary - coordinateTolerance
+    ));
+    for (const candidate of active) {
+      const distance = Math.abs(candidate.index - edge.index);
+      if (distance <= 1 || distance === edgeCount - 1) continue;
+      if (
+        candidate.maxSecondary < edge.minSecondary - coordinateTolerance
+        || edge.maxSecondary < candidate.minSecondary - coordinateTolerance
+      ) {
+        continue;
+      }
+      if (segmentIntersection(
+        candidate,
+        edge,
+        coordinateTolerance,
+        crossTolerance,
+      )) return true;
+    }
+    active.push(edge);
+  }
+  return false;
+};
+
+const directSweptDiskRing = (points, radius, semicircleSteps) => {
+  const segments = [];
+  for (let index = 1; index < points.length; index += 1) {
+    const a = points[index - 1];
+    const b = points[index];
+    const dx = b.x - a.x;
+    const dy = b.y - a.y;
+    const length = Math.hypot(dx, dy);
+    if (length === 0) continue;
+    segments.push({
+      a,
+      b,
+      length,
+      ux: dx / length,
+      uy: dy / length,
+      nx: -dy / length,
+      ny: dx / length,
+    });
+  }
+  if (!segments.length) return null;
+  // A repeated first point represents a closed path. Its offset may contain
+  // holes or multiple components, so leave it to the robust boolean fallback.
+  if (
+    points.length > 2
+    && points[0].x === points.at(-1).x
+    && points[0].y === points.at(-1).y
+  ) {
+    return null;
+  }
+
+  // A direct offset is valid only while consecutive inside joins retain a
+  // positive interval on every source segment. If the two inset distances
+  // meet or cross, neighboring vertex disks overlap beyond the local join
+  // topology and a single offset ring can contain a false hole. The capsule
+  // union is the robust path for that tight fold.
+  const startInsets = [new Array(segments.length).fill(0), new Array(segments.length).fill(0)];
+  const endInsets = [new Array(segments.length).fill(0), new Array(segments.length).fill(0)];
+  for (let index = 1; index < segments.length; index += 1) {
+    const previous = segments[index - 1];
+    const next = segments[index];
+    const cross = previous.ux * next.uy - previous.uy * next.ux;
+    const dot = previous.ux * next.ux + previous.uy * next.uy;
+    const turn = Math.atan2(Math.abs(cross), dot);
+    if (turn >= Math.PI - Number.EPSILON * 32) return null;
+    const inset = radius * Math.tan(turn / 2);
+    if (!Number.isFinite(inset)) return null;
+    const insideSide = cross >= 0 ? 0 : 1;
+    endInsets[insideSide][index - 1] = inset;
+    startInsets[insideSide][index] = inset;
+  }
+  for (let index = 0; index < segments.length; index += 1) {
+    for (let side = 0; side < 2; side += 1) {
+      if (
+        startInsets[side][index] + endInsets[side][index]
+        >= segments[index].length
+      ) {
+        return null;
+      }
+    }
+  }
+
+  let unsafe = false;
+  const buildSide = (side) => {
+    const output = [[
+      segments[0].a.x + segments[0].nx * radius * side,
+      segments[0].a.y + segments[0].ny * radius * side,
+    ]];
+    for (let index = 1; index < segments.length; index += 1) {
+      const previous = segments[index - 1];
+      const next = segments[index];
+      const vertex = previous.b;
+      const cross = previous.ux * next.uy - previous.uy * next.ux;
+      const dot = previous.ux * next.ux + previous.uy * next.uy;
+      if (Math.abs(cross) <= Number.EPSILON * 32) {
+        if (dot < 0) {
+          unsafe = true;
+          return output;
+        }
+        appendDistinctPoint(output, [
+          vertex.x + next.nx * radius * side,
+          vertex.y + next.ny * radius * side,
+        ]);
+        continue;
+      }
+
+      const previousOffset = [
+        vertex.x + previous.nx * radius * side,
+        vertex.y + previous.ny * radius * side,
+      ];
+      const nextOffset = [
+        vertex.x + next.nx * radius * side,
+        vertex.y + next.ny * radius * side,
+      ];
+      if (cross * side < 0) {
+        appendDistinctPoint(output, previousOffset);
+        appendRoundArc(
+          output,
+          vertex,
+          radius,
+          Math.atan2(previous.ny * side, previous.nx * side),
+          Math.atan2(next.ny * side, next.nx * side),
+          cross > 0 ? 1 : -1,
+          semicircleSteps,
+        );
+        output[output.length - 1] = nextOffset;
+        continue;
+      }
+
+      // The inside of a round join is the intersection of the two offset
+      // segment lines. Constructing it directly avoids unioning a circle and
+      // rectangle for every flattened curve sample.
+      const denominator = cross;
+      const deltaX = nextOffset[0] - previousOffset[0];
+      const deltaY = nextOffset[1] - previousOffset[1];
+      const distance = (deltaX * next.uy - deltaY * next.ux) / denominator;
+      const intersectionPoint = [
+        previousOffset[0] + previous.ux * distance,
+        previousOffset[1] + previous.uy * distance,
+      ];
+      if (!Number.isFinite(intersectionPoint[0]) || !Number.isFinite(intersectionPoint[1])) {
+        unsafe = true;
+        return output;
+      }
+      appendDistinctPoint(output, intersectionPoint);
+    }
+    const last = segments.at(-1);
+    appendDistinctPoint(output, [
+      last.b.x + last.nx * radius * side,
+      last.b.y + last.ny * radius * side,
+    ]);
+    return output;
+  };
+
+  const left = buildSide(1);
+  const right = buildSide(-1);
+  if (unsafe || left.length < 2 || right.length < 2) return null;
+
+  const first = segments[0];
+  const last = segments.at(-1);
+  const ring = [...left];
+  appendRoundArc(
+    ring,
+    last.b,
+    radius,
+    Math.atan2(last.ny, last.nx),
+    Math.atan2(-last.ny, -last.nx),
+    -1,
+    semicircleSteps,
+  );
+  ring[ring.length - 1] = [...right.at(-1)];
+  for (let index = right.length - 2; index >= 0; index -= 1) {
+    appendDistinctPoint(ring, right[index]);
+  }
+  appendRoundArc(
+    ring,
+    first.a,
+    radius,
+    Math.atan2(-first.ny, -first.nx),
+    Math.atan2(first.ny, first.nx),
+    -1,
+    semicircleSteps,
+  );
+  ring[ring.length - 1] = [...ring[0]];
+  return ringHasSelfIntersection(ring) ? null : ring;
+};
+
+export function sweptDiskPolygon(points, radius, options = {}) {
+  if (!Number.isFinite(radius) || radius <= 0) return [];
+  // Sampling thresholds are geometry-relative. In particular, do not restore
+  // an absolute epsilon here: imported PDF ink can legitimately be many
+  // orders of magnitude smaller than one page unit.
+  const minDistance = options.minDistance
+    ?? Math.max(Number.MIN_VALUE, Math.min(0.35, radius * 0.1));
+  const compacted = compactPoints(points, minDistance).filter((point, index, values) => (
+    index === 0
+    || point.x !== values[index - 1].x
+    || point.y !== values[index - 1].y
+  ));
+  if (!compacted.length) return [];
+  const requestedArcSteps = Number(options.arcSteps);
+  const curveTolerance = Number(options.curveTolerance);
+  const semicircleSteps = (() => {
+    if (Number.isFinite(requestedArcSteps) && requestedArcSteps > 0) {
+      return Math.max(1, Math.ceil(requestedArcSteps));
+    }
+    if (Number.isFinite(curveTolerance) && curveTolerance > 0) {
+      if (curveTolerance >= radius) return DEFAULT_ARC_STEPS;
+      const maximumAngle = 2 * Math.acos(
+        Math.max(-1, Math.min(1, 1 - curveTolerance / radius)),
+      );
+      if (Number.isFinite(maximumAngle) && maximumAngle > 0) {
+        // Retain the historical 18-facet semicircle as the minimum visual
+        // quality, then add facets only when the requested tolerance needs
+        // them (for example a very large imported stroke).
+        return Math.max(DEFAULT_ARC_STEPS, Math.ceil(Math.PI / maximumAngle));
+      }
+    }
+    return DEFAULT_ARC_STEPS;
+  })();
+  if (compacted.length === 1) {
+    const ring = circlePolygon(compacted[0], radius, semicircleSteps * 2)[0];
+    if (
+      ring[0][0] !== ring.at(-1)[0]
+      || ring[0][1] !== ring.at(-1)[1]
+    ) {
+      ring.push([...ring[0]]);
+    }
+    return [[ring]];
+  }
+
+  const directRing = directSweptDiskRing(compacted, radius, semicircleSteps);
+  if (directRing) return [[directRing]];
+  return sweptDiskPolygonByCapsules(compacted, radius, semicircleSteps);
+}
+
+const midpointCoordinate = (a, b) => {
+  const sum = a + b;
+  return Number.isFinite(sum) ? sum / 2 : a / 2 + b / 2;
+};
+
+const midpoint = (a, b) => ({
+  x: midpointCoordinate(a.x, b.x),
+  y: midpointCoordinate(a.y, b.y),
+});
+
+function flattenQuadratic(p0, control, p1, tolerance, output, depth = 0) {
+  if (
+    depth >= 18
+    || perpendicularDistance(control, p0, p1)
+      <= tolerance * (1 + Number.EPSILON * 64)
+  ) {
+    output.push(p1);
+    return;
+  }
+  const p01 = midpoint(p0, control);
+  const p12 = midpoint(control, p1);
+  const split = midpoint(p01, p12);
+  flattenQuadratic(p0, p01, split, tolerance, output, depth + 1);
+  flattenQuadratic(split, p12, p1, tolerance, output, depth + 1);
+}
+
+function flattenCubic(p0, c1, c2, p1, tolerance, output, depth = 0) {
+  const flatness = Math.max(
+    perpendicularDistance(c1, p0, p1),
+    perpendicularDistance(c2, p0, p1),
+  );
+  if (
+    depth >= 18
+    || flatness <= tolerance * (1 + Number.EPSILON * 64)
+  ) {
+    output.push(p1);
+    return;
+  }
+  const p01 = midpoint(p0, c1);
+  const p12 = midpoint(c1, c2);
+  const p23 = midpoint(c2, p1);
+  const p012 = midpoint(p01, p12);
+  const p123 = midpoint(p12, p23);
+  const split = midpoint(p012, p123);
+  flattenCubic(p0, p01, p012, split, tolerance, output, depth + 1);
+  flattenCubic(split, p123, p23, p1, tolerance, output, depth + 1);
 }
 
 export function commandsToPolylines(commands, tolerance = 0.75) {
@@ -174,33 +599,30 @@ export function commandsToPolylines(commands, tolerance = 0.75) {
       const p0 = current;
       const control = { x: command[1], y: command[2] };
       const p1 = { x: command[3], y: command[4] };
-      const steps = sampleCount([p0, control, p1], tolerance, 4);
-      for (let i = 1; i <= steps; i += 1) {
-        const t = i / steps;
-        const mt = 1 - t;
-        points.push({
-          x: mt * mt * p0.x + 2 * mt * t * control.x + t * t * p1.x,
-          y: mt * mt * p0.y + 2 * mt * t * control.y + t * t * p1.y,
-        });
-      }
+      flattenQuadratic(
+        p0,
+        control,
+        p1,
+        Number.isFinite(tolerance) && tolerance > 0 ? tolerance : Number.MIN_VALUE,
+        points,
+      );
       current = p1;
     } else if (op === 'C') {
       const p0 = current;
       const c1 = { x: command[1], y: command[2] };
       const c2 = { x: command[3], y: command[4] };
       const p1 = { x: command[5], y: command[6] };
-      const steps = sampleCount([p0, c1, c2, p1], tolerance, 6);
-      for (let i = 1; i <= steps; i += 1) {
-        const t = i / steps;
-        const mt = 1 - t;
-        points.push({
-          x: mt ** 3 * p0.x + 3 * mt * mt * t * c1.x + 3 * mt * t * t * c2.x + t ** 3 * p1.x,
-          y: mt ** 3 * p0.y + 3 * mt * mt * t * c1.y + 3 * mt * t * t * c2.y + t ** 3 * p1.y,
-        });
-      }
+      flattenCubic(
+        p0,
+        c1,
+        c2,
+        p1,
+        Number.isFinite(tolerance) && tolerance > 0 ? tolerance : Number.MIN_VALUE,
+        points,
+      );
       current = p1;
     } else if (op === 'Z') {
-      if (start && Math.hypot(current.x - start.x, current.y - start.y) > EPS) points.push(start);
+      if (start && (current.x !== start.x || current.y !== start.y)) points.push(start);
       closed = true;
       flush();
     }
@@ -209,12 +631,80 @@ export function commandsToPolylines(commands, tolerance = 0.75) {
   return polylines;
 }
 
-function ringArea(ring) {
-  let area = 0;
-  for (let i = 0, j = ring.length - 1; i < ring.length; j = i, i += 1) {
-    area += ring[j][0] * ring[i][1] - ring[i][0] * ring[j][1];
+function ringAreaMetrics(ring) {
+  if (!ring.length) return { area: 0, logArea: -Infinity };
+  const originX = ring[0][0];
+  const originY = ring[0][1];
+  let coordinateScale = 0;
+  const translated = ring.map(([x, y]) => {
+    const point = [x - originX, y - originY];
+    coordinateScale = Math.max(
+      coordinateScale,
+      Math.abs(point[0]),
+      Math.abs(point[1]),
+    );
+    return point;
+  });
+  if (!(coordinateScale > 0) || !Number.isFinite(coordinateScale)) {
+    return { area: 0, logArea: -Infinity };
   }
-  return Math.abs(area / 2);
+
+  // Preserve the old arithmetic exactly while it is representable. Imported
+  // geometry near 1e155 needs a normalized fallback because its perfectly
+  // finite coordinate differences produce 1e310 cross-products; those used
+  // to become Infinity-Infinity => NaN and made the valid ring disappear.
+  let directTwiceArea = 0;
+  let directIsFinite = true;
+  for (let i = 0, j = translated.length - 1; i < translated.length; j = i, i += 1) {
+    const cross = (
+      translated[j][0] * translated[i][1]
+      - translated[i][0] * translated[j][1]
+    );
+    directTwiceArea += cross;
+    if (!Number.isFinite(cross) || !Number.isFinite(directTwiceArea)) {
+      directIsFinite = false;
+      break;
+    }
+  }
+  if (directIsFinite) {
+    const area = Math.abs(directTwiceArea / 2);
+    if (area > 0) {
+      return {
+        area,
+        logArea: Math.log(area),
+      };
+    }
+    // A zero direct result can also be underflow, not collinearity. The
+    // normalized pass below distinguishes those cases.
+  }
+
+  let normalizedTwiceArea = 0;
+  let compensation = 0;
+  for (let i = 0, j = translated.length - 1; i < translated.length; j = i, i += 1) {
+    const cross = (
+      (translated[j][0] / coordinateScale) * (translated[i][1] / coordinateScale)
+      - (translated[i][0] / coordinateScale) * (translated[j][1] / coordinateScale)
+    );
+    const corrected = cross - compensation;
+    const next = normalizedTwiceArea + corrected;
+    compensation = (next - normalizedTwiceArea) - corrected;
+    normalizedTwiceArea = next;
+  }
+  const normalizedArea = Math.abs(normalizedTwiceArea) / 2;
+  if (!(normalizedArea > 0) || !Number.isFinite(normalizedArea)) {
+    return { area: 0, logArea: -Infinity };
+  }
+  const logArea = Math.log(normalizedArea) + 2 * Math.log(coordinateScale);
+  return {
+    area: logArea >= Math.log(Number.MAX_VALUE)
+      ? Number.MAX_VALUE
+      : Math.max(Number.MIN_VALUE, Math.exp(logArea)),
+    logArea,
+  };
+}
+
+function ringArea(ring) {
+  return ringAreaMetrics(ring).area;
 }
 
 function ringContains(ring, point) {
@@ -256,30 +746,52 @@ function ringCoverageScore(outer, candidate) {
     if (ringContains(outer, point)) score += 2;
     else if (pointOnRing(outer, point)) score += 1;
     const next = candidate[(index + 1) % candidate.length];
-    const midpoint = [(point[0] + next[0]) / 2, (point[1] + next[1]) / 2];
+    const midpoint = [
+      midpointCoordinate(point[0], next[0]),
+      midpointCoordinate(point[1], next[1]),
+    ];
     if (ringContains(outer, midpoint)) score += 2;
     else if (pointOnRing(outer, midpoint)) score += 1;
   }
   return score;
 }
 
+function ringFullyContained(outer, candidate) {
+  if (!candidate.length) return false;
+  for (let index = 0; index < candidate.length; index += 1) {
+    const point = candidate[index];
+    if (!ringContains(outer, point) && !pointOnRing(outer, point)) return false;
+    const next = candidate[(index + 1) % candidate.length];
+    const midpoint = [
+      midpointCoordinate(point[0], next[0]),
+      midpointCoordinate(point[1], next[1]),
+    ];
+    if (!ringContains(outer, midpoint) && !pointOnRing(outer, midpoint)) return false;
+  }
+  return true;
+}
+
 function groupRings(rings) {
   const entries = rings
-    .map((ring) => ({ ring: closeRing(ring), area: ringArea(ring) }))
-    .filter((entry) => entry.ring.length >= 4 && entry.area > EPS)
-    .sort((a, b) => b.area - a.area);
+    .map((ring) => {
+      const closedRing = closeRing(ring);
+      return { ring: closedRing, ...ringAreaMetrics(closedRing) };
+    })
+    .filter((entry) => entry.ring.length >= 4 && entry.area > 0)
+    .sort((a, b) => b.logArea - a.logArea);
   const polygons = [];
   const placed = [];
 
   for (const entry of entries) {
-    const point = entry.ring[0];
-    const containers = placed.filter((candidate) => ringContains(candidate.entry.ring, point));
+    const containers = placed.filter((candidate) => (
+      ringFullyContained(candidate.entry.ring, entry.ring)
+    ));
     const depth = containers.length;
     if (depth % 2 === 0) {
       polygons.push([entry.ring]);
       placed.push({ entry, depth, polygonIndex: polygons.length - 1 });
     } else {
-      containers.sort((a, b) => a.entry.area - b.entry.area);
+      containers.sort((a, b) => a.entry.logArea - b.entry.logArea);
       const parent = containers[0];
       polygons[parent.polygonIndex].push(entry.ring);
       placed.push({ entry, depth, polygonIndex: parent.polygonIndex });
@@ -327,7 +839,7 @@ function splitWeaklySimpleRing(rawRing) {
 
   if (!repeatedPair) {
     const closed = closeRing(ring);
-    return closed.length >= 4 && ringArea(closed) > EPS ? [closed] : [];
+    return closed.length >= 4 && ringArea(closed) > 0 ? [closed] : [];
   }
 
   const [start, end] = repeatedPair;
@@ -437,7 +949,20 @@ export function commandsToPolygonSet(commands, {
   curveTolerance = 0.75,
   simplifyTolerance = 0,
 } = {}) {
-  const polylines = commandsToPolylines(commands, curveTolerance);
+  // A page-space floor from an upstream renderer must not flatten a tiny
+  // curved stroke into its endpoint chord. For stroked paths, cap curve error
+  // by a fraction of the actual width; filled outlines keep the caller's
+  // explicit tolerance because they have no trustworthy width.
+  const outlineCurveTolerance = (
+    !fill
+    && Number.isFinite(strokeWidth)
+    && strokeWidth > 0
+    && Number.isFinite(curveTolerance)
+    && curveTolerance > 0
+  )
+    ? Math.min(curveTolerance, strokeWidth * 0.05)
+    : curveTolerance;
+  const polylines = commandsToPolylines(commands, outlineCurveTolerance);
   if (!polylines.length) return [];
 
   if (fill) {
@@ -453,11 +978,321 @@ export function commandsToPolygonSet(commands, {
     const points = simplifyTolerance > EPS
       ? simplifyPoints(polyline.points, simplifyTolerance)
       : polyline.points;
-    const outlined = sweptDiskPolygon(points, strokeWidth / 2);
+    const outlined = sweptDiskPolygon(
+      points,
+      strokeWidth / 2,
+      { curveTolerance: outlineCurveTolerance },
+    );
     if (!outlined.length) continue;
     geometry = geometry ? union(geometry, outlined) : outlined;
   }
   return normalizeMultiPolygon(geometry);
+}
+
+const styledRingGeometry = (points) => {
+  if (points.length < 3) return [];
+  const ring = points.map((point) => [...point]);
+  closeRing(ring);
+  return [[ring]];
+};
+
+export function roundCircleStepCount(radius, tolerance, minimum = 24) {
+  if (!Number.isFinite(radius) || radius <= 0) return 0;
+  const safeMinimum = Math.max(3, Math.ceil(Number(minimum) || 0));
+  if (!Number.isFinite(tolerance) || tolerance <= 0) return safeMinimum;
+  const ratio = Math.min(1, tolerance / radius);
+  if (ratio >= 1) return safeMinimum;
+  // acos(1-ratio) loses the ratio entirely below machine epsilon. Its small
+  // angle limit is sqrt(2*ratio), which keeps tessellation proportional down
+  // to microscopic authored units without a facet ceiling.
+  const halfAngle = ratio < 1e-8
+    ? Math.sqrt(2 * ratio)
+    : Math.acos(1 - ratio);
+  if (!Number.isFinite(halfAngle) || halfAngle <= 0) return safeMinimum;
+  return Math.max(safeMinimum, Math.ceil(Math.PI / halfAngle));
+}
+
+const styledCircleGeometry = (point, radius, tolerance) => {
+  if (radius <= 0) return [];
+  const steps = roundCircleStepCount(radius, tolerance);
+  return styledRingGeometry(Array.from({ length: steps }, (_unused, index) => {
+    const angle = index / steps * 2 * Math.PI;
+    return [
+      point.x + Math.cos(angle) * radius,
+      point.y + Math.sin(angle) * radius,
+    ];
+  }));
+};
+
+const mergeStyledStrokeGeometries = (values) => {
+  let geometries = values.map(normalizeMultiPolygon).filter((value) => value.length);
+  while (geometries.length > 1) {
+    const next = [];
+    for (let index = 0; index < geometries.length; index += 2) {
+      next.push(
+        index + 1 < geometries.length
+          ? normalizeMultiPolygon(union(geometries[index], geometries[index + 1]))
+          : geometries[index],
+      );
+    }
+    geometries = next;
+  }
+  return geometries[0] || [];
+};
+
+const splitPolylineByDash = (points, dashArray, dashOffset = 0) => {
+  let pattern = (dashArray || [])
+    .map((value) => Math.max(0, Number(value) || 0));
+  if (!pattern.length || pattern.every((value) => value === 0)) return [points];
+  if (pattern.length % 2 === 1) pattern = [...pattern, ...pattern];
+  const total = pattern.reduce((sum, value) => sum + value, 0);
+  let phase = ((Number(dashOffset) || 0) % total + total) % total;
+  let patternIndex = 0;
+  let remaining = pattern[patternIndex];
+  let phaseGuard = 0;
+  while (phase > 0 && phaseGuard < pattern.length * 2) {
+    const entryLength = pattern[patternIndex];
+    if (entryLength > 0 && phase < entryLength) {
+      remaining = entryLength - phase;
+      phase = 0;
+      break;
+    }
+    if (entryLength > 0) phase -= entryLength;
+    patternIndex = (patternIndex + 1) % pattern.length;
+    remaining = pattern[patternIndex];
+    phaseGuard += 1;
+  }
+  let currentRun = patternIndex % 2 === 0 && remaining > 0 ? [points[0]] : null;
+  const runs = [];
+  const advanceCompletedEntries = (point, tangent = null) => {
+    let guard = 0;
+    while (remaining === 0 && guard < pattern.length) {
+      if (patternIndex % 2 === 0) {
+        if (currentRun?.length > 1) {
+          runs.push(currentRun);
+        } else if (pattern[patternIndex] === 0) {
+          // A zero-length painted dash is real geometry with round/square
+          // caps (PDF `[0 gap]` is the standard dotted-line idiom).
+          const zeroRun = [{ ...point }, { ...point }];
+          zeroRun.zeroDashTangent = tangent;
+          runs.push(zeroRun);
+        }
+      }
+      currentRun = null;
+      patternIndex = (patternIndex + 1) % pattern.length;
+      remaining = pattern[patternIndex];
+      if (patternIndex % 2 === 0 && remaining > 0) currentRun = [{ ...point }];
+      guard += 1;
+    }
+  };
+
+  for (let segmentIndex = 1; segmentIndex < points.length; segmentIndex += 1) {
+    const a = points[segmentIndex - 1];
+    const b = points[segmentIndex];
+    const dx = b.x - a.x;
+    const dy = b.y - a.y;
+    const length = Math.hypot(dx, dy);
+    if (length === 0) continue;
+    const tangent = { ux: dx / length, uy: dy / length };
+    let consumed = 0;
+    advanceCompletedEntries(a, tangent);
+    while (consumed < length) {
+      const step = Math.min(remaining, length - consumed);
+      const endDistance = consumed + step;
+      if (endDistance === consumed) break;
+      const end = {
+        x: a.x + dx * endDistance / length,
+        y: a.y + dy * endDistance / length,
+      };
+      if (patternIndex % 2 === 0) {
+        if (!currentRun) {
+          currentRun = [{
+            x: a.x + dx * consumed / length,
+            y: a.y + dy * consumed / length,
+          }];
+        }
+        currentRun.push(end);
+      }
+      consumed = endDistance;
+      remaining = step === remaining ? 0 : remaining - step;
+      advanceCompletedEntries(end, tangent);
+    }
+  }
+  if (currentRun?.length > 1) runs.push(currentRun);
+  return runs;
+};
+
+const styledStrokeRunPolygon = (
+  points,
+  {
+    radius,
+    lineCap,
+    lineJoin,
+    miterLimit,
+    curveTolerance,
+    closed,
+  },
+) => {
+  if (!Array.isArray(points) || points.length < 2 || radius <= 0) return [];
+  const segments = [];
+  for (let index = 1; index < points.length; index += 1) {
+    const a = points[index - 1];
+    const b = points[index];
+    const dx = b.x - a.x;
+    const dy = b.y - a.y;
+    const length = Math.hypot(dx, dy);
+    if (length === 0) continue;
+    segments.push({
+      a,
+      b,
+      ux: dx / length,
+      uy: dy / length,
+      nx: -dy / length,
+      ny: dx / length,
+    });
+  }
+  if (!segments.length) {
+    if (lineCap === 'round') {
+      return styledCircleGeometry(points[0], radius, curveTolerance);
+    }
+    if (lineCap === 'square') {
+      const { x, y } = points[0];
+      const ux = Number.isFinite(points.zeroDashTangent?.ux)
+        ? points.zeroDashTangent.ux
+        : 1;
+      const uy = Number.isFinite(points.zeroDashTangent?.uy)
+        ? points.zeroDashTangent.uy
+        : 0;
+      const nx = -uy;
+      const ny = ux;
+      return styledRingGeometry([
+        [x + ux * radius + nx * radius, y + uy * radius + ny * radius],
+        [x + ux * radius - nx * radius, y + uy * radius - ny * radius],
+        [x - ux * radius - nx * radius, y - uy * radius - ny * radius],
+        [x - ux * radius + nx * radius, y - uy * radius + ny * radius],
+      ]);
+    }
+    return [];
+  }
+
+  const shapes = segments.map((segment, index) => {
+    const startExtension = !closed && lineCap === 'square' && index === 0 ? radius : 0;
+    const endExtension = !closed && lineCap === 'square' && index === segments.length - 1
+      ? radius
+      : 0;
+    const ax = segment.a.x - segment.ux * startExtension;
+    const ay = segment.a.y - segment.uy * startExtension;
+    const bx = segment.b.x + segment.ux * endExtension;
+    const by = segment.b.y + segment.uy * endExtension;
+    return styledRingGeometry([
+      [ax + segment.nx * radius, ay + segment.ny * radius],
+      [bx + segment.nx * radius, by + segment.ny * radius],
+      [bx - segment.nx * radius, by - segment.ny * radius],
+      [ax - segment.nx * radius, ay - segment.ny * radius],
+    ]);
+  });
+
+  const joinCount = closed ? segments.length : segments.length - 1;
+  for (let index = 0; index < joinCount; index += 1) {
+    const previous = segments[index];
+    const next = segments[(index + 1) % segments.length];
+    const vertex = previous.b;
+    if (lineJoin === 'round') {
+      shapes.push(styledCircleGeometry(vertex, radius, curveTolerance));
+      continue;
+    }
+    const cross = previous.ux * next.uy - previous.uy * next.ux;
+    if (Math.abs(cross) <= Number.EPSILON * 64) continue;
+    const side = cross > 0 ? -1 : 1;
+    const outer1 = [
+      vertex.x + previous.nx * radius * side,
+      vertex.y + previous.ny * radius * side,
+    ];
+    const outer2 = [
+      vertex.x + next.nx * radius * side,
+      vertex.y + next.ny * radius * side,
+    ];
+    if (lineJoin === 'miter') {
+      const mx = (previous.nx + next.nx) * side;
+      const my = (previous.ny + next.ny) * side;
+      const magnitude = Math.hypot(mx, my);
+      const unitX = magnitude > Number.EPSILON * 64 ? mx / magnitude : 0;
+      const unitY = magnitude > Number.EPSILON * 64 ? my / magnitude : 0;
+      const denominator = unitX * next.nx * side + unitY * next.ny * side;
+      const miterLength = Math.abs(denominator) > Number.EPSILON * 64
+        ? radius / denominator
+        : Infinity;
+      if (Number.isFinite(miterLength) && miterLength <= miterLimit * radius) {
+        shapes.push(styledRingGeometry([
+          outer1,
+          [vertex.x + unitX * miterLength, vertex.y + unitY * miterLength],
+          outer2,
+        ]));
+        continue;
+      }
+    }
+    shapes.push(styledRingGeometry([outer1, [vertex.x, vertex.y], outer2]));
+  }
+
+  if (!closed && lineCap === 'round') {
+    shapes.push(styledCircleGeometry(segments[0].a, radius, curveTolerance));
+    shapes.push(styledCircleGeometry(segments.at(-1).b, radius, curveTolerance));
+  }
+  return mergeStyledStrokeGeometries(shapes);
+};
+
+/**
+ * Convert stroked path commands to their exact styled local-space outline.
+ * Supports SVG/PDF cap, join, miter, and dash semantics and is shared by
+ * partial erase and page-space hit testing.
+ */
+export function styledStrokeCommandsToPolygonSet(commands, {
+  strokeWidth,
+  curveTolerance,
+  lineCap = 'round',
+  lineJoin = 'round',
+  miterLimit = 10,
+  dashArray = null,
+  dashOffset = 0,
+} = {}) {
+  const radius = strokeWidth / 2;
+  const shapes = [];
+  for (const polyline of commandsToPolylines(commands, curveTolerance)) {
+    let points = polyline.points;
+    if (
+      polyline.closed
+      && points.length > 1
+      && points[0].x === points.at(-1).x
+      && points[0].y === points.at(-1).y
+    ) {
+      points = points.slice(0, -1);
+    }
+    const dashed = Array.isArray(dashArray) && dashArray.length > 0;
+    if (!dashed) {
+      const solidPoints = polyline.closed ? [...points, points[0]] : points;
+      shapes.push(styledStrokeRunPolygon(solidPoints, {
+        radius,
+        lineCap,
+        lineJoin,
+        miterLimit,
+        curveTolerance,
+        closed: polyline.closed,
+      }));
+      continue;
+    }
+    const dashPoints = polyline.closed ? [...points, points[0]] : points;
+    for (const run of splitPolylineByDash(dashPoints, dashArray, dashOffset)) {
+      shapes.push(styledStrokeRunPolygon(run, {
+        radius,
+        lineCap,
+        lineJoin,
+        miterLimit,
+        curveTolerance,
+        closed: false,
+      }));
+    }
+  }
+  return mergeStyledStrokeGeometries(shapes);
 }
 
 /**
@@ -473,27 +1308,92 @@ export function commandsToPolygonSet(commands, {
  * identical to the nonzero source. Nested rings (letter counters like "o")
  * survive as genuine holes either way.
  *
- * curveTolerance defaults tighter than the eraser's 0.75 because this bakes
- * the PERMANENT visual geometry at import time — one sample per 0.25 page
- * units keeps flattened cubics visually identical to the source curves even
- * at deep zoom.
+ * curveTolerance defaults tighter than the generic eraser conversion because
+ * this clipping geometry may later become the persisted visual after a bite.
+ * Keep its maximum local deviation below ordinary render tolerances; callers
+ * that know an object transform should tighten it further by that scale.
  *
  * @returns {Array} multipolygon (possibly empty when the path is degenerate).
  */
-export function filledOutlineCommandsToPolygonSet(commands, { curveTolerance = 0.25 } = {}) {
-  const grouped = commandsToPolygonSet(commands, { fill: true, curveTolerance });
-  if (grouped.length <= 1) return grouped;
+export function filledOutlineCommandsToPolygonSet(commands, {
+  curveTolerance = 0.05,
+  fillRule = 'nonzero',
+} = {}) {
+  const rings = commandsToPolylines(commands, curveTolerance)
+    .filter((polyline) => polyline.points.length >= 3)
+    .map((polyline) => closeRing(
+      polyline.points.map((point) => [point.x, point.y]),
+    ))
+    .filter((ring) => ring.length >= 4 && ringArea(ring) > 0);
+  if (rings.length === 0) return [];
+  if (rings.length === 1) return [[rings[0]]];
+
   try {
-    let geometry = null;
-    for (const polygon of grouped) {
-      geometry = geometry ? union(geometry, [polygon]) : [polygon];
+    if (fillRule === 'evenodd') {
+      let geometry = null;
+      for (const ring of rings) {
+        const ringGeometry = [[ring]];
+        geometry = geometry ? xor(geometry, ringGeometry) : ringGeometry;
+      }
+      return normalizeMultiPolygon(geometry);
     }
-    const unioned = normalizeMultiPolygon(geometry);
-    return unioned.length ? unioned : grouped;
+
+    // Model the PDF/SVG nonzero winding rule exactly for ordinary simple
+    // rings. Keep disjoint regions bucketed by their integer winding count;
+    // each new clockwise/counter-clockwise subpath increments/decrements the
+    // covered region. Any final nonzero bucket is painted.
+    let windingRegions = new Map();
+    const mergeRegion = (regions, winding, geometry) => {
+      if (winding === 0) return;
+      const normalized = normalizeMultiPolygon(geometry);
+      if (!normalized.length) return;
+      const existing = regions.get(winding);
+      regions.set(
+        winding,
+        existing ? normalizeMultiPolygon(union(existing, normalized)) : normalized,
+      );
+    };
+
+    for (const ring of rings) {
+      const ringGeometry = [[ring]];
+      const windingDelta = (() => {
+        let signedArea = 0;
+        for (let index = 0, previous = ring.length - 1; index < ring.length; previous = index, index += 1) {
+          signedArea += ring[previous][0] * ring[index][1]
+            - ring[index][0] * ring[previous][1];
+        }
+        return signedArea < 0 ? -1 : 1;
+      })();
+      const nextRegions = new Map();
+      let priorCoverage = null;
+
+      for (const [winding, geometry] of windingRegions) {
+        const coveredByRing = normalizeMultiPolygon(intersection(geometry, ringGeometry));
+        const outsideRing = normalizeMultiPolygon(diff(geometry, ringGeometry));
+        mergeRegion(nextRegions, winding, outsideRing);
+        mergeRegion(nextRegions, winding + windingDelta, coveredByRing);
+        priorCoverage = priorCoverage
+          ? normalizeMultiPolygon(union(priorCoverage, geometry))
+          : geometry;
+      }
+
+      const newlyCovered = priorCoverage
+        ? normalizeMultiPolygon(diff(ringGeometry, priorCoverage))
+        : ringGeometry;
+      mergeRegion(nextRegions, windingDelta, newlyCovered);
+      windingRegions = nextRegions;
+    }
+
+    let painted = null;
+    for (const geometry of windingRegions.values()) {
+      painted = painted ? union(painted, geometry) : geometry;
+    }
+    return normalizeMultiPolygon(painted);
   } catch {
-    // martinez can reject degenerate self-touching rings; the grouped set is
-    // still a faithful evenodd rendering for non-overlapping subpaths.
-    return grouped;
+    // Martinez can reject degenerate self-touching rings. Fall back to the
+    // prior containment grouping, which remains faithful for non-overlapping
+    // subpaths and never blocks import.
+    return groupRings(rings);
   }
 }
 
@@ -543,6 +1443,12 @@ export function translatePolygonSet(value, dx, dy) {
     ring.map(([x, y]) => [x + dx, y + dy])
   )));
 }
+
+const mapPolygonSetCoordinates = (value, mapPoint) => (
+  normalizeMultiPolygon(value).map((polygon) => polygon.map((ring) => (
+    ring.map(([x, y]) => mapPoint(x, y))
+  )))
+);
 
 function boundsIntersect(a, b) {
   return a.x <= b.x + b.w && a.x + a.w >= b.x && a.y <= b.y + b.h && a.y + a.h >= b.y;
@@ -619,8 +1525,12 @@ const ringPerimeter = (ring) => {
  */
 export function cullInkSliverPolygons(polygons, width) {
   const safeWidth = Number.isFinite(width) && width > 0 ? width : 1;
-  const minArea = Math.max(0.05, Math.min(0.4 * safeWidth, 0.35 * safeWidth * safeWidth));
-  const minMeanWidth = Math.max(0.08, 0.15 * safeWidth);
+  const numericAreaFloor = safeWidth * safeWidth * 1e-12;
+  const minArea = Math.max(
+    numericAreaFloor,
+    Math.min(0.4 * safeWidth, 0.35 * safeWidth * safeWidth),
+  );
+  const minMeanWidth = 0.15 * safeWidth;
   // 2·area/perimeter is slightly below the physical width for every finite
   // ribbon because its end caps contribute perimeter. Preserve a component
   // whose real cross-section is at the public floor while still dropping
@@ -632,10 +1542,12 @@ export function cullInkSliverPolygons(polygons, width) {
     if (!Array.isArray(outer) || outer.length < 4) continue;
     const area = Math.abs(ringSignedArea(outer));
     const perimeter = ringPerimeter(outer);
-    if (area < minArea || perimeter <= 1e-9) continue;
+    if (area < minArea || perimeter <= safeWidth * 1e-12) continue;
     if ((2 * area) / perimeter < meanWidthCullFloor) continue;
     const keptHoles = holes.filter((hole) => (
-      Array.isArray(hole) && hole.length >= 4 && Math.abs(ringSignedArea(hole)) > 1e-9
+      Array.isArray(hole)
+      && hole.length >= 4
+      && Math.abs(ringSignedArea(hole)) > numericAreaFloor
     ));
     kept.push([outer, ...keptHoles]);
   }
@@ -646,14 +1558,41 @@ export function cullInkSliverPolygons(polygons, width) {
  * Boolean subtraction has a non-negotiable postcondition: it may remove ink,
  * but it may never create ink outside the source. Invalid legacy rings once
  * made Martinez return a long eraser-shaped streak. Check both bounds (catches
- * even near-zero-area needles) and set difference (catches spill inside a
- * concave source's overall bounds). Any failure degrades to a no-op.
+ * even near-zero-area needles) and every result-edge interval against the
+ * source (catches spill inside a concave source's overall bounds). Do not ask
+ * the polygon engine to validate its own dense subtraction output: on accurate
+ * curve meshes that second boolean can invent a tiny outside fragment or throw
+ * even when the original result is contained.
  */
 export function subtractionStayedInsideSubject(result, subject, sourceWidth) {
   if (!result.length) return true;
-  const tolerance = Math.max(1e-6, (Number(sourceWidth) || 1) * 1e-6);
   const subjectBounds = boundsOfCommands(polygonSetToCommands(subject));
   const resultBounds = boundsOfCommands(polygonSetToCommands(result));
+  // This is a fail-closed proof, not a visual comparison. Derive numerical
+  // allowances from the subject extent: a fixed page-unit epsilon both hid
+  // needles in tiny ink and rejected valid proportional subtraction output.
+  const geometryScale = Math.max(
+    Number.MIN_VALUE,
+    subjectBounds.w,
+    subjectBounds.h,
+    Number(sourceWidth) || 0,
+  );
+  const coordinateMagnitude = Math.max(
+    Math.abs(subjectBounds.x),
+    Math.abs(subjectBounds.y),
+    Math.abs(subjectBounds.x + subjectBounds.w),
+    Math.abs(subjectBounds.y + subjectBounds.h),
+  );
+  const tolerance = Math.max(
+    Number.MIN_VALUE,
+    geometryScale * Number.EPSILON * 128,
+    coordinateMagnitude * Number.EPSILON * 16,
+  );
+  const crossTolerance = Math.max(
+    Number.MIN_VALUE,
+    geometryScale * geometryScale * Number.EPSILON * 128,
+  );
+  const parameterTolerance = Number.EPSILON * 128;
   if (
     resultBounds.x < subjectBounds.x - tolerance
     || resultBounds.y < subjectBounds.y - tolerance
@@ -674,14 +1613,16 @@ export function subtractionStayedInsideSubject(result, subject, sourceWidth) {
   );
   if (validationVertexCount >= 512) {
     try {
-      // The exact set proof scales substantially better than the edge-by-edge
-      // audit below once repeated bites create hundreds of vertices. Inputs
-      // are already split into ordinary simple rings, so Martinez no longer
-      // receives the weakly-simple legacy topology that caused the historical
-      // outside-subject streak. Any engine failure still fails closed.
-      return normalizeMultiPolygon(diff(resultPolygons, sourcePolygons)).length === 0;
+      // The ordinary case is a true subset, so the set difference is empty
+      // and Martinez proves containment much faster than the O(result×source)
+      // edge audit below. A non-empty/failed result is only inconclusive:
+      // numerical dust from dense curve meshes must not reject a valid erase,
+      // so the exact edge audit remains the fail-closed fallback.
+      if (normalizeMultiPolygon(diff(resultPolygons, sourcePolygons)).length === 0) {
+        return true;
+      }
     } catch {
-      return false;
+      // Fall through to the independent edge-interval proof.
     }
   }
   const sourceEdges = [];
@@ -734,21 +1675,28 @@ export function subtractionStayedInsideSubject(result, subject, sourceWidth) {
     const s = [d[0] - c[0], d[1] - c[1]];
     const denominator = cross(r, s);
     const fromA = [c[0] - a[0], c[1] - a[1]];
-    if (Math.abs(denominator) > EPS) {
+    if (Math.abs(denominator) > crossTolerance) {
       const t = cross(fromA, s) / denominator;
       const u = cross(fromA, r) / denominator;
-      return t >= -EPS && t <= 1 + EPS && u >= -EPS && u <= 1 + EPS
+      return (
+        t >= -parameterTolerance
+        && t <= 1 + parameterTolerance
+        && u >= -parameterTolerance
+        && u <= 1 + parameterTolerance
+      )
         ? [Math.max(0, Math.min(1, t))]
         : [];
     }
-    if (Math.abs(cross(fromA, r)) > tolerance) return [];
-    const lengthSquared = r[0] * r[0] + r[1] * r[1];
-    if (lengthSquared <= EPS) return [0];
+    if (Math.abs(cross(fromA, r)) > crossTolerance) return [];
+    const length = Math.hypot(r[0], r[1]);
+    if (length === 0) return [0];
+    const unitX = r[0] / length;
+    const unitY = r[1] / length;
     return [c, d]
       .map((point) => (
-        ((point[0] - a[0]) * r[0] + (point[1] - a[1]) * r[1]) / lengthSquared
+        ((point[0] - a[0]) * unitX + (point[1] - a[1]) * unitY) / length
       ))
-      .filter((t) => t >= -EPS && t <= 1 + EPS)
+      .filter((t) => t >= -parameterTolerance && t <= 1 + parameterTolerance)
       .map((t) => Math.max(0, Math.min(1, t)));
   };
 
@@ -783,7 +1731,10 @@ export function subtractionStayedInsideSubject(result, subject, sourceWidth) {
         }
         parameters.sort((left, right) => left - right);
         for (let part = 1; part < parameters.length; part += 1) {
-          if (parameters[part] - parameters[part - 1] <= EPS) continue;
+          if (
+            parameters[part] - parameters[part - 1]
+            <= parameterTolerance
+          ) continue;
           const t = (parameters[part] + parameters[part - 1]) / 2;
           const midpoint = [
             a[0] + (b[0] - a[0]) * t,
@@ -832,17 +1783,24 @@ export function subtractionStayedInsideSubject(result, subject, sourceWidth) {
   return true;
 }
 
-function pointOnRingEdge(point, a, b, tolerance = 1e-7) {
+function pointOnRingEdge(point, a, b, tolerance = null) {
   const dx = b[0] - a[0];
   const dy = b[1] - a[1];
-  const lengthSquared = dx * dx + dy * dy;
-  if (lengthSquared <= EPS) {
-    return Math.hypot(point.x - a[0], point.y - a[1]) <= tolerance;
+  const length = Math.hypot(dx, dy);
+  const safeTolerance = Number.isFinite(tolerance) && tolerance >= 0
+    ? tolerance
+    : Math.max(Number.MIN_VALUE, length * Number.EPSILON * 64);
+  if (length === 0) {
+    return Math.hypot(point.x - a[0], point.y - a[1]) <= safeTolerance;
   }
-  const cross = (point.x - a[0]) * dy - (point.y - a[1]) * dx;
-  if (Math.abs(cross) > tolerance * Math.sqrt(lengthSquared)) return false;
-  const projection = (point.x - a[0]) * dx + (point.y - a[1]) * dy;
-  return projection >= -tolerance && projection <= lengthSquared + tolerance;
+  const ux = dx / length;
+  const uy = dy / length;
+  const perpendicular = Math.abs(
+    (point.x - a[0]) * uy - (point.y - a[1]) * ux,
+  );
+  if (perpendicular > safeTolerance) return false;
+  const projection = (point.x - a[0]) * ux + (point.y - a[1]) * uy;
+  return projection >= -safeTolerance && projection <= length + safeTolerance;
 }
 
 function pointInRing(point, ring) {
@@ -874,7 +1832,7 @@ function outwardNormalForBoundaryEdge(a, b, ringArea, isHole) {
   const dx = b.x - a.x;
   const dy = b.y - a.y;
   const length = Math.hypot(dx, dy);
-  if (length <= EPS) return null;
+  if (length === 0) return null;
   const left = { x: -dy / length, y: dx / length };
   // Positive signed area means the ring interior is on the left. The eraser
   // exterior is outside an outer ring but inside a hole ring.
@@ -888,14 +1846,16 @@ const cross2d = (a, b) => a.x * b.y - a.y * b.x;
 function raySegmentDistance(origin, direction, a, b) {
   const segment = { x: b[0] - a[0], y: b[1] - a[1] };
   const denominator = cross2d(direction, segment);
-  if (Math.abs(denominator) <= EPS) return null;
+  const segmentLength = Math.hypot(segment.x, segment.y);
+  if (segmentLength === 0) return null;
+  if (Math.abs(denominator) <= segmentLength * Number.EPSILON * 64) return null;
   const fromOrigin = { x: a[0] - origin.x, y: a[1] - origin.y };
   const distance = cross2d(fromOrigin, segment) / denominator;
   const segmentPosition = cross2d(fromOrigin, direction) / denominator;
   if (
     distance < 0
-    || segmentPosition < -EPS
-    || segmentPosition > 1 + EPS
+    || segmentPosition < -Number.EPSILON * 64
+    || segmentPosition > 1 + Number.EPSILON * 64
   ) {
     return null;
   }
@@ -903,7 +1863,7 @@ function raySegmentDistance(origin, direction, a, b) {
 }
 
 function firstRayMaterialInterval(origin, direction, result, maximumDistance) {
-  const epsilon = Math.max(1e-7, maximumDistance * 1e-5);
+  const epsilon = Math.max(Number.MIN_VALUE, maximumDistance * 1e-5);
   const justOutside = {
     x: origin.x + direction.x * epsilon,
     y: origin.y + direction.y * epsilon,
@@ -949,7 +1909,7 @@ function firstRayMaterialInterval(origin, direction, result, maximumDistance) {
 }
 
 function thinRibbonCleanupDepth(midpoint, normal, result, ribbonWidth) {
-  const cleanupSeam = Math.max(0.005, ribbonWidth * 0.025);
+  const cleanupSeam = ribbonWidth * 0.025;
   const interval = firstRayMaterialInterval(
     midpoint,
     normal,
@@ -960,7 +1920,7 @@ function thinRibbonCleanupDepth(midpoint, normal, result, ribbonWidth) {
   // Curved polygon approximations can move an analytical threshold-width band
   // inward by a few hundredths. Bias the decision toward preserving ink at
   // the floor; obvious hairlines remain far below this tolerance.
-  const classificationTolerance = Math.max(0.0005, ribbonWidth * 0.001);
+  const classificationTolerance = ribbonWidth * 0.001;
   if (
     !Number.isFinite(interval.exitDistance)
     || interval.exitDistance >= ribbonWidth - classificationTolerance
@@ -1032,16 +1992,17 @@ function ribbonPatch(chunk, ribbonWidth) {
   if (!chunk.length) return [];
   const first = chunk[0];
   const last = chunk[chunk.length - 1];
-  const startLength = Math.max(EPS, Math.hypot(
+  const startLength = Math.hypot(
     first.b.x - first.a.x,
     first.b.y - first.a.y,
-  ));
-  const endLength = Math.max(EPS, Math.hypot(
+  );
+  const endLength = Math.hypot(
     last.b.x - last.a.x,
     last.b.y - last.a.y,
-  ));
-  const overlap = Math.max(1e-4, ribbonWidth * 0.015);
-  const inward = Math.max(1e-4, ribbonWidth * 0.01);
+  );
+  if (startLength === 0 || endLength === 0) return [];
+  const overlap = ribbonWidth * 0.015;
+  const inward = ribbonWidth * 0.01;
   const start = {
     x: first.a.x - ((first.b.x - first.a.x) / startLength) * overlap,
     y: first.a.y - ((first.b.y - first.a.y) / startLength) * overlap,
@@ -1097,11 +2058,48 @@ function removeAttachedBridge({
   eraser,
   sourceWidth,
 }) {
+  if (!result.length) return result;
   const safeWidth = Number.isFinite(sourceWidth) && sourceWidth > 0 ? sourceWidth : 1;
-  const minRibbonWidth = Math.max(0.08, 0.15 * safeWidth);
-  const maximumEdgeLength = Math.max(0.08, Math.min(4, minRibbonWidth * 2));
-  const minimumRunLength = Math.max(0.01, minRibbonWidth * 0.1);
+  const minRibbonWidth = 0.15 * safeWidth;
+  // Cleanup sampling is width-relative. Absolute 4/.08 page-unit caps
+  // subdivided a proportionally huge round stroke into ~78k pieces and made
+  // one pointer release take seconds.
+  const maximumEdgeLength = safeWidth * 0.2;
+  const minimumRunLength = minRibbonWidth * 0.1;
   const patches = [];
+  const resultBounds = boundsOfCommands(polygonSetToCommands(result));
+  const probePadding = minRibbonWidth * 1.025;
+  const probeBounds = {
+    x: resultBounds.x - probePadding,
+    y: resultBounds.y - probePadding,
+    w: resultBounds.w + probePadding * 2,
+    h: resultBounds.h + probePadding * 2,
+  };
+  const clipToProbeBounds = (start, end) => {
+    const dx = end[0] - start[0];
+    const dy = end[1] - start[1];
+    let first = 0;
+    let last = 1;
+    for (const [p, q] of [
+      [-dx, start[0] - probeBounds.x],
+      [dx, probeBounds.x + probeBounds.w - start[0]],
+      [-dy, start[1] - probeBounds.y],
+      [dy, probeBounds.y + probeBounds.h - start[1]],
+    ]) {
+      if (p === 0) {
+        if (q < 0) return null;
+        continue;
+      }
+      const ratio = q / p;
+      if (p < 0) first = Math.max(first, ratio);
+      else last = Math.min(last, ratio);
+      if (first > last) return null;
+    }
+    return [
+      [start[0] + dx * first, start[1] + dy * first],
+      [start[0] + dx * last, start[1] + dy * last],
+    ];
+  };
 
   for (const polygon of normalizeMultiPolygon(eraser)) {
     for (let ringIndex = 0; ringIndex < polygon.length; ringIndex += 1) {
@@ -1117,8 +2115,17 @@ function removeAttachedBridge({
       if (ring.length < 2) continue;
       const segments = [];
       for (let index = 0; index < ring.length; index += 1) {
-        const start = ring[index];
-        const end = ring[(index + 1) % ring.length];
+        const clipped = clipToProbeBounds(
+          ring[index],
+          ring[(index + 1) % ring.length],
+        );
+        if (!clipped) {
+          if (segments.length && segments.at(-1)?.thin !== false) {
+            segments.push({ thin: false });
+          }
+          continue;
+        }
+        const [start, end] = clipped;
         const length = Math.hypot(end[0] - start[0], end[1] - start[1]);
         const pieces = Math.max(1, Math.ceil(length / maximumEdgeLength));
         for (let piece = 0; piece < pieces; piece += 1) {
@@ -1133,7 +2140,10 @@ function removeAttachedBridge({
             y: start[1] + (end[1] - start[1]) * t1,
           };
           const normal = outwardNormalForBoundaryEdge(a, b, area, ringIndex > 0);
-          const midpoint = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+          const midpoint = {
+            x: midpointCoordinate(a.x, b.x),
+            y: midpointCoordinate(a.y, b.y),
+          };
           const cleanupDepth = normal
             ? thinRibbonCleanupDepth(midpoint, normal, result, minRibbonWidth)
             : null;
@@ -1174,14 +2184,22 @@ export function eraseAnnotations(annotations, eraserPoints, radius, mode = 'part
   // exception escaping into the pointer-up handler.
   let eraser;
   try {
-    eraser = sweptDiskPolygon(eraserPoints, radius, { minDistance: 0.1 });
+    const eraserSampleDistance = Math.max(
+      Number.MIN_VALUE,
+      Math.min(0.1, radius * 0.1),
+    );
+    eraser = sweptDiskPolygon(eraserPoints, radius, { minDistance: eraserSampleDistance });
   } catch (error) {
     console.warn('Eraser disk construction failed; gesture erased nothing:', error);
     return { annotations, changedIds: [], deletedIds: [] };
   }
   if (!eraser.length) return { annotations, changedIds: [], deletedIds: [] };
   const eraserBounds = boundsOfCommands(polygonSetToCommands(eraser));
-  const centerlinePoints = compactPoints(eraserPoints, 0.1);
+  const centerlineSampleDistance = Math.max(
+    Number.MIN_VALUE,
+    Math.min(0.1, radius * 0.1),
+  );
+  const centerlinePoints = compactPoints(eraserPoints, centerlineSampleDistance);
   const capsules = centerlinePoints.length <= 1
     ? [{ a: centerlinePoints[0], b: centerlinePoints[0] }]
     : centerlinePoints.slice(1).map((point, index) => ({ a: centerlinePoints[index], b: point }));
@@ -1242,6 +2260,51 @@ export function eraseAnnotations(annotations, eraserPoints, radius, mode = 'part
       next.push(annotation);
       continue;
     }
+    const sourceWidth = (Number(annotation.sourceWidth) > 0 && Number(annotation.sourceWidth))
+      || (Number(annotation.strokeWidth) > 0 && Number(annotation.strokeWidth))
+      || null;
+    const subjectBounds = boundsOfCommands(polygonSetToCommands(subject));
+    const workingScale = Math.max(
+      Number.MIN_VALUE,
+      subjectBounds.w,
+      subjectBounds.h,
+      sourceWidth || 0,
+      radius * 2,
+    );
+    const coordinateMagnitude = Math.max(
+      Math.abs(subjectBounds.x),
+      Math.abs(subjectBounds.y),
+      Math.abs(subjectBounds.x + subjectBounds.w),
+      Math.abs(subjectBounds.y + subjectBounds.h),
+    );
+    const useWorkingFrame = (
+      workingScale < 1e-6
+      || workingScale > 1e6
+      || coordinateMagnitude > 1e12
+      || coordinateMagnitude / workingScale > 1e8
+    );
+    const originX = subjectBounds.x + subjectBounds.w / 2;
+    const originY = subjectBounds.y + subjectBounds.h / 2;
+    const toWorking = (x, y) => [
+      (x - originX) / workingScale,
+      (y - originY) / workingScale,
+    ];
+    const fromWorking = (x, y) => [
+      x * workingScale + originX,
+      y * workingScale + originY,
+    ];
+    // Extreme or badly translated coordinates need one O(1) local frame.
+    // Ordinary page geometry stays in place: cloning every accumulated vertex
+    // on every bite creates avoidable GC pauses in long annotation sessions.
+    const workingSubject = useWorkingFrame
+      ? mapPolygonSetCoordinates(subject, toWorking)
+      : subject;
+    const workingEraser = useWorkingFrame
+      ? mapPolygonSetCoordinates(eraser, toWorking)
+      : eraser;
+    const workingSourceWidth = sourceWidth == null
+      ? null
+      : (useWorkingFrame ? sourceWidth / workingScale : sourceWidth);
     // Boolean-op safety net (2026-07-19 eraser audit): martinez can throw on
     // degenerate self-touching input (e.g. "Cannot read properties of
     // undefined (reading 'holeOf')") — previously that escaped and failed the
@@ -1249,7 +2312,7 @@ export function eraseAnnotations(annotations, eraserPoints, radius, mode = 'part
     // delete-on-error) and let the rest of the gesture proceed.
     let overlap;
     try {
-      overlap = normalizeMultiPolygon(intersection(subject, eraser));
+      overlap = normalizeMultiPolygon(intersection(workingSubject, workingEraser));
     } catch (error) {
       console.warn('Eraser polygon intersection failed; annotation left unchanged:', annotation.id, error);
       next.push(annotation);
@@ -1268,21 +2331,25 @@ export function eraseAnnotations(annotations, eraserPoints, radius, mode = 'part
 
     let result;
     try {
-      result = normalizeWeaklySimplePolygonSet(diff(subject, eraser));
+      result = normalizeWeaklySimplePolygonSet(diff(workingSubject, workingEraser));
     } catch (error) {
       console.warn('Eraser polygon subtraction failed; annotation left unchanged:', annotation.id, error);
       next.push(annotation);
       continue;
     }
-    const sourceWidth = (Number(annotation.sourceWidth) > 0 && Number(annotation.sourceWidth))
-      || (Number(annotation.strokeWidth) > 0 && Number(annotation.strokeWidth))
-      || 1;
     try {
-      result = removeAttachedBridge({
-        result,
-        eraser,
-        sourceWidth,
-      });
+      // A filled imported appearance can have no trustworthy centerline width.
+      // Guessing "1 page unit" used to delete legitimate thin pressure-ink
+      // components. Width-relative bridge/sliver cleanup is safe only when the
+      // source explicitly supplies geometry truth; containment validation still
+      // protects unknown-width paths from newly-created outside streaks.
+      if (workingSourceWidth != null) {
+        result = removeAttachedBridge({
+          result,
+          eraser: workingEraser,
+          sourceWidth: workingSourceWidth,
+        });
+      }
       result = compactCollinearPolygonSet(
         normalizeWeaklySimplePolygonSet(result),
       );
@@ -1291,12 +2358,18 @@ export function eraseAnnotations(annotations, eraserPoints, radius, mode = 'part
       // turn a successful ordinary subtraction into a failed erase.
       console.warn('Attached ink bridge cleanup failed; base subtraction kept:', annotation.id, error);
     }
-    result = cullInkSliverPolygons(
-      result,
-      sourceWidth,
-    );
+    if (workingSourceWidth != null) {
+      result = cullInkSliverPolygons(
+        result,
+        workingSourceWidth,
+      );
+    }
     try {
-      if (!subtractionStayedInsideSubject(result, subject, sourceWidth)) {
+      if (!subtractionStayedInsideSubject(
+        result,
+        workingSubject,
+        workingSourceWidth,
+      )) {
         console.warn(
           'Eraser polygon subtraction tried to create ink outside its source; annotation left unchanged:',
           annotation.id,
@@ -1315,6 +2388,9 @@ export function eraseAnnotations(annotations, eraserPoints, radius, mode = 'part
       );
       next.push(annotation);
       continue;
+    }
+    if (useWorkingFrame) {
+      result = mapPolygonSetCoordinates(result, fromWorking);
     }
     changedIds.push(annotation.id);
     if (!result.length) {

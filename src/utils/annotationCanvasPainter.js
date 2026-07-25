@@ -31,6 +31,8 @@ import {
 import { countWrappedLines, getLineEndpoints } from './svgBoundingBox.js';
 import { buildCloudPathCommands } from './pdfAnnotationImporter.js';
 import { DRAWN_CENTERED_STROKE_CONTRACT } from './shapeCommitGeometry.js';
+import { createInkPathAffine } from './inkGeometryTransform.js';
+import { normalizeOperationalInkPath } from './inkPathNormalization.js';
 
 const MAX_RASTER_SCALE = 2.5;
 const MAX_BACKING_DIMENSION = 8192;
@@ -180,9 +182,8 @@ function traceCommandsInto(context, commands) {
 // Parse an SVG path d-string (as emitted by renderPathToSvgD /
 // buildCloudPathCommands joins: absolute M/L/Q/C/H/V/A/Z, space/comma
 // separated) into [op, ...number] command arrays for traceCommandsInto.
-// Keeping the parse here means the canvas paints the EXACT smoothed geometry
-// (Catmull-Rom ink outlines, ellipse marker blobs) the SVG shows, instead of
-// the raw un-smoothed fabric commands.
+// Keeping the parser here means Canvas follows the exact authored geometry
+// emitted by the SVG lane, including legacy shorthand normalized upstream.
 const ARG_COUNT = { M: 2, L: 2, Q: 4, C: 6, H: 1, V: 1, A: 7, Z: 0 };
 export function parseSvgPathD(d) {
   const out = [];
@@ -226,6 +227,66 @@ function pathBounds(commands) {
   }
   if (!Number.isFinite(minX)) return null;
   return { minX, minY, maxX, maxY };
+}
+
+function transformedPaperSourceBounds(source) {
+  if (
+    !Array.isArray(source?.path)
+    || !Array.isArray(source?.matrix)
+    || source.matrix.length !== 6
+  ) return null;
+  const [a, b, c, d, e, f] = source.matrix;
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  const boundsPath = (
+    Array.isArray(source.operationalPath) && source.operationalPath.length > 0
+      ? source.operationalPath
+      : normalizeOperationalInkPath(source.path)
+  );
+  for (const command of boundsPath) {
+    for (let index = 1; index + 1 < command.length; index += 2) {
+      const x = Number(command[index]);
+      const y = Number(command[index + 1]);
+      if (!Number.isFinite(x) || !Number.isFinite(y)) continue;
+      const pageX = a * x + c * y + e;
+      const pageY = b * x + d * y + f;
+      if (!Number.isFinite(pageX) || !Number.isFinite(pageY)) continue;
+      minX = Math.min(minX, pageX);
+      minY = Math.min(minY, pageY);
+      maxX = Math.max(maxX, pageX);
+      maxY = Math.max(maxY, pageY);
+    }
+  }
+  if (!Number.isFinite(minX)) return null;
+  const strokeScale = Math.max(
+    Math.hypot(a, b),
+    Math.hypot(c, d),
+    Number.MIN_VALUE,
+  );
+  const pad = source.paintMode === 'fill'
+    ? 1
+    : Math.max(1, toNumber(source.strokeWidth) * strokeScale);
+  return {
+    x: minX - pad,
+    y: minY - pad,
+    width: Math.max(Number.MIN_VALUE, maxX - minX + pad * 2),
+    height: Math.max(Number.MIN_VALUE, maxY - minY + pad * 2),
+  };
+}
+
+function tracePolygonSetInto(context, polygons) {
+  for (const polygon of polygons || []) {
+    for (const ring of polygon || []) {
+      if (!Array.isArray(ring) || ring.length < 3) continue;
+      context.moveTo(toNumber(ring[0]?.[0]), toNumber(ring[0]?.[1]));
+      for (let index = 1; index < ring.length; index += 1) {
+        context.lineTo(toNumber(ring[index]?.[0]), toNumber(ring[index]?.[1]));
+      }
+      context.closePath();
+    }
+  }
 }
 
 function applyBlendAndOpacity(context, object, opacityOverride = null) {
@@ -308,6 +369,48 @@ function paintArrowheadSpec(context, spec) {
 function drawPath(context, object, displayScale) {
   if (!Array.isArray(object?.path) || object.path.length === 0) return;
   const attrs = renderPathToSvgAttrs(object);
+  const isPdfHairline = attrs.vectorEffect === 'non-scaling-stroke';
+
+  // SVG's non-scaling-stroke is defined after the complete object transform:
+  // the centerline moves into page space, but its one-display-pixel outline
+  // never inherits scale/skew. Applying a reciprocal geometric-mean width
+  // inside Canvas's anisotropic CTM cannot reproduce that contract — a
+  // scaleX=4/scaleY=1 object made horizontal and vertical hairlines 0.5px and
+  // 2px respectively. Trace a read-only normalized copy through the same
+  // affine used by SVG/hit-test/export, then stroke in page space instead.
+  if (isPdfHairline) {
+    const affine = createInkPathAffine(object, object.path);
+    const pageCommands = normalizeOperationalInkPath(object.path).map((command) => {
+      if (!Array.isArray(command) || command.length < 2) return command;
+      const transformed = [command[0]];
+      for (let index = 1; index + 1 < command.length; index += 2) {
+        const point = affine.point(command[index], command[index + 1]);
+        transformed.push(point.x, point.y);
+      }
+      return transformed;
+    });
+
+    context.save();
+    applyBlendAndOpacity(context, object, attrs.opacity);
+    context.lineCap = attrs.strokeLinecap || 'round';
+    context.lineJoin = attrs.strokeLinejoin || 'round';
+    context.miterLimit = toNumber(attrs.strokeMiterlimit, 10);
+    if (typeof context.setLineDash === 'function') {
+      context.setLineDash(Array.isArray(attrs.strokeDasharray) ? attrs.strokeDasharray : []);
+    }
+    context.lineDashOffset = toNumber(attrs.strokeDashoffset);
+    context.beginPath();
+    traceCommandsInto(context, pageCommands);
+    paintCurrentPath(context, {
+      fill: attrs.fill,
+      stroke: attrs.stroke,
+      strokeWidth: toNumber(attrs.strokeWidth, 1) / Math.max(0.01, toNumber(displayScale, 1)),
+      fillRule: attrs.fillRule || 'nonzero',
+    });
+    context.restore();
+    return;
+  }
+
   const left = toNumber(object.left);
   const top = toNumber(object.top);
   const scaleX = toNumber(object.scaleX, 1) || 1;
@@ -330,15 +433,73 @@ function drawPath(context, object, displayScale) {
   context.translate(-pathOffsetX, -pathOffsetY);
   context.lineCap = attrs.strokeLinecap || 'round';
   context.lineJoin = attrs.strokeLinejoin || 'round';
-  // Same geometry the SVG paints: renderPathToSvgD applies the Catmull-Rom /
-  // ellipse-blob smoothing for imported ink; falls back to the raw commands.
-  context.beginPath();
-  traceCommandsInto(context, parseSvgPathD(renderPathToSvgD(object, attrs)));
+  context.miterLimit = toNumber(attrs.strokeMiterlimit, 10);
+  if (typeof context.setLineDash === 'function') {
+    context.setLineDash(Array.isArray(attrs.strokeDasharray) ? attrs.strokeDasharray : []);
+  }
+  context.lineDashOffset = toNumber(attrs.strokeDashoffset);
 
-  const objectScale = Math.max(0.001, Math.sqrt(Math.abs(scaleX * scaleY)));
-  const strokeWidth = attrs.vectorEffect === 'non-scaling-stroke'
-    ? toNumber(attrs.strokeWidth, 1) / Math.max(0.01, displayScale * objectScale)
-    : toNumber(attrs.strokeWidth, 1);
+  const paperSource = object?.paperSourceStroke;
+  const paperCuts = object?.paperEraserCuts;
+  const paperBounds = transformedPaperSourceBounds(paperSource);
+  if (
+    paperBounds
+    && Array.isArray(paperCuts)
+    && paperCuts.length > 0
+    && typeof context.clip === 'function'
+    && typeof context.rect === 'function'
+    && typeof context.transform === 'function'
+  ) {
+    context.save();
+    context.beginPath();
+    context.rect(
+      paperBounds.x,
+      paperBounds.y,
+      paperBounds.width,
+      paperBounds.height,
+    );
+    tracePolygonSetInto(context, paperCuts);
+    context.clip('evenodd');
+    context.transform(...paperSource.matrix);
+    context.lineCap = paperSource.strokeLineCap || 'round';
+    context.lineJoin = paperSource.strokeLineJoin || 'round';
+    context.miterLimit = toNumber(paperSource.strokeMiterLimit, 10);
+    if (typeof context.setLineDash === 'function') {
+      context.setLineDash(
+        Array.isArray(paperSource.strokeDashArray)
+          ? paperSource.strokeDashArray
+          : [],
+      );
+    }
+    context.lineDashOffset = toNumber(paperSource.strokeDashOffset);
+    context.beginPath();
+    traceCommandsInto(
+      context,
+      Array.isArray(paperSource.operationalPath)
+        ? paperSource.operationalPath
+        : normalizeOperationalInkPath(paperSource.path),
+    );
+    if (paperSource.paintMode === 'fill') {
+      context.fillStyle = object.fill || attrs.fill || paperSource.fill;
+      context.fill(paperSource.fillRule === 'evenodd' ? 'evenodd' : 'nonzero');
+    } else {
+      context.strokeStyle = object.fill || attrs.fill || paperSource.stroke;
+      context.lineWidth = toNumber(paperSource.strokeWidth);
+      context.stroke();
+    }
+    context.restore();
+    context.restore();
+    return;
+  }
+
+  // Same exact authored geometry the SVG paints.
+  context.beginPath();
+  traceCommandsInto(
+    context,
+    normalizeOperationalInkPath(parseSvgPathD(renderPathToSvgD(object, attrs))),
+  );
+
+  const strokeWidth = toNumber(attrs.strokeWidth, 1);
   // Erased-outline override (renderPath:233-236): strokeWidth 0 + visible fill
   // means paper-eraser outline geometry — fill with evenodd so carved holes
   // stay holes instead of filling back in under the nonzero rule.

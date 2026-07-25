@@ -1678,12 +1678,25 @@ const PDF_IMPORTED_EDIT_MARKER_KEYS = new Set([
 ]);
 
 const isPdfImportedAnnotationObject = (obj) => Boolean(obj?.isPdfImported || obj?.pdfAnnotationId);
+const isEditedPdfImportedAnnotationObject = (obj) => (
+  isPdfImportedAnnotationObject(obj)
+  && (
+    obj?.pdfImportedEditState === 'edited'
+    || obj?.data?.pdfImportedEditState === 'edited'
+  )
+);
 
 const getPdfImportedAnnotationKey = (obj) => (
   obj?.id
   || obj?.data?.id
   || obj?.annotationId
   || (obj?.pdfAnnotationId ? `pdf:${obj.pdfAnnotationId}` : null)
+);
+
+const getPdfAppearanceCompositeId = (obj) => (
+  obj?.data?.pdfAppearanceCompositeId
+  || obj?.pdfAppearanceCompositeId
+  || null
 );
 
 const sanitizePdfImportedObjectForEditCompare = (value) => {
@@ -1732,16 +1745,76 @@ export const markEditedImportedPdfAnnotationsOnPage = (incomingPage, previousPag
     if (key) previousByKey.set(key, obj);
   });
 
+  const normalizedSource = String(source || '').toLowerCase();
+  const suppressCompositePropagation = (
+    normalizedSource.includes('import')
+    || normalizedSource.includes('hydrate')
+    || normalizedSource.includes('sync')
+  );
+  const dirtyCompositeIds = new Set();
+  if (!suppressCompositePropagation) {
+    const previousCompositeKeys = new Map();
+    const incomingCompositeKeys = new Map();
+    const addCompositeKey = (target, obj) => {
+      const compositeId = getPdfAppearanceCompositeId(obj);
+      const key = getPdfImportedAnnotationKey(obj);
+      if (!compositeId || !key) return;
+      if (!target.has(compositeId)) target.set(compositeId, []);
+      target.get(compositeId).push(key);
+    };
+    (Array.isArray(previousPage?.objects) ? previousPage.objects : []).forEach((obj) => (
+      addCompositeKey(previousCompositeKeys, obj)
+    ));
+    objects.forEach((obj) => {
+      addCompositeKey(incomingCompositeKeys, obj);
+      const key = getPdfImportedAnnotationKey(obj);
+      const previousObject = key ? previousByKey.get(key) : null;
+      const compositeId = getPdfAppearanceCompositeId(obj);
+      if (
+        compositeId
+        && (
+          isEditedPdfImportedAnnotationObject(obj)
+          || shouldStampPdfImportedEditStateForSource(source, previousObject, obj)
+        )
+      ) {
+        dirtyCompositeIds.add(compositeId);
+      }
+    });
+    const allCompositeIds = new Set([
+      ...previousCompositeKeys.keys(),
+      ...incomingCompositeKeys.keys(),
+    ]);
+    allCompositeIds.forEach((compositeId) => {
+      const previousKeys = (previousCompositeKeys.get(compositeId) || []).sort();
+      const incomingKeys = (incomingCompositeKeys.get(compositeId) || []).sort();
+      if (JSON.stringify(previousKeys) !== JSON.stringify(incomingKeys)) {
+        dirtyCompositeIds.add(compositeId);
+      }
+    });
+  }
+
   let editedCount = 0;
+  const editedAt = new Date().toISOString();
   const markedObjects = objects.map((obj) => {
     const key = getPdfImportedAnnotationKey(obj);
     const previousObject = key ? previousByKey.get(key) : null;
-    if (!shouldStampPdfImportedEditStateForSource(source, previousObject, obj)) return obj;
+    const compositeId = getPdfAppearanceCompositeId(obj);
+    const shouldStamp = (
+      shouldStampPdfImportedEditStateForSource(source, previousObject, obj)
+      || (compositeId && dirtyCompositeIds.has(compositeId))
+    );
+    if (!shouldStamp) return obj;
+    if (
+      obj?.pdfImportedEditState === 'edited'
+      && obj?.data?.pdfImportedEditState === 'edited'
+    ) {
+      return obj;
+    }
     editedCount += 1;
     const stamp = {
       ...obj,
       pdfImportedEditState: 'edited',
-      pdfImportedEditedAt: new Date().toISOString(),
+      pdfImportedEditedAt: editedAt,
       pdfImportedEditedBy: userId || null,
       pdfImportedEditSource: source || null,
       data: {

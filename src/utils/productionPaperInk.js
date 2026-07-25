@@ -31,7 +31,8 @@ export function createProductionPaperInk({
   for (const key of [
     'type', 'path', 'polygons', 'paperCenterline', 'paperCenterlineRuns',
     'paperInkGeometry',
-    'paperEraserGeometry', 'pathOffset', 'left', 'top', 'width', 'height',
+    'paperEraserGeometry', 'paperSourceStroke', 'paperEraserCuts',
+    'pathOffset', 'left', 'top', 'width', 'height',
     'scaleX', 'scaleY', 'angle', 'fill', 'fillRule', 'stroke', 'strokeWidth',
     'sourceWidth', 'globalCompositeOperation',
   ]) {

@@ -7,6 +7,26 @@
  *
  * Phase 9 Plan 01: Selection foundation utilities.
  */
+import { createInkPathAffine } from './inkGeometryTransform.js';
+
+const stableSum = (...values) => {
+  if (values.some((value) => Number.isNaN(value))) return NaN;
+  if (values.some((value) => !Number.isFinite(value))) {
+    return values.reduce((sum, value) => sum + value, 0);
+  }
+  const direct = values.reduce((sum, value) => sum + value, 0);
+  if (Number.isFinite(direct)) return direct;
+  const scale = Math.max(0, ...values.map((value) => Math.abs(value)));
+  if (scale === 0) return 0;
+  return scale * values.reduce((sum, value) => sum + value / scale, 0);
+};
+
+const safeMidpoint = (low, high) => stableSum(low / 2, high / 2);
+
+const degreesToRadians = (degrees) => {
+  const numeric = Number(degrees) || 0;
+  return (numeric % 360) * Math.PI / 180;
+};
 
 // UX 2026-04-20 diag: per-object throttle for [LineBboxDiag] console.log
 // emission from getLineBBox. Rendering can call getLineBBox dozens of times
@@ -101,9 +121,9 @@ export function getAnnotationWorldAABB(obj) {
   if (!angle) {
     return { left: bbox.left, top: bbox.top, width: bbox.width, height: bbox.height, angle: 0 };
   }
-  const cx = bbox.left + bbox.width / 2;
-  const cy = bbox.top + bbox.height / 2;
-  const rad = (angle * Math.PI) / 180;
+  const cx = stableSum(bbox.left, bbox.width / 2);
+  const cy = stableSum(bbox.top, bbox.height / 2);
+  const rad = degreesToRadians(angle);
   const cos = Math.cos(rad);
   const sin = Math.sin(rad);
   const corners = [
@@ -116,8 +136,8 @@ export function getAnnotationWorldAABB(obj) {
   for (const p of corners) {
     const dx = p.x - cx;
     const dy = p.y - cy;
-    const rx = cx + dx * cos - dy * sin;
-    const ry = cy + dx * sin + dy * cos;
+    const rx = stableSum(cx, dx * cos, -dy * sin);
+    const ry = stableSum(cy, dx * sin, dy * cos);
     if (rx < minX) minX = rx;
     if (ry < minY) minY = ry;
     if (rx > maxX) maxX = rx;
@@ -276,8 +296,8 @@ export function scalePathData(pathData, scaleX, scaleY, anchorX, anchorY) {
  * @returns {{ x1: number, y1: number, x2: number, y2: number }}
  */
 export function getLineEndpoints(obj) {
-  const centerX = (obj.left ?? 0) + (obj.width ?? 0) / 2;
-  const centerY = (obj.top ?? 0) + (obj.height ?? 0) / 2;
+  const centerX = stableSum((obj.left ?? 0), (obj.width ?? 0) / 2);
+  const centerY = stableSum((obj.top ?? 0), (obj.height ?? 0) / 2);
   return {
     x1: centerX + (obj.x1 ?? 0),
     y1: centerY + (obj.y1 ?? 0),
@@ -321,8 +341,8 @@ export function computeLineBboxCenter(ep, midpoint) {
     }
   }
   return {
-    x: (Math.min(...xs) + Math.max(...xs)) / 2,
-    y: (Math.min(...ys) + Math.max(...ys)) / 2,
+    x: safeMidpoint(Math.min(...xs), Math.max(...xs)),
+    y: safeMidpoint(Math.min(...ys), Math.max(...ys)),
   };
 }
 
@@ -331,70 +351,82 @@ export function computeLineBboxCenter(ep, midpoint) {
 // ---------------------------------------------------------------------------
 
 function getPathBBox(obj) {
-  const left = obj.left;
-  const top = obj.top;
-  const w = obj.width;
-  const h = obj.height;
-
-  // pathOffset presence is the discriminator between two path storage shapes:
-  //  1) Fabric center-origin path (raw PencilBrush output + serialized pathOffset):
-  //     path data is in local coords, left/top = bbox CENTER, width/height = bbox size.
-  //  2) Absolute-coord path (user-drawn strokes committed via FabricDrawingCanvas,
-  //     which explicitly zeroes left/top; or imported PDF paths with null left/top):
-  //     path data already carries world coords, left/top (if any) is a move offset.
-  //
-  // FabricDrawingCanvas.jsx path:created handler doesn't include pathOffset in
-  // CUSTOM_PROPS, so toJSON() omits it — that absence is our signal that the
-  // stored path data is absolute. Use path-command scan + left/top as offset.
-  const hasPathOffset =
-    obj.pathOffset && (obj.pathOffset.x !== 0 || obj.pathOffset.y !== 0);
-
-  // Case 1 — Fabric center-origin path with serialized pathOffset.
-  if (hasPathOffset && left != null && top != null && w != null && h != null) {
-    const sw = w * Math.abs(obj.scaleX ?? 1);
-    const sh = h * Math.abs(obj.scaleY ?? 1);
-    return {
-      left: left - sw / 2,
-      top: top - sh / 2,
-      width: sw,
-      height: sh,
-      angle: obj.angle ?? 0,
-    };
+  if (!Array.isArray(obj.path) || obj.path.length === 0) {
+    return { left: 0, top: 0, width: 0, height: 0, angle: 0 };
   }
 
-  // Case 2 — absolute-coord path (user-drawn pen strokes + imported PDF paths).
-  // Scan path commands for true bounds; apply left/top as a translation offset
-  // (0 for freshly-drawn, nonzero after drag), and scaleX/scaleY for resize.
-  if (Array.isArray(obj.path) && obj.path.length > 0) {
-    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-    for (const seg of obj.path) {
-      for (let j = 1; j < seg.length; j += 2) {
-        const x = seg[j];
-        const y = seg[j + 1];
-        if (typeof x === 'number' && typeof y === 'number') {
-          if (x < minX) minX = x;
-          if (x > maxX) maxX = x;
-          if (y < minY) minY = y;
-          if (y > maxY) maxY = y;
-        }
-      }
-    }
-    if (minX !== Infinity) {
-      const sx = Math.abs(obj.scaleX ?? 1);
-      const sy = Math.abs(obj.scaleY ?? 1);
-      const offsetX = left ?? 0;
-      const offsetY = top ?? 0;
-      return {
-        left: offsetX + minX * sx,
-        top: offsetY + minY * sy,
-        width: (maxX - minX) * sx,
-        height: (maxY - minY) * sy,
-        angle: obj.angle ?? 0,
-      };
-    }
+  // Use the exact affine consumed by SVG rendering and erasing. The
+  // operational normalizer inside createInkPathAffine also understands
+  // legacy relative/H/V/S/T/A commands, so arc flags can never be mistaken
+  // for coordinates. Transforming the normalized control hull is a safe
+  // world-space superset of every line/Bezier segment.
+  // Preserve the established bbox contract: return an unrotated box plus
+  // `angle`, because selection handles and resize math apply that rotation
+  // separately. Flip/skew/scale are included in this pre-rotation hull.
+  const affine = createInkPathAffine({ ...obj, angle: 0 }, obj.path);
+  const { minX, minY, maxX, maxY } = affine.bounds;
+  const corners = [
+    affine.point(minX, minY),
+    affine.point(maxX, minY),
+    affine.point(maxX, maxY),
+    affine.point(minX, maxY),
+  ];
+  const xs = corners.map((point) => point.x);
+  const ys = corners.map((point) => point.y);
+  let left = Math.min(...xs);
+  let top = Math.min(...ys);
+  let right = Math.max(...xs);
+  let bottom = Math.max(...ys);
+
+  const strokeValue = String(obj?.stroke || '').trim().toLowerCase();
+  const hasVisibleStroke = Number(obj?.strokeWidth) > 0
+    && strokeValue !== ''
+    && strokeValue !== 'none'
+    && strokeValue !== 'transparent';
+  if (hasVisibleStroke) {
+    const radius = Number(obj.strokeWidth) / 2;
+    const [a, b, c, d] = affine.matrix;
+    const padX = obj?.strokeUniform === true
+      ? radius
+      : radius * Math.hypot(a, c);
+    const padY = obj?.strokeUniform === true
+      ? radius
+      : radius * Math.hypot(b, d);
+    left -= padX;
+    right += padX;
+    top -= padY;
+    bottom += padY;
   }
 
-  return { left: 0, top: 0, width: 0, height: 0, angle: 0 };
+  // SVGSelectionOverlay rotates a bbox around its own center. Fabric paths
+  // rotate around pathOffset (or the operational bounds center for old
+  // absolute-coordinate rows), which need not equal the control-hull center
+  // for asymmetric curves/arcs. Symmetrize the safe hull around that real
+  // pivot so applying `angle` cannot clip or shift the visible path.
+  const hasFabricOrigin = obj?.inkGeometryOrigin === 'center-v1'
+    || obj?.data?.inkGeometryOrigin === 'center-v1'
+    || obj?.originX != null
+    || obj?.originY != null;
+  const pivotLocalX = hasFabricOrigin && Number.isFinite(Number(obj?.pathOffset?.x))
+    ? Number(obj.pathOffset.x)
+    : safeMidpoint(minX, maxX);
+  const pivotLocalY = hasFabricOrigin && Number.isFinite(Number(obj?.pathOffset?.y))
+    ? Number(obj.pathOffset.y)
+    : safeMidpoint(minY, maxY);
+  const pivot = affine.point(pivotLocalX, pivotLocalY);
+  const halfWidth = Math.max(pivot.x - left, right - pivot.x);
+  const halfHeight = Math.max(pivot.y - top, bottom - pivot.y);
+  left = pivot.x - halfWidth;
+  right = pivot.x + halfWidth;
+  top = pivot.y - halfHeight;
+  bottom = pivot.y + halfHeight;
+  return {
+    left,
+    top,
+    width: right - left,
+    height: bottom - top,
+    angle: obj.angle ?? 0,
+  };
 }
 
 function getRectBBox(obj) {
@@ -412,8 +444,8 @@ function getLineBBox(obj) {
   // x1/y1/x2/y2 = offsets from bounding box CENTER.
   // Must compute center first, then add offsets to get absolute coords.
   // (Same formula as renderLine in svgAnnotationRenderers.jsx)
-  const centerX = (obj.left ?? 0) + (obj.width ?? 0) / 2;
-  const centerY = (obj.top ?? 0) + (obj.height ?? 0) / 2;
+  const centerX = stableSum((obj.left ?? 0), (obj.width ?? 0) / 2);
+  const centerY = stableSum((obj.top ?? 0), (obj.height ?? 0) / 2);
   const x1 = centerX + (obj.x1 ?? 0);
   const y1 = centerY + (obj.y1 ?? 0);
   const x2 = centerX + (obj.x2 ?? 0);
@@ -442,7 +474,7 @@ function getLineBBox(obj) {
     const denomY = y1 - 2 * Cy + y2;
     let txVal = null, tyVal = null, extremumXVal = null, extremumYVal = null;
     let txInRange = false, tyInRange = false;
-    if (Math.abs(denomX) > 1e-9) {
+    if (Number.isFinite(denomX) && denomX !== 0) {
       const tx = (x1 - Cx) / denomX;
       txVal = tx;
       if (tx > 0 && tx < 1) {
@@ -452,7 +484,7 @@ function getLineBBox(obj) {
         txInRange = true;
       }
     }
-    if (Math.abs(denomY) > 1e-9) {
+    if (Number.isFinite(denomY) && denomY !== 0) {
       const ty = (y1 - Cy) / denomY;
       tyVal = ty;
       if (ty > 0 && ty < 1) {
@@ -489,8 +521,8 @@ function getLineBBox(obj) {
   // topSideHalfH=103, adding 75 px of bottom padding). Tight wrap + an
   // explicit pivot override gives both: frame hugs geometry AND rotates
   // around the same point as the visible shape.
-  const midX = (x1 + x2) / 2;
-  const midY = (y1 + y2) / 2;
+  const midX = safeMidpoint(x1, x2);
+  const midY = safeMidpoint(y1, y2);
   // Enforce a 10-px minimum on the tight bounds themselves so near-
   // horizontal / near-vertical straight lines still have a grabbable
   // resize handle strip. Symmetric expansion around the endpoint
@@ -721,7 +753,7 @@ function getCircleBBox(obj) {
     const tipExtension = Math.max(5, r * 0.5);
     const tipDistance = r + tipExtension;
     const pointerAngleDeg = (obj.data.pointerAngle != null) ? obj.data.pointerAngle : 225;
-    const rad = (pointerAngleDeg * Math.PI) / 180;
+    const rad = degreesToRadians(pointerAngleDeg);
     const tipX = centerX + Math.cos(rad) * tipDistance;
     const tipY = centerY + Math.sin(rad) * tipDistance;
     const minX = Math.min(bodyLeft, tipX);

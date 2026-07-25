@@ -1,11 +1,244 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  doesRectIntersectPath,
   doesRectIntersectObject,
   getCounterHitGeometry,
+  isPointOnPath,
   isPointOnObject,
 } from '../src/utils/geometryHitTest.js';
 import { getCounterRenderGeometry } from '../src/utils/counterGeometry.js';
+import { createInkPathAffine } from '../src/utils/inkGeometryTransform.js';
+import { getAnnotationBBox, getAnnotationWorldAABB } from '../src/utils/svgBoundingBox.js';
+
+test('persisted ink hit testing follows the exact SVG affine through flip and skew', () => {
+  const path = {
+    type: 'path',
+    path: [
+      ['M', 10, 20],
+      ['L', 50, 20],
+    ],
+    left: 150,
+    top: 90,
+    width: 40,
+    height: 0,
+    pathOffset: { x: 30, y: 20 },
+    originX: 'center',
+    originY: 'center',
+    inkGeometryOrigin: 'center-v1',
+    scaleX: 2,
+    scaleY: 1.5,
+    angle: 31,
+    flipX: true,
+    skewX: 24,
+    skewY: -9,
+    stroke: '#d11b2d',
+    strokeWidth: 4,
+    fill: 'none',
+  };
+  const affine = createInkPathAffine(path, path.path);
+  const renderedPoint = affine.point(12, 20);
+
+  assert.equal(isPointOnPath(renderedPoint, path, 0.5), true);
+  assert.equal(
+    doesRectIntersectPath({
+      left: renderedPoint.x - 1,
+      top: renderedPoint.y - 1,
+      right: renderedPoint.x + 1,
+      bottom: renderedPoint.y + 1,
+    }, path),
+    true,
+  );
+
+  // The pre-fix fallback ignored flip/skew and searched on the opposite side.
+  const staleUnflippedPoint = { x: 114, y: 68 };
+  assert.equal(isPointOnPath(staleUnflippedPoint, path, 0.5), false);
+});
+
+test('persisted ink bbox contains the rendered affine geometry and normalizes legacy arcs', () => {
+  const path = {
+    type: 'path',
+    path: [
+      ['M', 20, 40],
+      ['A', 30, 20, 25, 0, 1, 100, 40],
+    ],
+    left: 200,
+    top: 100,
+    width: 80,
+    height: 40,
+    pathOffset: { x: 60, y: 40 },
+    originX: 'center',
+    originY: 'center',
+    inkGeometryOrigin: 'center-v1',
+    scaleX: 1.6,
+    scaleY: 0.8,
+    angle: 17,
+    flipY: true,
+    skewX: 30,
+    stroke: '#111',
+    strokeWidth: 2,
+    fill: 'none',
+  };
+  const affine = createInkPathAffine(path, path.path);
+  const bbox = getAnnotationBBox(path);
+  const worldBBox = getAnnotationWorldAABB(path);
+  const corners = [
+    affine.point(affine.bounds.minX, affine.bounds.minY),
+    affine.point(affine.bounds.maxX, affine.bounds.minY),
+    affine.point(affine.bounds.maxX, affine.bounds.maxY),
+    affine.point(affine.bounds.minX, affine.bounds.maxY),
+  ];
+
+  assert.equal(bbox.angle, path.angle);
+  for (const point of corners) {
+    assert.ok(point.x >= worldBBox.left - 1e-9);
+    assert.ok(point.x <= worldBBox.left + worldBBox.width + 1e-9);
+    assert.ok(point.y >= worldBBox.top - 1e-9);
+    assert.ok(point.y <= worldBBox.top + worldBBox.height + 1e-9);
+  }
+
+  const renderedArcEnd = affine.point(100, 40);
+  assert.equal(
+    isPointOnPath(renderedArcEnd, path, 0.5),
+    true,
+    'legacy A/a commands hit-test on their rendered endpoint',
+  );
+});
+
+test('path hit radius stays in page units across extreme affine scales', () => {
+  const fixture = (scale) => ({
+    type: 'path',
+    path: [['M', 0, 0], ['L', 100, 0]],
+    left: 200,
+    top: 150,
+    width: 100,
+    height: 0,
+    pathOffset: { x: 50, y: 0 },
+    originX: 'center',
+    originY: 'center',
+    inkGeometryOrigin: 'center-v1',
+    scaleX: scale,
+    scaleY: scale,
+    angle: 37,
+    skewX: 25,
+    stroke: '#111',
+    strokeWidth: 2,
+    strokeLineCap: 'round',
+    fill: 'none',
+  });
+  const probeNormal = (path, distance) => {
+    const affine = createInkPathAffine(path, path.path);
+    const start = affine.point(0, 0);
+    const end = affine.point(100, 0);
+    const dx = end.x - start.x;
+    const dy = end.y - start.y;
+    const length = Math.hypot(dx, dy);
+    return {
+      x: (start.x + end.x) / 2 - dy / length * distance,
+      y: (start.y + end.y) / 2 + dx / length * distance,
+    };
+  };
+
+  const tiny = fixture(0.01);
+  assert.equal(
+    isPointOnPath(probeNormal(tiny, 5), tiny, 8),
+    true,
+    '8-page-unit eraser reaches a tiny transformed stroke',
+  );
+
+  const huge = fixture(100);
+  assert.equal(
+    isPointOnPath(probeNormal(huge, 500), huge, 8),
+    false,
+    'page tolerance is not magnified by a huge object transform',
+  );
+});
+
+test('live Fabric path hit testing inverts microscopic transforms instead of using identity', () => {
+  const livePath = {
+    type: 'path',
+    path: [['M', 0, 0], ['L', 100, 0]],
+    pathOffset: { x: 0, y: 0 },
+    stroke: '#111',
+    strokeWidth: 2,
+    fill: 'none',
+    calcTransformMatrix: () => [1e-6, 0, 0, 1e-6, 0, 0],
+  };
+
+  assert.equal(isPointOnPath({ x: 50e-6, y: 0.5e-6 }, livePath, 0), true);
+  assert.equal(isPointOnPath({ x: 50e-6, y: 5e-6 }, livePath, 0), false);
+});
+
+test('plain path hit testing honors butt caps and dash gaps', () => {
+  const butt = {
+    type: 'path',
+    path: [['M', 0, 0], ['L', 100, 0]],
+    stroke: '#111',
+    strokeWidth: 10,
+    strokeLineCap: 'butt',
+    fill: 'none',
+  };
+  assert.equal(isPointOnPath({ x: -1, y: 0 }, butt, 0), false);
+  assert.equal(isPointOnPath({ x: 0, y: 0 }, butt, 0), true);
+
+  const dashed = {
+    ...butt,
+    strokeLineCap: 'butt',
+    strokeDashArray: [10, 10],
+  };
+  assert.equal(isPointOnPath({ x: 5, y: 0 }, dashed, 0), true);
+  assert.equal(isPointOnPath({ x: 15, y: 0 }, dashed, 0), false);
+});
+
+test('polygon-backed mixed fill and stroke hit-tests the visible stroke fringe', () => {
+  const mixed = {
+    type: 'path',
+    path: [
+      ['M', 0, 0],
+      ['L', 20, 0],
+      ['L', 20, 20],
+      ['L', 0, 20],
+      ['Z'],
+    ],
+    polygons: [[[
+      [0, 0],
+      [20, 0],
+      [20, 20],
+      [0, 20],
+      [0, 0],
+    ]]],
+    fill: '#f00',
+    stroke: '#00f',
+    strokeWidth: 10,
+    strokeLineCap: 'butt',
+    strokeLineJoin: 'miter',
+  };
+
+  assert.equal(isPointOnPath({ x: 10, y: 10 }, mixed, 0), true, 'fill interior');
+  assert.equal(isPointOnPath({ x: 23, y: 10 }, mixed, 0), true, 'stroke fringe');
+  assert.equal(isPointOnPath({ x: 27, y: 10 }, mixed, 0), false, 'outside both paints');
+});
+
+test('long ordinary round strokes avoid first-hit polygon-union latency', () => {
+  const path = [['M', 0, 0]];
+  for (let index = 1; index <= 5_000; index += 1) {
+    path.push(['L', index, Math.sin(index / 25) * 20]);
+  }
+  const stroke = {
+    type: 'path',
+    path,
+    stroke: '#111',
+    strokeWidth: 4,
+    strokeLineCap: 'round',
+    strokeLineJoin: 'round',
+    fill: 'none',
+  };
+
+  const startedAt = performance.now();
+  assert.equal(isPointOnPath({ x: 2_500, y: Math.sin(100) * 20 }, stroke, 2), true);
+  const elapsed = performance.now() - startedAt;
+  assert.ok(elapsed < 500, `first hit took ${elapsed.toFixed(1)}ms`);
+});
 
 test('unfilled rect selects stroke but not blank interior', () => {
   const rect = {

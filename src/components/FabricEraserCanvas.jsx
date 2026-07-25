@@ -780,11 +780,10 @@ const FabricEraserCanvas = memo(({
     const preview = livePreviewCanvasRef.current;
     if (!preview || preview.style.display === 'none') return;
     const idSet = new Set(ids);
-    // The preview snapshot was painted from presentation-PROJECTED objects
-    // (LightweightAnnotationOverlay maps projectPaperInkForPresentation), so
-    // the ghost mask must carve the same projected geometry — masking the raw
-    // stroked centerline leaves outline slivers of wide ink until the commit
-    // repaint.
+    // Use the same immutable presentation objects as the visible overlay.
+    // projectPaperInkForPresentation intentionally preserves authored curves;
+    // committed partial bites carry a separate clip mask instead of replacing
+    // the source path with a flattened outline.
     const objects = (annotationsRef.current?.objects || []).filter((object, index) => (
       idSet.has(getEraserCandidateId(object, index))
     )).map(projectPaperInkForPresentation);

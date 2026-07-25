@@ -24,6 +24,10 @@ import {
   rebaseErasedPathSurvivor,
 } from '../utils/pageSpaceEraser.js';
 import {
+  applyInkGeometryMatrix,
+  createInkPathAffine,
+} from '../utils/inkGeometryTransform.js';
+import {
   createAnnotationStorageKeyResolver,
   getAnnotationStorageKey,
   normalizeAnnotationIdentity,
@@ -131,6 +135,198 @@ function eraserTransformSignature(object) {
   });
 }
 
+const ERASER_REMOVABLE_PRESENTATION_KEYS = [
+  'strokeDashArray',
+  'strokeDashOffset',
+];
+
+function preserveEraserPresentationRemovals(rebased, sourceBase, sourceSurvivor) {
+  if (!rebased || !sourceSurvivor) return rebased;
+  const next = { ...rebased };
+  for (const key of ERASER_REMOVABLE_PRESENTATION_KEYS) {
+    if (
+      Object.prototype.hasOwnProperty.call(sourceBase || {}, key)
+      && !Object.prototype.hasOwnProperty.call(sourceSurvivor, key)
+    ) {
+      delete next[key];
+    }
+  }
+  return next;
+}
+
+const analyticEraserBaseGeometrySignature = (object) => JSON.stringify({
+  type: String(object?.type || '').toLowerCase(),
+  path: object?.path || null,
+  cmds: object?.cmds || null,
+  sourceWidth: object?.sourceWidth ?? null,
+  strokeWidth: object?.strokeWidth ?? null,
+  strokeLineCap: object?.strokeLineCap ?? null,
+  strokeLineJoin: object?.strokeLineJoin ?? null,
+  strokeMiterLimit: object?.strokeMiterLimit ?? null,
+  strokeDashArray: object?.strokeDashArray ?? null,
+  strokeDashOffset: object?.strokeDashOffset ?? null,
+  fillRule: object?.fillRule ?? null,
+  pdfStrokeHairline: object?.pdfStrokeHairline === true
+    || object?.data?.pdfStrokeHairline === true,
+});
+
+const stableSum = (...values) => {
+  const direct = values.reduce((sum, value) => sum + value, 0);
+  if (Number.isFinite(direct)) return direct;
+  const scale = Math.max(0, ...values.map((value) => Math.abs(value)));
+  return scale === 0
+    ? 0
+    : scale * values.reduce((sum, value) => sum + value / scale, 0);
+};
+
+const multiplyAffineMatrices = (left, right) => {
+  const [a1, b1, c1, d1, e1, f1] = left;
+  const [a2, b2, c2, d2, e2, f2] = right;
+  return [
+    stableSum(a1 * a2, c1 * b2),
+    stableSum(b1 * a2, d1 * b2),
+    stableSum(a1 * c2, c1 * d2),
+    stableSum(b1 * c2, d1 * d2),
+    stableSum(a1 * e2, c1 * f2, e1),
+    stableSum(b1 * e2, d1 * f2, f1),
+  ];
+};
+
+const invertAffineMatrix = (matrix) => {
+  const [a, b, c, d, e, f] = matrix;
+  const scale = Math.max(Math.abs(a), Math.abs(b), Math.abs(c), Math.abs(d));
+  if (!(scale > 0) || !Number.isFinite(scale)) return null;
+  const na = a / scale;
+  const nb = b / scale;
+  const nc = c / scale;
+  const nd = d / scale;
+  const normalizedDeterminant = na * nd - nb * nc;
+  if (normalizedDeterminant === 0 || !Number.isFinite(normalizedDeterminant)) return null;
+  const inverseScale = 1 / (scale * normalizedDeterminant);
+  const ia = nd * inverseScale;
+  const ib = -nb * inverseScale;
+  const ic = -nc * inverseScale;
+  const id = na * inverseScale;
+  const inverse = [
+    ia,
+    ib,
+    ic,
+    id,
+    -stableSum(ia * e, ic * f),
+    -stableSum(ib * e, id * f),
+  ];
+  return inverse.every(Number.isFinite) ? inverse : null;
+};
+
+function rebaseAnalyticEraserSurvivor(currentBase, capturedBase, survivor) {
+  if (
+    !currentBase
+    || !capturedBase
+    || !survivor
+    || !Array.isArray(survivor.path)
+    || survivor.polygons?.length
+    || analyticEraserBaseGeometrySignature(currentBase)
+      !== analyticEraserBaseGeometrySignature(capturedBase)
+  ) {
+    return null;
+  }
+  const capturedCommands = capturedBase.path || capturedBase.cmds;
+  const currentCommands = currentBase.path || currentBase.cmds;
+  if (!Array.isArray(capturedCommands) || !Array.isArray(currentCommands)) return null;
+  const capturedMatrix = createInkPathAffine(capturedBase, capturedCommands).matrix;
+  const currentMatrix = createInkPathAffine(currentBase, currentCommands).matrix;
+  if (JSON.stringify(capturedMatrix) === JSON.stringify(currentMatrix)) {
+    return structuredClone(survivor);
+  }
+  const capturedInverse = invertAffineMatrix(capturedMatrix);
+  if (!capturedInverse) return null;
+  const pageMatrix = multiplyAffineMatrices(currentMatrix, capturedInverse);
+  if (!pageMatrix.every(Number.isFinite)) return null;
+  return applyInkGeometryMatrix(survivor, pageMatrix);
+}
+
+function rebaseStoredEraserSurvivor(currentBase, capturedBase, survivor, options) {
+  const rebased = rebaseErasedPathSurvivor(
+    currentBase,
+    capturedBase,
+    survivor,
+    options,
+  ) || rebaseAnalyticEraserSurvivor(currentBase, capturedBase, survivor);
+  return preserveEraserPresentationRemovals(rebased, capturedBase, survivor);
+}
+
+const normalizedLaneGesture = (gesture) => {
+  const points = Array.isArray(gesture?.points)
+    ? gesture.points
+      .map((point) => ({ x: Number(point?.x), y: Number(point?.y) }))
+      .filter((point) => Number.isFinite(point.x) && Number.isFinite(point.y))
+    : [];
+  const radius = Number(gesture?.radius);
+  if (!points.length || !Number.isFinite(radius) || radius <= 0) return null;
+  return {
+    mode: gesture?.mode === 'entire' || gesture?.mode === 'full' ? 'full' : 'partial',
+    points,
+    radius,
+  };
+};
+
+function transformLaneGesture(gesture, capturedBase, currentBase) {
+  const normalized = normalizedLaneGesture(gesture);
+  if (!normalized || normalized.mode !== 'partial') return null;
+  const capturedCommands = capturedBase?.path || capturedBase?.cmds;
+  const currentCommands = currentBase?.path || currentBase?.cmds;
+  if (!Array.isArray(capturedCommands) || !Array.isArray(currentCommands)) return null;
+  const capturedMatrix = createInkPathAffine(capturedBase, capturedCommands).matrix;
+  const currentMatrix = createInkPathAffine(currentBase, currentCommands).matrix;
+  const capturedInverse = invertAffineMatrix(capturedMatrix);
+  if (!capturedInverse) return null;
+  const pageMatrix = multiplyAffineMatrices(currentMatrix, capturedInverse);
+  const [a, b, c, d, e, f] = pageMatrix;
+  const scaleX = Math.hypot(a, b);
+  const scaleY = Math.hypot(c, d);
+  const orthogonality = Math.abs(a * c + b * d);
+  const tolerance = Number.EPSILON * 128 * Math.max(1, scaleX * scaleY);
+  if (
+    !(scaleX > 0)
+    || !(scaleY > 0)
+    || Math.abs(scaleX - scaleY) > tolerance
+    || orthogonality > tolerance
+  ) {
+    return null;
+  }
+  return {
+    ...normalized,
+    radius: normalized.radius * ((scaleX + scaleY) / 2),
+    points: normalized.points.map((point) => ({
+      x: stableSum(a * point.x, c * point.y, e),
+      y: stableSum(b * point.x, d * point.y, f),
+    })),
+  };
+}
+
+function intersectAnalyticEraserLanes(currentBase, lanes) {
+  let current = currentBase;
+  for (const [, lane] of lanes) {
+    const gestures = Array.isArray(lane?.gestures) ? lane.gestures : [];
+    if (!gestures.length) return { supported: false, survivor: null };
+    for (const gesture of gestures) {
+      const transformed = transformLaneGesture(gesture, lane.base, currentBase);
+      if (!transformed) return { supported: false, survivor: null };
+      const erased = erasePageAnnotations({
+        pageAnnotations: { objects: [current] },
+        eraserPoints: transformed.points,
+        eraserRadius: transformed.radius,
+        mode: 'partial',
+      });
+      const mutation = erased.objectMutations?.find((item) => item?.index === 0);
+      if (!mutation) continue;
+      if (mutation.deleted === true) return { supported: true, survivor: null };
+      current = mutation.survivor;
+    }
+  }
+  return { supported: true, survivor: current };
+}
+
 /**
  * Build one writer's lane from that writer's own survivor (or the immutable
  * base), never from the all-writer materialized intersection. This matters
@@ -157,23 +353,27 @@ export function deriveWriterEraserLane({
     : 'partial';
   const points = Array.isArray(gesture?.points) ? gesture.points : [];
   const radius = Number(gesture?.radius);
+  const currentGesture = normalizedLaneGesture(gesture);
+  const previousGestures = Array.isArray(previousLane?.gestures)
+    ? previousLane.gestures.map((value) => structuredClone(value))
+    : [];
   const previousSurvivor = previousLane?.deleted === true
     ? null
-    : rebaseErasedPathSurvivor(
-      baseObject,
-      previousLane?.base,
-      previousLane?.survivor,
-      { geometryBase: previousLane?.base },
+    : rebaseStoredEraserSurvivor(
+        baseObject,
+        previousLane?.base,
+        previousLane?.survivor,
+        { geometryBase: previousLane?.base },
     );
   const writerSource = previousLane?.deleted === true
     ? null
     : (previousSurvivor || baseObject || null);
   const capturedSurvivor = capturedBase && survivor
-    ? rebaseErasedPathSurvivor(
-      baseObject,
-      capturedBase,
-      survivor,
-      { geometryBase: previousLane?.base || capturedBase },
+    ? rebaseStoredEraserSurvivor(
+        baseObject,
+        capturedBase,
+        survivor,
+        { geometryBase: previousLane?.base || capturedBase },
     )
     : null;
   const capturedWasMaterialized = capturedBase?.paperEraserGeometry === 'v1';
@@ -228,6 +428,9 @@ export function deriveWriterEraserLane({
     base: baseObject || previousLane?.base || null,
     deleted: laneDeleted,
     survivor: laneDeleted ? null : laneSurvivor,
+    gestures: currentGesture
+      ? [...previousGestures, currentGesture]
+      : previousGestures,
   };
 }
 
@@ -247,12 +450,20 @@ const ERASER_GEOMETRY_KEYS = [
   'skewY',
   'flipX',
   'flipY',
+  'originX',
+  'originY',
   'pathOffset',
+  'inkGeometrySpace',
+  'inkGeometryOrigin',
   'fillRule',
   'paperInkGeometry',
   'paperEraserGeometry',
   'paperEraserBaseTransform',
+  'paperSourceStroke',
+  'paperEraserCuts',
   'sourceWidth',
+  'strokeDashArray',
+  'strokeDashOffset',
 ];
 const ERASER_STALE_GEOMETRY_KEYS = [
   'paperCenterline',
@@ -287,7 +498,17 @@ function projectEraserGeometryOntoCurrentBase(baseObject, survivor) {
     ...(survivor.data?.pdfImportedEditState
       ? { pdfImportedEditState: survivor.data.pdfImportedEditState }
       : {}),
+    ...(survivor.data?.inkGeometrySpace
+      ? { inkGeometrySpace: survivor.data.inkGeometrySpace }
+      : {}),
   };
+  if (
+    survivor.inkGeometrySpace === 'page'
+    || survivor.data?.inkGeometrySpace === 'page'
+  ) {
+    delete next.inkGeometryOrigin;
+    delete next.data.inkGeometryOrigin;
+  }
   if (survivor.paperEraserGeometry === 'v1') {
     const baseFill = String(baseObject.fill || '').toLowerCase();
     const paint = baseFill && baseFill !== 'none' && baseFill !== 'transparent'
@@ -524,11 +745,34 @@ export function docToByPage(doc, { replayStats = null } = {}) {
     }
     const baseObject = pageAnnotations.objects[objectIndex];
     const survivors = lanes.map(([, lane]) => (
-      rebaseErasedPathSurvivor(baseObject, lane.base, lane.survivor)
+      rebaseStoredEraserSurvivor(baseObject, lane.base, lane.survivor)
     )).filter(Boolean);
     if (!survivors.length) continue;
-    polygonIntersections += Math.max(0, survivors.length - 1);
-    const intersected = intersectErasedPathSurvivors(survivors);
+    const onlyAnalyticSurvivors = survivors.every(
+      (value) => !Array.isArray(value?.polygons) || value.polygons.length === 0,
+    );
+    if (!onlyAnalyticSurvivors) {
+      polygonIntersections += Math.max(0, survivors.length - 1);
+    }
+    // A single analytic hairline survivor has no polygon carrier by design.
+    // Preserve it directly; the polygon intersection helper intentionally
+    // accepts only filled-outline survivors.
+    let intersected;
+    if (survivors.length === 1) {
+      [intersected] = survivors;
+    } else if (onlyAnalyticSurvivors) {
+      const combined = intersectAnalyticEraserLanes(baseObject, lanes);
+      // Old lanes predate gesture retention. Fail closed by keeping one real
+      // survivor instead of treating an unsupported analytic intersection as
+      // a full deletion.
+      intersected = combined.supported ? combined.survivor : survivors[0];
+    } else if (survivors.some(
+      (value) => !Array.isArray(value?.polygons) || value.polygons.length === 0,
+    )) {
+      intersected = survivors[0];
+    } else {
+      intersected = intersectErasedPathSurvivors(survivors);
+    }
     const survivor = intersected
       ? projectEraserGeometryOntoCurrentBase(
         pageAnnotations.objects[objectIndex],

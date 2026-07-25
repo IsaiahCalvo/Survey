@@ -2,7 +2,6 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import { projectPaperInkForPresentation } from '../src/utils/paperInkPresentation.js';
-import { commandsToPolygonSet } from '../src/utils/paperAnnotationGeometry.js';
 
 const nativeStroke = (overrides = {}) => ({
   type: 'path',
@@ -22,21 +21,9 @@ const nativeStroke = (overrides = {}) => ({
   ...overrides,
 });
 
-test('native ink is presented as the same filled paper shape used by partial erase', () => {
+test('arming partial erase leaves a native authored curve byte-identical', () => {
   const source = nativeStroke();
-  const projected = projectPaperInkForPresentation(source);
-
-  assert.notEqual(projected, source);
-  assert.equal(projected.id, source.id);
-  assert.equal(projected.tool, source.tool);
-  assert.deepEqual(projected.data, source.data);
-  assert.equal(projected.fill, source.stroke);
-  assert.equal(projected.stroke, 'transparent');
-  assert.equal(projected.strokeWidth, 0);
-  assert.equal(projected.fillRule, 'evenodd');
-  assert.equal(projected.paperPresentationGeometry, 'v1');
-  assert.ok(projected.path.length > source.path.length);
-  assert.ok(projected.path.some((command) => command[0] === 'Z'));
+  assert.equal(projectPaperInkForPresentation(source), source);
 });
 
 test('thin imported PDF Ink stays a compact centerline presentation', () => {
@@ -50,11 +37,7 @@ test('thin imported PDF Ink stays a compact centerline presentation', () => {
   assert.equal(projectPaperInkForPresentation(imported), imported);
 });
 
-test('wide imported PDF Ink projects like native ink (item 5c gate retired)', () => {
-  // UX 2026-07-17: since item 5a the stored imported width IS the rendered
-  // width, so the old imported-ink skip is gone — a wide imported open
-  // stroke presents as the same paper outline partial erase will commit,
-  // exactly like a native pen stroke of the same width.
+test('wide imported PDF Ink keeps its authored presentation', () => {
   const imported = nativeStroke({
     tool: undefined,
     isPdfImported: true,
@@ -63,15 +46,7 @@ test('wide imported PDF Ink projects like native ink (item 5c gate retired)', ()
     strokeWidth: 8,
   });
 
-  const projected = projectPaperInkForPresentation(imported);
-  assert.notEqual(projected, imported);
-  assert.equal(projected.fill, imported.stroke);
-  assert.equal(projected.stroke, 'transparent');
-  assert.equal(projected.strokeWidth, 0);
-  assert.equal(projected.fillRule, 'evenodd');
-  assert.equal(projected.paperPresentationGeometry, 'v1');
-  // Provenance survives the projection untouched.
-  assert.equal(projected.pdfAnnotationId, 'pdf-1');
+  assert.equal(projectPaperInkForPresentation(imported), imported);
 });
 
 test('converged imported filled ink (item 4) is never re-projected', () => {
@@ -123,17 +98,17 @@ test('already-erased filled paper geometry is not rebuilt', () => {
   assert.equal(projectPaperInkForPresentation(filled), filled);
 });
 
-test('legacy Fabric curves project to one compact outline without phantom fragments', () => {
+test('legacy Fabric curves are never flattened for eraser presentation', () => {
   const path = [['M', 0, 50]];
   for (let index = 1; index <= 24; index += 1) {
     const previousX = (index - 1) * 5;
     const x = index * 5;
     path.push(['Q', previousX + 2.5, 50 + Math.sin(index / 3) * 0.4, x, 50]);
   }
-  const projected = projectPaperInkForPresentation(nativeStroke({ path, strokeWidth: 20 }));
-  const polygons = commandsToPolygonSet(projected.path, { fill: true });
+  const source = nativeStroke({ path, strokeWidth: 20 });
+  const projected = projectPaperInkForPresentation(source);
 
-  assert.equal(polygons.length, 1);
-  assert.equal(polygons[0].length, 1);
-  assert.ok(projected.path.length < 100, `expected compact geometry, got ${projected.path.length}`);
+  assert.equal(projected, source);
+  assert.equal(projected.path, path);
+  assert.ok(projected.path.every((command) => command[0] === 'M' || command[0] === 'Q'));
 });

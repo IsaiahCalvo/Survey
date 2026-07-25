@@ -12,12 +12,14 @@
  */
 import { makeInternalPenPathSpec } from './nativeShapeFactory.js';
 import {
-  getImportedInkSmoothedOutlineCommands,
   hasSubstantiveClosedSubpath,
 } from './svgPathAttrs.js';
 import {
   filledOutlineCommandsToPolygonSet,
+  intersectPolygonSets,
+  normalizeMultiPolygon,
   polygonSetToCommands,
+  styledStrokeCommandsToPolygonSet,
   translatePolygonSet,
 } from './paperAnnotationGeometry.js';
 import {
@@ -1213,8 +1215,15 @@ function extractAnnotationDashArray(annotation) {
   for (const candidate of dashCandidates) {
     const numeric = toNumericArray(candidate);
     if (Array.isArray(numeric) && numeric.length > 0) {
-      const cleaned = numeric.filter((value) => value > 0);
-      if (cleaned.length > 0) return cleaned;
+      // Zero-length entries are valid (e.g. `[0 10]` with round caps paints
+      // spaced dots). Only negative/invalid values or an all-zero pattern are
+      // unusable under the PDF dash rules.
+      if (
+        numeric.every((value) => value >= 0)
+        && numeric.some((value) => value > 0)
+      ) {
+        return numeric;
+      }
     }
   }
 
@@ -1236,23 +1245,253 @@ function decodeStreamBytesToLatin1(bytes) {
   return result;
 }
 
-function parseAppearanceStream(content) {
+const PDF_IDENTITY_MATRIX = Object.freeze([1, 0, 0, 1, 0, 0]);
+
+function isFinitePdfMatrix(value) {
+  return (Array.isArray(value) || ArrayBuffer.isView(value))
+    && value.length === 6
+    && value.every((entry) => Number.isFinite(Number(entry)));
+}
+
+function applyPdfMatrixToPoint(matrix, x, y) {
+  const source = isFinitePdfMatrix(matrix) ? matrix : PDF_IDENTITY_MATRIX;
+  const [a, b, c, d, e, f] = source.map(Number);
+  return {
+    x: a * x + c * y + e,
+    y: b * x + d * y + f,
+  };
+}
+
+// Compose two PDF matrices so the child transform runs first and the parent
+// transform runs second: parent(child(point)). This matches Form /Matrix
+// outside an appearance stream's local `cm` operations.
+function composePdfMatrices(parent, child) {
+  const [pa, pb, pc, pd, pe, pf] = parent;
+  const [ca, cb, cc, cd, ce, cf] = child;
+  return [
+    pa * ca + pc * cb,
+    pb * ca + pd * cb,
+    pa * cc + pc * cd,
+    pb * cc + pd * cd,
+    pa * ce + pc * cf + pe,
+    pb * ce + pd * cf + pf,
+  ];
+}
+
+function createAppearanceToPdfMatrix(rectValue, bboxValue, matrixValue) {
+  const matrix = isFinitePdfMatrix(matrixValue)
+    ? Array.from(matrixValue, Number)
+    : Array.from(PDF_IDENTITY_MATRIX);
+  const rect = toNumericArray(rectValue);
+  const bbox = toNumericArray(bboxValue);
+  if (rect?.length !== 4 || bbox?.length !== 4) {
+    return matrix;
+  }
+
+  const corners = [
+    applyPdfMatrixToPoint(matrix, bbox[0], bbox[1]),
+    applyPdfMatrixToPoint(matrix, bbox[2], bbox[1]),
+    applyPdfMatrixToPoint(matrix, bbox[0], bbox[3]),
+    applyPdfMatrixToPoint(matrix, bbox[2], bbox[3]),
+  ];
+  const minX = Math.min(...corners.map((point) => point.x));
+  const minY = Math.min(...corners.map((point) => point.y));
+  const maxX = Math.max(...corners.map((point) => point.x));
+  const maxY = Math.max(...corners.map((point) => point.y));
+  const outer = minX === maxX || minY === maxY
+    ? [1, 0, 0, 1, rect[0], rect[1]]
+    : [
+        (rect[2] - rect[0]) / (maxX - minX),
+        0,
+        0,
+        (rect[3] - rect[1]) / (maxY - minY),
+        rect[0] - minX * ((rect[2] - rect[0]) / (maxX - minX)),
+        rect[1] - minY * ((rect[3] - rect[1]) / (maxY - minY)),
+      ];
+
+  // PDF.js begins an annotation with `outer`, then applies the Form /Matrix.
+  // Content-stream `cm` operations are already baked into parsed path points.
+  return composePdfMatrices(outer, matrix);
+}
+
+function pdfMatrixAreaScale(matrix) {
+  if (!isFinitePdfMatrix(matrix)) return 1;
+  const [a, b, c, d] = Array.from(matrix, Number);
+  return Math.sqrt(Math.abs(a * d - b * c));
+}
+
+function pdfMatrixMaxSingularScale(matrix) {
+  if (!isFinitePdfMatrix(matrix)) return 1;
+  const [a, b, c, d] = Array.from(matrix, Number);
+  const firstSquared = a * a + b * b;
+  const secondSquared = c * c + d * d;
+  const cross = a * c + b * d;
+  const discriminant = Math.hypot(
+    firstSquared - secondSquared,
+    2 * cross,
+  );
+  const largestEigenvalue = (firstSquared + secondSquared + discriminant) / 2;
+  const singular = Math.sqrt(Math.max(0, largestEigenvalue));
+  return Number.isFinite(singular) && singular > 1e-15 ? singular : 1;
+}
+
+function curveToleranceForMatrix(matrix, viewportTolerance = 0.02) {
+  return Math.max(
+    Number.EPSILON * 128,
+    viewportTolerance / pdfMatrixMaxSingularScale(matrix),
+  );
+}
+
+function viewportAreaScale(viewport, scale = 1) {
+  if (viewport && typeof viewport.convertToViewportPoint === 'function') {
+    const [originX, originY] = viewport.convertToViewportPoint(0, 0);
+    const [unitXX, unitXY] = viewport.convertToViewportPoint(1, 0);
+    const [unitYX, unitYY] = viewport.convertToViewportPoint(0, 1);
+    const determinant = (
+      (unitXX - originX) * (unitYY - originY)
+      - (unitXY - originY) * (unitYX - originX)
+    );
+    if (Number.isFinite(determinant)) {
+      return Math.sqrt(Math.abs(determinant)) * Math.abs(Number(scale) || 1);
+    }
+  }
+  return Math.abs(Number(scale) || 1);
+}
+
+function invertPdfMatrix(matrix) {
+  if (!isFinitePdfMatrix(matrix)) return null;
+  const [a, b, c, d, e, f] = Array.from(matrix, Number);
+  const determinant = a * d - b * c;
+  const linearScale = Math.max(Math.abs(a), Math.abs(b), Math.abs(c), Math.abs(d));
+  if (
+    !Number.isFinite(determinant)
+    || linearScale === 0
+    || Math.abs(determinant) <= (
+      linearScale * linearScale * Number.EPSILON * 16
+    )
+  ) return null;
+  return [
+    d / determinant,
+    -b / determinant,
+    -c / determinant,
+    a / determinant,
+    (c * f - d * e) / determinant,
+    (b * e - a * f) / determinant,
+  ];
+}
+
+function transformPathCommands(commands, matrix) {
+  return (commands || []).map((command) => {
+    if (!Array.isArray(command) || command.length === 0 || command[0] === 'Z') {
+      return Array.isArray(command) ? Array.from(command) : command;
+    }
+    const transformed = [command[0]];
+    for (let index = 1; index + 1 < command.length; index += 2) {
+      const point = applyPdfMatrixToPoint(matrix, command[index], command[index + 1]);
+      transformed.push(point.x, point.y);
+    }
+    return transformed;
+  });
+}
+
+function transformPolygonSet(polygons, matrix) {
+  return normalizeMultiPolygon(polygons).map((polygon) => polygon.map((ring) => (
+    ring.map(([x, y]) => {
+      const point = applyPdfMatrixToPoint(matrix, x, y);
+      return [point.x, point.y];
+    })
+  )));
+}
+
+function rectanglePolygonSet(rectValue, matrix = PDF_IDENTITY_MATRIX) {
+  const rect = toNumericArray(rectValue);
+  if (rect?.length !== 4) return [];
+  const corners = [
+    [rect[0], rect[1]],
+    [rect[2], rect[1]],
+    [rect[2], rect[3]],
+    [rect[0], rect[3]],
+    [rect[0], rect[1]],
+  ].map(([x, y]) => {
+    const point = applyPdfMatrixToPoint(matrix, x, y);
+    return [point.x, point.y];
+  });
+  return [[corners]];
+}
+
+function clonePolygonSet(polygons) {
+  return normalizeMultiPolygon(polygons).map((polygon) => polygon.map((ring) => (
+    ring.map(([x, y]) => [x, y])
+  )));
+}
+
+function parseAppearanceStream(content, options = {}) {
   if (!content || typeof content !== 'string') return null;
 
-  const tokens = content.split(/\s+/).filter(Boolean);
+  // Keep arrays intact enough to read graphics-state operands such as
+  // `[3 2] 1 d`. A whitespace split turns `[3` and `2]` into unknown
+  // operators, which silently converted dashed authored appearances to solid.
+  const tokens = (
+    content.match(
+      /%[^\r\n]*|\/[^\s[\]()<>/%]+|\[|\]|[-+]?(?:\d*\.\d+|\d+\.?)(?:[eE][-+]?\d+)?|[^\s[\]()<>/%]+/g,
+    ) || []
+  ).filter((token) => !token.startsWith('%'));
   if (tokens.length === 0) return null;
 
   const operands = [];
+  const arrayMarker = Object.freeze({ pdfArrayMarker: true });
   const path = [];
+  const sourcePath = [];
+  let currentPath = [];
+  let currentSourcePath = [];
   let currentPoint = null;
-  let strokeColor = null;
-  let fillColor = null;
-  let strokeWidth = null;
-  let lineCap = null;
-  let lineJoin = null;
+  let sourceCurrentPoint = null;
+  let strokeColor = options.initialGraphicsState?.strokeColor || null;
+  let fillColor = options.initialGraphicsState?.fillColor || null;
+  // PDF graphics-state defaults: 1-unit width, butt cap, miter join.
+  // `0 w` remains a distinct, valid device-space hairline.
+  let strokeWidth = options.initialGraphicsState?.strokeWidth ?? 1;
+  let lineCap = options.initialGraphicsState?.lineCap || 'butt';
+  let lineJoin = options.initialGraphicsState?.lineJoin || 'miter';
+  let miterLimit = options.initialGraphicsState?.miterLimit ?? 10;
+  let dashArray = Array.isArray(options.initialGraphicsState?.dashArray)
+    ? Array.from(options.initialGraphicsState.dashArray, Number)
+    : [];
+  let dashPhase = Number(options.initialGraphicsState?.dashPhase) || 0;
+  let strokeAlpha = Number.isFinite(options.initialGraphicsState?.strokeAlpha)
+    ? Number(options.initialGraphicsState.strokeAlpha)
+    : 1;
+  let fillAlpha = Number.isFinite(options.initialGraphicsState?.fillAlpha)
+    ? Number(options.initialGraphicsState.fillAlpha)
+    : 1;
   let hasStroke = false;
   let hasFill = false;
+  let fillRule = null;
+  let paintedStrokeColor = null;
+  let paintedFillColor = null;
+  let paintedStrokeWidth = null;
+  let paintedLineCap = null;
+  let paintedLineJoin = null;
+  let paintedStrokeMatrix = null;
+  let ctm = isFinitePdfMatrix(options.initialCtm)
+    ? Array.from(options.initialCtm, Number)
+    : Array.from(PDF_IDENTITY_MATRIX);
+  const contentMatrices = [];
   const gstateStack = [];
+  const paintOperations = [];
+  let currentSubpathStart = null;
+  let sourceSubpathStart = null;
+  let pendingClipRule = null;
+  let activeClip = clonePolygonSet(options.initialClip);
+  const formBBoxClip = rectanglePolygonSet(options.bbox, ctm);
+  let clipActive = options.initialClipActive === true || activeClip.length > 0;
+  if (formBBoxClip.length > 0) {
+    activeClip = clipActive
+      ? intersectPolygonSets(activeClip, formBBoxClip)
+      : formBBoxClip;
+    clipActive = true;
+  }
+  let hasExplicitClip = options.hasExplicitClip === true;
 
   const consumeNumbers = (count) => {
     if (operands.length < count) return null;
@@ -1266,13 +1505,127 @@ function parseAppearanceStream(content) {
     return raw;
   };
 
+  const consumeName = () => {
+    const value = operands.pop();
+    return typeof value === 'string' && value.startsWith('/')
+      ? value.slice(1)
+      : null;
+  };
+
   const closeCurrentSubpath = () => {
-    if (path.length === 0) return;
-    if (path[path.length - 1][0] === 'Z') return;
-    path.push(['Z']);
+    if (currentPath.length === 0) return;
+    if (currentPath[currentPath.length - 1][0] === 'Z') return;
+    currentPath.push(['Z']);
+    currentSourcePath.push(['Z']);
+    if (currentSubpathStart) currentPoint = { ...currentSubpathStart };
+    if (sourceSubpathStart) sourceCurrentPoint = { ...sourceSubpathStart };
+  };
+
+  const applyPendingClip = () => {
+    if (!pendingClipRule || currentPath.length === 0) {
+      pendingClipRule = null;
+      return;
+    }
+    const nextClip = filledOutlineCommandsToPolygonSet(currentPath, {
+      curveTolerance: Number.isFinite(options.curveTolerance)
+        ? options.curveTolerance
+        : 0.02,
+      fillRule: pendingClipRule,
+    });
+    if (nextClip.length > 0) {
+      activeClip = clipActive
+        ? intersectPolygonSets(activeClip, nextClip)
+        : nextClip;
+      clipActive = true;
+      hasExplicitClip = true;
+    } else {
+      activeClip = [];
+      clipActive = true;
+      hasExplicitClip = true;
+    }
+    pendingClipRule = null;
+  };
+
+  const consumeCurrentPath = ({ stroke = false, fill = false, rule = null } = {}) => {
+    if (currentPath.length > 0) {
+      path.push(...currentPath);
+      sourcePath.push(...currentSourcePath);
+      if (stroke || fill) {
+        paintOperations.push({
+          path: currentPath.map((command) => Array.from(command)),
+          sourcePath: currentSourcePath.map((command) => Array.from(command)),
+          stroke,
+          fill,
+          fillRule: rule,
+          strokeColor: strokeColor ? Array.from(strokeColor) : null,
+          fillColor: fillColor ? Array.from(fillColor) : null,
+          strokeWidth: Number.isFinite(strokeWidth) ? strokeWidth : null,
+          lineCap,
+          lineJoin,
+          miterLimit,
+          dashArray: Array.from(dashArray),
+          dashPhase,
+          strokeAlpha,
+          fillAlpha,
+          strokeMatrix: Array.from(ctm),
+          clipPolygons: clonePolygonSet(activeClip),
+          clipActive,
+          hasExplicitClip,
+        });
+      }
+    }
+    if (stroke) {
+      hasStroke = true;
+      if (paintedStrokeColor === null && strokeColor !== null) {
+        paintedStrokeColor = Array.from(strokeColor);
+      }
+      if (paintedStrokeWidth === null && Number.isFinite(strokeWidth)) {
+        paintedStrokeWidth = strokeWidth;
+      }
+      if (paintedLineCap === null && lineCap !== null) paintedLineCap = lineCap;
+      if (paintedLineJoin === null && lineJoin !== null) paintedLineJoin = lineJoin;
+      if (paintedStrokeMatrix === null) paintedStrokeMatrix = Array.from(ctm);
+    }
+    if (fill) {
+      hasFill = true;
+      if (paintedFillColor === null && fillColor !== null) {
+        paintedFillColor = Array.from(fillColor);
+      }
+      if (fillRule === null && rule !== null) fillRule = rule;
+    }
+    applyPendingClip();
+    currentPath = [];
+    currentSourcePath = [];
+    currentPoint = null;
+    sourceCurrentPoint = null;
+    currentSubpathStart = null;
+    sourceSubpathStart = null;
+  };
+
+  const discardCurrentPath = () => {
+    applyPendingClip();
+    currentPath = [];
+    currentSourcePath = [];
+    currentPoint = null;
+    sourceCurrentPoint = null;
+    currentSubpathStart = null;
+    sourceSubpathStart = null;
   };
 
   for (const token of tokens) {
+    if (token === '[') {
+      operands.push(arrayMarker);
+      continue;
+    }
+    if (token === ']') {
+      const markerIndex = operands.lastIndexOf(arrayMarker);
+      if (markerIndex >= 0) {
+        const entries = operands.splice(markerIndex + 1);
+        operands.pop();
+        operands.push(entries);
+      }
+      continue;
+    }
     const numeric = Number(token);
     if (!Number.isNaN(numeric) && Number.isFinite(numeric)) {
       operands.push(numeric);
@@ -1289,40 +1642,69 @@ function parseAppearanceStream(content) {
         const values = consumeNumbers(2);
         if (!values) break;
         const [x, y] = values;
-        path.push(['M', x, y]);
-        currentPoint = { x, y };
+        const point = applyPdfMatrixToPoint(ctm, x, y);
+        currentPath.push(['M', point.x, point.y]);
+        currentSourcePath.push(['M', x, y]);
+        currentPoint = point;
+        sourceCurrentPoint = { x, y };
+        currentSubpathStart = { ...point };
+        sourceSubpathStart = { x, y };
         break;
       }
       case 'l': {
         const values = consumeNumbers(2);
         if (!values) break;
         const [x, y] = values;
-        path.push(['L', x, y]);
-        currentPoint = { x, y };
+        const point = applyPdfMatrixToPoint(ctm, x, y);
+        currentPath.push(['L', point.x, point.y]);
+        currentSourcePath.push(['L', x, y]);
+        currentPoint = point;
+        sourceCurrentPoint = { x, y };
         break;
       }
       case 'c': {
         const values = consumeNumbers(6);
         if (!values) break;
         const [x1, y1, x2, y2, x3, y3] = values;
-        path.push(['C', x1, y1, x2, y2, x3, y3]);
-        currentPoint = { x: x3, y: y3 };
+        const p1 = applyPdfMatrixToPoint(ctm, x1, y1);
+        const p2 = applyPdfMatrixToPoint(ctm, x2, y2);
+        const p3 = applyPdfMatrixToPoint(ctm, x3, y3);
+        currentPath.push(['C', p1.x, p1.y, p2.x, p2.y, p3.x, p3.y]);
+        currentSourcePath.push(['C', x1, y1, x2, y2, x3, y3]);
+        currentPoint = p3;
+        sourceCurrentPoint = { x: x3, y: y3 };
         break;
       }
       case 'v': {
         const values = consumeNumbers(4);
-        if (!values || !currentPoint) break;
+        if (!values || !currentPoint || !sourceCurrentPoint) break;
         const [x2, y2, x3, y3] = values;
-        path.push(['C', currentPoint.x, currentPoint.y, x2, y2, x3, y3]);
-        currentPoint = { x: x3, y: y3 };
+        const p2 = applyPdfMatrixToPoint(ctm, x2, y2);
+        const p3 = applyPdfMatrixToPoint(ctm, x3, y3);
+        currentPath.push(['C', currentPoint.x, currentPoint.y, p2.x, p2.y, p3.x, p3.y]);
+        currentSourcePath.push([
+          'C',
+          sourceCurrentPoint.x,
+          sourceCurrentPoint.y,
+          x2,
+          y2,
+          x3,
+          y3,
+        ]);
+        currentPoint = p3;
+        sourceCurrentPoint = { x: x3, y: y3 };
         break;
       }
       case 'y': {
         const values = consumeNumbers(4);
         if (!values) break;
         const [x1, y1, x3, y3] = values;
-        path.push(['C', x1, y1, x3, y3, x3, y3]);
-        currentPoint = { x: x3, y: y3 };
+        const p1 = applyPdfMatrixToPoint(ctm, x1, y1);
+        const p3 = applyPdfMatrixToPoint(ctm, x3, y3);
+        currentPath.push(['C', p1.x, p1.y, p3.x, p3.y, p3.x, p3.y]);
+        currentSourcePath.push(['C', x1, y1, x3, y3, x3, y3]);
+        currentPoint = p3;
+        sourceCurrentPoint = { x: x3, y: y3 };
         break;
       }
       case 'h': {
@@ -1333,12 +1715,31 @@ function parseAppearanceStream(content) {
         const values = consumeNumbers(4);
         if (!values) break;
         const [x, y, w, h] = values;
-        path.push(['M', x, y]);
-        path.push(['L', x + w, y]);
-        path.push(['L', x + w, y + h]);
-        path.push(['L', x, y + h]);
-        path.push(['Z']);
-        currentPoint = { x, y };
+        const corners = [
+          [x, y],
+          [x + w, y],
+          [x + w, y + h],
+          [x, y + h],
+        ];
+        corners.forEach(([cornerX, cornerY], index) => {
+          const point = applyPdfMatrixToPoint(ctm, cornerX, cornerY);
+          currentPath.push([index === 0 ? 'M' : 'L', point.x, point.y]);
+          currentSourcePath.push([index === 0 ? 'M' : 'L', cornerX, cornerY]);
+        });
+        currentPath.push(['Z']);
+        currentSourcePath.push(['Z']);
+        currentPoint = applyPdfMatrixToPoint(ctm, x, y);
+        sourceCurrentPoint = { x, y };
+        currentSubpathStart = { ...currentPoint };
+        sourceSubpathStart = { x, y };
+        break;
+      }
+      case 'cm': {
+        const values = consumeNumbers(6);
+        if (!values) break;
+        const matrix = values.map(Number);
+        contentMatrices.push(Array.from(matrix));
+        ctm = composePdfMatrices(ctm, matrix);
         break;
       }
       case 'w': {
@@ -1359,6 +1760,48 @@ function parseAppearanceStream(content) {
         if (!values) break;
         const joinIndex = Math.trunc(values[0]);
         lineJoin = LINE_JOIN_MAP[joinIndex] || null;
+        break;
+      }
+      case 'M': {
+        const values = consumeNumbers(1);
+        if (!values) break;
+        miterLimit = values[0];
+        break;
+      }
+      case 'd': {
+        const phase = operands.pop();
+        const pattern = operands.pop();
+        if (
+          Array.isArray(pattern)
+          && pattern.every((value) => typeof value === 'number' && Number.isFinite(value))
+          && typeof phase === 'number'
+          && Number.isFinite(phase)
+        ) {
+          dashArray = pattern.map((value) => Math.max(0, value));
+          dashPhase = phase;
+        }
+        operands.length = 0;
+        break;
+      }
+      case 'gs': {
+        const name = consumeName();
+        const ext = (
+          name
+          && typeof options.resolveExtGState === 'function'
+        )
+          ? options.resolveExtGState(name, options.resources)
+          : null;
+        if (ext) {
+          if (Number.isFinite(ext.strokeWidth)) strokeWidth = ext.strokeWidth;
+          if (ext.lineCap) lineCap = ext.lineCap;
+          if (ext.lineJoin) lineJoin = ext.lineJoin;
+          if (Number.isFinite(ext.miterLimit)) miterLimit = ext.miterLimit;
+          if (Array.isArray(ext.dashArray)) dashArray = Array.from(ext.dashArray, Number);
+          if (Number.isFinite(ext.dashPhase)) dashPhase = ext.dashPhase;
+          if (Number.isFinite(ext.strokeAlpha)) strokeAlpha = ext.strokeAlpha;
+          if (Number.isFinite(ext.fillAlpha)) fillAlpha = ext.fillAlpha;
+        }
+        operands.length = 0;
         break;
       }
       case 'RG': {
@@ -1386,31 +1829,125 @@ function parseAppearanceStream(content) {
         break;
       }
       case 'S': {
-        hasStroke = true;
+        consumeCurrentPath({ stroke: true });
         break;
       }
       case 's': {
         closeCurrentSubpath();
-        hasStroke = true;
+        consumeCurrentPath({ stroke: true });
         break;
       }
       case 'f':
-      case 'F':
+      case 'F': {
+        consumeCurrentPath({ fill: true, rule: 'nonzero' });
+        break;
+      }
       case 'f*': {
-        hasFill = true;
+        consumeCurrentPath({ fill: true, rule: 'evenodd' });
         break;
       }
-      case 'B':
+      case 'B': {
+        consumeCurrentPath({ stroke: true, fill: true, rule: 'nonzero' });
+        break;
+      }
       case 'B*': {
-        hasFill = true;
-        hasStroke = true;
+        consumeCurrentPath({ stroke: true, fill: true, rule: 'evenodd' });
         break;
       }
-      case 'b':
+      case 'b': {
+        closeCurrentSubpath();
+        consumeCurrentPath({ stroke: true, fill: true, rule: 'nonzero' });
+        break;
+      }
       case 'b*': {
         closeCurrentSubpath();
-        hasFill = true;
-        hasStroke = true;
+        consumeCurrentPath({ stroke: true, fill: true, rule: 'evenodd' });
+        break;
+      }
+      case 'W':
+      case 'W*': {
+        // The clipping operator modifies the clipping path only when the
+        // current path is subsequently ended. It never paints geometry.
+        pendingClipRule = token === 'W*' ? 'evenodd' : 'nonzero';
+        operands.length = 0;
+        break;
+      }
+      case 'n': {
+        discardCurrentPath();
+        break;
+      }
+      case 'Do': {
+        const name = consumeName();
+        const depth = Number(options.depth) || 0;
+        const nested = (
+          name
+          && depth < 64
+          && typeof options.resolveXObject === 'function'
+        )
+          ? options.resolveXObject(name, options.resources)
+          : null;
+        const ancestors = options.xObjectAncestors instanceof Set
+          ? options.xObjectAncestors
+          : new Set();
+        if (
+          !nested?.content
+          || (nested.identity && ancestors.has(nested.identity))
+        ) {
+          operands.length = 0;
+          break;
+        }
+        const childAncestors = new Set(ancestors);
+        if (nested.identity) childAncestors.add(nested.identity);
+        const nestedMatrix = isFinitePdfMatrix(nested.matrix)
+          ? Array.from(nested.matrix, Number)
+          : Array.from(PDF_IDENTITY_MATRIX);
+        const child = parseAppearanceStream(nested.content, {
+          bbox: nested.bbox,
+          resources: nested.resources || options.resources,
+          resolveXObject: options.resolveXObject,
+          resolveExtGState: options.resolveExtGState,
+          curveTolerance: options.curveTolerance,
+          xObjectAncestors: childAncestors,
+          depth: depth + 1,
+          initialCtm: composePdfMatrices(ctm, nestedMatrix),
+          initialClip: activeClip,
+          initialClipActive: clipActive,
+          hasExplicitClip,
+          initialGraphicsState: {
+            strokeColor,
+            fillColor,
+            strokeWidth,
+            lineCap,
+            lineJoin,
+            miterLimit,
+            dashArray,
+            dashPhase,
+            strokeAlpha,
+            fillAlpha,
+          },
+        });
+        if (child) {
+          path.push(...(child.path || []).map((command) => Array.from(command)));
+          sourcePath.push(...(child.sourcePath || []).map((command) => Array.from(command)));
+          contentMatrices.push(nestedMatrix, ...(child.contentMatrices || []));
+          for (const operation of child.paintOperations || []) {
+            paintOperations.push(operation);
+          }
+          if (child.hasStroke) {
+            hasStroke = true;
+            paintedStrokeColor ??= child.strokeColor;
+            paintedStrokeWidth ??= child.strokeWidth;
+            paintedLineCap ??= child.lineCap;
+            paintedLineJoin ??= child.lineJoin;
+            paintedStrokeMatrix ??= child.strokeMatrix;
+          }
+          if (child.hasFill) {
+            hasFill = true;
+            paintedFillColor ??= child.fillColor;
+            fillRule ??= child.fillRule;
+          }
+        }
+        operands.length = 0;
         break;
       }
       case 'q': {
@@ -1419,7 +1956,22 @@ function parseAppearanceStream(content) {
         // stroke before the text) overwrites the earlier real stroke color
         // set for the callout border, so the border was coming through as
         // black instead of red.
-        gstateStack.push({ strokeColor, fillColor, strokeWidth, lineCap, lineJoin });
+        gstateStack.push({
+          strokeColor,
+          fillColor,
+          strokeWidth,
+          lineCap,
+          lineJoin,
+          miterLimit,
+          dashArray: Array.from(dashArray),
+          dashPhase,
+          strokeAlpha,
+          fillAlpha,
+          ctm: Array.from(ctm),
+          activeClip: clonePolygonSet(activeClip),
+          clipActive,
+          hasExplicitClip,
+        });
         operands.length = 0;
         break;
       }
@@ -1431,6 +1983,15 @@ function parseAppearanceStream(content) {
           strokeWidth = saved.strokeWidth;
           lineCap = saved.lineCap;
           lineJoin = saved.lineJoin;
+          miterLimit = saved.miterLimit;
+          dashArray = saved.dashArray;
+          dashPhase = saved.dashPhase;
+          strokeAlpha = saved.strokeAlpha;
+          fillAlpha = saved.fillAlpha;
+          ctm = saved.ctm;
+          activeClip = saved.activeClip;
+          clipActive = saved.clipActive;
+          hasExplicitClip = saved.hasExplicitClip;
         }
         operands.length = 0;
         break;
@@ -1449,14 +2010,105 @@ function parseAppearanceStream(content) {
 
   return {
     path,
-    strokeWidth,
-    strokeColor,
-    fillColor,
-    lineCap,
-    lineJoin,
+    sourcePath,
+    contentMatrices,
+    strokeWidth: paintedStrokeWidth ?? strokeWidth,
+    strokeColor: paintedStrokeColor ?? strokeColor,
+    fillColor: paintedFillColor ?? fillColor,
+    lineCap: paintedLineCap ?? lineCap,
+    lineJoin: paintedLineJoin ?? lineJoin,
+    miterLimit,
+    strokeMatrix: paintedStrokeMatrix,
+    paintOperations,
     hasStroke,
-    hasFill
+    hasFill,
+    fillRule,
   };
+}
+
+function lookupPdfResourceEntry(resourcesValue, category, name, context, PDFName) {
+  if (!resourcesValue || !name) return null;
+  try {
+    const resources = context.lookup(resourcesValue) || resourcesValue;
+    const categoryRef = resources?.get?.(PDFName.of(category));
+    const categoryDict = categoryRef ? (context.lookup(categoryRef) || categoryRef) : null;
+    const entryRef = categoryDict?.get?.(PDFName.of(name));
+    return entryRef
+      ? {
+          value: context.lookup(entryRef) || entryRef,
+          identity: entryRef,
+        }
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+function createAppearanceResourceResolvers(context, pdfLib) {
+  const { PDFName, decodePDFRawStream } = pdfLib;
+
+  const resolveXObject = (name, resourcesValue) => {
+    const resource = lookupPdfResourceEntry(
+      resourcesValue,
+      'XObject',
+      name,
+      context,
+      PDFName,
+    );
+    const stream = resource?.value;
+    const streamDict = stream?.dict || stream;
+    if (!stream || typeof streamDict?.get !== 'function') return null;
+    const subtype = normalizePdfNameToken(
+      readPdfLibText(streamDict.get(PDFName.of('Subtype'))),
+    );
+    if (subtype && subtype !== 'Form') return null;
+    try {
+      const decoded = decodePDFRawStream(stream).decode();
+      return {
+        content: decodeStreamBytesToLatin1(decoded),
+        bbox: readPdfLibNumberArray(streamDict.get(PDFName.of('BBox'))),
+        matrix: readPdfLibNumberArray(streamDict.get(PDFName.of('Matrix'))),
+        resources: streamDict.get(PDFName.of('Resources')) || resourcesValue,
+        identity: resource.identity,
+      };
+    } catch {
+      return null;
+    }
+  };
+
+  const resolveExtGState = (name, resourcesValue) => {
+    const resource = lookupPdfResourceEntry(
+      resourcesValue,
+      'ExtGState',
+      name,
+      context,
+      PDFName,
+    );
+    const state = resource?.value;
+    if (!state || typeof state.get !== 'function') return null;
+    const dashValue = state.get(PDFName.of('D'));
+    const dashEntries = dashValue?.asArray?.();
+    const dashArray = Array.isArray(dashEntries) && dashEntries.length > 0
+      ? readPdfLibNumberArray(context.lookup(dashEntries[0]) || dashEntries[0])
+      : null;
+    const dashPhase = Array.isArray(dashEntries) && dashEntries.length > 1
+      ? readPdfLibNumber(context.lookup(dashEntries[1]) || dashEntries[1])
+      : null;
+    const capIndex = readPdfLibNumber(state.get(PDFName.of('LC')));
+    const joinIndex = readPdfLibNumber(state.get(PDFName.of('LJ')));
+    return {
+      strokeWidth: readPdfLibNumber(state.get(PDFName.of('LW'))),
+      lineCap: Number.isFinite(capIndex) ? (LINE_CAP_MAP[Math.trunc(capIndex)] || null) : null,
+      lineJoin: Number.isFinite(joinIndex) ? (LINE_JOIN_MAP[Math.trunc(joinIndex)] || null) : null,
+      miterLimit: readPdfLibNumber(state.get(PDFName.of('ML'))),
+      dashArray,
+      dashPhase,
+      strokeAlpha: readPdfLibNumber(state.get(PDFName.of('CA'))),
+      fillAlpha: readPdfLibNumber(state.get(PDFName.of('ca'))),
+    };
+  };
+
+  return { resolveXObject, resolveExtGState };
 }
 
 function extractAppearanceMetadataForAnnotation(annotationDict, context, pdfLib) {
@@ -1479,22 +2131,40 @@ function extractAppearanceMetadataForAnnotation(annotationDict, context, pdfLib)
   // tilted 47° imports as a 231×231 axis-aligned square (its AABB).
   let matrix = null;
   let bbox = null;
+  let rect = null;
+  let resources = null;
   try {
     const streamDict = stream.dict || stream;
     if (streamDict && typeof streamDict.get === 'function') {
       matrix = readPdfLibNumberArray(streamDict.get(PDFName.of('Matrix')));
       bbox = readPdfLibNumberArray(streamDict.get(PDFName.of('BBox')));
+      rect = readPdfLibNumberArray(annotationDict.get(PDFName.of('Rect')));
+      resources = streamDict.get(PDFName.of('Resources'));
     }
   } catch {
     matrix = null;
     bbox = null;
+    rect = null;
+    resources = null;
   }
 
   let parsed = null;
   try {
     const decoded = decodePDFRawStream(stream).decode();
     const source = decodeStreamBytesToLatin1(decoded);
-    parsed = parseAppearanceStream(source);
+    const { resolveXObject, resolveExtGState } = createAppearanceResourceResolvers(
+      context,
+      pdfLib,
+    );
+    parsed = parseAppearanceStream(source, {
+      bbox,
+      resources,
+      resolveXObject,
+      resolveExtGState,
+      curveTolerance: curveToleranceForMatrix(
+        createAppearanceToPdfMatrix(rect, bbox, matrix),
+      ),
+    });
   } catch {
     parsed = null;
   }
@@ -1502,6 +2172,7 @@ function extractAppearanceMetadataForAnnotation(annotationDict, context, pdfLib)
   if (!parsed && !matrix && !bbox) return null;
   return {
     ...(parsed || {}),
+    isFormXObject: true,
     ...(Array.isArray(matrix) && matrix.length === 6 ? { matrix } : {}),
     ...(Array.isArray(bbox) && bbox.length === 4 ? { bbox } : {}),
   };
@@ -1843,10 +2514,25 @@ function applyRawMetadataToAnnotation(annotation, rawMetadata) {
   };
 }
 
-function convertAppearancePathToFabricPath(pathCommands, viewport, scale = 1) {
+function convertAppearancePathToFabricPath(
+  pathCommands,
+  viewport,
+  scale = 1,
+  formMatrix = null,
+  formBBox = null,
+  annotationRect = null,
+  mapFormToAnnotation = false,
+) {
   if (!Array.isArray(pathCommands) || pathCommands.length === 0) return null;
 
   const converted = [];
+  const appearanceToPdf = mapFormToAnnotation
+    ? createAppearanceToPdfMatrix(annotationRect, formBBox, formMatrix)
+    : formMatrix;
+  const transformPoint = (x, y) => {
+    const point = applyPdfMatrixToPoint(appearanceToPdf, x, y);
+    return convertPdfPointToViewport(point.x, point.y, viewport, scale);
+  };
 
   pathCommands.forEach((segment) => {
     if (!Array.isArray(segment) || segment.length === 0) return;
@@ -1854,15 +2540,22 @@ function convertAppearancePathToFabricPath(pathCommands, viewport, scale = 1) {
     const cmd = segment[0];
 
     if (cmd === 'M' || cmd === 'L') {
-      const point = convertPdfPointToViewport(segment[1], segment[2], viewport, scale);
+      const point = transformPoint(segment[1], segment[2]);
       converted.push([cmd, point.x, point.y]);
       return;
     }
 
+    if (cmd === 'Q') {
+      const p1 = transformPoint(segment[1], segment[2]);
+      const p2 = transformPoint(segment[3], segment[4]);
+      converted.push(['Q', p1.x, p1.y, p2.x, p2.y]);
+      return;
+    }
+
     if (cmd === 'C') {
-      const p1 = convertPdfPointToViewport(segment[1], segment[2], viewport, scale);
-      const p2 = convertPdfPointToViewport(segment[3], segment[4], viewport, scale);
-      const p3 = convertPdfPointToViewport(segment[5], segment[6], viewport, scale);
+      const p1 = transformPoint(segment[1], segment[2]);
+      const p2 = transformPoint(segment[3], segment[4]);
+      const p3 = transformPoint(segment[5], segment[6]);
       converted.push(['C', p1.x, p1.y, p2.x, p2.y, p3.x, p3.y]);
       return;
     }
@@ -1922,15 +2615,408 @@ function convertPdfRectToViewportRect(rect, viewport, scale = 1) {
 }
 
 const FILLED_PDF_INK_MODE = 'filled-outline';
+const PDF_INK_SOURCE_GEOMETRY_VERSION = 1;
 
-// UX 2026-07-17 (import-normalization item 5a): minimum page-unit stroke
-// width for imported OPEN ink, applied to the STORED value at import time.
-// Source PDFs ship hairline /BS widths (0.5–1.1pt) that are invisible at
-// 100% zoom; the floor used to live in the renderer (svgPathAttrs) as a
-// provenance-gated clamp — moving it here makes the stored value the truth
-// the renderer, eraser, and hit-testing all share, with no imported-ink
-// branch at render/erase time. Same 2.5 value the renderer used.
-const IMPORTED_INK_MIN_STROKE_WIDTH = 2.5;
+function clonePdfAppearancePath(path) {
+  if (!Array.isArray(path)) return null;
+  const cloned = path
+    .filter((segment) => Array.isArray(segment) && segment.length > 0)
+    .map((segment) => Array.from(segment));
+  return cloned.length > 0 ? cloned : null;
+}
+
+function normalizePdfInkListsForSource(inkLists) {
+  if (!Array.isArray(inkLists)) return [];
+  const normalized = [];
+
+  for (const inkList of inkLists) {
+    if (!Array.isArray(inkList) && !ArrayBuffer.isView(inkList)) continue;
+    const points = [];
+    if (Array.isArray(inkList[0])) {
+      for (const point of inkList) {
+        const x = Number(point?.[0]);
+        const y = Number(point?.[1]);
+        if (Number.isFinite(x) && Number.isFinite(y)) points.push([x, y]);
+      }
+    } else if (inkList[0] && typeof inkList[0] === 'object') {
+      for (const point of inkList) {
+        const x = Number(point?.x);
+        const y = Number(point?.y);
+        if (Number.isFinite(x) && Number.isFinite(y)) points.push([x, y]);
+      }
+    } else {
+      for (let index = 0; index + 1 < inkList.length; index += 2) {
+        const x = Number(inkList[index]);
+        const y = Number(inkList[index + 1]);
+        if (Number.isFinite(x) && Number.isFinite(y)) points.push([x, y]);
+      }
+    }
+    if (points.length > 0) normalized.push(points);
+  }
+
+  return normalized;
+}
+
+function translatePathCommands(commands, dx, dy) {
+  return (commands || []).map((command) => {
+    if (!Array.isArray(command) || command.length === 0) return command;
+    if (command[0] === 'Z') return ['Z'];
+    const translated = [command[0]];
+    for (let index = 1; index < command.length; index += 2) {
+      translated.push(command[index] + dx, command[index + 1] + dy);
+    }
+    return translated;
+  });
+}
+
+const PDF_APPEARANCE_COMPANION_LAYERS = Symbol('pdfAppearanceCompanionLayers');
+
+function polygonSetArea(polygons) {
+  const ringArea = (ring) => {
+    let area = 0;
+    for (
+      let index = 0, previous = ring.length - 1;
+      index < ring.length;
+      previous = index, index += 1
+    ) {
+      area += (
+        Number(ring[previous]?.[0]) * Number(ring[index]?.[1])
+        - Number(ring[index]?.[0]) * Number(ring[previous]?.[1])
+      );
+    }
+    return Math.abs(area / 2);
+  };
+  return normalizeMultiPolygon(polygons).reduce((total, polygon) => (
+    total
+    + ringArea(polygon[0] || [])
+    - polygon.slice(1).reduce((holes, ring) => holes + ringArea(ring), 0)
+  ), 0);
+}
+
+function polygonSetBounds(polygons) {
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  for (const polygon of normalizeMultiPolygon(polygons)) {
+    for (const ring of polygon) {
+      for (const [x, y] of ring) {
+        minX = Math.min(minX, x);
+        minY = Math.min(minY, y);
+        maxX = Math.max(maxX, x);
+        maxY = Math.max(maxY, y);
+      }
+    }
+  }
+  return Number.isFinite(minX)
+    ? { minX, minY, maxX, maxY }
+    : null;
+}
+
+function transformAppearancePolygonSetToViewport(
+  polygons,
+  appearanceToPdf,
+  viewport,
+  scale,
+) {
+  return normalizeMultiPolygon(polygons).map((polygon) => polygon.map((ring) => (
+    ring.map(([x, y]) => {
+      const pdfPoint = applyPdfMatrixToPoint(appearanceToPdf, x, y);
+      const point = convertPdfPointToViewport(pdfPoint.x, pdfPoint.y, viewport, scale);
+      return [point.x, point.y];
+    })
+  )));
+}
+
+function createPdfToViewportMatrix(viewport, scale) {
+  const origin = convertPdfPointToViewport(0, 0, viewport, scale);
+  const xUnit = convertPdfPointToViewport(1, 0, viewport, scale);
+  const yUnit = convertPdfPointToViewport(0, 1, viewport, scale);
+  return [
+    xUnit.x - origin.x,
+    xUnit.y - origin.y,
+    yUnit.x - origin.x,
+    yUnit.y - origin.y,
+    origin.x,
+    origin.y,
+  ];
+}
+
+function isSimilarityMatrix(matrix) {
+  if (!isFinitePdfMatrix(matrix)) return false;
+  const [a, b, c, d] = Array.from(matrix, Number);
+  const firstLength = Math.hypot(a, b);
+  const secondLength = Math.hypot(c, d);
+  const scale = Math.max(firstLength, secondLength);
+  return (
+    firstLength > 0
+    && secondLength > 0
+    && Math.abs(firstLength - secondLength) <= scale * Number.EPSILON * 64
+    && Math.abs(a * c + b * d)
+      <= firstLength * secondLength * Number.EPSILON * 64
+  );
+}
+
+function stableAppearanceSourceKey(annotation, appearance) {
+  const explicit = String(annotation?.id || annotation?.name || '').trim();
+  if (explicit) return explicit;
+  const source = JSON.stringify({
+    rect: toNumericArray(annotation?.rect),
+    path: appearance?.sourcePath || appearance?.path || null,
+  });
+  let hash = 2166136261;
+  for (let index = 0; index < source.length; index += 1) {
+    hash ^= source.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return `anonymous-${(hash >>> 0).toString(36)}`;
+}
+
+function cloneInkSourceGeometry(sourceGeometry) {
+  try {
+    return structuredClone(sourceGeometry);
+  } catch {
+    return JSON.parse(JSON.stringify(sourceGeometry));
+  }
+}
+
+function createFilledAppearanceLayer({
+  annotation,
+  appearance,
+  sourceGeometry,
+  kind,
+  paintOperationIndex,
+  layerIndex,
+  paint,
+  opacity,
+  worldPolygons,
+  exactWorldPath = null,
+  sourceWidth = 0,
+  fillRule = 'evenodd',
+}) {
+  const bounds = polygonSetBounds(worldPolygons);
+  if (!bounds) return null;
+  const sourceKey = stableAppearanceSourceKey(annotation, appearance);
+  const compositeId = `pdf-appearance:${sourceKey}`;
+  const layerId = `${compositeId}:layer:${layerIndex}`;
+  const localPolygons = translatePolygonSet(
+    worldPolygons,
+    -bounds.minX,
+    -bounds.minY,
+  );
+  const localPath = exactWorldPath
+    ? translatePathCommands(exactWorldPath, -bounds.minX, -bounds.minY)
+    : polygonSetToCommands(localPolygons);
+  const fill = hexToRgba(pdfColorToHex(paint, annotation), opacity);
+  return {
+    type: 'path',
+    id: layerId,
+    path: localPath,
+    polygons: localPolygons,
+    left: bounds.minX,
+    top: bounds.minY,
+    width: bounds.maxX - bounds.minX,
+    height: bounds.maxY - bounds.minY,
+    fill,
+    stroke: 'transparent',
+    strokeWidth: 0,
+    fillRule: fillRule === 'nonzero' ? 'nonzero' : 'evenodd',
+    paperInkGeometry: 'v1',
+    sourceWidth: Math.max(0, Number(sourceWidth) || 0),
+    selectable: true,
+    evented: true,
+    hasControls: true,
+    hasBorders: true,
+    lockMovementX: false,
+    lockMovementY: false,
+    perPixelTargetFind: true,
+    targetFindTolerance: 5,
+    isPdfImported: true,
+    pdfAnnotationId: annotation?.id,
+    pdfAnnotationType: 'Ink',
+    pdfInkRenderMode: FILLED_PDF_INK_MODE,
+    inkGeometrySpace: 'local',
+    data: {
+      id: layerId,
+      groupId: compositeId,
+      inkGeometrySpace: 'local',
+      pdfInkRenderMode: FILLED_PDF_INK_MODE,
+      pdfInkSourceGeometry: cloneInkSourceGeometry(sourceGeometry),
+      pdfAppearanceCompositeId: compositeId,
+      pdfAppearanceSourceAnnotationId: annotation?.id || annotation?.name || null,
+      pdfAppearanceLayerIndex: layerIndex,
+      pdfAppearancePaintOperationIndex: paintOperationIndex,
+      pdfAppearanceLayerKind: kind,
+    },
+    layer: 'pdf-annotations',
+  };
+}
+
+function buildAppearancePaintLayers(
+  annotation,
+  appearance,
+  viewport,
+  scale,
+  sourceGeometry,
+) {
+  const operations = Array.isArray(appearance?.paintOperations)
+    ? appearance.paintOperations
+    : [];
+  if (operations.length === 0) return null;
+  const appearanceToPdf = appearance?.isFormXObject === true
+    ? createAppearanceToPdfMatrix(
+        annotation?.rect,
+        appearance?.bbox,
+        appearance?.matrix,
+      )
+    : (
+        isFinitePdfMatrix(appearance?.matrix)
+          ? Array.from(appearance.matrix, Number)
+          : Array.from(PDF_IDENTITY_MATRIX)
+      );
+  const pdfToViewport = createPdfToViewportMatrix(viewport, scale);
+  const appearanceToViewport = composePdfMatrices(
+    pdfToViewport,
+    appearanceToPdf,
+  );
+  const baseOpacity = extractAnnotationOpacity(annotation, 1);
+  const layers = [];
+  let requiresMaterialization = operations.length > 1;
+
+  const clippedGeometry = (geometry, operation) => {
+    if (operation?.clipActive !== true) {
+      return { geometry, changed: false };
+    }
+    const clipped = operation.clipPolygons?.length
+      ? intersectPolygonSets(geometry, operation.clipPolygons)
+      : [];
+    const originalArea = polygonSetArea(geometry);
+    const clippedArea = polygonSetArea(clipped);
+    const tolerance = Math.max(
+      Number.MIN_VALUE,
+      Math.max(originalArea, clippedArea) * Number.EPSILON * 64,
+    );
+    return {
+      geometry: clipped,
+      changed: Math.abs(originalArea - clippedArea) > tolerance,
+    };
+  };
+
+  operations.forEach((operation, paintOperationIndex) => {
+    if (operation?.fill) {
+      const rawFill = filledOutlineCommandsToPolygonSet(operation.path, {
+        curveTolerance: curveToleranceForMatrix(appearanceToViewport),
+        fillRule: operation.fillRule || 'nonzero',
+      });
+      const clipped = clippedGeometry(rawFill, operation);
+      if (clipped.changed) requiresMaterialization = true;
+      if (clipped.geometry.length > 0) {
+        const worldPolygons = transformAppearancePolygonSetToViewport(
+          clipped.geometry,
+          appearanceToPdf,
+          viewport,
+          scale,
+        );
+        const exactWorldPath = clipped.changed
+          ? null
+          : convertAppearancePathToFabricPath(
+              operation.path,
+              viewport,
+              scale,
+              appearance?.matrix,
+              appearance?.bbox,
+              annotation?.rect,
+              appearance?.isFormXObject === true,
+            );
+        const layer = createFilledAppearanceLayer({
+          annotation,
+          appearance,
+          sourceGeometry,
+          kind: 'fill',
+          paintOperationIndex,
+          layerIndex: layers.length,
+          paint: operation.fillColor || annotation?.color,
+          opacity: baseOpacity * (
+            Number.isFinite(operation.fillAlpha) ? operation.fillAlpha : 1
+          ),
+          worldPolygons,
+          exactWorldPath,
+          fillRule: operation.fillRule || 'nonzero',
+        });
+        if (layer) layers.push(layer);
+      }
+    }
+
+    if (operation?.stroke && Number(operation.strokeWidth) > 0) {
+      const strokeMatrix = isFinitePdfMatrix(operation.strokeMatrix)
+        ? Array.from(operation.strokeMatrix, Number)
+        : Array.from(PDF_IDENTITY_MATRIX);
+      const inverseStrokeMatrix = invertPdfMatrix(strokeMatrix);
+      const userPath = inverseStrokeMatrix
+        ? transformPathCommands(operation.path, inverseStrokeMatrix)
+        : operation.path;
+      const effectiveStrokeMatrix = composePdfMatrices(
+        appearanceToViewport,
+        strokeMatrix,
+      );
+      const userOutline = styledStrokeCommandsToPolygonSet(userPath, {
+        strokeWidth: operation.strokeWidth,
+        curveTolerance: curveToleranceForMatrix(effectiveStrokeMatrix),
+        lineCap: operation.lineCap || 'butt',
+        lineJoin: operation.lineJoin || 'miter',
+        miterLimit: Math.max(1, Number(operation.miterLimit) || 10),
+        dashArray: operation.dashArray,
+        dashOffset: operation.dashPhase,
+      });
+      const rootOutline = inverseStrokeMatrix
+        ? transformPolygonSet(userOutline, strokeMatrix)
+        : userOutline;
+      const clipped = clippedGeometry(rootOutline, operation);
+      if (
+        clipped.changed
+        || !isSimilarityMatrix(effectiveStrokeMatrix)
+        || (Array.isArray(operation.dashArray) && operation.dashArray.length > 0)
+      ) {
+        requiresMaterialization = true;
+      }
+      if (clipped.geometry.length > 0) {
+        const worldPolygons = transformAppearancePolygonSetToViewport(
+          clipped.geometry,
+          appearanceToPdf,
+          viewport,
+          scale,
+        );
+        const layer = createFilledAppearanceLayer({
+          annotation,
+          appearance,
+          sourceGeometry,
+          kind: 'stroke',
+          paintOperationIndex,
+          layerIndex: layers.length,
+          paint: operation.strokeColor || annotation?.color,
+          opacity: baseOpacity * (
+            Number.isFinite(operation.strokeAlpha) ? operation.strokeAlpha : 1
+          ),
+          worldPolygons,
+          sourceWidth: (
+            operation.strokeWidth
+            * pdfMatrixAreaScale(composePdfMatrices(appearanceToPdf, strokeMatrix))
+            * viewportAreaScale(viewport, scale)
+          ),
+          fillRule: 'evenodd',
+        });
+        if (layer) layers.push(layer);
+      }
+    }
+  });
+
+  if (layers.length > 1) requiresMaterialization = true;
+  // An empty array is authoritative: the appearance contained supported paint
+  // operations, but clipping removed every painted point. Keep that distinct
+  // from null ("use the exact live-path representation") so a fully clipped
+  // native annotation cannot reappear from its InkList fallback.
+  return requiresMaterialization ? layers : null;
+}
 
 function getInkPathEndpoint(seg) {
   if (!Array.isArray(seg) || seg.length === 0) return null;
@@ -1999,15 +3085,92 @@ export function convertInkToFabricPath(annotation, viewport, scale = 1) {
   // so regular strokes remain editable centerlines.
   const hasInkList = Array.isArray(annotation.inkLists) && annotation.inkLists.length > 0;
   const borderWidth = getBorderWidth(annotation, 0);
-  const appearancePathData = convertAppearancePathToFabricPath(appearance?.path, viewport, scale);
+  const appearancePathData = convertAppearancePathToFabricPath(
+    appearance?.path,
+    viewport,
+    scale,
+    appearance?.matrix,
+    appearance?.bbox,
+    annotation?.rect,
+    appearance?.isFormXObject === true,
+  );
   const useFilledAppearancePath =
     Array.isArray(appearancePathData) &&
     appearancePathData.length > 0 &&
-    appearance?.hasFill === true &&
-    borderWidth <= 0;
+    appearance?.hasFill === true;
+  const useStrokedAppearancePath =
+    !useFilledAppearancePath &&
+    Array.isArray(appearancePathData) &&
+    appearancePathData.length > 0 &&
+    appearance?.hasStroke === true;
+  const appearanceFillRule = appearance?.fillRule
+    || (appearance?.isFormXObject === true ? 'nonzero' : 'evenodd');
+  const isPdfStrokeHairline = (
+    useStrokedAppearancePath
+    && appearance?.hasStroke === true
+    && Number(appearance?.strokeWidth) === 0
+  );
+  const sourceGeometry = {
+    version: PDF_INK_SOURCE_GEOMETRY_VERSION,
+    kind: useFilledAppearancePath || useStrokedAppearancePath || !hasInkList
+      ? 'appearance-path'
+      : 'ink-list',
+    coordinateSpace: 'pdf',
+    inkLists: normalizePdfInkListsForSource(annotation?.inkLists),
+    appearancePath: clonePdfAppearancePath(appearance?.sourcePath || appearance?.path),
+    appearanceContentMatrices: Array.isArray(appearance?.contentMatrices)
+      ? appearance.contentMatrices.map((matrix) => Array.from(matrix))
+      : [],
+    appearancePaintOperations: Array.isArray(appearance?.paintOperations)
+      ? appearance.paintOperations.map((operation) => ({
+          sourcePath: clonePdfAppearancePath(operation?.sourcePath || operation?.path),
+          path: clonePdfAppearancePath(operation?.path),
+          stroke: operation?.stroke === true,
+          fill: operation?.fill === true,
+          fillRule: operation?.fillRule || null,
+          strokeColor: toNumericArray(operation?.strokeColor),
+          fillColor: toNumericArray(operation?.fillColor),
+          strokeWidth: Number.isFinite(operation?.strokeWidth)
+            ? operation.strokeWidth
+            : null,
+          lineCap: operation?.lineCap || null,
+          lineJoin: operation?.lineJoin || null,
+          miterLimit: Number.isFinite(operation?.miterLimit)
+            ? operation.miterLimit
+            : null,
+          dashArray: Array.isArray(operation?.dashArray)
+            ? Array.from(operation.dashArray, Number)
+            : [],
+          dashPhase: Number(operation?.dashPhase) || 0,
+          strokeAlpha: Number.isFinite(operation?.strokeAlpha)
+            ? operation.strokeAlpha
+            : 1,
+          fillAlpha: Number.isFinite(operation?.fillAlpha)
+            ? operation.fillAlpha
+            : 1,
+          strokeMatrix: isFinitePdfMatrix(operation?.strokeMatrix)
+            ? Array.from(operation.strokeMatrix, Number)
+            : null,
+          clipActive: operation?.clipActive === true,
+          hasExplicitClip: operation?.hasExplicitClip === true,
+          clipPolygons: clonePolygonSet(operation?.clipPolygons),
+        }))
+      : [],
+    appearanceStrokeMatrix: isFinitePdfMatrix(appearance?.strokeMatrix)
+      ? Array.from(appearance.strokeMatrix, Number)
+      : null,
+    appearanceMatrix: Array.isArray(appearance?.matrix) ? Array.from(appearance.matrix) : null,
+    appearanceBBox: Array.isArray(appearance?.bbox) ? Array.from(appearance.bbox) : null,
+    appearanceHasFill: appearance?.hasFill === true,
+    appearanceHasStroke: appearance?.hasStroke === true,
+    appearanceFillRule: appearance?.fillRule || null,
+    borderWidth,
+    appearanceStrokeWidth:
+      Number.isFinite(appearance?.strokeWidth) ? appearance.strokeWidth : null,
+  };
   let pathData = null;
 
-  if (useFilledAppearancePath) {
+  if (useFilledAppearancePath || useStrokedAppearancePath) {
     pathData = appearancePathData;
   } else if (hasInkList) {
     pathData = [];
@@ -2041,18 +3204,12 @@ export function convertInkToFabricPath(annotation, viewport, scale = 1) {
         return;
       }
 
-      // Smooth raw PDF ink points to better match native viewer appearance.
+      // Preserve the authored InkList exactly. Visual smoothing must not
+      // replace the annotation's editable geometry; a stroked /AP is chosen
+      // above when the PDF provides an authoritative curved appearance.
       pathData.push(['M', points[0].x, points[0].y]);
-      if (points.length === 2) {
-        pathData.push(['L', points[1].x, points[1].y]);
-      } else {
-        for (let i = 1; i < points.length - 1; i++) {
-          const midX = (points[i].x + points[i + 1].x) / 2;
-          const midY = (points[i].y + points[i + 1].y) / 2;
-          pathData.push(['Q', points[i].x, points[i].y, midX, midY]);
-        }
-        const last = points[points.length - 1];
-        pathData.push(['L', last.x, last.y]);
+      for (let index = 1; index < points.length; index += 1) {
+        pathData.push(['L', points[index].x, points[index].y]);
       }
     });
   }
@@ -2111,13 +3268,61 @@ export function convertInkToFabricPath(annotation, viewport, scale = 1) {
   const importedWidth = Number.isFinite(maxX) && Number.isFinite(minX) ? maxX - minX : 0;
   const importedHeight = Number.isFinite(maxY) && Number.isFinite(minY) ? maxY - minY : 0;
 
-  const strokeColorHex = pdfColorToHex(annotation.color, annotation);
-  const strokeOpacity = extractAnnotationOpacity(annotation, 1);
+  // An authoritative AP carries the paint that PDF viewers render. /C is
+  // only a fallback and is frequently stale after edits in other PDF tools.
+  // A mixed fill+stroke Ink AP converges to the filled-outline representation,
+  // so its fill paint is the safe single-paint choice for Fabric.
+  const appearancePaint = useFilledAppearancePath
+    ? (appearance?.fillColor || annotation.color)
+    : useStrokedAppearancePath
+      ? (appearance?.strokeColor || annotation.color)
+      : annotation.color;
+  const strokeColorHex = pdfColorToHex(appearancePaint, annotation);
+  const primaryPaintOperation = Array.isArray(appearance?.paintOperations)
+    ? appearance.paintOperations.find((operation) => (
+        useFilledAppearancePath ? operation?.fill : operation?.stroke
+      ))
+    : null;
+  const appearancePaintAlpha = useFilledAppearancePath
+    ? primaryPaintOperation?.fillAlpha
+    : primaryPaintOperation?.strokeAlpha;
+  const strokeOpacity = extractAnnotationOpacity(annotation, 1) * (
+    Number.isFinite(appearancePaintAlpha) ? appearancePaintAlpha : 1
+  );
 
   let strokeWidth = 0;
-  if (borderWidth > 0) {
-    // Slightly reduce imported ink stroke width so external annotations remain legible.
-    strokeWidth = Math.max(0.75, borderWidth * 0.82) * scale;
+  if (isPdfStrokeHairline) {
+    // PDF line width 0 is a device-space hairline, not a missing width and
+    // not a request for the app's historical 0.9-unit fallback.
+    strokeWidth = 0;
+  } else if (
+    Array.isArray(appearancePathData)
+    && appearancePathData.length > 0
+    && appearance?.hasStroke === true
+    && Number.isFinite(appearance?.strokeWidth)
+    && appearance.strokeWidth > 0
+  ) {
+    const appearanceToPdf = appearance?.isFormXObject === true
+      ? createAppearanceToPdfMatrix(annotation?.rect, appearance?.bbox, appearance?.matrix)
+      : (isFinitePdfMatrix(appearance?.matrix)
+          ? Array.from(appearance.matrix, Number)
+          : Array.from(PDF_IDENTITY_MATRIX));
+    const strokeCtm = isFinitePdfMatrix(appearance?.strokeMatrix)
+      ? Array.from(appearance.strokeMatrix, Number)
+      : Array.from(PDF_IDENTITY_MATRIX);
+    const effectiveStrokeMatrix = composePdfMatrices(appearanceToPdf, strokeCtm);
+    // A Fabric path has one scalar width. The determinant/geometric-mean
+    // scale preserves transformed stroke area and matches the main exporter's
+    // strokeScale convention for nonuniform transforms.
+    strokeWidth = (
+      appearance.strokeWidth
+      * pdfMatrixAreaScale(effectiveStrokeMatrix)
+      * viewportAreaScale(viewport, scale)
+    );
+  } else if (borderWidth > 0) {
+    // /BS/W is geometry truth. Visibility aids belong to hit targets, not
+    // persisted rendering/export geometry.
+    strokeWidth = borderWidth * scale;
   } else if (Number.isFinite(appearance?.strokeWidth) && appearance.strokeWidth > 0) {
     strokeWidth = appearance.strokeWidth * scale;
   } else {
@@ -2129,47 +3334,49 @@ export function convertInkToFabricPath(annotation, viewport, scale = 1) {
   //    dots) — the strict pre-2026-07-17 check.
   // 2. THIN-stroked closed outlines (/BS width ~1 on pressure-ink outline
   //    geometry — same Drawboard export, different width convention). The
-  //    renderer has always caught these via the shouldFillPdfInkOutline
-  //    geometry fallback (rawWidth <= 1.1 + closed subpath); since item 5a
-  //    normalizes the stored width at import (which would defeat that
-  //    render fallback), the SAME geometry predicate now runs here so the
-  //    classification is made once, before any width normalization.
+  //    renderer catches these via the same closed-subpath predicate. The
+  //    predicate runs here so classification is made once without changing
+  //    the source width or authored commands.
   const fillsClosedOutline =
-    ((useFilledAppearancePath || borderWidth <= 0) &&
-      pathSubpathsAreClosed(pathData, importedWidth, importedHeight)) ||
-    (strokeWidth <= 1.1 * scale && hasSubstantiveClosedSubpath(pathData));
-  if (!fillsClosedOutline) {
-    // Item 5a: normalize the stored width up to the visibility floor here,
-    // once, instead of re-clamping in the renderer on every draw.
-    strokeWidth = Math.max(IMPORTED_INK_MIN_STROKE_WIDTH * scale, strokeWidth);
-  }
+    useFilledAppearancePath ||
+    (
+      !useStrokedAppearancePath
+      && (
+        (
+          borderWidth <= 0
+          && pathSubpathsAreClosed(pathData, importedWidth, importedHeight)
+        )
+        || (
+          strokeWidth <= 1.1 * scale
+          && hasSubstantiveClosedSubpath(pathData)
+        )
+      )
+    );
   const inkPaint = hexToRgba(strokeColorHex, strokeOpacity);
 
-  // UX 2026-07-17 (import-normalization item 4): imported FILLED ink (Drawboard
-  // pressure strokes, marker dots) converges onto the NATIVE paper-ink
-  // representation at import time — evenodd `polygons` + flattened ring path,
-  // exactly like createProductionPaperInk / eraser-carved ink — instead of the
-  // legacy `smoothClosedOutline` render mode. The Drawboard smoothing (marker
-  // dots as true ellipses, Catmull-Rom rebuild of polygonal outlines,
-  // preserved authored cubics) is baked INTO the stored geometry via
-  // getImportedInkSmoothedOutlineCommands, so before/after visuals are
-  // identical while render/hover/hit/erase all ride the single native branch.
+  // Imported FILLED ink converges onto the native paper-ink representation at
+  // import time: the exact authored live path plus polygons derived only for
+  // clipping/hit-testing.
   // No centerline exists for these outlines, so paperCenterline is absent and
   // the export fallback stays outline-based (createFilledPaperInkAnnotation
   // already handles that: /AP filled polygons + polygon-ring /InkList).
-  // The legacy smoothClosedOutline render branch is intentionally KEPT in
-  // svgPathAttrs.js for pre-existing cloud rows and metadata-stripped sync
-  // round-trips that still store the raw outline path.
+  // Legacy and metadata-stripped rows also render their authored path directly.
   let nativeFilledOutline = null;
   if (fillsClosedOutline) {
     try {
-      const smoothingProbe = { path: pathData, fill: inkPaint, stroke: null, strokeWidth: 0 };
-      const smoothedCommands = getImportedInkSmoothedOutlineCommands(smoothingProbe) || pathData;
-      const polygons = filledOutlineCommandsToPolygonSet(smoothedCommands);
+      // Both /AP paths and /InkList coordinates are authored geometry. Import
+      // must never infer replacement Catmull-Rom/ellipse curves: that changes
+      // legacy shapes before the user edits them and makes a first erase bite
+      // visibly angular. Derived polygons are clipping-only.
+      const outlineCommands = pathData;
+      const polygons = filledOutlineCommandsToPolygonSet(outlineCommands, {
+        fillRule: useFilledAppearancePath
+          ? appearanceFillRule
+          : 'nonzero',
+      });
       if (polygons.length > 0) {
-        // Re-normalize to local coords: smoothing (ellipse synthesis /
-        // Catmull-Rom overshoot) can shift the geometry off the raw path
-        // bounds, and the native contract is "path bounds == object bounds"
+        // Re-normalize derived clipping polygons to local coords. The native
+        // contract is "path bounds == object bounds"
         // with left/top carrying the world placement (same convention as the
         // bbox-drift fix above).
         let pMinX = Infinity, pMinY = Infinity, pMaxX = -Infinity, pMaxY = -Infinity;
@@ -2187,7 +3394,10 @@ export function convertInkToFabricPath(annotation, viewport, scale = 1) {
           const localPolygons = translatePolygonSet(polygons, -pMinX, -pMinY);
           nativeFilledOutline = {
             polygons: localPolygons,
-            path: polygonSetToCommands(localPolygons),
+            // The polygon set is derived clipping geometry. Keep the authored
+            // cubic/smoothed curve as the live render path so import does not
+            // visibly replace it with the clipping mesh.
+            path: translatePathCommands(outlineCommands, -pMinX, -pMinY),
             left: importedLeft + pMinX,
             top: importedTop + pMinY,
             width: pMaxX - pMinX,
@@ -2202,12 +3412,9 @@ export function convertInkToFabricPath(annotation, viewport, scale = 1) {
     }
   }
 
-  // UX 2026-04-21: Ink is by PDF spec a stroked freeform scribble — never
-  // filled. Drawboard (and other editors) sometimes emit an /AP appearance
-  // stream whose content our basic parser misreads as "filled shape, no
-  // stroke," which previously produced the hollow-black-outline symptom when
-  // importing red pen strokes. Ignore appearance.hasFill/hasStroke entirely
-  // for ink, trust the raw /C color + /BS width from the dictionary.
+  // Ink normally uses /InkList + /BS. Some editors instead author a filled
+  // pressure-stroke outline in /AP; that appearance is authoritative when it
+  // is valid. Both source forms are retained in pdfInkSourceGeometry.
   //
   // UX 2026-04-21 (import-normalization Chunk 2): the imported Ink Fabric
   // spec must be field-for-field identical to an internally-drawn pen
@@ -2237,8 +3444,18 @@ export function convertInkToFabricPath(annotation, viewport, scale = 1) {
     stroke: fillsClosedOutline ? null : inkPaint,
     strokeWidth,
     fill: fillsClosedOutline ? inkPaint : null,
-    strokeLineCap: appearance?.lineCap || 'round',
-    strokeLineJoin: appearance?.lineJoin || 'round',
+    strokeLineCap: appearance?.lineCap || (useStrokedAppearancePath ? 'butt' : 'round'),
+    strokeLineJoin: appearance?.lineJoin || (useStrokedAppearancePath ? 'miter' : 'round'),
+    ...(Number.isFinite(primaryPaintOperation?.miterLimit)
+      ? { strokeMiterLimit: primaryPaintOperation.miterLimit }
+      : {}),
+    ...(Array.isArray(appearance?.paintOperations?.[0]?.dashArray)
+      && appearance.paintOperations[0].dashArray.length > 0
+      ? {
+          strokeDashArray: Array.from(appearance.paintOperations[0].dashArray, Number),
+          strokeDashOffset: Number(appearance.paintOperations[0].dashPhase) || 0,
+        }
+      : {}),
     // strokeUniform intentionally omitted — matches internal pen-stroke
     // behavior (undefined). Do NOT reintroduce without removing the
     // matching field from makeInternalPenPathSpec + updating the parity
@@ -2257,12 +3474,19 @@ export function convertInkToFabricPath(annotation, viewport, scale = 1) {
     isPdfImported: true,
     pdfAnnotationId: annotation.id,
     pdfAnnotationType: 'Ink',
+    ...(isPdfStrokeHairline ? { pdfStrokeHairline: true } : {}),
+    inkGeometrySpace: 'local',
+    data: {
+      inkGeometrySpace: 'local',
+      pdfInkSourceGeometry: sourceGeometry,
+      ...(isPdfStrokeHairline ? { pdfStrokeHairline: true } : {}),
+      ...(fillsClosedOutline ? { pdfInkRenderMode: FILLED_PDF_INK_MODE } : {}),
+    },
     ...(fillsClosedOutline ? {
       // Provenance only ("this arrived as a filled-outline pressure stroke")
       // — export/debug tooling reads it; renderers must not branch on it for
       // converged objects (they ride the evenodd/polygons native branch).
       pdfInkRenderMode: FILLED_PDF_INK_MODE,
-      data: { pdfInkRenderMode: FILLED_PDF_INK_MODE },
     } : {}),
     // Item-4 convergence: replace the legacy filled-outline fields with the
     // native paper-ink representation (see block above). Keeps provenance.
@@ -2276,7 +3500,9 @@ export function convertInkToFabricPath(annotation, viewport, scale = 1) {
       fill: inkPaint,
       stroke: 'transparent',
       strokeWidth: 0,
-      fillRule: 'evenodd',
+      fillRule: useFilledAppearancePath
+        ? appearanceFillRule
+        : 'evenodd',
       paperInkGeometry: 'v1',
     } : {}),
     layer: 'pdf-annotations'
@@ -2317,6 +3543,29 @@ export function convertInkToFabricPath(annotation, viewport, scale = 1) {
       // Diagnostic path — never break import on logging failure.
       console.warn('[InkNormDiag import] log failed:', err);
     }
+  }
+
+  const appearanceLayers = annotation?.appAnnotationMetadata
+    ? null
+    : buildAppearancePaintLayers(
+        annotation,
+        appearance,
+        viewport,
+        scale,
+        sourceGeometry,
+      );
+  if (Array.isArray(appearanceLayers)) {
+    if (appearanceLayers.length === 0) return null;
+    const [primary, ...companions] = appearanceLayers;
+    if (companions.length > 0) {
+      Object.defineProperty(primary, PDF_APPEARANCE_COMPANION_LAYERS, {
+        value: companions,
+        enumerable: false,
+        configurable: false,
+        writable: false,
+      });
+    }
+    return primary;
   }
 
   return result;
@@ -3339,11 +4588,77 @@ function convertCaretToFabricPolyline(annotation, viewport, scale = 1) {
 export function convertPdfAnnotationToFabric(annotation, viewport, scale = 1, rawMetadata = null) {
   const normalizedAnnotation = applyRawMetadataToAnnotation(annotation, rawMetadata);
   const subtype = normalizedAnnotation.subtype;
-  const finish = (fabricObj) => (
-    normalizedAnnotation.appAnnotationMetadata
-      ? applyPdfAppAnnotationMetadata(fabricObj, normalizedAnnotation.appAnnotationMetadata)
-      : fabricObj
-  );
+  const finish = (fabricObj) => {
+    if (!fabricObj) return fabricObj;
+    const metadata = normalizedAnnotation.appAnnotationMetadata;
+    const primary = metadata
+      ? applyPdfAppAnnotationMetadata(fabricObj, metadata)
+      : fabricObj;
+    const companions = fabricObj[PDF_APPEARANCE_COMPANION_LAYERS];
+    if (!Array.isArray(companions) || companions.length === 0) return primary;
+
+    // A PDF paint operation can require several editable filled layers (for
+    // example `B`: fill, then stroke). They share source ownership/scope and a
+    // group, but never an object/history id. Full app geometry/style metadata
+    // is intentionally applied only to the primary; applying it to companions
+    // would replace each distinct AP paint layer with the same geometry.
+    const scopedCompanions = companions.map((companion) => {
+      if (!metadata) return companion;
+      return {
+        ...companion,
+        appAnnotationId: metadata.id,
+        appAnnotationType: metadata.appType,
+        ...(metadata.moduleId ? { moduleId: metadata.moduleId } : {}),
+        ...(metadata.regionId ? { regionId: metadata.regionId } : {}),
+        ...(metadata.spaceId ? { spaceId: metadata.spaceId } : {}),
+        ...(metadata.layer ? { layer: metadata.layer } : {}),
+        ...(metadata.ownership && typeof metadata.ownership === 'object'
+          ? {
+              meta: {
+                ...(companion.meta || {}),
+                ...metadata.ownership,
+              },
+            }
+          : {}),
+      };
+    });
+    const groupId = (
+      primary?.data?.groupId
+      || fabricObj?.data?.groupId
+      || scopedCompanions[0]?.data?.groupId
+    );
+    const restoreLayerIdentity = (value, original) => ({
+      ...value,
+      id: original.id,
+      data: {
+        ...(value.data || {}),
+        ...(groupId ? { groupId } : {}),
+        id: original.data?.id || original.id,
+        pdfAppearanceCompositeId:
+          original.data?.pdfAppearanceCompositeId || groupId || null,
+        pdfAppearanceSourceAnnotationId:
+          original.data?.pdfAppearanceSourceAnnotationId
+          || normalizedAnnotation.id
+          || normalizedAnnotation.name
+          || null,
+        pdfAppearanceLayerIndex: original.data?.pdfAppearanceLayerIndex,
+        pdfAppearancePaintOperationIndex:
+          original.data?.pdfAppearancePaintOperationIndex,
+        pdfAppearanceLayerKind: original.data?.pdfAppearanceLayerKind,
+      },
+    });
+    const stablePrimary = restoreLayerIdentity(primary, fabricObj);
+    const stableCompanions = scopedCompanions.map((value, index) => (
+      restoreLayerIdentity(value, companions[index])
+    ));
+    Object.defineProperty(stablePrimary, PDF_APPEARANCE_COMPANION_LAYERS, {
+      value: stableCompanions,
+      enumerable: false,
+      configurable: false,
+      writable: false,
+    });
+    return stablePrimary;
+  };
 
   switch (subtype) {
     case 'Ink':
@@ -3614,13 +4929,28 @@ export async function importAnnotationsFromPdf(pdfDoc, options = {}) {
           });
         }
 
-        const fabricObj = attachPdfNativeAnnotationIdentity(
-          convertPdfAnnotationToFabric(annotation, viewport, 1, rawMetadata),
-          directNativeIdentities.get(annotation),
+        const converted = convertPdfAnnotationToFabric(
+          annotation,
+          viewport,
+          1,
+          rawMetadata,
         );
+        const convertedObjects = converted
+          ? [
+              converted,
+              ...(converted[PDF_APPEARANCE_COMPANION_LAYERS] || []),
+            ]
+          : [];
+        const fabricObjectsForAnnotation = convertedObjects.map((fabricObject) => (
+          attachPdfNativeAnnotationIdentity(
+            fabricObject,
+            directNativeIdentities.get(annotation),
+          )
+        ));
+        const fabricObj = fabricObjectsForAnnotation[0] || null;
         if (fabricObj) {
           if (!options.diagnosticsOnly) {
-            fabricObjects.push(fabricObj);
+            fabricObjects.push(...fabricObjectsForAnnotation);
           }
           if (fabricObj?.data?.type === 'counter') {
             counts.counterAnnotationsImported++;

@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { convertInkToFabricPath, convertPdfAnnotationToFabric } from '../src/utils/pdfAnnotationImporter.js';
 import { makeInternalPenPathSpec } from '../src/utils/nativeShapeFactory.js';
 import {
@@ -29,6 +30,10 @@ const viewport = {
   height: 100,
   convertToViewportPoint: (x, y) => [x, 100 - y],
 };
+
+const authoredPathD = (object) => (
+  object.path.map((command) => command.join(' ')).join(' ')
+);
 
 test('imported Ink has the same core Fabric properties as an internal pen stroke', () => {
   const imported = convertInkToFabricPath(inkAnnotation, viewport, 1);
@@ -137,10 +142,7 @@ test('renderPathToSvgAttrs preserves stroke / fill / cap / join parity for impor
   // Behavior parity guarantee: stroke color, fill, line caps, line joins,
   // and opacity must NOT diverge based on provenance — the user-visible
   // ink/cap/color identity is the same whether the stroke came from PDF
-  // import or from an internal pen-down. Width and vector-effect ARE
-  // expected to diverge (see the next test) because the source PDF's
-  // hairline widths must be promoted for visibility while internal pens
-  // keep their toolbar-specified width verbatim.
+  // import or from an internal pen-down.
   const base = {
     type: 'path',
     path: [
@@ -165,23 +167,57 @@ test('renderPathToSvgAttrs preserves stroke / fill / cap / join parity for impor
   }
 });
 
-test('thin imported Ink is promoted to the page-unit visibility floor AT IMPORT TIME', () => {
-  // 2026-04-28 visibility fix, moved to import time 2026-07-17 (item 5a):
-  // thin PDF strokes (typical /BS borderWidth 0.5-1.1pt) clamp up to a
-  // visible page-unit floor in the STORED value, so the renderer, eraser
-  // and hit-testing all share one width with no provenance branch. The
-  // floor is a page-unit width that scales with zoom (no
-  // vector-effect:non-scaling-stroke pin — 2026-07-14 unification).
+test('path presentation preserves dash, phase, and miter style in SVG and canvas lanes', () => {
+  const styledPath = {
+    type: 'path',
+    path: [['M', 0, 0], ['L', 30, 0]],
+    stroke: '#111111',
+    strokeWidth: 4,
+    fill: null,
+    strokeLineCap: 'square',
+    strokeLineJoin: 'miter',
+    strokeMiterLimit: 7,
+    strokeDashArray: [0, 10],
+    strokeDashOffset: 3,
+  };
+  const attrs = renderPathToSvgAttrs(styledPath);
+  assert.deepEqual(attrs.strokeDasharray, [0, 10]);
+  assert.equal(attrs.strokeDashoffset, 3);
+  assert.equal(attrs.strokeMiterlimit, 7);
+  assert.equal(renderPathToSvgD(styledPath, attrs), authoredPathD(styledPath));
+
+  const svgRendererSource = readFileSync(
+    new URL('../src/utils/svgAnnotationRenderers.jsx', import.meta.url),
+    'utf8',
+  );
+  const overlaySource = readFileSync(
+    new URL('../src/components/SVGAnnotationLayer.jsx', import.meta.url),
+    'utf8',
+  );
+  const canvasPainterSource = readFileSync(
+    new URL('../src/utils/annotationCanvasPainter.js', import.meta.url),
+    'utf8',
+  );
+  assert.match(svgRendererSource, /strokeDasharray=\{attrs\.strokeDasharray\?\.join\(' '\)\}/);
+  assert.match(svgRendererSource, /strokeMiterlimit=\{attrs\.strokeMiterlimit\}/);
+  assert.match(overlaySource, /strokeDasharray=\{pathAttrs\.strokeDasharray\?\.join\(' '\)\}/);
+  assert.match(canvasPainterSource, /context\.setLineDash\(Array\.isArray\(attrs\.strokeDasharray\)/);
+  assert.match(canvasPainterSource, /context\.miterLimit\s*=\s*toNumber\(attrs\.strokeMiterlimit/);
+});
+
+test('thin imported Ink preserves its exact native page-unit width at import', () => {
+  // Import geometry is source truth: a thin /BS width must not be thickened
+  // merely for visibility. Larger hit targets belong to interaction code.
   const thinInk = {
     id: 'ink-thin-import-1',
     subtype: 'Ink',
     inkLists: [[10, 10, 30, 30]],
     color: [0, 0, 0],
-    borderWidth: 0.6, // stored would be 0.6*0.82 ≈ 0.75 without the floor
+    borderWidth: 0.6,
     rect: [0, 0, 100, 100],
   };
   const imported = convertInkToFabricPath(thinInk, viewport, 1);
-  assert.ok(imported.strokeWidth >= 1.5, `stored width clamps up at import (got ${imported.strokeWidth})`);
+  assert.equal(imported.strokeWidth, 0.6, 'stored width remains the exact native /BS width');
 
   // Renderer: pure passthrough of the stored width for BOTH provenances —
   // the render-time imported clamp is retired.
@@ -200,14 +236,14 @@ test('thin imported Ink is promoted to the page-unit visibility floor AT IMPORT 
   assert.equal(internalAttrs.strokeWidth, 0.9, 'internal stroke width passes through unchanged');
   assert.equal(internalAttrs.vectorEffect, undefined, 'internal stroke has no vector-effect by default');
 
-  // A provenance-flagged path with a thin STORED width now renders at that
-  // stored width — no imported-vs-internal width divergence at render time.
+  // A provenance-flagged path with a thin stored width renders at that stored
+  // width — no imported-vs-internal width divergence at render time.
   const legacyThinImported = renderPathToSvgAttrs({ ...internalThin, isPdfImported: true, pdfAnnotationType: 'Ink' });
   assert.equal(legacyThinImported.strokeWidth, 0.9, 'no render-time width branch on provenance');
 
-  // Already-thick imported widths are NOT shrunk at import.
+  // Thick imported widths are exact too.
   const thickInk = convertInkToFabricPath({ ...thinInk, id: 'ink-thick-1', borderWidth: 6 }, viewport, 1);
-  assert.ok(thickInk.strokeWidth > 2.5, 'thick imported stroke keeps its width');
+  assert.equal(thickInk.strokeWidth, 6, 'thick imported stroke keeps its exact width');
 
   // Legacy strokeUniform opt-ins no longer pin either — one zoom convention
   // for every stroke.
@@ -251,16 +287,18 @@ test('closed zero-width PDF Ink imports as a filled outline, not a hollow stroke
   assert.equal(imported.pdfInkRenderMode, 'filled-outline');
   assert.ok(imported.fill?.startsWith('rgba(164, 103, 243'), `fill should use ink color, got ${imported.fill}`);
 
-  // UX 2026-07-17 (import-normalization item 4): freshly imported filled ink
-  // converges onto the NATIVE paper-ink representation — evenodd polygons +
-  // flattened ring path with the Drawboard smoothing baked in — so it rides
-  // the exact same render/hit/erase branch as native pen ink.
+  // Freshly imported filled ink keeps the authored InkList exactly. Import
+  // must not invent replacement Catmull-Rom curves before the first edit.
   assert.equal(imported.stroke, 'transparent');
   assert.equal(imported.strokeWidth, 0);
   assert.equal(imported.fillRule, 'evenodd');
   assert.equal(imported.paperInkGeometry, 'v1');
   assert.ok(Array.isArray(imported.polygons) && imported.polygons.length > 0, 'polygons derived at import');
-  assert.ok(imported.path.every((seg) => ['M', 'L', 'Z'].includes(seg[0])), 'path is flattened polygon rings');
+  assert.deepEqual(
+    imported.path.map((seg) => seg[0]),
+    ['M', 'L', 'L', 'L', 'L'],
+    'live path preserves exact authored M/L geometry',
+  );
 
   const attrs = renderPathToSvgAttrs(imported);
   assert.equal(attrs.stroke, 'none');
@@ -296,10 +334,9 @@ test('converged imported filled ink gets the NATIVE filled-ink hit contract', ()
   assert.ok(props.strokeWidth >= 12);
 });
 
-test('converged imported marker dots bake the smooth ellipse into the stored polygons', () => {
-  // Low-point semi-transparent closed outline — the Drawboard marker-dot
-  // signature. Legacy render synthesized an ellipse per draw; convergence bakes
-  // that ellipse into the polygon geometry once at import.
+test('converged imported marker dots keep authored vertices without inferred ellipse geometry', () => {
+  // Low-point semi-transparent closed outline. Legacy rendering inferred an
+  // ellipse, which mutated imported geometry; convergence now preserves it.
   const dotInk = {
     id: 'ink-marker-dot-1',
     subtype: 'Ink',
@@ -312,11 +349,11 @@ test('converged imported marker dots bake the smooth ellipse into the stored pol
   assert.equal(imported.fillRule, 'evenodd');
   assert.ok(Array.isArray(imported.polygons) && imported.polygons.length === 1, 'one dot polygon');
   const ring = imported.polygons[0][0];
-  // Densely sampled ellipse — far more vertices than the 9 input points.
-  assert.ok(ring.length > 20, `ellipse should be densely sampled, got ${ring.length} points`);
+  assert.equal(ring.length, 10, 'nine authored points plus the closing point');
+  assert.equal(imported.path.some((segment) => segment[0] === 'C'), false);
 });
 
-test('legacy closed thin imported Ink rows render filled even without new import marker', () => {
+test('legacy closed thin imported Ink rows render their exact authored fill geometry', () => {
   const legacyCloudRow = {
     type: 'path',
     path: [
@@ -339,13 +376,15 @@ test('legacy closed thin imported Ink rows render filled even without new import
   assert.equal(attrs.strokeWidth, 0);
   assert.equal(attrs.fill, legacyCloudRow.stroke);
   assert.equal(attrs.vectorEffect, undefined);
+  assert.equal(attrs.filledOutline, true);
+  assert.equal(attrs.smoothClosedOutline, undefined);
 
   const d = renderPathToSvgD(legacyCloudRow, attrs);
-  assert.match(d, /\bC\b/, 'closed outline should render with smoothed cubic curves');
-  assert.match(d, /\bZ\b/, 'closed outline should stay closed for fill rendering');
+  assert.equal(d, authoredPathD(legacyCloudRow));
+  assert.doesNotMatch(d, /\bC\b/, 'renderer must not invent curves before the first erase');
 });
 
-test('filled legacy imported Ink rows keep smoothing even if marker metadata is missing', () => {
+test('filled legacy imported Ink rows keep authored commands when marker metadata is missing', () => {
   const legacyFilledRow = {
     type: 'path',
     path: [
@@ -366,13 +405,36 @@ test('filled legacy imported Ink rows keep smoothing even if marker metadata is 
   const attrs = renderPathToSvgAttrs(legacyFilledRow);
   assert.equal(attrs.stroke, 'none');
   assert.equal(attrs.fill, legacyFilledRow.fill);
-  assert.equal(attrs.smoothClosedOutline, true);
+  assert.equal(attrs.filledOutline, true);
+  assert.equal(attrs.smoothClosedOutline, undefined);
 
   const d = renderPathToSvgD(legacyFilledRow, attrs);
-  assert.match(d, /\bC\b/, 'filled legacy outline should still render with smoothed cubic curves');
+  assert.equal(d, authoredPathD(legacyFilledRow));
 });
 
-test('synced PDF-layer filled Ink rows keep smoothing even if import flags are missing', () => {
+test('an explicit close command remains authoritative for a metadata-stripped filled outline', () => {
+  const explicitlyClosed = {
+    type: 'path',
+    path: [
+      ['M', 0, 0],
+      ['L', 20, 0],
+      ['L', 20, 20],
+      ['Z'],
+    ],
+    stroke: 'none',
+    strokeWidth: 0,
+    fill: '#ff0000',
+  };
+
+  const sourcePath = structuredClone(explicitlyClosed.path);
+  const attrs = renderPathToSvgAttrs(explicitlyClosed);
+  assert.equal(attrs.filledOutline, true);
+  assert.equal(attrs.stroke, 'none');
+  assert.equal(renderPathToSvgD(explicitlyClosed, attrs), authoredPathD(explicitlyClosed));
+  assert.deepEqual(explicitlyClosed.path, sourcePath, 'classification never closes or rewrites the carrier');
+});
+
+test('synced PDF-layer filled Ink rows keep authored geometry when import flags are missing', () => {
   const syncedRow = {
     type: 'path',
     path: [
@@ -391,13 +453,14 @@ test('synced PDF-layer filled Ink rows keep smoothing even if import flags are m
   const attrs = renderPathToSvgAttrs(syncedRow);
   assert.equal(attrs.stroke, 'none');
   assert.equal(attrs.fill, syncedRow.fill);
-  assert.equal(attrs.smoothClosedOutline, true);
+  assert.equal(attrs.filledOutline, true);
+  assert.equal(attrs.smoothClosedOutline, undefined);
 
   const d = renderPathToSvgD(syncedRow, attrs);
-  assert.match(d, /\bC\b/, 'metadata-stripped synced PDF outline should stay smooth');
+  assert.equal(d, authoredPathD(syncedRow));
 });
 
-test('metadata-stripped filled outlines stay filled and smooth after sync/edit round-trips', () => {
+test('metadata-stripped filled outlines stay filled and exact after sync/edit round-trips', () => {
   const strippedFilledOutline = {
     type: 'path',
     path: [
@@ -415,13 +478,14 @@ test('metadata-stripped filled outlines stay filled and smooth after sync/edit r
   const attrs = renderPathToSvgAttrs(strippedFilledOutline);
   assert.equal(attrs.stroke, 'none');
   assert.equal(attrs.fill, strippedFilledOutline.fill);
-  assert.equal(attrs.smoothClosedOutline, true);
+  assert.equal(attrs.filledOutline, true);
+  assert.equal(attrs.smoothClosedOutline, undefined);
 
   const d = renderPathToSvgD(strippedFilledOutline, attrs);
-  assert.match(d, /\bC\b/, 'filled outline should be smoothed without PDF metadata');
+  assert.equal(d, authoredPathD(strippedFilledOutline));
 });
 
-test('semi-transparent Drawboard marker dots render as true smooth ellipses', () => {
+test('semi-transparent Drawboard marker dots retain their authored vertices', () => {
   const markerDot = {
     type: 'path',
     path: [
@@ -443,16 +507,16 @@ test('semi-transparent Drawboard marker dots render as true smooth ellipses', ()
   };
 
   const attrs = renderPathToSvgAttrs(markerDot);
-  assert.equal(attrs.smoothClosedOutline, true);
-  assert.equal(attrs.smoothClosedOutlineAsEllipse, true);
+  assert.equal(attrs.filledOutline, true);
+  assert.equal(attrs.smoothClosedOutline, undefined);
+  assert.equal(attrs.smoothClosedOutlineAsEllipse, undefined);
 
   const d = renderPathToSvgD(markerDot, attrs);
-  assert.match(d, /M 20 9.5/, 'ellipse starts at the right edge of the bbox');
-  assert.match(d, /\bC\b/, 'ellipse is rendered with cubic arcs');
-  assert.match(d, /\bZ\b/, 'ellipse remains closed for fill rendering');
+  assert.equal(d, authoredPathD(markerDot));
+  assert.doesNotMatch(d, /\bC\b/);
 });
 
-test('synced Drawboard marker dots use rgba alpha even when opacity round-trips to 1', () => {
+test('synced Drawboard marker dots keep authored cubics when opacity round-trips to 1', () => {
   const syncedMarkerDot = {
     type: 'path',
     path: [
@@ -470,13 +534,14 @@ test('synced Drawboard marker dots use rgba alpha even when opacity round-trips 
   };
 
   const attrs = renderPathToSvgAttrs(syncedMarkerDot);
-  assert.equal(attrs.smoothClosedOutlineAsEllipse, true);
+  assert.equal(attrs.filledOutline, true);
+  assert.equal(attrs.smoothClosedOutlineAsEllipse, undefined);
 
   const d = renderPathToSvgD(syncedMarkerDot, attrs);
-  assert.match(d, /M 20 10.5/, 'ellipse should replace the cached cubic outline');
+  assert.equal(d, authoredPathD(syncedMarkerDot));
 });
 
-test('Drawboard red ink outlines with mixed cubic and line commands are rebuilt smooth', () => {
+test('Drawboard red ink outlines preserve mixed cubic and line commands', () => {
   const redInkOutline = {
     type: 'path',
     path: [
@@ -494,13 +559,14 @@ test('Drawboard red ink outlines with mixed cubic and line commands are rebuilt 
   };
 
   const attrs = renderPathToSvgAttrs(redInkOutline);
-  assert.equal(attrs.smoothClosedOutline, true);
-  assert.equal(attrs.smoothClosedOutlineAsEllipse, false);
+  assert.equal(attrs.filledOutline, true);
+  assert.equal(attrs.smoothClosedOutline, undefined);
+  assert.equal(attrs.smoothClosedOutlineAsEllipse, undefined);
 
   const d = renderPathToSvgD(redInkOutline, attrs);
-  assert.match(d, /\bC\b/, 'mixed Drawboard ink outline should render with smoothed cubic curves');
-  assert.doesNotMatch(d, /\bL\b/, 'raw line segments should not leak into closed ink rendering');
-  assert.match(d, /\bZ\b/, 'smoothed ink outline should stay closed for fill rendering');
+  assert.equal(d, authoredPathD(redInkOutline));
+  assert.match(d, /\bC\b/);
+  assert.match(d, /\bL\b/);
 });
 
 test('Drawboard pressure ink keeps original cubic handles when the PDF already has smooth curves', () => {
@@ -522,14 +588,14 @@ test('Drawboard pressure ink keeps original cubic handles when the PDF already h
   };
 
   const attrs = renderPathToSvgAttrs(redPressureInk);
-  assert.equal(attrs.smoothClosedOutline, true);
+  assert.equal(attrs.filledOutline, true);
+  assert.equal(attrs.smoothClosedOutline, undefined);
 
   const d = renderPathToSvgD(redPressureInk, attrs);
-  assert.match(d, /C 0.6 0.5 1.1 0 1.7 0.2/, 'original Drawboard cubic handles should survive rendering');
-  assert.match(d, /L 1.9 2.1/, 'Drawboard connector segments should stay part of the authored outline');
+  assert.equal(d, authoredPathD(redPressureInk));
 });
 
-test('synced filled Ink rows with tiny open subpaths still smooth the main outline', () => {
+test('synced filled Ink rows preserve main curves and tiny open subpaths', () => {
   const syncedRow = {
     type: 'path',
     path: [
@@ -548,9 +614,11 @@ test('synced filled Ink rows with tiny open subpaths still smooth the main outli
   };
 
   const attrs = renderPathToSvgAttrs(syncedRow);
-  assert.equal(attrs.smoothClosedOutline, true);
+  assert.equal(attrs.filledOutline, true);
+  assert.equal(attrs.smoothClosedOutline, undefined);
 
   const d = renderPathToSvgD(syncedRow, attrs);
-  assert.match(d, /\bC\b/, 'main outline should be converted to cubic curves');
-  assert.match(d, /M 2 2 L 2.1 2.1/, 'tiny open subpath should be preserved');
+  assert.equal(d, authoredPathD(syncedRow));
+  assert.match(d, /\bQ\b/, 'authored quadratic controls survive');
+  assert.match(d, /M 2 2 L 2.1 2.1/, 'tiny open subpath survives');
 });

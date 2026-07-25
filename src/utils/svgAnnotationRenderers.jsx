@@ -45,6 +45,7 @@ import { DRAWN_CENTERED_STROKE_CONTRACT } from './shapeCommitGeometry.js';
 // guarantee import vs internal paths produce byte-identical SVG output
 // when their Fabric input fields match.
 import { renderPathToSvgAttrs, renderPathToSvgD } from './svgPathAttrs.js';
+import { normalizeOperationalInkPath } from './inkPathNormalization.js';
 
 const __shapeClick = (e) => __captureShape(e.currentTarget, e);
 
@@ -110,6 +111,80 @@ export const toNumber = (value, fallback = 0) => {
  */
 export const isErasedOutline = (obj) =>
   obj.strokeWidth === 0 && obj.fill && obj.fill !== 'transparent';
+
+const paperCutsToSvgD = (polygons) => (polygons || [])
+  .flatMap((polygon) => polygon || [])
+  .map((ring) => {
+    if (!Array.isArray(ring) || ring.length < 3) return '';
+    const end = (
+      ring.length > 1
+      && ring[0]?.[0] === ring.at(-1)?.[0]
+      && ring[0]?.[1] === ring.at(-1)?.[1]
+    ) ? ring.length - 1 : ring.length;
+    if (end < 3) return '';
+    return ring.slice(0, end).map((point, index) => (
+      `${index === 0 ? 'M' : 'L'} ${point[0]} ${point[1]}`
+    )).join(' ') + ' Z';
+  })
+  .filter(Boolean)
+  .join(' ');
+
+const paperSourceBounds = (source) => {
+  if (
+    !Array.isArray(source?.path)
+    || !Array.isArray(source?.matrix)
+    || source.matrix.length !== 6
+  ) return null;
+  const [a, b, c, d, e, f] = source.matrix;
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  const boundsPath = (
+    Array.isArray(source.operationalPath) && source.operationalPath.length > 0
+      ? source.operationalPath
+      : normalizeOperationalInkPath(source.path)
+  );
+  for (const command of boundsPath) {
+    for (let index = 1; index + 1 < command.length; index += 2) {
+      const x = Number(command[index]);
+      const y = Number(command[index + 1]);
+      if (!Number.isFinite(x) || !Number.isFinite(y)) continue;
+      const pageX = a * x + c * y + e;
+      const pageY = b * x + d * y + f;
+      if (!Number.isFinite(pageX) || !Number.isFinite(pageY)) continue;
+      minX = Math.min(minX, pageX);
+      minY = Math.min(minY, pageY);
+      maxX = Math.max(maxX, pageX);
+      maxY = Math.max(maxY, pageY);
+    }
+  }
+  if (!Number.isFinite(minX)) return null;
+  const strokeScale = Math.max(
+    Math.hypot(a, b),
+    Math.hypot(c, d),
+    Number.MIN_VALUE,
+  );
+  const pad = source.paintMode === 'fill'
+    ? 1
+    : Math.max(1, Number(source.strokeWidth || 0) * strokeScale);
+  return {
+    x: minX - pad,
+    y: minY - pad,
+    width: Math.max(Number.MIN_VALUE, maxX - minX + pad * 2),
+    height: Math.max(Number.MIN_VALUE, maxY - minY + pad * 2),
+  };
+};
+
+const stablePaperClipId = (key, source, cutD) => {
+  const value = `${key}|${JSON.stringify(source?.path)}|${JSON.stringify(source?.matrix)}|${cutD}`;
+  let hash = 2166136261;
+  for (let index = 0; index < value.length; index += 1) {
+    hash ^= value.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return `paper-eraser-clip-${(hash >>> 0).toString(36)}`;
+};
 
 // ---------------------------------------------------------------------------
 // Render Functions
@@ -226,6 +301,57 @@ export const renderPath = (obj, index) => {
     }
   }
 
+  const paperSource = obj?.paperSourceStroke;
+  const paperCutD = paperCutsToSvgD(obj?.paperEraserCuts);
+  const paperBounds = paperSourceBounds(paperSource);
+  if (
+    paperBounds
+    && paperCutD
+    && Array.isArray(paperSource?.path)
+    && paperSource.path.length > 0
+  ) {
+    const sourceD = paperSource.path.map((command) => command.join(' ')).join(' ');
+    const [a, b, c, d, e, f] = paperSource.matrix;
+    const sourceIsFill = paperSource.paintMode === 'fill';
+    const clipId = stablePaperClipId(key, paperSource, paperCutD);
+    const clipRect = [
+      `M ${paperBounds.x} ${paperBounds.y}`,
+      `L ${paperBounds.x + paperBounds.width} ${paperBounds.y}`,
+      `L ${paperBounds.x + paperBounds.width} ${paperBounds.y + paperBounds.height}`,
+      `L ${paperBounds.x} ${paperBounds.y + paperBounds.height}`,
+      'Z',
+    ].join(' ');
+    return (
+      <g
+        key={key}
+        transform={transform}
+        style={isHighlight ? { mixBlendMode: 'multiply' } : undefined}
+      >
+        <defs>
+          <clipPath id={clipId} clipPathUnits="userSpaceOnUse">
+            <path d={`${clipRect} ${paperCutD}`} fillRule="evenodd" clipRule="evenodd" />
+          </clipPath>
+        </defs>
+        <path
+          d={sourceD}
+          transform={`matrix(${a} ${b} ${c} ${d} ${e} ${f})`}
+          clipPath={`url(#${clipId})`}
+          stroke={sourceIsFill ? 'none' : (obj.fill || attrs.fill || paperSource.stroke)}
+          strokeWidth={sourceIsFill ? 0 : paperSource.strokeWidth}
+          fill={sourceIsFill ? (obj.fill || attrs.fill || paperSource.fill) : 'none'}
+          fillRule={sourceIsFill ? (paperSource.fillRule || 'nonzero') : undefined}
+          opacity={attrs.opacity}
+          strokeLinecap={paperSource.strokeLineCap || 'round'}
+          strokeLinejoin={paperSource.strokeLineJoin || 'round'}
+          strokeMiterlimit={paperSource.strokeMiterLimit}
+          strokeDasharray={paperSource.strokeDashArray?.join(' ')}
+          strokeDashoffset={paperSource.strokeDashOffset}
+          shapeRendering="geometricPrecision"
+        />
+      </g>
+    );
+  }
+
   return (
     <path
       key={key}
@@ -238,6 +364,9 @@ export const renderPath = (obj, index) => {
       opacity={attrs.opacity}
       strokeLinecap={attrs.strokeLinecap}
       strokeLinejoin={attrs.strokeLinejoin}
+      strokeMiterlimit={attrs.strokeMiterlimit}
+      strokeDasharray={attrs.strokeDasharray?.join(' ')}
+      strokeDashoffset={attrs.strokeDashoffset}
       vectorEffect={attrs.vectorEffect}
       shapeRendering="geometricPrecision"
       style={isHighlight ? { mixBlendMode: 'multiply' } : undefined}

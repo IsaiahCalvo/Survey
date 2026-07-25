@@ -7,6 +7,7 @@ import {
   createInkAnnotation,
   normalizeMultiPolygon,
   polygonSetToCommands,
+  styledStrokeCommandsToPolygonSet,
   subtractionStayedInsideSubject,
 } from '../src/utils/paperAnnotationGeometry.js';
 
@@ -529,6 +530,359 @@ test('full mode whole-deletes pen, highlighter, and imported PDF Ink without rew
   assert.deepEqual(result.changedIds, []);
   assert.deepEqual(result.pageAnnotations.objects, [neighbor]);
   assert.equal(result.pageAnnotations.objects[0], neighbor);
+});
+
+test('full erase honors authored dash gaps instead of treating them as solid ink', () => {
+  const dashed = nativeInk('dashed-full-hit', 0, {
+    path: [['M', 0, 0], ['L', 100, 0]],
+    strokeWidth: 10,
+    strokeDashArray: [10, 10],
+    strokeDashOffset: 0,
+    strokeLineCap: 'butt',
+  });
+
+  const gap = erasePageAnnotations({
+    pageAnnotations: { objects: [dashed] },
+    eraserPoints: [{ x: 15, y: 0 }],
+    eraserRadius: 1,
+    mode: 'full',
+  });
+  assert.equal(gap.didChange, false);
+  assert.equal(gap.pageAnnotations.objects[0], dashed);
+
+  const paintedDash = erasePageAnnotations({
+    pageAnnotations: { objects: [dashed] },
+    eraserPoints: [{ x: 5, y: 0 }],
+    eraserRadius: 1,
+    mode: 'full',
+  });
+  assert.deepEqual(paintedDash.deletedIds, ['dashed-full-hit']);
+});
+
+test('zero-length round dashes remain dots with real gaps', () => {
+  const dotted = nativeInk('zero-dash-dots', 0, {
+    path: [['M', 0, 0], ['L', 30, 0]],
+    strokeWidth: 4,
+    strokeDashArray: [0, 10],
+    strokeDashOffset: 0,
+    strokeLineCap: 'round',
+  });
+
+  const gap = erasePageAnnotations({
+    pageAnnotations: { objects: [dotted] },
+    eraserPoints: [{ x: 5, y: 0 }],
+    eraserRadius: 1,
+    mode: 'full',
+  });
+  assert.equal(gap.didChange, false);
+
+  const dot = erasePageAnnotations({
+    pageAnnotations: { objects: [dotted] },
+    eraserPoints: [{ x: 10, y: 0 }],
+    eraserRadius: 1,
+    mode: 'full',
+  });
+  assert.deepEqual(dot.deletedIds, ['zero-dash-dots']);
+
+  const squareDotted = {
+    ...dotted,
+    id: 'zero-dash-squares',
+    strokeLineCap: 'square',
+    data: { ...dotted.data, id: 'zero-dash-squares' },
+  };
+  const squareGap = erasePageAnnotations({
+    pageAnnotations: { objects: [squareDotted] },
+    eraserPoints: [{ x: 5, y: 0 }],
+    eraserRadius: 1,
+    mode: 'full',
+  });
+  assert.equal(squareGap.didChange, false);
+  const squareDot = erasePageAnnotations({
+    pageAnnotations: { objects: [squareDotted] },
+    eraserPoints: [{ x: 10, y: 0 }],
+    eraserRadius: 1,
+    mode: 'full',
+  });
+  assert.deepEqual(squareDot.deletedIds, ['zero-dash-squares']);
+});
+
+test('full erase honors butt caps outside an open stroke endpoint', () => {
+  const butt = nativeInk('butt-full-hit', 0, {
+    path: [['M', 0, 0], ['L', 100, 0]],
+    strokeWidth: 10,
+    strokeLineCap: 'butt',
+  });
+
+  const outside = erasePageAnnotations({
+    pageAnnotations: { objects: [butt] },
+    eraserPoints: [{ x: -4, y: 0 }],
+    eraserRadius: 1,
+    mode: 'full',
+  });
+  assert.equal(outside.didChange, false);
+  assert.equal(outside.pageAnnotations.objects[0], butt);
+
+  const inside = erasePageAnnotations({
+    pageAnnotations: { objects: [butt] },
+    eraserPoints: [{ x: 0.5, y: 0 }],
+    eraserRadius: 1,
+    mode: 'full',
+  });
+  assert.deepEqual(inside.deletedIds, ['butt-full-hit']);
+});
+
+test('PDF zero-width hairlines remain erasable while preserving stored width zero', () => {
+  const hairline = nativeInk('pdf-hairline', 0, {
+    path: [['M', 0, 0], ['L', 100, 0]],
+    strokeWidth: 0,
+    pdfStrokeHairline: true,
+    data: {
+      id: 'pdf-hairline',
+      pdfStrokeHairline: true,
+    },
+  });
+
+  const partial = erasePageAnnotations({
+    pageAnnotations: { objects: [hairline] },
+    eraserPoints: [{ x: 50, y: 0 }],
+    eraserRadius: 5,
+    mode: 'partial',
+  });
+  assert.equal(partial.didChange, true);
+  assert.equal(partial.pageAnnotations.objects[0].strokeWidth, 0);
+  assert.equal(partial.pageAnnotations.objects[0].pdfStrokeHairline, true);
+  assert.equal(partial.pageAnnotations.objects[0].data.pdfStrokeHairline, true);
+  assert.ok(
+    partial.pageAnnotations.objects[0].path.filter((command) => command[0] === 'M').length >= 2,
+    'partial erase splits the visible hairline around the gesture',
+  );
+
+  const full = erasePageAnnotations({
+    pageAnnotations: { objects: [hairline] },
+    eraserPoints: [{ x: 50, y: 0 }],
+    eraserRadius: 5,
+    mode: 'full',
+  });
+  assert.deepEqual(full.deletedIds, ['pdf-hairline']);
+});
+
+test('dashed PDF hairlines erase only painted runs and never repaint a reset phase', () => {
+  const hairline = nativeInk('dashed-pdf-hairline', 0, {
+    path: [['M', 0, 0], ['L', 100, 0]],
+    strokeWidth: 0,
+    strokeDashArray: [10, 10],
+    strokeDashOffset: 0,
+    strokeLineCap: 'butt',
+    pdfStrokeHairline: true,
+    data: {
+      id: 'dashed-pdf-hairline',
+      tool: 'pen',
+      pdfStrokeHairline: true,
+    },
+  });
+
+  for (const mode of ['partial', 'full']) {
+    const gap = erasePageAnnotations({
+      pageAnnotations: { objects: [hairline] },
+      eraserPoints: [{ x: 15, y: 0 }],
+      eraserRadius: 1,
+      mode,
+    });
+    assert.equal(gap.didChange, false, `${mode} leaves a dash gap untouched`);
+    assert.equal(gap.pageAnnotations.objects[0], hairline, 'no-hit preserves object identity');
+  }
+
+  const paintedFull = erasePageAnnotations({
+    pageAnnotations: { objects: [hairline] },
+    eraserPoints: [{ x: 5, y: 0 }],
+    eraserRadius: 1,
+    mode: 'full',
+  });
+  assert.deepEqual(paintedFull.deletedIds, ['dashed-pdf-hairline']);
+
+  const paintedPartial = erasePageAnnotations({
+    pageAnnotations: { objects: [hairline] },
+    eraserPoints: [{ x: 5, y: 0 }],
+    eraserRadius: 1,
+    mode: 'partial',
+  });
+  assert.equal(paintedPartial.didChange, true);
+  const survivor = paintedPartial.pageAnnotations.objects[0];
+  assert.equal(survivor.strokeWidth, 0);
+  assert.equal(survivor.pdfStrokeHairline, true);
+  assert.equal(survivor.strokeDashArray, undefined, 'painted runs are explicit after editing');
+  assert.equal(survivor.strokeDashOffset, undefined, 'no new M can restart the old phase');
+
+  const oldGapStillEmpty = erasePageAnnotations({
+    pageAnnotations: { objects: [survivor] },
+    eraserPoints: [{ x: 15, y: 0 }],
+    eraserRadius: 1,
+    mode: 'full',
+  });
+  assert.equal(oldGapStillEmpty.didChange, false);
+  const nextPaintedRunStillExists = erasePageAnnotations({
+    pageAnnotations: { objects: [survivor] },
+    eraserPoints: [{ x: 25, y: 0 }],
+    eraserRadius: 1,
+    mode: 'full',
+  });
+  assert.deepEqual(nextPaintedRunStillExists.deletedIds, ['dashed-pdf-hairline']);
+});
+
+test('a dashed PDF hairline curve keeps exact quadratic segments after a bite', () => {
+  const curved = nativeInk('curved-dashed-hairline', 0, {
+    path: [
+      ['M', 0, 0],
+      ['Q', 50, 100, 100, 0],
+    ],
+    strokeWidth: 0,
+    strokeDashArray: [200, 10],
+    strokeLineCap: 'round',
+    pdfStrokeHairline: true,
+    data: {
+      id: 'curved-dashed-hairline',
+      tool: 'pen',
+      pdfStrokeHairline: true,
+    },
+  });
+  const sourcePath = structuredClone(curved.path);
+  const bitten = erasePageAnnotations({
+    pageAnnotations: { objects: [curved] },
+    eraserPoints: [{ x: 50, y: 50 }],
+    eraserRadius: 2,
+    mode: 'partial',
+  });
+
+  assert.equal(bitten.didChange, true);
+  assert.deepEqual(curved.path, sourcePath, 'source quadratic is never rewritten');
+  const survivor = bitten.pageAnnotations.objects[0];
+  assert.ok(survivor.path.some((command) => command[0] === 'Q'));
+  assert.equal(
+    survivor.path.some((command) => command[0] === 'L'),
+    false,
+    'dash arc-length mapping never replaces the curve with flattening chords',
+  );
+});
+
+test('zero-length PDF hairline dashes keep real dots and gaps', () => {
+  const dotted = nativeInk('dotted-pdf-hairline', 0, {
+    path: [['M', 0, 0], ['L', 30, 0]],
+    strokeWidth: 0,
+    strokeDashArray: [0, 10],
+    strokeLineCap: 'round',
+    pdfStrokeHairline: true,
+    data: {
+      id: 'dotted-pdf-hairline',
+      tool: 'pen',
+      pdfStrokeHairline: true,
+    },
+  });
+  const gap = erasePageAnnotations({
+    pageAnnotations: { objects: [dotted] },
+    eraserPoints: [{ x: 5, y: 0 }],
+    eraserRadius: 0.5,
+    mode: 'full',
+  });
+  assert.equal(gap.didChange, false);
+  const dot = erasePageAnnotations({
+    pageAnnotations: { objects: [dotted] },
+    eraserPoints: [{ x: 10, y: 0 }],
+    eraserRadius: 0.5,
+    mode: 'full',
+  });
+  assert.deepEqual(dot.deletedIds, ['dotted-pdf-hairline']);
+});
+
+test('zero-length square dashes follow a diagonal path tangent', () => {
+  const distance = 10 / Math.sqrt(2);
+  const diagonal = nativeInk('diagonal-square-dots', 0, {
+    path: [['M', 0, 0], ['L', 30, 30]],
+    strokeWidth: 4,
+    strokeDashArray: [0, 10],
+    strokeLineCap: 'square',
+  });
+  const alongHorizontalDiamondTip = erasePageAnnotations({
+    pageAnnotations: { objects: [diagonal] },
+    eraserPoints: [{ x: distance + 2.4, y: distance }],
+    eraserRadius: 0.1,
+    mode: 'full',
+  });
+  assert.deepEqual(alongHorizontalDiamondTip.deletedIds, ['diagonal-square-dots']);
+
+  const oldAxisAlignedCorner = erasePageAnnotations({
+    pageAnnotations: { objects: [diagonal] },
+    eraserPoints: [{ x: distance + 1.8, y: distance + 1.8 }],
+    eraserRadius: 0.1,
+    mode: 'full',
+  });
+  assert.equal(oldAxisAlignedCorner.didChange, false);
+
+  const sharedOutline = styledStrokeCommandsToPolygonSet(diagonal.path, {
+    strokeWidth: 4,
+    curveTolerance: 0.01,
+    lineCap: 'square',
+    dashArray: [0, 10],
+  });
+  assert.equal(
+    pointInPolygonSet({ x: distance + 2.4, y: distance }, sharedOutline),
+    true,
+  );
+  assert.equal(
+    pointInPolygonSet({ x: distance + 1.8, y: distance + 1.8 }, sharedOutline),
+    false,
+  );
+});
+
+test('full erase removes disjoint PDF appearance companions as one authorized annotation', () => {
+  const layer = (id, x) => ({
+    id,
+    type: 'path',
+    tool: 'pen',
+    path: [['M', x, 0], ['L', x + 20, 0]],
+    stroke: '#111',
+    strokeWidth: 8,
+    fill: null,
+    data: {
+      id,
+      groupId: 'pdf-appearance:source-1',
+      pdfAppearanceCompositeId: 'pdf-appearance:source-1',
+      pdfAppearanceLayerKind: 'stroke',
+    },
+  });
+  const first = layer('appearance-layer-1', 0);
+  const disjointCompanion = layer('appearance-layer-2', 200);
+  const unrelated = layer('appearance-layer-other', 400);
+  unrelated.data.groupId = 'pdf-appearance:source-2';
+  unrelated.data.pdfAppearanceCompositeId = 'pdf-appearance:source-2';
+
+  const erased = erasePageAnnotations({
+    pageAnnotations: { objects: [first, disjointCompanion, unrelated] },
+    eraserPoints: [{ x: 10, y: 0 }],
+    eraserRadius: 4,
+    mode: 'full',
+  });
+
+  assert.deepEqual(
+    erased.pageAnnotations.objects.map((object) => object.id),
+    ['appearance-layer-other'],
+  );
+  assert.deepEqual(
+    erased.deletedIds.sort(),
+    ['appearance-layer-1', 'appearance-layer-2'],
+  );
+
+  const permissionLimited = erasePageAnnotations({
+    pageAnnotations: { objects: [first, disjointCompanion] },
+    eraserPoints: [{ x: 10, y: 0 }],
+    eraserRadius: 4,
+    mode: 'full',
+    canErase: (_object, index) => index === 0,
+  });
+  assert.deepEqual(
+    permissionLimited.pageAnnotations.objects.map((object) => object.id),
+    ['appearance-layer-2'],
+    'group expansion never bypasses per-object erase permission',
+  );
 });
 
 test('thin stroked imported curves become filled shape geometry before subtraction', () => {

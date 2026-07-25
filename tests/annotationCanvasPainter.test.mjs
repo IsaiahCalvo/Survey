@@ -132,6 +132,197 @@ test('Fabric path commands map to the matching Canvas2D path operations', () => 
   ]);
 });
 
+test('PDF hairlines stay one display pixel under anisotropic object transforms', () => {
+  const paint = (path, pathOffset) => {
+    const calls = [];
+    const context = {
+      save: () => {},
+      restore: () => {},
+      beginPath: () => calls.push(['beginPath']),
+      moveTo: (...args) => calls.push(['moveTo', ...args]),
+      lineTo: (...args) => calls.push(['lineTo', ...args]),
+      quadraticCurveTo: (...args) => calls.push(['quadraticCurveTo', ...args]),
+      bezierCurveTo: (...args) => calls.push(['bezierCurveTo', ...args]),
+      closePath: () => calls.push(['closePath']),
+      setLineDash: (dash) => calls.push(['dash', ...dash]),
+      stroke: () => calls.push(['stroke', context.lineWidth]),
+      fill: () => calls.push(['fill']),
+    };
+    drawAnnotationObject(context, {
+      type: 'path',
+      path,
+      left: 100,
+      top: 100,
+      scaleX: 4,
+      scaleY: 1,
+      pathOffset,
+      originX: 'center',
+      originY: 'center',
+      inkGeometryOrigin: 'center-v1',
+      stroke: '#000',
+      strokeWidth: 0,
+      strokeDashArray: [3, 2],
+      strokeDashOffset: 1,
+      strokeLineCap: 'butt',
+      strokeLineJoin: 'miter',
+      strokeMiterLimit: 7,
+      pdfStrokeHairline: true,
+      data: { pdfStrokeHairline: true },
+    }, 2);
+    return { calls, context };
+  };
+
+  const horizontal = paint(
+    [['M', 0, 5], ['L', 10, 5]],
+    { x: 5, y: 5 },
+  );
+  const vertical = paint(
+    [['M', 5, 0], ['L', 5, 10]],
+    { x: 5, y: 5 },
+  );
+
+  assert.deepEqual(
+    horizontal.calls.filter(([kind]) => kind === 'stroke'),
+    [['stroke', 0.5]],
+  );
+  assert.deepEqual(
+    vertical.calls.filter(([kind]) => kind === 'stroke'),
+    [['stroke', 0.5]],
+  );
+  assert.deepEqual(
+    horizontal.calls.find(([kind]) => kind === 'dash'),
+    ['dash', 3, 2],
+  );
+  assert.equal(horizontal.context.lineDashOffset, 1);
+  assert.equal(horizontal.context.lineCap, 'butt');
+  assert.equal(horizontal.context.lineJoin, 'miter');
+  assert.equal(horizontal.context.miterLimit, 7);
+
+  const horizontalMove = horizontal.calls.find(([kind]) => kind === 'moveTo');
+  const horizontalLine = horizontal.calls.find(([kind]) => kind === 'lineTo');
+  const verticalMove = vertical.calls.find(([kind]) => kind === 'moveTo');
+  const verticalLine = vertical.calls.find(([kind]) => kind === 'lineTo');
+  assert.equal(horizontalLine[1] - horizontalMove[1], 40, 'scaleX affects centerline only');
+  assert.equal(verticalLine[2] - verticalMove[2], 10, 'scaleY affects centerline only');
+});
+
+test('Canvas2D paints a partial-erased curve from its analytic source under the cut clip', () => {
+  const calls = [];
+  const context = {
+    save: () => calls.push(['save']),
+    restore: () => calls.push(['restore']),
+    translate: (...args) => calls.push(['translate', ...args]),
+    rotate: (...args) => calls.push(['rotate', ...args]),
+    scale: (...args) => calls.push(['scale', ...args]),
+    transform: (...args) => calls.push(['transform', ...args]),
+    beginPath: () => calls.push(['beginPath']),
+    rect: (...args) => calls.push(['rect', ...args]),
+    moveTo: (...args) => calls.push(['moveTo', ...args]),
+    lineTo: (...args) => calls.push(['lineTo', ...args]),
+    quadraticCurveTo: (...args) => calls.push(['quadraticCurveTo', ...args]),
+    bezierCurveTo: (...args) => calls.push(['bezierCurveTo', ...args]),
+    closePath: () => calls.push(['closePath']),
+    clip: (...args) => calls.push(['clip', ...args]),
+    setLineDash: (dash) => calls.push(['dash', ...dash]),
+    stroke: () => calls.push(['stroke', context.lineWidth]),
+    fill: (...args) => calls.push(['fill', ...args]),
+  };
+
+  drawAnnotationObject(context, {
+    type: 'path',
+    path: [
+      ['M', 0, 0],
+      ['L', 100, 0],
+      ['L', 100, 20],
+      ['L', 0, 20],
+      ['Z'],
+    ],
+    polygons: [[[
+      [0, 0],
+      [100, 0],
+      [100, 20],
+      [0, 20],
+      [0, 0],
+    ]]],
+    paperEraserGeometry: 'v1',
+    paperSourceStroke: {
+      path: [['M', 0, 10], ['Q', 50, -20, 100, 10]],
+      matrix: [1, 0, 0, 1, 0, 0],
+      stroke: '#111111',
+      strokeWidth: 12,
+      strokeLineCap: 'round',
+      strokeLineJoin: 'round',
+    },
+    paperEraserCuts: [[[
+      [45, 0],
+      [55, 0],
+      [55, 20],
+      [45, 20],
+      [45, 0],
+    ]]],
+    left: 0,
+    top: 0,
+    scaleX: 1,
+    scaleY: 1,
+    fill: '#2563eb',
+    stroke: 'transparent',
+    strokeWidth: 0,
+  }, 1);
+
+  assert.deepEqual(calls.find(([kind]) => kind === 'clip'), ['clip', 'evenodd']);
+  assert.deepEqual(
+    calls.find(([kind]) => kind === 'transform'),
+    ['transform', 1, 0, 0, 1, 0, 0],
+  );
+  assert.deepEqual(
+    calls.find(([kind]) => kind === 'quadraticCurveTo'),
+    ['quadraticCurveTo', 50, -20, 100, 10],
+  );
+  assert.deepEqual(
+    calls.filter(([kind]) => kind === 'stroke'),
+    [['stroke', 12]],
+  );
+  assert.equal(context.strokeStyle, '#2563eb', 'live survivor recolor wins over source snapshot');
+  assert.equal(calls.some(([kind]) => kind === 'fill'), false);
+
+  calls.length = 0;
+  drawAnnotationObject(context, {
+    type: 'path',
+    path: [['M', 0, 0], ['L', 100, 0], ['L', 100, 20], ['L', 0, 20], ['Z']],
+    polygons: [[[[0, 0], [100, 0], [100, 20], [0, 20], [0, 0]]]],
+    paperEraserGeometry: 'v1',
+    paperSourceStroke: {
+      path: [['M', 0, 20], ['A', 50, 20, 0, 0, 1, 100, 20], ['Z']],
+      operationalPath: [
+        ['M', 0, 20],
+        ['C', 0, 8.954, 22.386, 0, 50, 0],
+        ['C', 77.614, 0, 100, 8.954, 100, 20],
+        ['Z'],
+      ],
+      matrix: [1, 0, 0, 1, 0, 0],
+      paintMode: 'fill',
+      fill: '#111111',
+      fillRule: 'evenodd',
+    },
+    paperEraserCuts: [[[[45, 0], [55, 0], [55, 20], [45, 20], [45, 0]]]],
+    left: 0,
+    top: 0,
+    scaleX: 1,
+    scaleY: 1,
+    fill: '#2563eb',
+    stroke: 'transparent',
+    strokeWidth: 0,
+  }, 1);
+
+  assert.ok(calls.some(([kind]) => kind === 'bezierCurveTo'));
+  assert.deepEqual(
+    calls.filter(([kind]) => kind === 'fill'),
+    [['fill', 'evenodd']],
+  );
+  assert.equal(context.fillStyle, '#2563eb', 'live survivor recolor wins over source snapshot');
+  assert.equal(calls.some(([kind]) => kind === 'stroke'), false);
+});
+
 test('Canvas2D shapes preserve dashed survey-marker strokes', () => {
   const calls = [];
   const context = {

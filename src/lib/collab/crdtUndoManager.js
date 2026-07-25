@@ -22,11 +22,11 @@
 //   correct undo-scope identity. The per-session numeric id still appears IN the
 //   origin payload for activity log attribution but is NOT the undo-scoping field.
 //
-// Pitfall 8 mitigation (origin wrap on undoManager.undo()):
-//   undoManager.undo() runs inside ydoc.transact with a 'local-undo' source. This origin
-//   is NOT in trackedOrigins, so the undo transaction itself does not get pushed onto the
-//   undo stack as a NEW op (correct: undoing an undo is redo(), not "track the undo").
-//   The 'local-undo' source surfaces in the activity log via Phase 33 doc_yjs_updates row.
+// Pitfall 8 mitigation (attributed undoManager origin):
+//   Yjs must own the undo()/redo() transaction so it can populate the opposite
+//   history stack for nested annotation Y.Maps. userUndo/userRedo temporarily
+//   stamp attribution fields on the UndoManager itself; Yjs uses that same
+//   object as transaction.origin and observers still see local-undo/local-redo.
 
 import * as Y from 'yjs';
 
@@ -44,6 +44,7 @@ import * as Y from 'yjs';
  */
 const memoizedOriginByUser = new Map();
 const UNDO_BOUNDARY_REGISTRY_KEY = '__surveyCrdtUndoBoundaryRegistry';
+const undoReconcileStateByManager = new WeakMap();
 
 function getUndoBoundaryRegistry() {
   const root = globalThis;
@@ -60,32 +61,91 @@ function shallowEqual(a, b) {
   if (typeof a !== 'object') return false;
   if (Array.isArray(a)) {
     if (!Array.isArray(b) || a.length !== b.length) return false;
-    return a.every((value, index) => value === b[index]);
+    return a.every((value, index) => shallowEqual(value, b[index]));
   }
   if (Array.isArray(b)) return false;
   const aKeys = Object.keys(a);
   const bKeys = Object.keys(b);
   if (aKeys.length !== bKeys.length) return false;
-  return aKeys.every((key) => a[key] === b[key]);
+  return aKeys.every(
+    (key) => Object.prototype.hasOwnProperty.call(b, key)
+      && shallowEqual(a[key], b[key]),
+  );
 }
 
-function reconcileResurrectedAnnotations(ydoc) {
+function getResurrectedAnnotationIds(ydoc, transaction) {
+  const annotations = ydoc.getMap('annotations');
+  const events = transaction?.changedParentTypes?.get?.(annotations);
+  if (!Array.isArray(events)) return [];
+
+  const annotationIds = new Set();
+  for (const event of events) {
+    if (event?.target !== annotations) continue;
+    event?.changes?.keys?.forEach?.((change, annotationId) => {
+      if (change?.action === 'add' && annotations.has(annotationId)) {
+        annotationIds.add(annotationId);
+      }
+    });
+  }
+  return [...annotationIds];
+}
+
+function getDeletedAnnotationIds(ydoc, transaction) {
+  const annotations = ydoc.getMap('annotations');
+  const events = transaction?.changedParentTypes?.get?.(annotations);
+  if (!Array.isArray(events)) return [];
+
+  const annotationIds = new Set();
+  for (const event of events) {
+    if (event?.target !== annotations) continue;
+    event?.changes?.keys?.forEach?.((change, annotationId) => {
+      if (change?.action === 'delete' && !annotations.has(annotationId)) {
+        annotationIds.add(annotationId);
+      }
+    });
+  }
+  return [...annotationIds];
+}
+
+function getChangedRootMapIds(transaction, rootMap) {
+  const events = transaction?.changedParentTypes?.get?.(rootMap);
+  if (!Array.isArray(events)) return [];
+  const ids = new Set();
+  for (const event of events) {
+    if (event?.target === rootMap) {
+      event?.changes?.keys?.forEach?.((_change, key) => ids.add(key));
+    } else {
+      const attachment = event?.target?._item;
+      if (attachment?.parent === rootMap && attachment.parentSub != null) {
+        ids.add(attachment.parentSub);
+        continue;
+      }
+      const path = getYEventPath(event);
+      if (path[0] != null) ids.add(path[0]);
+    }
+  }
+  return [...ids];
+}
+
+function reconcileResurrectedAnnotations(ydoc, annotationIds) {
+  if (!Array.isArray(annotationIds) || annotationIds.length === 0) return;
   const annotations = ydoc.getMap('annotations');
   const latestFabricById = ydoc.getMap('__annotationLatestFabric');
   if (!annotations || !latestFabricById || latestFabricById.size === 0) return;
 
   const pending = [];
-  annotations.forEach((annotationMap, annoId) => {
+  for (const annoId of annotationIds) {
+    const annotationMap = annotations.get(annoId);
     const latestFabric = latestFabricById.get(annoId);
-    if (!latestFabric || typeof annotationMap?.get !== 'function') return;
+    if (!latestFabric || typeof annotationMap?.get !== 'function') continue;
     const fabricMap = annotationMap.get('fabric');
-    if (!fabricMap || typeof fabricMap.get !== 'function') return;
+    if (!fabricMap || typeof fabricMap.get !== 'function') continue;
     for (const key of Object.keys(latestFabric)) {
       if (!shallowEqual(fabricMap.get(key), latestFabric[key])) {
         pending.push({ fabricMap, key, value: latestFabric[key] });
       }
     }
-  });
+  }
 
   if (pending.length === 0) return;
   ydoc.transact(() => {
@@ -93,6 +153,281 @@ function reconcileResurrectedAnnotations(ydoc) {
       fabricMap.set(key, value);
     }
   }, { source: 'crdt-resurrection-reconcile' });
+}
+
+function yMapHasForeignOwner(ownerMap, localUserId) {
+  if (!ownerMap) return false;
+  let hasForeignOwner = false;
+  try {
+    ownerMap.forEach?.((ownerId) => {
+      if (ownerId != null && ownerId !== localUserId) {
+        hasForeignOwner = true;
+      }
+    });
+  } catch (_) {
+    // Fall through to plain-object compatibility below.
+  }
+  if (hasForeignOwner) return true;
+  if (typeof ownerMap === 'object' && typeof ownerMap.forEach !== 'function') {
+    return Object.values(ownerMap).some(
+      (ownerId) => ownerId != null && ownerId !== localUserId,
+    );
+  }
+  return false;
+}
+
+function annotationHasForeignFabricOwner(ydoc, annotationId, localUserId) {
+  const ownersById = ydoc.getMap('__annotationFabricFieldOwners');
+  const ownerMap = ownersById.get(annotationId);
+  if (ownerMap) {
+    return yMapHasForeignOwner(ownerMap, localUserId);
+  }
+
+  // Backward-compatible fallback for annotations edited before the field-owner
+  // map existed. It is deliberately narrower than the field map: new commits
+  // always use exact changed-key ownership.
+  const annotationMap = ydoc.getMap('annotations').get(annotationId);
+  const lastEditorId = annotationMap?.get?.('meta')?.get?.('lastEditorId');
+  return lastEditorId != null && lastEditorId !== localUserId;
+}
+
+function getAnnotationItemRole(
+  item,
+  annotations,
+  fabricOwnersById,
+  latestFabricFieldsById,
+) {
+  if (!item || !annotations) return null;
+  if (item.parent === annotations && item.parentSub != null) {
+    return { annotationId: item.parentSub, role: 'annotation-container' };
+  }
+  if (item.parent === fabricOwnersById && item.parentSub != null) {
+    return { annotationId: item.parentSub, role: 'owner-container' };
+  }
+  if (item.parent === latestFabricFieldsById && item.parentSub != null) {
+    return { annotationId: item.parentSub, role: 'latest-fields-container' };
+  }
+  const ownerAttachment = item.parent?._item;
+  if (
+    ownerAttachment?.parent === fabricOwnersById
+    && ownerAttachment.parentSub != null
+  ) {
+    return {
+      annotationId: ownerAttachment.parentSub,
+      role: 'owner-field',
+    };
+  }
+  if (
+    ownerAttachment?.parent === latestFabricFieldsById
+    && ownerAttachment.parentSub != null
+  ) {
+    return {
+      annotationId: ownerAttachment.parentSub,
+      role: 'latest-field',
+    };
+  }
+
+  const directParent = item.parent;
+  const annotationAttachment = directParent?._item;
+  if (
+    annotationAttachment?.parent === annotations
+    && annotationAttachment.parentSub != null
+    && (item.parentSub === 'fabric' || item.parentSub === 'meta')
+  ) {
+    return {
+      annotationId: annotationAttachment.parentSub,
+      role: `${item.parentSub}-container`,
+    };
+  }
+  return null;
+}
+
+function snapshotAnnotationForReconcile(ydoc, annotationId) {
+  const live = ydoc.getMap('annotations').get(annotationId);
+  if (typeof live?.toJSON === 'function') {
+    try {
+      return live.toJSON();
+    } catch (_) {
+      // Fall through to the out-of-scope coherent snapshot.
+    }
+  }
+  return ydoc.getMap('__annotationLatestSnapshot').get(annotationId) || null;
+}
+
+function setMissingPlainFields(targetMap, values) {
+  if (!targetMap || !values || typeof values !== 'object') return;
+  for (const [key, value] of Object.entries(values)) {
+    if (!targetMap.has(key)) {
+      targetMap.set(key, value);
+    }
+  }
+}
+
+function reconcileProtectedUndoCreate(ydoc, protectedSnapshots) {
+  if (!(protectedSnapshots instanceof Map) || protectedSnapshots.size === 0) return;
+  const annotations = ydoc.getMap('annotations');
+
+  ydoc.transact(() => {
+    const latestSnapshots = ydoc.getMap('__annotationLatestSnapshot');
+    for (const [annotationId, snapshot] of protectedSnapshots) {
+      if (!snapshot || typeof snapshot !== 'object') continue;
+
+      let annotationMap = annotations.get(annotationId);
+      if (!annotationMap) {
+        annotationMap = new Y.Map();
+        annotations.set(annotationId, annotationMap);
+      }
+
+      for (const [key, value] of Object.entries(snapshot)) {
+        if (key === 'fabric' || key === 'meta') continue;
+        if (!annotationMap.has(key)) {
+          annotationMap.set(key, value);
+        }
+      }
+
+      for (const nestedKey of ['fabric', 'meta']) {
+        const nestedValues = snapshot[nestedKey];
+        if (!nestedValues || typeof nestedValues !== 'object') continue;
+        let nestedMap = annotationMap.get(nestedKey);
+        if (!nestedMap || typeof nestedMap.has !== 'function') {
+          nestedMap = new Y.Map();
+          annotationMap.set(nestedKey, nestedMap);
+        }
+        // Never overwrite a surviving value: it may be collaborator-owned and
+        // newer than the creator's pre-undo snapshot.
+        setMissingPlainFields(nestedMap, nestedValues);
+      }
+      latestSnapshots.set(annotationId, annotationMap.toJSON());
+    }
+  }, { source: 'crdt-undo-create-reconcile' });
+}
+
+function prepareProtectedCreateSnapshots(ydoc, undoManager, localUserId) {
+  const state = undoReconcileStateByManager.get(undoManager);
+  const stackItem = undoManager?.undoStack?.[undoManager.undoStack.length - 1];
+  const createdAnnotationIds = stackItem?.meta?.get?.('createdAnnotationIds');
+  if (!Array.isArray(createdAnnotationIds)) return [];
+  if (!state) return createdAnnotationIds;
+
+  const annotations = ydoc.getMap('annotations');
+  for (const annotationId of createdAnnotationIds) {
+    state.creatorUndoInProgressIds.add(annotationId);
+  }
+  for (const annotationId of createdAnnotationIds) {
+    if (!annotationHasForeignFabricOwner(ydoc, annotationId, localUserId)) continue;
+    const snapshot = snapshotAnnotationForReconcile(ydoc, annotationId);
+    if (snapshot) state.protectedSnapshots.set(annotationId, snapshot);
+  }
+  return createdAnnotationIds;
+}
+
+function markUndoneCreates(ydoc, createdAnnotationIds, ctx) {
+  if (!Array.isArray(createdAnnotationIds) || createdAnnotationIds.length === 0) return;
+  const annotations = ydoc.getMap('annotations');
+  const missingIds = createdAnnotationIds.filter(
+    (annotationId) => !annotations.has(annotationId),
+  );
+  if (missingIds.length === 0) return;
+
+  ydoc.transact(() => {
+    const markers = ydoc.getMap('__annotationUndoCreateMarkers');
+    for (const annotationId of missingIds) {
+      markers.set(annotationId, {
+        creatorId: ctx.userId,
+        deviceId: ctx.deviceId,
+        undoneAt: Date.now(),
+      });
+    }
+  }, { source: 'crdt-undo-create-marker', userId: ctx.userId });
+}
+
+function reconcileLateCollaboratorEdits(ydoc, annotationIds) {
+  if (!(annotationIds instanceof Set) || annotationIds.size === 0) return;
+  const annotations = ydoc.getMap('annotations');
+  const ownersById = ydoc.getMap('__annotationFabricFieldOwners');
+  const latestFabricFieldsById = ydoc.getMap('__annotationLatestFabricFields');
+  const latestSnapshots = ydoc.getMap('__annotationLatestSnapshot');
+  const undoCreateMarkers = ydoc.getMap('__annotationUndoCreateMarkers');
+  const deletionTombstones = ydoc.getMap('__annotationDeletionTombstones');
+  const pending = [];
+
+  for (const annotationId of annotationIds) {
+    const marker = undoCreateMarkers.get(annotationId);
+    if (!marker) continue;
+    if (deletionTombstones.has(annotationId)) {
+      if (annotations.has(annotationId)) {
+        pending.push({ annotationId, deleteAnnotation: true });
+      }
+      continue;
+    }
+
+    const snapshot = latestSnapshots.get(annotationId);
+    if (!snapshot) continue;
+    const creatorId = marker?.creatorId ?? snapshot?.meta?.authorId;
+    if (!creatorId) continue;
+    const ownerMap = ownersById.get(annotationId);
+    if (!yMapHasForeignOwner(ownerMap, creatorId)) continue;
+    pending.push({
+      annotationId,
+      creatorId,
+      ownerMap,
+      latestFabricFields: latestFabricFieldsById.get(annotationId),
+      snapshot,
+    });
+  }
+
+  if (pending.length === 0) return;
+  ydoc.transact(() => {
+    for (const entry of pending) {
+      if (entry.deleteAnnotation) {
+        annotations.delete(entry.annotationId);
+        continue;
+      }
+
+      const {
+        annotationId,
+        creatorId,
+        ownerMap,
+        latestFabricFields,
+        snapshot,
+      } = entry;
+      let annotationMap = annotations.get(annotationId);
+      if (!annotationMap) {
+        annotationMap = new Y.Map();
+        annotations.set(annotationId, annotationMap);
+      }
+
+      for (const [key, value] of Object.entries(snapshot)) {
+        if (key === 'fabric' || key === 'meta') continue;
+        if (!annotationMap.has(key)) annotationMap.set(key, value);
+      }
+
+      for (const nestedKey of ['fabric', 'meta']) {
+        const nestedValues = snapshot[nestedKey];
+        if (!nestedValues || typeof nestedValues !== 'object') continue;
+        let nestedMap = annotationMap.get(nestedKey);
+        if (!nestedMap || typeof nestedMap.has !== 'function') {
+          nestedMap = new Y.Map();
+          annotationMap.set(nestedKey, nestedMap);
+        }
+        setMissingPlainFields(nestedMap, nestedValues);
+      }
+
+      const fabricMap = annotationMap.get('fabric');
+      ownerMap?.forEach?.((ownerId, key) => {
+        if (
+          ownerId === creatorId
+          || !latestFabricFields?.has?.(key)
+        ) {
+          return;
+        }
+        const latestValue = latestFabricFields.get(key);
+        if (!shallowEqual(fabricMap.get(key), latestValue)) {
+          fabricMap.set(key, latestValue);
+        }
+      });
+    }
+  }, { source: 'crdt-undo-create-reconcile' });
 }
 
 function getYEventPath(event) {
@@ -256,8 +591,23 @@ export function getLocalFabricOrigin({ userId, deviceId, sessionId, clientID }) 
  */
 export function createUndoManager({ ydoc, userId, deviceId, sessionId, clientID, captureTimeout = 500, historyCap = 100 }) {
   const origin = getLocalFabricOrigin({ userId, deviceId, sessionId, clientID });
+  const protectedSnapshots = new Map();
+  const protectedDuringHistoryAction = new Set();
+  const creatorUndoInProgressIds = new Set();
+  const annotations = ydoc.getMap('annotations');
+  const fabricOwnersById = ydoc.getMap('__annotationFabricFieldOwners');
+  const deletionTombstones = ydoc.getMap('__annotationDeletionTombstones');
+  const latestSnapshots = ydoc.getMap('__annotationLatestSnapshot');
+  const latestFabricFields = ydoc.getMap('__annotationLatestFabricFields');
+  const undoCreateMarkers = ydoc.getMap('__annotationUndoCreateMarkers');
   const undoManager = new Y.UndoManager(
-    [ydoc.getMap('annotations'), ydoc.getMap('callouts')],
+    [
+      annotations,
+      ydoc.getMap('callouts'),
+      fabricOwnersById,
+      latestFabricFields,
+      deletionTombstones,
+    ],
     {
       // Reference equality (Pitfall 7): the SAME memoized object reference is the
       // single Set member, AND the same reference is what the bridge passes as the
@@ -265,8 +615,65 @@ export function createUndoManager({ ydoc, userId, deviceId, sessionId, clientID,
       // fresh frozen object with the same shape would silently disable undo scoping.
       trackedOrigins: new Set([origin]),
       captureTimeout,
+      deleteFilter: (item) => {
+        const annotationItem = getAnnotationItemRole(
+          item,
+          annotations,
+          fabricOwnersById,
+          latestFabricFields,
+        );
+        // Keep the internal ownership container integrated even when it only
+        // contains creator-owned fields. Its presence distinguishes an exact
+        // "no collaborator data change" from the legacy lastEditor fallback
+        // while the rest of the CREATE is being deleted.
+        if (
+          annotationItem?.role === 'owner-container'
+          || annotationItem?.role === 'latest-fields-container'
+        ) {
+          return false;
+        }
+        if (
+          (
+            annotationItem?.role === 'owner-field'
+            || annotationItem?.role === 'latest-field'
+          )
+          && creatorUndoInProgressIds.has(annotationItem.annotationId)
+        ) {
+          return false;
+        }
+        if (
+          !annotationItem
+          || !annotationHasForeignFabricOwner(
+            ydoc,
+            annotationItem.annotationId,
+            userId,
+          )
+        ) {
+          return true;
+        }
+
+        const { annotationId } = annotationItem;
+        if (!protectedSnapshots.has(annotationId)) {
+          const snapshot = ydoc
+            .getMap('__annotationLatestSnapshot')
+            .get(annotationId)
+            || snapshotAnnotationForReconcile(ydoc, annotationId);
+          if (snapshot) protectedSnapshots.set(annotationId, snapshot);
+        }
+        protectedDuringHistoryAction.add(annotationId);
+
+        // Keep the shared parent and its nested map containers integrated.
+        // Creator-owned leaf values may still be undone; the reconciliation
+        // pass restores only missing values and never overwrites B-owned ones.
+        return false;
+      },
     },
   );
+  undoReconcileStateByManager.set(undoManager, {
+    protectedSnapshots,
+    protectedDuringHistoryAction,
+    creatorUndoInProgressIds,
+  });
 
   // History cap: trim oldest when stack-item-added fires and undoStack > cap.
   // UX rationale (CONTEXT.md): matches Figma defaults; bounded memory; oldest-out is the
@@ -275,6 +682,16 @@ export function createUndoManager({ ydoc, userId, deviceId, sessionId, clientID,
     try {
       event?.stackItem?.meta?.set?.('historySource', 'Yjs history');
       event?.stackItem?.meta?.set?.('historyDiagnostics', summarizeYjsStackEvent(ydoc, event));
+      const existingCreatedIds = event?.stackItem?.meta?.get?.('createdAnnotationIds') || [];
+      event?.stackItem?.meta?.set?.(
+        'createdAnnotationIds',
+        [
+          ...new Set([
+            ...existingCreatedIds,
+            ...getResurrectedAnnotationIds(ydoc, event),
+          ]),
+        ],
+      );
     } catch (_) {
       // diagnostics must never affect undo behavior
     }
@@ -283,9 +700,54 @@ export function createUndoManager({ ydoc, userId, deviceId, sessionId, clientID,
     }
   };
   undoManager.on('stack-item-added', onStackItemAdded);
+  const onStackItemUpdated = (event = {}) => {
+    try {
+      const existingCreatedIds = event?.stackItem?.meta?.get?.('createdAnnotationIds') || [];
+      event?.stackItem?.meta?.set?.(
+        'createdAnnotationIds',
+        [
+          ...new Set([
+            ...existingCreatedIds,
+            ...getResurrectedAnnotationIds(ydoc, event),
+          ]),
+        ],
+      );
+    } catch (_) {
+      // Reconciliation metadata must never affect history behavior.
+    }
+  };
+  undoManager.on('stack-item-updated', onStackItemUpdated);
   const onAfterTransaction = (transaction) => {
     if (transaction.origin === undoManager || transaction.origin?.source === 'local-undo') {
-      reconcileResurrectedAnnotations(ydoc);
+      creatorUndoInProgressIds.clear();
+      if (protectedDuringHistoryAction.size > 0) {
+        const snapshotsToReconcile = new Map();
+        for (const annotationId of protectedDuringHistoryAction) {
+          const snapshot = protectedSnapshots.get(annotationId);
+          if (snapshot) snapshotsToReconcile.set(annotationId, snapshot);
+        }
+        protectedDuringHistoryAction.clear();
+        protectedSnapshots.clear();
+        reconcileProtectedUndoCreate(ydoc, snapshotsToReconcile);
+      }
+      reconcileResurrectedAnnotations(
+        ydoc,
+        getResurrectedAnnotationIds(ydoc, transaction),
+      );
+    }
+
+    if (transaction.origin?.source !== 'crdt-undo-create-reconcile') {
+      reconcileLateCollaboratorEdits(
+        ydoc,
+        new Set([
+          ...getDeletedAnnotationIds(ydoc, transaction),
+          ...getChangedRootMapIds(transaction, fabricOwnersById),
+          ...getChangedRootMapIds(transaction, latestSnapshots),
+          ...getChangedRootMapIds(transaction, latestFabricFields),
+          ...getChangedRootMapIds(transaction, undoCreateMarkers),
+          ...getChangedRootMapIds(transaction, deletionTombstones),
+        ]),
+      );
     }
   };
   ydoc.on('afterTransaction', onAfterTransaction);
@@ -305,19 +767,55 @@ export function createUndoManager({ ydoc, userId, deviceId, sessionId, clientID,
     }
     ydoc.off('afterTransaction', onAfterTransaction);
     undoManager.off('stack-item-added', onStackItemAdded);
+    undoManager.off('stack-item-updated', onStackItemUpdated);
+    undoReconcileStateByManager.delete(undoManager);
     undoManager.destroy();
   };
 
   return { undoManager, origin, dispose };
 }
 
+function runAttributedHistoryAction(undoManager, source, ctx, action) {
+  const keys = ['source', 'userId', 'deviceId', 'sessionId', 'clientID', 'ts'];
+  const previous = new Map(keys.map((key) => [
+    key,
+    {
+      existed: Object.prototype.hasOwnProperty.call(undoManager, key),
+      value: undoManager[key],
+    },
+  ]));
+  const attribution = {
+    source,
+    userId: ctx.userId,
+    deviceId: ctx.deviceId,
+    sessionId: ctx.sessionId,
+    clientID: ctx.clientID,
+    ts: Date.now(),
+  };
+
+  Object.assign(undoManager, attribution);
+  try {
+    action();
+  } finally {
+    for (const key of keys) {
+      const prior = previous.get(key);
+      if (prior.existed) {
+        undoManager[key] = prior.value;
+      } else {
+        delete undoManager[key];
+      }
+    }
+  }
+}
+
 /**
  * User-pressed Cmd+Z (or Home-tab Undo button or Electron Edit > Undo menu item).
  *
- * Wraps undoManager.undo() in ydoc.transact with a 'local-undo' source. This origin is
- * NOT in trackedOrigins so the undo transaction itself does not get pushed onto the
- * undo stack — pressing Cmd+Z again pops the NEXT item, not "the undo of the undo"
- * (that is what redo() does).
+ * Lets Y.UndoManager own the transaction so edits inside nested annotation.fabric
+ * Y.Maps move onto redoStack correctly. During the synchronous transaction, the
+ * UndoManager instance carries local attribution fields. Yjs already uses that
+ * same instance as transaction.origin, so observers retain the local-undo signal
+ * without an outer transaction that would discard nested redo history.
  *
  * UX rationale (CONTEXT.md, Pitfall 8): activity log (Phase 33) reads the origin
  * payload from doc_yjs_updates.origin column. 'local-undo' tells Phase 33's audit
@@ -329,34 +827,34 @@ export function createUndoManager({ ydoc, userId, deviceId, sessionId, clientID,
  * @param {{userId: string, deviceId: string, sessionId: string, clientID: number}} ctx
  */
 export function userUndo(ydoc, undoManager, ctx) {
-  ydoc.transact(() => undoManager.undo(), {
-    source: 'local-undo',
-    userId: ctx.userId,
-    deviceId: ctx.deviceId,
-    sessionId: ctx.sessionId,
-    clientID: ctx.clientID,
-    ts: Date.now(),
-  });
+  const createdAnnotationIds = prepareProtectedCreateSnapshots(
+    ydoc,
+    undoManager,
+    ctx.userId,
+  );
+  runAttributedHistoryAction(
+    undoManager,
+    'local-undo',
+    ctx,
+    () => undoManager.undo(),
+  );
+  markUndoneCreates(ydoc, createdAnnotationIds, ctx);
 }
 
 /**
  * User-pressed Cmd+Shift+Z (or Ctrl+Y / Home-tab Redo button / Electron Edit > Redo).
  *
- * Same wrap pattern as userUndo, with 'local-redo' source. Pitfall 8 mitigation parity —
- * the redo transaction is attributable in the Phase 33 activity log, and 'local-redo'
- * is NOT in trackedOrigins so the redo itself doesn't push a new undo entry.
+ * Same attributed UndoManager-origin pattern as userUndo, with local-redo.
  *
  * @param {Y.Doc} ydoc
  * @param {Y.UndoManager} undoManager
  * @param {{userId: string, deviceId: string, sessionId: string, clientID: number}} ctx
  */
 export function userRedo(ydoc, undoManager, ctx) {
-  ydoc.transact(() => undoManager.redo(), {
-    source: 'local-redo',
-    userId: ctx.userId,
-    deviceId: ctx.deviceId,
-    sessionId: ctx.sessionId,
-    clientID: ctx.clientID,
-    ts: Date.now(),
-  });
+  runAttributedHistoryAction(
+    undoManager,
+    'local-redo',
+    ctx,
+    () => undoManager.redo(),
+  );
 }

@@ -535,7 +535,7 @@ test('exported hidden app layer state reimports separately from regular PDF anno
   }
 });
 
-test('convertPdfAnnotationToFabric smooths Ink paths and normalizes stroke width', () => {
+test('convertPdfAnnotationToFabric preserves InkList path commands and native stroke width', () => {
   const viewport = makeViewport({ pageHeight: 100 });
 
   const annotation = {
@@ -553,11 +553,14 @@ test('convertPdfAnnotationToFabric smooths Ink paths and normalizes stroke width
 
   assert.equal(obj.type, 'path');
   assert.equal(obj.stroke, 'rgba(0, 0, 255, 0.5)');
-  // /BS width 3 → 3 * 0.82 = 2.46, then floored to the 2.5 page-unit
-  // visibility minimum applied at import (item 5a, 2026-07-17 — the floor
-  // moved out of the renderer into the stored value).
-  assert.ok(Math.abs(obj.strokeWidth - 2.5) < 1e-6);
-  assert.ok(obj.path.some((segment) => segment[0] === 'Q'));
+  // /BS width is rendering/export geometry truth. Interaction code may use a
+  // larger hit target, but import must not thicken or shrink the annotation.
+  assert.equal(obj.strokeWidth, 3);
+  assert.deepEqual(
+    obj.path.map((segment) => segment[0]),
+    ['M', 'L', 'L'],
+    'InkList points remain exact unless a stroked appearance path is available',
+  );
 });
 
 test('convertPdfAnnotationToFabric maps PDF Squiggly to stroke path contract', () => {
@@ -848,6 +851,20 @@ test('convertPdfAnnotationToFabric preserves line endings and callout metadata f
   assert.equal(obj.data?.pdfIntent, 'LineArrow');
   assert.equal(obj.data?.pdfCalloutPoints?.length, 3);
   assert.deepEqual(obj.strokeDashArray, [4, 2]);
+
+  const dotted = convertPdfAnnotationToFabric({
+    ...annotation,
+    id: 'line-zero-dash-1',
+    borderStyle: {
+      style: 'D',
+      dashArray: [0, 10],
+    },
+  }, viewport, 1);
+  assert.deepEqual(
+    dotted.strokeDashArray,
+    [0, 10],
+    'valid zero dash entries must not be deleted',
+  );
 });
 
 test('convertPdfAnnotationToFabric maps text and freetext-callout annotations with interaction metadata', () => {
