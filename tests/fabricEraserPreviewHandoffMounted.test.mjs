@@ -369,6 +369,107 @@ test('safe SVG preview carves only permitted ink and preserves foreign/locked co
   await mounted.unmount();
 });
 
+test('one partial-erase drag continues past a counter into later shapes, text, and ink', async () => {
+  const segmentPath = (id, x1, x2) => ({
+    ...pathObject({ id }),
+    path: [['M', x1, 50], ['L', x2, 50]],
+    width: x2 - x1,
+  });
+  const counter = {
+    ...atomicObject({ id: 'counter-mid', type: 'circle' }),
+    left: 28,
+    top: 38,
+    width: 12,
+    height: 24,
+    data: {
+      id: 'counter-mid',
+      type: 'counter',
+      annotationType: 'counter',
+      displayNumber: 2,
+      seriesId: 'mixed-series',
+      seriesStart: 1,
+      createdAt: 2,
+      authorId: 'collaborator',
+    },
+  };
+  const shape = {
+    ...atomicObject({ id: 'shape-after-counter', type: 'rect' }),
+    left: 45,
+    top: 38,
+    width: 12,
+    height: 24,
+  };
+  const text = {
+    ...atomicObject({ id: 'text-after-counter', type: 'textbox' }),
+    left: 62,
+    top: 38,
+    width: 12,
+    height: 24,
+    data: { id: 'text-after-counter', tool: 'text', authorId: 'collaborator' },
+  };
+  const pageObjects = [
+    segmentPath('ink-before-counter', 2, 24),
+    counter,
+    shape,
+    text,
+    segmentPath('ink-after-counter', 76, 98),
+  ];
+  const mounted = await mountEraser({ pageObjects });
+
+  await act(async () => {
+    mounted.surface.dispatchEvent(pointer('pointerdown', {
+      x: 4,
+      y: 50,
+      buttons: 1,
+    }));
+    for (const x of [20, 35, 52, 69, 80, 84]) {
+      mounted.surface.dispatchEvent(pointer('pointermove', {
+        x,
+        y: 50,
+        buttons: 1,
+      }));
+    }
+  });
+
+  const clone = document.querySelector('[data-eraser-mask-clone="1"]');
+  assert.ok(clone, 'the continuous gesture must retain one live preview');
+  assert.equal(
+    clone.querySelector('[data-annotation-id="counter-mid"]').style.display,
+    'none',
+  );
+  assert.equal(
+    clone.querySelector('[data-annotation-id="shape-after-counter"]').style.display,
+    'none',
+  );
+  assert.equal(
+    clone.querySelector('[data-annotation-id="text-after-counter"]').style.display,
+    'none',
+  );
+  assert.match(
+    clone.querySelector('[data-annotation-id="ink-after-counter"]').getAttribute('mask') || '',
+    /^url\(#eraser-carve-mask-/,
+    'crossing the counter must not stop live carving of later ink',
+  );
+
+  await act(async () => {
+    mounted.surface.dispatchEvent(pointer('pointerup', {
+      x: 84,
+      y: 50,
+      buttons: 0,
+    }));
+    await Promise.resolve();
+  });
+
+  assert.equal(mounted.commits.length, 1);
+  const committedIds = mounted.commits[0].objects.map((object) => object.id);
+  assert.ok(committedIds.includes('ink-before-counter'));
+  assert.ok(committedIds.includes('ink-after-counter'));
+  assert.ok(!committedIds.includes('counter-mid'));
+  assert.ok(!committedIds.includes('shape-after-counter'));
+  assert.ok(!committedIds.includes('text-after-counter'));
+  await mounted.unmount();
+});
+
 test('live preview namespaces imported-ink clip ids instead of resolving into the hidden SVG', async (t) => {
   const mounted = await mountEraser();
   t.after(() => mounted.unmount());
