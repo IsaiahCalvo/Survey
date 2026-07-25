@@ -62,6 +62,46 @@ const getEraserHandoffTestFlags = () => (
     : null
 );
 
+// Keep live mask reparsing independent of gesture length. A growing `d`
+// rewritten on every pointermove makes the browser repeatedly parse the whole
+// held gesture (quadratic total work). Completed chunks are immutable; the
+// next chunk repeats the previous endpoint so round joins stay gap-free.
+const LIVE_ERASE_PREVIEW_CHUNK_POINT_LIMIT = 32;
+
+const samePreviewPoint = (left, right) => (
+  left?.x === right?.x && left?.y === right?.y
+);
+
+const canDropPreviewMiddlePoint = (start, middle, end) => {
+  const firstX = middle.x - start.x;
+  const firstY = middle.y - start.y;
+  const secondX = end.x - middle.x;
+  const secondY = end.y - middle.y;
+  // Exact collinearity plus forward travel preserves the swept round-capped
+  // segment exactly. Backtracking points stay because they can change coverage.
+  return (
+    firstX * secondY === firstY * secondX
+    && firstX * secondX + firstY * secondY >= 0
+  );
+};
+
+const previewPathData = (points) => points.map((point, index) => (
+  `${index === 0 ? 'M' : 'L'} ${point.x} ${point.y}`
+)).join(' ');
+
+const createLiveErasePreviewPath = (mask, radius, chunkIndex) => {
+  const path = mask.ownerDocument.createElementNS('http://www.w3.org/2000/svg', 'path');
+  path.setAttribute('d', '');
+  path.setAttribute('fill', 'none');
+  path.setAttribute('stroke', '#000');
+  path.setAttribute('stroke-width', String(radius * 2));
+  path.setAttribute('stroke-linecap', 'round');
+  path.setAttribute('stroke-linejoin', 'round');
+  path.setAttribute('data-eraser-carve-chunk', String(chunkIndex));
+  mask.appendChild(path);
+  return path;
+};
+
 // An SVG clone shares the document-wide fragment-id namespace with its source.
 // Imported ink can already contain clip paths after one partial erase, so an
 // unchanged clone would duplicate those ids. Chromium may then resolve the
@@ -732,7 +772,6 @@ const FabricEraserCanvas = memo(({
     if (clone?.carve) {
       // Mask-clone mode: carve in PAGE UNITS directly (mask user space).
       const radius = gestureRadius;
-      clone.carve.setAttribute('stroke-width', String(radius * 2));
       if (points.length === 1) {
         const SVG_NS = 'http://www.w3.org/2000/svg';
         const dot = document.createElementNS(SVG_NS, 'circle');
@@ -743,12 +782,58 @@ const FabricEraserCanvas = memo(({
         clone.mask?.appendChild(dot);
         return;
       }
-      let d = clone.carve.getAttribute('d') || '';
-      d += ` M ${points[0].x} ${points[0].y}`;
-      for (let index = 1; index < points.length; index += 1) {
-        d += ` L ${points[index].x} ${points[index].y}`;
+
+      const gestureId = latestEraseGestureRef.current;
+      if (clone.activeCarveGestureId !== gestureId) {
+        clone.activeCarveGestureId = gestureId;
+        clone.activeCarvePoints = [];
+        if (clone.carve.getAttribute('d')) {
+          clone.carveChunkCount += 1;
+          clone.carve = createLiveErasePreviewPath(
+            clone.mask,
+            radius,
+            clone.carveChunkCount,
+          );
+        } else {
+          clone.carve.setAttribute('stroke-width', String(radius * 2));
+        }
       }
-      clone.carve.setAttribute('d', d.trim());
+
+      let activeChanged = false;
+      for (const point of points) {
+        const activePoints = clone.activeCarvePoints;
+        const last = activePoints[activePoints.length - 1];
+        if (samePreviewPoint(last, point)) continue;
+        if (
+          activePoints.length >= 2
+          && canDropPreviewMiddlePoint(
+            activePoints[activePoints.length - 2],
+            last,
+            point,
+          )
+        ) {
+          activePoints[activePoints.length - 1] = point;
+        } else {
+          activePoints.push(point);
+        }
+        activeChanged = true;
+
+        if (activePoints.length >= LIVE_ERASE_PREVIEW_CHUNK_POINT_LIMIT) {
+          clone.carve.setAttribute('d', previewPathData(activePoints));
+          const overlapPoint = activePoints[activePoints.length - 1];
+          clone.carveChunkCount += 1;
+          clone.carve = createLiveErasePreviewPath(
+            clone.mask,
+            radius,
+            clone.carveChunkCount,
+          );
+          clone.activeCarvePoints = [overlapPoint];
+          activeChanged = false;
+        }
+      }
+      if (activeChanged && clone.activeCarvePoints.length >= 2) {
+        clone.carve.setAttribute('d', previewPathData(clone.activeCarvePoints));
+      }
       return;
     }
     const preview = livePreviewCanvasRef.current;
@@ -1188,6 +1273,7 @@ const FabricEraserCanvas = memo(({
       carve.setAttribute('stroke', '#000');
       carve.setAttribute('stroke-linecap', 'round');
       carve.setAttribute('stroke-linejoin', 'round');
+      carve.setAttribute('data-eraser-carve-chunk', '0');
       mask.appendChild(keep);
       mask.appendChild(carve);
       defs.appendChild(mask);
@@ -1225,6 +1311,9 @@ const FabricEraserCanvas = memo(({
       carve,
       mask: maskEl,
       maskId: liveMaskId,
+      activeCarveGestureId: null,
+      activeCarvePoints: [],
+      carveChunkCount: 0,
       maskedKeys: new Set(),
       indexHidden: new Set(),
     };

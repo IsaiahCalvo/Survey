@@ -470,6 +470,114 @@ test('one partial-erase drag continues past a counter into later shapes, text, a
   await mounted.unmount();
 });
 
+test('dense blank-start drag keeps live SVG work bounded and reaches late ink with a live cursor', async (t) => {
+  const pageObjects = [
+    pathObject({ id: 'early-ink', y: 30 }),
+    pathObject({ id: 'late-ink', y: 80 }),
+  ];
+  const mounted = await mountEraser({ pageObjects });
+  t.after(async () => {
+    await mounted.rerender({ interruptionPolicy: 'cancel' });
+    await mounted.unmount();
+  });
+  const nativeSetAttribute = dom.window.SVGElement.prototype.setAttribute;
+  const carveWrites = [];
+  dom.window.SVGElement.prototype.setAttribute = function trackedSetAttribute(name, value) {
+    if (
+      name === 'd'
+      && this.closest?.('[data-eraser-mask-clone="1"]')
+      && this.getAttribute('stroke') === '#000'
+    ) {
+      carveWrites.push(String(value).length);
+    }
+    return nativeSetAttribute.call(this, name, value);
+  };
+
+  try {
+    await act(async () => {
+      mounted.surface.dispatchEvent(pointer('pointerdown', {
+        x: 5,
+        y: 5,
+        buttons: 1,
+      }));
+      // Model several seconds of high-rate input before the first hit.
+      for (let index = 0; index < 900; index += 1) {
+        mounted.surface.dispatchEvent(pointer('pointermove', {
+          x: 5 + (index % 80),
+          y: 5,
+          buttons: 1,
+        }));
+      }
+      mounted.surface.dispatchEvent(pointer('pointermove', {
+        x: 50,
+        y: 30,
+        buttons: 1,
+      }));
+      // Keep the same held gesture dense after preview activation, then cross
+      // a late annotation. This is the input-starvation shape from production.
+      for (let index = 0; index < 900; index += 1) {
+        mounted.surface.dispatchEvent(pointer('pointermove', {
+          x: 5 + (index % 80),
+          y: 55 + ((index % 7) - 3),
+          buttons: 1,
+        }));
+      }
+      mounted.surface.dispatchEvent(pointer('pointermove', {
+        x: 50,
+        y: 80,
+        buttons: 1,
+      }));
+    });
+  } finally {
+    dom.window.SVGElement.prototype.setAttribute = nativeSetAttribute;
+  }
+
+  const clone = document.querySelector('[data-eraser-mask-clone="1"]');
+  assert.ok(clone, 'the long held gesture must retain one live preview');
+  assert.match(
+    clone.querySelector('[data-annotation-id="early-ink"]').getAttribute('mask') || '',
+    /^url\(#eraser-carve-mask-/,
+  );
+  assert.match(
+    clone.querySelector('[data-annotation-id="late-ink"]').getAttribute('mask') || '',
+    /^url\(#eraser-carve-mask-/,
+    'late ink must react before pointer-up',
+  );
+  assert.equal(
+    document.querySelector('[data-eraser-cursor="true"]').style.transform,
+    'translate3d(44px, 74px, 0)',
+    'the custom cursor must reach the final pointer sample during the held drag',
+  );
+  assert.ok(carveWrites.length > 1, 'the regression must exercise repeated live SVG updates');
+  const largestCarveWrite = Math.max(...carveWrites);
+  const totalCarveWriteChars = carveWrites.reduce((total, length) => total + length, 0);
+  assert.ok(
+    largestCarveWrite <= 1600,
+    `each SVG path update must stay bounded; largest d write was ${largestCarveWrite} chars`,
+  );
+  assert.ok(
+    totalCarveWriteChars <= 400_000,
+    `total SVG serialization must stay linear; wrote ${totalCarveWriteChars} d characters`,
+  );
+  const chunks = [...clone.querySelectorAll('[data-eraser-carve-chunk]')];
+  assert.ok(chunks.length > 1, 'the dense gesture must seal at least one immutable path chunk');
+  for (let index = 1; index < chunks.length; index += 1) {
+    const previousNumbers = chunks[index - 1].getAttribute('d').match(/-?\d+(?:\.\d+)?/g);
+    const nextNumbers = chunks[index].getAttribute('d').match(/-?\d+(?:\.\d+)?/g);
+    assert.deepEqual(
+      previousNumbers?.slice(-2),
+      nextNumbers?.slice(0, 2),
+      `chunk ${index} must repeat the prior endpoint so the mask has no geometry gap`,
+    );
+  }
+  t.diagnostic(JSON.stringify({
+    moves: 1802,
+    chunks: chunks.length,
+    largestCarveWrite,
+    totalCarveWriteChars,
+  }));
+});
+
 test('live preview namespaces imported-ink clip ids instead of resolving into the hidden SVG', async (t) => {
   const mounted = await mountEraser();
   t.after(() => mounted.unmount());
