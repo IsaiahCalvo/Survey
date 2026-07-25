@@ -369,6 +369,38 @@ test('safe SVG preview carves only permitted ink and preserves foreign/locked co
   await mounted.unmount();
 });
 
+test('live preview namespaces imported-ink clip ids instead of resolving into the hidden SVG', async (t) => {
+  const mounted = await mountEraser();
+  t.after(() => mounted.unmount());
+  const svg = document.querySelector('svg[data-svg-annotation-layer]');
+  const defs = document.createElementNS('http://www.w3.org/2000/svg', 'defs');
+  defs.innerHTML = (
+    '<clipPath id="paper-eraser-clip-imported">'
+      + '<rect x="0" y="0" width="100" height="100" />'
+    + '</clipPath>'
+  );
+  svg.prepend(defs);
+  document.querySelector('[data-annotation-id="own-ink"]')
+    .setAttribute('clip-path', 'url(#paper-eraser-clip-imported)');
+
+  await drag(mounted);
+
+  const clone = document.querySelector('[data-eraser-mask-clone="1"]');
+  assert.ok(clone);
+  const ids = [...document.querySelectorAll('[id]')].map((element) => element.id);
+  assert.equal(
+    new Set(ids).size,
+    ids.length,
+    'real and preview SVGs must never expose duplicate fragment ids',
+  );
+  const cloneInk = clone.querySelector('[data-annotation-id="own-ink"]');
+  const cloneClipReference = cloneInk.getAttribute('clip-path');
+  assert.notEqual(cloneClipReference, 'url(#paper-eraser-clip-imported)');
+  const cloneClipId = cloneClipReference?.match(/^url\(#(.+)\)$/)?.[1];
+  assert.ok(cloneClipId);
+  assert.ok(clone.querySelector(`[id="${cloneClipId}"]`));
+});
+
 test('removing the live clone mid-swap reattaches the same safe presentation before paint', async () => {
   const mounted = await mountEraser();
   await drag(mounted);

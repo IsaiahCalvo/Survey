@@ -60,6 +60,43 @@ const getEraserHandoffTestFlags = () => (
     : null
 );
 
+// An SVG clone shares the document-wide fragment-id namespace with its source.
+// Imported ink can already contain clip paths after one partial erase, so an
+// unchanged clone would duplicate those ids. Chromium may then resolve the
+// visible clone's url(#clip) against the hidden real SVG, briefly blanking the
+// stroke. Namespace every cloned id and its local references before insertion.
+const namespaceSvgCloneFragmentIds = (cloneRoot, namespace) => {
+  if (!cloneRoot || !namespace) return;
+  const elements = [cloneRoot, ...cloneRoot.querySelectorAll('*')];
+  const idMap = new Map();
+  elements.forEach((element) => {
+    const id = element.getAttribute?.('id');
+    if (!id) return;
+    const namespacedId = `${namespace}-${id}`;
+    idMap.set(id, namespacedId);
+    element.setAttribute('id', namespacedId);
+  });
+  if (idMap.size === 0) return;
+
+  const rewriteUrl = (value) => String(value).replace(
+    /url\(\s*(['"]?)#([^)'" \t\r\n]+)\1\s*\)/g,
+    (match, _quote, id) => (
+      idMap.has(id) ? `url(#${idMap.get(id)})` : match
+    ),
+  );
+  elements.forEach((element) => {
+    [...(element.attributes || [])].forEach((attribute) => {
+      let nextValue = rewriteUrl(attribute.value);
+      if (nextValue.startsWith('#') && idMap.has(nextValue.slice(1))) {
+        nextValue = `#${idMap.get(nextValue.slice(1))}`;
+      }
+      if (nextValue !== attribute.value) {
+        element.setAttribute(attribute.name, nextValue);
+      }
+    });
+  });
+};
+
 const distanceToSegment = (point, start, end) => {
   const dx = end.x - start.x;
   const dy = end.y - start.y;
@@ -1116,6 +1153,10 @@ const FabricEraserCanvas = memo(({
     try {
       const SVG_NS = 'http://www.w3.org/2000/svg';
       cloneRoot = svg.cloneNode(true);
+      namespaceSvgCloneFragmentIds(
+        cloneRoot,
+        `eraser-preview-${pageNumber}-${latestEraseGestureRef.current}-${Date.now().toString(36)}`,
+      );
       // The clone must never masquerade as the real layer for selectors,
       // diagnostics, or harnesses.
       cloneRoot.removeAttribute('data-svg-annotation-layer');
