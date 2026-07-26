@@ -2352,10 +2352,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     // Defer CSS transform removal until Fabric.js confirms it rendered at the new scale.
     // This prevents the visual flicker between CSS transform removal and canvas re-render.
     // Skip during active overlay zoom — the zoom settle timer handles cleanup.
-    // `&& usePdfjsRenderer` (hardcoded true today, so byte-for-byte unchanged)
-    // keeps this shared zoomGeneration bump off the pdf.js path, where the engine's
-    // own onZoomPhase drives the signal — Stage 3 made zoomGeneration cross-engine.
-    if (!overlayZoomInProgress && usePdfjsRenderer) {
+    // The owned pdf.js engine publishes real zoom starts through onZoomPhase.
+    // Generic interaction settling (including annotation repaint after erasing)
+    // must not impersonate a zoom or it terminates an otherwise-held gesture.
+    if (!overlayZoomInProgress && !usePdfjsRenderer) {
       beginPdfjsScaleConfirmPending('finalize_idle');
     }
     if (wasActive) {
@@ -9826,7 +9826,6 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
       attachOverlayToPageDiv(pageNumber);
       setAnnotationOverlayRecoveryTick((tick) => tick + 1);
-      setZoomGeneration((tick) => tick + 1);
     }, 1000);
 
     return () => window.clearInterval(intervalId);

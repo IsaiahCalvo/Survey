@@ -99,6 +99,22 @@ test('owned pdf.js zoom bypasses the removed legacy snapshot and 1.4 second hand
   assert.doesNotMatch(ownedZoomSource, /pdfjsPendingZoomScaleRef/);
 });
 
+test('ordinary pdf.js interaction settling cannot impersonate a zoom start', () => {
+  const finalizeStart = APP_SOURCE.indexOf('const finalizePdfjsInteractionIdle = useCallback');
+  const finalizeEnd = APP_SOURCE.indexOf('const isPdfjsPageViewportVisible', finalizeStart);
+  const finalizeSource = APP_SOURCE.slice(finalizeStart, finalizeEnd);
+  assert.match(finalizeSource, /if \(!overlayZoomInProgress && !usePdfjsRenderer\)/);
+  assert.doesNotMatch(finalizeSource, /if \(!overlayZoomInProgress && usePdfjsRenderer\)/);
+});
+
+test('annotation overlay recovery redraw cannot impersonate a zoom start', () => {
+  const watchdogStart = APP_SOURCE.indexOf('const intervalId = window.setInterval(() => {');
+  const watchdogEnd = APP_SOURCE.indexOf('return () => window.clearInterval(intervalId);', watchdogStart);
+  const watchdogSource = APP_SOURCE.slice(watchdogStart, watchdogEnd);
+  assert.match(watchdogSource, /setAnnotationOverlayRecoveryTick/);
+  assert.doesNotMatch(watchdogSource, /setZoomGeneration/);
+});
+
 test('zoom hotkeys preserve the active pen or eraser tool like the demo', () => {
   const keyZoomStart = APP_SOURCE.indexOf('// Pre-activate zoom overlay protection');
   const keyZoomEnd = APP_SOURCE.indexOf('// Optimized pan handling', keyZoomStart);
