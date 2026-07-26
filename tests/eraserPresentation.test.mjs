@@ -545,13 +545,11 @@ test('rapid gestures serialize commits and only the newest session may close the
   );
 });
 
-test('interrupted gestures commit once while secondary pointers are ignored', () => {
-  // Contract change (2026-07-19 eraser audit): pointercancel / lost capture /
-  // buttons-released-elsewhere used to DISCARD the whole gesture after the
-  // user already watched ink carve and shapes ghost — silent un-erase. All
-  // interrupt paths now commit the accumulated points (same contract as the
-  // zoom auto-commit). A second/non-primary pointer is input noise and cannot
-  // cancel or replace the active gesture.
+test('authoritative interruptions commit once while stray button-state moves are ignored', () => {
+  // pointercancel / lost capture commit the accumulated points. A transient
+  // buttons=0 move is not authoritative while pointer capture is still owned;
+  // Chromium can emit one during a long drag and the gesture must continue.
+  // A second/non-primary pointer is input noise and cannot replace the gesture.
   assert.match(ERASER_SOURCE, /const handleLostPointerCapture = useCallback/);
   assert.match(ERASER_SOURCE, /onLostPointerCapture=\{handleLostPointerCapture\}/);
   assert.match(ERASER_SOURCE, /const handleLostPointerCapture[\s\S]*?commitPointerNow\(\)/);
@@ -560,7 +558,7 @@ test('interrupted gestures commit once while secondary pointers are ignored', ()
     /const handlePointerDown[\s\S]*?if \(event\.isPrimary === false \|\| pointerRef\.current\) return;/,
   );
   assert.doesNotMatch(ERASER_SOURCE, /if \(pointerRef\.current\) cancelPointer\(\)/);
-  assert.match(ERASER_SOURCE, /const handlePointerMove[\s\S]*?event\.buttons === 0[\s\S]*?commitPointerNow\(\)/);
+  assert.doesNotMatch(ERASER_SOURCE, /const handlePointerMove[\s\S]*?event\.buttons === 0/);
   assert.match(ERASER_SOURCE, /if \(cancelled\) \{[\s\S]*?commitInterruptedPointer\(pointer\)/);
 });
 

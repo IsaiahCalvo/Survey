@@ -1245,8 +1245,8 @@
     "semantic_hash": ""
   },
   "src/components/FabricEraserCanvas.jsx": {
-    "mtime": 1785009525.8461726,
-    "ast_hash": "be8e8140f5a2d3a2616ab1488ac2cf44",
+    "mtime": 1785087549.71588,
+    "ast_hash": "c4b10fb7d6611acc7dd833e5dbe8bbaa",
     "semantic_hash": ""
   },
   "src/components/FormFieldPropertiesPanel.jsx": {
@@ -7580,8 +7580,8 @@
     "semantic_hash": ""
   },
   "tests/eraserPresentation.test.mjs": {
-    "mtime": 1784903815.903773,
-    "ast_hash": "932782eae7cff860a925003b385f698c",
+    "mtime": 1785087664.1564572,
+    "ast_hash": "93cf01d845956f00315a35bff0a488bb",
     "semantic_hash": ""
   },
   "tests/eraserPreviewPlan.test.mjs": {
@@ -10330,8 +10330,8 @@
     "semantic_hash": ""
   },
   "tests/fabricEraserLifecycleMounted.test.mjs": {
-    "mtime": 1784903815.9061766,
-    "ast_hash": "121f385b0fcf08d9a5c50dbcdf1100f1",
+    "mtime": 1785087533.50138,
+    "ast_hash": "d92d5e7905600367e515020a0e9954eb",
     "semantic_hash": ""
   },
   "tests/fabricEraserPreviewHandoffMounted.test.mjs": {

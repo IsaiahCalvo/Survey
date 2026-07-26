@@ -197,6 +197,42 @@ test('mounted eraser control: a normal primary pointer gesture commits', async (
   await act(async () => mounted.root.unmount());
 });
 
+test('mounted eraser ignores a transient buttons=0 move while pointer capture is still owned', async () => {
+  const mounted = await mountEraser();
+
+  await act(async () => {
+    mounted.surface.dispatchEvent(pointer('pointerdown', {
+      pointerId: 2, x: 30, y: 50, buttons: 1,
+    }));
+    mounted.surface.dispatchEvent(pointer('pointermove', {
+      pointerId: 2, x: 40, y: 50, buttons: 1,
+    }));
+    // Chromium can emit a transient hover-like move with buttons=0 during a
+    // long captured drag. Pointer-up/cancel/lost-capture remain authoritative.
+    mounted.surface.dispatchEvent(pointer('pointermove', {
+      pointerId: 2, x: 45, y: 50, buttons: 0,
+    }));
+    assert.equal(mounted.commits.length, 0, 'a stray move must not end the gesture');
+    assert.equal(mounted.surface.__capturedPointerId, 2, 'capture must remain owned');
+    mounted.surface.dispatchEvent(pointer('pointermove', {
+      pointerId: 2, x: 60, y: 50, buttons: 1,
+    }));
+    mounted.surface.dispatchEvent(pointer('pointerup', {
+      pointerId: 2, x: 70, y: 50, buttons: 0,
+    }));
+  });
+
+  assert.equal(mounted.commits.length, 1);
+  assert.deepEqual(mounted.textMarkupCommits[0].points, [
+    { x: 30, y: 50 },
+    { x: 40, y: 50 },
+    { x: 45, y: 50 },
+    { x: 60, y: 50 },
+    { x: 70, y: 50 },
+  ]);
+  await act(async () => mounted.root.unmount());
+});
+
 test('mounted eraser ignores a second pointer without cancelling the active pen gesture', async () => {
   const mounted = await mountEraser();
 

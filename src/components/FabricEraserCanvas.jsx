@@ -2151,12 +2151,10 @@ const FabricEraserCanvas = memo(({
     updateEraserCursor(point, true);
     const pointer = pointerRef.current;
     if (!pointer || pointer.pointerId !== event.pointerId) return;
-    if (event.buttons === 0) {
-      // Button released outside our capture (missed pointerup): keep the
-      // erase already performed rather than silently discarding it.
-      commitPointerNow();
-      return;
-    }
+    // Pointer capture owns the gesture until pointerup, pointercancel, or
+    // lostpointercapture. Chromium can emit a transient hover-like
+    // pointermove with buttons=0 during a long captured drag; treating that
+    // sample as release made the eraser blink and permanently stop mid-drag.
     event.preventDefault();
     markAnnotationPreviewFrame(eraserDiagGestureRef.current, { action: 'eraser-stroke' });
     const nativeEvents = getCoalescedOrCurrentEvents(event.nativeEvent);
@@ -2168,7 +2166,7 @@ const FabricEraserCanvas = memo(({
         previewEraserGesture(pointer, last ? [last, point] : [point]);
       }
     }
-  }, [commitPointerNow, pagePoint, previewEraserGesture, updateEraserCursor]);
+  }, [pagePoint, previewEraserGesture, updateEraserCursor]);
 
   const finishPointer = useCallback((event, cancelled) => {
     const pointer = pointerRef.current;
