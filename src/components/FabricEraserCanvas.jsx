@@ -62,71 +62,6 @@ const getEraserHandoffTestFlags = () => (
     : null
 );
 
-const ERASER_DEBUG_MAX_ENTRIES = 2500;
-
-const isEraserDebugEnabled = () => {
-  if (!import.meta.env.DEV || typeof window === 'undefined') return false;
-  if (window.__ENABLE_ERASER_DEBUG === true) return true;
-  try {
-    return new URLSearchParams(window.location.search).has('testPdf');
-  } catch {
-    return false;
-  }
-};
-
-const recordEraserDebug = (event, detail = {}) => {
-  if (!isEraserDebugEnabled()) return;
-  const state = window.__eraserDebugState || {
-    sequence: 0,
-    startedAt: Date.now(),
-    entries: [],
-  };
-  window.__eraserDebugState = state;
-  const entry = {
-    sequence: ++state.sequence,
-    elapsedMs: Date.now() - state.startedAt,
-    at: new Date().toISOString(),
-    event,
-    ...detail,
-  };
-  state.entries.push(entry);
-  if (state.entries.length > ERASER_DEBUG_MAX_ENTRIES) {
-    state.entries.splice(0, state.entries.length - ERASER_DEBUG_MAX_ENTRIES);
-  }
-  try { console.log('[EraserDebug]', JSON.stringify(entry)); } catch { /* diagnostics only */ }
-};
-
-const dumpEraserDebug = () => {
-  if (typeof window === 'undefined') return '';
-  const entries = window.__eraserDebugState?.entries || [];
-  return entries.map((entry) => JSON.stringify(entry)).join('\n');
-};
-
-const copyEraserDebug = async () => {
-  const text = dumpEraserDebug();
-  try {
-    await navigator.clipboard.writeText(text);
-    recordEraserDebug('log-copied', { entryCount: window.__eraserDebugState?.entries?.length || 0 });
-    return true;
-  } catch (error) {
-    try { console.log('[EraserDebug] COPY FAILED — log follows\n' + text); } catch { /* diagnostics only */ }
-    recordEraserDebug('log-copy-failed', { message: error?.message || String(error) });
-    return false;
-  }
-};
-
-if (isEraserDebugEnabled()) {
-  window.__eraserDebugLog = () => {
-    const text = dumpEraserDebug();
-    console.log(text);
-    return text;
-  };
-  window.__copyEraserDebugLog = copyEraserDebug;
-  window.__clearEraserDebugLog = () => {
-    window.__eraserDebugState = { sequence: 0, startedAt: Date.now(), entries: [] };
-  };
-}
-
 // Keep live mask reparsing independent of gesture length. A growing `d`
 // rewritten on every pointermove makes the browser repeatedly parse the whole
 // held gesture (quadratic total work). Completed chunks are immutable; the
@@ -385,11 +320,6 @@ const FabricEraserCanvas = memo(({
   const lastClientPosRef = useRef(null);
   const eraserDiagGestureRef = useRef(null);
   const initialZoomGenerationRef = useRef(zoomGeneration);
-  const debugLastMoveLogAtRef = useRef(0);
-  const debugLastVisualRef = useRef('');
-  const debugMountIdRef = useRef(
-    `eraser-${pageNumber}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-  );
   // Per-gesture AABB cache: { byIndex, byCallout, bySurveyMarker }.
   // Built once at pointer-down from the live SVG layer's getBBox (see
   // buildGestureBounds); powers the per-move fast-reject prefilter.
@@ -418,19 +348,8 @@ const FabricEraserCanvas = memo(({
   // otherwise mounted canvas reject the result of an in-flight erase.
   useEffect(() => {
     mountedRef.current = true;
-    recordEraserDebug('surface-mounted', {
-      mountId: debugMountIdRef.current,
-      pageNumber,
-      renderer,
-    });
     return () => {
       mountedRef.current = false;
-      recordEraserDebug('surface-unmounted', {
-        mountId: debugMountIdRef.current,
-        pageNumber,
-        pointerActive: Boolean(pointerRef.current),
-        sessionId: pointerRef.current?.sessionId || null,
-      });
     };
   }, []);
 
@@ -557,27 +476,9 @@ const FabricEraserCanvas = memo(({
 
   const updateEraserCursor = useCallback((point, visible = true) => {
     const cursor = cursorRef.current;
-    if (!cursor) {
-      recordEraserDebug('cursor-element-missing', {
-        mountId: debugMountIdRef.current,
-        pointerActive: Boolean(pointerRef.current),
-      });
-      return;
-    }
+    if (!cursor) return;
     const shouldShow = visible && !spaceHeldRef.current && point;
-    const wasVisible = cursor.style.display !== 'none';
     cursor.style.display = shouldShow ? 'block' : 'none';
-    if (wasVisible !== Boolean(shouldShow)) {
-      recordEraserDebug(shouldShow ? 'cursor-shown' : 'cursor-hidden', {
-        mountId: debugMountIdRef.current,
-        pointerActive: Boolean(pointerRef.current),
-        sessionId: pointerRef.current?.sessionId || null,
-        requestedVisible: Boolean(visible),
-        spaceHeld: spaceHeldRef.current,
-        point: point ? { x: point.x, y: point.y } : null,
-        cursorConnected: cursor.isConnected,
-      });
-    }
     if (!shouldShow) return;
     const displayScale = Math.max(
       0.01,
@@ -610,45 +511,6 @@ const FabricEraserCanvas = memo(({
     }
     updateEraserCursor(pagePoint({ clientX: last.x, clientY: last.y }), true);
   }, [pagePoint, updateEraserCursor]);
-
-  useEffect(() => {
-    if (!isEraserDebugEnabled()) return undefined;
-    const inspect = () => {
-      const wrapper = containerRef.current;
-      const cursor = cursorRef.current;
-      const pointer = pointerRef.current;
-      const clone = maskCloneRef.current?.root;
-      const state = {
-        mountId: debugMountIdRef.current,
-        wrapperConnected: Boolean(wrapper?.isConnected),
-        cursorConnected: Boolean(cursor?.isConnected),
-        cursorDisplay: cursor?.style?.display || 'missing',
-        pointerActive: Boolean(pointer),
-        pointerId: pointer?.pointerId ?? null,
-        sessionId: pointer?.sessionId ?? null,
-        captureOwned: Boolean(
-          pointer
-          && wrapper?.hasPointerCapture?.(pointer.pointerId)
-        ),
-        pointCount: pointer?.points?.length || 0,
-        previewActive: pointer?.previewActive === true,
-        previewHasPartial: pointer?.previewHasPartial === true,
-        atomicHitCount: pointer?.previewAtomicIds?.size || 0,
-        calloutHitCount: pointer?.previewCalloutIds?.size || 0,
-        surveyMarkerHitCount: pointer?.previewSurveyMarkerIds?.size || 0,
-        cloneConnected: Boolean(clone?.isConnected),
-        cloneHandoff: clone?.dataset?.eraserHandoffState || null,
-      };
-      const signature = JSON.stringify({ ...state, pointCount: undefined });
-      if (signature !== debugLastVisualRef.current) {
-        debugLastVisualRef.current = signature;
-        recordEraserDebug('visual-state-change', state);
-      }
-    };
-    inspect();
-    const timer = window.setInterval(inspect, 50);
-    return () => window.clearInterval(timer);
-  }, []);
 
   const findPresentationSource = useCallback(() => {
     const surface = containerRef.current?.closest('[data-annotation-real-surface]');
@@ -1919,51 +1781,6 @@ const FabricEraserCanvas = memo(({
     pageNumber,
   ]);
 
-  const getDebugHitSummary = useCallback((point, clientPoint, pointer) => {
-    if (!import.meta.env.DEV || !point || !pointer) return [];
-    const radius = pointer.gestureConfig.radius;
-    const mode = pointer.gestureConfig.mode;
-    const hits = [];
-    (annotationsRef.current?.objects || []).forEach((object, index) => {
-      if (!eraserStrokeTouchesObject({
-        eraserPoints: [point],
-        eraserRadius: radius,
-        object,
-      })) return;
-      const blocked = getEraseBlockReason(object);
-      hits.push({
-        lane: 'annotation',
-        id: getEraserCandidateId(object, index),
-        index,
-        type: object?.type || null,
-        tool: object?.tool || object?.data?.tool || null,
-        operation: getEraserOperation(object, mode),
-        shouldErase: !blocked,
-        blocked: blocked || null,
-      });
-    });
-    getPermittedCalloutHitIds([point], new Set(), radius).forEach((id) => {
-      hits.push({ lane: 'callout', id, operation: 'entire', shouldErase: true, blocked: null });
-    });
-    getPermittedSurveyMarkerHitIds([point], new Set(), radius).forEach((id) => {
-      hits.push({ lane: 'survey-marker', id, operation: 'entire', shouldErase: true, blocked: null });
-    });
-    const stack = clientPoint && typeof document?.elementsFromPoint === 'function'
-      ? document.elementsFromPoint(clientPoint.x, clientPoint.y).slice(0, 8).map((element) => ({
-        tag: element.tagName,
-        annotationId: element.getAttribute?.('data-annotation-id') || null,
-        annotationIndex: element.getAttribute?.('data-annotation-index') || null,
-        eraserWrapper: element.getAttribute?.('data-diag-eraser-wrapper') || null,
-        eraserCursor: element.getAttribute?.('data-eraser-cursor') || null,
-      }))
-      : [];
-    return { hits, elementStack: stack };
-  }, [
-    getEraseBlockReason,
-    getPermittedCalloutHitIds,
-    getPermittedSurveyMarkerHitIds,
-  ]);
-
   const applyEraserAndCommit = useCallback(async (eraserPoints, gestureConfig = null) => {
     if (!eraserPoints?.length) return { didPaint: false, expectedRevision: null };
     if (containerRef.current) {
@@ -2243,18 +2060,9 @@ const FabricEraserCanvas = memo(({
     }
   }, [finishLiveErasePreview, queueEraserCommit]);
 
-  const commitPointerNow = useCallback((reason = 'interrupted') => {
+  const commitPointerNow = useCallback(() => {
     const pointer = pointerRef.current;
     if (!pointer) return;
-    recordEraserDebug('gesture-interrupted-commit', {
-      mountId: debugMountIdRef.current,
-      reason,
-      sessionId: pointer.sessionId,
-      pointerId: pointer.pointerId,
-      pointCount: pointer.points?.length || 0,
-      cursorDisplay: cursorRef.current?.style?.display || 'missing',
-      captureOwned: pointer.captureTarget?.hasPointerCapture?.(pointer.pointerId) === true,
-    });
     pointerRef.current = null;
     try { pointer.captureTarget?.releasePointerCapture(pointer.pointerId); } catch { /* already released */ }
     void commitInterruptedPointer(pointer);
@@ -2262,12 +2070,6 @@ const FabricEraserCanvas = memo(({
 
   const cancelPointerNow = useCallback(() => {
     const pointer = pointerRef.current;
-    recordEraserDebug('gesture-cancelled-for-authorization', {
-      mountId: debugMountIdRef.current,
-      sessionId: pointer?.sessionId ?? null,
-      pointerId: pointer?.pointerId ?? null,
-      pointCount: pointer?.points?.length || 0,
-    });
     pointerRef.current = null;
     try { pointer?.captureTarget?.releasePointerCapture(pointer.pointerId); } catch { /* already released */ }
     gestureBoundsRef.current = null;
@@ -2282,35 +2084,13 @@ const FabricEraserCanvas = memo(({
   }, [cancelPointerNow, getInterruptionPolicy, interruptionPolicy]);
 
   const handlePointerDown = useCallback((event) => {
-    if (event.button !== 0 || spaceHeldRef.current) {
-      recordEraserDebug('pointer-down-rejected', {
-        mountId: debugMountIdRef.current,
-        reason: event.button !== 0 ? 'not-primary-button' : 'space-pan',
-        button: event.button,
-        buttons: event.buttons,
-        client: { x: event.clientX, y: event.clientY },
-      });
-      return;
-    }
+    if (event.button !== 0 || spaceHeldRef.current) return;
     // Read-only/locked state is also checked at gesture start. Cancelling the
     // active pointer is insufficient if the surface remains mounted.
-    if (getInterruptionPolicy() === 'cancel') {
-      recordEraserDebug('pointer-down-rejected', {
-        mountId: debugMountIdRef.current,
-        reason: 'interruption-policy-cancel',
-      });
-      return;
-    }
+    if (getInterruptionPolicy() === 'cancel') return;
     // One pointer owns a gesture. A palm/second pointer is input noise and
     // must not release capture, clear preview, or replace the active pen.
-    if (event.isPrimary === false || pointerRef.current) {
-      recordEraserDebug('pointer-down-rejected', {
-        mountId: debugMountIdRef.current,
-        reason: event.isPrimary === false ? 'non-primary-pointer' : 'gesture-already-active',
-        pointerId: event.pointerId,
-      });
-      return;
-    }
+    if (event.isPrimary === false || pointerRef.current) return;
     lastClientPosRef.current = { x: event.clientX, y: event.clientY, pointerType: event.pointerType };
     const point = pagePoint(event.nativeEvent);
     if (!point) return;
@@ -2355,28 +2135,10 @@ const FabricEraserCanvas = memo(({
     // fast-reject far-away annotations (the drag-smoothness prefilter).
     buildGestureBounds();
     previewEraserGesture(pointerRef.current, [point]);
-    recordEraserDebug('pointer-down-accepted', {
-      mountId: debugMountIdRef.current,
-      sessionId,
-      pointerId: event.pointerId,
-      pointerType: event.pointerType,
-      buttons: event.buttons,
-      client: { x: event.clientX, y: event.clientY },
-      page: { x: point.x, y: point.y },
-      captureOwned: event.currentTarget.hasPointerCapture?.(event.pointerId) === true,
-      mode: pointerRef.current.gestureConfig.mode,
-      radius: pointerRef.current.gestureConfig.radius,
-      underneath: getDebugHitSummary(
-        point,
-        { x: event.clientX, y: event.clientY },
-        pointerRef.current,
-      ),
-    });
   }, [
     buildGestureBounds,
     getPageRadius,
     getInterruptionPolicy,
-    getDebugHitSummary,
     pageNumber,
     pagePoint,
     previewEraserGesture,
@@ -2388,20 +2150,7 @@ const FabricEraserCanvas = memo(({
     const point = pagePoint(event.nativeEvent);
     updateEraserCursor(point, true);
     const pointer = pointerRef.current;
-    if (!pointer || pointer.pointerId !== event.pointerId) {
-      if (event.buttons !== 0) {
-        recordEraserDebug('pointer-move-with-button-down-but-no-active-gesture', {
-          mountId: debugMountIdRef.current,
-          eventPointerId: event.pointerId,
-          activePointerId: pointer?.pointerId ?? null,
-          buttons: event.buttons,
-          client: { x: event.clientX, y: event.clientY },
-          page: point ? { x: point.x, y: point.y } : null,
-          cursorDisplay: cursorRef.current?.style?.display || 'missing',
-        });
-      }
-      return;
-    }
+    if (!pointer || pointer.pointerId !== event.pointerId) return;
     // Pointer capture owns the gesture until pointerup, pointercancel, or
     // lostpointercapture. Chromium can emit a transient hover-like
     // pointermove with buttons=0 during a long captured drag; treating that
@@ -2417,69 +2166,11 @@ const FabricEraserCanvas = memo(({
         previewEraserGesture(pointer, last ? [last, point] : [point]);
       }
     }
-    const nowMs = Date.now();
-    if (
-      event.buttons !== 1
-      || nowMs - debugLastMoveLogAtRef.current >= 250
-    ) {
-      debugLastMoveLogAtRef.current = nowMs;
-      const latestPoint = pointer.points[pointer.points.length - 1] || point;
-      const clone = maskCloneRef.current?.root;
-      recordEraserDebug('pointer-move-active', {
-        mountId: debugMountIdRef.current,
-        sessionId: pointer.sessionId,
-        pointerId: pointer.pointerId,
-        buttons: event.buttons,
-        client: { x: event.clientX, y: event.clientY },
-        page: latestPoint ? { x: latestPoint.x, y: latestPoint.y } : null,
-        pointCount: pointer.points.length,
-        captureOwned: event.currentTarget.hasPointerCapture?.(event.pointerId) === true,
-        cursorDisplay: cursorRef.current?.style?.display || 'missing',
-        cursorConnected: Boolean(cursorRef.current?.isConnected),
-        previewActive: pointer.previewActive,
-        previewHasPartial: pointer.previewHasPartial,
-        atomicHitIds: [...pointer.previewAtomicIds],
-        calloutHitIds: [...pointer.previewCalloutIds],
-        surveyMarkerHitIds: [...pointer.previewSurveyMarkerIds],
-        cloneConnected: Boolean(clone?.isConnected),
-        cloneHandoff: clone?.dataset?.eraserHandoffState || null,
-        underneath: getDebugHitSummary(
-          latestPoint,
-          { x: event.clientX, y: event.clientY },
-          pointer,
-        ),
-      });
-    }
-  }, [getDebugHitSummary, pagePoint, previewEraserGesture, updateEraserCursor]);
+  }, [pagePoint, previewEraserGesture, updateEraserCursor]);
 
   const finishPointer = useCallback((event, cancelled) => {
     const pointer = pointerRef.current;
-    if (!pointer || pointer.pointerId !== event.pointerId) {
-      recordEraserDebug('pointer-finish-without-active-gesture', {
-        mountId: debugMountIdRef.current,
-        cancelled,
-        eventPointerId: event.pointerId,
-        activePointerId: pointer?.pointerId ?? null,
-        buttons: event.buttons,
-        client: { x: event.clientX, y: event.clientY },
-      });
-      return;
-    }
-    recordEraserDebug(cancelled ? 'pointer-cancel' : 'pointer-up', {
-      mountId: debugMountIdRef.current,
-      sessionId: pointer.sessionId,
-      pointerId: pointer.pointerId,
-      buttons: event.buttons,
-      client: { x: event.clientX, y: event.clientY },
-      pointCount: pointer.points.length,
-      captureOwnedBeforeRelease: event.currentTarget.hasPointerCapture?.(event.pointerId) === true,
-      cursorDisplay: cursorRef.current?.style?.display || 'missing',
-      previewActive: pointer.previewActive,
-      previewHasPartial: pointer.previewHasPartial,
-      atomicHitIds: [...pointer.previewAtomicIds],
-      calloutHitIds: [...pointer.previewCalloutIds],
-      surveyMarkerHitIds: [...pointer.previewSurveyMarkerIds],
-    });
+    if (!pointer || pointer.pointerId !== event.pointerId) return;
     pointerRef.current = null;
     try { event.currentTarget.releasePointerCapture(event.pointerId); } catch { /* already released */ }
     if (cancelled) {
@@ -2516,19 +2207,9 @@ const FabricEraserCanvas = memo(({
 
   const handleLostPointerCapture = useCallback((event) => {
     const pointer = pointerRef.current;
-    recordEraserDebug('lost-pointer-capture', {
-      mountId: debugMountIdRef.current,
-      eventPointerId: event.pointerId,
-      activePointerId: pointer?.pointerId ?? null,
-      sessionId: pointer?.sessionId ?? null,
-      buttons: event.buttons,
-      client: { x: event.clientX, y: event.clientY },
-      pointCount: pointer?.points?.length || 0,
-      cursorDisplay: cursorRef.current?.style?.display || 'missing',
-    });
     if (!pointer || pointer.pointerId !== event.pointerId) return;
     // Losing capture mid-gesture: keep the erase performed so far.
-    commitPointerNow('lost-pointer-capture');
+    commitPointerNow();
     // Same reasoning as the cancelled branch of finishPointer: losing capture
     // does not mean the pointer left the wrapper — keep a visible cursor.
     reshowCursorAtLastClientPos();
@@ -2551,15 +2232,6 @@ const FabricEraserCanvas = memo(({
       finishLiveErasePreview();
       return;
     }
-    recordEraserDebug('gesture-interrupted-commit', {
-      mountId: debugMountIdRef.current,
-      reason: 'zoom',
-      sessionId: pointer.sessionId,
-      pointerId: pointer.pointerId,
-      pointCount: pointer.points?.length || 0,
-      cursorDisplay: cursorRef.current?.style?.display || 'missing',
-      captureOwned: pointer.captureTarget?.hasPointerCapture?.(pointer.pointerId) === true,
-    });
     pointerRef.current = null;
     try { pointer.captureTarget?.releasePointerCapture(pointer.pointerId); } catch { /* already released */ }
     // This runs inside a React effect, not a DOM event handler: a geometry
@@ -2622,7 +2294,7 @@ const FabricEraserCanvas = memo(({
       spaceHeldRef.current = true;
       // Switching to space-pan mid-gesture keeps the erase already shown
       // (commit, don't discard) — same contract as the zoom auto-commit.
-      commitPointerNow('space-pan');
+      commitPointerNow();
       updateEraserCursor(null, false);
     };
     const releaseSpacePan = (event) => {
@@ -2650,16 +2322,6 @@ const FabricEraserCanvas = memo(({
   // which could discard an active gesture when mode/size props changed.
   unmountCleanupRef.current = () => {
     const pointer = pointerRef.current;
-    recordEraserDebug('unmount-cleanup', {
-      mountId: debugMountIdRef.current,
-      pointerActive: Boolean(pointer),
-      sessionId: pointer?.sessionId ?? null,
-      pointerId: pointer?.pointerId ?? null,
-      pointCount: pointer?.points?.length || 0,
-      interruptionPolicy: getInterruptionPolicy(),
-      cursorDisplay: cursorRef.current?.style?.display || 'missing',
-      captureOwned: pointer?.captureTarget?.hasPointerCapture?.(pointer.pointerId) === true,
-    });
     pointerRef.current = null;
     try { pointer?.captureTarget?.releasePointerCapture(pointer.pointerId); } catch { /* already released */ }
     if (
@@ -2750,38 +2412,6 @@ const FabricEraserCanvas = memo(({
           willChange: 'transform',
         }}
       />
-      {isEraserDebugEnabled() && (
-        <button
-          type="button"
-          data-eraser-debug-copy="true"
-          onPointerDown={(event) => event.stopPropagation()}
-          onPointerUp={(event) => event.stopPropagation()}
-          onClick={async (event) => {
-            event.stopPropagation();
-            const button = event.currentTarget;
-            const copied = await copyEraserDebug();
-            button.textContent = copied
-              ? 'Eraser log copied'
-              : 'Copy failed — log printed';
-          }}
-          style={{
-            position: 'absolute',
-            left: 8,
-            bottom: 8,
-            zIndex: 1000,
-            pointerEvents: 'auto',
-            border: '1px solid rgba(141,150,166,0.65)',
-            borderRadius: 5,
-            background: 'rgba(18,22,29,0.92)',
-            color: '#e8e2d4',
-            padding: '5px 8px',
-            fontSize: 11,
-            cursor: 'pointer',
-          }}
-        >
-          Copy eraser debug log
-        </button>
-      )}
     </div>
   );
 });

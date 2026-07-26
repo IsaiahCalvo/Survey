@@ -552,29 +552,14 @@ test('authoritative interruptions commit once while stray button-state moves are
   // A second/non-primary pointer is input noise and cannot replace the gesture.
   assert.match(ERASER_SOURCE, /const handleLostPointerCapture = useCallback/);
   assert.match(ERASER_SOURCE, /onLostPointerCapture=\{handleLostPointerCapture\}/);
+  assert.match(ERASER_SOURCE, /const handleLostPointerCapture[\s\S]*?commitPointerNow\(\)/);
   assert.match(
     ERASER_SOURCE,
-    /const handleLostPointerCapture[\s\S]*?commitPointerNow\('lost-pointer-capture'\)/,
-  );
-  assert.match(
-    ERASER_SOURCE,
-    /const handlePointerDown[\s\S]*?if \(event\.isPrimary === false \|\| pointerRef\.current\) \{/,
+    /const handlePointerDown[\s\S]*?if \(event\.isPrimary === false \|\| pointerRef\.current\) return;/,
   );
   assert.doesNotMatch(ERASER_SOURCE, /if \(pointerRef\.current\) cancelPointer\(\)/);
   assert.doesNotMatch(ERASER_SOURCE, /const handlePointerMove[\s\S]*?event\.buttons === 0/);
   assert.match(ERASER_SOURCE, /if \(cancelled\) \{[\s\S]*?commitInterruptedPointer\(pointer\)/);
-});
-
-test('dev eraser flight recorder captures cursor, pointer, hit, capture, and remount state', () => {
-  assert.match(ERASER_SOURCE, /data-eraser-debug-copy="true"/);
-  assert.match(ERASER_SOURCE, /recordEraserDebug\('pointer-down-accepted'/);
-  assert.match(ERASER_SOURCE, /recordEraserDebug\('pointer-move-active'/);
-  assert.match(ERASER_SOURCE, /recordEraserDebug\(cancelled \? 'pointer-cancel' : 'pointer-up'/);
-  assert.match(ERASER_SOURCE, /recordEraserDebug\('lost-pointer-capture'/);
-  assert.match(ERASER_SOURCE, /recordEraserDebug\('visual-state-change'/);
-  assert.match(ERASER_SOURCE, /recordEraserDebug\('surface-unmounted'/);
-  assert.match(ERASER_SOURCE, /underneath:\s*getDebugHitSummary/);
-  assert.match(ERASER_SOURCE, /window\.__copyEraserDebugLog = copyEraserDebug/);
 });
 
 test('preview handoff never reveals a known-stale presentation on a timer', () => {
