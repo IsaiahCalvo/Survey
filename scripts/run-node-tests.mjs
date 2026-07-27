@@ -47,23 +47,34 @@ const isolatedTestFiles = [
 const isolatedSet = new Set(isolatedTestFiles);
 const mainTestFiles = testFiles.filter((file) => !isolatedSet.has(file));
 
-function runTestBatch(files, label) {
-  if (files.length === 0) return Promise.resolve(0);
+function runTestFile(file, label, timeoutMs = 120_000) {
   console.log(`\n[tests] ${label}`);
   return new Promise((resolveExitCode) => {
-    // Node 24's parallel test worker pool can wedge after every test has
-    // reported, leaving CI alive until its hard timeout. Serial workers still
-    // exercise every test and make completion deterministic.
-    const child = spawn(process.execPath, [
-      '--test',
-      '--test-concurrency=1',
-      ...files,
-    ], {
+    // A fresh process per file avoids Node 24's worker-pool wedge. The named
+    // timeout turns any future leaked handle into a useful, bounded failure.
+    const child = spawn(process.execPath, ['--test', file], {
       stdio: 'inherit',
     });
-    child.on('exit', (code, signal) => {
+    let timedOut = false;
+    const timer = setTimeout(() => {
+      timedOut = true;
+      child.kill('SIGKILL');
+    }, timeoutMs);
+
+    child.once('error', (error) => {
+      clearTimeout(timer);
+      console.error(`${file} failed to start: ${error.message}`);
+      resolveExitCode(1);
+    });
+    child.once('exit', (code, signal) => {
+      clearTimeout(timer);
+      if (timedOut) {
+        console.error(`${file} exceeded its ${timeoutMs}ms file timeout.`);
+        resolveExitCode(1);
+        return;
+      }
       if (signal) {
-        console.error(`Test runner terminated by ${signal}.`);
+        console.error(`${file} terminated by ${signal}.`);
         resolveExitCode(1);
         return;
       }
@@ -72,9 +83,13 @@ function runTestBatch(files, label) {
   });
 }
 
-let exitCode = await runTestBatch(mainTestFiles, 'main suite (serial workers)');
+let exitCode = 0;
+for (const file of mainTestFiles) {
+  exitCode = await runTestFile(file, `file: ${file}`);
+  if (exitCode !== 0) break;
+}
 for (const file of isolatedTestFiles) {
   if (exitCode !== 0) break;
-  exitCode = await runTestBatch([file], `isolated timing suite: ${file}`);
+  exitCode = await runTestFile(file, `isolated timing suite: ${file}`);
 }
 process.exit(exitCode);
