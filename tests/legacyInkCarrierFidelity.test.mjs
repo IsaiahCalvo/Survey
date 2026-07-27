@@ -1,4 +1,4 @@
-import nodeTest from 'node:test';
+import test from 'node:test';
 import assert from 'node:assert/strict';
 import { PDFDocument, PDFName, decodePDFRawStream } from 'pdf-lib';
 import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.mjs';
@@ -20,15 +20,6 @@ import {
 import { getEraserOperation } from '../src/utils/eraserPolicy.js';
 import { importAnnotationsFromPdf } from '../src/utils/pdfAnnotationImporter.js';
 import { createInkAnnotation } from '../src/utils/pdfAnnotationsPdfLib.js';
-
-const test = (name, fn) => nodeTest(name, async (...args) => {
-  process.stderr.write(`[DEBUG-legacy-ink-ci] START ${name}\n`);
-  try {
-    return await fn(...args);
-  } finally {
-    process.stderr.write(`[DEBUG-legacy-ink-ci] END ${name}\n`);
-  }
-});
 
 const clone = (value) => JSON.parse(JSON.stringify(value));
 
@@ -376,13 +367,11 @@ test('flip and skew use one visible geometry for erase and native PDF export', a
     eraserRadius: 3,
     mode: 'partial',
   });
-  process.stderr.write('[DEBUG-legacy-ink-ci] flip/skew erase returned\n');
   assert.equal(erased.didChange, true, 'eraser hits the shared visible affine');
 
   const pdfDoc = await PDFDocument.create();
   const page = pdfDoc.addPage([400, 400]);
   const ref = createInkAnnotation(pdfDoc, page, object, 400);
-  process.stderr.write('[DEBUG-legacy-ink-ci] flip/skew PDF export returned\n');
   const dict = pdfDoc.context.lookup(ref);
   const inkList = dict.get(PDFName.of('InkList')).asArray()[0].asArray()
     .map((value) => value.value());
