@@ -2464,7 +2464,8 @@ export function eraseAnnotations(annotations, eraserPoints, radius, mode = 'part
       Math.abs(subjectBounds.y + subjectBounds.h),
     );
     const useWorkingFrame = (
-      workingScale < 1e-6
+      annotation.forceWorkingFrame === true
+      || workingScale < 1e-6
       || workingScale > 1e6
       || coordinateMagnitude > 1e12
       || coordinateMagnitude / workingScale > 1e8

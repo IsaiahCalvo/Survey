@@ -656,6 +656,7 @@ function pathToPageAnnotation(
       stroke: null,
       strokeWidth: 0,
       sourceWidth,
+      forceWorkingFrame: true,
       paperSourceStroke: createPaperSourceStroke(),
       bounds: boundsOfCommands(polygonCommands),
       locked: object?.locked === true,
