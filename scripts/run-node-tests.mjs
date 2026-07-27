@@ -50,9 +50,12 @@ const mainTestFiles = testFiles.filter((file) => !isolatedSet.has(file));
 function runTestFile(file, label, timeoutMs = 120_000) {
   console.log(`\n[tests] ${label}`);
   return new Promise((resolveExitCode) => {
-    // A fresh process per file avoids Node 24's worker-pool wedge. The named
-    // timeout turns any future leaked handle into a useful, bounded failure.
-    const child = spawn(process.execPath, ['--test', file], {
+    // A fresh process per file avoids Node 24's worker-pool wedge. pdf.js can
+    // retain a fake-worker handle on Linux after all assertions and cleanup
+    // finish, so let Node end the completed test process instead of waiting on
+    // library-owned handles. The named timeout still catches tests that never
+    // finish and reports the exact file.
+    const child = spawn(process.execPath, ['--test', '--test-force-exit', file], {
       stdio: 'inherit',
     });
     let timedOut = false;

@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import {
   assertFunctionsInSync,
@@ -56,4 +57,11 @@ test('Stripe configuration gate checks every required secret by name', () => {
     secrets: names.map((name) => ({ name })),
   }));
   assert.throws(() => assertRequiredSecrets({ secrets: [] }), /Missing Supabase Stripe secrets/);
+});
+
+test('Node test gate isolates files, bounds hangs, and exits completed workers', () => {
+  const runner = readFileSync('scripts/run-node-tests.mjs', 'utf8');
+  assert.match(runner, /spawn\(process\.execPath, \['--test', '--test-force-exit', file\]/);
+  assert.match(runner, /timeoutMs = 120_000/);
+  assert.match(runner, /exceeded its \$\{timeoutMs\}ms file timeout/);
 });
