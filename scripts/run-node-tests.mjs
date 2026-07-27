@@ -36,10 +36,8 @@ if (testFiles.length === 0) {
   process.exit(1);
 }
 
-// Most of these suites contain real wall-clock performance budgets or
-// multi-second transport timing assertions. The SVG transform suite can also
-// wedge a Node 24 test worker after the parallel suite completes. Keep the main
-// suite parallel, then run these files alone for deterministic CI.
+// These suites contain real wall-clock performance budgets or multi-second
+// transport timing assertions. Run them alone after the main suite.
 const isolatedTestFiles = [
   'tests/annotationDocConcurrency.test.mjs',
   'tests/partialEraseCurveLocality.test.mjs',
@@ -47,13 +45,20 @@ const isolatedTestFiles = [
   'tests/svgPathTransformFidelity.test.mjs',
 ].filter((file) => testFiles.includes(file));
 const isolatedSet = new Set(isolatedTestFiles);
-const parallelTestFiles = testFiles.filter((file) => !isolatedSet.has(file));
+const mainTestFiles = testFiles.filter((file) => !isolatedSet.has(file));
 
 function runTestBatch(files, label) {
   if (files.length === 0) return Promise.resolve(0);
   console.log(`\n[tests] ${label}`);
   return new Promise((resolveExitCode) => {
-    const child = spawn(process.execPath, ['--test', ...files], {
+    // Node 24's parallel test worker pool can wedge after every test has
+    // reported, leaving CI alive until its hard timeout. Serial workers still
+    // exercise every test and make completion deterministic.
+    const child = spawn(process.execPath, [
+      '--test',
+      '--test-concurrency=1',
+      ...files,
+    ], {
       stdio: 'inherit',
     });
     child.on('exit', (code, signal) => {
@@ -67,7 +72,7 @@ function runTestBatch(files, label) {
   });
 }
 
-let exitCode = await runTestBatch(parallelTestFiles, 'parallel suite');
+let exitCode = await runTestBatch(mainTestFiles, 'main suite (serial workers)');
 for (const file of isolatedTestFiles) {
   if (exitCode !== 0) break;
   exitCode = await runTestBatch([file], `isolated timing suite: ${file}`);
