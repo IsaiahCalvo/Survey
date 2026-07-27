@@ -174,7 +174,7 @@ export default function ShareModal({
     if (failed.length) {
       setError(`Sent ${results.length - failed.length} of ${results.length}. First failure: ${failed[0].error || 'unknown'}.`);
     } else {
-      setSuccess(`Sent ${results.length} ${role.toLowerCase()} invite${results.length === 1 ? '' : 's'}.`);
+      setSuccess(`Sent ${results.length} ${role.toLowerCase()} share email${results.length === 1 ? '' : 's'}.`);
       setEmails('');
     }
   };
@@ -237,7 +237,7 @@ export default function ShareModal({
               rows={3}
               style={{ width: '100%', background: C.deep, border: `1px solid ${C.rule}`, borderRadius: 6, padding: '9px 11px', fontSize: 12.5, fontFamily: 'inherit', color: C.ink, resize: 'vertical', outline: 'none', minHeight: 72, lineHeight: 1.45, boxSizing: 'border-box' }}
             />
-            <div style={{ fontSize: 11, color: C.muted, marginTop: 8, lineHeight: 1.4 }}>Separate addresses with commas. Each invitee gets an email with a link to join as {role.toLowerCase()}.</div>
+            <div style={{ fontSize: 11, color: C.muted, marginTop: 8, lineHeight: 1.4 }}>Separate addresses with commas. New users get an invite link; existing users get a direct-access link as {role.toLowerCase()}.</div>
           </div>
 
           {blockedReason && (

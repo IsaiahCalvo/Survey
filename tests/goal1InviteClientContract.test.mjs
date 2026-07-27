@@ -8,8 +8,8 @@
  *     through sendInviteEmailSmart.
  *   - The edge function's real wiring (index.ts) builds the invite lookup
  *     client from the ANON key + the caller's Authorization header (RLS
- *     owner semantics), keeps the service role for auth.admin + the
- *     send-email fallback only, and stays a thin wrapper over handler.js.
+ *     owner semantics), keeps the service role for auth.admin only, and
+ *     stays a thin wrapper over handler.js.
  *   - config.toml disables gateway verify_jwt for the browser-invoked
  *     function (preflight OPTIONS carries no JWT).
  */
@@ -50,8 +50,8 @@ test('GOAL-1 client: no legacy invite-sender reference anywhere in src/', () => 
   equal(out, '', `stale references:\n${out}`);
 });
 
-test('GOAL-1 client: create + resend in all three services call sendInviteEmailSmart with token from the row', () => {
-  for (const file of SERVICES) {
+test('GOAL-1 client: new-user create + all resends keep the smart token sender', () => {
+  for (const file of SERVICES.slice(1)) {
     const text = read(file);
     match(text, /import \{ sendInviteEmailSmart \} from '\.\/shareEmailService'/);
     const calls = text.match(/sendInviteEmailSmart\(\{/g) || [];
@@ -59,9 +59,19 @@ test('GOAL-1 client: create + resend in all three services call sendInviteEmailS
     match(text, /token: data\.token/);
     match(text, /token: row\.token/);
   }
+
+  const documentText = read(SERVICES[0]);
+  match(documentText, /import \{ sendInviteEmailSmart \} from '\.\/shareEmailService'/);
+  equal(
+    (documentText.match(/sendInviteEmailSmart\(\{/g) || []).length,
+    2,
+    'document create + resend both call the server-derived smart sender',
+  );
+  match(documentText, /token:\s*data\.token/);
+  match(documentText, /token:\s*row\.token/);
 });
 
-test('GOAL-1 wiring: index.ts is a thin wrapper — caller-scoped RLS lookup, service role only for admin invite + fallback', () => {
+test('GOAL-1 wiring: index.ts is a thin wrapper — caller-scoped RLS lookup and service role only for auth admin', () => {
   const text = read('supabase/functions/send-invite-email/index.ts');
   match(text, /from '\.\/handler\.js'/);
   // Caller-scoped lookup client: anon key + caller Authorization header.
@@ -71,9 +81,11 @@ test('GOAL-1 wiring: index.ts is a thin wrapper — caller-scoped RLS lookup, se
   doesNotMatch(text, /adminClient\s*\.from\(/);
   // Admin client is used exactly for the auth invite.
   match(text, /adminClient\.auth\.admin\.inviteUserByEmail/);
-  // Fallback goes server-to-server to send-email with the service role key.
+  // Fallback goes server-to-server with the already-validated caller JWT.
+  // Modern sb_secret_ service keys are not JWTs and fail the Edge gateway.
   match(text, /functions\/v1\/send-email/);
-  match(text, /Bearer \$\{SERVICE_ROLE_KEY\}/);
+  match(text, /apikey:\s*ANON_KEY/);
+  match(text, /Authorization:\s*authHeader/);
   // Thin: no branch logic in the wrapper.
   doesNotMatch(text, /email_exists/);
 });

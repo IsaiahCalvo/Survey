@@ -113,10 +113,17 @@ test('shareEmailService routes all three invite kinds through the smart server-s
   // Honest per-kind naming so the email copy reads correctly.
   match(src, /the project "/);
   match(src, /the template "/);
-  // The existing-account branch still reuses the deployed document-invite
-  // template — server-side now (edge fn handler).
+  // Project/template existing-account branches still use the pending invite
+  // template; only verified immediate document grants use direct access.
   const fn = read('supabase/functions/send-invite-email/handler.js');
-  match(fn, /template: 'document-invite'/);
+  match(fn, /'permission-changed' : 'document-invite'/);
+
+  // Only document_invites has document_id. Keep the shared lookup columns
+  // valid for project_invites/template_invites.
+  const wrapper = read('supabase/functions/send-invite-email/index.ts');
+  match(wrapper, /table === 'document_invites'/);
+  match(wrapper, /\? `document_id,\$\{COMMON_INVITE_COLUMNS\}`/);
+  match(wrapper, /: COMMON_INVITE_COLUMNS/);
 });
 
 test('ShareModal routes project/template kinds to the right service (no Phase-A block)', () => {

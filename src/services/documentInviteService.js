@@ -122,8 +122,11 @@ export async function createDocumentInvite({ documentId, role, email = null, cur
     }
   }
 
-  // Phase C: fire invite email (best-effort) for email-bound invites.
-  // GOAL-1: one server-side call — recipient/role/URL derived from the row.
+  // Phase C: one server-side call for both paths. The edge function derives
+  // recipient, template, and URL from the owner-visible invite row. For an
+  // existing user it also verifies the active collaborator grant above and
+  // sends a direct document notification with no token. New users receive the
+  // secure acceptance link.
   if (email) {
     try {
       await sendInviteEmailSmart({

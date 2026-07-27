@@ -6,10 +6,11 @@
  *   Branch A (no account yet): auth.admin.inviteUserByEmail → the proven
  *     Supabase auth mailer (owner-configured Brevo SMTP + installed branded
  *     "Invite" template) with redirectTo = canonical /invite/<token>.
- *   Branch B (account exists → GoTrue email_exists): server-to-server call
- *     to the deployed send-email function (Resend transport, per the
- *     GOAL-autonomous-post-launch.md decided default) with the same
- *     canonical invite URL.
+ *   Branch B (account exists → GoTrue email_exists): after verifying the
+ *     immediate document collaborator grant, call the deployed send-email
+ *     function with a canonical direct-document URL and no invite token.
+ *     Project/template invites, or document invites without a verified
+ *     grant, keep the canonical acceptance URL.
  *
  * Authorization model: the caller's own JWT is used for the invite-row
  * lookup (anon-key client + caller Authorization header in index.ts), so
@@ -70,6 +71,7 @@ function capitalize(s) {
  *   anonKey: string,
  *   getUserFromToken: (jwt: string) => Promise<object|null>,
  *   selectInviteRow: (table: string, token: string) => Promise<object|null>,
+ *   selectActiveDocumentAccess: (documentId: string, email: string) => Promise<{role: string}|null>,
  *   inviteUserByEmail: (email: string, redirectTo: string) => Promise<{ error: object|null }>,
  *   sendFallbackEmail: (payload: { to: string, subject: string, template: string, data: object }) => Promise<boolean>,
  * }} deps
@@ -132,22 +134,52 @@ export async function handleSendInviteEmail(input, deps) {
     return json(502, { sent: false, error: 'Send failed' });
   }
 
-  // Branch B — account exists (or auth mailer rate-limited): same generic
-  // response, Resend transport via the deployed send-email function
-  // (trusted service-role caller path).
+  // Existing document accounts are granted access by documentInviteService
+  // before this function is called. Verify that active grant through the
+  // caller's owner-scoped RLS client before choosing a token-free direct link.
+  // If lookup/grant failed, keep the still-valid acceptance link.
+  let activeDocumentAccess = null;
+  if (
+    isExisting
+    && kind === 'document'
+    && row.document_id
+    && typeof deps.selectActiveDocumentAccess === 'function'
+  ) {
+    activeDocumentAccess = await deps.selectActiveDocumentAccess(
+      row.document_id,
+      row.target_email,
+    );
+  }
+
   const roleLabel = capitalize(row.intended_role || row.role || 'viewer');
-  const subject = `${inviterName} invited you to ${displayName} on Survey`;
+  const effectiveRole = capitalize(activeDocumentAccess?.role || 'viewer');
+  const directRoleLabel = effectiveRole === 'Viewer' && roleLabel !== 'Viewer'
+    ? `Viewer (${roleLabel} activates after upgrade)`
+    : effectiveRole;
+  const directDocumentUrl = `${CANONICAL_ORIGIN}/?docId=${encodeURIComponent(row.document_id || '')}`;
+  const subject = activeDocumentAccess
+    ? `${inviterName} shared ${displayName} with you on Survey`
+    : `${inviterName} invited you to ${displayName} on Survey`;
   const ok = await deps.sendFallbackEmail({
     to: row.target_email,
     subject,
-    template: 'document-invite',
-    data: {
-      documentName: displayName,
-      inviterName,
-      role: roleLabel,
-      inviteUrl,
-      expiresAt: row.expires_at || null,
-    },
+    template: activeDocumentAccess ? 'permission-changed' : 'document-invite',
+    data: activeDocumentAccess
+      ? {
+          documentName: displayName,
+          changedByName: inviterName,
+          newRole: directRoleLabel,
+          oldRole: null,
+          documentUrl: directDocumentUrl,
+          appUrl: CANONICAL_ORIGIN,
+        }
+      : {
+          documentName: displayName,
+          inviterName,
+          role: roleLabel,
+          inviteUrl,
+          expiresAt: row.expires_at || null,
+        },
   });
   if (!ok) {
     console.error('[send-invite-email] fallback send failed');

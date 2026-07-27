@@ -7,8 +7,8 @@
  *     header) for the invite-row lookup, so RLS owner-select policies
  *     decide visibility — NEVER the service role;
  *   - service-role client ONLY for auth.admin.inviteUserByEmail;
- *   - service-role fetch to the deployed send-email function for the
- *     existing-account (Resend) branch.
+ *   - caller-JWT fetch to the deployed send-email function for the
+ *     existing-account branch. The payload remains fully server-derived.
  */
 import { createClient } from 'npm:@supabase/supabase-js@2.110.8';
 import { handleSendInviteEmail, CORS_HEADERS } from './handler.js';
@@ -21,7 +21,10 @@ const adminClient = createClient(SUPABASE_URL, SERVICE_ROLE_KEY, {
   auth: { persistSession: false, autoRefreshToken: false },
 });
 
-const INVITE_COLUMNS = 'token,target_email,revoked_at,accepted_at,expires_at,intended_role,role';
+const COMMON_INVITE_COLUMNS = 'token,target_email,revoked_at,accepted_at,expires_at,intended_role,role';
+const inviteColumns = (table: string) => table === 'document_invites'
+  ? `document_id,${COMMON_INVITE_COLUMNS}`
+  : COMMON_INVITE_COLUMNS;
 
 Deno.serve(async (req) => {
   const authHeader = req.headers.get('Authorization') || '';
@@ -48,8 +51,19 @@ Deno.serve(async (req) => {
     selectInviteRow: async (table: string, token: string) => {
       const { data, error } = await callerClient
         .from(table)
-        .select(INVITE_COLUMNS)
+        .select(inviteColumns(table))
         .eq('token', token)
+        .maybeSingle();
+      if (error) return null;
+      return data ?? null;
+    },
+    selectActiveDocumentAccess: async (documentId: string, email: string) => {
+      const { data, error } = await callerClient
+        .from('document_collaborators')
+        .select('role')
+        .eq('document_id', documentId)
+        .ilike('email', email)
+        .eq('status', 'active')
         .maybeSingle();
       if (error) return null;
       return data ?? null;
@@ -70,7 +84,13 @@ Deno.serve(async (req) => {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            Authorization: `Bearer ${SERVICE_ROLE_KEY}`,
+            // Modern Supabase service keys use the sb_secret_ format, not a
+            // JWT, so the Edge gateway rejects them in Authorization before
+            // send-email can authenticate the request. Forward the already
+            // validated caller JWT; recipient/template/links are still
+            // derived above and never accepted from the browser.
+            apikey: ANON_KEY,
+            Authorization: authHeader,
           },
           body: JSON.stringify(payload),
         });
