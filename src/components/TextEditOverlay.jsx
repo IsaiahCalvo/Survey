@@ -41,6 +41,7 @@ import {
   buildNewTextCommitJSON,
   buildExistingTextCommitJSON,
 } from '../utils/textEditCommit.js';
+import { stampAnnotationCreationIdentity } from '../utils/annotationStorageIdentity.js';
 
 const DEFAULT_FONT_FAMILY = 'Helvetica';
 
@@ -93,6 +94,7 @@ export default function TextEditOverlay({
   textBoxWidth,
   newTextStyle = null,
   strokeColor,
+  authorId = null,
   onLiveTextGrow,
   onRichTextEditorChange,
   onCalloutTextStyleChange,
@@ -336,6 +338,7 @@ export default function TextEditOverlay({
         if (typeof onEditCancel === 'function') onEditCancel();
         return;
       }
+      json = stampAnnotationCreationIdentity(json, { authorId });
     } else {
       json = buildExistingTextCommitJSON({
         original: originalRef.current,
@@ -360,7 +363,7 @@ export default function TextEditOverlay({
     } else {
       onEditCommit(updated);
     }
-  }, [annotations, annotationIndex, isNewText, isCallout, onEditCommit, onEditCancel, pad]);
+  }, [annotations, annotationIndex, isNewText, isCallout, onEditCommit, onEditCancel, pad, authorId]);
 
   const cancelAndClose = useCallback(() => {
     if (committedRef.current) return;

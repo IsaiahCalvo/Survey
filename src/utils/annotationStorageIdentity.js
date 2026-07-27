@@ -14,6 +14,68 @@ function canonicalizeLegacyStorageKey(object, storageKey) {
   return `legacy-${prefix}-${encodedKey}`;
 }
 
+function getCanonicalAnnotationIdentityAuthorId(annotation) {
+  return (
+    annotation?.meta?.authorId
+    ?? annotation?.authorId
+    ?? annotation?.data?.authorId
+    ?? annotation?.data?.userId
+    ?? null
+  );
+}
+
+function getAnnotationIdentityAuthorId(annotation) {
+  return (
+    getCanonicalAnnotationIdentityAuthorId(annotation)
+    ?? annotation?.__meta?.authorId
+    ?? null
+  );
+}
+
+/**
+ * Stamp the identity fields a locally-created annotation needs before its
+ * first history checkpoint or Y.Doc write. Existing authors are write-once:
+ * passing an already-attributed object never reassigns it to the current user.
+ */
+export function stampAnnotationCreationIdentity(annotation, { authorId = null } = {}) {
+  if (!annotation || typeof annotation !== 'object') return annotation;
+  const normalized = normalizeAnnotationIdentity(annotation);
+  const object = normalized.object;
+  const annotationId = normalized.storageKey;
+  const canonicalAuthorId = getCanonicalAnnotationIdentityAuthorId(object);
+  const existingAuthorId = getAnnotationIdentityAuthorId(object);
+  const authorIdToStamp = existingAuthorId ?? authorId;
+  const needsTopLevelId = annotationId != null && object.id == null;
+  const needsAuthorStamp = canonicalAuthorId == null
+    && typeof authorIdToStamp === 'string'
+    && authorIdToStamp.length > 0;
+
+  if (!needsTopLevelId && !needsAuthorStamp) return object;
+  return {
+    ...object,
+    ...(needsTopLevelId ? { id: annotationId } : {}),
+    ...(needsAuthorStamp
+      ? { meta: { ...(object.meta || {}), authorId: authorIdToStamp } }
+      : {}),
+  };
+}
+
+/**
+ * Canonical identity attributes used by the SVG wrapper and browser tests.
+ */
+export function getAnnotationRenderIdentity(annotation) {
+  return {
+    annotationId: (
+      annotation?.data?.id
+      ?? annotation?.data?.annoId
+      ?? annotation?.id
+      ?? annotation?.annotationId
+      ?? ''
+    ),
+    authorId: getAnnotationIdentityAuthorId(annotation) ?? '',
+  };
+}
+
 export function normalizeAnnotationIdentity(
   object,
   {

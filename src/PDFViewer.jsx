@@ -30903,6 +30903,7 @@ ${pageBlocks}
                                   clickPosition={editingAnnotation.clickPosition || null}
                                   textBoxWidth={editingAnnotation.textBoxWidth}
                                   newTextStyle={mobileMode ? textStyleDefaults : null}
+                                  authorId={user?.id ?? null}
                                   // UX: Phase 15 UAT-2 — match the edit-mode outline
                                   // to the callout's own border color so view and
                                   // edit look identical. Text edits keep the default

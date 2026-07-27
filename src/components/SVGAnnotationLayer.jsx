@@ -57,6 +57,10 @@ import {
   buildLineCommitJSON,
   composeAnnotationColor,
 } from '../utils/annotationCreationCommit.js';
+import {
+  getAnnotationRenderIdentity,
+  stampAnnotationCreationIdentity,
+} from '../utils/annotationStorageIdentity.js';
 import { computeDrawnBoundaryShapePreviewGeometry } from '../utils/shapeCommitGeometry.js';
 import {
   beginAnnotationGesture,
@@ -1214,7 +1218,8 @@ const SVGAnnotationLayer = memo(({
     const id = (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function')
       ? crypto.randomUUID()
       : `anno-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
-    const dispatchCommit = (json) => {
+    const dispatchCommit = (rawJson) => {
+      const json = stampAnnotationCreationIdentity(rawJson, { authorId: viewerId });
       updateAnnotationGesture(state.gestureId, { annotationId: id });
       const current = annotationsRef.current;
       // setShapeCreation(null) above + this save land in ONE batched React
@@ -1295,6 +1300,7 @@ const SVGAnnotationLayer = memo(({
     isRegionOverlayEnabled, lineBorderStyle, onSaveAnnotations,
     onSurveyMarkerCreated, pageNumber, selectedModuleId, selectedSpaceId,
     spaces, strokeColor, strokeOpacity, strokeWidth,
+    viewerId,
   ]);
   const commitShapeCreationRef = useRef(commitShapeCreation);
   useEffect(() => { commitShapeCreationRef.current = commitShapeCreation; }, [commitShapeCreation]);
@@ -3878,12 +3884,13 @@ const SVGAnnotationLayer = memo(({
     if (isBeingEdited && TEXT_EDIT_TYPES.has(objTypeForEdit)) {
       renderElement = renderText(renderObj, i, liveTextEditBounds || null, true);
     }
+    const renderIdentity = getAnnotationRenderIdentity(obj);
 
     return (
       <g
         key={`wrapper-${obj.id || i}`}
         data-annotation-index={i}
-        data-annotation-id={obj.id || ''}
+        data-annotation-id={renderIdentity.annotationId}
         data-pdf-annotation-id={obj?.pdfAnnotationId || obj?.data?.pdfAnnotationId || ''}
         data-pdf-annotation-type={obj?.pdfAnnotationType || obj?.data?.pdfAnnotationType || ''}
         // Phase 29 (Plan 29-04 Info 1 resolution) — e2e test seams.
@@ -3895,8 +3902,8 @@ const SVGAnnotationLayer = memo(({
         // per-user attribution without scraping internal state. Pure attribute
         // pass-through — ZERO behavior change. CLAUDE.md SVG rule honored
         // (viewBox owns all zoom; no JS coordination added).
-        data-anno-id={obj?.data?.id || obj?.id || ''}
-        data-author-id={obj?.__meta?.authorId ?? obj?.data?.authorId ?? ''}
+        data-anno-id={renderIdentity.annotationId}
+        data-author-id={renderIdentity.authorId}
         style={{
           cursor: annotationIsSelected ? 'move' : (annotationIsHovered ? 'pointer' : undefined),
           opacity: hideForEdit ? 0 : undefined,
