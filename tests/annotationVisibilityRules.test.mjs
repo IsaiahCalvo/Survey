@@ -248,7 +248,7 @@ describe('isAnnotationVisibleInContext', () => {
     }],
   }];
 
-  it('uses the shared survey filter for regular and survey-scoped annotations', () => {
+  it('adds matching survey annotations without hiding regular annotations', () => {
     assert.equal(
       isAnnotationVisibleInContext({
         annotation: { moduleId: null, regionId: null },
@@ -257,7 +257,7 @@ describe('isAnnotationVisibleInContext', () => {
         selectedModuleId: 'module-1',
         showSurveyPanel: true,
       }),
-      false
+      true
     );
 
     assert.equal(
@@ -398,7 +398,7 @@ describe('isAnnotationVisibleInContext', () => {
     );
   });
 
-  it('keeps normal annotations visible outside survey mode even when a survey module is selected', () => {
+  it('keeps normal annotations visible across survey mode and module transitions', () => {
     assert.equal(
       isAnnotationVisibleInContext({
         annotation: { moduleId: null, regionId: null },
@@ -406,6 +406,16 @@ describe('isAnnotationVisibleInContext', () => {
         selectedSpaceId: 'space-1',
         selectedModuleId: 'module-1',
         showSurveyPanel: false,
+      }),
+      true
+    );
+    assert.equal(
+      isAnnotationVisibleInContext({
+        annotation: { moduleId: null, regionId: null },
+        pageNumber: 1,
+        selectedSpaceId: 'space-1',
+        selectedModuleId: 'module-1',
+        showSurveyPanel: true,
       }),
       true
     );

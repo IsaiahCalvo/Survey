@@ -86,6 +86,7 @@ import {
   getAnnotationVisibilityScope,
   getSpaceIdForRegionFromSpaces,
   isAnnotationVisibleInContext,
+  isAnnotationVisibleInSurveyMode,
   isAnnotationVisibleByPageControl,
   shouldStampActiveRegionId
 } from '../utils/annotationVisibilityRules';
@@ -2079,9 +2080,6 @@ const SVGAnnotationLayer = memo(({
         moduleId: obj.moduleId,
         regionId: obj.regionId
       });
-      const isSurveyAnnotation =
-        visibilityScope === ANNOTATION_VISIBILITY_SCOPE.SURVEY ||
-        visibilityScope === ANNOTATION_VISIBILITY_SCOPE.SURVEY_REGION;
       const isScopedRegionAnnotation =
         visibilityScope === ANNOTATION_VISIBILITY_SCOPE.REGION ||
         visibilityScope === ANNOTATION_VISIBILITY_SCOPE.SURVEY_REGION;
@@ -2098,13 +2096,11 @@ const SVGAnnotationLayer = memo(({
       }
 
       // 2. Survey visibility
-      let surveyAnnotationVisible = true;
-      if (isSurveyAnnotation) {
-        surveyAnnotationVisible =
-          showSurveyPanel && selectedModuleId !== null && obj.moduleId === selectedModuleId;
-      } else if (!isScopedRegionAnnotation) {
-        surveyAnnotationVisible = !(showSurveyPanel && selectedModuleId !== null);
-      }
+      const surveyAnnotationVisible = isAnnotationVisibleInSurveyMode({
+        moduleId: obj.moduleId,
+        showSurveyPanel,
+        selectedModuleId
+      });
 
       // 3. Scoped region visibility
       let scopedRegionAnnotationVisible = true;
@@ -2347,9 +2343,6 @@ const SVGAnnotationLayer = memo(({
         moduleId: h.moduleId,
         regionId: h.regionId,
       });
-      const isSurveyAnnotation =
-        visibilityScope === ANNOTATION_VISIBILITY_SCOPE.SURVEY ||
-        visibilityScope === ANNOTATION_VISIBILITY_SCOPE.SURVEY_REGION;
       const isScopedRegionAnnotation =
         visibilityScope === ANNOTATION_VISIBILITY_SCOPE.REGION ||
         visibilityScope === ANNOTATION_VISIBILITY_SCOPE.SURVEY_REGION;
@@ -2362,13 +2355,11 @@ const SVGAnnotationLayer = memo(({
         matchesSpace = activeSpaceId !== null && derivedSpaceId === activeSpaceId;
       }
 
-      let surveyAnnotationVisible = true;
-      if (isSurveyAnnotation) {
-        surveyAnnotationVisible =
-          showSurveyPanel && selectedModuleId !== null && h.moduleId === selectedModuleId;
-      } else if (!isScopedRegionAnnotation) {
-        surveyAnnotationVisible = !(showSurveyPanel && selectedModuleId !== null);
-      }
+      const surveyAnnotationVisible = isAnnotationVisibleInSurveyMode({
+        moduleId: h.moduleId,
+        showSurveyPanel,
+        selectedModuleId
+      });
 
       let scopedRegionAnnotationVisible = true;
       if (isScopedRegionAnnotation) {

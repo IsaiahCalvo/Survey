@@ -51,6 +51,7 @@ const ydocProviderDebug = (...args) => {
 // Importing the alias `createTransportProvider` keeps the call site transport-
 // agnostic — if v2.5+ ever flips to Hocuspocus, the change is one line here.
 import { createSupabaseYjsProvider as createTransportProvider } from '../../lib/collab/SupabaseYjsProvider.js';
+import { isTransportChannelJoined } from '../../lib/collab/transportStatus.js';
 import { attachAuthSessionBridge } from '../../lib/collab/authSessionBridge.js';
 import { buildOrigin } from '../../lib/collab/originBuilder.js';
 import { getDeviceId } from '../../lib/collab/deviceId.js';
@@ -113,6 +114,9 @@ import { CleanupResidueReviewPanel } from './CleanupResidueReviewPanel.jsx';
 // audit is a one-shot affordance, not a recurring nag.
 const PHASE35_DISMISSED_KEY = 'phase35.dismissedCleanupBanners';
 const TRANSPORT_OFFLINE_BANNER_GRACE_MS = 1500;
+const TRANSPORT_RETRY_RESULT_TIMEOUT_MS = 5000;
+const TRANSPORT_RETRY_ERROR =
+  'Live sync did not reconnect. Check your internet connection and try again.';
 
 const ydocTransportDebug = (...args) => {
   if (typeof window === 'undefined' || window.__YDOC_TRANSPORT_DEBUG !== true) return;
@@ -283,12 +287,14 @@ function YDocProviderInner({ docId, children, closeDocument, isActive }) {
   // Supabase session lookup goes through getSupabaseSession so corrupted local
   // refresh-token state can be cleared instead of poisoning boot/reconnect.
   const [undoState, setUndoState] = useState(null);
+  const [transportRetryError, setTransportRetryError] = useState(null);
 
   // Ref-mirror of storageState so the transport provider's async callbacks can
   // read the latest code without stale-closure bugs. Updated via the effect below.
   const storageStateRef = useRef(null);
   useEffect(() => { storageStateRef.current = storageState; }, [storageState]);
   const transportOfflineBannerTimerRef = useRef(null);
+  const transportRetryResultTimerRef = useRef(null);
   const transportOfflineGenerationRef = useRef(0);
 
   const clearTransportOfflineBannerTimer = useCallback(() => {
@@ -297,6 +303,29 @@ function YDocProviderInner({ docId, children, closeDocument, isActive }) {
     transportOfflineBannerTimerRef.current = null;
   }, []);
 
+  const clearTransportRetryResultTimer = useCallback(() => {
+    if (!transportRetryResultTimerRef.current) return;
+    clearTimeout(transportRetryResultTimerRef.current);
+    transportRetryResultTimerRef.current = null;
+  }, []);
+
+  const markTransportOnline = useCallback(() => {
+    clearTransportRetryResultTimer();
+    setTransportRetryError(null);
+    setTransportState('online');
+    const okState = { code: 'ok', role: 'unknown' };
+    if (storageStateRef.current?.code === 'transport_offline') {
+      storageStateRef.current = okState;
+    }
+    // The ref is updated by persistence and transport callbacks before React
+    // commits their queued state. Reconcile against the committed state too,
+    // or an out-of-order callback can leave the banner rendered while the ref
+    // already says "ok".
+    setStorageState((current) => (
+      current?.code === 'transport_offline' ? okState : current
+    ));
+  }, [clearTransportRetryResultTimer]);
+
   const scheduleTransportOfflineBanner = useCallback(() => {
     const generation = transportOfflineGenerationRef.current + 1;
     transportOfflineGenerationRef.current = generation;
@@ -304,15 +333,63 @@ function YDocProviderInner({ docId, children, closeDocument, isActive }) {
     transportOfflineBannerTimerRef.current = setTimeout(() => {
       transportOfflineBannerTimerRef.current = null;
       if (transportOfflineGenerationRef.current !== generation) return;
+      // Supabase can deliver a late CLOSED/TIMED_OUT callback after the channel
+      // has already rejoined. Trust the live channel state before surfacing a
+      // failure; otherwise a stale callback leaves an offline banner over a
+      // healthy, still-syncing document.
+      if (isTransportChannelJoined(providerRef.current)) {
+        ydocTransportDebug('[YDocProvider] ignored stale offline status; channel is joined');
+        markTransportOnline();
+        return;
+      }
       const currentCode = storageStateRef.current?.code || 'ok';
       if (currentCode !== 'ok' && currentCode !== 'transport_offline') {
         ydocTransportDebug('[YDocProvider] transport offline persisted but another banner is active', currentCode);
         return;
       }
       ydocTransportDebug('[YDocProvider] transport offline persisted; showing banner');
-      setStorageState({ code: 'transport_offline', role: 'unknown' });
+      const offlineState = { code: 'transport_offline', role: 'unknown' };
+      storageStateRef.current = offlineState;
+      setStorageState(offlineState);
     }, TRANSPORT_OFFLINE_BANNER_GRACE_MS);
-  }, [clearTransportOfflineBannerTimer]);
+  }, [clearTransportOfflineBannerTimer, markTransportOnline]);
+
+  const handleTransportRetry = useCallback(() => {
+    const generation = transportOfflineGenerationRef.current + 1;
+    transportOfflineGenerationRef.current = generation;
+    clearTransportOfflineBannerTimer();
+    clearTransportRetryResultTimer();
+    setTransportRetryError(null);
+    try {
+      // connect() is idempotent and returns immediately. Channels auto-rejoin;
+      // their SUBSCRIBED callback owns the normal online transition.
+      supabase?.realtime?.connect?.();
+    } catch (err) {
+      ydocTransportDebug('[YDocProvider] manual transport retry failed', err?.message || String(err));
+      setTransportRetryError(TRANSPORT_RETRY_ERROR);
+      return;
+    }
+
+    if (isTransportChannelJoined(providerRef.current)) {
+      markTransportOnline();
+      return;
+    }
+
+    setTransportState('offline');
+    transportRetryResultTimerRef.current = setTimeout(() => {
+      transportRetryResultTimerRef.current = null;
+      if (transportOfflineGenerationRef.current !== generation) return;
+      if (isTransportChannelJoined(providerRef.current)) {
+        markTransportOnline();
+        return;
+      }
+      setTransportRetryError(TRANSPORT_RETRY_ERROR);
+    }, TRANSPORT_RETRY_RESULT_TIMEOUT_MS);
+  }, [
+    clearTransportOfflineBannerTimer,
+    clearTransportRetryResultTimer,
+    markTransportOnline,
+  ]);
 
   useEffect(() => {
     // Fresh mount → reset banner-dismiss state. Subsequent storage failures
@@ -324,6 +401,7 @@ function YDocProviderInner({ docId, children, closeDocument, isActive }) {
 
     const handle = attachLifecycle(ydoc, docId, {
       onStorageState: (state) => {
+        storageStateRef.current = state;
         setStorageState(state);
         // UX: 'ok' code fires when IndexeddbPersistence emits 'synced'. That's
         // the moment hydration is complete — flip the fade-in class to 'hydrated'.
@@ -367,10 +445,8 @@ function YDocProviderInner({ docId, children, closeDocument, isActive }) {
             // UX: only clear if the current state is the transport-side banner.
             // Don't stomp on persistence-side codes (quota / blocked / etc.) —
             // those are independent failure modes.
-            if (storageStateRef.current?.code === 'transport_offline') {
-              ydocTransportDebug('[YDocProvider] transport online; clearing banner');
-              setStorageState({ code: 'ok', role: 'unknown' });
-            }
+            ydocTransportDebug('[YDocProvider] transport online; reconciling banner');
+            markTransportOnline();
           }
         },
         onUpdateRejected: (reason) => {
@@ -405,7 +481,9 @@ function YDocProviderInner({ docId, children, closeDocument, isActive }) {
       if (cancelled) return;
       // eslint-disable-next-line no-console
       console.warn('[YDocProvider] transport provider failed to construct', err?.message);
-      setStorageState({ code: 'transport_offline', role: 'unknown' });
+      const offlineState = { code: 'transport_offline', role: 'unknown' };
+      storageStateRef.current = offlineState;
+      setStorageState(offlineState);
     });
 
     // Phase 28 — mount the auth session bridge inside this useEffect (Pitfall 1
@@ -463,6 +541,7 @@ function YDocProviderInner({ docId, children, closeDocument, isActive }) {
       clearTimeout(hydrationFallback);
       transportOfflineGenerationRef.current += 1;
       clearTransportOfflineBannerTimer();
+      clearTransportRetryResultTimer();
       try { handle.detach(); } catch { /* swallow — handle may already be torn down */ }
       try { providerHandle?.disconnect?.(); } catch { /* swallow */ }
       try { providerRef.current?.disconnect?.(); } catch { /* swallow */ }
@@ -473,7 +552,14 @@ function YDocProviderInner({ docId, children, closeDocument, isActive }) {
       releaseYDoc(docId);
       lifecycleRef.current = null;
     };
-  }, [clearTransportOfflineBannerTimer, docId, scheduleTransportOfflineBanner, ydoc]);
+  }, [
+    clearTransportOfflineBannerTimer,
+    clearTransportRetryResultTimer,
+    docId,
+    markTransportOnline,
+    scheduleTransportOfflineBanner,
+    ydoc,
+  ]);
 
   // Sleep/wake revive — when the display sleeps, the OS suspends the realtime
   // websocket and its sockets go stale; on a naive wake the channel can stay
@@ -1397,6 +1483,9 @@ function YDocProviderInner({ docId, children, closeDocument, isActive }) {
       {showBanner && (
         <StorageFailureBanner
           code={storageState.code}
+          statusDetail={
+            storageState.code === 'transport_offline' ? transportRetryError : null
+          }
           onDismiss={() => {
             // The banner component refuses to render the dismiss button when
             // code === 'permission_revoked', so this handler only fires for
@@ -1409,15 +1498,9 @@ function YDocProviderInner({ docId, children, closeDocument, isActive }) {
           onAction={() => {
             // Per-code action wiring per 28-UI-SPEC.md Interaction States table.
             if (storageState.code === 'transport_offline') {
-              // UX: Retry now — disconnect + reconnect. Easiest reliable path is
-              // a full page reload (the existing useEffect re-runs and rebuilds
-              // the provider). Plan 32 may add a softer reconnect() method on
-              // the provider; for now the reload preserves the user's state via
-              // Phase 27 IndexedDB persistence so nothing is lost.
-              try { providerRef.current?.disconnect?.(); } catch { /* swallow */ }
-              if (typeof window !== 'undefined') {
-                window.location.reload();
-              }
+              // Retry the existing transport in place. This is bounded and
+              // preserves the open document instead of forcing a full reload.
+              handleTransportRetry();
             } else if (storageState.code === 'permission_revoked') {
               // UX: Close document — caller-provided callback. User leaves on
               // their own terms, document stayed open in read-only the whole

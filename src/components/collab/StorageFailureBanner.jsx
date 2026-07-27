@@ -288,6 +288,7 @@ export function StorageFailureBanner({
   code,
   onDismiss,
   onAction,
+  statusDetail = null,
   // Phase 29 — used only when code === 'annotation_remote_deleted'.
   collaboratorName = null,
   onRestore,
@@ -375,8 +376,10 @@ export function StorageFailureBanner({
             ? "You may lose track of edits that haven't saved yet. Saves keep retrying either way — this just hides the reminder."
             : copy.body}
         </div>
-        {!confirmingDismiss && SECONDARY_BY_CODE[code] && (
-          <div className="storage-banner__secondary">{SECONDARY_BY_CODE[code]}</div>
+        {!confirmingDismiss && (statusDetail || SECONDARY_BY_CODE[code]) && (
+          <div className="storage-banner__secondary">
+            {statusDetail || SECONDARY_BY_CODE[code]}
+          </div>
         )}
       </div>
       {confirmingDismiss ? (

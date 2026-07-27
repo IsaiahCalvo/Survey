@@ -62,6 +62,18 @@ export function isSurveyVisibilityContext({ showSurveyPanel = false, selectedMod
   return Boolean(showSurveyPanel && selectedModuleId !== null && selectedModuleId !== undefined);
 }
 
+// KAL-436: Survey adds the selected module's annotations to the shared canvas;
+// it never hides ordinary canvas annotations during template/category changes.
+export function isAnnotationVisibleInSurveyMode({
+  moduleId = null,
+  showSurveyPanel = false,
+  selectedModuleId = null
+} = {}) {
+  if (!isScopedToSurvey(moduleId)) return true;
+  return isSurveyVisibilityContext({ showSurveyPanel, selectedModuleId })
+    && moduleId === selectedModuleId;
+}
+
 export function getPageVisibilityControlMode({ showSurveyPanel = false, selectedModuleId = null } = {}) {
   return isSurveyVisibilityContext({ showSurveyPanel, selectedModuleId })
     ? PAGE_VISIBILITY_CONTROL_MODE.SURVEY
@@ -238,9 +250,6 @@ export function isAnnotationVisibleInContext({
     moduleId: annotation.moduleId,
     regionId: annotation.regionId
   });
-  const isSurveyAnnotation =
-    visibilityScope === ANNOTATION_VISIBILITY_SCOPE.SURVEY ||
-    visibilityScope === ANNOTATION_VISIBILITY_SCOPE.SURVEY_REGION;
   const isScopedRegionAnnotation =
     visibilityScope === ANNOTATION_VISIBILITY_SCOPE.REGION ||
     visibilityScope === ANNOTATION_VISIBILITY_SCOPE.SURVEY_REGION;
@@ -272,13 +281,11 @@ export function isAnnotationVisibleInContext({
     matchesSpace = activeSpaceId !== null && derivedSpaceId === activeSpaceId;
   }
 
-  let surveyAnnotationVisible = true;
-  if (isSurveyAnnotation) {
-    surveyAnnotationVisible =
-      showSurveyPanel && selectedModuleId !== null && annotation.moduleId === selectedModuleId;
-  } else if (!isScopedRegionAnnotation) {
-    surveyAnnotationVisible = !(showSurveyPanel && selectedModuleId !== null);
-  }
+  const surveyAnnotationVisible = isAnnotationVisibleInSurveyMode({
+    moduleId: annotation.moduleId,
+    showSurveyPanel,
+    selectedModuleId
+  });
 
   let scopedRegionAnnotationVisible = true;
   if (isScopedRegionAnnotation) {

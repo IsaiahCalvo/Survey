@@ -18585,6 +18585,20 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   // Keep the latest-ref current so the earlier conflict-resolver can re-reconcile.
   reconcileExcelSyncRef.current = reconcileExcelSync;
 
+  // Reconcile once when a workbook-capable Survey template becomes active,
+  // without tearing down the document-scoped live hint channel below.
+  useEffect(() => {
+    if (!pdfFile?.id || !user?.id || !cloudSyncEnabled) return;
+    if (!selectedTemplate?.supabaseId && !selectedTemplate?.id) return;
+    void reconcileExcelSyncRef.current?.();
+  }, [
+    pdfFile?.id,
+    user?.id,
+    cloudSyncEnabled,
+    selectedTemplate?.supabaseId,
+    selectedTemplate?.id,
+  ]);
+
   useEffect(() => {
     const documentId = pdfFile?.id || null;
     if (!documentId || !user?.id || !cloudSyncEnabled) return undefined;
@@ -18594,16 +18608,14 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     const runReconcile = async () => {
       if (cancelled) return;
       try {
-        await reconcileExcelSync();
+        await reconcileExcelSyncRef.current?.();
         backoff = 1000; // success resets backoff
       } catch (err) {
         console.warn('[KAL-309] reconcile failed; backing off', err?.message);
         backoff = Math.min(backoff * 2, MAX_BACKOFF);
       }
     };
-    // 1) On open: replay anything missed offline.
-    void runReconcile();
-    // 2) Live: a content-free post-commit hint from the Edge (channel yjs:<documentId>,
+    // Live: a content-free post-commit hint from the Edge (channel yjs:<documentId>,
     //    event 'excel_sync_applied') → re-fetch + materialize missed ops.
     const channel = supabase
       .channel(`yjs:${documentId}`)
@@ -18617,7 +18629,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       cancelled = true;
       try { supabase.removeChannel(channel); } catch { /* */ }
     };
-  }, [pdfFile?.id, user?.id, cloudSyncEnabled, reconcileExcelSync]);
+  }, [pdfFile?.id, user?.id, cloudSyncEnabled]);
 
   // Live presence list — feeds the stacked-avatars row in the toolbar.
   // Uses cloudSyncActive (operational flag) so presence stops fetching when
