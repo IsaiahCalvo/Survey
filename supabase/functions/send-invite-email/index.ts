@@ -10,7 +10,7 @@
  *   - service-role fetch to the deployed send-email function for the
  *     existing-account (Resend) branch.
  */
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.47.10';
+import { createClient } from 'npm:@supabase/supabase-js@2.110.8';
 import { handleSendInviteEmail, CORS_HEADERS } from './handler.js';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL') ?? '';

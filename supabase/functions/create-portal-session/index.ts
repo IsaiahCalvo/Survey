@@ -1,5 +1,5 @@
 import Stripe from 'npm:stripe@20.4.1';
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.47.10?target=deno';
+import { createClient } from 'npm:@supabase/supabase-js@2.110.8';
 
 const stripe = new Stripe(Deno.env.get('STRIPE_SECRET_KEY') as string, {
     apiVersion: '2026-02-25.clover',

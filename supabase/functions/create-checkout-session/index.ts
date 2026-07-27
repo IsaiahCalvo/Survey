@@ -1,7 +1,6 @@
 
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import Stripe from "npm:stripe@20.4.1";
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.0'
+import { createClient } from 'npm:@supabase/supabase-js@2.110.8'
 
 const corsHeaders = {
     // ⚠️ INTENTIONAL — do NOT tighten to an origin allowlist (false positive if an
@@ -19,7 +18,7 @@ const corsHeaders = {
 // STRIPE_PRO_ANNUAL_PRICE_ID = price_yyy (for $99/year)
 // STRIPE_ENTERPRISE_PRICE_ID = price_zzz (for $20/user/month)
 
-serve(async (req) => {
+Deno.serve(async (req) => {
     if (req.method === 'OPTIONS') {
         return new Response('ok', { headers: corsHeaders })
     }

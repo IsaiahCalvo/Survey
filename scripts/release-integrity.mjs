@@ -6,6 +6,7 @@ import { pathToFileURL } from 'node:url';
 
 export const STRIPE_SDK_VERSION = '20.4.1';
 export const STRIPE_API_VERSION = '2026-02-25.clover';
+export const SUPABASE_JS_VERSION = '2.110.8';
 
 const REQUIRED_STRIPE_SECRETS = [
   'STRIPE_ENTERPRISE_PRICE_ID',
@@ -142,6 +143,22 @@ export function assertStaticReleaseContract(root = process.cwd()) {
   const jwtConfig = parseFunctionJwtConfig(configText, functionNames);
   assert.equal(jwtConfig.get('stripe-webhook'), false, 'Stripe webhook must use Stripe signature auth');
   assert.equal(jwtConfig.get('create-portal-session'), false, 'Portal function must receive browser preflight');
+
+  for (const name of functionNames) {
+    const source = readFileSync(join(root, 'supabase', 'functions', name, 'index.ts'), 'utf8');
+    assert.doesNotMatch(
+      source,
+      /https:\/\/(?:esm\.sh|deno\.land|unpkg\.com)/,
+      `${name} must not depend on a third-party module CDN during clean CI or deployment`,
+    );
+    if (source.includes('@supabase/supabase-js')) {
+      assert.match(
+        source,
+        new RegExp(`npm:@supabase/supabase-js@${SUPABASE_JS_VERSION.replaceAll('.', '\\.')}`),
+        `${name} must pin the approved Supabase SDK`,
+      );
+    }
+  }
 
   for (const name of ['create-checkout-session', 'create-portal-session', 'stripe-webhook']) {
     const source = readFileSync(join(root, 'supabase', 'functions', name, 'index.ts'), 'utf8');

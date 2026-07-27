@@ -1,4 +1,4 @@
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.47.10';
+import { createClient } from 'npm:@supabase/supabase-js@2.110.8';
 
 // Transactional email via Brevo. Consolidated 2026-07-05 so the whole app uses
 // ONE email service — Brevo also sends the Supabase Auth login/reset emails.

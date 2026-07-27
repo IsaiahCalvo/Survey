@@ -17,8 +17,7 @@
 // Secrets discipline: the Row-ID signing secret is resolved server-side and NEVER returned to
 // the client or logged. Errors are structured and content-free.
 
-// esm.sh, deno target — same convention as create-checkout-session/index.ts.
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.47.10?target=deno';
+import { createClient } from 'npm:@supabase/supabase-js@2.110.8';
 
 // Guarded copy of the matcher/token modules (synced by scripts/sync-matcher-to-edge.sh;
 // drift-gated by tests/edgeMatcherDrift.test.mjs). Explicit .js paths — the copy keeps its
