@@ -36,14 +36,15 @@ if (testFiles.length === 0) {
   process.exit(1);
 }
 
-// These suites contain real wall-clock performance budgets or multi-second
-// transport timing assertions. Running them beside ~2,900 other tests creates
-// CPU-starvation flakes and makes CI randomly red even though the product path
-// is healthy. Keep the main suite parallel, then run these files alone.
+// Most of these suites contain real wall-clock performance budgets or
+// multi-second transport timing assertions. The SVG transform suite can also
+// wedge a Node 24 test worker after the parallel suite completes. Keep the main
+// suite parallel, then run these files alone for deterministic CI.
 const isolatedTestFiles = [
   'tests/annotationDocConcurrency.test.mjs',
   'tests/partialEraseCurveLocality.test.mjs',
   'tests/partialEraserComplexity.test.mjs',
+  'tests/svgPathTransformFidelity.test.mjs',
 ].filter((file) => testFiles.includes(file));
 const isolatedSet = new Set(isolatedTestFiles);
 const parallelTestFiles = testFiles.filter((file) => !isolatedSet.has(file));
