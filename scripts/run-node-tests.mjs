@@ -45,7 +45,12 @@ const isolatedTestFiles = [
   'tests/svgPathTransformFidelity.test.mjs',
 ].filter((file) => testFiles.includes(file));
 const isolatedSet = new Set(isolatedTestFiles);
-const mainTestFiles = testFiles.filter((file) => !isolatedSet.has(file));
+const mainTestFiles = testFiles
+  .filter((file) => !isolatedSet.has(file))
+  .sort((left, right) => (
+    Number(right === 'tests/legacyInkCarrierFidelity.test.mjs')
+    - Number(left === 'tests/legacyInkCarrierFidelity.test.mjs')
+  ));
 
 function runTestFile(file, label, timeoutMs = 120_000) {
   console.log(`\n[tests] ${label}`);

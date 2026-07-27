@@ -376,11 +376,13 @@ test('flip and skew use one visible geometry for erase and native PDF export', a
     eraserRadius: 3,
     mode: 'partial',
   });
+  process.stderr.write('[DEBUG-legacy-ink-ci] flip/skew erase returned\n');
   assert.equal(erased.didChange, true, 'eraser hits the shared visible affine');
 
   const pdfDoc = await PDFDocument.create();
   const page = pdfDoc.addPage([400, 400]);
   const ref = createInkAnnotation(pdfDoc, page, object, 400);
+  process.stderr.write('[DEBUG-legacy-ink-ci] flip/skew PDF export returned\n');
   const dict = pdfDoc.context.lookup(ref);
   const inkList = dict.get(PDFName.of('InkList')).asArray()[0].asArray()
     .map((value) => value.value());
