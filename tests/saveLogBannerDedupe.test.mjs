@@ -14,6 +14,14 @@ const BANNER_SOURCE = readFileSync(
   'utf8'
 );
 
+test('SaveLogBanner never creates a second local snapshot after the trigger site saved one', () => {
+  assert.doesNotMatch(
+    BANNER_SOURCE,
+    /saveLogSnapshot/,
+    'GitHub push success or failure must not create another local snapshot'
+  );
+});
+
 test('SaveLogBanner declares the pushInFlightRef dedupe guard', () => {
   assert.match(
     BANNER_SOURCE,

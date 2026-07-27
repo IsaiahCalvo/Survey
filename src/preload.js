@@ -1,6 +1,48 @@
 // preload.js
 const { contextBridge, ipcRenderer } = require('electron');
 
+// KAL-411: Electron can deliver one Cmd/Ctrl+Shift+L action through both the
+// renderer key handler and the native menu accelerator. Keep the dedupe at the
+// shared bridge so every current and future Save Log trigger gets the same
+// protection without weakening the crash-resilient keyboard path.
+const SAVE_LOG_SNAPSHOT_DEDUPE_MS = 1000;
+let saveLogSnapshotInFlight = null;
+let lastSaveLogSnapshotResult = null;
+let lastSaveLogSnapshotCompletedAt = 0;
+
+function saveLogSnapshotOnce(payload) {
+  if (saveLogSnapshotInFlight) return saveLogSnapshotInFlight;
+
+  if (
+    lastSaveLogSnapshotCompletedAt > 0
+    && Date.now() - lastSaveLogSnapshotCompletedAt < SAVE_LOG_SNAPSHOT_DEDUPE_MS
+  ) {
+    return Promise.resolve(lastSaveLogSnapshotResult);
+  }
+
+  let request;
+  try {
+    request = Promise.resolve(ipcRenderer.invoke('logs:saveSnapshot', payload));
+  } catch (error) {
+    request = Promise.reject(error);
+  }
+
+  const trackedRequest = request
+    .then((result) => {
+      lastSaveLogSnapshotResult = result;
+      lastSaveLogSnapshotCompletedAt = Date.now();
+      return result;
+    })
+    .finally(() => {
+      if (saveLogSnapshotInFlight === trackedRequest) {
+        saveLogSnapshotInFlight = null;
+      }
+    });
+
+  saveLogSnapshotInFlight = trackedRequest;
+  return trackedRequest;
+}
+
 contextBridge.exposeInMainWorld('electronAPI', {
   openFile: (options) => ipcRenderer.invoke('dialog:openFile', options),
   saveFile: (options) => ipcRenderer.invoke('dialog:saveFile', options),
@@ -92,7 +134,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // dated subfolder under <project>/Logs/ containing console.log, network.json,
   // and summary.json. Caller hands over the captured payload; main does the
   // path math + prune-to-20 cleanup. Returns { ok, dir, error }.
-  saveLogSnapshot: (payload) => ipcRenderer.invoke('logs:saveSnapshot', payload),
+  saveLogSnapshot: saveLogSnapshotOnce,
 
   // 2026-06-04 — Read the continuous main-process renderer-console log. Main
   // captures every renderer console message from launch through every reload, so
