@@ -1,4 +1,4 @@
-import test from 'node:test';
+import nodeTest from 'node:test';
 import assert from 'node:assert/strict';
 import { PDFDocument, PDFName, decodePDFRawStream } from 'pdf-lib';
 import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.mjs';
@@ -20,6 +20,15 @@ import {
 import { getEraserOperation } from '../src/utils/eraserPolicy.js';
 import { importAnnotationsFromPdf } from '../src/utils/pdfAnnotationImporter.js';
 import { createInkAnnotation } from '../src/utils/pdfAnnotationsPdfLib.js';
+
+const test = (name, fn) => nodeTest(name, async (...args) => {
+  process.stderr.write(`[DEBUG-legacy-ink-ci] START ${name}\n`);
+  try {
+    return await fn(...args);
+  } finally {
+    process.stderr.write(`[DEBUG-legacy-ink-ci] END ${name}\n`);
+  }
+});
 
 const clone = (value) => JSON.parse(JSON.stringify(value));
 
