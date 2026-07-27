@@ -1244,6 +1244,7 @@ const SVGAnnotationLayer = memo(({
       const json = buildFreehandCommitJSON({
         tool,
         id,
+        authorId: viewerId,
         points,
         strokeColor,
         highlightColor,
@@ -1299,8 +1300,7 @@ const SVGAnnotationLayer = memo(({
     activeRegionId, arrowheadStyle, cloudIntensity, fillColor, fillOpacity,
     isRegionOverlayEnabled, lineBorderStyle, onSaveAnnotations,
     onSurveyMarkerCreated, pageNumber, selectedModuleId, selectedSpaceId,
-    spaces, strokeColor, strokeOpacity, strokeWidth,
-    viewerId,
+    spaces, strokeColor, strokeOpacity, strokeWidth, viewerId,
   ]);
   const commitShapeCreationRef = useRef(commitShapeCreation);
   useEffect(() => { commitShapeCreationRef.current = commitShapeCreation; }, [commitShapeCreation]);

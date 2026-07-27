@@ -3,8 +3,10 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
 import { createProductionPaperInk } from '../src/utils/productionPaperInk.js';
+import { buildFreehandCommitJSON } from '../src/utils/annotationCreationCommit.js';
 import { createInkPathAffine } from '../src/utils/inkGeometryTransform.js';
 import { polygonSetToCommands } from '../src/utils/paperAnnotationGeometry.js';
+import { canModify, getAnnotationAuthorId } from '../src/lib/collab/permissionScope.js';
 import {
   applyPdfAppAnnotationMetadata,
   buildPdfAppAnnotationMetadata,
@@ -78,6 +80,32 @@ test('a production highlighter uses the same geometry with multiply compositing'
   assert.equal(object.fill, 'rgba(255, 235, 59, 0.45)');
   assert.equal(object.sourceWidth, 12);
   assert.ok(object.paperCenterline.length >= 2);
+});
+
+test('editor-created highlighter stamps its creator for partial-erase admission', () => {
+  const creatorId = '53f84051-1022-4915-bdcf-63e63ddcd2fc';
+  const ownerId = '170d915c-5741-4e0b-b03f-deaeedae27bd';
+  const object = buildFreehandCommitJSON({
+    tool: 'highlighter',
+    id: 'editor-highlight-1',
+    authorId: creatorId,
+    points: [{ x: 10, y: 30 }, { x: 110, y: 30 }],
+    strokeColor: '#d11b2d',
+    highlightColor: 'rgba(255, 235, 59, 0.45)',
+    strokeWidth: 20,
+  });
+
+  assert.equal(object.id, 'editor-highlight-1');
+  assert.equal(object.data.id, 'editor-highlight-1');
+  assert.equal(object.tool, 'highlighter');
+  assert.equal(object.paperInkGeometry, 'v1');
+  assert.equal(getAnnotationAuthorId(object), creatorId);
+  assert.equal(canModify({ annotation: object, viewerId: creatorId, documentOwnerId: ownerId }), true);
+  assert.equal(canModify({
+    annotation: object,
+    viewerId: '00000000-0000-0000-0000-000000000002',
+    documentOwnerId: ownerId,
+  }), false);
 });
 
 test('the production drawing surface commits captured pointer points through paper geometry', () => {

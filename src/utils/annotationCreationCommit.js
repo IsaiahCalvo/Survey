@@ -261,6 +261,7 @@ export function buildLineCommitJSON({
 export function buildFreehandCommitJSON({
   tool, // 'pen' | 'highlighter'
   id,
+  authorId,
   points,
   strokeColor,
   highlightColor,
@@ -273,6 +274,13 @@ export function buildFreehandCommitJSON({
     ...PEN_FABRIC_RESIDUE,
     id,
     tool,
+    // KAL-417: highlighters are permission-gated at partial-erase time.
+    // Stamp their creator before the first collaborative publish so an editor
+    // can modify their own stroke. Keep this narrow: KAL-435 owns the general
+    // text/shape identity boundary.
+    ...(tool === 'highlighter' && typeof authorId === 'string' && authorId
+      ? { meta: { authorId } }
+      : {}),
     points,
     // Parity quirk preserved: the fabric brush color was never composed with
     // strokeOpacity for pen, and highlighter used the fixed highlightColor.
