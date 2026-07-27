@@ -107,6 +107,7 @@ const PDFSidebar = React.forwardRef(({
   onPageDrop,
   onToggleCollapse,
   features,
+  canManageSpaces = false,
   getCanvasAnnotationVisibilityState = null,
   onToggleCanvasAnnotations = null,
   getSurveyAnnotationVisibilityState = null,
@@ -554,6 +555,7 @@ const PDFSidebar = React.forwardRef(({
                 regionSelectionPage={regionSelectionPage}
                 numPages={numPages}
                 features={features}
+                canManageSpaces={canManageSpaces}
                 getCanvasAnnotationVisibilityState={getCanvasAnnotationVisibilityState}
                 onToggleCanvasAnnotations={onToggleCanvasAnnotations}
                 getSurveyAnnotationVisibilityState={getSurveyAnnotationVisibilityState}

@@ -188,6 +188,8 @@ import { preserveExistingCountersOnPage, shouldRenumberCountersForSave, summariz
 import { recordAnnotationCommit, recordAnnotationSyncPush, recordAnnotationUndoRedo } from './utils/annotationPreviewDiag';
 import { resolveAnnotationAt } from './utils/annotationHitTest';
 import { resolveSafeSnapshot } from './utils/safeSnapshot';
+import { canManageCollaborativeSpaces } from './utils/collaborativeSpaceAccess';
+import { combineCollaborationSyncStatus } from './utils/collaborationSyncStatus';
 import { resolveSurveyMarkerPromptName } from './utils/surveyMarkerNamePrompt';
 import { sanitizeConsoleLogText } from './utils/consoleLogFilter';
 import { scopeHistoryStateForCalloutRestore } from './utils/calloutHistoryScope';
@@ -9681,6 +9683,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     undoManager: yjsUndoManager,
     undoCtx: yjsUndoCtx,
     docRole: yjsDocRole,
+    transportState: yjsTransportState,
+    isDocShared: yjsIsDocShared,
     accessRevoked: yjsAccessRevoked,
   } = useYDoc();
   const [devAccessRevoked, setDevAccessRevoked] = useState(false);
@@ -10601,6 +10605,20 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     }
     return documentOwnerId;
   }, [documentOwnerId, pdfFile?.id, pdfFile?.user_id]);
+
+  const canManageSpaces = useMemo(() => canManageCollaborativeSpaces({
+    hasAdvancedSurvey: !!features?.advancedSurvey,
+    documentId: pdfFile?.id || null,
+    documentOwnerId,
+    viewerId: user?.id || null,
+    documentRole: yjsDocRole,
+  }), [
+    documentOwnerId,
+    features?.advancedSurvey,
+    pdfFile?.id,
+    user?.id,
+    yjsDocRole,
+  ]);
 
   // UX: Phase 14 KBD-01 — handler for Delete/Backspace on selected callouts.
   // Called by SVGAnnotationLayer's extended keydown effect via
@@ -18482,6 +18500,23 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     // callouts via the hook's zero-op read-only fallback.
     docRole: yjsDocRole,
   });
+
+  const displayedCloudSyncStatus = useMemo(() => combineCollaborationSyncStatus({
+    annotationStatus: cloudSyncStatus,
+    transportState: yjsTransportState,
+    isSharedDocument: yjsIsDocShared || (
+      yjsDocRole === 'editor'
+      && !!documentOwnerId
+      && documentOwnerId !== user?.id
+    ),
+  }), [
+    cloudSyncStatus,
+    documentOwnerId,
+    user?.id,
+    yjsDocRole,
+    yjsIsDocShared,
+    yjsTransportState,
+  ]);
   applyDurableEraseHistoryTransitionRef.current = applyDurableEraseHistoryTransition;
   const applyEraseHistoryTransitionFromToast = useCallback((transition) => {
     const mutationId = transition?.mutationId || null;
@@ -19547,7 +19582,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     setActiveSpaceId(spaceId);
     setSelectedSpaceId(spaceId); // Automatically select the space when entering edit mode
     setRegionSelectionPage(pageId);
-    if (features?.advancedSurvey) {
+    if (canManageSpaces) {
       const returnTool = getRegionEditReturnTool();
       if (regionEditReturnToolRef.current === null && returnTool && returnTool !== REGION_EDIT_TOOL) {
         regionEditReturnToolRef.current = returnTool;
@@ -19559,7 +19594,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       showToast('The region selection tool is a Pro feature. Please upgrade to use this tool.', 'warn');
     }
     goToPage(pageId, { fallback: 'nearest' });
-  }, [spaces, goToPage, features, getRegionEditReturnTool, showSurveyPanel, selectedModuleId, activeRegionId, clearAnnotationSelectionForContextChange]);
+  }, [spaces, goToPage, canManageSpaces, getRegionEditReturnTool, showSurveyPanel, selectedModuleId, activeRegionId, clearAnnotationSelectionForContextChange]);
 
   const handleCancelRegionEdit = useCallback(() => {
     finishRegionEditSession();
@@ -28502,6 +28537,7 @@ ${pageBlocks}
     const nextLeftRailApi = {
       ref: pdfSidebarRef,
       features,
+      canManageSpaces,
       pdfDoc,
       pdfDocumentKey: pdfSearchDocumentKey,
       numPages,
@@ -28565,7 +28601,7 @@ ${pageBlocks}
       isRegionOverlayToggleEnabled,
       showSurveyPanel,
       selectedModuleId,
-      cloudSyncStatus,
+      cloudSyncStatus: displayedCloudSyncStatus,
       cloudSyncQueueSize,
       cloudSyncEnabled,
       cloudSyncOnRetry: cloudSyncForceFlush,
@@ -28601,6 +28637,7 @@ ${pageBlocks}
     onLeftRailApiChange,
     pdfSidebarRef,
     features,
+    canManageSpaces,
     pdfDoc,
     pdfSearchDocumentKey,
     numPages,
@@ -28664,7 +28701,7 @@ ${pageBlocks}
     isRegionOverlayToggleEnabled,
     showSurveyPanel,
     selectedModuleId,
-    cloudSyncStatus,
+    displayedCloudSyncStatus,
     cloudSyncQueueSize,
     cloudSyncEnabled,
     cloudSyncForceFlush,

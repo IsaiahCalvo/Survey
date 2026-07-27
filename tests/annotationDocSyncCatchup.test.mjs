@@ -17,6 +17,14 @@ function makeRemoteOpHex(annotationId) {
   return bytesToPgHex(captured);
 }
 
+function makeRemoteSpacesHex(spaces) {
+  const remote = new Y.Doc();
+  let captured;
+  remote.on('update', (u) => { captured = u; });
+  setMetaValue(remote, 'spaces', spaces, 'remote-test');
+  return bytesToPgHex(captured);
+}
+
 function makeSeedAndDelete(annotationId) {
   const source = new Y.Doc();
   let captured = null;
@@ -47,7 +55,7 @@ function makeSupabase() {
     beforeInsert: null,
     failTailReads: false,
     failWrites: false,
-    fireSubscribed() { subscribeCallback?.('SUBSCRIBED'); },
+    fireSubscribed() { return subscribeCallback?.('SUBSCRIBED'); },
     fireRealtime(row) { realtimeCallback?.({ new: row }); },
     from(table) {
       if (table === 'annotation_updates') {
@@ -126,6 +134,72 @@ test('open-time race: an op committed between hydrate and SUBSCRIBED is applied 
 
   assert.ok(doc.getMap('annotations').has('missed-mark'), 'the missed op is applied');
   assert.ok(changes.length >= 1, 'listeners are notified so the viewer re-renders');
+  await handle.destroy();
+});
+
+test('status is not Up to date until realtime join and its catch-up sweep finish', async () => {
+  const supabase = makeSupabase();
+  const handle = await openAnnotationDoc({ actorUserId: 'test-actor',
+    documentId: 'doc-honest-status', supabase, clientId: 'me',
+    enableLocal: false, enableRealtime: true, doc: new Y.Doc(),
+  });
+
+  assert.notEqual(handle.getSyncStatus().stage, 'idle', 'joining realtime is not Up to date');
+  const catchup = supabase.fireSubscribed();
+  assert.notEqual(handle.getSyncStatus().stage, 'idle', 'catch-up in flight is not Up to date');
+  await catchup;
+  assert.equal(handle.getSyncStatus().stage, 'idle', 'successful catch-up reaches Up to date');
+  await handle.destroy();
+});
+
+test('failed catch-up cannot report Up to date', async () => {
+  const supabase = makeSupabase();
+  const handle = await openAnnotationDoc({ actorUserId: 'test-actor',
+    documentId: 'doc-failed-honest-status', supabase, clientId: 'me',
+    enableLocal: false, enableRealtime: true, doc: new Y.Doc(),
+  });
+
+  supabase.failTailReads = true;
+  await supabase.fireSubscribed();
+  assert.notEqual(handle.getSyncStatus().stage, 'idle');
+  assert.equal(handle.getSyncStatus().healthy, false);
+  await handle.destroy();
+});
+
+test('Space page membership and Region geometry materialize through catch-up', async () => {
+  const supabase = makeSupabase();
+  const doc = new Y.Doc();
+  const handle = await openAnnotationDoc({ actorUserId: 'test-actor',
+    documentId: 'doc-space-region-catchup', supabase, clientId: 'me',
+    enableLocal: false, enableRealtime: true, doc,
+  });
+  const spaces = [{
+    id: 'space-1',
+    name: 'Shared floor',
+    assignedPages: [{
+      pageId: 1,
+      label: 'Region 1',
+      wholePageIncluded: false,
+      regions: [{
+        id: 'region-1',
+        type: 'rect',
+        x: 0.1,
+        y: 0.2,
+        width: 0.3,
+        height: 0.4,
+      }],
+    }],
+  }];
+  supabase.log.push({
+    seq: 1,
+    data: makeRemoteSpacesHex(spaces),
+    client_id: 'owner-device',
+  });
+
+  supabase.fireSubscribed();
+  await new Promise((r) => setTimeout(r, 10));
+
+  assert.deepEqual(handle.getMeta('spaces'), spaces);
   await handle.destroy();
 });
 

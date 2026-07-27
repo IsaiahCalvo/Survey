@@ -754,6 +754,7 @@ const SpacesPanel = ({
   regionSelectionPage = null,
   numPages,
   features,
+  canManageSpaces = false,
   getCanvasAnnotationVisibilityState = null,
   onToggleCanvasAnnotations = null,
   getSurveyAnnotationVisibilityState = null,
@@ -1066,7 +1067,7 @@ const SpacesPanel = ({
   }, [expandedSpaces]);
 
   const handleCreateSpace = useCallback(() => {
-    if (!features?.advancedSurvey) {
+    if (!canManageSpaces) {
       showToast('Upgrade to Pro to create Spaces.', 'error');
       return;
     }
@@ -1077,7 +1078,7 @@ const SpacesPanel = ({
         assignedPages: []
       });
     }
-  }, [features?.advancedSurvey, spaces.length, onSpaceCreate]);
+  }, [canManageSpaces, spaces.length, onSpaceCreate]);
 
   const handleRenameSpace = useCallback((spaceId, nextName) => {
     const name = nextName?.trim();
@@ -1334,8 +1335,8 @@ const SpacesPanel = ({
             type="button"
             onClick={handleCreateSpace}
             className="survey-marker-category-create-button"
-            title={features?.advancedSurvey ? 'Create space' : 'Upgrade to Pro to create spaces'}
-            aria-label={features?.advancedSurvey ? 'Create space' : 'Upgrade to Pro to create spaces'}
+            title={canManageSpaces ? 'Create space' : 'Upgrade to Pro to create spaces'}
+            aria-label={canManageSpaces ? 'Create space' : 'Upgrade to Pro to create spaces'}
           >
             <Icon name="plus" size={14} />
           </button>

@@ -1304,9 +1304,9 @@ test('authoritative receipt recovers health after accepted-journal settlement fa
   assert.deepEqual(handle.getSyncStatus(), {
     healthy: true,
     error: null,
-    stage: 'idle',
+    stage: 'hydrating',
     queueSize: 0,
-  });
+  }, 'realtime was never confirmed SUBSCRIBED, so status cannot be Up to date');
   snapshotAvailable = true;
   await handle.destroy();
 });
@@ -1532,9 +1532,9 @@ test('authoritative predecessor receipt pumps one newly unblocked dependent', as
     assert.deepEqual(handle.getSyncStatus(), {
       healthy: true,
       error: null,
-      stage: 'idle',
+      stage: 'hydrating',
       queueSize: 0,
-    });
+    }, 'realtime was never confirmed SUBSCRIBED, so status cannot be Up to date');
   } finally {
     snapshotAvailable = true;
     await handle?.destroy().catch(() => {});
@@ -4571,7 +4571,7 @@ function makeGapRepairBackend(documentId) {
     snapshots,
     allowRepair() { snapshotMode = 'success'; },
     denyRepair() { snapshotMode = 'deny'; },
-    fireSubscribed() { subscribeCallback?.('SUBSCRIBED'); },
+    fireSubscribed() { return subscribeCallback?.('SUBSCRIBED'); },
     supabase: {
       async rpc(name, args) {
         if (name === 'append_annotation_update') {
@@ -6579,8 +6579,7 @@ for (const caller of ['scheduled', 'manual', 'reconnect', 'destroy', 'pagehide']
       } else if (caller === 'manual') {
         assert.equal(await handle.flushSnapshot(), false);
       } else if (caller === 'reconnect') {
-        backend.fireSubscribed();
-        await new Promise((resolve) => setTimeout(resolve, 20));
+        await backend.fireSubscribed();
       } else if (caller === 'pagehide') {
         pagehide();
         await new Promise((resolve) => setTimeout(resolve, 20));

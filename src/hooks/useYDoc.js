@@ -23,6 +23,7 @@ const NULL_VALUE = Object.freeze({
   // null on the null shape = fail open (read-write presentation).
   docRole: null,
   transportState: 'connecting',
+  isDocShared: false,
   loginExpired: false,
   // Phase 29 additions — undoManager / undoCtx are null until YDocProvider's
   // per-user UndoManager mount effect resolves. Plan 29-04's App.jsx Cmd+Z
@@ -45,6 +46,7 @@ const NULL_VALUE = Object.freeze({
  *   accessRevoked: boolean,
  *   docRole: 'owner' | 'editor' | 'viewer' | null,
  *   transportState: 'connecting' | 'connected' | 'offline' | string,
+ *   isDocShared: boolean,
  *   loginExpired: boolean,
  *   undoManager: import('yjs').UndoManager | null,
  *   undoCtx: { userId: string, deviceId: string, sessionId: string, clientID: number } | null,

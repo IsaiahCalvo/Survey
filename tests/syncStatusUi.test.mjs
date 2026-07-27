@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { getSyncStatusViewModel } from '../src/utils/syncStatusViewModel.js';
 import { getSyncedDelayMs, MIN_SYNC_ACTIVITY_VISIBLE_MS } from '../src/utils/syncStatusTiming.js';
+import { combineCollaborationSyncStatus } from '../src/utils/collaborationSyncStatus.js';
 
 const appSource = () => readFileSync(resolve('src/viewerShared.js'), 'utf8')
   + '\n' + readFileSync(resolve('src/PDFViewer.jsx'), 'utf8');
@@ -39,6 +40,39 @@ test('fast successful sync stays visible for the minimum activity duration', () 
   assert.equal(getSyncedDelayMs(1000, 1300), MIN_SYNC_ACTIVITY_VISIBLE_MS - 300);
   assert.equal(getSyncedDelayMs(1000, 1900), 0);
   assert.equal(getSyncedDelayMs(null, 1000), 0);
+});
+
+test('shared-document transport health prevents a false green annotation status', () => {
+  const annotationStatus = { stage: 'idle', healthy: true, error: null };
+  assert.deepEqual(
+    combineCollaborationSyncStatus({
+      annotationStatus,
+      transportState: 'offline',
+      isSharedDocument: true,
+    }),
+    {
+      stage: 'error',
+      healthy: false,
+      error: 'live collaboration is offline',
+    },
+  );
+  assert.equal(
+    combineCollaborationSyncStatus({
+      annotationStatus,
+      transportState: 'connecting',
+      isSharedDocument: true,
+    }).stage,
+    'hydrating',
+  );
+  assert.equal(
+    combineCollaborationSyncStatus({
+      annotationStatus,
+      transportState: 'offline',
+      isSharedDocument: false,
+    }),
+    annotationStatus,
+    'a private document keeps the independent durable-save status',
+  );
 });
 
 // 2026-07-17: five tests pinning the retired useAnnotationCloudSync hook's

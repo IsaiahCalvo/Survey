@@ -313,6 +313,8 @@ export async function openAnnotationDoc({
     snapshotBaseWriterEpoch: 0,
     snapshotGeneration: 0,
     catchupChain: Promise.resolve(), // serializes catch-up reads across reconnects
+    realtimePhase: useRealtime ? 'connecting' : 'ready',
+    realtimeCatchupGeneration: 0,
     authoritativeChain: Promise.resolve(),
     outboxReplayChain: Promise.resolve(),
     outboxReplayScheduled: false,
@@ -1567,7 +1569,13 @@ function currentSyncStatus(state) {
   return {
     healthy: state.syncHealthy,
     error: state.syncHealthy ? null : state.lastSyncError,
-    stage: state.syncHealthy ? (queueSize > 0 ? 'pending' : 'idle') : 'error',
+    stage: state.syncHealthy
+      ? (
+        queueSize > 0
+          ? 'pending'
+          : (state.realtimePhase === 'ready' ? 'idle' : 'hydrating')
+      )
+      : 'error',
     queueSize,
   };
 }
@@ -2919,18 +2927,41 @@ function subscribeRealtime(state) {
         void queueEraseOutboxDrain(state);
       }).catch((err) => {
         console.warn('[annotationDocSync] remote apply failed', err?.message);
+        markSyncHealth(state, false, err);
       });
     })
     .subscribe((status) => {
       // Fires on the initial join AND after every reconnect re-join. Each time,
       // sweep the log for ops that landed while we weren't listening.
       if (status === 'SUBSCRIBED') {
-        catchUpTail(state).then((caughtUp) => {
-          if (caughtUp && state.durabilityGap) {
-            writeSnapshot(state, captureSnapshotOptions(state))
-              .then((result) => finalizeSnapshotResult(state, result));
+        const catchupGeneration = ++state.realtimeCatchupGeneration;
+        state.realtimePhase = 'catching-up';
+        notifySyncStatus(state);
+        return catchUpTail(state).then(async (caughtUp) => {
+          if (state.destroyed || catchupGeneration !== state.realtimeCatchupGeneration) return;
+          if (!caughtUp) {
+            state.realtimePhase = 'connecting';
+            markSyncHealth(state, false, new Error('realtime catch-up failed'));
+            return;
           }
+          // Keep the reconnect lifecycle open through repair. A catch-up that
+          // found every remote row is not complete while a known local WAL gap
+          // is still awaiting its authoritative checkpoint (or rollback).
+          const hadDurabilityGap = state.durabilityGap;
+          if (hadDurabilityGap) {
+            const result = await writeSnapshot(state, captureSnapshotOptions(state));
+            await finalizeSnapshotResult(state, result);
+          }
+          if (state.destroyed || catchupGeneration !== state.realtimeCatchupGeneration) return;
+          state.realtimePhase = 'ready';
+          // Gap finalization owns health: success repairs it; denial/failure
+          // must stay red. A plain catch-up can safely recover transport health.
+          if (!hadDurabilityGap) markSyncHealth(state, true);
+          notifySyncStatus(state);
         });
+      } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
+        state.realtimePhase = 'connecting';
+        markSyncHealth(state, false, new Error(`realtime ${String(status).toLowerCase()}`));
       }
     });
 }

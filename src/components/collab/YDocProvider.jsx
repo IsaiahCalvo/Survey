@@ -1344,6 +1344,7 @@ function YDocProviderInner({ docId, children, closeDocument, isActive }) {
     // role === 'viewer'; null fails open to read-write.
     docRole,
     transportState,
+    isDocShared,
     loginExpired,
     reSignInModalOpen,
     setReSignInModalOpen,
@@ -1412,6 +1413,7 @@ function YDocProviderInner({ docId, children, closeDocument, isActive }) {
     accessRevoked,
     docRole,
     transportState,
+    isDocShared,
     loginExpired,
     reSignInModalOpen,
     closeDocument,
