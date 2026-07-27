@@ -359,6 +359,9 @@ console.warn = (...args) => {
 let devRouteActive = false;
 if (import.meta.env.DEV) {
   const params = new URLSearchParams(window.location.search);
+  if (params.get('pdfImportDebug') === '1') {
+    window.__PDF_IMPORT_DEBUG = true;
+  }
   const eraserRace = params.get('eraserRace');
   if (eraserRace === '1') {
     devRouteActive = true;

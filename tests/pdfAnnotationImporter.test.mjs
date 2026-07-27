@@ -7,6 +7,7 @@ import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.mjs';
 import { PDFDocument } from 'pdf-lib';
 
 import {
+  buildPdfImportStatisticsSummary,
   convertPdfAnnotationToFabric,
   importAnnotationsFromPdf
 } from '../src/utils/pdfAnnotationImporter.js';
@@ -37,6 +38,77 @@ const makeViewport = ({ xOffset = 0, yOffset = 0, pageHeight = 100 } = {}) => {
     }
   };
 };
+
+test('buildPdfImportStatisticsSummary derives sampled, fallback, and skipped from importer diagnostics', () => {
+  const summary = buildPdfImportStatisticsSummary({
+    1: {
+      importedAnnotations: [
+        {
+          status: 'imported',
+          importOutcome: 'sampled',
+          importOutcomeReason: 'appearance-path',
+          rawSubtype: 'Ink',
+        },
+        {
+          status: 'imported',
+          importOutcome: 'fallback',
+          importOutcomeReason: 'ink-list-polyline',
+          rawSubtype: 'Ink',
+        },
+        {
+          status: 'native-only',
+          reason: 'unsupported-renderable-native-annotation',
+          rawSubtype: 'Stamp',
+        },
+        {
+          status: 'skipped',
+          reason: 'converter-returned-null',
+          rawSubtype: 'Square',
+        },
+        {
+          status: 'app-callout-piece-grouped',
+          importOutcome: 'sampled',
+          importOutcomeReason: 'survey-app-callout-metadata',
+          rawSubtype: 'Line',
+        },
+      ],
+    },
+  }, {
+    pdfName: 'mixed-annotations.pdf',
+    pageCount: 1,
+  });
+
+  assert.equal(summary.pdfName, 'mixed-annotations.pdf');
+  assert.deepEqual(summary.counts, { sampled: 2, fallback: 2, skipped: 1 });
+  assert.equal(summary.total, 5);
+  assert.deepEqual(summary.byStatus, {
+    imported: 2,
+    'native-only': 1,
+    skipped: 1,
+    'app-callout-piece-grouped': 1,
+  });
+  assert.deepEqual(summary.bySubtype.Ink, { sampled: 1, fallback: 1, skipped: 0 });
+  assert.equal(
+    summary.reasons.fallback['unsupported-renderable-native-annotation'],
+    1,
+  );
+  assert.equal(summary.reasons.skipped['converter-returned-null'], 1);
+});
+
+test('buildPdfImportStatisticsSummary treats PDF-provided subtype keys as data, not object prototypes', () => {
+  const summary = buildPdfImportStatisticsSummary({
+    1: {
+      importedAnnotations: [{
+        status: 'native-only',
+        rawSubtype: '__proto__',
+        reason: 'unsupported-renderable-native-annotation',
+      }],
+    },
+  });
+
+  assert.equal(summary.bySubtype.__proto__.fallback, 1);
+  assert.equal(Object.prototype.fallback, undefined);
+});
 
 test('convertPdfAnnotationToFabric maps rectangle annotations using viewport transforms', () => {
   const viewport = makeViewport({ xOffset: 10, yOffset: 20, pageHeight: 100 });
@@ -126,6 +198,91 @@ test('convertPdfAnnotationToFabric keeps plain external Circle annotations as ci
   assert.equal(obj.appAnnotationType, undefined);
   assert.equal(obj.data?.appAnnotationMetadata, undefined);
   assert.equal(obj.pdfAnnotationType, 'Circle');
+});
+
+test('importAnnotationsFromPdf reports an unparseable counter marker as fallback', async () => {
+  const viewport = makeViewport({ pageHeight: 100 });
+  const pdfDoc = {
+    numPages: 1,
+    async getPage() {
+      return {
+        getViewport: () => viewport,
+        async getAnnotations() {
+          return [{
+            id: 'broken-counter-1',
+            subtype: 'Circle',
+            subject: 'survey-counter',
+            rect: [10, 20, 30, 40],
+            color: [1, 0, 0],
+          }];
+        },
+      };
+    },
+  };
+
+  const result = await importAnnotationsFromPdf(pdfDoc);
+  assert.deepEqual(result.importStatistics.counts, {
+    sampled: 0,
+    fallback: 1,
+    skipped: 0,
+  });
+  assert.equal(
+    result.diagnosticsByPage[1].importedAnnotations[0].importOutcomeReason,
+    'counter-metadata-unparseable',
+  );
+});
+
+test('importAnnotationsFromPdf records a failed page as skipped instead of dropping it', async () => {
+  const pdfDoc = {
+    numPages: 1,
+    async getPage() {
+      throw new TypeError('broken page geometry');
+    },
+  };
+
+  const result = await importAnnotationsFromPdf(pdfDoc, {
+    pdfName: 'broken-page.pdf',
+  });
+  assert.deepEqual(result.importStatistics.counts, {
+    sampled: 0,
+    fallback: 0,
+    skipped: 1,
+  });
+  assert.equal(result.diagnosticsByPage[1].importedAnnotations[0].rawSubtype, 'Page');
+  assert.equal(
+    result.diagnosticsByPage[1].importedAnnotations[0].reason,
+    'page-import-failed',
+  );
+  assert.equal(result.nativeLayerPolicyByPage[1].reason, 'page-import-failed');
+});
+
+test('importAnnotationsFromPdf records a getAnnotations failure as skipped instead of an empty page', async () => {
+  const pdfDoc = {
+    numPages: 1,
+    async getPage() {
+      return {
+        getViewport: () => makeViewport({ pageHeight: 100 }),
+        async getAnnotations() {
+          throw new TypeError('broken annotation tree');
+        },
+      };
+    },
+  };
+
+  const result = await importAnnotationsFromPdf(pdfDoc, {
+    pdfName: 'broken-annotations.pdf',
+  });
+  assert.deepEqual(result.importStatistics.counts, {
+    sampled: 0,
+    fallback: 0,
+    skipped: 1,
+  });
+  assert.equal(result.diagnosticsByPage[1].importedAnnotations[0].rawSubtype, 'Page');
+  assert.equal(
+    result.diagnosticsByPage[1].importedAnnotations[0].errorMessage,
+    'broken annotation tree',
+  );
+  assert.equal(result.nativeLayerPolicyByPage[1].reason, 'page-import-failed');
 });
 
 test('convertPdfAnnotationToFabric rebuilds marked app counter Circle annotations as counters', () => {
@@ -712,6 +869,11 @@ test('importAnnotationsFromPdf imports polygon and square annotations and report
   assert.deepEqual(result.unsupportedTypes, []);
   assert.ok(result.annotationsByPage[1]);
   assert.equal(result.annotationsByPage[1].objects.length, 2);
+  assert.deepEqual(
+    result.importStatistics.counts,
+    { sampled: 2, fallback: 0, skipped: 0 },
+    'a clean supported import must report zero fallback and skipped annotations',
+  );
 
   const square = result.annotationsByPage[1].objects.find((obj) => obj.pdfAnnotationType === 'Square');
   const polygon = result.annotationsByPage[1].objects.find((obj) => obj.pdfAnnotationType === 'Polygon');
@@ -804,6 +966,18 @@ test('importAnnotationsFromPdf keeps native layer visible when a renderable anno
           subtype: 'Stamp',
           rect: [60, 60, 90, 90],
           hasAppearance: true
+        },
+        {
+          id: 'sound-1',
+          subtype: 'Sound',
+          rect: [100, 60, 130, 90],
+          hasAppearance: true
+        },
+        {
+          id: 'sound-1',
+          subtype: 'Sound',
+          rect: [100, 60, 130, 90],
+          hasAppearance: false
         }
       ];
     }
@@ -826,6 +1000,23 @@ test('importAnnotationsFromPdf keeps native layer visible when a renderable anno
     entry.rawId === 'stamp-1' &&
     entry.status === 'native-only' &&
     entry.reason === 'unsupported-renderable-native-annotation'
+  )));
+  assert.deepEqual(
+    result.importStatistics.counts,
+    { sampled: 0, fallback: 2, skipped: 1 },
+    'InkList and native-only Stamp are fallbacks; non-renderable Sound is skipped',
+  );
+  assert.equal(
+    result.diagnosticsByPage[1].importedAnnotations.filter((entry) => (
+      entry.rawId === 'sound-1'
+    )).length,
+    1,
+    'duplicate unsupported /NM ids must not inflate import statistics',
+  );
+  assert.ok(result.diagnosticsByPage[1].importedAnnotations.some((entry) => (
+    entry.rawId === 'sound-1'
+    && entry.status === 'skipped'
+    && entry.reason === 'unsupported-nonrenderable-annotation'
   )));
 });
 

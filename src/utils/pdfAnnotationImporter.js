@@ -444,10 +444,43 @@ function summarizePdfAnnotationForDiag(annotation, rawMetadata = null) {
   };
 }
 
+function resolveImportOutcome(fabricObj, sourceAnnotation, status, reason) {
+  if (status === 'skipped') {
+    return { importOutcome: 'skipped', importOutcomeReason: reason || 'not-imported' };
+  }
+  if (status === 'native-only') {
+    return { importOutcome: 'fallback', importOutcomeReason: reason || 'native-layer-only' };
+  }
+  if (status === 'app-callout-piece-grouped') {
+    return { importOutcome: 'sampled', importOutcomeReason: reason || 'app-callout-grouped' };
+  }
+
+  const subtype = sourceAnnotation?.subtype || fabricObj?.pdfAnnotationType || null;
+  const inkSourceKind = fabricObj?.data?.pdfInkSourceGeometry?.kind || null;
+  if (subtype === 'Ink' && inkSourceKind === 'ink-list') {
+    return {
+      importOutcome: 'fallback',
+      importOutcomeReason: 'ink-list-polyline',
+    };
+  }
+  if (subtype === 'Ink' && inkSourceKind === 'appearance-path') {
+    return {
+      importOutcome: 'sampled',
+      importOutcomeReason: 'appearance-path',
+    };
+  }
+  return {
+    importOutcome: 'sampled',
+    importOutcomeReason: 'editable-import',
+  };
+}
+
 function summarizeFabricImportForDiag(fabricObj, sourceAnnotation = null, status = 'imported', reason = null) {
+  const outcome = resolveImportOutcome(fabricObj, sourceAnnotation, status, reason);
   return {
     status,
     reason,
+    ...outcome,
     rawId: sourceAnnotation?.id || sourceAnnotation?.name || fabricObj?.pdfAnnotationId || null,
     rawSubtype: sourceAnnotation?.subtype || fabricObj?.pdfAnnotationType || null,
     appId: fabricObj?.id || fabricObj?.annotationId || fabricObj?.pdfAnnotationId || null,
@@ -468,6 +501,66 @@ function summarizeFabricImportForDiag(fabricObj, sourceAnnotation = null, status
     pdfAnnotationId: fabricObj?.pdfAnnotationId || null,
     pdfAnnotationType: fabricObj?.pdfAnnotationType || null,
     savedToAppState: status === 'imported',
+  };
+}
+
+export function buildPdfImportStatisticsSummary(diagnosticsByPage, options = {}) {
+  const counts = { sampled: 0, fallback: 0, skipped: 0 };
+  const byStatusMap = new Map();
+  const bySubtypeMap = new Map();
+  const reasonMaps = {
+    sampled: new Map(),
+    fallback: new Map(),
+    skipped: new Map(),
+  };
+  const entries = Object.values(diagnosticsByPage || {}).flatMap((page) => (
+    Array.isArray(page?.importedAnnotations) ? page.importedAnnotations : []
+  ));
+
+  entries.forEach((entry) => {
+    const status = entry?.status || 'unknown';
+    byStatusMap.set(status, (byStatusMap.get(status) || 0) + 1);
+
+    let outcome = entry?.importOutcome;
+    if (!Object.hasOwn(counts, outcome)) {
+      if (status === 'native-only') outcome = 'fallback';
+      else if (status === 'imported' || status === 'app-callout-piece-grouped') outcome = 'sampled';
+      else outcome = 'skipped';
+    }
+    counts[outcome] += 1;
+
+    const subtype = entry?.rawSubtype || 'Unknown';
+    const subtypeCounts = bySubtypeMap.get(subtype) || {
+      sampled: 0,
+      fallback: 0,
+      skipped: 0,
+    };
+    subtypeCounts[outcome] += 1;
+    bySubtypeMap.set(subtype, subtypeCounts);
+
+    const reason = (
+      entry?.importOutcomeReason
+      || entry?.reason
+      || (outcome === 'sampled' ? 'editable-import' : 'unspecified')
+    );
+    const outcomeReasons = reasonMaps[outcome];
+    outcomeReasons.set(reason, (outcomeReasons.get(reason) || 0) + 1);
+  });
+
+  return {
+    marker: 'PDFImportStatistics',
+    pdfName: options.pdfName || null,
+    pageCount: Number(options.pageCount) || Object.keys(diagnosticsByPage || {}).length,
+    diagnosticsOnly: options.diagnosticsOnly === true,
+    total: entries.length,
+    counts,
+    byStatus: Object.fromEntries(byStatusMap),
+    bySubtype: Object.fromEntries(bySubtypeMap),
+    reasons: {
+      sampled: Object.fromEntries(reasonMaps.sampled),
+      fallback: Object.fromEntries(reasonMaps.fallback),
+      skipped: Object.fromEntries(reasonMaps.skipped),
+    },
   };
 }
 
@@ -497,13 +590,7 @@ function isPotentiallyVisibleNativeAnnotation(annotation, rawMetadata = null) {
  * @returns {Promise<Array>} Array of annotation objects
  */
 export async function extractAnnotationsFromPage(page) {
-  try {
-    const annotations = await page.getAnnotations();
-    return annotations;
-  } catch (error) {
-    console.error('Error extracting annotations from page:', error);
-    return [];
-  }
+  return page.getAnnotations();
 }
 
 /**
@@ -4852,15 +4939,20 @@ export async function importAnnotationsFromPdf(pdfDoc, options = {}) {
       // imports and renders (even as a locked proxy: sticky notes,
       // underline/strikeout/squiggly) goes through `supported` instead, and
       // Link/Popup/Widget companions are silently ignored upstream.
-      const seenUnsupportedIds = new Set();
-      unsupported.forEach(ann => {
-        if (!ann.subtype) return;
-        localUnsupported.add(ann.subtype);
+      const lastUnsupportedIndexById = new Map();
+      unsupported.forEach((ann, index) => {
         const idKey = ann?.id || ann?.name || null;
-        if (idKey) {
-          if (seenUnsupportedIds.has(idKey)) return;
-          seenUnsupportedIds.add(idKey);
-        }
+        if (idKey) lastUnsupportedIndexById.set(idKey, index);
+      });
+      const uniqueUnsupported = unsupported.filter((ann, index) => {
+        const idKey = ann?.id || ann?.name || null;
+        return Boolean(
+          ann?.subtype
+          && (!idKey || lastUnsupportedIndexById.get(idKey) === index)
+        );
+      });
+      uniqueUnsupported.forEach(ann => {
+        localUnsupported.add(ann.subtype);
         localUnsupportedCounts.set(
           ann.subtype,
           (localUnsupportedCounts.get(ann.subtype) || 0) + 1
@@ -4907,6 +4999,8 @@ export async function importAnnotationsFromPdf(pdfDoc, options = {}) {
             importedDiag.push({
               status: 'app-callout-piece-grouped',
               reason: 'survey-app-callout-metadata',
+              importOutcome: 'sampled',
+              importOutcomeReason: 'survey-app-callout-metadata',
               rawId: annotation?.id || annotation?.name || null,
               rawSubtype: annotation?.subtype || null,
               appId: appCallout.id,
@@ -4917,11 +5011,12 @@ export async function importAnnotationsFromPdf(pdfDoc, options = {}) {
             return;
           }
         }
-        if (
+        const counterMetadataParseFailed = (
           normalized.subtype === 'Circle' &&
           normalized.subject === PDF_COUNTER_SUBJECT &&
           !normalized.counterMetadata
-        ) {
+        );
+        if (counterMetadataParseFailed) {
           counts.counterMetadataParseFailures++;
           console.warn('[PDFCounterImport] counter marker found but metadata was not parseable', {
             id: normalized.id || normalized.name || null,
@@ -4957,16 +5052,23 @@ export async function importAnnotationsFromPdf(pdfDoc, options = {}) {
           } else if (fabricObj?.pdfAnnotationType === 'Circle' || fabricObj?.type === 'circle') {
             counts.plainCirclesImported++;
           }
-          importedDiag.push(summarizeFabricImportForDiag(fabricObj, annotation));
+          const diagEntry = summarizeFabricImportForDiag(fabricObj, annotation);
+          if (counterMetadataParseFailed) {
+            diagEntry.importOutcome = 'fallback';
+            diagEntry.importOutcomeReason = 'counter-metadata-unparseable';
+          }
+          importedDiag.push(diagEntry);
         } else {
           importedDiag.push(summarizeFabricImportForDiag(null, annotation, 'skipped', 'converter-returned-null'));
         }
       });
 
-      unsupported.forEach((annotation) => {
+      uniqueUnsupported.forEach((annotation) => {
         const rawMetadata = getRawAnnotationMetadataForAnnotation(annotation, rawMetadataById);
         if (isPotentiallyVisibleNativeAnnotation(annotation, rawMetadata)) {
           importedDiag.push(summarizeFabricImportForDiag(null, annotation, 'native-only', 'unsupported-renderable-native-annotation'));
+        } else {
+          importedDiag.push(summarizeFabricImportForDiag(null, annotation, 'skipped', 'unsupported-nonrenderable-annotation'));
         }
       });
 
@@ -4976,7 +5078,7 @@ export async function importAnnotationsFromPdf(pdfDoc, options = {}) {
           entry.rawId
         ))
         .map((entry) => entry.rawId));
-      const renderableNative = annotations.filter((annotation) => {
+      const renderableNative = [...supported, ...uniqueUnsupported].filter((annotation) => {
         const rawMetadata = getRawAnnotationMetadataForAnnotation(annotation, rawMetadataById);
         return isPotentiallyVisibleNativeAnnotation(annotation, rawMetadata);
       });
@@ -5021,7 +5123,47 @@ export async function importAnnotationsFromPdf(pdfDoc, options = {}) {
         error && (error.stack || error.message || error),
         error
       );
-      return null;
+      const pageFailure = {
+        ...summarizeFabricImportForDiag(
+          null,
+          null,
+          'skipped',
+          'page-import-failed',
+        ),
+        rawSubtype: 'Page',
+        pageNumber: pageNum,
+        errorName: error?.name || null,
+        errorMessage: error?.message || String(error),
+      };
+      return {
+        pageNum,
+        annot: null,
+        callouts: null,
+        diag: {
+          pageNumber: pageNum,
+          rawAnnotations: [],
+          importedAnnotations: [pageFailure],
+          nativeRenderableAnnotationIds: [],
+          nativeOnlyAnnotationIds: [],
+        },
+        policy: {
+          pageNumber: pageNum,
+          hideNativeLayer: false,
+          reason: 'page-import-failed',
+          importedIds: [],
+          nativeRenderableAnnotationIds: [],
+          nativeOnlyAnnotationIds: [],
+        },
+        unsupported: new Set(),
+        unsupportedCounts: new Map(),
+        counts: {
+          counterAnnotationsImported: 0,
+          plainCirclesImported: 0,
+          counterMetadataParseFailures: 0,
+          appCalloutAnnotationsImported: 0,
+          appCalloutPiecesSkipped: 0,
+        },
+      };
     }
   };
 
@@ -5064,6 +5206,18 @@ export async function importAnnotationsFromPdf(pdfDoc, options = {}) {
     window.__nativePdfAnnotationLayerDiag = nativeLayerPolicyByPage;
   }
 
+  const importStatistics = buildPdfImportStatisticsSummary(diagnosticsByPage, {
+    pdfName: options.pdfName || (
+      typeof window !== 'undefined' ? window.__currentPdfName : null
+    ),
+    pageCount: numPages,
+    diagnosticsOnly: options.diagnosticsOnly,
+  });
+  if (typeof window !== 'undefined') {
+    window.__pdfImportStatistics = importStatistics;
+  }
+  pdfImportDebug('[PDFImportStatistics] summary ' + JSON.stringify(importStatistics));
+
   pdfImportDebug('[PDFCounterImport] summary ' + JSON.stringify({
     marker: PDF_COUNTER_SUBJECT,
     metadataKey: PDF_COUNTER_METADATA_KEY,
@@ -5099,7 +5253,8 @@ export async function importAnnotationsFromPdf(pdfDoc, options = {}) {
     // (e.g. { Stamp: 2, Sound: 1 }) — feeds the user-facing notice.
     unsupportedCounts,
     diagnosticsByPage,
-    nativeLayerPolicyByPage
+    nativeLayerPolicyByPage,
+    importStatistics
   };
 }
 
