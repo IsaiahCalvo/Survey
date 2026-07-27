@@ -22,7 +22,7 @@ not pushed, prod DB not written (dry-runs only) until Isaiah's go.
    - same name, different/unknown bytes → modal: Open existing / Upload as new version
      (new version archives the old row; marks preserved). Escape/backdrop = cancel upload.
    - Alias names are searchable in the Documents search box.
-2. **Migration** `supabase/migrations/20260708120000_document_name_aliases.sql`
+2. **Migration** `supabase/migrations/20260716043104_document_name_aliases.sql`
    (`name_aliases TEXT[] NOT NULL DEFAULT '{}'` — additive, metadata-only default).
    NOT applied to prod yet (owner-gated, applies with the push).
 3. **Maintenance script** `scripts/content-hash-maintenance.mjs` — modes `audit` (read-only) /
@@ -93,7 +93,7 @@ Rounds 2–6 (iterative re-verification until ALL THREE agreed on the same code)
 Final gates after the last fix: build clean, 1881 tests / 1797 pass / 0 fail / 84 skip.
 
 ## Run order when Isaiah says go
-1. Apply `20260708120000_document_name_aliases.sql` to prod (dashboard SQL, additive).
+1. Apply `20260716043104_document_name_aliases.sql` to prod (dashboard SQL, additive).
 2. `node scripts/content-hash-maintenance.mjs backfill --apply` (89 rows; collisions stay for manual merge).
 3. `node scripts/content-hash-maintenance.mjs rekey --apply` (re-keys backfilled rows).
 4. Push the app code.

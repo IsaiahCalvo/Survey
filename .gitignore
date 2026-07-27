@@ -1,7 +1,7 @@
 # See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
 
 # dependencies
-/node_modules
+node_modules/
 /.pnp
 .pnp.js
 .npm-cache/
@@ -85,6 +85,9 @@ audit/**/*.log
 # Dev-only test fixture for ?testPdf= route (do not commit)
 public/debug-fixtures/
 
+# Generated on every build so production can prove which commit is live
+public/release.json
+
 # Main-process MSAL token cache (only ever in userData; ignore if a dev profile points into the repo)
 ms-auth-cache.bin
 ms-auth-cache.bin.tmp
@@ -94,3 +97,6 @@ agent-cli/artifacts/
 
 # content-hash maintenance reports carry live doc names/paths — local artifacts only
 debug/content-hash/
+
+# Vercel CLI project link — local machine metadata only
+.vercel/

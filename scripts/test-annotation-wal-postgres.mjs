@@ -5,7 +5,7 @@ import { join, resolve } from 'node:path';
 import { spawn, spawnSync } from 'node:child_process';
 
 const root = resolve(import.meta.dirname, '..');
-const migration = join(root, 'supabase/migrations/20260723120000_annotation_wal_concurrency.sql');
+const migration = join(root, 'supabase/migrations/20260727131230_annotation_wal_concurrency.sql');
 const temp = mkdtempSync(join(tmpdir(), 'survey-annotation-wal-'));
 const data = join(temp, 'data');
 const socket = join(temp, 'socket');

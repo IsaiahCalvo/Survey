@@ -1,6 +1,6 @@
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
-import { Stripe } from "https://esm.sh/stripe@14.21.0?target=deno";
+import Stripe from "npm:stripe@20.4.1";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.0'
 
 const corsHeaders = {
@@ -32,7 +32,7 @@ serve(async (req) => {
         }
 
         const stripe = new Stripe(secretKey, {
-            apiVersion: '2025-12-15.clover',
+            apiVersion: '2026-02-25.clover',
             httpClient: Stripe.createFetchHttpClient(),
         })
 
@@ -154,8 +154,9 @@ serve(async (req) => {
         )
     } catch (error) {
         console.error('Error creating checkout session:', error);
+        const message = error instanceof Error ? error.message : String(error);
         return new Response(
-            JSON.stringify({ error: error.message }),
+            JSON.stringify({ error: message }),
             {
                 headers: { ...corsHeaders, 'Content-Type': 'application/json' },
                 status: 200,

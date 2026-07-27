@@ -19,12 +19,19 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
-          node-version: 20
+          node-version: 24
           cache: npm
+
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.7.5
+
+      - name: Verify release contract
+        run: node scripts/release-integrity.mjs --static
 
       - name: Install dependencies
         # Use `install` (not `ci`) to sidestep the npm optional-deps bug
@@ -32,6 +39,9 @@ jobs:
         run: npm install --include=optional --no-audit --no-fund
         env:
           NODE_OPTIONS: --max-old-space-size=8192
+
+      - name: Type-check Supabase functions
+        run: deno check --config supabase/functions/deno.json supabase/functions/*/index.ts
 
       - name: Run tests
         run: npm test

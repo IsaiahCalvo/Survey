@@ -36,14 +36,39 @@ if (testFiles.length === 0) {
   process.exit(1);
 }
 
-const child = spawn(process.execPath, ['--test', ...testFiles], {
-  stdio: 'inherit'
-});
+// These suites contain real wall-clock performance budgets or multi-second
+// transport timing assertions. Running them beside ~2,900 other tests creates
+// CPU-starvation flakes and makes CI randomly red even though the product path
+// is healthy. Keep the main suite parallel, then run these files alone.
+const isolatedTestFiles = [
+  'tests/annotationDocConcurrency.test.mjs',
+  'tests/partialEraseCurveLocality.test.mjs',
+  'tests/partialEraserComplexity.test.mjs',
+].filter((file) => testFiles.includes(file));
+const isolatedSet = new Set(isolatedTestFiles);
+const parallelTestFiles = testFiles.filter((file) => !isolatedSet.has(file));
 
-child.on('exit', (code, signal) => {
-  if (signal) {
-    console.error(`Test runner terminated by ${signal}.`);
-    process.exit(1);
-  }
-  process.exit(code ?? 1);
-});
+function runTestBatch(files, label) {
+  if (files.length === 0) return Promise.resolve(0);
+  console.log(`\n[tests] ${label}`);
+  return new Promise((resolveExitCode) => {
+    const child = spawn(process.execPath, ['--test', ...files], {
+      stdio: 'inherit',
+    });
+    child.on('exit', (code, signal) => {
+      if (signal) {
+        console.error(`Test runner terminated by ${signal}.`);
+        resolveExitCode(1);
+        return;
+      }
+      resolveExitCode(code ?? 1);
+    });
+  });
+}
+
+let exitCode = await runTestBatch(parallelTestFiles, 'parallel suite');
+for (const file of isolatedTestFiles) {
+  if (exitCode !== 0) break;
+  exitCode = await runTestBatch([file], `isolated timing suite: ${file}`);
+}
+process.exit(exitCode);

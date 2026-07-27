@@ -177,11 +177,23 @@ Webhooks allow Stripe to notify your app when payments succeed/fail, subscriptio
 
 ### 5.1 Deploy Edge Functions
 
+Production deploys are automatic and ordered by
+`.github/workflows/deploy-production.yml`: database migrations first, then all
+Supabase functions, then Vercel. This includes checkout, portal, and webhook
+code. Do not deploy the website independently.
+
+For an emergency manual backend-only deployment:
+
 ```bash
-# Deploy both functions
-supabase functions deploy create-checkout-session
-supabase functions deploy stripe-webhook
+# Deploy every local function together
+supabase functions deploy --project-ref cvamwtpsuvxvjdnotbeg --use-api
+
+# Verify migrations, functions, Stripe secrets, and endpoint health
+SUPABASE_PROJECT_ID=cvamwtpsuvxvjdnotbeg node scripts/release-integrity.mjs --remote
 ```
+
+The Stripe functions currently use Stripe SDK `20.4.1` with API version
+`2026-02-25.clover`.
 
 ### 5.2 Create Webhook in Stripe
 

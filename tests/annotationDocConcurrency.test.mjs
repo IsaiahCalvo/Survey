@@ -48,7 +48,7 @@ const {
   subscribeHistoryQuarantine,
 } = __test;
 const WAL_CONCURRENCY_SQL = readFileSync(
-  new URL('../supabase/migrations/20260723120000_annotation_wal_concurrency.sql', import.meta.url),
+  new URL('../supabase/migrations/20260727131230_annotation_wal_concurrency.sql', import.meta.url),
   'utf8',
 );
 const FABRIC_ERASER_SOURCE = readFileSync(

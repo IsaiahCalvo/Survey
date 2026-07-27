@@ -1,8 +1,8 @@
-import Stripe from 'https://esm.sh/stripe@17.5.0?target=deno';
+import Stripe from 'npm:stripe@20.4.1';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.47.10?target=deno';
 
 const stripe = new Stripe(Deno.env.get('STRIPE_SECRET_KEY') as string, {
-    apiVersion: '2025-12-15.clover',
+    apiVersion: '2026-02-25.clover',
     httpClient: Stripe.createFetchHttpClient(),
 });
 
@@ -96,8 +96,9 @@ Deno.serve(async (req) => {
         );
     } catch (error) {
         console.error('Error creating portal session:', error);
+        const message = error instanceof Error ? error.message : String(error);
         return new Response(
-            JSON.stringify({ error: error.message }),
+            JSON.stringify({ error: message }),
             {
                 headers: { ...corsHeaders, 'Content-Type': 'application/json' },
                 status: 500,

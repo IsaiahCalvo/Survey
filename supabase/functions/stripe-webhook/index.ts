@@ -1,12 +1,40 @@
-import Stripe from 'https://esm.sh/stripe@11.1.0?target=deno';
+import Stripe from 'npm:stripe@20.4.1';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.47.10?target=deno';
 
 const stripe = new Stripe(Deno.env.get('STRIPE_SECRET_KEY') as string, {
-    apiVersion: '2023-10-16',
+    apiVersion: '2026-02-25.clover',
     httpClient: Stripe.createFetchHttpClient(),
 });
 
 const cryptoProvider = Stripe.createSubtleCryptoProvider();
+
+type LegacySubscriptionPeriod = {
+    current_period_start?: number | null;
+    current_period_end?: number | null;
+};
+
+type LegacyInvoiceSubscription = {
+    subscription?: string | Stripe.Subscription | null;
+};
+
+function subscriptionPeriod(subscription: Stripe.Subscription) {
+    const legacy = subscription as Stripe.Subscription & LegacySubscriptionPeriod;
+    const firstItem = subscription.items.data[0];
+    return {
+        start: legacy.current_period_start ?? firstItem?.current_period_start ?? null,
+        end: legacy.current_period_end ?? firstItem?.current_period_end ?? null,
+    };
+}
+
+function stripeResourceId(value: string | { id: string } | null | undefined) {
+    return typeof value === 'string' ? value : value?.id ?? null;
+}
+
+function invoiceSubscriptionId(invoice: Stripe.Invoice) {
+    const current = invoice.parent?.subscription_details?.subscription;
+    const legacy = (invoice as Stripe.Invoice & LegacyInvoiceSubscription).subscription;
+    return stripeResourceId(current ?? legacy);
+}
 
 // Helper function to send email notifications
 async function sendEmail(template: string, to: string, subject: string, data: any) {
@@ -125,12 +153,13 @@ Deno.serve(async (req) => {
             status: 200,
         });
     } catch (error) {
+        const parsedError = error instanceof Error ? error : new Error(String(error));
         console.error('❌ WEBHOOK ERROR:', error);
-        console.error('Error type:', error.constructor.name);
-        console.error('Error message:', error.message);
-        console.error('Error stack:', error.stack);
+        console.error('Error type:', parsedError.constructor.name);
+        console.error('Error message:', parsedError.message);
+        console.error('Error stack:', parsedError.stack);
         return new Response(
-            JSON.stringify({ error: error.message }),
+            JSON.stringify({ error: parsedError.message }),
             {
                 headers: { 'Content-Type': 'application/json' },
                 status: 400,
@@ -175,6 +204,7 @@ async function handleCheckoutCompleted(supabase: any, session: Stripe.Checkout.S
         console.error('WARNING: checkout price', actualPriceId, 'maps to no configured tier (metadata said', session.metadata?.tier, ') — granting free; check STRIPE_*_PRICE_ID secrets');
     }
 
+    const period = subscriptionPeriod(subscription);
     const updateData = {
         tier: tier,
         status: status,
@@ -182,8 +212,8 @@ async function handleCheckoutCompleted(supabase: any, session: Stripe.Checkout.S
         stripe_subscription_id: subscriptionId,
         stripe_price_id: subscription.items.data[0].price.id,
         trial_ends_at: subscription.trial_end ? new Date(subscription.trial_end * 1000).toISOString() : null,
-        current_period_start: subscription.current_period_start ? new Date(subscription.current_period_start * 1000).toISOString() : null,
-        current_period_end: subscription.current_period_end ? new Date(subscription.current_period_end * 1000).toISOString() : null,
+        current_period_start: period.start ? new Date(period.start * 1000).toISOString() : null,
+        current_period_end: period.end ? new Date(period.end * 1000).toISOString() : null,
     };
 
     console.log('Update data prepared:', updateData);
@@ -303,6 +333,7 @@ async function handleSubscriptionUpdate(supabase: any, subscription: Stripe.Subs
         }
 
         // Update subscription with null-safe date handling
+        const period = subscriptionPeriod(subscription);
         const { error } = await supabase
             .from('user_subscriptions')
             .update({
@@ -310,8 +341,8 @@ async function handleSubscriptionUpdate(supabase: any, subscription: Stripe.Subs
                 status: subscription.status,
                 stripe_price_id: priceId,
                 trial_ends_at: subscription.trial_end ? new Date(subscription.trial_end * 1000).toISOString() : null,
-                current_period_start: subscription.current_period_start ? new Date(subscription.current_period_start * 1000).toISOString() : null,
-                current_period_end: subscription.current_period_end ? new Date(subscription.current_period_end * 1000).toISOString() : null,
+                current_period_start: period.start ? new Date(period.start * 1000).toISOString() : null,
+                current_period_end: period.end ? new Date(period.end * 1000).toISOString() : null,
             })
             .eq('stripe_subscription_id', subscription.id);
 
@@ -438,23 +469,24 @@ async function handleTrialWillEnd(supabase: any, subscription: Stripe.Subscripti
 
 // Handle successful payment
 async function handlePaymentSucceeded(supabase: any, invoice: Stripe.Invoice) {
-    if (!invoice.subscription) return;
+    const subscriptionId = invoiceSubscriptionId(invoice);
+    if (!subscriptionId) return;
 
     const { error } = await supabase
         .from('user_subscriptions')
         .update({
             status: 'active',
         })
-        .eq('stripe_subscription_id', invoice.subscription);
+        .eq('stripe_subscription_id', subscriptionId);
 
     if (!error) {
-        console.log(`Payment succeeded for subscription ${invoice.subscription}`);
+        console.log(`Payment succeeded for subscription ${subscriptionId}`);
 
         // Get user for email notification
         const { data: userSubscription } = await supabase
             .from('user_subscriptions')
             .select('user_id')
-            .eq('stripe_subscription_id', invoice.subscription)
+            .eq('stripe_subscription_id', subscriptionId)
             .single();
 
         if (userSubscription && invoice.customer_email && invoice.customer) {
@@ -481,17 +513,18 @@ async function handlePaymentSucceeded(supabase: any, invoice: Stripe.Invoice) {
 
 // Handle failed payment
 async function handlePaymentFailed(supabase: any, invoice: Stripe.Invoice) {
-    if (!invoice.subscription) return;
+    const subscriptionId = invoiceSubscriptionId(invoice);
+    if (!subscriptionId) return;
 
     const { error } = await supabase
         .from('user_subscriptions')
         .update({
             status: 'past_due',
         })
-        .eq('stripe_subscription_id', invoice.subscription);
+        .eq('stripe_subscription_id', subscriptionId);
 
     if (!error) {
-        console.log(`Payment failed for subscription ${invoice.subscription}`);
+        console.log(`Payment failed for subscription ${subscriptionId}`);
 
         // Send email notification
         if (invoice.customer_email && invoice.customer) {

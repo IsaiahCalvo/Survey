@@ -1,0 +1,106 @@
+name: Deploy production
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: production-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.head_branch == 'main')
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      SUPABASE_PROJECT_ID: ${{ vars.SUPABASE_PROJECT_ID }}
+
+    steps:
+      - name: Checkout the exact tested revision
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+          cache: npm
+
+      - name: Setup Deno
+        uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.7.5
+
+      - name: Setup Supabase CLI
+        uses: supabase/setup-cli@v3
+        with:
+          version: 2.109.1
+
+      - name: Install dependencies
+        run: npm install --include=optional --no-audit --no-fund
+        env:
+          NODE_OPTIONS: --max-old-space-size=8192
+
+      - name: Recheck release contract
+        run: node scripts/release-integrity.mjs --static
+
+      - name: Type-check Supabase functions before production
+        run: deno check --config supabase/functions/deno.json supabase/functions/*/index.ts
+
+      - name: Link production database
+        run: supabase link --project-ref "$SUPABASE_PROJECT_ID"
+
+      - name: Apply every pending database migration
+        run: supabase db push --linked --yes
+
+      - name: Deploy every local Supabase function
+        run: supabase functions deploy --project-ref "$SUPABASE_PROJECT_ID" --use-api --jobs 4
+
+      - name: Verify database, functions, Stripe, and endpoint health
+        run: node scripts/release-integrity.mjs --remote
+
+      - name: Confirm main still points to the tested revision
+        shell: bash
+        run: |
+          tested_sha="${{ github.event.workflow_run.head_sha || github.sha }}"
+          remote_sha="$(git ls-remote origin refs/heads/main | cut -f1)"
+          test "$remote_sha" = "$tested_sha"
+
+      - name: Trigger Vercel only after backend success
+        shell: bash
+        run: |
+          curl --fail --silent --show-error --request POST "${{ secrets.VERCEL_DEPLOY_HOOK }}" \
+            | jq -e '.job.id // .id' > /dev/null
+
+      - name: Verify the exact revision reached production
+        shell: bash
+        run: |
+          tested_sha="${{ github.event.workflow_run.head_sha || github.sha }}"
+          for attempt in $(seq 1 120); do
+            live_sha="$(curl --fail --silent --show-error \
+              "https://surveytool.app/release.json?attempt=$attempt" \
+              | jq -r '.commit // empty' 2>/dev/null || true)"
+            if [ "$live_sha" = "$tested_sha" ]; then
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "surveytool.app did not reach revision $tested_sha" >&2
+          exit 1
+
+      - name: Record deployment
+        run: |
+          echo "### Production deployment complete" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Revision: \`${{ github.event.workflow_run.head_sha || github.sha }}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- URL: https://surveytool.app" >> "$GITHUB_STEP_SUMMARY"

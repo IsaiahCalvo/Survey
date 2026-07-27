@@ -9,6 +9,7 @@
     "predev": "node scripts/bootstrap-dev-env.mjs",
     "dev": "node find-port.js",
     "postinstall": "node scripts/bootstrap-dev-env.mjs",
+    "prebuild": "node scripts/write-release-marker.mjs",
     "build": "vite build && node scripts/assert-no-pdfjs-demo-in-dist.mjs",
     "check:licenses": "node scripts/check-licenses.mjs",
     "dist": "npm run build && electron-builder",

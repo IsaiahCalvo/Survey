@@ -341,6 +341,11 @@ deno_version = 2
 [functions.stripe-webhook]
 verify_jwt = false
 
+# Browser-invoked and self-authenticating. Keep gateway verification off so the
+# browser's unauthenticated CORS preflight reaches the function.
+[functions.create-portal-session]
+verify_jwt = false
+
 # Browser-invoked: the gateway JWT check rejects the CORS preflight OPTIONS (no JWT on preflight),
 # breaking invoke() from the app. The function does its OWN auth (auth.getUser on the Bearer JWT +
 # registration token_hash + actor-role) and answers OPTIONS with CORS headers, so the gateway check
