@@ -34,6 +34,22 @@ assume `~/.claude` loads for you). Full history and gotchas live in CLAUDE.md if
 - Gate deletions and risky changes behind `npx vite build` + `node scripts/run-node-tests.mjs`.
 - Verify user-visible changes in the running app before calling them done.
 
+## Shared test-account leases
+
+- A coordinator must reserve one exact existing bot account for each task before any real-auth
+  test. Do not create accounts, use Gmail plus-aliases, or choose an entry directly from
+  `.bot-credentials.json`.
+- Reserve with `node scripts/test-account-lease.mjs assign --task <TASK> --account-index <N>`.
+  The command fails if that task, account, or worktree already has a different assignment.
+- Run real-auth test commands through
+  `node scripts/test-account-lease.mjs run --task <TASK> --account-index <N> --lease-token <TOKEN> -- <COMMAND>`.
+  This verifies the shared lock and injects only the assigned account.
+- Before release, remove the task's exact documents, shares, invites, collaborators, storage
+  objects, and temporary users; restore the assigned account's original tier/status; then run
+  `node scripts/test-account-lease.mjs release --task <TASK> --account-index <N> --lease-token <TOKEN>`.
+- The monitoring/coordinator task owns assignment and release. Workers must stop if the lease
+  check fails or the account email/user ID differs from their assignment.
+
 ## Codebase navigation (graphify)
 
 - For codebase questions run `graphify query "<question>"` first (graphify-out/graph.json

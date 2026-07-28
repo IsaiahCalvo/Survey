@@ -61,6 +61,7 @@ debug/debug-sessions/
 # (5 dedicated test bots in real Supabase project, tagged with phase28_bot=true).
 # NEVER commit — read by tests/phase28/transportSpikeBenchmark.mjs at runtime.
 .planning/phases/28-transport-spike-auth-validator/.bot-credentials.json
+.survey-test-account.json
 
 # IDE / tooling caches (per-developer noise, never commit)
 .cursor/
