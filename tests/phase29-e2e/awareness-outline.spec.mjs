@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
-import { readFileSync, existsSync } from 'node:fs';
-import path from 'node:path';
+import { loadVerifiedTestAccounts } from '../../scripts/test-account-lease.mjs';
+import { assertBrowserUsesLeasedAccount, installLeasedBrowserAccount } from '../../agent-cli/lib/leased-browser-session.mjs';
 
 // Phase 29 e2e — Plan 29-06 unfixme target.
 // Maps to: 29-UI-SPEC.md §2 outline contract (per-user awareness outline)
@@ -20,15 +20,8 @@ import path from 'node:path';
 // landed yet. When the feed lands, this spec automatically un-skips and
 // validates the visual contract.
 
-const credsPath = path.resolve(process.cwd(), '.bot-credentials.json');
-const HAS_BOTS = existsSync(credsPath);
-
 test('remote collaborator opens edit canvas → local screen shows per-user-color outline 2px solid 0.7 opacity', async ({ browser }) => {
-  test.skip(!HAS_BOTS, '.bot-credentials.json not present (Phase 28 bots required)');
-  const creds = JSON.parse(readFileSync(credsPath, 'utf8'));
-  const bots = Array.isArray(creds?.bots) ? creds.bots : (Array.isArray(creds) ? creds : []);
-  test.skip(bots.length < 2, 'fewer than 2 bot accounts available in .bot-credentials.json');
-
+  const bots = loadVerifiedTestAccounts({ minimumAccounts: 2 });
   const botA = bots[0];
   const botB = bots[1];
 
@@ -38,8 +31,10 @@ test('remote collaborator opens edit canvas → local screen shows per-user-colo
   const pageB = await ctxB.newPage();
 
   // Sign-in injection per the project's feedback_dev_auto_login pattern.
-  for (const [page, bot] of [[pageA, botA], [pageB, botB]]) {
+  for (const [page, bot, accountIndex] of [[pageA, botA, 0], [pageB, botB, 1]]) {
+    const leasedBrowserAccount = await installLeasedBrowserAccount(page, { accountIndex });
     await page.goto('http://localhost:5173/');
+    await assertBrowserUsesLeasedAccount(page, { account: leasedBrowserAccount });
     await page.evaluate(({ email, password }) => {
       window.localStorage.setItem('test-bot-email', email);
       window.localStorage.setItem('test-bot-password', password);

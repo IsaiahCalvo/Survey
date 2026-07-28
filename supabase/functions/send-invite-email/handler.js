@@ -72,8 +72,12 @@ function capitalize(s) {
  *   getUserFromToken: (jwt: string) => Promise<object|null>,
  *   selectInviteRow: (table: string, token: string) => Promise<object|null>,
  *   selectActiveDocumentAccess: (documentId: string, email: string) => Promise<{role: string}|null>,
- *   inviteUserByEmail: (email: string, redirectTo: string) => Promise<{ error: object|null }>,
- *   sendFallbackEmail: (payload: { to: string, subject: string, template: string, data: object }) => Promise<boolean>,
+ *   claimInviteDelivery: (kind: string, token: string, claimId: string) => Promise<'claimed'|'busy'|'completed'|'error'>,
+ *   completeInviteDelivery: (claimId: string) => Promise<boolean>,
+ *   releaseInviteDelivery: (claimId: string) => Promise<boolean>,
+ *   newClaimId?: () => string,
+ *   inviteUserByEmail: (email: string, redirectTo: string) => Promise<{ error: object|null, outcome?: 'confirmed'|'definite-failure'|'uncertain' }>,
+ *   sendFallbackEmail: (payload: { to: string, subject: string, template: string, data: object }) => Promise<boolean|{ outcome: 'confirmed'|'definite-failure'|'uncertain' }>,
  * }} deps
  * @returns {Promise<{ status: number, body: object|null }>}
  */
@@ -113,14 +117,74 @@ export async function handleSendInviteEmail(input, deps) {
     return json(409, { sent: false, error: 'Invite expired' });
   }
 
+  // Claim this exact invite generation before touching either transport.
+  // The database RPC is the concurrency authority across all edge instances;
+  // an in-memory lock would not protect simultaneous cold starts. Delivery
+  // identity is a dedicated UUID, never expires_at, so an expiry refresh or a
+  // retry after a lost response cannot accidentally mint a second send.
+  const claimId = typeof deps.newClaimId === 'function'
+    ? deps.newClaimId()
+    : crypto.randomUUID();
+  let claimStatus = 'error';
+  try {
+    claimStatus = await deps.claimInviteDelivery(kind, row.token, claimId);
+  } catch (claimError) {
+    console.error('[send-invite-email] delivery claim failed:', claimError);
+  }
+  if (claimStatus === 'completed') return json(200, { sent: true });
+  if (claimStatus === 'busy') {
+    return json(202, { sent: false, retryable: true, error: 'Delivery in progress' });
+  }
+  if (claimStatus !== 'claimed') {
+    return json(502, { sent: false, retryable: true, error: 'Send failed' });
+  }
+
+  const releaseFailedClaim = async () => {
+    try {
+      await deps.releaseInviteDelivery(claimId);
+    } catch (releaseError) {
+      // A stranded claim fails closed. It is never automatically taken over:
+      // after transport outcome is uncertain, silence is safer than a duplicate.
+      console.error('[send-invite-email] delivery claim release failed:', releaseError);
+    }
+    return json(502, { sent: false, retryable: true, error: 'Send failed' });
+  };
+  const retainUncertainClaim = (transport) => {
+    // The request crossed the transport boundary, but no authoritative
+    // delivery result came back. Never release this generation: a retry could
+    // duplicate an email the provider already accepted. Only the owner's
+    // explicit Resend action may rotate to a new generation.
+    console.error(`[send-invite-email] ${transport} delivery outcome is uncertain; retaining claim`);
+    return json(502, { sent: false, retryable: false, error: 'Delivery outcome unknown' });
+  };
+  const completeConfirmedDelivery = async () => {
+    try {
+      const completed = await deps.completeInviteDelivery(claimId);
+      if (!completed) {
+        // The transport has confirmed delivery, so the honest response is
+        // still sent:true. Keep the claim (do not release) to fail closed
+        // against a duplicate. An owner can explicitly request a new delivery
+        // generation when another copy is genuinely needed.
+        console.error('[send-invite-email] confirmed send could not be marked completed');
+      }
+    } catch (completeError) {
+      console.error('[send-invite-email] confirmed send completion failed:', completeError);
+    }
+    return json(200, { sent: true });
+  };
+
   // Canonical, server-built — the only allowlisted origin; never client input.
   const inviteUrl = `${CANONICAL_ORIGIN}/invite/${encodeURIComponent(row.token)}`;
 
   // Branch A — no existing account: GoTrue sends the installed Invite
   // template via the auth mailer. Admin calls RETURN {data,error}; they
   // don't throw.
-  const { error } = await deps.inviteUserByEmail(row.target_email, inviteUrl);
-  if (!error) return json(200, { sent: true });
+  const inviteResult = await deps.inviteUserByEmail(row.target_email, inviteUrl);
+  const { error } = inviteResult;
+  if (!error) return completeConfirmedDelivery();
+  if (inviteResult.outcome === 'uncertain') {
+    return retainUncertainClaim('auth mailer');
+  }
 
   const isExisting = error.code === 'email_exists'
     || (error.status === 422 && /already.*registered|email_exists/i.test(error.message || ''));
@@ -131,7 +195,7 @@ export async function handleSendInviteEmail(input, deps) {
   const isRateLimited = error.code === 'over_email_send_rate_limit' || error.status === 429;
   if (!isExisting && !isRateLimited) {
     console.error('[send-invite-email] inviteUserByEmail failed:', error.code || error.status || error.message);
-    return json(502, { sent: false, error: 'Send failed' });
+    return releaseFailedClaim();
   }
 
   // Existing document accounts are granted access by documentInviteService
@@ -160,7 +224,7 @@ export async function handleSendInviteEmail(input, deps) {
   const subject = activeDocumentAccess
     ? `${inviterName} shared ${displayName} with you on Survey`
     : `${inviterName} invited you to ${displayName} on Survey`;
-  const ok = await deps.sendFallbackEmail({
+  const fallbackResult = await deps.sendFallbackEmail({
     to: row.target_email,
     subject,
     template: activeDocumentAccess ? 'permission-changed' : 'document-invite',
@@ -181,9 +245,15 @@ export async function handleSendInviteEmail(input, deps) {
           expiresAt: row.expires_at || null,
         },
   });
-  if (!ok) {
-    console.error('[send-invite-email] fallback send failed');
-    return json(502, { sent: false, error: 'Send failed' });
+  const fallbackOutcome = typeof fallbackResult === 'object'
+    ? fallbackResult?.outcome
+    : (fallbackResult ? 'confirmed' : 'definite-failure');
+  if (fallbackOutcome === 'uncertain') {
+    return retainUncertainClaim('fallback');
   }
-  return json(200, { sent: true });
+  if (fallbackOutcome !== 'confirmed') {
+    console.error('[send-invite-email] fallback send failed');
+    return releaseFailedClaim();
+  }
+  return completeConfirmedDelivery();
 }

@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { assertBrowserUsesLeasedAccount, installLeasedBrowserAccount } from '../../agent-cli/lib/leased-browser-session.mjs';
 
 // Phase 29 e2e — UNDO-01: Cmd+Z undoes the local user's most recent action.
 // Activated by Plan 29-04. Maps to UI-SPEC §3 keybind contract + 29-CONTEXT.md
@@ -9,7 +10,9 @@ import { test, expect } from '@playwright/test';
 // no manual sign-in step required.
 
 test('Cmd+Z undoes the local user\'s most recent action', async ({ page }) => {
+  const leasedBrowserAccount = await installLeasedBrowserAccount(page);
   await page.goto('http://localhost:5173/');
+  await assertBrowserUsesLeasedAccount(page, { account: leasedBrowserAccount });
   // Document picker render is not gated by a stable selector; wait for the test
   // PDF link itself instead. 15s timeout covers cold-start IndexedDB reads.
   const docLink = page.locator('text=Package 2 - Rev 4 -- IC.pdf').first();

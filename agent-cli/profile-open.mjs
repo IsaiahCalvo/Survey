@@ -3,6 +3,7 @@
 // Captures longtasks (main-thread blocks) during the open window + app console
 // timing, so we can see whether the ~3s freeze is real and what it is.
 import { chromium } from 'playwright';
+import { assertBrowserUsesLeasedAccount, installLeasedBrowserAccount } from './lib/leased-browser-session.mjs';
 
 const DOC_NAME = process.argv[2] || 'Package 2 - Rev 4 -- IC.pdf';
 const HEADLESS = process.env.HEADFUL ? false : true;
@@ -30,7 +31,9 @@ await page.addInitScript(() => {
 });
 
 console.log('navigating to localhost:5173 (auto-login as dev account)...');
+const leasedBrowserAccount = await installLeasedBrowserAccount(page);
 await page.goto('http://localhost:5173/', { waitUntil: 'domcontentloaded', timeout: 60000 });
+await assertBrowserUsesLeasedAccount(page, { account: leasedBrowserAccount });
 
 // Wait for the dashboard to show document tiles (auto-login completes).
 await page.waitForTimeout(4000);

@@ -5,6 +5,7 @@ import { chromium } from 'playwright';
 import { PDFArray, PDFDocument, PDFName, PDFNumber, PDFString, StandardFonts, rgb } from 'pdf-lib';
 import fs from 'node:fs';
 import path from 'node:path';
+import { loadVerifiedTestAccounts } from './test-account-lease.mjs';
 
 const REPO_ROOT = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..');
 const LOGS_ROOT = path.join(REPO_ROOT, 'Logs');
@@ -643,10 +644,11 @@ function summarizeImportedFamily(imported, row, afterImportState, reloadState, p
 loadEnv('.env');
 loadEnv('.env.local');
 
-const required = ['VITE_SUPABASE_URL', 'VITE_SUPABASE_ANON_KEY', 'VITE_DEV_AUTO_LOGIN_EMAIL', 'VITE_DEV_AUTO_LOGIN_PASSWORD'];
+const required = ['VITE_SUPABASE_URL', 'VITE_SUPABASE_ANON_KEY'];
 for (const key of required) {
   if (!process.env[key]) throw new Error(`Missing ${key}`);
 }
+const [leasedAccount] = loadVerifiedTestAccounts();
 
 fs.mkdirSync(LOGS_ROOT, { recursive: true });
 const logDir = path.join(LOGS_ROOT, `${stampForFolder()}_fix19-live-auth`);
@@ -676,11 +678,14 @@ const evidence = {
 
 const supabase = createClient(process.env.VITE_SUPABASE_URL, process.env.VITE_SUPABASE_ANON_KEY);
 const signIn = await supabase.auth.signInWithPassword({
-  email: process.env.VITE_DEV_AUTO_LOGIN_EMAIL,
-  password: process.env.VITE_DEV_AUTO_LOGIN_PASSWORD,
+  email: leasedAccount.email,
+  password: leasedAccount.password,
 });
 if (signIn.error) throw signIn.error;
 const userId = signIn.data.user.id;
+if (userId !== leasedAccount.userId) {
+  throw new Error(`Leased account identity mismatch for ${leasedAccount.email}`);
+}
 const document = await createDisposableDocument(supabase, userId);
 evidence.document = {
   id: document.id,
@@ -691,6 +696,15 @@ evidence.document = {
 
 const browser = await chromium.launch({ headless: true });
 const page = await browser.newPage({ viewport: { width: 1400, height: 900 } });
+const projectRef = new URL(process.env.VITE_SUPABASE_URL).hostname.split('.')[0];
+await page.addInitScript(({ key, session, account }) => {
+  window.localStorage.setItem(key, JSON.stringify(session));
+  window.localStorage.setItem('__fix20AuthOverride', JSON.stringify(account));
+}, {
+  key: `sb-${projectRef}-auth-token`,
+  session: signIn.data.session,
+  account: { email: leasedAccount.email, password: leasedAccount.password },
+});
 
 page.on('console', (msg) => {
   const line = `${new Date().toISOString()} ${msg.type()} ${msg.text()}`;
@@ -724,6 +738,17 @@ let runError = null;
 try {
   await page.goto(BASE_URL, { waitUntil: 'domcontentloaded', timeout: 60_000 });
   await sleep(4_000);
+  const browserUserId = await page.evaluate(() => {
+    for (let index = 0; index < window.localStorage.length; index += 1) {
+      const key = window.localStorage.key(index);
+      if (!key?.startsWith('sb-') || !key.endsWith('-auth-token')) continue;
+      try { return JSON.parse(window.localStorage.getItem(key))?.user?.id || null; } catch {}
+    }
+    return null;
+  });
+  if (browserUserId !== leasedAccount.userId) {
+    throw new Error(`Browser session does not match leased account ${leasedAccount.email}`);
+  }
   await page.getByText(document.name, { exact: true }).click({ timeout: 30_000 });
   await page.waitForSelector('.e-pv-page-container', { timeout: 60_000 });
   await sleep(7_000);

@@ -586,7 +586,13 @@ export default function App({ devPreviewReturnTab = null }) {
   const openingPdfsRef = useRef(new Set());
 
   // Template management state
-  const [appTemplates, setAppTemplates] = useState([]);
+  const [appTemplates, setAppTemplates] = useState(() => (
+    import.meta.env.DEV
+    && typeof window !== 'undefined'
+    && Array.isArray(window.__surveyTransitionE2ETemplates)
+      ? window.__surveyTransitionE2ETemplates
+      : []
+  ));
 
   const handleTemplatesChange = useCallback((nextTemplates) => {
     const normalized = Array.isArray(nextTemplates) ? nextTemplates : [];

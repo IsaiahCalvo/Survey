@@ -1,4 +1,6 @@
 import { test, expect } from '@playwright/test';
+import { loadVerifiedTestAccounts } from '../../scripts/test-account-lease.mjs';
+import { assertBrowserUsesLeasedAccount, installLeasedBrowserAccount } from '../../agent-cli/lib/leased-browser-session.mjs';
 
 // Phase 29 e2e — Plan 29-05 unfixme.
 // Maps to: COLLAB-02 + 29-CONTEXT.md acceptance criterion
@@ -6,7 +8,7 @@ import { test, expect } from '@playwright/test';
 //    commit, then both edits appear on both clients without collision."
 //
 // Test seam expectations:
-//   - .bot-credentials.json (Phase 28 bot accounts) — required for two-context flows
+//   - verified two-account task lease — required for two-context flows
 //   - window.__navigateToPage (Plan 29-04 expected seam) — required for page jump
 //   - data-anno-id attribute on SVG annotations (Plan 29-04 SVG seam)
 //
@@ -23,13 +25,7 @@ test('two clients edit different shapes on same page — both edits land', async
   // Skip-guard: if Phase 28 bot credentials aren't provisioned, skip with a
   // clear reason so the test reports a meaningful state instead of failing on
   // the sign-in step.
-  const fs = await import('node:fs');
-  const path = await import('node:path');
-  const credPath = path.resolve(process.cwd(), '.bot-credentials.json');
-  if (!fs.existsSync(credPath)) {
-    test.skip(true, '.bot-credentials.json missing — Phase 28 bot accounts required for two-context flows');
-    return;
-  }
+  loadVerifiedTestAccounts({ minimumAccounts: 2 });
 
   // Seam check: window.__navigateToPage is the Plan 29-04 page-jump seam used by
   // every Phase 29 e2e to land on Page 6 deterministically. If absent, runtime-
@@ -37,7 +33,9 @@ test('two clients edit different shapes on same page — both edits land', async
   // exposes this seam in a one-line non-functional set.
   const ctx1 = await browser.newContext();
   const page1 = await ctx1.newPage();
+  const leasedBrowserAccount = await installLeasedBrowserAccount(page1);
   await page1.goto('http://localhost:5173/');
+  await assertBrowserUsesLeasedAccount(page1, { account: leasedBrowserAccount });
 
   const hasSeam = await page1.evaluate(() => typeof window.__navigateToPage === 'function').catch(() => false);
   if (!hasSeam) {

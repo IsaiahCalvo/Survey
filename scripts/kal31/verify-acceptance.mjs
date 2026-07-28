@@ -48,6 +48,13 @@ function loadEnv(file) {
 loadEnv('.env.local');
 loadEnv('.env');
 
+if (
+  process.env.SURVEY_COORDINATOR_DISPOSABLE_TEST_USERS
+    !== 'I_AM_THE_TEST_ACCOUNT_COORDINATOR'
+) {
+  throw new Error('Exact coordinator authorization is required before creating KAL-31 users');
+}
+
 const SUPABASE_URL = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL;
 const SUPABASE_ANON_KEY = process.env.VITE_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY;
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;

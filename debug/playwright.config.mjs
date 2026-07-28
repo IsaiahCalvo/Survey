@@ -19,6 +19,13 @@ export default defineConfig({
   webServer: {
     command: `npm run dev:ui -- --host ${serverURL.hostname} --port ${serverPort} --strictPort`,
     url: baseURL,
+    // Debug scenarios use local fixtures/seams. Never let the Vite server
+    // inherit a real shared-account auto-login from .env.local.
+    env: {
+      ...process.env,
+      VITE_DEV_AUTO_LOGIN_EMAIL: '',
+      VITE_DEV_AUTO_LOGIN_PASSWORD: '',
+    },
     reuseExistingServer: false,
     timeout: 120_000,       // 2 minutes for Vite cold start with 30+ Syncfusion packages
     stdout: 'pipe',

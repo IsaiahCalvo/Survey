@@ -8,6 +8,7 @@
 //             of real-user cost; use only as a floor/baseline comparison.
 
 import { createClient } from '@supabase/supabase-js';
+import { loadVerifiedTestAccounts } from '../../scripts/test-account-lease.mjs';
 import { loadEnv } from './env.mjs';
 
 loadEnv();
@@ -24,14 +25,14 @@ export async function makeClient(mode = 'user') {
   }
 
   const anon = process.env.VITE_SUPABASE_ANON_KEY;
-  const email = process.env.VITE_DEV_AUTO_LOGIN_EMAIL;
-  const password = process.env.VITE_DEV_AUTO_LOGIN_PASSWORD;
+  const [leasedAccount] = loadVerifiedTestAccounts();
+  const { email, password, userId: leasedUserId } = leasedAccount;
   if (!anon) throw new Error('VITE_SUPABASE_ANON_KEY missing (check .env)');
-  if (!email || !password) {
-    throw new Error('VITE_DEV_AUTO_LOGIN_EMAIL / _PASSWORD missing (check .env.local)');
-  }
   const supabase = createClient(url, anon, { auth: { persistSession: false } });
   const { data, error } = await supabase.auth.signInWithPassword({ email, password });
   if (error) throw new Error(`dev login failed: ${error.message}`);
+  if (data.user.id !== leasedUserId) {
+    throw new Error(`Leased account identity mismatch for ${email}`);
+  }
   return { supabase, mode, userId: data.user.id, who: `${email} (RLS enforced)` };
 }

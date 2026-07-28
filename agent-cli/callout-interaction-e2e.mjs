@@ -21,6 +21,7 @@
 //   FORCE_FLAG=0 node agent-cli/callout-interaction-e2e.mjs # kill switch (flag OFF)
 
 import { chromium } from 'playwright';
+import { assertBrowserUsesLeasedAccount, installLeasedBrowserAccount } from './lib/leased-browser-session.mjs';
 
 const APP_URL = process.env.APP_URL || 'http://localhost:5173';
 const DOC_NAME = process.argv[2] || 'SE-011 Security Shop Drawing Rev2 - 05.06.25.pdf';
@@ -41,7 +42,9 @@ if (FORCE_FLAG !== null) {
 const page = await ctx.newPage();
 
 try {
+  const leasedBrowserAccount = await installLeasedBrowserAccount(page);
   await page.goto(APP_URL + '/', { waitUntil: 'domcontentloaded', timeout: 60000 });
+  await assertBrowserUsesLeasedAccount(page, { account: leasedBrowserAccount });
   // Clear any leftover localStorage callouts so we measure only our fresh one.
   // NB: keep CALLOUTS_SHARED_STORE — /allout/i matches it, and wiping it here
   // silently disarmed the documented FORCE_FLAG kill-switch mode.

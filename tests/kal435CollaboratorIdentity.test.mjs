@@ -105,6 +105,35 @@ test('KAL-435 serialization and Y.Doc hydration preserve collaborator identity',
   );
 });
 
+test('KAL-435 two replicas replay the same create exactly once with stable identity', () => {
+  const created = stampAnnotationCreationIdentity(newCircle(), {
+    authorId: COLLABORATOR_ID,
+  });
+  const replicaA = new Y.Doc();
+  const replicaB = new Y.Doc();
+
+  syncByPageToDoc(replicaA, { 1: { objects: [created] } });
+  Y.applyUpdate(replicaB, Y.encodeStateAsUpdate(replicaA));
+
+  // Replica B replays the hydrated object through the normal save boundary
+  // while A independently replays the original create. Both writes address
+  // the same canonical storage key and must converge to one object.
+  syncByPageToDoc(replicaB, docToByPage(replicaB));
+  syncByPageToDoc(replicaA, { 1: { objects: [structuredClone(created)] } });
+  Y.applyUpdate(replicaA, Y.encodeStateAsUpdate(replicaB));
+  Y.applyUpdate(replicaB, Y.encodeStateAsUpdate(replicaA));
+
+  const coldReload = new Y.Doc();
+  Y.applyUpdate(coldReload, Y.encodeStateAsUpdate(replicaA));
+  const objects = docToByPage(coldReload)[1].objects;
+  assert.equal(objects.length, 1, 'replay and merge cannot duplicate the annotation');
+  assert.deepEqual(getAnnotationRenderIdentity(objects[0]), {
+    annotationId: 'kal435-circle',
+    authorId: COLLABORATOR_ID,
+  });
+  assert.equal(getAnnotationAuthorId(objects[0]), COLLABORATOR_ID);
+});
+
 test('KAL-435 collaborator history and delete authority recognize own creates', () => {
   const currentPage = { objects: [] };
   const committed = {

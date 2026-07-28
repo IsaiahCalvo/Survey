@@ -66,13 +66,54 @@ export async function sendInviteEmailSmart({ token, kind, name, inviterName }) {
     });
     if (error) {
       console.warn('[GOAL-1] send-invite-email invoke error:', error?.message || error);
-      return { success: false, error: error.message || String(error) };
+      let response = data || null;
+      if (!response && error?.context?.clone) {
+        try { response = await error.context.clone().json(); } catch { /* no structured body */ }
+      }
+      const status = Number(error?.context?.status) || 0;
+      const deliveryUncertain = response?.retryable === false
+        || response?.error === 'Delivery outcome unknown'
+        || status === 0
+        || status >= 500;
+      return {
+        success: false,
+        retryable: !deliveryUncertain,
+        deliveryUncertain,
+        error: response?.error || error.message || String(error),
+        response,
+      };
     }
-    return { success: !!data?.sent, response: data };
+    if (data?.sent !== true) {
+      const deliveryUncertain = data?.retryable === false
+        || data?.error === 'Delivery outcome unknown';
+      return {
+        success: false,
+        retryable: !deliveryUncertain,
+        deliveryUncertain,
+        error: data?.error || 'Email was not sent',
+        response: data,
+      };
+    }
+    return { success: true, retryable: false, response: data };
   } catch (err) {
     console.warn('[GOAL-1] send-invite-email threw:', err?.message || err);
-    return { success: false, error: err?.message || String(err) };
+    return {
+      success: false,
+      retryable: false,
+      deliveryUncertain: true,
+      error: err?.message || String(err),
+    };
   }
+}
+
+export function inviteEmailFailureMessage(
+  emailResult,
+  { completedAction, retryInstruction },
+) {
+  if (emailResult?.deliveryUncertain || emailResult?.retryable === false) {
+    return `${completedAction}. The email may already have been delivered. Use Resend only if you intentionally want to send another copy.`;
+  }
+  return `${completedAction}, but the email was not sent. ${retryInstruction}`;
 }
 
 /** Send the permission-changed email after a role update. */

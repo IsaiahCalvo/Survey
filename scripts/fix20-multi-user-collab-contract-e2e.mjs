@@ -3,14 +3,20 @@
 import { createClient } from '@supabase/supabase-js';
 import { chromium } from 'playwright';
 import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
+import * as Y from 'yjs';
 import fs from 'node:fs';
 import path from 'node:path';
+import { gunzipSync } from 'node:zlib';
+import {
+  assertBrowserUsesLeasedAccount,
+  installLeasedBrowserAccount,
+} from '../agent-cli/lib/leased-browser-session.mjs';
+import { loadVerifiedTestAccounts } from './test-account-lease.mjs';
 
 const REPO_ROOT = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..');
-const BOT_CREDENTIALS = path.join(REPO_ROOT, '.planning/phases/28-transport-spike-auth-validator/.bot-credentials.json');
 const LOGS_ROOT = path.join(REPO_ROOT, 'Logs');
 const BASE_URL = process.env.FIX20_BASE_URL || 'http://localhost:5173/';
-const EXISTING_DOCUMENT_ID = process.env.FIX20_DOCUMENT_ID || null;
+const CHROME_EXECUTABLE = process.env.FIX20_CHROME_EXECUTABLE || null;
 
 function loadEnv(file) {
   const p = path.join(REPO_ROOT, file);
@@ -30,23 +36,71 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-function parseJsonTail(line) {
-  const idx = line.indexOf('{');
-  if (idx < 0) return null;
-  try {
-    return JSON.parse(line.slice(idx));
-  } catch {
-    return null;
+function pgHexToBytes(value) {
+  if (value instanceof Uint8Array) return value;
+  if (typeof value !== 'string') throw new Error('Expected PostgreSQL bytea hex string');
+  const hex = value.startsWith('\\x') ? value.slice(2) : value;
+  if (!/^[0-9a-f]*$/i.test(hex) || hex.length % 2 !== 0) {
+    throw new Error('Invalid PostgreSQL bytea hex');
   }
+  return Uint8Array.from(Buffer.from(hex, 'hex'));
 }
 
-function countBy(rows, key) {
-  const out = {};
-  for (const row of rows || []) {
-    const value = row?.[key] || 'unknown';
-    out[value] = (out[value] || 0) + 1;
+function durableAnnotationId(key, value) {
+  const object = value?.o || value;
+  const id = object?.data?.id ?? object?.id ?? object?.annotationId ?? object?.pdfAnnotationId;
+  return id == null ? String(key) : String(id);
+}
+
+function durableAnnotationAuthorId(value) {
+  const object = value?.o || value;
+  return object?.meta?.authorId
+    ?? object?.data?.authorId
+    ?? object?.data?.userId
+    ?? object?.authorId
+    ?? null;
+}
+
+async function loadDurableAnnotationState(supabase, documentId) {
+  const snapshotResult = await supabase
+    .from('annotation_snapshots')
+    .select('snapshot, at_seq, encoding_version')
+    .eq('document_id', documentId)
+    .maybeSingle();
+  if (snapshotResult.error) throw snapshotResult.error;
+
+  const doc = new Y.Doc();
+  const atSeq = Number(snapshotResult.data?.at_seq) || 0;
+  if (snapshotResult.data?.snapshot) {
+    let bytes = pgHexToBytes(snapshotResult.data.snapshot);
+    if (Number(snapshotResult.data.encoding_version) === 2) {
+      bytes = new Uint8Array(gunzipSync(bytes));
+    }
+    Y.applyUpdate(doc, bytes);
   }
-  return out;
+
+  const updatesResult = await supabase
+    .from('annotation_updates')
+    .select('seq, data')
+    .eq('document_id', documentId)
+    .gt('seq', atSeq)
+    .order('seq', { ascending: true });
+  if (updatesResult.error) throw updatesResult.error;
+  for (const row of updatesResult.data || []) {
+    Y.applyUpdate(doc, pgHexToBytes(row.data));
+  }
+
+  const entries = [...doc.getMap('annotations').entries()].map(([key, value]) => ({
+    key: String(key),
+    annotationId: durableAnnotationId(key, value),
+    authorId: durableAnnotationAuthorId(value),
+    value,
+  }));
+  return {
+    snapshotAtSeq: atSeq,
+    updateCount: (updatesResult.data || []).length,
+    entries,
+  };
 }
 
 async function createDisposableDocument(supabase, ownerUserId) {
@@ -101,7 +155,15 @@ async function createDisposableDocument(supabase, ownerUserId) {
     })
     .select()
     .single();
-  if (insert.error) throw insert.error;
+  if (insert.error) {
+    const cleanup = await supabase.storage.from('documents').remove([filePath]);
+    if (cleanup.error) {
+      throw new Error(
+        `Document row insert failed (${insert.error.message}); partial upload cleanup also failed (${cleanup.error.message})`,
+      );
+    }
+    throw insert.error;
+  }
   return insert.data;
 }
 
@@ -136,16 +198,12 @@ async function waitForStorageDownloadProof(storageResponses, label, timeoutMs = 
   throw new Error(`${label}: did not observe successful Supabase storage PDF download`);
 }
 
-async function openAsUser(browser, credentials, document, label, evidence) {
+async function openAsUser(browser, credentials, accountIndex, document, label, evidence) {
   const context = await browser.newContext({ viewport: { width: 1400, height: 900 } });
-  await context.addInitScript(({ creds }) => {
-    window.localStorage.setItem('__fix20AuthOverride', JSON.stringify({
-      email: creds.email,
-      password: creds.password,
-    }));
-  }, {
-    creds: credentials,
-  });
+  const leasedAccount = await installLeasedBrowserAccount(context, { accountIndex });
+  if (leasedAccount.userId !== credentials.userId || leasedAccount.email !== credentials.email) {
+    throw new Error(`${label}: verified lease account changed before browser launch`);
+  }
   const page = await context.newPage();
   const consoleLines = [];
   const storageResponses = [];
@@ -188,12 +246,13 @@ async function openAsUser(browser, credentials, document, label, evidence) {
       return false;
     }
   }, null, { timeout: 45_000 });
+  await assertBrowserUsesLeasedAccount(page, { account: credentials, timeoutMs: 45_000 });
   const hasByteOverride = await page.evaluate(() => {
     try { return window.localStorage.getItem('__fix20DocumentOverride') != null; } catch { return false; }
   });
   if (hasByteOverride) throw new Error(`${label}: forbidden __fix20DocumentOverride is present`);
   await page.evaluate((documentId) => window.__fix20OpenDocumentById(documentId), document.id);
-  await page.waitForSelector('.e-pv-page-container', { timeout: 60_000 });
+  await page.waitForSelector('.survey-pdfjs-page-div[data-page-number="1"]', { timeout: 60_000 });
   const storageProof = await waitForStorageDownloadProof(storageResponses, label);
   await waitForHarness(page);
   evidence.storageDownloadProof[label] = {
@@ -230,70 +289,44 @@ async function waitForEntity(client, id, kind = 'annotation', shouldExist = true
   throw new Error(`${client.label}: timed out waiting for ${kind} ${id} exist=${shouldExist}`);
 }
 
-async function waitForDelta(client, sinceIndex, id, kind = 'fabric', timeoutMs = 15_000) {
-  const marker = kind === 'callout'
-    ? '[CloudSync][delta] callout prepared'
-    : '[CloudSync][delta] fabric prepared';
-  const start = Date.now();
-  while (Date.now() - start < timeoutMs) {
-    const line = client.consoleLines.slice(sinceIndex).find((entry) => {
-      if (!entry.includes(marker)) return false;
-      const payload = parseJsonTail(entry);
-      return Array.isArray(payload?.changedIds) && payload.changedIds.includes(id);
-    });
-    if (line) return { line, payload: parseJsonTail(line) || {} };
+async function createCircleThroughProductionUi(client, timeoutMs = 20_000) {
+  const before = await getHarnessState(client);
+  const existingIds = new Set(before.annotations.map((entry) => entry.id));
+
+  await client.page.getByRole('button', { name: 'Shapes', exact: true }).click();
+  await client.page.getByRole('button', { name: 'Ellipse', exact: true }).click();
+  const page = client.page.locator('.survey-pdfjs-page-div[data-page-number="1"]');
+  await page.waitFor({ state: 'visible', timeout: 20_000 });
+  const box = await page.boundingBox();
+  if (!box) throw new Error('Production PDF page has no drawable geometry');
+
+  await client.page.mouse.move(box.x + box.width * 0.28, box.y + box.height * 0.34);
+  await client.page.mouse.down();
+  await client.page.mouse.move(box.x + box.width * 0.42, box.y + box.height * 0.48, { steps: 8 });
+  await client.page.mouse.up();
+
+  const startedAt = Date.now();
+  while (Date.now() - startedAt < timeoutMs) {
+    const state = await getHarnessState(client);
+    const created = state.annotations.find((entry) => !existingIds.has(entry.id));
+    if (created) return created;
     await sleep(200);
   }
-  return { line: null, payload: null };
-}
-
-async function waitForDeleteDelta(client, sinceIndex, id, kind = 'fabric', timeoutMs = 15_000) {
-  const marker = kind === 'callout'
-    ? '[CloudSync][delta] callout prepared'
-    : '[CloudSync][delta] fabric prepared';
-  const start = Date.now();
-  while (Date.now() - start < timeoutMs) {
-    const line = client.consoleLines.slice(sinceIndex).find((entry) => {
-      if (!entry.includes(marker)) return false;
-      const payload = parseJsonTail(entry);
-      return Array.isArray(payload?.deletedIds) && payload.deletedIds.includes(id);
-    });
-    if (line) return { line, payload: parseJsonTail(line) || {} };
-    await sleep(200);
-  }
-  return { line: null, payload: null };
-}
-
-function assertScopedDelta(delta, id, label) {
-  if (!delta.payload) throw new Error(`${label}: missing delta for ${id}`);
-  if (delta.payload.changedCount !== 1) throw new Error(`${label}: changedCount != 1`);
-  if (delta.payload.dispatchedCount !== 1) throw new Error(`${label}: dispatchedCount != 1`);
-  if (delta.payload.supabaseUpsertCount !== 1) throw new Error(`${label}: supabaseUpsertCount != 1`);
-  if (delta.payload.yDocUpdateCount !== 1) throw new Error(`${label}: yDocUpdateCount != 1`);
-  if (delta.payload.fullFanOutReason !== null) throw new Error(`${label}: fullFanOutReason is not null`);
-}
-
-function assertScopedDelete(delta, id, label) {
-  if (!delta.payload) throw new Error(`${label}: missing delete delta for ${id}`);
-  if (!Array.isArray(delta.payload.deletedIds) || !delta.payload.deletedIds.includes(id)) {
-    throw new Error(`${label}: deletedIds missing ${id}`);
-  }
-  if (delta.payload.dispatchedCount !== 1) throw new Error(`${label}: delete dispatchedCount != 1`);
-  if (delta.payload.fullFanOutReason !== null) throw new Error(`${label}: delete fullFanOutReason is not null`);
+  throw new Error('Production Ellipse tool did not commit a new annotation');
 }
 
 loadEnv('.env');
 loadEnv('.env.local');
 
-const required = ['VITE_SUPABASE_URL', 'VITE_SUPABASE_ANON_KEY', 'VITE_DEV_AUTO_LOGIN_EMAIL', 'VITE_DEV_AUTO_LOGIN_PASSWORD'];
+const required = [
+  'VITE_SUPABASE_URL',
+  'VITE_SUPABASE_ANON_KEY',
+  'SUPABASE_SERVICE_ROLE_KEY',
+];
 for (const key of required) {
   if (!process.env[key]) throw new Error(`Missing ${key}`);
 }
-if (!fs.existsSync(BOT_CREDENTIALS)) throw new Error(`Missing bot credentials: ${BOT_CREDENTIALS}`);
-
-const botCredentials = JSON.parse(fs.readFileSync(BOT_CREDENTIALS, 'utf8'));
-const [userA, userB] = botCredentials.bots;
-if (!userA || !userB) throw new Error('Need at least two bot credentials');
+const [userA, userB] = loadVerifiedTestAccounts({ minimumAccounts: 2 });
 
 fs.mkdirSync(LOGS_ROOT, { recursive: true });
 const logDir = path.join(LOGS_ROOT, `${stampForFolder()}_fix20-multi-user-collab`);
@@ -305,15 +338,15 @@ const evidence = {
   logDir,
   document: null,
   users: {
-    A: { id: userA.id, email: userA.email },
-    B: { id: userB.id, email: userB.email },
+    A: { id: userA.userId, email: userA.email },
+    B: { id: userB.userId, email: userB.email },
   },
   createdIds: { A: {}, B: {} },
   liveVisibilityProof: {},
+  exactlyOnceProof: {},
   ownershipBlockProof: {},
-  undoRedoIsolationProof: {},
+  ownerDeleteIsolationProof: {},
   reloadProof: {},
-  syncDeltaProof: {},
   storageDownloadProof: {
     usedPdfByteOverride: false,
     responses: [],
@@ -325,63 +358,95 @@ const evidence = {
   result: 'pending',
 };
 
-const ownerClient = createClient(process.env.VITE_SUPABASE_URL, process.env.VITE_SUPABASE_ANON_KEY);
-const ownerSignIn = await ownerClient.auth.signInWithPassword({
-  email: process.env.VITE_DEV_AUTO_LOGIN_EMAIL,
-  password: process.env.VITE_DEV_AUTO_LOGIN_PASSWORD,
-});
-if (ownerSignIn.error) throw ownerSignIn.error;
-const ownerId = ownerSignIn.data.user.id;
-const document = EXISTING_DOCUMENT_ID
-  ? await (async () => {
-      const { data, error } = await ownerClient
-        .from('documents')
-        .select('*')
-        .eq('id', EXISTING_DOCUMENT_ID)
-        .single();
-      if (error) throw error;
-      return data;
-    })()
-  : await createDisposableDocument(ownerClient, ownerId);
-evidence.document = {
-  id: document.id,
-  name: document.name,
-  filePath: document.file_path,
-  ownerId,
-};
-await ensureCollaborator(ownerClient, document.id, userA.id, userA.email);
-await ensureCollaborator(ownerClient, document.id, userB.id, userB.email);
-await ownerClient
-  .from('document_annotations')
-  .delete()
-  .eq('document_id', document.id)
-  .like('highlight_id', 'fix20-%');
+const ownerClient = createClient(
+  process.env.VITE_SUPABASE_URL,
+  process.env.SUPABASE_SERVICE_ROLE_KEY,
+  {
+    auth: {
+      persistSession: false,
+      autoRefreshToken: false,
+      detectSessionInUrl: false,
+    },
+  },
+);
+const ownerId = userA.userId;
+if (process.env.FIX20_DOCUMENT_ID) {
+  throw new Error('FIX20_DOCUMENT_ID is forbidden; this harness only uses disposable leased-owner documents');
+}
 
-const browser = await chromium.launch({ headless: true });
+let document;
+let browser;
 let clientA;
 let clientB;
 let runError = null;
 
 try {
-  clientA = await openAsUser(browser, userA, document, 'A', evidence);
-  clientB = await openAsUser(browser, userB, document, 'B', evidence);
+  const ownerLookup = await ownerClient.auth.admin.getUserById(userA.userId);
+  if (ownerLookup.error) throw ownerLookup.error;
+  if (
+    ownerLookup.data.user?.id !== userA.userId
+    || ownerLookup.data.user?.email?.toLowerCase() !== userA.email.toLowerCase()
+  ) {
+    throw new Error('Service-role setup did not resolve the exact leased owner account');
+  }
+  document = await createDisposableDocument(ownerClient, ownerId);
+  evidence.document = {
+    id: document.id,
+    name: document.name,
+    filePath: document.file_path,
+    ownerId,
+  };
+  await ensureCollaborator(ownerClient, document.id, userA.userId, userA.email);
+  await ensureCollaborator(ownerClient, document.id, userB.userId, userB.email);
+  const preflightCleanup = await ownerClient
+    .from('document_annotations')
+    .delete()
+    .eq('document_id', document.id)
+    .like('annotation_id', 'fix20-%');
+  if (preflightCleanup.error) throw preflightCleanup.error;
+
+  browser = await chromium.launch({
+    headless: true,
+    ...(CHROME_EXECUTABLE ? { executablePath: CHROME_EXECUTABLE } : {}),
+  });
+  clientA = await openAsUser(browser, userA, 0, document, 'A', evidence);
+  clientB = await openAsUser(browser, userB, 1, document, 'B', evidence);
 
   const ids = {
+    aCircle: null,
+    bCircle: null,
     aRect: `fix20-a-rect-${Date.now()}`,
     aCallout: `fix20-a-callout-${Date.now()}`,
     bCounter: `fix20-b-counter-${Date.now()}`,
+  };
+  const createdCircle = await createCircleThroughProductionUi(clientA);
+  ids.aCircle = createdCircle.id;
+  evidence.createdIds.A.circle = ids.aCircle;
+  const bSawACircle = await waitForEntity(clientB, ids.aCircle);
+  evidence.liveVisibilityProof.userBSeesUserACircleExactlyOnce = {
+    pass: bSawACircle.annotations.filter(
+      (entry) => entry.id === ids.aCircle && entry.authorId === userA.userId,
+    ).length === 1,
+    state: bSawACircle,
+  };
+  const createdCollaboratorCircle = await createCircleThroughProductionUi(clientB);
+  ids.bCircle = createdCollaboratorCircle.id;
+  evidence.createdIds.B.circle = ids.bCircle;
+  const aSawBCircle = await waitForEntity(clientA, ids.bCircle);
+  evidence.liveVisibilityProof.userASeesUserBCircleExactlyOnce = {
+    pass: aSawBCircle.annotations.filter(
+      (entry) => entry.id === ids.bCircle && entry.authorId === userB.userId,
+    ).length === 1,
+    state: aSawBCircle,
   };
   evidence.createdIds.A.rectangle = ids.aRect;
   evidence.createdIds.A.callout = ids.aCallout;
   evidence.createdIds.B.counter = ids.bCounter;
 
-  let start = clientA.consoleLines.length;
   await clientA.page.evaluate((id) => window.__fix20CollabHarness.createRectangle(id), ids.aRect);
-  const aRectDelta = await waitForDelta(clientA, start, ids.aRect, 'fabric');
-  assertScopedDelta(aRectDelta, ids.aRect, 'A rectangle create');
   const bSawARect = await waitForEntity(clientB, ids.aRect);
   evidence.liveVisibilityProof.userBSeesUserARectangle = {
-    pass: bSawARect.annotations.some((entry) => entry.id === ids.aRect && entry.authorId === userA.id),
+    pass: bSawARect.annotations.some((entry) => entry.id === ids.aRect && entry.authorId === userA.userId),
     state: bSawARect,
   };
 
@@ -392,18 +457,15 @@ try {
   evidence.ownershipBlockProof.userBCannotEditDeleteUserA = {
     blockedMove,
     blockedDelete,
-    stillPresent: afterBlocked.annotations.some((entry) => entry.id === ids.aRect && entry.authorId === userA.id),
+    stillPresent: afterBlocked.annotations.some((entry) => entry.id === ids.aRect && entry.authorId === userA.userId),
     pass: blockedMove.allowed === false && blockedDelete.allowed === false
-      && afterBlocked.annotations.some((entry) => entry.id === ids.aRect && entry.authorId === userA.id),
+      && afterBlocked.annotations.some((entry) => entry.id === ids.aRect && entry.authorId === userA.userId),
   };
 
-  start = clientA.consoleLines.length;
   await clientA.page.evaluate((id) => window.__fix20CollabHarness.createCallout(id), ids.aCallout);
-  const aCalloutDelta = await waitForDelta(clientA, start, ids.aCallout, 'callout');
-  assertScopedDelta(aCalloutDelta, ids.aCallout, 'A callout create');
   const bSawACallout = await waitForEntity(clientB, ids.aCallout, 'callout');
   evidence.liveVisibilityProof.userBSeesUserACallout = {
-    pass: bSawACallout.callouts.some((entry) => entry.id === ids.aCallout && entry.authorId === userA.id),
+    pass: bSawACallout.callouts.some((entry) => entry.id === ids.aCallout && entry.authorId === userA.userId),
     state: bSawACallout,
   };
   const blockedCalloutMove = await clientB.page.evaluate((id) => window.__fix20CollabHarness.tryMove(id, 'callout'), ids.aCallout);
@@ -414,60 +476,50 @@ try {
     pass: blockedCalloutMove.allowed === false && blockedCalloutDelete.allowed === false,
   };
 
-  start = clientB.consoleLines.length;
   await clientB.page.evaluate((id) => window.__fix20CollabHarness.createCounter(id), ids.bCounter);
-  const bCounterDelta = await waitForDelta(clientB, start, ids.bCounter, 'fabric');
-  assertScopedDelta(bCounterDelta, ids.bCounter, 'B counter create');
   const aSawBCounter = await waitForEntity(clientA, ids.bCounter);
   evidence.liveVisibilityProof.userASeesUserBCounter = {
-    pass: aSawBCounter.annotations.some((entry) => entry.id === ids.bCounter && entry.authorId === userB.id),
+    pass: aSawBCounter.annotations.some((entry) => entry.id === ids.bCounter && entry.authorId === userB.userId),
     state: aSawBCounter,
   };
 
-  start = clientA.consoleLines.length;
-  await clientA.page.evaluate(() => window.__fix20CollabHarness.undo());
-  const aUndoCalloutDelta = await waitForDeleteDelta(clientA, start, ids.aCallout, 'callout');
+  const aDeleteCallout = await clientA.page.evaluate(
+    (id) => window.__fix20CollabHarness.tryDelete(id, 'callout'),
+    ids.aCallout,
+  );
   await waitForEntity(clientA, ids.aCallout, 'callout', false);
   await waitForEntity(clientB, ids.aCallout, 'callout', false);
-  const bCounterAfterAUndo1 = await waitForEntity(clientA, ids.bCounter);
-  evidence.undoRedoIsolationProof.userAUndoCalloutOnly = {
-    delta: aUndoCalloutDelta.payload,
-    bCounterStillPresent: bCounterAfterAUndo1.annotations.some((entry) => entry.id === ids.bCounter && entry.authorId === userB.id),
-    pass: bCounterAfterAUndo1.annotations.some((entry) => entry.id === ids.bCounter && entry.authorId === userB.id),
+  const bCounterAfterADeleteCallout = await waitForEntity(clientA, ids.bCounter);
+  evidence.ownerDeleteIsolationProof.userADeletesOwnCalloutOnly = {
+    result: aDeleteCallout,
+    bCounterStillPresent: bCounterAfterADeleteCallout.annotations.some((entry) => entry.id === ids.bCounter && entry.authorId === userB.userId),
+    pass: aDeleteCallout.allowed === true
+      && bCounterAfterADeleteCallout.annotations.some((entry) => entry.id === ids.bCounter && entry.authorId === userB.userId),
   };
 
-  start = clientA.consoleLines.length;
-  await clientA.page.evaluate(() => window.__fix20CollabHarness.undo());
-  const aUndoRectDelta = await waitForDeleteDelta(clientA, start, ids.aRect, 'fabric');
-  assertScopedDelete(aUndoRectDelta, ids.aRect, 'A rectangle undo');
+  const aDeleteRect = await clientA.page.evaluate(
+    (id) => window.__fix20CollabHarness.tryDelete(id),
+    ids.aRect,
+  );
   await waitForEntity(clientA, ids.aRect, 'annotation', false);
   await waitForEntity(clientB, ids.aRect, 'annotation', false);
-  const bCounterAfterAUndo2 = await waitForEntity(clientB, ids.bCounter);
-  evidence.undoRedoIsolationProof.userAUndoRectangleOnly = {
-    delta: aUndoRectDelta.payload,
-    bCounterStillPresent: bCounterAfterAUndo2.annotations.some((entry) => entry.id === ids.bCounter && entry.authorId === userB.id),
-    pass: bCounterAfterAUndo2.annotations.some((entry) => entry.id === ids.bCounter && entry.authorId === userB.id),
+  const bCounterAfterADeleteRect = await waitForEntity(clientB, ids.bCounter);
+  evidence.ownerDeleteIsolationProof.userADeletesOwnRectangleOnly = {
+    result: aDeleteRect,
+    bCounterStillPresent: bCounterAfterADeleteRect.annotations.some((entry) => entry.id === ids.bCounter && entry.authorId === userB.userId),
+    pass: aDeleteRect.allowed === true
+      && bCounterAfterADeleteRect.annotations.some((entry) => entry.id === ids.bCounter && entry.authorId === userB.userId),
   };
 
-  start = clientB.consoleLines.length;
-  await clientB.page.evaluate(() => window.__fix20CollabHarness.undo());
-  const bUndoCounterDelta = await waitForDeleteDelta(clientB, start, ids.bCounter, 'fabric');
-  assertScopedDelete(bUndoCounterDelta, ids.bCounter, 'B counter undo');
+  const bDeleteCounter = await clientB.page.evaluate(
+    (id) => window.__fix20CollabHarness.tryDelete(id),
+    ids.bCounter,
+  );
   await waitForEntity(clientA, ids.bCounter, 'annotation', false);
   await waitForEntity(clientB, ids.bCounter, 'annotation', false);
-  evidence.undoRedoIsolationProof.userBUndoCounterOnly = {
-    delta: bUndoCounterDelta.payload,
-    pass: true,
-  };
-
-  evidence.syncDeltaProof = {
-    aRectCreate: aRectDelta.payload,
-    aCalloutCreate: aCalloutDelta.payload,
-    bCounterCreate: bCounterDelta.payload,
-    aRectUndoDelete: aUndoRectDelta.payload,
-    bCounterUndoDelete: bUndoCounterDelta.payload,
-    noFullPageFanOut: [aRectDelta, aCalloutDelta, bCounterDelta, aUndoRectDelta, bUndoCounterDelta]
-      .every((entry) => entry.payload?.fullFanOutReason === null),
+  evidence.ownerDeleteIsolationProof.userBDeletesOwnCounterOnly = {
+    result: bDeleteCounter,
+    pass: bDeleteCounter.allowed === true,
   };
 
   await clientA.page.reload({ waitUntil: 'domcontentloaded', timeout: 60_000 });
@@ -496,8 +548,8 @@ try {
   }, null, { timeout: 45_000 });
   await clientA.page.evaluate((documentId) => window.__fix20OpenDocumentById(documentId), document.id);
   await clientB.page.evaluate((documentId) => window.__fix20OpenDocumentById(documentId), document.id);
-  await clientA.page.waitForSelector('.e-pv-page-container', { timeout: 60_000 });
-  await clientB.page.waitForSelector('.e-pv-page-container', { timeout: 60_000 });
+  await clientA.page.waitForSelector('.survey-pdfjs-page-div[data-page-number="1"]', { timeout: 60_000 });
+  await clientB.page.waitForSelector('.survey-pdfjs-page-div[data-page-number="1"]', { timeout: 60_000 });
   await waitForHarness(clientA.page);
   await waitForHarness(clientB.page);
   await sleep(3000);
@@ -509,19 +561,84 @@ try {
     userA: reloadA,
     userB: reloadB,
     deletedIdsAbsent: [ids.aRect, ids.aCallout, ids.bCounter].every((id) => !finalIdsA.has(id) && !finalIdsB.has(id)),
-    pass: [ids.aRect, ids.aCallout, ids.bCounter].every((id) => !finalIdsA.has(id) && !finalIdsB.has(id)),
+    circlesExactlyOnce: [ids.aCircle, ids.bCircle].every(
+      (id) => reloadA.annotations.filter((entry) => entry.id === id).length === 1
+        && reloadB.annotations.filter((entry) => entry.id === id).length === 1,
+    ),
+    pass: [ids.aRect, ids.aCallout, ids.bCounter].every((id) => !finalIdsA.has(id) && !finalIdsB.has(id))
+      && reloadA.annotations.filter(
+        (entry) => entry.id === ids.aCircle && entry.authorId === userA.userId,
+      ).length === 1
+      && reloadB.annotations.filter(
+        (entry) => entry.id === ids.aCircle && entry.authorId === userA.userId,
+      ).length === 1
+      && reloadA.annotations.filter(
+        (entry) => entry.id === ids.bCircle && entry.authorId === userB.userId,
+      ).length === 1
+      && reloadB.annotations.filter(
+        (entry) => entry.id === ids.bCircle && entry.authorId === userB.userId,
+      ).length === 1,
   };
 
-  const rows = await ownerClient
-    .from('document_annotations')
-    .select('highlight_id, annotation_type, user_id, last_modified_by, annotation_data')
-    .eq('document_id', document.id)
-    .in('highlight_id', [ids.aRect, ids.aCallout, ids.bCounter]);
-  if (rows.error) throw rows.error;
+  const durableState = await loadDurableAnnotationState(ownerClient, document.id);
+  const durableCreatedRows = durableState.entries.filter((entry) => (
+    [ids.aCircle, ids.bCircle, ids.aRect, ids.aCallout, ids.bCounter].includes(entry.annotationId)
+  ));
+  const durableACircle = durableCreatedRows.filter(
+    (entry) => entry.annotationId === ids.aCircle && entry.authorId === userA.userId,
+  );
+  const durableBCircle = durableCreatedRows.filter(
+    (entry) => entry.annotationId === ids.bCircle && entry.authorId === userB.userId,
+  );
   evidence.supabaseRows = {
-    finalRowsForCreatedIds: rows.data || [],
-    finalRowsByType: countBy(rows.data || [], 'annotation_type'),
-    pass: (rows.data || []).length === 0,
+    durableSnapshotAtSeq: durableState.snapshotAtSeq,
+    durableUpdateCount: durableState.updateCount,
+    finalRowsForCreatedIds: durableCreatedRows,
+    pass: durableCreatedRows.length === 2
+      && durableACircle.length === 1
+      && durableBCircle.length === 1,
+  };
+  evidence.exactlyOnceProof = {
+    ownerLiveReplicaCount: bSawACircle.annotations.filter((entry) => entry.id === ids.aCircle).length,
+    collaboratorLiveReplicaCount: aSawBCircle.annotations.filter((entry) => entry.id === ids.bCircle).length,
+    ownerShapeOwnerReloadCount: reloadA.annotations.filter((entry) => entry.id === ids.aCircle).length,
+    ownerShapeCollaboratorReloadCount: reloadB.annotations.filter((entry) => entry.id === ids.aCircle).length,
+    collaboratorShapeOwnerReloadCount: reloadA.annotations.filter((entry) => entry.id === ids.bCircle).length,
+    collaboratorShapeCollaboratorReloadCount: reloadB.annotations.filter((entry) => entry.id === ids.bCircle).length,
+    ownerShapeDurableBackendCount: durableCreatedRows.filter(
+      (entry) => entry.annotationId === ids.aCircle,
+    ).length,
+    collaboratorShapeDurableBackendCount: durableCreatedRows.filter(
+      (entry) => entry.annotationId === ids.bCircle,
+    ).length,
+  };
+  evidence.exactlyOnceProof.pass = Object.values(evidence.exactlyOnceProof)
+    .filter((value) => typeof value === 'number')
+    .every((value) => value === 1);
+
+  const circleDelete = await clientA.page.evaluate(
+    (id) => window.__fix20CollabHarness.tryDelete(id),
+    ids.aCircle,
+  );
+  await waitForEntity(clientA, ids.aCircle, 'annotation', false);
+  await waitForEntity(clientB, ids.aCircle, 'annotation', false);
+  const collaboratorCircleDelete = await clientB.page.evaluate(
+    (id) => window.__fix20CollabHarness.tryDelete(id),
+    ids.bCircle,
+  );
+  await waitForEntity(clientA, ids.bCircle, 'annotation', false);
+  await waitForEntity(clientB, ids.bCircle, 'annotation', false);
+  const durableStateAfterDelete = await loadDurableAnnotationState(ownerClient, document.id);
+  const circleRowsAfterDelete = durableStateAfterDelete.entries.filter(
+    (entry) => [ids.aCircle, ids.bCircle].includes(entry.annotationId),
+  );
+  evidence.productionCircleCleanup = {
+    circleDelete,
+    collaboratorCircleDelete,
+    remainingRows: circleRowsAfterDelete,
+    pass: circleDelete.allowed === true
+      && collaboratorCircleDelete.allowed === true
+      && circleRowsAfterDelete.length === 0,
   };
 
   evidence.ydocRealtimeProof = {
@@ -540,17 +657,20 @@ try {
     evidence.storageDownloadProof.usedPdfByteOverride === false,
     evidence.storageDownloadProof.A?.pass,
     evidence.storageDownloadProof.B?.pass,
+    evidence.liveVisibilityProof.userBSeesUserACircleExactlyOnce?.pass,
+    evidence.liveVisibilityProof.userASeesUserBCircleExactlyOnce?.pass,
     evidence.liveVisibilityProof.userBSeesUserARectangle?.pass,
     evidence.liveVisibilityProof.userBSeesUserACallout?.pass,
     evidence.liveVisibilityProof.userASeesUserBCounter?.pass,
     evidence.ownershipBlockProof.userBCannotEditDeleteUserA?.pass,
     evidence.ownershipBlockProof.userBCannotEditDeleteUserACallout?.pass,
-    evidence.undoRedoIsolationProof.userAUndoCalloutOnly?.pass,
-    evidence.undoRedoIsolationProof.userAUndoRectangleOnly?.pass,
-    evidence.undoRedoIsolationProof.userBUndoCounterOnly?.pass,
+    evidence.ownerDeleteIsolationProof.userADeletesOwnCalloutOnly?.pass,
+    evidence.ownerDeleteIsolationProof.userADeletesOwnRectangleOnly?.pass,
+    evidence.ownerDeleteIsolationProof.userBDeletesOwnCounterOnly?.pass,
     evidence.reloadProof.pass,
     evidence.supabaseRows.pass,
-    evidence.syncDeltaProof.noFullPageFanOut,
+    evidence.exactlyOnceProof.pass,
+    evidence.productionCircleCleanup.pass,
   ];
   if (!mustPass.every(Boolean)) {
     throw new Error('Fix20 multi-user collaboration contract proof failed one or more assertions');
@@ -564,7 +684,33 @@ try {
 } finally {
   try { await clientA?.context?.close(); } catch {}
   try { await clientB?.context?.close(); } catch {}
-  await browser.close();
+  try { await browser?.close(); } catch {}
+  if (document) {
+    const storageCleanup = await ownerClient.storage.from('documents').remove([document.file_path]);
+    const documentCleanup = await ownerClient.from('documents').delete().eq('id', document.id);
+    evidence.disposableCleanup = {
+      documentId: document.id,
+      filePath: document.file_path,
+      documentRemoved: !documentCleanup.error,
+      storageRemoved: !storageCleanup.error,
+      pass: !documentCleanup.error && !storageCleanup.error,
+      errors: [storageCleanup.error?.message, documentCleanup.error?.message].filter(Boolean),
+    };
+  } else {
+    evidence.disposableCleanup = {
+      documentId: null,
+      filePath: null,
+      documentRemoved: true,
+      storageRemoved: true,
+      pass: true,
+      errors: [],
+    };
+  }
+  if (!evidence.disposableCleanup.pass && !runError) {
+    runError = new Error(`Disposable cleanup failed: ${evidence.disposableCleanup.errors.join('; ')}`);
+    evidence.result = 'fail';
+    evidence.error = runError.message;
+  }
   fs.writeFileSync(path.join(logDir, 'evidence.json'), JSON.stringify(evidence, null, 2) + '\n');
   fs.writeFileSync(path.join(logDir, 'console.log'), evidence.console.join('\n') + '\n');
   fs.writeFileSync(path.join(logDir, 'network-failures.json'), JSON.stringify(evidence.networkFailures, null, 2) + '\n');

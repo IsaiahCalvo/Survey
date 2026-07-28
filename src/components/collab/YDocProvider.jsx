@@ -51,7 +51,11 @@ const ydocProviderDebug = (...args) => {
 // Importing the alias `createTransportProvider` keeps the call site transport-
 // agnostic — if v2.5+ ever flips to Hocuspocus, the change is one line here.
 import { createSupabaseYjsProvider as createTransportProvider } from '../../lib/collab/SupabaseYjsProvider.js';
-import { isTransportChannelJoined } from '../../lib/collab/transportStatus.js';
+import {
+  createTransportProviderCoordinator,
+  hasRemoteDocumentCollaborator,
+  isTransportChannelJoined,
+} from '../../lib/collab/transportStatus.js';
 import { attachAuthSessionBridge } from '../../lib/collab/authSessionBridge.js';
 import { buildOrigin } from '../../lib/collab/originBuilder.js';
 import { getDeviceId } from '../../lib/collab/deviceId.js';
@@ -296,6 +300,9 @@ function YDocProviderInner({ docId, children, closeDocument, isActive }) {
   const transportOfflineBannerTimerRef = useRef(null);
   const transportRetryResultTimerRef = useRef(null);
   const transportOfflineGenerationRef = useRef(0);
+  const transportRetryGenerationRef = useRef(0);
+  const transportRetryInFlightRef = useRef(null);
+  const restartTransportProviderRef = useRef(null);
 
   const clearTransportOfflineBannerTimer = useCallback(() => {
     if (!transportOfflineBannerTimerRef.current) return;
@@ -310,6 +317,8 @@ function YDocProviderInner({ docId, children, closeDocument, isActive }) {
   }, []);
 
   const markTransportOnline = useCallback(() => {
+    transportRetryGenerationRef.current += 1;
+    transportRetryInFlightRef.current = null;
     clearTransportRetryResultTimer();
     setTransportRetryError(null);
     setTransportState('online');
@@ -355,36 +364,57 @@ function YDocProviderInner({ docId, children, closeDocument, isActive }) {
   }, [clearTransportOfflineBannerTimer, markTransportOnline]);
 
   const handleTransportRetry = useCallback(() => {
-    const generation = transportOfflineGenerationRef.current + 1;
-    transportOfflineGenerationRef.current = generation;
+    if (transportRetryInFlightRef.current) {
+      return transportRetryInFlightRef.current;
+    }
+
+    const generation = transportRetryGenerationRef.current + 1;
+    transportRetryGenerationRef.current = generation;
+    transportOfflineGenerationRef.current += 1;
     clearTransportOfflineBannerTimer();
     clearTransportRetryResultTimer();
     setTransportRetryError(null);
-    try {
-      // connect() is idempotent and returns immediately. Channels auto-rejoin;
-      // their SUBSCRIBED callback owns the normal online transition.
-      supabase?.realtime?.connect?.();
-    } catch (err) {
-      ydocTransportDebug('[YDocProvider] manual transport retry failed', err?.message || String(err));
+    setTransportState('connecting');
+
+    const restartProvider = restartTransportProviderRef.current;
+    if (typeof restartProvider !== 'function') {
+      setTransportState('offline');
       setTransportRetryError(TRANSPORT_RETRY_ERROR);
       return;
     }
 
-    if (isTransportChannelJoined(providerRef.current)) {
-      markTransportOnline();
-      return;
-    }
-
-    setTransportState('offline');
     transportRetryResultTimerRef.current = setTimeout(() => {
       transportRetryResultTimerRef.current = null;
-      if (transportOfflineGenerationRef.current !== generation) return;
+      if (transportRetryGenerationRef.current !== generation) return;
       if (isTransportChannelJoined(providerRef.current)) {
         markTransportOnline();
         return;
       }
+      transportRetryInFlightRef.current = null;
+      setTransportState('offline');
       setTransportRetryError(TRANSPORT_RETRY_ERROR);
     }, TRANSPORT_RETRY_RESULT_TIMEOUT_MS);
+
+    const retryPromise = (async () => {
+      try {
+        const provider = await restartProvider();
+        if (transportRetryGenerationRef.current !== generation) return provider;
+        if (isTransportChannelJoined(provider)) {
+          markTransportOnline();
+        }
+        return provider;
+      } catch (err) {
+        if (transportRetryGenerationRef.current !== generation) return null;
+        clearTransportRetryResultTimer();
+        transportRetryInFlightRef.current = null;
+        ydocTransportDebug('[YDocProvider] manual transport retry failed', err?.message || String(err));
+        setTransportState('offline');
+        setTransportRetryError(TRANSPORT_RETRY_ERROR);
+        return null;
+      }
+    })();
+    transportRetryInFlightRef.current = retryPromise;
+    return retryPromise;
   }, [
     clearTransportOfflineBannerTimer,
     clearTransportRetryResultTimer,
@@ -420,14 +450,18 @@ function YDocProviderInner({ docId, children, closeDocument, isActive }) {
     // The factory is sync on the Supabase path (returns a handle directly); the
     // Hocuspocus fallback wrapper would return a Promise. Wrap in Promise.resolve
     // so the wiring works regardless of which path 28-BENCHMARK.md locks.
-    let providerHandle = null;
     let cancelled = false;
-    Promise.resolve(
-      createTransportProvider({
+    const transportCoordinator = createTransportProviderCoordinator({
+      getCurrentProvider: () => providerRef.current,
+      setCurrentProvider: (provider) => {
+        providerRef.current = provider;
+      },
+      createProvider: ({ isCurrent }) => Promise.resolve(createTransportProvider({
         documentId: docId,
         ydoc,
         supabase,
         onTransportState: (state) => {
+          if (!isCurrent()) return;
           // UX: setTransportState is the always-on side; the banner gate fires
           // only on 'offline' so steady-state 'online' is invisible to the user.
           setTransportState(state);
@@ -450,6 +484,7 @@ function YDocProviderInner({ docId, children, closeDocument, isActive }) {
           }
         },
         onUpdateRejected: (reason) => {
+          if (!isCurrent()) return;
           // UX per CONTEXT.md: in-flight edit dropped with explicit reason;
           // document stays open in read-only mode (NOT auto-bounced to dashboard).
           // The 'authentication_failed*' reasons cover Plan 28-05's RLS-violation
@@ -463,18 +498,11 @@ function YDocProviderInner({ docId, children, closeDocument, isActive }) {
             setStorageState({ code: 'permission_revoked', role: 'unknown' });
           }
         },
-      })
-    ).then((p) => {
-      if (cancelled) {
-        // The unmount cleanup ran before the factory resolved (rare on the
-        // sync Supabase path; possible on the async Hocuspocus path). Tear
-        // down what we just built so we don't leak a live channel.
-        try { p?.disconnect?.(); } catch { /* swallow */ }
-        return;
-      }
-      providerHandle = p;
-      providerRef.current = p;
-    }).catch((err) => {
+      })),
+    });
+    const installTransportProvider = () => transportCoordinator.restart();
+    restartTransportProviderRef.current = installTransportProvider;
+    installTransportProvider().catch((err) => {
       // Provider construction failed (network down at boot, missing env, etc.).
       // Surface via the storage state channel as transport_offline so the user
       // sees the offline banner rather than a silent freeze.
@@ -537,14 +565,18 @@ function YDocProviderInner({ docId, children, closeDocument, isActive }) {
 
     return () => {
       cancelled = true;
+      if (restartTransportProviderRef.current === installTransportProvider) {
+        restartTransportProviderRef.current = null;
+      }
       clearInterval(roleInterval);
       clearTimeout(hydrationFallback);
       transportOfflineGenerationRef.current += 1;
+      transportRetryGenerationRef.current += 1;
+      transportRetryInFlightRef.current = null;
       clearTransportOfflineBannerTimer();
       clearTransportRetryResultTimer();
       try { handle.detach(); } catch { /* swallow — handle may already be torn down */ }
-      try { providerHandle?.disconnect?.(); } catch { /* swallow */ }
-      try { providerRef.current?.disconnect?.(); } catch { /* swallow */ }
+      transportCoordinator.dispose();
       try { bridge?.detach?.(); } catch { /* swallow */ }
       try { bridgeRef.current?.detach?.(); } catch { /* swallow */ }
       providerRef.current = null;
@@ -1435,24 +1467,49 @@ function YDocProviderInner({ docId, children, closeDocument, isActive }) {
     let cancelled = false;
     (async () => {
       try {
-        // "Shared" = at least one active collaborator OTHER than me. Every doc has the current user's
-        // own active row (owner of their own doc, or a co-owner/editor/viewer of a shared one), so we
-        // exclude MY user_id — NOT role='owner': a doc shared only with co-owners (invite flow) has no
-        // editor/viewer rows, so excluding role='owner' would wrongly read as not-shared. If we cannot
-        // resolve the user id, treat as not shared (never a false offline alarm).
+        // "Shared" = an explicit active row for another user, or my own
+        // collaborator row when I am not the owner. The latter matters because
+        // document owners are not guaranteed to have a collaborator row.
+        // If identity/role cannot be resolved, fail quiet rather than show a
+        // false offline alarm.
         let myId = null;
         try {
           const session = await getSupabaseSession('YDocProvider.isDocShared');
           myId = session?.user?.id ?? null;
         } catch { myId = null; }
         if (!myId) { if (!cancelled) setIsDocShared(false); return; }
-        const { count, error } = await supabase
+        const { data, error } = await supabase
           .from('document_collaborators')
-          .select('user_id', { count: 'exact', head: true })
+          .select('user_id')
           .eq('document_id', docId)
-          .eq('status', 'active')
-          .neq('user_id', myId);
-        if (!cancelled) setIsDocShared(!error && (count || 0) > 0);
+          .eq('status', 'active');
+        if (error) {
+          if (!cancelled) setIsDocShared(false);
+          return;
+        }
+        const activeCollaboratorUserIds = (data || [])
+          .map((row) => row?.user_id)
+          .filter(Boolean);
+        const hasExplicitRemote = hasRemoteDocumentCollaborator({
+          activeCollaboratorUserIds,
+          currentUserId: myId,
+          currentRole: null,
+        });
+        if (hasExplicitRemote) {
+          if (!cancelled) setIsDocShared(true);
+          return;
+        }
+        // Owners are not guaranteed to have a document_collaborators row. If
+        // my row is the only row, an editor/viewer still has the row-less owner
+        // to sync with; an owner with only their own row does not.
+        const currentRole = await fetchMyDocumentRole(supabase, docId);
+        if (!cancelled) {
+          setIsDocShared(hasRemoteDocumentCollaborator({
+            activeCollaboratorUserIds,
+            currentUserId: myId,
+            currentRole,
+          }));
+        }
       } catch { if (!cancelled) setIsDocShared(false); }
     })();
     return () => { cancelled = true; };

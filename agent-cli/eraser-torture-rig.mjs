@@ -74,6 +74,7 @@ import { PDFDocument, rgb } from 'pdf-lib';
 import { PNG } from 'pngjs';
 
 import { loadEnv } from './lib/env.mjs';
+import { assertBrowserUsesLeasedAccount, installLeasedBrowserAccount } from './lib/leased-browser-session.mjs';
 import { openAnnotationDoc } from '../src/services/annotationDocSync.js';
 import { erasePageAnnotations } from '../src/utils/pageSpaceEraser.js';
 import {
@@ -666,7 +667,9 @@ function fuzzCases(count, rngSeed) {
 
 // ─── backend/session plumbing ────────────────────────────────────────────────
 async function harvestSession(page) {
+  const leasedBrowserAccount = await installLeasedBrowserAccount(page);
   await page.goto(`${PAGE_URL}/`, { waitUntil: 'domcontentloaded', timeout: 60000 });
+  await assertBrowserUsesLeasedAccount(page, { account: leasedBrowserAccount });
   await page.waitForFunction(
     () => Object.keys(localStorage).some((k) => /^sb-.*-auth-token$/.test(k)),
     { timeout: 45000 },

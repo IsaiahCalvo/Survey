@@ -10,6 +10,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright';
+import { assertBrowserUsesLeasedAccount, installLeasedBrowserAccount } from './lib/leased-browser-session.mjs';
 
 const BASE_URL = process.env.BASE_URL || 'http://localhost:5173';
 const DOC_NAME = process.argv[2] || 'clickable-link-test.pdf';
@@ -22,7 +23,9 @@ const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 }, d
 const page = await ctx.newPage();
 
 try {
+  const leasedBrowserAccount = await installLeasedBrowserAccount(page);
   await page.goto(BASE_URL + '/', { waitUntil: 'domcontentloaded', timeout: 60000 });
+  await assertBrowserUsesLeasedAccount(page, { account: leasedBrowserAccount });
   const tile = page.getByText(DOC_NAME, { exact: false }).first();
   await tile.waitFor({ state: 'visible', timeout: 45000 });
   await tile.click();

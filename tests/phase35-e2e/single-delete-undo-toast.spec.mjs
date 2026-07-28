@@ -13,6 +13,7 @@
 // Locked toast copy: "Annotation deleted — Undo".
 
 import { test, expect } from '@playwright/test';
+import { assertBrowserUsesLeasedAccount, installLeasedBrowserAccount } from '../../agent-cli/lib/leased-browser-session.mjs';
 
 // Plan 35-06 unfixme. The 4 LOCKED Phase 35 test seams (per Plan 35-01
 // frontmatter contract) are wired up: __phase35TestRoleOverride,
@@ -33,7 +34,9 @@ test.afterEach(async ({ page }) => {
 
 test.describe('Phase 35 — single-delete undo toast (5s)', () => {
   test('single delete shows 5-second undo toast', async ({ page }) => {
+    const leasedBrowserAccount = await installLeasedBrowserAccount(page);
     await page.goto('http://localhost:5173/');
+    await assertBrowserUsesLeasedAccount(page, { account: leasedBrowserAccount });
     await page.locator('text=Package 2 - Rev 4 -- IC.pdf').first().click({ timeout: 20000 });
     await page.waitForSelector('.survey-pdfjs-page-container', { timeout: 20000 });
     await page.evaluate(() => window.__navigateToPage?.(6));
@@ -66,7 +69,9 @@ test.describe('Phase 35 — single-delete undo toast (5s)', () => {
   });
 
   test('clicking Undo within 5 seconds restores the annotation', async ({ page }) => {
+    const leasedBrowserAccount = await installLeasedBrowserAccount(page);
     await page.goto('http://localhost:5173/');
+    await assertBrowserUsesLeasedAccount(page, { account: leasedBrowserAccount });
     await page.locator('text=Package 2 - Rev 4 -- IC.pdf').first().click({ timeout: 20000 });
     await page.waitForSelector('.survey-pdfjs-page-container', { timeout: 20000 });
     await page.evaluate(() => window.__navigateToPage?.(6));

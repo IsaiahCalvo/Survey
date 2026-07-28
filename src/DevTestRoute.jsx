@@ -63,9 +63,29 @@ const mockMSGraphValue = {
   ensureFreshToken: async () => true,
 };
 
+const surveyTransitionE2ETemplates = [{
+  id: 'kal436-template',
+  name: 'KAL-436 Preservation Template',
+  modules: [{
+    id: 'kal436-module',
+    name: 'Existing Survey Data',
+    categories: [{
+      id: 'kal436-category',
+      name: 'Walls',
+      color: '#d8a84e',
+    }],
+  }],
+}];
+
 export function DevTestRoute({ pdfName, displayName = null, returnTab = null }) {
   const [status, setStatus] = useState('loading');
   const [error, setError] = useState(null);
+  const surveyTransitionE2E = new URLSearchParams(window.location.search)
+    .get('surveyTransitionE2E') === '1';
+
+  if (surveyTransitionE2E) {
+    window.__surveyTransitionE2ETemplates = surveyTransitionE2ETemplates;
+  }
 
   useEffect(() => {
     let cancelled = false;

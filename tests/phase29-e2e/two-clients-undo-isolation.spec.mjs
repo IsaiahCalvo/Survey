@@ -1,24 +1,16 @@
 import { test, expect } from '@playwright/test';
-import { readFileSync, existsSync } from 'node:fs';
-import path from 'node:path';
+import { loadVerifiedTestAccounts } from '../../scripts/test-account-lease.mjs';
+import { assertBrowserUsesLeasedAccount, installLeasedBrowserAccount } from '../../agent-cli/lib/leased-browser-session.mjs';
 
 // Phase 29 e2e — UNDO-02 CANONICAL: user A's Cmd+Z does NOT erase user B's stroke.
 // Activated by Plan 29-04. Maps to Pitfall 7 (per-user undo silently broken
 // when trackedOrigins reference equality fails) — the canonical mitigation
 // is the memoized origin object shared across the bridge + the undo manager.
 //
-// Uses the Phase 28 bot accounts left in place per STATE.md. Skips cleanly when
-// .bot-credentials.json is missing or has fewer than 2 accounts.
-
-const credsPath = path.resolve(process.cwd(), '.bot-credentials.json');
-const HAS_BOTS = existsSync(credsPath);
+// Uses exactly two accounts from the coordinator-assigned verified task lease.
 
 test('UNDO-02 canonical: user A undo never erases user B stroke', async ({ browser }) => {
-  test.skip(!HAS_BOTS, '.bot-credentials.json not present (Phase 28 bots required)');
-  const creds = JSON.parse(readFileSync(credsPath, 'utf8'));
-  const bots = Array.isArray(creds?.bots) ? creds.bots : (Array.isArray(creds) ? creds : []);
-  test.skip(bots.length < 2, 'fewer than 2 bot accounts available in .bot-credentials.json');
-
+  const bots = loadVerifiedTestAccounts({ minimumAccounts: 2 });
   const botA = bots[0];
   const botB = bots[1];
 
@@ -30,8 +22,10 @@ test('UNDO-02 canonical: user A undo never erases user B stroke', async ({ brows
   // Sign-in injection: dev seed reads test-bot-email/password from localStorage
   // when present (per CLAUDE.md feedback_dev_auto_login pattern). If the seed
   // doesn't honor that surface, the test is gracefully skipped below.
-  for (const [page, bot] of [[pageA, botA], [pageB, botB]]) {
+  for (const [page, bot, accountIndex] of [[pageA, botA, 0], [pageB, botB, 1]]) {
+    const leasedBrowserAccount = await installLeasedBrowserAccount(page, { accountIndex });
     await page.goto('http://localhost:5173/');
+    await assertBrowserUsesLeasedAccount(page, { account: leasedBrowserAccount });
     await page.evaluate(({ email, password }) => {
       window.localStorage.setItem('test-bot-email', email);
       window.localStorage.setItem('test-bot-password', password);

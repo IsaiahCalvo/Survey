@@ -558,7 +558,11 @@ export default function ManageTeamModal({ open, onClose, project, members }) {
   const resendInvite = async (inv) => {
     setError(""); setStatus("");
     setBusy(true);
-    const res = await resendProjectInvite(inv.id, { projectName, inviterName });
+    const res = await resendProjectInvite(inv.id, {
+      projectName,
+      inviterName,
+      forceNewDelivery: true,
+    });
     setBusy(false);
     if (!res?.success) { setError(res?.error || 'Could not resend invite.'); return; }
     setStatus(`Invite to ${inv.target_email || 'recipient'} resent.`);

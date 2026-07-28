@@ -25,16 +25,7 @@
 
 import { Hocuspocus } from '@hocuspocus/server';
 import { decodeJwt } from 'jose';
-import { readFileSync, existsSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
-
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const REPO_ROOT = resolve(__dirname, '..', '..');
-const CREDENTIALS_FILE = resolve(
-  REPO_ROOT,
-  '.planning/phases/28-transport-spike-auth-validator/.bot-credentials.json'
-);
+import { loadVerifiedTestAccounts } from '../../scripts/test-account-lease.mjs';
 
 function parseArgs(argv) {
   const args = { port: 1234, host: '127.0.0.1' };
@@ -48,14 +39,8 @@ function parseArgs(argv) {
 }
 
 function loadAllowedBotIds() {
-  // Allow only the 5 phase28 bot user ids to connect — defense-in-depth on
-  // top of JWT signature verification.
-  if (!existsSync(CREDENTIALS_FILE)) {
-    console.warn('[hocuspocusBenchServer] no credentials file — accepting any signed JWT');
-    return null;
-  }
-  const creds = JSON.parse(readFileSync(CREDENTIALS_FILE, 'utf8'));
-  return new Set((creds.bots || []).map((b) => b.id));
+  // Fail closed: only exact accounts in this task's verified lease may connect.
+  return new Set(loadVerifiedTestAccounts().map((account) => account.userId));
 }
 
 async function authenticateToken(token) {

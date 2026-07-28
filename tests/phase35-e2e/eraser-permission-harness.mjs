@@ -25,6 +25,14 @@ function requireValue(name, value) {
 }
 
 export function readHarnessConfig(override = null) {
+  if (
+    process.env.SURVEY_COORDINATOR_DISPOSABLE_TEST_USERS
+      !== 'I_AM_THE_TEST_ACCOUNT_COORDINATOR'
+  ) {
+    throw new Error(
+      '[ERASER_E2E_INFRA] Exact coordinator authorization is required before creating disposable users.',
+    );
+  }
   if (process.env.ERASER_PERMISSION_E2E !== '1' && override?.authorized !== true) {
     throw new Error(
       '[ERASER_E2E_INFRA] Set ERASER_PERMISSION_E2E=1 to authorize disposable test users, rows, and storage.',

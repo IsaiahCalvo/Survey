@@ -16,7 +16,10 @@
  */
 import { supabase } from '../supabaseClient';
 import { buildInviteUrl } from './documentInviteService';
-import { sendInviteEmailSmart } from './shareEmailService';
+import {
+  inviteEmailFailureMessage,
+  sendInviteEmailSmart,
+} from './shareEmailService';
 
 // Re-export so UI layers can import one URL builder per service. Project and
 // template invites share the /invite/<token> URL space with documents — the
@@ -81,22 +84,42 @@ export async function createProjectInvite({ projectId, role, email = null, curre
     return { success: false, error: error.message };
   }
 
-  // Fire invite email (best-effort) for email-bound invites.
   // GOAL-1: one server-side call — recipient/role/URL derived from the row.
+  // Keep the row retryable and report delivery separately if the transport
+  // fails; creating a token is not the same as sending an email.
   if (email) {
+    let emailResult;
     try {
-      await sendInviteEmailSmart({
+      emailResult = await sendInviteEmailSmart({
         token: data.token,
         kind: 'project',
         name: projectName || '',
         inviterName: inviterName || currentUser.email || 'A Survey user',
       });
     } catch (mailErr) {
-      console.warn('[KAL-31] project invite email send failed (best-effort):', mailErr?.message || mailErr);
+      emailResult = {
+        success: false,
+        retryable: false,
+        deliveryUncertain: true,
+        error: mailErr?.message || String(mailErr),
+      };
+    }
+    if (!emailResult?.success) {
+      console.warn('[KAL-31] project invite email was not sent:', emailResult?.error || 'unknown failure');
+      return {
+        success: false,
+        invite: data,
+        emailSent: false,
+        retryable: emailResult?.retryable !== false,
+        error: inviteEmailFailureMessage(emailResult, {
+          completedAction: 'The project invite was created',
+          retryInstruction: 'Retry it from Manage Team.',
+        }),
+      };
     }
   }
 
-  return { success: true, invite: data };
+  return { success: true, invite: data, emailSent: email ? true : null };
 }
 
 /**
@@ -126,31 +149,86 @@ export async function revokeProjectInvite(inviteId) {
 }
 
 /**
- * Resend a project invite — refreshes the 7-day expiration window and
- * re-sends the invite email (best-effort) when the invite is email-bound.
+ * Retry a project invite using its stable delivery generation. Pass
+ * forceNewDelivery only for an intentional additional copy; ordinary retries
+ * (including a lost HTTP response) remain idempotent.
  */
-export async function resendProjectInvite(inviteId, { projectName = null, inviterName = null } = {}) {
-  const { data, error } = await supabase.rpc('kal31_resend_project_invite', { invite_id: inviteId });
+export async function resendProjectInvite(
+  inviteId,
+  { projectName = null, inviterName = null, forceNewDelivery = false } = {},
+) {
+  const { data, error } = forceNewDelivery
+    ? await supabase.rpc('rotate_invite_email_delivery', {
+      p_kind: 'project',
+      p_invite_id: inviteId,
+    })
+    : await supabase.rpc('kal31_resend_project_invite', { invite_id: inviteId });
   if (error) return { success: false, error: error.message };
+  if (forceNewDelivery && !data?.expiresAt) {
+    return { success: false, error: 'Could not start a new project invite delivery.' };
+  }
+  const expiresAt = forceNewDelivery ? data.expiresAt : data;
   // Reload the invite row so we can email it again.
   try {
-    const { data: row } = await supabase
+    const { data: row, error: rowError } = await supabase
       .from('project_invites')
       .select('*')
       .eq('id', inviteId)
       .single();
+    if (rowError || !row) {
+      return {
+        success: false,
+        expiresAt,
+        emailSent: false,
+        retryable: true,
+        error: 'The project invite was refreshed, but its email details could not be loaded. Try again.',
+      };
+    }
     if (row?.target_email && row?.token) {
-      await sendInviteEmailSmart({
+      const emailResult = await sendInviteEmailSmart({
         token: row.token,
         kind: 'project',
         name: projectName || '',
         inviterName: inviterName || 'A Survey user',
       });
+      if (!emailResult?.success) {
+        return {
+          success: false,
+          expiresAt,
+          emailSent: false,
+          retryable: emailResult?.retryable !== false,
+          error: inviteEmailFailureMessage(emailResult, {
+            completedAction: 'The project invite was refreshed',
+            retryInstruction: 'Try again.',
+          }),
+        };
+      }
+      return {
+        success: true,
+        expiresAt,
+        emailSent: true,
+      };
     }
+    return { success: true, expiresAt, emailSent: null };
   } catch (mailErr) {
-    console.warn('[KAL-31] project resend email failed (best-effort):', mailErr?.message || mailErr);
+    console.warn('[KAL-31] project resend email failed:', mailErr?.message || mailErr);
+    const emailResult = {
+      success: false,
+      retryable: false,
+      deliveryUncertain: true,
+      error: mailErr?.message || String(mailErr),
+    };
+    return {
+      success: false,
+      expiresAt,
+      emailSent: false,
+      retryable: false,
+      error: inviteEmailFailureMessage(emailResult, {
+        completedAction: 'The project invite was refreshed',
+        retryInstruction: 'Try again.',
+      }),
+    };
   }
-  return { success: true, expiresAt: data };
 }
 
 /**

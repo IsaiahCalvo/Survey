@@ -27,13 +27,16 @@
  */
 
 import { test, expect } from '@playwright/test';
+import { assertBrowserUsesLeasedAccount, installLeasedBrowserAccount } from '../../agent-cli/lib/leased-browser-session.mjs';
 
 test.fixme(
   'phase30-backfill-roundtrip: v2.3 doc opens silently on v2.4 + persists via Y.Doc on reload',
   async ({ page }) => {
     // Pre-condition: PDF "Package 2 - Rev 4 -- IC.pdf" loaded with at least 3 v2.3
     // annotations on page 6 (per memory/architecture_annotation_system.md test setup).
+    const leasedBrowserAccount = await installLeasedBrowserAccount(page);
     await page.goto('http://localhost:5173/');
+    await assertBrowserUsesLeasedAccount(page, { account: leasedBrowserAccount });
 
     // Auth: dev server auto-login per memory/feedback_dev_auto_login.md.
     // .env.development.local drives the auto sign-in so no manual login step.

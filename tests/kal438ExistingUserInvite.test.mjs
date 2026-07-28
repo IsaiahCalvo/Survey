@@ -19,6 +19,7 @@ const read = (file) => fs.readFileSync(path.join(repoRoot, file), 'utf8');
 const FUTURE = new Date(Date.now() + 86400000).toISOString();
 const PAST = new Date(Date.now() - 1000).toISOString();
 const BASE_ROW = {
+  id: 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee',
   token: 'secret-invite-token',
   document_id: '11111111-2222-3333-4444-555555555555',
   target_email: 'existing@example.com',
@@ -36,6 +37,7 @@ function makeDeps({
   fallbackResult = true,
 } = {}) {
   const calls = { invite: [], fallback: [], access: [] };
+  let delivered = false;
   return {
     calls,
     deps: {
@@ -54,6 +56,13 @@ function makeDeps({
         calls.fallback.push(payload);
         return fallbackResult;
       },
+      newClaimId: () => '00000000-0000-4000-8000-000000000001',
+      claimInviteDelivery: async () => (delivered ? 'completed' : 'claimed'),
+      completeInviteDelivery: async () => {
+        delivered = true;
+        return true;
+      },
+      releaseInviteDelivery: async () => true,
     },
   };
 }
@@ -68,6 +77,141 @@ function post(body = {}) {
       inviterName: 'Isaiah',
       ...body,
     },
+  };
+}
+
+async function loadDocumentInviteService({ supabase, sendInviteEmailSmart }) {
+  const supabaseKey = `__kal438_supabase_${Date.now()}_${Math.random()}`;
+  const senderKey = `__kal438_sender_${Date.now()}_${Math.random()}`;
+  globalThis[supabaseKey] = supabase;
+  globalThis[senderKey] = sendInviteEmailSmart;
+
+  const source = read('src/services/documentInviteService.js')
+    .replace(
+      "import { supabase } from '../supabaseClient';",
+      `const supabase = globalThis[${JSON.stringify(supabaseKey)}];`,
+    )
+    .replace(
+      /import \{\s*inviteEmailFailureMessage,\s*sendInviteEmailSmart,\s*\} from '\.\/shareEmailService';/,
+      `const sendInviteEmailSmart = globalThis[${JSON.stringify(senderKey)}];
+const inviteEmailFailureMessage = (result, { completedAction, retryInstruction }) =>
+  result?.deliveryUncertain || result?.retryable === false
+    ? \`\${completedAction}. The email may already have been delivered. Use Resend only if you intentionally want to send another copy.\`
+    : \`\${completedAction}, but the email was not sent. \${retryInstruction}\`;`,
+    );
+
+  try {
+    return await import(`data:text/javascript;base64,${Buffer.from(source).toString('base64')}`);
+  } finally {
+    delete globalThis[supabaseKey];
+    delete globalThis[senderKey];
+  }
+}
+
+function makeDocumentServiceHarness({
+  existingGrant = true,
+  markerFailures = 0,
+  lostResponses = 0,
+} = {}) {
+  const row = { ...BASE_ROW };
+  let deliveryGeneration = 'initial-delivery-generation';
+  let refreshes = 0;
+  let rotations = 0;
+  let markerAttempts = 0;
+  let transports = 0;
+  let sendCalls = 0;
+  const completedGenerations = new Set();
+
+  const supabase = {
+    rpc: async (name) => {
+      if (name === 'check_collaborator_by_email') {
+        return {
+          data: existingGrant
+            ? [{ user_id: 'existing-user-id', email: row.target_email }]
+            : [],
+          error: null,
+        };
+      }
+      if (name === 'kal31_resend_document_invite') {
+        refreshes += 1;
+        row.expires_at = new Date(Date.now() + (refreshes + 2) * 86400000).toISOString();
+        return { data: row.expires_at, error: null };
+      }
+      if (name === 'rotate_invite_email_delivery') {
+        rotations += 1;
+        deliveryGeneration = `delivery-generation-${rotations}`;
+        row.expires_at = new Date(Date.now() + (rotations + 10) * 86400000).toISOString();
+        return {
+          data: {
+            deliveryVersion: deliveryGeneration,
+            expiresAt: row.expires_at,
+          },
+          error: null,
+        };
+      }
+      throw new Error(`Unexpected RPC ${name}`);
+    },
+    from: (table) => {
+      if (table === 'document_collaborators') {
+        const query = {
+          select: () => query,
+          eq: () => query,
+          maybeSingle: async () => ({
+            data: existingGrant ? { role: 'editor' } : null,
+            error: null,
+          }),
+        };
+        return query;
+      }
+      if (table !== 'document_invites') throw new Error(`Unexpected table ${table}`);
+
+      let updating = false;
+      let updatePayload = null;
+      const query = {
+        select: () => query,
+        eq: () => query,
+        single: async () => ({ data: { ...row }, error: null }),
+        update: (payload) => {
+          updating = true;
+          updatePayload = payload;
+          return query;
+        },
+        maybeSingle: async () => {
+          if (!updating) return { data: { ...row }, error: null };
+          markerAttempts += 1;
+          if (markerAttempts <= markerFailures) {
+            return { data: null, error: { message: 'simulated marker failure' } };
+          }
+          Object.assign(row, updatePayload);
+          return {
+            data: {
+              accepted_at: row.accepted_at,
+              accepted_by: row.accepted_by,
+              accepted_role: row.accepted_role,
+            },
+            error: null,
+          };
+        },
+      };
+      return query;
+    },
+  };
+
+  const sendInviteEmailSmart = async () => {
+    sendCalls += 1;
+    const deduplicated = completedGenerations.has(deliveryGeneration);
+    if (!completedGenerations.has(deliveryGeneration)) {
+      completedGenerations.add(deliveryGeneration);
+      transports += 1;
+    }
+    if (sendCalls <= lostResponses) throw new Error('simulated lost HTTP response');
+    return { success: true, response: { deduplicated } };
+  };
+
+  return {
+    supabase,
+    sendInviteEmailSmart,
+    counts: () => ({ refreshes, rotations, markerAttempts, transports }),
   };
 }
 
@@ -142,7 +286,98 @@ test('KAL-438: direct notification delivery failure is generic and does not expo
 
   deepStrictEqual(out, {
     status: 502,
-    body: { sent: false, error: 'Send failed' },
+    body: { sent: false, retryable: true, error: 'Send failed' },
+  });
+});
+
+test('KAL-438: client treats {sent:false} honestly and warns on uncertain delivery', () => {
+  const documentService = read('src/services/documentInviteService.js');
+  const shareService = read('src/services/shareEmailService.js');
+
+  match(shareService, /if \(data\?\.sent !== true\)/);
+  match(shareService, /success:\s*false/);
+  match(documentService, /if \(!emailResult\?\.success\)/);
+  match(documentService, /accessGranted:\s*!!pendingAcceptanceMarker/);
+  match(documentService, /emailSent:\s*false/);
+  match(documentService, /inviteEmailFailureMessage/);
+  match(shareService, /deliveryUncertain/);
+  match(shareService, /may already have been delivered/);
+  match(shareService, /retryable:\s*false/);
+
+  const createStart = documentService.indexOf('export async function createDocumentInvite');
+  const createEnd = documentService.indexOf('export async function listDocumentInvites');
+  const createSource = documentService.slice(createStart, createEnd);
+  const failureReturn = createSource.indexOf('if (!emailResult?.success)');
+  const acceptedMarker = createSource.indexOf('markExistingUserInviteAccepted(');
+  ok(
+    failureReturn >= 0 && acceptedMarker > failureReturn,
+    'failed delivery must return before marking the existing-user invite accepted',
+  );
+});
+
+test('KAL-438: failed existing-user close is honest and retry closes without a second transport', async () => {
+  const harness = makeDocumentServiceHarness({ markerFailures: 1 });
+  const service = await loadDocumentInviteService(harness);
+
+  const first = await service.resendDocumentInvite(BASE_ROW.id);
+  equal(first.success, false);
+  equal(first.emailSent, true);
+  equal(first.retryable, true);
+  match(first.error, /delivered.*could not be closed/i);
+  deepStrictEqual(harness.counts(), {
+    refreshes: 0,
+    rotations: 0,
+    markerAttempts: 1,
+    transports: 1,
+  });
+
+  const second = await service.resendDocumentInvite(BASE_ROW.id);
+  equal(second.success, true);
+  equal(second.emailSent, true);
+  deepStrictEqual(harness.counts(), {
+    refreshes: 0,
+    rotations: 0,
+    markerAttempts: 2,
+    transports: 1,
+  });
+});
+
+test('KAL-438: lost new-user response retries the same generation without a second transport', async () => {
+  const harness = makeDocumentServiceHarness({
+    existingGrant: false,
+    lostResponses: 1,
+  });
+  const service = await loadDocumentInviteService(harness);
+
+  const lost = await service.resendDocumentInvite(BASE_ROW.id);
+  equal(lost.success, false);
+  equal(lost.emailSent, false);
+
+  const retried = await service.resendDocumentInvite(BASE_ROW.id);
+  equal(retried.success, true);
+  equal(retried.emailSent, true);
+  deepStrictEqual(harness.counts(), {
+    refreshes: 2,
+    rotations: 0,
+    markerAttempts: 0,
+    transports: 1,
+  });
+});
+
+test('KAL-438: explicit new-delivery intent rotates once and sends a legitimate new copy', async () => {
+  const harness = makeDocumentServiceHarness({ existingGrant: false });
+  const service = await loadDocumentInviteService(harness);
+
+  equal((await service.resendDocumentInvite(BASE_ROW.id)).success, true);
+  const intentional = await service.resendDocumentInvite(BASE_ROW.id, {
+    forceNewDelivery: true,
+  });
+  equal(intentional.success, true);
+  deepStrictEqual(harness.counts(), {
+    refreshes: 1,
+    rotations: 1,
+    markerAttempts: 0,
+    transports: 2,
   });
 });
 

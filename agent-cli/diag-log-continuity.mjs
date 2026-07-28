@@ -4,6 +4,7 @@
 // what every known reset path — engine toggle, signOut, YDoc banner, ErrorBoundary,
 // chunk-load failure — ultimately does).
 import { chromium } from 'playwright';
+import { assertBrowserUsesLeasedAccount, installLeasedBrowserAccount } from './lib/leased-browser-session.mjs';
 
 const DOC_NAME = process.argv[2] || 'Package 2 - Rev 4 -- IC.pdf';
 const HEADLESS = process.env.HEADFUL ? false : true;
@@ -20,7 +21,9 @@ const allConsole = [];
 page.on('console', (m) => allConsole.push(m.text()));
 
 console.log('navigating to localhost:5173 (auto-login as dev account)...');
+const leasedBrowserAccount = await installLeasedBrowserAccount(page);
 await page.goto('http://localhost:5173/', { waitUntil: 'domcontentloaded', timeout: 60000 });
+await assertBrowserUsesLeasedAccount(page, { account: leasedBrowserAccount });
 await page.waitForTimeout(5000);
 
 const SENTINEL = '=== DIAG SENTINEL pre-open line (must survive) ===';

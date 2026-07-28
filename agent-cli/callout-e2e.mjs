@@ -21,6 +21,7 @@
 // Modeled on agent-cli/render-smoke.mjs — same launch/login/open-document patterns.
 
 import { chromium } from 'playwright';
+import { assertBrowserUsesLeasedAccount, installLeasedBrowserAccount } from './lib/leased-browser-session.mjs';
 
 const APP_URL  = process.env.APP_URL || 'http://localhost:5173';
 const DOC_NAME = process.argv[2]    || 'Package 2 - Rev 4 -- IC.pdf';
@@ -71,7 +72,9 @@ const waitForSVGLayer = () =>
 try {
   // ── 1. Navigate + auto-login ─────────────────────────────────────────────
   step(`Navigating to ${APP_URL} (dev auto-login)...`);
+  const leasedBrowserAccount = await installLeasedBrowserAccount(page);
   await page.goto(APP_URL + '/', { waitUntil: 'domcontentloaded', timeout: 60000 });
+  await assertBrowserUsesLeasedAccount(page, { account: leasedBrowserAccount });
 
   // ── 2. Open document ─────────────────────────────────────────────────────
   step(`Waiting for document tile: "${DOC_NAME}"`);

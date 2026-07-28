@@ -13,6 +13,7 @@
 // console-message listener (no Electron process here). That is verified by
 // reading the wiring back in electron-main.js (done separately by the agent).
 import { chromium } from 'playwright';
+import { assertBrowserUsesLeasedAccount, installLeasedBrowserAccount } from './lib/leased-browser-session.mjs';
 
 const DOC_NAME = process.argv[2] || 'Package 2 - Rev 4 -- IC.pdf';
 const HEADLESS = process.env.HEADFUL ? false : true;
@@ -23,7 +24,9 @@ const page = await ctx.newPage();
 page.on('console', () => {});
 
 console.log('navigating to localhost:5173 ...');
+const leasedBrowserAccount = await installLeasedBrowserAccount(page);
 await page.goto('http://localhost:5173/', { waitUntil: 'domcontentloaded', timeout: 60000 });
+await assertBrowserUsesLeasedAccount(page, { account: leasedBrowserAccount });
 await page.waitForTimeout(5000);
 
 const HOME_SENTINEL = '=== SELFTEST home-page line (pre-open) ===';

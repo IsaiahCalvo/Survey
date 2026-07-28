@@ -15,7 +15,10 @@
  *   - Invites expire after 7 days; resend refreshes the window.
  */
 import { supabase } from '../supabaseClient';
-import { sendInviteEmailSmart } from './shareEmailService';
+import {
+  inviteEmailFailureMessage,
+  sendInviteEmailSmart,
+} from './shareEmailService';
 
 const ROLE_SET = new Set(['viewer', 'editor', 'owner']);
 const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
@@ -37,6 +40,65 @@ function newToken() {
   const buf = new Uint8Array(16);
   crypto.getRandomValues(buf);
   return Array.from(buf, (b) => b.toString(16).padStart(2, '0')).join('');
+}
+
+async function findExistingUserActiveGrant(invite) {
+  if (!invite?.document_id || !invite?.target_email) return { state: 'none' };
+
+  const { data: matches, error: lookupError } = await supabase.rpc(
+    'check_collaborator_by_email',
+    { email_address: invite.target_email },
+  );
+  if (lookupError) return { state: 'unknown', error: lookupError };
+
+  const existingUser = Array.isArray(matches) ? matches[0] : matches;
+  if (!existingUser?.user_id) return { state: 'none' };
+
+  const { data: access, error: accessError } = await supabase
+    .from('document_collaborators')
+    .select('role')
+    .eq('document_id', invite.document_id)
+    .eq('user_id', existingUser.user_id)
+    .eq('status', 'active')
+    .maybeSingle();
+  if (accessError) return { state: 'unknown', error: accessError };
+  if (!access?.role) return { state: 'none' };
+
+  return {
+    state: 'active',
+    userId: existingUser.user_id,
+    role: access.role,
+  };
+}
+
+async function markExistingUserInviteAccepted(invite, knownGrant = null) {
+  if (!invite?.id) return false;
+  const grant = knownGrant || await findExistingUserActiveGrant(invite);
+  if (grant?.state !== 'active') return false;
+
+  const { data: acceptedRow, error: acceptError } = await supabase
+    .from('document_invites')
+    .update({
+      accepted_at: new Date().toISOString(),
+      accepted_by: grant.userId,
+      accepted_role: grant.role,
+    })
+    .eq('id', invite.id)
+    .select('accepted_at, accepted_by, accepted_role')
+    .maybeSingle();
+  if (
+    acceptError
+    || !acceptedRow?.accepted_at
+    || acceptedRow.accepted_by !== grant.userId
+    || acceptedRow.accepted_role !== grant.role
+  ) {
+    console.warn(
+      '[KAL-31] notification delivered but acceptance marker was not confirmed:',
+      acceptError?.message || 'updated row was not returned',
+    );
+    return false;
+  }
+  return true;
 }
 
 /**
@@ -113,8 +175,9 @@ export async function createDocumentInvite({ documentId, role, email = null, cur
         }
 
         pendingAcceptanceMarker = {
-          accepted_by: existingUser.user_id,
-          accepted_role: effectiveRole,
+          state: 'active',
+          userId: existingUser.user_id,
+          role: effectiveRole,
         };
       }
     } else {
@@ -127,37 +190,71 @@ export async function createDocumentInvite({ documentId, role, email = null, cur
   // existing user it also verifies the active collaborator grant above and
   // sends a direct document notification with no token. New users receive the
   // secure acceptance link.
+  let emailResult = null;
   if (email) {
     try {
-      await sendInviteEmailSmart({
+      emailResult = await sendInviteEmailSmart({
         token: data.token,
         kind: 'document',
         name: documentName || '',
         inviterName: inviterName || currentUser.email || 'A Survey user',
       });
     } catch (mailErr) {
-      console.warn('[KAL-31] invite email send failed (best-effort):', mailErr?.message || mailErr);
+      emailResult = {
+        success: false,
+        retryable: false,
+        deliveryUncertain: true,
+        error: mailErr?.message || String(mailErr),
+      };
+    }
+    if (!emailResult?.success) {
+      console.warn('[KAL-31] invite email was not sent:', emailResult?.error || 'unknown failure');
+      return {
+        success: false,
+        invite: data,
+        accessGranted: !!pendingAcceptanceMarker,
+        emailSent: false,
+        retryable: emailResult?.retryable !== false,
+        error: inviteEmailFailureMessage(emailResult, {
+          completedAction: pendingAcceptanceMarker ? 'Access was granted' : 'The invite was created',
+          retryInstruction: 'Retry it from Manage Access.',
+        }),
+      };
     }
   }
 
   // Existing-account branch: access was already granted above — now that the
   // notification email has fired, record the invite as accepted so it never
-  // lingers as "pending" in Manage Access. Best-effort: a failed marker only
-  // leaves a cosmetic pending row; the grant itself already succeeded.
+  // lingers as "pending" in Manage Access. This close is authoritative:
+  // reporting success while it remains pending would allow another resend.
   if (pendingAcceptanceMarker) {
-    const { error: acceptError } = await supabase
-      .from('document_invites')
-      .update({
-        accepted_at: new Date().toISOString(),
-        ...pendingAcceptanceMarker,
-      })
-      .eq('id', data.id);
-    if (acceptError) {
-      console.warn('[KAL-31] invite granted but acceptance marker failed:', acceptError.message);
+    const markerClosed = await markExistingUserInviteAccepted(
+      {
+        ...data,
+        id: data.id,
+        document_id: documentId,
+        target_email: row.target_email,
+      },
+      pendingAcceptanceMarker,
+    );
+    if (!markerClosed) {
+      return {
+        success: false,
+        invite: data,
+        accessGranted: true,
+        emailSent: true,
+        retryable: true,
+        error: 'Access was granted and the notification was delivered, but the pending invite could not be closed. Retry to finish closing it.',
+      };
     }
   }
 
-  return { success: true, invite: data };
+  return {
+    success: true,
+    invite: data,
+    accessGranted: !!pendingAcceptanceMarker,
+    emailSent: email ? true : null,
+  };
 }
 
 /**
@@ -187,32 +284,138 @@ export async function revokeDocumentInvite(inviteId) {
 }
 
 /**
- * Resend an invite — refreshes the 7-day expiration window. Caller is
- * responsible for re-triggering the invite email through the edge function
- * (Phase C).
+ * Resend an invite. Pending token invites refresh their 7-day window.
+ * Existing-user direct notifications retain their current delivery generation
+ * until the accepted marker is confirmed, preventing a closure retry from
+ * transporting the same notification twice.
  */
-export async function resendDocumentInvite(inviteId, { documentName = null, inviterName = null } = {}) {
-  const { data, error } = await supabase.rpc('kal31_resend_document_invite', { invite_id: inviteId });
-  if (error) return { success: false, error: error.message };
-  // Reload the invite row so we can email it again.
+export async function resendDocumentInvite(
+  inviteId,
+  { documentName = null, inviterName = null, forceNewDelivery = false } = {},
+) {
   try {
-    const { data: row } = await supabase
+    // Read before refreshing. Existing-user grants deliberately retain the
+    // current delivery generation: if closing the accepted marker fails after
+    // delivery, a retry reuses the completed delivery claim instead of sending
+    // a second email under a newly refreshed expiration timestamp.
+    let { data: row, error: rowError } = await supabase
       .from('document_invites')
       .select('*')
       .eq('id', inviteId)
       .single();
+    if (rowError || !row) {
+      return {
+        success: false,
+        emailSent: false,
+        retryable: true,
+        error: 'The invite details could not be loaded. Try again.',
+      };
+    }
+
+    const existingGrant = await findExistingUserActiveGrant(row);
+    if (existingGrant.state === 'unknown') {
+      return {
+        success: false,
+        expiresAt: row.expires_at,
+        emailSent: false,
+        retryable: true,
+        error: 'The current access grant could not be verified. Try again.',
+      };
+    }
+
+    let expiresAt = row.expires_at;
+    const isExpired = !row.expires_at || new Date(row.expires_at).getTime() <= Date.now();
+    const mustRefresh = forceNewDelivery
+      || existingGrant.state !== 'active'
+      || isExpired
+      || !!row.revoked_at;
+    if (mustRefresh) {
+      const { data, error } = forceNewDelivery
+        ? await supabase.rpc('rotate_invite_email_delivery', {
+          p_kind: 'document',
+          p_invite_id: inviteId,
+        })
+        : await supabase.rpc('kal31_resend_document_invite', { invite_id: inviteId });
+      if (error) return { success: false, error: error.message };
+      if (forceNewDelivery && !data?.expiresAt) {
+        return { success: false, error: 'Could not start a new document invite delivery.' };
+      }
+      expiresAt = forceNewDelivery ? data.expiresAt : data;
+
+      const refreshed = await supabase
+        .from('document_invites')
+        .select('*')
+        .eq('id', inviteId)
+        .single();
+      row = refreshed.data;
+      rowError = refreshed.error;
+      if (rowError || !row) {
+        return {
+          success: false,
+          expiresAt,
+          emailSent: false,
+          retryable: true,
+          error: 'The invite was refreshed, but its email details could not be loaded. Try again.',
+        };
+      }
+    }
+
     if (row?.target_email && row?.token) {
-      await sendInviteEmailSmart({
+      const emailResult = await sendInviteEmailSmart({
         token: row.token,
         kind: 'document',
         name: documentName || '',
         inviterName: inviterName || 'A Survey user',
       });
+      if (!emailResult?.success) {
+        return {
+          success: false,
+          expiresAt,
+          emailSent: false,
+          retryable: emailResult?.retryable !== false,
+          error: inviteEmailFailureMessage(emailResult, {
+            completedAction: 'The invite was refreshed',
+            retryInstruction: 'Try again.',
+          }),
+        };
+      }
+      if (existingGrant.state === 'active') {
+        const markerClosed = await markExistingUserInviteAccepted(row, existingGrant);
+        if (!markerClosed) {
+          return {
+            success: false,
+            expiresAt,
+            emailSent: true,
+            retryable: true,
+            error: 'The notification was delivered, but the pending invite could not be closed. Retry to finish closing it.',
+          };
+        }
+      }
+      return {
+        success: true,
+        expiresAt,
+        emailSent: true,
+      };
     }
+    return { success: true, expiresAt, emailSent: null };
   } catch (mailErr) {
-    console.warn('[KAL-31] resend email failed (best-effort):', mailErr?.message || mailErr);
+    console.warn('[KAL-31] resend email failed:', mailErr?.message || mailErr);
+    const emailResult = {
+      success: false,
+      retryable: false,
+      deliveryUncertain: true,
+      error: mailErr?.message || String(mailErr),
+    };
+    return {
+      success: false,
+      emailSent: false,
+      retryable: false,
+      error: inviteEmailFailureMessage(emailResult, {
+        completedAction: 'The invite was refreshed',
+        retryInstruction: 'Try again.',
+      }),
+    };
   }
-  return { success: true, expiresAt: data };
 }
 
 /**

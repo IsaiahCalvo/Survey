@@ -66,6 +66,7 @@ debug/debug-sessions/
 # IDE / tooling caches (per-developer noise, never commit)
 .cursor/
 .playwright-mcp/
+graphify-out/cache/stat-index.json
 
 # Supabase CLI runtime cache (auto-bumped by local CLI installs)
 supabase/.temp/

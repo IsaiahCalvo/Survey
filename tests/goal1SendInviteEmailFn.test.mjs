@@ -37,6 +37,7 @@ function baseRow(overrides = {}) {
 
 function makeDeps(overrides = {}) {
   const calls = { invite: [], fallback: [], selects: [] };
+  let delivered = false;
   const deps = {
     anonKey: ANON,
     getUserFromToken: async () => USER,
@@ -52,6 +53,13 @@ function makeDeps(overrides = {}) {
       calls.fallback.push(payload);
       return true;
     },
+    newClaimId: () => '00000000-0000-4000-8000-000000000001',
+    claimInviteDelivery: async () => (delivered ? 'completed' : 'claimed'),
+    completeInviteDelivery: async () => {
+      delivered = true;
+      return true;
+    },
+    releaseInviteDelivery: async () => true,
     ...overrides,
   };
   return { deps, calls };
@@ -177,7 +185,7 @@ test('GOAL-1 fn: non-exists, non-rate-limit invite error → 502 generic, NO fal
   });
   const out = await handleSendInviteEmail(post({ token: 'tok123' }), deps);
   equal(out.status, 502);
-  deepStrictEqual(out.body, { sent: false, error: 'Send failed' });
+  deepStrictEqual(out.body, { sent: false, retryable: true, error: 'Send failed' });
   equal(calls.fallback.length, 0);
 });
 
@@ -213,7 +221,7 @@ test('GOAL-1 fn: fallback send failure → 502 generic', async () => {
   });
   const out = await handleSendInviteEmail(post({ token: 'tok123' }), deps);
   equal(out.status, 502);
-  deepStrictEqual(out.body, { sent: false, error: 'Send failed' });
+  deepStrictEqual(out.body, { sent: false, retryable: true, error: 'Send failed' });
 });
 
 test('GOAL-1 fn: copy fields are length-capped and defaulted; token from row is URL-encoded', async () => {

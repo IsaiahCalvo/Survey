@@ -68,14 +68,62 @@ Deno.serve(async (req) => {
       if (error) return null;
       return data ?? null;
     },
+    newClaimId: () => crypto.randomUUID(),
+    claimInviteDelivery: async (kind: string, token: string, claimId: string) => {
+      const { data, error } = await callerClient.rpc('claim_invite_email_delivery', {
+        p_kind: kind,
+        p_token: token,
+        p_claim_id: claimId,
+        p_stale_after_seconds: 300,
+      });
+      if (error) {
+        console.error('[send-invite-email] claim RPC failed:', error.message);
+        return 'error';
+      }
+      return data;
+    },
+    completeInviteDelivery: async (claimId: string) => {
+      const { data, error } = await callerClient.rpc('complete_invite_email_delivery', {
+        p_claim_id: claimId,
+      });
+      if (error) {
+        console.error('[send-invite-email] completion RPC failed:', error.message);
+        return false;
+      }
+      return data === true;
+    },
+    releaseInviteDelivery: async (claimId: string) => {
+      const { data, error } = await callerClient.rpc('release_invite_email_delivery', {
+        p_claim_id: claimId,
+      });
+      if (error) {
+        console.error('[send-invite-email] release RPC failed:', error.message);
+        return false;
+      }
+      return data === true;
+    },
     inviteUserByEmail: async (email: string, redirectTo: string) => {
       try {
         const { error } = await adminClient.auth.admin.inviteUserByEmail(email, { redirectTo });
-        return { error };
+        if (!error) return { error: null, outcome: 'confirmed' as const };
+        const status = Number(error.status) || 0;
+        // A received 4xx is an authoritative pre-send rejection. A 5xx (or an
+        // error without a status) may have happened after the mailer accepted
+        // the request, so fail closed and retain the delivery claim.
+        return {
+          error,
+          outcome: status >= 400 && status < 500
+            ? 'definite-failure' as const
+            : 'uncertain' as const,
+        };
       } catch (e) {
-        // auth-js re-throws non-Auth errors (e.g. network) — normalize so the
-        // handler returns its clean 502 instead of an uncaught 500 sans CORS.
-        return { error: { code: 'invite_threw', message: String(e) } };
+        // Network/transport exceptions can occur after the provider accepted
+        // the request. Preserve that uncertainty so the handler never unlocks
+        // this delivery generation for an automatic duplicate.
+        return {
+          error: { code: 'invite_threw', message: String(e) },
+          outcome: 'uncertain' as const,
+        };
       }
     },
     sendFallbackEmail: async (payload: { to: string; subject: string; template: string; data: object }) => {
@@ -94,9 +142,19 @@ Deno.serve(async (req) => {
           },
           body: JSON.stringify(payload),
         });
-        return res.ok;
+        let responseBody: { success?: boolean } | null = null;
+        try { responseBody = await res.json(); } catch { /* invalid body is failure */ }
+        if (res.ok && responseBody?.success === true) {
+          return { outcome: 'confirmed' as const };
+        }
+        if (res.status >= 400 && res.status < 500) {
+          return { outcome: 'definite-failure' as const };
+        }
+        // A 2xx with an invalid body or any 5xx can be a lost confirmation
+        // after the inner send-email function/provider accepted the message.
+        return { outcome: 'uncertain' as const };
       } catch {
-        return false;
+        return { outcome: 'uncertain' as const };
       }
     },
   };

@@ -115,6 +115,71 @@ function makeSupabase() {
   return supabase;
 }
 
+function makeTwoClientSupabase() {
+  const log = [];
+  const channels = [];
+  let broadcastEnabled = true;
+  const supabase = {
+    log,
+    setBroadcastEnabled(value) { broadcastEnabled = value; },
+    fireSubscribed(clientIndex = null) {
+      const targets = clientIndex == null
+        ? channels
+        : channels.filter((_channel, index) => index === clientIndex);
+      return Promise.all(targets.map((channel) => channel.status?.('SUBSCRIBED')));
+    },
+    from(table) {
+      if (table === 'annotation_updates') {
+        const filters = { gtSeq: null };
+        const builder = {
+          select: () => builder,
+          eq: () => builder,
+          gt: (_column, value) => { filters.gtSeq = Number(value); return builder; },
+          order: () => builder,
+          limit: () => builder,
+          insert: (row) => ({
+            select: () => ({
+              single: async () => {
+                const committed = { ...row, seq: log.length + 1 };
+                log.push(committed);
+                if (broadcastEnabled) {
+                  for (const channel of channels) channel.realtime?.({ new: committed });
+                }
+                return { data: { seq: committed.seq }, error: null };
+              },
+            }),
+          }),
+          maybeSingle: async () => ({ data: null }),
+          then: (resolve) => resolve({
+            data: filters.gtSeq == null ? [] : log.filter((row) => row.seq > filters.gtSeq),
+            error: null,
+          }),
+        };
+        return builder;
+      }
+      if (table === 'annotation_snapshots') {
+        return {
+          select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: null }) }) }),
+          upsert: async () => ({ error: null }),
+        };
+      }
+      throw new Error(`unexpected table ${table}`);
+    },
+    channel(topic) {
+      const channel = {
+        clientId: topic,
+        realtime: null,
+        status: null,
+        on(_event, _filter, callback) { channel.realtime = callback; return channel; },
+        subscribe(callback) { channel.status = callback; channels.push(channel); return channel; },
+      };
+      return channel;
+    },
+    removeChannel: async () => ({ status: 'ok' }),
+  };
+  return supabase;
+}
+
 test('open-time race: an op committed between hydrate and SUBSCRIBED is applied by the catch-up sweep', async () => {
   const supabase = makeSupabase();
   const doc = new Y.Doc();
@@ -201,6 +266,91 @@ test('Space page membership and Region geometry materialize through catch-up', a
 
   assert.deepEqual(handle.getMeta('spaces'), spaces);
   await handle.destroy();
+});
+
+test('two clients sync Space and Region create, rename, geometry, delete, and reconnect exactly once', async () => {
+  const supabase = makeTwoClientSupabase();
+  const owner = await openAnnotationDoc({
+    actorUserId: 'owner-user',
+    documentId: 'doc-space-region-two-client',
+    supabase,
+    clientId: 'owner-client',
+    enableLocal: false,
+    enableRealtime: true,
+    doc: new Y.Doc(),
+  });
+  const editor = await openAnnotationDoc({
+    actorUserId: 'editor-user',
+    documentId: 'doc-space-region-two-client',
+    supabase,
+    clientId: 'editor-client',
+    enableLocal: false,
+    enableRealtime: true,
+    doc: new Y.Doc(),
+  });
+  await supabase.fireSubscribed();
+
+  const created = [{
+    id: 'space-shared',
+    name: 'Owner floor',
+    assignedPages: [{
+      pageId: 1,
+      label: 'Owner region',
+      wholePageIncluded: false,
+      regions: [{
+        id: 'region-shared',
+        type: 'rect',
+        x: 0.1,
+        y: 0.2,
+        width: 0.3,
+        height: 0.4,
+      }],
+    }],
+  }];
+  owner.setMeta('spaces', created);
+  await owner.drain();
+  assert.deepEqual(editor.getMeta('spaces'), created, 'owner create reaches editor');
+
+  const edited = structuredClone(editor.getMeta('spaces'));
+  edited[0].name = 'Editor rename';
+  edited[0].assignedPages[0].regions[0] = {
+    ...edited[0].assignedPages[0].regions[0],
+    x: 0.25,
+    width: 0.5,
+  };
+  editor.setMeta('spaces', edited);
+  await editor.drain();
+  assert.deepEqual(owner.getMeta('spaces'), edited, 'editor rename and geometry reach owner');
+  assert.equal(owner.getMeta('spaces').length, 1, 'Space is not duplicated');
+  assert.equal(
+    owner.getMeta('spaces')[0].assignedPages[0].regions.length,
+    1,
+    'Region is not duplicated',
+  );
+
+  // Miss one accepted owner update, then rejoin and catch it up.
+  supabase.setBroadcastEnabled(false);
+  const whileOffline = structuredClone(owner.getMeta('spaces'));
+  whileOffline[0].assignedPages[0].label = 'Changed while editor offline';
+  owner.setMeta('spaces', whileOffline);
+  await owner.drain();
+  assert.notDeepEqual(editor.getMeta('spaces'), whileOffline);
+  supabase.setBroadcastEnabled(true);
+  await supabase.fireSubscribed(1);
+  assert.deepEqual(editor.getMeta('spaces'), whileOffline, 'reconnect catches up missed metadata');
+
+  const regionDeleted = structuredClone(editor.getMeta('spaces'));
+  regionDeleted[0].assignedPages[0].regions = [];
+  editor.setMeta('spaces', regionDeleted);
+  await editor.drain();
+  assert.deepEqual(owner.getMeta('spaces'), regionDeleted, 'editor Region delete reaches owner');
+
+  owner.setMeta('spaces', []);
+  await owner.drain();
+  assert.deepEqual(editor.getMeta('spaces'), [], 'owner Space delete reaches editor');
+
+  await owner.destroy();
+  await editor.destroy();
 });
 
 test('reconnect: a re-fired SUBSCRIBED sweeps ops missed while the channel was down', async () => {

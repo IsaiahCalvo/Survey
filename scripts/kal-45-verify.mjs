@@ -1,17 +1,20 @@
 // KAL-45 verification: browser dashboard upload picker.
 //
 // Verifies:
-//   1. Sign up + sign in via disposable account.
+//   1. Sign in with the exact coordinator-leased test account.
 //   2. Documents Upload button opens file picker.
 //   3. Selecting a PDF creates a document record.
 //   4. ProjectsFolderTree Add Files path opens picker and associates with project.
 //   5. Same file selected twice still fires (input value resets).
 //   6. Forced upload failure (route block) surfaces inline error (no native alert).
 
+import { createClient } from '@supabase/supabase-js';
 import { chromium } from 'playwright';
 import path from 'node:path';
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import { loadEnv } from '../agent-cli/lib/env.mjs';
+import { loadVerifiedTestAccounts } from './test-account-lease.mjs';
 
 // Avoid unhandled-rejection process exit while individual test steps fail —
 // each step has its own try/catch and records a status.
@@ -27,9 +30,13 @@ const FIXTURE_PDF = path.join(REPO, 'debug/fixtures/text-search-glyph-lab.pdf');
 const SHOT_DIR = '/tmp/kal45-screenshots';
 fs.mkdirSync(SHOT_DIR, { recursive: true });
 
-const ts = Date.now();
-const TEST_EMAIL = `survey-test-${ts}@example.com`;
-const TEST_PASSWORD = `Kal45Verify!${ts}`;
+loadEnv();
+const [leasedAccount] = loadVerifiedTestAccounts();
+const supabaseUrl = process.env.VITE_SUPABASE_URL;
+const supabaseAnonKey = process.env.VITE_SUPABASE_ANON_KEY;
+if (!supabaseUrl || !supabaseAnonKey) {
+  throw new Error('Missing VITE_SUPABASE_URL or VITE_SUPABASE_ANON_KEY');
+}
 
 const results = [];
 const record = (name, status, detail = '') => {
@@ -55,9 +62,8 @@ async function dismissAuth(page) {
 }
 
 async function waitForDevAutoLogin(page) {
-  // Vite dev-mode auto-login fires via VITE_DEV_AUTO_LOGIN_EMAIL /
-  // VITE_DEV_AUTO_LOGIN_PASSWORD in .env.local. We just wait for the
-  // localStorage sb-...-auth-token to appear.
+  // The leased session is injected before app boot. Wait for Supabase auth
+  // storage so this script cannot silently inherit another agent's login.
   await page.goto(URL_BASE, { waitUntil: 'domcontentloaded' });
   const deadline = Date.now() + 30000;
   while (Date.now() < deadline) {
@@ -80,8 +86,29 @@ async function waitForDevAutoLogin(page) {
 }
 
 async function main() {
+  const authClient = createClient(supabaseUrl, supabaseAnonKey, {
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
+  const signIn = await authClient.auth.signInWithPassword({
+    email: leasedAccount.email,
+    password: leasedAccount.password,
+  });
+  if (signIn.error) throw signIn.error;
+  if (signIn.data.user.id !== leasedAccount.userId) {
+    throw new Error(`Leased account identity mismatch for ${leasedAccount.email}`);
+  }
+
   const browser = await chromium.launch({ headless: true });
   const context = await browser.newContext({ acceptDownloads: true });
+  const projectRef = new URL(supabaseUrl).hostname.split('.')[0];
+  await context.addInitScript(({ key, session, account }) => {
+    window.localStorage.setItem(key, JSON.stringify(session));
+    window.localStorage.setItem('__fix20AuthOverride', JSON.stringify(account));
+  }, {
+    key: `sb-${projectRef}-auth-token`,
+    session: signIn.data.session,
+    account: { email: leasedAccount.email, password: leasedAccount.password },
+  });
   const page = await context.newPage();
   page.on('console', msg => {
     const t = msg.text();
@@ -99,6 +126,17 @@ async function main() {
     // ===== Step 1: dev auto-login =====
     const signedIn = await waitForDevAutoLogin(page);
     await page.waitForTimeout(1500);
+    const browserUserId = await page.evaluate(() => {
+      for (let index = 0; index < window.localStorage.length; index += 1) {
+        const key = window.localStorage.key(index);
+        if (!key?.startsWith('sb-') || !key.endsWith('-auth-token')) continue;
+        try { return JSON.parse(window.localStorage.getItem(key))?.user?.id || null; } catch {}
+      }
+      return null;
+    });
+    if (browserUserId !== leasedAccount.userId) {
+      throw new Error(`Browser session does not match leased account ${leasedAccount.email}`);
+    }
     await dismissAuth(page);
     await shot(page, '01-after-auth');
     record('dev auto-login', signedIn ? 'PASS' : 'PARTIAL', signedIn ? 'sb-*-auth-token present' : 'no session detected — picker mount test still proceeds');
@@ -246,7 +284,7 @@ async function main() {
   } finally {
     await browser.close();
     const json = path.join(SHOT_DIR, 'results.json');
-    fs.writeFileSync(json, JSON.stringify({ email: TEST_EMAIL, results }, null, 2));
+    fs.writeFileSync(json, JSON.stringify({ email: leasedAccount.email, results }, null, 2));
     console.log('\nResults JSON:', json);
     const failed = results.filter(r => r.status === 'FAIL').length;
     if (failed > 0) process.exitCode = 2;

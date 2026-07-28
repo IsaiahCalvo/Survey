@@ -1,11 +1,14 @@
 import { chromium } from 'playwright';
+import { assertBrowserUsesLeasedAccount, installLeasedBrowserAccount } from './lib/leased-browser-session.mjs';
 const browser = await chromium.launch({ headless: true });
 const ctx = await browser.newContext({ viewport: { width: 1512, height: 900 } });
 const page = await ctx.newPage();
 const errs = [];
 page.on('pageerror', (e) => errs.push('PAGEERROR: ' + e.message));
 page.on('console', (m) => errs.push('[' + m.type() + '] ' + m.text().slice(0, 240)));
+const leasedBrowserAccount = await installLeasedBrowserAccount(page);
 await page.goto('http://localhost:5173/', { waitUntil: 'networkidle', timeout: 60000 }).catch((e) => errs.push('goto: ' + e.message));
+await assertBrowserUsesLeasedAccount(page, { account: leasedBrowserAccount });
 await page.waitForTimeout(8000);
 const title = await page.title().catch(() => '?');
 const info = await page.evaluate(() => {

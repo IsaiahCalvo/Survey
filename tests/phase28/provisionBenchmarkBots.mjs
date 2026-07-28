@@ -192,6 +192,13 @@ async function ensureCollaborator(adminClient, documentId, userId) {
 }
 
 async function main() {
+  if (process.env.SURVEY_COORDINATOR_PROVISION_BOTS !== 'I_AM_THE_TEST_ACCOUNT_COORDINATOR') {
+    throw new Error(
+      'Bot provisioning is disabled for workers. '
+      + 'A coordinator must explicitly set SURVEY_COORDINATOR_PROVISION_BOTS='
+      + 'I_AM_THE_TEST_ACCOUNT_COORDINATOR.',
+    );
+  }
   console.log('[provisionBenchmarkBots] pulling service-role key from Supabase CLI…');
   const serviceRoleKey = pullServiceRoleKey();
   if (!ANON_KEY_FROM_ENV) {

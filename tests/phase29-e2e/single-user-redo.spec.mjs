@@ -1,10 +1,13 @@
 import { test, expect } from '@playwright/test';
+import { assertBrowserUsesLeasedAccount, installLeasedBrowserAccount } from '../../agent-cli/lib/leased-browser-session.mjs';
 
 // Phase 29 e2e — UNDO-04: Cmd+Shift+Z redoes the most recently undone action.
 // Activated by Plan 29-04. Maps to UI-SPEC §3 keybind contract.
 
 test('Cmd+Shift+Z redoes the most recently undone action', async ({ page }) => {
+  const leasedBrowserAccount = await installLeasedBrowserAccount(page);
   await page.goto('http://localhost:5173/');
+  await assertBrowserUsesLeasedAccount(page, { account: leasedBrowserAccount });
   await page.locator('text=Package 2 - Rev 4 -- IC.pdf').first().click({ timeout: 20000 });
   await page.waitForSelector('.survey-pdfjs-page-container', { timeout: 20000 });
 

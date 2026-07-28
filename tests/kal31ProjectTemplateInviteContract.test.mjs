@@ -104,6 +104,38 @@ test('templateInviteService mirrors the document invite contract', () => {
   match(src, /sendInviteEmailSmart/);
 });
 
+test('project/template create and resend results never claim a failed email was sent', () => {
+  for (const file of [
+    'src/services/projectInviteService.js',
+    'src/services/templateInviteService.js',
+  ]) {
+    const src = read(file);
+    const honestFailures = src.match(/if \(!emailResult\?\.success\)/g) || [];
+    ok(honestFailures.length >= 2, `${file}: create and resend must inspect smart-send result`);
+    match(src, /emailSent:\s*false/);
+    match(src, /retryable:\s*emailResult\?\.retryable !== false/);
+    match(src, /inviteEmailFailureMessage/);
+    match(src, /completedAction:\s*'The (project|template) invite was created'/);
+    match(src, /completedAction:\s*'The (project|template) invite was refreshed'/);
+  }
+});
+
+test('project/template retry is stable by default and explicit UI resend rotates delivery', () => {
+  for (const file of [
+    'src/services/projectInviteService.js',
+    'src/services/templateInviteService.js',
+  ]) {
+    const src = read(file);
+    match(src, /forceNewDelivery = false/);
+    match(src, /rotate_invite_email_delivery/);
+  }
+
+  const documentAccess = read('src/home/AccessManagementModal.jsx');
+  const projectAccess = read('src/home/ManageTeamModal.jsx');
+  match(documentAccess, /resendDocumentInvite\([\s\S]+forceNewDelivery:\s*true/);
+  match(projectAccess, /resendProjectInvite\([\s\S]+forceNewDelivery:\s*true/);
+});
+
 test('shareEmailService routes all three invite kinds through the smart server-side sender', () => {
   const src = read('src/services/shareEmailService.js');
   // GOAL-1: one smart sender invoking the send-invite-email edge fn; the

@@ -36,19 +36,29 @@ assume `~/.claude` loads for you). Full history and gotchas live in CLAUDE.md if
 
 ## Shared test-account leases
 
-- A coordinator must reserve one exact existing bot account for each task before any real-auth
-  test. Do not create accounts, use Gmail plus-aliases, or choose an entry directly from
-  `.bot-credentials.json`.
-- Reserve with `node scripts/test-account-lease.mjs assign --task <TASK> --account-index <N>`.
-  The command fails if that task, account, or worktree already has a different assignment.
+- The monitoring/coordinator task must atomically reserve every exact existing account a task
+  needs before any real-auth test. Identify each by both email and Supabase user ID, never by
+  array position. Example:
+  `node scripts/test-account-lease.mjs assign --task KAL-500 --account
+  'bot-a@example.test|<USER_ID>|free|active' --account
+  'bot-b@example.test|<USER_ID>|developer|active'`.
+- Workers must not create accounts, use Gmail plus-aliases, read `.bot-credentials.json`, or
+  select/switch accounts themselves. Account provisioning is disabled unless the coordinator
+  supplies the script's exact explicit opt-in.
 - Run real-auth test commands through
-  `node scripts/test-account-lease.mjs run --task <TASK> --account-index <N> --lease-token <TOKEN> -- <COMMAND>`.
-  This verifies the shared lock and injects only the assigned account.
+  `node scripts/test-account-lease.mjs run --task <TASK> --lease-token <TOKEN> -- <COMMAND>`.
+  Official real-auth harnesses fail closed unless this verifies the complete shared bundle.
+- Only one leased test command may run per task. An interrupted command leaves a process lock;
+  only the coordinator may recover it after verifying the recorded PID is dead.
 - Before release, remove the task's exact documents, shares, invites, collaborators, storage
-  objects, and temporary users; restore the assigned account's original tier/status; then run
-  `node scripts/test-account-lease.mjs release --task <TASK> --account-index <N> --lease-token <TOKEN>`.
-- The monitoring/coordinator task owns assignment and release. Workers must stop if the lease
-  check fails or the account email/user ID differs from their assignment.
+  objects, and temporary users; restore every leased account's recorded baseline tier/status.
+  The monitor must attest the exact restored email/user ID/tier/status bundle with
+  `attest-cleanup` before `release` will work.
+- The monitoring/coordinator task owns assignment, interrupted-run recovery, cleanup attestation,
+  and release. Workers must stop if any lease check or exact identity differs.
+- These locks make every official test entry point fail closed. Because all agents run as the
+  same unrestricted macOS user, OS-level protection against a deliberately malicious direct
+  file/cloud access bypass is not possible; such a bypass is forbidden and must be reported.
 
 ## Codebase navigation (graphify)
 

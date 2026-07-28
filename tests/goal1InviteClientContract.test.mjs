@@ -53,7 +53,7 @@ test('GOAL-1 client: no legacy invite-sender reference anywhere in src/', () => 
 test('GOAL-1 client: new-user create + all resends keep the smart token sender', () => {
   for (const file of SERVICES.slice(1)) {
     const text = read(file);
-    match(text, /import \{ sendInviteEmailSmart \} from '\.\/shareEmailService'/);
+    match(text, /import \{[\s\S]*sendInviteEmailSmart[\s\S]*\} from '\.\/shareEmailService'/);
     const calls = text.match(/sendInviteEmailSmart\(\{/g) || [];
     equal(calls.length, 2, `${file}: expected exactly 2 smart-send call sites (create + resend), got ${calls.length}`);
     match(text, /token: data\.token/);
@@ -61,7 +61,7 @@ test('GOAL-1 client: new-user create + all resends keep the smart token sender',
   }
 
   const documentText = read(SERVICES[0]);
-  match(documentText, /import \{ sendInviteEmailSmart \} from '\.\/shareEmailService'/);
+  match(documentText, /import \{[\s\S]*sendInviteEmailSmart[\s\S]*\} from '\.\/shareEmailService'/);
   equal(
     (documentText.match(/sendInviteEmailSmart\(\{/g) || []).length,
     2,

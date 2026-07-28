@@ -11,8 +11,8 @@
 //
 // Architecture (hybrid pragmatic approach):
 //   - N Node processes (workers), one per peer.
-//   - Each worker signs in via @supabase/supabase-js as a distinct bot account
-//     (read from .planning/phases/28-transport-spike-auth-validator/.bot-credentials.json).
+//   - Each worker signs in via @supabase/supabase-js as a distinct account from
+//     the task's coordinator-assigned, verified test-account lease.
 //   - Each worker creates a Y.Doc + connects to the chosen transport.
 //   - Latency capture uses a SIDE-CHANNEL "bench:emit" event that piggybacks
 //     on the same channel infrastructure as the actual Y.Doc update broadcast.
@@ -58,18 +58,14 @@
 //     msgs_per_sec, errors, samples_count, verdict, speed_bar_threshold_p95_ms }
 
 import { fork } from 'node:child_process';
-import { writeFileSync, readFileSync, existsSync, mkdirSync } from 'node:fs';
+import { writeFileSync, existsSync, mkdirSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { loadVerifiedTestAccounts } from '../../scripts/test-account-lease.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const REPO_ROOT = resolve(__dirname, '..', '..');
-const CREDENTIALS_FILE = resolve(
-  REPO_ROOT,
-  '.planning/phases/28-transport-spike-auth-validator/.bot-credentials.json'
-);
-
 const VALID_TRANSPORTS = ['supabase', 'hocuspocus'];
 const VALID_NETWORKS = ['throttled', 'fast'];
 const SPEED_BAR_P95_MS = 500;
@@ -302,7 +298,7 @@ async function runWorker() {
     const t0_ms = Date.now();
     const origin = {
       source: 'local',
-      userId: bot.id,
+      userId: bot.userId,
       deviceId: `phase28-bot-${peerIndex}`,
       sessionId: `bench-${peerIndex}-${process.pid}`,
       clientID: ydoc.clientID,
@@ -393,26 +389,14 @@ function percentile(sortedArr, p) {
 }
 
 async function runParent(args) {
-  if (!existsSync(CREDENTIALS_FILE)) {
-    console.error(
-      `transportSpikeBenchmark: missing credentials file at ${CREDENTIALS_FILE}\n` +
-        `Run: node tests/phase28/provisionBenchmarkBots.mjs first.\n` +
-        `See 28-04-PLAN.md "Peer identity provisioning (LOCKED — 2026-04-27)" for the full contract.`
+  const leasedAccounts = loadVerifiedTestAccounts({ minimumAccounts: args.peers });
+  const documentId = process.env.PHASE28_TEST_DOCUMENT_ID;
+  const supabaseUrl = process.env.VITE_SUPABASE_URL;
+  const supabaseAnonKey = process.env.VITE_SUPABASE_ANON_KEY;
+  if (!documentId || !supabaseUrl || !supabaseAnonKey) {
+    throw new Error(
+      'PHASE28_TEST_DOCUMENT_ID, VITE_SUPABASE_URL, and VITE_SUPABASE_ANON_KEY are required',
     );
-    process.exit(2);
-  }
-  const credentials = JSON.parse(readFileSync(CREDENTIALS_FILE, 'utf8'));
-  if (!Array.isArray(credentials.bots) || credentials.bots.length < args.peers) {
-    console.error(
-      `transportSpikeBenchmark: credentials file has ${credentials.bots?.length || 0} bots, ` +
-        `need at least ${args.peers}. Re-run provisioner.`
-    );
-    process.exit(2);
-  }
-  const documentId = credentials.test_document_id;
-  if (!documentId) {
-    console.error('transportSpikeBenchmark: credentials file missing test_document_id');
-    process.exit(2);
   }
 
   const networkProfile = NETWORK_PROFILES[args.network];
@@ -425,7 +409,7 @@ async function runParent(args) {
   let actualElapsedMs = 0;
 
   for (let i = 0; i < args.peers; i++) {
-    const bot = credentials.bots[i];
+    const bot = leasedAccounts[i];
     const config = {
       transport: args.transport,
       peerIndex: i,
@@ -433,8 +417,8 @@ async function runParent(args) {
       networkProfile,
       hocuspocusUrl: args['hocuspocus-url'],
       bot,
-      supabaseUrl: credentials.supabase_url,
-      supabaseAnonKey: credentials.supabase_anon_key,
+      supabaseUrl,
+      supabaseAnonKey,
       documentId,
     };
     const child = fork(__filename, ['--worker'], {

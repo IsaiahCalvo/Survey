@@ -204,7 +204,11 @@ export default function AccessManagementModal({ open, onClose, kind = 'document'
   const handleResend = async (invite) => {
     setError(''); setStatus('');
     setBusy(true);
-    const res = await resendDocumentInvite(invite.id, { documentName, inviterName });
+    const res = await resendDocumentInvite(invite.id, {
+      documentName,
+      inviterName,
+      forceNewDelivery: true,
+    });
     setBusy(false);
     if (!res?.success) {
       setError(res?.error || 'Could not resend invite.');

@@ -18,6 +18,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright';
+import { assertBrowserUsesLeasedAccount, installLeasedBrowserAccount } from './lib/leased-browser-session.mjs';
 
 let PNG;
 try {
@@ -117,7 +118,9 @@ const findTarget = () => page.evaluate((needle) => {
 
 try {
   step(`Navigating to ${BASE_URL} …`);
+  const leasedBrowserAccount = await installLeasedBrowserAccount(page);
   await page.goto(BASE_URL + '/', { waitUntil: 'domcontentloaded', timeout: 60000 });
+  await assertBrowserUsesLeasedAccount(page, { account: leasedBrowserAccount });
 
   step(`Opening document "${DOC_NAME}"…`);
   const tile = page.getByText(DOC_NAME, { exact: false }).first();

@@ -53,6 +53,13 @@ function sleep(ms) {
 loadEnv('.env');
 loadEnv('.env.local');
 
+if (
+  process.env.SURVEY_COORDINATOR_DISPOSABLE_TEST_USERS
+    !== 'I_AM_THE_TEST_ACCOUNT_COORDINATOR'
+) {
+  throw new Error('Exact coordinator authorization is required before creating KAL-49 users');
+}
+
 const required = ['VITE_SUPABASE_URL', 'VITE_SUPABASE_ANON_KEY', 'SUPABASE_SERVICE_ROLE_KEY'];
 for (const key of required) {
   if (!process.env[key]) throw new Error(`Missing ${key}`);

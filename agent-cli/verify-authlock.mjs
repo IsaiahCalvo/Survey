@@ -8,6 +8,7 @@
 // NOTE: the true 5s orphaned-lock symptom is an Electron + real-auth cold-start
 // phenomenon. This browser/dev-server run is a proxy and may not reproduce it.
 import { chromium } from 'playwright';
+import { assertBrowserUsesLeasedAccount, installLeasedBrowserAccount } from './lib/leased-browser-session.mjs';
 
 const DOC_NAME = process.argv[2] || 'Package 2 - Rev 4 -- IC.pdf';
 const HEADLESS = process.env.HEADFUL ? false : true;
@@ -53,7 +54,9 @@ page.on('console', (m) => {
 });
 
 console.log('[' + rel() + '] navigating to localhost:5173...');
+const leasedBrowserAccount = await installLeasedBrowserAccount(page);
 await page.goto('http://localhost:5173/', { waitUntil: 'domcontentloaded', timeout: 60000 });
+await assertBrowserUsesLeasedAccount(page, { account: leasedBrowserAccount });
 await page.waitForTimeout(4500);
 
 let opened = false;

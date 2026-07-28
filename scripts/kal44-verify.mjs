@@ -32,7 +32,9 @@ const args = Object.fromEntries(
 );
 const PORT = args.port || '5265';
 const SCREENSHOT_DIR = args.screenshots || '/tmp/kal44-screenshots';
-const BASE = `http://localhost:${PORT}`;
+// Explicit mock-data route: this harness imports TemplatesEditor directly and
+// must never inherit a real dev auto-login session.
+const BASE = `http://localhost:${PORT}/?hubPreview=1`;
 
 await fs.mkdir(SCREENSHOT_DIR, { recursive: true });
 

@@ -1,11 +1,14 @@
 import { test, expect } from '@playwright/test';
+import { assertBrowserUsesLeasedAccount, installLeasedBrowserAccount } from '../../agent-cli/lib/leased-browser-session.mjs';
 
 // Phase 29 e2e — UI-SPEC §"Empty-undo-stack press" silent contract.
 // Activated by Plan 29-04. CONTEXT.md decision: "Empty-undo-stack Cmd+Z press
 // is silent — no toast, no flash, no message. Matches every desktop app."
 
 test('Cmd+Z on empty stack is silent — zero DOM diff', async ({ page }) => {
+  const leasedBrowserAccount = await installLeasedBrowserAccount(page);
   await page.goto('http://localhost:5173/');
+  await assertBrowserUsesLeasedAccount(page, { account: leasedBrowserAccount });
   await page.locator('text=Package 2 - Rev 4 -- IC.pdf').first().click({ timeout: 20000 });
   await page.waitForSelector('.survey-pdfjs-page-container', { timeout: 20000 });
   // Wait for hydration to settle — empty undo stack guaranteed when no draw fired.

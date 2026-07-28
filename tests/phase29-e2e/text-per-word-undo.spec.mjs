@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { assertBrowserUsesLeasedAccount, installLeasedBrowserAccount } from '../../agent-cli/lib/leased-browser-session.mjs';
 
 // Phase 29 e2e — Plan 29-05 unfixme.
 // Maps to: 29-CONTEXT.md per-word undo decision
@@ -21,7 +22,9 @@ import { test, expect } from '@playwright/test';
 // grouping from per-keystroke.
 
 test('Cmd+Z in text annotation reverts last word to whitespace boundary', async ({ page }) => {
+  const leasedBrowserAccount = await installLeasedBrowserAccount(page);
   await page.goto('http://localhost:5173/');
+  await assertBrowserUsesLeasedAccount(page, { account: leasedBrowserAccount });
 
   const hasNavigate = await page.evaluate(() => typeof window.__navigateToPage === 'function').catch(() => false);
   if (!hasNavigate) {

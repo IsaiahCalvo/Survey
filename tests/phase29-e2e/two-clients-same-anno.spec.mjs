@@ -1,4 +1,6 @@
 import { test, expect } from '@playwright/test';
+import { loadVerifiedTestAccounts } from '../../scripts/test-account-lease.mjs';
+import { assertBrowserUsesLeasedAccount, installLeasedBrowserAccount } from '../../agent-cli/lib/leased-browser-session.mjs';
 
 // Phase 29 e2e — Plan 29-05 unfixme.
 // Maps to: COLLAB-03 + 29-CONTEXT.md acceptance criterion
@@ -6,7 +8,7 @@ import { test, expect } from '@playwright/test';
 //    both commit, then per-property LWW merges cleanly (both properties survive)."
 //
 // Test seam expectations:
-//   - .bot-credentials.json (Phase 28 bot accounts) — required for two-context flows
+//   - verified two-account task lease — required for two-context flows
 //   - window.__navigateToPage (Plan 29-04 expected seam)
 //   - data-anno-id attribute on SVG annotations (Plan 29-04 SVG seam)
 //
@@ -18,17 +20,13 @@ import { test, expect } from '@playwright/test';
 // no flicker, no toast (this is the silent-success path).
 
 test('two clients edit different properties of same shape — per-property LWW merge', async ({ browser }) => {
-  const fs = await import('node:fs');
-  const path = await import('node:path');
-  const credPath = path.resolve(process.cwd(), '.bot-credentials.json');
-  if (!fs.existsSync(credPath)) {
-    test.skip(true, '.bot-credentials.json missing — Phase 28 bot accounts required for two-context flows');
-    return;
-  }
+  loadVerifiedTestAccounts({ minimumAccounts: 2 });
 
   const ctx1 = await browser.newContext();
   const page1 = await ctx1.newPage();
+  const leasedBrowserAccount = await installLeasedBrowserAccount(page1);
   await page1.goto('http://localhost:5173/');
+  await assertBrowserUsesLeasedAccount(page1, { account: leasedBrowserAccount });
 
   const hasSeam = await page1.evaluate(() => typeof window.__navigateToPage === 'function').catch(() => false);
   if (!hasSeam) {

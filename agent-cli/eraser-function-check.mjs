@@ -18,6 +18,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright';
+import { assertBrowserUsesLeasedAccount, installLeasedBrowserAccount } from './lib/leased-browser-session.mjs';
 
 let PNG;
 try { ({ PNG } = await import('pngjs')); } catch { console.error('pngjs missing'); process.exit(2); }
@@ -69,7 +70,9 @@ const presentation = () => page.evaluate(() => ({
 }));
 
 try {
+  const leasedBrowserAccount = await installLeasedBrowserAccount(page);
   await page.goto(BASE_URL + '/', { waitUntil: 'domcontentloaded', timeout: 60000 });
+  await assertBrowserUsesLeasedAccount(page, { account: leasedBrowserAccount });
   const tile = page.getByText(DOC_NAME, { exact: false }).first();
   await tile.waitFor({ state: 'visible', timeout: 45000 });
   await tile.click();

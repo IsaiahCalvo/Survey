@@ -20,6 +20,7 @@
 // annotations as residueCandidateIds. Array form locks an explicit set.
 
 import { test, expect } from '@playwright/test';
+import { assertBrowserUsesLeasedAccount, installLeasedBrowserAccount } from '../../agent-cli/lib/leased-browser-session.mjs';
 
 // Plan 35-06 unfixme. All seams used here are LOCKED + wired:
 // __phase35TestRoleOverride (App.jsx) and __phase35SeedResidue (YDocProvider).
@@ -48,7 +49,9 @@ test.describe('Phase 35 — cleanup-residue banner one-shot per document', () =>
   });
 
   test('owner sees cleanup banner exactly once per document', async ({ page }) => {
+    const leasedBrowserAccount = await installLeasedBrowserAccount(page);
     await page.goto('http://localhost:5173/');
+    await assertBrowserUsesLeasedAccount(page, { account: leasedBrowserAccount });
     await page.evaluate(() => {
       window.__phase35TestRoleOverride = 'owner';
     });
@@ -90,7 +93,9 @@ test.describe('Phase 35 — cleanup-residue banner one-shot per document', () =>
   });
 
   test('collaborator never sees the cleanup banner even with seeded residue', async ({ page }) => {
+    const leasedBrowserAccount = await installLeasedBrowserAccount(page);
     await page.goto('http://localhost:5173/');
+    await assertBrowserUsesLeasedAccount(page, { account: leasedBrowserAccount });
     await page.evaluate(() => {
       window.__phase35TestRoleOverride = 'collaborator';
     });

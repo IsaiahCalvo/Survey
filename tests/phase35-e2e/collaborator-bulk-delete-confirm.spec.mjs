@@ -18,6 +18,7 @@
 //   "N annotations deleted — Undo".
 
 import { test, expect } from '@playwright/test';
+import { assertBrowserUsesLeasedAccount, installLeasedBrowserAccount } from '../../agent-cli/lib/leased-browser-session.mjs';
 
 // Plan 35-06 unfixme. __phase35TestRoleOverride is locked + wired. The
 // speculative seeding / select-all helpers are NOT in the locked contract —
@@ -33,7 +34,9 @@ test.afterEach(async ({ page }) => {
 
 test.describe('Phase 35 — collaborator bulk-delete confirm + undo toast', () => {
   test('delete-all-mine modal appears with simple count', async ({ page }) => {
+    const leasedBrowserAccount = await installLeasedBrowserAccount(page);
     await page.goto('http://localhost:5173/');
+    await assertBrowserUsesLeasedAccount(page, { account: leasedBrowserAccount });
     await page.locator('text=Package 2 - Rev 4 -- IC.pdf').first().click({ timeout: 20000 });
     await page.waitForSelector('.survey-pdfjs-page-container', { timeout: 20000 });
     await page.evaluate(() => window.__navigateToPage?.(6));

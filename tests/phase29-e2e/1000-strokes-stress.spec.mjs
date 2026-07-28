@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { assertBrowserUsesLeasedAccount, installLeasedBrowserAccount } from '../../agent-cli/lib/leased-browser-session.mjs';
 
 // Phase 29 e2e — Plan 29-05 unfixme.
 // Maps to: Roadmap success criterion 1 — "no echo loop", Pitfall 4
@@ -19,7 +20,9 @@ import { test, expect } from '@playwright/test';
 // FabricEditCanvas commit code path through the real bridge module.
 
 test('1000 strokes stress run — CPU < 30%, IndexedDB grows linearly, zero echo loops', async ({ page }) => {
+  const leasedBrowserAccount = await installLeasedBrowserAccount(page);
   await page.goto('http://localhost:5173/');
+  await assertBrowserUsesLeasedAccount(page, { account: leasedBrowserAccount });
 
   const hasNavigate = await page.evaluate(() => typeof window.__navigateToPage === 'function').catch(() => false);
   if (!hasNavigate) {

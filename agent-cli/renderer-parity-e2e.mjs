@@ -66,6 +66,7 @@
 // baseline. Exit 1 = FAIL.
 
 import { chromium } from 'playwright';
+import { assertBrowserUsesLeasedAccount, installLeasedBrowserAccount } from './lib/leased-browser-session.mjs';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -622,7 +623,9 @@ const measuredPasses = []; // one entry per capture+diff pass (see runParityPass
 try {
   // 1. Open the app (dev auto-login) + the fixture document.
   step(`Navigating to ${BASE_URL} (dev auto-login via .env.local)…`);
+  const leasedBrowserAccount = await installLeasedBrowserAccount(page);
   await page.goto(BASE_URL + '/', { waitUntil: 'domcontentloaded', timeout: 60000 });
+  await assertBrowserUsesLeasedAccount(page, { account: leasedBrowserAccount });
 
   step(`Opening document "${DOC_NAME}"…`);
   const tile = page.getByText(DOC_NAME, { exact: false }).first();

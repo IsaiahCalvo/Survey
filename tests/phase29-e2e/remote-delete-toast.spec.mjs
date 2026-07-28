@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
-import { readFileSync, existsSync } from 'node:fs';
-import path from 'node:path';
+import { loadVerifiedTestAccounts } from '../../scripts/test-account-lease.mjs';
+import { assertBrowserUsesLeasedAccount, installLeasedBrowserAccount } from '../../agent-cli/lib/leased-browser-session.mjs';
 
 // Phase 29 e2e — Plan 29-06 unfixme target.
 // Maps to: 29-UI-SPEC.md §1 toast contract (annotation_remote_deleted)
@@ -15,20 +15,10 @@ import path from 'node:path';
 // fields of window.__phase29InteractionState. (e) contextMenuId is deferred per
 // 29-deferred-items.md item 1 (App.jsx waiver scope protection).
 //
-// Skip patterns match the existing two-clients-undo-isolation.spec.mjs convention:
-//   - .bot-credentials.json absent → SKIP (no two-account harness available)
-//   - fewer than 2 bots → SKIP
-//   - dev seed cannot drive sign-in / page load → SKIP at the natural failure point
-
-const credsPath = path.resolve(process.cwd(), '.bot-credentials.json');
-const HAS_BOTS = existsSync(credsPath);
+// Requires a verified two-account task lease; missing/mismatched leases fail closed.
 
 test('remote-delete toast surfaces when local user is interacting with deleted anno', async ({ browser }) => {
-  test.skip(!HAS_BOTS, '.bot-credentials.json not present (Phase 28 bots required)');
-  const creds = JSON.parse(readFileSync(credsPath, 'utf8'));
-  const bots = Array.isArray(creds?.bots) ? creds.bots : (Array.isArray(creds) ? creds : []);
-  test.skip(bots.length < 2, 'fewer than 2 bot accounts available in .bot-credentials.json');
-
+  const bots = loadVerifiedTestAccounts({ minimumAccounts: 2 });
   const botA = bots[0];
   const botB = bots[1];
 
@@ -38,8 +28,10 @@ test('remote-delete toast surfaces when local user is interacting with deleted a
   const pageB = await ctxB.newPage();
 
   // Sign-in injection per the project's feedback_dev_auto_login pattern.
-  for (const [page, bot] of [[pageA, botA], [pageB, botB]]) {
+  for (const [page, bot, accountIndex] of [[pageA, botA, 0], [pageB, botB, 1]]) {
+    const leasedBrowserAccount = await installLeasedBrowserAccount(page, { accountIndex });
     await page.goto('http://localhost:5173/');
+    await assertBrowserUsesLeasedAccount(page, { account: leasedBrowserAccount });
     await page.evaluate(({ email, password }) => {
       window.localStorage.setItem('test-bot-email', email);
       window.localStorage.setItem('test-bot-password', password);

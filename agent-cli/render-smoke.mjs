@@ -11,6 +11,7 @@
 // Exit 0 = rendered a non-blank canvas, no errors. Exit 1 = failed (reason printed).
 // ponytail: hardcoded selectors/timeouts; lift to args if a second caller needs them.
 import { chromium } from 'playwright';
+import { assertBrowserUsesLeasedAccount, installLeasedBrowserAccount } from './lib/leased-browser-session.mjs';
 
 const APP_URL = process.env.APP_URL || 'http://localhost:5173';
 const DOC_NAME = process.argv[2] || 'Package 2 - Rev 4 -- IC.pdf';
@@ -30,7 +31,9 @@ page.on('pageerror', (e) => pageErrors.push(e.message || String(e)));
 
 try {
   console.log(`→ navigating to ${APP_URL} (dev auto-login)...`);
+  const leasedBrowserAccount = await installLeasedBrowserAccount(page);
   await page.goto(APP_URL + '/', { waitUntil: 'domcontentloaded', timeout: 60000 });
+  await assertBrowserUsesLeasedAccount(page, { account: leasedBrowserAccount });
 
   // Wait for auto-login + dashboard tiles, select the doc, then click "Open file".
   console.log(`→ waiting for document tile: "${DOC_NAME}"`);
