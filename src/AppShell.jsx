@@ -294,7 +294,23 @@ export default function App({ devPreviewReturnTab = null }) {
   const [currentView, setCurrentView] = useState('dashboard');
   const [selectedPDF, setSelectedPDF] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
-  const [documents, setDocuments] = useState([]);
+  const [documents, setDocuments] = useState(() => {
+    if (
+      import.meta.env.DEV
+      && typeof window !== 'undefined'
+      && Array.isArray(window.__documentDeepLinkE2EDocuments)
+    ) {
+      const seededDocuments = window.__documentDeepLinkE2EDocuments;
+      window.__documentDeepLinkE2EDocuments = null;
+      return seededDocuments;
+    }
+    return [];
+  });
+  const deepLinkDocumentIdRef = useRef(
+    typeof window === 'undefined'
+      ? null
+      : new URLSearchParams(window.location.search).get('docId'),
+  );
   const dashboardRef = useRef(null);
 
   // UX 2026-05-13: App-level top toolbar state. The chrome strip lives at the
@@ -731,6 +747,34 @@ export default function App({ devPreviewReturnTab = null }) {
       handleDocumentSelect(file);
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Existing-user share emails and accepted invites land on ?docId=<id>.
+  // Wait for the authenticated document list, then use the exact same open
+  // path as clicking that document in the dashboard.
+  useEffect(() => {
+    const deepLinkDocumentId = deepLinkDocumentIdRef.current;
+    if (!deepLinkDocumentId) return;
+    const documentToOpen = documents.find(
+      (document) => String(document?.id) === String(deepLinkDocumentId),
+    );
+    if (!documentToOpen) return;
+
+    deepLinkDocumentIdRef.current = null;
+    const fileToOpen = (
+      import.meta.env.DEV
+      && documentToOpen.__localFile instanceof File
+    )
+      ? documentToOpen.__localFile
+      : documentToOpen;
+    handleDocumentSelect(
+      fileToOpen,
+      documentToOpen.filePath || documentToOpen.file_path || null,
+    );
+
+    const url = new URL(window.location.href);
+    url.searchParams.delete('docId');
+    window.history.replaceState({}, '', `${url.pathname}${url.search}${url.hash}`);
+  }, [documents]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const returnToDevHubPreview = () => {
     if (!import.meta.env.DEV || !devPreviewReturnTab) return false;

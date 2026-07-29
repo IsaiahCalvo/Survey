@@ -1,10 +1,9 @@
 /**
- * A collaborator's document role, not their personal plan, controls whether
- * they can edit Spaces inside somebody else's shared document.
+ * Advanced Survey entitlement is always required to manage Spaces and Regions.
+ * On shared documents, the collaborator must also hold an editing role.
  *
- * This grant is deliberately narrow: a paid plan never upgrades a shared
- * document's viewer role, and a collaborator grant does not unlock survey
- * templates, exports, or Space creation in the Free user's own documents.
+ * A paid plan never upgrades a shared document's viewer role, and an editor
+ * role never bypasses the user's personal plan.
  */
 export function canManageCollaborativeSpaces({
   hasAdvancedSurvey,
@@ -13,10 +12,9 @@ export function canManageCollaborativeSpaces({
   viewerId,
   documentRole,
 }) {
-  if (!documentId) return !!hasAdvancedSurvey;
-  if (!documentOwnerId || !viewerId) return false;
-  if (documentOwnerId === viewerId) {
-    return !!hasAdvancedSurvey;
-  }
+  if (!hasAdvancedSurvey) return false;
+  if (!documentId) return true;
+  if (!viewerId) return false;
+  if (documentOwnerId && documentOwnerId === viewerId) return true;
   return documentRole === 'editor' || documentRole === 'owner';
 }

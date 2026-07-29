@@ -55,7 +55,9 @@ function makeSupabase() {
     beforeInsert: null,
     failTailReads: false,
     failWrites: false,
+    tailReadGate: null,
     fireSubscribed() { return subscribeCallback?.('SUBSCRIBED'); },
+    fireStatus(status) { return subscribeCallback?.(status); },
     fireRealtime(row) { realtimeCallback?.({ new: row }); },
     from(table) {
       if (table === 'annotation_updates') {
@@ -80,7 +82,10 @@ function makeSupabase() {
             }),
           }),
           maybeSingle: async () => ({ data: null }),
-          then: (resolve) => {
+          then: async (resolve) => {
+            if (filters.gtSeq !== null && supabase.tailReadGate) {
+              await supabase.tailReadGate;
+            }
             if (filters.gtSeq !== null && supabase.failTailReads) {
               resolve({ data: null, error: { code: 'XX000', message: 'catch-up offline' } });
               return;
@@ -587,6 +592,31 @@ test('catch-up failure leaves a bounded outbox that a later reconnect authorizes
     handle.destroy(),
     new Promise((_, reject) => setTimeout(() => reject(new Error('destroy timed out')), 500)),
   ]);
+});
+
+test('a channel close invalidates an in-flight catch-up and cannot turn status green', async () => {
+  const supabase = makeSupabase();
+  const doc = new Y.Doc();
+  const handle = await openAnnotationDoc({ actorUserId: 'test-actor',
+    documentId: 'doc-close-during-catchup', supabase, clientId: 'me',
+    enableLocal: false, enableRealtime: true, doc,
+  });
+
+  let releaseTailRead;
+  supabase.tailReadGate = new Promise((resolve) => { releaseTailRead = resolve; });
+  const catchup = supabase.fireSubscribed();
+  await Promise.resolve();
+  assert.equal(handle.getSyncStatus().stage, 'hydrating');
+
+  supabase.fireStatus('CLOSED');
+  assert.equal(handle.getSyncStatus().healthy, false);
+
+  releaseTailRead();
+  await catchup;
+  assert.equal(handle.getSyncStatus().healthy, false);
+  assert.notEqual(handle.getSyncStatus().stage, 'idle');
+
+  await handle.destroy();
 });
 
 test('an exact persisted delta cannot resurrect a backend delete committed at reconciliation', async () => {

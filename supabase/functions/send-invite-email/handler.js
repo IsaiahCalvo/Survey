@@ -227,13 +227,12 @@ export async function handleSendInviteEmail(input, deps) {
   const fallbackResult = await deps.sendFallbackEmail({
     to: row.target_email,
     subject,
-    template: activeDocumentAccess ? 'permission-changed' : 'document-invite',
+    template: activeDocumentAccess ? 'document-shared' : 'document-invite',
     data: activeDocumentAccess
       ? {
           documentName: displayName,
-          changedByName: inviterName,
-          newRole: directRoleLabel,
-          oldRole: null,
+          sharedByName: inviterName,
+          role: directRoleLabel,
           documentUrl: directDocumentUrl,
           appUrl: CANONICAL_ORIGIN,
         }

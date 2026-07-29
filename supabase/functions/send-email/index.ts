@@ -179,6 +179,21 @@ Deno.serve(async (req) => {
                 </div>
             `,
 
+            'document-shared': (data: any) => `
+                <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+                    <h2 style="color: #3b82f6;">${data.documentName || 'A document'} was shared with you</h2>
+                    <p>Hi,</p>
+                    <p><strong>${data.sharedByName || 'A Survey user'}</strong> shared <strong>${data.documentName || 'a document'}</strong> with you on Survey.</p>
+                    <p>Your role is: <strong>${data.role || 'Viewer'}</strong>.</p>
+                    <div style="margin: 30px 0;">
+                        <a href="${data.documentUrl || data.appUrl || '#'}" style="background: #3b82f6; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block; font-weight: 600;">
+                            Open ${data.documentName || 'document'}
+                        </a>
+                    </div>
+                    <p style="color: #666; font-size: 13px;">Access is already active; no invitation acceptance is required.</p>
+                </div>
+            `,
+
             'permission-changed': (data: any) => `
                 <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
                     <h2 style="color: #3b82f6;">Your access changed on ${data.documentName || 'a document'}</h2>

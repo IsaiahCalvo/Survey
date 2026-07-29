@@ -148,7 +148,7 @@ test('shareEmailService routes all three invite kinds through the smart server-s
   // Project/template existing-account branches still use the pending invite
   // template; only verified immediate document grants use direct access.
   const fn = read('supabase/functions/send-invite-email/handler.js');
-  match(fn, /'permission-changed' : 'document-invite'/);
+  match(fn, /'document-shared' : 'document-invite'/);
 
   // Only document_invites has document_id. Keep the shared lookup columns
   // valid for project_invites/template_invites.

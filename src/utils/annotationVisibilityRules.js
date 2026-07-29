@@ -62,16 +62,22 @@ export function isSurveyVisibilityContext({ showSurveyPanel = false, selectedMod
   return Boolean(showSurveyPanel && selectedModuleId !== null && selectedModuleId !== undefined);
 }
 
-// KAL-436: Survey adds the selected module's annotations to the shared canvas;
-// it never hides ordinary canvas annotations during template/category changes.
+// Survey is an isolated annotation context:
+// - selected Survey annotations are visible only in their matching module;
+// - ordinary canvas annotations are hidden while Survey is active;
+// - Region-only annotations remain controlled by their active Space/Region.
 export function isAnnotationVisibleInSurveyMode({
   moduleId = null,
+  regionId = null,
   showSurveyPanel = false,
   selectedModuleId = null
 } = {}) {
-  if (!isScopedToSurvey(moduleId)) return true;
-  return isSurveyVisibilityContext({ showSurveyPanel, selectedModuleId })
-    && moduleId === selectedModuleId;
+  if (isScopedToSurvey(moduleId)) {
+    return isSurveyVisibilityContext({ showSurveyPanel, selectedModuleId })
+      && moduleId === selectedModuleId;
+  }
+  if (isScopedToRegion(regionId)) return true;
+  return !isSurveyVisibilityContext({ showSurveyPanel, selectedModuleId });
 }
 
 export function getPageVisibilityControlMode({ showSurveyPanel = false, selectedModuleId = null } = {}) {
@@ -283,6 +289,7 @@ export function isAnnotationVisibleInContext({
 
   const surveyAnnotationVisible = isAnnotationVisibleInSurveyMode({
     moduleId: annotation.moduleId,
+    regionId: annotation.regionId,
     showSurveyPanel,
     selectedModuleId
   });

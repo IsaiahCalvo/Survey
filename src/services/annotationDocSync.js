@@ -2960,6 +2960,10 @@ function subscribeRealtime(state) {
           notifySyncStatus(state);
         });
       } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
+        // Invalidate any catch-up that started under the channel we just lost.
+        // Otherwise its delayed success can race this callback and turn the
+        // status green even though Realtime is still offline.
+        state.realtimeCatchupGeneration += 1;
         state.realtimePhase = 'connecting';
         markSyncHealth(state, false, new Error(`realtime ${String(status).toLowerCase()}`));
       }

@@ -108,6 +108,20 @@ const inviteEmailFailureMessage = (result, { completedAction, retryInstruction }
   }
 }
 
+async function loadShareEmailService(invoke) {
+  const supabaseKey = `__kal438_share_supabase_${Date.now()}_${Math.random()}`;
+  globalThis[supabaseKey] = { functions: { invoke } };
+  const source = read('src/services/shareEmailService.js').replace(
+    "import { supabase } from '../supabaseClient';",
+    `const supabase = globalThis[${JSON.stringify(supabaseKey)}];`,
+  );
+  try {
+    return await import(`data:text/javascript;base64,${Buffer.from(source).toString('base64')}`);
+  } finally {
+    delete globalThis[supabaseKey];
+  }
+}
+
 function makeDocumentServiceHarness({
   existingGrant = true,
   markerFailures = 0,
@@ -223,8 +237,8 @@ test('KAL-438: existing paid user gets a server-derived direct document notifica
   equal(calls.fallback.length, 1);
   const payload = calls.fallback[0];
   equal(payload.to, BASE_ROW.target_email);
-  equal(payload.template, 'permission-changed');
-  equal(payload.data.newRole, 'Editor');
+  equal(payload.template, 'document-shared');
+  equal(payload.data.role, 'Editor');
   equal(
     payload.data.documentUrl,
     `${CANONICAL_ORIGIN}/?docId=${encodeURIComponent(BASE_ROW.document_id)}`,
@@ -238,7 +252,7 @@ test('KAL-438: existing free editor invite clearly says Viewer until upgrade', a
   const out = await handleSendInviteEmail(post(), deps);
 
   equal(out.status, 200);
-  equal(calls.fallback[0].data.newRole, 'Viewer (Editor activates after upgrade)');
+  equal(calls.fallback[0].data.role, 'Viewer (Editor activates after upgrade)');
   equal(calls.fallback[0].data.documentUrl.includes('/invite/'), false);
 });
 
@@ -313,6 +327,28 @@ test('KAL-438: client treats {sent:false} honestly and warns on uncertain delive
     failureReturn >= 0 && acceptedMarker > failureReturn,
     'failed delivery must return before marking the existing-user invite accepted',
   );
+});
+
+test('KAL-438: a structured retryable 502 remains a definite unsent failure', async () => {
+  const service = await loadShareEmailService(async () => ({
+    data: { sent: false, retryable: true, error: 'Send failed' },
+    error: {
+      message: 'Edge Function returned a non-2xx status code',
+      context: { status: 502 },
+    },
+  }));
+
+  const result = await service.sendInviteEmailSmart({
+    token: BASE_ROW.token,
+    kind: 'document',
+    name: 'Site Plan.pdf',
+    inviterName: 'Isaiah',
+  });
+
+  equal(result.success, false);
+  equal(result.retryable, true);
+  equal(result.deliveryUncertain, false);
+  equal(result.error, 'Send failed');
 });
 
 test('KAL-438: failed existing-user close is honest and retry closes without a second transport', async () => {
@@ -403,7 +439,7 @@ test('KAL-438: client-injected recipient/template/link fields are ignored', asyn
 
   equal(out.status, 200);
   equal(calls.fallback[0].to, BASE_ROW.target_email);
-  equal(calls.fallback[0].template, 'permission-changed');
+  equal(calls.fallback[0].template, 'document-shared');
   equal(JSON.stringify(calls.fallback[0]).includes('evil.example'), false);
   equal(JSON.stringify(calls.fallback[0]).includes('attacker@example.com'), false);
 });
@@ -420,4 +456,23 @@ test('KAL-438: client still calls only send-invite-email and server verifies act
   match(edgeWrapper, /\.from\('document_collaborators'\)/);
   match(edgeWrapper, /\.eq\('status', 'active'\)/);
   ok(edgeWrapper.includes('document_id'));
+});
+
+test('KAL-438: direct-share email copy describes a first share, not a permission change', () => {
+  const emailFunction = read('supabase/functions/send-email/index.ts');
+  const templateStart = emailFunction.indexOf("'document-shared':");
+  const templateEnd = emailFunction.indexOf("'permission-changed':", templateStart);
+  ok(templateStart >= 0 && templateEnd > templateStart);
+  const directShareTemplate = emailFunction.slice(templateStart, templateEnd);
+  match(directShareTemplate, /shared .* with you/i);
+  match(directShareTemplate, /Access is already active/);
+  equal(/changed your access|Permission changes/i.test(directShareTemplate), false);
+});
+
+test('KAL-438: AppShell consumes the server-built document deep link', () => {
+  const appShell = read('src/AppShell.jsx');
+  match(appShell, /new URLSearchParams\(window\.location\.search\)\.get\('docId'\)/);
+  match(appShell, /documents\.find\(/);
+  match(appShell, /handleDocumentSelect\(\s*fileToOpen/);
+  match(appShell, /url\.searchParams\.delete\('docId'\)/);
 });

@@ -2098,6 +2098,7 @@ const SVGAnnotationLayer = memo(({
       // 2. Survey visibility
       const surveyAnnotationVisible = isAnnotationVisibleInSurveyMode({
         moduleId: obj.moduleId,
+        regionId: obj.regionId,
         showSurveyPanel,
         selectedModuleId
       });
@@ -2357,6 +2358,7 @@ const SVGAnnotationLayer = memo(({
 
       const surveyAnnotationVisible = isAnnotationVisibleInSurveyMode({
         moduleId: h.moduleId,
+        regionId: h.regionId,
         showSurveyPanel,
         selectedModuleId
       });

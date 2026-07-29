@@ -214,7 +214,7 @@ test('contract: survey, regular, region, and survey-region visibility do not lea
 
   assert.equal(isAnnotationVisibleInContext({ ...base, annotation: { moduleId: 'module-1' }, showSurveyPanel: false, selectedModuleId: 'module-1' }), false);
   assert.equal(isAnnotationVisibleInContext({ ...base, annotation: { moduleId: 'module-1' }, showSurveyPanel: true, selectedModuleId: 'module-1' }), true);
-  assert.equal(isAnnotationVisibleInContext({ ...base, annotation: {}, showSurveyPanel: true, selectedModuleId: 'module-1' }), true);
+  assert.equal(isAnnotationVisibleInContext({ ...base, annotation: {}, showSurveyPanel: true, selectedModuleId: 'module-1' }), false);
   assert.equal(isAnnotationVisibleInContext({ ...base, annotation: {}, showSurveyPanel: false, selectedModuleId: 'module-1' }), true);
   assert.equal(isAnnotationVisibleInContext({ ...base, annotation: { regionId: 'region-1' }, activeSpaceId: null }), false);
   assert.equal(isAnnotationVisibleInContext({ ...base, annotation: { moduleId: 'module-1', regionId: 'region-1' }, showSurveyPanel: false, selectedModuleId: 'module-1' }), false);

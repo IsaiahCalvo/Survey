@@ -234,7 +234,7 @@ function YDocProviderInner({ docId, children, closeDocument, isActive }) {
   const [bannerDismissed, setBannerDismissed] = useState(false);
   // Whether THIS document is actually shared (has active collaborators). The live-sync-offline
   // banner only makes sense for a shared document — resolved once per open in the effect below.
-  const [isDocShared, setIsDocShared] = useState(false);
+  const [isDocShared, setIsDocShared] = useState(null);
   // 2026-04-29 — when SyncStatusChip's manual retry exhausts (4 failed attempts),
   // it dispatches a window event so the banner surfaces immediately rather than
   // waiting the 30s stuck-queue threshold. Reset on document mount.
@@ -1457,34 +1457,33 @@ function YDocProviderInner({ docId, children, closeDocument, isActive }) {
   // one that actually has collaborators to sync WITH. If the document was never shared, there is no
   // live sync to be offline, so the banner would be noise that wrongly competes with the bottom-left
   // save indicator (the user's work still saves via the cloud-save path). Resolve "is this document
-  // shared" once per open from document_collaborators — a DB fact, independent of the realtime
-  // connection. Best-effort: any failure → treat as not shared → don't show the live-sync banner
-  // (never a false alarm). When sharing/collaboration actually ships, a shared doc that fails to live
-  // sync WILL show it. Genuine save/access failures (quota / permission_revoked / login_expiry / ...)
-  // are unaffected and always surface.
+  // shared" from document_collaborators — a DB fact, independent of the Y.Doc
+  // transport. Unknown stays fail-safe (never falsely green) until the query
+  // resolves. Realtime row changes and a bounded poll keep this current when a
+  // private document is shared or unshared while it remains open.
   useEffect(() => {
     if (!docId) { setIsDocShared(false); return undefined; }
     let cancelled = false;
-    (async () => {
+    const refreshSharedState = async () => {
       try {
         // "Shared" = an explicit active row for another user, or my own
         // collaborator row when I am not the owner. The latter matters because
         // document owners are not guaranteed to have a collaborator row.
-        // If identity/role cannot be resolved, fail quiet rather than show a
-        // false offline alarm.
+        // If identity/role cannot be resolved, retain unknown rather than
+        // presenting a false healthy state.
         let myId = null;
         try {
           const session = await getSupabaseSession('YDocProvider.isDocShared');
           myId = session?.user?.id ?? null;
         } catch { myId = null; }
-        if (!myId) { if (!cancelled) setIsDocShared(false); return; }
+        if (!myId) { if (!cancelled) setIsDocShared(null); return; }
         const { data, error } = await supabase
           .from('document_collaborators')
           .select('user_id')
           .eq('document_id', docId)
           .eq('status', 'active');
         if (error) {
-          if (!cancelled) setIsDocShared(false);
+          if (!cancelled) setIsDocShared(null);
           return;
         }
         const activeCollaboratorUserIds = (data || [])
@@ -1510,9 +1509,31 @@ function YDocProviderInner({ docId, children, closeDocument, isActive }) {
             currentRole,
           }));
         }
-      } catch { if (!cancelled) setIsDocShared(false); }
-    })();
-    return () => { cancelled = true; };
+      } catch { if (!cancelled) setIsDocShared(null); }
+    };
+    void refreshSharedState();
+
+    const channelSuffix = typeof crypto !== 'undefined' && crypto.randomUUID
+      ? crypto.randomUUID()
+      : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    const collaboratorChannel = supabase
+      .channel(`ydoc-shared-state:${docId}:${channelSuffix}`)
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'document_collaborators',
+        filter: `document_id=eq.${docId}`,
+      }, () => {
+        void refreshSharedState();
+      })
+      .subscribe();
+    const refreshTimer = setInterval(refreshSharedState, 30_000);
+
+    return () => {
+      cancelled = true;
+      clearInterval(refreshTimer);
+      try { supabase.removeChannel(collaboratorChannel); } catch { /* best effort */ }
+    };
   }, [docId]);
 
   // 2026-07-01 — resolve the caller's effective role once per document open.
@@ -1535,7 +1556,7 @@ function YDocProviderInner({ docId, children, closeDocument, isActive }) {
   // EXCEPTION: 'transport_offline' (live realtime/collaboration down) only surfaces when the document
   // is actually shared (isDocShared) — otherwise there is nothing to live-sync and it would be noise.
   const showBanner = storageState && storageState.code !== 'ok' && !bannerDismissed
-    && (storageState.code !== 'transport_offline' || isDocShared);
+    && (storageState.code !== 'transport_offline' || isDocShared !== false);
 
   return (
     <YDocContext.Provider value={value}>

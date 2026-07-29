@@ -4,6 +4,9 @@ export function combineCollaborationSyncStatus({
   isSharedDocument,
 }) {
   if (!isSharedDocument) return annotationStatus;
+  if (annotationStatus?.stage === 'error' || annotationStatus?.healthy === false) {
+    return annotationStatus;
+  }
   if (transportState === 'offline') {
     return {
       stage: 'error',

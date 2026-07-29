@@ -2,9 +2,9 @@
  *
  * Thin wrapper over the deployed `send-email` Supabase Edge Function. The
  * function already handles Resend authentication via the `RESEND_API_KEY`
- * function secret. Callers just provide template + data; failures are logged
- * but never throw because email delivery is best-effort and must not block
- * the underlying invite/role-change/remove action.
+ * function secret. Callers just provide template + data. Permission-change
+ * and removal notifications remain best-effort; invitation delivery reports
+ * a definite failure or an uncertain outcome to its caller.
  */
 import { supabase } from '../supabaseClient';
 
@@ -46,8 +46,8 @@ async function invokeSendEmail({ to, subject, template, data }) {
  * Deliberately NO client-side fallback send on failure: a refusal means the
  * server saw a revoked/accepted/expired/not-owned invite (or the send
  * failed) and a client-built email could carry a stale or wrong-origin
- * link. Email stays best-effort by contract — warn and move on, exactly
- * like the failure mode this app has always had.
+ * link. The caller can safely distinguish a definite unsent failure from an
+ * uncertain transport outcome without exposing whether the account exists.
  */
 export async function sendInviteEmailSmart({ token, kind, name, inviterName }) {
   if (!token) return { success: false, error: 'missing token' };
@@ -71,13 +71,15 @@ export async function sendInviteEmailSmart({ token, kind, name, inviterName }) {
         try { response = await error.context.clone().json(); } catch { /* no structured body */ }
       }
       const status = Number(error?.context?.status) || 0;
+      const hasStructuredRetryability = typeof response?.retryable === 'boolean';
       const deliveryUncertain = response?.retryable === false
         || response?.error === 'Delivery outcome unknown'
-        || status === 0
-        || status >= 500;
+        || (!hasStructuredRetryability && (status === 0 || status >= 500));
       return {
         success: false,
-        retryable: !deliveryUncertain,
+        retryable: hasStructuredRetryability
+          ? response.retryable === true && !deliveryUncertain
+          : !deliveryUncertain,
         deliveryUncertain,
         error: response?.error || error.message || String(error),
         response,

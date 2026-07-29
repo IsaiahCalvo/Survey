@@ -74,6 +74,14 @@ const surveyTransitionE2ETemplates = [{
       name: 'Walls',
       color: '#d8a84e',
     }],
+  }, {
+    id: 'kal436-other-module',
+    name: 'Other Survey Data',
+    categories: [{
+      id: 'kal436-other-category',
+      name: 'Doors',
+      color: '#5ba1f0',
+    }],
   }],
 }];
 
@@ -82,6 +90,8 @@ export function DevTestRoute({ pdfName, displayName = null, returnTab = null }) 
   const [error, setError] = useState(null);
   const surveyTransitionE2E = new URLSearchParams(window.location.search)
     .get('surveyTransitionE2E') === '1';
+  const documentDeepLinkE2E = new URLSearchParams(window.location.search)
+    .get('documentDeepLinkE2E') === '1';
 
   if (surveyTransitionE2E) {
     window.__surveyTransitionE2ETemplates = surveyTransitionE2ETemplates;
@@ -102,8 +112,18 @@ export function DevTestRoute({ pdfName, displayName = null, returnTab = null }) 
 
         if (cancelled) return;
 
-        // Set the file on window so App's useEffect can auto-open it
-        window.__devTestPdf = file;
+        if (documentDeepLinkE2E) {
+          window.__documentDeepLinkE2EDocuments = [{
+            id: 'deep-link-test-document',
+            name: file.name,
+            size: file.size,
+            filePath: '/debug/deep-link-test.pdf',
+            __localFile: file,
+          }];
+        } else {
+          // Set the file on window so App's useEffect can auto-open it
+          window.__devTestPdf = file;
+        }
         setStatus('ready');
       } catch (err) {
         if (!cancelled) {
@@ -115,7 +135,7 @@ export function DevTestRoute({ pdfName, displayName = null, returnTab = null }) 
 
     loadPdf();
     return () => { cancelled = true; };
-  }, [pdfName, displayName]);
+  }, [pdfName, displayName, documentDeepLinkE2E]);
 
   if (status === 'loading') {
     return (

@@ -248,7 +248,7 @@ describe('isAnnotationVisibleInContext', () => {
     }],
   }];
 
-  it('adds matching survey annotations without hiding regular annotations', () => {
+  it('hides regular annotations while showing the selected Survey module', () => {
     assert.equal(
       isAnnotationVisibleInContext({
         annotation: { moduleId: null, regionId: null },
@@ -257,7 +257,7 @@ describe('isAnnotationVisibleInContext', () => {
         selectedModuleId: 'module-1',
         showSurveyPanel: true,
       }),
-      true
+      false
     );
 
     assert.equal(
@@ -398,7 +398,7 @@ describe('isAnnotationVisibleInContext', () => {
     );
   });
 
-  it('keeps normal annotations visible across survey mode and module transitions', () => {
+  it('keeps normal annotations visible outside Survey and hides them inside Survey', () => {
     assert.equal(
       isAnnotationVisibleInContext({
         annotation: { moduleId: null, regionId: null },
@@ -417,7 +417,7 @@ describe('isAnnotationVisibleInContext', () => {
         selectedModuleId: 'module-1',
         showSurveyPanel: true,
       }),
-      true
+      false
     );
   });
 

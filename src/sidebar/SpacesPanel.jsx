@@ -1066,11 +1066,16 @@ const SpacesPanel = ({
     }, null, 2);
   }, [expandedSpaces]);
 
-  const handleCreateSpace = useCallback(() => {
+  const requireSpaceManagement = useCallback(() => {
     if (!canManageSpaces) {
-      showToast('Upgrade to Pro to create Spaces.', 'error');
-      return;
+      showToast('Your plan or document access does not allow editing Spaces or Regions.', 'error');
+      return false;
     }
+    return true;
+  }, [canManageSpaces]);
+
+  const handleCreateSpace = useCallback(() => {
+    if (!requireSpaceManagement()) return;
     const name = `Space ${spaces.length + 1}`;
     if (onSpaceCreate) {
       onSpaceCreate({
@@ -1078,22 +1083,24 @@ const SpacesPanel = ({
         assignedPages: []
       });
     }
-  }, [canManageSpaces, spaces.length, onSpaceCreate]);
+  }, [requireSpaceManagement, spaces.length, onSpaceCreate]);
 
   const handleRenameSpace = useCallback((spaceId, nextName) => {
+    if (!requireSpaceManagement()) return;
     const name = nextName?.trim();
     if (spaceId && name && onSpaceUpdate) {
       onSpaceUpdate(spaceId, { name });
     }
-  }, [onSpaceUpdate]);
+  }, [onSpaceUpdate, requireSpaceManagement]);
 
   const handleDelete = useCallback((spaceId) => {
+    if (!requireSpaceManagement()) return;
     if (window.confirm('Delete this space? This will not delete the pages, only the space assignment.')) {
       if (onSpaceDelete) {
         onSpaceDelete(spaceId);
       }
     }
-  }, [onSpaceDelete]);
+  }, [onSpaceDelete, requireSpaceManagement]);
 
   const handleToggleExpand = useCallback((spaceId) => {
     setExpandedSpaces(prev => {
@@ -1146,6 +1153,7 @@ const SpacesPanel = ({
   }, []);
 
   const handleAssignPages = useCallback((spaceId) => {
+    if (!requireSpaceManagement()) return;
     const rawInput = (pageInputs[spaceId] || '').trim();
     const { pages, errors } = parsePageRangeInput(rawInput, {
       min: 1,
@@ -1180,7 +1188,7 @@ const SpacesPanel = ({
       ...prev,
       [spaceId]: null
     }));
-  }, [pageInputs, numPages, onSpaceAssignPages]);
+  }, [pageInputs, numPages, onSpaceAssignPages, requireSpaceManagement]);
 
   React.useEffect(() => {
     const previousIds = previousSpaceIdsRef.current;
@@ -1226,11 +1234,23 @@ const SpacesPanel = ({
   }, [optimisticSpaceIds, spaces]);
 
   const handleRemovePage = useCallback((spaceId, pageId) => {
+    if (!requireSpaceManagement()) return;
     if (!onSpaceRemovePage) return;
     onSpaceRemovePage(spaceId, pageId);
-  }, [onSpaceRemovePage]);
+  }, [onSpaceRemovePage, requireSpaceManagement]);
+
+  const handleRenameRegion = useCallback((spaceId, pageId, label) => {
+    if (!requireSpaceManagement()) return;
+    onSpaceRenamePage?.(spaceId, pageId, label);
+  }, [onSpaceRenamePage, requireSpaceManagement]);
+
+  const handleRequestRegionEdit = useCallback((spaceId, pageId) => {
+    if (!requireSpaceManagement()) return;
+    onRequestRegionEdit?.(spaceId, pageId);
+  }, [onRequestRegionEdit, requireSpaceManagement]);
 
   const handleSpaceReorder = useCallback((activeId, overId) => {
+    if (!requireSpaceManagement()) return;
     if (activeId === overId) return;
     if (!onReorderSpaces) return;
     const fromIndex = spaces.findIndex(space => space.id === activeId);
@@ -1248,7 +1268,7 @@ const SpacesPanel = ({
       return nextIds === ids ? ids : nextIds;
     });
     onReorderSpaces(fromIndex, toIndex);
-  }, [onReorderSpaces, orderedSpaces, recordSpacesReorderDebug, spaces]);
+  }, [onReorderSpaces, orderedSpaces, recordSpacesReorderDebug, requireSpaceManagement, spaces]);
 
   const handleSpaceDragStart = useCallback(({ activeId }) => {
     setIsRearrangingSpaces(true);
@@ -1432,7 +1452,7 @@ const SpacesPanel = ({
                 <SortableRearrangeRow
                   key={space.id}
                   id={space.id}
-                  disabled={!onReorderSpaces}
+                  disabled={!canManageSpaces || !onReorderSpaces}
                   animateLayoutChanges={animateSpaceLayoutChanges}
                   draggingOpacity={1}
                   transition={null}
@@ -1457,10 +1477,10 @@ const SpacesPanel = ({
                       onToggleSpace={handleToggleSpace}
                       onPageInputChange={handlePageInputChange}
                       onAssignPages={handleAssignPages}
-                      onRenameRegion={onSpaceRenamePage}
+                      onRenameRegion={handleRenameRegion}
                       onRemovePage={handleRemovePage}
                       onNavigateToPage={onNavigateToPage}
-                      onRequestRegionEdit={onRequestRegionEdit}
+                      onRequestRegionEdit={handleRequestRegionEdit}
                       onCancelRegionEdit={onCancelRegionEdit}
                       isRegionSelectionActive={isRegionSelectionActive}
                       regionSelectionPage={regionSelectionPage}

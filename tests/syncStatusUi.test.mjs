@@ -8,6 +8,10 @@ import { combineCollaborationSyncStatus } from '../src/utils/collaborationSyncSt
 
 const appSource = () => readFileSync(resolve('src/viewerShared.js'), 'utf8')
   + '\n' + readFileSync(resolve('src/PDFViewer.jsx'), 'utf8');
+const providerSource = () => readFileSync(
+  resolve('src/components/collab/YDocProvider.jsx'),
+  'utf8',
+);
 
 test('sync status view model exposes pending debounce as visible saving state', () => {
   assert.deepEqual(
@@ -73,6 +77,32 @@ test('shared-document transport health prevents a false green annotation status'
     annotationStatus,
     'a private document keeps the independent durable-save status',
   );
+});
+
+test('a real annotation save error is never hidden by a connecting transport', () => {
+  const annotationError = {
+    stage: 'error',
+    healthy: false,
+    error: 'save failed',
+  };
+  assert.equal(
+    combineCollaborationSyncStatus({
+      annotationStatus: annotationError,
+      transportState: 'connecting',
+      isSharedDocument: true,
+    }),
+    annotationError,
+  );
+});
+
+test('shared-state lookup stays fail-safe and refreshes when sharing changes after open', () => {
+  const provider = providerSource();
+  assert.match(provider, /useState\(null\)/);
+  assert.match(provider, /table:\s*'document_collaborators'/);
+  assert.match(provider, /event:\s*'\*'/);
+  assert.match(provider, /setInterval\(refreshSharedState,\s*30_000\)/);
+  assert.match(provider, /isDocShared !== false/);
+  assert.match(appSource(), /yjsIsDocShared !== false/);
 });
 
 // 2026-07-17: five tests pinning the retired useAnnotationCloudSync hook's

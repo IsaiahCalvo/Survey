@@ -10619,6 +10619,11 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     user?.id,
     yjsDocRole,
   ]);
+  const requireSpaceManagement = useCallback(() => {
+    if (canManageSpaces) return true;
+    showToast('Your plan or document access does not allow editing Spaces or Regions.', 'warn');
+    return false;
+  }, [canManageSpaces]);
 
   // UX: Phase 14 KBD-01 — handler for Delete/Backspace on selected callouts.
   // Called by SVGAnnotationLayer's extended keydown effect via
@@ -12237,6 +12242,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   }, []);
 
   const handleSpaceCreate = useCallback((space) => {
+    if (!requireSpaceManagement()) return;
     // Checkpoint history before creating space
     addHistoryCheckpoint('space:create', {
       requestedName: typeof space?.name === 'string' ? space.name : null
@@ -12269,9 +12275,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       };
       return [...prev, newSpace];
     });
-  }, [addHistoryCheckpoint]);
+  }, [addHistoryCheckpoint, requireSpaceManagement]);
 
   const handleSpaceUpdate = useCallback((id, updates) => {
+    if (!requireSpaceManagement()) return;
     // Checkpoint history before updating space
     addHistoryCheckpoint('space:update', {
       spaceId: id,
@@ -12313,9 +12320,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
       return prev.map(space => space.id === id ? { ...space, ...sanitizedUpdates } : space);
     });
-  }, [addHistoryCheckpoint]);
+  }, [addHistoryCheckpoint, requireSpaceManagement]);
 
   const handleSpaceAssignPages = useCallback((spaceId, pageNumbers) => {
+    if (!requireSpaceManagement()) return;
     if (!Array.isArray(pageNumbers) || pageNumbers.length === 0) {
       return;
     }
@@ -12365,7 +12373,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         assignedPages: updatedPages
       };
     }));
-  }, []);
+  }, [requireSpaceManagement]);
 
   const cascadeDeleteScopedAppState = useCallback(({ spaceId, pageIds = null, regionIds = null, reason = 'space-scope-delete' }) => {
     if (!spaceId) return;
@@ -12513,6 +12521,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   }, [pdfFile?.id, setCalloutsIfPersistedChanged]);
 
   const handleSpaceRemovePage = useCallback((spaceId, pageId) => {
+    if (!requireSpaceManagement()) return;
     cascadeDeleteScopedAppState({
       spaceId,
       pageIds: [pageId],
@@ -12576,9 +12585,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
       return nextSpaces;
     });
-  }, [activeSpaceId, cascadeDeleteScopedAppState, pdfFile?.id, user]);
+  }, [activeSpaceId, cascadeDeleteScopedAppState, pdfFile?.id, requireSpaceManagement, user]);
 
   const handleSpaceRenamePage = useCallback((spaceId, pageId, newLabel) => {
+    if (!requireSpaceManagement()) return;
     const trimmedLabel = typeof newLabel === 'string' ? newLabel.trim() : '';
     setSpaces(prev => prev.map(space => {
       if (space.id !== spaceId) {
@@ -12622,9 +12632,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         assignedPages: updatedPages
       };
     }));
-  }, []);
+  }, [requireSpaceManagement]);
 
   const handleSpaceClearRegions = useCallback((spaceId, pageId) => {
+    if (!requireSpaceManagement()) return;
     cascadeDeleteScopedAppState({
       spaceId,
       pageIds: [pageId],
@@ -12678,9 +12689,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
       return updated;
     });
-  }, [cascadeDeleteScopedAppState]);
+  }, [cascadeDeleteScopedAppState, requireSpaceManagement]);
 
   const handleReorderSpaces = useCallback((fromIndex, toIndex) => {
+    if (!requireSpaceManagement()) return;
     setSpaces(prev => {
       if (
         fromIndex < 0 ||
@@ -12693,7 +12705,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       const reordered = arrayMove(prev, fromIndex, toIndex);
       return [...reordered];
     });
-  }, []);
+  }, [requireSpaceManagement]);
 
   // Helper function to get user initials
   const getUserInitials = useCallback(() => {
@@ -18504,7 +18516,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   const displayedCloudSyncStatus = useMemo(() => combineCollaborationSyncStatus({
     annotationStatus: cloudSyncStatus,
     transportState: yjsTransportState,
-    isSharedDocument: yjsIsDocShared || (
+    isSharedDocument: yjsIsDocShared !== false || (
       yjsDocRole === 'editor'
       && !!documentOwnerId
       && documentOwnerId !== user?.id
@@ -18843,6 +18855,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   }, [spaces, pdfDoc]);
 
   const handleSpaceDelete = useCallback((id) => {
+    if (!requireSpaceManagement()) return;
     // Checkpoint history before deleting space
     addHistoryCheckpoint('space:delete', { spaceId: id });
 
@@ -18879,7 +18892,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     if (selectedSpaceId === id) {
       setSelectedSpaceId(null);
     }
-  }, [addHistoryCheckpoint, activeSpaceId, selectedSpaceId, cascadeDeleteScopedAppState, pdfFile?.id, user]);
+  }, [addHistoryCheckpoint, activeSpaceId, selectedSpaceId, cascadeDeleteScopedAppState, pdfFile?.id, requireSpaceManagement, user]);
 
   const handleSetActiveSpace = useCallback((spaceId) => {
     debugLog('[SPACE TOGGLE] Activating space - regions enabled, annotations with regionId should be shown:', { spaceId, previousActiveSpaceId: activeSpaceId });
@@ -19601,6 +19614,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   }, [finishRegionEditSession]);
 
   const handleRegionSetFullPage = useCallback(() => {
+    if (!requireSpaceManagement()) return;
     if (!activeSpaceId || !regionSelectionPage) {
       console.warn('[App] ERROR: Missing activeSpaceId or regionSelectionPage', { activeSpaceId, regionSelectionPage });
       return;
@@ -19610,7 +19624,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
     // Close the region selection tool after setting full page
     finishRegionEditSession();
-  }, [activeSpaceId, regionSelectionPage, handleSpaceClearRegions, finishRegionEditSession]);
+  }, [activeSpaceId, regionSelectionPage, handleSpaceClearRegions, finishRegionEditSession, requireSpaceManagement]);
 
   const canSetRegionToFullPage = useMemo(() => {
     if (!activeSpaceId || !regionSelectionPage) return false;
@@ -19622,6 +19636,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   }, [spaces, activeSpaceId, regionSelectionPage]);
 
   const handleRegionComplete = useCallback((regions) => {
+    if (!requireSpaceManagement()) return;
     if (!activeSpaceId || !regionSelectionPage) {
       console.warn('[App-RegionEdit] handleRegionComplete ignored — missing activeSpaceId or regionSelectionPage', {
         activeSpaceId,
@@ -19756,7 +19771,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     setSelectedSpaceId(activeSpaceId);
     finishRegionEditSession();
     // Keep selectedSpaceId set - don't clear it when region selection completes
-  }, [activeSpaceId, regionSelectionPage, spaces, handleSpaceUpdate, finishRegionEditSession, cascadeDeleteScopedAppState, pdfFile?.id, user]);
+  }, [activeSpaceId, regionSelectionPage, spaces, handleSpaceUpdate, finishRegionEditSession, cascadeDeleteScopedAppState, pdfFile?.id, requireSpaceManagement, user]);
 
   // KAL-313 (2026-06-11): region trash journaling moved INTO handleRegionComplete
   // above — commit time, gated on the removedRegionIds diff. The old
@@ -23560,6 +23575,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   // DECLARATION ORDER: must stay ABOVE handleRestoreHistoryActivity — that
   // callback lists it in its dep array (TDZ crash otherwise).
   const handleRestoreSpace = useCallback((spaceRestoreAction) => {
+    if (!requireSpaceManagement()) {
+      return { ok: false, reason: 'access-denied' };
+    }
     if (!isSpaceRestoreAction(spaceRestoreAction)) {
       return { ok: false, reason: 'restore-unavailable' };
     }
@@ -23574,7 +23592,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       return result ? result.spaces : prev;
     });
     return { ok: true };
-  }, []);
+  }, [requireSpaceManagement]);
 
   const handleRestoreHistoryActivity = useCallback((event) => {
     const restoreAction = event?.payload?.restoreAction;
@@ -27813,6 +27831,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   }, [spaces]);
 
   const setPageAnnotationVisibilityState = useCallback((spaceId, pageId, updates) => {
+    if (!requireSpaceManagement()) return;
     debugLog('[setPageAnnotationVisibilityState] Called:', { spaceId, pageId, updates });
     setSpaces(prev => prev.map(space => {
       if (space.id !== spaceId) {
@@ -27859,7 +27878,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         assignedPages: updatedPages
       };
     }));
-  }, []);
+  }, [requireSpaceManagement]);
 
   const handleToggleCanvasAnnotations = useCallback((spaceId, pageId, value) => {
     setPageAnnotationVisibilityState(spaceId, pageId, { canvasVisible: value });
