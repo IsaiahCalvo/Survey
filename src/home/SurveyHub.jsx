@@ -21,6 +21,7 @@ const TemplatesEditor = lazy(() => import('./TemplatesEditor'));
 import ShareModal from './ShareModal';
 import AccessManagementModal from './AccessManagementModal';
 import { HubChromeContext } from './HubShell';
+import HubLoadingSkeletons from './HubLoadingSkeletons';
 const AccountSettings = lazy(() => import('../components/AccountSettings').then(m => ({ default: m.AccountSettings })));
 import './hub.css';
 
@@ -30,6 +31,9 @@ export default function SurveyHub({
   documents = [],
   projects = [],
   templates = [],
+  documentsInitialLoading = false,
+  projectsInitialLoading = false,
+  templatesInitialLoading = false,
   members = [],
   user = null,
   isPro = true,
@@ -98,7 +102,10 @@ export default function SurveyHub({
   return (
     <HubChromeContext.Provider value={{ user, onSettings: openSettings, onSignOut }}>
       {tab === 'documents' && (
-        <DocumentsLedger
+        documentsInitialLoading ? (
+          <HubLoadingSkeletons {...common} tab="documents" />
+        ) : (
+          <DocumentsLedger
           {...common}
           documents={documents}
           projects={projects}
@@ -109,10 +116,14 @@ export default function SurveyHub({
           onDelete={onDeleteDocuments}
           onMoveCopy={onMoveCopyDocuments}
           onLockDocument={onLockDocument}
-        />
+          />
+        )
       )}
       {tab === 'projects' && (
-        <Suspense fallback={null}>
+        projectsInitialLoading ? (
+          <HubLoadingSkeletons {...common} tab="projects" />
+        ) : (
+        <Suspense fallback={<HubLoadingSkeletons {...common} tab="projects" />}>
           <ProjectsFolderTree
             {...common}
             projects={projects}
@@ -129,9 +140,13 @@ export default function SurveyHub({
             onShareDocument={shareDocuments}
           />
         </Suspense>
+        )
       )}
       {tab === 'templates' && (
-        <Suspense fallback={null}>
+        templatesInitialLoading ? (
+          <HubLoadingSkeletons {...common} tab="templates" />
+        ) : (
+        <Suspense fallback={<HubLoadingSkeletons {...common} tab="templates" />}>
           <TemplatesEditor
             {...common}
             templates={templates}
@@ -142,6 +157,7 @@ export default function SurveyHub({
             getChecklistItemUsageCount={getChecklistItemUsageCount}
           />
         </Suspense>
+        )
       )}
 
       <ShareModal

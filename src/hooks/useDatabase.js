@@ -7,12 +7,13 @@
  * plus getOtherSurveysUsingTemplate and DEFAULT_TOOL_PREFERENCES / tool capability
  * tables. Each hook returns data + loading/error + create/update/delete + refetch.
  */
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase, isSupabaseAvailable, isSchemaError, isConnectedServicesAvailable, setConnectedServicesAvailable } from '../supabaseClient';
 import { useAuth } from '../contexts/AuthContext';
 import { buildDocumentProvenance } from '../utils/documentProvenance.js';
 import { coalesceRead } from './requestCoalescer.js';
 import { resolveDocumentMetadata } from '../services/documentMetadataResolver.js';
+import { isScopedRequestCurrent } from './scopedRequestGuard.js';
 
 const isSupabaseNotFoundError = (error) => {
   if (!error) return false;
@@ -36,18 +37,35 @@ export const useProjects = () => {
   const { user } = useAuth();
   const [projects, setProjects] = useState([]);
   const [loading, setLoading] = useState(true);
+  const projectScopeKey = user?.id || 'anonymous';
+  const [loadedProjectScopeKey, setLoadedProjectScopeKey] = useState(null);
+  const initialLoading = loadedProjectScopeKey !== projectScopeKey;
+  const projectScopeKeyRef = useRef(projectScopeKey);
+  const projectRequestRef = useRef(0);
+  projectScopeKeyRef.current = projectScopeKey;
   const [error, setError] = useState(null);
 
   useEffect(() => {
     if (!user || !isSupabaseAvailable()) {
+      projectRequestRef.current += 1;
+      setProjects([]);
       setLoading(false);
+      setLoadedProjectScopeKey(projectScopeKey);
       return;
     }
 
-    fetchProjects();
+    fetchProjects({ initialScopeKey: projectScopeKey });
   }, [user]);
 
-  const fetchProjects = async () => {
+  const fetchProjects = async ({ initialScopeKey = null } = {}) => {
+    const requestScopeKey = initialScopeKey || projectScopeKey;
+    const requestId = ++projectRequestRef.current;
+    const isCurrentRequest = () => isScopedRequestCurrent({
+      requestId,
+      latestRequestId: projectRequestRef.current,
+      requestScopeKey,
+      currentScopeKey: projectScopeKeyRef.current,
+    });
     try {
       setLoading(true);
       // KAL-285 — explicit column list instead of select('*'). The live
@@ -63,13 +81,18 @@ export const useProjects = () => {
 
       if (error) throw error;
       const projectsData = data || [];
+      if (!isCurrentRequest()) return [];
       setProjects(projectsData);
       return projectsData; // Return the data so callers can use it immediately
     } catch (err) {
+      if (!isCurrentRequest()) return [];
       setError(err.message);
       throw err; // Re-throw so callers can handle errors
     } finally {
-      setLoading(false);
+      if (isCurrentRequest()) {
+        setLoading(false);
+        setLoadedProjectScopeKey(requestScopeKey);
+      }
     }
   };
 
@@ -125,6 +148,7 @@ export const useProjects = () => {
   return {
     projects,
     loading,
+    initialLoading,
     error,
     createProject,
     updateProject,
@@ -141,19 +165,28 @@ export const useDocuments = (projectId = null) => {
   const { user, tier } = useAuth();
   const [documents, setDocuments] = useState([]);
   const [loading, setLoading] = useState(true);
+  const documentScopeKey = `${user?.id || 'anonymous'}:${projectId ?? 'all'}`;
+  const [loadedDocumentScopeKey, setLoadedDocumentScopeKey] = useState(null);
+  const initialLoading = loadedDocumentScopeKey !== documentScopeKey;
+  const documentScopeKeyRef = useRef(documentScopeKey);
+  const documentRequestRef = useRef(0);
+  documentScopeKeyRef.current = documentScopeKey;
   const [error, setError] = useState(null);
 
 
   useEffect(() => {
     if (!user || !isSupabaseAvailable()) {
+      documentRequestRef.current += 1;
+      setDocuments([]);
       setLoading(false);
+      setLoadedDocumentScopeKey(documentScopeKey);
       return;
     }
 
     // Boot/dep-change load goes through the coalescer so the simultaneous burst
     // from the multiple live useDocuments instances (Dashboard x2 + one per open
     // PDFViewer tab) collapses to ONE round-trip. See KAL-251.
-    loadDocuments({ coalesce: true });
+    loadDocuments({ coalesce: true, initialScopeKey: documentScopeKey });
   }, [user, projectId]);
 
   // Pure query worker: runs the owned + collaborator-probe + conditional id=in
@@ -223,21 +256,34 @@ export const useDocuments = (projectId = null) => {
   // in-flight read across instances (boot burst); the exposed `refetch` calls
   // with `coalesce:false` so a deliberate post-mutation refetch ALWAYS hits the
   // network and is never served a coalesced promise that predates the mutation.
-  const loadDocuments = async ({ coalesce = false } = {}) => {
+  const loadDocuments = async ({ coalesce = false, initialScopeKey = null } = {}) => {
     if (!user || !isSupabaseAvailable()) return [];
+    const requestScopeKey = initialScopeKey || documentScopeKey;
+    const requestId = ++documentRequestRef.current;
+    const isCurrentRequest = () => isScopedRequestCurrent({
+      requestId,
+      latestRequestId: documentRequestRef.current,
+      requestScopeKey,
+      currentScopeKey: documentScopeKeyRef.current,
+    });
     try {
       setLoading(true);
       const key = `documents:${user.id}:${projectId ?? 'null'}`;
       const merged = coalesce
         ? await coalesceRead(key, runDocumentsQuery)
         : await runDocumentsQuery();
+      if (!isCurrentRequest()) return [];
       setDocuments(merged);
       return merged;
     } catch (err) {
+      if (!isCurrentRequest()) return [];
       setError(err.message);
       return [];
     } finally {
-      setLoading(false);
+      if (isCurrentRequest()) {
+        setLoading(false);
+        setLoadedDocumentScopeKey(requestScopeKey);
+      }
     }
   };
 
@@ -373,6 +419,7 @@ export const useDocuments = (projectId = null) => {
   return {
     documents,
     loading,
+    initialLoading,
     error,
     createDocument,
     updateDocument,
@@ -390,17 +437,26 @@ export const useTemplates = () => {
   const { user } = useAuth();
   const [templates, setTemplates] = useState([]);
   const [loading, setLoading] = useState(true);
+  const templateScopeKey = user?.id || 'anonymous';
+  const [loadedTemplateScopeKey, setLoadedTemplateScopeKey] = useState(null);
+  const initialLoading = loadedTemplateScopeKey !== templateScopeKey;
+  const templateScopeKeyRef = useRef(templateScopeKey);
+  const templateRequestRef = useRef(0);
+  templateScopeKeyRef.current = templateScopeKey;
   const [error, setError] = useState(null);
 
   useEffect(() => {
     if (!user || !isSupabaseAvailable()) {
+      templateRequestRef.current += 1;
+      setTemplates([]);
       setLoading(false);
+      setLoadedTemplateScopeKey(templateScopeKey);
       return;
     }
 
     // Coalesced so the always-mounted Dashboard + AppShell (+ per-tab) template
     // consumers share one boot read. See KAL-251.
-    loadTemplates({ coalesce: true });
+    loadTemplates({ coalesce: true, initialScopeKey: templateScopeKey });
   }, [user]);
 
   const runTemplatesQuery = async () => {
@@ -413,21 +469,34 @@ export const useTemplates = () => {
     return data || [];
   };
 
-  const loadTemplates = async ({ coalesce = false } = {}) => {
+  const loadTemplates = async ({ coalesce = false, initialScopeKey = null } = {}) => {
     if (!user || !isSupabaseAvailable()) return [];
+    const requestScopeKey = initialScopeKey || templateScopeKey;
+    const requestId = ++templateRequestRef.current;
+    const isCurrentRequest = () => isScopedRequestCurrent({
+      requestId,
+      latestRequestId: templateRequestRef.current,
+      requestScopeKey,
+      currentScopeKey: templateScopeKeyRef.current,
+    });
     try {
       setLoading(true);
       const key = `templates:${user.id}`;
       const rows = coalesce
         ? await coalesceRead(key, runTemplatesQuery)
         : await runTemplatesQuery();
+      if (!isCurrentRequest()) return [];
       setTemplates(rows);
       return rows;
     } catch (err) {
+      if (!isCurrentRequest()) return [];
       setError(err.message);
       return [];
     } finally {
-      setLoading(false);
+      if (isCurrentRequest()) {
+        setLoading(false);
+        setLoadedTemplateScopeKey(requestScopeKey);
+      }
     }
   };
 
@@ -483,6 +552,7 @@ export const useTemplates = () => {
   return {
     templates,
     loading,
+    initialLoading,
     error,
     createTemplate,
     updateTemplate,

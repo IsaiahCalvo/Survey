@@ -13,6 +13,7 @@ import { resolveIncomingUpload, shouldOfferAlias, nextAvailableName } from './ut
 import DuplicateUploadModal from './components/DuplicateUploadModal';
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
 import SurveyHub from './home/SurveyHub';
+import { resolveHubInitialLoading } from './home/hubInitialLoadingState.js';
 import { useAuth } from './contexts/AuthContext';
 import { useMSGraph } from './contexts/MSGraphContext';
 import { useDocuments, useProjects, useStorage, useTemplates } from './hooks/useDatabase';
@@ -123,7 +124,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
   // Supabase hooks for data persistence
   const {
     projects: supabaseProjects,
-    loading: projectsLoading,
+    initialLoading: projectsInitialLoading,
     createProject: createSupabaseProject,
     updateProject: updateSupabaseProject,
     deleteProject: deleteSupabaseProject,
@@ -132,7 +133,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
 
   const {
     templates: supabaseTemplates,
-    loading: templatesLoading,
+    initialLoading: templatesInitialLoading,
     createTemplate: createSupabaseTemplate,
     updateTemplate: updateSupabaseTemplate,
     deleteTemplate: deleteSupabaseTemplate,
@@ -272,7 +273,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
   // Documents hook - must be called after selectedProjectId is declared
   const {
     documents: supabaseDocuments,
-    loading: documentsLoading,
+    initialLoading: documentsInitialLoading,
     createDocument: createSupabaseDocument,
     updateDocument: updateSupabaseDocument,
     deleteDocument: deleteSupabaseDocument,
@@ -1957,6 +1958,12 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
      a no-op. Mount the file inputs here so handleUploadClick fires correctly
      in v2.0 browser mode. handleFileUpload already resets event.target.value
      so the same file can be re-picked. */
+  const hubInitialLoading = resolveHubInitialLoading({
+    documentsInitialLoading,
+    projectsInitialLoading,
+    templatesInitialLoading,
+  });
+
   return (
     <>
       <input
@@ -1978,6 +1985,9 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
         documents={documents}
         projects={projects}
         templates={templates}
+        documentsInitialLoading={hubInitialLoading.documents}
+        projectsInitialLoading={hubInitialLoading.projects}
+        templatesInitialLoading={hubInitialLoading.templates}
         members={[]}
         user={user ? { id: user.id, name: user.user_metadata?.full_name || user.name || user.email, email: user.email } : null}
         isPro={!!features?.advancedSurvey}

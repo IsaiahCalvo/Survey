@@ -154,7 +154,9 @@ export default function HubPreview() {
   const params = new URLSearchParams(window.location.search);
   const emptyFixture = params.get('empty') === '1';
   const longDocsFixture = params.get('longDocs') === '1';
-  const [documents, setDocuments] = useState(emptyFixture ? [] : (longDocsFixture ? makeLongDocumentFixture() : INITIAL_DOCUMENTS));
+  const loadingFixture = params.get('hubLoading');
+  const previewHasNoData = emptyFixture || ['documents', 'projects', 'templates'].includes(loadingFixture);
+  const [documents, setDocuments] = useState(previewHasNoData ? [] : (longDocsFixture ? makeLongDocumentFixture() : INITIAL_DOCUMENTS));
   const initialTab = params.get('tab');
   const initialMobileDetailOpen = params.get('mobileState') === 'detail';
 
@@ -193,8 +195,11 @@ export default function HubPreview() {
         <div style={{ width: '100vw', height: '100vh' }}>
           <SurveyHub
             documents={documents}
-            projects={emptyFixture ? [] : MOCK_PROJECTS}
-            templates={emptyFixture ? [] : MOCK_TEMPLATES}
+            projects={previewHasNoData ? [] : MOCK_PROJECTS}
+            templates={previewHasNoData ? [] : MOCK_TEMPLATES}
+            documentsInitialLoading={loadingFixture === 'documents'}
+            projectsInitialLoading={loadingFixture === 'projects'}
+            templatesInitialLoading={loadingFixture === 'templates'}
             members={MOCK_MEMBERS}
             user={{ name: 'Isaiah Calvo', email: 'isaiahcalvo123@gmail.com' }}
             isPro
