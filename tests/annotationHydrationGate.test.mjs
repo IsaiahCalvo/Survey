@@ -8,38 +8,41 @@ import {
 } from '../src/utils/annotationHydrationGate.js';
 
 describe('annotation hydration first-paint gate', () => {
-  it('does not gate cloud pages while annotations hydrate', () => {
+  it('keeps the first visible cloud page gated until normal and survey sources are ready', () => {
     assert.equal(
       shouldGateFirstVisibleAnnotationPage({
+        documentId: 'doc-1',
         isCloudBackedDocument: true,
         pageNumber: 1,
         firstVisiblePageNumber: 1,
-        normalHydration: { ready: false, source: 'starting' },
-        surveyHydration: { ready: true, source: 'supabase-highlight' },
+        normalHydration: { ready: false, source: 'starting', documentId: 'doc-1' },
+        surveyHydration: { ready: true, source: 'supabase-highlight', documentId: 'doc-1' },
       }),
-      false
+      true
     );
 
     assert.equal(
       shouldGateFirstVisibleAnnotationPage({
+        documentId: 'doc-1',
         isCloudBackedDocument: true,
         pageNumber: 1,
         firstVisiblePageNumber: 1,
-        normalHydration: { ready: true, source: 'ydoc-snapshot' },
-        surveyHydration: { ready: false, source: 'supabase-highlight-starting' },
+        normalHydration: { ready: true, source: 'ydoc-snapshot', documentId: 'doc-1' },
+        surveyHydration: { ready: false, source: 'supabase-highlight-starting', documentId: 'doc-1' },
       }),
-      false
+      true
     );
   });
 
   it('allows the first visible cloud page after normal annotations are complete', () => {
     assert.equal(
       shouldGateFirstVisibleAnnotationPage({
+        documentId: 'doc-1',
         isCloudBackedDocument: true,
         pageNumber: 1,
         firstVisiblePageNumber: 1,
-        normalHydration: { ready: true, source: 'ydoc-snapshot' },
-        surveyHydration: { ready: true, source: 'supabase-highlight' },
+        normalHydration: { ready: true, source: 'ydoc-snapshot', documentId: 'doc-1' },
+        surveyHydration: { ready: true, source: 'supabase-highlight', documentId: 'doc-1' },
       }),
       false
     );
@@ -48,34 +51,37 @@ describe('annotation hydration first-paint gate', () => {
   it('does not gate offscreen pages, so they can lazy-load after first paint', () => {
     assert.equal(
       shouldGateFirstVisibleAnnotationPage({
+        documentId: 'doc-1',
         isCloudBackedDocument: true,
         pageNumber: 4,
         firstVisiblePageNumber: 1,
-        normalHydration: { ready: false, source: 'starting' },
-        surveyHydration: { ready: false, source: 'supabase-highlight-starting' },
+        normalHydration: { ready: false, source: 'starting', documentId: 'doc-1' },
+        surveyHydration: { ready: false, source: 'supabase-highlight-starting', documentId: 'doc-1' },
       }),
       false
     );
   });
 
-  it('does not visually cover cloud pages while hydration is gated', () => {
+  it('visually covers only the first visible cloud page while hydration is gated', () => {
     const pendingSources = {
-      normalHydration: { ready: false, source: 'starting' },
-      surveyHydration: { ready: false, source: 'supabase-highlight-starting' },
+      normalHydration: { ready: false, source: 'starting', documentId: 'doc-1' },
+      surveyHydration: { ready: false, source: 'supabase-highlight-starting', documentId: 'doc-1' },
     };
 
     assert.equal(
       shouldCoverFirstVisibleAnnotationPage({
+        documentId: 'doc-1',
         isCloudBackedDocument: true,
         pageNumber: 1,
         firstVisiblePageNumber: 1,
         ...pendingSources,
       }),
-      false
+      true
     );
 
     assert.equal(
       shouldCoverFirstVisibleAnnotationPage({
+        documentId: 'doc-1',
         isCloudBackedDocument: true,
         pageNumber: 2,
         firstVisiblePageNumber: 1,
@@ -85,14 +91,37 @@ describe('annotation hydration first-paint gate', () => {
     );
   });
 
-  it('releases the visual cover when hydration is ready and never covers local PDFs', () => {
+  it('does not reuse the previous document readiness during a cloud document switch', () => {
     assert.equal(
-      shouldCoverFirstVisibleAnnotationPage({
+      shouldGateFirstVisibleAnnotationPage({
+        documentId: 'next-document',
         isCloudBackedDocument: true,
         pageNumber: 1,
         firstVisiblePageNumber: 1,
-        normalHydration: { ready: true, source: 'ydoc-snapshot' },
-        surveyHydration: { ready: true, source: 'supabase-highlight' },
+        normalHydration: {
+          ready: true,
+          source: 'annotation-doc',
+          documentId: 'previous-document',
+        },
+        surveyHydration: {
+          ready: true,
+          source: 'annotation-doc',
+          documentId: 'previous-document',
+        },
+      }),
+      true
+    );
+  });
+
+  it('releases the visual cover when hydration is ready and never covers local PDFs', () => {
+    assert.equal(
+      shouldCoverFirstVisibleAnnotationPage({
+        documentId: 'doc-1',
+        isCloudBackedDocument: true,
+        pageNumber: 1,
+        firstVisiblePageNumber: 1,
+        normalHydration: { ready: true, source: 'ydoc-snapshot', documentId: 'doc-1' },
+        surveyHydration: { ready: true, source: 'supabase-highlight', documentId: 'doc-1' },
       }),
       false
     );

@@ -4,8 +4,9 @@
  *
  * Exports hydration-state constants, resolveFirstVisibleAnnotationPage,
  * isInitialAnnotationHydrationReady, and shouldGate/CoverFirstVisibleAnnotationPage.
- * Cloud-backed documents now never gate (last-good layer stays visible); only
- * local docs gate the first visible page until hydration is ready.
+ * Cloud-backed documents gate the first visible page until the authoritative
+ * annotation state for the current document is ready. Local documents never
+ * gate because their annotations load synchronously with the PDF.
  */
 export const ANNOTATION_HYDRATION_PENDING = Object.freeze({
   ready: false,
@@ -40,27 +41,35 @@ export function resolveFirstVisibleAnnotationPage({
 }
 
 function isInitialAnnotationHydrationReady({
+  documentId,
   isCloudBackedDocument,
   normalHydration,
+  surveyHydration,
 } = {}) {
   if (!isCloudBackedDocument) return true;
-  return normalHydration?.ready === true;
+  if (normalHydration?.ready !== true || surveyHydration?.ready !== true) return false;
+
+  // React may render once with the previous document's ready state before the
+  // hydration effects reset. Never let that stale readiness uncover a new PDF.
+  if (documentId) {
+    return normalHydration?.documentId === documentId
+      && surveyHydration?.documentId === documentId;
+  }
+  return true;
 }
 
 export function shouldGateFirstVisibleAnnotationPage({
+  documentId,
   isCloudBackedDocument,
   pageNumber,
   firstVisiblePageNumber,
   normalHydration,
   surveyHydration,
 } = {}) {
-  // Cloud documents now follow the collaborative-editor rule: keep the last
-  // good annotation layer visible while fresh sync state hydrates in the
-  // background. Hiding the page during hydration caused repeated blank-screen
-  // failures even though Supabase/Y.Doc still had the annotations.
+  if (!isCloudBackedDocument) return false;
   if (Number(pageNumber) !== Number(firstVisiblePageNumber)) return false;
-  if (isCloudBackedDocument) return false;
   return !isInitialAnnotationHydrationReady({
+    documentId,
     isCloudBackedDocument,
     normalHydration,
     surveyHydration,
@@ -68,6 +77,7 @@ export function shouldGateFirstVisibleAnnotationPage({
 }
 
 export function shouldCoverFirstVisibleAnnotationPage({
+  documentId,
   isCloudBackedDocument,
   pageNumber,
   firstVisiblePageNumber,
@@ -75,6 +85,7 @@ export function shouldCoverFirstVisibleAnnotationPage({
   surveyHydration,
 } = {}) {
   return shouldGateFirstVisibleAnnotationPage({
+    documentId,
     isCloudBackedDocument,
     pageNumber,
     firstVisiblePageNumber,

@@ -19018,6 +19018,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   const isCloudBackedAnnotationDocument = !!pdfFile?.id && cloudSyncEnabled;
   const isFirstVisibleAnnotationPageGated = useCallback((pageNumber) => {
     const gated = shouldGateFirstVisibleAnnotationPage({
+      documentId: pdfFile?.id || null,
       isCloudBackedDocument: isCloudBackedAnnotationDocument,
       pageNumber,
       firstVisiblePageNumber: firstVisibleAnnotationPage,
@@ -19047,6 +19048,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   useEffect(() => {
     if (!isCloudBackedAnnotationDocument) return;
     const ready = !shouldGateFirstVisibleAnnotationPage({
+      documentId: pdfFile?.id || null,
       isCloudBackedDocument: true,
       pageNumber: firstVisibleAnnotationPage,
       firstVisiblePageNumber: firstVisibleAnnotationPage,
