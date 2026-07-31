@@ -45,7 +45,7 @@ jobs:
       - name: Setup Supabase CLI
         uses: supabase/setup-cli@v3
         with:
-          version: 2.109.1
+          version: 2.111.0
 
       - name: Install dependencies
         run: npm install --include=optional --no-audit --no-fund
@@ -54,6 +54,9 @@ jobs:
 
       - name: Recheck release contract
         run: node scripts/release-integrity.mjs --static
+
+      - name: Recheck production dependency licenses
+        run: npm run check:licenses
 
       - name: Type-check Supabase functions before production
         run: deno check --config supabase/functions/deno.json supabase/functions/*/index.ts
@@ -64,8 +67,20 @@ jobs:
       - name: Apply every pending database migration
         run: supabase db push --linked --yes
 
-      - name: Deploy every local Supabase function
-        run: supabase functions deploy --project-ref "$SUPABASE_PROJECT_ID" --use-api --jobs 4
+      - name: Deploy shared email renderer first
+        run: supabase functions deploy --project-ref "$SUPABASE_PROJECT_ID" --use-api send-email
+
+      - name: Deploy invite handler after its database and email dependencies
+        run: supabase functions deploy --project-ref "$SUPABASE_PROJECT_ID" --use-api send-invite-email
+
+      - name: Deploy remaining Supabase functions
+        run: >-
+          supabase functions deploy --project-ref "$SUPABASE_PROJECT_ID" --use-api --jobs 4
+          create-checkout-session
+          create-portal-session
+          excel-apply-changeset
+          send-profile-change-notification
+          stripe-webhook
 
       - name: Verify database, functions, Stripe, and endpoint health
         run: node scripts/release-integrity.mjs --remote
