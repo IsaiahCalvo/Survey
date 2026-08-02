@@ -56,23 +56,27 @@ export const useFocusTrap = (containerRef, isOpen, { onEscape, autoFocus = true 
 
     openerRef.current = document.activeElement;
 
-    // Move focus in. Deferred a frame so portals/animations have painted and
-    // the container's children are actually measurable (isReachable needs a box).
-    let focusFrame = 0;
-    if (autoFocus) {
-      focusFrame = requestAnimationFrame(() => {
-        const container = containerRef.current;
-        if (!container || container.contains(document.activeElement)) return;
-        const focusable = focusableWithin(container);
-        const preferred = container.querySelector('[data-autofocus]')
-          || focusable.find((el) => /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName))
-          || focusable[0];
-        preferred?.focus?.();
-      });
+    // Move focus in. Tried synchronously first, then retried on a timer for
+    // dialogs whose content arrives a tick late (portals, lazy panels).
+    // Deliberately a timer and not requestAnimationFrame: rAF is throttled to
+    // never in a hidden/background tab, which would silently skip the move.
+    let retryTimer = 0;
+    const moveFocusIn = () => {
+      const container = containerRef.current;
+      if (!container || container.contains(document.activeElement)) return true;
+      const focusable = focusableWithin(container);
+      const preferred = container.querySelector('[data-autofocus]')
+        || focusable.find((el) => /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName))
+        || focusable[0];
+      preferred?.focus?.();
+      return Boolean(preferred);
+    };
+    if (autoFocus && !moveFocusIn()) {
+      retryTimer = setTimeout(moveFocusIn, 0);
     }
 
     return () => {
-      if (focusFrame) cancelAnimationFrame(focusFrame);
+      if (retryTimer) clearTimeout(retryTimer);
       openerRef.current?.focus?.();
       openerRef.current = null;
     };
