@@ -18,7 +18,6 @@ import { useState, useEffect, lazy, Suspense } from 'react';
 import DocumentsLedger from './DocumentsLedger';
 const ProjectsFolderTree = lazy(() => import('./ProjectsFolderTree'));
 const TemplatesEditor = lazy(() => import('./TemplatesEditor'));
-const ArchiveScreenContainer = lazy(() => import('./ArchiveScreenContainer'));
 import ShareModal from './ShareModal';
 import AccessManagementModal from './AccessManagementModal';
 import { HubChromeContext } from './HubShell';
@@ -159,15 +158,6 @@ export default function SurveyHub({
           />
         </Suspense>
         )
-      )}
-
-      {/* KAL-280 — Archive owns its own data: it reads the archived slice
-          directly rather than filtering the hub's live lists, because those
-          lists deliberately exclude archived rows. */}
-      {tab === 'archive' && (
-        <Suspense fallback={<HubLoadingSkeletons {...common} tab="documents" />}>
-          <ArchiveScreenContainer {...common} />
-        </Suspense>
       )}
 
       <ShareModal
