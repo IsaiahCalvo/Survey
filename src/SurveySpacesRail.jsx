@@ -23,6 +23,7 @@ import reviewWarningIcon from './assets/review-warning.svg';
 import { SYNC_TONE_COLORS, liveSyncGateStatus, liveSyncVerifyStatus, syncMessagePresentation } from './services/excelSyncStatus';
 import { compareSurveyMarkersForOrder } from './utils/surveyMarkerOrdering';
 import { showToast } from './utils/toast';
+import { useConfirmDialog } from './components/dialogPrompts';
 import { useMobileSheetMotion } from './mobile/useMobileSheetMotion';
 
 const FONT_FAMILY = '-apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", "Segoe UI", Roboto, Ubuntu, "Noto Sans", Arial, sans-serif';
@@ -331,6 +332,11 @@ const SurveySpacesRail = ({
   onCollapseChange = null,
   mobileMode = false,
 }) => {
+  // KAL-57: themed replacement for the native confirm() that gated the three
+  // bulk-delete actions in this rail (categories, copied items, category
+  // items). Promise-based so each handler keeps its original
+  // `if (!confirmed) return;` shape and nothing deletes before the user answers.
+  const [askConfirm, confirmDialogElement] = useConfirmDialog();
   const [isSurveyPanelCollapsed, setIsSurveyPanelCollapsed] = useState(true);
   const [openEntityDropdownId, setOpenEntityDropdownId] = useState(null);
   const [isModuleSelectorOpen, setIsModuleSelectorOpen] = useState(false);
@@ -1992,13 +1998,19 @@ const SurveySpacesRail = ({
                             const selectedCategoryCount = Object.keys(selectedCategories).filter(id => selectedCategories[id]).length;
                             const hasSelectedCategories = selectedCategoryCount > 0;
 
-                            const deleteSelectedCategories = () => {
+                            const deleteSelectedCategories = async () => {
                               const selectedCatIds = Object.keys(selectedCategories).filter(id => selectedCategories[id]);
                               if (selectedCatIds.length === 0) {
                                 showToast('Please select at least one category to delete.', 'warn');
                                 return;
                               }
-                              if (!confirm(`Are you sure you want to delete ${selectedCatIds.length} categor${selectedCatIds.length !== 1 ? 'ies' : 'y'} and all items within?`)) {
+                              const confirmed = await askConfirm({
+                                title: `Delete ${selectedCatIds.length} categor${selectedCatIds.length !== 1 ? 'ies' : 'y'}?`,
+                                message: `Are you sure you want to delete ${selectedCatIds.length} categor${selectedCatIds.length !== 1 ? 'ies' : 'y'} and all items within?`,
+                                confirmLabel: `Delete categor${selectedCatIds.length !== 1 ? 'ies' : 'y'}`,
+                                danger: true,
+                              });
+                              if (!confirmed) {
                                 return;
                               }
 
@@ -2594,12 +2606,18 @@ const SurveySpacesRail = ({
 
                               {/* Delete button */}
                               <button
-                                onClick={() => {
+                                onClick={async () => {
                                   const selectedIds = Object.keys(copiedItemSelection).filter(id => copiedItemSelection[id]);
                                   if (selectedIds.length === 0) return;
 
                                   // Confirm deletion
-                                  if (!confirm(`Are you sure you want to delete ${selectedIds.length} item${selectedIds.length !== 1 ? 's' : ''}?`)) {
+                                  const confirmed = await askConfirm({
+                                    title: `Delete ${selectedIds.length} item${selectedIds.length !== 1 ? 's' : ''}?`,
+                                    message: `Are you sure you want to delete ${selectedIds.length} item${selectedIds.length !== 1 ? 's' : ''}?`,
+                                    confirmLabel: `Delete ${selectedIds.length} item${selectedIds.length !== 1 ? 's' : ''}`,
+                                    danger: true,
+                                  });
+                                  if (!confirmed) {
                                     return;
                                   }
 
@@ -3137,13 +3155,19 @@ const SurveySpacesRail = ({
 
                                               <button
                                                 type="button"
-                                                onClick={() => {
+                                                onClick={async () => {
                                                   const selectedItemIds = Object.keys(selectedItemsForCategory).filter(id => selectedItemsForCategory[id]);
                                                   if (selectedItemIds.length === 0) {
                                                     showToast('Please select at least one item to delete.', 'warn');
                                                     return;
                                                   }
-                                                  if (!confirm(`Are you sure you want to delete ${selectedItemIds.length} item${selectedItemIds.length !== 1 ? 's' : ''}?`)) {
+                                                  const confirmed = await askConfirm({
+                                                    title: `Delete ${selectedItemIds.length} item${selectedItemIds.length !== 1 ? 's' : ''}?`,
+                                                    message: `Are you sure you want to delete ${selectedItemIds.length} item${selectedItemIds.length !== 1 ? 's' : ''}?`,
+                                                    confirmLabel: `Delete ${selectedItemIds.length} item${selectedItemIds.length !== 1 ? 's' : ''}`,
+                                                    danger: true,
+                                                  });
+                                                  if (!confirmed) {
                                                     return;
                                                   }
 
@@ -4118,6 +4142,12 @@ const SurveySpacesRail = ({
                 currentSurveyId={pdfFile?.id || null}
               />
             )}
+
+            {/* KAL-57: themed confirm dialog for the rail's three bulk-delete
+                actions, replacing native confirm(). Rendered unconditionally
+                (including mobile) so any delete path can await it; it renders
+                nothing until a handler opens it. */}
+            {confirmDialogElement}
           </>
   );
 };
