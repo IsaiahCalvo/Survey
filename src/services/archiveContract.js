@@ -1,0 +1,198 @@
+/**
+ * KAL-426 — the one normalized Archive item shape.
+ *
+ * Every later ticket reads this module rather than raw Supabase rows: the
+ * archive services (KAL-427/428/429) produce these items and the Archive screen
+ * (KAL-430) consumes them. Keeping the shape here — and pure — is what lets the
+ * screen be tested against mocks and the services be tested without a database.
+ *
+ * A normalized Archive item:
+ *   {
+ *     type:           'document' | 'project' | 'template'
+ *     id:             row id
+ *     name:           display name
+ *     ownerId:        the PERMANENT owner (row.user_id). A collaborator whose
+ *                     role is 'owner' is deliberately not represented here —
+ *                     only the permanent owner can act on an archived item.
+ *     projectId:      documents only; the project restore returns them to
+ *     projectName:    documents only; resolved for display, may be null
+ *     archiveGroupId: non-null only on a project group (the project row and
+ *                     each of its child documents share the id)
+ *     archivedAt:     ISO string
+ *     expiresAt:      ISO string, archivedAt + 30 days
+ *     daysRemaining:  whole days left, clamped to 0
+ *     children:       projects only; descriptive child documents
+ *     childCount:     children.length (0 for documents and templates)
+ *   }
+ */
+
+/** Retention window. Mirrors public.archive_retention_interval() in the database. */
+export const ARCHIVE_RETENTION_DAYS = 30;
+
+const MS_PER_DAY = 24 * 60 * 60 * 1000;
+
+export const ARCHIVE_ITEM_TYPES = Object.freeze(['document', 'project', 'template']);
+
+function toIso(value) {
+  if (!value) return null;
+  const date = value instanceof Date ? value : new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date.toISOString();
+}
+
+/**
+ * Whole days between now and the expiry, rounded UP so a partial day still
+ * reads as a day left, and clamped to 0 so an overdue row never shows a
+ * negative count while it waits for the purge job.
+ */
+export function daysRemaining(expiresAt, now = Date.now()) {
+  const iso = toIso(expiresAt);
+  if (!iso) return 0;
+  const delta = new Date(iso).getTime() - (now instanceof Date ? now.getTime() : now);
+  if (delta <= 0) return 0;
+  return Math.ceil(delta / MS_PER_DAY);
+}
+
+/** The expiry the database would compute for an archive happening at `archivedAt`. */
+export function expiryFromArchivedAt(archivedAt) {
+  const iso = toIso(archivedAt);
+  if (!iso) return null;
+  return new Date(new Date(iso).getTime() + ARCHIVE_RETENTION_DAYS * MS_PER_DAY).toISOString();
+}
+
+/** True when the row carries user-Archive metadata (never the plan-limit `archived` flag). */
+export function isUserArchived(row) {
+  return Boolean(row && row.user_archived_at);
+}
+
+function baseItem(type, row, now) {
+  const archivedAt = toIso(row.user_archived_at);
+  const expiresAt = toIso(row.user_archive_expires_at) || expiryFromArchivedAt(archivedAt);
+  return {
+    type,
+    id: row.id,
+    name: row.name || 'Untitled',
+    ownerId: row.user_id || null,
+    projectId: null,
+    projectName: null,
+    archiveGroupId: row.archive_group_id || null,
+    archivedAt,
+    expiresAt,
+    daysRemaining: daysRemaining(expiresAt, now),
+    children: [],
+    childCount: 0,
+  };
+}
+
+/** A document archived on its own — a top-level Archive item. */
+export function normalizeDocumentItem(row, { projectName = null, now = Date.now() } = {}) {
+  const item = baseItem('document', row, now);
+  item.projectId = row.project_id || null;
+  item.projectName = projectName;
+  return item;
+}
+
+/** A template archived on its own. */
+export function normalizeTemplateItem(row, { now = Date.now() } = {}) {
+  return baseItem('template', row, now);
+}
+
+/**
+ * A project group: one Archive item whose children are descriptive rows.
+ * Children cannot be restored or deleted on their own — the project acts as a
+ * unit — so they are deliberately reduced to the fields the screen displays.
+ */
+export function normalizeProjectItem(row, childDocumentRows = [], { now = Date.now() } = {}) {
+  const item = baseItem('project', row, now);
+  item.children = (childDocumentRows || []).map((child) => ({
+    type: 'document',
+    id: child.id,
+    name: child.name || 'Untitled',
+    projectId: child.project_id || row.id,
+    archiveGroupId: child.archive_group_id || row.archive_group_id || null,
+  }));
+  item.childCount = item.children.length;
+  return item;
+}
+
+/**
+ * Assemble the whole Archive from the three raw row sets.
+ *
+ * A document belongs to a project group when it carries that project's
+ * archive_group_id; those rows become children and never appear as top-level
+ * items. Everything else is top level.
+ */
+export function buildArchiveItems({
+  documents = [],
+  projects = [],
+  templates = [],
+  projectNamesById = {},
+  now = Date.now(),
+} = {}) {
+  const archivedDocuments = documents.filter(isUserArchived);
+  const archivedProjects = projects.filter(isUserArchived);
+  const archivedTemplates = templates.filter(isUserArchived);
+
+  const groupIds = new Set(
+    archivedProjects.map((project) => project.archive_group_id).filter(Boolean),
+  );
+  const childrenByGroup = new Map();
+  const standaloneDocuments = [];
+
+  for (const row of archivedDocuments) {
+    const group = row.archive_group_id;
+    if (group && groupIds.has(group)) {
+      if (!childrenByGroup.has(group)) childrenByGroup.set(group, []);
+      childrenByGroup.get(group).push(row);
+      continue;
+    }
+    standaloneDocuments.push(row);
+  }
+
+  return [
+    ...archivedProjects.map((row) => normalizeProjectItem(
+      row,
+      childrenByGroup.get(row.archive_group_id) || [],
+      { now },
+    )),
+    ...standaloneDocuments.map((row) => normalizeDocumentItem(row, {
+      projectName: row.project_id ? (projectNamesById[row.project_id] || null) : null,
+      now,
+    })),
+    ...archivedTemplates.map((row) => normalizeTemplateItem(row, { now })),
+  ];
+}
+
+/**
+ * The confirmation copy locked in KAL-280. Kept beside the contract so the
+ * archive call sites (KAL-432) and the Archive screen cannot drift apart.
+ * Sentence case, curly apostrophes, matching the rest of the hub.
+ */
+export function archiveConfirmCopy(item) {
+  if (!item) return null;
+  if (item.type === 'project') {
+    return {
+      title: 'Archive this project?',
+      message: `${item.name} and its ${item.childCount} ${item.childCount === 1 ? 'document' : 'documents'} will move to Archive and remain recoverable for ${ARCHIVE_RETENTION_DAYS} days. After ${ARCHIVE_RETENTION_DAYS} days, the project, its documents, and all markups will be permanently deleted.`,
+      confirmLabel: 'Archive project',
+    };
+  }
+  if (item.type === 'template') {
+    return {
+      title: 'Archive this template?',
+      message: `${item.name} and all of its content will move to Archive and remain recoverable for ${ARCHIVE_RETENTION_DAYS} days. After ${ARCHIVE_RETENTION_DAYS} days, the template will be permanently deleted.`,
+      confirmLabel: 'Archive template',
+    };
+  }
+  return {
+    title: 'Archive this document?',
+    message: `${item.name} will move to Archive and remain recoverable for ${ARCHIVE_RETENTION_DAYS} days. After ${ARCHIVE_RETENTION_DAYS} days, the document and all its markups will be permanently deleted.`,
+    confirmLabel: 'Archive document',
+  };
+}
+
+/** The single permanent-deletion confirmation, identical for every selection. */
+export const DELETE_FOREVER_COPY = Object.freeze({
+  title: 'Delete forever?',
+  message: 'This cannot be undone. The selected items and everything they contain will be permanently deleted.',
+  confirmLabel: 'Delete forever',
+});
