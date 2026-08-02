@@ -14,7 +14,7 @@
    The prototype scoped an editorial "paper-and-ink" palette via an inline
    `.ed-scope` stylesheet injected into <head> at runtime. Survey Hub v2.html
    then overrode it to warm-dark. Here those overrides are folded straight
-   into the injected stylesheet, so the end result is warm-dark on its own.
+   into TemplatesEditor.css, so the end result is warm-dark on its own.
 
    Real data shape (defensive reads — older templates store modules under
    `spaces` or inside a `config` blob, and entities inside `config`):
@@ -77,6 +77,7 @@ import {
 import { moveItemById } from '../reorder/flatReorderUtils.js';
 import { pickByIds, removeByIds, duplicateAfterByIds } from './selectionById.js';
 import { closeButtonStyle, miniButtonStyle, miniSelectButtonStyle, moreButtonStyle } from './hubControls';
+import './TemplatesEditor.css';
 
 const CATEGORY_COLLAPSE_TRANSITION = 'grid-template-rows 0.18s ease, opacity 0.16s ease';
 const TEMPLATE_ORDER_STORAGE_KEY = 'surveyHub.templateOrder';
@@ -134,131 +135,6 @@ const getModuleTabClampBounds = (activeId) => {
     maxX: lastSlotLeft - activeLeft,
   };
 };
-
-/* ============================================================
-   Inline scoped stylesheet — the prototype's `.ed-scope` editorial
-   sheet with Survey Hub v2.html's warm-dark overrides folded in,
-   so it renders warm-dark without a separate override sheet.
-   ============================================================ */
-const _edScopeCSS = `
-.ed-scope {
-  background:
-    radial-gradient(circle at 0% 0%, rgba(216,168,78,0.06), transparent 35%),
-    #0d0f14;
-  color: #f4f1ea;
-  font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
-  letter-spacing: -0.005em;
-  --paper: #0d0f14; --paper-deep: #12151c; --paper-card: #181c24;
-  --ink: #f4f1ea; --ink-soft: #e8e2d4; --ink-muted: #8d96a6; --ink-quiet: #5a6473;
-  --rule: #2a3140; --rule-strong: #3a4252;
-  --accent: #d8a84e; --accent-soft: #b6904a;
-  /* warm-dark aliases used by some prototype inline styles */
-  --ink-700: #181c24; --ink-600: #232834; --ink-500: #2a3140;
-  --ink-300: #5a6473; --ink-200: #8d96a6; --bone-100: #f4f1ea;
-}
-.ed-scope * { box-sizing: border-box; min-width: 0; }
-.ed-scope .mono,
-.ed-scope .micro,
-.ed-scope .micro-mid,
-.ed-scope .pin,
-.ed-scope .pill-mono { font-family: "JetBrains Mono", "SF Mono", ui-monospace, Menlo, monospace; }
-.ed-scope .micro {
-  font-size: 10.5px; letter-spacing: 0.14em; text-transform: uppercase;
-  color: #8d96a6; font-weight: 700;
-}
-.ed-scope .micro-mid {
-  font-size: 10.5px; letter-spacing: 0.10em; text-transform: uppercase;
-  color: #8d96a6; font-weight: 600;
-}
-.ed-scope .meta { color: var(--ink-muted); }
-
-/* Cards */
-.ed-scope .card { background: #181c24; border: 1px solid #2a3140; border-radius: 10px; }
-.ed-scope .card-line { background: #12151c; border: 1px solid #2a3140; border-radius: 6px; }
-
-/* Buttons */
-.ed-scope .btn-ink {
-  background: #d8a84e; color: #15110a; border: 1px solid #d8a84e;
-  border-radius: 6px; padding: 4px 8px; font-size: 11px; font-weight: 600;
-  height: 28px; box-sizing: border-box; cursor: pointer; font-family: inherit;
-  display: inline-flex; align-items: center; gap: 4px;
-}
-.ed-scope .btn-line {
-  background: #181c24; color: #f4f1ea; border: 1px solid #2a3140;
-  border-radius: 6px; padding: 4px 8px; font-size: 11px;
-  cursor: pointer; font-family: inherit;
-}
-.ed-scope .btn-ghost {
-  background: transparent; color: #8d96a6; border: 0;
-  padding: 4px 8px; font-size: 11px; cursor: pointer; font-family: inherit;
-}
-.ed-scope .btn-ghost:hover { color: #f4f1ea; }
-
-/* Inputs / editable feel */
-.ed-scope .inline-edit {
-  background: transparent; border: 0; border-bottom: 1px solid transparent;
-  color: var(--ink); font: inherit; font-size: 13px; padding: 4px 0;
-  width: 100%; outline: none;
-}
-.ed-scope .inline-edit:hover { border-bottom-color: var(--rule); }
-.ed-scope .inline-edit:focus { border-bottom-color: #d8a84e; }
-.ed-scope .cat-title { cursor: text; border-bottom: 1px dashed transparent; }
-.ed-scope .cat-title:hover { border-bottom-color: var(--rule-strong); }
-.ed-scope .cat-title:focus { border-bottom: 1px solid #d8a84e; }
-
-/* Prevent horizontal scrolling anywhere inside the editor */
-.ed-scope .slim-scroll { overflow-x: hidden; }
-
-/* Overlay range inputs (hue + opacity) — transparent track, pill thumb */
-.ed-scope .picker-hue-range, .ed-scope .picker-op-range {
-  appearance: none; -webkit-appearance: none; background: transparent; padding: 0;
-}
-.ed-scope .picker-hue-range::-webkit-slider-runnable-track,
-.ed-scope .picker-op-range::-webkit-slider-runnable-track { background: transparent; height: 100%; }
-.ed-scope .picker-hue-range::-moz-range-track,
-.ed-scope .picker-op-range::-moz-range-track { background: transparent; height: 100%; }
-.ed-scope .picker-hue-range::-webkit-slider-thumb,
-.ed-scope .picker-op-range::-webkit-slider-thumb {
-  appearance: none; -webkit-appearance: none;
-  width: 4px; height: 14px; border-radius: 2px;
-  background: #f6f4ef; border: 1px solid rgba(0,0,0,0.65);
-  box-shadow: 0 1px 3px rgba(0,0,0,0.55); cursor: pointer;
-}
-.ed-scope .picker-hue-range::-moz-range-thumb {
-  width: 4px; height: 14px; border-radius: 2px;
-  background: #f6f4ef; border: 1px solid rgba(0,0,0,0.65);
-  box-shadow: 0 1px 3px rgba(0,0,0,0.55); cursor: pointer;
-}
-.ed-scope .picker-op-range::-moz-range-thumb {
-  width: 4px; height: 14px; border-radius: 2px;
-  background: #f6f4ef; border: 1px solid rgba(0,0,0,0.65);
-  box-shadow: 0 1px 3px rgba(0,0,0,0.55); cursor: pointer;
-}
-
-/* "More" popup — rendered into a document.body portal at fixed coords so
-   the panels' overflow:hidden can never clip it. Literal hex colours
-   because the portal renders outside the .ed-scope CSS-variable root. */
-.ed-tpl-menu {
-  position: fixed; z-index: 4000;
-  background: #181c24; border: 1px solid #3a4252; border-radius: 8px;
-  padding: 4px; box-shadow: 0 12px 30px rgba(0,0,0,0.55);
-  font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
-}
-.ed-tpl-menu button {
-  display: block; width: 100%; text-align: left;
-  background: transparent; border: 0; color: #f4f1ea;
-  padding: 7px 10px; font-size: 12px; border-radius: 4px;
-  cursor: pointer; font-family: inherit;
-}
-.ed-tpl-menu button:hover { background: #232834; }
-.ed-tpl-menu button.danger { color: #cf6f6f; }
-`;
-if (typeof document !== 'undefined' && !document.getElementById('ed-style')) {
-  const s = document.createElement('style');
-  s.id = 'ed-style';
-  s.textContent = _edScopeCSS;
-  document.head.appendChild(s);
-}
 
 /* ============================================================
    Defensive readers — templates may carry structure at the top
