@@ -26,6 +26,7 @@ import { purgeAnnotationDoc } from './services/annotationDocSync';
 import { lockDocument, unlockDocument } from './services/documentLockService.js';
 import { perfUpload } from './utils/performanceLogger';
 import { showToast } from './utils/toast';
+import { useConfirmDialog, usePromptDialog } from './components/dialogPrompts';
 import { readBlobAsArrayBuffer } from './utils/blobArrayBuffer.js';
 
 // --- helpers (shared small utilities; FONT_FAMILY/hexToRgba/normalizeName/
@@ -114,6 +115,12 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
     }
   }, []);
   const [isProjectModalOpen, setIsProjectModalOpen] = useState(false);
+  // KAL-57: themed replacements for the native confirm()/prompt() dialogs that
+  // used to gate document/project deletion and the document lock toggle. Both
+  // are promise-based so each caller keeps its original `if (!answer) return;`
+  // control flow — nothing runs until the user actually answers.
+  const [askConfirm, confirmDialogElement] = useConfirmDialog();
+  const [askPrompt, promptDialogElement] = usePromptDialog();
   // Auth state and user dropdown menu
   const { user, isAuthenticated, signOut, signInWithGoogle, features } = useAuth();
   const { isAuthenticated: isMSAuthenticated, login: msLogin, logout: msLogout, account: msAccount, needsReconnect: msNeedsReconnect } = useMSGraph();
@@ -1654,7 +1661,13 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
 
     console.log('[DocumentDelete] single:click', JSON.stringify({ docId }));
 
-    if (!confirm('Are you sure you want to delete this document? This action cannot be undone.')) {
+    const confirmed = await askConfirm({
+      title: 'Delete this document?',
+      message: 'Are you sure you want to delete this document? This action cannot be undone.',
+      confirmLabel: 'Delete document',
+      danger: true,
+    });
+    if (!confirmed) {
       console.log('[DocumentDelete] single:cancelled', JSON.stringify({ docId }));
       return;
     }
@@ -1807,7 +1820,13 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
     const list = Array.isArray(docs) ? docs.filter(Boolean) : [];
     if (list.length === 0) return;
     if (!user) { showToast('Please sign in to delete documents', 'warn'); return; }
-    if (!confirm(`Delete ${list.length === 1 ? 'this document' : `these ${list.length} documents`}? This action cannot be undone.`)) return;
+    const confirmed = await askConfirm({
+      title: list.length === 1 ? 'Delete this document?' : `Delete these ${list.length} documents?`,
+      message: 'This action cannot be undone.',
+      confirmLabel: list.length === 1 ? 'Delete document' : `Delete ${list.length} documents`,
+      danger: true,
+    });
+    if (!confirmed) return;
     const ids = list.map(d => d.id);
     setDocuments(prev => prev.filter(d => !ids.includes(d.id)));
     try {
@@ -1829,7 +1848,18 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
     const list = Array.isArray(items) ? items.filter(Boolean) : [];
     if (list.length === 0) return false;
     if (!user) { showToast('Please sign in to delete projects', 'warn'); return false; }
-    if (!confirm(`Delete ${list.length === 1 ? 'this project and its documents' : `these ${list.length} projects and their documents`}? This action cannot be undone.`)) return false;
+    const confirmed = await askConfirm({
+      title: list.length === 1
+        ? 'Delete this project and its documents?'
+        : `Delete these ${list.length} projects and their documents?`,
+      message: 'This action cannot be undone.',
+      confirmLabel: list.length === 1 ? 'Delete project' : `Delete ${list.length} projects`,
+      danger: true,
+    });
+    // Cancelling must still resolve the caller's boolean contract as "not
+    // deleted" — the hub uses this return value to decide whether to clear its
+    // selection.
+    if (!confirmed) return false;
 
     const ids = list.map((project) => project.id).filter(Boolean);
     setDocuments((prev) => prev.filter((doc) => !ids.includes(doc.project_id || doc.projectId)));
@@ -1916,14 +1946,26 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
     try {
       let result;
       if (isLocked) {
-        const ok = confirm('Unlock for editing? This re-enables changes from everyone with edit access.');
+        const ok = await askConfirm({
+          title: 'Unlock for editing?',
+          message: 'This re-enables changes from everyone with edit access.',
+          confirmLabel: 'Unlock',
+          // Unlocking is not destructive — brand gold primary, not red.
+          danger: false,
+        });
         if (!ok) return;
         result = await unlockDocument(doc.id);
       } else {
-        const raw = prompt(
-          'Lock this document? It becomes read-only for everyone.\n\nOptional label (e.g. "Final v1"):',
-          '',
-        );
+        const raw = await askPrompt({
+          title: 'Lock this document?',
+          message: 'It becomes read-only for everyone.',
+          label: 'Optional label',
+          placeholder: 'e.g. Final v1',
+          confirmLabel: 'Lock document',
+        });
+        // null === dismissed. An empty string means "lock it, no label" — the
+        // same distinction native prompt() made, and lockDocument() relies on
+        // it below.
         if (raw == null) return;
         result = await lockDocument(doc.id, raw.trim() ? raw.trim() : null);
       }
@@ -2059,6 +2101,12 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
           >×</button>
         </div>
       )}
+
+      {/* KAL-57: themed confirm / prompt dialogs (replacing native
+          confirm()/prompt()). Rendered last so their fixed-position scrim sits
+          above the hub chrome. Both are inert until a handler awaits them. */}
+      {confirmDialogElement}
+      {promptDialogElement}
     </>
   );
 });
