@@ -7,7 +7,8 @@
  * isOneDrive/filePath props. Renders null unless isOpen. Part of the Excel two-way
  * sync flow.
  */
-import { useEffect, useRef } from 'react';
+import { useRef } from 'react';
+import { useFocusTrap } from '../hooks/useFocusTrap';
 import { COLORS, TYPOGRAPHY, BORDERS, SHADOWS } from '../theme';
 
 const ExcelLockedModal = ({
@@ -17,27 +18,11 @@ const ExcelLockedModal = ({
   filePath = '',
   isOneDrive = false
 }) => {
-  const previouslyFocusedRef = useRef(null);
+  const dialogRef = useRef(null);
 
-  // Accessibility: Escape closes the modal, and focus returns to whatever
-  // triggered it once it closes (minimal per-modal patch, no shared modal
-  // primitive/focus trap).
-  useEffect(() => {
-    if (!isOpen) return undefined;
-    previouslyFocusedRef.current = document.activeElement;
-    const handleKey = (e) => {
-      if (e.key === 'Escape') {
-        e.stopPropagation();
-        onCancel?.();
-      }
-    };
-    window.addEventListener('keydown', handleKey, true);
-    return () => {
-      window.removeEventListener('keydown', handleKey, true);
-      previouslyFocusedRef.current?.focus?.();
-      previouslyFocusedRef.current = null;
-    };
-  }, [isOpen, onCancel]);
+  // Accessibility: the shared focus trap keeps Tab inside the dialog, closes
+  // it on Escape, and returns focus to whatever opened it.
+  useFocusTrap(dialogRef, isOpen, { onEscape: onCancel });
 
   if (!isOpen) return null;
 
@@ -74,6 +59,9 @@ const ExcelLockedModal = ({
           boxShadow: SHADOWS.xl,
           border: `1px solid ${COLORS.modal.border}`,
         }}
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header with warning icon */}

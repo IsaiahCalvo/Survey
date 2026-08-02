@@ -6,6 +6,7 @@
  * calls onSave({ fileName, folder }). Used by the Excel export flow to save to OneDrive.
  */
 import { useState, useEffect, useRef } from 'react';
+import { useFocusTrap } from '../hooks/useFocusTrap';
 import { COLORS, TYPOGRAPHY, BORDERS, SHADOWS } from '../theme';
 import OneDriveFolderBrowser from './OneDriveFolderBrowser';
 import { showToast } from '../utils/toast';
@@ -21,7 +22,7 @@ const OneDriveFileSaveModal = ({
   const [fileName, setFileName] = useState(defaultFileName);
   const [selectedFolder, setSelectedFolder] = useState(null);
   const [fileNameError, setFileNameError] = useState('');
-  const previouslyFocusedRef = useRef(null);
+  const dialogRef = useRef(null);
 
   // Reset state when modal opens
   useEffect(() => {
@@ -32,25 +33,9 @@ const OneDriveFileSaveModal = ({
     }
   }, [isOpen, defaultFileName]);
 
-  // Accessibility: Escape closes the modal, and focus returns to whatever
-  // triggered it once it closes (minimal per-modal patch, no shared modal
-  // primitive/focus trap).
-  useEffect(() => {
-    if (!isOpen) return undefined;
-    previouslyFocusedRef.current = document.activeElement;
-    const handleKey = (e) => {
-      if (e.key === 'Escape') {
-        e.stopPropagation();
-        onClose?.();
-      }
-    };
-    window.addEventListener('keydown', handleKey, true);
-    return () => {
-      window.removeEventListener('keydown', handleKey, true);
-      previouslyFocusedRef.current?.focus?.();
-      previouslyFocusedRef.current = null;
-    };
-  }, [isOpen, onClose]);
+  // Accessibility: the shared focus trap keeps Tab inside the dialog, closes
+  // it on Escape, and returns focus to whatever opened it.
+  useFocusTrap(dialogRef, isOpen, { onEscape: onClose });
 
   // Validate filename
   const validateFileName = (name) => {
@@ -155,6 +140,9 @@ const OneDriveFileSaveModal = ({
           boxShadow: SHADOWS.xl,
           border: `1px solid ${COLORS.modal.border}`,
         }}
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}

@@ -15,7 +15,8 @@
  * mode="version" the caller cancels the upload, for mode="alias" the caller
  * treats it like 'skip-alias'. This component just reports.
  */
-import { useEffect, useRef } from 'react';
+import { useRef } from 'react';
+import { useFocusTrap } from '../hooks/useFocusTrap';
 import { COLORS, TYPOGRAPHY, BORDERS, SHADOWS, Z_INDEX } from '../theme';
 
 const DuplicateUploadModal = ({
@@ -29,24 +30,11 @@ const DuplicateUploadModal = ({
   onResolve,
   onClose,
 }) => {
-  const previouslyFocusedRef = useRef(null);
+  const dialogRef = useRef(null);
 
-  useEffect(() => {
-    if (!isOpen) return undefined;
-    previouslyFocusedRef.current = document.activeElement;
-    const handleKey = (e) => {
-      if (e.key === 'Escape') {
-        e.stopPropagation();
-        onClose?.();
-      }
-    };
-    window.addEventListener('keydown', handleKey, true);
-    return () => {
-      window.removeEventListener('keydown', handleKey, true);
-      previouslyFocusedRef.current?.focus?.();
-      previouslyFocusedRef.current = null;
-    };
-  }, [isOpen, onClose]);
+  // Accessibility: the shared focus trap keeps Tab inside the dialog, closes
+  // it on Escape, and returns focus to whatever opened it.
+  useFocusTrap(dialogRef, isOpen, { onEscape: onClose });
 
   if (!isOpen) return null;
 
@@ -91,6 +79,9 @@ const DuplicateUploadModal = ({
         role="dialog"
         aria-modal="true"
         aria-label={title}
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
         onClick={(e) => e.stopPropagation()}
         style={{
           background: COLORS.modal.surface,

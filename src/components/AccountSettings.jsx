@@ -7,8 +7,9 @@
  * Enterprise plans, reads `user_subscriptions` from Supabase, and launches
  * StripeCheckout / the billing portal. Embeds <UsageIndicator/> on the Usage tab.
  */
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../contexts/AuthContext';
+import { useFocusTrap } from '../hooks/useFocusTrap';
 import { useMSGraph } from '../contexts/MSGraphContext';
 import { getSupabaseSession, supabase } from '../supabaseClient';
 import StripeCheckout from './StripeCheckout';
@@ -46,6 +47,11 @@ export const AccountSettings = ({ isOpen, onClose }) => {
   const [isEditing, setIsEditing] = useState(false);
   const [activeTab, setActiveTab] = useState('general');
   const [subscriptionViewTab, setSubscriptionViewTab] = useState('manage'); // 'manage' or 'usage'
+  const dialogRef = useRef(null);
+
+  // Accessibility: the shared focus trap keeps Tab inside the dialog, closes
+  // it on Escape, and returns focus to whatever opened it.
+  useFocusTrap(dialogRef, isOpen, { onEscape: onClose });
 
   // Form state
   const [firstName, setFirstName] = useState('');
@@ -370,7 +376,13 @@ export const AccountSettings = ({ isOpen, onClose }) => {
 
   return (
     <div className="account-settings-overlay" onClick={onClose}>
-      <div className="account-settings-modal" onClick={(e) => e.stopPropagation()}>
+      <div
+        className="account-settings-modal"
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        onClick={(e) => e.stopPropagation()}
+      >
 
         {/* Header */}
         <div className="account-settings-header">
