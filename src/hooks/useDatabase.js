@@ -14,6 +14,7 @@ import { buildDocumentProvenance } from '../utils/documentProvenance.js';
 import { coalesceRead } from './requestCoalescer.js';
 import { resolveDocumentMetadata } from '../services/documentMetadataResolver.js';
 import { isScopedRequestCurrent } from './scopedRequestGuard.js';
+import { subscribeLibraryChange } from './libraryChangeBus.js';
 
 const isSupabaseNotFoundError = (error) => {
   if (!error) return false;
@@ -57,6 +58,16 @@ export const useProjects = () => {
     fetchProjects({ initialScopeKey: projectScopeKey });
   }, [user]);
 
+  // KAL-280 — restoring a project from Archive puts it back in this list. The
+  // Archive screen is a sibling of the hub, not a parent, so it announces the
+  // change rather than pushing rows down: subscribers simply refetch.
+  useEffect(() => {
+    if (!user || !isSupabaseAvailable()) return undefined;
+    return subscribeLibraryChange(() => {
+      fetchProjects({ initialScopeKey: projectScopeKeyRef.current }).catch(() => {});
+    });
+  }, [user]);
+
   const fetchProjects = async ({ initialScopeKey = null } = {}) => {
     const requestScopeKey = initialScopeKey || projectScopeKey;
     const requestId = ++projectRequestRef.current;
@@ -77,6 +88,9 @@ export const useProjects = () => {
         .from('projects')
         .select('id, user_id, name, description, color, archived, created_at, updated_at')
         .eq('user_id', user.id)
+        // KAL-280 — user-archived projects live in Archive, not the library.
+        // Separate column from `archived` (the Free-tier downgrade flag).
+        .is('user_archived_at', null)
         .order('created_at', { ascending: false });
 
       if (error) throw error;
@@ -189,6 +203,16 @@ export const useDocuments = (projectId = null) => {
     loadDocuments({ coalesce: true, initialScopeKey: documentScopeKey });
   }, [user, projectId]);
 
+  // KAL-280 — same as projects: a document restored from Archive reappears
+  // here without waiting for a remount. Not coalesced, because the archive
+  // mutation has already landed and this read must see it.
+  useEffect(() => {
+    if (!user || !isSupabaseAvailable()) return undefined;
+    return subscribeLibraryChange(() => {
+      loadDocuments({ initialScopeKey: documentScopeKeyRef.current });
+    });
+  }, [user, projectId]);
+
   // Pure query worker: runs the owned + collaborator-probe + conditional id=in
   // sequence as ONE unit and RETURNS the merged array (no setState here), so it
   // can be shared verbatim across instances by the coalescer.
@@ -198,6 +222,10 @@ export const useDocuments = (projectId = null) => {
       .select('*')
       .eq('user_id', user.id)
       .eq('archived', false)
+      // KAL-280 — user-archived documents live in Archive, not the library.
+      // This is a SEPARATE column from `archived` above: that one is the
+      // Free-tier downgrade flag, this one is the 30-day recoverable Archive.
+      .is('user_archived_at', null)
       .order('updated_at', { ascending: false });
 
     if (projectId) {
@@ -233,6 +261,11 @@ export const useDocuments = (projectId = null) => {
           .select('*')
           .in('id', missingIds)
           .eq('archived', false)
+          // KAL-280 — an archived document disappears for collaborators too.
+          // The database enforces this as well (user_can_access_document
+          // resolves only for the permanent owner while archived); filtering
+          // here keeps the shared document out of the list in the first place.
+          .is('user_archived_at', null)
           .order('updated_at', { ascending: false });
         if (projectId) {
           collaboratorQuery = collaboratorQuery.eq('project_id', projectId);
@@ -459,11 +492,22 @@ export const useTemplates = () => {
     loadTemplates({ coalesce: true, initialScopeKey: templateScopeKey });
   }, [user]);
 
+  // KAL-280 — a template restored from (or permanently deleted in) Archive has
+  // to leave/rejoin this list without a reload, same as documents and projects.
+  useEffect(() => {
+    if (!user || !isSupabaseAvailable()) return undefined;
+    return subscribeLibraryChange(() => {
+      loadTemplates({ initialScopeKey: templateScopeKeyRef.current });
+    });
+  }, [user]);
+
   const runTemplatesQuery = async () => {
     const { data, error } = await supabase
       .from('templates')
       .select('*')
       .eq('user_id', user.id)
+      // KAL-280 — user-archived templates live in Archive, not the library.
+      .is('user_archived_at', null)
       .order('created_at', { ascending: false });
     if (error) throw error;
     return data || [];
