@@ -11432,6 +11432,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
           redoHistoryRef.current = [currentState, ...redoHistoryRef.current].slice(0, 50);
           redoHistoryMetaRef.current = [legacyUndoMeta, ...redoHistoryMetaRef.current].slice(0, 50);
           setRedoHistory(redoHistoryRef.current);
+          // A new action after Undo must checkpoint the restored state before
+          // clearing Redo. Keeping the pre-undo hash here made that checkpoint
+          // look duplicate, so Survey Marker delete-after-move had no Undo.
+          lastCheckpointHashRef.current = null;
           pushHistoryDebugEvent('legacy_annotation_undo_applied', {
             historySource: shouldScopeCallouts ? 'callout history' : 'legacy history',
             chosenStack: 'legacyUndoHistory',
@@ -11693,6 +11697,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         undoHistoryRef.current = [...undoHistoryRef.current, currentState].slice(-50);
         undoHistoryMetaRef.current = [...undoHistoryMetaRef.current, legacyRedoMeta].slice(-50);
         setUndoHistory(undoHistoryRef.current);
+        lastCheckpointHashRef.current = null;
         pushHistoryDebugEvent('legacy_annotation_redo_applied', {
           historySource: shouldScopeCallouts ? 'callout history' : 'legacy history',
           chosenStack: 'legacyRedoHistory',

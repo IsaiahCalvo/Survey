@@ -157,6 +157,8 @@ const RegionSelectionTool = ({
   const undoStackRef = useRef([]);
   const redoStackRef = useRef([]);
   const documentDragFallbackRef = useRef(false);
+  const activePointerIdRef = useRef(null);
+  const pointerCaptureTargetRef = useRef(null);
   // Slice 1 (KAL-301a): tracks whether the current drag interaction actually
   // moved (i.e. coords changed). Undo snapshot is pushed at drag-END only when
   // this is true — one checkpoint per completed drag, not per pixel.
@@ -165,6 +167,38 @@ const RegionSelectionTool = ({
     () => getRegionEditHistoryKey(currentSpaceId, currentPageId),
     [currentSpaceId, currentPageId]
   );
+
+  const captureInteractionPointer = useCallback((event) => {
+    if (!Number.isFinite(event?.pointerId)) return true;
+    if (
+      activePointerIdRef.current !== null &&
+      activePointerIdRef.current !== event.pointerId
+    ) return false;
+
+    activePointerIdRef.current = event.pointerId;
+    const captureTarget = typeof event.currentTarget?.setPointerCapture === 'function'
+      ? event.currentTarget
+      : containerRef.current;
+    pointerCaptureTargetRef.current = captureTarget || null;
+    try { captureTarget?.setPointerCapture?.(event.pointerId); } catch { /* capture is best-effort */ }
+    return true;
+  }, []);
+
+  const releaseInteractionPointer = useCallback((event) => {
+    const activePointerId = activePointerIdRef.current;
+    if (
+      activePointerId !== null &&
+      Number.isFinite(event?.pointerId) &&
+      event.pointerId !== activePointerId
+    ) return false;
+
+    if (activePointerId !== null) {
+      try { pointerCaptureTargetRef.current?.releasePointerCapture?.(activePointerId); } catch { /* already released */ }
+    }
+    activePointerIdRef.current = null;
+    pointerCaptureTargetRef.current = null;
+    return true;
+  }, []);
 
   const resolvedPageWidth = useMemo(() => {
     if (Number.isFinite(pageWidth) && pageWidth > 0) {
@@ -601,6 +635,7 @@ const RegionSelectionTool = ({
         setIsCursorOverCanvas(false);
       }
     } else {
+      releaseInteractionPointer();
       persistHistoryStacks();
       setRegions([]);
       hasInitializedRegionsRef.current = false;
@@ -614,7 +649,7 @@ const RegionSelectionTool = ({
       setPolygonPoints([]);
       setIsCursorOverCanvas(false);
     }
-  }, [active, initialRegions, historyKey, cloneHistorySnapshot, persistHistoryStacks]);
+  }, [active, initialRegions, historyKey, cloneHistorySnapshot, persistHistoryStacks, releaseInteractionPointer]);
 
   useEffect(() => {
     setPolygonPoints([]);
@@ -1182,6 +1217,8 @@ const RegionSelectionTool = ({
       return;
     }
 
+    if (event.isPrimary === false || !captureInteractionPointer(event)) return;
+
     const rect = targetElement.getBoundingClientRect();
     const isWithinCanvas = isPointWithinTargetRect(event.clientX, event.clientY, rect);
 
@@ -1242,10 +1279,15 @@ const RegionSelectionTool = ({
       setIsDrawing(true);
       setPolygonPoints([{ x, y }]);
     }
-  }, [active, targetElement, effectiveToolType, clientPointToPage, selectedRegionIds, regions, getRegionBounds, activeTool, isPointWithinTargetRect]);
+  }, [active, targetElement, effectiveToolType, clientPointToPage, selectedRegionIds, regions, getRegionBounds, activeTool, isPointWithinTargetRect, captureInteractionPointer]);
 
   const handleMouseMove = useCallback((event) => {
     if (!active || !targetElement) return;
+    if (
+      activePointerIdRef.current !== null &&
+      Number.isFinite(event.pointerId) &&
+      event.pointerId !== activePointerIdRef.current
+    ) return;
 
     // Allow pan to work: if pan tool is active and not drawing/interacting, don't handle the event
     if (activeTool === 'pan' && !isDrawing && !interactionState) {
@@ -1589,8 +1631,9 @@ const RegionSelectionTool = ({
     }
   }, [active, targetElement, clientPointToPage, displayScaleX, displayScaleY, interactionState, ensureBoundsMinSize, isDrawing, effectiveToolType, startPoint, regions, activeTool]);
 
-  const handleMouseUp = useCallback(() => {
+  const handleMouseUp = useCallback((event) => {
     if (!active) return;
+    if (!releaseInteractionPointer(event)) return;
 
     setIsCursorOverCanvas(false);
 
@@ -1735,12 +1778,23 @@ const RegionSelectionTool = ({
     setStartPoint(null);
     setCurrentRect(null);
     setPolygonPoints([]);
-  }, [active, interactionState, liveRotationAngle, isDrawing, effectiveToolType, currentRect, polygonPoints, currentPageId, effectiveSelectionMode, mergeRegionWithOverlapping, subtractRegionFromRegions, pushUndoSnapshot, persistHistoryStacks, userId]);
+  }, [active, interactionState, liveRotationAngle, isDrawing, effectiveToolType, currentRect, polygonPoints, currentPageId, effectiveSelectionMode, mergeRegionWithOverlapping, subtractRegionFromRegions, pushUndoSnapshot, persistHistoryStacks, userId, releaseInteractionPointer]);
 
   const handleCanvasMouseLeave = useCallback(() => {
     setIsCursorOverCanvas(false);
-    handleMouseUp();
-  }, [handleMouseUp]);
+  }, []);
+
+  const handlePointerCancel = useCallback((event) => {
+    if (!releaseInteractionPointer(event)) return;
+    dragHasMovedRef.current = false;
+    setIsCursorOverCanvas(false);
+    setIsDrawing(false);
+    setStartPoint(null);
+    setCurrentRect(null);
+    setPolygonPoints([]);
+    setInteractionState(null);
+    setLiveRotationAngle(null);
+  }, [releaseInteractionPointer]);
 
   const handleConfirm = useCallback(() => {
     if (!onRegionComplete) {
@@ -1778,6 +1832,7 @@ const RegionSelectionTool = ({
   }, [currentPageId, onRegionComplete]);
 
   const handleCancel = useCallback(() => {
+    releaseInteractionPointer();
     if (typeof document !== 'undefined' && document.activeElement && typeof document.activeElement.blur === 'function') {
       document.activeElement.blur();
     }
@@ -1791,7 +1846,7 @@ const RegionSelectionTool = ({
     if (onCancel) {
       onCancel();
     }
-  }, [onCancel]);
+  }, [onCancel, releaseInteractionPointer]);
 
   // UX (mobile demo parity): on mobile, "Full Page" never raises a browser
   // window.confirm() dialog. Instead it flips the mobile region strip into an
@@ -1836,41 +1891,6 @@ const RegionSelectionTool = ({
     handleCancel();
   }, [onSetFullPage, handleCancel, regions.length, mobileMode]);
 
-  useEffect(() => {
-    if (typeof onMobileToolbarApiChange !== 'function') return;
-    if (!active || !mobileMode) {
-      onMobileToolbarApiChange(null);
-      return;
-    }
-    onMobileToolbarApiChange({
-      toolType,
-      selectionMode,
-      canSetFullPage,
-      setToolType,
-      setSelectionMode,
-      confirm: handleConfirm,
-      cancel: handleCancel,
-      setFullPage: handleSetFullPage,
-      // Inline full-page confirm step (mobile only — see handleSetFullPage).
-      fullPageConfirmPending: isFullPageConfirmPending,
-      confirmFullPage: applyFullPage,
-      cancelFullPage: cancelFullPageConfirm,
-    });
-  }, [
-    active,
-    mobileMode,
-    onMobileToolbarApiChange,
-    toolType,
-    selectionMode,
-    canSetFullPage,
-    handleConfirm,
-    handleCancel,
-    handleSetFullPage,
-    isFullPageConfirmPending,
-    applyFullPage,
-    cancelFullPageConfirm,
-  ]);
-
   useEffect(() => () => {
     if (typeof onMobileToolbarApiChange === 'function') onMobileToolbarApiChange(null);
   }, [onMobileToolbarApiChange]);
@@ -1885,6 +1905,7 @@ const RegionSelectionTool = ({
       }
       return;
     }
+    if (event.isPrimary === false || !captureInteractionPointer(event)) return;
     event.stopPropagation();
 
     // If not in move mode, ignore
@@ -1949,7 +1970,7 @@ const RegionSelectionTool = ({
         });
       }
     }
-  }, [active, effectiveToolType, targetElement, regions, selectedRegionIds, toolType, createHistorySnapshot]);
+  }, [active, effectiveToolType, targetElement, regions, selectedRegionIds, toolType, createHistorySnapshot, captureInteractionPointer]);
 
   const handleVertexPointerDown = useCallback((region, vertexIndex, event) => {
     if (!active || effectiveToolType !== 'move' || !targetElement) return;
@@ -1959,6 +1980,7 @@ const RegionSelectionTool = ({
       }
       return;
     }
+    if (event.isPrimary === false || !captureInteractionPointer(event)) return;
     event.stopPropagation();
     event.preventDefault();
 
@@ -1977,7 +1999,7 @@ const RegionSelectionTool = ({
       initialCoords: [...region.coordinates],
       preSnapshot
     });
-  }, [active, effectiveToolType, targetElement, selectedRegionIds, createHistorySnapshot, getRegionBounds]);
+  }, [active, effectiveToolType, targetElement, selectedRegionIds, createHistorySnapshot, getRegionBounds, captureInteractionPointer]);
 
   const handleResizePointerDown = useCallback((region, handle, event) => {
     if (!active || effectiveToolType !== 'move' || !targetElement) return;
@@ -1987,6 +2009,7 @@ const RegionSelectionTool = ({
       }
       return;
     }
+    if (event.isPrimary === false || !captureInteractionPointer(event)) return;
     event.stopPropagation();
     event.preventDefault();
 
@@ -2006,7 +2029,7 @@ const RegionSelectionTool = ({
       initialCoords: [...region.coordinates],
       preSnapshot
     });
-  }, [active, effectiveToolType, targetElement, getRegionBounds, selectedRegionIds, createHistorySnapshot]);
+  }, [active, effectiveToolType, targetElement, getRegionBounds, selectedRegionIds, createHistorySnapshot, captureInteractionPointer]);
 
   // KAL-301 REDO: rotation handle pointer-down, matching the standard mtr
   // pointer-down in useSVGInteraction.js: the rotation pivot is the bbox
@@ -2017,6 +2040,7 @@ const RegionSelectionTool = ({
   const handleRotatePointerDown = useCallback((region, event) => {
     if (!active || effectiveToolType !== 'move' || !targetElement) return;
     if (event.button === 2) return;
+    if (event.isPrimary === false || !captureInteractionPointer(event)) return;
     event.stopPropagation();
     event.preventDefault();
 
@@ -2043,7 +2067,7 @@ const RegionSelectionTool = ({
       baseRotation,
       preSnapshot
     });
-  }, [active, effectiveToolType, targetElement, getRegionBounds, createHistorySnapshot]);
+  }, [active, effectiveToolType, targetElement, getRegionBounds, createHistorySnapshot, captureInteractionPointer]);
 
   const handleDeleteSelected = useCallback(() => {
     if (selectedRegionIds.size === 0) return;
@@ -2057,6 +2081,45 @@ const RegionSelectionTool = ({
     setSelectedRegionIds(new Set());
     setInteractionState(null);
   }, [selectedRegionIds, pushUndoSnapshot]);
+
+  useEffect(() => {
+    if (typeof onMobileToolbarApiChange !== 'function') return;
+    if (!active || !mobileMode) {
+      onMobileToolbarApiChange(null);
+      return;
+    }
+    onMobileToolbarApiChange({
+      toolType,
+      selectionMode,
+      canSetFullPage,
+      canDelete: selectedRegionIds.size > 0,
+      setToolType,
+      setSelectionMode,
+      confirm: handleConfirm,
+      cancel: handleCancel,
+      deleteSelected: handleDeleteSelected,
+      setFullPage: handleSetFullPage,
+      // Inline full-page confirm step (mobile only — see handleSetFullPage).
+      fullPageConfirmPending: isFullPageConfirmPending,
+      confirmFullPage: applyFullPage,
+      cancelFullPage: cancelFullPageConfirm,
+    });
+  }, [
+    active,
+    mobileMode,
+    onMobileToolbarApiChange,
+    toolType,
+    selectionMode,
+    canSetFullPage,
+    selectedRegionIds,
+    handleConfirm,
+    handleCancel,
+    handleDeleteSelected,
+    handleSetFullPage,
+    isFullPageConfirmPending,
+    applyFullPage,
+    cancelFullPageConfirm,
+  ]);
 
   const handleContextMenu = useCallback((event) => {
     event.preventDefault();
@@ -2462,7 +2525,11 @@ const RegionSelectionTool = ({
   useEffect(() => {
     if (!active || !targetElement) return;
 
-    const handleDocumentMouseDown = (event) => {
+    const handleDocumentPointerDown = (event) => {
+      // Preserve the desktop click-outside-to-cancel contract. Touch users
+      // must be able to operate mobile chrome/backdrops without ending the
+      // region session before the tapped control receives its click.
+      if (event.pointerType && event.pointerType !== 'mouse') return;
       if (targetElement.contains(event.target)) {
         return;
       }
@@ -2481,16 +2548,16 @@ const RegionSelectionTool = ({
       handleCancel();
     };
 
-    document.addEventListener('mousedown', handleDocumentMouseDown);
+    document.addEventListener('pointerdown', handleDocumentPointerDown);
     return () => {
-      document.removeEventListener('mousedown', handleDocumentMouseDown);
+      document.removeEventListener('pointerdown', handleDocumentPointerDown);
     };
   }, [active, targetElement, handleCancel]);
 
   useEffect(() => {
     if (!active || !targetElement) return;
 
-    const handleDocumentMouseDownCapture = (event) => {
+    const handleDocumentPointerDownCapture = (event) => {
       if (activeTool === 'pan') return;
       if (documentDragFallbackRef.current) return;
       if (containerRef.current && containerRef.current.contains(event.target)) return;
@@ -2501,14 +2568,14 @@ const RegionSelectionTool = ({
       handleMouseDown(event);
     };
 
-    const handleDocumentMouseMoveCapture = (event) => {
+    const handleDocumentPointerMoveCapture = (event) => {
       if (!documentDragFallbackRef.current) return;
       handleMouseMove(event);
       event.preventDefault();
       event.stopPropagation();
     };
 
-    const handleDocumentMouseUpCapture = (event) => {
+    const handleDocumentPointerUpCapture = (event) => {
       if (!documentDragFallbackRef.current) return;
       documentDragFallbackRef.current = false;
       handleMouseUp(event);
@@ -2516,17 +2583,27 @@ const RegionSelectionTool = ({
       event.stopPropagation();
     };
 
-    document.addEventListener('mousedown', handleDocumentMouseDownCapture, true);
-    document.addEventListener('mousemove', handleDocumentMouseMoveCapture, true);
-    document.addEventListener('mouseup', handleDocumentMouseUpCapture, true);
+    const handleDocumentPointerCancelCapture = (event) => {
+      if (!documentDragFallbackRef.current) return;
+      documentDragFallbackRef.current = false;
+      handlePointerCancel(event);
+      event.preventDefault();
+      event.stopPropagation();
+    };
+
+    document.addEventListener('pointerdown', handleDocumentPointerDownCapture, true);
+    document.addEventListener('pointermove', handleDocumentPointerMoveCapture, true);
+    document.addEventListener('pointerup', handleDocumentPointerUpCapture, true);
+    document.addEventListener('pointercancel', handleDocumentPointerCancelCapture, true);
 
     return () => {
       documentDragFallbackRef.current = false;
-      document.removeEventListener('mousedown', handleDocumentMouseDownCapture, true);
-      document.removeEventListener('mousemove', handleDocumentMouseMoveCapture, true);
-      document.removeEventListener('mouseup', handleDocumentMouseUpCapture, true);
+      document.removeEventListener('pointerdown', handleDocumentPointerDownCapture, true);
+      document.removeEventListener('pointermove', handleDocumentPointerMoveCapture, true);
+      document.removeEventListener('pointerup', handleDocumentPointerUpCapture, true);
+      document.removeEventListener('pointercancel', handleDocumentPointerCancelCapture, true);
     };
-  }, [active, targetElement, activeTool, handleMouseDown, handleMouseMove, handleMouseUp, isPointWithinTargetRect]);
+  }, [active, targetElement, activeTool, handleMouseDown, handleMouseMove, handleMouseUp, handlePointerCancel, isPointWithinTargetRect]);
 
   // KAL-301 REDO: live rotation preview transform. While a rotate drag is in
   // flight the selected region AND its full selection chrome (boundary box,
@@ -2890,13 +2967,15 @@ const RegionSelectionTool = ({
               height: `${canvasRect.height}px`,
               zIndex: 100000,
               cursor: effectiveToolType === 'move' ? 'default' : (isCursorOverCanvas ? 'crosshair' : 'default'),
-              pointerEvents: activeTool === 'pan' ? 'none' : 'auto' // Allow events to pass through when pan is active
+              pointerEvents: activeTool === 'pan' ? 'none' : 'auto', // Allow events to pass through when pan is active
+              touchAction: 'none'
             }}
             {...(activeTool === 'pan' ? {} : {
-              onMouseDown: handleMouseDown,
-              onMouseMove: handleMouseMove,
-              onMouseUp: handleMouseUp,
-              onMouseLeave: handleCanvasMouseLeave
+              onPointerDown: handleMouseDown,
+              onPointerMove: handleMouseMove,
+              onPointerUp: handleMouseUp,
+              onPointerCancel: handlePointerCancel,
+              onPointerLeave: handleCanvasMouseLeave
             })}
           >
           <svg
@@ -3026,7 +3105,7 @@ const RegionSelectionTool = ({
                       pointerEvents: effectiveToolType === 'move' ? 'visiblePainted' : 'none',
                       cursor: effectiveToolType === 'move' ? 'move' : 'default'
                     }}
-                    onMouseDown={effectiveToolType === 'move' ? (event) => handleRegionPointerDown(region, event) : undefined}
+                    onPointerDown={effectiveToolType === 'move' ? (event) => handleRegionPointerDown(region, event) : undefined}
                   />
                 );
                 // KAL-301 REDO: live rotation preview — shape rotates via
@@ -3051,7 +3130,7 @@ const RegionSelectionTool = ({
                       pointerEvents: effectiveToolType === 'move' ? 'all' : 'none',
                       cursor: effectiveToolType === 'move' ? 'move' : 'default'
                     }}
-                    onMouseDown={effectiveToolType === 'move' ? (event) => handleRegionPointerDown(region, event) : undefined}
+                    onPointerDown={effectiveToolType === 'move' ? (event) => handleRegionPointerDown(region, event) : undefined}
                   />
                 );
               }
@@ -3124,7 +3203,7 @@ const RegionSelectionTool = ({
                         cursor: 'crosshair',
                         pointerEvents: 'auto'
                       }}
-                      onMouseDown={(event) => handleRotatePointerDown(selectedRegion, event)}
+                      onPointerDown={(event) => handleRotatePointerDown(selectedRegion, event)}
                     />
                     {/* Rotation icon image (70% of circle diameter) */}
                     <image
@@ -3293,7 +3372,7 @@ const RegionSelectionTool = ({
                 boundaryBox = (
                   <div
                     key="boundary-box"
-                    onMouseDown={(event) => {
+                    onPointerDown={(event) => {
                       // Keep selection when clicking inside boundary box
                       // Allow dragging by not stopping propagation if region is already selected
                       // The handleMouseDown will check if click is inside bounds and keep selection
@@ -3328,7 +3407,7 @@ const RegionSelectionTool = ({
                 handles.push(
                   <div
                     key={`v-${i}`}
-                    onMouseDown={(event) => handleVertexPointerDown(selectedRegion, i, event)}
+                    onPointerDown={(event) => handleVertexPointerDown(selectedRegion, i, event)}
                     style={{
                       position: 'absolute',
                       left: `${x}px`,
@@ -3362,7 +3441,7 @@ const RegionSelectionTool = ({
                 <>
                   {/* Selection boundary box - Drawboard style */}
                   <div
-                    onMouseDown={(event) => {
+                    onPointerDown={(event) => {
                       // Keep selection when clicking inside boundary box
                       // Allow dragging by triggering the same behavior as clicking on the region path
                       if (selectedRegionIds.has(selectedRegion.regionId)) {
@@ -3397,7 +3476,7 @@ const RegionSelectionTool = ({
                     return (
                       <div
                         key={handle.key}
-                        onMouseDown={(event) => handleResizePointerDown(selectedRegion, handle.key, event)}
+                        onPointerDown={(event) => handleResizePointerDown(selectedRegion, handle.key, event)}
                         style={{
                           position: 'absolute',
                           left: `${left + (handle.offsetX * width)}px`,

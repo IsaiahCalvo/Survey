@@ -109,7 +109,10 @@ test('Expo shell publishes native safe areas and keeps controls above the home i
   assert.match(EXPO_APP_SOURCE, /Math\.max\(insets\.bottom, 10\)/);
   assert.match(EXPO_APP_SOURCE, /--native-safe-area-bottom/);
   assert.match(EXPO_APP_SOURCE, /injectedJavaScriptBeforeContentLoaded/);
-  assert.match(EXPO_APP_SOURCE, /nativeShell=expo/);
+  assert.match(EXPO_APP_SOURCE, /process\.env\.EXPO_PUBLIC_SURVEY_URL/);
+  assert.match(EXPO_APP_SOURCE, /DEFAULT_SURVEY_URL = 'https:\/\/surveytool\.app\/'/);
+  assert.match(EXPO_APP_SOURCE, /url\.searchParams\.set\('mobileNav', 'tabs'\)/);
+  assert.match(EXPO_APP_SOURCE, /url\.searchParams\.set\('nativeShell', 'expo'\)/);
   assert.match(HUB_CSS_SOURCE, /\.survey-hub\.hub-native-shell-expo \.mobile-home-tabs \{/);
   assert.match(HUB_CSS_SOURCE, /padding-top: 4px/);
   assert.match(HUB_CSS_SOURCE, /padding-bottom: calc\(4px \+ var\(--native-safe-area-bottom, 0px\)\)/);
@@ -157,6 +160,12 @@ test('mobile viewer exposes the preserved dynamic tool and page controls', () =>
   assert.match(PAGES_PANEL_SOURCE, /aria-label="Page actions"/);
   assert.match(PAGES_PANEL_SOURCE, /onInsertBlankPage\?\.\(pageNum\)/);
   assert.match(PAGES_PANEL_SOURCE, /mobileSelectMode \? 'Done' : 'Select'/);
+});
+
+test('mobile live text formatting stays scroll-reachable with 44px touch targets', () => {
+  assert.match(MOBILE_VIEWER_CSS_SOURCE, /\.mobile-pdf-properties--text \{[\s\S]{0,420}justify-content: flex-start;[\s\S]{0,160}touch-action: pan-x;/);
+  assert.match(MOBILE_VIEWER_CSS_SOURCE, /\.mobile-pdf-properties--text > button,[\s\S]{0,180}min-width: 44px;[\s\S]{0,80}min-height: 44px;/);
+  assert.match(MOBILE_VIEWER_CHROME_SOURCE, /aria-label="Font color"[\s\S]{0,120}onPointerDown=\{\(event\) => event\.preventDefault\(\)\}[\s\S]{0,100}setColorPicker\('fontColorLive'\)/);
 });
 
 test('mobile annotation settings retain the preserved app geometry and controls', () => {

@@ -9,7 +9,19 @@ html.survey-viewer-open #root {
   overscroll-behavior: none;
 }
 
+/* Select-mode Survey Marker action. The SVG owns selection geometry; this
+   action group stays hidden outside the narrow mobile viewer. Its viewBox
+   dimensions are container-measured so the button remains 76x48 CSS px. */
+.survey-marker-touch-delete {
+  display: none;
+}
+
 @media (max-width: 720px) {
+  html.survey-viewer-open .survey-marker-touch-delete {
+    display: inline;
+    overflow: visible;
+  }
+
   html.survey-viewer-open,
   html.survey-viewer-open body,
   html.survey-viewer-open #root,
@@ -615,7 +627,15 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 }
 
 .mobile-pdf-properties--text {
-  justify-content: center;
+  /* A centred overflowing flex row clips equal width from both ends; on a
+     390px phone that put Font color left of the rail with no scroll path back
+     to it. Anchor the row at its scroll origin so every control is reachable. */
+  height: 52px;
+  min-height: 52px;
+  justify-content: flex-start;
+  scroll-padding-inline: 8px;
+  touch-action: pan-x;
+  -webkit-overflow-scrolling: touch;
 }
 
 .mobile-pdf-properties--actions,
@@ -914,6 +934,17 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 .mobile-pdf-properties__format.is-active {
   color: var(--accent-primary, #d8a84e);
   background: var(--gold-bg, #2a2218);
+}
+
+/* Live text formatting is intentionally a single horizontal strip. Keep its
+   compact visuals, but give every direct interactive control an iOS-sized hit
+   target while the strip itself supplies horizontal scrolling. */
+.mobile-pdf-properties--text > button,
+.mobile-pdf-properties--text > select,
+.mobile-pdf-properties--text > input {
+  min-width: 44px;
+  min-height: 44px;
+  height: 44px;
 }
 
 .mobile-pdf-properties__menu-anchor {

@@ -4,7 +4,29 @@ import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { WebView } from 'react-native-webview';
 
-const SURVEY_URL = 'http://isaiahs-macbook-pro.taila0b324.ts.net:5177/?mobileNav=tabs&nativeShell=expo';
+const DEFAULT_SURVEY_URL = 'https://surveytool.app/';
+
+function resolveSurveyUrl(configuredUrl = process.env.EXPO_PUBLIC_SURVEY_URL) {
+  try {
+    const url = new URL(configuredUrl?.trim() || DEFAULT_SURVEY_URL);
+    if (url.protocol !== 'https:' && url.protocol !== 'http:') {
+      throw new Error(`Unsupported Survey URL protocol: ${url.protocol}`);
+    }
+    // These identify the real mobile viewer and the native safe-area bridge.
+    // Override conflicting caller values so every shell launch is consistent.
+    url.searchParams.set('mobileNav', 'tabs');
+    url.searchParams.set('nativeShell', 'expo');
+    return url.toString();
+  } catch (error) {
+    console.warn('Invalid EXPO_PUBLIC_SURVEY_URL; using the deployed Survey app.', error);
+    const fallbackUrl = new URL(DEFAULT_SURVEY_URL);
+    fallbackUrl.searchParams.set('mobileNav', 'tabs');
+    fallbackUrl.searchParams.set('nativeShell', 'expo');
+    return fallbackUrl.toString();
+  }
+}
+
+const SURVEY_URL = resolveSurveyUrl();
 
 function SurveyApp() {
   const webViewRef = useRef<WebView>(null);
@@ -110,7 +132,7 @@ function SurveyApp() {
       {loadError ? (
         <View style={styles.centered}>
           <Text style={styles.errorTitle}>Survey could not connect</Text>
-          <Text style={styles.errorBody}>Keep Tailscale running on this phone and the laptop.</Text>
+          <Text style={styles.errorBody}>Check this phone's connection and make sure the selected Survey server is online.</Text>
           <Pressable accessibilityRole="button" onPress={retry} style={styles.retryButton}>
             <Text style={styles.retryButtonText}>Try again</Text>
           </Pressable>

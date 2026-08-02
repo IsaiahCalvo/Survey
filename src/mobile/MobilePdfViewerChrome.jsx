@@ -580,6 +580,7 @@ function MobileToolProperties({ api }) {
     return (
       <div className="mobile-pdf-properties mobile-pdf-properties--actions" data-mobile-tool-properties="true" role="toolbar" aria-label="Region editing">
         <button type="button" className="mobile-pdf-properties__primary" onClick={region.confirm}>Confirm</button>
+        <button type="button" disabled={!region.canDelete} onClick={region.deleteSelected}>Delete</button>
         <button type="button" disabled={!region.canSetFullPage} onClick={region.setFullPage}>Full Page</button>
         <button type="button" onClick={region.cancel}>Cancel</button>
       </div>
@@ -634,6 +635,7 @@ function MobileToolProperties({ api }) {
           className="mobile-pdf-properties__color"
           aria-label="Font color"
           title="Font color"
+          onPointerDown={(event) => event.preventDefault()}
           onClick={() => setColorPicker('fontColorLive')}
         >
           <span style={{ background: toHexColor(state.fontColor, '#1e293b') }} />
@@ -1326,6 +1328,12 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, onOpenP
             <>
               <div className="mobile-pdf-tools__divider is-short" />
               <div className="mobile-pdf-tools__subtools" aria-label="Region tools">
+                <RailButton
+                  active={bottomToolbarApi.regionToolbarApi.toolType === 'move'}
+                  icon="cursor"
+                  label="Select region"
+                  onClick={() => bottomToolbarApi.regionToolbarApi.setToolType?.('move')}
+                />
                 <RailButton
                   active={bottomToolbarApi.regionToolbarApi.toolType === 'rectangular'}
                   icon="rect"

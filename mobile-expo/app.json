@@ -10,13 +10,7 @@
       "supportsTablet": true,
       "infoPlist": {
         "NSAppTransportSecurity": {
-          "NSAllowsLocalNetworking": true,
-          "NSExceptionDomains": {
-            "isaiahs-macbook-pro.taila0b324.ts.net": {
-              "NSExceptionAllowsInsecureHTTPLoads": true,
-              "NSIncludesSubdomains": false
-            }
-          }
+          "NSAllowsLocalNetworking": true
         }
       }
     },

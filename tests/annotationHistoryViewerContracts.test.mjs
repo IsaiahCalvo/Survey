@@ -77,3 +77,20 @@ test('viewer materializes current and incoming pages before every history diff',
       < saveSource.indexOf('buildPreciseAnnotationHistoryAction'),
   );
 });
+
+test('legacy undo and redo clear the checkpoint hash before the next action', () => {
+  const undoStart = VIEWER_SOURCE.indexOf('const handleUndo = useCallback');
+  const redoStart = VIEWER_SOURCE.indexOf('const handleRedo = useCallback', undoStart);
+  const undoSource = VIEWER_SOURCE.slice(undoStart, redoStart);
+  const redoEnd = VIEWER_SOURCE.indexOf('const handleUndoRef', redoStart);
+  const redoSource = VIEWER_SOURCE.slice(redoStart, redoEnd);
+
+  assert.match(
+    undoSource,
+    /setRedoHistory\(redoHistoryRef\.current\);\s*\/\/ A new action after Undo[\s\S]*?lastCheckpointHashRef\.current = null;/,
+  );
+  assert.match(
+    redoSource,
+    /setUndoHistory\(undoHistoryRef\.current\);\s*lastCheckpointHashRef\.current = null;/,
+  );
+});

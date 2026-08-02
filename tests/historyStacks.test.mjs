@@ -36,3 +36,11 @@ test('history order falls back to timestamps when checkpoint id is missing', () 
 test('atomic eraser checkpoints stay eligible for the legacy undo/redo lane', () => {
   equal(isLegacyAnnotationHistoryMeta({ reason: 'eraser:gesture' }), true);
 });
+
+test('survey marker move checkpoints stay eligible for the legacy undo/redo lane', () => {
+  equal(isLegacyAnnotationHistoryMeta({ reason: 'survey-marker:move' }), true);
+});
+
+test('space checkpoints stay eligible for the legacy undo/redo lane', () => {
+  equal(isLegacyAnnotationHistoryMeta({ reason: 'space:delete' }), true);
+});

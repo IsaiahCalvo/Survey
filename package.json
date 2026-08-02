@@ -28,8 +28,9 @@
     "test:eraser-lifecycle": "npx playwright test --config debug/playwright.config.mjs debug/scenarios/eraser-lifecycle-gestures.spec.mjs",
     "debug:scenario": "npx playwright test --config debug/playwright.config.mjs --grep",
     "debug:process": "node debug/lib/post-process.mjs",
-    "mobile:sync": "vite build && npx cap sync",
+    "mobile:sync": "npm run build && npx cap sync",
     "mobile:ios": "npx cap open ios",
+    "mobile:ios:sim": "node scripts/run-ios-simulator.mjs",
     "mobile:android": "npx cap open android"
   },
   "dependencies": {
