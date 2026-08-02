@@ -308,6 +308,11 @@ export const HubShell = ({ tab, onNav, title, subtitle, actions, children, userN
     ['documents', 'doc', 'Documents', false],
     ['projects', 'folder', 'Projects', false],
     ['templates', 'template', 'Templates', templatesLocked],
+    // KAL-280 — Archive sits last so it lands directly above the profile chip
+    // (`.who` uses margin-top:auto). It is deliberately the lowest entry: it is
+    // a recovery destination, not somewhere you work, so it should never
+    // compete with the three main tabs for attention.
+    ['archive', 'clock', 'Archive', false],
   ];
   const mobileNavMode = mobileNavModeFromUrl();
   const navBtn = (key, icon, label, disabled = false) => (
