@@ -11,6 +11,7 @@ import React from 'react';
 import { COLORS, TYPOGRAPHY, BORDERS, SHADOWS } from '../theme';
 import Icon from '../Icons';
 import { useKeyPress } from '../utils/hooks';
+import { useFocusTrap } from '../hooks/useFocusTrap';
 
 /**
  * KeyboardShortcutsOverlay - Display keyboard shortcuts in an overlay
@@ -24,11 +25,11 @@ const KeyboardShortcutsOverlay = () => {
     setIsOpen((prev) => !prev);
   });
 
-  useKeyPress('Escape', () => {
-    if (isOpen) {
-      setIsOpen(false);
-    }
-  });
+  // Accessibility: Tab stays inside the overlay, Escape closes it (this replaces
+  // the old useKeyPress('Escape') — the trap listens in the capture phase so it
+  // has to own Escape), and focus returns to whatever was focused before '?'.
+  const closeOverlay = React.useCallback(() => setIsOpen(false), []);
+  useFocusTrap(modalContentRef, isOpen, { onEscape: closeOverlay });
 
   // No floating hint pill — the overlay stays reachable via the '?' key, but
   // the bottom-right "Press ? for keyboard shortcuts" prompt is not shown.

@@ -21,7 +21,7 @@
  * it `data-autofocus` — otherwise the first text field wins, then the first
  * focusable element of any kind (close buttons included, as a last resort).
  */
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 
 const FOCUSABLE_SELECTOR = [
   'a[href]',
@@ -46,10 +46,15 @@ const focusableWithin = (container) => (
 );
 
 export const useFocusTrap = (containerRef, isOpen, { onEscape, autoFocus = true } = {}) => {
+  // Callers commonly pass an inline arrow for onEscape, so the key effect below
+  // re-runs on most renders. Opener capture and the initial focus move live in
+  // their own isOpen-only effect so neither repeats mid-dialog.
+  const openerRef = useRef(null);
+
   useEffect(() => {
     if (!isOpen) return undefined;
 
-    const previouslyFocused = document.activeElement;
+    openerRef.current = document.activeElement;
 
     // Move focus in. Deferred a frame so portals/animations have painted and
     // the container's children are actually measurable (isReachable needs a box).
@@ -65,6 +70,16 @@ export const useFocusTrap = (containerRef, isOpen, { onEscape, autoFocus = true 
         preferred?.focus?.();
       });
     }
+
+    return () => {
+      if (focusFrame) cancelAnimationFrame(focusFrame);
+      openerRef.current?.focus?.();
+      openerRef.current = null;
+    };
+  }, [containerRef, isOpen, autoFocus]);
+
+  useEffect(() => {
+    if (!isOpen) return undefined;
 
     // Capture phase so the dialog wins over app-level hotkeys, and
     // stopPropagation so an Escape aimed at this dialog doesn't also cancel
@@ -104,12 +119,8 @@ export const useFocusTrap = (containerRef, isOpen, { onEscape, autoFocus = true 
     };
 
     window.addEventListener('keydown', handleKey, true);
-    return () => {
-      if (focusFrame) cancelAnimationFrame(focusFrame);
-      window.removeEventListener('keydown', handleKey, true);
-      previouslyFocused?.focus?.();
-    };
-  }, [containerRef, isOpen, onEscape, autoFocus]);
+    return () => window.removeEventListener('keydown', handleKey, true);
+  }, [containerRef, isOpen, onEscape]);
 };
 
 export default useFocusTrap;

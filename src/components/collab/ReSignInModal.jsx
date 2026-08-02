@@ -22,6 +22,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { useAuth } from '../../contexts/AuthContext.jsx';
+import { useFocusTrap } from '../../hooks/useFocusTrap';
 import TurnstileWidget, { TURNSTILE_ENABLED } from '../TurnstileWidget';
 import './ReSignInModal.css';
 
@@ -52,6 +53,7 @@ export function ReSignInModal({ isOpen, onSignedIn, onCloseDocument, prefillEmai
   const [captchaBroken, setCaptchaBroken] = useState(false);
   const passwordRef = useRef(null);
   const emailRef = useRef(null);
+  const dialogRef = useRef(null);
 
   // UX: initial focus per UI-SPEC — email input UNLESS prefilled, then password.
   // Avoids a useless tab into an already-filled field; saves the user one keystroke.
@@ -60,6 +62,12 @@ export function ReSignInModal({ isOpen, onSignedIn, onCloseDocument, prefillEmai
     const target = prefillEmail ? passwordRef.current : emailRef.current;
     target?.focus();
   }, [isOpen, prefillEmail]);
+
+  // Accessibility: Tab stays inside the dialog and focus returns to whatever was
+  // focused before the session expired. autoFocus is off — the effect above owns
+  // the initial focus (email vs password), and no onEscape because this modal is
+  // non-dismissible.
+  useFocusTrap(dialogRef, isOpen, { autoFocus: false });
 
   // UX: ESC is a deliberate NO-OP. Modal is non-dismissible per UI-SPEC.
   // The only ways out are successful sign-in OR clicking "Sign in with a different
@@ -140,6 +148,7 @@ export function ReSignInModal({ isOpen, onSignedIn, onCloseDocument, prefillEmai
   return (
     <div
       className="re-signin-modal"
+      ref={dialogRef}
       // dialog + aria-modal so assistive tech treats this as a modal even
       // though there's no scrim layer — matches UI-SPEC accessibility contract.
       role="dialog"
