@@ -7,8 +7,9 @@
  * resendConfirmation). onDismiss (when present) lets unauthenticated users
  * continue without an account.
  */
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
+import { useFocusTrap } from '../hooks/useFocusTrap';
 import { resendCooldownRemainingMs, passwordMeetsRequirements } from './authFlow';
 import PasswordRequirements from './PasswordRequirements';
 import TurnstileWidget, { TURNSTILE_ENABLED } from './TurnstileWidget';
@@ -44,8 +45,23 @@ export const AuthModal = ({ isOpen, onClose, onDismiss }) => {
   const [captchaToken, setCaptchaToken] = useState('');
   const [captchaNonce, setCaptchaNonce] = useState(0);
   const [captchaBroken, setCaptchaBroken] = useState(false);
+  const modalRef = useRef(null);
 
   const { signIn, signUp, signInWithGoogle, signInWithSSO, resetPassword, resendConfirmation } = useAuth();
+
+  const handleClose = useCallback(() => {
+    // If onDismiss is available (for non-authenticated users), use it
+    // Otherwise use onClose (for authenticated users or when dismiss isn't available)
+    if (onDismiss) {
+      onDismiss();
+    } else {
+      onClose();
+    }
+  }, [onDismiss, onClose]);
+
+  // Keyboard accessibility: Tab stays inside the dialog, Escape dismisses it,
+  // focus opens on the first field and returns to the opener on close.
+  useFocusTrap(modalRef, isOpen, { onEscape: handleClose });
 
   // Modes that hit a captcha-protected endpoint (signin / signup / recover).
   const captchaMode = mode === 'login' || mode === 'signup' || mode === 'reset';
@@ -177,25 +193,22 @@ export const AuthModal = ({ isOpen, onClose, onDismiss }) => {
     }
   };
 
-  const handleClose = () => {
-    // If onDismiss is available (for non-authenticated users), use it
-    // Otherwise use onClose (for authenticated users or when dismiss isn't available)
-    if (onDismiss) {
-      onDismiss();
-    } else {
-      onClose();
-    }
-  };
-
   return (
     <div className="auth-modal-overlay" onClick={handleClose}>
-      <div className="auth-modal" onClick={(e) => e.stopPropagation()}>
-        <button className="auth-modal-close" onClick={handleClose}>
+      <div
+        className="auth-modal"
+        ref={modalRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="auth-modal-title"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <button className="auth-modal-close" onClick={handleClose} aria-label="Close">
           ×
         </button>
 
         <div className="auth-modal-header">
-          <h2>
+          <h2 id="auth-modal-title">
             {mode === 'login' && 'Welcome back'}
             {mode === 'signup' && 'Create account'}
             {mode === 'confirm' && 'Check your email'}
@@ -369,7 +382,7 @@ export const AuthModal = ({ isOpen, onClose, onDismiss }) => {
               onClick={() => setMode('sso')}
               disabled={loading}
             >
-              Sign in with company SSO (Enterprise)
+              Sign in with company SSO (enterprise)
             </button>
           </>
         )}
@@ -387,7 +400,7 @@ export const AuthModal = ({ isOpen, onClose, onDismiss }) => {
                   }}
                   className="auth-link-btn"
                 >
-                  Sign up
+                  Create an account
                 </button>
               </p>
               <button
