@@ -210,6 +210,7 @@ test('Survey development build owns Google sign-in without exposing the Supabase
   assert.match(EXPO_CONFIG_SOURCE, /"appleTeamId": "T3KR4X5869"/);
   assert.match(EXPO_CONFIG_SOURCE, /com\.googleusercontent\.apps\.88293580204-481ecgudu1qgmlh2nvdhip13jtqj0iku/);
   assert.match(EXPO_PACKAGE_SOURCE, /"start:tunnel": "expo start --dev-client --tunnel"/);
+  assert.match(EXPO_PACKAGE_SOURCE, /"start:remote": "EXPO_PUBLIC_SURVEY_URL='https:\/\/isaiahs-macbook-pro\.taila0b324\.ts\.net\/' expo start --go --tunnel --port 8082"/);
   assert.match(EXPO_APP_SOURCE, /new AuthSession\.AuthRequest/);
   assert.match(EXPO_APP_SOURCE, /responseType: AuthSession\.ResponseType\.Code/);
   assert.match(EXPO_APP_SOURCE, /usePKCE: true/);

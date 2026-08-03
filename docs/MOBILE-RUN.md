@@ -10,6 +10,29 @@ testing. `npm run start:tunnel` publishes Metro through an `exp.direct` internet
 iPhone can use cellular or any other network. A `100.x.x.x:8081` or other local address means
 Metro was started in LAN mode; stop it and use the tunnel command below.
 
+## Remote testing while Isaiah is away: Expo Go
+
+This is the zero-install path for the current worktree. It uses Expo's public tunnel for the
+shell and Tailscale HTTPS for the Vite app, so the iPhone may be on cellular or any Wi-Fi.
+The development auth relay signs in the configured owner automatically; Cloudflare Turnstile
+and Google OAuth are not part of this test path.
+
+Keep the existing Vite server and Tailscale Serve route running, then run:
+
+```bash
+cd mobile-expo
+npm run start:remote
+```
+
+Open `https://survey-ios-install.vercel.app/` on the iPhone and tap **Open in Expo Go**.
+The terminal must say `Tunnel ready` and show an `exp.direct` address. Never use a QR or URL
+containing `100.x.x.x:8081`; that is LAN mode and will fail when the phone leaves the Mac.
+
+Verified on 2026-08-03 in the iPhone 17 Pro Max Simulator: the public Expo Go tunnel loaded
+the Tailscale-served worktree, auto-signed in as IC, and displayed all 19 live documents.
+Expo Go cannot validate the native Google OAuth redirect; the Survey development build and
+Simulator cover that native-only flow.
+
 ## Immediate: Survey development app
 
 This Mac is signed into Isaiah's free Apple Personal Team and has a valid development
