@@ -57,6 +57,46 @@ const isCaptchaBlockedAuthError = (error) => {
     || message.includes('human');
 };
 
+const requestNativeGoogleIdToken = () => {
+  if (typeof window === 'undefined' || typeof window.ReactNativeWebView?.postMessage !== 'function') {
+    return null;
+  }
+
+  const requestId = typeof window.crypto?.randomUUID === 'function'
+    ? window.crypto.randomUUID()
+    : `google-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+
+  return new Promise((resolve, reject) => {
+    let timeoutId;
+    const cleanup = () => {
+      window.clearTimeout(timeoutId);
+      window.removeEventListener('survey-native-google-auth-result', handleResult);
+    };
+    const handleResult = (event) => {
+      const result = event?.detail;
+      if (!result || result.requestId !== requestId) return;
+      cleanup();
+      if (result.cancelled) {
+        resolve({ cancelled: true });
+      } else if (result.ok && typeof result.idToken === 'string' && result.idToken) {
+        resolve({ idToken: result.idToken });
+      } else {
+        reject(new Error(result.error || 'Google sign-in failed.'));
+      }
+    };
+
+    window.addEventListener('survey-native-google-auth-result', handleResult);
+    timeoutId = window.setTimeout(() => {
+      cleanup();
+      reject(new Error('Google sign-in timed out. Please try again.'));
+    }, 120_000);
+    window.ReactNativeWebView.postMessage(JSON.stringify({
+      type: 'survey:google-sign-in',
+      requestId,
+    }));
+  });
+};
+
 const runDevAuthBootstrap = async (email) => {
   if (!import.meta.env.DEV || !DEV_AUTH_BOOTSTRAP_TOKEN || !devAuthRelayAllows(email)) {
     return null;
@@ -498,6 +538,19 @@ export const AuthProvider = ({ children }) => {
   const signInWithGoogle = async () => {
     if (!isSupabaseAvailable()) {
       throw new Error('Supabase is not configured');
+    }
+
+    const nativeCredential = requestNativeGoogleIdToken();
+    if (nativeCredential) {
+      const result = await nativeCredential;
+      if (result.cancelled) return result;
+
+      const { data, error } = await supabase.auth.signInWithIdToken({
+        provider: 'google',
+        token: result.idToken,
+      });
+      if (error) throw error;
+      return data;
     }
 
     // For Electron, use a proper redirect URL

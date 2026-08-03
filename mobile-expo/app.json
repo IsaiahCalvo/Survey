@@ -2,11 +2,17 @@
   "expo": {
     "name": "Survey",
     "slug": "survey",
+    "scheme": [
+      "com.kalvoe.survey",
+      "com.googleusercontent.apps.88293580204-481ecgudu1qgmlh2nvdhip13jtqj0iku"
+    ],
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "dark",
     "ios": {
+      "appleTeamId": "627THD5CBR",
+      "bundleIdentifier": "com.kalvoe.survey",
       "supportsTablet": true,
       "infoPlist": {
         "NSAppTransportSecurity": {
@@ -25,6 +31,9 @@
     },
     "web": {
       "favicon": "./assets/favicon.png"
-    }
+    },
+    "plugins": [
+      "expo-web-browser"
+    ]
   }
 }

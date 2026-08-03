@@ -1,10 +1,18 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, BackHandler, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, BackHandler, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
+import Constants, { ExecutionEnvironment } from 'expo-constants';
+import * as AuthSession from 'expo-auth-session';
+import { discovery as googleDiscovery } from 'expo-auth-session/providers/google';
 import { StatusBar } from 'expo-status-bar';
+import * as WebBrowser from 'expo-web-browser';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { WebView } from 'react-native-webview';
+import { WebView, WebViewMessageEvent } from 'react-native-webview';
 
 const DEFAULT_SURVEY_URL = 'https://surveytool.app/';
+const GOOGLE_IOS_CLIENT_ID = '88293580204-481ecgudu1qgmlh2nvdhip13jtqj0iku.apps.googleusercontent.com';
+const GOOGLE_REDIRECT_URI = 'com.googleusercontent.apps.88293580204-481ecgudu1qgmlh2nvdhip13jtqj0iku:/oauthredirect';
+
+WebBrowser.maybeCompleteAuthSession();
 
 function resolveSurveyUrl(configuredUrl = process.env.EXPO_PUBLIC_SURVEY_URL) {
   try {
@@ -43,6 +51,7 @@ function isExternalNavigationUrl(url: string) {
 function SurveyApp() {
   const webViewRef = useRef<WebView>(null);
   const processRecoveryRef = useRef<number[]>([]);
+  const googleAuthInFlightRef = useRef(false);
   const [canGoBack, setCanGoBack] = useState(false);
   const [loadError, setLoadError] = useState(false);
   const [webViewKey, setWebViewKey] = useState(0);
@@ -125,6 +134,85 @@ function SurveyApp() {
     setWebViewKey((value) => value + 1);
   };
 
+  const sendGoogleAuthResult = (payload: Record<string, unknown>) => {
+    const serialized = JSON.stringify(payload)
+      .replace(/</g, '\\u003c')
+      .replace(/\u2028/g, '\\u2028')
+      .replace(/\u2029/g, '\\u2029');
+    webViewRef.current?.injectJavaScript(`
+      window.dispatchEvent(new CustomEvent('survey-native-google-auth-result', {
+        detail: ${serialized}
+      }));
+      true;
+    `);
+  };
+
+  const handleGoogleSignIn = async (requestId: string) => {
+    if (googleAuthInFlightRef.current) {
+      sendGoogleAuthResult({ requestId, ok: false, error: 'Google sign-in is already open.' });
+      return;
+    }
+
+    googleAuthInFlightRef.current = true;
+    try {
+      if (Constants.executionEnvironment === ExecutionEnvironment.StoreClient) {
+        throw new Error('Google sign-in requires the Survey development app, not Expo Go.');
+      }
+
+      const request = new AuthSession.AuthRequest({
+        clientId: GOOGLE_IOS_CLIENT_ID,
+        redirectUri: GOOGLE_REDIRECT_URI,
+        responseType: AuthSession.ResponseType.Code,
+        scopes: ['openid', 'profile', 'email'],
+        prompt: AuthSession.Prompt.SelectAccount,
+        usePKCE: true,
+      });
+      const result = await request.promptAsync(googleDiscovery);
+
+      if (result.type === 'cancel' || result.type === 'dismiss') {
+        sendGoogleAuthResult({ requestId, ok: false, cancelled: true });
+        return;
+      }
+      if (result.type !== 'success' || !result.params.code) {
+        throw new Error(result.type === 'error'
+          ? result.error?.message || 'Google sign-in failed.'
+          : 'Google sign-in did not return an authorization code.');
+      }
+
+      const tokens = await AuthSession.exchangeCodeAsync({
+        clientId: GOOGLE_IOS_CLIENT_ID,
+        code: result.params.code,
+        redirectUri: GOOGLE_REDIRECT_URI,
+        extraParams: { code_verifier: request.codeVerifier || '' },
+      }, googleDiscovery);
+      if (!tokens.idToken) {
+        throw new Error('Google sign-in did not return an identity token.');
+      }
+
+      sendGoogleAuthResult({ requestId, ok: true, idToken: tokens.idToken });
+    } catch (error) {
+      sendGoogleAuthResult({
+        requestId,
+        ok: false,
+        error: error instanceof Error ? error.message : 'Google sign-in failed.',
+      });
+    } finally {
+      googleAuthInFlightRef.current = false;
+    }
+  };
+
+  const handleWebMessage = (event: WebViewMessageEvent) => {
+    try {
+      if (new URL(event.nativeEvent.url).origin !== SURVEY_ORIGIN) return;
+      const message = JSON.parse(event.nativeEvent.data);
+      if (message?.type === 'survey:google-sign-in' && typeof message.requestId === 'string') {
+        void handleGoogleSignIn(message.requestId);
+      }
+    } catch {
+      // Ignore messages that are not part of Survey's small native bridge.
+    }
+  };
+
   const handleNavigationStateChange = (state: { canGoBack: boolean; url: string }) => {
     setCanGoBack(state.canGoBack);
     setExternalNavigationActive(isExternalNavigationUrl(state.url));
@@ -171,6 +259,7 @@ function SurveyApp() {
         )}
         onLoadStart={() => setLoadError(false)}
         onNavigationStateChange={handleNavigationStateChange}
+        onMessage={Platform.OS === 'ios' ? handleWebMessage : undefined}
         onLoadEnd={() => webViewRef.current?.injectJavaScript(nativeSafeAreaScript)}
         onError={() => setLoadError(true)}
         onHttpError={() => setLoadError(true)}

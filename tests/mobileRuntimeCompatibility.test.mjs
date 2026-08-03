@@ -11,6 +11,9 @@ import {
 } from '../scripts/ios-simulator-dev-config.mjs';
 
 const EXPO_APP_SOURCE = readFileSync(new URL('../mobile-expo/App.tsx', import.meta.url), 'utf8');
+const EXPO_CONFIG_SOURCE = readFileSync(new URL('../mobile-expo/app.json', import.meta.url), 'utf8');
+const EXPO_PACKAGE_SOURCE = readFileSync(new URL('../mobile-expo/package.json', import.meta.url), 'utf8');
+const AUTH_CONTEXT_SOURCE = readFileSync(new URL('../src/contexts/AuthContext.jsx', import.meta.url), 'utf8');
 const INDEX_HTML_SOURCE = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
 const APP_SHELL_SOURCE = readFileSync(new URL('../src/AppShell.jsx', import.meta.url), 'utf8');
 const MAIN_SOURCE = readFileSync(new URL('../src/main.jsx', import.meta.url), 'utf8');
@@ -200,6 +203,25 @@ test('Expo gives external OAuth navigation a native dismiss button', () => {
   assert.match(EXPO_APP_SOURCE, /minHeight: 44/);
   const closeStyle = EXPO_APP_SOURCE.match(/externalNavigationClose:\s*\{([\s\S]*?)\n\s*\},\n\s*externalNavigationCloseText:/)?.[1] || '';
   assert.doesNotMatch(closeStyle, /borderRadius|borderWidth|backgroundColor/);
+});
+
+test('Survey development build owns Google sign-in without exposing the Supabase callback host', () => {
+  assert.match(EXPO_CONFIG_SOURCE, /"bundleIdentifier": "com\.kalvoe\.survey"/);
+  assert.match(EXPO_CONFIG_SOURCE, /"appleTeamId": "627THD5CBR"/);
+  assert.match(EXPO_CONFIG_SOURCE, /com\.googleusercontent\.apps\.88293580204-481ecgudu1qgmlh2nvdhip13jtqj0iku/);
+  assert.match(EXPO_PACKAGE_SOURCE, /"start:tunnel": "expo start --dev-client --tunnel"/);
+  assert.match(EXPO_APP_SOURCE, /new AuthSession\.AuthRequest/);
+  assert.match(EXPO_APP_SOURCE, /responseType: AuthSession\.ResponseType\.Code/);
+  assert.match(EXPO_APP_SOURCE, /usePKCE: true/);
+  assert.match(EXPO_APP_SOURCE, /AuthSession\.exchangeCodeAsync/);
+  assert.match(EXPO_APP_SOURCE, /result\.type === 'cancel' \|\| result\.type === 'dismiss'/);
+  assert.match(EXPO_APP_SOURCE, /survey-native-google-auth-result/);
+  assert.match(EXPO_APP_SOURCE, /new URL\(event\.nativeEvent\.url\)\.origin !== SURVEY_ORIGIN/);
+  assert.match(EXPO_APP_SOURCE, /onMessage=\{Platform\.OS === 'ios' \? handleWebMessage : undefined\}/);
+  assert.match(AUTH_CONTEXT_SOURCE, /window\.ReactNativeWebView\.postMessage/);
+  assert.match(AUTH_CONTEXT_SOURCE, /supabase\.auth\.signInWithIdToken/);
+  assert.match(AUTH_CONTEXT_SOURCE, /provider: 'google'/);
+  assert.match(AUTH_CONTEXT_SOURCE, /token: result\.idToken/);
 });
 
 test('mobile PDF rendering stays inside the WKWebView memory budget', () => {

@@ -1,31 +1,50 @@
 # Run Survey on iPhone without a cable
 
-Use **Expo Go** for immediate testing from this worktree. Use **Capacitor through
-TestFlight** for a normal Survey icon that keeps working when this Mac is offline.
+Use the **Survey development app** for immediate testing from this worktree. It replaces
+Expo Go because Survey's iOS identity and direct Google sign-in must be compiled into the
+native app. After the one-time wireless install, it keeps Expo's fast refresh and QR workflow.
+Use **TestFlight** for a Survey build that keeps working when this Mac is offline.
 
-## Immediate: Expo Go QR
+## Immediate: Survey development app
 
-This path requires no Apple developer account, signing, cable, or git push. Expo Go on
-iPhone currently supports this shell's Expo SDK 54. The Expo tunnel carries the small
-native shell bundle; the shell then opens either the deployed Survey site or this Mac's
-current worktree.
+This Mac already has an Apple development identity and this iPhone is already paired with
+Xcode, so the development app can be installed over Wi-Fi without a cable. Before the first
+install, sign into the matching Apple developer account in **Xcode → Settings → Accounts**;
+Xcode needs that session to create the `com.kalvoe.survey` provisioning profile. The iPhone
+must be unlocked, have Developer Mode enabled, and be on the same network as the Mac.
 
-### Test the deployed site
+### One-time wireless install
 
-1. Install **Expo Go** from the iPhone App Store.
-2. On the Mac:
+On the Mac:
 
-   ```bash
-   cd mobile-expo
-   npm ci
-   npm run start:tunnel
-   ```
+```bash
+cd mobile-expo
+npm ci
+npx expo prebuild --platform ios
+xcrun devicectl list devices
+npx expo run:ios --device "Isaiah Calvo’s iPhone"
+```
 
-3. Scan the terminal QR code with the iPhone Camera and open it in Expo Go.
+The final command builds, signs, installs, and launches **Survey**. It also starts Metro.
+If the phone is unavailable, unlock it, enable Settings → Privacy & Security → Developer
+Mode, confirm both devices are on the same Wi-Fi, and rerun the command. If Xcode reports
+`No Account for Team`, complete the Xcode account sign-in above and rerun it.
 
-Verified on 2026-08-02: the tunnel connected, reported ready, and emitted an iOS Camera/
-Expo Go QR. A first `CI=1` diagnostic attempt failed inside ngrok; normal interactive
-`npm run start:tunnel` connected successfully and is the supported command.
+### Every later test: no rebuild and no cable
+
+```bash
+cd mobile-expo
+npm run start:tunnel
+```
+
+Open **Survey** on the iPhone. If Metro prints a QR, scanning it opens the link in Survey,
+not Expo Go. Native TypeScript changes fast-refresh; a newly added native dependency or iOS
+configuration change requires rerunning the one-time install command.
+
+Google sign-in is intentionally handled by the Survey development app. iOS first says
+**Survey wants to use accounts.google.com**, then Google says **continue to Survey**. Both
+screens can be cancelled or closed. A `supabase.co` Google screen means the shell loaded an
+older deployed web bundle; use the unpushed-worktree steps below or deploy the bridge first.
 
 With no configuration, the shell opens
 `https://surveytool.app/?mobileNav=tabs&nativeShell=expo`. The shell always sets
@@ -63,10 +82,10 @@ npm ci
 EXPO_PUBLIC_SURVEY_URL='https://<mac-name>.<tailnet>.ts.net/' npm run start:tunnel
 ```
 
-Scan the QR code. Keep Vite, Tailscale Serve, and Expo running while testing. Changes to
-the web app come from the current worktree and do not require a git push. Native-shell
-TypeScript changes use Expo Fast Refresh; if the URL itself changes, stop and restart
-Expo with the new `EXPO_PUBLIC_SURVEY_URL`.
+Open Survey or scan the QR code into Survey. Keep Vite, Tailscale Serve, and Expo running
+while testing. Changes to the web app come from the current worktree and do not require a
+git push. Native-shell TypeScript changes use Expo Fast Refresh; if the URL itself changes,
+stop and restart Expo with the new `EXPO_PUBLIC_SURVEY_URL`.
 
 If the shell says it cannot connect, verify all three processes, open the Tailscale HTTPS
 URL in iPhone Safari, then tap **Try again**. Do not fall back to an insecure public Vite
@@ -175,8 +194,8 @@ The deployed mobile web viewer works without an install. Open this exact URL in 
 https://surveytool.app/?mobileNav=tabs
 ```
 
-Use Safari as the lowest-friction fallback. Use Expo Go when testing the native WebView shell,
-and TestFlight once its Apple signing/App Store Connect prerequisites are complete.
+Use Safari as the lowest-friction fallback. Use the Survey development app for the native
+WebView shell, and TestFlight once its App Store Connect prerequisites are complete.
 
 Official references:
 
