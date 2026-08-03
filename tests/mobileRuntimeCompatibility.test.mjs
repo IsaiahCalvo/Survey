@@ -198,6 +198,8 @@ test('Expo gives external OAuth navigation a native dismiss button', () => {
   assert.match(EXPO_APP_SOURCE, /setWebViewKey\(\(value\) => value \+ 1\)/);
   assert.match(EXPO_APP_SOURCE, /minWidth: 44/);
   assert.match(EXPO_APP_SOURCE, /minHeight: 44/);
+  const closeStyle = EXPO_APP_SOURCE.match(/externalNavigationClose:\s*\{([\s\S]*?)\n\s*\},\n\s*externalNavigationCloseText:/)?.[1] || '';
+  assert.doesNotMatch(closeStyle, /borderRadius|borderWidth|backgroundColor/);
 });
 
 test('mobile PDF rendering stays inside the WKWebView memory budget', () => {
