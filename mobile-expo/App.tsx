@@ -50,11 +50,37 @@ function SurveyApp() {
   const nativeSafeAreaScript = useMemo(() => `
     (() => {
       const root = document.documentElement;
+      const viewportContent = 'width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover';
+      let viewport = document.querySelector('meta[name="viewport"]');
+      if (!viewport) {
+        viewport = document.createElement('meta');
+        viewport.setAttribute('name', 'viewport');
+        (document.head || root).appendChild(viewport);
+      }
+      viewport.setAttribute('content', viewportContent);
+
+      let viewportStyle = document.querySelector('style[data-survey-mobile-viewport-lock]');
+      if (!viewportStyle) {
+        viewportStyle = document.createElement('style');
+        viewportStyle.setAttribute('data-survey-mobile-viewport-lock', '');
+        viewportStyle.textContent = 'input:not([type="hidden"]), textarea, select, [contenteditable="true"] { font-size: 16px !important; }';
+        (document.head || root).appendChild(viewportStyle);
+      }
+
+      if (!window.__surveyPageZoomLockInstalled) {
+        const preventPageZoom = (event) => event.preventDefault();
+        document.addEventListener('gesturestart', preventPageZoom, { passive: false });
+        document.addEventListener('gesturechange', preventPageZoom, { passive: false });
+        document.addEventListener('gestureend', preventPageZoom, { passive: false });
+        window.__surveyPageZoomLockInstalled = true;
+      }
+
       root.style.setProperty('--native-safe-area-bottom', '${nativeBottomInset}px');
       root.style.setProperty('--native-safe-area-top', '${nativeTopInset}px');
       root.style.setProperty('--native-safe-area-left', '${nativeLeftInset}px');
       root.style.setProperty('--native-safe-area-right', '${nativeRightInset}px');
       root.dataset.nativeShell = 'expo';
+      root.dataset.mobileViewport = 'locked';
       window.dispatchEvent(new CustomEvent('survey-native-safe-area-change', {
         detail: { bottom: ${nativeBottomInset}, top: ${nativeTopInset}, left: ${nativeLeftInset}, right: ${nativeRightInset} }
       }));
@@ -105,6 +131,7 @@ function SurveyApp() {
         originWhitelist={['*']}
         javaScriptEnabled
         domStorageEnabled
+        setBuiltInZoomControls={false}
         allowsBackForwardNavigationGestures
         allowsInlineMediaPlayback
         setSupportMultipleWindows={false}

@@ -182,6 +182,14 @@ test('mobile shells lock page zoom without disabling app-controlled PDF pinch', 
   assert.match(PDFJS_VIEWER_SOURCE, /event\.touches\.length >= 2/);
 });
 
+test('Expo enforces the zoom lock inside its WebView even when the hosted app is older', () => {
+  assert.match(EXPO_APP_SOURCE, /maximum-scale=1\.0, user-scalable=no/);
+  assert.match(EXPO_APP_SOURCE, /data-survey-mobile-viewport-lock/);
+  assert.match(EXPO_APP_SOURCE, /font-size: 16px !important/);
+  assert.match(EXPO_APP_SOURCE, /addEventListener\('gesturestart', preventPageZoom, \{ passive: false \}\)/);
+  assert.match(EXPO_APP_SOURCE, /root\.dataset\.mobileViewport = 'locked'/);
+});
+
 test('mobile PDF rendering stays inside the WKWebView memory budget', () => {
   assert.match(PDFJS_VIEWER_SOURCE, /MOBILE_MAX_CANVAS_AREA = 8 \* 1024 \* 1024/);
   assert.match(PDFJS_VIEWER_SOURCE, /MOBILE_MAX_OVERSCAN_PAGES = 1/);
