@@ -437,7 +437,7 @@ function SortableModuleTab({
   return (
     <div
       ref={setNodeRef}
-      {...attributes}
+      {...(!isRenaming ? attributes : {})}
       {...(!isRenaming ? listeners : {})}
       data-module-tab-id={mod.id}
       style={{

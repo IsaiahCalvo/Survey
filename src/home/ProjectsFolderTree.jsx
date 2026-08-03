@@ -159,6 +159,7 @@ export default function ProjectsFolderTree({
   onNav,
   onOpenDocument,
   onCreateProject,
+  onRenameProject,
   onUpload,
   onDeleteProjects,
   onDeleteDocuments,
@@ -478,10 +479,12 @@ export default function ProjectsFolderTree({
   }, [localProjects, onDeleteProjects]);
 
   const renameProject = useCallback((id, name) => {
+    const project = localProjects.find((item) => item.id === id);
     setLocalProjects((prev) => prev.map((p) => (
       p.id === id ? { ...p, name, updated_at: new Date().toISOString() } : p
     )));
-  }, []);
+    if (project && onRenameProject) void onRenameProject(project, name);
+  }, [localProjects, onRenameProject]);
 
   const reorderProjects = useCallback((fromId, toId) => {
     if (fromId == null || toId == null || fromId === toId) return;
@@ -656,6 +659,7 @@ export default function ProjectsFolderTree({
   const mobileProjectActions = (
     <div className="projects-mobile-select-row mobile-header-select-row">
       <button
+        data-testid="project-select-toggle"
         className="mobile-header-select-button"
         onClick={() => { const next = !jobsEdit; setJobsEdit(next); if (!next) setSelProj(new Set()); }}
       >
@@ -681,6 +685,7 @@ export default function ProjectsFolderTree({
               title="Share"
             ><Icon name="share" size={12} /></button>
             <button
+              data-testid="delete-selected-projects"
               disabled={!selCount}
               onClick={() => { void deleteProjects([...selProj]); }}
               style={miniButtonStyle({ disabled: !selCount, danger: true, iconOnly: true })}
@@ -765,6 +770,7 @@ export default function ProjectsFolderTree({
     return (
       <div
         key={`${keyPrefix}-${f.id}`}
+        data-document-id={f.id}
         className={`projects-mobile-file-row ${dragHandle ? 'reorderable' : ''}`}
         onClick={() => { if (fileSelect) { toggleFileSel(f.id); return; } onOpenDocument && onOpenDocument(f); }}
       >
@@ -821,6 +827,7 @@ export default function ProjectsFolderTree({
             </button>
             <div style={{ display: 'flex', alignItems: 'center', gap: 3, flexWrap: 'nowrap', height: 22, overflow: 'hidden' }}>
               <button
+                data-testid="project-select-toggle"
                 onClick={() => { const next = !jobsEdit; setJobsEdit(next); if (!next) setSelProj(new Set()); }}
                 style={miniSelectButtonStyle()}
               >
@@ -852,6 +859,7 @@ export default function ProjectsFolderTree({
                   ><Icon name="share" size={11} /></button>
                   {/* Delete — removes each selected project and lets the host persist it when wired. */}
                   <button
+                    data-testid="delete-selected-projects"
                     disabled={!selCount}
                     onClick={() => { void deleteProjects([...selProj]); }}
                     style={miniButtonStyle({ disabled: !selCount, danger: true, iconOnly: true })}
@@ -881,6 +889,7 @@ export default function ProjectsFolderTree({
                   {({ attributes, listeners, isDragging }) => (
                   <div
                     data-drag-rearrange-row
+                    data-project-id={p.id}
                     onClick={() => { if (jobsEdit) toggleProjSel(p.id); else setOpenId(p.id); }}
                     style={{
                       display: 'grid',
@@ -1082,6 +1091,7 @@ export default function ProjectsFolderTree({
                             {({ attributes, listeners, isDragging }) => (
                           <div
                             data-drag-rearrange-row
+                            data-document-id={f.id}
                             onClick={() => { if (fileSelect) { toggleFileSel(f.id); return; } onOpenDocument && onOpenDocument(f); }}
                             style={{
                               background: fileSelect && isChecked ? 'rgba(216,168,78,0.10)' : (i % 2 ? 'transparent' : 'rgba(255,255,255,0.02)'),
@@ -1267,6 +1277,7 @@ export default function ProjectsFolderTree({
                         {({ attributes, listeners, isDragging }) => (
                           <div
                             data-drag-rearrange-row
+                            data-project-id={p.id}
                             role="button"
                             tabIndex={0}
                             className="projects-mobile-folder-row drill reorderable"

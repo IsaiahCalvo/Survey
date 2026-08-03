@@ -11063,6 +11063,25 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     });
   }, [handleRequestCalloutEditMode]);
 
+  // Mobile has no reliable browser dblclick gesture. Give line/arrow/counter
+  // selections an explicit touch entry into the existing SVG bbox transform
+  // mode instead of making their resize/rotation chrome desktop-only.
+  const handleEnterBBoxEditFromStrip = useCallback(() => {
+    const sel = selectedToolbarAnnotationRef.current;
+    const annot = sel?.annotation;
+    if (!sel || sel.annotationIndex == null || !annot) return;
+    const type = String(annot.type || '').toLowerCase();
+    const isCounter = annot?.data?.type === 'counter';
+    if (!isCounter && type !== 'line' && type !== 'polygon' && type !== 'polyline') return;
+    setEditingAnnotation({
+      pageNumber: sel.pageNumber,
+      index: sel.annotationIndex,
+      type: annot.type,
+      editType: 'bbox',
+      data: annot,
+    });
+  }, []);
+
   const applyLocalAnnotationHistoryAction = useCallback((action) => {
     if (!action) return false;
     const viewerId = yjsUndoCtx?.userId || user?.id || null;
@@ -22436,6 +22455,15 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       canEnterTextEdit: !!(selectedToolbarCallout
         || (selectedToolbarAnnotation
           && String(selectedToolbarAnnotation.annotation?.type || '').toLowerCase() === 'textbox')),
+      onEnterBBoxEdit: handleEnterBBoxEditFromStrip,
+      canEnterBBoxEdit: !!(selectedToolbarAnnotation && (() => {
+        const annotation = selectedToolbarAnnotation.annotation;
+        const type = String(annotation?.type || '').toLowerCase();
+        return annotation?.data?.type === 'counter'
+          || type === 'line'
+          || type === 'polygon'
+          || type === 'polyline';
+      })()),
       richTextEditor,
       textStyleDefaults,
       onTextStyleDefaultsChange: setTextStyleDefaults,
@@ -22527,6 +22555,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     arrowheadStyle,
     handleArrowheadStyleChange,
     handleEnterTextEditFromStrip,
+    handleEnterBBoxEditFromStrip,
     richTextEditor,
     textStyleDefaults,
     lineBorderStyle,

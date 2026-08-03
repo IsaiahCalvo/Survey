@@ -171,3 +171,85 @@ export function ConfirmModal({ open, onClose, title = 'Are you sure?', message =
     </div>
   );
 }
+
+export function RenameModal({ open, onClose, title = 'Rename', initialName = '', onConfirm }) {
+  const [name, setName] = useState(initialName);
+  const inputRef = useRef(null);
+  const previouslyFocusedRef = useRef(null);
+
+  useEffect(() => {
+    if (!open) return undefined;
+    setName(initialName);
+    previouslyFocusedRef.current = document.activeElement;
+    const frame = requestAnimationFrame(() => {
+      inputRef.current?.focus();
+      inputRef.current?.select();
+    });
+    const handleKey = (event) => {
+      if (event.key === 'Escape') {
+        event.stopPropagation();
+        onClose?.();
+      }
+    };
+    window.addEventListener('keydown', handleKey, true);
+    return () => {
+      cancelAnimationFrame(frame);
+      window.removeEventListener('keydown', handleKey, true);
+      previouslyFocusedRef.current?.focus?.();
+      previouslyFocusedRef.current = null;
+    };
+  }, [initialName, onClose, open]);
+
+  if (!open) return null;
+  const trimmed = name.trim();
+  const submit = () => {
+    if (!trimmed) return;
+    onConfirm?.(trimmed);
+    onClose?.();
+  };
+
+  return (
+    <div onClick={onClose} style={overlay}>
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label={title}
+        onClick={(event) => event.stopPropagation()}
+        style={{ width: 380, maxWidth: '92vw', background: C.card, border: `1px solid ${C.rule}`, borderRadius: 10, boxShadow: '0 24px 60px rgba(0,0,0,0.55)', color: C.ink, overflow: 'hidden' }}
+      >
+        <div style={{ padding: '18px 18px 14px', display: 'flex', justifyContent: 'space-between', gap: 12 }}>
+          <div style={{ minWidth: 0, flex: 1 }}>
+            <div style={{ fontSize: 16, fontWeight: 700, letterSpacing: '-0.015em' }}>{title}</div>
+            <label style={{ display: 'block', marginTop: 12 }}>
+              <span style={{ display: 'block', fontSize: 11, color: C.muted, marginBottom: 6 }}>Name</span>
+              <input
+                ref={inputRef}
+                aria-label="Name"
+                value={name}
+                onChange={(event) => setName(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter') {
+                    event.preventDefault();
+                    submit();
+                  }
+                }}
+                style={{ width: '100%', height: 44, boxSizing: 'border-box', borderRadius: 7, border: `1px solid ${C.rule}`, background: C.deep, color: C.ink, padding: '0 11px', fontSize: 16, fontFamily: 'inherit', outline: 'none' }}
+              />
+            </label>
+          </div>
+          <button onClick={onClose} title="Close" style={closeButtonStyle({ borderColor: C.rule, color: C.muted })}>×</button>
+        </div>
+        <div style={{ padding: '12px 16px', borderTop: `1px solid ${C.rule}`, background: C.deep, display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+          <button onClick={onClose} style={{ minHeight: 44, background: 'transparent', border: 0, color: C.muted, padding: '6px 12px', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit', borderRadius: 6 }}>Cancel</button>
+          <button
+            disabled={!trimmed}
+            onClick={submit}
+            style={{ minHeight: 44, opacity: trimmed ? 1 : 0.45, cursor: trimmed ? 'pointer' : 'not-allowed', background: C.gold, color: '#15110a', border: 0, borderRadius: 6, padding: '6px 16px', fontSize: 12, fontWeight: 700, fontFamily: 'inherit' }}
+          >
+            Save
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}

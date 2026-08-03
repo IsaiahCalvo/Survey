@@ -42,6 +42,7 @@ export default function SurveyHub({
   onOpenDocument,
   onUpload,
   onCreateProject,
+  onRenameProject,
   onCreateTemplate,
   onDeleteProjects,
   onSaveTemplates,
@@ -51,6 +52,7 @@ export default function SurveyHub({
   getChecklistItemUsageCount,
   onDuplicateDocuments,
   onDeleteDocuments,
+  onRenameDocument,
   onMoveCopyDocuments,
   onLockDocument,
   onSettings,
@@ -114,6 +116,7 @@ export default function SurveyHub({
           onShare={shareDocuments}
           onDuplicate={onDuplicateDocuments}
           onDelete={onDeleteDocuments}
+          onRename={onRenameDocument}
           onMoveCopy={onMoveCopyDocuments}
           onLockDocument={onLockDocument}
           />
@@ -132,9 +135,11 @@ export default function SurveyHub({
             initialMobileOpen={initialMobileDetailOpen}
             onOpenDocument={(document) => onOpenDocument?.(document, 'projects')}
             onCreateProject={onCreateProject}
+            onRenameProject={onRenameProject}
             onUpload={onUpload}
             onDeleteProjects={onDeleteProjects}
             onDeleteDocuments={onDeleteDocuments}
+            onRenameDocument={onRenameDocument}
             onLockDocument={onLockDocument}
             onShare={shareProject}
             onShareDocument={shareDocuments}

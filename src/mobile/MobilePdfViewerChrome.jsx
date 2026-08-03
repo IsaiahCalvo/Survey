@@ -929,6 +929,16 @@ function MobileToolProperties({ api }) {
           Aa
         </button>
       )}
+      {api.canEnterBBoxEdit && api.onEnterBBoxEdit && (
+        <button
+          type="button"
+          className="mobile-pdf-properties__edit"
+          aria-label="Resize and rotate"
+          onClick={api.onEnterBBoxEdit}
+        >
+          ↗
+        </button>
+      )}
     </div>
     {textDefaultsOpen && typeof document !== 'undefined' && createPortal(
       <>

@@ -19,6 +19,8 @@
     "test:e2e:home-skeletons": "PLAYWRIGHT_BASE_URL=http://127.0.0.1:5197 playwright test --config debug/playwright.config.mjs debug/scenarios/home-loading-skeletons.spec.mjs",
     "test:privacy": "SUPABASE_INTEGRATION=1 node --env-file-if-exists=.env.test --test tests/storagePrivacyTripwire.test.mjs",
     "test:mobile-annotations": "node agent-cli/mobile-annotations-e2e.mjs",
+    "test:app-e2e": "node agent-cli/full-app-e2e.mjs --device=all",
+    "test:app-e2e:fast": "node agent-cli/full-app-e2e.mjs --device=all",
     "benchmark:pdf-annotations": "node debug/benchmarks/run-production-240k.mjs",
     "audit:code": "npx fallow",
     "audit:dead": "npx fallow dead-code",

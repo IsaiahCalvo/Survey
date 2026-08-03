@@ -13,6 +13,7 @@ import { resolveIncomingUpload, shouldOfferAlias, nextAvailableName } from './ut
 import DuplicateUploadModal from './components/DuplicateUploadModal';
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
 import SurveyHub from './home/SurveyHub';
+import CreateProjectModal from './home/CreateProjectModal';
 import { resolveHubInitialLoading } from './home/hubInitialLoadingState.js';
 import { useAuth } from './contexts/AuthContext';
 import { useMSGraph } from './contexts/MSGraphContext';
@@ -1092,7 +1093,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
     });
 
     // If no files were successfully uploaded, throw an error
-    if (successCount === 0) {
+    if (files.length > 0 && successCount === 0) {
       const errorMessages = uploadErrors.map(e => `${e.fileName}: ${e.error}`).join('; ');
       const error = new Error(`Failed to upload any files. Errors: ${errorMessages}`);
       error.code = 'NO_FILES_UPLOADED';
@@ -1146,10 +1147,6 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
 
     if (hasNameConflict(latestProjects, trimmedProjectName, { getName: (project) => project?.name })) {
       setDashboardError('A project with this name already exists. Please choose a different name.');
-      return;
-    }
-    if (projectFiles.length === 0) {
-      setDashboardError('Add at least one PDF to the project before creating it.');
       return;
     }
     setUploadInFlight(true);
@@ -1850,6 +1847,42 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
     }
   };
 
+  const hubRenameProject = async (project, nextName) => {
+    const name = String(nextName || '').trim();
+    if (!project?.id || !name) return false;
+    if (!user) { showToast('Please sign in to rename projects', 'warn'); return false; }
+    try {
+      await updateSupabaseProject(project.id, { name, updated_at: new Date().toISOString() });
+      await refetchProjects();
+      return true;
+    } catch (err) {
+      console.error('[ProjectRename] survey-hub:error', serializeError(err));
+      showToast('Failed to rename project: ' + (err.message || 'Unknown error'), 'error');
+      await refetchProjects();
+      return false;
+    }
+  };
+
+  const hubRenameDocument = async (doc, nextName) => {
+    const name = String(nextName || '').trim();
+    if (!doc?.id || !name) return false;
+    if (!user) { showToast('Please sign in to rename documents', 'warn'); return false; }
+    try {
+      setDocuments((prev) => prev.map((item) => (
+        item.id === doc.id ? { ...item, name, updated_at: new Date().toISOString() } : item
+      )));
+      await updateSupabaseDocument(doc.id, { name, updated_at: new Date().toISOString() });
+      await refetchDocuments();
+      await refetchAllDocuments();
+      return true;
+    } catch (err) {
+      console.error('[DocumentRename] survey-hub:error', serializeError(err));
+      showToast('Failed to rename document: ' + (err.message || 'Unknown error'), 'error');
+      await refetchDocuments();
+      return false;
+    }
+  };
+
   // Duplicate the given documents — optimistic local copies, same shape as
   // the removed legacy bulk-copy documents flow.
   const hubDuplicateDocuments = (docs) => {
@@ -1994,16 +2027,31 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
         onOpenDocument={hubOpenDocument}
         onUpload={handleUploadClick}
         onCreateProject={handleCreateProjectClick}
+        onRenameProject={hubRenameProject}
         onCreateTemplate={openTemplateModal}
         onDeleteProjects={hubDeleteProjects}
         onSaveTemplates={hubSaveTemplates}
         getChecklistItemUsageCount={hubGetChecklistItemUsageCount}
         onDuplicateDocuments={hubDuplicateDocuments}
         onDeleteDocuments={hubDeleteDocuments}
+        onRenameDocument={hubRenameDocument}
         onMoveCopyDocuments={hubMoveCopyDocuments}
         onLockDocument={hubToggleDocumentLock}
         onSettings={() => setShowAccountSettings(true)}
         onSignOut={signOut}
+      />
+      <CreateProjectModal
+        open={isProjectModalOpen}
+        name={projectName}
+        files={projectFiles}
+        busy={uploadInFlight}
+        onNameChange={setProjectName}
+        onFilesChange={(files) => setProjectFiles((prev) => [...prev, ...files.filter((file) => (
+          file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf')
+        ))])}
+        onRemoveFile={(index) => setProjectFiles((prev) => prev.filter((_, itemIndex) => itemIndex !== index))}
+        onCancel={handleCancelCreateProject}
+        onConfirm={handleConfirmCreateProject}
       />
       <DuplicateUploadModal
         isOpen={!!duplicateModal}

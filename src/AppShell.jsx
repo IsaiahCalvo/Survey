@@ -778,12 +778,19 @@ export default function App({ devPreviewReturnTab = null }) {
 
   const returnToDevHubPreview = () => {
     if (!import.meta.env.DEV || !devPreviewReturnTab) return false;
+    const source = new URLSearchParams(window.location.search);
+    const workflowE2E = source.get('workflowE2E') === '1';
     const params = new URLSearchParams({
       hubPreview: '1',
-      longDocs: '1',
       tab: devPreviewReturnTab,
-      mobileNav: 'rail',
+      mobileNav: workflowE2E ? 'tabs' : 'rail',
     });
+    if (workflowE2E) {
+      params.set('workflowE2E', '1');
+      params.set('nativeShell', 'expo');
+    } else {
+      params.set('longDocs', '1');
+    }
     window.location.assign(`/?${params.toString()}`);
     return true;
   };

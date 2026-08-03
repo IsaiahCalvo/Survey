@@ -11,7 +11,7 @@
 import { useState, useMemo, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { HubShell, Icon, Avatar, PdfThumb, Search, EmptyState } from './HubShell';
-import { MoveCopyModal, ConfirmModal } from './BulkModals';
+import { MoveCopyModal, ConfirmModal, RenameModal } from './BulkModals';
 import PdfPageThumb from './PdfPageThumb';
 import { useStorage } from '../hooks/useDatabase';
 import { closeButtonStyle, miniButtonStyle, moreButtonStyle } from './hubControls';
@@ -135,6 +135,7 @@ export default function DocumentsLedger({
   onShare,
   onDuplicate,
   onDelete,
+  onRename,
   onMoveCopy,
   onLockDocument,
 }) {
@@ -147,6 +148,7 @@ export default function DocumentsLedger({
   const [search, setSearch] = useState('');
   const [moveOpen, setMoveOpen] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [renameTarget, setRenameTarget] = useState(null);
   const [docMenu, setDocMenu] = useState(null);
   const [clipboardDoc, setClipboardDoc] = useState(null);
   const [mobileDetailId, setMobileDetailId] = useState(null);
@@ -372,6 +374,7 @@ export default function DocumentsLedger({
     return (
       <div
         key={`mobile-${d.id}`}
+        data-document-id={d.id}
         className="mobile-doc-card"
         onClick={() => openMobileDoc(d)}
         role="button"
@@ -444,6 +447,7 @@ export default function DocumentsLedger({
                 return (
                   <div
                     key={d.id}
+                    data-document-id={d.id}
                     onClick={() => { if (docSelectMode) { toggleDocSel(d.id); return; } setSelId(d.id); setPreviewOpen(true); }}
                     onDoubleClick={() => !docSelectMode && onOpenDocument && onOpenDocument(d.raw)}
                     style={{
@@ -656,6 +660,13 @@ export default function DocumentsLedger({
       danger
       onConfirm={() => { onDelete && onDelete(selectedRaw()); clearSel(); }}
     />
+    <RenameModal
+      open={!!renameTarget}
+      onClose={() => setRenameTarget(null)}
+      title="Rename document"
+      initialName={renameTarget?.name || ''}
+      onConfirm={(name) => onRename?.(renameTarget, name)}
+    />
     {docMenu && (() => {
       const doc = docs.find((d) => d.id === docMenu.id);
       if (!doc) return null;
@@ -667,6 +678,7 @@ export default function DocumentsLedger({
           onClose={() => setDocMenu(null)}
           items={[
             { label: 'Preview & details', onClick: () => showDocumentDetails(doc) },
+            { label: 'Rename', onClick: () => setRenameTarget(doc.raw) },
             { label: 'Copy', onClick: () => setClipboardDoc(doc.raw) },
             { label: 'Paste', disabled: !clipboardDoc, onClick: () => clipboardDoc && onDuplicate && onDuplicate([clipboardDoc]) },
             { label: 'Delete', danger: true, onClick: () => onDelete && onDelete([doc.raw]) },

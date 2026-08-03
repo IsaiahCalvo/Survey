@@ -3407,6 +3407,7 @@ const RegionSelectionTool = ({
                 handles.push(
                   <div
                     key={`v-${i}`}
+                    data-region-vertex-handle={i}
                     onPointerDown={(event) => handleVertexPointerDown(selectedRegion, i, event)}
                     style={{
                       position: 'absolute',
@@ -3476,6 +3477,7 @@ const RegionSelectionTool = ({
                     return (
                       <div
                         key={handle.key}
+                        data-region-resize-handle={handle.key}
                         onPointerDown={(event) => handleResizePointerDown(selectedRegion, handle.key, event)}
                         style={{
                           position: 'absolute',

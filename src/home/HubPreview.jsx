@@ -7,8 +7,9 @@
    SAMPLE teammates (members directory, project rosters, file owners) so the
    preview reads one-to-one with the design mockup. The bulk-action handlers
    run on local state so duplicate / move / copy / delete are demonstrable. */
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import SurveyHub from './SurveyHub';
+import CreateProjectModal from './CreateProjectModal';
 import ToastHost from '../components/ToastHost';
 import { AuthContext } from '../contexts/AuthContext';
 import { MSGraphContext } from '../contexts/MSGraphContext';
@@ -147,6 +148,24 @@ const copyName = (name = '') => {
 let copyCounter = 0;
 const newId = () => `d-copy-${Date.now()}-${copyCounter++}`;
 
+export const MOBILE_WORKFLOW_STORAGE_KEYS = Object.freeze({
+  documents: 'mobileWorkflowDocuments',
+  projects: 'mobileWorkflowProjects',
+  templates: 'mobileWorkflowTemplates',
+});
+
+const readWorkflowFixture = (key, fallback) => {
+  try {
+    const stored = JSON.parse(localStorage.getItem(key) || 'null');
+    if (Array.isArray(stored)) return stored;
+  } catch { /* a corrupt test fixture resets to the stable seed */ }
+  return fallback;
+};
+
+const persistWorkflowFixture = (key, value) => {
+  try { localStorage.setItem(key, JSON.stringify(value)); } catch { /* storage is optional outside E2E */ }
+};
+
 export default function HubPreview() {
   /* `?empty=1` renders the hub with zero documents/projects/templates so the
      three empty states can be reviewed with real code (dev-only, like the rest
@@ -155,17 +174,48 @@ export default function HubPreview() {
   const emptyFixture = params.get('empty') === '1';
   const longDocsFixture = params.get('longDocs') === '1';
   const loadingFixture = params.get('hubLoading');
+  const workflowE2E = params.get('workflowE2E') === '1';
   const previewHasNoData = emptyFixture || ['documents', 'projects', 'templates'].includes(loadingFixture);
-  const [documents, setDocuments] = useState(previewHasNoData ? [] : (longDocsFixture ? makeLongDocumentFixture() : INITIAL_DOCUMENTS));
+  const [documents, setDocuments] = useState(() => {
+    const fallback = previewHasNoData ? [] : (longDocsFixture ? makeLongDocumentFixture() : INITIAL_DOCUMENTS);
+    return workflowE2E ? readWorkflowFixture(MOBILE_WORKFLOW_STORAGE_KEYS.documents, fallback) : fallback;
+  });
+  const [projects, setProjects] = useState(() => {
+    const fallback = previewHasNoData ? [] : MOCK_PROJECTS;
+    return workflowE2E ? readWorkflowFixture(MOBILE_WORKFLOW_STORAGE_KEYS.projects, fallback) : fallback;
+  });
+  const [templates, setTemplates] = useState(() => {
+    const fallback = previewHasNoData ? [] : MOCK_TEMPLATES;
+    return workflowE2E ? readWorkflowFixture(MOBILE_WORKFLOW_STORAGE_KEYS.templates, fallback) : fallback;
+  });
+  const workflowUploadInputRef = useRef(null);
+  const workflowUploadTargetRef = useRef(null);
+  const [projectModalOpen, setProjectModalOpen] = useState(false);
+  const [projectDraftName, setProjectDraftName] = useState('');
+  const [projectDraftFiles, setProjectDraftFiles] = useState([]);
   const initialTab = params.get('tab');
   const initialMobileDetailOpen = params.get('mobileState') === 'detail';
 
+  useEffect(() => {
+    if (!workflowE2E) return;
+    persistWorkflowFixture(MOBILE_WORKFLOW_STORAGE_KEYS.documents, documents);
+    persistWorkflowFixture(MOBILE_WORKFLOW_STORAGE_KEYS.projects, projects);
+    persistWorkflowFixture(MOBILE_WORKFLOW_STORAGE_KEYS.templates, templates);
+    window.__mobileWorkflowState = { documents, projects, templates };
+  }, [documents, projects, templates, workflowE2E]);
+
   const handleOpenDocument = (document, returnTab = 'documents') => {
     const viewerParams = new URLSearchParams({
-      testPdf: 'Package 2 - Rev 4 -- IC.pdf',
+      testPdf: workflowE2E ? 'clickable-link-test.pdf' : 'Package 2 - Rev 4 -- IC.pdf',
       previewName: document?.name || 'Document.pdf',
       returnTab,
     });
+    if (workflowE2E) {
+      viewerParams.set('workflowE2E', '1');
+      viewerParams.set('surveyTemplateWorkflowE2E', '1');
+      viewerParams.set('mobileNav', 'tabs');
+      viewerParams.set('nativeShell', 'expo');
+    }
     window.location.assign(`/?${viewerParams.toString()}`);
   };
 
@@ -189,14 +239,126 @@ export default function HubPreview() {
     }
   };
 
+  const handleCreateProject = () => {
+    if (!workflowE2E) {
+      console.log('[hub preview] new project');
+      return null;
+    }
+    setProjectDraftName('');
+    setProjectDraftFiles([]);
+    setProjectModalOpen(true);
+    return null;
+  };
+
+  const workflowRowsForFiles = (files, projectId) => {
+    const now = new Date().toISOString();
+    return files.map((file, index) => ({
+      id: `workflow-document-${Date.now()}-${index}`,
+      name: file.name,
+      file_size: file.size,
+      mime_type: file.type || 'application/pdf',
+      project_id: projectId,
+      user_id: 'u1',
+      owner: 'IC',
+      created_at: now,
+      updated_at: now,
+    }));
+  };
+
+  const confirmCreateProject = () => {
+    const name = projectDraftName.trim();
+    if (!name) return;
+    const now = new Date().toISOString();
+    const project = {
+      id: `workflow-project-${Date.now()}`,
+      name,
+      user_id: 'u1',
+      members: ['IC'],
+      created_at: now,
+      updated_at: now,
+    };
+    setProjects((prev) => [project, ...prev]);
+    const acceptedFiles = projectDraftFiles.filter((file) => (
+      file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf')
+    ));
+    if (acceptedFiles.length) {
+      setDocuments((prev) => [...workflowRowsForFiles(acceptedFiles, project.id), ...prev]);
+    }
+    setProjectModalOpen(false);
+    setProjectDraftName('');
+    setProjectDraftFiles([]);
+  };
+
+  const handleRenameProject = (project, name) => {
+    if (!project?.id || !name) return false;
+    setProjects((prev) => prev.map((item) => (
+      item.id === project.id ? { ...item, name, updated_at: new Date().toISOString() } : item
+    )));
+    return true;
+  };
+
+  const handleDeleteProjects = (items) => {
+    const ids = new Set((items || []).map((item) => item?.id).filter(Boolean));
+    if (ids.size === 0) return false;
+    setProjects((prev) => prev.filter((project) => !ids.has(project.id)));
+    setDocuments((prev) => prev.filter((document) => !ids.has(document.project_id)));
+    return true;
+  };
+
+  const handleRenameDocument = (document, name) => {
+    if (!document?.id || !name) return false;
+    setDocuments((prev) => prev.map((item) => (
+      item.id === document.id ? { ...item, name, updated_at: new Date().toISOString() } : item
+    )));
+    return true;
+  };
+
+  const handleUpload = (projectId = null) => {
+    if (!workflowE2E) {
+      console.log('[hub preview] upload');
+      return;
+    }
+    workflowUploadTargetRef.current = projectId || null;
+    if (workflowUploadInputRef.current) {
+      workflowUploadInputRef.current.value = '';
+      workflowUploadInputRef.current.click();
+    }
+  };
+
+  const handleWorkflowFiles = (fileList) => {
+    const files = Array.from(fileList || []).filter((file) => (
+      file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf')
+    ));
+    if (files.length === 0) return;
+    const projectId = workflowUploadTargetRef.current;
+    const rows = workflowRowsForFiles(files, projectId);
+    setDocuments((prev) => [...rows, ...prev]);
+  };
+
+  const handleCreateTemplate = () => {
+    if (!workflowE2E) {
+      console.log('[hub preview] new template');
+      return null;
+    }
+    const template = {
+      id: `workflow-template-${Date.now()}`,
+      name: `Untitled Template ${templates.length + 1}`,
+      created_at: new Date().toISOString(),
+      entities: [],
+      modules: [],
+    };
+    setTemplates((prev) => [template, ...prev]);
+    return template;
+  };
+
   return (
     <AuthContext.Provider value={mockAuthValue}>
       <MSGraphContext.Provider value={mockMSGraphValue}>
         <div style={{ width: '100vw', height: '100vh' }}>
           <SurveyHub
             documents={documents}
-            projects={previewHasNoData ? [] : MOCK_PROJECTS}
-            templates={previewHasNoData ? [] : MOCK_TEMPLATES}
+            projects={projects}
+            templates={templates}
             documentsInitialLoading={loadingFixture === 'documents'}
             projectsInitialLoading={loadingFixture === 'projects'}
             templatesInitialLoading={loadingFixture === 'templates'}
@@ -206,15 +368,43 @@ export default function HubPreview() {
             initialTab={initialTab}
             initialMobileDetailOpen={initialMobileDetailOpen}
             onOpenDocument={handleOpenDocument}
-            onUpload={() => console.log('[hub preview] upload')}
-            onCreateProject={() => console.log('[hub preview] new project')}
-            onCreateTemplate={() => console.log('[hub preview] new template')}
+            onUpload={handleUpload}
+            onCreateProject={handleCreateProject}
+            onRenameProject={handleRenameProject}
+            onDeleteProjects={handleDeleteProjects}
+            onCreateTemplate={handleCreateTemplate}
+            onSaveTemplates={setTemplates}
             onDuplicateDocuments={handleDuplicate}
             onDeleteDocuments={handleDelete}
+            onRenameDocument={handleRenameDocument}
             onMoveCopyDocuments={handleMoveCopy}
             onSettings={() => console.log('[hub preview] open settings page')}
             onSignOut={() => console.log('[hub preview] sign out')}
           />
+          <CreateProjectModal
+            open={projectModalOpen}
+            name={projectDraftName}
+            files={projectDraftFiles}
+            onNameChange={setProjectDraftName}
+            onFilesChange={(files) => setProjectDraftFiles((prev) => [...prev, ...files])}
+            onRemoveFile={(index) => setProjectDraftFiles((prev) => prev.filter((_, itemIndex) => itemIndex !== index))}
+            onCancel={() => setProjectModalOpen(false)}
+            onConfirm={confirmCreateProject}
+          />
+          {workflowE2E ? (
+            <input
+              ref={workflowUploadInputRef}
+              data-testid="mobile-workflow-upload-input"
+              type="file"
+              multiple
+              accept="application/pdf"
+              style={{ display: 'none' }}
+              onChange={(event) => {
+                handleWorkflowFiles(event.target.files);
+                event.target.value = '';
+              }}
+            />
+          ) : null}
           {/* Toast bus host — in the real app AppShell mounts this; mount it
               here too so hub actions (and design review) can show toasts. */}
           <ToastHost />

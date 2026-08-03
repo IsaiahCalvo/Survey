@@ -16,6 +16,16 @@ async function firstVisible(locator) {
   return null;
 }
 
+async function waitForFirstVisible(locator, timeoutMs = 10_000) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const target = await firstVisible(locator);
+    if (target) return target;
+    await wait(100);
+  }
+  return null;
+}
+
 async function clickVisible(locator, label) {
   const target = await firstVisible(locator);
   invariant(target, `Expected visible ${label}`);
@@ -102,7 +112,10 @@ async function openSurveyCategory(page) {
       'KAL-436 test template',
     );
   }
-  const walls = await firstVisible(page.locator('button.survey-marker-category-main', { hasText: 'Walls' }));
+  const walls = await waitForFirstVisible(
+    page.locator('button.survey-marker-category-main', { hasText: 'Walls' }),
+    15_000,
+  );
   invariant(walls, 'Survey test category Walls did not render');
   await walls.click();
   await collapseSurveySheet(page);
@@ -293,12 +306,16 @@ export async function runSurveyMarkerLifecycle({
 
   // Undo-delete must restore the same persisted record, then touch-delete it
   // again so reload proves the final deletion rather than the undo state.
+  // WebKit can leave its native Paste callout open after the trusted-touch
+  // selection gesture. Dismiss it before exercising the visible mobile Undo.
+  await page.keyboard.press('Escape');
   await page.waitForFunction(() => (
     [...document.querySelectorAll('button[aria-label="Undo"]')]
       .some((button) => !button.disabled)
   ));
-  invariant(await undo.isEnabled(), 'Undo was disabled after Survey Marker touch delete');
-  await undo.click();
+  const visibleUndo = invariant(await firstVisible(undo), 'Visible Undo missing after Survey Marker touch delete');
+  invariant(await visibleUndo.isEnabled(), 'Undo was disabled after Survey Marker touch delete');
+  await tapLocator(touch, undo, 'Undo Survey Marker touch delete');
   marker = await waitForMarkerRecord(
     page,
     storageKeys.markers,
@@ -547,14 +564,27 @@ export async function runRegionLifecycle({ page, touch, storageKeys, spaceId, ar
 
   // Header Undo is the real mobile control and must restore the pre-move path.
   const undo = page.getByRole('button', { name: 'Undo', exact: true });
-  await undo.waitFor({ state: 'visible' });
-  invariant(await undo.isEnabled(), 'Region Undo stayed disabled after touch move');
+  const visibleUndo = invariant(await firstVisible(undo), 'Visible Region Undo button missing');
+  // The SVG path repaints during the drag before React publishes the matching
+  // history entry. Wait for that separate commit signal instead of racing it.
+  await page.waitForFunction(() => [...document.querySelectorAll('button')].some((button) => (
+    (button.getAttribute('aria-label') === 'Undo' || button.getAttribute('title') === 'Undo')
+      && !button.disabled
+      && button.getClientRects().length > 0
+  )), null, { timeout: 5_000 });
+  invariant(await visibleUndo.isEnabled(), 'Region Undo stayed disabled after touch move');
   await tapLocator(touch, undo, 'Region Undo button');
   await page.waitForFunction((expected) => (
     document.querySelector('div[data-region-selection-ui="true"] svg path[stroke="#F5A623"]')?.getAttribute('d') === expected
   ), originalPath);
   const redo = page.getByRole('button', { name: 'Redo', exact: true });
-  invariant(await redo.isEnabled(), 'Region Redo stayed disabled after Undo');
+  const visibleRedo = invariant(await firstVisible(redo), 'Visible Region Redo button missing');
+  await page.waitForFunction(() => [...document.querySelectorAll('button')].some((button) => (
+    (button.getAttribute('aria-label') === 'Redo' || button.getAttribute('title') === 'Redo')
+      && !button.disabled
+      && button.getClientRects().length > 0
+  )), null, { timeout: 5_000 });
+  invariant(await visibleRedo.isEnabled(), 'Region Redo stayed disabled after Undo');
   await tapLocator(touch, redo, 'Region Redo button');
   await page.waitForFunction((expected) => (
     document.querySelector('div[data-region-selection-ui="true"] svg path[stroke="#F5A623"]')?.getAttribute('d') === expected

@@ -1,0 +1,64 @@
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import test from 'node:test';
+
+const read = (file) => readFileSync(file, 'utf8');
+const harness = read('agent-cli/mobile-workflows/hub-resilience-e2e.mjs');
+const preview = read('src/home/HubPreview.jsx');
+const documents = read('src/home/DocumentsLedger.jsx');
+const loading = read('src/home/HubLoadingSkeletons.jsx');
+const workflowModel = read('agent-cli/mobile-workflows/project-document-model.mjs');
+
+test('hub resilience runner is explicitly fast mock-local and not a durable certification', () => {
+  assert.match(harness, /FAST \/ MOCK-LOCAL \/ NOT DURABLE/);
+  assert.match(harness, /FAST\/mock-local \(dev-only; not durable\)/);
+  assert.match(harness, /durablePersistenceCertified: false/);
+  assert.match(harness, /hubPreview: '1'/);
+  assert.doesNotMatch(harness, /SUPABASE_SERVICE_ROLE_KEY|DEV_AUTO_LOGIN|bot-credentials|test-account-lease/);
+});
+
+test('runner defaults to exact mobile touch and desktop mouse contracts in parallel', () => {
+  assert.match(harness, /device: 'all'/);
+  assert.match(harness, /Promise\.allSettled\(devices\.map/);
+  assert.match(harness, /createTouchDriver\(\{ browserName: 'chromium'/);
+  assert.match(harness, /trusted-cdp-touch/);
+  assert.match(harness, /desktop-mouse-keyboard/);
+  assert.match(harness, /WORKFLOW_VIEWPORTS/);
+  assert.match(workflowModel, /desktop: \{ width: 1400, height: 900 \}/);
+  assert.match(workflowModel, /mobile: \{ width: 390, height: 844 \}/);
+});
+
+test('runner covers tabs, discovery controls, bulk state, fixtures, lifecycle, and diagnostics', () => {
+  for (const token of [
+    'testDocuments',
+    'testProjects',
+    'testTemplates',
+    'Search documents...',
+    'Search projects...',
+    'Search templates...',
+    'Move/Copy',
+    'testEdgeFixtures',
+    'testViewerReturn',
+    'testHistory',
+    'page.goBack',
+    'page.goForward',
+    'page.reload',
+    'consoleErrors',
+    'pageErrors',
+    'criticalRequestFailures',
+  ]) assert.match(harness, new RegExp(token.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+});
+
+test('dev preview exposes stable empty, loading, and long-document fixtures used by the runner', () => {
+  assert.match(preview, /params\.get\('empty'\) === '1'/);
+  assert.match(preview, /params\.get\('longDocs'\) === '1'/);
+  assert.match(preview, /params\.get\('hubLoading'\)/);
+  assert.match(preview, /makeLongDocumentFixture/);
+  assert.match(preview, /documentsInitialLoading=\{loadingFixture === 'documents'\}/);
+  assert.match(preview, /projectsInitialLoading=\{loadingFixture === 'projects'\}/);
+  assert.match(preview, /templatesInitialLoading=\{loadingFixture === 'templates'\}/);
+  assert.match(documents, /No documents match your search/);
+  assert.match(documents, /sortOptions/);
+  assert.match(loading, /aria-busy="true"/);
+  assert.match(loading, /aria-label=\{`Loading \$\{title\.toLowerCase\(\)\}`\}/);
+});
