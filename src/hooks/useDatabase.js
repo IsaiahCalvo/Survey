@@ -73,14 +73,45 @@ export const useProjects = () => {
       // schema); Dashboard.jsx and this hook consume id/name/user_id directly
       // and sort/display off created_at/updated_at, so every real column is
       // kept rather than guessing which ones are unused.
-      const { data, error } = await supabase
-        .from('projects')
-        .select('id, user_id, name, description, color, archived, created_at, updated_at')
-        .eq('user_id', user.id)
-        .order('created_at', { ascending: false });
+      const projectColumns = 'id, user_id, name, description, color, archived, created_at, updated_at';
+      const [ownedResult, collaboratorResult] = await Promise.all([
+        supabase
+          .from('projects')
+          .select(projectColumns)
+          .eq('user_id', user.id)
+          .order('created_at', { ascending: false }),
+        supabase
+          .from('project_collaborators')
+          .select('project_id')
+          .eq('user_id', user.id)
+          .eq('status', 'active'),
+      ]);
 
-      if (error) throw error;
-      const projectsData = data || [];
+      if (ownedResult.error) throw ownedResult.error;
+      const ownedProjects = ownedResult.data || [];
+      let collaboratorProjects = [];
+      if (collaboratorResult.error) {
+        console.warn('Error fetching collaborator projects:', collaboratorResult.error);
+      } else {
+        const ownedIds = new Set(ownedProjects.map((project) => project.id));
+        const missingIds = [...new Set((collaboratorResult.data || [])
+          .map((row) => row.project_id)
+          .filter(Boolean))]
+          .filter((id) => !ownedIds.has(id));
+        if (missingIds.length > 0) {
+          const sharedResult = await supabase
+            .from('projects')
+            .select(projectColumns)
+            .in('id', missingIds)
+            .order('created_at', { ascending: false });
+          if (sharedResult.error) throw sharedResult.error;
+          collaboratorProjects = sharedResult.data || [];
+        }
+      }
+
+      const projectsData = [...new Map(
+        [...ownedProjects, ...collaboratorProjects].map((project) => [project.id, project]),
+      ).values()].sort((a, b) => (Date.parse(b.created_at) || 0) - (Date.parse(a.created_at) || 0));
       if (!isCurrentRequest()) return [];
       setProjects(projectsData);
       return projectsData; // Return the data so callers can use it immediately

@@ -9,6 +9,30 @@ async function readTemplates(page) {
   return page.evaluate((key) => JSON.parse(localStorage.getItem(key) || '[]'), TEMPLATE_WORKFLOW_STORAGE_KEY);
 }
 
+async function waitForReloadedTemplate(page, expected) {
+  await page.waitForFunction(({ key, templateId, templateName, moduleId }) => {
+    let templates;
+    try {
+      templates = JSON.parse(localStorage.getItem(key) || '[]');
+    } catch {
+      return false;
+    }
+    const stored = templates.find((entry) => entry.id === templateId);
+    if (stored?.name !== templateName || !stored.modules?.some((entry) => entry.id === moduleId)) return false;
+
+    const center = document.querySelector('.templates-editor-grid > section');
+    if (!center) return false;
+    const renamedTemplateVisible = [...center.querySelectorAll('input[title="Click to rename"]')]
+      .some((input) => input.value === templateName);
+    const moduleVisible = [...center.querySelectorAll('[data-module-tab-id]')]
+      .some((element) => element.dataset.moduleTabId === moduleId);
+    return renamedTemplateVisible && moduleVisible;
+  }, {
+    key: TEMPLATE_WORKFLOW_STORAGE_KEY,
+    ...expected,
+  }, { timeout: 30_000 });
+}
+
 async function save(page) {
   const saveButton = page.locator('button:visible', { hasText: /^Save$/ }).first();
   await saveButton.click();
@@ -64,8 +88,15 @@ export async function runDesktopSurveyTemplateWorkflow({ page, baseUrl, artifact
 
   await page.reload({ waitUntil: 'domcontentloaded', timeout: 60_000 });
   await grid.waitFor({ state: 'visible', timeout: 30_000 });
-  invariant(await center.locator(`input[value=${JSON.stringify(templateName)}]`).count(), 'Desktop template rename missing after reload');
-  invariant(await center.locator(`[data-module-tab-id="${ids.moduleId}"]`).count(), 'Desktop module missing after reload');
+  // `grid` becomes visible before React has necessarily selected and painted
+  // the persisted template under parallel-suite CPU load. Wait for BOTH the
+  // exact persisted mock model and its matching DOM tree; then keep strict
+  // cardinality assertions below so readiness cannot mask wrong content.
+  await waitForReloadedTemplate(page, ids);
+  invariant(await center.locator(`input[value=${JSON.stringify(templateName)}]`).count() === 1,
+    'Desktop template rename missing after reload');
+  invariant(await center.locator(`[data-module-tab-id="${ids.moduleId}"]`).count() === 1,
+    'Desktop module missing after reload');
   const reloadedCategory = categoryByName(page, categoryName);
   await reloadedCategory.waitFor({ state: 'visible' });
   await reloadedCategory.getByTitle('Expand').click();

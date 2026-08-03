@@ -32,7 +32,19 @@ const overlay = {
 export function MoveCopyModal({ open, onClose, projects = [], count = 0, onConfirm }) {
   const [mode, setMode] = useState('move'); // 'move' | 'copy'
   const [destId, setDestId] = useState(null);
+  const [submitting, setSubmitting] = useState(false);
   const previouslyFocusedRef = useRef(null);
+
+  const handleConfirm = async () => {
+    if (!destId || submitting) return;
+    setSubmitting(true);
+    try {
+      await onConfirm?.(destId, mode);
+      onClose?.();
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
   // Accessibility: Escape closes the modal, and focus returns to whatever
   // triggered it once it closes (minimal per-modal patch, no shared modal
@@ -72,14 +84,14 @@ export function MoveCopyModal({ open, onClose, projects = [], count = 0, onConfi
   );
 
   return (
-    <div onClick={onClose} style={overlay}>
-      <div onClick={(e) => e.stopPropagation()} style={{ width: 420, maxWidth: '92vw', background: C.card, border: `1px solid ${C.rule}`, borderRadius: 10, boxShadow: '0 24px 60px rgba(0,0,0,0.55)', color: C.ink, overflow: 'hidden' }}>
+    <div onClick={submitting ? undefined : onClose} style={overlay}>
+      <div role="dialog" aria-modal="true" aria-label="Move or copy documents" onClick={(e) => e.stopPropagation()} style={{ width: 420, maxWidth: '92vw', background: C.card, border: `1px solid ${C.rule}`, borderRadius: 10, boxShadow: '0 24px 60px rgba(0,0,0,0.55)', color: C.ink, overflow: 'hidden' }}>
         <div style={{ padding: '16px 18px 14px', borderBottom: `1px solid ${C.rule}`, display: 'flex', justifyContent: 'space-between', gap: 12 }}>
           <div>
             <div style={{ fontSize: 10.5, letterSpacing: '0.14em', textTransform: 'uppercase', color: C.muted, fontWeight: 700 }}>Move or copy</div>
             <div style={{ fontSize: 17, fontWeight: 700, letterSpacing: '-0.015em', marginTop: 4 }}>{count} {count === 1 ? 'document' : 'documents'}</div>
           </div>
-          <button onClick={onClose} title="Close" style={closeButtonStyle({ borderColor: C.rule, color: C.muted })}>×</button>
+          <button disabled={submitting} onClick={onClose} title="Close" style={closeButtonStyle({ borderColor: C.rule, color: C.muted })}>×</button>
         </div>
         <div style={{ padding: '16px 18px', display: 'flex', flexDirection: 'column', gap: 14 }}>
           <div style={{ display: 'flex', gap: 6 }}>
@@ -94,29 +106,32 @@ export function MoveCopyModal({ open, onClose, projects = [], count = 0, onConfi
             <div style={{ maxHeight: 200, overflowY: 'auto', border: `1px solid ${C.rule}`, borderRadius: 6 }}>
               {projects.length === 0 && <div style={{ padding: '12px', fontSize: 11.5, color: C.muted }}>No projects to move into.</div>}
               {projects.map((p) => (
-                <div
+                <button
+                  type="button"
                   key={p.id}
                   onClick={() => setDestId(p.id)}
+                  aria-pressed={destId === p.id}
                   style={{
-                    padding: '9px 12px', fontSize: 12.5, cursor: 'pointer',
+                    display: 'block', width: '100%', padding: '9px 12px', fontSize: 12.5,
+                    cursor: 'pointer', color: C.ink, textAlign: 'left', fontFamily: 'inherit',
                     background: destId === p.id ? 'rgba(216,168,78,0.12)' : 'transparent',
-                    borderLeft: `2px solid ${destId === p.id ? C.gold : 'transparent'}`,
+                    border: 0, borderLeft: `2px solid ${destId === p.id ? C.gold : 'transparent'}`,
                   }}
                 >
                   {p.name}
-                </div>
+                </button>
               ))}
             </div>
           </div>
         </div>
         <div style={{ padding: '12px 16px', borderTop: `1px solid ${C.rule}`, background: C.deep, display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-          <button onClick={onClose} style={{ background: 'transparent', border: 0, color: C.muted, padding: '6px 10px', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit', borderRadius: 6 }}>Cancel</button>
+          <button disabled={submitting} onClick={onClose} style={{ background: 'transparent', border: 0, color: C.muted, padding: '6px 10px', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit', borderRadius: 6 }}>Cancel</button>
           <button
-            disabled={!destId}
-            onClick={() => { onConfirm && onConfirm(destId, mode); onClose(); }}
-            style={{ opacity: destId ? 1 : 0.45, cursor: destId ? 'pointer' : 'not-allowed', background: C.gold, color: '#15110a', border: 0, borderRadius: 6, padding: '5px 14px', height: 28, fontSize: 11.5, fontWeight: 600, fontFamily: 'inherit' }}
+            disabled={!destId || submitting}
+            onClick={handleConfirm}
+            style={{ opacity: destId && !submitting ? 1 : 0.45, cursor: destId && !submitting ? 'pointer' : 'not-allowed', background: C.gold, color: '#15110a', border: 0, borderRadius: 6, padding: '5px 14px', height: 28, fontSize: 11.5, fontWeight: 600, fontFamily: 'inherit' }}
           >
-            {mode === 'move' ? 'Move here' : 'Copy here'}
+            {submitting ? (mode === 'move' ? 'Moving…' : 'Copying…') : (mode === 'move' ? 'Move here' : 'Copy here')}
           </button>
         </div>
       </div>

@@ -1234,7 +1234,7 @@ export default function ProjectsFolderTree({
                     <span>{mobileDrillAllFiles.length} files · {projectLastEditedLabel(mobileDrillProject.id)}</span>
                   </div>
                   <button className="btn" onClick={() => addFiles(mobileDrillProject)}><Icon name="upload" size={12} />Add files</button>
-                  <button className="btn" onClick={() => setTeamModalProject(mobileDrillProject)}><Icon name="users" size={12} />Team</button>
+                  <button className="btn" aria-label="Manage team" onClick={() => setTeamModalProject(mobileDrillProject)}><Icon name="users" size={12} />Team</button>
                 </div>
                 <div className="projects-mobile-file-list">
                   {mobileDrillFiles.length === 0 ? (

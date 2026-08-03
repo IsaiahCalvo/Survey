@@ -49,6 +49,19 @@ test('runner covers tabs, discovery controls, bulk state, fixtures, lifecycle, a
   ]) assert.match(harness, new RegExp(token.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
 });
 
+test('viewer deep link waits for the exact workflow fixture before asserting one visible source', () => {
+  const readiness = harness.indexOf("await waitForWorkflowFixtureReady(page, { projectId: 'p1', documentId: 'd1' })");
+  const projectVisible = harness.indexOf("await project.waitFor({ state: 'visible', timeout: 30_000 })");
+  const exactProjectAssertion = harness.indexOf('assert.equal(await project.count(), 1');
+  const documentVisible = harness.indexOf("await document.waitFor({ state: 'visible', timeout: 30_000 })");
+  const exactDocumentAssertion = harness.indexOf('assert.equal(await document.count(), 1');
+  assert.ok(readiness >= 0);
+  assert.ok(projectVisible > readiness && exactProjectAssertion > projectVisible);
+  assert.ok(documentVisible > exactProjectAssertion && exactDocumentAssertion > documentVisible);
+  assert.match(harness, /matchingProjects\.length === 1 && matchingDocuments\.length === 1/);
+  assert.match(harness, /window\.__mobileWorkflowState/);
+});
+
 test('dev preview exposes stable empty, loading, and long-document fixtures used by the runner', () => {
   assert.match(preview, /params\.get\('empty'\) === '1'/);
   assert.match(preview, /params\.get\('longDocs'\) === '1'/);

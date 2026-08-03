@@ -1166,30 +1166,6 @@ export default function App({ devPreviewReturnTab = null }) {
           Log handler dispatches. */}
       <SaveLogBanner />
       <ToastHost />
-      {/* UX: dev-only build stamp (git hash · server start time, injected at
-          dev-server start). A stale tab served by a dead dev server silently
-          ran old code through an entire bug hunt — this chip answers "which
-          build am I actually looking at" at a glance. Not rendered in
-          production builds. */}
-      {import.meta.env.DEV && typeof __BUILD_STAMP__ !== 'undefined' && __BUILD_STAMP__ && (
-        <div style={{
-          position: 'fixed',
-          left: '6px',
-          bottom: '6px',
-          zIndex: 6000,
-          pointerEvents: 'none',
-          background: 'rgba(24, 28, 36, 0.85)',
-          color: '#8d96a6',
-          border: '1px solid #2a3140',
-          borderRadius: '4px',
-          padding: '2px 6px',
-          fontSize: '10px',
-          fontFamily: 'ui-monospace, monospace',
-          letterSpacing: 0,
-        }}>
-          {__BUILD_STAMP__}
-        </div>
-      )}
       <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
         {tabs.length > 0 && !isNarrowShell && ( // Desktop-only: mobile navigation lives inside the home/viewer chrome.
           <TabBar
@@ -2717,7 +2693,8 @@ export default function App({ devPreviewReturnTab = null }) {
             id="chrome-left-host"
             style={{
               display: isViewerVisible ? 'flex' : 'none',
-              flex: isMobileViewer ? '0 0 44px' : '0 0 48px',
+              flexGrow: 0,
+              flexBasis: isMobileViewer ? '44px' : '48px',
               width: isMobileViewer ? '44px' : '48px',
               flexShrink: 0,
               minWidth: isMobileViewer ? '44px' : '48px',
@@ -2865,7 +2842,8 @@ export default function App({ devPreviewReturnTab = null }) {
             id="chrome-right-host"
             style={{
               display: isViewerVisible ? 'flex' : 'none',
-              flex: isMobileViewer ? '0 0 0px' : '0 0 48px',
+              flexGrow: 0,
+              flexBasis: isMobileViewer ? '0px' : '48px',
               flexShrink: 0,
               width: isMobileViewer ? '0px' : '48px',
               minWidth: isMobileViewer ? '0px' : '48px',

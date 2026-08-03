@@ -116,6 +116,24 @@ if (typeof window !== 'undefined') {
   console.error = (...args) => capture('console.error @ ', _error, args);
 })();
 
+// Build identity belongs in console/save logs, never in product chrome. This
+// runs before route selection so desktop, web, Expo, Capacitor, and dev-only
+// harness routes all report the exact build they loaded.
+(() => {
+  const version = typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : 'unknown';
+  const devStamp = typeof __BUILD_STAMP__ !== 'undefined' ? __BUILD_STAMP__ : '';
+  if (devStamp) {
+    console.log('[Survey build]', { version, runtime: 'dev-server', build: devStamp });
+    return;
+  }
+
+  const releaseUrl = new URL('release.json', document.baseURI).href;
+  fetch(releaseUrl, { cache: 'no-store' })
+    .then((response) => (response.ok ? response.json() : Promise.reject(new Error(`HTTP ${response.status}`))))
+    .then((release) => console.log('[Survey build]', { version, runtime: 'release', ...release }))
+    .catch((error) => console.log('[Survey build]', { version, runtime: 'release', marker: 'unavailable', error: error.message }));
+})();
+
 // BULLETPROOF Cmd+Shift+L (2026-05-03) — capture-phase, install-once,
 // outside-React keydown handler. Lives at module-init level so it survives
 // any React crash, error-boundary fallback, route change, or unmount of

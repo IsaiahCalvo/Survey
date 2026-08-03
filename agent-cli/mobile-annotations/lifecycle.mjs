@@ -99,6 +99,69 @@ async function interactionPoint(locator, toolId, label) {
   return { x: box.x + (box.width / 2), y: box.y + (box.height / 2) };
 }
 
+async function mobileMenuPoint(locator, toolId, label) {
+  const result = await locator.evaluate((target, id) => {
+    const box = target.getBoundingClientRect();
+    if (!(box.width > 0 && box.height > 0)) return { point: null, stacks: [] };
+    const candidates = [[box.left + (box.width / 2), box.top + (box.height / 2)]];
+
+    const geometryLength = target.getTotalLength?.();
+    const screenMatrix = target.getScreenCTM?.();
+    if (Number.isFinite(geometryLength) && geometryLength > 0 && screenMatrix) {
+      for (const fraction of [0.25, 0.75, 0.35, 0.65]) {
+        const geometryPoint = target.getPointAtLength(geometryLength * fraction);
+        const screenPoint = new DOMPoint(geometryPoint.x, geometryPoint.y).matrixTransform(screenMatrix);
+        candidates.push([screenPoint.x, screenPoint.y]);
+      }
+    }
+
+    if (id === 'ellipse') {
+      const radiusX = Math.max(0, (box.width / 2) - 3);
+      const radiusY = Math.max(0, (box.height / 2) - 3);
+      for (const degrees of [30, 60, 120, 150, 210, 240, 300, 330]) {
+        const radians = degrees * (Math.PI / 180);
+        candidates.push([
+          box.left + (box.width / 2) + (radiusX * Math.cos(radians)),
+          box.top + (box.height / 2) + (radiusY * Math.sin(radians)),
+        ]);
+      }
+    } else if (id === 'rectangle') {
+      candidates.push(
+        [box.right - 3, box.top + (box.height * 0.25)],
+        [box.right - 3, box.top + (box.height * 0.75)],
+        [box.left + (box.width * 0.25), box.top + 3],
+        [box.left + (box.width * 0.75), box.bottom - 3],
+      );
+    }
+
+    const targetAnnotationId = target.closest?.('[data-anno-id]')?.getAttribute('data-anno-id');
+    const targetCalloutId = target.closest?.('[data-callout-id]')?.getAttribute('data-callout-id');
+    for (const [x, y] of candidates) {
+      const top = document.elementFromPoint(x, y);
+      if (!top || top.closest?.('[data-resize-handle], [data-rotation-handle]')) continue;
+      const belongsToTarget = top === target
+        || target.contains?.(top)
+        || (targetAnnotationId && top.closest?.('[data-anno-id]')?.getAttribute('data-anno-id') === targetAnnotationId)
+        || (targetCalloutId && top.closest?.('[data-callout-id]')?.getAttribute('data-callout-id') === targetCalloutId);
+      if (belongsToTarget) return { point: { x, y }, stacks: [] };
+    }
+    return {
+      point: null,
+      stacks: candidates.slice(0, 8).map(([x, y]) => ({
+        point: { x, y },
+        stack: document.elementsFromPoint(x, y).slice(0, 3).map((node) => ({
+          calloutId: node.closest?.('[data-callout-id]')?.getAttribute('data-callout-id') || null,
+          part: node.getAttribute?.('data-callout-part') || null,
+          resizeHandle: node.closest?.('[data-resize-handle]')?.getAttribute('data-resize-handle') || null,
+          tag: node.tagName,
+        })),
+      })),
+    };
+  }, toolId);
+  assert(result?.point, `${label} must expose an object body point outside transform handles; stacks=${JSON.stringify(result?.stacks)}`);
+  return result.point;
+}
+
 async function selectObject(page, touch, toolId, id) {
   await activateSelect(page);
   const target = await targetLocator(page, toolId, id);
@@ -278,11 +341,19 @@ async function deleteWithMobileMenu(page, touch, toolId, id) {
   } else {
     target = await selectObject(page, touch, toolId, id);
   }
-  const deletePoint = await interactionPoint(target, toolId, `${toolId} delete target`);
+  const deletePoint = await mobileMenuPoint(target, toolId, `${toolId} delete target`);
   await touch.longPress(deletePoint);
   const menu = page.locator('[data-annotation-context-menu]');
-  await menu.waitFor({ state: 'visible', timeout: 3_000 }).catch(() => {
-    throw new Error(`${toolId}: long-press exposed no mobile annotation action menu`);
+  await menu.waitFor({ state: 'visible', timeout: 3_000 }).catch(async () => {
+    const stack = await page.evaluate(({ x, y }) => document.elementsFromPoint(x, y).slice(0, 6).map((node) => ({
+      annoId: node.closest?.('[data-anno-id]')?.getAttribute('data-anno-id') || null,
+      className: typeof node.className === 'string' ? node.className : null,
+      hit: node.getAttribute?.('data-shape-hit-target') || node.getAttribute?.('data-path-hit-target'),
+      resizeHandle: node.closest?.('[data-resize-handle]')?.getAttribute('data-resize-handle') || null,
+      rotationHandle: node.closest?.('[data-rotation-handle]')?.getAttribute('data-rotation-handle') || null,
+      tag: node.tagName,
+    })), deletePoint);
+    throw new Error(`${toolId}: long-press exposed no mobile annotation action menu; stack=${JSON.stringify(stack)}`);
   });
   const deleteAction = menu.getByText('Delete', { exact: true });
   if (await deleteAction.count() !== 1) {

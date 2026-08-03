@@ -867,7 +867,10 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     // gesture-start here so Canvas tools flush before the host re-layouts. (Wheel
     // gestures already signalled on their first frame; an extra signal is harmless.)
     if (signalStart) {
-      cb.current.onZoomPhase?.('gesture-start', { atPct: Math.round(oldScale * 100) });
+      cb.current.onZoomPhase?.('gesture-start', {
+        atPct: Math.round(oldScale * 100),
+        source: 'imperative',
+      });
     }
     const cX = el.scrollLeft + cursorX;
     const cY = el.scrollTop + cursorY;
@@ -928,7 +931,10 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
         };
         // Stage 3: a zoom gesture has started — let the host flush in-progress
         // Canvas drawing before the page hosts re-layout on settle.
-        cb.current.onZoomPhase?.('gesture-start', { atPct: Math.round(scaleRef.current * 100) });
+        cb.current.onZoomPhase?.('gesture-start', {
+          atPct: Math.round(scaleRef.current * 100),
+          source: 'wheel',
+        });
         setZoomInteraction(true);
       }
       const committed = scaleRef.current;
@@ -1152,7 +1158,10 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
       setLiveZoom(1);
       if (settleTimerRef.current) clearTimeout(settleTimerRef.current);
       window.dispatchEvent(new Event(PINCH_START_EVENT));
-      cb.current.onZoomPhase?.('gesture-start', { atPct: Math.round(scaleRef.current * 100) });
+      cb.current.onZoomPhase?.('gesture-start', {
+        atPct: Math.round(scaleRef.current * 100),
+        source: 'pinch',
+      });
       setZoomInteraction(true);
       setPanInteraction(true);
       setMobileTouchMode('pinch');
@@ -1367,6 +1376,13 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
 
     const onStart = (event) => {
       if (event.touches.length !== 1) { clear(); return; }
+      // Resize/rotation handles own the entire touch sequence. Never arm the
+      // annotation long-press menu beneath them; WebKit otherwise may surface
+      // its native Page/Paste callout during a deliberate slow transform.
+      if (event.target?.closest?.('[data-resize-handle], [data-rotation-handle]')) {
+        clear();
+        return;
+      }
       const t = event.touches[0];
       startX = t.clientX;
       startY = t.clientY;
@@ -1577,6 +1593,9 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
   }, [goToPage, zoomToScale, applyAnchoredScale, getThumbnailDataUrl]);
 
   const loading = pageSizes.length === 0;
+  const nativePinchE2E = import.meta.env.DEV
+    && typeof window !== 'undefined'
+    && new URLSearchParams(window.location.search).has('nativePinchE2E');
 
   // ── Live-zoom transform origin: lock-to-centre on any axis that already fits ──
   // UX intent (matches HANDOFF-zoom-pagegap-centering "lock-to-center"): cursor-
@@ -1630,6 +1649,14 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
         ...style
       }}
     >
+      {nativePinchE2E && (
+        <button
+          type="button"
+          aria-label="PDF gesture surface"
+          tabIndex={-1}
+          style={{ position: 'absolute', inset: 0, zIndex: 2147483646, opacity: 0, touchAction: 'none' }}
+        />
+      )}
       <style>{`
         [data-space-pan='armed'], [data-space-pan='armed'] * { cursor: grab !important; }
         [data-space-pan='dragging'], [data-space-pan='dragging'] * { cursor: grabbing !important; }

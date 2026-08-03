@@ -27,6 +27,7 @@ function resolveSurveyUrl(configuredUrl = process.env.EXPO_PUBLIC_SURVEY_URL) {
 }
 
 const SURVEY_URL = resolveSurveyUrl();
+console.info('[Survey shell]', { runtime: 'expo', url: SURVEY_URL });
 
 function SurveyApp() {
   const webViewRef = useRef<WebView>(null);

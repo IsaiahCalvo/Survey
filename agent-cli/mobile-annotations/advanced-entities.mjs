@@ -69,6 +69,12 @@ async function hardReload(page) {
 async function history(page, touch, name) {
   const button = page.getByRole('button', { name, exact: true });
   await button.waitFor({ state: 'visible', timeout: 10_000 });
+  await page.waitForFunction((label) => {
+    const candidates = [...document.querySelectorAll('button')];
+    return candidates.some((candidate) => (
+      candidate.getAttribute('aria-label') === label && !candidate.disabled
+    ));
+  }, name, { timeout: 10_000 });
   assert.equal(await button.isEnabled(), true, `${name} must be enabled after transform`);
   await tapLocator(touch, button, name);
 }
@@ -124,7 +130,15 @@ async function selectMarker(page, touch, id) {
     await backdrop.click({ force: true });
     await backdrop.waitFor({ state: 'hidden', timeout: 5_000 });
   }
-  await page.getByRole('button', { name: 'Select', exact: true }).click();
+  const selectTool = page.getByRole('button', { name: 'Select', exact: true });
+  await selectTool.click();
+  // Tool changes intentionally clear the previous page selection in a layout
+  // effect. Wait for that state transition to paint before touching the marker,
+  // otherwise the clear can land after the trusted touch and erase the new
+  // selection before its handles render.
+  await selectTool.evaluate((button) => new Promise((resolve) => {
+    requestAnimationFrame(() => requestAnimationFrame(resolve));
+  }));
   const hit = page.locator(`[data-survey-marker-id="${escapeAttribute(id)}"] [data-survey-marker-hit-target="true"]`);
   const selectedHandle = page.locator(
     `[data-survey-marker-id="${escapeAttribute(id)}"] .svg-selection-overlay [data-resize-handle="br"]`,
@@ -185,6 +199,14 @@ export async function runSurveyMarkerAdvancedTransform({ page, touch, storageKey
   ), { key: storageKeys.markers, markerId: id }, { timeout: 10_000 });
   const initialMarker = await markerRecord(page, storageKeys.markers, id);
   const initial = invariant(markerProjection(initialMarker), 'Survey Marker initial bounds missing');
+  await page.evaluate(() => {
+    window.__markerTransformContextMenus = 0;
+    document.addEventListener('contextmenu', (event) => {
+      if (event.target?.closest?.('.svg-selection-overlay')) {
+        window.__markerTransformContextMenus += 1;
+      }
+    }, true);
+  });
 
   await selectMarker(page, touch, id);
   await page.locator('.svg-selection-overlay [data-resize-handle="br"]')
@@ -212,24 +234,45 @@ export async function runSurveyMarkerAdvancedTransform({ page, touch, storageKey
   await history(page, touch, 'Redo');
   await waitMarkerProjection(page, storageKeys.markers, id, resized);
 
-  await selectMarker(page, touch, id);
-  await page.locator('.svg-selection-overlay > rect').first().waitFor({ state: 'visible', timeout: 10_000 });
-  const frame = await markerFrameBox(page);
-  await page.locator('.svg-selection-overlay [data-rotation-handle="mtr"] circle')
-    .waitFor({ state: 'visible', timeout: 10_000 });
-  const rotate = invariant(await firstVisible(page.locator('.svg-selection-overlay [data-rotation-handle="mtr"] circle')),
-    'Survey Marker rotation handle missing');
-  const { point: rotateStart } = await exposedLocatorPoint(rotate, 'Survey Marker rotation handle');
-  const center = { x: frame.x + frame.width / 2, y: frame.y + frame.height / 2 };
-  await touch.drag(rotateStart, { x: center.x + 54, y: center.y }, { steps: 14 });
-  marker = await waitMarkerProjection(page, storageKeys.markers, id, resized, false);
-  const rotated = markerProjection(marker);
-  assert(Math.abs(rotated.angle - resized.angle) > 0.1, 'Survey Marker rotation angle did not persist');
+  const targetAngles = [0, 90, 180, -90, 35, 145, -35, -145];
+  let rotated = resized;
+  for (let iteration = 0; iteration < targetAngles.length; iteration += 1) {
+    await selectMarker(page, touch, id);
+    await page.locator('.svg-selection-overlay > rect').first().waitFor({ state: 'visible', timeout: 10_000 });
+    const frame = await markerFrameBox(page);
+    const rotate = invariant(await firstVisible(
+      page.locator('.svg-selection-overlay [data-rotation-handle="mtr"] circle'),
+    ), `Survey Marker rotation handle missing on repetition ${iteration + 1}`);
+    const { point: rotateStart } = await exposedLocatorPoint(
+      rotate,
+      `Survey Marker rotation handle repetition ${iteration + 1}`,
+    );
+    const center = { x: frame.x + frame.width / 2, y: frame.y + frame.height / 2 };
+    const targetRadians = (targetAngles[iteration] * Math.PI) / 180;
+    const rotateEnd = {
+      x: center.x + 54 * Math.cos(targetRadians),
+      y: center.y + 54 * Math.sin(targetRadians),
+    };
+    const beforeRotation = rotated;
+    await touch.drag(rotateStart, rotateEnd, { steps: 14 });
+    marker = await waitMarkerProjection(page, storageKeys.markers, id, beforeRotation, false);
+    rotated = markerProjection(marker);
+    assert(
+      Math.abs(rotated.angle - beforeRotation.angle) > 0.1,
+      `Survey Marker rotation ${iteration + 1} angle did not persist`,
+    );
 
-  await history(page, touch, 'Undo');
-  await waitMarkerProjection(page, storageKeys.markers, id, resized);
-  await history(page, touch, 'Redo');
-  await waitMarkerProjection(page, storageKeys.markers, id, rotated);
+    await history(page, touch, 'Undo');
+    await waitMarkerProjection(page, storageKeys.markers, id, beforeRotation);
+    await history(page, touch, 'Redo');
+    await waitMarkerProjection(page, storageKeys.markers, id, rotated);
+  }
+  await delay(450);
+  assert.equal(
+    await page.evaluate(() => window.__markerTransformContextMenus || 0),
+    0,
+    'Survey Marker transforms opened a native context menu',
+  );
   await hardReload(page);
   marker = await markerRecord(page, storageKeys.markers, id);
   assert.deepEqual(markerProjection(marker), rotated, 'Survey Marker resize+rotation changed after reload');
@@ -240,7 +283,8 @@ export async function runSurveyMarkerAdvancedTransform({ page, touch, storageKey
     persistenceStore: 'markers',
     id,
     input: touch.inputKind,
-    lifecycle: 'create-resize-undo-redo-rotate-undo-redo-reload',
+    lifecycle: `create-resize-undo-redo-rotate-x${targetAngles.length}-undo-redo-reload`,
+    rotationRepetitions: targetAngles.length,
     resize: true,
     rotate: true,
     status: 'passed',

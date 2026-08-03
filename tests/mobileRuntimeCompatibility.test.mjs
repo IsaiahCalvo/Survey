@@ -7,7 +7,11 @@ import { installBlobArrayBufferPolyfill, readBlobAsArrayBuffer } from '../src/ut
 import { getMobileSyncPresentation, normalizeMobilePresence } from '../src/mobile/mobilePdfViewerModel.js';
 
 const EXPO_APP_SOURCE = readFileSync(new URL('../mobile-expo/App.tsx', import.meta.url), 'utf8');
+const APP_SHELL_SOURCE = readFileSync(new URL('../src/AppShell.jsx', import.meta.url), 'utf8');
+const MAIN_SOURCE = readFileSync(new URL('../src/main.jsx', import.meta.url), 'utf8');
 const HUB_CSS_SOURCE = readFileSync(new URL('../src/home/hub.css', import.meta.url), 'utf8');
+const IOS_SIMULATOR_SOURCE = readFileSync(new URL('../scripts/run-ios-simulator.mjs', import.meta.url), 'utf8');
+const IOS_APP_SCHEME_SOURCE = readFileSync(new URL('../ios/App/App.xcodeproj/xcshareddata/xcschemes/App.xcscheme', import.meta.url), 'utf8');
 const PDFJS_VIEWER_SOURCE = readFileSync(new URL('../src/components/PdfjsViewerContainer.jsx', import.meta.url), 'utf8');
 // Unified renderer (FabricDrawingCanvas retired): touch-compat behavior for
 // creation strokes now lives in SVGAnnotationLayer (the live creation surface).
@@ -121,6 +125,23 @@ test('Expo shell publishes native safe areas and keeps controls above the home i
   assert.match(EXPO_APP_SOURCE, /onRenderProcessGone/);
 });
 
+test('build identity is diagnostic-only and Simulator rejects a stale bundle', () => {
+  assert.doesNotMatch(APP_SHELL_SOURCE, /position:\s*'fixed'[\s\S]{0,500}\{__BUILD_STAMP__\}/);
+  assert.doesNotMatch(APP_SHELL_SOURCE, /\{__BUILD_STAMP__\}/);
+  assert.match(MAIN_SOURCE, /console\.log\('\[Survey build\]'/);
+  assert.match(MAIN_SOURCE, /new URL\('release\.json', document\.baseURI\)/);
+  assert.match(IOS_SIMULATOR_SOURCE, /distRelease\.commit !== sourceCommit/);
+  assert.match(IOS_SIMULATOR_SOURCE, /appRelease\.commit !== sourceCommit/);
+  assert.match(IOS_APP_SCHEME_SOURCE, /BlueprintName="App"/);
+  assert.match(IOS_APP_SCHEME_SOURCE, /BuildableName="App\.app"/);
+});
+
+test('Capacitor and Expo mobile headers each consume the top safe area once', () => {
+  assert.match(HUB_CSS_SOURCE, /\.survey-hub \.header \{[\s\S]{0,520}top: env\(safe-area-inset-top, 0px\)/);
+  assert.match(HUB_CSS_SOURCE, /html\[data-native-shell="expo"\] \.survey-hub \.header \{\s*top: 0;/);
+  assert.match(EXPO_APP_SOURCE, /paddingTop: insets\.top/);
+});
+
 test('mobile PDF rendering stays inside the WKWebView memory budget', () => {
   assert.match(PDFJS_VIEWER_SOURCE, /MOBILE_MAX_CANVAS_AREA = 8 \* 1024 \* 1024/);
   assert.match(PDFJS_VIEWER_SOURCE, /MOBILE_MAX_OVERSCAN_PAGES = 1/);
@@ -129,12 +150,26 @@ test('mobile PDF rendering stays inside the WKWebView memory budget', () => {
 });
 
 test('starting a two-finger pinch cancels a partial creation stroke', () => {
+  // A named region gives native XCUITest/Appium an exact real gesture target
+  // inside WKWebView instead of pinching the shell-level web view.
+  assert.match(PDFJS_VIEWER_SOURCE, /import\.meta\.env\.DEV[\s\S]{0,180}nativePinchE2E/);
+  assert.match(PDFJS_VIEWER_SOURCE, /nativePinchE2E && \([\s\S]{0,220}aria-label="PDF gesture surface"/);
   assert.match(PDFJS_VIEWER_SOURCE, /window\.dispatchEvent\(new Event\(PINCH_START_EVENT\)\)/);
   // SVGAnnotationLayer's pinch listener must discard (never commit) the
   // in-flight gesture: synchronous ref clear + captured-point flush.
   assert.match(SVG_ANNOTATION_LAYER_SOURCE, /window\.addEventListener\('survey-pdfjs-pinch-start', cancelPinchGesture\)/);
   assert.match(SVG_ANNOTATION_LAYER_SOURCE, /shapeCreationRef\.current = null;/);
   assert.match(SVG_ANNOTATION_LAYER_SOURCE, /freehandPointsRef\.current = \[\];/);
+});
+
+test('native pinch and trackpad gestures override a stale fit-mode source', () => {
+  assert.match(PDFJS_VIEWER_SOURCE, /source: 'pinch'/);
+  assert.match(PDFJS_VIEWER_SOURCE, /source: 'wheel'/);
+  assert.match(PDFJS_VIEWER_SOURCE, /source: 'imperative'/);
+  assert.match(
+    PDF_VIEWER_SOURCE,
+    /payload\?\.source === 'pinch'[\s\S]{0,80}payload\?\.source === 'wheel'[\s\S]{0,300}pdfjsZoomSourceRef\.current = ZOOM_MODES\.MANUAL/,
+  );
 });
 
 test('one-finger creation strokes stay touch-compatible on the SVG surface', () => {
@@ -189,6 +224,12 @@ test('native mobile home remains viewport-contained with a solid full-width tab 
   assert.match(HUB_CSS_SOURCE, /html\.survey-hub-native-frame,[\s\S]{0,180}overflow: hidden !important/);
   assert.match(HUB_CSS_SOURCE, /\.survey-hub \.mobile-home-tabs \{[\s\S]{0,180}left: 0;[\s\S]{0,80}right: 0;[\s\S]{0,300}background: #0d0f14/);
   assert.match(HUB_CSS_SOURCE, /\.survey-hub \.mobile-home-tabs::before \{\s*display: none/);
+});
+
+test('mobile viewer rails do not mix flex shorthand with flexShrink during rerender', () => {
+  assert.match(APP_SHELL_SOURCE, /id="chrome-left-host"[\s\S]{0,220}flexGrow: 0,[\s\S]{0,100}flexBasis: isMobileViewer \? '44px' : '48px',[\s\S]{0,100}flexShrink: 0/);
+  assert.match(APP_SHELL_SOURCE, /id="chrome-right-host"[\s\S]{0,220}flexGrow: 0,[\s\S]{0,100}flexBasis: isMobileViewer \? '0px' : '48px',[\s\S]{0,100}flexShrink: 0/);
+  assert.doesNotMatch(APP_SHELL_SOURCE, /flex: isMobileViewer \? '0 0 (?:0|44)px' : '0 0 48px'/);
 });
 
 test('mobile Survey and Spaces drawers follow their content', () => {

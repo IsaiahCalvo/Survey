@@ -4,34 +4,54 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { chromium } from 'playwright';
 import { assertBrowserUsesLeasedAccount, installLeasedBrowserAccount } from './lib/leased-browser-session.mjs';
+import { loadVerifiedTestAccounts } from '../scripts/test-account-lease.mjs';
 import { ensureViteServer } from './mobile-annotations/vite-server.mjs';
 import {
   createCleanupManifest,
   createDurableNames,
+  documentCleanupProblems,
   DURABLE_SURFACES,
+  exactDocumentCleanupProblems,
   finalizeCleanupManifest,
+  isExpectedMissingLegacySidecar,
   parseDurableArgs,
 } from './full-app-durable-contract.mjs';
+import {
+  assertRuntimeOwnerEntitlement,
+  resolveLeasedCollaborationAccounts,
+} from './full-app-collaboration-contract.mjs';
+import {
+  createRuntimeEntitlementProbe,
+  proveProjectCollaborationCleanup,
+  runProjectCollaboration,
+} from './full-app-collaboration-e2e.mjs';
 
 async function main() {
   const args = parseDurableArgs(process.argv.slice(2));
   const runId = new Date().toISOString().replace(/[-:.TZ]/g, '').slice(0, 14);
   if (args.dryRun) {
-    console.log(JSON.stringify({ runId, surfaces: args.surfaces, liveAuth: false, cleanupRequired: true }, null, 2));
+    console.log(JSON.stringify({
+      runId,
+      surfaces: args.surfaces,
+      liveAuth: false,
+      cleanupRequired: true,
+      collaborationIdentitiesConfigured: !!args.ownerAccount && !!args.inviteeAccount,
+    }, null, 2));
     return;
   }
+
+  invariant(args.ownerAccount && args.inviteeAccount,
+    'Durable collaboration requires --owner-account=email|user-id and --invitee-account=email|user-id');
+  const leasedAccounts = loadVerifiedTestAccounts({ minimumAccounts: 2 });
+  const collaborationAccounts = resolveLeasedCollaborationAccounts(leasedAccounts, {
+    ownerIdentity: args.ownerAccount,
+    inviteeIdentity: args.inviteeAccount,
+  });
 
   const server = await ensureViteServer(args.baseUrl);
   const browser = await chromium.launch({ headless: !args.headful });
   const failures = [];
   try {
-    // Verify the exact second identity is part of this coordinator-owned lease
-    // even though the current free/free bundle cannot exercise sharing (the
-    // product intentionally disables invite creation for free owners).
-    const collaboratorLeaseContext = await browser.newContext();
-    const collaboratorLeaseAccount = await installLeasedBrowserAccount(collaboratorLeaseContext, { accountIndex: 1 });
-    await collaboratorLeaseContext.close();
-
     for (const surface of args.surfaces) {
       const config = DURABLE_SURFACES[surface];
       const context = await browser.newContext({
@@ -45,12 +65,18 @@ async function main() {
 
       // Required ordering: exact lease verification and auth installation run
       // before the first page is created or navigated.
-      const leasedAccount = await installLeasedBrowserAccount(context);
+      const leasedAccount = await installLeasedBrowserAccount(context, { accountIndex: collaborationAccounts.ownerIndex });
       const page = await context.newPage();
+      const entitlementProbe = createRuntimeEntitlementProbe(page, { userId: leasedAccount.userId });
       const diagnostics = createBrowserDiagnostics(page);
       await page.goto(`${server.baseUrl}${config.route}`, { waitUntil: 'domcontentloaded', timeout: 60_000 });
       await assertBrowserUsesLeasedAccount(page, { account: leasedAccount, timeoutMs: 60_000 });
       diagnostics.markIdentityVerified();
+      const runtimeOwnerEntitlement = assertRuntimeOwnerEntitlement(
+        await entitlementProbe.wait(60_000),
+        leasedAccount.userId,
+      );
+      entitlementProbe.stop();
 
       try {
         await runSurface({
@@ -59,7 +85,12 @@ async function main() {
           runId,
           artifactRoot: args.artifactRoot,
           ownerLeaseAccount: leasedAccount,
-          collaboratorLeaseAccount,
+          collaboratorLeaseAccount: collaborationAccounts.invitee,
+          collaboratorLeaseAccountIndex: collaborationAccounts.inviteeIndex,
+          runtimeOwnerEntitlement,
+          browser,
+          serverBaseUrl: server.baseUrl,
+          surfaceConfig: config,
           diagnostics,
         });
       } catch (error) {
@@ -104,8 +135,13 @@ function createResponseTracker(page, manifest, names) {
     const request = response.request();
     const url = new URL(response.url());
     const method = request.method().toUpperCase();
-    const ok = response.status() >= 200 && response.status() < 300;
+    let ok = response.status() >= 200 && response.status() < 300;
     const tableMatch = url.pathname.match(/\/rest\/v1\/(projects|documents)$/);
+    let completionError = null;
+    if ((tableMatch || url.pathname.includes('/storage/v1/object/documents')) && method === 'DELETE') {
+      completionError = await response.finished();
+      ok = ok && !completionError;
+    }
     if (tableMatch && method === 'POST' && ok) {
       const body = await response.json().catch(() => null);
       for (const row of Array.isArray(body) ? body : [body]) {
@@ -135,18 +171,24 @@ function createResponseTracker(page, manifest, names) {
         ids,
         status: response.status(),
         ok,
+        ...(completionError ? { error: completionError.message } : {}),
       });
     }
     if (url.pathname.includes('/storage/v1/object/documents') && method === 'DELETE') {
       let payload = null;
       try { payload = request.postDataJSON(); } catch { payload = request.postData(); }
+      const objectPrefix = '/storage/v1/object/documents/';
+      const urlPath = url.pathname.startsWith(objectPrefix)
+        ? decodeURIComponent(url.pathname.slice(objectPrefix.length))
+        : null;
       manifest.requests.push({
         at: new Date().toISOString(),
         resource: 'storage',
         operation: 'delete',
-        paths: payload?.prefixes || [],
+        paths: payload?.prefixes || (urlPath ? [urlPath] : []),
         status: response.status(),
         ok,
+        ...(completionError ? { error: completionError.message } : {}),
       });
     }
   };
@@ -183,10 +225,12 @@ function installDialogDiscipline(page) {
 }
 
 function createBrowserDiagnostics(page) {
-  let identityVerifiedAt = null;
+  let runManifest = null;
   const consoleEvents = [];
   const criticalRequestFailures = [];
   const expectedAbortedRequests = [];
+  const httpErrorResponses = [];
+  const pendingResponseReads = new Set();
   page.on('console', (message) => {
     if (message.type() !== 'error') return;
     consoleEvents.push({ at: Date.now(), text: message.text() });
@@ -211,35 +255,87 @@ function createBrowserDiagnostics(page) {
     }
     criticalRequestFailures.push(failure);
   });
-  page.on('response', (response) => {
+  const recordHttpError = async (response) => {
+    if (response.status() < 400) return;
+    const responseUrl = response.url();
+    if (!/\/(?:auth|rest|storage|functions)\/v1\//.test(responseUrl)) return;
     const request = response.request();
     const method = request.method().toUpperCase();
-    if (!['POST', 'PATCH', 'DELETE'].includes(method) || response.status() < 400) return;
-    const url = response.url();
-    if (!/\/(?:rest|storage)\/v1\//.test(url)) return;
-    criticalRequestFailures.push({
-      at: new Date().toISOString(),
+    const atMs = Date.now();
+    let errorCode = null;
+    let errorMessage = null;
+    const body = await response.json().catch(() => null);
+    if (body && typeof body === 'object') {
+      errorCode = body.error_code || body.code || body.error || null;
+      errorMessage = body.msg || body.message || body.error_description || null;
+    }
+    const verifiedCaptchaFallback = new URL(responseUrl).pathname.includes('/auth/v1/token')
+      && method === 'POST'
+      && response.status() === 400
+      && /captcha/i.test(`${errorCode || ''} ${errorMessage || ''}`);
+    const expectedMissingLegacySidecar = method === 'GET' && isExpectedMissingLegacySidecar({
+      url: responseUrl,
+      status: response.status(),
+      errorCode,
+      manifest: runManifest,
+    });
+    const entry = {
+      at: new Date(atMs).toISOString(),
+      atMs,
       kind: 'http',
       method,
-      url: redactRequestUrl(url),
+      url: redactRequestUrl(responseUrl),
       status: response.status(),
-    });
+      errorCode,
+      classification: verifiedCaptchaFallback
+        ? 'verified dev-auto-login captcha fallback'
+        : expectedMissingLegacySidecar
+          ? 'expected optional legacy survey sidecar absent'
+          : 'unexpected',
+    };
+    httpErrorResponses.push(entry);
+    if (!verifiedCaptchaFallback
+      && ['POST', 'PATCH', 'DELETE'].includes(method)
+      && /\/(?:rest|storage)\/v1\//.test(responseUrl)) {
+      criticalRequestFailures.push(entry);
+    }
+  };
+  page.on('response', (response) => {
+    const task = recordHttpError(response).finally(() => pendingResponseReads.delete(task));
+    pendingResponseReads.add(task);
   });
   return {
-    markIdentityVerified() { identityVerifiedAt = Date.now(); },
-    snapshot() {
+    markIdentityVerified() {},
+    setManifest(manifest) { runManifest = manifest; },
+    async snapshot() {
+      await Promise.all([...pendingResponseReads]);
       const expectedConsoleErrors = [];
       const consoleErrors = [];
+      const availableExpectedResponses = httpErrorResponses
+        .filter((entry) => entry.classification !== 'unexpected')
+        .map((entry) => ({ ...entry, matched: false }));
       for (const event of consoleEvents) {
-        const beforeVerified = identityVerifiedAt != null && event.at <= identityVerifiedAt;
-        const expectedCaptcha = beforeVerified && /turnstile|captcha|failed to load resource.*(?:400|401)/i.test(event.text);
-        (expectedCaptcha ? expectedConsoleErrors : consoleErrors).push({
+        const matchingResponse = availableExpectedResponses.find((entry) => (
+          !entry.matched
+          && /failed to load resource.*400/i.test(event.text)
+          && Math.abs(entry.atMs - event.at) <= 2_000
+        ));
+        if (matchingResponse) matchingResponse.matched = true;
+        (matchingResponse ? expectedConsoleErrors : consoleErrors).push({
           at: new Date(event.at).toISOString(),
           text: event.text,
-          classification: expectedCaptcha ? 'pre-lease-session captcha fallback' : 'unexpected',
+          classification: matchingResponse
+            ? matchingResponse.classification
+            : 'unexpected',
         });
       }
-      return { consoleErrors, expectedConsoleErrors, expectedAbortedRequests, criticalRequestFailures };
+      return {
+        consoleErrors,
+        expectedConsoleErrors,
+        expectedAbortedRequests,
+        httpErrorResponses: httpErrorResponses.map(({ atMs: _atMs, ...entry }) => entry),
+        criticalRequestFailures,
+      };
     },
   };
 }
@@ -375,15 +471,37 @@ async function renameDocument(page, oldName, newName) {
   await waitForExactText(page, newName, { timeout: 30_000 });
 }
 
-async function moveDocument(page, documentName, targetProject) {
+async function moveDocument(page, documentName, targetProject, manifest) {
+  const createdDocument = invariant(
+    createdDocumentForCleanup(manifest, documentName),
+    `Could not resolve exact created document row for move name ${documentName}`,
+  );
+  const createdTargetProject = invariant(
+    manifest.created.projects.find((project) => project.name === targetProject),
+    `Could not resolve exact target project row for move name ${targetProject}`,
+  );
   await navigateHub(page, 'Documents');
   await clickVisible(page.getByRole('button', { name: 'Select', exact: true }), 'Documents Select');
   await (await waitForExactText(page, documentName)).click();
   await clickVisible(page.getByRole('button', { name: 'Move/Copy', exact: true }), 'Move/Copy');
-  await clickVisible(page.getByText(targetProject, { exact: true }), `destination ${targetProject}`);
-  await clickVisible(page.getByRole('button', { name: 'Move here', exact: true }), 'Move here');
-  const done = await firstVisible(page.getByRole('button', { name: 'Done', exact: true }));
-  if (done) await done.click();
+  const moveDialog = page.getByRole('dialog', { name: 'Move or copy documents', exact: true });
+  await moveDialog.waitFor({ state: 'visible', timeout: 10_000 });
+  const destination = invariant(
+    await firstVisible(moveDialog.getByRole('button', { name: targetProject, exact: true })),
+    `Move picker has no interactive destination for ${targetProject}`,
+  );
+  await destination.click();
+  invariant(await destination.getAttribute('aria-pressed') === 'true', `Move destination ${targetProject} was not selected`);
+  const moveResponsePromise = page.waitForResponse(
+    (response) => responseMovesDocument(response, createdDocument.id, createdTargetProject.id),
+    { timeout: 60_000 },
+  );
+  await clickVisible(moveDialog.getByRole('button', { name: 'Move here', exact: true }), 'Move here');
+  const moveResponse = await moveResponsePromise;
+  const completionError = await moveResponse.finished();
+  invariant(!completionError, `Document move PATCH was interrupted: ${completionError?.message}`);
+  invariant(moveResponse.ok(), `Document move PATCH failed with HTTP ${moveResponse.status()}`);
+  await moveDialog.waitFor({ state: 'hidden', timeout: 60_000 });
 
   await page.reload({ waitUntil: 'domcontentloaded', timeout: 60_000 });
   await waitForHub(page, 'Documents');
@@ -406,14 +524,70 @@ async function openViewerAndReturn(page, surface, documentName) {
   await waitForExactText(page, documentName, { timeout: 60_000 });
 }
 
-async function deleteDocumentByName({ page, name, dialogs, manifest }) {
+function createdDocumentForCleanup(manifest, currentName) {
+  const createdName = currentName === manifest.names.renamedDocument
+    ? manifest.names.sourceDocument
+    : currentName;
+  return manifest.created.documents.find((document) => document.name === createdName) || null;
+}
+
+function responseDeletesId(response, table, id) {
+  const url = new URL(response.url());
+  if (response.request().method().toUpperCase() !== 'DELETE'
+    || !url.pathname.endsWith(`/rest/v1/${table}`)) return false;
+  return url.searchParams.getAll('id')
+    .flatMap((value) => value.replace(/^eq\./, '').split(','))
+    .includes(id);
+}
+
+function responseMovesDocument(response, documentId, targetProjectId) {
+  const url = new URL(response.url());
+  if (response.request().method().toUpperCase() !== 'PATCH'
+    || !url.pathname.endsWith('/rest/v1/documents')) return false;
+  const targetsDocument = url.searchParams.getAll('id')
+    .flatMap((value) => value.replace(/^eq\./, '').split(','))
+    .includes(documentId);
+  if (!targetsDocument) return false;
+  try {
+    return response.request().postDataJSON()?.project_id === targetProjectId;
+  } catch {
+    return false;
+  }
+}
+
+async function closeManageTeamForCleanup(page) {
+  const manageTeam = page.locator('[data-kal31-manage-team="true"]');
+  if (await firstVisible(manageTeam)) {
+    await clickVisible(manageTeam.getByRole('button', { name: 'Done', exact: true }), 'Manage Team Done before cleanup');
+    await manageTeam.waitFor({ state: 'hidden', timeout: 10_000 });
+  }
+  invariant(!(await firstVisible(manageTeam)), 'Manage Team remained open before owner cleanup');
+}
+
+async function deleteDocumentByName({ page, name, dialogs, manifest, tracker }) {
   await navigateHub(page, 'Documents');
   const existing = await visibleExactText(page, name);
   if (!existing) return;
+  const createdDocument = invariant(
+    createdDocumentForCleanup(manifest, name),
+    `Could not resolve exact created document row for cleanup name ${name}`,
+  );
   const row = await findNamedContainer(page, name, 'button[title="More"]');
   await clickVisible(row.locator('button[title="More"]'), `${name} cleanup More`);
+  // The hub removes the card optimistically. Wait for the product's terminal
+  // verification log before any reload/navigation, otherwise navigation can
+  // abort the storage removal or even the next document's initial row lookup.
+  const productDeleteComplete = page.waitForEvent('console', {
+    predicate: (message) => message.text().includes('[DocumentDelete] verify:removed')
+      && message.text().includes(`"docId":"${createdDocument.id}"`),
+    timeout: 60_000,
+  });
   dialogs.expect(/Delete this document\?/i);
   await clickVisible(page.getByRole('menuitem', { name: 'Delete', exact: true }), `Delete ${name}`);
+  await productDeleteComplete;
+  await tracker.flush();
+  const cleanupProblems = exactDocumentCleanupProblems(manifest, createdDocument);
+  invariant(cleanupProblems.length === 0, cleanupProblems.join('; '));
   await waitForExactTextAbsent(page, name, { timeout: 60_000 });
   await page.reload({ waitUntil: 'domcontentloaded', timeout: 60_000 });
   await waitForHub(page, 'Documents');
@@ -421,17 +595,35 @@ async function deleteDocumentByName({ page, name, dialogs, manifest }) {
   manifest.uiAbsenceAfterReload.documents.push(name);
 }
 
-async function deleteProjectsByName({ page, names, dialogs, manifest }) {
+async function deleteProjectsByName({ page, names, dialogs, manifest, tracker }) {
   await navigateHub(page, 'Projects');
   const existing = [];
   for (const name of names) {
     if (await visibleExactText(page, name)) existing.push(name);
   }
   if (existing.length) {
+    const createdProjects = existing.map((name) => {
+      const createdName = name === manifest.names.renamedProject ? manifest.names.sourceProject : name;
+      return invariant(
+        manifest.created.projects.find((project) => project.name === createdName),
+        `Could not resolve exact created project row for cleanup name ${name}`,
+      );
+    });
+    const completedDeletes = createdProjects.map((project) => page.waitForResponse(
+      (response) => responseDeletesId(response, 'projects', project.id),
+      { timeout: 60_000 },
+    ));
     await clickVisible(page.getByRole('button', { name: 'Select', exact: true }), 'Projects Select');
     for (const name of existing) await (await waitForExactText(page, name)).click();
     dialogs.expect(/Delete (?:this project|these 2 projects) and (?:its|their) documents\?/i);
     await clickVisible(page.getByTitle('Delete'), 'Delete selected projects');
+    for (const [index, responsePromise] of completedDeletes.entries()) {
+      const response = await responsePromise;
+      const completionError = await response.finished();
+      invariant(!completionError, `Project DELETE was interrupted for ${createdProjects[index].id}: ${completionError?.message}`);
+      invariant(response.ok(), `Project DELETE failed for ${createdProjects[index].id} with HTTP ${response.status()}`);
+    }
+    await tracker.flush();
     for (const name of existing) await waitForExactTextAbsent(page, name, { timeout: 60_000 });
   }
   await page.reload({ waitUntil: 'domcontentloaded', timeout: 60_000 });
@@ -449,27 +641,22 @@ async function runSurface({
   artifactRoot,
   ownerLeaseAccount,
   collaboratorLeaseAccount,
+  collaboratorLeaseAccountIndex,
+  runtimeOwnerEntitlement,
+  browser,
+  serverBaseUrl,
+  surfaceConfig,
   diagnostics,
 }) {
   const names = createDurableNames(surface, runId);
-  const ownerTier = String(ownerLeaseAccount?.tier || ownerLeaseAccount?.baseline?.tier || 'unknown').toLowerCase();
-  const collaboratorTier = String(collaboratorLeaseAccount?.tier || collaboratorLeaseAccount?.baseline?.tier || 'unknown').toLowerCase();
+  const ownerTier = runtimeOwnerEntitlement.tier;
   const manifest = createCleanupManifest({
     surface,
     runId,
     names,
-    collaboration: {
-      status: 'blocked',
-      blockerCode: 'free_owner_invites_locked',
-      blocker: 'The exact leased owner is free-tier. Locked product rules disable project/document invite links and email before any backend mutation; invite/accept/role/revoke cannot be truthfully exercised with this lease.',
-      ownerTier,
-      inviteeTier: collaboratorTier,
-      secondLeasedIdentityVerified: true,
-      covered: [],
-      notCovered: ['invite', 'accept', 'change-role', 'revoke'],
-      requiredOwnerTier: ['pro', 'enterprise', 'developer'],
-    },
+    collaboration: { status: 'pending' },
   });
+  diagnostics.setManifest(manifest);
   const outputDirectory = path.resolve(artifactRoot, `${runId}-${surface}`);
   await mkdir(outputDirectory, { recursive: true });
   const tracker = createResponseTracker(page, manifest, names);
@@ -477,6 +664,8 @@ async function runSurface({
   const pageErrors = [];
   page.on('pageerror', (error) => pageErrors.push(error.message));
   let workflowError = null;
+  let collaborationRun = null;
+  let collaborationProjectId = null;
 
   try {
     await waitForHub(page, 'Documents');
@@ -504,6 +693,10 @@ async function runSurface({
     await tracker.flush();
     invariant(manifest.created.projects.length >= (ownerTier === 'free' ? 1 : 2), 'Supabase project-create responses did not expose the exact created rows');
     invariant(manifest.created.documents.length >= 2, 'Supabase document-create responses did not expose two exact created rows');
+    collaborationProjectId = invariant(
+      manifest.created.projects.find((project) => project.name === names.sourceProject)?.id,
+      'Could not resolve exact collaboration project id from create response',
+    );
 
     await renameProject(page, names.sourceProject, names.renamedProject);
     manifest.workflowCoverage.renameProject = 'covered';
@@ -512,11 +705,24 @@ async function runSurface({
     if (ownerTier === 'free') {
       manifest.workflowCoverage.moveDocument = 'blocked: free tier permits one project, so no valid destination project can coexist';
     } else {
-      await moveDocument(page, names.renamedDocument, names.targetProject);
+      await moveDocument(page, names.renamedDocument, names.targetProject, manifest);
       manifest.workflowCoverage.moveDocument = 'covered';
     }
     await openViewerAndReturn(page, surface, names.renamedDocument);
     manifest.workflowCoverage.openViewerAndBack = 'covered';
+    collaborationRun = await runProjectCollaboration({
+      browser,
+      ownerPage: page,
+      serverBaseUrl,
+      surfaceConfig,
+      projectName: names.renamedProject,
+      ownerAccount: ownerLeaseAccount,
+      inviteeAccount: collaboratorLeaseAccount,
+      inviteeAccountIndex: collaboratorLeaseAccountIndex,
+      runtimeOwnerEntitlement,
+      artifactDirectory: outputDirectory,
+    });
+    manifest.collaboration = collaborationRun.evidence;
     await page.screenshot({ path: path.join(outputDirectory, 'workflow-complete.png') });
   } catch (error) {
     workflowError = error;
@@ -526,29 +732,52 @@ async function runSurface({
   // Cleanup always runs, including after a partial workflow. UI deletion is
   // deliberate: it exercises the app's DB cascade, storage remove, and local
   // durable purge instead of bypassing product behavior with an admin client.
+  let documentsExplicitlyClean = false;
   try {
-    await deleteDocumentByName({ page, name: names.renamedDocument, dialogs, manifest });
-    await deleteDocumentByName({ page, name: names.sourceDocument, dialogs, manifest });
-    await deleteDocumentByName({ page, name: names.targetDocument, dialogs, manifest });
+    await closeManageTeamForCleanup(page);
+    await deleteDocumentByName({ page, name: names.renamedDocument, dialogs, manifest, tracker });
+    await deleteDocumentByName({ page, name: names.sourceDocument, dialogs, manifest, tracker });
+    await deleteDocumentByName({ page, name: names.targetDocument, dialogs, manifest, tracker });
+    await tracker.flush();
+    const cleanupProblems = documentCleanupProblems(manifest);
+    invariant(cleanupProblems.length === 0, cleanupProblems.join('; '));
+    documentsExplicitlyClean = true;
   } catch (error) {
     manifest.errors.push(`document cleanup: ${error.message}`);
   }
-  try {
-    await deleteProjectsByName({
-      page,
-      names: [names.renamedProject, names.sourceProject, ...(ownerTier === 'free' ? [] : [names.targetProject])],
-      dialogs,
-      manifest,
-    });
-  } catch (error) {
-    manifest.errors.push(`project cleanup: ${error.message}`);
+  if (documentsExplicitlyClean) {
+    try {
+      await deleteProjectsByName({
+        page,
+        names: [names.renamedProject, names.sourceProject, ...(ownerTier === 'free' ? [] : [names.targetProject])],
+        dialogs,
+        manifest,
+        tracker,
+      });
+    } catch (error) {
+      manifest.errors.push(`project cleanup: ${error.message}`);
+    }
+  } else {
+    manifest.errors.push('project cleanup skipped: explicit document/storage deletion was not proved first');
+  }
+  if (collaborationRun && collaborationProjectId) {
+    try {
+      manifest.collaboration = await proveProjectCollaborationCleanup({
+        page,
+        projectId: collaborationProjectId,
+        evidence: collaborationRun.evidence,
+        signedApi: collaborationRun.signedApi,
+      });
+    } catch (error) {
+      manifest.errors.push(`collaboration cleanup: ${error.message}`);
+    }
   }
   await sleep(750);
   await tracker.flush();
   tracker.stop();
   try { dialogs.assertClean(); } catch (error) { manifest.errors.push(error.message); }
   if (pageErrors.length) manifest.errors.push(...pageErrors.map((message) => `pageerror: ${message}`));
-  manifest.browserDiagnostics = diagnostics.snapshot();
+  manifest.browserDiagnostics = await diagnostics.snapshot();
   if (manifest.browserDiagnostics.consoleErrors.length) {
     manifest.errors.push(`${manifest.browserDiagnostics.consoleErrors.length} unexpected console error(s)`);
   }

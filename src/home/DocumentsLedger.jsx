@@ -649,7 +649,10 @@ export default function DocumentsLedger({
       onClose={() => setMoveOpen(false)}
       projects={projects}
       count={selDocs.size}
-      onConfirm={(destId, mode) => { onMoveCopy && onMoveCopy(selectedRaw(), destId, mode); clearSel(); }}
+      onConfirm={async (destId, mode) => {
+        await onMoveCopy?.(selectedRaw(), destId, mode);
+        clearSel();
+      }}
     />
     <ConfirmModal
       open={confirmDelete}

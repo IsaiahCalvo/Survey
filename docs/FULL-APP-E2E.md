@@ -55,14 +55,21 @@ SUPABASE_SERVICE_ROLE_KEY='<local secret>' \
 node scripts/test-account-lease.mjs run \
   --task '<task-id>' \
   --lease-token '<lease-token>' \
-  -- node agent-cli/full-app-durable-e2e.mjs --surface=both
+  -- npm run test:app-e2e:durable -- \
+    --owner-account='owner@example.test|<OWNER_USER_ID>' \
+    --invitee-account='invitee@example.test|<INVITEE_USER_ID>'
 ```
 
 The durable lane verifies the leased identity before navigation, creates exact
 throwaway rows, uploads two fixture PDFs, reloads, renames, opens the viewer,
 and fail-closes unless every database row and storage object is deleted and
-absent after reload. The coordinator must attest exact account restoration and
-release the lease after the run.
+absent after reload. It also reads the owner's paid/active entitlement from the
+signed-in backend response (never the lease baseline), creates and accepts a
+real project invite in the second leased account, proves Viewer writes fail,
+promotes the recipient to Editor, proves an Editor rename survives hard reload,
+revokes a second invite, removes the collaborator, and proves the exact invite
+and collaborator rows are gone after the project cascade. The coordinator must
+attest exact account restoration and release the lease after the run.
 
 The 2026-08-02 run found a production last-owner trigger that blocks a document
 FK delete cascade. The local migration
@@ -78,8 +85,9 @@ that migration is deployed.
 - Survey Marker resize/rotation and Region resize/rotation have focused passing
   runs, but are not in the default gate yet: repeated marker rotation can trigger
   WebKit's Page/Paste long-press menu instead of the rotation handle.
-- Free-tier owners cannot create project/document invites. Invite acceptance,
-  role change, and revoke need a leased Pro, Enterprise, or Developer owner.
+- Collaboration requires the leased owner to have an active Pro, Enterprise,
+  or Developer entitlement in the real backend. The durable harness fails
+  closed if the signed-in app reports anything else.
 - CAPTCHA signup, billing portal, Microsoft/Google tenants, live collaboration,
   offline reconnect, and TestFlight distribution require dedicated external
   accounts or platform configuration. Never substitute a mock result.

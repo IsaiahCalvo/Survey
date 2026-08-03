@@ -172,11 +172,8 @@ export default defineConfig(({ mode }) => {
   const devAuthBootstrapToken = mode === 'development'
     ? randomBytes(24).toString('hex')
     : '';
-  // UX: dev-only build stamp shown as a tiny corner chip (AppShell). One
-  // stale-tab hunt cost hours because a page loaded from a dead dev server
-  // silently kept running old code — the stamp makes "which build am I
-  // looking at" answerable at a glance. Git hash + server start time;
-  // re-evaluated whenever the dev server (re)starts.
+  // Dev build identity is logged during app bootstrap, never rendered in UI.
+  // Git hash + server start time are re-evaluated when Vite (re)starts.
   let buildStamp = '';
   if (mode === 'development') {
     let gitHash = 'no-git';

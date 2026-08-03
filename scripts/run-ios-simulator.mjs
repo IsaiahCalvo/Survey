@@ -168,6 +168,14 @@ async function main() {
     console.log('\nSkipping web build and Capacitor sync by explicit request.');
   }
 
+  const sourceCommit = (await run('git', ['rev-parse', 'HEAD'], { capture: true })).stdout;
+  const distReleasePath = path.join(ROOT, 'dist', 'release.json');
+  const distRelease = JSON.parse(await readFile(distReleasePath, 'utf8'));
+  if (distRelease.commit !== sourceCommit) {
+    throw new Error(`Simulator bundle commit ${distRelease.commit || 'unknown'} does not match source ${sourceCommit}. Run without --skip-sync.`);
+  }
+  console.log(`Verified web bundle commit ${sourceCommit.slice(0, 8)}.`);
+
   await run('xcodebuild', [
     '-project', PROJECT,
     '-scheme', SCHEME,
@@ -181,6 +189,11 @@ async function main() {
 
   const appPath = path.join(derivedData, 'Build', 'Products', 'Debug-iphonesimulator', 'App.app');
   await access(appPath);
+  const appReleasePath = path.join(appPath, 'public', 'release.json');
+  const appRelease = JSON.parse(await readFile(appReleasePath, 'utf8'));
+  if (appRelease.commit !== sourceCommit) {
+    throw new Error(`Built iOS app commit ${appRelease.commit || 'unknown'} does not match source ${sourceCommit}.`);
+  }
   await run('xcrun', ['simctl', 'bootstatus', simulator.udid, '-b']);
   await run('xcrun', ['simctl', 'install', simulator.udid, appPath]);
   const launch = await run(
@@ -200,6 +213,8 @@ async function main() {
     runtime: simulator.runtime,
     udid: simulator.udid,
     bundleId: BUNDLE_ID,
+    sourceCommit,
+    release: appRelease,
     appPath,
     screenshotPath,
     launch: launch.stdout,

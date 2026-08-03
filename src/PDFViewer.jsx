@@ -1923,8 +1923,17 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   // the pdf.js page hosts re-layout — the same contract Pdfjs gets via
   // beginPdfjsScaleConfirmPending. Engine-gated: only runs under pdf.js;
   // under Pdfjs this is never wired (the prop is undefined), so it is inert.
-  const handlePdfjsZoomPhase = useCallback((phase) => {
+  const handlePdfjsZoomPhase = useCallback((phase, payload) => {
     if (phase === 'gesture-start') cancelInitialFitPageRef.current?.();
+    if (
+      phase === 'gesture-start'
+      && (payload?.source === 'pinch' || payload?.source === 'wheel')
+    ) {
+      // A no-op fit command emits no scale commit and can leave its source token
+      // pending. A real user gesture must always override that token so its later
+      // commit is presented and persisted as manual zoom.
+      pdfjsZoomSourceRef.current = ZOOM_MODES.MANUAL;
+    }
     if (false) return;
     // INVARIANT: keep this bump — Canvas tools (Fabric draw/eraser/edit) watch
     // zoomGeneration to auto-commit in-progress work before the host re-layouts.
@@ -9809,11 +9818,17 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
       const overlay = attachOverlayToPageDiv(pageNumber);
       const wrapper = document.querySelector(`[data-diag-svg-wrapper="${pageNumber}"]`);
-      const groupCount = wrapper?.querySelectorAll?.('[data-annotation-index]')?.length ?? 0;
       const isGated = wrapper?.getAttribute?.('data-annotation-hydration-gated') === 'true';
       const wrapperStyle = wrapper ? window.getComputedStyle(wrapper) : null;
       const visibleWrapper = !!wrapper && wrapperStyle?.display !== 'none' && wrapperStyle?.visibility !== 'hidden';
-      const mismatch = !overlay?.isConnected || !wrapper || (!isGated && (!visibleWrapper || groupCount === 0));
+      const svgRoot = wrapper?.querySelector?.(`[data-svg-annotation-layer="${pageNumber}"]`) || null;
+      // Raw page objects are not the same as visible SVG groups: imported PDF
+      // appearances, scope filters, and hydration can intentionally produce
+      // zero [data-annotation-index] children. Treating that valid state as a
+      // broken overlay remounted SVGAnnotationLayer every five seconds, which
+      // disconnected an active touch handle and dropped resize/rotation.
+      // Recover only when the owned layer itself is missing or hidden.
+      const mismatch = !overlay?.isConnected || !wrapper || (!isGated && (!visibleWrapper || !svgRoot));
 
       if (!mismatch) {
         annotationOverlayWatchdogRef.current.consecutiveMismatch = 0;

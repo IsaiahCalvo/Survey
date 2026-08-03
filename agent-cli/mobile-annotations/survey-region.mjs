@@ -266,7 +266,14 @@ export async function runSurveyMarkerLifecycle({
 
   const undo = page.getByRole('button', { name: 'Undo', exact: true });
   await undo.waitFor({ state: 'visible' });
-  invariant(await undo.isEnabled(), 'Undo was disabled after Survey Marker move');
+  // Persistence and the React history button are separate commit signals.
+  // Under parallel browser load, marker storage can update one frame first.
+  await page.waitForFunction(() => [...document.querySelectorAll('button')].some((button) => (
+    (button.getAttribute('aria-label') === 'Undo' || button.getAttribute('title') === 'Undo')
+      && !button.disabled
+      && button.getClientRects().length > 0
+  )), null, { timeout: 10_000 });
+  invariant(await undo.isEnabled(), 'Undo stayed disabled after Survey Marker move history commit');
   await undo.click();
   await page.waitForFunction(({ key, markerId, expected }) => {
     const current = JSON.parse(localStorage.getItem(key) || '{}')?.[markerId];

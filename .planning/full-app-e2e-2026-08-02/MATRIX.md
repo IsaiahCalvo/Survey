@@ -64,6 +64,12 @@ Mock-only UI checks never count as durable persistence.
 - Offline edits/deletes, reload offline, reconnect, sync status, cold reopen.
 - Lock/unlock, revisions, trash/restore where product supports them.
 
+Durable project collaboration is automated in `test:app-e2e:durable`: exact
+leased identities, runtime owner entitlement, invite/accept, Viewer denial,
+Editor mutation + hard reload, revoke, remove, access loss, and exact cascade
+cleanup. Document/template invites, presence, concurrent edits, and offline
+reconnect remain separate rows and must not inherit that result.
+
 ## Account and integrations
 
 - Guest, login, sign-up/confirmation, reset, SSO, sign-out.

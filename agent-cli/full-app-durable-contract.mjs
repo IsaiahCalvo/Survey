@@ -30,6 +30,8 @@ export function parseDurableArgs(argv = []) {
     headful: argv.includes('--headful'),
     dryRun: argv.includes('--dry-run'),
     artifactRoot: read('artifact-root') || '.playwright-mcp/full-app-durable',
+    ownerAccount: read('owner-account') || process.env.FULL_APP_OWNER_ACCOUNT || null,
+    inviteeAccount: read('invitee-account') || process.env.FULL_APP_INVITEE_ACCOUNT || null,
   };
 }
 
@@ -70,13 +72,68 @@ export function createCleanupManifest({ surface, runId, names, collaboration = n
       blockerCode: 'not-configured',
       blocker: 'No second leased identity was configured for this run.',
     },
-    browserDiagnostics: { consoleErrors: [], expectedConsoleErrors: [], criticalRequestFailures: [] },
+    browserDiagnostics: { consoleErrors: [], expectedConsoleErrors: [], httpErrorResponses: [], criticalRequestFailures: [] },
     errors: [],
     complete: false,
   };
 }
 
 const unique = (values) => [...new Set(values.filter(Boolean))];
+
+export function documentCleanupProblems(manifest) {
+  const createdDocumentIds = unique((manifest.created?.documents || []).map((item) => item.id));
+  const deletedDocumentIds = unique((manifest.requests || [])
+    .filter((item) => item.resource === 'documents' && item.operation === 'delete' && item.ok)
+    .flatMap((item) => item.ids || []));
+  const createdStoragePaths = unique([
+    ...(manifest.created?.storagePaths || []),
+    ...(manifest.created?.documents || []).map((document) => document.file_path),
+  ]);
+  const deletedStoragePaths = unique((manifest.requests || [])
+    .filter((item) => item.resource === 'storage' && item.operation === 'delete' && item.ok)
+    .flatMap((item) => item.paths || []));
+  const problems = [];
+  const missingDocumentIds = createdDocumentIds.filter((id) => !deletedDocumentIds.includes(id));
+  const missingStoragePaths = createdStoragePaths.filter((value) => !deletedStoragePaths.includes(value));
+  if (missingDocumentIds.length) problems.push(`document DELETE not observed for: ${missingDocumentIds.join(', ')}`);
+  if (missingStoragePaths.length) problems.push(`storage DELETE not observed for: ${missingStoragePaths.join(', ')}`);
+  return problems;
+}
+
+export function exactDocumentCleanupProblems(manifest, { id, file_path: filePath }) {
+  const successfulDocumentDelete = (manifest.requests || []).some((item) => (
+    item.resource === 'documents'
+    && item.operation === 'delete'
+    && item.ok
+    && (item.ids || []).includes(id)
+  ));
+  const successfulStorageDelete = !filePath || (manifest.requests || []).some((item) => (
+    item.resource === 'storage'
+    && item.operation === 'delete'
+    && item.ok
+    && (item.paths || []).includes(filePath)
+  ));
+  const problems = [];
+  if (!successfulDocumentDelete) problems.push(`document DELETE not completed for ${id}`);
+  if (!successfulStorageDelete) problems.push(`storage DELETE not completed for ${filePath}`);
+  return problems;
+}
+
+export function isExpectedMissingLegacySidecar({ url, status, errorCode, manifest }) {
+  if (status !== 400 || errorCode !== 'NoSuchKey') return false;
+  let match = null;
+  try {
+    match = new URL(url).pathname.match(/\/storage\/v1\/object\/documents\/([^/]+)\/([^/]+)_data\.json$/);
+  } catch {
+    return false;
+  }
+  if (!match) return false;
+  const projectId = decodeURIComponent(match[1]);
+  const documentId = decodeURIComponent(match[2]);
+  const projectBelongsToRun = (manifest?.created?.projects || []).some((project) => project.id === projectId);
+  const documentBelongsToRun = (manifest?.created?.documents || []).some((document) => document.id === documentId);
+  return projectBelongsToRun && documentBelongsToRun;
+}
 
 export function finalizeCleanupManifest(manifest) {
   manifest.created.projects = dedupeById(manifest.created.projects);
@@ -103,7 +160,6 @@ export function finalizeCleanupManifest(manifest) {
   const deletedProjectIds = unique(manifest.requests
     .filter((item) => item.resource === 'projects' && item.operation === 'delete' && item.ok)
     .flatMap((item) => item.ids || []));
-  const storageDeletes = manifest.requests.filter((item) => item.resource === 'storage' && item.operation === 'delete' && item.ok);
 
   const problems = [];
   for (const key of ['createProject', 'uploadDocuments', 'reloadList', 'renameProject', 'renameDocument', 'openViewerAndBack']) {
@@ -121,9 +177,7 @@ export function finalizeCleanupManifest(manifest) {
   if (manifest.created.documents.length < 2 || createdDocumentIds.length < 2) problems.push('fewer than two created document rows were observed');
   if (createdDocumentIds.some((id) => !deletedDocumentIds.includes(id))) problems.push('not every created document id had a successful DELETE');
   if (createdProjectIds.some((id) => !deletedProjectIds.includes(id))) problems.push('not every created project id had a successful DELETE');
-  if (manifest.created.storagePaths.length > 0 && storageDeletes.length < manifest.created.storagePaths.length) {
-    problems.push('not every created storage path had a successful remove request');
-  }
+  problems.push(...documentCleanupProblems(manifest));
   if (missingUiDocuments.length) problems.push(`documents still unproved after reload: ${missingUiDocuments.join(', ')}`);
   if (missingUiProjects.length) problems.push(`projects still unproved after reload: ${missingUiProjects.join(', ')}`);
   if (manifest.errors.length) problems.push(`${manifest.errors.length} cleanup error(s) recorded`);

@@ -571,7 +571,10 @@
 
   .survey-hub .header {
     position: fixed;
-    top: 0;
+    /* Capacitor/plain mobile web fills the screen edge-to-edge, so fixed
+       chrome must clear WebKit's top safe area itself. Expo already pads its
+       WebView natively and is overridden below to avoid double-counting. */
+    top: env(safe-area-inset-top, 0px);
     left: 0;
     right: 0;
     z-index: 90;
@@ -585,6 +588,10 @@
     flex: none;
     background: var(--ink-900);
     border-bottom: 1px solid rgba(42,49,64,0.72);
+  }
+
+  html[data-native-shell="expo"] .survey-hub .header {
+    top: 0;
   }
 
   .survey-hub .header-title-block {

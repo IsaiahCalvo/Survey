@@ -144,6 +144,19 @@ async function gotoHub(page, baseUrl, tab, extras = {}, config = {}) {
   await waitForHub(page, tab);
 }
 
+async function waitForWorkflowFixtureReady(page, { projectId, documentId }) {
+  await page.waitForFunction(({ expectedProjectId, expectedDocumentId }) => {
+    const state = window.__mobileWorkflowState;
+    if (!state) return false;
+    const matchingProjects = (state.projects || []).filter((project) => project.id === expectedProjectId);
+    const matchingDocuments = (state.documents || []).filter((document) => document.id === expectedDocumentId);
+    return matchingProjects.length === 1 && matchingDocuments.length === 1;
+  }, {
+    expectedProjectId: projectId,
+    expectedDocumentId: documentId,
+  }, { timeout: 30_000 });
+}
+
 function visibleNav(page, device) {
   return page.locator(device === 'mobile' ? '.mobile-home-tabs:visible' : '.side:visible .nav');
 }
@@ -288,10 +301,13 @@ async function testEdgeFixtures(page, baseUrl, touch, device) {
 
 async function testViewerReturn(page, baseUrl, touch, device) {
   await gotoHub(page, baseUrl, 'projects', {}, { workflow: true });
+  await waitForWorkflowFixtureReady(page, { projectId: 'p1', documentId: 'd1' });
   const project = page.locator('[data-project-id="p1"]:visible');
+  await project.waitFor({ state: 'visible', timeout: 30_000 });
   assert.equal(await project.count(), 1, `${device}: project deep-link source visible`);
   await activate(project, touch, device);
   const document = page.locator('[data-document-id="d1"]:visible');
+  await document.waitFor({ state: 'visible', timeout: 30_000 });
   assert.equal(await document.count(), 1, `${device}: project document visible`);
   await activate(document, touch, device);
   await page.waitForURL((url) => url.searchParams.get('testPdf') === 'clickable-link-test.pdf', { timeout: 60_000 });
