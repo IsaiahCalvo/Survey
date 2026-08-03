@@ -5,13 +5,17 @@ Expo Go because Survey's iOS identity and direct Google sign-in must be compiled
 native app. After the one-time wireless install, it keeps Expo's fast refresh and QR workflow.
 Use **TestFlight** for a Survey build that keeps working when this Mac is offline.
 
+The development app does **not** require the Mac and iPhone to share Wi-Fi during normal
+testing. `npm run start:tunnel` publishes Metro through an `exp.direct` internet URL, so the
+iPhone can use cellular or any other network. A `100.x.x.x:8081` or other local address means
+Metro was started in LAN mode; stop it and use the tunnel command below.
+
 ## Immediate: Survey development app
 
-This Mac already has an Apple development identity and this iPhone is already paired with
-Xcode, so the development app can be installed over Wi-Fi without a cable. Before the first
-install, sign into the matching Apple developer account in **Xcode → Settings → Accounts**;
-Xcode needs that session to create the `com.kalvoe.survey` provisioning profile. The iPhone
-must be unlocked, have Developer Mode enabled, and be on the same network as the Mac.
+This Mac is signed into Isaiah's free Apple Personal Team and has a valid development
+identity. The one-time local installation requires Xcode to reach the unlocked iPhone, but
+the phone does not need to stay near this Mac afterward. A fully remote initial installation
+requires TestFlight or EAS distribution and therefore a paid Apple Developer Program team.
 
 ### One-time wireless install
 
@@ -104,10 +108,10 @@ One-time requirements:
 - A development team selected for the `App` target in Xcode.
 - Isaiah added to an internal TestFlight group with an eligible App Store Connect role.
 
-Current repository/machine status as of 2026-08-02: an iOS signing identity exists, but
-the Xcode project has no selected development team, no provisioning profile is installed,
-and an App Store Connect app record has not been verified. Those are the remaining
-distribution blockers.
+Current repository/machine status as of 2026-08-03: Xcode exposes the free Personal Team
+`T3KR4X5869`, and the Expo project uses that exact team for local development signing. A paid
+Apple team and App Store Connect app record have not been verified; those are the remaining
+TestFlight distribution blockers.
 
 Build the current worktree and open its native project:
 

@@ -207,7 +207,7 @@ test('Expo gives external OAuth navigation a native dismiss button', () => {
 
 test('Survey development build owns Google sign-in without exposing the Supabase callback host', () => {
   assert.match(EXPO_CONFIG_SOURCE, /"bundleIdentifier": "com\.kalvoe\.survey"/);
-  assert.match(EXPO_CONFIG_SOURCE, /"appleTeamId": "627THD5CBR"/);
+  assert.match(EXPO_CONFIG_SOURCE, /"appleTeamId": "T3KR4X5869"/);
   assert.match(EXPO_CONFIG_SOURCE, /com\.googleusercontent\.apps\.88293580204-481ecgudu1qgmlh2nvdhip13jtqj0iku/);
   assert.match(EXPO_PACKAGE_SOURCE, /"start:tunnel": "expo start --dev-client --tunnel"/);
   assert.match(EXPO_APP_SOURCE, /new AuthSession\.AuthRequest/);

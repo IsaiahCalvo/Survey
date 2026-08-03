@@ -11,7 +11,7 @@
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "dark",
     "ios": {
-      "appleTeamId": "627THD5CBR",
+      "appleTeamId": "T3KR4X5869",
       "bundleIdentifier": "com.kalvoe.survey",
       "supportsTablet": true,
       "infoPlist": {
