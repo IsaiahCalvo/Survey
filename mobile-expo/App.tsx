@@ -27,7 +27,18 @@ function resolveSurveyUrl(configuredUrl = process.env.EXPO_PUBLIC_SURVEY_URL) {
 }
 
 const SURVEY_URL = resolveSurveyUrl();
+const SURVEY_ORIGIN = new URL(SURVEY_URL).origin;
 console.info('[Survey shell]', { runtime: 'expo', url: SURVEY_URL });
+
+function isExternalNavigationUrl(url: string) {
+  try {
+    const parsed = new URL(url);
+    return (parsed.protocol === 'https:' || parsed.protocol === 'http:')
+      && parsed.origin !== SURVEY_ORIGIN;
+  } catch {
+    return false;
+  }
+}
 
 function SurveyApp() {
   const webViewRef = useRef<WebView>(null);
@@ -35,6 +46,7 @@ function SurveyApp() {
   const [canGoBack, setCanGoBack] = useState(false);
   const [loadError, setLoadError] = useState(false);
   const [webViewKey, setWebViewKey] = useState(0);
+  const [externalNavigationActive, setExternalNavigationActive] = useState(false);
   const insets = useSafeAreaInsets();
   const nativeBottomInset = Math.max(insets.bottom, 10);
   // 2026-07-12 (S2 device-adaptive safe areas): publish ALL four device-
@@ -107,6 +119,17 @@ function SurveyApp() {
     setWebViewKey((value) => value + 1);
   };
 
+  const dismissExternalNavigation = () => {
+    setExternalNavigationActive(false);
+    setCanGoBack(false);
+    setWebViewKey((value) => value + 1);
+  };
+
+  const handleNavigationStateChange = (state: { canGoBack: boolean; url: string }) => {
+    setCanGoBack(state.canGoBack);
+    setExternalNavigationActive(isExternalNavigationUrl(state.url));
+  };
+
   const recoverTerminatedProcess = () => {
     const now = Date.now();
     const recent = processRecoveryRef.current.filter((time) => now - time < 60_000);
@@ -147,7 +170,7 @@ function SurveyApp() {
           </View>
         )}
         onLoadStart={() => setLoadError(false)}
-        onNavigationStateChange={(state) => setCanGoBack(state.canGoBack)}
+        onNavigationStateChange={handleNavigationStateChange}
         onLoadEnd={() => webViewRef.current?.injectJavaScript(nativeSafeAreaScript)}
         onError={() => setLoadError(true)}
         onHttpError={() => setLoadError(true)}
@@ -157,6 +180,17 @@ function SurveyApp() {
           return true;
         }}
       />
+      {externalNavigationActive ? (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Close sign-in"
+          hitSlop={8}
+          onPress={dismissExternalNavigation}
+          style={[styles.externalNavigationClose, { top: insets.top + 8 }]}
+        >
+          <Text style={styles.externalNavigationCloseText}>×</Text>
+        </Pressable>
+      ) : null}
       {loadError ? (
         <View style={styles.centered}>
           <Text style={styles.errorTitle}>Survey could not connect</Text>
@@ -186,6 +220,26 @@ const styles = StyleSheet.create({
   webView: {
     flex: 1,
     backgroundColor: '#090C12',
+  },
+  externalNavigationClose: {
+    position: 'absolute',
+    right: 12,
+    minWidth: 44,
+    minHeight: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 22,
+    borderWidth: 1,
+    borderColor: '#5A6473',
+    backgroundColor: 'rgba(13, 15, 20, 0.92)',
+    zIndex: 100,
+    elevation: 12,
+  },
+  externalNavigationCloseText: {
+    color: '#F4F1EA',
+    fontSize: 30,
+    lineHeight: 32,
+    fontWeight: '400',
   },
   centered: {
     ...StyleSheet.absoluteFillObject,

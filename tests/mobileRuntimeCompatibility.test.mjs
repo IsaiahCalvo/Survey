@@ -190,6 +190,16 @@ test('Expo enforces the zoom lock inside its WebView even when the hosted app is
   assert.match(EXPO_APP_SOURCE, /root\.dataset\.mobileViewport = 'locked'/);
 });
 
+test('Expo gives external OAuth navigation a native dismiss button', () => {
+  assert.match(EXPO_APP_SOURCE, /const \[externalNavigationActive, setExternalNavigationActive\] = useState\(false\)/);
+  assert.match(EXPO_APP_SOURCE, /isExternalNavigationUrl\(state\.url\)/);
+  assert.match(EXPO_APP_SOURCE, /accessibilityLabel="Close sign-in"/);
+  assert.match(EXPO_APP_SOURCE, /const dismissExternalNavigation = \(\) =>/);
+  assert.match(EXPO_APP_SOURCE, /setWebViewKey\(\(value\) => value \+ 1\)/);
+  assert.match(EXPO_APP_SOURCE, /minWidth: 44/);
+  assert.match(EXPO_APP_SOURCE, /minHeight: 44/);
+});
+
 test('mobile PDF rendering stays inside the WKWebView memory budget', () => {
   assert.match(PDFJS_VIEWER_SOURCE, /MOBILE_MAX_CANVAS_AREA = 8 \* 1024 \* 1024/);
   assert.match(PDFJS_VIEWER_SOURCE, /MOBILE_MAX_OVERSCAN_PAGES = 1/);
