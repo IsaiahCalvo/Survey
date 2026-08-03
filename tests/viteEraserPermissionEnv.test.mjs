@@ -8,7 +8,7 @@ import { Readable } from 'node:stream';
 import viteConfig from '../vite.config.js';
 import { resolveViteConfigEnv } from '../viteEnvConfig.mjs';
 
-test('eraser E2E process credentials reach dev-auth without local env files', async () => {
+test('dev-auth relay rejects every email except its exact configured owner', async () => {
   const emptyEnvRoot = await mkdtemp(join(tmpdir(), 'survey-vite-env-contract-'));
   try {
     const env = resolveViteConfigEnv('development', emptyEnvRoot, {
@@ -16,19 +16,18 @@ test('eraser E2E process credentials reach dev-auth without local env files', as
       VITE_SUPABASE_ANON_KEY: 'test-anon-key',
       SUPABASE_SERVICE_ROLE_KEY: 'test-service-role-key',
     });
-    assert.equal(env.VITE_SUPABASE_URL, 'https://test-project.invalid');
-    assert.equal(env.VITE_SUPABASE_ANON_KEY, 'test-anon-key');
-    assert.equal(env.SUPABASE_SERVICE_ROLE_KEY, 'test-service-role-key');
 
     const previous = Object.fromEntries([
       'VITE_SUPABASE_URL',
       'VITE_SUPABASE_ANON_KEY',
       'SUPABASE_SERVICE_ROLE_KEY',
+      'SURVEY_DEV_AUTH_EMAIL',
     ].map((name) => [name, process.env[name]]));
     Object.assign(process.env, {
       VITE_SUPABASE_URL: env.VITE_SUPABASE_URL,
       VITE_SUPABASE_ANON_KEY: env.VITE_SUPABASE_ANON_KEY,
       SUPABASE_SERVICE_ROLE_KEY: env.SUPABASE_SERVICE_ROLE_KEY,
+      SURVEY_DEV_AUTH_EMAIL: 'owner@example.test',
     });
     let config;
     try {
@@ -43,6 +42,8 @@ test('eraser E2E process credentials reach dev-auth without local env files', as
       .flat(Infinity)
       .find((plugin) => plugin?.name === 'dev-auth-bootstrap');
     assert.ok(devAuthPlugin);
+    assert.equal(JSON.parse(config.define.__DEV_AUTH_RELAY_ENABLED__), true);
+    assert.doesNotMatch(JSON.stringify(config.define), /test-service-role-key/);
     const bootstrapToken = JSON.parse(config.define.__DEV_AUTH_BOOTSTRAP_TOKEN__);
 
     let route = null;
@@ -58,7 +59,7 @@ test('eraser E2E process credentials reach dev-auth without local env files', as
     assert.equal(route, '/__dev-auth/session');
     assert.equal(typeof middleware, 'function');
 
-    const request = Readable.from([JSON.stringify({ email: ' ' })]);
+    const request = Readable.from([JSON.stringify({ email: 'attacker@example.test' })]);
     request.method = 'POST';
     request.headers = { 'x-dev-auth-bootstrap': bootstrapToken };
     const response = {
@@ -74,8 +75,8 @@ test('eraser E2E process credentials reach dev-auth without local env files', as
 
     await middleware(request, response);
 
-    assert.equal(response.statusCode, 400);
-    assert.deepEqual(JSON.parse(response.body), { error: 'email_required' });
+    assert.equal(response.statusCode, 403);
+    assert.deepEqual(JSON.parse(response.body), { error: 'forbidden' });
   } finally {
     await rm(emptyEnvRoot, { recursive: true, force: true });
   }

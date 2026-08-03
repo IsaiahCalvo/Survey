@@ -36,6 +36,17 @@ const authDebug = (...args) => {
 const DEV_AUTH_BOOTSTRAP_TOKEN = typeof __DEV_AUTH_BOOTSTRAP_TOKEN__ === 'string'
   ? __DEV_AUTH_BOOTSTRAP_TOKEN__
   : '';
+const DEV_AUTH_RELAY_ENABLED = import.meta.env.DEV
+  && typeof __DEV_AUTH_RELAY_ENABLED__ === 'boolean'
+  && __DEV_AUTH_RELAY_ENABLED__;
+const DEV_AUTH_RELAY_EMAIL = DEV_AUTH_RELAY_ENABLED
+  && typeof __DEV_AUTH_RELAY_EMAIL__ === 'string'
+  ? __DEV_AUTH_RELAY_EMAIL__.trim()
+  : '';
+
+const devAuthRelayAllows = (email) => DEV_AUTH_RELAY_ENABLED
+  && Boolean(DEV_AUTH_RELAY_EMAIL)
+  && String(email || '').trim().toLowerCase() === DEV_AUTH_RELAY_EMAIL.toLowerCase();
 
 const isCaptchaBlockedAuthError = (error) => {
   const code = String(error?.code || '').toLowerCase();
@@ -46,8 +57,8 @@ const isCaptchaBlockedAuthError = (error) => {
     || message.includes('human');
 };
 
-const runDevAuthBootstrapIfCaptchaBlocked = async (error, email) => {
-  if (!import.meta.env.DEV || !DEV_AUTH_BOOTSTRAP_TOKEN || !isCaptchaBlockedAuthError(error) || !email) {
+const runDevAuthBootstrap = async (email) => {
+  if (!import.meta.env.DEV || !DEV_AUTH_BOOTSTRAP_TOKEN || !devAuthRelayAllows(email)) {
     return null;
   }
   try {
@@ -78,6 +89,11 @@ const runDevAuthBootstrapIfCaptchaBlocked = async (error, email) => {
     }));
     return null;
   }
+};
+
+const runDevAuthBootstrapIfCaptchaBlocked = async (error, email) => {
+  if (!isCaptchaBlockedAuthError(error)) return null;
+  return runDevAuthBootstrap(email);
 };
 
 // In-flight subscription-tier reads keyed by userId. The two BOOT paths
@@ -153,7 +169,9 @@ export const AuthProvider = ({ children }) => {
       return {};
     })();
     return {
-      email: devOverride.email || import.meta.env.VITE_DEV_AUTO_LOGIN_EMAIL,
+      email: DEV_AUTH_RELAY_ENABLED
+        ? DEV_AUTH_RELAY_EMAIL
+        : devOverride.email || import.meta.env.VITE_DEV_AUTO_LOGIN_EMAIL,
       password: devOverride.password || import.meta.env.VITE_DEV_AUTO_LOGIN_PASSWORD,
     };
   };
@@ -170,7 +188,8 @@ export const AuthProvider = ({ children }) => {
     }));
 
     let needsAutoLogin = !session;
-    if (session && devEmail && devPassword) {
+    const hasConfiguredDevAuth = Boolean(devEmail && (devPassword || devAuthRelayAllows(devEmail)));
+    if (session && hasConfiguredDevAuth) {
       const cachedEmail = session?.user?.email;
       if (cachedEmail && cachedEmail.toLowerCase() !== devEmail.toLowerCase()) {
         authDebug('[dev-auto-login] cached session is for a different user, overriding ' + JSON.stringify({
@@ -186,11 +205,21 @@ export const AuthProvider = ({ children }) => {
 
     authDebug('[dev-auto-login] decision ' + JSON.stringify({
       needsAutoLogin,
-      willAttemptSignIn: needsAutoLogin && !!devEmail && !!devPassword
+      willAttemptSignIn: needsAutoLogin && hasConfiguredDevAuth
     }));
     if (!needsAutoLogin) return session;
 
-    if (devEmail && devPassword) {
+    if (devAuthRelayAllows(devEmail)) {
+      const bootstrapSession = await runDevAuthBootstrap(devEmail);
+      if (bootstrapSession) {
+        authDebug('[dev-auto-login] owner relay OK ' + JSON.stringify({
+          userId: bootstrapSession?.user?.id || null,
+          email: bootstrapSession?.user?.email || null
+        }));
+        return bootstrapSession;
+      }
+      console.warn('[dev-auto-login] owner relay failed; check ~/.config/survey/dev-auth.env and restart Vite.');
+    } else if (devEmail && devPassword) {
       try {
         const { data, error } = await supabase.auth.signInWithPassword({
           email: devEmail,
@@ -455,7 +484,13 @@ export const AuthProvider = ({ children }) => {
       ...(captchaToken ? { options: { captchaToken } } : {}),
     });
 
-    if (error) throw error;
+    if (error) {
+      const bootstrapSession = await runDevAuthBootstrapIfCaptchaBlocked(error, email);
+      if (bootstrapSession) {
+        return { session: bootstrapSession, user: bootstrapSession.user };
+      }
+      throw error;
+    }
     return data;
   };
 

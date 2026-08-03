@@ -128,6 +128,25 @@ it, and fails if the app never paints visible UI:
 npm run mobile:ios:sim
 ```
 
+For sign-in and live development, run Vite first, then launch the Simulator against that
+same dev origin. This gives the native Simulator the same development auth relay and current
+unbuilt code as the browser; the URL is injected only into a disposable native-project copy:
+
+```bash
+# one-time setup on this Mac (requires `npx supabase login`)
+npm run dev:auth:configure -- --email isaiahcalvo123@gmail.com
+
+# terminal 1
+npm run dev:ui -- --host 127.0.0.1 --port 5177
+
+# terminal 2
+npm run mobile:ios:sim -- --dev-server
+```
+
+The checked-in Capacitor configuration and normal production/TestFlight builds never receive
+the dev URL. Use `--dev-server=https://<host>/` or `MOBILE_IOS_DEV_SERVER_URL=...` to select a
+different reachable Vite origin.
+
 The command writes a screenshot and JSON metadata to a temporary artifact directory printed
 at the end. After the first successful sync, use the faster rebuild loop when the bundled web
 assets have not changed:
@@ -144,9 +163,9 @@ MOBILE_IOS_SIMULATOR_UDID='<exact-udid>' npm run mobile:ios:sim
 ```
 
 Verified on 2026-08-02 with Xcode 26.6, iOS 26.5, and an iPhone 17 Pro Max simulator:
-the native build installed, launched, and painted the real Survey UI. Authentication in a
-local simulator can still show the expected Turnstile connectivity error; annotation
-automation uses the development-only `?testPdf=` route and does not depend on CAPTCHA.
+the native build installed, launched, and painted the real Survey UI. Use `--dev-server` for
+the development auth relay; embedded production builds continue to use normal production
+authentication.
 
 ## Mobile Safari fallback
 

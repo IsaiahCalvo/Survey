@@ -3,6 +3,7 @@ import react from '@vitejs/plugin-react';
 import { randomBytes } from 'node:crypto';
 import { execSync } from 'node:child_process';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { resolveViteConfigEnv } from './viteEnvConfig.mjs';
@@ -102,13 +103,67 @@ async function readJsonBody(req) {
   return JSON.parse(body);
 }
 
-function devAuthBootstrapPlugin(env, bootstrapToken) {
+const DEV_AUTH_ENV_KEYS = new Set([
+  'VITE_SUPABASE_URL',
+  'VITE_SUPABASE_ANON_KEY',
+  'SUPABASE_SERVICE_ROLE_KEY',
+  'SURVEY_DEV_AUTH_EMAIL',
+]);
+
+// Persisted machine-local dev auth. This intentionally lives outside any git
+// worktree so Expo/simulator sign-in keeps working across Codex sessions and
+// fresh worktrees. Only the Vite server reads the service-role key. Project
+// .env/.env.local values are merged afterwards and therefore take precedence.
+function readPersistentDevAuthEnv() {
+  const filePath = path.join(os.homedir(), '.config', 'survey', 'dev-auth.env');
+  let source;
+  try {
+    source = fs.readFileSync(filePath, 'utf8');
+  } catch (error) {
+    if (error?.code === 'ENOENT') return {};
+    console.warn(`[dev-auth] could not read ${filePath}: ${error?.message || error}`);
+    return {};
+  }
+
+  const values = {};
+  for (const line of source.split(/\r?\n/)) {
+    const match = line.match(/^\s*([A-Z0-9_]+)\s*=\s*(.*?)\s*$/);
+    if (!match || !DEV_AUTH_ENV_KEYS.has(match[1])) continue;
+    let value = match[2];
+    if ((value.startsWith('"') && value.endsWith('"'))
+      || (value.startsWith("'") && value.endsWith("'"))) {
+      value = value.slice(1, -1);
+    }
+    values[match[1]] = value;
+  }
+  if (values.SURVEY_DEV_AUTH_EMAIL) {
+    values.VITE_DEV_AUTO_LOGIN_EMAIL = values.SURVEY_DEV_AUTH_EMAIL;
+  }
+  delete values.SURVEY_DEV_AUTH_EMAIL;
+  return values;
+}
+
+function resolveDevAuthRelay(env, mode) {
+  const email = String(env.VITE_DEV_AUTO_LOGIN_EMAIL || '').trim();
+  const enabled = mode === 'development'
+    && Boolean(email)
+    && Boolean(env.VITE_SUPABASE_URL)
+    && Boolean(env.VITE_SUPABASE_ANON_KEY)
+    && Boolean(env.SUPABASE_SERVICE_ROLE_KEY);
+  return { enabled, email };
+}
+
+function devAuthBootstrapPlugin(env, bootstrapToken, relay) {
   return {
     name: 'dev-auth-bootstrap',
     configureServer(server) {
       server.middlewares.use('/__dev-auth/session', async (req, res) => {
         if (req.method !== 'POST') {
           sendJson(res, 405, { error: 'method_not_allowed' });
+          return;
+        }
+        if (!relay.enabled) {
+          sendJson(res, 503, { error: 'dev_auth_not_configured' });
           return;
         }
         if (!bootstrapToken || req.headers['x-dev-auth-bootstrap'] !== bootstrapToken) {
@@ -126,9 +181,11 @@ function devAuthBootstrapPlugin(env, bootstrapToken) {
 
         try {
           const body = await readJsonBody(req);
-          const email = String(body.email || env.VITE_DEV_AUTO_LOGIN_EMAIL || '').trim();
-          if (!email) {
-            sendJson(res, 400, { error: 'email_required' });
+          const email = String(body.email || '').trim();
+          if (email.toLowerCase() !== relay.email.toLowerCase()) {
+            // Never let a caller choose which Supabase user receives a
+            // service-role-generated session. One machine-local owner only.
+            sendJson(res, 403, { error: 'forbidden' });
             return;
           }
 
@@ -168,8 +225,15 @@ function devAuthBootstrapPlugin(env, bootstrapToken) {
 }
 
 export default defineConfig(({ mode }) => {
-  const env = resolveViteConfigEnv(mode, __dirname);
-  const devAuthBootstrapToken = mode === 'development'
+  const projectEnv = resolveViteConfigEnv(mode, __dirname);
+  const env = mode === 'development'
+    ? { ...readPersistentDevAuthEnv(), ...projectEnv }
+    : projectEnv;
+  if (mode === 'development' && process.env.SURVEY_DEV_AUTH_EMAIL) {
+    env.VITE_DEV_AUTO_LOGIN_EMAIL = process.env.SURVEY_DEV_AUTH_EMAIL;
+  }
+  const devAuthRelay = resolveDevAuthRelay(env, mode);
+  const devAuthBootstrapToken = devAuthRelay.enabled
     ? randomBytes(24).toString('hex')
     : '';
   // Dev build identity is logged during app bootstrap, never rendered in UI.
@@ -190,7 +254,7 @@ export default defineConfig(({ mode }) => {
       react(),
       debugFixturesPlugin(),
       spikeLogSavePlugin(),
-      devAuthBootstrapPlugin(env, devAuthBootstrapToken),
+      devAuthBootstrapPlugin(env, devAuthBootstrapToken, devAuthRelay),
     ],
     server: {
       // Port is set via CLI flag from find-port.js
@@ -240,6 +304,8 @@ export default defineConfig(({ mode }) => {
       global: 'globalThis',
       __APP_VERSION__: JSON.stringify(APP_VERSION),
       __DEV_AUTH_BOOTSTRAP_TOKEN__: JSON.stringify(devAuthBootstrapToken),
+      __DEV_AUTH_RELAY_ENABLED__: JSON.stringify(devAuthRelay.enabled),
+      __DEV_AUTH_RELAY_EMAIL__: JSON.stringify(devAuthRelay.enabled ? devAuthRelay.email : ''),
       __BUILD_STAMP__: JSON.stringify(buildStamp),
     }
   };

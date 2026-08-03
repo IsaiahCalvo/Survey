@@ -109,7 +109,11 @@ test('Turnstile can be disabled locally with an explicit empty env value', () =>
   assert.equal(isTurnstileEnabled(DEFAULT_TURNSTILE_SITE_KEY), true);
 });
 
-test('dev auth bootstrap endpoint mints only a token hash through server-side Supabase admin', () => {
+test('dev auth bootstrap is machine-persistent, exact-owner-only, and server-side', () => {
+  assert.match(VITE_CONFIG_SOURCE, /\.config', 'survey', 'dev-auth\.env'/);
+  assert.match(VITE_CONFIG_SOURCE, /email\.toLowerCase\(\) !== relay\.email\.toLowerCase\(\)/);
+  assert.match(VITE_CONFIG_SOURCE, /__DEV_AUTH_RELAY_ENABLED__/);
+  assert.match(VITE_CONFIG_SOURCE, /__DEV_AUTH_RELAY_EMAIL__/);
   assert.match(VITE_CONFIG_SOURCE, /\/__dev-auth\/session/);
   assert.match(VITE_CONFIG_SOURCE, /SUPABASE_SERVICE_ROLE_KEY/);
   assert.match(VITE_CONFIG_SOURCE, /admin\.auth\.admin\.generateLink\(\{\s*type: 'magiclink'/);
@@ -119,8 +123,17 @@ test('dev auth bootstrap endpoint mints only a token hash through server-side Su
 
 test('dev auto-login falls back to magic-link bootstrap after captcha failure', () => {
   assert.match(AUTH_CONTEXT_SOURCE, /runDevAuthBootstrapIfCaptchaBlocked\(error, devEmail\)/);
+  assert.match(AUTH_CONTEXT_SOURCE, /devAuthRelayAllows\(email\)/);
   assert.match(AUTH_CONTEXT_SOURCE, /X-Dev-Auth-Bootstrap/);
   assert.match(AUTH_CONTEXT_SOURCE, /supabase\.auth\.verifyOtp\(\{\s*token_hash: payload\.token_hash,\s*type: payload\.type \|\| 'magiclink'/);
+});
+
+test('Turnstile widget has a development-only, fully configured relay suppression', () => {
+  assert.match(VITE_CONFIG_SOURCE, /mode === 'development'[\s\S]*Boolean\(env\.SUPABASE_SERVICE_ROLE_KEY\)/);
+  assert.match(AUTH_MODAL_SOURCE, /TURNSTILE_ENABLED && captchaMode/);
+  const widgetSource = readFileSync(new URL('../src/components/TurnstileWidget.jsx', import.meta.url), 'utf8');
+  assert.match(widgetSource, /import\.meta\.env\.DEV[\s\S]*__DEV_AUTH_RELAY_ENABLED__/);
+  assert.match(widgetSource, /isTurnstileEnabled\(TURNSTILE_SITE_KEY\)[\s\S]*!DEV_AUTH_RELAY_ENABLED/);
 });
 
 // --- wiring: /reset-password route + page -----------------------------------

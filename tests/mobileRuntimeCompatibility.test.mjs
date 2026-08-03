@@ -5,6 +5,10 @@ import { readFileSync } from 'node:fs';
 import { createSafeNavigatorLock } from '../src/utils/safeNavigatorLock.js';
 import { installBlobArrayBufferPolyfill, readBlobAsArrayBuffer } from '../src/utils/blobArrayBuffer.js';
 import { getMobileSyncPresentation, normalizeMobilePresence } from '../src/mobile/mobilePdfViewerModel.js';
+import {
+  simulatorDevServerUrl,
+  withSimulatorDevServer,
+} from '../scripts/ios-simulator-dev-config.mjs';
 
 const EXPO_APP_SOURCE = readFileSync(new URL('../mobile-expo/App.tsx', import.meta.url), 'utf8');
 const APP_SHELL_SOURCE = readFileSync(new URL('../src/AppShell.jsx', import.meta.url), 'utf8');
@@ -134,6 +138,23 @@ test('build identity is diagnostic-only and Simulator rejects a stale bundle', (
   assert.match(IOS_SIMULATOR_SOURCE, /appRelease\.commit !== sourceCommit/);
   assert.match(IOS_APP_SCHEME_SOURCE, /BlueprintName="App"/);
   assert.match(IOS_APP_SCHEME_SOURCE, /BuildableName="App\.app"/);
+});
+
+test('iOS Simulator dev mode targets Vite without changing production Capacitor config', () => {
+  const serverUrl = simulatorDevServerUrl('http://127.0.0.1:5177/?mobileNav=rail&nativeShell=expo');
+  assert.equal(
+    serverUrl,
+    'http://127.0.0.1:5177/?mobileNav=tabs&nativeShell=capacitor',
+  );
+  assert.deepEqual(withSimulatorDevServer({ appId: 'com.kalvoe.survey' }, serverUrl), {
+    appId: 'com.kalvoe.survey',
+    server: { cleartext: true, url: serverUrl },
+  });
+  assert.throws(() => simulatorDevServerUrl('file:///tmp/app'), /http:\/\/ or https:\/\//);
+  assert.throws(() => simulatorDevServerUrl('https://user:secret@example.com'), /credentials/);
+  assert.match(IOS_SIMULATOR_SOURCE, /temporaryIosRoot = path\.join\(artifactRoot, 'SimulatorSource'\)/);
+  assert.match(IOS_SIMULATOR_SOURCE, /cp\(path\.join\(ROOT, 'ios'\), temporaryIosRoot/);
+  assert.match(IOS_SIMULATOR_SOURCE, /CAPACITOR_SERVER_URL: ''/);
 });
 
 test('Capacitor and Expo mobile headers each consume the top safe area once', () => {

@@ -19,7 +19,11 @@ import { isTurnstileEnabled, resolveTurnstileSiteKey } from './turnstileConfig';
 // Public site key — safe to ship in client code (Cloudflare renders it in HTML).
 // Empty string disables the widget entirely (renders nothing, no gate).
 export const TURNSTILE_SITE_KEY = resolveTurnstileSiteKey(import.meta.env);
-export const TURNSTILE_ENABLED = isTurnstileEnabled(TURNSTILE_SITE_KEY);
+export const DEV_AUTH_RELAY_ENABLED = import.meta.env.DEV
+  && typeof __DEV_AUTH_RELAY_ENABLED__ === 'boolean'
+  && __DEV_AUTH_RELAY_ENABLED__;
+export const TURNSTILE_ENABLED = isTurnstileEnabled(TURNSTILE_SITE_KEY)
+  && !DEV_AUTH_RELAY_ENABLED;
 
 const SCRIPT_SRC =
   'https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit';

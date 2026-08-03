@@ -5,6 +5,7 @@
   "main": "src/electron-main.js",
   "scripts": {
     "dev:ui": "vite",
+    "dev:auth:configure": "node scripts/configure-dev-auth.mjs",
     "dev:electron": "wait-on -t 30000 http://localhost:5173 && NODE_ENV=development electron .",
     "predev": "node scripts/bootstrap-dev-env.mjs",
     "dev": "node find-port.js",
