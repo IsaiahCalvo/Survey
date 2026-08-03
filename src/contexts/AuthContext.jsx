@@ -43,10 +43,30 @@ const DEV_AUTH_RELAY_EMAIL = DEV_AUTH_RELAY_ENABLED
   && typeof __DEV_AUTH_RELAY_EMAIL__ === 'string'
   ? __DEV_AUTH_RELAY_EMAIL__.trim()
   : '';
+const DEV_AUTH_AUTO_LOGIN_SUPPRESSED_KEY = 'survey:dev-auth:auto-login-suppressed';
 
 const devAuthRelayAllows = (email) => DEV_AUTH_RELAY_ENABLED
   && Boolean(DEV_AUTH_RELAY_EMAIL)
   && String(email || '').trim().toLowerCase() === DEV_AUTH_RELAY_EMAIL.toLowerCase();
+
+const isDevAuthAutoLoginSuppressed = () => {
+  if (!DEV_AUTH_RELAY_ENABLED || typeof window === 'undefined') return false;
+  try {
+    return window.localStorage?.getItem(DEV_AUTH_AUTO_LOGIN_SUPPRESSED_KEY) === '1';
+  } catch {
+    return false;
+  }
+};
+
+const setDevAuthAutoLoginSuppressed = (suppressed) => {
+  if (!DEV_AUTH_RELAY_ENABLED || typeof window === 'undefined') return;
+  try {
+    if (suppressed) window.localStorage?.setItem(DEV_AUTH_AUTO_LOGIN_SUPPRESSED_KEY, '1');
+    else window.localStorage?.removeItem(DEV_AUTH_AUTO_LOGIN_SUPPRESSED_KEY);
+  } catch {
+    console.warn('[dev-auth] could not persist owner auto-login preference');
+  }
+};
 
 const isCaptchaBlockedAuthError = (error) => {
   const code = String(error?.code || '').toLowerCase();
@@ -217,6 +237,14 @@ export const AuthProvider = ({ children }) => {
   };
 
   const runDevAutoLoginIfNeeded = async (session) => {
+    // A manual Sign out is authoritative. Keep both the signed-out state and
+    // any subsequently chosen non-owner session until the user explicitly
+    // signs in as the configured dev owner again.
+    if (isDevAuthAutoLoginSuppressed()) {
+      authDebug('[dev-auto-login] skipped after explicit sign-out');
+      return session;
+    }
+
     const { email: devEmail, password: devPassword } = getDevAutoLoginCredentials();
     authDebug('[dev-auto-login] boot ' + JSON.stringify({
       hasDevEmail: !!devEmail,
@@ -527,10 +555,12 @@ export const AuthProvider = ({ children }) => {
     if (error) {
       const bootstrapSession = await runDevAuthBootstrapIfCaptchaBlocked(error, email);
       if (bootstrapSession) {
+        setDevAuthAutoLoginSuppressed(false);
         return { session: bootstrapSession, user: bootstrapSession.user };
       }
       throw error;
     }
+    if (devAuthRelayAllows(email)) setDevAuthAutoLoginSuppressed(false);
     return data;
   };
 
@@ -600,6 +630,10 @@ export const AuthProvider = ({ children }) => {
     if (!isSupabaseAvailable()) {
       throw new Error('Supabase is not configured');
     }
+
+    // Persist before the network call and reload. Otherwise the dev relay sees
+    // an empty session on the next boot and immediately signs the owner back in.
+    setDevAuthAutoLoginSuppressed(true);
 
     try {
       // Try to sign out on the server

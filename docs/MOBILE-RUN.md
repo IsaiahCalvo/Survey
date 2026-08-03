@@ -10,12 +10,13 @@ testing. `npm run start:tunnel` publishes Metro through an `exp.direct` internet
 iPhone can use cellular or any other network. A `100.x.x.x:8081` or other local address means
 Metro was started in LAN mode; stop it and use the tunnel command below.
 
-## Remote testing while Isaiah is away: Expo Go
+## Remote testing while Isaiah is away: Survey development app
 
-This is the zero-install path for the current worktree. It uses Expo's public tunnel for the
-shell and Tailscale HTTPS for the Vite app, so the iPhone may be on cellular or any Wi-Fi.
-The development auth relay signs in the configured owner automatically; Cloudflare Turnstile
-and Google OAuth are not part of this test path.
+This uses the already-installed Survey development app. Expo's public tunnel delivers the
+native shell and Tailscale HTTPS delivers the Vite app, so the iPhone may be on cellular or
+any Wi-Fi. Manual sign-out stays signed out. The real native Google flow uses
+`accounts.google.com`, returns an ID token directly to Survey, and never opens a Supabase
+OAuth callback.
 
 Keep the existing Vite server and Tailscale Serve route running, then run:
 
@@ -24,14 +25,34 @@ cd mobile-expo
 npm run start:remote
 ```
 
-Open `https://survey-ios-install.vercel.app/` on the iPhone and tap **Open in Expo Go**.
+Open `https://survey-ios-install.vercel.app/` on the iPhone and tap
+**Open Survey Development App**.
 The terminal must say `Tunnel ready` and show an `exp.direct` address. Never use a QR or URL
 containing `100.x.x.x:8081`; that is LAN mode and will fail when the phone leaves the Mac.
 
-Verified on 2026-08-03 in the iPhone 17 Pro Max Simulator: the public Expo Go tunnel loaded
-the Tailscale-served worktree, auto-signed in as IC, and displayed all 19 live documents.
-Expo Go cannot validate the native Google OAuth redirect; the Survey development build and
-Simulator cover that native-only flow.
+Verified on 2026-08-03 in the iPhone 17 Pro Max Simulator: the public development-client
+tunnel loaded the Tailscale-served worktree, manual sign-out remained signed out, and Google
+opened `accounts.google.com` with **continue to Survey**. The interactive Simulator is also
+mirrored into Codex at `http://localhost:3200/` while `serve-sim` is running.
+
+Expo Go remains available with `npm run start:remote:expo-go` for UI-only fallback testing,
+but Expo does not support custom-scheme OAuth/OIDC in Expo Go. It cannot prove Google sign-in.
+
+## Interactive iPhone Simulator inside Codex
+
+Keep Vite running on port 5177, then start the Simulator-specific native bundle:
+
+```bash
+cd mobile-expo
+npm run start:simulator
+xcrun simctl openurl 54E7DD27-F277-4EB2-9F3B-8CA7939F5AC6 'exp+survey://expo-development-client/?url=http%3A%2F%2F127.0.0.1%3A8084'
+```
+
+Mirror that exact Simulator into Codex with `serve-sim`, then open its printed local URL in
+the Codex in-app browser. The current verified mirror is `http://localhost:3200/`. It renders
+the real Simulator frame, accepts clicks and typing, and exposes screenshot and device tools.
+The local Metro and Vite origins avoid Simulator-only DNS failures while keeping the same
+native and web source used by the phone.
 
 ## Immediate: Survey development app
 

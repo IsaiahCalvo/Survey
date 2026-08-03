@@ -128,6 +128,28 @@ test('dev auto-login falls back to magic-link bootstrap after captcha failure', 
   assert.match(AUTH_CONTEXT_SOURCE, /supabase\.auth\.verifyOtp\(\{\s*token_hash: payload\.token_hash,\s*type: payload\.type \|\| 'magiclink'/);
 });
 
+test('manual dev sign-out persists and only explicit owner sign-in re-enables auto-login', () => {
+  assert.match(AUTH_CONTEXT_SOURCE, /DEV_AUTH_AUTO_LOGIN_SUPPRESSED_KEY = 'survey:dev-auth:auto-login-suppressed'/);
+  assert.match(AUTH_CONTEXT_SOURCE, /if \(isDevAuthAutoLoginSuppressed\(\)\) \{[\s\S]*return session;/);
+
+  const signOutBlock = AUTH_CONTEXT_SOURCE.slice(
+    AUTH_CONTEXT_SOURCE.indexOf('const signOut = async'),
+    AUTH_CONTEXT_SOURCE.indexOf('// Resend the signup confirmation email'),
+  );
+  assert.match(signOutBlock, /setDevAuthAutoLoginSuppressed\(true\)/);
+  assert.ok(
+    signOutBlock.indexOf('setDevAuthAutoLoginSuppressed(true)') < signOutBlock.indexOf('supabase.auth.signOut()'),
+    'sign-out suppression must persist before the network call and reload',
+  );
+
+  const signInBlock = AUTH_CONTEXT_SOURCE.slice(
+    AUTH_CONTEXT_SOURCE.indexOf('const signIn = async'),
+    AUTH_CONTEXT_SOURCE.indexOf('// Sign in with Google OAuth'),
+  );
+  assert.match(signInBlock, /bootstrapSession[\s\S]*setDevAuthAutoLoginSuppressed\(false\)/);
+  assert.match(signInBlock, /if \(devAuthRelayAllows\(email\)\) setDevAuthAutoLoginSuppressed\(false\)/);
+});
+
 test('Turnstile widget has a development-only, fully configured relay suppression', () => {
   assert.match(VITE_CONFIG_SOURCE, /mode === 'development'[\s\S]*Boolean\(env\.SUPABASE_SERVICE_ROLE_KEY\)/);
   assert.match(AUTH_MODAL_SOURCE, /TURNSTILE_ENABLED && captchaMode/);
