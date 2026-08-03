@@ -11,6 +11,7 @@ import {
 } from '../scripts/ios-simulator-dev-config.mjs';
 
 const EXPO_APP_SOURCE = readFileSync(new URL('../mobile-expo/App.tsx', import.meta.url), 'utf8');
+const INDEX_HTML_SOURCE = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
 const APP_SHELL_SOURCE = readFileSync(new URL('../src/AppShell.jsx', import.meta.url), 'utf8');
 const MAIN_SOURCE = readFileSync(new URL('../src/main.jsx', import.meta.url), 'utf8');
 const HUB_CSS_SOURCE = readFileSync(new URL('../src/home/hub.css', import.meta.url), 'utf8');
@@ -161,6 +162,24 @@ test('Capacitor and Expo mobile headers each consume the top safe area once', ()
   assert.match(HUB_CSS_SOURCE, /\.survey-hub \.header \{[\s\S]{0,520}top: env\(safe-area-inset-top, 0px\)/);
   assert.match(HUB_CSS_SOURCE, /html\[data-native-shell="expo"\] \.survey-hub \.header \{\s*top: 0;/);
   assert.match(EXPO_APP_SOURCE, /paddingTop: insets\.top/);
+});
+
+test('mobile shells lock page zoom without disabling app-controlled PDF pinch', () => {
+  assert.match(
+    INDEX_HTML_SOURCE,
+    /name="viewport" content="[^"]*maximum-scale=1\.0[^"]*user-scalable=no[^"]*viewport-fit=cover"/,
+  );
+  assert.match(INDEX_HTML_SOURCE, /root\.dataset\.mobileViewport = 'locked'/);
+  assert.match(INDEX_HTML_SOURCE, /nativeShell === 'expo' \|\| nativeShell === 'capacitor'/);
+  assert.match(
+    INDEX_HTML_SOURCE,
+    /html\[data-mobile-viewport="locked"\][\s\S]{0,420}input:not\(\[type="hidden"\]\)[\s\S]{0,300}font-size: max\(16px, 1em\) !important/,
+  );
+  assert.match(INDEX_HTML_SOURCE, /addEventListener\('gesturestart', preventPageZoom, \{ passive: false \}\)/);
+  assert.match(INDEX_HTML_SOURCE, /addEventListener\('gesturechange', preventPageZoom, \{ passive: false \}\)/);
+  assert.match(INDEX_HTML_SOURCE, /addEventListener\('gestureend', preventPageZoom, \{ passive: false \}\)/);
+  assert.match(PDFJS_VIEWER_SOURCE, /source: 'pinch'/);
+  assert.match(PDFJS_VIEWER_SOURCE, /event\.touches\.length >= 2/);
 });
 
 test('mobile PDF rendering stays inside the WKWebView memory budget', () => {

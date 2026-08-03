@@ -2,7 +2,7 @@
 <html>
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
     <meta name="theme-color" content="#0d0f14" />
     <meta name="color-scheme" content="dark" />
     <style>
@@ -43,6 +43,16 @@
         padding-top: 0;
         padding-bottom: 0;
       }
+      /* iOS zooms the whole WKWebView when a focused field renders below 16px.
+         Keep the compact control geometry, but never let the editable glyphs
+         cross that native auto-zoom threshold. Scoped to mobile routes/shells
+         so desktop and ordinary desktop web rendering remain unchanged. */
+      html[data-mobile-viewport="locked"] input:not([type="hidden"]),
+      html[data-mobile-viewport="locked"] textarea,
+      html[data-mobile-viewport="locked"] select,
+      html[data-mobile-viewport="locked"] [contenteditable="true"] {
+        font-size: max(16px, 1em) !important;
+      }
       /* UX 2026-07-12 (S1, PWA/plain-browser case): when the MOBILE viewer is
          active, its header consumes the top inset and its dock/sheets consume
          the bottom inset, so #root padding would double-count both edges.
@@ -63,8 +73,22 @@
          shell's injection overwrites the floor with the device's real inset. */
       (function () {
         try {
-          if (new URLSearchParams(window.location.search).get('nativeShell') === 'expo') {
-            var root = document.documentElement;
+          var params = new URLSearchParams(window.location.search);
+          var nativeShell = params.get('nativeShell');
+          var mobileNav = params.get('mobileNav');
+          var root = document.documentElement;
+          var isMobileViewport = nativeShell === 'expo' || nativeShell === 'capacitor'
+            || mobileNav === 'tabs' || mobileNav === 'rail';
+
+          if (isMobileViewport) {
+            root.dataset.mobileViewport = 'locked';
+            var preventPageZoom = function (event) { event.preventDefault(); };
+            document.addEventListener('gesturestart', preventPageZoom, { passive: false });
+            document.addEventListener('gesturechange', preventPageZoom, { passive: false });
+            document.addEventListener('gestureend', preventPageZoom, { passive: false });
+          }
+
+          if (nativeShell === 'expo') {
             root.dataset.nativeShell = 'expo';
             if (!root.style.getPropertyValue('--native-safe-area-bottom')) {
               root.style.setProperty('--native-safe-area-bottom', '10px');
