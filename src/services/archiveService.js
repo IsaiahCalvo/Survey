@@ -46,7 +46,9 @@ export async function loadArchive(userId, { now = Date.now() } = {}) {
   const [documentsRes, projectsRes, templatesRes, projectNamesRes] = await Promise.all([
     supabase
       .from('documents')
-      .select('id, user_id, name, project_id, file_path, user_archived_at, user_archive_expires_at, archive_group_id')
+      // Keep in step with DOCUMENT_ARCHIVE_COLUMNS in documentArchiveService.js —
+      // file_size and page_count feed the preview pane.
+      .select('id, user_id, name, project_id, file_path, file_size, page_count, user_archived_at, user_archive_expires_at, archive_group_id')
       .eq('user_id', userId)
       .not('user_archived_at', 'is', null),
     supabase

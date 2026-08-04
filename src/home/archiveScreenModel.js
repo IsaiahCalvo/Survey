@@ -105,23 +105,24 @@ export function visibleArchiveItems(items = [], { filter = 'all', sortKey = 'arc
 }
 
 /**
- * Project rows start EXPANDED: the whole point of the group row is showing the
- * user which documents disappear with the project. We therefore track the
- * COLLAPSED ids — an empty set means everything is open, which is also the
- * natural state after a sort or filter change (the set is never rebuilt from
- * the item list, so expansion survives both).
+ * Project rows start COLLAPSED (owner call, 2026-08-04). Archive is a scan-and-
+ * rescue list: opening every group by default buries the top-level rows the
+ * user is actually choosing between under their children. We therefore track
+ * the EXPANDED ids — an empty set means everything is closed, and because the
+ * set is never rebuilt from the item list, whatever the user opens stays open
+ * across sorts and filter changes.
  */
-export function defaultCollapsedIds() {
+export function defaultExpandedIds() {
   return new Set();
 }
 
-export function isRowExpanded(collapsedIds, id) {
-  return !(collapsedIds && collapsedIds.has(id));
+export function isRowExpanded(expandedIds, id) {
+  return Boolean(expandedIds && expandedIds.has(id));
 }
 
 /** Returns a NEW set so React sees a changed reference. */
-export function toggleCollapsed(collapsedIds, id) {
-  const next = new Set(collapsedIds || []);
+export function toggleExpanded(expandedIds, id) {
+  const next = new Set(expandedIds || []);
   if (next.has(id)) next.delete(id);
   else next.add(id);
   return next;
@@ -186,6 +187,35 @@ export function daysRemainingLabel(days) {
   if (n === 0) return 'Today';
   if (n === 1) return '1 day';
   return `${n} days`;
+}
+
+/**
+ * Countdown copy for the preview pane. Inside the final day "1 day" is too
+ * coarse to act on — the user needs to know whether they have twenty hours or
+ * twenty minutes — so the last day counts down in hours, then minutes.
+ * The list column keeps the coarser day label; only the preview goes finer.
+ */
+export function timeRemainingLabel(expiresAt, now = Date.now()) {
+  const ms = Date.parse(expiresAt || '') || 0;
+  if (!ms) return '—';
+  const nowMs = now instanceof Date ? now.getTime() : now;
+  const delta = ms - nowMs;
+  if (delta <= 0) return 'Expired';
+  const hours = delta / 3600000;
+  if (hours >= 24) return daysRemainingLabel(Math.ceil(hours / 24));
+  const wholeHours = Math.floor(hours);
+  if (wholeHours >= 1) return `${wholeHours} ${wholeHours === 1 ? 'hour' : 'hours'}`;
+  const minutes = Math.max(1, Math.floor(delta / 60000));
+  return `${minutes} ${minutes === 1 ? 'minute' : 'minutes'}`;
+}
+
+/** File size for the preview pane, matching the Documents ledger's units. */
+export function fileSizeLabel(bytes) {
+  const n = Number(bytes);
+  if (!Number.isFinite(n) || n <= 0) return '—';
+  if (n < 1024) return `${n} B`;
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
+  return `${(n / (1024 * 1024)).toFixed(2)} MB`;
 }
 
 /** Short archived-on date, matching the Documents ledger's date formatting. */

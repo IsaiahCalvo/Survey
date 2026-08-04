@@ -88,6 +88,11 @@ export function normalizeDocumentItem(row, { projectName = null, now = Date.now(
   const item = baseItem('document', row, now);
   item.projectId = row.project_id || null;
   item.projectName = projectName;
+  // Preview-pane fields. Kept on the item (not fetched again by the screen) so
+  // the presentational component stays free of data access.
+  item.filePath = row.file_path || null;
+  item.fileSize = typeof row.file_size === 'number' ? row.file_size : null;
+  item.pageCount = typeof row.page_count === 'number' ? row.page_count : null;
   return item;
 }
 

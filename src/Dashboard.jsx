@@ -1761,6 +1761,47 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
   // Persist edits made in the Survey Hub's Templates editor. Logged-in / guest
   // split: hub edits land in Supabase (config JSONB) for signed-in users, or
   // localStorage otherwise.
+  // UX (KAL-432): templates archive exactly like documents and projects. They
+  // were the odd one out only because the editor's delete filtered the list and
+  // let the bundle save infer the removal — that inferred delete was permanent.
+  // Archiving goes straight at the row instead, so the editor never has to
+  // round-trip a deletion through its save path. Returns false on cancel so the
+  // editor can leave its list untouched.
+  const hubArchiveTemplates = async (templateIds) => {
+    const ids = Array.from(templateIds || []).filter(Boolean);
+    if (ids.length === 0) return false;
+    if (!user) { showToast('Please sign in to archive templates', 'warn'); return false; }
+    const confirmed = await askConfirm({
+      title: ids.length === 1 ? 'Move this template to Archive?' : `Move these ${ids.length} templates to Archive?`,
+      message: ids.length === 1
+        ? 'You can restore it from Archive for the next 30 days.'
+        : 'You can restore them from Archive for the next 30 days.',
+      confirmLabel: ids.length === 1 ? 'Move to Archive' : `Move ${ids.length} to Archive`,
+    });
+    if (!confirmed) return false;
+    // The RPC takes the templates ROW id; the editor works in config ids.
+    const rows = ids
+      .map((id) => ({ id, supabaseId: resolveSupabaseTemplateId(id) }))
+      .filter((row) => row.supabaseId);
+    try {
+      const { failed } = await archiveItems(
+        rows.map((row) => ({ type: 'template', id: row.supabaseId, name: 'Template' }))
+      );
+      if (failed.length) {
+        console.error('[TemplateArchive] survey-hub:partial', JSON.stringify(failed.map(f => f.error)));
+        showToast(failed[0].error, 'error');
+      }
+      await refetchTemplates();
+      notifyLibraryChanged();
+    } catch (err) {
+      console.error('[TemplateArchive] survey-hub:error', serializeError(err));
+      showToast('Failed to archive templates: ' + (err.message || 'Unknown error'), 'error');
+      await refetchTemplates();
+      return false;
+    }
+    return true;
+  };
+
   const hubSaveTemplates = async (nextTemplates) => {
     if (!Array.isArray(nextTemplates)) return;
     try {
@@ -1813,11 +1854,12 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
       const { failed } = await archiveItems(
         archivable.map(doc => ({ type: 'document', id: doc.id, name: doc.name || doc.title || 'Document' }))
       );
+      // UX: no success toast. The row leaving the list IS the confirmation, and
+      // a banner that lingers for seconds over a routine action is noise. Only
+      // a failure is worth interrupting for.
       if (failed.length) {
         console.error('[DocumentArchive] survey-hub:partial', JSON.stringify(failed.map(f => f.error)));
         showToast(failed[0].error, 'error');
-      } else {
-        showToast(list.length === 1 ? 'Moved to Archive.' : `Moved ${list.length} items to Archive.`, 'success');
       }
       await refetchDocuments();
       notifyLibraryChanged();
@@ -1856,11 +1898,10 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
           type: 'project', id: project.id, name: project.name || 'Project',
         }))
       );
+      // UX: no success toast — see hubDeleteDocuments. Only failures speak up.
       if (failed.length) {
         console.error('[ProjectArchive] survey-hub:partial', JSON.stringify(failed.map(f => f.error)));
         showToast(failed[0].error, 'error');
-      } else {
-        showToast(list.length === 1 ? 'Moved to Archive.' : `Moved ${list.length} projects to Archive.`, 'success');
       }
       await refetchProjects();
       await refetchDocuments();
@@ -2035,6 +2076,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
         onCreateTemplate={openTemplateModal}
         onDeleteProjects={hubDeleteProjects}
         onSaveTemplates={hubSaveTemplates}
+        onArchiveTemplates={hubArchiveTemplates}
         getChecklistItemUsageCount={hubGetChecklistItemUsageCount}
         onDuplicateDocuments={hubDuplicateDocuments}
         onDeleteDocuments={hubDeleteDocuments}

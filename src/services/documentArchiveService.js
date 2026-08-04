@@ -16,8 +16,11 @@ import { supabase } from '../supabaseClient';
 import { purgeAnnotationDoc } from './annotationDocSync';
 import { normalizeDocumentItem } from './archiveContract';
 
+// file_size and page_count feed the Archive preview pane, which mirrors the
+// Documents ledger's preview: you should be able to tell WHICH file you are
+// about to restore or destroy without leaving Archive.
 const DOCUMENT_ARCHIVE_COLUMNS =
-  'id, user_id, name, project_id, file_path, user_archived_at, user_archive_expires_at, user_archived_by, archive_group_id';
+  'id, user_id, name, project_id, file_path, file_size, page_count, user_archived_at, user_archive_expires_at, user_archived_by, archive_group_id';
 
 /** Turn an RPC `reason` into copy the hub can show verbatim. */
 function messageForReason(reason, noun = 'document') {

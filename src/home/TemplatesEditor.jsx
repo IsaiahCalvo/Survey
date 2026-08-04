@@ -678,6 +678,7 @@ export default function TemplatesEditor({
   onNav,
   onCreateTemplate,
   onSaveTemplates,
+  onArchiveTemplates,
   onShare,
   /* KAL-44 — host-provided usage count for a checklist item. Returns the
      number of survey markers that have a response keyed under itemId. When
@@ -958,8 +959,21 @@ export default function TemplatesEditor({
       return next === prev ? prev : next;
     });
   };
-  const deleteTemplates = (ids) => {
-    /* BL-23: the save call lives OUTSIDE the setRich updater (updaters must
+  const deleteTemplates = async (ids) => {
+    /* KAL-432: templates archive like everything else. The hub owns the
+       confirmation and the archive call; we only drop the rows locally once it
+       reports success, so a cancel leaves the list exactly as it was.
+       Deliberately NOT routed through the bundle save below: that path infers a
+       deletion from the list shrinking and issues a permanent delete, which is
+       the behaviour this replaces. */
+    if (onArchiveTemplates) {
+      const archived = await onArchiveTemplates(Array.from(ids));
+      if (archived === false) return;
+      setRich((prev) => prev.filter((t) => !ids.has(t.id)));
+      return;
+    }
+    /* Signed-out / local-only fallback keeps the original bundle-save delete.
+       BL-23: the save call lives OUTSIDE the setRich updater (updaters must
        stay pure — StrictMode double-invokes them, which would double the
        save). A delete IS an edit: markEdited() keeps dirty=true while the
        save is in flight so a background refetch can't full-reload and

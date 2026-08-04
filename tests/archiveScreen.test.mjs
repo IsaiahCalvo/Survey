@@ -14,7 +14,7 @@ import {
   buildBulkFailureMessage,
   buildBulkOutcomeMessage,
   daysRemainingLabel,
-  defaultCollapsedIds,
+  defaultExpandedIds,
   filterArchiveItems,
   isAllSelected,
   isRowExpanded,
@@ -27,7 +27,7 @@ import {
   selectableIds,
   sortArchiveItems,
   sortStateForNamedSort,
-  toggleCollapsed,
+  toggleExpanded,
   toggleSelection,
   visibleArchiveItems,
 } from '../src/home/archiveScreenModel.js';
@@ -109,21 +109,23 @@ test('all four named sorts map onto a (sortKey, sortDir) pair and order correctl
   );
 });
 
-test('project rows start expanded and stay expanded across sorting and filtering', () => {
-  const collapsed = defaultCollapsedIds();
-  assert.equal(collapsed.size, 0);
-  assert.equal(isRowExpanded(collapsed, 'p1'), true);
+test('project rows start COLLAPSED and stay put across sorting and filtering', () => {
+  // Owner call 2026-08-04: Archive is a scan-and-rescue list, so groups start
+  // closed rather than burying the top-level rows under their children.
+  const expanded = defaultExpandedIds();
+  assert.equal(expanded.size, 0);
+  assert.equal(isRowExpanded(expanded, 'p1'), false);
 
-  const afterCollapse = toggleCollapsed(collapsed, 'p1');
-  assert.equal(isRowExpanded(afterCollapse, 'p1'), false);
+  const afterOpen = toggleExpanded(expanded, 'p1');
+  assert.equal(isRowExpanded(afterOpen, 'p1'), true);
   // The original set is untouched — React sees a new reference each time.
-  assert.equal(isRowExpanded(collapsed, 'p1'), true);
-  assert.equal(isRowExpanded(toggleCollapsed(afterCollapse, 'p1'), 'p1'), true);
+  assert.equal(isRowExpanded(expanded, 'p1'), false);
+  assert.equal(isRowExpanded(toggleExpanded(afterOpen, 'p1'), 'p1'), false);
 
   // Expansion is not derived from the list, so re-sorting/re-filtering cannot
-  // reset it: the same set still answers for the same project.
+  // reset it: whatever the user opened stays open.
   visibleArchiveItems(ALL, { filter: 'project', sortKey: 'name', sortDir: 'desc' });
-  assert.equal(isRowExpanded(afterCollapse, 'p1'), false);
+  assert.equal(isRowExpanded(afterOpen, 'p1'), true);
 });
 
 test('only top-level items are selectable — a project child never is', () => {

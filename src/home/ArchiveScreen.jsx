@@ -15,9 +15,11 @@
    without a DOM.
 */
 import { useCallback, useMemo, useState } from 'react';
-import { HubShell, Icon, EmptyState } from './HubShell';
+import { HubShell, Icon, EmptyState, PdfThumb } from './HubShell';
 import { ConfirmModal } from './BulkModals';
-import { miniButtonStyle } from './hubControls';
+import PdfPageThumb from './PdfPageThumb';
+import { useStorage } from '../hooks/useDatabase';
+import { closeButtonStyle, miniButtonStyle } from './hubControls';
 import { showToast } from '../utils/toast';
 import { DELETE_FOREVER_COPY } from '../services/archiveContract';
 import {
@@ -28,7 +30,8 @@ import {
   buildBulkFailureMessage,
   buildBulkOutcomeMessage,
   daysRemainingLabel,
-  defaultCollapsedIds,
+  defaultExpandedIds,
+  fileSizeLabel,
   isAllSelected,
   isRowExpanded,
   nextSelectAll,
@@ -36,7 +39,8 @@ import {
   normalizeBulkResult,
   pruneSelection,
   resolveSelection,
-  toggleCollapsed,
+  timeRemainingLabel,
+  toggleExpanded,
   toggleSelection,
   visibleArchiveItems,
 } from './archiveScreenModel';
@@ -78,9 +82,16 @@ export default function ArchiveScreen({
   const [sortKey, setSortKey] = useState(DEFAULT_ARCHIVE_SORT.sortKey);
   const [sortDir, setSortDir] = useState(DEFAULT_ARCHIVE_SORT.sortDir);
   const [selectedIds, setSelectedIds] = useState(() => new Set());
-  /* Collapsed — not expanded — ids, so project groups render open by default
-     and stay open when the user re-sorts or switches filters. */
-  const [collapsedIds, setCollapsedIds] = useState(defaultCollapsedIds);
+  /* Selection is OFF until the user asks for it, exactly like the Documents
+     ledger: clicking a row previews it, and only "Select" turns rows into
+     checkboxes. Archive holds things you are deciding about — making every row
+     a live checkbox invites an accidental "Delete forever". */
+  const [selectMode, setSelectMode] = useState(false);
+  const [previewId, setPreviewId] = useState(null);
+  const [previewOpen, setPreviewOpen] = useState(true);
+  /* Expanded — not collapsed — ids, so project groups render CLOSED by default
+     and whatever the user opens stays open across sorts and filter changes. */
+  const [expandedIds, setExpandedIds] = useState(defaultExpandedIds);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [busy, setBusy] = useState(false);
 
@@ -105,6 +116,16 @@ export default function ArchiveScreen({
       }}
     >{label}{arrow(key)}</span>
   );
+
+  const { downloadDocument } = useStorage();
+
+  /* The previewed row, resolved against what is actually on screen: a row that
+     was just restored, or filtered out, must not keep a stale pane open. */
+  const previewItem = useMemo(
+    () => rows.find((row) => row.id === previewId) || null,
+    [rows, previewId],
+  );
+  const showPreview = previewOpen && !selectMode && Boolean(previewItem);
 
   const selectedItems = useMemo(() => resolveSelection(rows, selectedIds), [rows, selectedIds]);
   const selectedCount = selectedItems.length;
@@ -139,25 +160,38 @@ export default function ArchiveScreen({
   const actionsDisabled = busy || selectedCount === 0;
 
   /* Bulk actions live in the header subtitle, exactly like Documents, so the
-     ledger itself stays a pure list. */
+     ledger itself stays a pure list — and, like Documents, they only appear
+     once the user has turned selection on. */
   const subtitle = (
     <span style={{ display: 'inline-flex', alignItems: 'baseline', gap: 10 }}>
       <span><b>{rows.length}</b> {rows.length === 1 ? 'item' : 'items'}</span>
       <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
         <button
-          onClick={() => setSelectedIds((prev) => nextSelectAll(prev, rows))}
-          style={{ ...miniButtonStyle(), color: 'var(--bone-100)' }}
-        >{allSelected ? 'None' : 'All'}</button>
-        <button
-          disabled={actionsDisabled}
-          onClick={doRestore}
-          style={miniButtonStyle({ disabled: actionsDisabled })}
-        >Restore</button>
-        <button
-          disabled={actionsDisabled}
-          onClick={() => setConfirmDelete(true)}
-          style={miniButtonStyle({ disabled: actionsDisabled, danger: true })}
-        >Delete forever</button>
+          onClick={() => {
+            const next = !selectMode;
+            setSelectMode(next);
+            if (!next) setSelectedIds(new Set());
+          }}
+          style={{ background: 'transparent', border: 0, color: 'var(--gold)', borderRadius: 2, padding: 0, fontSize: 11.5, cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap', fontWeight: 600 }}
+        >{selectMode ? 'Done' : 'Select'}</button>
+        {selectMode && (
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, marginLeft: 8 }}>
+            <button
+              onClick={() => setSelectedIds((prev) => nextSelectAll(prev, rows))}
+              style={{ ...miniButtonStyle(), color: 'var(--bone-100)' }}
+            >{allSelected ? 'None' : 'All'}</button>
+            <button
+              disabled={actionsDisabled}
+              onClick={doRestore}
+              style={miniButtonStyle({ disabled: actionsDisabled })}
+            >Restore</button>
+            <button
+              disabled={actionsDisabled}
+              onClick={() => setConfirmDelete(true)}
+              style={miniButtonStyle({ disabled: actionsDisabled, danger: true })}
+            >Delete forever</button>
+          </span>
+        )}
       </span>
     </span>
   );
@@ -167,13 +201,20 @@ export default function ArchiveScreen({
      row someone came here to rescue. */
   const headerActions = (
     <div className="archive-filter-row" role="group" aria-label="Filter archive by type">
+      {/* Styled with the hub's own miniButtonStyle, NOT the global `.btn`
+          class: `.btn:not(:disabled):hover` carries an app-wide translateY(-1px)
+          lift that nothing else in the hub uses, so these buttons were bobbing
+          on hover while every neighbouring control stayed still. */}
       {ARCHIVE_FILTERS.map(({ key, label }) => (
         <button
           key={key}
           type="button"
-          className={`btn archive-filter-button${filter === key ? ' active' : ''}`}
+          className={`archive-filter-button${filter === key ? ' active' : ''}`}
           aria-pressed={filter === key}
           onClick={() => setFilter(key)}
+          style={filter === key
+            ? { ...miniButtonStyle({ borderColor: 'var(--gold)' }), color: 'var(--gold)' }
+            : miniButtonStyle()}
         >{label}</button>
       ))}
     </div>
@@ -208,27 +249,40 @@ export default function ArchiveScreen({
     >{daysRemainingLabel(item.daysRemaining)}</span>
   );
 
+  /* The same disclosure the Templates editor uses for a category: one ▾ glyph
+     that rotates, never a swapped ▾/▸ pair. Matching it keeps one expand
+     affordance across the app. */
+  const chevron = (open) => (
+    <span style={{ color: '#8d96a6', fontSize: 10, lineHeight: 1, transform: open ? 'rotate(180deg)' : 'none', transition: 'transform .12s', flex: 'none' }}>▾</span>
+  );
+
   const renderRow = (item) => {
     const checked = selectedIds.has(item.id);
-    const expanded = isRowExpanded(collapsedIds, item.id);
+    const expanded = isRowExpanded(expandedIds, item.id);
     const isProject = item.type === 'project' && item.childCount > 0;
+    const active = selectMode ? checked : previewId === item.id;
+    const activate = () => {
+      if (selectMode) { toggleRow(item.id); return; }
+      setPreviewId(item.id);
+      setPreviewOpen(true);
+    };
     return (
       <div key={item.id}>
         <div
-          onClick={() => toggleRow(item.id)}
+          onClick={activate}
           role="button"
           tabIndex={0}
-          aria-pressed={checked}
+          aria-pressed={selectMode ? checked : undefined}
           onKeyDown={(e) => {
             if (e.key !== 'Enter' && e.key !== ' ') return;
             e.preventDefault();
-            toggleRow(item.id);
+            activate();
           }}
           style={{
             display: 'grid', gridTemplateColumns: grid, alignItems: 'center',
             borderBottom: '1px solid var(--ink-600)',
-            borderLeft: checked ? '2px solid var(--gold)' : '2px solid transparent',
-            background: checked ? 'var(--ink-600)' : 'transparent',
+            borderLeft: active ? '2px solid var(--gold)' : '2px solid transparent',
+            background: active ? 'var(--ink-600)' : 'transparent',
             cursor: 'pointer',
             // Skip layout/paint for off-screen rows; intrinsic height matches
             // the Documents ledger's single-line rows.
@@ -237,21 +291,22 @@ export default function ArchiveScreen({
           }}
         >
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 8px' }}>
-            {checkGlyph(checked)}
+            {selectMode ? checkGlyph(checked) : null}
           </div>
-          <div style={stickyCell(checked)}>
+          <div style={stickyCell(active)}>
             {isProject ? (
               <button
                 type="button"
                 title={expanded ? 'Hide documents' : 'Show documents'}
                 aria-expanded={expanded}
-                onClick={(e) => { e.stopPropagation(); setCollapsedIds((prev) => toggleCollapsed(prev, item.id)); }}
+                onClick={(e) => { e.stopPropagation(); setExpandedIds((prev) => toggleExpanded(prev, item.id)); }}
                 style={{
                   background: 'transparent', border: 0, color: 'var(--ink-200)',
-                  cursor: 'pointer', padding: 0, fontSize: 10, lineHeight: 1,
+                  cursor: 'pointer', padding: 0, lineHeight: 1,
                   fontFamily: 'inherit', flex: 'none', width: 12,
+                  display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
                 }}
-              >{expanded ? '▾' : '▸'}</button>
+              >{chevron(expanded)}</button>
             ) : <span style={{ width: 12, flex: 'none' }} />}
             <Icon name={typeIcon[item.type] || 'doc'} size={13} color="var(--ink-200)" />
             <span style={{ fontWeight: 600, fontSize: 12.5, whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' }}>{item.name}</span>
@@ -296,7 +351,7 @@ export default function ArchiveScreen({
 
   const renderMobileCard = (item) => {
     const checked = selectedIds.has(item.id);
-    const expanded = isRowExpanded(collapsedIds, item.id);
+    const expanded = isRowExpanded(expandedIds, item.id);
     const isProject = item.type === 'project' && item.childCount > 0;
     return (
       <div
@@ -304,11 +359,11 @@ export default function ArchiveScreen({
         className="archive-mobile-card"
         role="button"
         tabIndex={0}
-        onClick={() => toggleRow(item.id)}
+        onClick={() => { if (selectMode) toggleRow(item.id); }}
         onKeyDown={(e) => {
           if (e.key !== 'Enter' && e.key !== ' ') return;
           e.preventDefault();
-          toggleRow(item.id);
+          if (selectMode) toggleRow(item.id);
         }}
         style={{
           borderColor: checked ? 'var(--gold)' : 'var(--ink-500)',
@@ -316,7 +371,7 @@ export default function ArchiveScreen({
         }}
       >
         <div className="archive-mobile-card-head">
-          <span style={{ display: 'grid', placeItems: 'center' }}>{checkGlyph(checked)}</span>
+          {selectMode && <span style={{ display: 'grid', placeItems: 'center' }}>{checkGlyph(checked)}</span>}
           <div style={{ minWidth: 0 }}>
             <div className="mobile-card-title">{item.name}</div>
             <div className="mobile-card-meta">
@@ -329,8 +384,8 @@ export default function ArchiveScreen({
               className="archive-mobile-disclosure"
               aria-expanded={expanded}
               title={expanded ? 'Hide documents' : 'Show documents'}
-              onClick={(e) => { e.stopPropagation(); setCollapsedIds((prev) => toggleCollapsed(prev, item.id)); }}
-            >{expanded ? '▾' : '▸'}</button>
+              onClick={(e) => { e.stopPropagation(); setExpandedIds((prev) => toggleExpanded(prev, item.id)); }}
+            >{chevron(expanded)}</button>
           )}
         </div>
         {isProject && expanded && (
@@ -399,8 +454,8 @@ export default function ArchiveScreen({
         templatesLocked={templatesLocked}
       >
         <div className="archive-body" style={{ padding: '0 8px 8px 8px', flex: 1, minHeight: 0 }}>
-          <div className="card archive-desktop-card" style={{ height: '100%', overflow: 'hidden' }}>
-            <div className="slim-scroll" style={{ overflow: 'auto', height: '100%' }}>
+          <div className="card archive-desktop-card" style={{ display: 'grid', gridTemplateColumns: showPreview ? '2.2fr 1fr' : '1fr', height: '100%', overflow: 'hidden' }}>
+            <div className="slim-scroll" style={{ overflow: 'auto', height: '100%', borderRight: showPreview ? '1px solid var(--ink-500)' : 0 }}>
               <div>
                 <div style={{ ...ledgerHeader, display: 'grid', gridTemplateColumns: grid, position: 'sticky', top: 0, zIndex: 3 }}>
                   <span></span>
@@ -419,6 +474,51 @@ export default function ArchiveScreen({
                 {!error && !loading && rows.map(renderRow)}
               </div>
             </div>
+            {showPreview && (
+              /* Preview pane — same shape as the Documents ledger's. You are
+                 deciding whether to rescue or destroy this thing, so it has to
+                 be identifiable without leaving Archive. A project shows less:
+                 there is no page to render, only what travels with it. */
+              <aside style={{ padding: 18, position: 'relative', height: '100%', boxSizing: 'border-box', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flex: 'none' }}>
+                  <div className="section-label">Preview</div>
+                  <button onClick={() => setPreviewOpen(false)} title="Close preview" style={closeButtonStyle()}>×</button>
+                </div>
+                <div style={{ marginTop: 10, fontSize: 15, fontWeight: 700, flex: 'none', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{previewItem.name}</div>
+                <div className="meta" style={{ marginTop: 4, fontSize: 11.5, flex: 'none' }}>
+                  {[
+                    archiveTypeLabel(previewItem.type),
+                    previewItem.projectName || null,
+                    previewItem.type === 'document' ? fileSizeLabel(previewItem.fileSize) : null,
+                    previewItem.type === 'document' && previewItem.pageCount != null ? `${previewItem.pageCount} pages` : null,
+                    previewItem.type === 'project' && previewItem.childCount
+                      ? `${previewItem.childCount} ${previewItem.childCount === 1 ? 'document' : 'documents'}`
+                      : null,
+                  ].filter(Boolean).join(' · ')}
+                </div>
+                {previewItem.type === 'document' && (
+                  <div style={{ marginTop: 14, height: 360, flex: '0 1 auto', minHeight: 0 }}>
+                    <PdfPageThumb
+                      key={previewItem.id}
+                      doc={{ id: previewItem.id, file_path: previewItem.filePath }}
+                      downloadDocument={downloadDocument}
+                      variant="preview"
+                      fill
+                      fallback={<div style={{ width: '100%', height: '100%' }}><PdfThumb height="100%" /></div>}
+                    />
+                  </div>
+                )}
+                <div style={{ marginTop: 'auto', paddingTop: 14, flex: 'none' }}>
+                  <div className="section-label">Archived</div>
+                  <div style={{ marginTop: 8, fontSize: 12 }}>{archivedDateLabel(previewItem.archivedAt)}</div>
+                  <div className="section-label" style={{ marginTop: 14 }}>Time remaining</div>
+                  <div
+                    className="mono"
+                    style={{ marginTop: 8, fontSize: 12, color: previewItem.daysRemaining <= URGENT_DAYS ? DANGER : 'inherit' }}
+                  >{timeRemainingLabel(previewItem.expiresAt)}</div>
+                </div>
+              </aside>
+            )}
           </div>
           <div className="archive-mobile-list slim-scroll">
             {error ? errorLine : null}
