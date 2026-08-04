@@ -11,7 +11,7 @@
 import { useState, useMemo, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { HubShell, Icon, Avatar, PdfThumb, Search, EmptyState } from './HubShell';
-import { MoveCopyModal, ConfirmModal } from './BulkModals';
+import { MoveCopyModal } from './BulkModals';
 import PdfPageThumb from './PdfPageThumb';
 import { useStorage } from '../hooks/useDatabase';
 import { closeButtonStyle, miniButtonStyle, moreButtonStyle } from './hubControls';
@@ -146,7 +146,6 @@ export default function DocumentsLedger({
   const [selDocs, setSelDocs] = useState(() => new Set());
   const [search, setSearch] = useState('');
   const [moveOpen, setMoveOpen] = useState(false);
-  const [confirmDelete, setConfirmDelete] = useState(false);
   const [docMenu, setDocMenu] = useState(null);
   const [clipboardDoc, setClipboardDoc] = useState(null);
   const [mobileDetailId, setMobileDetailId] = useState(null);
@@ -272,7 +271,13 @@ export default function DocumentsLedger({
               <button disabled={!docSelCount} onClick={() => { onDuplicate && onDuplicate(selectedRaw()); clearSel(); }} style={miniButtonStyle({ disabled: !docSelCount })}>Duplicate</button>
               <button disabled={!docSelCount} onClick={() => setMoveOpen(true)} style={miniButtonStyle({ disabled: !docSelCount })}>Move/Copy</button>
               <button disabled={!docSelCount} title="Share" onClick={() => onShare && onShare(selectedRaw())} style={miniButtonStyle({ disabled: !docSelCount, iconOnly: true })}><Icon name="share" size={12} /></button>
-              <button disabled={!docSelCount} title="Delete" onClick={() => setConfirmDelete(true)} style={miniButtonStyle({ disabled: !docSelCount, danger: true, iconOnly: true })}><Icon name="trash" size={12} /></button>
+              {/* UX: one confirmation only. The delete gate lives in the hub's
+                  onDelete handler (themed confirm, count-aware) so the toolbar
+                  bulk delete and the row "..." menu delete both ask exactly
+                  once. Do not add a second modal here. Selection is cleared
+                  only when the delete actually ran, so cancelling keeps the
+                  user's selection intact. */}
+              <button disabled={!docSelCount} title="Delete" onClick={async () => { if (!onDelete) return; const ran = await onDelete(selectedRaw()); if (ran !== false) clearSel(); }} style={miniButtonStyle({ disabled: !docSelCount, danger: true, iconOnly: true })}><Icon name="trash" size={12} /></button>
             </span>
           );
         })()}
@@ -646,15 +651,6 @@ export default function DocumentsLedger({
       projects={projects}
       count={selDocs.size}
       onConfirm={(destId, mode) => { onMoveCopy && onMoveCopy(selectedRaw(), destId, mode); clearSel(); }}
-    />
-    <ConfirmModal
-      open={confirmDelete}
-      onClose={() => setConfirmDelete(false)}
-      title="Delete documents?"
-      message={`${selDocs.size} ${selDocs.size === 1 ? 'document' : 'documents'} will be removed.`}
-      confirmLabel="Delete"
-      danger
-      onConfirm={() => { onDelete && onDelete(selectedRaw()); clearSel(); }}
     />
     {docMenu && (() => {
       const doc = docs.find((d) => d.id === docMenu.id);
