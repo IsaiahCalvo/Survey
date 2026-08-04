@@ -232,10 +232,25 @@ test('Survey development build owns Google sign-in without exposing the Supabase
 });
 
 test('mobile PDF rendering stays inside the WKWebView memory budget', () => {
-  assert.match(PDFJS_VIEWER_SOURCE, /MOBILE_MAX_CANVAS_AREA = 8 \* 1024 \* 1024/);
+  assert.match(PDFJS_VIEWER_SOURCE, /MOBILE_MAX_CANVAS_AREA = 3 \* 1024 \* 1024/);
+  assert.match(PDFJS_VIEWER_SOURCE, /MOBILE_BASE_MAX_SCALE = 1\.25/);
   assert.match(PDFJS_VIEWER_SOURCE, /MOBILE_MAX_OVERSCAN_PAGES = 1/);
-  assert.match(PDFJS_VIEWER_SOURCE, /const target = isMobileSurface \? canvasRef\.current : document\.createElement\('canvas'\)/);
+  assert.match(PDFJS_VIEWER_SOURCE, /target = document\.createElement\('canvas'\)/);
+  assert.match(PDFJS_VIEWER_SOURCE, /if \(target && !targetRetained\) releaseRasterCanvas\(target\)/);
   assert.match(PDFJS_VIEWER_SOURCE, /const externalPdf = isPdfDocumentProxy\(activeSource\) \? activeSource : null/);
+});
+
+test('mobile pinch settles at the latest centroid and suppresses a staggered release', () => {
+  assert.match(PDFJS_VIEWER_SOURCE, /resolvePinchCommitCursor\(g\)/);
+  assert.match(PDFJS_VIEWER_SOURCE, /gestureRef\.current\.currentCursorX = center\.x/);
+  assert.match(PDFJS_VIEWER_SOURCE, /resolvePinchEndTransition\(touchState\.mode, event\.touches\.length\)/);
+  assert.match(PDFJS_VIEWER_SOURCE, /mode === 'pinch-release'/);
+});
+
+test('Expo forwards narrow PDF diagnostics and reports WebView process termination', () => {
+  assert.match(PDFJS_VIEWER_SOURCE, /type: 'survey:diagnostic'/);
+  assert.match(EXPO_APP_SOURCE, /\[Survey phone PDF\]/);
+  assert.match(EXPO_APP_SOURCE, /\[Survey shell\] WebView process terminated/);
 });
 
 test('starting a two-finger pinch cancels a partial creation stroke', () => {

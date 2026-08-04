@@ -34,9 +34,11 @@ import {
   useRef,
   useState,
 } from 'react';
+import { createPortal } from 'react-dom';
 import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.mjs';
 import pdfWorker from 'pdfjs-dist/legacy/build/pdf.worker.min.mjs?url';
 import { extractPdfOutlineBookmarks } from '../utils/bookmarkOutline';
+import { resolvePinchCommitCursor, resolvePinchEndTransition } from '../utils/mobilePinchGesture';
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorker;
 
@@ -51,6 +53,7 @@ const MOBILE_PAGE_MAX_WIDTH = 390;
 const MIN_SCALE = 0.01;
 const MAX_SCALE = 40;
 const BASE_MAX_SCALE = 2.5; // above this the base canvas is a cheap backdrop; the detail tile owns sharpness
+const MOBILE_BASE_MAX_SCALE = 1.25;
 const SETTLE_MS = 110;      // commit the gesture this long after the last wheel tick
 const WHEEL_GAIN = 0.01;    // factor = 1 - deltaY * WHEEL_GAIN
 const DPR = Math.min(typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1, 2);
@@ -59,6 +62,21 @@ const PAN_END_EVENT = 'survey-pdfjs-pan-end';
 const ZOOM_START_EVENT = 'survey-pdfjs-zoom-start';
 const ZOOM_END_EVENT = 'survey-pdfjs-zoom-end';
 const PINCH_START_EVENT = 'survey-pdfjs-pinch-start';
+
+function postNativePdfDiagnostic(event, detail = {}) {
+  try {
+    if (!window.ReactNativeWebView?.postMessage) return;
+    window.ReactNativeWebView.postMessage(JSON.stringify({
+      type: 'survey:diagnostic',
+      area: 'pdf-zoom',
+      event,
+      detail,
+      timestamp: Date.now(),
+    }));
+  } catch {
+    // Diagnostics must never interfere with the viewer.
+  }
+}
 
 const isSpaceKey = (event) => event?.code === 'Space' || event?.key === ' ' || event?.key === 'Spacebar';
 const isEditableTarget = (target) => {
@@ -80,7 +98,7 @@ const getTouchDistance = (touches) => Math.hypot(
 // Chromium canvas limits + smooth-area budget (ported from spikeMetrics).
 const MAX_CANVAS_DIM = 16384;
 const DESKTOP_MAX_CANVAS_AREA = 80 * 1024 * 1024; // ~80 MP
-const MOBILE_MAX_CANVAS_AREA = 8 * 1024 * 1024; // ~32 MiB RGBA
+const MOBILE_MAX_CANVAS_AREA = 3 * 1024 * 1024; // ~12 MiB RGBA per mobile raster buffer
 const DESKTOP_MAX_OVERSCAN_PAGES = 3;
 const MOBILE_MAX_OVERSCAN_PAGES = 1;
 function isMobilePdfSurfaceViewport() {
@@ -207,12 +225,13 @@ function buildGetDocumentParams(source, password) {
 }
 
 // --- one mounted page: double-buffered, DPR-correct, cancellable raster -------
-function PdfPageCanvas({ pdf, pageIndex, pageW, pageH, renderScale, rotation, onRaster }) {
+function PdfPageCanvas({ pdf, pageIndex, pageW, pageH, renderScale, rotation, onRaster, isMobileSurface }) {
   const canvasRef = useRef(null);
   const taskRef = useRef(null);
   const genRef = useRef(0);
-  const baseScale = Math.min(renderScale, BASE_MAX_SCALE);
-  const tiled = renderScale > BASE_MAX_SCALE;
+  const baseScaleLimit = isMobileSurface ? MOBILE_BASE_MAX_SCALE : BASE_MAX_SCALE;
+  const baseScale = Math.min(renderScale, baseScaleLimit);
+  const tiled = renderScale > baseScaleLimit;
 
   useEffect(() => {
     let cancelled = false;
@@ -222,7 +241,6 @@ function PdfPageCanvas({ pdf, pageIndex, pageW, pageH, renderScale, rotation, on
     // no re-raster, no "loading" flash on scroll-return.
     const docKey = (pdf?.fingerprints && pdf.fingerprints[0]) || pdf?.fingerprint || 'doc';
     const cacheKey = `${docKey}:${pageIndex}:${baseScale.toFixed(3)}:${DPR}:${rotation}`;
-    const isMobileSurface = isMobilePdfSurfaceViewport();
     const cachedCanvas = isMobileSurface ? null : pageRasterCacheGet(cacheKey);
     if (cachedCanvas) {
       const c = canvasRef.current;
@@ -235,6 +253,8 @@ function PdfPageCanvas({ pdf, pageIndex, pageW, pageH, renderScale, rotation, on
     }
 
     (async () => {
+      let target = null;
+      let targetRetained = false;
       try {
         const page = await pdf.getPage(pageIndex + 1);
         if (cancelled || myGen !== genRef.current) return;
@@ -243,10 +263,11 @@ function PdfPageCanvas({ pdf, pageIndex, pageW, pageH, renderScale, rotation, on
         const rasterScale = want * factor;
         const viewport = page.getViewport({ scale: rasterScale, rotation: page.rotate + rotation });
 
-        // WKWebView has a much smaller memory ceiling than desktop browsers.
-        // Render directly into the visible canvas there so a page never exists
-        // twice as an offscreen + onscreen RGBA bitmap.
-        const target = isMobileSurface ? canvasRef.current : document.createElement('canvas');
+        // Keep the previous bitmap visible until the replacement is complete.
+        // Mobile uses a lower raster ceiling and releases this staging canvas
+        // immediately after the atomic copy, avoiding both blank frames and
+        // unbounded WKWebView memory spikes during rapid pinch gestures.
+        target = document.createElement('canvas');
         if (!target) return;
         target.width = Math.max(1, Math.floor(viewport.width));
         target.height = Math.max(1, Math.floor(viewport.height));
@@ -269,25 +290,33 @@ function PdfPageCanvas({ pdf, pageIndex, pageW, pageH, renderScale, rotation, on
         }
         if (cancelled || myGen !== genRef.current) return;
 
+        const c = canvasRef.current;
+        if (!c) return;
+        c.width = target.width;
+        c.height = target.height;
+        c.getContext('2d', { alpha: false }).drawImage(target, 0, 0);
         if (!isMobileSurface) {
-          const c = canvasRef.current;
-          if (!c) return;
-          c.width = target.width;
-          c.height = target.height;
-          c.getContext('2d', { alpha: false }).drawImage(target, 0, 0);
           // Desktop keeps the rendered bitmap so a scroll-return repaints instantly.
           pageRasterCacheSet(cacheKey, target);
+          targetRetained = true;
         }
         onRaster?.(pageIndex, { ms: Math.round(performance.now() - t0), clamped: tiled });
-      } catch {
+      } catch (error) {
+        postNativePdfDiagnostic('raster-error', {
+          name: error?.name || 'Error',
+          message: String(error?.message || 'PDF raster failed').slice(0, 180),
+          page: pageIndex + 1,
+        });
         /* a page may unmount mid-render; never throw out of the engine */
+      } finally {
+        if (target && !targetRetained) releaseRasterCanvas(target);
       }
     })();
     return () => {
       cancelled = true;
       if (taskRef.current) { try { taskRef.current.cancel(); } catch { /* noop */ } }
     };
-  }, [pdf, pageIndex, pageW, pageH, baseScale, rotation, tiled, onRaster]);
+  }, [pdf, pageIndex, pageW, pageH, baseScale, rotation, tiled, onRaster, isMobileSurface]);
 
   return (
     <canvas
@@ -298,7 +327,7 @@ function PdfPageCanvas({ pdf, pageIndex, pageW, pageH, renderScale, rotation, on
 }
 
 // --- deep-zoom detail tile: crisp visible slice over the soft base -----------
-function DetailTile({ pdf, pageIndex, scale, rotation, liveZoom, interactionRef, scrollerRef }) {
+function DetailTile({ pdf, pageIndex, scale, rotation, liveZoom, interactionRef, scrollerRef, isMobileSurface }) {
   const hostRef = useRef(null);
   const canvasRef = useRef(null);
   const taskRef = useRef(null);
@@ -311,7 +340,9 @@ function DetailTile({ pdf, pageIndex, scale, rotation, liveZoom, interactionRef,
     const canvas = canvasRef.current;
     if (!host || !scroller || !canvas || !pdf || liveZoom !== 1) return;
     if (interactionRef?.current) return;
-    if (scale <= BASE_MAX_SCALE) { setTile(null); return; }
+    const baseScaleLimit = isMobileSurface ? MOBILE_BASE_MAX_SCALE : BASE_MAX_SCALE;
+    if (scale <= baseScaleLimit) { setTile(null); return; }
+    setTile(null);
 
     const hr = host.getBoundingClientRect();
     const sr = scroller.getBoundingClientRect();
@@ -347,7 +378,7 @@ function DetailTile({ pdf, pageIndex, scale, rotation, liveZoom, interactionRef,
     } catch {
       /* never throw out of the engine */
     }
-  }, [pdf, pageIndex, scale, rotation, liveZoom, interactionRef, scrollerRef]);
+  }, [pdf, pageIndex, scale, rotation, liveZoom, interactionRef, scrollerRef, isMobileSurface]);
 
   useEffect(() => { render(); }, [render]);
 
@@ -466,6 +497,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
 
   const scrollerRef = useRef(null);
   const contentRef = useRef(null);
+  const nativePinchSurfaceRef = useRef(null);
   const pdfRef = useRef(null);
 
   const [numPages, setNumPages] = useState(0);
@@ -909,7 +941,14 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
       fromPct: Math.round(oldScale * 100),
       toPct: Math.round(newScale * 100),
     });
-    applyAnchoredScale(newScale, g.originCursorX, g.originCursorY, false);
+    const commitCursor = resolvePinchCommitCursor(g);
+    postNativePdfDiagnostic('gesture-settle', {
+      fromPct: Math.round(oldScale * 100),
+      toPct: Math.round(newScale * 100),
+      cursorX: Math.round(commitCursor.x),
+      cursorY: Math.round(commitCursor.y),
+    });
+    applyAnchoredScale(newScale, commitCursor.x, commitCursor.y, false);
     setLiveZoom(1);
   }, [applyAnchoredScale, setZoomInteraction]);
 
@@ -1151,6 +1190,8 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
       gestureRef.current = {
         originCursorX: center.x,
         originCursorY: center.y,
+        currentCursorX: center.x,
+        currentCursorY: center.y,
         originContentX: el.scrollLeft + center.x,
         originContentY: el.scrollTop + center.y,
       };
@@ -1161,6 +1202,11 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
       cb.current.onZoomPhase?.('gesture-start', {
         atPct: Math.round(scaleRef.current * 100),
         source: 'pinch',
+      });
+      postNativePdfDiagnostic('pinch-start', {
+        atPct: Math.round(scaleRef.current * 100),
+        cursorX: Math.round(center.x),
+        cursorY: Math.round(center.y),
       });
       setZoomInteraction(true);
       setPanInteraction(true);
@@ -1219,13 +1265,17 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
         el.scrollTop -= center.y - touchState.lastCenterY;
         touchState.lastCenterX = center.x;
         touchState.lastCenterY = center.y;
+        if (gestureRef.current) {
+          gestureRef.current.currentCursorX = center.x;
+          gestureRef.current.currentCursorY = center.y;
+        }
 
         if (!wheelRafRef.current) wheelRafRef.current = requestAnimationFrame(applyWheelZoom);
         return;
       }
 
       const touchState = mobileTouchRef.current;
-      if (touchState?.mode === 'pinch') {
+      if (touchState?.mode === 'pinch' || touchState?.mode === 'pinch-release') {
         event.stopPropagation();
         return;
       }
@@ -1253,12 +1303,13 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
       }
 
       event.stopPropagation();
-      if (touchState.mode === 'pinch') {
-        mobileTouchRef.current = null;
+      if (touchState.mode === 'pinch' || touchState.mode === 'pinch-release') {
+        const transition = resolvePinchEndTransition(touchState.mode, event.touches.length);
+        mobileTouchRef.current = transition.nextMode ? { mode: transition.nextMode } : null;
         suppressMobileTouchUntilRef.current = performance.now() + 450;
-        setMobileTouchMode(null);
+        setMobileTouchMode(transition.nextMode);
         setPanInteraction(false);
-        commitGesture();
+        if (transition.commit) commitGesture();
         return;
       }
 
@@ -1291,36 +1342,41 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
       event.stopImmediatePropagation();
     };
 
-    el.addEventListener('touchstart', onTouchStart, { capture: true, passive: false });
-    el.addEventListener('touchmove', onTouchMove, { capture: true, passive: false });
-    el.addEventListener('touchend', onTouchEnd, { capture: true, passive: false });
-    el.addEventListener('touchcancel', onTouchEnd, { capture: true, passive: false });
-    el.addEventListener('gesturestart', stopNativeGesture, { capture: true, passive: false });
-    el.addEventListener('gesturechange', stopNativeGesture, { capture: true, passive: false });
-    el.addEventListener('gestureend', stopNativeGesture, { capture: true, passive: false });
-    el.addEventListener('selectstart', stopNativeSelection, true);
-    el.addEventListener('contextmenu', stopNativeSelection, true);
-    el.addEventListener('dragstart', stopNativeSelection, true);
-    el.addEventListener('click', stopPostGestureClick, true);
-    el.addEventListener('pointermove', stopPinchPointer, true);
-    el.addEventListener('pointerup', stopPinchPointer, true);
-    el.addEventListener('pointercancel', stopPinchPointer, true);
+    const eventTargets = [el, nativePinchSurfaceRef.current].filter(Boolean);
+    eventTargets.forEach((target) => {
+      target.addEventListener('touchstart', onTouchStart, { capture: true, passive: false });
+      target.addEventListener('touchmove', onTouchMove, { capture: true, passive: false });
+      target.addEventListener('touchend', onTouchEnd, { capture: true, passive: false });
+      target.addEventListener('touchcancel', onTouchEnd, { capture: true, passive: false });
+      target.addEventListener('gesturestart', stopNativeGesture, { capture: true, passive: false });
+      target.addEventListener('gesturechange', stopNativeGesture, { capture: true, passive: false });
+      target.addEventListener('gestureend', stopNativeGesture, { capture: true, passive: false });
+      target.addEventListener('selectstart', stopNativeSelection, true);
+      target.addEventListener('contextmenu', stopNativeSelection, true);
+      target.addEventListener('dragstart', stopNativeSelection, true);
+      target.addEventListener('click', stopPostGestureClick, true);
+      target.addEventListener('pointermove', stopPinchPointer, true);
+      target.addEventListener('pointerup', stopPinchPointer, true);
+      target.addEventListener('pointercancel', stopPinchPointer, true);
+    });
 
     return () => {
-      el.removeEventListener('touchstart', onTouchStart, true);
-      el.removeEventListener('touchmove', onTouchMove, true);
-      el.removeEventListener('touchend', onTouchEnd, true);
-      el.removeEventListener('touchcancel', onTouchEnd, true);
-      el.removeEventListener('gesturestart', stopNativeGesture, true);
-      el.removeEventListener('gesturechange', stopNativeGesture, true);
-      el.removeEventListener('gestureend', stopNativeGesture, true);
-      el.removeEventListener('selectstart', stopNativeSelection, true);
-      el.removeEventListener('contextmenu', stopNativeSelection, true);
-      el.removeEventListener('dragstart', stopNativeSelection, true);
-      el.removeEventListener('click', stopPostGestureClick, true);
-      el.removeEventListener('pointermove', stopPinchPointer, true);
-      el.removeEventListener('pointerup', stopPinchPointer, true);
-      el.removeEventListener('pointercancel', stopPinchPointer, true);
+      eventTargets.forEach((target) => {
+        target.removeEventListener('touchstart', onTouchStart, true);
+        target.removeEventListener('touchmove', onTouchMove, true);
+        target.removeEventListener('touchend', onTouchEnd, true);
+        target.removeEventListener('touchcancel', onTouchEnd, true);
+        target.removeEventListener('gesturestart', stopNativeGesture, true);
+        target.removeEventListener('gesturechange', stopNativeGesture, true);
+        target.removeEventListener('gestureend', stopNativeGesture, true);
+        target.removeEventListener('selectstart', stopNativeSelection, true);
+        target.removeEventListener('contextmenu', stopNativeSelection, true);
+        target.removeEventListener('dragstart', stopNativeSelection, true);
+        target.removeEventListener('click', stopPostGestureClick, true);
+        target.removeEventListener('pointermove', stopPinchPointer, true);
+        target.removeEventListener('pointerup', stopPinchPointer, true);
+        target.removeEventListener('pointercancel', stopPinchPointer, true);
+      });
       mobileTouchRef.current = null;
       setMobileTouchMode(null);
       setPanInteraction(false);
@@ -1596,6 +1652,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
   const nativePinchE2E = import.meta.env.DEV
     && typeof window !== 'undefined'
     && new URLSearchParams(window.location.search).has('nativePinchE2E');
+  const nativePinchSessionIdRef = useRef(`pdf-viewer-${Date.now()}-${Math.random().toString(16).slice(2)}`);
 
   // ── Live-zoom transform origin: lock-to-centre on any axis that already fits ──
   // UX intent (matches HANDOFF-zoom-pagegap-centering "lock-to-center"): cursor-
@@ -1650,12 +1707,29 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
       }}
     >
       {nativePinchE2E && (
-        <button
-          type="button"
-          aria-label="PDF gesture surface"
-          tabIndex={-1}
-          style={{ position: 'absolute', inset: 0, zIndex: 2147483646, opacity: 0, touchAction: 'none' }}
-        />
+        <>
+          {createPortal(
+            <button
+              ref={nativePinchSurfaceRef}
+              type="button"
+              aria-label="PDF gesture surface"
+              tabIndex={-1}
+              style={{
+                position: 'fixed', left: '15vw', top: '15vh', width: '70vw', height: '60vh',
+                zIndex: 2147483646, opacity: 0.001, touchAction: 'none',
+              }}
+            />,
+            document.body,
+          )}
+          <span
+            aria-label={`PDF viewer session ${nativePinchSessionIdRef.current}`}
+            style={{ position: 'absolute', width: 1, height: 1, opacity: 0, pointerEvents: 'none' }}
+          />
+          <span
+            aria-label={`PDF zoom scale ${Math.round(scale * 100)}`}
+            style={{ position: 'absolute', width: 1, height: 1, opacity: 0, pointerEvents: 'none' }}
+          />
+        </>
       )}
       <style>{`
         [data-space-pan='armed'], [data-space-pan='armed'] * { cursor: grab !important; }
@@ -1737,6 +1811,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
                       renderScale={scale}
                       rotation={rotation}
                       onRaster={onRaster}
+                      isMobileSurface={isMobileSurface}
                     />
                     <DetailTile
                       pdf={pdfRef.current}
@@ -1746,6 +1821,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
                       liveZoom={liveZoom}
                       interactionRef={panInteractionRef}
                       scrollerRef={scrollerRef}
+                      isMobileSurface={isMobileSurface}
                     />
                   </>
                 ) : (

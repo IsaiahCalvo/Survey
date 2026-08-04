@@ -111,6 +111,17 @@ async function largestWhiteSurface(imagePath) {
   return best;
 }
 
+async function meanAbsoluteImageDifference(leftPath, rightPath) {
+  const left = await sharp(leftPath).removeAlpha().raw().toBuffer({ resolveWithObject: true });
+  const right = await sharp(rightPath).removeAlpha().raw().toBuffer({ resolveWithObject: true });
+  assert.deepEqual(left.info, right.info, 'Native stress screenshots have different geometry');
+  let total = 0;
+  for (let index = 0; index < left.data.length; index += 1) {
+    total += Math.abs(left.data[index] - right.data[index]);
+  }
+  return total / left.data.length;
+}
+
 async function main() {
   await mkdir(artifactDir, { recursive: true });
   const simulator = await selectSimulator();
@@ -140,7 +151,7 @@ async function main() {
       '-derivedDataPath', path.join(artifactDir, 'DerivedData'),
       '-resultBundlePath', resultBundle,
       '-quiet',
-      '-only-testing:AppNativePinchUITests/NativePinchUITests/testTwoFingerPinchChangesPdfZoom',
+      '-only-testing:AppNativePinchUITests/NativePinchUITests',
       'CODE_SIGNING_ALLOWED=NO',
       'test',
     ], { outputPath: buildLog });
@@ -153,9 +164,14 @@ async function main() {
     const findAttachment = (prefix) => attachments.find((entry) => entry.suggestedHumanReadableName?.startsWith(prefix));
     const beforeAttachment = findAttachment('before-native-pinch');
     const afterAttachment = findAttachment('after-native-pinch');
+    const beforeStressAttachment = findAttachment('before-rapid-pinch-stress');
+    const afterStressAttachment = findAttachment('after-rapid-pinch-stress');
     assert.ok(beforeAttachment && afterAttachment, 'XCTest did not retain both native pinch screenshots');
+    assert.ok(beforeStressAttachment && afterStressAttachment, 'XCTest did not retain both native stress screenshots');
     const beforeScreenshot = path.join(attachmentsDir, beforeAttachment.exportedFileName);
     const afterScreenshot = path.join(attachmentsDir, afterAttachment.exportedFileName);
+    const beforeStressScreenshot = path.join(attachmentsDir, beforeStressAttachment.exportedFileName);
+    const afterStressScreenshot = path.join(attachmentsDir, afterStressAttachment.exportedFileName);
     const beforePage = await largestWhiteSurface(beforeScreenshot);
     const afterPage = await largestWhiteSurface(afterScreenshot);
     assert.ok(beforePage?.pixelCount > 100_000 && afterPage?.pixelCount > 100_000, 'Could not locate the visible PDF page in native screenshots');
@@ -166,6 +182,11 @@ async function main() {
       beforePage.height / afterPage.height,
     );
     assert.ok(visibleScaleRatio > 1.05, `Native pinch changed app state but not visible PDF geometry (${visibleScaleRatio.toFixed(3)}x)`);
+    const stressImageDifference = await meanAbsoluteImageDifference(beforeStressScreenshot, afterStressScreenshot);
+    assert.ok(
+      stressImageDifference < 12,
+      `Native pinch stress did not restore the rendered PDF after Fit Page (mean image difference ${stressImageDifference.toFixed(2)})`,
+    );
 
     const screenshotPath = path.join(artifactDir, 'final-simulator.png');
     await run('xcrun', ['simctl', 'io', simulator.udid, 'screenshot', '--type=png', screenshotPath]);
@@ -178,6 +199,11 @@ async function main() {
       evidence,
       input: 'XCUIElement.pinch(withScale:velocity:) native two-contact gesture',
       nativeScreenshots: { after: afterScreenshot, before: beforeScreenshot },
+      stressScreenshots: {
+        after: afterStressScreenshot,
+        before: beforeStressScreenshot,
+        meanAbsoluteDifference: stressImageDifference,
+      },
       pageGeometry: { after: afterPage, before: beforePage, visibleScaleRatio },
       result: 'passed',
       resultBundle,

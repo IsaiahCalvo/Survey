@@ -207,6 +207,12 @@ function SurveyApp() {
       const message = JSON.parse(event.nativeEvent.data);
       if (message?.type === 'survey:google-sign-in' && typeof message.requestId === 'string') {
         void handleGoogleSignIn(message.requestId);
+      } else if (message?.type === 'survey:diagnostic' && message.area === 'pdf-zoom') {
+        console.info('[Survey phone PDF]', {
+          event: message.event,
+          detail: message.detail,
+          timestamp: message.timestamp,
+        });
       }
     } catch {
       // Ignore messages that are not part of Survey's small native bridge.
@@ -218,9 +224,14 @@ function SurveyApp() {
     setExternalNavigationActive(isExternalNavigationUrl(state.url));
   };
 
-  const recoverTerminatedProcess = () => {
+  const recoverTerminatedProcess = (source: string) => {
     const now = Date.now();
     const recent = processRecoveryRef.current.filter((time) => now - time < 60_000);
+    console.error('[Survey shell] WebView process terminated', {
+      source,
+      recoveriesInLastMinute: recent.length,
+      timestamp: now,
+    });
     if (recent.length >= 2) {
       processRecoveryRef.current = recent;
       setLoadError(true);
@@ -263,9 +274,9 @@ function SurveyApp() {
         onLoadEnd={() => webViewRef.current?.injectJavaScript(nativeSafeAreaScript)}
         onError={() => setLoadError(true)}
         onHttpError={() => setLoadError(true)}
-        onContentProcessDidTerminate={recoverTerminatedProcess}
+        onContentProcessDidTerminate={() => recoverTerminatedProcess('ios-content-process')}
         onRenderProcessGone={() => {
-          recoverTerminatedProcess();
+          recoverTerminatedProcess('android-render-process');
           return true;
         }}
       />
