@@ -433,6 +433,18 @@ async function testTemplateDisclosureIconParity(page, baseUrl, touch, device) {
   }
 }
 
+async function testProjectRowTeamParity(page, baseUrl, device) {
+  await gotoHub(page, baseUrl, 'projects');
+  const row = device === 'mobile'
+    ? page.locator('.projects-mobile-folder-row.drill.reorderable:visible').first()
+    : page.locator('.projects-desktop-layout [data-project-id]:visible').first();
+  await row.waitFor({ state: 'visible' });
+  const summary = row.locator('.project-team-summary');
+  assert.equal(await summary.count(), 1, `${device}: project row has one shared team summary`);
+  assert.match(await summary.getAttribute('aria-label'), /^\d+ team members?$/, `${device}: project row exposes its team count`);
+  assert.doesNotMatch(await row.innerText(), /\bfiles?\b|\b(?:Today|\d+d ago|No files)\b/i, `${device}: project row omits invented file and activity metadata`);
+}
+
 async function testMobileEntitiesModalCentering(page, baseUrl, touch) {
   await gotoHub(page, baseUrl, 'templates');
   await page.evaluate(() => {
@@ -820,6 +832,9 @@ async function runDevice(device, baseUrl) {
     await artifacts.time(`${device}:template-disclosure-icon-parity`, () => (
       testTemplateDisclosureIconParity(page, baseUrl, touch, device)
     ));
+    await artifacts.time(`${device}:project-row-team-parity`, () => (
+      testProjectRowTeamParity(page, baseUrl, device)
+    ));
     if (device === 'mobile') {
       await artifacts.time('mobile:safe-area-tabs', () => testMobileSafeAreaTabs(page, baseUrl));
       await artifacts.time('mobile:edge-swipe-back', () => testMobileEdgeSwipeBack(page, baseUrl, touch));
@@ -846,7 +861,7 @@ async function runDevice(device, baseUrl) {
       device,
       viewport,
       input: device === 'mobile' ? touch.inputKind : 'desktop-mouse-keyboard',
-      coverage: 'first-visit-frame-continuity-template-disclosure-icon-parity-safe-area-tabs-edge-swipe-back-template-category-row-alignment-entities-modal-centering-search-filter-sort-selection-bulk-state-empty-loading-long-docs-viewer-exact-return-back-forward-refresh',
+      coverage: 'first-visit-frame-continuity-template-disclosure-icon-parity-project-row-team-parity-safe-area-tabs-edge-swipe-back-template-category-row-alignment-entities-modal-centering-search-filter-sort-selection-bulk-state-empty-loading-long-docs-viewer-exact-return-back-forward-refresh',
       diagnostics,
       status: 'passed',
     });

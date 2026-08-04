@@ -50,6 +50,16 @@ test('mobile project list rows omit the decorative folder icon', () => {
   assert.doesNotMatch(projects.slice(rowStart, rowEnd), /projects-mobile-folder-glyph/);
 });
 
+test('desktop and mobile project rows share team metadata without invented file or age copy', () => {
+  assert.match(projects, /const ProjectTeamSummary = \(\{ memberIds, lookupMember \}\) =>/);
+  assert.equal((projects.match(/<ProjectTeamSummary memberIds=\{projMembers\} lookupMember=\{lookupMember\} \/>/g) || []).length, 2);
+  const mobileRowStart = projects.indexOf('className="projects-mobile-folder-row drill reorderable"');
+  const mobileRowEnd = projects.indexOf('</SortableRearrangeRow>', mobileRowStart);
+  const mobileRow = projects.slice(mobileRowStart, mobileRowEnd);
+  assert.match(mobileRow, /<ProjectTeamSummary memberIds=\{projMembers\} lookupMember=\{lookupMember\} \/>/);
+  assert.doesNotMatch(mobileRow, /projectFileCount|projectLastEditedLabel| files| ago/);
+});
+
 test('project/document harness defaults to parallel mobile and desktop model contracts', () => {
   assert.match(harness, /device: 'all'/);
   assert.match(harness, /Promise\.allSettled\(devices\.map/);

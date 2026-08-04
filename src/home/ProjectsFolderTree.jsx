@@ -75,6 +75,22 @@ const shortWhen = (d) => {
 const initialsOf = (name) => (name || '')
   .trim().split(/\s+/).map((w) => w[0] || '').join('').slice(0, 2).toUpperCase() || '—';
 
+/* Project rows use the same team summary on desktop and mobile. Keeping this
+   shared prevents mobile from substituting file or activity metadata. */
+const ProjectTeamSummary = ({ memberIds, lookupMember }) => (
+  <div
+    className="project-team-summary"
+    aria-label={`${memberIds.length} team ${memberIds.length === 1 ? 'member' : 'members'}`}
+    style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0, marginTop: 3 }}
+  >
+    <AvatarStack
+      members={memberIds.slice(0, 3).map((id) => initialsOf(lookupMember(id)?.name))}
+      size={14}
+    />
+    <span className="mono meta" style={{ fontSize: 9.5 }}>{memberIds.length}</span>
+  </div>
+);
+
 let LOCAL_ID = 1;
 const nextLocalId = () => `local-${Date.now()}-${LOCAL_ID++}`;
 
@@ -932,13 +948,7 @@ export default function ProjectsFolderTree({
                       {/* Owner-avatar stack (first 3 team members) + member
                           count. Every project shows at least the owner glyph —
                           ids are resolved to real initials, never shown raw. */}
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 3 }}>
-                        <AvatarStack
-                          members={projMembers.slice(0, 3).map((id) => initialsOf(lookupMember(id)?.name))}
-                          size={14}
-                        />
-                        <span className="mono meta" style={{ fontSize: 9.5 }}>{projMembers.length}</span>
-                      </div>
+                      <ProjectTeamSummary memberIds={projMembers} lookupMember={lookupMember} />
                     </div>
                     {jobsEdit ? (
                       <span
@@ -1280,6 +1290,7 @@ export default function ProjectsFolderTree({
                   {filtered.map((p) => {
                     const isSel = selProj.has(p.id);
                     const isPinned = pinnedIds.has(p.id);
+                    const projMembers = projectTeam(p);
                     return (
                       <SortableRearrangeRow key={`drill-folder-${p.id}`} id={p.id}>
                         {({ attributes, listeners, isDragging }) => (
@@ -1320,7 +1331,7 @@ export default function ProjectsFolderTree({
                             )}
                             <span className="projects-mobile-folder-copy">
                               <strong>{p.name}</strong>
-                              <small>{projectFileCount(p.id)} files · {projectLastEditedLabel(p.id)}</small>
+                              <ProjectTeamSummary memberIds={projMembers} lookupMember={lookupMember} />
                             </span>
                             {jobsEdit ? (
                               <span className={`projects-mobile-check ${isSel ? 'checked' : ''}`}>{isSel ? '✓' : ''}</span>
