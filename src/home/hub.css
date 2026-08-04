@@ -1139,6 +1139,9 @@
   }
 
   .survey-hub .mobile-home-tabs {
+    --mobile-tab-safe-bottom: var(--native-safe-area-bottom, env(safe-area-inset-bottom, 0px));
+    --mobile-tab-corner-inset: min(8px, max(0px, calc(var(--mobile-tab-safe-bottom) - 10px)));
+    --mobile-tab-lower-offset: min(3px, max(0px, calc(var(--mobile-tab-safe-bottom) - 10px)));
     position: fixed;
     left: 0;
     right: 0;
@@ -1148,17 +1151,19 @@
     grid-template-columns: repeat(3, 1fr);
     gap: 0;
     height: var(--mobile-tabs-h);
-    padding: 4px 0 calc(4px + var(--native-safe-area-bottom, env(safe-area-inset-bottom, 0px)));
+    padding: 4px
+      max(var(--native-safe-area-right, env(safe-area-inset-right, 0px)), var(--mobile-tab-corner-inset))
+      calc(4px + var(--mobile-tab-safe-bottom) - var(--mobile-tab-lower-offset))
+      max(var(--native-safe-area-left, env(safe-area-inset-left, 0px)), var(--mobile-tab-corner-inset));
     box-sizing: border-box;
-    align-items: center;
+    align-items: end;
     background: #0d0f14;
     border-top: 1px solid var(--ink-500);
     box-shadow: none;
   }
 
   .survey-hub.hub-native-shell-expo .mobile-home-tabs {
-    padding-top: 4px;
-    padding-bottom: calc(4px + var(--native-safe-area-bottom, 0px));
+    --mobile-tab-safe-bottom: var(--native-safe-area-bottom, 10px);
   }
 
   .survey-hub .mobile-home-tabs::before {

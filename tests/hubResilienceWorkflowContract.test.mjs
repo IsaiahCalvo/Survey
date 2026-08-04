@@ -34,6 +34,8 @@ test('runner covers tabs, discovery controls, bulk state, fixtures, lifecycle, a
     'first-visit-tab-frame-continuity',
     'frame.hubPresent',
     'frame.bodyFramed',
+    'testMobileSafeAreaTabs',
+    'mobile:safe-area-tabs',
     'testDocuments',
     'testProjects',
     'testTemplates',

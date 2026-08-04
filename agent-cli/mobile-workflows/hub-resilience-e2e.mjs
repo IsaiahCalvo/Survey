@@ -255,6 +255,54 @@ function assertNear(actual, expected, label, tolerance = 1) {
   assert.ok(Math.abs(actual - expected) <= tolerance, `${label}: expected ${expected}, received ${actual}`);
 }
 
+async function testMobileSafeAreaTabs(page, baseUrl) {
+  await gotoHub(page, baseUrl, 'templates');
+
+  const readLayout = async () => {
+    const nav = page.locator('.mobile-home-tabs:visible');
+    const documents = nav.getByRole('button', { name: 'Documents', exact: true });
+    const templates = nav.getByRole('button', { name: 'Templates', exact: true });
+    return {
+      documents: await requiredBox(documents, 'mobile Documents tab'),
+      templates: await requiredBox(templates, 'mobile Templates tab'),
+      style: await nav.evaluate((element) => {
+        const style = getComputedStyle(element);
+        return {
+          paddingLeft: style.paddingLeft,
+          paddingRight: style.paddingRight,
+          paddingBottom: style.paddingBottom,
+          alignItems: style.alignItems,
+        };
+      }),
+    };
+  };
+
+  await page.evaluate(() => {
+    document.documentElement.style.setProperty('--native-safe-area-bottom', '10px');
+    document.documentElement.style.setProperty('--native-safe-area-left', '0px');
+    document.documentElement.style.setProperty('--native-safe-area-right', '0px');
+  });
+  const flat = await readLayout();
+  assert.equal(flat.style.paddingLeft, '0px', 'mobile: flat screen keeps left tab flush');
+  assert.equal(flat.style.paddingRight, '0px', 'mobile: flat screen keeps right tab flush');
+  assert.equal(flat.style.paddingBottom, '14px', 'mobile: flat screen keeps baseline bottom clearance');
+  assertNear(flat.documents.x, 0, 'mobile: flat Documents edge remains unchanged');
+  assertNear(flat.templates.x + flat.templates.width, WORKFLOW_VIEWPORTS.mobile.width, 'mobile: flat Templates edge remains unchanged');
+
+  await page.evaluate(() => {
+    document.documentElement.style.setProperty('--native-safe-area-bottom', '34px');
+  });
+  const rounded = await readLayout();
+  assert.equal(rounded.style.paddingLeft, '8px', 'mobile: rounded screen protects left tab corner');
+  assert.equal(rounded.style.paddingRight, '8px', 'mobile: rounded screen protects right tab corner');
+  assert.equal(rounded.style.paddingBottom, '35px', 'mobile: rounded screen lowers tabs without entering home indicator');
+  assert.equal(rounded.style.alignItems, 'end', 'mobile: tabs sit against computed safe bottom');
+  assertNear(rounded.documents.x, 8, 'mobile: rounded Documents edge is inset');
+  assertNear(rounded.templates.x + rounded.templates.width, WORKFLOW_VIEWPORTS.mobile.width - 8, 'mobile: rounded Templates edge is inset');
+  assertNear(rounded.templates.y + rounded.templates.height, WORKFLOW_VIEWPORTS.mobile.height - 35, 'mobile: rounded tabs retain home-indicator clearance');
+  await artifacts.screenshot(page, 'mobile-rounded-safe-area-tabs');
+}
+
 async function measureMobileHeader(page, tab) {
   const row = page.locator(`.${tab}-mobile-search-actions:visible`);
   const action = row.locator('.hub-mobile-primary-action:visible');
@@ -574,6 +622,9 @@ async function runDevice(device, baseUrl) {
     await artifacts.time(`${device}:first-visit-tab-frame-continuity`, () => (
       testFirstVisitTabContinuity(page, baseUrl, touch, device)
     ));
+    if (device === 'mobile') {
+      await artifacts.time('mobile:safe-area-tabs', () => testMobileSafeAreaTabs(page, baseUrl));
+    }
     await artifacts.time(`${device}:tab-search-sort-selection`, async () => {
       if (device === 'mobile') await testMobileHeaderParity(page, baseUrl);
       await gotoHub(page, baseUrl, 'documents', {}, { workflow: true });
@@ -594,7 +645,7 @@ async function runDevice(device, baseUrl) {
       device,
       viewport,
       input: device === 'mobile' ? touch.inputKind : 'desktop-mouse-keyboard',
-      coverage: 'first-visit-frame-continuity-tabs-search-filter-sort-selection-bulk-state-empty-loading-long-docs-viewer-exact-return-back-forward-refresh',
+      coverage: 'first-visit-frame-continuity-safe-area-tabs-search-filter-sort-selection-bulk-state-empty-loading-long-docs-viewer-exact-return-back-forward-refresh',
       diagnostics,
       status: 'passed',
     });

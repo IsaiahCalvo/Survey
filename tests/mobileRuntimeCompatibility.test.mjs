@@ -126,8 +126,12 @@ test('Expo shell publishes native safe areas and keeps controls above the home i
   assert.match(EXPO_APP_SOURCE, /url\.searchParams\.set\('mobileNav', 'tabs'\)/);
   assert.match(EXPO_APP_SOURCE, /url\.searchParams\.set\('nativeShell', 'expo'\)/);
   assert.match(HUB_CSS_SOURCE, /\.survey-hub\.hub-native-shell-expo \.mobile-home-tabs \{/);
-  assert.match(HUB_CSS_SOURCE, /padding-top: 4px/);
-  assert.match(HUB_CSS_SOURCE, /padding-bottom: calc\(4px \+ var\(--native-safe-area-bottom, 0px\)\)/);
+  assert.match(HUB_CSS_SOURCE, /--mobile-tab-corner-inset: min\(8px, max\(0px, calc\(var\(--mobile-tab-safe-bottom\) - 10px\)\)\)/);
+  assert.match(HUB_CSS_SOURCE, /--mobile-tab-lower-offset: min\(3px, max\(0px, calc\(var\(--mobile-tab-safe-bottom\) - 10px\)\)\)/);
+  assert.match(HUB_CSS_SOURCE, /max\(var\(--native-safe-area-right, env\(safe-area-inset-right, 0px\)\), var\(--mobile-tab-corner-inset\)\)/);
+  assert.match(HUB_CSS_SOURCE, /max\(var\(--native-safe-area-left, env\(safe-area-inset-left, 0px\)\), var\(--mobile-tab-corner-inset\)\)/);
+  assert.match(HUB_CSS_SOURCE, /calc\(4px \+ var\(--mobile-tab-safe-bottom\) - var\(--mobile-tab-lower-offset\)\)/);
+  assert.match(HUB_CSS_SOURCE, /align-items: end/);
   assert.doesNotMatch(HUB_CSS_SOURCE, /\.mobile-home-tabs button[\s\S]{0,500}transform: translateY\(4px\)/);
   assert.match(EXPO_APP_SOURCE, /onContentProcessDidTerminate/);
   assert.match(EXPO_APP_SOURCE, /onRenderProcessGone/);
@@ -307,7 +311,8 @@ test('mobile annotation settings retain the preserved app geometry and controls'
 
 test('native mobile home remains viewport-contained with a solid full-width tab bar', () => {
   assert.match(HUB_CSS_SOURCE, /html\.survey-hub-native-frame,[\s\S]{0,180}overflow: hidden !important/);
-  assert.match(HUB_CSS_SOURCE, /\.survey-hub \.mobile-home-tabs \{[\s\S]{0,180}left: 0;[\s\S]{0,80}right: 0;[\s\S]{0,300}background: #0d0f14/);
+  assert.match(HUB_CSS_SOURCE, /\.survey-hub \.mobile-home-tabs \{[\s\S]{0,500}left: 0;[\s\S]{0,80}right: 0/);
+  assert.match(HUB_CSS_SOURCE, /\.survey-hub \.mobile-home-tabs \{[\s\S]{0,1000}background: #0d0f14/);
   assert.match(HUB_CSS_SOURCE, /\.survey-hub \.mobile-home-tabs::before \{\s*display: none/);
 });
 
