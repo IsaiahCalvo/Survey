@@ -623,7 +623,7 @@ export default function ProjectsFolderTree({
 
   const actions = (
     <>
-      <div className={`projects-mobile-search-actions ${mobileDrillProject ? 'with-back' : 'with-create'}`}>
+      <div className={`projects-mobile-search-actions hub-mobile-search-actions ${mobileDrillProject ? 'with-back' : 'with-create'}`}>
         {mobileDrillProject ? (
           <button
             type="button"
@@ -646,7 +646,7 @@ export default function ProjectsFolderTree({
           onChange={mobileDrillProject ? setFileSearch : setSearch}
         />
         {!mobileDrillProject ? (
-          <button className="btn primary projects-mobile-create-button" onClick={handleNewProject}>
+          <button className="btn primary projects-mobile-create-button hub-mobile-primary-action" onClick={handleNewProject}>
             <Icon name="plus" size={12} />New project
           </button>
         ) : null}

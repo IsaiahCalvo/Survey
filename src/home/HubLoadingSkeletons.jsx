@@ -23,9 +23,9 @@ const LoadingHeader = ({ tab }) => {
   if (tab === 'documents') {
     return (
       <>
-        <div className="documents-mobile-search-row hub-loading-mobile-actions">
-          <Block style={{ width: 92, height: 28 }} />
+        <div className="documents-mobile-search-actions hub-mobile-search-actions hub-loading-mobile-actions">
           <Block style={{ width: '100%', height: 28 }} />
+          <Block style={{ width: 112, height: 28 }} />
         </div>
         {desktopSearch('documents-desktop-search', 'Search documents')}
         <Block className="hub-loading-primary-action" style={{ width: 76, height: 28 }} />
@@ -34,8 +34,8 @@ const LoadingHeader = ({ tab }) => {
   }
 
   const mobileClass = tab === 'projects'
-    ? 'projects-mobile-search-actions with-create'
-    : 'templates-mobile-search-actions with-create';
+    ? 'projects-mobile-search-actions hub-mobile-search-actions with-create'
+    : 'templates-mobile-search-actions hub-mobile-search-actions with-create';
   const desktopClass = tab === 'projects' ? 'projects-desktop-search' : 'templates-desktop-search';
   return (
     <>
@@ -53,10 +53,13 @@ const LoadingSubtitle = ({ tab }) => {
     return (
       <span className="documents-mobile-summary" style={{ display: 'inline-flex', alignItems: 'baseline', gap: 10 }} aria-hidden="true">
         <span className="documents-file-count hub-loading-metric-cell"><b>0</b> files<Block style={{ width: 30, height: 9 }} /></span>
-        <span className="documents-select-row mobile-header-select-row">
-          <button className="mobile-header-select-button hub-loading-metric-cell hub-loading-metric-button" type="button" disabled tabIndex={-1}>
-            Select<Block style={{ width: 34, height: 9 }} />
-          </button>
+        <span className="documents-select-row mobile-header-select-row documents-mobile-select-sort-row">
+          <span className="documents-mobile-select-main">
+            <button className="mobile-header-select-button hub-loading-metric-cell hub-loading-metric-button" type="button" disabled tabIndex={-1}>
+              Select<Block style={{ width: 34, height: 9 }} />
+            </button>
+          </span>
+          <Block style={{ width: 112, height: 28 }} />
         </span>
       </span>
     );

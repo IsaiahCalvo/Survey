@@ -253,35 +253,6 @@ export default function DocumentsLedger({
     setPreviewOpen(true);
   };
 
-  const subtitle = (
-    <span className="documents-mobile-summary" style={{ display: 'inline-flex', alignItems: 'baseline', gap: 10 }}>
-      <span className="documents-file-count"><b>{docs.length}</b> files</span>
-      <span className="documents-select-row mobile-header-select-row">
-        <button
-          className="mobile-header-select-button"
-          onClick={() => { const next = !docSelectMode; setDocSelectMode(next); if (!next) setSelDocs(new Set()); }}
-          style={{ background: 'transparent', border: 0, color: 'var(--gold)', borderRadius: 2, padding: 0, fontSize: 11.5, cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap', fontWeight: 600 }}
-        >
-          {docSelectMode ? 'Done' : 'Select'}
-        </button>
-        {docSelectMode && (() => {
-          const docSelCount = selDocs.size;
-          const allSel = docSelCount === docs.length && docs.length > 0;
-          const baseBtn = miniButtonStyle();
-          return (
-            <span className="documents-select-actions mobile-header-select-actions" style={{ display: 'inline-flex', alignItems: 'center', gap: 4, marginLeft: 8 }}>
-              <button onClick={() => setSelDocs(allSel ? new Set() : new Set(docs.map((d) => d.id)))} style={{ ...baseBtn, color: 'var(--bone-100)' }}>{allSel ? 'None' : 'All'}</button>
-              <button disabled={!docSelCount} onClick={() => { onDuplicate && onDuplicate(selectedRaw()); clearSel(); }} style={miniButtonStyle({ disabled: !docSelCount })}>Duplicate</button>
-              <button disabled={!docSelCount} onClick={() => setMoveOpen(true)} style={miniButtonStyle({ disabled: !docSelCount })}>Move/Copy</button>
-              <button disabled={!docSelCount} title="Share" onClick={() => onShare && onShare(selectedRaw())} style={miniButtonStyle({ disabled: !docSelCount, iconOnly: true })}><Icon name="share" size={12} /></button>
-              <button disabled={!docSelCount} title="Delete" onClick={() => setConfirmDelete(true)} style={miniButtonStyle({ disabled: !docSelCount, danger: true, iconOnly: true })}><Icon name="trash" size={12} /></button>
-            </span>
-          );
-        })()}
-      </span>
-    </span>
-  );
-
   const sortOptions = [
     ['name', 'File'],
     ['project', 'Project'],
@@ -289,41 +260,76 @@ export default function DocumentsLedger({
     ['size', 'Size'],
   ];
   const activeSortLabel = sortOptions.find(([key]) => key === sortKey)?.[1] || 'Sort';
+
+  const subtitle = (
+    <span className="documents-mobile-summary" style={{ display: 'inline-flex', alignItems: 'baseline', gap: 10 }}>
+      <span className="documents-file-count"><b>{docs.length}</b> files</span>
+      <span className="documents-select-row mobile-header-select-row documents-mobile-select-sort-row" ref={mobileSortRef}>
+        <span className="documents-mobile-select-main">
+          <button
+            className="mobile-header-select-button"
+            onClick={() => { const next = !docSelectMode; setDocSelectMode(next); if (!next) setSelDocs(new Set()); }}
+            style={{ background: 'transparent', border: 0, color: 'var(--gold)', borderRadius: 2, padding: 0, fontSize: 11.5, cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap', fontWeight: 600 }}
+          >
+            {docSelectMode ? 'Done' : 'Select'}
+          </button>
+          {docSelectMode && (() => {
+            const docSelCount = selDocs.size;
+            const allSel = docSelCount === docs.length && docs.length > 0;
+            const baseBtn = miniButtonStyle();
+            return (
+              <span className="documents-select-actions mobile-header-select-actions" style={{ display: 'inline-flex', alignItems: 'center', gap: 4, marginLeft: 8 }}>
+                <button onClick={() => setSelDocs(allSel ? new Set() : new Set(docs.map((d) => d.id)))} style={{ ...baseBtn, color: 'var(--bone-100)' }}>{allSel ? 'None' : 'All'}</button>
+                <button disabled={!docSelCount} onClick={() => { onDuplicate && onDuplicate(selectedRaw()); clearSel(); }} style={miniButtonStyle({ disabled: !docSelCount })}>Duplicate</button>
+                <button disabled={!docSelCount} onClick={() => setMoveOpen(true)} style={miniButtonStyle({ disabled: !docSelCount })}>Move/Copy</button>
+                <button disabled={!docSelCount} title="Share" onClick={() => onShare && onShare(selectedRaw())} style={miniButtonStyle({ disabled: !docSelCount, iconOnly: true })}><Icon name="share" size={12} /></button>
+                <button disabled={!docSelCount} title="Delete" onClick={() => setConfirmDelete(true)} style={miniButtonStyle({ disabled: !docSelCount, danger: true, iconOnly: true })}><Icon name="trash" size={12} /></button>
+              </span>
+            );
+          })()}
+        </span>
+        <span className="documents-mobile-sort-control">
+          <button
+            className="btn documents-mobile-filter"
+            type="button"
+            aria-haspopup="menu"
+            aria-expanded={mobileSortOpen}
+            onClick={() => setMobileSortOpen((open) => !open)}
+          >
+            <Icon name="filter" size={12} />
+            <span>{activeSortLabel}</span>
+          </button>
+          {mobileSortOpen && (
+            <div className="documents-mobile-sort-menu" role="menu">
+              {sortOptions.map(([key, label]) => (
+                <button
+                  key={key}
+                  type="button"
+                  role="menuitem"
+                  className={sortKey === key ? 'active' : ''}
+                  onClick={() => { onHeaderClick(key); setMobileSortOpen(false); }}
+                >
+                  <span>{label}</span>
+                  <span>{sortKey === key ? (sortDir === 'asc' ? '↑' : '↓') : ''}</span>
+                </button>
+              ))}
+            </div>
+          )}
+        </span>
+      </span>
+    </span>
+  );
+
   const actions = (
     <>
-      <div className="documents-mobile-search-row" ref={mobileSortRef}>
-        <button
-          className="btn documents-mobile-filter"
-          type="button"
-          aria-haspopup="menu"
-          aria-expanded={mobileSortOpen}
-          onClick={() => setMobileSortOpen((open) => !open)}
-        >
-          <Icon name="filter" size={12} />
-          <span>{activeSortLabel}</span>
-        </button>
-        {mobileSortOpen && (
-          <div className="documents-mobile-sort-menu" role="menu">
-            {sortOptions.map(([key, label]) => (
-              <button
-                key={key}
-                type="button"
-                role="menuitem"
-                className={sortKey === key ? 'active' : ''}
-                onClick={() => { onHeaderClick(key); setMobileSortOpen(false); }}
-              >
-                <span>{label}</span>
-                <span>{sortKey === key ? (sortDir === 'asc' ? '↑' : '↓') : ''}</span>
-              </button>
-            ))}
-          </div>
-        )}
+      <div className="documents-mobile-search-actions hub-mobile-search-actions">
         <Search placeholder="Search documents..." value={search} onChange={setSearch} width="100%" />
+        <button className="btn primary hub-mobile-primary-action" onClick={() => onUpload && onUpload()}><Icon name="upload" size={12} />Upload</button>
       </div>
       <div className="documents-desktop-search">
         <Search placeholder="Search documents..." value={search} onChange={setSearch} />
       </div>
-      <button className="btn primary" onClick={() => onUpload && onUpload()}><Icon name="upload" size={12} />Upload</button>
+      <button className="btn primary documents-desktop-upload" onClick={() => onUpload && onUpload()}><Icon name="upload" size={12} />Upload</button>
     </>
   );
 

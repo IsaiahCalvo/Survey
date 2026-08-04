@@ -1546,7 +1546,7 @@ export default function TemplatesEditor({
   );
   const actions = (
     <>
-      <div className={`templates-mobile-search-actions ${mobileTemplateOpen ? 'with-back' : 'with-create'}`}>
+      <div className={`templates-mobile-search-actions hub-mobile-search-actions ${mobileTemplateOpen ? 'with-back' : 'with-create'}`}>
         {mobileTemplateOpen ? (
           <button
             type="button"
@@ -1572,7 +1572,7 @@ export default function TemplatesEditor({
           width="100%"
         />
         {!mobileTemplateOpen ? (
-          <button className="btn primary templates-mobile-create-button" onClick={() => onCreateTemplate && onCreateTemplate()}>
+          <button className="btn primary templates-mobile-create-button hub-mobile-primary-action" onClick={() => onCreateTemplate && onCreateTemplate()}>
             <Icon name="plus" size={12} />New template
           </button>
         ) : null}

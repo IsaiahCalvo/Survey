@@ -68,6 +68,7 @@
 .survey-hub .crumb b { color: var(--bone-100); font-weight: 600; }
 .survey-hub .projects-mobile-summary,
 .survey-hub .templates-mobile-summary,
+.survey-hub .documents-mobile-search-actions,
 .survey-hub .projects-mobile-search-actions,
 .survey-hub .templates-mobile-search-actions,
 .survey-hub .templates-mobile-layout {
@@ -452,7 +453,7 @@
 .survey-hub .mobile-home-tabs,
 .survey-hub .mobile-profile,
 .survey-hub .mobile-rail-nav,
-.survey-hub .documents-mobile-search-row,
+.survey-hub .documents-mobile-sort-control,
 .survey-hub .documents-mobile-list,
 .survey-hub .projects-mobile-layout {
   display: none;
@@ -786,11 +787,10 @@
     width: 100% !important;
   }
 
-  .survey-hub .projects-mobile-search-actions,
-  .survey-hub .templates-mobile-search-actions {
+  .survey-hub .hub-mobile-search-actions {
     display: grid !important;
     grid-column: 1 / -1;
-    grid-template-columns: minmax(0, 1fr);
+    grid-template-columns: minmax(0, 1fr) 112px;
     gap: 8px;
     width: 100%;
   }
@@ -814,11 +814,24 @@
   .survey-hub .projects-mobile-search-actions .projects-mobile-create-button,
   .survey-hub .templates-mobile-search-actions .templates-mobile-create-button {
     height: 28px;
-    min-width: 104px;
+    width: 112px;
+    min-width: 112px;
     padding: 0 10px;
     font-size: 11.5px;
     justify-content: center;
     white-space: nowrap;
+  }
+
+  .survey-hub .hub-mobile-primary-action {
+    width: 112px;
+    min-width: 112px;
+    height: 28px;
+    padding-inline: 10px;
+    justify-content: center;
+  }
+
+  .survey-hub .documents-desktop-upload {
+    display: none;
   }
 
   .survey-hub .actions .btn {
@@ -880,23 +893,47 @@
     display: none;
   }
 
+  .survey-hub .documents-mobile-select-sort-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 112px;
+    gap: 8px;
+    overflow: visible;
+  }
+
+  .survey-hub .documents-mobile-select-main {
+    min-width: 0;
+    height: 28px;
+    display: flex;
+    align-items: center;
+    overflow-x: auto;
+    overflow-y: hidden;
+    white-space: nowrap;
+    scrollbar-width: none;
+  }
+
+  .survey-hub .documents-mobile-select-main::-webkit-scrollbar {
+    display: none;
+  }
+
+  .survey-hub .documents-mobile-sort-control {
+    display: block;
+    width: 112px;
+    height: 28px;
+    position: relative;
+  }
+
   .survey-hub .documents-desktop-search,
   .survey-hub .projects-desktop-search,
   .survey-hub .templates-desktop-search {
     display: none;
   }
 
-  .survey-hub .documents-mobile-search-row {
-    display: grid;
-    grid-template-columns: auto minmax(0, 1fr);
-    gap: 8px;
-    position: relative;
-    min-width: 0;
-  }
-
   .survey-hub .documents-mobile-filter {
-    min-width: 78px;
-    padding: 5px 8px;
+    width: 112px;
+    min-width: 112px;
+    height: 28px;
+    padding: 5px 10px;
+    justify-content: center;
   }
 
   .survey-hub .documents-mobile-filter span {
@@ -909,7 +946,7 @@
   .survey-hub .documents-mobile-sort-menu {
     position: absolute;
     top: calc(100% + 6px);
-    left: 0;
+    right: 0;
     z-index: 30;
     width: 176px;
     padding: 5px;

@@ -188,6 +188,59 @@ async function visibleRowIds(page, selector) {
   return page.locator(selector).evaluateAll((rows) => rows.map((row) => row.getAttribute('data-document-id') || row.getAttribute('data-project-id')));
 }
 
+async function requiredBox(locator, label) {
+  const box = await locator.boundingBox();
+  assert.ok(box, `${label}: measurable box`);
+  return box;
+}
+
+function assertNear(actual, expected, label, tolerance = 1) {
+  assert.ok(Math.abs(actual - expected) <= tolerance, `${label}: expected ${expected}, received ${actual}`);
+}
+
+async function measureMobileHeader(page, tab) {
+  const row = page.locator(`.${tab}-mobile-search-actions:visible`);
+  const action = row.locator('.hub-mobile-primary-action:visible');
+  const search = row.locator('input:visible');
+  const select = page.locator('.header-subtitle:visible .mobile-header-select-button');
+  assert.equal(await row.count(), 1, `mobile: one ${tab} search/action row`);
+  assert.equal(await action.count(), 1, `mobile: one ${tab} primary action`);
+  assert.equal(await search.count(), 1, `mobile: one ${tab} search input`);
+  assert.equal(await select.count(), 1, `mobile: one ${tab} Select control`);
+  return {
+    row: await requiredBox(row, `${tab} search/action row`),
+    action: await requiredBox(action, `${tab} primary action`),
+    search: await requiredBox(search, `${tab} search input`),
+    select: await requiredBox(select, `${tab} Select control`),
+  };
+}
+
+async function testMobileHeaderParity(page, baseUrl) {
+  const metrics = {};
+  for (const tab of EDGE_TABS) {
+    await gotoHub(page, baseUrl, tab);
+    metrics[tab] = await measureMobileHeader(page, tab);
+  }
+
+  const reference = metrics.documents;
+  for (const tab of EDGE_TABS.slice(1)) {
+    const candidate = metrics[tab];
+    for (const key of ['row', 'action', 'search']) {
+      for (const field of ['x', 'y', 'width', 'height']) {
+        assertNear(candidate[key][field], reference[key][field], `mobile: ${tab} ${key} ${field} matches Documents`);
+      }
+    }
+    assertNear(candidate.select.x, reference.select.x, `mobile: ${tab} Select left alignment`);
+    assertNear(candidate.select.y, reference.select.y, `mobile: ${tab} Select row alignment`);
+  }
+  assertNear(reference.action.width, 112, 'mobile: shared primary-action width');
+
+  await gotoHub(page, baseUrl, 'documents');
+  const sort = await requiredBox(page.locator('.documents-mobile-filter:visible'), 'mobile Documents sort');
+  assertNear(sort.y, reference.select.y, 'mobile: Select and sort share a row');
+  assertNear(sort.x + sort.width, reference.action.x + reference.action.width, 'mobile: sort and Upload right edges align');
+}
+
 async function testDocuments(page, touch, device) {
   await switchTab(page, touch, device, 'documents');
   const rows = page.locator('[data-document-id]:visible');
@@ -204,6 +257,14 @@ async function testDocuments(page, touch, device) {
     sortControl = page.locator('.documents-mobile-filter:visible');
     assert.equal(await sortControl.count(), 1, 'mobile: sort/filter control exposed');
     await activate(sortControl, touch, device);
+    const menu = page.locator('.documents-mobile-sort-menu:visible');
+    const sortBox = await requiredBox(sortControl, 'mobile: open sort control');
+    const menuBox = await requiredBox(menu, 'mobile: open sort menu');
+    const viewport = page.viewportSize();
+    assertNear(menuBox.x + menuBox.width, sortBox.x + sortBox.width, 'mobile: sort menu right edge aligns with control');
+    assert.ok(menuBox.y >= sortBox.y + sortBox.height, 'mobile: sort menu opens below control');
+    assert.ok(menuBox.x >= 0 && menuBox.x + menuBox.width <= viewport.width, 'mobile: sort menu remains within viewport');
+    await artifacts.screenshot(page, 'mobile-documents-sort-menu-open');
     const fileSort = page.getByRole('menuitem', { name: /^File(?: [↑↓])?$/ });
     assert.equal(await fileSort.count(), 1, 'mobile: File sort choice exposed');
     await activate(fileSort, touch, device);
@@ -221,6 +282,10 @@ async function testDocuments(page, touch, device) {
   const desc = await visibleRowIds(page, '[data-document-id]:visible');
   assert.notEqual(asc[0], desc[0], `${device}: exposed File sort reverses row order`);
 
+  const stableMobileSortBox = device === 'mobile'
+    ? await requiredBox(sortControl, 'mobile: sort before expanded selection')
+    : null;
+
   const select = page.locator('.header-subtitle:visible .mobile-header-select-button');
   assert.equal(await select.count(), 1, `${device}: document Select control`);
   await activate(select, touch, device);
@@ -231,6 +296,28 @@ async function testDocuments(page, touch, device) {
   const moveCopy = page.locator('.header-subtitle:visible').getByRole('button', { name: 'Move/Copy', exact: true });
   assert.equal(await duplicate.isEnabled(), true, `${device}: Duplicate enables after selection`);
   assert.equal(await moveCopy.isEnabled(), true, `${device}: Move/Copy enables after selection`);
+  if (device === 'mobile') {
+    const selectionStrip = page.locator('.documents-mobile-select-main:visible');
+    const expandedSortBox = await requiredBox(sortControl, 'mobile: sort after expanded selection');
+    assertNear(expandedSortBox.x, stableMobileSortBox.x, 'mobile: sort remains fixed while Select expands');
+    assertNear(expandedSortBox.y, stableMobileSortBox.y, 'mobile: sort stays on Select row while Select expands');
+    await artifacts.screenshot(page, 'mobile-documents-selection-expanded-start');
+    const stripState = await selectionStrip.evaluate((element) => {
+      element.scrollLeft = element.scrollWidth;
+      return { clientWidth: element.clientWidth, scrollWidth: element.scrollWidth };
+    });
+    assert.ok(stripState.scrollWidth > stripState.clientWidth, 'mobile: expanded bulk controls use bounded horizontal scrolling');
+    await page.waitForTimeout(50);
+    const stripBox = await requiredBox(selectionStrip, 'mobile: expanded selection strip');
+    const deleteBox = await requiredBox(
+      page.locator('.documents-mobile-select-main:visible').getByRole('button', { name: 'Delete', exact: true }),
+      'mobile: scrolled Delete action',
+    );
+    assert.ok(deleteBox.x >= stripBox.x - 1 && deleteBox.x + deleteBox.width <= stripBox.x + stripBox.width + 1, 'mobile: every bulk action can scroll into the left control area');
+    const scrolledSortBox = await requiredBox(sortControl, 'mobile: sort after bulk-control scroll');
+    assertNear(scrolledSortBox.x, stableMobileSortBox.x, 'mobile: bulk scrolling does not move sort');
+    await artifacts.screenshot(page, 'mobile-documents-selection-expanded-end');
+  }
   const done = page.locator('.header-subtitle:visible').getByRole('button', { name: 'Done', exact: true });
   await activate(done, touch, device);
 }
@@ -374,6 +461,7 @@ async function runDevice(device, baseUrl) {
     if (device === 'mobile') assert.equal(touch.inputKind, 'trusted-cdp-touch', 'mobile: trusted touch required');
 
     await artifacts.time(`${device}:tab-search-sort-selection`, async () => {
+      if (device === 'mobile') await testMobileHeaderParity(page, baseUrl);
       await gotoHub(page, baseUrl, 'documents', {}, { workflow: true });
       await testDocuments(page, touch, device);
       await testProjects(page, touch, device);
