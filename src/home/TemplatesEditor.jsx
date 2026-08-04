@@ -902,9 +902,11 @@ export default function TemplatesEditor({
     setSelCats(new Set());
     setSelEntities(new Set());
   }, []);
+  const mobileSwipeSurfaceRef = useRef(null);
   useMobileEdgeSwipeBack({
     enabled: mobileTemplateOpen && !mobileEntitiesOpen,
     onBack: closeMobileTemplate,
+    surfaceRef: mobileSwipeSurfaceRef,
   });
 
   useEffect(() => {
@@ -1617,6 +1619,7 @@ export default function TemplatesEditor({
       actions={actions}
       userName={user?.name || user?.email?.split('@')[0] || 'You'}
       templatesLocked={templatesLocked}
+      mobileSwipeSurfaceRef={mobileSwipeSurfaceRef}
     >
       <div className="ed-scope" style={{ width: 'auto', height: 'calc(100% - 65px)', position: 'relative', overflow: 'hidden' }}>
         <div className="templates-editor-body" style={{ padding: '0 8px 8px 8px', height: '100%', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>

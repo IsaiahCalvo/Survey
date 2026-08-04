@@ -304,6 +304,29 @@ async function testMobileSafeAreaTabs(page, baseUrl) {
 }
 
 async function testMobileEdgeSwipeBack(page, baseUrl, touch) {
+  const readSwipeSurface = () => page.locator('.survey-hub .main').evaluate((element) => {
+    const matrix = new DOMMatrixReadOnly(getComputedStyle(element).transform);
+    return {
+      phase: element.dataset.mobileSwipePhase || '',
+      translateX: matrix.m41,
+      transitionDuration: getComputedStyle(element).transitionDuration,
+    };
+  });
+  const dragToAndHold = async (start, end) => {
+    await touch.start(start);
+    const steps = 6;
+    for (let index = 1; index <= steps; index += 1) {
+      await touch.move({
+        x: start.x + ((end.x - start.x) * index) / steps,
+        y: start.y + ((end.y - start.y) * index) / steps,
+      });
+      await page.waitForTimeout(18);
+    }
+    await page.waitForTimeout(40);
+    await touch.move(end);
+    await page.waitForTimeout(32);
+  };
+
   await gotoHub(page, baseUrl, 'projects');
   const project = page.locator('.projects-mobile-folder-row.drill:visible').first();
   await activate(project, touch, 'mobile');
@@ -311,11 +334,23 @@ async function testMobileEdgeSwipeBack(page, baseUrl, touch) {
 
   await touch.drag({ x: 8, y: 280 }, { x: 12, y: 410 });
   assert.equal(await page.locator('.projects-mobile-back-button:visible').count(), 1, 'mobile: vertical edge scroll does not leave project');
-  await touch.drag({ x: 8, y: 300 }, { x: 50, y: 302 });
+  await dragToAndHold({ x: 8, y: 300 }, { x: 50, y: 302 });
+  const projectDrag = await readSwipeSurface();
+  assert.equal(projectDrag.phase, 'dragging', 'mobile: project page enters interactive drag phase');
+  assert(projectDrag.translateX >= 35 && projectDrag.translateX <= 50, `mobile: project page follows finger (${projectDrag.translateX}px)`);
+  await touch.end();
+  await page.waitForFunction(() => !document.querySelector('.survey-hub .main')?.dataset.mobileSwipePhase);
   assert.equal(await page.locator('.projects-mobile-back-button:visible').count(), 1, 'mobile: short edge drag does not leave project');
   await touch.drag({ x: 40, y: 320 }, { x: 180, y: 322 });
   assert.equal(await page.locator('.projects-mobile-back-button:visible').count(), 1, 'mobile: swipe away from edge does not leave project');
-  await touch.drag({ x: 8, y: 340 }, { x: 140, y: 344 });
+  await dragToAndHold({ x: 8, y: 340 }, { x: 140, y: 344 });
+  const projectCommitDrag = await readSwipeSurface();
+  assert.equal(projectCommitDrag.phase, 'dragging', 'mobile: project page remains interactive before release');
+  assert(projectCommitDrag.translateX >= 120, `mobile: project page visibly tracks committed drag (${projectCommitDrag.translateX}px)`);
+  await touch.end();
+  const projectSettle = await readSwipeSurface();
+  assert.equal(projectSettle.phase, 'completing', 'mobile: project swipe animates to completion after release');
+  assert.notEqual(projectSettle.transitionDuration, '0s', 'mobile: project completion has visible duration');
   await page.locator('.projects-mobile-folder-row.drill:visible').first().waitFor({ state: 'visible' });
   assert.equal(await page.locator('.projects-mobile-back-button:visible').count(), 0, 'mobile: right swipe from left edge returns to projects');
 
@@ -323,7 +358,11 @@ async function testMobileEdgeSwipeBack(page, baseUrl, touch) {
   const template = page.locator('.templates-mobile-row:visible').first();
   await activate(template, touch, 'mobile');
   await page.locator('.templates-mobile-detail:visible').waitFor({ state: 'visible' });
-  await touch.drag({ x: 8, y: 340 }, { x: 140, y: 344 });
+  await dragToAndHold({ x: 8, y: 340 }, { x: 140, y: 344 });
+  const templateDrag = await readSwipeSurface();
+  assert.equal(templateDrag.phase, 'dragging', 'mobile: template page enters interactive drag phase');
+  assert(templateDrag.translateX >= 120, `mobile: template page visibly follows finger (${templateDrag.translateX}px)`);
+  await touch.end();
   await page.locator('.templates-mobile-browser:visible').waitFor({ state: 'visible' });
   assert.equal(await page.locator('.templates-mobile-detail:visible').count(), 0, 'mobile: right swipe from left edge returns to templates');
   await artifacts.screenshot(page, 'mobile-edge-swipe-back-complete');

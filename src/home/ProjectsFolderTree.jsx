@@ -280,6 +280,7 @@ export default function ProjectsFolderTree({
   const mobileDrillProject = mobileDrillOpenId
     ? filtered.find((p) => p.id === mobileDrillOpenId) || null
     : null;
+  const mobileSwipeSurfaceRef = useRef(null);
   const closeMobileProject = useCallback(() => {
     setMobileDrillOpenId(null);
     setFileMenu(null);
@@ -290,6 +291,7 @@ export default function ProjectsFolderTree({
   useMobileEdgeSwipeBack({
     enabled: Boolean(mobileDrillProject) && !teamModalProject,
     onBack: closeMobileProject,
+    surfaceRef: mobileSwipeSurfaceRef,
   });
   const mobileDrillAllFiles = useMemo(
     () => (mobileDrillProject ? localDocs.filter((d) => d.project_id === mobileDrillProject.id) : []),
@@ -818,6 +820,7 @@ export default function ProjectsFolderTree({
       actions={actions}
       userName={user?.name || user?.email?.split('@')[0] || 'You'}
       templatesLocked={templatesLocked}
+      mobileSwipeSurfaceRef={mobileSwipeSurfaceRef}
     >
       <div className="projects-tab-body" style={{ padding: '0 8px 8px 8px', flex: 1, minHeight: 0, overflow: 'hidden' }}>
       <div className="projects-desktop-layout" style={{ display: 'grid', gridTemplateColumns: '260px 1fr', gap: 8, height: '100%', minHeight: 0 }}>

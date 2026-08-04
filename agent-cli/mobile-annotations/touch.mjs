@@ -21,6 +21,21 @@ export async function createTouchDriver({ browserName, context, page }) {
     const cdp = await context.newCDPSession(page);
     return {
       inputKind: 'trusted-cdp-touch',
+      async start(point) {
+        await cdp.send('Input.dispatchTouchEvent', {
+          type: 'touchStart',
+          touchPoints: [touchPoint(point)],
+        });
+      },
+      async move(point) {
+        await cdp.send('Input.dispatchTouchEvent', {
+          type: 'touchMove',
+          touchPoints: [touchPoint(point)],
+        });
+      },
+      async end() {
+        await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+      },
       async drag(start, end, { steps = 10, stepDelayMs = 12 } = {}) {
         const points = interpolate(start, end, steps);
         await cdp.send('Input.dispatchTouchEvent', {
@@ -67,6 +82,16 @@ export async function createTouchDriver({ browserName, context, page }) {
   // same touch-enabled mobile context, but label its drag fallback honestly.
   return {
     inputKind: 'webkit-pointer-fallback',
+    async start(point) {
+      await page.mouse.move(point.x, point.y);
+      await page.mouse.down();
+    },
+    async move(point) {
+      await page.mouse.move(point.x, point.y);
+    },
+    async end() {
+      await page.mouse.up();
+    },
     async drag(start, end, { steps = 10 } = {}) {
       await page.mouse.move(start.x, start.y);
       await page.mouse.down();

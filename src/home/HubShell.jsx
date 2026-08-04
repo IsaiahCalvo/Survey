@@ -287,7 +287,7 @@ const MobileRailNav = ({ mode, title, tab, navItems, onNav }) => {
 
 /* Sidebar + header frame. SurveyHub swaps complete tab shells atomically, so
    this component owns the shared viewport and chrome contract for each tab. */
-export const HubShell = ({ tab, onNav, title, subtitle, actions, children, userName = 'You', userMeta = undefined, templatesLocked = false }) => {
+export const HubShell = ({ tab, onNav, title, subtitle, actions, children, userName = 'You', userMeta = undefined, templatesLocked = false, mobileSwipeSurfaceRef = undefined }) => {
   const expoNativeShell = isExpoNativeShell();
 
   // These classes define the mobile viewport itself. A passive effect can run
@@ -339,7 +339,7 @@ export const HubShell = ({ tab, onNav, title, subtitle, actions, children, userN
           </nav>
           <ProfileMenu userName={userName} userMeta={userMeta} />
         </aside>
-        <main className="main paper">
+        <main ref={mobileSwipeSurfaceRef} className="main paper">
           <div className="header">
             <div className="header-title-block">
               <MobileRailNav mode={mobileNavMode} title={title} tab={tab} navItems={navItems} onNav={onNav} />

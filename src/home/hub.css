@@ -572,6 +572,19 @@
     display: block;
   }
 
+  /* Interactive iOS-style edge back. The shared screen surface follows the
+     finger; the shadow makes the outgoing page edge legible over the shell. */
+  .survey-hub .main.mobile-edge-swipe-surface {
+    z-index: 2;
+    background: var(--ink-900);
+    backface-visibility: hidden;
+  }
+
+  .survey-hub .main.mobile-edge-swipe-active,
+  .survey-hub .main.mobile-edge-swipe-settling {
+    box-shadow: -16px 0 30px rgba(0, 0, 0, 0.34);
+  }
+
   .survey-hub .header {
     position: fixed;
     /* Capacitor/plain mobile web fills the screen edge-to-edge, so fixed
