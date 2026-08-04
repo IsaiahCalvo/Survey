@@ -2105,8 +2105,7 @@
   }
 
   .survey-hub .templates-editor-body {
-    padding-left: 10px !important;
-    padding-right: 10px !important;
+    padding: 8px 10px 10px !important;
   }
 
   .survey-hub.hub-mobile-nav-rail .templates-mobile-layout {

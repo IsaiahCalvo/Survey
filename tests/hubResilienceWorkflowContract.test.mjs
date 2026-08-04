@@ -48,6 +48,7 @@ test('runner covers tabs, discovery controls, bulk state, fixtures, lifecycle, a
     'Search documents...',
     'Search projects...',
     'Search templates...',
+    'first card has the shared top gap',
     'Move/Copy',
     'testEdgeFixtures',
     'testViewerReturn',

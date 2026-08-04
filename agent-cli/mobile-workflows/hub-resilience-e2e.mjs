@@ -462,15 +462,23 @@ async function testMobileHeaderParity(page, baseUrl) {
     projects: '.projects-mobile-folder-row.drill.reorderable:visible',
     templates: '.templates-mobile-row.reorderable:visible',
   };
+  const bodySelectors = {
+    documents: '.documents-ledger-body:visible',
+    projects: '.projects-tab-body:visible',
+    templates: '.templates-editor-body:visible',
+  };
   for (const tab of EDGE_TABS) {
     await gotoHub(page, baseUrl, tab);
     metrics[tab] = await measureMobileHeader(page, tab);
     const cards = page.locator(cardSelectors[tab]);
     await cards.first().waitFor({ state: 'visible', timeout: 30_000 });
     assert.ok(await cards.count() >= 1, `mobile: ${tab} has a list card`);
+    metrics[tab].body = await requiredBox(page.locator(bodySelectors[tab]), `${tab} mobile body`);
     metrics[tab].card = await cards.first().evaluate((element) => {
       const box = element.getBoundingClientRect();
       return {
+        x: box.x,
+        y: box.y,
         width: box.width,
         height: box.height,
         clientHeight: element.clientHeight,
@@ -508,6 +516,7 @@ async function testMobileHeaderParity(page, baseUrl) {
   }
   assertNear(reference.action.width, 112, 'mobile: shared primary-action width');
   for (const tab of EDGE_TABS) {
+    assertNear(metrics[tab].card.y - metrics[tab].body.y, 8, `mobile: ${tab} first card has the shared top gap`);
     assertNear(metrics[tab].card.width, 370, `mobile: ${tab} card uses the shared width`);
     assertNear(metrics[tab].card.height, 76, `mobile: ${tab} card uses the shared height`);
     assert.ok(metrics[tab].card.scrollHeight <= metrics[tab].card.clientHeight, `mobile: ${tab} card content is not vertically clipped`);
