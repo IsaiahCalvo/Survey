@@ -107,8 +107,8 @@ test('skeletons mirror real desktop and mobile row geometry', () => {
   assert.match(SKELETONS, /hub-loading-project-team/);
   assert.match(SKELETONS, /hub-loading-template-content/);
   assert.match(SKELETONS, /hub-loading-entities-rail/);
-  assert.match(SKELETONS, /projects-mobile-browser-label/);
-  assert.match(SKELETONS, /templates-mobile-label/);
+  assert.doesNotMatch(SKELETONS, /projects-mobile-browser-label hub-loading-mobile-label/);
+  assert.doesNotMatch(SKELETONS, /templates-mobile-label hub-loading-mobile-label/);
   assert.match(CSS, /\.survey-hub \.hub-loading-document-row\s*\{[\s\S]*?height:\s*50px/);
   assert.match(CSS, /\.survey-hub \.hub-loading-project-columns\s*\{[\s\S]*?grid-template-columns:\s*minmax\(0, 1fr\) 148px/);
   assert.match(CSS, /\.survey-hub \.hub-loading-project-header\s*\{[\s\S]*?min-height:\s*65px/);

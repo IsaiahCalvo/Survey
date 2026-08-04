@@ -236,6 +236,14 @@ async function testMobileHeaderParity(page, baseUrl) {
   for (const tab of EDGE_TABS) {
     await gotoHub(page, baseUrl, tab);
     metrics[tab] = await measureMobileHeader(page, tab);
+    if (tab === 'projects') {
+      assert.equal(await page.getByText('Project folders', { exact: true }).filter({ visible: true }).count(), 0, 'mobile: Projects omits redundant list heading');
+      await artifacts.screenshot(page, 'mobile-projects-without-list-heading');
+    }
+    if (tab === 'templates') {
+      assert.equal(await page.getByText('Template sets', { exact: true }).filter({ visible: true }).count(), 0, 'mobile: Templates omits redundant list heading');
+      await artifacts.screenshot(page, 'mobile-templates-without-list-heading');
+    }
   }
 
   const reference = metrics.documents;

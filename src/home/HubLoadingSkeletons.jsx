@@ -182,7 +182,6 @@ const ProjectsSkeleton = () => (
     </div>
     <div className="projects-mobile-layout">
       <div className="projects-mobile-browser projects-mobile-drill-view">
-        <div className="projects-mobile-browser-label hub-loading-mobile-label"><Block style={{ width: 92, height: 8 }} /></div>
         {MOBILE_ROWS.map((row) => (
           <div key={row} className="projects-mobile-folder-row drill reorderable hub-loading-mobile-row">
             <Block style={{ width: 14, height: 14, justifySelf: 'center' }} />
@@ -220,7 +219,6 @@ const TemplatesSkeleton = () => (
       </div>
       <div className="templates-mobile-layout">
         <div className="templates-mobile-browser">
-          <div className="templates-mobile-label hub-loading-mobile-label"><Block style={{ width: 76, height: 8 }} /></div>
           {MOBILE_ROWS.map((row) => (
             <div key={row} className="templates-mobile-row reorderable hub-loading-mobile-row">
               <Block style={{ width: 14, height: 14, justifySelf: 'center' }} />

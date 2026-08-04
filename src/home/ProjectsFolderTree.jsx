@@ -1267,7 +1267,6 @@ export default function ProjectsFolderTree({
               </>
             ) : (
               <>
-                <div className="projects-mobile-browser-label">Project folders</div>
                 <SortableRearrangeList ids={filtered.map((p) => p.id)} onReorder={reorderProjects}>
                   {filtered.map((p) => {
                     const isSel = selProj.has(p.id);

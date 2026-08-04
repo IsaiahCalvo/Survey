@@ -2316,7 +2316,6 @@ export default function TemplatesEditor({
                 />
               ) : (
                 <>
-                  <div className="templates-mobile-label">Template sets</div>
                   <SortableRearrangeList ids={visibleTemplates.map((t) => t.id)} onReorder={reorderTemplates}>
                     {visibleTemplates.map((t) => {
                       const isSel = selTpls.has(t.id);
