@@ -2510,12 +2510,13 @@ export default function TemplatesEditor({
                                 <DragRearrangeHandle {...attributes} {...listeners} isDragging={isDragging} style={{ width: 24, height: 24 }} />
                                 <button
                                   type="button"
-                                  className={open ? 'open' : ''}
+                                  className={`templates-mobile-category-toggle ${open ? 'open' : ''}`}
+                                  aria-label={`${open ? 'Collapse' : 'Expand'} ${c.name}`}
                                   onClick={(e) => {
                                     e.stopPropagation();
                                     setOpenCat(open ? -1 : ci);
                                   }}
-                                >›</button>
+                                ><Icon name="arrow-r" size={13} /></button>
                                 <input
                                   className="templates-mobile-inline-input"
                                   defaultValue={c.name}

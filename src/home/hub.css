@@ -2556,7 +2556,7 @@
     min-height: 42px;
   }
 
-  .survey-hub .templates-mobile-category-row > button {
+  .survey-hub .templates-mobile-category-toggle {
     width: 24px;
     height: 24px;
     border: 0;
@@ -2567,12 +2567,15 @@
     place-items: center;
     padding: 0;
     font: inherit;
-    font-size: 21px;
-    font-weight: 800;
+    line-height: 1;
     transform: rotate(0deg);
   }
 
-  .survey-hub .templates-mobile-category-row > button.open {
+  .survey-hub .templates-mobile-category-toggle svg {
+    display: block;
+  }
+
+  .survey-hub .templates-mobile-category-toggle.open {
     transform: rotate(90deg);
     color: var(--gold);
   }

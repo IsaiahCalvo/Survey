@@ -329,6 +329,43 @@ async function testMobileEdgeSwipeBack(page, baseUrl, touch) {
   await artifacts.screenshot(page, 'mobile-edge-swipe-back-complete');
 }
 
+async function testMobileTemplateCategoryRowAlignment(page, baseUrl, touch) {
+  await gotoHub(page, baseUrl, 'templates');
+  await activate(page.locator('.templates-mobile-row:visible').first(), touch, 'mobile');
+  const rows = page.locator('.templates-mobile-category-row:visible');
+  await rows.first().waitFor({ state: 'visible' });
+
+  const assertRowsCentered = async (state) => {
+    const measurements = await rows.evaluateAll((elements) => elements.map((row) => {
+      const centerY = (element) => {
+        const box = element?.getBoundingClientRect();
+        return box ? box.y + box.height / 2 : null;
+      };
+      return {
+        row: centerY(row),
+        handle: centerY(row.querySelector(':scope > [data-drag-rearrange-handle]')),
+        toggle: centerY(row.querySelector(':scope > .templates-mobile-category-toggle')),
+        toggleIcon: centerY(row.querySelector(':scope > .templates-mobile-category-toggle svg')),
+        input: centerY(row.querySelector(':scope > input')),
+        count: centerY(row.querySelector(':scope > span')),
+      };
+    }));
+    assert.ok(measurements.length >= 2, `mobile: ${state} template exposes multiple category rows`);
+    measurements.forEach((measurement, index) => {
+      for (const part of ['handle', 'toggle', 'toggleIcon', 'input', 'count']) {
+        assert.notEqual(measurement[part], null, `mobile: ${state} category ${index} has ${part}`);
+        assertNear(measurement[part], measurement.row, `mobile: ${state} category ${index} ${part} is vertically centered`);
+      }
+    });
+  };
+
+  await assertRowsCentered('collapsed');
+  await activate(rows.first().locator('.templates-mobile-category-toggle'), touch, 'mobile');
+  await page.locator('.templates-mobile-items:visible').waitFor({ state: 'visible' });
+  await assertRowsCentered('expanded');
+  await artifacts.screenshot(page, 'mobile-template-category-rows-centered');
+}
+
 async function measureMobileHeader(page, tab) {
   const row = page.locator(`.${tab}-mobile-search-actions:visible`);
   const action = row.locator('.hub-mobile-primary-action:visible');
@@ -651,6 +688,7 @@ async function runDevice(device, baseUrl) {
     if (device === 'mobile') {
       await artifacts.time('mobile:safe-area-tabs', () => testMobileSafeAreaTabs(page, baseUrl));
       await artifacts.time('mobile:edge-swipe-back', () => testMobileEdgeSwipeBack(page, baseUrl, touch));
+      await artifacts.time('mobile:template-category-row-alignment', () => testMobileTemplateCategoryRowAlignment(page, baseUrl, touch));
     }
     await artifacts.time(`${device}:tab-search-sort-selection`, async () => {
       if (device === 'mobile') await testMobileHeaderParity(page, baseUrl);
@@ -672,7 +710,7 @@ async function runDevice(device, baseUrl) {
       device,
       viewport,
       input: device === 'mobile' ? touch.inputKind : 'desktop-mouse-keyboard',
-      coverage: 'first-visit-frame-continuity-safe-area-tabs-edge-swipe-back-search-filter-sort-selection-bulk-state-empty-loading-long-docs-viewer-exact-return-back-forward-refresh',
+      coverage: 'first-visit-frame-continuity-safe-area-tabs-edge-swipe-back-template-category-row-alignment-search-filter-sort-selection-bulk-state-empty-loading-long-docs-viewer-exact-return-back-forward-refresh',
       diagnostics,
       status: 'passed',
     });
