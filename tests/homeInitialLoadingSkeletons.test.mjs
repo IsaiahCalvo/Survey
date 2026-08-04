@@ -7,6 +7,7 @@ import { isScopedRequestCurrent } from '../src/hooks/scopedRequestGuard.js';
 const read = (path) => readFileSync(new URL(path, import.meta.url), 'utf8');
 const DASHBOARD = read('../src/Dashboard.jsx');
 const HUB = read('../src/home/SurveyHub.jsx');
+const HUB_SHELL = read('../src/home/HubShell.jsx');
 const SKELETONS = read('../src/home/HubLoadingSkeletons.jsx');
 const CSS = read('../src/home/hub.css');
 const PREVIEW = read('../src/home/HubPreview.jsx');
@@ -85,11 +86,15 @@ test('a late request from an old user or project cannot replace the current scop
   assert.match(DATABASE_HOOKS, /setLoadedTemplateScopeKey\(requestScopeKey\)/);
 });
 
-test('lazy tab loading never blanks the home screen', () => {
-  assert.doesNotMatch(HUB, /<Suspense fallback=\{null\}>[\s\S]{0,120}<ProjectsFolderTree/);
-  assert.doesNotMatch(HUB, /<Suspense fallback=\{null\}>[\s\S]{0,120}<TemplatesEditor/);
-  assert.match(HUB, /fallback=\{<HubLoadingSkeletons[^>]*tab="projects"/);
-  assert.match(HUB, /fallback=\{<HubLoadingSkeletons[^>]*tab="templates"/);
+test('primary tab navigation never waits on a first-visit code split', () => {
+  assert.match(HUB, /import ProjectsFolderTree from '\.\/ProjectsFolderTree'/);
+  assert.match(HUB, /import TemplatesEditor from '\.\/TemplatesEditor'/);
+  assert.doesNotMatch(HUB, /lazy\(\(\) => import\('\.\/ProjectsFolderTree'\)\)/);
+  assert.doesNotMatch(HUB, /lazy\(\(\) => import\('\.\/TemplatesEditor'\)\)/);
+  assert.match(HUB, /const navigateToTab = \(nextTab\) => \{[\s\S]*?startTransition\(\(\) => setTab\(nextTab\)\)/);
+  assert.match(HUB, /const common = \{ onNav: navigateToTab/);
+  const shellFrameEffect = HUB_SHELL.slice(HUB_SHELL.indexOf('export const HubShell'));
+  assert.match(shellFrameEffect, /useLayoutEffect\(\(\) => \{[\s\S]*?document\.documentElement\.classList\.add\(pageClass\)/);
 });
 
 test('skeletons mirror real desktop and mobile row geometry', () => {

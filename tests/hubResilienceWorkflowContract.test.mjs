@@ -30,6 +30,10 @@ test('runner defaults to exact mobile touch and desktop mouse contracts in paral
 
 test('runner covers tabs, discovery controls, bulk state, fixtures, lifecycle, and diagnostics', () => {
   for (const token of [
+    'testFirstVisitTabContinuity',
+    'first-visit-tab-frame-continuity',
+    'frame.hubPresent',
+    'frame.bodyFramed',
     'testDocuments',
     'testProjects',
     'testTemplates',

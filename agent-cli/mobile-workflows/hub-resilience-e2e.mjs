@@ -169,6 +169,63 @@ async function switchTab(page, touch, device, tab) {
   await waitForHub(page, tab);
 }
 
+async function beginHubFrameProbe(page) {
+  await page.evaluate(() => {
+    window.__hubFrameProbe = { active: true, frames: [] };
+    const sample = () => {
+      const probe = window.__hubFrameProbe;
+      if (!probe?.active) return;
+      const hub = document.querySelector('.survey-hub');
+      const main = hub?.querySelector('main');
+      const box = hub?.getBoundingClientRect();
+      probe.frames.push({
+        hubPresent: !!hub,
+        mainPresent: !!main,
+        mainChildren: main?.childElementCount || 0,
+        title: hub?.querySelector('h1')?.textContent?.trim() || '',
+        width: box?.width || 0,
+        height: box?.height || 0,
+        background: hub ? getComputedStyle(hub).backgroundColor : '',
+        bodyFramed: document.body.classList.contains('survey-hub-native-frame'),
+        rootFramed: document.getElementById('root')?.classList.contains('survey-hub-native-root') || false,
+      });
+      if (probe.frames.length < 120) requestAnimationFrame(sample);
+    };
+    requestAnimationFrame(sample);
+  });
+}
+
+async function endHubFrameProbe(page) {
+  return page.evaluate(() => new Promise((resolve) => {
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      const probe = window.__hubFrameProbe;
+      if (probe) probe.active = false;
+      resolve(probe?.frames || []);
+    }));
+  }));
+}
+
+async function testFirstVisitTabContinuity(page, baseUrl, touch, device) {
+  await gotoHub(page, baseUrl, 'documents');
+  for (const tab of ['projects', 'templates', 'documents']) {
+    await beginHubFrameProbe(page);
+    await switchTab(page, touch, device, tab);
+    const frames = await endHubFrameProbe(page);
+    assert.ok(frames.length >= 2, `${device}: ${tab} first switch sampled multiple painted frames`);
+    frames.forEach((frame, index) => {
+      assert.equal(frame.hubPresent, true, `${device}: ${tab} frame ${index} retains hub`);
+      assert.equal(frame.mainPresent, true, `${device}: ${tab} frame ${index} retains main content`);
+      assert.ok(frame.mainChildren > 0, `${device}: ${tab} frame ${index} never exposes an empty main`);
+      assert.ok(EDGE_TABS.some((name) => frame.title.toLowerCase() === name), `${device}: ${tab} frame ${index} retains a real tab heading`);
+      assert.equal(frame.width, WORKFLOW_VIEWPORTS[device].width, `${device}: ${tab} frame ${index} retains viewport width`);
+      assert.equal(frame.height, WORKFLOW_VIEWPORTS[device].height, `${device}: ${tab} frame ${index} retains viewport height`);
+      assert.equal(frame.background, 'rgb(13, 15, 20)', `${device}: ${tab} frame ${index} retains hub background`);
+      assert.equal(frame.bodyFramed, true, `${device}: ${tab} frame ${index} retains body frame class`);
+      assert.equal(frame.rootFramed, true, `${device}: ${tab} frame ${index} retains root frame class`);
+    });
+  }
+}
+
 async function fillVisibleSearch(page, placeholder, value) {
   const search = page.locator(`input[placeholder="${placeholder}"]:visible`);
   await search.waitFor({ state: 'visible', timeout: 30_000 });
@@ -514,6 +571,9 @@ async function runDevice(device, baseUrl) {
     assert.deepEqual(page.viewportSize(), viewport, `${device}: exact viewport`);
     if (device === 'mobile') assert.equal(touch.inputKind, 'trusted-cdp-touch', 'mobile: trusted touch required');
 
+    await artifacts.time(`${device}:first-visit-tab-frame-continuity`, () => (
+      testFirstVisitTabContinuity(page, baseUrl, touch, device)
+    ));
     await artifacts.time(`${device}:tab-search-sort-selection`, async () => {
       if (device === 'mobile') await testMobileHeaderParity(page, baseUrl);
       await gotoHub(page, baseUrl, 'documents', {}, { workflow: true });
@@ -534,7 +594,7 @@ async function runDevice(device, baseUrl) {
       device,
       viewport,
       input: device === 'mobile' ? touch.inputKind : 'desktop-mouse-keyboard',
-      coverage: 'tabs-search-filter-sort-selection-bulk-state-empty-loading-long-docs-viewer-exact-return-back-forward-refresh',
+      coverage: 'first-visit-frame-continuity-tabs-search-filter-sort-selection-bulk-state-empty-loading-long-docs-viewer-exact-return-back-forward-refresh',
       diagnostics,
       status: 'passed',
     });

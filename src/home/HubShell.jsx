@@ -1,7 +1,7 @@
 /* Survey Hub — shared shell + small presentational components.
    Ported from the Claude Design prototype (survey-hub/shell.jsx). All markup is
    rendered inside a `.survey-hub` root so hub.css stays fully scoped. */
-import { useState, useRef, useEffect, useContext, createContext } from 'react';
+import { useState, useRef, useEffect, useLayoutEffect, useContext, createContext } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 
 /* Friendly per-tier label used in the bottom-left profile chip. Maps the
@@ -285,12 +285,16 @@ const MobileRailNav = ({ mode, title, tab, navItems, onNav }) => {
   );
 };
 
-/* Sidebar + header frame. The three tabs are always rendered so the chrome
-   feels permanent; only the body content (children) changes per tab. */
+/* Sidebar + header frame. SurveyHub swaps complete tab shells atomically, so
+   this component owns the shared viewport and chrome contract for each tab. */
 export const HubShell = ({ tab, onNav, title, subtitle, actions, children, userName = 'You', userMeta = undefined, templatesLocked = false }) => {
   const expoNativeShell = isExpoNativeShell();
 
-  useEffect(() => {
+  // These classes define the mobile viewport itself. A passive effect can run
+  // after the browser paints, exposing one unframed page between tab shells.
+  // Layout effects hand the classes from the old shell to the new one before
+  // paint, so navigation has no white/blank frame.
+  useLayoutEffect(() => {
     const root = typeof document !== 'undefined' ? document.getElementById('root') : null;
     const pageClass = expoNativeShell ? 'survey-hub-native-frame' : 'survey-hub-mobile-scroll-page';
     const rootClass = expoNativeShell ? 'survey-hub-native-root' : 'survey-hub-mobile-scroll-root';

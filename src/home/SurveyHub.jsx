@@ -14,10 +14,10 @@
      onCreateProject()     — start the new-project flow
      onCreateTemplate()    — start the new-template flow
 */
-import { useState, useEffect, lazy, Suspense } from 'react';
+import { useState, useEffect, lazy, Suspense, startTransition } from 'react';
 import DocumentsLedger from './DocumentsLedger';
-const ProjectsFolderTree = lazy(() => import('./ProjectsFolderTree'));
-const TemplatesEditor = lazy(() => import('./TemplatesEditor'));
+import ProjectsFolderTree from './ProjectsFolderTree';
+import TemplatesEditor from './TemplatesEditor';
 import ShareModal from './ShareModal';
 import AccessManagementModal from './AccessManagementModal';
 import { HubChromeContext } from './HubShell';
@@ -69,6 +69,14 @@ export default function SurveyHub({
     try { localStorage.setItem(TAB_KEY, tab); } catch { /* storage unavailable — non-fatal */ }
   }, [tab]);
 
+  // Documents, Projects, and Templates are primary navigation, not optional
+  // features. Keep their code eager and retain the current frame while React
+  // prepares the next tab so a first visit can never expose a blank shell.
+  const navigateToTab = (nextTab) => {
+    if (nextTab === tab) return;
+    startTransition(() => setTab(nextTab));
+  };
+
   const shareDocuments = (docs) => {
     if (!docs || !docs.length) return;
     const single = docs.length === 1 ? docs[0] : null;
@@ -91,7 +99,7 @@ export default function SurveyHub({
     if (template) setShare({ kind: 'template', name: template.name, item: template, manage: false });
   };
 
-  const common = { onNav: setTab, user, templatesLocked: false };
+  const common = { onNav: navigateToTab, user, templatesLocked: false };
 
   /* Clicking "Settings" in the profile menu opens the settings page as a
      full-screen view over the hub. We still forward to the parent's
@@ -126,7 +134,6 @@ export default function SurveyHub({
         projectsInitialLoading ? (
           <HubLoadingSkeletons {...common} tab="projects" />
         ) : (
-        <Suspense fallback={<HubLoadingSkeletons {...common} tab="projects" />}>
           <ProjectsFolderTree
             {...common}
             projects={projects}
@@ -144,14 +151,12 @@ export default function SurveyHub({
             onShare={shareProject}
             onShareDocument={shareDocuments}
           />
-        </Suspense>
         )
       )}
       {tab === 'templates' && (
         templatesInitialLoading ? (
           <HubLoadingSkeletons {...common} tab="templates" />
         ) : (
-        <Suspense fallback={<HubLoadingSkeletons {...common} tab="templates" />}>
           <TemplatesEditor
             {...common}
             templates={templates}
@@ -161,7 +166,6 @@ export default function SurveyHub({
             onShare={shareTemplate}
             getChecklistItemUsageCount={getChecklistItemUsageCount}
           />
-        </Suspense>
         )
       )}
 
