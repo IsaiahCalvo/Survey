@@ -304,7 +304,7 @@ export default function ProjectsFolderTree({
     setFileSearch('');
     setSelFiles(new Set());
   }, []);
-  useMobileEdgeSwipeBack({
+  const captureMobileProjectList = useMobileEdgeSwipeBack({
     enabled: Boolean(mobileDrillProject) && !teamModalProject,
     onBack: closeMobileProject,
     surfaceRef: mobileSwipeSurfaceRef,
@@ -1305,6 +1305,7 @@ export default function ProjectsFolderTree({
                                 toggleProjSel(p.id);
                                 return;
                               }
+                              captureMobileProjectList();
                               setOpenId(p.id);
                               setMobileDrillOpenId(p.id);
                               setFileSearch('');

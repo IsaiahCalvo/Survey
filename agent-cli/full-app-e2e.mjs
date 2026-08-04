@@ -8,7 +8,7 @@ const args = process.argv.slice(2);
 const valueArg = (name, fallback) => args.find((arg) => arg.startsWith(`${name}=`))?.slice(name.length + 1) || fallback;
 const device = valueArg('--device', 'all');
 const serial = args.includes('--serial');
-const requestedSuites = new Set(valueArg('--suite', 'annotations,advanced,viewer,projects,surveys,hub').split(',').filter(Boolean));
+const requestedSuites = new Set(valueArg('--suite', 'annotations,advanced,viewer,projects,surveys,hub,stability').split(',').filter(Boolean));
 
 if (!['mobile', 'desktop', 'all'].includes(device)) {
   throw new Error(`Unsupported --device=${device}; use mobile, desktop, or all`);
@@ -48,6 +48,11 @@ const suites = [
     id: 'hub',
     devices: ['mobile', 'desktop'],
     command: ['node', 'agent-cli/mobile-workflows/hub-resilience-e2e.mjs', `--device=${device}`],
+  },
+  {
+    id: 'stability',
+    devices: ['mobile'],
+    command: ['node', 'agent-cli/mobile-workflows/document-idle-stability-e2e.mjs'],
   },
 ].filter((suite) => requestedSuites.has(suite.id))
   .filter((suite) => device === 'all' || suite.devices.includes(device));

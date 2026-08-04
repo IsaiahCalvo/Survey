@@ -22,6 +22,7 @@ node agent-cli/full-app-e2e.mjs --suite=viewer --device=all
 node agent-cli/full-app-e2e.mjs --suite=projects --device=all
 node agent-cli/full-app-e2e.mjs --suite=surveys --device=all
 node agent-cli/full-app-e2e.mjs --suite=hub --device=all
+node agent-cli/full-app-e2e.mjs --suite=stability --device=mobile
 ```
 
 `FAST` suites use development-only fixture routes and exact browser storage
@@ -42,6 +43,8 @@ assertions. They do not claim Supabase durability.
   created survey open; mobile Survey Marker lifecycle; template cleanup.
 - Mobile and desktop tabs, search, sorting, selection/bulk state, empty and
   loading states, long lists, exact-tab return, browser back/forward, refresh.
+- A 60-document mobile idle/scroll/open stress run that bounds rendered PDF
+  thumbnails and fails on a page crash, uncaught error, or dead viewer canvas.
 
 Each suite records input type, viewport, lifecycle, exact persistence
 assertions, browser diagnostics, timings, and screenshots in its JSON artifact.

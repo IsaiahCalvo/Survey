@@ -304,12 +304,13 @@ async function testMobileSafeAreaTabs(page, baseUrl) {
 }
 
 async function testMobileEdgeSwipeBack(page, baseUrl, touch) {
-  const readSwipeSurface = () => page.locator('.survey-hub .main').evaluate((element) => {
+  const readSwipeSurface = () => page.locator('.survey-hub .main:not([data-mobile-swipe-underlay="true"])').evaluate((element) => {
     const matrix = new DOMMatrixReadOnly(getComputedStyle(element).transform);
     return {
       phase: element.dataset.mobileSwipePhase || '',
       translateX: matrix.m41,
       transitionDuration: getComputedStyle(element).transitionDuration,
+      underlayText: document.querySelector('[data-mobile-swipe-underlay="true"]')?.textContent?.replace(/\s+/g, ' ').trim() || '',
     };
   });
   const dragToAndHold = async (start, end) => {
@@ -338,8 +339,9 @@ async function testMobileEdgeSwipeBack(page, baseUrl, touch) {
   const projectDrag = await readSwipeSurface();
   assert.equal(projectDrag.phase, 'dragging', 'mobile: project page enters interactive drag phase');
   assert(projectDrag.translateX >= 35 && projectDrag.translateX <= 50, `mobile: project page follows finger (${projectDrag.translateX}px)`);
+  assert.match(projectDrag.underlayText, /Tower 5|Lab Reno|MEP Phase/, 'mobile: project list is already rendered beneath the drag');
   await touch.end();
-  await page.waitForFunction(() => !document.querySelector('.survey-hub .main')?.dataset.mobileSwipePhase);
+  await page.waitForFunction(() => !document.querySelector('.survey-hub .main:not([data-mobile-swipe-underlay="true"])')?.dataset.mobileSwipePhase);
   assert.equal(await page.locator('.projects-mobile-back-button:visible').count(), 1, 'mobile: short edge drag does not leave project');
   await touch.drag({ x: 40, y: 320 }, { x: 180, y: 322 });
   assert.equal(await page.locator('.projects-mobile-back-button:visible').count(), 1, 'mobile: swipe away from edge does not leave project');
@@ -351,8 +353,10 @@ async function testMobileEdgeSwipeBack(page, baseUrl, touch) {
   const projectSettle = await readSwipeSurface();
   assert.equal(projectSettle.phase, 'completing', 'mobile: project swipe animates to completion after release');
   assert.notEqual(projectSettle.transitionDuration, '0s', 'mobile: project completion has visible duration');
-  await page.locator('.projects-mobile-folder-row.drill:visible').first().waitFor({ state: 'visible' });
-  assert.equal(await page.locator('.projects-mobile-back-button:visible').count(), 0, 'mobile: right swipe from left edge returns to projects');
+  await page.locator('.survey-hub .main:not([data-mobile-swipe-underlay="true"]) .projects-mobile-folder-row.drill:visible').first().waitFor({ state: 'visible' });
+  await page.locator('[data-mobile-swipe-underlay="true"]').waitFor({ state: 'detached' });
+  assert.equal(await page.locator('.survey-hub .main:not([data-mobile-swipe-underlay="true"]) .projects-mobile-back-button:visible').count(), 0, 'mobile: right swipe from left edge returns to projects');
+  assert.equal(await page.locator('[data-mobile-swipe-underlay="true"]').count(), 0, 'mobile: project swipe underlay is removed after navigation');
 
   await gotoHub(page, baseUrl, 'templates');
   const template = page.locator('.templates-mobile-row:visible').first();
@@ -362,9 +366,11 @@ async function testMobileEdgeSwipeBack(page, baseUrl, touch) {
   const templateDrag = await readSwipeSurface();
   assert.equal(templateDrag.phase, 'dragging', 'mobile: template page enters interactive drag phase');
   assert(templateDrag.translateX >= 120, `mobile: template page visibly follows finger (${templateDrag.translateX}px)`);
+  assert.match(templateDrag.underlayText, /Security Walk-Through|MEP As-Built/, 'mobile: template list is already rendered beneath the drag');
   await touch.end();
-  await page.locator('.templates-mobile-browser:visible').waitFor({ state: 'visible' });
-  assert.equal(await page.locator('.templates-mobile-detail:visible').count(), 0, 'mobile: right swipe from left edge returns to templates');
+  await page.locator('.survey-hub .main:not([data-mobile-swipe-underlay="true"]) .templates-mobile-browser:visible').waitFor({ state: 'visible' });
+  await page.locator('[data-mobile-swipe-underlay="true"]').waitFor({ state: 'detached' });
+  assert.equal(await page.locator('.survey-hub .main:not([data-mobile-swipe-underlay="true"]) .templates-mobile-detail:visible').count(), 0, 'mobile: right swipe from left edge returns to templates');
   await artifacts.screenshot(page, 'mobile-edge-swipe-back-complete');
 }
 
@@ -384,7 +390,7 @@ async function testMobileTemplateCategoryRowAlignment(page, baseUrl, touch) {
         row: centerY(row),
         handle: centerY(row.querySelector(':scope > [data-drag-rearrange-handle]')),
         toggle: centerY(row.querySelector(':scope > .templates-mobile-category-toggle')),
-        toggleIcon: centerY(row.querySelector(':scope > .templates-mobile-category-toggle > span')),
+        toggleIcon: centerY(row.querySelector(':scope > .templates-mobile-category-toggle > svg')),
         input: centerY(row.querySelector(':scope > input')),
         count: centerY(row.querySelector(':scope > span')),
       };
@@ -416,11 +422,15 @@ async function testTemplateDisclosureIconParity(page, baseUrl, touch, device) {
   }
   await toggle.waitFor({ state: 'visible' });
   const rendered = await toggle.evaluate((element) => ({
-    glyph: element.textContent.trim(),
     hasSvg: Boolean(element.querySelector('svg')),
+    glyphWidth: element.querySelector('svg')?.getBoundingClientRect().width || 0,
+    glyphHeight: element.querySelector('svg')?.getBoundingClientRect().height || 0,
+    strokeWidth: element.querySelector('svg path')?.getAttribute('stroke-width') || '',
   }));
-  assert.equal(rendered.glyph, '›', `${device}: category disclosure uses desktop/web chevron`);
-  assert.equal(rendered.hasSvg, false, `${device}: category disclosure does not substitute a mobile-only arrow icon`);
+  assert.equal(rendered.hasSvg, true, `${device}: category disclosure uses the shared desktop/web SVG chevron`);
+  assert.equal(rendered.glyphWidth, 18, `${device}: shared category chevron is large enough to read`);
+  assert.equal(rendered.glyphHeight, 18, `${device}: shared category chevron stays square`);
+  assert.equal(rendered.strokeWidth, '2', `${device}: shared category chevron keeps readable weight`);
   await activate(toggle, touch, device);
   if (device === 'mobile') {
     const expandedToggle = page.locator('.templates-mobile-category-toggle[aria-label^="Collapse"]:visible').first();
@@ -597,7 +607,7 @@ async function testMobileHeaderParity(page, baseUrl) {
   for (const tab of EDGE_TABS) {
     assertNear(metrics[tab].card.y - metrics[tab].body.y, 8, `mobile: ${tab} first card has the shared top gap`);
     assertNear(metrics[tab].card.width, 370, `mobile: ${tab} card uses the shared width`);
-    assertNear(metrics[tab].card.height, 76, `mobile: ${tab} card uses the shared height`);
+    assertNear(metrics[tab].card.height, 64, `mobile: ${tab} card uses the slimmer shared height`);
     assert.ok(metrics[tab].card.scrollHeight <= metrics[tab].card.clientHeight, `mobile: ${tab} card content is not vertically clipped`);
   }
 

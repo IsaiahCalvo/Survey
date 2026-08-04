@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 
 export const MOBILE_EDGE_SWIPE_START_PX = 24;
 export const MOBILE_EDGE_SWIPE_CLAIM_PX = 12;
@@ -52,7 +52,14 @@ export function shouldCompleteMobileEdgeSwipe({ distance, velocityX = 0, viewpor
  */
 export default function useMobileEdgeSwipeBack({ enabled, onBack, surfaceRef }) {
   const onBackRef = useRef(onBack);
+  const destinationSnapshotRef = useRef(null);
   useEffect(() => { onBackRef.current = onBack; }, [onBack]);
+
+  const captureBackDestination = useCallback(() => {
+    const surface = surfaceRef?.current;
+    if (!surface) return;
+    destinationSnapshotRef.current = surface.cloneNode(true);
+  }, [surfaceRef]);
 
   useEffect(() => {
     if (!enabled || typeof window === 'undefined') return undefined;
@@ -62,6 +69,7 @@ export default function useMobileEdgeSwipeBack({ enabled, onBack, surfaceRef }) 
     let frame = 0;
     let settleTimer = 0;
     let surfaceSnapshot = null;
+    let underlay = null;
     const surface = surfaceRef?.current || null;
     const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
@@ -73,6 +81,8 @@ export default function useMobileEdgeSwipeBack({ enabled, onBack, surfaceRef }) 
       surface.style.transition = surfaceSnapshot.transition;
       surface.style.willChange = surfaceSnapshot.willChange;
       surface.style.removeProperty('--mobile-edge-swipe-x');
+      underlay?.remove();
+      underlay = null;
       surfaceSnapshot = null;
     };
     const reset = () => {
@@ -87,6 +97,14 @@ export default function useMobileEdgeSwipeBack({ enabled, onBack, surfaceRef }) 
         transition: surface.style.transition,
         willChange: surface.style.willChange,
       };
+      if (destinationSnapshotRef.current && surface.parentNode) {
+        underlay = destinationSnapshotRef.current.cloneNode(true);
+        underlay.classList.add('mobile-edge-swipe-underlay');
+        underlay.dataset.mobileSwipeUnderlay = 'true';
+        underlay.setAttribute('aria-hidden', 'true');
+        underlay.setAttribute('inert', '');
+        surface.parentNode.insertBefore(underlay, surface);
+      }
       surface.classList.add('mobile-edge-swipe-surface', 'mobile-edge-swipe-active');
       surface.dataset.mobileSwipePhase = 'dragging';
       surface.style.transition = 'none';
@@ -97,6 +115,11 @@ export default function useMobileEdgeSwipeBack({ enabled, onBack, surfaceRef }) 
       const bounded = mobileEdgeSwipeProgress(distance, window.innerWidth) * window.innerWidth;
       surface.style.setProperty('--mobile-edge-swipe-x', `${bounded}px`);
       surface.style.transform = 'translate3d(var(--mobile-edge-swipe-x), 0, 0)';
+      if (underlay) {
+        const progress = mobileEdgeSwipeProgress(bounded, window.innerWidth);
+        underlay.style.transform = `translate3d(${Math.round((progress - 1) * window.innerWidth * 0.12)}px, 0, 0)`;
+        underlay.style.opacity = String(0.82 + progress * 0.18);
+      }
     };
     const scheduleDistance = (distance) => {
       if (!surface) return;
@@ -128,8 +151,12 @@ export default function useMobileEdgeSwipeBack({ enabled, onBack, surfaceRef }) 
       gesture = null;
       settleTimer = window.setTimeout(() => {
         settleTimer = 0;
-        if (complete) onBackRef.current?.();
-        restoreSurface();
+        if (complete) {
+          onBackRef.current?.();
+          requestAnimationFrame(restoreSurface);
+        } else {
+          restoreSurface();
+        }
       }, duration + 34);
     };
     const pointFrom = (touch) => ({ x: touch.clientX, y: touch.clientY });
@@ -225,4 +252,6 @@ export default function useMobileEdgeSwipeBack({ enabled, onBack, surfaceRef }) 
       document.removeEventListener('touchcancel', onTouchCancel, true);
     };
   }, [enabled, surfaceRef]);
+
+  return captureBackDestination;
 }

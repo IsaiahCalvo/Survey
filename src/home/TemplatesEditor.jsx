@@ -82,7 +82,16 @@ import { closeButtonStyle, miniButtonStyle, miniSelectButtonStyle, moreButtonSty
 /* Desktop/web already use this quiet chevron for category disclosure. Keep
    one shared glyph so mobile cannot drift to a different arrow treatment. */
 const CategoryDisclosureGlyph = () => (
-  <span aria-hidden="true" style={{ display: 'block', fontSize: 13, lineHeight: 1 }}>›</span>
+  <svg
+    aria-hidden="true"
+    viewBox="0 0 18 18"
+    width="18"
+    height="18"
+    fill="none"
+    style={{ display: 'block', flex: 'none' }}
+  >
+    <path d="M6.75 3.75 12 9l-5.25 5.25" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+  </svg>
 );
 
 const CATEGORY_COLLAPSE_TRANSITION = 'grid-template-rows 0.18s ease, opacity 0.16s ease';
@@ -909,7 +918,7 @@ export default function TemplatesEditor({
     setSelEntities(new Set());
   }, []);
   const mobileSwipeSurfaceRef = useRef(null);
-  useMobileEdgeSwipeBack({
+  const captureMobileTemplateList = useMobileEdgeSwipeBack({
     enabled: mobileTemplateOpen && !mobileEntitiesOpen,
     onBack: closeMobileTemplate,
     surfaceRef: mobileSwipeSurfaceRef,
@@ -2348,6 +2357,7 @@ export default function TemplatesEditor({
                                   toggleTplSel(t.id);
                                   return;
                                 }
+                                captureMobileTemplateList();
                                 setSelected(t.id);
                                 setOpenCat(-1);
                                 setOpenMod(0);
