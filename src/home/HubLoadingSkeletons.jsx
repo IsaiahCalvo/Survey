@@ -185,7 +185,6 @@ const ProjectsSkeleton = () => (
         {MOBILE_ROWS.map((row) => (
           <div key={row} className="projects-mobile-folder-row drill reorderable hub-loading-mobile-row">
             <Block style={{ width: 14, height: 14, justifySelf: 'center' }} />
-            <Block style={{ width: 40, height: 40, borderRadius: 8 }} />
             <span className="hub-loading-copy"><Block style={{ width: row % 2 ? '64%' : '80%', height: 11 }} /><Block style={{ width: '48%', height: 8 }} /></span>
             <Block style={{ width: 18, height: 18, justifySelf: 'center' }} />
           </div>
@@ -222,7 +221,6 @@ const TemplatesSkeleton = () => (
           {MOBILE_ROWS.map((row) => (
             <div key={row} className="templates-mobile-row reorderable hub-loading-mobile-row">
               <Block style={{ width: 14, height: 14, justifySelf: 'center' }} />
-              <Block style={{ width: 40, height: 40, borderRadius: 8 }} />
               <span className="hub-loading-copy"><Block style={{ width: row % 2 ? '66%' : '82%', height: 11 }} /><Block style={{ width: '50%', height: 8 }} /></span>
               <Block style={{ width: 18, height: 18, justifySelf: 'center' }} />
             </div>

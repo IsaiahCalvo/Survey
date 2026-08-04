@@ -43,6 +43,13 @@ test('mock-only workflow exposes exact persisted models and stable row ids', () 
   assert.match(projects, /data-document-id=\{f\.id\}/);
 });
 
+test('mobile project list rows omit the decorative folder icon', () => {
+  const rowStart = projects.indexOf('data-project-id={p.id}');
+  const rowEnd = projects.indexOf('</SortableRearrangeRow>', rowStart);
+  assert.ok(rowStart >= 0 && rowEnd > rowStart);
+  assert.doesNotMatch(projects.slice(rowStart, rowEnd), /projects-mobile-folder-glyph/);
+});
+
 test('project/document harness defaults to parallel mobile and desktop model contracts', () => {
   assert.match(harness, /device: 'all'/);
   assert.match(harness, /Promise\.allSettled\(devices\.map/);

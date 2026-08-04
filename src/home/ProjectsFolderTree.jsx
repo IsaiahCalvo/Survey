@@ -1315,7 +1315,6 @@ export default function ProjectsFolderTree({
                                 style={{ width: 24, height: 24 }}
                               />
                             )}
-                            <span className="projects-mobile-folder-glyph"><Icon name="folder" size={17} /></span>
                             <span className="projects-mobile-folder-copy">
                               <strong>{p.name}</strong>
                               <small>{projectFileCount(p.id)} files · {projectLastEditedLabel(p.id)}</small>

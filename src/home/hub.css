@@ -1442,7 +1442,7 @@
   }
 
   .survey-hub .projects-mobile-folder-row.reorderable {
-    grid-template-columns: 24px 40px minmax(0, 1fr) 28px;
+    grid-template-columns: 24px minmax(0, 1fr) 28px;
   }
 
   .survey-hub .projects-mobile-folder-row.active,
@@ -2147,17 +2147,7 @@
   }
 
   .survey-hub .templates-mobile-row.reorderable {
-    grid-template-columns: 24px 40px minmax(0, 1fr) 28px;
-  }
-
-  .survey-hub .templates-mobile-glyph {
-    width: 40px;
-    height: 40px;
-    border-radius: 8px;
-    display: grid;
-    place-items: center;
-    background: rgba(194,147,230,0.16);
-    color: var(--lilac);
+    grid-template-columns: 24px minmax(0, 1fr) 28px;
   }
 
   .survey-hub .templates-mobile-copy {

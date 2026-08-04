@@ -29,3 +29,7 @@ test('module rename input is not nested in a disabled drag control', () => {
   assert.match(EDITOR, /\{\.\.\.\(!isRenaming \? attributes : \{\}\)\}/);
   assert.match(EDITOR, /\{\.\.\.\(!isRenaming \? listeners : \{\}\)\}/);
 });
+
+test('mobile template list rows omit the decorative clipboard icon', () => {
+  assert.doesNotMatch(EDITOR, /templates-mobile-glyph/);
+});

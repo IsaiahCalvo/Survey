@@ -2358,7 +2358,6 @@ export default function TemplatesEditor({
                                 isDragging={isDragging}
                                 style={{ width: 24, height: 24 }}
                               />
-                              <span className="templates-mobile-glyph"><Icon name="template" size={16} /></span>
                               <span className="templates-mobile-copy">
                                 <strong>{t.name}</strong>
                                 <small>{t.modules.length} modules · {t.modules.reduce((sum, mod) => sum + (mod.categories || []).length, 0)} categories · {t.roster.length} entities</small>
