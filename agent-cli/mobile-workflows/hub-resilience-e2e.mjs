@@ -384,7 +384,7 @@ async function testMobileTemplateCategoryRowAlignment(page, baseUrl, touch) {
         row: centerY(row),
         handle: centerY(row.querySelector(':scope > [data-drag-rearrange-handle]')),
         toggle: centerY(row.querySelector(':scope > .templates-mobile-category-toggle')),
-        toggleIcon: centerY(row.querySelector(':scope > .templates-mobile-category-toggle svg')),
+        toggleIcon: centerY(row.querySelector(':scope > .templates-mobile-category-toggle > span')),
         input: centerY(row.querySelector(':scope > input')),
         count: centerY(row.querySelector(':scope > span')),
       };
@@ -403,6 +403,34 @@ async function testMobileTemplateCategoryRowAlignment(page, baseUrl, touch) {
   await page.locator('.templates-mobile-items:visible').waitFor({ state: 'visible' });
   await assertRowsCentered('expanded');
   await artifacts.screenshot(page, 'mobile-template-category-rows-centered');
+}
+
+async function testTemplateDisclosureIconParity(page, baseUrl, touch, device) {
+  await gotoHub(page, baseUrl, 'templates');
+  let toggle;
+  if (device === 'mobile') {
+    await activate(page.locator('.templates-mobile-row:visible').first(), touch, device);
+    toggle = page.locator('.templates-mobile-category-toggle:visible').first();
+  } else {
+    toggle = page.locator('button[title="Expand"]:visible').first();
+  }
+  await toggle.waitFor({ state: 'visible' });
+  const rendered = await toggle.evaluate((element) => ({
+    glyph: element.textContent.trim(),
+    hasSvg: Boolean(element.querySelector('svg')),
+  }));
+  assert.equal(rendered.glyph, '›', `${device}: category disclosure uses desktop/web chevron`);
+  assert.equal(rendered.hasSvg, false, `${device}: category disclosure does not substitute a mobile-only arrow icon`);
+  await activate(toggle, touch, device);
+  if (device === 'mobile') {
+    const expandedToggle = page.locator('.templates-mobile-category-toggle[aria-label^="Collapse"]:visible').first();
+    await expandedToggle.waitFor({ state: 'visible' });
+    assert.match(await expandedToggle.getAttribute('aria-label'), /^Collapse /, 'mobile: shared disclosure control expands the category');
+  } else {
+    const expandedToggle = page.locator('button[title="Collapse"]:visible').first();
+    await expandedToggle.waitFor({ state: 'visible' });
+    assert.equal(await expandedToggle.getAttribute('title'), 'Collapse', 'desktop: shared disclosure control expands the category');
+  }
 }
 
 async function testMobileEntitiesModalCentering(page, baseUrl, touch) {
@@ -789,6 +817,9 @@ async function runDevice(device, baseUrl) {
     await artifacts.time(`${device}:first-visit-tab-frame-continuity`, () => (
       testFirstVisitTabContinuity(page, baseUrl, touch, device)
     ));
+    await artifacts.time(`${device}:template-disclosure-icon-parity`, () => (
+      testTemplateDisclosureIconParity(page, baseUrl, touch, device)
+    ));
     if (device === 'mobile') {
       await artifacts.time('mobile:safe-area-tabs', () => testMobileSafeAreaTabs(page, baseUrl));
       await artifacts.time('mobile:edge-swipe-back', () => testMobileEdgeSwipeBack(page, baseUrl, touch));
@@ -815,7 +846,7 @@ async function runDevice(device, baseUrl) {
       device,
       viewport,
       input: device === 'mobile' ? touch.inputKind : 'desktop-mouse-keyboard',
-      coverage: 'first-visit-frame-continuity-safe-area-tabs-edge-swipe-back-template-category-row-alignment-entities-modal-centering-search-filter-sort-selection-bulk-state-empty-loading-long-docs-viewer-exact-return-back-forward-refresh',
+      coverage: 'first-visit-frame-continuity-template-disclosure-icon-parity-safe-area-tabs-edge-swipe-back-template-category-row-alignment-entities-modal-centering-search-filter-sort-selection-bulk-state-empty-loading-long-docs-viewer-exact-return-back-forward-refresh',
       diagnostics,
       status: 'passed',
     });

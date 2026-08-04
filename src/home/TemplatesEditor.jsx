@@ -79,6 +79,12 @@ import { moveItemById } from '../reorder/flatReorderUtils.js';
 import { pickByIds, removeByIds, duplicateAfterByIds } from './selectionById.js';
 import { closeButtonStyle, miniButtonStyle, miniSelectButtonStyle, moreButtonStyle } from './hubControls';
 
+/* Desktop/web already use this quiet chevron for category disclosure. Keep
+   one shared glyph so mobile cannot drift to a different arrow treatment. */
+const CategoryDisclosureGlyph = () => (
+  <span aria-hidden="true" style={{ display: 'block', fontSize: 13, lineHeight: 1 }}>›</span>
+);
+
 const CATEGORY_COLLAPSE_TRANSITION = 'grid-template-rows 0.18s ease, opacity 0.16s ease';
 const TEMPLATE_ORDER_STORAGE_KEY = 'surveyHub.templateOrder';
 const animateCategoryLayoutChanges = undefined;
@@ -1932,7 +1938,7 @@ export default function TemplatesEditor({
                             transform: open ? 'rotate(90deg)' : 'none', transition: 'transform .15s',
                             width: 20, height: 20, display: 'flex', alignItems: 'center', justifyContent: 'center',
                           }}
-                        >›</button>
+                        ><CategoryDisclosureGlyph /></button>
                         <input
                           className="inline-edit cat-title"
                           defaultValue={c.name}
@@ -2518,7 +2524,7 @@ export default function TemplatesEditor({
                                     e.stopPropagation();
                                     setOpenCat(open ? -1 : ci);
                                   }}
-                                ><Icon name="arrow-r" size={13} /></button>
+                                ><CategoryDisclosureGlyph /></button>
                                 <input
                                   className="templates-mobile-inline-input"
                                   defaultValue={c.name}

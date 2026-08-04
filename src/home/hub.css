@@ -2573,7 +2573,7 @@
     transform: rotate(0deg);
   }
 
-  .survey-hub .templates-mobile-category-toggle svg {
+  .survey-hub .templates-mobile-category-toggle > span {
     display: block;
   }
 

@@ -33,3 +33,9 @@ test('module rename input is not nested in a disabled drag control', () => {
 test('mobile template list rows omit the decorative clipboard icon', () => {
   assert.doesNotMatch(EDITOR, /templates-mobile-glyph/);
 });
+
+test('desktop and mobile category rows share the same disclosure glyph', () => {
+  assert.match(EDITOR, /const CategoryDisclosureGlyph = \(\) =>/);
+  assert.equal((EDITOR.match(/<CategoryDisclosureGlyph \/>/g) || []).length, 2);
+  assert.doesNotMatch(EDITOR, /templates-mobile-category-toggle[\s\S]{0,500}<Icon name="arrow-r"/);
+});
