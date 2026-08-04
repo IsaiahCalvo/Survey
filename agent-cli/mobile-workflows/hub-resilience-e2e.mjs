@@ -203,13 +203,29 @@ async function measureMobileHeader(page, tab) {
   const action = row.locator('.hub-mobile-primary-action:visible');
   const search = row.locator('input:visible');
   const select = page.locator('.header-subtitle:visible .mobile-header-select-button');
+  await row.waitFor({ state: 'visible', timeout: 30_000 });
+  await action.waitFor({ state: 'visible', timeout: 30_000 });
+  await search.waitFor({ state: 'visible', timeout: 30_000 });
+  await select.waitFor({ state: 'visible', timeout: 30_000 });
   assert.equal(await row.count(), 1, `mobile: one ${tab} search/action row`);
   assert.equal(await action.count(), 1, `mobile: one ${tab} primary action`);
   assert.equal(await search.count(), 1, `mobile: one ${tab} search input`);
   assert.equal(await select.count(), 1, `mobile: one ${tab} Select control`);
+  const actionTypography = await action.evaluate((element) => {
+    const style = getComputedStyle(element);
+    return {
+      fontSize: style.fontSize,
+      whiteSpace: style.whiteSpace,
+      clientWidth: element.clientWidth,
+      scrollWidth: element.scrollWidth,
+      clientHeight: element.clientHeight,
+      scrollHeight: element.scrollHeight,
+    };
+  });
   return {
     row: await requiredBox(row, `${tab} search/action row`),
     action: await requiredBox(action, `${tab} primary action`),
+    actionTypography,
     search: await requiredBox(search, `${tab} search input`),
     select: await requiredBox(select, `${tab} Select control`),
   };
@@ -230,8 +246,16 @@ async function testMobileHeaderParity(page, baseUrl) {
         assertNear(candidate[key][field], reference[key][field], `mobile: ${tab} ${key} ${field} matches Documents`);
       }
     }
+    assert.equal(candidate.actionTypography.fontSize, reference.actionTypography.fontSize, `mobile: ${tab} primary-action font size matches Documents`);
     assertNear(candidate.select.x, reference.select.x, `mobile: ${tab} Select left alignment`);
     assertNear(candidate.select.y, reference.select.y, `mobile: ${tab} Select row alignment`);
+  }
+  for (const tab of EDGE_TABS) {
+    const typography = metrics[tab].actionTypography;
+    assert.equal(typography.fontSize, '11.5px', `mobile: ${tab} primary action uses the shared font token`);
+    assert.equal(typography.whiteSpace, 'nowrap', `mobile: ${tab} primary action cannot wrap`);
+    assert.ok(typography.scrollWidth <= typography.clientWidth, `mobile: ${tab} primary action text is not horizontally clipped`);
+    assert.ok(typography.scrollHeight <= typography.clientHeight, `mobile: ${tab} primary action text is not vertically clipped`);
   }
   assertNear(reference.action.width, 112, 'mobile: shared primary-action width');
 

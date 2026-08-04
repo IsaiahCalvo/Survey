@@ -533,6 +533,7 @@
   .survey-hub {
     --mobile-header-h: 140px;
     --mobile-tabs-h: calc(56px + var(--native-safe-area-bottom, env(safe-area-inset-bottom, 0px)));
+    --hub-mobile-primary-action-font-size: 11.5px;
     position: relative;
     width: 100vw;
     min-height: 100dvh;
@@ -817,7 +818,6 @@
     width: 112px;
     min-width: 112px;
     padding: 0 10px;
-    font-size: 11.5px;
     justify-content: center;
     white-space: nowrap;
   }
@@ -827,7 +827,10 @@
     min-width: 112px;
     height: 28px;
     padding-inline: 10px;
+    font-size: var(--hub-mobile-primary-action-font-size);
     justify-content: center;
+    flex-wrap: nowrap;
+    white-space: nowrap;
   }
 
   .survey-hub .documents-desktop-upload {
