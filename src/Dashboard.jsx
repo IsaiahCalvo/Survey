@@ -1656,41 +1656,6 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
     };
   }, [handleDocumentClick]);
 
-  const handleDeleteDocument = async (docId, event) => {
-    event.stopPropagation();
-
-    console.log('[DocumentDelete] single:click', JSON.stringify({ docId }));
-
-    const confirmed = await askConfirm({
-      title: 'Delete this document?',
-      message: 'Are you sure you want to delete this document? This action cannot be undone.',
-      confirmLabel: 'Delete document',
-      danger: true,
-    });
-    if (!confirmed) {
-      console.log('[DocumentDelete] single:cancelled', JSON.stringify({ docId }));
-      return;
-    }
-
-    try {
-      console.log('[DocumentDelete] single:confirmed', JSON.stringify({ docId }));
-      // Optimistic update
-      setDocuments(prev => prev.filter(doc => doc.id !== docId));
-
-      // Find the document to get the file path
-      const doc = documents.find(d => d.id === docId);
-      const filePath = doc?.file_path || doc?.filePath;
-
-      await deleteDocumentEverywhere({ docId, filePath, source: 'single-document-button' });
-      await refetchDocuments();
-    } catch (error) {
-      console.error('[DocumentDelete] single:error', serializeError(error));
-      showToast('Failed to delete document: ' + error.message, 'error');
-      // Revert optimistic update if needed, but refetching should handle it
-      await refetchDocuments();
-    }
-  };
-
   /* KAL-82 slice 2 — the legacy template-modal UI is gone (home-redesign
      409b0325 stopped rendering it; 3cb37412 deleted its JSX), but these two
      openers are still invoked by live buttons: TemplatesEditor's "New
