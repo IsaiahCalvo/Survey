@@ -1816,17 +1816,22 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
   // Delete the given documents everywhere: hard-deletes each row (cascading its
   // annotation log, snapshot, and child rows), removes the stored PDF, and purges
   // the local durable copy.
+  // UX: this is the ONE and ONLY delete confirmation for documents — the hub's
+  // toolbar bulk delete and the row "..." menu delete both land here, so the
+  // user is asked exactly once. Never add a second confirm at a call site.
+  // Returns false when nothing was deleted (cancelled / signed out / empty) so
+  // callers can keep the user's selection intact after a cancel.
   const hubDeleteDocuments = async (docs) => {
     const list = Array.isArray(docs) ? docs.filter(Boolean) : [];
-    if (list.length === 0) return;
-    if (!user) { showToast('Please sign in to delete documents', 'warn'); return; }
+    if (list.length === 0) return false;
+    if (!user) { showToast('Please sign in to delete documents', 'warn'); return false; }
     const confirmed = await askConfirm({
       title: list.length === 1 ? 'Delete this document?' : `Delete these ${list.length} documents?`,
       message: 'This action cannot be undone.',
       confirmLabel: list.length === 1 ? 'Delete document' : `Delete ${list.length} documents`,
       danger: true,
     });
-    if (!confirmed) return;
+    if (!confirmed) return false;
     const ids = list.map(d => d.id);
     setDocuments(prev => prev.filter(d => !ids.includes(d.id)));
     try {
@@ -1842,6 +1847,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
       showToast('Failed to delete documents: ' + (err.message || 'Unknown error'), 'error');
       await refetchDocuments();
     }
+    return true;
   };
 
   const hubDeleteProjects = async (items) => {
