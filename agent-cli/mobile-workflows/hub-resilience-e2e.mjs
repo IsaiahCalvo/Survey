@@ -366,6 +366,62 @@ async function testMobileTemplateCategoryRowAlignment(page, baseUrl, touch) {
   await artifacts.screenshot(page, 'mobile-template-category-rows-centered');
 }
 
+async function testMobileEntitiesModalCentering(page, baseUrl, touch) {
+  await gotoHub(page, baseUrl, 'templates');
+  await page.evaluate(() => {
+    document.documentElement.style.setProperty('--native-safe-area-bottom', '34px');
+  });
+  await activate(page.locator('.templates-mobile-row:visible').first(), touch, 'mobile');
+  await page.locator('.templates-mobile-detail:visible').waitFor({ state: 'visible' });
+  await activate(page.getByRole('button', { name: 'Entities', exact: true }), touch, 'mobile');
+
+  const scrim = page.locator('.templates-mobile-modal-scrim:visible');
+  const modal = page.getByRole('dialog', { name: 'Entities', exact: true });
+  await modal.waitFor({ state: 'visible' });
+
+  const assertCentered = async (state) => {
+    const scrimBox = await requiredBox(scrim, `mobile: ${state} Entities scrim`);
+    const modalBox = await requiredBox(modal, `mobile: ${state} Entities modal`);
+    const style = await scrim.evaluate((element) => {
+      const computed = getComputedStyle(element);
+      return {
+        alignItems: computed.alignItems,
+        backdropFilter: computed.backdropFilter || computed.webkitBackdropFilter,
+        paddingTop: Number.parseFloat(computed.paddingTop),
+        paddingBottom: Number.parseFloat(computed.paddingBottom),
+      };
+    });
+    const usableTop = scrimBox.y + style.paddingTop;
+    const usableBottom = scrimBox.y + scrimBox.height - style.paddingBottom;
+    const expectedCenter = usableTop + (usableBottom - usableTop) / 2;
+    assert.equal(style.alignItems, 'center', `mobile: ${state} Entities modal uses centered flex alignment`);
+    assert.match(style.backdropFilter, /blur\(/, `mobile: ${state} Entities background remains blurred`);
+    assertNear(
+      modalBox.y + modalBox.height / 2,
+      expectedCenter,
+      `mobile: ${state} Entities modal is vertically centered in the safe viewport`,
+    );
+    assert.ok(modalBox.y >= usableTop, `mobile: ${state} Entities modal remains below the safe top`);
+    assert.ok(modalBox.y + modalBox.height <= usableBottom, `mobile: ${state} Entities modal remains above the safe bottom`);
+  };
+
+  await assertCentered('short-list');
+  const addEntity = modal.getByRole('button', { name: 'New entity', exact: true });
+  for (let index = 0; index < 8; index += 1) {
+    await activate(addEntity, touch, 'mobile');
+  }
+  const panel = modal.locator('.templates-mobile-entity-panel');
+  const overflow = await panel.evaluate((element) => ({
+    clientHeight: element.clientHeight,
+    scrollHeight: element.scrollHeight,
+    overflowY: getComputedStyle(element).overflowY,
+  }));
+  assert.ok(overflow.scrollHeight > overflow.clientHeight, 'mobile: long Entities list scrolls inside the centered modal');
+  assert.equal(overflow.overflowY, 'auto', 'mobile: Entities panel owns its vertical scrolling');
+  await assertCentered('long-list');
+  await artifacts.screenshot(page, 'mobile-entities-modal-centered');
+}
+
 async function measureMobileHeader(page, tab) {
   const row = page.locator(`.${tab}-mobile-search-actions:visible`);
   const action = row.locator('.hub-mobile-primary-action:visible');
@@ -689,6 +745,7 @@ async function runDevice(device, baseUrl) {
       await artifacts.time('mobile:safe-area-tabs', () => testMobileSafeAreaTabs(page, baseUrl));
       await artifacts.time('mobile:edge-swipe-back', () => testMobileEdgeSwipeBack(page, baseUrl, touch));
       await artifacts.time('mobile:template-category-row-alignment', () => testMobileTemplateCategoryRowAlignment(page, baseUrl, touch));
+      await artifacts.time('mobile:entities-modal-centering', () => testMobileEntitiesModalCentering(page, baseUrl, touch));
     }
     await artifacts.time(`${device}:tab-search-sort-selection`, async () => {
       if (device === 'mobile') await testMobileHeaderParity(page, baseUrl);
@@ -710,7 +767,7 @@ async function runDevice(device, baseUrl) {
       device,
       viewport,
       input: device === 'mobile' ? touch.inputKind : 'desktop-mouse-keyboard',
-      coverage: 'first-visit-frame-continuity-safe-area-tabs-edge-swipe-back-template-category-row-alignment-search-filter-sort-selection-bulk-state-empty-loading-long-docs-viewer-exact-return-back-forward-refresh',
+      coverage: 'first-visit-frame-continuity-safe-area-tabs-edge-swipe-back-template-category-row-alignment-entities-modal-centering-search-filter-sort-selection-bulk-state-empty-loading-long-docs-viewer-exact-return-back-forward-refresh',
       diagnostics,
       status: 'passed',
     });

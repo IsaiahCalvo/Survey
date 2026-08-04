@@ -2593,7 +2593,13 @@ export default function TemplatesEditor({
                     setSelEntities(new Set());
                   }}
                 >
-                  <div className="templates-mobile-entity-modal" onClick={(e) => e.stopPropagation()}>
+                  <div
+                    className="templates-mobile-entity-modal"
+                    role="dialog"
+                    aria-modal="true"
+                    aria-label="Entities"
+                    onClick={(e) => e.stopPropagation()}
+                  >
                     <div className="templates-mobile-entity-modal-head">
                       <div>
                         <strong>Entities</strong>

@@ -40,6 +40,8 @@ test('runner covers tabs, discovery controls, bulk state, fixtures, lifecycle, a
     'mobile:edge-swipe-back',
     'testMobileTemplateCategoryRowAlignment',
     'mobile:template-category-row-alignment',
+    'testMobileEntitiesModalCentering',
+    'mobile:entities-modal-centering',
     'testDocuments',
     'testProjects',
     'testTemplates',

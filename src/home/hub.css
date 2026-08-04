@@ -2689,11 +2689,11 @@
     position: fixed;
     inset: 0;
     z-index: 230;
-    background: rgba(7,9,13,0.5);
-    backdrop-filter: blur(4px);
-    -webkit-backdrop-filter: blur(4px);
+    background: rgba(13,15,20,0.55);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
     display: flex;
-    align-items: flex-end;
+    align-items: center;
     justify-content: center;
     /* 2026-07-12 (demo parity defect #8): var-first inset (Android WebView
        reports env()=0; the native shell publishes the real value). */
