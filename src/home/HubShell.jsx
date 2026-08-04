@@ -304,16 +304,21 @@ export const HubShell = ({ tab, onNav, title, subtitle, actions, children, userN
     };
   }, [expoNativeShell]);
 
-  const navItems = [
+  // The three places you work. Archive is deliberately NOT one of them.
+  const primaryNavItems = [
     ['documents', 'doc', 'Documents', false],
     ['projects', 'folder', 'Projects', false],
     ['templates', 'template', 'Templates', templatesLocked],
-    // KAL-280 — Archive sits last so it lands directly above the profile chip
-    // (`.who` uses margin-top:auto). It is deliberately the lowest entry: it is
-    // a recovery destination, not somewhere you work, so it should never
-    // compete with the three main tabs for attention.
-    ['archive', 'clock', 'Archive', false],
   ];
+  // KAL-280 — Archive is a recovery destination, not somewhere you work, so it
+  // must never compete with the three main tabs for attention. It renders in its
+  // own bottom group that is pushed down the rail so it sits directly above the
+  // profile chip. (Listing it last inside `.nav` was NOT enough: `.who` carries
+  // margin-top:auto, so the empty space opened up *below* Archive and it stayed
+  // glued to the main tabs at the top.)
+  const archiveNavItem = ['archive', 'clock', 'Archive', false];
+  // Mobile keeps one flat list — the rail/tab layouts have no bottom anchor.
+  const navItems = [...primaryNavItems, archiveNavItem];
   const mobileNavMode = mobileNavModeFromUrl();
   const navBtn = (key, icon, label, disabled = false) => (
     <button
@@ -336,7 +341,10 @@ export const HubShell = ({ tab, onNav, title, subtitle, actions, children, userN
         <aside className="side">
           <div className="brand"><span className="brand-dot"></span>Survey</div>
           <nav className="nav">
-            {navItems.map(([key, icon, label, disabled]) => navBtn(key, icon, label, disabled))}
+            {primaryNavItems.map(([key, icon, label, disabled]) => navBtn(key, icon, label, disabled))}
+          </nav>
+          <nav className="nav nav-bottom">
+            {navBtn(...archiveNavItem)}
           </nav>
           <ProfileMenu userName={userName} userMeta={userMeta} />
         </aside>

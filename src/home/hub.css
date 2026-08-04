@@ -57,6 +57,11 @@
 .survey-hub .nav button.active { background: var(--ink-600); color: var(--bone-100); box-shadow: inset 2px 0 var(--gold); }
 .survey-hub .nav button:disabled { opacity: 0.5; cursor: not-allowed; }
 .survey-hub .nav button .ico { width: 14px; height: 14px; opacity: .9; }
+/* KAL-280 — the Archive group takes the rail's flexible space so it settles at
+   the bottom, directly above the profile chip. `.who` keeps margin-top:auto as a
+   fallback for layouts that don't render this group (mobile). */
+.survey-hub .nav-bottom { margin-top: auto; }
+.survey-hub .nav-bottom + .who { margin-top: 10px; }
 .survey-hub .who { margin-top: auto; display: flex; align-items: center; gap: 7px; padding-top: 10px; border-top: 1px solid var(--ink-500); }
 .survey-hub .who .name { font-size: 11.5px; font-weight: 600; line-height: 1.15; }
 .survey-hub .who .who-meta { font-size: 10px; color: var(--ink-200); }

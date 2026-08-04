@@ -254,12 +254,26 @@ const SURVEY_HUB = readFileSync(new URL('../src/home/SurveyHub.jsx', import.meta
 const CONTAINER = readFileSync(new URL('../src/home/ArchiveScreenContainer.jsx', import.meta.url), 'utf8');
 const DATABASE_HOOKS = readFileSync(new URL('../src/hooks/useDatabase.js', import.meta.url), 'utf8');
 
-test('Archive is the last rail item, so it sits directly above the profile', () => {
-  const navBlock = HUB_SHELL.match(/const navItems = \[[\s\S]*?\];/)?.[0] || '';
-  assert.match(navBlock, /\['archive', 'clock', 'Archive', false\],\s*\n\s*\];/);
-  // `.who` (the profile chip) uses margin-top:auto, so "last in navItems" IS
-  // "directly above the profile". Guard that it still does.
-  assert.match(CSS, /\.survey-hub \.who \{[^}]*margin-top: auto/);
+test('Archive renders in its own bottom rail group, directly above the profile', () => {
+  // Being LAST inside `.nav` was not enough: `.who` carries margin-top:auto, so
+  // the flexible space opened up BELOW Archive and it stayed glued to the main
+  // tabs at the top of the rail. Archive must render in its own group that
+  // takes the space itself, immediately before the profile chip.
+  assert.match(HUB_SHELL, /const archiveNavItem = \['archive', 'clock', 'Archive', false\]/);
+  assert.doesNotMatch(
+    HUB_SHELL.match(/const primaryNavItems = \[[\s\S]*?\];/)?.[0] || '',
+    /archive/,
+    'Archive must not sit in the primary tab group',
+  );
+  // Render order: primary nav, then the archive group, then the profile chip.
+  assert.match(
+    HUB_SHELL,
+    /<nav className="nav nav-bottom">\s*\{navBtn\(\.\.\.archiveNavItem\)\}\s*<\/nav>\s*<ProfileMenu/,
+  );
+  // The bottom group is what claims the rail's flexible space now.
+  assert.match(CSS, /\.survey-hub \.nav-bottom \{[^}]*margin-top: auto/);
+  // Mobile has no bottom anchor, so it keeps one flat list including Archive.
+  assert.match(HUB_SHELL, /const navItems = \[\.\.\.primaryNavItems, archiveNavItem\]/);
 });
 
 test('the hub routes the archive tab to the data container, lazily', () => {
