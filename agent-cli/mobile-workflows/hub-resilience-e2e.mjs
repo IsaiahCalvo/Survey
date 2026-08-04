@@ -303,6 +303,32 @@ async function testMobileSafeAreaTabs(page, baseUrl) {
   await artifacts.screenshot(page, 'mobile-rounded-safe-area-tabs');
 }
 
+async function testMobileEdgeSwipeBack(page, baseUrl, touch) {
+  await gotoHub(page, baseUrl, 'projects');
+  const project = page.locator('.projects-mobile-folder-row.drill:visible').first();
+  await activate(project, touch, 'mobile');
+  await page.locator('.projects-mobile-back-button:visible').waitFor({ state: 'visible' });
+
+  await touch.drag({ x: 8, y: 280 }, { x: 12, y: 410 });
+  assert.equal(await page.locator('.projects-mobile-back-button:visible').count(), 1, 'mobile: vertical edge scroll does not leave project');
+  await touch.drag({ x: 8, y: 300 }, { x: 50, y: 302 });
+  assert.equal(await page.locator('.projects-mobile-back-button:visible').count(), 1, 'mobile: short edge drag does not leave project');
+  await touch.drag({ x: 40, y: 320 }, { x: 180, y: 322 });
+  assert.equal(await page.locator('.projects-mobile-back-button:visible').count(), 1, 'mobile: swipe away from edge does not leave project');
+  await touch.drag({ x: 8, y: 340 }, { x: 140, y: 344 });
+  await page.locator('.projects-mobile-folder-row.drill:visible').first().waitFor({ state: 'visible' });
+  assert.equal(await page.locator('.projects-mobile-back-button:visible').count(), 0, 'mobile: right swipe from left edge returns to projects');
+
+  await gotoHub(page, baseUrl, 'templates');
+  const template = page.locator('.templates-mobile-row:visible').first();
+  await activate(template, touch, 'mobile');
+  await page.locator('.templates-mobile-detail:visible').waitFor({ state: 'visible' });
+  await touch.drag({ x: 8, y: 340 }, { x: 140, y: 344 });
+  await page.locator('.templates-mobile-browser:visible').waitFor({ state: 'visible' });
+  assert.equal(await page.locator('.templates-mobile-detail:visible').count(), 0, 'mobile: right swipe from left edge returns to templates');
+  await artifacts.screenshot(page, 'mobile-edge-swipe-back-complete');
+}
+
 async function measureMobileHeader(page, tab) {
   const row = page.locator(`.${tab}-mobile-search-actions:visible`);
   const action = row.locator('.hub-mobile-primary-action:visible');
@@ -624,6 +650,7 @@ async function runDevice(device, baseUrl) {
     ));
     if (device === 'mobile') {
       await artifacts.time('mobile:safe-area-tabs', () => testMobileSafeAreaTabs(page, baseUrl));
+      await artifacts.time('mobile:edge-swipe-back', () => testMobileEdgeSwipeBack(page, baseUrl, touch));
     }
     await artifacts.time(`${device}:tab-search-sort-selection`, async () => {
       if (device === 'mobile') await testMobileHeaderParity(page, baseUrl);
@@ -645,7 +672,7 @@ async function runDevice(device, baseUrl) {
       device,
       viewport,
       input: device === 'mobile' ? touch.inputKind : 'desktop-mouse-keyboard',
-      coverage: 'first-visit-frame-continuity-safe-area-tabs-search-filter-sort-selection-bulk-state-empty-loading-long-docs-viewer-exact-return-back-forward-refresh',
+      coverage: 'first-visit-frame-continuity-safe-area-tabs-edge-swipe-back-search-filter-sort-selection-bulk-state-empty-loading-long-docs-viewer-exact-return-back-forward-refresh',
       diagnostics,
       status: 'passed',
     });

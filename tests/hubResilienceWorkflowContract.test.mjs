@@ -36,6 +36,8 @@ test('runner covers tabs, discovery controls, bulk state, fixtures, lifecycle, a
     'frame.bodyFramed',
     'testMobileSafeAreaTabs',
     'mobile:safe-area-tabs',
+    'testMobileEdgeSwipeBack',
+    'mobile:edge-swipe-back',
     'testDocuments',
     'testProjects',
     'testTemplates',

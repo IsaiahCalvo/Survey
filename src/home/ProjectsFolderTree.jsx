@@ -32,6 +32,7 @@ import DragRearrangeHandle from '../reorder/DragRearrangeHandle';
 import { SortableRearrangeList, SortableRearrangeRow } from '../reorder/SortableRearrangeList';
 import { pickByIds } from './selectionById';
 import { miniButtonStyle, miniSelectButtonStyle, moreButtonStyle } from './hubControls';
+import useMobileEdgeSwipeBack from './useMobileEdgeSwipeBack';
 
 /* Literal palette — used by the portal popups, which render outside the
    `.survey-hub` root and therefore cannot inherit its CSS variables. */
@@ -279,6 +280,17 @@ export default function ProjectsFolderTree({
   const mobileDrillProject = mobileDrillOpenId
     ? filtered.find((p) => p.id === mobileDrillOpenId) || null
     : null;
+  const closeMobileProject = useCallback(() => {
+    setMobileDrillOpenId(null);
+    setFileMenu(null);
+    setFileSelect(false);
+    setFileSearch('');
+    setSelFiles(new Set());
+  }, []);
+  useMobileEdgeSwipeBack({
+    enabled: Boolean(mobileDrillProject) && !teamModalProject,
+    onBack: closeMobileProject,
+  });
   const mobileDrillAllFiles = useMemo(
     () => (mobileDrillProject ? localDocs.filter((d) => d.project_id === mobileDrillProject.id) : []),
     [localDocs, mobileDrillProject],
@@ -628,13 +640,7 @@ export default function ProjectsFolderTree({
           <button
             type="button"
             className="projects-mobile-back-button"
-            onClick={() => {
-              setMobileDrillOpenId(null);
-              setFileMenu(null);
-              setFileSelect(false);
-              setFileSearch('');
-              setSelFiles(new Set());
-            }}
+            onClick={closeMobileProject}
           >
             <span className="projects-mobile-back-icon"><Icon name="arrow-r" size={13} /></span>Projects
           </button>

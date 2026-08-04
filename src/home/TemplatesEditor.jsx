@@ -41,6 +41,7 @@
 */
 import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { createPortal, flushSync } from 'react-dom';
+import useMobileEdgeSwipeBack from './useMobileEdgeSwipeBack';
 import {
   closestCenter,
   DndContext,
@@ -891,6 +892,21 @@ export default function TemplatesEditor({
   const [borderColors, setBorderColors] = useState({});
   const [matchFill, setMatchFill] = useState({});     // { entityId: bool }
 
+  const closeMobileTemplate = useCallback(() => {
+    setMobileTemplateOpen(false);
+    setMobileEntitiesOpen(false);
+    setTemplateContentSearch('');
+    setOpenColor(null);
+    setCatEdit(false);
+    setEntityEdit(false);
+    setSelCats(new Set());
+    setSelEntities(new Set());
+  }, []);
+  useMobileEdgeSwipeBack({
+    enabled: mobileTemplateOpen && !mobileEntitiesOpen,
+    onBack: closeMobileTemplate,
+  });
+
   useEffect(() => {
     if (!modEdit) setModSearch('');
   }, [modEdit]);
@@ -1551,16 +1567,7 @@ export default function TemplatesEditor({
           <button
             type="button"
             className="templates-mobile-back-button"
-            onClick={() => {
-              setMobileTemplateOpen(false);
-              setMobileEntitiesOpen(false);
-              setTemplateContentSearch('');
-              setOpenColor(null);
-              setCatEdit(false);
-              setEntityEdit(false);
-              setSelCats(new Set());
-              setSelEntities(new Set());
-            }}
+            onClick={closeMobileTemplate}
           >
             <span className="templates-mobile-back-icon"><Icon name="arrow-r" size={13} /></span>Templates
           </button>
