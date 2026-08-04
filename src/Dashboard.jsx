@@ -26,6 +26,8 @@ import { purgeAnnotationDoc } from './services/annotationDocSync';
 import { lockDocument, unlockDocument } from './services/documentLockService.js';
 import { perfUpload } from './utils/performanceLogger';
 import { showToast } from './utils/toast';
+import { archiveItems } from './services/archiveService';
+import { notifyLibraryChanged } from './hooks/libraryChangeBus';
 import { useConfirmDialog, usePromptDialog } from './components/dialogPrompts';
 import { readBlobAsArrayBuffer } from './utils/blobArrayBuffer.js';
 
@@ -1786,30 +1788,42 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
   // user is asked exactly once. Never add a second confirm at a call site.
   // Returns false when nothing was deleted (cancelled / signed out / empty) so
   // callers can keep the user's selection intact after a cancel.
+  // UX (KAL-432): Delete no longer destroys anything. It moves the documents
+  // into the user's Archive, where they stay recoverable for 30 days before the
+  // purge job removes them for good. The copy says so explicitly — promising
+  // "cannot be undone" when the item is in fact recoverable would train users to
+  // fear a safe action. Permanent deletion now lives only on the Archive screen.
   const hubDeleteDocuments = async (docs) => {
     const list = Array.isArray(docs) ? docs.filter(Boolean) : [];
     if (list.length === 0) return false;
-    if (!user) { showToast('Please sign in to delete documents', 'warn'); return false; }
+    if (!user) { showToast('Please sign in to archive documents', 'warn'); return false; }
     const confirmed = await askConfirm({
-      title: list.length === 1 ? 'Delete this document?' : `Delete these ${list.length} documents?`,
-      message: 'This action cannot be undone.',
-      confirmLabel: list.length === 1 ? 'Delete document' : `Delete ${list.length} documents`,
-      danger: true,
+      title: list.length === 1 ? 'Move this document to Archive?' : `Move these ${list.length} documents to Archive?`,
+      message: list.length === 1
+        ? 'You can restore it from Archive for the next 30 days.'
+        : 'You can restore them from Archive for the next 30 days.',
+      confirmLabel: list.length === 1 ? 'Move to Archive' : `Move ${list.length} to Archive`,
     });
     if (!confirmed) return false;
+    // Unsaved local-only rows have no server row to archive; drop them as before.
+    const archivable = list.filter(d => !(typeof d.id === 'string' && d.id.startsWith('temp-')));
     const ids = list.map(d => d.id);
     setDocuments(prev => prev.filter(d => !ids.includes(d.id)));
     try {
-      for (const doc of list) {
-        if (typeof doc.id === 'string' && doc.id.startsWith('temp-')) continue;
-        const match = (supabaseDocuments || []).find(d => d.id === doc.id);
-        const filePath = match?.file_path || match?.filePath || doc.file_path || doc.filePath;
-        await deleteDocumentEverywhere({ docId: doc.id, filePath, source: 'survey-hub-bulk' });
+      const { failed } = await archiveItems(
+        archivable.map(doc => ({ type: 'document', id: doc.id, name: doc.name || doc.title || 'Document' }))
+      );
+      if (failed.length) {
+        console.error('[DocumentArchive] survey-hub:partial', JSON.stringify(failed.map(f => f.error)));
+        showToast(failed[0].error, 'error');
+      } else {
+        showToast(list.length === 1 ? 'Moved to Archive.' : `Moved ${list.length} items to Archive.`, 'success');
       }
       await refetchDocuments();
+      notifyLibraryChanged();
     } catch (err) {
-      console.error('[DocumentDelete] survey-hub:error', serializeError(err));
-      showToast('Failed to delete documents: ' + (err.message || 'Unknown error'), 'error');
+      console.error('[DocumentArchive] survey-hub:error', serializeError(err));
+      showToast('Failed to archive documents: ' + (err.message || 'Unknown error'), 'error');
       await refetchDocuments();
     }
     return true;
@@ -1819,13 +1833,15 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
     const list = Array.isArray(items) ? items.filter(Boolean) : [];
     if (list.length === 0) return false;
     if (!user) { showToast('Please sign in to delete projects', 'warn'); return false; }
+    // UX (KAL-432): same as documents — a project and its documents move into
+    // Archive as ONE group and restore together, so the copy promises recovery
+    // rather than warning about permanence.
     const confirmed = await askConfirm({
       title: list.length === 1
-        ? 'Delete this project and its documents?'
-        : `Delete these ${list.length} projects and their documents?`,
-      message: 'This action cannot be undone.',
-      confirmLabel: list.length === 1 ? 'Delete project' : `Delete ${list.length} projects`,
-      danger: true,
+        ? 'Move this project and its documents to Archive?'
+        : `Move these ${list.length} projects and their documents to Archive?`,
+      message: 'You can restore the whole project from Archive for the next 30 days.',
+      confirmLabel: list.length === 1 ? 'Move to Archive' : `Move ${list.length} to Archive`,
     });
     // Cancelling must still resolve the caller's boolean contract as "not
     // deleted" — the hub uses this return value to decide whether to clear its
@@ -1835,16 +1851,25 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
     const ids = list.map((project) => project.id).filter(Boolean);
     setDocuments((prev) => prev.filter((doc) => !ids.includes(doc.project_id || doc.projectId)));
     try {
-      for (const projectId of ids) {
-        await deleteSupabaseProject(projectId);
+      const { failed } = await archiveItems(
+        list.filter((project) => project.id).map((project) => ({
+          type: 'project', id: project.id, name: project.name || 'Project',
+        }))
+      );
+      if (failed.length) {
+        console.error('[ProjectArchive] survey-hub:partial', JSON.stringify(failed.map(f => f.error)));
+        showToast(failed[0].error, 'error');
+      } else {
+        showToast(list.length === 1 ? 'Moved to Archive.' : `Moved ${list.length} projects to Archive.`, 'success');
       }
       await refetchProjects();
       await refetchDocuments();
       await refetchAllDocuments();
+      notifyLibraryChanged();
       return true;
     } catch (err) {
-      console.error('[ProjectDelete] survey-hub:error', serializeError(err));
-      showToast('Failed to delete projects: ' + (err.message || 'Unknown error'), 'error');
+      console.error('[ProjectArchive] survey-hub:error', serializeError(err));
+      showToast('Failed to archive projects: ' + (err.message || 'Unknown error'), 'error');
       await refetchProjects();
       await refetchDocuments();
       return false;
