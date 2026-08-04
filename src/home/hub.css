@@ -533,6 +533,7 @@
   .survey-hub {
     --mobile-header-h: 140px;
     --mobile-tabs-h: calc(56px + var(--native-safe-area-bottom, env(safe-area-inset-bottom, 0px)));
+    --mobile-list-card-h: 76px;
     --hub-mobile-primary-action-font-size: 11.5px;
     position: relative;
     width: 100vw;
@@ -1314,7 +1315,8 @@
     gap: 10px;
     align-items: center;
     padding: 10px;
-    min-height: 74px;
+    height: var(--mobile-list-card-h);
+    min-height: var(--mobile-list-card-h);
   }
 
   .survey-hub .mobile-project-card {
@@ -1415,7 +1417,8 @@
   .survey-hub .projects-mobile-folder-row {
     width: 100%;
     min-width: 0;
-    min-height: 62px;
+    height: var(--mobile-list-card-h);
+    min-height: var(--mobile-list-card-h);
     border: 1px solid var(--ink-500);
     border-radius: 8px;
     background: var(--ink-700);
@@ -1434,7 +1437,7 @@
   }
 
   .survey-hub .projects-mobile-folder-row.reorderable {
-    grid-template-columns: 24px 34px minmax(0, 1fr) 28px;
+    grid-template-columns: 24px 40px minmax(0, 1fr) 28px;
   }
 
   .survey-hub .projects-mobile-folder-row.active,
@@ -1444,8 +1447,8 @@
   }
 
   .survey-hub .projects-mobile-folder-glyph {
-    width: 34px;
-    height: 34px;
+    width: 40px;
+    height: 40px;
     border-radius: 8px;
     display: grid;
     place-items: center;
@@ -1477,6 +1480,13 @@
   .survey-hub .projects-mobile-disclosure {
     color: var(--ink-200);
     font-size: 11px;
+  }
+
+  .survey-hub .projects-mobile-folder-copy small {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .survey-hub .projects-mobile-disclosure,
@@ -2089,6 +2099,11 @@
     padding: 0 0 14px;
   }
 
+  .survey-hub .templates-editor-body {
+    padding-left: 10px !important;
+    padding-right: 10px !important;
+  }
+
   .survey-hub.hub-mobile-nav-rail .templates-mobile-layout {
     min-height: calc(100dvh - var(--mobile-header-h));
     /* 2026-07-12 (defect #8): var-first inset (Android WebView env()=0). */
@@ -2113,7 +2128,8 @@
   .survey-hub .templates-mobile-row {
     width: 100%;
     min-width: 0;
-    min-height: 74px;
+    height: var(--mobile-list-card-h);
+    min-height: var(--mobile-list-card-h);
     border: 1px solid var(--ink-500);
     border-radius: 8px;
     background: var(--ink-700);
@@ -2127,12 +2143,12 @@
   }
 
   .survey-hub .templates-mobile-row.reorderable {
-    grid-template-columns: 24px 34px minmax(0, 1fr) 28px;
+    grid-template-columns: 24px 40px minmax(0, 1fr) 28px;
   }
 
   .survey-hub .templates-mobile-glyph {
-    width: 34px;
-    height: 34px;
+    width: 40px;
+    height: 40px;
     border-radius: 8px;
     display: grid;
     place-items: center;
@@ -2160,6 +2176,14 @@
   .survey-hub .templates-mobile-module-strip small {
     color: var(--ink-200);
     font-size: 11px;
+  }
+
+  .survey-hub .templates-mobile-copy small {
+    display: block;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .survey-hub .templates-mobile-swatches {

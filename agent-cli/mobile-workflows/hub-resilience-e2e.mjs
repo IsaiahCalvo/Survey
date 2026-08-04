@@ -233,9 +233,26 @@ async function measureMobileHeader(page, tab) {
 
 async function testMobileHeaderParity(page, baseUrl) {
   const metrics = {};
+  const cardSelectors = {
+    documents: '.mobile-doc-card:visible',
+    projects: '.projects-mobile-folder-row.drill.reorderable:visible',
+    templates: '.templates-mobile-row.reorderable:visible',
+  };
   for (const tab of EDGE_TABS) {
     await gotoHub(page, baseUrl, tab);
     metrics[tab] = await measureMobileHeader(page, tab);
+    const cards = page.locator(cardSelectors[tab]);
+    await cards.first().waitFor({ state: 'visible', timeout: 30_000 });
+    assert.ok(await cards.count() >= 1, `mobile: ${tab} has a list card`);
+    metrics[tab].card = await cards.first().evaluate((element) => {
+      const box = element.getBoundingClientRect();
+      return {
+        width: box.width,
+        height: box.height,
+        clientHeight: element.clientHeight,
+        scrollHeight: element.scrollHeight,
+      };
+    });
     if (tab === 'projects') {
       assert.equal(await page.getByText('Project folders', { exact: true }).filter({ visible: true }).count(), 0, 'mobile: Projects omits redundant list heading');
       await artifacts.screenshot(page, 'mobile-projects-without-list-heading');
@@ -266,6 +283,11 @@ async function testMobileHeaderParity(page, baseUrl) {
     assert.ok(typography.scrollHeight <= typography.clientHeight, `mobile: ${tab} primary action text is not vertically clipped`);
   }
   assertNear(reference.action.width, 112, 'mobile: shared primary-action width');
+  for (const tab of EDGE_TABS) {
+    assertNear(metrics[tab].card.width, 370, `mobile: ${tab} card uses the shared width`);
+    assertNear(metrics[tab].card.height, 76, `mobile: ${tab} card uses the shared height`);
+    assert.ok(metrics[tab].card.scrollHeight <= metrics[tab].card.clientHeight, `mobile: ${tab} card content is not vertically clipped`);
+  }
 
   await gotoHub(page, baseUrl, 'documents');
   const sort = await requiredBox(page.locator('.documents-mobile-filter:visible'), 'mobile Documents sort');

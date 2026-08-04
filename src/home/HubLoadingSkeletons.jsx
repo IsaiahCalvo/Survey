@@ -185,7 +185,7 @@ const ProjectsSkeleton = () => (
         {MOBILE_ROWS.map((row) => (
           <div key={row} className="projects-mobile-folder-row drill reorderable hub-loading-mobile-row">
             <Block style={{ width: 14, height: 14, justifySelf: 'center' }} />
-            <Block style={{ width: 34, height: 34, borderRadius: 8 }} />
+            <Block style={{ width: 40, height: 40, borderRadius: 8 }} />
             <span className="hub-loading-copy"><Block style={{ width: row % 2 ? '64%' : '80%', height: 11 }} /><Block style={{ width: '48%', height: 8 }} /></span>
             <Block style={{ width: 18, height: 18, justifySelf: 'center' }} />
           </div>
@@ -197,7 +197,7 @@ const ProjectsSkeleton = () => (
 
 const TemplatesSkeleton = () => (
   <div className="ed-scope hub-loading-body" style={{ width: '100%', height: '100%', position: 'relative', overflow: 'hidden' }}>
-    <div style={{ padding: '0 8px 8px 8px', height: '100%', overflow: 'hidden' }}>
+    <div className="templates-editor-body" style={{ padding: '0 8px 8px 8px', height: '100%', overflow: 'hidden' }}>
       <div className="templates-editor-grid" style={{ display: 'grid', gridTemplateColumns: '260px 1fr 268px', gap: 8, height: '100%' }}>
         <aside className="hub-loading-template-panel hub-loading-sidebar"><SidebarRows kind="templates" /></aside>
         <section className="hub-loading-template-panel hub-loading-template-editor">
@@ -222,7 +222,7 @@ const TemplatesSkeleton = () => (
           {MOBILE_ROWS.map((row) => (
             <div key={row} className="templates-mobile-row reorderable hub-loading-mobile-row">
               <Block style={{ width: 14, height: 14, justifySelf: 'center' }} />
-              <Block style={{ width: 34, height: 34, borderRadius: 8 }} />
+              <Block style={{ width: 40, height: 40, borderRadius: 8 }} />
               <span className="hub-loading-copy"><Block style={{ width: row % 2 ? '66%' : '82%', height: 11 }} /><Block style={{ width: '50%', height: 8 }} /></span>
               <Block style={{ width: 18, height: 18, justifySelf: 'center' }} />
             </div>
