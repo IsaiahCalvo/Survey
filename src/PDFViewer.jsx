@@ -20958,6 +20958,17 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         setPageHeights({ 1: firstViewport.height });
         setPageSizes({ 1: { width: firstViewport.width, height: firstViewport.height } });
         setPageObjects({ 1: firstPage });
+        // Cloud/Y.Doc documents do not need the embedded-annotation import
+        // below before they are safe to display. Reveal the parsed first page
+        // now and continue sizing the rest in the background. Local uploads
+        // still wait because their PDF-native annotations must be imported
+        // before first paint to avoid a visible annotation pop-in.
+        if (pdfFile?.id) {
+          loadTrace('first page ready — lifting curtain while remaining pages size');
+          setIsLoadingPDF(false);
+          setMountedPages(new Set([1]));
+          setVisiblePagesSet(new Set([1]));
+        }
         // Local accumulator — React state is async, so the callout import
         // splitter below needs a synchronous source of page dimensions
         // built up alongside setPageSizes during the sizing loop.

@@ -16,6 +16,17 @@ final class NativePinchUITests: XCTestCase {
         return (webView, gestureSurface)
     }
 
+    private func scrollPosition() -> (left: Int, top: Int) {
+        let marker = app.descendants(matching: .any).matching(
+            NSPredicate(format: "label BEGINSWITH %@", "PDF scroll position ")
+        ).firstMatch
+        XCTAssertTrue(marker.waitForExistence(timeout: 5), "PDF scroll marker did not appear")
+        let values = marker.label.replacingOccurrences(of: "PDF scroll position ", with: "")
+            .split(separator: " ").compactMap { Int($0) }
+        XCTAssertEqual(values.count, 2, "Malformed PDF scroll marker: \(marker.label)")
+        return (values.first ?? 0, values.last ?? 0)
+    }
+
     func testTwoFingerPinchChangesPdfZoom() throws {
         let webView = app.webViews.firstMatch
         XCTAssertTrue(webView.waitForExistence(timeout: 30), "Capacitor web view did not appear")
@@ -53,6 +64,13 @@ final class NativePinchUITests: XCTestCase {
         // Let the viewer commit the gesture and finish its raster resize before
         // taking evidence. The JS path owns zoom state; XCTest owns the input.
         sleep(2)
+
+        let anchorMarker = app.descendants(matching: .any).matching(
+            NSPredicate(format: "label BEGINSWITH %@", "PDF anchor settle error ")
+        ).firstMatch
+        XCTAssertTrue(anchorMarker.waitForExistence(timeout: 5), "Anchor settle marker did not appear")
+        let anchorError = Double(anchorMarker.label.replacingOccurrences(of: "PDF anchor settle error ", with: "")) ?? .infinity
+        XCTAssertLessThanOrEqual(anchorError, 1.0, "Pinch release did not commit the previewed anchor")
 
         zoomMenu.tap()
         XCTAssertTrue(fitPage.waitForExistence(timeout: 5), "Fit menu did not open after native pinch")
@@ -124,5 +142,77 @@ final class NativePinchUITests: XCTestCase {
         after.lifetime = .keepAlways
         add(after)
         print("NATIVE_PINCH_STRESS_EVIDENCE cycles=8 sessionStable=true viewerVisible=true")
+    }
+
+    func testDeepZoomDoesNotTerminateWebContentProcess() throws {
+        _ = waitForViewer()
+        let sessionQuery = app.descendants(matching: .any).matching(
+            NSPredicate(format: "label BEGINSWITH %@", "PDF viewer session ")
+        )
+        XCTAssertTrue(sessionQuery.firstMatch.waitForExistence(timeout: 10), "Viewer session marker did not appear")
+        let originalSession = sessionQuery.firstMatch.label
+        // The dev fixture opens fit-to-page by contract. Avoid coupling this
+        // memory test to the animated toolbar menu, which has its own coverage.
+        sleep(1)
+
+        // Regression: the previous stress test paired every 2x pinch with a 0.5x
+        // pinch, so it never exercised the physical-phone crash at roughly 9-10x.
+        // Accumulate zoom first, then prove the same WKWebView session survives.
+        for index in 0..<5 {
+            let surface = app.buttons["PDF gesture surface"]
+            XCTAssertTrue(surface.waitForExistence(timeout: 5), "PDF gesture surface missing before deep pinch \(index)")
+            surface.pinch(withScale: 2.0, velocity: 2.0)
+            sleep(1)
+            XCTAssertTrue(app.buttons["PDF gesture surface"].exists, "PDF gesture surface disappeared at deep pinch \(index)")
+            XCTAssertEqual(sessionQuery.firstMatch.label, originalSession, "WKWebView reloaded at deep pinch \(index)")
+            let zoomState = app.descendants(matching: .any).matching(
+                NSPredicate(format: "label BEGINSWITH %@", "PDF zoom scale ")
+            ).firstMatch
+            print("NATIVE_DEEP_PINCH index=\(index) state=\(zoomState.label)")
+        }
+
+        let finalZoomLabel = app.descendants(matching: .any).matching(
+            NSPredicate(format: "label BEGINSWITH %@", "PDF zoom scale ")
+        ).firstMatch.label
+        let finalZoom = Int(finalZoomLabel.replacingOccurrences(of: "PDF zoom scale ", with: "")) ?? .max
+        XCTAssertLessThanOrEqual(finalZoom, 800, "Mobile zoom exceeded the WebKit-safe 800% ceiling")
+
+        let after = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+        after.name = "after-deep-pinch-stress"
+        after.lifetime = .keepAlways
+        add(after)
+        print("NATIVE_DEEP_PINCH_EVIDENCE pinches=5 sessionStable=true viewerVisible=true")
+    }
+
+    func testPanFlickCoastsDiagonallyAfterRelease() throws {
+        let (_, surface) = waitForViewer()
+        let zoomMenu = app.buttons["Zoom and fit options"]
+        XCTAssertTrue(zoomMenu.waitForExistence(timeout: 10), "Zoom menu did not appear for momentum baseline")
+        zoomMenu.tap()
+        let fitPage = app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", "Fit page")).firstMatch
+        XCTAssertTrue(fitPage.waitForExistence(timeout: 5), "Fit page did not appear for momentum baseline")
+        fitPage.tap()
+        sleep(1)
+        surface.pinch(withScale: 3.0, velocity: 2.0)
+        sleep(1)
+
+        // Pinch anchoring leaves scroll room toward the origin. Flick back into
+        // that room so the test measures momentum instead of a clamped edge.
+        let start = surface.coordinate(withNormalizedOffset: CGVector(dx: 0.40, dy: 0.40))
+        let end = surface.coordinate(withNormalizedOffset: CGVector(dx: 0.60, dy: 0.60))
+        start.press(forDuration: 0.05, thenDragTo: end, withVelocity: .fast, thenHoldForDuration: 0)
+        let coastMarker = app.descendants(matching: .any).matching(
+            NSPredicate(format: "label BEGINSWITH %@", "PDF pan coast distance ")
+        ).firstMatch
+        XCTAssertTrue(coastMarker.waitForExistence(timeout: 5), "PDF pan coast marker did not appear")
+        let coasted = NSPredicate { _, _ in
+            let values = coastMarker.label.replacingOccurrences(of: "PDF pan coast distance ", with: "")
+                .split(separator: " ").compactMap { Int($0) }
+            return values.count == 2 && values[0] > 1 && values[1] > 1
+        }
+        expectation(for: coasted, evaluatedWith: coastMarker)
+        waitForExpectations(timeout: 3)
+        let finalPosition = scrollPosition()
+        print("NATIVE_PAN_MOMENTUM coast=\(coastMarker.label) final=\(finalPosition) diagonal=true")
     }
 }

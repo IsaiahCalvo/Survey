@@ -227,7 +227,10 @@ function SurveyApp() {
   const recoverTerminatedProcess = (source: string) => {
     const now = Date.now();
     const recent = processRecoveryRef.current.filter((time) => now - time < 60_000);
-    console.error('[Survey shell] WebView process terminated', {
+    // Keep the recovery visible in Metro/device logs without opening Expo's
+    // full-screen red LogBox over the app. The shell already owns the reload or
+    // terminal error UI below; this diagnostic is not a React render failure.
+    console.warn('[Survey shell] WebView process terminated', {
       source,
       recoveriesInLastMinute: recent.length,
       timestamp: now,

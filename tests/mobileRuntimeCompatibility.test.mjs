@@ -21,6 +21,7 @@ const HUB_CSS_SOURCE = readFileSync(new URL('../src/home/hub.css', import.meta.u
 const IOS_SIMULATOR_SOURCE = readFileSync(new URL('../scripts/run-ios-simulator.mjs', import.meta.url), 'utf8');
 const IOS_APP_SCHEME_SOURCE = readFileSync(new URL('../ios/App/App.xcodeproj/xcshareddata/xcschemes/App.xcscheme', import.meta.url), 'utf8');
 const PDFJS_VIEWER_SOURCE = readFileSync(new URL('../src/components/PdfjsViewerContainer.jsx', import.meta.url), 'utf8');
+const UNSUPPORTED_NOTICE_SOURCE = readFileSync(new URL('../src/components/UnsupportedAnnotationsNotice.jsx', import.meta.url), 'utf8');
 // Unified renderer (FabricDrawingCanvas retired): touch-compat behavior for
 // creation strokes now lives in SVGAnnotationLayer (the live creation surface).
 const SVG_ANNOTATION_LAYER_SOURCE = readFileSync(new URL('../src/components/SVGAnnotationLayer.jsx', import.meta.url), 'utf8');
@@ -232,12 +233,49 @@ test('Survey development build owns Google sign-in without exposing the Supabase
 });
 
 test('mobile PDF rendering stays inside the WKWebView memory budget', () => {
+  assert.match(PDFJS_VIEWER_SOURCE, /MOBILE_MAX_SCALE = 8/);
   assert.match(PDFJS_VIEWER_SOURCE, /MOBILE_MAX_CANVAS_AREA = 3 \* 1024 \* 1024/);
   assert.match(PDFJS_VIEWER_SOURCE, /MOBILE_BASE_MAX_SCALE = 1\.25/);
   assert.match(PDFJS_VIEWER_SOURCE, /MOBILE_MAX_OVERSCAN_PAGES = 1/);
   assert.match(PDFJS_VIEWER_SOURCE, /target = document\.createElement\('canvas'\)/);
   assert.match(PDFJS_VIEWER_SOURCE, /if \(target && !targetRetained\) releaseRasterCanvas\(target\)/);
+  assert.match(PDFJS_VIEWER_SOURCE, /finally \{\s*releaseRasterCanvas\(off\)/);
   assert.match(PDFJS_VIEWER_SOURCE, /const externalPdf = isPdfDocumentProxy\(activeSource\) \? activeSource : null/);
+});
+
+test('mobile PDF pinch previews translation, progressively sharpens, and commits the same anchor', () => {
+  assert.match(PDFJS_VIEWER_SOURCE, /resolveGesturePreview\(g, oldScale \* lz\)/);
+  assert.match(PDFJS_VIEWER_SOURCE, /pendingAnchorRef\.current = \{ left: preview\.left, top: preview\.top \}/);
+  assert.match(PDFJS_VIEWER_SOURCE, /translate\(\$\{liveTranslateX\}px, \$\{liveTranslateY\}px\) scale/);
+  assert.match(PDFJS_VIEWER_SOURCE, /lastSharpAtRef/);
+  assert.match(PDFJS_VIEWER_SOURCE, /240/);
+});
+
+test('mobile pan keeps two-axis velocity and coasts after release', () => {
+  assert.match(PDFJS_VIEWER_SOURCE, /velocityX/);
+  assert.match(PDFJS_VIEWER_SOURCE, /velocityY/);
+  assert.match(PDFJS_VIEWER_SOURCE, /touchState\.samples\.push/);
+  assert.match(PDFJS_VIEWER_SOURCE, /startMobilePanInertia\(velocityX, velocityY\)/);
+  assert.match(PDFJS_VIEWER_SOURCE, /PDF pan coast distance/);
+  assert.match(PDFJS_VIEWER_SOURCE, /Math\.hypot\(vx, vy\)/);
+  assert.match(PDFJS_VIEWER_SOURCE, /Math\.exp\(-dt \/ 325\)/);
+});
+
+test('mobile PDF load paints page one before refining remaining page sizes', () => {
+  const firstPage = PDFJS_VIEWER_SOURCE.indexOf('const firstPage = await pdf.getPage(1)');
+  const visibleSizes = PDFJS_VIEWER_SOURCE.indexOf('setPageSizes(sizes.slice())', firstPage);
+  const remainingPages = PDFJS_VIEWER_SOURCE.indexOf('for (let start = 2; start <= pdf.numPages', visibleSizes);
+  assert.ok(firstPage > 0 && visibleSizes > firstPage && remainingPages > visibleSizes);
+  assert.match(PDF_VIEWER_SOURCE, /if \(pdfFile\?\.id\) \{[\s\S]{0,260}setIsLoadingPDF\(false\)/);
+});
+
+test('unsupported annotation notice is compact above the mobile dock and expands for details', () => {
+  assert.match(UNSUPPORTED_NOTICE_SOURCE, /Unsupported annotation/);
+  assert.match(UNSUPPORTED_NOTICE_SOURCE, /--mobile-viewer-dock-height/);
+  assert.match(UNSUPPORTED_NOTICE_SOURCE, /aria-expanded/);
+  assert.match(UNSUPPORTED_NOTICE_SOURCE, /setIsExpanded\(true\)/);
+  assert.match(UNSUPPORTED_NOTICE_SOURCE, /event\.stopPropagation\(\); handleDismiss\(\)/);
+  assert.match(UNSUPPORTED_NOTICE_SOURCE, /M2 10C4\.1 6\.6/);
 });
 
 test('mobile pinch settles at the latest centroid and suppresses a staggered release', () => {
@@ -251,6 +289,7 @@ test('Expo forwards narrow PDF diagnostics and reports WebView process terminati
   assert.match(PDFJS_VIEWER_SOURCE, /type: 'survey:diagnostic'/);
   assert.match(EXPO_APP_SOURCE, /\[Survey phone PDF\]/);
   assert.match(EXPO_APP_SOURCE, /\[Survey shell\] WebView process terminated/);
+  assert.doesNotMatch(EXPO_APP_SOURCE, /console\.error\('\[Survey shell\] WebView process terminated/);
 });
 
 test('starting a two-finger pinch cancels a partial creation stroke', () => {
