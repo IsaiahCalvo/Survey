@@ -965,11 +965,24 @@ export default function TemplatesEditor({
        reports success, so a cancel leaves the list exactly as it was.
        Deliberately NOT routed through the bundle save below: that path infers a
        deletion from the list shrinking and issues a permanent delete, which is
-       the behaviour this replaces. */
+       the behaviour this replaces.
+       UX: the hub reports WHICH templates reached Archive, and only those leave
+       the list. A template that could not be archived stays visible (the hub
+       explains why) — dropping it here would hide a template that still exists,
+       and the next bundle save would then read that as a deletion. */
     if (onArchiveTemplates) {
-      const archived = await onArchiveTemplates(Array.from(ids));
+      /* Names travel with the ids: a template that was never saved to the
+         cloud is unknown to the hub's own list, and the error it shows has to
+         be able to say which template it means. */
+      const selection = Array.from(ids).map((id) => ({
+        id,
+        name: rich.find((t) => t.id === id)?.name || null,
+      }));
+      const archived = await onArchiveTemplates(selection);
       if (archived === false) return;
-      setRich((prev) => prev.filter((t) => !ids.has(t.id)));
+      const done = Array.isArray(archived) ? new Set(archived) : ids;
+      if (done.size === 0) return;
+      setRich((prev) => prev.filter((t) => !done.has(t.id)));
       return;
     }
     /* Signed-out / local-only fallback keeps the original bundle-save delete.
