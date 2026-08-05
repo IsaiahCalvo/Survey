@@ -1765,10 +1765,23 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
   // were the odd one out only because the editor's delete filtered the list and
   // let the bundle save infer the removal — that inferred delete was permanent.
   // Archiving goes straight at the row instead, so the editor never has to
-  // round-trip a deletion through its save path. Returns false on cancel so the
-  // editor can leave its list untouched.
+  // round-trip a deletion through its save path.
+  // Returns false when nothing was attempted (empty / signed out / cancelled),
+  // otherwise the array of template ids that actually reached Archive. The
+  // editor drops exactly those rows and keeps the rest.
+  // UX: a template the hub cannot match to a stored row must NEVER disappear
+  // quietly. It used to be filtered out of the batch, so the row vanished from
+  // the editor while the stored template stayed live and un-archived — and the
+  // next bundle save then read that as a removal and destroyed it for good.
+  // Anything unresolved now stays on screen and says so out loud.
   const hubArchiveTemplates = async (templateIds) => {
-    const ids = Array.from(templateIds || []).filter(Boolean);
+    // Accepts bare ids or { id, name } entries — the editor passes names so an
+    // unsaved template (which the hub's own list has never seen) can still be
+    // named in the error message.
+    const selection = Array.from(templateIds || [])
+      .map((entry) => (typeof entry === 'string' ? { id: entry, name: null } : entry))
+      .filter((entry) => entry && entry.id);
+    const ids = selection.map((entry) => entry.id);
     if (ids.length === 0) return false;
     if (!user) { showToast('Please sign in to archive templates', 'warn'); return false; }
     const confirmed = await askConfirm({
@@ -1779,18 +1792,50 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
       confirmLabel: ids.length === 1 ? 'Move to Archive' : `Move ${ids.length} to Archive`,
     });
     if (!confirmed) return false;
-    // The RPC takes the templates ROW id; the editor works in config ids.
-    const rows = ids
-      .map((id) => ({ id, supabaseId: resolveSupabaseTemplateId(id) }))
-      .filter((row) => row.supabaseId);
-    try {
-      const { failed } = await archiveItems(
-        rows.map((row) => ({ type: 'template', id: row.supabaseId, name: 'Template' }))
+    // The RPC takes the templates ROW id; the editor works in config ids. The
+    // display name comes from the same lookup so Archive names the template
+    // instead of showing a generic label.
+    const known = templatesRef.current || [];
+    const rows = selection.map((entry) => {
+      const match = known.find((t) => t && t.id === entry.id);
+      return {
+        id: entry.id,
+        supabaseId: resolveSupabaseTemplateId(match || entry.id),
+        name: match?.name || entry.name || 'Untitled template',
+      };
+    });
+    const unresolved = rows.filter((row) => !row.supabaseId);
+    const resolved = rows.filter((row) => row.supabaseId);
+    if (unresolved.length) {
+      console.error('[TemplateArchive] survey-hub:unresolved', JSON.stringify(unresolved.map(r => r.id)));
+      showToast(
+        unresolved.length === 1
+          ? `${unresolved[0].name} isn’t saved to the cloud yet, so it can’t be archived. Save your templates and try again.`
+          : `${unresolved.length} templates aren’t saved to the cloud yet, so they can’t be archived. Save your templates and try again.`,
+        'error'
       );
+    }
+    if (resolved.length === 0) return [];
+    let succeededIds = [];
+    try {
+      const { succeeded, failed } = await archiveItems(
+        resolved.map((row) => ({ type: 'template', id: row.supabaseId, name: row.name }))
+      );
+      const archivedRowIds = new Set(succeeded.map((item) => item.id));
+      succeededIds = resolved.filter((row) => archivedRowIds.has(row.supabaseId)).map((row) => row.id);
       if (failed.length) {
         console.error('[TemplateArchive] survey-hub:partial', JSON.stringify(failed.map(f => f.error)));
         showToast(failed[0].error, 'error');
       }
+      // Drop the archived rows from the persisted-rows baseline immediately.
+      // A save queued right behind this archive would otherwise diff against a
+      // baseline that still lists the archived template, read it as a removal,
+      // and hard-delete it. Pruning (rather than trusting the refetch) is safe
+      // even when the read fails — loadTemplates swallows its error and returns
+      // an empty list, which must never become the baseline.
+      supabaseRowsRef.current = (supabaseRowsRef.current || []).filter(
+        (row) => !archivedRowIds.has(row?.id)
+      );
       await refetchTemplates();
       notifyLibraryChanged();
     } catch (err) {
@@ -1799,7 +1844,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
       await refetchTemplates();
       return false;
     }
-    return true;
+    return succeededIds;
   };
 
   const hubSaveTemplates = async (nextTemplates) => {
