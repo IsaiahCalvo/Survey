@@ -951,6 +951,43 @@ export default function TemplatesEditor({
     });
     markEdited();
   };
+  /* The five entities every new template starts with. Same set the hub used to
+     seed when the old create-template modal existed (GC / Subcontractor / My
+     Company / 100% Complete / Removed), expressed in the editor's own roster
+     shape and palette so a new template's entities look identical to ones added
+     with "Add entity". */
+  const DEFAULT_ROLES = ['GC', 'Subcontractor', 'My Company', '100% Complete', 'Removed'];
+
+  /* UX: "New template" adds an empty template and opens it, exactly like Copy
+     adds a duplicate — no modal. It is marked dirty so the existing Save bar
+     persists it, which is the same path every other edit takes; nothing is
+     written to the cloud until the user saves.
+     This used to call the hub's onCreateTemplate, which had been reduced to a
+     stub when its modal was deleted (KAL-82), so every "New template" button in
+     this editor did nothing at all. The hub callback is still invoked for its
+     remaining side effect (seeding the viewer's default entities). */
+  const createTemplate = () => {
+    const existing = rich.map((t) => t.name);
+    let n = rich.length + 1, name;
+    do { name = `Template ${n++}`; } while (existing.includes(name));
+    const id = newId('t');
+    setRich((prev) => [...prev, {
+      id,
+      name,
+      modules: [],
+      roster: DEFAULT_ROLES.map((role, i) => ({
+        id: newId('e'),
+        role,
+        color: ENTITY_COLORS[i % ENTITY_COLORS.length],
+      })),
+    }]);
+    markEdited();
+    /* Open the new template so it reads as "created", matching how a new module
+       opens itself. */
+    setTimeout(() => setSelected(id), 0);
+    if (onCreateTemplate) onCreateTemplate();
+  };
+
   const reorderTemplates = (activeId, overId) => {
     if (!activeId || !overId || activeId === overId) return;
     setRich((prev) => {
@@ -1475,7 +1512,7 @@ export default function TemplatesEditor({
           width="100%"
         />
         {!mobileTemplateOpen ? (
-          <button className="btn primary templates-mobile-create-button" onClick={() => onCreateTemplate && onCreateTemplate()}>
+          <button className="btn primary templates-mobile-create-button" onClick={createTemplate}>
             <Icon name="plus" size={12} />New template
           </button>
         ) : null}
@@ -1527,7 +1564,7 @@ export default function TemplatesEditor({
             <div style={{ padding: '4px 6px 6px', display: 'flex', flexDirection: 'column', gap: 6 }}>
               <button
                 className="btn-ink"
-                onClick={() => onCreateTemplate && onCreateTemplate()}
+                onClick={createTemplate}
                 style={{ padding: '4px 8px', fontSize: 11, gap: 4, display: 'inline-flex', alignItems: 'center', alignSelf: 'flex-start', whiteSpace: 'nowrap' }}
               >
                 <Icon name="plus" size={11} />New template
@@ -1665,7 +1702,7 @@ export default function TemplatesEditor({
                   icon="template"
                   line="No templates yet"
                   actionLabel="New template"
-                  onAction={() => onCreateTemplate && onCreateTemplate()}
+                  onAction={createTemplate}
                 />
               </div>
             ) : (
@@ -2215,7 +2252,7 @@ export default function TemplatesEditor({
                   icon="template"
                   line={rich.length === 0 ? 'No templates yet' : 'No templates match your search'}
                   actionLabel="New template"
-                  onAction={() => onCreateTemplate && onCreateTemplate()}
+                  onAction={createTemplate}
                 />
               ) : (
                 <>
@@ -2636,7 +2673,7 @@ export default function TemplatesEditor({
               icon="template"
               line="No templates yet"
               actionLabel="New template"
-              onAction={() => onCreateTemplate && onCreateTemplate()}
+              onAction={createTemplate}
             />
           )}
         </div>
