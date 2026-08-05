@@ -21,8 +21,12 @@
  *     archivedAt:     ISO string
  *     expiresAt:      ISO string, archivedAt + 30 days
  *     daysRemaining:  whole days left, clamped to 0
- *     children:       projects only; descriptive child documents
+ *     children:       projects only; descriptive child documents, each carrying
+ *                     the filePath its row thumbnail renders from
  *     childCount:     children.length (0 for documents and templates)
+ *     collaborators:  optional; people other than the permanent owner who still
+ *                     have access. Attached by archiveService.loadArchive, and
+ *                     absent entirely when the item is not shared.
  *   }
  */
 
@@ -114,6 +118,11 @@ export function normalizeProjectItem(row, childDocumentRows = [], { now = Date.n
     name: child.name || 'Untitled',
     projectId: child.project_id || row.id,
     archiveGroupId: child.archive_group_id || row.archive_group_id || null,
+    // Carried so an expanded project's child rows can show the same real
+    // first-page thumbnail the Documents ledger shows. Both child-row queries
+    // (archiveService.loadArchive and projectArchiveService.listArchivedProjects)
+    // must select file_path or the row silently falls back to the placeholder.
+    filePath: child.file_path || null,
   }));
   item.childCount = item.children.length;
   return item;

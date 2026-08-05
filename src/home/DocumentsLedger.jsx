@@ -535,6 +535,7 @@ export default function DocumentsLedger({
                   downloadDocument={downloadDocument}
                   variant="preview"
                   fill
+                  priority
                   fallback={
                     <div style={{ width: '100%', height: '100%' }}>
                       <PdfThumb height="100%" color={sel.color} stamp={(sel.rev || '').replace(' ', '')}

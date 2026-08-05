@@ -79,7 +79,7 @@ test('a project item exposes its children as descriptive rows only', () => {
   const item = normalizeProjectItem(
     { id: 'proj-1', user_id: 'owner-1', name: 'Harbour works', user_archived_at: day(-2), user_archive_expires_at: day(28), archive_group_id: 'grp-1' },
     [
-      { id: 'doc-a', name: 'Level 1', project_id: 'proj-1', archive_group_id: 'grp-1' },
+      { id: 'doc-a', name: 'Level 1', project_id: 'proj-1', file_path: 'u1/a.pdf', archive_group_id: 'grp-1' },
       { id: 'doc-b', name: 'Level 2', project_id: 'proj-1', archive_group_id: 'grp-1' },
     ],
     { now: NOW },
@@ -91,6 +91,10 @@ test('a project item exposes its children as descriptive rows only', () => {
   // because they can never be restored or deleted independently.
   assert.equal(item.children[0].archiveGroupId, 'grp-1');
   assert.equal(item.daysRemaining, 28);
+  // ...but they DO carry file_path, which is what lets an expanded project's
+  // rows render the same real page thumbnail the Documents ledger shows.
+  assert.equal(item.children[0].filePath, 'u1/a.pdf');
+  assert.equal(item.children[1].filePath, null);
 });
 
 test('buildArchiveItems folds project children in and keeps standalone docs top level', () => {

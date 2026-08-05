@@ -27,6 +27,9 @@ import {
   selectableIds,
   sortArchiveItems,
   sortStateForNamedSort,
+  TEAM_AVATAR_SLOTS,
+  collaboratorInitials,
+  teamAvatarSlots,
   toggleExpanded,
   toggleSelection,
   visibleArchiveItems,
@@ -235,6 +238,91 @@ test('the screen mirrors the Documents ledger structure and states', () => {
   // Children are descriptive: no checkbox, no per-child action.
   assert.match(SCREEN, /item\.children\.map/);
   assert.doesNotMatch(SCREEN, /toggleRow\(child\.id\)/);
+});
+
+test('the preview pane renders the real first page, ahead of any row thumbnails', () => {
+  // The preview is the one image on this screen, so it takes the shared
+  // render queue's priority slot instead of queueing behind a list the user
+  // has already left.
+  assert.match(
+    SCREEN,
+    /<PdfPageThumb\s+key=\{previewItem\.id\}[\s\S]*?doc=\{\{ id: previewItem\.id, file_path: previewItem\.filePath \}\}[\s\S]*?variant="preview"[\s\S]*?priority/,
+  );
+  assert.match(SCREEN, /downloadDocument\}/);
+  assert.match(SCREEN, /const \{ downloadDocument \} = useStorage\(\)/);
+});
+
+test("an expanded project's child rows show the same page thumbnail as a Documents row", () => {
+  // variant="row" — the small real-aspect thumbnail, NOT the big preview one.
+  assert.match(
+    SCREEN,
+    /<PdfPageThumb\s+doc=\{\{ id: child\.id, file_path: child\.filePath \}\}[\s\S]*?variant="row"/,
+  );
+  // The old icon-only row is the fallback now, never the default.
+  assert.match(SCREEN, /fallback=\{<Icon name="doc" size=\{12\} color="var\(--ink-300\)" \/>\}/);
+  // Intrinsic size must track the taller row or the skipped rows jump.
+  assert.match(SCREEN, /containIntrinsicSize: '0 40px'/);
+});
+
+test('the preview shows collaborator glyphs only when the item really is shared', () => {
+  // Reuses the hub's existing overlapping stack, not a new visual pattern.
+  assert.match(SCREEN, /import \{[^}]*AvatarStack[^}]*\} from '\.\/HubShell'/);
+  assert.match(SCREEN, /previewTeam\.shown\.length > 0 && \(/);
+  assert.match(SCREEN, /<AvatarStack[\s\S]*?previewTeam\.shown\.map\(collaboratorInitials\)/);
+  assert.match(SCREEN, /previewTeam\.overflow \? \[`\+\$\{previewTeam\.overflow\}`\] : \[\]/);
+  // Archive must NOT fall back to the signed-in user the way Documents does:
+  // every archived item is the owner's by definition, so a solo item shows
+  // no glyphs at all.
+  assert.doesNotMatch(SCREEN, /initialsOf\(user\?\.name/);
+});
+
+test('avatar slots fill owners first, then editors, then viewers', () => {
+  const person = (role, name) => ({ id: name, name, role });
+  assert.equal(TEAM_AVATAR_SLOTS, 5);
+
+  // 2 owners + 3 editors fits exactly: the 2 owners first, then the 3 editors,
+  // everyone shown, no overflow glyph.
+  const exact = teamAvatarSlots([
+    person('editor', 'Ed One'), person('owner', 'Ola One'), person('editor', 'Ed Two'),
+    person('owner', 'Ola Two'), person('editor', 'Ed Three'),
+  ]);
+  assert.deepEqual(exact.shown.map((p) => p.name), ['Ola One', 'Ola Two', 'Ed One', 'Ed Two', 'Ed Three']);
+  assert.equal(exact.overflow, 0);
+
+  // Viewers never displace an owner or an editor.
+  const mixed = teamAvatarSlots([
+    person('viewer', 'Vi One'), person('viewer', 'Vi Two'),
+    person('owner', 'Ola One'), person('editor', 'Ed One'),
+  ]);
+  assert.deepEqual(mixed.shown.map((p) => p.name), ['Ola One', 'Ed One', 'Vi One', 'Vi Two']);
+  assert.equal(mixed.overflow, 0);
+
+  // More people than slots: the LAST slot becomes "+N", and the lowest-priority
+  // people are the ones it stands for.
+  const over = teamAvatarSlots([
+    ...Array.from({ length: 6 }, (_, i) => person('owner', `Ola ${i}`)),
+    person('editor', 'Ed One'),
+  ]);
+  assert.equal(over.shown.length, TEAM_AVATAR_SLOTS - 1);
+  assert.deepEqual(over.shown.map((p) => p.role), ['owner', 'owner', 'owner', 'owner']);
+  assert.equal(over.overflow, 3);
+
+  // Ordering is stable within a role, so glyphs do not shuffle between renders.
+  assert.deepEqual(
+    teamAvatarSlots([person('editor', 'B'), person('editor', 'A')]).shown.map((p) => p.name),
+    ['B', 'A'],
+  );
+
+  assert.deepEqual(teamAvatarSlots(), { shown: [], overflow: 0 });
+  assert.deepEqual(teamAvatarSlots([]), { shown: [], overflow: 0 });
+});
+
+test('avatar initials come from the name, falling back to the invited email', () => {
+  assert.equal(collaboratorInitials({ name: 'Isaiah Calvo' }), 'IC');
+  assert.equal(collaboratorInitials({ name: 'cher' }), 'C');
+  assert.equal(collaboratorInitials({ email: 'dana.smith@example.com' }), 'D');
+  assert.equal(collaboratorInitials({}), '—');
+  assert.equal(collaboratorInitials(null), '—');
 });
 
 test('the mobile card list is hidden on desktop and shown under 720px', () => {

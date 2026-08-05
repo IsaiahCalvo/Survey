@@ -15,7 +15,7 @@
    without a DOM.
 */
 import { useCallback, useMemo, useState } from 'react';
-import { HubShell, Icon, EmptyState, PdfThumb } from './HubShell';
+import { HubShell, Icon, EmptyState, PdfThumb, AvatarStack } from './HubShell';
 import { ConfirmModal } from './BulkModals';
 import PdfPageThumb from './PdfPageThumb';
 import { useStorage } from '../hooks/useDatabase';
@@ -29,6 +29,7 @@ import {
   archivedDateLabel,
   buildBulkFailureMessage,
   buildBulkOutcomeMessage,
+  collaboratorInitials,
   daysRemainingLabel,
   defaultExpandedIds,
   fileSizeLabel,
@@ -39,6 +40,7 @@ import {
   normalizeBulkResult,
   pruneSelection,
   resolveSelection,
+  teamAvatarSlots,
   timeRemainingLabel,
   toggleExpanded,
   toggleSelection,
@@ -126,6 +128,13 @@ export default function ArchiveScreen({
     [rows, previewId],
   );
   const showPreview = previewOpen && !selectMode && Boolean(previewItem);
+
+  /* Avatar slots for the previewed item — owners, then editors, then viewers,
+     with the last slot turning into "+N" when more people exist than fit. */
+  const previewTeam = useMemo(
+    () => teamAvatarSlots(previewItem?.collaborators),
+    [previewItem],
+  );
 
   const selectedItems = useMemo(() => resolveSelection(rows, selectedIds), [rows, selectedIds]);
   const selectedCount = selectedItems.length;
@@ -332,12 +341,24 @@ export default function ArchiveScreen({
               borderBottom: '1px solid var(--ink-600)',
               borderLeft: '2px solid transparent',
               contentVisibility: 'auto',
-              containIntrinsicSize: '0 34px',
+              // 8px padding + the 24px row thumbnail + 8px padding.
+              containIntrinsicSize: '0 40px',
             }}
           >
             <span />
             <div style={{ ...stickyCell(false), padding: '8px 14px 8px 44px', gap: 8 }}>
-              <Icon name="doc" size={12} color="var(--ink-300)" />
+              {/* The same real first-page thumbnail the Documents ledger puts on
+                  its rows. A project restores as one unit, so what the user is
+                  really deciding about is these documents — a name alone does
+                  not tell you which drawing is about to be destroyed. The doc
+                  icon stays as the fallback for anything that cannot render. */}
+              <PdfPageThumb
+                doc={{ id: child.id, file_path: child.filePath }}
+                downloadDocument={downloadDocument}
+                variant="row"
+                height={24}
+                fallback={<Icon name="doc" size={12} color="var(--ink-300)" />}
+              />
               <span className="meta" style={{ fontSize: 11.5, whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' }}>{child.name}</span>
             </div>
             <span />
@@ -504,8 +525,30 @@ export default function ArchiveScreen({
                       downloadDocument={downloadDocument}
                       variant="preview"
                       fill
+                      priority
                       fallback={<div style={{ width: '100%', height: '100%' }}><PdfThumb height="100%" /></div>}
                     />
+                  </div>
+                )}
+                {previewTeam.shown.length > 0 && (
+                  /* Shared with — shown ONLY when this item really has other
+                     people on it. Unlike the Documents ledger, Archive does not
+                     draw a "team of one" from the signed-in user: everything
+                     here belongs to that user by definition, so an owner-only
+                     glyph would say nothing. When the block IS here it is a
+                     warning worth reading before Delete forever — other people
+                     still have this. */
+                  <div style={{ marginTop: 14, flex: 'none' }}>
+                    <div className="section-label">Shared with</div>
+                    <div style={{ marginTop: 8 }}>
+                      <AvatarStack
+                        members={[
+                          ...previewTeam.shown.map(collaboratorInitials),
+                          ...(previewTeam.overflow ? [`+${previewTeam.overflow}`] : []),
+                        ]}
+                        size={22}
+                      />
+                    </div>
                   </div>
                 )}
                 <div style={{ marginTop: 'auto', paddingTop: 14, flex: 'none' }}>
