@@ -218,6 +218,50 @@ export function fileSizeLabel(bytes) {
   return `${(n / (1024 * 1024)).toFixed(2)} MB`;
 }
 
+/* ------------------------------------------------------------------------
+   Preview-pane team glyphs
+   ------------------------------------------------------------------------ */
+
+/* Five overlapping avatars is what the preview column fits without the stack
+   crowding the name beside it. */
+export const TEAM_AVATAR_SLOTS = 5;
+
+/* Whose face you see when there is not room for everyone. Owners can act on
+   the item, editors changed it, viewers only looked — so that is the order the
+   slots fill in, and the people who drop off the end are the ones whose
+   absence tells you least. */
+const ROLE_RANK = { owner: 0, editor: 1, viewer: 2 };
+const roleRank = (role) => {
+  const rank = ROLE_RANK[String(role || '').toLowerCase()];
+  return rank == null ? ROLE_RANK.viewer : rank;
+};
+
+/**
+ * Split collaborators into the avatars to draw and the overflow count.
+ *
+ * Sorting is stable within a role, so people keep their position between
+ * renders. When more people exist than there are slots, the LAST slot becomes
+ * the "+N" glyph rather than another face — five faces plus a count would be
+ * six things wide, which is what the five-slot budget exists to prevent.
+ */
+export function teamAvatarSlots(collaborators = [], slots = TEAM_AVATAR_SLOTS) {
+  const people = (collaborators || []).filter(Boolean);
+  const ordered = people
+    .map((person, index) => ({ person, index }))
+    .sort((a, b) => (roleRank(a.person.role) - roleRank(b.person.role)) || (a.index - b.index))
+    .map((entry) => entry.person);
+
+  if (ordered.length <= slots) return { shown: ordered, overflow: 0 };
+  return { shown: ordered.slice(0, slots - 1), overflow: ordered.length - (slots - 1) };
+}
+
+/** Two-letter initials for an avatar glyph, matching the Documents ledger. */
+export function collaboratorInitials(person) {
+  const source = (person && (person.name || person.email)) || '';
+  return source
+    .trim().split(/\s+/).map((word) => word[0] || '').join('').slice(0, 2).toUpperCase() || '—';
+}
+
 /** Short archived-on date, matching the Documents ledger's date formatting. */
 export function archivedDateLabel(iso) {
   const ms = Date.parse(iso || '') || 0;

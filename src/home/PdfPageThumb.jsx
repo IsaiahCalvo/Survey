@@ -27,13 +27,23 @@ import { readBlobAsArrayBuffer } from '../utils/blobArrayBuffer';
 const thumbCache = new Map();
 
 /* Cap concurrent renders so a long document list does not spawn many pdf.js
-   workers at once. */
+   workers at once.
+
+   The queue is shared by every thumbnail in the app, so a screen the user has
+   already left can leave dozens of waiters in it — a Documents ledger of 17
+   files queues ~26. A `priority` waiter (the big preview pane: the one image
+   the user is actually looking at, on a screen where it is the ONLY image)
+   goes to the FRONT, so it waits for one in-flight render instead of the whole
+   backlog and its box does not sit empty while off-screen rows render. */
 let activeRenders = 0;
 const renderWaiters = [];
 const MAX_CONCURRENT = 3;
-const acquireSlot = () => {
+const acquireSlot = (priority = false) => {
   if (activeRenders < MAX_CONCURRENT) { activeRenders += 1; return Promise.resolve(); }
-  return new Promise((resolve) => renderWaiters.push(resolve));
+  return new Promise((resolve) => {
+    if (priority) renderWaiters.unshift(resolve);
+    else renderWaiters.push(resolve);
+  });
 };
 const releaseSlot = () => {
   const next = renderWaiters.shift();
@@ -128,6 +138,9 @@ export default function PdfPageThumb({
   height = variant === 'row' ? 30 : 460,
   fill = false,
   fallback = null,
+  // UX: set on the big preview pane so it jumps the shared render queue. The
+  // preview is the image the user is waiting on; row thumbnails are scenery.
+  priority = false,
 }) {
   const docId = doc?.id;
   const cached = docId ? thumbCache.get(docId) : null;
@@ -155,7 +168,7 @@ export default function PdfPageThumb({
           return;
         }
 
-        await acquireSlot();
+        await acquireSlot(priority);
         slotHeld = true;
         if (cancelled) return;
 
@@ -175,6 +188,9 @@ export default function PdfPageThumb({
     })();
 
     return () => { cancelled = true; };
+    // `priority` only steers queue position at the moment a slot is requested,
+    // so it deliberately stays out of the deps — changing it must not restart a
+    // render that is already under way.
   }, [docId, doc?.file, doc?.file_path, doc?.filePath, doc?.dataUrl, downloadDocument]);
 
   if (failed) return fallback;
