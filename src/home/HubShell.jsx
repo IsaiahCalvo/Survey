@@ -128,6 +128,7 @@ const mobileNavModeFromUrl = () => {
   if (typeof window === 'undefined') return 'tabs';
   const explicit = new URLSearchParams(window.location.search).get('mobileNav');
   if (explicit === 'rail' || explicit === 'tabs') return explicit;
+  if (/^\/mobile(?:\/|$)/.test(window.location.pathname)) return 'tabs';
   return window.Capacitor?.isNativePlatform?.() ? 'tabs' : 'rail';
 };
 

@@ -1,5 +1,17 @@
 # Run Survey on iPhone without a cable
 
+## Permanent hosted mobile app — no Mac server
+
+Open `https://surveytool.app/mobile` in iPhone Safari. This is the canonical,
+same-origin mobile route on the existing Vercel app; it needs no Vite, Metro,
+Tailscale, Cloudflare tunnel, cable, or shared Wi-Fi. Add it to the Home Screen
+for app-like launch. A compiled Survey/TestFlight build also loads this route.
+
+Expo Go is different: it is a development container and always needs Metro to
+deliver its JavaScript bundle. Vercel cannot replace Metro. Use `/mobile` or an
+installed Survey build for always-available testing; use Expo Go only for
+unpushed shell development.
+
 Use the **Survey development app** for immediate testing from this worktree. It replaces
 Expo Go because Survey's iOS identity and direct Google sign-in must be compiled into the
 native app. After the one-time wireless install, it keeps Expo's fast refresh and QR workflow.
@@ -95,7 +107,7 @@ screens can be cancelled or closed. A `supabase.co` Google screen means the shel
 older deployed web bundle; use the unpushed-worktree steps below or deploy the bridge first.
 
 With no configuration, the shell opens
-`https://surveytool.app/?mobileNav=tabs&nativeShell=expo`. The shell always sets
+`https://surveytool.app/mobile?mobileNav=tabs&nativeShell=expo`. The shell always sets
 `mobileNav=tabs` and `nativeShell=expo`, even if the configured URL contains conflicting
 values.
 
@@ -239,11 +251,30 @@ authentication.
 The deployed mobile web viewer works without an install. Open this exact URL in iPhone Safari:
 
 ```text
-https://surveytool.app/?mobileNav=tabs
+https://surveytool.app/mobile
 ```
 
 Use Safari as the lowest-friction fallback. Use the Survey development app for the native
 WebView shell, and TestFlight once its App Store Connect prerequisites are complete.
+
+## Remote crash and load diagnostics
+
+Survey emits privacy-bounded app-load, PDF parse/raster, pinch, zoom-settle,
+and JavaScript error events to the existing Agent Native Analytics collector
+when these public client variables are configured:
+
+```bash
+VITE_AGENT_NATIVE_ANALYTICS_PUBLIC_KEY='anpk_...'
+VITE_AGENT_NATIVE_ANALYTICS_URL='https://analytics.agent-native.com/track'
+EXPO_PUBLIC_AGENT_NATIVE_ANALYTICS_PUBLIC_KEY='anpk_...'
+EXPO_PUBLIC_AGENT_NATIVE_ANALYTICS_URL='https://analytics.agent-native.com/track'
+```
+
+The Expo shell keeps the last 24 PDF diagnostics outside WKWebView. If iOS
+terminates the WebContent process, the surviving shell uploads the termination
+plus those diagnostics before recovery. No PDF bytes/text, filenames, email,
+auth token, or annotation payload is sent. Use Survey Clips separately for an
+iOS screen recording and attach the Analytics session/correlation ID.
 
 Official references:
 

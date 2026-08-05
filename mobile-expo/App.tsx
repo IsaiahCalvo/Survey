@@ -8,7 +8,10 @@ import * as WebBrowser from 'expo-web-browser';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { WebView, WebViewMessageEvent } from 'react-native-webview';
 
-const DEFAULT_SURVEY_URL = 'https://surveytool.app/';
+const DEFAULT_SURVEY_URL = 'https://surveytool.app/mobile';
+const ANALYTICS_URL = process.env.EXPO_PUBLIC_AGENT_NATIVE_ANALYTICS_URL?.trim()
+  || 'https://analytics.agent-native.com/track';
+const ANALYTICS_PUBLIC_KEY = process.env.EXPO_PUBLIC_AGENT_NATIVE_ANALYTICS_PUBLIC_KEY?.trim() || '';
 const GOOGLE_IOS_CLIENT_ID = '88293580204-481ecgudu1qgmlh2nvdhip13jtqj0iku.apps.googleusercontent.com';
 const GOOGLE_REDIRECT_URI = 'com.googleusercontent.apps.88293580204-481ecgudu1qgmlh2nvdhip13jtqj0iku:/oauthredirect';
 
@@ -51,6 +54,8 @@ function isExternalNavigationUrl(url: string) {
 function SurveyApp() {
   const webViewRef = useRef<WebView>(null);
   const processRecoveryRef = useRef<number[]>([]);
+  const pdfDiagnosticRef = useRef<Array<Record<string, unknown>>>([]);
+  const shellSessionIdRef = useRef(`expo-${Date.now()}-${Math.random().toString(16).slice(2)}`);
   const googleAuthInFlightRef = useRef(false);
   const [canGoBack, setCanGoBack] = useState(false);
   const [loadError, setLoadError] = useState(false);
@@ -102,6 +107,7 @@ function SurveyApp() {
       root.style.setProperty('--native-safe-area-right', '${nativeRightInset}px');
       root.dataset.nativeShell = 'expo';
       root.dataset.mobileViewport = 'locked';
+      window.__surveyShellSessionId = '${shellSessionIdRef.current}';
       window.dispatchEvent(new CustomEvent('survey-native-safe-area-change', {
         detail: { bottom: ${nativeBottomInset}, top: ${nativeTopInset}, left: ${nativeLeftInset}, right: ${nativeRightInset} }
       }));
@@ -145,6 +151,33 @@ function SurveyApp() {
       }));
       true;
     `);
+  };
+
+  const sendAnalyticsEvent = (event: string, properties: Record<string, unknown>) => {
+    if (!ANALYTICS_PUBLIC_KEY) return;
+    void fetch(ANALYTICS_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-agent-native-analytics-key': ANALYTICS_PUBLIC_KEY,
+      },
+      body: JSON.stringify({
+        event,
+        sessionId: shellSessionIdRef.current,
+        anonymousId: shellSessionIdRef.current,
+        timestamp: new Date().toISOString(),
+        properties: {
+          app: 'survey',
+          surface: 'expo-webview',
+          os: Platform.OS,
+          route: '/mobile',
+          ...properties,
+        },
+        context: { source: 'survey-expo-shell' },
+      }),
+    }).catch(() => {
+      // Telemetry is write-only and must never affect app recovery.
+    });
   };
 
   const handleGoogleSignIn = async (requestId: string) => {
@@ -208,10 +241,14 @@ function SurveyApp() {
       if (message?.type === 'survey:google-sign-in' && typeof message.requestId === 'string') {
         void handleGoogleSignIn(message.requestId);
       } else if (message?.type === 'survey:diagnostic' && message.area === 'pdf-zoom') {
-        console.info('[Survey phone PDF]', {
+        const diagnostic = {
           event: message.event,
           detail: message.detail,
           timestamp: message.timestamp,
+        };
+        pdfDiagnosticRef.current = [...pdfDiagnosticRef.current, diagnostic].slice(-24);
+        console.info('[Survey phone PDF]', {
+          ...diagnostic,
         });
       }
     } catch {
@@ -234,6 +271,20 @@ function SurveyApp() {
       source,
       recoveriesInLastMinute: recent.length,
       timestamp: now,
+      lastPdfDiagnostics: pdfDiagnosticRef.current,
+    });
+    sendAnalyticsEvent('$exception', {
+      exceptionType: 'WebViewProcessTerminated',
+      fatal: true,
+      unhandled: true,
+      source,
+      recoveriesInLastMinute: recent.length,
+      lastPdfDiagnostics: pdfDiagnosticRef.current,
+    });
+    sendAnalyticsEvent('survey_webview_process_terminated', {
+      source,
+      recoveriesInLastMinute: recent.length,
+      lastPdfDiagnostics: pdfDiagnosticRef.current,
     });
     if (recent.length >= 2) {
       processRecoveryRef.current = recent;

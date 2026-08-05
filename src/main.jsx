@@ -2,6 +2,9 @@
 import './utils/randomUUIDPolyfill';
 import './utils/blobArrayBuffer';
 import { sanitizeConsoleLogText, shouldCaptureConsoleLine } from './utils/consoleLogFilter';
+import { installSurveyAnalytics } from './utils/surveyAnalytics';
+
+installSurveyAnalytics();
 
 // Stale-deploy recovery: when a lazy-loaded code chunk fails to load (usually a
 // new version deployed while this tab was open, so the old hashed chunk is

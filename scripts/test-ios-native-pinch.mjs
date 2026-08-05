@@ -19,6 +19,9 @@ const artifactDir = path.resolve(
   process.env.MOBILE_IOS_PINCH_ARTIFACT_DIR
     || path.join(tmpdir(), `survey-ios-native-pinch-${runKey}`, stamp),
 );
+const fixture = process.env.MOBILE_PINCH_FIXTURE?.trim() || 'clickable-link-test.pdf';
+const onlyTest = process.env.MOBILE_PINCH_ONLY?.trim() || 'AppNativePinchUITests/NativePinchUITests';
+const slowZoomOutOnly = onlyTest.endsWith('/testSlowZoomOutFromDeepScaleDoesNotTerminateWebContentProcess');
 
 function run(command, args, { capture = false, outputPath = null } = {}) {
   return new Promise((resolve, reject) => {
@@ -131,7 +134,7 @@ async function main() {
   const { baseUrl, managedProcess } = await ensureViteServer(process.env.MOBILE_QA_BASE_URL || null);
   const originalConfigText = await readFile(nativeConfigPath, 'utf8');
   const testUrl = new URL(baseUrl);
-  testUrl.searchParams.set('testPdf', 'clickable-link-test.pdf');
+  testUrl.searchParams.set('testPdf', fixture);
   testUrl.searchParams.set('mobileNav', 'tabs');
   testUrl.searchParams.set('nativeShell', 'capacitor');
   testUrl.searchParams.set('nativePinchE2E', '1');
@@ -151,7 +154,7 @@ async function main() {
       '-derivedDataPath', path.join(artifactDir, 'DerivedData'),
       '-resultBundlePath', resultBundle,
       '-quiet',
-      '-only-testing:AppNativePinchUITests/NativePinchUITests',
+      `-only-testing:${onlyTest}`,
       'CODE_SIGNING_ALLOWED=NO',
       'test',
     ], { outputPath: buildLog });
@@ -162,6 +165,30 @@ async function main() {
     const attachmentManifest = JSON.parse(await readFile(path.join(attachmentsDir, 'manifest.json'), 'utf8'));
     const attachments = attachmentManifest.flatMap((entry) => entry.attachments || []);
     const findAttachment = (prefix) => attachments.find((entry) => entry.suggestedHumanReadableName?.startsWith(prefix));
+    const log = await readFile(buildLog, 'utf8');
+    if (slowZoomOutOnly) {
+      const slowAttachment = findAttachment('after-slow-deep-zoom-out-stress');
+      assert.ok(slowAttachment, 'XCTest did not retain the slow deep zoom-out evidence screenshot');
+      const slowScreenshot = path.join(attachmentsDir, slowAttachment.exportedFileName);
+      const evidence = log.match(/NATIVE_SLOW_ZOOM_OUT_EVIDENCE[^\r\n]*/)?.[0]
+        || 'XCTest passed three session-stability and live-floor assertions';
+      const summaryPath = path.join(artifactDir, 'summary.json');
+      await writeFile(summaryPath, `${JSON.stringify({
+        assertion: 'Slow deep zoom-out keeps one WebView session and a bounded live compositor scale',
+        device: simulator.name,
+        evidence,
+        fixture,
+        input: 'Three native 800%-to-6.25% slow pinch contractions',
+        result: 'passed',
+        resultBundle,
+        runtime: simulator.runtime,
+        screenshotPath: slowScreenshot,
+        testUrl: testUrl.toString(),
+        udid: simulator.udid,
+      }, null, 2)}\n`);
+      console.log(`\n✅ Native slow deep zoom-out passed\nEvidence: ${summaryPath}\nXcode result: ${resultBundle}`);
+      return;
+    }
     const beforeAttachment = findAttachment('before-native-pinch');
     const afterAttachment = findAttachment('after-native-pinch');
     const beforeStressAttachment = findAttachment('before-rapid-pinch-stress');
@@ -190,7 +217,6 @@ async function main() {
 
     const screenshotPath = path.join(artifactDir, 'final-simulator.png');
     await run('xcrun', ['simctl', 'io', simulator.udid, 'screenshot', '--type=png', screenshotPath]);
-    const log = await readFile(buildLog, 'utf8');
     const evidence = log.match(/NATIVE_PINCH_EVIDENCE[^\r\n]*/)?.[0] || 'Recorded in NativePinch.xcresult attachments';
     const summaryPath = path.join(artifactDir, 'summary.json');
     await writeFile(summaryPath, `${JSON.stringify({

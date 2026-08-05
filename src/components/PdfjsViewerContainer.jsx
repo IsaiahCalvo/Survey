@@ -39,6 +39,7 @@ import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.mjs';
 import pdfWorker from 'pdfjs-dist/legacy/build/pdf.worker.min.mjs?url';
 import { extractPdfOutlineBookmarks } from '../utils/bookmarkOutline';
 import { resolvePinchCommitCursor, resolvePinchEndTransition } from '../utils/mobilePinchGesture';
+import { trackSurveyAnalyticsEvent } from '../utils/surveyAnalytics';
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorker;
 
@@ -56,6 +57,11 @@ const MAX_SCALE = 40;
 // when individual canvases are budgeted. Keep the desktop 4000% contract, but
 // stop mobile before WebKit's compositor reaches that unrecoverable range.
 const MOBILE_MAX_SCALE = 8;
+// Never ask WKWebView to composite a deeply zoomed document layer below this
+// ratio. At 800%, a single transform down to fit can expose >80 MP of source
+// pixels and iOS terminates the WebContent process. Pinch-out checkpoints the
+// same anchored preview into layout, then continues from a fresh 1x preview.
+const MOBILE_LIVE_ZOOM_REBASE_MIN = 0.67;
 const BASE_MAX_SCALE = 2.5; // above this the base canvas is a cheap backdrop; the detail tile owns sharpness
 const MOBILE_BASE_MAX_SCALE = 1.25;
 const SETTLE_MS = 110;      // commit the gesture this long after the last wheel tick
@@ -68,6 +74,7 @@ const ZOOM_END_EVENT = 'survey-pdfjs-zoom-end';
 const PINCH_START_EVENT = 'survey-pdfjs-pinch-start';
 
 function postNativePdfDiagnostic(event, detail = {}) {
+  trackSurveyAnalyticsEvent(`survey_pdf_${String(event || 'diagnostic').replaceAll('-', '_')}`, detail);
   try {
     if (!window.ReactNativeWebView?.postMessage) return;
     window.ReactNativeWebView.postMessage(JSON.stringify({
@@ -350,6 +357,10 @@ function DetailTile({ pdf, pageIndex, scale, rotation, liveZoom, interactionRef,
     const scroller = scrollerRef.current;
     const canvas = canvasRef.current;
     if (!host || !scroller || !canvas || !pdf) return;
+    // Zoom-out already has more source detail than the destination needs.
+    // Rendering another temporary tile here only duplicates large canvases
+    // during the exact slow-pinch path that is tightest on iPhone memory.
+    if (isMobileSurface && liveZoom < 1) { setTile(null); return; }
     // Ordinary one-finger panning waits until momentum settles. A pinch is
     // different: periodically refresh the visible tile while fingers remain
     // down so a slow deep zoom does not stay blurry until release.
@@ -410,6 +421,16 @@ function DetailTile({ pdf, pageIndex, scale, rotation, liveZoom, interactionRef,
   useEffect(() => {
     const enteringLiveZoom = liveZoom !== 1 && wasLiveZoomRef.current === 1;
     wasLiveZoomRef.current = liveZoom;
+    if (isMobileSurface && liveZoom < 1) {
+      if (progressiveTimerRef.current) clearTimeout(progressiveTimerRef.current);
+      progressiveTimerRef.current = 0;
+      genRef.current += 1;
+      if (taskRef.current) { try { taskRef.current.cancel(); } catch { /* settled */ } }
+      taskRef.current = null;
+      releaseRasterCanvas(canvasRef.current);
+      setTile(null);
+      return;
+    }
     if (enteringLiveZoom) {
       genRef.current += 1;
       if (taskRef.current) { try { taskRef.current.cancel(); } catch { /* settled */ } }
@@ -560,6 +581,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
   const nativeScrollMarkerRef = useRef(null);
   const nativeAnchorMarkerRef = useRef(null);
   const nativePanCoastMarkerRef = useRef(null);
+  const nativeLiveZoomFloorRef = useRef(null);
   const pdfRef = useRef(null);
 
   const [numPages, setNumPages] = useState(0);
@@ -1101,6 +1123,44 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     setLiveZoom(1);
   }, [resolveGesturePreview, setZoomInteraction]);
 
+  const checkpointPinchGesture = useCallback((touchState, center, distance) => {
+    const gesture = gestureRef.current;
+    if (!gesture || !touchState) return false;
+    const fromScale = scaleRef.current;
+    const preview = resolveGesturePreview(gesture, fromScale * liveZoomRef.current);
+    if (!preview) return false;
+
+    // Commit the exact preview currently under the fingers without ending the
+    // zoom interaction. The next touch frame starts from this smaller layout,
+    // so WebKit never downscales one enormous compositor layer for the whole
+    // 800%-to-fit gesture.
+    pendingAnchorRef.current = { left: preview.left, top: preview.top };
+    scaleRef.current = preview.targetScale;
+    setScale(preview.targetScale);
+    liveZoomRef.current = 1;
+    setLiveZoom(1);
+
+    touchState.startDistance = Math.max(1, distance);
+    touchState.lastCenterX = center.x;
+    touchState.lastCenterY = center.y;
+    gestureRef.current = {
+      originScale: preview.targetScale,
+      originCursorX: center.x,
+      originCursorY: center.y,
+      currentCursorX: center.x,
+      currentCursorY: center.y,
+      originContentX: preview.left + center.x,
+      originContentY: preview.top + center.y,
+    };
+    postNativePdfDiagnostic('pinch-rebase', {
+      fromPct: Math.round(fromScale * 100),
+      toPct: Math.round(preview.targetScale * 100),
+      floor: MOBILE_LIVE_ZOOM_REBASE_MIN,
+      pageCount: numPagesRef.current,
+    });
+    return true;
+  }, [resolveGesturePreview]);
+
   useEffect(() => {
     const el = scrollerRef.current;
     if (!el) return undefined;
@@ -1393,6 +1453,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
         startDistance: distance,
         lastCenterX: center.x,
         lastCenterY: center.y,
+        minPresentedLiveZoom: 1,
       };
       gestureRef.current = {
         originScale: scaleRef.current,
@@ -1416,6 +1477,9 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
         cursorX: Math.round(center.x),
         cursorY: Math.round(center.y),
       });
+      if (nativeLiveZoomFloorRef.current) {
+        nativeLiveZoomFloorRef.current.setAttribute('aria-label', 'PDF live zoom floor 1.00');
+      }
       setZoomInteraction(true);
       setPanInteraction(true);
       setMobileTouchMode('pinch');
@@ -1478,9 +1542,35 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
         const center = getTouchCenter(event.touches, rect);
         const committedScale = scaleRef.current;
         const maxScale = isMobileSurface ? MOBILE_MAX_SCALE : MAX_SCALE;
-        let nextLiveZoom = getTouchDistance(event.touches) / touchState.startDistance;
+        const distance = Math.max(1, getTouchDistance(event.touches));
+        let nextLiveZoom = distance / touchState.startDistance;
         nextLiveZoom = Math.max(MIN_SCALE / committedScale, Math.min(maxScale / committedScale, nextLiveZoom));
+
+        if (nextLiveZoom < MOBILE_LIVE_ZOOM_REBASE_MIN) {
+          // Do not publish the unsafe ratio to React/CSS. Commit that anchored
+          // scale directly, rebase the gesture, and keep following the fingers.
+          liveZoomRef.current = nextLiveZoom;
+          touchState.minPresentedLiveZoom = Math.min(
+            touchState.minPresentedLiveZoom || 1,
+            MOBILE_LIVE_ZOOM_REBASE_MIN,
+          );
+          if (nativeLiveZoomFloorRef.current) {
+            nativeLiveZoomFloorRef.current.setAttribute(
+              'aria-label',
+              `PDF live zoom floor ${touchState.minPresentedLiveZoom.toFixed(2)}`,
+            );
+          }
+          checkpointPinchGesture(touchState, center, distance);
+          return;
+        }
         liveZoomRef.current = nextLiveZoom;
+        touchState.minPresentedLiveZoom = Math.min(touchState.minPresentedLiveZoom || 1, nextLiveZoom);
+        if (nativeLiveZoomFloorRef.current) {
+          nativeLiveZoomFloorRef.current.setAttribute(
+            'aria-label',
+            `PDF live zoom floor ${touchState.minPresentedLiveZoom.toFixed(2)}`,
+          );
+        }
 
         // Keep the committed scroll position stable while fingers are down.
         // The CSS preview now owns both scale and translation; on release the
@@ -1628,7 +1718,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
       setMobileTouchMode(null);
       cancelPanInertia();
     };
-  }, [applyWheelZoom, cancelPanInertia, commitGesture, flushPan, isMobileSurface, schedulePan, setPanInteraction, setZoomInteraction, startMobilePanInertia]);
+  }, [applyWheelZoom, cancelPanInertia, checkpointPinchGesture, commitGesture, flushPan, isMobileSurface, schedulePan, setPanInteraction, setZoomInteraction, startMobilePanInertia]);
 
   // Mobile long-press → context menu (Phase D parity). Isolated, additive,
   // and passive: this effect only OBSERVES touches (it never preventDefaults or
@@ -1981,6 +2071,11 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
             aria-label="PDF pan coast distance 0 0"
             style={{ position: 'absolute', width: 1, height: 1, opacity: 0, pointerEvents: 'none' }}
           />
+          <span
+            ref={nativeLiveZoomFloorRef}
+            aria-label="PDF live zoom floor 1.00"
+            style={{ position: 'absolute', width: 1, height: 1, opacity: 0, pointerEvents: 'none' }}
+          />
         </>
       )}
       <style>{`
@@ -2028,7 +2123,14 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
             // viewport centre so the page stays locked centred with no drift/snap. See
             // the liveTransformOrigin computation above for the full UX rationale.
             transformOrigin: liveTransformOrigin,
-            willChange: renderedLiveZoom !== 1 || liveTranslateX || liveTranslateY ? 'transform' : 'auto',
+            // A mobile content node represents the full multi-page document.
+            // `will-change: transform` can retain that huge promoted layer even
+            // after a pinch settles, exhausting WKWebView across repeated deep
+            // zoom cycles. WebKit promotes the active transform on demand; do
+            // not ask it to keep the document layer resident.
+            willChange: isMobileSurface
+              ? 'auto'
+              : (renderedLiveZoom !== 1 || liveTranslateX || liveTranslateY ? 'transform' : 'auto'),
           }}
         >
           {pageSizes.map((s, i) => {

@@ -84,6 +84,7 @@ import { UndoToast } from './components/collab/UndoToast.jsx';
 import { applyAnnotationGroupId, findGroupMembers, generateGroupId, getAnnotationGroupId, getCalloutGroupId } from './utils/annotationGroups';
 import { applyAnnotationHistoryAction, buildAnnotationHistoryAction, buildPreciseAnnotationHistoryAction, filterAnnotationHistoryActionByOwner, invertAnnotationHistoryAction } from './utils/annotationLocalHistory';
 import { normalizeByPageAnnotationIdentities } from './utils/annotationStorageIdentity.js';
+import { trackSurveyAnalyticsEvent } from './utils/surveyAnalytics';
 import { mintPastedCloneIdentity } from './utils/pasteCloneIdentity';
 import { areViewStatesEqual, normalizeViewState } from './utils/viewState';
 import { arrayMove } from '@dnd-kit/sortable';
@@ -20823,6 +20824,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
     const loadPDF = async () => {
       const docName = pdfFile.name || 'unknown';
+      const analyticsLoadStartedAt = performance.now();
+      trackSurveyAnalyticsEvent('survey_pdf_open_requested', {
+        cloudDocument: Boolean(pdfFile?.id),
+      });
       perfLoad.start(docName);
       // Hoisted so the outer catch's rewrite-and-retry path can reuse
       // bytes we've already fetched instead of re-downloading.
@@ -20855,6 +20860,17 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
           throw new Error('Invalid file object: missing arrayBuffer and filePath');
         }
 
+        const loadedByteLength = arrayBuffer.byteLength;
+        const byteSizeBucket = loadedByteLength < 1024 * 1024
+          ? 'under-1mb'
+          : loadedByteLength < 10 * 1024 * 1024
+            ? '1-10mb'
+            : loadedByteLength < 30 * 1024 * 1024 ? '10-30mb' : 'over-30mb';
+        trackSurveyAnalyticsEvent('survey_pdf_bytes_ready', {
+          byteSizeBucket,
+          ms: Math.round(performance.now() - analyticsLoadStartedAt),
+        });
+
         //   size: arrayBuffer.byteLength,
         //   version: pdfjsLib.version,
         //   workerSrc: pdfjsLib.GlobalWorkerOptions.workerSrc
@@ -20876,17 +20892,33 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         perfLoad.mark(docName, 'Starting PDF.js getDocument');
         try {
           // First attempt: standard loading
-          // Clone buffer since PDF.js may detach it when transferring to worker
+          // Cloud/Y.Doc documents never need raw bytes after a successful
+          // parse, so transfer their original buffer to the worker and avoid a
+          // second full-size allocation. Local imports preserve the clone
+          // because their embedded annotations still need the original bytes.
+          const transferCloudBytes = Boolean(pdfFile?.id);
+          const primaryPdfData = transferCloudBytes ? arrayBuffer : arrayBuffer.slice(0);
+          if (transferCloudBytes) arrayBuffer = null;
           const loadingTask = pdfjsLib.getDocument({ isEvalSupported: false,
-            data: arrayBuffer.slice(0),
+            data: primaryPdfData,
             verbosity: pdfjsLib.VerbosityLevel.ERRORS
           });
           pdf = await loadingTask.promise;
           perfLoad.mark(docName, 'PDF.js document parsed');
+          trackSurveyAnalyticsEvent('survey_pdf_parse_completed', {
+            byteSizeBucket,
+            ms: Math.round(performance.now() - analyticsLoadStartedAt),
+            pageCount: pdf.numPages,
+          });
         } catch (firstError) {
           console.warn('Standard PDF load failed, trying recovery mode:', firstError.message);
           // Second attempt: recovery mode with lenient options
           try {
+            if (!arrayBuffer && pdfFile.filePath) {
+              const retryBlob = await downloadFromStorage(pdfFile.filePath);
+              if (!retryBlob) throw new Error('Failed to re-download PDF for recovery');
+              arrayBuffer = await retryBlob.arrayBuffer();
+            }
             // Use fresh buffer clone for recovery attempt
             const recoveryTask = pdfjsLib.getDocument({ isEvalSupported: false,
               data: arrayBuffer.slice(0),
@@ -20955,6 +20987,11 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         const firstPage = await pdf.getPage(1);
         if (isCancelled) return;
         const firstViewport = firstPage.getViewport({ scale: 1.0 });
+        trackSurveyAnalyticsEvent('survey_pdf_first_page_ready', {
+          byteSizeBucket,
+          ms: Math.round(performance.now() - analyticsLoadStartedAt),
+          pageCount: pdf.numPages,
+        });
         setPageHeights({ 1: firstViewport.height });
         setPageSizes({ 1: { width: firstViewport.width, height: firstViewport.height } });
         setPageObjects({ 1: firstPage });

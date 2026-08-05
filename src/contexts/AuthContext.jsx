@@ -587,6 +587,9 @@ export const AuthProvider = ({ children }) => {
     // In Electron, window.location.origin might be file:// which doesn't work for OAuth
     // Use the current window location or a custom protocol
     let redirectTo = window.location.origin;
+    if (/^\/mobile(?:\/|$)/.test(window.location.pathname)) {
+      redirectTo = `${window.location.origin}/mobile`;
+    }
     
     // If we're in Electron (detected by checking for electronAPI)
     if (window.electronAPI) {

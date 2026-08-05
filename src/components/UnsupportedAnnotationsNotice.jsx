@@ -95,7 +95,7 @@ const UnsupportedAnnotationsNotice = ({ unsupportedCounts, onDismiss }) => {
         fontFamily: '-apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", "Segoe UI", Roboto, Ubuntu, "Noto Sans", Arial, sans-serif',
       }}
     >
-      {/* Eye = the PDF content is preserved but cannot currently be shown. */}
+      {/* Circled information mark: explanatory notice, not visibility toggle. */}
       <div
         style={{
           flexShrink: 0,
@@ -107,14 +107,16 @@ const UnsupportedAnnotationsNotice = ({ unsupportedCounts, onDismiss }) => {
         }}
       >
         <svg
+          aria-label="Information"
           width="20"
           height="20"
           viewBox="0 0 20 20"
           fill="none"
           xmlns="http://www.w3.org/2000/svg"
         >
-          <path d="M2 10C4.1 6.6 6.8 4.9 10 4.9S15.9 6.6 18 10c-2.1 3.4-4.8 5.1-8 5.1S4.1 13.4 2 10Z" stroke="#d8a84e" strokeWidth="1.5" />
-          <circle cx="10" cy="10" r="2.5" stroke="#d8a84e" strokeWidth="1.5" />
+          <circle cx="10" cy="10" r="8" stroke="#d8a84e" strokeWidth="1.5" />
+          <circle cx="10" cy="6.2" r="1" fill="#d8a84e" />
+          <path d="M10 9V14" stroke="#d8a84e" strokeWidth="1.7" strokeLinecap="round" />
         </svg>
       </div>
 

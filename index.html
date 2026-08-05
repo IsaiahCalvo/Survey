@@ -78,7 +78,8 @@
           var mobileNav = params.get('mobileNav');
           var root = document.documentElement;
           var isMobileViewport = nativeShell === 'expo' || nativeShell === 'capacitor'
-            || mobileNav === 'tabs' || mobileNav === 'rail';
+            || mobileNav === 'tabs' || mobileNav === 'rail'
+            || /^\/mobile(?:\/|$)/.test(window.location.pathname);
 
           if (isMobileViewport) {
             root.dataset.mobileViewport = 'locked';

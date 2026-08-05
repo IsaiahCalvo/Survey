@@ -184,6 +184,49 @@ final class NativePinchUITests: XCTestCase {
         print("NATIVE_DEEP_PINCH_EVIDENCE pinches=5 sessionStable=true viewerVisible=true")
     }
 
+    func testSlowZoomOutFromDeepScaleDoesNotTerminateWebContentProcess() throws {
+        _ = waitForViewer()
+        let sessionQuery = app.descendants(matching: .any).matching(
+            NSPredicate(format: "label BEGINSWITH %@", "PDF viewer session ")
+        )
+        XCTAssertTrue(sessionQuery.firstMatch.waitForExistence(timeout: 10), "Viewer session marker did not appear")
+        let originalSession = sessionQuery.firstMatch.label
+        let liveFloorQuery = app.descendants(matching: .any).matching(
+            NSPredicate(format: "label BEGINSWITH %@", "PDF live zoom floor ")
+        )
+        XCTAssertTrue(liveFloorQuery.firstMatch.waitForExistence(timeout: 10), "Live zoom floor marker did not appear")
+
+        // Exact physical-phone regression: slow contraction from a deep scale.
+        // Slow movement previously gave WebKit time to raster an 80+ MP source
+        // surface and terminate its WebContent process; a fast pinch often hid it.
+        for cycle in 0..<3 {
+            for step in 0..<5 {
+                let zoomInSurface = app.buttons["PDF gesture surface"]
+                XCTAssertTrue(zoomInSurface.waitForExistence(timeout: 5), "Gesture surface missing before deep zoom cycle \(cycle), step \(step)")
+                zoomInSurface.pinch(withScale: 2.0, velocity: 2.0)
+                usleep(350_000)
+            }
+
+            let zoomOutSurface = app.buttons["PDF gesture surface"]
+            XCTAssertTrue(zoomOutSurface.waitForExistence(timeout: 5), "Gesture surface missing before slow zoom-out cycle \(cycle)")
+            zoomOutSurface.pinch(withScale: 0.0625, velocity: -0.1)
+            sleep(2)
+
+            XCTAssertTrue(app.buttons["PDF gesture surface"].exists, "PDF gesture surface disappeared after slow zoom-out cycle \(cycle)")
+            XCTAssertEqual(sessionQuery.firstMatch.label, originalSession, "WKWebView reloaded during slow deep zoom-out cycle \(cycle)")
+            let floorLabel = liveFloorQuery.firstMatch.label
+            let floor = Double(floorLabel.replacingOccurrences(of: "PDF live zoom floor ", with: "")) ?? 0
+            XCTAssertGreaterThanOrEqual(floor, 0.66, "Unsafe deep-layer downscale reached the compositor: \(floorLabel)")
+            print("NATIVE_SLOW_ZOOM_OUT cycle=\(cycle) floor=\(floorLabel) sessionStable=true")
+        }
+
+        let after = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+        after.name = "after-slow-deep-zoom-out-stress"
+        after.lifetime = .keepAlways
+        add(after)
+        print("NATIVE_SLOW_ZOOM_OUT_EVIDENCE cycles=3 sessionStable=true floorBounded=true")
+    }
+
     func testPanFlickCoastsDiagonallyAfterRelease() throws {
         let (_, surface) = waitForViewer()
         let zoomMenu = app.buttons["Zoom and fit options"]

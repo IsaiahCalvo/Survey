@@ -18,6 +18,7 @@ const INDEX_HTML_SOURCE = readFileSync(new URL('../index.html', import.meta.url)
 const APP_SHELL_SOURCE = readFileSync(new URL('../src/AppShell.jsx', import.meta.url), 'utf8');
 const MAIN_SOURCE = readFileSync(new URL('../src/main.jsx', import.meta.url), 'utf8');
 const HUB_CSS_SOURCE = readFileSync(new URL('../src/home/hub.css', import.meta.url), 'utf8');
+const HUB_SHELL_SOURCE = readFileSync(new URL('../src/home/HubShell.jsx', import.meta.url), 'utf8');
 const IOS_SIMULATOR_SOURCE = readFileSync(new URL('../scripts/run-ios-simulator.mjs', import.meta.url), 'utf8');
 const IOS_APP_SCHEME_SOURCE = readFileSync(new URL('../ios/App/App.xcodeproj/xcshareddata/xcschemes/App.xcscheme', import.meta.url), 'utf8');
 const PDFJS_VIEWER_SOURCE = readFileSync(new URL('../src/components/PdfjsViewerContainer.jsx', import.meta.url), 'utf8');
@@ -31,6 +32,7 @@ const MOBILE_VIEWER_CSS_SOURCE = readFileSync(new URL('../src/mobile/mobilePdfVi
 const PAGES_PANEL_SOURCE = readFileSync(new URL('../src/sidebar/PagesPanel.jsx', import.meta.url), 'utf8');
 const SPACES_PANEL_SOURCE = readFileSync(new URL('../src/sidebar/SpacesPanel.jsx', import.meta.url), 'utf8');
 const SURVEY_RAIL_SOURCE = readFileSync(new URL('../src/SurveySpacesRail.jsx', import.meta.url), 'utf8');
+const SURVEY_ANALYTICS_SOURCE = readFileSync(new URL('../src/utils/surveyAnalytics.js', import.meta.url), 'utf8');
 
 test('Supabase auth runs without navigator.locks on an insecure mobile host', async () => {
   let lockCalls = 0;
@@ -123,7 +125,7 @@ test('Expo shell publishes native safe areas and keeps controls above the home i
   assert.match(EXPO_APP_SOURCE, /--native-safe-area-bottom/);
   assert.match(EXPO_APP_SOURCE, /injectedJavaScriptBeforeContentLoaded/);
   assert.match(EXPO_APP_SOURCE, /process\.env\.EXPO_PUBLIC_SURVEY_URL/);
-  assert.match(EXPO_APP_SOURCE, /DEFAULT_SURVEY_URL = 'https:\/\/surveytool\.app\/'/);
+  assert.match(EXPO_APP_SOURCE, /DEFAULT_SURVEY_URL = 'https:\/\/surveytool\.app\/mobile'/);
   assert.match(EXPO_APP_SOURCE, /url\.searchParams\.set\('mobileNav', 'tabs'\)/);
   assert.match(EXPO_APP_SOURCE, /url\.searchParams\.set\('nativeShell', 'expo'\)/);
   assert.match(HUB_CSS_SOURCE, /\.survey-hub\.hub-native-shell-expo \.mobile-home-tabs \{/);
@@ -136,6 +138,12 @@ test('Expo shell publishes native safe areas and keeps controls above the home i
   assert.doesNotMatch(HUB_CSS_SOURCE, /\.mobile-home-tabs button[\s\S]{0,500}transform: translateY\(4px\)/);
   assert.match(EXPO_APP_SOURCE, /onContentProcessDidTerminate/);
   assert.match(EXPO_APP_SOURCE, /onRenderProcessGone/);
+});
+
+test('hosted mobile route is canonical and preserves mobile OAuth return', () => {
+  assert.match(INDEX_HTML_SOURCE, /\^\\\/mobile\(\?:\\\/\|\$\)/);
+  assert.match(HUB_SHELL_SOURCE, /\^\\\/mobile\(\?:\\\/\|\$\)[\s\S]{0,80}return 'tabs'/);
+  assert.match(AUTH_CONTEXT_SOURCE, /redirectTo = `\$\{window\.location\.origin\}\/mobile`/);
 });
 
 test('build identity is diagnostic-only and Simulator rejects a stale bundle', () => {
@@ -251,6 +259,15 @@ test('mobile PDF pinch previews translation, progressively sharpens, and commits
   assert.match(PDFJS_VIEWER_SOURCE, /240/);
 });
 
+test('mobile deep zoom-out rebases before WebKit composites an unsafe downscale', () => {
+  assert.match(PDFJS_VIEWER_SOURCE, /MOBILE_LIVE_ZOOM_REBASE_MIN = 0\.67/);
+  assert.match(PDFJS_VIEWER_SOURCE, /checkpointPinchGesture/);
+  assert.match(PDFJS_VIEWER_SOURCE, /nextLiveZoom < MOBILE_LIVE_ZOOM_REBASE_MIN/);
+  assert.match(PDFJS_VIEWER_SOURCE, /PDF live zoom floor/);
+  assert.match(PDFJS_VIEWER_SOURCE, /if \(isMobileSurface && liveZoom < 1\)/);
+  assert.match(PDFJS_VIEWER_SOURCE, /willChange: isMobileSurface[\s\S]{0,80}\? 'auto'/);
+});
+
 test('mobile pan keeps two-axis velocity and coasts after release', () => {
   assert.match(PDFJS_VIEWER_SOURCE, /velocityX/);
   assert.match(PDFJS_VIEWER_SOURCE, /velocityY/);
@@ -267,6 +284,11 @@ test('mobile PDF load paints page one before refining remaining page sizes', () 
   const remainingPages = PDFJS_VIEWER_SOURCE.indexOf('for (let start = 2; start <= pdf.numPages', visibleSizes);
   assert.ok(firstPage > 0 && visibleSizes > firstPage && remainingPages > visibleSizes);
   assert.match(PDF_VIEWER_SOURCE, /if \(pdfFile\?\.id\) \{[\s\S]{0,260}setIsLoadingPDF\(false\)/);
+  assert.match(PDF_VIEWER_SOURCE, /const transferCloudBytes = Boolean\(pdfFile\?\.id\)/);
+  assert.match(PDF_VIEWER_SOURCE, /const primaryPdfData = transferCloudBytes \? arrayBuffer : arrayBuffer\.slice\(0\)/);
+  assert.match(PDF_VIEWER_SOURCE, /survey_pdf_bytes_ready/);
+  assert.match(PDF_VIEWER_SOURCE, /survey_pdf_parse_completed/);
+  assert.match(PDF_VIEWER_SOURCE, /survey_pdf_first_page_ready/);
 });
 
 test('unsupported annotation notice is compact above the mobile dock and expands for details', () => {
@@ -275,7 +297,9 @@ test('unsupported annotation notice is compact above the mobile dock and expands
   assert.match(UNSUPPORTED_NOTICE_SOURCE, /aria-expanded/);
   assert.match(UNSUPPORTED_NOTICE_SOURCE, /setIsExpanded\(true\)/);
   assert.match(UNSUPPORTED_NOTICE_SOURCE, /event\.stopPropagation\(\); handleDismiss\(\)/);
-  assert.match(UNSUPPORTED_NOTICE_SOURCE, /M2 10C4\.1 6\.6/);
+  assert.match(UNSUPPORTED_NOTICE_SOURCE, /aria-label="Information"/);
+  assert.match(UNSUPPORTED_NOTICE_SOURCE, /<circle cx="10" cy="10" r="8"/);
+  assert.doesNotMatch(UNSUPPORTED_NOTICE_SOURCE, /M2 10C4\.1 6\.6/);
 });
 
 test('mobile pinch settles at the latest centroid and suppresses a staggered release', () => {
@@ -290,6 +314,21 @@ test('Expo forwards narrow PDF diagnostics and reports WebView process terminati
   assert.match(EXPO_APP_SOURCE, /\[Survey phone PDF\]/);
   assert.match(EXPO_APP_SOURCE, /\[Survey shell\] WebView process terminated/);
   assert.doesNotMatch(EXPO_APP_SOURCE, /console\.error\('\[Survey shell\] WebView process terminated/);
+  assert.match(EXPO_APP_SOURCE, /pdfDiagnosticRef\.current = \[\.\.\.pdfDiagnosticRef\.current, diagnostic\]\.slice\(-24\)/);
+  assert.match(EXPO_APP_SOURCE, /survey_webview_process_terminated/);
+  assert.match(EXPO_APP_SOURCE, /EXPO_PUBLIC_AGENT_NATIVE_ANALYTICS_PUBLIC_KEY/);
+  assert.match(EXPO_APP_SOURCE, /lastPdfDiagnostics: pdfDiagnosticRef\.current/);
+  assert.match(EXPO_APP_SOURCE, /window\.__surveyShellSessionId/);
+});
+
+test('hosted web and native shell analytics share a privacy-bounded session', () => {
+  assert.match(MAIN_SOURCE, /installSurveyAnalytics\(\)/);
+  assert.match(PDFJS_VIEWER_SOURCE, /trackSurveyAnalyticsEvent\(`survey_pdf_/);
+  assert.match(SURVEY_ANALYTICS_SOURCE, /VITE_AGENT_NATIVE_ANALYTICS_PUBLIC_KEY/);
+  assert.match(SURVEY_ANALYTICS_SOURCE, /window\.__surveyShellSessionId/);
+  assert.match(SURVEY_ANALYTICS_SOURCE, /BLOCKED_PROPERTY/);
+  assert.match(SURVEY_ANALYTICS_SOURCE, /keepalive: true/);
+  assert.doesNotMatch(SURVEY_ANALYTICS_SOURCE, /userId:/);
 });
 
 test('starting a two-finger pinch cancels a partial creation stroke', () => {
