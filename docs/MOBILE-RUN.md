@@ -1,16 +1,33 @@
 # Run Survey on iPhone without a cable
 
-## Permanent hosted mobile app — no Mac server
+## Permanent Expo Go app — no Mac server
 
-Open `https://surveytool.app/mobile` in iPhone Safari. This is the canonical,
-same-origin mobile route on the existing Vercel app; it needs no Vite, Metro,
-Tailscale, Cloudflare tunnel, cable, or shared Wi-Fi. Add it to the Home Screen
-for app-like launch. A compiled Survey/TestFlight build also loads this route.
+This is the default phone-testing path. It opens Survey inside Expo Go and does not need
+Metro, Vite, Tailscale, a cable, shared Wi-Fi, or this Mac to remain online.
+Metro is only the temporary local code server used for live, uncommitted development.
 
-Expo Go is different: it is a development container and always needs Metro to
-deliver its JavaScript bundle. Vercel cannot replace Metro. Use `/mobile` or an
-installed Survey build for always-available testing; use Expo Go only for
-unpushed shell development.
+1. Install Expo Go and sign in once as Expo user `isaiahcalvo`.
+2. Scan the permanent QR in the Codex handoff or open this URL on the iPhone:
+   `exp://u.expo.dev/7522d24f-7afd-4d5b-a5c0-58f2ea863c28/branch/019fd954-cd01-705b-a108-2e1ac9f755d7`
+3. Expo Go opens Survey as an iPhone app. It is not Safari. The shell loads the hosted
+   Survey UI from `https://surveytool.app/mobile`, which is how this native shell is designed.
+
+The QR and branch URL stay the same. To publish a newer native-shell bundle to them:
+
+```bash
+cd mobile-expo
+CI=1 EXPO_PUBLIC_SURVEY_URL='https://surveytool.app/mobile' \
+  npx eas-cli update --branch expo-go --platform ios \
+  --message 'Describe the mobile change'
+```
+
+Verified on 2026-08-06 in Expo Go on the iPhone 17 Pro Max Simulator with Metro stopped.
+The published update uses Expo Go's SDK 54 runtime and renders the production sign-in flow.
+Expo's free plan hosts this preview. Native Google identity cannot be proven in Expo Go;
+use the Survey development app below for that one native-only flow.
+
+`https://surveytool.app/mobile` remains the direct Safari fallback and the same hosted UI
+loaded by the native shell.
 
 Use the **Survey development app** for immediate testing from this worktree. It replaces
 Expo Go because Survey's iOS identity and direct Google sign-in must be compiled into the

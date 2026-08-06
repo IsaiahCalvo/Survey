@@ -18,7 +18,8 @@
         "NSAppTransportSecurity": {
           "NSAllowsLocalNetworking": true
         }
-      }
+      },
+      "runtimeVersion": "exposdk:54.0.0"
     },
     "android": {
       "adaptiveIcon": {
@@ -34,6 +35,15 @@
     },
     "plugins": [
       "expo-web-browser"
-    ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "7522d24f-7afd-4d5b-a5c0-58f2ea863c28"
+      }
+    },
+    "owner": "isaiahcalvo",
+    "updates": {
+      "url": "https://u.expo.dev/7522d24f-7afd-4d5b-a5c0-58f2ea863c28"
+    }
   }
 }
