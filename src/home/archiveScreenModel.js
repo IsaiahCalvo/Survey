@@ -128,6 +128,43 @@ export function toggleExpanded(expandedIds, id) {
   return next;
 }
 
+/* ------------------------------------------------------------------------
+   Preview-pane disclosure — a SEPARATE state from the ledger's
+   ------------------------------------------------------------------------
+
+   Owner call 2026-08-07: the ledger tree and the preview tree must not move
+   together. They answer different questions, so they get opposite defaults:
+
+     ledger  — collapsed by default. It is a scan-and-rescue list, and open
+               groups bury the top-level rows the user is choosing between.
+     preview — EXPANDED by default. You selected this one thing in order to
+               look inside it; making you click again to see the contents is
+               the click that should not exist.
+
+   Opposite defaults need opposite storage. The ledger tracks EXPANDED ids
+   (empty = all closed); the preview tracks COLLAPSED ids (empty = all open).
+   Two independent sets, so toggling one cannot touch the other.
+
+   Ids here are scoped by the previewed item (e.g. `<templateId>:<moduleId>`)
+   so a positional legacy id cannot collide across two items. Nothing is reset
+   when the selection changes: a node the user deliberately closed stays closed
+   when they come back to it. */
+export function defaultPreviewCollapsedIds() {
+  return new Set();
+}
+
+export function isPreviewNodeOpen(collapsedIds, id) {
+  return !(collapsedIds && collapsedIds.has(id));
+}
+
+/** Returns a NEW set so React sees a changed reference. */
+export function togglePreviewNode(collapsedIds, id) {
+  const next = new Set(collapsedIds || []);
+  if (next.has(id)) next.delete(id);
+  else next.add(id);
+  return next;
+}
+
 /**
  * Only top-level items are selectable. A project's children are descriptive —
  * restoring or deleting a child on its own would split a group that the

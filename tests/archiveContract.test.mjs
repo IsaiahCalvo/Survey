@@ -101,6 +101,56 @@ test('a project item exposes its children as descriptive rows only', () => {
   assert.equal(item.children[1].filePath, null);
 });
 
+test("a project's children carry their own Archived and Days remaining", () => {
+  // Owner call 2026-08-07: a child row IS a document, so it fills the same
+  // three columns. Derived exactly as a top-level item's are.
+  const item = normalizeProjectItem(
+    { id: 'proj-1', user_id: 'owner-1', name: 'Harbour works', user_archived_at: day(-2), user_archive_expires_at: day(28), archive_group_id: 'grp-1' },
+    [
+      { id: 'doc-a', name: 'Level 1', file_path: 'u1/a.pdf', archive_group_id: 'grp-1', user_archived_at: day(-2), user_archive_expires_at: day(28) },
+      // Expiry missing → derived from the archive moment, same as a top-level row.
+      { id: 'doc-b', name: 'Level 2', archive_group_id: 'grp-1', user_archived_at: day(-10) },
+      // No timestamps at all → falls back to the project's, because a project
+      // archives as ONE unit and an em dash here would be a lie.
+      { id: 'doc-c', name: 'Level 3', archive_group_id: 'grp-1' },
+    ],
+    { now: NOW },
+  );
+
+  assert.equal(item.children[0].archivedAt, day(-2));
+  assert.equal(item.children[0].expiresAt, day(28));
+  assert.equal(item.children[0].daysRemaining, 28);
+  // Same derivation a top-level document gets.
+  const topLevel = normalizeDocumentItem(archivedDoc({ user_archived_at: day(-2), user_archive_expires_at: day(28) }), { now: NOW });
+  assert.equal(item.children[0].daysRemaining, topLevel.daysRemaining);
+
+  assert.equal(item.children[1].expiresAt, expiryFromArchivedAt(day(-10)));
+  assert.equal(item.children[1].daysRemaining, 20);
+
+  assert.equal(item.children[2].archivedAt, item.archivedAt, 'falls back to the project');
+  assert.equal(item.children[2].expiresAt, item.expiresAt);
+  assert.equal(item.children[2].daysRemaining, item.daysRemaining);
+});
+
+test('the project child query selects the columns those columns need', () => {
+  // archiveService.loadArchive duplicates this list; both must carry file_path
+  // AND the two user_archive_* columns or child rows silently go blank.
+  const projectService = readSrc('../src/services/projectArchiveService.js');
+  const service = readSrc('../src/services/archiveService.js');
+  for (const column of ['file_path', 'user_archived_at', 'user_archive_expires_at']) {
+    assert.match(
+      projectService,
+      new RegExp(`\\.from\\('documents'\\)[\\s\\S]*?\\.select\\('[^']*\\b${column}\\b[^']*'\\)`),
+      `projectArchiveService child select must carry ${column}`,
+    );
+    assert.match(
+      service,
+      new RegExp(`\\.from\\('documents'\\)[\\s\\S]*?\\.select\\('[^']*\\b${column}\\b[^']*'\\)`),
+      `archiveService documents select must carry ${column}`,
+    );
+  }
+});
+
 /* ------------------------------------------------------------------------
    Template contents (2026-08-07 owner ask): "when I delete a template, I want
    the template to show information, like the entities that it has... the

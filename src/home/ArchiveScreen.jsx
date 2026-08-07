@@ -32,8 +32,10 @@ import {
   collaboratorInitials,
   daysRemainingLabel,
   defaultExpandedIds,
+  defaultPreviewCollapsedIds,
   fileSizeLabel,
   isAllSelected,
+  isPreviewNodeOpen,
   isRowExpanded,
   nextSelectAll,
   nextSortState,
@@ -43,6 +45,7 @@ import {
   teamAvatarSlots,
   timeRemainingLabel,
   toggleExpanded,
+  togglePreviewNode,
   toggleSelection,
   visibleArchiveItems,
 } from './archiveScreenModel';
@@ -113,6 +116,10 @@ export default function ArchiveScreen({
   /* Expanded — not collapsed — ids, so project groups render CLOSED by default
      and whatever the user opens stays open across sorts and filter changes. */
   const [expandedIds, setExpandedIds] = useState(defaultExpandedIds);
+  /* The preview tree's OWN state, deliberately not the one above (owner call
+     2026-08-07). Collapsed-ids semantics, so the pane opens already expanded:
+     selecting a thing to look inside it should not need a second click. */
+  const [previewCollapsedIds, setPreviewCollapsedIds] = useState(defaultPreviewCollapsedIds);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [busy, setBusy] = useState(false);
 
@@ -267,19 +274,30 @@ export default function ArchiveScreen({
      different, tighter list. */
   const ROW_PAD_Y = 16;
 
-  const stickyCell = (selected) => ({
+  /* A row carrying a glyph strip under its name needs less padding to land on
+     the SAME 51px. This is exactly how the Documents ledger works: its rows are
+     51px because its two-line "Last edited" cell runs at padding 10 while the
+     single-line cells run at 12. Two-line content, tighter padding, one height.
+     The Templates editor's own name-over-glyphs row is 50px at padding 8, which
+     is the number this tracks. */
+  const ROW_PAD_Y_STACKED = 7;
+
+  const stickyCell = (selected, padY = ROW_PAD_Y) => ({
     position: 'sticky', left: 0, zIndex: 2,
     background: selected ? 'var(--ink-600)' : 'var(--ink-700)',
-    padding: `${ROW_PAD_Y}px 14px`,
+    padding: `${padY}px 14px`,
     display: 'flex', alignItems: 'center', gap: 8,
     minWidth: 0,
   });
 
-  const daysCell = (item) => (
+  /* One days-remaining cell for top-level rows AND a project's child rows, so
+     the urgency colour cannot mean one thing in one place and another below it.
+     Only the vertical padding differs, because child rows sit tighter. */
+  const daysCell = (item, padY = ROW_PAD_Y) => (
     <span
       className="mono"
       style={{
-        fontSize: 11, padding: `${ROW_PAD_Y}px 0`,
+        fontSize: 11, padding: `${padY}px 0`,
         color: item.daysRemaining <= URGENT_DAYS ? DANGER : 'inherit',
       }}
     >{daysRemainingLabel(item.daysRemaining)}</span>
@@ -292,14 +310,16 @@ export default function ArchiveScreen({
     <span style={{ color: '#8d96a6', fontSize: 10, lineHeight: 1, transform: open ? 'rotate(180deg)' : 'none', transition: 'transform .12s', flex: 'none' }}>▾</span>
   );
 
-  /* One disclosure button, so the ledger's project rows and the preview pane's
-     project tree open and close with the identical control. */
-  const disclosureButton = (id, open) => (
+  /* One disclosure BUTTON shared by both trees — same glyph, same hit area —
+     but each caller passes its own toggle, because the ledger tree and the
+     preview tree are independent (see archiveScreenModel). Sharing the control
+     is a look; sharing the state was the bug. */
+  const disclosureButton = (open, onToggle, label = 'documents') => (
     <button
       type="button"
-      title={open ? 'Hide documents' : 'Show documents'}
+      title={open ? `Hide ${label}` : `Show ${label}`}
       aria-expanded={open}
-      onClick={(e) => { e.stopPropagation(); setExpandedIds((prev) => toggleExpanded(prev, id)); }}
+      onClick={(e) => { e.stopPropagation(); onToggle(); }}
       style={{
         background: 'transparent', border: 0, color: 'var(--ink-200)',
         cursor: 'pointer', padding: 0, lineHeight: 1,
@@ -307,6 +327,19 @@ export default function ArchiveScreen({
         display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
       }}
     >{chevron(open)}</button>
+  );
+
+  /* The ledger's own toggle — touches expandedIds and nothing else. */
+  const ledgerDisclosure = (id, open) => disclosureButton(
+    open,
+    () => setExpandedIds((prev) => toggleExpanded(prev, id)),
+  );
+
+  /* The preview's own toggle — touches previewCollapsedIds and nothing else. */
+  const previewDisclosure = (id, open, label) => disclosureButton(
+    open,
+    () => setPreviewCollapsedIds((prev) => togglePreviewNode(prev, id)),
+    label,
   );
 
   /* A document's real first page, at the one row size. Identical to the
@@ -323,6 +356,82 @@ export default function ArchiveScreen({
       fallback={<div style={{ width: 23, height: ROW_THUMB, flex: 'none' }}><PdfThumb height={ROW_THUMB} stamp="" /></div>}
     />
   );
+
+  /* ----------------------------------------------------------------------
+     Row subline — the glyph strip under a row's name.
+
+     Owner goal 2026-08-07: "at a glance ... they can see exactly what they're
+     looking at ... we're mixing documents, projects and templates." A name and
+     a type word do not distinguish two templates from each other, so a row
+     carries the same identifying marks the screen that OWNS that object shows:
+
+       template — its entity colour chips, exactly as the Templates editor
+                  draws them beside a template (TemplatesEditor.jsx ~1630).
+       project  — who it is shared with, exactly as the Projects tree draws a
+                  project's team (ProjectsFolderTree.jsx ~912).
+
+     Both of those are already one shared pattern in the hub: a 12.5px/600 name
+     over a 14px glyph strip at marginTop 3, gap 6, with a count in `mono meta`
+     at 9.5. Reproduced here verbatim — including the 14px glyph size, which is
+     the size the hub uses for this in-row treatment everywhere (the 22px
+     avatars are the preview-pane size, not the row size).
+     ---------------------------------------------------------------------- */
+  const SUBLINE_GLYPH = 14;
+  const sublineRow = (children) => (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 3 }}>{children}</div>
+  );
+
+  /* Up to 10 entity swatches fit before the row gets crowded; any beyond that
+     collapse into a "+N" overflow pill. Same cap and same pill the Templates
+     editor uses. */
+  const TEMPLATE_SWATCH_CAP = 10;
+
+  const rowSubline = (item) => {
+    if (item.type === 'template') {
+      const entities = item.entities || [];
+      if (!entities.length) return null;
+      return sublineRow(
+        <>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
+            {entities.slice(0, TEMPLATE_SWATCH_CAP).map((entity) => (
+              <span
+                key={entity.id}
+                title={entity.name}
+                style={{
+                  width: SUBLINE_GLYPH, height: SUBLINE_GLYPH, borderRadius: '50%', flex: 'none',
+                  background: entity.color, border: `1.5px solid ${entity.borderColor}`,
+                }}
+              />
+            ))}
+            {entities.length > TEMPLATE_SWATCH_CAP && (
+              <span className="mono meta" style={{ fontSize: 9.5 }}>+{entities.length - TEMPLATE_SWATCH_CAP}</span>
+            )}
+          </div>
+          <span className="mono meta" style={{ fontSize: 9.5 }}>{entities.length}</span>
+        </>,
+      );
+    }
+    if (item.type === 'project') {
+      /* Only when the project really was shared. Archive never invents a
+         "team of one" out of the owner — everything here is theirs by
+         definition, so an owner-only glyph would say nothing. */
+      const team = teamAvatarSlots(item.collaborators);
+      if (!team.shown.length) return null;
+      return sublineRow(
+        <>
+          <AvatarStack
+            members={[
+              ...team.shown.map(collaboratorInitials),
+              ...(team.overflow ? [`+${team.overflow}`] : []),
+            ]}
+            size={SUBLINE_GLYPH}
+          />
+          <span className="mono meta" style={{ fontSize: 9.5 }}>{(item.collaborators || []).length}</span>
+        </>,
+      );
+    }
+    return null;
+  };
 
   /* What fills a top-level row's thumbnail column: a page for a document, the
      tinted type tile for a project or a template. */
@@ -356,18 +465,20 @@ export default function ArchiveScreen({
     display: 'flex', flexDirection: 'column', gap: 2,
   };
 
-  /* An archived project, as an expandable tree whose leaves are its documents.
-     Same expandedIds set as the ledger, so a project the user opened in the
-     list is already open here — one project has one open/closed state. */
+  /* An archived project, as a tree whose leaves are its documents. Opens
+     EXPANDED and is driven by previewCollapsedIds — its own state, entirely
+     separate from the ledger row's. Toggling here leaves the ledger alone and
+     vice versa. */
   const projectPreviewTree = (item) => {
-    const open = isRowExpanded(expandedIds, item.id);
+    const nodeId = `${item.id}:contents`;
+    const open = isPreviewNodeOpen(previewCollapsedIds, nodeId);
     return (
       <div style={{ marginTop: 14, flex: '1 1 auto', minHeight: 0, display: 'flex', flexDirection: 'column' }}>
         <div className="section-label">Contents</div>
         <div className="slim-scroll" style={treeScroller}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0' }}>
             {item.childCount > 0
-              ? disclosureButton(item.id, open)
+              ? previewDisclosure(nodeId, open)
               : <span style={{ width: 12, flex: 'none' }} />}
             <Icon name="folder" size={13} color="var(--gold)" />
             <span style={{ fontSize: 12, fontWeight: 600, whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' }}>{item.name}</span>
@@ -409,13 +520,13 @@ export default function ArchiveScreen({
                stored ids falls back to positional ones, which would otherwise
                collide between two templates in the same expanded set. */
             const moduleKey = `${item.id}:${mod.id}`;
-            const open = isRowExpanded(expandedIds, moduleKey);
+            const open = isPreviewNodeOpen(previewCollapsedIds, moduleKey);
             const categories = mod.categories || [];
             return (
               <div key={mod.id}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0' }}>
                   {categories.length > 0
-                    ? disclosureButton(moduleKey, open)
+                    ? previewDisclosure(moduleKey, open, 'categories')
                     : <span style={{ width: 12, flex: 'none' }} />}
                   <span style={{ fontSize: 12, fontWeight: 600, whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' }}>{mod.name}</span>
                   <span className="mono" style={{ fontSize: 9.5, color: 'var(--ink-300)', flex: 'none' }}>
@@ -464,6 +575,7 @@ export default function ArchiveScreen({
     const expanded = isRowExpanded(expandedIds, item.id);
     const isProject = item.type === 'project' && item.childCount > 0;
     const active = selectMode ? checked : previewId === item.id;
+    const subline = rowSubline(item);
     const activate = () => {
       if (selectMode) { toggleRow(item.id); return; }
       setPreviewId(item.id);
@@ -503,9 +615,14 @@ export default function ArchiveScreen({
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             {rowTypeArt(item)}
           </div>
-          <div style={stickyCell(active)}>
-            {isProject ? disclosureButton(item.id, expanded) : <span style={{ width: 12, flex: 'none' }} />}
-            <span style={{ fontWeight: 600, fontSize: 12.5, whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' }}>{item.name}</span>
+          <div style={stickyCell(active, subline ? ROW_PAD_Y_STACKED : ROW_PAD_Y)}>
+            {isProject ? ledgerDisclosure(item.id, expanded) : <span style={{ width: 12, flex: 'none' }} />}
+            {/* Name over its glyph strip — the hub's one "identify this row"
+                block, shared with the Projects tree and the Templates editor. */}
+            <div style={{ minWidth: 0 }}>
+              <span style={{ display: 'block', fontWeight: 600, fontSize: 12.5, whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' }}>{item.name}</span>
+              {subline}
+            </div>
             {item.childCount > 0 && (
               <span className="meta" style={{ fontSize: 11, flex: 'none' }}>
                 {item.childCount} {item.childCount === 1 ? 'document' : 'documents'}
@@ -543,9 +660,14 @@ export default function ArchiveScreen({
               {rowThumb(child.id, child.filePath)}
               <span className="meta" style={{ fontSize: 11.5, whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' }}>{child.name}</span>
             </div>
-            <span />
-            <span />
-            <span />
+            {/* A child row IS a document, so it fills the same three columns a
+                top-level document does, through the same formatters and the
+                same urgency colour. Three blank cells read as missing data —
+                and these rows are exactly the ones whose expiry the user needs,
+                because a project takes them all with it. */}
+            <span className="meta" style={{ fontSize: 11.5, padding: '8px 0' }}>{archiveTypeLabel(child.type)}</span>
+            <span className="mono" style={{ fontSize: 11, padding: '8px 0' }}>{archivedDateLabel(child.archivedAt)}</span>
+            {daysCell(child, 8)}
           </div>
         ))}
       </div>

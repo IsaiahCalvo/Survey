@@ -75,9 +75,19 @@ export function isUserArchived(row) {
   return Boolean(row && row.user_archived_at);
 }
 
-function baseItem(type, row, now) {
+/**
+ * The three retention fields, derived once. Shared by top-level items and by a
+ * project's child rows so a child's "Archived" and "Days remaining" columns can
+ * never disagree with a top-level document's for the same moment in time.
+ */
+function archiveDates(row, now) {
   const archivedAt = toIso(row.user_archived_at);
   const expiresAt = toIso(row.user_archive_expires_at) || expiryFromArchivedAt(archivedAt);
+  return { archivedAt, expiresAt, daysRemaining: daysRemaining(expiresAt, now) };
+}
+
+function baseItem(type, row, now) {
+  const dates = archiveDates(row, now);
   return {
     type,
     id: row.id,
@@ -86,9 +96,7 @@ function baseItem(type, row, now) {
     projectId: null,
     projectName: null,
     archiveGroupId: row.archive_group_id || null,
-    archivedAt,
-    expiresAt,
-    daysRemaining: daysRemaining(expiresAt, now),
+    ...dates,
     children: [],
     childCount: 0,
   };
@@ -136,18 +144,30 @@ export function normalizeTemplateItem(row, { now = Date.now() } = {}) {
  */
 export function normalizeProjectItem(row, childDocumentRows = [], { now = Date.now() } = {}) {
   const item = baseItem('project', row, now);
-  item.children = (childDocumentRows || []).map((child) => ({
-    type: 'document',
-    id: child.id,
-    name: child.name || 'Untitled',
-    projectId: child.project_id || row.id,
-    archiveGroupId: child.archive_group_id || row.archive_group_id || null,
-    // Carried so an expanded project's child rows can show the same real
-    // first-page thumbnail the Documents ledger shows. Both child-row queries
-    // (archiveService.loadArchive and projectArchiveService.listArchivedProjects)
-    // must select file_path or the row silently falls back to the placeholder.
-    filePath: child.file_path || null,
-  }));
+  item.children = (childDocumentRows || []).map((child) => {
+    /* Owner call 2026-08-07: a child row IS a document, so it fills the same
+       Type / Archived / Days remaining columns as a top-level one — a row with
+       three blank cells reads as missing data, not as "inherited". A project
+       archives as one unit, so a child that somehow stored no timestamps of its
+       own falls back to the project's rather than showing an em dash. */
+    const dates = child.user_archived_at ? archiveDates(child, now) : {
+      archivedAt: item.archivedAt, expiresAt: item.expiresAt, daysRemaining: item.daysRemaining,
+    };
+    return {
+      type: 'document',
+      id: child.id,
+      name: child.name || 'Untitled',
+      projectId: child.project_id || row.id,
+      archiveGroupId: child.archive_group_id || row.archive_group_id || null,
+      // Carried so an expanded project's child rows can show the same real
+      // first-page thumbnail the Documents ledger shows. Both child-row queries
+      // (archiveService.loadArchive and projectArchiveService.listArchivedProjects)
+      // must select file_path — and now user_archived_at /
+      // user_archive_expires_at too — or the row silently falls back.
+      filePath: child.file_path || null,
+      ...dates,
+    };
+  });
   item.childCount = item.children.length;
   return item;
 }
