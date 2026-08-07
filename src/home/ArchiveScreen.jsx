@@ -90,16 +90,14 @@ const DANGER = '#cf6f6f';
 
 const typeIcon = { document: 'doc', project: 'folder', template: 'template' };
 
-/* A project and a template have no page to render, so they fill the thumbnail
-   column with the hub's existing tinted type glyph instead — the same gold
-   folder and lilac template tiles the Projects and Templates mobile lists use
-   (.projects-mobile-folder-art / .templates-mobile-glyph in hub.css). Keeping
-   the tile the same 30px as a page thumbnail is what stops the rows changing
-   height as the list mixes types. */
-const TYPE_TINT = {
-  project: { background: 'rgba(216,168,78,0.16)', color: 'var(--gold)' },
-  template: { background: 'rgba(194,147,230,0.16)', color: 'var(--lilac)' },
-};
+/* A project and a template have no page to render, so they show a PLAIN type
+   icon in the thumbnail column — no tinted tile behind it (owner call
+   2026-08-07: "we don't have that anywhere else in this app"). Nothing on the
+   hub's desktop surfaces puts a coloured plate behind an icon, so neither does
+   this. 18px is the largest inline glyph size the hub already uses
+   (ProjectsFolderTree's folder glyphs), and var(--ink-200) is the neutral this
+   very row used before the icon moved into its own column. */
+const TYPE_ICON_SIZE = 18;
 
 export default function ArchiveScreen({
   items = [],
@@ -441,17 +439,18 @@ export default function ArchiveScreen({
     return null;
   };
 
-  /* What fills a top-level row's thumbnail column: a page for a document, the
-     tinted type tile for a project or a template. */
+  /* What fills a top-level row's thumbnail column: a page for a document, a
+     plain type icon for a project or a template. The icon still occupies the
+     same ROW_THUMB box so the column stays aligned and the row height cannot
+     shift as the list mixes types — but the box is invisible. */
   const rowTypeArt = (item) => {
     if (item.type === 'document') return rowThumb(item.id, item.filePath);
-    const tint = TYPE_TINT[item.type] || TYPE_TINT.project;
     return (
       <div style={{
-        width: ROW_THUMB, height: ROW_THUMB, borderRadius: 6, flex: 'none',
-        display: 'grid', placeItems: 'center', ...tint,
+        width: ROW_THUMB, height: ROW_THUMB, flex: 'none',
+        display: 'grid', placeItems: 'center',
       }}>
-        <Icon name={typeIcon[item.type] || 'doc'} size={16} />
+        <Icon name={typeIcon[item.type] || 'doc'} size={TYPE_ICON_SIZE} color="var(--ink-200)" />
       </div>
     );
   };

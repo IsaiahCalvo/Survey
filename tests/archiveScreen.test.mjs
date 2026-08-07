@@ -295,12 +295,17 @@ test('every document in Archive renders at the one Documents-ledger thumbnail si
   assert.match(DOCUMENTS, /width: 23, height: 30, flex: 'none'/, 'Documents is the reference fallback');
 
   // Top-level rows fill the thumbnail column; a project/template has no page,
-  // so it shows the hub's tinted type tile at the same 30px instead.
+  // so it shows a PLAIN type icon in the same ROW_THUMB box — no tinted plate
+  // behind it (owner call 2026-08-07: "we don't have that anywhere else in this
+  // app"). The box stays so the column aligns and the row height cannot shift.
   assert.match(SCREEN, /const rowTypeArt = \(item\) => \{[\s\S]*?if \(item\.type === 'document'\) return rowThumb\(item\.id, item\.filePath\);/);
-  assert.match(SCREEN, /const TYPE_TINT = \{[\s\S]*?project: \{ background: 'rgba\(216,168,78,0\.16\)', color: 'var\(--gold\)' \}/);
-  assert.match(SCREEN, /template: \{ background: 'rgba\(194,147,230,0\.16\)', color: 'var\(--lilac\)' \}/);
   assert.match(SCREEN, /width: ROW_THUMB, height: ROW_THUMB/);
+  assert.match(SCREEN, /<Icon name=\{typeIcon\[item\.type\] \|\| 'doc'\} size=\{TYPE_ICON_SIZE\} color="var\(--ink-200\)" \/>/);
   assert.match(SCREEN, /\{rowTypeArt\(item\)\}/);
+  // No coloured plate may come back: no tint map, and no translucent
+  // background anywhere in the screen's own styles.
+  assert.doesNotMatch(SCREEN, /TYPE_TINT/);
+  assert.doesNotMatch(SCREEN, /background: 'rgba\([\d,\s]+0\.\d+\)'/);
 
   // Child rows call the SAME helper — indented, never shrunk.
   assert.match(SCREEN, /\{rowThumb\(child\.id, child\.filePath\)\}/);
@@ -430,6 +435,21 @@ test('a template ROW shows its entities as glyphs under the name', () => {
   assert.match(TEMPLATES, /slice\(0, 10\)/, 'the editor is the reference cap');
   // The subline renders inside the name cell, under the name.
   assert.match(SCREEN, /\{item\.name\}<\/span>\s*\n\s*\{subline\}/);
+});
+
+test('"Shared with" excludes the signed-in owner, so it never means a team of one', () => {
+  // Creating a project writes an `owner` row for its creator into
+  // project_collaborators, and that auto-row carries no email — so every
+  // archived project was drawing one avatar for the user themselves, rendered
+  // as "T" for the "Teammate" fallback. Verified against the live database
+  // 2026-08-07: all three projects with collaborator rows had exactly one, the
+  // owner's, with email null.
+  const SERVICE = read('../src/services/archiveService.js');
+  assert.match(SERVICE, /async function withCollaborators\(items, viewerId = null\)/);
+  assert.match(SERVICE, /if \(viewerId && row\.user_id === viewerId\) continue;/);
+  assert.match(SERVICE, /withCollaborators\(items, userId\)/);
+  // The screen's documented rule can now actually hold.
+  assert.match(SCREEN, /if \(!team\.shown\.length\) return null;/);
 });
 
 test('a project ROW shows who it was shared with, under the name', () => {

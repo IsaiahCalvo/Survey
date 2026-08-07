@@ -20,10 +20,19 @@
 import { useState, useEffect } from 'react';
 import { loadPdfjs } from '../utils/pdfWorkerConfig';
 import { readBlobAsArrayBuffer } from '../utils/blobArrayBuffer';
+import { thumbnailStore, thumbCacheKey } from '../services/thumbnailStore';
 
-/* Rendered thumbnails cached by document id for the lifetime of the page, so
-   each PDF is rendered at most once (no re-render on search keystrokes or
-   re-selection). Value: { url, aspect } or the 'FAILED' sentinel. */
+/* Two tiers of cache.
+
+   In-memory (this Map): keyed by document id, lives for the page. Stops a
+   re-render on every search keystroke or re-selection.
+
+   Durable (services/thumbnailStore, IndexedDB): survives reloads, so the
+   download + rasterize is paid ONCE per document rather than once per visit.
+   Before it existed, every reload re-downloaded the whole PDF for every
+   visible row — 6.3s of transfer for a single 25MB drawing. The memory tier
+   is checked synchronously first; the durable tier is checked before any
+   network work happens. Value: { url, aspect } or the 'FAILED' sentinel. */
 const thumbCache = new Map();
 
 /* Cap concurrent renders so a long document list does not spawn many pdf.js
@@ -160,6 +169,23 @@ export default function PdfPageThumb({
     let slotHeld = false;
     (async () => {
       try {
+        /* Durable cache FIRST, ahead of both the download and the render
+           queue. A hit costs one IndexedDB read (single-digit ms) instead of
+           re-fetching the whole PDF — measured at 517ms for a 548KB file and
+           6.3s for a 25MB drawing — and re-rasterizing page 1. It also must not
+           consume a render slot: a cached row that queued behind three live
+           renders would be slow for no reason. */
+        const persistKey = thumbCacheKey(doc);
+        if (persistKey) {
+          const stored = await thumbnailStore().get(persistKey);
+          if (cancelled) return;
+          if (stored) {
+            if (docId) thumbCache.set(docId, stored);
+            setData(stored);
+            return;
+          }
+        }
+
         const arrayBuffer = await resolvePdfBytes(doc, downloadDocument);
         if (cancelled) return;
         if (!arrayBuffer) {
@@ -176,6 +202,10 @@ export default function PdfPageThumb({
         if (cancelled) return;
         if (docId) thumbCache.set(docId, result);
         setData(result);
+        /* Persist for every later visit. Deliberately not awaited: the picture
+           is already on screen, and a slow or full IndexedDB must not hold the
+           render slot open behind it. */
+        if (persistKey) thumbnailStore().put(persistKey, result);
       } catch (error) {
         // Corrupt PDF, missing storage file, etc. — show the placeholder and
         // do not retry this document.
