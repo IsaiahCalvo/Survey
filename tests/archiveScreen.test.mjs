@@ -437,6 +437,21 @@ test('a template ROW shows its entities as glyphs under the name', () => {
   assert.match(SCREEN, /\{item\.name\}<\/span>\s*\n\s*\{subline\}/);
 });
 
+test('"Shared with" excludes the signed-in owner, so it never means a team of one', () => {
+  // Creating a project writes an `owner` row for its creator into
+  // project_collaborators, and that auto-row carries no email — so every
+  // archived project was drawing one avatar for the user themselves, rendered
+  // as "T" for the "Teammate" fallback. Verified against the live database
+  // 2026-08-07: all three projects with collaborator rows had exactly one, the
+  // owner's, with email null.
+  const SERVICE = read('../src/services/archiveService.js');
+  assert.match(SERVICE, /async function withCollaborators\(items, viewerId = null\)/);
+  assert.match(SERVICE, /if \(viewerId && row\.user_id === viewerId\) continue;/);
+  assert.match(SERVICE, /withCollaborators\(items, userId\)/);
+  // The screen's documented rule can now actually hold.
+  assert.match(SCREEN, /if \(!team\.shown\.length\) return null;/);
+});
+
 test('a project ROW shows who it was shared with, under the name', () => {
   // Owner ask: "It should say the project, and then underneath, the people it
   // was shared with." Same AvatarStack + ordering the preview pane uses, at the

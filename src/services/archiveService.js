@@ -88,21 +88,29 @@ export async function loadArchive(userId, { now = Date.now() } = {}) {
     now,
   });
 
-  return { data: await withCollaborators(items), error: null };
+  return { data: await withCollaborators(items, userId), error: null };
 }
 
 /**
  * Attach the people an archived item is shared with.
  *
- * The preview pane shows these as avatar glyphs so the user can see, before
- * they restore or destroy something, that it was not theirs alone. Only real
- * `status = 'active'` rows are attached — the pane deliberately shows nothing
- * for a solo item rather than inventing a "team of one" out of the owner.
+ * The row and the preview pane show these as avatar glyphs so the user can see,
+ * before they restore or destroy something, that it was not theirs alone. Only
+ * real `status = 'active'` rows are attached.
+ *
+ * The signed-in owner is EXCLUDED (`viewerId`). Creating a project writes an
+ * `owner` row for its creator into project_collaborators, so without this every
+ * archived project would draw one avatar for the user themselves — and because
+ * that auto-row stores no email it rendered as a meaningless "T" for
+ * "Teammate". "Shared with" has to mean other people, or the glyph tells the
+ * user nothing they did not already know. This is the rule the screen already
+ * documented ("Archive does not draw a team of one from the signed-in user");
+ * it just could not hold while the owner's own row came back from the query.
  *
  * Two bulk reads (one per table) for the whole Archive, and a failure degrades
  * to no glyphs: collaborators are context, never a reason to fail the screen.
  */
-async function withCollaborators(items) {
+async function withCollaborators(items, viewerId = null) {
   const documentIds = items.filter((i) => i.type === 'document').map((i) => i.id);
   const projectIds = items.filter((i) => i.type === 'project').map((i) => i.id);
   if (!documentIds.length && !projectIds.length) return items;
@@ -128,6 +136,7 @@ async function withCollaborators(items) {
   const byItemId = new Map();
   const collect = (rows, key) => {
     for (const row of rows || []) {
+      if (viewerId && row.user_id === viewerId) continue;
       const id = row[key];
       if (!byItemId.has(id)) byItemId.set(id, []);
       byItemId.get(id).push({
