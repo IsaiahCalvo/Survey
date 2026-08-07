@@ -15,8 +15,10 @@ import {
   buildBulkOutcomeMessage,
   daysRemainingLabel,
   defaultExpandedIds,
+  defaultPreviewCollapsedIds,
   filterArchiveItems,
   isAllSelected,
+  isPreviewNodeOpen,
   isRowExpanded,
   namedSortFor,
   nextSelectAll,
@@ -31,6 +33,7 @@ import {
   collaboratorInitials,
   teamAvatarSlots,
   toggleExpanded,
+  togglePreviewNode,
   toggleSelection,
   visibleArchiveItems,
 } from '../src/home/archiveScreenModel.js';
@@ -235,12 +238,20 @@ test('the screen mirrors the Documents ledger structure and states', () => {
   const DOCUMENTS = read('../src/home/DocumentsLedger.jsx');
   assert.match(DOCUMENTS, /'32px 54px minmax\(150px,1fr\)/, 'the Documents ledger is the reference for the leading columns');
   assert.match(SCREEN, /contentVisibility: 'auto'/);
-  assert.match(SCREEN, /containIntrinsicSize: '0 50px'/);
-  // Documents rows measure 51px because their "Last edited" cell stacks a time
-  // over a date. Archive's columns are all single-line, so the same 51px is
-  // bought with cell padding — browser-measured 51px on both screens.
+  // Every top-level row is PINNED to the Documents ledger's 51px, whatever it
+  // carries. Letting content drive the height made templates 50px, documents
+  // 51px and a shared project 54px — a mixed list only reads at a glance if the
+  // rows form one even rhythm. Pinning follows the Templates editor's own
+  // name-over-glyphs row (`height: 50, boxSizing: 'border-box'`).
+  assert.match(SCREEN, /const ROW_HEIGHT = 51;/);
+  assert.match(SCREEN, /height: ROW_HEIGHT, boxSizing: 'border-box'/);
+  assert.match(SCREEN, /containIntrinsicSize: `0 \$\{ROW_HEIGHT\}px`/);
+  const TEMPLATES_ROW = read('../src/home/TemplatesEditor.jsx');
+  assert.match(TEMPLATES_ROW, /height: 50, boxSizing: 'border-box'/, 'the editor is the reference for pinning');
+  // The name cell stretches instead of padding itself to height, so a glyph
+  // strip cannot push the row taller than its neighbours.
   assert.match(SCREEN, /const ROW_PAD_Y = 16;/);
-  assert.match(SCREEN, /padding: `\$\{ROW_PAD_Y\}px 14px`/);
+  assert.match(SCREEN, /padding: '0 14px',\s*\n\s*alignSelf: 'stretch'/);
   assert.match(SCREEN, /padding: `\$\{ROW_PAD_Y\}px 0`/);
   assert.match(SCREEN, /sortKey === key \? 'var\(--bone-100\)' : 'inherit'/);
   assert.match(SCREEN, /hub-skeleton-block/);
@@ -300,20 +311,70 @@ test('every document in Archive renders at the one Documents-ledger thumbnail si
 
 test('an archived project previews as an expandable tree of its documents', () => {
   // Owner ask: select a project, expand it, see the files inside WITH their
-  // thumbnails. Reuses the ledger's own expand state, so a project opened in
-  // the list is already open in the pane.
-  assert.match(SCREEN, /const projectPreviewTree = \(item\) => \{[\s\S]*?isRowExpanded\(expandedIds, item\.id\)/);
+  // thumbnails.
+  assert.match(SCREEN, /const projectPreviewTree = \(item\) => \{/);
   assert.match(SCREEN, /previewItem\.type === 'project' && projectPreviewTree\(previewItem\)/);
   // Leaves are the documents, each with the shared row thumbnail.
   assert.match(
     SCREEN,
     /const projectPreviewTree[\s\S]*?item\.children\.map\(\(child\) => \([\s\S]*?\{rowThumb\(child\.id, child\.filePath\)\}/,
   );
-  // One disclosure control for both the ledger row and the tree.
-  assert.match(SCREEN, /const disclosureButton = \(id, open\) => \([\s\S]*?toggleExpanded\(prev, id\)/);
   assert.match(SCREEN, /\{chevron\(open\)\}<\/button>/);
-  assert.match(SCREEN, /isProject \? disclosureButton\(item\.id, expanded\)/);
-  assert.match(SCREEN, /disclosureButton\(item\.id, open\)/);
+});
+
+test('the ledger tree and the preview tree are INDEPENDENT', () => {
+  // Owner call 2026-08-07: "Right now they work in unison, and I don't know
+  // why." Two separate states with OPPOSITE defaults — the ledger tracks
+  // expanded ids (starts closed), the preview tracks collapsed ids (starts
+  // open) — so neither toggle can reach the other.
+  assert.match(SCREEN, /const \[expandedIds, setExpandedIds\] = useState\(defaultExpandedIds\)/);
+  assert.match(SCREEN, /const \[previewCollapsedIds, setPreviewCollapsedIds\] = useState\(defaultPreviewCollapsedIds\)/);
+
+  // Each tree has its own toggle, and each toggle touches only its own setter.
+  const ledgerToggle = SCREEN.match(/const ledgerDisclosure = [\s\S]*?\);/)[0];
+  assert.match(ledgerToggle, /setExpandedIds\(\(prev\) => toggleExpanded\(prev, id\)\)/);
+  assert.doesNotMatch(ledgerToggle, /setPreviewCollapsedIds/);
+  const previewToggle = SCREEN.match(/const previewDisclosure = [\s\S]*?\);/)[0];
+  assert.match(previewToggle, /setPreviewCollapsedIds\(\(prev\) => togglePreviewNode\(prev, id\)\)/);
+  assert.doesNotMatch(previewToggle, /setExpandedIds/);
+
+  // Ledger rows read the ledger state; both preview trees read the preview one.
+  assert.match(SCREEN, /isProject \? ledgerDisclosure\(item\.id, expanded\)/);
+  assert.match(SCREEN, /const projectPreviewTree[\s\S]*?isPreviewNodeOpen\(previewCollapsedIds, nodeId\)/);
+  assert.match(SCREEN, /const templatePreviewTree[\s\S]*?isPreviewNodeOpen\(previewCollapsedIds, moduleKey\)/);
+  // No preview tree may read the ledger's expanded set any more.
+  const previewTrees = SCREEN.match(/const projectPreviewTree = [\s\S]*?const renderRow =/)[0];
+  assert.doesNotMatch(previewTrees, /isRowExpanded\(expandedIds/);
+  assert.doesNotMatch(previewTrees, /setExpandedIds/);
+});
+
+test('the preview tree opens EXPANDED, the ledger stays collapsed', () => {
+  // Opposite defaults, proven on the pure model rather than the markup.
+  const ledger = defaultExpandedIds();
+  assert.equal(ledger.size, 0);
+  assert.equal(isRowExpanded(ledger, 'p1'), false, 'ledger rows start closed');
+
+  const preview = defaultPreviewCollapsedIds();
+  assert.equal(preview.size, 0);
+  assert.equal(isPreviewNodeOpen(preview, 'p1:contents'), true, 'preview nodes start OPEN');
+  assert.equal(isPreviewNodeOpen(preview, 'anything-at-all'), true);
+
+  // Toggling a preview node closes it, and toggling again reopens it.
+  const closed = togglePreviewNode(preview, 'p1:contents');
+  assert.equal(isPreviewNodeOpen(closed, 'p1:contents'), false);
+  assert.equal(isPreviewNodeOpen(togglePreviewNode(closed, 'p1:contents'), 'p1:contents'), true);
+  // A sibling node is untouched.
+  assert.equal(isPreviewNodeOpen(closed, 'p2:contents'), true);
+  // The original set is never mutated — React sees a new reference each time.
+  assert.equal(isPreviewNodeOpen(preview, 'p1:contents'), true);
+
+  // The two states cannot collide: they are separate values with opposite
+  // meanings for the same id. Closing the preview node leaves the ledger's
+  // expanded set empty, and expanding the ledger row leaves the preview open.
+  const ledgerOpened = toggleExpanded(ledger, 'p1');
+  assert.equal(isRowExpanded(ledgerOpened, 'p1'), true);
+  assert.equal(isPreviewNodeOpen(preview, 'p1:contents'), true, 'ledger expansion did not touch the preview');
+  assert.equal(ledger.size, 0, 'preview toggling did not touch the ledger');
 });
 
 test('an archived template previews its modules, nested categories and entities', () => {
@@ -327,12 +388,64 @@ test('an archived template previews its modules, nested categories and entities'
   assert.match(SCREEN, /Entities<\/div>/);
   // Categories nest under their module behind the same rotating chevron.
   assert.match(SCREEN, /const moduleKey = `\$\{item\.id\}:\$\{mod\.id\}`;/);
-  assert.match(SCREEN, /disclosureButton\(moduleKey, open\)/);
+  assert.match(SCREEN, /previewDisclosure\(moduleKey, open, 'categories'\)/);
   assert.match(SCREEN, /open && categories\.map\(\(cat\) => \(/);
   // The Templates editor's own 14px entity chip, not a new swatch shape.
   assert.match(SCREEN, /width: 14, height: 14, borderRadius: '50%'[\s\S]*?border: `1\.5px solid \$\{entity\.borderColor\}`/);
   const TEMPLATES = read('../src/home/TemplatesEditor.jsx');
   assert.match(TEMPLATES, /width: 14, height: 14, borderRadius: '50%'/, 'the editor is the reference swatch');
+});
+
+test("a project's child rows fill the same columns a top-level document does", () => {
+  // Owner call 2026-08-07: "those are documents... under Type it should say
+  // 'document'. Under Archived, when they were archived, and days remaining."
+  // Blank cells read as missing data.
+  const childBlock = SCREEN.match(/\{isProject && expanded && item\.children\.map\(\(child\) => \([\s\S]*?\)\)\}/)[0];
+  assert.match(childBlock, /archiveTypeLabel\(child\.type\)/);
+  assert.match(childBlock, /archivedDateLabel\(child\.archivedAt\)/);
+  // The SAME days cell as a top-level row, so the urgency colour cannot mean
+  // one thing in a parent row and another in the child right below it.
+  assert.match(childBlock, /\{daysCell\(child, 8\)\}/);
+  assert.match(SCREEN, /const daysCell = \(item, padY = ROW_PAD_Y\) => \([\s\S]*?item\.daysRemaining <= URGENT_DAYS \? DANGER : 'inherit'/);
+  // No empty placeholder cells left over after the name cell.
+  assert.doesNotMatch(childBlock, /<span \/>\s*\n\s*<span \/>\s*\n\s*<span \/>\s*\n\s*<\/div>/);
+});
+
+test('a template ROW shows its entities as glyphs under the name', () => {
+  // Owner ask: "It has the name, and underneath is the glyph. It should show
+  // that same way as a line item in the Archive section." Reproduces the
+  // Templates editor's strip verbatim — 14px circles, cap 10, "+N", count.
+  assert.match(SCREEN, /const SUBLINE_GLYPH = 14;/);
+  assert.match(SCREEN, /const TEMPLATE_SWATCH_CAP = 10;/);
+  const sub = SCREEN.match(/const rowSubline = \(item\) => \{[\s\S]*?\n  \};/)[0];
+  assert.match(sub, /if \(item\.type === 'template'\)/);
+  assert.match(sub, /entities\.slice\(0, TEMPLATE_SWATCH_CAP\)\.map/);
+  assert.match(sub, /width: SUBLINE_GLYPH, height: SUBLINE_GLYPH, borderRadius: '50%'/);
+  assert.match(sub, /border: `1\.5px solid \$\{entity\.borderColor\}`/);
+  assert.match(sub, /\+\{entities\.length - TEMPLATE_SWATCH_CAP\}/);
+  // The wrapper is the hub's shared name-over-glyphs block.
+  assert.match(SCREEN, /const sublineRow = \(children\) => \([\s\S]*?alignItems: 'center', gap: 6, marginTop: 3/);
+  const TEMPLATES = read('../src/home/TemplatesEditor.jsx');
+  assert.match(TEMPLATES, /alignItems: 'center', gap: 6, marginTop: 3/, 'the editor is the reference block');
+  assert.match(TEMPLATES, /slice\(0, 10\)/, 'the editor is the reference cap');
+  // The subline renders inside the name cell, under the name.
+  assert.match(SCREEN, /\{item\.name\}<\/span>\s*\n\s*\{subline\}/);
+});
+
+test('a project ROW shows who it was shared with, under the name', () => {
+  // Owner ask: "It should say the project, and then underneath, the people it
+  // was shared with." Same AvatarStack + ordering the preview pane uses, at the
+  // 14px size the Projects tree uses for this in-row treatment.
+  const sub = SCREEN.match(/const rowSubline = \(item\) => \{[\s\S]*?\n  \};/)[0];
+  assert.match(sub, /if \(item\.type === 'project'\)/);
+  assert.match(sub, /const team = teamAvatarSlots\(item\.collaborators\)/);
+  assert.match(sub, /<AvatarStack[\s\S]*?team\.shown\.map\(collaboratorInitials\)/);
+  assert.match(sub, /team\.overflow \? \[`\+\$\{team\.overflow\}`\] : \[\]/);
+  assert.match(sub, /size=\{SUBLINE_GLYPH\}/);
+  // Never a "team of one": no collaborators means no strip at all.
+  assert.match(sub, /if \(!team\.shown\.length\) return null;/);
+  const PROJECTS = read('../src/home/ProjectsFolderTree.jsx');
+  assert.match(PROJECTS, /<AvatarStack\s*\n?\s*members=[\s\S]*?size=\{14\}/, 'the Projects tree is the reference size');
 });
 
 test('the rotating chevron is the one disclosure glyph, matching the Templates editor', () => {

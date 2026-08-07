@@ -145,9 +145,11 @@ export async function listArchivedProjects(userId, { documentRows = null, now = 
       const { data: childData, error: childError } = await supabase
         .from('documents')
         // Keep in step with the documents select in archiveService.loadArchive —
-        // that query duplicates this column list, and file_path is what lets an
-        // expanded project's child rows render their real page thumbnail.
-        .select('id, name, project_id, file_path, archive_group_id')
+        // that query duplicates this column list. file_path is what lets an
+        // expanded project's child rows render their real page thumbnail, and
+        // the two user_archive_* columns fill their Archived / Days remaining
+        // cells; drop either and the child row silently shows a placeholder.
+        .select('id, name, project_id, file_path, archive_group_id, user_archived_at, user_archive_expires_at')
         .in('archive_group_id', groupIds);
       if (childError) {
         console.error('[KAL-429] archived project children failed:', childError);
