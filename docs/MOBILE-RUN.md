@@ -1,9 +1,10 @@
 # Run Survey on iPhone without a cable
 
-## Permanent Expo Go app — no Mac server
+## Permanent Expo Go UI preview — no Mac server
 
-This is the default phone-testing path. It opens Survey inside Expo Go and does not need
-Metro, Vite, Tailscale, a cable, shared Wi-Fi, or this Mac to remain online.
+This is the always-available UI preview. It opens Survey inside Expo Go and does not need
+Metro, Vite, Tailscale, a cable, shared Wi-Fi, or this Mac to remain online. Do not use it
+to certify Google sign-in: Expo Go cannot own Survey's OAuth return scheme.
 Metro is only the temporary local code server used for live, uncommitted development.
 
 1. Install Expo Go and sign in once as Expo user `isaiahcalvo`.
@@ -26,8 +27,8 @@ CI=1 EXPO_PUBLIC_SURVEY_URL='https://surveytool.app/mobile' \
 
 Verified on 2026-08-06 in Expo Go on the iPhone 17 Pro Max Simulator with Metro stopped.
 The published update uses Expo Go's SDK 54 runtime and renders the production sign-in flow.
-Expo's free plan hosts this preview. Native Google identity cannot be proven in Expo Go;
-use the Survey development app below for that one native-only flow.
+Expo's free plan hosts this preview. Use the Survey development app below for full native
+testing, including Google identity and its return to the signed-in Survey session.
 
 `https://surveytool.app/mobile` remains the direct Safari fallback and the same hosted UI
 loaded by the native shell.

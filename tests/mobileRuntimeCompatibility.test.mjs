@@ -12,6 +12,7 @@ import {
 
 const EXPO_APP_SOURCE = readFileSync(new URL('../mobile-expo/App.tsx', import.meta.url), 'utf8');
 const EXPO_CONFIG_SOURCE = readFileSync(new URL('../mobile-expo/app.json', import.meta.url), 'utf8');
+const EXPO_EAS_CONFIG_SOURCE = readFileSync(new URL('../mobile-expo/eas.json', import.meta.url), 'utf8');
 const EXPO_PACKAGE_SOURCE = readFileSync(new URL('../mobile-expo/package.json', import.meta.url), 'utf8');
 const AUTH_CONTEXT_SOURCE = readFileSync(new URL('../src/contexts/AuthContext.jsx', import.meta.url), 'utf8');
 const INDEX_HTML_SOURCE = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
@@ -240,12 +241,24 @@ test('Survey development build owns Google sign-in without exposing the Supabase
   assert.match(EXPO_APP_SOURCE, /AuthSession\.exchangeCodeAsync/);
   assert.match(EXPO_APP_SOURCE, /result\.type === 'cancel' \|\| result\.type === 'dismiss'/);
   assert.match(EXPO_APP_SOURCE, /survey-native-google-auth-result/);
+  assert.match(EXPO_APP_SOURCE, /ExecutionEnvironment\.StoreClient/);
+  assert.match(EXPO_APP_SOURCE, /Google sign-in is not available in Expo Go\. Open the Survey app to continue\./);
   assert.match(EXPO_APP_SOURCE, /new URL\(event\.nativeEvent\.url\)\.origin !== SURVEY_ORIGIN/);
   assert.match(EXPO_APP_SOURCE, /onMessage=\{Platform\.OS === 'ios' \? handleWebMessage : undefined\}/);
   assert.match(AUTH_CONTEXT_SOURCE, /window\.ReactNativeWebView\.postMessage/);
   assert.match(AUTH_CONTEXT_SOURCE, /supabase\.auth\.signInWithIdToken/);
   assert.match(AUTH_CONTEXT_SOURCE, /provider: 'google'/);
   assert.match(AUTH_CONTEXT_SOURCE, /token: result\.idToken/);
+});
+
+test('Expo has durable development, preview, and production build lanes', () => {
+  const easConfig = JSON.parse(EXPO_EAS_CONFIG_SOURCE);
+  assert.equal(easConfig.cli.appVersionSource, 'remote');
+  assert.equal(easConfig.build.development.developmentClient, true);
+  assert.equal(easConfig.build.development.distribution, 'internal');
+  assert.equal(easConfig.build['development-simulator'].ios.simulator, true);
+  assert.equal(easConfig.build.preview.channel, 'preview');
+  assert.equal(easConfig.build.production.channel, 'production');
 });
 
 test('mobile PDF rendering stays inside the WKWebView memory budget', () => {

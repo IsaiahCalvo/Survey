@@ -202,6 +202,24 @@ test('AuthModal signup lands on a persistent confirm panel, not a timed close', 
   assert.match(AUTH_MODAL_SOURCE, /if \(data\?\.session\)/);
 });
 
+test('AuthModal labels credentials for iPhone and Android password autofill', () => {
+  assert.match(AUTH_MODAL_SOURCE, /<form[^>]*autoComplete="on"/);
+  assert.match(
+    AUTH_MODAL_SOURCE,
+    /id="email"[\s\S]{0,420}name="username"[\s\S]{0,220}autoComplete="username"[\s\S]{0,220}inputMode="email"[\s\S]{0,220}autoCapitalize="none"[\s\S]{0,220}spellCheck=\{false\}/,
+  );
+  assert.match(
+    AUTH_MODAL_SOURCE,
+    /id="password"[\s\S]{0,420}name="password"[\s\S]{0,220}autoComplete=\{mode === 'login' \? 'current-password' : 'new-password'\}/,
+  );
+  assert.match(
+    AUTH_MODAL_SOURCE,
+    /id="confirmPassword"[\s\S]{0,420}name="confirm-password"[\s\S]{0,220}autoComplete="new-password"/,
+  );
+  assert.match(AUTH_MODAL_SOURCE, /id="firstName"[\s\S]{0,320}autoComplete="given-name"/);
+  assert.match(AUTH_MODAL_SOURCE, /id="lastName"[\s\S]{0,320}autoComplete="family-name"/);
+});
+
 // --- wiring: change-password verifies the current password -------------------
 
 test('AccountSettings verifies the current password server-side before updating', () => {

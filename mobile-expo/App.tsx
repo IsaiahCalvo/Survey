@@ -199,7 +199,7 @@ function SurveyApp() {
     googleAuthInFlightRef.current = true;
     try {
       if (Constants.executionEnvironment === ExecutionEnvironment.StoreClient) {
-        throw new Error('Google sign-in requires the Survey development app, not Expo Go.');
+        throw new Error('Google sign-in is not available in Expo Go. Open the Survey app to continue.');
       }
 
       const request = new AuthSession.AuthRequest({
