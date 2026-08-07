@@ -60,7 +60,10 @@ export async function loadArchive(userId, { now = Date.now() } = {}) {
       .not('user_archived_at', 'is', null),
     supabase
       .from('templates')
-      .select('id, user_id, name, user_archived_at, user_archive_expires_at, archive_group_id')
+      // Keep in step with TEMPLATE_ARCHIVE_COLUMNS in templateArchiveService.js —
+      // `config` is the JSONB blob holding the template's modules, categories
+      // and entities, and it is what the preview pane's contents tree reads.
+      .select('id, user_id, name, config, user_archived_at, user_archive_expires_at, archive_group_id')
       .eq('user_id', userId)
       .not('user_archived_at', 'is', null),
     // Names for the "original project" column on a standalone archived document.

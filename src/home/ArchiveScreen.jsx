@@ -57,9 +57,17 @@ const ledgerHeader = {
 };
 
 /* One template, used by the header and every row so the columns cannot drift:
-   [checkbox] [Name] [Type] [Archived] [Days remaining]. The 32px leading
-   column matches the Documents ledger's select column exactly. */
-const grid = '32px minmax(150px,1fr) 110px 124px 110px';
+   [checkbox] [thumbnail] [Name] [Type] [Archived] [Days remaining]. The 32px
+   leading column and the 54px thumbnail column match the Documents ledger's
+   exactly, so an Archive row is the same height and the same shape as the
+   Documents row it came from — the owner asked for rows he can actually read
+   the drawing off, not a skinnier variant. */
+const grid = '32px 54px minmax(150px,1fr) 110px 124px 110px';
+
+/* Row thumbnail height, shared by the ledger rows, an expanded project's child
+   rows and the project preview tree. One number, so a document is the same
+   size wherever it appears in Archive. */
+const ROW_THUMB = 30;
 
 /* Rows near the end of the retention window are tinted danger so the user
    spots what is about to be purged without reading every date. Three days is
@@ -69,6 +77,17 @@ const URGENT_DAYS = 3;
 const DANGER = '#cf6f6f';
 
 const typeIcon = { document: 'doc', project: 'folder', template: 'template' };
+
+/* A project and a template have no page to render, so they fill the thumbnail
+   column with the hub's existing tinted type glyph instead — the same gold
+   folder and lilac template tiles the Projects and Templates mobile lists use
+   (.projects-mobile-folder-art / .templates-mobile-glyph in hub.css). Keeping
+   the tile the same 30px as a page thumbnail is what stops the rows changing
+   height as the list mixes types. */
+const TYPE_TINT = {
+  project: { background: 'rgba(216,168,78,0.16)', color: 'var(--gold)' },
+  template: { background: 'rgba(194,147,230,0.16)', color: 'var(--lilac)' },
+};
 
 export default function ArchiveScreen({
   items = [],
@@ -240,10 +259,18 @@ export default function ArchiveScreen({
     </span>
   );
 
+  /* Vertical padding on the row's text cells. The Documents ledger's rows come
+     out at 51px because its "Last edited" cell stacks a time over a date;
+     Archive's columns are all single-line, so the same 51px is bought with
+     padding instead. The owner asked for rows exactly the size of the
+     Documents tab's — a 30px thumbnail in a row that hugs it reads as a
+     different, tighter list. */
+  const ROW_PAD_Y = 16;
+
   const stickyCell = (selected) => ({
     position: 'sticky', left: 0, zIndex: 2,
     background: selected ? 'var(--ink-600)' : 'var(--ink-700)',
-    padding: '12px 14px',
+    padding: `${ROW_PAD_Y}px 14px`,
     display: 'flex', alignItems: 'center', gap: 8,
     minWidth: 0,
   });
@@ -252,7 +279,7 @@ export default function ArchiveScreen({
     <span
       className="mono"
       style={{
-        fontSize: 11, padding: '12px 0',
+        fontSize: 11, padding: `${ROW_PAD_Y}px 0`,
         color: item.daysRemaining <= URGENT_DAYS ? DANGER : 'inherit',
       }}
     >{daysRemainingLabel(item.daysRemaining)}</span>
@@ -264,6 +291,173 @@ export default function ArchiveScreen({
   const chevron = (open) => (
     <span style={{ color: '#8d96a6', fontSize: 10, lineHeight: 1, transform: open ? 'rotate(180deg)' : 'none', transition: 'transform .12s', flex: 'none' }}>▾</span>
   );
+
+  /* One disclosure button, so the ledger's project rows and the preview pane's
+     project tree open and close with the identical control. */
+  const disclosureButton = (id, open) => (
+    <button
+      type="button"
+      title={open ? 'Hide documents' : 'Show documents'}
+      aria-expanded={open}
+      onClick={(e) => { e.stopPropagation(); setExpandedIds((prev) => toggleExpanded(prev, id)); }}
+      style={{
+        background: 'transparent', border: 0, color: 'var(--ink-200)',
+        cursor: 'pointer', padding: 0, lineHeight: 1,
+        fontFamily: 'inherit', flex: 'none', width: 12,
+        display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+      }}
+    >{chevron(open)}</button>
+  );
+
+  /* A document's real first page, at the one row size. Identical to the
+     Documents ledger's row thumbnail — same variant, same height, same
+     stylised placeholder when the page cannot be rendered — because the user
+     is choosing between drawings and a name alone does not tell you which one
+     is about to be destroyed. */
+  const rowThumb = (id, filePath) => (
+    <PdfPageThumb
+      doc={{ id, file_path: filePath }}
+      downloadDocument={downloadDocument}
+      variant="row"
+      height={ROW_THUMB}
+      fallback={<div style={{ width: 23, height: ROW_THUMB, flex: 'none' }}><PdfThumb height={ROW_THUMB} stamp="" /></div>}
+    />
+  );
+
+  /* What fills a top-level row's thumbnail column: a page for a document, the
+     tinted type tile for a project or a template. */
+  const rowTypeArt = (item) => {
+    if (item.type === 'document') return rowThumb(item.id, item.filePath);
+    const tint = TYPE_TINT[item.type] || TYPE_TINT.project;
+    return (
+      <div style={{
+        width: ROW_THUMB, height: ROW_THUMB, borderRadius: 6, flex: 'none',
+        display: 'grid', placeItems: 'center', ...tint,
+      }}>
+        <Icon name={typeIcon[item.type] || 'doc'} size={16} />
+      </div>
+    );
+  };
+
+  /* ----------------------------------------------------------------------
+     Preview-pane contents trees.
+
+     A project and a template have no page to render, so the pane would
+     otherwise be a name and two dates — nothing you could safely decide
+     "delete forever" on. Both therefore show what is INSIDE them, using the
+     same disclosure and the same visual vocabulary as the screens that own
+     these objects (the Projects tree and the Templates editor).
+
+     Both trees scroll inside their own box rather than growing the pane, so
+     the Archived / Time remaining block stays pinned where it always is.
+     ---------------------------------------------------------------------- */
+  const treeScroller = {
+    marginTop: 8, flex: '0 1 auto', minHeight: 0, overflow: 'auto',
+    display: 'flex', flexDirection: 'column', gap: 2,
+  };
+
+  /* An archived project, as an expandable tree whose leaves are its documents.
+     Same expandedIds set as the ledger, so a project the user opened in the
+     list is already open here — one project has one open/closed state. */
+  const projectPreviewTree = (item) => {
+    const open = isRowExpanded(expandedIds, item.id);
+    return (
+      <div style={{ marginTop: 14, flex: '1 1 auto', minHeight: 0, display: 'flex', flexDirection: 'column' }}>
+        <div className="section-label">Contents</div>
+        <div className="slim-scroll" style={treeScroller}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0' }}>
+            {item.childCount > 0
+              ? disclosureButton(item.id, open)
+              : <span style={{ width: 12, flex: 'none' }} />}
+            <Icon name="folder" size={13} color="var(--gold)" />
+            <span style={{ fontSize: 12, fontWeight: 600, whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' }}>{item.name}</span>
+            <span className="mono" style={{ fontSize: 9.5, color: 'var(--ink-300)', flex: 'none' }}>{item.childCount}</span>
+          </div>
+          {item.childCount === 0 && (
+            <div className="meta" style={{ fontSize: 11.5, padding: '6px 0 6px 20px' }}>This project has no documents.</div>
+          )}
+          {open && item.children.map((child) => (
+            /* Indented leaf, carrying the same 30px page thumbnail the ledger
+               rows use — these files go with the project, so the owner needs
+               to see them before restoring or destroying it. */
+            <div key={child.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0 4px 20px' }}>
+              {rowThumb(child.id, child.filePath)}
+              <span className="meta" style={{ fontSize: 11.5, whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' }}>{child.name}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  };
+
+  /* An archived template, as its contents: modules with their categories
+     nested underneath, then the entities. Naming, the disclosure and the
+     entity colour swatches are the Templates editor's, so an archived
+     template reads as the same object the editor shows. */
+  const templatePreviewTree = (item) => {
+    const modules = item.modules || [];
+    const entities = item.entities || [];
+    return (
+      <div style={{ marginTop: 14, flex: '1 1 auto', minHeight: 0, display: 'flex', flexDirection: 'column' }}>
+        <div className="section-label">Modules</div>
+        <div className="slim-scroll" style={treeScroller}>
+          {modules.length === 0 && (
+            <div className="meta" style={{ fontSize: 11.5, padding: '4px 0' }}>This template has no modules.</div>
+          )}
+          {modules.map((mod) => {
+            /* Module ids are scoped by template id: a legacy template with no
+               stored ids falls back to positional ones, which would otherwise
+               collide between two templates in the same expanded set. */
+            const moduleKey = `${item.id}:${mod.id}`;
+            const open = isRowExpanded(expandedIds, moduleKey);
+            const categories = mod.categories || [];
+            return (
+              <div key={mod.id}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0' }}>
+                  {categories.length > 0
+                    ? disclosureButton(moduleKey, open)
+                    : <span style={{ width: 12, flex: 'none' }} />}
+                  <span style={{ fontSize: 12, fontWeight: 600, whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' }}>{mod.name}</span>
+                  <span className="mono" style={{ fontSize: 9.5, color: 'var(--ink-300)', flex: 'none' }}>
+                    {categories.length} {categories.length === 1 ? 'category' : 'categories'}
+                  </span>
+                </div>
+                {open && categories.map((cat) => (
+                  /* Categories are the leaves: their checklist lines are
+                     counted, not listed. The preview answers "is this the
+                     template I meant?" — a full checklist would bury that. */
+                  <div key={cat.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '3px 0 3px 20px' }}>
+                    <span className="meta" style={{ fontSize: 11.5, whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' }}>{cat.name}</span>
+                    <span className="mono" style={{ fontSize: 9.5, color: 'var(--ink-300)', flex: 'none' }}>
+                      {cat.itemCount} {cat.itemCount === 1 ? 'item' : 'items'}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            );
+          })}
+        </div>
+        {/* Entities — the same 14px colour chip the Templates editor draws
+            beside a template, at full strength with its own border colour, so
+            an entity set is recognisable at a glance. */}
+        <div className="section-label" style={{ marginTop: 14, flex: 'none' }}>Entities</div>
+        <div className="slim-scroll" style={{ ...treeScroller, flex: '0 1 auto' }}>
+          {entities.length === 0 && (
+            <div className="meta" style={{ fontSize: 11.5, padding: '4px 0' }}>This template has no entities.</div>
+          )}
+          {entities.map((entity) => (
+            <div key={entity.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '3px 0' }}>
+              <span style={{
+                width: 14, height: 14, borderRadius: '50%', flex: 'none',
+                background: entity.color, border: `1.5px solid ${entity.borderColor}`,
+              }} />
+              <span style={{ fontSize: 11.5, whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' }}>{entity.name}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  };
 
   const renderRow = (item) => {
     const checked = selectedIds.has(item.id);
@@ -302,22 +496,15 @@ export default function ArchiveScreen({
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 8px' }}>
             {selectMode ? checkGlyph(checked) : null}
           </div>
+          {/* Thumbnail column — its own cell, centred so every thumbnail lines
+              up under the next, exactly as the Documents ledger does it. The
+              type glyph moved here out of the name cell: one type mark per row,
+              at a size the user can actually read the page off. */}
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            {rowTypeArt(item)}
+          </div>
           <div style={stickyCell(active)}>
-            {isProject ? (
-              <button
-                type="button"
-                title={expanded ? 'Hide documents' : 'Show documents'}
-                aria-expanded={expanded}
-                onClick={(e) => { e.stopPropagation(); setExpandedIds((prev) => toggleExpanded(prev, item.id)); }}
-                style={{
-                  background: 'transparent', border: 0, color: 'var(--ink-200)',
-                  cursor: 'pointer', padding: 0, lineHeight: 1,
-                  fontFamily: 'inherit', flex: 'none', width: 12,
-                  display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                }}
-              >{chevron(expanded)}</button>
-            ) : <span style={{ width: 12, flex: 'none' }} />}
-            <Icon name={typeIcon[item.type] || 'doc'} size={13} color="var(--ink-200)" />
+            {isProject ? disclosureButton(item.id, expanded) : <span style={{ width: 12, flex: 'none' }} />}
             <span style={{ fontWeight: 600, fontSize: 12.5, whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' }}>{item.name}</span>
             {item.childCount > 0 && (
               <span className="meta" style={{ fontSize: 11, flex: 'none' }}>
@@ -325,8 +512,8 @@ export default function ArchiveScreen({
               </span>
             )}
           </div>
-          <span className="meta" style={{ fontSize: 11.5, padding: '12px 0' }}>{archiveTypeLabel(item.type)}</span>
-          <span className="mono" style={{ fontSize: 11, padding: '12px 0' }}>{archivedDateLabel(item.archivedAt)}</span>
+          <span className="meta" style={{ fontSize: 11.5, padding: `${ROW_PAD_Y}px 0` }}>{archiveTypeLabel(item.type)}</span>
+          <span className="mono" style={{ fontSize: 11, padding: `${ROW_PAD_Y}px 0` }}>{archivedDateLabel(item.archivedAt)}</span>
           {daysCell(item)}
         </div>
         {/* Child documents of an archived project. Descriptive only: they are
@@ -341,24 +528,19 @@ export default function ArchiveScreen({
               borderBottom: '1px solid var(--ink-600)',
               borderLeft: '2px solid transparent',
               contentVisibility: 'auto',
-              // 8px padding + the 24px row thumbnail + 8px padding.
-              containIntrinsicSize: '0 40px',
+              // 8px padding + the 30px row thumbnail + 8px padding.
+              containIntrinsicSize: '0 46px',
             }}
           >
             <span />
+            <span />
             <div style={{ ...stickyCell(false), padding: '8px 14px 8px 44px', gap: 8 }}>
               {/* The same real first-page thumbnail the Documents ledger puts on
-                  its rows. A project restores as one unit, so what the user is
-                  really deciding about is these documents — a name alone does
-                  not tell you which drawing is about to be destroyed. The doc
-                  icon stays as the fallback for anything that cannot render. */}
-              <PdfPageThumb
-                doc={{ id: child.id, file_path: child.filePath }}
-                downloadDocument={downloadDocument}
-                variant="row"
-                height={24}
-                fallback={<Icon name="doc" size={12} color="var(--ink-300)" />}
-              />
+                  its rows, at the SAME size — a child document is not a lesser
+                  document, and the owner has to recognise it before the whole
+                  project is destroyed. Indented rather than sitting in the
+                  thumbnail column, so the nesting stays legible. */}
+              {rowThumb(child.id, child.filePath)}
               <span className="meta" style={{ fontSize: 11.5, whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' }}>{child.name}</span>
             </div>
             <span />
@@ -431,6 +613,9 @@ export default function ArchiveScreen({
           style={{ display: 'grid', gridTemplateColumns: grid, alignItems: 'center' }}
         >
           <span />
+          {/* The thumbnail column reserves its real 23x30 footprint, or the
+              rows shuffle sideways the moment the data lands. */}
+          <span className="hub-skeleton-block" style={{ height: 30, width: 23, margin: '0 auto' }} />
           <span className="hub-skeleton-block" style={{ height: 12, width: '58%', marginLeft: 14 }} />
           <span className="hub-skeleton-block" style={{ height: 10, width: 62 }} />
           <span className="hub-skeleton-block" style={{ height: 10, width: 84 }} />
@@ -480,6 +665,9 @@ export default function ArchiveScreen({
               <div>
                 <div style={{ ...ledgerHeader, display: 'grid', gridTemplateColumns: grid, position: 'sticky', top: 0, zIndex: 3 }}>
                   <span></span>
+                  {/* The thumbnail column carries no header, exactly as in
+                      Documents, so "Name" sits over the name. */}
+                  <span></span>
                   {headerCell('name', 'Name', { padding: '0 14px', display: 'flex', alignItems: 'center' })}
                   {headerCell('type', 'Type')}
                   {headerCell('archived', 'Archived')}
@@ -498,8 +686,9 @@ export default function ArchiveScreen({
             {showPreview && (
               /* Preview pane — same shape as the Documents ledger's. You are
                  deciding whether to rescue or destroy this thing, so it has to
-                 be identifiable without leaving Archive. A project shows less:
-                 there is no page to render, only what travels with it. */
+                 be identifiable without leaving Archive. A document shows its
+                 real first page; a project and a template have no page, so
+                 they show what is inside them as a tree instead. */
               <aside style={{ padding: 18, position: 'relative', height: '100%', boxSizing: 'border-box', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flex: 'none' }}>
                   <div className="section-label">Preview</div>
@@ -530,6 +719,8 @@ export default function ArchiveScreen({
                     />
                   </div>
                 )}
+                {previewItem.type === 'project' && projectPreviewTree(previewItem)}
+                {previewItem.type === 'template' && templatePreviewTree(previewItem)}
                 {previewTeam.shown.length > 0 && (
                   /* Shared with — shown ONLY when this item really has other
                      people on it. Unlike the Documents ledger, Archive does not

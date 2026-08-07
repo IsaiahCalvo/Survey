@@ -27,8 +27,15 @@
  *     collaborators:  optional; people other than the permanent owner who still
  *                     have access. Attached by archiveService.loadArchive, and
  *                     absent entirely when the item is not shared.
+ *     modules:        templates only; [{ id, name, categories: [{ id, name,
+ *                     itemCount }] }] — the contents tree the preview shows
+ *     entities:       templates only; [{ id, name, color, borderColor }]
  *   }
  */
+
+// Explicit extension: this module is loaded directly by the Node test suite
+// (tests/archiveContract.test.mjs), which does not resolve extensionless paths.
+import { templateOutline } from './templateConfigShape.js';
 
 /** Retention window. Mirrors public.archive_retention_interval() in the database. */
 export const ARCHIVE_RETENTION_DAYS = 30;
@@ -100,9 +107,26 @@ export function normalizeDocumentItem(row, { projectName = null, now = Date.now(
   return item;
 }
 
-/** A template archived on its own. */
+/**
+ * A template archived on its own.
+ *
+ * Carries a read-only outline of what is inside it — modules with their
+ * categories nested underneath, plus the entities — so the preview pane can
+ * show the user what they are about to restore or destroy. A template owns no
+ * file, so its contents are the ONLY way to recognise it; a name alone does
+ * not tell you which checklist set is about to be deleted forever.
+ *
+ * The outline comes from the same readers TemplatesEditor uses
+ * (services/templateConfigShape), so an archived template reads as the same
+ * object the editor shows. Both template queries must select `config` or this
+ * degrades to empty lists.
+ */
 export function normalizeTemplateItem(row, { now = Date.now() } = {}) {
-  return baseItem('template', row, now);
+  const item = baseItem('template', row, now);
+  const outline = templateOutline(row);
+  item.modules = outline.modules;
+  item.entities = outline.entities;
+  return item;
 }
 
 /**

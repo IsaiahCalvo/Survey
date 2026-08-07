@@ -18,8 +18,11 @@
 import { supabase } from '../supabaseClient';
 import { normalizeTemplateItem } from './archiveContract';
 
+/* Keep in step with the templates select in archiveService.loadArchive —
+   `config` carries the modules/categories/entities the Archive preview pane
+   renders as a contents tree. */
 const TEMPLATE_ARCHIVE_COLUMNS =
-  'id, user_id, name, user_archived_at, user_archive_expires_at, user_archived_by, archive_group_id';
+  'id, user_id, name, config, user_archived_at, user_archive_expires_at, user_archived_by, archive_group_id';
 
 function messageForReason(reason) {
   switch (reason) {
