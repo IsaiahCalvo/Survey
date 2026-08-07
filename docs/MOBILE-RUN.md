@@ -285,10 +285,13 @@ when these public client variables are configured:
 
 ```bash
 VITE_AGENT_NATIVE_ANALYTICS_PUBLIC_KEY='anpk_...'
-VITE_AGENT_NATIVE_ANALYTICS_URL='https://analytics.agent-native.com/track'
+VITE_AGENT_NATIVE_ANALYTICS_URL='https://survey-analytics-796.netlify.app/track'
 EXPO_PUBLIC_AGENT_NATIVE_ANALYTICS_PUBLIC_KEY='anpk_...'
-EXPO_PUBLIC_AGENT_NATIVE_ANALYTICS_URL='https://analytics.agent-native.com/track'
+EXPO_PUBLIC_AGENT_NATIVE_ANALYTICS_URL='https://survey-analytics-796.netlify.app/track'
 ```
+
+The Vercel production bundle and permanent `expo-go` EAS branch are already configured
+with this owner-controlled collector. The Netlify site uses the free plan.
 
 The Expo shell keeps the last 24 PDF diagnostics outside WKWebView. If iOS
 terminates the WebContent process, the surviving shell uploads the termination
