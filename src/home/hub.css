@@ -60,6 +60,20 @@
 .survey-hub .who { margin-top: auto; display: flex; align-items: center; gap: 7px; padding-top: 10px; border-top: 1px solid var(--ink-500); }
 .survey-hub .who .name { font-size: 11.5px; font-weight: 600; line-height: 1.15; }
 .survey-hub .who .who-meta { font-size: 10px; color: var(--ink-200); }
+.survey-hub .profile-signin {
+  width: 100%;
+  min-height: 32px;
+  border: 1px solid var(--gold);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--gold);
+  padding: 6px 10px;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.survey-hub .profile-signin:hover { background: rgba(216,168,78,0.1); }
 
 .survey-hub .main { overflow: hidden; min-height: 0; min-width: 0; display: flex; flex-direction: column; }
 .survey-hub .header { display: flex; align-items: baseline; gap: 14px; padding: 12px 18px 8px; }
@@ -1134,7 +1148,7 @@
     display: block;
     order: 2;
     flex: none;
-    max-width: 46px;
+    max-width: none;
     position: absolute;
     top: 14px;
     right: 14px;
@@ -1152,6 +1166,12 @@
     height: 38px;
     padding: 0 !important;
     justify-content: center;
+  }
+
+  .survey-hub .mobile-profile .who > button.profile-signin {
+    width: auto !important;
+    min-width: 64px;
+    padding: 0 12px !important;
   }
 
   .survey-hub .mobile-profile .who > button > div:not(:first-child) {

@@ -141,7 +141,7 @@ const isExpoNativeShell = () => {
    popup (matching the menu the app had before, restyled to the hub palette).
    Reads the user and the two callbacks from HubChromeContext. */
 const ProfileMenu = ({ userName, userMeta }) => {
-  const { user, onSettings, onSignOut } = useContext(HubChromeContext);
+  const { user, onSettings, onSignOut, onSignIn } = useContext(HubChromeContext);
   // Resolve the per-tier badge text. Callers may pass `userMeta` explicitly;
   // otherwise we read from AuthContext so free users no longer see "Pro".
   const auth = useAuth();
@@ -159,6 +159,17 @@ const ProfileMenu = ({ userName, userMeta }) => {
     document.addEventListener('mousedown', onDoc);
     return () => document.removeEventListener('mousedown', onDoc);
   }, [open]);
+
+  if (!user) {
+    return (
+      <div className="who who-guest">
+        <button type="button" className="profile-signin" onClick={() => onSignIn && onSignIn()}>
+          Sign in
+        </button>
+      </div>
+    );
+  }
+
   const name = user?.name || user?.email?.split('@')[0] || userName;
   const email = user?.email || '';
   const initials = initialsOf(name);

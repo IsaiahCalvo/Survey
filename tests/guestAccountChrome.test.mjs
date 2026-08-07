@@ -1,0 +1,37 @@
+import { readFileSync } from 'node:fs';
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+
+const read = (path) => readFileSync(new URL(path, import.meta.url), 'utf8');
+
+const HUB_SHELL = read('../src/home/HubShell.jsx');
+const SURVEY_HUB = read('../src/home/SurveyHub.jsx');
+const DASHBOARD = read('../src/Dashboard.jsx');
+const ACCOUNT_SETTINGS = read('../src/components/AccountSettings.jsx');
+
+test('signed-out hub chrome renders Sign in instead of a fake profile menu', () => {
+  const profileMenu = HUB_SHELL.slice(
+    HUB_SHELL.indexOf('const ProfileMenu'),
+    HUB_SHELL.indexOf('const MobileRailNav'),
+  );
+
+  assert.match(profileMenu, /if \(!user\) \{/);
+  assert.match(profileMenu, />\s*Sign in\s*</);
+  assert.match(profileMenu, /onSignIn/);
+  assert.ok(
+    profileMenu.indexOf('if (!user) {') < profileMenu.indexOf('const name ='),
+    'guest branch must return before any fallback name or avatar is resolved',
+  );
+});
+
+test('the shared Dashboard-to-Hub path opens authentication for guests', () => {
+  assert.match(DASHBOARD, /onSignIn=\{onShowAuthModal\}/);
+  assert.match(SURVEY_HUB, /onSignIn,/);
+  assert.match(SURVEY_HUB, /HubChromeContext\.Provider value=\{\{ user, onSettings: openSettings, onSignOut, onSignIn \}\}/);
+});
+
+test('settings and subscription UI cannot mount without an authenticated user', () => {
+  assert.match(SURVEY_HUB, /const openSettings = \(\) => \{\s*if \(!user\) return;/);
+  assert.match(SURVEY_HUB, /\{settingsOpen && user && \(/);
+  assert.match(ACCOUNT_SETTINGS, /if \(!isOpen \|\| !user\) return null;/);
+});

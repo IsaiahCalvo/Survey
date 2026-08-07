@@ -57,6 +57,7 @@ export default function SurveyHub({
   onLockDocument,
   onSettings,
   onSignOut,
+  onSignIn,
 }) {
   const [tab, setTab] = useState(() => {
     if (initialTab) return initialTab;
@@ -105,12 +106,13 @@ export default function SurveyHub({
      full-screen view over the hub. We still forward to the parent's
      onSettings (if supplied) so host apps can observe the intent. */
   const openSettings = () => {
+    if (!user) return;
     setSettingsOpen(true);
     if (onSettings) onSettings();
   };
 
   return (
-    <HubChromeContext.Provider value={{ user, onSettings: openSettings, onSignOut }}>
+    <HubChromeContext.Provider value={{ user, onSettings: openSettings, onSignOut, onSignIn }}>
       {tab === 'documents' && (
         documentsInitialLoading ? (
           <HubLoadingSkeletons {...common} tab="documents" />
@@ -188,7 +190,7 @@ export default function SurveyHub({
       {/* Settings page — shown full-screen over the hub. AccountSettings
           renders its own fixed overlay with a close (×) button in its
           header, which is the way back to the hub. */}
-      {settingsOpen && (
+      {settingsOpen && user && (
         <Suspense fallback={null}>
           <AccountSettings
             isOpen

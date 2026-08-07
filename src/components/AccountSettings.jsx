@@ -167,7 +167,7 @@ export const AccountSettings = ({ isOpen, onClose }) => {
     }
   }, [isMSAuthenticated, msAccount, user, updateProfile]);
 
-  if (!isOpen) return null;
+  if (!isOpen || !user) return null;
 
   const handleSaveChanges = async (e) => {
     e.preventDefault();

@@ -2039,6 +2039,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
         onLockDocument={hubToggleDocumentLock}
         onSettings={() => setShowAccountSettings(true)}
         onSignOut={signOut}
+        onSignIn={onShowAuthModal}
       />
       <CreateProjectModal
         open={isProjectModalOpen}
