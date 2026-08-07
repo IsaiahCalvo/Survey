@@ -1,6 +1,7 @@
 // KAL-426 — the normalized Archive item contract every later ticket reads.
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 
 import {
   ARCHIVE_RETENTION_DAYS,
@@ -15,6 +16,9 @@ import {
   normalizeTemplateItem,
 } from '../src/services/archiveContract.js';
 import { runArchiveBulk } from '../src/services/archiveBulk.js';
+import { templateOutline, toHex6 } from '../src/services/templateConfigShape.js';
+
+const readSrc = (path) => readFileSync(new URL(path, import.meta.url), 'utf8');
 
 const NOW = Date.parse('2026-08-02T12:00:00.000Z');
 const day = (n) => new Date(NOW + n * 24 * 60 * 60 * 1000).toISOString();
@@ -95,6 +99,110 @@ test('a project item exposes its children as descriptive rows only', () => {
   // rows render the same real page thumbnail the Documents ledger shows.
   assert.equal(item.children[0].filePath, 'u1/a.pdf');
   assert.equal(item.children[1].filePath, null);
+});
+
+/* ------------------------------------------------------------------------
+   Template contents (2026-08-07 owner ask): "when I delete a template, I want
+   the template to show information, like the entities that it has... the
+   modules it has, with the individual categories underneath it as a tree".
+   ------------------------------------------------------------------------ */
+
+const templateRow = (config) => ({
+  id: 'tpl-1',
+  user_id: 'owner-1',
+  name: 'Fire doors',
+  config,
+  user_archived_at: day(-3),
+  user_archive_expires_at: day(27),
+});
+
+test('a normalized template carries its modules, nested categories and entities', () => {
+  const item = normalizeTemplateItem(templateRow({
+    modules: [
+      {
+        id: 'm1',
+        name: 'Egress',
+        categories: [
+          { id: 'c1', name: 'Doors', checklist: [{ id: 'i1', text: 'Latch' }, { id: 'i2', text: 'Closer' }] },
+          { id: 'c2', name: 'Signage', checklist: [] },
+        ],
+      },
+      { id: 'm2', name: 'Fire stopping', categories: [] },
+    ],
+    entities: [
+      { id: 'e1', name: 'Contractor', color: '#e07a5e' },
+      { id: 'e2', name: 'Client', color: 'rgba(122,183,230,0.35)' },
+    ],
+  }), { now: NOW });
+
+  assert.equal(item.type, 'template');
+  assert.deepEqual(item.modules.map((m) => m.name), ['Egress', 'Fire stopping']);
+  assert.deepEqual(item.modules[0].categories.map((c) => c.name), ['Doors', 'Signage']);
+  // Checklist lines are COUNTED, not listed — the preview answers "is this the
+  // template I meant?", and a full checklist would bury that.
+  assert.deepEqual(item.modules[0].categories.map((c) => c.itemCount), [2, 0]);
+  assert.deepEqual(item.modules[1].categories, []);
+  assert.deepEqual(item.entities.map((e) => e.name), ['Contractor', 'Client']);
+  // An rgba entity colour normalizes to the hex the swatch needs.
+  assert.equal(item.entities[1].color, '#7ab7e6');
+  // No "Match fill" refinement: the border falls back to the fill colour.
+  assert.equal(item.entities[0].borderColor, '#e07a5e');
+});
+
+test('the template outline tolerates every legacy shape the editor tolerates', () => {
+  // Structure under a legacy `spaces` key, categories under `cats`, checklist
+  // under `items`, entities as `role` — all shapes TemplatesEditor reads.
+  const legacy = templateOutline({
+    spaces: [{ name: 'Old module', cats: [{ name: 'Old category', items: ['One', 'Two', ''] }] }],
+    entities: [{ role: 'Surveyor', color: '#abc' }],
+  });
+  assert.equal(legacy.modules[0].name, 'Old module');
+  assert.equal(legacy.modules[0].categories[0].name, 'Old category');
+  assert.equal(legacy.modules[0].categories[0].itemCount, 2, 'blank lines are not counted');
+  assert.equal(legacy.entities[0].name, 'Surveyor');
+  assert.equal(legacy.entities[0].color, '#aabbcc');
+  // Legacy rows with no ids still get stable React keys.
+  assert.equal(legacy.modules[0].id, 'm0');
+  assert.equal(legacy.modules[0].categories[0].id, 'm0c0');
+  assert.equal(legacy.entities[0].id, 'e0');
+
+  // Unnamed rows degrade to a positional label rather than rendering blank.
+  const unnamed = templateOutline({ modules: [{ categories: [{}] }], entities: [{}] });
+  assert.equal(unnamed.modules[0].name, 'Module 1');
+  assert.equal(unnamed.modules[0].categories[0].name, 'Category 1');
+  assert.equal(unnamed.entities[0].name, 'Entity 1');
+
+  // "Match fill" collapses the border onto the fill, exactly as the editor's
+  // entitySwatch() does.
+  const matched = templateOutline({ entities: [{ name: 'A', color: '#111111', borderColor: '#999999', matchFill: true }] });
+  assert.equal(matched.entities[0].borderColor, '#111111');
+  const unmatched = templateOutline({ entities: [{ name: 'A', color: '#111111', borderColor: '#999999' }] });
+  assert.equal(unmatched.entities[0].borderColor, '#999999');
+
+  assert.equal(toHex6(null), '#8c8c8a', 'a missing colour still renders a swatch');
+});
+
+test('a template with no structure at all still normalizes to empty lists', () => {
+  // The screen reads item.modules / item.entities unconditionally, so these
+  // must never be undefined — including when the query forgot to select config.
+  const bare = normalizeTemplateItem({ id: 't', name: 'Bare', user_archived_at: day(-1) }, { now: NOW });
+  assert.deepEqual(bare.modules, []);
+  assert.deepEqual(bare.entities, []);
+});
+
+test('both template queries select config, or the preview silently shows nothing', () => {
+  // archiveService.js keeps its own duplicated column list; the two must match.
+  const service = readSrc('../src/services/archiveService.js');
+  const templateService = readSrc('../src/services/templateArchiveService.js');
+  assert.match(service, /\.from\('templates'\)[\s\S]*?\.select\('[^']*\bconfig\b[^']*'\)/);
+  assert.match(templateService, /const TEMPLATE_ARCHIVE_COLUMNS =\s*\n?\s*'[^']*\bconfig\b[^']*'/);
+  // The editor and the Archive preview read the same converters — no second
+  // derivation of the persisted shape.
+  const contract = readSrc('../src/services/archiveContract.js');
+  const editor = readSrc('../src/home/TemplatesEditor.jsx');
+  assert.match(contract, /import \{ templateOutline \} from '\.\/templateConfigShape\.js'/);
+  assert.match(editor, /from '\.\.\/services\/templateConfigShape'/);
+  assert.doesNotMatch(editor, /^const modulesOf =/m, 'the editor must not keep a private copy of the readers');
 });
 
 test('buildArchiveItems folds project children in and keeps standalone docs top level', () => {

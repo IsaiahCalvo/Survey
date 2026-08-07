@@ -74,6 +74,16 @@ import {
   isArchivedChecklistItem,
   archivedItemLabel,
 } from '../services/checklistOrphanCleanup';
+/* The defensive readers for a persisted template's structure. Shared with the
+   Archive screen's template preview so the two cannot drift. */
+import {
+  modulesOf,
+  entitiesOf,
+  categoriesOf,
+  checklistOf,
+  itemText,
+  toHex6,
+} from '../services/templateConfigShape';
 import { moveItemById } from '../reorder/flatReorderUtils.js';
 import { pickByIds, removeByIds, duplicateAfterByIds } from './selectionById.js';
 import { closeButtonStyle, miniButtonStyle, miniSelectButtonStyle, moreButtonStyle } from './hubControls';
@@ -136,16 +146,6 @@ const getModuleTabClampBounds = (activeId) => {
   };
 };
 
-/* ============================================================
-   Defensive readers — templates may carry structure at the top
-   level, under a legacy `spaces` key, or inside a `config` blob.
-   ============================================================ */
-const modulesOf = (t) => t?.modules || t?.spaces || t?.config?.modules || t?.config?.spaces || [];
-const entitiesOf = (t) => t?.entities || t?.config?.entities || [];
-const categoriesOf = (m) => m?.categories || m?.cats || [];
-const checklistOf = (c) => c?.checklist || c?.items || [];
-const itemText = (it) => (typeof it === 'string' ? it : (it?.text ?? it?.name ?? ''));
-
 /* Accent ribbon — templates may not store an accent colour. */
 const ACCENTS = ['#e07a5e', '#7ab7e6', '#c293e6', '#a6e07a', '#d8a84e', '#9aa3b2'];
 
@@ -154,22 +154,6 @@ const ENTITY_COLORS = [
   '#e07a5e', '#7ab7e6', '#c293e6', '#a6e07a', '#d8a84e', '#ec8a9a',
   '#5fc7b0', '#9aa3b2',
 ];
-
-/* Normalise a colour value (entities may store an rgba string or a hex). */
-const toHex6 = (color) => {
-  if (!color) return '#8c8c8a';
-  const c = String(color).trim();
-  if (/^#[0-9a-f]{6}$/i.test(c)) return c.toLowerCase();
-  if (/^#[0-9a-f]{3}$/i.test(c)) {
-    return ('#' + c.slice(1).split('').map((ch) => ch + ch).join('')).toLowerCase();
-  }
-  const m = /rgba?\(\s*(\d+)[,\s]+(\d+)[,\s]+(\d+)/i.exec(c);
-  if (m) {
-    const hx = (n) => Number(n).toString(16).padStart(2, '0');
-    return ('#' + hx(m[1]) + hx(m[2]) + hx(m[3])).toLowerCase();
-  }
-  return '#8c8c8a';
-};
 
 /* Monotonic id generator — every new module/category/item/entity gets a
    stable unique React key so renames and reorders don't churn the tree. */

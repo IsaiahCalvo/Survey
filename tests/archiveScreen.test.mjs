@@ -227,7 +227,13 @@ test('the screen offers Restore and Delete forever, and nothing else', () => {
 
 test('the screen mirrors the Documents ledger structure and states', () => {
   assert.match(SCREEN, /<HubShell[\s\S]*?tab="archive"/);
-  assert.match(SCREEN, /const grid = '32px minmax\(150px,1fr\) 110px 124px 110px'/);
+  // Owner call 2026-08-07: the rows were too skinny to read a drawing off, so
+  // Archive adopts the Documents ledger's row geometry EXACTLY — the same 32px
+  // select column and the same dedicated 54px thumbnail column. Only the three
+  // trailing columns differ, because they carry different data.
+  assert.match(SCREEN, /const grid = '32px 54px minmax\(150px,1fr\) 110px 124px 110px'/);
+  const DOCUMENTS = read('../src/home/DocumentsLedger.jsx');
+  assert.match(DOCUMENTS, /'32px 54px minmax\(150px,1fr\)/, 'the Documents ledger is the reference for the leading columns');
   assert.match(SCREEN, /contentVisibility: 'auto'/);
   assert.match(SCREEN, /containIntrinsicSize: '0 50px'/);
   assert.match(SCREEN, /sortKey === key \? 'var\(--bone-100\)' : 'inherit'/);
@@ -252,16 +258,85 @@ test('the preview pane renders the real first page, ahead of any row thumbnails'
   assert.match(SCREEN, /const \{ downloadDocument \} = useStorage\(\)/);
 });
 
-test("an expanded project's child rows show the same page thumbnail as a Documents row", () => {
-  // variant="row" — the small real-aspect thumbnail, NOT the big preview one.
+test('every document in Archive renders at the one Documents-ledger thumbnail size', () => {
+  // One helper, one size. Top-level rows, an expanded project's child rows and
+  // the project preview tree all call it, so a document cannot end up smaller
+  // in one place than another (the owner's complaint).
+  assert.match(SCREEN, /const ROW_THUMB = 30;/);
   assert.match(
     SCREEN,
-    /<PdfPageThumb\s+doc=\{\{ id: child\.id, file_path: child\.filePath \}\}[\s\S]*?variant="row"/,
+    /const rowThumb = \(id, filePath\) => \([\s\S]*?<PdfPageThumb[\s\S]*?doc=\{\{ id, file_path: filePath \}\}[\s\S]*?variant="row"[\s\S]*?height=\{ROW_THUMB\}/,
   );
-  // The old icon-only row is the fallback now, never the default.
-  assert.match(SCREEN, /fallback=\{<Icon name="doc" size=\{12\} color="var\(--ink-300\)" \/>\}/);
-  // Intrinsic size must track the taller row or the skipped rows jump.
-  assert.match(SCREEN, /containIntrinsicSize: '0 40px'/);
+  // The same stylised placeholder the Documents ledger falls back to, at the
+  // same 23x30 footprint — NOT the old tiny doc icon.
+  assert.match(
+    SCREEN,
+    /fallback=\{<div style=\{\{ width: 23, height: ROW_THUMB, flex: 'none' \}\}><PdfThumb height=\{ROW_THUMB\} stamp="" \/><\/div>\}/,
+  );
+  const DOCUMENTS = read('../src/home/DocumentsLedger.jsx');
+  assert.match(DOCUMENTS, /variant="row"\s*\n\s*height=\{30\}/, 'Documents is the reference height');
+  assert.match(DOCUMENTS, /width: 23, height: 30, flex: 'none'/, 'Documents is the reference fallback');
+
+  // Top-level rows fill the thumbnail column; a project/template has no page,
+  // so it shows the hub's tinted type tile at the same 30px instead.
+  assert.match(SCREEN, /const rowTypeArt = \(item\) => \{[\s\S]*?if \(item\.type === 'document'\) return rowThumb\(item\.id, item\.filePath\);/);
+  assert.match(SCREEN, /const TYPE_TINT = \{[\s\S]*?project: \{ background: 'rgba\(216,168,78,0\.16\)', color: 'var\(--gold\)' \}/);
+  assert.match(SCREEN, /template: \{ background: 'rgba\(194,147,230,0\.16\)', color: 'var\(--lilac\)' \}/);
+  assert.match(SCREEN, /width: ROW_THUMB, height: ROW_THUMB/);
+  assert.match(SCREEN, /\{rowTypeArt\(item\)\}/);
+
+  // Child rows call the SAME helper — indented, never shrunk.
+  assert.match(SCREEN, /\{rowThumb\(child\.id, child\.filePath\)\}/);
+  // Intrinsic size must track the taller row or the skipped rows jump:
+  // 8px padding + the 30px thumbnail + 8px padding.
+  assert.match(SCREEN, /containIntrinsicSize: '0 46px'/);
+});
+
+test('an archived project previews as an expandable tree of its documents', () => {
+  // Owner ask: select a project, expand it, see the files inside WITH their
+  // thumbnails. Reuses the ledger's own expand state, so a project opened in
+  // the list is already open in the pane.
+  assert.match(SCREEN, /const projectPreviewTree = \(item\) => \{[\s\S]*?isRowExpanded\(expandedIds, item\.id\)/);
+  assert.match(SCREEN, /previewItem\.type === 'project' && projectPreviewTree\(previewItem\)/);
+  // Leaves are the documents, each with the shared row thumbnail.
+  assert.match(
+    SCREEN,
+    /const projectPreviewTree[\s\S]*?item\.children\.map\(\(child\) => \([\s\S]*?\{rowThumb\(child\.id, child\.filePath\)\}/,
+  );
+  // One disclosure control for both the ledger row and the tree.
+  assert.match(SCREEN, /const disclosureButton = \(id, open\) => \([\s\S]*?toggleExpanded\(prev, id\)/);
+  assert.match(SCREEN, /\{chevron\(open\)\}<\/button>/);
+  assert.match(SCREEN, /isProject \? disclosureButton\(item\.id, expanded\)/);
+  assert.match(SCREEN, /disclosureButton\(item\.id, open\)/);
+});
+
+test('an archived template previews its modules, nested categories and entities', () => {
+  // Owner ask: a deleted template must say what is IN it. Modules with their
+  // categories underneath as a tree, plus the entities.
+  assert.match(SCREEN, /const templatePreviewTree = \(item\) => \{/);
+  assert.match(SCREEN, /previewItem\.type === 'template' && templatePreviewTree\(previewItem\)/);
+  assert.match(SCREEN, /const modules = item\.modules \|\| \[\];/);
+  assert.match(SCREEN, /const entities = item\.entities \|\| \[\];/);
+  assert.match(SCREEN, /<div className="section-label">Modules<\/div>/);
+  assert.match(SCREEN, /Entities<\/div>/);
+  // Categories nest under their module behind the same rotating chevron.
+  assert.match(SCREEN, /const moduleKey = `\$\{item\.id\}:\$\{mod\.id\}`;/);
+  assert.match(SCREEN, /disclosureButton\(moduleKey, open\)/);
+  assert.match(SCREEN, /open && categories\.map\(\(cat\) => \(/);
+  // The Templates editor's own 14px entity chip, not a new swatch shape.
+  assert.match(SCREEN, /width: 14, height: 14, borderRadius: '50%'[\s\S]*?border: `1\.5px solid \$\{entity\.borderColor\}`/);
+  const TEMPLATES = read('../src/home/TemplatesEditor.jsx');
+  assert.match(TEMPLATES, /width: 14, height: 14, borderRadius: '50%'/, 'the editor is the reference swatch');
+});
+
+test('the rotating chevron is the one disclosure glyph, matching the Templates editor', () => {
+  // Never a swapped ▾/▸ pair — one glyph that rotates.
+  assert.match(
+    SCREEN,
+    /const chevron = \(open\) => \([\s\S]*?color: '#8d96a6', fontSize: 10[\s\S]*?transform: open \? 'rotate\(180deg\)' : 'none', transition: 'transform \.12s'/,
+  );
+  const TEMPLATES = read('../src/home/TemplatesEditor.jsx');
+  assert.match(TEMPLATES, /transform: open \? 'rotate\(180deg\)' : 'none', transition: 'transform \.12s'/);
 });
 
 test('the preview shows collaborator glyphs only when the item really is shared', () => {
