@@ -236,6 +236,12 @@ test('the screen mirrors the Documents ledger structure and states', () => {
   assert.match(DOCUMENTS, /'32px 54px minmax\(150px,1fr\)/, 'the Documents ledger is the reference for the leading columns');
   assert.match(SCREEN, /contentVisibility: 'auto'/);
   assert.match(SCREEN, /containIntrinsicSize: '0 50px'/);
+  // Documents rows measure 51px because their "Last edited" cell stacks a time
+  // over a date. Archive's columns are all single-line, so the same 51px is
+  // bought with cell padding — browser-measured 51px on both screens.
+  assert.match(SCREEN, /const ROW_PAD_Y = 16;/);
+  assert.match(SCREEN, /padding: `\$\{ROW_PAD_Y\}px 14px`/);
+  assert.match(SCREEN, /padding: `\$\{ROW_PAD_Y\}px 0`/);
   assert.match(SCREEN, /sortKey === key \? 'var\(--bone-100\)' : 'inherit'/);
   assert.match(SCREEN, /hub-skeleton-block/);
   assert.match(SCREEN, /hub-loading-document-row/);

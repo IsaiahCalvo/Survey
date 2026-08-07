@@ -259,10 +259,18 @@ export default function ArchiveScreen({
     </span>
   );
 
+  /* Vertical padding on the row's text cells. The Documents ledger's rows come
+     out at 51px because its "Last edited" cell stacks a time over a date;
+     Archive's columns are all single-line, so the same 51px is bought with
+     padding instead. The owner asked for rows exactly the size of the
+     Documents tab's — a 30px thumbnail in a row that hugs it reads as a
+     different, tighter list. */
+  const ROW_PAD_Y = 16;
+
   const stickyCell = (selected) => ({
     position: 'sticky', left: 0, zIndex: 2,
     background: selected ? 'var(--ink-600)' : 'var(--ink-700)',
-    padding: '12px 14px',
+    padding: `${ROW_PAD_Y}px 14px`,
     display: 'flex', alignItems: 'center', gap: 8,
     minWidth: 0,
   });
@@ -271,7 +279,7 @@ export default function ArchiveScreen({
     <span
       className="mono"
       style={{
-        fontSize: 11, padding: '12px 0',
+        fontSize: 11, padding: `${ROW_PAD_Y}px 0`,
         color: item.daysRemaining <= URGENT_DAYS ? DANGER : 'inherit',
       }}
     >{daysRemainingLabel(item.daysRemaining)}</span>
@@ -504,8 +512,8 @@ export default function ArchiveScreen({
               </span>
             )}
           </div>
-          <span className="meta" style={{ fontSize: 11.5, padding: '12px 0' }}>{archiveTypeLabel(item.type)}</span>
-          <span className="mono" style={{ fontSize: 11, padding: '12px 0' }}>{archivedDateLabel(item.archivedAt)}</span>
+          <span className="meta" style={{ fontSize: 11.5, padding: `${ROW_PAD_Y}px 0` }}>{archiveTypeLabel(item.type)}</span>
+          <span className="mono" style={{ fontSize: 11, padding: `${ROW_PAD_Y}px 0` }}>{archivedDateLabel(item.archivedAt)}</span>
           {daysCell(item)}
         </div>
         {/* Child documents of an archived project. Descriptive only: they are
