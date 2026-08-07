@@ -238,18 +238,21 @@ test('the screen mirrors the Documents ledger structure and states', () => {
   const DOCUMENTS = read('../src/home/DocumentsLedger.jsx');
   assert.match(DOCUMENTS, /'32px 54px minmax\(150px,1fr\)/, 'the Documents ledger is the reference for the leading columns');
   assert.match(SCREEN, /contentVisibility: 'auto'/);
-  assert.match(SCREEN, /containIntrinsicSize: '0 50px'/);
-  // Documents rows measure 51px because their "Last edited" cell stacks a time
-  // over a date. Archive's columns are all single-line, so the same 51px is
-  // bought with cell padding — browser-measured 51px on both screens.
+  // Every top-level row is PINNED to the Documents ledger's 51px, whatever it
+  // carries. Letting content drive the height made templates 50px, documents
+  // 51px and a shared project 54px — a mixed list only reads at a glance if the
+  // rows form one even rhythm. Pinning follows the Templates editor's own
+  // name-over-glyphs row (`height: 50, boxSizing: 'border-box'`).
+  assert.match(SCREEN, /const ROW_HEIGHT = 51;/);
+  assert.match(SCREEN, /height: ROW_HEIGHT, boxSizing: 'border-box'/);
+  assert.match(SCREEN, /containIntrinsicSize: `0 \$\{ROW_HEIGHT\}px`/);
+  const TEMPLATES_ROW = read('../src/home/TemplatesEditor.jsx');
+  assert.match(TEMPLATES_ROW, /height: 50, boxSizing: 'border-box'/, 'the editor is the reference for pinning');
+  // The name cell stretches instead of padding itself to height, so a glyph
+  // strip cannot push the row taller than its neighbours.
   assert.match(SCREEN, /const ROW_PAD_Y = 16;/);
-  assert.match(SCREEN, /padding: `\$\{padY\}px 14px`/);
+  assert.match(SCREEN, /padding: '0 14px',\s*\n\s*alignSelf: 'stretch'/);
   assert.match(SCREEN, /padding: `\$\{ROW_PAD_Y\}px 0`/);
-  // A row that carries a glyph strip under its name runs tighter padding so it
-  // lands on the SAME 51px — the Documents ledger's own trick for its two-line
-  // "Last edited" cell. Rows must never diverge in height by type.
-  assert.match(SCREEN, /const ROW_PAD_Y_STACKED = 7;/);
-  assert.match(SCREEN, /stickyCell\(active, subline \? ROW_PAD_Y_STACKED : ROW_PAD_Y\)/);
   assert.match(SCREEN, /sortKey === key \? 'var\(--bone-100\)' : 'inherit'/);
   assert.match(SCREEN, /hub-skeleton-block/);
   assert.match(SCREEN, /hub-loading-document-row/);

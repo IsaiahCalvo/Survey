@@ -72,6 +72,15 @@ const grid = '32px 54px minmax(150px,1fr) 110px 124px 110px';
    size wherever it appears in Archive. */
 const ROW_THUMB = 30;
 
+/* Every top-level row is pinned to this height, whatever it carries — a plain
+   name, a name over entity chips, or a name over shared-with avatars. The
+   Documents ledger measures 51px, and a mixed list only reads "at a glance" if
+   the rows form one even rhythm; letting content drive the height made
+   templates 50px, documents 51px and a shared project 54px. Pinning it is the
+   Templates editor's own approach for its name-over-glyphs row
+   (TemplatesEditor.jsx ~1618: `height: 50, boxSizing: 'border-box'`). */
+const ROW_HEIGHT = 51;
+
 /* Rows near the end of the retention window are tinted danger so the user
    spots what is about to be purged without reading every date. Three days is
    the point where "I'll get to it later" stops being safe. */
@@ -274,18 +283,17 @@ export default function ArchiveScreen({
      different, tighter list. */
   const ROW_PAD_Y = 16;
 
-  /* A row carrying a glyph strip under its name needs less padding to land on
-     the SAME 51px. This is exactly how the Documents ledger works: its rows are
-     51px because its two-line "Last edited" cell runs at padding 10 while the
-     single-line cells run at 12. Two-line content, tighter padding, one height.
-     The Templates editor's own name-over-glyphs row is 50px at padding 8, which
-     is the number this tracks. */
-  const ROW_PAD_Y_STACKED = 7;
-
-  const stickyCell = (selected, padY = ROW_PAD_Y) => ({
+  const stickyCell = (selected) => ({
     position: 'sticky', left: 0, zIndex: 2,
     background: selected ? 'var(--ink-600)' : 'var(--ink-700)',
-    padding: `${padY}px 14px`,
+    /* No vertical padding: ROW_HEIGHT governs, and `alignSelf: stretch` makes
+       the cell's background fill the row while its own flex centring handles
+       the content. Padding here would fight the pinned height, and a row whose
+       name cell carries a glyph strip would end up taller than its neighbours —
+       which is exactly what happened when this was padding-driven (templates
+       came out 50px, a project with avatars 54px, documents 51px). */
+    padding: '0 14px',
+    alignSelf: 'stretch',
     display: 'flex', alignItems: 'center', gap: 8,
     minWidth: 0,
   });
@@ -599,10 +607,11 @@ export default function ArchiveScreen({
             borderLeft: active ? '2px solid var(--gold)' : '2px solid transparent',
             background: active ? 'var(--ink-600)' : 'transparent',
             cursor: 'pointer',
-            // Skip layout/paint for off-screen rows; intrinsic height matches
-            // the Documents ledger's single-line rows.
+            height: ROW_HEIGHT, boxSizing: 'border-box',
+            // Skip layout/paint for off-screen rows; the intrinsic size is the
+            // real pinned height, so skipped rows reserve exactly their space.
             contentVisibility: 'auto',
-            containIntrinsicSize: '0 50px',
+            containIntrinsicSize: `0 ${ROW_HEIGHT}px`,
           }}
         >
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 8px' }}>
@@ -615,7 +624,7 @@ export default function ArchiveScreen({
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             {rowTypeArt(item)}
           </div>
-          <div style={stickyCell(active, subline ? ROW_PAD_Y_STACKED : ROW_PAD_Y)}>
+          <div style={stickyCell(active)}>
             {isProject ? ledgerDisclosure(item.id, expanded) : <span style={{ width: 12, flex: 'none' }} />}
             {/* Name over its glyph strip — the hub's one "identify this row"
                 block, shared with the Projects tree and the Templates editor. */}
