@@ -295,12 +295,17 @@ test('every document in Archive renders at the one Documents-ledger thumbnail si
   assert.match(DOCUMENTS, /width: 23, height: 30, flex: 'none'/, 'Documents is the reference fallback');
 
   // Top-level rows fill the thumbnail column; a project/template has no page,
-  // so it shows the hub's tinted type tile at the same 30px instead.
+  // so it shows a PLAIN type icon in the same ROW_THUMB box — no tinted plate
+  // behind it (owner call 2026-08-07: "we don't have that anywhere else in this
+  // app"). The box stays so the column aligns and the row height cannot shift.
   assert.match(SCREEN, /const rowTypeArt = \(item\) => \{[\s\S]*?if \(item\.type === 'document'\) return rowThumb\(item\.id, item\.filePath\);/);
-  assert.match(SCREEN, /const TYPE_TINT = \{[\s\S]*?project: \{ background: 'rgba\(216,168,78,0\.16\)', color: 'var\(--gold\)' \}/);
-  assert.match(SCREEN, /template: \{ background: 'rgba\(194,147,230,0\.16\)', color: 'var\(--lilac\)' \}/);
   assert.match(SCREEN, /width: ROW_THUMB, height: ROW_THUMB/);
+  assert.match(SCREEN, /<Icon name=\{typeIcon\[item\.type\] \|\| 'doc'\} size=\{TYPE_ICON_SIZE\} color="var\(--ink-200\)" \/>/);
   assert.match(SCREEN, /\{rowTypeArt\(item\)\}/);
+  // No coloured plate may come back: no tint map, and no translucent
+  // background anywhere in the screen's own styles.
+  assert.doesNotMatch(SCREEN, /TYPE_TINT/);
+  assert.doesNotMatch(SCREEN, /background: 'rgba\([\d,\s]+0\.\d+\)'/);
 
   // Child rows call the SAME helper — indented, never shrunk.
   assert.match(SCREEN, /\{rowThumb\(child\.id, child\.filePath\)\}/);
