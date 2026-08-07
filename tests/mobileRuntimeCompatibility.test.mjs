@@ -140,6 +140,14 @@ test('Expo shell publishes native safe areas and keeps controls above the home i
   assert.match(EXPO_APP_SOURCE, /onRenderProcessGone/);
 });
 
+test('Expo cold launches bypass stale hosted HTML while preserving the signed-in WebView profile', () => {
+  assert.match(EXPO_APP_SOURCE, /function withLaunchCacheBust\(surveyUrl: string, launchId: string\)/);
+  assert.match(EXPO_APP_SOURCE, /url\.searchParams\.set\('shellLaunch', launchId\)/);
+  assert.match(EXPO_APP_SOURCE, /surveyLaunchUrlRef = useRef\(withLaunchCacheBust\(SURVEY_URL, shellSessionIdRef\.current\)\)/);
+  assert.match(EXPO_APP_SOURCE, /source=\{\{ uri: surveyLaunchUrlRef\.current \}\}/);
+  assert.doesNotMatch(EXPO_APP_SOURCE, /incognito/);
+});
+
 test('hosted mobile route is canonical and preserves mobile OAuth return', () => {
   assert.match(INDEX_HTML_SOURCE, /\^\\\/mobile\(\?:\\\/\|\$\)/);
   assert.match(HUB_SHELL_SOURCE, /\^\\\/mobile\(\?:\\\/\|\$\)[\s\S]{0,80}return 'tabs'/);

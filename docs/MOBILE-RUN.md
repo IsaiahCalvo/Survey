@@ -12,6 +12,9 @@ Metro is only the temporary local code server used for live, uncommitted develop
 3. Expo Go opens Survey as an iPhone app. It is not Safari. The shell loads the hosted
    Survey UI from `https://surveytool.app/mobile`, which is how this native shell is designed.
 
+Each cold launch uses a launch-scoped hosted URL so Expo cannot reuse stale HTML. The
+WebView profile is retained, so this freshness check does not clear cookies or signed-in data.
+
 The QR and branch URL stay the same. To publish a newer native-shell bundle to them:
 
 ```bash

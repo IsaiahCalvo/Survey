@@ -37,6 +37,15 @@ function resolveSurveyUrl(configuredUrl = process.env.EXPO_PUBLIC_SURVEY_URL) {
   }
 }
 
+function withLaunchCacheBust(surveyUrl: string, launchId: string) {
+  const url = new URL(surveyUrl);
+  // Expo Go keeps the WKWebView data store (and therefore auth) between
+  // launches. A launch-scoped URL bypasses stale HTML without clearing the
+  // signed-in profile or disabling caching for hashed assets and PDFs.
+  url.searchParams.set('shellLaunch', launchId);
+  return url.toString();
+}
+
 const SURVEY_URL = resolveSurveyUrl();
 const SURVEY_ORIGIN = new URL(SURVEY_URL).origin;
 console.info('[Survey shell]', { runtime: 'expo', url: SURVEY_URL });
@@ -56,6 +65,7 @@ function SurveyApp() {
   const processRecoveryRef = useRef<number[]>([]);
   const pdfDiagnosticRef = useRef<Array<Record<string, unknown>>>([]);
   const shellSessionIdRef = useRef(`expo-${Date.now()}-${Math.random().toString(16).slice(2)}`);
+  const surveyLaunchUrlRef = useRef(withLaunchCacheBust(SURVEY_URL, shellSessionIdRef.current));
   const googleAuthInFlightRef = useRef(false);
   const [canGoBack, setCanGoBack] = useState(false);
   const [loadError, setLoadError] = useState(false);
@@ -302,7 +312,7 @@ function SurveyApp() {
       <WebView
         key={webViewKey}
         ref={webViewRef}
-        source={{ uri: SURVEY_URL }}
+        source={{ uri: surveyLaunchUrlRef.current }}
         style={styles.webView}
         originWhitelist={['*']}
         javaScriptEnabled
