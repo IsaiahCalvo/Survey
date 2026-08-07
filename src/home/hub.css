@@ -1171,6 +1171,8 @@
   .survey-hub .mobile-profile .who > button.profile-signin {
     width: auto !important;
     min-width: 64px;
+    height: 28px;
+    min-height: 28px;
     padding: 0 12px !important;
   }
 

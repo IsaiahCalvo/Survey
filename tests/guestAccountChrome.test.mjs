@@ -8,6 +8,7 @@ const HUB_SHELL = read('../src/home/HubShell.jsx');
 const SURVEY_HUB = read('../src/home/SurveyHub.jsx');
 const DASHBOARD = read('../src/Dashboard.jsx');
 const ACCOUNT_SETTINGS = read('../src/components/AccountSettings.jsx');
+const HUB_CSS = read('../src/home/hub.css');
 
 test('signed-out hub chrome renders Sign in instead of a fake profile menu', () => {
   const profileMenu = HUB_SHELL.slice(
@@ -34,4 +35,11 @@ test('settings and subscription UI cannot mount without an authenticated user', 
   assert.match(SURVEY_HUB, /const openSettings = \(\) => \{\s*if \(!user\) return;/);
   assert.match(SURVEY_HUB, /\{settingsOpen && user && \(/);
   assert.match(ACCOUNT_SETTINGS, /if \(!isOpen \|\| !user\) return null;/);
+});
+
+test('mobile guest sign-in control clears the action row below it', () => {
+  assert.match(
+    HUB_CSS,
+    /\.mobile-profile \.who > button\.profile-signin\s*\{[^}]*height:\s*28px;[^}]*min-height:\s*28px;/s,
+  );
 });
