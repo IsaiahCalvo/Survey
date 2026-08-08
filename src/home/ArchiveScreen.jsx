@@ -16,6 +16,9 @@
 */
 import { useCallback, useMemo, useState } from 'react';
 import { HubShell, Icon, EmptyState, PdfThumb, AvatarStack } from './HubShell';
+/* The app-wide icon set. Aliased because HubShell exports its own `Icon` for
+   the hub's type glyphs; this one carries the shared chevrons. */
+import AppIcon from '../Icons';
 import { ConfirmModal } from './BulkModals';
 import PdfPageThumb from './PdfPageThumb';
 import { useStorage } from '../hooks/useDatabase';
@@ -77,6 +80,19 @@ const ROW_THUMB = 30;
    placeholder. Projects and templates use the same width so the gap between
    the art and the name is one number across every row and both screens. */
 const ROW_ART_W = 23;
+
+/* Shared chevron size — matches PDFViewer's disclosure chevrons in dense lists. */
+const CHEVRON_SIZE = 12;
+
+/* The name cell's leading slot, which holds a project's disclosure chevron.
+   It is exactly the Documents ledger's name-cell left padding (14px), and it
+   REPLACES that padding rather than adding to it. That is what lets the
+   chevron sit between the icon column and the title — hugging the title, per
+   the owner's 2026-08-07 call — without moving the title: every row's name
+   still starts 14px past the thumbnail column, so the art-to-name distance
+   stays the 29.5px that matches Documents. Rows with no chevron keep the same
+   empty slot, so nothing gains a phantom indent and the names stay aligned. */
+const NAME_LEAD = 14;
 
 /* Every top-level row is pinned to this height, whatever it carries — a plain
    name, a name over entity chips, or a name over shared-with avatars. The
@@ -296,9 +312,15 @@ export default function ArchiveScreen({
        name cell carries a glyph strip would end up taller than its neighbours —
        which is exactly what happened when this was padding-driven (templates
        came out 50px, a project with avatars 54px, documents 51px). */
-    padding: '0 14px',
+    /* No LEFT padding: the 14px NAME_LEAD slot provides it, and holds the
+       disclosure chevron inside that same 14px. Padding plus a slot would push
+       the title 14px further right than the Documents ledger's. No flex `gap`
+       either — it would land between the slot and the title and undo the
+       alignment; the one place that needs spacing (the "N documents" label)
+       asks for it explicitly. */
+    padding: '0 14px 0 0',
     alignSelf: 'stretch',
-    display: 'flex', alignItems: 'center', gap: 8,
+    display: 'flex', alignItems: 'center',
     minWidth: 0,
   });
 
@@ -315,11 +337,26 @@ export default function ArchiveScreen({
     >{daysRemainingLabel(item.daysRemaining)}</span>
   );
 
-  /* The same disclosure the Templates editor uses for a category: one ▾ glyph
-     that rotates, never a swapped ▾/▸ pair. Matching it keeps one expand
-     affordance across the app. */
+  /* The app's real chevron from src/Icons.jsx — an SVG, not the literal
+     down-triangle CHARACTER this used to render (owner call 2026-08-07: "it
+     should be the same chevron used throughout the app, not this"). Size 12 at
+     #8d96a6 is how PDFViewer already draws a disclosure chevron in a dense
+     list. The test forbids any text-glyph chevron in this file, so do not
+     reintroduce one even in a comment.
+
+     Still ONE glyph that rotates rather than a swapped down/right pair, so the
+     open/close transition survives the swap. */
   const chevron = (open) => (
-    <span style={{ color: '#8d96a6', fontSize: 10, lineHeight: 1, transform: open ? 'rotate(180deg)' : 'none', transition: 'transform .12s', flex: 'none' }}>▾</span>
+    <AppIcon
+      name="chevronDown"
+      size={CHEVRON_SIZE}
+      color="#8d96a6"
+      style={{
+        display: 'block', flex: 'none',
+        transform: open ? 'rotate(180deg)' : 'none',
+        transition: 'transform .12s',
+      }}
+    />
   );
 
   /* One disclosure BUTTON shared by both trees — same glyph, same hit area —
@@ -335,10 +372,20 @@ export default function ArchiveScreen({
       style={{
         background: 'transparent', border: 0, color: 'var(--ink-200)',
         cursor: 'pointer', padding: 0, lineHeight: 1,
-        fontFamily: 'inherit', flex: 'none', width: 12,
+        fontFamily: 'inherit', flex: 'none', width: CHEVRON_SIZE,
         display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
       }}
     >{chevron(open)}</button>
+  );
+
+  /* The name cell's leading slot. Always rendered at the same width so the
+     title's left edge never moves; the chevron is pushed to the RIGHT of the
+     slot so it sits tight against the title rather than out by the icon. */
+  const nameLeadSlot = (content) => (
+    <span style={{
+      width: NAME_LEAD, flex: 'none',
+      display: 'inline-flex', alignItems: 'center', justifyContent: 'flex-end',
+    }}>{content}</span>
   );
 
   /* The ledger's own toggle — touches expandedIds and nothing else. */
@@ -622,16 +669,14 @@ export default function ArchiveScreen({
             containIntrinsicSize: `0 ${ROW_HEIGHT}px`,
           }}
         >
-          {/* Lead column — the checkbox in select mode, otherwise a project's
-              disclosure. The chevron lives HERE rather than in the name cell so
-              the name starts at the same offset on every row: inside the name
-              cell it pushed the title 20px further right than the Documents
-              ledger's (owner call 2026-08-07, "the names ... and their icons to
-              the left of them are too far"). This column is otherwise empty
-              outside select mode, and the Documents ledger already swaps this
-              same cell's content by mode. */}
+          {/* Lead column — the select checkbox only. The disclosure used to
+              live here too, which put it out at the far left of the row; the
+              owner asked for it "just to the left of the title", so it moved
+              into the name cell's leading slot. Keeping this column
+              checkbox-only also means a project can be expanded WHILE
+              selecting, which the shared cell had made impossible. */}
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 8px' }}>
-            {selectMode ? checkGlyph(checked) : (isProject ? ledgerDisclosure(item.id, expanded) : null)}
+            {selectMode ? checkGlyph(checked) : null}
           </div>
           {/* Thumbnail column — its own cell, centred so every thumbnail lines
               up under the next, exactly as the Documents ledger does it. The
@@ -641,6 +686,11 @@ export default function ArchiveScreen({
             {rowTypeArt(item)}
           </div>
           <div style={stickyCell(active)}>
+            {/* Leading slot — the disclosure sits here, immediately left of the
+                title and hugging it, inside the 14px that would otherwise be
+                the name cell's left padding. Always present so the title's
+                left edge is identical on every row. */}
+            {nameLeadSlot(isProject ? ledgerDisclosure(item.id, expanded) : null)}
             {/* Name over its glyph strip — the hub's one "identify this row"
                 block, shared with the Projects tree and the Templates editor. */}
             <div style={{ minWidth: 0 }}>
@@ -648,7 +698,7 @@ export default function ArchiveScreen({
               {subline}
             </div>
             {item.childCount > 0 && (
-              <span className="meta" style={{ fontSize: 11, flex: 'none' }}>
+              <span className="meta" style={{ fontSize: 11, flex: 'none', marginLeft: 8 }}>
                 {item.childCount} {item.childCount === 1 ? 'document' : 'documents'}
               </span>
             )}
