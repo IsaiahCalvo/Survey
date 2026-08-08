@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { getSyncStatusViewModel } from '../src/utils/syncStatusViewModel.js';
+import { getCompactSyncStatusMessage, getSyncStatusViewModel } from '../src/utils/syncStatusViewModel.js';
 import { getSyncedDelayMs, MIN_SYNC_ACTIVITY_VISIBLE_MS } from '../src/utils/syncStatusTiming.js';
 import { combineCollaborationSyncStatus } from '../src/utils/collaborationSyncStatus.js';
 
@@ -91,17 +91,32 @@ test('yellow and red sync states explain the cause, local backup, and retry beha
       retryLabel: 'Backup is retrying automatically.',
     },
   );
+  assert.equal(
+    getCompactSyncStatusMessage({ stage: 'pending' }, 0),
+    'Changes are saved locally and backing up now.',
+  );
+  assert.equal(
+    getCompactSyncStatusMessage({ stage: 'error', error: 'realtime timed_out' }, 2),
+    'Cloud backup timed out; changes are safe and retrying.',
+  );
 });
 
-test('desktop and mobile sync indicators expose tappable status details without hiding manual retry', () => {
+test('desktop and mobile sync indicators keep details compact without moving adjacent tools', () => {
   const desktop = syncChipSource();
   const mobile = mobileChromeSource();
   assert.match(desktop, /aria-expanded=/);
   assert.match(desktop, /sync-status-details/);
-  assert.match(desktop, /Retry now/);
+  assert.match(desktop, /data-sync-message/);
+  assert.match(desktop, /aria-label="Retry now"/);
+  assert.doesNotMatch(desktop, />Retry now</);
   assert.match(mobile, /aria-expanded=/);
   assert.match(mobile, /mobile-pdf-tools__sync-details/);
-  assert.match(mobile, /Retry now/);
+  assert.match(mobile, /data-sync-message/);
+  assert.match(mobile, /aria-label="Retry now"/);
+  assert.doesNotMatch(mobile, />Retry now</);
+  assert.match(mobile, /createPortal\([\s\S]*?document\.body/);
+  assert.match(mobile, /if \(sync\.state === 'synced'\)[\s\S]*?cloudSyncOnRetry/);
+  assert.match(mobile, /ref=\{syncDetailsRef\}/);
 });
 
 test('fast successful sync stays visible for the minimum activity duration', () => {

@@ -1230,6 +1230,7 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, onOpenP
   const [moreOpen, setMoreOpen] = useState(false);
   const [presenceOpen, setPresenceOpen] = useState(false);
   const [syncDetailsOpen, setSyncDetailsOpen] = useState(false);
+  const [syncDetailsPosition, setSyncDetailsPosition] = useState(null);
   // Phase F (motion & feel): the active-users sheet gets the shared bottom-sheet
   // motion — finger-follow drag off the handle + dy>82/vy>0.65 dismiss + spring-
   // back + 170ms slide-down exit before unmount (inv-demo §17).
@@ -1239,6 +1240,8 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, onOpenP
     requestClose: requestUsersSheetClose,
   } = useMobileSheetMotion(() => setPresenceOpen(false));
   const popoverRef = useRef(null);
+  const syncButtonRef = useRef(null);
+  const syncDetailsRef = useRef(null);
   const presenceUsers = useMemo(() => normalizeMobilePresence({
     presence: leftRailApi?.presence,
     currentUserId: leftRailApi?.currentUserId,
@@ -1259,7 +1262,7 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, onOpenP
   useEffect(() => {
     if (!moreOpen && !syncDetailsOpen) return undefined;
     const close = (event) => {
-      if (!popoverRef.current?.contains(event.target)) {
+      if (!popoverRef.current?.contains(event.target) && !syncDetailsRef.current?.contains(event.target)) {
         setMoreOpen(false);
         setSyncDetailsOpen(false);
       }
@@ -1267,6 +1270,25 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, onOpenP
     document.addEventListener('pointerdown', close, true);
     return () => document.removeEventListener('pointerdown', close, true);
   }, [moreOpen, syncDetailsOpen]);
+
+  useEffect(() => {
+    if (sync.state === 'synced') setSyncDetailsOpen(false);
+  }, [sync.state]);
+
+  const activateSyncStatus = () => {
+    setMoreOpen(false);
+    setPresenceOpen(false);
+    if (sync.state === 'synced') {
+      setSyncDetailsOpen(false);
+      void leftRailApi?.cloudSyncOnRetry?.();
+      return;
+    }
+    const rect = syncButtonRef.current?.getBoundingClientRect();
+    if (rect) {
+      setSyncDetailsPosition({ left: rect.right + 8, top: rect.top + (rect.height / 2) });
+    }
+    setSyncDetailsOpen((open) => !open);
+  };
 
   const activeTool = bottomToolbarApi?.activeTool || 'pan';
   const activeGroup = TOOL_TO_GROUP[activeTool] || null;
@@ -1429,18 +1451,15 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, onOpenP
           />
           <div className="mobile-pdf-tools__footer-stack">
             <button
+              ref={syncButtonRef}
               type="button"
               className="mobile-pdf-tools__sync"
-              aria-label={`${sync.label}. ${sync.detail} Tap for details.`}
-              aria-expanded={syncDetailsOpen}
+              aria-label={sync.state === 'synced' ? `${sync.label}. Tap to sync now.` : `${sync.label}. ${sync.compactMessage}`}
+              aria-expanded={sync.state !== 'synced' && syncDetailsOpen}
               aria-controls="mobile-sync-status-details"
-              title={`${sync.label}. Tap for details.`}
+              title={sync.state === 'synced' ? `${sync.label}. Tap to sync now.` : `${sync.label}. Tap for details.`}
               disabled={leftRailApi?.cloudSyncEnabled === false}
-              onClick={() => {
-                setSyncDetailsOpen((open) => !open);
-                setMoreOpen(false);
-                setPresenceOpen(false);
-              }}
+              onClick={activateSyncStatus}
             >
               <span style={{ background: sync.color }} />
             </button>
@@ -1463,30 +1482,6 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, onOpenP
               {presenceCount > 1 && <span className="mobile-pdf-tools__user-count">+{presenceCount - 1}</span>}
             </RailButton>
           </div>
-
-          {syncDetailsOpen && (
-            <div
-              id="mobile-sync-status-details"
-              className="mobile-pdf-tools__sync-details"
-              role="dialog"
-              aria-label="Sync status details"
-            >
-              <strong style={{ color: sync.color }}>{sync.label}</strong>
-              <p>{sync.detail}</p>
-              {!!sync.retryLabel && <small>{sync.retryLabel}</small>}
-              {typeof leftRailApi?.cloudSyncOnRetry === 'function' && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setSyncDetailsOpen(false);
-                    void leftRailApi.cloudSyncOnRetry();
-                  }}
-                >
-                  Retry now
-                </button>
-              )}
-            </div>
-          )}
 
           {moreOpen && (
             <div className="mobile-pdf-tools__popover is-more">
@@ -1533,6 +1528,33 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, onOpenP
 
         </div>
       </aside>
+      {syncDetailsOpen && sync.state !== 'synced' && syncDetailsPosition && typeof document !== 'undefined' && createPortal(
+        <div
+          ref={syncDetailsRef}
+          id="mobile-sync-status-details"
+          className="mobile-pdf-tools__sync-details"
+          role="dialog"
+          aria-label="Sync status details"
+          style={{ left: syncDetailsPosition.left, top: syncDetailsPosition.top }}
+        >
+          <span data-sync-message>{sync.compactMessage}</span>
+          {typeof leftRailApi?.cloudSyncOnRetry === 'function' && (
+            <button
+              type="button"
+              aria-label="Retry now"
+              title="Retry now"
+              style={{ color: sync.color }}
+              onClick={() => {
+                setSyncDetailsOpen(false);
+                void leftRailApi.cloudSyncOnRetry();
+              }}
+            >
+              <Icon name="retry" size={17} color="currentColor" />
+            </button>
+          )}
+        </div>,
+        document.body,
+      )}
       {presenceOpen && (
         <>
           <button

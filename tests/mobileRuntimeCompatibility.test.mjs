@@ -462,6 +462,7 @@ test('mobile viewer sync presentation consumes the structured sync state', () =>
       label: 'Syncing...',
       detail: 'Survey is loading and backing up this document’s cloud changes.',
       retryLabel: 'Keep this document open while backup finishes.',
+      compactMessage: 'Loading and backing up this document.',
       color: '#f5a524',
     },
   );
@@ -472,6 +473,7 @@ test('mobile viewer sync presentation consumes the structured sync state', () =>
       label: 'Offline · 3 saved locally',
       detail: 'Your changes are safe on this device and are waiting for cloud backup.',
       retryLabel: 'Backup is retrying automatically.',
+      compactMessage: '3 changes are safe locally and waiting to back up.',
       color: '#ef4444',
     },
   );

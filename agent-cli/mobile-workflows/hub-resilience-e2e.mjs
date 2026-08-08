@@ -169,6 +169,25 @@ async function switchTab(page, touch, device, tab) {
   await waitForHub(page, tab);
 }
 
+async function testContentTypeIconColors(page, baseUrl, device) {
+  await gotoHub(page, baseUrl, 'documents');
+  const nav = visibleNav(page, device);
+  const expected = {
+    Documents: 'rgb(122, 183, 230)',
+    Projects: 'rgb(216, 168, 78)',
+    Templates: 'rgb(194, 147, 230)',
+  };
+  for (const [label, color] of Object.entries(expected)) {
+    const icon = nav.getByRole('button', { name: label, exact: true }).locator('svg');
+    assert.equal(await icon.count(), 1, `${device}: ${label} has one identity icon`);
+    assert.equal(
+      await icon.evaluate((node) => getComputedStyle(node).stroke),
+      color,
+      `${device}: ${label} keeps its identity color`,
+    );
+  }
+}
+
 async function beginHubFrameProbe(page) {
   await page.evaluate(() => {
     window.__hubFrameProbe = { active: true, frames: [] };
@@ -845,6 +864,9 @@ async function runDevice(device, baseUrl) {
     await artifacts.time(`${device}:project-row-team-parity`, () => (
       testProjectRowTeamParity(page, baseUrl, device)
     ));
+    await artifacts.time(`${device}:content-type-icon-colors`, () => (
+      testContentTypeIconColors(page, baseUrl, device)
+    ));
     if (device === 'mobile') {
       await artifacts.time('mobile:safe-area-tabs', () => testMobileSafeAreaTabs(page, baseUrl));
       await artifacts.time('mobile:edge-swipe-back', () => testMobileEdgeSwipeBack(page, baseUrl, touch));
@@ -871,7 +893,7 @@ async function runDevice(device, baseUrl) {
       device,
       viewport,
       input: device === 'mobile' ? touch.inputKind : 'desktop-mouse-keyboard',
-      coverage: 'first-visit-frame-continuity-template-disclosure-icon-parity-project-row-team-parity-safe-area-tabs-edge-swipe-back-template-category-row-alignment-entities-modal-centering-search-filter-sort-selection-bulk-state-empty-loading-long-docs-viewer-exact-return-back-forward-refresh',
+      coverage: 'first-visit-frame-continuity-template-disclosure-icon-parity-project-row-team-parity-content-type-icon-colors-safe-area-tabs-edge-swipe-back-template-category-row-alignment-entities-modal-centering-search-filter-sort-selection-bulk-state-empty-loading-long-docs-viewer-exact-return-back-forward-refresh',
       diagnostics,
       status: 'passed',
     });

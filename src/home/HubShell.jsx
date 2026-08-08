@@ -3,6 +3,7 @@
    rendered inside a `.survey-hub` root so hub.css stays fully scoped. */
 import { useState, useRef, useEffect, useLayoutEffect, useContext, createContext } from 'react';
 import { useAuth } from '../contexts/AuthContext';
+import { getContentTypeIconColor } from '../utils/contentTypeColors.js';
 
 /* Friendly per-tier label used in the bottom-left profile chip. Maps the
    raw plan/tier string from AuthContext to the short capitalised form. The
@@ -25,8 +26,15 @@ const tierLabelFromAuth = (tier) => {
 export const HubChromeContext = createContext({});
 
 /* Inline SVG icon set used across the hub. */
-export const Icon = ({ name, size = 14, color = 'currentColor' }) => {
-  const s = { width: size, height: size, fill: 'none', stroke: color, strokeWidth: 1.6, strokeLinecap: 'round', strokeLinejoin: 'round' };
+const HUB_CONTENT_TYPE_BY_ICON = {
+  doc: 'document',
+  folder: 'project',
+  template: 'template',
+};
+
+export const Icon = ({ name, size = 14, color }) => {
+  const resolvedColor = color || getContentTypeIconColor(HUB_CONTENT_TYPE_BY_ICON[name], 'currentColor');
+  const s = { width: size, height: size, fill: 'none', stroke: resolvedColor, strokeWidth: 1.6, strokeLinecap: 'round', strokeLinejoin: 'round' };
   switch (name) {
     case 'doc': return <svg viewBox="0 0 24 24" style={s}><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/><path d="M8 12h8"/><path d="M8 15h8"/><path d="M8 18h5"/></svg>;
     case 'folder': return <svg viewBox="0 0 24 24" style={s}><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>;
@@ -111,7 +119,7 @@ export const Search = ({ placeholder = 'Search…', width = 240, value, onChange
 export const EmptyState = ({ icon, line, actionLabel, actionIcon = 'plus', onAction }) => (
   <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 10, padding: '40px 16px', textAlign: 'center', letterSpacing: 0 }}>
     <div style={{ width: 44, height: 44, borderRadius: 10, background: 'var(--ink-600)', border: '1px solid var(--ink-500)', display: 'grid', placeItems: 'center' }}>
-      <Icon name={icon} size={20} color="var(--ink-200)" />
+      <Icon name={icon} size={20} />
     </div>
     <div style={{ fontSize: 12.5, color: 'var(--ink-200)' }}>{line}</div>
     <button className="btn primary" type="button" onClick={() => onAction && onAction()}>

@@ -10,8 +10,9 @@
  * exhaustion. Returns null when `enabled` is false (local-only/free tier).
  */
 import { useEffect, useState, useRef } from 'react';
-import { getSyncStatusViewModel } from '../utils/syncStatusViewModel.js';
+import { getCompactSyncStatusMessage, getSyncStatusViewModel } from '../utils/syncStatusViewModel.js';
 import Spinner from './Spinner';
+import Icon from '../Icons';
 
 /**
  * Cloud sync status indicator.
@@ -50,6 +51,7 @@ export default function SyncStatusChip({ status, queueSize = 0, enabled = true, 
 
   if (!enabled) return null;
   const { state, label, detail, retryLabel } = getSyncStatusViewModel(status, queueSize, manualSyncing);
+  const compactMessage = getCompactSyncStatusMessage(status, queueSize);
 
   const colors = {
     synced:  '#2bbd7e',
@@ -113,12 +115,21 @@ export default function SyncStatusChip({ status, queueSize = 0, enabled = true, 
     setManualSyncing(false);
   };
 
+  const handlePrimaryAction = () => {
+    if (state === 'synced') {
+      setDetailsOpen(false);
+      void handleManualClick();
+      return;
+    }
+    setDetailsOpen((open) => !open);
+  };
+
   return (
     <div ref={rootRef} style={{ position: 'relative', display: 'inline-flex' }}>
       {compact
-        ? <CompactSyncStatusChip state={state} label={label} accessibleLabel={accessibleLabel} color={color} detailsOpen={detailsOpen} onToggle={() => setDetailsOpen((open) => !open)} />
-        : <ExpandedSyncStatusChip state={state} label={label} accessibleLabel={accessibleLabel} color={color} detailsOpen={detailsOpen} onToggle={() => setDetailsOpen((open) => !open)} />}
-      {detailsOpen && (
+        ? <CompactSyncStatusChip state={state} label={label} accessibleLabel={accessibleLabel} color={color} detailsOpen={detailsOpen} onActivate={handlePrimaryAction} />
+        : <ExpandedSyncStatusChip state={state} label={label} accessibleLabel={accessibleLabel} color={color} detailsOpen={detailsOpen} onActivate={handlePrimaryAction} />}
+      {detailsOpen && state !== 'synced' && (
         <div
           id="sync-status-details"
           className="sync-status-details"
@@ -129,8 +140,8 @@ export default function SyncStatusChip({ status, queueSize = 0, enabled = true, 
             left: compact ? '36px' : '50%',
             bottom: compact ? '-12px' : 'calc(100% + 8px)',
             transform: compact ? undefined : 'translateX(-50%)',
-            width: '240px',
-            padding: '12px',
+            width: 'min(320px, calc(100vw - 32px))',
+            padding: '7px 8px 7px 10px',
             borderRadius: '10px',
             border: '1px solid #343b49',
             background: '#181c24',
@@ -138,31 +149,36 @@ export default function SyncStatusChip({ status, queueSize = 0, enabled = true, 
             boxShadow: '0 10px 30px rgba(0,0,0,0.45)',
             zIndex: 3000,
             fontSize: '12px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
           }}
         >
-          <strong style={{ display: 'block', color, marginBottom: '5px' }}>{label}</strong>
-          <div style={{ lineHeight: 1.4 }}>{detail}</div>
-          {!!retryLabel && <div style={{ color: '#9aa3b2', lineHeight: 1.4, marginTop: '4px' }}>{retryLabel}</div>}
+          <span data-sync-message style={{ minWidth: 0, flex: 1, lineHeight: 1.25, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{compactMessage}</span>
           {canRetry && (
             <button
               type="button"
+              aria-label="Retry now"
+              title="Retry now"
               onClick={() => {
                 setDetailsOpen(false);
                 void handleManualClick();
               }}
               style={{
-                marginTop: '10px',
-                border: '1px solid #4a5363',
-                borderRadius: '7px',
-                background: '#222833',
-                color: '#e8e2d4',
-                padding: '6px 10px',
-                font: 'inherit',
-                fontWeight: 700,
+                width: '28px',
+                height: '28px',
+                flex: '0 0 28px',
+                display: 'grid',
+                placeItems: 'center',
+                border: 0,
+                borderRadius: '50%',
+                background: 'transparent',
+                color,
+                padding: 0,
                 cursor: 'pointer',
               }}
             >
-              Retry now
+              <Icon name="retry" size={17} color="currentColor" />
             </button>
           )}
         </div>
@@ -171,7 +187,7 @@ export default function SyncStatusChip({ status, queueSize = 0, enabled = true, 
   );
 }
 
-function CompactSyncStatusChip({ state, label, accessibleLabel, color, detailsOpen, onToggle }) {
+function CompactSyncStatusChip({ state, label, accessibleLabel, color, detailsOpen, onActivate }) {
   const [hover, setHover] = useState(false);
   return (
     <div
@@ -181,8 +197,8 @@ function CompactSyncStatusChip({ state, label, accessibleLabel, color, detailsOp
       aria-expanded={detailsOpen}
       aria-controls="sync-status-details"
       tabIndex={0}
-      onClick={onToggle}
-      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onToggle(); } }}
+      onClick={onActivate}
+      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onActivate(); } }}
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
       style={{
@@ -231,7 +247,7 @@ function CompactSyncStatusChip({ state, label, accessibleLabel, color, detailsOp
   );
 }
 
-function ExpandedSyncStatusChip({ state, label, accessibleLabel, color, detailsOpen, onToggle }) {
+function ExpandedSyncStatusChip({ state, label, accessibleLabel, color, detailsOpen, onActivate }) {
   return (
     <div
       role="button"
@@ -240,8 +256,8 @@ function ExpandedSyncStatusChip({ state, label, accessibleLabel, color, detailsO
       aria-expanded={detailsOpen}
       aria-controls="sync-status-details"
       tabIndex={0}
-      onClick={onToggle}
-      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onToggle(); } }}
+      onClick={onActivate}
+      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onActivate(); } }}
       title={label}
       style={{
         display: 'inline-flex',

@@ -1,4 +1,4 @@
-import { getSyncStatusViewModel } from '../utils/syncStatusViewModel.js';
+import { getCompactSyncStatusMessage, getSyncStatusViewModel } from '../utils/syncStatusViewModel.js';
 
 const SYNC_COLORS = {
   synced: '#2bbd7e',
@@ -17,7 +17,11 @@ const initialsOf = (value) => {
 export const getMobileSyncPresentation = (status, queueSize = 0, enabled = true) => {
   if (!enabled) return { state: 'unavailable', label: 'Cloud sync unavailable', color: '#687180' };
   const view = getSyncStatusViewModel(status, queueSize, false);
-  return { ...view, color: SYNC_COLORS[view.state] || '#687180' };
+  return {
+    ...view,
+    compactMessage: getCompactSyncStatusMessage(status, queueSize),
+    color: SYNC_COLORS[view.state] || '#687180',
+  };
 };
 
 export const normalizeMobilePresence = ({

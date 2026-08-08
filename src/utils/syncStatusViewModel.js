@@ -76,3 +76,37 @@ export function getSyncStatusViewModel(status, queueSize = 0, manualSyncing = fa
     retryLabel: '',
   };
 }
+
+export function getCompactSyncStatusMessage(status, queueSize = 0) {
+  const stage = status?.stage || 'idle';
+  const pendingCount = Math.max(0, Number(queueSize) || Number(status?.queueSize) || 0);
+  const errorText = String(status?.error?.message || status?.error || '').toLowerCase();
+
+  if (stage === 'error') {
+    if (/timed[_ -]?out|timeout/.test(errorText)) {
+      return 'Cloud backup timed out; changes are safe and retrying.';
+    }
+    if (/realtime|network|offline|fetch|connection|websocket|channel/.test(errorText)) {
+      return 'Cloud backup is offline; changes are safe and retrying.';
+    }
+    if (/permission|row.level.security|42501|access|authentication/.test(errorText)) {
+      return 'Cloud backup access failed; changes are safe locally.';
+    }
+    if (/quota|storage|indexeddb|database/.test(errorText)) {
+      return 'The backup queue needs attention; keep this document open.';
+    }
+    return 'Cloud backup failed; changes are safe and retrying.';
+  }
+
+  if (pendingCount > 0 || stage === 'queued') {
+    const count = pendingCount > 0 ? `${pendingCount} change${pendingCount === 1 ? '' : 's'}` : 'Changes';
+    return `${count} are safe locally and waiting to back up.`;
+  }
+  if (stage === 'pending') return 'Changes are saved locally and backing up now.';
+  if (stage === 'hydrating' || stage === 'migrating' || stage === 'syncing') {
+    return errorText.includes('checking whether')
+      ? 'Checking this document’s cloud backup status.'
+      : 'Loading and backing up this document.';
+  }
+  return 'Everything is backed up to the cloud.';
+}
