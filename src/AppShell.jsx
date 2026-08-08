@@ -53,6 +53,17 @@ const PDFViewer = lazy(() => import('./PDFViewer').then((m) => ({ default: m.PDF
 // toolbar when a rich-text or annotation color picker is explicitly opened.
 const CompactColorPicker = lazy(() => import('./components/CompactColorPicker'));
 
+/* Dev build stamp (git hash · dev-server start time, injected by vite.config's
+   __BUILD_STAMP__ define). It used to render as a fixed chip in the bottom-left
+   corner; the owner removed it 2026-08-07 — "any time I want to know what build
+   I'm in, I should be able to just see my console logs", and on mobile the chip
+   collided with the left rail. The information still matters (a stale tab served
+   by a dead dev server once burned an entire bug hunt), so it is logged ONCE at
+   module load instead of occupying screen space. */
+if (import.meta.env.DEV && typeof __BUILD_STAMP__ !== 'undefined' && __BUILD_STAMP__) {
+  console.info(`[build] ${__BUILD_STAMP__}`);
+}
+
 export default function App({ devPreviewReturnTab = null }) {
   // Microsoft Graph authentication hook
   const { graphClient, isAuthenticated: isMSAuthenticated, login: msLogin, account: msAccount, needsReconnect: msNeedsReconnect, ensureFreshToken, getAuthSignals: msGetAuthSignals } = useMSGraph();
@@ -1159,30 +1170,6 @@ export default function App({ devPreviewReturnTab = null }) {
           Log handler dispatches. */}
       <SaveLogBanner />
       <ToastHost />
-      {/* UX: dev-only build stamp (git hash · server start time, injected at
-          dev-server start). A stale tab served by a dead dev server silently
-          ran old code through an entire bug hunt — this chip answers "which
-          build am I actually looking at" at a glance. Not rendered in
-          production builds. */}
-      {import.meta.env.DEV && typeof __BUILD_STAMP__ !== 'undefined' && __BUILD_STAMP__ && (
-        <div style={{
-          position: 'fixed',
-          left: '6px',
-          bottom: '6px',
-          zIndex: 6000,
-          pointerEvents: 'none',
-          background: 'rgba(24, 28, 36, 0.85)',
-          color: '#8d96a6',
-          border: '1px solid #2a3140',
-          borderRadius: '4px',
-          padding: '2px 6px',
-          fontSize: '10px',
-          fontFamily: 'ui-monospace, monospace',
-          letterSpacing: 0,
-        }}>
-          {__BUILD_STAMP__}
-        </div>
-      )}
       <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
         {tabs.length > 0 && !isNarrowShell && ( // Desktop-only: mobile navigation lives inside the home/viewer chrome.
           <TabBar

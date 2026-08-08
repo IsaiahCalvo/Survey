@@ -251,7 +251,7 @@ test('the screen mirrors the Documents ledger structure and states', () => {
   // The name cell stretches instead of padding itself to height, so a glyph
   // strip cannot push the row taller than its neighbours.
   assert.match(SCREEN, /const ROW_PAD_Y = 16;/);
-  assert.match(SCREEN, /padding: '0 14px',\s*\n\s*alignSelf: 'stretch'/);
+  assert.match(SCREEN, /padding: '0 14px 0 0',\s*\n\s*alignSelf: 'stretch'/);
   assert.match(SCREEN, /padding: `\$\{ROW_PAD_Y\}px 0`/);
   assert.match(SCREEN, /sortKey === key \? 'var\(--bone-100\)' : 'inherit'/);
   assert.match(SCREEN, /hub-skeleton-block/);
@@ -327,16 +327,34 @@ test("the name sits the same distance from its icon as the Documents ledger's", 
      screens measure 29.5px on every row type.
 
      The name cell must therefore lead with the name block itself. */
-  const nameCell = SCREEN.match(/<div style=\{stickyCell\(active\)\}>[\s\S]*?\n          <\/div>/)[0];
-  assert.doesNotMatch(nameCell, /width: 12, flex: 'none'/, 'no lead spacer before the name');
-  assert.doesNotMatch(nameCell, /ledgerDisclosure/, 'the disclosure is not in the name cell');
-  assert.match(nameCell, /<div style=\{\{ minWidth: 0 \}\}>\s*\n\s*<span style=\{\{ display: 'block', fontWeight: 600/);
-  // The disclosure moved to the lead column, alongside the select checkbox.
-  assert.match(SCREEN, /\{selectMode \? checkGlyph\(checked\) : \(isProject \? ledgerDisclosure\(item\.id, expanded\) : null\)\}/);
-  // Same horizontal padding as the Documents ledger's name cell.
+  /* The chevron sits in a fixed-width slot that REPLACES the name cell's left
+     padding rather than adding to it (owner call 2026-08-07: the disclosure
+     belongs "just to the left of the title", but the 29.5px gap must survive).
+     14px slot + 0 left padding == the Documents ledger's 14px padding, so the
+     title's left edge is identical on both screens and on every row type. */
+  assert.match(SCREEN, /const NAME_LEAD = 14;/);
+  assert.match(SCREEN, /padding: '0 14px 0 0'/, 'no LEFT padding — the slot provides it');
   const DOCS = read('../src/home/DocumentsLedger.jsx');
   assert.match(DOCS, /padding: '12px 14px'/, 'Documents name cell pads 14px horizontally');
-  assert.match(SCREEN, /padding: '0 14px'/);
+
+  const nameCell = SCREEN.match(/<div style=\{stickyCell\(active\)\}>[\s\S]*?\n          <\/div>/)[0];
+  // The slot is ALWAYS rendered, so a row without a chevron keeps the same
+  // title offset — no phantom indent, no ragged left edge.
+  assert.match(nameCell, /\{nameLeadSlot\(isProject \? ledgerDisclosure\(item\.id, expanded\) : null\)\}/);
+  assert.match(SCREEN, /const nameLeadSlot = \(content\) => \([\s\S]*?width: NAME_LEAD, flex: 'none'[\s\S]*?justifyContent: 'flex-end'/);
+  // A flex gap would land between the slot and the title and undo the
+  // alignment, so the cell has none; the one label that needs air asks for it.
+  assert.doesNotMatch(SCREEN, /alignSelf: 'stretch',\s*\n\s*display: 'flex', alignItems: 'center', gap:/);
+  assert.match(nameCell, /flex: 'none', marginLeft: 8/);
+
+  // The lead COLUMN is the checkbox only now — which also restores expanding a
+  // project while in select mode.
+  assert.match(SCREEN, /\{selectMode \? checkGlyph\(checked\) : null\}/);
+  assert.doesNotMatch(
+    SCREEN,
+    /\{selectMode \? checkGlyph\(checked\) : \(isProject \? ledgerDisclosure/,
+    'the disclosure no longer shares the checkbox column',
+  );
 });
 
 test('an archived project previews as an expandable tree of its documents', () => {
@@ -493,14 +511,33 @@ test('a project ROW shows who it was shared with, under the name', () => {
   assert.match(PROJECTS, /<AvatarStack\s*\n?\s*members=[\s\S]*?size=\{14\}/, 'the Projects tree is the reference size');
 });
 
-test('the rotating chevron is the one disclosure glyph, matching the Templates editor', () => {
-  // Never a swapped ▾/▸ pair — one glyph that rotates.
+test("the disclosure uses the app's real chevron icon, not a text glyph", () => {
+  /* Owner call 2026-08-07: "it should be the same chevron used throughout the
+     app, not this." It rendered the literal "▾" character; src/Icons.jsx has
+     had a real chevronDown SVG all along. */
+  assert.match(SCREEN, /import AppIcon from '\.\.\/Icons'/);
   assert.match(
     SCREEN,
-    /const chevron = \(open\) => \([\s\S]*?color: '#8d96a6', fontSize: 10[\s\S]*?transform: open \? 'rotate\(180deg\)' : 'none', transition: 'transform \.12s'/,
+    /const chevron = \(open\) => \([\s\S]*?<AppIcon\s*\n\s*name="chevronDown"\s*\n\s*size=\{CHEVRON_SIZE\}\s*\n\s*color="#8d96a6"/,
   );
-  const TEMPLATES = read('../src/home/TemplatesEditor.jsx');
-  assert.match(TEMPLATES, /transform: open \? 'rotate\(180deg\)' : 'none', transition: 'transform \.12s'/);
+  assert.match(SCREEN, /const CHEVRON_SIZE = 12;/);
+  // No literal chevron characters may survive anywhere in the screen.
+  assert.doesNotMatch(SCREEN, /[▾▴▸▹►▼]/, 'no text-glyph chevrons remain');
+
+  // Still ONE glyph that rotates, never a swapped down/right pair — that is
+  // what keeps the open/close transition.
+  assert.match(SCREEN, /transform: open \? 'rotate\(180deg\)' : 'none',\s*\n?\s*transition: 'transform \.12s'/);
+
+  // The icon set really does export it, at the size/colour the hub already
+  // uses for a disclosure chevron in a dense list.
+  const ICONS = read('../src/Icons.jsx');
+  assert.match(ICONS, /chevronDown: \(size, color, style, className\) => \(/);
+  const VIEWER = read('../src/PDFViewer.jsx');
+  assert.match(VIEWER, /<Icon name="chevronDown" size=\{12\} color="#8d96a6" \/>/, 'PDFViewer is the reference');
+
+  // Both trees and the mobile card go through the same helper.
+  assert.match(SCREEN, /const disclosureButton = \(open, onToggle, label = 'documents'\) => \([\s\S]*?\{chevron\(open\)\}<\/button>/);
+  assert.match(SCREEN, /className="archive-mobile-disclosure"[\s\S]*?\{chevron\(expanded\)\}/);
 });
 
 test('the preview shows collaborator glyphs only when the item really is shared', () => {
@@ -586,6 +623,29 @@ test('the mobile card head ALWAYS renders three children, matching its three col
   // Geometry copied from .mobile-doc-card, not invented.
   assert.match(CSS, /\.survey-hub \.archive-mobile-card-head \{[^}]*grid-template-columns: 28px minmax\(0, 1fr\) 52px/);
   assert.match(CSS, /\.survey-hub \.mobile-doc-card,[\s\S]*?grid-template-columns: 28px minmax\(0, 1fr\) 52px/);
+});
+
+test('the dev build stamp is logged to the console, never rendered on screen', () => {
+  /* Owner call 2026-08-07: "get rid of the build indicator at the very
+     bottom... any time I want to know what build I'm in, I should be able to
+     just see my console logs. When I'm in mobile mode, this build ends up being
+     this massive left rail thing that's super ugly."
+
+     The information still matters — a stale tab served by a dead dev server
+     once burned a whole bug hunt — so it moves to the console rather than
+     disappearing. */
+  const APP_SHELL = readFileSync(new URL('../src/AppShell.jsx', import.meta.url), 'utf8');
+  assert.match(APP_SHELL, /console\.info\(`\[build\] \$\{__BUILD_STAMP__\}`\)/);
+  assert.match(APP_SHELL, /if \(import\.meta\.env\.DEV && typeof __BUILD_STAMP__ !== 'undefined' && __BUILD_STAMP__\) \{/);
+  // Nothing may render it any more. `${__BUILD_STAMP__}` inside the console
+  // template literal is fine; a JSX child on its own line is what was removed.
+  assert.doesNotMatch(APP_SHELL, /^\s*\{__BUILD_STAMP__\}\s*$/m, 'the stamp is never rendered as JSX');
+  assert.doesNotMatch(APP_SHELL, /position: 'fixed',\s*\n\s*left: '6px',\s*\n\s*bottom: '6px'/, 'the fixed corner chip is gone');
+  // The only surviving reads are the dev guard and the log itself.
+  assert.equal((APP_SHELL.match(/__BUILD_STAMP__/g) || []).length, 4, 'comment + guard x2 + log');
+  // The vite define stays, because the console log reads it.
+  const VITE = readFileSync(new URL('../vite.config.js', import.meta.url), 'utf8');
+  assert.match(VITE, /__BUILD_STAMP__: JSON\.stringify\(buildStamp\)/);
 });
 
 test('the mobile card list is hidden on desktop and shown under 720px', () => {
