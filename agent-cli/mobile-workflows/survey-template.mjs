@@ -234,11 +234,19 @@ async function armCreatedSurveyInViewer({ page, touch, ids }) {
   if (collapse) await collapse.click();
 }
 
-async function openCreatedSurveyInViewer({ page, touch, ids }) {
-  await tapLocator(touch, page.getByRole('button', { name: 'Documents', exact: true }), 'Documents tab');
-  const documentRow = page.locator('[data-document-id]').filter({ hasText: 'test.pdf' });
-  const fallbackRow = page.getByText('test.pdf', { exact: true });
-  await tapLocator(touch, await documentRow.count() ? documentRow : fallbackRow, 'test PDF');
+async function openCreatedSurveyInViewer({ page, touch, ids, baseUrl }) {
+  // Hub tab transitions have their own exhaustive suite. Navigate directly to
+  // the stable Documents fixture here so a retained hidden template-detail
+  // tree cannot race this survey lifecycle's real PDF selection.
+  const documentsRoute = TEMPLATE_WORKFLOW_ROUTE.replace('tab=templates', 'tab=documents');
+  await page.goto(`${baseUrl}${documentsRoute}`, { waitUntil: 'domcontentloaded', timeout: 60_000 });
+  await page.getByRole('heading', { name: 'Documents', exact: true })
+    .waitFor({ state: 'visible', timeout: 10_000 });
+  const documentRow = page.locator('[data-document-id]:visible').filter({ hasText: 'test.pdf' });
+  const fallbackRow = page.getByText('test.pdf', { exact: true }).filter({ visible: true });
+  const target = await documentRow.count() ? documentRow : fallbackRow;
+  await target.first().waitFor({ state: 'visible', timeout: 10_000 });
+  await tapLocator(touch, target, 'test PDF');
   await armCreatedSurveyInViewer({ page, touch, ids });
 }
 
@@ -384,7 +392,7 @@ export async function runSurveyTemplateWorkflow({ page, touch, baseUrl, artifact
   const ids = await createTemplateTree({ page, touch, artifacts });
   await verifyTreeAfterReload({ page, touch, baseUrl, ids });
   await coverDeletes({ page, touch, ids });
-  await openCreatedSurveyInViewer({ page, touch, ids });
+  await openCreatedSurveyInViewer({ page, touch, ids, baseUrl });
   const marker = await runMarkerThroughCreatedSurvey({ page, touch, ids, artifacts });
   await deleteTemplateAndVerify({ page, touch, baseUrl, ids });
   const result = {

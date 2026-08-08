@@ -1229,6 +1229,7 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, onOpenP
   const [openCategory, setOpenCategory] = useState(null);
   const [moreOpen, setMoreOpen] = useState(false);
   const [presenceOpen, setPresenceOpen] = useState(false);
+  const [syncDetailsOpen, setSyncDetailsOpen] = useState(false);
   // Phase F (motion & feel): the active-users sheet gets the shared bottom-sheet
   // motion — finger-follow drag off the handle + dy>82/vy>0.65 dismiss + spring-
   // back + 170ms slide-down exit before unmount (inv-demo §17).
@@ -1256,15 +1257,16 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, onOpenP
   ), [leftRailApi?.cloudSyncStatus, leftRailApi?.cloudSyncQueueSize, leftRailApi?.cloudSyncEnabled]);
 
   useEffect(() => {
-    if (!moreOpen) return undefined;
+    if (!moreOpen && !syncDetailsOpen) return undefined;
     const close = (event) => {
       if (!popoverRef.current?.contains(event.target)) {
         setMoreOpen(false);
+        setSyncDetailsOpen(false);
       }
     };
     document.addEventListener('pointerdown', close, true);
     return () => document.removeEventListener('pointerdown', close, true);
-  }, [moreOpen]);
+  }, [moreOpen, syncDetailsOpen]);
 
   const activeTool = bottomToolbarApi?.activeTool || 'pan';
   const activeGroup = TOOL_TO_GROUP[activeTool] || null;
@@ -1429,10 +1431,16 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, onOpenP
             <button
               type="button"
               className="mobile-pdf-tools__sync"
-              aria-label={`${sync.label}. Tap to sync now.`}
-              title={`${sync.label}. Tap to sync now.`}
+              aria-label={`${sync.label}. ${sync.detail} Tap for details.`}
+              aria-expanded={syncDetailsOpen}
+              aria-controls="mobile-sync-status-details"
+              title={`${sync.label}. Tap for details.`}
               disabled={leftRailApi?.cloudSyncEnabled === false}
-              onClick={leftRailApi?.cloudSyncOnRetry || undefined}
+              onClick={() => {
+                setSyncDetailsOpen((open) => !open);
+                setMoreOpen(false);
+                setPresenceOpen(false);
+              }}
             >
               <span style={{ background: sync.color }} />
             </button>
@@ -1455,6 +1463,30 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, onOpenP
               {presenceCount > 1 && <span className="mobile-pdf-tools__user-count">+{presenceCount - 1}</span>}
             </RailButton>
           </div>
+
+          {syncDetailsOpen && (
+            <div
+              id="mobile-sync-status-details"
+              className="mobile-pdf-tools__sync-details"
+              role="dialog"
+              aria-label="Sync status details"
+            >
+              <strong style={{ color: sync.color }}>{sync.label}</strong>
+              <p>{sync.detail}</p>
+              {!!sync.retryLabel && <small>{sync.retryLabel}</small>}
+              {typeof leftRailApi?.cloudSyncOnRetry === 'function' && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSyncDetailsOpen(false);
+                    void leftRailApi.cloudSyncOnRetry();
+                  }}
+                >
+                  Retry now
+                </button>
+              )}
+            </div>
+          )}
 
           {moreOpen && (
             <div className="mobile-pdf-tools__popover is-more">

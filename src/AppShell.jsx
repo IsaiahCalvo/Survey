@@ -38,6 +38,7 @@ import { getNetworkLogSnapshot } from './utils/networkLogger';
 import { sanitizeConsoleLogText } from './utils/consoleLogFilter';
 import { showToast } from './utils/toast';
 import { randomUUID } from './utils/randomUUIDPolyfill';
+import { schedulePdfViewerPrefetch } from './utils/pdfViewerPrefetch';
 import { useAuth } from './contexts/AuthContext';
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import { useMSGraph } from './contexts/MSGraphContext';
@@ -48,12 +49,15 @@ import { FONT_FAMILY, REVIEW_TOOL_IDS, ZOOM_MODE_OPTIONS, appDebug, coerceScroll
 // Lazy boundary: the dashboard paints without pulling in the viewer (and its
 // fabric / annotation / Excel weight). The viewer chunk fetches the first time
 // a PDF tab is opened.
-const PDFViewer = lazy(() => import('./PDFViewer').then((m) => ({ default: m.PDFViewer })));
+const loadPDFViewerModule = () => import('./PDFViewer');
+const PDFViewer = lazy(() => loadPDFViewerModule().then((m) => ({ default: m.PDFViewer })));
 // Lazy boundary: the compact color picker only renders deep inside the bottom
 // toolbar when a rich-text or annotation color picker is explicitly opened.
 const CompactColorPicker = lazy(() => import('./components/CompactColorPicker'));
 
 export default function App({ devPreviewReturnTab = null }) {
+  useEffect(() => schedulePdfViewerPrefetch(loadPDFViewerModule), []);
+
   // Microsoft Graph authentication hook
   const { graphClient, isAuthenticated: isMSAuthenticated, login: msLogin, account: msAccount, needsReconnect: msNeedsReconnect, ensureFreshToken, getAuthSignals: msGetAuthSignals } = useMSGraph();
 

@@ -116,9 +116,16 @@ export async function runDesktopSurveyTemplateWorkflow({ page, baseUrl, artifact
   await categorySelect.click();
   const disposableCategoryNamed = categoryByName(page, 'Disposable desktop category');
   const disposableHeader = disposableCategoryNamed.locator('[data-drag-rearrange-row]');
-  const headerBox = invariant(await disposableHeader.boundingBox(), 'Desktop category selection row has no bounds');
-  await page.mouse.click(headerBox.x + headerBox.width - 12, headerBox.y + headerBox.height / 2);
-  await center.locator('button[title="Delete"]').click();
+  const categorySelectionControl = disposableHeader.locator(':scope > span').last();
+  await categorySelectionControl.click();
+  const deleteSelectedCategory = center.locator('button[title="Delete"]');
+  await deleteSelectedCategory.waitFor({ state: 'visible' });
+  await page.waitForFunction(() => {
+    const centerPane = document.querySelector('.templates-editor-grid > section');
+    const button = centerPane?.querySelector('button[title="Delete"]');
+    return button instanceof HTMLButtonElement && !button.disabled;
+  });
+  await deleteSelectedCategory.click();
   await page.waitForFunction(() => ![...document.querySelectorAll('.templates-editor-grid > section input')]
     .some((input) => input.value === 'Disposable desktop category'));
   await center.getByRole('button', { name: 'Done', exact: true }).click();

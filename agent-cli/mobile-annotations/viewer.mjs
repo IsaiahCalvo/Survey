@@ -16,6 +16,12 @@ const TOOL_MATCHERS = Object.freeze({
     && object?.data?.type === 'counter',
 });
 
+export function isFirstPageRasterSizeReady(size) {
+  const width = Number(size?.width || 0);
+  const height = Number(size?.height || 0);
+  return width > 0 && height > 0 && !(width === 300 && height === 150);
+}
+
 async function uniqueButton(page, name) {
   const button = page.getByRole('button', { name, exact: true });
   const count = await button.count();
@@ -52,6 +58,17 @@ export async function openRealMobileViewer(page, baseUrl, { navigate = true } = 
     state: 'visible',
     timeout: 30_000,
   });
+  await page.waitForFunction(() => {
+    const canvases = [...document.querySelectorAll(
+      '.survey-pdfjs-page-div[data-page-number="1"] canvas',
+    )];
+    return canvases.some((canvas) => (
+      canvas instanceof HTMLCanvasElement
+      && canvas.width > 0
+      && canvas.height > 0
+      && !(canvas.width === 300 && canvas.height === 150)
+    ));
+  }, null, { timeout: 30_000 });
   await page.waitForFunction(() => typeof window.__phase35GetAnnotationById === 'function');
 }
 

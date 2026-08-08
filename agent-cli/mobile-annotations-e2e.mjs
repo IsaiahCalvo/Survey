@@ -172,8 +172,23 @@ async function run() {
   page = await context.newPage();
   artifacts.captureBrowserProblems(page);
 
+  const viewerOpenStartedAt = Date.now();
   await artifacts.time('viewer:open', async () => {
     await openRealMobileViewer(page, baseUrl);
+  });
+  const viewerReadyMs = Date.now() - viewerOpenStartedAt;
+  if (viewerReadyMs > options.viewerReadyBudgetMs) {
+    throw new Error(
+      `viewer:first-page-ready exceeded ${options.viewerReadyBudgetMs}ms budget (${viewerReadyMs}ms)`,
+    );
+  }
+  artifacts.recordScenario({
+    budgetMs: options.viewerReadyBudgetMs,
+    durationMs: viewerReadyMs,
+    lifecycle: 'navigate-domcontentloaded-first-page-painted-annotation-layer-ready',
+    status: 'passed',
+    storeKind: 'diagnostic',
+    tool: 'viewer-first-page-ready',
   });
 
   const touch = await createTouchDriver({
@@ -194,6 +209,7 @@ async function run() {
 
   const finalStorage = await persistedSnapshot(page, storageKeys);
   for (const scenario of artifacts.scenarios) {
+    if (scenario.storeKind === 'diagnostic') continue;
     if (['survey-marker', 'space', 'region'].includes(scenario.tool)) continue;
     const exists = scenario.storeKind === 'callout'
       ? findPersistedCallout(finalStorage.callouts, scenario.id)
@@ -208,6 +224,8 @@ async function run() {
     input: touch.inputKind,
     storageKeys,
     storedAnnotationCount: finalStorage.annotationObjects.length,
+    viewerReadyBudgetMs: options.viewerReadyBudgetMs,
+    viewerReadyMs,
   });
   artifacts.assertNoBrowserErrors();
 }

@@ -316,7 +316,9 @@ test('unsupported annotation notice is compact above the mobile dock and expands
   assert.match(UNSUPPORTED_NOTICE_SOURCE, /Unsupported annotation/);
   assert.match(UNSUPPORTED_NOTICE_SOURCE, /--mobile-viewer-dock-height/);
   assert.match(UNSUPPORTED_NOTICE_SOURCE, /aria-expanded/);
-  assert.match(UNSUPPORTED_NOTICE_SOURCE, /setIsExpanded\(true\)/);
+  assert.match(UNSUPPORTED_NOTICE_SOURCE, /COLLAPSED_DISMISS_MS = 3000/);
+  assert.match(UNSUPPORTED_NOTICE_SOURCE, /EXPANDED_DISMISS_MS = 5000/);
+  assert.match(UNSUPPORTED_NOTICE_SOURCE, /setIsExpanded\(\(expanded\) => !expanded\)/);
   assert.match(UNSUPPORTED_NOTICE_SOURCE, /event\.stopPropagation\(\); handleDismiss\(\)/);
   assert.match(UNSUPPORTED_NOTICE_SOURCE, /aria-label="Information"/);
   assert.match(UNSUPPORTED_NOTICE_SOURCE, /<circle cx="10" cy="10" r="8"/);
@@ -455,11 +457,23 @@ test('mobile Survey and Spaces drawers follow their content', () => {
 test('mobile viewer sync presentation consumes the structured sync state', () => {
   assert.deepEqual(
     getMobileSyncPresentation({ stage: 'syncing' }, 0, true),
-    { state: 'syncing', label: 'Syncing...', color: '#f5a524' },
+    {
+      state: 'syncing',
+      label: 'Syncing...',
+      detail: 'Survey is loading and backing up this document’s cloud changes.',
+      retryLabel: 'Keep this document open while backup finishes.',
+      color: '#f5a524',
+    },
   );
   assert.deepEqual(
     getMobileSyncPresentation({ stage: 'queued' }, 3, true),
-    { state: 'offline', label: 'Offline · 3 saved locally', color: '#ef4444' },
+    {
+      state: 'offline',
+      label: 'Offline · 3 saved locally',
+      detail: 'Your changes are safe on this device and are waiting for cloud backup.',
+      retryLabel: 'Backup is retrying automatically.',
+      color: '#ef4444',
+    },
   );
 });
 

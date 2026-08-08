@@ -12,31 +12,96 @@ const providerSource = () => readFileSync(
   resolve('src/components/collab/YDocProvider.jsx'),
   'utf8',
 );
+const syncChipSource = () => readFileSync(
+  resolve('src/components/SyncStatusChip.jsx'),
+  'utf8',
+);
+const mobileChromeSource = () => readFileSync(
+  resolve('src/mobile/MobilePdfViewerChrome.jsx'),
+  'utf8',
+);
 
 test('sync status view model exposes pending debounce as visible saving state', () => {
   assert.deepEqual(
     getSyncStatusViewModel({ stage: 'pending' }, 0),
-    { state: 'syncing', label: 'Saving...' },
+    {
+      state: 'syncing',
+      label: 'Saving...',
+      detail: 'Your changes are saved on this device and are waiting to be backed up.',
+      retryLabel: 'Backup will retry automatically.',
+    },
   );
   assert.deepEqual(
     getSyncStatusViewModel({ stage: 'syncing' }, 0),
-    { state: 'syncing', label: 'Syncing...' },
+    {
+      state: 'syncing',
+      label: 'Syncing...',
+      detail: 'Survey is loading and backing up this document’s cloud changes.',
+      retryLabel: 'Keep this document open while backup finishes.',
+    },
   );
 });
 
 test('sync status view model keeps queued and error states visible', () => {
   assert.deepEqual(
     getSyncStatusViewModel({ stage: 'queued' }, 0),
-    { state: 'offline', label: 'Saved locally' },
+    {
+      state: 'offline',
+      label: 'Saved locally',
+      detail: 'Your changes are safe on this device and are waiting for cloud backup.',
+      retryLabel: 'Backup is retrying automatically.',
+    },
   );
   assert.deepEqual(
     getSyncStatusViewModel({ stage: 'synced' }, 2),
-    { state: 'offline', label: 'Offline · 2 saved locally' },
+    {
+      state: 'offline',
+      label: 'Offline · 2 saved locally',
+      detail: 'Your changes are safe on this device and are waiting for cloud backup.',
+      retryLabel: 'Backup is retrying automatically.',
+    },
   );
   assert.deepEqual(
     getSyncStatusViewModel({ stage: 'error', error: new Error('boom') }, 0),
-    { state: 'offline', label: 'Sync error' },
+    {
+      state: 'offline',
+      label: 'Sync error',
+      detail: 'Cloud backup could not finish. Your changes are safe on this device.',
+      retryLabel: 'Backup is retrying automatically.',
+    },
   );
+});
+
+test('yellow and red sync states explain the cause, local backup, and retry behavior', () => {
+  assert.deepEqual(
+    getSyncStatusViewModel({ stage: 'pending' }, 0),
+    {
+      state: 'syncing',
+      label: 'Saving...',
+      detail: 'Your changes are saved on this device and are waiting to be backed up.',
+      retryLabel: 'Backup will retry automatically.',
+    },
+  );
+  assert.deepEqual(
+    getSyncStatusViewModel({ stage: 'error', error: 'realtime timed_out' }, 2),
+    {
+      state: 'offline',
+      label: 'Offline · 2 saved locally',
+      detail: 'The connection to cloud backup timed out. Your changes are safe on this device.',
+      retryLabel: 'Backup is retrying automatically.',
+    },
+  );
+});
+
+test('desktop and mobile sync indicators expose tappable status details without hiding manual retry', () => {
+  const desktop = syncChipSource();
+  const mobile = mobileChromeSource();
+  assert.match(desktop, /aria-expanded=/);
+  assert.match(desktop, /sync-status-details/);
+  assert.match(desktop, /Retry now/);
+  assert.match(mobile, /aria-expanded=/);
+  assert.match(mobile, /mobile-pdf-tools__sync-details/);
+  assert.match(mobile, /Retry now/);
 });
 
 test('fast successful sync stays visible for the minimum activity duration', () => {
@@ -77,6 +142,19 @@ test('shared-document transport health prevents a false green annotation status'
     annotationStatus,
     'a private document keeps the independent durable-save status',
   );
+  assert.deepEqual(
+    combineCollaborationSyncStatus({
+      annotationStatus,
+      transportState: 'offline',
+      isSharedDocument: null,
+    }),
+    {
+      stage: 'hydrating',
+      healthy: true,
+      error: 'checking whether this document uses live collaboration',
+    },
+    'an unresolved sharing lookup stays yellow instead of showing a false red failure',
+  );
 });
 
 test('a real annotation save error is never hidden by a connecting transport', () => {
@@ -101,8 +179,16 @@ test('shared-state lookup stays fail-safe and refreshes when sharing changes aft
   assert.match(provider, /table:\s*'document_collaborators'/);
   assert.match(provider, /event:\s*'\*'/);
   assert.match(provider, /setInterval\(refreshSharedState,\s*30_000\)/);
-  assert.match(provider, /isDocShared !== false/);
-  assert.match(appSource(), /yjsIsDocShared !== false/);
+  assert.match(provider, /isDocShared === true/);
+  assert.match(appSource(), /isSharedDocument:\s*yjsIsDocShared/);
+});
+
+test('sync failures emit privacy-safe analytics categories without raw error text', () => {
+  const src = appSource();
+  assert.match(src, /survey_cloud_sync_status_changed/);
+  assert.match(src, /queueDepthBucket/);
+  assert.match(src, /sharedState/);
+  assert.doesNotMatch(src, /survey_cloud_sync_status_changed[\s\S]{0,400}errorText,/);
 });
 
 // 2026-07-17: five tests pinning the retired useAnnotationCloudSync hook's

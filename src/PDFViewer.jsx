@@ -1040,6 +1040,11 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   // pdf-lib rewrite/retry path or Pdfjs render path can't recover.
   const [pdfLoadError, setPdfLoadError] = useState(null);
   const [loadRetryToken, setLoadRetryToken] = useState(0);
+  const firstPagePaintAnalyticsRef = useRef({
+    startedAt: 0,
+    byteSizeBucket: 'unknown',
+    reported: true,
+  });
   // KAL-46 / sleep-wake: bounds how many times the load watchdog will silently
   // auto-retry a hung download (dead socket after display sleep/wake) before it
   // gives up and surfaces the retryable error screen. Reset whenever a fresh
@@ -7056,9 +7061,21 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     scheduleTextSearchHighlightRefresh('engine-zoom-commit', 0);
   }, [scheduleTextSearchHighlightRefresh]);
 
-  const handlePdfjsPageRenderComplete = useCallback(() => {
+  const handlePdfjsPageRenderComplete = useCallback((payload) => {
     reconcilePdfjsScaleFromRenderedPage('page-render-complete');
     scheduleTextSearchHighlightRefresh('page-render-complete', 80);
+    const paintState = firstPagePaintAnalyticsRef.current;
+    if (payload?.pageNumber !== 1 || paintState.reported || !paintState.startedAt) return;
+    paintState.reported = true;
+    const recordPaint = () => {
+      if (firstPagePaintAnalyticsRef.current !== paintState) return;
+      trackSurveyAnalyticsEvent('survey_pdf_first_page_painted', {
+        byteSizeBucket: paintState.byteSizeBucket,
+        ms: Math.round(performance.now() - paintState.startedAt),
+      });
+    };
+    if (typeof requestAnimationFrame === 'function') requestAnimationFrame(recordPaint);
+    else setTimeout(recordPaint, 0);
   }, [reconcilePdfjsScaleFromRenderedPage, scheduleTextSearchHighlightRefresh]);
 
   const handlePdfjsWrapperWheel = useCallback((event) => {
@@ -18556,11 +18573,11 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   const displayedCloudSyncStatus = useMemo(() => combineCollaborationSyncStatus({
     annotationStatus: cloudSyncStatus,
     transportState: yjsTransportState,
-    isSharedDocument: yjsIsDocShared !== false || (
+    isSharedDocument: yjsIsDocShared === true || (
       yjsDocRole === 'editor'
       && !!documentOwnerId
       && documentOwnerId !== user?.id
-    ),
+    ) ? true : yjsIsDocShared,
   }), [
     cloudSyncStatus,
     documentOwnerId,
@@ -18569,6 +18586,34 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     yjsIsDocShared,
     yjsTransportState,
   ]);
+  const lastSyncAnalyticsKeyRef = useRef('');
+  useEffect(() => {
+    if (!cloudSyncEnabled) return;
+    const stage = displayedCloudSyncStatus?.stage || 'idle';
+    const errorText = String(displayedCloudSyncStatus?.error || '').toLowerCase();
+    const reason = stage !== 'error'
+      ? stage
+      : /permission|42501|access|authentication/.test(errorText)
+        ? 'access'
+        : /timed[_ -]?out|timeout/.test(errorText)
+          ? 'timeout'
+          : /realtime|network|offline|fetch|connection|websocket|channel/.test(errorText)
+            ? 'connection'
+            : /quota|storage|indexeddb|database/.test(errorText)
+              ? 'storage'
+              : 'unknown';
+    const queueDepth = Math.max(0, Number(cloudSyncQueueSize) || 0);
+    const queueDepthBucket = queueDepth === 0 ? 'none' : queueDepth === 1 ? 'one' : queueDepth <= 5 ? 'two-to-five' : 'over-five';
+    const analyticsKey = `${stage}:${reason}:${queueDepthBucket}:${String(yjsIsDocShared)}`;
+    if (lastSyncAnalyticsKeyRef.current === analyticsKey) return;
+    lastSyncAnalyticsKeyRef.current = analyticsKey;
+    trackSurveyAnalyticsEvent('survey_cloud_sync_status_changed', {
+      stage,
+      reason,
+      queueDepthBucket,
+      sharedState: yjsIsDocShared === true ? 'shared' : yjsIsDocShared === false ? 'private' : 'checking',
+    });
+  }, [cloudSyncEnabled, cloudSyncQueueSize, displayedCloudSyncStatus, yjsIsDocShared]);
   applyDurableEraseHistoryTransitionRef.current = applyDurableEraseHistoryTransition;
   const applyEraseHistoryTransitionFromToast = useCallback((transition) => {
     const mutationId = transition?.mutationId || null;
@@ -20825,6 +20870,11 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     const loadPDF = async () => {
       const docName = pdfFile.name || 'unknown';
       const analyticsLoadStartedAt = performance.now();
+      firstPagePaintAnalyticsRef.current = {
+        startedAt: analyticsLoadStartedAt,
+        byteSizeBucket: 'unknown',
+        reported: false,
+      };
       trackSurveyAnalyticsEvent('survey_pdf_open_requested', {
         cloudDocument: Boolean(pdfFile?.id),
       });
@@ -20866,6 +20916,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
           : loadedByteLength < 10 * 1024 * 1024
             ? '1-10mb'
             : loadedByteLength < 30 * 1024 * 1024 ? '10-30mb' : 'over-30mb';
+        firstPagePaintAnalyticsRef.current.byteSizeBucket = byteSizeBucket;
         trackSurveyAnalyticsEvent('survey_pdf_bytes_ready', {
           byteSizeBucket,
           ms: Math.round(performance.now() - analyticsLoadStartedAt),

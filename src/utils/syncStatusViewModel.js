@@ -7,31 +7,72 @@
  */
 export function getSyncStatusViewModel(status, queueSize = 0, manualSyncing = false) {
   const stage = status?.stage || 'idle';
+  const pendingCount = Math.max(0, Number(queueSize) || Number(status?.queueSize) || 0);
+  const errorText = String(status?.error?.message || status?.error || '').toLowerCase();
 
   if (manualSyncing) {
-    return { state: 'syncing', label: 'Syncing now...' };
+    return {
+      state: 'syncing',
+      label: 'Syncing now...',
+      detail: 'Survey is backing up your locally saved changes now.',
+      retryLabel: 'Keep this document open while backup finishes.',
+    };
   }
 
   if (stage === 'error') {
-    return { state: 'offline', label: 'Sync error' };
-  }
-
-  if (queueSize > 0 || stage === 'queued') {
+    let detail = 'Cloud backup could not finish. Your changes are safe on this device.';
+    if (/timed[_ -]?out|timeout/.test(errorText)) {
+      detail = 'The connection to cloud backup timed out. Your changes are safe on this device.';
+    } else if (/realtime|network|offline|fetch|connection|websocket|channel/.test(errorText)) {
+      detail = 'Survey cannot reach cloud backup right now. Your changes are safe on this device.';
+    } else if (/permission|row.level.security|42501|access|authentication/.test(errorText)) {
+      detail = 'Cloud backup rejected this account’s access. Your changes are safe on this device.';
+    } else if (/quota|storage|indexeddb|database/.test(errorText)) {
+      detail = 'Survey could not update its local backup queue. Keep this document open and retry.';
+    }
     return {
       state: 'offline',
-      label: queueSize > 0
-        ? `Offline · ${queueSize} saved locally`
+      label: pendingCount > 0 ? `Offline · ${pendingCount} saved locally` : 'Sync error',
+      detail,
+      retryLabel: 'Backup is retrying automatically.',
+    };
+  }
+
+  if (pendingCount > 0 || stage === 'queued') {
+    return {
+      state: 'offline',
+      label: pendingCount > 0
+        ? `Offline · ${pendingCount} saved locally`
         : 'Saved locally',
+      detail: 'Your changes are safe on this device and are waiting for cloud backup.',
+      retryLabel: 'Backup is retrying automatically.',
     };
   }
 
   if (stage === 'pending') {
-    return { state: 'syncing', label: 'Saving...' };
+    return {
+      state: 'syncing',
+      label: 'Saving...',
+      detail: 'Your changes are saved on this device and are waiting to be backed up.',
+      retryLabel: 'Backup will retry automatically.',
+    };
   }
 
   if (stage === 'hydrating' || stage === 'migrating' || stage === 'syncing') {
-    return { state: 'syncing', label: 'Syncing...' };
+    return {
+      state: 'syncing',
+      label: 'Syncing...',
+      detail: errorText.includes('checking whether')
+        ? 'Survey is checking whether this document uses live collaboration.'
+        : 'Survey is loading and backing up this document’s cloud changes.',
+      retryLabel: 'Keep this document open while backup finishes.',
+    };
   }
 
-  return { state: 'synced', label: 'Up to date' };
+  return {
+    state: 'synced',
+    label: 'Up to date',
+    detail: 'Everything is backed up to the cloud.',
+    retryLabel: '',
+  };
 }

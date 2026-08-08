@@ -10,13 +10,18 @@
  * "annotations of a type we don't recognize" — never raw PDF subtype jargon.
  * Only genuinely-invisible types trigger it; annotations imported as visible
  * (even locked) proxies — sticky notes, underline/strikeout/squiggly — never
- * do. No action buttons; auto-dismisses after 12s or on the X.
+ * do. No action buttons; compact notices auto-dismiss after 3s, expanded
+ * notices after 5s, and the X dismisses immediately.
  *
  * Default export UnsupportedAnnotationsNotice takes `unsupportedCounts`
  * ({ Stamp: 2, ... } from the importer) and `onDismiss`.
  */
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { formatUnsupportedAnnotationNotice } from '../utils/unsupportedAnnotationNotice';
+
+const COLLAPSED_DISMISS_MS = 3000;
+const EXPANDED_DISMISS_MS = 5000;
+const EXIT_ANIMATION_MS = 300;
 
 const UnsupportedAnnotationsNotice = ({ unsupportedCounts, onDismiss }) => {
   const [isVisible, setIsVisible] = useState(true);
@@ -25,6 +30,31 @@ const UnsupportedAnnotationsNotice = ({ unsupportedCounts, onDismiss }) => {
   const [isMobile, setIsMobile] = useState(() => (
     typeof window !== 'undefined' && window.matchMedia?.('(max-width: 720px)').matches
   ));
+  const dismissCompletionRef = useRef(null);
+  const onDismissRef = useRef(onDismiss);
+  onDismissRef.current = onDismiss;
+  const noticeIdentity = Object.entries(unsupportedCounts || {})
+    .filter(([, count]) => Number(count) > 0)
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([type, count]) => `${type}:${count}`)
+    .join('|');
+
+  const clearDismissCompletion = useCallback(() => {
+    if (dismissCompletionRef.current !== null) {
+      clearTimeout(dismissCompletionRef.current);
+      dismissCompletionRef.current = null;
+    }
+  }, []);
+
+  const handleDismiss = useCallback(() => {
+    clearDismissCompletion();
+    setIsExiting(true);
+    dismissCompletionRef.current = setTimeout(() => {
+      dismissCompletionRef.current = null;
+      setIsVisible(false);
+      onDismissRef.current?.();
+    }, EXIT_ANIMATION_MS);
+  }, [clearDismissCompletion]);
 
   useEffect(() => {
     const query = window.matchMedia?.('(max-width: 720px)');
@@ -35,26 +65,24 @@ const UnsupportedAnnotationsNotice = ({ unsupportedCounts, onDismiss }) => {
     return () => query.removeEventListener?.('change', update);
   }, []);
 
+  useEffect(() => () => clearDismissCompletion(), [clearDismissCompletion]);
+
   useEffect(() => {
-    // Auto-dismiss after 12 seconds — the message is a full sentence with
-    // counts, so it gets a little longer on screen than a one-liner toast.
-    if (isExpanded) return undefined;
-    const timer = setTimeout(() => {
-      handleDismiss();
-    }, 12000);
+    clearDismissCompletion();
+    setIsVisible(true);
+    setIsExiting(false);
+    setIsExpanded(false);
+  }, [clearDismissCompletion, noticeIdentity]);
+
+  useEffect(() => {
+    if (!isVisible || isExiting) return undefined;
+    const dismissAfter = isMobile && !isExpanded
+      ? COLLAPSED_DISMISS_MS
+      : EXPANDED_DISMISS_MS;
+    const timer = setTimeout(handleDismiss, dismissAfter);
 
     return () => clearTimeout(timer);
-  }, [isExpanded]);
-
-  const handleDismiss = () => {
-    setIsExiting(true);
-    setTimeout(() => {
-      setIsVisible(false);
-      if (onDismiss) {
-        onDismiss();
-      }
-    }, 300); // Match animation duration
-  };
+  }, [handleDismiss, isExpanded, isExiting, isMobile, isVisible, noticeIdentity]);
 
   const message = formatUnsupportedAnnotationNotice(unsupportedCounts);
   if (!isVisible || !message) {
@@ -63,15 +91,17 @@ const UnsupportedAnnotationsNotice = ({ unsupportedCounts, onDismiss }) => {
 
   return (
     <div
-      role={isMobile && !isExpanded ? 'button' : undefined}
-      tabIndex={isMobile && !isExpanded ? 0 : undefined}
+      role={isMobile ? 'button' : undefined}
+      tabIndex={isMobile ? 0 : undefined}
       aria-expanded={isMobile ? isExpanded : undefined}
-      aria-label={isMobile && !isExpanded ? 'Unsupported annotation. Show details' : undefined}
-      onClick={() => { if (isMobile && !isExpanded) setIsExpanded(true); }}
+      aria-label={isMobile
+        ? `Unsupported annotation. ${isExpanded ? 'Hide' : 'Show'} details`
+        : undefined}
+      onClick={() => { if (isMobile) setIsExpanded((expanded) => !expanded); }}
       onKeyDown={(event) => {
-        if (!isMobile || isExpanded || (event.key !== 'Enter' && event.key !== ' ')) return;
+        if (!isMobile || (event.key !== 'Enter' && event.key !== ' ')) return;
         event.preventDefault();
-        setIsExpanded(true);
+        setIsExpanded((expanded) => !expanded);
       }}
       style={{
         position: 'fixed',
@@ -91,7 +121,7 @@ const UnsupportedAnnotationsNotice = ({ unsupportedCounts, onDismiss }) => {
         opacity: isExiting ? 0 : 1,
         transform: isExiting ? 'translateY(10px)' : 'translateY(0)',
         transition: 'opacity 0.3s ease, transform 0.3s ease',
-        cursor: isMobile && !isExpanded ? 'pointer' : 'default',
+        cursor: isMobile ? 'pointer' : 'default',
         fontFamily: '-apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", "Segoe UI", Roboto, Ubuntu, "Noto Sans", Arial, sans-serif',
       }}
     >
