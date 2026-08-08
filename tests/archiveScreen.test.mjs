@@ -288,7 +288,7 @@ test('every document in Archive renders at the one Documents-ledger thumbnail si
   // same 23x30 footprint — NOT the old tiny doc icon.
   assert.match(
     SCREEN,
-    /fallback=\{<div style=\{\{ width: 23, height: ROW_THUMB, flex: 'none' \}\}><PdfThumb height=\{ROW_THUMB\} stamp="" \/><\/div>\}/,
+    /fallback=\{<div style=\{\{ width: ROW_ART_W, height: ROW_THUMB, flex: 'none' \}\}><PdfThumb height=\{ROW_THUMB\} stamp="" \/><\/div>\}/,
   );
   const DOCUMENTS = read('../src/home/DocumentsLedger.jsx');
   assert.match(DOCUMENTS, /variant="row"\s*\n\s*height=\{30\}/, 'Documents is the reference height');
@@ -299,7 +299,10 @@ test('every document in Archive renders at the one Documents-ledger thumbnail si
   // behind it (owner call 2026-08-07: "we don't have that anywhere else in this
   // app"). The box stays so the column aligns and the row height cannot shift.
   assert.match(SCREEN, /const rowTypeArt = \(item\) => \{[\s\S]*?if \(item\.type === 'document'\) return rowThumb\(item\.id, item\.filePath\);/);
-  assert.match(SCREEN, /width: ROW_THUMB, height: ROW_THUMB/);
+  // A project/template's icon box is the SAME 23x30 footprint a page thumbnail
+  // occupies, so the art-to-name distance is one number regardless of row type.
+  assert.match(SCREEN, /const ROW_ART_W = 23;/);
+  assert.match(SCREEN, /width: ROW_ART_W, height: ROW_THUMB/);
   assert.match(SCREEN, /<Icon name=\{typeIcon\[item\.type\] \|\| 'doc'\} size=\{TYPE_ICON_SIZE\} color="var\(--ink-200\)" \/>/);
   assert.match(SCREEN, /\{rowTypeArt\(item\)\}/);
   // No coloured plate may come back: no tint map, and no translucent
@@ -312,6 +315,28 @@ test('every document in Archive renders at the one Documents-ledger thumbnail si
   // Intrinsic size must track the taller row or the skipped rows jump:
   // 8px padding + the 30px thumbnail + 8px padding.
   assert.match(SCREEN, /containIntrinsicSize: '0 46px'/);
+});
+
+test("the name sits the same distance from its icon as the Documents ledger's", () => {
+  /* Owner call 2026-08-07: "the names of the elements and their icons to the
+     left of them are too far ... the same distance that it is on the Documents
+     page." Archive's name cell used to lead with a 12px chevron spacer plus an
+     8px flex gap, pushing every title 20px further right than Documents'.
+     Browser-measured before: 49.5px art-to-name vs Documents' 29.5px. After
+     moving the disclosure into the otherwise-empty 32px lead column, both
+     screens measure 29.5px on every row type.
+
+     The name cell must therefore lead with the name block itself. */
+  const nameCell = SCREEN.match(/<div style=\{stickyCell\(active\)\}>[\s\S]*?\n          <\/div>/)[0];
+  assert.doesNotMatch(nameCell, /width: 12, flex: 'none'/, 'no lead spacer before the name');
+  assert.doesNotMatch(nameCell, /ledgerDisclosure/, 'the disclosure is not in the name cell');
+  assert.match(nameCell, /<div style=\{\{ minWidth: 0 \}\}>\s*\n\s*<span style=\{\{ display: 'block', fontWeight: 600/);
+  // The disclosure moved to the lead column, alongside the select checkbox.
+  assert.match(SCREEN, /\{selectMode \? checkGlyph\(checked\) : \(isProject \? ledgerDisclosure\(item\.id, expanded\) : null\)\}/);
+  // Same horizontal padding as the Documents ledger's name cell.
+  const DOCS = read('../src/home/DocumentsLedger.jsx');
+  assert.match(DOCS, /padding: '12px 14px'/, 'Documents name cell pads 14px horizontally');
+  assert.match(SCREEN, /padding: '0 14px'/);
 });
 
 test('an archived project previews as an expandable tree of its documents', () => {
@@ -539,6 +564,30 @@ test('avatar initials come from the name, falling back to the invited email', ()
   assert.equal(collaboratorInitials(null), '—');
 });
 
+test('the mobile card head ALWAYS renders three children, matching its three columns', () => {
+  /* The bug the owner photographed: .archive-mobile-card-head declares three
+     grid columns, but the lead cell was rendered with `{selectMode && ...}` and
+     the trailing cell with `{isProject && ...}`. Outside select mode the name
+     block became the FIRST child and landed in the 28px lead track — it wrapped
+     one word per line and the rest of the card sat empty. Measured 148px tall
+     against the Documents card's 76px.
+
+     Conditional content must live INSIDE a cell, never in place of one. */
+  const head = SCREEN.match(/<div className="archive-mobile-card-head">[\s\S]*?\n        <\/div>/)[0];
+  const cells = head.match(/^\s{10}<div /gm) || [];
+  assert.equal(cells.length, 3, 'exactly three unconditional cell divs');
+  // No cell may be gated by a `X && (` guard at the cell level.
+  assert.doesNotMatch(head, /^\s{10}\{(selectMode|isProject) &&/m);
+  // The lead cell swaps its CONTENTS by mode instead.
+  assert.match(head, /\{selectMode \? checkGlyph\(checked\) : \(isProject \? \(/);
+  // The trailing cell carries the same type art the desktop row shows.
+  assert.match(head, /\{rowTypeArt\(item\)\}/);
+
+  // Geometry copied from .mobile-doc-card, not invented.
+  assert.match(CSS, /\.survey-hub \.archive-mobile-card-head \{[^}]*grid-template-columns: 28px minmax\(0, 1fr\) 52px/);
+  assert.match(CSS, /\.survey-hub \.mobile-doc-card,[\s\S]*?grid-template-columns: 28px minmax\(0, 1fr\) 52px/);
+});
+
 test('the mobile card list is hidden on desktop and shown under 720px', () => {
   assert.match(SCREEN, /className="archive-mobile-list slim-scroll"/);
   assert.match(SCREEN, /className="card archive-desktop-card"/);
@@ -576,8 +625,29 @@ test('Archive renders in its own bottom rail group, directly above the profile',
   );
   // The bottom group is what claims the rail's flexible space now.
   assert.match(CSS, /\.survey-hub \.nav-bottom \{[^}]*margin-top: auto/);
-  // Mobile has no bottom anchor, so it keeps one flat list including Archive.
-  assert.match(HUB_SHELL, /const navItems = \[\.\.\.primaryNavItems, archiveNavItem\]/);
+});
+
+test('on MOBILE, Archive leaves navigation and lives behind the profile avatar', () => {
+  // Owner call 2026-08-07: "in mobile, when the user clicks on their icon in
+  // the top right corner, that's where they'll be able to see their archives."
+  // `navItems` feeds BOTH mobile modes — the ?mobileNav=tabs bottom bar and the
+  // ?mobileNav=rail drawer — so dropping Archive here removes it from both.
+  assert.match(HUB_SHELL, /const navItems = primaryNavItems;/);
+  assert.doesNotMatch(
+    HUB_SHELL.match(/const navItems = [\s\S]*?;/)?.[0] || '',
+    /archiveNavItem/,
+    'Archive must not appear in either mobile navigation mode',
+  );
+  assert.match(HUB_SHELL, /<MobileRailNav[^>]*navItems=\{navItems\}/);
+  assert.match(HUB_SHELL, /<nav className="mobile-home-tabs"[\s\S]*?\{navItems\.map/);
+
+  // The profile menu carries it, and ONLY on the mobile instance — desktop
+  // already has it pinned in the rail, so offering it twice there is noise.
+  assert.match(HUB_SHELL, /const ProfileMenu = \(\{ userName, userMeta, showArchive = false, tab, onNav \}\)/);
+  assert.match(HUB_SHELL, /\{showArchive && \([\s\S]*?onNav && onNav\('archive'\)[\s\S]*?Archive\s*\n?\s*<\/button>/);
+  assert.match(HUB_SHELL, /<div className="mobile-profile">\s*\n\s*<ProfileMenu userName=\{userName\} userMeta=\{userMeta\} showArchive tab=\{tab\} onNav=\{onNav\} \/>/);
+  // The desktop rail instance must NOT pass showArchive.
+  assert.match(HUB_SHELL, /<\/nav>\s*\n\s*<ProfileMenu userName=\{userName\} userMeta=\{userMeta\} \/>/);
 });
 
 test('the hub routes the archive tab to the data container, lazily', () => {

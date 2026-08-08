@@ -72,6 +72,12 @@ const grid = '32px 54px minmax(150px,1fr) 110px 124px 110px';
    size wherever it appears in Archive. */
 const ROW_THUMB = 30;
 
+/* Width of a row's art. A US-Letter page at 30px tall is 23px wide, which is
+   the footprint the Documents ledger reserves for its row thumbnail and its
+   placeholder. Projects and templates use the same width so the gap between
+   the art and the name is one number across every row and both screens. */
+const ROW_ART_W = 23;
+
 /* Every top-level row is pinned to this height, whatever it carries — a plain
    name, a name over entity chips, or a name over shared-with avatars. The
    Documents ledger measures 51px, and a mixed list only reads "at a glance" if
@@ -359,7 +365,7 @@ export default function ArchiveScreen({
       downloadDocument={downloadDocument}
       variant="row"
       height={ROW_THUMB}
-      fallback={<div style={{ width: 23, height: ROW_THUMB, flex: 'none' }}><PdfThumb height={ROW_THUMB} stamp="" /></div>}
+      fallback={<div style={{ width: ROW_ART_W, height: ROW_THUMB, flex: 'none' }}><PdfThumb height={ROW_THUMB} stamp="" /></div>}
     />
   );
 
@@ -446,8 +452,11 @@ export default function ArchiveScreen({
   const rowTypeArt = (item) => {
     if (item.type === 'document') return rowThumb(item.id, item.filePath);
     return (
+      /* Same 23x30 footprint a page thumbnail occupies, so the distance from
+         the art to the name is identical whatever the row's type — a mixed
+         list has one left edge, not one per type. */
       <div style={{
-        width: ROW_THUMB, height: ROW_THUMB, flex: 'none',
+        width: ROW_ART_W, height: ROW_THUMB, flex: 'none',
         display: 'grid', placeItems: 'center',
       }}>
         <Icon name={typeIcon[item.type] || 'doc'} size={TYPE_ICON_SIZE} color="var(--ink-200)" />
@@ -613,8 +622,16 @@ export default function ArchiveScreen({
             containIntrinsicSize: `0 ${ROW_HEIGHT}px`,
           }}
         >
+          {/* Lead column — the checkbox in select mode, otherwise a project's
+              disclosure. The chevron lives HERE rather than in the name cell so
+              the name starts at the same offset on every row: inside the name
+              cell it pushed the title 20px further right than the Documents
+              ledger's (owner call 2026-08-07, "the names ... and their icons to
+              the left of them are too far"). This column is otherwise empty
+              outside select mode, and the Documents ledger already swaps this
+              same cell's content by mode. */}
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 8px' }}>
-            {selectMode ? checkGlyph(checked) : null}
+            {selectMode ? checkGlyph(checked) : (isProject ? ledgerDisclosure(item.id, expanded) : null)}
           </div>
           {/* Thumbnail column — its own cell, centred so every thumbnail lines
               up under the next, exactly as the Documents ledger does it. The
@@ -624,7 +641,6 @@ export default function ArchiveScreen({
             {rowTypeArt(item)}
           </div>
           <div style={stickyCell(active)}>
-            {isProject ? ledgerDisclosure(item.id, expanded) : <span style={{ width: 12, flex: 'none' }} />}
             {/* Name over its glyph strip — the hub's one "identify this row"
                 block, shared with the Projects tree and the Templates editor. */}
             <div style={{ minWidth: 0 }}>
@@ -703,23 +719,36 @@ export default function ArchiveScreen({
           background: checked ? 'var(--ink-600)' : 'var(--ink-700)',
         }}
       >
+        {/* THREE grid children, ALWAYS — never conditionally rendered.
+            .archive-mobile-card-head declares three columns, so a card that
+            omitted its first child put the name into the 28px lead column,
+            wrapped the metadata one word per line and left the rest of the card
+            empty (measured 148px tall against the Documents card's 74px; the
+            owner's screenshot showed worse). Conditional content goes INSIDE a
+            cell, never in place of one — the Documents card does the same. */}
         <div className="archive-mobile-card-head">
-          {selectMode && <span style={{ display: 'grid', placeItems: 'center' }}>{checkGlyph(checked)}</span>}
+          <div style={{ display: 'grid', placeItems: 'center', minWidth: 0 }}>
+            {selectMode ? checkGlyph(checked) : (isProject ? (
+              <button
+                type="button"
+                className="archive-mobile-disclosure"
+                aria-expanded={expanded}
+                title={expanded ? 'Hide documents' : 'Show documents'}
+                onClick={(e) => { e.stopPropagation(); setExpandedIds((prev) => toggleExpanded(prev, item.id)); }}
+              >{chevron(expanded)}</button>
+            ) : null)}
+          </div>
           <div style={{ minWidth: 0 }}>
             <div className="mobile-card-title">{item.name}</div>
             <div className="mobile-card-meta">
               {[archiveTypeLabel(item.type), archivedDateLabel(item.archivedAt), daysRemainingLabel(item.daysRemaining)].join(' · ')}
             </div>
           </div>
-          {isProject && (
-            <button
-              type="button"
-              className="archive-mobile-disclosure"
-              aria-expanded={expanded}
-              title={expanded ? 'Hide documents' : 'Show documents'}
-              onClick={(e) => { e.stopPropagation(); setExpandedIds((prev) => toggleExpanded(prev, item.id)); }}
-            >{chevron(expanded)}</button>
-          )}
+          {/* Trailing cell — the same type art the desktop row shows, in the
+              slot the Documents card fills with its page thumbnail. */}
+          <div style={{ display: 'grid', placeItems: 'center', minWidth: 0 }}>
+            {rowTypeArt(item)}
+          </div>
         </div>
         {isProject && expanded && (
           <div className="archive-mobile-children">

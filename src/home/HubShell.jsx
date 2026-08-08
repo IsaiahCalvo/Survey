@@ -139,7 +139,12 @@ const isExpoNativeShell = () => {
 /* Bottom-left profile control — a button that opens a Settings / Sign Out
    popup (matching the menu the app had before, restyled to the hub palette).
    Reads the user and the two callbacks from HubChromeContext. */
-const ProfileMenu = ({ userName, userMeta }) => {
+/* `showArchive` is set only on the MOBILE instance (owner call 2026-08-07:
+   "in mobile, when the user clicks on their icon in the top right corner,
+   that's where they'll be able to see their archives"). Desktop keeps Archive
+   pinned at the bottom of the left rail, so putting it in the desktop menu too
+   would be the same destination offered twice. */
+const ProfileMenu = ({ userName, userMeta, showArchive = false, tab, onNav }) => {
   const { user, onSettings, onSignOut } = useContext(HubChromeContext);
   // Resolve the per-tier badge text. Callers may pass `userMeta` explicitly;
   // otherwise we read from AuthContext so free users no longer see "Pro".
@@ -190,6 +195,17 @@ const ProfileMenu = ({ userName, userMeta }) => {
           </div>
           <div style={{ height: 1, background: 'var(--ink-500)' }} />
           <div className="profile-menu-actions" style={{ padding: 4 }}>
+            {showArchive && (
+              /* Same key, icon and label as the desktop rail entry, so it is
+                 recognisably the same destination — only the doorway moves. */
+              <button
+                className={tab === 'archive' ? 'active' : ''}
+                style={{ ...itemStyle, color: tab === 'archive' ? 'var(--gold)' : itemStyle.color }}
+                onClick={() => { setOpen(false); setConfirmSignOut(false); onNav && onNav('archive'); }}
+              >
+                <Icon name="clock" size={15} color={tab === 'archive' ? 'var(--gold)' : 'var(--ink-200)'} />Archive
+              </button>
+            )}
             <button style={itemStyle} onClick={() => { setOpen(false); setConfirmSignOut(false); onSettings && onSettings(); }}>
               <Icon name="settings" size={15} color="var(--ink-200)" />Settings
             </button>
@@ -317,8 +333,13 @@ export const HubShell = ({ tab, onNav, title, subtitle, actions, children, userN
   // margin-top:auto, so the empty space opened up *below* Archive and it stayed
   // glued to the main tabs at the top.)
   const archiveNavItem = ['archive', 'clock', 'Archive', false];
-  // Mobile keeps one flat list — the rail/tab layouts have no bottom anchor.
-  const navItems = [...primaryNavItems, archiveNavItem];
+  /* Mobile navigation carries the three primary tabs ONLY. Archive lives behind
+     the top-right profile avatar there (owner call 2026-08-07) — the same
+     "recovery destination, not somewhere you work" reasoning as the desktop
+     rail, applied to a bar that has far less room to spend. This list feeds
+     both mobile navigation modes (`?mobileNav=tabs` bottom bar and
+     `?mobileNav=rail` drawer), so Archive leaves both at once. */
+  const navItems = primaryNavItems;
   const mobileNavMode = mobileNavModeFromUrl();
   const navBtn = (key, icon, label, disabled = false) => (
     <button
@@ -356,7 +377,7 @@ export const HubShell = ({ tab, onNav, title, subtitle, actions, children, userN
               {subtitle ? <div className="crumb header-subtitle" style={{ marginTop: 6 }}>{subtitle}</div> : null}
             </div>
             <div className="mobile-profile">
-              <ProfileMenu userName={userName} userMeta={userMeta} />
+              <ProfileMenu userName={userName} userMeta={userMeta} showArchive tab={tab} onNav={onNav} />
             </div>
             <div className="actions">{actions}</div>
           </div>
