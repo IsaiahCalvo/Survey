@@ -2911,12 +2911,16 @@
     padding: 10px;
   }
 
+  /* Identical geometry to .mobile-doc-card — same lead column, same trailing
+     art column, same gap. With the card's own 10px padding this lands on the
+     74px card height the Documents and Projects lists use, so a mixed Archive
+     list has the same rhythm as every other mobile list. */
   .survey-hub .archive-mobile-card-head {
     display: grid;
-    grid-template-columns: 20px minmax(0, 1fr) auto;
+    grid-template-columns: 28px minmax(0, 1fr) 52px;
     gap: 10px;
     align-items: center;
-    min-height: 44px;
+    min-height: 54px;
   }
 
   .survey-hub .archive-mobile-disclosure {
