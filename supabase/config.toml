@@ -360,6 +360,14 @@ verify_jwt = false
 [functions.send-invite-email]
 verify_jwt = false
 
+# KAL-431 Archive auto-cleanup. Machine-invoked by the scheduler, never by a
+# user: the gateway JWT check would reject a cron call that carries the shared
+# cron secret instead of a user JWT. The function does its OWN auth — it accepts
+# ONLY the service-role key or ARCHIVE_PURGE_CRON_SECRET, so an end user's valid
+# JWT is explicitly NOT sufficient to trigger a purge.
+[functions.archive-purge-sweep]
+verify_jwt = false
+
 [analytics]
 enabled = true
 port = 54327
