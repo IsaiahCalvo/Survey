@@ -107,10 +107,12 @@ These steps do not require Netlify, a second Supabase project, or a self-hosted 
   `/api/analytics/track` function forwards events to Builder's hosted collector;
   no separate analytics app or database runs on Vercel.
 - The hosted collector key is server-only and is not embedded in the production
-  Survey or Expo bundles. The proxy accepts only the two `surveytool.app`
-  origins, caps body size and per-IP request rate, and redacts again server-side.
-  Native recovery diagnostics are queued and emitted by the Survey WebView
-  after it reloads.
+  Survey or Expo bundles. The proxy accepts the two `surveytool.app` origins,
+  localhost development origins, and HTTPS origins inside Survey's exact
+  Tailscale tailnet; it rejects other tailnets. It caps body size and per-IP
+  request rate and redacts again server-side. Native recovery diagnostics are
+  privacy-filtered and persisted in bounded on-device storage, then emitted by
+  the Survey WebView after reload with an acknowledgement before deletion.
 - The second `survey-test` Supabase project was replaced by the main Survey
   project's leased bot accounts plus one RLS-enabled, service-role-only bytea
   fixture table. Integration tests create no customer documents.

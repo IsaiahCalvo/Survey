@@ -28,10 +28,30 @@ async function waitForFirstVisible(locator, label, timeoutMs = 5_000) {
 }
 
 async function tapLocator(touch, locator, label) {
-  const target = invariant(await firstVisible(locator), `Expected visible ${label}`);
+  const target = await waitForFirstVisible(locator, label);
   const box = invariant(await target.boundingBox(), `${label} has no touch bounds`);
   invariant(box.width >= 1 && box.height >= 1, `${label} has invalid touch bounds`);
   await touch.tap({ x: box.x + box.width / 2, y: box.y + box.height / 2 });
+  return target;
+}
+
+async function tapExposedLocator(touch, locator, label) {
+  const target = await waitForFirstVisible(locator, label);
+  const point = await target.evaluate((node) => {
+    const rect = node.getBoundingClientRect();
+    const fractions = [0.5, 0.25, 0.75];
+    for (const yFraction of fractions) {
+      for (const xFraction of fractions) {
+        const x = rect.left + rect.width * xFraction;
+        const y = rect.top + rect.height * yFraction;
+        const hit = document.elementFromPoint(x, y);
+        if (hit === node || node.contains(hit)) return { x, y };
+      }
+    }
+    return null;
+  });
+  invariant(point, `${label} has no exposed trusted-touch point`);
+  await touch.drag(point, point, { steps: 1 });
   return target;
 }
 
@@ -46,6 +66,16 @@ async function readTemplates(page) {
 
 function findTemplate(templates, id) {
   return templates.find((template) => template?.id === id) || null;
+}
+
+function entityStyle(entity) {
+  return {
+    color: entity?.color?.toLowerCase(),
+    opacity: entity?.opacity,
+    borderColor: entity?.borderColor?.toLowerCase(),
+    borderOpacity: entity?.borderOpacity,
+    matchFill: !!entity?.matchFill,
+  };
 }
 
 async function waitForTemplateModel(page, predicate, label) {
@@ -63,12 +93,21 @@ async function waitForTemplateModel(page, predicate, label) {
 }
 
 async function openTemplate(page, templateName, touch) {
+  const row = page.locator('.templates-mobile-row', { hasText: templateName });
+  await waitForFirstVisible(row, `template ${templateName}`, 10_000);
   await tapLocator(
     touch,
-    page.locator('.templates-mobile-row', { hasText: templateName }),
+    row,
     `template ${templateName}`,
   );
   await page.locator('.templates-mobile-detail').waitFor({ state: 'visible', timeout: 10_000 });
+}
+
+async function ensureTemplateList(page) {
+  if (await page.locator('.templates-mobile-detail:visible').count() > 0) {
+    await page.getByRole('button', { name: 'Templates', exact: true }).click();
+    await page.locator('.templates-mobile-row:visible').first().waitFor({ state: 'visible', timeout: 10_000 });
+  }
 }
 
 function categoryCardByName(page, categoryName, { mobile = true } = {}) {
@@ -76,9 +115,178 @@ function categoryCardByName(page, categoryName, { mobile = true } = {}) {
   return page.locator(`${base}:has(input[value=${JSON.stringify(categoryName)}])`);
 }
 
+async function ensureCategoryExpanded(touch, card, label) {
+  const items = card.locator('.templates-mobile-items');
+  if (await items.isVisible().catch(() => false)) return;
+  const disclosure = card.locator('.templates-mobile-category-row > button');
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    await tapLocator(touch, disclosure, `${label} disclosure`);
+    try {
+      await items.waitFor({ state: 'visible', timeout: 2_000 });
+      return;
+    } catch {
+      // A trusted tap can be consumed by the inline input's blur on WebKit;
+      // retry the same physical disclosure after the blur settles.
+    }
+  }
+  throw new Error(`Expected expanded ${label}`);
+}
+
 async function saveTemplate(page, touch) {
-  await tapLocator(touch, page.getByRole('button', { name: 'Save', exact: true }), 'Save templates');
+  await page.getByRole('button', { name: 'Save', exact: true }).click();
   await page.getByRole('button', { name: 'Save', exact: true }).waitFor({ state: 'hidden', timeout: 10_000 });
+}
+
+async function dragBetween(touch, from, to, label, { axis = 'vertical', holdMs = 0 } = {}) {
+  const explicitHandleBox = await from.evaluate((node) => {
+    const handle = node.matches?.('[data-drag-rearrange-handle]')
+      ? node
+      : node.querySelector?.('[data-drag-rearrange-handle]');
+    if (!handle) return null;
+    const rect = handle.getBoundingClientRect();
+    return { x: rect.x, y: rect.y, width: rect.width, height: rect.height };
+  });
+  const fromBox = invariant(explicitHandleBox || await from.boundingBox(), `${label}: source handle has no bounds`);
+  const toBox = invariant(await to.boundingBox(), `${label}: destination row has no bounds`);
+  const start = { x: fromBox.x + fromBox.width / 2, y: fromBox.y + fromBox.height / 2 };
+  const end = axis === 'horizontal'
+    ? { x: toBox.x + toBox.width / 2, y: start.y }
+    : { x: start.x, y: toBox.y + toBox.height / 2 };
+  if (holdMs > 0) {
+    await touch.start(start);
+    await new Promise((resolve) => setTimeout(resolve, holdMs));
+    for (let step = 1; step <= 16; step += 1) {
+      await touch.move({
+        x: start.x + ((end.x - start.x) * step) / 16,
+        y: start.y + ((end.y - start.y) * step) / 16,
+      });
+      await wait(12);
+    }
+    await touch.end();
+  } else {
+    await touch.drag(start, end, { steps: 16 });
+  }
+}
+
+async function coverTouchReorderPersistence({ page, touch, baseUrl, artifacts }) {
+  await page.goto(`${baseUrl}${TEMPLATE_WORKFLOW_ROUTE}`, { waitUntil: 'domcontentloaded', timeout: 60_000 });
+  await page.getByRole('heading', { name: 'Templates' }).waitFor({ state: 'visible', timeout: 30_000 });
+  const restoreTemplates = await readTemplates(page);
+  const reorderFixtures = [
+    {
+      id: 't1', name: 'Security Walk-Through',
+      entities: [{ id: 'e1', name: 'GC', color: '#d8a84e' }],
+      modules: [
+        {
+          id: 'm1', name: 'Installation Phase', categories: [
+            { id: 'c1', name: 'Cameras', checklist: [
+              { id: 'i1', text: 'Is the camera cable pulled?' },
+              { id: 'i2', text: 'Is the camera installed?' },
+            ] },
+            { id: 'c2', name: 'Doors', checklist: [{ id: 'i3', text: 'Is the door roughed in?' }] },
+          ],
+        },
+        { id: 'm2', name: 'Commissioning Phase', categories: [{ id: 'c3', name: 'Testing', checklist: [] }] },
+      ],
+    },
+    {
+      id: 't2', name: 'MEP As-Built Markup',
+      entities: [{ id: 'e2', name: 'MEP', color: '#7ab7e6' }],
+      modules: [{ id: 'm3', name: 'Equipment', categories: [] }],
+    },
+  ];
+  await page.evaluate(({ key, fixtures }) => {
+    localStorage.setItem(key, JSON.stringify(fixtures));
+  }, { key: TEMPLATE_WORKFLOW_STORAGE_KEY, fixtures: reorderFixtures });
+  await page.reload({ waitUntil: 'domcontentloaded', timeout: 60_000 });
+  await waitForTemplateModel(page, (templates) => templates.length >= 2, 'seeded templates');
+  const originalTemplates = await readTemplates(page);
+  const orderPreferenceKey = 'surveyHub.templateOrder:isaiahcalvo123@gmail.com';
+  const originalOrderPreference = await page.evaluate((key) => localStorage.getItem(key), orderPreferenceKey);
+
+  const templateRows = page.locator('.templates-mobile-row:visible');
+  const secondTemplateId = originalTemplates[1].id;
+  await dragBetween(
+    touch,
+    page.locator(`[data-sortable-rearrange-item="${secondTemplateId}"]:visible`),
+    page.locator(`[data-sortable-rearrange-item="${originalTemplates[0].id}"]:visible`),
+    'template touch reorder',
+  );
+  await page.waitForFunction(({ key, id }) => JSON.parse(localStorage.getItem(key) || '[]')?.[0] === id,
+    { key: orderPreferenceKey, id: secondTemplateId }, { timeout: 5_000 });
+  await page.reload({ waitUntil: 'domcontentloaded', timeout: 60_000 });
+  invariant((await templateRows.first().innerText()).includes(originalTemplates[1].name), 'Template touch reorder changed after reload');
+
+  await openTemplate(page, originalTemplates[0].name, touch);
+  await dragBetween(
+    touch,
+    page.locator(`[data-module-tab-id="m2"]:visible`),
+    page.locator(`[data-module-tab-id="m1"]:visible`),
+    'module touch reorder',
+    { axis: 'horizontal', holdMs: 190 },
+  );
+  await page.waitForTimeout(300);
+  await saveTemplate(page, touch);
+  await page.reload({ waitUntil: 'domcontentloaded', timeout: 60_000 });
+  await ensureTemplateList(page);
+  await openTemplate(page, originalTemplates[0].name, touch);
+  await page.locator('[data-module-tab-id="m1"]:visible').click();
+  await page.locator('[data-sortable-rearrange-item="c1"]:visible').waitFor({ state: 'visible', timeout: 10_000 });
+  await dragBetween(
+    touch,
+    page.locator('[data-sortable-rearrange-item="c2"]:visible'),
+    page.locator('[data-sortable-rearrange-item="c1"]:visible'),
+    'category touch reorder',
+  );
+  await page.waitForTimeout(300);
+  await saveTemplate(page, touch);
+  await page.reload({ waitUntil: 'domcontentloaded', timeout: 60_000 });
+  await ensureTemplateList(page);
+  await openTemplate(page, originalTemplates[0].name, touch);
+  await page.locator('[data-module-tab-id="m1"]:visible').click();
+  await ensureCategoryExpanded(touch, categoryCardByName(page, 'Cameras'), 'Cameras');
+  const installedItem = page.locator('.templates-mobile-item-row:has(input[value="Is the camera installed?"]):visible').locator('..');
+  const cableItem = page.locator('.templates-mobile-item-row:has(input[value="Is the camera cable pulled?"]):visible').locator('..');
+  await installedItem.waitFor({ state: 'visible', timeout: 10_000 });
+  await dragBetween(
+    touch,
+    installedItem,
+    cableItem,
+    'checklist item touch reorder',
+  );
+  await page.waitForTimeout(300);
+  await saveTemplate(page, touch);
+  let templates = await waitForTemplateModel(
+    page,
+    (value) => {
+      const template = value.find((entry) => entry.id === 't1');
+      const installation = template?.modules?.find((module) => module.id === 'm1');
+      const cameras = installation?.categories?.find((category) => category.id === 'c1');
+      return template?.modules?.[0]?.id === 'm2'
+        && installation?.categories?.[0]?.id === 'c2'
+        && cameras?.checklist?.[0]?.id === 'i2';
+    },
+    'touch reorder persistence',
+  );
+  await page.reload({ waitUntil: 'domcontentloaded', timeout: 60_000 });
+  templates = await readTemplates(page);
+  const reloaded = templates.find((entry) => entry.id === 't1');
+  invariant(reloaded.modules[0].id === 'm2', 'Module touch reorder changed after reload');
+  invariant(reloaded.modules.find((module) => module.id === 'm1').categories[0].id === 'c2', 'Category touch reorder changed after reload');
+  invariant(reloaded.modules.find((module) => module.id === 'm1').categories.find((category) => category.id === 'c1').checklist[0].id === 'i2', 'Item touch reorder changed after reload');
+  await artifacts?.screenshot?.(page, 'template-touch-reorders-reloaded');
+
+  await page.evaluate(({ key, orderKey, orderValue, templates: snapshot }) => {
+    localStorage.setItem(key, JSON.stringify(snapshot));
+    if (orderValue == null) localStorage.removeItem(orderKey);
+    else localStorage.setItem(orderKey, orderValue);
+  }, {
+    key: TEMPLATE_WORKFLOW_STORAGE_KEY,
+    orderKey: orderPreferenceKey,
+    orderValue: originalOrderPreference,
+    templates: restoreTemplates,
+  });
+  await page.reload({ waitUntil: 'domcontentloaded', timeout: 60_000 });
 }
 
 async function createTemplateTree({ page, touch, artifacts }) {
@@ -110,15 +318,18 @@ async function createTemplateTree({ page, touch, artifacts }) {
   const categoryInput = categoryCard.locator('.templates-mobile-category-row input');
   const categoryName = 'Mobile Survey Category';
   await fillAndCommit(categoryInput, categoryName);
+  const renamedCategoryCard = categoryCardByName(page, categoryName);
+  await renamedCategoryCard.waitFor({ state: 'visible', timeout: 10_000 });
+  await ensureCategoryExpanded(touch, renamedCategoryCard, `created category ${categoryName}`);
 
   const categoryId = invariant(await categoryCard.locator('[data-drag-rearrange-row]').getAttribute('data-rbd-draggable-id').catch(() => null)
     || await categoryCard.evaluate((node) => node.querySelector('[data-drag-rearrange-row]')?.parentElement?.getAttribute('data-sortable-id'))
     || `category:${categoryName}`,
   'Created category has no stable identity');
 
-  const addItem = categoryCard.getByRole('button', { name: 'Add checklist item', exact: false });
+  const addItem = renamedCategoryCard.getByRole('button', { name: 'Add checklist item', exact: false });
   await tapLocator(touch, addItem, 'Add checklist item');
-  const itemInput = categoryCard.locator('.templates-mobile-item-row input').last();
+  const itemInput = renamedCategoryCard.locator('.templates-mobile-item-row input').last();
   await itemInput.waitFor({ state: 'visible', timeout: 10_000 });
   const itemText = 'Mobile item persists after reload';
   await fillAndCommit(itemInput, itemText);
@@ -156,10 +367,227 @@ async function verifyTreeAfterReload({ page, touch, baseUrl, ids }) {
   await page.locator(`.templates-mobile-module-tabs [data-module-tab-id="${ids.moduleId}"]`).waitFor({ state: 'visible' });
   const category = categoryCardByName(page, ids.categoryName);
   await category.waitFor({ state: 'visible' });
-  await tapLocator(touch, category.locator('.templates-mobile-category-row > button'), 'Expand category');
+  await ensureCategoryExpanded(touch, category, `category ${ids.categoryName}`);
   const itemInput = category.locator('.templates-mobile-item-row input').first();
   await itemInput.waitFor({ state: 'visible' });
   invariant(await itemInput.inputValue() === ids.itemText, 'Checklist item text changed after hard reload');
+}
+
+async function coverEntitiesAndReload({ page, touch, baseUrl, ids, artifacts }) {
+  await tapLocator(touch, page.getByRole('button', { name: 'Entities', exact: true }), 'Open Entities');
+  const modal = page.getByRole('dialog', { name: 'Entities', exact: true });
+  await modal.waitFor({ state: 'visible', timeout: 10_000 });
+
+  const addEntity = modal.getByRole('button', { name: 'New entity', exact: true });
+  await tapLocator(touch, addEntity, 'New Inspector entity');
+  let rows = modal.locator('.templates-mobile-entity-row');
+  let inspectorRow = rows.last();
+  await fillAndCommit(inspectorRow.locator('input'), 'Inspector');
+  let colorPanel = modal.locator('.templates-mobile-color-panel:visible');
+  await tapLocator(touch, colorPanel.getByTitle('#00FF00'), 'Inspector fill green');
+  await tapLocator(touch, colorPanel.getByRole('button', { name: 'Border', exact: true }), 'Inspector border tab');
+  await tapLocator(touch, colorPanel.getByTitle('#0000FF'), 'Inspector border blue');
+  await tapLocator(touch, inspectorRow.getByTitle('Edit color'), 'Close Inspector color picker');
+  await colorPanel.waitFor({ state: 'hidden', timeout: 10_000 });
+  await page.waitForTimeout(950);
+
+  // Duplicate before Save: the clone must snapshot the live picker maps, not
+  // the last persisted roster values.
+  await tapLocator(touch, inspectorRow.locator('.templates-mobile-more'), 'Inspector More before save');
+  const duplicateInspector = await waitForFirstVisible(
+    page.getByRole('menuitem', { name: 'Duplicate', exact: true }),
+    'Duplicate Inspector before save',
+  );
+  await tapLocator(touch, duplicateInspector, 'Duplicate Inspector before save');
+  const inspectorCopyRow = modal.locator('.templates-mobile-entity-row:has(input[value="Inspector copy"])');
+  await inspectorCopyRow.waitFor({ state: 'visible', timeout: 10_000 });
+
+  await tapLocator(touch, addEntity, 'New Owner entity');
+  rows = modal.locator('.templates-mobile-entity-row');
+  const ownerRow = rows.last();
+  await fillAndCommit(ownerRow.locator('input'), 'Owner');
+  colorPanel = modal.locator('.templates-mobile-color-panel:visible');
+  await tapLocator(touch, colorPanel.getByTitle('#FF0000'), 'Owner fill red');
+  await tapLocator(touch, colorPanel.getByRole('button', { name: 'Border', exact: true }), 'Owner border tab');
+  await tapLocator(touch, colorPanel.getByTitle('#0000FF'), 'Owner border blue before match fill');
+  const matchFill = colorPanel.getByRole('checkbox');
+  await tapLocator(touch, matchFill, 'Owner match fill');
+  invariant(await matchFill.isChecked(), 'Owner Match fill did not enable');
+  await tapLocator(touch, ownerRow.getByTitle('Edit color'), 'Close Owner color picker');
+  await colorPanel.waitFor({ state: 'hidden', timeout: 10_000 });
+  // DismissBarrier deliberately retains its trailing click shield briefly after
+  // the picker unmounts so the same physical tap cannot activate the surface
+  // underneath it. Trusted touch automation does not always emit that click,
+  // therefore wait for the shield's bounded fallback before the next gesture.
+  await page.waitForTimeout(950);
+
+  inspectorRow = modal.locator('.templates-mobile-entity-row:has(input[value="Inspector"])');
+  const reorderedOwnerRow = modal.locator('.templates-mobile-entity-row:has(input[value="Owner"])');
+  await dragBetween(
+    touch,
+    reorderedOwnerRow.locator('xpath=..'),
+    inspectorRow.locator('xpath=..'),
+    'entity touch reorder',
+  );
+  await page.waitForTimeout(1_000);
+  await modal.getByRole('button', { name: 'Close', exact: true }).click();
+  await modal.waitFor({ state: 'hidden', timeout: 10_000 });
+
+  // Whole-template duplicate before Save. Its fresh entity ids must carry the
+  // same unsaved fill, opacity, border, and match-fill values through the
+  // duplicate's immediate persistence and a hard reload.
+  await page.locator('.templates-mobile-back-button').click();
+  const sourceRow = page.locator('.templates-mobile-row', { hasText: ids.templateName });
+  await sourceRow.waitFor({ state: 'visible', timeout: 10_000 });
+  await tapLocator(touch, sourceRow.getByTitle('More'), 'Source template More before save');
+  const copyBeforeSave = await waitForFirstVisible(
+    page.getByRole('menuitem', { name: 'Copy', exact: true }),
+    'Copy template before save',
+  );
+  await tapLocator(touch, copyBeforeSave, 'Copy template before save');
+  const unsavedCopyName = `${ids.templateName} copy`;
+
+  let templates = await waitForTemplateModel(
+    page,
+    (value) => {
+      const template = value.find((entry) => entry?.name?.startsWith('Mobile Template '));
+      const owner = template?.entities?.find((entity) => entity.name === 'Owner');
+      const inspector = template?.entities?.find((entity) => entity.name === 'Inspector');
+      const inspectorCopy = template?.entities?.find((entity) => entity.name === 'Inspector copy');
+      const templateCopy = value.find((entry) => entry?.name === `${template?.name} copy`);
+      const copiedOwner = templateCopy?.entities?.find((entity) => entity.name === 'Owner');
+      const copiedInspector = templateCopy?.entities?.find((entity) => entity.name === 'Inspector');
+      const copiedInspectorCopy = templateCopy?.entities?.find((entity) => entity.name === 'Inspector copy');
+      return template?.entities?.[0]?.name === 'Owner'
+        && owner?.color?.toLowerCase() === '#ff0000'
+        && owner?.matchFill === true
+        && owner?.borderColor?.toLowerCase() === '#ff0000'
+        && inspector?.color?.toLowerCase() === '#00ff00'
+        && inspector?.borderColor?.toLowerCase() === '#0000ff'
+        && inspector?.matchFill === false
+        && inspectorCopy?.color === inspector?.color
+        && inspectorCopy?.opacity === inspector?.opacity
+        && inspectorCopy?.borderColor === inspector?.borderColor
+        && inspectorCopy?.borderOpacity === inspector?.borderOpacity
+        && inspectorCopy?.matchFill === inspector?.matchFill
+        && copiedOwner?.color === owner?.color
+        && copiedOwner?.borderColor === owner?.borderColor
+        && copiedOwner?.matchFill === owner?.matchFill
+        && copiedInspector?.borderColor === inspector?.borderColor
+        && copiedInspectorCopy?.borderColor === inspectorCopy?.borderColor;
+    },
+    'unsaved entity and template duplicate styling',
+  );
+  let template = findTemplate(templates, ids.templateId);
+  const ownerId = invariant(template.entities.find((entity) => entity.name === 'Owner')?.id, 'Owner entity has no persisted id');
+  const inspectorId = invariant(template.entities.find((entity) => entity.name === 'Inspector')?.id, 'Inspector entity has no persisted id');
+  const inspectorCopyId = invariant(template.entities.find((entity) => entity.name === 'Inspector copy')?.id, 'Inspector copy has no persisted id');
+  const unsavedTemplateCopy = invariant(templates.find((entry) => entry.name === unsavedCopyName), 'Unsaved-styled template copy missing');
+  const expectedSourceStyles = Object.fromEntries(
+    template.entities
+      .filter((entity) => ['Owner', 'Inspector', 'Inspector copy'].includes(entity.name))
+      .map((entity) => [entity.name, entityStyle(entity)]),
+  );
+  const expectedCopyStyles = Object.fromEntries(
+    unsavedTemplateCopy.entities
+      .filter((entity) => ['Owner', 'Inspector', 'Inspector copy'].includes(entity.name))
+      .map((entity) => [entity.name, entityStyle(entity)]),
+  );
+  await page.reload({ waitUntil: 'domcontentloaded', timeout: 60_000 });
+  templates = await readTemplates(page);
+  template = findTemplate(templates, ids.templateId);
+  invariant(template?.entities?.[0]?.id === ownerId, 'Entity touch reorder changed after hard reload');
+  invariant(template?.entities?.some((entity) => entity.id === inspectorId && entity.borderColor.toLowerCase() === '#0000ff'), 'Entity colors changed after hard reload');
+  invariant(template?.entities?.some((entity) => entity.id === inspectorCopyId && entity.borderColor.toLowerCase() === '#0000ff'), 'Unsaved entity duplicate styling changed after hard reload');
+  const reloadedTemplateCopy = findTemplate(templates, unsavedTemplateCopy.id);
+  for (const name of ['Owner', 'Inspector', 'Inspector copy']) {
+    const reloadedSourceStyle = entityStyle(template.entities.find((entity) => entity.name === name));
+    const reloadedCopyStyle = entityStyle(reloadedTemplateCopy.entities.find((entity) => entity.name === name));
+    invariant(JSON.stringify(reloadedSourceStyle) === JSON.stringify(expectedSourceStyles[name]),
+      `Unsaved ${name} entity style changed after hard reload`);
+    invariant(JSON.stringify(reloadedCopyStyle) === JSON.stringify(expectedCopyStyles[name]),
+      `Unsaved template copy ${name} style changed after hard reload`);
+  }
+
+  const unsavedCopyRow = page.locator('.templates-mobile-row', { hasText: unsavedCopyName });
+  await unsavedCopyRow.scrollIntoViewIfNeeded();
+  await tapLocator(touch, unsavedCopyRow.getByTitle('More'), 'Unsaved-styled template copy More');
+  const deleteUnsavedCopy = await waitForFirstVisible(
+    page.getByRole('menuitem', { name: 'Delete', exact: true }),
+    'Delete unsaved-styled template copy',
+  );
+  await tapLocator(touch, deleteUnsavedCopy, 'Delete unsaved-styled template copy');
+  await waitForTemplateModel(
+    page,
+    (value) => !value.some((entry) => entry?.name?.endsWith(' copy')),
+    'unsaved-styled template copy cleanup',
+  );
+
+  await openTemplate(page, ids.templateName, touch);
+  await tapLocator(touch, page.getByRole('button', { name: 'Entities', exact: true }), 'Reopen Entities');
+  await modal.waitFor({ state: 'visible', timeout: 10_000 });
+  const persistedInspector = modal.locator('.templates-mobile-entity-row:has(input[value="Inspector"])');
+  await tapLocator(touch, persistedInspector.locator('.templates-mobile-more'), 'Inspector More');
+  const deleteInspector = await waitForFirstVisible(
+    page.getByRole('menuitem', { name: 'Delete', exact: true }),
+    'Delete Inspector',
+  );
+  await tapLocator(touch, deleteInspector, 'Delete Inspector');
+  await page.waitForTimeout(1_000);
+  await modal.getByRole('button', { name: 'Close', exact: true }).click();
+  await modal.waitFor({ state: 'hidden', timeout: 10_000 });
+  await saveTemplate(page, touch);
+  await waitForTemplateModel(
+    page,
+    (value) => !value.find((entry) => entry?.name?.startsWith('Mobile Template '))?.entities?.some((entity) => entity.name === 'Inspector'),
+    'entity delete',
+  );
+  await page.reload({ waitUntil: 'domcontentloaded', timeout: 60_000 });
+  invariant(!findTemplate(await readTemplates(page), ids.templateId)?.entities?.some((entity) => entity.id === inspectorId), 'Deleted entity returned after reload');
+  await artifacts?.screenshot?.(page, 'entities-persisted-reloaded');
+  return { ownerId, inspectorId, inspectorCopyId };
+}
+
+async function coverTemplateDuplicateReload({ page, touch, baseUrl, ids }) {
+  await page.goto(`${baseUrl}${TEMPLATE_WORKFLOW_ROUTE}`, { waitUntil: 'domcontentloaded', timeout: 60_000 });
+  const sourceRow = page.locator('.templates-mobile-row', { hasText: ids.templateName });
+  await sourceRow.waitFor({ state: 'visible', timeout: 30_000 });
+  await tapLocator(touch, sourceRow.getByTitle('More'), 'Source template More');
+  const copyAction = await waitForFirstVisible(page.getByRole('menuitem', { name: 'Copy', exact: true }), 'Copy template');
+  await tapLocator(touch, copyAction, 'Copy template');
+  const copyName = `${ids.templateName} copy`;
+  let templates = await waitForTemplateModel(
+    page,
+    (value) => value.some((template) => template?.name?.endsWith(' copy') && template?.name?.startsWith('Mobile Template ')),
+    'template duplicate',
+  );
+  const source = invariant(findTemplate(templates, ids.templateId), 'Source template vanished during duplicate');
+  const copy = invariant(templates.find((template) => template.name === copyName), 'Persisted template copy missing');
+  invariant(copy.id !== source.id, 'Template copy reused source id');
+  invariant(copy.modules[0]?.id !== source.modules[0]?.id, 'Template copy reused module id');
+  invariant(copy.modules[0]?.categories[0]?.id !== source.modules[0]?.categories[0]?.id, 'Template copy reused category id');
+  invariant(copy.modules[0]?.categories[0]?.checklist[0]?.id !== source.modules[0]?.categories[0]?.checklist[0]?.id, 'Template copy reused checklist id');
+  invariant(copy.entities[0]?.id !== source.entities[0]?.id, 'Template copy reused entity id');
+  invariant(copy.entities[0]?.color === source.entities[0]?.color && copy.entities[0]?.matchFill === source.entities[0]?.matchFill,
+    'Template copy changed persisted entity styling');
+  await page.reload({ waitUntil: 'domcontentloaded', timeout: 60_000 });
+  templates = await readTemplates(page);
+  invariant(templates.some((template) => template.id === copy.id), 'Duplicated template returned missing after reload');
+
+  const copyRow = page.locator('.templates-mobile-row', { hasText: copyName });
+  await copyRow.scrollIntoViewIfNeeded();
+  await copyRow.waitFor({ state: 'visible', timeout: 10_000 });
+  await tapLocator(touch, copyRow.getByTitle('More'), 'Copied template More');
+  const deleteCopy = await waitForFirstVisible(
+    page.getByRole('menuitem', { name: 'Delete', exact: true }),
+    'Delete copied template',
+  );
+  await tapLocator(touch, deleteCopy, 'Delete copied template');
+  await waitForTemplateModel(page, (value) => !value.some((template) => template.name.endsWith(' copy')), 'template copy cleanup');
+  await page.reload({ waitUntil: 'domcontentloaded', timeout: 60_000 });
+  invariant(await page.getByText(copyName, { exact: true }).count() === 0, 'Deleted template copy returned after reload');
+  await openTemplate(page, ids.templateName, touch);
+  return { copyId: copy.id };
 }
 
 async function coverDeletes({ page, touch, ids }) {
@@ -167,6 +595,7 @@ async function coverDeletes({ page, touch, ids }) {
 
   // Item delete: create a disposable row, edit it, then delete it through its
   // visible touch action. The primary item remains for the viewer survey.
+  await ensureCategoryExpanded(touch, primaryCategory, 'primary category');
   await tapLocator(touch, primaryCategory.getByRole('button', { name: 'Add checklist item', exact: false }), 'Add disposable checklist item');
   const disposableItem = primaryCategory.locator('.templates-mobile-item-row').last();
   await fillAndCommit(disposableItem.locator('input'), 'Disposable mobile item');
@@ -179,7 +608,8 @@ async function coverDeletes({ page, touch, ids }) {
   const disposableCategoryNamed = categoryCardByName(page, 'Disposable mobile category');
   const categoriesSection = page.locator('.templates-mobile-categories-section');
   await tapLocator(touch, categoriesSection.getByRole('button', { name: 'Select', exact: true }), 'Select categories');
-  await tapLocator(touch, disposableCategoryNamed.locator('.templates-mobile-check'), 'Disposable category checkbox');
+  await tapExposedLocator(touch, disposableCategoryNamed.locator('.templates-mobile-check'), 'Disposable category checkbox');
+  await disposableCategoryNamed.locator('.templates-mobile-check.checked').waitFor({ state: 'visible' });
   await tapLocator(touch, categoriesSection.getByTitle('Delete'), 'Delete category');
   await page.waitForFunction(() => ![...document.querySelectorAll('.templates-mobile-category-card input')]
     .some((input) => input.value === 'Disposable mobile category'));
@@ -317,23 +747,22 @@ async function runMarkerThroughCreatedSurvey({ page, touch, ids, artifacts }) {
   await armCreatedSurveyInViewer({ page, touch, ids });
 
   const collapse = await firstVisible(page.getByRole('button', { name: 'Collapse Survey panel' }));
-  if (collapse) await tapLocator(touch, collapse, 'Collapse Survey panel');
+  if (collapse) {
+    await tapLocator(touch, collapse, 'Collapse Survey panel');
+    await page.getByRole('button', { name: 'Expand Survey panel' })
+      .waitFor({ state: 'visible', timeout: 5_000 });
+  }
   await tapLocator(touch, page.getByRole('button', { name: 'Select', exact: true }), 'Select tool');
   const hit = page.locator(`[data-survey-marker-id="${markerId}"] [data-survey-marker-hit-target="true"]`);
-  const hitBox = invariant(await hit.boundingBox(), 'Survey Marker has no touch hit target');
-  const point = { x: hitBox.x + hitBox.width / 2, y: hitBox.y + hitBox.height / 2 };
-  await touch.tap(point);
-  await wait(80);
-  await touch.tap(point);
   const renamed = `${originalName} mobile edited`;
   const rename = page.getByRole('textbox', { name: `Rename ${originalName}` });
-  if (!await rename.isVisible().catch(() => false)) {
-    await wait(450);
-    const retryBox = invariant(await hit.boundingBox(), 'Selected Survey Marker lost its hit target');
-    const retryPoint = { x: retryBox.x + retryBox.width / 2, y: retryBox.y + retryBox.height / 2 };
-    await touch.tap(retryPoint);
+  for (let attempt = 0; attempt < 3 && !await rename.isVisible().catch(() => false); attempt += 1) {
+    const hitBox = invariant(await hit.boundingBox(), 'Survey Marker has no touch hit target');
+    const point = { x: hitBox.x + hitBox.width / 2, y: hitBox.y + hitBox.height / 2 };
+    await touch.tap(point);
     await wait(80);
-    await touch.tap(retryPoint);
+    await touch.tap(point);
+    await rename.waitFor({ state: 'visible', timeout: 2_000 }).catch(() => {});
   }
   await rename.waitFor({ state: 'visible', timeout: 10_000 });
   await fillAndCommit(rename, renamed);
@@ -376,7 +805,7 @@ async function deleteTemplateAndVerify({ page, touch, baseUrl, ids }) {
   await row.waitFor({ state: 'visible', timeout: 30_000 });
   await tapLocator(touch, row.getByTitle('More'), 'Template More menu');
   const deleteTemplate = await waitForFirstVisible(
-    page.getByRole('button', { name: 'Delete', exact: true }),
+    page.getByRole('menuitem', { name: 'Delete', exact: true }),
     'Delete template',
   );
   await tapLocator(touch, deleteTemplate, 'Delete template');
@@ -389,8 +818,11 @@ async function deleteTemplateAndVerify({ page, touch, baseUrl, ids }) {
 export async function runSurveyTemplateWorkflow({ page, touch, baseUrl, artifacts = null }) {
   await page.goto(`${baseUrl}${TEMPLATE_WORKFLOW_ROUTE}`, { waitUntil: 'domcontentloaded', timeout: 60_000 });
   await page.getByRole('heading', { name: 'Templates' }).waitFor({ state: 'visible', timeout: 30_000 });
+  await coverTouchReorderPersistence({ page, touch, baseUrl, artifacts });
   const ids = await createTemplateTree({ page, touch, artifacts });
   await verifyTreeAfterReload({ page, touch, baseUrl, ids });
+  const entities = await coverEntitiesAndReload({ page, touch, baseUrl, ids, artifacts });
+  const duplicate = await coverTemplateDuplicateReload({ page, touch, baseUrl, ids });
   await coverDeletes({ page, touch, ids });
   await openCreatedSurveyInViewer({ page, touch, ids, baseUrl });
   const marker = await runMarkerThroughCreatedSurvey({ page, touch, ids, artifacts });
@@ -398,8 +830,10 @@ export async function runSurveyTemplateWorkflow({ page, touch, baseUrl, artifact
   const result = {
     status: 'passed',
     workflow: 'survey-template',
-    lifecycle: 'create-template-module-category-item-edit-save-reload-delete-nested-open-survey-create-edit-reload-delete-marker-delete-template-reload',
+    lifecycle: 'template-module-category-item-entity-touch-reorder-reload-create-template-module-category-item-entity-crud-colors-border-match-fill-reload-template-duplicate-reload-delete-nested-open-survey-create-edit-reload-delete-marker-delete-template-reload',
     ...ids,
+    ...entities,
+    ...duplicate,
     ...marker,
   };
   artifacts?.recordScenario?.(result);

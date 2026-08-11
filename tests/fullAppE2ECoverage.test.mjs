@@ -15,6 +15,7 @@ test('default fast full-app gate covers every requested mobile product area', ()
     'annotations',
     'advanced',
     'advanced-entities',
+    'secondary',
     'viewer',
     'projects',
     'surveys',
@@ -34,6 +35,8 @@ test('default fast full-app gate covers every requested mobile product area', ()
     'signed-out account chrome',
     'sync-status details',
     'first-page readiness timing budget',
+    'bookmark CRUD',
+    'export/reimport exact',
   ]) {
     assert.match(defaultCopy, new RegExp(phrase.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i'));
   }

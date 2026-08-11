@@ -882,6 +882,56 @@
     padding: 0 9px;
   }
 
+  /* Keep the compact 28px header chrome, while its transparent hit layer is
+     44px tall. Generated content belongs to the button for hit testing, so a
+     tap in the added area activates the same control without shifting rows. */
+  .survey-hub .hub-mobile-primary-action,
+  .survey-hub .projects-mobile-search-actions .projects-mobile-back-button,
+  .survey-hub .templates-mobile-search-actions .templates-mobile-back-button,
+  .survey-hub .mobile-header-select-button,
+  .survey-hub .documents-mobile-filter,
+  .survey-hub .mobile-profile .profile-signin,
+  .survey-hub .templates-mobile-save-row button,
+  .survey-hub .templates-mobile-entities-button,
+  .survey-hub .templates-mobile-section-head button,
+  .survey-hub .templates-mobile-add-line,
+  .survey-hub .templates-mobile-module-group-head button {
+    position: relative;
+  }
+
+  .survey-hub .hub-mobile-primary-action::after,
+  .survey-hub .projects-mobile-search-actions .projects-mobile-back-button::after,
+  .survey-hub .templates-mobile-search-actions .templates-mobile-back-button::after,
+  .survey-hub .mobile-header-select-button::after,
+  .survey-hub .documents-mobile-filter::after,
+  .survey-hub .mobile-profile .profile-signin::after,
+  .survey-hub .templates-mobile-save-row button::after,
+  .survey-hub .templates-mobile-entities-button::after,
+  .survey-hub .templates-mobile-section-head button::after,
+  .survey-hub .templates-mobile-add-line::after,
+  .survey-hub .templates-mobile-module-group-head button::after {
+    content: '';
+    position: absolute;
+    inset-block: -8px;
+    inset-inline: 0;
+    z-index: 1;
+    background: transparent;
+    pointer-events: auto;
+  }
+
+  /* Header actions and the lower sort/filter row are only ~38px apart. Keep
+     each target at 44px without letting their transparent hit layers overlap:
+     primary actions grow upward, while the sort control grows downward. */
+  .survey-hub .hub-mobile-primary-action::after,
+  .survey-hub .projects-mobile-search-actions .projects-mobile-back-button::after,
+  .survey-hub .templates-mobile-search-actions .templates-mobile-back-button::after {
+    inset-block: -16px 0;
+  }
+
+  .survey-hub .documents-mobile-filter::after {
+    inset-block: -8px;
+  }
+
   .survey-hub .projects-mobile-search-actions .projects-mobile-create-button,
   .survey-hub .templates-mobile-search-actions .templates-mobile-create-button {
     height: 28px;
@@ -915,7 +965,10 @@
   .survey-hub .mobile-header-select-row {
     order: 4;
     width: 100%;
-    height: 28px;
+    height: 44px;
+    margin-block: -8px;
+    padding-block: 8px;
+    box-sizing: border-box;
     display: flex;
     align-items: center;
     gap: 10px;
@@ -927,6 +980,7 @@
 
   .survey-hub .mobile-header-select-button {
     height: 28px;
+    min-width: 44px;
     flex: none;
     display: inline-flex;
     align-items: center;
@@ -975,7 +1029,10 @@
 
   .survey-hub .documents-mobile-select-main {
     min-width: 0;
-    height: 28px;
+    height: 44px;
+    margin-block: -8px;
+    padding-block: 8px;
+    box-sizing: border-box;
     display: flex;
     align-items: center;
     overflow-x: auto;
@@ -989,9 +1046,12 @@
   }
 
   .survey-hub .documents-mobile-sort-control {
-    display: block;
+    display: flex;
+    align-items: center;
     width: 112px;
-    height: 28px;
+    height: 44px;
+    margin-block: -8px;
+    box-sizing: border-box;
     position: relative;
   }
 
@@ -1004,12 +1064,32 @@
   .survey-hub .documents-mobile-filter {
     width: 112px;
     min-width: 112px;
-    height: 28px;
-    padding: 5px 10px;
+    height: 44px;
+    padding: 0;
+    border: 0;
+    background: transparent;
     justify-content: center;
   }
 
-  .survey-hub .documents-mobile-filter span {
+  .survey-hub .documents-mobile-filter::after {
+    display: none;
+  }
+
+  .survey-hub .documents-mobile-filter-visual {
+    width: 112px;
+    height: 28px;
+    box-sizing: border-box;
+    padding: 5px 10px;
+    border: 1px solid var(--ink-500);
+    border-radius: 6px;
+    background: var(--ink-700);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+  }
+
+  .survey-hub .documents-mobile-filter-visual span {
     min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -1190,8 +1270,8 @@
   }
 
   .survey-hub .mobile-profile .who > button {
-    width: 38px !important;
-    height: 38px;
+    width: 44px !important;
+    height: 44px;
     padding: 0 !important;
     justify-content: center;
   }
@@ -2590,7 +2670,11 @@
 
   .survey-hub .templates-mobile-select-inline {
     min-width: 0;
-    min-height: 28px;
+    height: 44px;
+    min-height: 44px;
+    margin-block: -8px;
+    padding-block: 8px;
+    box-sizing: border-box;
     display: flex;
     align-items: center;
     gap: 10px;
@@ -2618,13 +2702,13 @@
   }
 
   .survey-hub .templates-mobile-category-row {
-    grid-template-columns: 24px 24px minmax(0, 1fr) 28px 20px;
-    min-height: 42px;
+    grid-template-columns: 44px 44px minmax(0, 1fr) 44px 44px;
+    min-height: 44px;
   }
 
   .survey-hub .templates-mobile-category-toggle {
-    width: 24px;
-    height: 24px;
+    width: 44px;
+    height: 44px;
     border: 0;
     border-radius: 5px;
     background: transparent;
@@ -2660,15 +2744,15 @@
   }
 
   .survey-hub .templates-mobile-item-row {
-    grid-template-columns: 20px minmax(0, 1fr) 24px;
-    min-height: 34px;
+    grid-template-columns: 44px minmax(0, 1fr) 44px;
+    min-height: 44px;
     padding: 6px 0;
     border-top: 1px solid rgba(42,49,64,0.58);
   }
 
   .survey-hub .templates-mobile-item-row > button {
-    width: 24px;
-    height: 24px;
+    width: 44px;
+    height: 44px;
     border: 0;
     background: transparent;
     color: var(--ink-200);
@@ -2702,9 +2786,9 @@
   }
 
   .survey-hub .templates-mobile-archived > div:not(:first-child) {
-    min-height: 30px;
+    min-height: 44px;
     display: grid;
-    grid-template-columns: minmax(0, 1fr) 24px;
+    grid-template-columns: minmax(0, 1fr) 44px;
     gap: 8px;
     align-items: center;
     border-top: 1px dashed rgba(42,49,64,0.58);
@@ -2722,8 +2806,8 @@
   }
 
   .survey-hub .templates-mobile-archived button {
-    width: 24px;
-    height: 24px;
+    width: 44px;
+    height: 44px;
     border: 0;
     background: transparent;
     color: #cf6f6f;
@@ -2747,8 +2831,25 @@
   }
 
   .survey-hub .templates-mobile-entity-row {
-    grid-template-columns: 24px 22px minmax(0, 1fr) 28px;
+    grid-template-columns: 44px 44px minmax(0, 1fr) 44px;
     min-height: 44px;
+  }
+
+  .survey-hub [data-drag-rearrange-handle] {
+    width: 44px !important;
+    height: 44px !important;
+  }
+
+  .survey-hub button[title="More"] {
+    width: 44px !important;
+    height: 44px !important;
+  }
+
+  /* Right-edge list columns are visually 28px wide. Center the 44px target
+     on that column so neither side is clipped by the scrollport. */
+  .survey-hub .projects-mobile-folder-row.reorderable > button[title="More"],
+  .survey-hub .templates-mobile-row.reorderable > button[title="More"] {
+    justify-self: center;
   }
 
   .survey-hub .templates-mobile-modal-scrim {
@@ -2813,7 +2914,8 @@
   }
 
   .survey-hub .templates-mobile-entity-modal-head button {
-    height: 30px;
+    min-width: 44px;
+    height: 44px;
     border: 1px solid var(--ink-500);
     border-radius: 7px;
     background: var(--ink-700);
@@ -2835,16 +2937,26 @@
   }
 
   .survey-hub .templates-mobile-entity-row > button[title="Edit color"] {
-    width: 20px;
-    height: 20px;
-    border: 1.5px solid currentColor;
-    border-radius: 50%;
+    width: 44px;
+    height: 44px;
+    display: grid;
+    place-items: center;
+    border: 0;
+    background: transparent;
     padding: 0;
   }
 
+  .survey-hub .templates-mobile-entity-row > button[title="Edit color"] > span {
+    width: 20px;
+    height: 20px;
+    border: 1.5px solid var(--entity-border-color, currentColor);
+    border-radius: 50%;
+    background: var(--entity-color, currentColor);
+  }
+
   .survey-hub .templates-mobile-more {
-    width: 28px;
-    height: 28px;
+    width: 44px;
+    height: 44px;
     border: 0;
     border-radius: 6px;
     background: transparent;

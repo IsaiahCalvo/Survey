@@ -17,6 +17,7 @@ import {
   getSupabaseSession,
   recoverSupabaseAuthSession,
 } from '../supabaseClient';
+import { requestAccountDeletion, unlinkOAuthProvider } from '../utils/accountPlatform';
 
 export const AuthContext = createContext({});
 
@@ -656,6 +657,36 @@ export const AuthProvider = ({ children }) => {
     window.location.reload();
   };
 
+  // Disconnect an optional OAuth identity without signing the Survey account
+  // out. Supabase deliberately refuses to unlink the final identity because
+  // that would leave the user with no way back into the account.
+  const unlinkProvider = async (provider) => {
+    if (!isSupabaseAvailable()) throw new Error('Supabase is not configured');
+    const nextUser = await unlinkOAuthProvider({
+      auth: supabase.auth,
+      user: userRef.current,
+      provider,
+    });
+    userRef.current = nextUser;
+    setUser(nextUser);
+    return nextUser;
+  };
+
+  const deleteAccount = async () => {
+    if (!isSupabaseAvailable()) throw new Error('Supabase is not configured');
+    setDevAuthAutoLoginSuppressed(true);
+    const data = await requestAccountDeletion(supabase.functions);
+
+    // The server has removed the Auth user. Clear the local refresh token even
+    // when GoTrue can no longer accept a normal sign-out for that deleted user.
+    try { await supabase.auth.signOut({ scope: 'local' }); } catch { /* local state below is authoritative */ }
+    userRef.current = null;
+    setUser(null);
+    setSession(null);
+    window.location.reload();
+    return data;
+  };
+
   // Resend the signup confirmation email (rate-limited server-side; the
   // AuthModal also applies a client cooldown so users can't hammer it)
   const resendConfirmation = async (email) => {
@@ -742,6 +773,8 @@ export const AuthProvider = ({ children }) => {
     signInWithGoogle,
     signInWithSSO,
     signOut,
+    unlinkProvider,
+    deleteAccount,
     resendConfirmation,
     resetPassword,
     updatePassword,

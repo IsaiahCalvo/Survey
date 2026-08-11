@@ -43,7 +43,7 @@ import { useAuth } from './contexts/AuthContext';
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import { useMSGraph } from './contexts/MSGraphContext';
 import { useOptionalAuth } from './components/OptionalAuthPrompt';
-import { useTemplates } from './hooks/useDatabase';
+import { useStorage, useTemplates } from './hooks/useDatabase';
 
 import { FONT_FAMILY, REVIEW_TOOL_IDS, ZOOM_MODE_OPTIONS, appDebug, coerceScrollMode, ensureRgbaOpacity, getWindowTrackpadInteractionDebugSavePayload, hexToRgba, writeSaveLogExtraFiles } from './viewerShared';
 // Lazy boundary: the dashboard paints without pulling in the viewer (and its
@@ -57,6 +57,8 @@ const CompactColorPicker = lazy(() => import('./components/CompactColorPicker'))
 
 export default function App({ devPreviewReturnTab = null }) {
   useEffect(() => schedulePdfViewerPrefetch(loadPDFViewerModule), []);
+
+  const { replaceDocument } = useStorage();
 
   // Microsoft Graph authentication hook
   const { graphClient, isAuthenticated: isMSAuthenticated, login: msLogin, account: msAccount, needsReconnect: msNeedsReconnect, ensureFreshToken, getAuthSignals: msGetAuthSignals } = useMSGraph();
@@ -922,7 +924,11 @@ export default function App({ devPreviewReturnTab = null }) {
   }, [tabs, activeTabId]);
 
   // Memoized callback to update PDF file
-  const handleUpdatePDFFile = useCallback((newFile, targetTabId) => {
+  const handleUpdatePDFFile = useCallback(async (newFile, targetTabId) => {
+    const durablePath = newFile?.supabaseFilePath || newFile?.filePath || null;
+    if (newFile?.id && durablePath) {
+      await replaceDocument(newFile, durablePath);
+    }
     setTabs(prev => {
       if (targetTabId) {
         return prev.map(tab =>
@@ -940,7 +946,18 @@ export default function App({ devPreviewReturnTab = null }) {
     if (!targetTabId || targetTabId === activeTabId) {
       setSelectedPDF(newFile);
     }
-  }, [selectedPDF, activeTabId]);
+    setDocuments((prev) => prev.map((document) => (
+      document?.id === newFile?.id
+        ? {
+          ...document,
+          size: newFile.size,
+          file_size: newFile.size,
+          updated_at: new Date().toISOString(),
+        }
+        : document
+    )));
+    return newFile;
+  }, [selectedPDF, activeTabId, replaceDocument]);
 
   const handleTabClose = (tabId) => {
     // Prevent closing the home tab

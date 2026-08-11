@@ -52,6 +52,23 @@ test('home skeletons appear only during an empty first load, never a later refet
   assert.match(HUB, /templatesInitialLoading\s*\?\s*\(/);
 });
 
+test('failed first loads render retryable tab errors instead of false empty states', () => {
+  for (const name of [
+    'documentsLoadError',
+    'projectsLoadError',
+    'templatesLoadError',
+    'onRetryDocuments',
+    'onRetryProjects',
+    'onRetryTemplates',
+  ]) {
+    assert.match(DASHBOARD, new RegExp(name));
+    assert.match(HUB, new RegExp(name));
+  }
+  assert.match(HUB, /role="alert"/);
+  assert.match(HUB, />Try again</);
+  assert.match(DATABASE_HOOKS, /setError\(null\)/);
+});
+
 test('a late request from an old user or project cannot replace the current scope', () => {
   const requestA = { requestId: 1, requestScopeKey: 'user-a:project-a' };
   const requestB = { requestId: 2, requestScopeKey: 'user-b:project-b' };

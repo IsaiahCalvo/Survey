@@ -208,6 +208,7 @@ import { useYDoc } from './hooks/useYDoc.js';
 import { useZoomState } from './hooks/useZoomState';
 import { useAnnotationContextMenu, renderAnnotationContextMenu } from './hooks/useAnnotationContextMenu.jsx';
 import { usePageOperations } from './hooks/usePageOperations.js';
+import { pageNumberAfterOperation } from './utils/pageAnnotationReindex.js';
 import { usePdfjsFormFieldPersistence } from './hooks/usePdfjsFormFieldPersistence.js';
 import { useRegionOverlayVisibility } from './hooks/useRegionOverlayVisibility.js';
 import { userRedo, userUndo } from './lib/collab/crdtUndoManager.js';
@@ -271,6 +272,8 @@ import {
   applyRegionMaskToCanvasContext,
   buildOutlinePageLookup,
   categoryExists,
+  cloneMissingTransferCategories,
+  persistTemplateBeforeDocumentMutation,
   clampWheelDelta,
   cloneOverlayRecorderPayload,
   coercePageNumber,
@@ -11915,13 +11918,84 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
 
 
-  // Sidebar handlers — page add / delete / duplicate / reorder / rotate /
-  // mirror / reset / cut-copy-paste / insert-blank. Extracted to the
-  // usePageOperations hook; the four state cells stay here (they are
-  // co-serialized with bookmarks + spaces in the sidebar localStorage
-  // effects, out of this concern) and are passed in. Returned handlers keep
-  // their names so the leftRail publisher + PageAnnotationLayer render sites
-  // below are unchanged.
+  // Page mutations stage one complete physical-page identity graph. The hook
+  // persists the rewritten PDF first; only then does this callback publish the
+  // remapped annotation/sidebar stores together. `_surveyPdfId` stays stable,
+  // so the same-document reload path cannot hydrate the pre-mutation keys.
+  const pageStructureStateRef = useRef(null);
+  pageStructureStateRef.current = {
+    annotationsByPage: annotationsByPageRef.current || {},
+    surveyMarkers: surveyMarkersRef.current || {},
+    annotations: annotations || {},
+    pageNames: pageNames || {},
+    pageTransformations: pageTransformations || {},
+    bookmarks: bookmarks || [],
+    spaces: spacesRef.current || [],
+    regionOverlayDisabled: regionOverlayDisabled || new Map(),
+  };
+  const getPageStructureState = useCallback(() => pageStructureStateRef.current, []);
+  const persistPageMutationFile = useCallback((file) => (
+    onUpdatePDFFile?.(file, tabId)
+  ), [onUpdatePDFFile, tabId]);
+  const commitPageStructureState = useCallback((next, operation) => {
+    pageStructureStateRef.current = next;
+    annotationsByPageRef.current = next.annotationsByPage;
+    surveyMarkersRef.current = next.surveyMarkers;
+    spacesRef.current = next.spaces;
+    setAnnotationsByPage(next.annotationsByPage);
+    setSurveyMarkers(next.surveyMarkers);
+    setAnnotations(next.annotations);
+    setPageNames(next.pageNames);
+    setPageTransformations(next.pageTransformations);
+    setBookmarks(next.bookmarks);
+    setSpaces(next.spaces);
+    setRegionOverlayDisabled(next.regionOverlayDisabled);
+    setUndoHistory([]);
+    setRedoHistory([]);
+    clearAnnotationSelectionForContextChange('page-structure-change');
+
+    // Persist synchronously at the commit boundary. React effects retain their
+    // normal backup writes, but a hard reopen immediately after the action sees
+    // the transformed graph rather than racing a later effect.
+    if (pdfId) {
+      saveAnnotationsByPage(pdfId, next.annotationsByPage);
+      saveSurveyMarkers(pdfId, next.surveyMarkers);
+      try {
+        localStorage.setItem(`pdfSidebar_${pdfId}`, JSON.stringify({
+          pageNames: next.pageNames,
+          bookmarks: next.bookmarks,
+          spaces: next.spaces,
+          activeSpaceId,
+          pageTransformations: next.pageTransformations,
+        }));
+        localStorage.setItem(
+          `regionOverlayStates_${pdfId}`,
+          JSON.stringify(Object.fromEntries(next.regionOverlayDisabled || new Map())),
+        );
+      } catch (error) {
+        console.error('Error committing page mutation metadata:', error);
+      }
+    }
+
+    const pageCountDelta = operation?.type === 'delete'
+      ? -1
+      : ['insert', 'duplicate', 'copy'].includes(operation?.type) ? 1 : 0;
+    setPageNum((current) => pageNumberAfterOperation(
+      current,
+      operation,
+      Math.max(1, Number(numPages || 1) + pageCountDelta),
+    ));
+  }, [
+    activeSpaceId,
+    clearAnnotationSelectionForContextChange,
+    numPages,
+    pdfId,
+    setRegionOverlayDisabled,
+  ]);
+
+  // Sidebar handlers — page add / delete / duplicate / physical reorder /
+  // rotate / cut-copy-paste / insert-blank. Mirror remains a presentation-only
+  // page transformation because PDF pages have no native mirror primitive.
   const {
     handleDuplicatePage,
     handleRenamePage,
@@ -11940,16 +12014,15 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     handleInsertBlankPage,
   } = usePageOperations({
     pdfFile,
-    onUpdatePDFFile,
-    pageNames,
+    onUpdatePDFFile: persistPageMutationFile,
+    getPageState: getPageStructureState,
+    commitPageState: commitPageStructureState,
     setPageNames,
     setPageTransformations,
     clipboardPage,
     setClipboardPage,
     clipboardType,
     setClipboardType,
-    pageNum,
-    setPageNum,
   });
 
   const importPdfBookmarksIntoSidebar = useCallback((incomingBookmarks = []) => {
@@ -21410,10 +21483,12 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
               name: pdfFile.name,
               projectId: pdfFile.projectId,
               filePath: pdfFile.filePath,
+              supabaseFilePath: pdfFile.supabaseFilePath,
+              user_id: pdfFile.user_id || null,
               id: pdfFile.id,
               __rewrittenForParse: true,
             });
-            onUpdatePDFFile(rewrittenFile);
+            await onUpdatePDFFile(rewrittenFile, tabId);
             return;
           } catch (rewriteError) {
             console.error('Rewrite-and-retry PDF load also failed:', rewriteError?.message);
@@ -34746,7 +34821,7 @@ ${pageBlocks}
                       const itemsToCheck = transferState.items.map(itemId => items[itemId]);
                       const itemTypes = [...new Set(itemsToCheck.map(item => item.itemType))];
                       const missingCategories = itemTypes.filter(itemType =>
-                        !categoryExists(selectedTemplate, transferState.destSpaceId, itemType)
+                        !categoryExists(selectedTemplate, transferState.destModuleId, itemType)
                       );
 
                       return missingCategories.map(itemType => (
@@ -34766,22 +34841,26 @@ ${pageBlocks}
 
                   <div style={{ display: 'flex', gap: '8px' }}>
                     <button
-                      onClick={() => {
-                        // Transfer as-is - clone checklists
+                      onClick={async () => {
+                        const itemTypes = [...new Set(
+                          transferState.items.map((itemId) => items[itemId]?.itemType).filter(Boolean)
+                        )];
+                        const updatedTemplate = cloneMissingTransferCategories(
+                          selectedTemplate,
+                          transferState.sourceModuleId,
+                          transferState.destModuleId,
+                          itemTypes
+                        );
                         const result = transferItems(
                           transferState.items,
-                          transferState.sourceSpaceId,
-                          transferState.destSpaceId,
-                          selectedTemplate,
+                          transferState.sourceModuleId,
+                          transferState.destModuleId,
+                          updatedTemplate,
                           items,
                           annotations
                         );
 
-                        // TODO: Actually create categories in template with cloned checklists
-                        // For now, just complete the transfer
-                        setItems(result.newItems);
-                        setAnnotations(result.updatedAnnotations);
-
+                        const supabaseTemplateId = selectedTemplate.supabaseId || null;
                         // Create surveyMarker entries for UI display (same logic as direct transfer)
                         const newSurveyMarkers = {};
                         transferState.items.forEach(itemId => {
@@ -34789,23 +34868,23 @@ ${pageBlocks}
                           if (!item) return;
 
                           const destAnnotation = Object.values(result.updatedAnnotations).find(ann =>
-                            ann.itemId === itemId && ann.spaceId === transferState.destSpaceId
+                            ann.itemId === itemId && ann.moduleId === transferState.destModuleId
                           );
 
                           if (destAnnotation && destAnnotation.pdfCoordinates) {
                             const sourceAnnotation = Object.values(annotations).find(a =>
-                              a.itemId === itemId && a.spaceId === transferState.sourceSpaceId
+                              a.itemId === itemId && a.moduleId === transferState.sourceModuleId
                             );
 
                             const sourceSurveyMarker = sourceAnnotation ? Object.values(surveyMarkers).find(h =>
-                              h.spaceId === transferState.sourceSpaceId &&
+                              h.moduleId === transferState.sourceModuleId &&
                               h.bounds &&
                               sourceAnnotation.pdfCoordinates &&
                               Math.abs((h.bounds.x || 0) - (sourceAnnotation.pdfCoordinates.x || 0)) < 1 &&
                               Math.abs((h.bounds.y || 0) - (sourceAnnotation.pdfCoordinates.y || 0)) < 1
                             ) : null;
 
-                            const destModule = ((selectedTemplate.modules || selectedTemplate.spaces) || []).find(m => m.id === transferState.destModuleId);
+                            const destModule = ((updatedTemplate.modules || updatedTemplate.spaces) || []).find(m => m.id === transferState.destModuleId);
                             const destCategory = destModule?.categories?.find(c => c.name === item.itemType);
 
                             const annotationId = `surveyMarker-${crypto.randomUUID()}`;
@@ -34821,14 +34900,40 @@ ${pageBlocks}
                           }
                         });
 
-                        if (Object.keys(newSurveyMarkers).length > 0) {
-                          setSurveyMarkers(prev => ({
-                            ...prev,
-                            ...newSurveyMarkers
-                          }));
+                        try {
+                          await persistTemplateBeforeDocumentMutation({
+                            persistTemplate: updateSupabaseTemplate && supabaseTemplateId
+                              ? () => updateSupabaseTemplate(supabaseTemplateId, {
+                                config: sanitizeTemplateConfig(updatedTemplate),
+                                updated_at: updatedTemplate.updatedAt,
+                              })
+                              : null,
+                            applyTemplate: () => {
+                              setSelectedTemplate(updatedTemplate);
+                              if (handleTemplatesChange && appTemplates) {
+                                handleTemplatesChange(appTemplates.map((template) => (
+                                  template.id === updatedTemplate.id || template.supabaseId === supabaseTemplateId
+                                    ? updatedTemplate
+                                    : template
+                                )));
+                              }
+                            },
+                            applyDocument: () => {
+                              setItems(result.newItems);
+                              setAnnotations(result.updatedAnnotations);
+                              if (Object.keys(newSurveyMarkers).length > 0) {
+                                setSurveyMarkers(prev => ({
+                                  ...prev,
+                                  ...newSurveyMarkers
+                                }));
+                              }
+                              setTransferState(null);
+                            },
+                          });
+                        } catch (error) {
+                          console.warn('Failed to persist transferred survey categories:', error);
+                          showToast('The new categories could not be saved. Nothing was copied; try again.', 'error');
                         }
-
-                        setTransferState(null);
                       }}
                       className="btn btn-primary btn-md"
                       style={{

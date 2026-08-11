@@ -190,6 +190,11 @@ async function waitForExactAnnotationProjection(page, key, id, expected, timeout
 async function history(page, touch, action) {
   const button = page.getByRole('button', { name: action, exact: true });
   await button.waitFor({ state: 'visible', timeout: 10_000 });
+  const handle = await button.elementHandle();
+  invariant(handle, `${action} history control has no mounted element`);
+  await page.waitForFunction((element) => (
+    !element.disabled && element.getAttribute('aria-disabled') !== 'true'
+  ), handle, { timeout: 10_000 });
   assert.equal(await button.isEnabled(), true, `${action} must be enabled after transform`);
   await tapLocator(touch, button, action);
 }

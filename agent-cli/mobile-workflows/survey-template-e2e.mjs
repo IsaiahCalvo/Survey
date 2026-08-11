@@ -36,9 +36,17 @@ async function runDevice(server, device) {
     const sentinel = '__mobileWorkflowTemplatesInitialized';
     if (!sessionStorage.getItem(sentinel)) {
       localStorage.setItem(key, '[]');
+      localStorage.removeItem('surveyHub.templateOrder:isaiahcalvo123@gmail.com');
       sessionStorage.setItem(sentinel, '1');
     }
   }, TEMPLATE_WORKFLOW_STORAGE_KEY);
+  await context.route('**/api/analytics/track', async (route) => {
+    await route.fulfill({
+      status: 204,
+      headers: { 'Access-Control-Allow-Origin': '*' },
+      body: '',
+    });
+  });
   const devicePage = await context.newPage();
   page = devicePage;
   artifacts.captureBrowserProblems(devicePage);
@@ -52,6 +60,9 @@ async function runDevice(server, device) {
     return await artifacts.time('survey-template:mobile', () => runSurveyTemplateWorkflow({
       page: devicePage, touch, baseUrl: server.baseUrl, artifacts,
     }));
+  } catch (error) {
+    await artifacts.screenshot(devicePage, `${device}-failure`).catch(() => {});
+    throw error;
   } finally {
     await context.close();
   }

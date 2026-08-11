@@ -16,14 +16,22 @@ Metro is only the temporary local code server used for live, uncommitted develop
 Each cold launch uses a launch-scoped hosted URL so Expo cannot reuse stale HTML. The
 WebView profile is retained, so this freshness check does not clear cookies or signed-in data.
 
-The QR and branch URL stay the same. To publish a newer native-shell bundle to them:
+The QR and branch URL stay the same. From a reviewed, committed, clean worktree,
+publish a newer native-shell bundle to them:
 
 ```bash
+EXPO_SHELL_HASH=$(node scripts/verify-mobile-rollout-readiness.mjs --print-expo-hash)
 cd mobile-expo
 CI=1 EXPO_PUBLIC_SURVEY_URL='https://surveytool.app/mobile' \
   npx eas-cli update --branch expo-go --platform ios \
-  --message 'Describe the mobile change'
+  --message "shell:${EXPO_SHELL_HASH} release:$(git -C .. rev-parse HEAD) Describe the mobile change"
 ```
+
+The `shell:<sha256>` marker covers the Expo entry point, configuration,
+dependencies, assets, and native-shell helpers. The release gate compares it
+with Expo's read-only `update:list` metadata. A web-only change does not alter
+this hash; any shell change blocks release until its reviewed update is
+published.
 
 Verified on 2026-08-06 in Expo Go on the iPhone 17 Pro Max Simulator with Metro stopped.
 The published update uses Expo Go's SDK 54 runtime and renders the production sign-in flow.
@@ -281,18 +289,54 @@ WebView shell, and TestFlight once its App Store Connect prerequisites are compl
 ## Remote crash and load diagnostics
 
 Survey emits privacy-bounded app-load, PDF parse/raster, pinch, zoom-settle,
-and JavaScript error events to the existing Agent Native Analytics collector
-when these public client variables are configured:
+and JavaScript error events through Survey's same-origin
+`https://surveytool.app/api/analytics/track` Vercel proxy. The Agent Native key
+is server-only. Never put it in `VITE_*`, `EXPO_PUBLIC_*`, a native bundle, or a
+browser request. Netlify and a second Supabase project are not used.
 
-```bash
-VITE_AGENT_NATIVE_ANALYTICS_PUBLIC_KEY='anpk_...'
-VITE_AGENT_NATIVE_ANALYTICS_URL='https://survey-analytics-796.netlify.app/track'
-EXPO_PUBLIC_AGENT_NATIVE_ANALYTICS_PUBLIC_KEY='anpk_...'
-EXPO_PUBLIC_AGENT_NATIVE_ANALYTICS_URL='https://survey-analytics-796.netlify.app/track'
-```
+The proxy accepts only a valid signed-in Supabase session. Guest and signed-out
+activity is not sent. It redacts sensitive fields, disables session replay and
+automatic retries, limits each client to 60 events/minute, then atomically caps
+ingestion in the primary Survey database at 500 events/user/day and 10,000
+events/global/day.
 
-The Vercel production bundle and permanent `expo-go` EAS branch are already configured
-with this owner-controlled collector. The Netlify site uses the free plan.
+Production rollout order is fail-closed:
+
+1. Apply all five required Supabase migrations:
+   - `20260802010000_allow_last_owner_document_cascade.sql`
+   - `20260810010000_integration_test_bytea_roundtrip.sql`
+   - `20260811120000_account_deletion_user_references.sql`
+   - `20260811130000_analytics_ingestion_daily_cap.sql`
+   - `20260811140000_atomic_template_snapshot.sql`
+2. Deploy the `delete-account` Edge function.
+3. Configure these **server-only** Vercel Production variables through the
+   protected Vercel environment: `AGENT_NATIVE_ANALYTICS_PUBLIC_KEY`,
+   `SUPABASE_URL`, and `SUPABASE_SERVICE_ROLE_KEY`.
+4. If the Expo shell hash changed, publish its reviewed `expo-go` update using
+   the hash-bearing command above.
+5. Before any Vercel code deployment, run this fail-closed gate from the linked
+   project:
+
+   ```bash
+   SUPABASE_PROJECT_ID='<primary-project-ref>' npm run release:mobile:readiness
+   ```
+
+The gate first requires a clean Git worktree, builds the current Vite source,
+requires `dist/release.json` to name the exact HEAD commit, type-checks Expo,
+checks Expo dependency compatibility,
+and creates then deletes a temporary iOS export. Its remote operations are
+read-only metadata lists: Supabase `migration list` and `functions list`,
+Vercel `env ls`, and Expo `update:list`. It never invokes the production app,
+an Edge endpoint, or an analytics collector, and never deploys or changes cloud
+data. The latest `expo-go` iOS metadata must have the pinned runtime and exact
+current `shell:<sha256>` marker.
+
+If build evidence, Electron packaging, Expo freshness, any migration, function,
+or environment-variable name is absent, the command prints
+`BLOCK CODE DEPLOYMENT` and exits nonzero. Environment values are never
+printed. The lightweight evidence is the terminal's exact build commit,
+`dist/release.json`, Expo shell hash, update group, runtime, and the command's
+final `READY` line; videos and large Playwright caches are not release evidence.
 
 The Expo shell keeps the last 24 PDF diagnostics outside WKWebView. If iOS
 terminates the WebContent process, the surviving shell uploads the termination

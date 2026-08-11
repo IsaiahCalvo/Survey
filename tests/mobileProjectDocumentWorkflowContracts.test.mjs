@@ -32,6 +32,24 @@ test('project and document renames are wired from hub UI to durable host handler
   assert.match(projects, /onRenameProject\(project, name\)/);
 });
 
+test('all project-detail duplicate, move, copy, paste, pin, and reorder controls have durable seams', () => {
+  for (const callback of [
+    'onDuplicateProjects',
+    'onDuplicateDocuments',
+    'onMoveCopyDocuments',
+    'onProjectPreferencesChange',
+  ]) {
+    assert.match(hub, new RegExp(callback));
+    assert.match(projects, new RegExp(callback));
+  }
+  assert.match(dashboard, /hubDuplicateProjects/);
+  assert.match(dashboard, /cloneDocumentToProject/);
+  assert.match(dashboard, /onDuplicateProjects=\{hubDuplicateProjects\}/);
+  assert.match(dashboard, /onDuplicateDocuments=\{hubDuplicateDocuments\}/);
+  assert.match(dashboard, /onMoveCopyDocuments=\{hubMoveCopyDocuments\}/);
+  assert.doesNotMatch(projects, /id: nextLocalId\(\), name: `\$\{f\.name\} \(copy\)`/);
+});
+
 test('mock-only workflow exposes exact persisted models and stable row ids', () => {
   for (const key of ['mobileWorkflowDocuments', 'mobileWorkflowProjects', 'mobileWorkflowTemplates']) {
     assert.match(preview, new RegExp(key));

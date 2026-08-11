@@ -1,90 +1,347 @@
-// pageAnnotationReindex — pure helper that shifts the per-page annotation model
-// when pages are added/removed/moved, so annotations follow their page instead
-// of staying glued to a now-stale page number (the page-operation data-loss bug).
-//
-// The model is the five page-addressed stores the viewer owns:
-//   - annotationsByPage:   { [pageNumber]: { objects: [...] } }   (page-keyed)
-//   - pageNames:           { [pageNumber]: string }               (page-keyed)
-//   - pageTransformations: { [pageNumber]: {...} }                (page-keyed)
-//   - surveyMarkers:       { [id]: { pageNumber, ... } }          (id-keyed, page field)
-//   - callouts:            [ { pageNumber, ... } ]                (list, page field)
-//
-// Every operation is expressed as a single page-number remap `mapPage(old) ->
-// new | null` (null = the item is on a removed page and is dropped). Pure and
-// non-mutating: returns a fresh model; input is untouched.
+import { mintPastedCloneIdentity } from './pasteCloneIdentity.js';
 
-function applyPageMap(model, mapPage) {
-  const remapPageKeyed = (obj) => {
-    const out = {};
-    for (const key of Object.keys(obj || {})) {
-      const np = mapPage(Number(key));
-      if (np == null) continue;
-      out[np] = obj[key];
+const clone = (value) => {
+  if (value == null) return value;
+  if (typeof structuredClone === 'function') return structuredClone(value);
+  return JSON.parse(JSON.stringify(value));
+};
+
+const fallbackId = () => (
+  typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+    ? crypto.randomUUID()
+    : `page-copy-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`
+);
+
+const asPage = (value) => {
+  const page = Number(value);
+  return Number.isInteger(page) && page > 0 ? page : null;
+};
+
+const remapPageFields = (value, mapPage) => {
+  if (!value || typeof value !== 'object') return value;
+  const next = { ...value };
+  for (const key of ['pageNumber', 'pageId', 'page']) {
+    if (!(key in next)) continue;
+    const page = asPage(next[key]);
+    if (page == null) continue;
+    next[key] = mapPage(page);
+  }
+  if (next.data && typeof next.data === 'object' && !Array.isArray(next.data)) {
+    next.data = remapPageFields(next.data, mapPage);
+  }
+  if (next.legacyCallout && typeof next.legacyCallout === 'object') {
+    next.legacyCallout = remapPageFields(next.legacyCallout, mapPage);
+  }
+  return next;
+};
+
+const remapPageKeyed = (source, mapPage, transformValue = (value) => value) => {
+  const next = {};
+  for (const [key, value] of Object.entries(source || {})) {
+    const mapped = mapPage(asPage(key));
+    if (mapped == null) continue;
+    next[mapped] = transformValue(value, mapped);
+  }
+  return next;
+};
+
+const remapIdKeyed = (source, mapPage) => {
+  const next = {};
+  for (const [id, value] of Object.entries(source || {})) {
+    const page = asPage(value?.pageNumber ?? value?.pageId ?? value?.page);
+    if (page == null) {
+      next[id] = value;
+      continue;
     }
-    return out;
-  };
-  const remapIdKeyed = (byId) => {
-    const out = {};
-    for (const id of Object.keys(byId || {})) {
-      const item = byId[id];
-      const np = mapPage(Number(item?.pageNumber));
-      if (np == null) continue;
-      out[id] = { ...item, pageNumber: np };
+    const mapped = mapPage(page);
+    if (mapped == null) continue;
+    next[id] = remapPageFields(value, () => mapped);
+  }
+  return next;
+};
+
+const remapBookmarks = (bookmarks, mapPage, copySource = null, copyTarget = null) => (
+  (Array.isArray(bookmarks) ? bookmarks : []).map((bookmark) => {
+    const next = { ...bookmark };
+    if (Array.isArray(bookmark?.pageIds)) {
+      const pageIds = bookmark.pageIds
+        .map((page) => mapPage(asPage(page)))
+        .filter((page) => page != null);
+      if (copySource != null && bookmark.pageIds.some((page) => asPage(page) === copySource)) {
+        pageIds.push(copyTarget);
+      }
+      next.pageIds = [...new Set(pageIds)].sort((left, right) => left - right);
     }
-    return out;
-  };
-  const remapList = (list) =>
-    (Array.isArray(list) ? list : [])
-      .map((item) => {
-        const np = mapPage(Number(item?.pageNumber));
-        return np == null ? null : { ...item, pageNumber: np };
+    for (const key of ['pageNumber', 'pageId', 'page', 'targetPage']) {
+      const page = asPage(bookmark?.[key]);
+      if (page == null) continue;
+      const mapped = mapPage(page);
+      if (mapped == null) delete next[key];
+      else next[key] = mapped;
+    }
+    if (Array.isArray(bookmark?.children)) {
+      next.children = remapBookmarks(bookmark.children, mapPage, copySource, copyTarget);
+    }
+    return next;
+  })
+);
+
+const addCopiedBookmarkAssociations = (nextBookmarks, sourceBookmarks, sourcePage, targetPage) => (
+  (Array.isArray(nextBookmarks) ? nextBookmarks : []).map((bookmark, index) => {
+    const source = sourceBookmarks?.[index];
+    const next = { ...bookmark };
+    if (Array.isArray(source?.pageIds) && source.pageIds.some((page) => asPage(page) === sourcePage)) {
+      next.pageIds = [...new Set([...(bookmark.pageIds || []), targetPage])]
+        .sort((left, right) => left - right);
+    }
+    if (Array.isArray(bookmark?.children)) {
+      next.children = addCopiedBookmarkAssociations(
+        bookmark.children,
+        source?.children,
+        sourcePage,
+        targetPage,
+      );
+    }
+    return next;
+  })
+);
+
+const remapSpaces = (spaces, mapPage) => (
+  (Array.isArray(spaces) ? spaces : []).map((space) => ({
+    ...space,
+    assignedPages: (Array.isArray(space?.assignedPages) ? space.assignedPages : [])
+      .map((entry) => {
+        const mapped = mapPage(asPage(entry?.pageId ?? entry?.pageNumber));
+        if (mapped == null) return null;
+        return {
+          ...entry,
+          pageId: mapped,
+          ...(Array.isArray(entry?.regions)
+            ? { regions: entry.regions.map((region) => remapPageFields(region, () => mapped)) }
+            : {}),
+        };
       })
-      .filter(Boolean);
+      .filter(Boolean)
+      .sort((left, right) => left.pageId - right.pageId),
+  }))
+);
 
-  return {
-    annotationsByPage: remapPageKeyed(model.annotationsByPage),
-    surveyMarkers: remapIdKeyed(model.surveyMarkers),
-    callouts: remapList(model.callouts),
-    pageNames: remapPageKeyed(model.pageNames),
-    pageTransformations: remapPageKeyed(model.pageTransformations),
-  };
+const remapRegionOverlay = (source, mapPage) => {
+  const entries = source instanceof Map ? source.entries() : Object.entries(source || {});
+  const next = new Map();
+  for (const [key, value] of entries) {
+    const match = String(key).match(/^(.*)-(\d+)$/);
+    if (!match) {
+      next.set(key, value);
+      continue;
+    }
+    const mapped = mapPage(asPage(match[2]));
+    if (mapped != null) next.set(`${match[1]}-${mapped}`, value);
+  }
+  return next;
+};
+
+const baseRemap = (model, mapPage) => ({
+  annotationsByPage: remapPageKeyed(model.annotationsByPage, mapPage, (page, mapped) => ({
+    ...(page || {}),
+    objects: (Array.isArray(page?.objects) ? page.objects : [])
+      .map((object) => remapPageFields(object, () => mapped)),
+  })),
+  surveyMarkers: remapIdKeyed(model.surveyMarkers, mapPage),
+  annotations: remapIdKeyed(model.annotations, mapPage),
+  pageNames: remapPageKeyed(model.pageNames, mapPage),
+  pageTransformations: remapPageKeyed(model.pageTransformations, mapPage),
+  bookmarks: remapBookmarks(model.bookmarks, mapPage),
+  spaces: remapSpaces(model.spaces, mapPage),
+  regionOverlayDisabled: remapRegionOverlay(model.regionOverlayDisabled, mapPage),
+});
+
+const replaceRegionId = (value, regionIds) => {
+  if (!value || typeof value !== 'object') return value;
+  const next = { ...value };
+  if (next.regionId && regionIds.has(next.regionId)) next.regionId = regionIds.get(next.regionId);
+  if (next.data && typeof next.data === 'object' && !Array.isArray(next.data)) {
+    next.data = replaceRegionId(next.data, regionIds);
+  }
+  if (next.legacyCallout && typeof next.legacyCallout === 'object') {
+    next.legacyCallout = replaceRegionId(next.legacyCallout, regionIds);
+  }
+  return next;
+};
+
+function addPageClone(next, source, sourcePage, targetPage, createId) {
+  const annotationIds = new Map();
+  const regionIds = new Map();
+
+  for (const space of source.spaces || []) {
+    const entry = (space?.assignedPages || []).find((candidate) => asPage(candidate?.pageId) === sourcePage);
+    for (const region of entry?.regions || []) {
+      if (region?.regionId) regionIds.set(region.regionId, createId());
+    }
+  }
+
+  const sourcePageData = source.annotationsByPage?.[sourcePage] || source.annotationsByPage?.[String(sourcePage)];
+  if (sourcePageData) {
+    const clonedPage = clone(sourcePageData);
+    clonedPage.objects = (clonedPage.objects || []).map((object) => {
+      const oldId = object?.data?.id || object?.data?.annoId || object?.id || object?.annotationId || null;
+      const newId = createId();
+      if (oldId) annotationIds.set(oldId, newId);
+      let copied = mintPastedCloneIdentity(object, newId);
+      copied = remapPageFields(copied, () => targetPage);
+      copied = replaceRegionId(copied, regionIds);
+      if (copied?.data?.legacyCallout) {
+        copied.data.legacyCallout = {
+          ...copied.data.legacyCallout,
+          id: newId,
+          annotationId: newId,
+          pageNumber: targetPage,
+        };
+      }
+      return copied;
+    });
+    next.annotationsByPage[targetPage] = clonedPage;
+  }
+
+  for (const [id, marker] of Object.entries(source.surveyMarkers || {})) {
+    if (asPage(marker?.pageNumber) !== sourcePage) continue;
+    const newId = annotationIds.get(id) || annotationIds.get(marker?.annotationId) || createId();
+    annotationIds.set(id, newId);
+    next.surveyMarkers[newId] = replaceRegionId({
+      ...clone(marker),
+      id: newId,
+      annotationId: newId,
+      pageNumber: targetPage,
+    }, regionIds);
+  }
+
+  for (const [id, annotation] of Object.entries(source.annotations || {})) {
+    if (asPage(annotation?.pageNumber ?? annotation?.pageId ?? annotation?.page) !== sourcePage) continue;
+    const newId = annotationIds.get(id) || annotationIds.get(annotation?.annotationId) || createId();
+    annotationIds.set(id, newId);
+    next.annotations[newId] = replaceRegionId({
+      ...clone(annotation),
+      id: newId,
+      annotationId: newId,
+      pageNumber: targetPage,
+    }, regionIds);
+  }
+
+  if (source.pageNames?.[sourcePage] != null) next.pageNames[targetPage] = source.pageNames[sourcePage];
+  if (source.pageTransformations?.[sourcePage] != null) {
+    next.pageTransformations[targetPage] = clone(source.pageTransformations[sourcePage]);
+  }
+
+  next.bookmarks = addCopiedBookmarkAssociations(
+    next.bookmarks,
+    source.bookmarks,
+    sourcePage,
+    targetPage,
+  );
+  next.spaces = next.spaces.map((space, index) => {
+    const sourceSpace = source.spaces?.[index];
+    const entry = (sourceSpace?.assignedPages || []).find((candidate) => asPage(candidate?.pageId) === sourcePage);
+    if (!entry) return space;
+    const copiedEntry = clone(entry);
+    copiedEntry.pageId = targetPage;
+    copiedEntry.regions = (copiedEntry.regions || []).map((region) => ({
+      ...replaceRegionId(region, regionIds),
+      pageId: targetPage,
+      pageNumber: targetPage,
+    }));
+    return {
+      ...space,
+      assignedPages: [...(space.assignedPages || []), copiedEntry]
+        .sort((left, right) => left.pageId - right.pageId),
+    };
+  });
+
+  for (const [key, value] of source.regionOverlayDisabled instanceof Map
+    ? source.regionOverlayDisabled.entries()
+    : Object.entries(source.regionOverlayDisabled || {})) {
+    const suffix = `-${sourcePage}`;
+    if (String(key).endsWith(suffix)) {
+      next.regionOverlayDisabled.set(`${String(key).slice(0, -suffix.length)}-${targetPage}`, value);
+    }
+  }
+  return next;
 }
 
-// op shapes:
-//   { type: 'delete',    page: N }      remove page N, shift pages > N down by 1
-//   { type: 'insert',    afterPage: N } new blank page at N+1, shift pages > N up by 1
-//   { type: 'duplicate', page: N }      new page at N+1 (existing annotations shift up; new page starts empty)
-//   { type: 'reorder',   from: S, to: T } move page S to position T
-export function reindexAnnotationModel(model, op) {
-  switch (op?.type) {
-    case 'delete': {
-      const n = op.page;
-      return applyPageMap(model, (p) => (p < n ? p : p === n ? null : p - 1));
+export function transformPageState(model = {}, op, { createId = fallbackId } = {}) {
+  const type = op?.type;
+  if (type === 'rotate') {
+    const next = baseRemap(model, (page) => page);
+    const page = asPage(op.page);
+    const previous = next.pageTransformations?.[page];
+    if (previous) {
+      const cleared = { ...previous, rotation: 0 };
+      if (!cleared.mirrorH && !cleared.mirrorV) delete next.pageTransformations[page];
+      else next.pageTransformations[page] = cleared;
     }
-    case 'insert': {
-      // New blank page lands at afterPage + 1; everything above shifts up.
-      const n = op.afterPage;
-      return applyPageMap(model, (p) => (p <= n ? p : p + 1));
-    }
-    case 'duplicate': {
-      // The duplicate lands at page + 1. Existing annotations shift up exactly
-      // like an insert; the duplicated page starts empty (copying annotations
-      // onto it is a deliberate follow-up that must regenerate marker/callout ids).
-      const n = op.page;
-      return applyPageMap(model, (p) => (p <= n ? p : p + 1));
-    }
-    case 'reorder': {
-      // Move page `from` to position `to`; only the pages between them shift.
-      const s = op.from;
-      const t = op.to;
-      return applyPageMap(model, (p) => {
-        if (p === s) return t;
-        if (s < t) return p > s && p <= t ? p - 1 : p;
-        if (s > t) return p >= t && p < s ? p + 1 : p;
-        return p;
-      });
-    }
-    default:
-      throw new Error(`reindexAnnotationModel: unknown op type ${op?.type}`);
+    return next;
   }
+
+  if (type === 'delete') {
+    const page = asPage(op.page);
+    if (page == null) throw new Error('delete requires a positive page');
+    return baseRemap(model, (value) => (value < page ? value : value === page ? null : value - 1));
+  }
+
+  if (type === 'insert') {
+    const afterPage = asPage(op.afterPage);
+    if (afterPage == null) throw new Error('insert requires a positive afterPage');
+    return baseRemap(model, (value) => (value <= afterPage ? value : value + 1));
+  }
+
+  if (type === 'move' || type === 'reorder') {
+    const from = asPage(op.from);
+    const to = asPage(op.to);
+    if (from == null || to == null) throw new Error('move requires positive from/to pages');
+    return baseRemap(model, (value) => {
+      if (value === from) return to;
+      if (from < to) return value > from && value <= to ? value - 1 : value;
+      if (from > to) return value >= to && value < from ? value + 1 : value;
+      return value;
+    });
+  }
+
+  if (type === 'duplicate' || type === 'copy') {
+    const sourcePage = asPage(op.page ?? op.source);
+    const afterPage = asPage(op.afterPage ?? op.page ?? op.target);
+    if (sourcePage == null || afterPage == null) throw new Error(`${type} requires source and target pages`);
+    const targetPage = afterPage + 1;
+    const next = baseRemap(model, (value) => (value <= afterPage ? value : value + 1));
+    return addPageClone(next, model, sourcePage, targetPage, createId);
+  }
+
+  throw new Error(`transformPageState: unknown op type ${type}`);
+}
+
+export function pageNumberAfterOperation(currentPage, operation, resultingPageCount) {
+  const page = asPage(currentPage) || 1;
+  const type = operation?.type;
+  let next = page;
+  if (type === 'delete') {
+    const removed = asPage(operation.page);
+    next = page < removed ? page : page === removed ? removed : page - 1;
+  } else if (type === 'insert') {
+    const after = asPage(operation.afterPage);
+    next = page <= after ? page : page + 1;
+  } else if (type === 'duplicate' || type === 'copy') {
+    const after = asPage(operation.afterPage ?? operation.page ?? operation.target);
+    next = page <= after ? page : page + 1;
+  } else if (type === 'move' || type === 'reorder') {
+    const from = asPage(operation.from);
+    const to = asPage(operation.to);
+    if (page === from) next = to;
+    else if (from < to && page > from && page <= to) next = page - 1;
+    else if (from > to && page >= to && page < from) next = page + 1;
+  }
+  const max = Math.max(1, Number(resultingPageCount) || next);
+  return Math.min(Math.max(1, next), max);
+}
+
+// Compatibility for the original annotation-only helper callers/tests.
+export function reindexAnnotationModel(model, op) {
+  return transformPageState(model, op);
 }

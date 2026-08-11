@@ -49,12 +49,13 @@ export const useProjects = () => {
     if (!user || !isSupabaseAvailable()) {
       projectRequestRef.current += 1;
       setProjects([]);
+      setError(null);
       setLoading(false);
       setLoadedProjectScopeKey(projectScopeKey);
       return;
     }
 
-    fetchProjects({ initialScopeKey: projectScopeKey });
+    void fetchProjects({ initialScopeKey: projectScopeKey }).catch(() => undefined);
   }, [user]);
 
   const fetchProjects = async ({ initialScopeKey = null } = {}) => {
@@ -68,6 +69,7 @@ export const useProjects = () => {
     });
     try {
       setLoading(true);
+      setError(null);
       // KAL-285 — explicit column list instead of select('*'). The live
       // `projects` table has exactly these 8 columns (verified against prod
       // schema); Dashboard.jsx and this hook consume id/name/user_id directly
@@ -209,6 +211,7 @@ export const useDocuments = (projectId = null) => {
     if (!user || !isSupabaseAvailable()) {
       documentRequestRef.current += 1;
       setDocuments([]);
+      setError(null);
       setLoading(false);
       setLoadedDocumentScopeKey(documentScopeKey);
       return;
@@ -217,7 +220,11 @@ export const useDocuments = (projectId = null) => {
     // Boot/dep-change load goes through the coalescer so the simultaneous burst
     // from the multiple live useDocuments instances (Dashboard x2 + one per open
     // PDFViewer tab) collapses to ONE round-trip. See KAL-251.
-    loadDocuments({ coalesce: true, initialScopeKey: documentScopeKey });
+    // The loader records the failure in hook state, then rejects so explicit
+    // refetch callers can react to it. This boot-only caller has no awaiter,
+    // so consume that rejection after state is updated instead of leaking an
+    // unhandled promise rejection into Expo/WebView.
+    void loadDocuments({ coalesce: true, initialScopeKey: documentScopeKey }).catch(() => undefined);
   }, [user, projectId]);
 
   // Pure query worker: runs the owned + collaborator-probe + conditional id=in
@@ -299,6 +306,7 @@ export const useDocuments = (projectId = null) => {
     });
     try {
       setLoading(true);
+      setError(null);
       const key = `documents:${user.id}:${projectId ?? 'null'}`;
       const merged = coalesce
         ? await coalesceRead(key, runDocumentsQuery)
@@ -309,7 +317,7 @@ export const useDocuments = (projectId = null) => {
     } catch (err) {
       if (!isCurrentRequest()) return [];
       setError(err.message);
-      return [];
+      throw err;
     } finally {
       if (isCurrentRequest()) {
         setLoading(false);
@@ -480,6 +488,7 @@ export const useTemplates = () => {
     if (!user || !isSupabaseAvailable()) {
       templateRequestRef.current += 1;
       setTemplates([]);
+      setError(null);
       setLoading(false);
       setLoadedTemplateScopeKey(templateScopeKey);
       return;
@@ -487,7 +496,9 @@ export const useTemplates = () => {
 
     // Coalesced so the always-mounted Dashboard + AppShell (+ per-tab) template
     // consumers share one boot read. See KAL-251.
-    loadTemplates({ coalesce: true, initialScopeKey: templateScopeKey });
+    // Preserve loadTemplates' rejecting refetch contract while consuming the
+    // boot-only rejection after it has populated the hook's error state.
+    void loadTemplates({ coalesce: true, initialScopeKey: templateScopeKey }).catch(() => undefined);
   }, [user]);
 
   const runTemplatesQuery = async () => {
@@ -512,6 +523,7 @@ export const useTemplates = () => {
     });
     try {
       setLoading(true);
+      setError(null);
       const key = `templates:${user.id}`;
       const rows = coalesce
         ? await coalesceRead(key, runTemplatesQuery)
@@ -522,7 +534,7 @@ export const useTemplates = () => {
     } catch (err) {
       if (!isCurrentRequest()) return [];
       setError(err.message);
-      return [];
+      throw err;
     } finally {
       if (isCurrentRequest()) {
         setLoading(false);
@@ -580,6 +592,26 @@ export const useTemplates = () => {
     }
   };
 
+  const replaceTemplates = async (templateRows) => {
+    if (!user || !isSupabaseAvailable()) return [];
+    if (!Array.isArray(templateRows)) {
+      throw new TypeError('Template snapshot must be an array.');
+    }
+    try {
+      setError(null);
+      const { data, error } = await supabase.rpc('replace_my_templates', {
+        p_templates: templateRows,
+      });
+      if (error) throw error;
+      const rows = Array.isArray(data) ? data : [];
+      setTemplates(rows);
+      return rows;
+    } catch (err) {
+      setError(err.message);
+      throw err;
+    }
+  };
+
   return {
     templates,
     loading,
@@ -588,6 +620,7 @@ export const useTemplates = () => {
     createTemplate,
     updateTemplate,
     deleteTemplate,
+    replaceTemplates,
     refetch: () => loadTemplates({ coalesce: false }),
   };
 };
@@ -699,6 +732,22 @@ export const useStorage = () => {
     return filePath;
   }, [user]);
 
+  const replaceDocument = useCallback(async (file, filePath, onProgress) => {
+    if (!user || !isSupabaseAvailable()) {
+      throw new Error('User not authenticated or Supabase not available');
+    }
+    if (!filePath) throw new Error('Document storage path is required');
+    const { error } = await supabase.storage
+      .from('documents')
+      .upload(filePath, file, {
+        upsert: true,
+        contentType: 'application/pdf',
+        onUploadProgress: onProgress,
+      });
+    if (error) throw error;
+    return filePath;
+  }, [user]);
+
   const downloadDocument = useCallback(async (filePath) => {
     if (!isSupabaseAvailable()) {
       throw new Error('Supabase not available');
@@ -726,6 +775,7 @@ export const useStorage = () => {
 
   return {
     uploadDocument,
+    replaceDocument,
     uploadDataFile,
     downloadDocument,
     deleteDocumentFile,

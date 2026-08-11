@@ -22,6 +22,7 @@ import { Icon } from './HubShell';
 import { AuthContext } from '../contexts/AuthContext';
 import { closeButtonStyle, moreButtonStyle } from './hubControls';
 import DismissBarrier from '../components/DismissBarrier';
+import { copyTextToClipboard } from '../utils/clipboard';
 import {
   createProjectInvite,
   listProjectInvites,
@@ -232,7 +233,12 @@ const InviteModal = ({ project, onClose, currentUser, canInvite, onChanged }) =>
     if (!res.success) { setError(res.error || 'Could not create invite link.'); return; }
     setActiveInvite(res.invite);
     const link = buildInviteUrl(res.invite);
-    try { await navigator.clipboard.writeText(link); } catch { /* clipboard unavailable */ }
+    const copyResult = await copyTextToClipboard(link, { surface: 'project_invite_link' });
+    if (!copyResult.ok) {
+      setError('Invite link created, but Survey could not copy it. Select the link and copy it manually.');
+      onChanged?.();
+      return;
+    }
     setCopied(true);
     setSuccess(`Link copied. Anyone with it can join as ${linkRole}.`);
     setTimeout(() => setCopied(false), 1800);
@@ -648,7 +654,12 @@ export default function ManageTeamModal({ open, onClose, project, members }) {
                 {ICON_BTN(
                   <><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/></>,
                   "Copy email" + (someSel ? "s" : ""),
-                  () => { const emails = memberList.filter(m => selectedIds.has(m.id)).map(m => m.email).filter(Boolean).join(", "); if (navigator.clipboard) navigator.clipboard.writeText(emails); },
+                  async () => {
+                    const emails = memberList.filter(m => selectedIds.has(m.id)).map(m => m.email).filter(Boolean).join(", ");
+                    const result = await copyTextToClipboard(emails, { surface: 'project_team_bulk_emails' });
+                    if (result.ok) { setError(''); setStatus('Emails copied.'); }
+                    else { setStatus(''); setError('Survey could not copy the selected emails.'); }
+                  },
                   BONE_100,
                   !someSel
                 )}
@@ -724,7 +735,12 @@ export default function ManageTeamModal({ open, onClose, project, members }) {
                         { label: "Invite user", onClick: () => { setOpenMenu(null); setInviteOpen(true); } },
                         ...(m.isCreator ? [] : [{ label: "Change role", onClick: () => { setOpenMenu(null); setEditMode(true); setOpenRoleSel(m.id); } }]),
                         { label: "View activity", onClick: () => { setOpenMenu(null); setActivityFor(m); } },
-                        { label: "Copy email", disabled: !m.email, onClick: () => { setOpenMenu(null); if (navigator.clipboard && m.email) navigator.clipboard.writeText(m.email); } },
+                        { label: "Copy email", disabled: !m.email, onClick: async () => {
+                          setOpenMenu(null);
+                          const result = await copyTextToClipboard(m.email, { surface: 'project_team_member_email' });
+                          if (result.ok) { setError(''); setStatus('Email copied.'); }
+                          else { setStatus(''); setError('Survey could not copy this email.'); }
+                        } },
                         ...(m.isCreator ? [] : [{ label: "Remove from team", danger: true, onClick: () => { setOpenMenu(null); removeMember(m.id); } }]),
                       ].map(it => (
                         <button key={it.label} disabled={it.disabled || busy} onClick={it.onClick} style={{ display: "block", width: "100%", textAlign: "left", background: "transparent", border: 0, color: it.danger ? DANGER : (it.disabled ? INK_300 : BONE_100), padding: "7px 10px", fontSize: 12, borderRadius: 4, cursor: it.disabled || busy ? "not-allowed" : "pointer", fontFamily: "inherit" }}>{it.label}</button>
@@ -756,7 +772,12 @@ export default function ManageTeamModal({ open, onClose, project, members }) {
                   {openInviteMenu === inv.id && (
                     <div data-manage-team-dismiss-surface="true" onClick={(e) => e.stopPropagation()} style={{ position: "absolute", right: 14, top: 38, zIndex: 20, background: INK_700, border: `1px solid ${INK_500}`, borderRadius: 8, padding: 4, minWidth: 150, boxShadow: "0 12px 30px rgba(0,0,0,0.45)" }}>
                       {[
-                        { label: "Copy invite link", onClick: () => { setOpenInviteMenu(null); if (navigator.clipboard) navigator.clipboard.writeText(buildInviteUrl(inv)); setStatus('Link copied.'); } },
+                        { label: "Copy invite link", onClick: async () => {
+                          setOpenInviteMenu(null);
+                          const result = await copyTextToClipboard(buildInviteUrl(inv), { surface: 'project_pending_invite_link' });
+                          if (result.ok) { setError(''); setStatus('Link copied.'); }
+                          else { setStatus(''); setError('Survey could not copy this invite link.'); }
+                        } },
                         ...(isLink ? [] : [{ label: "Resend invite", onClick: () => { setOpenInviteMenu(null); resendInvite(inv); } }]),
                         { label: "Revoke invite", danger: true, onClick: () => { setOpenInviteMenu(null); revokeInvite(inv); } },
                       ].map(it => (

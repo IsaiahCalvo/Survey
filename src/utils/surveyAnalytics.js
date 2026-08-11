@@ -1,6 +1,8 @@
 import { createAnalyticsRateLimiter } from './analyticsRateLimiter.js';
+import { getSupabaseSession } from '../supabaseClient.js';
 
 const DEFAULT_ENDPOINT = '/api/analytics/track';
+const HOSTED_PROXY_ENDPOINT = 'https://surveytool.app/api/analytics/track';
 const SESSION_STORAGE_KEY = 'survey-analytics-session-id';
 const BLOCKED_PROPERTY = /(?:email|filename|fileName|token|password|authorization|content|annotation)/i;
 const URL_VALUE = /\b(?:https?|file):\/\/[^\s<>"'`]+/gi;
@@ -12,9 +14,8 @@ const NAMED_SECRET_VALUE = /\b(?:access[_-]?token|refresh[_-]?token|id[_-]?token
 const ABSOLUTE_PATH_VALUE = /(?:\/[A-Za-z0-9._ -]+){2,}\/[A-Za-z0-9._ -]+|\b[A-Z]:\\(?:[^\\\r\n]+\\)*[^\\\r\n]+/g;
 const DOCUMENT_NAME_VALUE = /\b[^\s<>"'`/\\]+\.(?:pdf|docx?|xlsx?|pptx?|png|jpe?g|tiff?)\b/gi;
 
-const analyticsPublicKey = import.meta.env?.VITE_AGENT_NATIVE_ANALYTICS_PUBLIC_KEY?.trim() || '';
-const analyticsEndpoint = import.meta.env?.VITE_AGENT_NATIVE_ANALYTICS_URL?.trim() || DEFAULT_ENDPOINT;
 const analyticsRateLimiter = createAnalyticsRateLimiter();
+let lastDeliveryWarningAt = 0;
 
 const safeIdentifier = (value, limit = 240) => String(value || '').replace(/[\r\n]+/g, ' ').slice(0, limit);
 
@@ -45,6 +46,72 @@ export const sanitizeAnalyticsProperties = (value, depth = 0) => {
     .filter(([, entry]) => entry !== undefined));
 };
 
+export const resolveSurveyAnalyticsEndpoint = (locationLike = globalThis.window?.location) => {
+  const hostname = String(locationLike?.hostname || '').toLowerCase();
+  const isOfficialOrigin = locationLike?.protocol === 'https:'
+    && !locationLike?.port
+    && (hostname === 'surveytool.app' || hostname === 'www.surveytool.app');
+  if (isOfficialOrigin) return DEFAULT_ENDPOINT;
+  return HOSTED_PROXY_ENDPOINT;
+};
+
+export const classifyAnalyticsDelivery = ({ ok, status, contentType = '', body = null }) => {
+  const normalizedStatus = Number(status) || 0;
+  if (!ok) return { ok: false, reason: 'http_error', status: normalizedStatus };
+  if (!String(contentType).toLowerCase().includes('application/json') || !body || typeof body !== 'object') {
+    return { ok: false, reason: 'unexpected_response', status: normalizedStatus };
+  }
+  if (body.accepted === false) return { ok: false, reason: 'collector_rejected', status: normalizedStatus };
+  return { ok: true, reason: null, status: normalizedStatus };
+};
+
+export const isRetryableAnalyticsDelivery = (result) => result?.reason === 'network_error'
+  || result?.reason === 'collector_rejected'
+  || result?.reason === 'authentication_required'
+  || (result?.reason === 'http_error' && [0, 401, 408, 425, 429, 500, 502, 503, 504].includes(result.status));
+
+const publishDeliveryStatus = (result) => {
+  if (typeof window === 'undefined') return;
+  const detail = {
+    state: result.ok ? 'available' : result.disabled ? 'disabled' : 'unavailable',
+    reason: result.reason,
+    status: result.status,
+    checkedAt: new Date().toISOString(),
+  };
+  window.__surveyAnalyticsDeliveryStatus = detail;
+  window.dispatchEvent(new CustomEvent('survey-analytics-delivery-status', { detail }));
+  if (!result.ok && !result.disabled && Date.now() - lastDeliveryWarningAt > 60_000) {
+    lastDeliveryWarningAt = Date.now();
+    console.warn('[Survey analytics] Collector unavailable', {
+      reason: result.reason,
+      status: result.status,
+    });
+  }
+};
+
+const observeDelivery = async (request) => {
+  try {
+    const response = await request;
+    const contentType = response.headers?.get?.('content-type') || response.contentType || '';
+    let body = response.body && typeof response.body === 'object' ? response.body : null;
+    if (!body && contentType.toLowerCase().includes('application/json')) {
+      body = await response.json().catch(() => null);
+    }
+    const result = classifyAnalyticsDelivery({
+      ok: response.ok,
+      status: response.status,
+      contentType,
+      body,
+    });
+    publishDeliveryStatus(result);
+    return result;
+  } catch {
+    const result = { ok: false, reason: 'network_error', status: 0 };
+    publishDeliveryStatus(result);
+    return result;
+  }
+};
+
 const getSessionId = () => {
   if (typeof window === 'undefined') return 'server';
   if (window.__surveyShellSessionId) return safeIdentifier(window.__surveyShellSessionId, 100);
@@ -59,7 +126,7 @@ const getSessionId = () => {
   }
 };
 
-export function trackSurveyAnalyticsEvent(event, properties = {}) {
+const deliverSurveyAnalyticsEvent = async (event, properties = {}) => {
   if (typeof window === 'undefined' || typeof fetch !== 'function') return false;
   // Hard client ceiling: analytics must never create an unbounded event bill or
   // error-loop storm. No retries and no session replay are installed here.
@@ -79,17 +146,33 @@ export function trackSurveyAnalyticsEvent(event, properties = {}) {
     },
     context: { source: 'survey-web' },
   };
-  const headers = { 'Content-Type': 'application/json' };
-  if (analyticsPublicKey) {
-    payload.publicKey = analyticsPublicKey;
-    headers['x-agent-native-analytics-key'] = analyticsPublicKey;
+  const session = await getSupabaseSession('surveyAnalytics').catch(() => null);
+  const accessToken = session?.access_token || '';
+  if (!accessToken) {
+    const result = { ok: false, reason: 'authentication_required', status: 0, disabled: true };
+    publishDeliveryStatus(result);
+    return result;
   }
-  void fetch(analyticsEndpoint, {
-    method: 'POST',
-    headers,
-    body: JSON.stringify(payload),
-    keepalive: true,
-  }).catch(() => {});
+
+  const request = window.location.protocol === 'file:'
+    && typeof window.electronAPI?.trackSurveyAnalytics === 'function'
+    ? window.electronAPI.trackSurveyAnalytics({ payload, accessToken })
+    : fetch(resolveSurveyAnalyticsEndpoint(window.location), {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(payload),
+      keepalive: true,
+    });
+  return observeDelivery(request);
+};
+
+export function trackSurveyAnalyticsEvent(event, properties = {}) {
+  const delivery = deliverSurveyAnalyticsEvent(event, properties);
+  if (!delivery) return false;
+  void delivery;
   return true;
 }
 
@@ -128,6 +211,24 @@ export function installSurveyAnalytics() {
   window.addEventListener('survey-native-analytics', (event) => {
     const name = event?.detail?.event;
     if (typeof name !== 'string' || !name) return;
-    trackSurveyAnalyticsEvent(name, event?.detail?.properties || {});
+    const id = typeof event?.detail?.id === 'string' ? event.detail.id : '';
+    const delivery = deliverSurveyAnalyticsEvent(name, event?.detail?.properties || {});
+    if (!delivery || !id) return;
+    void delivery.then((result) => {
+      if (!result.ok) {
+        const retryable = isRetryableAnalyticsDelivery(result);
+        window.ReactNativeWebView?.postMessage(JSON.stringify({
+          type: 'survey:native-analytics-nack',
+          ids: [id],
+          retryable,
+          retryAfterMs: result.status === 429 ? 15 * 60_000 : 30_000,
+        }));
+        return;
+      }
+      window.ReactNativeWebView?.postMessage(JSON.stringify({
+        type: 'survey:native-analytics-ack',
+        ids: [id],
+      }));
+    });
   });
 }

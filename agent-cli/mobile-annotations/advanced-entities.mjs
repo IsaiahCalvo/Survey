@@ -28,20 +28,39 @@ async function tapLocator(touch, locator, label) {
 
 async function exposedLocatorPoint(locator, label) {
   const target = invariant(await firstVisible(locator), `Expected visible ${label}`);
-  const point = await target.evaluate((node) => {
-    const rect = node.getBoundingClientRect();
-    const fractions = [0.5, 0.2, 0.8, 0.35, 0.65];
-    for (const yFraction of fractions) {
-      for (const xFraction of fractions) {
-        const x = rect.left + rect.width * xFraction;
-        const y = rect.top + rect.height * yFraction;
-        const hit = document.elementFromPoint(x, y);
-        if (hit === node || node.contains(hit)) return { x, y };
+  let point = null;
+  for (let attempt = 0; attempt < 20 && !point; attempt += 1) {
+    point = await target.evaluate((node) => {
+      const rect = node.getBoundingClientRect();
+      const fractions = [0.5, 0.2, 0.8, 0.35, 0.65];
+      for (const yFraction of fractions) {
+        for (const xFraction of fractions) {
+          const x = rect.left + rect.width * xFraction;
+          const y = rect.top + rect.height * yFraction;
+          const hit = document.elementFromPoint(x, y);
+          if (hit === node || node.contains(hit)) return { x, y };
+        }
       }
-    }
-    return null;
-  });
-  invariant(point, `${label} has no exposed trusted-touch point`);
+      return null;
+    });
+    if (!point) await delay(50);
+  }
+  if (!point) {
+    const diagnostic = await target.evaluate((node) => {
+      const rect = node.getBoundingClientRect();
+      const x = rect.left + rect.width / 2;
+      const y = rect.top + rect.height / 2;
+      return {
+        rect: { x: rect.x, y: rect.y, width: rect.width, height: rect.height },
+        stack: document.elementsFromPoint(x, y).slice(0, 8).map((entry) => ({
+          className: typeof entry.className === 'string' ? entry.className : null,
+          tag: entry.tagName,
+          title: entry.getAttribute?.('title'),
+        })),
+      };
+    });
+    throw new Error(`${label} has no exposed trusted-touch point: ${JSON.stringify(diagnostic)}`);
+  }
   return { point, target };
 }
 
@@ -305,7 +324,7 @@ async function enterRegionEditor(page, touch, spaceId) {
   if (!await row.getByPlaceholder('Add pages (e.g. 3, 6-9, 12)').isVisible().catch(() => false)) {
     await tapLocator(touch, row.locator('button[title="Expand"]'), 'Expand Space');
   }
-  await tapLocator(touch, row.getByRole('button', { name: 'Edit region areas on the page' }), 'Edit region areas');
+  await tapExposedLocator(touch, row.getByRole('button', { name: 'Edit region areas on the page' }), 'Edit region areas');
   await page.getByRole('toolbar', { name: 'Region editing' }).waitFor({ state: 'visible' });
   const close = await firstVisible(page.getByRole('button', { name: 'Close document panel' }));
   if (close) {

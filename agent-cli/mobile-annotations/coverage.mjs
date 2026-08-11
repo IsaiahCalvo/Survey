@@ -2,6 +2,7 @@ export const FAST_SUITE_IDS = Object.freeze([
   'annotations',
   'advanced',
   'advanced-entities',
+  'secondary',
   'viewer',
   'projects',
   'surveys',
@@ -42,6 +43,16 @@ export const FULL_APP_COVERAGE = Object.freeze({
       'Survey Marker resize and rotation',
       'Region resize and rotation',
       'undo/redo and hard-reload exact-key persistence',
+    ],
+  }),
+  secondary: Object.freeze({
+    proof: 'browser-e2e',
+    surfaces: ['mobile'],
+    covers: [
+      'multi-select clipboard and group z-order persistence',
+      'counter series creation, switching, numbering, and reload persistence',
+      'bookmark CRUD plus add/rotate/reorder/delete page operations',
+      'annotated PDF export/reimport exact type, text, geometry, style, page, counter-series, and z-order parity',
     ],
   }),
   viewer: Object.freeze({

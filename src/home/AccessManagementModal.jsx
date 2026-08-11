@@ -31,6 +31,7 @@ import {
   sendPermissionChangedEmail,
   sendAccessRemovedEmail,
 } from '../services/shareEmailService';
+import { copyTextToClipboard } from '../utils/clipboard';
 import { closeButtonStyle } from './hubControls';
 
 const C = {
@@ -323,7 +324,11 @@ export default function AccessManagementModal({ open, onClose, kind = 'document'
                     <div style={{ fontSize: 12, color: C.inkSoft }}>{roleLabel(inv.intended_role)}</div>
                     <div style={{ fontSize: 11, color: C.muted }}>created {new Date(inv.created_at).toLocaleDateString()}</div>
                     <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
-                      <button disabled={busy} onClick={() => { navigator.clipboard?.writeText(buildInviteUrl(inv)); setStatus('Link copied.'); }} style={{ background: 'transparent', border: `1px solid ${C.rule}`, color: C.ink, fontSize: 11, padding: '3px 8px', borderRadius: 4, cursor: 'pointer', fontFamily: 'inherit' }}>Copy</button>
+                      <button disabled={busy} onClick={async () => {
+                        const result = await copyTextToClipboard(buildInviteUrl(inv), { surface: 'document_access_link' });
+                        if (result.ok) { setError(''); setStatus('Link copied.'); }
+                        else { setStatus(''); setError('Survey could not copy this share link.'); }
+                      }} style={{ background: 'transparent', border: `1px solid ${C.rule}`, color: C.ink, fontSize: 11, padding: '3px 8px', borderRadius: 4, cursor: 'pointer', fontFamily: 'inherit' }}>Copy</button>
                       <button disabled={busy} onClick={() => handleRevoke(inv)} style={{ background: 'transparent', border: `1px solid ${C.rule}`, color: C.danger, fontSize: 11, padding: '3px 8px', borderRadius: 4, cursor: busy ? 'not-allowed' : 'pointer', fontFamily: 'inherit' }}>Revoke</button>
                     </div>
                   </div>

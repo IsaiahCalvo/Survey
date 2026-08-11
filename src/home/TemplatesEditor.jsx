@@ -41,7 +41,9 @@
 */
 import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { createPortal, flushSync } from 'react-dom';
+import { reloadTemplatesAfterPendingSave } from './templatePersistence.js';
 import useMobileEdgeSwipeBack from './useMobileEdgeSwipeBack';
+import useModalFocusTrap from './useModalFocusTrap';
 import {
   closestCenter,
   DndContext,
@@ -813,6 +815,7 @@ export default function TemplatesEditor({
   onNav,
   onCreateTemplate,
   onSaveTemplates,
+  onReloadTemplates,
   onShare,
   /* KAL-44 — host-provided usage count for a checklist item. Returns the
      number of survey markers that have a response keyed under itemId. When
@@ -858,6 +861,7 @@ export default function TemplatesEditor({
      a clean editor). Chaining guarantees dispatch order = write order, so the
      newest payload always lands last. Payloads are snapshotted at dispatch. */
   const saveChainRef = useRef(Promise.resolve());
+  const [persistenceError, setPersistenceError] = useState('');
   const dispatchTemplatesSave = useCallback((payload) => {
     const run = () => Promise.resolve(onSaveTemplates(payload));
     const p = saveChainRef.current.then(run, run);
@@ -869,6 +873,8 @@ export default function TemplatesEditor({
   const [selectedId, setSelected] = useState(() => (initialMobileOpen ? (templates[0]?.id ?? null) : null));
   const [mobileTemplateOpen, setMobileTemplateOpen] = useState(initialMobileOpen);
   const [mobileEntitiesOpen, setMobileEntitiesOpen] = useState(false);
+  const mobileEntitiesModalRef = useRef(null);
+  const mobileEntitiesCloseRef = useRef(null);
   const [templateContentSearch, setTemplateContentSearch] = useState('');
   const [openCat, setOpenCat] = useState(-1);
   const [tplEdit, setTplEdit] = useState(false);
@@ -894,6 +900,8 @@ export default function TemplatesEditor({
   const pendingCategoryFocusRef = useRef(null);
   const toggleCatSel = (id) => setSelCats((prev) => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
   const [moveModal, setMoveModal] = useState(null);  // { count, kind: 'category'|'module'|'entity' }
+  const moveModalRef = useRef(null);
+  const moveModalCloseRef = useRef(null);
   /* Move/Copy modal destination picks — destTpl is always meaningful;
      destMod only applies when a Category is being moved. */
   const [moveDestTpl, setMoveDestTpl] = useState(null);
@@ -913,6 +921,25 @@ export default function TemplatesEditor({
     setSelCats(new Set());
     setSelEntities(new Set());
   }, []);
+  const closeMobileEntities = useCallback(() => {
+    setMobileEntitiesOpen(false);
+    setOpenColor(null);
+    setEntityEdit(false);
+    setSelEntities(new Set());
+  }, []);
+  const closeMoveModal = useCallback(() => setMoveModal(null), []);
+  useModalFocusTrap({
+    active: mobileEntitiesOpen,
+    containerRef: mobileEntitiesModalRef,
+    initialFocusRef: mobileEntitiesCloseRef,
+    onClose: closeMobileEntities,
+  });
+  useModalFocusTrap({
+    active: Boolean(moveModal),
+    containerRef: moveModalRef,
+    initialFocusRef: moveModalCloseRef,
+    onClose: closeMoveModal,
+  });
   const mobileSwipeSurfaceRef = useRef(null);
   const captureMobileTemplateList = useMobileEdgeSwipeBack({
     enabled: mobileTemplateOpen && !mobileEntitiesOpen,
@@ -927,8 +954,8 @@ export default function TemplatesEditor({
   /* Rebuild the working copy + colour-picker maps from the templates prop.
      Seeds the maps from each entity's persisted refinements so saved colours
      round-trip, and clears the dirty flag since the copy now matches the host. */
-  const reloadFromProps = useCallback(() => {
-    const next = buildRich(applyTemplateOrderPreference(templates, user), mintId);
+  const applyAuthoritativeTemplates = useCallback((sourceTemplates) => {
+    const next = buildRich(applyTemplateOrderPreference(sourceTemplates, user), mintId);
     const seeded = seedColorMaps(next);
     setRich(next);
     setRoleColors(seeded.roleColors);
@@ -942,7 +969,11 @@ export default function TemplatesEditor({
     setSelMods(new Set());
     setModRename(null);
     setDirty(false);
-  }, [templates, user?.id, user?.email, mintId]);
+    setPersistenceError('');
+  }, [user?.id, user?.email, mintId]);
+  const reloadFromProps = useCallback(() => {
+    applyAuthoritativeTemplates(templates);
+  }, [applyAuthoritativeTemplates, templates]);
   /* BL-23 dirty guard — sync the working copy with the host's templates prop.
      `reloadFromProps`'s useCallback identity changes exactly when
      (templates, user) change, so it doubles as the snapshot key; the guard ref
@@ -1078,30 +1109,92 @@ export default function TemplatesEditor({
     if (!v) return;
     mutateTpl(tid, (t) => (t.name === v ? t : { ...t, name: v }));
   };
-  const duplicateTemplates = (ids) => {
-    setRich((prev) => {
-      const out = [];
-      prev.forEach((t) => {
-        out.push(t);
-        if (ids.has(t.id)) {
-          out.push({
-            ...t,
-            id: newId('t'),
-            name: `${t.name} copy`,
-            modules: t.modules.map((m) => ({
-              ...m, id: newId('m'),
-              categories: m.categories.map((c) => ({
-                ...c, id: newId('c'),
-                items: c.items.map((it) => ({ ...it, id: newId('i') })),
-              })),
-            })),
-            roster: t.roster.map((r) => ({ ...r, id: newId('e') })),
-          });
-        }
+  const liveEntityStyle = (entity) => {
+    const fill = roleColors[entity.id] || {
+      color: entity.color || '#8c8c8a',
+      opacity: entity.opacity ?? 0.35,
+    };
+    const matched = Object.prototype.hasOwnProperty.call(matchFill, entity.id)
+      ? !!matchFill[entity.id]
+      : !!entity.matchFill;
+    const border = matched
+      ? fill
+      : (borderColors[entity.id] || {
+        color: entity.borderColor || fill.color,
+        opacity: entity.borderOpacity ?? fill.opacity,
       });
-      return out;
+    return {
+      color: fill.color,
+      opacity: fill.opacity,
+      borderColor: border.color,
+      borderOpacity: border.opacity,
+      matchFill: matched,
+    };
+  };
+  const seedClonedEntityStyles = (clones) => {
+    if (!clones.length) return;
+    setRoleColors((prev) => ({
+      ...prev,
+      ...Object.fromEntries(clones.map(({ id, style }) => [id, { color: style.color, opacity: style.opacity }])),
+    }));
+    setBorderColors((prev) => ({
+      ...prev,
+      ...Object.fromEntries(clones.map(({ id, style }) => [id, { color: style.borderColor, opacity: style.borderOpacity }])),
+    }));
+    setMatchFill((prev) => ({
+      ...prev,
+      ...Object.fromEntries(clones.map(({ id, style }) => [id, style.matchFill])),
+    }));
+  };
+  const duplicateTemplates = (ids) => {
+    const next = [];
+    const clonedEntities = [];
+    rich.forEach((t) => {
+      next.push(t);
+      if (ids.has(t.id)) {
+        next.push({
+          ...t,
+          id: newId('t'),
+          name: `${t.name} copy`,
+          modules: t.modules.map((m) => ({
+            ...m, id: newId('m'),
+            categories: m.categories.map((c) => ({
+              ...c, id: newId('c'),
+              items: c.items.map((it) => ({ ...it, id: newId('i') })),
+            })),
+          })),
+          roster: t.roster.map((r) => {
+            const id = newId('e');
+            const style = liveEntityStyle(r);
+            clonedEntities.push({ id, style });
+            return { ...r, ...style, id };
+          }),
+        });
+      }
     });
     markEdited();
+    setRich(next);
+    seedClonedEntityStyles(clonedEntities);
+    if (onSaveTemplates) {
+      const rev = editRevisionRef.current;
+      const req = ++saveReqSeqRef.current;
+      dispatchTemplatesSave(next.map(richToTemplate))
+        .then(() => {
+          if (editRevisionRef.current === rev && saveReqSeqRef.current === req) {
+            setDirty(false);
+            setPersistenceError('');
+          }
+        })
+        .catch((err) => {
+          console.error('Failed to duplicate templates', err);
+          if (editRevisionRef.current === rev && saveReqSeqRef.current === req) {
+            setDirty(true);
+            setPersistenceError('Could not save templates. Your edits are still here; try again.');
+          }
+        });
+    } else {
+      setDirty(false);
+    }
   };
   const reorderTemplates = (activeId, overId) => {
     if (!activeId || !overId || activeId === overId) return;
@@ -1126,10 +1219,18 @@ export default function TemplatesEditor({
       const rev = editRevisionRef.current;
       const req = ++saveReqSeqRef.current;
       dispatchTemplatesSave(next.map(richToTemplate))
-        .then(() => { if (editRevisionRef.current === rev && saveReqSeqRef.current === req) setDirty(false); })
+        .then(() => {
+          if (editRevisionRef.current === rev && saveReqSeqRef.current === req) {
+            setDirty(false);
+            setPersistenceError('');
+          }
+        })
         .catch((err) => {
           console.error('Failed to delete templates', err);
-          if (editRevisionRef.current === rev && saveReqSeqRef.current === req) setDirty(true);
+          if (editRevisionRef.current === rev && saveReqSeqRef.current === req) {
+            setDirty(true);
+            setPersistenceError('Could not save templates. Your edits are still here; try again.');
+          }
         });
     } else {
       setDirty(false);
@@ -1424,14 +1525,26 @@ export default function TemplatesEditor({
   };
   const duplicateEntities = (ids) => {
     if (!tpl || !ids.size) return;
+    const clonesBySource = new Map();
+    const clonedEntities = [];
+    tpl.roster.forEach((entity) => {
+      if (!ids.has(entity.id)) return;
+      const id = newId('e');
+      const style = liveEntityStyle(entity);
+      const clone = { ...entity, ...style, id, role: `${entity.role} copy` };
+      clonesBySource.set(entity.id, clone);
+      clonedEntities.push({ id, style });
+    });
     mutateTpl(tpl.id, (t) => {
       const out = [];
       t.roster.forEach((r) => {
         out.push(r);
-        if (ids.has(r.id)) out.push({ ...r, id: newId('e'), role: `${r.role} copy` });
+        const clone = clonesBySource.get(r.id);
+        if (clone) out.push(clone);
       });
       return { ...t, roster: out };
     });
+    seedClonedEntityStyles(clonedEntities);
     setSelEntities(new Set());
   };
   const reorderEntities = (activeId, overId) => {
@@ -1494,11 +1607,16 @@ export default function TemplatesEditor({
       spaces: mods,
       entities: r.roster.map((e) => {
         const fillColor = roleColors[e.id]?.color || e.color || '#8c8c8a';
-        const fillOpacity = roleColors[e.id]?.opacity ?? 0.35;
-        const mf = !!matchFill[e.id];
+        const fillOpacity = roleColors[e.id]?.opacity ?? e.opacity ?? 0.35;
+        const mf = Object.prototype.hasOwnProperty.call(matchFill, e.id)
+          ? !!matchFill[e.id]
+          : !!e.matchFill;
         const bd = mf
           ? { color: fillColor, opacity: fillOpacity }
-          : (borderColors[e.id] || { color: fillColor, opacity: fillOpacity });
+          : (borderColors[e.id] || {
+            color: e.borderColor || fillColor,
+            opacity: e.borderOpacity ?? fillOpacity,
+          });
         return {
           id: e.id,
           name: e.role,
@@ -1524,17 +1642,44 @@ export default function TemplatesEditor({
     const rev = editRevisionRef.current;
     const req = ++saveReqSeqRef.current;
     dispatchTemplatesSave(rich.map(richToTemplate))
-      .then(() => { if (editRevisionRef.current === rev && saveReqSeqRef.current === req) setDirty(false); })
+      .then(() => {
+        if (editRevisionRef.current === rev && saveReqSeqRef.current === req) {
+          setDirty(false);
+          setPersistenceError('');
+        }
+      })
       .catch((err) => {
         console.error('Failed to save templates', err);
-        if (editRevisionRef.current === rev && saveReqSeqRef.current === req) setDirty(true);
+        if (editRevisionRef.current === rev && saveReqSeqRef.current === req) {
+          setDirty(true);
+          setPersistenceError('Could not save templates. Your edits are still here; try again.');
+        }
       });
   };
-  const handleCancelEdits = () => {
+  const handleCancelEdits = async () => {
     /* BL-23: invalidate any in-flight save/delete so its later settlement
        can't re-dirty (or re-clear) the editor the user just reset. */
     editRevisionRef.current += 1;
-    reloadFromProps();
+    setPersistenceError('');
+    try {
+      // A save already in flight may settle after Cancel is pressed. Wait for
+      // it, then read the authoritative snapshot so Cancel can never restore a
+      // stale pre-save prop over a backend write that just committed.
+      if (onReloadTemplates) {
+        await reloadTemplatesAfterPendingSave({
+          pendingSave: saveChainRef.current,
+          reload: onReloadTemplates,
+          apply: applyAuthoritativeTemplates,
+        });
+      } else {
+        await saveChainRef.current.catch(() => undefined);
+        reloadFromProps();
+      }
+    } catch (error) {
+      console.error('Failed to reload authoritative templates', error);
+      setDirty(true);
+      setPersistenceError('Could not reload templates. Your edits are still here; try Cancel again.');
+    }
   };
 
   const selectLinkStyle = {
@@ -1682,6 +1827,11 @@ export default function TemplatesEditor({
       mobileSwipeSurfaceRef={mobileSwipeSurfaceRef}
     >
       <div className="ed-scope" style={{ width: 'auto', height: 'calc(100% - 65px)', position: 'relative', overflow: 'hidden' }}>
+        {persistenceError ? (
+          <div role="alert" style={{ position: 'absolute', zIndex: 20, top: 6, left: '50%', transform: 'translateX(-50%)', maxWidth: 'calc(100% - 24px)', padding: '6px 10px', borderRadius: 6, border: '1px solid #cf6f6f', background: '#281b20', color: '#f3c4c4', fontSize: 11.5, lineHeight: 1.35, textAlign: 'center' }}>
+            {persistenceError}
+          </div>
+        ) : null}
         <div className="templates-editor-body" style={{ padding: '0 8px 8px 8px', height: '100%', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
         {/* Three columns */}
         <div className="templates-editor-grid" style={{ display: 'grid', gridTemplateColumns: '260px 1fr 268px', gap: 8, height: '100%' }}>
@@ -2309,7 +2459,7 @@ export default function TemplatesEditor({
                           markEdited();
                         };
                         return (
-                          <div style={{
+                          <div data-entity-color-panel style={{
                             margin: '-4px 0 6px', padding: 0,
                             background: 'var(--paper-deep)', border: '1px solid var(--rule)', borderTop: 0, borderRadius: '0 0 4px 4px',
                             display: 'flex', flexDirection: 'column',
@@ -2355,7 +2505,8 @@ export default function TemplatesEditor({
                                   color={activeColor}
                                   opacity={activeOp}
                                   onChange={applyColor}
-                                  onClose={() => {}}
+                                  onClose={() => setOpenColor(null)}
+                                  dismissInsideSelector="[data-entity-color-panel]"
                                 />
                               </div>
                             </div>
@@ -2650,18 +2801,15 @@ export default function TemplatesEditor({
               {mobileEntitiesOpen ? (
                 <div
                   className="templates-mobile-modal-scrim"
-                  onClick={() => {
-                    setMobileEntitiesOpen(false);
-                    setOpenColor(null);
-                    setEntityEdit(false);
-                    setSelEntities(new Set());
-                  }}
+                  onClick={closeMobileEntities}
                 >
                   <div
+                    ref={mobileEntitiesModalRef}
                     className="templates-mobile-entity-modal"
                     role="dialog"
                     aria-modal="true"
                     aria-label="Entities"
+                    tabIndex={-1}
                     onClick={(e) => e.stopPropagation()}
                   >
                     <div className="templates-mobile-entity-modal-head">
@@ -2670,13 +2818,9 @@ export default function TemplatesEditor({
                         <span>{tpl.roster.length} entities in {tpl.name}</span>
                       </div>
                       <button
+                        ref={mobileEntitiesCloseRef}
                         type="button"
-                        onClick={() => {
-                          setMobileEntitiesOpen(false);
-                          setOpenColor(null);
-                          setEntityEdit(false);
-                          setSelEntities(new Set());
-                        }}
+                        onClick={closeMobileEntities}
                       >
                         Close
                       </button>
@@ -2735,8 +2879,8 @@ export default function TemplatesEditor({
                                   type="button"
                                   title="Edit color"
                                   onClick={() => setOpenColor(isOpen ? null : r.id)}
-                                  style={{ background: c, borderColor: rowBorderColor }}
-                                />
+                                  style={{ '--entity-color': c, '--entity-border-color': rowBorderColor }}
+                                ><span aria-hidden="true" /></button>
                                 <input
                                   className="templates-mobile-inline-input"
                                   defaultValue={r.role}
@@ -2775,7 +2919,7 @@ export default function TemplatesEditor({
                                   markEdited();
                                 };
                                 return (
-                                  <div className="templates-mobile-color-panel">
+                                  <div className="templates-mobile-color-panel" data-entity-color-panel>
                                     <div className="templates-mobile-color-tabs">
                                       {['fill', 'border'].map((k) => (
                                         <button key={k} type="button" className={layer === k ? 'active' : ''} onClick={() => setLayerTab({ ...layerTab, [r.id]: k })}>{k === 'fill' ? 'Fill' : 'Border'}</button>
@@ -2788,7 +2932,7 @@ export default function TemplatesEditor({
                                       </label>
                                     ) : null}
                                     <div style={{ opacity: isBorderMatched ? 0.4 : 1, pointerEvents: isBorderMatched ? 'none' : 'auto' }}>
-                                      <CompactColorPicker color={activeData.color} opacity={activeData.opacity} onChange={applyColor} onClose={() => {}} />
+                                      <CompactColorPicker color={activeData.color} opacity={activeData.opacity} onChange={applyColor} onClose={() => setOpenColor(null)} dismissInsideSelector="[data-entity-color-panel]" />
                                     </div>
                                   </div>
                                 );
@@ -3020,10 +3164,16 @@ export default function TemplatesEditor({
     {/* Move/Copy modal */}
     {moveModal && tpl && (
       <div
-        onClick={() => setMoveModal(null)}
-        style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100 }}
+        onClick={closeMoveModal}
+        style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 5400 }}
       >
         <div
+          ref={moveModalRef}
+          role="dialog"
+          aria-modal="true"
+          aria-label="Move or copy items"
+          data-modal-focus-layer="true"
+          tabIndex={-1}
           onClick={(e) => e.stopPropagation()}
           style={{ width: 420, overflow: 'hidden', background: '#181c24', border: '1px solid #2a3140', borderRadius: 10 }}
         >
@@ -3032,7 +3182,7 @@ export default function TemplatesEditor({
               <p style={{ margin: 0, fontSize: 10.5, letterSpacing: '0.14em', textTransform: 'uppercase', color: '#8d96a6', fontWeight: 700, fontFamily: '"JetBrains Mono", ui-monospace, monospace' }}>Move/Copy</p>
               <h3 style={{ fontSize: 14, fontWeight: 700, margin: '2px 0 0', color: '#f4f1ea', letterSpacing: '-0.025em', fontFamily: '"Helvetica Neue", Helvetica, Arial, sans-serif' }}>{moveModal.count} item{moveModal.count === 1 ? '' : 's'}</h3>
             </div>
-            <button onClick={() => setMoveModal(null)} title="Close" style={closeButtonStyle({ borderColor: '#2a3140', color: '#8d96a6' })}>×</button>
+            <button ref={moveModalCloseRef} onClick={closeMoveModal} title="Close" style={closeButtonStyle({ borderColor: '#2a3140', color: '#8d96a6' })}>×</button>
           </div>
           {/* Destination fields depend on WHAT is being moved/copied:
               - Category → pick a Destination Template, then a Destination
@@ -3069,9 +3219,9 @@ export default function TemplatesEditor({
             })()}
           </div>
           <div style={{ padding: '12px 14px', borderTop: '1px solid #2a3140', background: '#12151c', display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-            <button onClick={() => setMoveModal(null)} style={{ background: 'transparent', color: '#8d96a6', border: 0, padding: '4px 8px', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit' }}>Cancel</button>
-            <button onClick={() => setMoveModal(null)} style={{ background: 'transparent', color: '#8d96a6', border: 0, padding: '4px 8px', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit' }}>Copy</button>
-            <button onClick={() => setMoveModal(null)} style={{ background: '#d8a84e', color: '#15110a', border: '1px solid #d8a84e', borderRadius: 6, fontSize: 12, padding: '6px 12px', fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>Move</button>
+            <button onClick={closeMoveModal} style={{ background: 'transparent', color: '#8d96a6', border: 0, padding: '4px 8px', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit' }}>Cancel</button>
+            <button onClick={closeMoveModal} style={{ background: 'transparent', color: '#8d96a6', border: 0, padding: '4px 8px', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit' }}>Copy</button>
+            <button onClick={closeMoveModal} style={{ background: '#d8a84e', color: '#15110a', border: '1px solid #d8a84e', borderRadius: 6, fontSize: 12, padding: '6px 12px', fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>Move</button>
           </div>
         </div>
       </div>

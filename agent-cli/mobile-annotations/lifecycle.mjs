@@ -186,7 +186,8 @@ async function selectObject(page, touch, toolId, id) {
 }
 
 async function chooseStyledOption(page, ariaLabel, optionLabel) {
-  const trigger = page.getByRole('button', { name: ariaLabel, exact: true });
+  const escapedLabel = ariaLabel.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const trigger = page.getByRole('button', { name: new RegExp(`^${escapedLabel}(?:: .+)?$`) });
   if (await trigger.count() !== 1) {
     const toolbars = await page.locator('[data-mobile-tool-properties="true"]').evaluateAll((nodes) => (
       nodes.map((node) => ({

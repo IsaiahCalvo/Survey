@@ -17,6 +17,8 @@ const PRESET_COLORS = [
     '#FF8000', '#FFFFFF', '#808080', '#000000',     // Orange + Greys (light grey removed)
 ];
 
+const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
+
 // Convert a #rrggbb hex into HSV so the spectrum view opens already pointed at
 // the current colour. Returns null for non-hex input (named colours, rgba()).
 const hexToHsv = (hex) => {
@@ -66,6 +68,7 @@ const CompactColorPicker = ({
     //     opacity (shapes require a visible border).
     firstPreset = 'transparent',
     minOpacity = 0,
+    dismissInsideSelector,
 }) => {
     const isMatchFirst = firstPreset && typeof firstPreset === 'object' && firstPreset.kind === 'match';
     const matchFillColor = isMatchFirst ? (firstPreset.color || '#ffffff') : null;
@@ -94,8 +97,8 @@ const CompactColorPicker = ({
     const hueRef = useRef(null);
     const containerRef = useRef(null);
     const dismissInsideRefs = useMemo(() => [containerRef], []);
-    const isDraggingSV = useRef(false);
-    const isDraggingHue = useRef(false);
+    const svPointerId = useRef(null);
+    const huePointerId = useRef(null);
 
     // Keep the local hex AND the spectrum's HSV in sync with the colour prop,
     // so opening the spectrum view starts on the real current colour.
@@ -205,39 +208,76 @@ const CompactColorPicker = ({
         onChange(hex, alpha);
     };
 
-    // Simple drag handlers
-    const handleMouseDownSV = (e) => {
-        isDraggingSV.current = true;
-        handleSVChange(e);
-        window.addEventListener('mousemove', handleMouseMoveSV, { passive: true });
-        window.addEventListener('mouseup', handleMouseUpSV, { passive: true });
+    // Pointer capture keeps both mouse and finger drags live when they leave
+    // the small spectrum/hue track. touchAction none prevents WebKit from
+    // turning the same gesture into page panning after it has begun.
+    const beginPointerDrag = (kind, event) => {
+        event.preventDefault();
+        event.currentTarget.setPointerCapture?.(event.pointerId);
+        if (kind === 'sv') {
+            svPointerId.current = event.pointerId;
+            handleSVChange(event);
+        } else {
+            huePointerId.current = event.pointerId;
+            handleHueChange(event);
+        }
     };
 
-    const handleMouseMoveSV = (e) => {
-        if (isDraggingSV.current) handleSVChange(e);
+    const movePointerDrag = (kind, event) => {
+        const activeId = kind === 'sv' ? svPointerId.current : huePointerId.current;
+        if (activeId !== event.pointerId) return;
+        event.preventDefault();
+        if (kind === 'sv') handleSVChange(event);
+        else handleHueChange(event);
     };
 
-    const handleMouseUpSV = () => {
-        isDraggingSV.current = false;
-        window.removeEventListener('mousemove', handleMouseMoveSV);
-        window.removeEventListener('mouseup', handleMouseUpSV);
+    const endPointerDrag = (kind, event) => {
+        const pointerRef = kind === 'sv' ? svPointerId : huePointerId;
+        if (pointerRef.current !== event.pointerId) return;
+        pointerRef.current = null;
+        if (event.currentTarget.hasPointerCapture?.(event.pointerId)) {
+            event.currentTarget.releasePointerCapture(event.pointerId);
+        }
     };
 
-    const handleMouseDownHue = (e) => {
-        isDraggingHue.current = true;
-        handleHueChange(e);
-        window.addEventListener('mousemove', handleMouseMoveHue, { passive: true });
-        window.addEventListener('mouseup', handleMouseUpHue, { passive: true });
+    const handleSpectrumKeyDown = (event) => {
+        let nextSaturation = saturation;
+        let nextValue = value;
+        switch (event.key) {
+            case 'ArrowLeft': nextSaturation = clamp(saturation - 1, 0, 100); break;
+            case 'ArrowRight': nextSaturation = clamp(saturation + 1, 0, 100); break;
+            case 'ArrowUp': nextValue = clamp(value + 1, 0, 100); break;
+            case 'ArrowDown': nextValue = clamp(value - 1, 0, 100); break;
+            case 'PageUp': nextValue = clamp(value + 10, 0, 100); break;
+            case 'PageDown': nextValue = clamp(value - 10, 0, 100); break;
+            case 'Home': nextSaturation = 0; break;
+            case 'End': nextSaturation = 100; break;
+            default: return;
+        }
+        event.preventDefault();
+        event.stopPropagation();
+        setSaturation(nextSaturation);
+        setValue(nextValue);
+        updateColorFromHSV(hue, nextSaturation, nextValue);
     };
 
-    const handleMouseMoveHue = (e) => {
-        if (isDraggingHue.current) handleHueChange(e);
-    };
-
-    const handleMouseUpHue = () => {
-        isDraggingHue.current = false;
-        window.removeEventListener('mousemove', handleMouseMoveHue);
-        window.removeEventListener('mouseup', handleMouseUpHue);
+    const handleHueKeyDown = (event) => {
+        let nextHue = hue;
+        switch (event.key) {
+            case 'ArrowLeft':
+            case 'ArrowDown': nextHue = clamp(hue - 1, 0, 360); break;
+            case 'ArrowRight':
+            case 'ArrowUp': nextHue = clamp(hue + 1, 0, 360); break;
+            case 'PageDown': nextHue = clamp(hue - 10, 0, 360); break;
+            case 'PageUp': nextHue = clamp(hue + 10, 0, 360); break;
+            case 'Home': nextHue = 0; break;
+            case 'End': nextHue = 360; break;
+            default: return;
+        }
+        event.preventDefault();
+        event.stopPropagation();
+        setHue(nextHue);
+        updateColorFromHSV(nextHue, saturation, value);
     };
 
     return (
@@ -245,10 +285,13 @@ const CompactColorPicker = ({
         <DismissBarrier
             active={typeof onClose === 'function'}
             insideRefs={dismissInsideRefs}
+            insideSelector={dismissInsideSelector}
             onDismiss={onClose}
         />
         <div
             ref={containerRef}
+            data-modal-focus-layer="true"
+            data-testid="compact-color-picker"
             style={{
             width: '260px',
             background: '#0d0f14',
@@ -269,6 +312,8 @@ const CompactColorPicker = ({
                 <span style={{ color: '#e8e2d4', fontSize: '13px', fontWeight: 600 }}>Color</span>
                 <div style={{ display: 'flex', gap: '4px', background: '#2a3140', padding: '2px', borderRadius: '4px' }}>
                     <button
+                        type="button"
+                        aria-label="Preset colors"
                         onClick={() => setMode('grid')}
                         style={{
                             background: mode === 'grid' ? '#5a6473' : 'transparent',
@@ -288,6 +333,8 @@ const CompactColorPicker = ({
                         </div>
                     </button>
                     <button
+                        type="button"
+                        aria-label="Color spectrum"
                         onClick={() => setMode('spectrum')}
                         style={{
                             background: mode === 'spectrum' ? '#5a6473' : 'transparent',
@@ -342,6 +389,7 @@ const CompactColorPicker = ({
                         const title = isMatchSlot ? 'Match fill' : (isTransparent ? 'Transparent' : c);
                         return (
                             <button
+                                type="button"
                                 key={isMatchSlot ? '__match__' : c}
                                 title={title}
                                 onClick={() => applyHex(presetValue)}
@@ -379,7 +427,21 @@ const CompactColorPicker = ({
                     {/* SV Box */}
                     <div
                         ref={svRef}
-                        onMouseDown={handleMouseDownSV}
+                        data-color-picker-spectrum="true"
+                        role="slider"
+                        tabIndex={0}
+                        aria-label="Saturation and brightness"
+                        aria-valuemin={0}
+                        aria-valuemax={100}
+                        aria-valuenow={Math.round(saturation)}
+                        aria-valuetext={`Saturation ${Math.round(saturation)}%, brightness ${Math.round(value)}%`}
+                        aria-description="Left and right adjust saturation. Up and down adjust brightness. Page Up and Page Down adjust brightness by ten percent. Home and End set minimum and maximum saturation."
+                        onKeyDown={handleSpectrumKeyDown}
+                        onPointerDown={(event) => beginPointerDrag('sv', event)}
+                        onPointerMove={(event) => movePointerDrag('sv', event)}
+                        onPointerUp={(event) => endPointerDrag('sv', event)}
+                        onPointerCancel={(event) => endPointerDrag('sv', event)}
+                        onLostPointerCapture={() => { svPointerId.current = null; }}
                         style={{
                             width: '100%',
                             height: '150px',
@@ -390,7 +452,8 @@ const CompactColorPicker = ({
                 linear-gradient(to right, #FFF, transparent),
                 hsl(${hue}, 100%, 50%)
               `,
-                            cursor: 'crosshair'
+                            cursor: 'crosshair',
+                            touchAction: 'none'
                         }}
                     >
                         <div style={{
@@ -412,14 +475,30 @@ const CompactColorPicker = ({
                         <span style={{ color: '#8d96a6', fontSize: '10px', width: '20px' }}>HUE</span>
                         <div
                             ref={hueRef}
-                            onMouseDown={handleMouseDownHue}
+                            data-color-picker-hue="true"
+                            role="slider"
+                            tabIndex={0}
+                            aria-label="Hue"
+                            aria-orientation="horizontal"
+                            aria-valuemin={0}
+                            aria-valuemax={360}
+                            aria-valuenow={Math.round(hue)}
+                            aria-valuetext={`${Math.round(hue)} degrees`}
+                            aria-description="Arrow keys adjust hue by one degree. Page Up and Page Down adjust hue by ten degrees. Home and End set the minimum and maximum hue."
+                            onKeyDown={handleHueKeyDown}
+                            onPointerDown={(event) => beginPointerDrag('hue', event)}
+                            onPointerMove={(event) => movePointerDrag('hue', event)}
+                            onPointerUp={(event) => endPointerDrag('hue', event)}
+                            onPointerCancel={(event) => endPointerDrag('hue', event)}
+                            onLostPointerCapture={() => { huePointerId.current = null; }}
                             style={{
                                 flex: 1,
                                 height: '12px',
                                 borderRadius: '6px',
                                 background: 'linear-gradient(to right, #f00 0%, #ff0 17%, #0f0 33%, #0ff 50%, #00f 67%, #f0f 83%, #f00 100%)',
                                 position: 'relative',
-                                cursor: 'pointer'
+                                cursor: 'pointer',
+                                touchAction: 'none'
                             }}
                         >
                             <div style={{

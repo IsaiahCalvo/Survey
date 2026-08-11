@@ -26,6 +26,7 @@ node agent-cli/full-app-e2e.mjs --suite=surveys --device=all
 node agent-cli/full-app-e2e.mjs --suite=hub --device=all
 node agent-cli/full-app-e2e.mjs --suite=stability --device=mobile
 node agent-cli/full-app-e2e.mjs --suite=contracts --device=all
+npm run test:mobile-secondary
 ```
 
 List every suite and its exact proof contract:
@@ -64,6 +65,10 @@ assertions. They do not claim Supabase durability.
   and two-axis pan-momentum contracts.
 - Yellow/red sync-status explanation and retry-affordance contracts. Real
   cloud recovery remains part of the leased durable lane, not a mock claim.
+- The separate mobile-secondary gate covers real mobile multi-select,
+  cut/copy/paste and z-order; Counter series creation/switching; Bookmark CRUD;
+  page insert/rotate/move/delete; and downloaded PDF export/reimport with exact
+  count, type, text, geometry/style, page, Counter-series, and z-order parity.
 
 Each suite records input type, viewport, lifecycle, exact persistence
 assertions, browser diagnostics, timings, and screenshots in its JSON artifact.
@@ -122,6 +127,17 @@ preserving direct last-owner protection. Durable cleanup was completed manually
 against exact recorded IDs and paths. The full durable lane must be rerun after
 that migration is deployed.
 
+Release readiness requires that migration, the service-role-only bytea fixture
+`20260810010000_integration_test_bytea_roundtrip.sql`, and the three
+`20260811120000`–`20260811140000` account-deletion, analytics-cap, and atomic
+template migrations. `npm run release:mobile:readiness` also produces a current
+Vite build, checks the Electron packaging whitelist, checks and temporarily
+exports the Expo iOS bundle, then verifies only read-only Supabase/Vercel/Expo
+metadata lists. It blocks unless `dist/release.json` matches HEAD and the latest
+`expo-go` metadata contains the deterministic current shell hash. These are
+release-integrity checks, not substitutes for the native and durable E2E limits
+below.
+
 ## Honest external limits
 
 - Browser gesture contracts do not claim native pinch proof; only the optional
@@ -132,5 +148,9 @@ that migration is deployed.
 - CAPTCHA signup, billing portal, Microsoft/Google tenants, live collaboration,
   offline reconnect, and TestFlight distribution require dedicated external
   accounts or platform configuration. Never substitute a mock result.
+- `test:mobile-secondary` uses the development viewer fixture and browser-local
+  persistence. It proves its exact viewer operations and PDF round trip, not
+  Supabase durability, native iOS/Android gesture delivery, OS share sheets, or
+  Files-app placement.
 
 Phone and Simulator setup is in [MOBILE-RUN.md](./MOBILE-RUN.md).

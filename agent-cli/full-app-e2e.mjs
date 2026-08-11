@@ -59,6 +59,11 @@ const suites = [
     command: ['node', 'agent-cli/mobile-annotations/advanced-selftest.mjs', 'survey-marker', 'region'],
   },
   {
+    id: 'secondary',
+    devices: ['mobile'],
+    command: ['node', 'agent-cli/mobile-annotations/secondary-selftest.mjs'],
+  },
+  {
     id: 'viewer',
     devices: ['mobile', 'desktop'],
     command: ['node', 'agent-cli/mobile-workflows/viewer-auxiliary-e2e.mjs', `--device=${device}`],

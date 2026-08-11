@@ -398,6 +398,13 @@ if (import.meta.env.DEV) {
       createRoot(document.getElementById('root')).render(<AtomicEraseHarness />);
     });
   }
+  const mobileTextFormattingHarness = params.get('mobileTextFormattingHarness');
+  if (!devRouteActive && mobileTextFormattingHarness) {
+    devRouteActive = true;
+    import('./dev/MobileTextFormattingHarness').then(({ default: MobileTextFormattingHarness }) => {
+      createRoot(document.getElementById('root')).render(<MobileTextFormattingHarness />);
+    });
+  }
   const testPdf = params.get('testPdf');
   if (!devRouteActive && testPdf) {
     devRouteActive = true;

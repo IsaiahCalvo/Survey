@@ -20,7 +20,7 @@ import ProjectsFolderTree from './ProjectsFolderTree';
 import TemplatesEditor from './TemplatesEditor';
 import ShareModal from './ShareModal';
 import AccessManagementModal from './AccessManagementModal';
-import { HubChromeContext } from './HubShell';
+import { HubChromeContext, HubShell } from './HubShell';
 import HubLoadingSkeletons from './HubLoadingSkeletons';
 const AccountSettings = lazy(() => import('../components/AccountSettings').then(m => ({ default: m.AccountSettings })));
 import './hub.css';
@@ -34,6 +34,13 @@ export default function SurveyHub({
   documentsInitialLoading = false,
   projectsInitialLoading = false,
   templatesInitialLoading = false,
+  projectPreferences = {},
+  documentsLoadError = null,
+  projectsLoadError = null,
+  templatesLoadError = null,
+  onRetryDocuments,
+  onRetryProjects,
+  onRetryTemplates,
   members = [],
   user = null,
   isPro = true,
@@ -45,7 +52,9 @@ export default function SurveyHub({
   onRenameProject,
   onCreateTemplate,
   onDeleteProjects,
+  onDuplicateProjects,
   onSaveTemplates,
+  onReloadTemplates,
   /* KAL-44 — host (App.jsx) supplies this so TemplatesEditor can decide
      whether deleting a checklist item should hard-delete or trigger the
      archive confirmation flow. Pure callback: (itemId) => number. */
@@ -54,6 +63,7 @@ export default function SurveyHub({
   onDeleteDocuments,
   onRenameDocument,
   onMoveCopyDocuments,
+  onProjectPreferencesChange,
   onLockDocument,
   onSettings,
   onSignOut,
@@ -111,11 +121,36 @@ export default function SurveyHub({
     if (onSettings) onSettings();
   };
 
+  const HubLoadError = ({ tabName, error, onRetry }) => (
+    <HubShell
+      {...common}
+      tab={tabName}
+      title={tabName === 'projects' ? 'Projects' : tabName === 'templates' ? 'Templates' : 'Documents'}
+      userName={user?.name || user?.email?.split('@')[0] || 'You'}
+    >
+      <div role="alert" style={{ display: 'grid', placeItems: 'center', minHeight: 220, padding: 24, textAlign: 'center' }}>
+        <div>
+          <p style={{ margin: '0 0 12px', color: 'var(--ink-100)' }}>
+            Couldn&apos;t load {tabName}. Check your connection and try again.
+          </p>
+          <button
+            type="button"
+            className="btn primary"
+            onClick={() => { void Promise.resolve(onRetry?.()).catch(() => undefined); }}
+            title={error || undefined}
+          >Try again</button>
+        </div>
+      </div>
+    </HubShell>
+  );
+
   return (
     <HubChromeContext.Provider value={{ user, onSettings: openSettings, onSignOut, onSignIn }}>
       {tab === 'documents' && (
         documentsInitialLoading ? (
           <HubLoadingSkeletons {...common} tab="documents" />
+        ) : documentsLoadError && documents.length === 0 ? (
+          <HubLoadError tabName="documents" error={documentsLoadError} onRetry={onRetryDocuments} />
         ) : (
           <DocumentsLedger
           {...common}
@@ -135,6 +170,8 @@ export default function SurveyHub({
       {tab === 'projects' && (
         projectsInitialLoading ? (
           <HubLoadingSkeletons {...common} tab="projects" />
+        ) : projectsLoadError && projects.length === 0 ? (
+          <HubLoadError tabName="projects" error={projectsLoadError} onRetry={onRetryProjects} />
         ) : (
           <ProjectsFolderTree
             {...common}
@@ -147,6 +184,11 @@ export default function SurveyHub({
             onRenameProject={onRenameProject}
             onUpload={onUpload}
             onDeleteProjects={onDeleteProjects}
+            onDuplicateProjects={onDuplicateProjects}
+            onDuplicateDocuments={onDuplicateDocuments}
+            onMoveCopyDocuments={onMoveCopyDocuments}
+            projectPreferences={projectPreferences}
+            onProjectPreferencesChange={onProjectPreferencesChange}
             onDeleteDocuments={onDeleteDocuments}
             onRenameDocument={onRenameDocument}
             onLockDocument={onLockDocument}
@@ -158,6 +200,8 @@ export default function SurveyHub({
       {tab === 'templates' && (
         templatesInitialLoading ? (
           <HubLoadingSkeletons {...common} tab="templates" />
+        ) : templatesLoadError && templates.length === 0 ? (
+          <HubLoadError tabName="templates" error={templatesLoadError} onRetry={onRetryTemplates} />
         ) : (
           <TemplatesEditor
             {...common}
@@ -165,6 +209,7 @@ export default function SurveyHub({
             initialMobileOpen={initialMobileDetailOpen}
             onCreateTemplate={onCreateTemplate}
             onSaveTemplates={onSaveTemplates}
+            onReloadTemplates={onReloadTemplates}
             onShare={shareTemplate}
             getChecklistItemUsageCount={getChecklistItemUsageCount}
           />

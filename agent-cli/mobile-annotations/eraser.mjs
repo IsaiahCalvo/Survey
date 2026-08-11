@@ -109,7 +109,7 @@ async function activateEraser(page, { mode, size }) {
     timeout: 10_000,
   });
   const desiredMode = mode === 'entire' ? 'Full Stroke' : 'Partial Erase';
-  const modeTrigger = page.getByRole('button', { name: 'Eraser mode', exact: true });
+  const modeTrigger = page.getByRole('button', { name: /^Eraser mode(?:: .+)?$/ });
   assert.equal(await modeTrigger.count(), 1, 'Mobile Eraser mode control must be available');
   if ((await modeTrigger.textContent())?.trim() !== desiredMode) {
     await modeTrigger.click();
@@ -121,7 +121,7 @@ async function activateEraser(page, { mode, size }) {
   // Poll the actual mobile control instead of sampling that intermediate frame.
   await page.waitForFunction(({ label }) => {
     const controls = [...document.querySelectorAll('button')];
-    const trigger = controls.find((button) => button.getAttribute('aria-label') === 'Eraser mode');
+    const trigger = controls.find((button) => button.getAttribute('aria-label')?.startsWith('Eraser mode'));
     return trigger?.textContent?.trim() === label;
   }, { label: desiredMode }, { timeout: 5_000 });
 

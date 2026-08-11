@@ -8,7 +8,7 @@
    store yet (page count, revision, per-event activity) fall back gracefully
    without changing the layout.
 */
-import { useState, useMemo, useEffect, useRef } from 'react';
+import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { HubShell, Icon, Avatar, PdfThumb, Search, EmptyState } from './HubShell';
 import { MoveCopyModal, ConfirmModal, RenameModal } from './BulkModals';
@@ -16,6 +16,7 @@ import PdfPageThumb from './PdfPageThumb';
 import { useStorage } from '../hooks/useDatabase';
 import { closeButtonStyle, miniButtonStyle, moreButtonStyle } from './hubControls';
 import DismissBarrier from '../components/DismissBarrier';
+import useModalFocusTrap from './useModalFocusTrap';
 
 const ledgerHeader = {
   background: 'var(--ink-700)',
@@ -144,6 +145,17 @@ export default function DocumentsLedger({
   const [mobileDetailId, setMobileDetailId] = useState(null);
   const [mobileSortOpen, setMobileSortOpen] = useState(false);
   const mobileSortRef = useRef(null);
+  const mobileDetailModalRef = useRef(null);
+  const mobileDetailCloseRef = useRef(null);
+  const mobileDetailOpenerRef = useRef(null);
+  const closeMobileDetail = useCallback(() => setMobileDetailId(null), []);
+  useModalFocusTrap({
+    active: Boolean(mobileDetailId),
+    containerRef: mobileDetailModalRef,
+    initialFocusRef: mobileDetailCloseRef,
+    returnFocusRef: mobileDetailOpenerRef,
+    onClose: closeMobileDetail,
+  });
 
   /* Supabase storage helper — let PdfPageThumb fetch a document's bytes to
      render its real first page via the authenticated download (private bucket). */
@@ -227,6 +239,7 @@ export default function DocumentsLedger({
   const clearSel = () => setSelDocs(new Set());
   const showDocumentDetails = (doc) => {
     if (typeof window !== 'undefined' && window.matchMedia('(max-width: 720px)').matches) {
+      mobileDetailOpenerRef.current = docMenu?.trigger || document.activeElement;
       setMobileDetailId(doc.id);
       return;
     }
@@ -283,8 +296,10 @@ export default function DocumentsLedger({
             aria-expanded={mobileSortOpen}
             onClick={() => setMobileSortOpen((open) => !open)}
           >
-            <Icon name="filter" size={12} />
-            <span>{activeSortLabel}</span>
+            <span className="documents-mobile-filter-visual">
+              <Icon name="filter" size={12} />
+              <span>{activeSortLabel}</span>
+            </span>
           </button>
           {mobileSortOpen && (
             <div className="documents-mobile-sort-menu" role="menu">
@@ -332,8 +347,9 @@ export default function DocumentsLedger({
   };
   const openDocMenu = (e, d) => {
     e.stopPropagation();
+    const trigger = e.currentTarget;
     const rect = e.currentTarget.getBoundingClientRect();
-    setDocMenu((cur) => (cur && cur.id === d.id ? null : { id: d.id, rect }));
+    setDocMenu((cur) => (cur && cur.id === d.id ? null : { id: d.id, rect, trigger }));
   };
   const renderMobileMore = (d) => (
     <button
@@ -466,8 +482,9 @@ export default function DocumentsLedger({
                           type="button"
                           onClick={(e) => {
                             e.stopPropagation();
+                            const trigger = e.currentTarget;
                             const rect = e.currentTarget.getBoundingClientRect();
-                            setDocMenu((cur) => (cur && cur.id === d.id ? null : { id: d.id, rect }));
+                            setDocMenu((cur) => (cur && cur.id === d.id ? null : { id: d.id, rect, trigger }));
                           }}
                           style={moreButtonStyle()}
                           title="More"
@@ -569,7 +586,7 @@ export default function DocumentsLedger({
               <div style={{ flex: 1, minHeight: 0 }} />
               <div style={{ display: 'flex', gap: 8, marginTop: 14, flex: 'none' }}>
                 <button className="btn primary" style={{ flex: 1, justifyContent: 'center' }} onClick={() => onOpenDocument && onOpenDocument(sel.raw)}>Open file</button>
-                <button className="btn" title="Share" onClick={() => onShare && onShare([sel.raw])}><Icon name="more" size={12} /></button>
+                <button className="btn" title="Share" onClick={() => onShare && onShare([sel.raw])}><Icon name="share" size={12} /></button>
               </div>
             </aside>
           )}
@@ -591,12 +608,14 @@ export default function DocumentsLedger({
           {docs.length > 0 && docs.map(renderMobileCard)}
         </div>
         {mobileDetailDoc ? (
-          <div className="documents-mobile-detail-scrim" onClick={() => setMobileDetailId(null)}>
+          <div className="documents-mobile-detail-scrim" onClick={closeMobileDetail}>
             <section
+              ref={mobileDetailModalRef}
               className="documents-mobile-detail-modal slim-scroll"
               role="dialog"
               aria-modal="true"
               aria-label={`${mobileDetailDoc.name} details`}
+              tabIndex={-1}
               onClick={(e) => e.stopPropagation()}
             >
               <div className="documents-mobile-detail-head">
@@ -604,7 +623,7 @@ export default function DocumentsLedger({
                   <span>Document details</span>
                   <strong>{mobileDetailDoc.name}</strong>
                 </div>
-                <button type="button" title="Close details" onClick={() => setMobileDetailId(null)} style={closeButtonStyle()}>×</button>
+                <button ref={mobileDetailCloseRef} type="button" title="Close details" onClick={closeMobileDetail} style={closeButtonStyle()}>×</button>
               </div>
               <div className="documents-mobile-detail-meta">
                 {[mobileDetailDoc.project === 'Sandbox' ? null : mobileDetailDoc.project, mobileDetailDoc.size, mobileDetailDoc.pages != null ? `${mobileDetailDoc.pages} pages` : null].filter(Boolean).join(' · ')}

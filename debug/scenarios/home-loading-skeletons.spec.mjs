@@ -255,3 +255,250 @@ test('mobile New category seeds the first module in an empty template', async ({
   await expect(createdName).toHaveValue('Category 1');
   await expect(createdName).toBeFocused();
 });
+
+test('mobile document details trap focus, close on Escape, and restore More', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await openHub(page, 'documents', false, true);
+
+  const opener = page.locator('.mobile-doc-card').first().getByTitle('More');
+  await opener.click();
+  await page.getByRole('menuitem', { name: 'Preview & details' }).click();
+
+  const dialog = page.getByRole('dialog', { name: /details$/ });
+  const close = dialog.getByTitle('Close details');
+  await expect(dialog).toBeVisible();
+  await expect(close).toBeFocused();
+
+  await dialog.getByRole('button', { name: 'Open file' }).focus();
+  await page.keyboard.press('Tab');
+  await expect(close).toBeFocused();
+
+  await page.keyboard.press('Escape');
+  await expect(dialog).toHaveCount(0);
+  await expect(opener).toBeFocused();
+});
+
+test('mobile Entities traps focus, closes on Escape, and restores its opener', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await openHub(page, 'templates', false, true);
+  await page.locator('.templates-mobile-row.reorderable').first().click();
+
+  const opener = page.getByRole('button', { name: 'Entities' });
+  await opener.click();
+  const dialog = page.getByRole('dialog', { name: 'Entities' });
+  const close = dialog.getByRole('button', { name: 'Close' });
+  await expect(close).toBeFocused();
+
+  await dialog.locator('button').last().focus();
+  await page.keyboard.press('Tab');
+  await expect(close).toBeFocused();
+
+  await page.keyboard.press('Escape');
+  await expect(dialog).toHaveCount(0);
+  await expect(opener).toBeFocused();
+});
+
+test('Entities yields focus and Escape to real Share, Move/Copy, and color layers', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await openHub(page, 'templates', false, true);
+  await page.locator('.templates-mobile-row.reorderable').first().click();
+  await page.getByRole('button', { name: 'Entities' }).click();
+
+  const entities = page.getByRole('dialog', { name: 'Entities' });
+  await entities.getByRole('button', { name: 'Select' }).click();
+  await entities.getByRole('button', { name: 'All' }).click();
+
+  const shareOpener = entities.getByTitle('Share');
+  await shareOpener.click();
+  const share = page.getByRole('dialog', { name: 'Share template' });
+  await expect(share.getByTitle('Close')).toBeFocused();
+  await page.keyboard.press('Escape');
+  await expect(share).toHaveCount(0);
+  await expect(entities).toBeVisible();
+  await expect(shareOpener).toBeFocused();
+
+  await entities.getByRole('button', { name: 'Move/Copy' }).click();
+  const move = page.getByRole('dialog', { name: 'Move or copy items' });
+  await expect(move.getByTitle('Close')).toBeFocused();
+  await page.keyboard.press('Escape');
+  await expect(move).toHaveCount(0);
+  await expect(entities).toBeVisible();
+
+  await entities.getByRole('button', { name: 'Done' }).click();
+  await entities.getByTitle('Edit color').first().click();
+  const visibleColorPicker = page.locator('[data-testid="compact-color-picker"]:visible');
+  await expect(visibleColorPicker).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(visibleColorPicker).toHaveCount(0);
+  await expect(entities).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(entities).toHaveCount(0);
+});
+
+test('named mobile controls provide at least 44px hit geometry', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+
+  const effectiveHitBox = (locator) => locator.evaluate((element) => {
+    const rect = element.getBoundingClientRect();
+    const pseudo = getComputedStyle(element, '::after');
+    const hasHitPseudo = pseudo.display !== 'none' && pseudo.content !== 'none';
+    const top = hasHitPseudo ? (Number.parseFloat(pseudo.top) || 0) : 0;
+    const bottom = hasHitPseudo ? (Number.parseFloat(pseudo.bottom) || 0) : 0;
+    const left = hasHitPseudo ? (Number.parseFloat(pseudo.left) || 0) : 0;
+    const right = hasHitPseudo ? (Number.parseFloat(pseudo.right) || 0) : 0;
+    const hit = {
+      left: rect.left + left,
+      right: rect.right - right,
+      top: rect.top + top,
+      bottom: rect.bottom - bottom,
+    };
+    for (let ancestor = element.parentElement; ancestor; ancestor = ancestor.parentElement) {
+      const style = getComputedStyle(ancestor);
+      const clip = ancestor.getBoundingClientRect();
+      if (style.overflowX !== 'visible') {
+        hit.left = Math.max(hit.left, clip.left);
+        hit.right = Math.min(hit.right, clip.right);
+      }
+      if (style.overflowY !== 'visible') {
+        hit.top = Math.max(hit.top, clip.top);
+        hit.bottom = Math.min(hit.bottom, clip.bottom);
+      }
+    }
+    const sampleX = (hit.left + hit.right) / 2;
+    const topTarget = document.elementFromPoint(sampleX, hit.top + 1);
+    const bottomTarget = document.elementFromPoint(sampleX, hit.bottom - 1);
+    return {
+      width: Math.max(0, hit.right - hit.left),
+      height: Math.max(0, hit.bottom - hit.top),
+      topHittable: topTarget === element || element.contains(topTarget),
+      bottomHittable: bottomTarget === element || element.contains(bottomTarget),
+    };
+  });
+
+  await openHub(page, 'documents', false, true);
+  for (const control of [
+    page.getByRole('button', { name: 'Upload' }).first(),
+    page.locator('.mobile-header-select-button'),
+    page.locator('.documents-mobile-filter'),
+    page.getByRole('button', { name: 'Open account menu' }),
+    page.locator('.mobile-doc-card').first().getByTitle('More'),
+  ]) {
+    const hit = await effectiveHitBox(control);
+    expect(hit.width).toBeGreaterThanOrEqual(44);
+    expect(hit.height).toBeGreaterThanOrEqual(44);
+    expect(hit.topHittable).toBe(true);
+    expect(hit.bottomHittable).toBe(true);
+  }
+
+  await openHub(page, 'projects', false, true);
+  for (const control of [
+    page.getByRole('button', { name: 'New project' }),
+    page.locator('.mobile-header-select-button'),
+    page.locator('.projects-mobile-folder-row.drill.reorderable').first().getByTitle('More'),
+  ]) {
+    const hit = await effectiveHitBox(control);
+    expect(hit.width).toBeGreaterThanOrEqual(44);
+    expect(hit.height).toBeGreaterThanOrEqual(44);
+    expect(hit.topHittable).toBe(true);
+    expect(hit.bottomHittable).toBe(true);
+  }
+
+  await openHub(page, 'templates', false, true);
+  for (const control of [
+    page.getByRole('button', { name: 'New template' }),
+    page.locator('.mobile-header-select-button'),
+    page.locator('.templates-mobile-row.reorderable').first().getByTitle('More'),
+  ]) {
+    const listHit = await effectiveHitBox(control);
+    expect(listHit.width).toBeGreaterThanOrEqual(44);
+    expect(listHit.height).toBeGreaterThanOrEqual(44);
+    expect(listHit.topHittable).toBe(true);
+    expect(listHit.bottomHittable).toBe(true);
+  }
+  await page.locator('.templates-mobile-row.reorderable').first().click();
+  for (const control of [
+    page.locator('.templates-mobile-back-button:visible'),
+    page.getByRole('button', { name: 'Entities' }),
+    page.locator('[data-drag-rearrange-handle]:visible').first(),
+    page.locator('.templates-mobile-category-toggle:visible').first(),
+  ]) {
+    const detailHit = await effectiveHitBox(control);
+    expect(detailHit.width).toBeGreaterThanOrEqual(44);
+    expect(detailHit.height).toBeGreaterThanOrEqual(44);
+  }
+
+  await page.getByRole('button', { name: 'Entities' }).click();
+  const entitiesDialog = page.getByRole('dialog', { name: 'Entities' });
+  for (const control of [
+    entitiesDialog.locator('[data-drag-rearrange-handle]').first(),
+    entitiesDialog.getByTitle('Edit color').first(),
+    entitiesDialog.locator('.templates-mobile-more').first(),
+  ]) {
+    const entityHit = await effectiveHitBox(control);
+    expect(entityHit.width).toBeGreaterThanOrEqual(44);
+    expect(entityHit.height).toBeGreaterThanOrEqual(44);
+  }
+});
+
+test('edge swipe exposes the already-rendered template list under the moving detail', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await openHub(page, 'templates', false, true);
+  await page.locator('.templates-mobile-row.reorderable').first().click();
+  await expect(page.locator('.templates-mobile-detail')).toBeVisible();
+
+  const cdp = await page.context().newCDPSession(page);
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: 4, y: 280 }] });
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: 150, y: 282 }] });
+  await page.evaluate(() => new Promise(requestAnimationFrame));
+
+  const underlay = page.locator('[data-mobile-swipe-underlay="true"]');
+  await expect(underlay).toHaveCount(1);
+  await expect(underlay.locator('.templates-mobile-row.reorderable').first()).toBeVisible();
+  expect(await page.locator('.main.mobile-edge-swipe-active').evaluate((element) => getComputedStyle(element).transform)).not.toBe('none');
+
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchCancel', touchPoints: [] });
+  await expect(underlay).toHaveCount(0);
+  await expect(page.locator('.templates-mobile-detail')).toBeVisible();
+});
+
+test('completed edge swipe navigates once while a second gesture is ignored during settle', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await openHub(page, 'projects', false, true);
+  await page.locator('.projects-mobile-folder-row.drill.reorderable').first().click();
+  await expect(page.locator('.projects-mobile-drill-view')).toBeVisible();
+
+  const cdp = await page.context().newCDPSession(page);
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: 3, y: 290 }] });
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: 260, y: 292 }] });
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+  await expect(page.locator('.main.mobile-edge-swipe-settling')).toHaveCount(1);
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: 3, y: 310 }] });
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: 180, y: 312 }] });
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+
+  await expect(page.locator('[data-mobile-swipe-underlay="true"]')).toHaveCount(0);
+  await expect(page.locator('.projects-mobile-folder-row.drill.reorderable').first()).toBeVisible();
+  await expect(page.locator('.survey-hub')).toHaveClass(/hub-tab-projects/);
+});
+
+test('desktop and mobile document Share controls preserve document semantics', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await openHub(page, 'documents');
+  const previewAside = page.locator('aside').filter({ has: page.getByTitle('Share') });
+  const selectedName = await previewAside.locator(':scope > div').nth(1).textContent();
+  await previewAside.getByTitle('Share').click();
+  await expect(page.getByText('Share document', { exact: true })).toBeVisible();
+  const desktopShareClose = page.getByTitle('Close').last();
+  await expect(desktopShareClose.locator('..').getByText(selectedName, { exact: true })).toBeVisible();
+  await desktopShareClose.click();
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await openHub(page, 'documents', false, true);
+  const mobileRow = page.locator('.mobile-doc-card').first();
+  const mobileName = await mobileRow.locator('.mobile-card-title').textContent();
+  await mobileRow.getByTitle('More').click();
+  await page.getByRole('menuitem', { name: 'Share' }).click();
+  await expect(page.getByText('Share document', { exact: true })).toBeVisible();
+  const mobileShareClose = page.getByTitle('Close').last();
+  await expect(mobileShareClose.locator('..').getByText(mobileName, { exact: true })).toBeVisible();
+});

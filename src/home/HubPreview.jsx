@@ -150,6 +150,7 @@ const newId = () => `d-copy-${Date.now()}-${copyCounter++}`;
 
 export const MOBILE_WORKFLOW_STORAGE_KEYS = Object.freeze({
   documents: 'mobileWorkflowDocuments',
+  projectPreferences: 'mobileWorkflowProjectPreferences',
   projects: 'mobileWorkflowProjects',
   templates: 'mobileWorkflowTemplates',
 });
@@ -158,6 +159,14 @@ const readWorkflowFixture = (key, fallback) => {
   try {
     const stored = JSON.parse(localStorage.getItem(key) || 'null');
     if (Array.isArray(stored)) return stored;
+  } catch { /* a corrupt test fixture resets to the stable seed */ }
+  return fallback;
+};
+
+const readWorkflowObject = (key, fallback = {}) => {
+  try {
+    const stored = JSON.parse(localStorage.getItem(key) || 'null');
+    if (stored && typeof stored === 'object' && !Array.isArray(stored)) return stored;
   } catch { /* a corrupt test fixture resets to the stable seed */ }
   return fallback;
 };
@@ -174,8 +183,11 @@ export default function HubPreview() {
   const emptyFixture = params.get('empty') === '1';
   const longDocsFixture = params.get('longDocs') === '1';
   const loadingFixture = params.get('hubLoading');
+  const errorFixture = params.get('hubError');
   const workflowE2E = params.get('workflowE2E') === '1';
-  const previewHasNoData = emptyFixture || ['documents', 'projects', 'templates'].includes(loadingFixture);
+  const previewHasNoData = emptyFixture
+    || ['documents', 'projects', 'templates'].includes(loadingFixture)
+    || ['documents', 'projects', 'templates'].includes(errorFixture);
   const [documents, setDocuments] = useState(() => {
     const fallback = previewHasNoData ? [] : (longDocsFixture ? makeLongDocumentFixture() : INITIAL_DOCUMENTS);
     return workflowE2E ? readWorkflowFixture(MOBILE_WORKFLOW_STORAGE_KEYS.documents, fallback) : fallback;
@@ -188,6 +200,16 @@ export default function HubPreview() {
     const fallback = previewHasNoData ? [] : MOCK_TEMPLATES;
     return workflowE2E ? readWorkflowFixture(MOBILE_WORKFLOW_STORAGE_KEYS.templates, fallback) : fallback;
   });
+  const [projectPreferences, setProjectPreferences] = useState(() => (
+    workflowE2E
+      ? readWorkflowObject(MOBILE_WORKFLOW_STORAGE_KEYS.projectPreferences)
+      : {}
+  ));
+  const [loadErrors, setLoadErrors] = useState(() => ({
+    documents: errorFixture === 'documents' ? new Error('Documents could not be loaded.') : null,
+    projects: errorFixture === 'projects' ? new Error('Projects could not be loaded.') : null,
+    templates: errorFixture === 'templates' ? new Error('Templates could not be loaded.') : null,
+  }));
   const workflowUploadInputRef = useRef(null);
   const workflowUploadTargetRef = useRef(null);
   const [projectModalOpen, setProjectModalOpen] = useState(false);
@@ -199,10 +221,11 @@ export default function HubPreview() {
   useEffect(() => {
     if (!workflowE2E) return;
     persistWorkflowFixture(MOBILE_WORKFLOW_STORAGE_KEYS.documents, documents);
+    persistWorkflowFixture(MOBILE_WORKFLOW_STORAGE_KEYS.projectPreferences, projectPreferences);
     persistWorkflowFixture(MOBILE_WORKFLOW_STORAGE_KEYS.projects, projects);
     persistWorkflowFixture(MOBILE_WORKFLOW_STORAGE_KEYS.templates, templates);
-    window.__mobileWorkflowState = { documents, projects, templates };
-  }, [documents, projects, templates, workflowE2E]);
+    window.__mobileWorkflowState = { documents, projectPreferences, projects, templates };
+  }, [documents, projectPreferences, projects, templates, workflowE2E]);
 
   const handleOpenDocument = (document, returnTab = 'documents') => {
     const viewerParams = new URLSearchParams({
@@ -222,6 +245,47 @@ export default function HubPreview() {
   const handleDuplicate = (docs) => {
     const copies = docs.map((d) => ({ ...d, id: newId(), name: copyName(d.name), updated_at: new Date().toISOString() }));
     setDocuments((prev) => [...copies, ...prev]);
+  };
+
+  const handleDuplicateProjects = (items) => {
+    const now = new Date().toISOString();
+    const projectCopies = [];
+    const documentCopies = [];
+    (items || []).forEach((source, index) => {
+      const projectId = `workflow-project-copy-${Date.now()}-${index}`;
+      projectCopies.push({
+        ...source,
+        id: projectId,
+        name: `${source.name} (copy)`,
+        created_at: now,
+        updated_at: now,
+      });
+      documents.filter((document) => document.project_id === source.id).forEach((document, documentIndex) => {
+        documentCopies.push({
+          ...document,
+          id: `workflow-document-copy-${Date.now()}-${index}-${documentIndex}`,
+          name: copyName(document.name),
+          project_id: projectId,
+          created_at: now,
+          updated_at: now,
+        });
+      });
+    });
+    if (projectCopies.length) setProjects((prev) => [...projectCopies, ...prev]);
+    if (documentCopies.length) setDocuments((prev) => [...documentCopies, ...prev]);
+  };
+
+  const handleProjectPreferencesChange = (patch) => {
+    setProjectPreferences((previous) => (
+      typeof patch === 'function' ? patch(previous) : { ...previous, ...(patch || {}) }
+    ));
+  };
+
+  const retryLoad = (kind) => {
+    if (kind === 'documents') setDocuments(longDocsFixture ? makeLongDocumentFixture() : INITIAL_DOCUMENTS);
+    if (kind === 'projects') setProjects(MOCK_PROJECTS);
+    if (kind === 'templates') setTemplates(MOCK_TEMPLATES);
+    setLoadErrors((previous) => ({ ...previous, [kind]: null }));
   };
 
   const handleDelete = (docs) => {
@@ -360,8 +424,14 @@ export default function HubPreview() {
             projects={projects}
             templates={templates}
             documentsInitialLoading={loadingFixture === 'documents'}
+            documentsLoadError={loadErrors.documents}
+            onRetryDocuments={() => retryLoad('documents')}
             projectsInitialLoading={loadingFixture === 'projects'}
+            projectsLoadError={loadErrors.projects}
+            onRetryProjects={() => retryLoad('projects')}
             templatesInitialLoading={loadingFixture === 'templates'}
+            templatesLoadError={loadErrors.templates}
+            onRetryTemplates={() => retryLoad('templates')}
             members={MOCK_MEMBERS}
             user={{ name: 'Isaiah Calvo', email: 'isaiahcalvo123@gmail.com' }}
             isPro
@@ -372,12 +442,15 @@ export default function HubPreview() {
             onCreateProject={handleCreateProject}
             onRenameProject={handleRenameProject}
             onDeleteProjects={handleDeleteProjects}
+            onDuplicateProjects={handleDuplicateProjects}
             onCreateTemplate={handleCreateTemplate}
             onSaveTemplates={setTemplates}
             onDuplicateDocuments={handleDuplicate}
             onDeleteDocuments={handleDelete}
             onRenameDocument={handleRenameDocument}
             onMoveCopyDocuments={handleMoveCopy}
+            projectPreferences={projectPreferences}
+            onProjectPreferencesChange={handleProjectPreferencesChange}
             onSettings={() => console.log('[hub preview] open settings page')}
             onSignOut={() => console.log('[hub preview] sign out')}
           />

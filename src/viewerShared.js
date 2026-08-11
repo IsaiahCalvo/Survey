@@ -1555,8 +1555,10 @@ export const generateUUID = () => crypto.randomUUID();
 
 export const getPDFId = (file) => {
   if (!file) return null;
-  // Use file name + size as unique identifier
-  return `${file.name}-${file.size}`;
+  // Page mutations produce a new File with a different byte size. Preserve
+  // the original identity so bookmarks, page transforms and annotations stay
+  // attached to the document throughout the editing session.
+  return file._surveyPdfId || `${file.name}-${file.size}`;
 };
 
 export const loadPDFData = (pdfId) => {
@@ -2042,9 +2044,67 @@ export const filterAnnotationsByModule = (annotations, moduleId) => {
 
 // Check if category exists in destination module
 export const categoryExists = (template, destModuleId, categoryName) => {
-  const module = template?.modules?.find(m => m.id === destModuleId);
+  const module = (template?.modules || template?.spaces || []).find(m => m.id === destModuleId);
   if (!module || !module.categories) return false;
   return module.categories.some(cat => cat.name === categoryName);
+};
+
+// Clone missing destination categories before an item transfer. Checklist
+// identities must be fresh: reusing source IDs causes responses in one module
+// to overwrite the other after persistence/reload.
+export const cloneMissingTransferCategories = (
+  template,
+  sourceModuleId,
+  destModuleId,
+  categoryNames,
+  makeId = generateUUID,
+) => {
+  const modules = template?.modules || template?.spaces || [];
+  const sourceModule = modules.find((module) => module.id === sourceModuleId);
+  const destinationModule = modules.find((module) => module.id === destModuleId);
+  if (!sourceModule || !destinationModule) return template;
+
+  const requested = new Set((categoryNames || []).filter(Boolean));
+  const existing = new Set((destinationModule.categories || []).map((category) => category.name));
+  const missing = (sourceModule.categories || [])
+    .filter((category) => requested.has(category.name) && !existing.has(category.name))
+    .map((category) => {
+      const sourceItems = category.checklist || category.items || [];
+      const clonedItems = sourceItems.map((item) => ({ ...item, id: makeId() }));
+      const clone = { ...category, id: makeId(), checklist: clonedItems };
+      if (Object.prototype.hasOwnProperty.call(category, 'items')) clone.items = clonedItems;
+      return clone;
+    });
+  if (missing.length === 0) return template;
+
+  const nextModules = modules.map((module) => (
+    module.id === destModuleId
+      ? { ...module, categories: [...(module.categories || []), ...missing] }
+      : module
+  ));
+  return {
+    ...template,
+    modules: nextModules,
+    spaces: nextModules,
+    updatedAt: new Date().toISOString(),
+  };
+};
+
+// Missing-category transfer is a two-resource change: the template must own
+// the destination categories before document annotations may reference them.
+// Keep that ordering explicit and testable so a rejected cloud write leaves
+// the document untouched and the user can retry the same confirmation.
+export const persistTemplateBeforeDocumentMutation = async ({
+  persistTemplate,
+  applyTemplate,
+  applyDocument,
+}) => {
+  // Guest/local templates have no cloud row. They still need the same ordered
+  // in-memory update, but must not manufacture a Supabase id from their local
+  // template id or block the transfer on a cloud call that cannot exist.
+  if (typeof persistTemplate === 'function') await persistTemplate();
+  applyTemplate();
+  applyDocument();
 };
 
 // Transfer items between modules with proper category checks

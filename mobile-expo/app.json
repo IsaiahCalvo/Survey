@@ -23,6 +23,7 @@
       "runtimeVersion": "exposdk:54.0.0"
     },
     "android": {
+      "package": "com.kalvoe.survey",
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/android-icon-foreground.png",

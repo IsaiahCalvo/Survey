@@ -33,14 +33,18 @@ export function MoveCopyModal({ open, onClose, projects = [], count = 0, onConfi
   const [mode, setMode] = useState('move'); // 'move' | 'copy'
   const [destId, setDestId] = useState(null);
   const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState('');
   const previouslyFocusedRef = useRef(null);
 
   const handleConfirm = async () => {
     if (!destId || submitting) return;
     setSubmitting(true);
+    setSubmitError('');
     try {
       await onConfirm?.(destId, mode);
       onClose?.();
+    } catch (error) {
+      setSubmitError(error?.message || `Could not ${mode} the selected documents.`);
     } finally {
       setSubmitting(false);
     }
@@ -51,6 +55,7 @@ export function MoveCopyModal({ open, onClose, projects = [], count = 0, onConfi
   // primitive/focus trap).
   useEffect(() => {
     if (!open) return undefined;
+    setSubmitError('');
     previouslyFocusedRef.current = document.activeElement;
     const handleKey = (e) => {
       if (e.key === 'Escape') {
@@ -101,6 +106,11 @@ export function MoveCopyModal({ open, onClose, projects = [], count = 0, onConfi
           <div style={{ fontSize: 11, color: C.muted, lineHeight: 1.4 }}>
             {mode === 'move' ? 'Moves the documents into the chosen project.' : 'Copies the documents into the chosen project; originals stay where they are.'}
           </div>
+          {submitError && (
+            <div role="alert" style={{ fontSize: 11.5, color: C.danger, lineHeight: 1.4 }}>
+              {submitError} Try again.
+            </div>
+          )}
           <div>
             <div style={{ fontSize: 10.5, letterSpacing: '0.14em', textTransform: 'uppercase', color: C.muted, fontWeight: 700, marginBottom: 8 }}>Destination project</div>
             <div style={{ maxHeight: 200, overflowY: 'auto', border: `1px solid ${C.rule}`, borderRadius: 6 }}>

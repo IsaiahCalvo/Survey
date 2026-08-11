@@ -12,10 +12,9 @@
    team panel and the "Last edited by" column render the true prototype
    behavior. All fall back gracefully when member data is absent.
 
-   Interaction model: every button and menu is wired to LOCAL React state —
-   there is no backend. New Project / Duplicate / Delete mutate a local copy
-   of the project list; file menu actions (Copy/Paste/Share/Details), Add
-   files, select-mode toolbars and drag-reorder all visibly change state.
+   Interaction model: the component keeps an optimistic local mirror for
+   responsiveness, while host callbacks persist project/document mutations.
+   Standalone preview mode falls back to local-only behavior.
    The per-project "more" menu and the file-row "more" menu are rendered as
    fixed-position popups via createPortal to document.body, anchored to the
    trigger button's bounding rect — so no parent's overflow:hidden/auto can
@@ -24,6 +23,7 @@
 */
 import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
+import { mergeProjectDocumentOrder, orderDocumentsByProject } from './projectDocumentOrder.js';
 import { HubShell, Icon, Avatar, AvatarStack, Search, EmptyState } from './HubShell';
 import ManageTeamModal from './ManageTeamModal';
 import { listProjectCollaboratorsForProjects } from '../services/projectInviteService';
@@ -94,7 +94,15 @@ const ProjectTeamSummary = ({ memberIds, lookupMember }) => (
 
 let LOCAL_ID = 1;
 const nextLocalId = () => `local-${Date.now()}-${LOCAL_ID++}`;
-
+const orderByStoredIds = (rows, storedIds = []) => {
+  if (!Array.isArray(storedIds) || storedIds.length === 0) return rows;
+  const rank = new Map(storedIds.map((id, index) => [id, index]));
+  return [...rows].sort((a, b) => {
+    const aRank = rank.has(a.id) ? rank.get(a.id) : Number.MAX_SAFE_INTEGER;
+    const bRank = rank.has(b.id) ? rank.get(b.id) : Number.MAX_SAFE_INTEGER;
+    return aRank - bRank;
+  });
+};
 /* Fixed-position popup menu, portalled to <body>.
    Anchored to `anchorRect` (a getBoundingClientRect() snapshot of the trigger
    button) so it floats cleanly over the page — immune to any ancestor's
@@ -168,6 +176,11 @@ export default function ProjectsFolderTree({
   onRenameProject,
   onUpload,
   onDeleteProjects,
+  onDuplicateProjects,
+  onDuplicateDocuments,
+  onMoveCopyDocuments,
+  projectPreferences = {},
+  onProjectPreferencesChange,
   onDeleteDocuments,
   onLockDocument,
   onShare,
@@ -176,17 +189,18 @@ export default function ProjectsFolderTree({
   const [search, setSearch] = useState('');
   const [fileSearch, setFileSearch] = useState('');
 
-  // Local, mutable copy of the project list. Seeded from the `projects` prop
-  // and re-synced when the prop changes; New Project / Duplicate / Delete /
-  // rename / reorder all mutate THIS list so the UI visibly responds with no
-  // backend. `localProjects` is the single source of truth for rendering.
+  // Optimistic project mirror, reconciled from durable host data and the
+  // user's persisted display order.
   const [localProjects, setLocalProjects] = useState(projects);
-  useEffect(() => { setLocalProjects(projects); }, [projects]);
+  useEffect(() => {
+    setLocalProjects(orderByStoredIds(projects, projectPreferences.projectOrder));
+  }, [projects, projectPreferences.projectOrder]);
 
-  // Local, mutable copy of documents — Add files / file duplicate / file
-  // delete / file reorder mutate this so file rows visibly change.
+  // Optimistic document mirror, reconciled from durable host data/order.
   const [localDocs, setLocalDocs] = useState(documents);
-  useEffect(() => { setLocalDocs(documents); }, [documents]);
+  useEffect(() => {
+    setLocalDocs(orderDocumentsByProject(documents, projectPreferences.documentOrderByProject));
+  }, [documents, projectPreferences.documentOrderByProject]);
 
   const [openId, setOpenId] = useState(projects[0]?.id ?? null);
   const [mobileProjectLayout, setMobileProjectLayout] = useState('drill');
@@ -218,14 +232,15 @@ export default function ProjectsFolderTree({
   // header "Manage Team" button and the per-project menu's "Manage project".
   const [teamModalProject, setTeamModalProject] = useState(null);
 
-  // Pinned-project ids. A pinned project sorts to the TOP of the left list
-  // and shows a pin icon in place of its drag grabber. Local-only state.
-  const [pinnedIds, setPinnedIds] = useState(() => new Set());
-  const togglePin = useCallback((id) => setPinnedIds((prev) => {
-    const next = new Set(prev);
+  // Project ordering/pins are user preferences (persisted by the host).
+  const [pinnedIds, setPinnedIds] = useState(() => new Set(projectPreferences.pinnedIds || []));
+  useEffect(() => setPinnedIds(new Set(projectPreferences.pinnedIds || [])), [projectPreferences.pinnedIds]);
+  const togglePin = useCallback((id) => {
+    const next = new Set(pinnedIds);
     next.has(id) ? next.delete(id) : next.add(id);
-    return next;
-  }), []);
+    setPinnedIds(next);
+    onProjectPreferencesChange?.({ pinnedIds: [...next] });
+  }, [pinnedIds, onProjectPreferencesChange]);
 
   // Hidden <input type="file"> for the real OS file picker. Add files /
   // Upload files programmatically .click() this; the picked File objects are
@@ -473,7 +488,13 @@ export default function ProjectsFolderTree({
     setOpenId(id);
   }, [onCreateProject, localProjects.length, user]);
 
-  const duplicateProjects = useCallback((ids) => {
+  const duplicateProjects = useCallback(async (ids) => {
+    const targets = pickByIds(localProjects, ids);
+    if (onDuplicateProjects && targets.length > 0) {
+      await onDuplicateProjects(targets);
+      setSelProj(new Set());
+      return;
+    }
     setLocalProjects((prev) => {
       const out = [...prev];
       ids.forEach((id) => {
@@ -483,7 +504,7 @@ export default function ProjectsFolderTree({
       });
       return out;
     });
-  }, []);
+  }, [localProjects, onDuplicateProjects]);
 
   const deleteProjects = useCallback(async (ids) => {
     const set = new Set(ids);
@@ -507,17 +528,15 @@ export default function ProjectsFolderTree({
 
   const reorderProjects = useCallback((fromId, toId) => {
     if (fromId == null || toId == null || fromId === toId) return;
-    setLocalProjects((prev) => {
-      // `filtered` may be a search subset — reorder by the actual project ids.
-      const out = [...prev];
-      const fi = out.findIndex((p) => p.id === fromId);
-      const ti = out.findIndex((p) => p.id === toId);
-      if (fi < 0 || ti < 0) return prev;
-      const [moved] = out.splice(fi, 1);
-      out.splice(ti, 0, moved);
-      return out;
-    });
-  }, []);
+    const out = [...localProjects];
+    const fi = out.findIndex((p) => p.id === fromId);
+    const ti = out.findIndex((p) => p.id === toId);
+    if (fi < 0 || ti < 0) return;
+    const [moved] = out.splice(fi, 1);
+    out.splice(ti, 0, moved);
+    setLocalProjects(out);
+    onProjectPreferencesChange?.({ projectOrder: out.map((project) => project.id) });
+  }, [localProjects, onProjectPreferencesChange]);
 
   /* ---- Document mutations (local state) -------------------------------- */
 
@@ -560,12 +579,20 @@ export default function ProjectsFolderTree({
     setLocalDocs((prev) => [...prev, ...docs]);
   }, [localProjects, user]);
 
-  const duplicateFiles = useCallback((docIds) => {
+  const duplicateFiles = useCallback(async (docIds) => {
     if (!open) return;
-    const clones = pickByIds(openFiles, docIds)
-      .map((f) => ({ ...f, id: nextLocalId(), name: `${f.name} (copy)`, updated_at: new Date().toISOString() }));
+    const targets = pickByIds(openFiles, docIds);
+    if (onDuplicateDocuments && targets.length > 0) {
+      await onDuplicateDocuments(targets, open.id);
+      setSelFiles(new Set());
+      return;
+    }
+    const clones = targets.map((file) => {
+      const cloneId = nextLocalId();
+      return { ...file, id: cloneId, name: `${file.name} (copy)`, updated_at: new Date().toISOString() };
+    });
     if (clones.length) setLocalDocs((prev) => [...prev, ...clones]);
-  }, [open, openFiles]);
+  }, [open, openFiles, onDuplicateDocuments]);
 
   const deleteFiles = useCallback((docIds) => {
     const targets = pickByIds(openFiles, docIds);
@@ -586,30 +613,38 @@ export default function ProjectsFolderTree({
 
   const reorderFiles = useCallback((fromId, toId) => {
     if (fromId == null || toId == null || fromId === toId || !open) return;
-    setLocalDocs((prev) => {
-      // Split docs into this project's slice (in display order) and the rest,
-      // reorder the slice, then stitch back together.
-      const slice = [];
-      const rest = [];
-      prev.forEach((d) => { (d.project_id === open.id ? slice : rest).push(d); });
-      const from = slice.findIndex((d) => d.id === fromId);
-      const to = slice.findIndex((d) => d.id === toId);
-      if (from < 0 || to < 0) return prev;
-      const [moved] = slice.splice(from, 1);
-      slice.splice(to, 0, moved);
-      return [...rest, ...slice];
-    });
-  }, [open]);
+    const slice = localDocs.filter((document) => document.project_id === open.id);
+    const rest = localDocs.filter((document) => document.project_id !== open.id);
+    const from = slice.findIndex((document) => document.id === fromId);
+    const to = slice.findIndex((document) => document.id === toId);
+    if (from < 0 || to < 0) return;
+    const [moved] = slice.splice(from, 1);
+    slice.splice(to, 0, moved);
+    setLocalDocs([...rest, ...slice]);
+    onProjectPreferencesChange?.((currentPreferences) => (
+      mergeProjectDocumentOrder(
+        currentPreferences,
+        open.id,
+        slice.map((document) => document.id),
+      )
+    ));
+  }, [localDocs, open, onProjectPreferencesChange]);
 
   // Move or copy the given document ids to a destination project. 'move'
   // re-parents the originals; 'copy' clones them into the destination and
   // leaves the originals in place. Ids are resolved against the OPEN
   // project's current files — a stale id (doc deleted/moved meanwhile) is a
   // silent no-op, never a wrong target.
-  const moveCopyFiles = useCallback((docIds, destId, mode) => {
+  const moveCopyFiles = useCallback(async (docIds, destId, mode) => {
     if (!open || destId == null) return;
-    const ids = new Set(pickByIds(openFiles, docIds).map((d) => d.id));
+    const targets = pickByIds(openFiles, docIds);
+    const ids = new Set(targets.map((d) => d.id));
     if (ids.size === 0) return;
+    if (onMoveCopyDocuments) {
+      await onMoveCopyDocuments(targets, destId, mode);
+      setSelFiles(new Set());
+      return;
+    }
     setLocalDocs((prev) => {
       if (mode === 'copy') {
         const clones = prev
@@ -627,16 +662,20 @@ export default function ProjectsFolderTree({
       ));
     });
     setSelFiles(new Set());
-  }, [open, openFiles]);
+  }, [open, openFiles, onMoveCopyDocuments]);
 
   const copyFile = useCallback((f) => { if (f) setClipboard(f); }, []);
-  const pasteFile = useCallback(() => {
+  const pasteFile = useCallback(async () => {
     if (!clipboard || !open) return;
+    if (onDuplicateDocuments) {
+      await onDuplicateDocuments([clipboard], open.id);
+      return;
+    }
     setLocalDocs((prev) => [
       ...prev,
       { ...clipboard, id: nextLocalId(), project_id: open.id, name: `${clipboard.name} (copy)`, updated_at: new Date().toISOString() },
     ]);
-  }, [clipboard, open]);
+  }, [clipboard, open, onDuplicateDocuments]);
 
   /* ---- Render ---------------------------------------------------------- */
 
@@ -1942,7 +1981,7 @@ export default function ProjectsFolderTree({
         onClose={() => setMoveOpen(false)}
         projects={localProjects}
         count={pickByIds(openFiles, moveIds).length}
-        onConfirm={(destId, mode) => { moveCopyFiles(moveIds, destId, mode); }}
+        onConfirm={(destId, mode) => moveCopyFiles(moveIds, destId, mode)}
       />
     </HubShell>
   );

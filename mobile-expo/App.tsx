@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, BackHandler, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, BackHandler, Linking, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import Constants, { ExecutionEnvironment } from 'expo-constants';
 import * as AuthSession from 'expo-auth-session';
 import { discovery as googleDiscovery } from 'expo-auth-session/providers/google';
@@ -7,6 +7,17 @@ import { StatusBar } from 'expo-status-bar';
 import * as WebBrowser from 'expo-web-browser';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { WebView, WebViewMessageEvent } from 'react-native-webview';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import {
+  acknowledgeNativeAnalyticsEvents,
+  claimNativeAnalyticsEvents,
+  createNativeDiagnosticPersistenceGate,
+  loadNativeDiagnosticState,
+  mergeNativeDiagnosticStates,
+} from './src/nativeDiagnosticStore.js';
+import { parseNativeShellMessage, resolveSurveyDeepLink } from './src/nativeShellProtocol.js';
+
+export { resolveSurveyDeepLink } from './src/nativeShellProtocol.js';
 
 const DEFAULT_SURVEY_URL = 'https://surveytool.app/mobile';
 const GOOGLE_IOS_CLIENT_ID = '88293580204-481ecgudu1qgmlh2nvdhip13jtqj0iku.apps.googleusercontent.com';
@@ -63,6 +74,13 @@ function SurveyApp() {
   const processRecoveryRef = useRef<number[]>([]);
   const pdfDiagnosticRef = useRef<Array<Record<string, unknown>>>([]);
   const pendingNativeAnalyticsRef = useRef<Array<Record<string, unknown>>>([]);
+  const nativeStoreHydratedRef = useRef(false);
+  const nativeStoreWarningRef = useRef(false);
+  const nativePersistenceGateRef = useRef(createNativeDiagnosticPersistenceGate(AsyncStorage));
+  const nativeAnalyticsInFlightRef = useRef(new Set<string>());
+  const nativeAnalyticsRetryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const shellReadyRef = useRef(false);
+  const shellReadyMessageHandledRef = useRef(false);
   const shellSessionIdRef = useRef(`expo-${Date.now()}-${Math.random().toString(16).slice(2)}`);
   const surveyLaunchUrlRef = useRef(withLaunchCacheBust(SURVEY_URL, shellSessionIdRef.current));
   const googleAuthInFlightRef = useRef(false);
@@ -124,8 +142,10 @@ function SurveyApp() {
       }));
 
       const notifyShellReady = () => {
+        if (window.__surveyShellReadySent) return true;
         const appRoot = document.getElementById('root');
         if (!appRoot?.firstElementChild || !window.ReactNativeWebView) return false;
+        window.__surveyShellReadySent = true;
         window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'survey:shell-ready' }));
         window.__surveyShellReadyObserver?.disconnect();
         window.__surveyShellReadyObserver = null;
@@ -154,15 +174,69 @@ function SurveyApp() {
 
   useEffect(() => () => {
     if (loadTimeoutRef.current) clearTimeout(loadTimeoutRef.current);
+    if (nativeAnalyticsRetryTimerRef.current) clearTimeout(nativeAnalyticsRetryTimerRef.current);
+  }, []);
+
+  const persistNativeDiagnosticState = () => {
+    void nativePersistenceGateRef.current.persist(() => ({
+        diagnostics: pdfDiagnosticRef.current,
+        pendingEvents: pendingNativeAnalyticsRef.current,
+        recoveries: processRecoveryRef.current,
+      }))
+      .catch(() => {
+        if (nativeStoreWarningRef.current) return;
+        nativeStoreWarningRef.current = true;
+        console.warn('[Survey shell] Native diagnostic storage unavailable');
+      });
+  };
+
+  useEffect(() => {
+    let active = true;
+    void loadNativeDiagnosticState(AsyncStorage).then((stored) => {
+      if (!active) return;
+      const merged = mergeNativeDiagnosticStates(stored, {
+        diagnostics: pdfDiagnosticRef.current,
+        pendingEvents: pendingNativeAnalyticsRef.current,
+        recoveries: processRecoveryRef.current,
+      });
+      pdfDiagnosticRef.current = merged.diagnostics;
+      pendingNativeAnalyticsRef.current = merged.pendingEvents;
+      processRecoveryRef.current = merged.recoveries;
+      nativeStoreHydratedRef.current = true;
+      void nativePersistenceGateRef.current.markHydrated().catch(() => undefined);
+      persistNativeDiagnosticState();
+      if (shellReadyRef.current) flushNativeAnalyticsEvents();
+    });
+    return () => { active = false; };
+  }, []);
+
+  useEffect(() => {
+    const openDeepLink = (url: string | null | undefined) => {
+      const target = resolveSurveyDeepLink(url);
+      if (!target) return;
+      const launchId = `${shellSessionIdRef.current}-link-${Date.now()}`;
+      surveyLaunchUrlRef.current = withLaunchCacheBust(target, launchId);
+      setExternalNavigationActive(false);
+      setCanGoBack(false);
+      beginShellLoad();
+      setWebViewKey((value) => value + 1);
+    };
+    void Linking.getInitialURL().then(openDeepLink).catch(() => undefined);
+    const subscription = Linking.addEventListener('url', ({ url }) => openDeepLink(url));
+    return () => subscription.remove();
   }, []);
 
   const beginShellLoad = () => {
     if (loadTimeoutRef.current) clearTimeout(loadTimeoutRef.current);
     setLoadError(false);
     setShellReady(false);
+    shellReadyRef.current = false;
+    shellReadyMessageHandledRef.current = false;
+    nativeAnalyticsInFlightRef.current.clear();
     loadTimeoutRef.current = setTimeout(() => {
       loadTimeoutRef.current = null;
       setShellReady(false);
+      shellReadyRef.current = false;
       setLoadError(true);
     }, SHELL_LOAD_TIMEOUT_MS);
   };
@@ -172,12 +246,14 @@ function SurveyApp() {
     loadTimeoutRef.current = null;
     setLoadError(false);
     setShellReady(true);
+    shellReadyRef.current = true;
   };
 
   const failShellLoad = () => {
     if (loadTimeoutRef.current) clearTimeout(loadTimeoutRef.current);
     loadTimeoutRef.current = null;
     setShellReady(false);
+    shellReadyRef.current = false;
     setLoadError(true);
   };
 
@@ -190,6 +266,7 @@ function SurveyApp() {
 
   const retry = () => {
     processRecoveryRef.current = [];
+    persistNativeDiagnosticState();
     surveyLaunchUrlRef.current = withLaunchCacheBust(SURVEY_URL, `${shellSessionIdRef.current}-retry-${Date.now()}`);
     beginShellLoad();
     setWebViewKey((value) => value + 1);
@@ -216,6 +293,7 @@ function SurveyApp() {
 
   const queueNativeAnalyticsEvent = (event: string, properties: Record<string, unknown>) => {
     pendingNativeAnalyticsRef.current = [...pendingNativeAnalyticsRef.current, {
+      id: `native-${Date.now()}-${Math.random().toString(16).slice(2)}`,
       event,
       properties: {
         surface: 'expo-webview',
@@ -224,10 +302,15 @@ function SurveyApp() {
         ...properties,
       },
     }].slice(-8);
+    persistNativeDiagnosticState();
   };
 
-  const flushNativeAnalyticsEvents = () => {
-    const pending = pendingNativeAnalyticsRef.current;
+  function flushNativeAnalyticsEvents() {
+    if (!nativeStoreHydratedRef.current || !shellReadyRef.current) return;
+    const pending = claimNativeAnalyticsEvents(
+      pendingNativeAnalyticsRef.current,
+      nativeAnalyticsInFlightRef.current,
+    );
     if (!pending.length) return;
     const serialized = JSON.stringify(pending)
       .replace(/</g, '\\u003c')
@@ -239,7 +322,15 @@ function SurveyApp() {
       }
       true;
     `);
-    pendingNativeAnalyticsRef.current = [];
+  }
+
+  const scheduleNativeAnalyticsRetry = (retryAfterMs: number) => {
+    if (nativeAnalyticsRetryTimerRef.current) return;
+    const delay = Math.max(5_000, Math.min(Number(retryAfterMs) || 30_000, 15 * 60_000));
+    nativeAnalyticsRetryTimerRef.current = setTimeout(() => {
+      nativeAnalyticsRetryTimerRef.current = null;
+      flushNativeAnalyticsEvents();
+    }, delay);
   };
 
   const handleGoogleSignIn = async (requestId: string) => {
@@ -299,11 +390,28 @@ function SurveyApp() {
   const handleWebMessage = (event: WebViewMessageEvent) => {
     try {
       if (new URL(event.nativeEvent.url).origin !== SURVEY_ORIGIN) return;
-      const message = JSON.parse(event.nativeEvent.data);
+      const message = parseNativeShellMessage(event.nativeEvent.data);
+      if (!message) return;
       if (message?.type === 'survey:google-sign-in' && typeof message.requestId === 'string') {
         void handleGoogleSignIn(message.requestId);
       } else if (message?.type === 'survey:shell-ready') {
+        if (shellReadyMessageHandledRef.current) return;
+        shellReadyMessageHandledRef.current = true;
         finishShellLoad();
+        flushNativeAnalyticsEvents();
+      } else if (message?.type === 'survey:native-analytics-ack' && Array.isArray(message.ids)) {
+        for (const id of message.ids) nativeAnalyticsInFlightRef.current.delete(String(id));
+        pendingNativeAnalyticsRef.current = acknowledgeNativeAnalyticsEvents(
+          pendingNativeAnalyticsRef.current,
+          message.ids,
+        );
+        persistNativeDiagnosticState();
+      } else if (message?.type === 'survey:native-analytics-nack' && Array.isArray(message.ids)) {
+        for (const id of message.ids) nativeAnalyticsInFlightRef.current.delete(String(id));
+        // A negative acknowledgement never removes the persisted diagnostic.
+        // Auth, network, collector, and quota failures remain retryable.
+        persistNativeDiagnosticState();
+        if (message.retryable !== false) scheduleNativeAnalyticsRetry(Number(message.retryAfterMs));
       } else if (message?.type === 'survey:diagnostic' && message.area === 'pdf-zoom') {
         const diagnostic = {
           event: message.event,
@@ -311,6 +419,7 @@ function SurveyApp() {
           timestamp: message.timestamp,
         };
         pdfDiagnosticRef.current = [...pdfDiagnosticRef.current, diagnostic].slice(-24);
+        persistNativeDiagnosticState();
         console.info('[Survey phone PDF]', {
           ...diagnostic,
         });
@@ -352,10 +461,12 @@ function SurveyApp() {
     });
     if (recent.length >= 2) {
       processRecoveryRef.current = recent;
+      persistNativeDiagnosticState();
       setLoadError(true);
       return;
     }
     processRecoveryRef.current = [...recent, now];
+    persistNativeDiagnosticState();
     setLoadError(false);
     setWebViewKey((value) => value + 1);
   };
@@ -388,10 +499,9 @@ function SurveyApp() {
         )}
         onLoadStart={handleLoadStart}
         onNavigationStateChange={handleNavigationStateChange}
-        onMessage={Platform.OS === 'ios' ? handleWebMessage : undefined}
+        onMessage={handleWebMessage}
         onLoadEnd={() => {
           webViewRef.current?.injectJavaScript(nativeSafeAreaScript);
-          flushNativeAnalyticsEvents();
         }}
         onError={failShellLoad}
         onHttpError={failShellLoad}

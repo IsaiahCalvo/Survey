@@ -27,6 +27,7 @@ function parseOptions(argv) {
     baseUrl: process.env.MOBILE_QA_BASE_URL || null,
     device: 'all',
     headful: process.env.HEADFUL === '1',
+    scenario: 'all',
     outputDir: path.resolve('.playwright-mcp', 'hub-resilience'),
   };
   for (let index = 0; index < argv.length; index += 1) {
@@ -41,12 +42,16 @@ function parseOptions(argv) {
     if (arg === '--device' || arg.startsWith('--device=')) options.device = take('--device');
     else if (arg === '--base-url' || arg.startsWith('--base-url=')) options.baseUrl = take('--base-url');
     else if (arg === '--output-dir' || arg.startsWith('--output-dir=')) options.outputDir = path.resolve(take('--output-dir'));
+    else if (arg === '--scenario' || arg.startsWith('--scenario=')) options.scenario = take('--scenario');
     else if (arg === '--headful') options.headful = true;
     else if (arg === '--help' || arg === '-h') options.help = true;
     else throw new Error(`Unknown option: ${arg}`);
   }
   if (!['mobile', 'desktop', 'all'].includes(options.device)) {
     throw new Error('--device must be mobile, desktop, or all');
+  }
+  if (!['all', 'fetch-error-retry'].includes(options.scenario)) {
+    throw new Error('--scenario must be all or fetch-error-retry');
   }
   return options;
 }
@@ -515,8 +520,19 @@ async function testMobileEntitiesModalCentering(page, baseUrl, touch) {
 
   await assertCentered('short-list');
   const addEntity = modal.getByRole('button', { name: 'New entity', exact: true });
+  const entityRows = modal.locator('.templates-mobile-entity-row');
   for (let index = 0; index < 8; index += 1) {
+    const previousCount = await entityRows.count();
     await activate(addEntity, touch, 'mobile');
+    await page.waitForFunction(
+      ({ selector, count }) => document.querySelectorAll(selector).length === count + 1,
+      { selector: '.templates-mobile-entity-modal .templates-mobile-entity-row', count: previousCount },
+    );
+    const colorPanel = modal.locator('.templates-mobile-color-panel:visible');
+    if (await colorPanel.waitFor({ state: 'visible', timeout: 3_000 }).then(() => true).catch(() => false)) {
+      await page.keyboard.press('Escape');
+      await colorPanel.waitFor({ state: 'hidden' });
+    }
   }
   const panel = modal.locator('.templates-mobile-entity-panel');
   const overflow = await panel.evaluate((element) => ({
@@ -631,7 +647,7 @@ async function testMobileHeaderParity(page, baseUrl) {
   }
 
   await gotoHub(page, baseUrl, 'documents');
-  const sort = await requiredBox(page.locator('.documents-mobile-filter:visible'), 'mobile Documents sort');
+  const sort = await requiredBox(page.locator('.documents-mobile-filter-visual:visible'), 'mobile Documents sort visual');
   assertNear(sort.y, reference.select.y, 'mobile: Select and sort share a row');
   assertNear(sort.x + sort.width, reference.action.x + reference.action.width, 'mobile: sort and Upload right edges align');
 }
@@ -651,7 +667,18 @@ async function testDocuments(page, touch, device) {
   if (device === 'mobile') {
     sortControl = page.locator('.documents-mobile-filter:visible');
     assert.equal(await sortControl.count(), 1, 'mobile: sort/filter control exposed');
-    await activate(sortControl, touch, device);
+  } else {
+    sortControl = page.locator('.documents-desktop-card:visible').getByText(/^File(?: [↑↓])?$/);
+    assert.equal(await sortControl.count(), 1, 'desktop: File sort header exposed');
+  }
+  // Search still owns focus after clearing. Its first outside gesture must
+  // dismiss only; the following gesture intentionally activates sorting.
+  await activate(sortControl, touch, device);
+  if (device === 'mobile') {
+    assert.equal(await page.locator('.documents-mobile-sort-menu:visible').count(), 0, 'mobile: first sort tap only dismisses document search');
+  }
+  await activate(sortControl, touch, device);
+  if (device === 'mobile') {
     const menu = page.locator('.documents-mobile-sort-menu:visible');
     const sortBox = await requiredBox(sortControl, 'mobile: open sort control');
     const menuBox = await requiredBox(menu, 'mobile: open sort menu');
@@ -663,10 +690,6 @@ async function testDocuments(page, touch, device) {
     const fileSort = page.getByRole('menuitem', { name: /^File(?: [↑↓])?$/ });
     assert.equal(await fileSort.count(), 1, 'mobile: File sort choice exposed');
     await activate(fileSort, touch, device);
-  } else {
-    sortControl = page.locator('.documents-desktop-card:visible').getByText(/^File(?: [↑↓])?$/);
-    assert.equal(await sortControl.count(), 1, 'desktop: File sort header exposed');
-    await activate(sortControl, touch, device);
   }
   const asc = await visibleRowIds(page, '[data-document-id]:visible');
   await activate(sortControl, touch, device);
@@ -727,7 +750,13 @@ async function testProjects(page, touch, device) {
 
   const select = page.locator('[data-testid="project-select-toggle"]:visible');
   assert.equal(await select.count(), 1, `${device}: project Select control`);
+  // A focused search intentionally owns the first outside gesture: it blurs
+  // without activating the underlying control. Prove that contract before
+  // the second gesture enters selection mode.
   await activate(select, touch, device);
+  assert.equal(await select.textContent(), 'Select', `${device}: first outside tap only dismisses project search`);
+  await activate(select, touch, device);
+  assert.equal(await select.textContent(), 'Done', `${device}: second tap enters project selection`);
   const target = page.locator('[data-project-id="p1"]:visible');
   assert.equal(await target.count(), 1, `${device}: project selection target visible`);
   await activate(target, touch, device);
@@ -751,13 +780,20 @@ async function testTemplates(page, touch, device) {
     : page.locator('.templates-editor-grid:visible > aside').first();
   const select = bulkScope.getByRole('button', { name: 'Select', exact: true });
   assert.equal(await select.count(), 1, `${device}: template Select control`);
+  const searchOwnedFocus = await search.evaluate((element) => document.activeElement === element);
   await activate(select, touch, device);
+  const done = bulkScope.getByRole('button', { name: 'Done', exact: true });
+  if (searchOwnedFocus) {
+    assert.equal(await done.count(), 0, `${device}: focused template search owns the first outside tap`);
+    await activate(select, touch, device);
+  }
+  await done.waitFor({ state: 'visible' });
   const target = page.getByText('Security Walk-Through', { exact: true }).filter({ visible: true });
   assert.ok(await target.count() >= 1, `${device}: template selection target visible`);
   await activate(target.first(), touch, device);
   const duplicate = bulkScope.getByRole('button', { name: 'Duplicate', exact: true });
   assert.equal(await duplicate.isEnabled(), true, `${device}: template Duplicate enables after selection`);
-  await activate(bulkScope.getByRole('button', { name: 'Done', exact: true }), touch, device);
+  await activate(done, touch, device);
 }
 
 async function testEdgeFixtures(page, baseUrl, touch, device) {
@@ -779,6 +815,23 @@ async function testEdgeFixtures(page, baseUrl, touch, device) {
   await last.scrollIntoViewIfNeeded();
   assert.equal(await last.isVisible(), true, `${device}: final long-fixture document remains reachable`);
   await artifacts.screenshot(page, `${device}-long-documents`);
+}
+
+async function testFetchErrorRetry(page, baseUrl, touch, device) {
+  const readySelectors = {
+    documents: '[data-document-id]:visible',
+    projects: '[data-project-id]:visible',
+    templates: device === 'mobile' ? '.templates-mobile-row:visible' : '.templates-editor-grid [data-drag-rearrange-row]:visible',
+  };
+  for (const tab of EDGE_TABS) {
+    await gotoHub(page, baseUrl, tab, { hubError: tab });
+    const alert = page.getByRole('alert');
+    await alert.waitFor({ state: 'visible', timeout: 15_000 });
+    assert.match(await alert.innerText(), new RegExp(`Couldn't load ${tab}`, 'i'), `${device}: ${tab} fetch error is explicit`);
+    await activate(alert.getByRole('button', { name: 'Try again', exact: true }), touch, device);
+    await alert.waitFor({ state: 'hidden', timeout: 15_000 });
+    assert.ok(await page.locator(readySelectors[tab]).count() > 0, `${device}: ${tab} retry repopulates the real view`);
+  }
 }
 
 async function testViewerReturn(page, baseUrl, touch, device) {
@@ -845,6 +898,11 @@ async function runDevice(device, baseUrl) {
       sessionStorage.setItem(gate, '1');
     } catch { /* storage is unavailable on initial opaque documents */ }
   }, { keys: WORKFLOW_STORAGE_KEYS, gate: `hub-resilience-${artifacts.runId}-${device}` });
+  await context.route('**/api/analytics/track', (route) => route.fulfill({
+    status: 204,
+    headers: { 'Access-Control-Allow-Origin': '*' },
+    body: '',
+  }));
 
   const page = await context.newPage();
   const diagnostics = attachFailureGuards(page, baseUrl, device);
@@ -854,6 +912,13 @@ async function runDevice(device, baseUrl) {
   try {
     assert.deepEqual(page.viewportSize(), viewport, `${device}: exact viewport`);
     if (device === 'mobile') assert.equal(touch.inputKind, 'trusted-cdp-touch', 'mobile: trusted touch required');
+
+    if (options.scenario === 'fetch-error-retry') {
+      await artifacts.time(`${device}:fetch-error-retry`, () => testFetchErrorRetry(page, baseUrl, touch, device));
+      assertHealthy(diagnostics, device);
+      artifacts.recordScenario({ certification: CERTIFICATION, device, viewport, input: device === 'mobile' ? touch.inputKind : 'desktop-mouse-keyboard', coverage: 'fetch-error-retry', diagnostics, status: 'passed' });
+      return diagnostics;
+    }
 
     await artifacts.time(`${device}:first-visit-tab-frame-continuity`, () => (
       testFirstVisitTabContinuity(page, baseUrl, touch, device)
@@ -883,6 +948,7 @@ async function runDevice(device, baseUrl) {
     await artifacts.screenshot(page, `${device}-tabs-search-selection`);
 
     await artifacts.time(`${device}:edge-fixtures`, () => testEdgeFixtures(page, baseUrl, touch, device));
+    await artifacts.time(`${device}:fetch-error-retry`, () => testFetchErrorRetry(page, baseUrl, touch, device));
     await artifacts.time(`${device}:viewer-return`, () => testViewerReturn(page, baseUrl, touch, device));
     await artifacts.time(`${device}:history`, () => testHistory(page, baseUrl, device));
     await page.waitForTimeout(300);
@@ -893,7 +959,7 @@ async function runDevice(device, baseUrl) {
       device,
       viewport,
       input: device === 'mobile' ? touch.inputKind : 'desktop-mouse-keyboard',
-      coverage: 'first-visit-frame-continuity-template-disclosure-icon-parity-project-row-team-parity-content-type-icon-colors-safe-area-tabs-edge-swipe-back-template-category-row-alignment-entities-modal-centering-search-filter-sort-selection-bulk-state-empty-loading-long-docs-viewer-exact-return-back-forward-refresh',
+      coverage: 'first-visit-frame-continuity-template-disclosure-icon-parity-project-row-team-parity-content-type-icon-colors-safe-area-tabs-edge-swipe-back-template-category-row-alignment-entities-modal-centering-search-filter-sort-selection-bulk-state-empty-loading-fetch-error-retry-long-docs-viewer-exact-return-back-forward-refresh',
       diagnostics,
       status: 'passed',
     });

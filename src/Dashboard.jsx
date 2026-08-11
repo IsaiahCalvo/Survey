@@ -16,6 +16,9 @@ import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRe
 import SurveyHub from './home/SurveyHub';
 import CreateProjectModal from './home/CreateProjectModal';
 import { resolveHubInitialLoading } from './home/hubInitialLoadingState.js';
+import { retryCompensatingCleanup, runCompensatingBatch } from './home/compensatingBatch.js';
+import { moveOrCopyDocumentsAtomically, parseDocumentBatchRecovery } from './home/documentBatchOperations.js';
+import { mapAuthoritativeTemplateRows, persistTemplateSnapshot } from './home/templatePersistence.js';
 import { useAuth } from './contexts/AuthContext';
 import { useMSGraph } from './contexts/MSGraphContext';
 import { useDocuments, useProjects, useStorage, useTemplates } from './hooks/useDatabase';
@@ -123,12 +126,71 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
   const [showUserDropdown, setShowUserDropdown] = useState(false);
   const [showAccountSettings, setShowAccountSettings] = useState(false);
   const userDropdownRef = useRef(null);
+  const documentMoveCopyRecoveryRef = useRef(null);
+  const duplicateDocumentsRecoveryRef = useRef(null);
+  const duplicateProjectsRecoveryRef = useRef(null);
   const userDropdownInsideRefs = useMemo(() => [userDropdownRef], []);
+  const documentMoveCopyRecoveryKey = `survey-document-move-copy-recovery:${user?.id || 'guest'}`;
+  useEffect(() => {
+    try {
+      documentMoveCopyRecoveryRef.current = parseDocumentBatchRecovery(
+        localStorage.getItem(documentMoveCopyRecoveryKey),
+      );
+    } catch {
+      documentMoveCopyRecoveryRef.current = null;
+    }
+  }, [documentMoveCopyRecoveryKey]);
+  const persistDocumentMoveCopyRecovery = useCallback((recovery) => {
+    documentMoveCopyRecoveryRef.current = recovery;
+    try {
+      if (recovery) localStorage.setItem(documentMoveCopyRecoveryKey, JSON.stringify(recovery));
+      else localStorage.removeItem(documentMoveCopyRecoveryKey);
+    } catch { /* durable retry is best effort when storage is unavailable */ }
+  }, [documentMoveCopyRecoveryKey]);
+  const duplicateDocumentsRecoveryKey = `survey-duplicate-documents-recovery:${user?.id || 'guest'}`;
+  const duplicateProjectsRecoveryKey = `survey-duplicate-projects-recovery:${user?.id || 'guest'}`;
+  useEffect(() => {
+    const readPending = (key) => {
+      try {
+        const parsed = JSON.parse(localStorage.getItem(key) || 'null');
+        return Array.isArray(parsed?.pending) ? parsed : null;
+      } catch { return null; }
+    };
+    duplicateDocumentsRecoveryRef.current = readPending(duplicateDocumentsRecoveryKey);
+    duplicateProjectsRecoveryRef.current = readPending(duplicateProjectsRecoveryKey);
+  }, [duplicateDocumentsRecoveryKey, duplicateProjectsRecoveryKey]);
+  const persistPendingCleanup = useCallback((key, ref, recovery) => {
+    ref.current = recovery;
+    try {
+      if (recovery?.pending?.length) localStorage.setItem(key, JSON.stringify(recovery));
+      else localStorage.removeItem(key);
+    } catch { /* cleanup retry remains live in memory */ }
+  }, []);
+  const projectPreferencesKey = `survey-project-preferences:${user?.id || 'guest'}`;
+  const [projectPreferences, setProjectPreferences] = useState({});
+  useEffect(() => {
+    try {
+      const stored = JSON.parse(localStorage.getItem(projectPreferencesKey) || '{}');
+      setProjectPreferences(stored && typeof stored === 'object' ? stored : {});
+    } catch {
+      setProjectPreferences({});
+    }
+  }, [projectPreferencesKey]);
+  const hubProjectPreferencesChange = useCallback((nextPreferences) => {
+    setProjectPreferences((current) => {
+      const next = typeof nextPreferences === 'function'
+        ? nextPreferences(current)
+        : { ...current, ...(nextPreferences || {}) };
+      try { localStorage.setItem(projectPreferencesKey, JSON.stringify(next)); } catch { /* preference persistence is best effort */ }
+      return next;
+    });
+  }, [projectPreferencesKey]);
 
   // Supabase hooks for data persistence
   const {
     projects: supabaseProjects,
     initialLoading: projectsInitialLoading,
+    error: projectsLoadError,
     createProject: createSupabaseProject,
     updateProject: updateSupabaseProject,
     deleteProject: deleteSupabaseProject,
@@ -138,9 +200,11 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
   const {
     templates: supabaseTemplates,
     initialLoading: templatesInitialLoading,
+    error: templatesLoadError,
     createTemplate: createSupabaseTemplate,
     updateTemplate: updateSupabaseTemplate,
     deleteTemplate: deleteSupabaseTemplate,
+    replaceTemplates: replaceSupabaseTemplates,
     refetch: refetchTemplates
   } = useTemplates();
 
@@ -261,6 +325,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
   const {
     documents: supabaseDocuments,
     initialLoading: documentsInitialLoading,
+    error: documentsLoadError,
     createDocument: createSupabaseDocument,
     updateDocument: updateSupabaseDocument,
     deleteDocument: deleteSupabaseDocument,
@@ -1187,102 +1252,30 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
       return;
     }
 
-    // BL-23: count per-row failures and throw after the refetch so callers can
-    // tell a save actually failed (the editor keeps its dirty state and the
-    // user's edits survive). Whatever DID persist still syncs via the refetch.
-    let rowFailures = 0;
     try {
-      // BL-23: diff against the freshest PERSISTED rows (supabaseRowsRef is
-      // render-synced AND advanced synchronously by the previous save's
-      // refetch below), not this closure's render-time `templates` — a save
-      // queued behind another save would otherwise diff against a stale
-      // baseline and re-create rows the earlier save already persisted
-      // (duplicates) or miss deletes. Mapping mirrors the templates useMemo:
-      // template id lives in config.id (the row id is the Supabase id).
-      const baselineTemplates = (supabaseRowsRef.current || []).map((row) => ({
-        id: (row?.config && typeof row.config === 'object' && row.config.id) || row.id,
-        supabaseId: row.id,
+      const withResolvedRows = templatesToSave.map((template) => ({
+        ...template,
+        supabaseId: template.supabaseId || resolveSupabaseTemplateId(template) || undefined,
       }));
-      const currentTemplateIds = new Set(baselineTemplates.map(t => t.id));
-      const newTemplateIds = new Set(templatesToSave.map(t => t.id));
-
-      // Delete templates that were removed
-      for (const template of baselineTemplates) {
-        if (!newTemplateIds.has(template.id)) {
-          const supabaseId = resolveSupabaseTemplateId(template);
-          if (!supabaseId) continue;
-          try {
-            await deleteSupabaseTemplate(supabaseId);
-          } catch (err) {
-            console.error('Error deleting template:', err);
-            rowFailures += 1;
-          }
-        }
-      }
-
-      // Update or create templates
-      for (const template of templatesToSave) {
-        const configPayload = sanitizeTemplateConfig(template);
-        if (currentTemplateIds.has(template.id)) {
-          // Update existing template
-          const supabaseId = resolveSupabaseTemplateId(template);
-          if (!supabaseId) {
-            console.warn('Unable to resolve Supabase template id for update, creating new template instead.');
-            try {
-              await createSupabaseTemplate({
-                name: template.name,
-                config: configPayload
-              });
-            } catch (err) {
-              console.error('Error creating template:', err);
-              rowFailures += 1;
-            }
-            continue;
-          }
-          try {
-            await updateSupabaseTemplate(supabaseId, {
-              name: template.name,
-              config: configPayload // Store entire template structure in config JSONB
-            });
-          } catch (err) {
-            console.error('Error updating template:', err);
-            rowFailures += 1;
-          }
-        } else {
-          // Create new template
-          try {
-            await createSupabaseTemplate({
-              name: template.name,
-              config: configPayload // Store entire template structure in config JSONB
-            });
-          } catch (err) {
-            console.error('Error creating template:', err);
-            rowFailures += 1;
-          }
-        }
-      }
-
-      // Refetch to sync state — and advance the baseline ref synchronously so
-      // a save queued right behind this one diffs against what we just
-      // persisted, without waiting for React to re-render. Guard: a refetch
-      // failure returns [] (loadTemplates swallows its error); never poison
-      // the baseline with an empty set while rows were just saved.
-      const freshRows = await refetchTemplates();
-      if (Array.isArray(freshRows) && (freshRows.length > 0 || templatesToSave.length === 0)) {
-        supabaseRowsRef.current = freshRows;
-      }
+      const freshRows = await persistTemplateSnapshot({
+        ownerId: user.id,
+        templates: withResolvedRows,
+        persist: replaceSupabaseTemplates,
+      });
+      supabaseRowsRef.current = freshRows;
+      return freshRows;
     } catch (err) {
-      // BL-23: rethrow — swallowing refetch/unexpected errors here left callers
-      // believing failed saves succeeded (the editor then dropped its edits).
       console.error('Error persisting templates:', err);
       throw err;
     }
-    if (rowFailures > 0) {
-      throw new Error(`${rowFailures} template${rowFailures === 1 ? '' : 's'} failed to save`);
-    }
   };
 
-  const deleteDocumentEverywhere = async ({ docId, filePath = null, source = 'unknown' }) => {
+  const deleteDocumentEverywhere = async ({
+    docId,
+    filePath = null,
+    source = 'unknown',
+    requireStorageCleanup = false,
+  }) => {
     if (!docId) throw new Error('Missing document id');
     if (!supabase) throw new Error('Supabase is not available');
 
@@ -1316,6 +1309,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
     // Content-addressed storage means the SAME object can back several rows
     // (same bytes in two projects share one {user}/{sha}.pdf) — only remove it
     // when no other row still points at it.
+    let storageCleanupError = null;
     if (storagePath) {
       try {
         const { data: sharer, error: sharerErr } = await supabase
@@ -1330,12 +1324,16 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
           // is GC territory later; a deleted shared object is another
           // document's bytes gone.
           console.warn('[DocumentDelete] sharer check failed — keeping storage object', sharerErr.message);
+          storageCleanupError = sharerErr;
         } else if (sharer) {
           console.log('[DocumentDelete] storage kept — object shared with', sharer.id);
         } else {
           await deleteFromStorage(storagePath);
         }
-      } catch (storageErr) { console.warn('[DocumentDelete] storage remove failed', storageErr?.message); }
+      } catch (storageErr) {
+        storageCleanupError = storageErr;
+        console.warn('[DocumentDelete] storage remove failed', storageErr?.message);
+      }
     }
 
     // Purge the local durable copy (IndexedDB + in-memory doc).
@@ -1361,6 +1359,8 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
       console.error('[DocumentDelete] verify:still-present', JSON.stringify({ docId, source, remaining }));
       throw blocked;
     }
+
+    if (storageCleanupError && requireStorageCleanup) throw storageCleanupError;
 
     console.log('[DocumentDelete] verify:removed', JSON.stringify({ docId, source }));
   };
@@ -1760,8 +1760,8 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
     if (!Array.isArray(nextTemplates)) return;
     try {
       if (user) {
-        updateTemplates(nextTemplates);
-        await persistTemplates(nextTemplates);
+        const freshRows = await persistTemplates(nextTemplates);
+        updateTemplates(mapAuthoritativeTemplateRows(freshRows));
       } else {
         localStorage.setItem('templates', JSON.stringify(nextTemplates));
         updateTemplates(nextTemplates);
@@ -1773,6 +1773,14 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
       // user's unsaved edits) when persistence fails.
       throw e;
     }
+  };
+
+  const hubReloadTemplates = async () => {
+    const freshRows = await refetchTemplates();
+    supabaseRowsRef.current = freshRows;
+    const authoritative = mapAuthoritativeTemplateRows(freshRows);
+    updateTemplates(authoritative);
+    return authoritative;
   };
 
   // Delete the given documents everywhere: hard-deletes each row (cascading its
@@ -1861,20 +1869,196 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
     }
   };
 
-  // Duplicate the given documents — optimistic local copies, same shape as
-  // the removed legacy bulk-copy documents flow.
-  const hubDuplicateDocuments = (docs) => {
-    const list = Array.isArray(docs) ? docs.filter(Boolean) : [];
-    if (list.length === 0) return;
-    const copies = list.map(d => ({ ...d, id: crypto.randomUUID(), name: `${d.name} (Copy)` }));
-    setDocuments(prev => [...copies, ...prev]);
+  const cloneDocumentToProject = async (doc, projectId = null, operation = null) => {
+    const actualDoc = (allDocuments || []).find((candidate) => candidate.id === doc?.id) || doc;
+    const filePath = actualDoc?.file_path || actualDoc?.filePath;
+    if (!filePath) throw new Error(`Document "${actualDoc?.name || 'Untitled'}" has no stored PDF.`);
+    const blob = await downloadFromStorage(filePath);
+    const sourceName = actualDoc.name || 'Untitled.pdf';
+    const dot = sourceName.toLowerCase().lastIndexOf('.pdf');
+    const copyName = dot >= 0
+      ? `${sourceName.slice(0, dot)} (Copy)${sourceName.slice(dot)}`
+      : `${sourceName} (Copy)`;
+    const copyFile = new File([blob], copyName, { type: blob.type || 'application/pdf' });
+    // A batch copy supplies a stable UUID. The same key makes both the storage
+    // upload and documents insert idempotent after a committed-but-lost reply.
+    const stableCopyId = operation?.operationId || crypto.randomUUID();
+    const uploadedPath = await uploadToStorage(
+      copyFile,
+      projectId,
+      undefined,
+      stableCopyId,
+    );
+    try {
+      return await createSupabaseDocument({
+        id: stableCopyId,
+        name: copyName,
+        file_path: uploadedPath,
+        file_size: blob.size,
+        page_count: actualDoc.page_count ?? null,
+        project_id: projectId,
+        archived: false,
+      });
+    } catch (error) {
+      // The row may have committed even though the response was lost. The
+      // batch compensator reconciles this stable candidate by id; never remove
+      // its bytes here based on the response alone.
+      error.recoveryValue = { id: stableCopyId, file_path: uploadedPath };
+      throw error;
+    }
   };
 
-  // Move or copy the given documents to an existing project. Move re-parents
-  // the real Supabase rows (project_id), matching the removed legacy
-  // move-to-existing-project behavior. Copy has no
-  // clean single-call Supabase primitive, so it stays an optimistic local
-  // copy (consistent with the removed legacy bulk-copy flow).
+  const rollbackClonedDocument = async (created) => {
+    if (!created?.id) return;
+    await deleteDocumentEverywhere({
+      docId: created.id,
+      filePath: created.file_path || created.filePath || null,
+      source: 'survey-hub-duplicate-rollback',
+      requireStorageCleanup: true,
+    });
+  };
+
+  const rollbackClonedDocuments = async (createdDocuments) => {
+    const cleanupErrors = [];
+    for (const created of [...createdDocuments].reverse()) {
+      try { await rollbackClonedDocument(created); }
+      catch (error) { cleanupErrors.push(error); }
+    }
+    return cleanupErrors;
+  };
+
+  const hubDuplicateDocuments = async (docs, targetProjectId = undefined) => {
+    const list = Array.isArray(docs) ? docs.filter(Boolean) : [];
+    if (list.length === 0) return false;
+    if (!user) { showToast('Please sign in to duplicate documents', 'warn'); return false; }
+    try {
+      if (duplicateDocumentsRecoveryRef.current?.pending?.length) {
+        await retryCompensatingCleanup(
+          duplicateDocumentsRecoveryRef.current,
+          rollbackClonedDocument,
+        );
+        persistPendingCleanup(
+          duplicateDocumentsRecoveryKey,
+          duplicateDocumentsRecoveryRef,
+          null,
+        );
+      }
+      await runCompensatingBatch(
+        list,
+        (doc) => cloneDocumentToProject(
+          doc,
+          targetProjectId === undefined ? (doc.project_id ?? null) : targetProjectId,
+        ),
+        rollbackClonedDocument,
+      );
+      await refetchDocuments();
+      await refetchAllDocuments();
+      return true;
+    } catch (err) {
+      if (err.compensation?.pending?.length) {
+        persistPendingCleanup(
+          duplicateDocumentsRecoveryKey,
+          duplicateDocumentsRecoveryRef,
+          err.compensation,
+        );
+      }
+      console.error('[DocumentDuplicate] survey-hub:error', serializeError(err));
+      if (err.cleanupErrors?.length > 0) {
+        console.error('[DocumentDuplicate] rollback:error', err.cleanupErrors.map(serializeError));
+      }
+      showToast('Failed to duplicate documents: ' + (err.message || 'Unknown error'), 'error');
+      await refetchDocuments();
+      await refetchAllDocuments();
+      return false;
+    }
+  };
+
+  const hubDuplicateProjects = async (sourceProjects) => {
+    const list = Array.isArray(sourceProjects) ? sourceProjects.filter(Boolean) : [];
+    if (list.length === 0) return false;
+    if (!user) { showToast('Please sign in to duplicate projects', 'warn'); return false; }
+    const duplicateProjectBundle = async (source) => {
+        const stableProjectId = crypto.randomUUID();
+        let created;
+        try {
+          created = await createSupabaseProject({
+            id: stableProjectId,
+            name: `${source.name || 'Untitled Project'} (copy)`,
+          });
+        } catch (error) {
+          error.recoveryValue = { project: { id: stableProjectId }, documents: [] };
+          throw error;
+        }
+        const createdDocuments = [];
+        const sourceDocuments = (allDocuments || []).filter((doc) => doc.project_id === source.id);
+        try {
+          for (const doc of sourceDocuments) {
+            createdDocuments.push(await cloneDocumentToProject(doc, created.id));
+          }
+          return { project: created, documents: createdDocuments };
+        } catch (error) {
+          if (error.recoveryValue) createdDocuments.push(error.recoveryValue);
+          const cleanupErrors = await rollbackClonedDocuments(createdDocuments);
+          try { await deleteSupabaseProject(created.id); }
+          catch (cleanupError) { cleanupErrors.push(cleanupError); }
+          if (cleanupErrors.length > 0) {
+            error.cleanupErrors = cleanupErrors;
+            error.recoveryValue = { project: created, documents: createdDocuments };
+          } else {
+            delete error.recoveryValue;
+          }
+          throw error;
+        }
+    };
+    const rollbackDuplicatedProjectBundle = async ({ project, documents: copiedDocuments }) => {
+      const cleanupErrors = await rollbackClonedDocuments(copiedDocuments);
+      try { await deleteSupabaseProject(project.id); }
+      catch (error) { cleanupErrors.push(error); }
+      if (cleanupErrors.length > 0) throw cleanupErrors[0];
+    };
+    try {
+      if (duplicateProjectsRecoveryRef.current?.pending?.length) {
+        await retryCompensatingCleanup(
+          duplicateProjectsRecoveryRef.current,
+          rollbackDuplicatedProjectBundle,
+        );
+        persistPendingCleanup(
+          duplicateProjectsRecoveryKey,
+          duplicateProjectsRecoveryRef,
+          null,
+        );
+      }
+      await runCompensatingBatch(
+        list,
+        duplicateProjectBundle,
+        rollbackDuplicatedProjectBundle,
+      );
+      await refetchProjects();
+      await refetchDocuments();
+      await refetchAllDocuments();
+      return true;
+    } catch (err) {
+      if (err.compensation?.pending?.length) {
+        persistPendingCleanup(
+          duplicateProjectsRecoveryKey,
+          duplicateProjectsRecoveryRef,
+          err.compensation,
+        );
+      }
+      console.error('[ProjectDuplicate] survey-hub:error', serializeError(err));
+      if (err.cleanupErrors?.length > 0) {
+        console.error('[ProjectDuplicate] rollback:error', err.cleanupErrors.map(serializeError));
+      }
+      showToast('Failed to duplicate projects: ' + (err.message || 'Unknown error'), 'error');
+      await refetchProjects();
+      await refetchDocuments();
+      await refetchAllDocuments();
+      return false;
+    }
+  };
+
+  // Move re-parents the existing row; copy downloads the stored PDF and
+  // creates a distinct storage object + document row in the destination.
   const hubMoveCopyDocuments = async (docs, projectId, mode = 'move') => {
     const list = Array.isArray(docs) ? docs.filter(Boolean) : [];
     if (list.length === 0 || !projectId) return;
@@ -1882,36 +2066,73 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
     const targetProj = projects.find(p => p.id === projectId);
     if (!targetProj) return;
 
-    if (mode === 'copy') {
-      // TODO: no server-side document-copy primitive exists; this is an
-      // optimistic local-only copy, matching the removed legacy bulk-copy
-      // behavior. Wire a real copy primitive if/when one is added.
-      const copies = list.map(d => ({
-        ...d,
-        id: crypto.randomUUID(),
-        name: `${d.name} (Copy)`,
-        projectId,
-        project_id: projectId,
-      }));
-      setDocuments(prev => [...copies, ...prev]);
-      return;
-    }
-
+    const actualDocuments = list.map((doc) => {
+      const actual = (supabaseDocuments || []).find((candidate) => candidate.id === doc.id)
+        || (allDocuments || []).find((candidate) => candidate.id === doc.id)
+        || doc;
+      if (!actual?.id) throw new Error(`Document "${doc?.name || 'Untitled'}" is no longer available.`);
+      return actual;
+    });
+    const rollbackMove = async ({ document, previousProjectId }) => {
+      await updateSupabaseDocument(document.id, { project_id: previousProjectId });
+    };
+    const readDocument = async (documentId) => {
+      const { data, error } = await supabase
+        .from('documents')
+        .select('*')
+        .eq('id', documentId)
+        .maybeSingle();
+      if (error && !isSupabaseRowNotFoundError(error)) throw error;
+      return data || null;
+    };
     try {
-      const ids = list.map(d => d.id);
-      setDocuments(prev => prev.filter(d => !ids.includes(d.id)));
-      for (const doc of list) {
-        const actualDoc = (supabaseDocuments || []).find(d => d.id === doc.id || d.name === doc.name);
-        if (actualDoc) {
-          await updateSupabaseDocument(actualDoc.id, { project_id: projectId });
+      const previousRecovery = documentMoveCopyRecoveryRef.current;
+      if (previousRecovery) {
+        const previousPhase = previousRecovery.phase;
+        await moveOrCopyDocumentsAtomically({
+          documents: [],
+          projectId,
+          mode,
+          copyDocument: cloneDocumentToProject,
+          rollbackCopy: rollbackClonedDocument,
+          moveDocument: (document, destinationId) => (
+            updateSupabaseDocument(document.id, { project_id: destinationId })
+          ),
+          rollbackMove,
+          readDocument,
+          recovery: previousRecovery,
+          onRecoveryChange: persistDocumentMoveCopyRecovery,
+        });
+        if (previousPhase === 'execute') {
+          await refetchProjects();
+          await refetchDocuments();
+          await refetchAllDocuments();
+          return true;
         }
       }
+      await moveOrCopyDocumentsAtomically({
+        documents: actualDocuments,
+        projectId,
+        mode,
+        copyDocument: cloneDocumentToProject,
+        rollbackCopy: rollbackClonedDocument,
+        moveDocument: (document, destinationId) => (
+          updateSupabaseDocument(document.id, { project_id: destinationId })
+        ),
+        rollbackMove,
+        readDocument,
+        onRecoveryChange: persistDocumentMoveCopyRecovery,
+      });
       await refetchProjects();
       await refetchDocuments();
+      await refetchAllDocuments();
+      return true;
     } catch (err) {
       console.error('[DocumentMoveCopy] survey-hub:error', serializeError(err));
-      showToast('Failed to move documents: ' + (err.message || 'Unknown error'), 'error');
+      showToast(`Failed to ${mode} documents: ${err.message || 'Unknown error'}`, 'error');
       await refetchDocuments();
+      await refetchAllDocuments();
+      throw err;
     }
   };
 
@@ -2009,6 +2230,13 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
         documentsInitialLoading={hubInitialLoading.documents}
         projectsInitialLoading={hubInitialLoading.projects}
         templatesInitialLoading={hubInitialLoading.templates}
+        projectPreferences={projectPreferences}
+        documentsLoadError={documentsLoadError}
+        projectsLoadError={projectsLoadError}
+        templatesLoadError={templatesLoadError}
+        onRetryDocuments={refetchDocuments}
+        onRetryProjects={refetchProjects}
+        onRetryTemplates={refetchTemplates}
         members={[]}
         user={user ? { id: user.id, name: user.user_metadata?.full_name || user.name || user.email, email: user.email } : null}
         isPro={!!features?.advancedSurvey}
@@ -2018,12 +2246,15 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
         onRenameProject={hubRenameProject}
         onCreateTemplate={openTemplateModal}
         onDeleteProjects={hubDeleteProjects}
+        onDuplicateProjects={hubDuplicateProjects}
         onSaveTemplates={hubSaveTemplates}
+        onReloadTemplates={hubReloadTemplates}
         getChecklistItemUsageCount={hubGetChecklistItemUsageCount}
         onDuplicateDocuments={hubDuplicateDocuments}
         onDeleteDocuments={hubDeleteDocuments}
         onRenameDocument={hubRenameDocument}
         onMoveCopyDocuments={hubMoveCopyDocuments}
+        onProjectPreferencesChange={hubProjectPreferencesChange}
         onLockDocument={hubToggleDocumentLock}
         onSettings={() => setShowAccountSettings(true)}
         onSignOut={signOut}

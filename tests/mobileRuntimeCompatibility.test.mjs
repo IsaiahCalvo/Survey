@@ -14,6 +14,7 @@ const EXPO_APP_SOURCE = readFileSync(new URL('../mobile-expo/App.tsx', import.me
 const EXPO_CONFIG_SOURCE = readFileSync(new URL('../mobile-expo/app.json', import.meta.url), 'utf8');
 const EXPO_EAS_CONFIG_SOURCE = readFileSync(new URL('../mobile-expo/eas.json', import.meta.url), 'utf8');
 const EXPO_PACKAGE_SOURCE = readFileSync(new URL('../mobile-expo/package.json', import.meta.url), 'utf8');
+const EXPO_DIAGNOSTIC_STORE_SOURCE = readFileSync(new URL('../mobile-expo/src/nativeDiagnosticStore.js', import.meta.url), 'utf8');
 const AUTH_CONTEXT_SOURCE = readFileSync(new URL('../src/contexts/AuthContext.jsx', import.meta.url), 'utf8');
 const INDEX_HTML_SOURCE = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
 const APP_SHELL_SOURCE = readFileSync(new URL('../src/AppShell.jsx', import.meta.url), 'utf8');
@@ -255,7 +256,7 @@ test('Survey development build owns Google sign-in without exposing the Supabase
   assert.match(EXPO_APP_SOURCE, /ExecutionEnvironment\.StoreClient/);
   assert.match(EXPO_APP_SOURCE, /Google sign-in is not available in Expo Go\. Open the Survey app to continue\./);
   assert.match(EXPO_APP_SOURCE, /new URL\(event\.nativeEvent\.url\)\.origin !== SURVEY_ORIGIN/);
-  assert.match(EXPO_APP_SOURCE, /onMessage=\{Platform\.OS === 'ios' \? handleWebMessage : undefined\}/);
+  assert.match(EXPO_APP_SOURCE, /onMessage=\{handleWebMessage\}/);
   assert.match(AUTH_CONTEXT_SOURCE, /window\.ReactNativeWebView\.postMessage/);
   assert.match(AUTH_CONTEXT_SOURCE, /supabase\.auth\.signInWithIdToken/);
   assert.match(AUTH_CONTEXT_SOURCE, /provider: 'google'/);
@@ -353,6 +354,23 @@ test('Expo forwards narrow PDF diagnostics and reports WebView process terminati
   assert.doesNotMatch(EXPO_APP_SOURCE, /EXPO_PUBLIC_AGENT_NATIVE_ANALYTICS_PUBLIC_KEY/);
   assert.match(EXPO_APP_SOURCE, /survey-native-analytics/);
   assert.match(EXPO_APP_SOURCE, /pendingNativeAnalyticsRef/);
+  assert.match(EXPO_APP_SOURCE, /loadNativeDiagnosticState\(AsyncStorage\)/);
+  assert.match(EXPO_APP_SOURCE, /nativePersistenceGateRef\.current\.persist/);
+  assert.match(EXPO_APP_SOURCE, /survey:native-analytics-ack/);
+  assert.match(EXPO_APP_SOURCE, /survey:native-analytics-nack/);
+  assert.match(EXPO_APP_SOURCE, /scheduleNativeAnalyticsRetry/);
+  assert.match(EXPO_APP_SOURCE, /createNativeDiagnosticPersistenceGate/);
+  assert.match(EXPO_APP_SOURCE, /mergeNativeDiagnosticStates/);
+  assert.match(EXPO_APP_SOURCE, /window\.__surveyShellReadySent/);
+  assert.match(EXPO_APP_SOURCE, /shellReadyMessageHandledRef/);
+  assert.match(EXPO_APP_SOURCE, /nativeAnalyticsInFlightRef/);
+  assert.match(EXPO_APP_SOURCE, /claimNativeAnalyticsEvents/);
+  assert.doesNotMatch(EXPO_APP_SOURCE, /deliveredIds/);
+  assert.doesNotMatch(EXPO_APP_SOURCE, /pendingNativeAnalyticsRef\.current = \[\];/);
+  assert.match(EXPO_PACKAGE_SOURCE, /@react-native-async-storage\/async-storage/);
+  assert.match(EXPO_DIAGNOSTIC_STORE_SOURCE, /BLOCKED_KEY/);
+  assert.match(EXPO_DIAGNOSTIC_STORE_SOURCE, /diagnostics\.slice\(-24\)/);
+  assert.match(EXPO_DIAGNOSTIC_STORE_SOURCE, /pendingEvents\.slice\(-8\)/);
   assert.match(EXPO_APP_SOURCE, /lastPdfDiagnostics: pdfDiagnosticRef\.current/);
   assert.match(EXPO_APP_SOURCE, /window\.__surveyShellSessionId/);
 });
@@ -360,10 +378,12 @@ test('Expo forwards narrow PDF diagnostics and reports WebView process terminati
 test('hosted web and native shell analytics share a privacy-bounded session', () => {
   assert.match(MAIN_SOURCE, /installSurveyAnalytics\(\)/);
   assert.match(PDFJS_VIEWER_SOURCE, /trackSurveyAnalyticsEvent\(`survey_pdf_/);
-  assert.match(SURVEY_ANALYTICS_SOURCE, /VITE_AGENT_NATIVE_ANALYTICS_PUBLIC_KEY/);
+  assert.doesNotMatch(SURVEY_ANALYTICS_SOURCE, /VITE_AGENT_NATIVE_ANALYTICS_PUBLIC_KEY/);
   assert.match(SURVEY_ANALYTICS_SOURCE, /window\.__surveyShellSessionId/);
   assert.match(SURVEY_ANALYTICS_SOURCE, /BLOCKED_PROPERTY/);
   assert.match(SURVEY_ANALYTICS_SOURCE, /keepalive: true/);
+  assert.match(SURVEY_ANALYTICS_SOURCE, /getSupabaseSession\('surveyAnalytics'\)/);
+  assert.match(SURVEY_ANALYTICS_SOURCE, /Authorization: `Bearer \$\{accessToken\}`/);
   assert.doesNotMatch(SURVEY_ANALYTICS_SOURCE, /userId:/);
 });
 

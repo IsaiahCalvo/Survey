@@ -74,6 +74,15 @@ const MOBILE_ANNOTATION_COLORS = [
   '#000000',
 ];
 
+const MOBILE_FOCUSABLE_SELECTOR = [
+  'a[href]',
+  'button:not([disabled])',
+  'input:not([disabled])',
+  'select:not([disabled])',
+  'textarea:not([disabled])',
+  '[tabindex]:not([tabindex="-1"])',
+].join(',');
+
 // Human labels for the edit-sheet header, per tool. (demo AnnotationEditPanel
 // titles the sheet with the annotation kind — App.tsx tool set.)
 const TOOL_LABELS = {
@@ -136,10 +145,14 @@ function MobileColorPickerSurface({ color, opacity, showOpacity = true, firstPre
 function MobileStyledSelect({ value, options, onChange, ariaLabel, disabled = false, minWidth, placeholder }) {
   const [open, setOpen] = useState(false);
   const [pos, setPos] = useState(null);
+  const [activeIndex, setActiveIndex] = useState(0);
   const triggerRef = useRef(null);
   const menuRef = useRef(null);
+  const optionRefs = useRef([]);
   const dismissInsideRefs = useMemo(() => [triggerRef, menuRef], []);
   const selected = options.find((option) => option.value === value);
+  const selectedIndex = Math.max(0, options.findIndex((option) => option.value === value));
+  const currentLabel = selected?.label || placeholder || 'No selection';
 
   const measure = () => {
     const rect = triggerRef.current?.getBoundingClientRect();
@@ -154,10 +167,66 @@ function MobileStyledSelect({ value, options, onChange, ariaLabel, disabled = fa
     });
   };
 
-  const toggle = () => {
+  const openMenu = (index = selectedIndex) => {
     if (disabled) return;
-    if (!open) measure();
-    setOpen((value) => !value);
+    measure();
+    setActiveIndex(Math.max(0, Math.min(options.length - 1, index)));
+    setOpen(true);
+  };
+
+  const closeMenu = (restoreFocus = false) => {
+    setOpen(false);
+    if (restoreFocus) requestAnimationFrame(() => triggerRef.current?.querySelector('button')?.focus({ preventScroll: true }));
+  };
+
+  const selectOption = (index) => {
+    const option = options[index];
+    if (!option) return;
+    onChange(option.value);
+    closeMenu(true);
+  };
+
+  const moveActiveOption = (event, nextIndex) => {
+    event.preventDefault();
+    event.stopPropagation();
+    setActiveIndex(Math.max(0, Math.min(options.length - 1, nextIndex)));
+  };
+
+  const closeAndMoveFocus = (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    const trigger = triggerRef.current?.querySelector('button');
+    const candidates = Array.from(document.querySelectorAll(MOBILE_FOCUSABLE_SELECTOR))
+      .filter((element) => !menuRef.current?.contains(element) && element.getClientRects().length > 0);
+    const triggerIndex = candidates.indexOf(trigger);
+    const nextIndex = triggerIndex + (event.shiftKey ? -1 : 1);
+    const next = candidates[nextIndex] || trigger;
+    setOpen(false);
+    requestAnimationFrame(() => next?.focus?.({ preventScroll: true }));
+  };
+
+  useEffect(() => {
+    if (!open) return undefined;
+    const frame = requestAnimationFrame(() => optionRefs.current[activeIndex]?.focus({ preventScroll: true }));
+    return () => cancelAnimationFrame(frame);
+  }, [activeIndex, open]);
+
+  const onMenuKeyDown = (event) => {
+    if (event.key === 'ArrowDown') moveActiveOption(event, (activeIndex + 1) % options.length);
+    else if (event.key === 'ArrowUp') moveActiveOption(event, (activeIndex - 1 + options.length) % options.length);
+    else if (event.key === 'Home') moveActiveOption(event, 0);
+    else if (event.key === 'End') moveActiveOption(event, options.length - 1);
+    else if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault();
+      event.stopPropagation();
+      selectOption(activeIndex);
+    } else if (event.key === 'Escape') {
+      event.preventDefault();
+      event.stopPropagation();
+      closeMenu(true);
+    } else if (event.key === 'Tab') {
+      closeAndMoveFocus(event);
+    }
   };
 
   return (
@@ -165,26 +234,35 @@ function MobileStyledSelect({ value, options, onChange, ariaLabel, disabled = fa
       <DismissBarrier
         active={open}
         insideRefs={dismissInsideRefs}
-        onDismiss={() => setOpen(false)}
+        dismissOnEscape={false}
+        onDismiss={() => closeMenu(true)}
       />
       <button
         type="button"
         className={`mobile-styled-select__trigger${open ? ' is-open' : ''}`}
         aria-haspopup="listbox"
         aria-expanded={open}
-        aria-label={ariaLabel}
+        aria-label={`${ariaLabel}: ${currentLabel}`}
         disabled={disabled}
         style={minWidth ? { minWidth } : undefined}
         onKeyDown={(event) => {
           if (event.key === 'ArrowDown' || event.key === 'Enter' || event.key === ' ') {
             event.preventDefault();
-            if (!open) measure();
-            setOpen(true);
+            openMenu();
+          } else if (event.key === 'ArrowUp') {
+            event.preventDefault();
+            openMenu();
+          } else if (event.key === 'Home') {
+            event.preventDefault();
+            openMenu(0);
+          } else if (event.key === 'End') {
+            event.preventDefault();
+            openMenu(options.length - 1);
           }
         }}
-        onClick={toggle}
+        onClick={() => (open ? closeMenu(false) : openMenu())}
       >
-        <span>{selected?.label || placeholder || ''}</span>
+        <span>{currentLabel}</span>
         <Icon name="chevronDown" size={11} color="currentColor" />
       </button>
       {open && typeof document !== 'undefined' && pos && createPortal(
@@ -193,6 +271,8 @@ function MobileStyledSelect({ value, options, onChange, ariaLabel, disabled = fa
           className="mobile-styled-select__menu"
           role="listbox"
           aria-label={ariaLabel}
+          data-modal-focus-layer="true"
+          onKeyDown={onMenuKeyDown}
           style={{
             position: 'fixed',
             left: pos.left,
@@ -201,16 +281,19 @@ function MobileStyledSelect({ value, options, onChange, ariaLabel, disabled = fa
             minWidth: pos.minWidth,
           }}
         >
-          {options.map((option) => {
+          {options.map((option, index) => {
             const active = option.value === value;
             return (
               <button
                 key={option.value}
+                ref={(node) => { optionRefs.current[index] = node; }}
                 type="button"
                 role="option"
                 aria-selected={active}
+                tabIndex={index === activeIndex ? 0 : -1}
                 className={active ? 'is-active' : ''}
-                onClick={() => { onChange(option.value); setOpen(false); }}
+                onFocus={() => setActiveIndex(index)}
+                onClick={() => selectOption(index)}
               >
                 <span>{option.label}</span>
                 {active && <Icon name="check" size={14} color="currentColor" />}
@@ -510,7 +593,7 @@ export function MobilePdfViewerHeader({ id, documentName, onBack, topToolbarApi,
   );
 }
 
-function MobileToolProperties({ api }) {
+export function MobileToolProperties({ api }) {
   const [counterMenuOpen, setCounterMenuOpen] = useState(false);
   // 2026-07-12 (Phase E, demo parity): which colour control has the shared
   // CompactColorPicker takeover open. null | 'textColor' | 'fill' | 'stroke'
@@ -621,9 +704,13 @@ function MobileToolProperties({ api }) {
         >
           <span style={{ background: toHexColor(state.fontColor, '#1e293b') }} />
         </button>
-        <select aria-label="Font" value={state.fontFamily || 'Arial'} onChange={(event) => editorApi.setFontFamily?.(event.target.value)}>
-          {['Arial', 'Helvetica', 'Times New Roman', 'Courier New', 'Georgia', 'Verdana'].map((family) => <option key={family} value={family}>{family}</option>)}
-        </select>
+        <MobileStyledSelect
+          ariaLabel="Font"
+          value={state.fontFamily || 'Arial'}
+          options={['Arial', 'Helvetica', 'Times New Roman', 'Courier New', 'Georgia', 'Verdana'].map((family) => ({ value: family, label: family }))}
+          onChange={(family) => editorApi.setFontFamily?.(family)}
+          minWidth={96}
+        />
         <input
           className="mobile-pdf-properties__font-size"
           aria-label="Font size"
@@ -652,19 +739,20 @@ function MobileToolProperties({ api }) {
             {label}
           </button>
         ))}
-        <select
-          aria-label="Text alignment"
+        <MobileStyledSelect
+          ariaLabel="Text alignment"
           value={alignment}
-          onChange={(event) => {
-            const [vertical, horizontal] = event.target.value.split('|');
+          options={['top', 'middle', 'bottom'].flatMap((vertical) => ['left', 'center', 'right'].map((horizontal) => ({
+            value: `${vertical}|${horizontal}`,
+            label: `${vertical} ${horizontal}`,
+          })))}
+          onChange={(nextAlignment) => {
+            const [vertical, horizontal] = nextAlignment.split('|');
             editorApi.setTextAlign?.(horizontal);
             editorApi.setVerticalAlign?.(vertical);
           }}
-        >
-          {['top', 'middle', 'bottom'].flatMap((vertical) => ['left', 'center', 'right'].map((horizontal) => (
-            <option key={`${vertical}|${horizontal}`} value={`${vertical}|${horizontal}`}>{vertical} {horizontal}</option>
-          )))}
-        </select>
+          minWidth={104}
+        />
       </div>
       {colorPicker === 'fontColorLive' && (
         <MobileColorPickerSurface
