@@ -1,4 +1,12 @@
 import { createClient } from 'npm:@supabase/supabase-js@2.110.8'
+import {
+  renderEmailLayout,
+  EMAIL_DANGER,
+  EMAIL_GOLD,
+  EMAIL_P_STYLE as P,
+  EMAIL_FINE_STYLE as FINE,
+  EMAIL_LIST_STYLE as LIST,
+} from '../_shared/emailLayout.ts'
 
 // Transactional email via Brevo (consolidated to one email service 2026-07-05).
 const BREVO_API_KEY = Deno.env.get('BREVO_API_KEY')
@@ -77,89 +85,29 @@ Deno.serve(async (req) => {
       return field
     }).join(' and ')
 
-    // Email HTML content
-    const emailHtml = `
-      <!DOCTYPE html>
-      <html>
-        <head>
-          <style>
-            body {
-              font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-              line-height: 1.6;
-              color: #333;
-              max-width: 600px;
-              margin: 0 auto;
-              padding: 20px;
-            }
-            .header {
-              background: #4A90E2;
-              color: white;
-              padding: 20px;
-              border-radius: 8px 8px 0 0;
-              text-align: center;
-            }
-            .content {
-              background: #f9f9f9;
-              padding: 30px;
-              border-radius: 0 0 8px 8px;
-            }
-            .alert-box {
-              background: #fff3cd;
-              border-left: 4px solid #ffc107;
-              padding: 15px;
-              margin: 20px 0;
-            }
-            .footer {
-              margin-top: 20px;
-              padding-top: 20px;
-              border-top: 1px solid #ddd;
-              font-size: 12px;
-              color: #666;
-              text-align: center;
-            }
-            .button {
-              display: inline-block;
-              padding: 12px 24px;
-              background: #4A90E2;
-              color: white;
-              text-decoration: none;
-              border-radius: 6px;
-              margin: 10px 0;
-            }
-          </style>
-        </head>
-        <body>
-          <div class="header">
-            <h1>Account Security Alert</h1>
-          </div>
-          <div class="content">
-            <p>Hello ${escapeHtml(userName)},</p>
-
-            <p>This email confirms that the following information on your Survey account was recently changed:</p>
-
-            <p><strong>Changed: ${escapeHtml(fieldList)}</strong></p>
-
-            <div class="alert-box">
-              <strong>⚠️ If this wasn't you:</strong>
-              <p>If you did not make this change, please contact us immediately at:</p>
-              <p><strong>isaiahcalvo123@gmail.com</strong></p>
-            </div>
-
-            <p>For your security:</p>
-            <ul>
-              <li>Never share your password with anyone</li>
-              <li>Use a strong, unique password</li>
-              <li>Contact us if you notice any suspicious activity</li>
-            </ul>
-
-            <div class="footer">
-              <p>This is an automated security notification from Survey.</p>
-              <p>© ${new Date().getFullYear()} Survey. All rights reserved.</p>
-            </div>
-          </div>
-        </body>
-      </html>
-    `
+    // Email HTML content — rendered through the shared branded frame
+    // (supabase/functions/_shared/emailLayout.ts, docs/design/email-style-guide.md).
+    const emailHtml = renderEmailLayout({
+      heading: 'Account security alert',
+      headingColor: EMAIL_DANGER,
+      bodyHtml:
+        `<p style="${P}">Hello ${escapeHtml(userName)},</p>` +
+        `<p style="${P}">This email confirms that the following information on your Survey account was recently changed:</p>` +
+        `<p style="${P}"><strong>Changed: ${escapeHtml(fieldList)}</strong></p>` +
+        `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin: 20px 0;">` +
+        `<tr><td style="background-color: #f9f1df; border-left: 4px solid ${EMAIL_GOLD}; padding: 14px 16px; ` +
+        `font-family: -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; font-size: 14px; line-height: 1.5; color: #1f2430;">` +
+        `<strong>If this wasn't you:</strong> please contact us immediately at ` +
+        `<strong>isaiahcalvo123@gmail.com</strong>.` +
+        `</td></tr></table>` +
+        `<p style="${P}">For your security:</p>` +
+        `<ul style="${LIST}">` +
+        `<li>Never share your password with anyone</li>` +
+        `<li>Use a strong, unique password</li>` +
+        `<li>Contact us if you notice any suspicious activity</li>` +
+        `</ul>` +
+        `<p style="${FINE}">This is an automated security notification from Survey. &copy; ${new Date().getFullYear()} Survey. All rights reserved.</p>`,
+    })
 
     // Send email via Brevo transactional API (one email service across the app)
     const res = await fetch('https://api.brevo.com/v3/smtp/email', {

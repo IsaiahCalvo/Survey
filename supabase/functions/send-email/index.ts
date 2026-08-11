@@ -1,4 +1,13 @@
 import { createClient } from 'npm:@supabase/supabase-js@2.110.8';
+import {
+    renderEmailLayout,
+    emailButton,
+    EMAIL_DANGER,
+    EMAIL_P_STYLE as P,
+    EMAIL_MUTED_STYLE as MUTED,
+    EMAIL_FINE_STYLE as FINE,
+    EMAIL_LIST_STYLE as LIST,
+} from '../_shared/emailLayout.ts';
 
 // Transactional email via Brevo. Consolidated 2026-07-05 so the whole app uses
 // ONE email service — Brevo also sends the Supabase Auth login/reset emails.
@@ -77,147 +86,112 @@ Deno.serve(async (req) => {
             );
         }
 
-        // Email templates
+        // Email templates. Every template renders through the shared branded
+        // frame (supabase/functions/_shared/emailLayout.ts) — see
+        // docs/design/email-style-guide.md. Reskins preserve each message's
+        // information and links; copy is sentence case per the copy style guide.
         const templates = {
-            'trial-ending': (data: any) => `
-                <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-                    <h2 style="color: #3b82f6;">Your Trial is Ending Soon</h2>
-                    <p>Hi${data.firstName ? ' ' + data.firstName : ''},</p>
-                    <p>Your Pro trial will end in <strong>${data.daysLeft} days</strong> on ${data.trialEndDate}.</p>
-                    <p>To continue enjoying all Pro features, no action is needed - your subscription will automatically start at $9.99/month.</p>
-                    <p><strong>Want to cancel?</strong> You can do so anytime before ${data.trialEndDate} with no charge.</p>
-                    <div style="margin: 30px 0;">
-                        <a href="${data.portalUrl}" style="background: #3b82f6; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block;">
-                            Manage Subscription
-                        </a>
-                    </div>
-                    <p style="color: #666; font-size: 14px;">
-                        Questions? Reply to this email for support.
-                    </p>
-                </div>
-            `,
+            'trial-ending': (data: any) => renderEmailLayout({
+                heading: 'Your trial is ending soon',
+                bodyHtml:
+                    `<p style="${P}">Hi${data.firstName ? ' ' + data.firstName : ''},</p>` +
+                    `<p style="${P}">Your Pro trial will end in <strong>${data.daysLeft} days</strong> on ${data.trialEndDate}.</p>` +
+                    `<p style="${P}">To continue enjoying all Pro features, no action is needed — your subscription will automatically start at $9.99/month.</p>` +
+                    `<p style="${P}"><strong>Want to cancel?</strong> You can do so anytime before ${data.trialEndDate} with no charge.</p>` +
+                    emailButton('Manage subscription', data.portalUrl) +
+                    `<p style="${MUTED}">Questions? Reply to this email for support.</p>`,
+            }),
 
-            'payment-failed': (data: any) => `
-                <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-                    <h2 style="color: #ef4444;">Payment Failed</h2>
-                    <p>Hi${data.firstName ? ' ' + data.firstName : ''},</p>
-                    <p>We were unable to process your payment for your Pro subscription ($9.99/month).</p>
-                    <p><strong>What happens now?</strong></p>
-                    <ul>
-                        <li>Your subscription is currently <strong>past due</strong></li>
-                        <li>We'll retry the payment in a few days</li>
-                        <li>If payment fails again, your subscription may be canceled</li>
-                    </ul>
-                    <div style="margin: 30px 0;">
-                        <a href="${data.portalUrl}" style="background: #ef4444; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block;">
-                            Update Payment Method
-                        </a>
-                    </div>
-                    <p style="color: #666; font-size: 14px;">
-                        Questions? Reply to this email for support.
-                    </p>
-                </div>
-            `,
+            'payment-failed': (data: any) => renderEmailLayout({
+                heading: 'Payment failed',
+                headingColor: EMAIL_DANGER,
+                bodyHtml:
+                    `<p style="${P}">Hi${data.firstName ? ' ' + data.firstName : ''},</p>` +
+                    `<p style="${P}">We were unable to process your payment for your Pro subscription ($9.99/month).</p>` +
+                    `<p style="${P}"><strong>What happens now?</strong></p>` +
+                    `<ul style="${LIST}">` +
+                    `<li>Your subscription is currently <strong>past due</strong></li>` +
+                    `<li>We'll retry the payment in a few days</li>` +
+                    `<li>If payment fails again, your subscription may be canceled</li>` +
+                    `</ul>` +
+                    emailButton('Update payment method', data.portalUrl) +
+                    `<p style="${MUTED}">Questions? Reply to this email for support.</p>`,
+            }),
 
-            'subscription-canceled': (data: any) => `
-                <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-                    <h2 style="color: #666;">Subscription Canceled</h2>
-                    <p>Hi${data.firstName ? ' ' + data.firstName : ''},</p>
-                    <p>Your Pro subscription has been canceled as requested.</p>
-                    <p><strong>What's next?</strong></p>
-                    <ul>
-                        <li>You've been moved to the Free plan</li>
-                        <li>Your data is safe and secure</li>
-                        <li>You can reactivate anytime from Account Settings in the app</li>
-                    </ul>
-                    <p>We're sorry to see you go! If there's anything we could have done better, please let us know by replying to this email.</p>
-                    <p style="color: #666; font-size: 14px; margin-top: 30px;">
-                        Want to come back? Open Survey and go to Account Settings → Manage Subscription to reactivate.
-                    </p>
-                </div>
-            `,
+            'subscription-canceled': (data: any) => renderEmailLayout({
+                heading: 'Subscription canceled',
+                bodyHtml:
+                    `<p style="${P}">Hi${data.firstName ? ' ' + data.firstName : ''},</p>` +
+                    `<p style="${P}">Your Pro subscription has been canceled as requested.</p>` +
+                    `<p style="${P}"><strong>What's next?</strong></p>` +
+                    `<ul style="${LIST}">` +
+                    `<li>You've been moved to the Free plan</li>` +
+                    `<li>Your data is safe and secure</li>` +
+                    `<li>You can reactivate anytime from Account Settings in the app</li>` +
+                    `</ul>` +
+                    `<p style="${P}">We're sorry to see you go! If there's anything we could have done better, please let us know by replying to this email.</p>` +
+                    `<p style="${MUTED}">Want to come back? Open Survey and go to Account Settings → Manage Subscription to reactivate.</p>`,
+            }),
 
-            'payment-succeeded': (data: any) => `
-                <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-                    <h2 style="color: #22c55e;">Payment Received</h2>
-                    <p>Hi${data.firstName ? ' ' + data.firstName : ''},</p>
-                    <p>Thank you! Your payment of <strong>$${data.amount}</strong> has been received.</p>
-                    <p><strong>Subscription Details:</strong></p>
-                    <ul>
-                        <li>Plan: ${data.planName}</li>
-                        <li>Amount: $${data.amount}</li>
-                        <li>Next billing date: ${data.nextBillingDate}</li>
-                    </ul>
-                    <div style="margin: 30px 0;">
-                        <a href="${data.portalUrl}" style="background: #22c55e; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block;">
-                            View Receipt
-                        </a>
-                    </div>
-                    <p style="color: #666; font-size: 14px;">
-                        Questions about your billing? Contact us at support@yourcompany.com
-                    </p>
-                </div>
-            `,
+            'payment-succeeded': (data: any) => renderEmailLayout({
+                heading: 'Payment received',
+                bodyHtml:
+                    `<p style="${P}">Hi${data.firstName ? ' ' + data.firstName : ''},</p>` +
+                    `<p style="${P}">Thank you! Your payment of <strong>$${data.amount}</strong> has been received.</p>` +
+                    `<p style="${P}"><strong>Subscription details:</strong></p>` +
+                    `<ul style="${LIST}">` +
+                    `<li>Plan: ${data.planName}</li>` +
+                    `<li>Amount: $${data.amount}</li>` +
+                    `<li>Next billing date: ${data.nextBillingDate}</li>` +
+                    `</ul>` +
+                    emailButton('View receipt', data.portalUrl) +
+                    `<p style="${MUTED}">Questions about your billing? Contact us at support@yourcompany.com</p>`,
+            }),
 
             // ==============================================================
             // KAL-31 sharing templates.
             // ==============================================================
 
-            'document-invite': (data: any) => `
-                <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-                    <h2 style="color: #d8a84e;">You're invited to ${data.documentName || 'a document'}</h2>
-                    <p>Hi,</p>
-                    <p><strong>${data.inviterName || 'A Survey user'}</strong> invited you to join <strong>${data.documentName || 'a document'}</strong> as <strong>${data.role || 'Viewer'}</strong> on Survey.</p>
-                    <div style="margin: 30px 0;">
-                        <a href="${data.inviteUrl}" style="background: #d8a84e; color: #15110a; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block; font-weight: 600;">
-                            Open invite
-                        </a>
-                    </div>
-                    <p style="color: #666; font-size: 13px;">This invite expires on ${data.expiresAt || '7 days from now'}.</p>
-                    <p style="color: #666; font-size: 13px;">If the button doesn't work, copy and paste this link:<br/><span style="font-family: monospace; word-break: break-all;">${data.inviteUrl}</span></p>
-                    <p style="color: #999; font-size: 12px; margin-top: 30px;">If you weren't expecting this invite, you can safely ignore this email.</p>
-                </div>
-            `,
+            'document-invite': (data: any) => renderEmailLayout({
+                heading: `You're invited to ${data.documentName || 'a document'}`,
+                bodyHtml:
+                    `<p style="${P}">Hi,</p>` +
+                    `<p style="${P}"><strong>${data.inviterName || 'A Survey user'}</strong> invited you to join <strong>${data.documentName || 'a document'}</strong> as <strong>${data.role || 'Viewer'}</strong> on Survey.</p>` +
+                    emailButton('Open invite', data.inviteUrl) +
+                    `<p style="${MUTED}">This invite expires on ${data.expiresAt || '7 days from now'}.</p>` +
+                    `<p style="${MUTED}">If the button doesn't work, copy and paste this link:<br/><span style="font-family: monospace; word-break: break-all;">${data.inviteUrl}</span></p>` +
+                    `<p style="${FINE}">If you weren't expecting this invite, you can safely ignore this email.</p>`,
+            }),
 
-            'document-shared': (data: any) => `
-                <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-                    <h2 style="color: #3b82f6;">${data.documentName || 'A document'} was shared with you</h2>
-                    <p>Hi,</p>
-                    <p><strong>${data.sharedByName || 'A Survey user'}</strong> shared <strong>${data.documentName || 'a document'}</strong> with you on Survey.</p>
-                    <p>Your role is: <strong>${data.role || 'Viewer'}</strong>.</p>
-                    <div style="margin: 30px 0;">
-                        <a href="${data.documentUrl || data.appUrl || '#'}" style="background: #3b82f6; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block; font-weight: 600;">
-                            Open ${data.documentName || 'document'}
-                        </a>
-                    </div>
-                    <p style="color: #666; font-size: 13px;">Access is already active; no invitation acceptance is required.</p>
-                </div>
-            `,
+            'document-shared': (data: any) => renderEmailLayout({
+                heading: `${data.documentName || 'A document'} was shared with you`,
+                bodyHtml:
+                    `<p style="${P}">Hi,</p>` +
+                    `<p style="${P}"><strong>${data.sharedByName || 'A Survey user'}</strong> shared <strong>${data.documentName || 'a document'}</strong> with you on Survey.</p>` +
+                    `<p style="${P}">Your role is: <strong>${data.role || 'Viewer'}</strong>.</p>` +
+                    emailButton(`Open ${data.documentName || 'document'}`, data.documentUrl || data.appUrl || '#') +
+                    `<p style="${MUTED}">Access is already active; no invitation acceptance is required.</p>`,
+            }),
 
-            'permission-changed': (data: any) => `
-                <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-                    <h2 style="color: #3b82f6;">Your access changed on ${data.documentName || 'a document'}</h2>
-                    <p>Hi,</p>
-                    <p><strong>${data.changedByName || 'An owner'}</strong> changed your access to <strong>${data.documentName || 'a document'}</strong>.</p>
-                    <p>Your new role is: <strong>${data.newRole || 'Viewer'}</strong>${data.oldRole ? ' (was <strong>' + data.oldRole + '</strong>)' : ''}.</p>
-                    <div style="margin: 30px 0;">
-                        <a href="${data.documentUrl || data.appUrl || '#'}" style="background: #3b82f6; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block; font-weight: 600;">
-                            Open ${data.documentName || 'document'}
-                        </a>
-                    </div>
-                    <p style="color: #666; font-size: 13px;">Permission changes apply immediately. If you have unsaved changes, they may be blocked from saving after a downgrade.</p>
-                </div>
-            `,
+            'permission-changed': (data: any) => renderEmailLayout({
+                heading: `Your access changed on ${data.documentName || 'a document'}`,
+                bodyHtml:
+                    `<p style="${P}">Hi,</p>` +
+                    `<p style="${P}"><strong>${data.changedByName || 'An owner'}</strong> changed your access to <strong>${data.documentName || 'a document'}</strong>.</p>` +
+                    `<p style="${P}">Your new role is: <strong>${data.newRole || 'Viewer'}</strong>${data.oldRole ? ' (was <strong>' + data.oldRole + '</strong>)' : ''}.</p>` +
+                    emailButton(`Open ${data.documentName || 'document'}`, data.documentUrl || data.appUrl || '#') +
+                    `<p style="${MUTED}">Permission changes apply immediately. If you have unsaved changes, they may be blocked from saving after a downgrade.</p>`,
+            }),
 
-            'access-removed': (data: any) => `
-                <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-                    <h2 style="color: #cf6f6f;">Your access to ${data.documentName || 'a document'} was removed</h2>
-                    <p>Hi,</p>
-                    <p><strong>${data.removedByName || 'An owner'}</strong> removed your access to <strong>${data.documentName || 'a document'}</strong> on Survey.</p>
-                    <p>You can no longer open, view, or edit this item. If you believe this was a mistake, contact the owner directly.</p>
-                    <p style="color: #666; font-size: 12px; margin-top: 30px;">This is an automated notification. Please do not reply.</p>
-                </div>
-            `,
+            'access-removed': (data: any) => renderEmailLayout({
+                heading: `Your access to ${data.documentName || 'a document'} was removed`,
+                headingColor: EMAIL_DANGER,
+                bodyHtml:
+                    `<p style="${P}">Hi,</p>` +
+                    `<p style="${P}"><strong>${data.removedByName || 'An owner'}</strong> removed your access to <strong>${data.documentName || 'a document'}</strong> on Survey.</p>` +
+                    `<p style="${P}">You can no longer open, view, or edit this item. If you believe this was a mistake, contact the owner directly.</p>` +
+                    `<p style="${FINE}">This is an automated notification. Please do not reply.</p>`,
+            }),
         };
 
         const getTemplate = templates[template as keyof typeof templates];
