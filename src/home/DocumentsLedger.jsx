@@ -434,6 +434,7 @@ export default function DocumentsLedger({
                     <EmptyState
                       icon="doc"
                       line="No documents yet"
+                      description="Upload your first PDF to start surveying."
                       actionIcon="upload"
                       actionLabel="Upload PDF"
                       onAction={() => onUpload && onUpload()}
@@ -588,6 +589,7 @@ export default function DocumentsLedger({
               <EmptyState
                 icon="doc"
                 line="No documents yet"
+                description="Upload your first PDF to start surveying."
                 actionIcon="upload"
                 actionLabel="Upload PDF"
                 onAction={() => onUpload && onUpload()}

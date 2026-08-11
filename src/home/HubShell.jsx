@@ -111,14 +111,36 @@ export const Search = ({ placeholder = 'Search…', width = 240, value, onChange
   </div>
 );
 
-/* Shared empty state — icon + one short line + one primary action.
-   (Design decision 4: every empty tab surface uses this exact shape.) */
-export const EmptyState = ({ icon, line, actionLabel, actionIcon = 'plus', onAction }) => (
+/* Shared empty state — icon + headline + one primary action.
+   (Design decision 4: every empty tab surface uses this exact shape.)
+
+   UX (KAL-58): `description` is OPTIONAL and is what turns the one-line form
+   into a two-tier one. Pass it and `line` is promoted to a real 13px headline
+   with the sentence beneath it in muted ink; omit it and the block renders
+   exactly as it always has — a single muted line.
+
+   Why two tiers: "No documents yet" states the fact but not the next move. A
+   first-time user on a blank pane needs to know what to DO, and a headline plus
+   one plain sentence carries that without turning the empty state into a page.
+   The block is capped at 320px so the sentence wraps to two lines at most.
+
+   The one-line form is not legacy — the Archive screen deliberately uses it.
+   "Nothing in Archive" needs no coaching, and Archive's layout was signed off
+   as-is, so it must keep rendering identically. Any change here has to leave
+   the no-description path byte-for-byte the same. */
+export const EmptyState = ({ icon, line, description, actionLabel, actionIcon = 'plus', onAction }) => (
   <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 10, padding: '40px 16px', textAlign: 'center', letterSpacing: 0 }}>
     <div style={{ width: 44, height: 44, borderRadius: 10, background: 'var(--ink-600)', border: '1px solid var(--ink-500)', display: 'grid', placeItems: 'center' }}>
       <Icon name={icon} size={20} color="var(--ink-200)" />
     </div>
-    <div style={{ fontSize: 12.5, color: 'var(--ink-200)' }}>{line}</div>
+    {description ? (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 4, maxWidth: 320 }}>
+        <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--bone-100)' }}>{line}</div>
+        <div style={{ fontSize: 12, color: 'var(--ink-200)', lineHeight: 1.5 }}>{description}</div>
+      </div>
+    ) : (
+      <div style={{ fontSize: 12.5, color: 'var(--ink-200)' }}>{line}</div>
+    )}
     <button className="btn primary" type="button" onClick={() => onAction && onAction()}>
       <Icon name={actionIcon} size={12} />{actionLabel}
     </button>

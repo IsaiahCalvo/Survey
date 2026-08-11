@@ -1711,6 +1711,7 @@ export default function TemplatesEditor({
                 <EmptyState
                   icon="template"
                   line="No templates yet"
+                  description="Create a template to define your survey structure."
                   actionLabel="New template"
                   onAction={createTemplate}
                 />
@@ -2262,6 +2263,11 @@ export default function TemplatesEditor({
                 <EmptyState
                   icon="template"
                   line={rich.length === 0 ? 'No templates yet' : 'No templates match your search'}
+                  // UX (KAL-58): the coaching sentence belongs only on the
+                  // genuinely-empty case. A user whose SEARCH returned nothing
+                  // already has templates and doesn't need to be told what a
+                  // template is for — they need to fix their search.
+                  description={rich.length === 0 ? 'Create a template to define your survey structure.' : undefined}
                   actionLabel="New template"
                   onAction={createTemplate}
                 />
@@ -2684,6 +2690,7 @@ export default function TemplatesEditor({
             <EmptyState
               icon="template"
               line="No templates yet"
+              description="Create a template to define your survey structure."
               actionLabel="New template"
               onAction={createTemplate}
             />

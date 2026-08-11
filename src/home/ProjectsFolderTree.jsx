@@ -1185,6 +1185,7 @@ export default function ProjectsFolderTree({
                 <EmptyState
                   icon="folder"
                   line="No projects yet"
+                  description="Create a project to group related documents."
                   actionLabel="New project"
                   onAction={handleNewProject}
                 />
@@ -1198,7 +1199,7 @@ export default function ProjectsFolderTree({
       <div className="projects-mobile-layout slim-scroll">
         {filtered.length === 0 && (
           localProjects.length === 0 ? (
-            <EmptyState icon="folder" line="No projects yet" actionLabel="New project" onAction={handleNewProject} />
+            <EmptyState icon="folder" line="No projects yet" description="Create a project to group related documents." actionLabel="New project" onAction={handleNewProject} />
           ) : (
             <div className="meta" style={{ fontSize: 12, padding: '14px 4px' }}>No projects match your search.</div>
           )
