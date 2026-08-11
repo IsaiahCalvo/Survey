@@ -159,13 +159,13 @@ const ProfileMenu = ({ userName, userMeta }) => {
   const ref = useRef(null);
   useEffect(() => {
     if (!open) return undefined;
-    const onDoc = (e) => {
-      if (!ref.current || ref.current.contains(e.target)) return;
+    const onKeyDown = (event) => {
+      if (event.key !== 'Escape') return;
       setOpen(false);
       setConfirmSignOut(false);
     };
-    document.addEventListener('mousedown', onDoc);
-    return () => document.removeEventListener('mousedown', onDoc);
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
   }, [open]);
 
   if (!user) {
@@ -185,6 +185,9 @@ const ProfileMenu = ({ userName, userMeta }) => {
   return (
     <div className="who" ref={ref} style={{ position: 'relative' }}>
       <button
+        type="button"
+        aria-label="Open account menu"
+        aria-expanded={open}
         onClick={() => setOpen((o) => {
           const next = !o;
           if (!next) setConfirmSignOut(false);
@@ -200,35 +203,47 @@ const ProfileMenu = ({ userName, userMeta }) => {
         </div>
       </button>
       {open && (
-        <div style={{ position: 'absolute', bottom: 'calc(100% + 6px)', left: 0, width: 214, background: 'var(--ink-700)', border: '1px solid var(--ink-500)', borderRadius: 10, boxShadow: '0 16px 40px rgba(0,0,0,0.5)', overflow: 'hidden', zIndex: 50 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: 12 }}>
-            <Avatar initials={initials} size={34} />
-            <div style={{ minWidth: 0 }}>
-              <div style={{ fontSize: 12.5, fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{name}</div>
-              {email ? <div style={{ fontSize: 10.5, color: 'var(--ink-200)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{email}</div> : null}
-            </div>
-          </div>
-          <div style={{ height: 1, background: 'var(--ink-500)' }} />
-          <div className="profile-menu-actions" style={{ padding: 4 }}>
-            <button style={itemStyle} onClick={() => { setOpen(false); setConfirmSignOut(false); onSettings && onSettings(); }}>
-              <Icon name="settings" size={15} color="var(--ink-200)" />Settings
-            </button>
-            {confirmSignOut ? (
-              <div className="profile-signout-confirm">
-                <div className="profile-signout-copy">Sign out of Survey?</div>
-                <div className="profile-signout-buttons">
-                  <button type="button" onClick={() => setConfirmSignOut(false)}>Cancel</button>
-                  <button type="button" className="danger" onClick={() => { setOpen(false); onSignOut && onSignOut(); }}>Sign Out</button>
-                </div>
+        <>
+          <div
+            className="profile-menu-scrim"
+            aria-hidden="true"
+            onClick={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              setOpen(false);
+              setConfirmSignOut(false);
+            }}
+          />
+          <div className="profile-menu-popup" role="menu" aria-label="Account menu" style={{ position: 'absolute', bottom: 'calc(100% + 6px)', left: 0, width: 214, background: 'var(--ink-700)', border: '1px solid var(--ink-500)', borderRadius: 10, boxShadow: '0 16px 40px rgba(0,0,0,0.5)', overflow: 'hidden', zIndex: 50 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: 12 }}>
+              <Avatar initials={initials} size={34} />
+              <div style={{ minWidth: 0 }}>
+                <div style={{ fontSize: 12.5, fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{name}</div>
+                {email ? <div style={{ fontSize: 10.5, color: 'var(--ink-200)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{email}</div> : null}
               </div>
-            ) : (
-              <button className="profile-menu-signout" style={{ ...itemStyle, color: '#cf6f6f' }} onClick={() => setConfirmSignOut(true)}>
-                <Icon name="signout" size={15} color="#cf6f6f" />Sign Out
+            </div>
+            <div style={{ height: 1, background: 'var(--ink-500)' }} />
+            <div className="profile-menu-actions" style={{ padding: 4 }}>
+              <button style={itemStyle} onClick={() => { setOpen(false); setConfirmSignOut(false); onSettings && onSettings(); }}>
+                <Icon name="settings" size={15} color="var(--ink-200)" />Settings
               </button>
-            )}
+              {confirmSignOut ? (
+                <div className="profile-signout-confirm">
+                  <div className="profile-signout-copy">Sign out of Survey?</div>
+                  <div className="profile-signout-buttons">
+                    <button type="button" onClick={() => setConfirmSignOut(false)}>Cancel</button>
+                    <button type="button" className="danger" onClick={() => { setOpen(false); onSignOut && onSignOut(); }}>Sign Out</button>
+                  </div>
+                </div>
+              ) : (
+                <button className="profile-menu-signout" style={{ ...itemStyle, color: '#cf6f6f' }} onClick={() => setConfirmSignOut(true)}>
+                  <Icon name="signout" size={15} color="#cf6f6f" />Sign Out
+                </button>
+              )}
+            </div>
+            <div style={{ borderTop: '1px solid var(--ink-500)', padding: '7px 12px', fontSize: 10, color: 'var(--ink-300)' }}>Survey App v1.0</div>
           </div>
-          <div style={{ borderTop: '1px solid var(--ink-500)', padding: '7px 12px', fontSize: 10, color: 'var(--ink-300)' }}>Survey App v1.0</div>
-        </div>
+        </>
       )}
     </div>
   );

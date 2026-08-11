@@ -415,6 +415,22 @@
   gap: 4px;
 }
 
+/* Keep the first outside press on a real hit target until its click finishes.
+   Removing an overlay on pointer-down can retarget the release to the document
+   or control underneath, recreating the click-through this scrim prevents. */
+.survey-hub .profile-menu-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 49;
+  display: block;
+  background: transparent;
+  cursor: default;
+}
+
+.survey-hub .profile-menu-popup {
+  z-index: 50;
+}
+
 .survey-hub .profile-menu-actions > button {
   min-height: 34px;
 }

@@ -43,3 +43,19 @@ test('mobile guest sign-in control clears the action row below it', () => {
     /\.mobile-profile \.who > button\.profile-signin\s*\{[^}]*height:\s*28px;[^}]*min-height:\s*28px;/s,
   );
 });
+
+test('authenticated account menu consumes the first outside click before content can activate', () => {
+  const profileMenu = HUB_SHELL.slice(
+    HUB_SHELL.indexOf('const ProfileMenu'),
+    HUB_SHELL.indexOf('const MobileRailNav'),
+  );
+
+  assert.doesNotMatch(profileMenu, /addEventListener\(['"]mousedown['"]/);
+  assert.match(profileMenu, /className="profile-menu-scrim"/);
+  assert.match(profileMenu, /event\.preventDefault\(\);\s*event\.stopPropagation\(\);/s);
+  assert.match(profileMenu, /setOpen\(false\);\s*setConfirmSignOut\(false\);/s);
+  assert.match(
+    HUB_CSS,
+    /\.survey-hub \.profile-menu-scrim\s*\{[^}]*position:\s*fixed;[^}]*inset:\s*0;[^}]*z-index:\s*49;/s,
+  );
+});
