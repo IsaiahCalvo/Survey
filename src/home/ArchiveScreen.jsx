@@ -116,7 +116,10 @@ const ROW_HEIGHT = 51;
    the point where "I'll get to it later" stops being safe. */
 const URGENT_DAYS = 3;
 
-const DANGER = '#cf6f6f';
+/* The app's one destructive red (KAL-72, docs/ui/colors.md). Archive uses it
+   for "Delete forever" and to tint rows inside the final days of the retention
+   window, so it has to be the same red the rest of the app warns with. */
+const DANGER = '#d95a56';
 
 const typeIcon = { document: 'doc', project: 'folder', template: 'template' };
 
