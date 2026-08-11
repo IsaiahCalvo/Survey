@@ -75,14 +75,19 @@ const grid = '32px 54px minmax(150px,1fr) 110px 124px 110px';
 
 /* Row thumbnail height, shared by the ledger rows, an expanded project's child
    rows and the project preview tree. One number, so a document is the same
-   size wherever it appears in Archive. */
-const ROW_THUMB = 30;
+   size wherever it appears in Archive.
 
-/* Width of a row's art. A US-Letter page at 30px tall is 23px wide, which is
-   the footprint the Documents ledger reserves for its row thumbnail and its
-   placeholder. Projects and templates use the same width so the gap between
-   the art and the name is one number across every row and both screens. */
-const ROW_ART_W = 23;
+   Owner call 2026-08-07: "make the thumbnails bigger without changing anything
+   else." 44px is the largest a page can be inside the pinned 51px row and still
+   keep an even 3.5px above and below — so the drawing is readable at a glance
+   while the row rhythm, the 54px column and the name position all stay put. */
+const ROW_THUMB = 44;
+
+/* Width of a row's art, kept at the US-Letter ratio so a page is never
+   distorted: 44px tall x 8.5/11 = 34px. Still inside the 54px thumbnail column
+   (10px of breathing room each side). Projects and templates reserve the same
+   box so the column stays aligned across every row type. */
+const ROW_ART_W = 34;
 
 /* Shared chevron size — matches PDFViewer's disclosure chevrons in dense lists. */
 const CHEVRON_SIZE = 12;

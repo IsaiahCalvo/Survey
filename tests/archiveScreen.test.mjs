@@ -379,29 +379,44 @@ test('every document in Archive renders at the one Documents-ledger thumbnail si
   // One helper, one size. Top-level rows, an expanded project's child rows and
   // the project preview tree all call it, so a document cannot end up smaller
   // in one place than another (the owner's complaint).
-  assert.match(SCREEN, /const ROW_THUMB = 30;/);
+  // Owner call 2026-08-07: "make the thumbnails bigger without changing
+  // anything else." Archive DELIBERATELY diverges from the Documents ledger's
+  // 30px row thumb here — Archive is the screen where you decide whether to
+  // rescue a drawing, so the page has to be readable. 44px is the largest that
+  // fits the pinned 51px row with even breathing room above and below; the row
+  // height, the 54px column and the name position are all unchanged.
+  assert.match(SCREEN, /const ROW_THUMB = 44;/);
+  assert.match(SCREEN, /const ROW_ART_W = 34;/);
+  // The art must stay inside the thumbnail column and keep the page ratio.
+  assert.ok(34 < 54, 'row art fits the 54px thumbnail column');
+  assert.ok(Math.abs(34 - 44 * (8.5 / 11)) < 1, 'row art keeps the US-Letter ratio');
+  assert.ok(44 < 51, 'row art fits inside the pinned row height');
   assert.match(
     SCREEN,
     /const rowThumb = \(id, filePath\) => \([\s\S]*?<PdfPageThumb[\s\S]*?doc=\{\{ id, file_path: filePath \}\}[\s\S]*?variant="row"[\s\S]*?height=\{ROW_THUMB\}/,
   );
-  // The same stylised placeholder the Documents ledger falls back to, at the
-  // same 23x30 footprint — NOT the old tiny doc icon.
+  // The same stylised placeholder the Documents ledger falls back to — NOT the
+  // old tiny doc icon — sized from the same two constants as the real thumb, so
+  // a failed render never changes the column's footprint.
   assert.match(
     SCREEN,
     /fallback=\{<div style=\{\{ width: ROW_ART_W, height: ROW_THUMB, flex: 'none' \}\}><PdfThumb height=\{ROW_THUMB\} stamp="" \/><\/div>\}/,
   );
+  // Documents keeps its own smaller row thumb; this asserts the two screens are
+  // knowingly different rather than accidentally drifting.
   const DOCUMENTS = read('../src/home/DocumentsLedger.jsx');
-  assert.match(DOCUMENTS, /variant="row"\s*\n\s*height=\{30\}/, 'Documents is the reference height');
-  assert.match(DOCUMENTS, /width: 23, height: 30, flex: 'none'/, 'Documents is the reference fallback');
+  assert.match(DOCUMENTS, /variant="row"\s*\n\s*height=\{30\}/, 'Documents row thumb is unchanged at 30');
+  assert.match(DOCUMENTS, /width: 23, height: 30, flex: 'none'/, 'Documents fallback is unchanged at 23x30');
 
   // Top-level rows fill the thumbnail column; a project/template has no page,
   // so it shows a PLAIN type icon in the same ROW_THUMB box — no tinted plate
   // behind it (owner call 2026-08-07: "we don't have that anywhere else in this
   // app"). The box stays so the column aligns and the row height cannot shift.
   assert.match(SCREEN, /const rowTypeArt = \(item\) => \{[\s\S]*?if \(item\.type === 'document'\) return rowThumb\(item\.id, item\.filePath\);/);
-  // A project/template's icon box is the SAME 23x30 footprint a page thumbnail
+  // A project/template's icon box is the SAME footprint a page thumbnail
   // occupies, so the art-to-name distance is one number regardless of row type.
-  assert.match(SCREEN, /const ROW_ART_W = 23;/);
+  // Asserted through the shared constants rather than literals, so the two can
+  // never disagree when the thumbnail size is tuned again.
   assert.match(SCREEN, /width: ROW_ART_W, height: ROW_THUMB/);
   assert.match(SCREEN, /<Icon name=\{typeIcon\[item\.type\] \|\| 'doc'\} size=\{TYPE_ICON_SIZE\} color="var\(--ink-200\)" \/>/);
   assert.match(SCREEN, /\{rowTypeArt\(item\)\}/);
