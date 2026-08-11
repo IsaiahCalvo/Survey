@@ -45,6 +45,7 @@ function withLaunchCacheBust(surveyUrl: string, launchId: string) {
 
 const SURVEY_URL = resolveSurveyUrl();
 const SURVEY_ORIGIN = new URL(SURVEY_URL).origin;
+const SHELL_LOAD_TIMEOUT_MS = 15_000;
 console.info('[Survey shell]', { runtime: 'expo', url: SURVEY_URL });
 
 function isExternalNavigationUrl(url: string) {
@@ -65,8 +66,10 @@ function SurveyApp() {
   const shellSessionIdRef = useRef(`expo-${Date.now()}-${Math.random().toString(16).slice(2)}`);
   const surveyLaunchUrlRef = useRef(withLaunchCacheBust(SURVEY_URL, shellSessionIdRef.current));
   const googleAuthInFlightRef = useRef(false);
+  const loadTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [canGoBack, setCanGoBack] = useState(false);
   const [loadError, setLoadError] = useState(false);
+  const [shellReady, setShellReady] = useState(false);
   const [webViewKey, setWebViewKey] = useState(0);
   const [externalNavigationActive, setExternalNavigationActive] = useState(false);
   const insets = useSafeAreaInsets();
@@ -119,6 +122,19 @@ function SurveyApp() {
       window.dispatchEvent(new CustomEvent('survey-native-safe-area-change', {
         detail: { bottom: ${nativeBottomInset}, top: ${nativeTopInset}, left: ${nativeLeftInset}, right: ${nativeRightInset} }
       }));
+
+      const notifyShellReady = () => {
+        const appRoot = document.getElementById('root');
+        if (!appRoot?.firstElementChild || !window.ReactNativeWebView) return false;
+        window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'survey:shell-ready' }));
+        window.__surveyShellReadyObserver?.disconnect();
+        window.__surveyShellReadyObserver = null;
+        return true;
+      };
+      if (!notifyShellReady() && !window.__surveyShellReadyObserver) {
+        window.__surveyShellReadyObserver = new MutationObserver(notifyShellReady);
+        window.__surveyShellReadyObserver.observe(root, { childList: true, subtree: true });
+      }
     })();
     true;
   `, [nativeBottomInset, nativeTopInset, nativeLeftInset, nativeRightInset]);
@@ -136,9 +152,46 @@ function SurveyApp() {
     webViewRef.current?.injectJavaScript(nativeSafeAreaScript);
   }, [nativeSafeAreaScript]);
 
+  useEffect(() => () => {
+    if (loadTimeoutRef.current) clearTimeout(loadTimeoutRef.current);
+  }, []);
+
+  const beginShellLoad = () => {
+    if (loadTimeoutRef.current) clearTimeout(loadTimeoutRef.current);
+    setLoadError(false);
+    setShellReady(false);
+    loadTimeoutRef.current = setTimeout(() => {
+      loadTimeoutRef.current = null;
+      setShellReady(false);
+      setLoadError(true);
+    }, SHELL_LOAD_TIMEOUT_MS);
+  };
+
+  const finishShellLoad = () => {
+    if (loadTimeoutRef.current) clearTimeout(loadTimeoutRef.current);
+    loadTimeoutRef.current = null;
+    setLoadError(false);
+    setShellReady(true);
+  };
+
+  const failShellLoad = () => {
+    if (loadTimeoutRef.current) clearTimeout(loadTimeoutRef.current);
+    loadTimeoutRef.current = null;
+    setShellReady(false);
+    setLoadError(true);
+  };
+
+  const handleLoadStart = (event: { nativeEvent: { url: string } }) => {
+    // OAuth pages render inside this WebView but do not own Survey's #root.
+    // Keep them visible instead of waiting for the Survey-ready bridge.
+    if (isExternalNavigationUrl(event.nativeEvent.url)) return;
+    beginShellLoad();
+  };
+
   const retry = () => {
     processRecoveryRef.current = [];
-    setLoadError(false);
+    surveyLaunchUrlRef.current = withLaunchCacheBust(SURVEY_URL, `${shellSessionIdRef.current}-retry-${Date.now()}`);
+    beginShellLoad();
     setWebViewKey((value) => value + 1);
   };
 
@@ -249,6 +302,8 @@ function SurveyApp() {
       const message = JSON.parse(event.nativeEvent.data);
       if (message?.type === 'survey:google-sign-in' && typeof message.requestId === 'string') {
         void handleGoogleSignIn(message.requestId);
+      } else if (message?.type === 'survey:shell-ready') {
+        finishShellLoad();
       } else if (message?.type === 'survey:diagnostic' && message.area === 'pdf-zoom') {
         const diagnostic = {
           event: message.event,
@@ -331,21 +386,26 @@ function SurveyApp() {
             <ActivityIndicator color="#D8A84E" />
           </View>
         )}
-        onLoadStart={() => setLoadError(false)}
+        onLoadStart={handleLoadStart}
         onNavigationStateChange={handleNavigationStateChange}
         onMessage={Platform.OS === 'ios' ? handleWebMessage : undefined}
         onLoadEnd={() => {
           webViewRef.current?.injectJavaScript(nativeSafeAreaScript);
           flushNativeAnalyticsEvents();
         }}
-        onError={() => setLoadError(true)}
-        onHttpError={() => setLoadError(true)}
+        onError={failShellLoad}
+        onHttpError={failShellLoad}
         onContentProcessDidTerminate={() => recoverTerminatedProcess('ios-content-process')}
         onRenderProcessGone={() => {
           recoverTerminatedProcess('android-render-process');
           return true;
         }}
       />
+      {!shellReady && !loadError ? (
+        <View pointerEvents="none" style={styles.centered}>
+          <ActivityIndicator color="#D8A84E" />
+        </View>
+      ) : null}
       {externalNavigationActive ? (
         <Pressable
           accessibilityRole="button"

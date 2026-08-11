@@ -149,6 +149,17 @@ test('Expo cold launches bypass stale hosted HTML while preserving the signed-in
   assert.doesNotMatch(EXPO_APP_SOURCE, /incognito/);
 });
 
+test('Expo never leaves a failed or stalled WebView as a silent blank screen', () => {
+  assert.match(EXPO_APP_SOURCE, /const SHELL_LOAD_TIMEOUT_MS = 15_000/);
+  assert.match(EXPO_APP_SOURCE, /type: 'survey:shell-ready'/);
+  assert.match(EXPO_APP_SOURCE, /new MutationObserver\(notifyShellReady\)/);
+  assert.match(EXPO_APP_SOURCE, /message\?\.type === 'survey:shell-ready'/);
+  assert.match(EXPO_APP_SOURCE, /surveyLaunchUrlRef\.current = withLaunchCacheBust\(SURVEY_URL,[\s\S]{0,120}-retry-/);
+  assert.match(EXPO_APP_SOURCE, /!shellReady && !loadError/);
+  assert.match(EXPO_APP_SOURCE, /onError=\{failShellLoad\}/);
+  assert.match(EXPO_APP_SOURCE, /onHttpError=\{failShellLoad\}/);
+});
+
 test('hosted mobile route is canonical and preserves mobile OAuth return', () => {
   assert.match(INDEX_HTML_SOURCE, /\^\\\/mobile\(\?:\\\/\|\$\)/);
   assert.match(HUB_SHELL_SOURCE, /\^\\\/mobile\(\?:\\\/\|\$\)[\s\S]{0,80}return 'tabs'/);
