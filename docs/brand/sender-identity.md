@@ -21,15 +21,16 @@ _Written: 2026-08-11. Owner-directed. Companion to docs/design/email-style-guide
   `https://cvamwtpsuvxvjdnotbeg.supabase.co/storage/v1/object/public/brand/bimi-logo.svg`
 - `docs/brand/apple-branded-mail-1024.png` — 1024x1024 for Apple Business Connect.
 
-## DNS changes (Cloudflare, zone surveytool.app)
+## DNS changes (Cloudflare, zone surveytool.app) — ALL DONE 2026-08-11, publicly verified
 
 1. EDIT existing TXT `_dmarc` — from `p=none` to enforcement (prerequisite for
    BIMI and Apple Branded Mail; low-risk: all mail is Brevo-authenticated):
    `v=DMARC1; p=quarantine; rua=mailto:rua@dmarc.brevo.com`
 2. ADD TXT `default._bimi` :
    `v=BIMI1; l=https://cvamwtpsuvxvjdnotbeg.supabase.co/storage/v1/object/public/brand/bimi-logo.svg`
-3. Enable Email Routing and forward `no-reply@surveytool.app` → isaiahcalvo123@gmail.com
-   (so Gravatar / Google-account verification mail for that address can be received).
+3. Email Routing ENABLED: rule `no-reply@surveytool.app` → isaiahcalvo123@gmail.com is Active;
+   Cloudflare MX x3 + DKIM + SPF records added. SPF was hand-extended to include
+   `include:spf.brevo.com` alongside Cloudflare's, since Brevo is the actual sender.
 
 ## Owner-only steps (accounts; assistant may not create accounts or enter passwords)
 
