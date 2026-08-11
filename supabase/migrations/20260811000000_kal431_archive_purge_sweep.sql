@@ -478,7 +478,10 @@ BEGIN
 END;
 $$;
 
-REVOKE ALL ON FUNCTION public.sweep_expired_archives(INTEGER, BOOLEAN) FROM PUBLIC;
+-- Hosted Supabase auto-grants EXECUTE on new public functions to anon /
+-- authenticated via ALTER DEFAULT PRIVILEGES, so revoking PUBLIC alone is not
+-- enough there (caught on production 2026-08-11: both roles held X). Name them.
+REVOKE ALL ON FUNCTION public.sweep_expired_archives(INTEGER, BOOLEAN) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.sweep_expired_archives(INTEGER, BOOLEAN) TO service_role;
 
 COMMENT ON FUNCTION public.sweep_expired_archives(INTEGER, BOOLEAN) IS
