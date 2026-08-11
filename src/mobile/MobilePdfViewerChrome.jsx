@@ -580,7 +580,7 @@ function MobileToolProperties({ api }) {
     return (
       <div className="mobile-pdf-properties mobile-pdf-properties--actions" data-mobile-tool-properties="true" role="toolbar" aria-label="Region editing">
         <button type="button" className="mobile-pdf-properties__primary" onClick={region.confirm}>Confirm</button>
-        <button type="button" disabled={!region.canSetFullPage} onClick={region.setFullPage}>Full Page</button>
+        <button type="button" disabled={!region.canSetFullPage} onClick={region.setFullPage}>Full page</button>
         <button type="button" onClick={region.cancel}>Cancel</button>
       </div>
     );

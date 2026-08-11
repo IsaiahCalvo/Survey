@@ -219,12 +219,12 @@ const ProfileMenu = ({ userName, userMeta, showArchive = false, tab, onNav }) =>
                 <div className="profile-signout-copy">Sign out of Survey?</div>
                 <div className="profile-signout-buttons">
                   <button type="button" onClick={() => setConfirmSignOut(false)}>Cancel</button>
-                  <button type="button" className="danger" onClick={() => { setOpen(false); onSignOut && onSignOut(); }}>Sign Out</button>
+                  <button type="button" className="danger" onClick={() => { setOpen(false); onSignOut && onSignOut(); }}>Sign out</button>
                 </div>
               </div>
             ) : (
               <button className="profile-menu-signout" style={{ ...itemStyle, color: '#d95a56' }} onClick={() => setConfirmSignOut(true)}>
-                <Icon name="signout" size={15} color="#d95a56" />Sign Out
+                <Icon name="signout" size={15} color="#d95a56" />Sign out
               </button>
             )}
           </div>
