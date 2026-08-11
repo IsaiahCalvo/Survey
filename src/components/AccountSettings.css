@@ -138,7 +138,12 @@
   font-weight: 500;
   transition: all 0.15s ease;
   font-family: inherit;
-  outline: none;
+  /* UX (KAL-68): safety net for the fixed-width sidebar. Today's labels all fit
+     on one line, but a long label at a 1.25x OS scale used to wrap and push the
+     list around; truncating with an ellipsis keeps the nav stable instead. */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .account-sidebar-btn:hover {
