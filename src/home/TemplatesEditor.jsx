@@ -78,6 +78,7 @@ import {
 import { moveItemById } from '../reorder/flatReorderUtils.js';
 import { pickByIds, removeByIds, duplicateAfterByIds } from './selectionById.js';
 import { closeButtonStyle, miniButtonStyle, miniSelectButtonStyle, moreButtonStyle } from './hubControls';
+import DismissBarrier from '../components/DismissBarrier';
 
 /* Desktop/web already use this quiet chevron for category disclosure. Keep
    one shared glyph so mobile cannot drift to a different arrow treatment. */
@@ -631,17 +632,11 @@ function MoreMenu({ anchorRect, items, onClose }) {
   const ref = useRef(null);
   const [pos, setPos] = useState(null);
 
-  /* Close on outside click / Escape / scroll — same dismiss feel as the
-     prototype's onMouseLeave, but robust now that it floats over the page. */
+  /* Scrolling invalidates the anchor rectangle. Outside press / Escape are
+     handled by the shared first-gesture dismissal barrier below. */
   useEffect(() => {
-    const onDown = (e) => { if (ref.current && !ref.current.contains(e.target)) onClose(); };
-    const onKey = (e) => { if (e.key === 'Escape') onClose(); };
-    window.addEventListener('mousedown', onDown, true);
-    window.addEventListener('keydown', onKey, true);
     window.addEventListener('scroll', onClose, { capture: true, passive: true });
     return () => {
-      window.removeEventListener('mousedown', onDown, true);
-      window.removeEventListener('keydown', onKey, true);
       window.removeEventListener('scroll', onClose, { capture: true });
     };
   }, [onClose]);
@@ -663,26 +658,31 @@ function MoreMenu({ anchorRect, items, onClose }) {
   if (!anchorRect) return null;
 
   return createPortal(
-    <div
-      ref={ref}
-      className="ed-tpl-menu"
-      style={{
-        minWidth: 150,
-        left: pos ? pos.left : -9999,
-        top: pos ? pos.top : -9999,
-        visibility: pos ? 'visible' : 'hidden',
-      }}
-    >
-      {items.map(({ label, danger, onClick }) => (
-        <button
-          key={label}
-          className={danger ? 'danger' : undefined}
-          onClick={() => { onClick(); onClose(); }}
-        >
-          {label}
-        </button>
-      ))}
-    </div>,
+    <>
+      <DismissBarrier insideRefs={[ref]} onDismiss={onClose} />
+      <div
+        ref={ref}
+        className="ed-tpl-menu"
+        role="menu"
+        style={{
+          minWidth: 150,
+          left: pos ? pos.left : -9999,
+          top: pos ? pos.top : -9999,
+          visibility: pos ? 'visible' : 'hidden',
+        }}
+      >
+        {items.map(({ label, danger, onClick }) => (
+          <button
+            key={label}
+            role="menuitem"
+            className={danger ? 'danger' : undefined}
+            onClick={() => { onClick(); onClose(); }}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+    </>,
     document.body,
   );
 }
@@ -707,22 +707,12 @@ function CustomSelect({ value, options, onChange, placeholder = 'Select…', dis
   const popRef = useRef(null);
   const selected = options.find((o) => o.value === value) || null;
 
-  /* Dismiss on outside click / Escape / scroll — same feel as MoreMenu. */
+  /* Scrolling invalidates the measured popup position. */
   useEffect(() => {
     if (!open) return undefined;
-    const onDown = (e) => {
-      if (triggerRef.current && triggerRef.current.contains(e.target)) return;
-      if (popRef.current && popRef.current.contains(e.target)) return;
-      setOpen(false);
-    };
-    const onKey = (e) => { if (e.key === 'Escape') setOpen(false); };
     const onScroll = () => setOpen(false);
-    window.addEventListener('mousedown', onDown, true);
-    window.addEventListener('keydown', onKey, true);
     window.addEventListener('scroll', onScroll, { capture: true, passive: true });
     return () => {
-      window.removeEventListener('mousedown', onDown, true);
-      window.removeEventListener('keydown', onKey, true);
       window.removeEventListener('scroll', onScroll, { capture: true });
     };
   }, [open]);
@@ -740,6 +730,11 @@ function CustomSelect({ value, options, onChange, placeholder = 'Select…', dis
 
   return (
     <>
+      <DismissBarrier
+        active={open}
+        insideRefs={[triggerRef, popRef]}
+        onDismiss={() => setOpen(false)}
+      />
       <button
         ref={triggerRef}
         type="button"

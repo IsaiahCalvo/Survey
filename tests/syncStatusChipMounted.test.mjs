@@ -22,8 +22,8 @@ async function loadSyncStatusChip() {
   let source = await readFile(componentPath, 'utf8');
   source = source
     .replace(
-      "import { useEffect, useState, useRef } from 'react';",
-      `import { useEffect, useState, useRef } from ${JSON.stringify(reactUrl)};`,
+      "import { useMemo, useState, useRef } from 'react';",
+      `import { useMemo, useState, useRef } from ${JSON.stringify(reactUrl)};`,
     )
     .replace(
       "import { getCompactSyncStatusMessage, getSyncStatusViewModel } from '../utils/syncStatusViewModel.js';",
@@ -36,6 +36,10 @@ async function loadSyncStatusChip() {
     .replace(
       "import Icon from '../Icons';",
       'const Icon = ({ name }) => <svg data-icon={name} />;',
+    )
+    .replace(
+      "import DismissBarrier from './DismissBarrier';",
+      'const DismissBarrier = () => null;',
     );
   const transformed = await transformWithOxc(source, componentPath, { lang: 'jsx' });
   const executable = transformed.code.replaceAll('"react/jsx-runtime"', JSON.stringify(jsxRuntimeUrl));

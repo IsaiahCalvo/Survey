@@ -15,6 +15,7 @@ import { MoveCopyModal, ConfirmModal, RenameModal } from './BulkModals';
 import PdfPageThumb from './PdfPageThumb';
 import { useStorage } from '../hooks/useDatabase';
 import { closeButtonStyle, miniButtonStyle, moreButtonStyle } from './hubControls';
+import DismissBarrier from '../components/DismissBarrier';
 
 const ledgerHeader = {
   background: 'var(--ink-700)',
@@ -37,20 +38,6 @@ const MENU_HEX = {
 function DocumentActionMenu({ anchorRect, items, onClose, minWidth = 168 }) {
   const ref = useRef(null);
 
-  useEffect(() => {
-    const onDown = (e) => { if (ref.current && !ref.current.contains(e.target)) onClose(); };
-    const onKey = (e) => { if (e.key === 'Escape') onClose(); };
-    const t = setTimeout(() => {
-      document.addEventListener('mousedown', onDown, true);
-      document.addEventListener('keydown', onKey, true);
-    }, 0);
-    return () => {
-      clearTimeout(t);
-      document.removeEventListener('mousedown', onDown, true);
-      document.removeEventListener('keydown', onKey, true);
-    };
-  }, [onClose]);
-
   if (!anchorRect) return null;
 
   const estHeight = items.length * 34 + 8;
@@ -59,48 +46,51 @@ function DocumentActionMenu({ anchorRect, items, onClose, minWidth = 168 }) {
   const left = Math.max(8, Math.min(anchorRect.right - minWidth, window.innerWidth - minWidth - 8));
 
   return createPortal(
-    <div
-      ref={ref}
-      role="menu"
-      style={{
-        position: 'fixed',
-        top,
-        left,
-        zIndex: 4000,
-        background: MENU_HEX.card,
-        border: `1px solid ${MENU_HEX.rule}`,
-        borderRadius: 8,
-        padding: 4,
-        minWidth,
-        boxShadow: '0 12px 30px rgba(0,0,0,0.45)',
-      }}
-    >
-      {items.map((it) => (
-        <button
-          key={it.label}
-          role="menuitem"
-          disabled={it.disabled}
-          onClick={() => { if (it.disabled) return; onClose(); it.onClick && it.onClick(); }}
-          style={{
-            display: 'block',
-            width: '100%',
-            textAlign: 'left',
-            background: 'transparent',
-            border: 0,
-            color: it.disabled ? MENU_HEX.muted : (it.danger ? MENU_HEX.danger : MENU_HEX.ink),
-            padding: '7px 10px',
-            fontSize: 12,
-            borderRadius: 4,
-            cursor: it.disabled ? 'not-allowed' : 'pointer',
-            fontFamily: 'inherit',
-          }}
-          onMouseEnter={(e) => { if (!it.disabled) e.currentTarget.style.background = MENU_HEX.rule; }}
-          onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
-        >
-          {it.label}
-        </button>
-      ))}
-    </div>,
+    <>
+      <DismissBarrier insideRefs={[ref]} onDismiss={onClose} />
+      <div
+        ref={ref}
+        role="menu"
+        style={{
+          position: 'fixed',
+          top,
+          left,
+          zIndex: 4000,
+          background: MENU_HEX.card,
+          border: `1px solid ${MENU_HEX.rule}`,
+          borderRadius: 8,
+          padding: 4,
+          minWidth,
+          boxShadow: '0 12px 30px rgba(0,0,0,0.45)',
+        }}
+      >
+        {items.map((it) => (
+          <button
+            key={it.label}
+            role="menuitem"
+            disabled={it.disabled}
+            onClick={() => { if (it.disabled) return; onClose(); it.onClick && it.onClick(); }}
+            style={{
+              display: 'block',
+              width: '100%',
+              textAlign: 'left',
+              background: 'transparent',
+              border: 0,
+              color: it.disabled ? MENU_HEX.muted : (it.danger ? MENU_HEX.danger : MENU_HEX.ink),
+              padding: '7px 10px',
+              fontSize: 12,
+              borderRadius: 4,
+              cursor: it.disabled ? 'not-allowed' : 'pointer',
+              fontFamily: 'inherit',
+            }}
+            onMouseEnter={(e) => { if (!it.disabled) e.currentTarget.style.background = MENU_HEX.rule; }}
+            onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
+          >
+            {it.label}
+          </button>
+        ))}
+      </div>
+    </>,
     document.body,
   );
 }
@@ -212,15 +202,6 @@ export default function DocumentsLedger({
     if (selId == null && docs.length) setSelId(docs[0].id);
   }, [docs, selId]);
 
-  useEffect(() => {
-    if (!mobileSortOpen) return undefined;
-    const onDown = (e) => {
-      if (mobileSortRef.current && !mobileSortRef.current.contains(e.target)) setMobileSortOpen(false);
-    };
-    document.addEventListener('mousedown', onDown, true);
-    return () => document.removeEventListener('mousedown', onDown, true);
-  }, [mobileSortOpen]);
-
   const sel = docs.find((d) => d.id === selId) || docs[0];
   const toggleDocSel = (id) => setSelDocs((prev) => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
 
@@ -262,6 +243,12 @@ export default function DocumentsLedger({
   const activeSortLabel = sortOptions.find(([key]) => key === sortKey)?.[1] || 'Sort';
 
   const subtitle = (
+    <>
+    <DismissBarrier
+      active={mobileSortOpen}
+      insideRefs={[mobileSortRef]}
+      onDismiss={() => setMobileSortOpen(false)}
+    />
     <span className="documents-mobile-summary" style={{ display: 'inline-flex', alignItems: 'baseline', gap: 10 }}>
       <span className="documents-file-count"><b>{docs.length}</b> files</span>
       <span className="documents-select-row mobile-header-select-row documents-mobile-select-sort-row" ref={mobileSortRef}>
@@ -318,6 +305,7 @@ export default function DocumentsLedger({
         </span>
       </span>
     </span>
+    </>
   );
 
   const actions = (

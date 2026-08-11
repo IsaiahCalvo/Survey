@@ -7,7 +7,8 @@
  * or a "Match Fill" first cell (firstPreset), a minOpacity floor, and optional
  * opacity controls (showOpacity). Calls onChange(hex, alpha) live as the user drags.
  */
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
+import DismissBarrier from './DismissBarrier';
 
 const PRESET_COLORS = [
     'transparent', '#FF0000', '#FF0080', '#FF00FF', // Transparent + Reds/Pinks
@@ -92,22 +93,9 @@ const CompactColorPicker = ({
     const svRef = useRef(null);
     const hueRef = useRef(null);
     const containerRef = useRef(null);
+    const dismissInsideRefs = useMemo(() => [containerRef], []);
     const isDraggingSV = useRef(false);
     const isDraggingHue = useRef(false);
-
-    // Handle click outside
-    useEffect(() => {
-        const handleClickOutside = (event) => {
-            if (containerRef.current && !containerRef.current.contains(event.target)) {
-                if (onClose) onClose();
-            }
-        };
-
-        document.addEventListener('mousedown', handleClickOutside);
-        return () => {
-            document.removeEventListener('mousedown', handleClickOutside);
-        };
-    }, [onClose]);
 
     // Keep the local hex AND the spectrum's HSV in sync with the colour prop,
     // so opening the spectrum view starts on the real current colour.
@@ -253,6 +241,12 @@ const CompactColorPicker = ({
     };
 
     return (
+        <>
+        <DismissBarrier
+            active={typeof onClose === 'function'}
+            insideRefs={dismissInsideRefs}
+            onDismiss={onClose}
+        />
         <div
             ref={containerRef}
             style={{
@@ -540,6 +534,7 @@ const CompactColorPicker = ({
                 )}
             </div>
         </div>
+        </>
     );
 };
 

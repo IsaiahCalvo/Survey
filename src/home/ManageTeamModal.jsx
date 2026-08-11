@@ -21,6 +21,7 @@ import React from 'react';
 import { Icon } from './HubShell';
 import { AuthContext } from '../contexts/AuthContext';
 import { closeButtonStyle, moreButtonStyle } from './hubControls';
+import DismissBarrier from '../components/DismissBarrier';
 import {
   createProjectInvite,
   listProjectInvites,
@@ -358,6 +359,11 @@ export default function ManageTeamModal({ open, onClose, project, members }) {
   const [sortKey, setSortKey] = React.useState("default");
   const [sortDir, setSortDir] = React.useState("asc");
   const previouslyFocusedRef = React.useRef(null);
+  const searchRootRef = React.useRef(null);
+  const searchInputRef = React.useRef(null);
+  const [searchFocused, setSearchFocused] = React.useState(false);
+  const transientDismissActiveRef = React.useRef(false);
+  transientDismissActiveRef.current = searchFocused || openMenu != null || openInviteMenu != null || openRoleSel != null || bulkRoleOpen;
 
   // Accessibility: Escape closes the modal, and focus returns to whatever
   // triggered it once it closes (minimal per-modal patch, no shared modal
@@ -368,6 +374,7 @@ export default function ManageTeamModal({ open, onClose, project, members }) {
     previouslyFocusedRef.current = document.activeElement;
     const handleKey = (e) => {
       if (e.key === 'Escape' && !activityFor && !inviteOpen) {
+        if (transientDismissActiveRef.current) return;
         e.stopPropagation();
         onClose?.();
       }
@@ -403,12 +410,6 @@ export default function ManageTeamModal({ open, onClose, project, members }) {
     setError(""); setStatus(""); setSelectedIds(new Set()); setEditMode(false);
     refresh();
   }, [open, refresh]);
-
-  React.useEffect(() => {
-    const onDoc = () => { setOpenMenu(null); setOpenInviteMenu(null); setOpenRoleSel(null); setBulkRoleOpen(false); };
-    document.addEventListener("click", onDoc);
-    return () => document.removeEventListener("click", onDoc);
-  }, []);
 
   /* Real member list: creator first, then fetched collaborator rows mapped
      into the display shape the design expects. */
@@ -586,6 +587,24 @@ export default function ManageTeamModal({ open, onClose, project, members }) {
 
   return (
     <>
+      <DismissBarrier
+        active={searchFocused}
+        insideRefs={[searchRootRef]}
+        onDismiss={() => {
+          searchInputRef.current?.blur();
+          setSearchFocused(false);
+        }}
+      />
+      <DismissBarrier
+        active={openMenu != null || openInviteMenu != null || openRoleSel != null || bulkRoleOpen}
+        insideSelector="[data-manage-team-dismiss-surface='true']"
+        onDismiss={() => {
+          setOpenMenu(null);
+          setOpenInviteMenu(null);
+          setOpenRoleSel(null);
+          setBulkRoleOpen(false);
+        }}
+      />
       <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(13,15,20,0.55)", backdropFilter: "blur(8px)", WebkitBackdropFilter: "blur(8px)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 110, fontFamily: "\"Helvetica Neue\", Helvetica, Arial, sans-serif" }}>
         <div role="dialog" aria-modal="true" aria-label="Manage Team" data-kal31-manage-team="true" onClick={(e) => e.stopPropagation()} style={{ width: 560, background: INK_700, border: `1px solid ${INK_500}`, borderRadius: 10, boxShadow: "0 24px 60px rgba(0,0,0,0.55)", color: BONE_100, overflow: "hidden", display: "flex", flexDirection: "column", maxHeight: "84vh" }}>
           {/* Header */}
@@ -602,9 +621,9 @@ export default function ManageTeamModal({ open, onClose, project, members }) {
 
           {/* Toolbar */}
           <div style={{ padding: "10px 18px", borderBottom: `1px solid ${INK_500}`, display: "flex", alignItems: "center", gap: 6, flexWrap: "nowrap" }}>
-            <div style={{ flex: 1, display: "flex", alignItems: "center", gap: 8, background: INK_800, border: `1px solid ${INK_500}`, borderRadius: 6, padding: "0 10px", height: 28, fontSize: 12, color: INK_200, minWidth: 0 }}>
+            <div ref={searchRootRef} style={{ flex: 1, display: "flex", alignItems: "center", gap: 8, background: INK_800, border: `1px solid ${INK_500}`, borderRadius: 6, padding: "0 10px", height: 28, fontSize: 12, color: INK_200, minWidth: 0 }}>
               <Icon name="search" size={13} color={INK_200}/>
-              <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Find a teammate…" style={{ background: "transparent", border: 0, outline: 0, color: BONE_100, font: "inherit", fontSize: 12, flex: 1, width: "100%", minWidth: 0 }}/>
+              <input ref={searchInputRef} value={search} onChange={(e) => setSearch(e.target.value)} onFocus={() => setSearchFocused(true)} onBlur={() => setSearchFocused(false)} placeholder="Find a teammate…" style={{ background: "transparent", border: 0, outline: 0, color: BONE_100, font: "inherit", fontSize: 12, flex: 1, width: "100%", minWidth: 0 }}/>
             </div>
             {editMode && (
               <div style={{ display: "inline-flex", alignItems: "center", gap: 4, flex: "none" }}>
@@ -619,7 +638,7 @@ export default function ManageTeamModal({ open, onClose, project, members }) {
                     !someSel || busy
                   )}
                   {bulkRoleOpen && someSel && (
-                    <div onClick={(e) => e.stopPropagation()} style={{ position: "absolute", right: 0, top: "calc(100% + 4px)", zIndex: 200, background: INK_700, border: `1px solid ${INK_500}`, borderRadius: 6, padding: 4, minWidth: 130, boxShadow: "0 12px 30px rgba(0,0,0,0.5)" }}>
+                    <div data-manage-team-dismiss-surface="true" onClick={(e) => e.stopPropagation()} style={{ position: "absolute", right: 0, top: "calc(100% + 4px)", zIndex: 200, background: INK_700, border: `1px solid ${INK_500}`, borderRadius: 6, padding: 4, minWidth: 130, boxShadow: "0 12px 30px rgba(0,0,0,0.5)" }}>
                       {ROLES.map(r => (
                         <button key={r} onClick={() => setRoleBulk(r)} style={{ display: "block", width: "100%", textAlign: "left", background: "transparent", border: 0, color: BONE_100, padding: "6px 10px", fontSize: 12, borderRadius: 4, cursor: "pointer", fontFamily: "inherit" }}>{r}</button>
                       ))}
@@ -675,7 +694,7 @@ export default function ManageTeamModal({ open, onClose, project, members }) {
                         <button data-kal31-role-trigger="true" onClick={(e) => { e.stopPropagation(); setOpenRoleSel(openRoleSel === m.id ? null : m.id); }}
                           style={{ background: "transparent", border: 0, padding: "0 14px 0 0", color: BONE_200, font: "inherit", fontFamily: "inherit", fontSize: 11.5, height: 24, lineHeight: "24px", textAlign: "left", cursor: "pointer", width: "max-content", maxWidth: "100%", whiteSpace: "nowrap", backgroundImage: "url(\"data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'><path d='M1 1l4 4 4-4' fill='none' stroke='%238d96a6' stroke-width='1.4' stroke-linecap='round' stroke-linejoin='round'/></svg>\")", backgroundRepeat: "no-repeat", backgroundPosition: "right center" }}>{m.role}</button>
                         {openRoleSel === m.id && (
-                          <div data-kal31-role-menu="true" onClick={(e) => e.stopPropagation()} style={{ position: "absolute", left: 0, top: "calc(100% + 4px)", zIndex: 50, background: INK_700, border: `1px solid ${INK_500}`, borderRadius: 6, padding: 4, minWidth: 110, boxShadow: "0 12px 30px rgba(0,0,0,0.5)" }}>
+                          <div data-kal31-role-menu="true" data-manage-team-dismiss-surface="true" onClick={(e) => e.stopPropagation()} style={{ position: "absolute", left: 0, top: "calc(100% + 4px)", zIndex: 50, background: INK_700, border: `1px solid ${INK_500}`, borderRadius: 6, padding: 4, minWidth: 110, boxShadow: "0 12px 30px rgba(0,0,0,0.5)" }}>
                             {ROLES.map(r => (
                               <button key={r} data-kal31-role-option={r.toLowerCase()} disabled={busy || (lastOwnerLocked && r !== 'Owner')} onClick={() => { setRole(m.id, r); setOpenRoleSel(null); }} style={{ display: "block", width: "100%", textAlign: "left", background: "transparent", border: 0, color: r === m.role ? GOLD : (lastOwnerLocked && r !== 'Owner' ? INK_300 : BONE_100), padding: "6px 10px", fontSize: 12, borderRadius: 4, cursor: busy || (lastOwnerLocked && r !== 'Owner') ? "not-allowed" : "pointer", fontFamily: "inherit" }}>{r}</button>
                             ))}
@@ -700,7 +719,7 @@ export default function ManageTeamModal({ open, onClose, project, members }) {
                     )}
                   </div>
                   {!editMode && openMenu === m.id && (
-                    <div onClick={(e) => e.stopPropagation()} style={{ position: "absolute", right: 14, top: 38, zIndex: 20, background: INK_700, border: `1px solid ${INK_500}`, borderRadius: 8, padding: 4, minWidth: 150, boxShadow: "0 12px 30px rgba(0,0,0,0.45)" }}>
+                    <div data-manage-team-dismiss-surface="true" onClick={(e) => e.stopPropagation()} style={{ position: "absolute", right: 14, top: 38, zIndex: 20, background: INK_700, border: `1px solid ${INK_500}`, borderRadius: 8, padding: 4, minWidth: 150, boxShadow: "0 12px 30px rgba(0,0,0,0.45)" }}>
                       {[
                         { label: "Invite user", onClick: () => { setOpenMenu(null); setInviteOpen(true); } },
                         ...(m.isCreator ? [] : [{ label: "Change role", onClick: () => { setOpenMenu(null); setEditMode(true); setOpenRoleSel(m.id); } }]),
@@ -735,7 +754,7 @@ export default function ManageTeamModal({ open, onClose, project, members }) {
                       style={moreButtonStyle({ color: INK_200 })}><Icon name="more" size={14} /></button>
                   </div>
                   {openInviteMenu === inv.id && (
-                    <div onClick={(e) => e.stopPropagation()} style={{ position: "absolute", right: 14, top: 38, zIndex: 20, background: INK_700, border: `1px solid ${INK_500}`, borderRadius: 8, padding: 4, minWidth: 150, boxShadow: "0 12px 30px rgba(0,0,0,0.45)" }}>
+                    <div data-manage-team-dismiss-surface="true" onClick={(e) => e.stopPropagation()} style={{ position: "absolute", right: 14, top: 38, zIndex: 20, background: INK_700, border: `1px solid ${INK_500}`, borderRadius: 8, padding: 4, minWidth: 150, boxShadow: "0 12px 30px rgba(0,0,0,0.45)" }}>
                       {[
                         { label: "Copy invite link", onClick: () => { setOpenInviteMenu(null); if (navigator.clipboard) navigator.clipboard.writeText(buildInviteUrl(inv)); setStatus('Link copied.'); } },
                         ...(isLink ? [] : [{ label: "Resend invite", onClick: () => { setOpenInviteMenu(null); resendInvite(inv); } }]),

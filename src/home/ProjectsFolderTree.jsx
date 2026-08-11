@@ -33,6 +33,7 @@ import { SortableRearrangeList, SortableRearrangeRow } from '../reorder/Sortable
 import { pickByIds } from './selectionById';
 import { miniButtonStyle, miniSelectButtonStyle, moreButtonStyle } from './hubControls';
 import useMobileEdgeSwipeBack from './useMobileEdgeSwipeBack';
+import DismissBarrier from '../components/DismissBarrier';
 
 /* Literal palette — used by the portal popups, which render outside the
    `.survey-hub` root and therefore cannot inherit its CSS variables. */
@@ -101,21 +102,6 @@ const nextLocalId = () => `local-${Date.now()}-${LOCAL_ID++}`;
 function PopupMenu({ anchorRect, onClose, items, align = 'right', minWidth = 160 }) {
   const ref = useRef(null);
 
-  useEffect(() => {
-    const onDocDown = (e) => { if (ref.current && !ref.current.contains(e.target)) onClose(); };
-    const onKey = (e) => { if (e.key === 'Escape') onClose(); };
-    // Defer attach so the click that opened the menu doesn't immediately close it.
-    const t = setTimeout(() => {
-      document.addEventListener('mousedown', onDocDown, true);
-      document.addEventListener('keydown', onKey, true);
-    }, 0);
-    return () => {
-      clearTimeout(t);
-      document.removeEventListener('mousedown', onDocDown, true);
-      document.removeEventListener('keydown', onKey, true);
-    };
-  }, [onClose]);
-
   if (!anchorRect) return null;
 
   // Hang below the trigger; flip up if it would run off the bottom.
@@ -130,38 +116,41 @@ function PopupMenu({ anchorRect, onClose, items, align = 'right', minWidth = 160
   left = Math.max(8, Math.min(left, window.innerWidth - minWidth - 8));
 
   return createPortal(
-    <div
-      ref={ref}
-      role="menu"
-      style={{
-        position: 'fixed', top, left, zIndex: 4000,
-        background: HEX.card, border: `1px solid ${HEX.rule}`, borderRadius: 8,
-        padding: 4, minWidth, boxShadow: '0 12px 30px rgba(0,0,0,0.45)',
-      }}
-    >
-      {items.map((it) => (
-        <button
-          key={it.label}
-          role="menuitem"
-          disabled={it.disabled}
-          onClick={() => { if (it.disabled) return; onClose(); it.onClick && it.onClick(); }}
-          style={{
-            display: 'flex', alignItems: 'center', gap: 9, width: '100%', textAlign: 'left',
-            background: 'transparent', border: 0,
-            color: it.disabled ? HEX.muted : (it.danger ? HEX.danger : HEX.ink),
-            padding: '7px 10px', fontSize: 12, borderRadius: 4,
-            cursor: it.disabled ? 'not-allowed' : 'pointer', fontFamily: 'inherit',
-          }}
-          onMouseEnter={(e) => { if (!it.disabled) e.currentTarget.style.background = HEX.rule; }}
-          onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
-        >
-          {it.iconNode
-            ? it.iconNode
-            : (it.icon && <Icon name={it.icon} size={12} color={it.danger ? HEX.danger : HEX.muted} />)}
-          {it.label}
-        </button>
-      ))}
-    </div>,
+    <>
+      <DismissBarrier insideRefs={[ref]} onDismiss={onClose} />
+      <div
+        ref={ref}
+        role="menu"
+        style={{
+          position: 'fixed', top, left, zIndex: 4000,
+          background: HEX.card, border: `1px solid ${HEX.rule}`, borderRadius: 8,
+          padding: 4, minWidth, boxShadow: '0 12px 30px rgba(0,0,0,0.45)',
+        }}
+      >
+        {items.map((it) => (
+          <button
+            key={it.label}
+            role="menuitem"
+            disabled={it.disabled}
+            onClick={() => { if (it.disabled) return; onClose(); it.onClick && it.onClick(); }}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 9, width: '100%', textAlign: 'left',
+              background: 'transparent', border: 0,
+              color: it.disabled ? HEX.muted : (it.danger ? HEX.danger : HEX.ink),
+              padding: '7px 10px', fontSize: 12, borderRadius: 4,
+              cursor: it.disabled ? 'not-allowed' : 'pointer', fontFamily: 'inherit',
+            }}
+            onMouseEnter={(e) => { if (!it.disabled) e.currentTarget.style.background = HEX.rule; }}
+            onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
+          >
+            {it.iconNode
+              ? it.iconNode
+              : (it.icon && <Icon name={it.icon} size={12} color={it.danger ? HEX.danger : HEX.muted} />)}
+            {it.label}
+          </button>
+        ))}
+      </div>
+    </>,
     document.body,
   );
 }

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import Icon from '../Icons';
 import CompactColorPicker from '../components/CompactColorPicker';
+import DismissBarrier from '../components/DismissBarrier';
 import { ARROWHEAD_STYLE_LABELS } from '../components/Callout/types';
 import { ZOOM_MODE_OPTIONS } from '../viewerShared';
 import { getMobileSyncPresentation, normalizeMobilePresence } from './mobilePdfViewerModel.js';
@@ -137,6 +138,7 @@ function MobileStyledSelect({ value, options, onChange, ariaLabel, disabled = fa
   const [pos, setPos] = useState(null);
   const triggerRef = useRef(null);
   const menuRef = useRef(null);
+  const dismissInsideRefs = useMemo(() => [triggerRef, menuRef], []);
   const selected = options.find((option) => option.value === value);
 
   const measure = () => {
@@ -152,21 +154,6 @@ function MobileStyledSelect({ value, options, onChange, ariaLabel, disabled = fa
     });
   };
 
-  useEffect(() => {
-    if (!open) return undefined;
-    const close = (event) => {
-      if (menuRef.current?.contains(event.target) || triggerRef.current?.contains(event.target)) return;
-      setOpen(false);
-    };
-    const onKey = (event) => { if (event.key === 'Escape') setOpen(false); };
-    document.addEventListener('pointerdown', close, true);
-    document.addEventListener('keydown', onKey, true);
-    return () => {
-      document.removeEventListener('pointerdown', close, true);
-      document.removeEventListener('keydown', onKey, true);
-    };
-  }, [open]);
-
   const toggle = () => {
     if (disabled) return;
     if (!open) measure();
@@ -175,6 +162,11 @@ function MobileStyledSelect({ value, options, onChange, ariaLabel, disabled = fa
 
   return (
     <div className="mobile-styled-select" ref={triggerRef}>
+      <DismissBarrier
+        active={open}
+        insideRefs={dismissInsideRefs}
+        onDismiss={() => setOpen(false)}
+      />
       <button
         type="button"
         className={`mobile-styled-select__trigger${open ? ' is-open' : ''}`}
@@ -342,19 +334,8 @@ export function MobilePdfViewerHeader({ id, documentName, onBack, topToolbarApi,
   // title >18 chars slides the text left to reveal its tail, then springs back.
   const [titleRevealing, setTitleRevealing] = useState(false);
   const pagesRef = useRef(null);
+  const dismissInsideRefs = useMemo(() => [pagesRef], []);
   const title = documentName || 'Document';
-
-  useEffect(() => {
-    if (!pageEditing && !zoomOpen) return undefined;
-    const close = (event) => {
-      if (!pagesRef.current?.contains(event.target)) {
-        setPageEditing(false);
-        setZoomOpen(false);
-      }
-    };
-    document.addEventListener('pointerdown', close, true);
-    return () => document.removeEventListener('pointerdown', close, true);
-  }, [pageEditing, zoomOpen]);
 
   const revealTitle = () => {
     // Only long titles marquee (demo gates on length > 18). The is-revealing
@@ -376,6 +357,14 @@ export function MobilePdfViewerHeader({ id, documentName, onBack, topToolbarApi,
 
   return (
     <header id={id} className="mobile-pdf-header" data-mobile-pdf-header="true">
+      <DismissBarrier
+        active={pageEditing || zoomOpen}
+        insideRefs={dismissInsideRefs}
+        onDismiss={() => {
+          setPageEditing(false);
+          setZoomOpen(false);
+        }}
+      />
       <div className="mobile-pdf-header__document">
         <button type="button" className="mobile-pdf-header__icon" aria-label="Back to documents" onClick={onBack}>
           <Icon name="chevronLeft" size={21} color="currentColor" />
@@ -542,6 +531,7 @@ function MobileToolProperties({ api }) {
   const [textDefaultsTab, setTextDefaultsTab] = useState('text');
   const [textShapeColorSection, setTextShapeColorSection] = useState('fill');
   const counterMenuRef = useRef(null);
+  const counterMenuInsideRefs = useMemo(() => [counterMenuRef], []);
   const tool = api?.contextTool || api?.activeTool;
 
   useEffect(() => {
@@ -551,15 +541,6 @@ function MobileToolProperties({ api }) {
     setColorPicker(null);
     setTextDefaultsOpen(false);
   }, [tool]);
-
-  useEffect(() => {
-    if (!counterMenuOpen) return undefined;
-    const close = (event) => {
-      if (!counterMenuRef.current?.contains(event.target)) setCounterMenuOpen(false);
-    };
-    document.addEventListener('pointerdown', close, true);
-    return () => document.removeEventListener('pointerdown', close, true);
-  }, [counterMenuOpen]);
 
   if (!api) return null;
 
@@ -785,6 +766,11 @@ function MobileToolProperties({ api }) {
 
   return (
     <>
+    <DismissBarrier
+      active={counterMenuOpen}
+      insideRefs={counterMenuInsideRefs}
+      onDismiss={() => setCounterMenuOpen(false)}
+    />
     <div className="mobile-pdf-properties" data-mobile-tool-properties="true" role="toolbar" aria-label={`${tool || 'Annotation'} formatting`}>
       {isEraser && api.setEraserMode && (
         <MobileStyledSelect
@@ -1242,6 +1228,7 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, onOpenP
   const popoverRef = useRef(null);
   const syncButtonRef = useRef(null);
   const syncDetailsRef = useRef(null);
+  const popoverInsideRefs = useMemo(() => [popoverRef, syncDetailsRef], []);
   const presenceUsers = useMemo(() => normalizeMobilePresence({
     presence: leftRailApi?.presence,
     currentUserId: leftRailApi?.currentUserId,
@@ -1258,18 +1245,6 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, onOpenP
     leftRailApi?.cloudSyncQueueSize,
     leftRailApi?.cloudSyncEnabled !== false,
   ), [leftRailApi?.cloudSyncStatus, leftRailApi?.cloudSyncQueueSize, leftRailApi?.cloudSyncEnabled]);
-
-  useEffect(() => {
-    if (!moreOpen && !syncDetailsOpen) return undefined;
-    const close = (event) => {
-      if (!popoverRef.current?.contains(event.target) && !syncDetailsRef.current?.contains(event.target)) {
-        setMoreOpen(false);
-        setSyncDetailsOpen(false);
-      }
-    };
-    document.addEventListener('pointerdown', close, true);
-    return () => document.removeEventListener('pointerdown', close, true);
-  }, [moreOpen, syncDetailsOpen]);
 
   useEffect(() => {
     if (sync.state === 'synced') setSyncDetailsOpen(false);
@@ -1328,6 +1303,14 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, onOpenP
 
   return (
     <>
+      <DismissBarrier
+        active={moreOpen || syncDetailsOpen}
+        insideRefs={popoverInsideRefs}
+        onDismiss={() => {
+          setMoreOpen(false);
+          setSyncDetailsOpen(false);
+        }}
+      />
       <aside className="mobile-pdf-tools" aria-label="Document tools">
         <div className="mobile-pdf-tools__main">
           <RailButton active={activeTool === 'pan'} icon="pan" label="Pan" onClick={() => { setOpenCategory(null); selectTool('pan'); }} />

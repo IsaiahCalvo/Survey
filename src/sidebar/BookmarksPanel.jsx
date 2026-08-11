@@ -20,6 +20,7 @@ import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-
 import { CSS } from '@dnd-kit/utilities';
 import { showToast } from '../utils/toast';
 import Icon from '../Icons';
+import DismissBarrier from '../components/DismissBarrier';
 import {
   BOOKMARK_INDENTATION_WIDTH,
   GROUP_AUTO_EXPAND_OFFSET_PX,
@@ -443,6 +444,7 @@ const BookmarksPanel = ({
   const [targetGroupId, setTargetGroupId] = useState(null);
   const [addToGroupBookmarks, setAddToGroupBookmarks] = useState([]);
   const menuRef = useRef(null);
+  const createMenuInsideRefs = useMemo(() => [menuRef], []);
 
   // Drag-and-drop state
   const [activeId, setActiveId] = useState(null);
@@ -1368,20 +1370,6 @@ const BookmarksPanel = ({
     setAddToGroupBookmarks([]);
   }, [targetGroupId, addToGroupBookmarks, onBookmarkCreate, onBookmarkUpdate, numPages]);
 
-  // Close menu when clicking outside
-  useEffect(() => {
-    const handleClickOutside = (event) => {
-      if (menuRef.current && !menuRef.current.contains(event.target)) {
-        setShowCreateMenu(false);
-      }
-    };
-
-    if (showCreateMenu) {
-      document.addEventListener('mousedown', handleClickOutside);
-      return () => document.removeEventListener('mousedown', handleClickOutside);
-    }
-  }, [showCreateMenu]);
-
   if (mobileMode) {
     // UX 2026-07-12 — Mobile bookmark list. Flat, touch-sized rows that mirror the
     // demo (BookmarkRow.tsx / HubTray bookmarks branch). flattenedItems already
@@ -1632,6 +1620,11 @@ const BookmarksPanel = ({
         borderTop: '1px solid #2a3140'
       }}>
         <div style={{ position: 'relative' }} ref={menuRef}>
+          <DismissBarrier
+            active={showCreateMenu}
+            insideRefs={createMenuInsideRefs}
+            onDismiss={() => setShowCreateMenu(false)}
+          />
           <button
             onClick={() => setShowCreateMenu(!showCreateMenu)}
             style={{

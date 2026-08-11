@@ -9,10 +9,11 @@
  * attempts and dispatches a `crdt:manual-retry-failed` window event on
  * exhaustion. Returns null when `enabled` is false (local-only/free tier).
  */
-import { useEffect, useState, useRef } from 'react';
+import { useMemo, useState, useRef } from 'react';
 import { getCompactSyncStatusMessage, getSyncStatusViewModel } from '../utils/syncStatusViewModel.js';
 import Spinner from './Spinner';
 import Icon from '../Icons';
+import DismissBarrier from './DismissBarrier';
 
 /**
  * Cloud sync status indicator.
@@ -39,15 +40,7 @@ export default function SyncStatusChip({ status, queueSize = 0, enabled = true, 
   const [detailsOpen, setDetailsOpen] = useState(false);
   const manualTimerRef = useRef(null);
   const rootRef = useRef(null);
-
-  useEffect(() => {
-    if (!detailsOpen) return undefined;
-    const close = (event) => {
-      if (!rootRef.current?.contains(event.target)) setDetailsOpen(false);
-    };
-    document.addEventListener('pointerdown', close, true);
-    return () => document.removeEventListener('pointerdown', close, true);
-  }, [detailsOpen]);
+  const dismissInsideRefs = useMemo(() => [rootRef], []);
 
   if (!enabled) return null;
   const { state, label, detail, retryLabel } = getSyncStatusViewModel(status, queueSize, manualSyncing);
@@ -126,6 +119,11 @@ export default function SyncStatusChip({ status, queueSize = 0, enabled = true, 
 
   return (
     <div ref={rootRef} style={{ position: 'relative', display: 'inline-flex' }}>
+      <DismissBarrier
+        active={detailsOpen}
+        insideRefs={dismissInsideRefs}
+        onDismiss={() => setDetailsOpen(false)}
+      />
       {compact
         ? <CompactSyncStatusChip state={state} label={label} accessibleLabel={accessibleLabel} color={color} detailsOpen={detailsOpen} onActivate={handlePrimaryAction} />
         : <ExpandedSyncStatusChip state={state} label={label} accessibleLabel={accessibleLabel} color={color} detailsOpen={detailsOpen} onActivate={handlePrimaryAction} />}

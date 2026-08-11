@@ -137,3 +137,78 @@ test('mobile account menu consumes the first outside document tap', async ({ pag
   await firstDocument.click();
   await expect(page).toHaveURL(/testPdf=/);
 });
+
+test('focused mobile search consumes the first outside document tap', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await openHub(page, 'documents', false, true);
+
+  const search = page.locator('input[placeholder="Search documents..."]').first();
+  const firstDocument = page.locator('.mobile-doc-card').first();
+  await search.focus();
+  await expect(search).toBeFocused();
+
+  await firstDocument.click();
+  await expect(search).not.toBeFocused();
+  await expect(page).toHaveURL(/hubPreview=1/);
+  await expect(firstDocument).toBeVisible();
+
+  await firstDocument.click();
+  await expect(page).toHaveURL(/testPdf=/);
+});
+
+test('mobile document More menu consumes the first outside document tap', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await openHub(page, 'documents', false, true);
+
+  const rows = page.locator('.mobile-doc-card');
+  const target = rows.nth(1);
+  await rows.first().getByTitle('More').click();
+  await expect(page.locator('body > [role="menu"]')).toBeVisible();
+
+  await target.click();
+  await expect(page.locator('body > [role="menu"]')).toHaveCount(0);
+  await expect(page).toHaveURL(/hubPreview=1/);
+  await expect(target).toBeVisible();
+
+  await target.click();
+  await expect(page).toHaveURL(/testPdf=/);
+});
+
+test('mobile project More menu consumes the first outside project tap', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await openHub(page, 'projects', false, true);
+
+  const rows = page.locator('.projects-mobile-folder-row.drill.reorderable');
+  const initialCount = await rows.count();
+  const target = rows.first();
+  await rows.last().getByTitle('More').click();
+  await expect(page.locator('body > [role="menu"]')).toBeVisible();
+
+  await target.click();
+  await expect(page.locator('body > [role="menu"]')).toHaveCount(0);
+  await expect(rows).toHaveCount(initialCount);
+  await expect(target).toBeVisible();
+
+  await target.click();
+  await expect(rows).toHaveCount(0);
+});
+
+test('mobile template More menu consumes the first outside template tap', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await openHub(page, 'templates', false, true);
+
+  const rows = page.locator('.templates-mobile-row.reorderable');
+  const initialCount = await rows.count();
+  const target = rows.first();
+  await rows.last().getByTitle('More').click();
+  await expect(page.locator('body > [role="menu"]')).toBeVisible();
+
+  await target.click();
+  await expect(page.locator('body > [role="menu"]')).toHaveCount(0);
+  await expect(rows).toHaveCount(initialCount);
+  await expect(target).toBeVisible();
+
+  await target.click();
+  await expect(rows).toHaveCount(0);
+  await expect(page.locator('.templates-mobile-detail')).toBeVisible();
+});

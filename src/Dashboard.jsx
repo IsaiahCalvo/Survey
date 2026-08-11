@@ -11,6 +11,7 @@
 import { loadPdfjs } from './utils/pdfWorkerConfig';
 import { resolveIncomingUpload, shouldOfferAlias, nextAvailableName } from './utils/incomingFileResolver';
 import DuplicateUploadModal from './components/DuplicateUploadModal';
+import DismissBarrier from './components/DismissBarrier';
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
 import SurveyHub from './home/SurveyHub';
 import CreateProjectModal from './home/CreateProjectModal';
@@ -122,6 +123,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
   const [showUserDropdown, setShowUserDropdown] = useState(false);
   const [showAccountSettings, setShowAccountSettings] = useState(false);
   const userDropdownRef = useRef(null);
+  const userDropdownInsideRefs = useMemo(() => [userDropdownRef], []);
 
   // Supabase hooks for data persistence
   const {
@@ -155,23 +157,6 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
     limits,
     refetch: refetchUsage
   } = useSubscriptionLimits();
-
-  // Close user dropdown when clicking outside
-  useEffect(() => {
-    const handleClickOutside = (event) => {
-      if (userDropdownRef.current && !userDropdownRef.current.contains(event.target)) {
-        setShowUserDropdown(false);
-      }
-    };
-
-    if (showUserDropdown) {
-      document.addEventListener('mousedown', handleClickOutside);
-    }
-
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
-    };
-  }, [showUserDropdown]);
 
   const [projectName, setProjectName] = useState('');
   const [projectFiles, setProjectFiles] = useState([]);
@@ -399,6 +384,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
   // View mode dropdown state
   const [isViewDropdownOpen, setIsViewDropdownOpen] = useState(false);
   const viewDropdownRef = useRef(null);
+  const viewDropdownInsideRefs = useMemo(() => [viewDropdownRef], []);
 
   // Load view mode from localStorage (only UI preference, not data)
   useEffect(() => {
@@ -455,23 +441,6 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
   useEffect(() => {
     try { localStorage.setItem('dashboardViewMode', viewMode); } catch { }
   }, [viewMode]);
-
-  // Close dropdown when clicking outside
-  useEffect(() => {
-    const handleClickOutside = (event) => {
-      if (viewDropdownRef.current && !viewDropdownRef.current.contains(event.target)) {
-        setIsViewDropdownOpen(false);
-      }
-    };
-
-    if (isViewDropdownOpen) {
-      document.addEventListener('mousedown', handleClickOutside);
-    }
-
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
-    };
-  }, [isViewDropdownOpen]);
 
 
   // UX 2026-04-22: File menu → "Open PDF…" fires the same flow as clicking
@@ -2008,6 +1977,16 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
 
   return (
     <>
+      <DismissBarrier
+        active={showUserDropdown}
+        insideRefs={userDropdownInsideRefs}
+        onDismiss={() => setShowUserDropdown(false)}
+      />
+      <DismissBarrier
+        active={isViewDropdownOpen}
+        insideRefs={viewDropdownInsideRefs}
+        onDismiss={() => setIsViewDropdownOpen(false)}
+      />
       <input
         ref={fileInputRef}
         type="file"
