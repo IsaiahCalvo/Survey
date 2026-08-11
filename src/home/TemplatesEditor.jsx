@@ -1928,7 +1928,7 @@ export default function TemplatesEditor({
                                 <button
                                   title="Delete item"
                                   onClick={(e) => { e.stopPropagation(); deleteItem(i, it.id); }}
-                                  onMouseEnter={(e) => { e.currentTarget.style.color = '#cf6f6f'; }}
+                                  onMouseEnter={(e) => { e.currentTarget.style.color = '#d95a56'; }}
                                   onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--ink-quiet)'; }}
                                   style={{ background: 'transparent', border: 0, color: 'var(--ink-quiet)', cursor: 'pointer', fontSize: 14, lineHeight: 1, padding: 0, width: 16, height: 16, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'inherit' }}
                                 >×</button>
@@ -1985,7 +1985,7 @@ export default function TemplatesEditor({
                                     <button
                                       title="Permanently delete (orphans historical responses)"
                                       onClick={(e) => { e.stopPropagation(); hardDeleteItem(i, it.id); }}
-                                      onMouseEnter={(e) => { e.currentTarget.style.color = '#cf6f6f'; }}
+                                      onMouseEnter={(e) => { e.currentTarget.style.color = '#d95a56'; }}
                                       onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--ink-quiet)'; }}
                                       style={{ background: 'transparent', border: 0, color: 'var(--ink-quiet)', cursor: 'pointer', fontSize: 14, lineHeight: 1, padding: 0, width: 16, height: 16, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'inherit' }}
                                     >×</button>
@@ -2855,7 +2855,7 @@ export default function TemplatesEditor({
               <button onClick={() => duplicateModules(selMods)} disabled={!selCount} style={{ background: 'transparent', border: '1px solid #3a4252', color: selCount ? '#e8e2d4' : '#5a6473', borderRadius: 4, padding: '5px 9px', fontSize: 11.5, cursor: selCount ? 'pointer' : 'not-allowed', fontFamily: 'inherit', whiteSpace: 'nowrap' }}>Duplicate</button>
               <button onClick={() => { if (selCount) setMoveModal({ count: selCount, kind: 'module' }); }} disabled={!selCount} style={{ background: 'transparent', border: '1px solid #3a4252', color: selCount ? '#e8e2d4' : '#5a6473', borderRadius: 4, padding: '5px 9px', fontSize: 11.5, cursor: selCount ? 'pointer' : 'not-allowed', fontFamily: 'inherit', whiteSpace: 'nowrap' }}>Move/Copy</button>
               <button disabled={!selCount} onClick={() => { if (selCount && tpl) onShare && onShare(tpl); }} style={{ background: 'transparent', border: '1px solid #3a4252', color: selCount ? '#e8e2d4' : '#5a6473', borderRadius: 4, padding: '5px 9px', fontSize: 11.5, cursor: selCount ? 'pointer' : 'not-allowed', fontFamily: 'inherit', whiteSpace: 'nowrap', display: 'inline-flex', alignItems: 'center' }} title="Share"><Icon name="share" size={12} /></button>
-              <button onClick={() => deleteModules(selMods)} disabled={!selCount} style={{ background: 'transparent', border: '1px solid #3a4252', color: selCount ? '#cf6f6f' : '#5a6473', borderRadius: 4, padding: '5px 9px', fontSize: 11.5, cursor: selCount ? 'pointer' : 'not-allowed', fontFamily: 'inherit', whiteSpace: 'nowrap', display: 'inline-flex', alignItems: 'center' }} title="Delete"><Icon name="trash" size={12} /></button>
+              <button onClick={() => deleteModules(selMods)} disabled={!selCount} style={{ background: 'transparent', border: '1px solid #3a4252', color: selCount ? '#d95a56' : '#5a6473', borderRadius: 4, padding: '5px 9px', fontSize: 11.5, cursor: selCount ? 'pointer' : 'not-allowed', fontFamily: 'inherit', whiteSpace: 'nowrap', display: 'inline-flex', alignItems: 'center' }} title="Delete"><Icon name="trash" size={12} /></button>
               <span style={{ flex: 1 }} />
               <button onClick={() => setModEdit(false)} style={{ background: '#d8a84e', border: '1px solid #d8a84e', color: '#15110a', borderRadius: 4, padding: '5px 16px', fontSize: 11.5, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' }}>Done</button>
             </div>

@@ -216,7 +216,7 @@ function TabItem({
             width: '6px',
             height: '6px',
             borderRadius: '50%',
-            background: '#cf6f6f',
+            background: '#d95a56',
             display: 'inline-block',
             marginRight: '7px',
             flexShrink: 0

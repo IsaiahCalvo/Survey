@@ -168,14 +168,14 @@
 }
 
 .btn-danger {
-  background: #cf6f6f;
+  background: #d95a56;
   color: #f4f1ea;
-  border: 1px solid #cf6f6f;
+  border: 1px solid #d95a56;
 }
 
 .btn-danger:hover:not(:disabled) {
-  background: #c25858;
-  border-color: #c25858;
+  background: #c84c49;
+  border-color: #c84c49;
 }
 
 .btn-ghost {
@@ -552,12 +552,12 @@ input[type="text"].space-name-inline:focus {
 }
 
 .region-delete-button {
-  color: #cf6f6f;
+  color: #d95a56;
   cursor: pointer;
 }
 
 .region-delete-button:hover {
-  background: rgba(207, 111, 111, 0.15);
+  background: rgba(217, 90, 86, 0.15);
 }
 
 .survey-marker-expand-spacer {
@@ -597,7 +597,7 @@ input[type="text"].space-name-inline:focus {
   border: 0;
   border-radius: 4px;
   background: transparent;
-  color: #cf6f6f;
+  color: #d95a56;
   cursor: help;
   display: inline-flex;
   align-items: center;
@@ -669,7 +669,7 @@ input[type="text"].space-name-inline:focus {
 }
 
 .survey-marker-review-tooltip-title {
-  color: #cf6f6f;
+  color: #d95a56;
   font-weight: 600;
 }
 
@@ -849,13 +849,13 @@ input[type="text"].space-name-inline:focus {
 }
 
 .survey-marker-select-action-danger {
-  color: #c25858;
+  color: #c84c49;
   border-color: #6b3a3a;
 }
 
 .survey-marker-select-action-danger:hover:not(:disabled) {
   color: #d98a8a;
-  border-color: #c25858;
+  border-color: #c84c49;
   background: rgba(255, 102, 102, 0.12);
 }
 

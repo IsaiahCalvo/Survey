@@ -35,7 +35,7 @@ const C = {
   inkSoft: '#e8e2d4',
   muted: '#8d96a6',
   gold: '#d8a84e',
-  danger: '#cf6f6f',
+  danger: '#d95a56',
 };
 
 const KIND_LABEL = { document: 'document', project: 'project', template: 'template' };
@@ -242,12 +242,12 @@ export default function ShareModal({
           </div>
 
           {blockedReason && (
-            <div style={{ background: 'rgba(207,111,111,0.10)', border: `1px solid ${C.danger}`, borderRadius: 6, padding: '8px 10px', color: C.danger, fontSize: 11.5 }}>
+            <div style={{ background: 'rgba(217, 90, 86, 0.10)', borderLeft: `3px solid ${C.danger}`, borderRadius: 8, padding: '8px 10px', color: C.ink, fontSize: 11.5 }}>
               {blockedReason}
             </div>
           )}
           {error && !blockedReason && (
-            <div style={{ background: 'rgba(207,111,111,0.10)', border: `1px solid ${C.danger}`, borderRadius: 6, padding: '8px 10px', color: C.danger, fontSize: 11.5 }}>
+            <div style={{ background: 'rgba(217, 90, 86, 0.10)', borderLeft: `3px solid ${C.danger}`, borderRadius: 8, padding: '8px 10px', color: C.ink, fontSize: 11.5 }}>
               {error}
             </div>
           )}

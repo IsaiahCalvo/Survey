@@ -2426,7 +2426,7 @@ const SurveySpacesRail = ({
                                   : liveSyncStatus === 'connecting' || gateChecking
                                     ? '#f39c12'
                                     : liveSyncStatus === 'error' || liveSyncSupported === false
-                                      ? '#cf6f6f'
+                                      ? '#d95a56'
                                       : '#fff',
                                 fontSize: '14px',
                                 cursor: liveSyncSupported === false ? 'not-allowed' : 'pointer',
@@ -2801,19 +2801,19 @@ const SurveySpacesRail = ({
                                   padding: 0,
                                   background: 'transparent',
                                   border: 'none',
-                                  color: Object.values(copiedItemSelection).some(Boolean) ? '#c25858' : '#5a6473',
+                                  color: Object.values(copiedItemSelection).some(Boolean) ? '#c84c49' : '#5a6473',
                                   fontSize: '13px',
                                   fontWeight: '400',
                                   cursor: Object.values(copiedItemSelection).some(Boolean) ? 'pointer' : 'not-allowed'
                                 }}
                                 onMouseEnter={(e) => {
                                   if (Object.values(copiedItemSelection).some(Boolean)) {
-                                    e.currentTarget.style.color = '#c25858';
+                                    e.currentTarget.style.color = '#c84c49';
                                   }
                                 }}
                                 onMouseLeave={(e) => {
                                   if (Object.values(copiedItemSelection).some(Boolean)) {
-                                    e.currentTarget.style.color = '#c25858';
+                                    e.currentTarget.style.color = '#c84c49';
                                   }
                                 }}
                               >

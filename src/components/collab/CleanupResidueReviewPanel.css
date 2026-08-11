@@ -179,12 +179,12 @@
   /* UX: red destructive primary — same accent-red token ConfirmDeleteModal
      uses so cleaning up brake-suppressed residue and bulk-deleting feel
      like the same destructive surface family. */
-  background: var(--accent-red, #cf6f6f);
-  border-color: var(--accent-red, #cf6f6f);
+  background: var(--accent-red, #d95a56);
+  border-color: var(--accent-red, #d95a56);
   color: #FFFFFF;
 }
 
 .cleanup-residue-review__action--primary:hover {
-  background: var(--accent-red-hover, #B02A37);
-  border-color: var(--accent-red-hover, #B02A37);
+  background: var(--accent-red-hover, #c84c49);
+  border-color: var(--accent-red-hover, #c84c49);
 }

@@ -42,7 +42,7 @@ const C = {
   inkSoft: '#e8e2d4',
   muted: '#8d96a6',
   gold: '#d8a84e',
-  danger: '#cf6f6f',
+  danger: '#d95a56',
 };
 
 const ROLES = ['Owner', 'Editor', 'Viewer'];

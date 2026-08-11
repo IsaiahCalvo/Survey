@@ -1315,7 +1315,7 @@ const PagesPanel = ({
               fontSize: '13px',
               textAlign: 'left',
               cursor: 'pointer',
-              color: mobileMode ? '#F08A8A' : '#cf6f6f',
+              color: mobileMode ? '#F08A8A' : '#d95a56',
               display: 'flex',
               alignItems: 'center',
               gap: '8px'
@@ -1323,7 +1323,7 @@ const PagesPanel = ({
             onMouseEnter={(e) => e.currentTarget.style.background = mobileMode ? '#22262d' : '#2a3140'}
             onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
           >
-            <Icon name="trash" size={14} color={mobileMode ? '#F08A8A' : '#cf6f6f'} />
+            <Icon name="trash" size={14} color={mobileMode ? '#F08A8A' : '#d95a56'} />
             Delete
           </button>
         </div>

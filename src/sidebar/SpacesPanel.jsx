@@ -321,11 +321,11 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
                 alignItems: 'center',
                 justifyContent: 'center'
               }}
-              onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(207, 111, 111, 0.15)'}
+              onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(217, 90, 86, 0.15)'}
               onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
               title="Delete"
             >
-              <Icon name="trash" size={12} color="#cf6f6f" />
+              <Icon name="trash" size={12} color="#d95a56" />
             </button>
           </div>
         </div>
@@ -717,7 +717,7 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
                               onClick={() => onRemovePage(space.id, page.pageId)}
                               className="region-delete-button"
                             >
-                              <Icon name="trash" size={12} color="#cf6f6f" />
+                              <Icon name="trash" size={12} color="#d95a56" />
                             </button>
                           </div>
                         </li>

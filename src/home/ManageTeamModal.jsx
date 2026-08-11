@@ -46,7 +46,7 @@ const INK_200 = '#8d96a6';
 const BONE_100 = '#f4f1ea';
 const BONE_200 = '#e8e2d4';
 const GOLD = '#d8a84e';
-const DANGER = '#cf6f6f';
+const DANGER = '#d95a56';
 
 const ROLES = ["Owner", "Editor", "Viewer"];
 const ROLE_ORDER = { Owner: 0, Editor: 1, Viewer: 2 };
@@ -298,7 +298,7 @@ const InviteModal = ({ project, onClose, currentUser, canInvite, onChanged }) =>
             <div style={{ fontSize: 11, color: INK_200, marginTop: 8, lineHeight: 1.4 }}>Separate addresses with commas. Each invitee gets an email with a link to join as {emailRole}.</div>
           </div>
           {(blockedReason || error) && (
-            <div style={{ background: "rgba(207,111,111,0.10)", border: `1px solid ${DANGER}`, borderRadius: 6, padding: "8px 10px", color: DANGER, fontSize: 11.5 }}>
+            <div style={{ background: "rgba(217, 90, 86, 0.10)", borderLeft: `3px solid ${DANGER}`, borderRadius: 8, padding: "8px 10px", color: BONE_100, fontSize: 11.5 }}>
               {blockedReason || error}
             </div>
           )}

@@ -218,8 +218,8 @@ const ProfileMenu = ({ userName, userMeta, showArchive = false, tab, onNav }) =>
                 </div>
               </div>
             ) : (
-              <button className="profile-menu-signout" style={{ ...itemStyle, color: '#cf6f6f' }} onClick={() => setConfirmSignOut(true)}>
-                <Icon name="signout" size={15} color="#cf6f6f" />Sign Out
+              <button className="profile-menu-signout" style={{ ...itemStyle, color: '#d95a56' }} onClick={() => setConfirmSignOut(true)}>
+                <Icon name="signout" size={15} color="#d95a56" />Sign Out
               </button>
             )}
           </div>

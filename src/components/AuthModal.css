@@ -6,7 +6,7 @@
      ink-900 #0d0f14 · ink-800 #12151c · ink-700 #181c24 · ink-600 #1f2430
      ink-500 #2a3140 · ink-300 #5a6473 · ink-200 #8d96a6
      bone-100 #f4f1ea · bone-200 #e8e2d4 · gold #d8a84e · gold-soft #b6904a
-     danger #cf6f6f
+     danger #d95a56
    Per the spec's implementation guard, letter-spacing stays 0 everywhere. */
 
 .auth-modal-overlay {
@@ -125,12 +125,16 @@
 }
 
 /* Inline error — low-opacity danger background + danger border/text. */
+/* UX (KAL-72): the app's one error-banner treatment — 10%-opacity destructive
+   fill, a 3px destructive left border as the accent, 8px radius, and bone-cream
+   body text. Red is the accent, not the text colour, so the message stays
+   readable rather than shouting. Same shape as .account-error. */
 .auth-error {
-  background: rgba(207, 111, 111, 0.12);
-  border: 1px solid rgba(207, 111, 111, 0.55);
-  color: #cf6f6f;
+  background: rgba(217, 90, 86, 0.10);
+  border-left: 3px solid #d95a56;
+  color: #f4f1ea;
   padding: 10px 12px;
-  border-radius: 6px;
+  border-radius: 8px;
   margin-bottom: 16px;
   font-size: 12.5px;
   font-weight: 400;

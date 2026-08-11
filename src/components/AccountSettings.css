@@ -5,7 +5,7 @@
      borders   #2a3140 / #3a4252
      text      #f4f1ea (primary) / #8d96a6 (muted) / #5a6473 (quiet)
      accent    gold #d8a84e, dark ink #15110a on gold
-     danger    #cf6f6f
+     danger    #d95a56
    Fonts: "Helvetica Neue", Helvetica, Arial; mono "JetBrains Mono". */
 
 .account-settings-overlay {
@@ -201,11 +201,14 @@
   line-height: 1.5;
 }
 
+/* UX (KAL-72): the app's one error-banner treatment — 10%-opacity destructive
+   fill, a 3px destructive left border as the accent, 8px radius, and bone-cream
+   body text. Red is the accent, not the text colour. Same shape as .auth-error. */
 .account-error {
-  background: rgba(207, 111, 111, 0.1);
-  border: 1px solid rgba(207, 111, 111, 0.28);
-  color: #cf6f6f;
-  border-radius: 6px;
+  background: rgba(217, 90, 86, 0.10);
+  border-left: 3px solid #d95a56;
+  color: #f4f1ea;
+  border-radius: 8px;
   padding: 9px 12px;
   font-size: 12.5px;
   margin-bottom: 14px;
@@ -404,9 +407,9 @@
 
 .account-btn-danger {
   padding: 8px 16px;
-  background: rgba(207, 111, 111, 0.1);
-  color: #cf6f6f;
-  border: 1px solid rgba(207, 111, 111, 0.26);
+  background: rgba(217, 90, 86, 0.1);
+  color: #d95a56;
+  border: 1px solid rgba(217, 90, 86, 0.26);
   border-radius: 6px;
   font-size: 13px;
   font-weight: 600;
@@ -416,8 +419,8 @@
 }
 
 .account-btn-danger:hover:not(:disabled) {
-  background: rgba(207, 111, 111, 0.18);
-  border-color: rgba(207, 111, 111, 0.4);
+  background: rgba(217, 90, 86, 0.18);
+  border-color: rgba(217, 90, 86, 0.4);
   transform: translateY(-1px);
 }
 
@@ -431,7 +434,7 @@
 }
 
 .account-danger-zone h3 {
-  color: #cf6f6f;
+  color: #d95a56;
   margin-bottom: 8px;
   font-size: 14px;
 }

@@ -31,7 +31,7 @@ const MENU_HEX = {
   rule: '#2a3140',
   ink: '#f4f1ea',
   muted: '#8d96a6',
-  danger: '#cf6f6f',
+  danger: '#d95a56',
 };
 
 function DocumentActionMenu({ anchorRect, items, onClose, minWidth = 168 }) {

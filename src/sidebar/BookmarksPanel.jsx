@@ -388,7 +388,7 @@ const BookmarkTreeRow = ({
               flexShrink: 0,
             }}
           >
-            <Icon name="trash" size={12} color="#cf6f6f" />
+            <Icon name="trash" size={12} color="#d95a56" />
           </button>
         )}
         {isClone && childCount > 1 && (
@@ -2036,7 +2036,7 @@ const BookmarksPanel = ({
                         style={{
                           background: 'transparent',
                           border: 'none',
-                          color: '#cf6f6f',
+                          color: '#d95a56',
                           cursor: 'pointer',
                           padding: '4px',
                           display: 'flex',
@@ -2416,7 +2416,7 @@ const BookmarksPanel = ({
                         style={{
                           background: 'transparent',
                           border: 'none',
-                          color: '#cf6f6f',
+                          color: '#d95a56',
                           cursor: 'pointer',
                           padding: '4px',
                           display: 'flex',

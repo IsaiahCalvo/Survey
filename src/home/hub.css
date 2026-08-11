@@ -410,7 +410,7 @@
 }
 
 .survey-hub .profile-menu-signout:hover {
-  background: rgba(207,111,111,0.1) !important;
+  background: rgba(217, 90, 86,0.1) !important;
 }
 
 .survey-hub .profile-signout-confirm {
@@ -419,8 +419,8 @@
   gap: 8px;
   margin-top: 2px;
   padding: 9px 10px;
-  background: rgba(207,111,111,0.08);
-  border: 1px solid rgba(207,111,111,0.22);
+  background: rgba(217, 90, 86,0.08);
+  border: 1px solid rgba(217, 90, 86,0.22);
   border-radius: 8px;
 }
 
@@ -449,8 +449,8 @@
 }
 
 .survey-hub .profile-signout-buttons button.danger {
-  border-color: rgba(207,111,111,0.42);
-  background: #cf6f6f;
+  border-color: rgba(217, 90, 86,0.42);
+  background: #d95a56;
   color: #fff;
 }
 
@@ -2665,7 +2665,7 @@
     height: 24px;
     border: 0;
     background: transparent;
-    color: #cf6f6f;
+    color: #d95a56;
     font: inherit;
     font-size: 16px;
   }

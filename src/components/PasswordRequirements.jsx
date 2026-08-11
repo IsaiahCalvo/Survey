@@ -12,7 +12,7 @@ import { passwordRequirements } from './authFlow';
 
 const DEFAULT_THEME = {
   ink: '#f4f1ea', muted: '#8d96a6', card: '#181c24', rule: '#2a3140',
-  danger: '#cf6f6f', good: '#5fbf83',
+  danger: '#d95a56', good: '#5fbf83',
 };
 
 export default function PasswordRequirements({

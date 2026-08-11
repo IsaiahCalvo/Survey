@@ -6,12 +6,12 @@ import { useEffect, useState, useCallback } from 'react';
 //
 // Visual language follows docs/design/design.md (master plan decision 3: ONE
 // feedback system): warm dark surface #181c24, border #2a3140, gold accent for
-// success/status, #cf6f6f for danger, compact type, letter-spacing 0.
+// success/status, #d95a56 for danger, compact type, letter-spacing 0.
 
 const TYPE_ACCENT = {
   info: '#d8a84e',    // gold — status (design.md: success/status uses gold)
   success: '#d8a84e', // gold
-  error: '#cf6f6f',   // danger
+  error: '#d95a56',   // danger
   warn: '#e69a7a',    // rose supporting accent — caution, softer than danger
 };
 const AUTO_DISMISS_MS = 4500; // UX: long enough to read a short error, short enough not to nag.

@@ -35,7 +35,7 @@ export const COLORS = {
     muted: '#8d96a6',        // ink-200
     disabled: '#5a6473',     // ink-300
     dark: '#15110a',         // dark text on gold surfaces
-    error: '#cf6f6f',
+    error: '#d95a56',
   },
 
   // Brand/Accent colors
@@ -50,10 +50,10 @@ export const COLORS = {
   status: {
     success: '#a6e07a',
     successHover: '#93cf68',
-    danger: '#cf6f6f',
-    dangerHover: '#c25858',
-    dangerText: '#cf6f6f',
-    dangerBg: 'rgba(207, 111, 111, 0.12)',
+    danger: '#d95a56',
+    dangerHover: '#c84c49',
+    dangerText: '#d95a56',
+    dangerBg: 'rgba(217, 90, 86, 0.12)',
     dangerBgDark: '#2a1a1c',
     warning: '#e69a7a',
     info: '#7ab7e6',

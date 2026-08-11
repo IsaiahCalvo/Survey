@@ -42,7 +42,7 @@ const HEX = {
   ink: '#f4f1ea',    // --bone-100 primary text
   muted: '#8d96a6',  // --ink-200  secondary text
   gold: '#d8a84e',   // --gold     accent
-  danger: '#cf6f6f', // destructive action
+  danger: '#d95a56', // destructive action
 };
 
 /* Inline pin icon — HubShell's Icon set has no `pin` glyph, so a small

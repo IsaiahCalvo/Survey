@@ -29,7 +29,7 @@ const C = {
   inkSoft: '#e8e2d4',
   muted: '#8d96a6',
   gold: '#d8a84e',
-  danger: '#cf6f6f',
+  danger: '#d95a56',
   good: '#5fbf83',
 };
 
@@ -180,7 +180,7 @@ export default function ResetPasswordPage() {
           <div style={{ color: C.inkSoft, fontSize: 13, lineHeight: 1.5 }}>{description}</div>
 
           {error && (
-            <div style={{ background: 'rgba(207,111,111,0.10)', border: `1px solid ${C.danger}`, borderRadius: 8, padding: '8px 10px', color: C.danger, fontSize: 12 }}>
+            <div style={{ background: 'rgba(217, 90, 86, 0.10)', borderLeft: `3px solid ${C.danger}`, borderRadius: 8, padding: '8px 10px', color: C.ink, fontSize: 12 }}>
               {error}
             </div>
           )}

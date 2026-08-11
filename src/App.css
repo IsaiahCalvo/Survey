@@ -31,7 +31,13 @@
   /* Professional accent colors */
   --accent-primary: #d8a84e;
   --accent-blue: #d8a84e;
-  --accent-red: #cf6f6f;
+  /* UX (KAL-72): the app's ONE destructive red. Used for every irreversible
+     primary action (delete document, delete annotation, remove member) and for
+     every error banner's accent. Deliberately cooler and more serious than the
+     warmer validation-hint red — see docs/ui/colors.md for the two-tier rule.
+     Do not add a third red. */
+  --accent-red: #d95a56;
+  --accent-red-hover: #c84c49;
   --accent-purple: #5a6473;
 
   /* Border colors - Neutral gray tones */
@@ -396,8 +402,8 @@ screen and (min-resolution: 192dpi) {
 
 
 .selection-mode-button.danger {
-  border-color: #cf6f6f;
-  color: #cf6f6f;
+  border-color: #d95a56;
+  color: #d95a56;
 }
 
 .selection-mode-button.danger:hover {

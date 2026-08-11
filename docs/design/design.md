@@ -122,7 +122,7 @@ Supporting accents:
 - rose `#e69a7a`
 - lilac `#c293e6`
 - slate `#9aa3b2`
-- danger `#cf6f6f`
+- danger `#d95a56`
 
 Rules:
 
@@ -270,7 +270,7 @@ More menus are compact portalled popups:
 - padding `4px`
 - shadow `0 12px 30px rgba(0,0,0,0.45-0.55)`
 - menu item height around `32px` to `34px`
-- danger items use `#cf6f6f`
+- danger items use `#d95a56`
 
 Menus anchor to the trigger and flip inside the viewport.
 
@@ -315,7 +315,7 @@ Modal controls:
 - role selectors and destination pickers are compact dark controls
 - textarea/input fields use `#12151c`, `#2a3140` border, bone text
 - primary footer action is gold unless destructive
-- destructive action uses `#cf6f6f`
+- destructive action uses `#d95a56`
 - inline errors use low-opacity danger background plus danger border/text
 - success/status uses low-opacity gold background plus gold border/text
 
