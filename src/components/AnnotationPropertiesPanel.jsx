@@ -7,6 +7,13 @@
  * Style (incl. cloud bump size), arrowhead, and text styling. Edits apply live
  * via onUpdate(patch); closes on outside-pointerdown/Escape/X. Font options are
  * single-name only per the Fabric.js measurement gotcha (CLAUDE.md 2026-04-08).
+ *
+ * UX (KAL-62): context popover — NO SCRIM BY DESIGN. Every true modal in the
+ * app dims and blurs the page behind it (--overlay-scrim). This panel
+ * deliberately does not: it is a context popover attached to the annotation the
+ * user is editing, and they must keep seeing that annotation change live while
+ * they drag a slider. Dimming the page would hide the very thing being edited.
+ * Do not "fix" this by adding a scrim.
  */
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';

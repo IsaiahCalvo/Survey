@@ -31,7 +31,8 @@
   --pp-accent-ink: #15110A;
   --pp-accent-soft: rgba(216, 168, 78, 0.16);
   --pp-accent-glow: 0 0 0 1px rgba(216, 168, 78, 0.35);
-  --pp-overlay: rgba(0, 0, 0, 0.55);
+  /* UX (KAL-62): the app's one modal scrim colour. */
+  --pp-overlay: rgba(13, 15, 20, 0.55);
   --pp-shadow-xl: 0 24px 60px rgba(0, 0, 0, 0.6), 0 2px 0 rgba(255,255,255,0.02) inset;
   --pp-radius: 12px;
   --pp-radius-sm: 6px;
@@ -42,7 +43,11 @@
 /* Backdrop so the floating panel has a visible separation from the app. */
 .pp-backdrop {
   position: fixed; inset: 0;
+  /* UX (KAL-62): warm-dark dim plus the same 8px blur every other modal uses,
+     so the print panel sits at the same visual weight as the rest. */
   background: var(--pp-overlay);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
   z-index: 9998;
   animation: pp-fade-in 140ms ease-out;
 }

@@ -14,8 +14,12 @@
   left: 0;
   right: 0;
   bottom: 0;
-  background: rgba(8, 9, 12, 0.78);
-  backdrop-filter: blur(4px);
+  /* UX (KAL-62): the app's one modal scrim — warm-dark dim plus an 8px blur.
+     Account Settings used to dim harder (0.78) and blur less than every other
+     dialog, which made it feel like a heavier, separate surface. */
+  background: rgba(13, 15, 20, 0.55);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
   display: flex;
   align-items: center;
   justify-content: center;

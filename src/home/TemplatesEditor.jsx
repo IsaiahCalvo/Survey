@@ -2709,7 +2709,7 @@ export default function TemplatesEditor({
       <div
         data-testid="archive-confirm-modal"
         onClick={() => setArchiveConfirm(null)}
-        style={{ position: 'fixed', inset: 0, background: 'rgba(13, 15, 20, 0.55)', backdropFilter: 'blur(6px)', WebkitBackdropFilter: 'blur(6px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 5100 }}
+        style={{ position: 'fixed', inset: 0, background: 'rgba(13, 15, 20, 0.55)', backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 5100 }}
       >
         <div
           onClick={(e) => e.stopPropagation()}
@@ -2773,7 +2773,7 @@ export default function TemplatesEditor({
       return (
         <div
           onClick={() => setModEdit(false)}
-          style={{ position: 'fixed', inset: 0, background: 'rgba(13, 15, 20, 0.45)', backdropFilter: 'blur(6px)', WebkitBackdropFilter: 'blur(6px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100 }}
+          style={{ position: 'fixed', inset: 0, background: 'rgba(13, 15, 20, 0.55)', backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100 }}
         >
           <div
             className="templates-module-edit-modal"
@@ -2868,7 +2868,7 @@ export default function TemplatesEditor({
     {moveModal && tpl && (
       <div
         onClick={() => setMoveModal(null)}
-        style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100 }}
+        style={{ position: 'fixed', inset: 0, background: 'rgba(13, 15, 20, 0.55)', backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100 }}
       >
         <div
           onClick={(e) => e.stopPropagation()}

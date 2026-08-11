@@ -1027,9 +1027,12 @@
     /* 2026-07-12 (demo parity defect #8): var-first inset — raw env() is
        always 0 inside Android WebView; the shell publishes the real value. */
     padding: 12px 12px calc(12px + var(--native-safe-area-bottom, env(safe-area-inset-bottom, 0px)));
-    background: rgba(13,15,20,0.58);
-    backdrop-filter: blur(6px);
-    -webkit-backdrop-filter: blur(6px);
+    /* UX (KAL-62): one scrim for every modal surface, sheets included — a mobile
+       bottom sheet is still a dialog, so it dims and blurs by exactly the same
+       amount as the desktop modals rather than feeling lighter or heavier. */
+    background: rgba(13, 15, 20, 0.55);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
     overscroll-behavior: contain;
     touch-action: none;
   }
@@ -2694,9 +2697,11 @@
     position: fixed;
     inset: 0;
     z-index: 230;
-    background: rgba(7,9,13,0.5);
-    backdrop-filter: blur(4px);
-    -webkit-backdrop-filter: blur(4px);
+    /* UX (KAL-62): same one scrim as every other modal — see the Documents
+       mobile sheet above. */
+    background: rgba(13, 15, 20, 0.55);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
     display: flex;
     align-items: flex-end;
     justify-content: center;

@@ -46,6 +46,17 @@
   --border-light: #12151c;
   --border-lighter: #0d0f14;
 
+  /* UX (KAL-62): the app's ONE modal scrim. Every true dialog — desktop modal,
+     mobile bottom sheet, confirm, print panel — dims the page to this warm dark
+     tone and blurs it by 8px, so no dialog reads as heavier or lighter than
+     another. Pair this with `backdrop-filter: blur(8px)`.
+     Two deliberate exceptions, both documented in their own files:
+       * AnnotationPropertiesPanel — a context popover, not a modal, so no scrim.
+       * ReSignInModal — mounts inline so the user doesn't lose their place.
+     JS surfaces that render outside a CSS-variable scope mirror this value via
+     COLORS.modal.overlay / COLORS.background.overlay in src/theme.js. */
+  --overlay-scrim: rgba(13, 15, 20, 0.55);
+
   /* Professional shadows */
   --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.3);
   --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.4);
