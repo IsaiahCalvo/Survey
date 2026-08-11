@@ -33,6 +33,11 @@ export const Icon = ({ name, size = 14, color = 'currentColor' }) => {
     case 'template': return <svg viewBox="0 0 24 24" style={s}><rect x="5" y="4" width="14" height="16" rx="1"/><path d="M9 4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2H9V4z"/><path d="M7 10h10"/><path d="M7 13h10"/><path d="M7 16h8"/></svg>;
     case 'search': return <svg viewBox="0 0 24 24" style={s}><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>;
     case 'plus': return <svg viewBox="0 0 24 24" style={s}><path d="M12 5v14M5 12h14"/></svg>;
+    /* UX (KAL-64): every modal close is this drawn icon, never a typed "×"
+       character. A text glyph renders at whatever the system font decides,
+       so close buttons drifted in weight between dialogs. Same two strokes as
+       `close` in src/Icons.jsx, redrawn at the hub's 1.6 stroke width. */
+    case 'close': return <svg viewBox="0 0 24 24" style={s}><path d="M18 6L6 18"/><path d="M6 6L18 18"/></svg>;
     case 'upload': return <svg viewBox="0 0 24 24" style={s}><path d="M12 16V4M6 10l6-6 6 6M4 20h16"/></svg>;
     case 'filter': return <svg viewBox="0 0 24 24" style={s}><path d="M3 5h18M6 12h12M10 19h4"/></svg>;
     case 'menu': return <svg viewBox="0 0 24 24" style={s}><path d="M4 7h16M4 12h16M4 17h16"/></svg>;

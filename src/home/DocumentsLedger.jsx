@@ -519,7 +519,7 @@ export default function DocumentsLedger({
             <aside style={{ padding: 18, position: 'relative', height: '100%', boxSizing: 'border-box', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flex: 'none' }}>
                 <div className="section-label">Preview</div>
-                <button onClick={() => setPreviewOpen(false)} title="Close preview" style={closeButtonStyle()}>×</button>
+                <button onClick={() => setPreviewOpen(false)} title="Close preview" style={closeButtonStyle()}><Icon name="close" size={13} /></button>
               </div>
               <div style={{ marginTop: 10, fontSize: 15, fontWeight: 700, flex: 'none', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{sel.name}</div>
               <div className="meta" style={{ marginTop: 4, fontSize: 11.5, flex: 'none' }}>
@@ -612,7 +612,7 @@ export default function DocumentsLedger({
                   <span>Document details</span>
                   <strong>{mobileDetailDoc.name}</strong>
                 </div>
-                <button type="button" title="Close details" onClick={() => setMobileDetailId(null)} style={closeButtonStyle()}>×</button>
+                <button type="button" title="Close details" onClick={() => setMobileDetailId(null)} style={closeButtonStyle()}><Icon name="close" size={13} /></button>
               </div>
               <div className="documents-mobile-detail-meta">
                 {[mobileDetailDoc.project === 'Sandbox' ? null : mobileDetailDoc.project, mobileDetailDoc.size, mobileDetailDoc.pages != null ? `${mobileDetailDoc.pages} pages` : null].filter(Boolean).join(' · ')}

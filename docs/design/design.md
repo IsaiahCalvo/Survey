@@ -232,7 +232,9 @@ Modal close action:
 
 - Use a top-right bordered square close button.
 - Hit target is `24px x 24px`.
-- Use `×`, not lowercase `x`.
+- Use the drawn `close` icon from the shared registry, never a typed `×` or `x`
+  character (KAL-64). A text glyph renders at whatever weight and baseline the
+  system font picks, so close buttons drifted in weight between dialogs.
 - Border follows the modal rule color; icon color follows muted ink.
 
 ### Search

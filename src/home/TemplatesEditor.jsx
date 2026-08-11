@@ -1931,7 +1931,7 @@ export default function TemplatesEditor({
                                   onMouseEnter={(e) => { e.currentTarget.style.color = '#d95a56'; }}
                                   onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--ink-quiet)'; }}
                                   style={{ background: 'transparent', border: 0, color: 'var(--ink-quiet)', cursor: 'pointer', fontSize: 14, lineHeight: 1, padding: 0, width: 16, height: 16, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'inherit' }}
-                                >×</button>
+                                ><Icon name="close" size={11} /></button>
                               </div>
                                 )}
                               </SortableRearrangeRow>
@@ -1988,7 +1988,7 @@ export default function TemplatesEditor({
                                       onMouseEnter={(e) => { e.currentTarget.style.color = '#d95a56'; }}
                                       onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--ink-quiet)'; }}
                                       style={{ background: 'transparent', border: 0, color: 'var(--ink-quiet)', cursor: 'pointer', fontSize: 14, lineHeight: 1, padding: 0, width: 16, height: 16, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'inherit' }}
-                                    >×</button>
+                                    ><Icon name="close" size={11} /></button>
                                   </div>
                                 ))}
                               </div>
@@ -2467,7 +2467,7 @@ export default function TemplatesEditor({
                                               onBlur={(e) => renameItem(ci, it.id, e.currentTarget.value)}
                                               onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); else if (e.key === 'Escape') { e.currentTarget.value = it.text; e.currentTarget.blur(); } }}
                                             />
-                                            <button type="button" onClick={(e) => { e.stopPropagation(); deleteItem(ci, it.id); }}>×</button>
+                                            <button type="button" onClick={(e) => { e.stopPropagation(); deleteItem(ci, it.id); }}><Icon name="close" size={11} /></button>
                                           </div>
                                         )}
                                       </SortableRearrangeRow>
@@ -2484,7 +2484,7 @@ export default function TemplatesEditor({
                                             type="button"
                                             title="Permanently delete"
                                             onClick={(e) => { e.stopPropagation(); hardDeleteItem(ci, it.id); }}
-                                          >×</button>
+                                          ><Icon name="close" size={11} /></button>
                                         </div>
                                       ))}
                                     </div>
@@ -2879,7 +2879,7 @@ export default function TemplatesEditor({
               <p style={{ margin: 0, fontSize: 10.5, letterSpacing: '0.14em', textTransform: 'uppercase', color: '#8d96a6', fontWeight: 700, fontFamily: '"JetBrains Mono", ui-monospace, monospace' }}>Move/Copy</p>
               <h3 style={{ fontSize: 14, fontWeight: 700, margin: '2px 0 0', color: '#f4f1ea', letterSpacing: '-0.025em', fontFamily: '"Helvetica Neue", Helvetica, Arial, sans-serif' }}>{moveModal.count} item{moveModal.count === 1 ? '' : 's'}</h3>
             </div>
-            <button onClick={() => setMoveModal(null)} title="Close" style={closeButtonStyle({ borderColor: '#2a3140', color: '#8d96a6' })}>×</button>
+            <button onClick={() => setMoveModal(null)} title="Close" style={closeButtonStyle({ borderColor: '#2a3140', color: '#8d96a6' })}><Icon name="close" size={13} /></button>
           </div>
           {/* Destination fields depend on WHAT is being moved/copied:
               - Category → pick a Destination Template, then a Destination

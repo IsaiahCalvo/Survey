@@ -17,6 +17,7 @@
  */
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
+import Icon from '../Icons';
 import CompactColorPicker from './CompactColorPicker';
 import { resolvePropertiesPanelShape, computeBorderStylePatch } from './propertiesPanelShape';
 import { ARROWHEAD_STYLES, ARROWHEAD_STYLE_LABELS } from './Callout/types';
@@ -332,39 +333,33 @@ const AnnotationPropertiesPanel = ({
     </select>
   );
 
+  // UX (KAL-64): the stepper glyphs are DRAWN icons, not typed "−"/"+"
+  // characters. Typed glyphs render at whatever weight and baseline the system
+  // font picks, so they sat visibly off-centre in the 24px buttons and did not
+  // match the drawn icons elsewhere in the panel. One shared helper feeds all
+  // six steppers, so they can never drift apart again.
+  const stepperButtonStyle = {
+    width: 24,
+    height: 24,
+    borderRadius: 3,
+    border: '1px solid #d1d5db',
+    background: '#fff',
+    cursor: 'pointer',
+    lineHeight: 1,
+    padding: 0,
+    display: 'grid',
+    placeItems: 'center',
+  };
+
   const renderStepperRow = (valueLabel, onDecrement, onIncrement) => (
     <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-      <button
-        type="button"
-        onClick={onDecrement}
-        style={{
-          width: 24,
-          height: 24,
-          borderRadius: 3,
-          border: '1px solid #d1d5db',
-          background: '#fff',
-          cursor: 'pointer',
-          fontSize: 14,
-          lineHeight: 1,
-          padding: 0,
-        }}
-      >−</button>
+      <button type="button" onClick={onDecrement} style={stepperButtonStyle}>
+        <Icon name="minus" size={14} color="#374151" />
+      </button>
       <span style={{ fontSize: 12, minWidth: 32, textAlign: 'center', color: '#374151' }}>{valueLabel}</span>
-      <button
-        type="button"
-        onClick={onIncrement}
-        style={{
-          width: 24,
-          height: 24,
-          borderRadius: 3,
-          border: '1px solid #d1d5db',
-          background: '#fff',
-          cursor: 'pointer',
-          fontSize: 14,
-          lineHeight: 1,
-          padding: 0,
-        }}
-      >+</button>
+      <button type="button" onClick={onIncrement} style={stepperButtonStyle}>
+        <Icon name="plus" size={14} color="#374151" />
+      </button>
     </div>
   );
 
@@ -762,7 +757,7 @@ const AnnotationPropertiesPanel = ({
           onMouseEnter={(e) => { e.currentTarget.style.background = '#e5e7eb'; }}
           onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
           aria-label="Close properties panel"
-        >×</button>
+        ><Icon name="close" size={14} color="#6b7280" /></button>
       </div>
       {/* Body — per-type controls. */}
       <div style={{ padding: '10px 12px 12px' }}>

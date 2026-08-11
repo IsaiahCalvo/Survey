@@ -24,6 +24,7 @@ import { createDocumentInvite, buildInviteUrl } from '../services/documentInvite
 import { createProjectInvite } from '../services/projectInviteService';
 import { createTemplateInvite } from '../services/templateInviteService';
 import { closeButtonStyle } from './hubControls';
+import { Icon } from './HubShell';
 import Spinner from '../components/Spinner';
 
 const C = {
@@ -203,7 +204,7 @@ export default function ShareModal({
             <div style={{ fontSize: 10.5, letterSpacing: '0.14em', textTransform: 'uppercase', color: C.muted, fontWeight: 700 }}>Share {noun}</div>
             <div style={{ fontSize: 17, fontWeight: 700, letterSpacing: '-0.015em', marginTop: 4, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{name || 'Untitled'}</div>
           </div>
-          <button onClick={onClose} title="Close" style={closeButtonStyle({ borderColor: C.rule, color: C.muted })}>×</button>
+          <button onClick={onClose} title="Close" style={closeButtonStyle({ borderColor: C.rule, color: C.muted })}><Icon name="close" size={13} /></button>
         </div>
 
         {/* Single role selector — applies to both link and email per locked spec. */}

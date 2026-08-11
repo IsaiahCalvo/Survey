@@ -30,6 +30,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ConfirmModal } from '../home/BulkModals';
 import { closeButtonStyle } from '../home/hubControls';
+import { Icon } from '../home/HubShell';
 
 // Literal hex colors mirror src/home/BulkModals.jsx: these overlays render
 // outside the `.survey-hub` root where the palette CSS variables aren't in
@@ -143,7 +144,7 @@ export function PromptModal({
               }}
             />
           </div>
-          <button onClick={onCancel} title="Close" style={closeButtonStyle({ borderColor: C.rule, color: C.muted })}>×</button>
+          <button onClick={onCancel} title="Close" style={closeButtonStyle({ borderColor: C.rule, color: C.muted })}><Icon name="close" size={13} /></button>
         </div>
         <div style={{ padding: '12px 16px', borderTop: `1px solid ${C.rule}`, background: C.deep, display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
           <button onClick={onCancel} style={cancelButtonStyle}>Cancel</button>

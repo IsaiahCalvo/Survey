@@ -140,7 +140,7 @@ const ActivityModal = ({ member, onClose }) => {
             <div style={{ fontSize: 10.5, letterSpacing: 0.14, textTransform: "uppercase", color: INK_200, fontWeight: 700 }}>Activity</div>
             <div style={{ fontSize: 17, fontWeight: 700, letterSpacing: -0.015, marginTop: 4 }}>{member.name} · activity</div>
           </div>
-          <button onClick={onClose} title="Close" style={closeButtonStyle({ borderColor: INK_500, color: INK_200 })}>×</button>
+          <button onClick={onClose} title="Close" style={closeButtonStyle({ borderColor: INK_500, color: INK_200 })}><Icon name="close" size={13} /></button>
         </div>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 130px", gap: 14, padding: "8px 18px 6px", borderBottom: `1px solid ${INK_500}`, fontSize: 10.5, letterSpacing: 0.14, textTransform: "uppercase", color: INK_200, fontWeight: 700 }}>
           <span onClick={() => click("file")} style={{ cursor: "pointer", userSelect: "none", color: sortKey === "file" ? BONE_100 : "inherit" }}>File{arrow("file")}</span>
@@ -273,7 +273,7 @@ const InviteModal = ({ project, onClose, currentUser, canInvite, onChanged }) =>
             <div style={{ fontSize: 10.5, letterSpacing: 0.14, textTransform: "uppercase", color: INK_200, fontWeight: 700 }}>Invite User</div>
             <div style={{ fontSize: 17, fontWeight: 700, letterSpacing: -0.015, marginTop: 4, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{project.name}</div>
           </div>
-          <button onClick={onClose} title="Close" style={closeButtonStyle({ borderColor: INK_500, color: INK_200 })}>×</button>
+          <button onClick={onClose} title="Close" style={closeButtonStyle({ borderColor: INK_500, color: INK_200 })}><Icon name="close" size={13} /></button>
         </div>
         <div style={{ padding: "16px 18px", display: "flex", flexDirection: "column", gap: 18 }}>
           <div>
