@@ -24,6 +24,9 @@ import { createDocumentInvite, buildInviteUrl } from '../services/documentInvite
 import { createProjectInvite } from '../services/projectInviteService';
 import { createTemplateInvite } from '../services/templateInviteService';
 import { closeButtonStyle } from './hubControls';
+import { Icon } from './HubShell';
+import Spinner from '../components/Spinner';
+import { useFocusTrap } from '../hooks/useFocusTrap';
 
 const C = {
   scrim: 'rgba(13,15,20,0.55)',
@@ -34,7 +37,7 @@ const C = {
   inkSoft: '#e8e2d4',
   muted: '#8d96a6',
   gold: '#d8a84e',
-  danger: '#cf6f6f',
+  danger: '#d95a56',
 };
 
 const KIND_LABEL = { document: 'document', project: 'project', template: 'template' };
@@ -72,7 +75,7 @@ export default function ShareModal({
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [activeInvite, setActiveInvite] = useState(null); // last link-invite for share-link display
-  const previouslyFocusedRef = useRef(null);
+  const cardRef = useRef(null);
 
   useEffect(() => {
     if (!open) {
@@ -86,25 +89,10 @@ export default function ShareModal({
     }
   }, [open]);
 
-  // Accessibility: Escape closes the modal, and focus returns to whatever
-  // triggered it once it closes (minimal per-modal patch, no shared modal
-  // primitive/focus trap).
-  useEffect(() => {
-    if (!open) return undefined;
-    previouslyFocusedRef.current = document.activeElement;
-    const handleKey = (e) => {
-      if (e.key === 'Escape') {
-        e.stopPropagation();
-        onClose?.();
-      }
-    };
-    window.addEventListener('keydown', handleKey, true);
-    return () => {
-      window.removeEventListener('keydown', handleKey, true);
-      previouslyFocusedRef.current?.focus?.();
-      previouslyFocusedRef.current = null;
-    };
-  }, [open, onClose]);
+  // Accessibility (KAL-66): the shared modal primitive — Tab stays inside the
+  // dialog, Escape closes it, and focus returns to whatever opened it. This
+  // replaces a hand-rolled Escape+focus-return that never trapped Tab.
+  useFocusTrap(cardRef, open, { onEscape: onClose });
 
   const noun = KIND_LABEL[kind] || 'item';
   const targetId = useMemo(() => {
@@ -192,6 +180,9 @@ export default function ShareModal({
       }}
     >
       <div
+        ref={cardRef}
+        role="dialog"
+        aria-modal="true"
         onClick={(e) => e.stopPropagation()}
         style={{ width: 440, maxWidth: '92vw', background: C.card, border: `1px solid ${C.rule}`, borderRadius: 10, boxShadow: '0 24px 60px rgba(0,0,0,0.55)', color: C.ink, overflow: 'hidden' }}
       >
@@ -202,7 +193,7 @@ export default function ShareModal({
             <div style={{ fontSize: 10.5, letterSpacing: '0.14em', textTransform: 'uppercase', color: C.muted, fontWeight: 700 }}>Share {noun}</div>
             <div style={{ fontSize: 17, fontWeight: 700, letterSpacing: '-0.015em', marginTop: 4, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{name || 'Untitled'}</div>
           </div>
-          <button onClick={onClose} title="Close" style={closeButtonStyle({ borderColor: C.rule, color: C.muted })}>×</button>
+          <button onClick={onClose} title="Close" aria-label="Close" style={closeButtonStyle({ borderColor: C.rule, color: C.muted })}><Icon name="close" size={13} /></button>
         </div>
 
         {/* Single role selector — applies to both link and email per locked spec. */}
@@ -241,12 +232,12 @@ export default function ShareModal({
           </div>
 
           {blockedReason && (
-            <div style={{ background: 'rgba(207,111,111,0.10)', border: `1px solid ${C.danger}`, borderRadius: 6, padding: '8px 10px', color: C.danger, fontSize: 11.5 }}>
+            <div style={{ background: 'rgba(217, 90, 86, 0.10)', borderLeft: `3px solid ${C.danger}`, borderRadius: 8, padding: '8px 10px', color: C.ink, fontSize: 11.5 }}>
               {blockedReason}
             </div>
           )}
           {error && !blockedReason && (
-            <div style={{ background: 'rgba(207,111,111,0.10)', border: `1px solid ${C.danger}`, borderRadius: 6, padding: '8px 10px', color: C.danger, fontSize: 11.5 }}>
+            <div style={{ background: 'rgba(217, 90, 86, 0.10)', borderLeft: `3px solid ${C.danger}`, borderRadius: 8, padding: '8px 10px', color: C.ink, fontSize: 11.5 }}>
               {error}
             </div>
           )}
@@ -263,9 +254,13 @@ export default function ShareModal({
           <button
             disabled={busy || !emails.trim() || !!blockedReason}
             onClick={sendInvite}
-            style={{ opacity: busy || !emails.trim() || blockedReason ? 0.45 : 1, cursor: busy || !emails.trim() || blockedReason ? 'not-allowed' : 'pointer', background: C.gold, color: '#15110a', border: 0, borderRadius: 6, padding: '5px 14px', height: 28, fontSize: 11.5, fontWeight: 600, fontFamily: 'inherit' }}
+            style={{ opacity: busy || !emails.trim() || blockedReason ? 0.45 : 1, cursor: busy ? 'progress' : (!emails.trim() || blockedReason ? 'not-allowed' : 'pointer'), background: C.gold, color: '#15110a', border: 0, borderRadius: 6, padding: '5px 14px', height: 28, fontSize: 11.5, fontWeight: 600, fontFamily: 'inherit', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}
           >
-            {busy ? 'Sending…' : `Send ${role.toLowerCase()} invite`}
+            {/* UX (KAL-73): sending an invite is a network round-trip well over
+                500ms, so it takes the shared button loading treatment — 14px ring
+                on the left, label in its present-participle form, stays disabled. */}
+            {busy && <Spinner size={14} color="#15110a" trackColor="rgba(21,17,10,0.25)" />}
+            {busy ? 'Sending invite…' : `Send ${role.toLowerCase()} invite`}
           </button>
         </div>
       </div>

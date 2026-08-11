@@ -16,6 +16,7 @@ import StripeCheckout from './StripeCheckout';
 import UsageIndicator from './UsageIndicator';
 import './AccountSettings.css';
 import PasswordRequirements from './PasswordRequirements';
+import Spinner from './Spinner';
 import { passwordMeetsRequirements } from './authFlow';
 import TurnstileWidget, { TURNSTILE_ENABLED } from './TurnstileWidget';
 
@@ -60,7 +61,6 @@ export const AccountSettings = ({ isOpen, onClose }) => {
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
-  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   // Cloudflare Turnstile — shared by the password-change re-auth and the
   // "email me a reset link" button (both hit captcha-protected endpoints).
   const [captchaToken, setCaptchaToken] = useState('');
@@ -76,6 +76,11 @@ export const AccountSettings = ({ isOpen, onClose }) => {
   // Reset state when modal opens
   useEffect(() => {
     if (isOpen) {
+      // UX (KAL-68): Account Settings ALWAYS opens on General — deliberate, do
+      // not "fix" this by persisting the last-active tab. This modal is opened
+      // rarely and most visits address a different concern, so restoring a
+      // remembered tab produces a "why am I on this weird screen?" moment days
+      // later. Landing on General every time is predictable.
       setActiveTab('general');
       setSubscriptionViewTab('manage');
       setIsEditing(false);
@@ -324,23 +329,6 @@ export const AccountSettings = ({ isOpen, onClose }) => {
     resetCaptcha();
   };
 
-  const handleDeleteAccount = async () => {
-    setError('');
-    setLoading(true);
-
-    try {
-      // Note: Supabase doesn't have a built-in user deletion from client
-      // You'll need to create a Supabase Edge Function or use admin API
-      // For now, we'll just sign out
-      setError('Account deletion must be implemented on the server. Please contact support.');
-      setShowDeleteConfirm(false);
-    } catch (err) {
-      setError(err.message || 'Failed to delete account');
-    } finally {
-      setLoading(false);
-    }
-  };
-
   const handleSignOut = async () => {
     try {
       await signOut();
@@ -411,7 +399,12 @@ export const AccountSettings = ({ isOpen, onClose }) => {
               onClick={() => setActiveTab('subscription')}
               className={`account-sidebar-btn ${activeTab === 'subscription' ? 'active' : ''}`}
             >
-              Manage subscription
+              {/* UX (KAL-68): "Subscription", not "Manage subscription". The longer
+                  label ran to ~175px inside the 200px sidebar, so at a 1.25x OS
+                  scale or a narrow window it wrapped or overflowed. One word — the
+                  tab still opens the same Manage subscription content, which keeps
+                  its own longer label on the sub-tab inside. */}
+              Subscription
             </button>
           </div>
 
@@ -578,8 +571,13 @@ export const AccountSettings = ({ isOpen, onClose }) => {
                       </div>
 
                       <div className="account-btn-group">
+                        {/* UX (KAL-73): saving the profile is a network round-trip
+                            over 500ms, so it takes the shared button loading
+                            treatment — 14px ring left of a present-participle
+                            label, disabled until the save resolves. */}
                         <button type="submit" className="account-btn-primary" disabled={loading}>
-                          {loading ? 'Saving...' : 'Save changes'}
+                          {loading && <Spinner size={14} color="#15110a" trackColor="rgba(21,17,10,0.25)" />}
+                          {loading ? 'Saving…' : 'Save changes'}
                         </button>
                         <button
                           type="button"
@@ -598,45 +596,30 @@ export const AccountSettings = ({ isOpen, onClose }) => {
                   <>
                 {/* Danger Zone */}
                 <section className="account-section account-danger-zone">
-                  {!showDeleteConfirm ? (
-                    <>
-                      <button
-                        className="account-btn-danger"
-                        onClick={() => setShowDeleteConfirm(true)}
-                        disabled={loading}
-                      >
-                        Delete account
-                      </button>
-                      <p className="account-danger-zone-description">
-                        Permanently delete your account. This action cannot be undone.
-                      </p>
-                    </>
-                  ) : (
-                    <div className="account-delete-confirm">
-                      <p className="account-delete-confirm-title">
-                        Are you absolutely sure?
-                      </p>
-                      <p className="account-delete-confirm-description">
-                        This will permanently delete your account and all associated data. This action cannot be undone.
-                      </p>
-                      <div className="account-delete-confirm-actions">
-                        <button
-                          className="account-btn-danger"
-                          onClick={handleDeleteAccount}
-                          disabled={loading}
-                        >
-                          Yes, Delete My Account
-                        </button>
-                        <button
-                          className="account-btn-secondary"
-                          onClick={() => setShowDeleteConfirm(false)}
-                          disabled={loading}
-                        >
-                          Cancel
-                        </button>
-                      </div>
-                    </div>
-                  )}
+                  {/* UX (KAL-68): self-serve account deletion is NOT built — there
+                      is no server-side delete endpoint behind this. The control
+                      stays visible so the user knows deletion exists as a concept,
+                      but it is permanently disabled and says so up front.
+                      It used to be a live two-step confirm whose final button set
+                      a red error reading "Account deletion must be implemented on
+                      the server" — which read as "your deletion just failed", not
+                      "this feature isn't finished". Announcing the limitation
+                      before the click is honest; a red failure after it is not.
+                      When a real delete endpoint ships, re-enable this button and
+                      restore a confirm gate using the shared ConfirmModal. */}
+                  <button
+                    className="account-btn-danger"
+                    type="button"
+                    disabled
+                    title="Account deletion isn't self-serve yet — contact support"
+                    aria-label="Account deletion isn't self-serve yet — contact support"
+                  >
+                    Delete account
+                  </button>
+                  <p className="account-danger-zone-description">
+                    Account deletion isn&apos;t self-serve yet — contact support and
+                    we&apos;ll remove your account and all associated data.
+                  </p>
                 </section>
 
                 {/* Sign Out Section */}

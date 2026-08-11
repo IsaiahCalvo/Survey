@@ -7,9 +7,17 @@
  * Style (incl. cloud bump size), arrowhead, and text styling. Edits apply live
  * via onUpdate(patch); closes on outside-pointerdown/Escape/X. Font options are
  * single-name only per the Fabric.js measurement gotcha (CLAUDE.md 2026-04-08).
+ *
+ * UX (KAL-62): context popover — NO SCRIM BY DESIGN. Every true modal in the
+ * app dims and blurs the page behind it (--overlay-scrim). This panel
+ * deliberately does not: it is a context popover attached to the annotation the
+ * user is editing, and they must keep seeing that annotation change live while
+ * they drag a slider. Dimming the page would hide the very thing being edited.
+ * Do not "fix" this by adding a scrim.
  */
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
+import Icon from '../Icons';
 import CompactColorPicker from './CompactColorPicker';
 import { resolvePropertiesPanelShape, computeBorderStylePatch } from './propertiesPanelShape';
 import { ARROWHEAD_STYLES, ARROWHEAD_STYLE_LABELS } from './Callout/types';
@@ -128,6 +136,26 @@ const AnnotationPropertiesPanel = ({
       document.removeEventListener('keydown', onKey, true);
     };
   }, [onClose]);
+
+  // Accessibility (KAL-66): focus return. The panel is portalled to body, so
+  // when it unmounts the browser drops focus onto <body> and a keyboard user
+  // is dumped back to the top of the tab order — they'd have to tab all the way
+  // through the chrome to get back to the annotation they were just editing.
+  // Remember what opened the panel and hand focus back on close.
+  // NOT the shared useFocusTrap: this is a context popover, not a modal. Its
+  // whole point is that the page behind stays live and reachable, so Tab must
+  // NOT be trapped inside it.
+  const openerRef = useRef(null);
+  useEffect(() => {
+    openerRef.current = document.activeElement;
+    return () => {
+      // Only restore if the opener is still in the document — the annotation
+      // may have been deleted from under us.
+      const opener = openerRef.current;
+      openerRef.current = null;
+      if (opener && opener.isConnected) opener.focus?.();
+    };
+  }, []);
 
   // Draggable header — pointerdown on the header starts a drag, pointermove
   // updates position, pointerup ends. pointer capture keeps the drag alive
@@ -325,39 +353,33 @@ const AnnotationPropertiesPanel = ({
     </select>
   );
 
+  // UX (KAL-64): the stepper glyphs are DRAWN icons, not typed "−"/"+"
+  // characters. Typed glyphs render at whatever weight and baseline the system
+  // font picks, so they sat visibly off-centre in the 24px buttons and did not
+  // match the drawn icons elsewhere in the panel. One shared helper feeds all
+  // six steppers, so they can never drift apart again.
+  const stepperButtonStyle = {
+    width: 24,
+    height: 24,
+    borderRadius: 3,
+    border: '1px solid #d1d5db',
+    background: '#fff',
+    cursor: 'pointer',
+    lineHeight: 1,
+    padding: 0,
+    display: 'grid',
+    placeItems: 'center',
+  };
+
   const renderStepperRow = (valueLabel, onDecrement, onIncrement) => (
     <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-      <button
-        type="button"
-        onClick={onDecrement}
-        style={{
-          width: 24,
-          height: 24,
-          borderRadius: 3,
-          border: '1px solid #d1d5db',
-          background: '#fff',
-          cursor: 'pointer',
-          fontSize: 14,
-          lineHeight: 1,
-          padding: 0,
-        }}
-      >−</button>
+      <button type="button" onClick={onDecrement} style={stepperButtonStyle}>
+        <Icon name="minus" size={14} color="#374151" />
+      </button>
       <span style={{ fontSize: 12, minWidth: 32, textAlign: 'center', color: '#374151' }}>{valueLabel}</span>
-      <button
-        type="button"
-        onClick={onIncrement}
-        style={{
-          width: 24,
-          height: 24,
-          borderRadius: 3,
-          border: '1px solid #d1d5db',
-          background: '#fff',
-          cursor: 'pointer',
-          fontSize: 14,
-          lineHeight: 1,
-          padding: 0,
-        }}
-      >+</button>
+      <button type="button" onClick={onIncrement} style={stepperButtonStyle}>
+        <Icon name="plus" size={14} color="#374151" />
+      </button>
     </div>
   );
 
@@ -755,7 +777,7 @@ const AnnotationPropertiesPanel = ({
           onMouseEnter={(e) => { e.currentTarget.style.background = '#e5e7eb'; }}
           onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
           aria-label="Close properties panel"
-        >×</button>
+        ><Icon name="close" size={14} color="#6b7280" /></button>
       </div>
       {/* Body — per-type controls. */}
       <div style={{ padding: '10px 12px 12px' }}>

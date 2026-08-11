@@ -7,6 +7,19 @@
 // Every inline `border-radius:50% + rotate` spinner should use this instead of
 // hand-rolling its own <span> + local @keyframes. Defaults are design-system
 // gold; pass `color="currentColor"` inside status chips that tint by state.
+//
+// UX — WHEN TO SHOW ONE (500ms threshold rule, KAL-73):
+// Any async action that MAY exceed ~500ms must show loading feedback; anything
+// that always resolves under 500ms must NOT, because a spinner that flashes for
+// one frame reads as lag rather than progress. The two sanctioned treatments:
+//   * inside a button  — size 14 to the LEFT of the label, 8px gap, and the
+//     label switches to the present participle ("Send invite" -> "Sending
+//     invite…"). The button stays disabled while it spins.
+//   * on an empty surface — size 18 centred with descriptive text to its right
+//     ("Loading pages…"), so the user knows what is loading, not just that
+//     something is.
+// Purely local work (a toggle, an in-memory filter, a synchronous state edit)
+// gets no spinner.
 
 // Inject the keyframes once per document (module-level singleton, SSR-safe).
 const KEYFRAMES_ID = 'survey-spinner-keyframes';

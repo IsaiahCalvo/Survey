@@ -33,6 +33,11 @@ export const Icon = ({ name, size = 14, color = 'currentColor' }) => {
     case 'template': return <svg viewBox="0 0 24 24" style={s}><rect x="5" y="4" width="14" height="16" rx="1"/><path d="M9 4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2H9V4z"/><path d="M7 10h10"/><path d="M7 13h10"/><path d="M7 16h8"/></svg>;
     case 'search': return <svg viewBox="0 0 24 24" style={s}><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>;
     case 'plus': return <svg viewBox="0 0 24 24" style={s}><path d="M12 5v14M5 12h14"/></svg>;
+    /* UX (KAL-64): every modal close is this drawn icon, never a typed "×"
+       character. A text glyph renders at whatever the system font decides,
+       so close buttons drifted in weight between dialogs. Same two strokes as
+       `close` in src/Icons.jsx, redrawn at the hub's 1.6 stroke width. */
+    case 'close': return <svg viewBox="0 0 24 24" style={s}><path d="M18 6L6 18"/><path d="M6 6L18 18"/></svg>;
     case 'upload': return <svg viewBox="0 0 24 24" style={s}><path d="M12 16V4M6 10l6-6 6 6M4 20h16"/></svg>;
     case 'filter': return <svg viewBox="0 0 24 24" style={s}><path d="M3 5h18M6 12h12M10 19h4"/></svg>;
     case 'menu': return <svg viewBox="0 0 24 24" style={s}><path d="M4 7h16M4 12h16M4 17h16"/></svg>;
@@ -106,14 +111,36 @@ export const Search = ({ placeholder = 'Search…', width = 240, value, onChange
   </div>
 );
 
-/* Shared empty state — icon + one short line + one primary action.
-   (Design decision 4: every empty tab surface uses this exact shape.) */
-export const EmptyState = ({ icon, line, actionLabel, actionIcon = 'plus', onAction }) => (
+/* Shared empty state — icon + headline + one primary action.
+   (Design decision 4: every empty tab surface uses this exact shape.)
+
+   UX (KAL-58): `description` is OPTIONAL and is what turns the one-line form
+   into a two-tier one. Pass it and `line` is promoted to a real 13px headline
+   with the sentence beneath it in muted ink; omit it and the block renders
+   exactly as it always has — a single muted line.
+
+   Why two tiers: "No documents yet" states the fact but not the next move. A
+   first-time user on a blank pane needs to know what to DO, and a headline plus
+   one plain sentence carries that without turning the empty state into a page.
+   The block is capped at 320px so the sentence wraps to two lines at most.
+
+   The one-line form is not legacy — the Archive screen deliberately uses it.
+   "Nothing in Archive" needs no coaching, and Archive's layout was signed off
+   as-is, so it must keep rendering identically. Any change here has to leave
+   the no-description path byte-for-byte the same. */
+export const EmptyState = ({ icon, line, description, actionLabel, actionIcon = 'plus', onAction }) => (
   <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 10, padding: '40px 16px', textAlign: 'center', letterSpacing: 0 }}>
     <div style={{ width: 44, height: 44, borderRadius: 10, background: 'var(--ink-600)', border: '1px solid var(--ink-500)', display: 'grid', placeItems: 'center' }}>
       <Icon name={icon} size={20} color="var(--ink-200)" />
     </div>
-    <div style={{ fontSize: 12.5, color: 'var(--ink-200)' }}>{line}</div>
+    {description ? (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 4, maxWidth: 320 }}>
+        <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--bone-100)' }}>{line}</div>
+        <div style={{ fontSize: 12, color: 'var(--ink-200)', lineHeight: 1.5 }}>{description}</div>
+      </div>
+    ) : (
+      <div style={{ fontSize: 12.5, color: 'var(--ink-200)' }}>{line}</div>
+    )}
     <button className="btn primary" type="button" onClick={() => onAction && onAction()}>
       <Icon name={actionIcon} size={12} />{actionLabel}
     </button>
@@ -214,12 +241,12 @@ const ProfileMenu = ({ userName, userMeta, showArchive = false, tab, onNav }) =>
                 <div className="profile-signout-copy">Sign out of Survey?</div>
                 <div className="profile-signout-buttons">
                   <button type="button" onClick={() => setConfirmSignOut(false)}>Cancel</button>
-                  <button type="button" className="danger" onClick={() => { setOpen(false); onSignOut && onSignOut(); }}>Sign Out</button>
+                  <button type="button" className="danger" onClick={() => { setOpen(false); onSignOut && onSignOut(); }}>Sign out</button>
                 </div>
               </div>
             ) : (
-              <button className="profile-menu-signout" style={{ ...itemStyle, color: '#cf6f6f' }} onClick={() => setConfirmSignOut(true)}>
-                <Icon name="signout" size={15} color="#cf6f6f" />Sign Out
+              <button className="profile-menu-signout" style={{ ...itemStyle, color: '#d95a56' }} onClick={() => setConfirmSignOut(true)}>
+                <Icon name="signout" size={15} color="#d95a56" />Sign out
               </button>
             )}
           </div>

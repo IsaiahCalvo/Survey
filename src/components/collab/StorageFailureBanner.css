@@ -35,7 +35,7 @@
   background: var(--bg-secondary, #12151c);
   /* 4px solid red left border signals "something is broken" without screaming —
      matches the destructive-warning convention used by Linear / Notion / Figma. */
-  border-left: 4px solid var(--accent-red, #cf6f6f);
+  border-left: 4px solid var(--accent-red, #d95a56);
   border-bottom: 1px solid var(--border-primary, #2a3140);
   box-shadow: var(--shadow-md, 0 4px 16px rgba(0, 0, 0, 0.4));
 
@@ -50,7 +50,7 @@
   flex-shrink: 0;
   margin-top: 2px;
   margin-right: 8px;
-  color: var(--accent-red, #cf6f6f);
+  color: var(--accent-red, #d95a56);
 }
 
 .storage-banner__text {

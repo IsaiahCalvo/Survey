@@ -5,7 +5,7 @@
      borders   #2a3140 / #3a4252
      text      #f4f1ea (primary) / #8d96a6 (muted) / #5a6473 (quiet)
      accent    gold #d8a84e, dark ink #15110a on gold
-     danger    #cf6f6f
+     danger    #d95a56
    Fonts: "Helvetica Neue", Helvetica, Arial; mono "JetBrains Mono". */
 
 .account-settings-overlay {
@@ -14,8 +14,12 @@
   left: 0;
   right: 0;
   bottom: 0;
-  background: rgba(8, 9, 12, 0.78);
-  backdrop-filter: blur(4px);
+  /* UX (KAL-62): the app's one modal scrim — warm-dark dim plus an 8px blur.
+     Account Settings used to dim harder (0.78) and blur less than every other
+     dialog, which made it feel like a heavier, separate surface. */
+  background: rgba(13, 15, 20, 0.55);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -134,7 +138,12 @@
   font-weight: 500;
   transition: all 0.15s ease;
   font-family: inherit;
-  outline: none;
+  /* UX (KAL-68): safety net for the fixed-width sidebar. Today's labels all fit
+     on one line, but a long label at a 1.25x OS scale used to wrap and push the
+     list around; truncating with an ellipsis keeps the nav stable instead. */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .account-sidebar-btn:hover {
@@ -201,11 +210,14 @@
   line-height: 1.5;
 }
 
+/* UX (KAL-72): the app's one error-banner treatment — 10%-opacity destructive
+   fill, a 3px destructive left border as the accent, 8px radius, and bone-cream
+   body text. Red is the accent, not the text colour. Same shape as .auth-error. */
 .account-error {
-  background: rgba(207, 111, 111, 0.1);
-  border: 1px solid rgba(207, 111, 111, 0.28);
-  color: #cf6f6f;
-  border-radius: 6px;
+  background: rgba(217, 90, 86, 0.10);
+  border-left: 3px solid #d95a56;
+  color: #f4f1ea;
+  border-radius: 8px;
   padding: 9px 12px;
   font-size: 12.5px;
   margin-bottom: 14px;
@@ -350,6 +362,18 @@
   cursor: pointer;
   transition: all 0.2s ease;
   font-family: inherit;
+  /* UX (KAL-73): inline-flex + 8px gap so the shared loading ring can sit to the
+     left of the label without shifting the label off-centre. */
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+/* UX (KAL-73): a button mid-request reads as "working", not "broken" — the
+   progress cursor reinforces the ring while the button stays disabled. */
+.account-btn-primary:disabled {
+  cursor: progress;
 }
 
 .account-btn-primary:hover:not(:disabled) {
@@ -392,9 +416,9 @@
 
 .account-btn-danger {
   padding: 8px 16px;
-  background: rgba(207, 111, 111, 0.1);
-  color: #cf6f6f;
-  border: 1px solid rgba(207, 111, 111, 0.26);
+  background: rgba(217, 90, 86, 0.1);
+  color: #d95a56;
+  border: 1px solid rgba(217, 90, 86, 0.26);
   border-radius: 6px;
   font-size: 13px;
   font-weight: 600;
@@ -404,8 +428,8 @@
 }
 
 .account-btn-danger:hover:not(:disabled) {
-  background: rgba(207, 111, 111, 0.18);
-  border-color: rgba(207, 111, 111, 0.4);
+  background: rgba(217, 90, 86, 0.18);
+  border-color: rgba(217, 90, 86, 0.4);
   transform: translateY(-1px);
 }
 
@@ -419,7 +443,7 @@
 }
 
 .account-danger-zone h3 {
-  color: #cf6f6f;
+  color: #d95a56;
   margin-bottom: 8px;
   font-size: 14px;
 }

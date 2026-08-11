@@ -348,7 +348,7 @@ const BookmarkTreeRow = ({
               event.stopPropagation();
               onAddChild?.(item.id);
             }}
-            title="Add bookmark to group"
+            title="Add bookmark to group" aria-label="Add bookmark to group"
             style={{
               width: 24,
               height: 22,
@@ -375,7 +375,7 @@ const BookmarkTreeRow = ({
                 onDelete?.(item.id);
               }
             }}
-            title="Delete"
+            title="Delete" aria-label="Delete"
             style={{
               background: 'transparent',
               border: 'none',
@@ -388,7 +388,7 @@ const BookmarkTreeRow = ({
               flexShrink: 0,
             }}
           >
-            <Icon name="trash" size={12} color="#cf6f6f" />
+            <Icon name="trash" size={12} color="#d95a56" />
           </button>
         )}
         {isClone && childCount > 1 && (
@@ -1799,7 +1799,12 @@ const BookmarksPanel = ({
           left: 0,
           right: 0,
           bottom: 0,
-          background: 'rgba(0, 0, 0, 0.7)',
+          // UX (KAL-62): the app's one modal scrim — warm-dark dim plus an 8px
+          // blur, identical to every other dialog, so this one no longer reads
+          // as heavier and colder than the rest.
+          background: 'rgba(13, 15, 20, 0.55)',
+          backdropFilter: 'blur(8px)',
+          WebkitBackdropFilter: 'blur(8px)',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
@@ -2036,7 +2041,7 @@ const BookmarksPanel = ({
                         style={{
                           background: 'transparent',
                           border: 'none',
-                          color: '#cf6f6f',
+                          color: '#d95a56',
                           cursor: 'pointer',
                           padding: '4px',
                           display: 'flex',
@@ -2047,7 +2052,7 @@ const BookmarksPanel = ({
                         }}
                         onMouseEnter={(e) => e.currentTarget.style.background = '#3a1f1f'}
                         onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
-                        title="Remove"
+                        title="Remove" aria-label="Remove"
                       >
                         <Icon name="trash" size={14} />
                       </button>
@@ -2180,7 +2185,12 @@ const BookmarksPanel = ({
           left: 0,
           right: 0,
           bottom: 0,
-          background: 'rgba(0, 0, 0, 0.7)',
+          // UX (KAL-62): the app's one modal scrim — warm-dark dim plus an 8px
+          // blur, identical to every other dialog, so this one no longer reads
+          // as heavier and colder than the rest.
+          background: 'rgba(13, 15, 20, 0.55)',
+          backdropFilter: 'blur(8px)',
+          WebkitBackdropFilter: 'blur(8px)',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
@@ -2416,7 +2426,7 @@ const BookmarksPanel = ({
                         style={{
                           background: 'transparent',
                           border: 'none',
-                          color: '#cf6f6f',
+                          color: '#d95a56',
                           cursor: 'pointer',
                           padding: '4px',
                           display: 'flex',
@@ -2427,7 +2437,7 @@ const BookmarksPanel = ({
                         }}
                         onMouseEnter={(e) => e.currentTarget.style.background = '#3a1f1f'}
                         onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
-                        title="Remove"
+                        title="Remove" aria-label="Remove"
                       >
                         <Icon name="trash" size={14} />
                       </button>

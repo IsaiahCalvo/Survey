@@ -168,14 +168,14 @@
 }
 
 .btn-danger {
-  background: #cf6f6f;
+  background: #d95a56;
   color: #f4f1ea;
-  border: 1px solid #cf6f6f;
+  border: 1px solid #d95a56;
 }
 
 .btn-danger:hover:not(:disabled) {
-  background: #c25858;
-  border-color: #c25858;
+  background: #c84c49;
+  border-color: #c84c49;
 }
 
 .btn-ghost {
@@ -552,12 +552,12 @@ input[type="text"].space-name-inline:focus {
 }
 
 .region-delete-button {
-  color: #cf6f6f;
+  color: #d95a56;
   cursor: pointer;
 }
 
 .region-delete-button:hover {
-  background: rgba(207, 111, 111, 0.15);
+  background: rgba(217, 90, 86, 0.15);
 }
 
 .survey-marker-expand-spacer {
@@ -597,7 +597,7 @@ input[type="text"].space-name-inline:focus {
   border: 0;
   border-radius: 4px;
   background: transparent;
-  color: #cf6f6f;
+  color: #d95a56;
   cursor: help;
   display: inline-flex;
   align-items: center;
@@ -669,7 +669,7 @@ input[type="text"].space-name-inline:focus {
 }
 
 .survey-marker-review-tooltip-title {
-  color: #cf6f6f;
+  color: #d95a56;
   font-weight: 600;
 }
 
@@ -849,13 +849,13 @@ input[type="text"].space-name-inline:focus {
 }
 
 .survey-marker-select-action-danger {
-  color: #c25858;
+  color: #c84c49;
   border-color: #6b3a3a;
 }
 
 .survey-marker-select-action-danger:hover:not(:disabled) {
   color: #d98a8a;
-  border-color: #c25858;
+  border-color: #c84c49;
   background: rgba(255, 102, 102, 0.12);
 }
 
@@ -1474,4 +1474,63 @@ input[type="text"].space-add-pages-input:focus-visible {
   border-radius: inherit;
   pointer-events: none;
   z-index: 1;
+}
+
+/* UX (KAL-66): ONE keyboard focus ring for the whole app — a crisp 2px brand
+   gold outline with a 2px gap so it hugs the control without touching it.
+   Gold because a keyboard-only user must be able to find their place at a
+   glance on a dark surface. Crisp outline, not a glow or halo — a soft ring
+   reads as decoration, not position.
+   :focus-visible (not :focus) so a mouse click never draws it; only keyboard
+   Tab and programmatic focus do.
+   NOTE: this lives here, not in src/App.css. App.css is NOT imported anywhere
+   (verified 2026-08-11) — it is a dead stylesheet whose `var(--x, fallback)`
+   consumers only ever see the fallback. styles.css is the one global sheet
+   main.jsx actually loads. */
+:focus-visible {
+  outline: 2px solid #d8a84e;
+  outline-offset: 2px;
+}
+
+/* UX (KAL-69): the app's ONE "this field can't be empty" treatment, driven by
+   flagRequiredInput() in src/components/requiredInput.js. A refused blank commit
+   flashes the input's bottom edge and shakes it once (~320ms), then a hint
+   slides in beneath and clears itself after ~2s.
+   The red is the WARMER validation red — soft, recoverable, "fix this and move
+   on". It is deliberately NOT the cooler destructive red used for irreversible
+   actions. See docs/ui/colors.md; do not collapse the two.
+   Any future required text input adopts these classes rather than inventing its
+   own error style. */
+@keyframes required-input-shake {
+  0%, 100% { transform: translateX(0); }
+  20% { transform: translateX(-3px); }
+  40% { transform: translateX(3px); }
+  60% { transform: translateX(-2px); }
+  80% { transform: translateX(2px); }
+}
+
+.required-input--invalid {
+  border-bottom-color: #d97766 !important;
+  animation: required-input-shake 320ms ease-in-out;
+}
+
+@keyframes required-input-hint-in {
+  from { opacity: 0; transform: translateY(-3px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.required-input-hint {
+  margin-top: 4px;
+  font-size: 11px;
+  line-height: 1.35;
+  color: #d97766;
+  animation: required-input-hint-in 140ms ease-out;
+  pointer-events: none;
+}
+
+/* Respect a reduced-motion preference: keep the red edge and the hint (they
+   carry the meaning) and drop only the movement. */
+@media (prefers-reduced-motion: reduce) {
+  .required-input--invalid { animation: none; }
+  .required-input-hint { animation: none; }
 }

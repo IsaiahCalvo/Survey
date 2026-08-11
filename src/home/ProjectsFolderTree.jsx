@@ -42,7 +42,7 @@ const HEX = {
   ink: '#f4f1ea',    // --bone-100 primary text
   muted: '#8d96a6',  // --ink-200  secondary text
   gold: '#d8a84e',   // --gold     accent
-  danger: '#cf6f6f', // destructive action
+  danger: '#d95a56', // destructive action
 };
 
 /* Inline pin icon — HubShell's Icon set has no `pin` glyph, so a small
@@ -678,13 +678,13 @@ export default function ProjectsFolderTree({
               disabled={!selCount}
               onClick={() => { const first = filtered.find((p) => selProj.has(p.id)); if (first) onShare && onShare(first); }}
               style={miniButtonStyle({ disabled: !selCount, iconOnly: true })}
-              title="Share"
+              title="Share" aria-label="Share"
             ><Icon name="share" size={12} /></button>
             <button
               disabled={!selCount}
               onClick={() => { void deleteProjects([...selProj]); }}
               style={miniButtonStyle({ disabled: !selCount, danger: true, iconOnly: true })}
-              title="Delete"
+              title="Delete" aria-label="Delete"
             ><Icon name="trash" size={12} /></button>
           </span>
         );
@@ -727,13 +727,13 @@ export default function ProjectsFolderTree({
               disabled={!c}
               onClick={() => onShare && onShare(mobileDrillProject)}
               style={miniButtonStyle({ disabled: !c, iconOnly: true })}
-              title="Share"
+              title="Share" aria-label="Share"
             ><Icon name="share" size={12} /></button>
             <button
               disabled={!c}
               onClick={() => deleteFiles(selectedFiles.map((f) => f.id))}
               style={miniButtonStyle({ disabled: !c, danger: true, iconOnly: true })}
-              title="Delete"
+              title="Delete" aria-label="Delete"
             ><Icon name="trash" size={12} /></button>
           </span>
         );
@@ -790,7 +790,7 @@ export default function ProjectsFolderTree({
               setFileMenu((cur) => (cur && cur.id === f.id ? null : { id: f.id, rect }));
             }}
             style={moreButtonStyle()}
-            title="More"
+            title="More" aria-label="More"
           ><Icon name="more" size={14} /></button>
         )}
       </div>
@@ -848,14 +848,14 @@ export default function ProjectsFolderTree({
                     disabled={!selCount}
                     onClick={() => { const first = filtered.find((p) => selProj.has(p.id)); if (first) onShare && onShare(first); }}
                     style={miniButtonStyle({ disabled: !selCount, iconOnly: true })}
-                    title="Share"
+                    title="Share" aria-label="Share"
                   ><Icon name="share" size={11} /></button>
                   {/* Delete — removes each selected project and lets the host persist it when wired. */}
                   <button
                     disabled={!selCount}
                     onClick={() => { void deleteProjects([...selProj]); }}
                     style={miniButtonStyle({ disabled: !selCount, danger: true, iconOnly: true })}
-                    title="Delete"
+                    title="Delete" aria-label="Delete"
                   ><Icon name="trash" size={11} /></button>
                 </>
               )}
@@ -1185,6 +1185,7 @@ export default function ProjectsFolderTree({
                 <EmptyState
                   icon="folder"
                   line="No projects yet"
+                  description="Create a project to group related documents."
                   actionLabel="New project"
                   onAction={handleNewProject}
                 />
@@ -1198,7 +1199,7 @@ export default function ProjectsFolderTree({
       <div className="projects-mobile-layout slim-scroll">
         {filtered.length === 0 && (
           localProjects.length === 0 ? (
-            <EmptyState icon="folder" line="No projects yet" actionLabel="New project" onAction={handleNewProject} />
+            <EmptyState icon="folder" line="No projects yet" description="Create a project to group related documents." actionLabel="New project" onAction={handleNewProject} />
           ) : (
             <div className="meta" style={{ fontSize: 12, padding: '14px 4px' }}>No projects match your search.</div>
           )

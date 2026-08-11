@@ -42,7 +42,7 @@
   width: 4px;
   height: 4px;
   border-radius: 50%;
-  background: var(--accent-red, #cf6f6f);
+  background: var(--accent-red, #d95a56);
   flex-shrink: 0;
 }
 

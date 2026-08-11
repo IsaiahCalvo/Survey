@@ -1782,7 +1782,7 @@ const SearchTextPanel = ({
               <button
                 onClick={goToPrevMatch}
                 disabled={searchResults.length === 0}
-                title="Previous match (Shift+Enter)"
+                title="Previous match (Shift+Enter)" aria-label="Previous match (Shift+Enter)"
                 style={{
                   background: 'transparent',
                   border: '1px solid #2a3140',
@@ -1804,7 +1804,7 @@ const SearchTextPanel = ({
               <button
                 onClick={goToNextMatch}
                 disabled={searchResults.length === 0}
-                title="Next match (Enter)"
+                title="Next match (Enter)" aria-label="Next match (Enter)"
                 style={{
                   background: 'transparent',
                   border: '1px solid #2a3140',

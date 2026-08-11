@@ -12,6 +12,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { useFocusTrap } from '../hooks/useFocusTrap';
 import { resendCooldownRemainingMs, passwordMeetsRequirements } from './authFlow';
 import PasswordRequirements from './PasswordRequirements';
+import Spinner from './Spinner';
 import TurnstileWidget, { TURNSTILE_ENABLED } from './TurnstileWidget';
 import './AuthModal.css';
 
@@ -354,8 +355,15 @@ export const AuthModal = ({ isOpen, onClose, onDismiss }) => {
             />
           )}
 
+          {/* UX (KAL-73): auth round-trips routinely exceed 500ms, so the button
+              shows the shared loading treatment — a 14px ring left of the label
+              and the label in its present-participle form, so the user reads
+              which action is in flight rather than a generic "Please wait". */}
           <button type="submit" className="auth-submit-btn" disabled={loading}>
-            {loading ? 'Please wait...' : mode === 'login' ? 'Sign in' : mode === 'signup' ? 'Create account' : mode === 'sso' ? 'Continue with SSO' : 'Send reset link'}
+            {loading && <Spinner size={14} color="#15110a" trackColor="rgba(21,17,10,0.25)" style={{ marginRight: 8 }} />}
+            {loading
+              ? (mode === 'login' ? 'Signing in…' : mode === 'signup' ? 'Creating account…' : mode === 'sso' ? 'Continuing…' : 'Sending link…')
+              : (mode === 'login' ? 'Sign in' : mode === 'signup' ? 'Create account' : mode === 'sso' ? 'Continue with SSO' : 'Send reset link')}
           </button>
         </form>
         )}
