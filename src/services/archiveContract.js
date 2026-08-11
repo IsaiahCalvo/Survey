@@ -165,10 +165,18 @@ export function normalizeProjectItem(row, childDocumentRows = [], { now = Date.n
       // must select file_path — and now user_archived_at /
       // user_archive_expires_at too — or the row silently falls back.
       filePath: child.file_path || null,
+      fileSize: typeof child.file_size === 'number' ? child.file_size : null,
       ...dates,
     };
   });
   item.childCount = item.children.length;
+  /* A project's size is the SUM of the documents that travel with it — the
+     honest answer to "how much comes back if I restore this", and what lets a
+     project take a real position in the Size sort instead of sinking to the
+     bottom with the templates. Null (not 0) when nothing reported a size, so
+     "no size" stays distinguishable from "empty". */
+  const sized = item.children.filter((child) => typeof child.fileSize === 'number');
+  item.fileSize = sized.length ? sized.reduce((total, child) => total + child.fileSize, 0) : null;
   return item;
 }
 

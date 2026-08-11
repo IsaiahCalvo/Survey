@@ -30,6 +30,27 @@ export const ARCHIVE_SORTS = Object.freeze([
   { key: 'oldest', label: 'Oldest archived', sortKey: 'archived', sortDir: 'asc' },
   { key: 'az', label: 'Name A–Z', sortKey: 'name', sortDir: 'asc' },
   { key: 'za', label: 'Name Z–A', sortKey: 'name', sortDir: 'desc' },
+  { key: 'largest', label: 'Size', sortKey: 'size', sortDir: 'desc' },
+]);
+
+/**
+ * The sort menu, in the Documents ledger's own order and wording.
+ *
+ * The owner asked (2026-08-07) to "filter by: file, project, most recently
+ * archived, size" — which is exactly DocumentsLedger's sortOptions list
+ * (File / Project / Last edited / Size) with the date field renamed to
+ * Archive's equivalent. Same control, same four rows, one word changed.
+ *
+ * `name` is labelled "File" to match Documents even though an Archive row may
+ * be a project or a template: the column it sorts is the name column, and
+ * borrowing the neighbouring screen's word keeps the two menus readable as one
+ * feature.
+ */
+export const ARCHIVE_SORT_OPTIONS = Object.freeze([
+  { key: 'name', label: 'File' },
+  { key: 'project', label: 'Project' },
+  { key: 'archived', label: 'Most recently archived' },
+  { key: 'size', label: 'Size' },
 ]);
 
 /* Default sort: most recently archived first. Someone opening Archive is
@@ -67,7 +88,10 @@ export function sortStateForNamedSort(key) {
 export function nextSortState(current, key) {
   const { sortKey, sortDir } = current || DEFAULT_ARCHIVE_SORT;
   if (sortKey === key) return { sortKey, sortDir: sortDir === 'asc' ? 'desc' : 'asc' };
-  return { sortKey: key, sortDir: key === 'archived' || key === 'days' ? 'desc' : 'asc' };
+  /* Natural first direction, matching the Documents ledger: dates and sizes
+     open biggest/newest first, names open A–Z. */
+  const descFirst = key === 'archived' || key === 'days' || key === 'size';
+  return { sortKey: key, sortDir: descFirst ? 'desc' : 'asc' };
 }
 
 /** Type filter. 'all' (or anything unrecognized) passes everything through. */
@@ -83,12 +107,56 @@ const timeOf = (iso) => Date.parse(iso || '') || 0;
  * names land where a reader expects; ties fall back to name so the order is
  * stable across renders.
  */
+/**
+ * Whether an item has a size at all.
+ *
+ * Only documents carry bytes. A project reports the SUM of its archived
+ * children (it is a container, and the sum is the honest answer to "how much
+ * disk does restoring this bring back"). A template stores its whole structure
+ * in a JSON column and owns no file, so it genuinely has no size — and 0 is not
+ * the same statement as "none". `null` keeps the difference.
+ */
+export function archiveItemSize(item) {
+  if (!item) return null;
+  return typeof item.fileSize === 'number' ? item.fileSize : null;
+}
+
+/**
+ * Sort a copy of the list. Name comparisons use localeCompare so accented
+ * names land where a reader expects; ties fall back to name so the order is
+ * stable across renders.
+ */
 export function sortArchiveItems(items = [], sortKey = 'archived', sortDir = 'desc') {
   const sign = sortDir === 'asc' ? 1 : -1;
   const byName = (a, b) => (a.name || '').localeCompare(b.name || '');
   const arr = [...items];
   if (sortKey === 'name') {
     arr.sort((a, b) => sign * byName(a, b));
+  } else if (sortKey === 'project') {
+    /* A document sorts under its original project; a project sorts under its
+       own name (restoring it recreates that project); a template belongs to no
+       project. Items with no project sink to the bottom either way, for the
+       same reason sizeless items do — "none" is not a position on the scale. */
+    const projectOf = (item) => (item.type === 'project' ? item.name : item.projectName) || '';
+    arr.sort((a, b) => {
+      const pa = projectOf(a);
+      const pb = projectOf(b);
+      if (!pa !== !pb) return pa ? -1 : 1;
+      return sign * pa.localeCompare(pb) || byName(a, b);
+    });
+  } else if (sortKey === 'size') {
+    /* Sizeless items (templates, and any project whose children reported no
+       bytes) always land LAST, in both directions. Treating "no size" as zero
+       would rank them as the smallest thing in the list, which is a different
+       claim from "this has no size". */
+    arr.sort((a, b) => {
+      const sa = archiveItemSize(a);
+      const sb = archiveItemSize(b);
+      if (sa == null && sb == null) return byName(a, b);
+      if (sa == null) return 1;
+      if (sb == null) return -1;
+      return sign * (sa - sb) || byName(a, b);
+    });
   } else if (sortKey === 'days') {
     arr.sort((a, b) => sign * ((a.daysRemaining || 0) - (b.daysRemaining || 0)) || byName(a, b));
   } else if (sortKey === 'type') {
@@ -99,9 +167,49 @@ export function sortArchiveItems(items = [], sortKey = 'archived', sortDir = 'de
   return arr;
 }
 
-/** Filter then sort — the single list the screen renders and selects over. */
-export function visibleArchiveItems(items = [], { filter = 'all', sortKey = 'archived', sortDir = 'desc' } = {}) {
-  return sortArchiveItems(filterArchiveItems(items, filter), sortKey, sortDir);
+/**
+ * Name search, matching the Documents ledger's: case-insensitive substring on
+ * the name, nothing fancier.
+ *
+ * A project ALSO matches on its children, because the thing the user is
+ * hunting for is often a file that travelled into Archive inside a project. A
+ * project kept only because a child matched has its children narrowed to the
+ * matches, so opening it shows the hit rather than the whole group.
+ */
+export function searchArchiveItems(items = [], query = '') {
+  const q = String(query || '').trim().toLowerCase();
+  if (!q) return [...items];
+  const hits = (name) => String(name || '').toLowerCase().includes(q);
+  const out = [];
+  for (const item of items) {
+    if (!item) continue;
+    if (hits(item.name)) { out.push(item); continue; }
+    const matchingChildren = (item.children || []).filter((child) => hits(child.name));
+    if (matchingChildren.length) {
+      out.push({ ...item, children: matchingChildren, childCount: matchingChildren.length });
+    }
+  }
+  return out;
+}
+
+/**
+ * True when this project is only in the list because a CHILD matched the
+ * search. The screen forces those open, so the row that justified the match is
+ * actually visible instead of hidden behind a collapsed chevron.
+ */
+export function matchedOnChildOnly(item, query = '') {
+  const q = String(query || '').trim().toLowerCase();
+  if (!q || !item || item.type !== 'project') return false;
+  return !String(item.name || '').toLowerCase().includes(q);
+}
+
+/** Search, then filter, then sort — the one list the screen renders and selects over. */
+export function visibleArchiveItems(items = [], { filter = 'all', sortKey = 'archived', sortDir = 'desc', search = '' } = {}) {
+  return sortArchiveItems(
+    filterArchiveItems(searchArchiveItems(items, search), filter),
+    sortKey,
+    sortDir,
+  );
 }
 
 /**
